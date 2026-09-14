@@ -80,7 +80,11 @@ def start_app(binary):
     proc = subprocess.Popen(
             [binary, "--headless", "--width", str(WIDTH), "--height", str(HEIGHT)],
             env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    for _ in range(300):
+    # 600 x 0.05 s = 30 s, which is what every other check here waits: under a parallel run
+    # (`tests/run-checks.py -j8`) a headless testapp can need more than ten seconds to bind its
+    # socket, and this was the ONE script that then failed - twice out of two, with `app did not
+    # come up` and nothing else wrong.
+    for _ in range(600):
         if os.path.exists(ADDR):
             try:
                 Session().close()

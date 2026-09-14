@@ -38,8 +38,8 @@ bool QueueCache::init(AppThread *app) {
 void QueueCache::initialize(AppThread *) { }
 
 void QueueCache::invalidate(AppThread *app) {
-	// Runs at app-thread teardown, which happens before the render loop stops - the queues have to
-	// let go of their GPU objects while there is still a device to hand them back to.
+	// Runs at app-thread teardown, before the render loop stops, so queues release GPU objects
+	// while the device still exists.
 	for (auto &it : _entries) {
 		if (it.second.queue && it.second.state == State::Ready) {
 			if (auto res = it.second.queue->getInternalResource()) {
@@ -123,13 +123,9 @@ void QueueCache::acquire(StringView name, NotNull<core::RenderServerChannel> cha
 
 	log::source().debug("QueueCache", "compiling '", name, "'");
 
-	// The compile completion fires on the render loop's thread, not this one — so hop back before
-	// touching `_entries` or the ResourceCache, both of which are app-thread-only. (Without the
-	// hop this looks fine and works: the test's own "prewarm complete" line just prints from the
-	// wrong thread, which is what gave it away.)
-	//
-	// `this` is safe to capture: the cache is an AppThread extension, and the app thread is kept
-	// alive across the hop by the target below.
+	// The compile completion fires on the render loop thread, so hop back before touching
+	// `_entries` or the ResourceCache (app-thread only). Capturing `this` is safe: the cache is an
+	// AppThread extension, and the target below keeps the app thread alive.
 	channel->compileRenderQueue(queue, [this, nameStr](bool success) mutable {
 		_application->performOnAppThread([this, nameStr = sp::move(nameStr), success]() mutable {
 			finishEntry(nameStr, success);
@@ -151,9 +147,9 @@ void QueueCache::finishEntry(StringView name, bool success) {
 		log::source().error("QueueCache", "failed to compile '", name, "'");
 		entry.queue = nullptr;
 	} else if (entry.queue) {
-		// The queue's internal resource is registered here, once, and stays registered while the
-		// entry lives. A Scene that adopts the queue must not do this itself - ResourceCache is
-		// name-keyed with no refcount, so the first adopter to finish would erase it for the rest.
+		// The queue's internal resource is registered here once, for the entry's lifetime. An
+		// adopting Scene must not register it: ResourceCache is name-keyed without refcount, so the
+		// first adopter to finish would erase it for the rest.
 		if (auto res = entry.queue->getInternalResource()) {
 			if (auto cache = _application ? _application->getExtension<ResourceCache>() : nullptr) {
 				cache->addResource(res);
@@ -161,8 +157,7 @@ void QueueCache::finishEntry(StringView name, bool success) {
 		}
 	}
 
-	// Move the list out first: a callback that acquires another queue would otherwise rehash the
-	// map underneath the iteration.
+	// Move the list out first: a callback acquiring another queue could rehash the map.
 	auto pending = sp::move(entry.pending);
 	entry.pending.clear();
 

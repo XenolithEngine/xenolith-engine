@@ -43,12 +43,9 @@ class Device;
 // core::ImageFormat -> the GLES triple (internal format, pixel format, pixel type) for the
 // subset the backend actually accepts. `internalFormat` is zero for anything the backend can
 // not allocate - that is how callers detect an unsupported image.
-// B8G8R8A8_UNORM maps to RGBA8 storage: on Linux the loop reports it as the common format
-// (SPRTWinLinuxController), and a frame whose output attachment is tagged with it must be
-// allocatable, exactly like it is for soft/vk where B8G8R8A8 is native. Channel semantics are
-// preserved - shaders write r/g/b/a into channels and capture reads them back through
-// glReadPixels(GL_RGBA) - so the tag only distinguishes byte order in memory, which nothing in
-// this backend consumes raw.
+// B8G8R8A8_UNORM maps to RGBA8 storage, since the Linux loop reports it as the common format.
+// Channel semantics are preserved (capture reads through glReadPixels(GL_RGBA)); nothing here
+// consumes the raw byte order.
 struct GlFormat {
 	GLenum internalFormat = 0;
 	GLenum format = 0;
@@ -106,7 +103,7 @@ inline constexpr uint32_t makeApiVersion(uint32_t major, uint32_t minor) {
 
 // One probed EGL device. The GL strings are read once, through a temporary context, when the
 // instance is created - the GL_RENDERER string is only available with a context current, and
-// readDeviceProperties must stay const and side-effect free. eglDevice/surfaceless record HOW the
+// readDeviceProperties must stay const and side-effect free. eglDevice/surfaceless record how the
 // probe opened its display so Device::init can reopen exactly that one.
 struct SP_PUBLIC DeviceInfo {
 	String deviceName; // GL_RENDERER

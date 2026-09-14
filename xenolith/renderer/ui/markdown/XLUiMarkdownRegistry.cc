@@ -32,12 +32,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 namespace {
 
-/* A Panel answering to a markdown tag.
-
-A derived class rather than a call, because `Panel::registerStyleAppliers` is protected: the
-appliers route back through `Panel::setStyleValue`, so whoever claims a type has to BE a Panel.
-This is what gives `pre`, `blockquote-body` and `table` a background, an outline and rounded
-corners from CSS - a plain Node would take `background-color` as a tint and draw nothing with it. */
+/* A Panel answering to a markdown tag. A subclass because `Panel::registerStyleAppliers` is
+protected; it gives `pre`, `blockquote-body` and `table` CSS background, outline and rounded
+corners, which a plain Node would treat as a tint. */
 class MarkdownPanel : public Panel {
 public:
 	virtual bool init(StringView type) {
@@ -45,8 +42,7 @@ public:
 			return false;
 		}
 
-		// Panel::init() made this a `panel`; a sheet's panel rules paint cards and dialogs and
-		// have no business reaching a code block.
+		// Drop Panel::init()'s class so a sheet's panel rules do not reach document blocks.
 		removeStyleClass("xl-ui-panel");
 		setType(type);
 		registerStyleAppliers(type);
@@ -57,8 +53,8 @@ protected:
 	using Panel::init;
 };
 
-// A block whose children are all inline: the node IS the Label, so a `p { color: … }` rule lands
-// on the node whose text it is meant to colour.
+// A block whose children are all inline: the node is the Label, so `p { color: … }` reaches its
+// text.
 static MarkdownTagFactory makeTextFactory() {
 	return MarkdownTagFactory{
 		.create = [](const MarkdownBuilderContext &) -> Rc<Node> {
@@ -68,26 +64,16 @@ static MarkdownTagFactory makeTextFactory() {
 	};
 }
 
-// A block that only groups and lays its children out. It paints nothing, so it is a plain Node -
-// see MarkdownPanel above for the ones that do.
+// A block that only groups and lays out its children; it paints nothing, so a plain Node.
 static MarkdownTagFactory makeContainerFactory() {
 	return MarkdownTagFactory{
 		.create = [](const MarkdownBuilderContext &) -> Rc<Node> { return Rc<Node>::create(); },
 	};
 }
 
-/* A ground a block's CONTENT sits on: a layer that paints nothing until a stylesheet gives it a
-background, and that must not tint or fade what is inside it when it does.
-
-Both of those need saying, because on a Node "paints nothing" is inherited twice over. The alpha IS
-the node's opacity, which multiplies down the whole subtree, and the rgb is multiplied into every
-descendant's colour. A table row built as plain transparent black therefore handed its cells opacity
-zero and the colour black - which on the white page the default sheet is written for looked like
-ordinary dark text, and on any other ground like a table that had never been built.
-
-So the colour is WHITE, the identity of the colour cascade, and both cascades are switched off. That
-is also what CSS says about a background: a box's own background-color is neither something its
-contents are seen through nor something they are tinted by. */
+/* A ground for a block's content that paints only when a stylesheet gives it a background. A
+Node's alpha and rgb cascade into descendants, so the colour is white and both opacity and colour
+cascades are off; otherwise the ground would fade or tint its content. */
 static Rc<basic2d::Layer> makeGroundLayer() {
 	auto layer = Rc<basic2d::Layer>::create(Color4F(1.0f, 1.0f, 1.0f, 0.0f));
 	layer->setCascadeColorEnabled(false);
@@ -112,10 +98,8 @@ static uint32_t MarkdownRegistry_itemIndex(const document::Node &item) {
 		return 1;
 	}
 
-	// Counting the siblings before this one is O(items) per item, i.e. quadratic over the list.
-	// Acceptable for the lists a document actually contains; a document that is one enormous
-	// numbered list is the case to fix, and the fix belongs in the builder's own walk rather than
-	// in a cache written back into the parsed document.
+	// Counting preceding siblings is quadratic over a list; acceptable for typical documents. A
+	// fix belongs in the builder's walk, not in a cache written into the parsed document.
 	uint32_t index = 0;
 	for (auto &it : parent->getNodes()) {
 		if (it->getHtmlName() == "li") {
@@ -154,9 +138,8 @@ static uint32_t MarkdownRegistry_listDepth(const document::Node &item) {
 	return depth == 0 ? 0 : depth - 1;
 }
 
-// The `input[type=checkbox]` a task item carries, or nullptr for an ordinary one. Attribute
-// selectors do not exist in this CSS subset, so the state reaches a stylesheet as a class and as
-// the checkbox's own `:checked` - never as the attribute it arrived in.
+// The `input[type=checkbox]` a task item carries, or nullptr. The CSS subset has no attribute
+// selectors, so the state reaches a stylesheet as a class and as the checkbox's `:checked`.
 static const document::Node *MarkdownRegistry_taskBox(const document::Node &item) {
 	for (auto &it : item.getNodes()) {
 		if (it->getHtmlName() == "input" && it->getAttribute("type") == "checkbox") {
@@ -202,8 +185,7 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 
 	// --- painted blocks -------------------------------------------------------------------
 
-	// A rule is read as a break in the document, so it holds a place in the reading order even
-	// though there is nothing in it to read. A row does not: its cells speak for it.
+	// A rule holds a place in the reading order though it has nothing to read; a row does not.
 	ret->set("hr",
 			MarkdownTagFactory{
 				.create = [](const MarkdownBuilderContext &) -> Rc<Node> {
@@ -228,18 +210,16 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 		auto ordered = MarkdownRegistry_isOrdered(*ctx.source);
 		auto depth = MarkdownRegistry_listDepth(*ctx.source);
 
-		// The marker is a sibling, not a pseudo-element: the CSS subset has no `::before`,
-		// and a real node is what lets the indent be a layout column instead of arithmetic.
+		// The marker is a sibling node (no `::before` in the CSS subset), so the indent is a layout
+		// column.
 		if (auto box = MarkdownRegistry_taskBox(*ctx.source)) {
-			// A task item's marker IS the checkbox, and it is disabled: a document is a document,
-			// the state is what the source says, and a click has nowhere to write it back to.
+			// A task item's marker is the checkbox, disabled: the state has nowhere to be written.
 			auto checkbox = node->addChild(Rc<Checkbox>::create());
 			MarkdownBuilder::applyIdentity(checkbox, "li-checkbox");
 			checkbox->addStyleClass("md-marker");
 
-			// A size to start from. The widget draws a vector image and has no text to measure,
-			// so with nothing assigned it has nothing to be; the sheet's `li-checkbox` rule
-			// overrides this on the first style pass.
+			// An initial size: the widget has no text to measure; the sheet's `li-checkbox` rule
+			// overrides it on the first style pass.
 			checkbox->setContentSize(Size2(15.0f, 15.0f));
 			LayoutSystem::setItem(checkbox,
 					FlexItemInfo{.grow = 0.0f, .shrink = 0.0f, .basis = 15.0f});
@@ -247,8 +227,7 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 			checkbox->setEnabled(false);
 			node->addStyleClass("md-task");
 
-			// The checkbox stands for the `[x]` the source holds, and carries its span: a copy
-			// that starts on it starts on the marker.
+			// Stands for the source's `[x]` and carries its span.
 			builder->registerFlow(checkbox, MarkdownFlowKind::Atomic, *box);
 		} else {
 			auto marker = builder->makeLabel(node, "li-marker");
@@ -262,8 +241,7 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 				marker->addStyleClass("md-marker-bullet");
 			}
 
-			// The builder wrote this text, not the document: it is read, so it is in the flow,
-			// and it maps to the item it marks rather than to any bytes of its own.
+			// Builder-written text: in the flow, mapped to the item rather than to source bytes.
 			builder->registerFlow(marker, MarkdownFlowKind::Marker, *ctx.source,
 					uint32_t(marker->getString().size()));
 		}
@@ -271,8 +249,8 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 		auto content = node->addChild(Rc<Node>::create());
 		MarkdownBuilder::applyIdentity(content, "li-content");
 
-		// A tight item holds its text directly and a loose one wraps it in `p`; the builder's
-		// implicit-run rule covers both without the factory knowing which it got.
+		// Tight items hold text directly, loose ones wrap it in `p`; the implicit-run rule covers
+		// both.
 		builder->buildChildren(content, *ctx.source);
 		return true;
 	},
@@ -286,8 +264,8 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 		return Rc<Node>::create();
 	},
 				.buildContent = [](const MarkdownBuilderContext &ctx, Node *node) -> bool {
-		// `border-left` is consumed by table cells and nothing else in this engine, so the
-		// quote bar is a node - stretched to the body's height by the row layout.
+		// `border-left` applies only to table cells here, so the quote bar is a node stretched by
+		// the row layout.
 		auto bar = node->addChild(Rc<basic2d::Layer>::create(Color4F(0.0f, 0.0f, 0.0f, 0.0f)));
 		MarkdownBuilder::applyIdentity(bar, "blockquote-bar");
 
@@ -307,9 +285,8 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 		return Rc<Node>(Rc<MarkdownPanel>::create(StringView("pre")));
 	},
 				.buildContent = [](const MarkdownBuilderContext &ctx, Node *node) -> bool {
-		// The document shape is `pre > code` for both fenced and indented blocks. The inner
-		// node is where the language class sits, and it is the Label - so a `code` rule
-		// reaches the text directly.
+		// Both fenced and indented blocks are `pre > code`; the inner `code` carries the language
+		// class and is the Label.
 		const document::Node *code = nullptr;
 		for (auto &it : ctx.source->getNodes()) {
 			if (it->getHtmlName() == "code") {
@@ -318,10 +295,9 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 			}
 		}
 
-		// The scroll lives on an inner node, not on the `pre` itself. Declaring one overflow
-		// axis computes the other to `auto` (the only clip is a rect), and an overflowing
-		// container is sized by its content on BOTH axes - so a scrolling `pre` would also
-		// stop reporting its own height and scroll vertically inside a box too short for it.
+		// The scroll lives on an inner node: one overflow axis computes the other to `auto`, and an
+		// overflowing container is content-sized on both axes, so a scrolling `pre` would lose its
+		// height.
 		auto scroll = node->addChild(Rc<Node>::create());
 		MarkdownBuilder::applyIdentity(scroll, "pre-scroll");
 
@@ -337,9 +313,8 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 	},
 			});
 
-	// A `code` node reached on its own (outside a `pre`) is inline markup, and inline markup is a
-	// style range, never a node - the builder never dispatches it here. Registered as text so a
-	// hand-built document with a block-level `code` still renders.
+	// The builder never dispatches inline `code` here; registered as text so a block-level
+	// `code` in a hand-built document still renders.
 	ret->set("code", makeTextFactory());
 
 	// --- table ----------------------------------------------------------------------------
@@ -350,9 +325,8 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 		return Rc<Node>(Rc<MarkdownPanel>::create(StringView("table")));
 	},
 				.buildContent = [](const MarkdownBuilderContext &ctx, Node *node) -> bool {
-		// `display: table` expects the rows as direct children, so thead/tbody are flattened
-		// here and each row keeps a class saying which section it came from - explicit
-		// classes rather than :nth-child, which would stripe the header along with the body.
+		// `display: table` expects rows as direct children, so thead/tbody are flattened; each row
+		// gets a section class (not :nth-child, which would stripe the header too).
 		uint32_t columns = 0;
 		auto addRows = [&](const document::Node &section, StringView cls) {
 			for (auto &row : section.getNodes()) {
@@ -399,24 +373,22 @@ Rc<MarkdownRegistry> MarkdownRegistry::createDefault() {
 			}
 		}
 
-		// The column count is per table, and CSS has no way to say it: a custom property is
-		// the per-node channel, and the sheet reads it with var().
+		// The column count reaches the sheet through a custom property read with var().
 		if (columns > 0) {
 			setStyleVariable(node, "--md-columns", toString("repeat(", columns, ", auto)"));
 		}
 
-		// The table layout publishes collapsed borders as geometry and draws nothing; this is
-		// what turns them into a draw. Out of flow, or the table pass counts it as a row.
+		// The table layout publishes collapsed borders as geometry only; this draws them. Out of
+		// flow, or the table would count it as a row.
 		auto painter = node->addChild(Rc<TableBorderPainter>::create(), ZOrder(10));
 		painter->setComponent<OutOfFlowComponent>();
 		return true;
 	},
 			});
 
-	// --- out of scope for this milestone ---------------------------------------------------
+	// --- tags that produce no node ---------------------------------------------------------
 
-	// An image is a later milestone. Registering it now as a nothing-node keeps a README with a
-	// badge from losing the paragraph around it.
+	// Images are inline and built by the builder; a block-level `img` produces nothing.
 	ret->set("img",
 			MarkdownTagFactory{
 				.create = [](const MarkdownBuilderContext &) -> Rc<Node> { return nullptr; },

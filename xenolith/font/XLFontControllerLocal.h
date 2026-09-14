@@ -30,10 +30,10 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 class FontComponent;
 class FontGapi;
 
-// Local (single-process / server) FontController leaf: rasterizes glyphs and owns the GPU atlas image
-// through a FontComponent gAPI endpoint. The abstract base owns only positioning + source state; this
-// leaf adds the GPU touchpoints. The remote/headless counterpart is FontControllerRemote (a sibling
-// leaf that never references this class).
+// Local (single-process / server) FontController leaf: rasterizes glyphs and owns the GPU atlas
+// image through a FontComponent gAPI endpoint. The abstract base owns only positioning + source
+// state; this leaf adds the GPU touchpoints. The remote/headless counterpart is
+// FontControllerRemote (a sibling leaf that never references this class).
 class SP_PUBLIC FontControllerLocal : public FontController {
 public:
 	virtual ~FontControllerLocal();

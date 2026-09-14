@@ -47,9 +47,8 @@ bool DockSystem::init(Rc<PanelRegistry> &&registry) {
 
 	_systemPriority = DockDefaultPriority;
 
-	// HandleChildNodeEvents catches a panel's content growing inside a frame; AddToFrameStack
-	// publishes the dock to its own subtree; HandleMeasure lets a fit-content ancestor size around
-	// the whole dock (see handleMeasure for why the answer is the tree's minimum)
+	// HandleChildNodeEvents: panel content growing in a frame; AddToFrameStack: publish the dock to
+	// its subtree; HandleMeasure: a fit-content ancestor can size around the dock
 	setSystemFlags(SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents
 			| SystemFlags::HandleNodeEvents | SystemFlags::HandleLayoutChildren
 			| SystemFlags::HandleMeasure | SystemFlags::HandleChildNodeEvents
@@ -64,15 +63,11 @@ void DockSystem::handleAdded(Node *owner) {
 	sprt_passert(owner->getSystemByType<LayoutSystem>() == nullptr,
 			"DockSystem owns its children's geometry: the dock root must not carry a LayoutSystem");
 
-	// Claim ownership of the children's ContentSize towards the style resolver: a CSS width/height
-	// on a frame becomes an intrinsic hint in a MeasureComponent instead of a committed size that
-	// would fight this system every frame. It also keeps `display:flex` on the root from adding a
-	// second writer of the children's geometry.
+	// A CSS width/height on a frame becomes a MeasureComponent hint instead of a committed size,
+	// and `display: flex` on the root cannot add a second geometry writer.
 	owner->setComponent<SystemManagedLayout>();
 
-	// How the dock receives dragged panels. One target for the whole dock, not one per frame: a
-	// frame is resolved by walking the split tree, which is both cheaper than a scene traversal
-	// and immune to whatever the parked panels' own input listeners are doing
+	// one drop target for the whole dock; frames are resolved by walking the split tree
 	setDropTarget(owner,
 			DropTargetSlots{
 				.accept = [this](const DragEvent &event) { return handleDragAccept(event); },
@@ -94,17 +89,11 @@ void DockSystem::detachPanelsUnder(const Set<Node *> &roots) {
 		return;
 	}
 
-	// A panel node the registry keeps alive may be parked inside a subtree that is about to be
-	// cleaned. Node::cleanup() recurses into children and would destroy its systems (a Label's
-	// EventListener among them), leaving a dangling system pointer on a node the registry - and
-	// whoever re-parents it next - still holds. So take it out first, WITHOUT cleanup: a plain
-	// detach fires handleExit, which is exactly how a system pauses while its node is out of the
-	// scene, and re-entry replays handleEnter.
-	//
-	// It attaches to a frame's BODY, one level below the frame itself, so the whole ancestor chain
-	// has to be walked rather than just the direct parent. And with a registry that may be SHARED
-	// with another container, the walk is what keeps this from tearing that container's live panels
-	// out from under it: only what is inside `roots` is ours to detach.
+	// Detach registry-owned panel nodes from subtrees about to be cleaned, without cleanup:
+	// Node::cleanup() would destroy their systems while the registry still holds the nodes. A plain
+	// detach fires handleExit, and re-parenting replays handleEnter. Panels sit in a frame's body,
+	// so walk the whole ancestor chain; only nodes under `roots` are touched, as the registry may
+	// be shared.
 	_registry->foreachContent([&](StringView, Node *node) {
 		for (auto p = node->getParent(); p != nullptr; p = p->getParent()) {
 			if (roots.find(p) != roots.end()) {
@@ -127,8 +116,7 @@ void DockSystem::handleRemoved() {
 		});
 	}
 
-	// Give up every claim: the panels this dock was holding are now parked nowhere, and they keep
-	// their content, so re-opening one anywhere brings back exactly what was there.
+	// release all claims; the panels keep their content in the registry
 	_registry->releaseHost(this);
 
 	System::handleRemoved();
@@ -158,8 +146,7 @@ bool DockSystem::setLayout(const DockLayoutSpec &spec) {
 		return false;
 	}
 
-	// drop what the registry does not know: a layout naming a panel this build of the application
-	// no longer has must not be fatal
+	// drop panel ids the registry does not know; not fatal
 	_tree.each([&](DockTreeNode &n) {
 		if (!n.isLeaf()) {
 			return;
@@ -248,10 +235,8 @@ bool DockSystem::openPanel(StringView id, DockNodeHandle target, size_t index) {
 bool DockSystem::closePanel(StringView id) { return takePanelOut(id, true); }
 
 void DockSystem::releasePanel(StringView id) {
-	// Structurally identical to a close - the frame folds away just the same - but NOT reported as
-	// one: the panel is moving to another container, and an application that treats `closed` as
-	// "the user is done with this" would act on something that did not happen. The node is not
-	// touched here at all; the registry hands it to the new host.
+	// same as a close, but not reported: the panel is moving to another container, and the registry
+	// hands the node over
 	takePanelOut(id, false);
 }
 
@@ -279,7 +264,7 @@ bool DockSystem::takePanelOut(StringView id, bool notify) {
 
 	updateFrameContent(*leaf);
 
-	// an emptied place folds away and its sibling takes the space, unless it was declared to stay
+	// an emptied frame folds away and its sibling takes the space, unless it is Permanent
 	if (leaf->panels.empty()) {
 		_tree.collapseLeaf(h);
 		syncNodes();
@@ -361,8 +346,7 @@ bool DockSystem::movePanel(StringView id, DockNodeHandle target, size_t index) {
 		}
 	}
 
-	// re-read: nothing reallocated above, but the source may have been the target's sibling and
-	// the collapse below can move it
+	// re-read: the source may be the target's sibling, and the collapse below can move it
 	auto &leaf = _tree.at(target);
 	const size_t at = sprt::min(index, leaf.panels.size());
 	leaf.panels.emplace(leaf.panels.begin() + at, id.str<Interface>());
@@ -386,8 +370,8 @@ DockNodeHandle DockSystem::splitFrame(DockNodeHandle frame, DockAxis axis, bool 
 		return DockNodeHandle();
 	}
 
-	// a new place inherits the constraints of the one it was carved out of, unless the caller
-	// named its own; only the name is never inherited - it identifies one place, not a kind
+	// a new frame inherits the source's flags and tab side unless the caller set its own; the name
+	// is never inherited
 	auto next = params;
 	if (next.minSize == Size2::ZERO && next.flags == DockFrameFlags::Default) {
 		next.flags = source->params.flags;
@@ -449,8 +433,7 @@ bool DockSystem::setFrameParams(DockNodeHandle h, const DockFrameParams &params)
 
 	if (auto frame = static_cast<DockFrame *>(leaf->node.get())) {
 		frame->setParams(params);
-		// the close affordance follows DockFrameFlags::AllowClose, so the strip has to be brought
-		// in line with the flags as well as with the side the frame has just been given
+		// tabs too: the close affordance follows DockFrameFlags::AllowClose
 		updateFrameTabs(*leaf);
 	}
 
@@ -492,16 +475,14 @@ bool DockSystem::restore(const Value &value) {
 		return false;
 	}
 
-	// A tree with nothing left in it - every panel it named is gone from this build - would leave
-	// the dock with no parking place at all. One default frame is a better answer than none.
+	// if every panel was dropped, keep one default frame rather than none
 	if (_tree.empty()) {
 		_tree.build(DockLayoutSpec::leaf(Vector<String>()));
 	}
 
 	syncNodes();
 
-	// Panels the file did not mention stay closed, EXCEPT the ones declared OpenByDefault: those
-	// are how a panel introduced by a newer build of the application still shows up.
+	// panels absent from the file stay closed, except OpenByDefault ones
 	for (auto &it : _registry->getPanelDescriptors()) {
 		if (!hasFlag(it.second.flags, DockPanelFlags::OpenByDefault)) {
 			continue;
@@ -509,10 +490,7 @@ bool DockSystem::restore(const Value &value) {
 		if (isPanelOpen(it.first)) {
 			continue;
 		}
-		// Somebody ELSE is holding it. Opening it here would take it away from them, which is the
-		// opposite of what "open this by default" asks for: a shared registry makes a dock's saved
-		// layout one half of an arrangement, and the other half's panels are not this one's to
-		// claim. A container that wants it back restores its own half.
+		// held by another host: do not take it; with a shared registry that panel is not ours
 		if (auto host = _registry->getHost(it.first); host != nullptr && host != this) {
 			continue;
 		}
@@ -562,7 +540,7 @@ bool DockSystem::canResize(DockNodeHandle h) const {
 		return false;
 	}
 
-	// a place that forbids resizing freezes every divider touching it, whichever side it is on
+	// a frame that forbids resizing freezes every divider touching it
 	const auto allowsResize = [&](DockNodeHandle child) {
 		auto n = _tree.get(child);
 		if (!n) {
@@ -581,8 +559,8 @@ void DockSystem::updateSplitterDrag(DockNodeHandle h, const Vec2 &delta) {
 
 	const bool horizontal = (split->axis == DockAxis::Horizontal);
 
-	// Y points up while `first` of a vertical split is the TOP child. Dragging the divider DOWN is
-	// a NEGATIVE delta.y and makes the top child TALLER, so the vertical axis is inverted.
+	// Y points up and `first` of a vertical split is the top child: dragging down (negative
+	// delta.y) makes it taller, so the vertical axis is inverted.
 	const float travel = horizontal ? delta.x : -delta.y;
 
 	const float extent = horizontal ? split->rect.size.width : split->rect.size.height;
@@ -595,11 +573,8 @@ void DockSystem::updateSplitterDrag(DockNodeHandle h, const Vec2 &delta) {
 
 	const float free = usable - minA - minB;
 
-	// Where the first child stands NOW, derived from the ratio with the same formula distribute
-	// uses - not read back from its committed rect. Reading the rect would make the result depend
-	// on whether a placement pass has run since the previous delta, so a burst of deltas inside
-	// one frame would lose all but the last. In ratio space the drag is a true fixed point of the
-	// pass: any number of small deltas land exactly where one big one does.
+	// Derive the current position from the ratio, as distribute does, not from the committed rect:
+	// several deltas within one frame must accumulate before the next placement pass.
 	const float current = minA + free * sprt::clamp(split->ratio, 0.0f, 1.0f);
 	const float target = sprt::clamp(current + travel, minA, usable - minB);
 
@@ -644,11 +619,8 @@ DockDropTarget DockSystem::hitTest(const Vec2 &rootLocal, StringView draggedPane
 	auto frame = static_cast<DockFrame *>(leaf->node.get());
 	const Vec2 frameLocal = rootLocal - leaf->rect.origin;
 
-	// A panel that is the ONLY occupant of this very frame has nowhere to go inside it. Appending
-	// it or reordering it changes nothing; even splitting the frame off changes nothing, because
-	// carrying the lone panel into the new half empties the old one and collapses it straight
-	// back. So the whole frame offers no zone at all, and the indicator stays hidden while the
-	// panel is dragged around its own place.
+	// A frame's only panel dragged over its own frame offers no zone: appending, reordering or
+	// splitting (which would collapse the emptied half back) changes nothing.
 	if (handle == _tree.findFrameForPanel(draggedPanelId) && leaf->panels.size() == 1) {
 		return target;
 	}
@@ -686,11 +658,8 @@ DockDropTarget DockSystem::hitTest(const Vec2 &rootLocal, StringView draggedPane
 	}
 
 	{
-		// Which of the four bands this place actually offers. A frame that may only be stacked has
-		// no left and no right zone at all - and the distances to those edges must be left OUT of
-		// the "nearest" comparison rather than merely rejected afterwards, or a pointer near the
-		// left edge would resolve to the nearest edge, find it forbidden, and answer NOTHING where
-		// the honest answer is the middle.
+		// Edges on a disallowed axis are excluded from the nearest-edge comparison, so a pointer
+		// near them falls through to the center zone instead of resolving to nothing.
 		const bool splitH = allowsSplitAxis(leaf->params.flags, DockAxis::Horizontal);
 		const bool splitV = allowsSplitAxis(leaf->params.flags, DockAxis::Vertical);
 
@@ -704,7 +673,7 @@ DockDropTarget DockSystem::hitTest(const Vec2 &rootLocal, StringView draggedPane
 			const float dyBottom = splitV ? rootLocal.y - body.origin.y : Never;
 			const float dyTop = splitV ? body.getMaxY() - rootLocal.y : Never;
 
-			// the closest OFFERED edge wins, so a corner resolves to one zone rather than to neither
+			// the closest allowed edge wins, so a corner resolves to one zone
 			const float nearest = sprt::min(sprt::min(dxLeft, dxRight), sprt::min(dyBottom, dyTop));
 			if (nearest < band) {
 				if (nearest == dxLeft) {
@@ -748,14 +717,13 @@ DragResponse DockSystem::handleDragAccept(const DragEvent &event) {
 		return DragResponse();
 	}
 
-	// `event.location` is already in the owner's space, which is the space the tree is computed
-	// in - so this is the rootLocal hitTest wants, with no conversion of our own
+	// `event.location` is already in the owner's space, which is the tree's space
 	auto target = hitTest(event.location, payload->panelId);
 	if (target.kind == DockDropTarget::Kind::None) {
 		return DragResponse(); // no zone here; whatever is under the dock may still take it
 	}
 
-	// A panel is moved between frames, never copied: there is one node and one identity
+	// panels are always moved, never copied
 	return DragResponse{event.allowed & DragActions::Move};
 }
 
@@ -790,8 +758,8 @@ bool DockSystem::handleDragDrop(const DragEvent &event, DragActions) {
 		return false;
 	}
 
-	// Read everything the drop needs BEFORE anything mutates: applying it can collapse the source
-	// frame, which invalidates its handle and destroys the tab that delivered the drag
+	// read everything first: applying the drop can collapse the source frame, invalidating its
+	// handle and destroying the tab that delivered the drag
 	const auto target = hitTest(event.location, payload->panelId);
 	const auto panelId = payload->panelId;
 	const auto source = payload->source;
@@ -801,22 +769,16 @@ bool DockSystem::handleDragDrop(const DragEvent &event, DragActions) {
 		return false;
 	}
 
-	// Dropping the only panel of a frame back into that same frame changes nothing.
-	//
-	// `fromHere` is not a shortcut, it is what makes the comparison mean anything: a DockNodeHandle
-	// is an index into ONE tree's arena, so the handle of another dock's frame can equal one of ours
-	// by coincidence and this would refuse a perfectly good drop. A panel arriving from anywhere
-	// else has no no-op case here at all - wherever it lands is somewhere it was not.
+	// Dropping a frame's only panel back into that frame is a no-op. Check `fromHere` first:
+	// handles index this tree's arena only, so another dock's handle may coincidentally match.
 	if (fromHere && target.frame == source && !target.isSplit()) {
 		if (getPanelsInFrame(source).size() == 1) {
 			return false;
 		}
 	}
 
-	// A panel another container is holding is taken from it by the registry as part of handing over
-	// the node, on the acquire that updateFrameContent does at the end of every path below. So there
-	// is nothing to negotiate here - only the arrival to report, which for a panel that was not open
-	// in this dock a moment ago is an open rather than a move.
+	// A panel held elsewhere is taken over by the registry during updateFrameContent's acquire; one
+	// not open here before is reported as opened.
 	const bool arriving = !fromHere && !isPanelOpen(panelId);
 
 	bool applied = false;
@@ -829,9 +791,7 @@ bool DockSystem::handleDragDrop(const DragEvent &event, DragActions) {
 		applied = movePanel(panelId, target.frame, target.tabIndex);
 		break;
 	default:
-		// A split zone: subdivide the target and park the panel in the new place. Both go through
-		// the same public operations an application would call, so a drop can never reach a code
-		// path the API does not already expose - and the whole thing stays drivable from a test.
+		// split zone: subdivide the target and park the panel in the new frame via the public API
 		applied = !splitFrameWithPanel(target.frame, target.getAxis(), target.isFirst(), panelId)
 						   .empty();
 		break;
@@ -871,14 +831,8 @@ void DockSystem::handleLayoutChildren() {
 }
 
 Size2 DockSystem::measureLeaf(const DockTreeNode &leaf) const {
-	// Only ONE panel is visible at a time, so the place has to fit the LARGEST of them - not their
-	// sum. This is where a panel's declared minimum strengthens the frame's, and through the
-	// bottom-up pass in DockTree, every split above it.
-	//
-	// A COLLAPSED frame skips this entirely: its body is out of the way, and a place that is not
-	// showing a panel has no business claiming the room that panel would need. That is the whole
-	// mechanism behind shutting a side rail - the propagated minimum drops to the strip, and the
-	// divider above can finally travel down to it.
+	// One panel is visible at a time, so the frame fits the largest minimum, not the sum. A
+	// collapsed frame ignores panel minimums entirely, so its minimum drops to the strip.
 	Size2 content;
 	if (!leaf.collapsed) {
 		for (auto &id : leaf.panels) {
@@ -889,9 +843,8 @@ Size2 DockSystem::measureLeaf(const DockTreeNode &leaf) const {
 		}
 	}
 
-	// The tab strip eats one axis outright and floors the other. Its natural size comes from the
-	// SAME measurement protocol that gives it `flex-basis: fit-content` inside the frame, so the
-	// strip cannot end up smaller than the size the frame reserved for it.
+	// The strip adds to one axis and floors the other, measured the same way as its
+	// `flex-basis: fit-content` inside the frame.
 	auto frame = static_cast<const DockFrame *>(leaf.node.get());
 	if (frame && frame->getTabBar()) {
 		const Size2 strip = LayoutSystem::measureNode(frame->getTabBar(),
@@ -917,15 +870,13 @@ void DockSystem::apply() {
 		return;
 	}
 
-	// Node::setContentSize notifies the parent SYNCHRONOUSLY, which lands right back in
-	// handleChildContentSizeDirty above and would mark us dirty again - an unconditional relayout
-	// on every frame, forever. The same guard LayoutSystem needs, for the same reason.
+	// setContentSize notifies the parent synchronously into handleChildContentSizeDirty; without
+	// this guard every placement would schedule another one.
 	_inPlacement = true;
 
 	_tree.updateMinimums([this](const DockTreeNode &n) { return measureLeaf(n); },
 			_splitterThickness);
-	// A docked window mirrors with the interface's direction: `first` is the inline start, not the
-	// left. See DockTree::distribute for why no saved layout has to be migrated for this.
+	// mirrors with the interface direction: `first` is the inline start; see DockTree::distribute
 	_tree.distribute(Rect(Vec2::ZERO, _owner->getContentSize()), _overflowPolicy,
 			_splitterThickness, isInlineRtl(_owner));
 	commitGeometry();
@@ -938,8 +889,8 @@ bool DockSystem::handleMeasure(const MeasureConstraints &constraints, Size2 &res
 		return false;
 	}
 
-	// Pure: only the first of the three passes runs here. A dock has no "preferred larger" size -
-	// it always fills whatever it is given - so its natural size IS the tree's minimum.
+	// Pure: only the minimum pass runs here. A dock fills whatever it gets, so its natural size is
+	// the tree's minimum.
 	_tree.updateMinimums([this](const DockTreeNode &n) { return measureLeaf(n); },
 			_splitterThickness);
 
@@ -963,10 +914,8 @@ void DockSystem::commitGeometry() {
 // --- scene nodes -----------------------------------------------------------
 
 Node *DockSystem::acquireContent(StringView panelId) {
-	// Builds it on first show, and - when another container was holding it - takes it from there:
-	// the registry evicts the previous host before handing the node over, so this dock never has to
-	// ask who had it. That eviction can re-enter this system through releasePanel, which is why the
-	// callers of this read everything they need before calling it.
+	// Builds on first show and takes the panel from another host if needed. The eviction can
+	// re-enter through releasePanel, so callers read what they need before calling this.
 	return _registry->acquireContent(panelId, this);
 }
 
@@ -977,9 +926,7 @@ void DockSystem::updateFrameTabs(DockTreeNode &leaf) {
 	}
 	auto bar = frame->getTabBar();
 
-	// Reuse the tab a panel already has, wherever in the strip it was: a reorder, an activation or
-	// a panel arriving beside it must not destroy and rebuild a tab - that would drop the hover
-	// state and, worse, the drag that is quite possibly in flight on it right now.
+	// reuse existing tabs: rebuilding one would drop its hover state and any drag in flight on it
 	Vector<DockTab *> next;
 	next.reserve(leaf.panels.size());
 
@@ -995,10 +942,7 @@ void DockSystem::updateFrameTabs(DockTreeNode &leaf) {
 		}
 		if (!tab) {
 			auto created = Rc<DockTab>::create(this, leaf.self, id);
-			// Parent it BEFORE the local Rc goes out of scope: `next` holds raw pointers, so
-			// letting the only reference die at the end of this block would leave every entry
-			// dangling. The strip is the tab's owner from its first moment; setTabs below only
-			// reorders what is already there.
+			// parent it before `created` goes out of scope: `next` holds raw pointers
 			bar->addChild(created, ZOrder(1));
 			if (auto desc = getPanelDescriptor(id)) {
 				created->setString(
@@ -1010,8 +954,7 @@ void DockSystem::updateFrameTabs(DockTreeNode &leaf) {
 			tab = created;
 		}
 
-		// the frame handle is re-stamped every time: a tab can be carried into another place by a
-		// drop, and the handle is how it reports where it now lives
+		// re-stamp the frame handle: a drop may have carried the tab into another frame
 		tab->setFrame(leaf.self);
 		tab->setActive(i == leaf.active);
 		next.emplace_back(tab);
@@ -1036,12 +979,9 @@ void DockSystem::updateFrameContent(DockTreeNode &leaf) {
 
 	auto content = activeId.empty() ? nullptr : acquireContent(activeId);
 
-	// take out whatever else is in there; the node itself stays alive in _content, so a panel that
-	// is only being switched away from - or moved to another frame - keeps its state. Detach
-	// WITHOUT cleanup: these are live nodes we own and re-parent below, and Node::cleanup() would
-	// destroy their systems (a Label's EventListener among them), which handleEnter then reads as
-	// freed memory on the next present. A plain detach fires handleExit, which is exactly how a
-	// system pauses while its node leaves the scene; re-entry replays it through handleEnter.
+	// Detach everything else without cleanup: the nodes stay alive in the registry and keep their
+	// state, and cleanup() would destroy their systems. handleExit/handleEnter pause and resume
+	// them.
 	auto children = body->getChildren();
 	for (auto &it : Vector<Rc<Node>>(children.begin(), children.end())) {
 		if (it.get() != content) {
@@ -1067,11 +1007,8 @@ void DockSystem::syncNodes() {
 		return;
 	}
 
-	// First the sweep, then the build. A slot that was released - a frame collapsed by the last
-	// panel leaving it, a split merged away by a drop - dropped its reference to the node, but the
-	// root still holds one, so the node would otherwise stay in the scene: drawn, hit-tested, and
-	// frozen at whatever rect it had when its slot died. Nothing in the tree would ever mention it
-	// again, which is exactly why the sweep has to work from the other direction.
+	// Sweep first: a released slot drops its node reference, but the node stays a child of the
+	// root, so orphans are found from the children side and removed before new nodes are built.
 	Set<Node *> live;
 	_tree.each([&](DockTreeNode &n) {
 		if (n.node) {
@@ -1084,15 +1021,13 @@ void DockSystem::syncNodes() {
 		if (live.find(child) != live.end()) {
 			continue;
 		}
-		// only our own nodes: the root may well carry an overlay the application put there
+		// only our own nodes: the root may carry application overlays
 		if (child->getComponent<DockFrameComponent>()
 				|| dynamic_cast<DockSplitter *>(child.get())) {
 			orphans.emplace_back(child);
 		}
 	}
-	// A panel node the registry keeps alive may still be parented INSIDE an orphan frame that is
-	// about to be cleaned. Take those out first - see detachPanelsUnder for why a plain detach, and
-	// why the whole ancestor chain has to be walked. Only then may the orphan be cleaned safely.
+	// detach registry-owned panels from orphan frames before cleaning them; see detachPanelsUnder
 	Set<Node *> dead;
 	for (auto &it : orphans) {
 		dead.emplace(it.get());
@@ -1107,8 +1042,7 @@ void DockSystem::syncNodes() {
 		}
 		if (n.isLeaf()) {
 			auto frame = Rc<DockFrame>::create(n.params, n.self);
-			// a slot restored as shut materializes shut: the flag is the tree's, and this is the
-			// moment the node it describes first exists
+			// the collapsed flag comes from the tree
 			frame->setCollapsed(n.collapsed);
 			n.node = frame;
 			_owner->addChild(frame, FrameZOrder);

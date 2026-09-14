@@ -49,18 +49,9 @@ bool DragSource::init(OfferBuilder &&builder, float threshold) {
 }
 
 void DragSource::handleExit() {
-	/* The node is leaving the scene with the button still down, and the drag SURVIVES it.
-
-	This used to abort here, on the reasoning that a drop routinely removes its own source. But the
-	source node going away is not the same event as the drag ending, and a list that scrolls under
-	its own drag proves it: a virtualized row is unbuilt the moment it leaves the window, which
-	killed every drag that reached the edge of a long list. A target disappearing mid-drag has
-	always been ordinary here (see DragSystem::handleTargetGone); a source is no different - the
-	session holds an Rc on this object and the payload is already a value.
-
-	`_detached` is what keeps InputListener::handleExit below from undoing that: it cancels every
-	recognizer, and the swipe's cancellation would otherwise arrive as a perfectly ordinary "the
-	user let go". */
+	/* The drag survives the source leaving the scene (e.g. a virtualized row unbuilt mid-drag): the
+	session holds an Rc on this object. `_detached` keeps the recognizer cancellation in
+	InputListener::handleExit from being taken as a release. */
 	_detached = _dragging;
 
 	InputListener::handleExit();
@@ -69,8 +60,7 @@ void DragSource::handleExit() {
 void DragSource::setOfferBuilder(OfferBuilder &&builder) { _builder = sp::move(builder); }
 
 DragSession *DragSource::getSession() const {
-	// Guarded on _dragging as well as on the system: the system outlives any one drag, and its
-	// session may by now belong to somebody else entirely.
+	// The system outlives any one drag; its session may belong to another source
 	return (_dragging && _drag) ? _drag->getSession() : nullptr;
 }
 
@@ -81,7 +71,7 @@ bool DragSource::handleDragBegin(const GestureSwipe &swipe) {
 
 	DragOffer offer;
 	if (!_builder(offer)) {
-		return false; // not draggable right now; a plain refusal, not an error
+		return false; // not draggable right now
 	}
 
 	auto drag = DragSystem::acquireForNode(_owner);
@@ -97,9 +87,8 @@ bool DragSource::handleDragBegin(const GestureSwipe &swipe) {
 	_dragging = true;
 	_detached = false;
 
-	// The pointer is off this node by the next event, and the dispatcher freezes an event chain's
-	// listener set at Begin - it can shrink, never re-target. Without the capture the drag stops
-	// receiving Move as soon as it crosses its own edge
+	// The dispatcher freezes an event chain's listeners at Begin; without the capture the drag
+	// stops receiving Move once the pointer leaves this node
 	setExclusive();
 
 	_drag->updateDrag(swipe.location(), swipe.input->data.getModifiers());
@@ -108,8 +97,7 @@ bool DragSource::handleDragBegin(const GestureSwipe &swipe) {
 
 void DragSource::handleDragMove(const GestureSwipe &swipe) {
 	if (_dragging && _drag) {
-		// a POSITION, never an accumulated delta: that is what makes the drag a fixed point of
-		// the pass and keeps a burst of moves in one frame from drifting
+		// a position, not an accumulated delta, so a burst of moves in one frame does not drift
 		_drag->updateDrag(swipe.location(), swipe.input->data.getModifiers());
 	}
 }
@@ -119,8 +107,7 @@ void DragSource::handleDragEnd(bool cancelled) {
 		return;
 	}
 
-	// The recognizer being torn down with the node, not the user letting go. Told apart by
-	// _detached, because at this level the two arrive as the same call.
+	// The recognizer torn down with the node, not a release
 	if (_detached) {
 		return;
 	}

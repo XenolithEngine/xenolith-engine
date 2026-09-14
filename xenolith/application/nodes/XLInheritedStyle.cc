@@ -104,8 +104,7 @@ void InheritedTextStyle::merge(const InheritedTextStyle &parent) {
 		direction = parent.direction;
 		defined |= DefinedDirection;
 	}
-	// `unicode-bidi` is NOT inherited in CSS, so it is deliberately absent from this walk: it is
-	// carried here only for the node that declared it, and the resolver writes it there.
+	// `unicode-bidi` is not inherited in CSS, so it is absent from this walk
 }
 
 font::TextDirection getInlineDirection(const Node *node) {
@@ -118,8 +117,7 @@ font::TextDirection getInlineDirection(const Node *node) {
 		}
 	}
 
-	// Nothing on this node. The walk is the uncommon path: `direction` is inherited, so a subtree
-	// under a root that declares one carries the component on every node.
+	// Nothing on this node; uncommon, since the resolver stamps inherited `direction` on every node
 	auto ret = font::TextDirection::LeftToRight;
 	node->findParentWithComponent<InheritedTextStyle>(
 			[&](NotNull<Node>, NotNull<const InheritedTextStyle> c, uint32_t) {

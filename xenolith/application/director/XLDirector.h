@@ -59,11 +59,9 @@ public:
 	Rc<core::Queue> shareQueue(core::Queue::Builder &&, StringView addr, BytesView key,
 			BytesView dict = BytesView());
 
-	/* The same, for a window joining a session that is ALREADY running.
-	
-	Credentials and the listen address are set once, by whoever opened the session; re-supplying them
-	for a second window is not merely redundant, it is refused (setBearerKey fails outright while the
-	listener is up). A connected client is re-announced, so the window appears without reconnecting. */
+	/* The same, for a window joining a session that is already running. Credentials and the listen
+	address are set once by the session opener (setBearerKey fails while the listener is up). A
+	connected client is re-announced, so the window appears without reconnecting. */
 	Rc<core::Queue> shareQueue(core::Queue::Builder &&);
 
 	// core::RenderClientChannel (server -> client). The server's PresentationEngine pulls a
@@ -72,8 +70,8 @@ public:
 			Function<void(bool)> &&) override;
 	virtual void handleRenderQueueAttached(const Rc<core::Queue> &) override;
 	virtual void handleConstraintsChanged(const core::FrameConstraints &) override;
-	// windowId is ignored throughout: a Director drives exactly one window, so the id can only ever
-	// name that window. It is in the signature for the remote channel, which drives many.
+	// windowId is ignored: a Director drives exactly one window. The id exists for the remote
+	// channel, which drives many.
 	virtual void handleWindowGeometryChanged(uint64_t windowId,
 			const sprt::window::WindowGeometry &) override;
 	virtual void handleInputEvents(uint64_t windowId, Vector<core::InputEventData> &&) override;
@@ -93,9 +91,8 @@ public:
 	// issues render-graph / resource / material compilation through it.
 	core::RenderServerChannel *getRenderServer() const { return _server; }
 
-	// REMAINING client->server coupling: the 2D renderer still reaches the gapi loop directly to
-	// schedule frame-input attachment on the render-loop thread. To be folded into the render
-	// session (as part of command-batch submission) in a later stage.
+	// The 2D renderer still reaches the gapi loop directly to schedule frame-input attachment on
+	// the render-loop thread.
 	core::Loop *getGlLoop() const;
 
 	// Run `cb` on the thread that consumes per-frame input: the gapi loop thread on a server/local
@@ -129,26 +126,17 @@ public:
 	float getDirectorFrameTime() const { return _avgFrameTimeValue / 1000.0f; }
 
 #if XL_FRAME_ACCOUNT
-	/* THE APP HALF OF ONE FRAME, exactly, in nanoseconds - not the twenty-frame average above.
-
-	`getDirectorFrameTime` is a moving average, which is the right thing for a frame-rate readout
-	and the wrong thing for a measurement: an average cannot say what the FIRST frame after a
-	document load cost, and that frame is the one being asked about. Covers `acquireFrame` whole:
-	the update, the scene visit, and everything a node does inside it - including handing
-	tesselation to a worker, but NOT waiting for it, which happens later and elsewhere. */
+	/* The app half of the last frame, exact, in nanoseconds (not an average): `acquireFrame` whole,
+	including the update and the scene visit, and handing tesselation to a worker but not waiting
+	for it. */
 	uint64_t getLastAppFrameTime() const { return _lastAppFrameTime; }
 
-	// The render half of the last COMPLETED frame, exact, with the frame it belongs to. Covers the
-	// FrameHandle's whole life: the vertex plan, the wait on deferred work, the buffer writes and
-	// the device submission. It does NOT cover the visit - that is the app half above.
+	// The render half of the last completed frame, exact, with its frame id: vertex plan, wait on
+	// deferred work, buffer writes and device submission. Does not include the visit.
 	core::FrameTimingInfo getFrameTiming() const;
 
-	/* Deferred tasks STARTED during that frame's visit.
-
-	The direct answer to "did this frame tesselate", asked on the producing side. The consuming
-	side (VertexPlan) reports what a frame PAID for, which is a different question with a different
-	answer: a task started here may be waited for by this frame, or be ready by the time the next
-	one looks. Both are needed - a steady frame must report zero on both. */
+	/* Deferred tasks started during that frame's visit (the producing side). VertexPlan reports
+	what a frame waited for, which differs; a steady frame reports zero on both. */
 	uint32_t getLastDeferredSpawned() const { return _lastDeferredSpawned; }
 	void countDeferredSpawned() { ++_deferredSpawned; }
 #endif
@@ -167,8 +155,8 @@ protected:
 
 	Rc<Ref> _window;
 
-	// Server-side endpoint of the render-session boundary (client -> server calls).
-	// In local mode this points at the AppWindow; later it may be a network proxy.
+	// Server-side endpoint of the render-session boundary (client -> server calls): the AppWindow
+	// locally, a RemoteWindow on a remote client.
 	core::RenderServerChannel *_server = nullptr;
 
 	// Render queues the server has announced as available (via handleRenderQueueAttached), keyed

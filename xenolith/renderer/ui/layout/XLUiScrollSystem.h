@@ -38,21 +38,15 @@ Installed by ui::StyleResolver for any node whose `overflow-x` / `overflow-y` is
 - `scroll` / `auto`: the LayoutSystem below lays the content out at its natural size, this system
   clips the box, slides the content inside it, and shows an overlay indicator.
 
-It never writes a ContentSize - neither its own nor a child's. The LayoutSystem stays the sole
-writer (see the ContentSize ownership rule in XLUiStyleResolver.cc); all this does is hand it a
-translation to replay.
+It never writes a ContentSize; it only hands the LayoutSystem a translation to replay. There is no
+virtualization: long lists belong in ui::TreeView / ui::TableView.
 
-There is NO virtualization here: every child of a scroll container is a real node, always. A long
-list belongs in ui::TreeView / ui::TableView, which build only the rows in the window.
-
-It IS the InputListener rather than owning one, following ui::FormInputListener and DragSource.
-That is not only tidier: Node::removeSystem calls handleRemoved() while holding an iterator into
-the owner's system list, so a system that removed a second system of its own from there would
-invalidate that iterator underneath the caller. */
+It is the InputListener rather than owning one: Node::removeSystem holds an iterator into the
+system list while calling handleRemoved(), so removing a second system from there is unsafe. */
 class SP_PUBLIC ScrollSystem : public InputListener {
 public:
-	// Runs AFTER LayoutSystem in the layout-children phase, so it reads the extent that pass has
-	// just produced. Systems are dispatched in ASCENDING priority order, so "after" is "+".
+	// Runs after LayoutSystem in the layout-children phase (ascending priority), so it reads the
+	// extent that pass produced.
 	static constexpr uint32_t ScrollDefaultPriority = LayoutSystem::LayoutDefaultPriority + 10;
 
 	// When the indicator is shown. `Auto` follows the CSS value: an `overflow: scroll` axis with a
@@ -65,9 +59,8 @@ public:
 
 	virtual ~ScrollSystem() = default;
 
-	// Takes the resolved overflow rather than defaulting to it, so the signature stays distinct from
-	// InputListener::init(int32_t priority = 0). A zero-argument override would be hidden by that
-	// one and silently never run - the same reason FormInputListener and DragSource take arguments.
+	// Takes arguments to stay distinct from InputListener::init(int32_t priority = 0);
+	// a zero-argument override would never run.
 	virtual bool init(document::Overflow x, document::Overflow y);
 
 	virtual void handleAdded(Node *) override;
@@ -94,7 +87,7 @@ public:
 	// not scroll, and zero while the content fits.
 	Size2 getScrollRange() const { return _range; }
 
-	// Current offset, in CSS scroll orientation: x grows right, y grows DOWN.
+	// Current offset, in CSS scroll orientation: x grows right, y grows down.
 	Vec2 getScrollPosition() const { return Vec2(float(_scrollX), float(_scrollY)); }
 	void setScrollPosition(Vec2);
 	void scrollBy(Vec2 delta);
@@ -108,24 +101,21 @@ public:
 
 	void setScrollCallback(Function<void(Vec2)> &&);
 
-	// Where a wheel animation is heading, or the current position when none is running. Reading it
-	// is how a second notch adds to the first instead of restarting from wherever the easing is.
+	// Where a wheel animation is heading, or the current position when none is running, so a second
+	// notch adds to the first.
 	Vec2 getScrollTarget() const;
 
 protected:
 	using InputListener::init;
 
-	// Tag of the wheel easing action on the owner. Using a tag rather than an Rc means "is one
-	// running?" is always asked of the node itself, so a finished action can never leave a stale
-	// pointer behind.
+	// Tag of the wheel easing action on the owner; a tag rather than an Rc leaves no stale pointer.
 	static constexpr uint32_t WheelActionTag = 0x5C401101;
 
 	// Ease to `target` over ScrollSystem_wheelDuration, replacing any easing already in flight.
 	void scrollToAnimated(Vec2 target);
 
-	// Commit an offset without touching the wheel easing. The easing itself drives this; every
-	// other caller goes through setScrollPosition, which cancels the easing first - otherwise the
-	// two would write the same offset from different directions on the same frame.
+	// Commit an offset without touching the wheel easing. Only the easing calls this; everyone else
+	// uses setScrollPosition, which cancels the easing first.
 	void applyScrollPosition(Vec2);
 
 	void updateClip();
@@ -135,16 +125,13 @@ protected:
 	bool handleScrollGesture(const GestureScroll &);
 	bool handleSwipeGesture(const GestureSwipe &);
 
-	// Accumulated in double, like ui::TextViewContainer: a long wheel session inside a large
-	// content area accumulates visible float error otherwise.
+	// Accumulated in double, like ui::TextViewContainer, to avoid float drift in large content.
 	double _scrollX = 0.0;
 	double _scrollY = 0.0;
 
 	Size2 _range;
 
-	// Coasting after a released touch. Zero for a mouse drag: a pointer released with the content
-	// still moving under it reads as the scroller ignoring the button, and only a real touchscreen
-	// says otherwise (InputModifier::Touch).
+	// Coasting after a released touch (InputModifier::Touch). Always zero for a mouse drag.
 	Vec2 _velocity;
 
 	// The destination of the wheel easing in flight. Only meaningful while an action carrying
@@ -152,8 +139,7 @@ protected:
 	Vec2 _wheelTarget;
 
 	// World scale of the owner, recomputed on every transform change. Wheel and drag deltas arrive
-	// in screen units and must be divided by it, or a scroller inside a scaled subtree moves at the
-	// wrong rate (the same divisor basic2d::ScrollViewBase keeps as _globalScale).
+	// in screen units and are divided by it (as basic2d::ScrollViewBase::_globalScale).
 	Vec2 _worldScale = Vec2(1.0f, 1.0f);
 
 	document::Overflow _overflowX = document::Overflow::Visible;
@@ -176,9 +162,8 @@ protected:
 	bool _lastWheelDiscrete = false;
 };
 
-// Walk the ancestor chain from `node` upward and ask every ScrollSystem on it to reveal `node`.
-// The whole chain, outermost included - that is what makes a widget nested two scrollers deep
-// actually become visible. This is the focus-follow entry point.
+// Asks every ScrollSystem on the ancestor chain, outermost included, to reveal `node`.
+// The focus-follow entry point.
 SP_PUBLIC void scrollIntoView(NotNull<Node>, Padding = Padding());
 
 } // namespace stappler::xenolith::ui

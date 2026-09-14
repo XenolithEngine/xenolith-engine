@@ -41,8 +41,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 // above whatever the scene already draws.
 static constexpr ZOrder kTipZOrder = ZOrder(10'000);
 
-// Ids are for logs and for the window backend's own bookkeeping only — nothing is looked up by
-// them. App thread, so a plain counter is enough.
+// Ids are for logs and the window backend's bookkeeping only. App thread, so a plain counter.
 static uint32_t s_subWindowCounter = 0;
 
 static String nextSubWindowId(StringView prefix, sprt::window::WindowType type) {
@@ -58,25 +57,10 @@ static basic2d::SceneContent2d *contentForWindow(AppWindow *w) {
 	return scene ? dynamic_cast<basic2d::SceneContent2d *>(scene->getContent()) : nullptr;
 }
 
-/* HOW MANY OF THE WINDOW'S LOGICAL POINTS ONE POINT OF THE SCENE CONTENT'S SPACE IS WORTH.
-
-Almost always one, and the two cases where it is not are the reason this exists at all.
-
-There are two densities in play and they are not the same number. `surfaceDensity` is the DISPLAY's,
-and it is the one the window system scales by: every backend divides pixels by it to answer where a
-window is (`NativeWindow::getContentScreenRect`) and multiplies by it to be told where to put one -
-so the window's logical points are pixels over `surfaceDensity`. `density` is that multiplied by the
-APPLICATION's own `WindowInfo::density`, the factor `--density` sets, and it is what the scene graph
-is laid out in: `Scene::setFrameConstraints` divides the content by it and scales the root by it, so
-the content node's space is pixels over `density`.
-
-The two spaces therefore differ by exactly `WindowInfo::density` - which is 1 unless an application
-asked for something else, and the whole of this file was written while it was. With `--density 1.5`
-a menu came out a third of the way to the left of the button it hung off, and no test saw it because
-no test passes that option.
-
-Answered from the SCENE's constraints and not the director's, because the scene is what the caller
-already has and the two are the same object's. */
+/* Window logical points per point of scene content space. `surfaceDensity` (the display's) is what
+the window system scales by, so window points are pixels over it. `density` also includes the
+application's `WindowInfo::density` (`--density`) and is what the scene is laid out in. The spaces
+differ by `WindowInfo::density`, usually 1. Read from the scene's frame constraints. */
 static float placementPointScale(const Node *inScene) {
 	auto scene = inScene->getScene();
 	if (!scene) {
@@ -85,8 +69,7 @@ static float placementPointScale(const Node *inScene) {
 
 	const auto &c = scene->getFrameConstraints();
 	if (c.density <= 0.0f || c.surfaceDensity <= 0.0f) {
-		// A window that has not been given constraints yet. 1.0 is what every caller assumed before
-		// this function existed, and it is the only answer that cannot make things worse.
+		// No constraints yet: assume 1.
 		return 1.0f;
 	}
 	return c.density / c.surfaceDensity;
@@ -101,8 +84,7 @@ IRect placementAnchorRect(NotNull<Node> anchor) {
 
 	const auto k = placementPointScale(anchor);
 
-	// Four corners, not origin+size, and both conversions - see the header for why each of the
-	// three steps is load-bearing.
+	// Four corners and both conversions; see the header.
 	const auto size = anchor->getContentSize();
 	const Vec2 corners[4] = {
 		content->convertToNodeSpace(anchor->convertToWorldSpace(Vec2::ZERO)),
@@ -121,12 +103,8 @@ IRect placementAnchorRect(NotNull<Node> anchor) {
 	}
 
 	// Scene nodes are Y-up; WindowPlacement is Y-down from the content's top-left. The flip swaps
-	// which edge is "top", so the rect is built from the flipped extremes rather than by flipping
-	// its origin.
-	//
-	// Flipped in the CONTENT's space and scaled afterwards, in that order: the step to the window's
-	// points is a uniform scale about the content's top-left corner, which is the origin the flip
-	// has just measured from.
+	// which edge is "top", so the rect is built from the flipped extremes. Flip in content space,
+	// then scale: the scale is uniform about the same top-left origin.
 	const float topYDown = content->getContentSize().height - high.y;
 
 	return IRect(int32_t(std::lround(low.x * k)), int32_t(std::lround(topYDown * k)),
@@ -141,9 +119,8 @@ IRect placementAnchorPoint(NotNull<Node> inScene, const Vec2 &worldLocation) {
 		return IRect();
 	}
 
-	// A point has no corners, so what the node form MEASURES is skipped and what it CONVERTS is
-	// not: the step into the content's space is what undoes the scene's density scale, and the
-	// scale beside it is what carries the result the rest of the way into the window's own points.
+	// A point has no corners, but still needs the conversion into content space (undoing the
+	// scene's density scale) and the scale into window points.
 	const auto at = content->convertToNodeSpace(worldLocation);
 	const auto k = placementPointScale(inScene);
 
@@ -172,9 +149,8 @@ Rc<SubWindow> SubWindow::open(NotNull<AppWindow> parent, Config &&config) {
 	ret->_id = nextSubWindowId(config.idPrefix, config.type);
 	ret->_onClose = sp::move(config.onClose);
 
-	// A tooltip is an overlay even where subwindows exist (showTooltip sets preferNative=false):
-	// a native tip costs a swapchain for a few hundred milliseconds and takes hover away from the
-	// node it describes. The caller can still ask for a native one explicitly.
+	// A tooltip is an overlay even where subwindows exist (showTooltip sets preferNative=false);
+	// a caller can still ask for a native one explicitly.
 	const bool wantNative = config.preferNative && parent->getContext() && parent->getInfo()
 			&& platformSupportsSubwindows(parent);
 
@@ -182,9 +158,8 @@ Rc<SubWindow> SubWindow::open(NotNull<AppWindow> parent, Config &&config) {
 		if (ret->openNative(parent, sp::move(config))) {
 			return ret;
 		}
-		// Fall through: a refused native window is still better served by an overlay than by
-		// nothing, and the caller cannot tell the difference anyway. `config` is untouched — see
-		// openNative, which moves nothing until it can no longer fail.
+		// Fall through to an overlay. `config` is untouched: openNative moves nothing until it can
+		// no longer fail.
 	}
 
 	if (!config.content) {
@@ -198,7 +173,7 @@ Rc<SubWindow> SubWindow::open(NotNull<AppWindow> parent, Config &&config) {
 		return ret;
 	}
 
-	// Nothing was materialized. Answer the opener now — it may already have put up a backdrop.
+	// Nothing was materialized. Notify the opener now; it may already have put up a backdrop.
 	ret->handleClosed();
 	return nullptr;
 }
@@ -211,11 +186,9 @@ bool SubWindow::openNative(NotNull<AppWindow> parent, Config &&config) {
 		return false;
 	}
 
-	// The handle rides INSIDE the scene provider, which is how what-to-show travels with the
-	// window request. That makes a reference cycle — SubWindow -> WindowSceneInfo -> closure ->
-	// SubWindow — and that is deliberate: it is what keeps the surface alive when the opener drops
-	// its Rc immediately, which most callers do. handleClosed() breaks it, and every teardown path
-	// reaches handleClosed() through AppWindow::end().
+	// The handle rides inside the scene provider, forming a deliberate cycle
+	// (SubWindow -> WindowSceneInfo -> closure -> SubWindow) that keeps the surface alive after the
+	// opener drops its Rc. handleClosed() breaks it; all teardown reaches it via AppWindow::end().
 	auto self = Rc<SubWindow>(this);
 
 	_sceneInfo = Rc<WindowSceneInfo>::create(
@@ -246,20 +219,9 @@ bool SubWindow::openNative(NotNull<AppWindow> parent, Config &&config) {
 	info->placement = config.placement;
 	info->flags = config.flags;
 
-	/* USER-SPACE DECORATIONS ARE INHERITED BY WHAT IS ANCHORED, and by nothing else.
-
-	A popup or a tip is CHROME of the window it hangs off: it has no title, nothing closes it but the
-	pointer leaving, and a system frame around one would be a frame around a menu. Those follow their
-	parent, so an application that draws its own decorations draws its menus to match.
-
-	A DIALOG OR A UTILITY IS A WINDOW. The window manager places it, the author moves it, and what
-	they reach for to close it is the frame - so it gets the system's, whatever the parent does. This
-	used to be inherited too, and the studio's preview came up as a bare rectangle with no title bar
-	and no close button: a second window of the application wearing the application's own
-	decorations, which the application had not drawn for it and had no way to.
-
-	A caller that wants the other answer says so in `config.flags`, and that is honoured either way -
-	this only adds, never takes away. */
+	/* Popups and tips are chrome of their parent and inherit its user-space decorations. Dialogs
+	and Utility windows are real windows the WM places and the user closes by the frame, so they get
+	system decorations regardless of the parent. `config.flags` can only add, never remove. */
 	const bool anchored = config.type == WindowType::Popup || config.type == WindowType::Tooltip;
 	if (anchored && hasFlag(parentInfo->flags, WindowCreationFlags::UserSpaceDecorations)) {
 		info->flags |= WindowCreationFlags::UserSpaceDecorations;
@@ -269,8 +231,8 @@ bool SubWindow::openNative(NotNull<AppWindow> parent, Config &&config) {
 
 	ctx->createWindow(sp::move(info), [self](Status st, StringView id) mutable {
 		if (!sprt::status::isSuccessful(st)) {
-			// Context::createWindow already handed the payload back to this thread and its close
-			// callback ran, so the surface has already been retired.
+			// Context::createWindow already returned the payload and ran the close callback, so the
+			// surface is already retired.
 			return;
 		}
 		// Adopt the id the window system actually settled on: a collision renames it.
@@ -287,14 +249,9 @@ bool SubWindow::openOverlay(NotNull<AppWindow> parent, Config &&config) {
 		return false;
 	}
 
-	// Resolve the placement the same way the window backends do, rather than dropping the surface
-	// at the raw anchor point: `anchor`, `gravity`, `offset` and the flip/slide adjustments are the
-	// whole reason WindowPlacement exists, and a caller that gets them honoured natively but
-	// ignored here has to branch on the platform after all. The scene IS the work area for an
-	// overlay — there is nothing outside it to slide against.
-	//
-	// It is resolved BEFORE the content builder for the same reason it is published: a caller that
-	// re-derives this arithmetic is a caller that will get the Y flip or the density wrong.
+	// Resolve the placement as the window backends do (`anchor`, `gravity`, `offset`, flip/slide),
+	// so callers need not branch on the platform. The scene is the overlay's work area. Resolved
+	// before the content builder, which reads it via getOverlayRect().
 	const auto contentSize = content->getContentSize();
 	const auto workArea = IRect(0, 0, int32_t(std::lround(contentSize.width)),
 			int32_t(std::lround(contentSize.height)));
@@ -302,47 +259,30 @@ bool SubWindow::openOverlay(NotNull<AppWindow> parent, Config &&config) {
 			sprt::window::computeWindowPlacement(config.placement, config.size, workArea, workArea);
 	_overlayRect = placed;
 
-	// The builder runs AFTER the placement is resolved, so it can read getOverlayRect(): everything
-	// but a tip is pushed as a full-parent overlay, and then the builder - not the push - is what
-	// decides where the visible box of a menu or a palette actually sits.
+	// Everything but a tip is pushed as a full-parent overlay, so the builder positions the visible
+	// box from getOverlayRect().
 	auto layout = config.content ? config.content(this) : nullptr;
 	if (!layout) {
 		return false;
 	}
 
-	/* A surface that could not become a real window still has to look like one: it must sit ON TOP
-	of the scene, not be resolved against it.
-
-	A high ZOrder does not do that. It gives the subtree a late zPath, and a zPath decides the order
-	WITHIN a level - the overlay would still be depth-tested and painted against everything the
-	scene draws at the same level, which is the "the popup mixes with what is under it" this used to
-	be. RenderingLevel::Overlay is a pass of its own, drawn last, at zero depth, after all of it.
-
-	setOverlay is inherited by the whole subtree and cannot be escaped from inside, so marking the
-	layout is marking the popup - a menu made of a panel, rows, labels and icons needs this one
-	call. Which is also why the popup surface no longer forces its panel to RenderingLevel::Solid:
-	that was this problem answered one node at a time, and it cost every popup the ability to be
-	translucent.
-
-	Note what stays ABOVE: the window decorations live on the overlay too, at ZOrder::max() - 1, and
-	the drag ghost at ZOrder::max() - 16 - so the frame still covers a menu and a dragged panel
-	still passes over one. */
+	/* The overlay must draw on top of the scene, not be depth-tested against it. A high ZOrder only
+	orders within a level; RenderingLevel::Overlay is a separate pass drawn last at zero depth.
+	setOverlay is inherited by the whole subtree and cannot be escaped from inside, so one call
+	covers the popup. Window decorations (ZOrder::max() - 1) and the drag ghost (ZOrder::max() - 16)
+	are on the overlay too and stay above. */
 	layout->setOverlay(true);
 
-	// computeWindowPlacement answers in the same Y-down space it was asked in; scene nodes are Y-up.
+	// computeWindowPlacement answers in Y-down space; scene nodes are Y-up.
 	const float yUp = contentSize.height - float(placed.y);
 	layout->setAnchorPoint(Anchor::TopLeft);
 	layout->setPosition(Vec2(float(placed.x), yUp));
 
 	_overlayIsTip = config.type == WindowType::Tooltip;
 
-	// A modal dialog that could not become a real window still has to behave like one. There is no
-	// second window here, so ContextController's _modalBlocks cannot help: the block is a node that
-	// covers the parent's content and swallows pointer and key events before they reach it.
-	//
-	// This is a different mechanism from the native path with the same observable behaviour, and
-	// it is the only one available on Android and wasm. Note WindowState::Enabled is NOT cleared
-	// here — there is no OS window to clear it on.
+	// An overlay modal dialog has no second window for ContextController's _modalBlocks, so a
+	// backdrop covers the parent's content and swallows pointer and key events. The only mechanism
+	// on Android and wasm; WindowState::Enabled is not cleared, there being no OS window.
 	if (config.type == WindowType::Dialog && hasFlag(config.flags, WindowCreationFlags::Modal)) {
 		auto backdrop = Rc<basic2d::Layer>::create(Color4F(0.0f, 0.0f, 0.0f, 0.32f));
 		backdrop->setName("modal-backdrop");
@@ -354,8 +294,7 @@ bool SubWindow::openOverlay(NotNull<AppWindow> parent, Config &&config) {
 		// A recognizer is what actually claims the event; the swallow mask alone would let the
 		// press fall through to whatever is underneath.
 		listener->addTouchRecognizer([](const GestureData &) { return true; });
-		// A key recognizer needs an explicit key mask or it refuses to arm — so name every key
-		// rather than leave the mask empty and silently swallow nothing.
+		// A key recognizer with an empty key mask refuses to arm, so name every key.
 		InputKeyMask allKeys;
 		allKeys.set();
 		listener->addKeyRecognizer([](const GestureData &) { return true; },
@@ -367,12 +306,10 @@ bool SubWindow::openOverlay(NotNull<AppWindow> parent, Config &&config) {
 	}
 
 	if (_overlayIsTip) {
-		// pushOverlay's updateLayoutNode would force full-parent size and a BottomLeft origin,
-		// which is exactly wrong for a hint anchored at a point.
+		// Not pushOverlay: its updateLayoutNode forces full-parent size and a BottomLeft origin.
 		//
-		// Only name it if the builder did not: a tip's name is its CSS id and the hook tools look
-		// it up by, so a content builder that named its own root has said something deliberate and
-		// overwriting it would make every custom hint indistinguishable from the stock one.
+		// Only name it if the builder did not: the name is the tip's CSS id and how hook tools find
+		// it, so a builder-chosen name is kept.
 		if (layout->getName().empty()) {
 			layout->setName("aux-tip");
 		}
@@ -425,12 +362,11 @@ void SubWindow::handleClosed() {
 	_closeFired = true;
 	_parent = nullptr;
 
-	// Dropping _sceneInfo below breaks the cycle described in openNative, and the reference it
-	// releases may well be the last one — so hold ourselves across the whole method.
+	// Dropping _sceneInfo breaks the cycle from openNative and may release the last reference, so
+	// hold ourselves across the whole method.
 	auto guard = Rc<SubWindow>(this);
 
-	// Move out before invoking: a callback that opens the next surface is normal, and it must not
-	// be able to reenter this one.
+	// Move out before invoking: a callback may open the next surface and must not reenter this one.
 	auto cb = sp::move(_onClose);
 	_onClose = nullptr;
 	if (cb) {

@@ -33,17 +33,12 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 class DragSystem;
 class InputDispatcher;
 
-/** One drag, from the moment it begins to exactly one terminal event.
+/** One drag, from begin to exactly one terminal event.
 
-THE INVARIANT WORTH KEEPING: between begin and the drop, the session only READS. Every structural
-change happens in one shot inside the target's `drop` slot. Without that rule a drop that removes
-the source node - which is the normal case, not an exotic one: it is what moving a dock panel does -
-would destroy the very object delivering the drag events, halfway through delivering them.
-
-The second half of the same guarantee is `finish()`: every way this can end (drop, cancel, Escape,
-the source leaving the scene, the whole system leaving the scene) funnels through it, and it runs
-its body at most once. The system detaches the session from itself BEFORE calling it, so anything
-that re-enters during the drop finds no drag in flight and becomes a no-op instead of recursing. */
+Between begin and the drop the session only reads; structural changes happen inside the target's
+`drop` slot, which may destroy the source. Every ending (drop, cancel, Escape, source or system
+leaving the scene) goes through `finish()`, which runs at most once; the system detaches the session
+before calling it, so re-entry during the drop is a no-op. */
 class SP_PUBLIC DragSession : public Ref {
 public:
 	virtual ~DragSession() = default;
@@ -56,9 +51,8 @@ public:
 	Node *getTarget() const { return _target; }
 	Node *getDecorator() const { return _decorator; }
 
-	// Install (or replace) the node that follows the pointer. For a source that set
-	// DragOffer::decoratorDeferred and had nothing to show yet at beginDrag. Ignored once the drag
-	// has finished, so a capture that lands late is a no-op rather than a leak.
+	// Install (or replace) the node that follows the pointer, for DragOffer::decoratorDeferred.
+	// Ignored once the drag has finished.
 	void setDecorator(Rc<Node> &&);
 
 	DragActions getAllowedActions() const { return _offer.allowedActions; }
@@ -74,12 +68,11 @@ public:
 	const Vec2 &getWorldLocation() const { return _world; }
 	InputModifier getModifiers() const { return _modifiers; }
 
-	// The input event id of the Begin that started this drag. Unused in v1; it is what a Wayland
-	// start_drag serial and an X11 grab timestamp will have to be derived from
+	// The input event id of the Begin that started this drag; 0 for a drag begun from code.
+	// Reserved for a Wayland start_drag serial or an X11 grab timestamp
 	uint32_t getInputEventId() const { return _inputEventId; }
 
-	// Always false in v1. A target that can only handle in-process data should branch on it now,
-	// so it keeps working unchanged once external drags exist
+	// Always false for now (no external drags). A target limited to in-process data should check it
 	bool isExternal() const { return false; }
 
 	bool isFinished() const { return _finished; }
@@ -95,8 +88,7 @@ protected:
 	// The current target left the scene, or stopped being one: leave fires, the drag continues
 	virtual void handleTargetGone(NotNull<Node>);
 
-	// Park the node on the decorator parent, on the Overlay level. See the definition for why the
-	// level rather than the ZOrder is what matters.
+	// Park the node on the decorator parent, on the Overlay level
 	void installDecorator(Rc<Node> &&);
 
 	DragEvent makeEvent(Node *target) const;
@@ -129,48 +121,32 @@ protected:
     auto drag = DragSystem::acquireForNode(this);
     drag->beginDrag(DragOffer{ ... }, this, swipe.getId());
 
-WHERE IT LIVES. On `SceneContent`, and `acquireForNode` puts it there if nobody did. That node is
-the only one at this layer that is both full-window and reachable from every descendant, and since
-`Scene::addChild` is protected it is also the only place the decorator could be parked. A second one
-deeper in the tree is no longer a silent trap - targets are the registry's, not any system's - but
-`findForNode` would hand the widgets below it a different drag from the ones above, so don't.
+Lives on `SceneContent` (`acquireForNode` installs it there): the full-window node reachable from
+every descendant. Nesting is not allowed - `findForNode` would give widgets below a second system a
+different drag. Public calls use `findForNode`, since gesture and command callbacks run outside a
+visit. Drop targets are read from the window's hit-test registry (see HitTestFlags), not a roster.
 
-HOW IT IS REACHED. `findForNode` walks the parent chain, and everything public here uses it: a
-gesture callback and a command handler both run outside any visit. Drop TARGETS do not come through
-here at all - a node publishes itself into the window's hit-test registry (see HitTestFlags) and this
-system reads that registry, so there is no roster here to keep in step with the scene.
-
-CURSOR. During a drag the pointer is over the TARGET, not the source, so nothing the source owns
-can set the cursor. Instead this system keeps its own InputListener on its owner - disabled when
-idle, no recognizers, nothing but a window layer - at a deeply negative priority. Negative-priority
-listeners land in the dispatcher's post-scene band, which is walked last, and the window applies the
-LAST non-Undefined cursor it is handed. So this one layer covers the window and outranks every
-widget under the pointer, for exactly as long as the drag lasts. */
+During a drag the pointer is over the target, so the cursor is set by this system's own
+InputListener on its owner: disabled when idle, no recognizers, at a negative priority that puts it
+in the dispatcher's post-scene band. The window applies the last non-Undefined cursor it gets. */
 class SP_PUBLIC DragSystem : public System {
 public:
 	static uint64_t Id;
 
-	// The decorator is put on the Overlay LEVEL (see DragSession::installDecorator), which is what
-	// puts it above ordinary content and, crucially, after the frame has been captured. This ZOrder
-	// is what orders it against the other things on that level - WindowDecorations at
-	// ZOrder::max() - 1, which a drag ghost must not paint over. A band of its own, shared with
-	// nothing: sortAllChildren is unstable, so equal ZOrders permute between frames
+	// Orders the decorator within the Overlay level, below WindowDecorations (ZOrder::max() - 1).
+	// Must not be shared: sortAllChildren is unstable, so equal ZOrders permute between frames
 	static constexpr ZOrder DecoratorZOrder = ZOrder::max() - ZOrder(16);
 
-	// Deeply negative so the drag's cursor layer is applied after every widget's; see the class
-	// comment. SceneContent's own listener sits at -1
+	// Applied after every widget's cursor; SceneContent's own listener sits at -1
 	static constexpr int32_t CursorListenerPriority = -0x4000;
 
-	// How far a pointer must travel before a press becomes a drag. Above the tap tolerance
-	// (TapDistanceAllowed = 12) would make a drag impossible to start without first cancelling a
-	// tap; below it, a click would start a drag
+	// Travel before a press becomes a drag; must stay below the tap tolerance (TapDistanceAllowed)
 	static constexpr float DefaultDragThreshold = 8.0f;
 
 	// Walks the parent chain. Use this everywhere except inside a visit
 	static DragSystem *findForNode(Node *);
 
-	// findForNode, and if there is none, installs one on the scene's content node. This is what
-	// lets a widget start a drag without the application having arranged anything
+	// findForNode, installing one on the scene's content node if there is none
 	static DragSystem *acquireForNode(Node *);
 
 	virtual ~DragSystem() = default;
@@ -184,42 +160,29 @@ public:
 	virtual void update(const UpdateTime &) override;
 
 	// Starts a drag. Null if one is already in flight, if the offer allows no action, or if it
-	// asks to go external (v1 has no OS path). `source` is retained for the whole drag
+	// asks to go external (no OS path yet). `source` is retained for the whole drag
 	virtual DragSession *beginDrag(DragOffer &&, Rc<Ref> &&source, uint32_t inputEventId = 0);
 
-	// `worldLocation` is world (screen) space, physical pixels - what an input event carries.
-	// Never accumulate deltas: this is a position, and the drag is a fixed point of it
+	// `worldLocation` is world (screen) space, physical pixels; an absolute position, not a delta
 	virtual void updateDrag(const Vec2 &worldLocation, InputModifier = InputModifier::None);
 
-	/* Re-resolve what the drag is over, at the position it is already at.
-
-	For when the SCENE moved under a pointer that did not: a list auto-scrolling at its edge, a
-	panel animating into place. Drag events arrive only on pointer motion - DragSession::update is
-	called from DragSource::handleDragMove and nowhere else - so after such a move everything the
-	drag decided is about a target that has slid away, and nothing will say so.
-
-	Call it only on a frame where something actually moved. Calling it every frame regardless is the
-	thing this exists to avoid: it would make handleDragOver a 60Hz event for every drag everywhere
-	in order to fix a case that arises only while a scroller is scrolling itself.
-
-	Not from a visit hook: this can fire handleDragLeave/handleDragEnter, and a target is entitled
-	to mutate the scene in those. */
+	/* Re-resolve the target at the current position, for when the scene moved under a still
+	pointer (e.g. an auto-scrolling list). Call only on frames where something moved, and not from
+	a visit hook: it can fire handleDragLeave/handleDragEnter, which may mutate the scene. */
 	virtual void refreshDrag();
 
 	virtual void commitDrag();
 
-	// `source` guards against a stale abort: a source leaving the scene cancels only its OWN drag
+	// `source` guards against a stale abort: only that source's own drag is cancelled
 	virtual void cancelDrag(Ref *source = nullptr);
 
 	DragSession *getSession() const { return _session; }
 	bool isDragging() const { return _session != nullptr; }
 
-	// A target left the scene. If it is the current one it gets its `leave`, and the drag goes on:
-	// a target disappearing mid-drag is ordinary, not a reason to abort
+	// A target left the scene. If it is the current one it gets its `leave`; the drag goes on
 	void handleTargetGone(NotNull<Node>);
 
-	// How many drop targets the committed frame registered. Answered by the hit-test registry, which
-	// is the only place that knows: this system keeps no roster of its own
+	// How many drop targets the committed frame registered in the hit-test registry
 	size_t getTargetCount() const;
 
 	InputListener *getCursorListener() const { return _cursorListener; }

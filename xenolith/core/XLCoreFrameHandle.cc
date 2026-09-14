@@ -404,8 +404,7 @@ void FrameHandle::onOutputAttachmentInvalidated(FrameAttachmentData *data) {
 
 #if XL_FRAME_ACCOUNT
 void FrameHandle::accountDependencies(const Vector<Rc<DependencyEvent>> &events) {
-	// Counted BEFORE the wait: an event that fires while we wait was still one we waited for, and
-	// `_depWaited` is about what could have stalled us when we asked.
+	// Counted before the wait: `_depWaited` counts events not yet signalled when we asked.
 	_depCount.fetch_add(uint32_t(events.size()));
 	for (auto &it : events) {
 		if (!it->isSignaled()) {
@@ -415,13 +414,8 @@ void FrameHandle::accountDependencies(const Vector<Rc<DependencyEvent>> &events)
 }
 #endif
 
-/* ONE WAIT, ACCOUNTED FOR, and a no-op in a build without the account.
-
-A struct rather than two `#if` blocks around the call below, for two reasons. The waiting code stays
-readable - there is no preprocessor inside the lambda or its capture list - and each wait carries its
-OWN start, which a member could not: a frame's attachments submit their input concurrently (the vertex
-pass and the shadow pass both wait), so two waits of one frame can overlap. Empty in the shipping
-build, so capturing it by value costs nothing and warns about nothing. */
+/* Accounts one dependency wait; empty without XL_FRAME_ACCOUNT. Each wait carries its own start,
+since waits of one frame can overlap (attachments submit input concurrently). */
 namespace {
 struct DependencyWaitAccount {
 #if XL_FRAME_ACCOUNT
@@ -446,8 +440,7 @@ void FrameHandle::waitForDependencies(const Vector<Rc<DependencyEvent>> &events,
 		Function<void(FrameHandle &, bool)> &&cb) {
 	auto linkId = sprt::retain(this);
 
-	// THE ONE CHOKE POINT every frame and every pass waits through, which is why the account is here
-	// and not at the six call sites.
+	// Every frame and pass waits through here, so the account lives here.
 	DependencyWaitAccount account(this, events);
 
 	_loop->waitForDependencies(events, [this, cb = sp::move(cb), linkId, account](bool success) {

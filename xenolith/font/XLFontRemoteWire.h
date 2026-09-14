@@ -29,15 +29,8 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 
 /* Packed binary encoding of a GlyphRequest (remote::FontCode::GlyphRequest), shared by the client
- * controller (encode) and the server endpoint (decode).
- *
- * It was a CBOR dict, with a note saying the plan called for a packed layout and that swapping it
- * later would not touch the control flow on either side. This is that swap, and the reason it was
- * worth making is the shape of the traffic rather than elegance: a batch carries the WHOLE required
- * character set of every face on every flush -- not a delta -- and that set only grows over the life
- * of the process (FontController::update explains why: the atlas is rebuilt from scratch each time).
- * In CBOR every codepoint was a separate data::Value, allocated on both sides, to carry what is
- *4 bytes.
+ * controller (encode) and the server endpoint (decode). Packed because a batch carries the whole
+ * required character set of every face on every flush, not a delta.
  *
  * Layout, network byte order throughout:
  *
@@ -46,12 +39,10 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
  *             [i16 style][u16 weight][u16 stretch][i16 grade][u16 size][u32 density 16.16]
  *             [u16 faceId][u32 charCount][u32 char x charCount]
  *
- * `density` stays 16.16 fixed point, as it was in the dict -- the one thing the old encoding got
- * right on purpose, so that nothing here depends on floating-point support in the value layer.
+ * `density` is 16.16 fixed point, so nothing depends on floating-point support in the value layer.
  */
 
-// The specialization, 16 bytes. Free-standing because both sides of the request need it and neither
-// should be writing the field order out by hand twice.
+// The specialization, 16 bytes; shared by both sides so the field order is written once.
 inline void encodeFontSpec(remote::WireWriter &w, const FontSpecializationVector &s) {
 	w.writeU16(uint16_t(s.fontStyle.get()));
 	w.writeU16(uint16_t(s.fontWeight.get()));
@@ -96,9 +87,9 @@ inline void encodeGlyphRequest(Bytes &out, uint32_t depId, SpanView<GlyphRequest
 	}
 }
 
-// Returns false on a payload that does not parse. The readers zero-fill past the end, so a truncated
-// message yields a face count it cannot satisfy and is caught by the size check rather than by
-// reading past the buffer.
+// Returns false on a payload that does not parse. The readers zero-fill past the end, so a
+// truncated message yields a face count it cannot satisfy and is caught by the size check rather
+// than by reading past the buffer.
 inline bool decodeGlyphRequest(BytesView payload, uint32_t &outDepId,
 		Vector<GlyphRequestFace> &out) {
 	BytesViewNetwork in(payload.data(), payload.size());

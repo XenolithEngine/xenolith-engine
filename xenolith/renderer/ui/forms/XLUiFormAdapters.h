@@ -37,16 +37,12 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// Ready-made slot fillers for the widgets this kit ships. This is the ONLY place where the form
-// machinery knows what a TextInput or a Checkbox is - and the dependency points from forms/ to
-// atoms/, never the other way, so a widget stays usable with no form in sight.
-//
-// Each one creates the listener, fills in what the widget can do and adds it to the node. The
-// field name defaults to the node's own name, which is also its CSS id.
+// Slot fillers for the kit's widgets: each creates the listener, fills the slots and adds it to the
+// node. The only place forms/ knows about atoms/; widgets never depend on forms. The field name
+// defaults to the node's name (its CSS id).
 
-// Also takes a ui::NumberField, which IS a TextInput: it collects the NUMBER rather than the text
-// of one. There is no second overload for it, because NotNull<> converts from either and the two
-// would be ambiguous at every call site - the adapter branches instead.
+// Also takes a ui::NumberField and collects its number; branches inside, since a second overload
+// would be ambiguous through NotNull<>.
 SP_PUBLIC FormInputListener *addFormField(NotNull<TextInput>, StringView name = StringView(),
 		FormFieldFlags = FormFieldFlags::None);
 
@@ -56,39 +52,27 @@ SP_PUBLIC FormInputListener *addFormField(NotNull<Checkbox>, StringView name = S
 SP_PUBLIC FormInputListener *addFormField(NotNull<Select>, StringView name = StringView(),
 		FormFieldFlags = FormFieldFlags::None);
 
-// Collects the chosen id, exactly as the Select adapter does: the same field may be either widget
-// depending on how many values there are, and what a form sees must not depend on that choice.
+// Collects the chosen id, same as the Select adapter.
 SP_PUBLIC FormInputListener *addFormField(NotNull<SearchPicker>, StringView name = StringView(),
 		FormFieldFlags = FormFieldFlags::None);
 
-// A COMPOSITE field: several ui::NumberFields collected as ONE array under one name. It is the
-// worked example of what FormFieldSlots is for - the form drives a widget it knows nothing about,
-// and the widget's own parts keep their keys because FormSystem admits a listener that sits below
-// the focused field's node
+// Composite field: the components are collected as one array under one name; their own listeners
+// keep receiving keys because FormSystem admits listeners below the focused field's node.
 SP_PUBLIC FormInputListener *addFormField(NotNull<VectorField>, StringView name = StringView(),
 		FormFieldFlags = FormFieldFlags::None);
 
 
-// Collects the CANONICAL HEX of the colour ("#rrggbb", or "#rrggbbaa" where the field carries an
-// alpha channel): JSON has no colour type, and hex is what a stylesheet, a schema default and a
-// config file all already hold
+// Collects the canonical hex of the colour ("#rrggbb", or "#rrggbbaa" with an alpha channel).
 SP_PUBLIC FormInputListener *addFormField(NotNull<ColorField>, StringView name = StringView(),
 		FormFieldFlags = FormFieldFlags::None);
 
-/* An ARRAY of the chips' ids, left to right. The second composite field in this kit, and the one
-that shows the pattern is not about text: the row keeps its own selection and its own keys, the form
-sees one value under one name, and a Required row that is empty is refused ONCE. Order is part of
-the value - an element chain read back in a different order describes a different type. */
+/* Collects an array of chip ids, left to right; order is part of the value. An empty Required
+row is refused once. */
 SP_PUBLIC FormInputListener *addFormField(NotNull<ChipRow>, StringView name = StringView(),
 		FormFieldFlags = FormFieldFlags::None);
 
-/* The VALUE, not the index. The widget carries a step index because that is the only thing a
-coordinate can be turned into exactly; a form talks about values, and `min + step * index` is what
-the field MEANS. Integer or real is the widget's DECLARED flag, for the same reason ui::NumberField
-declares one: a form that submits 7.0 where the schema says 7 has changed the value on its way out.
-
-No `activate`: a track has nothing to do with Enter, and declining is what lets the form submit
-instead - the same answer a single-line ui::TextInput gives. */
+/* Collects the value (`min + step * index`), not the index: an integer for an integer slider, a
+double otherwise. No `activate`, so Enter on a focused slider submits the form. */
 SP_PUBLIC FormInputListener *addFormField(NotNull<Slider>, StringView name = StringView(),
 		FormFieldFlags = FormFieldFlags::None);
 

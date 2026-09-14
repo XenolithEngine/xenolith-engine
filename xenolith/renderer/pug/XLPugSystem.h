@@ -97,7 +97,7 @@ protected:
 	spug::Context *_context = nullptr;
 	spug::Template *_template = nullptr;
 
-	String _source; // inline content OR file path
+	String _source; // inline content or file path
 	FileCategory _category = FileCategory::Custom;
 	bool _isFile = false;
 	bool _templateDirty = true;

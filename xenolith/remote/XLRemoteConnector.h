@@ -34,9 +34,8 @@ public:
 	//
 	// `expectedFingerprint` is the SHA-256 of the server's DER SubjectPublicKeyInfo, obtained
 	// out-of-band (Listener::getCertificateFingerprint). On a TLS-based transport a non-empty value
-	// is what authenticates the server; WITHOUT it the certificate is ephemeral and self-signed, so
-	// any man in the middle both intercepts the session and receives the bearer key the handshake
-	// then presents. Transports that authenticate by other means (a unix socket) ignore it.
+	// authenticates the server; without it the self-signed certificate lets a man in the middle
+	// receive the bearer key. Transports that authenticate by other means (unix socket) ignore it.
 	static Rc<ClientConnection> connect(const Address &,
 			BytesView expectedFingerprint = BytesView());
 

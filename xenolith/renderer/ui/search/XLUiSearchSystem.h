@@ -37,20 +37,15 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 class SearchSystem;
 
-// How a source decides what a query matches. It is the SOURCE that declares this, not the widget:
-// the right comparison is a property of what is being searched, and a picker over component names
-// and a picker over documentation should not have to be two widgets to get two answers.
+// How a query matches; declared by the source, not the widget.
 enum class SearchMatchMode {
-	// The typed characters, read out of the name in order (`vtxbuf` finds `VertexBufferPass`).
-	// For identifiers and short labels, where a person types an abbreviation rather than a word.
+	// Typed characters in order within the name (`vtxbuf` finds `VertexBufferPass`)
 	Subsequence,
 
-	// Whole words, each matched as a prefix, weighted by position and by the item's tag. For
-	// multi-word labels where the words are words and their order carries meaning.
+	// Whole words matched as prefixes, weighted by position and tag; for multi-word labels
 	Prefix,
 
-	// Stemming, stop words and rank: the full-text path. For descriptions and documentation, where
-	// "rendering" has to find "render" and "the" has to find nothing.
+	// Full text: stemming, stop words and rank; for descriptions and documentation
 	Text,
 };
 
@@ -64,11 +59,8 @@ struct SP_PUBLIC SearchHit {
 
 	float score = 0.0f;
 
-	/* The matched fragments of `title`, as (start, length) in UTF-16 CODE UNITS - the units
-	`Label::setTextRangeStyle` counts in, and the reason this is computed here rather than at each
-	call site. A range may be empty for a hit that matched without being able to say WHERE: an edit
-	distance answers "how far apart", not "which characters", and inventing a highlight for it would
-	underline the wrong letters. */
+	/* Matched fragments of `title` as (start, length) in UTF-16 code units, as used by
+	`Label::setTextRangeStyle`. Empty for typo-tolerant matches, which have no position. */
 	Vector<Pair<uint32_t, uint32_t>> ranges;
 
 	Value data;
@@ -85,8 +77,7 @@ struct SP_PUBLIC SearchRequestParams {
 struct SP_PUBLIC SearchResult {
 	String query;
 
-	// Which request this answers. A caller that only wants the newest can compare, but does not
-	// have to: the system already drops results overtaken by a later query.
+	// Which request this answers; the system already drops results overtaken by a later query.
 	uint64_t generation = 0;
 
 	Vector<SearchHit> hits;
@@ -97,18 +88,9 @@ struct SP_PUBLIC SearchResult {
 
 using SearchCallback = Function<void(SearchResult &&)>;
 
-/** Where results come from.
-
-The abstraction exists for one concrete second implementation, not for symmetry: a source backed by
-`xenolith::storage::Server` answers from a database on its own thread, and that is what dictates the
-shape here - a request identity, a cancel, and a callback instead of a return value. A synchronous
-source answers through the same callback rather than being given a shortcut, so that swapping one
-for the other is a line in the application and nothing in the widget.
-
-That source cannot live in this module: it needs `stappler_db`, and `xenolith_renderer_ui` must not.
-It belongs in a module of its own on top of `xenolith_resources_storage`, defining a scheme with a
-`db::Field::FullTextView` bound to this system's `search::Configuration`, and turning a query into
-`Query::select(field, vocabulary.expand(cfg.parseQuery(input)))` ordered by the emitted rank column. */
+/** Where results come from. The interface is asynchronous (request handle, cancel, callback) so a
+source may answer from another thread, e.g. a database; synchronous sources use the same callback.
+A database-backed source needs `stappler_db` and must live outside `xenolith_renderer_ui`. */
 class SP_PUBLIC SearchSource : public Ref {
 public:
 	virtual ~SearchSource() = default;
@@ -126,8 +108,7 @@ public:
 
 	virtual void cancel(uint64_t handle);
 
-	// Whether the callback can arrive after `query` returns. A synchronous source still calls back,
-	// but a caller that has to keep something alive across the wait can tell the difference.
+	// Whether the callback can arrive after `query` returns.
 	virtual bool isAsync() const { return false; }
 
 protected:
@@ -135,29 +116,15 @@ protected:
 	SearchSystem *_system = nullptr;
 };
 
-/** The search configuration and the sources built on it, as one object on the scene.
-
-WHAT IT OWNS THAT A SOURCE CANNOT.
-
-The `search::Configuration` - language, stemmers, stop words - is shared. Two sources that disagree
-about what a word IS would answer the same typing differently for no reason a user could see, and a
-per-source configuration is the way that happens by accident.
-
-Ordering. Every request gets a generation, and a result overtaken by a later one is dropped instead
-of being handed to the widget. Without this, a slow answer to a short query lands after a fast answer
-to a long one and the list flickers backwards - the standard failure of every typeahead, and not
-something each widget should have to rediscover.
-
-Timing. Typing produces a query per keystroke; the debounce collapses them. It runs off this system's
-own update tick, so there is no timer to own and nothing to cancel when the scene goes away. */
+/** The shared search configuration (language, stemmers, stop words) and its sources, on the scene.
+Each request gets a generation; results overtaken by a later request are dropped. Queries are
+debounced on this system's update tick. */
 class SP_PUBLIC SearchSystem : public System {
 public:
 	static constexpr TimeInterval DefaultDebounce = TimeInterval::milliseconds(120);
 
-	// The nearest SearchSystem at or above `node`.
-	//
-	// NOT usable from inside a popup: a subwindow is a scene of its own with nothing of the opener
-	// above it. A widget that opens one passes the system down by value.
+	// The nearest SearchSystem at or above `node`. Does not reach the opener from a popup
+	// subwindow (a separate scene); pass the system down explicitly.
 	static SearchSystem *findForNode(Node *);
 
 	// findForNode, and if there is none, installs one on the scene's content node.
@@ -184,12 +151,8 @@ public:
 	virtual void setDebounce(TimeInterval);
 	TimeInterval getDebounce() const { return _debounce; }
 
-	/* Asks `sourceName` for `query`, and calls back with the result once - unless a later request
-	overtakes this one, in which case it never calls back at all.
-
-	Returns the request id, which `cancel` takes. An unknown source is not an error worth a crash:
-	it calls back at once with an empty result, because a picker pointed at a source that has not
-	been registered yet should show "nothing" and not stop working. */
+	/* Asks `sourceName` for `query`; calls back once, or never if a later request overtakes it.
+	Returns the request id for `cancel`. An unknown source answers at once with an empty result. */
 	virtual uint64_t query(StringView sourceName, StringView, const SearchRequestParams &,
 			SearchCallback &&);
 
@@ -212,13 +175,8 @@ protected:
 	void dispatch(Request &);
 	void handleCompletion(uint64_t requestId, SearchResult &&);
 
-	/* The configuration lives in a pool this system OWNS, and is built inside it.
-
-	`search::Configuration` creates its pool as a child of whatever pool is current when it is
-	constructed. For an object on the scene that is the frame that happened to be running during
-	init(), and a child pool cannot outlive its parent: the configuration's internals are freed the
-	moment that frame ends, and the next query reads them. A pool with its own allocator has no
-	parent to be outlived by. */
+	/* Own root pool for the configuration: it makes a child of the current pool, which during
+	init() is a frame pool that dies at frame end. */
 	memory::pool_t *_pool = nullptr;
 	search::Configuration *_configuration = nullptr;
 
@@ -232,12 +190,10 @@ protected:
 	// The newest generation a result has already been delivered for. Anything older is late.
 	uint64_t _delivered = 0;
 
-	// At most one request waits out the debounce: a keystroke replaces whatever was waiting, which
-	// is the whole point of debouncing.
+	// At most one request waits out the debounce; a new one replaces it.
 	sprt::optional<Request> _pending;
 
-	// Stamped on the first update tick after the request was queued, not when it was queued: this
-	// system has no clock of its own, and the tick is the only time it is handed one.
+	// Stamped on the first update tick after queueing, the only clock this system has.
 	uint64_t _pendingSince = 0;
 
 	Vector<Request> _inFlight;
@@ -251,18 +207,14 @@ struct SP_PUBLIC SearchItem {
 	String title;
 	String subtitle;
 
-	// Only read in SearchMatchMode::Text: the body a full-text query searches, as opposed to the
-	// name it displays.
+	// Body text searched in SearchMatchMode::Text only.
 	String text;
 
 	Value data;
 };
 
-/** A source over a list held in memory.
-
-Answers synchronously - through the callback, like any other source. Rebuilt whole rather than
-incrementally, because `search::SearchIndex::add` inserts into a sorted vector and an incremental
-update of a large index costs more than rebuilding it. */
+/** A synchronous source over an in-memory list. The index is rebuilt whole on change, since
+`search::SearchIndex::add` inserts into a sorted vector. */
 class SP_PUBLIC StaticSearchSource : public SearchSource {
 public:
 	virtual ~StaticSearchSource();
@@ -278,21 +230,13 @@ public:
 	virtual void setMatchMode(SearchMatchMode);
 	SearchMatchMode getMatchMode() const { return _mode; }
 
-	/* Per-tag weighting for SearchMatchMode::Prefix, so a source can say "a component outranks a
-	comment". Ignored by the other modes.
-
-	A callback rather than a whole `search::SearchIndex::Heuristic`: that struct's members are
-	POOL functions, and holding one in a refcounted object would bind it to whichever pool happened
-	to be current when the source was created. The heuristic is assembled inside the query's own
-	temporary pool instead, where it belongs. */
+	/* Per-tag weighting for SearchMatchMode::Prefix; ignored by other modes. A plain callback,
+	since `search::SearchIndex::Heuristic` holds pool functions and is built per query. */
 	virtual void setTagScore(Function<float(int64_t tag)> &&);
 
-	/* Whether a query that matches nothing exactly is retried against words within an edit or two.
-
-	What it does depends on the mode, because the modes have different things to be tolerant WITH:
-	Prefix and Text expand the query into the words the index actually holds, and keep their
-	highlights; Subsequence falls back to comparing the whole string and reports NO highlight,
-	because an edit distance cannot say which characters matched. */
+	/* Retry a query with no exact match against words within a small edit distance. Prefix and Text
+	expand the query to indexed words and keep highlights; Subsequence compares whole strings and
+	reports no highlight. */
 	virtual void setTypoTolerance(bool);
 	bool isTypoTolerance() const { return _typoTolerance; }
 
@@ -326,13 +270,8 @@ protected:
 	// Encoded search vectors, one per item, in SearchMatchMode::Text.
 	Vector<mem_std::Bytes> _vectors;
 
-	/* The index is built in a pool this source OWNS.
-
-	`search::SearchIndex` is refcounted but its nodes and tokens are POOL containers, bound to
-	whatever pool was current when it was constructed. Built in the ambient pool, an index outlives
-	its own storage: it survives as an object and reads freed memory as data. A pool with its own
-	allocator has no parent frame to be outlived by, and clearing it between rebuilds is what keeps
-	a source that is re-populated often from growing without bound. */
+	/* Own root pool for the index, whose nodes are pool containers bound to the pool current at
+	construction; cleared on each rebuild. */
 	memory::pool_t *_pool = nullptr;
 
 	Rc<search::SearchIndex> _index;

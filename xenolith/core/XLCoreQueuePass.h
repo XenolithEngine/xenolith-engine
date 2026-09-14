@@ -141,13 +141,9 @@ protected:
 
 /* Typed pass base: creates HandleType in makeFrameHandle.
  *
- * Prefer this over overriding makeFrameHandle by hand: inside a member function
- * of a derived class, an unqualified handle name resolves via the base class
- * scope to the core::QueuePass::QueuePassHandle alias, silently creating the
- * no-op core handle. Here the handle type is spelled once at the inheritance
- * site, where unqualified lookup works in namespace scope.
- *
- * HandleType must be complete at the point of class instantiation.
+ * Prefer this over overriding makeFrameHandle by hand: inside a derived member function an
+ * unqualified handle name resolves to the base QueuePassHandle alias and silently creates the
+ * no-op core handle. HandleType must be complete at the point of class instantiation.
  */
 template <typename HandleType, typename BasePass = QueuePass>
 class QueuePassTyped : public BasePass {

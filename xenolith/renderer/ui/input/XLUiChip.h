@@ -30,27 +30,18 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/** One element of a set: a label you can take off again.
+/** One removable element of a set: a ui::Badge with a leading icon and a remove button. setText,
+getText and setVariant behave as on a badge.
 
-A ui::Badge SAYS something; a chip is something a person put there and can remove. That difference
-is the leading icon and the remove button, and it is the whole of this class - which is why it is a
-ui::Badge with two children rather than a second widget that happens to look like one. setText,
-getText and setVariant therefore mean exactly what they mean on a badge, in both.
+The node and its label are retyped to `chip`, so `badge` rules do not apply to chips.
 
-IT RETYPES ITSELF. init() calls Badge::init and then declares itself `chip`: a stylesheet addressing
-`badge` must not paint chips, and one addressing `chip` must not have to know that a chip is
-implemented as a badge. The inherited label is retyped with it, for the same reason.
+The measure callback answers the natural width (padding, icon, shaped label, button); ui::ChipRow
+wraps by it and `flex-basis: fit-content` resolves to it.
 
-IT ANSWERS THE MEASUREMENT PROTOCOL. `MaxContent` is its natural width - the padding, the icon, the
-shaped label and the button. That single answer serves two callers: ui::ChipRow wraps by it, and
-`flex-basis: fit-content` resolves to it for a chip placed in a flex container by CSS. A chip that
-answered only one of them would wrap differently from the way it is drawn.
+Selection and the meaning of removal belong to the owner (ui::ChipRow); the chip only shows the
+`selected` class it is given.
 
-WHAT IT DOES NOT DECIDE. Selection is the ROW's - a chip only paints the `selected` class it is
-told to wear - and so is what removing one means. A lone chip with a remove callback is perfectly
-usable, but it does not know about any others.
-
-CSS: type `chip`, class `xl-ui-chip`, states `.selected` and `.disabled`. Children are
+CSS: type `chip`, class `xl-ui-chip`, states `.selected` and `:disabled`. Children are
 `chip > icon` (the leading icon, hidden while it is IconName::None), `chip > label` and
 `chip > button` (the remove button, named `remove`).
 
@@ -69,9 +60,8 @@ public:
 
 	virtual void handleContentSizeDirty() override;
 
-	/* Phase 6. The side these parts take comes from the resolved `direction`, and an ancestor's
-	   StyleResolver re-resolves this node in reaction to its content-size phase - so phase 4
-	   reads the direction from before the pass. See placeInlineParts. */
+	/* Places the parts by the resolved `direction`, which is only settled at this phase, not in
+	   handleContentSizeDirty. */
 	virtual void handleLayoutChildren() override;
 
 	void placeInlineParts();
@@ -80,26 +70,24 @@ public:
 	virtual void setIcon(IconName);
 	IconName getIcon() const;
 
-	/* Whether the remove button is there at all. A chip without one is a label that happens to be
-	in a set - which is what a fixed member of a chain looks like. */
+	// Whether the remove button is shown; a non-removable chip is a fixed member of the set.
 	virtual void setRemovable(bool);
 	bool isRemovable() const { return _removable; }
 
 	virtual void setRemoveCallback(Callback &&);
 
-	// A tap on the chip ITSELF, not on its button. ui::ChipRow selects with this.
+	// A tap on the chip itself, not on its remove button; ui::ChipRow selects with this.
 	virtual void setTapCallback(Callback &&);
 
-	// Paints `selected`. The row decides who wears it; the chip only wears it.
+	// Applies the `selected` class; the owner decides which chip is selected.
 	virtual void setSelected(bool);
 	bool isSelected() const { return _selected; }
 
 	virtual void setEnabled(bool) override;
 	bool isEnabled() const override { return isControlEnabled(this); }
 
-	/* The natural size, which is what the measurement protocol answers with. Shapes the label
-	first: a Label reports zero width until it has been through an update, and a row that wrapped
-	by that number would put every chip on one line. */
+	/* The natural size answered by the measure callback. Shapes the label first: a Label reports
+	zero width until its update has run. */
 	virtual Size2 measureNatural() const;
 
 	basic2d::IconSprite *getLeadingIcon() const { return _icon; }

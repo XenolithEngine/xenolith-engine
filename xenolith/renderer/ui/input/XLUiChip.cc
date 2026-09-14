@@ -29,8 +29,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// The fallback's metrics, in points. Only the fallback: a styled chip gets its LayoutSystem from
-// `display:flex` and none of the placement below runs.
+// Fallback metrics in points, used only without a LayoutSystem (no `display:flex`).
 static constexpr float s_chipPaddingLeft = 8.0f;
 static constexpr float s_chipPaddingRight = 4.0f;
 static constexpr float s_chipGap = 4.0f;
@@ -41,12 +40,8 @@ static constexpr float s_chipIconSize = 16.0f;
 static constexpr IconName s_chipRemoveIcon = IconName::Navigation_close_solid;
 static constexpr float s_chipRemoveIconSize = 12.0f;
 
-/* The remove button's fallback box.
-
-The WIDTH is not a free choice: ui::Button's own fallback placement insets its icon by 8pt from the
-left edge and centres it vertically, so a box of `icon + 2 * 8` is what puts equal air on both sides
-of the glyph. Anything else draws the cross off-centre in the unstyled case. The height is free, and
-is what keeps the button inside a chip rather than the other way round. */
+/* The remove button's fallback box. The width is `icon + 2 * 8` because ui::Button's fallback
+insets its icon by 8pt; any other width draws the cross off-centre. */
 static constexpr float s_chipRemoveWidth = s_chipRemoveIconSize + 16.0f;
 static constexpr float s_chipRemoveHeight = 18.0f;
 
@@ -57,14 +52,11 @@ bool Chip::init() {
 		return false;
 	}
 
-	/* The InteractiveComponent has to EXIST from the first line, not from the first call that
-	changes something: a node without one reads as state 0, so `:disabled` would match an untouched
-	widget - and anything this init() builds from isEnabled() would be built disabled. */
+	/* The InteractiveComponent must exist before anything reads isEnabled(): a node without one
+	reads as state 0, which matches `:disabled`. */
 	applyControlEnabled(this, true);
 
-	/* A chip IS a badge, and a stylesheet must not be able to tell. A rule for `badge` would
-	otherwise paint every chip, and a rule for `chip` would have to know how the widget happens to
-	be implemented - so the type, the class and the inherited label are all redeclared here. */
+	// Retype the node and the inherited label so `badge` rules do not apply to chips.
 	setType("chip");
 	removeStyleClass("xl-ui-badge");
 	addStyleClass("xl-ui-chip");
@@ -73,8 +65,7 @@ bool Chip::init() {
 	if (_label) {
 		_label->removeStyleClass("xl-ui-badge-label");
 		_label->addStyleClass("xl-ui-chip-label");
-		// Left, not the badge's Center: a chip's text starts after its icon and is followed by its
-		// button, so there is no box to be centred in.
+		// left-aligned: the text sits between the icon and the remove button
 		_label->setAlignment(font::TextAlign::Left);
 	}
 
@@ -105,8 +96,7 @@ bool Chip::init() {
 			if (!isEnabled()) {
 				return false;
 			}
-			// The button is a child and answered first; without this guard a tap on the cross would
-			// also read as a tap on the chip, and the row would select what it is about to remove.
+			// a tap on the remove button is not a tap on the chip
 			if (isOverRemoveButton(tap.location())) {
 				return false;
 			}
@@ -129,8 +119,7 @@ bool Chip::init() {
 		return true;
 	}, false);
 
-	// One answer for two callers: ui::ChipRow wraps by it, and `flex-basis: fit-content` resolves
-	// to it for a chip a stylesheet put in a flex container.
+	// used by ui::ChipRow wrapping and by `flex-basis: fit-content` in a flex container
 	setMeasureCallback([this](const MeasureConstraints &c, Size2 &result) {
 		result = measureNatural();
 		// MaxContent means "do not wrap at all", so it is the one mode that ignores the constraint.
@@ -154,8 +143,7 @@ void Chip::handleLayoutChildren() {
 }
 
 void Chip::placeInlineParts() {
-	// A LayoutSystem - from `display:flex` or added by hand - owns the children's geometry, and the
-	// placement below would be a second writer of the same positions. Same rule as ui::Select's.
+	// a LayoutSystem owns the children's geometry when present
 	if (getSystemByType<LayoutSystem>()) {
 		return;
 	}
@@ -166,12 +154,8 @@ void Chip::placeInlineParts() {
 		return;
 	}
 
-	/* PHASE 6 AND NOT PHASE 4. An ancestor's StyleResolver re-resolves this node in reaction to its
-	content-size phase, so a direction read from inside handleContentSizeDirty is the one the node
-	had a pass ago. Switching a window back from a right-to-left language left these on the edge
-	they had a moment before, with nothing afterwards to correct the record. handleLayoutChildren
-	runs later in the same visit, when the resolved style has settled. */
-	// The icon leads, the remove button trails, both measured from the INLINE edges.
+	/* Runs from handleLayoutChildren: the resolved direction is not yet current in
+	handleContentSizeDirty. The icon leads and the remove button trails, from the inline edges. */
 	const bool rtl = isInlineRtl(this);
 
 	float startInset = s_chipPaddingLeft;
@@ -188,9 +172,7 @@ void Chip::placeInlineParts() {
 	if (_label) {
 		placeInlineStart(_label, startInset, height / 2.0f, width, rtl);
 		_label->setAlignment(inlineStartAlign(rtl));
-		// Deliberately no setWidth: a constrained label reports the constrained width afterwards,
-		// and measureNatural() would then answer with whatever the last placement squeezed it into.
-		// A chip is as wide as its text; making it narrower is the ROW's business, not the box's.
+		// No setWidth: a constrained label would report that width back to measureNatural().
 	}
 }
 
@@ -235,8 +217,7 @@ void Chip::setSelected(bool value) {
 }
 
 void Chip::setEnabled(bool value) {
-	// The lock has the last word, and remembers what was asked for so unlocking can give it
-	// back. A no-op, and one pointer test, on a control nobody locked.
+	// the edit lock has the last word and remembers the requested value for unlocking
 	value = resolveEditLock(this, value);
 	if (isEnabled() == value) {
 		return;
@@ -258,8 +239,7 @@ Size2 Chip::measureNatural() const {
 	}
 
 	if (_label && _label->isVisible()) {
-		// Shaped NOW: a Label measures zero until its own update runs, which is after this, and a
-		// row that wrapped by that number would put every chip on the same line.
+		// shape now: a Label measures zero until its own update runs
 		_label->tryUpdateLabel();
 		width += _label->getContentSize().width;
 		height = sprt::max(height, _label->getContentSize().height + s_chipVerticalPadding * 2.0f);
@@ -275,7 +255,7 @@ Size2 Chip::measureNatural() const {
 
 void Chip::updateInteractiveState() {
 	setOrUpdateComponent<InteractiveComponent>([this](NotNull<InteractiveComponent> state) {
-		// The Enabled bit and the `disabled` class are applyControlEnabled's, from setEnabled.
+		// The Enabled bit is written by applyControlEnabled, from setEnabled.
 		bool dirty = false;
 		// The counter is cumulative, so the flag is pushed on an edge and never twice.
 		const bool hover = _hoverApplied && sprt::hasFlag(state->state, InteractiveState::Enabled);

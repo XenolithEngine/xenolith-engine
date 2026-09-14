@@ -75,25 +75,14 @@ public:
 	uint64_t getOrder() const { return _order; }
 	uint64_t getGen() const { return _gen; }
 #if XL_FRAME_ACCOUNT
-	/* WHAT THIS FRAME SPENT WAITING FOR WORK IT DOES NOT OWN, which is the one cost of a frame that
-	nothing else in the account can see.
-
-	A frame waits on a `DependencyEvent` before an attachment may take its input - for the atlas that
-	carries its glyphs, for the materials it samples - and that wait is neither the visit, nor the
-	vertex stage, nor the device. It used to be visible only as the remainder of the timeline's
-	`render` bucket, which is to say as a number with no name; this is the name.
-
-	`count` is every event the frame was asked to wait on and `waited` only those that were not already
-	signalled when the wait began - the distinction the deferred pair draws for the same reason: an
-	event that had already fired costs a branch, and a frame that waits on five satisfied events has
-	not waited at all. Accumulated across every wait of the frame, in nanoseconds. */
+	/* Time this frame spent waiting on DependencyEvents (glyph atlas, materials) before attachments
+	took their input, in nanoseconds, summed over all waits. `count` is every event waited on,
+	`waited` only those not yet signalled when the wait began. */
 	uint64_t getDependencyWaitTime() const { return _depWaitTime.load(); }
 	uint32_t getDependencyCount() const { return _depCount.load(); }
 	uint32_t getDependencyWaited() const { return _depWaited.load(); }
 
-	// The two halves of one wait, told to the frame by the account at the call site (see the .cc).
-	// Public only because that account is a file-local helper there, and a helper is what keeps the
-	// `#if` out of the waiting code itself.
+	// Called by the file-local wait account in the .cc; public only for that helper.
 	void accountDependencies(const Vector<Rc<DependencyEvent>> &);
 	void accountDependencyWait(uint64_t ns) { _depWaitTime.fetch_add(ns); }
 #endif
@@ -187,10 +176,8 @@ protected:
 	uint64_t _submissionTime = 0;
 	uint64_t _deviceTime = 0;
 #if XL_FRAME_ACCOUNT
-	/* See getDependencyWaitTime. ATOMIC, and not out of caution: a frame's attachments submit their
-	input concurrently - the vertex pass and the shadow pass each wait on their own list - so two
-	waits of one frame can be opened and closed on different threads. Relaxed adds; there is no
-	ordering to establish, only a sum to keep. */
+	/* See getDependencyWaitTime. Atomic: waits of one frame can open and close on different
+	threads. */
 	sprt::atomic<uint64_t> _depWaitTime = 0;
 	sprt::atomic<uint32_t> _depCount = 0;
 	sprt::atomic<uint32_t> _depWaited = 0;

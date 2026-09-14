@@ -73,9 +73,8 @@ class SP_PUBLIC QueuePassHandle : public core::QueuePassHandle {
 public:
 	virtual ~QueuePassHandle() = default;
 
-	// Scene-space scissor -> target pixels, honouring the surface pre-rotation. Ported from
-	// vk::QueuePassHandle: the transform is a property of the presented surface, not of the API,
-	// so both backends have to agree on it or clipped content would land in different places.
+	// Scene-space scissor -> target pixels, honouring the surface pre-rotation. Must match
+	// vk::QueuePassHandle.
 	static URect rotateScissor(const core::FrameConstraints &constraints, const URect &scissor);
 
 	virtual bool prepare(core::FrameQueue &, Function<void(bool)> &&) override;
@@ -90,18 +89,13 @@ protected:
 	// execute every subpass. Returns false when the pass has no usable colour output.
 	bool runPass(core::FrameQueue &);
 
-	// Regions of the target this frame has to repaint, from the swapchain's damage tracker. Kept
-	// as a list rather than collapsed into a bounding box, so that changes far apart do not cost
-	// everything between them; the regions are pairwise disjoint, which is what makes it safe to
-	// rasterize each one separately.
-	//
-	// Returns false when the image already holds this frame and it can be skipped outright.
+	// Regions of the target this frame has to repaint, from the swapchain's damage tracker; pairwise
+	// disjoint, so each can be rasterized separately. Returns false when the image already holds
+	// this frame and it can be skipped.
 	bool computeRedrawArea(core::FrameQueue &, const raster::Target &, Vector<URect> &areas);
 
-	// Called at the end of a runPass that actually rasterized, so a subclass can report what the
-	// frame cost without having to reach into the rasterization itself. Not called for a frame the
-	// damage tracker skipped: there is nothing to report and overwriting the previous frame's
-	// numbers with zeroes would read as "the rasterizer did nothing", which is a different claim.
+	// Called at the end of a runPass that actually rasterized, so a subclass can report the frame's
+	// cost. Not called for frames the damage tracker skipped.
 	virtual void handlePassRasterized(core::FrameQueue &) { }
 
 	Device *_device = nullptr;

@@ -42,12 +42,13 @@ public:
 
 	/**
 	 * Called after the action has finished. It will set the 'target' to nil.
-	 * IMPORTANT: You should never call "Action::stop()" manually. Instead, use: "target->stopAction(action);".
+	 * You should never call "Action::stop()" manually. Instead, use: "target->stopAction(action);".
 	 */
 	virtual void invalidate();
 	virtual void stop();
 
-	/** Called every frame with it's delta time, dt in seconds. DON'T override unless you know what you are doing */
+	/** Called every frame with it's delta time, dt in seconds. Don't override unless you know what
+	 * you are doing */
 	virtual void step(float dt);
 
 	/**
@@ -474,9 +475,8 @@ protected:
 	Vec3 _endPosition;
 };
 
-// Displaces a node in discrete jumps rather than interpolating: the node stays put for a step's
-// worth of time, then teleports to the next position. Unlike MoveTo it never produces an
-// intermediate position.
+// Displaces a node in discrete jumps: it stays put for a step's time, then jumps to the next
+// position, never producing an intermediate one.
 class SP_PUBLIC MoveStep : public ActionInterval {
 public:
 	virtual ~MoveStep() = default;

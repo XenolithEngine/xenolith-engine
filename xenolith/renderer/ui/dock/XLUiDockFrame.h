@@ -31,13 +31,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 // One parking place, as a scene node: a tab strip and a body that hosts the active panel.
 //
-// It is a FLAT child of the dock root - it neither contains nor is contained by any other frame,
-// whatever the split tree says. DockSystem writes its position and content size; the frame owns
-// only what is inside it.
-//
-// Inside, the strip-then-body arrangement is one flex column (a row for a Left/Right strip), run
-// by an ordinary LayoutSystem. The frame carries SystemManagedLayout so a stylesheet cannot
-// reconfigure that layout out from under it - see the header of that marker for the full reason.
+// A flat child of the dock root; DockSystem writes its position and content size. Inside, the
+// strip and body are a flex column (a row for a Left/Right strip) run by a LayoutSystem; the frame
+// carries SystemManagedLayout so a stylesheet cannot reconfigure that layout.
 //
 // CSS type "dock-frame"; the body is "dock-frame-body".
 class SP_PUBLIC DockFrame : public Panel {
@@ -54,22 +50,15 @@ public:
 	// where the active panel's node is parented
 	Node *getBody() const { return _body; }
 
-	/* SHUT TO THE TAB STRIP: the body stops being displayed and the strip is all that is left.
-
-	`display: none` and not `setVisible(false)`, through a VisibilityComponent: an invisible box is
-	still a box the flex run reserves room for, and what is wanted here is for the body to take no
-	room at all so the strip becomes the frame's whole width. The class `collapsed` goes on the frame
-	so a stylesheet can say what a shut place looks like.
-
-	It says nothing about the tree - DockSystem::setFrameCollapsed writes that and then tells this. */
+	/* Collapse to the tab strip: the body gets `display: none` (not setVisible, which would still
+	take room) and the frame gets the class `collapsed`. Does not touch the tree;
+	DockSystem::setFrameCollapsed does and then calls this. */
 	virtual void setCollapsed(bool);
 	bool isCollapsed() const { return _collapsed; }
 
 	DockTabBar *getTabBar() const { return _tabBar; }
 
-	// The strip's rect in THIS frame's coordinate space, as of the last layout. A drop test works
-	// in the dock root's space and offsets this by the frame's own rect, rather than converting
-	// through the scene graph.
+	// The strip's rect in this frame's space, as of the last layout.
 	Rect getTabBarRect() const;
 
 protected:

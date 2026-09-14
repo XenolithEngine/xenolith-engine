@@ -31,11 +31,8 @@ class DockSystem;
 
 // One tab in a frame's strip: the icon and title of a parked panel, plus an optional close button.
 //
-// It is a PanelHandle, so the drag that pulls the panel out of this frame - threshold, pointer
-// capture, abort on exit - is the same one an accordion header uses, and so is everything a Button
-// brings with it. What a TAB adds is the frame it belongs to: the whole of the tab is a grab point
-// (there is nothing else a press on it could mean), and the frame handle is what a drop reads to
-// recognise a move that would change nothing.
+// A PanelHandle; the whole tab is a grab point, and its frame handle lets a drop detect no-op
+// moves.
 //
 // CSS type "dock-tab"; the style class `active` is on the one showing, and the close affordance is
 // "dock-tab-close".
@@ -48,9 +45,7 @@ public:
 	DockNodeHandle getFrame() const { return _frame; }
 	void setFrame(DockNodeHandle handle) { _frame = handle; }
 
-	// The title, which is also what the tab OFFERS AS A HINT: a strip narrowed to icons is a
-	// stylesheet's decision (`dock-tab.vertical > label { display: none }`), and the hint is what
-	// keeps the title readable after it.
+	// Also sets the tooltip hint, which keeps the title readable when a stylesheet hides the label.
 	virtual void setString(StringView) override;
 
 	virtual void setActive(bool);

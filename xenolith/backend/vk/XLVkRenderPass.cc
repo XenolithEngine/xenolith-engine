@@ -725,10 +725,8 @@ bool RenderPass::usesAlternativeAttachments(const QueuePassHandle &handle) const
 void RenderPass::perform(const QueuePassHandle &handle, CommandBuffer &buf,
 		const Callback<void()> &cb, bool writeBarriers) {
 	if (handle.isRedrawSkipped()) {
-		// The target image already holds this exact frame and is already in PRESENT_SRC. Recording
-		// anything - even the barriers - would only be work that reproduces what is there. Leaving
-		// the command buffer empty also leaves the image layout untouched, which is exactly what
-		// the subsequent present expects.
+		// The target image already holds this frame in PRESENT_SRC; an empty command buffer
+		// leaves the layout untouched for the present.
 		return;
 	}
 
@@ -1150,18 +1148,10 @@ bool RenderPass::initGraphicsPass(Device &dev, QueuePassData &data) {
 		}
 	}
 
-	// Partial redraw needs a variant that keeps what the image already holds *outside* the render
-	// area. That is what the initial layout does: PRESENT_SRC (which is what the image was left in)
-	// preserves the contents, where the UNDEFINED of the normal variant discards the whole image.
-	//
-	// The load op is deliberately left alone. It applies only to the render area, so a CLEAR stays
-	// correct and is in fact required: the background of this queue comes from the clear op rather
-	// than from geometry, so replacing it with LOAD would leave whatever the damaged region held
-	// before - the previous position of a node that moved - showing through as a trail.
-	// A load op that is neither CLEAR nor LOAD would leave the damaged region undefined, so those
-	// are switched to LOAD.
-	//
-	// Only built when the queue asked for it, and only for the presented attachment.
+	// Partial redraw variant: initial layout PRESENT_SRC preserves contents outside the render area
+	// (UNDEFINED would discard them). A CLEAR load op is kept, since the background comes from the
+	// clear; other non-LOAD ops are switched to LOAD. Built only for the presented attachment of a
+	// queue with PartialRedraw.
 	if (hasAlternative && hasFlag(data.queue->damage, core::QueueDamageFlags::PartialRedraw)) {
 		auto loadDescriptions = _attachmentDescriptions;
 		for (auto &desc : data.attachments) {
@@ -1184,14 +1174,9 @@ bool RenderPass::initGraphicsPass(Device &dev, QueuePassData &data) {
 		}
 	}
 
-	/* The Overlay level is recorded as a SECOND instance over the same framebuffer, after the frame
-	has been drawn and copied out, so its variants differ from the base ones in exactly two fields per
-	attachment: the contents are loaded rather than cleared or discarded, and the initial layout is
-	the layout the base pass left the attachment in.
-
-	Everything else - formats, sample counts, subpass structure, dependencies - is left byte-identical
-	on purpose. That is what makes these render passes COMPATIBLE with the base ones, and therefore
-	what lets the pipelines already compiled against the base pass be bound inside this one. */
+	/* The Overlay level is a second instance over the same framebuffer, after the frame is drawn
+	and copied out. Its variants differ only in load op (load) and initial layout (the base pass's
+	final one); everything else must stay identical so base-pass pipelines remain compatible. */
 	auto makeOverlayVariant = [&](const Vector<VkAttachmentDescription> &base,
 									  Variant variant) -> bool {
 		auto descriptions = base;

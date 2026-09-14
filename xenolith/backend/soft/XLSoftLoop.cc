@@ -271,9 +271,8 @@ void Loop::compileQueue(const Rc<Queue> &req, Function<void(bool)> &&cb) const {
 						}
 					}
 
-					// Compute is not part of the flat contract; a queue that asks for it is not
-					// one this backend can execute, and silently ignoring it would render a
-					// half-correct frame instead of saying so.
+					// Compute is not part of the flat contract; reject the queue rather
+					// than render a half-correct frame.
 					if (!subpass->computePipelines.empty()) {
 						log::source().error("soft::Loop",
 								"Compute pipelines are not supported by the software backend: ",
@@ -393,7 +392,7 @@ void Loop::compileMaterials(Rc<core::MaterialInputData> &&req,
 
 		loop->signalDependencies(deps, nullptr, success);
 	}, loop, false);
-	// NOT immediate: the caller (updateDynamicImage) holds the attachment's dynamic-tracker
+	// Not immediate: the caller (updateDynamicImage) holds the attachment's dynamic-tracker
 	// mutex, and updateMaterials re-locks it through addDynamicTracker
 }
 

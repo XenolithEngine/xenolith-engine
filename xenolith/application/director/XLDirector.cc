@@ -40,28 +40,15 @@ Director::Director() { sprt::memset(&_drawStat, 0, sizeof(DrawStat)); }
 #if XL_FRAME_ACCOUNT
 /* ---- the app account (XL_APP_ACCOUNT=N) ---------------------------------------------------------
 
-The counterpart of the software backend's frame budget (XL_SOFT_BUDGET, see
-docs/agents/measuring-frames.md). That instrument accounts for the render half and lands everything
-it cannot see in one bucket called `wait`; this one says what is inside it.
+App-thread counterpart of the software frame budget (XL_SOFT_BUDGET): running averages printed
+every N frames. Compare the two logs as averages of one run, not line by line.
 
-Reported the same way - running averages over the whole run, every N frames - so the two logs can
-be read against each other directly, even though they are counted on different threads and neither
-knows about the other. They must be read as averages of the same run, not of the same frame: the
-app half of frame N and the render half of frame N are published at different moments, and pairing
-individual lines would describe two different frames.
+	update  acquireFrame before posting the visit: scheduler, actions, input, application update().
+	visit   the scene graph walk that builds the command list.
+	spawned deferred tesselation tasks started by the visit; zero on a steady frame.
 
-The split that matters:
-
-	update  everything acquireFrame does before posting the visit - the scheduler, the action
-	        manager, input dispatch, and whatever the application's own update() does.
-	visit   the scene graph walk that builds the frame's command list.
-	spawned deferred tesselation tasks STARTED by that visit. A steady frame must report zero:
-	        anything else means the scene is re-tesselating something every frame, and that is a
-	        bug in the scene, not a cost of the renderer.
-
-`work` and `wait` come back on DrawStat from the consuming side and ARE NOT PARTS OF ONE WHOLE -
-work is summed across worker threads and may exceed the frame, wait is one thread standing still.
-Never add them. */
+`work` (summed across worker threads) and `wait` (one thread idle) come from DrawStat and must not
+be added together. */
 static uint64_t Director_accountInterval() {
 	static const uint64_t value = [] () -> uint64_t {
 		auto env = ::getenv("XL_APP_ACCOUNT");
@@ -78,9 +65,8 @@ static uint64_t Director_accountInterval() {
 	return value;
 }
 
-// Runs on the app thread, at the point where the visit closes the account, so the counters are
-// touched by one thread and need no synchronization. `stat` is the last DrawStat the render half
-// sent back; it lags the visit by a frame or so, which does not matter to an average.
+// Runs on the app thread when the visit closes the account, so the counters need no
+// synchronization. `stat` is the last DrawStat from the render side and may lag by a frame.
 static void Director_reportAccount(uint64_t update, uint64_t visit, uint32_t spawned,
 		const DrawStat &stat) {
 	auto interval = Director_accountInterval();
@@ -118,8 +104,7 @@ static void Director_reportAccount(uint64_t update, uint64_t visit, uint32_t spa
 		return;
 	}
 
-	// Microseconds, because that is what the frame budget prints and the whole point is to put the
-	// two side by side. The clocks below are nanosecond ones.
+	// Microseconds, to match the frame budget output; the clocks below are nanoseconds.
 	auto per = [&] (uint64_t v) { return double(v) / double(frames) / 1'000.0; };
 
 	log::source().debug("app::account", "frames=", frames,
@@ -133,11 +118,8 @@ static void Director_reportAccount(uint64_t update, uint64_t visit, uint32_t spa
 			" count/frame=", double(deferCount) / double(frames),
 			" waited/frame=", double(deferWaited) / double(frames));
 
-	// The vertex stage's own phases, not the app thread's - they belong to whichever budget stage
-	// runs VertexPlan (`vertex` on the software backend). Reported here because DrawStat is the
-	// channel they arrive on, and because a `vertex` stage that is large is answered by exactly
-	// these four numbers. `damage` and `plan` are the command walk split in two and are NESTED in
-	// it: read as "of the walk, this much is that", never added to write and span.
+	// The vertex stage's phases (VertexPlan), reported here because they arrive on DrawStat.
+	// `damage` and `plan` are nested parts of the command walk, not additive with write and span.
 	log::source().debug("app::account", "  vertexPlan: write=", per(writeTime), "us",
 			" span=", per(spanTime), "us",
 			" (walk: damage=", per(damageTime), "us plan=", per(planTime), "us)");
@@ -153,9 +135,8 @@ bool Director::init(NotNull<AppThread> app, const core::FrameConstraints &constr
 	if (auto winref = dynamic_cast<Ref *>(window.get())) {
 		_window = winref;
 	}
-	// Wire both ends of the render-session boundary at director-creation time (local mode: the
-	// AppWindow is both). Registering the client here ensures the server can announce queues before
-	// the initial scene runs.
+	// Wire both ends of the render-session boundary (locally the AppWindow is both). Registering
+	// the client here lets the server announce queues before the initial scene runs.
 	_server = window.get();
 	window->setRenderClient(this);
 	_allocator = Rc<sprt::AllocRef>::alloc();
@@ -189,9 +170,8 @@ Rc<core::Queue> Director::shareQueue(core::Queue::Builder &&builder, StringView 
 	if (!_application || !_application->isServerThread()) {
 		return nullptr;
 	}
-	// Credentials first, on the app thread that owns them, and only then the window. Setting them
-	// from inside the compile callback (as this used to) meant the FIRST window carried them, which
-	// worked only because there was exactly one.
+	// Set credentials first, on the app thread that owns them, then open the window, so every
+	// window gets them, not only the first.
 	auto a = addr.str<Interface>();
 	auto k = key.bytes<Interface>();
 	auto d = dict.bytes<Interface>();
@@ -221,13 +201,13 @@ Rc<core::Queue> Director::shareQueue(core::Queue::Builder &&builder) {
 	info->director = this;
 	info->application = _application;
 
-	// We are on server, so, it's safe to cast _server to actual window
+	// On the server, so _server is the actual window.
 	info->window = static_cast<AppWindow *>(info->director->getRenderServer());
 	info->queue = Rc<core::Queue>::create(sp::move(builder));
 
 	if (info->queue) {
 		_server->compileRenderQueue(info->queue, [info](bool success) {
-			// Note: we on main thread here
+			// Main thread here.
 
 			if (success) {
 				// build a list of initial materials
@@ -240,9 +220,9 @@ Rc<core::Queue> Director::shareQueue(core::Queue::Builder &&builder) {
 				}
 
 				info->application->performOnAppThread([info] {
-					// Allow this window to be taken over by a connecting client (X11-style split).
-					// The listener's address and bearer key were set by whoever opened the session;
-					// no server dictionary is set, so a client's suggested one will be used.
+					// Allow a connecting client to take this window over. The listener's address
+					// and key were set by whoever opened the session; with no server dictionary,
+					// the client's suggestion is used.
 					Vector<core::Queue *> queues{info->queue.get()};
 
 					info->application->shareWindow(info->window, queues, info->materials);
@@ -275,11 +255,9 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 	auto t = sp::platform::clock(ClockType::Monotonic);
 
 #if XL_FRAME_ACCOUNT
-	// Reset HERE and not in the visit: a task started by the update - before the visit - belongs to
-	// this frame just as much as one started by a node.
+	// Reset here, not in the visit: tasks started by the update belong to this frame too.
 	_deferredSpawned = 0;
-	// A clock of its own, in NANOSECONDS. `t` above is `clock()`, which is microseconds - fine for
-	// a frame-rate average and too coarse for a visit that can be a few tens of microseconds.
+	// Nanosecond clock: `t` above is microseconds, too coarse for a short visit.
 	const auto appStart = core::getAccountClock();
 	core::markFrame(core::FrameMark::AcquireStart);
 #endif
@@ -307,17 +285,9 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 		core::markFrame(core::FrameMark::VisitStart);
 #endif
 
-		/* The visit's own six phases are cleared HERE and not beside the deferred counter above.
-
-		The update runs first and the application's own `update` is called from inside it - which is
-		where a reader of this account is (the studio's page profile samples it per frame) - so a reset
-		at the top of acquireFrame would hand that reader zeros and throw away the frame it was asking
-		about. Nothing between this line and the visit touches the account: only the visit's phases
-		do.
-
-		Under the account flag, like every other line of it: `VisitAccount` does not exist in a shipping
-		build, and this call without its guard broke every build that did not set the flag - found by
-		`tests/window`, whose project does not. */
+		/* The visit's phases are cleared here, not at the top of acquireFrame: the application
+		update (which may read the account) runs before this and must see the previous frame's
+		values. Guarded by XL_FRAME_ACCOUNT: `VisitAccount` does not exist without it. */
 #if XL_FRAME_ACCOUNT
 		getVisitAccount().clear();
 #endif
@@ -339,39 +309,15 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 			}
 		});
 
-		/* THE FRAME IS OUT; ANYTHING IT WAITS ON SHOULD BE ON ITS WAY.
-
-		The visit above is where a Label asks the font controller for glyphs, and that request gates
-		THIS frame. The controller's own flush runs from `update()` - the top of the NEXT frame - so
-		without this line the frame waits for a batch that has not been handed to a queue yet: measured
-		at up to 13 ms of pure queueing (`XL_DEP_ACCOUNT=1`), against 0.6-1.5 ms for the work itself.
-		The remote road already did exactly this, one step earlier in its own sequence
-		(RemoteWindow, before the FrameInput).
-
-		AFTER the `perform` and not inside it: the batch is assembled into containers that outlive this
-		call - they are handed to the gl loop - and everything inside that block is allocated from the
-		frame's own pool, which is released with it.
-
-		AND A SECOND CALL BEFORE THE VISIT WAS TRIED AND REMOVED. The reasoning for it was that tasks
-		running between this frame's update and this lambda (a socket command building widgets) mint
-		requests that then wait out the visit. They do not: a Label asks for glyphs when it SHAPES,
-		which is inside the visit, so there is nothing there for an earlier flush to carry. Measured
-		over three interleaved pairs on identical builds - `queued` 3.6/33.9/13.9 ms without it against
-		10.3/7.6/15.4 with it, and in every single run the number was the length of that frame's visit.
-		A request minted early in a long visit cannot be sent before that visit ends, so this half of
-		the wait is the VISIT's cost wearing another name. */
+		/* Flush glyph requests made during the visit, which gate this frame; otherwise they wait
+		for the controller's flush at the next update(). Called after `perform`, since the batch
+		outlives the frame pool. A flush before the visit is pointless: labels request glyphs
+		while shaping, inside the visit. */
 		_application->flushPendingFontGlyphs();
 
 #if XL_FRAME_ACCOUNT
-		/* The app half is CLOSED here, not where acquireFrame returns.
-
-		The post above is deliberate - "break current stack frame" - so the visit happens on a later
-		turn of the loop and the clock taken at the bottom of acquireFrame covers the update and the
-		posting and nothing else. Measured before this was noticed: 800ns for a frame that walked
-		three hundred nodes, which is the shape of a measurement that ended too early.
-
-		The two pieces are added rather than reported apart because they are one thing - everything
-		this thread does for the frame - and because between them there is nothing but the hop. */
+		/* The app half is closed here, not where acquireFrame returns: the visit runs on a later
+		loop turn. Update and visit time are summed as this thread's total work for the frame. */
 		core::markFrame(core::FrameMark::VisitEnd);
 		const auto visitTime = core::getAccountClock() - visitStart;
 		_lastAppFrameTime = _pendingAppTime + visitTime;
@@ -427,7 +373,7 @@ void Director::handleTextInput(uint64_t, const core::TextInputState &state) {
 }
 
 void Director::handleFramePresented(uint64_t frameOrder) {
-	// Reserved for client-side pacing/stats; no-op in stage 1.
+	// Reserved for client-side pacing/stats; no-op.
 }
 
 void Director::update(uint64_t t) {
@@ -565,20 +511,17 @@ void Director::runScene(Rc<Scene> &&scene) {
 
 	_nextScene = scene;
 
-	// An already-compiled queue (one adopted from QueueCache) must not go through the compiler a
-	// second time. That is not just wasted work: Queue::setCompiled OVERWRITES the queue's release
-	// callback, so a second compile silently drops the first one and re-creates every render pass -
-	// a GPU-object leak with no crash to point at it.
+	// An already-compiled queue (adopted from QueueCache) must not be compiled again:
+	// Queue::setCompiled overwrites the release callback, leaking the first set of render passes.
 	if (queue->isCompiled()) {
 		_server->attachRenderQueue(queue);
 		sprt::release(this, linkId);
 		return;
 	}
 
-	// Compile the render graph on the server, then make it the active graph (attachRenderQueue
-	// performs the server-side context-thread hop + runWithQueue + setReadyForNextFrame).
-	// `this` is kept alive across the async callback by linkId; the server endpoint stays valid
-	// because the Director retains the AppWindow via _window.
+	// Compile the render graph on the server, then make it active (attachRenderQueue does the
+	// context-thread hop, runWithQueue and setReadyForNextFrame). `this` is kept alive by linkId;
+	// the server endpoint stays valid because the Director retains the AppWindow.
 	_server->compileRenderQueue(queue, [this, scene = move(scene), linkId](bool success) mutable {
 		if (success && _server) {
 			_server->attachRenderQueue(scene->getQueue());

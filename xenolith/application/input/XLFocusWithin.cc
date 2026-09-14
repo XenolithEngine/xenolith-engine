@@ -34,8 +34,7 @@ static void retainFocusWithin(Node *node) {
 	while (node) {
 		node->setOrUpdateComponent<FocusWithinComponent>([](NotNull<FocusWithinComponent> c) {
 			++c->counter;
-			// Only the first one changes what a selector sees; the rest must not re-dirty the
-			// node, or a focus move inside a panel would restyle everything above it.
+			// Only the first retain changes what a selector sees, so only it dirties the node.
 			return c->counter == 1;
 		});
 		node = node->getParent();
@@ -46,8 +45,7 @@ static void releaseFocusWithin(Node *node) {
 	while (node) {
 		if (auto c = node->getComponent<FocusWithinComponent>()) {
 			if (c->counter <= 1) {
-				// Presence is the state, so the last release takes the component away rather than
-				// leaving a zero behind for a matcher to read.
+				// Presence is the state: the last release removes the component.
 				node->removeComponent<FocusWithinComponent>();
 			} else {
 				node->updateComponent<FocusWithinComponent>([](NotNull<FocusWithinComponent> c) {
@@ -65,9 +63,8 @@ void updateFocusWithinChain(Node *from, Node *to) {
 		return;
 	}
 
-	// Retain BEFORE release: a shared ancestor of the two chains goes 1 -> 2 -> 1 and never loses
-	// the component, so neither it nor anything under it is restyled for a move that did not leave
-	// it. The same order, and the same reason, as the focus-in-then-out swap in FormSystem.
+	// Retain before release: a shared ancestor goes 1 -> 2 -> 1 and keeps the component, so it is
+	// not restyled (same order as the focus swap in FormSystem).
 	if (to) {
 		retainFocusWithin(to);
 	}

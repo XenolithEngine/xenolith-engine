@@ -25,34 +25,20 @@
 
 #include "XLUiFormTypes.h"
 
-// isInvalid() below calls isControlInvalid(), declared here - included so this header stands on
-// its own instead of depending on the consumer's include order.
+// For isControlInvalid(), used by isInvalid() below
 #include "XLInteractiveComponent.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 class FormSystem;
 
-// One form field, attached to the widget node it represents.
-//
-// It is an InputListener rather than a plain System because a field IS an input target: it has to
-// be in the focus group to be reachable by Tab, and it has to bind keys for the widgets that bind
-// none of their own (a Checkbox has no key handling, a Button has none either).
-//
-// WHAT THE NODE OWNS AND WHAT THIS OWNS. The listener knows the field's identity - name, role,
-// required-ness, validator - and nothing about how the widget works. Everything it needs the
-// widget to DO goes through FormFieldSlots, which the widget fills in. See XLUiFormAdapters.h for
-// the ready-made fillers.
-//
-// DISPATCH ORDER. This listener sits at a lower system priority than the widget's own, which means
-// it is visited first and therefore dispatched LAST on its node (the dispatcher walks the scene
-// bucket in reverse). It is the fallback: it only ever sees the keys the widget declined. That is
-// what makes ui::TextInput's Enter callback win over the form's submit without either of them
-// knowing about the other.
+// One form field, attached to its widget node. An InputListener so it joins the focus group and
+// binds keys for widgets without their own. Holds the field identity (name, role, flags,
+// validator); acts on the widget only through FormFieldSlots (see XLUiFormAdapters.h).
+// Dispatched after the widget's own listener, so it only sees keys the widget declined.
 class SP_PUBLIC FormInputListener : public InputListener {
 public:
-	// Below System::DefaultPriority so this listener is visited before the widget's own and
-	// dispatched after it - see the class comment
+	// Lower priority: visited before the widget's listener, dispatched after it
 	static constexpr uint32_t SystemPriority = System::DefaultPriority - 16;
 
 	// Return false to reject, writing an explanation into `message`
@@ -65,8 +51,7 @@ public:
 	virtual void handleEnter(Scene *) override;
 	virtual void handleExit() override;
 
-	// Empty means "take the owner's name", resolved when the listener enters the scene. A node's
-	// name is also its CSS id, so a form field is named exactly once
+	// Empty means the owner's name (its CSS id), resolved when the listener enters the scene
 	virtual void setFieldName(StringView);
 	virtual StringView getFieldName() const;
 
@@ -110,14 +95,8 @@ public:
 	virtual bool requestSubmit();
 	virtual bool requestReset();
 
-	// Entry point for FormSystem, which is this field's focus group. InputListener declares
-	// FocusGroup a friend so it can reach handleFocusIn/handleFocusOut, and friendship does not
-	// extend to a subclass - but a derived listener may always call its own protected hooks, so
-	// the group asks the field to do it.
-	//
-	// `backwards` is what the slot receives: the direction of the navigation behind this change,
-	// false for any other cause. It is carried in a member rather than in the hooks' signatures,
-	// because handleFocusIn/handleFocusOut override InputListener's and cannot take an argument
+	// Called by FormSystem (the focus group) to run the protected focus hooks, which FocusGroup's
+	// friendship with InputListener does not reach. `backwards` is passed to the slot via a member
 	void applyFocus(bool value, FocusGroup *group, bool backwards = false);
 
 protected:
@@ -139,7 +118,7 @@ protected:
 	FormSystem *_form = nullptr;
 	bool _focusStyleApplied = false;
 
-	// Set by applyFocus for the hooks below it; see the comment there
+	// Set by applyFocus for the focus hooks
 	bool _focusBackwards = false;
 };
 

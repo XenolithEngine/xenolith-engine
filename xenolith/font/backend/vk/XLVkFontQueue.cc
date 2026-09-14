@@ -54,8 +54,8 @@ struct RenderFontPersistentBufferUserdata : public Ref {
 	HashMap<uint32_t, RenderFontCharPersistentData> chars;
 };
 
-// The same switch the controller's batch log is on (XL_FONT_CACHE_LOG), read here rather than
-// reached for across the module: this file is the backend half and the controller is not its caller.
+// The controller's batch log switch (XL_FONT_CACHE_LOG), read locally: the controller is not this
+// backend's caller.
 static bool FontQueue_cacheLogEnabled() {
 	static const bool s_value = [] {
 		auto v = ::getenv("XL_FONT_CACHE_LOG");
@@ -83,12 +83,8 @@ public:
 
 	Extent2 getImageExtent() const { return _imageExtent; }
 
-	/* WHERE THE ATLAS'S OWN TIME WENT, for `XL_FONT_CACHE_LOG=1` to print beside the batch.
-
-	Three stamps rather than one duration, because the three spans between them have three different
-	owners: the frame WAITING for its own dependencies before it may start, the rasterize + pack on
-	the worker threads, and the GPU submission after it. A single "the atlas took N ms" cannot be
-	acted on, and the first of the three is not work at all. */
+	/* Timestamps for `XL_FONT_CACHE_LOG=1`: the spans between them are the wait for dependencies
+	(not work), the rasterize + pack on workers, and the GPU submission. */
 	uint64_t getClockInput() const { return _clockInput; }
 	uint64_t getClockStart() const { return _clockStart; }
 	uint64_t getClockRaster() const { return _clockRaster; }
@@ -413,8 +409,8 @@ void FontAttachmentHandle::doSubmitInput(FrameHandle &handle, Function<void(bool
 }
 
 void FontAttachmentHandle::writeAtlasData(FrameHandle &handle, bool underlinePersistent) {
-	// Everything before this is rasterization; everything after it is the pack. Stamped here because
-	// this is the one point both roads into this function pass through.
+	// Everything before this is rasterization, everything after is the pack; both paths into this
+	// function pass here.
 	_clockRaster = sp::platform::clock(ClockType::Monotonic);
 
 	Vector<SpanView<VkBufferImageCopy>> commands;
@@ -461,12 +457,8 @@ void FontAttachmentHandle::writeAtlasData(FrameHandle &handle, bool underlinePer
 		_imageExtent = FontAttachmentHandle_buildTextureData(commands);
 		_clockPlace = sp::platform::clock(ClockType::Monotonic);
 
-		/* EVERY command, not only the ones copied out of the staging buffer.
-
-		This count is what DataAtlas reserves, both for its data and - since the reserve was added to
-		the name index - for the map that was costing this frame milliseconds. The persistent copies
-		are glyphs this atlas holds just as much as the freshly rasterized ones: counting only the
-		latter left the map to grow through the rest, which is the case that was 12 ms. */
+		/* Every command, not only those copied from the staging buffer: DataAtlas reserves its data
+		and name index from this count, and persistent copies are atlas glyphs too. */
 		size_t atlasObjects = 0;
 		for (auto &c : commands) { atlasObjects += c.size(); }
 
@@ -884,14 +876,10 @@ void FontRenderPassHandle::doComplete(FrameQueue &queue, Function<void(bool)> &&
 void FontRenderPassHandle::submitResult(FrameHandle &frame) {
 	auto &input = _fontAttachment->getInput();
 
-	/* WHAT THE ATLAS ITSELF COST, under the same switch that logs the batch on the way in
-	(`XL_FONT_CACHE_LOG=1`), so the two lines can be read as one story.
-
-	`wait` is this frame standing still on its own dependencies before it could start - not atlas work
-	at all; `build` is the rasterize and the pack; `device` is the submission that got us here. The
-	instance swap below, and the material recompiles it sets off in every window, are NOT in any of
-	the three - they follow this line, and what they cost shows up as the "Material" dependency in
-	`XL_DEP_ACCOUNT=1`. */
+	/* Atlas cost, under the same switch as the batch log (`XL_FONT_CACHE_LOG=1`). `wait` is the
+	frame waiting on its dependencies (not atlas work), `build` the rasterize and pack, `device`
+	the submission. The instance swap and material recompiles that follow are not included; see
+	the "Material" dependency in `XL_DEP_ACCOUNT=1`. */
 	if (FontQueue_cacheLogEnabled()) {
 		const auto now = sp::platform::clock(ClockType::Monotonic);
 		const auto in = _fontAttachment->getClockInput();
@@ -901,9 +889,8 @@ void FontRenderPassHandle::submitResult(FrameHandle &frame) {
 		const auto place = _fontAttachment->getClockPlace();
 		const auto values = _fontAttachment->getClockValues();
 		if (in && start && raster && packed) {
-			// The pack is split in three because they are three different algorithms over the same
-			// set: placing the rectangles, writing four atlas values per glyph, and compiling the
-			// index. Only one of them has ever been the cost.
+			// The pack is split in three: placing rectangles, writing four atlas values per glyph,
+			// and compiling the index.
 			log::source().debug("FontController",
 					"atlas frame: wait=", double(start - in) / 1'000.0,
 					"ms raster=", double(raster - start) / 1'000.0,

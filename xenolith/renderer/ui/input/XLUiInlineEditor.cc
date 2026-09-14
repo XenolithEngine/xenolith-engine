@@ -30,11 +30,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 namespace {
 
-/* The stock editor: a text field that is its own CSS type.
-
-A class rather than a configured ui::TextInput because registerStyleAppliers is protected - and
-that is the right shape anyway: every field built on TextInput declares its own type from init(),
-which is what lets a stylesheet address `inline-editor` without touching every text input. */
+/* The stock editor: a text field with its own CSS type `inline-editor`. A subclass because
+registerStyleAppliers is protected. */
 class InlineTextEditor : public TextInput {
 public:
 	virtual ~InlineTextEditor() = default;
@@ -54,22 +51,16 @@ public:
 
 } // namespace
 
-/* The one inline edit that is open, application-wide, or null.
-
-A plain pointer and no lock: an inline edit is scene-graph work, and the scene graph is
-app-thread-only and therefore lock-free. The slot is cleared by close() and by the destructor, so a
-session that is simply dropped without being ended cannot leave it dangling. */
+/* The open inline edit, application-wide, or null. App thread only, so no lock. Cleared by close()
+and by the destructor. */
 static InlineEditSession *s_activeInlineEdit = nullptr;
 
 // ---- InlineEditLayout ---------------------------------------------------------------------------
 
 bool InlineEditLayout::init(NotNull<Node> anchor, const Rect &rect, Rc<Node> &&editor,
 		InlineEditSession *session) {
-	/* Keyboard as well as touch, and Exclusive so the editor owns it outright while it is up.
-
-	Propagate is not optional: an exclusive group makes the dispatcher re-collect receivers scoped
-	to itself, and without it a ui::FormSystem anywhere under this overlay stops receiving input at
-	all - which its own header says in as many words. */
+	/* Keyboard and touch, Exclusive while open. Propagate is required: without it a ui::FormSystem
+	under this overlay stops receiving input. */
 	if (!OverlaySurface::init(InputEventMask(EventMaskTouch | EventMaskKeyboard),
 				FocusGroup::Flags::Exclusive | FocusGroup::Flags::Propagate)) {
 		return false;
@@ -83,12 +74,8 @@ bool InlineEditLayout::init(NotNull<Node> anchor, const Rect &rect, Rc<Node> &&e
 	setName("inline-edit-layout");
 	setType("inline-edit-layout");
 
-	/* Escape arrives as a HOTKEY, never as a key event.
-
-	The runtime's text-input processor takes Escape for itself - it is deliberately not marked
-	ReserveFromTextInput ("Escape releases input, Backspace and Delete edit") - so a focused
-	ui::TextInput only ever learns of it as an echo with enabled=false. Bound as a raw keycode this
-	would simply never fire, and the editor would be the one overlay a person cannot back out of. */
+	/* Escape arrives as the `back` hotkey, never as a key event: the text-input processor takes it,
+	and a focused ui::TextInput only sees an echo with enabled=false. */
 	_listener->addHotkey(EngineHotkeys::get().back, [this](HotkeyId, const InputEvent &) {
 		if (_session) {
 			_session->cancel();
@@ -97,9 +84,7 @@ bool InlineEditLayout::init(NotNull<Node> anchor, const Rect &rect, Rc<Node> &&e
 		return false;
 	}, HotkeyFlags::None);
 
-	// A key event carries the last pointer position, so the default filter would hand the keyboard
-	// over only while the mouse happens to hover the editor. An overlay that owns the keyboard owns
-	// it wherever the pointer is - the same seam as ui::TextInput's and ui::MenuSystem's.
+	// key events carry the pointer position; accept them regardless of the pointer
 	_listener->setTouchFilter(
 			[](const InputEvent &event, const InputListener::DefaultEventFilter &cb) {
 		if (event.data.isKeyEvent()) {
@@ -117,8 +102,7 @@ void InlineEditLayout::handleEnter(Scene *scene) {
 	if (_session && _session->_config.closeOnScroll) {
 		findScroller();
 		if (_hasScroll) {
-			// Sampled, not subscribed: ScrollViewBase has exactly ONE scroll callback slot, and
-			// taking it would quietly disconnect whoever owns the list.
+			// sampled in update(): ScrollViewBase has one scroll callback slot, owned by the list
 			scheduleUpdate();
 		}
 	}
@@ -138,9 +122,7 @@ void InlineEditLayout::update(const UpdateTime &time) {
 
 	float position = 0.0f;
 	if (readScrollPosition(position) && position != _scrollPosition) {
-		// The rect was the whole address of what is being edited. It now points at a different row,
-		// so the session ends - keeping what was typed, because losing it is the one outcome a
-		// person cannot undo.
+		// the rect now covers a different row; end the session, keeping the text
 		_session->commit();
 	}
 }
@@ -174,13 +156,8 @@ void InlineEditLayout::findScroller() {
 	_scrollSystem = nullptr;
 	_hasScroll = false;
 
-	/* Upward first, then downward, because both topologies are real and they are not the same one.
-
-	An anchor that IS a row sits inside the scroller: the walk up finds it. An anchor that is the
-	LIST - which is what a cell editor passes, because the table's space is where the rect keeps its
-	meaning - CONTAINS the scroller instead: ui::TableView holds its basic2d::ScrollView as a child.
-	Searching only upward finds nothing there, and an editor that never notices the list scrolling
-	is left pointing at a row the author did not choose. */
+	/* Search upward, then downward: a row anchor sits inside the scroller, while a list anchor
+	(e.g. ui::TableView) contains its scroll view as a child. */
 	auto node = _anchor;
 	while (node) {
 		if (takeScroller(node)) {
@@ -202,8 +179,7 @@ bool InlineEditLayout::readScrollPosition(float &out) const {
 		return true;
 	}
 	if (_scrollSystem) {
-		// One number, because that is all the comparison needs: any movement on either axis ends
-		// the session, and which axis moved changes nothing about that.
+		// a single number: movement on either axis ends the session
 		auto position = _scrollSystem->getScrollPosition();
 		out = position.x + position.y;
 		return true;
@@ -231,10 +207,8 @@ void InlineEditLayout::layoutContent() {
 		return;
 	}
 
-	/* Four corners, not origin plus size: the anchor may be rotated or scaled, and what the editor
-	has to cover is the axis-aligned box the rect actually occupies on screen. The same arithmetic
-	as ui::placementForNode and TooltipSystem::getTargetWorldRect - but stopping in this layout's
-	space, because undoing the density and flipping into Y-down are only what a real window needs. */
+	/* Transform all four corners: the anchor may be rotated or scaled, and the editor covers the
+	axis-aligned bounding box in this layout's space. */
 	const Vec2 corners[4] = {
 		convertToNodeSpace(_anchor->convertToWorldSpace(Vec2(_rect.getMinX(), _rect.getMinY()))),
 		convertToNodeSpace(_anchor->convertToWorldSpace(Vec2(_rect.getMaxX(), _rect.getMinY()))),
@@ -258,8 +232,7 @@ void InlineEditLayout::layoutContent() {
 
 bool InlineEditLayout::handleTap(Vec2 pt) {
 	if (_content && !_content->isTouched(pt) && _session) {
-		// This IS the focus loss: the overlay covers the whole parent, so the press that would have
-		// blurred the field lands here and never reaches it.
+		// focus loss: the overlay covers the parent, so an outside press lands here
 		_session->finish(_session->_config.commitOnFocusLoss);
 	}
 	return true;
@@ -268,17 +241,13 @@ bool InlineEditLayout::handleTap(Vec2 pt) {
 // ---- InlineEditSession --------------------------------------------------------------------------
 
 InlineEditSession::~InlineEditSession() {
-	// A session let go of without being ended - the caller simply dropped the Rc - must not leave
-	// the application-wide slot pointing at freed memory.
+	// a session dropped without being ended must not leave the global slot dangling
 	if (s_activeInlineEdit == this) {
 		s_activeInlineEdit = nullptr;
 	}
 
-	/* Nor the ANCHOR'S SYSTEM, for the same reason and one step less obviously. The watch below
-	captures `this`, the anchor holds it, and the anchor is under no obligation to go first - so a
-	dropped session leaves a node whose exit calls a freed object. Disarming the callback is what
-	can be done from here without asking: removeSystem would take `_anchor`, and an anchor that
-	died first is exactly the case this is about. */
+	/* The anchor's watch system captures `this` and may outlive the session: disarm its callback.
+	removeSystem is not used because `_anchor` may already be destroyed. */
 	if (_anchorWatch) {
 		_anchorWatch->setExitCallback(nullptr);
 	}
@@ -292,27 +261,14 @@ bool InlineEditSession::init(NotNull<Node> anchorContent, const Rect &rect, Rc<N
 		return false;
 	}
 
-	/* ONE inline edit at a time, for the whole application, and the outgoing one is CANCELLED.
-
-	Two editors at once is not a state this can be in: they are overlays over a single keyboard
-	focus, and the second one takes it - which leaves the first standing, unfocused, still holding a
-	commit that will be delivered whenever something finally closes it, out of order with the edit
-	that replaced it. Cancelling is the only ending that keeps nothing: a caller that wants the
-	outgoing value has to say so by committing it FIRST, which is a decision only that caller can
-	make.
-
-	Done before anything below reads the scene, because the cancel runs the previous session's
-	onCancel and onClose, and those are free to change the very geometry this init is about to place
-	an editor against. The cost is that a session which then fails to open still took the previous
-	one away - and that reads as "the edit did not start", while a rectangle resolved before those
-	callbacks ran would be a silent misplacement. */
+	/* One inline edit at a time: cancel the outgoing one (a caller wanting its value commits
+	first). Done before reading the scene, since its onCancel/onClose may change the geometry; a
+	session that then fails to open has still cancelled the previous one. */
 	if (auto prev = s_activeInlineEdit; prev && prev != this) {
 		Rc<InlineEditSession> hold(prev);
 		hold->cancel();
 		if (s_activeInlineEdit == hold.get()) {
-			// cancel() answers false only from inside that session's own commit callback, which
-			// finish() refuses to re-enter. Nothing will close it later, so the slot must not go on
-			// pointing at it.
+			// cancel() fails only from inside that session's commit callback; clear the slot anyway
 			s_activeInlineEdit = nullptr;
 		}
 	}
@@ -352,19 +308,16 @@ bool InlineEditSession::init(NotNull<Node> anchorContent, const Rect &rect, Rc<N
 		return false;
 	}
 
-	/* Its OWN CallbackSystem, not Node::setExitCallback.
-
-	That accessor lazily creates the node's shared callback system, tagged DefaultCallbackSystemTag,
-	and writing into it would silently replace whatever the node's owner had put there. */
+	/* A separate CallbackSystem: Node::setExitCallback writes the shared default callback system
+	and would replace the owner's callback. */
 	_anchorWatch = Rc<CallbackSystem>::create();
 	_anchorWatch->setExitCallback([this](CallbackSystem *) {
-		// The thing being edited is leaving the scene. Keep what was typed rather than dropping it.
+		// the edited node is leaving the scene; commit the text
 		finish(true);
 	});
 	anchorContent->addSystemItem(_anchorWatch);
 
-	// Registered only once everything above has succeeded: a session that could not open is not one
-	// the next open has to cancel.
+	// registered only after a successful open
 	s_activeInlineEdit = this;
 
 	return true;
@@ -390,8 +343,7 @@ void InlineEditSession::close() {
 	}
 	_finished = true;
 
-	// Released BEFORE the callbacks below, so that an onClose which opens the next editor finds the
-	// slot empty rather than being made to cancel a session that has already ended.
+	// released before the callbacks, so an onClose that opens the next editor finds the slot empty
 	if (s_activeInlineEdit == this) {
 		s_activeInlineEdit = nullptr;
 	}
@@ -416,12 +368,8 @@ void InlineEditSession::close() {
 }
 
 bool InlineEditSession::finish(bool commitValue) {
-	/* The single exit, and the reason it exists.
-
-	Enter fires the field's accept callback while the priority-1 outside-tap listener inside
-	ui::TextInput independently calls blur() - both land in one interaction often enough that
-	"commit once" has to be a guarantee. `_inCommit` covers the other direction: a commit callback
-	that closes something, or opens something else, must not re-enter this. */
+	/* The single exit. Enter and ui::TextInput's outside-tap blur can both land in one interaction,
+	so it runs once; `_inCommit` blocks re-entry from a commit callback. */
 	if (_finished || _inCommit) {
 		return false;
 	}
@@ -437,8 +385,7 @@ bool InlineEditSession::finish(bool commitValue) {
 		_inCommit = false;
 
 		if (!accepted) {
-			// Refused. The session stays exactly as it was, with what was typed still in it: the
-			// author has to be able to see what was rejected in order to fix it.
+			// refused: the session stays open with the text intact
 			return false;
 		}
 	} else if (!commitValue && _config.onCancel) {
@@ -474,15 +421,9 @@ Rc<InlineEditSession> beginInlineTextEdit(NotNull<Node> anchorContent, const Rec
 	config.minSize = textConfig.minSize;
 	config.styleClass = sp::move(textConfig.styleClass);
 
-	/* The FIELD is held, not borrowed, and both closures below do it.
-
-	They are read by finish(), and finish() runs from the anchor's exit - "the thing being edited is
-	leaving the scene". A teardown reaches the overlay this field lives on and the anchor in whatever
-	order it likes, so by the time the anchor exits, the layout may already be down and the field
-	destroyed with it. A raw pointer here was a virtual call through a freed node, and the commit that
-	carries the typed text is exactly the path that makes it. Holding it costs one reference for as
-	long as the session, and closes no cycle: what the field holds of the session (its Enter callback)
-	is a raw pointer, deliberately. */
+	/* Both closures hold a reference to the field: finish() may run from the anchor's exit after
+	the layout and the field were torn down. No cycle: the field's Enter callback holds the session
+	by a raw pointer. */
 	config.collect = [input] { return Value(input->getText()); };
 
 	if (auto cb = sp::move(textConfig.onCommit)) {
@@ -491,11 +432,7 @@ Rc<InlineEditSession> beginInlineTextEdit(NotNull<Node> anchorContent, const Rec
 		config.onCommit = [](const Value &) { return true; };
 	}
 
-	/* Escape puts the seeded text back before the caller is told.
-
-	The field will not do it: of every widget here only ui::NumberField restores anything on its
-	own, and even that is about a value that does not parse. Restoring here means a caller that
-	reads the field in onCancel sees what the edit started from. */
+	// Escape restores the seeded text before onCancel, so the caller sees the original text.
 	config.onCancel = [input, text = textConfig.text, cb = sp::move(textConfig.onCancel)] {
 		input->setText(text);
 		if (cb) {
@@ -509,8 +446,7 @@ Rc<InlineEditSession> beginInlineTextEdit(NotNull<Node> anchorContent, const Rec
 		return nullptr;
 	}
 
-	// After the overlay is up: focus is a request through the IME, and a field that is not yet in a
-	// scene has nothing to request it from.
+	// focus after the overlay is up: the field must be in a scene to request the IME
 	input->setEnterCallback([session = session.get()] { session->commit(); });
 	input->focus();
 	if (textConfig.selectAll) {
@@ -532,8 +468,7 @@ bool InlineEditTarget::init(InlineEditTrigger trigger, StringView text) {
 	_trigger = trigger;
 	_text = text.str<Interface>();
 
-	// One recognizer for both gestures: the count is what tells them apart, and re-registering on
-	// every setTrigger would leave a listener with two.
+	// one recognizer for both triggers, distinguished by tap count
 	addTapRecognizer([this](const GestureTap &tap) {
 		if (tap.event != GestureEvent::Activated) {
 			return true;
@@ -558,8 +493,7 @@ bool InlineEditTarget::init(InlineEditTrigger trigger, StringView text) {
 }
 
 void InlineEditTarget::handleExit() {
-	// The owner is leaving the scene; an overlay left standing over it is one the user has to
-	// dismiss by hand.
+	// the owner is leaving the scene; commit and close the overlay
 	if (_session) {
 		auto session = sp::move(_session);
 		_session = nullptr;
@@ -618,7 +552,7 @@ bool InlineEditTarget::getTargetRect(Rect &out) const {
 		return false;
 	}
 
-	// Four corners again, for the same reason as in the layout: the owner may be rotated or scaled.
+	// all four corners: the owner may be rotated or scaled
 	const auto size = owner->getContentSize();
 	const Vec2 corners[4] = {
 		anchor->convertToNodeSpace(owner->convertToWorldSpace(Vec2::ZERO)),
@@ -672,10 +606,7 @@ bool InlineEditTarget::begin() {
 	if (auto editor = makeEditor(request)) {
 		InlineEditConfig config;
 
-		/* The factory's editor reads itself through this, and without it the commit carried Nil -
-		which read as "the value is empty" rather than as "there is nobody to ask". The stock path
-		below never needed it, because beginInlineTextEdit sets `collect` over the field it built,
-		and that is why the hole stayed invisible: every caller in the tree took the stock path. */
+		// a factory-built editor needs the collect callback; without it the commit carries Nil
 		if (_collectCallback) {
 			config.collect = [this] { return _collectCallback(); };
 		}
@@ -704,7 +635,7 @@ bool InlineEditTarget::begin() {
 		return _session != nullptr;
 	}
 
-	// No factory: the stock editor is a line of text over what the target is holding.
+	// no factory: the stock single-line text editor
 	InlineTextEditConfig config;
 	config.text = _text;
 	config.closeOnScroll = _closeOnScroll;

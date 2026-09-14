@@ -86,8 +86,7 @@ Value encodeWindowInfo(const WindowInfo &info) {
 	}
 
 	if (info.icon) {
-		// Sizes and name only: the pixels have no business in a data::Value the inspector will
-		// serialize, and the sizes are what actually tells you whether the icon is usable.
+		// Sizes and name only: pixels do not belong in a Value the inspector serializes.
 		Value icon;
 		if (!info.icon->name.empty()) {
 			icon.setString(info.icon->name, "name");
@@ -188,9 +187,8 @@ Rc<WindowIcon> makeWindowIcon(BytesView imageData, SpanView<uint32_t> sizes) {
 		return nullptr;
 	}
 
-	// WindowIconImage is defined as straight alpha. A decoder normally hands us exactly that, but
-	// normalize rather than trust it: premultiplied data taken as straight darkens every
-	// semi-transparent pixel a second time when the backend premultiplies again.
+	// WindowIconImage is straight alpha; normalize premultiplied input, or the backend would
+	// premultiply semi-transparent pixels twice.
 	if (bmp.alpha() == bitmap::AlphaFormat::Premultiplied) {
 		auto ptr = bmp.dataPtr();
 		for (uint32_t y = 0; y < bmp.height(); ++y) {
@@ -207,8 +205,7 @@ Rc<WindowIcon> makeWindowIcon(BytesView imageData, SpanView<uint32_t> sizes) {
 		}
 	}
 
-	// A non-square source is center-cropped to its shorter side: every consumer of this type
-	// requires square rasters, and cropping beats the letterbox a resample to square would give.
+	// A non-square source is center-cropped to its shorter side: consumers require square rasters.
 	if (bmp.width() != bmp.height()) {
 		auto side = sprt::min(bmp.width(), bmp.height());
 		auto offX = (bmp.width() - side) / 2;
@@ -234,8 +231,7 @@ Rc<WindowIcon> makeWindowIcon(BytesView imageData, SpanView<uint32_t> sizes) {
 
 	for (auto &size : sizes) {
 		if (size > source) {
-			// Skip rather than upscale: the window system chooses from what it is given, and a
-			// blurry raster it might pick is worse than one size fewer to choose from.
+			// Skip rather than upscale: the window system may pick a blurry raster.
 			continue;
 		}
 		if (size == source) {
@@ -247,8 +243,7 @@ Rc<WindowIcon> makeWindowIcon(BytesView imageData, SpanView<uint32_t> sizes) {
 		}
 	}
 
-	// Always emit the source's own size, so a source smaller than every requested size still
-	// produces a usable icon instead of an empty one.
+	// Always emit the source's own size, so a small source still produces a usable icon.
 	ret->images.emplace_back(WindowIcon_makeImage(bmp));
 
 	if (ret->images.empty()) {

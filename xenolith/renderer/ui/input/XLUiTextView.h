@@ -35,30 +35,22 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 // Multi-line viewport for TextView, replacing the single-line geometry of the stock
 // TextInputContainer through TextInput::makeContainer().
 //
-// The document is NOT one Label. It is a TextDocument (owned by the widget above), and this
-// container materializes a Label per visible BLOCK - a logical line, or a chunk of one that is
-// too long for the font formatter's uint16_t layout domain. Labels come from a pool and are
-// reused by pointer: the CSS resolver keeps per-Node* maps that are never cleaned for deleted
-// nodes, so churning Label nodes would both leak those maps and risk stale-pointer reuse.
+// The document is a TextDocument owned by the widget above; this container materializes a Label
+// per visible block. Labels are pooled and reused by pointer: the CSS resolver keeps per-Node*
+// maps that are not cleaned for deleted nodes.
 //
-// Geometry rules that the rest of the class follows:
+// Geometry rules:
 //  * The vertical model is integer rows times a uniform line height, measured from a reference
-//    label. Document Y reaches millions of pixels, where float's step is already 2 px - so the
-//    scroll offset and every document-space Y live in double, and become float only after the
-//    viewport-relative subtraction.
-//  * Service labels (the measure label, pooled labels between uses) stay VISIBLE. An invisible
-//    node is never visited, an unvisited node is never styled by the CSS resolver and never
-//    lays out - so a hidden label silently loses its font. An empty visible label draws nothing
-//    and costs nothing.
-//  * The caret is re-parented from the base's hidden label onto the stage, and is positioned,
-//    never hidden, when its block is out of the window: the blink action turns visibility back
-//    on every half second, so hiding it would flicker. The scissor clips it instead.
+//    label. Scroll offset and document-space Y are double (document Y reaches millions of px) and
+//    become float only after subtracting the viewport position.
+//  * Service labels (the measure label, idle pooled labels) stay visible: an invisible node is not
+//    visited, so it is never styled and loses its font. An empty label draws nothing.
+//  * The caret is re-parented onto the stage and, when its block is outside the window, moved
+//    rather than hidden (the blink action re-shows it); the scissor clips it.
 //
-// Scroll is expressed as a document-space offset from the top-left corner - both components
-// >= 0, growing as the view moves right and down. The horizontal range is derived from the
-// blocks currently materialized, not from the whole document: measuring every line's pixel
-// width would be O(document) at every edit, and following the visible window is what other
-// editors do too.
+// Scroll is a document-space offset from the top-left corner, both components >= 0. The
+// horizontal range follows the materialized blocks, not the whole document, to avoid O(document)
+// measurement per edit.
 class SP_PUBLIC TextViewContainer : public TextInputContainer {
 public:
 	// Blocks kept laid out beyond each edge of the viewport, so a small scroll only positions
@@ -72,7 +64,7 @@ public:
 	virtual void update(const UpdateTime &) override;
 	virtual void handleContentSizeDirty() override;
 
-	// The whole per-frame pipeline lives here, BEFORE the base call: clamp the scroll against
+	// The whole per-frame pipeline lives here, before the base call: clamp the scroll against
 	// the model, follow the caret if it moved, materialize the visible blocks (assign pooled
 	// labels, lay them out, slice selection and marked ranges into them), position everything -
 	// and only then let the base flush the caret, which by that point reads settled geometry.
@@ -96,10 +88,9 @@ public:
 
 	virtual void moveHorizontalOverflow(float d) override;
 
-	// The width the text wraps at, in px; 0 = no wrapping. Applied to each materialized label -
-	// Label::setWidth() is what actually makes the formatter break lines, `white-space` in CSS
-	// only decides whether it is ALLOWED to. Pushed in by the widget above from the same layout
-	// pass that computed the viewport, because the viewport width is only reliable there.
+	// The width the text wraps at, in px; 0 = no wrapping. Applied to each materialized label via
+	// Label::setWidth() (CSS `white-space` only allows breaking). Set by the widget above from the
+	// layout pass that computes the viewport.
 	virtual void setWrapWidth(float);
 	virtual float getWrapWidth() const { return _wrapWidth; }
 
@@ -135,9 +126,8 @@ public:
 	virtual void setScrollCallback(Function<void(const Vec2 &)> &&);
 
 	// Fired after materialization when anything the gutter depends on changed: the block
-	// window, the scroll position or the line structure. Runs inside visitDraw, AFTER the
-	// blocks are laid out - the widget's own visitDraw runs before its children's and would
-	// read the previous frame.
+	// window, the scroll position or the line structure. Runs inside visitDraw, after the
+	// blocks are laid out.
 	virtual void setMaterializeCallback(Function<void()> &&);
 
 	// The block range currently holding labels, [first, past-last).
@@ -147,9 +137,8 @@ public:
 	virtual uint32_t getMaterializedCount() const;
 	virtual uint32_t getPoolSize() const { return uint32_t(_slots.size()); }
 
-	// Sum of the selection lengths the materialized labels were actually told to draw - the
-	// widget's cursor and the drawn highlight are different things, and only reporting both
-	// tells them apart when one is wrong.
+	// Sum of the selection lengths the materialized labels were told to draw (for checks against
+	// the widget's cursor).
 	virtual uint32_t getDrawnSelectionLength() const;
 
 	virtual void scrollToCursor();
@@ -159,9 +148,8 @@ public:
 	// survive a float round trip through the Vec2 API.
 	virtual void scrollToRow(uint64_t row);
 
-	// The viewport follows the caret when the CURSOR moves, never when the viewport itself
-	// does - otherwise a wheel scroll or a scrollToLine() would snap straight back to the
-	// caret on the next frame. Recorded here, consumed by the next visitDraw.
+	// The viewport follows the caret only when the cursor moves, not on a wheel scroll or
+	// scrollToLine(). Recorded here, consumed by the next visitDraw.
 	virtual void setCursor(TextCursor, uint32_t activePosition = maxOf<uint32_t>()) override;
 	virtual void setMarked(TextCursor) override;
 
@@ -184,7 +172,7 @@ protected:
 
 	virtual void updateCaretPosition() override;
 
-	// Nothing to centre: a multi-line view starts its text at the TOP and positions its own pooled
+	// Nothing to centre: a multi-line view starts its text at the top and positions its own pooled
 	// labels per frame. The base's single-line label is inherited but never shown here.
 	virtual void updateLabelPosition() override { }
 
@@ -245,12 +233,10 @@ protected:
 	bool _followCursor = false;
 };
 
-// Monospace multi-line text view - the base a code editor, a log pane or a console output is
-// configured out of, rather than subclassed for: line numbers, wrapping, the current-line
-// highlight, read-only and Tab-indents are all switches, and everything above them is the file or
-// the stream a particular widget carries.
+// Monospace multi-line text view for code editors, log panes and consoles. Line numbers, wrapping,
+// current-line highlight, read-only and Tab-indents are switches.
 //
-// CSS: type `text-input` (it IS a TextInput - the background, outline, radius and padding come from
+// CSS: type `text-input` (it is a TextInput - the background, outline, radius and padding come from
 // the same applier), plus the classes `text-view` on the widget, `text-view-gutter` /
 // `text-view-gutter-label` on the line-number strip, `text-view-current-line` on the current-line
 // highlight, and `xl-ui-text-input-label` on every content label. The gutter width in monospace
@@ -260,44 +246,31 @@ protected:
 //   .text-view-gutter { background-color:#1E1E1E; }
 //   .text-view-current-line { background-color:rgba(255,255,255,.05); }
 //
-// TWO LAYERS OF STATE. The document lives in a TextDocument, rendered as a Label per visible
-// block (see TextViewContainer). TextInput's _inputState holds only a WINDOW of it, a few
-// kilobytes around the caret, because the IME contract carries its whole string through every
-// request and echo: with the document in there, every keystroke would cost O(document) in the
-// echo path. XLTextInputManager itself advises sending "only the current paragraph"; this class
-// is that advice, implemented.
+// The document lives in a TextDocument, rendered as a Label per visible block (see
+// TextViewContainer). TextInput's _inputState holds only a window of a few kilobytes around the
+// caret, since the IME string travels through every request and echo.
 //
-// The window protocol, in one paragraph. Every push carries a serial (a small engine hook), and
-// every edit the runtime's TextInputProcessor makes starts as a copy of the state it is based
-// on - so every echo comes back carrying the serial of the exact string it edited. The widget
-// keeps its live pushes (serial, anchor, base string), diffs the echo against the base of ITS
-// serial, and applies the single-range edit at that push's anchor. A re-anchor is therefore
-// safe at any time: an in-flight echo of the old window still finds its own base and lands at
-// the right offset, and no keystroke is lost to the race. The window re-centres only when the
-// caret comes within kWindowGuard of an edge (and never during a composition - dead keys keep
-// their run in cursor.length with compose == Composing, not in marked).
+// Window protocol: every push carries a serial, and every edit the TextInputProcessor makes
+// copies the state it is based on, so each echo carries the serial of the string it edited. The
+// widget keeps its live pushes (serial, anchor, base string), diffs the echo against the base of
+// its serial, and applies the edit at that push's anchor, so re-anchoring is safe while echoes
+// are in flight. The window re-centres when the caret comes within kWindowGuard of an edge, never
+// during a composition (dead keys keep their run in cursor.length with compose == Composing).
 //
-// Because the window's indices mean nothing outside it, the GLOBAL cursor and selection are
-// authoritative here (_gCursor/_gSelAnchor), and everything cursor-shaped in the base that is
-// not virtual - pendingCursor, offsetCursor, moveCursor, getWordForPosition - is deliberately
-// left unused, replaced by global equivalents. A selection wider than the window is pushed as
-// its clip; an echo that edits the string while such a selection stands means "replace the
-// whole selection", which is what typing over a select-all must do.
+// The global cursor and selection (_gCursor/_gSelAnchor) are authoritative. The base's
+// non-virtual cursor helpers (pendingCursor, offsetCursor, moveCursor, getWordForPosition) are
+// unused. A selection wider than the window is pushed clipped; an echo that edits the string
+// while it stands replaces the whole selection.
 //
-// SIZE. Blocks keep every label under the font formatter's uint16_t ceilings (Formatter::
-// charNum caps a label at 65535 chars; CharLayoutData::pos caps an unwrapped line at 32767
-// layout units, which is why the unwrapped chunk is computed from the measured cell width and
-// the density instead of being a constant). There is no document size cap: the widget is
-// bounded by memory, the echo path by the window.
+// Blocks keep every label under the formatter's uint16_t ceilings (charNum: 65535 chars;
+// CharLayoutData::pos: 32767 layout units for an unwrapped line, so the unwrapped chunk is computed
+// from cell width and density). No document size cap beyond memory.
 //
-// NOT SUPPORTED: password mode (the display path is the block model, which never masks) and
-// FormAdapters (they reach the text through the non-virtual window-based accessors).
+// Not supported: password mode (the block model never masks) and FormAdapters (they use the
+// non-virtual window-based accessors).
 //
-// KEYBOARD. As documented on TextInput, the runtime's TextInputProcessor claims printable
-// characters, Backspace and Delete before the scene sees them. Enter is the one that changes
-// here: with TextInputType::MultiLineBit set the processor stops declining it and inserts it
-// as text. Tab is always declined by the processor, so it arrives as the focusNext hotkey and
-// is turned back into an indent here.
+// Keyboard: as on TextInput, except that with TextInputType::MultiLineBit the processor inserts
+// Enter as text. Tab arrives as the focusNext hotkey and is turned into an indent here.
 class SP_PUBLIC TextView : public TextInput {
 public:
 	// Chunk of a line one Label holds when wrapping: only the uint16_t char counter binds (the
@@ -305,10 +278,8 @@ public:
 	static constexpr uint32_t kChunkWrapped = 8'000;
 
 	// The IME window: total size, and how close the caret may come to an edge before the window
-	// re-centres. The guard is generous because the echo crosses two threads: an autorepeating
-	// Backspace lands several edits against the OLD window before a re-anchor's echo returns,
-	// and each must still find room to act (the processor silently no-ops a delete at its
-	// string's edge, and the key is already consumed by then).
+	// re-centres. The guard leaves room for several autorepeat edits against the old window before
+	// a re-anchor's echo returns; the processor silently no-ops a delete at its string's edge.
 	static constexpr uint32_t kWindowMax = 4'096;
 	static constexpr uint32_t kWindowGuard = 256;
 
@@ -324,15 +295,13 @@ public:
 	virtual void handleExit() override;
 	virtual void handleContentSizeDirty() override;
 
-	// Reconciles the gutter strip with the gutter label's measured width before drawing. It has
-	// to be a per-frame check rather than a one-off: a Label measures nothing until its font is
-	// LOADED, which happens asynchronously, and the widget gets no notification when it does.
+	// Reconciles the gutter strip with the gutter label's measured width before drawing. Checked
+	// per frame: the font loads asynchronously with no notification.
 	virtual bool visitDraw(FrameInfo &, NodeVisitFlags parentFlags) override;
 
-	// The document-level text API. The change callback is fired with an EMPTY view: the base
-	// passed the whole text, which is an O(document) UTF-8 conversion per keystroke, and the
-	// only consumer here uses it as a dirty marker. The using-declaration keeps the base's
-	// UTF-8 overload visible - an override of one overload hides the whole set otherwise.
+	// The document-level text API. The change callback is fired with an empty view, to avoid an
+	// O(document) UTF-8 conversion per keystroke. The using-declaration keeps the base's UTF-8
+	// overload visible.
 	using TextInput::setText;
 	virtual void setText(WideStringView) override;
 	virtual StringView getText() const override;
@@ -372,9 +341,8 @@ public:
 
 	// -- TextHistoryTarget, over the document rather than over the IME's window --
 	//
-	// applyHistoryEdit routes through insertGlobal, which is this widget's ONE insertion path:
-	// an undo therefore pushes a fresh window, moves the caret and fires the change callback
-	// exactly as a typed character does, and nothing downstream can tell the two apart.
+	// applyHistoryEdit routes through insertGlobal, the single insertion path, so an undo pushes a
+	// fresh window, moves the caret and fires the change callback like typing.
 
 	virtual WideStringView sliceForHistory(uint32_t pos, uint32_t len) const override;
 	virtual void applyHistoryEdit(uint32_t pos, uint32_t removed, WideStringView) override;
@@ -384,14 +352,13 @@ public:
 	// pane's state inside its own answer.
 	virtual Value encodeState() const;
 
-	// Shared by the editor and the console commands: both drive the same widget and neither
-	// wants to reimplement cursor-to-line conversion on the far side of the socket.
+	// Shared by the editor and the console inspector commands.
 	virtual bool handleInspectorCommand(StringView action, const Value &args, Value &result);
 
 protected:
 	// One live push: what was sent to the IME and where it came from. Kept until an echo with
 	// this serial (or a later one) returns, so an in-flight edit of an already-replaced window
-	// can still be diffed against ITS base and applied at ITS anchor.
+	// can still be diffed against its base and applied at its anchor.
 	struct WindowPush {
 		uint64_t serial = 0;
 		uint32_t anchor = 0;
@@ -404,19 +371,13 @@ protected:
 	virtual void acquireInput(TextCursor) override;
 	virtual void insertText(WideStringView text, TextCursor replaceGlobal) override;
 
-	/* The clipboard hooks. copy/cut/paste/handleTextDrop themselves live ONCE, in the base; what a
-	document changes about them is the cursor they read and where the text comes from - and
-	insertText above already routes an insert into insertGlobal, so nothing else differs.
-
-	Both cursor hooks answer with the GLOBAL cursor: this class deliberately leaves every
-	non-virtual window-based cursor helper of the base unused, pendingCursor() included. */
+	/* The clipboard hooks; copy/cut/paste/handleTextDrop live in the base. Both cursor hooks answer
+	with the global cursor (pendingCursor() is unused here). */
 	virtual TextCursor selectionCursor() const override { return _gCursor; }
 	virtual TextCursor insertionCursor() const override { return _gCursor; }
 	virtual WideStringView getTextForCursor(TextCursor) const override;
 
-	// This class never masks - its display path is the block model - so a selection may always
-	// leave it. Stated as an override rather than inherited by accident: the base refuses to copy
-	// out of a password field, and a reader has to be able to see that the difference is meant.
+	// This class never masks, so a selection may always leave it.
 	virtual bool canCopySelection() const override { return true; }
 
 	// The base pours the window into its (empty, service) label here; the document model
@@ -436,11 +397,10 @@ protected:
 	virtual bool setStyleValue(const ResolvedStyle &, document::ParameterName,
 			const document::StyleValue &) override;
 
-	// Registers through here so handleExit() can drop the lot: a command whose lambda captured
-	// a destroyed widget is a dangling call from the inspector socket, and demos are swapped.
+	// Registers through here so handleExit() can remove them; their lambdas capture this widget.
 	void addInspectorCommand(Scene *, StringView name, StringView desc);
 
-	// The unwrapped chunk, from the live cell width and density: a chunk drawn as ONE physical
+	// The unwrapped chunk, from the live cell width and density: a chunk drawn as one physical
 	// line must fit CharLayoutData::pos (int16_t, 32767 layout units = px * density), and both
 	// the cell width (a CSS variable) and the density (the monitor) are runtime values.
 	uint32_t computePlainChunk() const;
@@ -448,8 +408,7 @@ protected:
 	void applyChunkSize();
 
 	// Rebuilds the gutter for the materialized window only: numbers for the logical lines whose
-	// first block is visible, blanks for wrap continuations and chunk tails. A whole-document
-	// gutter string would be O(document) per change - the exact cost this design removes.
+	// first block is visible, blanks for wrap continuations and chunk tails.
 	void rebuildGutter();
 
 	// Vertical motion keeps the column the caret started from, so a run of Down through short
@@ -484,12 +443,12 @@ protected:
 
 	bool needsReanchor() const;
 
-	// A NEW window (new serial) centred on the caret; falls back to a local _inputState write
-	// when no handler runs, exactly as the base's setText does.
+	// A new window (new serial) centred on the caret; falls back to a local _inputState write
+	// when no handler runs, as the base's setText does.
 	void pushWindow();
 
-	// The SAME window (same serial, same string object) with a new relative cursor - a cursor
-	// move is not a new base string, and keeping the serial keeps the diff arithmetic exact.
+	// The same window (same serial, same string object) with a new relative cursor, so the diff
+	// base is unchanged.
 	void pushCursorUpdate();
 
 	TextDocument _doc;
@@ -515,10 +474,8 @@ protected:
 	uint32_t _gutterColumns = 0;
 	float _gutterChars = 4.0f;
 
-	// The gutter label width the strip was last carved from. Compared against the label's live
-	// width in visitDraw, and the comparison is the only thing that gets the strip its size: a
-	// re-mark issued from inside handleContentSizeDirty is swallowed, because the dirty flag is
-	// cleared after the handler returns.
+	// The gutter label width the strip was last sized from; compared in visitDraw. A re-mark from
+	// inside handleContentSizeDirty would be lost, as the dirty flag is cleared after it returns.
 	float _gutterAppliedWidth = -1.0f;
 
 	// The wrap column count the row estimates were last computed for; the re-estimate runs only

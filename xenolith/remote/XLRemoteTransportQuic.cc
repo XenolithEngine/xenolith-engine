@@ -20,13 +20,8 @@
  THE SOFTWARE.
  **/
 
-/* The `quic://` transport: OpenSSL QUIC over UDP.
- *
- * This is the code that used to BE the protocol layer -- SSL_CTX, the ephemeral certificate, the
- * bound socket and the read/write loops all lived inside remote::Listener and remote::Connector,
- * with an `SSL *` handed upward as a `void *`. Nothing has changed about how it talks to OpenSSL;
- * what changed is that it now says so through TransportConnection, so it is one implementation
- * among several rather than the only thing the protocol can speak to.
+/* The `quic://` transport: OpenSSL QUIC over UDP (SSL_CTX, ephemeral certificate, bound socket
+ * and read/write loops) behind TransportConnection.
  */
 
 #include "XLRemoteTransport.h"
@@ -45,8 +40,8 @@
 #include <sys/socket.h> // AF_UNSPEC, SOCK_DGRAM (via the sprt socket layer)
 #include <sys/time.h> // struct timeval (SSL_get_event_timeout)
 
-// Needs a kernel socket layer -- wasm has none (every entry point in the runtime socket
-// backend answers ENOSYS), so the scheme is simply absent there rather than failing at run time.
+// Needs a kernel socket layer; wasm has none (the runtime socket backend answers ENOSYS), so the
+// scheme is absent there.
 #if !SPRT_WASM
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
@@ -146,8 +141,8 @@ static int alpnSelectCb(SSL *, const unsigned char **out, unsigned char *outlen,
 	return SSL_TLSEXT_ERR_ALERT_FATAL;
 }
 
-// Bind a UDP socket for the listener. AF_UNSPEC, so an IPv6 host (or an IPv6-capable "all
-// interfaces") resolves and binds like any other -- the old AF_INET made every address IPv4-only.
+// Bind a UDP socket for the listener. AF_UNSPEC, so IPv6 hosts (and IPv6-capable "all interfaces")
+// resolve and bind as well.
 static int makeBoundUdpSocket(const Address &addr) {
 	char service[6];
 	portToStr(addr.port, service);
@@ -256,18 +251,13 @@ public:
 	bool init(void *ctx, void *ssl, int fd);
 
 	virtual TransportCaps getCaps() const override {
-		// MultiStream and Datagrams are NOT declared, even though QUIC provides both. This connection
-		// runs on the default stream (SSL_read_ex/SSL_write_ex against the connection SSL) and nothing
-		// here has ever called SSL_new_stream or SSL_accept_stream; QuicStream::isClosed even asks about
-		// the CONNECTION rather than a stream. It cost nothing to declare them while no caller read
-		// caps, but the protocol layer now maps message classes onto whatever streams a transport says
-		// it has -- so an unbacked claim here would silently fold Bulk back onto Control while
-		// everything above believed it was separated.
+		// MultiStream and Datagrams are not declared, although QUIC provides both: this connection
+		// runs on the default stream only (QuicStream::isClosed asks about the connection), and the
+		// protocol layer trusts declared streams.
 		//
-		// Restoring them means all of: SSL_new_stream on the initiator, SSL_accept_stream plus an
-		// incoming-stream policy on the acceptor, a preamble on each new stream saying which class it
-		// carries (mem: needs none because it pairs its pipes at accept time), and per-stream close
-		// semantics.
+		// Declaring them requires SSL_new_stream on the initiator, SSL_accept_stream plus an
+		// incoming-stream policy on the acceptor, a preamble on each new stream naming its class,
+		// and per-stream close semantics.
 		return TransportCaps::Encrypted | TransportCaps::Pollable;
 	}
 
@@ -337,9 +327,8 @@ bool QuicConnection::init(void *ctx, void *ssl, int fd) {
 	}
 
 	_peer.spki = peerSpkiFingerprint((SSL *)_ssl);
-	// The certificate is ephemeral and self-signed, so holding its key proves nothing about WHO the
-	// peer is -- only that it is the same party across a session. Identity comes from the protocol's
-	// bearer key, which is why this stays false.
+	// The certificate is ephemeral and self-signed, so it does not identify the peer; identity
+	// comes from the protocol's bearer key.
 	_peer.authenticated = false;
 	_peer.description = toString("quic:",
 			_peer.spki.empty()
@@ -556,8 +545,7 @@ void QuicListener::handleEvents(const Callback<void(Rc<TransportConnection> &&)>
 		if (!conn) {
 			break;
 		}
-		// The accepted connection owns neither the context nor the socket -- both belong to this
-		// listener and outlive it.
+		// The accepted connection owns neither the context nor the socket (the listener does).
 		auto c = Rc<QuicConnection>::create(nullptr, (void *)conn, -1);
 		if (c) {
 			log::source().info("remote::quic", "accepted a client connection");
@@ -676,8 +664,7 @@ Rc<TransportConnection> QuicTransport::connect(const Address &addr,
 		}
 	}
 
-	// Pin the server's key BEFORE the session sends anything: the bearer key goes out in the very
-	// next step, so a man in the middle that gets past this point has it.
+	// Pin the server's key before the session sends anything: the bearer key goes out next.
 	if (!cfg.expectedFingerprint.empty()) {
 		auto actual = peerSpkiFingerprint(ssl);
 		if (actual.empty()
@@ -732,8 +719,7 @@ void registerQuicTransport() { TransportRegistry::registerTransport(Rc<QuicTrans
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
-// Not available in this build: wasm has none (every entry point in the runtime socket
-// backend answers ENOSYS), so the scheme is simply absent there rather than failing at run time.
+// Not available in this build: no kernel socket layer, so the scheme is absent.
 void registerQuicTransport() { }
 
 } // namespace stappler::xenolith::remote

@@ -30,15 +30,13 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-// Per-request reply deadlines (relative us). CompileQueue makes the server compile a render graph
-// (shaders, pipelines) so it is generous; AttachQueue is a trivial readiness ack so it is short. If a
-// reply does not arrive in time the request watchdog fails the waiter and the client disconnects.
+// Per-request reply deadlines (relative us). CompileQueue compiles a render graph on the server,
+// so it is generous; AttachQueue is a trivial ack. On timeout the watchdog fails the waiter and
+// the client disconnects.
 static constexpr uint64_t kCompileQueueReplyTimeoutUs = 15'000'000; // 15s
 static constexpr uint64_t kAttachQueueReplyTimeoutUs = 5'000'000; // 5s
 
-// A window-control op is a short round trip on the server's app thread. Bounded rather than
-// generous: a server that has not answered one in five seconds is not a server whose session should
-// carry on, and the request watchdog will say so.
+// A window-control op is a short round trip on the server's app thread.
 static constexpr uint64_t kWindowControlReplyTimeoutUs = 5'000'000; // 5s
 
 RemoteWindow::~RemoteWindow() { }
@@ -52,9 +50,8 @@ bool RemoteWindow::init(NotNull<ClientAppThread> thread, const Value &val) {
 	_appSwapchainConfig = remote::deserializeSwapchainConfig(val.getValue(5));
 
 	for (auto &qIt : val.getValue(6).asArray()) {
-		// [id, name] is the version-1 shape; [id, name, api, typeTag, damage] is what a server that
-		// describes its queues sends (M3.3). Accept both -- a shorter entry simply leaves the
-		// descriptive fields at their "nobody said" defaults, which is what selection tests for.
+		// Entries are [id, name] (version-1) or [id, name, api, typeTag, damage]; a short entry
+		// leaves the descriptive fields at their defaults.
 		if (qIt.isArray() && qIt.size() >= 2) {
 			_queues.emplace_back(RemoteQueueInfo{
 				static_cast<uint64_t>(qIt.getInteger(0)),
@@ -66,20 +63,14 @@ bool RemoteWindow::init(NotNull<ClientAppThread> thread, const Value &val) {
 		}
 	}
 
-	// Index 6 is the queue array; the WindowInfo the server appends lives at 7 (see
-	// RemoteRenderClient::announce). Reading 6 here built every client-side WindowInfo out of the
-	// queue list.
-	//
-	// Guarded by the TYPE, not by hasValue(): the slot is always present now (a window with no info
-	// sends an empty value there), and hasValue() on an array is only a bounds check -- it would
-	// have accepted the empty and built a default WindowInfo out of nothing.
+	// Index 6 is the queue array, the WindowInfo is at 7 (see RemoteRenderClient::announce). The
+	// slot is always present (empty when the window has no info), so check the type, not
+	// hasValue().
 	if (val.getValue(7).isArray()) {
 		_info = remote::deserializeWindowInfo(val.getValue(7));
 	}
 
-	// [8] Geometry as of connect time, so getWindowGeometry() answers something real before the
-	// window first moves. Absent from a version-1 server: the mirror then stays at its defaults,
-	// which read as "unknown".
+	// [8] Geometry at connect time; absent from a version-1 server, leaving the mirror at defaults.
 	if (val.getValue(8).isArray()) {
 		_appWindowGeometry = remote::deserializeWindowGeometry(val.getValue(8));
 	}
@@ -153,44 +144,32 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 		return;
 	}
 
-	/* The window's own constraints mirror, and the ONLY place it is written after the announce.
-	
-	There is deliberately no ConstraintsChanged message: the constraints are already here, in every
-	frame request, and the Director below applies them exactly as a local one does. What was missing
-	is only that the WINDOW never learned them -- getConstraints() answered the announce-time value
-	for the life of the session, so a scene (or the inspector) asking the window rather than the
-	director got a stale size forever.
-	
-	The mirror therefore catches up with the first frame after a resize. That is not a gap in
-	practice: a resize recreates the swapchain, and a recreated swapchain produces a frame. */
+	/* The window's constraints mirror is written only here after the announce: constraints arrive
+	with every frame request, so the mirror catches up with the first frame after a resize. */
 	if (_appFrameConstraints != c) {
 		_appFrameConstraints = c;
 		_client->handleConstraintsChanged(c);
 	}
 
-	// Telemetry that rode along with the request. Absent means "the server said nothing this time"
-	// -- keep the previous value rather than zeroing the mirror.
+	// Telemetry that rode along with the request; absent means no update, keep the previous value.
 	if (timing) {
 		_frameTiming = *timing;
 	}
 	if (stat) {
-		// Straight to the Director, which owns the copy the FPS overlay reads. Already on the app
-		// thread here, so no hop: the local path's performOnAppThread exists only because the local
-		// push originates on the render thread.
+		// Straight to the Director, which owns the copy the FPS overlay reads; already on the app
+		// thread.
 		_client->pushDrawStat(0, *stat);
 	}
 
-	// Stream each per-attachment input the moment the scene submits it, then a commit. These run on
-	// the client app thread (Director::performOnRenderThread resolves there), so the connection is
-	// touched on its owning thread.
+	// Stream each per-attachment input as the scene submits it, then a commit. These run on the
+	// client app thread (Director::performOnRenderThread resolves there), which owns the
+	// connection.
 	auto thread = _thread;
 	auto proxy = Rc<core::RemoteFrameRequestProxy>::create(c, frameId,
 			[thread, frameId](SpanView<const core::AttachmentData *> atts, BytesView bytes) {
 		if (auto conn = thread->getConnection()) {
-			// Flush this frame's pending glyph requests BEFORE its FrameInput, so the server registers the
-			// gating dependency (via GlyphRequest) before it reconciles the frame against it -- otherwise
-			// the reconcile finds nothing and the glyphs are not actually gated. The font dependency baked
-			// into the serialized `bytes` matches the one the flush submits.
+			// Flush pending glyph requests before this frame's FrameInput, so the server registers
+			// the gating dependency before reconciling the frame against it.
 			thread->flushPendingFontGlyphs();
 
 			// [frameId, keys[], bytes] -- one serialized input addressed to multiple attachments.
@@ -216,8 +195,8 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 		return;
 	}
 
-	// Director::acquireFrame sets selectQueue() synchronously and fires this callback before its async
-	// render/commit, so the selected queue is already populated here. Per-frame input is deferred.
+	// Director::acquireFrame calls selectQueue() and fires this callback before its async
+	// render/commit, so the selected queue is set here. Per-frame input is deferred.
 	_client->acquireFrame(0, proxy, [this, proxy, reply = sp::move(reply)](bool ok) mutable {
 		if (!ok) {
 			slog().error("RemoteWindow", "acquireFrame: fail to acquire director's frame");
@@ -243,9 +222,9 @@ void RemoteWindow::compileResource(Rc<core::Resource> &&, Function<void(bool)> &
 
 void RemoteWindow::compileMaterials(Rc<core::MaterialInputData> &&req,
 		const Vector<Rc<core::DependencyEvent>> &deps) {
-	// The headless client cannot compile a runtime material (no GPU). Forward the request to the server,
-	// which resolves the image refs (the atlas image id -> its DynamicImage), compiles into the window's
-	// MaterialSet under the client-assigned ids, signals the gating deps, and pushes the set back.
+	// The headless client can not compile a runtime material (no GPU). The server resolves image
+	// refs, compiles into the window's MaterialSet under the client-assigned ids, signals the
+	// gating deps, and pushes the set back.
 	auto conn = _thread->getConnection();
 	if (!conn || !req) {
 		return;
@@ -277,18 +256,16 @@ void RemoteWindow::compileMaterials(Rc<core::MaterialInputData> &&req,
 	}
 	msg.setValue(sp::move(mats), "mats");
 
-	// dynamicMaterialsToUpdate / materialsToRemove are not forwarded yet (the font add-path is enough for
-	// remote text; atlas growth is tracked server-side via the dynamic material).
+	// dynamicMaterialsToUpdate / materialsToRemove are not forwarded (atlas growth is tracked
+	// server-side via the dynamic material).
 	conn->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::CompileMaterials), msg);
 }
 
 void RemoteWindow::compileImage(const Rc<core::DynamicImage> &, Function<void(bool)> &&) { }
 
 void RemoteWindow::attachRenderQueue(const Rc<core::Queue> &) {
-	// The Director just made the (already compiled) shared queue its active render graph -- the client is
-	// now ready to serve frames for this window. Notify the server with an AttachQueue sync: only on this
-	// message does it route the window's frames to us, so AcquireFrame requests can't arrive before we
-	// are ready. The server replies with an empty atomic acknowledgement.
+	// The shared queue is now the Director's active render graph. Send AttachQueue: only then does
+	// the server route the window's frames here. The server replies with an empty acknowledgement.
 	auto c = _thread->getConnection();
 	if (!c) {
 		slog().error("RemoteWindow", "attachRenderQueue: not connected");
@@ -312,9 +289,8 @@ void RemoteWindow::attachRenderQueue(const Rc<core::Queue> &) {
 }
 
 void RemoteWindow::setReadyForNextFrame() {
-	// The client's Director has active actions/input (see Director::hasActiveInteractions) and wants
-	// another frame. Forward the request so the server's PresentationEngine schedules the next frame and
-	// keeps continuous progress going; fire-and-forget (no reply), same cadence as per-frame input.
+	// The client's Director has active actions/input and wants another frame; ask the server's
+	// PresentationEngine to schedule it. Fire-and-forget.
 	if (auto conn = _thread->getConnection()) {
 		conn->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::ReadyForNextFrame),
 				Value(_id));
@@ -322,17 +298,9 @@ void RemoteWindow::setReadyForNextFrame() {
 }
 /* --- window control (WindowCode::WindowControl) ------------------------------------------------
 
-Every method below splits into two halves, and the split is the whole design.
-
-The `bool` these calls return is answered LOCALLY, from `_state` and `_capabilities` -- mirrors this
-window already keeps -- using the same rules the real window uses, because those rules now live on
-the shared base (RenderServerChannel::validateStateChange and friends). They have to be answered
-locally: the signatures are synchronous, and a round trip cannot produce a return value. So the
-bool is a PRECONDITION.
-
-The `Status` is the OUTCOME, and it comes back in the reply. The server re-runs the precondition on
-receipt -- a client can send anything -- and answers Declined if it disagrees. That disagreement is
-what a test asserts is absent. */
+The returned `bool` is a precondition, answered locally from the `_state` and `_capabilities`
+mirrors with the shared RenderServerChannel rules. The `Status` in the reply is the outcome: the
+server re-checks the precondition and answers Declined if it disagrees. */
 
 void RemoteWindow::sendWindowControl(remote::WindowControlOp op, Value &&args,
 		Function<void(Status)> &&cb) {
@@ -352,8 +320,7 @@ void RemoteWindow::sendWindowControl(remote::WindowControlOp op, Value &&args,
 		}
 		cb(Status(int32_t(data::read<Interface>(payload).getInteger(0))));
 	}, kWindowControlReplyTimeoutUs)) {
-		// Not connected, or the send failed outright. Answer rather than drop: a caller that never
-		// hears back cannot tell "refused" from "still working".
+		// Not connected, or the send failed: answer, so the caller does not wait forever.
 		if (cb) {
 			cb(Status::ErrorNotSupported);
 		}
@@ -369,9 +336,8 @@ void RemoteWindow::setPreferredFrameInterval(uint64_t intervalUs) {
 core::FrameTimingInfo RemoteWindow::getFrameTiming() const { return _frameTiming; }
 
 void RemoteWindow::acquireScreenInfo(Function<void(NotNull<core::ScreenInfo>)> &&cb, Ref *) {
-	// Screen enumeration is its own domain and belongs to a later milestone: there is no ScreenInfo
-	// to hand back, so an empty one is delivered rather than the callback dropped - a caller must
-	// never be left waiting for an answer that is not coming.
+	// Screen enumeration is not supported remotely: deliver an empty ScreenInfo rather than
+	// dropping the callback.
 	if (cb) {
 		cb(Rc<core::ScreenInfo>::alloc());
 	}
@@ -379,11 +345,8 @@ void RemoteWindow::acquireScreenInfo(Function<void(NotNull<core::ScreenInfo>)> &
 
 /* --- text input (WindowCode::TextInputControl / ::TextInputState) --------------------------------
 
-The local contract is that the state belongs to the IME on the OS side, never to the application:
-the application only ever REQUESTS a state, and what it gets back through the echo is the answer.
-That is preserved here exactly. Nothing below touches the local TextInputManager -- the client's
-widget learns what happened only when handleTextInput arrives from the server. Updating the field
-optimistically would show text the server has not accepted. */
+The application only requests a state; the IME owns it. The local TextInputManager is updated only
+by the echo in handleTextInput, never optimistically. */
 
 void RemoteWindow::acquireTextInput(core::TextInputRequest &&req) {
 	Value args;
@@ -416,8 +379,7 @@ void RemoteWindow::sendTextInputControl(Value &&args) {
 }
 
 void RemoteWindow::handleTextInput(const core::TextInputState &state) {
-	// The echo, straight through to the Director's TextInputManager -- the same hop a local window
-	// makes in AppWindow::handleTextInput.
+	// The echo, straight to the Director's TextInputManager, as in AppWindow::handleTextInput.
 	if (_client) {
 		_client->handleTextInput(0, state);
 	}
@@ -456,9 +418,7 @@ bool RemoteWindow::disableState(core::WindowState state) {
 }
 
 bool RemoteWindow::setFullscreen(core::FullscreenInfo &&info, Function<void(Status)> &&cb, Ref *) {
-	// Same gate AppWindow applies, from the same mirrored capabilities. And when it refuses, the
-	// callback is ANSWERED: dropping it here is what made a refused fullscreen indistinguishable
-	// from one still in progress.
+	// Same gate as AppWindow, from the mirrored capabilities; a refusal still answers the callback.
 	if (!canSetFullscreen()) {
 		if (cb) {
 			cb(Status::ErrorNotSupported);
@@ -472,9 +432,8 @@ bool RemoteWindow::setFullscreen(core::FullscreenInfo &&info, Function<void(Stat
 }
 
 bool RemoteWindow::setPreferredFrameRate(float rate, Function<void(Status)> &&cb) {
-	// Returns true unconditionally, matching AppWindow. That is arguably wrong there -- the
-	// interface says to gate on WindowCapabilities::PreferredFrameRate and it does not -- but the
-	// two sides must answer alike, and changing the local path is not this milestone's business.
+	// Returns true unconditionally, matching AppWindow (which does not gate on
+	// WindowCapabilities::PreferredFrameRate either).
 	Value args;
 	args.setDouble(rate, "rate");
 	sendWindowControl(remote::WindowControlOp::SetPreferredFrameRate, sp::move(args), sp::move(cb));
@@ -491,10 +450,9 @@ void RemoteWindow::setWindowExtent(Extent2 extent, Function<void(Status)> &&cb, 
 
 void RemoteWindow::captureScreenshot(
 		Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) {
-	// The client is headless and cannot render locally. Forward the request to the server, which owns
-	// the real window/GPU; the captured pixels return asynchronously as a Domain::Data Screenshot
-	// transfer (see ClientAppThread::loadExtensions -> deliverScreenshot), matched back to `cb` by the
-	// RequestScreenshot serial echoed in the transfer's announce reason. Fire-and-forget (no reply).
+	// The headless client can not render. The server captures the pixels and returns them as a
+	// Domain::Data Screenshot transfer (see ClientAppThread::loadExtensions -> deliverScreenshot),
+	// matched to `cb` by the RequestScreenshot serial in the announce reason. Fire-and-forget.
 	auto conn = _thread ? _thread->getConnection() : nullptr;
 	if (!conn) {
 		slog().error("RemoteWindow", "captureScreenshot: not connected");
@@ -548,10 +506,8 @@ bool RemoteWindow::openWindowMenu(Vec2 pos) {
 }
 
 void RemoteWindow::handleInputEvents(Vector<core::InputEventData> &&events) {
-	// Server-forwarded platform input (WindowCode::InputEvents): replay it into the local Director's
-	// render endpoint (_client), exactly as a real window would feed its own scene. Runs on the app
-	// thread (the connection dispatch loop), where the scene graph lives. Window-state events also
-	// update the mirrored state so getWindowState() stays consistent.
+	// Server-forwarded platform input (WindowCode::InputEvents): replay it into the local Director
+	// on the app thread, as a real window does. Window-state events also update the mirrored state.
 	for (auto &event : events) {
 		if (event.event == core::InputEventName::WindowState) {
 			_state = event.window.state;
@@ -563,9 +519,8 @@ void RemoteWindow::handleInputEvents(Vector<core::InputEventData> &&events) {
 }
 
 void RemoteWindow::handleWindowGeometryChanged(const sprt::window::WindowGeometry &g) {
-	// The server pushes this only when the geometry actually changed (AppWindow::notifyWindowGeometry
-	// compares first), so there is nothing to deduplicate here. Update the mirror, then let the
-	// scene hear about it through the same hook a local window uses.
+	// The server pushes this only on a real change (AppWindow::notifyWindowGeometry compares
+	// first). Update the mirror, then notify the scene through the same hook a local window uses.
 	_appWindowGeometry = g;
 	if (_client) {
 		_client->handleWindowGeometryChanged(0, g);
@@ -573,9 +528,9 @@ void RemoteWindow::handleWindowGeometryChanged(const sprt::window::WindowGeometr
 }
 
 void RemoteWindow::updateLayers(sprt::window::Vector<sprt::window::WindowLayer> &&layers) {
-	// The client's scene graph (InputDispatcher) computes the window's interaction layers (hit/cursor/
-	// drag regions), but the server owns the real OS window. Forward them in the typed wire format
-	// (see serializeWindowLayers); the server applies them to its native window.
+	// The client's InputDispatcher computes the interaction layers (hit/cursor/drag regions), but
+	// the server owns the OS window: forward them in the typed wire format (see
+	// serializeWindowLayers).
 
 	auto conn = _thread ? _thread->getConnection() : nullptr;
 	if (!conn) {
@@ -585,14 +540,8 @@ void RemoteWindow::updateLayers(sprt::window::Vector<sprt::window::WindowLayer> 
 	Bytes blob;
 	remote::serializeWindowLayers(blob, _id, layers);
 
-	/* Dedup: the dispatcher recomputes the layer set on every input commit, so an unchanged set must
-	not flood the server with an update per frame.
-	
-	Compared on the SERIALIZED bytes rather than on the structs, which is a real difference and not
-	just a convenience: WindowLayer has three bytes of padding between `cursor` and `flags`, and the
-	old comparison ran over them -- so two identical layer sets could differ in bytes nobody had
-	written, and the deduplication would silently stop working. The serialized form has no
-	unwritten bytes in it. */
+	/* Dedup: the dispatcher recomputes layers on every input commit. Compare serialized bytes, not
+	structs: WindowLayer has uninitialized padding. */
 	if (_lastLayersBlob.size() == blob.size()
 			&& (blob.empty() || sprt::memcmp(_lastLayersBlob.data(), blob.data(), blob.size()) == 0)) {
 		return;

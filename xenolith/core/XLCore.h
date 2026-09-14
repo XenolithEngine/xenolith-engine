@@ -60,8 +60,7 @@
 #ifndef XL_USE_64_BIT_PTR_DEFINES
 #if defined(SPRT_WASM)
 // wasm uses the WebGPU backend, whose object handles are pointers; ObjectHandle wraps void*
-// so they store directly. Vulkan's "64-bit handle on a 32-bit target" rationale (which
-// forces the uint64_t path) does not apply — Vulkan is not built for wasm.
+// so they store directly (Vulkan, which needs the uint64_t path, is not built for wasm).
 #define XL_USE_64_BIT_PTR_DEFINES 1
 #elif defined(__LP64__) || defined(_WIN64) || (defined(__x86_64__) && !defined(__ILP32__)) \
 		|| defined(_M_X64) || defined(__ia64) || defined(_M_IA64) || defined(__aarch64__) \

@@ -39,9 +39,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-// A client must answer an AcquireFrame request within this budget. It is short by design: a frame the
-// presentation engine is already waiting on must not stall, and a client that misses it is treated as
-// gone (the request watchdog fails the waiter and the server drops the connection).
+// A client must answer AcquireFrame within this budget; the presentation engine is waiting, so a
+// client that misses it is treated as gone (the watchdog fails the waiter, the connection drops).
 static constexpr uint64_t kAcquireFrameReplyTimeoutUs = 2'000'000; // 2s
 
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
@@ -86,26 +85,24 @@ void RemoteRenderClient::announce(NotNull<remote::ObjectRegistry> registry) {
 				auto &v = queues.emplace();
 				v.addInteger(qIt);
 				v.addString(q->queue->getName());
-				// What the queue IS, so the client can select one it can actually drive instead of
-				// recognising a name both sides agreed on out of band (M3.3). See
-				// Scene2d::selectServerQueue.
+				// The queue's API, so the client can select a queue it can drive (see
+				// Scene2d::selectServerQueue).
 				v.addInteger(toInt(q->queue->getApi()));
 				v.addInteger(q->queue->getTypeTag());
 				v.addInteger(toInt(q->queue->getDamageFlags()));
 			}
 		}
 
-		// [7] WindowInfo. Emitted UNCONDITIONALLY, even when the window has none, so no later index
-		// depends on whether a window happened to have info. The reader tells "absent" from
-		// "present" by the value's TYPE, not by its position.
+		// [7] WindowInfo, always emitted so later indexes are stable; the reader detects absence by
+		// the value type.
 		if (auto info = it.second.window->getInfo()) {
 			v.addValue(remote::serializeWindowInfo(*info));
 		} else {
 			v.addValue(Value());
 		}
 
-		// [8] Geometry as of connect time. Without it the client's mirror is zeros until the window
-		// first moves -- and "0,0 0x0" is indistinguishable from a window at the top-left corner.
+		// [8] Geometry at connect time, so the client's mirror is valid before the window first
+		// moves.
 		v.addValue(remote::serializeWindowGeometry(it.second.window->getWindowGeometry()));
 	}
 
@@ -128,16 +125,9 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 	req.addInteger(int64_t(windowId));
 	req.addValue(remote::serializeFrameConstraints(proxy->getFrameConstraints()));
 
-	/* [3] Frame timing, [4] the last DrawStat. Appended to a message that already goes out once per
-	frame, rather than given messages of their own.
-	
-	getFrameTiming() is a SYNCHRONOUS by-value getter on the channel -- six call sites in Director
-	feed the FPS overlay -- so a remote client cannot answer it with a request; it needs a mirror,
-	and a mirror needs a push. This is that push, at zero extra messages.
-	
-	Both describe the frame BEFORE this one. That is not a compromise made for the wire: the local
-	path is the same, because Director::pushDrawStat hops to the app thread asynchronously and the
-	overlay reads whatever landed. */
+	/* [3] Frame timing, [4] the last DrawStat, appended to the per-frame message. getFrameTiming()
+	is a synchronous getter, so the remote client needs a pushed mirror. Both describe the previous
+	frame, as on the local path (Director::pushDrawStat is asynchronous). */
 	if (auto registry = _host->getSharedObjects()) {
 		if (auto w = static_cast<AppWindow *>(registry->resolveWindow(windowId))) {
 			req.addValue(remote::serializeFrameTiming(w->getFrameTiming()));
@@ -153,8 +143,8 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 		statIt->second.dirty = false;
 	}
 
-	// Hold the completion across the async reply and guarantee it fires exactly once (on reply or on
-	// send failure) without a use-after-move on `cb`.
+	// Hold the completion across the async reply and fire it exactly once (on reply or send
+	// failure).
 	struct FrameReply : Ref {
 		Function<void(bool)> cb;
 	};
@@ -203,27 +193,11 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 	}
 }
 
-/* Feed the inputs a remote client CANNOT produce.
- *
- * `FrameCapture` carries which rectangles of this frame the window wants copied out. That is server
- * state -- it lives on the AppWindow and is armed by whoever asked for a capture on this side -- and
- * the client's RemoteWindow has no way to know it: its takeFrameCaptureInput() is the base's, which
- * answers null. So the client's frame context never ships this attachment.
- *
- * And an input attachment that is declared and then never fed does not degrade. It WEDGES: the
- * FrameRequest waits for an input that never comes, the frame never completes, it stays in
- * PresentationEngine::_activeFrames, and scheduleNextImage refuses to schedule anything after it.
- * The window stops producing frames entirely, which reads from outside as "the client connected but
- * the picture never changed". (XL2dFrameContext::submitInput carries the same warning, which is why
- * the local path submits an empty capture on EVERY frame rather than skipping it.)
- *
- * So the server supplies it here, once per frame, exactly as the local frame context does -- taken,
- * not read, because two frames must never carry the same capture.
- *
- * `windowId` comes from the FRAME, not from whatever window asked most recently. This runs inside the
- * asynchronous reply to AcquireFrame, so with more than one window the two are routinely different --
- * and because the capture is TAKEN, getting it wrong does not merely misattribute: it steals the
- * capture from the window that armed it and hands it to one that did not ask.
+/* Feeds the inputs a remote client can not produce. `FrameCapture` is server state (armed on the
+ * AppWindow), and the client never ships it, but a declared input that is never fed wedges the
+ * frame and stops presentation. So an input is submitted every frame, empty when nothing is armed.
+ * The capture is taken, not read, and `windowId` must come from the frame, not the latest window,
+ * or the capture goes to the wrong window.
  */
 void RemoteRenderClient::submitServerOwnedInputs(uint64_t frameId, uint64_t windowId,
 		NotNull<core::LocalFrameRequestProxy> proxy) {
@@ -255,7 +229,7 @@ void RemoteRenderClient::submitServerOwnedInputs(uint64_t frameId, uint64_t wind
 		}
 	}
 	if (!capture) {
-		// Empty is the normal case: nothing armed. It still has to be submitted -- see above.
+		// Empty is the normal case: nothing armed. It still has to be submitted (see above).
 		capture = Rc<core::FrameCaptureInput>::alloc();
 	}
 
@@ -282,10 +256,9 @@ void RemoteRenderClient::handleFrameInput(uint64_t frameId, SpanView<StringView>
 		return;
 	}
 
-	// Resolve every target attachment; deserialize the shared payload once (the first attachment mints
-	// the concrete input type -- all keys in a multi-key message accept the same type). The client-minted
-	// gating dependency ids carried in the blob are output into `remoteWaitDependencyIds`, wired into the
-	// input via makeInputData and filled by its deserialize (this local must outlive that call).
+	// Resolve every target attachment and deserialize the payload once (all keys accept the same
+	// input type). Client-minted gating dependency ids go into `remoteWaitDependencyIds` via
+	// makeInputData; this local must outlive the deserialize call.
 	Vector<const core::AttachmentData *> atts;
 	Rc<core::AttachmentInputData> input;
 	Vector<uint32_t> remoteWaitDependencyIds;
@@ -301,9 +274,8 @@ void RemoteRenderClient::handleFrameInput(uint64_t frameId, SpanView<StringView>
 		}
 		atts.emplace_back(attData);
 	}
-	// Say WHICH step failed and for which attachment: "failed to reconstruct" covers three
-	// unrelated causes (a key this queue does not have, an attachment with no input type, a payload
-	// the input rejects) and they are fixed in three different places.
+	// Report which step failed and for which attachment: unknown key, no input type, or a rejected
+	// payload.
 	if (atts.empty() || !input) {
 		StringStream keys;
 		for (auto key : attachmentKeys) { keys << " '" << key << "'"; }
@@ -317,17 +289,16 @@ void RemoteRenderClient::handleFrameInput(uint64_t frameId, SpanView<StringView>
 		return;
 	}
 
-	// Reconcile this frame's remote dependency ids to the server-local DependencyEvents that gate it: a
-	// font atlas update (font server) or a forwarded material compile (_materialDeps). The frame cannot
-	// render until those are signalled. Unknown ids (nothing server-side waits on them) are skipped.
+	// Reconcile the frame's remote dependency ids to server-local DependencyEvents that gate it
+	// (font atlas update or forwarded material compile). Unknown ids are skipped.
 	for (auto depId : remoteWaitDependencyIds) {
 		if (auto dep = reconcileDependency(depId)) {
 			input->waitDependencies.emplace_back(sp::move(dep));
 		}
 	}
 
-	// Submit on the gapi loop thread (where the frame queue runs), mirroring the local renderer; the
-	// one input object is shared across all its attachments.
+	// Submit on the gapi loop thread (where the frame queue runs); the one input object is shared
+	// across all its attachments.
 	if (auto loop = _host->getGlLoop()) {
 		loop->performOnThread([req, atts = sp::move(atts), input = sp::move(input)]() mutable {
 			for (auto a : atts) { req->addInput(a, Rc<core::AttachmentInputData>(input)); }
@@ -384,11 +355,9 @@ void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
 	auto input = Rc<core::MaterialInputData>::alloc();
 	input->setAttachment(att);
 
-	// Resolve a material pipeline by key the same way FrameContext::readMaterials does: walk the material
-	// attachment's target texture-set-layout -> binding pipeline layouts -> families -> graphic pipelines.
-	// The queue's top-level graphicPipelines table is not populated for a dynamically-built render queue
-	// (Queue::getGraphicPipeline returns null), but the family graph that drives material compilation is
-	// intact -- this is the same graph the client used to pick the pipeline it forwarded.
+	// Resolve a material pipeline by key as FrameContext::readMaterials does: material attachment's
+	// texture-set layout -> binding pipeline layouts -> families -> graphic pipelines. The
+	// top-level table is empty for a dynamically-built queue.
 	auto resolvePipeline = [&](StringView key) -> const core::GraphicPipelineData * {
 		if (auto tl = att->getTargetLayout()) {
 			for (auto bl : tl->bindingLayouts) {
@@ -405,9 +374,8 @@ void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
 		return queue->getGraphicPipeline(key);
 	};
 
-	// Resolve a static (non-atlas) resource image by its gAPI object id: find the real ImageData via an
-	// existing material in this attachment's set that already references the same ImageObject. The server
-	// owns the ImageData; the wire only carried the object id.
+	// Resolve a static (non-atlas) image by its gAPI object id through an existing material in this
+	// set that references the same ImageObject; the wire carries only the id.
 	auto resolveStaticImageData = [&](uint64_t imageId) -> const core::ImageData * {
 		auto obj = reg->resolveObject(imageId);
 		if (!obj) {
@@ -439,10 +407,9 @@ void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
 			uint64_t imageId = 0;
 			auto mi = remote::deserializeMaterialImage(in, imageId);
 
-			// The codec carries only the descriptor binding + view info; the server resolves the real
-			// image by id. The font atlas is a runtime dynamic (atlas-tracked) image, rebuilt from the
-			// font server's current instance; any other image is a static resource image (e.g.
-			// SolidImage), reused from an existing material in this attachment's set.
+			// The codec carries only the binding and view info. The font atlas image is rebuilt
+			// from the font server's current instance; any other image is a static resource image
+			// reused from an existing material in this set.
 			if (auto inst = fontServer ? fontServer->resolveAtlasInstance(imageId) : nullptr) {
 				mi.dynamic = inst;
 				mi.image = &inst->data;
@@ -468,19 +435,16 @@ void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
 		return;
 	}
 
-	// Server-local gating events the compile signals; registered so handleFrameInput reconciles a frame's
-	// material dependency id to them (the frame waits until the material is compiled). The registry is
-	// drained by a per-event signal callback (below): once a dependency fires it is removed, so a later
-	// frame referencing that id finds nothing in reconcileDependency and treats it as already satisfied.
+	// Server-local gating events signalled by the compile, registered for handleFrameInput. A fired
+	// dependency is removed, so a later frame referencing its id treats it as satisfied.
 	Vector<Rc<core::DependencyEvent>> events;
 	for (auto &dn : v.getValue("deps").asArray()) {
 		auto depId = uint32_t(dn.getInteger());
 		auto ev = Rc<core::DependencyEvent>::alloc(
 				core::DependencyEvent::QueueSet{Rc<core::Queue>(att->getCompiler())},
 				"RemoteMaterialDep");
-		// Drop the mirror dependency from _materialDeps once the compile signals it. The signal fires on
-		// the GPU loop thread and the event can outlive this connection, so guard the client by refcount
-		// (Rc captured now, while `this` is alive) and hop to the app thread, where _materialDeps lives.
+		// Drop the dependency from _materialDeps once signalled. The signal fires on the GPU loop
+		// thread and may outlive the connection, so capture an Rc and hop to the app thread.
 		ev->setSignalCallback(
 				[self = Rc<RemoteRenderClient>(this), host = Rc<ServerAppThread>(_host), depId]() {
 			host->performOnAppThread([self, depId]() { self->_materialDeps.erase(depId); },
@@ -496,29 +460,17 @@ void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
 }
 
 void RemoteRenderClient::handleRenderQueueAttached(const Rc<core::Queue> &) {
-	// Deliberately not forwarded. Its only consumer is Director::_availableQueues, which is written
-	// and never read; and on this path the CLIENT is the side that picks the queue
-	// (Scene2d::selectServerQueue over the announced list) and tells the server through
-	// AttachQueue -- so a message here would inform the better-informed side. See M4 in the plan.
+	// Not forwarded: the client selects the queue itself and reports it with AttachQueue.
 }
 
 void RemoteRenderClient::handleConstraintsChanged(const core::FrameConstraints &) {
-	// Deliberately not forwarded either, but for the opposite reason: the constraints already reach
-	// the client in every AcquireFrame, where its Director applies them exactly as a local one does.
-	// A second carrier would be a second source of truth. (This hook has no caller in the engine at
-	// all today -- AppWindow::handleSwapchainUpdated notifies only the native window.)
+	// Not forwarded: constraints reach the client in every AcquireFrame.
 }
 
 void RemoteRenderClient::handleWindowGeometryChanged(uint64_t windowId,
 		const sprt::window::WindowGeometry &g) {
-	// This one IS forwarded: geometry has no other carrier, and the server has already decided the
-	// change is real (AppWindow::notifyWindowGeometry compares against its mirror before calling),
-	// so a window that is merely redrawing sends nothing.
-	//
-	// windowId is the caller's own, so this no longer has to wait for a first frame to learn which
-	// window it is talking about -- and no longer misroutes to the window that happened to render
-	// last. A window that is not shared reports 0 and is dropped, which is correct: the client has
-	// never heard of it.
+	// Forwarded: geometry has no other carrier, and AppWindow::notifyWindowGeometry calls this only
+	// on a real change. A window that is not shared reports windowId 0 and is dropped.
 	if (isClosed() || windowId == 0) {
 		return;
 	}
@@ -533,13 +485,8 @@ void RemoteRenderClient::handleWindowGeometryChanged(uint64_t windowId,
 
 void RemoteRenderClient::handleInputEvents(uint64_t windowId,
 		Vector<core::InputEventData> &&events) {
-	// The server's window dispatches platform input here (this client is the window's render endpoint
-	// while a remote client is attached). Forward the whole batch in the typed wire format -- field
-	// by field, network byte order, the variant chosen by the event (see serializeInputEvents).
-	//
-	// This used to be a raw dump of the struct array, which is why the ABI tag had to gate the
-	// session: between builds that laid InputEventData out differently, the receiver read padding as
-	// a keycode. Nothing here depends on this build's layout any more.
+	// The server's window dispatches platform input here while a remote client is attached. Forward
+	// the batch in the typed wire format (see serializeInputEvents).
 	if (!_connection || _connection->isClosed() || windowId == 0 || events.empty()) {
 		return;
 	}
@@ -552,9 +499,8 @@ void RemoteRenderClient::handleInputEvents(uint64_t windowId,
 }
 
 void RemoteRenderClient::handleTextInput(uint64_t windowId, const core::TextInputState &state) {
-	// The window's processor decided the state changed; the client's widget has no other way to
-	// learn it. This is the echo half of text input, and the only source of truth for the field on
-	// the far side.
+	// Echo of the text input state decided by the window's processor; the client's only source for
+	// it.
 	if (isClosed() || windowId == 0) {
 		return;
 	}
@@ -567,27 +513,14 @@ void RemoteRenderClient::handleTextInput(uint64_t windowId, const core::TextInpu
 			msg);
 }
 void RemoteRenderClient::handleFramePresented(uint64_t) {
-	// Not forwarded, and deliberately not made to fire either. Nothing calls this hook anywhere in
-	// the engine (the one that does fire is the unrelated PresentationWindow::handleFramePresented,
-	// which takes a frame rather than an order), and Director::handleFramePresented is an explicit
-	// no-op on the receiving side. Wiring it would mean a per-frame thread hop plus a per-frame
-	// message to move a number into something that discards it.
-	//
-	// When client-side pacing does need a presented-frame signal, the carrier is the AcquireFrame
-	// piggyback below -- already once per frame, already on the app thread -- and the number is
-	// already there as FrameTimingInfo::lastFrameOrder.
+	// Not forwarded: nothing on the receiving side uses it. A presented-frame signal, when needed,
+	// is available as FrameTimingInfo::lastFrameOrder in the AcquireFrame piggyback.
 }
 
 void RemoteRenderClient::pushDrawStat(uint64_t windowId, const core::DrawStat &stat) {
-	// Arrives on the RENDER thread (the vertex pass calls it through FrameContextHandle::client),
-	// where the connection must not be touched. Hop to the app thread and hold the value for the
-	// next frame request, exactly as Director::pushDrawStat holds it for the local FPS overlay.
-	//
-	// This is also why a message of its own would buy nothing: the hop is needed either way, so a
-	// separate DrawStat message would be this plus a message.
-	//
-	// Rc, not a raw `this`: the push can outlive the connection (resetRemoteClient drops the
-	// client), and the task must then be a no-op rather than a use-after-free.
+	// Called on the render thread, where the connection must not be touched: hop to the app thread
+	// and hold the value for the next frame request. Captures an Rc, since the push can outlive the
+	// connection.
 	if (!_host) {
 		return;
 	}

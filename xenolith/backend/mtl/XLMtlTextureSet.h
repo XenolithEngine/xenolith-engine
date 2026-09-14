@@ -32,7 +32,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::mtl {
  * buffer: a plain shared MTLBuffer of 8-byte GPU resource handles
  * (MTLResourceID), written directly via gpuResourceID - no argument encoder.
  *
- * The buffer layout mirrors the engine's texture set convention and MUST
+ * The buffer layout mirrors the engine's texture set convention and must
  * match the MSL argument struct:
  *   struct TextureSetArgs {
  *       array<sampler, SAMPLERS> samplers;
@@ -77,11 +77,9 @@ public:
 	id<MTLBuffer> getArgumentBuffer() const { return bridgeHandle<id<MTLBuffer>>(_buffer); }
 #endif
 
-	// UNIQUE textures referenced by the argument buffer, for useResource at
-	// bind time. Deduplicated: the argument buffer pads unused slots with the
-	// empty image (potentially thousands of them), but residency is per unique
-	// MTLTexture - so this holds each bound texture once (used images + the
-	// empty image), keeping cmdBindTextureSet O(materials) not O(imageCount)
+	// Unique textures referenced by the argument buffer (used images + the empty
+	// image padding unused slots), for useResource at bind time; keeps
+	// cmdBindTextureSet O(materials), not O(imageCount)
 	SpanView<Rc<core::ImageView>> getResidencyViews() const { return _residencyViews; }
 
 protected:

@@ -36,10 +36,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d::gles {
 namespace glesb = stappler::xenolith::gles;
 
 // Clear-only queue: one graphics pass that clears its output attachment to the background colour
-// and presents it. The scene's draw commands travel input attachments (VertexInput2d, lights,
-// particles), but this queue declares none of them - a submit with no target returns false in
-// FrameRequest::addInput and is dropped without an error, so a screenshot reads exactly the
-// cleared colour. A scene draws through FlatPass instead; this one is the bring-up minimum.
+// and presents it. It declares no input attachments, so scene submits are dropped without error
+// (FrameRequest::addInput returns false) and a screenshot reads the cleared colour. Scenes draw
+// through FlatPass; this is the bring-up minimum.
 class SP_PUBLIC ClearPass : public core::QueuePass {
 public:
 	struct RenderQueueInfo {

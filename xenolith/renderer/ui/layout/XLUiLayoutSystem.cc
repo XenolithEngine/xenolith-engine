@@ -52,10 +52,8 @@ bool LayoutSystem::init() {
 
 	_systemPriority = LayoutDefaultPriority;
 
-	// We lay out children in the layout-children phase, react to the container's own
-	// layout-info component updates, descendant resize events (fit-content invalidation) and
-	// answer the measurement protocol (fit-content of nested containers). AddToFrameStack +
-	// the shared FrameTag publish us so descendants deliver their resize to the nearest container.
+	// Lays out children, reacts to own components and descendant resizes, answers measurement.
+	// AddToFrameStack + the shared tag let descendants reach the nearest container.
 	setSystemFlags(SystemFlags::HandleLayoutChildren | SystemFlags::HandleComponents
 			| SystemFlags::HandleSceneEvents | SystemFlags::HandleMeasure
 			| SystemFlags::HandleChildNodeEvents | SystemFlags::HandleChildComponents
@@ -99,12 +97,8 @@ bool LayoutSystem::init(LayoutMode mode) {
 	return true;
 }
 
-// Make sure the container always carries the matching container info component, so the
-// "parameters live on the parent node" contract holds even if the caller never set one.
-//
-// TableRow is the deliberate exception: its parameters are the TableColumnsComponent, which belongs
-// to whoever owns the rows (the table pass, or ui::TableView). A row that has not been stamped yet
-// simply lays nothing out - see layoutTableRow.
+// Ensures the container carries the component its mode reads. TableRow is exempt: its
+// TableColumnsComponent comes from the row's owner, and an unstamped row lays nothing out.
 void LayoutSystem::ensureModeComponent(Node *owner) {
 	switch (_mode) {
 	case LayoutMode::Grid:
@@ -255,24 +249,13 @@ void LayoutSystem::markItemDirty(NotNull<Node> node) {
 	}
 }
 
-/* THE SAME NEWS, TOLD ALL THE WAY UP: this node measures differently than it did.
-
-`markItemDirty` tells the node's own container, which is right for a change to how it is PLACED - a
-grow, a basis, an order - because nothing above that container was decided by it. An intrinsic size
-is the other case: a container sized by `fit-content` asked this node how tall it was and built its
-own height out of the answer, and so did the container above THAT. Dirtying one level leaves every
-one of those holding a measurement of a node that has since changed - a properties column that lost
-six rows kept the height of the selection before it, because the accordion section above it had
-already been measured and was never asked again.
-
-To the root rather than to the first non-measuring ancestor: which containers measured this one is
-not a question a node can answer, the flag is one bool, and it is set only when something really
-moved. */
+/* Unlike markItemDirty (one level, enough for placement changes), an intrinsic size change can
+stale every fit-content ancestor, so the flag goes to the root: a node cannot tell which ancestors
+measured it. */
 void LayoutSystem::markMeasureDirty(NotNull<Node> node) { node->markIntrinsicSizeDirty(); }
 
-// The four item setters follow one shape: write the component through an equality-guarded update,
-// and tell the PARENT when the write changed something. The guard is not an optimization here - see
-// markItemDirty for why an unguarded mark is a container that never stops re-laying-out.
+// Equality-guarded write that marks the parent only on a real change; an unguarded mark would make
+// the container re-lay-out forever.
 template <typename Info>
 static void LayoutSystem_setItemInfo(NotNull<Node> node, const Info &info) {
 	bool changed = false;
@@ -353,10 +336,8 @@ void LayoutSystem::setTableCell(NotNull<Node> node, const TableCellInfo &info) {
 
 void LayoutSystem::setTableColumns(NotNull<Node> node, const TableColumnsComponent &value) {
 	node->setOrUpdateComponent<TableColumnsComponent>([&](NotNull<TableColumnsComponent> c) {
-		// Compare everything EXCEPT the generation, then carry the old one forward and bump it only
-		// on a real change. Writing the caller's generation through would either re-lay-out every
-		// row on an unchanged pass, or (worse) let two writers hand out the same number for
-		// different geometry.
+		// Compare all but the generation; keep the old one and bump it only on a real change, so
+		// two writers never share a number for different geometry.
 		TableColumnsComponent next = value;
 		next.generation = c->generation;
 		if (next == *c) {
@@ -378,8 +359,8 @@ Size2 LayoutSystem::measureChildrenExtent() const {
 		}
 		const auto box = child->getBoundingBox();
 		ret.width = sprt::max(ret.width, box.getMaxX() + _scrollOffset.x);
-		// engine Y grows up, CSS scroll Y grows down: the content hangs BELOW the box, so its
-		// extent is measured from the box's top edge down to the lowest child edge
+		// engine Y grows up, CSS scroll Y grows down: the extent runs from the box's top edge
+		// down to the lowest child edge
 		ret.height = sprt::max(ret.height,
 				_owner->getContentSize().height - box.getMinY() - _scrollOffset.y);
 	}
@@ -448,12 +429,9 @@ bool LayoutSystem::handleMeasure(const MeasureConstraints &c, Size2 &result) {
 	}
 	result = measure(c);
 
-	// A scroll container does not grow to its content - that is what makes it a scroll container.
-	// Its intrinsic size on an overflow axis is the box it was already given, so neither a parent
-	// sizing it by fit-content nor the SELF-measure the engine runs whenever a child is added
-	// (Node::addChildNode -> markMeasureDirty -> Node::handleMeasure, which commits the answer) can
-	// swallow the scrollable area and leave nothing to scroll. The corollary is worth knowing:
-	// `height: fit-content` together with `overflow-y: auto` can never scroll.
+	// On an overflow axis the intrinsic size is the box already given, so neither a fit-content
+	// parent nor the self-measure on addChild swallows the scroll range. Consequence:
+	// `height: fit-content` with `overflow-y: auto` never scrolls.
 	const auto own = _owner->getContentSize();
 	if (_overflowX && own.width > 0.0f) {
 		result.width = own.width;
@@ -477,7 +455,7 @@ Size2 LayoutSystem::measure(const MeasureConstraints &c) {
 	return _owner->getContentSize();
 }
 
-// True when a layout engine computes this node's size FROM its content instead of taking the
+// True when a layout engine computes this node's size from its content instead of taking the
 // node's own content size as given: a fit-content flex item, or a grid item left to its content
 // on either axis.
 static bool LayoutSystem_isContentSized(Node *node) {
@@ -493,15 +471,9 @@ static bool LayoutSystem_isContentSized(Node *node) {
 	return false;
 }
 
-// Re-arm every ancestor container whose measured size can still depend on this subtree.
-//
-// The content-size bubble carries a resize outwards only as long as each container's OWN
-// ContentSize changes: the container node then delivers its own content-size event to the next
-// ancestor through the frame stack. That chain breaks at a content-sized container - a
-// fit-content item does NOT own its size, the container above it does, so re-laying out its
-// children leaves its ContentSize untouched and the ancestor never learns that the size it
-// measured from this subtree went stale. Walk out explicitly instead, stopping at the first
-// container whose size the content does not determine.
+// Re-arms ancestor containers whose measured size depends on this subtree. The content-size bubble
+// stops at a fit-content item (its ContentSize is set by its parent, so re-layout leaves it
+// unchanged); walk out explicitly until a container not sized by its content.
 static void LayoutSystem_invalidateMeasuredAncestors(Node *node) {
 	while (LayoutSystem_isContentSized(node)) {
 		auto parent = node->getParent();

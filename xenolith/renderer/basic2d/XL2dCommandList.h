@@ -139,21 +139,15 @@ struct SP_PUBLIC FrameContextHandle2d : public FrameContextHandle {
 
 	mem_pool::Map<uint64_t, ParticleSystemRenderInfo> particleEmitters;
 
-	// Remote render-session wire format for the 2D command batch (see XLCoreFrameRequestProxy.h).
-	// STUB this stage: the POD parts (lights/decorations) are easy, but CommandList/VertexData
-	// geometry is the hard part and is deferred.
+	// Remote render-session wire format for the 2D command batch (see XLCoreFrameRequestProxy.h;
+	// layout described in the .cc).
 	virtual bool serialize(const Callback<void(BytesView)> &) const override;
 	virtual bool deserialize(BytesView, Vector<uint32_t> *remoteDeps = nullptr) override;
 };
 
-// Mint an empty FrameContextHandle2d for a remote client's frame input.
-//
-// Every backend's vertex attachment consumes exactly this type and mints it exactly this way -- the
-// body touches no backend type at all. It lives here rather than being written once per backend
-// because "which input type the 2d vertex attachment takes" is a basic2d fact, and five copies of
-// it is five chances for one backend to quietly not support a remote client. See
-// core::Attachment::makeInputData, whose default null is what a queue that cannot serve a remote
-// frame reports.
+// Mint an empty FrameContextHandle2d for a remote client's frame input. Shared by every backend's
+// vertex attachment, since the input type is a basic2d fact. See core::Attachment::makeInputData,
+// whose default null means the queue cannot serve a remote frame.
 SP_PUBLIC Rc<core::AttachmentInputData> makeFrameContextInput(NotNull<core::RenderClientChannel>,
 		uint64_t windowId);
 

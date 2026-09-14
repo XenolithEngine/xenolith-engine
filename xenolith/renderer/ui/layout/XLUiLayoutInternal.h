@@ -25,23 +25,14 @@
 
 #include "XLUiLayoutSystem.h" // IWYU pragma: keep
 
-/* Implementation-private shared leaves of the LayoutSystem subunits.
-
-The layout backends live in one .cc each (XLUiLayoutFlex.cc, XLUiLayoutGrid.cc,
-XLUiLayoutTable.cc), all of them included into the module's single translation unit by
-XLUi.scu.cpp. What follows is what more than one of them needs, and therefore what cannot stay
-file-local to any single one.
-
-Helpers here are `inline` rather than `static` deliberately: with one TU, `static` would emit an
-unused-function warning in every subunit that includes the header without calling that particular
-helper. This header is not part of the module's API - nothing outside layout/ should include it. */
+/* Private helpers shared by the layout backends (Flex, Grid, Table subunits of XLUi.scu.cpp).
+Helpers are `inline`, not `static`, to avoid unused-function warnings in the single TU.
+Not part of the module API: include only from layout/. */
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// Can this node answer the content-measurement protocol at all? Either a system opted into it
-// (`SystemFlags::HandleMeasure` — Label's own, a flex container's, or one an application wrote),
-// or the precomputed MeasureComponent fallback is present. Both are resolved by measureNode();
-// this is only the cheap "is it worth asking" predicate, so it calls nothing.
+// True if the node can be measured: an enabled `SystemFlags::HandleMeasure` system or a
+// MeasureComponent. A cheap predicate; measureNode() does the actual measuring.
 inline bool LayoutSystem_canMeasure(Node *node) {
 	for (auto &it : node->getSystems()) {
 		if (it->isEnabled() && hasFlag(it->getSystemFlags(), SystemFlags::HandleMeasure)) {
@@ -51,9 +42,8 @@ inline bool LayoutSystem_canMeasure(Node *node) {
 	return node->getComponent<MeasureComponent>() != nullptr;
 }
 
-// Does the style give this node a definite size on the axis? That is what the resolver publishes
-// in MeasureComponent::normal (a per-axis value < 0 means "unspecified"), and it is the CSS
-// `width`/`height` of the item - which wins over content sizing.
+// True if the style gives the node a definite size on the axis (MeasureComponent::normal >= 0);
+// that CSS `width`/`height` wins over content sizing.
 inline bool LayoutSystem_hasDefiniteSize(Node *node, bool horizontal) {
 	if (auto mc = node->getComponent<MeasureComponent>()) {
 		return (horizontal ? mc->normal.width : mc->normal.height) >= 0.0f;
@@ -61,8 +51,8 @@ inline bool LayoutSystem_hasDefiniteSize(Node *node, bool horizontal) {
 	return false;
 }
 
-// Let every child re-derive what its style asks for before anything reads it. A child's systems
-// are themselves installed by the style pass, so this has to run before the layout looks at them.
+// Let every child apply its style; must run before layout inspects the children's systems,
+// which the style pass installs.
 inline void LayoutSystem_settleChildren(Node *owner) {
 	for (auto &child : owner->getChildren()) { child->settleForMeasure(); }
 }
@@ -79,11 +69,9 @@ inline void dispatchLayoutApplied(Node *node, const Size2 &size) {
 	}
 }
 
-// A child's intrinsic (style-requested) size - the INPUT to layout. An explicit per-axis size that
-// the style resolver published in a MeasureComponent wins; an axis it left unspecified (value < 0)
-// falls back to the child's current ContentSize. Keeping the requested size in a component rather
-// than in ContentSize is what lets the LayoutSystem be the SOLE writer of a child's ContentSize,
-// breaking the cycle where the style both writes ContentSize and has the layout read it back.
+// A child's style-requested size, the input to layout: MeasureComponent::normal per axis, or the
+// current ContentSize where unspecified (< 0). The style never writes ContentSize, so the
+// LayoutSystem stays its only writer.
 inline Size2 intrinsicSize(Node *node) {
 	Size2 cs = node->getContentSize();
 	if (auto mc = node->getComponent<MeasureComponent>()) {
@@ -104,20 +92,17 @@ struct GridTrackSize {
 	float position = 0.0f; // start offset from the content-box start along its axis
 };
 
-// One item's demand on a track axis, as track sizing sees it: which tracks it covers and how big
-// it wants to be. It is the entire coupling between an item model (grid item, table cell) and the
-// track algorithm, which is why grid and table can share the algorithm without sharing anything
-// else.
+// One item's demand on a track axis: the tracks it covers and the size it wants. The only input
+// track sizing takes from a grid item or table cell.
 struct TrackContribution {
 	uint32_t start = 0;
 	uint32_t span = 1;
 	float size = 0.0f;
 };
 
-// Resolve track base sizes along one axis: Fixed/Percent from their definition, Auto from the
-// contributions covering them (single-track first, then the deficit of spanning ones spread over
-// the Auto tracks they cover), Fraction from whatever free space is left. Defined in
-// XLUiLayoutGrid.cc - the track vocabulary is grid's - and used by the table backend too.
+// Resolve track base sizes along one axis: Fixed/Percent from the definition, Auto from covering
+// contributions (single-track first, then spanning deficits), Fraction from the remaining free
+// space. Defined in XLUiLayoutGrid.cc.
 SP_PUBLIC void resolveTrackSizes(Vector<GridTrackSize> &tracks, SpanView<TrackContribution> items,
 		float axisContent, float gap);
 

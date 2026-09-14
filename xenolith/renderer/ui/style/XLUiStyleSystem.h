@@ -36,24 +36,14 @@ struct SP_PUBLIC StyleSystemState {
 	uint32_t version = 0; // track system content update
 };
 
-/* Custom CSS properties declared on ONE node, outside any stylesheet.
-
-This is the per-element channel a stylesheet cannot express: a rule reaches a SET of nodes, so a
-value that differs per node — a tree row's depth, a progress bar's ratio, a chart bar's height —
-has nowhere to live in the sheet. Declared here, it participates in the cascade exactly like a
-`--name: value` declaration written for that node: it is inherited by the subtree, it is visible
-to `var()` in any declaration that node resolves, and being node-local it beats every rule that
-matched the same node.
+/* Custom CSS properties declared on one node, outside any stylesheet (per-node values such as a
+tree row's depth). They cascade like a `--name: value` declaration for that node, are inherited,
+and beat every matched rule. Values are raw text, parsed where substituted:
 
 	setStyleVariable(row, "--depth", "3");
-
 	.fs-row { padding-left: calc(8px + var(--depth, 0) * var(--indent)); }
 
-The value is raw text, like every custom property: it is parsed only where it is substituted, so
-the same variable can carry a length, a colour or a whole shorthand — and a typo is diagnosed at
-the use, not here.
-
-Changing it re-resolves the node and its subtree through the ordinary components-dirty path. */
+Changing it re-resolves the node and its subtree via components-dirty. */
 struct SP_PUBLIC StyleVariables {
 	static ComponentId Id;
 
@@ -61,8 +51,8 @@ struct SP_PUBLIC StyleVariables {
 	// `get("depth")` and `get("--DEPTH")` find the same entry.
 	Map<String, String> vars;
 
-	// Raw text of a property, or empty when this node does not declare it. Does NOT consult
-	// ancestors — inheritance happens during resolution, not here.
+	// raw text of a property, or empty when this node does not declare it; ancestors are not
+	// consulted
 	StringView get(StringView name) const;
 
 	bool operator==(const StyleVariables &) const = default;
@@ -75,38 +65,21 @@ SP_PUBLIC bool setStyleVariable(NotNull<Node>, StringView name, StringView value
 // Drop a property declared by setStyleVariable. Returns true when it was there.
 SP_PUBLIC bool removeStyleVariable(NotNull<Node>, StringView name);
 
-// Marker recording that THIS StyleResolver created the node's LayoutSystem. The
-// applier only removes layouts it added, so pug `flex` tags and programmatic
-// LayoutSystems (which carry no marker) are left untouched.
+// Marker: the StyleResolver created the node's LayoutSystem. It only removes layouts it added,
+// so pug `flex` tags and programmatic LayoutSystems are left untouched.
 struct StyleManagedLayout {
 	static ComponentId Id;
 };
 
-// Marker recording that THIS StyleResolver created the node's ScrollSystem, from a non-`visible`
-// `overflow`. Same contract as StyleManagedLayout: only a system the resolver added may the
-// resolver take away, so a scroll container built in code survives a pass that matched nothing.
+// Marker: the StyleResolver created the node's ScrollSystem from a non-`visible` `overflow`;
+// only such a system may the resolver remove.
 struct StyleManagedScroll {
 	static ComponentId Id;
 };
 
-// Marker recording that a SYSTEM on this node owns the layout of its children - it writes their
-// ContentSize and positions them itself. The exact counterpart of StyleManagedLayout: that one says
-// "the resolver created this layout", this one says "the resolver keeps out of it".
-//
-// It changes two decisions in StyleResolver:
-//
-// - a CSS width/height on a CHILD is handed to the owner as a MeasureComponent input instead of
-//   being committed with setContentSize, exactly as under a flex/grid container. Without it a
-//   container that lays its children out by other means (ui::DockSystem) would fight the resolver
-//   for ContentSize on every frame: style writes the size, the owner overwrites it, the resulting
-//   ContentSizeDirty re-runs the resolver;
-//
-// - `display: flex|grid` on THIS node neither creates nor reconfigures a LayoutSystem, so a
-//   stylesheet can neither silently reshape a hand-built layout nor add a second writer of the
-//   children's geometry beside the system that already owns them.
-//
-// Unlike FlexLayoutInfo / GridLayoutInfo it publishes no parameters, so no per-item component is
-// derived from it either - the owner system reads whatever it needs by itself.
+// Marker: a system on this node (e.g. ui::DockSystem) lays out its children. The resolver then
+// passes a child's CSS width/height as a MeasureComponent input instead of setContentSize, and
+// `display: flex|grid` on this node creates no LayoutSystem. Publishes no per-item parameters.
 struct SP_PUBLIC SystemManagedLayout {
 	static ComponentId Id;
 
@@ -140,17 +113,9 @@ public:
 	void setMediaParameters(const document::MediaParameters &);
 	const document::MediaParameters &getMediaParameters() const { return _media; }
 
-	/* Set or clear one `@media (x-option: name)` flag, and re-resolve the subtree.
-
-	The engine sets one of these itself: `rtl`, seeded from `locale::getTextDirection()` in
-	updateMedia and re-seeded when the locale changes. That is what lets a stylesheet say
-
-	    @media (x-option: rtl) { :root { direction: rtl; } }
-
-	and lets an application ship a right-to-left interface without writing any code at all. It is
-	also the channel for the branches `direction` cannot express - which icon a disclosure arrow
-	uses, which half of a title bar the window buttons sit on - the job CSS gives `:dir()`, which
-	this selector subset does not have. */
+	/* Set or clear one `@media (x-option: name)` flag, and re-resolve the subtree. The engine
+	seeds `rtl` from `locale::getTextDirection()` in updateMedia and on locale change, e.g.
+	`@media (x-option: rtl) { :root { direction: rtl; } }`. */
 	void setMediaOption(StringView name, bool enabled);
 	bool hasMediaOption(StringView name) const { return _media.hasOption(name); }
 
@@ -168,8 +133,8 @@ public:
 protected:
 	void updateMedia();
 
-	// Keeps the `rtl` media flag in step with `locale::setLocale`. An EventListener is itself a
-	// System, so it rides on the same owner: added in handleAdded, subscribed in handleEnter.
+	// keeps the `rtl` media flag in step with `locale::setLocale`; added to the owner in
+	// handleAdded, subscribed in handleEnter
 	EventListener *_localeListener = nullptr;
 	sprt::dispatch::BusDelegate *_localeDelegate = nullptr; // owned by the listener
 

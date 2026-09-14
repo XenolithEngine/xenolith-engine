@@ -34,15 +34,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 static sprt::atomic<uint32_t> s_eventId = 1;
 static uint32_t s_eventIdMask = 0;
 
-/* ---- XL_DEP_ACCOUNT=1: what a gating dependency's life was spent on ------------------------------
-
-Same grammar as the other instruments: unset or `0` is off, anything else on. Off costs one load and
-a branch per signalled event, which is a handful per frame.
-
-The two halves are reported APART because they have different owners and different fixes. `queued` is
-the event sitting in hand, minted but not yet submitted - time that belongs to whoever decides when
-to submit, and which no amount of making the work faster will remove. `work` is the queue's own half.
-A `queued` that dwarfs `work` is a scheduling problem wearing a performance problem's clothes. */
+/* XL_DEP_ACCOUNT=1 logs a gating dependency's life when it fires: `queued` (minted but not yet
+submitted, owned by the submitter) and `work` (the queue's part), reported separately. Unset or `0`
+is off. */
 static bool DependencyEvent_accountEnabled() {
 	static const bool s_value = [] {
 		auto v = ::getenv("XL_DEP_ACCOUNT");
@@ -80,13 +74,11 @@ bool DependencyEvent::signal(Queue *q, bool success) {
 
 	const bool signaled = _queues.empty();
 
-	// `!_signaled` so the account reports the TRANSITION and not every later call: signal() on an
-	// event whose queue set is already empty answers true again, and the log read as two batches.
+	// `!_signaled` so the account reports the transition only: signal() on an event with an empty
+	// queue set answers true again.
 	if (signaled && !_signaled.load() && DependencyEvent_accountEnabled()) {
 		const auto now = sp::platform::clock(ClockType::Monotonic);
-		// `queued` is absent rather than zero where nobody stamped the hand-over: an event whose
-		// sender does not call markSent can still report its total, and a zero there would read as
-		// "submitted instantly", which is the one wrong answer.
+		// Without markSent, `queued` is omitted rather than reported as zero.
 		if (_sentClock) {
 			log::source().debug("dep::account", "tag=", _tag, " id=", _id,
 					" queued=", double(_sentClock - _clock) / 1'000.0,

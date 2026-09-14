@@ -33,15 +33,10 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
-// The draw plan of a 2d frame, with no backend in it.
-//
-// A frame's command list is walked once into per-material/per-state write plans, the plans are
-// then flattened into three flat arrays (vertexes, indexes, transforms) plus a list of VertexSpan
-// draws over them. Nothing here touches a GPU: the arrays are plain memory and a VertexSpan is
-// just the arguments of an indexed draw. A Vulkan backend maps device buffers and hands over their
-// pointers; a software rasterizer allocates host arrays and reads the same bytes back. Extracted
-// from XL2dVkVertexPass so the two cannot drift - the plan is subtle (packed vs instanced chains,
-// painter-order sorting, CPU atlas resolution) and one wrong index shows up as a blank frame.
+// The backend-independent draw plan of a 2d frame. The command list is walked once into
+// per-material/per-state write plans, then flattened into vertex, index and transform arrays plus
+// VertexSpan draws over them. A Vulkan backend passes mapped device buffers; a software rasterizer
+// passes host arrays.
 
 // Where the plan writes. Three raw pointers plus the running offsets into them; the caller sizes
 // the allocations from VertexPlan::globalWritePlan after the command walk.
@@ -55,16 +50,15 @@ struct SP_PUBLIC VertexWriteTarget {
 	uint32_t transtormOffset = 0;
 };
 
-// The seam between the plan and whoever runs it: what the plan reads from the frame, and what it
-// produces. Deliberately free of backend types - a backend keeps its buffers and devices in its
-// own processor object and passes only this.
+// The seam between the plan and whoever runs it: what the plan reads from the frame and what it
+// produces. Free of backend types.
 struct SP_PUBLIC VertexPlanContext {
 	// inputs
 	FrameContextHandle2d *input = nullptr;
 	const core::MaterialSet *materialSet = nullptr;
 
-	// Damage is collected by the very same walk: the commands are visited once anyway, and
-	// deferred results are already resolved there, so their bounds are exact.
+	// Damage is collected by the same walk, where deferred results are already resolved, so their
+	// bounds are exact.
 	bool collectDamage = false;
 	DamageCollector *damage = nullptr;
 
@@ -73,10 +67,8 @@ struct SP_PUBLIC VertexPlanContext {
 	Vector<VertexSpan> shadowSolidSpans;
 	Vector<VertexSpan> shadowSdfSpans;
 
-	// Kept apart from materialSpans, and that separation is the whole point: the backend has to be
-	// able to draw these AFTER the frame has been copied out (see FrameCapture). Merged into
-	// materialSpans they would be indistinguishable - the per-bucket counters below are statistics,
-	// not boundaries.
+	// Kept apart from materialSpans so the backend can draw them after the frame is copied out (see
+	// FrameCapture); the per-bucket counters below are statistics, not boundaries.
 	Vector<VertexSpan> overlaySpans;
 
 	uint32_t solidCmds = 0;
@@ -84,13 +76,18 @@ struct SP_PUBLIC VertexPlanContext {
 	uint32_t transparentCmds = 0;
 	uint32_t overlayCmds = 0;
 
+	// Surface commands (not spans) moved into painter's order because transparent geometry behind
+	// them covers where they draw - see VertexPlan::resolveSurfaceOrder.
+	uint32_t surfacePromotedCmds = 0;
+
 	const core::Material *getMaterialById(core::MaterialId id) const {
 		return materialSet ? materialSet->getMaterialById(id) : nullptr;
 	}
 };
 
 // Lives in a frame-local pool and is deleted when the frame's vertex data has been written.
-// Allocate with `new (pool) VertexPlan` and `delete` it (never sprt::__delete - see the pool rules).
+// Allocate with `new (pool) VertexPlan` and `delete` it (never sprt::__delete - see the pool
+// rules).
 struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 							  public memory::PoolInterface::AllocBaseType {
 	using WriteTarget = VertexWriteTarget;
@@ -115,7 +112,7 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 	struct StatePlanInfo {
 		const StateData *stateData = nullptr;
 
-		/* Command order IS painter's order, and the chains keep it (append at the tail). */
+		/* Command order is painter's order, and the chains keep it (append at the tail). */
 		VertexDataPlanInfo *instanced = nullptr;
 		VertexDataPlanInfo *instancedTail = nullptr;
 		VertexDataPlanInfo *packed = nullptr;
@@ -129,14 +126,9 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 		uint32_t gradientStart = 0;
 		uint32_t gradientCount = 0;
 
-		/* WHEN THIS STATE WAS FIRST SEEN, in the traversal that built the plan - painter's order,
-		the same clock `VertexDataPlanInfo::order` is stamped from.
-
-		Kept because the states of one material are held in a `Map<StateId, …>`, and a StateId is an
-		allocation counter: it says when a state VALUE was interned, which has nothing to do with
-		when the geometry carrying it is drawn. Drawing them in StateId order is therefore arbitrary,
-		and for a plan whose overlap is resolved by submission order alone - the SURFACE plan blends
-		and does not write depth - arbitrary is wrong. See the note in drawWritePlan. */
+		/* When this state was first seen in the traversal (painter's order, same clock as
+		`VertexDataPlanInfo::order`). StateId is an interning counter unrelated to draw order, and
+		the surface plan resolves overlap by submission order; see drawWritePlan. */
 		uint32_t order = 0;
 
 	private:
@@ -163,9 +155,8 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 
 	Map<SpanView<ZOrder>, float, ZOrderLess> paths;
 
-	// Overlay zPaths are kept apart from `paths` because they do not take part in the content's depth
-	// ordering at all: updatePathsDepth puts every one of them at the near plane. See it for why
-	// zero, and not merely a band below the content.
+	// Overlay zPaths are kept apart from `paths`: they take no part in content depth ordering, and
+	// updatePathsDepth puts all of them at the near plane.
 	Map<SpanView<ZOrder>, float, ZOrderLess> overlayPaths;
 
 	// fill write plan
@@ -181,8 +172,8 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 	Map<SpanView<ZOrder>, Map<core::MaterialId, MaterialWritePlan>, ZOrderLess>
 			transparentWritePlan;
 
-	// write plan for the Overlay level: drawn last, after the frame has been captured. Shaped like
-	// the transparent plan - keyed by zPath - so painter's order is what orders it.
+	// write plan for the Overlay level: drawn last, after the frame has been captured. Keyed by
+	// zPath like the transparent plan, so painter's order orders it.
 	Map<SpanView<ZOrder>, Map<core::MaterialId, MaterialWritePlan>, ZOrderLess> overlayWritePlan;
 
 	Extent3 surfaceExtent;
@@ -193,34 +184,59 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 	// vertex shader; a backend without buffer device addresses (or without shaders at all) sets it.
 	bool hasGpuSideAtlases = false;
 
-	// The CPU atlas resolution normally consumes the object id: it becomes texture coordinates and
-	// the field is cleared. A backend that draws each glyph from its own storage rather than from a
-	// packed atlas image needs the id to survive into the vertex, and sets this.
+	// CPU atlas resolution normally turns the object id into texture coordinates and clears it. A
+	// backend drawing each glyph from its own storage sets this to keep the id in the vertex.
 	bool keepAtlasObjects = false;
 
 	// FlatPass has no depth buffer: draws are emitted in painter's order and particles are dropped
 	bool flatOrder = false;
 	uint32_t orderCounter = 0;
 
+	/* A surface command waits for the whole list before it is given a plan. The surface plan blends
+	without depth writes and is drawn before the transparent one, so transparent geometry behind a
+	surface would paint over it. Such surfaces are drawn in painter's order; the rest stay batched.
+	Which ones qualify is known only after all commands, see `resolveSurfaceOrder`. */
+	struct PendingSurface {
+		const core::Material *material = nullptr;
+		const Command *command = nullptr;
+		const CmdInfo *info = nullptr;
+		SpanView<InstanceVertexData> vertexes;
+		Rect bounds; // clip space
+		bool bounded = false;
+		uint32_t order = 0; // the first of the traversal stamps reserved for it
+	};
+
+	// Where something drawn in painter's order covers, in clip space, for the overlap test.
+	struct PainterBounds {
+		SpanView<ZOrder> zPath;
+		Rect bounds;
+		bool bounded = false;
+	};
+
+	Vector<PendingSurface> pendingSurfaces;
+	Vector<PainterBounds> painterBounds;
+
+	// The clip-space box a command's instances cover; false when it cannot be known.
+	static bool computeClipBounds(const Command *, const CmdInfo *, SpanView<InstanceVertexData>,
+			Rect &out);
+
+	void deferSurface(const core::Material *, const Command *, const CmdInfo *,
+			SpanView<InstanceVertexData>);
+	void notePainter(const Command *, const CmdInfo *, SpanView<InstanceVertexData>);
+
 #if XL_FRAME_ACCOUNT
-	/* The frame's deferred account, gathered here because this is where the frame CONSUMES what
-	was deferred - see pushDeferred for what each one means and why the first two may not be added
-	together. Nanoseconds. */
+	/* The frame's deferred account, gathered where deferred results are consumed (see pushDeferred;
+	work and wait must not be summed). Nanoseconds. */
 	uint64_t deferredWorkTime = 0; // summed across worker threads; may exceed the frame
 	uint64_t deferredWaitTime = 0; // this thread standing still; always part of the frame
 	uint32_t deferredCount = 0; // results consumed
 	uint32_t deferredWaited = 0; // of those, how many were not finished when we got there
 
-	/* The stage's own two halves, filled by pushAll.
-
-	Kept here rather than timed from the backend, because pushAll is where the two are and a caller
-	outside it could only report their sum - which is the number that was already known and did not
-	say anything. */
+	/* The stage's own two halves, filled by pushAll. */
 	uint64_t writeTime = 0; // copying vertexes, indexes and transforms into the buffers
 	uint64_t spanTime = 0; // turning the write plans into draw spans, painter order included
 
-	/* And the command walk splits in two as well: collecting a damage rectangle for every instance,
-	or building the write plan itself. Only a measurement says which half is the cost. */
+	/* The command walk split in two: per-instance damage collection, and building the plan. */
 	uint64_t damageTime = 0;
 	uint64_t planTime = 0;
 #endif
@@ -246,6 +262,12 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 	void pushDeferred(Context &, const Command *c, const CmdDeferred *cmd);
 	void pushParticleEmitter(Context &, const Command *c, const CmdParticleEmitter *cmd);
 
+	/* Give every deferred surface command its plan: painter's order when geometry already in
+	painter's order lies behind it by zPath and covers where it draws, the surface plan otherwise.
+	Call once, after the last `pushCommand` and before the buffers are sized. A promoted surface
+	counts as painter geometry for surfaces in front of it. No-op in flat order. */
+	void resolveSurfaceOrder(Context &);
+
 	void updatePathsDepth();
 
 	void pushInitial(WriteTarget &writeTarget);
@@ -257,8 +279,8 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 			Map<core::MaterialId, MaterialWritePlan> &writePlan, mem_std::Vector<VertexSpan> &out,
 			bool withShadows);
 
-	// `overlay` picks which bucket is sorted and where the spans go. Two separate sorts, because the
-	// two sets are recorded by two separate passes.
+	// `overlay` picks which bucket is sorted and where the spans go; the two sets are recorded by
+	// separate passes.
 	void drawWritePlanFlat(Context &, WriteTarget &writeTarget, bool overlay);
 
 	// The depth a zPath draws at, from whichever of the two bands it belongs to

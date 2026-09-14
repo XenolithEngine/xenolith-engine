@@ -29,12 +29,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-// Scene of a natively materialized SubWindow: a SceneContent2d carrying whatever the handle's
-// ContentBuilder produced.
-//
-// The builder is reached through the SubWindow handle the window was created with, so this scene
-// needs no id lookup — which is the whole point, and also why the same builder can serve the
-// overlay path unchanged.
+// Scene of a natively materialized SubWindow: a SceneContent2d carrying what the handle's
+// ContentBuilder produced. The builder is reached through the handle, so no id lookup is needed
+// and the same builder serves the overlay path.
 class SP_PUBLIC SubWindowScene : public basic2d::Scene2d {
 public:
 	virtual ~SubWindowScene() = default;

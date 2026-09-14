@@ -226,7 +226,7 @@ bool Image::init(Device &dev, const core::ImageData &data) {
 	}
 
 	if (!data.data.empty() || data.memCallback || data.stdCallback) {
-		// Blocks, not pixels: `bytesPerRow` is a row of BLOCKS, and for a compressed format that is
+		// Blocks, not pixels: `bytesPerRow` is a row of blocks, and for a compressed format that is
 		// neither the pixel width nor the same number of rows.
 		uint64_t expected = core::getFormatImageSize(info.format, info.extent);
 

@@ -55,7 +55,7 @@ public:
 };
 
 // Remote endpoint: would forward the font gAPI to the server (atlas compile + glyph raster) and
-// receive atlas-ready callbacks. STUB this stage (no transport yet).
+// receive atlas-ready callbacks. Currently a stub (no transport).
 class SP_PUBLIC FontGapiProxy final : public FontGapi {
 public:
 	virtual ~FontGapiProxy();

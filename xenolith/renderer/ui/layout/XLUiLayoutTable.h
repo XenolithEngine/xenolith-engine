@@ -27,29 +27,16 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
-/* CSS table placement: a column template shared by every row, colspan / rowspan, and collapsed
-borders.
+/* CSS table placement: a column template (`GridTrack`s from `parseGridTemplate`) shared by every
+row, colspan / rowspan, and collapsed borders.
 
-The column tracks are `GridTrack`s parsed by `parseGridTemplate` from `grid-template-columns` - a
-table's columns ARE a track list, and giving them a second spelling would buy nothing. What a table
-adds over a grid is that the tracks are resolved ONCE and then imposed on every row, and that the
-rows are separate nodes rather than cells of one container.
+- `LayoutMode::Table` runs on the container: measures the cells of every row, resolves the column
+  tracks and stamps them onto each row as a `TableColumnsComponent`.
+- `LayoutMode::TableRow` runs on a row: places its cells into the stamped columns. Rows of a
+  virtualized `ui::TableView` get the same component from the view instead.
 
-That last point is why there are two modes rather than one:
-
-- `LayoutMode::Table` runs on the container. It measures the cells of every row, resolves the
-  column tracks, and stamps the result onto each row as a `TableColumnsComponent`.
-- `LayoutMode::TableRow` runs on a row. It places that row's cells into the columns the stamped
-  component describes.
-
-A virtualized view (`ui::TableView`) keeps its rows under a ScrollController's root, not under a
-table node, so a row there cannot walk up to find its columns. It carries the stamped component
-instead - and a row that IS a child of a table carries exactly the same thing. One code path, and
-the only difference is who wrote the component.
-
-Borders are geometry, not paint: the layout resolves the CSS border conflicts and publishes a flat
-list of rects to fill in a `TableBordersComponent`. A LayoutSystem must never create nodes, so
-drawing them is a consumer's job - see `ui::TableBorderPainter`. */
+Borders are published as rects in a `TableBordersComponent`; a LayoutSystem never creates nodes,
+so drawing is up to a consumer such as `ui::TableBorderPainter`. */
 
 using stappler::document::BorderCollapse;
 using stappler::document::BorderStyle;
@@ -100,12 +87,9 @@ struct SP_PUBLIC TableLayoutInfo {
 	bool operator!=(const TableLayoutInfo &) const = default;
 };
 
-/* Resolved column geometry: the OUTPUT of a Table pass and the INPUT of a TableRow pass.
-
-SINGLE WRITER. Either the table (`LayoutMode::Table`) or the widget that owns the rows
-(`ui::TableView`) writes this; nothing reads it in order to decide what to write. It is the one
-component in this header with that dual role, and a second writer would make two rows disagree
-about where column 3 starts. */
+/* Resolved column geometry: the output of a Table pass and the input of a TableRow pass.
+Single writer: either the table (`LayoutMode::Table`) or the row owner (`ui::TableView`), never
+both, or rows would disagree on column positions. */
 struct SP_PUBLIC TableColumnsComponent {
 	static ComponentId Id;
 
@@ -127,16 +111,16 @@ struct SP_PUBLIC TableColumnsComponent {
 	GridAlign justifyItems = GridAlign::Stretch;
 	GridAlign alignItems = GridAlign::Stretch;
 
-	// Columns already taken by a rowspan cell that began in an EARLIER row; this row's own cells
-	// skip them. One byte per column, mirroring layoutGrid's occupancy grid.
+	// columns taken by a rowspan cell from an earlier row, skipped by this row's cells;
+	// one byte per column
 	Vector<uint8_t> occupiedColumns;
 
 	// Heights of this row and the rows below it, so a `rowSpan > 1` cell can size itself. [0] is
 	// this row. A virtualized view fills in only the rows it has materialized.
 	Vector<float> spanRowHeights;
 
-	// Bumped by the writer whenever the geometry really changed; a row re-lays-out when it moves.
-	// Do NOT bump it on an unchanged layout pass - a view keys node reuse off it.
+	// Bumped by the writer only when the geometry changed; a row re-lays-out when it moves.
+	// Don't bump it on an unchanged pass: a view keys node reuse off it.
 	uint64_t generation = 0;
 
 	bool operator==(const TableColumnsComponent &) const = default;
@@ -157,11 +141,8 @@ struct SP_PUBLIC TableRowInfo {
 	bool operator!=(const TableRowInfo &) const = default;
 };
 
-// Component attached to a *cell* node, a direct child of a row.
-//
-// A cell has no explicit line placement on purpose: its column is its POSITION in the row, after
-// whatever a rowspan from above already occupies - exactly like HTML, and unlike a grid item.
-// Placing a box on named lines is what grid mode is for.
+// Component attached to a *cell* node, a direct child of a row. A cell's column is its position
+// in the row, after the columns occupied by rowspans from above (as in HTML).
 struct SP_PUBLIC TableCellInfo {
 	static ComponentId Id;
 
@@ -190,14 +171,9 @@ struct SP_PUBLIC TableBorderRect {
 	bool operator==(const TableBorderRect &) const = default;
 };
 
-/* Collapsed-border geometry produced by a layout pass.
-
-The LayoutSystem never creates nodes, so this component is the entire handoff: a consumer reads it
-and turns the rects into draw commands. `ui::TableBorderPainter` is the one shipped with the kit;
-an application is free to paint them itself.
-
-Written on the node whose content box the rects are expressed in - the container for a static
-table (every line), or the ROW for a virtualized one (that row's own lines only). */
+/* Collapsed-border geometry produced by a layout pass, painted by a consumer (e.g.
+`ui::TableBorderPainter`). Written on the node whose content box the rects use: the container
+for a static table (all lines), or each row of a virtualized one (that row's lines). */
 struct SP_PUBLIC TableBordersComponent {
 	static ComponentId Id;
 
@@ -208,7 +184,7 @@ struct SP_PUBLIC TableBordersComponent {
 	bool operator!=(const TableBordersComponent &) const = default;
 };
 
-// One cell as the collapse pass sees it: its place in the grid, and its border box in the OUTPUT
+// One cell as the collapse pass sees it: its place in the grid and its border box in the output
 // coordinate space.
 struct SP_PUBLIC TableCellBox {
 	uint32_t column = 0;
@@ -219,28 +195,15 @@ struct SP_PUBLIC TableCellBox {
 	TableBorderEdge top, right, bottom, left;
 };
 
-/* Resolve the CSS border conflicts between adjacent cells and emit the collapsed borders as a flat
-list of rects to fill, in the same space as `TableCellBox::box`.
-
-A free function rather than a method because collapsing is a function of a GRID of cells, and both
-a whole table and a single virtualized row have one.
-
-`outer` is the table's own border, standing in for the missing neighbour at the edges of the grid,
-in the order top / right / bottom / left. Rects are appended to `out`, which is cleared first. */
+/* Resolve CSS border conflicts between adjacent cells into rects in the `TableCellBox::box` space.
+`outer` is the table's own border (top / right / bottom / left), used at the grid edges.
+`out` is cleared first. */
 SP_PUBLIC void collapseTableBorders(SpanView<TableCellBox> cells, uint32_t columnCount,
 		uint32_t rowCount, const TableBorderEdge (&outer)[4], Vector<TableBorderRect> &out);
 
-/* Resolve a column track list into the widths and offsets a row is laid out with, and write them
-into `out.columns` / `out.contentWidth`.
-
-This is the same track sizing the Table pass runs, exposed because a VIRTUALIZED table has to do it
-without a table container: ui::TableView owns its rows and must hand them a geometry no container
-computed. Sharing the routine is what keeps a TableView and a static `display: table` from
-disagreeing about where column 3 starts.
-
-`available` is the content width already net of padding and of the inter-column spacing. There are
-no content contributions: a virtualized view cannot measure rows it has not built, so an `Auto`
-track resolves to zero here rather than to its content - size those columns with `fr` or a length.
+/* Resolve a column track list into `out.columns` / `out.contentWidth` with the Table pass's track
+sizing, for rows without a table container (ui::TableView). `available` excludes padding and
+column spacing. No content contributions: `Auto` tracks resolve to zero, so use `fr` or lengths.
 Nothing else in `out` is touched, `generation` included. */
 SP_PUBLIC void resolveTableColumns(SpanView<GridTrack> tracks, float available, float spacingH,
 		float paddingLeft, TableColumnsComponent &out);

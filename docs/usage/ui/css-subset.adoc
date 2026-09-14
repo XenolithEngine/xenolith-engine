@@ -697,6 +697,16 @@ Two things that are **not** alternatives to z-order:
   depth; the surface and transparent passes only test against it. So a node moved
   to `Transparent` is still hidden by anything opaque in front of it — moving a
   bar to `Transparent` does not lift it above the content. [`XL_RENDER_LEVEL_TEST`]
+  Neither the surface pass nor the transparent one writes depth, and the transparent
+  pass is drawn second - so, left alone, transparent geometry BEHIND a surface would
+  paint over it (a label over a picture with an alpha channel vanished that way). The
+  2d vertex plan therefore holds every surface command until the whole list is seen,
+  and draws in painter's order, with the transparent geometry, exactly the surfaces
+  that transparent geometry lies behind by zPath AND overlaps in clip space; a surface
+  promoted that way counts for the ones in front of it, and the rest stay batched by
+  material. `DrawStat::surfacePromotedCmds` counts them. Flat-order backends (GLES,
+  software) draw everything in painter's order already. [`XL_RENDER_LEVEL_TEST`,
+  `tests/window/render-level-check.py`]
 * `position: absolute` takes the node out of the flow but does not change its
   z-order; combine the two when you want both.
 
@@ -801,6 +811,11 @@ What you must know, because none of it matches the web exactly:
 * **`position: absolute` children do not scroll.** They are viewport-pinned overlays,
   which is what a sticky header, a footer or the scrollbar itself wants. (CSS agrees
   for a `position: static` scroll container, which is every one of them here.)
+* **The clip is a `DynamicStateSystem` of the ScrollSystem's own**, never one the
+  node already carried. A `ui::Panel` is a VectorSprite and ships with one for its
+  image's crop — created `DoNotApply` and switched off again whenever the image is
+  placed — and adopting it made `overflow` on any Panel (a table cell, a card) clip
+  nothing, while every component read as clipped. [`tests/window/overflow-check.py`]
 * **`overflow: hidden` clips to the bounding RECTANGLE.** The scissor is an
   axis-aligned integer rect in window pixels: `border-radius` corners are not
   followed, a rotated container clips to its axis-aligned bounding box, and a

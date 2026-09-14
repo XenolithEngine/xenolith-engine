@@ -75,10 +75,8 @@ SP_EXTERN_C JNIEXPORT void ANativeActivity_onCreate(ANativeActivity *activity, v
 #else
 
 #if SPRT_HOSTED_RTOS
-// RTOS flat build: the RTOS build system renames main() in the app source to
-// xxx_main, so the app wrapper needs a C-linkage entry point it can call.
-// Expose the engine run as xenolith_main; the app's own (renamed) main()
-// calls this.
+// RTOS flat build: the RTOS build system renames the app's main() to xxx_main, so the engine run
+// is exposed as the C-linkage xenolith_main for that renamed main() to call.
 extern "C" int xenolith_main(int argc, const char **argv) {
 #else
 int main(int argc, const char *argv[]) {

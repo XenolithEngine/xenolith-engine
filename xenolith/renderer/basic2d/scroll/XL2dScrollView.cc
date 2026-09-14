@@ -113,10 +113,8 @@ bool ScrollView::init(Layout l) {
 		return false;
 	}
 
-	// The track is a node of its own rather than an inflated thumb. Touch padding grows a box on
-	// all four sides, so a 3pt thumb widened enough to grab would also grow that far along the
-	// track and swallow the region a track click has to claim - and there would still be nothing
-	// to measure `track - thumb` against. Same shape, and the same reason, as ui::Slider.
+	// The track is a separate node rather than an inflated thumb: touch padding grows a box on all
+	// sides, so a grabbable thumb would swallow the track's click region. Same as ui::Slider.
 	_indicatorTrack = addChild(Rc<LayerRounded>::create(Color4F(0.0f, 0.0f, 0.0f, 0.0f),
 									   _indicatorThicknessActive / 2.0f),
 			ZOrder(1));
@@ -124,14 +122,8 @@ bool ScrollView::init(Layout l) {
 	_indicatorTrack->setName("scroll-indicator-track");
 	_indicatorTrack->setAnchorPoint(Vec2(1, 0));
 
-	/* The track's opacity is its own paint, not the group's.
-
-	Opacity multiplies down a subtree, and the track spends almost all of its life at ZERO - it is
-	revealed under the pointer and invisible otherwise. The thumb is its child for placement only,
-	so with the cascade left on the bar would be drawn only while the pointer was on the bar, and
-	invisible exactly when it is the one thing telling the user where they are. The flag belongs
-	here rather than on the thumb: a node's own flag is what decides whether ITS children inherit.
-	Visibility still cascades, so hiding the track still hides both. */
+	/* The track's opacity is its own paint: it stays at zero unless hovered, and the thumb is its
+	child for placement only, so opacity must not cascade to it. Visibility still cascades. */
 	_indicatorTrack->setCascadeOpacityEnabled(false);
 
 	_indicator = _indicatorTrack->addChild(
@@ -141,22 +133,16 @@ bool ScrollView::init(Layout l) {
 	_indicator->setAnchorPoint(Vec2(1, 0));
 
 
-	/* The listener goes on the TRACK, and it is served before the content's own.
-
-	InputListenerStorage collects listeners in visit order and walks them BACKWARDS, and a node
-	visits itself before its z >= 0 children - so the track, a ZOrder(1) child, registers after the
-	ScrollView's own listener and is therefore reached first. Order is not exclusivity, though:
-	a Processed result does not stop the walk, so the Begin is swallowed outright and the swipe
-	takes the pointer exclusively as soon as it starts. */
+	/* The listener goes on the track, which is served before the content's own:
+	InputListenerStorage walks listeners backwards in visit order, and the ZOrder(1) track registers
+	after the ScrollView. A Processed result does not stop the walk, so the Begin is swallowed and
+	the swipe takes the pointer exclusively. */
 	_indicatorListener = _indicatorTrack->addSystem(Rc<InputListener>::create());
 	_indicatorListener->setSwallowEvent(InputEventName::Begin);
 
-	/* The device subscription goes on the CONTENT's listener, not on the one above.
-
-	The track's listener is switched off wherever no pointing device exists - that is what keeps a
-	transparent strip from swallowing presses on a touch screen - and a listener that is off
-	receives nothing, so it could never learn that a mouse had been plugged in and switch itself
-	back on. The view's own listener is never disabled, so it is the one that can. */
+	/* The device subscription goes on the content's listener: the track's listener is disabled
+	where no pointing device exists (so a transparent strip does not swallow touches), and a
+	disabled listener would never learn a mouse was plugged in. */
 	_inputListener->setWindowStateCallback([this](core::WindowState state, core::WindowState) {
 		setIndicatorHasPointer(hasFlag(state, core::WindowState::InputPointer));
 		return false;
@@ -165,9 +151,8 @@ bool ScrollView::init(Layout l) {
 	_indicatorListener->addSwipeRecognizer(
 			[this](const GestureSwipe &s) -> bool {
 		switch (s.event) {
-		// secondTouch, not midpoint: for a one-pointer swipe the midpoint lags a full event behind
-		// the pointer, which puts the thumb one move short of wherever the drag ended. Same field,
-		// and the same reason, as ui::Slider and ui::DockSplitter.
+		// secondTouch, not midpoint: for a one-pointer swipe the midpoint lags one event behind the
+		// pointer. Same as ui::Slider and ui::DockSplitter.
 		case GestureEvent::Began: return handleIndicatorDragBegin(s.secondTouch);
 		case GestureEvent::Activated: handleIndicatorDragMove(s.secondTouch); return true;
 		case GestureEvent::Ended:
@@ -175,19 +160,13 @@ bool ScrollView::init(Layout l) {
 		}
 		return false;
 	},
-			// threshold 0 with sendThreshold: a handle has to follow the pointer from the first
-			// pixel rather than jump once the gesture has travelled the tap tolerance. Same
-			// settings, and the same reason, as ui::Slider's and ui::DockSplitter's.
+			// threshold 0 with sendThreshold: a handle follows the pointer from the first pixel.
+			// Same settings as ui::Slider and ui::DockSplitter.
 			InputSwipeInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}),
 				0.0f, true});
 
-	/* The press location, recorded before anything moves.
-
-	A swipe's Began arrives only once the gesture has been recognized, so the pointer has ALREADY
-	travelled by then - and computing the grab from that point measures the thumb against a pointer
-	that has moved while the thumb has not. The grab then absorbs that first step and the thumb
-	trails the cursor by it for the rest of the drag. The press is the only event that says where
-	the user actually took hold. */
+	/* Records the press location: a swipe's Began arrives after recognition, when the pointer has
+	already moved, and grabbing from there would leave the thumb trailing the cursor. */
 	_indicatorListener->addPressRecognizer([this](const GesturePress &press) -> bool {
 		if (press.event == GestureEvent::Began) {
 			_indicatorPress = press.pos;
@@ -202,9 +181,8 @@ bool ScrollView::init(Layout l) {
 		return true;
 	}, InputTapInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}), 1});
 
-	// Hover through the InteractiveComponent rather than a flag of our own: InteractiveState is
-	// exactly the set of CSS pseudo-classes, so the same call that reveals the track is what makes
-	// `scroll-indicator-track:hover` match. One source of the state, not two.
+	// Hover goes through the InteractiveComponent, so the same state makes
+	// `scroll-indicator-track:hover` match.
 	_indicatorListener->addMouseOverRecognizer([this](const GestureData &data) {
 		switch (data.event) {
 		case GestureEvent::Began: handleIndicatorHover(true); break;
@@ -263,8 +241,8 @@ void ScrollView::handleContentSizeDirty() {
 
 void ScrollView::handleLayoutChildren() {
 	ScrollViewBase::handleLayoutChildren();
-	// See the note on the declaration: this is the first point at which the resolved direction is
-	// certainly this frame's, so it is where the bar's side is decided.
+	// First point at which the resolved direction is certainly this frame's, so the bar's side is
+	// decided here.
 	updateIndicatorPosition();
 }
 
@@ -283,8 +261,8 @@ void ScrollView::setOverscrollVisible(bool value) {
 bool ScrollView::isOverscrollVisible() const { return _overflowFront->isVisible(); }
 
 void ScrollView::setIndicatorColor(const Color4B &val, bool withOpacity) {
-	// The node is replaceable, and only a LayerRounded is known here to paint a path: anything a
-	// higher layer swapped in takes its colour from a stylesheet, which is the reason to swap it.
+	// The node is replaceable, and only a LayerRounded is known to paint a path; a swapped-in node
+	// takes its colour from a stylesheet.
 	if (auto layer = dynamic_cast<LayerRounded *>(_indicator)) {
 		layer->setPathColor(val, withOpacity);
 	} else {
@@ -303,8 +281,8 @@ Color4F ScrollView::getIndicatorColor() const {
 
 namespace {
 
-// Everything about one of the two bar nodes that belongs to the VIEW rather than to the node: it is
-// re-imposed on whatever is swapped in, so a caller supplies a painter and gets back the same bar.
+// State of a bar node that belongs to the view rather than to the node: it is re-imposed on
+// whatever node is swapped in.
 static void ScrollView_adoptIndicatorNode(Node *from, Node *to, StringView name) {
 	to->setType(name);
 	to->setName(name);
@@ -327,7 +305,7 @@ void ScrollView::setIndicatorNode(Rc<Node> &&node) {
 	}
 
 	// Read the colour through the accessor pair, which knows how each kind of node stores it, and
-	// write it back the same way - the swap must not be the moment a bar changes colour
+	// write it back the same way, so the swap does not change the colour
 	const auto color = getIndicatorColor();
 
 	auto old = _indicator;
@@ -348,13 +326,9 @@ void ScrollView::setIndicatorTrackNode(Rc<Node> &&node) {
 	auto old = _indicatorTrack;
 	ScrollView_adoptIndicatorNode(old, node, "scroll-indicator-track");
 
-	/* The thumb and the listener move across rather than being rebuilt.
-
-	Both are the view's, not the track's: the thumb is a child of the track only so that the two
-	move as one, and the listener is on the track for the reason given in init(). Rebuilding either
-	would mean a caller who swaps the track loses the gesture set, and a swap mid-scroll would drop
-	the fade animation the thumb is running. `removeFromParent(false)` for the same reason - a
-	cleanup would stop those actions. */
+	/* The thumb and the listener move across rather than being rebuilt: both belong to the view,
+	and rebuilding would drop the gesture set and a running fade. `removeFromParent(false)` for
+	the same reason - cleanup would stop those actions. */
 	Rc<Node> thumb = _indicator;
 	if (thumb && thumb->getParent() == old) {
 		thumb->removeFromParent(false);
@@ -372,8 +346,8 @@ void ScrollView::setIndicatorTrackNode(Rc<Node> &&node) {
 	_indicatorTrack->setCascadeOpacityEnabled(false);
 	old->removeFromParent(true);
 
-	// The hover state lives in a component on the track, so the new one starts without it; this
-	// re-imposes the opacity that goes with the state the view is actually in
+	// The hover state lives in a component on the track, so the new one starts without it;
+	// re-impose the opacity for the view's actual state
 	updateIndicatorInteractive();
 }
 
@@ -396,12 +370,9 @@ void ScrollView::doSetScrollPosition(float pos) {
 void ScrollView::handleEnter(Scene *scene) {
 	ScrollViewBase::handleEnter(scene);
 
-	/* Seeded here, not merely subscribed to below.
-
-	A WindowState event is delivered when the state CHANGES, so a view built into a scene that is
-	already running never receives one and would come up as if no pointing device existed. Reading
-	the dispatcher's current answer on enter is what closes that hole - the same arrangement, and
-	the same reason, as GestureMouseOverRecognizer's. */
+	/* Seeded here, not only subscribed below: a WindowState event arrives on change only, so a view
+	entering a running scene would otherwise assume no pointing device (as in
+	GestureMouseOverRecognizer). */
 	if (auto dir = getDirector()) {
 		if (auto dispatcher = dir->getInputDispatcher()) {
 			setIndicatorHasPointer(
@@ -409,13 +380,8 @@ void ScrollView::handleEnter(Scene *scene) {
 		}
 	}
 
-	/* And applied, even when the answer did not CHANGE anything.
-
-	setIndicatorHasPointer records a change and does nothing when there is none - and on a device
-	with no pointing device the seeded answer equals the field's initial value, so nothing would
-	ever apply it. The state that goes with it is not a no-op though: the track's listener starts
-	out enabled, which on a touch-only device leaves a transparent strip swallowing every press
-	along the edge of the list. */
+	/* Applied even when nothing changed: setIndicatorHasPointer is a no-op without a change, but
+	the track's listener starts enabled and must be switched off on a touch-only device. */
 	updateIndicatorInteractive();
 }
 
@@ -463,8 +429,8 @@ void ScrollView::updateIndicatorInteractive() {
 		_indicatorListener->setEnabled(isIndicatorInteractive());
 	}
 
-	// The one part of this a stylesheet cannot work out for itself. Thickness is written by the
-	// code below, so `.active` is how a rule learns that the bar became something to aim at.
+	// Thickness is written by the code below, so `.active` is how a stylesheet learns the bar
+	// became something to aim at.
 	for (auto node : {_indicatorTrack, _indicator}) {
 		if (_indicatorHasPointer) {
 			node->addStyleClass(IndicatorActiveClass);
@@ -473,8 +439,8 @@ void ScrollView::updateIndicatorInteractive() {
 		}
 	}
 
-	// Settle the bar where this state says it belongs, unless it is mid-animation: interrupting the
-	// pulse would make a scroll that happens to cross a device change flicker.
+	// Settle the bar for this state unless it is mid-animation, so a scroll crossing a device
+	// change does not flicker.
 	if (!isIndicatorFading() && !_indicator->getActionByTag(IndicatorShowActionTag)
 			&& !_indicator->getActionByTag(IndicatorSettleActionTag)) {
 		_indicator->setOpacity(_indicatorOpacity);
@@ -483,8 +449,8 @@ void ScrollView::updateIndicatorInteractive() {
 	_indicatorTrack->setOpacity(
 			(_indicatorHovered && isIndicatorInteractive()) ? _indicatorTrackOpacity : 0.0f);
 
-	// The thickness is part of the placement, so the bar has to be laid out again rather than
-	// merely recorded - otherwise the new size waits for the next scroll.
+	// Thickness is part of the placement, so lay the bar out again now rather than on the next
+	// scroll.
 	updateIndicatorPosition();
 }
 
@@ -494,10 +460,9 @@ void ScrollView::handleIndicatorHover(bool value) {
 	}
 	_indicatorHovered = value;
 
-	// Through the component, which is what a stylesheet reads as `:hover`. The opacity below is the
-	// widget's own answer for a caller with no stylesheet at all; a rule on the type replaces it.
-	// The counters are cumulative, so the bit is pushed on an edge and never twice - which the
-	// early return above is what guarantees.
+	// Through the component, which a stylesheet reads as `:hover`. The opacity below is the default
+	// for a caller with no stylesheet. The counters are cumulative, so the bit is pushed only on an
+	// edge (guaranteed by the early return above).
 	_indicatorTrack->setOrUpdateComponent<InteractiveComponent>(
 			[value](NotNull<InteractiveComponent> state) {
 		return state->handleHover(value ? 1 : -1);
@@ -534,9 +499,8 @@ bool ScrollView::handleIndicatorDragBegin(const Vec2 &location) {
 		return false;
 	}
 
-	// Measured from where the PRESS landed, not from where the swipe was recognized - see the press
-	// recognizer. Falls back to the swipe's own point when no press was seen, which is what a
-	// synthesized drag with no Begin event looks like.
+	// Measured from where the press landed, not where the swipe was recognized; falls back to the
+	// swipe's point when no press was seen (a synthesized drag).
 	const auto grabAt = _indicatorPress.isValid() ? _indicatorPress : location;
 	const auto local = _indicatorTrack->convertToNodeSpace(grabAt);
 	const auto thumb = _indicator->getBoundingBox();
@@ -549,9 +513,8 @@ bool ScrollView::handleIndicatorDragBegin(const Vec2 &location) {
 		_indicatorGrab = (isVertical() ? thumb.size.height : thumb.size.width) / 2.0f;
 	}
 
-	// Manual, and the running animations dropped: a fling still in flight would otherwise keep
-	// writing the root's position underneath the thumb, and fixPosition() refuses to clamp an
-	// overshoot unless the movement state says nothing else owns the scroll.
+	// Manual, with running animations dropped: a fling would keep moving the root under the thumb,
+	// and fixPosition() clamps an overshoot only when nothing else owns the scroll.
 	onSwipeBegin();
 
 	_indicatorDragging = true;
@@ -654,10 +617,8 @@ float ScrollView::getIndicatorThickness() const {
 }
 
 float ScrollView::getIndicatorReservedSize() const {
-	// The same test updateIndicatorPosition() places the bar under: content that fits has no bar,
-	// and reserving a strip for one that is not drawn would inset an overlay for nothing. A length
-	// that is still nan - no range committed yet - fails this comparison and therefore RESERVES,
-	// which is the side to be wrong on: an overlay too narrow by a few points is not a defect.
+	// Same test updateIndicatorPosition() uses: content that fits has no bar and reserves no strip.
+	// A nan length (no range committed yet) fails the comparison and reserves.
 	if (getScrollLength() <= _scrollSize) {
 		return 0.0f;
 	}
@@ -674,16 +635,13 @@ float ScrollView::getIndicatorRelativePosition() const {
 	const float min = getScrollMinPosition();
 	const float max = getScrollMaxPosition();
 
-	// NaN until a controller has committed a range, and min == max whenever the content fits: in
-	// both cases there is no position to express, and 0 is the only answer that cannot be wrong.
-	// Guarded HERE rather than at the callers, because setIndicatorRelativePosition is the exact
-	// inverse of this expression and the two have to agree about the degenerate cases too.
+	// NaN until a controller commits a range, and min == max when content fits: answer 0. Guarded
+	// here because setIndicatorRelativePosition is the exact inverse and must agree on these cases.
 	if (sprt::isnan(min) || sprt::isnan(max) || max <= min) {
 		return 0.0f;
 	}
-	// getScrollPosition(), not _scrollPosition: the latter is a cache the frame settles a step
-	// LATER, while doSetScrollPosition has already moved the root - and this runs from inside that
-	// call. Reading the cache placed the thumb one scroll behind, every time.
+	// getScrollPosition(), not _scrollPosition: the cache settles a frame later, while this runs
+	// from inside doSetScrollPosition after the root has moved.
 	return sprt::clamp((getScrollPosition() - min) / (max - min), 0.0f, 1.0f);
 }
 
@@ -694,10 +652,8 @@ void ScrollView::setIndicatorRelativePosition(float value) {
 		return;
 	}
 
-	// Deliberately NOT setScrollRelativePosition: that one maps through the scrollable AREA and the
-	// padding, which is a different expression from the min/max the thumb was placed by. Round
-	// tripping a drag through it would slide the thumb out from under the pointer wherever the two
-	// disagree.
+	// Not setScrollRelativePosition: it maps through the scrollable area and padding, which differs
+	// from the min/max the thumb was placed by, so a drag would slide off the pointer.
 	doSetScrollPosition(min + sprt::clamp(value, 0.0f, 1.0f) * (max - min));
 }
 
@@ -741,14 +697,11 @@ void ScrollView::updateIndicatorPosition(Node *indicator, float size, float valu
 			}
 			const float r = track - h;
 
-			// The track spans the whole run and the thumb is placed INSIDE it, so both the drag
-			// arithmetic and a stylesheet have a box to work against. getIndicatorTravel() reads
-			// the same `r` back out of these two nodes, which is what keeps the inverse honest.
-			/* The bar sits at the INLINE END of the view, so it changes sides with the
-			interface's direction. The track is anchored by the edge it hangs from and the thumb
-			by the same edge INSIDE it, which is why both anchors flip together: getIndicatorTravel
-			reads `r` back out of these two nodes, and an anchor that disagreed with the position
-			would make the inverse lie. */
+			// The track spans the whole run and the thumb is placed inside it; getIndicatorTravel()
+			// reads the same `r` back out of these nodes.
+			/* The bar sits at the inline end of the view, so it changes sides with the interface
+			direction; track and thumb anchors flip together so getIndicatorTravel stays the exact
+			inverse. */
 			const bool rtl = isInlineRtl(this);
 			_indicatorTrack->setContentSize(Size2(thickness, track));
 			_indicatorTrack->setPosition(
@@ -775,9 +728,8 @@ void ScrollView::updateIndicatorPosition(Node *indicator, float size, float valu
 		}
 		_indicatorTrack->setVisible(_indicatorVisible);
 		if (actions) {
-			// Pulse to full on motion, then settle. WHERE it settles is the whole of IndicatorFade:
-			// away to nothing when there is nothing to aim at, back to the resting opacity when
-			// there is - see isIndicatorFading().
+			// Pulse to full on motion, then settle: to nothing when there is nothing to aim at,
+			// otherwise to the resting opacity (see isIndicatorFading()).
 			const float resting = isIndicatorFading() ? 0.0f : _indicatorOpacity;
 
 			if (indicator->getOpacity() != 1.0f) {

@@ -41,27 +41,17 @@ enum class AccordionExpansion : uint8_t {
 
 // What an OPEN section's height is made of. A collapsed one is always just its header.
 enum class AccordionSizing : uint8_t {
-	// Each open section takes the height its content asks for, and the view scrolls when the total
-	// runs past it. The natural reading of "accordion", and the one a list of unrelated panels wants.
+	// Each open section takes the height its content asks for; the view scrolls on overflow.
 	Fit,
 
-	// Open sections share the height that is left after the collapsed headers. Nothing scrolls.
-	// What a side pane of working panels wants - an editor is not useful at its minimum height.
+	// Open sections share the height left after the collapsed headers. Nothing scrolls.
 	Fill,
 };
 
 /** The header of one section: the chevron, the panel's icon and title, a grip, and a close button.
 
-It is a PanelHandle, so the drag that pulls the panel out is the SAME one a dock tab uses, down to
-the threshold, the pointer capture and the abort when the node goes away. What differs is only where
-that drag may start.
-
-A TAP TOGGLES THE SECTION; ONLY THE GRIP DRAGS IT. That split is the reason canBeginDragAt exists on
-the base at all. The whole header cannot be the grab point here the way a whole tab is: a header's
-press already means "open this", so a drag starting anywhere on it would make every slightly
-imprecise click a drag, and the panel would come loose when the user only meant to look inside it.
-A dock tab has no such conflict - its press means "show this", which is what a drag ends up doing
-anyway - so it keeps the whole node.
+A PanelHandle, so the panel drag is the same one a dock tab uses. A tap toggles the section;
+only the grip starts a drag (canBeginDragAt), so an imprecise click does not pull the panel out.
 
 CSS type "accordion-header", with the class `expanded` or `collapsed`; the children are
 "accordion-chevron", "accordion-grip" and "accordion-close". */
@@ -77,9 +67,8 @@ public:
 	virtual void setExpanded(bool);
 	bool isExpanded() const { return _expanded; }
 
-	// The panel's icon, placed between the grip and the title. Overridden only for that placement:
-	// ui::Button creates the sprite lazily on the first setIcon, so there is nothing to order until
-	// this has been called at least once.
+	// The panel's icon, placed between the grip and the title. Overridden for that placement, since
+	// ui::Button creates the sprite lazily on the first setIcon.
 	virtual void setIcon(IconName) override;
 
 	// mirrors DockPanelFlags::Closable; hides the close affordance when off
@@ -106,10 +95,8 @@ protected:
 
 /** One section: a header, and a body that holds the panel's node while the section is open.
 
-Collapsing does not hide the body, it TAKES THE PANEL OUT of it - detached without cleanup, so the
-node keeps everything it had. A hidden body would keep the panel's whole subtree alive in the layout
-and the style passes for as long as the section stayed shut, which for a panel that is expensive to
-lay out is the cost the collapse was supposed to avoid.
+Collapsing detaches the panel from the body without cleanup, so the node keeps its state and a
+closed section costs no layout or style passes.
 
 CSS type "accordion-section", class `expanded` or `collapsed`; the body is "accordion-body". */
 class SP_PUBLIC AccordionSection : public Panel {
@@ -144,19 +131,9 @@ protected:
 
 /** A vertical stack of named sections, each holding one panel: the accordion.
 
-WHAT IT IS NOT. It is not a ui::TreeView with two levels. A tree is driven by a data::Model whose
-shape it discovers, and it virtualizes rows because it cannot know how many there are. An accordion's
-sections are declared in advance, in the application's own source, and there are a dozen of them at
-most - so the model, the virtualization and the row recycling would all be machinery for a problem
-this does not have.
-
-WHAT IT SHARES WITH THE DOCK, and why that is the whole point. A section IS a parked panel, in
-exactly the sense ui::DockSystem means: same ui::DockPanelDescriptor, same lazy builder, same
-ui::PanelRegistry, same ui::PanelHandle drag with the same "xl/dock-panel" payload. Hand this view
-and a DockSystem the SAME registry and a panel can be dragged from a dock frame into this stack and
-back, keeping its node - and with it its scroll position, its selection and its half-typed text -
-across the move. Neither container knows anything about the other; the registry is the only thing
-they share.
+Sections are declared up front (no model, no virtualization). A section is a parked panel in the
+ui::DockSystem sense: same descriptor, builder, ui::PanelRegistry and "xl/dock-panel" drag
+payload. With a registry shared with a DockSystem, a panel moves between the two keeping its node.
 
     auto registry = Rc<ui::PanelRegistry>::create();
     registry->registerPanel({.id = "console", .title = "Console", .minSize = Size2(240, 100),
@@ -166,20 +143,15 @@ they share.
     auto side = addChild(Rc<ui::AccordionView>::create(Rc<ui::PanelRegistry>(registry)));
     side->setSections({StringView("explorer"), StringView("console")});
 
-STRUCTURE, and the one thing that is easy to get wrong. This node carries NO LayoutSystem: it holds a
-single viewport child, which it sizes itself, and the viewport is the flex column that runs the
-sections. That is not tidiness - it is what makes this node a legal `decoratorParent`. A drag ghost
-parked in a flex container becomes a flex item and gets laid out into the stack; parked in the
-viewport it would be clipped away by the scroll the moment it left. An unclipped parent with no
-layout is the only node that is neither, which is exactly what a dock root is for the dock.
+This node has no LayoutSystem: it sizes a single viewport child, which is the scrolling flex
+column of sections. That keeps this node usable as the `decoratorParent` (unclipped, no layout,
+so a drag ghost is neither laid out nor clipped).
 
 CSS type "accordion-view", with `drop-active` while a drag is over it. */
 class SP_PUBLIC AccordionView : public Panel, public PanelHost {
 public:
-	// Distinct bands: sortAllChildren is not a stable sort, so siblings sharing a ZOrder permute
-	// between frames - and inside the viewport the child order IS the flow order, so a permutation
-	// would reshuffle the sections on screen. Each section therefore gets its own increasing order
-	// from SectionZOrder, and the indicator sits far above every plausible section count.
+	// Each section gets its own increasing ZOrder from SectionZOrder: sortAllChildren is not
+	// stable, and child order is flow order. The indicator sits above any plausible count.
 	static constexpr ZOrder SectionZOrder = ZOrder(1);
 	static constexpr ZOrder IndicatorZOrder = ZOrder(1024);
 
@@ -220,12 +192,8 @@ public:
 	// Convenience forward; the registry is the real home of a descriptor.
 	void registerPanel(DockPanelDescriptor &&);
 
-	// Declare the sections, in order. The tabs of an accordion are known in advance - this is how
-	// they are named. Sections already present keep their node and their expanded state; the rest
-	// are built, and any that fall out of the list are released.
-	//
-	// A Vector rather than a SpanView, so the call site reads like the dock's own
-	// DockLayoutSpec::leaf({"editor", "console"}) - SpanView has no initializer-list constructor.
+	// Declare the sections, in order. Existing sections keep their node and expanded state, new
+	// ones are built, and those not in the list are released.
 	virtual void setSections(Vector<String> &&ids);
 
 	SpanView<String> getSections() const { return _order; }
@@ -254,24 +222,13 @@ public:
 	virtual void setSizing(AccordionSizing);
 	AccordionSizing getSizing() const { return _sizing; }
 
-	/* ONE SECTION AGAINST THE VIEW'S POLICY, and the case it exists for is a section with nothing in
-	it.
-
-	`Fill` divides the height between the open sections evenly, which is right for a pane of working
-	panels and wrong for the one among them that has nothing to show: a findings list that found
-	nothing is one sentence, and under `Fill` it is one sentence centred in a third of a rail. Setting
-	that section to `Fit` makes it ask for its declared minimum and no more, while its neighbours go
-	on sharing what is left.
-
-	The view's own policy is unchanged and so is its scrolling: a `Fit` section inside a `Fill` view
-	does not scroll, it simply does not grow. `clearSectionSizing` puts a section back under the
-	view's policy; `setSizing` does not clear these, because a per-section answer is a fact about that
-	section rather than about the mode it happens to be in. */
+	/* Per-section override of the view's sizing, e.g. a `Fit` section in a `Fill` view takes its
+	declared minimum and does not grow, while the others share the rest. `clearSectionSizing`
+	removes the override; `setSizing` keeps overrides. */
 	virtual void setSectionSizing(StringView id, AccordionSizing);
 	virtual void clearSectionSizing(StringView id);
 
-	// What decides this section's height: its own override where it has one, the view's policy
-	// otherwise. Answers for an id no section carries, so a caller need not check first.
+	// The section's override, or the view's policy; also valid for unknown ids.
 	AccordionSizing getSectionSizing(StringView id) const;
 
 	// --- callbacks ---------------------------------------------------------
@@ -283,11 +240,7 @@ public:
 	// --- receiving a dragged panel -----------------------------------------
 
 	/* Where a panel dropped at `viewportLocal` would land, as an insertion index into the section
-	list. An insertion index and nothing else: a section holds exactly one panel, so unlike a dock
-	frame there is no "into" and no way to subdivide - the only question a drop can answer here is
-	"between which two".
-
-	Answers with no drag in flight, so a test can drive the zone rule without synthesizing a pointer. */
+	list (no "into" zone). Works without a drag in flight. */
 	size_t getDropIndexAt(const Vec2 &viewportLocal) const;
 
 	// The caret for an insertion index, in the viewport's space; false when there is nothing to draw.
@@ -298,24 +251,15 @@ public:
 
 	// --- measurement -------------------------------------------------------
 
-	/* What this view would need to show everything it holds without scrolling: every header, plus
-	the declared minimum of every OPEN panel.
-
-	It has to be asked for rather than propagated, and that is worth knowing before parking an
-	accordion inside a dock. DockSystem::measureLeaf floors a frame from the `minSize` in each
-	parked panel's DESCRIPTOR - it never measures the node - so an accordion parked as a dock panel
-	contributes only the minimum its own descriptor declares, whatever it happens to be holding.
-	Feed this back into that descriptor if the frame has to grow with the stack. */
+	/* The size needed to show everything without scrolling: every header plus the declared minimum
+	of every open panel. Not propagated: a dock measures parked panels by descriptor `minSize`, so
+	feed this into the descriptor when an accordion is docked. */
 	Size2 getNaturalMinSize() const;
 
 	// --- persistence -------------------------------------------------------
 
-	// The order and which sections stand open. Never a title, an icon or a minimum: those come back
-	// from the registry, and a stale copy of them would be worse than none.
-	//
-	// With a registry shared with a dock, this and DockSystem::save() are two HALVES of one
-	// arrangement and have to be restored against that same registry - each half claims its own
-	// panels, and a panel named by neither simply stays closed.
+	// The order and which sections are open; titles, icons and minimums come from the registry.
+	// With a registry shared with a dock, restore both halves against that registry.
 	Value save() const;
 	bool restore(const Value &);
 
@@ -324,9 +268,8 @@ protected:
 
 	static constexpr uint32_t SaveVersion = 1;
 
-	// Bring the section nodes in line with `_order`, reusing by panel id: a reorder or an arrival
-	// beside one must not rebuild a section, which would drop its hover state and, worse, the drag
-	// quite possibly in flight on it right now.
+	// Bring the section nodes in line with `_order`, reusing by panel id so a reorder does not
+	// rebuild a section (and lose its hover state or an in-flight drag).
 	void syncSections();
 
 	// Flex item of one section, from the expansion state and the sizing policy.
@@ -356,8 +299,7 @@ protected:
 
 	Rc<PanelRegistry> _registry;
 
-	// The clipped, scrolling flex column the sections live in. This node holds nothing else, which
-	// is what keeps IT free to be a decoratorParent - see the class comment.
+	// The clipped, scrolling flex column the sections live in; this node's only child.
 	Node *_viewport = nullptr;
 	ScrollSystem *_scroll = nullptr;
 
@@ -370,9 +312,7 @@ protected:
 	AccordionExpansion _expansion = AccordionExpansion::Multi;
 	AccordionSizing _sizing = AccordionSizing::Fit;
 
-	// The sections that answer for themselves. Empty is the ordinary state - see setSectionSizing.
-	// Keyed by panel id and NOT by section pointer: a section is rebuilt by syncSections, and an
-	// override is a decision about the panel rather than about the node currently showing it.
+	// Per-section sizing overrides, keyed by panel id since section nodes may be rebuilt.
 	Map<String, AccordionSizing> _sectionSizing;
 
 	bool _dropEnabled = true;
