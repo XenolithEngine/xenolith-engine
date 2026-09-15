@@ -78,6 +78,14 @@ void performAddressTests() {
 	}
 
 	{
+		auto a = Address::parse("shm:/dev/shm/xenolith:app");
+		check(a.scheme == AddressScheme::Shm && a.path == "/dev/shm/xenolith:app"
+						&& a.isPathBased(),
+				"address: shm: rendezvous path");
+		check(Address::parse(a.description()) == a, "address: shm description round-trips");
+	}
+
+	{
 		// An IPv6 literal is bracketed on the wire and bare in the struct: getaddrinfo wants "::1".
 		auto a = Address::parse("quic://[::1]:4480");
 		check(a.host == "::1" && a.port == 4'480, "address: bracketed IPv6 literal");

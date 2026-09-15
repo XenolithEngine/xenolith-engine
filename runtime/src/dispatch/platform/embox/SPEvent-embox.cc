@@ -155,6 +155,57 @@ uint32_t EmboxData::fireThreadHandles(RunContext *) {
 	return count;
 }
 
+bool EmboxData::registerAddressHandle(EmboxAddressWaitHandle *h) {
+	if (_addressHandleCount >= MaxAddressHandles) {
+		oslog::vperror(__SPRT_LOCATION, "EmboxData", "address wait table full");
+		return false;
+	}
+	_addressHandles[_addressHandleCount++] = h;
+	return true;
+}
+
+void EmboxData::unregisterAddressHandle(EmboxAddressWaitHandle *h) {
+	for (size_t i = 0; i < _addressHandleCount; ++i) {
+		if (_addressHandles[i] == h) {
+			_addressHandles[i] = _addressHandles[_addressHandleCount - 1];
+			_addressHandles[_addressHandleCount - 1] = nullptr;
+			--_addressHandleCount;
+			return;
+		}
+	}
+}
+
+uint32_t EmboxData::fireAddressHandles(RunContext *) {
+	uint32_t count = 0;
+	const size_t n = _addressHandleCount;
+	for (size_t i = 0; i < n; ++i) {
+		auto h = _addressHandles[i];
+		if (!h) {
+			continue;
+		}
+		auto value = h->load();
+		if (value != h->getLastValue()) {
+			auto refId = sprt::retain(h);
+			NotifyData nd;
+			nd.result = intptr_t(value);
+			_data->notify(h, nd);
+			sprt::release(h, refId);
+			++count;
+		}
+	}
+	return count;
+}
+
+bool EmboxData::hasChangedAddress() const {
+	for (size_t i = 0; i < _addressHandleCount; ++i) {
+		auto h = _addressHandles[i];
+		if (h && h->load() != h->getLastValue()) {
+			return true;
+		}
+	}
+	return false;
+}
+
 void EmboxData::notifyWakeup() {
 	__atomic_fetch_or(&_wakeupReq, WakeupPresent, __ATOMIC_SEQ_CST);
 }
@@ -184,7 +235,7 @@ void EmboxData::spinWait(int timeoutMs) {
 	// exit for when the clock does run.
 	const int64_t until = embox_now_ns() + int64_t(timeoutMs) * 1'000'000ll;
 	for (int slice = 0; slice < timeoutMs; ++slice) {
-		if (__atomic_load_n(&_wakeupReq, __ATOMIC_SEQ_CST) != 0) {
+		if (__atomic_load_n(&_wakeupReq, __ATOMIC_SEQ_CST) != 0 || hasChangedAddress()) {
 			return;
 		}
 		::usleep(1000);
@@ -202,6 +253,7 @@ uint32_t EmboxData::poll() {
 
 	uint32_t result = fireExpired(&ctx);
 	result += fireThreadHandles(&ctx);
+	result += fireAddressHandles(&ctx);
 	drainWakeup();
 
 	popContext(&ctx);
@@ -214,6 +266,7 @@ uint32_t EmboxData::wait(TimeInterval ival) {
 
 	uint32_t result = fireExpired(&ctx);
 	result += fireThreadHandles(&ctx);
+	result += fireAddressHandles(&ctx);
 	if (result == 0 && ctx.state == RunContext::Running) {
 		int64_t now = embox_now_ns();
 		int64_t rel = embox_rel_timeout(ival, nearestDeadline(), now);
@@ -231,7 +284,7 @@ uint32_t EmboxData::wait(TimeInterval ival) {
 			spinWait(timeoutMs);
 		}
 		drainWakeup();
-		result = fireExpired(&ctx) + fireThreadHandles(&ctx);
+		result = fireExpired(&ctx) + fireThreadHandles(&ctx) + fireAddressHandles(&ctx);
 	}
 
 	popContext(&ctx);
@@ -263,6 +316,8 @@ Status EmboxData::run(TimeInterval ival, QueueWakeupInfo &&winfo) {
 		}
 
 		fireThreadHandles(&ctx);
+		if (ctx.state != RunContext::Running) break;
+		fireAddressHandles(&ctx);
 		if (ctx.state != RunContext::Running) break;
 		fireExpired(&ctx);
 		if (ctx.state != RunContext::Running) break;
@@ -447,11 +502,56 @@ Status EmboxThreadHandle::perform(dispatch::Function<void()> &&func, Ref *target
 	return Status::Ok;
 }
 
+bool EmboxAddressWaitHandle::init(HandleClass *cl, AddressWaitInfo &&info) {
+	if (!AddressWaitHandle::init(cl, move(info.completion))) {
+		return false;
+	}
+	_address = info.address;
+	_last = info.expected;
+	return true;
+}
+
+Status EmboxAddressWaitHandle::rearm(EmboxData *n, EmboxAddressWaitSource *) {
+	auto status = prepareRearm();
+	if (status == Status::Ok) {
+		if (!n->registerAddressHandle(this)) {
+			_status = Status::Suspended;
+			return Status::ErrorOutOfHostMemory;
+		}
+		// A change before arming is reported on the next loop pass, not lost.
+		n->notifyWakeup();
+	}
+	return status;
+}
+
+Status EmboxAddressWaitHandle::disarm(EmboxData *n, EmboxAddressWaitSource *) {
+	auto status = prepareDisarm();
+	if (status == Status::Ok) {
+		n->unregisterAddressHandle(this);
+	} else if (status == Status::ErrorAlreadyPerformed) {
+		return Status::Ok;
+	}
+	return status;
+}
+
+void EmboxAddressWaitHandle::notify(EmboxData *, EmboxAddressWaitSource *, const NotifyData &nd) {
+	if (_status != Status::Ok) {
+		return;
+	}
+	auto value = uint32_t(nd.result);
+	if (value != _last) {
+		_last = value;
+		sendCompletion(value, Status::Ok);
+	}
+}
+
 // --- Queue::Data ---
 
 Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags) {
 	setupEmboxHandleClass<EmboxTimerHandle, EmboxTimerSource>(&_info, &_emboxTimerClass, true);
 	setupEmboxHandleClass<EmboxThreadHandle, EmboxThreadSource>(&_info, &_emboxThreadClass, true);
+	setupEmboxHandleClass<EmboxAddressWaitHandle, EmboxAddressWaitSource>(&_info,
+			&_emboxAddressWaitClass, true);
 
 	auto *platform = new (memory::pool::acquire()) EmboxData(q, this, info);
 	_platformQueue = platform;
@@ -478,6 +578,15 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 	_thread = [](QueueData *d, void *ptr) -> Rc<ThreadHandle> {
 		auto data = static_cast<Queue::Data *>(d);
 		return Rc<EmboxThreadHandle>::create(&data->_emboxThreadClass);
+	};
+	_addressWait = [](QueueData *d, void *ptr, AddressWaitInfo &&info,
+						   Ref *ref) -> Rc<AddressWaitHandle> {
+		auto data = static_cast<Queue::Data *>(d);
+		auto h = Rc<EmboxAddressWaitHandle>::create(&data->_emboxAddressWaitClass, move(info));
+		if (h && ref) {
+			h->setUserdata(ref);
+		}
+		return h;
 	};
 }
 

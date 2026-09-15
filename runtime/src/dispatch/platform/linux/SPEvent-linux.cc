@@ -157,6 +157,10 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupUringHandleClass<FileURingHandle, FileSource>(&_info, &_uringFileClass, true);
 		setupUringHandleClass<InotifyReaderURingHandle, InotifySource>(&_info,
 				&_uringInotifyReaderClass, true);
+		setupUringHandleClass<AddressWaitFutexURingHandle, AddressWaitFutexSource>(&_info,
+				&_uringAddressWaitFutexClass, true);
+		setupUringHandleClass<AddressWaitEventFdURingHandle, AddressWaitEventFdSource>(&_info,
+				&_uringAddressWaitEventFdClass, true);
 		setupInotifyWatchClass(&_info, &_inotifyWatchClass);
 		setupSocketHandleClasses(&_info, this);
 		setupUringSocketClasses(&_info, &_uringSocketListenClass, &_uringSocketStreamClass,
@@ -196,6 +200,25 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 			_thread = [](QueueData *d, void *ptr) -> Rc<ThreadHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
 				return Rc<ThreadEventFdHandle>::create(&data->_uringThreadEventFdClass);
+			};
+
+			_addressWait = [](QueueData *d, void *ptr, AddressWaitInfo &&info,
+								   Ref *ref) -> Rc<AddressWaitHandle> {
+				auto uring = reinterpret_cast<URingData *>(ptr);
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				Rc<AddressWaitHandle> h;
+				if (hasFlag(uring->_uflags, URingFlags::FutexSupported)
+						&& uring->_probe.isOpcodeSupported(IORING_OP_FUTEX_WAIT)) {
+					h = Rc<AddressWaitFutexURingHandle>::create(&data->_uringAddressWaitFutexClass,
+							move(info));
+				} else {
+					h = Rc<AddressWaitEventFdURingHandle>::create(
+							&data->_uringAddressWaitEventFdClass, move(info));
+				}
+				if (h && ref) {
+					h->setUserdata(ref);
+				}
+				return h;
 			};
 
 			_listenHandle = [](QueueData *d, void *ptr, NativeHandle handle, PollFlags flags,
@@ -279,6 +302,8 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				true);
 		setupEpollHandleClass<InotifyReaderEPollHandle, InotifySource>(&_info,
 				&_epollInotifyReaderClass, true);
+		setupEpollHandleClass<AddressWaitEPollHandle, AddressWaitEventFdSource>(&_info,
+				&_epollAddressWaitClass, true);
 		setupInotifyWatchClass(&_info, &_inotifyWatchClass);
 		setupInlineFileHandleClass(&_info, &_epollFileClass);
 		setupSocketHandleClasses(&_info, this);
@@ -308,6 +333,16 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 			_thread = [](QueueData *d, void *ptr) -> Rc<ThreadHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
 				return Rc<ThreadEPollHandle>::create(&data->_epollThreadClass);
+			};
+			_addressWait = [](QueueData *d, void *ptr, AddressWaitInfo &&info,
+								   Ref *ref) -> Rc<AddressWaitHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				auto h = Rc<AddressWaitEPollHandle>::create(&data->_epollAddressWaitClass,
+						move(info));
+				if (h && ref) {
+					h->setUserdata(ref);
+				}
+				return h;
 			};
 			_listenHandle = [](QueueData *d, void *ptr, NativeHandle handle, PollFlags flags,
 									CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {

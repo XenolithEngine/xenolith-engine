@@ -44,9 +44,10 @@ public:
 	TransportConnection *getTransport() const { return _transport; }
 	Role getRole() const { return _role; }
 
-	// The handle for Looper::listenPollableHandle. Invalid on a transport without one, which then
-	// drives poll() through setOnReadable instead.
+	// The handle for Looper::listenPollableHandle. Invalid on a transport without one; that one
+	// offers getWaitAddress() for Looper::waitOnAddress instead.
 	sprt::dispatch::NativeHandle getPollHandle() const;
+	TransportWaitAddress getWaitAddress();
 
 	// True once the underlying connection has begun terminating (peer closed, local close, or an idle
 	// timeout).

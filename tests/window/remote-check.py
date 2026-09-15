@@ -17,7 +17,7 @@ and then asserts the things a screenshot cannot:
   * frames actually flow: the server's window keeps presenting while the client renders it;
   * a client started with the WRONG token is refused - the bearer key is load-bearing, not decorative.
 
-    tests/window/remote-check.py [--transport quic|unix] [--gapi vulkan|soft|gles]
+    tests/window/remote-check.py [--transport quic|unix|shm] [--gapi vulkan|soft|gles]
                                 [path-to-testapp] [path-to-clientapp]
 
 `--gapi` runs the server on another backend (the backend has to be linked in:
@@ -32,6 +32,9 @@ point of the transport abstraction and the only way to show it holds: the protoc
 does not change a line, and the two runs differ only in how the peer is authenticated -- a pinned
 SPKI for QUIC, kernel-vouched credentials (SO_PEERCRED) for unix, where the bearer key is not
 required at all.
+
+`--transport shm` runs it over shared-memory rings in /dev/shm. Identity works as for unix (the
+owner of the block files), and the server has no descriptor to poll: it waits on the doorbell word.
 
 Prints "N checks, M failures"; exit status is the result.
 """
@@ -221,7 +224,7 @@ def main():
             gapi = value
         else:
             raise SystemExit(f"unknown option: {opt}")
-    if transport not in ("quic", "unix"):
+    if transport not in ("quic", "unix", "shm"):
         raise SystemExit(f"unknown transport: {transport}")
 
     root = os.path.dirname(os.path.abspath(__file__))
@@ -245,6 +248,9 @@ def main():
     if transport == "unix":
         # No port, no certificate: the path IS the endpoint and its permissions are the access control.
         share = f"unix:/tmp/xl-remote-check-{os.getpid()}.xlsock"
+    elif transport == "shm":
+        # The rendezvous block; connection blocks appear next to it as <path>.<token>.
+        share = f"shm:/dev/shm/xl-remote-check-{os.getpid()}"
     else:
         port = 24000 + (os.getpid() % 20000)
         share = f"quic://127.0.0.1:{port}"
@@ -267,9 +273,9 @@ def main():
         if transport == "quic":
             check("listener reports an SPKI fingerprint", len(spki) == 64, f"got {spki!r}")
         else:
-            # A unix socket has no certificate to pin, and must not invent one: the peer is
-            # identified by credentials instead.
-            check("a unix listener reports no certificate", spki == "", f"got {spki!r}")
+            # A unix socket or a shared block has no certificate to pin, and must not invent one:
+            # the peer is identified by credentials instead.
+            check(f"a {transport} listener reports no certificate", spki == "", f"got {spki!r}")
         if not status.get("listening"):
             raise SystemExit("the server never started sharing - nothing left to check")
 
@@ -866,7 +872,14 @@ def main():
         kill(bad_client)
         kill(client)
         kill(server)
-        for path in (sock, client_sock, share[5:] if share.startswith("unix:") else ""):
+        share_path = share.split(":", 1)[1] if share.startswith(("unix:", "shm:")) else ""
+        leftovers = []
+        if share.startswith("shm:"):
+            # A killed server leaves its connection blocks next to the rendezvous file.
+            base = os.path.basename(share_path) + "."
+            leftovers = [os.path.join("/dev/shm", n) for n in os.listdir("/dev/shm")
+                    if n.startswith(base)]
+        for path in [sock, client_sock, share_path] + leftovers:
             if not path:
                 continue
             try:

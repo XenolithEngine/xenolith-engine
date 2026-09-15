@@ -39,6 +39,7 @@ class PollHandle;
 class ProcessHandle;
 class FileHandle;
 class WatchHandle;
+class AddressWaitHandle;
 class ListenHandle;
 class StreamHandle;
 
@@ -267,6 +268,22 @@ struct SPRT_API WatchInfo {
 
 	StringView path;
 	WatchFlags mask = WatchFlags::Any;
+	Completion completion;
+};
+
+// Parameters for Looper/Queue::waitOnAddress.
+//
+// The completion fires on the looper thread whenever `*address` differs from the last value it
+// saw, starting from `expected`, so a change made before the handle is armed is still reported.
+// `value` carries the word as read; several changes may collapse into one notification. The handle
+// stays armed until cancelled. The word may live in memory shared with another process; a writer
+// changes it and then calls __sprt_sprt_qlock_wake_all(address, __SPRT_SPRT_LOCK_FLAG_SHARED),
+// always with the shared flag, whether or not the memory is shared.
+struct SPRT_API AddressWaitInfo {
+	using Completion = CompletionHandle<AddressWaitHandle>;
+
+	uint32_t *address = nullptr;
+	uint32_t expected = 0;
 	Completion completion;
 };
 

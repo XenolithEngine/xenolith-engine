@@ -77,6 +77,10 @@ sprt::dispatch::NativeHandle Listener::getPollHandle() const {
 	return _listener ? _listener->getPollHandle() : sprt::dispatch::NativeHandle(-1);
 }
 
+TransportWaitAddress Listener::getWaitAddress() {
+	return _listener ? _listener->getWaitAddress() : TransportWaitAddress();
+}
+
 uint64_t Listener::getEventTimeout() const {
 	return _listener ? _listener->getEventTimeout() : maxOf<uint64_t>();
 }

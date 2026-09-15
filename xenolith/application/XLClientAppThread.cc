@@ -97,14 +97,13 @@ bool ClientAppThread::worker() {
 		log::source().info("ClientAppThread", "authenticated");
 		_connection = conn;
 
-		// Drive the async message-dispatch loop: socket readiness gives a prompt wakeup; QUIC timers
-		// are pumped from performAppUpdate (same appUpdateInterval cadence).
-		_listenPoll = _appLooper->listenPollableHandle(_connection->getPollHandle(),
-				sprt::dispatch::PollFlags::In,
-				[this](sprt::dispatch::NativeHandle, sprt::dispatch::PollFlags) -> Status {
-			pumpConnection();
-			return Status::Ok;
-		}, this);
+		// Drive the async message-dispatch loop: socket readiness or the shared-memory doorbell gives
+		// a prompt wakeup; QUIC timers are pumped from performAppUpdate (same appUpdateInterval
+		// cadence).
+		auto handle = _connection->getPollHandle();
+		_listenPoll = watchTransport(handle,
+				handle.fd >= 0 ? remote::TransportWaitAddress() : _connection->getWaitAddress(),
+				[this] { pumpConnection(); });
 
 		// Kick off the ping/pong exchange with one control ping.
 		_connection->ping();
