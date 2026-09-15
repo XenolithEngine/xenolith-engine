@@ -57,6 +57,7 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_ssize_t.h>
+#include <sprt/c/bits/__sprt_uint32_t.h>
 
 __SPRT_BEGIN_DECL
 
@@ -174,6 +175,17 @@ SPRT_FORCEINLINE long __el0_uname(void *__utsname) {
 }
 
 SPRT_FORCEINLINE long __el0_getpid(void) { return __sprt_svc0(__SPRT_SYSCALL_getpid); }
+
+// --- futex ------------------------------------------------------------------
+//
+// Linux argument order: (uaddr, op, val, timeout, uaddr2, val3). The timeout is
+// relative for FUTEX_WAIT and absolute CLOCK_MONOTONIC for FUTEX_WAIT_BITSET;
+// uaddr2 is unused by the operations the kernel implements.
+SPRT_FORCEINLINE long __el0_futex(__SPRT_ID(uint32_t) * __addr, int __op, __SPRT_ID(uint32_t) __val,
+		const void *__timespec, __SPRT_ID(uint32_t) __val3) {
+	return __sprt_svc6(__SPRT_SYSCALL_futex, (long)__addr, __op, (long)__val, (long)__timespec, 0L,
+			(long)__val3);
+}
 
 SPRT_FORCEINLINE long __el0_gettid(void) { return __sprt_svc0(__SPRT_SYSCALL_gettid); }
 
