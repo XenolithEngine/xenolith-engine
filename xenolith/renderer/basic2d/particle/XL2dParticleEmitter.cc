@@ -27,12 +27,15 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
+static sprt::atomic<uint64_t> s_particleEmitterId = 1;
+
 bool ParticleEmitter::init(NotNull<ParticleSystem> s) {
 	if (!Sprite::init()) {
 		return false;
 	}
 
 	_system = s;
+	_emitterId = s_particleEmitterId.fetch_add(1);
 
 	// The emitter has no CPU geometry at all (particles are simulated on the GPU) and they can
 	// fly outside contentSize, so damage tracking can neither version nor bound it.
@@ -46,6 +49,7 @@ bool ParticleEmitter::init(NotNull<ParticleSystem> s, StringView texName) {
 	}
 
 	_system = s;
+	_emitterId = s_particleEmitterId.fetch_add(1);
 
 	// The emitter has no CPU geometry at all (particles are simulated on the GPU) and they can
 	// fly outside contentSize, so damage tracking can neither version nor bound it.
@@ -59,6 +63,7 @@ bool ParticleEmitter::init(NotNull<ParticleSystem> s, Rc<Texture> &&tex) {
 	}
 
 	_system = s;
+	_emitterId = s_particleEmitterId.fetch_add(1);
 
 	// The emitter has no CPU geometry at all (particles are simulated on the GPU) and they can
 	// fly outside contentSize, so damage tracking can neither version nor bound it.
@@ -98,15 +103,24 @@ void ParticleEmitter::pushCommands(FrameInfo &frame, NodeVisitFlags flags) {
 	auto cmdInfo = buildCmdInfo(frame);
 	auto materialIndex = cmdInfo.material;
 
-	auto transform = handle->commands->pushParticleEmitter(_system->getId(), targetTransform,
+	auto transform = handle->commands->pushParticleEmitter(_emitterId, targetTransform,
 			move(cmdInfo), _commandFlags);
 
-	handle->particleEmitters.emplace(_system->getId(),
+	Size2 defaultSize;
+	if (_texture) {
+		auto extent = _texture->getExtent();
+		auto &rect = getTextureRect();
+		defaultSize = Size2(extent.width * rect.size.width, extent.height * rect.size.height);
+	}
+
+	handle->particleEmitters.emplace(_emitterId,
 			ParticleSystemRenderInfo{
 				move(particleSystem),
 				materialIndex,
 				_maxFramesPerCall,
 				transform,
+				0,
+				defaultSize,
 			});
 }
 

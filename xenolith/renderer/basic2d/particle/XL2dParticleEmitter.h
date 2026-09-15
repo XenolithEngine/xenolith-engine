@@ -41,7 +41,13 @@ public:
 
 	virtual void pushCommands(FrameInfo &, NodeVisitFlags flags) override;
 
+	// Keys the particle buffers on the GPU: two emitters sharing a system simulate separately
+	uint64_t getEmitterId() const { return _emitterId; }
+
+	ParticleSystem *getParticleSystem() const { return _system; }
+
 protected:
+	uint64_t _emitterId = 0;
 	Rc<ParticleSystem> _system;
 	uint32_t _maxFramesPerCall = 2;
 
