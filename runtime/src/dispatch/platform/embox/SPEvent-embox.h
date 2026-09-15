@@ -61,6 +61,12 @@ struct SPRT_API EmboxData : public PlatformQueueData {
 	// a pipe (see file comment).
 	alignas(4) int32_t _wakeupReq = 0;
 
+	// Threads inside spinWait()'s futex wait. notifyWakeup() calls the wake only
+	// when this is non-zero, so a post to a looper that is busy costs an atomic
+	// load and not a trip into the kernel. The waiter counts itself in BEFORE it
+	// compares the word, which is what makes skipping the wake safe.
+	alignas(4) int32_t _sleepers = 0;
+
 	// Active timers, scanned for the nearest deadline each loop iteration.
 	Queue::Vector<EmboxTimerEntry> _timers;
 

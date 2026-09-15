@@ -15,10 +15,44 @@ SPDX-License-Identifier: MIT
 #include <unistd.h>
 #include <time.h>
 #include <errno.h>
+#include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sched.h>
 
+#if SPRT_EMBOX && !SPRT_EMBOX_USER
+// xenolith-os drivers/xlfutex. Weak, as in core/embox/sprt_lock.cc: an image
+// without it links both null and the looper polls as it always did.
+extern "C" int xl_futex_wait(void *addr, unsigned size, uint64_t expected, int64_t timeout_ns)
+		__attribute__((weak));
+extern "C" int xl_futex_wake(void *addr, int nr) __attribute__((weak));
+#endif
+
 namespace sprt::dispatch {
+
+#if SPRT_EMBOX && !SPRT_EMBOX_USER
+// Whether the idle wait sleeps on the wakeup word. The same switch as the lock
+// backend's: the image has the futex, and SPRT_EMBOX_FUTEX is not "0". A plain
+// cached word, not a function-local static -- see core/embox/sprt_lock.cc for
+// the guard that recursed through the lock it was guarding.
+static int embox_futex_state = 0; // 0 unknown, 1 futex, 2 poll
+
+static bool embox_futex_wait_enabled() {
+	int state = __atomic_load_n(&embox_futex_state, __ATOMIC_RELAXED);
+	if (state == 0) {
+		bool futex = xl_futex_wait && xl_futex_wake;
+		if (futex) {
+			// "0" polls everywhere; "lock" keeps the futex for sprt_lock only and
+			// polls here. Anything else: futex.
+			auto env = ::getenv("SPRT_EMBOX_FUTEX");
+			futex = !(env && (::strcmp(env, "0") == 0 || ::strcmp(env, "lock") == 0));
+		}
+		state = futex ? 1 : 2;
+		__atomic_store_n(&embox_futex_state, state, __ATOMIC_RELAXED);
+	}
+	return state == 1;
+}
+#endif
 
 static constexpr int64_t EMBOX_DEADLINE_NONE = INT64_MAX;
 
@@ -208,6 +242,13 @@ bool EmboxData::hasChangedAddress() const {
 
 void EmboxData::notifyWakeup() {
 	__atomic_fetch_or(&_wakeupReq, WakeupPresent, __ATOMIC_SEQ_CST);
+#if SPRT_EMBOX && !SPRT_EMBOX_USER
+	// After the store: a sleeper that counted itself in before this load either
+	// sees the new word and does not sleep, or is on the futex and gets woken.
+	if (__atomic_load_n(&_sleepers, __ATOMIC_SEQ_CST) != 0 && embox_futex_wait_enabled()) {
+		xl_futex_wake(&_wakeupReq, INT_MAX);
+	}
+#endif
 }
 
 void EmboxData::drainWakeup() {
@@ -221,6 +262,17 @@ void EmboxData::spinWait(int timeoutMs) {
 	if (timeoutMs <= 0) {
 		return;
 	}
+#if SPRT_EMBOX && !SPRT_EMBOX_USER
+	// With the image's futex: one sleep that ends when notifyWakeup() changes the
+	// word or the timeout passes, instead of a usleep(1000) per millisecond. The
+	// timeout is the kernel's, so a clock that sits still does not matter here.
+	if (embox_futex_wait_enabled()) {
+		__atomic_add_fetch(&_sleepers, 1, __ATOMIC_SEQ_CST);
+		xl_futex_wait(&_wakeupReq, 4, 0, int64_t(timeoutMs) * 1'000'000ll);
+		__atomic_sub_fetch(&_sleepers, 1, __ATOMIC_SEQ_CST);
+		return;
+	}
+#endif
 	// usleep() slices, NOT a sched_yield() spin. The looper usually runs on the
 	// task that owns the window, and sched_yield() there does not run a pthread
 	// of equal or lower priority - core/embox/sprt_lock.cc says the same thing

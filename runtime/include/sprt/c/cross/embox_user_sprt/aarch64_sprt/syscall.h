@@ -48,6 +48,12 @@
 #define __SPRT_SYSCALL_exit            93
 #define __SPRT_SYSCALL_exit_group      94
 
+// futex: WAIT, WAKE and their BITSET forms with BITSET_MATCH_ANY, private or
+// not (there are no mappings shared between tasks). No PI, no requeue, no
+// CLOCK_REALTIME -- those answer ENOSYS (ABI doc section 6.2). The first
+// syscall that blocks by design.
+#define __SPRT_SYSCALL_futex           98
+
 #define __SPRT_SYSCALL_clock_gettime  113
 #define __SPRT_SYSCALL_uname          160
 #define __SPRT_SYSCALL_getpid         172
@@ -73,8 +79,8 @@
 //     34 mkdirat         35 unlinkat        38 renameat        46 ftruncate
 //     48 faccessat       49 chdir           59 pipe2           61 getdents64
 //     73 ppoll           78 readlinkat      82 fsync           96 set_tid_address
-//     98 futex          101 nanosleep      115 clock_nanosleep 124 sched_yield
-//    220 clone          278 getrandom
+//    101 nanosleep      115 clock_nanosleep 124 sched_yield    220 clone
+//    278 getrandom
 //
 //   17 getcwd already has a number in the kernel's xl_abi.h but no dispatcher
 //   case, so it answers ENOSYS; it stays out of this file until it does not.
