@@ -30,6 +30,9 @@
 #include "XLSceneInspector.h"
 #include "XLAction.h"
 #include "XL2dLayer.h"
+#include "XLUiPanel.h"
+#include "XLInputListener.h"
+#include "XLSelectionSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
@@ -200,7 +203,10 @@ accordion-drop-indicator { background-color: var(--accent); }
 
 /* A section's panel is the flex column buildFieldGroup() wants; it is `fit-content` on the main
    axis so an open section is exactly as tall as what it holds. */
-.section-body { display: flex; flex-direction: column; row-gap: 4px; flex-basis: fit-content; }
+.section-body { display: flex; flex-direction: column; row-gap: 4px; flex-basis: fit-content;
+                padding: 4px; border-radius: 4px; background-color: transparent; }
+/* The section holding the scene's selection. An outline only: the fill stays off, see above */
+.section-body:selection-within { outline-color: var(--accent); outline-width: 2px; }
 
 /* ---- the two in-scene popups ----------------------------------------- */
 
@@ -254,10 +260,20 @@ CSS tag unless somebody sets one. */
 // A section's panel: the flex column buildFieldGroup fills. Built at most once per section, and
 // kept across a collapse - the accordion detaches it rather than destroying it.
 static Rc<Node> makeSectionBody(FieldGroup group) {
-	auto body = Rc<Node>::create();
+	auto body = Rc<ui::Panel>::create();
 	body->setName(mem_std::toString("section-", getFieldGroupName(group)));
 	body->addStyleClass("section-body");
 	buildFieldGroup(body, group);
+
+	// A tap on the section's own space selects it, and Up/Down then move between the open sections
+	setNodeSelectable(body, true);
+	auto listener = body->addSystem(Rc<InputListener>::create());
+	listener->addTapRecognizer([node = body.get()](const GestureTap &) {
+		if (auto system = SelectionSystem::acquireForNode(node)) {
+			system->selectNode(node);
+		}
+		return true;
+	});
 	return body;
 }
 

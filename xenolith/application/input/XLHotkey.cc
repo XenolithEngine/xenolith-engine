@@ -429,6 +429,15 @@ const EngineHotkeys &EngineHotkeys::get() {
 				HotkeyCombo::parse("Alt+DOWN"), "Move the selected item down",
 				HotkeyOptions::ReserveFromTextInput);
 
+		s_hotkeys.selectLeft = add("org.stappler.xenolith.selection.left", "LEFT",
+				"Select the next element to the left");
+		s_hotkeys.selectRight = add("org.stappler.xenolith.selection.right", "RIGHT",
+				"Select the next element to the right");
+		s_hotkeys.selectUp =
+				add("org.stappler.xenolith.selection.up", "UP", "Select the next element above");
+		s_hotkeys.selectDown =
+				add("org.stappler.xenolith.selection.down", "DOWN", "Select the next element below");
+
 		s_hotkeys.textAccept =
 				add("org.stappler.xenolith.text-input.accept", "ENTER", "Accept the field's text");
 		s_hotkeys.textAcceptKeypad = add("org.stappler.xenolith.text-input.accept-keypad",
