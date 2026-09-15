@@ -198,11 +198,11 @@ protected:
 	// Server-side listener state (dormant unless a scene calls startListening).
 	remote::Address _listenAddress;
 	Rc<remote::Listener> _listener;
-	Rc<sprt::dispatch::PollHandle> _listenPoll;
+	Rc<sprt::dispatch::Handle> _listenPoll;
 
 	// Readiness on the accepted connection, whose fd differs from the listener's on transports
 	// where accept yields a new socket (unix, tcp); with QUIC one UDP socket carries both.
-	Rc<sprt::dispatch::PollHandle> _clientPoll;
+	Rc<sprt::dispatch::Handle> _clientPoll;
 	Rc<RemoteRenderClient> _remoteClient;
 
 	// Set by a dispatcher that ended the session; acted on in pumpListener, the only place allowed

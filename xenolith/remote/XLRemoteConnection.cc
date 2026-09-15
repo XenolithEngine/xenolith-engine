@@ -70,6 +70,10 @@ sprt::dispatch::NativeHandle Connection::getPollHandle() const {
 	return _transport ? _transport->getPollHandle() : sprt::dispatch::NativeHandle(-1);
 }
 
+TransportWaitAddress Connection::getWaitAddress() {
+	return _transport ? _transport->getWaitAddress() : TransportWaitAddress();
+}
+
 bool Connection::isClosed() { return !_transport || _transport->isClosed(); }
 
 GlobalError Connection::enqueue(MessageType t, Domain d, uint8_t code, uint32_t serial,

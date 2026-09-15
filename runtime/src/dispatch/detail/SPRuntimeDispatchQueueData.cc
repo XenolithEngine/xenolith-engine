@@ -347,6 +347,13 @@ Rc<WatchHandle> QueueData::watchFile(WatchInfo &&info, Ref *ref) {
 	return nullptr;
 }
 
+Rc<AddressWaitHandle> QueueData::waitOnAddress(AddressWaitInfo &&info, Ref *ref) {
+	if (_addressWait && info.address) {
+		return _addressWait(this, _platformQueue, move(info), ref);
+	}
+	return nullptr;
+}
+
 Rc<ThreadHandle> QueueData::addThreadHandle() {
 	if (_thread) {
 		return _thread(this, _platformQueue);

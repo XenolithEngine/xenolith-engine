@@ -262,6 +262,25 @@ void AppThread::waitForReply(uint32_t serial,
 	_requests.insert_or_assign(serial, PendingReply{sp::move(cb), deadline});
 }
 
+Rc<sprt::dispatch::Handle> AppThread::watchTransport(sprt::dispatch::NativeHandle handle,
+		remote::TransportWaitAddress wait, Function<void()> &&cb) {
+	if (handle.fd >= 0) {
+		return _appLooper->listenPollableHandle(handle, sprt::dispatch::PollFlags::In,
+				[cb = sp::move(cb)](auto, auto) -> Status {
+			cb();
+			return Status::Ok;
+		}, this);
+	}
+	if (wait.address) {
+		return _appLooper->waitOnAddress(wait.address, wait.value,
+				[cb = sp::move(cb)](uint32_t) -> Status {
+			cb();
+			return Status::Ok;
+		}, this);
+	}
+	return nullptr;
+}
+
 bool AppThread::failTimedOutRequests() {
 	if (_requests.empty()) {
 		return false;

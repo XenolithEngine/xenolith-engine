@@ -137,7 +137,7 @@ protected:
 
 	ClientContext *_clientContext = nullptr;
 
-	Rc<sprt::dispatch::PollHandle> _listenPoll;
+	Rc<sprt::dispatch::Handle> _listenPoll;
 	Rc<remote::ClientConnection> _connection;
 
 	Rc<remote::ObjectFactory> _sharedObjects;

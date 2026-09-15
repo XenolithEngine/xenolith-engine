@@ -495,14 +495,10 @@ bool ServerAppThread::startListening() {
 
 	_sharedObjects = Rc<remote::ObjectRegistry>::create();
 
-	// Socket readiness wakes accept promptly; QUIC timers are pumped from performAppUpdate(), so no
-	// separate listen timer is needed.
-	_listenPoll = _appLooper->listenPollableHandle(_listener->getPollHandle(),
-			sprt::dispatch::PollFlags::In,
-			[this](sprt::dispatch::NativeHandle, sprt::dispatch::PollFlags) -> Status {
-		pumpListener();
-		return Status::Ok;
-	}, this);
+	// Socket readiness or the rendezvous doorbell wakes accept promptly; QUIC timers are pumped from
+	// performAppUpdate(), so no separate listen timer is needed.
+	_listenPoll = watchTransport(_listener->getPollHandle(), _listener->getWaitAddress(),
+			[this] { pumpListener(); });
 	updateServerInfo(); // the transport is now known
 	pumpListener();
 	return true;
@@ -1011,13 +1007,14 @@ void ServerAppThread::completePendingHandshake() {
 			auto handle = c->getPollHandle();
 			// native_handle is a union with no comparison, so compare the fd. A transport whose
 			// accept returns the listening socket itself (QUIC) is already covered by _listenPoll.
-			if (handle.fd >= 0 && handle.fd != _listener->getPollHandle().fd) {
-				_clientPoll = _appLooper->listenPollableHandle(handle,
-						sprt::dispatch::PollFlags::In,
-						[this](sprt::dispatch::NativeHandle, sprt::dispatch::PollFlags) -> Status {
-					pumpListener();
-					return Status::Ok;
-				}, this);
+			if (handle.fd >= 0) {
+				if (handle.fd != _listener->getPollHandle().fd) {
+					_clientPoll = watchTransport(handle, remote::TransportWaitAddress(),
+							[this] { pumpListener(); });
+				}
+			} else {
+				_clientPoll =
+						watchTransport(handle, c->getWaitAddress(), [this] { pumpListener(); });
 			}
 		}
 		// Start the keepalive clock fresh so the timeout is measured from connection establishment.

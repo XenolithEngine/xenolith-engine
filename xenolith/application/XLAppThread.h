@@ -239,6 +239,11 @@ protected:
 	// timed out; the caller should then reset the connection.
 	bool failTimedOutRequests();
 
+	// Run `cb` on this thread when a transport has work: readiness of `handle` when it is valid,
+	// otherwise a change of `wait`. Null when there is neither; the update tick then services it.
+	Rc<sprt::dispatch::Handle> watchTransport(sprt::dispatch::NativeHandle handle,
+			remote::TransportWaitAddress wait, Function<void()> &&cb);
+
 	// Connection send facade for the block-transfer manager. The base has no connection and returns
 	// false; subclasses route to their active connection. remoteSendCborWithReply registers the
 	// reply waiter via waitForReply.
