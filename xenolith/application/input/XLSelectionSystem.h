@@ -29,6 +29,21 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class SelectionOwner;
+class InputListener;
+
+// A step of arrow navigation, in screen directions: a right-to-left layout does not swap them
+enum class SelectionDirection : uint8_t {
+	Left,
+	Right,
+	Up,
+	Down,
+};
+
+/* How far `to` lies from `from` when moving in `dir`; both in world space. Returns false when `to`
+is not past the near edge of `from`. Lower is closer: a rect overlapping `from` across the
+direction always wins over one that does not, then 13 * major^2 + minor^2 decides. */
+SP_PUBLIC bool getSelectionDirectionScore(SelectionDirection dir, const Rect &from, const Rect &to,
+		double &score);
 
 /* One item of a selection, as the owner names it; opaque here, only the owner interprets it.
 Two fields because a pointer alone cannot name a row: a TreeView row is (ModelNode, offset) within a
@@ -76,6 +91,16 @@ public:
 	// The selection changed. Fires on the owner that gained it and on the one that lost it (with
 	// an empty span)
 	virtual void handleSelectionChanged(SpanView<SelectionItem>) = 0;
+
+	/* One arrow step inside this owner, which holds the selection. True when handled (the
+	selection moved, or a branch was expanded); false at the edge, and the system then looks for
+	a neighbour outside the owner. */
+	virtual bool moveSelection(SelectionDirection) { return false; }
+
+	/* The selection arrives from outside, moving in `dir` from `fromWorld`: select an item fitting
+	that direction. False refuses, and the next candidate is tried. Called only for an owner
+	registered with setNodeSelectable. */
+	virtual bool enterSelection(SelectionDirection, const Rect &fromWorld) { return false; }
 };
 
 /* The scene's single selection: what the user is working on, as opposed to where typing goes.
@@ -101,6 +126,7 @@ public:
 	virtual bool init() override;
 
 	virtual void handleAdded(Node *) override;
+	virtual void handleRemoved() override;
 	virtual void handleExit() override;
 
 	virtual void handleVisitSelf(FrameInfo &, Node *, NodeVisitFlags) override;
@@ -115,6 +141,11 @@ public:
 
 	// Drop the selection. Answers false when there was none
 	virtual bool clear();
+
+	/* Move the selection one step in `dir`: first inside the owner (SelectionOwner::moveSelection),
+	then to the closest node registered with setNodeSelectable in the committed frame. False when
+	nothing is selected or nothing lies in that direction. Bound to the arrow keys. */
+	virtual bool moveSelection(SelectionDirection);
 
 	SelectionOwner *getOwner() const { return _owner; }
 	Node *getOwnerNode() const { return _ownerNode; }
@@ -179,6 +210,9 @@ protected:
 	Vector<SelectionItem> _pendingItems;
 
 	Function<void(const SelectionState &)> _callback;
+
+	// Receives the arrow hotkeys, after the ordinary key route declined them
+	Rc<InputListener> _listener;
 };
 
 } // namespace stappler::xenolith

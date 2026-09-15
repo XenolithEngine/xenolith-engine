@@ -25,6 +25,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 ComponentId SelectionComponent::Id;
+ComponentId SelectableComponent::Id;
 
 bool hasSelectionWithin(const Node *node) {
 	if (!node) {
@@ -110,6 +111,27 @@ void setNodeSelected(Node *node, bool value) {
 		c->selected = false;
 		return true;
 	});
+}
+
+void setNodeSelectable(Node *node, bool value, SelectionOwner *owner) {
+	if (!node) {
+		return;
+	}
+
+	if (value) {
+		// No selector reads the owner, so changing it dirties nothing
+		node->setOrUpdateComponent<SelectableComponent>([&](NotNull<SelectableComponent> c) {
+			c->owner = owner;
+			return false;
+		});
+		node->addHitTestFlags(HitTestFlags::Selectable);
+	} else if (node->removeComponent<SelectableComponent>()) {
+		node->removeHitTestFlags(HitTestFlags::Selectable);
+	}
+}
+
+const SelectableComponent *getNodeSelectable(const Node *node) {
+	return node ? node->getComponent<SelectableComponent>() : nullptr;
 }
 
 } // namespace stappler::xenolith

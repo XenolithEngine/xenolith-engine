@@ -28,6 +28,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
+class SelectionOwner;
+
 /* Marker for `:selected` and `:selection-within`. Not InteractiveComponent state, for the same
 reason as FocusWithinComponent: its default Enabled would change `:enabled`/`:disabled` matching
 on panels and plain nodes while something is selected.
@@ -67,6 +69,20 @@ SP_PUBLIC void updateSelectionChain(SpanView<Rc<Node>> from, SpanView<Rc<Node>> 
 bit always restyles while counter moves do not, and item nodes are recycled independently of the
 selection (TreeView re-applies it from updateRowNode). */
 SP_PUBLIC void setNodeSelected(Node *, bool);
+
+/* A candidate for arrow navigation (SelectionSystem::moveSelection), found through the committed
+frame's hit-test registry, so only a drawn node is one. With an `owner` the selection enters it
+through SelectionOwner::enterSelection; without one the node is selected with selectNode(). */
+struct SP_PUBLIC SelectableComponent {
+	static ComponentId Id;
+
+	SelectionOwner *owner = nullptr;
+};
+
+// Attaches or removes SelectableComponent together with HitTestFlags::Selectable
+SP_PUBLIC void setNodeSelectable(Node *, bool, SelectionOwner * = nullptr);
+
+SP_PUBLIC const SelectableComponent *getNodeSelectable(const Node *);
 
 } // namespace stappler::xenolith
 

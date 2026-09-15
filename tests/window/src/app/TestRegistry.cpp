@@ -79,6 +79,7 @@
 #include "widgets/TooltipLayout.h"
 #include "widgets/ScrollThrashLayout.h"
 #include "widgets/SelectionLayout.h"
+#include "widgets/SelectionNavLayout.h"
 #include "text/ShapingLayout.h"
 #include "text/MarkdownLayout.h"
 #include "css/SelectorLayout.h"
@@ -503,6 +504,16 @@ static const TestInfo s_widgetsTests[] = {
 				   "selection.materialize, selection.node, selection.hotkey-log, "
 				   "selection.clear-log, selection.set-consume."),
 		TestRegistry_make<SelectionLayout>, true},
+
+	TestInfo{StringView("selection-nav"), StringView("XL_SELECTION_NAV_TEST"),
+		StringView("Arrow navigation of the scene's selection"),
+		StringView("A grid of selectable nodes and two trees opted in as selection owners, one of "
+				   "them right-to-left. An arrow steps inside the owner first and at its edge moves "
+				   "to the closest drawn candidate in that direction; an arrow taken by the ordinary "
+				   "key route or held back by an Exclusive focus group never moves the selection. "
+				   "Inspector: selection-nav.state, selection-nav.select, selection-nav.move, "
+				   "selection-nav.eat, selection-nav.modal, selection-nav.hidden."),
+		TestRegistry_make<SelectionNavLayout>, true},
 };
 
 // src/text - text shaping

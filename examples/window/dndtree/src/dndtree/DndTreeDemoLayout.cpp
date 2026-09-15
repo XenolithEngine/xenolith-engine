@@ -113,6 +113,9 @@ tree-row {
 
 tree-row:hover      { background-color: var(--row-hover); }
 tree-row.selected   { background-color: var(--row-selected); }
+
+/* The frame whose tree holds the scene's selection */
+tree-view:selection-within { outline-color: var(--row-selected); outline-width: 2px; }
 tree-row.expanded > .tree-label, tree-row.collapsed > .tree-label { font-weight: bold; }
 
 .tree-toggle {
@@ -491,7 +494,12 @@ Rc<DndTreeView> DndTreeDemoLayout::makeTree(data::Model *model, StringView title
 	// Selection is what arms `.tree-row:hover` and `.tree-row.selected`: without a callback a row
 	// gets no input listener at all, and neither rule can ever match.
 	tree->setSelectionEnabled(true);
-	tree->setSelectCallback([tree = tree.get()](size_t index, const ui::TreeView::Row &row) {
+
+	// Both trees share the scene's selection, so the arrow keys walk a tree and cross to the other
+	// one at its edge. A category opens on a double click or its toggle, not on a pick: an arrow
+	// passing over it is a pick too
+	tree->setSelectionOwned(true);
+	tree->setActivateCallback([tree = tree.get()](size_t index, const ui::TreeView::Row &row) {
 		if (row.isCategory()) {
 			tree->toggleRow(index);
 		}

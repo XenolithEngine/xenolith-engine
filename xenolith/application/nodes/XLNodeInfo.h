@@ -77,7 +77,7 @@ A node with any of these bits publishes its drawn rect once per frame from its o
 walk the registry backwards (registration order is paint order); unvisited nodes are not registered.
 
 Each bit mirrors the presence of a component and is maintained by its setter (ui::setContextMenu,
-setDropTarget, ui::setTooltip). Never set it by hand: a bit without a component makes the node win
+setDropTarget, ui::setTooltip, setNodeSelectable). Never set it by hand: a bit without a component makes the node win
 a hit test and offer nothing. */
 enum class HitTestFlags : uint32_t {
 	None,
@@ -94,6 +94,9 @@ enum class HitTestFlags : uint32_t {
 
 	// ui::TooltipComponent: resting the pointer here shows a hint
 	Tooltip = 1 << 3,
+
+	// SelectableComponent: arrow navigation may move the scene's selection here
+	Selectable = 1 << 4,
 
 	// 1 << 16 and up are free for applications
 	ApplicationMask = 0xFFFF'0000,

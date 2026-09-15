@@ -303,7 +303,10 @@ lifetime, or for error detection. Details and examples:
     retained and release exactly it — re-walking `getParent()` strands every
     counter above a row that was detached in between. Focus coupling is one
     explicit call in the widget that wants it, and it is asymmetric: taking focus
-    may select, losing focus must not clear.
+    may select, losing focus must not clear. Arrows move the selection inside the
+    owner (`SelectionOwner::moveSelection`) and then to the closest DRAWN node
+    registered with `setNodeSelectable`; they are `HotkeyFlags::Unhandled`, so a
+    focused widget that takes the arrow keeps it.
 
 31. **Comments are short and describe working code.** One to three lines as a
     rule; no capital-letter headings or words stressed in capitals

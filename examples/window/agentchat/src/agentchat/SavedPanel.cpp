@@ -57,6 +57,8 @@ panel.bubble.saved { background-color: #23232c;
 panel.bubble.saved > label.title { color: var(--text); font-size: 13px; font-weight: bold; }
 panel.bubble.saved > label.body  { color: #c9c9d2; font-size: 13px; }
 panel.bubble.saved > label.meta  { color: var(--muted); font-size: 11px; }
+/* This sheet comes after the chat's, so its card outline would win over the chat's selection rule */
+panel.bubble.saved:selection-within { outline-width: 2px; outline-color: var(--accent); }
 
 label.saved-empty { color: var(--muted); font-size: 12px; }
 )css");

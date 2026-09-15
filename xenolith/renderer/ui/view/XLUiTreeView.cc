@@ -286,6 +286,9 @@ void TreeView::setSelectionOwned(bool value) {
 	}
 	_selectionOwned = value;
 
+	// A candidate for arrow navigation only while it can hold the selection
+	setNodeSelectable(this, _selectionOwned, this);
+
 	if (_selectionOwned) {
 		publishSelection();
 	} else if (auto system = SelectionSystem::findForNode(this)) {
@@ -336,6 +339,81 @@ Node *TreeView::resolveSelectionNode(const SelectionItem &item) const {
 		}
 	}
 	return nullptr;
+}
+
+bool TreeView::moveSelection(SelectionDirection dir) {
+	if (!_selectionOwned || _selectedRow >= _rows.size()) {
+		return false;
+	}
+
+	const auto index = _selectedRow;
+	switch (dir) {
+	case SelectionDirection::Up:
+		if (index == 0) {
+			return false;
+		}
+		selectRowFromKeyboard(index - 1);
+		return true;
+	case SelectionDirection::Down:
+		if (index + 1 >= _rows.size()) {
+			return false;
+		}
+		selectRowFromKeyboard(index + 1);
+		return true;
+	default: break;
+	}
+
+	const auto rtl = isInlineRtl(this);
+	const bool towardsParent = (dir == SelectionDirection::Left) != rtl;
+	const auto &row = _rows[index];
+
+	if (towardsParent) {
+		if (row.isCategory() && row.expanded) {
+			return collapseRow(index);
+		}
+		for (size_t i = index; i > 0; --i) {
+			if (_rows[i - 1].depth < row.depth) {
+				selectRowFromKeyboard(i - 1);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	if (row.isCategory() && !row.expanded) {
+		return expandRow(index);
+	}
+	if (row.isCategory() && index + 1 < _rows.size() && _rows[index + 1].depth > row.depth) {
+		selectRowFromKeyboard(index + 1);
+		return true;
+	}
+	return false;
+}
+
+bool TreeView::enterSelection(SelectionDirection dir, const Rect &fromWorld) {
+	if (!_selectionOwned || _rows.empty()) {
+		return false;
+	}
+
+	auto index = getEnteringRow(makeGeometrySource(), dir, fromWorld);
+	if (index >= _rows.size()) {
+		return false;
+	}
+	selectRowFromKeyboard(index);
+	return true;
+}
+
+void TreeView::selectRowFromKeyboard(size_t index) {
+	if (index >= _rows.size()) {
+		return;
+	}
+
+	setSelectedRow(index);
+	scrollRowIntoView(_scroll, _controller, index);
+
+	if (_selectCallback && index < _rows.size()) {
+		_selectCallback(index, _rows[index]);
+	}
 }
 
 void TreeView::handleSelectionChanged(SpanView<SelectionItem> items) {

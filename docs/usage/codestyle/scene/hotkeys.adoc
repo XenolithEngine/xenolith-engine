@@ -15,6 +15,9 @@
   normal walk order.
 * **`HotkeyFlags::SelectedOnly`** narrows a binding to listeners on the selection
   chain — the mirror of `FocusedOnly`, and how an Undo finds the right history.
+* **`HotkeyFlags::Unhandled`** moves a binding to the other end: it is offered only
+  **after** the ordinary key route declined the key. The arrow keys that move the
+  selection use it, so a focused slider keeps its arrows.
 * The name is the identity (`org.stappler.xenolith.<area>.<action>`); the
   combination is data and can be **rebound at runtime** without invalidating the id.
 * One combination can carry **several** hotkeys — `Escape` is both
@@ -139,6 +142,9 @@ in its focus group.
 `BypassExclusive`:: deliver even when an `Exclusive` focus group has scoped the
 walk to itself. For the few bindings that must survive a modal dialog.
 `Repeatable`:: also fire on key auto-repeat, not just the initial press.
+`SelectedOnly`:: deliver only while this listener's owner is on the selection chain.
+`Unhandled`:: deliver only in the pass after the ordinary key route, and never in
+the pass before it. For a key a focused widget may want for itself.
 
 **`FocusedOnly` is not `isFocused()`.** `ui::TextInput`'s own listener never holds
 focus — the `FormInputListener` above it does — so the test that actually works is
@@ -172,6 +178,13 @@ focused field's subtree". A listener with no focus group above it always qualifi
 
 That last point is what keeps an unused binding harmless: an unhandled `Ctrl+S`
 is still a plain `S` press with Ctrl held.
+
+**The pass after the key route.** When the ordinary route leaves no listener
+holding the key (every recognizer declined, or there was none), the same three
+steps run again for `HotkeyFlags::Unhandled` bindings only, and only those are
+eligible there. A `KeyRepeated` gets the same pass when its key chain is empty.
+Exclusive scoping applies as before, so nothing behind a modal dialog is offered
+the key.
 
 Because a consumed press never opens a key chain, the matching `KeyReleased`
 finds nothing and is a no-op. Nothing has to be cleaned up.
