@@ -38,6 +38,18 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 // Null before the director has a resource cache.
 Rc<Texture> makeSoftCircleTexture(Director *, uint32_t size = 64);
 
+// A white square with a soft one-texel edge
+Rc<Texture> makeSquareTexture(Director *, uint32_t size = 32);
+
+// A soft ellipse elongated along Y, for AlignWithVelocity
+Rc<Texture> makeSparkTexture(Director *, uint32_t width = 16, uint32_t height = 64);
+
+// A 4x4 sheet of animation frames, each frame a solid color of getFrameSheetColor, row 0 at the top
+Rc<Texture> makeFrameSheetTexture(Director *, uint32_t cellSize = 64);
+
+// Color of frame `index` (0..15) of the frame sheet: distinct, opaque, easy to find in a screenshot
+Color3B getFrameSheetColor(uint32_t index);
+
 } // namespace stappler::xenolith::examples
 
 #endif /* EXAMPLES_WINDOW_PARTICLES_SRC_PARTICLES_PARTICLETEXTURES_H_ */

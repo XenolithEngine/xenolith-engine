@@ -43,9 +43,21 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d::vk {
 
+// The shader reads the frame data with the std430 layout
+static_assert(sizeof(ParticleFrameData) == 144
+		&& __builtin_offsetof(ParticleFrameData, feedbackPointer) == 88);
+
 // TransferSrc: a resized emitter copies its particles out of the old buffer
 static constexpr auto s_particleBufferUsage = core::BufferUsage::ShaderDeviceAddress
 		| core::BufferUsage::StorageBuffer | core::BufferUsage::TransferSrc;
+
+bool ParticlePass::isFeedbackPipelineEnabled() {
+	static const bool enabled = [] {
+		auto v = ::getenv("XL_PARTICLE_FEEDBACK");
+		return v && StringView(v) != "0" && StringView(v) != "";
+	}();
+	return enabled;
+}
 
 const ParticleSystemRenderInfo *ParticleEmitterAttachmentHandle::getEmitterRenderInfo(
 		uint64_t id) const {
@@ -169,6 +181,9 @@ void ParticlePersistentData::update(DeviceMemoryPool *pool, FrameContextHandle2d
 		++it;
 	}
 
+	// Frames of a queue get their order here, on the loop thread, whatever order they complete in
+	++_frameSequence;
+
 	uint32_t vertexOffset = 0;
 	for (auto &info : ctx->particleEmitters) {
 		auto s = info.second.system.get();
@@ -289,6 +304,11 @@ void ParticlePersistentData::update(DeviceMemoryPool *pool, FrameContextHandle2d
 				info.second.maxFramesPerCall);
 
 		glsl::particleAdvanceFrame(e.frame, e.cycle, framesInGen, frame.nframes);
+
+		frame.sequence = _frameSequence;
+		frame.restartGeneration = e.restartGeneration;
+		frame.nextCycle = e.cycle;
+		frame.nextGenframe = e.frame;
 
 		vertexOffset += e.count * 6;
 		frameEmitters.emplace_back(move(frame));
@@ -461,6 +481,19 @@ bool ParticlePass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuil
 			)
 		);
 
+		if (isFeedbackPipelineEnabled()) {
+			// Constant ids follow the list: 0 - BUFFERS_ARRAY_SIZE, 1 - ENABLE_FEEDBACK
+			subpassBuilder.addComputePipeline(UpdateFeedbackPipelineName, layout->defaultFamily,
+				SpecializationInfo(
+					particleUpdateComp,
+					mem_pool::Vector<SpecializationConstant>{
+						SpecializationConstant(config::ParticleBufferArraySize),
+						SpecializationConstant(1)
+					}
+				)
+			);
+		}
+
 		subpassBuilder.setCommandsCallback([this] (FrameQueue &frame, const SubpassData &subpass, core::CommandBuffer &buf) {
 			recordCommandBuffer(subpass, frame, buf);
 		});
@@ -510,6 +543,7 @@ void ParticlePass::prepare(core::Device &dev) {
 	}
 	if (auto *q = const_cast<core::QueueData *>(_data->queue)) {
 		q->computePipelines.erase(UpdatePipelineName);
+		q->computePipelines.erase(UpdateFeedbackPipelineName);
 		q->programs.erase("ParticleUpdateComp");
 	}
 }
@@ -520,7 +554,9 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 	auto memPool = dFrame->getMemPool(nullptr);
 
 	auto &buf = static_cast<vk::CommandBuffer &>(cbuf);
-	auto pipelineIt = subpass.computePipelines.find(UpdatePipelineName);
+	const bool feedback = isFeedbackPipelineEnabled();
+	auto pipelineIt = subpass.computePipelines.find(
+			feedback ? UpdateFeedbackPipelineName : UpdatePipelineName);
 	if (pipelineIt == subpass.computePipelines.end()) {
 		return;
 	}
@@ -574,6 +610,24 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 
 	buf.cmdBindPipelineWithDescriptors((*pipelineIt), 0);
 
+	// Counter records of the emitters that report back, by frame emitter index
+	Vector<Rc<Buffer>> feedbackRecords;
+	feedbackRecords.resize(emitters.size());
+	if (feedback) {
+		for (size_t i = 0; i < emitters.size(); ++i) {
+			auto &e = emitters[i];
+			if (!e.renderInfo->feedback) {
+				continue;
+			}
+			feedbackRecords[i] = memPool->spawn(AllocationUsage::DeviceLocalHostVisible,
+					BufferInfo(core::ForceBufferUsage(core::BufferUsage::ShaderDeviceAddress),
+							sizeof(ParticleFeedbackRecord) * e.systemData->data.count));
+			feedbackRecords[i]->map([&](uint8_t *ptr, VkDeviceSize size) {
+				::__sprt_memset(ptr, 0, size);
+			}, DeviceMemoryAccess::Flush);
+		}
+	}
+
 	frameData->map([&](uint8_t *ptr, VkDeviceSize) {
 		auto target = reinterpret_cast<ParticleFrameData *>(ptr);
 		uint32_t bufferIndex = 0;
@@ -596,8 +650,25 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 			target->transformRotation = sprt::atan2(m[1], m[0]);
 			target->transformScale = sprt::sqrt(sprt::fabs(m[0] * m[5] - m[4] * m[1]));
 
+			auto &rect = e.renderInfo->textureRect;
+			target->textureRect =
+					Vec4(rect.origin.x, rect.origin.y, rect.size.width, rect.size.height);
+			auto &color = e.renderInfo->color;
+			target->nodeColor = Vec4(color.r, color.g, color.b, color.a);
+			target->hFrames = e.renderInfo->frameGrid.x;
+			target->vFrames = e.renderInfo->frameGrid.y;
+
+			// the last step this frame simulates, or the last one simulated before it
+			auto lastStep = (e.genframe + e.nframes + e.framesInGen - 1) % e.framesInGen;
+			target->newest = glsl::particleNewest(e.systemData->data.count,
+					e.systemData->data.explosiveness, e.framesInGen, lastStep);
+
 			// the extra data is reached through the emitter data, keep it alive with the commands
 			buf.bindBufferAddress(e.extraData);
+
+			if (auto &records = feedbackRecords[bufferIndex]) {
+				target->feedbackPointer = UVec2::convertFromPacked(buf.bindBufferAddress(records));
+			}
 
 			++target;
 			++bufferIndex;
@@ -619,6 +690,102 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 		buf.cmdDispatchPipeline(*pipelineIt, e.systemData->data.count);
 
 		++emitterIndex;
+	}
+
+	recordFeedback(queue, buf, memPool, emitters, feedbackRecords);
+}
+
+void ParticlePass::recordFeedback(core::FrameQueue &queue, vk::CommandBuffer &buf,
+		DeviceMemoryPool *memPool, SpanView<ParticlePersistentData::FrameEmitter> emitters,
+		SpanView<Rc<Buffer>> feedbackRecords) {
+	auto pass = queue.getRenderPass(_data);
+	auto fence = (pass && pass->handle) ? pass->handle->getFence() : nullptr;
+	if (!fence) {
+		return;
+	}
+
+	// Snapshots are copied out of the particle buffers after the simulation
+	Vector<Rc<Buffer>> snapshots;
+	snapshots.resize(emitters.size());
+
+	Vector<BufferMemoryBarrier> barriers;
+	for (size_t i = 0; i < emitters.size(); ++i) {
+		auto &e = emitters[i];
+		if (e.renderInfo->feedback && e.renderInfo->snapshotId && e.renderInfo->snapshotCount) {
+			barriers.emplace_back(BufferMemoryBarrier(e.particles,
+					VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+					VK_ACCESS_TRANSFER_READ_BIT));
+		}
+	}
+
+	if (!barriers.empty()) {
+		buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+				0, barriers);
+	}
+
+	for (size_t i = 0; i < emitters.size(); ++i) {
+		auto &e = emitters[i];
+		if (!e.renderInfo->feedback || !e.renderInfo->snapshotId || !e.renderInfo->snapshotCount) {
+			continue;
+		}
+		auto size = sizeof(ParticleData) * e.renderInfo->snapshotCount;
+		snapshots[i] = memPool->spawn(AllocationUsage::HostTransitionDestination,
+				BufferInfo(core::ForceBufferUsage(core::BufferUsage::TransferDst), size));
+		buf.cmdCopyBuffer(e.particles, snapshots[i], 0, 0, size);
+	}
+
+	for (size_t i = 0; i < emitters.size(); ++i) {
+		auto &e = emitters[i];
+		if (!e.renderInfo->feedback) {
+			continue;
+		}
+
+		ParticleFeedback feedback;
+		feedback.sequence = e.sequence;
+		feedback.restartGeneration = e.restartGeneration;
+		feedback.cycle = e.nextCycle;
+		feedback.cycleFrame = e.nextGenframe;
+		feedback.framesInGen = e.framesInGen;
+		feedback.nframes = e.nframes;
+
+		// Read on the loop thread once the frame's commands have run; the buffers live in the
+		// frame's pool, which has to outlive them
+		fence->addRelease(
+				[pool = Rc<DeviceMemoryPool>(memPool), receiver = e.renderInfo->feedback,
+						records = feedbackRecords[i], snapshot = snapshots[i],
+						snapshotId = e.renderInfo->snapshotId, count = e.renderInfo->snapshotCount,
+						feedback](bool success) mutable {
+			if (!success) {
+				return;
+			}
+
+			if (records) {
+				feedback.counters = true;
+				records->map([&](uint8_t *ptr, VkDeviceSize size) {
+					auto record = reinterpret_cast<const ParticleFeedbackRecord *>(ptr);
+					auto n = size / sizeof(ParticleFeedbackRecord);
+					for (size_t j = 0; j < n; ++j) {
+						feedback.births += record[j].births;
+						feedback.steps += record[j].steps;
+						feedback.alive += record[j].alive;
+					}
+				}, DeviceMemoryAccess::Invalidate);
+			}
+
+			receiver->deliverFeedback(feedback);
+
+			if (snapshot) {
+				ParticleSnapshot result;
+				result.feedback = feedback;
+				result.particles.resize(count);
+				snapshot->map([&](uint8_t *ptr, VkDeviceSize size) {
+					::__sprt_memcpy(result.particles.data(), ptr,
+							sprt::min(size_t(size), sizeof(ParticleData) * count));
+				}, DeviceMemoryAccess::Invalidate);
+				receiver->deliverSnapshot(snapshotId, sp::move(result));
+			}
+		},
+				nullptr, "ParticlePass::recordFeedback");
 	}
 }
 
