@@ -78,6 +78,7 @@ using glsl::ParticleIndirectCommand;
 using glsl::ParticleFloatParam;
 using glsl::ParticleVec2Param;
 using glsl::ParticleEmissionPoints;
+using glsl::ParticleCurveHeader;
 using glsl::ParticleEmitterData;
 using glsl::ParticleData;
 using glsl::ParticleConstantData;
@@ -108,7 +109,7 @@ struct VertexSpan {
 	uint32_t gradientOffset = 0;
 	uint32_t gradientCount = 0;
 	float outlineOffset = 0;
-	uint64_t particleSystemId = 0;
+	uint64_t particleEmitterId = 0; // ParticleEmitter::getEmitterId, 0 - not a particle span
 };
 
 struct alignas(16) VertexData : public Ref {

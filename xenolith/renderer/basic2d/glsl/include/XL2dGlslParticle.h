@@ -69,6 +69,12 @@ struct ParticleEmissionPoints {
 	uint padding4;
 };
 
+// Header of a curve in the emitter's extra data buffer, followed by count * components floats
+struct ParticleCurveHeader {
+	uint count;
+	uint components;
+};
+
 struct ParticleEmitterData {
 	// [0-15]
 	// 0 - points
