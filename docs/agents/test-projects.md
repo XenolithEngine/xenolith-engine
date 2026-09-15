@@ -9,6 +9,7 @@
 | `tests/runtime` | `runtimetest` | `runtime_libc_wrapper` + `runtime` — the Xenolith Runtime (libc/STL/pthread) | CLI, self-checking |
 | `tests/libc` | `libctest` | the internal libc implementation — `runtime/libc_impl` **and** the `runtime_libc_wrapper` wrappers (including the substitute/replacement functions the wrappers supply when a function is missing on the platform). Built for the host **and** `x86_64-pc-windows-msvc`; `compare.sh` diffs the two for behavioural identity | CLI, host-vs-Windows diff |
 | `tests/stappler` | `stapplertest` | the `stappler_*` app modules (core/data/bitmap/crypto/db/document/font/vg/pug/makefile/layout/network) — **fast smoke build** | CLI |
+| `tests/particles` | `particlestest` | `runtime` only + the header-only `XL2dGlslParticleSim.h` — the CPU reference of the GPU particle emission cycle, the same text the particle update shader compiles | CLI, self-checking |
 | `tests/tess` | `tesstest` | the tesselator (`stappler/tess`) and the vector layer, against the whole 2d icon set — a pinned digest per icon **and** a pinned raster per icon, plus a deterministic wire benchmark. No device, no window, no frame | CLI, golden |
 | `tests/window` | `testapp` | full xenolith GUI stack (`xenolith_application` + `renderer_ui` + `backend_vk` + `resources_assets`); transitively compiles the stappler modules | GUI |
 
@@ -22,6 +23,10 @@
   the other way round, so neither alone is the check. `--write` re-pins a golden,
   and re-pinning is a decision to record in the commit message, not a way to make
   a run green.
+- Changed the basic2d particle system or its GLSL (`xenolith/renderer/basic2d/particle`,
+  `glsl/include/XL2dGlslParticle*.h`, `xl_2d_particle_update.comp`) → `tests/particles`, then the
+  GPU side in `examples/window/particles` headless. The shader build does not track included
+  headers: touch the `.comp` after editing one.
 - Changed the runtime (`runtime`/`runtime_core`/wrapper) → `tests/runtime`; for
   the libc wrappers themselves also run `tests/libc`.
 - Changed `runtime/libc_impl` (or the libc wrappers) → `tests/libc` (its

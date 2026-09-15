@@ -64,6 +64,9 @@ public:
 		uint32_t framesInGen = 1;
 		uint32_t genframe = 0;
 		uint32_t nframes = 0;
+		uint32_t cycle = 0;
+		uint32_t seed = 0;
+		uint32_t vertexOffset = 0;
 		bool uploads = false;
 	};
 
@@ -73,7 +76,9 @@ public:
 		uint64_t windowId = 0;
 
 		uint64_t clock = 0;
-		uint64_t frame = 0;
+		uint32_t frame = 0; // position in the emission cycle
+		uint32_t cycle = 0;
+		uint32_t phaseSeed = 0; // the system's seed, or random per restart
 
 		Rc<Buffer> emitter;
 		Rc<Buffer> particles;

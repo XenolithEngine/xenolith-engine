@@ -85,6 +85,9 @@ struct ParticleSystemRenderInfo {
 
 	// Quad size used when the system sets none: the emitter's texture region, in pixels
 	Size2 defaultSize;
+
+	// Node to scene content transform for newborn particles; identity with LocalCoords
+	Mat4 nodeToScene;
 };
 
 class SP_PUBLIC ParticleSystem : public Ref {

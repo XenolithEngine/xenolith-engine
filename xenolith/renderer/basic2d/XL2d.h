@@ -82,7 +82,7 @@ using glsl::ParticleCurveHeader;
 using glsl::ParticleEmitterData;
 using glsl::ParticleData;
 using glsl::ParticleConstantData;
-using glsl::ParticleFeedback;
+using glsl::ParticleFrameData;
 using glsl::FrameClipperData;
 
 struct Triangle {
