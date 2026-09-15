@@ -67,6 +67,7 @@ CLI = [
     ("tests/locale", "localetest", [], True),
     ("tests/uilayout", "uilayouttest", [], True),
     ("tests/stappler", "stapplertest", [], True),
+    ("tests/particles", "particlestest", [], True),
     ("tests/tess", "tesstest", ["golden"], False),
     ("tests/tess", "tesstest", ["raster-golden"], False),
     ("tests/git", "gittest", [], False),
@@ -83,6 +84,8 @@ OWES = [
     ("stappler", ["stapplertest"]),
     ("xenolith/font", ["localetest", "stapplertest"]),
     ("xenolith/renderer/ui/layout", ["uilayouttest"]),
+    ("xenolith/renderer/basic2d/particle", ["particlestest"]),
+    ("xenolith/renderer/basic2d/glsl", ["particlestest"]),
     ("xenolith", []),
 ]
 
@@ -107,7 +110,7 @@ COST = {
     "window/panel-check.py": 4, "window/clipboard-check.py": 4, "window/scale9-check.py": 3,
     "window/render-level-check.py": 4, "window/overflow-check.py": 3,
     "gittest": 19, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
-    "uilayouttest": 1,
+    "uilayouttest": 1, "particlestest": 1,
 }
 
 # Scripts that are not checks, or cannot be part of an automated run - see the docstring.

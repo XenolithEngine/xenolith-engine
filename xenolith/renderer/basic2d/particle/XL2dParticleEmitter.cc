@@ -24,6 +24,7 @@
 #include "XL2dParticleSystem.h"
 #include "XL2dSprite.h"
 #include "XLAction.h"
+#include "XLScene.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
@@ -84,21 +85,34 @@ void ParticleEmitter::handleExit() {
 
 void ParticleEmitter::pushCommands(FrameInfo &frame, NodeVisitFlags flags) {
 	auto data = _vertexes.pop();
-	Mat4 newMV;
-	if (_normalized) {
-		auto &modelTransform = frame.modelTransformStack.back();
-		newMV.m[12] = floorf(modelTransform.m[12]);
-		newMV.m[13] = floorf(modelTransform.m[13]);
-		newMV.m[14] = floorf(modelTransform.m[14]);
-	} else {
-		newMV = frame.modelTransformStack.back();
-	}
-
-	auto targetTransform = frame.viewProjectionStack.back() * newMV;
 
 	FrameContextHandle2d *handle = static_cast<FrameContextHandle2d *>(frame.currentContext);
 
 	auto particleSystem = _system->pop();
+	auto &modelTransform = frame.modelTransformStack.back();
+
+	Mat4 targetTransform;
+	Mat4 nodeToScene;
+	if (hasFlag(ParticleSystemFlags(particleSystem->data.flags),
+				ParticleSystemFlags::LocalCoords)) {
+		Mat4 newMV;
+		if (_normalized) {
+			newMV.m[12] = floorf(modelTransform.m[12]);
+			newMV.m[13] = floorf(modelTransform.m[13]);
+			newMV.m[14] = floorf(modelTransform.m[14]);
+		} else {
+			newMV = modelTransform;
+		}
+		targetTransform = frame.viewProjectionStack.back() * newMV;
+	} else {
+		// Scene space is the dp space of the scene content: the model transform ends in pixels
+		Mat4 content;
+		if (_scene && _scene->getContent()) {
+			content = _scene->getContent()->getModelTransform();
+		}
+		targetTransform = frame.viewProjectionStack.back() * content;
+		nodeToScene = content.getInversed() * modelTransform;
+	}
 
 	auto cmdInfo = buildCmdInfo(frame);
 	auto materialIndex = cmdInfo.material;
@@ -121,6 +135,7 @@ void ParticleEmitter::pushCommands(FrameInfo &frame, NodeVisitFlags flags) {
 				transform,
 				0,
 				defaultSize,
+				nodeToScene,
 			});
 }
 

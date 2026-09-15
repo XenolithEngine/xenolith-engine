@@ -26,6 +26,13 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
 static sprt::atomic<uint64_t> s_particleSystemId = 1;
 
+// The shader reads the flags through the XL_PARTICLE_FLAG_* defines
+static_assert(toInt(ParticleSystemFlags::LocalCoords) == XL_PARTICLE_FLAG_LOCAL_COORDS);
+static_assert(
+		toInt(ParticleSystemFlags::AlignWithVelocity) == XL_PARTICLE_FLAG_ALIGN_WITH_VELOCITY);
+static_assert(toInt(ParticleSystemFlags::OrderByLifetime) == XL_PARTICLE_FLAG_ORDER_BY_LIFETIME);
+static_assert(toInt(ParticleSystemFlags::UseLifetimeMax) == XL_PARTICLE_FLAG_USE_LIFETIME_MAX);
+
 static constexpr size_t ParticleExtraAlign = 8;
 
 static size_t ParticleSystem_align(size_t size) {
@@ -141,13 +148,14 @@ static Value ParticleSystem_writeVec2(Vec2 v) {
 
 static void ParticleSystem_readRange(const Value &value, StringView key, float min, float max,
 		const Callback<void(float, float)> &setter) {
-	const auto &v = value.getValue(key);
-	if (v.isDictionary()) {
+	// Keyed checks: an absent key reads as Value::Null, and that counts as a basic type
+	if (value.isDictionary(key)) {
+		const auto &v = value.getValue(key);
 		auto newMin = float(v.getDouble("min", min));
 		auto newMax = float(v.getDouble("max", newMin + (max - min)));
 		setter(newMin, newMax - newMin);
-	} else if (v.isBasicType()) {
-		setter(float(v.getDouble()), 0.0f);
+	} else if (value.isInteger(key) || value.isDouble(key)) {
+		setter(float(value.getDouble(key)), 0.0f);
 	}
 }
 
@@ -506,11 +514,21 @@ bool ParticleSystem::setAnimFrameCurve(CurveBuffer *curve) {
 
 CurveBuffer *ParticleSystem::getAnimFrameCurve() const { return _data->animFrameCurve; }
 
-void ParticleSystem::addFlags(ParticleSystemFlags flags) { mutate().data.flags |= toInt(flags); }
+void ParticleSystem::addFlags(ParticleSystemFlags flags) { setFlags(getFlags() | flags); }
 
-void ParticleSystem::clearFlags(ParticleSystemFlags flags) { mutate().data.flags &= ~toInt(flags); }
+void ParticleSystem::clearFlags(ParticleSystemFlags flags) { setFlags(getFlags() & ~flags); }
 
-void ParticleSystem::setFlags(ParticleSystemFlags flags) { mutate().data.flags = toInt(flags); }
+void ParticleSystem::setFlags(ParticleSystemFlags flags) {
+	const auto changed = getFlags() ^ flags;
+
+	auto &d = mutate();
+	d.data.flags = toInt(flags);
+
+	// Living particles are in the old space
+	if (hasFlag(changed, ParticleSystemFlags::LocalCoords)) {
+		++d.restartGeneration;
+	}
+}
 
 ParticleSystemFlags ParticleSystem::getFlags() const {
 	return ParticleSystemFlags(_data->data.flags);

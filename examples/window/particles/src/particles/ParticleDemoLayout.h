@@ -52,12 +52,25 @@ protected:
 	struct EmitterSlot {
 		Rc<basic2d::ParticleSystem> system;
 		basic2d::ParticleEmitter *node = nullptr;
+
+		// Where the node stands, or the center it circles around while driven
+		Vec2 center;
+		bool placed = false; // moved by a command: layout changes leave it alone
+
+		float driveRadius = 0.0f;
+		float drivePeriod = 0.0f; // seconds per circle, 0 - not driven
+		float driveTime = 0.0f;
 	};
 
-	Rc<basic2d::ParticleSystem> makeBaselineSystem() const;
+	// The first emitter is a fountain, the second bursts from three points
+	Rc<basic2d::ParticleSystem> makeBaselineSystem(uint32_t index = 0) const;
 
 	// Every distinct system, once
 	Vector<basic2d::ParticleSystem *> getSystems() const;
+
+	// The emitter named by {emitter: index}, or every emitter
+	Vector<EmitterSlot *> getTargets(const Value &args);
+	void updateNodePosition(EmitterSlot &);
 
 	void setEmitters(uint32_t count, bool shared);
 	void rebuildEmitters();

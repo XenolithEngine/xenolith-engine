@@ -24,6 +24,7 @@
 
 #include "particles/ParticleDemoLayout.h"
 #include "particles/ParticleTextures.h"
+#include "particles/ParticlePresets.h"
 #include "XLScene.h"
 #include "XL2dSceneContent.h"
 #include "XLSceneInspector.h"
@@ -127,11 +128,53 @@ void ParticleDemoLayout::handleContentSizeDirty() {
 void ParticleDemoLayout::update(const UpdateTime &time) {
 	basic2d::SceneLayout2d::update(time);
 	++_updates;
+
+	for (auto &it : _emitters) {
+		if (it.drivePeriod > 0.0f) {
+			it.driveTime += time.dt;
+			updateNodePosition(it);
+		}
+	}
 }
 
-Rc<basic2d::ParticleSystem> ParticleDemoLayout::makeBaselineSystem() const {
+Vector<ParticleDemoLayout::EmitterSlot *> ParticleDemoLayout::getTargets(const Value &args) {
+	Vector<EmitterSlot *> ret;
+	if (args.isBasicType("emitter")) {
+		auto index = size_t(args.getInteger("emitter"));
+		if (index < _emitters.size()) {
+			ret.emplace_back(&_emitters[index]);
+		}
+	} else {
+		for (auto &it : _emitters) { ret.emplace_back(&it); }
+	}
+	return ret;
+}
+
+void ParticleDemoLayout::updateNodePosition(EmitterSlot &slot) {
+	auto pos = slot.center;
+	if (slot.drivePeriod > 0.0f) {
+		auto a = float(M_PI * 2.0) * slot.driveTime / slot.drivePeriod;
+		pos += Vec2(sprt::cos(a), sprt::sin(a)) * slot.driveRadius;
+	}
+	slot.node->setPosition(pos);
+}
+
+Rc<basic2d::ParticleSystem> ParticleDemoLayout::makeBaselineSystem(uint32_t index) const {
 	auto system = Rc<basic2d::ParticleSystem>::create();
 	if (_defaultSystems) {
+		return system;
+	}
+
+	if (index > 0) {
+		system->setCount(32);
+		system->setLifetime(1.0f);
+		system->setExplosiveness(1.0f);
+		system->setRandomness(1.0f);
+		system->setParticleSize(Size2(16.0f, 16.0f));
+		system->setVelocity(60.0f, 100.0f);
+		system->setNormal(0.0f, float(M_PI * 2.0));
+		system->setEmissionPoints(
+				makeSpanView({Vec2(-60.0f, -40.0f), Vec2(60.0f, -40.0f), Vec2(0.0f, 60.0f)}));
 		return system;
 	}
 
@@ -178,7 +221,7 @@ void ParticleDemoLayout::rebuildEmitters() {
 
 	for (uint32_t i = 0; i < _emitterCount; ++i) {
 		EmitterSlot slot;
-		slot.system = (_sharedSystem && i > 0) ? _emitters.front().system : makeBaselineSystem();
+		slot.system = (_sharedSystem && i > 0) ? _emitters.front().system : makeBaselineSystem(i);
 
 		Rc<basic2d::ParticleEmitter> emitter;
 		if (_texture) {
@@ -215,11 +258,20 @@ void ParticleDemoLayout::checkRoundtrip() {
 	auto decoded = Rc<basic2d::ParticleSystem>::create(encoded);
 	auto reencoded = decoded->encode();
 
-	if (encoded == reencoded) {
+	// A partial value changes its own keys and nothing else
+	Value partial;
+	partial.setDouble(0.5, "explosiveness");
+	decoded->apply(partial);
+
+	auto expected = encoded;
+	expected.setDouble(0.5, "explosiveness");
+	auto applied = decoded->encode();
+
+	if (encoded == reencoded && expected == applied) {
 		log::source().info("ParticleExample", "roundtrip ok");
 	} else {
 		log::source().warn("ParticleExample", "roundtrip FAILED:\n", data::EncodeFormat::Pretty,
-				encoded, "\n", reencoded);
+				encoded, "\n", reencoded, "\n", applied);
 	}
 }
 
@@ -227,8 +279,11 @@ void ParticleDemoLayout::placeEmitters() {
 	auto size = getContentSize();
 	const auto n = float(_emitters.size());
 	for (size_t i = 0; i < _emitters.size(); ++i) {
-		_emitters[i].node->setPosition(
-				Vec2(size.width * (float(i) + 1.0f) / (n + 1.0f), size.height / 2.0f));
+		auto &slot = _emitters[i];
+		if (!slot.placed) {
+			slot.center = Vec2(size.width * (float(i) + 1.0f) / (n + 1.0f), size.height / 2.0f);
+		}
+		updateNodePosition(slot);
 	}
 }
 
@@ -339,10 +394,62 @@ void ParticleDemoLayout::registerCommands() {
 		return encodeStats();
 	});
 
-	addCommand("set", "Apply parameters in the ParticleSystem::encode format to every system",
+	addCommand("set",
+			"Apply parameters in the ParticleSystem::encode format to every system, or to the "
+			"system of {emitter: index}",
 			[this](const Value &args) {
-		for (auto system : getSystems()) { system->apply(args); }
+		if (args.isBasicType("emitter")) {
+			auto index = size_t(args.getInteger("emitter"));
+			if (index < _emitters.size()) {
+				_emitters[index].system->apply(args);
+			}
+		} else {
+			for (auto system : getSystems()) { system->apply(args); }
+		}
 		refreshStatus();
+		return encodeStats();
+	});
+
+	addCommand("preset",
+			"Apply a preset (fountain, snow, vortex) to every system or to {emitter: index}",
+			[this](const Value &args) {
+		auto preset = getParticlePreset(args.getString("name"));
+		if (!preset.isDictionary()) {
+			Value error;
+			error.setString("unknown preset", "error");
+			return error;
+		}
+
+		Vector<basic2d::ParticleSystem *> systems;
+		for (auto slot : getTargets(args)) {
+			if (sprt::find(systems.begin(), systems.end(), slot->system.get()) == systems.end()) {
+				systems.emplace_back(slot->system.get());
+			}
+		}
+		for (auto system : systems) { system->apply(preset); }
+		refreshStatus();
+		return encodeStats();
+	});
+
+	addCommand("move", "Put the emitter node at {x, y} in layout coordinates: {x, y, emitter?}",
+			[this](const Value &args) {
+		for (auto slot : getTargets(args)) {
+			slot->center = Vec2(float(args.getDouble("x")), float(args.getDouble("y")));
+			slot->placed = true;
+			updateNodePosition(*slot);
+		}
+		return encodeStats();
+	});
+
+	addCommand("drive",
+			"Move the emitter node around its position: {radius, period, emitter?}; period 0 stops",
+			[this](const Value &args) {
+		for (auto slot : getTargets(args)) {
+			slot->driveRadius = float(args.getDouble("radius", 150.0));
+			slot->drivePeriod = float(sprt::max(args.getDouble("period"), 0.0));
+			slot->driveTime = 0.0f;
+			updateNodePosition(*slot);
+		}
 		return encodeStats();
 	});
 
