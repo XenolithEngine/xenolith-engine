@@ -73,10 +73,37 @@ struct ParticleFrameData {
 	// [80-95]
 	float transformScale; // sqrt(|det|) of the node's transform
 	uint padding84;
-	uint padding88;
-	uint padding92;
+	// ParticleFeedbackRecord per particle, for the feedback pipeline only. At 88: std430 aligns a
+	// uvec2 to 8 bytes.
+	uvec2 feedbackPointer;
 
-	// [96]
+	// [96-111]
+	vec4 textureRect; // the emitter's texture region: origin.x, origin.y, width, height
+
+	// [112-127]
+	vec4 nodeColor; // the emitter node's displayed color, straight alpha
+
+	// [128-143]
+	uint hFrames; // animation frame grid inside textureRect, row 0 at the top of the image
+	uint vFrames;
+	uint newest; // index of the last born particle, for XL_PARTICLE_FLAG_ORDER_BY_LIFETIME
+	uint padding140;
+
+	// [144]
+};
+
+// What one particle did in a frame, written by the feedback pipeline to the particle's own record:
+// no two invocations write the same memory, the CPU sums the records
+struct ParticleFeedbackRecord {
+	uint births;
+	uint steps; // steps a living particle aged by
+	uint alive; // 1 - the particle is alive after the frame and draws a quad
+	uint padding12;
+};
+
+struct ParticleUpdateCounters {
+	uint births;
+	uint steps;
 };
 
 struct ParticleIndirectCommand {

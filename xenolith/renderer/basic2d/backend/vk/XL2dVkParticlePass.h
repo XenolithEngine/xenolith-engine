@@ -68,6 +68,12 @@ public:
 		uint32_t seed = 0;
 		uint32_t vertexOffset = 0;
 		bool uploads = false;
+
+		// The emitter's state after this frame, for ParticleFeedback
+		uint64_t sequence = 0;
+		uint64_t restartGeneration = 0;
+		uint32_t nextCycle = 0;
+		uint32_t nextGenframe = 0;
 	};
 
 	struct EmitterData {
@@ -117,6 +123,7 @@ protected:
 
 	Map<uint64_t, EmitterData> _emitters;
 	uint64_t _particleAllocations = 0;
+	uint64_t _frameSequence = 0;
 };
 
 class SP_PUBLIC ParticleEmitterAttachment : public BufferAttachment {
@@ -185,6 +192,12 @@ public:
 
 	static constexpr StringView UpdatePipelineName = "ParticleUpdateComp";
 
+	// The same program with ENABLE_FEEDBACK: every particle writes its ParticleFeedbackRecord.
+	// Built only with XL_PARTICLE_FEEDBACK=1 in the environment.
+	static constexpr StringView UpdateFeedbackPipelineName = "ParticleUpdateFeedbackComp";
+
+	static bool isFeedbackPipelineEnabled();
+
 	virtual ~ParticlePass() = default;
 
 	virtual bool init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilder,
@@ -196,6 +209,10 @@ public:
 
 protected:
 	void recordCommandBuffer(const core::SubpassData &, core::FrameQueue &, core::CommandBuffer &);
+
+	// Snapshot copies and the read back of counters and snapshots after the frame
+	void recordFeedback(core::FrameQueue &, vk::CommandBuffer &, DeviceMemoryPool *,
+			SpanView<ParticlePersistentData::FrameEmitter>, SpanView<Rc<Buffer>> feedbackRecords);
 
 	const AttachmentData *_emitters = nullptr;
 };

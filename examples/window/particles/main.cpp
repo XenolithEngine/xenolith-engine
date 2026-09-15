@@ -26,6 +26,9 @@
 #include "XLEntryPoint.h"
 #include "XL2dScene.h"
 #include "XL2dSceneContent.h"
+#include "particles/ParticleLocale.h"
+#include "XLUiStyleSystem.h"
+#include "XLUiStyleResolver.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
@@ -36,7 +39,7 @@ DEFINE_CONFIG_FUNCTION((ContextConfig &cfg) {
 
 	cfg.window->flags = sprt::window::WindowCreationFlags::Regular
 			| sprt::window::WindowCreationFlags::UserSpaceDecorations;
-	cfg.window->minExtent = Extent2(1'024, 720);
+	cfg.window->minExtent = Extent2(1'280, 800);
 });
 
 // The particle pass exists only in the Default queue, which is what Scene2d::init builds unless
@@ -51,8 +54,15 @@ public:
 			return false;
 		}
 
+		// Before anything that carries a tag is built, and before the stylesheet enters the scene
+		defineParticleLocales();
+
 		auto content = Rc<basic2d::SceneContent2d>::create();
 		content->setDefaultLights();
+
+		// On the content rather than the layout, so the in-scene popups are styled too
+		content->addSystem(Rc<ui::StyleSystem>::create(getParticleDemoStylesheet()));
+		content->addSystem(Rc<ui::StyleResolver>::create(true));
 		content->pushLayout(Rc<ParticleDemoLayout>::create());
 		setContent(content);
 

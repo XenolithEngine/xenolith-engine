@@ -81,6 +81,7 @@ using glsl::ParticleEmissionPoints;
 using glsl::ParticleCurveHeader;
 using glsl::ParticleEmitterData;
 using glsl::ParticleData;
+using glsl::ParticleFeedbackRecord;
 using glsl::ParticleConstantData;
 using glsl::ParticleFrameData;
 using glsl::FrameClipperData;

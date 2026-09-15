@@ -27,6 +27,12 @@
 #include "XLCoreMaterial.h"
 #include "XLCurveBuffer.h"
 
+namespace STAPPLER_VERSIONIZED stappler::xenolith {
+
+class AppThread;
+
+}
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
 enum class ParticleEmissionType : uint32_t {
@@ -76,6 +82,74 @@ struct SP_PUBLIC ParticleSystemData : public Ref {
 	static void writeParticleSize(ParticleEmitterData &, Size2);
 };
 
+// The emitter's simulation after one rendered frame
+struct SP_PUBLIC ParticleFeedback {
+	uint64_t sequence = 0; // order of the frame in the renderer, never goes back; 0 - no report yet
+	uint64_t restartGeneration = 0;
+	uint32_t cycle = 0; // emission cycle the next frame starts in
+	uint32_t cycleFrame = 0; // step of that cycle
+	uint32_t framesInGen = 0; // steps in one cycle
+	uint32_t nframes = 0; // steps this frame simulated
+
+	// Filled only by the feedback pipeline (XL_PARTICLE_FEEDBACK=1), summed over the particles
+	bool counters = false;
+	uint32_t births = 0;
+	uint32_t steps = 0; // steps living particles aged by
+	uint32_t alive = 0; // particles drawn after the frame
+};
+
+// The first particles of the emitter's buffer after one rendered frame
+struct SP_PUBLIC ParticleSnapshot {
+	bool success = false; // false - the emitter left the scene before a frame took the snapshot
+	ParticleFeedback feedback; // of the frame the snapshot is taken after
+	Vector<ParticleData> particles;
+};
+
+/** Carries what the renderer learns about an emitter back to the application thread.
+
+The renderer calls deliver* from its own threads; results are handed to the application thread,
+where the rest of the object lives. After detach() nothing more is accepted. */
+class SP_PUBLIC ParticleFeedbackReceiver : public Ref {
+public:
+	using SnapshotCallback = Function<void(ParticleSnapshot &&)>;
+
+	struct SnapshotRequest {
+		uint32_t id = 0;
+		uint32_t count = 0;
+		SnapshotCallback callback;
+	};
+
+	virtual ~ParticleFeedbackReceiver() = default;
+
+	bool init(AppThread *);
+
+	// Any thread
+	void deliverFeedback(const ParticleFeedback &);
+	void deliverSnapshot(uint32_t id, ParticleSnapshot &&);
+
+	// Application thread
+	void attach();
+
+	// Pending snapshots complete with success = false
+	void detach();
+
+	uint32_t requestSnapshot(uint32_t count, SnapshotCallback &&);
+	const SnapshotRequest *getPendingSnapshot() const;
+
+	const ParticleFeedback &getFeedback() const { return _feedback; }
+	uint64_t getTotalBirths() const { return _totalBirths; }
+	uint64_t getTotalSteps() const { return _totalSteps; }
+
+protected:
+	AppThread *_application = nullptr;
+	bool _attached = false;
+	ParticleFeedback _feedback;
+	uint64_t _totalBirths = 0;
+	uint64_t _totalSteps = 0;
+	uint32_t _nextSnapshotId = 1;
+	Vector<SnapshotRequest> _snapshots;
+};
+
 struct ParticleSystemRenderInfo {
 	Rc<ParticleSystemData> system;
 	core::MaterialId material = 0;
@@ -88,6 +162,15 @@ struct ParticleSystemRenderInfo {
 
 	// Node to scene content transform for newborn particles; identity with LocalCoords
 	Mat4 nodeToScene;
+
+	Rect textureRect = Rect(0.0f, 0.0f, 1.0f, 1.0f);
+	UVec2 frameGrid = UVec2(1, 1);
+	Color4F color = Color4F::WHITE; // the node's displayed color
+
+	// Null - the emitter asks for nothing back
+	Rc<ParticleFeedbackReceiver> feedback;
+	uint32_t snapshotId = 0; // 0 - no snapshot this frame
+	uint32_t snapshotCount = 0;
 };
 
 class SP_PUBLIC ParticleSystem : public Ref {

@@ -20,23 +20,26 @@
  THE SOFTWARE.
  **/
 
-#ifndef EXAMPLES_WINDOW_PARTICLES_SRC_PARTICLES_PARTICLEPRESETS_H_
-#define EXAMPLES_WINDOW_PARTICLES_SRC_PARTICLES_PARTICLEPRESETS_H_
+#ifndef EXAMPLES_WINDOW_PARTICLES_SRC_PARTICLES_PARTICLELOCALE_H_
+#define EXAMPLES_WINDOW_PARTICLES_SRC_PARTICLES_PARTICLELOCALE_H_
 
-#include "XLCommon.h" // IWYU pragma: keep
+#include "XLFontLocale.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
-// Names of the presets, in the order they are offered
-SpanView<StringView> getParticlePresetNames();
+// The example's strings, English and Russian, as `@Locale:Particles:*` tags. Define them before the
+// stylesheet enters the scene.
+void defineParticleLocales();
 
-// The preset over the ParticleSystem::init defaults, in the ParticleSystem::encode format, so
-// ParticleSystem::apply sets every parameter. Empty for an unknown name.
-//
-// Keys beyond the system: the node's "texture" and "frameGrid", and the editable curves
-// "colorStops" and "animCurve" (see ParticleCurves.h), which replace sampled curves.
-Value getParticlePreset(StringView name);
+// Switch to a locale by id (`en-us`, `ru-ru`); false for an unknown id
+bool setParticleLocale(StringView id);
+
+StringView getParticleLocale();
+
+// The native name of the language the switch button changes to
+StringView getNextParticleLocaleName();
+StringView cycleParticleLocale();
 
 } // namespace stappler::xenolith::examples
 
-#endif /* EXAMPLES_WINDOW_PARTICLES_SRC_PARTICLES_PARTICLEPRESETS_H_ */
+#endif /* EXAMPLES_WINDOW_PARTICLES_SRC_PARTICLES_PARTICLELOCALE_H_ */

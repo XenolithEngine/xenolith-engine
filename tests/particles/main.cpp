@@ -41,11 +41,23 @@ static constexpr uint32_t MaxPoints = 8;
 static glsl::vec2 s_points[MaxPoints];
 static uint32_t s_pointCount = 0;
 
+// The extra data buffer, word by word, as ParticleSystemData::writeExtraData lays it out
+static constexpr uint32_t MaxExtraWords = 256;
+static uint32_t s_extra[MaxExtraWords];
+
 namespace STAPPLER_VERSIONIZED stappler::glsl {
 
 uint particleEmissionPointCount() { return s_pointCount; }
 
 vec2 particleEmissionPoint(uint index) { return s_points[index]; }
+
+uint particleExtraUint(uint word) { return s_extra[word]; }
+
+float particleExtraFloat(uint word) {
+	float ret;
+	::memcpy(&ret, &s_extra[word], sizeof(float));
+	return ret;
+}
 
 } // namespace stappler::glsl
 
@@ -94,6 +106,10 @@ struct Emitter {
 	bool born[MaxParticles];
 	bool wasAlive[MaxParticles];
 
+	// Summed ParticleUpdateCounters of the last tick, and the lifetime steps it took per particle
+	glsl::ParticleUpdateCounters counters;
+	uint32_t aged[MaxParticles];
+
 	Emitter(uint32_t count, float lifetime, uint32_t seed_) : seed(seed_) {
 		::memset(&data, 0, sizeof(data));
 		data.count = count;
@@ -134,12 +150,15 @@ struct Emitter {
 		f.transformRotation = transformRotation;
 		f.transformScale = transformScale;
 
+		counters = glsl::ParticleUpdateCounters{0, 0};
 		for (uint32_t i = 0; i < data.count; ++i) {
 			wasAlive[i] = particles[i].currentLifetime > nframes;
 			auto before = particles[i].rng;
-			glsl::particleUpdate(particles[i], data, f, i);
+			auto lifetime = particles[i].currentLifetime;
+			glsl::particleUpdate(particles[i], data, f, i, counters);
 			// Only an emission draws random numbers
 			born[i] = before.state != particles[i].rng.state;
+			aged[i] = lifetime - particles[i].currentLifetime;
 		}
 
 		glsl::particleAdvanceFrame(frame, cycle, framesInGen, nframes);
@@ -238,6 +257,35 @@ static void testHalfExplosive() {
 }
 
 // Birth step of every particle for `cycles` cycles
+// The feedback pipeline sums the same counters over its per-particle records
+static void testCounters() {
+	Emitter e(32, 0.7f, 5);
+	e.data.randomness = 1.0f;
+	auto framesInGen = e.cycleFrames();
+
+	bool births = true;
+	bool steps = true;
+	uint64_t total = 0;
+	for (uint32_t k = 0; k < framesInGen * 3; ++k) {
+		e.tick();
+		births = births && e.counters.births == e.births();
+		uint32_t aged = 0;
+		for (uint32_t i = 0; i < e.data.count; ++i) { aged += e.born[i] ? 0 : e.aged[i]; }
+		steps = steps && e.counters.steps == aged;
+		total += e.counters.births;
+	}
+	check(births, "counters: births match the particles born in the step");
+	check(steps, "counters: steps match the lifetime the living particles lost");
+	checkEq(int64_t(total), int64_t(e.data.count) * 3, "counters: count births per cycle");
+
+	Emitter burst(16, 1.0f, 2);
+	burst.data.explosiveness = 1.0f;
+	burst.maxSteps = 2;
+	burst.tick(2);
+	checkEq(burst.counters.births, 16, "counters: explosiveness 1 bursts in the first step");
+	checkEq(burst.counters.steps, 16, "counters: two steps - a birth and one aging step each");
+}
+
 static void recordBirths(Emitter &e, uint32_t cycles, uint32_t *out) {
 	auto framesInGen = e.cycleFrames();
 	for (uint32_t c = 0; c < cycles; ++c) {
@@ -710,6 +758,177 @@ static void testSceneSpace() {
 	checkNear(local.p().scale, 1.0f, "LocalCoords: scale is untouched");
 }
 
+// Writes a curve at a word offset: header, then the values; returns the byte offset
+static uint32_t writeCurve(uint32_t word, uint32_t components,
+		std::initializer_list<float> values) {
+	s_extra[word] = uint32_t(values.size() / components);
+	s_extra[word + 1] = components;
+	uint32_t i = 0;
+	for (auto v : values) { ::memcpy(&s_extra[word + 2 + i++], &v, sizeof(float)); }
+	return word * 4;
+}
+
+static void testCurves() {
+	::memset(s_extra, 0, sizeof(s_extra));
+
+	// Four samples at t = 0, 1/4, 2/4, 3/4
+	auto floatCurve = writeCurve(2, 1, {0.0f, 1.0f, 3.0f, 7.0f});
+	checkNear(glsl::particleSampleCurve(floatCurve, 0.0f).x, 0.0f,
+			"curve: the first sample at t = 0");
+	checkNear(glsl::particleSampleCurve(floatCurve, 0.25f).x, 1.0f, "curve: a sample at its own t");
+	checkNear(glsl::particleSampleCurve(floatCurve, 0.375f).x, 2.0f,
+			"curve: linear between neighbouring samples");
+	checkNear(glsl::particleSampleCurve(floatCurve, 1.0f).x, 7.0f,
+			"curve: holds the last sample at t = 1");
+	checkNear(glsl::particleSampleCurve(floatCurve, 2.0f).x, 7.0f, "curve: t is clamped");
+	checkNear(glsl::particleSampleCurve(floatCurve, 0.25f).w, 1.0f,
+			"curve: a float curve repeats its value in every component");
+
+	auto colorCurve = writeCurve(16, 4, {1.0f, 0.5f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f, 0.0f});
+	auto mid = glsl::particleSampleCurve(colorCurve, 0.25f);
+	checkNear(mid.x, 0.5f, "color curve: r halfway");
+	checkNear(mid.y, 0.5f, "color curve: g constant");
+	checkNear(mid.z, 0.5f, "color curve: b halfway");
+	checkNear(mid.w, 0.5f, "color curve: alpha halfway");
+
+	auto single = writeCurve(40, 1, {0.6f});
+	checkNear(glsl::particleSampleCurve(single, 0.9f).x, 0.6f, "curve: one sample is a constant");
+
+	// Color over life: at birth, and when the lifetime is half spent
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+	emitter.colorCurveOffset = colorCurve;
+
+	glsl::ParticleData particle;
+	::memset(&particle, 0, sizeof(particle));
+	particle.color = glsl::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+	particle.fullLifetime = 8;
+	particle.currentLifetime = 8;
+	checkNear(glsl::particleColor(particle, emitter).z, 0.0f, "color: the curve starts at birth");
+	// Two samples at t = 0 and 1/2: half the lifetime reaches the second
+	particle.currentLifetime = 4;
+	checkNear(glsl::particleColor(particle, emitter).z, 1.0f,
+			"color: follows the lifetime fraction");
+
+	// Animation frame: 16 frames, a linear curve over the lifetime whose last sample is 1
+	auto frameCurve = writeCurve(60, 1, {0.0f, 1.0f / 3.0f, 2.0f / 3.0f, 1.0f});
+	emitter.animFrameCurveOffset = frameCurve;
+	particle.fullLifetime = 16;
+	bool rising = true;
+	uint32_t last = 0;
+	for (uint32_t life = 16; life > 0; --life) {
+		particle.currentLifetime = life;
+		auto frame = glsl::particleAnimFrame(particle, emitter, 16);
+		rising = rising && frame >= last && frame < 16;
+		last = frame;
+	}
+	check(rising, "animation frame: rises with the lifetime and stays below the frame count");
+	particle.currentLifetime = 16;
+	checkEq(glsl::particleAnimFrame(particle, emitter, 16), 0, "animation frame: 0 at birth");
+	particle.currentLifetime = 1;
+	checkEq(glsl::particleAnimFrame(particle, emitter, 16), 15,
+			"animation frame: the last near death");
+	emitter.animFrameCurveOffset = 0;
+	checkEq(glsl::particleAnimFrame(particle, emitter, 16), 0,
+			"animation frame: 0 without a curve");
+
+	glsl::ParticleFrameData frame;
+	::memset(&frame, 0, sizeof(frame));
+	frame.textureRect = glsl::vec4(0.5f, 0.0f, 0.5f, 1.0f);
+	frame.hFrames = 4;
+	frame.vFrames = 4;
+	glsl::vec2 uv0, uv1;
+	glsl::particleFrameCell(frame, 5, uv0, uv1);
+	checkNear(uv0.x, 0.625f, "frame cell: column 1 starts a quarter into the rect");
+	checkNear(uv1.x, 0.75f, "frame cell: and is a quarter wide");
+	checkNear(uv0.y, 0.25f, "frame cell: row 1 from the top of the image");
+	checkNear(uv1.y, 0.5f, "frame cell: and a quarter high");
+}
+
+static glsl::vec4 hueReference(glsl::vec4 c, float turns) {
+	// Godot's hue matrix as base + cos * A + sin * B, its vectors as rows, multiplied the long way
+	const float a = turns * 2.0f * float(M_PI);
+	const float cs = sprt::cos(a);
+	const float sn = sprt::sin(a);
+	const float base[3][3] = {{0.299f, 0.587f, 0.114f}, {0.299f, 0.587f, 0.114f},
+		{0.299f, 0.587f, 0.114f}};
+	const float cosPart[3][3] = {{0.701f, -0.587f, -0.114f}, {-0.299f, 0.413f, -0.114f},
+		{-0.300f, -0.588f, 0.886f}};
+	const float sinPart[3][3] = {{0.168f, 0.330f, -0.497f}, {-0.328f, 0.035f, 0.292f},
+		{1.250f, -1.050f, -0.203f}};
+	const float in[3] = {c.x, c.y, c.z};
+	float out[3] = {0.0f, 0.0f, 0.0f};
+	for (int row = 0; row < 3; ++row) {
+		for (int col = 0; col < 3; ++col) {
+			out[row] +=
+					(base[row][col] + cosPart[row][col] * cs + sinPart[row][col] * sn) * in[col];
+		}
+	}
+	return glsl::vec4(out[0], out[1], out[2], c.w);
+}
+
+// Godot's constants are rounded to three digits: a gray drifts by about 1e-3
+static void checkHue(float got, float expected, const char *name) {
+	++s_checks;
+	bool ok = sprt::fabs(got - expected) <= 5e-3f;
+	sprt::cout << (ok ? "[ OK ] " : "[FAIL] ") << name;
+	if (!ok) {
+		sprt::cout << "  (got " << got << ", expected " << expected << ")";
+	}
+	sprt::cout << "\n";
+	if (!ok) {
+		++s_failures;
+	}
+}
+
+static void testHue() {
+	auto red = glsl::vec4(0.9f, 0.2f, 0.1f, 0.5f);
+
+	auto same = glsl::particleHueRotate(red, 0.0f);
+	checkHue(same.x, red.x, "hue 0: r is kept");
+	checkHue(same.y, red.y, "hue 0: g is kept");
+	checkHue(same.z, red.z, "hue 0: b is kept");
+
+	auto full = glsl::particleHueRotate(red, 1.0f);
+	checkHue(full.x, red.x, "hue 1: a full turn keeps r");
+	checkHue(full.y, red.y, "hue 1: a full turn keeps g");
+
+	auto gray = glsl::particleHueRotate(glsl::vec4(0.4f, 0.4f, 0.4f, 1.0f), 0.37f);
+	checkHue(gray.x, 0.4f, "hue: gray stays gray (r)");
+	checkHue(gray.z, 0.4f, "hue: gray stays gray (b)");
+
+	auto turned = glsl::particleHueRotate(red, 1.0f / 3.0f);
+	auto luma = [](glsl::vec4 c) { return 0.299f * c.x + 0.587f * c.y + 0.114f * c.z; };
+	checkHue(luma(turned), luma(red), "hue: luminance is kept");
+	checkNear(turned.w, 0.5f, "hue: alpha is kept");
+
+	auto reference = hueReference(red, 1.0f / 3.0f);
+	checkNear(turned.x, reference.x, "hue 1/3: r matches Godot's matrix");
+	checkNear(turned.y, reference.y, "hue 1/3: g matches Godot's matrix");
+	checkNear(turned.z, reference.z, "hue 1/3: b matches Godot's matrix");
+	check(turned.z > turned.x, "hue 1/3: a positive turn moves red towards blue, as in Godot");
+}
+
+static void testNewest() {
+	checkEq(glsl::particleNewest(16, 1.0f, 60, 0), 15,
+			"newest: a burst makes the last index newest");
+	checkEq(glsl::particleNewest(16, 0.0f, 60, 0), 0, "newest: the first step of a cycle births 0");
+
+	Emitter e(16, 1.0f, 12);
+	auto framesInGen = e.cycleFrames();
+	bool matches = true;
+	for (uint32_t k = 0; k < framesInGen; ++k) {
+		auto step = e.frame;
+		e.tick();
+		for (uint32_t i = 0; i < 16; ++i) {
+			if (e.born[i]) {
+				matches = matches && glsl::particleNewest(16, 0.0f, framesInGen, step) == i;
+			}
+		}
+	}
+	check(matches, "newest: the particle born on a step is the newest after it");
+}
+
 int main(int argc, const char *argv[]) {
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);
@@ -721,6 +940,7 @@ int main(int argc, const char *argv[]) {
 	testUniform();
 	testHalfExplosive();
 	testRandomness();
+	testCounters();
 	testLifetimeMax();
 	testSteps();
 	testClock();
@@ -730,6 +950,9 @@ int main(int argc, const char *argv[]) {
 	testRandom();
 	testKinematics();
 	testSceneSpace();
+	testCurves();
+	testHue();
+	testNewest();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 

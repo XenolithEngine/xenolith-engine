@@ -26,9 +26,11 @@
 /* Emission and simulation of one particle, compiled both by the particle update shader and by C++
 (tests/particles), so the CPU reference runs the same text.
 
-The includer provides the emission points:
+The includer provides the emission points and the words of the extra data buffer (byte offset / 4):
 	uint particleEmissionPointCount();
 	vec2 particleEmissionPoint(uint index);
+	uint particleExtraUint(uint word);
+	float particleExtraFloat(uint word);
 A shader defines them before including this header; in C++ they are declared here. */
 
 #include "XL2dGlslParticle.h"
@@ -38,6 +40,8 @@ namespace STAPPLER_VERSIONIZED stappler::glsl {
 
 uint particleEmissionPointCount();
 vec2 particleEmissionPoint(uint index);
+uint particleExtraUint(uint word);
+float particleExtraFloat(uint word);
 
 #endif
 
@@ -221,10 +225,113 @@ SP_GLSL_INLINE void particleQuad(SP_GLSL_IN(ParticleData) particle,
 	br = particle.position + ax - ay;
 }
 
+// Fraction of the lifetime lived, 0 at birth
+SP_GLSL_INLINE float particleLifeFraction(SP_GLSL_IN(ParticleData) particle) {
+	if (particle.fullLifetime == 0u) {
+		return 0.0f;
+	}
+	return 1.0f - float(particle.currentLifetime) / float(particle.fullLifetime);
+}
+
+SP_GLSL_INLINE float particleCurveComponent(uint base, uint i0, uint i1, float f, uint components,
+		uint c) {
+	uint k = (c < components) ? c : components - 1u;
+	float a = particleExtraFloat(base + i0 * components + k);
+	float b = particleExtraFloat(base + i1 * components + k);
+	return a + (b - a) * f;
+}
+
+// A curve of the extra data buffer at a byte offset, linearly interpolated at t in [0, 1]. Missing
+// components repeat the last one, so a float curve reads as (v, v, v, v).
+SP_GLSL_INLINE vec4 particleSampleCurve(uint offset, float t) {
+	uint word = offset / 4u;
+	uint count = particleExtraUint(word);
+	uint components = particleExtraUint(word + 1u);
+	if (count == 0u || components == 0u) {
+		return vec4(1.0f, 1.0f, 1.0f, 1.0f);
+	}
+
+	float pos = clamp(t, 0.0f, 1.0f) * float(count);
+	uint i0 = uint(floor(pos));
+	if (i0 > count - 1u) {
+		i0 = count - 1u;
+	}
+	uint i1 = (i0 + 1u < count) ? i0 + 1u : i0;
+	float f = clamp(pos - float(i0), 0.0f, 1.0f);
+
+	uint base = word + 2u;
+	return vec4(particleCurveComponent(base, i0, i1, f, components, 0u),
+			particleCurveComponent(base, i0, i1, f, components, 1u),
+			particleCurveComponent(base, i0, i1, f, components, 2u),
+			particleCurveComponent(base, i0, i1, f, components, 3u));
+}
+
+// Hue rotation by `turns` with the matrix of Godot's ParticleProcessMaterial, its vectors taken as
+// rows: luminance and grays are kept, alpha is untouched
+SP_GLSL_INLINE vec4 particleHueRotate(vec4 color, float turns) {
+	float angle = turns * 2.0f * 3.14159265358979323846f;
+	float c = cos(angle);
+	float s = sin(angle);
+	return vec4((0.299f + 0.701f * c + 0.168f * s) * color.x
+					+ (0.587f - 0.587f * c + 0.330f * s) * color.y
+					+ (0.114f - 0.114f * c - 0.497f * s) * color.z,
+			(0.299f - 0.299f * c - 0.328f * s) * color.x
+					+ (0.587f + 0.413f * c + 0.035f * s) * color.y
+					+ (0.114f - 0.114f * c + 0.292f * s) * color.z,
+			(0.299f - 0.300f * c + 1.250f * s) * color.x
+					+ (0.587f - 0.588f * c - 1.050f * s) * color.y
+					+ (0.114f + 0.886f * c - 0.203f * s) * color.z,
+			color.w);
+}
+
+// color · colorCurve(t), then the hue rotation chosen at birth
+SP_GLSL_INLINE vec4 particleColor(SP_GLSL_IN(ParticleData) particle,
+		SP_GLSL_IN(ParticleEmitterData) emitter) {
+	vec4 color = particle.color;
+	if (emitter.colorCurveOffset != 0u) {
+		vec4 curve = particleSampleCurve(emitter.colorCurveOffset, particleLifeFraction(particle));
+		color = vec4(color.x * curve.x, color.y * curve.y, color.z * curve.z, color.w * curve.w);
+	}
+	if (particle.hue != 0.0f) {
+		color = particleHueRotate(color, particle.hue);
+	}
+	return color;
+}
+
+// Animation frame of `frames`: the animation curve maps the lifetime fraction to [0, 1] of them
+SP_GLSL_INLINE uint particleAnimFrame(SP_GLSL_IN(ParticleData) particle,
+		SP_GLSL_IN(ParticleEmitterData) emitter, uint frames) {
+	if (emitter.animFrameCurveOffset == 0u || frames <= 1u) {
+		return 0u;
+	}
+
+	float value =
+			particleSampleCurve(emitter.animFrameCurveOffset, particleLifeFraction(particle)).x;
+	float frame = floor(clamp(value, 0.0f, 1.0f) * float(frames));
+	uint ret = uint(frame);
+	return (ret < frames) ? ret : frames - 1u;
+}
+
+// Texture coordinates of an animation frame: the frame's cell of the grid inside textureRect,
+// uv0 at the top left of the image cell, uv1 at the bottom right
+SP_GLSL_INLINE void particleFrameCell(SP_GLSL_IN(ParticleFrameData) frame, uint index,
+		SP_GLSL_OUT(vec2) uv0, SP_GLSL_OUT(vec2) uv1) {
+	uint h = (frame.hFrames > 0u) ? frame.hFrames : 1u;
+	uint v = (frame.vFrames > 0u) ? frame.vFrames : 1u;
+	float cw = frame.textureRect.z / float(h);
+	float ch = frame.textureRect.w / float(v);
+	uint col = index % h;
+	uint row = (index / h) % v;
+	uv0 = vec2(frame.textureRect.x + float(col) * cw, frame.textureRect.y + float(row) * ch);
+	uv1 = vec2(uv0.x + cw, uv0.y + ch);
+}
+
 // Simulates frame.nframes steps: a particle whose emission step comes is born (again, if it is still
-// alive), otherwise a living particle ages by one step and moves if it is still alive
+// alive), otherwise a living particle ages by one step and moves if it is still alive. The counters
+// grow by the births and the aging steps.
 SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
-		SP_GLSL_IN(ParticleEmitterData) emitter, SP_GLSL_IN(ParticleFrameData) frame, uint index) {
+		SP_GLSL_IN(ParticleEmitterData) emitter, SP_GLSL_IN(ParticleFrameData) frame, uint index,
+		SP_GLSL_INOUT(ParticleUpdateCounters) counters) {
 	for (uint k = 0u; k < frame.nframes; ++k) {
 		uint t = frame.genframe + k;
 		uint cycle = frame.cycle + t / frame.framesInGen;
@@ -240,9 +347,11 @@ SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
 				point = particleEmissionPoint(pcg16_boundedrand_r(particle.rng, npoints));
 			}
 			particleEmit(particle, emitter, frame, point);
+			counters.births += 1u;
 		} else if (particle.currentLifetime > 0u) {
 			// A lifetime of L steps covers the birth step and L - 1 more
 			particle.currentLifetime -= 1u;
+			counters.steps += 1u;
 			if (particle.currentLifetime > 0u) {
 				particleStep(particle, frame.dt);
 			}
@@ -268,6 +377,26 @@ inline uint32_t particleAdvanceClock(uint64_t &clock, uint64_t now, uint32_t int
 
 	clock += steps * interval;
 	return uint32_t(steps);
+}
+
+// The particle born last by the step `cycleStep` of the cycle, from the nominal phases (no
+// randomness): the largest index whose emission step is not after it
+inline uint32_t particleNewest(uint count, float explosiveness, uint framesInGen, uint cycleStep) {
+	if (count == 0) {
+		return 0;
+	}
+
+	uint32_t lo = 0;
+	uint32_t hi = count - 1;
+	while (lo < hi) {
+		auto mid = lo + (hi - lo + 1) / 2;
+		if (particleEmitFrame(mid, count, 0, 0, 0.0f, explosiveness, framesInGen) <= cycleStep) {
+			lo = mid;
+		} else {
+			hi = mid - 1;
+		}
+	}
+	return lo;
 }
 
 // Moves the cycle position by `steps`; with 0 it normalizes a position left past a shortened cycle

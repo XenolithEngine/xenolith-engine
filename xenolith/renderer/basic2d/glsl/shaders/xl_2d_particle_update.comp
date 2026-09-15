@@ -10,11 +10,15 @@
 #include "XL2dGlslVertexData.h"
 
 layout (constant_id = 0) const int BUFFERS_ARRAY_SIZE = 1024;
+layout (constant_id = 1) const int ENABLE_FEEDBACK = 0;
 
 layout(buffer_reference) readonly buffer EmitterBuffer;
 layout(buffer_reference) readonly buffer EmissionPointsBuffer;
+layout(buffer_reference) readonly buffer ExtraUintBuffer;
+layout(buffer_reference) readonly buffer ExtraFloatBuffer;
 layout(buffer_reference) readonly buffer FrameDataBuffer;
 layout(buffer_reference) buffer VerticesBuffer;
+layout(buffer_reference) buffer FeedbackBuffer;
 
 layout (push_constant) uniform PCB {
 	ParticleConstantData pcb;
@@ -29,12 +33,25 @@ layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer Emi
 	vec2 points[];
 };
 
+// The same extra data buffer, word by word
+layout(std430, buffer_reference, buffer_reference_align = 4) readonly buffer ExtraUintBuffer {
+	uint values[];
+};
+
+layout(std430, buffer_reference, buffer_reference_align = 4) readonly buffer ExtraFloatBuffer {
+	float values[];
+};
+
 layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer FrameDataBuffer {
 	ParticleFrameData frames[];
 };
 
 layout(std430, buffer_reference, buffer_reference_align = 8) buffer VerticesBuffer {
 	Vertex vertices[];
+};
+
+layout(std430, buffer_reference, buffer_reference_align = 4) buffer FeedbackBuffer {
+	ParticleFeedbackRecord records[];
 };
 
 layout (set = 0, binding = 0) buffer ParticlesBuffer {
@@ -51,6 +68,14 @@ uint particleEmissionPointCount() {
 
 vec2 particleEmissionPoint(uint index) {
 	return EmissionPointsBuffer(emitter.emissionData).points[index];
+}
+
+uint particleExtraUint(uint word) {
+	return ExtraUintBuffer(emitter.emissionData).values[word];
+}
+
+float particleExtraFloat(uint word) {
+	return ExtraFloatBuffer(emitter.emissionData).values[word];
 }
 
 #include "XL2dGlslParticleSim.h"
@@ -74,14 +99,28 @@ void main() {
 
 	ParticleData particle = particleBuffers[frame.particleBufferIndex].particles[index];
 
+	ParticleUpdateCounters counters = ParticleUpdateCounters(0u, 0u);
 	if (frame.nframes > 0u) {
-		particleUpdate(particle, emitter, frame, index);
+		particleUpdate(particle, emitter, frame, index, counters);
 		particleBuffers[frame.particleBufferIndex].particles[index] = particle;
 	}
 
-	// Every particle owns six vertices of its emitter's range; a dead one writes a degenerate quad
+	// Only emitters that report back have records
+	if (ENABLE_FEEDBACK != 0 && (frame.feedbackPointer.x != 0u || frame.feedbackPointer.y != 0u)) {
+		FeedbackBuffer feedback = FeedbackBuffer(frame.feedbackPointer);
+		feedback.records[index] = ParticleFeedbackRecord(counters.births, counters.steps,
+				particle.currentLifetime > 0u ? 1u : 0u, 0u);
+	}
+
+	// Every particle owns six vertices of its emitter's range; a dead one writes a degenerate quad.
+	// Ordered by lifetime, the slots rotate so the newest particle is drawn last.
+	uint slot = index;
+	if ((emitter.flags & XL_PARTICLE_FLAG_ORDER_BY_LIFETIME) != 0u) {
+		slot = (index + emitter.count - frame.newest - 1u) % emitter.count;
+	}
+
 	VerticesBuffer vertexBuffer = VerticesBuffer(pcb.outVerticesPointer);
-	const uint vertexOffset = frame.vertexOffset + index * 6u;
+	const uint vertexOffset = frame.vertexOffset + slot * 6u;
 
 	if (particle.currentLifetime == 0u) {
 		for (uint i = 0u; i < 6u; ++i) {
@@ -96,12 +135,19 @@ void main() {
 	vec2 br;
 	particleQuad(particle, emitter, bl, tl, tr, br);
 
-	const vec4 color = vec4(0, 0, 0, 1);
+	vec4 particleTint = particleColor(particle, emitter);
+	const vec4 color = vec4(particleTint.x * frame.nodeColor.x, particleTint.y * frame.nodeColor.y,
+			particleTint.z * frame.nodeColor.z, particleTint.w * frame.nodeColor.w);
 
-	writeVertex(vertexBuffer, vertexOffset + 0, bl, vec2(0.0, 0.0), color, frame.materialIndex);
-	writeVertex(vertexBuffer, vertexOffset + 1, tl, vec2(0.0, 1.0), color, frame.materialIndex);
-	writeVertex(vertexBuffer, vertexOffset + 2, br, vec2(1.0, 0.0), color, frame.materialIndex);
-	writeVertex(vertexBuffer, vertexOffset + 3, tr, vec2(1.0, 1.0), color, frame.materialIndex);
-	writeVertex(vertexBuffer, vertexOffset + 4, br, vec2(1.0, 0.0), color, frame.materialIndex);
-	writeVertex(vertexBuffer, vertexOffset + 5, tl, vec2(0.0, 1.0), color, frame.materialIndex);
+	vec2 uv0;
+	vec2 uv1;
+	particleFrameCell(frame, particleAnimFrame(particle, emitter, frame.hFrames * frame.vFrames), uv0, uv1);
+
+	// The corners take the texture as a Sprite does: the top of the quad samples the top of the image
+	writeVertex(vertexBuffer, vertexOffset + 0, bl, vec2(uv0.x, uv1.y), color, frame.materialIndex);
+	writeVertex(vertexBuffer, vertexOffset + 1, tl, vec2(uv0.x, uv0.y), color, frame.materialIndex);
+	writeVertex(vertexBuffer, vertexOffset + 2, br, vec2(uv1.x, uv1.y), color, frame.materialIndex);
+	writeVertex(vertexBuffer, vertexOffset + 3, tr, vec2(uv1.x, uv0.y), color, frame.materialIndex);
+	writeVertex(vertexBuffer, vertexOffset + 4, br, vec2(uv1.x, uv1.y), color, frame.materialIndex);
+	writeVertex(vertexBuffer, vertexOffset + 5, tl, vec2(uv0.x, uv0.y), color, frame.materialIndex);
 }
