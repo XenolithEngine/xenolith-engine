@@ -62,6 +62,7 @@
 #include "XLCoreResource.cc"
 #include "XLCoreQueue.cc"
 #include "XLCoreAttachment.cc"
+#include "XLCoreFrameCapture.cc"
 #include "XLCoreImageStorage.cc"
 #include "XLCoreDescriptorInfo.cc"
 #include "XLCoreQueuePass.cc"

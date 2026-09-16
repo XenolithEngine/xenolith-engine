@@ -96,6 +96,31 @@ bool InputListener::init(int32_t priority) {
 	return true;
 }
 
+void InputListener::handleAdded(Node *owner) {
+	System::handleAdded(owner);
+
+	// A node with a listener can be found under a pointer: register it for hit tests
+	owner->addHitTestFlags(HitTestFlags::Pointer);
+}
+
+void InputListener::handleRemoved() {
+	// Only when this was the last listener: the flag describes the node, which may carry several
+	if (_owner) {
+		bool other = false;
+		for (auto &it : _owner->getSystems()) {
+			if (it.get() != this && dynamic_cast<InputListener *>(it.get())) {
+				other = true;
+				break;
+			}
+		}
+		if (!other) {
+			_owner->removeHitTestFlags(HitTestFlags::Pointer);
+		}
+	}
+
+	System::handleRemoved();
+}
+
 void InputListener::handleEnter(Scene *scene) {
 	System::handleEnter(scene);
 
@@ -108,6 +133,10 @@ void InputListener::handleEnter(Scene *scene) {
 			scheduleUpdate();
 		}
 		it->onEnter(this);
+	}
+
+	if (_geometryRecognizers && _owner) {
+		_owner->markPointerStateDirty();
 	}
 }
 
@@ -125,6 +154,21 @@ void InputListener::handleExit() {
 void InputListener::handleVisitSelf(FrameInfo &info, Node *node, NodeVisitFlags flags) {
 	System::handleVisitSelf(info, node, flags);
 
+	// Remember the clip the owner is drawn under, so _shouldProcessEvent can reject pointer events
+	// over the clipped-away part. Only available here, on the frame context stack.
+	_visitScissorEnabled = false;
+	if (auto ctx = info.currentContext) {
+		if (auto state = ctx->getState(ctx->getCurrentState())) {
+			if (state->isScissorEnabled()) {
+				_visitScissorEnabled = true;
+				_visitScissor = state->scissor;
+			}
+		}
+	}
+
+	// The owner's opacity as of this frame, for the opacity filter
+	_visitOpacity = node->getOpacity();
+
 	if (_enabled) {
 		auto g = info.getSystem<FocusGroup>(FocusGroup::Id);
 
@@ -138,6 +182,47 @@ void InputListener::handleVisitSelf(FrameInfo &info, Node *node, NodeVisitFlags 
 			info.input->addListener(this, g, sp::move(layer));
 		} else {
 			info.input->addListener(this, g, WindowLayer(_windowLayer));
+		}
+	}
+}
+
+void InputListener::handleTransformDirty(const Mat4 &parentTransform) {
+	System::handleTransformDirty(parentTransform);
+
+	/* The transform phase runs before the owner's components phase, so a hover starting here is
+	   seen by this frame's styling and layout. setContentSize() also dirties the transform, so
+	   size needs no separate hook. */
+	updatePointerState();
+}
+
+void InputListener::settlePointerState() { updatePointerState(); }
+
+void InputListener::updatePointerState() {
+	// A listener the visit does not register (e.g. disabled) must not acquire a hover either
+	if (!_geometryRecognizers || !_running || !_enabled || !_owner) {
+		return;
+	}
+
+	auto director = _owner->getDirector();
+	if (!director) {
+		return;
+	}
+
+	auto dispatcher = director->getInputDispatcher();
+	auto pointer = dispatcher->getPointerEvent();
+	if (!pointer || !hasFlag(dispatcher->getWindowState(), WindowState::Pointer)) {
+		return;
+	}
+
+	for (auto &it : _recognizers) {
+		if (!_running || !_owner) {
+			break;
+		}
+
+		switch (it->handleGeometryUpdate(*pointer)) {
+		case InputEventState::Retain: retainEvent(InputEventName::MouseMove); break;
+		case InputEventState::Release: releaseEvent(InputEventName::MouseMove); break;
+		default: break;
 		}
 	}
 }
@@ -297,6 +382,8 @@ bool InputListener::setFocused() {
 
 bool InputListener::isFocused() const { return _hasFocus; }
 
+void InputListener::setFocusCallback(Function<void(bool)> &&cb) { _focusCallback = sp::move(cb); }
+
 FocusGroup *InputListener::getFocusGroup() const {
 	auto owner = getOwner();
 	while (owner) {
@@ -368,6 +455,75 @@ void InputListener::setWindowStateCallback(Function<bool(WindowState, WindowStat
 void InputListener::clear() {
 	_eventMask.reset();
 	_recognizers.clear();
+	_hotkeys.clear();
+}
+
+void InputListener::addHotkey(HotkeyId id, HotkeyCallback &&cb, HotkeyFlags flags) {
+	if (id.empty() || !cb) {
+		log::source().error("InputListener", "A hotkey subscription needs a valid id and callback");
+		return;
+	}
+
+	// No event mask and no recognizer: hotkeys are delivered by the dispatcher out of band, so
+	// subscribing must not make this listener a candidate for ordinary key events
+	_hotkeys[id] = HotkeyBinding{sp::move(cb), flags};
+}
+
+void InputListener::removeHotkey(HotkeyId id) { _hotkeys.erase(id); }
+
+bool InputListener::hasHotkey(HotkeyId id) const { return _hotkeys.find(id) != _hotkeys.end(); }
+
+bool InputListener::isHotkeyEligible(const HotkeyBinding &binding,
+		const HotkeyContext &ctx) const {
+	if (ctx.repeated && !hasFlag(binding.flags, HotkeyFlags::Repeatable)) {
+		return false;
+	}
+	if (hasFlag(binding.flags, HotkeyFlags::FocusedOnly) && !ctx.focused) {
+		return false;
+	}
+	if (hasFlag(binding.flags, HotkeyFlags::SelectedOnly) && !ctx.inSelection) {
+		return false;
+	}
+	if (ctx.exclusiveScoped && !hasFlag(binding.flags, HotkeyFlags::BypassExclusive)) {
+		return false;
+	}
+	return true;
+}
+
+bool InputListener::canHandleHotkey(SpanView<HotkeyId> ids, const HotkeyContext &ctx) const {
+	if (_hotkeys.empty() || !_running || !_owner) {
+		return false;
+	}
+	for (auto &id : ids) {
+		auto it = _hotkeys.find(id);
+		if (it != _hotkeys.end() && isHotkeyEligible(it->second, ctx)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool InputListener::handleHotkey(SpanView<HotkeyId> ids, const InputEvent &event,
+		const HotkeyContext &ctx) {
+	if (_hotkeys.empty() || !_running || !_owner) {
+		return false;
+	}
+
+	// A combination can carry several hotkeys at once (Escape is both a form reset and an app
+	// back); the first one this listener actually subscribed to and consumed wins
+	for (auto &id : ids) {
+		if (!_running || !_owner) {
+			break;
+		}
+		auto it = _hotkeys.find(id);
+		if (it == _hotkeys.end() || !isHotkeyEligible(it->second, ctx)) {
+			continue;
+		}
+		if (it->second.callback(id, event)) {
+			return true;
+		}
+	}
+	return false;
 }
 
 void InputListener::handleFocusIn(FocusGroup *) {
@@ -398,21 +554,37 @@ bool InputListener::shouldProcessEvent(const InputEvent &event) const {
 
 bool InputListener::_shouldProcessEvent(const InputEvent &event) const {
 	auto node = getOwner();
-	if (node && _running) {
-		bool visible = node->isVisible();
-		auto p = node->getParent();
-		while (visible && p) {
-			visible = p->isVisible();
-			p = p->getParent();
+	if (!node || !_running) {
+		return false;
+	}
+
+	/* Was the owner drawn in the frame this event is resolved against? An invisible, detached,
+	`display: none` or disabled owner never registered in the committed storage. */
+	auto dispatcher = _scene ? _scene->getDirector()->getInputDispatcher() : nullptr;
+	if (!dispatcher || _visitGeneration != dispatcher->getCommittedGeneration()) {
+		return false;
+	}
+
+	if (event.data.hasLocation()) {
+		if (_visitScissorEnabled) {
+			// Float, not URect::containsPoint(UVec2): a location off the window can be negative
+			// and would wrap into the rect when cast to unsigned.
+			const auto &loc = event.currentLocation;
+			if (loc.x < float(_visitScissor.x) || loc.y < float(_visitScissor.y)
+					|| loc.x >= float(_visitScissor.x + _visitScissor.width)
+					|| loc.y >= float(_visitScissor.y + _visitScissor.height)) {
+				// clipped away on screen, so not clickable either
+				return false;
+			}
 		}
-		if (visible
-				&& (!event.data.hasLocation()
-						|| node->isTouched(event.currentLocation, _touchPadding))
-				&& node->getOpacity() >= _opacityFilter) {
-			return true;
+
+		// Against the transform the node was drawn with
+		if (!node->isTouchedAsDrawn(event.currentLocation, _touchPadding)) {
+			return false;
 		}
 	}
-	return false;
+
+	return _visitOpacity >= _opacityFilter;
 }
 
 void InputListener::addEventMask(const EventMask &mask) {
@@ -426,10 +598,17 @@ void InputListener::addEventMask(const EventMask &mask) {
 GestureRecognizer *InputListener::addRecognizer(GestureRecognizer *rec) {
 	addEventMask(rec->getEventMask());
 	auto ret = _recognizers.emplace_back(rec).get();
+	if (ret->requiresGeometryUpdate()) {
+		_geometryRecognizers = true;
+	}
 	if (_running) {
 		ret->onEnter(this);
 		if (ret->requiresUpdate()) {
 			scheduleUpdate();
+		}
+		if (ret->requiresGeometryUpdate() && _owner) {
+			// Added to a listener already on screen: the recognizer does not know the pointer yet
+			_owner->markPointerStateDirty();
 		}
 	}
 	return ret;

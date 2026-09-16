@@ -1,0 +1,405 @@
+---
+name: gui-debug
+description: >-
+  Debug and drive a Xenolith app over its inspector socket — headless by default
+  (`--headless`, no window system), so a GUI can be inspected, screenshotted and
+  driven with no display, no compositor and no mouse. MCP tools: `inspect_scene`
+  (the node tree), `get_logs` (the log ring buffer), `screenshot`,
+  `list_commands`/`invoke_command` (scene-registered actions), `list_fonts` (loaded
+  font sets and what they cost), `send_input`,
+  `send_text`, `step_frame`, `window_control`, `list_windows`, `quit_app` — every one
+  of them addressable per window, so menus, dialogs and second windows are driven
+  the same way. Use when a Xenolith GUI app
+  (installer, scaffolded app, tests/window) is misbehaving visually — missing
+  elements, wrong layout, invisible nodes, overlap, wrong stacking, an element you
+  can't find, "why is this hidden", "where did this node go"; when verifying
+  business logic (catalogue load, install progress, errors, crashes) works BEFORE
+  or independently of the UI; or when you need a screenshot of an app on a machine
+  with no session at all. Complements source-level debugging (lldb/wine-debug).
+---
+
+# Debugging a Xenolith GUI: run it headless, drive it over the socket
+
+**Default to `--headless`.** It is the same engine and the same renderer with the
+window system removed: Vulkan draws into a pseudo-swapchain of ordinary device
+images instead of a compositor surface. Measured on `tests/window`
+(Linux/Vulkan), the headless frame is **byte-identical to the windowed one** —
+0 differing pixels out of 3 145 728 outside the live FPS counter. So a headless
+screenshot is evidence about the real rendering, not an approximation.
+
+What you gain by not opening a window:
+
+- **No display needed** — works over SSH, in CI, on a server, with the monitor
+  asleep.
+- **Deterministic frames.** Headless renders on demand: `step_frame` draws
+  exactly N frames. No "the window froze because nobody moved the mouse", no
+  render-lock actions, no sleeping-compositor stalls (see "Windowed mode" below).
+- **Resizable from the client.** `window_control op:"resize"` really works; with
+  a WM in play the size is the WM's to decide.
+- **Nothing to clean up.** No stray window stealing focus, no screenshot tool.
+
+Reach for a real window only for the short list under "Windowed mode" below.
+
+## Start the app
+
+```sh
+XENOLITH_INSPECTOR_ADDRESS=unix:/tmp/xl-$$.sock \
+  ./myapp --headless --width 1024 --height 768 &
+```
+
+- **Use a per-run socket path.** The default `/tmp/xenolith-inspector.sock` is
+  unlinked before bind, so two apps silently fight over it. Point the MCP client
+  at the same `XENOLITH_INSPECTOR_ADDRESS`.
+- **`--width/--height` are the surface in pixels.** `--density` only changes the
+  logical scale — it does *not* multiply the surface. To reproduce a HiDPI window
+  (a 1024×768 window at density 2), pass the physical size explicitly:
+  `--width 2048 --height 1536 --density 2`.
+- **Stop it with `quit_app`**, not a kill: it closes the window, tears the context
+  down and exits with status 0.
+
+The listener is armed in DEBUG builds, whenever `XENOLITH_INSPECTOR_ADDRESS` is
+set, and always in headless mode — so a release build works too.
+
+## Tools
+
+| Tool | What it does |
+|---|---|
+| `inspect_scene` | live scene graph as an indented text tree (one node per line) |
+| `get_logs` | application log ring buffer (last ~4096 entries, `[LEVEL][tag] message`) |
+| `list_fonts` | font sets loaded right now: glyphs, cached shaping data, memory, who holds them |
+| `list_windows` | every window that has a scene: id, type, parent, size |
+| `step_frame` | render N frames — headless draws nothing until you ask |
+| `screenshot` | write the current frame to a PNG |
+| `list_commands` | the actions this scene registered for external control |
+| `invoke_command` | run one of them |
+| `send_input` | inject synthetic pointer/key events (`native: true` to type text) |
+| `send_text` | drive the text-input processor: insert, composition, delete, read state |
+| `window_control` | read constraints, resize, close |
+| `quit_app` | shut the process down |
+
+Every tool except `get_logs` (a process-wide buffer), `list_fonts` (the
+application's font controller, shared by every window) and `quit_app` (the whole
+process) takes an optional **`window`** argument — an id from `list_windows`.
+Omit it for the main window.
+
+### When to use which
+
+- **`inspect_scene`** — visual/structural problems: invisible button, wrong layout,
+  overlap, z-order, "did my node appear", "why is everything gone" (ancestor
+  opacity 0 / `background-color: transparent`). Read content-size/position/z-order.
+- **`get_logs`** — behavioral problems: did the catalogue load? did install start?
+  what error did the worker throw? did the controller init? Use it to verify
+  business logic **before** building UI (call the controller methods from a scene
+  hook, then `get_logs`), and to diagnose crashes/misbehavior without a debugger.
+- **`screenshot`** — "what does it actually look like", when the tree reads fine
+  but the render does not. **Always `step_frame` first** (see below).
+- **`list_fonts`** — text that is the wrong size, a layout that stalls on the atlas,
+  or a suspicion that font sets are being built and thrown away. Each entry is one
+  `family.size.style.weight.stretch.grade.density` set, and `users` is what to read
+  first: a set with **users=0** is dropped by the next update, so it was built for
+  nothing — a wrong density, or a CSS rule the variant class immediately overrides.
+  The size shown is already multiplied by the density, so a set at density 1 in a
+  HiDPI app is a bug by itself. `glyphs` is what the atlas holds, `shaped` the
+  metrics cached by measuring (always the larger), and `inFlight`/`generation`
+  say whether frames are still gated on an upload.
+  The `cache:` line is the eviction policy: an unused set is kept until `pressure`
+  (atlas size against its budget, and live sets against their cap) reaches
+  `threshold`, because dropping one costs a full atlas rebuild. `occupancy` is how
+  much of the atlas image the glyphs cover — read it to judge the packer, never as
+  the pressure: the packer re-sizes the atlas to a tight fit on every rebuild, so
+  occupancy jumps back to ~0.5 after each doubling and says nothing about how much
+  is cached. `XL_FONT_EVICT_ALWAYS=1` restores the old drop-everything-every-tick
+  behaviour, `XL_FONT_EVICT_THRESHOLD=<float>` moves the gate.
+- **`list_commands` / `invoke_command`** — drive app-specific actions the scene
+  chose to expose, without synthesizing input.
+- **`list_windows`** — after anything that may have opened a menu, a dialog, a
+  palette or a second top-level window. Window creation is asynchronous, so give
+  it a moment before you look. See "Menus, dialogs and second windows" below.
+- **`send_input`** — exercise the real input path (hit-testing, gestures, focus)
+  rather than calling code directly.
+- **Typing into a text field** — a plain `send_input` key event never becomes
+  text: the platform's text-input processor sits *below* the scene, so the event
+  has to enter there. Pass `native: true`; then printable keys, Backspace, Delete
+  and Escape are consumed by the focused field, and everything else (arrows,
+  Home/End, Shift-selection) still reaches the widget. Note that Enter and Tab
+  are consumed too — they arrive as `\n`/`\t` in the text, and a widget is
+  expected to strip them.
+- **`send_text`** — the IME-level path for what no keystroke can express:
+  `op:"marked"` + `op:"unmark"` reproduce composition (CJK, dead keys),
+  `op:"insert"` can replace an explicit range, and `op:"state"` reads back the
+  string, cursor and marked range. Mutating ops land asynchronously, so
+  `step_frame` before reading state or shooting.
+
+### The order that matters: step, then shoot
+
+Headless renders only when asked. A `screenshot` without a preceding `step_frame`
+returns the *previous* frame — or falls back to rendering one offscreen if nothing
+has ever been presented. So every visual check is:
+
+```
+step_frame (count: 1-3)  →  short pause  →  screenshot
+```
+
+Same after anything that changes the scene: `invoke_command` / `send_input` /
+`window_control resize` → `step_frame` → `screenshot`. If a screenshot looks
+stale, you skipped the step.
+
+**Stepping is a REQUEST; `presented` is the receipt.** `step_frame` sets the
+presentation engine's ready flag and returns — measured at a tenth of a
+millisecond, with nothing drawn yet — so a read taken straight afterwards races
+the render loop. A screenshot does not close that gap either: it answers with the
+frame *before* the one you asked for. The reply now carries **`presented`**, the
+order of the last frame that actually completed
+(`core::PresentationEngine::getLastFrameOrder`), and `count: 0` asks for nothing
+and only reports. So the exact wait is:
+
+```
+n = step_frame(count: 0).presented    # where we are
+step_frame(count: 1)                  # ask
+poll step_frame(count: 0) until presented > n     # ~2 ms, a couple of polls
+```
+
+That is what a scripted check should do instead of sleeping. `tests/lib/studiocheck.py`
+in xlstudio wraps it as `step(frames)`; rebuilding one 150 ms sleep-and-hope on it
+made that script twice as fast and stopped it failing under load.
+
+**Each window steps on its own.** Every window has its own presentation engine,
+so `step_frame` with no `window` argument advances only the main one — a menu or
+a dialog stays on whatever frame it last drew until you step *it*.
+
+## Menus, dialogs and second windows
+
+A popup, a dialog, a palette or a second top-level window is a **real window**
+here, not an in-scene overlay: headless emulates the window manager and gives
+each one a pseudo-swapchain of its own. So they do not show up in the main
+window's `inspect_scene` or `screenshot` — you address them by id:
+
+```
+list_windows
+  org.stappler.app.myapp: Root 1024x768 @1.0 "myapp" (default)
+  menu-1: Popup parent=org.stappler.app.myapp 220x220 @1.0 "Menu"
+
+step_frame   {window: "menu-1", count: 3}
+screenshot   {window: "menu-1", path: "/tmp/menu.png"}
+inspect_scene{window: "menu-1"}
+send_input   {window: "menu-1", native: true, events: [...]}   # click a menu row
+```
+
+- **Coordinates are per window**, in that window's own scene space (Y-up from the
+  bottom-left) — a menu row at y=97 means 97 from the bottom of the *menu*.
+- **`native: true` matters for menus.** Only native input reaches the window
+  system emulation, which is what dismisses a menu when you press outside it,
+  cascades the close down a submenu chain and enforces a modal dialog's block on
+  its parent. Plain `send_input` goes straight to the scene and bypasses all of
+  it.
+- **Creation is asynchronous.** A window opened by a click or an `invoke_command`
+  needs a moment before `list_windows` sees it.
+- **`window_control` is per window too** — `resize` really resizes a popup's
+  pseudo-swapchain, and `close` dismisses that one window (use `quit_app` for the
+  process).
+- Tooltips stay in-scene overlays by default (`preferNative = false`), so look
+  for a tip in the parent window's tree, not in `list_windows`.
+
+## User-space decorations are on in headless
+
+Headless advertises `WindowCapabilities::UserSpaceDecorations`, so an app that
+asks for them gets them: the window system draws no frame, `SceneContent` builds
+the decorations node, and the capture is the frame a decorated desktop window
+presents. The grips are live — a drag on a `MoveGrip` (a title bar) moves the
+pseudo-window on the virtual screen, and a drag on one of the eight resize edges
+resizes it; read the result with `window_control op:"geometry"`.
+
+Two things that will otherwise waste an iteration:
+
+- **A grip press is swallowed** — the window system takes it everywhere else, and
+  so does this one. A click within **6pt of any window edge** is a resize grip
+  unless something declares `WindowLayerFlags::GripGuard` over it, so aim a check
+  at a widget's middle rather than its corner.
+- **While a drag runs, the coordinates you inject are read against the window rect
+  as it was when the press landed.** A synthetic pointer has no root coordinates,
+  so a drag from `(x0, y0)` to `(x1, y1)` moves the window by exactly
+  `(x1 - x0, y0 - y1)` — the Y flip because window space is Y-up and the screen
+  is Y-down.
+
+A moved or resized window is real state: an app that persists its geometry (the
+studio does) will reopen where a probe left it.
+
+## Debug loop
+
+```
+build (debug)  →  run --headless  →  get_logs / inspect_scene / step_frame+screenshot
+     ↑                                                        ↓
+     └──────── fix code/CSS, rebuild, quit_app, relaunch, re-check ←┘
+```
+
+Re-call a tool after each fix to confirm — no need to close/reopen between reads
+(each call reconnects), but you **must rebuild + relaunch** for code/CSS changes.
+
+## Inspecting the scene
+
+Call `inspect_scene`. Output, one node per line:
+
+```
+<type>  #<name>  .class1 .class2  V  <content-size>  @(<x>,<y>)  z<order>
+```
+
+- `V` — visible. Absent = invisible (opacity 0, hidden by parent, setVisible(false)).
+  **A node with opacity 0 still lays out and appears invisible here** — the common
+  "why is everything gone" cause is an ancestor with `opacity:0` /
+  `background-color: transparent` (see pitfalls).
+- `#name` — stable hook (set in code / via `setName`); grep for it.
+- `.class…` — style classes; match the CSS in the app's `.css`.
+- `content size` / `position` — laid-out geometry; mismatches reveal layout bugs.
+- `z<order>` — draw order within siblings.
+
+## Reading logs
+
+Call `get_logs`. Returns the whole current ring buffer (capped ~4096 lines). Log
+levels: `[V]` verbose, `[D]` debug, `[I]` info, `[W]` warn, `[E]` error, `[F]`
+fatal. Each line is `[LEVEL][tag] message`. The `installer` tag covers the
+InstallerController (catalogue load, install/uninstall, engine query/prepare);
+engine/framework tags (`Director`, `Context`, `vk::Loop`, `FontController`, …) come
+from the engine itself.
+
+## Scene-registered commands
+
+`list_commands` / `invoke_command` reach whatever the running scene chose to
+expose. A scene registers them in its `init()`:
+
+```cpp
+#include "XLSceneInspector.h"
+
+inspector::addCommand(getContent(), "reload", "Reload the catalogue",
+        [this](Value &&args, Function<void(Value &&)> &&done) {
+    _controller->loadCatalog([done = sp::move(done)](bool ok) mutable {
+        Value result;
+        result.setBool(ok, "ok");
+        done(sp::move(result));   // may be called later, from another thread hop
+    });
+});
+```
+
+This is the cheapest way to make an app driveable: one command per action you want
+to trigger from outside, and the whole flow becomes scriptable without synthesizing
+input. `tests/headless` is a minimal worked example (a coloured box exposing
+`set-color` and `box-size`); `tests/window` is the full one — `layouts` lists its
+28 demo layouts, flat and as the group tree they are declared in, `layout` switches
+to one by id (`nth`) or path (`css/nth`) (and answers only once the new layout has
+settled, so the reply is the signal to shoot), and whichever layout is on screen
+adds its own `<name>.<action>` commands for the duration.
+
+## Windowed mode — only when the window manager is the subject
+
+Drop `--headless` when the thing under test *is* the window system:
+
+- window decorations, chrome, traffic-light buttons, rounding, borders;
+- real WM-delivered input, IME/text input, cursors, drag & drop;
+- fullscreen, multi-monitor, per-monitor DPI, display-link pacing;
+- compositor-specific bugs (Wayland vs XCB paths).
+
+The rest of this section applies to that mode only — headless has none of these
+traps.
+
+**An untouched window does not advance.** The engine only produces a frame when
+something is dirty, so a window nobody is touching **freezes**: a scheduled action
+does not tick, a timed phase never fires, a state change from a callback is never
+laid out — and everything catches up at once as soon as you move the mouse. In an
+automated check nobody moves the mouse, so this reads as "my fix did nothing".
+Anything you want to verify for reactivity must hold the loop open itself:
+
+```cpp
+#include "XLAction.h"
+runAction(Rc<RenderContinuously>::create());       // forever
+runAction(Rc<RenderContinuously>::create(3.0f));   // for N seconds
+```
+
+`tests/window` does this for every test in `TestLayout::init()`; a scaffolded app
+or the installer does not. Symptoms that are really this: stale sizes in
+`inspect_scene` that become correct after you touch the window; an animation that
+only runs while the pointer moves; `get_logs` missing a `DelayTime` phase.
+
+**A sleeping monitor stops the loop the same way, and the render lock does not
+help** — the compositor stops delivering frame callbacks, so nothing chains the
+next frame. It looks exactly like a hung test:
+
+```sh
+kscreen-doctor --dpms on     # KDE/Wayland; the same trap on any idle session
+```
+
+A run that reports no phase output at all, on a test that worked minutes ago, is
+almost always this. **Both traps vanish in headless mode** — `step_frame` drives
+the loop directly.
+
+**Screenshots.** Prefer the `screenshot` tool even here: it captures the app's own
+frame, without decorations or compositor scaling. Grab the composited window only
+when the decorations are what you are checking: `spectacle -b -n -a -o shot.png`
+(active window), `-f` (whole screen). `import -window root` does NOT work —
+Xwayland here is rootless, so the root window is empty.
+
+One thing hides the freeze by accident: the FPS counter is marked `AlwaysDirty`,
+so a scene showing it looks busier than it is. Turning it off
+(`setFpsVisible(false)`, as the damage test does) exposes the real behaviour — and
+also makes two screenshots comparable, since the counter is the one region that
+differs between any two runs.
+
+## Known pitfalls (Xenolith-specific)
+
+- **`:hover` needs a window that claims focus and a pointer**, not just a
+  `MouseMove`. `GestureMouseOverRecognizer` gates on `WindowState::Focused` +
+  `Pointer`, which a WM normally reports. A headless window says so itself from
+  `mapWindow()` — so an injected `MouseMove` really does raise `:hover`, and the
+  demo text in `tests/window` reads "Focused Pointer Enabled". If hover ever goes
+  quiet in headless again, check that state first: a window at
+  `WindowState::None` silently disables every hover in the scene.
+- **A transparent node hides its children — by design.** Setting a colour with alpha
+  (CSS `background-color: transparent`, or `setColor(c, /*withOpacity*/true)`) writes
+  that alpha into the node's opacity, and opacity multiplies down the whole subtree,
+  exactly like CSS `opacity`. `inspect_scene` still marks the children `V`, because
+  that flag is `setVisible`, not the resulting transparency. If you want an invisible
+  container with visible children, use a plain `Node` — it draws nothing and leaves
+  opacity alone — instead of a transparent `Layer`.
+- **Bundled resources still have to be found.** Headless changes nothing about
+  resource lookup: `Fail to add image: …, file not found` in `get_logs` means the
+  app was launched from the wrong working directory, not that headless broke it.
+- **Custom window chrome** (traffic-light buttons, rounding, border) lives in
+  `XLUiButton.cc` / `SPRTWinMacosWindow.mm` / `SPRTWinMacosView.mm`. First-click on
+  the OS buttons being swallowed = missing `acceptsFirstMouse:` in the view.
+- **Verify business logic before UI.** Call controller methods from a scene hook
+  (e.g. `InstallerSceneContent::handleEnter` → `_controller->loadCatalog()`), then
+  `get_logs` — confirm `[I][installer] loadCatalog: ok, rows=N` before building the
+  table that displays them.
+
+## Transport (only if you are writing a client)
+
+One listener address, two protocols sharing it. `inspect_scene` and `get_logs` use
+the original one-shot text form (send `scene\n` / `logs\n` / `fonts\n`, read until
+EOF).
+Everything else opens a framed session (`xenolith/1 json\n`, then
+`[u32 LE size][JSON payload]` request/response frames correlated by `serial`),
+which is what makes binary screenshots and long-lived sessions work. **The
+handshake is answered with a greeting LINE — `# xenolith/1 ok json\n` — before
+any frame; read it to the newline first.** A client that starts framing straight
+away consumes those bytes as a length and then blocks forever, which looks
+exactly like "the app executes commands but never answers". The request key is
+`cmd` (`scene`, `logs`, `fonts`, `commands`, `invoke`, `screenshot`, `input`,
+`frame`, `window`, `quit`), not `command`. `fonts` answers with the structured
+report, plus the text one when `"text": true`. Binary
+payloads arrive as `"BASE64:<base64url, unpadded>"`. Address format:
+`unix:/path`, `unix:@abstract`, `host:port` or `:port`. Per-platform defaults:
+
+| Platform | Default |
+|---|---|
+| Linux / macOS | `unix:/tmp/xenolith-inspector.sock` |
+| Android | `unix:@xenolith-inspector` (abstract; from the host: `adb forward tcp:4490 localabstract:xenolith-inspector` and point the client at `127.0.0.1:4490`) |
+| Windows | `127.0.0.1:4490` (TCP loopback — Python has no practical AF_UNIX there) |
+| wasm | not available (no sockets in the browser sandbox; the inspector stays off) |
+
+## Related
+
+- `cli-build` skill — build/run the debug app.
+- `xenolith-build` skill — low-level engine/target builds.
+- Engine side: `XLSceneInspector.cc` (listener, protocols, command registry and
+  log sink, built on `Looper::listenSocket`); the headless controller in
+  `runtime/window/headless/`; the pseudo-swapchain in
+  `xenolith/backend/vk/XLVkHeadlessPresentation.cc`; scene graph nodes under
+  `xenolith/application/nodes/`; UI atoms under `xenolith/renderer/ui/atoms/`.

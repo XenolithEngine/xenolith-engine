@@ -32,6 +32,14 @@ THE SOFTWARE.
 #include <sprt/runtime/math.h>
 #include <sprt/runtime/log.h>
 
+// The <nl_types.h> dispatch header gives the plain catopen/catgets/catclose and
+// nl_catd on every target (the platform's on hosted, the umbrella's -- backed by
+// libc_impl -- on freestanding), which the message-catalog bridge below needs.
+// Embox libc has no message catalogs (no <nl_types.h>); use the empty fallback.
+#if !SPRT_EMBOX
+#include <nl_types.h>
+#endif
+
 #if __STDC_HOSTED__ == 1
 
 #include <stddef.h>
@@ -40,7 +48,6 @@ THE SOFTWARE.
 #include <stdio.h>
 #include <float.h>
 #include <utime.h>
-#include <nl_types.h>
 
 #endif
 
@@ -49,84 +56,68 @@ THE SOFTWARE.
 #include "common/signal.cc"
 #include "common/abort.cc"
 #include "common/locale.cc"
+#include "common/langinfo.cc"
 #include "common/rand.cc"
 
+static_assert(sizeof(void *) == sizeof(__sprt_intptr_t));
+static_assert(sizeof(void *) == sizeof(__sprt_uintptr_t));
+
 #if SPRT_ANDROID
-namespace sprt::platform {
-
-extern nl_catd (*_catopen)(const char *__name, int __flag);
-extern char *(*_catgets)(nl_catd __catalog, int __set_number, int __msg_number, const char *__msg);
-extern int (*_catclose)(nl_catd __catalog);
-
-} // namespace sprt::platform
+// Bionic gained catopen()/catgets()/catclose() only at API 26, so the NDK headers
+// leave the plain symbols undeclared at a lower minSdk. Declare them as weak
+// references: the address is the real Bionic symbol on API >= 26 devices and null
+// on older ones. (On glibc/macOS the system <nl_types.h> declares them strong, and
+// on Windows the umbrella declares them with libc_impl providing the definition --
+// there the null-check below is simply always taken.)
+extern "C" __attribute__((weak)) nl_catd catopen(const char *, int);
+extern "C" __attribute__((weak)) char *catgets(nl_catd, int, int, const char *);
+extern "C" __attribute__((weak)) int catclose(nl_catd);
 #endif
 
 namespace sprt {
 
-__SPRT_C_FUNC __SPRT_ID(nl_catd) __SPRT_ID(catopen)(const char *path, int v) {
-#if __SPRT_CONFIG_HAVE_NLTYPES_CAT
-#if SPRT_ANDROID
-	if (platform::_catopen) {
-		return platform::_catopen(path, v);
+// runtime_core's honest empty-catalog fallback.
+__SPRT_ID(nl_catd) __catopen_empty(const char *, int);
+char *__catgets_empty(__SPRT_ID(nl_catd), int, int, const char *);
+int __catclose_empty(__SPRT_ID(nl_catd));
+
+// The SPRT-API message-catalog symbols apps reach through the <nl_types.h>
+// umbrella. Deterministic: use the real platform catalog functions when present,
+// else the empty-catalog fallback.
+__SPRT_C_FUNC __SPRT_ID(nl_catd) __SPRT_ID(catopen)(const char *path, int v) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	return __catopen_empty(path, v);
+#else
+	auto *fn = catopen;
+	if (fn) {
+		return (__SPRT_ID(nl_catd))fn(path, v);
 	}
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (Android: API not available)");
-	*__sprt___errno_location() = ENOSYS;
-	return nullptr;
-#else
-	return ::catopen(path, v);
-#endif
-#else
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (__SPRT_CONFIG_HAVE_NLTYPES_CAT)");
-	*__sprt___errno_location() = ENOSYS;
-	return nullptr;
+	return __catopen_empty(path, v);
 #endif
 }
 
-__SPRT_C_FUNC char *__SPRT_ID(catgets)(__SPRT_ID(nl_catd) cat, int a, int b, const char *str) {
-#if __SPRT_CONFIG_HAVE_NLTYPES_CAT
-#if SPRT_ANDROID
-	if (platform::_catgets) {
-		return platform::_catgets(cat, a, b, str);
+__SPRT_C_FUNC char *__SPRT_ID(
+		catgets)(__SPRT_ID(nl_catd) cat, int a, int b, const char *str) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	return __catgets_empty(cat, a, b, str);
+#else
+	auto *fn = catgets;
+	if (fn) {
+		return fn((nl_catd)cat, a, b, str);
 	}
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (Android: API not available)");
-	*__sprt___errno_location() = ENOSYS;
-	return nullptr;
-#elif SPRT_MACOS
-	return ::catgets(nl_catd(cat), a, b, str);
-#else
-	return ::catgets(cat, a, b, str);
-#endif
-#else
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (__SPRT_CONFIG_HAVE_NLTYPES_CAT)");
-	*__sprt___errno_location() = ENOSYS;
-	return nullptr;
+	return __catgets_empty(cat, a, b, str);
 #endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(catclose)(__SPRT_ID(nl_catd) cat) {
-#if __SPRT_CONFIG_HAVE_NLTYPES_CAT
-#if SPRT_ANDROID
-	if (platform::_catclose) {
-		return platform::_catclose(cat);
+__SPRT_C_FUNC int __SPRT_ID(catclose)(__SPRT_ID(nl_catd) cat) __SPRT_NOEXCEPT {
+#if SPRT_EMBOX
+	return __catclose_empty(cat);
+#else
+	auto *fn = catclose;
+	if (fn) {
+		return fn((nl_catd)cat);
 	}
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (Android: API not available)");
-	*__sprt___errno_location() = ENOSYS;
-	return -1;
-#elif SPRT_MACOS
-	return ::catclose(nl_catd(cat));
-#else
-	return ::catclose(cat);
-#endif
-#else
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (__SPRT_CONFIG_HAVE_NLTYPES_CAT)");
-	*__sprt___errno_location() = ENOSYS;
-	return -1;
+	return __catclose_empty(cat);
 #endif
 }
 

@@ -424,6 +424,7 @@ struct SP_PUBLIC ImageData : ImageInfo {
 using sprt::window::FrameConstraints;
 using sprt::window::SwapchainConfig;
 using sprt::window::SurfaceInfo;
+using sprt::window::WindowGeometry;
 
 struct SP_PUBLIC TextureSetLayoutInfo {
 	uint32_t imageCount = config::MaxTextureSetImages;
@@ -498,6 +499,13 @@ SP_PUBLIC inline String getImageUsageDescription(ImageUsage fmt) {
 }
 
 using sprt::window::getFormatBlockSize;
+
+// The block arithmetic (see sprt/runtime/window/mode.h). Measure images with these, never with
+// `getFormatBlockSize * width * height`, which over-counts compressed formats.
+using sprt::window::getFormatBlockExtent;
+using sprt::window::getFormatImageSize;
+using sprt::window::getFormatRowCount;
+using sprt::window::getFormatRowSize;
 
 SP_PUBLIC PixelFormat getImagePixelFormat(ImageFormat format);
 SP_PUBLIC bool isStencilFormat(ImageFormat format);

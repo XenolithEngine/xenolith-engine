@@ -28,6 +28,22 @@
 #include "XLVkPlatform.h"
 #endif
 
+#ifdef MODULE_XENOLITH_BACKEND_WEBGPU
+#include "XLWgpuPlatform.h"
+#endif
+
+#ifdef MODULE_XENOLITH_BACKEND_MTL
+#include "XLMtlPlatform.h"
+#endif
+
+#ifdef MODULE_XENOLITH_BACKEND_SOFT
+#include "XLSoftPlatform.h"
+#endif
+
+#ifdef MODULE_XENOLITH_BACKEND_GLES
+#include "XLGlesPlatform.h"
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 Value encodeInstanceInfo(const InstanceInfo &info) {
@@ -70,6 +86,47 @@ Rc<Instance> Instance::create(Rc<InstanceInfo> &&info) {
 		}
 	}
 #endif
+#ifdef MODULE_XENOLITH_BACKEND_WEBGPU
+	if (info->api == InstanceApi::WebGPU) {
+		auto createInstance =
+				SharedModule::acquireTypedSymbol<decltype(&webgpu::platform::createInstance)>(
+						buildconfig::MODULE_XENOLITH_BACKEND_WEBGPU_NAME,
+						"platform::createInstance");
+		if (createInstance) {
+			return createInstance(move(info));
+		}
+	}
+#endif
+#ifdef MODULE_XENOLITH_BACKEND_MTL
+	if (info->api == InstanceApi::Metal) {
+		auto createInstance =
+				SharedModule::acquireTypedSymbol<decltype(&mtl::platform::createInstance)>(
+						buildconfig::MODULE_XENOLITH_BACKEND_MTL_NAME, "platform::createInstance");
+		if (createInstance) {
+			return createInstance(move(info));
+		}
+	}
+#endif
+#ifdef MODULE_XENOLITH_BACKEND_SOFT
+	if (info->api == InstanceApi::Software) {
+		auto createInstance =
+				SharedModule::acquireTypedSymbol<decltype(&soft::platform::createInstance)>(
+						buildconfig::MODULE_XENOLITH_BACKEND_SOFT_NAME, "platform::createInstance");
+		if (createInstance) {
+			return createInstance(move(info));
+		}
+	}
+#endif
+#ifdef MODULE_XENOLITH_BACKEND_GLES
+	if (info->api == InstanceApi::GLES) {
+		auto createInstance =
+				SharedModule::acquireTypedSymbol<decltype(&gles::platform::createInstance)>(
+						buildconfig::MODULE_XENOLITH_BACKEND_GLES_NAME, "platform::createInstance");
+		if (createInstance) {
+			return createInstance(move(info));
+		}
+	}
+#endif
 	return nullptr;
 }
 
@@ -91,6 +148,10 @@ StringView getInstanceApiName(InstanceApi backend) {
 	switch (backend) {
 	case InstanceApi::None: return "None"; break;
 	case InstanceApi::Vulkan: return "Vulkan"; break;
+	case InstanceApi::WebGPU: return "WebGPU"; break;
+	case InstanceApi::Metal: return "Metal"; break;
+	case InstanceApi::Software: return "Software"; break;
+	case InstanceApi::GLES: return "GLES"; break;
 	}
 	return StringView();
 }

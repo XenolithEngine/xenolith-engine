@@ -2,7 +2,8 @@
 #define CORE_RUNTIME_INCLUDE_SPRT_WRAPPERS_LIBC_STDDEF_H_
 
 #include <sprt/c/bits/__sprt_ssize_t.h>
-#include "sprt/c/bits/__sprt_wint_t.h"
+#include <sprt/c/bits/__sprt_wint_t.h>
+#include <sprt/c/bits/__sprt_wchar_t.h>
 #include <sprt/c/__sprt_stddef.h>
 
 #if __STDC_HOSTED__ == 0 || !defined(__SPRT_BUILD)
@@ -39,7 +40,17 @@ typedef __SPRT_ID(wchar_t) wchar_t;
 
 #endif
 
+// max_align_t coexistence: clang's <stddef.h> guards its own definition with
+// __CLANG_MAX_ALIGN_T_DEFINED, so when a clang resource header (e.g. <stdatomic.h>)
+// pulls clang's <stddef.h> into the same C translation unit, honour that guard to
+// avoid a duplicate typedef. In C++ the SPRT type lives in sprt::_cstddef and never
+// collides with clang's global ::max_align_t, so it is defined unconditionally.
+#ifdef __cplusplus
 typedef __SPRT_ID(max_align_t) max_align_t;
+#elif !defined(__CLANG_MAX_ALIGN_T_DEFINED)
+#define __CLANG_MAX_ALIGN_T_DEFINED
+typedef __SPRT_ID(max_align_t) max_align_t;
+#endif
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(wint_t) wint_t;
 typedef __SPRT_ID(ptrdiff_t) ptrdiff_t;

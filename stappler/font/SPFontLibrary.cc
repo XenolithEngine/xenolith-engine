@@ -40,6 +40,15 @@ namespace STAPPLER_VERSIONIZED stappler::font {
 #include "SPFont-RobotoFlex-VariableFont.ttf.cc"
 #include "SPFont-DejaVuSansStappler.cc"
 
+FontLibraryHandle::FontLibraryHandle() { FT_Init_FreeType(&_library); }
+
+FontLibraryHandle::~FontLibraryHandle() {
+	if (_library) {
+		FT_Done_FreeType(_library);
+		_library = nullptr;
+	}
+}
+
 FontFaceObjectHandle::~FontFaceObjectHandle() {
 	if (_onDestroy) {
 		_onDestroy(this);
@@ -60,6 +69,11 @@ bool FontFaceObjectHandle::init(const Rc<FontLibrary> &lib, Rc<FontFaceObject> &
 bool FontFaceObjectHandle::acquireTexture(char32_t theChar,
 		const Callback<void(const CharTexture &)> &cb) {
 	return _face->acquireTextureUnsafe(theChar, cb);
+}
+
+bool FontFaceObjectHandle::renderTexture(char32_t theChar,
+		const Callback<GlyphTarget(const CharTexture &)> &cb) {
+	return _face->renderTextureUnsafe(theChar, cb);
 }
 
 BytesView FontLibrary::getFont(DefaultFontName name) {
@@ -102,13 +116,13 @@ StringView FontLibrary::getFontName(DefaultFontName name) {
 	return StringView();
 }
 
-FontLibrary::FontLibrary() { FT_Init_FreeType(&_library); }
+FontLibrary::FontLibrary() {
+	_library = Rc<FontLibraryHandle>::alloc(); //
+}
 
 FontLibrary::~FontLibrary() {
-	if (_library) {
-		FT_Done_FreeType(_library);
-		_library = nullptr;
-	}
+	_threadLibrary.clear();
+	_library = nullptr;
 }
 
 Rc<FontFaceData> FontLibrary::openFontData(StringView dataName, FontLayoutParameters params,
@@ -142,12 +156,12 @@ Rc<FontFaceData> FontLibrary::openFontData(StringView dataName, FontLayoutParame
 		lock.lock();
 		_data.emplace(dataObject->getName(), dataObject);
 
-		auto face = newFontFace(dataObject->getView());
+		auto face = newFontFace(_library, dataObject->getView());
 		lock.unlock();
 		if (!isParamsPreconfigured) {
 			params = dataObject->acquireDefaultParams(face);
 		}
-		dataObject->inspectVariableFont(params, _library, face);
+		dataObject->inspectVariableFont(params, _library->getLibrary(), face);
 		lock.lock();
 		doneFontFace(face);
 	}
@@ -168,9 +182,9 @@ Rc<FontFaceObject> FontLibrary::openFontFace(StringView dataName,
 
 	auto it = _data.find(dataName);
 	if (it != _data.end()) {
-		auto face = newFontFace(it->second->getView());
-		auto ret =
-				Rc<FontFaceObject>::create(faceName, it->second, _library, face, spec, getNextId());
+		auto face = newFontFace(_library, it->second->getView());
+		auto ret = Rc<FontFaceObject>::create(faceName, it->second, _library->getLibrary(), face,
+				spec, getNextId());
 		if (ret) {
 			_faces.emplace(ret->getName(), ret);
 		} else {
@@ -197,9 +211,9 @@ Rc<FontFaceObject> FontLibrary::openFontFace(StringView dataName,
 
 	if (dataObject) {
 		_data.emplace(dataObject->getName(), dataObject);
-		auto face = newFontFace(dataObject->getView());
-		auto ret =
-				Rc<FontFaceObject>::create(faceName, it->second, _library, face, spec, getNextId());
+		auto face = newFontFace(_library, dataObject->getView());
+		auto ret = Rc<FontFaceObject>::create(faceName, dataObject, _library->getLibrary(), face,
+				spec, getNextId());
 		if (ret) {
 			_faces.emplace(ret->getName(), ret);
 		} else {
@@ -212,7 +226,7 @@ Rc<FontFaceObject> FontLibrary::openFontFace(StringView dataName,
 }
 
 Rc<FontFaceObject> FontLibrary::openFontFace(const Rc<FontFaceData> &dataObject,
-		const FontSpecializationVector &spec) {
+		const FontSpecializationVector &spec, uint16_t forcedId) {
 	String faceName =
 			mem_std::toString(dataObject->getName(), spec.getSpecializationArgs<Interface>());
 
@@ -220,16 +234,36 @@ Rc<FontFaceObject> FontLibrary::openFontFace(const Rc<FontFaceData> &dataObject,
 	do {
 		auto it = _faces.find(faceName);
 		if (it != _faces.end()) {
+			// Already opened for this (data, spec); reuse it (its id is the previously-forced one).
 			return it->second;
 		}
 	} while (0);
 
-	auto face = newFontFace(dataObject->getView());
-	auto ret = Rc<FontFaceObject>::create(faceName, dataObject, _library, face, spec, getNextId());
+	bool isNewId = false;
+	if (forcedId == sprt::Max<uint16_t>) {
+		forcedId = getNextId();
+		isNewId = true;
+	}
+
+	// Adopt the caller's id instead of minting one; mark it used so any getNextId() on this library
+	// would not hand it out.
+	if (forcedId != sprt::Max<uint16_t> && forcedId < _fontIds.size()) {
+		_fontIds.set(forcedId);
+	}
+
+	auto face = newFontFace(_library, dataObject->getView());
+	// Create the face with the forced id (NOT a freshly-minted one): the client baked CharIds with this
+	// id, so the server's atlas must key glyphs under the same id or getObjectByName() misses and the
+	// text renders blank.
+	auto ret = Rc<FontFaceObject>::create(faceName, dataObject, _library->getLibrary(), face, spec,
+			forcedId);
 	if (ret) {
 		_faces.emplace(ret->getName(), ret);
 	} else {
 		doneFontFace(face);
+		if (isNewId) {
+			releaseId(forcedId);
+		}
 	}
 	return ret;
 }
@@ -291,6 +325,8 @@ uint16_t FontLibrary::getNextId() {
 void FontLibrary::releaseId(uint16_t id) { _fontIds.reset(id); }
 
 Rc<FontFaceObjectHandle> FontLibrary::makeThreadHandle(const Rc<FontFaceObject> &obj) {
+	Rc<FontLibraryHandle> lib;
+
 	sprt::shared_lock sharedLock(_sharedMutex);
 	auto it = _threads.find(obj.get());
 	if (it != _threads.end()) {
@@ -311,10 +347,19 @@ Rc<FontFaceObjectHandle> FontLibrary::makeThreadHandle(const Rc<FontFaceObject> 
 	}
 
 	sprt::unique_lock lock(_mutex);
-	auto face = newFontFace(obj->getData()->getView());
+
+	auto threadId = sprt::this_thread::get_id();
+	auto threadIt = _threadLibrary.find(threadId);
+	if (threadIt == _threadLibrary.end()) {
+		lib = _threadLibrary.emplace(threadId, Rc<FontLibraryHandle>::alloc()).first->second;
+	} else {
+		lib = threadIt->second;
+	}
+
+	auto face = newFontFace(lib, obj->getData()->getView());
 	lock.unlock();
-	auto target = Rc<FontFaceObject>::create(obj->getName(), obj->getData(), _library, face,
-			obj->getSpec(), obj->getId());
+	auto target = Rc<FontFaceObject>::create(obj->getName(), obj->getData(), lib->getLibrary(),
+			face, obj->getSpec(), obj->getId());
 
 	if (it == _threads.end()) {
 		it = _threads.emplace(obj.get(),
@@ -333,11 +378,11 @@ Rc<FontFaceObjectHandle> FontLibrary::makeThreadHandle(const Rc<FontFaceObject> 
 	return iit;
 }
 
-FT_Face FontLibrary::newFontFace(BytesView data) {
+FT_Face FontLibrary::newFontFace(FontLibraryHandle *lib, BytesView data) {
 	FT_Face ret = nullptr;
 	FT_Error err = FT_Err_Ok;
 
-	err = FT_New_Memory_Face(_library, data.data(), data.size(), 0, &ret);
+	err = FT_New_Memory_Face(lib->getLibrary(), data.data(), data.size(), 0, &ret);
 	if (err != FT_Err_Ok) {
 		auto str = FT_Error_String(err);
 		log::source().error("font::FontLibrary", str ? StringView(str) : "Unknown error");

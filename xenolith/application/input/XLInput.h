@@ -42,6 +42,8 @@ using core::TextCursorLength;
 using core::TextInputString;
 using core::TextInputState;
 using core::TextInputRequest;
+using core::TextInputCommand;
+using core::TextInputCommandOp;
 
 static constexpr float TapDistanceAllowed = 12.0f;
 static constexpr float TapDistanceAllowedMulti = 32.0f;
@@ -88,7 +90,8 @@ using InputButtonMask = sprt::bitset<toInt(InputMouseButton::Max)>;
 using InputKeyMask = sprt::bitset<toInt(InputKeyCode::Max)>;
 
 SP_PUBLIC extern InputEventMask EventMaskTouch;
-SP_PUBLIC extern InputEventMask EventMaskKey;
+
+SP_PUBLIC extern InputEventMask EventMaskKeyboard;
 
 SP_PUBLIC InputButtonMask makeButtonMask(sprt::initializer_list<InputMouseButton> &&);
 SP_PUBLIC InputButtonMask makeButtonMask(InputMouseButton);
@@ -106,6 +109,22 @@ struct InputTouchInfo {
 	InputTouchInfo(InputButtonMask &&mask) : buttonMask(sp::move(mask)) { }
 };
 
+enum class InputTapFlags : uint32_t {
+	None = 0,
+
+	// No other input listener after this will receive Tap
+	// (Listeners earlier in hierarchy still can receive taps)
+	Exclusive = 1 << 0,
+
+	// Report every tap as soon as it is recognized, with `count` giving its number in the series,
+	// instead of waiting out TapIntervalAllowed; after maxTapCount a new series starts.
+	// Each call must refine the previous one's reaction (caret, then word, then all), not choose
+	// between exclusive reactions.
+	Immediate = 1 << 1,
+};
+
+SP_DEFINE_ENUM_AS_MASK(InputTapFlags)
+
 struct InputTapInfo {
 	InputButtonMask buttonMask = makeButtonMask({InputMouseButton::Touch});
 
@@ -113,14 +132,19 @@ struct InputTapInfo {
 	// If you only need to recognize one press, it is highly recommended to use 1
 	uint32_t maxTapCount = 2;
 
-	// No other input listener after this will receive Tap
-	// (Listeners earlier in hierarchy still can receive taps)
-	bool exclusive = false;
+	InputTapFlags flags = InputTapFlags::None;
+
+	bool isExclusive() const { return hasFlag(flags, InputTapFlags::Exclusive); }
+	bool isImmediate() const { return hasFlag(flags, InputTapFlags::Immediate); }
 
 	InputTapInfo() = default;
-	InputTapInfo(uint32_t count, bool ex = false) : maxTapCount(count), exclusive(ex) { }
-	InputTapInfo(InputButtonMask &&mask, uint32_t count = 2, bool ex = false)
-	: buttonMask(sp::move(mask)), maxTapCount(count), exclusive(ex) { }
+
+	// `exclusive` as a plain bool, for the common "just one tap" recognizers
+	InputTapInfo(uint32_t count, bool ex = false)
+	: maxTapCount(count), flags(ex ? InputTapFlags::Exclusive : InputTapFlags::None) { }
+
+	InputTapInfo(InputButtonMask &&mask, uint32_t count = 2, InputTapFlags f = InputTapFlags::None)
+	: buttonMask(sp::move(mask)), maxTapCount(count), flags(f) { }
 };
 
 enum class InputPressFlags : uint32_t {
@@ -191,9 +215,18 @@ struct InputMoveInfo {
 
 struct InputMouseOverInfo {
 	float padding = 0.0f;
+
+	/* Whether the window must hold the keyboard focus for a hover to count. Set to false for
+	content of popups (menus, dropdowns): a popup surface never takes focus. */
 	bool onlyFocused = true;
 
-	InputMouseOverInfo(float p = 0.0f, bool f = true) : padding(p), onlyFocused(f) { }
+	InputMouseOverInfo() = default;
+
+	/* A bool on its own means `onlyFocused`. A separate overload, so a bare `false` does not
+	convert to a zero padding of the `(float, bool)` constructor. */
+	InputMouseOverInfo(bool f) : onlyFocused(f) { }
+
+	InputMouseOverInfo(float p, bool f = true) : padding(p), onlyFocused(f) { }
 };
 
 struct InputKeyInfo {

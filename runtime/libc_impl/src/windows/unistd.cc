@@ -25,6 +25,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/sys/__sprt_random.h>
+#include <sprt/wrappers/windows/direct.h>
 
 #include "../../include/__impl_libc.h"
 #include "unistd.h"
@@ -46,7 +47,15 @@ namespace sprt {
 
 extern "C" {
 unsigned int sleep(unsigned int __seconds) __SPRT_NOEXCEPT {
-	::Sleep(__seconds * 1'000);
+	// Sleep() takes milliseconds in a DWORD. `__seconds * 1000` overflows 32 bits
+	// for large values, and 0xFFFFFFFF (INFINITE) must not be passed for a finite
+	// sleep — drain the total in sub-4-GiB-ms chunks.
+	uint64_t ms = (uint64_t)__seconds * 1'000;
+	while (ms > 0xFFFF'FFFEull) {
+		::Sleep(0xFFFF'FFFEu);
+		ms -= 0xFFFF'FFFEull;
+	}
+	::Sleep((DWORD)ms);
 	return 0;
 }
 
@@ -73,7 +82,6 @@ int usleep(__SPRT_ID(time_t) us) __SPRT_NOEXCEPT {
 			if (now.QuadPart >= target.QuadPart) {
 				break;
 			}
-			target.QuadPart -= now.QuadPart;
 		}
 	}
 
@@ -83,8 +91,18 @@ int usleep(__SPRT_ID(time_t) us) __SPRT_NOEXCEPT {
 int chdir(const char *path) __SPRT_NOEXCEPT {
 	return platform::performWithNativePath(path, [&](const char *target) {
 		// call with native path
-		::chdir(target);
-		return 0;
+		auto wpath = __MALLOCA_WSTRING(target);
+
+		auto ret = SetCurrentDirectoryW(wpath);
+
+		__sprt_freea(wpath);
+
+		if (ret) {
+			return 0;
+		}
+
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
 	}, -1);
 }
 
@@ -128,6 +146,8 @@ int fchdir(int fdDir) __SPRT_NOEXCEPT {
 }
 
 int execve(const char *__path, char *const __argv[], char *const __envp[]) __SPRT_NOEXCEPT {
+	// No process-image replacement (exec semantics) on win32.
+	__sprt_errno = ENOSYS;
 	return -1;
 }
 
@@ -153,7 +173,7 @@ int fexecve(int __fd, char *const _argv[], char *const __envp[]) __SPRT_NOEXCEPT
 
 	auto writtenLen = GetFinalPathNameByHandleW(slot->handle, buf, pathLen + 1, 0);
 	if (writtenLen == 0) {
-		__sprt_free(buf);
+		__sprt_freea(buf);
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
@@ -275,9 +295,23 @@ long sysconf(int name) __SPRT_NOEXCEPT {
 	case __SPRT_SC_NPROCESSORS_CONF: {
 		SYSTEM_LOGICAL_PROCESSOR_INFORMATION *proc_info;
 		DWORD proc_info_size = 0;
-		GetLogicalProcessorInformation(NULL, &proc_info_size);
+		// First call is expected to fail with ERROR_INSUFFICIENT_BUFFER and
+		// report the required size.
+		if (GetLogicalProcessorInformation(NULL, &proc_info_size)
+				|| GetLastError() != ERROR_INSUFFICIENT_BUFFER || proc_info_size == 0) {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return -1;
+		}
 		proc_info = (SYSTEM_LOGICAL_PROCESSOR_INFORMATION *)__sprt_malloca(proc_info_size);
-		GetLogicalProcessorInformation(proc_info, &proc_info_size);
+		if (!proc_info) {
+			__sprt_errno = ENOMEM;
+			return -1;
+		}
+		if (!GetLogicalProcessorInformation(proc_info, &proc_info_size)) {
+			__sprt_freea(proc_info);
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return -1;
+		}
 
 		int cores = 0;
 		for (DWORD i = 0; i < proc_info_size / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION); i++) {
@@ -353,6 +387,11 @@ __SPRT_ID(uid_t) getuid(void) __SPRT_NOEXCEPT {
 	DWORD size = 0;
 	GetTokenInformation(hToken, TokenUser, NULL, 0, &size);
 	PTOKEN_USER pUser = (PTOKEN_USER)__sprt_malloca(size);
+	if (!pUser) {
+		CloseHandle(hToken);
+		__sprt_errno = ENOMEM;
+		return __SPRT_ID(uid_t)(-1);
+	}
 	BOOL ok = GetTokenInformation(hToken, TokenUser, pUser, size, &size);
 	CloseHandle(hToken);
 
@@ -384,9 +423,16 @@ __SPRT_ID(gid_t) getgid(void) __SPRT_NOEXCEPT {
 	}
 
 	DWORD size = 0;
-	GetTokenInformation(hToken, TokenUser, NULL, 0, &size);
+	// Size must be queried for the SAME information class that is fetched
+	// below (TokenPrimaryGroup), not TokenUser.
+	GetTokenInformation(hToken, TokenPrimaryGroup, NULL, 0, &size);
 
 	PTOKEN_PRIMARY_GROUP pGroup = (PTOKEN_PRIMARY_GROUP)__sprt_malloca(size);
+	if (!pGroup) {
+		CloseHandle(hToken);
+		__sprt_errno = ENOMEM;
+		return __SPRT_ID(gid_t)(-1);
+	}
 
 	BOOL ok = GetTokenInformation(hToken, TokenPrimaryGroup, pGroup, size, &size);
 	CloseHandle(hToken);
@@ -426,6 +472,11 @@ int getgroups(int size, __SPRT_ID(gid_t) list[]) __SPRT_NOEXCEPT {
 	DWORD needed = 0;
 	GetTokenInformation(hToken, TokenGroups, NULL, 0, &needed);
 	PTOKEN_GROUPS pGroups = (PTOKEN_GROUPS)__sprt_malloca(needed);
+	if (!pGroups) {
+		CloseHandle(hToken);
+		__sprt_errno = ENOMEM;
+		return -1;
+	}
 
 	BOOL ok = GetTokenInformation(hToken, TokenGroups, pGroups, needed, &needed);
 	CloseHandle(hToken);
@@ -611,6 +662,45 @@ int access(const char *__path, int __mode) __SPRT_NOEXCEPT {
 
 int eaccess(const char *__path, int __mode) __SPRT_NOEXCEPT { return access(__path, __mode); }
 
+// MSVC <io.h> _access (see wrappers/unistd/io.h). Not a spelling of access():
+// the mode bits mean the same thing by accident (0/2/4/6 line up with F_OK/W_OK/
+// R_OK), but the questions differ. access() above asks whether this process may
+// open the file, opens it to find out, and refuses a directory for R_OK/W_OK;
+// _access only ever asks whether the file exists and whether FILE_ATTRIBUTE_READONLY
+// is set, and answers for a directory like any other entry. Code written against
+// the MSVC CRT relies on the second one - `_access(dir, 0)` as an existence test is
+// the common case - so it gets its own implementation instead of a forward.
+__SPRT_C_FUNC int _access(const char *__path, int __mode) __SPRT_NOEXCEPT {
+	if (!__path || !*__path) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	// Unlike the wide functions, this one takes an sprt path: it is the narrow
+	// surface, reached by the same code that calls fopen() next door.
+	return platform::performWithNativePath(__path, [&](const char *path) {
+		auto wpath = __MALLOCA_WSTRING(path);
+		DWORD attr = GetFileAttributesW(wpath);
+		__sprt_freea(wpath);
+		if (attr == INVALID_FILE_ATTRIBUTES) {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return -1;
+		}
+		// X_OK has no meaning here and MSVC rejects it outright; everything else is
+		// exist (0) plus the write bit (2). Read (4) is granted whenever the entry
+		// exists, which is what the CRT does.
+		if (__mode & ~(0x02 | 0x04)) {
+			__sprt_errno = EINVAL;
+			return -1;
+		}
+		if ((__mode & 0x02) && (attr & FILE_ATTRIBUTE_READONLY)
+				&& !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+			__sprt_errno = EACCES;
+			return -1;
+		}
+		return 0;
+	}, -1);
+}
+
 static ssize_t __readlink(const char *path, char *buf, size_t bufsiz) {
 	auto wpath = __MALLOCA_WSTRING(path);
 	auto strPath = __readlink_str(wpath);
@@ -665,6 +755,34 @@ int unlink(const char *__path) __SPRT_NOEXCEPT {
 	return platform::performWithNativePath(__path, [&](const char *path) {
 		return __unlink(path); //
 	}, -1);
+}
+
+// MSVC <io.h> wide unlink. The path is already native (see _wchmod in stat.cc for
+// why that matters), so this is __unlink's body without the conversion in front.
+__SPRT_C_FUNC int _wunlink(const wchar_t *__path) __SPRT_NOEXCEPT {
+	if (!__path) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	// Clear read-only first: DeleteFileW refuses a read-only file, and the MSVC CRT
+	// does the same thing before deleting.
+	DWORD attr = GetFileAttributesW(__path);
+	if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_READONLY)) {
+		// Try the delete even if this fails - the attribute may already be gone.
+		SetFileAttributesW(__path, attr & ~FILE_ATTRIBUTE_READONLY);
+	}
+	if (!DeleteFileW(__path)) {
+		DWORD err = GetLastError();
+		switch (err) {
+		case ERROR_FILE_NOT_FOUND:
+		case ERROR_PATH_NOT_FOUND: __sprt_errno = ENOENT; break;
+		case ERROR_ACCESS_DENIED: __sprt_errno = EACCES; break;
+		case ERROR_SHARING_VIOLATION: __sprt_errno = EBUSY; break;
+		default: __sprt_errno = platform::lastErrorToErrno(err);
+		}
+		return -1;
+	}
+	return 0;
 }
 
 // @AI-geerated
@@ -875,17 +993,12 @@ int ftruncate64(int __fd, off64_t length) __SPRT_NOEXCEPT {
 }
 
 
-struct flock {
-	short int l_type; /* Type of lock: F_RDLCK, F_WRLCK, or F_UNLCK.	*/
-	short int l_whence; /* Where `l_start' is relative to (like `lseek').  */
-	off_t l_start; /* Offset where the lock begins.  */
-	off_t l_len; /* Size of the locked area; zero means until EOF.  */
-	__SPRT_ID(pid_t) l_pid; /* Process holding the lock.  */
-};
+// struct flock now comes from <sprt/c/__sprt_fcntl.h> (included above); reference it
+// through __SPRT_FLOCK_NAME since its tag is __SPRT_ID-substituted on the hosted build.
 
 // from musl-libc
 int lockf64(int fd, int op, off_t size) __SPRT_NOEXCEPT {
-	flock l = {
+	struct __SPRT_FLOCK_NAME l = {
 		.l_type = __SPRT_F_WRLCK,
 		.l_whence = __SPRT_SEEK_CUR,
 		.l_len = size,
@@ -930,9 +1043,27 @@ ssize_t copy_file_range(int fd_in, long long *off_in, int fd_out, long long *off
 		return -1;
 	}
 
+	// POSIX: if both descriptors refer to the same file and the requested
+	// ranges overlap, the result is EINVAL. Detectable when explicit offsets
+	// are supplied for the same descriptor.
+	if (fd_in == fd_out && off_in && off_out) {
+		long long s = *off_in, d = *off_out;
+		if (s < d + (long long)len && d < s + (long long)len) {
+			__sprt_errno = EINVAL;
+			return -1;
+		}
+	}
+
 	const DWORD BUF_SIZE = 1 << 16; // 64 KiB
-	char buffer[BUF_SIZE];
+	// Heap-allocated rather than on the stack: a 64 KiB stack frame can
+	// overflow threads created with a small stack.
+	char *buffer = (char *)__sprt_malloc(BUF_SIZE);
+	if (!buffer) {
+		__sprt_errno = ENOMEM;
+		return -1;
+	}
 	size_t total = 0;
+	ssize_t result;
 
 	while (total < len) {
 		DWORD chunk = (DWORD)((len - total) > BUF_SIZE ? BUF_SIZE : (len - total));
@@ -945,7 +1076,8 @@ ssize_t copy_file_range(int fd_in, long long *off_in, int fd_out, long long *off
 			pos.QuadPart = *off_in;
 			if (!SetFilePointerEx(slot_in->handle, pos, &newpos, FILE_BEGIN)) {
 				__sprt_errno = EIO;
-				return (ssize_t)(total ? total : -1);
+				result = (ssize_t)(total ? total : -1);
+				goto done;
 			}
 		}
 
@@ -956,7 +1088,8 @@ ssize_t copy_file_range(int fd_in, long long *off_in, int fd_out, long long *off
 				break; // EOF
 			}
 			__sprt_errno = EIO;
-			return (ssize_t)(total ? total : -1);
+			result = (ssize_t)(total ? total : -1);
+			goto done;
 		}
 		if (nread == 0) {
 			break; // EOF
@@ -971,14 +1104,16 @@ ssize_t copy_file_range(int fd_in, long long *off_in, int fd_out, long long *off
 			pos.QuadPart = *off_out;
 			if (!SetFilePointerEx(slot_out->handle, pos, &newpos, FILE_BEGIN)) {
 				__sprt_errno = EIO;
-				return (ssize_t)(total ? total : -1);
+				result = (ssize_t)(total ? total : -1);
+				goto done;
 			}
 		}
 
 		DWORD nwritten = 0;
 		if (!WriteFile(slot_out->handle, buffer, nread, &nwritten, NULL) || nwritten < nread) {
 			__sprt_errno = EIO;
-			return (ssize_t)(total ? total : -1);
+			result = (ssize_t)(total ? total : -1);
+			goto done;
 		}
 
 		if (off_out) {
@@ -991,7 +1126,10 @@ ssize_t copy_file_range(int fd_in, long long *off_in, int fd_out, long long *off
 		}
 	}
 
-	return (ssize_t)total;
+	result = (ssize_t)total;
+done:
+	__sprt_free(buffer);
+	return result;
 }
 
 int symlinkat(const char *__old_path, int __new_dir_fd, const char *__new_path) __SPRT_NOEXCEPT {
@@ -1152,7 +1290,7 @@ int pipe2(int fds[2], int flags) __SPRT_NOEXCEPT {
 
 int pipe(int fds[2]) __SPRT_NOEXCEPT { return pipe2(fds, __SPRT_O_CLOEXEC); }
 
-char *getcwd(char *buf, size_t bufSize) __SPRT_NOEXCEPT {
+static char *__getcwd_impl(char *buf, size_t bufSize, bool posix) __SPRT_NOEXCEPT {
 	if (buf && bufSize == 0) {
 		__sprt_errno = EINVAL;
 		return nullptr;
@@ -1165,13 +1303,13 @@ char *getcwd(char *buf, size_t bufSize) __SPRT_NOEXCEPT {
 	}
 
 	auto wbuf = __sprt_typed_malloca(wchar_t, requiredBufferLen + 1);
-	auto цbufferLen = GetCurrentDirectoryW(requiredBufferLen + 1, wbuf);
-	if (цbufferLen == 0) {
+	auto bufferLen = GetCurrentDirectoryW(requiredBufferLen + 1, wbuf);
+	if (bufferLen == 0) {
 		__sprt_errno = EACCES;
 		return nullptr;
 	}
 
-	auto requiredLen = unicode::getUtf8Length(WideStringView((char16_t *)wbuf, цbufferLen)) + 1;
+	auto requiredLen = unicode::getUtf8Length(WideStringView((char16_t *)wbuf, bufferLen)) + 1;
 
 	if (bufSize > 0 && bufSize < requiredLen) {
 		__sprt_errno = ERANGE;
@@ -1188,19 +1326,26 @@ char *getcwd(char *buf, size_t bufSize) __SPRT_NOEXCEPT {
 	}
 
 	size_t retLen = 0;
-	unicode::toUtf8(buf, bufSize, WideStringView((char16_t *)wbuf, цbufferLen), &retLen);
+	unicode::toUtf8(buf, bufSize, WideStringView((char16_t *)wbuf, bufferLen), &retLen);
 	if (retLen < bufSize) {
 		buf[retLen] = 0;
 	}
 
-	if (!__sprt_fpath_is_posix(buf, retLen)) {
-		// convert path in place
+	if (posix && !__sprt_fpath_is_posix(buf, retLen)) {
 		if (__sprt_fpath_to_posix(buf, retLen, buf, bufSize) == 0) {
 			*__sprt___errno_location() = EINVAL;
 			return nullptr;
 		}
 	}
 	return buf;
+}
+
+char *getcwd(char *buf, size_t bufSize) __SPRT_NOEXCEPT {
+	return __getcwd_impl(buf, bufSize, true);
+}
+
+char *_getcwd(char *buf, int bufSize) __SPRT_NOEXCEPT {
+	return __getcwd_impl(buf, (bufSize < 0) ? (size_t)0 : (size_t)bufSize, false);
 }
 
 wchar_t *_wfullpath(wchar_t *absPath, const wchar_t *relPath, size_t maxLength) __SPRT_NOEXCEPT {
@@ -1271,9 +1416,15 @@ char *_fullpath(char *absPath, const char *relPath, size_t maxLength) __SPRT_NOE
 
 		char *mallocBuf = nullptr;
 		if (!absPath) {
-			mallocBuf = absPath = (char *)__sprt_malloc(required);
-			maxLength = required;
-		} else if (required > maxLength) {
+			// +1 for the NUL terminator (toUtf8 below does not write one).
+			mallocBuf = absPath = (char *)__sprt_malloc(required + 1);
+			if (!absPath) {
+				__sprt_errno = ENOMEM;
+				return;
+			}
+			maxLength = required + 1;
+		} else if (required + 1 > maxLength) {
+			// Caller buffer must hold the path AND the terminator.
 			absPath = nullptr;
 			__sprt_errno = EOVERFLOW;
 			return;
@@ -1286,9 +1437,11 @@ char *_fullpath(char *absPath, const char *relPath, size_t maxLength) __SPRT_NOE
 			if (mallocBuf) {
 				__sprt_free(mallocBuf);
 			}
+			absPath = nullptr;
 			__sprt_errno = status::toErrno(st);
 			return;
 		}
+		absPath[written] = 0;
 	}, relPath);
 	return absPath;
 }

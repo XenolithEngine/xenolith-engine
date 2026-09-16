@@ -43,16 +43,16 @@ auto _parsePath(StringView str, Vector &ret) {
 			// skip this component
 		} else {
 			if (!path.empty()) {
-				ret.push_back(str);
+				ret.push_back(path);
 			}
 		}
 	} while (!s.empty() && s.is('/'));
 }
 
 template <>
-auto UrlView::parsePath<memory::StandartInterface>(StringView str)
-		-> memory::StandartInterface::VectorType<StringView> {
-	memory::StandartInterface::VectorType<StringView> ret;
+auto UrlView::parsePath<mem_std::Interface>(StringView str)
+		-> mem_std::Interface::VectorType<StringView> {
+	mem_std::Interface::VectorType<StringView> ret;
 	_parsePath(str, ret);
 	return ret;
 }
@@ -71,7 +71,7 @@ template <>
 auto UrlView::parseArgs<memory::PoolInterface>(StringView str, size_t maxVarSize)
 		-> data::ValueTemplate<memory::PoolInterface> {
 	if (str.empty()) {
-		data::ValueTemplate<memory::PoolInterface>();
+		return data::ValueTemplate<memory::PoolInterface>();
 	}
 	StringView r(str);
 	if (r.front() == '?' || r.front() == '&' || r.front() == ';') {
@@ -84,29 +84,31 @@ auto UrlView::parseArgs<memory::PoolInterface>(StringView str, size_t maxVarSize
 	if (!fn) {
 		log::source().error("UrlView",
 				"Module MODULE_STAPPLER_DATA declared, but not available in runtime");
+		return data::ValueTemplate<memory::PoolInterface>();
 	}
-	return fn(str, maxVarSize);
+	return fn(r, maxVarSize);
 }
 
 template <>
-auto UrlView::parseArgs<memory::StandartInterface>(StringView str, size_t maxVarSize)
-		-> data::ValueTemplate<memory::StandartInterface> {
+auto UrlView::parseArgs<mem_std::Interface>(StringView str, size_t maxVarSize)
+		-> data::ValueTemplate<mem_std::Interface> {
 	if (str.empty()) {
-		data::ValueTemplate<memory::StandartInterface>();
+		return data::ValueTemplate<mem_std::Interface>();
 	}
 	StringView r(str);
 	if (r.front() == '?' || r.front() == '&' || r.front() == ';') {
 		++r;
 	}
 
-	auto fn = SharedModule::acquireTypedSymbol<
-			decltype(&data::readUrlencoded<memory::StandartInterface>)>(
-			buildconfig::MODULE_STAPPLER_DATA_NAME, "readUrlencoded");
+	auto fn =
+			SharedModule::acquireTypedSymbol< decltype(&data::readUrlencoded<mem_std::Interface>)>(
+					buildconfig::MODULE_STAPPLER_DATA_NAME, "readUrlencoded");
 	if (!fn) {
 		log::source().error("UrlView",
 				"Module MODULE_STAPPLER_DATA declared, but not available in runtime");
+		return data::ValueTemplate<mem_std::Interface>();
 	}
-	return fn(str, maxVarSize);
+	return fn(r, maxVarSize);
 }
 
 #endif

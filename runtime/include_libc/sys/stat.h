@@ -1,5 +1,6 @@
 /**
 Copyright (c) 2025 Stappler Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -23,6 +24,48 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_STAT_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_STAT_H_
 
+/*
+	Dispatch header for the POSIX <sys/stat.h> (file status and mode bits):
+	- hosted SPRT build -> forwards to the system <sys/stat.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded).
+	A function tagged [gate: X] is declared only when __SPRT_CONFIG_HAVE_X is set for
+	the target (or when __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS forces all of them).
+	struct stat comes in via <sprt/c/sys/__sprt_stat.h>.
+
+	Macros:
+	  file-type bits:   S_IFMT, S_IFDIR, S_IFCHR, S_IFBLK, S_IFREG, S_IFIFO, S_IFLNK,
+	                    S_IFSOCK
+	  permission bits:  S_ISUID, S_ISGID, S_ISVTX, S_IRUSR/S_IWUSR/S_IXUSR/S_IRWXU,
+	                    S_IRGRP/S_IWGRP/S_IXGRP/S_IRWXG, S_IROTH/S_IWOTH/S_IXOTH/S_IRWXO
+	                    (omitted on Windows-protected builds)
+	  legacy aliases:   S_IREAD, S_IWRITE, S_IEXEC
+	  mode type-tests:  S_ISDIR, S_ISCHR, S_ISBLK, S_ISREG, S_ISFIFO, S_ISLNK, S_ISSOCK
+	  stat-buf tests:   S_TYPEISMQ, S_TYPEISSEM, S_TYPEISSHM, S_TYPEISTMO
+	  utimensat values: UTIME_NOW, UTIME_OMIT
+
+	Types:
+	  mode_t, dev_t
+
+	Status functions (always available):
+	  stat     - file status by path
+	  lstat    - file status by path without following a final symlink
+	  fstat    - file status by open descriptor
+	  fstatat  - file status relative to a directory descriptor
+
+	Mode / creation functions (always available):
+	  chmod/fchmod/fchmodat - change permission bits (by path / fd / dir-relative)
+	  umask                 - set the file-creation permission mask
+	  mkdir/mkdirat         - create a directory (by path / dir-relative)
+	  futimens              - set a file's times by descriptor (struct timespec[2])
+	  utimensat             - set a file's times relative to a directory descriptor
+
+	Gated creation functions:
+	  mkfifo/mkfifoat - create a FIFO (by path / dir-relative)  [gate: STAT_MKFIFO]
+	  mknod/mknodat   - create a special or regular file        [gate: STAT_MKNOD]
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sys/stat.h>
@@ -30,6 +73,23 @@ THE SOFTWARE.
 #else
 
 #include <sprt/c/sys/__sprt_stat.h>
+
+// Legacy single-time member names. POSIX keeps the nanosecond-resolution timespec
+// members (st_atim/st_mtim/st_ctim) canonical and exposes the historical time_t
+// spellings as macros over their tv_sec, which much portable code still
+// uses. glibc/musl define these unconditionally in <sys/stat.h>; the hosted path gets
+// them from the system header via #include_next above.
+#ifndef st_atime
+#define st_atime st_atim.tv_sec
+#define st_mtime st_mtim.tv_sec
+#define st_ctime st_ctim.tv_sec
+#endif
+
+#if defined(__APPLE__) && !defined(st_mtimespec)
+#define st_atimespec st_atim
+#define st_mtimespec st_mtim
+#define st_ctimespec st_ctim
+#endif
 
 #ifndef S_IFMT
 #define S_IFMT __SPRT_S_IFMT
@@ -83,8 +143,18 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
+// POSIX requires <sys/stat.h> to make these types visible (identical redefinitions
+// of the ones in <sys/types.h>, which C/C++ permit). Several consumers rely on
+// off_t appearing after <sys/stat.h>.
 typedef __SPRT_ID(mode_t) mode_t;
 typedef __SPRT_ID(dev_t) dev_t;
+typedef __SPRT_ID(off_t) off_t;
+typedef __SPRT_ID(ino_t) ino_t;
+typedef __SPRT_ID(nlink_t) nlink_t;
+typedef __SPRT_ID(blksize_t) blksize_t;
+typedef __SPRT_ID(blkcnt_t) blkcnt_t;
+typedef __SPRT_ID(uid_t) uid_t;
+typedef __SPRT_ID(gid_t) gid_t;
 
 SPRT_UMBRELLA_FUNC
 int stat(const char *__SPRT_RESTRICT path,

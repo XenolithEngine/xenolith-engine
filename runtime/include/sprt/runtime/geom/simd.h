@@ -47,6 +47,14 @@ THE SOFTWARE.
 #endif
 #endif
 
+#if defined(__ANDROID__)
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+#include <fenv.h>
+#include <float.h>
+#endif
+
 #define SIMDE_MATH_NO_LIBM 1
 #define std sprt
 

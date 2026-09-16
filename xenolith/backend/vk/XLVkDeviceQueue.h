@@ -205,8 +205,11 @@ public:
 
 	void cmdClearColorImage(Image *, XImageLayout, const Color4F &);
 
+	// `renderArea` restricts both the load/store ops and rasterization to a sub-rectangle; null
+	// means the whole framebuffer.
 	void cmdBeginRenderPass(RenderPass *pass, Framebuffer *fb, VkSubpassContents subpass,
-			bool alt = false);
+			RenderPassVariant variant = RenderPassVariant::Default,
+			const VkRect2D *renderArea = nullptr);
 	void cmdEndRenderPass();
 
 	void cmdSetViewport(uint32_t firstViewport, SpanView<VkViewport> viewports);

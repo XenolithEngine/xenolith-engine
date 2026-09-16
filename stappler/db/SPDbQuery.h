@@ -206,7 +206,7 @@ protected:
 	size_t offsetValue = 0;
 	Value softLimitValue;
 
-	uint64_t deltaToken;
+	uint64_t deltaToken = 0;
 
 	uint16_t resolveDepth = 1;
 

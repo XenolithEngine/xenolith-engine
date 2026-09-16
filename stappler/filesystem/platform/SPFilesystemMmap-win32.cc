@@ -32,7 +32,7 @@ struct MmapStorage {
 	HANDLE mapping;
 };
 
-#define SP_TERMINATED_DATA(view) (view.terminated()?view.data():view.str<memory::StandartInterface>().data())
+#define SP_TERMINATED_DATA(view) (view.terminated()?view.data():view.str<mem_std::Interface>().data())
 
 #define DWORD_HI(x) (x >> 32)
 #define DWORD_LO(x) ((x) & 0xffff'ffff)

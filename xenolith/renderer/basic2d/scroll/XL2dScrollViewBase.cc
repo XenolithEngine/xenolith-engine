@@ -90,6 +90,8 @@ bool ScrollViewBase::init(Layout layout) {
 	_root->setAnchorPoint((_layout == Vertical) ? Vec2(0.0f, 1.0f) : Vec2::ZERO);
 	_root->setCascadeOpacityEnabled(true);
 	_root->setContentSizeDirtyCallback([this] { onPosition(); });
+	/* No position-equality guard here: the controller pass would arrive through the content-size
+	callback anyway, and that pass (item node construction) is the actual cost. */
 	_root->setTransformDirtyCallback([this](const Mat4 &) { onPosition(); });
 
 	return true;

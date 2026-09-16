@@ -269,7 +269,7 @@ bool Controller::Data::onComplete(Handle *handle, bool success) {
 void Controller::Data::sign(NetworkHandle &handle, Context &ctx) const {
 	String date = Time::now().toHttp<typename Interface::StringType>();
 
-	auto appInfo = _application->getContext()->getInfo();
+	auto appInfo = _application->getContextInfo();
 
 	auto msg = toString(handle.getUrl(), "\r\n", "X-ApplicationName: ", appInfo->bundleName, "\r\n",
 			"X-ApplicationVersion: ", appInfo->appVersion, "\r\n", "X-ClientDate: ", date, "\r\n",

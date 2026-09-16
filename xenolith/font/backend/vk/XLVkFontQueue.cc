@@ -54,6 +54,16 @@ struct RenderFontPersistentBufferUserdata : public Ref {
 	HashMap<uint32_t, RenderFontCharPersistentData> chars;
 };
 
+// The controller's batch log switch (XL_FONT_CACHE_LOG), read locally: the controller is not this
+// backend's caller.
+static bool FontQueue_cacheLogEnabled() {
+	static const bool s_value = [] {
+		auto v = ::getenv("XL_FONT_CACHE_LOG");
+		return v && StringView(v) != "0";
+	}();
+	return s_value;
+}
+
 class FontAttachment : public core::GenericAttachment {
 public:
 	virtual ~FontAttachment();
@@ -72,6 +82,18 @@ public:
 			Function<void(bool)> &&) override;
 
 	Extent2 getImageExtent() const { return _imageExtent; }
+
+	/* Timestamps for `XL_FONT_CACHE_LOG=1`: the spans between them are the wait for dependencies
+	(not work), the rasterize + pack on workers, and the GPU submission. */
+	uint64_t getClockInput() const { return _clockInput; }
+	uint64_t getClockStart() const { return _clockStart; }
+	uint64_t getClockRaster() const { return _clockRaster; }
+	uint64_t getClockPlace() const { return _clockPlace; }
+	uint64_t getClockCreate() const { return _clockCreate; }
+	uint64_t getClockValues() const { return _clockValues; }
+	uint64_t getClockAtlas() const { return _clockAtlas; }
+	uint32_t getAtlasGlyphs() const { return _atlasGlyphs; }
+	uint64_t getClockAddSum() const { return _clockAddSum; }
 	const Rc<font::RenderFontInput> &getInput() const { return _input; }
 	const Rc<Buffer> &getTmpBuffer() const { return _frontBuffer; }
 	const Rc<Buffer> &getPersistentTargetBuffer() const { return _persistentTargetBuffer; }
@@ -118,6 +140,15 @@ protected:
 	Vector<RenderFontCharPersistentData> _copyPersistentCharData;
 	Vector<RenderFontCharTextureData> _textureTarget;
 	Extent2 _imageExtent;
+	uint64_t _clockInput = 0; // the input arrived (before waiting on dependencies)
+	uint64_t _clockStart = 0; // the queue actually started on it
+	uint64_t _clockRaster = 0; // FreeType is done and the bitmaps are in the staging buffer
+	uint64_t _clockPlace = 0; // the rectangles have been placed and the extent is known
+	uint64_t _clockCreate = 0; // the DataAtlas object exists and its storage is reserved
+	uint64_t _clockValues = 0; // the four atlas values per glyph have been written
+	uint64_t _clockAtlas = 0; // the atlas is packed and the copies are recorded
+	uint32_t _atlasGlyphs = 0; // how many glyphs that pack covered
+	uint64_t _clockAddSum = 0; // summed across the four DataAtlas::addObject calls per glyph
 	sprt::mutex _mutex;
 	Function<void(bool)> _onInput;
 };
@@ -268,6 +299,8 @@ void FontAttachmentHandle::submitInput(FrameQueue &q, Rc<core::AttachmentInputDa
 		return;
 	}
 
+	_clockInput = sp::platform::clock(ClockType::Monotonic);
+
 	q.getFrame()->waitForDependencies(data->waitDependencies,
 			[this, cb = sp::move(cb), d = sp::move(d)](FrameHandle &handle, bool success) mutable {
 		handle.performInQueue(
@@ -280,6 +313,7 @@ void FontAttachmentHandle::submitInput(FrameQueue &q, Rc<core::AttachmentInputDa
 
 void FontAttachmentHandle::doSubmitInput(FrameHandle &handle, Function<void(bool)> &&cb,
 		Rc<font::RenderFontInput> &&d) {
+	_clockStart = sp::platform::clock(ClockType::Monotonic);
 	_counter = uint32_t(d->requests.size());
 	_input = d;
 	if (auto instance = d->image->getInstance()) {
@@ -375,6 +409,10 @@ void FontAttachmentHandle::doSubmitInput(FrameHandle &handle, Function<void(bool
 }
 
 void FontAttachmentHandle::writeAtlasData(FrameHandle &handle, bool underlinePersistent) {
+	// Everything before this is rasterization, everything after is the pack; both paths into this
+	// function pass here.
+	_clockRaster = sp::platform::clock(ClockType::Monotonic);
+
 	Vector<SpanView<VkBufferImageCopy>> commands;
 	if (!underlinePersistent) {
 		// write single white pixel for underlines
@@ -417,18 +455,33 @@ void FontAttachmentHandle::writeAtlasData(FrameHandle &handle, bool underlinePer
 		for (auto &it : _copyFromPersistentBufferData) { commands.emplace_back(it.second); }
 
 		_imageExtent = FontAttachmentHandle_buildTextureData(commands);
+		_clockPlace = sp::platform::clock(ClockType::Monotonic);
+
+		/* Every command, not only those copied from the staging buffer: DataAtlas reserves its data
+		and name index from this count, and persistent copies are atlas glyphs too. */
+		size_t atlasObjects = 0;
+		for (auto &c : commands) { atlasObjects += c.size(); }
 
 		auto atlas = Rc<core::DataAtlas>::create(core::DataAtlas::ImageAtlas,
-				uint32_t(_copyFromTmpBufferData.size() * 4), uint32_t(sizeof(font::FontAtlasValue)),
-				_imageExtent);
+				uint32_t(atlasObjects * 4), uint32_t(sizeof(font::FontAtlasValue)), _imageExtent);
+		_clockCreate = sp::platform::clock(ClockType::Monotonic);
 
+		uint32_t glyphs = 0;
 		for (auto &c : commands) {
-			for (auto &it : c) { pushAtlasTexture(atlas, const_cast<VkBufferImageCopy &>(it)); }
+			for (auto &it : c) {
+				pushAtlasTexture(atlas, const_cast<VkBufferImageCopy &>(it));
+				++glyphs;
+			}
 		}
+		_atlasGlyphs = glyphs;
+		_clockValues = sp::platform::clock(ClockType::Monotonic);
 
 		atlas->compile();
 		_atlas = move(atlas);
 	});
+
+	// The pack is done and the copies are recorded; everything past this is the device's.
+	_clockAtlas = sp::platform::clock(ClockType::Monotonic);
 
 	handle.performOnGlThread([this](FrameHandle &handle) {
 		_onInput(true);
@@ -474,7 +527,13 @@ void FontAttachmentHandle::pushCopyTexture(uint32_t reqIdx, const font::CharText
 				texData.height, " vs. ", texData.bitmapWidth, ";", texData.bitmapRows, "\n");
 	}
 
-	auto size = uint32_t(texData.bitmapRows * sprt::abs(texData.pitch));
+	auto size64 = uint64_t(texData.bitmapRows) * uint64_t(sprt::abs(texData.pitch));
+	if (size64 > CopyBlockSize) {
+		log::error("FontAttachmentHandle",
+				"Texture block exceeds CopyBlockSize: ", size64, " > ", CopyBlockSize);
+		return;
+	}
+	auto size = uint32_t(size64);
 	auto offset = _frontBuffer->reserveBlock(size, _optimalTextureAlignment);
 	if (offset == maxOf<uint64_t>() || offset + size > CopyBlockSize) {
 		log::error("FontAttachmentHandle",
@@ -541,10 +600,12 @@ void FontAttachmentHandle::pushAtlasTexture(core::DataAtlas *atlas, VkBufferImag
 	data[3].pos = Vec2(tex.x + tex.width, -tex.y);
 	data[3].tex = Vec2((x + w) / _imageExtent.width, y / _imageExtent.height);
 
+	const auto addStart = sp::platform::clock(ClockType::Monotonic);
 	atlas->addObject(font::CharId::rebindCharId(id, font::CharAnchor::BottomLeft), &data[0]);
 	atlas->addObject(font::CharId::rebindCharId(id, font::CharAnchor::TopLeft), &data[1]);
 	atlas->addObject(font::CharId::rebindCharId(id, font::CharAnchor::TopRight), &data[2]);
 	atlas->addObject(font::CharId::rebindCharId(id, font::CharAnchor::BottomRight), &data[3]);
+	_clockAddSum += sp::platform::clock(ClockType::Monotonic) - addStart;
 }
 
 FontRenderPass::~FontRenderPass() { }
@@ -637,7 +698,10 @@ Vector<const core::CommandBuffer *> FontRenderPassHandle::doPrepareCommands(Fram
 
 	auto allocator = _device->getAllocator();
 
-	if (_device->hasDynamicIndexedBuffers()) {
+	// Font atlas index buffer is consumed via GL_EXT_buffer_reference (BDA), not
+	// via SSBO descriptor-array indexing. Gate on bufferDeviceAddress — V3DV
+	// (Mesa get_features) exposes BDA=true while shaderStorageBufferArrayDynamicIndexing=false.
+	if (_device->hasBufferDeviceAddresses()) {
 		_targetImage =
 				allocator->preallocate(info.key, info, false, instance->data.image->getIndex());
 		_targetAtlas = allocator->preallocate(core::BufferInfo(atlas->getBufferData().size(),
@@ -812,8 +876,39 @@ void FontRenderPassHandle::doComplete(FrameQueue &queue, Function<void(bool)> &&
 void FontRenderPassHandle::submitResult(FrameHandle &frame) {
 	auto &input = _fontAttachment->getInput();
 
+	/* Atlas cost, under the same switch as the batch log (`XL_FONT_CACHE_LOG=1`). `wait` is the
+	frame waiting on its dependencies (not atlas work), `build` the rasterize and pack, `device`
+	the submission. The instance swap and material recompiles that follow are not included; see
+	the "Material" dependency in `XL_DEP_ACCOUNT=1`. */
+	if (FontQueue_cacheLogEnabled()) {
+		const auto now = sp::platform::clock(ClockType::Monotonic);
+		const auto in = _fontAttachment->getClockInput();
+		const auto start = _fontAttachment->getClockStart();
+		const auto packed = _fontAttachment->getClockAtlas();
+		const auto raster = _fontAttachment->getClockRaster();
+		const auto place = _fontAttachment->getClockPlace();
+		const auto values = _fontAttachment->getClockValues();
+		if (in && start && raster && packed) {
+			// The pack is split in three: placing rectangles, writing four atlas values per glyph,
+			// and compiling the index.
+			log::source().debug("FontController",
+					"atlas frame: wait=", double(start - in) / 1'000.0,
+					"ms raster=", double(raster - start) / 1'000.0,
+					"ms place=", double(place - raster) / 1'000.0,
+					"ms create=", double(_fontAttachment->getClockCreate() - place) / 1'000.0,
+					"ms values=", double(values - _fontAttachment->getClockCreate()) / 1'000.0,
+					"ms (of it addObject=", double(_fontAttachment->getClockAddSum()) / 1'000.0,
+					"ms) compile=", double(packed - values) / 1'000.0,
+					"ms device=", double(now - packed) / 1'000.0,
+					"ms total=", double(now - in) / 1'000.0,
+					"ms glyphs=", _fontAttachment->getAtlasGlyphs(),
+					" extent=", _fontAttachment->getImageExtent().width, "x",
+					_fontAttachment->getImageExtent().height);
+		}
+	}
+
 	auto atlas = _fontAttachment->getAtlas();
-	if (_device->hasDynamicIndexedBuffers()) {
+	if (_device->hasBufferDeviceAddresses()) {
 		atlas->setBuffer(_targetAtlas);
 	}
 

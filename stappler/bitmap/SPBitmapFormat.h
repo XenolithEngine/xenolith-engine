@@ -57,6 +57,13 @@ enum class PixelFormat {
 	RGBA8888,
 };
 
+// Maximum width or height (in pixels) accepted by the image decoders. Image
+// headers declaring a larger dimension are rejected before any pixel buffer is
+// allocated. This bounds memory use and, together with the byte-total check in
+// checkImageDataSize(), prevents the `stride * height` size computation from
+// overflowing an undersized allocation (the classic image-decoder heap overflow).
+static constexpr uint32_t MaxImageDimension = 32'768; // 32k
+
 struct ImageInfo {
 	PixelFormat color = PixelFormat::Auto;
 	AlphaFormat alpha = AlphaFormat::Premultiplied;
@@ -66,6 +73,21 @@ struct ImageInfo {
 
 	const BitmapFormat *format = nullptr;
 };
+
+// Validate decoded image dimensions and compute the pixel-buffer byte size in
+// 64-bit. Returns false (and leaves dataLen untouched) when width/height exceed
+// MaxImageDimension or when stride*height would not fit a 32-bit allocation.
+inline bool checkImageDataSize(const ImageInfo &info, uint32_t &dataLen) {
+	if (info.width > MaxImageDimension || info.height > MaxImageDimension) {
+		return false;
+	}
+	uint64_t total = uint64_t(info.stride) * uint64_t(info.height);
+	if (total > maxOf<uint32_t>()) {
+		return false;
+	}
+	dataLen = uint32_t(total);
+	return true;
+}
 
 using StrideFn = Callback<uint32_t(PixelFormat, uint32_t)>;
 
@@ -108,6 +130,9 @@ SP_PUBLIC void convertLine(const uint8_t *in, uint8_t *out, uint32_t ins, uint32
 
 template <PixelFormat Source, PixelFormat Target>
 size_t convertData(BytesView dataVec, BytesView out, uint32_t inStride, uint32_t outStride) {
+	if (inStride == 0) {
+		return 0;
+	}
 	auto dataLen = dataVec.size();
 	auto height = dataLen / inStride;
 	auto data = dataVec.data();

@@ -31,12 +31,14 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
+class RenderClientChannel;
+
 /** DependencyEvent используется для синхронизации данных на стороне GPU
 
 Поставщик DependencyEvent создаёт или изменяет данные на стороне GPU, а
 потребитель ожидает готовности этих данных.
 
-Поставщик создаёт DependencyEvent для совего набора очередей рендеринга
+Поставщик создаёт DependencyEvent для своего набора очередей рендеринга
 и отправляет его с помощью FrameRequest::addSignalDependency при запуске 
 работы. Также, можно связывать событие с обновлением материала, меша или
 динамического изображения.
@@ -56,6 +58,10 @@ public:
 
 	static uint32_t GetNextId();
 
+	// Set the high-bit mask added to every subsequently-generated id (0 = server/local, 0x80000000 =
+	// remote client). Call once at app init before any DependencyEvent is created.
+	static void SetIdGenerationMask(uint32_t mask);
+
 	virtual ~DependencyEvent();
 
 	DependencyEvent(QueueSet &&, StringView);
@@ -65,17 +71,35 @@ public:
 
 	bool signal(Queue *, bool);
 
+	// Safe to poll from any thread: it reads a flag the signalling thread publishes, not the queue
+	// set itself (basic2d::Sprite::visitDraw checks it from the app thread).
 	bool isSignaled() const;
 	bool isSuccessful() const;
 
 	void addQueue(Rc<Queue> &&);
 
+	/* Stamps the hand-over to the queue that will signal the event, splitting its life into the
+	wait to be sent and the queue's work (both logged by `XL_DEP_ACCOUNT=1` when it fires).
+	Idempotent: the first stamp stands. */
+	void markSent();
+
+	// Register a callback fired exactly once, when the event becomes fully signalled. It runs on the
+	// signalling thread (typically the GPU loop) and must hop threads for non-thread-safe work. The
+	// remote server uses it to drop a fired client-mirrored dependency from its registry.
+	void setSignalCallback(Function<void()> &&);
+
 protected:
 	uint32_t _id = GetNextId();
 	uint64_t _clock = sp::platform::clock(ClockType::Monotonic);
+	uint64_t _sentClock = 0; // see markSent; zero means nobody said
 	QueueSet _queues;
 	StringView _tag;
 	bool _success = true;
+	// Mirrors "_queues is empty", published for readers off the signalling thread. An event built
+	// with no queues starts out signalled - that is how a client-side mirror event (nothing signals
+	// it locally, the server gates on its own copy) reads as already satisfied.
+	sprt::atomic<bool> _signaled;
+	Function<void()> _signalCallback;
 };
 
 // dummy class for attachment input
@@ -83,6 +107,12 @@ struct SP_PUBLIC AttachmentInputData : public Ref {
 	virtual ~AttachmentInputData() = default;
 
 	Vector<Rc<DependencyEvent>> waitDependencies;
+
+	// Serialization for the remote render session (see XLCoreFrameRequestProxy.h). Each concrete
+	// input owns its wire format (e.g. basic2d serializes its command list). The defaults mean
+	// "no wire format": serialize writes nothing and reports false, deserialize fails.
+	virtual bool serialize(const Callback<void(BytesView)> &) const { return false; }
+	virtual bool deserialize(BytesView, Vector<uint32_t> *remoteDeps = nullptr) { return false; }
 };
 
 class SP_PUBLIC Attachment : public NamedRef {
@@ -114,6 +144,16 @@ public:
 
 	bool validateInput(const AttachmentInputData *) const;
 
+	// Mint an empty input-data object of the concrete type this attachment consumes, so a remote
+	// server can deserialize a wire blob into it (see AttachmentInputData::deserialize). Default null:
+	// only input attachments that participate in the remote render session override this.
+	// `windowId` travels with the input because the render pass that later reports a DrawStat runs
+	// on another thread, and the channel serves every window.
+	virtual Rc<AttachmentInputData> makeInputData(NotNull<RenderClientChannel>,
+			uint64_t windowId) const {
+		return nullptr;
+	}
+
 	virtual bool isCompatible(const ImageInfo &) const { return false; }
 
 	virtual Rc<AttachmentHandle> makeFrameHandle(const FrameQueue &);
@@ -125,6 +165,11 @@ public:
 	virtual const PassData *getPrevRenderPass(const PassData *) const;
 
 	const AttachmentData *getData() const { return _data; }
+
+	// The render queue this attachment belongs to, or null before the queue took ownership.
+	// getData() lives in that queue's pool, so holding an attachment across a thread hop or a frame
+	// requires keeping the queue alive, not just the attachment.
+	Queue *getQueue() const;
 
 	virtual void setCompiled(Device &);
 
@@ -266,6 +311,25 @@ protected:
 	Rc<AttachmentInputData> _input;
 	Rc<Attachment> _attachment;
 	FrameAttachmentData *_queueData = nullptr;
+};
+
+/* Typed attachment base: creates HandleType in makeFrameHandle.
+ *
+ * Prefer this over overriding makeFrameHandle by hand: inside a derived member function an
+ * unqualified handle name resolves to the base AttachmentHandle alias and silently creates the
+ * base handle. HandleType must be complete at the point of class instantiation.
+ */
+template <typename HandleType, typename BaseAttachment = Attachment>
+class AttachmentTyped : public BaseAttachment {
+public:
+	virtual ~AttachmentTyped() = default;
+
+	virtual Rc<AttachmentHandle> makeFrameHandle(const FrameQueue &queue) override {
+		if (this->_frameHandleCallback) {
+			return this->_frameHandleCallback(*this, queue);
+		}
+		return Rc<HandleType>::create(*this, queue);
+	}
 };
 
 } // namespace stappler::xenolith::core

@@ -28,3 +28,4 @@ THE SOFTWARE.
 #include "SPFilesystem.cc"
 #include "SPFilesystemFile.cc"
 #include "SPFilesystemMap.cc"
+#include "SPFilesystemEmbedded.cc"

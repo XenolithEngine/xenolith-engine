@@ -1,6 +1,7 @@
 /**
  Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
  Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -160,22 +161,54 @@ StringView Stmt::readLine(StringView &str, ErrorReporter &err) {
 
 static StringView readContextIdentifier(StringView &str, ReadContext ctx) {
 	switch (ctx) {
-	case ReadContext::LineStart:
-		return str.readUntil<StringView::WhiteSpace,
-				StringView::Chars<'#', ',', ')', ':', '=', '?', '+', '$', '\\'>>();
-		break;
+	case ReadContext::LineStart: {
+		auto begin = str.data();
+		// A target or variable name ends at whitespace, '#', a '$' expansion, a '\' escape, or an
+		// assignment/rule operator char ('=' ':' '?' '+'). ',' and ')' are NOT delimiters here —
+		// they are ordinary characters in a name (GNU make accepts "a,b" and "a)b" as targets), and
+		// '(' is likewise never a stop char. '?'/'+' only delimit when they actually form "?="/"+=";
+		// an isolated '+'/'?' (as in "libc++" or "a?b") is folded back into the word by readWord.
+		str.readUntil<StringView::WhiteSpace,
+				StringView::Chars<'#', ':', '=', '?', '+', '$', '\\'>>();
+#if SPRT_WINDOWS
+		// A Windows drive letter ("C:/dir/file") puts a ':' right after a single leading letter; that
+		// ':' is part of the path, not the rule separator. Consume it and keep reading so the whole
+		// drive-rooted target stays one identifier and only the real trailing ':' splits the rule.
+		// Both slash forms are accepted: the engine's own path functions emit "C:/...", while a
+		// dependency file written by clang/gcc on Windows uses the native "C:\..." (its backslashes are
+		// path separators, normalised to '/' by the '\' handling in the word loop below).
+		if (str.data() - begin == 1 && str.is(':')) {
+			char drive = *begin;
+			if (((drive >= 'a' && drive <= 'z') || (drive >= 'A' && drive <= 'Z'))
+					&& (str.sub(1).is('/') || str.sub(1).is('\\'))) {
+				++str; // consume the drive ':'
+				str.readUntil<StringView::WhiteSpace,
+						StringView::Chars<'#', ':', '=', '?', '+', '$', '\\'>>();
+			}
+		}
+#endif
+		return StringView(begin, str.data() - begin);
+	}
 	case ReadContext::Expansion:
-		return str.readUntil<StringView::WhiteSpace, StringView::Chars<'#', ',', ')', '$', '\\'>>();
+		// '(' is a stop char so that literal parentheses inside $(...) can be balanced
+		// against ')' instead of letting an inner ')' terminate the expansion early
+		return str.readUntil<StringView::WhiteSpace,
+				StringView::Chars<'#', ',', '(', ')', '$', '\\'>>();
 		break;
 	case ReadContext::LineEnd:
-	case ReadContext::TrailingRecipe:
 		return str.readUntil<StringView::WhiteSpace, StringView::Chars<'#', '$', '\\'>>();
+		break;
+	case ReadContext::TrailingRecipe:
+		// A recipe line is expanded and passed verbatim to the shell; '#' is NOT a make comment
+		// here (the shell handles it), so it stays literal — including inside quotes, where make has
+		// no cross-token quote state to recognize it otherwise.
+		return str.readUntil<StringView::WhiteSpace, StringView::Chars<'$', '\\'>>();
 		break;
 	case ReadContext::Multiline:
 		return str.readUntil<StringView::WhiteSpace, StringView::Chars<'$', '\\'>>();
 		break;
 	case ReadContext::MultilineExpansion:
-		return str.readUntil<StringView::WhiteSpace, StringView::Chars<',', ')', '$', '\\'>>();
+		return str.readUntil<StringView::WhiteSpace, StringView::Chars<',', '(', ')', '$', '\\'>>();
 		break;
 	case ReadContext::ConditionalQuoted:
 		return str.readUntil<StringView::WhiteSpace, StringView::Chars<'#', '$', '\\', '\''>>();
@@ -192,9 +225,10 @@ static StringView readContextIdentifier(StringView &str, ReadContext ctx) {
 	return StringView();
 }
 
-Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err) {
+Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err, uint32_t &nestedDepth) {
 	Stmt *stmt = nullptr;
 
+	auto beginning = getBeginChar(ctx);
 	auto ending = getEndChar(ctx);
 
 	auto makeStmt = [&]() -> Stmt * {
@@ -217,7 +251,32 @@ Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err) {
 
 	while (!str.empty() && !str.is<StringView::WhiteSpace>()) {
 		err.setPos(str);
+
+		uint32_t inPrefix = 0;
+		if (beginning == '(') {
+			while (str.is(beginning)) {
+				++inPrefix;
+				++str;
+			}
+		}
+
 		StringView sig = readContextIdentifier(str, ctx);
+
+		if (inPrefix > 0) {
+			sig = StringView(sig.data() - inPrefix, sig.size() + inPrefix);
+			nestedDepth += inPrefix;
+		}
+
+		uint32_t inSuffix = 0;
+		while (nestedDepth > 0 && str.is(ending)) {
+			++str;
+			++inSuffix;
+			--nestedDepth;
+		}
+
+		if (inSuffix > 0) {
+			sig = StringView(sig.data(), sig.size() + inSuffix);
+		}
 
 		if (str.is<StringView::WhiteSpace>()) {
 			makeStmt()->add(sig);
@@ -226,8 +285,9 @@ Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err) {
 			if (!sig.ends_with('\\')) {
 				makeStmt()->add(sig);
 				if (ending) {
+					slog().error("readWord1", sig);
 					err.setPos(str);
-					err.reportError("Unexpected line ending, ')' expected");
+					err.reportError("readWord: Unexpected line ending, ')' expected");
 				}
 				break;
 			} else {
@@ -271,6 +331,12 @@ Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err) {
 					++str;
 				}
 			}
+		} else if (beginning == '(' && str.is(beginning)) {
+			// a literal '(' inside $(...): keep it in the word and bump the nesting depth so
+			// its matching ')' is treated as balanced text rather than ending the expansion
+			makeStmt()->add(StringView(sig.data(), sig.size() + 1));
+			++nestedDepth;
+			++str;
 		} else if (ending && str.is(ending)) {
 			makeStmt()->add(sig);
 			break;
@@ -287,12 +353,41 @@ Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err) {
 			makeStmt()->add(sig);
 			break;
 		} else if (str.is('\\')) {
-			if (isWhitespace(str)) {
+			if (ctx != ReadContext::TrailingRecipe && ctx != ReadContext::Multiline
+					&& (str.sub(1, 1).is(' ') || str.sub(1, 1).is('\t'))) {
+				// In filename/word contexts, "\ " (or "\<tab>") is an escaped literal space: emit the
+				// path-space placeholder so the engine's whitespace word-splitting keeps the path as a
+				// single word. NOT in recipe/define bodies, which are passed verbatim to the shell (a
+				// user's literal "\ " must survive there); spaces in a recipe's paths arrive only via
+				// expanded variables and are handled at the spawn boundary.
+				static constexpr char placeholder = PathSpacePlaceholder;
+				makeStmt()->add(sig);
+				makeStmt()->add(StringView(&placeholder, 1));
+				str += 2;
+			} else if (isWhitespace(str)) {
 				makeStmt()->add(sig);
 				break;
 			} else {
-				makeStmt()->add(StringView(sig.data(), sig.size() + 1));
-				++str;
+				bool windowsSep = false;
+#if SPRT_WINDOWS
+				// clang/gcc on Windows write dependency files with '\' as the PATH SEPARATOR
+				// (e.g. `C:\dir\foo.o: C:\dir\foo.c`). In make syntax '\' is the escape char, but here
+				// it is a separator — and an escaped space "\ " was already handled above — so any
+				// remaining '\' in a target or prerequisite path is a separator: normalise it to the
+				// engine's native '/'. Restricted to rule path contexts so a '\' kept verbatim in a
+				// variable value or recipe (shell text) is untouched.
+				windowsSep = (ctx == ReadContext::LineStart || ctx == ReadContext::PrerequisiteList
+						|| ctx == ReadContext::OrderOnlyList);
+#endif
+				if (windowsSep) {
+					static constexpr char slash = '/';
+					makeStmt()->add(sig);
+					makeStmt()->add(StringView(&slash, 1));
+					++str;
+				} else {
+					makeStmt()->add(StringView(sig.data(), sig.size() + 1));
+					++str;
+				}
 			}
 		} else if (ctx == ReadContext::LineStart && str.is<PlainStopChars>()
 				&& !Stmt::getOperator(str, true).empty()) {
@@ -301,12 +396,21 @@ Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err) {
 		} else if (!str.empty()) {
 			makeStmt()->add(StringView(sig.data(), sig.size() + 1));
 			++str;
-			break;
+			if (beginning != '(' && ctx != ReadContext::LineStart) {
+				break;
+			}
+			// Two cases keep reading rather than ending the word on the char consumed above:
+			// - inside $(...): that char followed a balanced "(...)" group, so the text after the
+			//   closing ')' belongs to the same word;
+			// - at LineStart: the char is a stop char that did NOT form an assignment/rule operator
+			//   (a literal '+' or '?' in a target/variable name, e.g. "libc++" or "a?b"), so it is
+			//   part of the name — keep reading so the whole name stays one word (matching GNU make).
 		} else {
 			makeStmt()->add(sig);
 			if (ending) {
+				slog().error("readWord2", sig);
 				err.setPos(str);
-				err.reportError("Unexpected line ending, ')' expected");
+				err.reportError("readWord: Unexpected line ending, ')' expected");
 			}
 		}
 	}
@@ -386,7 +490,14 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 		isMultiline = true;
 	}
 
-	if (isMultiline) {
+	if (ctx == ReadContext::Multiline) {
+		// preserve the whole leading whitespace run (newlines + indentation) verbatim so
+		// `define` values round-trip exactly (recipe tabs survive for $(eval))
+		auto ws = skipWhitespace(str);
+		if (!ws.empty()) {
+			addStringWord(ws);
+		}
+	} else if (isMultiline) {
 		auto nl = countNewlines(skipWhitespace(str));
 		for (uint32_t i = 0; i < nl; ++i) { addStringWord("\n"); }
 	} else {
@@ -405,8 +516,18 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 		}
 	}
 
+	auto guard = str;
+	StringView whiteSpace;
+	uint32_t nestedDepth = 0;
+	// Within a function argument, literal whitespace is preserved verbatim, but a '\'-newline
+	// line continuation collapses to a single space (GNU make). Apply this to the whitespace
+	// emitted around commas and before ')'.
+	auto wsToken = [](StringView ws) -> StringView {
+		return (ws.find('\\') != maxOf<size_t>()) ? StringView(" ") : ws;
+	};
 	while (!str.empty() && (ending == 0 || !str.is(ending))) {
-		auto wordStmt = readWord(str, ctx, err);
+		auto first = str.front();
+		auto wordStmt = readWord(str, ctx, err, nestedDepth);
 		if (!wordStmt) {
 			if (ending == 0) {
 				break;
@@ -415,15 +536,42 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 			return nullptr;
 		}
 
+		// The whitespace between a function name and its first argument is the call
+		// separator, which GNU make strips entirely (`$(firstword \<nl>\t$(X))` -> first
+		// word of X, not the empty string). That transition is the very first word being
+		// added to an Expansion (only the name is present so far), so skip the preserve
+		// logic there; everywhere else a \t\n run between two $stmt is kept.
+		bool nameToFirstArg = (type == StmtType::Expansion && stmt && stmt->value == stmt->tail);
+		if (!whiteSpace.empty() && first == '$' && !nameToFirstArg) {
+			// special case: whitespace token between two $stmt, preserve it if it has \t\n
+			auto tmp = whiteSpace;
+			tmp.skipUntil<StringView::Chars<'\t', '\n'>>();
+			if (!tmp.empty()) {
+				// a '\' in the run is a backslash-newline line continuation, which GNU make
+				// collapses to a single space; only a literal tab/newline is kept verbatim
+				if (whiteSpace.find('\\') != maxOf<size_t>()) {
+					addStringWord(" ");
+				} else {
+					addStringWord(whiteSpace);
+				}
+			}
+		}
+
 		if (nextArgument) {
 			addStmtArgument(wordStmt);
 		} else {
 			addStmtWord(wordStmt);
 		}
 
-		StringView whiteSpace = skipWhitespace(str);
+		whiteSpace = skipWhitespace(str);
 
-		if (isMultiline) {
+		if (ctx == ReadContext::Multiline) {
+			// store the whitespace run verbatim (the verbatim resolve path emits it as-is)
+			if (!whiteSpace.empty()) {
+				addStringWord(whiteSpace);
+			}
+			whiteSpace = StringView(); // consumed above
+		} else if (isMultiline) {
 			auto nl = countNewlines(whiteSpace);
 			for (uint32_t i = 0; i < nl; ++i) { addStringWord("\n"); }
 			if (nl > 0) {
@@ -431,10 +579,12 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 			}
 		}
 
-		if (!isMultiline && str.is('#')) {
+		if (!isMultiline && ctx != ReadContext::TrailingRecipe && str.is('#')) {
+			// (in a recipe '#' is literal, not a make comment — see readContextIdentifier)
 			if (ending) {
 				err.setPos(str);
-				err.reportError(toString("Unexpected line ending, '", ending, "' expected"));
+				err.reportError(
+						toString("readScoped: Unexpected line ending, '", ending, "' expected"));
 			}
 			break;
 		} else if (ctx == ReadContext::PrerequisiteList && str.is('|')) {
@@ -445,13 +595,39 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 			break;
 		} else if ((ctx == ReadContext::Expansion || ctx == ReadContext::MultilineExpansion)
 				&& str.is(',')) {
-			// preserve whitespace before ','
+			// GNU make keeps whitespace within a function argument verbatim. Keep the current
+			// argument's trailing whitespace (the name/first-arg separator is dropped by the split)...
 			if (!whiteSpace.empty()) {
-				addStringWord(" ");
+				addStringWord(wsToken(whiteSpace));
 			}
-			++str;
-			skipWhitespace(str);
-			nextArgument = true;
+			whiteSpace = StringView();
+			// ...then consume this comma (and any consecutive ones) and open the next argument(s),
+			// folding the whitespace after each comma into the argument it introduces. Handling the
+			// run of commas here (rather than letting the main loop re-enter on a ',') avoids the
+			// empty word readWord() would produce at a ',', which would corrupt argument boundaries.
+			for (;;) {
+				++str;
+				auto leadWs = skipWhitespace(str);
+				if (str.empty() || (ending && str.is(ending))) {
+					// trailing argument, e.g. $(patsubst a,b,) or $(call f,a, ): the run after the comma
+					addStmtArgument(new (sprt::nothrow) Stmt(err, wsToken(leadWs)));
+					break;
+				} else if (str.is(',')) {
+					// a whitespace-only (or empty) argument between two commas, e.g. $(call f,a, ,b)
+					addStmtArgument(new (sprt::nothrow) Stmt(err, wsToken(leadWs)));
+				} else if (leadWs.empty()) {
+					nextArgument = true; // a real word starts the next argument
+					break;
+				} else {
+					// Open the next argument and add its leading whitespace as a STRING token, so resolve
+					// keeps it without inserting a synthetic separator before the first word (a whitespace
+					// token wrapped as a Stmt would not set the "ends in space" flag resolve relies on).
+					addStmtArgument(new (sprt::nothrow) Stmt(err, StringView()));
+					addStringWord(wsToken(leadWs));
+					nextArgument = false;
+					break;
+				}
+			}
 		} else if (ctx == ReadContext::LineStart && str.is<PlainStopChars>()) {
 			auto op = Stmt::getOperator(str, true);
 			if (!op.empty()) {
@@ -462,20 +638,41 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 				break;
 			}
 		} else if (ending && str.is(ending)) {
-			if ((ctx == ReadContext::Expansion || ctx == ReadContext::MultilineExpansion) && stmt
-					&& stmt->type == StmtType::ArgumentList) {
+			if (nestedDepth > 0) {
+				// drop nested ")" as string
+				uint32_t counter = 0;
+				auto d = str.data();
+				while (nestedDepth > 0 && str.is(ending)) {
+					--nestedDepth;
+					++counter;
+					++str;
+				}
+				addStringWord(StringView(d, counter));
+			} else if ((ctx == ReadContext::Expansion || ctx == ReadContext::MultilineExpansion)
+					&& stmt && stmt->type == StmtType::ArgumentList) {
 				if (!whiteSpace.empty()) {
-					addStringWord(" ");
+					addStringWord(wsToken(whiteSpace));
 				}
 			}
 		} else {
 			nextArgument = false;
 		}
+		if (str.data() == guard.data()) {
+			slog().error("makefile::Stmt", "No forward progress on exception parsing, exiting");
+			++str;
+			break;
+		}
+		guard = str;
 	}
 
-	StringView whiteSpace = skipWhitespace(str);
+	whiteSpace = skipWhitespace(str);
 
-	if (isMultiline) {
+	if (ctx == ReadContext::Multiline) {
+		if (!whiteSpace.empty()) {
+			addStringWord(whiteSpace);
+		}
+		whiteSpace = StringView(); // consumed above
+	} else if (isMultiline) {
 		auto nl = countNewlines(whiteSpace);
 		for (uint32_t i = 0; i < nl; ++i) { addStringWord("\n"); }
 	}
@@ -484,10 +681,14 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 		if ((ctx == ReadContext::Expansion || ctx == ReadContext::MultilineExpansion) && stmt
 				&& stmt->type == StmtType::ArgumentList) {
 			if (!whiteSpace.empty()) {
-				addStringWord(" ");
+				addStringWord(wsToken(whiteSpace));
 			}
 		}
 		++str;
+	}
+
+	if (stmt && ctx == ReadContext::Multiline) {
+		stmt->multiline = true;
 	}
 
 	return stmt;

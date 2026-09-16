@@ -116,7 +116,11 @@ void PageContainer::addLink(StringView data) {
 		if (!media.empty()) {
 			StyleBuffers buffers;
 			StringReader r(media);
-			mediaId = _document->addQuery(MediaQuery{readMediaQueryList(buffers, r)});
+			// explicit assignment: MediaQuery is an aggregate with a base class, so
+			// MediaQuery{list} would initialize the AllocPool base, not `list`
+			MediaQuery query;
+			query.list = readMediaQueryList(buffers, r);
+			mediaId = _document->addQuery(sp::move(query));
 		}
 
 		_assets.emplace_back(href);

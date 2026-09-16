@@ -133,6 +133,9 @@ float ShadowLightDataAttachmentHandle::getBoxOffset(float value) const {
 }
 
 uint32_t ShadowLightDataAttachmentHandle::getLightsCount() const {
+	if (!_input) {
+		return 0;
+	}
 	return _input->lights.ambientLightCount + _input->lights.directLightCount;
 }
 

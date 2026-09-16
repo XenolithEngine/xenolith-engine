@@ -1,0 +1,559 @@
+---
+name: css-engine
+description: >-
+  Write CSS for the Xenolith/Stappler engine's CSS engine (stappler_document +
+  xenolith_renderer_ui StyleSystem) CORRECTLY — it is a CSS subset, NOT web CSS.
+  Use before writing or debugging any .css in this repo (resources/style.css,
+  pug templates, ui:: atoms). Covers what flex/position/measure/selectors/units
+  properties are really supported, and — critically — what web CSS features are
+  silently ignored (:not(), ::before, [attr], min/max on a flex item's CROSS axis,
+  position:relative offsets, prefers-color-scheme, transform/box-shadow).
+---
+
+# Xenolith CSS engine — authoring reference
+
+The engine is a **CSS subset** backed by `stappler_document` and applied to the
+scene graph by `xenolith_renderer_ui` (`ui::StyleSystem` + `ui::StyleResolver` +
+`ui::LayoutSystem`). It is NOT a browser. Many web CSS features parse silently and
+do nothing. This card lists what REALLY works, so you don't waste an iteration
+writing CSS that the engine drops on the floor.
+
+Full reference, with the rationale, the cookbook of workarounds and the test that
+pins every claim: **[docs/usage/ui/css-subset.adoc](../../../docs/usage/ui/css-subset.adoc)**.
+Read it when this card is not enough; edit it (not just this card) when the
+engine changes.
+
+Origin: Y is **up** (scene graph). Styling is component-driven — the resolver reads
+CSS into `ResolvedStyle` and per-type appliers (e.g. `button`, `panel`, `label`)
+map it onto nodes. A recursive `StyleResolver(true)` on a layout root styles the
+whole subtree.
+
+## CRITICAL — web features that are SILENTLY dropped
+
+DO NOT use these (they parse but do nothing, or don't exist):
+
+| Web feature | Status here |
+|---|---|
+| `min-width`/`max-width` on a flex item's **cross** axis | parsed, **not applied** — the main axis IS enforced, see below |
+| `position: relative` offsets | **no effect** — only `position: absolute` is implemented |
+| `position: fixed` / `sticky` | **no effect** |
+| `:not()` / `:is()` / `:where()` / `:lang()` | **unsupported** — rule is skipped (`:nth-child` and friends DO work, see Selectors) |
+| `::before`/`::after`/`::marker` pseudo-elements | **unsupported** — rule is skipped |
+| `[attr]`/`[attr=val]` attribute selectors | parsed, **never match** |
+| `prefers-color-scheme` | **absent** — use `@media (light-level: dim)` or `x-option` |
+| `:dir()` pseudo-class | **unsupported** — use `@media (x-option: rtl)`, which the engine seeds from the locale |
+| `writing-mode` | **absent** — the block axis is always vertical, so `*-block-*` folds onto top/bottom |
+| `transform` `box-shadow` `text-shadow` `filter` `transition` `animation` `cursor` `box-sizing` `object-fit` `letter-spacing` | **not registered** (unknown-property warning) |
+| `overscroll-behavior` `scroll-behavior` `scroll-snap-*` `scrollbar-gutter` | **not registered** (`overflow` itself IS supported — see below) |
+| `background` shorthand | **absent** — write `background-color` etc. individually |
+| `border-radius` / `outline-*` on a plain `Layer` | **dropped** — only the typed widgets (`panel` `badge` `checkbox` `button`, and `menu`, the popup surface) can draw them |
+| `outline-*` / `border-radius` inheriting into children | they do **not**, as on the web — box decoration stays on the box that declared it |
+| `border-*` (the line, not the radius) | parsed everywhere, **consumed only by table cells** — elsewhere use `outline-*` |
+| bare number for size (`width: 100`) | **rejected** — must have a unit (`100px`/`100%`/`1em`); only `line-height: 1.5` takes a bare number |
+| elliptical `border-radius: H / V` | only H read; `/ V` dropped |
+
+Unknown properties whose name starts with `-` (vendor/`-xl-`) are suppressed
+silently; unknown unprefixed properties emit an "Unknown CSS parameter" log.
+
+## Flexbox (fully supported)
+
+A `display: flex` node becomes a flex container (`FlexLayoutInfo`); each direct
+child becomes a flex item (`FlexItemInfo`). Applied in `XLUiStyleResolver.cc`.
+
+Container:
+- `flex-direction`: `row | row-reverse | column | column-reverse`
+- `flex-wrap`: `nowrap | wrap | wrap-reverse`
+- `justify-content`: `flex-start | flex-end | center | space-between | space-around | space-evenly` (also `start/end/left/right/normal`)
+- `align-items` / `align-content`: `flex-start | flex-end | center | stretch | space-between | space-around` (note: `stretch` is the default for align-items; `normal`/`baseline`/`auto` collapse to `stretch`)
+- `gap` / `row-gap` / `column-gap`: `<length>` | `%` | `normal`(=0). `gap: 8px` = both; `gap: 8px 12px` = row column.
+- `padding` / `padding-{top,right,bottom,left}`: `%` is vs the container's **own** width.
+
+Item (on a direct child):
+- `flex-grow`, `flex-shrink`: `<number>`
+- `flex-basis`: `<length>` | `%` | `em` | `auto` | **`fit-content`** | `content`(=auto)
+- `flex` shorthand: `none`(=0 0 auto) | `initial`(=0 1 auto) | `[<grow> <shrink>?] [<basis>]`. Bare `flex: 1` → grow=1, shrink=1, basis=0px.
+- `order`: `<integer>` (lower first; default 0)
+- `align-self`: `auto`(inherit) | flex-start | flex-end | center | stretch
+- `margin` / `margin-{top,right,bottom,left}`: `%` vs parent width. **`auto` works**: on the main
+  axis the auto margins of a line split the leftover space and `justify-content` gets none of it
+  (`margin-left:auto` → push to the end, `margin: 0 auto` → centre); on the cross axis an item's
+  own auto margins centre/push it and OVERRIDE `align-self`, `stretch` included. Grid ignores it.
+
+## Right-aligning inside a flex row (the common need)
+
+Any of these works:
+```css
+.row > .last  { margin-inline-end: auto; }         /* just this item to the end */
+.row          { justify-content: space-between; }  /* first & last to the edges */
+.row > .spacer { flex-grow: 1; }                   /* explicit slack-eating gap */
+```
+
+`margin-inline-end: auto` and not `margin-left: auto`: the physical one pins the item to the right
+even in a right-to-left window, where "the end" is the left. The other two are direction-neutral
+already. See **Direction and logical properties**.
+
+## Width / height
+
+- `width` / `height`: `<length>` | `%`(vs parent) | `em` | `auto` | **`fit-content`**
+- `%` resolves against the **parent** size (parent content-box).
+- On a **Label**: `width` (non-auto) → `Label::setWidth` (wraps); `height` is ignored (label measures its height from text).
+- On **Layer/Button/…** inside a flex/grid parent: the size is published to a
+  `MeasureComponent` as the intrinsic size; `LayoutSystem` still controls the final
+  `ContentSize`. Explicit width/height wins over fit-content.
+- Outside any layout parent: `width`/`height` → direct `setContentSize`.
+- `min-width`/`max-width` (and `min-height`/`max-height`) **do constrain a flex item on the
+  container's MAIN axis** — `min-*`/`max-*` along the row for `flex-direction: row`, along the
+  column for `column`. They bound the flex base size and the size grow/shrink produces, and the
+  space a clamped item gives up is redistributed to the others (CSS "resolve the flexible
+  lengths"). On the **cross** axis they still do nothing — size that with `align-self`/`height`.
+- Outside a flex/grid container `min-*`/`max-*` are not applied at all.
+
+## fit-content / measure — who can be measured
+
+Who can answer is NOT a fixed class list — it is whoever implements the protocol:
+- a system with `SystemFlags::HandleMeasure` (`Label` has one; `ui::LayoutSystem` has one, which
+  is why a nested flex container measures itself; your own widget can have one);
+- or the `MeasureComponent` fallback (fill `maxContent`/`minContent`/`normal`, no code needed).
+
+When it is asked:
+- `flex-basis: fit-content` (or `width: fit-content` / `flex: 0 0 fit-content`) — always;
+- `flex-basis: auto` (the default) with NO definite CSS size on that axis — also measured (plain
+  CSS: auto → size property → content);
+- an explicit CSS `width`/`height` is definite and wins — never measured on that axis;
+- the cross axis is re-measured at the final main size (wrapped label: width → height).
+
+**Layer / Sprite / an empty Node answer neither**, so their current ContentSize stands in: give
+them an explicit size, a `flex-grow`, or make them a flex container with a measurable child.
+A measured item gets `handleLayoutApplied` with the box it finally received.
+
+## Position
+
+- `position: absolute` is the **only** implemented value. Offsets `top right bottom left`
+  are resolved vs the **parent**.
+  - If `width: auto` and **both** `left`+`right` are set → width stretches to fill
+    `parentWidth - left - right`. Same for height with `top`+`bottom`. **Absolute stretch works.**
+  - If size + both offsets are set, right/bottom is ignored.
+  - Anchor is forced to (0,1) (top-left, since engine Y is up).
+  - **The box leaves the flow.** Inside a `display:flex`/`grid` parent it is not an item: it
+    takes no space, is not moved by the container, and its siblings are sized as if it were not
+    there (the resolver marks it with `ui::OutOfFlowComponent`). So an overlay belongs INSIDE
+    the container it covers — no need to keep it outside any more. Its `width`/`height` are
+    committed directly rather than handed to the layout.
+- `relative`/`fixed`/`sticky`/`static`: **no positional effect** (only `-xl-anchor-point`/`-xl-position` run).
+
+## Direction and logical properties
+
+`direction: ltr | rtl` — **inherited**, and it is a property of the CONTAINER, not of the text
+alone. Declaring it once at the root mirrors every flow beneath it.
+
+```css
+:root { direction: rtl; }          /* mirrors flex rows, grid columns, table columns   */
+```
+
+**What it does NOT do: swap `padding-left` for `padding-right`.** The physical properties stay
+physical, exactly as on the web. What follows the direction is:
+
+| follows `direction` | stays physical |
+|---|---|
+| the inline axis of `flex-direction: row` (and `row-reverse` cancels it) | `padding-left/right`, `margin-left/right` |
+| grid and table **column** order | `border-left/right-*`, `left`/`right` offsets |
+| `text-align: start \| end` | `text-align: left \| right` |
+| `justify-*`/`align-*` with `start`/`end`/`self-start`/`self-end` | the same with `left`/`right` |
+| `*-inline-start` / `*-inline-end` | the four corner radii |
+
+Logical box properties, all supported, all resolved against the node's computed direction:
+
+```css
+padding-inline-start / -end     padding-inline: <start> <end>
+margin-inline-start  / -end     margin-inline:  <start> <end>
+inset-inline-start   / -end     inset-inline:   <start> <end>
+border-inline-start-style / -width / -color   (and -end-)
+```
+
+The `*-block-*` spellings are accepted and fold onto top/bottom at parse time — there is no
+`writing-mode` here, so the block axis is always vertical.
+
+**Where a declaration collides.** If a node ends up with both `padding-left` and
+`padding-inline-start`, the LOGICAL one wins, unconditionally. Real CSS decides that by source
+order; this cascade records none, so the rule is fixed and stated here rather than left to luck.
+
+### The three alignment keyword families
+
+They are genuinely three, and the difference only shows once something reverses:
+
+```css
+justify-content: flex-start;  /* follows the FLEX direction, reversal included */
+justify-content: start;       /* follows the WRITING MODE                      */
+justify-content: left;        /* physical, follows neither                     */
+```
+
+### `unicode-bidi`, and the one trap
+
+`normal | embed | isolate | isolate-override | bidi-override | plaintext`. Not inherited.
+
+**On a label, `plaintext` means `dir=auto`** — resolve this label's base direction from its own
+content — and that is what you want whenever an interface mixes scripts, which an editor always
+does. Without it, an inherited `direction: rtl` puts the leading slash of `/home/x/types.json` at
+the far end.
+
+```css
+* { unicode-bidi: plaintext; }   /* every label resolves its own base direction */
+```
+
+Use `*` and not `label`: a `basic2d::Label` carries no CSS tag unless something calls
+`setType("label")`, so a `label` rule silently matches almost nothing.
+
+**And the trap inside the trap: `plaintext` also decides where `start` aligns.** `text-align: start`
+resolves against the base direction of the LINE, and `plaintext` derives that from the content. So a
+Latin caption inside a right-to-left row gets a left-to-right line and hugs the LEFT edge of its
+box — correct per CSS, and wrong for a widget whose label grows to fill the row. Opt that one label
+out:
+
+```css
+.tree-label { flex-grow: 1; text-align: start; unicode-bidi: normal; }
+```
+
+The price is narrow and worth naming: a name beginning with a neutral character (`.gitignore`) now
+takes the row's direction for that character. Reserve `plaintext` for what is genuinely mixed —
+paths, identifiers, anything with punctuation at an edge.
+
+`plaintext` does NOT turn shaping on, and should not: it is a statement about base direction, not
+about whether glyphs join. Shaping follows the script — `direction: rtl`, or an RTL locale.
+
+### Turning it on at run time
+
+The engine sets one media flag itself, from `locale::getTextDirection()`:
+
+```css
+@media (x-option: rtl) { :root { direction: rtl; } }
+```
+
+`ui::StyleSystem` seeds `rtl` in `updateMedia` and re-seeds it on `locale::onLocale`, so a
+stylesheet is the whole of what an application needs. `StyleSystem::setMediaOption(name, on)` sets
+any other flag by hand. Use the media block for the branches `direction` cannot express — which
+way an arrow icon points, which half of a title bar a button cluster sits on — the job CSS gives
+`:dir()`, which this selector subset does not have.
+
+**Reading the resolved direction from C++ belongs in `handleLayoutChildren`, not in
+`handleContentSizeDirty`.** An ancestor's `StyleResolver` re-resolves a node in REACTION to that
+node's content-size phase, so phase 4 sees the direction from before the pass. Widgets that place
+their own children on a side (a scroll bar, a unit suffix, a dropdown arrow) must do it in phase 6,
+which runs later in the same visit. Getting this wrong is invisible on the way into an RTL locale
+and stays wrong on the way back out.
+
+**Put that block at the END of the sheet.** A rule inside `@media` has the same specificity as the
+identical rule outside it, and at equal specificity the LATER declaration wins. An override block
+written at the top of the file — where an author naturally puts "this is the direction" — is
+silently beaten by every rule below it, and nothing reports the loss. This costs an hour every time
+it is rediscovered.
+
+## Colors
+
+Properties: `color`, `background-color`, `outline-color`, `border-*-color`. `transparent` ok.
+Formats: `#rgb` `#rgba` `#rrggbb` `#rrggbbaa`, `rgb(r,g,b)`, `rgba(r,g,b,a)` (commas),
+`hsl(h,s%,l%)`, named (`white gray black red …` + full Material `Red_500` etc.).
+Note: setting a color with alpha also sets `opacity`. `opacity: 0..1`.
+
+## Border-radius
+
+Fully supported: `border-radius: 1..4 values` (TL TR BR BL ordering), or per-corner
+`border-top-left-radius` etc. `<length>`|`%`|`em`. `50%` → circle. **No elliptical `H / V`.**
+
+## Font / text (all inherited)
+
+`font-size` (`px`/`em` or named xx-small…xx-large; NOT rem), `font-weight` (`normal`/`bold`/1..1000),
+`font-style`, `font-family`, `text-align` (`left right center justify start end`; the initial value here is `left`, NOT
+CSS's `start`), `text-decoration`,
+`text-transform` (`none uppercase lowercase`), `line-height` (metric or bare-number multiplier),
+`white-space`, `hyphens`, `vertical-align`, `color`.
+
+## Selectors
+
+Supported: `*`, tag, `.class`, `#id`, compound (`tag.cls`, `tag.a.b`),
+descendant (`A B`), child (`A > B`), adjacent sibling (`A + B`), general sibling (`A ~ B`),
+comma lists. Specificity is standard (a=id, b=class+pseudo, c=tag).
+
+**Where the selector operands come from** (`NodeIdentity` in `XLNode.h`):
+`#id` ← **`Node::setName()`** — a node's *name* IS its CSS id; tag/type selector ←
+`Node::setType()`; `.class` ← `Node::addStyleClass()`. `Node::setTag()` (numeric) and
+`setDataValue()` are invisible to CSS. Names are not unique — two nodes with the same
+name are both matched by `#name`.
+Interactive pseudo-classes that DO work: **`:hover :focus :active :checked :enabled :disabled`**.
+
+**A recursive `StyleResolver` re-resolves its DESCENDANTS when their classes change, but not its
+own owner.** So `addStyleClass`/`removeStyleClass` on the very node that carries the resolver does
+nothing until something else re-resolves it. Put one recursive resolver at the layout root and
+style the subtree from there, rather than one resolver per stylable node.
+
+Structural pseudo-classes that DO work: **`:nth-child(An+B|odd|even) :nth-last-child()
+:first-child :last-child :only-child`**, the four **`*-of-type`** forms, **`:empty`**, **`:root`**.
+Each counts as a class for specificity. Two engine-specific rules:
+- **`:nth-child` counts in z-order**, not insertion order (the child list is sorted by
+  `getLocalZOrder()`, same as `+`/`~`). Give siblings explicit distinct z-orders when it matters.
+- **`:root` = the node owning the nearest `ui::StyleSystem`**, not the scene root. That is the
+  place to declare custom properties.
+Sibling-dependent styles stay live: add/remove/reorder re-arms the siblings automatically.
+
+NOT supported (rule is dropped): `::before`/`::after`/pseudo-elements, `:not()`/`:is()`/
+`:where()`/`:lang()`, attribute selectors `[attr]`.
+
+## Custom properties (`--x` / `var()`) — supported
+
+```css
+:root  { --brand: #3949ab; --pad: 12px; --accent: var(--brand); }
+.card  { background-color: var(--brand); padding: var(--pad); }
+.card  { outline-color: var(--outline, #cfd8dc); }   /* fallback */
+.dark  { --brand: #fdd835; }                          /* re-theme a subtree */
+```
+- Untyped: the value is raw text parsed where it is substituted, so a variable can be a colour,
+  a length or a shorthand. A typo is diagnosed at the USE, not at the declaration.
+- **Widgets read variables for what the subset has no property for.** `ui::TextInput` takes
+  `--caret-color`, `--selection-color` and `--marked-color`; declare none and all three follow
+  the TEXT's colour (the caret in the same ink, the other two dimmed). A single-line field
+  **centres its line vertically** in what `height` and `padding` leave, so vertical padding is
+  symmetry, not placement.
+- **The variable inherits; a declaration using it does not.** `width: var(--w)` on a parent is
+  not the child's width.
+- Full cascade of variables is resolved before substitution, so a variable from a MORE specific
+  rule is visible to a use in a less specific one. But the substituted declaration still loses
+  to a more specific literal one.
+- Unresolvable reference (undeclared with no fallback, or a cycle) drops that DECLARATION.
+- Names are **case-insensitive** here (web is case-sensitive). Values keep their case.
+- Changing a variable on an ancestor repaints the subtree.
+
+### Per-node custom properties — supported
+
+A rule reaches a SET of nodes, so a value that differs per node (a tree row's depth, a ratio)
+cannot live in the sheet. Declare it on the node:
+
+```cpp
+ui::setStyleVariable(row, "--depth", "3");     // "--" optional; names normalised
+ui::removeStyleVariable(row, "--depth");
+```
+- Behaves as a `--name:` declaration written for that node: inherited by the subtree, visible to
+  `var()`, and it **beats every rule that matched the same node**.
+- Changing it re-resolves the node and its subtree.
+
+## calc() — supported, over ONE unit
+
+```css
+width:        calc(8px + 16px);       /* 24px */
+width:        calc(2 * 16px);         /* 32px */
+padding-left: calc(8px + var(--depth, 0) * var(--indent));
+```
+`+ - * /` and parentheses, evaluated AFTER `var()` substitution.
+- A sum combines like with like; a product needs a plain number on one side; a divisor must be a
+  plain number and non-zero.
+- **`calc(100% - 20px)` is REJECTED** (a Metric holds one value + one unit), and the declaration
+  is dropped, not approximated. Use `width: 100%` plus `padding`/`margin` for the fixed part.
+
+## @media queries
+
+`@media (feature: value) [and …] [,…]`, optional `not`/`only`. Features resolved at runtime:
+`orientation` (landscape/portrait), `pointer` (fine/coarse/none), `hover`,
+**`light-level`** (normal/dim/washed — closest to prefers-color-scheme),
+`scripting`, **`platform`** (macos/ios/windows/android/linux/web — host platform),
+`width`/`min-width`/`max-width`, `height`/`min-/max-`, `aspect-ratio`, `resolution`,
+**`x-option`** (arbitrary app-set flag). No `prefers-color-scheme`/`color-gamut`.
+
+## Units
+
+`px` `%` `em` `rem` `vw vh vmin vmax` `pt`(×4/3) `pc`(×15) `mm` `cm` `in`(×90). `fr` **only inside grid tracks**.
+`auto`, `fit-content`, bare number (rejected except `line-height`).
+
+## display
+
+`flex`/`inline-flex` → flex layout. `grid`/`inline-grid` → grid layout (tracks, `repeat(N,…)`, `gap`, area placement; NO `minmax`/`fit-content()`/named lines/`auto-fit`).
+`table`/`table-row`/`table-cell` → table layout (see below). `table-column`/`table-caption` parse but do nothing; the row-group family (`table-row-group`, `thead`, `tfoot`) is NOT parsed.
+`none` → VisibilityComponent skips the subtree (collapses layout). `block`/`inline`/etc → no block flow (no effect beyond "not a layout container").
+
+## Tables
+
+The third layout model. Its point over grid: **columns are resolved once and imposed on rows that
+are SEPARATE NODES**, which is what makes a virtualized `ui::TableView` possible.
+
+```css
+table      { display: table;
+             grid-template-columns: 120px 2fr 1fr;  /* the columns ARE a track list */
+             table-layout: auto;                    /* `fixed` = never measure a cell */
+             border-collapse: collapse;
+             border: 2px solid #000; }
+.row       { display: table-row; height: 32px; }    /* auto height measures the cells */
+.cell      { display: table-cell; vertical-align: middle;
+             border-bottom: 1px solid #333; }
+.cell.wide { -xl-column-span: 2; }                  /* colspan */
+.cell.tall { -xl-row-span: 2; }                     /* rowspan */
+```
+
+- **Column tracks are `grid-template-columns`** — same parser, same units (`fr`/`%`/`px`/`auto`);
+  `grid-auto-columns` sizes columns past the end of the list.
+- **colspan/rowspan are `-xl-column-span` / `-xl-row-span`** — they are HTML attributes on the web,
+  and `[attr]` selectors never match here, so a property is the only channel.
+- **A cell's column is its POSITION in the row** (after any rowspan from above), like HTML — there
+  is no line placement; that is grid's job.
+- **`vertical-align`** on a cell = cross-axis alignment (`top`/`middle`/`bottom`); baseline/sub/super
+  are ignored.
+- **`border-*` is consumed ONLY by table cells.** Every other widget uses `outline-*` +
+  `border-radius`.
+- **Collapsed borders are GEOMETRY, not paint**: the layout resolves the conflicts (none loses →
+  wider wins → solid > dashed > dotted → top-left wins) into a `TableBordersComponent`. Nothing
+  draws it until you add `Rc<ui::TableBorderPainter>::create()` as a child of the table.
+
+**`ui::TableView` (virtualized)** has no table container node — it stamps the same
+`TableColumnsComponent` on the header and every row, which is why the sticky header cannot drift.
+Two rules for its sheet: an `auto` column resolves to **zero** (it cannot measure rows it has not
+built — use `fr`/px), and declare horizontal rules with `border-bottom` ONLY (a row collapses only
+what it can see, so a line on both sides of a boundary is drawn twice).
+
+## Overflow / scrolling (supported)
+
+`overflow` / `overflow-x` / `overflow-y`: `visible | hidden | clip | scroll | auto`.
+Shorthand is `overflow: <x> [<y>]`. `clip` == `hidden`. Anything but `visible` adds a
+`ui::ScrollSystem` that clips the box with a scissor; `scroll`/`auto` also slide the
+content and show an overlay indicator.
+
+```css
+.list { display: flex; flex-direction: column; height: 240px; overflow-y: auto; }
+```
+
+Rules you must know:
+- **The two axes are INDEPENDENT, unlike CSS.** A `visible` axis beside a non-`visible`
+  one stays visible (the web computes it to `auto`). The scissor rect is built per axis,
+  so `overflow-y: auto` scrolls vertically and cuts nothing off at the sides.
+- **A scroll container needs a definite size on its scroll axis** — it does not grow to
+  its content, so `height: fit-content` + `overflow-y: auto` never scrolls. Likewise
+  `height: 100%` on a CHILD resolves against the scrollport and can never overflow it.
+- **On an overflow axis `flex-shrink` stops crushing the items** (this stands in for CSS
+  automatic minimum size). The axis is freed only when the content genuinely does not
+  fit, so `flex-grow`/`justify-content` still work while it does.
+- **`flex-wrap` is ignored on a scrolling main axis** (nowrap wins).
+- **`align-items: stretch` grows the whole line**, not just the tall item — use
+  `flex-start` if only one item should overflow.
+- **`position: absolute` children do NOT scroll** — viewport-pinned overlays.
+- **`overflow: hidden` + `border-radius` clips to the bounding RECTANGLE** (no stencil
+  in the renderer); a rotated box clips to its AABB.
+- **No virtualization** — every child is a real node. Long lists → `ui::TreeView` /
+  `ui::TableView`.
+
+Scrollbars are real child nodes (`type = "scrollbar"`, classes `xl-ui-scrollbar` +
+`xl-ui-scrollbar-vertical`/`-horizontal`), so ordinary CSS styles them and
+`scrollbar { display: none }` removes them. Beware: `.container > *` matches them too.
+
+**There are two scrollbars.** The one above belongs to `ui::ScrollSystem` (what `overflow`
+creates). A virtualized view — `ui::TreeView`, `ui::TableView`, `basic2d::ScrollView` — has its
+own, under `scroll-indicator` (the thumb) and `scroll-indicator-track` (the strip, which carries
+the input, so `:hover` on it is the pointer being over the bar). Both nodes get `.active` while
+the bar is grabbable, i.e. while a pointing device exists. Its SIZE is not a style — the view
+rewrites it on every scroll; use `ScrollView::setIndicatorThickness`. A bare `basic2d::ScrollView`
+answers only to `background-color`/`opacity`/`display`; `ui::useStyledScrollIndicator(view)` swaps
+its nodes for Panels so radius and outline reach it (TreeView/TableView already do this).
+
+A vertical wheel over a **horizontal-only** scroller is redirected to the horizontal axis
+(browser behaviour — a mouse has no horizontal wheel); Shift+wheel does the same explicitly.
+Dragging scrolls. Inertia after release is TOUCH-only, keyed on `InputModifier::Touch` (the
+button is `MouseLeft` either way — `InputMouseButton::Touch` is an alias); a mouse stops dead.
+Wheel chaining is automatic: a container consumes the wheel only on an axis where it
+has range, otherwise the ancestor scroller gets it. From code:
+`ui::ScrollSystem::{getScrollRange,getScrollPosition,setScrollPosition,scrollBy,
+scrollNodeIntoView}` (offsets are y-DOWN) and the free `ui::scrollIntoView(node)`.
+
+## Hide vs collapse
+
+- `display: none` → subtree skipped (collapses flex/grid layout).
+- `visibility: hidden` → box kept, not painted (inherited).
+- `opacity: 0` → still laid out + painted, transparent.
+
+## z-order (NOT `z-index`)
+
+There is no `z-index`. Use **`-xl-z-order: <int>`** → `Node::setZOrder` (higher = drawn/placed later).
+
+**It is also the placement order.** Inside a flex/grid container the layout reads the children
+already sorted by z-order, so raising a node to draw it on top also moves it in the row or
+column. That is by design, and it means:
+
+- to set the order *within* the container without touching drawing → **`order: <int>`** (lower
+  first, applied after the z-order sort);
+- to lift a node above the content without disturbing the layout → take it out of the flow with
+  `position: absolute`, then raise it with `-xl-z-order`.
+
+`RenderingLevel` (`Solid`/`Surface`/`Transparent`, code-side only) is NOT an alternative: it
+picks the render pass, and geometry behind opaque solid geometry is depth-rejected in the later
+passes whatever level it has.
+
+## Engine extensions (`-xl-*`)
+
+| Property | Effect |
+|---|---|
+| `-xl-anchor-point: <x> [<y>]` | `setAnchorPoint`, normalized 0..1 (0,0=bottom-left). Ignored under `position: absolute`. |
+| `-xl-position: <x> [<y>]` | `setPosition` directly, bypassing layout (`%` vs parent). Not applied under `position: absolute`. |
+| `-xl-z-order: <int>` | z-order / placement order. |
+
+## Mental model for laying out a screen
+
+1. Root layout = a flex column (`display:flex; flex-direction:column`). It fills its parent (`height: 100%` or `flex: 1`).
+2. Fixed-height bands (`header`, `footer`) take `height: <px>; width: 100%`. The flexible middle takes `flex: 1`.
+3. Right-align within a row: `margin-left: auto` on the item, `justify-content: space-between`, or a `flex-grow:1` spacer.
+4. Overlays/fullscreen covers: `position: absolute; top:0; right:0; bottom:0; left:0;` (stretches). It leaves the flow, so put it inside the container it covers and raise it with `-xl-z-order`.
+5. Anything text-sized (badge, chip, tag) needs either an explicit width or to be a `display:flex` fit-content container with a `Label` child (Label is the one node that measures).
+6. Never hand-position children of a `display:flex` container in `handleContentSizeDirty` — it fights the layout pass. Let flex do it; only size `position:absolute` nodes by hand (the engine doesn't auto-stretch an absolute node unless both opposite offsets are set, which is the recommended way).
+
+## Anti-pattern checklist
+
+- `transform`/`box-shadow`/`transition`/`cursor` → don't exist (`overflow` DOES).
+- `overflow-y: auto` on a `height: fit-content` box → it sizes to its content, so there is
+  never anything to scroll. Give the scroll axis a definite size.
+- `height: 100%` on a child of a scroll container expecting it to overflow → it resolves
+  against the scrollport.
+- `overflow: hidden` + `border-radius` expecting rounded corners → the clip is a rect.
+- `::before`/`:not()`/`[attr]` selectors → rule never matches.
+- `:nth-child` assuming insertion order → it counts in z-order.
+- `:root` assuming the scene root → it is the stylesheet owner.
+- `min-width`/`max-width` on a flex item's CROSS axis → no effect (the main axis works).
+- `position: relative` expecting an offset → only `absolute` is implemented.
+- `-xl-z-order` to raise a node *without* moving it in a flex row → it is the placement order
+  too. Use `order` for placement, `position: absolute` to leave the flow entirely.
+- `prefers-color-scheme` → use `light-level` or `x-option`.
+- Sizes need units: `width: 100` is invalid; `100px`/`100%`/`1em`. `line-height: 1.5` is the only bare-number exception.
+- `calc()` mixing a percentage with a length → the declaration is dropped; only one unit survives.
+- A per-node number written as a class per value (`.d1 .d2 .d3 …`) → declare it on the node with
+  `ui::setStyleVariable` and multiply it with `calc()`.
+
+## Writing a type applier (engine side, not CSS)
+
+`StyleResolver::registerTypeApplier(type, applier, mask)` lets a widget claim attributes for
+its own node type. One contract is easy to miss: **list `ParameterName::CmdReset` in the mask**.
+It is a pseudo-parameter (no CSS produces it) delivered FIRST on EVERY pass, meaning "drop
+everything the previous pass left". Without it, a rule that stops matching (class removed,
+CSS reloaded, `@media` flipped) just goes missing from the resolved style and its paint stays
+applied forever. Canonical implementation: keep the styling in a component and
+`removeComponent<T>()` in the reset (`ui::Button`); a widget holding paint directly restores
+its `init()` defaults (`ui::Panel`). Return `true` from that branch. Details + the failure it
+prevents: css-subset.adoc §"Writing a type applier: the reset command". [`XL_PANEL_TEST`]
+
+## Source map (for deeper questions)
+
+- CSS property parse table: `stappler/document/SPDocStyleCss.cc:279` (`s_cssParameters`)
+- Property-name enum: `stappler/document/SPDocStyle.h:304` (`ParameterName`)
+- Selector parse: `stappler/document/SPDocStyleContainer.cc:887`..`:1011`
+- Unit parse: `runtime/src/geom/SPRuntimeGeometry.cc:31` (`Metric::readStyleValue`)
+- Color parse: `runtime/src/geom/SPRuntimeColor.cc:1489`
+- Flex model: `xenolith/renderer/ui/layout/XLUiLayoutFlex.h:58`
+- Flex algorithm: `xenolith/renderer/ui/layout/XLUiLayoutFlex.cc`
+- Grid algorithm + track sizing: `xenolith/renderer/ui/layout/XLUiLayoutGrid.cc`
+- Table layout + border collapsing: `xenolith/renderer/ui/layout/XLUiLayoutTable.cc`
+- Table components: `xenolith/renderer/ui/layout/XLUiLayoutTable.h`
+- CSS→layout bridge: `xenolith/renderer/ui/style/XLUiStyleResolver.cc:1307` (`applyLayout`), `:982` (`applyDefault`)
+- Overflow / scrolling: `xenolith/renderer/ui/layout/XLUiScrollSystem.{h,cc}`; the layout side
+  (`OverflowComponent`, `getContentExtent`, `setOverflowAxes`, `setScrollOffset`) in
+  `XLUiLayoutSystem.h` + `XLUiLayoutFlex.cc`; clipping in
+  `xenolith/application/nodes/XLDynamicStateSystem.cc`
+
+## Related
+
+- Full reference: [docs/usage/ui/css-subset.adoc](../../../docs/usage/ui/css-subset.adoc)
+- Measurement protocol: [docs/usage/ui/content-measurement.adoc](../../../docs/usage/ui/content-measurement.adoc)
+
+## Related skills
+
+- `gui-debug` — `inspect_scene`/`get_logs` to verify the tree and business logic.
+- `cli-build` — build/run the debug app to see CSS changes.

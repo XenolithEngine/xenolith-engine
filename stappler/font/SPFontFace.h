@@ -36,7 +36,7 @@ namespace STAPPLER_VERSIONIZED stappler::font {
 
 class FontLibrary;
 
-class SP_PUBLIC FontFaceData : public Ref, public InterfaceObject<memory::StandartInterface> {
+class SP_PUBLIC FontFaceData : public Ref, public InterfaceObject<mem_std::Interface> {
 public:
 	virtual ~FontFaceData() = default;
 
@@ -51,6 +51,10 @@ public:
 	StringView getName() const { return _name; }
 	BytesView getView() const;
 
+	// Stable content identity of the font bytes (xxh64 over getView()), used to dedupe a font across a
+	// network so a side that already holds it is never re-sent. Returns 0 for an unloaded source.
+	uint64_t getContentHash() const;
+
 	const FontVariations &getVariations() const { return _variations; }
 
 	FontSpecializationVector getSpecialization(const FontSpecializationVector &) const;
@@ -64,9 +68,24 @@ protected:
 	FontLayoutParameters _params;
 };
 
-class SP_PUBLIC FontFaceObject : public Ref, public InterfaceObject<memory::StandartInterface> {
+class SP_PUBLIC FontFaceObject : public Ref, public InterfaceObject<mem_std::Interface> {
 public:
-	virtual ~FontFaceObject() = default;
+	// What one face is holding, for a usage report (the inspector's `fonts` command).
+	//
+	// The two halves grow independently. `chars`/`kerningPairs` are the LAYOUT side: an entry
+	// appears as soon as a code point is measured, whether or not it is ever drawn. `requiredChars`
+	// is the ATLAS side: a glyph is added there only when something asks for its texture, and
+	// `pendingChars` says some of them have not reached the rasterizer yet.
+	struct Usage {
+		size_t chars = 0; // cached shaping entries (metrics + glyph index per code point)
+		size_t charsMemory = 0; // what the sparse table holding them costs
+		size_t kerningPairs = 0;
+		size_t requiredChars = 0;
+		size_t submittedChars = 0;
+		bool pendingChars = false;
+	};
+
+	virtual ~FontFaceObject();
 
 	bool init(StringView, const Rc<FontFaceData> &, FT_Library, FT_Face,
 			const FontSpecializationVector &, uint16_t, uint16_t plane = 0);
@@ -82,8 +101,24 @@ public:
 	const Rc<FontFaceData> &getData() const { return _data; }
 	const FontSpecializationVector &getSpec() const { return _spec; }
 
-	bool acquireTexture(char32_t, const Callback<void(const CharTexture &)> &);
+	// bool acquireTexture(char32_t, const Callback<void(const CharTexture &)> &);
 	bool acquireTextureUnsafe(char32_t, const Callback<void(const CharTexture &)> &);
+
+	// Same glyph, without the copy. Loads and hints the glyph once, hands its metrics to `cb`
+	// (with `bitmap == nullptr`, since there is none yet), and rasterizes into whatever storage
+	// `cb` returns. Producing the same bytes as acquireTextureUnsafe is a hard requirement, and
+	// tests/font checks it glyph by glyph.
+	bool renderTextureUnsafe(char32_t, const Callback<GlyphTarget(const CharTexture &)> &);
+
+	// Shape a run of code points with HarfBuzz over this face. Appends the glyphs HarfBuzz proposes
+	// (the RENDERING set) together with their advances/offsets (the POSITIONING set) to `out`. Locks
+	// the face (FT_Face carries mutable glyph state and is not thread-safe).
+	bool shape(const char32_t *text, size_t length, TextDirection direction,
+			Vector<ShapedGlyph> &out, bool enableLigatures = true);
+
+	// FreeType glyph index for a code point (FT_Get_Char_Index), or 0 if the face has no glyph for it.
+	// Used to substitute mirrored glyphs on the non-shaped bidi path (UAX #9 L4).
+	uint16_t getGlyphIndex(char32_t);
 
 	// returns true if updated
 	bool addChars(const Vector<char32_t> &chars, bool expand, Vector<char32_t> *failed);
@@ -95,10 +130,18 @@ public:
 	Interface::VectorType<char32_t> getRequiredChars() const;
 	size_t getRequiredCharsCount() const;
 
+	bool hasPendingChars() const;
+	void setCharsSubmitted(size_t count);
+	void resetCharsSubmitted();
+
 	CharShape getChar(char32_t c) const;
 	int16_t getKerningAmount(char32_t first, char32_t second) const;
 
 	Metrics getMetrics() const { return _metrics; }
+
+	// Counts every cached entry, so it walks the whole table - a report, not something to call per
+	// frame.
+	Usage getUsage() const;
 
 protected:
 	bool addChar(char16_t, bool &updated);
@@ -108,9 +151,11 @@ protected:
 	uint16_t _id = 0;
 	uint16_t _plane = 0;
 	FT_Face _face = nullptr;
+	void *_hbFont = nullptr; // cached hb_font_t for this face (lazily created by shape())
 	FontSpecializationVector _spec;
 	Metrics _metrics;
 	Interface::VectorType<char32_t> _required;
+	size_t _submittedChars = 0;
 	FontCharStorage<CharShape16> _chars;
 	mem_std::HashMap<uint32_t, int16_t> _kerning;
 	sprt::mutex _faceMutex;
@@ -118,7 +163,7 @@ protected:
 	mutable sprt::mutex _requiredMutex;
 };
 
-class SP_PUBLIC FontFaceSet : public Ref, public InterfaceObject<memory::StandartInterface> {
+class SP_PUBLIC FontFaceSet : public Ref, public InterfaceObject<mem_std::Interface> {
 public:
 	static String constructName(StringView, const FontSpecializationVector &);
 

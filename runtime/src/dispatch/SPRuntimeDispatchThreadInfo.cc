@@ -21,10 +21,11 @@
  **/
 
 #include "SPRuntimeDispatch.h"
+#include <sprt/runtime/stream.h>
 
 #include <pthread.h>
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 
 typedef struct objc_object *id;
 typedef struct objc_class *Class;
@@ -127,9 +128,24 @@ const thread_info *thread_info::get() {
 }
 
 void thread_info::set(StringView n, uint32_t w, bool m) {
-	n.pdup(tl_threadInfo.threadPool).performWithTerminated([](const char *tname, size_t) {
-		pthread_setname_np(pthread_self(), tname); //
+	auto bufSize = n.size() + 32;
+	auto str = __sprt_typed_malloca(char, bufSize);
+
+	sprt::StreamTraits<char>::toStringBuf(str, bufSize, tl_threadInfo.tid, ":", n);
+
+	auto pool = tl_threadInfo.threadPool;
+	if (!pool) {
+		pool = memory::pool::acquire();
+	}
+	n = StringView(str).pdup(pool);
+
+#if !SPRT_HOSTED_RTOS
+	n.performWithTerminated([](const char *n, size_t) {
+		pthread_setname_np(pthread_self(), n); //
 	});
+#endif
+
+	__sprt_freea(str);
 
 	tl_threadInfo.workerId = w;
 	tl_threadInfo.name = n;

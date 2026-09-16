@@ -96,7 +96,9 @@ void TemporaryResource::setLoaded(bool val) {
 	} else {
 		_loaded = false;
 		_requested = false;
-		_resource->clear();
+		if (_resource) {
+			_resource->clear();
+		}
 		onLoaded(this, _loaded);
 	}
 	_atime = sp::platform::clock(ClockType::Monotonic);
@@ -145,7 +147,9 @@ void TemporaryResource::handleEnter(ResourceOwner *owner, ResourceObject *res) {
 
 void TemporaryResource::handleExit(ResourceOwner *, ResourceObject *) {
 	_atime = sp::platform::clock(ClockType::Monotonic);
-	--_users;
+	if (_users) {
+		--_users;
+	}
 }
 
 bool TemporaryResource::clear() {
@@ -167,7 +171,12 @@ bool TemporaryResource::clear() {
 	return (_flags & TemporaryResourceFlags::RemoveOnClear) != TemporaryResourceFlags::None;
 }
 
-StringView TemporaryResource::getName() const { return _resource->getName(); }
+StringView TemporaryResource::getName() const {
+	if (_resource) {
+		return _resource->getName();
+	}
+	return StringView();
+}
 
 bool TemporaryResource::isDeprecated(const UpdateTime &time) const {
 	if (_users > 0 || !_loaded) {
@@ -176,7 +185,13 @@ bool TemporaryResource::isDeprecated(const UpdateTime &time) const {
 
 	if (_timeout == TimeInterval()) {
 		return true;
-	} else if (_atime + _timeout.toMicroseconds() < time.global) {
+	}
+
+	if (_timeout == TimeInterval::Infinite) {
+		return false;
+	}
+
+	if (_atime + _timeout.toMicroseconds() < time.global) {
 		return true;
 	}
 

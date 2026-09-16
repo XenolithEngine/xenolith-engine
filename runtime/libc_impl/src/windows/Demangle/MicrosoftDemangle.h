@@ -264,6 +264,12 @@ private:
 
 	sprt::pair<Qualifiers, bool> demangleQualifiers(sprt::StringView &MangledName);
 
+	// Current recursion depth of the recursive-descent parser. Used to bail out
+	// of pathologically/maliciously nested mangled names before they exhaust the
+	// stack. Guarded with ScopedOverride at the recursion funnel (demangleType).
+	unsigned RecursionLevel = 0;
+	static constexpr unsigned MaxRecursionLevel = 2048;
+
 	// Memory allocator.
 	ArenaAllocator Arena;
 

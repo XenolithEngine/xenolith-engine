@@ -75,22 +75,33 @@ struct DoubleLinkedListNode : ListNodeBase<Allocator> {
 		return target;
 	}
 
-	template <template <typename U> typename NodeAllocator>
-	constexpr static DoubleLinkedListNode *copyValue(
-			const NodeAllocator<DoubleLinkedListNode> &alloc, DoubleLinkedListNode *dest,
-			DoubleLinkedListNode *target) {
-		using value_allocator =
-				typename NodeAllocator<DoubleLinkedListNode>::template rebind<T>::other;
+	// NodeAllocator is any allocator following the sprt rebind protocol (including
+	// detail::AllocatorStd, whose template argument is the wrapped allocator rather
+	// than the node type, so a template-template parameter cannot express it).
+	template <typename NodeAllocator>
+	constexpr static DoubleLinkedListNode *copyValue(const NodeAllocator &alloc,
+			DoubleLinkedListNode *dest, DoubleLinkedListNode *target) {
+		using value_allocator = typename NodeAllocator::template rebind<T>::other;
 
 		dest->value.construct(value_allocator(alloc), target->value.ref());
 		return dest;
 	}
 
-	template <template <typename U> typename NodeAllocator>
-	constexpr static DoubleLinkedListNode *destroyValue(
-			const NodeAllocator<DoubleLinkedListNode> &alloc, DoubleLinkedListNode *node) {
-		using value_allocator =
-				typename NodeAllocator<DoubleLinkedListNode>::template rebind<T>::other;
+	// Move-relocating variant of copyValue for move-only element types (the
+	// unequal-allocator move path cannot steal nodes and cannot copy either).
+	template <typename NodeAllocator>
+	constexpr static DoubleLinkedListNode *moveValue(const NodeAllocator &alloc,
+			DoubleLinkedListNode *dest, DoubleLinkedListNode *target) {
+		using value_allocator = typename NodeAllocator::template rebind<T>::other;
+
+		dest->value.construct(value_allocator(alloc), sprt::move_unsafe(target->value.ref()));
+		return dest;
+	}
+
+	template <typename NodeAllocator>
+	constexpr static DoubleLinkedListNode *destroyValue(const NodeAllocator &alloc,
+			DoubleLinkedListNode *node) {
+		using value_allocator = typename NodeAllocator::template rebind<T>::other;
 
 		node->value.destroy(value_allocator(alloc));
 		return node;
@@ -259,11 +270,23 @@ public:
 			sprt::swap(this->_size, other._size);
 			sprt::swap(this->_root, other._root);
 
-			this->_root.next->prev = &this->_root;
-			this->_root.prev->next = &this->_root;
+			// An empty side's links still point at the OTHER object's sentinel
+			// after the value swap; re-close such circles instead of chasing them.
+			if (this->_root.next == sprt::addressof(other._root)) {
+				this->_root.next = sprt::addressof(this->_root);
+				this->_root.prev = sprt::addressof(this->_root);
+			} else {
+				this->_root.next->prev = sprt::addressof(this->_root);
+				this->_root.prev->next = sprt::addressof(this->_root);
+			}
 
-			other._root.next->prev = &other._root;
-			other._root.prev->next = &other._root;
+			if (other._root.next == sprt::addressof(this->_root)) {
+				other._root.next = sprt::addressof(other._root);
+				other._root.prev = sprt::addressof(other._root);
+			} else {
+				other._root.next->prev = sprt::addressof(other._root);
+				other._root.prev->next = sprt::addressof(other._root);
+			}
 
 			sprt::swap(this->_storage, other._storage);
 		};
@@ -276,10 +299,10 @@ public:
 	}
 
 	constexpr node_type **front_location() {
-		return reinterpret_cast<node_type **>(&this->_root.next);
+		return reinterpret_cast<node_type **>(sprt::addressof(this->_root).next);
 	}
 	constexpr node_type **back_location() {
-		return reinterpret_cast<node_type **>(&this->_root.prev);
+		return reinterpret_cast<node_type **>(sprt::addressof(this->_root).prev);
 	}
 	constexpr node_type *back() const { return static_cast<node_type *>(this->_root.prev); }
 
@@ -288,9 +311,81 @@ public:
 		++this->_size;
 	}
 
-	constexpr void insert_front(node_type *node) { insert_before(this->_root.next, node); }
-	constexpr void insert_back(node_type *node) { insert_before(&this->_root, node); }
+	constexpr void transfer_node(basic_node_type *target, double_linked_list_base &from,
+			basic_node_type *node) {
+		// Splicing a node to just before itself (pos == the node, in the same list) is a
+		// no-op; relinking it would form a self-loop and corrupt the ring.
+		if (node == target) {
+			return;
+		}
+		node_type::erase(node);
+		--from._size;
+		node_type::insert_before(target, static_cast<node_type *>(node));
+		++this->_size;
+	}
 
+	constexpr void insert_front(node_type *node) { insert_before(this->_root.next, node); }
+	constexpr void insert_back(node_type *node) {
+		insert_before(sprt::addressof(this->_root), node);
+	}
+
+	template <typename NodeLess>
+	constexpr void sort_nodes(NodeLess __less) {
+		if (this->_size < 2) {
+			return;
+		}
+		basic_node_type *__head = this->_root.next;
+		this->_root.prev->next = nullptr; // break the ring into a null-terminated chain
+		__head = __merge_sort_run(__head, this->_size, __less);
+		basic_node_type *__prev = sprt::addressof(this->_root);
+		for (basic_node_type *__n = __head; __n; __n = __n->next) {
+			__n->prev = __prev;
+			__prev->next = __n;
+			__prev = __n;
+		}
+		__prev->next = sprt::addressof(this->_root);
+		this->_root.prev = __prev;
+	}
+
+private:
+	template <typename NodeLess>
+	static constexpr basic_node_type *__merge_runs(basic_node_type *__a, basic_node_type *__b,
+			NodeLess __less) {
+		basic_node_type *__head = nullptr;
+		basic_node_type **__tail = &__head;
+		while (__a && __b) {
+			// Take from the left run unless the right strictly precedes it — keeps the
+			// sort stable (equal elements retain their original relative order).
+			if (__less(__b, __a)) {
+				*__tail = __b;
+				__b = __b->next;
+			} else {
+				*__tail = __a;
+				__a = __a->next;
+			}
+			__tail = &(*__tail)->next;
+		}
+		*__tail = __a ? __a : __b;
+		return __head;
+	}
+
+	template <typename NodeLess>
+	static constexpr basic_node_type *__merge_sort_run(basic_node_type *__head, size_type __count,
+			NodeLess __less) {
+		if (__count < 2) {
+			return __head;
+		}
+		size_type __half = __count / 2;
+		basic_node_type *__mid = __head;
+		for (size_type __i = 1; __i < __half; ++__i) { __mid = __mid->next; }
+		basic_node_type *__right = __mid->next;
+		__mid->next = nullptr; // split into [head, half) and [right, count-half)
+		basic_node_type *__l = __merge_sort_run(__head, __half, __less);
+		basic_node_type *__r = __merge_sort_run(__right, __count - __half, __less);
+		return __merge_runs(__l, __r, __less);
+	}
+
+public:
 	// add count nodes with ConstructCallback to fill it
 	template <typename ConstructCallback>
 	constexpr basic_node_type *expand_front(size_t count, const ConstructCallback &cb) {
@@ -403,7 +498,8 @@ protected:
 	}
 
 	constexpr void __move(double_linked_list_base &&other) {
-		if (other.get_allocator() != this->get_allocator()) {
+		// Same allocator (always true for stateless/always-equal allocators): steal storage.
+		if (other.get_allocator() == this->get_allocator()) {
 			this->clear_deallocate();
 
 			this->memory_persistent(other.memory_persistent());
@@ -411,8 +507,15 @@ protected:
 			this->_root = other._root;
 			this->_storage = other._storage;
 
-			this->_root.next->prev = &this->_root;
-			this->_root.prev->next = &this->_root;
+			if (this->_root.next == sprt::addressof(other._root)) {
+				// Empty source: the copied links still point at the SOURCE's
+				// sentinel; re-close the circle on our own root (flags stay).
+				this->_root.prev = sprt::addressof(this->_root);
+				this->_root.next = sprt::addressof(this->_root);
+			} else {
+				this->_root.next->prev = sprt::addressof(this->_root);
+				this->_root.prev->next = sprt::addressof(this->_root);
+			}
 
 			other._size = 0;
 			other._root.reset();
@@ -420,9 +523,64 @@ protected:
 			other._root.flag.size = 0;
 			other._root.flag.prealloc = 0;
 			other._storage = nullptr;
-		} else {
-			__clone(other);
+		} else if constexpr (!sprt::is_empty_v<node_allocator_type>) {
+			// Different (stateful) allocators: cannot steal; elided for always-equal
+			// allocators so a moved list of an incomplete element type never
+			// instantiates a clone path. Copyable elements keep the historical copy;
+			// move-only ones are move-relocated element-wise.
+			if constexpr (sprt::is_copy_constructible_v<T>) {
+				__clone(other);
+			} else {
+				__clone_move(other);
+			}
 		}
+	}
+
+public:
+	// LWG 526-safe remove_if: matching nodes are UNLINKED during the pass and
+	// destroyed only afterwards, so a predicate (or value) referring into the
+	// list stays valid while the scan runs.
+	template <typename NodePred>
+	constexpr size_t remove_if_nodes(NodePred pred) {
+		basic_node_type *sent = sprt::addressof(this->_root);
+		node_type *deferred = nullptr; // stack of unlinked nodes, chained via next
+		size_t removed = 0;
+		auto *cur = this->_root.next;
+		while (cur != sent) {
+			auto *next = cur->next;
+			if (pred(static_cast<node_type *>(cur))) {
+				node_type::erase(cur); // unlink, relinking neighbours
+				auto *n = static_cast<node_type *>(cur);
+				n->setNextStorage(deferred);
+				deferred = n;
+				++removed;
+				--this->_size;
+			}
+			cur = next;
+		}
+		while (deferred) {
+			auto *next = deferred->getNextStorage();
+			node_type::destroyValue(this->_alloc, deferred);
+			this->destroyNode(deferred);
+			deferred = next;
+		}
+		return removed;
+	}
+
+protected:
+	constexpr void __clone_move(double_linked_list_base &other) {
+		auto preallocTmp = this->memory_persistent();
+		this->memory_persistent(true);
+		this->clear();
+		this->memory_persistent(preallocTmp);
+
+		node_type *source = static_cast<node_type *>(other._root.next);
+
+		expand_front(other.size(),
+				[&](const node_allocator_type &nalloc, node_type *dest) SPRT_LAMBDAINLINE {
+			node_type::moveValue(this->_alloc, dest, source);
+			source = static_cast<node_type *>(source->next);
+		});
 	}
 };
 

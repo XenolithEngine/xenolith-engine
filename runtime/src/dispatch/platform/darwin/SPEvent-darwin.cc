@@ -23,6 +23,9 @@
 #include "SPEvent-darwin.h"
 #include "SPEvent-kqueue.h"
 #include "SPEvent-runloop.h"
+#include "../fd/SPEventFile.h"
+#include "../fd/SPEventStatWatch.h"
+#include "../fd/SPEventSocket.h"
 
 #include <signal.h>
 
@@ -31,6 +34,86 @@ namespace sprt::dispatch {
 static int SignalsToIntercept[] = {SIGUSR1, SIGUSR2};
 
 Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags) {
+	if (hasFlag(info.engineMask, QueueEngine::RunLoop)) {
+		// init runloop classes
+
+		auto runloop = new (memory::pool::acquire()) RunLoopData(_info.queue, this, info);
+		if (runloop->_runLoop) {
+			_submit = [](void *ptr) { return reinterpret_cast<RunLoopData *>(ptr)->submit(); };
+			_poll = [](void *ptr) { return reinterpret_cast<RunLoopData *>(ptr)->poll(); };
+			_wait = [](void *ptr, TimeInterval ival) {
+				return reinterpret_cast<RunLoopData *>(ptr)->wait(ival);
+			};
+			_run = [](void *ptr, TimeInterval ival, QueueWakeupInfo &&info) {
+				return reinterpret_cast<RunLoopData *>(ptr)->run(ival, info.flags, info.timeout);
+			};
+			_wakeup = [](void *ptr, WakeupFlags flags) {
+				return reinterpret_cast<RunLoopData *>(ptr)->wakeup(flags);
+			};
+			_cancel = [](void *ptr) { reinterpret_cast<RunLoopData *>(ptr)->cancel(); };
+			_destroy = [](void *ptr) { delete reinterpret_cast<RunLoopData *>(ptr); };
+
+			_timer = [](QueueData *d, void *ptr, TimerInfo &&info) -> Rc<TimerHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<RunLoopTimerHandle>::create(&data->_runloopTimerClass, move(info));
+			};
+
+			_thread = [](QueueData *d, void *ptr) -> Rc<ThreadHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<RunLoopThreadHandle>::create(&data->_runloopThreadClass);
+			};
+
+			// The RunLoop backend has no pollable-fd / process-exit primitive of its
+			// own (CFFileDescriptor/CFSocket are outside the freestanding CF surface),
+			// so the child process is reaped and its output drained by a repeating
+			// reactor timer — the same inline strategy used for file I/O below.
+			// Socket readiness follows the same pattern: the portable probe poller
+			// (a repeating reactor timer + zero-timeout poll(2)) backs _socketPoll,
+			// so listenSocket/connectSocket work on the main RunLoop too — with
+			// probe-interval latency; latency-sensitive socket work is still better
+			// placed on a KQueue-engine looper (e.g. the app thread).
+			_socketPoll = [](QueueData *d, void *ptr, SocketHandle sock, PollFlags flags,
+									 CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				return makeSocketProbeHandle(d, sock, flags, sprt::move(cb));
+			};
+			_spawnProcess = [](QueueData *d, void *ptr, ProcessInfo &&info,
+									Ref *ref) -> Rc<ProcessHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return spawnProcessRunLoop(d, &data->_runloopProcessClass, sprt::move(info), ref);
+			};
+
+			_makeFileHandle = [](QueueData *d, void *ptr, Rc<FileState> &&state) -> Rc<FileHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeFileInlineHandle(d, &data->_runloopFileClass, sprt::move(state));
+			};
+
+			// No filesystem-notification primitive either (FSEvents is outside the
+			// freestanding CF surface), so file-watch uses the portable stat-polling
+			// watch driven by a repeating reactor timer.
+			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info,
+								 Ref *ref) -> Rc<WatchHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeStatWatchHandle(d, &data->_runloopWatchClass, sprt::move(info), ref);
+			};
+
+			setupRunLoopHandleClass<RunLoopTimerHandle, RunLoopTimerSource>(&_info,
+					&_runloopTimerClass, true);
+			setupRunLoopHandleClass<RunLoopThreadHandle, RunLoopThreadSource>(&_info,
+					&_runloopThreadClass, true);
+			setupRunLoopProcessHandleClass(&_info, &_runloopProcessClass);
+			setupInlineFileHandleClass(&_info, &_runloopFileClass);
+			setupStatWatchClass(&_info, &_runloopWatchClass);
+			setupSocketHandleClasses(&_info, this);
+			setupSocketProbeClass(&_info, &_socketProbeClass);
+
+			_platformQueue = runloop;
+			_engine = QueueEngine::RunLoop;
+			return;
+		} else {
+			runloop->~RunLoopData();
+		}
+	}
+
 	if (hasFlag(info.engineMask, QueueEngine::KQueue)) {
 		// init kqueue classes
 
@@ -61,58 +144,62 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return Rc<KQueueThreadHandle>::create(&data->_kqueueThreadClass);
 			};
 
+			_listenHandle = [](QueueData *d, void *ptr, NativeHandle handle, PollFlags flags,
+									CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<ReadKQueueHandle>::create(&data->_kqueuePollFdClass, handle.fd, flags,
+						sprt::move(cb));
+			};
+
+			_socketPoll = [](QueueData *d, void *ptr, SocketHandle sock, PollFlags flags,
+									 CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<ReadKQueueHandle>::create(&data->_kqueuePollFdClass, int(sock), flags,
+						sprt::move(cb));
+			};
+
+			_spawnProcess = [](QueueData *d, void *ptr, ProcessInfo &&info,
+									Ref *ref) -> Rc<ProcessHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return spawnProcessKQueue(d, &data->_kqueueProcessClass, sprt::move(info), ref);
+			};
+
+			// kqueue cannot poll regular files, so file I/O uses the portable
+			// inline (timer-driven) strategy.
+			_makeFileHandle = [](QueueData *d, void *ptr, Rc<FileState> &&state) -> Rc<FileHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeFileInlineHandle(d, &data->_kqueueFileClass, sprt::move(state));
+			};
+
+			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info,
+								 Ref *ref) -> Rc<WatchHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				auto h = Rc<KQueueWatchHandle>::create(&data->_kqueueWatchClass, info.path,
+						info.mask, sprt::move(info.completion));
+				if (h && ref) {
+					h->setUserdata(ref);
+				}
+				return h;
+			};
+
 			setupKQueueHandleClass<KQueueTimerHandle, KQueueTimerSource>(&_info, &_kqueueTimerClass,
 					true);
 			setupKQueueHandleClass<KQueueThreadHandle, KQueueThreadSource>(&_info,
 					&_kqueueThreadClass, true);
+			setupKQueueHandleClass<ReadKQueueHandle, ReadKQueueSource>(&_info, &_kqueuePollFdClass,
+					true);
+			setupKQueueHandleClass<ProcessKQueueHandle, ProcessKQueueSource>(&_info,
+					&_kqueueProcessClass, true);
+			setupKQueueHandleClass<KQueueWatchHandle, KQueueWatchSource>(&_info, &_kqueueWatchClass,
+					true);
+			setupInlineFileHandleClass(&_info, &_kqueueFileClass);
+			setupSocketHandleClasses(&_info, this);
 
 			_platformQueue = queue;
 			_engine = QueueEngine::KQueue;
 			return;
 		} else {
 			queue->~KQueueData();
-		}
-	}
-
-	if (hasFlag(info.engineMask, QueueEngine::RunLoop)) {
-		// init runloop classes
-
-		auto runloop = new (memory::pool::acquire()) RunLoopData(_info.queue, this, info);
-		if (runloop->_runLoop) {
-			_submit = [](void *ptr) { return reinterpret_cast<RunLoopData *>(ptr)->submit(); };
-			_poll = [](void *ptr) { return reinterpret_cast<RunLoopData *>(ptr)->poll(); };
-			_wait = [](void *ptr, TimeInterval ival) {
-				return reinterpret_cast<RunLoopData *>(ptr)->wait(ival);
-			};
-			_run = [](void *ptr, TimeInterval ival, QueueWakeupInfo &&info) {
-				return reinterpret_cast<RunLoopData *>(ptr)->run(ival, info.flags, info.timeout);
-			};
-			_wakeup = [](void *ptr, WakeupFlags flags) {
-				return reinterpret_cast<RunLoopData *>(ptr)->wakeup(flags);
-			};
-			_cancel = [](void *ptr) { reinterpret_cast<RunLoopData *>(ptr)->cancel(); };
-			_destroy = [](void *ptr) { delete reinterpret_cast<RunLoopData *>(ptr); };
-
-			_timer = [](QueueData *d, void *ptr, TimerInfo &&info) -> Rc<TimerHandle> {
-				auto data = reinterpret_cast<Queue::Data *>(d);
-				return Rc<RunLoopTimerHandle>::create(&data->_runloopTimerClass, move(info));
-			};
-
-			_thread = [](QueueData *d, void *ptr) -> Rc<ThreadHandle> {
-				auto data = reinterpret_cast<Queue::Data *>(d);
-				return Rc<RunLoopThreadHandle>::create(&data->_runloopThreadClass);
-			};
-
-			setupRunLoopHandleClass<RunLoopTimerHandle, RunLoopTimerSource>(&_info,
-					&_runloopTimerClass, true);
-			setupRunLoopHandleClass<RunLoopThreadHandle, RunLoopThreadSource>(&_info,
-					&_runloopThreadClass, true);
-
-			_platformQueue = runloop;
-			_engine = QueueEngine::RunLoop;
-			return;
-		} else {
-			runloop->~RunLoopData();
 		}
 	}
 }
@@ -123,7 +210,8 @@ namespace sprt::dispatch::platform {
 
 Rc<QueueRef> getThreadQueue(QueueInfo &&info) {
 	// Allow only CFRunLoop
-	info.engineMask = QueueEngine::RunLoop;
+
+	info.engineMask &= QueueEngine::RunLoop | QueueEngine::KQueue;
 
 	return Queue::create(move(info));
 }

@@ -33,14 +33,14 @@ uint32_t Component::GetNextId() {
 
 void Component::clear() const {
 	if (destructor) {
-		if (soo) {
+		if (isStatic) {
 			destructor(staticStorage.bytes);
 		} else if (dynamicStorage.data) {
 			destructor(dynamicStorage.data);
 		}
 	}
 
-	soo = 0;
+	isStatic = 0;
 	destructor = nullptr;
 	dynamicStorage.size = 0;
 	dynamicStorage.data = nullptr;
@@ -48,7 +48,14 @@ void Component::clear() const {
 
 void ComponentContainer::removeAllComponents() {
 	_components.clear();
+	_componentsDirtyMask.clear();
 	_componentsDirty = true;
+	++_componentsVersion;
+}
+
+void ComponentContainer::resetComponentsDirty() {
+	_componentsDirtyMask.clear();
+	_componentsDirty = false;
 }
 
 } // namespace stappler::xenolith

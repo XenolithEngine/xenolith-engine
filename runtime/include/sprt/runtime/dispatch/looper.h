@@ -71,6 +71,59 @@ public:
 	Rc<PollHandle> listenPollableHandle(NativeHandle, PollFlags,
 			Function<Status(NativeHandle, PollFlags)> &&, Ref * = nullptr);
 
+	// Spawn a child process running `command` via the system shell. The returned
+	// handle represents the process; its completion fires once on exit with the
+	// exit code in `value`. ProcessInfo::reader receives merged stdout/stderr.
+	Rc<ProcessHandle> spawnProcess(ProcessInfo &&, Ref * = nullptr);
+
+	// Convenience form: `reader` receives output chunks; `onExit` receives the
+	// exit code and final Status.
+	Rc<ProcessHandle> spawnProcess(StringView command, Function<void(StringView)> &&reader,
+			Function<void(int exitCode, Status)> &&onExit, Ref * = nullptr);
+
+	// Asynchronous file I/O on this loop (non-blocking, no worker threads).
+	// readFile streams the file's bytes to the reader (each chunk on this thread)
+	// and fires the completion once when done; writeFile writes the given bytes
+	// honoring OpenFlags::Append and OpenFlags::CreateExclusive. The returned
+	// FileHandle can be reused to append further sequential operations via
+	// FileHandle::appendRead / appendWrite.
+	Rc<FileHandle> readFile(FileReadInfo &&, Ref * = nullptr);
+	Rc<FileHandle> writeFile(FileWriteInfo &&, Ref * = nullptr);
+
+	// Convenience forms (path + plain callbacks).
+	Rc<FileHandle> readFile(StringView path, Function<void(BytesView)> &&reader,
+			Function<void(Status)> &&onDone, Ref * = nullptr);
+	Rc<FileHandle> writeFile(StringView path, BytesView data, OpenFlags,
+			Function<void(Status)> &&onDone, Ref * = nullptr);
+
+	// Watch a single file by name for filesystem changes. The completion fires on
+	// each change with the observed WatchFlags in `value` and stays armed until
+	// the handle is cancelled. On Linux/Android this is inotify-backed and robust
+	// to atomic-replace saves; returns nullptr where no backend implementation
+	// exists (currently non-Linux/Android).
+	Rc<WatchHandle> watchFile(WatchInfo &&, Ref * = nullptr);
+
+	// Convenience form: `onChange` receives the WatchFlags of each change; return
+	// anything other than Status::Ok to cancel the watch.
+	Rc<WatchHandle> watchFile(StringView path, WatchFlags,
+			Function<Status(WatchFlags)> &&onChange, Ref * = nullptr);
+
+	// Listen for stream-socket connections on ListenInfo::address (see
+	// SocketAddress for the accepted text forms): onAccept runs on this thread
+	// once per connection, the completion fires once when the listener
+	// terminates. Returns nullptr where the backend has no socket support
+	// (wasm, CFRunLoop) or when bind/listen fails.
+	Rc<ListenHandle> listenSocket(ListenInfo &&, Ref * = nullptr);
+	Rc<ListenHandle> listenSocket(const SocketAddress &, ListenInfo::AcceptCallback &&onAccept,
+			Ref * = nullptr);
+
+	// Open a stream-socket connection (non-blocking); the completion fires
+	// exactly once with the connect result (possibly synchronously). Reads and
+	// writes may be issued on the returned handle right away.
+	Rc<StreamHandle> connectSocket(ConnectInfo &&, Ref * = nullptr);
+	Rc<StreamHandle> connectSocket(const SocketAddress &,
+			Function<void(StreamHandle *, Status)> &&onConnect, Ref * = nullptr);
+
 	// Perform task on this thread (only Complete callback will be executed)
 	// If current thread is looper thread - performs in place
 	Status performOnThread(Rc<Task> &&task, bool immediate = false);

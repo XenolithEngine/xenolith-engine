@@ -1,0 +1,20 @@
+# Xenolith runtime core functions
+
+These functions are extracted into a separate module because they serve as building blocks in the implementation of a custom libc when the runtime is used as libc itself, rather than in an umbrella configuration.
+
+When implementing a custom libc, the modules `runtime_core`, `runtime_libc_impl`, and `runtime_malloc` must together constitute a functional libc.
+
+The module includes:
+* Basic wrappers for libc functions (runtime_core_defaults.cpp)
+* Custom pthread implementation (runtime_core_pthread.cpp)
+* SPRT synchronization primitives (runtime_core_sprt.cpp)
+* Safe setjmp/longjmp implementation (runtime_core_setjmp.cpp)
+* Dynamic library loading support (runtime_core_dso.cpp)
+* Unicode and character classification support (runtime_core_chars.cpp, runtime_core_unicode.cpp)
+* File path manipulation functions (note that SPRT functions operate on paths in POSIX format on all systems) (runtime_core_filepath.cpp)
+* Memory pool subsystem (runtime_core_memory.cpp)
+* Safe random number generator functions (runtime_core_random.cpp)
+* Time-related functions (runtime_core_time.cpp)
+* Status and error encoding (runtime_core_status.cpp)
+* Standard logger (runtime_core_log.cpp)
+* Base64 and base16 encoding/decoding functions (runtime_core_base64.cpp)

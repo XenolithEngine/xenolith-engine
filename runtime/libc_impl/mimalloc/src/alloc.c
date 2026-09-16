@@ -541,9 +541,13 @@ static std_new_handler_t mi_get_new_handler(void) {
   return _ZSt15get_new_handlerv();
 }
 #else
-// note: on windows we could dynamically link to `?get_new_handler@std@@YAP6AXXZXZ`.
+// sprt: the freestanding runtime defines std::set_new_handler / std::get_new_handler
+// (builtin_libcxx.cpp) and exposes the current handler through this C accessor, so the
+// mangled `?get_new_handler@std@@YAP6AXXZXZ` need not be spelled from C. This lets a
+// handler installed via std::set_new_handler participate in the OOM retry loop below.
+extern void (*__sprt_get_new_handler(void))(void);
 static std_new_handler_t mi_get_new_handler(void) {
-  return NULL;
+  return (std_new_handler_t)__sprt_get_new_handler();
 }
 #endif
 

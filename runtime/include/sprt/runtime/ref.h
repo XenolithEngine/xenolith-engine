@@ -28,12 +28,11 @@
 
 #include <sprt/cxx/list>
 #include <sprt/cxx/new>
-#include <sprt/cxx/memory>
 #include <sprt/cxx/atomic>
 
 // enable Ref debug mode to track retain/release sources
 #ifndef SPRT_REF_DEBUG
-#define SPRT_REF_DEBUG 1
+#define SPRT_REF_DEBUG 0
 #endif
 
 // WinCRT instantiates Rc's in place of definition, not actual usage
@@ -53,6 +52,12 @@ inline T *__new(Args &&...args) noexcept;
 
 template <typename T>
 inline void __delete(T *t) noexcept;
+
+
+// You can assign an unique number for retain/release sequence to track leaked references
+// In this case, release should be called with the same id, as returned from retain.
+// Retain argument can be used as designated id, or maxOf<uint64_t>() to allocate unique id
+// If SPRT_REF_DEBUG is not enabled - it's noop
 
 template <typename T>
 inline uint64_t retain(T *t, uint64_t value = Max<uint64_t>) noexcept;
@@ -94,10 +99,14 @@ public:
 
 	template <typename T, typename... Args>
 	static T *__pnew(memory::pool_t *pool, Args &&...args) {
-		// Use __construct_at with disabled checker to use with protected constructors
-		return sprt::__construct_at(
-				reinterpret_cast<T *>(sprt::memory::pool::palloc(pool, sizeof(T), alignof(T))),
-				sprt::forward<Args>(args)...);
+		// Use __construct_at with disabled checker to use with protected constructors.
+		// palloc can return null (e.g. an APR pool that cannot honor the alignment);
+		// construct-at-null would be UB, so bail out instead.
+		auto mem = reinterpret_cast<T *>(sprt::memory::pool::palloc(pool, sizeof(T), alignof(T)));
+		if (!mem) {
+			return nullptr;
+		}
+		return sprt::__construct_at(mem, sprt::forward<Args>(args)...);
 	}
 
 	// Disable default ABI operators
@@ -136,26 +145,13 @@ protected:
 
 class SPRT_API Ref : public RefAlloc {
 public:
-	// You can assign an unique number for retain/release sequence to track leaked references
-	// In this case, release should be called with the same id, as returned from retain.
-	// Retain argument can be used as designated id, or maxOf<uint64_t>() to allocate unique id
-	// If SPRT_REF_DEBUG is not enabled - it's noop
+	virtual ~Ref();
 
 #if SPRT_REF_DEBUG
-	virtual ~Ref() {
-		if (isRetainTrackerEnabled()) {
-			memleak::releaseRef(this);
-		}
-	}
-
 	virtual void foreachBacktrace(
 			const callback<void(uint64_t, time_t, const __pool_list<StringView> &)> &cb) const {
 		memleak::foreachBacktrace(this, cb);
 	}
-
-#else
-	virtual ~Ref() = default;
-
 #endif
 
 protected:
@@ -196,7 +192,7 @@ protected:
 		if (decrementReferenceCount()) {
 			return true;
 		}
-		return false
+		return false;
 	}
 #endif
 
@@ -714,9 +710,11 @@ inline void RcBase<_Base, _Pointer>::set(const Pointer &value) {
 
 template <typename _Base, typename _Pointer>
 inline void RcBase<_Base, _Pointer>::swap(RcBase<Base, Pointer> &v) {
-	swap(_ptr, v._ptr);
+	// qualify: an unqualified swap() inside this member named `swap` suppresses
+	// ADL and resolves to the 1-arg member (ill-formed for these 2-arg calls).
+	sprt::swap(_ptr, v._ptr);
 #if SPRT_REF_DEBUG
-	swap(_id, v._id);
+	sprt::swap(_id, v._id);
 #endif
 }
 
@@ -1076,7 +1074,10 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(Args &&.
 		}
 	});
 	if (!ret) {
-		__delete(pRet);
+		// init failed: release pRet through the SharedRef-aware destructor
+		// (the free __delete() would skip pool + allocator teardown and leak).
+		[[maybe_unused]]
+		Self deleter(pRet, true);
 	}
 	return ret;
 }
@@ -1093,7 +1094,10 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(memory::
 		}
 	});
 	if (!ret) {
-		__delete(pRet);
+		// init failed: release pRet through the SharedRef-aware destructor
+		// (the free __delete() would skip pool + allocator teardown and leak).
+		[[maybe_unused]]
+		Self deleter(pRet, true);
 	}
 	return ret;
 }
@@ -1110,7 +1114,10 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(SharedRe
 		}
 	});
 	if (!ret) {
-		__delete(pRet);
+		// init failed: release pRet through the SharedRef-aware destructor
+		// (the free __delete() would skip pool + allocator teardown and leak).
+		[[maybe_unused]]
+		Self deleter(pRet, true);
 	}
 	return ret;
 }
@@ -1181,6 +1188,17 @@ template <typename T>
 inline void release(const NotNull<T> &t, uint64_t value) noexcept {
 	sprt::release(t.get(), value);
 }
+
+
+template <typename T>
+struct hash<Rc<T>> {
+	using is_transparent = void;
+
+	constexpr size_t operator()(const Rc<T> &value) const noexcept {
+		return hash<T *>()(value.get());
+	}
+};
+
 
 } // namespace sprt
 

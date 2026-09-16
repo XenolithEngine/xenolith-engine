@@ -55,7 +55,7 @@ public:
 
 	static bool readFile(PathWriter *p, const FileInfo &str) {
 		if (!str.path.empty()) {
-			auto content = filesystem::readTextFile<memory::StandartInterface>(str);
+			auto content = filesystem::readTextFile<mem_std::Interface>(str);
 			return readFileContent(p, content);
 		}
 		return false;
@@ -723,6 +723,52 @@ auto pathToString(const Source &source, bool newline) -> typename Interface::Str
 	return buffer.str();
 }
 
+bool DashPattern::isSolid() const {
+	if (count == 0) {
+		return true;
+	}
+
+	// An all-zero pattern has no period to advance along, so treating it as anything but solid
+	// would leave the dash state machine spinning forever.
+	for (uint32_t i = 0; i < count; ++i) {
+		if (lengths[i] > 0.0f) {
+			return false;
+		}
+	}
+	return true;
+}
+
+float DashPattern::getPeriod() const {
+	float ret = 0.0f;
+	for (uint32_t i = 0; i < count; ++i) { ret += lengths[i]; }
+	return ret;
+}
+
+bool DashPattern::set(SpanView<float> value) {
+	*this = DashPattern{{}, offset, 0};
+
+	if (value.empty()) {
+		return true;
+	}
+
+	// SVG: a negative value is an error for the whole list, not just for that entry.
+	for (auto &it : value) {
+		if (it < 0.0f || sprt::isnan(it)) {
+			return false;
+		}
+	}
+
+	auto n = sprt::min(uint32_t(value.size()), MaxCount);
+	if (value.size() > MaxCount) {
+		log::source().warn("VectorPath", "dash pattern of ", value.size(),
+				" entries truncated to ", MaxCount);
+	}
+
+	for (uint32_t i = 0; i < n; ++i) { lengths[i] = value[i]; }
+	count = uint8_t(n);
+	return true;
+}
+
 template <>
 void PathData<memory::PoolInterface>::clear() {
 	points.clear();
@@ -730,7 +776,7 @@ void PathData<memory::PoolInterface>::clear() {
 }
 
 template <>
-void PathData<memory::StandartInterface>::clear() {
+void PathData<mem_std::Interface>::clear() {
 	points.clear();
 	commands.clear();
 }
@@ -741,7 +787,7 @@ PathWriter PathData<memory::PoolInterface>::getWriter() {
 }
 
 template <>
-PathWriter PathData<memory::StandartInterface>::getWriter() {
+PathWriter PathData<mem_std::Interface>::getWriter() {
 	return PathWriter(*this);
 }
 
@@ -754,23 +800,23 @@ auto PathData<memory::PoolInterface>::encode<memory::PoolInterface>() const
 
 template <>
 template <>
-auto PathData<memory::PoolInterface>::encode<memory::StandartInterface>() const
-		-> memory::StandartInterface::BytesType {
-	return encodePath<memory::StandartInterface>(*this);
+auto PathData<memory::PoolInterface>::encode<mem_std::Interface>() const
+		-> mem_std::Interface::BytesType {
+	return encodePath<mem_std::Interface>(*this);
 }
 
 template <>
 template <>
-auto PathData<memory::StandartInterface>::encode<memory::PoolInterface>() const
+auto PathData<mem_std::Interface>::encode<memory::PoolInterface>() const
 		-> memory::PoolInterface::BytesType {
 	return encodePath<memory::PoolInterface>(*this);
 }
 
 template <>
 template <>
-auto PathData<memory::StandartInterface>::encode<memory::StandartInterface>() const
-		-> memory::StandartInterface::BytesType {
-	return encodePath<memory::StandartInterface>(*this);
+auto PathData<mem_std::Interface>::encode<mem_std::Interface>() const
+		-> mem_std::Interface::BytesType {
+	return encodePath<mem_std::Interface>(*this);
 }
 
 template <>
@@ -782,23 +828,23 @@ auto PathData<memory::PoolInterface>::toString<memory::PoolInterface>(bool newli
 
 template <>
 template <>
-auto PathData<memory::PoolInterface>::toString<memory::StandartInterface>(bool newline) const
-		-> memory::StandartInterface::StringType {
-	return pathToString<memory::StandartInterface>(*this, newline);
+auto PathData<memory::PoolInterface>::toString<mem_std::Interface>(bool newline) const
+		-> mem_std::Interface::StringType {
+	return pathToString<mem_std::Interface>(*this, newline);
 }
 
 template <>
 template <>
-auto PathData<memory::StandartInterface>::toString<memory::PoolInterface>(bool newline) const
+auto PathData<mem_std::Interface>::toString<memory::PoolInterface>(bool newline) const
 		-> memory::PoolInterface::StringType {
 	return pathToString<memory::PoolInterface>(*this, newline);
 }
 
 template <>
 template <>
-auto PathData<memory::StandartInterface>::toString<memory::StandartInterface>(bool newline) const
-		-> memory::StandartInterface::StringType {
-	return pathToString<memory::StandartInterface>(*this, newline);
+auto PathData<mem_std::Interface>::toString<mem_std::Interface>(bool newline) const
+		-> mem_std::Interface::StringType {
+	return pathToString<mem_std::Interface>(*this, newline);
 }
 
 PathWriter::PathWriter(PathData<mem_std::Interface> &d)
@@ -1022,7 +1068,106 @@ PathWriter &PathWriter::addRect(float x, float y, float width, float height, flo
 	return *this;
 }
 
-bool PathWriter::addPath(const PathData<memory::StandartInterface> &d) {
+PathWriter &PathWriter::addBox(float x, float y, float width, float height, float r) {
+	r = sprt::max(0.0f, r);
+	if (r == 0.0f) {
+		return addRect(x, y, width, height);
+	}
+	return addBox(x, y, width, height, r, r, r, r);
+}
+
+PathWriter &PathWriter::addBox(float x, float y, float width, float height, float rtlbr,
+		float rtrbl) {
+	rtlbr = sprt::max(0.0f, rtlbr);
+	rtrbl = sprt::max(0.0f, rtrbl);
+	if (rtlbr == 0.0f && rtrbl == 0.0f) {
+		return addRect(x, y, width, height);
+	}
+	// rtlbr = top-left & bottom-right; rtrbl = top-right & bottom-left
+	return addBox(x, y, width, height, rtlbr, rtrbl, rtlbr, rtrbl);
+}
+
+PathWriter &PathWriter::addBox(float x, float y, float width, float height, float rtl, float rtr,
+		float rbr, float rbl) {
+	// Clamp negative values to 0
+	rtl = sprt::max(0.0f, rtl);
+	rtr = sprt::max(0.0f, rtr);
+	rbr = sprt::max(0.0f, rbr);
+	rbl = sprt::max(0.0f, rbl);
+
+
+	float f = 1.0f;
+	auto fitEdge = [&f](float length, float a, float b) {
+		const float sum = a + b;
+		if (sum > 0.0f) {
+			f = sprt::min(f, length / sum);
+		}
+	};
+
+	fitEdge(width, rtl, rtr); // top edge
+	fitEdge(width, rbl, rbr); // bottom edge
+	fitEdge(height, rtl, rbl); // left edge
+	fitEdge(height, rtr, rbr); // right edge
+
+	if (f < 1.0f) {
+		rtl *= f;
+		rtr *= f;
+		rbr *= f;
+		rbl *= f;
+	}
+
+	if (rtl == 0.0f && rtr == 0.0f && rbr == 0.0f && rbl == 0.0f) {
+		return addRect(x, y, width, height);
+	}
+
+	float rx = x + width;
+	float ry = y + height;
+
+	auto hasStraightPart = [](float length, float a, float b) {
+		constexpr float epsilon = 1.0f / 4'096.0f;
+		return a + b < length - epsilon;
+	};
+
+	// Start at top edge after TL corner
+	moveTo(x + rtl, y);
+
+	// Top edge to TR corner
+	if (hasStraightPart(width, rtl, rtr)) {
+		lineTo(rx - rtr, y);
+	}
+	if (rtr > 0.0f) {
+		arcTo(rtr, rtr, 0, false, true, rx, y + rtr);
+	}
+
+	// Right edge to BR corner
+	if (hasStraightPart(height, rtr, rbr)) {
+		lineTo(rx, ry - rbr);
+	}
+	if (rbr > 0.0f) {
+		arcTo(rbr, rbr, 0, false, true, rx - rbr, ry);
+	}
+
+	// Bottom edge to BL corner
+	if (hasStraightPart(width, rbr, rbl)) {
+		lineTo(x + rbl, ry);
+	}
+	if (rbl > 0.0f) {
+		arcTo(rbl, rbl, 0, false, true, x, ry - rbl);
+	}
+
+	// Left edge back to TL corner
+	if (rtl > 0.0f) {
+		if (hasStraightPart(height, rtl, rbl)) {
+			lineTo(x, y + rtl);
+		}
+		// TL corner arc (closes to moveTo point)
+		arcTo(rtl, rtl, 0, false, true, x + rtl, y);
+	}
+	closePath();
+	return *this;
+}
+
+bool PathWriter::addPath(const PathData<mem_std::Interface> &d) {
 	commands.reserve(commands.size() + d.commands.size());
 	for (auto &it : d.commands) { commands.emplace_back(Command(it)); }
 
@@ -1062,10 +1207,20 @@ bool PathWriter::addPath(BytesView data) {
 
 	auto ncommands = data::cbor::_readInt(reader);
 	auto npoints = data::cbor::_readInt(reader);
-	commands.reserve(ncommands);
-	uvPoints.reserve(ncommands);
-	points.reserve(npoints);
-	for (; ncommands != 0; --ncommands) {
+	if (ncommands < 0 || npoints < 0) {
+		log::source().error("vg::PathWriter", "Invalid command/point count in binary path");
+		return false;
+	}
+	// each command/point consumes at least one input byte, so the remaining input
+	// length is a safe upper bound — avoids a huge allocation and a runaway loop
+	// from a forged count
+	size_t reserveCommands =
+			(ncommands < int64_t(reader.size())) ? size_t(ncommands) : reader.size();
+	size_t reservePoints = (npoints < int64_t(reader.size())) ? size_t(npoints) : reader.size();
+	commands.reserve(reserveCommands);
+	uvPoints.reserve(reserveCommands);
+	points.reserve(reservePoints);
+	for (; ncommands != 0 && !reader.empty(); --ncommands) {
 		auto cmd = data::cbor::_readInt(reader);
 
 		if (version == 2) {

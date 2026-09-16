@@ -91,6 +91,12 @@ struct SP_PUBLIC Asn1Decoder {
 		} else {
 			size = sizeByte;
 		}
+		// clamp to the remaining input so a forged TLV length can't build a sub-view
+		// (or advance r) past the end of the buffer — every caller derives its
+		// BytesViewNetwork(r.data(), size) / `r += size` from this value
+		if (size > r.size()) {
+			size = r.size();
+		}
 		return size;
 	}
 

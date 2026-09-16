@@ -35,8 +35,17 @@ static Rc<VectorCanvasDeferredResult> VectorSprite_runDeferredVectorCavas(
 		const VectorCanvasConfig &config, bool waitOnReady) {
 	Rc<VectorCanvasDeferredResult> ret = Rc<VectorCanvasDeferredResult>::create(waitOnReady);
 	queue->performAsync([image = move(image), config, ret]() mutable {
+#if XL_FRAME_ACCOUNT
+		// Inside the task, so it is the work and not the queue latency in front of it. Stamped
+		// before setResult, because setResult is what raises the signal the consumer waits on.
+		const auto workStart = core::getAccountClock();
+#endif
 		auto canvas = VectorCanvas::getInstance();
-		ret->setResult(canvas->draw(config, move(image)));
+		auto result = canvas->draw(config, move(image));
+#if XL_FRAME_ACCOUNT
+		ret->setWorkTime(core::getAccountClock() - workStart);
+#endif
+		ret->setResult(sp::move(result));
 	}, ret);
 	return ret;
 }
@@ -57,6 +66,16 @@ static float VectorSprite_getPseudoSdfOffset(float value) {
 }
 
 VectorSprite::VectorSprite() { }
+
+bool VectorSprite::init() {
+	if (!Sprite::init()) {
+		return false;
+	}
+
+	_imageScissorComponent = addSystem(Rc<DynamicStateSystem>::create());
+
+	return true;
+}
 
 bool VectorSprite::init(Rc<VectorImage> &&img) {
 	XL_ASSERT(img, "Image should not be nullptr");
@@ -303,8 +322,15 @@ void VectorSprite::pushCommands(FrameInfo &frame, NodeVisitFlags flags) {
 			auto reqMemSize = sizeof(InstanceVertexData) * targetData.size();
 
 			// pool memory is 16-bytes aligned, no problems with Mat4
-			auto tmpData = new (memory::pool::palloc(frame.pool->getPool(), reqMemSize))
-					InstanceVertexData[targetData.size()];
+			// Note: use per-element placement-new instead of array placement-new -
+			// InstanceVertexData is non-trivially-destructible, so array placement-new
+			// would reserve/write an array cookie before element 0 (Itanium ABI),
+			// overflowing the exactly-sized allocation above.
+			auto tmpData = reinterpret_cast<InstanceVertexData *>(
+					memory::pool::palloc(frame.pool->getPool(), reqMemSize));
+			for (size_t i = 0; i < targetData.size(); ++i) {
+				new (tmpData + i) InstanceVertexData();
+			}
 			auto target = tmpData;
 			if (_normalized) {
 				auto transform = frame.modelTransformStack.back() * _imageTargetTransform;
@@ -449,6 +475,9 @@ void VectorSprite::updateVertexes(FrameInfo &frame) {
 		}
 
 		if (_deferred) {
+#if XL_FRAME_ACCOUNT
+			_director->countDeferredSpawned();
+#endif
 			_deferredResult =
 					VectorSprite_runDeferredVectorCavas(_director->getApplication()->getLooper(),
 							move(imageData), config, _waitDeferred);
@@ -517,6 +546,12 @@ void VectorSprite::updateVertexesColor() {
 }
 
 RenderingLevel VectorSprite::getRealRenderingLevel() const {
+	// The Overlay level outranks everything a sprite could resolve for itself, including an
+	// explicit setRenderingLevel: a subtree lifted onto the overlay goes as a whole.
+	if (_inOverlay) {
+		return RenderingLevel::Overlay;
+	}
+
 	auto level = _renderingLevel;
 	if (level == RenderingLevel::Default) {
 		if (_displayedColor.a < 1.0f || !_texture || _materialInfo.getLineWidth() != 0.0f) {

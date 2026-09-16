@@ -195,11 +195,16 @@ ParticlePersistentData::EmitterData ParticlePersistentData::spawnEmitter(DeviceM
 				sizeof(ParticleEmissionPoints) + s->emissionPoints.size() * sizeof(Vec2)));
 	}
 
-	Buffer *buffers[] = {emitterBuffer.get(), particlesBuffer.get(), emissionData.get()};
-
-	alloc->emplaceObjects(AllocationUsage::DeviceLocal, SpanView<Image *>(), makeSpanView(buffers));
-
-	s->data.emissionData = UVec2::convertFromPacked(emissionData->getDeviceAddress());
+	if (emissionData) {
+		Buffer *buffers[] = {emitterBuffer.get(), particlesBuffer.get(), emissionData.get()};
+		alloc->emplaceObjects(AllocationUsage::DeviceLocal, SpanView<Image *>(),
+				makeSpanView(buffers));
+		s->data.emissionData = UVec2::convertFromPacked(emissionData->getDeviceAddress());
+	} else {
+		Buffer *buffers[] = {emitterBuffer.get(), particlesBuffer.get()};
+		alloc->emplaceObjects(AllocationUsage::DeviceLocal, SpanView<Image *>(),
+				makeSpanView(buffers));
+	}
 
 	addStaging(emitterBuffer, emitterBuffer->getSize(), 0,
 			[&](uint8_t *ptr, VkDeviceSize size) { ::__sprt_memcpy(ptr, &s->data, size); });
@@ -214,12 +219,14 @@ ParticlePersistentData::EmitterData ParticlePersistentData::spawnEmitter(DeviceM
 		});
 	}
 
-	addStaging(emissionData, emissionData->getSize(), 0, [&](uint8_t *ptr, VkDeviceSize size) {
-		auto points = reinterpret_cast<ParticleEmissionPoints *>(ptr);
-		points->count = static_cast<uint32_t>(s->emissionPoints.size());
-		ptr += sizeof(ParticleEmissionPoints);
-		sprt::memcpy(ptr, s->emissionPoints.data(), s->emissionPoints.size() * sizeof(Vec2));
-	});
+	if (emissionData) {
+		addStaging(emissionData, emissionData->getSize(), 0, [&](uint8_t *ptr, VkDeviceSize size) {
+			auto points = reinterpret_cast<ParticleEmissionPoints *>(ptr);
+			points->count = static_cast<uint32_t>(s->emissionPoints.size());
+			ptr += sizeof(ParticleEmissionPoints);
+			sprt::memcpy(ptr, s->emissionPoints.data(), s->emissionPoints.size() * sizeof(Vec2));
+		});
+	}
 
 	return EmitterData{
 		id,
@@ -258,12 +265,17 @@ bool ParticleEmitterAttachment::init(AttachmentBuilder &builder) {
 
 void ParticleEmitterAttachment::handleInput(FrameQueue &q, ParticleEmitterAttachmentHandle &handle,
 		core::AttachmentInputData *d, Function<void(bool)> &&complete) {
-	auto ctx = static_cast<FrameContextHandle2d *>(d);
 	auto dFrame = q.getFrame().get_cast<DeviceFrameHandle>();
 
-	if (!d) {
+	// The frame can be gone by now: with dependencies, submitInput defers this callback keeping
+	// only the FrameQueue, and FrameQueue::tryReleaseFrame() drops _frame once everything finalized
+	// (common during shutdown).
+	if (!d || !dFrame) {
 		complete(false);
+		return;
 	}
+
+	auto ctx = static_cast<FrameContextHandle2d *>(d);
 
 	Vector<uint64_t> ids;
 
@@ -347,6 +359,11 @@ bool ParticlePass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuil
 	// clang-format on
 
 	passBuilder.setAvailabilityChecker([this](const FrameQueue &queue, const QueuePassData &) {
+		auto *dev = static_cast<xenolith::vk::Device *>(queue.getFrame()->getDevice());
+		if (!dev->hasDynamicIndexedBuffers()) {
+			return false;
+		}
+
 		auto fHandle = queue.getAttachment(_emitters);
 		auto aHandle = fHandle->handle.get_cast<ParticleEmitterAttachmentHandle>();
 
@@ -358,6 +375,34 @@ bool ParticlePass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuil
 	}
 
 	return true;
+}
+
+void ParticlePass::prepare(core::Device &dev) {
+	auto &vkDev = static_cast<xenolith::vk::Device &>(dev);
+	if (vkDev.hasDynamicIndexedBuffers()) {
+		return;
+	}
+
+	log::source().info("vk::ParticlePass",
+			"shaderStorageBufferArrayDynamicIndexing unsupported; "
+			"ParticleUpdateComp pipeline disabled");
+
+	for (auto &subpass : _data->subpasses) {
+		const_cast<core::SubpassData *>(subpass)->computePipelines.clear();
+	}
+	for (auto &layout : _data->pipelineLayouts) {
+		const_cast<core::PipelineLayoutData *>(layout)->computePipelines.clear();
+		if (layout->defaultFamily) {
+			const_cast<core::PipelineFamilyData *>(layout->defaultFamily)->computePipelines.clear();
+		}
+		for (auto &family : layout->families) {
+			const_cast<core::PipelineFamilyData *>(family)->computePipelines.clear();
+		}
+	}
+	if (auto *q = const_cast<core::QueueData *>(_data->queue)) {
+		q->computePipelines.erase(UpdatePipelineName);
+		q->programs.erase("ParticleUpdateComp");
+	}
 }
 
 void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::FrameQueue &queue,
@@ -440,6 +485,9 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 		auto lifetime = d.lifetime.init + d.lifetime.rnd;
 		auto framesInGen =
 				uint32_t(TimeInterval::floatSeconds(lifetime).toMicros() / d.frameInterval);
+
+		// avoid division-by-zero / infinite loops when lifetime rounds down to 0 frames
+		framesInGen = sprt::max(1u, framesInGen);
 
 		auto dt = ctx->clock - e.second.clock;
 		auto v = float(dt) / d.frameInterval;

@@ -65,13 +65,13 @@ typedef __UINT8_TYPE__ __SPRT_ID(uint8_t);
 #ifdef __UINT8_C
 #define __SPRT_UINT8_C(C) __UINT8_C(C)
 #else
-#error "Compiler-assisted __UINT8_FMTx__ is not defined"
+#error "Compiler-assisted __UINT8_C is not defined"
 #endif
 
 #ifdef __UINT8_C_SUFFIX__
 #define __UINT8_C_SUFFIX __UINT8_C_SUFFIX__
 #else
-#error "Compiler-assisted __UINT8_FMTx__ is not defined"
+#error "Compiler-assisted __UINT8_C_SUFFIX__ is not defined"
 #endif
 
 #else // __UINT8_TYPE__

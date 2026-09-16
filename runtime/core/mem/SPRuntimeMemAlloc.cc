@@ -70,6 +70,22 @@ static MemNode *Allocator_malloc(size_t size, uint32_t index) {
 	uint32_t mapped = 0;
 	uint8_t *ptr = nullptr;
 #if 0
+	// NOTE: this page-alignment gate is the wrong criterion for choosing mmap.
+	// Anonymous mmap only beats malloc/arena allocation for *large* blocks: both
+	// glibc and macOS deliberately avoid it below ~128 KiB. Below that threshold
+	// mmap loses to malloc because of first-touch page faults, mandatory kernel
+	// zeroing, page-alignment waste, per-call syscall cost, and no free-list reuse
+	// (a freed mmap block goes straight back to the kernel and must re-fault).
+	//   - glibc: default M_MMAP_THRESHOLD is 128 KiB and ratchets dynamically up
+	//     to 32 MiB; it only mmaps at/above that. A real benchmark (Quickwit)
+	//     measured ~330 MB/s when forcing mmap (threshold=0) vs ~700 MB/s with a
+	//     4 MiB threshold.
+	//   - macOS libmalloc routes only the "large" zone (~128 KiB+) to mach_vm_alloc;
+	//     smaller sizes stay in pooled tiny/small/medium magazines.
+	// BOUNDARY_SIZE (8 KiB) being page-aligned says nothing about this: it would
+	// start mmapping MIN_ALLOC (16 KiB) nodes, squarely in the range where mmap
+	// is a net loss. If re-enabled, gate on an absolute size (>= ~128 KiB) and
+	// ideally only for the large, non-recycled sink nodes (index >= MAX_INDEX).
 	static bool isPageAligned = config::BOUNDARY_SIZE % platform::getMemoryPageSize() == 0;
 	if (isPageAligned) {
 		ptr = Allocator_mmap(size);
@@ -155,10 +171,13 @@ MemNode *Allocator::alloc(size_t in_size) {
 		size = config::MIN_ALLOC;
 	}
 
+	// `size` is clamped to [MIN_ALLOC, UINT32_MAX] above, so index is in
+	// [1, (0xFFFFE000 >> BOUNDARY_INDEX) - 1] and always fits MemNode::index.
+	// Indices >= MAX_INDEX are valid and routed to the sink (buf[0]); only the
+	// `index <= last` path below dereferences buf[index], and `last` is kept
+	// < MAX_INDEX, so that access is in-bounds. (Upstream APR's
+	// `index > UINT32_MAX` guard is dead here since index is uint32_t.)
 	uint32_t index = uint32_t(size >> config::BOUNDARY_INDEX) - 1;
-	if (index > Max<uint32_t>) {
-		return nullptr;
-	}
 
 	MemNode *node = nullptr;
 	MemNode **ref = nullptr;
@@ -309,7 +328,7 @@ void Allocator::free(MemNode *node) {
 		++i;
 	}
 
-	if (i >= 1'024 * 128) {
+	if (i >= 1'024 * 16) {
 		__sprt_perror("ERRER: pool double-free detected!\n");
 		__sprt_abort();
 	}

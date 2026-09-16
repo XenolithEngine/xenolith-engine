@@ -43,6 +43,9 @@ struct SPRT_API DecorationInfo {
 	float resizeInset = 0.0f;
 	float borderRadius = 0.0f;
 	float shadowWidth = 0.0f;
+
+	// For user-space decor, shadow intensivity values for incative/active window;
+	// Note that on wayland it's baked with initial values
 	float shadowMinValue = 0.1f;
 	float shadowMaxValue = 0.25f;
 	Vec2 shadowOffset;

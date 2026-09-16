@@ -24,6 +24,9 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS_COM_CXX_H_
 
 #include <sprt/wrappers/windows/com_api.h>
+// SIGDN / FILEOPENDIALOGOPTIONS / COMDLG_FILTERSPEC: the value tables IFileDialog's methods are
+// spelled in terms of. They are ABI, so they live under abi/ and are pinned against the SDK there.
+#include <sprt/wrappers/windows/abi/shlobj.h>
 
 #ifdef __cplusplus
 
@@ -49,6 +52,12 @@ typedef struct _ITEMIDLIST {
 typedef ITEMIDLIST ITEMIDLIST_ABSOLUTE;
 typedef ITEMIDLIST_ABSOLUTE *PIDLIST_ABSOLUTE;
 typedef const ITEMIDLIST_ABSOLUTE *PCIDLIST_ABSOLUTE;
+
+// A single-level ("child") id relative to some folder, and an array of them: what
+// SHOpenFolderAndSelectItems takes to say which entries to highlight.
+typedef ITEMIDLIST ITEMID_CHILD;
+typedef const ITEMID_CHILD *PCUITEMID_CHILD;
+typedef PCUITEMID_CHILD const *PCUITEMID_CHILD_ARRAY;
 
 struct IWbemCallResult;
 struct IWbemObjectSink;
@@ -549,6 +558,228 @@ public:
 			/* [annotation][string][out] */
 			LPWSTR *ppszError) = 0;
 };
+
+template <typename T>
+void **IID_PPV_ARGS_Helper(T **__pp) {
+	(void)static_cast<IUnknown *>(*__pp); // compile-time check: T derives from IUnknown
+	return reinterpret_cast<void **>(__pp);
+}
+#define IID_PPV_ARGS(ppType) __uuidof(**(ppType)), IID_PPV_ARGS_Helper(ppType)
+
+// ---- IShellItem / IFileOperation ([shobjidl_core]) ------------------------
+MIDL_INTERFACE("43826d1e-e718-42ee-bc55-a1e261c37bfe")
+IShellItem : public IUnknown {
+public:
+	virtual HRESULT STDMETHODCALLTYPE BindToHandler(void *pbc, const GUID &bhid, REFIID riid,
+			void **ppv) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetParent(IShellItem * *ppsi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetDisplayName(DWORD sigdnName, LPWSTR * ppszName) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetAttributes(ULONG sfgaoMask, ULONG * psfgaoAttribs) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Compare(IShellItem * psi, DWORD hint, int *piOrder) = 0;
+};
+
+MIDL_INTERFACE("947aab5f-0a5c-4c13-b4d6-4bf7836fc9f8")
+IFileOperation : public IUnknown {
+public:
+	virtual HRESULT STDMETHODCALLTYPE Advise(void *pfops, DWORD *pdwCookie) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Unadvise(DWORD dwCookie) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetOperationFlags(DWORD dwOperationFlags) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetProgressMessage(LPCWSTR pszMessage) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetProgressDialog(void *popd) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetProperties(void *pproparray) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetOwnerWindow(HANDLE hwndOwner) = 0;
+	virtual HRESULT STDMETHODCALLTYPE ApplyPropertiesToItem(IShellItem * psiItem) = 0;
+	virtual HRESULT STDMETHODCALLTYPE ApplyPropertiesToItems(void *punkItems) = 0;
+	virtual HRESULT STDMETHODCALLTYPE RenameItem(IShellItem * psiItem, LPCWSTR pszNewName,
+			void *pfopsItem) = 0;
+	virtual HRESULT STDMETHODCALLTYPE RenameItems(void *pUnkItems, LPCWSTR pszNewName) = 0;
+	virtual HRESULT STDMETHODCALLTYPE MoveItem(IShellItem * psiItem,
+			IShellItem * psiDestinationFolder, LPCWSTR pszNewName, void *pfopsItem) = 0;
+	virtual HRESULT STDMETHODCALLTYPE MoveItems(void *punkItems,
+			IShellItem *psiDestinationFolder) = 0;
+	virtual HRESULT STDMETHODCALLTYPE CopyItem(IShellItem * psiItem,
+			IShellItem * psiDestinationFolder, LPCWSTR pszCopyName, void *pfopsItem) = 0;
+	virtual HRESULT STDMETHODCALLTYPE CopyItems(void *punkItems,
+			IShellItem *psiDestinationFolder) = 0;
+	virtual HRESULT STDMETHODCALLTYPE DeleteItem(IShellItem * psiItem, void *pfopsItem) = 0;
+	virtual HRESULT STDMETHODCALLTYPE DeleteItems(void *punkItems) = 0;
+	virtual HRESULT STDMETHODCALLTYPE NewItem(IShellItem * psiDestinationFolder,
+			DWORD dwFileAttributes, LPCWSTR pszName, LPCWSTR pszTemplateName, void *pfopsItem) = 0;
+	virtual HRESULT STDMETHODCALLTYPE PerformOperations(void) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetAnyOperationsAborted(BOOL * pfAnyOperationsAborted) = 0;
+};
+
+// coclass {3ad05575-8857-4850-9277-11b85bdb8e09}. inline (C++17) so every including
+// TU shares one definition and it is not flagged unused.
+inline constexpr GUID CLSID_FileOperation = {0x3ad0'5575, 0x8857, 0x4850,
+	{0x92, 0x77, 0x11, 0xb8, 0x5b, 0xdb, 0x8e, 0x09}};
+
+// ---- IFileDialog and friends ([shobjidl_core]) ----------------------------
+//
+// SIGDN, FOS_* and COMDLG_FILTERSPEC live in abi/shlobj.h, pulled in above: they are plain values
+// and layouts that have to be pinned against the SDK, which is what the abi/ half is for.
+
+MIDL_INTERFACE("b4db1657-70d7-485e-8e3e-6fcb5a5c1802")
+IModalWindow : public IUnknown {
+public:
+	// Runs its own modal message loop and does not return until the dialog closes. S_OK means the
+	// user accepted; HRESULT_FROM_WIN32(ERROR_CANCELLED) means they dismissed it.
+	virtual HRESULT STDMETHODCALLTYPE Show(HANDLE hwndOwner) = 0;
+};
+
+MIDL_INTERFACE("42f85136-db7e-439c-85f1-e4075d135fc8")
+IFileDialog : public IModalWindow {
+public:
+	virtual HRESULT STDMETHODCALLTYPE SetFileTypes(UINT cFileTypes,
+			const COMDLG_FILTERSPEC *rgFilterSpec) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetFileTypeIndex(UINT iFileType) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetFileTypeIndex(UINT * piFileType) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Advise(void *pfde, DWORD *pdwCookie) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Unadvise(DWORD dwCookie) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetOptions(DWORD fos) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetOptions(DWORD * pfos) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetDefaultFolder(IShellItem * psi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetFolder(IShellItem * psi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetFolder(IShellItem * *ppsi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetCurrentSelection(IShellItem * *ppsi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetFileName(LPCWSTR pszName) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetFileName(LPWSTR * pszName) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetTitle(LPCWSTR pszTitle) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetOkButtonLabel(LPCWSTR pszText) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetFileNameLabel(LPCWSTR pszLabel) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetResult(IShellItem * *ppsi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE AddPlace(IShellItem * psi, int fdap) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetDefaultExtension(LPCWSTR pszDefaultExtension) = 0;
+	// Dismisses the dialog from another thread; hr becomes Show()'s return value.
+	virtual HRESULT STDMETHODCALLTYPE Close(HRESULT hr) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetClientGuid(const GUID &guid) = 0;
+	virtual HRESULT STDMETHODCALLTYPE ClearClientData(void) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetFilter(void *pFilter) = 0;
+};
+
+MIDL_INTERFACE("b63ea76d-1f85-456f-a19c-48159efa858b")
+IShellItemArray : public IUnknown {
+public:
+	virtual HRESULT STDMETHODCALLTYPE BindToHandler(void *pbc, const GUID &bhid, REFIID riid,
+			void **ppvOut) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetPropertyStore(int flags, REFIID riid, void **ppv) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetPropertyDescriptionList(const void *keyType, REFIID riid,
+			void **ppv) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetAttributes(int AttribFlags, ULONG sfgaoMask,
+			ULONG *psfgaoAttribs) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetCount(DWORD * pdwNumItems) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetItemAt(DWORD dwIndex, IShellItem * *ppsi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE EnumItems(void **ppenumShellItems) = 0;
+};
+
+MIDL_INTERFACE("d57c7288-d4ad-4768-be02-9d969532d960")
+IFileOpenDialog : public IFileDialog {
+public:
+	virtual HRESULT STDMETHODCALLTYPE GetResults(IShellItemArray * *ppenum) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetSelectedItems(IShellItemArray * *ppsai) = 0;
+};
+
+MIDL_INTERFACE("84bccd23-5fde-4cdb-aea4-af64b83d78ab")
+IFileSaveDialog : public IFileDialog {
+public:
+	virtual HRESULT STDMETHODCALLTYPE SetSaveAsItem(IShellItem * psi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetProperties(void *pStore) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetCollectedProperties(void *pList, BOOL fAppendDefault) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetProperties(void **ppStore) = 0;
+	virtual HRESULT STDMETHODCALLTYPE ApplyProperties(IShellItem * psi, void *pStore, HANDLE hwnd,
+			void *pSink) = 0;
+};
+
+// coclass {dc1c5a9c-e88a-4dde-a5a1-60f82a20aef7}
+inline constexpr GUID CLSID_FileOpenDialog = {0xdc1c'5a9c, 0xe88a, 0x4dde,
+	{0xa5, 0xa1, 0x60, 0xf8, 0x2a, 0x20, 0xae, 0xf7}};
+
+// coclass {c0b4e2f3-ba21-4773-8dba-335ec946eb8b}
+inline constexpr GUID CLSID_FileSaveDialog = {0xc0b4'e2f3, 0xba21, 0x4773,
+	{0x8d, 0xba, 0x33, 0x5e, 0xc9, 0x46, 0xeb, 0x8b}};
+
+/* ---- the Recycle Bin: enumerating it and putting an item back ------------------------------
+
+Windows has no "restore from trash" call. What it has is the Recycle Bin as a shell FOLDER whose
+items carry the properties Explorer shows - where each came from and when it went in - and whose
+context menu carries the shell's own `undelete` verb. So a restore is: enumerate, match on the
+original path, invoke the verb.
+
+Everything below is what that needs and nothing more. IShellItem2 is what makes it affordable:
+GetString and GetFileTime hand back a plain LPWSTR and a plain FILETIME, so the whole property
+system arrives without PROPVARIANT - a 24-byte tagged union with forty members, every one of which
+would have to be pinned against the SDK for the three fields this uses. */
+
+MIDL_INTERFACE("7e9fb0d3-919f-4307-ab2e-9b1860310c93")
+IShellItem2 : public IShellItem {
+public:
+	virtual HRESULT STDMETHODCALLTYPE GetPropertyStore(int flags, REFIID riid, void **ppv) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetPropertyStoreWithCreateObject(int flags,
+			IUnknown *punkCreateObject, REFIID riid, void **ppv) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetPropertyStoreForKeys(const PROPERTYKEY *rgKeys, UINT cKeys,
+			int flags, REFIID riid, void **ppv) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetPropertyDescriptionList(REFPROPERTYKEY keyType,
+			REFIID riid, void **ppv) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Update(void *pbc) = 0;
+	// PROPVARIANT is deliberately not declared: this runtime hand-writes the ABI it uses, and the
+	// typed accessors below cover everything it asks the property system for.
+	virtual HRESULT STDMETHODCALLTYPE GetProperty(REFPROPERTYKEY key, void *ppropvar) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetCLSID(REFPROPERTYKEY key, GUID * pclsid) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetFileTime(REFPROPERTYKEY key, FILETIME * pft) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetInt32(REFPROPERTYKEY key, int *pi) = 0;
+	// The string is allocated by the shell: release it with CoTaskMemFree.
+	virtual HRESULT STDMETHODCALLTYPE GetString(REFPROPERTYKEY key, LPWSTR * ppsz) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetUInt32(REFPROPERTYKEY key, ULONG * pui) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetUInt64(REFPROPERTYKEY key, ULONGLONG * pull) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetBool(REFPROPERTYKEY key, BOOL * pf) = 0;
+};
+
+MIDL_INTERFACE("70629033-e363-4a28-a567-0db78006e6d7")
+IEnumShellItems : public IUnknown {
+public:
+	// S_OK means `celt` items were fetched, S_FALSE fewer than that - including none, which is how
+	// the walk ends.
+	virtual HRESULT STDMETHODCALLTYPE Next(ULONG celt, IShellItem * *rgelt,
+			ULONG * pceltFetched) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Skip(ULONG celt) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Reset(void) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Clone(IEnumShellItems * *ppenum) = 0;
+};
+
+MIDL_INTERFACE("000214e4-0000-0000-c000-000000000046")
+IContextMenu : public IUnknown {
+public:
+	/* Populates `hmenu` and, as a side effect, is what puts the handler into a state where
+	InvokeCommand works. It is not optional even for a caller that never shows the menu: a shell
+	verb handler is entitled to do its discovery here, and several do. */
+	virtual HRESULT STDMETHODCALLTYPE QueryContextMenu(HANDLE hmenu, UINT indexMenu,
+			UINT idCmdFirst, UINT idCmdLast, UINT uFlags) = 0;
+	virtual HRESULT STDMETHODCALLTYPE InvokeCommand(CMINVOKECOMMANDINFO * pici) = 0;
+	// `pszName` is CHAR* even for the W types, which write UTF-16 into the same buffer - the
+	// signature is from a time before the two were told apart.
+	virtual HRESULT STDMETHODCALLTYPE GetCommandString(UINT_PTR idCmd, UINT uType, UINT * pReserved,
+			CHAR * pszName, UINT cchMax) = 0;
+};
+
+// IShellItem::BindToHandler selectors. {94f60519-2850-4924-aa5a-d15e84868039} enumerates a folder
+// item's children as IShellItems; {3981e225-f559-11d3-8e3a-00c04f6837d5} is its UI object, which
+// for IID_IContextMenu is the menu the user would get by right-clicking it.
+inline constexpr GUID BHID_EnumItems = {0x94f6'0519, 0x2850, 0x4924,
+	{0xaa, 0x5a, 0xd1, 0x5e, 0x84, 0x86, 0x80, 0x39}};
+inline constexpr GUID BHID_SFUIObject = {0x3981'e225, 0xf559, 0x11d3,
+	{0x8e, 0x3a, 0x00, 0xc0, 0x4f, 0x68, 0x37, 0xd5}};
+
+/* The two properties a trashed item carries, from the shell's `Displaced` format
+{9b174b33-40ff-11d2-a27e-00c04fc30871} - FMTID_Displaced in the SDK's <shlguid.h>, with the pids
+the SDK's <propkey.h> spells as PKEY_Displaced_From (2) and PKEY_Displaced_Date (3).
+
+`From` is the FOLDER the item was deleted from, not its full path: the file name is the item's own
+display name, and the original path is the two joined. */
+inline constexpr GUID FMTID_Displaced = {0x9b17'4b33, 0x40ff, 0x11d2,
+	{0xa2, 0x7e, 0x00, 0xc0, 0x4f, 0xc3, 0x08, 0x71}};
+
+inline constexpr PROPERTYKEY PKEY_Displaced_From = {FMTID_Displaced, 2};
+inline constexpr PROPERTYKEY PKEY_Displaced_Date = {FMTID_Displaced, 3};
 
 #endif
 

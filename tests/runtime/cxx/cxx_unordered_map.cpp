@@ -303,7 +303,10 @@ void performMallocUnorderedMapTests() {
 		l.insert({"key1", "value1"});
 		auto range = l.equal_range("key1");
 		sprt::cout << "Test 17 - Equal range: ";
-		if (range.first != l.end() && range.second != l.end()) {
+		// the range of the single stored key holds exactly one element; for the
+		// last element `second` == end(), so compare range extent, not end()
+		auto it = range.first;
+		if (range.first != range.second && ++it == range.second) {
 			sprt::cout << "PASS\n";
 		} else {
 			sprt::cout << "FAIL\n";

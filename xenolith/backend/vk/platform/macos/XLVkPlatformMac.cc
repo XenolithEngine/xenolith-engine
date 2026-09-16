@@ -69,7 +69,24 @@ Rc<core::Instance> createInstance(Rc<core::InstanceInfo> &&info) {
 		isBundled = false;
 	}
 
-	if (!isBundled) {
+	if (isBundled) {
+		// Restrict the loader to the ICD we ship. Otherwise it adds system-wide manifests, and two
+		// libMoltenVK images in one process share ObjC class names, corrupting Metal's bookkeeping
+		// (VK_ERROR_DEVICE_LOST with several windows presenting).
+		auto icdPath = filepath::merge<Interface>(root, "Resources", "vulkan", "icd.d",
+				"MoltenVK_icd.json");
+		if (filesystem::exists(FileInfo{icdPath})) {
+			// VK_DRIVER_FILES is the current name, VK_ICD_FILENAMES the pre-1.3.207 one; older
+			// loaders ignore the former, newer ones accept either, so set both.
+			::setenv("VK_DRIVER_FILES", icdPath.data(), 1);
+			::setenv("VK_ICD_FILENAMES", icdPath.data(), 1);
+		} else {
+			log::source().warn("Vulkan",
+					"Bundled ICD manifest is not found, the loader may pick up a system-wide "
+					"MoltenVK in addition to the bundled one: ",
+					icdPath);
+		}
+	} else {
 		// Point to where is layers located when we not in bundle
 		::setenv("VK_LAYER_PATH",
 				filepath::merge<Interface>(filepath::root(execPath), "vulkan", "explicit_layer.d")

@@ -69,13 +69,13 @@ typedef __UINTMAX_TYPE__ __SPRT_ID(uintmax_t);
 #ifdef __UINTMAX_C
 #define __SPRT_UINTMAX_C(C) __UINTMAX_C(C)
 #else
-#error "Compiler-assisted __UINTMAX_FMTx__ is not defined"
+#error "Compiler-assisted __UINTMAX_C is not defined"
 #endif
 
 #ifdef __UINTMAX_C_SUFFIX__
 #define __UINTMAX_C_SUFFIX __UINTMAX_C_SUFFIX__
 #else
-#error "Compiler-assisted __UINTMAX_FMTx__ is not defined"
+#error "Compiler-assisted __UINTMAX_C_SUFFIX__ is not defined"
 #endif
 
 #else // __UINTMAX_TYPE__

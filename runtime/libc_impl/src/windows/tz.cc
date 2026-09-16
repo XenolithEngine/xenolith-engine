@@ -60,8 +60,17 @@ __SPRT_C_FUNC void tzset(void) __SPRT_NOEXCEPT {
 				dst_off = timezone; // Standard time offset
 			}
 
-			WideCharToMultiByte(CP_UTF8, 0, tzi.StandardName, -1, tzname[0], 64, NULL, NULL);
-			WideCharToMultiByte(CP_UTF8, 0, tzi.DaylightName, -1, tzname[1], 64, NULL, NULL);
+			// On success WideCharToMultiByte NUL-terminates (source length -1);
+			// on failure (e.g. name too long) it returns 0 and may leave the
+			// buffer non-terminated, so force termination in that case.
+			if (WideCharToMultiByte(CP_UTF8, 0, tzi.StandardName, -1, tzname[0], 64, NULL, NULL)
+					== 0) {
+				tzname[0][63] = '\0';
+			}
+			if (WideCharToMultiByte(CP_UTF8, 0, tzi.DaylightName, -1, tzname[1], 64, NULL, NULL)
+					== 0) {
+				tzname[1][63] = '\0';
+			}
 		}
 		return;
 	}
@@ -78,9 +87,15 @@ __SPRT_C_FUNC void tzset(void) __SPRT_NOEXCEPT {
 		dst_off = timezone; // Standard time offset
 	}
 
-	// Copy timezone names
-	WideCharToMultiByte(CP_UTF8, 0, dtzi.StandardName, -1, tzname[0], 64, NULL, NULL);
-	WideCharToMultiByte(CP_UTF8, 0, dtzi.DaylightName, -1, tzname[1], 64, NULL, NULL);
+	// Copy timezone names. On success WideCharToMultiByte NUL-terminates
+	// (source length -1); on failure (e.g. name too long) it returns 0 and may
+	// leave the buffer non-terminated, so force termination in that case.
+	if (WideCharToMultiByte(CP_UTF8, 0, dtzi.StandardName, -1, tzname[0], 64, NULL, NULL) == 0) {
+		tzname[0][63] = '\0';
+	}
+	if (WideCharToMultiByte(CP_UTF8, 0, dtzi.DaylightName, -1, tzname[1], 64, NULL, NULL) == 0) {
+		tzname[1][63] = '\0';
+	}
 }
 
 } // namespace sprt

@@ -206,7 +206,7 @@ template <typename Interface>
 bool SubscriptionTemplate<Interface>::unsubscribe(Id id) {
 	if (_forwardedFlags) {
 		auto it = _forwardedFlags->find(id);
-		if (it == _forwardedFlags->end()) {
+		if (it != _forwardedFlags->end()) {
 			_forwardedFlags->erase(id);
 			_flags.erase(id);
 			return true;
@@ -336,7 +336,7 @@ T *Binding<T>::get() const {
 
 namespace STAPPLER_VERSIONIZED stappler::mem_std {
 
-using Subscription = stappler::SubscriptionTemplate<memory::StandartInterface>;
+using Subscription = stappler::SubscriptionTemplate<memory::StandardInterface>;
 
 }
 

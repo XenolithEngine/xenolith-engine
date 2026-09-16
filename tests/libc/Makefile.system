@@ -1,0 +1,79 @@
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
+# Standalone build of the tests/libc suite with the SYSTEM compiler + system libc /
+# libstdc++, bypassing the xenolith build entirely. Every standard-named include
+# (<optional>, <string>, <string.h>, ...) resolves to the host's own header, so this
+# produces a pure system-library reference run. It complements compare.sh, which
+# builds the sprt runtime for the host and x86_64-pc-windows-msvc targets.
+#
+# The tests include only STL wrappers / standard headers; the single test that probes
+# sprt-specific logic (paths) substitutes the identity path-converters when the sprt
+# runtime is absent (see c/paths.cpp, guarded by __has_include).
+#
+#   make -f Makefile.system            # build build-system/libctest
+#   make -f Makefile.system run        # build, then run every test
+#   make -f Makefile.system list       # build, then print the test names
+#   make -f Makefile.system clean
+#   make -f Makefile.system CXX=clang++ CC=clang        # pick a compiler
+#   make -f Makefile.system CXXSTD=gnu++23              # pick a C++ standard
+
+CXX      ?= c++
+CC       ?= cc
+CXXSTD   ?= gnu++2a
+CSTD     ?= gnu17
+OPT      ?= -O2
+WARN     ?= -Wall -Wno-unused-function
+
+# -fno-exceptions matches the freestanding runtime the tests were written for (they
+# never take a throwing path); -pthread covers <threads.h>/std::call_once/atomics.
+CXXFLAGS ?= -std=$(CXXSTD) -fno-exceptions -pthread $(OPT) $(WARN)
+CFLAGS   ?= -std=$(CSTD) -pthread $(OPT) $(WARN)
+LDLIBS   ?= -lm -pthread
+
+OUTDIR   := build-system
+BIN      := $(OUTDIR)/libctest
+
+CXX_SRCS := $(wildcard c/*.cpp) main.cpp
+C_SRCS   := $(wildcard c/*.c)
+OBJS     := $(addprefix $(OUTDIR)/,$(CXX_SRCS:.cpp=.cpp.o) $(C_SRCS:.c=.c.o))
+
+.PHONY: all run list clean
+all: $(BIN)
+
+$(BIN): $(OBJS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDLIBS)
+
+$(OUTDIR)/%.cpp.o: %.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -I. -c $< -o $@
+
+$(OUTDIR)/%.c.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -I. -c $< -o $@
+
+run: $(BIN)
+	@LC_ALL=C $(BIN)
+
+list: $(BIN)
+	@$(BIN) --list
+
+clean:
+	rm -rf $(OUTDIR)

@@ -1,0 +1,63 @@
+--- !tapi-tbd
+tbd-version:     4
+targets:         [ x86_64-macos, arm64-macos ]
+install-name:    '/System/Library/Frameworks/CoreText.framework/Versions/A/CoreText'
+current-version: 0
+compatibility-version: 0
+exports:
+  - targets:         [ x86_64-macos, arm64-macos ]
+    symbols:         [
+        _CTFontCopyAttribute,
+        _CTFontCopyAvailableTables,
+        _CTFontCopyGraphicsFont,
+        _CTFontCopyName,
+        _CTFontCopyPostScriptName,
+        _CTFontCopyVariation,
+        _CTFontCreateCopyWithAttributes,
+        _CTFontCreatePathForGlyph,
+        _CTFontCreateUIFontForLanguage,
+        _CTFontCreateWithFontDescriptor,
+        _CTFontCreateWithGraphicsFont,
+        _CTFontDescriptorCreateWithAttributes,
+        _CTFontDescriptorCreateWithNameAndSize,
+        _CTFontGetAdvancesForGlyphs,
+        _CTFontGetAscent,
+        _CTFontGetBoundingRectsForGlyphs,
+        _CTFontGetDescent,
+        _CTFontGetGlyphsForCharacters,
+        _CTFontGetGlyphWithName,
+        _CTFontGetLeading,
+        _CTFontGetSize,
+        _CTFontGetVerticalTranslationsForGlyphs,
+        _CTFontManagerCreateFontDescriptorsFromData,
+        _CTFontManagerCreateFontDescriptorsFromURL,
+        _CTGetCoreTextVersion,
+        _CTLineGetGlyphRuns,
+        _CTLineGetTrailingWhitespaceWidth,
+        _CTRunGetAttributes,
+        _CTRunGetGlyphCount,
+        _CTRunGetGlyphs,
+        _CTRunGetGlyphsPtr,
+        _CTRunGetPositions,
+        _CTRunGetPositionsPtr,
+        _CTRunGetStatus,
+        _CTRunGetStringIndices,
+        _CTRunGetStringIndicesPtr,
+        _CTRunGetStringRange,
+        _CTRunGetTypographicBounds,
+        _CTTypesetterCreateLine,
+        _CTTypesetterCreateWithAttributedStringAndOptions,
+        _kCTFontAttributeName,
+        _kCTFontCascadeListAttribute,
+        _kCTFontFeatureSettingsAttribute,
+        _kCTFontOpenTypeFeatureTag,
+        _kCTFontOpenTypeFeatureValue,
+        _kCTFontPostScriptNameKey,
+        _kCTFontURLAttribute,
+        _kCTFontVariationAttribute,
+        _kCTKernAttributeName,
+        _kCTLanguageAttributeName,
+        _kCTTypesetterOptionForcedEmbeddingLevel,
+        _kCTVerticalFormsAttributeName,
+    ]
+...

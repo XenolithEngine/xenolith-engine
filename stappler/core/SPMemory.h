@@ -51,6 +51,7 @@ public:
 	bool empty() const { return empty_fn(target); }
 	T &at(size_t pos) const { return at_fn(target, pos); }
 	T &emplace_back(T &&v) const { return emplace_back_fn(target, move(v)); }
+	void insert(size_t pos, T &&v) const { insert_fn(target, pos, move(v)); }
 
 	T *begin() const { return begin_fn(target); }
 	T *end() const { return end_fn(target); }
@@ -63,7 +64,7 @@ public:
 
 	VectorAdapter() noexcept = default;
 
-	VectorAdapter(memory::StandartInterface::VectorType<T> &vec) noexcept;
+	VectorAdapter(mem_std::Interface::VectorType<T> &vec) noexcept;
 	VectorAdapter(memory::PoolInterface::VectorType<T> &vec) noexcept;
 
 public:
@@ -74,6 +75,7 @@ public:
 	bool (*empty_fn)(void *) = nullptr;
 	T &(*at_fn)(void *, size_t) = nullptr;
 	T &(*emplace_back_fn)(void *, T &&) = nullptr;
+	void (*insert_fn)(void *, size_t, T &&) = nullptr;
 	T *(*begin_fn)(void *) = nullptr;
 	T *(*end_fn)(void *) = nullptr;
 	void (*clear_fn)(void *) = nullptr;
@@ -166,7 +168,7 @@ using stappler::WideStringView;
 using stappler::BytesView;
 using stappler::SpanView;
 
-using AllocBase = stappler::memory::StandartInterface::AllocBaseType;
+using AllocBase = stappler::mem_std::Interface::AllocBaseType;
 
 template <typename T>
 using Allocator = sprt::detail::AllocatorMalloc<T>;
@@ -185,12 +187,12 @@ template <typename K, typename V, typename Compare = sprt::less<void>>
 using Map = sprt::__malloc_map<K, V, Compare>;
 
 template <typename T, typename V>
-using HashMap = sprt::__malloc_unordered_map<T, V, sprt::hash<T>, sprt::equal_to<T>>;
+using HashMap = sprt::__malloc_unordered_map<T, V, sprt::hash<void>, sprt::equal_to<void>>;
 
 template <typename T, typename Compare = sprt::less<void>>
 using Set = sprt::__malloc_set<T, Compare>;
 
-template <typename T, typename Hash = sprt::hash<T>, typename Equal = sprt::equal_to<void>>
+template <typename T, typename Hash = sprt::hash<void>, typename Equal = sprt::equal_to<void>>
 using HashSet = sprt::__malloc_unordered_set<T, Hash, Equal>;
 
 using StringStream = typename Interface::StringStreamType;
@@ -244,7 +246,7 @@ inline bool emplace_ordered(Vector<Value> &vec, const Value &val) {
 
 namespace STAPPLER_VERSIONIZED stappler::mem_std {
 
-using Value = data::ValueTemplate<stappler::memory::StandartInterface>;
+using Value = data::ValueTemplate<stappler::mem_std::Interface>;
 using Array = Value::ArrayType;
 using Dictionary = Value::DictionaryType;
 using EncodeFormat = stappler::data::EncodeFormat;
@@ -274,7 +276,7 @@ inline bool emplace_ordered(Vector<Value> &vec, const Value &val) {
 namespace STAPPLER_VERSIONIZED stappler {
 
 template <typename T>
-VectorAdapter<T>::VectorAdapter(memory::StandartInterface::VectorType<T> &vec) noexcept
+VectorAdapter<T>::VectorAdapter(mem_std::Interface::VectorType<T> &vec) noexcept
 : target(&vec)
 , size_fn([](void *target) { return ((mem_std::Vector<T> *)target)->size(); })
 , back_fn([](void *target) -> T & { return ((mem_std::Vector<T> *)target)->back(); })
@@ -283,6 +285,10 @@ VectorAdapter<T>::VectorAdapter(memory::StandartInterface::VectorType<T> &vec) n
 , at_fn([](void *target, size_t pos) -> T & { return ((mem_std::Vector<T> *)target)->at(pos); })
 , emplace_back_fn([](void *target, T &&v) -> T & {
 	return ((mem_std::Vector<T> *)target)->emplace_back(move(v));
+})
+, insert_fn([](void *target, size_t pos, T &&v) {
+	auto v_ = (mem_std::Vector<T> *)target;
+	v_->insert(v_->begin() + pos, move(v));
 })
 , begin_fn([](void *target) -> T * { return &*((mem_std::Vector<T> *)target)->begin(); })
 , end_fn([](void *target) -> T * { return &*((mem_std::Vector<T> *)target)->end(); })
@@ -300,6 +306,10 @@ VectorAdapter<T>::VectorAdapter(memory::PoolInterface::VectorType<T> &vec) noexc
 , at_fn([](void *target, size_t pos) -> T & { return ((mem_pool::Vector<T> *)target)->at(pos); })
 , emplace_back_fn([](void *target, T &&v) -> T & {
 	return ((mem_pool::Vector<T> *)target)->emplace_back(move(v));
+})
+, insert_fn([](void *target, size_t pos, T &&v) {
+	auto v_ = (mem_pool::Vector<T> *)target;
+	v_->insert(v_->begin() + pos, move(v));
 })
 , begin_fn([](void *target) -> T * { return &*((mem_pool::Vector<T> *)target)->begin(); })
 , end_fn([](void *target) -> T * { return &*((mem_pool::Vector<T> *)target)->end(); })

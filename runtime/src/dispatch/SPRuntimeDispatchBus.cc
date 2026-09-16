@@ -73,6 +73,20 @@ void BusDelegate::invalidate() {
 }
 
 void BusDelegate::handleEvent(Bus &bus, const BusEvent &event) {
+	/* REMOVED AFTER THE EVENT WAS QUEUED, and then it is not listening.
+
+	`dispatchEvent` takes its snapshot of the listeners under the bus's lock and POSTS it to each
+	looper, holding every delegate by `Rc`. A delegate removed on its own looper before that task runs
+	is therefore still in the snapshot and still alive - and a subclass may already have forgotten
+	its looper: `xenolith::EventDelegate::disable` nulls `_looper`, which is the SIGSEGV this line
+	exists for (a `Label` leaving the scene while the font thread's `onFontSourceUpdated` is in flight).
+	Delivering to it would be a callback after removal even when nothing crashes, so the event is
+	dropped rather than the looper merely checked. Re-added in between, it is listening again and is
+	delivered to. */
+	if (_bus.get() != &bus || !_looper) {
+		return;
+	}
+
 	if (!_looper->isOnThisThread()) {
 		oslog::vperror(__SPRT_LOCATION, "dispatch::BusDelegate", "BusEvent '",
 				bus.getCategoryName(event.getCategory()), "' should be handled in looper context");

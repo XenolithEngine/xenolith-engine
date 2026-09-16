@@ -29,16 +29,17 @@ THE SOFTWARE.
 #include <sprt/cxx/__iterator/iterator_tags.h>
 #include <sprt/cxx/__type_traits/queries.h>
 
-/*
-	!!!WIBECODED - NEED CHECKS, TESTS and styling
-*/
-
 namespace sprt {
+inline namespace __cxx_algorithm {
 
 template <typename Iter>
 concept is_random_access = sprt::is_base_of_v< sprt::random_access_iterator_tag,
 		typename sprt::iterator_traits<Iter>::iterator_category >;
 
+} // namespace __cxx_algorithm
+
+// 'detail' is the shared sprt::detail namespace, so it must stay outside the
+// per-header inline namespace (otherwise it conflicts with sprt::detail elsewhere).
 namespace detail {
 
 template <typename RandomIt, typename Comparator>
@@ -111,14 +112,16 @@ void insertion_sort(RandomIt first, RandomIt last, Compare comp) {
 
 	for (auto i = first + 1; i != last; ++i) {
 		auto key = sprt::move_unsafe(*i); // Copy or move depending on type cost
-		auto j = i - 1;
+		auto j = i;
 
-		// Move elements greater than key one position ahead
-		while (j >= first && comp(key, *j)) {
-			*(j + 1) = sprt::move_unsafe(*j);
+		// Move elements greater than key one position ahead. Comparing `j != first`
+		// (rather than the old `j - 1 >= first`) avoids forming the one-before-begin
+		// iterator `first - 1`, which is UB for pointers.
+		while (j != first && comp(key, *(j - 1))) {
+			*j = sprt::move_unsafe(*(j - 1));
 			--j;
 		}
-		*(j + 1) = sprt::move_unsafe(key);
+		*j = sprt::move_unsafe(key);
 	}
 }
 
@@ -147,7 +150,7 @@ RandomIt __get_median_pivot(RandomIt first, RandomIt middle, RandomIt last, Comp
  */
 template <typename RandomIt, typename Compare>
 RandomIt __partition(RandomIt first, RandomIt last, Compare comp) {
-	if (first >= last - 1) {
+	if (last - first <= 1) { // avoid forming last - 1 on an empty range
 		return first;
 	}
 
@@ -156,23 +159,30 @@ RandomIt __partition(RandomIt first, RandomIt last, Compare comp) {
 	// Select pivot deterministically using the custom comparator
 	auto pivot_iter = __get_median_pivot(first, mid, last - 1, comp);
 
-	// Move pivot to the end for easier partitioning
-	sprt::swap(*pivot_iter, *(last - 1));
+	// Move pivot to the end for easier partitioning. Self-swap guards throughout:
+	// swap is move-based, and a self-move-assignment is UB for many value types.
+	if (pivot_iter != last - 1) {
+		sprt::swap(*pivot_iter, *(last - 1));
+	}
 
-	const auto &pivot_value = *(last - 1);
+	auto &pivot_value = *(last - 1);
 
 	RandomIt store_index = first;
 
 	for (RandomIt iter = first; iter < last - 1; ++iter) {
 		// Use the custom comparator to decide if element belongs on the left
 		if (comp(*iter, pivot_value)) {
-			sprt::swap(*store_index, *iter);
+			if (store_index != iter) {
+				sprt::swap(*store_index, *iter);
+			}
 			++store_index;
 		}
 	}
 
 	// Place pivot in correct position
-	sprt::swap(*(last - 1), *store_index);
+	if (store_index != last - 1) {
+		sprt::swap(*(last - 1), *store_index);
+	}
 
 	return store_index;
 }
@@ -183,7 +193,7 @@ void quicksort_impl(RandomIt first, RandomIt last, size_t depth_limit, Compare c
 
 	// Base cases
 	// Base case: if the range has fewer than 2 elements, it is already sorted
-	if (first >= last - 1) {
+	if (last - first <= 1) { // avoid forming last - 1 on an empty range
 		return;
 	}
 
@@ -209,6 +219,8 @@ void quicksort_impl(RandomIt first, RandomIt last, size_t depth_limit, Compare c
 
 } // namespace detail
 
+inline namespace __cxx_algorithm {
+
 /**
  * Main public interface: std::sort equivalent.
  * 
@@ -219,8 +231,8 @@ void quicksort_impl(RandomIt first, RandomIt last, size_t depth_limit, Compare c
  */
 template <class Iter, class Compare>
 requires is_random_access<Iter>
-		&& sprt::is_invocable_r_v<bool, Compare, typename sprt::iterator_traits<Iter>::value_type,
-				typename sprt::iterator_traits<Iter>::value_type>
+		&& sprt::is_invocable_r_v<bool, Compare, typename sprt::iterator_traits<Iter>::value_type &,
+				typename sprt::iterator_traits<Iter>::value_type &>
 void sort(Iter first, Iter last, Compare comp) {
 	if (first >= last) {
 		return;
@@ -232,7 +244,8 @@ void sort(Iter first, Iter last, Compare comp) {
 	// Calculate max recursion depth: log2(N) * 2
 	size_t n = static_cast<size_t>(last - first);
 	size_t limit = 0;
-	while ((size_t(1) << limit) < n) { ++limit; }
+	// guard the shift: stop before limit reaches the width of size_t (1 << 64 is UB)
+	while (limit < sizeof(size_t) * 8 - 1 && (size_t(1) << limit) < n) { ++limit; }
 	limit *= 2;
 
 	detail::quicksort_impl(first, last, limit, comp);
@@ -248,6 +261,7 @@ void sort(Iter first, Iter last) {
 	sort(first, last, sprt::less<void>{});
 }
 
+} // namespace __cxx_algorithm
 } // namespace sprt
 
 #endif

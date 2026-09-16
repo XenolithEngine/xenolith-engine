@@ -30,6 +30,10 @@ MODULE_STAPPLER_NETWORK_INCLUDES_OBJS := $(STAPPLER_MODULE_DIR)/network
 MODULE_STAPPLER_NETWORK_DEPENDS_ON := stappler_crypto stappler_filesystem stappler_brotli_lib stappler_data
 MODULE_STAPPLER_NETWORK_GENERAL_LDFLAGS :=
 
+ifeq ($(STAPPLER_CRYPTO_DEFAULT),openssl)
+MODULE_STAPPLER_NETWORK_LIBS += -l:libngtcp2_crypto_ossl.a -l:libngtcp2.a
+endif
+
 ifeq ($(TARGET_SYSTEM),Linux)
 MODULE_STAPPLER_NETWORK_LIBS += 
 endif

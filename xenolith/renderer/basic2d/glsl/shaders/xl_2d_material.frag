@@ -39,9 +39,14 @@ vec4 getSample(in sampler2D s, vec2 coord) {
 	return texture(s, coord);
 }
 
-#define SAMPLER2D(image, sampler) sampler2D( images2d[image], immutableSamplers[sampler] )
-#define SAMPLER2DARR(image, sampler) sampler2DArray( images2dArray[image], immutableSamplers[sampler] )
-#define SAMPLER3D(image, sampler) sampler3D( images3d[image], immutableSamplers[sampler] )
+// IMAGES_ARRAY_SIZE is specialized to 1 when the device lacks
+// shaderSampledImageArrayDynamicIndexing (e.g. V3DV). Dynamic indices then
+// become nir_tex_src_texture_offset and assert in v3d_tex.c — force [0].
+#define TEX_IDX(image) ((IMAGES_ARRAY_SIZE == 1) ? 0 : (image))
+#define SMP_IDX(sampler) ((IMAGES_ARRAY_SIZE == 1) ? 0 : (sampler))
+#define SAMPLER2D(image, sampler) sampler2D( images2d[TEX_IDX(image)], immutableSamplers[SMP_IDX(sampler)] )
+#define SAMPLER2DARR(image, sampler) sampler2DArray( images2dArray[TEX_IDX(image)], immutableSamplers[SMP_IDX(sampler)] )
+#define SAMPLER3D(image, sampler) sampler3D( images3d[TEX_IDX(image)], immutableSamplers[SMP_IDX(sampler)] )
 
 #define SAMPLE_PC 0
 
@@ -72,11 +77,11 @@ vec4 getSample(in sampler2D s, vec2 coord) {
 vec2 getTextureSize_pc() {
 	vec2 size;
 	if (IMAGE_TYPE == 1) {
-		size = textureSize(images2dArray[tex.x], 0).xy;
+		size = textureSize(images2dArray[TEX_IDX(tex.x)], 0).xy;
 	} else if (IMAGE_TYPE == 2) {
-		size = textureSize(images3d[tex.x], 0).xy;
+		size = textureSize(images3d[TEX_IDX(tex.x)], 0).xy;
 	} else {
-		size = textureSize(images2d[tex.x], 0);
+		size = textureSize(images2d[TEX_IDX(tex.x)], 0);
 	}
 	return size;
 }

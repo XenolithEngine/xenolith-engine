@@ -126,7 +126,8 @@ __SPRT_C_FUNC int nanosleep(const struct __SPRT_TIMESPEC_NAME *req,
 
 			// Spin-wait
 			LARGE_INTEGER now;
-			ULONGLONG target_ticks = nanoStop + (nanoToSleep * qpc_freq.QuadPart / 1'000'000'000LL);
+			QueryPerformanceCounter(&now);
+			ULONGLONG target_ticks = now.QuadPart + (nanoToSleep * qpc_freq.QuadPart / 1'000'000'000LL);
 			while (1) {
 				YieldProcessor();
 				now.QuadPart = 0;
@@ -134,13 +135,13 @@ __SPRT_C_FUNC int nanosleep(const struct __SPRT_TIMESPEC_NAME *req,
 				if (now.QuadPart >= target_ticks) {
 					break;
 				}
-				target_ticks -= now.QuadPart;
 			}
 		}
 	} else {
 		// Spin-wait
 		LARGE_INTEGER now;
-		ULONGLONG target_ticks = nanoStart + (nanoToSleep * qpc_freq.QuadPart / 1'000'000'000LL);
+		QueryPerformanceCounter(&now);
+		ULONGLONG target_ticks = now.QuadPart + (nanoToSleep * qpc_freq.QuadPart / 1'000'000'000LL);
 		while (1) {
 			YieldProcessor();
 			now.QuadPart = 0;
@@ -148,7 +149,6 @@ __SPRT_C_FUNC int nanosleep(const struct __SPRT_TIMESPEC_NAME *req,
 			if (now.QuadPart >= target_ticks) {
 				break;
 			}
-			target_ticks -= now.QuadPart;
 		}
 	}
 
@@ -206,13 +206,13 @@ __SPRT_C_FUNC int clock_nanosleep(__SPRT_ID(clockid_t) clock, int v,
 
 	if (nanoToSleep <= SPIN_NS) {
 		// Spin-wait
+		auto target = nanoStart + nanoToSleep;
 		while (1) {
 			YieldProcessor();
 			auto v = __sprt_clock_gettime_nsec_np(clock);
-			if (v >= nanoToSleep) {
+			if (v >= target) {
 				break;
 			}
-			nanoToSleep -= v;
 		}
 	} else {
 		HANDLE timer = CreateWaitableTimerW(NULL, TRUE, NULL);

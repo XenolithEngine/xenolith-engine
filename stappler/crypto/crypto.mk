@@ -98,6 +98,24 @@ endif
 # module name resolution
 MODULE_stappler_crypto_mbedtls := MODULE_STAPPLER_CRYPTO_MBEDTLS
 
+#
+# None backend (no TLS library): for targets without a crypto backend (e.g. wasm, where
+# openssl/mbedtls are not built). No backend macro is defined, so every SPCrypto-<x>.cc
+# compiles empty; backend-specific entry points resolve to the stubs in SPCrypto-none.cc.
+#
+
+MODULE_STAPPLER_CRYPTO_NONE_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
+MODULE_STAPPLER_CRYPTO_NONE_LIBS :=
+MODULE_STAPPLER_CRYPTO_NONE_FLAGS :=
+MODULE_STAPPLER_CRYPTO_NONE_SRCS_DIRS :=
+MODULE_STAPPLER_CRYPTO_NONE_SRCS_OBJS :=
+MODULE_STAPPLER_CRYPTO_NONE_INCLUDES_DIRS :=
+MODULE_STAPPLER_CRYPTO_NONE_INCLUDES_OBJS :=
+MODULE_STAPPLER_CRYPTO_NONE_DEPENDS_ON :=
+
+# module name resolution
+MODULE_stappler_crypto_none := MODULE_STAPPLER_CRYPTO_NONE
+
 
 MODULE_STAPPLER_CRYPTO_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
 MODULE_STAPPLER_CRYPTO_PRIVATE_INCLUDE_PCH := SPCommon.h

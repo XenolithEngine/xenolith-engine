@@ -1,0 +1,12 @@
+#define __SPRT_CLOCK_REALTIME           0
+#define __SPRT_CLOCK_MONOTONIC          1
+#define __SPRT_CLOCK_PROCESS_CPUTIME_ID 2
+#define __SPRT_CLOCK_THREAD_CPUTIME_ID  3
+#define __SPRT_CLOCK_MONOTONIC_RAW      4
+#define __SPRT_CLOCK_REALTIME_COARSE    5
+#define __SPRT_CLOCK_MONOTONIC_COARSE   6
+#define __SPRT_CLOCK_BOOTTIME           7
+#define __SPRT_CLOCK_REALTIME_ALARM     8
+#define __SPRT_CLOCK_BOOTTIME_ALARM     9
+#define __SPRT_CLOCK_SGI_CYCLE         10
+#define __SPRT_CLOCK_TAI               11

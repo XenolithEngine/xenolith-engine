@@ -56,17 +56,30 @@ static StringView filepath_lastComponent(StringView path) {
 
 static size_t print(char *buf, size_t bufLen, uintptr_t pc, StringView filename, int lineno,
 		StringView function) {
+	// __sprt_snprintf returns the would-be length on truncation (and may be negative on
+	// error); clamp into [0, bufLen] so bufLen never underflows.
+	static auto clampWritten = [](int w, size_t bufLen) -> size_t {
+		if (w < 0) {
+			return 0;
+		}
+		return sprt::min(size_t(w), bufLen);
+	};
+
 	char *target = buf;
-	auto w = __sprt_snprintf(target, bufLen, "[%p]", (void *)pc);
+	auto w = clampWritten(__sprt_snprintf(target, bufLen, "[%p]", (void *)pc), bufLen);
 	bufLen -= w;
 	target += w;
 
 	if (!filename.empty()) {
 		auto name = filepath_lastComponent(filename);
 		if (lineno >= 0) {
-			w = __sprt_snprintf(target, bufLen, " %.*s:%d", int(name.size()), name.data(), lineno);
+			w = clampWritten(__sprt_snprintf(target, bufLen, " %.*s:%d", int(name.size()),
+									 name.data(), lineno),
+					bufLen);
 		} else {
-			w = __sprt_snprintf(target, bufLen, " %.*s", int(name.size()), name.data());
+			w = clampWritten(
+					__sprt_snprintf(target, bufLen, " %.*s", int(name.size()), name.data()),
+					bufLen);
 		}
 		bufLen -= w;
 		target += w;
@@ -76,12 +89,14 @@ static size_t print(char *buf, size_t bufLen, uintptr_t pc, StringView filename,
 		int status = 0;
 		auto ptr = abi::__cxa_demangle(function.data(), nullptr, nullptr, &status);
 		if (ptr) {
-			w = __sprt_snprintf(target, bufLen, " - %s", ptr);
+			w = clampWritten(__sprt_snprintf(target, bufLen, " - %s", ptr), bufLen);
 			bufLen -= w;
 			target += w;
 			__sprt_free(ptr);
 		} else {
-			w = __sprt_snprintf(target, bufLen, " - %.*s", int(function.size()), function.data());
+			w = clampWritten(__sprt_snprintf(target, bufLen, " - %.*s", int(function.size()),
+									 function.data()),
+					bufLen);
 			bufLen -= w;
 			target += w;
 		}
@@ -178,6 +193,67 @@ static void termState(State &state) {
 
 static void performBacktrace(State &state, size_t offset,
 		const callback<void(uintptr_t, StringView)> &cb) {
+	// All dbghelp Sym* calls are single-threaded, so serialize the whole walk.
+	unique_lock lock(state.mutex);
+
+	DWORD dwDisplacement;
+	StackFrameSym stackSym;
+
+	// Resolve an instruction pointer to symbol/line and hand it to the callback.
+	// dbghelp symbolization is architecture-independent (only StackWalk64 is not),
+	// so this step is shared by every walk strategy below.
+	auto emit = [&](uintptr_t pc) {
+		BOOL hasSym = state.SymGetSymFromAddr64(state.hProcess, pc, nullptr, &stackSym.sym);
+		BOOL hasLine =
+				state.SymGetLineFromAddr64(state.hProcess, pc, &dwDisplacement, &stackSym.line);
+
+		auto size = backtrace::detail::print(stackSym.targetNameBuffer, 1_KiB, pc,
+				hasLine ? stackSym.line.FileName : nullptr, hasLine ? stackSym.line.LineNumber : 0,
+				hasSym ? stackSym.sym.Name : nullptr);
+		cb(pc, StringView(stackSym.targetNameBuffer, size));
+	};
+
+#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
+	// dbghelp's StackWalk64 only accepts IMAGE_FILE_MACHINE_{I386,IA64,AMD64} as its
+	// MachineType -- there is no ARM64 value, so it cannot walk an AArch64 stack. Instead
+	// drive the table-based virtual unwinder directly (the same machinery the OS uses for
+	// SEH), reading the .pdata unwind records the MSVC ABI emits for every function.
+	CONTEXT context;
+	RtlCaptureContext(&context);
+
+	for (DWORD64 prevSp = 0; context.Pc != 0;) {
+		if (offset > 0) {
+			--offset;
+		} else {
+			emit(context.Pc);
+		}
+
+		DWORD64 imageBase = 0;
+		auto fn = RtlLookupFunctionEntry(context.Pc, &imageBase, nullptr);
+		if (!fn) {
+			// No unwind record means a leaf function: on AArch64 the return address is
+			// still live in the link register (x30) rather than spilled to the stack.
+			if (context.Lr == 0 || context.Lr == context.Pc) {
+				break;
+			}
+			context.Pc = context.Lr;
+			context.Lr = 0;
+			continue;
+		}
+
+		PVOID handlerData = nullptr;
+		DWORD64 establisherFrame = 0;
+		RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, context.Pc, fn, &context, &handlerData,
+				&establisherFrame, nullptr);
+
+		// Guard against corrupt unwind data: Sp must climb toward the stack base on every
+		// frame, otherwise a bad record could spin the loop forever.
+		if (context.Sp <= prevSp) {
+			break;
+		}
+		prevSp = context.Sp;
+	}
+#else
 	auto hThread = GetCurrentThread();
 
 	DWORD machine = 0;
@@ -200,30 +276,14 @@ static void performBacktrace(State &state, size_t offset,
 #pragma error("unsupported architecture")
 #endif
 
-	unique_lock lock(state.mutex);
-
-	DWORD dwDisplacement;
-	StackFrameSym stackSym;
-
 	while (state.StackWalk64(machine, state.hProcess, hThread, &frame, &context, 0, 0, 0, 0)) {
 		if (offset > 0) {
 			--offset;
 			continue;
 		}
-
-		BOOL hasSym = FALSE;
-		BOOL hasLine = FALSE;
-
-		hasSym = state.SymGetSymFromAddr64(state.hProcess, frame.AddrPC.Offset, nullptr,
-				&stackSym.sym);
-		hasLine = state.SymGetLineFromAddr64(state.hProcess, frame.AddrPC.Offset, &dwDisplacement,
-				&stackSym.line);
-
-		auto size = backtrace::detail::print(stackSym.targetNameBuffer, 1_KiB, frame.AddrPC.Offset,
-				hasLine ? stackSym.line.FileName : nullptr, hasLine ? stackSym.line.LineNumber : 0,
-				hasSym ? stackSym.sym.Name : nullptr);
-		cb(frame.AddrPC.Offset, StringView(stackSym.targetNameBuffer, size));
+		emit(frame.AddrPC.Offset);
 	}
+#endif
 }
 
 } // namespace sprt::backtrace::detail
@@ -233,7 +293,6 @@ static void performBacktrace(State &state, size_t offset,
 #if __has_include(<backtrace.h>)
 #include <backtrace.h>
 #else
-#warning "No <backtrace.h> available, replacing with forward declaration"
 
 struct backtrace_state;
 
@@ -247,6 +306,25 @@ typedef int (*backtrace_full_callback)(void *data, __SPRT_ID(uintptr_t) pc, cons
 
 extern "C" int backtrace_full(struct backtrace_state *state, int skip,
 		backtrace_full_callback callback, backtrace_error_callback error_callback, void *data);
+
+#ifndef SPRT_WASM
+#warning "No <backtrace.h> available, replacing with forward declaration"
+
+#else
+
+// No backtrace on WASM, no-op stubs
+
+extern "C" struct backtrace_state *backtrace_create_state(const char *filename, int threaded,
+		backtrace_error_callback error_callback, void *data) {
+	return nullptr;
+}
+
+extern "C" int backtrace_full(struct backtrace_state *state, int skip,
+		backtrace_full_callback callback, backtrace_error_callback error_callback, void *data) {
+	return -1;
+}
+
+#endif // SPRT_WASM
 
 
 #endif
@@ -291,8 +369,12 @@ static void termState(State &state) {
 
 static void performBacktrace(State &state, size_t offset,
 		const callback<void(uintptr_t, StringView)> &cb) {
-	backtrace_full(state.state, int(offset), debug_backtrace_full_callback, debug_backtrace_error,
-			(void *)&cb);
+	if (state.state) {
+		backtrace_full(state.state, int(offset), debug_backtrace_full_callback,
+				debug_backtrace_error, (void *)&cb);
+	} else {
+		cb(0, StringView("unavailable"));
+	}
 }
 
 } // namespace sprt::backtrace::detail
@@ -317,7 +399,16 @@ struct BacktraceState {
 
 static BacktraceState s_backtraceState;
 
-void initialize() { s_backtraceState.init(); }
+void initialize() {
+#if SPRT_EMBOX
+	// libunwind's backtrace_create_state (weak, pulled in via EXTRA_LIBS) tries
+	// to parse the flat kernel ELF. That either hangs or OOMs on qemu-armv8a;
+	// the Embox target does not need symbolic backtraces yet.
+	return;
+#else
+	s_backtraceState.init();
+#endif
+}
 
 void terminate() { s_backtraceState.term(); }
 

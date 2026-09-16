@@ -1,0 +1,13 @@
+build
+/build/
+src
+*.tar.xz
+*.tar.lz
+*.cmake
+/sysroot-*
+/linux-*
+/gcc-*
+/glibc-*
+/llvm-*
+/make-4.4.1
+/zlib-*

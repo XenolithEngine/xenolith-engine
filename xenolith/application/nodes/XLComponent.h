@@ -24,6 +24,7 @@
 #define XENOLITH_APPLICATION_NODES_XLCOMPONENT_H_
 
 #include "XLNodeInfo.h" // IWYU pragma: keep
+#include <sprt/cxx/int_set>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -44,7 +45,9 @@ Code style recomendations:
 */
 
 struct ComponentId {
-	uint32_t value;
+	using Value = uint32_t;
+
+	Value value;
 
 	ComponentId();
 };
@@ -55,8 +58,8 @@ struct Component {
 
 	static uint32_t GetNextId();
 
-	uint32_t id			 : 31; // unique component class id
-	mutable uint32_t soo : 1; // 1 if dynamic storage is used
+	uint32_t id				  : 31; // unique component class id
+	mutable uint32_t isStatic : 1; // 1 if dynamic storage is used
 
 	union {
 		mutable struct {
@@ -89,7 +92,7 @@ struct Component {
 		if (id != T::Id.value) {
 			return nullptr;
 		}
-		if (soo) {
+		if (isStatic) {
 			return reinterpret_cast<T *>(staticStorage.bytes);
 		} else {
 			return reinterpret_cast<T *>(dynamicStorage.data);
@@ -105,24 +108,64 @@ struct Component {
 			return nullptr;
 		}
 
-		clear();
+		if (destructor) {
+			clear();
+		}
 
-		if constexpr (sizeof(T) > STATIC_SIZE) {
-			soo = 0;
-			destructor = [](void *ptr) { sprt::__delete(reinterpret_cast<T *>(ptr)); };
+		if constexpr (sizeof(T) > STATIC_SIZE
+				|| !sprt::is_trivial_v<T> || !sprt::is_standard_layout_v<T>) {
+			isStatic = 0;
+			destructor = [](void *ptr) {
+				sprt::__delete(reinterpret_cast<T *>(ptr)); //
+			};
 			dynamicStorage.size = sizeof(T);
 			auto d = new (sprt::nothrow) T(sprt::forward<Args>(args)...);
 			dynamicStorage.data = d;
 			return d;
 		} else {
-			soo = 1;
-			destructor = [](void *ptr) { reinterpret_cast<T *>(ptr)->~T(); };
+			isStatic = 1;
+			destructor = [](void *ptr) {
+				reinterpret_cast<T *>(ptr)->~T(); //
+			};
 			return new (staticStorage.bytes) T(sprt::forward<Args>(args)...);
 		}
 	}
 
-	Component(const ComponentId &v) : id(v.value), soo(0) { }
+	Component(const ComponentId &v) : id(v.value), isStatic(0) { }
 	~Component() { clear(); }
+
+	Component(const Component &) = delete;
+	Component &operator=(const Component &) = delete;
+
+	Component(Component &&other) {
+		id = other.id;
+		isStatic = other.isStatic;
+		if (isStatic) {
+			memcpy(staticStorage.bytes, other.staticStorage.bytes, STATIC_SIZE);
+		} else {
+			dynamicStorage.size = other.dynamicStorage.size;
+			dynamicStorage.data = other.dynamicStorage.data;
+		}
+
+		destructor = other.destructor;
+		other.destructor = nullptr;
+	}
+
+	Component &operator=(Component &&other) {
+		clear();
+		id = other.id;
+		isStatic = other.isStatic;
+		if (isStatic) {
+			memcpy(staticStorage.bytes, other.staticStorage.bytes, STATIC_SIZE);
+		} else {
+			dynamicStorage.size = other.dynamicStorage.size;
+			dynamicStorage.data = other.dynamicStorage.data;
+		}
+
+		destructor = other.destructor;
+		other.destructor = nullptr;
+		return *this;
+	}
 };
 
 struct ComponentEqual {
@@ -145,10 +188,13 @@ struct ComponentHash {
 	using hash_type = sprt::hash<uint32_t>;
 	using is_transparent = void;
 
-	sprt::size_t operator()(Component c) const { return hash_type{}(c.id); }
+	sprt::size_t operator()(const Component &c) const { return hash_type{}(c.id); }
 	sprt::size_t operator()(ComponentId id) const { return hash_type{}(id.value); }
 	sprt::size_t operator()(uint32_t id) const { return hash_type{}(id); }
 };
+
+// Fast int/hash set
+using ComponentMask = sprt::__malloc_int_set<ComponentId::Value>;
 
 class ComponentContainer {
 public:
@@ -183,14 +229,25 @@ public:
 
 	void removeAllComponents();
 
+	void resetComponentsDirty();
+
+	/* Monotone per-container counter, bumped by every component mutation below. The component half
+	of Node's style-match stamp: everything a selector reads lives in components, so any write
+	(styling-only ones included) conservatively invalidates the node's cached match list. */
+	uint64_t getComponentsVersion() const { return _componentsVersion; }
+
 protected:
 	bool _componentsDirty = false;
+	uint64_t _componentsVersion = 0;
 	HashSet<Component, ComponentHash, ComponentEqual> _components;
+	ComponentMask _componentsDirtyMask;
 };
 
 template <typename T, typename... Args>
 T *ComponentContainer::setComponent(Args &&...args) {
 	_componentsDirty = true;
+	++_componentsVersion;
+	_componentsDirtyMask.emplace(T::Id.value);
 	auto it = _components.find(T::Id);
 	if (it == _components.end()) {
 		it = _components.emplace(T::Id).first;
@@ -201,10 +258,13 @@ T *ComponentContainer::setComponent(Args &&...args) {
 template <typename T>
 const T *ComponentContainer::updateComponent(const Callback<bool(NotNull<T>)> &cb) {
 	auto it = _components.find(T::Id);
-	if (it != _components.end()) {
-		if (cb((*it).template get<T>())) {
-			_componentsDirty = true;
-		}
+	if (it == _components.end()) {
+		return nullptr;
+	}
+	if (cb((*it).template get<T>())) {
+		_componentsDirty = true;
+		++_componentsVersion;
+		_componentsDirtyMask.emplace(T::Id.value);
 	}
 	return (*it).template get<T>();
 }
@@ -218,10 +278,14 @@ const T *ComponentContainer::setOrUpdateComponent(const Callback<bool(NotNull<T>
 		it = _components.emplace(T::Id).first;
 		(*it).template create<T>();
 		_componentsDirty = true;
+		++_componentsVersion;
+		_componentsDirtyMask.emplace(T::Id.value);
 	}
 
 	if (cb((*it).template get<T>())) {
 		_componentsDirty = true;
+		++_componentsVersion;
+		_componentsDirtyMask.emplace(T::Id.value);
 	}
 	return (*it).template get<T>();
 }
@@ -240,11 +304,76 @@ bool ComponentContainer::removeComponent() {
 	auto it = _components.find(T::Id);
 	if (it != _components.end()) {
 		_componentsDirty = true;
+		++_componentsVersion;
+		_componentsDirtyMask.emplace(T::Id.value);
 		_components.erase(it);
 		return true;
 	}
 	return false;
 }
+
+// Style-driven visibility (CSS `display: none` / `visibility: hidden`). Either flag skips drawing,
+// input and children at visit, but the node's own data phases keep running so styling can remove
+// the component; `setVisible` state is untouched. Layout collapses `displayNone` nodes, while
+// `visibilityHidden` keeps its box. Checked live at visit, no invalidation needed.
+struct SP_PUBLIC VisibilityComponent {
+	static ComponentId Id;
+
+	bool displayNone = false; // display: none — skipped at visit and collapsed by layout
+	bool visibilityHidden = false; // visibility: hidden — skipped at visit, keeps its box
+
+	bool visible() const { return !displayNone && !visibilityHidden; }
+
+	bool operator==(const VisibilityComponent &) const = default;
+};
+
+// Precomputed measurement, read by Node::handleMeasure and LayoutSystem::measureNode when no
+// HandleMeasure system answers. An entry at Size2::ZERO is unset; a negative axis is unspecified.
+// An axis `normal` specifies is the node's definite size and is never replaced by a measurement.
+struct SP_PUBLIC MeasureComponent {
+	static ComponentId Id;
+
+	Size2 normal = Size2::ZERO; // MeasureMode::Normal (preferred size)
+	Size2 minContent = Size2::ZERO; // MeasureMode::MinContent
+	Size2 maxContent = Size2::ZERO; // MeasureMode::MaxContent
+
+	// The entry for the requested mode, per axis, falling back to the other entries. An axis no
+	// entry specifies is returned negative, and the caller keeps its current size.
+	Size2 measure(const MeasureConstraints &c) const {
+		Size2 ret(-1.0f, -1.0f);
+
+		auto take = [&](const Size2 &v) {
+			if (v == Size2::ZERO) {
+				return; // whole entry unset
+			}
+			if (ret.width < 0.0f && v.width >= 0.0f) {
+				ret.width = v.width;
+			}
+			if (ret.height < 0.0f && v.height >= 0.0f) {
+				ret.height = v.height;
+			}
+		};
+
+		switch (c.mode) {
+		case MeasureMode::MinContent:
+			take(minContent);
+			take(normal);
+			take(maxContent);
+			break;
+		case MeasureMode::MaxContent:
+			take(maxContent);
+			take(normal);
+			take(minContent);
+			break;
+		default:
+			take(normal);
+			take(maxContent);
+			take(minContent);
+			break;
+		}
+		return ret;
+	}
+};
 
 } // namespace stappler::xenolith
 

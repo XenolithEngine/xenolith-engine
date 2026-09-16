@@ -23,6 +23,36 @@
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_EVENT_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_EVENT_H_
 
+/*
+	Dispatch header for the BSD/macOS <sys/event.h> (kqueue event notification):
+	- hosted SPRT build -> forwards to the system <sys/event.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded).
+	A function tagged [gate: X] is declared only when __SPRT_CONFIG_HAVE_X is set for
+	the target (or when __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS forces all of them).
+	struct kevent and struct timespec come in via <sprt/c/sys/__sprt_event.h>.
+
+	Macros:
+	  filter types (EVFILT_*): EVFILT_READ, EVFILT_WRITE, EVFILT_AIO, EVFILT_VNODE,
+	    EVFILT_PROC, EVFILT_SIGNAL, EVFILT_TIMER, EVFILT_MACHPORT, EVFILT_FS,
+	    EVFILT_USER, EVFILT_VM, EVFILT_EXCEPT
+	  action/flag bits (EV_*): EV_ADD, EV_DELETE, EV_ENABLE, EV_DISABLE, EV_ONESHOT,
+	    EV_CLEAR, EV_RECEIPT, EV_DISPATCH, EV_UDATA_SPECIFIC, EV_VANISHED,
+	    EV_SYSFLAGS, EV_FLAG0, EV_FLAG1, EV_EOF, EV_ERROR
+	  filter-specific fflags (NOTE_*): the full set - user-filter control
+	    (NOTE_TRIGGER, NOTE_FF*), vnode (NOTE_DELETE/WRITE/EXTEND/ATTRIB/LINK/RENAME/
+	    REVOKE/FUNLOCK, lease notes), proc (NOTE_EXIT and its detail flags, NOTE_FORK,
+	    NOTE_EXEC, NOTE_SIGNAL, NOTE_TRACK, NOTE_TRACKERR, NOTE_CHILD),
+	    VM pressure (NOTE_VM_ family), and timer units/flags (NOTE_SECONDS/USECONDS/NSECONDS/
+	    ABSOLUTE/LEEWAY/CRITICAL/BACKGROUND/MACH_CONTINUOUS_TIME/MACHTIME)
+	  EV_SET(...) - helper macro to populate a struct kevent
+
+	Functions  [gate: KQUEUE]:
+	  kqueue - create a new kernel event queue, returning a descriptor
+	  kevent - register changes on a queue and/or wait for pending events
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sys/event.h>
@@ -39,7 +69,7 @@
 #define EVFILT_SIGNAL __SPRT_EVFILT_SIGNAL
 #define EVFILT_TIMER __SPRT_EVFILT_TIMER
 #define EVFILT_MACHPORT __SPRT_EVFILT_MACHPORT
-#define EVFILT_FS__SPRT_EVFILT_FS
+#define EVFILT_FS __SPRT_EVFILT_FS
 #define EVFILT_USER __SPRT_EVFILT_USER
 #define EVFILT_VM __SPRT_EVFILT_VM
 #define EVFILT_EXCEPT __SPRT_EVFILT_EXCEPT
@@ -54,15 +84,12 @@
 #define EV_RECEIPT __SPRT_EV_RECEIPT
 #define EV_DISPATCH __SPRT_EV_DISPATCH
 #define EV_UDATA_SPECIFIC __SPRT_EV_UDATA_SPECIFIC
-#define EV_UDATA_SPECIFIC __SPRT_EV_UDATA_SPECIFIC
 #define EV_VANISHED __SPRT_EV_VANISHED
 #define EV_SYSFLAGS __SPRT_EV_SYSFLAGS
 #define EV_FLAG0 __SPRT_EV_FLAG0
 #define EV_FLAG1 __SPRT_EV_FLAG1
 #define EV_EOF __SPRT_EV_EOF
 #define EV_ERROR __SPRT_EV_ERROR
-#define EV_FLAG0 __SPRT_EV_FLAG0
-#define EV_FLAG1 __SPRT_EV_FLAG1
 
 #define NOTE_TRIGGER __SPRT_NOTE_TRIGGER
 #define NOTE_FFNOP __SPRT_NOTE_FFNOP

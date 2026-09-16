@@ -8,16 +8,17 @@
 #define __SPRT_O_DSYNC      010000
 #define __SPRT_O_SYNC     04010000
 #define __SPRT_O_RSYNC    04010000
-#define __SPRT_O_DIRECTORY 0200000
-#define __SPRT_O_NOFOLLOW  0400000
+#define __SPRT_O_DIRECTORY  040000
+#define __SPRT_O_NOFOLLOW  0100000
 #define __SPRT_O_CLOEXEC  02000000
+#define __SPRT_O_INHERITABLE 0 // non-standard, no-op on this platform
 
 #define __SPRT_O_ASYNC      020000
-#define __SPRT_O_DIRECT     040000
+#define __SPRT_O_DIRECT    0200000
 #define __SPRT_O_LARGEFILE 0
 #define __SPRT_O_NOATIME  01000000
 #define __SPRT_O_PATH    010000000
-#define __SPRT_O_TMPFILE 020200000
+#define __SPRT_O_TMPFILE 020040000
 #define __SPRT_O_NDELAY __SPRT_O_NONBLOCK
 
 #define __SPRT_O_SEARCH   __SPRT_O_PATH
@@ -87,5 +88,10 @@
 #define __SPRT_AT_RECURSIVE 0x8000
 #define __SPRT_AT_EACCESS 0x200
 #define __SPRT_AT_REMOVEDIR 0x200
+
+// name_to_handle_at: AT_HANDLE_FID переиспользует бит AT_REMOVEDIR (Linux 6.7,
+// glibc 2.39), AT_HANDLE_MNT_ID_UNIQUE — бит AT_SYMLINK_NOFOLLOW (Linux 6.12).
+#define __SPRT_AT_HANDLE_FID 0x200
+#define __SPRT_AT_HANDLE_MNT_ID_UNIQUE 0x001
 
 // clang-format on

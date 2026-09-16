@@ -39,7 +39,11 @@ using __pointer = __detected_or_t<_Tp *, __pointer_member, remove_reference_t<_A
 template <typename _Alloc, template <typename> typename _Alias, typename _Ptr, typename _Tp,
 		typename = void>
 struct __rebind_or_alias_pointer {
-	using type = typename pointer_traits<_Ptr>::template rebind<_Tp>::other;
+	// pointer_traits<Ptr>::rebind<T> is itself the rebound pointer type (an alias
+	// template); the `::other` member belongs to the *allocator* rebind protocol,
+	// not pointer_traits, so naming it here makes allocator_traits<allocator<T>>
+	// fail to instantiate (rebind<T> is e.g. `const int *`, which has no members).
+	using type = typename pointer_traits<_Ptr>::template rebind<_Tp>;
 };
 
 template <typename _Ptr, typename _Alloc, typename _Tp, template <typename> typename _Alias>
@@ -111,6 +115,17 @@ using __propagate_on_container_swap_member = typename _Tp::propagate_on_containe
 template <typename _Alloc>
 using __propagate_on_container_swap =
 		__detected_or_t<false_type, __propagate_on_container_swap_member, _Alloc>;
+
+// __is_always_equal — the allocator's own member if present, otherwise is_empty<Alloc>::type
+// ([allocator.traits.types]). The default is the bool_constant is_empty<Alloc>::type (i.e.
+// true_type/false_type), not the is_empty<Alloc> trait itself: conformance code compares the
+// resulting typedef against std::true_type/false_type by exact type identity.
+template <typename _Tp>
+using __is_always_equal_member = typename _Tp::is_always_equal;
+
+template <typename _Alloc>
+using __is_always_equal =
+		__detected_or_t<typename is_empty<_Alloc>::type, __is_always_equal_member, _Alloc>;
 
 // __allocator_traits_rebind
 template <typename _Tp, typename _Up, typename = void>
@@ -199,6 +214,7 @@ struct allocator_traits {
 	using propagate_on_container_move_assignment =
 			__propagate_on_container_move_assignment<allocator_type>;
 	using propagate_on_container_swap = __propagate_on_container_swap<allocator_type>;
+	using is_always_equal = __is_always_equal<allocator_type>;
 
 	template <typename _Tp>
 	using rebind_alloc = __allocator_traits_rebind_t<allocator_type, _Tp>;

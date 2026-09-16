@@ -28,17 +28,39 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
-uint32_t DependencyEvent::GetNextId() {
-	static sprt::atomic<uint32_t> s_eventId = 1;
-	return s_eventId.fetch_add(1);
+// Shared id space across processes: the low 31 bits are a monotonic counter; the top bit is a
+// per-side mask (0 for server/local, 0x80000000 for the remote client, set once at app init) so
+// client- and server-minted ids never collide on the wire.
+static sprt::atomic<uint32_t> s_eventId = 1;
+static uint32_t s_eventIdMask = 0;
+
+/* XL_DEP_ACCOUNT=1 logs a gating dependency's life when it fires: `queued` (minted but not yet
+submitted, owned by the submitter) and `work` (the queue's part), reported separately. Unset or `0`
+is off. */
+static bool DependencyEvent_accountEnabled() {
+	static const bool s_value = [] {
+		auto v = ::getenv("XL_DEP_ACCOUNT");
+		return v && StringView(v) != "0";
+	}();
+	return s_value;
 }
+
+uint32_t DependencyEvent::GetNextId() {
+	return (s_eventId.fetch_add(1) & 0x7FFFFFFFu) | s_eventIdMask;
+}
+
+void DependencyEvent::SetIdGenerationMask(uint32_t mask) { s_eventIdMask = mask; }
 
 DependencyEvent::~DependencyEvent() { }
 
-DependencyEvent::DependencyEvent(QueueSet &&q, StringView str) : _queues(sp::move(q)), _tag(str) { }
+DependencyEvent::DependencyEvent(QueueSet &&q, StringView str) : _queues(sp::move(q)), _tag(str) {
+	_signaled.store(_queues.empty());
+}
 
 DependencyEvent::DependencyEvent(InitializerList<Rc<Queue>> &&il, StringView str)
-: _queues(sp::move(il)), _tag(str) { }
+: _queues(sp::move(il)), _tag(str) {
+	_signaled.store(_queues.empty());
+}
 
 bool DependencyEvent::signal(Queue *q, bool success) {
 	if (!success) {
@@ -49,14 +71,55 @@ bool DependencyEvent::signal(Queue *q, bool success) {
 	if (it != _queues.end()) {
 		_queues.erase(it);
 	}
-	return _queues.empty();
+
+	const bool signaled = _queues.empty();
+
+	// `!_signaled` so the account reports the transition only: signal() on an event with an empty
+	// queue set answers true again.
+	if (signaled && !_signaled.load() && DependencyEvent_accountEnabled()) {
+		const auto now = sp::platform::clock(ClockType::Monotonic);
+		// Without markSent, `queued` is omitted rather than reported as zero.
+		if (_sentClock) {
+			log::source().debug("dep::account", "tag=", _tag, " id=", _id,
+					" queued=", double(_sentClock - _clock) / 1'000.0,
+					"ms work=", double(now - _sentClock) / 1'000.0,
+					"ms total=", double(now - _clock) / 1'000.0, "ms");
+		} else {
+			log::source().debug("dep::account", "tag=", _tag, " id=", _id,
+					" queued=? work=? total=", double(now - _clock) / 1'000.0, "ms");
+		}
+	}
+
+	// Publish before running the callback: the callback may hand control to another thread, and a
+	// reader that gets there first must already see the event as fired.
+	_signaled.store(signaled);
+	if (signaled && _signalCallback) {
+		// Fire once on full signal. Move the callback out first so it cannot re-fire on a later signal()
+		// and so a callback that releases the last external reference to this event cannot re-enter here.
+		// The loop holds an Rc across signal(), so `this` stays valid for the return below.
+		auto cb = sp::move(_signalCallback);
+		_signalCallback = nullptr;
+		cb();
+	}
+	return signaled;
 }
 
-bool DependencyEvent::isSignaled() const { return _queues.empty(); }
+void DependencyEvent::markSent() {
+	if (!_sentClock) {
+		_sentClock = sp::platform::clock(ClockType::Monotonic);
+	}
+}
+
+bool DependencyEvent::isSignaled() const { return _signaled.load(); }
 
 bool DependencyEvent::isSuccessful() const { return _success; }
 
-void DependencyEvent::addQueue(Rc<Queue> &&q) { _queues.emplace(move(q)); }
+void DependencyEvent::addQueue(Rc<Queue> &&q) {
+	_queues.emplace(move(q));
+	_signaled.store(false);
+}
+
+void DependencyEvent::setSignalCallback(Function<void()> &&cb) { _signalCallback = sp::move(cb); }
 
 bool Attachment::init(AttachmentBuilder &builder) {
 	_data = builder.getAttachmentData();
@@ -99,6 +162,8 @@ Rc<AttachmentHandle> Attachment::makeFrameHandle(const FrameQueue &queue) {
 	}
 	return nullptr;
 }
+
+Queue *Attachment::getQueue() const { return _data && _data->queue ? _data->queue->queue : nullptr; }
 
 Vector<const QueuePassData *> Attachment::getRenderPasses() const {
 	Vector<const PassData *> ret;

@@ -26,6 +26,7 @@
 #include "XLSystem.h"
 #include "XLNodeInfo.h"
 #include "XLGestureRecognizer.h"
+#include "XLHotkey.h"
 
 #include <sprt/cxx/variant>
 
@@ -52,9 +53,13 @@ public:
 
 	bool init(int32_t priority = 0);
 
+	virtual void handleAdded(Node *) override;
+	virtual void handleRemoved() override;
 	virtual void handleEnter(Scene *) override;
 	virtual void handleExit() override;
 	virtual void handleVisitSelf(FrameInfo &, Node *, NodeVisitFlags flags) override;
+	virtual void handleTransformDirty(const Mat4 &) override;
+	virtual void settlePointerState() override;
 
 	virtual void update(const UpdateTime &) override;
 
@@ -113,9 +118,15 @@ public:
 	bool canHandleEvent(const InputEvent &event) const;
 	InputEventState handleEvent(const InputEvent &event);
 
+	void updatePointerState();
+
 	// try to set focus on this listener
 	bool setFocused();
 	bool isFocused() const;
+
+	// Fired from handleFocusIn/handleFocusOut. A subclass should override those instead; this is
+	// for the listeners that are not subclassed
+	void setFocusCallback(Function<void(bool)> &&);
 
 	FocusGroup *getFocusGroup() const;
 
@@ -139,6 +150,23 @@ public:
 	GestureKeyRecognizer *addKeyRecognizer(InputCallback<GestureData> &&,
 			InputKeyInfo && = InputKeyInfo());
 
+	/* Subscribe to a global hotkey (see XLHotkey.h). Return true from the callback to consume the
+	   key: the dispatcher stops the walk there and the ordinary key route never runs.
+
+	   Needs no key mask and is not hit-tested: the dispatcher calls handleHotkey directly,
+	   bypassing canHandleEvent and the touch filter. The focus group still applies (see
+	   HotkeyFlags::FocusedOnly). */
+	void addHotkey(HotkeyId, HotkeyCallback &&, HotkeyFlags = HotkeyFlags::None);
+	void removeHotkey(HotkeyId);
+	bool hasHotkey(HotkeyId) const;
+
+	// Any of `ids` this listener is subscribed to and is eligible for under `ctx` - see
+	// HotkeyContext, which carries what each HotkeyFlags value is tested against
+	bool canHandleHotkey(SpanView<HotkeyId> ids, const HotkeyContext &ctx) const;
+
+	// Delivers the first matching binding; returns true when the callback consumed the hotkey
+	bool handleHotkey(SpanView<HotkeyId> ids, const InputEvent &, const HotkeyContext &ctx);
+
 	void setWindowStateCallback(Function<bool(WindowState, WindowState)> &&);
 
 	void clear();
@@ -148,13 +176,24 @@ public:
 protected:
 	friend class FocusGroup;
 
-	void handleFocusIn(FocusGroup *);
-	void handleFocusOut(FocusGroup *);
+	// Stamps _visitGeneration when the storage this listener registered into is committed
+	friend class InputDispatcher;
+
+	virtual void handleFocusIn(FocusGroup *);
+	virtual void handleFocusOut(FocusGroup *);
 
 	bool shouldProcessEvent(const InputEvent &) const;
 	bool _shouldProcessEvent(const InputEvent &) const; // default realization
 
 	void addEventMask(const EventMask &);
+
+	struct HotkeyBinding {
+		HotkeyCallback callback;
+		HotkeyFlags flags = HotkeyFlags::None;
+	};
+
+	// True when this binding is eligible for the current delivery pass
+	bool isHotkeyEligible(const HotkeyBinding &, const HotkeyContext &) const;
 
 	using EventCallback = sprt::variant<Function<bool()>, Function<bool(WindowState, WindowState)>>;
 
@@ -177,12 +216,28 @@ protected:
 	float _opacityFilter = 0.0f;
 	bool _hasFocus = false;
 
+	bool _visitScissorEnabled = false;
+	URect _visitScissor;
+
+	/* Which committed frame this listener was last drawn in - stamped by InputDispatcher at commit.
+	A listener whose owner was not visited does not match, which matters for listeners reached
+	outside the dispatcher walk (e.g. held by an active gesture chain). */
+	uint64_t _visitGeneration = 0;
+
+	// The owner's opacity as of that frame, for _opacityFilter
+	float _visitOpacity = 1.0f;
+
+	// Whether any recognizer here keeps state derived from a hit test against the owner
+	// (GestureRecognizer::requiresGeometryUpdate) - if none does, there is nothing to settle
+	bool _geometryRecognizers = false;
+
 	Scene *_scene = nullptr;
 
 	EventFilter _eventFilter;
 	Vector<Rc<GestureRecognizer>> _recognizers;
 	Map<InputEventName, EventCallback> _callbacks;
 	Map<InputEventName, uint32_t> _retainedEvents;
+	Map<HotkeyId, HotkeyBinding> _hotkeys;
 	Function<void(bool)> _focusCallback;
 };
 

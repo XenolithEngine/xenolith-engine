@@ -328,7 +328,7 @@ void TableRec::writeCompareResult(Handle &h, StringStream &outstream,
 				case RemovePolicy::Restrict:
 					writeTriggerHeader(name, t, StringView());
 					outstream << " BEGIN\n\tSELECT RAISE(ABORT, 'Restrict constraint failed on "
-							  << t.targetTable << "." << t.targetField << "' FROM \""
+							  << t.targetTable << "." << t.targetField << "') FROM \""
 							  << t.targetTable << "\" WHERE \"" << t.targetTable << "\".\""
 							  << t.targetField << "\"=OLD.\"" << t.sourceField << "\";\nEND;\n";
 					break;

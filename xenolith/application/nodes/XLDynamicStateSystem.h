@@ -38,6 +38,17 @@ enum class DynamicStateApplyMode : uint32_t {
 
 SP_DEFINE_ENUM_AS_MASK(DynamicStateApplyMode)
 
+/* Which axes a scissor clips. An axis left out is opened rather than narrowed to the box, so only
+an ancestor scissor limits it; this lets `overflow-x` and `overflow-y` differ. */
+enum class ScissorAxes : uint32_t {
+	None = 0,
+	Horizontal = 1 << 0,
+	Vertical = 1 << 1,
+	Both = Horizontal | Vertical,
+};
+
+SP_DEFINE_ENUM_AS_MASK(ScissorAxes)
+
 class SP_PUBLIC DynamicStateSystem : public System, protected FrameStateOwnerInterface {
 public:
 	virtual ~DynamicStateSystem() = default;
@@ -61,12 +72,15 @@ public:
 
 	virtual StateId getCurrentStateId() const { return _currentStateId; }
 
-	virtual void enableScissor(Padding outline = Padding());
+	virtual void enableScissor(Padding outline = Padding(), ScissorAxes axes = ScissorAxes::Both);
 	virtual void disableScissor();
 	virtual bool isScissorEnabled() const { return _scissorEnabled; }
 
 	virtual void setScissorOutlone(Padding value) { _scissorOutline = value; }
 	virtual Padding getScissorOutline() const { return _scissorOutline; }
+
+	virtual void setScissorAxes(ScissorAxes value) { _scissorAxes = value; }
+	virtual ScissorAxes getScissorAxes() const { return _scissorAxes; }
 
 protected:
 	using System::init;
@@ -82,6 +96,7 @@ protected:
 
 	bool _ignoreParentState = false;
 	bool _scissorEnabled = false;
+	ScissorAxes _scissorAxes = ScissorAxes::Both;
 	Padding _scissorOutline;
 	StateId _currentStateId = maxOf<StateId>();
 

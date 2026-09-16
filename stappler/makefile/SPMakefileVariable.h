@@ -1,5 +1,6 @@
 /**
  Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -33,9 +34,60 @@ class VariableEngine;
 
 struct Variable;
 
+// PathSpacePlaceholder (declared in SPMakefileStmt.h) is the make-visible stand-in for a space inside
+// a path. These convert between it and a real space at the engine's OS boundaries.
+// Encode: each real space (0x20) -> PathSpacePlaceholder. Returns the input unchanged (no allocation)
+// when it contains no space; otherwise writes the encoded copy into `storage` and returns a view of
+// it. `storage` is a caller-owned scratch buffer (mirrors the toPosixPath idiom in getAbsolutePath),
+// so the helper is usable without an active memory pool.
+SP_PUBLIC StringView encodePathSpaces(StringView, mem_std::Interface::StringType &storage);
+
+// Decode: each PathSpacePlaceholder -> real space (0x20). Inverse of encodePathSpaces.
+SP_PUBLIC StringView decodePathSpaces(StringView, mem_std::Interface::StringType &storage);
+
+// Decode a command line for the shell, streaming the result to `out` in chunks: each verbatim span is
+// emitted whole and only the placeholder replacements are separate pieces (so the caller appends into
+// whatever buffer it likes -- no storage is owned here). Each PathSpacePlaceholder becomes a space the
+// shell keeps inside one argument. The scan is quote-aware -- a placeholder ALREADY inside author quotes
+// ("..." or '...') becomes a plain space (the quotes already group it, and escaping there would be
+// wrong), while a placeholder OUTSIDE quotes is escaped so an unquoted path with spaces still survives
+// word splitting (POSIX emits "\ "; Windows, lacking a per-space escape, emits a quoted space the
+// command-line parser fuses into the adjacent word). With `noEscape` every placeholder decodes to a
+// plain space (GNU-make-style literal expansion -- the caller is expected to quote). When the input has
+// no placeholder it is handed to `out` unchanged in a single call. This is the recipe / $(shell) -> OS
+// boundary.
+SP_PUBLIC void decodePathSpacesForShell(const Callback<void(StringView)> &out, StringView,
+		bool noEscape = false);
+
+// One bit per diagnostic warning the engine can emit, so a consumer can enable or suppress
+// each independently. A warning is reported only when its bit is set in the engine flags.
 enum class EngineFlags : uint32_t {
-	None,
-	Pedantic = 1 << 0,
+	None = 0,
+
+	WarnSubstEmpty = 1 << 0, // $(subst) called with an empty 'from'
+	WarnPatsubstEmpty = 1 << 1, // $(patsubst) with an empty pattern
+	WarnFilterEmpty = 1 << 2, // $(filter)/$(filter-out) with empty patterns
+	WarnSortEmpty = 1 << 3, // $(sort) called with an empty argument
+	WarnCallStaticVariable = 1 << 4, // $(call) of a simple (:=) variable
+	WarnCallArgumentCount = 1 << 5, // $(call) arg count differs from the function's $(N) refs
+	WarnCallUndefined = 1 << 6, // $(call) of an undefined variable
+	WarnSubstituteFunction = 1 << 7, // substituting a function-typed variable into a string
+	WarnAppendUndefined = 1 << 8, // '+=' to an undefined variable
+	WarnUndefineUndefined = 1 << 9, // 'undefine' of an undefined variable
+	WarnUndefineOrigin = 1 << 10, // 'undefine' blocked by the variable's origin
+	WarnPatsubstEmptyText = 1 << 11, // $(patsubst) called with empty text
+
+	// every warning
+	WarnAll = WarnSubstEmpty | WarnPatsubstEmpty | WarnFilterEmpty | WarnSortEmpty
+			| WarnCallStaticVariable | WarnCallArgumentCount | WarnCallUndefined
+			| WarnSubstituteFunction | WarnAppendUndefined | WarnUndefineUndefined
+			| WarnUndefineOrigin | WarnPatsubstEmptyText,
+
+	// the stricter ("pedantic") warnings — off by default
+	WarnPedantic = WarnFilterEmpty | WarnSortEmpty | WarnCallArgumentCount | WarnPatsubstEmptyText,
+
+	// default set: everything except the pedantic ones (preserves prior behavior)
+	Default = WarnAll & ~WarnPedantic,
 };
 
 SP_DEFINE_ENUM_AS_MASK(EngineFlags)
@@ -124,6 +176,9 @@ public:
 
 	const Variable *getIfDefined(StringView) const;
 
+	// Enumerate every defined variable (name + raw Variable), in name order.
+	void foreachVariable(const Callback<void(StringView, const Variable &)> &) const;
+
 	// If var is not defined, try to resolve in with SubstitutionCallback
 	const Variable *get(StringView);
 
@@ -134,8 +189,34 @@ public:
 
 	bool clear(StringView, Origin o);
 
+	// Unconditional set/erase that bypass the Origin overridability check. Used to restore an
+	// exact prior Variable after a temporary scope (e.g. target-specific variables), where the
+	// saved value may have a lower Origin than what was written and so could not be put back via
+	// the precedence-checked set()/clear().
+	void forceSet(StringView, const Variable &);
+	void forceErase(StringView);
+
 	void addSubstitutionCallback(Origin, VariableCallback::Fn, void *);
 	void addSubstitutionCallback(VariableCallback *);
+
+	// GNU make `export`/`unexport` state. A per-name flag (set by `export NAME`/`unexport NAME`)
+	// takes precedence over the global export-all toggle (the bare `export`/`unexport`). The engine
+	// only records the intent; the consumer turns it into the child-process environment (see
+	// Makefile::foreachExportedVariable).
+	void setExportFlag(StringView, bool exported);
+	void setExportAll(bool v) { _exportAll = v; }
+	bool isExportAll() const { return _exportAll; }
+	// 1 = explicitly exported, 0 = explicitly unexported, -1 = no explicit flag for this name.
+	int getExportFlag(StringView) const;
+
+	// Wires $(eval ...) back to the owning Makefile's parser without making the engine
+	// depend on Makefile (mirrors the include/substitution-callback indirection).
+	using EvalFn = bool (*)(void *, StringView name, StringView content);
+	void setEvalCallback(EvalFn, void *);
+
+	// Parse `content` as makefile text via the registered eval callback. Returns false
+	// (and reports) when no callback is set.
+	bool evalText(StringView content, ErrorReporter &, const FileLocation *stmtLoc = nullptr);
 
 	void setRootPath(StringView);
 
@@ -149,6 +230,8 @@ public:
 
 	void substitute(Output, StringView, ErrorReporter &err);
 
+	bool checkRecursion(StringView, Stmt *, ErrorReporter &err);
+
 	const CallContext *getCallContext() const { return _callContext; }
 
 	memory::pool_t *getPool() const { return _pool; }
@@ -156,33 +239,50 @@ public:
 	void pushBlock(Block *);
 	void popBlock();
 
+	// Append a makefile name to MAKEFILE_LIST (kept as a real, immediately-resolved variable so it
+	// is valid during AND after parsing, e.g. in exported recipes). Call as each file begins parsing.
+	void appendMakefileList(StringView name);
+
 	Block *getCurrentBlock() const { return _currentBlock; }
 
 	void setCustomOutput(const Callback<void(StringView)> *v) { _customOutput = v; }
 	const Callback<void(StringView)> *getCustomOutput() const { return _customOutput; }
 
 	EngineFlags getFlags() const { return _flags; }
+	void setFlags(EngineFlags f) { _flags = f; }
+
+	// True if the given warning bit is enabled in the current flags.
+	bool warnEnabled(EngineFlags f) const { return hasFlag(_flags, f); }
 
 	StringView getAbsolutePath(StringView) const;
+
+	const BufferTemplate<Interface> *getCurrentBuffer() const { return _currentBuffer; }
 
 protected:
 	bool call(const Callback<void(StringView)> &out, StringView fn, StmtType type, StmtValue *args,
 			ErrorReporter &err);
 
-	bool checkRecursion(StringView, Stmt *, ErrorReporter &err);
-
 	memory::pool_t *_pool = nullptr;
 	Block *_currentBlock = nullptr;
-	EngineFlags _flags = EngineFlags::None;
+	EngineFlags _flags = EngineFlags::Default;
 
 	CallContext _rootContext;
 	CallContext *_callContext = nullptr;
 	Map<StringView, Variable> _variables;
 	Vector<VariableCallback *> _varCallbacks;
+
+	// `export`/`unexport` bookkeeping (see setExportFlag/setExportAll). Names are pool-copied.
+	Map<StringView, bool> _exportFlags;
+	bool _exportAll = false;
 	Vector<Stmt *> _subStack;
 
 	StringView _rootPath;
 	const Callback<void(StringView)> *_customOutput;
+
+	EvalFn _evalFn = nullptr;
+	void *_evalUserdata = nullptr;
+
+	BufferTemplate<Interface> *_currentBuffer = nullptr;
 };
 
 } // namespace stappler::makefile

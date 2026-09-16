@@ -60,13 +60,13 @@ Status TaskQueue::OutputContext::perform(Rc<Task> &&task) {
 	outputMutex.lock();
 	outputQueue.push_back(sprt::move(task));
 	++outputCounter;
+	// signal under outputMutex (qcondvar contract: closes the lost-wakeup window)
+	outputCondition.notify_one();
 	outputMutex.unlock();
 
 	if (wakeup) {
 		wakeup();
 	}
-
-	outputCondition.notify_one();
 	return Status::Ok;
 }
 
@@ -74,13 +74,13 @@ Status TaskQueue::OutputContext::perform(Function<void()> &&func, Ref *target, S
 	outputMutex.lock();
 	outputCallbacks.emplace_back(sprt::move(func), target);
 	++outputCounter;
+	// signal under outputMutex (qcondvar contract: closes the lost-wakeup window)
+	outputCondition.notify_one();
 	outputMutex.unlock();
 
 	if (wakeup) {
 		wakeup();
 	}
-
-	outputCondition.notify_one();
 	return Status::Ok;
 }
 
@@ -138,8 +138,12 @@ void TaskQueue::update(uint32_t *count) {
 		*count += stack.size() + callbacks.size();
 	}
 
-	if (_context.tasksInQueue.load() > 0) {
-		_context.inputCondition.notify_all();
+	// signal the worker input condition under its mutex (qcondvar contract)
+	{
+		sprt::unique_lock<sprt::mutex> lock(_context.inputMutexQueue);
+		if (_context.tasksInQueue.load() > 0) {
+			_context.inputCondition.notify_all();
+		}
 	}
 }
 
@@ -157,7 +161,12 @@ Status TaskQueue::waitForAll(TimeInterval iv) {
 
 Status TaskQueue::wait(uint32_t *count) {
 	sprt::unique_lock<sprt::mutex> waitLock(_outContext.outputMutex);
-	_outContext.outputCondition.wait(waitLock);
+	// predicate-loop wait: a lost/spurious wakeup is recovered by re-checking
+	// outputCounter (incremented under outputMutex by perform()).
+	_outContext.outputCondition.wait(waitLock,
+			[&, this] { return _outContext.outputCounter.load() > 0; });
+	// release before update() — update() re-locks outputMutex internally
+	waitLock.unlock();
 	update(count);
 	return Status::Ok;
 }

@@ -29,22 +29,22 @@ void main() {
 	*/
 
 	if (s.x > 0.0 && s.y > 0.0) {
-		if ((data.constraints & (1 << 0)) != 0 || (data.constraints & (1 << 3)) != 0) {
-			outColor = 1.0.xxxx;
-			return;
-		}
-	} else if (s.x < 0.0 && s.y > 0.0) {
-		if ((data.constraints & (1 << 0)) != 0 || (data.constraints & (1 << 1)) != 0) {
-			outColor = 1.0.xxxx;
-			return;
-		}
-	} else if (s.x > 0.0 && s.y < 0.0) {
 		if ((data.constraints & (1 << 2)) != 0 || (data.constraints & (1 << 3)) != 0) {
 			outColor = 1.0.xxxx;
 			return;
 		}
-	} else if (s.x < 0.0 && s.y < 0.0) {
+	} else if (s.x < 0.0 && s.y > 0.0) {
 		if ((data.constraints & (1 << 2)) != 0 || (data.constraints & (1 << 1)) != 0) {
+			outColor = 1.0.xxxx;
+			return;
+		}
+	} else if (s.x > 0.0 && s.y < 0.0) {
+		if ((data.constraints & (1 << 0)) != 0 || (data.constraints & (1 << 3)) != 0) {
+			outColor = 1.0.xxxx;
+			return;
+		}
+	} else if (s.x < 0.0 && s.y < 0.0) {
+		if ((data.constraints & (1 << 0)) != 0 || (data.constraints & (1 << 1)) != 0) {
 			outColor = 1.0.xxxx;
 			return;
 		}

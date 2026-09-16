@@ -1,0 +1,136 @@
+# macOS (Darwin) platform architecture
+
+This document describes the macOS-specific architectural decisions in the
+Stappler / Xenolith engine — how the engine integrates with AppKit, Metal /
+MoltenVK, the Cocoa run loop, and the `.app` bundle format — and why. For the
+build-system view see [../articles/ru/general/build.adoc](../articles/ru/general/build.adoc).
+
+macOS targets use Apple triples such as `aarch64-apple-macosx` /
+`x86_64-apple-macosx`, optionally with the `+sprt` variant
+(`aarch64-apple-macosx+sprt`) to select the toolchain with the Xenolith Runtime
+integrated. The SDK path is discovered with `xcrun --sdk` at configure time
+([../../make/os/darwin.mk](../../make/os/darwin.mk)).
+
+## Objective-C++ bridge to AppKit
+
+The window layer is written in Objective-C++ (`.mm`) so it can call AppKit
+directly while staying in the C++ object model:
+[../../runtime/libc_wrapper/window/macos/](../../runtime/libc_wrapper/window/macos/)
+(`SPRTWinMacosWindow.mm`, `SPRTWinMacosView.mm`,
+`SPRTWinMacosContextController.mm`). `NSApplication` / `NSWindow` own the window
+lifecycle; an `NSViewController` subclass drives the content view.
+
+The decisive detail is that the content view's `+layerClass` returns
+**`CAMetalLayer`** — the engine renders into a Metal layer rather than through
+`NSView`'s normal drawing path. Frame pacing uses `CADisplayLink` added to the
+run loop in `NSRunLoopCommonModes`, and input arrives through `NSTrackingArea`
+plus the `NSTextInputClient` protocol, mapped to engine key codes via static
+lookup tables.
+
+## Vulkan over Metal (MoltenVK)
+
+There is no native Vulkan on macOS, so the engine runs **MoltenVK**, loading
+`libvulkan.1.dylib` dynamically (from `…app/Contents/Frameworks` in a deployed
+bundle, or a developer location otherwise) in
+[../../xenolith/backend/vk/platform/macos/XLVkPlatformMac.cc](../../xenolith/backend/vk/platform/macos/XLVkPlatformMac.cc).
+
+The surface is created from the `CAMetalLayer`. The loaded function table
+([../../xenolith/backend/vk/XLVkTable.h](../../xenolith/backend/vk/XLVkTable.h))
+carries both `vkCreateMacOSSurfaceMVK` (the MoltenVK `VK_MVK_macos_surface`
+extension) and `vkCreateMetalSurfaceEXT` (the portable `VK_EXT_metal_surface`),
+so either path can be used depending on what the loader exposes. The window
+returns a `SurfaceBackend::Metal` descriptor whose `layer` field is the
+`CAMetalLayer` bridged to `void *`
+([../../runtime/include/sprt/runtime/window/surface_info.h](../../runtime/include/sprt/runtime/window/surface_info.h)) —
+the single hand-off point between AppKit and Vulkan.
+
+## The `.app` bundle
+
+macOS executables are produced as application bundles rather than bare binaries.
+The build ([../../make/utils/build-targets.mk](../../make/utils/build-targets.mk),
+[../../make/distrib/macos.mk](../../make/distrib/macos.mk)) places the binary at
+`…/<name>.app/Contents/MacOS/<name>` and:
+
+* generates `Info.plist` (`CFBundleExecutable`, `CFBundleIdentifier` from
+  `APPCONFIG_BUNDLE_NAME`, `LSMinimumSystemVersion`, `NSHighResolutionCapable`),
+* links with rpath `@executable_path/../Frameworks`
+  ([../../make/os/darwin.mk](../../make/os/darwin.mk)) so bundled dylibs
+  (MoltenVK, libvulkan) load from `Contents/Frameworks`,
+* generates a `.dSYM` with `dsymutil` for non-`RELEASE` builds,
+* links static archives with `-all_load` so all of their symbols are retained.
+
+The bundled-Vulkan copy rule lives in [../../make/host.mk](../../make/host.mk)
+(`RUNTIME_INSTALL_LIBRARY` → `…app/Contents/Frameworks/`).
+
+## Filesystem, paths and frameworks
+
+Platform integration goes through CoreFoundation/Foundation. The executable path
+is obtained with `_NSGetExecutablePath()` (enabling bundle-relative resource
+resolution), locale via `CFLocaleCopyCurrent()`, Unicode operations through
+`CFString`, and the device id via `gethostuuid()` — see
+[../../runtime/libc_wrapper/platform/darwin/](../../runtime/libc_wrapper/platform/darwin/).
+The `UniformTypeIdentifiers` framework is linked for file-type handling.
+
+## Runtime / libc and frameworks linked
+
+Even on macOS the engine provides its own libc surface, layering the SDK headers
+*after* the system ones (`-idirafter include_libc/darwin` and the SDK
+`usr/include`, [../../runtime/runtime.mk](../../runtime/runtime.mk)). Notable
+Darwin-specific choices:
+
+* **Clock**: thread CPU time via the Mach `thread_info(THREAD_BASIC_INFO)` API,
+  wrapped behind a custom clock id in
+  [../../runtime/core/darwin/clock_gettime.cc](../../runtime/core/darwin/clock_gettime.cc).
+* **Synchronisation**: `os_sync_wait_on_address` / `os_sync_wake_by_address_*`
+  (the modern Darwin futex-equivalent) instead of a pthread mutex, in
+  [../../runtime/core/darwin/sprt_lock.cc](../../runtime/core/darwin/sprt_lock.cc).
+* **Frameworks** linked by the runtime module
+  ([../../runtime/runtime.mk](../../runtime/runtime.mk)): CoreFoundation,
+  Foundation, AppKit, QuartzCore, Metal, Security, SystemConfiguration,
+  UniformTypeIdentifiers, Network, IOKit — plus `libSystem`, `icucore`, `objc`,
+  `iconv`, `c++abi`.
+
+When building with the integrated runtime (`+sprt`), the macOS SDK does not need
+to be installed. This avoids the legal restrictions tied to Apple's hardware
+requirements. To make this possible, the runtime library (`libsprt.dylib`) is
+built as an umbrella over the system libraries and frameworks, and its text-based
+stub (`.tbd`) has the references to the standard libraries removed and their
+symbols added directly instead.
+
+The symbol list for the `.tbd` is extracted not from the SDK libraries but from
+`libsprt.dylib` itself and the statically built Xenolith Runtime dependencies.
+This way the macOS SDK is used only for its intended purpose — building the
+library — and Apple's license agreement is not violated.
+
+Note for users: before using the Apple targets *without* `+sprt`, review the
+macOS SDK license agreement, especially the clauses that restrict use to Apple
+hardware.
+
+## Event loop / dispatch
+
+[../../runtime/src/dispatch/platform/darwin/](../../runtime/src/dispatch/platform/darwin/)
+provides two backends:
+
+* **CFRunLoop** (`SPEvent-runloop.*`) — required on the main thread so the
+  dispatch queue interleaves with Cocoa's own event delivery. Cross-thread
+  wakeups use `CFRunLoopPerformBlock()` + `CFRunLoopWakeUp()`, timers use
+  `CFRunLoopTimer`.
+* **kqueue** (`SPEvent-kqueue.*`) — used on worker threads, where the BSD
+  `kevent` interface is more efficient and no GUI integration is needed.
+
+Thread queues are forced to the run-loop backend only where Cocoa requires it;
+otherwise kqueue is preferred.
+
+## Build flags
+
+From [../../make/os/darwin.mk](../../make/os/darwin.mk): `-fvisibility=hidden`
+and `-fvisibility-inlines-hidden` (private-by-default symbols), `-frtti` (RTTI
+kept), `-fPIC -DPIC`, `-all_load` and the `@executable_path/../Frameworks` rpath
+described above. `.mm` Objective-C++ compilation is enabled by the `BUILD_OBJC`
+flag, and `OSTYPE_LIBS_REALPATH` resolves framework/library symlinks.
+
+Unlike Linux, macOS does **not** add `-fno-exceptions` — exceptions are left at
+the compiler default. Xcode project files
+([../../xenolith/proj.macos/](../../xenolith/proj.macos/)) generate an
+`xcconfig` (deployment target, `-framework Cocoa/Metal/Quartz`, sandbox
+entitlements) for the IDE build path.

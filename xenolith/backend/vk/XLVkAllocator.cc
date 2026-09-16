@@ -1188,6 +1188,7 @@ Allocator::MemBlock DeviceMemoryPool::tryReuse(MemData *mem, VkDeviceSize size,
 			mem->freed.erase(fIt);
 			return ret;
 		}
+		++fIt;
 	}
 
 	return Allocator::MemBlock();

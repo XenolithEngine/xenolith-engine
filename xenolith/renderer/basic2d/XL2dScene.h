@@ -24,8 +24,10 @@
 #ifndef XENOLITH_RENDERER_BASIC2D_XL2DSCENE_H_
 #define XENOLITH_RENDERER_BASIC2D_XL2DSCENE_H_
 
+#include "XLCoreRenderSession.h"
 #include "XLScene.h"
 #include "XLInput.h"
+#include "XL2d.h" // QueueType, re-exported below
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
@@ -33,9 +35,18 @@ class VectorSprite;
 
 class SP_PUBLIC Scene2d : public Scene {
 public:
+	// Declared in XL2d.h so the backend pass makers can tag their queues with it; re-exported here
+	// because Scene2d::QueueType is how the rest of the engine spells it.
+	using QueueType = basic2d::QueueType;
+
 	struct QueueInfo {
 		Extent2 extent;
 		Color4F backgroundColor = Color4F::WHITE;
+		QueueType type = QueueType::Default;
+
+		// Defaulted per QueueType in Scene2d::init and overridable from buildQueueResources.
+		// maxOf<uint32_t> means "not set, use the type's default".
+		core::QueueDamageFlags damage = core::QueueDamageFlags(maxOf<uint32_t>());
 	};
 
 	class FpsDisplay;
@@ -43,14 +54,23 @@ public:
 	virtual ~Scene2d() = default;
 
 	// create with default render queue
-	virtual bool init(NotNull<AppThread> app, NotNull<AppWindow>,
+	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel>,
 			const core::FrameConstraints &constraints);
 
 	// create with default render queue, resources can be added via callback
-	virtual bool init(NotNull<AppThread> app, NotNull<AppWindow>,
+	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel>,
 			const Callback<void(Queue::Builder &)> &, const core::FrameConstraints &);
 
 	virtual bool init(Queue::Builder &&, const core::FrameConstraints &) override;
+
+	// Adopt an already-built (usually already-compiled) queue instead of building one.
+	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel>,
+			Rc<core::Queue> &&, const core::FrameConstraints &);
+
+	// Fill `builder` with the standard 2d render graph for the current gAPI, honouring
+	// QueueInfo::type and defaulting QueueInfo::damage for it. Static: needs no Scene, so a queue
+	// can be built, cached and compiled before the scene or window exists (used by QueueCache).
+	static bool buildQueue(NotNull<AppThread>, QueueInfo &, core::Queue::Builder &);
 
 	virtual void update(const UpdateTime &time) override;
 
@@ -62,6 +82,11 @@ public:
 	virtual void setContent(SceneContent *) override;
 
 protected:
+	// What kind of queue this scene wants, before anything is built. Used on both paths: a local
+	// scene builds a graph from it, a remote one matches it against the server's queues, so set
+	// `type` here rather than in buildQueueResources (which a client never calls).
+	virtual void describeQueue(QueueInfo &);
+
 	// override this to add initial resources to be compiled woth render queue
 	virtual void buildQueueResources(QueueInfo &, core::Queue::Builder &);
 
@@ -70,6 +95,13 @@ protected:
 
 	void updateInputEventData(InputEventData &data, const InputEventData &source, Vec2 pos,
 			uint32_t id);
+
+	// Which of the server's shared queues this scene renders through, by name (the name is the
+	// handle the rest of the client/server exchange uses -- see RemoteWindow::compileRenderQueue).
+	// The default matches on what the queue IS: the server's gAPI and the shape `info` asked for.
+	// Empty means nothing usable was offered, and scene construction fails.
+	virtual StringView selectServerQueue(NotNull<AppThread> app,
+			NotNull<core::RenderServerChannel> window, const QueueInfo &info);
 
 	InputEventData _data1 = InputEventData{maxOf<uint32_t>() - 1};
 	InputEventData _data2 = InputEventData{maxOf<uint32_t>() - 2};

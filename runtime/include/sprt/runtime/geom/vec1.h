@@ -110,9 +110,12 @@ public:
 
 	constexpr float lengthSquared() const { return (x * x); }
 
-	constexpr float distance(const Vec1 &v) const { return v.x - x; }
+	constexpr float distance(const Vec1 &v) const {
+		const float dx = v.x - x;
+		return dx < 0.0f ? -dx : dx; // a distance is non-negative (matches Vec2/3/4)
+	}
 
-	constexpr float length() const { return x; }
+	constexpr float length() const { return x < 0.0f ? -x : x; }
 
 	constexpr bool isWithinDistance(const Vec1 &v, float val) const { return distance(v) < val; }
 
@@ -170,7 +173,13 @@ public:
 };
 
 constexpr inline Vec1 &Vec1::normalize() {
-	x = 1.0f;
+	// preserve direction (sign); the old `x = 1.0f` dropped the sign and turned
+	// the zero vector into 1. A zero vector has no direction, so leave it at 0.
+	if (x > 0.0f) {
+		x = 1.0f;
+	} else if (x < 0.0f) {
+		x = -1.0f;
+	}
 	return *this;
 }
 

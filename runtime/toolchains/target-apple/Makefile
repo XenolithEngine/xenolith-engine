@@ -31,8 +31,18 @@ TOOLCHAIN_TARGETS ?= $(abspath $(MAKE_ROOT)targets)
 
 MKDIR = mkdir -p
 
-SP_MACOS_VER := 14.4
+SP_MACOS_VER := 14.5
 SP_IOS_VER := 17.4
+
+# The Vulkan validation layer is a loadable MODULE (.dylib) on macOS, but on iOS
+# upstream forces it to a SHARED .framework bundle. Track the produced artifact
+# (a real file usable as a make marker) per platform; SP_SYSNAME is only set in
+# the per-arch (else) branch, which is the only place this list is consumed.
+ifeq ($(SP_SYSNAME),iOS)
+SP_VVL_LIB := VkLayer_khronos_validation.framework/VkLayer_khronos_validation
+else
+SP_VVL_LIB := libVkLayer_khronos_validation.dylib
+endif
 
 INCLUDES := \
 	simde/simde-arch.h \
@@ -53,14 +63,15 @@ LIBS := \
 	libtiff.a \
 	libfreetype.a \
 	libharfbuzz.a \
+	libSheenBidi.a \
 	libsqlite3.a \
 	libnghttp3.a \
+	libngtcp2.a \
 	libssl.a \
 	libgost_engine.a \
 	libmbedtls.a \
 	libcurl-openssl.a \
 	libcurl-mbedtls.a \
-	libzip.a \
 	libiwasm-release.a \
 	libiwasm-debug.a \
 	libbacktrace.a \
@@ -68,7 +79,7 @@ LIBS := \
 	libvulkan.dylib \
 	libMoltenVK.dylib \
 	libVulkanLayerSettings.a \
-	libVkLayer_khronos_validation.dylib
+	$(SP_VVL_LIB)
 
 ifndef SP_ARCH
 
@@ -81,38 +92,71 @@ ARCHS := \
 
 all: $(ARCHS)
 
+SP_ARCH_COMMON := \
+	SP_RUNTIME_ROOT=$(realpath $(MAKE_ROOT)/../..)
+
 SP_x86_64_MACOSX_INFO := \
+	$(SP_ARCH_COMMON) \
 	SP_SYSNAME=Darwin \
 	SP_OSVER=$(SP_MACOS_VER) \
 	SP_TARGET=x86_64-apple-macosx \
 	SP_ARCH=x86_64 \
+	SP_APPLE_ARCH=x86_64-macos \
 	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx
 
 SP_aarch64_MACOSX_INFO := \
+	$(SP_ARCH_COMMON) \
 	SP_SYSNAME=Darwin \
 	SP_OSVER=$(SP_MACOS_VER) \
 	SP_TARGET=aarch64-apple-macosx \
 	SP_ARCH=arm64 \
+	SP_APPLE_ARCH=arm64-macos \
 	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx
 
-SP_aarch64_IOS_INFO := \
-	SP_SYSNAME=iOS \
+# "+open" now builds a STANDALONE sysroot from scratch in its OWN intermediate
+# (intermediate/<arch>-apple-macosx+open) — it is a primary target, no longer an
+# overlay staged from the stock <arch>-apple-macosx build. Same compiler triple
+# (SP_TARGET); only the intermediate dir differs. init-target lays the toolchain
+# there and open-sysroot.mk assembles usr/include from apple-oss + the baked overlay.
+SP_x86_64_MACOSX_OPEN_INFO := \
+	$(SP_ARCH_COMMON) \
+	SP_SYSNAME=Darwin \
 	SP_OSVER=$(SP_MACOS_VER) \
+	SP_TARGET=x86_64-apple-macosx \
+	SP_ARCH=x86_64 \
+	SP_APPLE_ARCH=x86_64-macos \
+	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx+open
+
+SP_aarch64_MACOSX_OPEN_INFO := \
+	$(SP_ARCH_COMMON) \
+	SP_SYSNAME=Darwin \
+	SP_OSVER=$(SP_MACOS_VER) \
+	SP_TARGET=aarch64-apple-macosx \
+	SP_ARCH=arm64 \
+	SP_APPLE_ARCH=arm64-macos \
+	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx+open
+
+SP_aarch64_IOS_INFO := \
+	$(SP_ARCH_COMMON) \
+	SP_SYSNAME=iOS \
+	SP_OSVER=$(SP_IOS_VER) \
 	SP_TARGET=aarch64-apple-ios \
 	SP_ARCH=arm64 \
 	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios
 
 SP_x86_64_IOSSIM_INFO := \
+	$(SP_ARCH_COMMON) \
 	SP_SYSNAME=iOS \
-	SP_OSVER=$(SP_MACOS_VER) \
+	SP_OSVER=$(SP_IOS_VER) \
 	SP_TARGET=x86_64-apple-ios-simulator \
 	SP_ARCH=x86_64 \
 	SP_IOSSIM=1 \
 	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-ios-simulator
 
 SP_aarch64_IOSSIM_INFO := \
+	$(SP_ARCH_COMMON) \
 	SP_SYSNAME=iOS \
-	SP_OSVER=$(SP_MACOS_VER) \
+	SP_OSVER=$(SP_IOS_VER) \
 	SP_TARGET=aarch64-apple-ios-simulator \
 	SP_ARCH=arm64 \
 	SP_IOSSIM=1 \
@@ -133,6 +177,67 @@ aarch64-apple-macosx:
 	$(MAKE) -f $(INSTALL_TARGET_FILE) \
 		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx \
 		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-apple-macosx
+
+x86_64-apple-macosx+sprt:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx/usr/include $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx/usr/lib
+	$(MAKE) -f $(TARGET_FILE) $(SP_x86_64_MACOSX_INFO)
+	$(MAKE) -f $(THIS_FILE) $(SP_x86_64_MACOSX_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_x86_64_MACOSX_INFO) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-apple-macosx+sprt
+
+aarch64-apple-macosx+sprt:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx/usr/lib
+	$(MAKE) -f $(TARGET_FILE) $(SP_aarch64_MACOSX_INFO)
+	$(MAKE) -f $(THIS_FILE) $(SP_aarch64_MACOSX_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_aarch64_MACOSX_INFO) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-apple-macosx+sprt
+
+# The "+open" variant is a STANDALONE Xcode-SDK-free sysroot, built from scratch
+# in its OWN intermediate (intermediate/<arch>-apple-macosx+open):
+#   1. init-target bootstrap — toolchain.cmake + target.mk (fresh, both SDK-free:
+#                     -isysroot = the sysroot itself, -DXNU_PLATFORM_MacOSX) + host/
+#                     lib-clang symlinks + the CSU checkout (NO crt1 yet);
+#   2. open-sysroot — assemble usr/include from apple-oss + the baked overlay
+#                     (tbds, framework headers, libm) directly in the intermediate;
+#   3. init-target crt1 — compile crt1.o against the now-populated +open sysroot
+#                     (SDK-free; runs AFTER open-sysroot so usr/include exists);
+#   4. libcxx       — cross-built libc++/libc++abi/libunwind (see libcxx.mk); MUST
+#                     precede the C++ deps so usr/include/c++/v1 exists for them;
+#   5. all          — the full third-party dependency set, same per-lib rules as the
+#                     stock targets. Includes lib/clang/lib/darwin/libclang_rt.osx.a
+#                     (compiler-rt builtins + sanitizers via libc++.mk): configure.mk
+#                     redirects SP_MACOS_SDK to the sysroot for +open prefixes, so
+#                     that build is SDK-free too;
+#   6. install      — export the final sysroot into targets/<arch>-apple-macosx+open
+#                     via install-target.mk: include_libc + verbatim usr/lib (tbds,
+#                     dylib chains, crt1.o) + frameworks + usr/local/include link +
+#                     the +sprt packaging (prebuilt libsprt.dylib/.tbd + runtime.mk).
+# The working sysroot IS the intermediate dir; the install step only exports it.
+x86_64-apple-macosx+open:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx+open/usr/include $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx+open/usr/lib
+	$(MAKE) -f $(TARGET_FILE) $(SP_x86_64_MACOSX_OPEN_INFO) bootstrap
+	$(MAKE) -f $(MAKE_ROOT)open-sysroot.mk $(SP_x86_64_MACOSX_OPEN_INFO) \
+		T_TARGET=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx+open
+	$(MAKE) -f $(TARGET_FILE) $(SP_x86_64_MACOSX_OPEN_INFO) crt1
+	$(MAKE) -f $(THIS_FILE) $(SP_x86_64_MACOSX_OPEN_INFO) libcxx
+	$(MAKE) -f $(THIS_FILE) $(SP_x86_64_MACOSX_OPEN_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_x86_64_MACOSX_OPEN_INFO) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx+open \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-apple-macosx+open
+
+aarch64-apple-macosx+open:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx+open/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx+open/usr/lib
+	$(MAKE) -f $(TARGET_FILE) $(SP_aarch64_MACOSX_OPEN_INFO) bootstrap
+	$(MAKE) -f $(MAKE_ROOT)open-sysroot.mk $(SP_aarch64_MACOSX_OPEN_INFO) \
+		T_TARGET=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx+open
+	$(MAKE) -f $(TARGET_FILE) $(SP_aarch64_MACOSX_OPEN_INFO) crt1
+	$(MAKE) -f $(THIS_FILE) $(SP_aarch64_MACOSX_OPEN_INFO) libcxx
+	$(MAKE) -f $(THIS_FILE) $(SP_aarch64_MACOSX_OPEN_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_aarch64_MACOSX_OPEN_INFO) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx+open \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-apple-macosx+open
 
 aarch64-apple-ios:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios/usr/lib
@@ -248,6 +353,9 @@ $(SP_INSTALL_PREFIX)/usr/lib/libfreetype.a: ../common/freetype.mk $(SP_INSTALL_P
 $(SP_INSTALL_PREFIX)/usr/lib/libharfbuzz.a:../common/harfbuzz.mk $(SP_INSTALL_PREFIX)/usr/lib/libfreetype.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
+$(SP_INSTALL_PREFIX)/usr/lib/libSheenBidi.a: ../common/sheenbidi.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
 $(SP_INSTALL_PREFIX)/usr/lib/libsqlite3.a: ../common/sqlite.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
@@ -257,20 +365,26 @@ $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a: ../common/mbedtls.mk
 $(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a:  ../common/nghttp3.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
+# ngtcp2 QUIC transport with the OpenSSL (ossl) crypto backend: libngtcp2.a +
+# libngtcp2_crypto_ossl.a, consumed by curl for HTTP/3 (USE_NGTCP2).
+$(SP_INSTALL_PREFIX)/usr/lib/libngtcp2.a:  ../common/ngtcp2.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
 $(SP_INSTALL_PREFIX)/usr/lib/libssl.a: $(MAKE_ROOT)openssl.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a:  ../common/gost.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a
+$(SP_INSTALL_PREFIX)/usr/include/idn2.h: $(MAKE_ROOT)../../include/sprt/compat/idn2.h
+	$(MKDIR) $(SP_INSTALL_PREFIX)/usr/include
+	cp -f $< $@
+
+$(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a $(SP_INSTALL_PREFIX)/usr/lib/libngtcp2.a $(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a $(SP_INSTALL_PREFIX)/usr/include/idn2.h
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
-$(SP_INSTALL_PREFIX)/usr/lib/libcurl-mbedtls.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a
+$(SP_INSTALL_PREFIX)/usr/lib/libcurl-mbedtls.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a $(SP_INSTALL_PREFIX)/usr/include/idn2.h
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=mbedtls
-
-$(SP_INSTALL_PREFIX)/usr/lib/libzip.a: ../common/libzip.mk
-	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-release.a $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-debug.a:  ../common/wamr.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a
 	$(MAKE) -f $< $(FORWARD_VARS)
@@ -288,7 +402,7 @@ $(SP_INSTALL_PREFIX)/usr/lib/libVulkanLayerSettings.a: $(MAKE_ROOT)vulkan-utilit
 		$(SP_INSTALL_PREFIX)/usr/include/spirv/unified1/spirv.h
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/lib/libVkLayer_khronos_validation.dylib: $(MAKE_ROOT)vulkan-validation.mk $(SP_INSTALL_PREFIX)/usr/lib/libVulkanLayerSettings.a \
+$(SP_INSTALL_PREFIX)/usr/lib/$(SP_VVL_LIB): $(MAKE_ROOT)vulkan-validation.mk $(SP_INSTALL_PREFIX)/usr/lib/libVulkanLayerSettings.a \
 		$(SP_INSTALL_PREFIX)/usr/include/spirv-tools/libspirv.hpp
 	$(MAKE) -f $< $(FORWARD_VARS)
 
@@ -314,6 +428,17 @@ $(SP_INSTALL_PREFIX)/usr/include/simde/simde-arch.h: ../common/simde.mk
 $(SP_INSTALL_PREFIX)/share/licenses:
 	rm -rf $(SP_INSTALL_PREFIX)/share/licenses
 
-.PHONY: all
+# libc++ / libc++abi / libunwind cross-built from src/llvm-project-17 into the target
+# sysroot (SDK-like: separate abi dylib, /usr/lib install-names, tbds via llvm-readtapi).
+# Invoked as a standalone goal by the +open target rule BEFORE `all` so that
+# usr/include/c++/v1 exists for the C++ deps. Keyed on the final artifact (libc++.tbd,
+# written last by libcxx.mk) so re-running the +open pipeline does not redo the whole
+# LLVM runtimes build every time.
+libcxx: $(SP_INSTALL_PREFIX)/usr/lib/libc++.tbd
+
+$(SP_INSTALL_PREFIX)/usr/lib/libc++.tbd: $(MAKE_ROOT)libcxx.mk
+	$(MAKE) -f $(MAKE_ROOT)libcxx.mk $(FORWARD_VARS)
+
+.PHONY: all libcxx
 
 endif

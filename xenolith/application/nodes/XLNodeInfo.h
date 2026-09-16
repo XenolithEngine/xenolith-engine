@@ -24,6 +24,7 @@
 #define XENOLITH_APPLICATION_NODES_XLNODEINFO_H_
 
 #include "XLContextInfo.h"
+#include "XLCoreRenderSession.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -41,15 +42,16 @@ enum class NodeVisitFlags : uint32_t {
 	ContentSizeDirty = 1 << 1,
 	ComponentsDirty = 1 << 2,
 	ReorderChildDirty = 1 << 3,
+	MeasureDirty = 1 << 4,
 
 	GlobalTransformDirtyMask = TransformDirty | ContentSizeDirty
 };
 
 SP_DEFINE_ENUM_AS_MASK(NodeVisitFlags)
 
-// This flags used to alter Node::handle<X> behavior
+// Flags to alter Node::handle<X> behavior
 // If some flag is set, corresponding function will be called not only when node's
-// own dirty flag is set. but when dirty flag was set in some of node's parents
+// own dirty flag is set, but when dirty flag was set in some of node's parents
 enum class NodeEventFlags : uint32_t {
 	None,
 
@@ -59,8 +61,9 @@ enum class NodeEventFlags : uint32_t {
 	// Call Node::handleContentSizeDirty if parent ContentSize was dirty
 	HandleParentContentSize = 1 << 1,
 
-	// Call Node::handleComponentsDirty if parent components was updated
-	HandleComponents = 1 << 2,
+	// NB: bit 1 << 2 is unused - ancestor components-dirty is opted into per-System via
+	// SystemFlags::HandleAncestorComponents (or a Node subclass via
+	// Node::setWantsAncestorComponents), driven by a subtree listener counter
 
 	// Call Node::handleReorderChildDirty if parent childs was updated
 	HandleParentReorderChild = 1 << 3,
@@ -68,12 +71,96 @@ enum class NodeEventFlags : uint32_t {
 
 SP_DEFINE_ENUM_AS_MASK(NodeEventFlags)
 
+/** What a node offers to the per-frame hit-test registry (see InputListenerStorage::addHitTest).
+
+A node with any of these bits publishes its drawn rect once per frame from its own visit. Queries
+walk the registry backwards (registration order is paint order); unvisited nodes are not registered.
+
+Each bit mirrors the presence of a component and is maintained by its setter (ui::setContextMenu,
+setDropTarget, ui::setTooltip). Never set it by hand: a bit without a component makes the node win
+a hit test and offer nothing. */
+enum class HitTestFlags : uint32_t {
+	None,
+
+	// An InputListener is attached to this node; maintained by the listener, which reads the
+	// published geometry back in its own hit test (see InputListener::_shouldProcessEvent).
+	Pointer = 1 << 0,
+
+	// DropTargetComponent: a drag can be dropped here
+	DropTarget = 1 << 1,
+
+	// ui::ContextMenuComponent: a right click or a long press opens a menu here
+	ContextMenu = 1 << 2,
+
+	// ui::TooltipComponent: resting the pointer here shows a hint
+	Tooltip = 1 << 3,
+
+	// 1 << 16 and up are free for applications
+	ApplicationMask = 0xFFFF'0000,
+};
+
+SP_DEFINE_ENUM_AS_MASK(HitTestFlags)
+
+// How a content measurement request interprets its constraints.
+// Semantics mirror font::Formatter::ContentRequest.
+enum class MeasureMode : uint8_t {
+	Normal, // preferred size under the given constraints (wrap to fit)
+	MinContent, // smallest size that avoids overflow (widest unbreakable unit)
+	MaxContent, // ideal size without any wrapping
+};
+
+// Constraints for a content measurement request (see System::handleMeasure);
+// maxOf<float>() means the axis is unconstrained
+struct SP_PUBLIC MeasureConstraints {
+	MeasureMode mode = MeasureMode::Normal;
+	float maxWidth = maxOf<float>();
+	float maxHeight = maxOf<float>();
+};
+
 enum class CommandFlags : uint16_t {
 	None,
-	DoNotCount = 1 << 0
+	DoNotCount = 1 << 0,
+
+	// The command is always treated as changed: the generation comparison is skipped for it and
+	// its bounds go into the frame damage unconditionally. For content that changes without its
+	// data set changing (particles, video, the FPS overlay).
+	AlwaysDirty = 1 << 1,
+
+	// Bounds cannot be determined for this command; the frame escalates to full-surface damage.
+	UnknownBounds = 1 << 2,
 };
 
 SP_DEFINE_ENUM_AS_MASK(CommandFlags)
+
+// Identity + version for a copy-on-write data set, used to compute damage rectangles between
+// frames. `id` is stable for the lifetime of the object, `generation` changes whenever the
+// contents may have changed. A model-space AABB is cached alongside, so damage collection never
+// has to rescan the data of an unchanged set.
+struct SP_PUBLIC DataIdentity {
+	uint64_t id = 0;
+	uint32_t generation = 0;
+	uint32_t boundsGeneration = maxOf<uint32_t>();
+	Rect bounds;
+
+	// Whether the AABB may be derived by scanning the data. False for atlas-driven geometry.
+	bool derivable = true;
+
+	DataIdentity() : id(allocate()) { }
+
+	void invalidate() {
+		++generation;
+		boundsGeneration = maxOf<uint32_t>();
+	}
+
+	void setBounds(const Rect &r) {
+		bounds = r;
+		boundsGeneration = generation;
+	}
+
+	bool hasBounds() const { return boundsGeneration == generation; }
+
+	static uint64_t allocate();
+};
 
 struct SP_PUBLIC MaterialInfo {
 	sprt::array<uint64_t, config::MaxMaterialImages> images = {0};
@@ -127,24 +214,8 @@ struct SP_PUBLIC DrawStateValues {
 	}
 };
 
-struct SP_PUBLIC DrawStat {
-	uint32_t vertexes;
-	uint32_t triangles;
-	uint32_t zPaths;
-	uint32_t drawCalls;
+using core::DrawStat;
 
-	uint32_t cachedImages;
-	uint32_t cachedFramebuffers;
-	uint32_t cachedImageViews;
-	uint32_t materials;
-
-	uint32_t solidCmds;
-	uint32_t surfaceCmds;
-	uint32_t transparentCmds;
-	uint32_t shadowsCmds;
-
-	uint32_t vertexInputTime;
-};
 } // namespace stappler::xenolith
 
 #endif /* XENOLITH_APPLICATION_XLNODEINFO_H_ */

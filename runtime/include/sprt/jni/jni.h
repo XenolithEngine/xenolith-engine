@@ -123,41 +123,10 @@ struct EnvironmentProxy : ClassProxy {
 	using ClassProxy::ClassProxy;
 };
 
-struct UCharacterProxy : jni::ClassProxy {
-	jni::StaticMethod<"toLowerCase", jint(jint)> toLowerChar = this;
-	jni::StaticMethod<"toUpperCase", jint(jint)> toUpperChar = this;
-	jni::StaticMethod<"toTitleCase", jint(jint)> toTitleChar = this;
-
-	jni::StaticMethod<"toLowerCase", jstring(jstring)> toLowerString = this;
-	jni::StaticMethod<"toUpperCase", jstring(jstring)> toUpperString = this;
-	jni::StaticMethod<"toTitleCase", jstring(jstring, L<"android/icu/text/BreakIterator">)>
-			toTitleString = this;
-
-	using jni::ClassProxy::ClassProxy;
-};
-
-struct CollatorProxy : jni::ClassProxy {
-	jni::StaticField<"PRIMARY", jint> PRIMARY = this;
-	jni::StaticField<"SECONDARY", jint> SECONDARY = this;
-	jni::StaticField<"TERTIARY", jint> TERTIARY = this;
-	jni::StaticField<"QUATERNARY", jint> QUATERNARY = this;
-
-	jni::StaticMethod<"getInstance", jni::L<"android/icu/text/Collator">()> getInstance = this;
-	jni::Method<"setStrength", void(jint)> setStrength = this;
-	jni::Method<"compare", jint(jstring, jstring)> _compare = this;
-
-	using jni::ClassProxy::ClassProxy;
-};
-
-struct IdnProxy : ClassProxy {
-	StaticField<"ALLOW_UNASSIGNED", jint> ALLOW_UNASSIGNED = this;
-	StaticField<"USE_STD3_ASCII_RULES", jint> USE_STD3_ASCII_RULES = this;
-
-	StaticMethod<"toASCII", jstring(jstring, jint)> toASCII = this;
-	StaticMethod<"toUnicode", jstring(jstring, jint)> toUnicode = this;
-
-	using ClassProxy::ClassProxy;
-};
+// Nothing here binds android.icu or java.text any more. Case mapping, word
+// breaking and both string orderings come from the compiled-in Unicode tables in
+// runtime/src/unicode and make no JNI call on any device; the UCharacter proxy
+// went with the case mapping, and the Collator proxy with the comparison.
 
 struct FileProxy : ClassProxy {
 	Method<"getAbsolutePath", jstring()> getAbsolutePath = this;
@@ -675,9 +644,6 @@ struct SPRT_API App : public sprt::Ref {
 	PackageManagerProxy PackageManager = "android/content/pm/PackageManager";
 	ApplicationInfoProxy ApplicationInfo = "android/content/pm/ApplicationInfo";
 	EnvironmentProxy Environment = "android/os/Environment";
-	IdnProxy IDN = "java/net/IDN";
-	UCharacterProxy UCharacter = "android/icu/lang/UCharacter";
-	CollatorProxy Collator = "android/icu/text/Collator";
 	PackageInfoProxy PackageInfo = "android/content/pm/PackageInfo";
 	ResourcesProxy Resources = "android/content/res/Resources";
 	DisplayMetricsProxy DisplayMetrics = "android/util/DisplayMetrics";

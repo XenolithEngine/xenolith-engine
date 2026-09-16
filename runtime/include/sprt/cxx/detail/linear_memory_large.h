@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/cxx/bit>
 #include <sprt/cxx/detail/ctypes.h>
+#include <sprt/cxx/__new/construct.h>
 
 namespace sprt::detail {
 
@@ -62,13 +63,13 @@ public:
 		}
 	}
 
-	linear_memory_large() = default;
+	constexpr linear_memory_large() = default;
 	linear_memory_large(const self &) = delete;
 	self &operator=(const self &other) = delete;
 	linear_memory_large(self &&other) = delete;
 	self &operator=(self &&other) = delete;
 
-	void assign(allocator &alloc, const_pointer ptr, size_type count) {
+	constexpr void assign(allocator &alloc, const_pointer ptr, size_type count) {
 		if (capacity() < count) {
 			reserve(alloc, count);
 			if (!_ptr) {
@@ -83,7 +84,7 @@ public:
 		drop_unused();
 	}
 
-	void move_assign(allocator &alloc, pointer ptr, size_type count) {
+	constexpr void move_assign(allocator &alloc, pointer ptr, size_type count) {
 		if (capacity() < count) {
 			reserve(alloc, count);
 		}
@@ -95,19 +96,19 @@ public:
 		drop_unused();
 	}
 
-	void assign_mem(allocator &alloc, pointer ptr, size_type s, size_type nalloc) {
+	constexpr void assign_mem(allocator &alloc, pointer ptr, size_type s, size_type nalloc) {
 		clear_dealloc(alloc);
 		_ptr = ptr;
 		_used = s;
 		_allocated_with_soo_bit = wrap_allocated(nalloc - Extra);
 	}
 
-	void reserve(allocator &alloc, size_type s) {
+	constexpr void reserve(allocator &alloc, size_type s) {
 		grow_alloc(alloc, s);
 		drop_unused();
 	}
 
-	void replace_content(allocator &alloc, linear_memory_large &other) {
+	constexpr void replace_content(allocator &alloc, linear_memory_large &other) {
 		clear_dealloc(alloc);
 		_ptr = other._ptr;
 		other._ptr = nullptr;
@@ -119,7 +120,7 @@ public:
 		other._allocated_with_soo_bit = wrap_allocated(0);
 	}
 
-	void clear_dealloc(allocator &alloc) {
+	constexpr void clear_dealloc(allocator &alloc) {
 		if (_ptr) {
 			if (_used) {
 				alloc.destroy(_ptr, _used);
@@ -135,19 +136,42 @@ public:
 		_allocated_with_soo_bit = wrap_allocated(0);
 	}
 
-	void force_clear() {
+	constexpr void force_clear() {
 		_ptr = nullptr;
 		_used = 0;
 		_allocated_with_soo_bit = wrap_allocated(0);
 	}
 
-	pointer extract() {
+	constexpr pointer extract() {
 		auto ret = _ptr;
 		force_clear();
 		return ret;
 	}
 
-	void drop_unused() {
+	// drop constexpr if empty sprt::construct_at is not supported
+	constexpr void drop_unused() requires requires(Type *t) { sprt::construct_at(t); }
+	{
+		auto _allocated = capacity();
+		if (_allocated > 0 && _allocated >= _used && _ptr) {
+			if (sprt::is_constant_evaluated()) {
+				// __builtin_memset / void* casts are not valid in constant
+				// evaluation; construct the (raw / already-destroyed) tail as
+				// value-initialised (zero) elements so c_str()/data() sees a live
+				// null terminator (and the spare capacity stays writable) during
+				// constant evaluation.
+				for (size_type i = _used; i < _allocated + Extra; ++i) {
+					sprt::construct_at(_ptr + i);
+				}
+			} else {
+				// data is already garbage, bypass -Wclass-memaccess
+				__builtin_memset((void *)(_ptr + _used), 0,
+						(_allocated - _used + Extra) * sizeof(Type));
+			}
+		}
+	}
+
+	void drop_unused() requires (!requires(Type *t) { sprt::construct_at(t); })
+	{
 		auto _allocated = capacity();
 		if (_allocated > 0 && _allocated >= _used && _ptr) {
 			// data is already garbage, bypass -Wclass-memaccess
@@ -156,11 +180,16 @@ public:
 		}
 	}
 
-	void grow_alloc(allocator &alloc, size_type newsize) {
-		size_t alloc_size = newsize + Extra;
+	constexpr void grow_alloc(allocator &alloc, size_type newsize) {
+		size_t alloc_size;
+		if (__builtin_add_overflow(newsize, size_t(Extra), &alloc_size)) {
+			// capacity request overflows size_t: force the allocator to fail
+			// rather than wrap to a tiny, under-sized block.
+			alloc_size = Max<size_t>;
+		}
 
 		// use extra memory if provided by allocator
-		size_t allocated = alloc_size * sizeof(Type); // real memory block size returned
+		size_t allocated = 0; // real memory block size returned, set by __allocate
 		auto ptr = alloc.__allocate(alloc_size, allocated);
 
 		alloc_size = allocated / sizeof(Type);
@@ -171,19 +200,20 @@ public:
 
 		auto _allocated = capacity();
 		if (_ptr && _allocated > 0) {
-			alloc.deallocate(_ptr, _allocated);
+			// the block was allocated as (_allocated + Extra) elements
+			alloc.deallocate(_ptr, _allocated + Extra);
 		}
 
 		_ptr = ptr;
 		_allocated_with_soo_bit = wrap_allocated(alloc_size - Extra);
 	}
 
-	size_t modify_size(intptr_t diff) {
+	constexpr size_t modify_size(intptr_t diff) {
 		_used += diff;
 		return _used;
 	}
 
-	void set_size(size_t s) {
+	constexpr void set_size(size_t s) {
 		if (s < _used) {
 			_used = s;
 			drop_unused();
@@ -192,13 +222,13 @@ public:
 		}
 	}
 
-	size_t size() const noexcept { return _used; }
-	size_t capacity() const noexcept { return unwrap_allocated(_allocated_with_soo_bit); }
+	constexpr size_t size() const noexcept { return _used; }
+	constexpr size_t capacity() const noexcept { return unwrap_allocated(_allocated_with_soo_bit); }
 
-	pointer data() noexcept { return _ptr; }
-	const_pointer data() const noexcept { return _ptr; }
+	constexpr pointer data() noexcept { return _ptr; }
+	constexpr const_pointer data() const noexcept { return _ptr; }
 
-	bool empty() const noexcept { return _ptr == nullptr || _used == 0; }
+	constexpr bool empty() const noexcept { return _ptr == nullptr || _used == 0; }
 
 protected:
 	pointer _ptr = nullptr;

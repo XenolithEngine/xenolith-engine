@@ -48,7 +48,7 @@ struct SPRT_API EPollData : public PlatformQueueData {
 	Status remove(int fd);
 
 	Status runPoll(TimeInterval);
-	uint32_t processEvents();
+	uint32_t processEvents(RunContext *);
 
 	Status submit();
 	uint32_t poll();

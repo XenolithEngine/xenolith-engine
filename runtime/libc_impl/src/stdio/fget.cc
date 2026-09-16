@@ -13,6 +13,9 @@ static int locking_getc(FILE *f) {
 }
 
 static inline int do_getc(FILE *f) {
+	if (!f) {
+		return EOF; // defensive: a null stream (e.g. an unchecked failed fopen) reports EOF
+	}
 	if (f->__lock_pid < 0 || f->__lock_pid == __sprt_gettid()) {
 		return __getc_unlocked(f);
 	}
@@ -27,6 +30,9 @@ weak_alias(getc_unlocked, _IO_getc_unlocked);
 __SPRT_C_FUNC int fgetc(FILE *f) __SPRT_NOEXCEPT { return do_getc(f); }
 
 __SPRT_C_FUNC char *fgets(char *__restrict s, int n, FILE *__restrict f) __SPRT_NOEXCEPT {
+	if (!f) {
+		return nullptr;
+	}
 	char *p = s;
 	unsigned char *z;
 	size_t k;

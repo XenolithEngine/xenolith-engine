@@ -67,6 +67,14 @@ void StyleParameter::set<ParameterName::CssTextAlign, TextAlign>(const TextAlign
 	value.textAlign = v;
 }
 template <>
+void StyleParameter::set<ParameterName::CssDirection, TextDirection>(const TextDirection &v) {
+	value.textDirection = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssUnicodeBidi, BidiMode>(const BidiMode &v) {
+	value.bidiMode = v;
+}
+template <>
 void StyleParameter::set<ParameterName::CssWhiteSpace, WhiteSpace>(const WhiteSpace &v) {
 	value.whiteSpace = v;
 }
@@ -77,6 +85,18 @@ void StyleParameter::set<ParameterName::CssHyphens, Hyphens>(const Hyphens &v) {
 template <>
 void StyleParameter::set<ParameterName::CssDisplay, Display>(const Display &v) {
 	value.display = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssVisibility, Visibility>(const Visibility &v) {
+	value.visibility = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssOverflowX, Overflow>(const Overflow &v) {
+	value.overflow = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssOverflowY, Overflow>(const Overflow &v) {
+	value.overflow = v;
 }
 template <>
 void StyleParameter::set<ParameterName::CssListStyleType, ListStyleType>(const ListStyleType &v) {
@@ -136,6 +156,14 @@ void StyleParameter::set<ParameterName::CssMarginLeft, Metric>(const Metric &v) 
 	value.sizeValue = v;
 }
 template <>
+void StyleParameter::set<ParameterName::CssMarginInlineStart, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssMarginInlineEnd, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
 void StyleParameter::set<ParameterName::CssWidth, Metric>(const Metric &v) {
 	value.sizeValue = v;
 }
@@ -173,6 +201,14 @@ void StyleParameter::set<ParameterName::CssPaddingBottom, Metric>(const Metric &
 }
 template <>
 void StyleParameter::set<ParameterName::CssPaddingLeft, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssPaddingInlineStart, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssPaddingInlineEnd, Metric>(const Metric &v) {
 	value.sizeValue = v;
 }
 template <>
@@ -261,11 +297,57 @@ void StyleParameter::set<ParameterName::CssBorderLeftColor, Color4B>(const Color
 	value.color4 = v;
 }
 template <>
+void StyleParameter::set<ParameterName::CssBorderInlineStartStyle, BorderStyle>(
+		const BorderStyle &v) {
+	value.borderStyle = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderInlineStartWidth, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderInlineStartColor, Color4B>(const Color4B &v) {
+	value.color4 = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderInlineEndStyle, BorderStyle>(
+		const BorderStyle &v) {
+	value.borderStyle = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderInlineEndWidth, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderInlineEndColor, Color4B>(const Color4B &v) {
+	value.color4 = v;
+}
+template <>
 void StyleParameter::set<ParameterName::CssOutlineStyle, BorderStyle>(const BorderStyle &v) {
 	value.borderStyle = v;
 }
 template <>
 void StyleParameter::set<ParameterName::CssOutlineWidth, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderRadius, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderTopLeftRadius, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderTopRightRadius, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderBottomRightRadius, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderBottomLeftRadius, Metric>(const Metric &v) {
 	value.sizeValue = v;
 }
 template <>
@@ -298,12 +380,176 @@ void StyleParameter::set<ParameterName::CssCaptionSide, CaptionSide>(const Capti
 	value.captionSide = v;
 }
 template <>
+void StyleParameter::set<ParameterName::CssTableLayout, TableLayout>(const TableLayout &v) {
+	value.tableLayout = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderSpacingHorizontal, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderSpacingVertical, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssXlColumnSpan, uint32_t>(const uint32_t &v) {
+	value.uintValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssXlRowSpan, uint32_t>(const uint32_t &v) {
+	value.uintValue = v;
+}
+template <>
 void StyleParameter::set<ParameterName::CssOrphans, uint32_t>(const uint32_t &v) {
 	value.uintValue = v;
 }
 template <>
 void StyleParameter::set<ParameterName::CssWidows, uint32_t>(const uint32_t &v) {
 	value.uintValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssPosition, Position>(const Position &v) {
+	value.position = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssTop, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssRight, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBottom, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssLeft, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssInsetInlineStart, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssInsetInlineEnd, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssXlAnchorPointX, float>(const float &v) {
+	value.floatValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssXlAnchorPointY, float>(const float &v) {
+	value.floatValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssXlPositionX, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssXlPositionY, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssFlexDirection, FlexDirection>(const FlexDirection &v) {
+	value.flexDirection = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssFlexWrap, FlexWrap>(const FlexWrap &v) {
+	value.flexWrap = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssOrder, int32_t>(const int32_t &v) {
+	value.intValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssXlZOrder, int32_t>(const int32_t &v) {
+	value.intValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssFlexGrow, float>(const float &v) {
+	value.floatValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssFlexShrink, float>(const float &v) {
+	value.floatValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssFlexBasis, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssJustifyContent, Align>(const Align &v) {
+	value.align = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssAlignContent, Align>(const Align &v) {
+	value.align = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssJustifyItems, Align>(const Align &v) {
+	value.align = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssAlignItems, Align>(const Align &v) {
+	value.align = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssJustifySelf, Align>(const Align &v) {
+	value.align = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssAlignSelf, Align>(const Align &v) {
+	value.align = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssRowGap, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssColumnGap, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridAutoFlow, GridAutoFlow>(const GridAutoFlow &v) {
+	value.gridAutoFlow = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridTemplateColumns, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridTemplateRows, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridTemplateAreas, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridAutoColumns, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridAutoRows, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridColumnStart, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridColumnEnd, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridRowStart, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridRowEnd, StringId>(const StringId &v) {
+	value.stringId = v;
 }
 
 template <>
@@ -321,6 +567,10 @@ void StyleParameter::set<ParameterName::CssMediaHover, Hover>(const Hover &v) {
 template <>
 void StyleParameter::set<ParameterName::CssMediaPointer, Pointer>(const Pointer &v) {
 	value.pointer = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssMediaPlatform, Platform>(const Platform &v) {
+	value.platform = v;
 }
 template <>
 void StyleParameter::set<ParameterName::CssMediaLightLevel, LightLevel>(const LightLevel &v) {
@@ -1004,6 +1254,7 @@ void writeStyle(memory::PoolInterface::StringStreamType &stream, const Metric &s
 	case Metric::Units::Vh: stream << "vh"; break;
 	case Metric::Units::VMin: stream << "vmin"; break;
 	case Metric::Units::VMax: stream << "vmax"; break;
+	case Metric::Units::FitContent: stream << "fit-content"; break;
 	}
 }
 
@@ -1029,6 +1280,30 @@ void writeStyle(memory::PoolInterface::StringStreamType &stream, const StringId 
 	}
 }
 
+static StringView getAlignName(Align a) {
+	switch (a) {
+	case Align::Auto: return StringView("auto"); break;
+	case Align::Normal: return StringView("normal"); break;
+	case Align::Stretch: return StringView("stretch"); break;
+	case Align::Baseline: return StringView("baseline"); break;
+	case Align::FirstBaseline: return StringView("first baseline"); break;
+	case Align::LastBaseline: return StringView("last baseline"); break;
+	case Align::Center: return StringView("center"); break;
+	case Align::Start: return StringView("start"); break;
+	case Align::End: return StringView("end"); break;
+	case Align::SelfStart: return StringView("self-start"); break;
+	case Align::SelfEnd: return StringView("self-end"); break;
+	case Align::FlexStart: return StringView("flex-start"); break;
+	case Align::FlexEnd: return StringView("flex-end"); break;
+	case Align::Left: return StringView("left"); break;
+	case Align::Right: return StringView("right"); break;
+	case Align::SpaceBetween: return StringView("space-between"); break;
+	case Align::SpaceAround: return StringView("space-around"); break;
+	case Align::SpaceEvenly: return StringView("space-evenly"); break;
+	}
+	return StringView("normal");
+}
+
 auto StyleList::css(const StyleInterface *iface) const -> String {
 	memory::PoolInterface::StringStreamType stream;
 	stream << "{\n";
@@ -1038,7 +1313,11 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 		case ParameterName::__BeginCssParameters:
 		case ParameterName::__EndCssParameters:
 		case ParameterName::__BeginCssMediaParameters:
-		case ParameterName::__EndCssMediaParameters: break;
+		case ParameterName::__EndCssMediaParameters:
+		case ParameterName::__BeginCmds:
+		case ParameterName::CmdReset:
+		case ParameterName::__EndCmds:
+		case ParameterName::Max: break;
 		case ParameterName::Unknown: stream << "unknown"; break;
 		case ParameterName::CssFontStyle:
 			stream << "font-style: ";
@@ -1124,6 +1403,8 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			case TextAlign::Left: stream << "left"; break;
 			case TextAlign::Right: stream << "right"; break;
 			case TextAlign::Justify: stream << "justify"; break;
+			case TextAlign::Start: stream << "start"; break;
+			case TextAlign::End: stream << "end"; break;
 			};
 			break; // enum
 		case ParameterName::CssWhiteSpace:
@@ -1155,9 +1436,33 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			case Display::Block: stream << "block"; break;
 			case Display::ListItem: stream << "list-item"; break;
 			case Display::Table: stream << "table"; break;
+			case Display::TableRow: stream << "table-row"; break;
 			case Display::TableCell: stream << "table-cell"; break;
 			case Display::TableColumn: stream << "table-column"; break;
 			case Display::TableCaption: stream << "table-caption"; break;
+			case Display::Flex: stream << "flex"; break;
+			case Display::InlineFlex: stream << "inline-flex"; break;
+			case Display::Grid: stream << "grid"; break;
+			case Display::InlineGrid: stream << "inline-grid"; break;
+			};
+			break; // enum
+		case ParameterName::CssVisibility:
+			stream << "visibility: ";
+			switch (it.value.visibility) {
+			case Visibility::Visible: stream << "visible"; break;
+			case Visibility::Hidden: stream << "hidden"; break;
+			case Visibility::Collapse: stream << "collapse"; break;
+			};
+			break; // enum
+		case ParameterName::CssOverflowX:
+		case ParameterName::CssOverflowY:
+			stream << (it.name == ParameterName::CssOverflowX ? "overflow-x: " : "overflow-y: ");
+			switch (it.value.overflow) {
+			case Overflow::Visible: stream << "visible"; break;
+			case Overflow::Hidden: stream << "hidden"; break;
+			case Overflow::Clip: stream << "clip"; break;
+			case Overflow::Scroll: stream << "scroll"; break;
+			case Overflow::Auto: stream << "auto"; break;
 			};
 			break; // enum
 		case ParameterName::CssFloat:
@@ -1407,6 +1712,27 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			case CaptionSide::Bottom: stream << "bottom"; break;
 			};
 			break; // enum
+		case ParameterName::CssTableLayout:
+			stream << "table-layout: ";
+			switch (it.value.tableLayout) {
+			case TableLayout::Auto: stream << "auto"; break;
+			case TableLayout::Fixed: stream << "fixed"; break;
+			};
+			break; // enum
+		case ParameterName::CssBorderSpacingHorizontal:
+			stream << "border-spacing-horizontal: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssBorderSpacingVertical:
+			stream << "border-spacing-vertical: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssXlColumnSpan:
+			stream << "-xl-column-span: " << it.value.uintValue;
+			break; // uint
+		case ParameterName::CssXlRowSpan:
+			stream << "-xl-row-span: " << it.value.uintValue;
+			break; // uint
 		case ParameterName::CssOutlineStyle:
 			stream << "outline-style: ";
 			switch (it.value.borderStyle) {
@@ -1465,9 +1791,172 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			}
 			break; // enum
 		case ParameterName::CssOrphans: stream << "orphans: " << it.value.uintValue; break; // enum
-		case ParameterName::CssWidows:
-			stream << "widows: " << it.value.uintValue;
+		case ParameterName::CssWidows: stream << "widows: " << it.value.uintValue; break; // enum
+
+		case ParameterName::CssPosition:
+			stream << "position: ";
+			switch (it.value.position) {
+			case Position::Static: stream << "static"; break;
+			case Position::Relative: stream << "relative"; break;
+			case Position::Absolute: stream << "absolute"; break;
+			case Position::Fixed: stream << "fixed"; break;
+			case Position::Sticky: stream << "sticky"; break;
+			}
 			break; // enum
+		case ParameterName::CssTop:
+			stream << "top: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssRight:
+			stream << "right: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssBottom:
+			stream << "bottom: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssLeft:
+			stream << "left: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssXlAnchorPointX:
+			stream << "-xl-anchor-point-x: " << it.value.floatValue;
+			break; // float
+		case ParameterName::CssXlAnchorPointY:
+			stream << "-xl-anchor-point-y: " << it.value.floatValue;
+			break; // float
+		case ParameterName::CssXlPositionX:
+			stream << "-xl-position-x: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssXlPositionY:
+			stream << "-xl-position-y: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssXlZOrder:
+			stream << "-xl-z-order: " << it.value.intValue;
+			break; // int
+
+		case ParameterName::CssFlexDirection:
+			stream << "flex-direction: ";
+			switch (it.value.flexDirection) {
+			case FlexDirection::Row: stream << "row"; break;
+			case FlexDirection::RowReverse: stream << "row-reverse"; break;
+			case FlexDirection::Column: stream << "column"; break;
+			case FlexDirection::ColumnReverse: stream << "column-reverse"; break;
+			}
+			break; // enum
+		case ParameterName::CssFlexWrap:
+			stream << "flex-wrap: ";
+			switch (it.value.flexWrap) {
+			case FlexWrap::NoWrap: stream << "nowrap"; break;
+			case FlexWrap::Wrap: stream << "wrap"; break;
+			case FlexWrap::WrapReverse: stream << "wrap-reverse"; break;
+			}
+			break; // enum
+		case ParameterName::CssOrder: stream << "order: " << it.value.intValue; break; // int
+		case ParameterName::CssFlexGrow:
+			stream << "flex-grow: " << it.value.floatValue;
+			break; // float
+		case ParameterName::CssFlexShrink:
+			stream << "flex-shrink: " << it.value.floatValue;
+			break; // float
+		case ParameterName::CssFlexBasis:
+			stream << "flex-basis: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssJustifyContent:
+			stream << "justify-content: " << getAlignName(it.value.align);
+			break; // enum
+		case ParameterName::CssAlignContent:
+			stream << "align-content: " << getAlignName(it.value.align);
+			break; // enum
+		case ParameterName::CssJustifyItems:
+			stream << "justify-items: " << getAlignName(it.value.align);
+			break; // enum
+		case ParameterName::CssAlignItems:
+			stream << "align-items: " << getAlignName(it.value.align);
+			break; // enum
+		case ParameterName::CssJustifySelf:
+			stream << "justify-self: " << getAlignName(it.value.align);
+			break; // enum
+		case ParameterName::CssAlignSelf:
+			stream << "align-self: " << getAlignName(it.value.align);
+			break; // enum
+		case ParameterName::CssRowGap:
+			stream << "row-gap: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssColumnGap:
+			stream << "column-gap: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssGridAutoFlow:
+			stream << "grid-auto-flow: ";
+			switch (it.value.gridAutoFlow) {
+			case GridAutoFlow::Row: stream << "row"; break;
+			case GridAutoFlow::Column: stream << "column"; break;
+			case GridAutoFlow::RowDense: stream << "row dense"; break;
+			case GridAutoFlow::ColumnDense: stream << "column dense"; break;
+			}
+			break; // enum
+		case ParameterName::CssGridTemplateColumns:
+			stream << "grid-template-columns: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridTemplateRows:
+			stream << "grid-template-rows: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridTemplateAreas:
+			stream << "grid-template-areas: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridAutoColumns:
+			stream << "grid-auto-columns: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridAutoRows:
+			stream << "grid-auto-rows: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridColumnStart:
+			stream << "grid-column-start: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridColumnEnd:
+			stream << "grid-column-end: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridRowStart:
+			stream << "grid-row-start: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridRowEnd:
+			stream << "grid-row-end: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+
+		case ParameterName::CssBorderRadius:
+			stream << "border-radius: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssBorderTopLeftRadius:
+			stream << "border-top-left-radius: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssBorderTopRightRadius:
+			stream << "border-top-right-radius: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssBorderBottomRightRadius:
+			stream << "border-bottom-right-radius: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssBorderBottomLeftRadius:
+			stream << "border-bottom-left-radius: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
 
 		/* media - specific */
 		case ParameterName::CssMediaType:
@@ -1492,6 +1981,18 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			case Pointer::None: stream << "none"; break;
 			case Pointer::Fine: stream << "fine"; break;
 			case Pointer::Coarse: stream << "coarse"; break;
+			};
+			break; // enum
+		case ParameterName::CssMediaPlatform:
+			stream << "platform: ";
+			switch (it.value.platform) {
+			case Platform::Unknown: stream << "unknown"; break;
+			case Platform::MacOS: stream << "macos"; break;
+			case Platform::Ios: stream << "ios"; break;
+			case Platform::Windows: stream << "windows"; break;
+			case Platform::Android: stream << "android"; break;
+			case Platform::Linux: stream << "linux"; break;
+			case Platform::Web: stream << "web"; break;
 			};
 			break; // enum
 		case ParameterName::CssMediaHover:
@@ -1543,8 +2044,9 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			writeStyle(stream, it.value.sizeValue);
 			break;
 		case ParameterName::CssMediaOption:
-			stream << "media-option: ";
-			writeStyle(stream, it.value.stringId, iface);
+			// The hash of the option's name, not an index into the string table - see the parser.
+			// There is nothing to look it up in, so the number is the honest answer.
+			stream << "media-option: #" << it.value.stringId;
 			break;
 		}
 		if (it.mediaQuery != MediaQueryIdNone) {
@@ -1595,7 +2097,7 @@ float MediaParameters::getDefaultFontSize() const { return FontSize::Medium.get(
 
 void MediaParameters::addOption(const StringView &str) {
 	auto value = sprt::hash32(str.data(), str.size());
-	_options.insert(pair(value, str.str<memory::StandartInterface>()));
+	_options.insert(pair(value, str.str<mem_std::Interface>()));
 }
 void MediaParameters::removeOption(const StringView &str) {
 	auto value = sprt::hash32(str.data(), str.size());
@@ -1634,6 +2136,9 @@ bool MediaParameters::resolveQuery(const MediaQuery &q) const {
 				break;
 			case ParameterName::CssMediaPointer:
 				paramSuccess = param.value.pointer == pointer;
+				break;
+			case ParameterName::CssMediaPlatform:
+				paramSuccess = param.value.platform == platform;
 				break;
 			case ParameterName::CssMediaHover: paramSuccess = param.value.hover == hover; break;
 			case ParameterName::CssMediaLightLevel:
@@ -1737,9 +2242,9 @@ auto MediaParameters::resolveMediaQueries<memory::PoolInterface>(
 }
 
 template <>
-auto MediaParameters::resolveMediaQueries<memory::StandartInterface>(
-		const SpanView<MediaQuery> &vec) const -> memory::StandartInterface::VectorType<bool> {
-	memory::StandartInterface::VectorType<bool> ret;
+auto MediaParameters::resolveMediaQueries<mem_std::Interface>(const SpanView<MediaQuery> &vec) const
+		-> mem_std::Interface::VectorType<bool> {
+	mem_std::Interface::VectorType<bool> ret;
 	for (auto &it : vec) { ret.push_back(resolveQuery(it)); }
 	return ret;
 }
@@ -1814,6 +2319,13 @@ StyleParameter::StyleParameter(ParameterName name, MediaQueryId query, StyleRule
 StyleParameter::StyleParameter(const StyleParameter &p, MediaQueryId query, StyleRule r)
 : name(p.name), mediaQuery(query), value(p.value), rule(r) { }
 
+/* The list is of what is NOT inherited; everything absent from it is.
+
+Box decoration is all of it: the whole of `outline-*` and all four corner radii, which are not
+inherited on the web either. Letting the outline's width and colour through - only its STYLE was
+listed - meant every descendant of a box with a 1px outline drew one of its own, so a menu whose
+surface declared a border came out with that border around every row in it. The radii went the same
+way: a rounded panel rounded every child it had. */
 bool StyleList::isInheritable(ParameterName name) {
 	if (name == ParameterName::CssMarginTop || name == ParameterName::CssMarginRight
 			|| name == ParameterName::CssMarginBottom || name == ParameterName::CssMarginLeft
@@ -1824,7 +2336,13 @@ bool StyleList::isInheritable(ParameterName name) {
 			|| name == ParameterName::CssMaxWidth || name == ParameterName::CssMaxHeight
 			|| name == ParameterName::CssDisplay || name == ParameterName::CssFloat
 			|| name == ParameterName::CssClear || name == ParameterName::CssBackgroundColor
-			|| name == ParameterName::CssOutlineStyle || name == ParameterName::CssBorderTopStyle
+			|| name == ParameterName::CssOutlineStyle || name == ParameterName::CssOutlineWidth
+			|| name == ParameterName::CssOutlineColor
+			|| name == ParameterName::CssBorderTopLeftRadius
+			|| name == ParameterName::CssBorderTopRightRadius
+			|| name == ParameterName::CssBorderBottomRightRadius
+			|| name == ParameterName::CssBorderBottomLeftRadius
+			|| name == ParameterName::CssBorderTopStyle
 			|| name == ParameterName::CssBorderRightStyle
 			|| name == ParameterName::CssBorderBottomStyle
 			|| name == ParameterName::CssBorderLeftStyle || name == ParameterName::CssBorderTopWidth
@@ -1835,7 +2353,66 @@ bool StyleList::isInheritable(ParameterName name) {
 			|| name == ParameterName::CssBorderBottomColor
 			|| name == ParameterName::CssBorderLeftColor
 			|| name == ParameterName::CssPageBreakBefore || name == ParameterName::CssPageBreakAfter
-			|| name == ParameterName::CssPageBreakInside) {
+			|| name == ParameterName::CssPageBreakInside || name == ParameterName::CssPosition
+			|| name == ParameterName::CssTop || name == ParameterName::CssRight
+			|| name == ParameterName::CssBottom || name == ParameterName::CssLeft
+			/* THE INLINE-AXIS BOX PROPERTIES, and `unicode-bidi` with them. Box decoration is never
+			   inherited, and `unicode-bidi` describes how ONE box takes part in the bidirectional
+			   algorithm - inherited, an `isolate` on a container would isolate every descendant
+			   separately, which is not what the author asked for and not what CSS does.
+
+			   `CssDirection` is deliberately ABSENT from this list: `direction` IS inherited, and
+			   this function answers `true` by default. That default is the whole reason the
+			   direction reaches a subtree without a line of new plumbing. */
+			|| name == ParameterName::CssUnicodeBidi
+			|| name == ParameterName::CssMarginInlineStart
+			|| name == ParameterName::CssMarginInlineEnd
+			|| name == ParameterName::CssPaddingInlineStart
+			|| name == ParameterName::CssPaddingInlineEnd
+			|| name == ParameterName::CssInsetInlineStart
+			|| name == ParameterName::CssInsetInlineEnd
+			|| name == ParameterName::CssBorderInlineStartStyle
+			|| name == ParameterName::CssBorderInlineStartWidth
+			|| name == ParameterName::CssBorderInlineStartColor
+			|| name == ParameterName::CssBorderInlineEndStyle
+			|| name == ParameterName::CssBorderInlineEndWidth
+			|| name == ParameterName::CssBorderInlineEndColor
+			|| name == ParameterName::CssXlAnchorPointX || name == ParameterName::CssXlAnchorPointY
+			|| name == ParameterName::CssXlPositionX || name == ParameterName::CssXlPositionY
+			// `-xl-z-order` is this engine's `z-index`, and no more inheritable than that one:
+			// it is a node's place among its SIBLINGS. Inherited, a single declaration on a
+			// container flattened the z-order of its whole subtree to one value - and since
+			// sortAllChildren is an unstable sort, the children then permuted between passes.
+			// A form felt it worst of all: its tab ring is document order, which is z-order.
+			|| name == ParameterName::CssXlZOrder
+			|| name == ParameterName::CssFlexDirection || name == ParameterName::CssFlexWrap
+			|| name == ParameterName::CssOrder || name == ParameterName::CssFlexGrow
+			|| name == ParameterName::CssFlexShrink || name == ParameterName::CssFlexBasis
+			|| name == ParameterName::CssJustifyContent || name == ParameterName::CssAlignContent
+			|| name == ParameterName::CssJustifyItems || name == ParameterName::CssAlignItems
+			|| name == ParameterName::CssJustifySelf || name == ParameterName::CssAlignSelf
+			|| name == ParameterName::CssRowGap || name == ParameterName::CssColumnGap
+			|| name == ParameterName::CssGridAutoFlow
+			|| name == ParameterName::CssGridTemplateColumns
+			|| name == ParameterName::CssGridTemplateRows
+			|| name == ParameterName::CssGridTemplateAreas
+			|| name == ParameterName::CssGridAutoColumns || name == ParameterName::CssGridAutoRows
+			|| name == ParameterName::CssGridColumnStart || name == ParameterName::CssGridColumnEnd
+			|| name == ParameterName::CssGridRowStart
+			|| name == ParameterName::CssGridRowEnd
+			// Table. `border-collapse` is deliberately NOT here: it IS inherited in CSS, and the
+			// table container reads it off whichever element declared it. `border-spacing` is
+			// inherited on the web too, but here only the container ever reads it, so inheriting it
+			// into every cell would be noise.
+			|| name == ParameterName::CssTableLayout
+			|| name == ParameterName::CssBorderSpacingHorizontal
+			|| name == ParameterName::CssBorderSpacingVertical
+			|| name == ParameterName::CssXlColumnSpan
+			|| name == ParameterName::CssXlRowSpan
+			// `overflow` is not inherited in CSS, and it especially must not be here: a scroll
+			// container that leaked its overflow into every descendant would make each of them a
+			// scroll container of its own.
+			|| name == ParameterName::CssOverflowX || name == ParameterName::CssOverflowY) {
 		return false;
 	}
 	return true;

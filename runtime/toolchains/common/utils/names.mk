@@ -25,6 +25,8 @@ CONFIGURE_PROC_aarch64 := aarch64
 CONFIGURE_PROC_arm64 := aarch64
 CONFIGURE_PROC_riscv64 := riscv64
 CONFIGURE_PROC_e2k := e2kv4
+CONFIGURE_PROC_wasm32 := wasm32
+CONFIGURE_PROC_wasm64 := wasm64
 
 CONFIGURE_HOST_Linux_x86 := i686-linux-gnu
 CONFIGURE_HOST_Linux_armv7a := armv7a-linux-gnu
@@ -43,6 +45,13 @@ CONFIGURE_HOST_Darwin_x86_64 := x86_64-apple-macosx
 CONFIGURE_HOST_Darwin_aarch64 := aarch64-apple-macosx
 CONFIGURE_HOST_Darwin_arm64 := aarch64-apple-macosx
 
-CONFIGURE_HOST_iOS_x86_64 := x86_64-apple-ios-simulator
+# autoconf --host is only a cross-compile alias (the real platform comes from
+# --target in CFLAGS). config.sub does not accept the 4-part
+# "x86_64-apple-ios-simulator" triple ("kernel ios not known to work with os
+# simulator"), so the simulator maps to the suffix-free "x86_64-apple-ios".
+CONFIGURE_HOST_iOS_x86_64 := x86_64-apple-ios
 CONFIGURE_HOST_iOS_aarch64 := aarch64-apple-ios
 CONFIGURE_HOST_iOS_arm64 := aarch64-apple-ios
+
+CONFIGURE_HOST_NuttX_aarch64 := aarch64-elf
+CONFIGURE_HOST_Embox_aarch64 := aarch64-elf

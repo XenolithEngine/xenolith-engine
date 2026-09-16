@@ -268,14 +268,8 @@ inline constexpr sprt::size_t hashSize(const char *str, sprt::size_t len, sprt::
 
 } // namespace sprt
 
-#if __SPRT_USE_STL
-
-#include <hash>
-
-#else
-
-namespace std { } // namespace std
-
-#endif
+// (Historically this projected a std hash header under __SPRT_USE_STL via a
+// non-existent <hash> include; sprt::hash<T> is defined unconditionally in
+// <sprt/cxx/detail/hash.h>, so nothing is needed here in either mode.)
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_HASH_H_

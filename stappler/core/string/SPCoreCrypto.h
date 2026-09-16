@@ -36,10 +36,10 @@ struct SP_PUBLIC CoderSource {
 	CoderSource(const StringView &d);
 
 	CoderSource(const typename memory::PoolInterface::BytesType &d);
-	CoderSource(const typename memory::StandartInterface::BytesType &d);
+	CoderSource(const typename memory::StandardInterface::BytesType &d);
 
 	CoderSource(const typename memory::PoolInterface::StringType &d);
-	CoderSource(const typename memory::StandartInterface::StringType &d);
+	CoderSource(const typename memory::StandardInterface::StringType &d);
 
 	template <sprt::endian Order>
 	CoderSource(const BytesViewTemplate<Order> &d);
@@ -92,6 +92,8 @@ struct SP_PUBLIC Sha1 {
 	using _Ctx = sprt::sha1::Ctx;
 
 	constexpr static uint32_t Length = 20;
+	// HMAC compression-block size (RFC 2104), not derived from the digest length
+	constexpr static uint32_t BlockSize = 64;
 	using Buf = sprt::array<uint8_t, Length>;
 
 	static Buf make(const CoderSource &, const StringView &salt = StringView());
@@ -124,6 +126,8 @@ struct SP_PUBLIC Sha512 {
 	using _Ctx = sprt::sha512::Ctx;
 
 	constexpr static uint32_t Length = 64;
+	// HMAC compression-block size (RFC 2104), not derived from the digest length
+	constexpr static uint32_t BlockSize = 128;
 	using Buf = sprt::array<uint8_t, Length>;
 
 	static Buf make(const CoderSource &, const StringView &salt = StringView());
@@ -156,6 +160,8 @@ struct SP_PUBLIC Sha256 {
 	using _Ctx = sprt::sha256::Ctx;
 
 	constexpr static uint32_t Length = 32;
+	// HMAC compression-block size (RFC 2104), not derived from the digest length
+	constexpr static uint32_t BlockSize = 64;
 	using Buf = sprt::array<uint8_t, Length>;
 
 	static Buf make(const CoderSource &, const StringView &salt = StringView());
@@ -201,6 +207,8 @@ struct SP_PUBLIC Gost3411_512 {
 	using _Ctx = Gost3411_Ctx;
 
 	constexpr static uint32_t Length = 64;
+	// HMAC compression-block size (RFC 2104), not derived from the digest length
+	constexpr static uint32_t BlockSize = 64;
 	using Buf = sprt::array<uint8_t, Length>;
 
 	template <typename... Args>
@@ -231,6 +239,8 @@ struct SP_PUBLIC Gost3411_256 {
 	using _Ctx = Gost3411_Ctx;
 
 	constexpr static uint32_t Length = 32;
+	// HMAC compression-block size (RFC 2104), not derived from the digest length
+	constexpr static uint32_t BlockSize = 64;
 	using Buf = sprt::array<uint8_t, Length>;
 
 	template <typename... Args>
@@ -257,6 +267,19 @@ struct SP_PUBLIC Gost3411_256 {
 	_Ctx ctx;
 };
 
+// Constant-time equality for secret-dependent byte ranges (MACs, tags, fingerprints, password
+// hashes). Unlike memcmp / BytesView::operator==, this does not short-circuit on the first
+// differing byte, so it does not leak how many leading bytes matched (timing channel).
+// The length comparison is intentionally not constant-time (lengths are not secret).
+inline bool isEqualConstantTime(BytesView a, BytesView b) {
+	if (a.size() != b.size()) {
+		return false;
+	}
+	uint8_t diff = 0;
+	for (size_t i = 0; i < a.size(); ++i) { diff = uint8_t(diff | (a.data()[i] ^ b.data()[i])); }
+	return diff == 0;
+}
+
 } // namespace stappler::crypto
 
 
@@ -273,13 +296,13 @@ inline CoderSource::CoderSource(const StringView &d) : _data((uint8_t *)d.data()
 inline CoderSource::CoderSource(const typename memory::PoolInterface::BytesType &d)
 : _data(d.data(), d.size()) { }
 
-inline CoderSource::CoderSource(const typename memory::StandartInterface::BytesType &d)
+inline CoderSource::CoderSource(const typename memory::StandardInterface::BytesType &d)
 : _data(d.data(), d.size()) { }
 
 inline CoderSource::CoderSource(const typename memory::PoolInterface::StringType &d)
 : _data((const uint8_t *)d.data(), d.size()) { }
 
-inline CoderSource::CoderSource(const typename memory::StandartInterface::StringType &d)
+inline CoderSource::CoderSource(const typename memory::StandardInterface::StringType &d)
 : _data((const uint8_t *)d.data(), d.size()) { }
 
 template <sprt::endian Order>
@@ -316,24 +339,28 @@ inline size_t CoderSource::read(uint8_t *buf, size_t nbytes) {
 
 inline size_t CoderSource::seek(int64_t offset, io::Seek s) {
 	switch (s) {
-	case io::Seek::Current:
-		if (offset + _offset > _data.size()) {
-			_offset = _data.size();
-		} else if (offset + int64_t(_offset) < 0) {
+	case io::Seek::Current: {
+		int64_t np = int64_t(_offset) + offset;
+		if (np < 0) {
 			_offset = 0;
+		} else if (size_t(np) > _data.size()) {
+			_offset = _data.size();
 		} else {
-			_offset += offset;
+			_offset = size_t(np);
 		}
 		break;
-	case io::Seek::End:
-		if (offset > 0) {
-			_offset = _data.size();
-		} else if (size_t(-offset) > _data.size()) {
+	}
+	case io::Seek::End: {
+		int64_t np = int64_t(_data.size()) + offset;
+		if (np < 0) {
 			_offset = 0;
+		} else if (size_t(np) > _data.size()) {
+			_offset = _data.size();
 		} else {
-			_offset = size_t(-offset);
+			_offset = size_t(np);
 		}
 		break;
+	}
 	case io::Seek::Set:
 		if (offset < 0) {
 			_offset = 0;

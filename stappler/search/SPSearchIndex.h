@@ -52,8 +52,8 @@ public:
 	using FilterCallback = Function<bool(const Node *)>;
 
 	struct Slice {
-		uint16_t start = 0; // start position in node's canonical string
-		uint16_t size = 0; // length in node's canonical string
+		uint32_t start = 0; // start position in node's canonical string
+		uint32_t size = 0; // length in node's canonical string
 
 		bool operator==(const Slice &) const = default;
 	};
@@ -74,7 +74,7 @@ public:
 
 	struct ResultToken {
 		uint32_t word = 0; // node index
-		uint16_t match = 0; // node index
+		uint32_t match = 0; // node index
 		Slice slice; // slice from canonical
 
 		bool operator==(const ResultToken &) const = default;
@@ -130,6 +130,9 @@ public:
 	void reserve(size_t);
 	void add(const StringView &, int64_t id, int64_t tag);
 
+	// `minMatch` is how many DISTINCT words of the request a node has to answer to stay in the
+	// result: 1 is "any of them", 2 is "at least two of them". Two hits on the same word count
+	// once. It is applied before the heuristic runs, so filtered nodes cost no scoring calls.
 	Result performSearch(const StringView &, size_t minMatch,
 			const HeuristicCallback & = Heuristic(), const FilterCallback &filter = nullptr);
 

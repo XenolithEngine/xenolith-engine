@@ -124,11 +124,11 @@ protected:
 	typename Interface::template VectorType<Pair<Handle<Interface> *, Rc<Ref>>> pending;
 };
 
-}
+} // namespace stappler::network
 
 namespace STAPPLER_VERSIONIZED stappler::mem_std {
 
-using NetworkHandle = network::Handle<memory::StandartInterface>;
+using NetworkHandle = network::Handle<mem_std::Interface>;
 
 }
 

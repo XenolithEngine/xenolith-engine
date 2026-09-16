@@ -90,7 +90,7 @@ bool TextInputManager::run(TextInputHandler *h, TextInputRequest &&req) {
 
 	_state = req.getState();
 
-	_director->getWindow()->acquireTextInput(move(req));
+	_director->getRenderServer()->acquireTextInput(move(req));
 	return true;
 }
 
@@ -111,7 +111,7 @@ bool TextInputManager::update(TextInputHandler *h, TextInputRequest &&req) {
 	}
 
 	_state = move(newState);
-	_director->getWindow()->acquireTextInput(move(req));
+	_director->getRenderServer()->acquireTextInput(move(req));
 	return true;
 }
 
@@ -142,7 +142,7 @@ void TextInputManager::cancel() {
 		_handler->onData(copy);
 		_handler->manager = nullptr;
 	}
-	if (auto w = _director->getWindow()) {
+	if (auto w = _director->getRenderServer()) {
 		w->releaseTextInput();
 	}
 	_handler = nullptr;

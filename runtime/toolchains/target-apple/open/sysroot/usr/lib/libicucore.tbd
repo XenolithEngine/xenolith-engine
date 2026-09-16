@@ -1,0 +1,15 @@
+--- !tapi-tbd
+tbd-version:     4
+targets:         [ x86_64-macos, arm64-macos ]
+install-name:    '/usr/lib/libicucore.A.dylib'
+current-version: 74.1
+compatibility-version: 1.0.0
+exports:
+  - targets:         [ x86_64-macos, arm64-macos ]
+    symbols:         [
+        _uidna_close,
+        _uidna_nameToASCII_UTF8,
+        _uidna_nameToUnicodeUTF8,
+        _uidna_openUTS46,
+    ]
+...

@@ -65,13 +65,13 @@ typedef __UINT32_TYPE__ __SPRT_ID(uint32_t);
 #ifdef __UINT32_C
 #define __SPRT_UINT32_C(C) __UINT32_C(C)
 #else
-#error "Compiler-assisted __UINT32_FMTx__ is not defined"
+#error "Compiler-assisted __UINT32_C is not defined"
 #endif
 
 #ifdef __UINT32_C_SUFFIX__
 #define __UINT32_C_SUFFIX __UINT32_C_SUFFIX__
 #else
-#error "Compiler-assisted __UINT32_FMTx__ is not defined"
+#error "Compiler-assisted __UINT32_C_SUFFIX__ is not defined"
 #endif
 
 #else // __UINT32_TYPE__

@@ -1,0 +1,6 @@
+/build/
+/src/
+/sysroot-target-*/
+/sysroot-userland-*/
+/sysroot-gpu-*/
+*.tar.*

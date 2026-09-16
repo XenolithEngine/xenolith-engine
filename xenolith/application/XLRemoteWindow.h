@@ -1,0 +1,158 @@
+/**
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
+
+#ifndef XENOLITH_APPLICATION_XLREMOTEWINDOW_H_
+#define XENOLITH_APPLICATION_XLREMOTEWINDOW_H_
+
+#include "XLCoreRenderSession.h"
+#include "XLWindowSceneInfo.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith {
+
+class ClientAppThread;
+
+class SP_PUBLIC RemoteWindow : public Ref, public core::RenderServerChannel {
+public:
+	// One shared queue as announced by the server. Scenes match `api` and `typeTag` to pick a queue
+	// they can drive (see Scene2d::selectServerQueue); `name` is for diagnostics or lookup by name.
+	struct RemoteQueueInfo {
+		uint64_t id;
+		String name;
+		core::InstanceApi api = core::InstanceApi::None;
+		uint32_t typeTag = 0;
+		core::QueueDamageFlags damage = core::QueueDamageFlags::None;
+	};
+
+	virtual ~RemoteWindow();
+
+	virtual bool init(NotNull<ClientAppThread>, const Value &);
+
+	virtual void compileRenderQueue(const Rc<core::Queue> &,
+			Function<void(bool)> && = nullptr) override;
+	virtual void compileResource(Rc<core::Resource> &&, Function<void(bool)> && = nullptr,
+			bool preload = false) override;
+	virtual void compileMaterials(Rc<core::MaterialInputData> &&,
+			const Vector<Rc<core::DependencyEvent>> & =
+					Vector<Rc<core::DependencyEvent>>()) override;
+	virtual void compileImage(const Rc<core::DynamicImage> &,
+			Function<void(bool)> && = nullptr) override;
+
+	virtual void attachRenderQueue(const Rc<core::Queue> &) override;
+
+	virtual void setReadyForNextFrame() override;
+	virtual void setPreferredFrameInterval(uint64_t intervalUs) override;
+	virtual core::FrameTimingInfo getFrameTiming() const override;
+
+	virtual void acquireScreenInfo(Function<void(NotNull<core::ScreenInfo>)> &&,
+			Ref * = nullptr) override;
+	virtual void acquireTextInput(core::TextInputRequest &&) override;
+	virtual void releaseTextInput() override;
+	virtual void performTextInput(core::TextInputCommand &&) override;
+	virtual void close(bool graceful = true) override;
+
+	virtual void handleBackButton() override;
+
+	// Forwarded to the server window (the base answers ErrorNotSupported).
+	virtual void setWindowExtent(Extent2, Function<void(Status)> && = nullptr,
+			Ref * = nullptr) override;
+
+	virtual const sprt::window::WindowInfo *getInfo() const override;
+
+	// Mirror of AppWindow::getSceneInfo(). The client sets it before the window takes a Director,
+	// since remote windows are announced by the server. App thread.
+	WindowSceneInfo *getSceneInfo() const { return _sceneInfo; }
+	void setSceneInfo(Rc<WindowSceneInfo> &&s) { _sceneInfo = sp::move(s); }
+
+	virtual bool enableState(core::WindowState) override;
+	virtual bool disableState(core::WindowState) override;
+
+	virtual bool setFullscreen(core::FullscreenInfo &&, Function<void(Status)> &&,
+			Ref * = nullptr) override;
+
+	virtual bool setPreferredFrameRate(float, Function<void(Status)> && = nullptr) override;
+
+	virtual void captureScreenshot(
+			Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) override;
+
+	// Deliver a screenshot received over Domain::Data to the captureScreenshot() callback
+	// registered for `serial` (echoed in the announce reason). Returns true if a pending capture
+	// matched.
+	bool deliverScreenshot(uint32_t serial, const core::ImageInfoData &info, BytesView pixels);
+
+	virtual bool openWindowMenu(Vec2 pos) override;
+
+	virtual void handleInputEvents(Vector<core::InputEventData> &&events) override;
+
+	// Server-pushed text-input state (WindowCode::TextInputState), the echo from the window's
+	// processor. Not an override: the receiving end of a RenderClientChannel call on the server.
+	void handleTextInput(const core::TextInputState &);
+
+	// Server-pushed window geometry (WindowCode::WindowGeometryChanged): updates the
+	// getWindowGeometry() mirror and notifies the local Director. Not an override: the receiving
+	// end of a RenderClientChannel call on the server.
+	void handleWindowGeometryChanged(const sprt::window::WindowGeometry &);
+
+	virtual void updateLayers(sprt::window::Vector<sprt::window::WindowLayer> &&) override;
+
+	uint64_t getServerId() const { return _id; }
+
+	SpanView<RemoteQueueInfo> getQueues() const { return _queues; }
+
+	// Drive the local Director for a server frame request: the scene graph selects a shared queue;
+	// `reply` receives its server id (0 if none). `timing` and `stat` ride along with the request
+	// (see RemoteRenderClient::acquireFrame); null means no update (e.g. a version-1 server), not
+	// zeros.
+	void acquireFrame(uint64_t frameId, const core::FrameConstraints &,
+			const core::FrameTimingInfo *timing, const core::DrawStat *stat,
+			Function<void(uint64_t queueId)> &&reply);
+
+protected:
+	uint64_t _id = 0;
+	Rc<sprt::window::WindowInfo> _info;
+	Vector<RemoteQueueInfo> _queues;
+	Rc<ClientAppThread> _thread; // creates cyclic reference until windows is closed/detached
+
+	// Set by the client; consulted by ClientAppThread::makeScene before the process-wide symbol.
+	Rc<WindowSceneInfo> _sceneInfo;
+
+	// captureScreenshot() callbacks awaiting their pixels, keyed by the RequestScreenshot serial.
+	Map<uint32_t, Function<void(const core::ImageInfoData &, BytesView)>> _pendingScreenshots;
+
+	/* Send one WindowCode::WindowControl request and route its Status back to `cb`. Replies use
+	AppThread::waitForReply, so on a dropped connection the watchdog delivers an error Status. */
+	void sendWindowControl(remote::WindowControlOp, Value &&args, Function<void(Status)> &&cb);
+
+	// Fire-and-forget counterpart for the text-input ops; the answer is the state echo, not a reply.
+	void sendTextInputControl(Value &&args);
+
+	// The server's frame telemetry, mirrored here because getFrameTiming() is a synchronous getter
+	// the wire cannot answer. Fed by the AcquireFrame piggyback.
+	core::FrameTimingInfo _frameTiming;
+
+	// Last forwarded serialized layer payload, so identical layer sets are not re-sent
+	// (updateLayers runs on every input commit).
+	Bytes _lastLayersBlob;
+};
+
+} // namespace stappler::xenolith
+
+#endif /* XENOLITH_APPLICATION_XLREMOTEWINDOW_H_ */

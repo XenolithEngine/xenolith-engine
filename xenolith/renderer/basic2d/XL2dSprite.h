@@ -109,11 +109,11 @@ public:
 
 	virtual void setTextureLoadedCallback(Function<void()> &&);
 
-	virtual void setOutlineOffset(float);
-	virtual float getOutlineOffset() const { return _outlineOffset; }
+	virtual void setShadedOutlineOffset(float);
+	virtual float getShadedOutlineOffset() const { return _shadedOutlineOffset; }
 
-	virtual void setOutlineColor(const Color4F &);
-	virtual const Color4F &getOutlineColor() const { return _outlineColor; }
+	virtual void setShadedOutlineColor(const Color4F &);
+	virtual const Color4F &getShadedOutlineColor() const { return _shadedOutlineColor; }
 
 protected:
 	using Node::init;
@@ -133,6 +133,12 @@ protected:
 	virtual RenderingLevel getRealRenderingLevel() const;
 
 	virtual bool checkVertexDirty() const;
+
+	// Called on every frame this node draws, right before its pending dependencies go to the frame.
+	// Nodes whose vertex data is resolved on the GPU against asynchronously uploaded data (Label:
+	// glyph ids via the font atlas) re-arm their gate here, since the data can go stale after
+	// layout.
+	virtual void refreshPendingDependencies() { }
 
 	virtual CmdInfo buildCmdInfo(const FrameInfo &) const;
 
@@ -156,7 +162,7 @@ protected:
 
 	float _textureScale = 1.0f;
 	float _textureLayer = 0.0f;
-	float _outlineOffset = 0.0f;
+	float _shadedOutlineOffset = 0.0f;
 
 	ImagePlacementInfo _texturePlacement;
 
@@ -165,13 +171,18 @@ protected:
 
 	RenderingLevel _renderingLevel = RenderingLevel::Default;
 	RenderingLevel _realRenderingLevel = RenderingLevel::Default;
+
+	// Whether this sprite was drawn inside a subtree marked with Node::setOverlay, as of the last
+	// frame. Read from FrameInfo in draw(): marking an ancestor or reparenting would not invalidate
+	// a cached parent walk.
+	bool _inOverlay = false;
 	core::MaterialId _materialId = 0;
 
 	// if not defined - use pipeline matching algorithm
 	const core::PipelineFamilyInfo *_pipelineFamily = nullptr;
 	CommandFlags _commandFlags = CommandFlags::None;
 
-	Color4F _outlineColor = Color4F::WHITE;
+	Color4F _shadedOutlineColor = Color4F::WHITE;
 	Color4F _tmpColor;
 	core::ColorMode _colorMode;
 	core::BlendInfo _blendInfo;

@@ -538,6 +538,10 @@ void Device::clearShaders() { _shaders.clear(); }
 void Device::invalidateObjects() {
 	Vector<ObjectData> data;
 
+	// Tells the destroy callbacks below that this is the device's last moment: anything they would
+	// normally postpone has to happen inline instead (see isFinalizingObjects()).
+	_finalizingObjects = true;
+
 	sprt::unique_lock<sprt::mutex > lock(_objectMutex);
 	for (auto &it : _objects) {
 		if (auto img = dynamic_cast<ImageObject *>(it)) {

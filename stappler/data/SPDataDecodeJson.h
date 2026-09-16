@@ -73,7 +73,16 @@ struct Decoder : public Interface::AllocBaseType {
 	inline void parseValue(ValueType &current);
 	void parseJson(ValueType &val);
 
+	// bound nesting depth (shared limit): the parser is iterative, but the resulting
+	// Value tree is destroyed and re-encoded recursively, so an unbounded depth would
+	// overflow the native stack on teardown/encode
+	static constexpr size_t MaxDepth = MaxDecodeDepth;
+
 	inline void push(BackType t, ValueType *v) {
+		if (stack.size() >= MaxDepth) {
+			stop = true;
+			return;
+		}
 		++r;
 		back = v;
 		stack.push_back(v);
@@ -190,7 +199,21 @@ inline void Decoder<Interface>::parseValue(ValueType &current) {
 	case '8':
 	case '9':
 	case '+':
-	case '-': parseJsonNumber(current); break;
+	case '-':
+		// A leading minus reaches the number parser, which would read the sign and then find no
+		// digits at all - so the two negative infinities are taken here, before it.
+		if (r.is("-Infinity")) {
+			current._type = ValueType::Type::DOUBLE;
+			current.doubleVal = -sprt::Infinity<double>;
+			r += 9;
+		} else if (r.is("-inf")) {
+			current._type = ValueType::Type::DOUBLE;
+			current.doubleVal = -sprt::Infinity<double>;
+			r += 4;
+		} else {
+			parseJsonNumber(current);
+		}
+		break;
 	case '[':
 		current._type = ValueType::Type::ARRAY;
 		current.arrayVal = new (sprt::nothrow) typename ValueType::ArrayType();
@@ -202,10 +225,37 @@ inline void Decoder<Interface>::parseValue(ValueType &current) {
 		current.dictVal = new (sprt::nothrow) typename ValueType::DictionaryType();
 		push(BackIsDict, &current);
 		break;
+	case 'N':
+		if (r.is("NaN")) {
+			current._type = ValueType::Type::DOUBLE;
+			current.doubleVal = nan<double>();
+			r += 3;
+		} else {
+			r += 1;
+		}
+		break;
+	case 'I':
+		if (r.is("Infinity")) {
+			current._type = ValueType::Type::DOUBLE;
+			current.doubleVal = sprt::Infinity<double>;
+			r += 8;
+		} else {
+			r += 1;
+		}
+		break;
+	case 'i':
+		if (r.is("inf")) {
+			current._type = ValueType::Type::DOUBLE;
+			current.doubleVal = sprt::Infinity<double>;
+			r += 3;
+		} else {
+			r += 1;
+		}
+		break;
 	case 'n':
 		if (r.is("nan")) {
 			current._type = ValueType::Type::DOUBLE;
-			current.doubleVal = nan();
+			current.doubleVal = nan<double>();
 			r += 3;
 		} else {
 			r += 4;

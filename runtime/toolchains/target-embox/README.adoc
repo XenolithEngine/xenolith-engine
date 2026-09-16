@@ -1,0 +1,99 @@
+= Embox target (`target-embox`)
+
+Hosted-POSIX Xenolith target running on the Embox RTOS kernel with Embox's own
+libc. The runtime does NOT build a second libc — it forwards to the Embox libc
+through the existing `libc_wrapper` "hosted" path (the same model as
+Linux/glibc and Android/Bionic), with musl adapters filling the gaps the way
+they do for Android.
+
+How to assemble the sysroot: `docs/platforms/embox.adoc`.
+
+== Why hosted, not freestanding
+
+Embox's kernel exposes services to userspace only through its own libc and
+syscall stubs; there is no stable raw syscall ABI the way Linux has. A flat
+build links application code into one image with the kernel, where the Embox
+libc is already present. A second libc (our musl-derived `libc_impl`) in the
+same image is a guaranteed `malloc`/`stdio`/`errno`/`pthread` conflict and
+cuts userspace off from `/dev/*`. The `libc_wrapper` umbrella mode exists
+precisely for this case — see `runtime/libc_wrapper/README.adoc`.
+
+== Where the sysroot comes from
+
+The sysroot is **imported**, not built from scratch. Embox has no
+`make export`. The input is `embox-export-<ver>.tar.gz`: pack
+`make distgen` output (`build/dist/{include,lib}`) plus the template
+`build.conf`. The package contains:
+
+* `include/`   — merged libc + posix + kernel + arch headers
+* `src/`       — Embox `src/*.h` (module headers include `<../../src/…>`)
+* `lib/`       — `embox.a`, `embox.o`, `image.lds`, `libc.a` → `embox.a`
+* `build.conf` — arch flags (`CFLAGS` / `CROSS_COMPILE` / `ARCH`)
+* `mods.conf`  — enabled modules snapshot
+
+The import step lays these out as `sysroot/usr/{include,lib}`, extracts the
+arch flags into `embox-arch-flags.mk`, and records module notes in
+`embox-config.mk`. `init-target.mk` then generates the standard
+`target.mk` + `toolchain.cmake` contract from those.
+
+== Usage
+
+Once `$EMBOX_EXPORT` exists and `runtime/toolchains/src/{zlib,freetype,llvm-project,…}`
+are populated (see `docs/platforms/embox.adoc`):
+
+[source,sh]
+----
+# PATH: Xenolith GNU make 4.x + clang 21 first. Do NOT use Apple /usr/bin/make.
+make -C runtime/toolchains/target-embox target-aarch64 \
+    EMBOX_EXPORT=/path/to/embox-export-0.0.0.tar.gz
+----
+
+Then symlink into the CLI store — Embox is not in the SDK catalogue:
+
+----
+ln -sfn <engine>/runtime/toolchains/target-embox/targets/aarch64-embox-none-elf \
+    <engine>/runtime/toolchains/targets/aarch64-embox-none-elf
+ln -sfn <engine>/runtime/toolchains/targets/aarch64-embox-none-elf \
+    ~/.local/share/xenolith/data/toolchains/targets/aarch64-embox-none-elf
+
+xenolith-cli build tests/runtime --engine <engine> --target aarch64-embox-none-elf
+----
+
+Do **not** `make -C runtime/toolchains download` and do **not**
+`make -C runtime/toolchains target-aarch64-embox-none-elf` (parent `host` goal
+rebuilds clang).
+
+== Triple naming
+
+LLVM has no `OSType embox`, so the OS field cannot carry "embox" — clang would
+parse the triple as unknown. Embox rides in the **vendor** field and the OS
+stays `none` (baremetal ELF) for real boards and `linux` for the sim target
+(which is a normal Linux process):
+
+[cols="1,1,2", options="header"]
+|===
+| STAPPLER_TARGET                | clang --target            | Use
+| `aarch64-embox-none-elf`       | `aarch64-none-elf`        | ARMv8-A boards
+| `riscv64-embox-none-elf`       | `riscv64-none-elf`        | RISC-V boards
+| `arm-embox-none-eabi`          | `arm-none-eabi`           | Cortex-M/-R/32-bit -A boards
+| `x86_64-embox-sim-linux-gnu`   | `x86_64-unknown-linux-gnu` | Embox sim target
+|===
+
+Per-board profiles arrive as a `+<board>` suffix mirroring the existing
+`+dll`/`+sprt` scheme — the suffix selects a specific export package and the
+arch flags it carries. The base triple (no suffix) is what CI uses for
+compile-only checks.
+
+== License / distribution
+
+Embox is Apache-2.0. The target is therefore built at the user's site from
+their export package and is **not** published into the SDK release archive
+(see `toolchains/Makefile` at the repo root — no `target-*-embox-*` targets
+are registered there). Only the build glue in this directory ships in our
+source tree.
+
+== Pinned version
+
+M0 status (2026-08): validated against Embox master commit `87260499`
+(2026-08-09). When upgrading, re-run `import-sysroot.mk` against a fresh export
+and diff `embox-arch-flags.mk` + `embox-config.mk` to catch `build.conf` drift.

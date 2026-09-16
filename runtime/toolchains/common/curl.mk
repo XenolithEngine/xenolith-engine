@@ -24,8 +24,8 @@ VARIANT ?= mbedtls
 
 LIBNAME = curl
 
-SP_USER_CFLAGS := -DNGHTTP3_STATICLIB
-SP_USER_CXXFLAGS := -DNGHTTP3_STATICLIB
+SP_USER_CFLAGS := -DNGHTTP3_STATICLIB -DNGTCP2_STATICLIB
+SP_USER_CXXFLAGS := -DNGHTTP3_STATICLIB -DNGTCP2_STATICLIB
 
 ifdef WINDOWS
 SP_USER_CFLAGS += -DSIZEOF_CURL_OFF_T=8 -Wno-incompatible-pointer-types-discards-qualifiers -Wno-cast-function-type-strict
@@ -40,7 +40,6 @@ CONFIGURE := \
 	-DBUILD_SHARED_LIBS=OFF \
 	-DBUILD_STATIC_LIBS=ON \
 	-DUSE_NGHTTP2=OFF \
-	-DUSE_WIN32_IDN=ON \
 	-DCURL_USE_LIBSSH2=OFF \
 	-DCURL_USE_LIBPSL=OFF \
 	-DBUILD_LIBCURL_DOCS=OFF \
@@ -51,17 +50,26 @@ CONFIGURE := \
 	-DCURL_STATIC_CRT=On \
 	-DCURL_CA_BUNDLE="$(realpath ../replacements/curl/cacert.pem)"
 
+# IDN comes from the runtime's own UTS-46 engine, which exports the libidn2 C ABI
+# (runtime/src/idn/SPRuntimeIdn2Api.cpp) on every target. That replaces what used to
+# be three different answers: USE_WIN32_IDN on Windows (IDNA2003), USE_APPLE_IDN on
+# Darwin, and no IDN at all on wasm.
+#
+# There is no libidn2.a to point cmake at - the symbols resolve at the final link of
+# the application - so LIBIDN2_LIBRARY names an archive that is present but
+# irrelevant, purely to satisfy find_package. The header is the real dependency, and
+# each target Makefile installs it into the sysroot.
+CONFIGURE += \
+	-DUSE_LIBIDN2=ON \
+	-DLIBIDN2_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a \
+	-DLIBIDN2_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/usr/include
+
 ifdef DARWIN
 CONFIGURE += \
 	-DSYSTEMCONFIGURATION_FRAMEWORK="SystemConfiguration" \
 	-DCOREFOUNDATION_FRAMEWORK="CoreFoundation" \
 	-DCORESERVICES_FRAMEWORK="CoreServices" \
-	-DUSE_APPLE_IDN=On \
-	-DUSE_LIBIDN2=Off
-endif
-
-ifdef ANDROID
-CONFIGURE += -DLIBIDN2_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a
+	-DUSE_APPLE_IDN=Off
 endif
 
 ifeq ($(VARIANT),mbedtls)
@@ -70,11 +78,84 @@ CONFIGURE += \
 endif
 
 ifeq ($(VARIANT),openssl)
+# HTTP/3 via ngtcp2 (QUIC) + nghttp3 (framing) on the OpenSSL crypto backend. NOTE: curl
+# 8.20 has NO USE_OPENSSL_QUIC option - it is a no-op and does NOT turn on the HTTP3
+# feature (curl_add_if("HTTP3" USE_NGTCP2 OR USE_QUICHE)). USE_NGTCP2 does: with OpenSSL
+# 3.5+ curl calls find_package(NGTCP2 COMPONENTS ossl) -> libngtcp2 + libngtcp2_crypto_ossl
+# (needs ngtcp2 >= 1.12.0) and pulls nghttp3 automatically. The libs are static, so tell
+# FindNGTCP2 to resolve the *_static/.a via pkg-config (NGTCP2_STATICLIB comes from
+# SP_USER_CFLAGS above; the LIB_EAY/SSL_EAY hints were dead in 8.20).
 CONFIGURE += \
 	-DCURL_DEFAULT_SSL_BACKEND="openssl" -DCURL_USE_OPENSSL=ON \
-	-DLIB_EAY=$(SP_INSTALL_PREFIX)/usr/lib/crypto.lib \
-	-DSSL_EAY=$(SP_INSTALL_PREFIX)/usr/lib/ssl.lib \
-	-DUSE_OPENSSL_QUIC=ON
+	-DUSE_NGTCP2=ON \
+	-DNGTCP2_USE_STATIC_LIBS=ON
+endif
+
+ifdef WASM
+CONFIGURE += \
+	-DOPENSSL_ROOT_DIR=$(SP_INSTALL_PREFIX)/usr \
+	-DOPENSSL_CRYPTO_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libcrypto.a \
+	-DOPENSSL_SSL_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
+	-DOPENSSL_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/usr/include \
+	-DCURL_DISABLE_NETRC=ON \
+	-DCURL_USE_LIBPSL=OFF \
+	-DENABLE_THREADED_RESOLVER=OFF
+endif
+
+ifdef NUTTX
+CONFIGURE += \
+	-DCMAKE_PROJECT_CURL_INCLUDE=$(MAKE_ROOT)nuttx-curl-project-include.cmake \
+	-DOPENSSL_ROOT_DIR=$(SP_INSTALL_PREFIX)/usr \
+	-DOPENSSL_CRYPTO_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libcrypto.a \
+	-DOPENSSL_SSL_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
+	-DOPENSSL_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/usr/include \
+	-DCURL_DISABLE_NETRC=ON \
+	-DUSE_LIBIDN2=OFF \
+	-DCURL_USE_LIBPSL=OFF \
+	-DENABLE_THREADED_RESOLVER=OFF \
+	-DCURL_CA_BUNDLE=none \
+	-DCURL_CA_PATH=none
+endif
+
+ifdef EMBOX_USER
+# Same shape as the EMBOX branch below, minus the project-include (which patches
+# around Embox libc quirks that do not exist here -- the libc is ours).
+#
+# THREADED_RESOLVER off, and not only because pthread_create is ENOSYS until
+# phase L3b: a threaded resolver has nothing to resolve. Sockets at EL0 are
+# milestone M3, so curl is built for its protocol and TLS code, not to open a
+# connection -- see the note in target-embox-user/Makefile about why it is built
+# at all.
+CONFIGURE += \
+	-DOPENSSL_ROOT_DIR=$(SP_INSTALL_PREFIX)/usr \
+	-DOPENSSL_CRYPTO_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libcrypto.a \
+	-DOPENSSL_SSL_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
+	-DOPENSSL_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/usr/include \
+	-DCURL_DISABLE_NETRC=ON \
+	-DUSE_LIBIDN2=OFF \
+	-DCURL_USE_LIBPSL=OFF \
+	-DENABLE_THREADED_RESOLVER=OFF \
+	-DCMAKE_USE_PTHREADS_INIT=ON \
+	-DHAVE_THREADS_POSIX=ON \
+	-DCURL_CA_BUNDLE=none \
+	-DCURL_CA_PATH=none
+endif
+
+ifdef EMBOX
+CONFIGURE += \
+	-DCMAKE_PROJECT_CURL_INCLUDE=$(MAKE_ROOT)embox-curl-project-include.cmake \
+	-DOPENSSL_ROOT_DIR=$(SP_INSTALL_PREFIX)/usr \
+	-DOPENSSL_CRYPTO_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libcrypto.a \
+	-DOPENSSL_SSL_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
+	-DOPENSSL_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/usr/include \
+	-DCURL_DISABLE_NETRC=ON \
+	-DUSE_LIBIDN2=OFF \
+	-DCURL_USE_LIBPSL=OFF \
+	-DENABLE_THREADED_RESOLVER=OFF \
+	-DCMAKE_USE_PTHREADS_INIT=ON \
+	-DHAVE_THREADS_POSIX=ON \
+	-DCURL_CA_BUNDLE=none \
+	-DCURL_CA_PATH=none
 endif
 
 all:

@@ -1,0 +1,96 @@
+/**
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
+
+#ifndef CORE_RUNTIME_PRIVATE_WINDOW_LINUX_XCB_SPRTWINLINUXXCBSOFTWARESURFACE_H_
+#define CORE_RUNTIME_PRIVATE_WINDOW_LINUX_XCB_SPRTWINLINUXXCBSOFTWARESURFACE_H_
+
+#include "SPRTWinLinuxXcbConnection.h"
+
+#if SPRT_LINUX
+
+#include <sprt/runtime/window/software_surface.h>
+
+namespace sprt::window {
+
+class XcbWindow;
+
+// MIT-SHM presentation for a host rasterizer. The segment is shared with the X server, so the
+// frame is rasterized straight into what gets blitted - xcb_put_image would instead push a copy of
+// our own buffer through the protocol socket, which is exactly what this exists to avoid.
+class SPRT_API XcbSoftwareSurface final : public SoftwareSurface {
+public:
+	virtual ~XcbSoftwareSurface();
+
+	bool init(NotNull<XcbWindow>);
+
+	virtual SurfaceInfo getSurfaceOptions(SurfaceInfo &&) const override;
+
+	virtual Rc<SoftwareSwapchain> makeSwapchain(const SoftwareSwapchainInfo &) override;
+
+	virtual void invalidate() override;
+
+protected:
+	Rc<XcbConnection> _connection;
+	XcbLibrary *_xcb = nullptr;
+	// Non-owning: the window outlives every surface built from it, and an Rc here would close a
+	// cycle through the window's own AppWindow.
+	XcbWindow *_owner = nullptr;
+	xcb_window_t _window = 0;
+	uint8_t _depth = 0;
+};
+
+// One memfd shared with the server, N slots inside it, one graphics context to blit with.
+class SPRT_API XcbSoftwareSwapchain final : public SoftwareSwapchain {
+public:
+	virtual ~XcbSoftwareSwapchain();
+
+	bool init(NotNull<XcbConnection>, xcb_window_t, uint8_t depth, const SoftwareSwapchainInfo &);
+
+	virtual Status present(uint32_t index, SpanView<geom::URect> damage) override;
+
+	virtual void invalidate() override;
+
+	// XCB_SHM_COMPLETION: the server has finished reading the slot at `offset`.
+	void handleCompletion(uint32_t offset);
+
+protected:
+	void teardown();
+
+	Rc<XcbConnection> _connection;
+	XcbLibrary *_xcb = nullptr;
+	xcb_window_t _window = 0;
+	xcb_gcontext_t _gc = 0;
+	uint8_t _depth = 0;
+
+	xcb_shm_seg_t _segment = 0;
+	uint8_t *_mapping = nullptr;
+	size_t _mappingSize = 0;
+	size_t _slotSize = 0;
+
+	Extent2 _extent;
+};
+
+} // namespace sprt::window
+
+#endif
+
+#endif /* CORE_RUNTIME_PRIVATE_WINDOW_LINUX_XCB_SPRTWINLINUXXCBSOFTWARESURFACE_H_ */

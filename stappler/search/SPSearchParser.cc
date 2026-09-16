@@ -439,7 +439,6 @@ static bool pushHWord(StringView word, const Callback<ParserStatus(StringView, P
 static bool parseHyphenatedWord(StringViewUtf8 &tmp, StringView r,
 		const Callback<ParserStatus(StringView, ParserToken)> &cb, size_t depth) {
 	auto tmp2 = tmp;
-	tmp2.skipChars<WordCharGroup>();
 
 	auto doPushWord = [&] {
 		if (depth == 0) {
@@ -449,31 +448,38 @@ static bool parseHyphenatedWord(StringViewUtf8 &tmp, StringView r,
 		}
 	};
 
-	if (tmp2.is('-')) {
-		tmp2.skipChars<StringViewUtf8::Chars<U'-'>>();
-		if (!parseHyphenatedWord(tmp2, StringView(r.data(), tmp.data() - r.data()), cb,
-					depth + 1)) {
-			return false;
-		}
-	} else if (tmp2.is('_') || tmp2.is('.') || tmp2.is(':') || tmp2.is('@') || tmp2.is('/')
-			|| tmp2.is('?') || tmp2.is('#')) {
-		switch (tryParseUrl(tmp2, r, cb)) {
-		case ParserStatus::PreventSubdivide:
+	// walk the hyphen chain iteratively: a long "a-a-a-..." token would otherwise
+	// recurse once per segment and exhaust the native stack. r.data() is the word
+	// start and is invariant across segments (doPushWord/tryParseUrl only use it),
+	// so the original recursion is equivalent to looping with an incremented depth.
+	while (true) {
+		tmp2.skipChars<WordCharGroup>();
+
+		if (tmp2.is('-')) {
+			tmp2.skipChars<StringViewUtf8::Chars<U'-'>>();
+			++depth;
+			continue;
+		} else if (tmp2.is('_') || tmp2.is('.') || tmp2.is(':') || tmp2.is('@') || tmp2.is('/')
+				|| tmp2.is('?') || tmp2.is('#')) {
+			switch (tryParseUrl(tmp2, r, cb)) {
+			case ParserStatus::PreventSubdivide:
+				if (!doPushWord()) {
+					return false;
+				}
+				if (cb(tmp2.sub(0, 1), ParserToken::Blank) == ParserStatus::Stop) {
+					return false;
+				}
+				++tmp2;
+				break;
+			case ParserStatus::Stop: return false; break;
+			default: break;
+			}
+		} else {
 			if (!doPushWord()) {
 				return false;
 			}
-			if (cb(tmp2.sub(0, 1), ParserToken::Blank) == ParserStatus::Stop) {
-				return false;
-			}
-			++tmp2;
-			break;
-		case ParserStatus::Stop: return false; break;
-		default: break;
 		}
-	} else {
-		if (!doPushWord()) {
-			return false;
-		}
+		break;
 	}
 	tmp = tmp2;
 	return true;
@@ -903,6 +909,8 @@ bool parsePhrase(StringView str, const Callback<ParserStatus(StringView, ParserT
 			}
 			if (r.data() == control) {
 				log::source().error("search", "Parsing is stalled");
+				// force progress so a non-advancing token can't spin forever
+				++r;
 			}
 		}
 	}

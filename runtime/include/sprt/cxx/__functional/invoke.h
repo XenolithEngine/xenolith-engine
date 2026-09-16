@@ -28,6 +28,11 @@ THE SOFTWARE.
 
 namespace sprt {
 
+template <typename _Tp>
+class reference_wrapper;
+
+inline namespace __cxx_type_traits {
+
 /*
 	Invokable
 	(based on llvm-libc++ code)
@@ -79,6 +84,9 @@ template <typename _Ret, typename... _Args>
 inline const bool is_invocable_r_v =
 		__is_invocable_r_impl<_Ret, is_invocable_v<_Args...>, _Args...>;
 
+template <typename _Ret, typename _Fn, typename... _Args>
+struct is_invocable_r : integral_constant<bool, is_invocable_r_v<_Ret, _Fn, _Args...> > { };
+
 template <bool __is_invocable, typename... _Args>
 inline const bool __is_nothrow_invocable_impl = false;
 
@@ -110,9 +118,6 @@ template <typename _Ret, typename _ClassType>
 struct __member_pointer_typename_type<_Ret _ClassType::*> {
 	typedef _ClassType type;
 };
-
-template <typename _Tp>
-class reference_wrapper;
 
 template <typename _Tp>
 struct __is_reference_wrapper_impl {
@@ -326,6 +331,7 @@ struct is_nothrow_invocable : bool_constant<is_nothrow_invocable_v<_Fn, _Args...
 template <typename _Ret, typename _Fn, typename... _Args>
 struct is_nothrow_invocable_r : bool_constant<is_nothrow_invocable_r_v<_Ret, _Fn, _Args...>> { };
 
+} // namespace __cxx_type_traits
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___FUNCTIONAL_INVOKE_H_

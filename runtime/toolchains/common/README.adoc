@@ -1,0 +1,20 @@
+# Common dependencies build scripts
+
+Most build scripts are located here. Platform-specific builders use them, and only in extreme cases use their own build scripts. This ensures uniformity of operation for all Xenolith Engine mechanisms.
+
+Scripts typically use cmake, but in some cases a manual build based on pure makefiles is used.
+
+The use of directives for platform detection is not encouraged, but in some cases they are necessary. General build principles, enabled and disabled features should, as far as possible, match across all platforms.
+
+## configure.mk
+
+In this file, a scheme is described based on which common flags are set for each platform.
+
+## utils/*
+
+Helper tools:
+
+* utils/detect-platform.mk - gets data about the current build platform
+* utils/find-recursive.mk - functions for recursive search in subdirectories
+* utils/init-shell.mk - unified functions for standard commands
+* utils/names.mk - list of platform and architecture names

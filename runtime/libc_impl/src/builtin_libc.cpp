@@ -29,6 +29,19 @@ THE SOFTWARE.
 #include "windows/libc.cc"
 #include "windows/libc_file_ops.cc"
 #include "windows/libc_dir_ops.cc"
+#elif SPRT_WASM
+#include "wasm/libc.cc"
+#include "wasm/libc_file_ops.cc"
+#include "wasm/libc_opfs.cc"
+#include "wasm/libc_dir_ops.cc"
+#include "wasm/libc_path.cc"
+#elif SPRT_EMBOX_USER
+// No opfs sibling: there is a real filesystem behind openat(56), so the path
+// family is syscalls rather than a memfs (embox_user/libc_path.cc).
+#include "embox_user/libc.cc"
+#include "embox_user/libc_file_ops.cc"
+#include "embox_user/libc_dir_ops.cc"
+#include "embox_user/libc_path.cc"
 #endif
 
 namespace sprt {
@@ -69,13 +82,15 @@ __libc::__libc() {
 
 	localeCache.max_load_factor(2.0);
 
+	// The program default is the UTF-8 locale (native convention across targets);
+	// an explicit setlocale/newlocale("C"/"POSIX") selects the single-byte map.
 	defaultLocale = __locale_struct{
-		__get_locale(__SPRT_LC_CTYPE, "C", 1),
-		__get_locale(__SPRT_LC_NUMERIC, "C", 1),
-		__get_locale(__SPRT_LC_TIME, "C", 1),
-		__get_locale(__SPRT_LC_COLLATE, "C", 1),
-		__get_locale(__SPRT_LC_MONETARY, "C", 1),
-		__get_locale(__SPRT_LC_MESSAGES, "C", 1),
+		__get_locale(__SPRT_LC_CTYPE, "C.UTF8", 6),
+		__get_locale(__SPRT_LC_NUMERIC, "C.UTF8", 6),
+		__get_locale(__SPRT_LC_TIME, "C.UTF8", 6),
+		__get_locale(__SPRT_LC_COLLATE, "C.UTF8", 6),
+		__get_locale(__SPRT_LC_MONETARY, "C.UTF8", 6),
+		__get_locale(__SPRT_LC_MESSAGES, "C.UTF8", 6),
 	};
 
 	plockStorage.plocks.max_load_factor(2.0);
@@ -104,7 +119,7 @@ __libc::~__libc() {
 struct __locale_map *__libc::get_cached_locale(const char *name, size_t len,
 		const Callback<struct __locale_map *()> &cb) {
 	auto nameView = StringView(name, len);
-	unique_lock lock(defaultLocaleMutex);
+	unique_lock lock(localeCacheMutex);
 	auto it = localeCache.find(nameView);
 	if (it != localeCache.end()) {
 		return it->second;
@@ -139,11 +154,14 @@ int __libc::create_fd(void *handle, const __fd_ops *ops, uint32_t flags, uint32_
 	}
 
 	auto pageNumber = fd / FDS_PER_PAGE;
+	// Use designated initializers: __fd_slot has a `padding` field between `ops`
+	// and `flags`, so a positional list would land `flags` in `padding` and
+	// `mode` in `flags`, leaving `mode` zeroed (and F_GETFL returning the mode).
 	fdPages[pageNumber]->fds[fd % FDS_PER_PAGE] = __fd_slot{
-		handle,
-		ops,
-		flags,
-		mode,
+		.handle = handle,
+		.ops = ops,
+		.flags = flags,
+		.mode = mode,
 	};
 	return fd;
 }

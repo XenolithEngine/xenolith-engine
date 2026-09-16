@@ -63,6 +63,9 @@ public:
 	virtual FrameConstraints exportConstraints(uint64_t &serial) const = 0;
 
 	virtual void setFrameOrder(uint64_t) = 0;
+
+	// Stable id for multi-window diagnostics (WindowInfo::id). Empty if unknown.
+	virtual StringView getPresentationDebugId() const { return StringView(); }
 };
 
 using sprt::window::UpdateConstraintsFlags;
@@ -132,6 +135,11 @@ public:
 	uint64_t getLastFrameInterval() const;
 	uint64_t getAvgFrameInterval() const;
 	uint64_t getLastFrameTime() const;
+
+	/* Order of the last presented frame (capture frames excluded); monotonic. Tells which frame
+	getLastFrameTime() describes, and lets an external driver wait for a frame to be drawn by
+	watching it advance. */
+	uint64_t getLastFrameOrder() const { return _lastFrameOrder; }
 	uint64_t getLastFenceFrameTime() const;
 	uint64_t getLastTimestampFrameTime() const;
 
@@ -144,6 +152,11 @@ public:
 
 	void enableExclusiveFullscreen();
 
+	// Return an acquired-but-unused swapchain image to the reuse pool (a frame was discarded before
+	// rendering started, see PresentationFrame::invalidate). The next frame picks it up via scheduleImage
+	// instead of acquiring a fresh one, and it is accounted for (presented/released) exactly once.
+	void reclaimAcquiredImage(Rc<Swapchain::SwapchainAcquiredImage> &&);
+
 	virtual bool handleFrameStarted(NotNull<PresentationFrame>);
 	virtual void handleFrameInvalidated(NotNull<PresentationFrame>);
 	virtual void handleFrameReady(NotNull<PresentationFrame>);
@@ -152,7 +165,22 @@ public:
 
 	virtual void handleSwapchainUpdated(const FrameConstraints &);
 
+	// Force-invalidate every in-flight frame tagged PresentationFrame::Remote (data produced by a remote
+	// render client). Called when the client connection is reset, so a frame stuck waiting on a dead
+	// client cannot wedge the pipeline and the window can revert to its local Director.
+	void invalidateRemoteFrames();
+
+	// Kick presentation back into motion after the window's render client changed (remote takeover or
+	// revert to the local Director): clear a possibly-stale display-link barrier and schedule one fresh
+	// frame. Runs only on a client change, so normal frame pacing is untouched.
+	void resetForRenderClientChange();
+
 	virtual void captureScreenshot(Function<void(const ImageInfoData &info, BytesView view)> &&cb);
+
+	/* Render one frame into an offscreen image and present nothing, for work a pass does inside it
+	(frame capture where the presented image cannot be read). `cb` runs on the presentation thread
+	when the frame ends. */
+	virtual void scheduleOffscreenFrame(Function<void(bool)> &&cb);
 
 	virtual void synchronizeClose();
 
@@ -169,6 +197,11 @@ protected:
 
 	void resetFrames();
 
+	// Start / stop a per-frame deadline timer that cancels the frame if it is still pending when the
+	// deadline (FrameRequest::getDeadline(), or a seeded default) passes.
+	void scheduleFrameDeadline(NotNull<PresentationFrame>);
+	void cancelFrameDeadline(NotNull<PresentationFrame>);
+
 	void scheduleImage(NotNull<PresentationFrame>);
 
 	Status acquireScheduledImage();
@@ -181,7 +214,8 @@ protected:
 	void presentSwapchainImage(Rc<DeviceQueue> &&queue, NotNull<PresentationFrame> frame,
 			ImageStorage *image, uint64_t presentWindow);
 
-	void presentWithQueue(DeviceQueue &queue, NotNull<PresentationFrame> frame, ImageStorage *image,
+	// `queue` is null for a swapchain that presents without one (Swapchain::isPresentQueueRequired)
+	void presentWithQueue(DeviceQueue *queue, NotNull<PresentationFrame> frame, ImageStorage *image,
 			uint64_t presentWindow);
 
 	bool canScheduleNextFrame() const;
@@ -221,6 +255,7 @@ protected:
 	sprt::atomic<uint64_t> _avgPresentationIntervalValue = 0;
 
 	uint64_t _lastFrameTime = 0;
+	uint64_t _lastFrameOrder = 0;
 	MovingAverage<FrameAverageCount, uint64_t> _avgFrameTime;
 	sprt::atomic<uint64_t> _avgFrameTimeValue = 0;
 
@@ -237,6 +272,9 @@ protected:
 	bool _running = false;
 	bool _readyForNextFrame = false;
 	bool _waitUntilFrame = false;
+
+	// XL_DAMAGE_DEBUG=1 - log the computed damage of every presented frame
+	bool _damageDebug = false;
 	bool _waitUntilSwapchainRecreation = false;
 	bool _waitForDisplayLink = false;
 	bool _swapchainRecreationScheduled = false;
@@ -256,6 +294,14 @@ protected:
 
 	// Handles, waiting for their present windows
 	Set<Rc<sprt::dispatch::Handle>> _scheduledPresentHandles;
+
+	// Per-frame deadline timers (cancel a frame stuck waiting for input/dependencies)
+	Map<PresentationFrame *, Rc<sprt::dispatch::Handle>> _frameDeadlines;
+
+	// In-flight Remote frames, tracked from scheduling so invalidateRemoteFrames can kill them on a
+	// connection reset. The Rc keeps an awaiting frame alive after the connection drops; erased at
+	// every terminal frame transition.
+	Map<PresentationFrame *, Rc<PresentationFrame>> _remoteFrames;
 
 	// Async request for a swapchain images
 	Set<Swapchain::SwapchainAcquiredImage *> _requestedSwapchainImage;

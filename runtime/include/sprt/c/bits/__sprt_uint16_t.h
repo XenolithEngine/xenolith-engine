@@ -65,13 +65,13 @@ typedef __UINT16_TYPE__ __SPRT_ID(uint16_t);
 #ifdef __UINT16_C
 #define __SPRT_UINT16_C(C) __UINT16_C(C)
 #else
-#error "Compiler-assisted __UINT16_FMTx__ is not defined"
+#error "Compiler-assisted __UINT16_C is not defined"
 #endif
 
 #ifdef __UINT16_C_SUFFIX__
 #define __UINT16_C_SUFFIX __UINT16_C_SUFFIX__
 #else
-#error "Compiler-assisted __UINT16_FMTx__ is not defined"
+#error "Compiler-assisted __UINT16_C_SUFFIX__ is not defined"
 #endif
 
 #else // __UINT16_TYPE__

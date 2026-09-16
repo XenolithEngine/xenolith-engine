@@ -57,21 +57,25 @@ struct hash<Enum> {
 template <>
 struct hash<float> {
 	constexpr size_t operator()(const float &value) const noexcept {
-		return sprt::bit_cast<uint32_t>(value) & Max<size_t>;
+		// equal keys must hash equal: -0.0f == 0.0f but their bit patterns differ
+		return sprt::bit_cast<uint32_t>(value == 0.0f ? 0.0f : value) & Max<size_t>;
 	}
 };
 
 template <>
 struct hash<double> {
 	constexpr size_t operator()(const double &value) const noexcept {
-		return sprt::bit_cast<uint64_t>(value) & Max<size_t>;
+		// equal keys must hash equal: -0.0 == 0.0 but their bit patterns differ
+		return sprt::bit_cast<uint64_t>(value == 0.0 ? 0.0 : value) & Max<size_t>;
 	}
 };
 
 template <>
 struct hash<long double> {
-	size_t operator()(const double &value) const noexcept {
-		return sprt::hashSize((const char *)&value, sizeof(value));
+	size_t operator()(const long double &value) const noexcept {
+		// equal keys must hash equal: -0.0L == 0.0L but their bit patterns differ
+		const long double norm = (value == 0.0L) ? 0.0L : value;
+		return sprt::hashSize((const char *)&norm, sizeof(norm));
 	}
 };
 
@@ -91,20 +95,73 @@ struct hash<const char *> {
 
 template <size_t N>
 struct hash<const char (&)[N]> {
-	size_t operator()(const char (&value)[N]) const noexcept { return sprt::hashSize(value, N); }
+	// hash up to the first NUL (like hash<const char *>) so a string literal and
+	// an equal const char* produce the same hash; hashing all N bytes would
+	// include the terminator and break transparent lookups.
+	size_t operator()(const char (&value)[N]) const noexcept {
+		return sprt::hashSize(value, __constexpr_strlen(value));
+	}
+};
+
+// The transparent hash<void> deduces T from `const T &` as the ARRAY type
+// (char[N] / const char[N]), never as a reference-to-array - these are the
+// specializations such lookups actually reach (same first-NUL contract).
+template <size_t N>
+struct hash<char[N]> {
+	size_t operator()(const char (&value)[N]) const noexcept {
+		return sprt::hashSize(value, __constexpr_strlen(value));
+	}
+};
+
+template <size_t N>
+struct hash<const char[N]> {
+	size_t operator()(const char (&value)[N]) const noexcept {
+		return sprt::hashSize(value, __constexpr_strlen(value));
+	}
 };
 
 template <typename T>
 struct hash<T *> {
 	size_t operator()(const T *value) const noexcept {
-		static const size_t shift = (size_t)__sprt_log2(1 + sizeof(T));
-		return reinterpret_cast<size_t>(value) >> shift;
+		size_t __a = reinterpret_cast<size_t>(value);
+		if constexpr (sizeof(size_t) == 8) {
+			return __a * static_cast<size_t>(0x9E37'79B9'7F4A'7C15ull);
+		} else {
+			return __a * static_cast<size_t>(0x9E37'79B9u);
+		}
 	}
 };
 
 template <>
 struct hash<void *> {
 	size_t operator()(const void *value) const noexcept { return reinterpret_cast<size_t>(value); }
+};
+
+template <typename Hash = hash<void>>
+struct hash_spread {
+	using is_transparent = void;
+
+	constexpr static size_t finalize(size_t __h) noexcept {
+		if constexpr (sizeof(size_t) == 8) {
+			__h ^= __h >> 33;
+			__h *= static_cast<size_t>(0xFF51'AFD7'ED55'8CCDull);
+			__h ^= __h >> 33;
+			__h *= static_cast<size_t>(0xC4CE'B9FE'1A85'EC53ull);
+			__h ^= __h >> 33;
+		} else {
+			__h ^= __h >> 16;
+			__h *= static_cast<size_t>(0x85EB'CA6Bu);
+			__h ^= __h >> 13;
+			__h *= static_cast<size_t>(0xC2B2'AE35u);
+			__h ^= __h >> 16;
+		}
+		return __h;
+	}
+
+	template <typename T>
+	constexpr size_t operator()(const T &value) const noexcept {
+		return finalize(Hash()(value));
+	}
 };
 
 template <>
@@ -118,19 +175,5 @@ struct hash<void> {
 };
 
 } // namespace sprt
-
-#ifdef __SPRT_AS_STD
-namespace std {
-
-template <typename T>
-struct hash {
-	template <typename T>
-	constexpr size_t operator()(T &&value) const noexcept {
-		return sprt::hash<T>()(sprt::forward<T>(value));
-	}
-};
-
-} // namespace std
-#endif
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_HASH_H_

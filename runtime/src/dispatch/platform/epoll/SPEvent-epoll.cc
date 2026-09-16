@@ -77,28 +77,49 @@ Status EPollData::runPoll(TimeInterval ival) {
 	}
 }
 
-uint32_t EPollData::processEvents() {
+uint32_t EPollData::processEvents(RunContext *ctx) {
+	// Snapshot this invocation's batch into the context-local buffer and clear the
+	// shared counters up front. A handler dispatched through notify() can re-enter
+	// the loop (a nested run() with its own RunContext) and reuse the shared
+	// _events buffer, so a nested runPoll() must perform a fresh epoll_pwait2()
+	// rather than overwrite (or consume) the events we are still iterating.
+	//
+	// Pin every handle while all Handle* payloads are still valid (no callback has
+	// run yet): the pin keeps a handle alive even if an earlier event's callback
+	// drops the queue's last reference to it, so a later (otherwise-stale) batch
+	// entry cannot become a use-after-free. The buffer lives in the RunContext, so
+	// it is private to this invocation (nested runs use their own) and reused
+	// across this context's run-loop iterations. Each pin is released as its event
+	// is dispatched.
+	auto &batch = ctx->eventBatch;
+	batch.clear();
+	batch.reserve(_receivedEvents - _processedEvents);
+	for (uint32_t i = _processedEvents; i < _receivedEvents; ++i) {
+		auto &ev = _events.at(i);
+		auto h = (Handle *)ev.data.ptr;
+		auto &slot = batch.emplace_back();
+		slot.handle = h;
+		slot.flags = ev.events;
+		slot.refId = h ? sprt::retain(h) : uint64_t(0);
+	}
+	_receivedEvents = _processedEvents = 0;
+
 	uint32_t count = 0;
 	NotifyData data;
-
-	while (_processedEvents < _receivedEvents) {
-		auto &ev = _events.at(_processedEvents++);
-
-		auto h = (Handle *)ev.data.ptr;
-		if (h) {
-			auto refId = sprt::retain(h);
-
+	for (auto &slot : batch) {
+		if (slot.handle) {
 			data.result = 0;
-			data.queueFlags = ev.events;
+			data.queueFlags = slot.flags;
 			data.userFlags = 0;
 
-			_data->notify(h, data);
+			_data->notify(slot.handle, data);
 
-			sprt::release(h, refId);
+			sprt::release(slot.handle, slot.refId);
+			slot.handle = nullptr;
 		}
 		++count;
 	}
-	_receivedEvents = _processedEvents = 0;
+	batch.clear();
 	return count;
 }
 
@@ -112,7 +133,7 @@ uint32_t EPollData::poll() {
 
 	auto status = runPoll(TimeInterval());
 	if (status == Status::Ok) {
-		result = processEvents();
+		result = processEvents(&ctx);
 	}
 
 	popContext(&ctx);
@@ -128,7 +149,7 @@ uint32_t EPollData::wait(TimeInterval ival) {
 
 	auto status = runPoll(ival);
 	if (status == Status::Ok) {
-		result = processEvents();
+		result = processEvents(&ctx);
 	}
 
 	popContext(&ctx);
@@ -175,7 +196,7 @@ Status EPollData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval w
 	while (ctx.state == RunContext::Running) {
 		auto status = runPoll(TimeInterval::Infinite);
 		if (status == Status::Ok) {
-			processEvents();
+			processEvents(&ctx);
 		} else if (status != Status::ErrorInterrupted) {
 			oslog::vperror(__SPRT_LOCATION, "dispatch::EPollData", "epoll error: ", status);
 			ctx.wakeupStatus = status;

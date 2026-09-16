@@ -58,6 +58,13 @@ struct StreamTraits {
 				"Invalid string type");
 		auto bufferSize = calculateSize(sprt::forward<Args>(args)...);
 		String ret;
+		if (bufferSize <= 1) {
+			// Nothing to write, and nothing may be written: an empty string with no allocated
+			// buffer hands back the shared read-only null terminator from data(), which is where
+			// strappend would put its own terminator - a write into .rodata.
+			return ret;
+		}
+
 		ret.resize(bufferSize - 1);
 
 		auto target = ret.data();

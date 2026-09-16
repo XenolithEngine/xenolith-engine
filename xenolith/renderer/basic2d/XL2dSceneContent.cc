@@ -562,7 +562,7 @@ void SceneContent2d::setGlobalLight(const Color4F &color) { _globalLight = color
 
 const Color4F &SceneContent2d::getGlobalLight() const { return _globalLight; }
 
-bool SceneContent2d::visitGeometry(FrameInfo &info, NodeVisitFlags parentFlags) {
+bool SceneContent2d::visitDraw(FrameInfo &info, NodeVisitFlags parentFlags) {
 	if (_visible) {
 		auto tmp = sp::move(_visitNotification);
 		_visitNotification.clear();
@@ -570,7 +570,7 @@ bool SceneContent2d::visitGeometry(FrameInfo &info, NodeVisitFlags parentFlags) 
 		for (auto &it : tmp) { it(); }
 	}
 
-	return SceneContent::visitGeometry(info, parentFlags);
+	return SceneContent::visitDraw(info, parentFlags);
 }
 
 void SceneContent2d::draw(FrameInfo &info, NodeVisitFlags flags) {
@@ -600,19 +600,23 @@ void SceneContent2d::draw(FrameInfo &info, NodeVisitFlags flags) {
 
 	auto &theme = _director->getApplication()->getThemeInfo();
 
-	auto window = _director->getWindow();
-	if (hasFlag(window->getInfo()->flags, WindowCreationFlags::UserSpaceDecorations)) {
-		ctx->decorations.drawUserShadows = hasFlag(_director->getWindow()->getInfo()->capabilities,
-				WindowCapabilities::UserShadowsRequired);
+	auto window = _director->getRenderServer();
+	auto state = _director->getRenderServer()->getWindowState();
+
+	if (!hasFlag(state, WindowState::Fullscreen) && !hasFlag(state, WindowState::Maximized)
+			&& hasFlag(window->getInfo()->flags, WindowCreationFlags::UserSpaceDecorations)) {
+		ctx->decorations.drawUserShadows =
+				hasFlag(_director->getRenderServer()->getInfo()->capabilities,
+						WindowCapabilities::UserShadowsRequired);
 		ctx->decorations.borderRadius = theme.decorations.borderRadius;
 		ctx->decorations.shadowRadius = theme.decorations.shadowWidth;
 		ctx->decorations.shadowValue =
-				hasFlag(_director->getWindow()->getWindowState(), WindowState::Focused)
+				hasFlag(_director->getRenderServer()->getWindowState(), WindowState::Focused)
 				? theme.decorations.shadowMaxValue
 				: theme.decorations.shadowMinValue;
 		ctx->decorations.shadowOffset = theme.decorations.shadowOffset;
 		ctx->decorations.viewConstraints =
-				core::getViewConstraints(_director->getWindow()->getWindowState());
+				core::getViewConstraints(_director->getRenderServer()->getWindowState());
 	}
 }
 

@@ -63,8 +63,7 @@ public:
 
 		_transferBuffer = _mempool->spawn(AllocationUsage::HostTransitionDestination,
 				BufferInfo(core::ForceBufferUsage(core::BufferUsage::TransferDst),
-						size_t(extent.width * extent.height * extent.depth
-								* core::getFormatBlockSize(info.format)),
+						size_t(core::getFormatImageSize(info.format, extent)),
 						_image->getInfo().type));
 		return true;
 	}
@@ -231,11 +230,16 @@ bool Device::init(const vk::Instance *inst, DeviceInfo &&info, const Features &f
 
 	_presentMask = info.presentFamily.presentSurfaceMask;
 
-	info.presentFamily.count = 1;
-
 	emplaceQueueFamily(info.graphicsFamily, sprt::thread::hardware_concurrency(),
 			core::QueueFlags::Graphics);
-	emplaceQueueFamily(info.presentFamily, 1, core::QueueFlags::Present);
+
+	// A headless device has no present family (count == 0). Emplacing it would merge into family 0
+	// and clamp the graphics family to one queue; presentation then needs no queue (see
+	// Swapchain::isPresentQueueRequired).
+	if (info.presentFamily.count > 0) {
+		info.presentFamily.count = 1;
+		emplaceQueueFamily(info.presentFamily, 1, core::QueueFlags::Present);
+	}
 	emplaceQueueFamily(info.transferFamily, 2, core::QueueFlags::Transfer);
 	emplaceQueueFamily(info.computeFamily, sprt::thread::hardware_concurrency(),
 			core::QueueFlags::Compute);
@@ -554,7 +558,10 @@ bool Device::isPortabilityMode() const {
 void Device::waitIdle() const {
 	sprt::unique_lock lock(_resourceMutex);
 
-	_table->vkDeviceWaitIdle(_device);
+	// vkDeviceWaitIdle must be externally synchronized against every queue of the device, and a
+	// sibling window may be submitting or presenting right now.
+	const_cast<Device *>(this)->makeQueueApiCall(
+			[](const DeviceTable &table, VkDevice device) { table.vkDeviceWaitIdle(device); });
 
 	core::Device::waitIdle();
 }

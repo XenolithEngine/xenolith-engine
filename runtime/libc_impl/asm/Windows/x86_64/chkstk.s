@@ -1,5 +1,10 @@
 # Original source: https://github.com/skeeto/w64devkit
+// _alloca_probe is the same routine under its older MSVC name: clang emits __chkstk, but
+// object code produced elsewhere (LLVM's own, for one) still calls _alloca_probe. On x64
+// they are one and the same entry, so alias rather than duplicate.
 .globl __chkstk
+.globl _alloca_probe
+_alloca_probe:
 __chkstk:
 	push %rax
 	push %rcx

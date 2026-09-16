@@ -31,3 +31,6 @@ EXPORTS
 	LookupPrivilegeValueA
 	LookupPrivilegeValueW
 	AdjustTokenPrivileges
+	RegEnumKeyExA
+	RegQueryValueExW
+	RegQueryValueExA

@@ -28,7 +28,15 @@
 #include "SPEventThreadIocp.h"
 #include "SPEventTimerWin.h"
 #include "SPEventPollIocp.h"
+#include "SPEventProcessIocp.h"
+#include "SPEventFileIocp.h"
+#include "SPEventWatchIocp.h"
+#include "SPEventSocketIocp.h"
+#include "../fd/SPEventFile.h"
+#include "../fd/SPEventSocket.h"
 #include "platform/windows/SPEvent-iocp.h"
+
+#include <sprt/c/__sprt_fcntl.h>
 
 namespace sprt::dispatch {
 
@@ -37,7 +45,17 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupIocpHandleClass<TimerIocpHandle, TimerIocpSource>(&_info, &_iocpTimerClass, true);
 		setupIocpHandleClass<ThreadIocpHandle, ThreadIocpSource>(&_info, &_iocpThreadClass, true);
 		setupIocpHandleClass<PollIocpHandle, PollIocpSource>(&_info, &_iocpPollClass, true);
+		setupIocpHandleClass<ReadIocpHandle, ReadIocpSource>(&_info, &_iocpReadClass, true);
+		setupIocpHandleClass<ProcessIocpHandle, ProcessIocpSource>(&_info, &_iocpProcessClass, true);
 		setupIocpHandleClass<TimerWinHandle, TimerWinSource>(&_info, &_winTimerClass, true);
+		setupIocpHandleClass<FileIocpHandle, FileIocpSource>(&_info, &_iocpFileClass, true);
+		setupIocpHandleClass<WatchIocpHandle, WatchIocpSource>(&_info, &_iocpWatchClass, true);
+		setupIocpHandleClass<SocketPollIocpHandle, SocketPollIocpSource>(&_info,
+				&_iocpSocketPollClass, true);
+		setupSocketHandleClasses(&_info, this);
+		setupSocketProbeClass(&_info, &_socketProbeClass);
+		setupIocpSocketStreamClass(&_info, &_iocpSocketStreamClass);
+		setupInlineFileHandleClass(&_info, &_iocpFileInlineClass);
 
 		auto iocp = new (memory::pool::acquire()) IocpData(_info.queue, this, info);
 		if (iocp->_port) {
@@ -75,6 +93,60 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				auto data = static_cast<Queue::Data *>(d);
 				return Rc<PollIocpHandle>::create(&data->_iocpPollClass, handle.handle, flags,
 						sprt::move(cb));
+			};
+
+			// a winsock SOCKET is not a waitable HANDLE - route socket readiness
+			// through the WSAEventSelect adapter; without wait-completion packets
+			// (wine aborts in the NtCreateWaitCompletionPacket stub) fall back to
+			// the portable probe poller (timer + zero-timeout WSAPoll)
+			_socketPoll = [](QueueData *d, void *ptr, SocketHandle sock, PollFlags flags,
+									 CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				auto iocp = static_cast<IocpData *>(ptr);
+				auto data = static_cast<Queue::Data *>(d);
+				if (iocp->_hasCompletionPackage) {
+					return Rc<SocketPollIocpHandle>::create(&data->_iocpSocketPollClass, sock,
+							flags, sprt::move(cb));
+				}
+				return makeSocketProbeHandle(d, sock, flags, sprt::move(cb));
+			};
+
+			// native overlapped streams for established connections (accepted
+			// ones foremost); a still-connecting stream resolves its connect on
+			// the readiness path (ConnectEx lives in the unwrapped mswsock.dll)
+			_makeSocketStream = [](QueueData *d, void *ptr,
+										   Rc<StreamState> &&state) -> Rc<StreamHandle> {
+				auto data = static_cast<Queue::Data *>(d);
+				if (state->connecting) {
+					return makeSocketStreamPollHandle(d, sprt::move(state));
+				}
+				return makeSocketStreamIocpHandle(d, &data->_iocpSocketStreamClass,
+						sprt::move(state));
+			};
+
+			_spawnProcess = [](QueueData *d, void *ptr, ProcessInfo &&info,
+									Ref *ref) -> Rc<ProcessHandle> {
+				auto data = static_cast<Queue::Data *>(d);
+				return spawnProcessIocp(d, &data->_iocpProcessClass, &data->_iocpReadClass,
+						sprt::move(info), ref);
+			};
+
+			// Overlapped-capable fds (path opens add O_OVERLAPPED) use the IOCP
+			// native handle; synchronous fds fall back to the inline handle. The
+			// strategy is selected by querying the fd's flags via fcntl(F_GETFL).
+			_makeFileHandle = [](QueueData *d, void *ptr,
+									Rc<FileState> &&state) -> Rc<FileHandle> {
+				auto data = static_cast<Queue::Data *>(d);
+				int fl = ::__sprt_fcntl(state->fd, __SPRT_F_GETFL);
+				if (fl >= 0 && (fl & __SPRT_O_OVERLAPPED)) {
+					return makeFileIocpHandle(d, &data->_iocpFileClass, sprt::move(state));
+				}
+				return makeFileInlineHandle(d, &data->_iocpFileInlineClass, sprt::move(state));
+			};
+
+			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info,
+									Ref *ref) -> Rc<WatchHandle> {
+				auto data = static_cast<Queue::Data *>(d);
+				return makeWatchIocpHandle(d, &data->_iocpWatchClass, sprt::move(info), ref);
 			};
 
 			_platformQueue = iocp;

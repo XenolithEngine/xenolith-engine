@@ -104,6 +104,13 @@ public:
 	void setIgnoreResponseData(bool);
 	bool isIgnoreResponseData() const { return _ignoreResponseData; }
 
+	// Upper bound on the number of response bytes buffered in memory. The server-supplied
+	// Content-Length is clamped to this value before the speculative allocation, and a transfer
+	// is aborted once it exceeds it — protects against an oversized/hostile response (OOM/DoS).
+	// Defaults to "unlimited"; set a concrete cap appropriate to the expected payload.
+	void setMaxResponseSize(size_t val) { _maxResponseSize = val; }
+	size_t getMaxResponseSize() const { return _maxResponseSize; }
+
 	bool isRunning() const { return _running; }
 
 	const Handle &getHandle() const { return _handle; }
@@ -146,6 +153,7 @@ protected:
 	Rc<Ref> _owner;
 
 	size_t _nbytes = 0;
+	size_t _maxResponseSize = maxOf<size_t>(); // default: no limit
 	Bytes _data;
 };
 

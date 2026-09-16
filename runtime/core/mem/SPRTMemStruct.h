@@ -184,7 +184,7 @@ struct SPRT_LOCAL Allocator {
 	using AllocMutex = sprt::rmutex;
 
 	// used to detect stappler allocators vs. APR allocators
-	uintptr_t magic = static_cast<uintptr_t>(config::POOL_MAGIC);
+	uint64_t magic = static_cast<uintptr_t>(config::POOL_MAGIC);
 	uint32_t last = 0; // largest used index into free
 	uint32_t max = config::ALLOCATOR_MAX_FREE_UNLIMITED; // Total size (in BOUNDARY_SIZE multiples)
 	uint32_t current = 0; // current allocated size in BOUNDARY_SIZE
@@ -192,7 +192,7 @@ struct SPRT_LOCAL Allocator {
 
 	AllocMutex mutex;
 	array<MemNode *, config::MAX_INDEX> buf;
-	atomic<size_t> allocated;
+	atomic<uint64_t> allocated;
 	uint64_t padding = 0;
 
 	static size_t getAllocatorsCount();
@@ -253,8 +253,8 @@ struct SPRT_LOCAL Pool : public AllocPlacement {
 	Pool *make_child();
 	Pool *make_child(Allocator *);
 
-	void cleanup_register(const void *, Cleanup::Callback cb, pool::cleanup_flags);
-	void pre_cleanup_register(const void *, Cleanup::Callback cb, pool::cleanup_flags);
+	Status cleanup_register(const void *, Cleanup::Callback cb, pool::cleanup_flags);
+	Status pre_cleanup_register(const void *, Cleanup::Callback cb, pool::cleanup_flags);
 
 	void cleanup_kill(void *, Cleanup::Callback cb);
 	void cleanup_run(void *, Cleanup::Callback cb);
@@ -264,8 +264,6 @@ struct SPRT_LOCAL Pool : public AllocPlacement {
 	Status userdata_get(void **data, const char *key);
 	Status userdata_get(void **data, const char *key, size_t);
 };
-
-using HashFunc = uint32_t (*)(const char *key, size_t *klen);
 
 struct SPRT_LOCAL HashEntry {
 	HashEntry *next;
@@ -294,13 +292,11 @@ struct SPRT_LOCAL HashTable {
 	HashEntry **array;
 	HashIndex iterator; /* For apr_hash_first(NULL, ...) */
 	uint32_t count, max, seed;
-	HashFunc hash_func;
 	HashEntry *free; /* List of recycled entries */
 
 	static void init(HashTable *ht, Pool *pool);
 
 	static HashTable *make(Pool *pool);
-	static HashTable *make(Pool *pool, HashFunc);
 
 	HashIndex *first(Pool *p = nullptr);
 

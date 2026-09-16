@@ -23,10 +23,10 @@
 #ifndef XENOLITH_APPLICATION_XLCONTEXT_H_
 #define XENOLITH_APPLICATION_XLCONTEXT_H_
 
+#include "XLCoreRenderSession.h"
 #include "XLEvent.h"
 #include "XLContextInfo.h"
 #include "XLCoreTextInput.h"
-#include "XLLiveReload.h"
 #include "SPSharedModule.h" // IWYU pragma: keep
 
 #include <sprt/runtime/window/native_window.h>
@@ -42,7 +42,7 @@ class NativeWindow;
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class Context;
-class AppThread;
+class ServerAppThread;
 class AppWindow;
 class Director;
 class Scene;
@@ -87,10 +87,6 @@ struct SP_PUBLIC ContentInitializer {
 	memory::pool_t *pool = nullptr;
 	memory::pool_t *tmpPool = nullptr;
 
-	String liveReloadPath;
-	String liveReloadCachePath;
-	Rc<LiveReloadLibrary> liveReloadLibrary;
-
 	bool init = false;
 
 	ContentInitializer();
@@ -114,7 +110,6 @@ public:
 	static EventHeader onNetworkStateChanged;
 	static EventHeader onThemeChanged;
 	static EventHeader onSystemNotification;
-	static EventHeader onLiveReload;
 
 	static EventHeader onMessageToken;
 	static EventHeader onRemoteNotification;
@@ -137,8 +132,8 @@ public:
 	using SymbolMakeAppThreadSignature = Rc<AppThread> (*)(NotNull<Context>);
 	static constexpr auto SymbolMakeAppThreadName = "makeAppThread";
 
-	using SymbolMakeSceneSignature = Rc<Scene> (*)(NotNull<AppThread>, NotNull<AppWindow>,
-			const core::FrameConstraints &);
+	using SymbolMakeSceneSignature = Rc<Scene> (*)(NotNull<AppThread>,
+			NotNull<core::RenderServerChannel>, const core::FrameConstraints &);
 	static constexpr auto SymbolMakeSceneName = "makeScene";
 
 	using SymbolMakeConfigSignature = void (*)(ContextConfig &);
@@ -163,8 +158,6 @@ public:
 
 	BytesView getMessageToken() const { return _messageToken; }
 
-	bool isLiveReloadEnabled() const { return _initializer.liveReloadLibrary; }
-
 	virtual void performOnThread(Function<void()> &&func, Ref *target = nullptr,
 			bool immediate = false, StringView tag = SP_FUNC) const;
 
@@ -177,12 +170,41 @@ public:
 	bool isCursorSupported(WindowCursor, bool serverSide) const;
 	WindowCapabilities getWindowCapabilities() const;
 
+	/* Whether an OS dialog of this type can be served here. Capability bits cover groups of types
+	(SystemFileActions includes restore, which macOS lacks), so check this before offering a
+	feature. Safe from any thread: the answer is fixed when the controller starts. */
+	bool isDialogSupported(sprt::window::DialogType) const;
+
+	// Request creation of an additional native window; safe to call from any thread. `info` (and
+	// its appData) must not be touched afterwards.
+	// On success, the window arrives through the usual pipeline:
+	// handleNativeWindowCreated -> makeAppWindow -> AppThread::handleAppWindowCreated.
+	// Non-Root types require WindowInfo::parent and native subwindow support
+	// (WindowCapabilities::Subwindows)
+	//
+	// `complete` runs once on the app thread with the outcome and the final, uniqued WindowInfo::id
+	// (empty on failure; the requested id may be renamed). It reports that the window system
+	// accepted the window, not the first frame; the scene arrives through
+	// WindowSceneInfo::makeScene.
+	virtual void createWindow(Rc<WindowInfo> &&,
+			Function<void(Status, StringView id)> && = nullptr);
+
 	virtual Status readFromClipboard(sprt::window::Function<void(Status, BytesView, StringView)> &&,
 			sprt::window::Function<StringView(SpanView<StringView>)> &&, Ref * = nullptr);
 	virtual Status probeClipboard(sprt::window::Function<void(Status, SpanView<StringView>)> &&,
 			Ref * = nullptr);
 	virtual Status writeToClipboard(sprt::window::Function<sprt::window::Bytes(StringView)> &&,
 			SpanView<String>, Ref * = nullptr, StringView label = StringView());
+
+	// Hand the controller an already-assembled ClipboardData. Call on the context thread
+	virtual Status writeToClipboard(Rc<sprt::window::ClipboardData> &&);
+
+	// Open an OS dialog with no owning window (CLI paths, reveal/trash without a visible window).
+	// Safe from any thread; the completion runs on `target`. Window-owned dialogs use
+	// AppWindow::openDialog, which parents them and cancels them with the window.
+	virtual Status openDialog(NotNull<sprt::dispatch::Looper> target,
+			Rc<sprt::window::DialogRequest> &&);
+	virtual Status cancelDialog(NotNull<sprt::window::DialogRequest>);
 
 	virtual void handleConfigurationChanged(Rc<ContextInfo> &&) override;
 
@@ -199,6 +221,7 @@ public:
 	virtual void handleNativeWindowDestroyed(NotNull<NativeWindow>) override;
 	virtual void handleNativeWindowConstraintsChanged(NotNull<NativeWindow>,
 			core::UpdateConstraintsFlags) override;
+	virtual void handleNativeWindowGeometryChanged(NotNull<NativeWindow>) override;
 	virtual void handleNativeWindowInputEvents(NotNull<NativeWindow>,
 			Vector<core::InputEventData> &&) override;
 	virtual void handleNativeWindowTextInput(NotNull<NativeWindow>,
@@ -250,13 +273,10 @@ protected:
 	virtual Rc<sprt::window::gapi::Loop> makeLoop(NotNull<sprt::window::gapi::Instance>,
 			NotNull<sprt::window::gapi::LoopInfo>) override;
 
-	virtual Rc<AppThread> makeAppThread();
+	virtual Rc<ServerAppThread> makeAppThread();
 	virtual Rc<AppWindow> makeAppWindow(NotNull<NativeWindow>);
 
 	virtual void initializeComponent(NotNull<ContextComponent>);
-
-	virtual void updateLiveReload();
-	virtual void performLiveReload(const filesystem::Stat &);
 
 	ContentInitializer _initializer;
 
@@ -268,15 +288,9 @@ protected:
 
 	Rc<core::Loop> _loop;
 
-	Rc<AppThread> _application;
+	Rc<ServerAppThread> _application;
 
 	HashMap<sprt::type_index, Rc<ContextComponent>> _components;
-
-	Rc<sprt::dispatch::TimerHandle> _liveReloadWatchdog;
-
-	// preserve last unloaded version until all async actions finished
-	Rc<LiveReloadLibrary> _unloadedLiveReloadLibrary;
-	Rc<LiveReloadLibrary> _actualLiveReloadLibrary;
 };
 
 template <typename T>

@@ -54,6 +54,11 @@ typedef __SPRT_ID(locale_t) locale_t;
 
 __SPRT_BEGIN_DECL
 
+// These four are also exposed through <string.h>; guard each so the two headers
+// can be co-included without duplicating the inline definition (see the matching
+// __SPRT_DEFINED_* guards in <sprt/wrappers/libc/string.h>).
+#ifndef __SPRT_DEFINED_strcasecmp
+#define __SPRT_DEFINED_strcasecmp
 SPRT_UMBRELLA_FUNC
 int strcasecmp(const char *l, const char *r) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -61,7 +66,10 @@ int strcasecmp(const char *l, const char *r) SPRT_UMBRELLA_END
 	return __sprt_strcasecmp(l, r);
 }
 #endif
+#endif // __SPRT_DEFINED_strcasecmp
 
+#ifndef __SPRT_DEFINED_strncasecmp
+#define __SPRT_DEFINED_strncasecmp
 SPRT_UMBRELLA_FUNC
 int strncasecmp(const char *l, const char *r, rsize_t n) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -69,7 +77,10 @@ int strncasecmp(const char *l, const char *r, rsize_t n) SPRT_UMBRELLA_END
 	return __sprt_strncasecmp(l, r, n);
 }
 #endif
+#endif // __SPRT_DEFINED_strncasecmp
 
+#ifndef __SPRT_DEFINED_strcasecmp_l
+#define __SPRT_DEFINED_strcasecmp_l
 SPRT_UMBRELLA_FUNC
 int strcasecmp_l(const char *l, const char *r, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -77,7 +88,10 @@ int strcasecmp_l(const char *l, const char *r, locale_t loc) SPRT_UMBRELLA_END
 	return __sprt_strcasecmp_l(l, r, loc);
 }
 #endif
+#endif // __SPRT_DEFINED_strcasecmp_l
 
+#ifndef __SPRT_DEFINED_strncasecmp_l
+#define __SPRT_DEFINED_strncasecmp_l
 SPRT_UMBRELLA_FUNC
 int strncasecmp_l(const char *l, const char *r, rsize_t n, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -85,6 +99,7 @@ int strncasecmp_l(const char *l, const char *r, rsize_t n, locale_t loc) SPRT_UM
 	return __sprt_strncasecmp_l(l, r, n, loc);
 }
 #endif
+#endif // __SPRT_DEFINED_strncasecmp_l
 
 __SPRT_END_DECL
 

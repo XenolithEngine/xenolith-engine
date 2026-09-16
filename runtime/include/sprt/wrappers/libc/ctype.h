@@ -46,12 +46,6 @@ SPRT_FORCEINLINE constexpr char32_t toupper_c(char32_t c) { return __constexpr_t
 using namespace sprt::_cctype;
 #endif
 
-#ifdef __SPRT_AS_STD
-namespace std {
-using namespace sprt::_cctype;
-}
-#endif
-
 #endif // __cplusplus
 
 

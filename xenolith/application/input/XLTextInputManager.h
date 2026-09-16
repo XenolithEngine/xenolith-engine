@@ -78,6 +78,10 @@ public:
 
 	TextInputHandler *getHandler() const { return _handler; }
 
+	// The last state the platform reported. Read-only by design: the IME owns it, the application
+	// only ever requests a new one through run()/update().
+	const TextInputState &getState() const { return _state; }
+
 	void handleInputUpdate(const TextInputState &);
 
 protected:

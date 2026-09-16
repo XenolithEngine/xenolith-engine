@@ -60,7 +60,7 @@ struct ErrorReporter : FileLocation {
 	ErrorReporter *outer = nullptr;
 
 	LogCallback callback = nullptr;
-	void *ref;
+	void *ref = nullptr;
 
 	ErrorReporter(ErrorReporter *);
 	ErrorReporter(const FileLocation &, ErrorReporter *);

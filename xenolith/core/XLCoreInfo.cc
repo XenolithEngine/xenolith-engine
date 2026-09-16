@@ -259,20 +259,27 @@ size_t BufferData::writeData(uint8_t *mem, size_t expected) const {
 
 	if (!data.empty()) {
 		auto outsize = data.size();
-		sprt::memcpy(mem, data.data(), size);
+		const size_t n = sprt::min(expected, size_t(sprt::min(uint64_t(data.size()), size)));
+		sprt::memcpy(mem, data.data(), n);
 		return outsize;
 	} else if (memCallback) {
 		size_t outsize = size;
-		memCallback(mem, expected, [&, this](BytesView data) {
-			outsize = data.size();
-			sprt::memcpy(mem, data.data(), size);
+		memCallback(mem, expected, [&, this](BytesView view) {
+			outsize = view.size();
+			const size_t n = sprt::min(expected, size_t(sprt::min(uint64_t(view.size()), size)));
+			if (mem && view.data() && n) {
+				sprt::memcpy(mem, view.data(), n);
+			}
 		});
 		return outsize;
 	} else if (stdCallback) {
 		size_t outsize = size;
-		stdCallback(mem, expected, [&, this](BytesView data) {
-			outsize = data.size();
-			sprt::memcpy(mem, data.data(), size);
+		stdCallback(mem, expected, [&, this](BytesView view) {
+			outsize = view.size();
+			const size_t n = sprt::min(expected, size_t(sprt::min(uint64_t(view.size()), size)));
+			if (mem && view.data() && n) {
+				sprt::memcpy(mem, view.data(), n);
+			}
 		});
 		return outsize;
 	}
@@ -325,8 +332,9 @@ String ImageInfo::description() const {
 }
 
 size_t ImageData::writeData(uint8_t *mem, size_t expected) const {
-	uint64_t expectedSize = getFormatBlockSize(format) * extent.width * extent.height * extent.depth
-			* arrayLayers.get();
+	// Blocks, not pixels: for a compressed format the size is blocks * bytes-per-block, which
+	// getFormatImageSize accounts for.
+	uint64_t expectedSize = getFormatImageSize(format, extent, arrayLayers.get());
 	if (expectedSize > expected) {
 		log::source().error("core::ImageData", "Not enoudh space for image: ", expectedSize,
 				" required, ", expected, " allocated");
@@ -905,6 +913,23 @@ String getQueueFlagsDesc(QueueFlags flags) {
 	return stream.str();
 }
 
+// getImagePixelFormat() collapses formats to a channel-count category (RGBA/RGB/...), discarding the
+// component order, so a B-first (BGRA) buffer is otherwise written as RGBA with red and blue swapped.
+// These are the non-packed 8-bit B-first formats -- the common Vulkan swapchain surface formats. The
+// PACK32 A8B8G8R8 family is excluded on purpose: it is already R,G,B,A in little-endian memory.
+static bool isBgra8Format(core::ImageFormat fmt) {
+	switch (fmt) {
+	case core::ImageFormat::B8G8R8A8_UNORM:
+	case core::ImageFormat::B8G8R8A8_SNORM:
+	case core::ImageFormat::B8G8R8A8_USCALED:
+	case core::ImageFormat::B8G8R8A8_SSCALED:
+	case core::ImageFormat::B8G8R8A8_UINT:
+	case core::ImageFormat::B8G8R8A8_SINT:
+	case core::ImageFormat::B8G8R8A8_SRGB: return true;
+	default: return false;
+	}
+}
+
 Bitmap getBitmap(const ImageInfoData &info, BytesView bytes) {
 	if (!bytes.empty()) {
 		auto fmt = core::getImagePixelFormat(info.format);
@@ -923,7 +948,18 @@ Bitmap getBitmap(const ImageInfoData &info, BytesView bytes) {
 				* info.extent.height * info.extent.depth * info.arrayLayers.get();
 
 		if (pixelFormat != bitmap::PixelFormat::Auto && requiredSize == bytes.size()) {
-			return Bitmap(bytes.data(), info.extent.width, info.extent.height, pixelFormat);
+			Bitmap bmp(bytes.data(), info.extent.width, info.extent.height, pixelFormat);
+			// Reorder B-first source bytes to RGBA in place (the bitmap owns a mutable copy).
+			if (pixelFormat == bitmap::PixelFormat::RGBA8888 && isBgra8Format(info.format)) {
+				auto data = bmp.dataPtr();
+				auto count = bmp.data().size() / 4;
+				for (size_t i = 0; i < count; ++i) {
+					auto b = data[i * 4 + 0];
+					data[i * 4 + 0] = data[i * 4 + 2];
+					data[i * 4 + 2] = b;
+				}
+			}
+			return bmp;
 		}
 	}
 	return Bitmap();

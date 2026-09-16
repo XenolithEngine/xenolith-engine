@@ -37,9 +37,23 @@ THE SOFTWARE.
 #include "stdlib/byteswap.cc"
 #include "stdlib/qsort_s.cc"
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include <xlocale.h>
 #include <unistd.h>
+#endif
+
+#if SPRT_ANDROID
+#include "../src/private/SPRTSpecific.h"
+#endif
+
+// musl provides the float strto*_l variants but not the integer ones; integer
+// conversion is locale-independent, so fall back to the plain functions there
+// (Android is bionic and SPRT_ANDROID, not SPRT_LINUX, and keeps the _l calls).
+// NuttX libc has neither the integer nor the float _l variants.
+#if (SPRT_LINUX && !defined(__GLIBC__)) || SPRT_HOSTED_RTOS
+#define __SPRT_NO_STRTO_INT_L 1
+#else
+#define __SPRT_NO_STRTO_INT_L 0
 #endif
 
 namespace sprt {
@@ -123,7 +137,17 @@ __SPRT_C_FUNC void __SPRT_ID(aligned_free)(void *memblock) {
 #endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(system_impl)(const char *cmd) { return ::system(cmd); }
+__SPRT_C_FUNC int __SPRT_ID(system_impl)(const char *cmd) {
+#if SPRT_IOS
+	// system() is marked unavailable on iOS (no shell / process spawning); report
+	// it as unsupported rather than failing to compile.
+	(void)cmd;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
+	return ::system(cmd);
+#endif
+}
 
 #if __STDC_HOSTED__ == 1
 __SPRT_C_FUNC void *__SPRT_ID(bsearch_impl)(const void *key, const void *base, size_t nmemb,
@@ -131,12 +155,6 @@ __SPRT_C_FUNC void *__SPRT_ID(bsearch_impl)(const void *key, const void *base, s
 	return ::bsearch(key, base, nmemb, size, compar);
 }
 #endif
-
-SPRT_API void __SPRT_ID(qsort_r)(void *array, __SPRT_ID(size_t) n, __SPRT_ID(size_t) size,
-		int (*cmp)(const void *, const void *, void *), void *ctx) {
-	::qsort_r(array, n, size, cmp, ctx);
-}
-
 
 __SPRT_C_FUNC int __SPRT_ID(abs_impl)(int v) { return ::abs(v); }
 
@@ -163,11 +181,29 @@ __SPRT_C_FUNC __SPRT_ID(lldiv_t) __SPRT_ID(lldiv_impl)(long long a, long long b)
 
 __SPRT_C_FUNC int __SPRT_ID(
 		posix_memalign)(void **ptr, __SPRT_ID(size_t) size, __SPRT_ID(size_t) align) {
-	return posix_memalign(ptr, size, align);
+	return posix_memalign(ptr, align, size);
 }
 __SPRT_C_FUNC int __SPRT_ID(mkstemp)(char *tpl) { return mkstemp(tpl); }
-__SPRT_C_FUNC int __SPRT_ID(mkostemp)(char *tpl, int n) { return mkostemp(tpl, n); }
-__SPRT_C_FUNC char *__SPRT_ID(mkdtemp)(char *tpl) { return mkdtemp(tpl); }
+__SPRT_C_FUNC int __SPRT_ID(mkostemp)(char *tpl, int n) {
+#if SPRT_HOSTED_RTOS
+	// NuttX libc has no mkostemp; fall back to mkstemp (the flags argument is
+	// silently dropped — NuttX does not honour O_CLOEXEC on tempfile creation
+	// anyway, callers must fcntl FD_CLOEXEC afterwards).
+	(void)n;
+	return mkstemp(tpl);
+#else
+	return mkostemp(tpl, n);
+#endif
+}
+__SPRT_C_FUNC char *__SPRT_ID(mkdtemp)(char *tpl) {
+#if SPRT_EMBOX
+	(void)tpl;
+	*__sprt___errno_location() = ENOSYS;
+	return nullptr;
+#else
+	return mkdtemp(tpl);
+#endif
+}
 
 __SPRT_C_FUNC char *__SPRT_ID(
 		realpath)(const char *__SPRT_RESTRICT path, char *__SPRT_RESTRICT out) {
@@ -176,19 +212,39 @@ __SPRT_C_FUNC char *__SPRT_ID(
 
 __SPRT_C_FUNC long __SPRT_ID(strtol_l)(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
 		int base, __SPRT_ID(locale_t) loc) {
+#if __SPRT_NO_STRTO_INT_L
+	(void)loc;
+	return ::strtol(str, endp, base);
+#else
 	return ::strtol_l(str, endp, base, loc);
+#endif
 }
 __SPRT_C_FUNC long long __SPRT_ID(strtoll_l)(const char *__SPRT_RESTRICT str,
 		char **__SPRT_RESTRICT endp, int base, __SPRT_ID(locale_t) loc) {
+#if __SPRT_NO_STRTO_INT_L
+	(void)loc;
+	return ::strtoll(str, endp, base);
+#else
 	return ::strtoll_l(str, endp, base, loc);
+#endif
 }
 __SPRT_C_FUNC unsigned long __SPRT_ID(strtoul_l)(const char *__SPRT_RESTRICT str,
 		char **__SPRT_RESTRICT endp, int base, __SPRT_ID(locale_t) loc) {
+#if __SPRT_NO_STRTO_INT_L
+	(void)loc;
+	return ::strtoul(str, endp, base);
+#else
 	return ::strtoul_l(str, endp, base, loc);
+#endif
 }
 __SPRT_C_FUNC unsigned long long __SPRT_ID(strtoull_l)(const char *__SPRT_RESTRICT str,
 		char **__SPRT_RESTRICT endp, int base, __SPRT_ID(locale_t) loc) {
+#if __SPRT_NO_STRTO_INT_L
+	(void)loc;
+	return ::strtoull(str, endp, base);
+#else
 	return ::strtoull_l(str, endp, base, loc);
+#endif
 }
 __SPRT_C_FUNC float __SPRT_ID(strtof_l)(const char *__SPRT_RESTRICT str,
 		char **__SPRT_RESTRICT endp, __SPRT_ID(locale_t) loc) {
@@ -206,48 +262,46 @@ __SPRT_C_FUNC long double __SPRT_ID(strtold_l)(const char *__SPRT_RESTRICT str,
 
 __SPRT_C_FUNC __SPRT_ID(size_t)
 		__SPRT_ID(mbstowcs)(wchar_t *__dst, const char *__src, __SPRT_ID(size_t) __n) {
-#if __SPRT_CONFIG_HAVE_STDLIB_MB
 	return ::mbstowcs(__dst, __src, __n);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(mblen)(const char *__s, __SPRT_ID(size_t) __n) {
+#if SPRT_ANDROID
+	// Bionic only added mblen at API 26, but the runtime targets 24. mblen is
+	// defined as mbtowc(NULL, ...) against a private state, and since the encoding
+	// is stateless UTF-8 there is nothing to carry; mirror that (as libc_impl does)
+	// through Bionic's mbtowc, which is available.
+	return ::mbtowc(nullptr, __s, __n);
 #else
-	__sprt_errno = ENOSYS;
-	return 0;
+	return ::mblen(__s, __n);
 #endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mbtowc)(wchar_t *__wc_ptr, const char *__s, __SPRT_ID(size_t) __n) {
-#if __SPRT_CONFIG_HAVE_STDLIB_MB
 	return ::mbtowc(__wc_ptr, __s, __n);
-#else
-	__sprt_errno = ENOSYS;
-	return -1;
-#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(wctomb)(char *__dst, wchar_t __wc) {
-#if __SPRT_CONFIG_HAVE_STDLIB_MB
-	return ::wctomb(__dst, __wc);
+#if SPRT_EMBOX
+	return ::wctomb(__dst, &__wc);
 #else
-	__sprt_errno = ENOSYS;
-	return -1;
+	return ::wctomb(__dst, __wc);
 #endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t)
 		__SPRT_ID(wcstombs)(char *__dst, const wchar_t *__src, __SPRT_ID(size_t) __n) {
-#if __SPRT_CONFIG_HAVE_STDLIB_MB
 	return ::wcstombs(__dst, __src, __n);
-#else
-	__sprt_errno = ENOSYS;
-	return 0;
-#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(__ctype_get_mb_cur_max)(void) {
-#if __SPRT_CONFIG_HAVE_STDLIB_MB
-	return ::__ctype_get_mb_cur_max();
+#if SPRT_APPLE
+	return ___mb_cur_max();
+#elif SPRT_HOSTED_RTOS
+	// NuttX has no __ctype_get_mb_cur_max; MB_CUR_MAX is a compile-time macro.
+	return MB_CUR_MAX;
 #else
-	__sprt_errno = ENOSYS;
-	return 0;
+	return ::__ctype_get_mb_cur_max();
 #endif
 }
 

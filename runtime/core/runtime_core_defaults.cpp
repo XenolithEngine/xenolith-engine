@@ -24,8 +24,10 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_cpuset_t.h>
 #include <sprt/cxx/detail/constexpr.h>
+#include <sprt/cxx/__new/nothrow.h>
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_dlfcn.h>
+#include <sprt/c/__sprt_unistd.h>
 #include <sprt/runtime/log.h>
 
 #if SPRT_LINUX || SPRT_ANDROID
@@ -40,27 +42,73 @@ THE SOFTWARE.
 #include "linux/clock_gettime.cc"
 #include "linux/libc.cc"
 
-#elif SPRT_MACOS
+#elif SPRT_APPLE
 #include <sched.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <dlfcn.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <pthread.h>
 #include "darwin/clock_gettime.cc"
+#include "darwin/libc.cc"
 
 #elif SPRT_WINDOWS
 #include "windows/clock_gettime.cc"
 #include "windows/sched.cc"
 #include "windows/libc.h"
+#elif SPRT_WASM
+#include "wasm/clock_gettime.cc"
+#include "wasm/sched.cc"
+#include "wasm/libc.h"
+#elif SPRT_EMBOX_USER
+// Freestanding like wasm and Windows -- the libc is ours, so the prototypes
+// come from our own header rather than from a platform <time.h>/<sched.h>.
+#include "embox_user/clock_gettime.cc"
+#include "embox_user/sched.cc"
+#include "embox_user/libc.h"
+#elif SPRT_HOSTED_RTOS
+// Both RTOS targets are hosted POSIX on their own libc, so the Linux
+// libc/sched/clock_gettime adapters apply verbatim — their <sched.h>, <time.h>,
+// <stdio.h>, <pthread.h> expose the same POSIX surface the Linux adapter uses.
+// dlfcn is a no-op in a flat build (no DSOs) but the prototypes are present in
+// <dlfcn.h>.
+#include <sched.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <pthread.h>
+#include "linux/clock_gettime.cc"
+#include "linux/libc.cc"
 #else
 #error Not implemented
 #endif
 
 extern "C" {
 __SPRT_NORETURN void abort();
+
+SPRT_API void __sprt_assert_fail(const char *cond, const char *file, unsigned int line,
+		const char *fn, const char *text) __SPRT_NOEXCEPT;
 }
 
-namespace sprt {
+namespace std {
+// Always versioned (unified ABI) — must match the declaration in
+// <sprt/cxx/__new/nothrow.h>; the runtime defines no canonical-namespace symbols.
+__SPRT_STD_OWNED_BEGIN
 
-const nothrow_t nothrow;
+__attribute__((weak)) const nothrow_t nothrow;
+
+__SPRT_STD_OWNED_END
+} // namespace std
+
+namespace sprt {
 
 __SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(stdin_impl)() {
 	return stdin; //
@@ -86,11 +134,14 @@ __SPRT_C_FUNC void __SPRT_ID(perror_impl)(const char *err) { return ::perror(err
 
 __SPRT_C_FUNC int __SPRT_ID(fflush_impl)(__SPRT_ID(FILE) * file) { return ::fflush(file); }
 
-__SPRT_C_FUNC int __SPRT_ID(fcntl)(int __fd, int __cmd, ...) {
-	unsigned long arg;
+__SPRT_C_FUNC SPRT_API int __SPRT_ID(fcntl)(int __fd, int __cmd, ...) {
+	// The argument must be forwarded at pointer width: commands such as
+	// F_GETLK/F_SETLK take a `struct flock *`, and on LLP64 (Windows) an
+	// `unsigned long` is only 32 bits and would truncate the pointer.
+	intptr_t arg;
 	__builtin_va_list ap;
 	__builtin_va_start(ap, __cmd);
-	arg = __builtin_va_arg(ap, unsigned long);
+	arg = __builtin_va_arg(ap, intptr_t);
 	__builtin_va_end(ap);
 
 	return fcntl(__fd, __cmd, arg);
@@ -185,7 +236,30 @@ __SPRT_C_FUNC __SPRT_ID(uint64_t) __SPRT_ID(clock_gettime_nsec_np)(__SPRT_ID(clo
 			+ static_cast<uint64_t>(__tp.tv_nsec);
 }
 
+#if SPRT_WASM
+extern "C" __SPRT_ID(pid_t) __sprt_wasm_gettid(void);
+#endif
+
 __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
+#if SPRT_EMBOX
+	// Embox has no gettid(2). pthread_t is struct thread *; fold the pointer
+	// into pid_t so tish tasks and pthreads stay distinct without TLS.
+	const uintptr_t p = reinterpret_cast<uintptr_t>(pthread_self());
+	return static_cast<__SPRT_ID(pid_t)>((p >> 4) ^ (p >> 32));
+#elif SPRT_HOSTED_RTOS
+	// NSH tasks are not sprt pthreads. pthread_self_noattach_np() reads tl_self,
+	// which must not be the gettid() path: a process-global tl_self made Main
+	// inherit AppThread's id, Looper::isOnThisThread went false, and compileQueue
+	// posted into a mutex it already held. Kernel gettid() is the identity.
+	return ::gettid();
+#elif SPRT_EMBOX_USER
+	// gettid(178) is a real syscall here, so the kernel's thread id is available
+	// directly -- and it is the identity every other subsystem sees. Taking it
+	// from the kernel rather than from tl_self is the same argument the hosted
+	// RTOS branch above makes: a thread the libc did not create still has to
+	// answer correctly.
+	return (__SPRT_ID(pid_t))__el0_gettid();
+#else
 	auto t = __sprt_pthread_self_noattach_np();
 	if (t) {
 		__SPRT_ID(pid_t) tid = 0;
@@ -194,12 +268,15 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
 			return tid;
 		}
 	}
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return pthread_mach_thread_np(pthread_self());
 #elif SPRT_WINDOWS
 	return GetCurrentThreadId();
+#elif SPRT_WASM
+	return __sprt_wasm_gettid();
 #else
 	return ::gettid();
+#endif
 #endif
 }
 
@@ -235,7 +312,15 @@ __SPRT_C_FUNC void *__SPRT_ID(
 }
 
 __SPRT_C_FUNC int __SPRT_ID(dladdr)(const void *__handle, __SPRT_ID(Dl_info) * __info) {
+#if SPRT_EMBOX
+	(void)__handle;
+	if (__info) {
+		*__info = {};
+	}
+	return 0;
+#else
 	return dladdr(__handle, (Dl_info *)__info);
+#endif
 }
 
 __SPRT_C_FUNC double __SPRT_ID(log2_impl)(double value) { return ::log2(value); }
@@ -343,16 +428,203 @@ __SPRT_C_FUNC int __SPRT_ID(sigemptyset)(__SPRT_ID(sigset_t) * set) {
 } // namespace sprt
 
 
-#ifndef SPRT_WINDOWS
+#include <sprt/c/__sprt_errno.h>
+#include <sprt/c/__sprt_wctype.h>
+
+// The case mapping is delegated to the platform's plain towupper()/towlower(),
+// which resolve to libc_impl on freestanding targets and to the system libc on
+// hosted ones -- both long predate any wctrans support (on Android, Bionic has
+// had them since API 1, unlike the API-26 wctrans). They are declared directly
+// (the libc umbrella <wctype.h> is not on runtime_core's include path on every
+// target); extern "C" + the SPRT wint_t keeps the declaration ABI-compatible.
+extern "C" {
+__SPRT_ID(wint_t) towupper(__SPRT_ID(wint_t));
+__SPRT_ID(wint_t) towlower(__SPRT_ID(wint_t));
+}
+
+// Shared glibc-style wctrans/towctrans fallback (see sprt/runtime/wctype.h).
+// Used both by the freestanding libc_impl <wctype.h> entry points and the
+// Android wrapper bridge when the platform exposes no wctrans/towctrans.
+
+namespace sprt {
+
+// Opaque non-zero handles: only their identity matters, never any pointee. Cast
+// from small integers so this works whether __sprt_wctrans_t is a pointer (glibc
+// / libc_impl ABI) or a plain int (macOS ABI override); real platform handles
+// are valid addresses, so they never collide with 1/2.
+#define SPRT_WCTRANS_UPPER ((__SPRT_ID(wctrans_t))1)
+#define SPRT_WCTRANS_LOWER ((__SPRT_ID(wctrans_t))2)
+
+__SPRT_ID(wctrans_t) __wctrans_fallback(const char *name) __SPRT_NOEXCEPT {
+	if (name) {
+		if (__builtin_strcmp(name, "toupper") == 0) {
+			return SPRT_WCTRANS_UPPER;
+		}
+		if (__builtin_strcmp(name, "tolower") == 0) {
+			return SPRT_WCTRANS_LOWER;
+		}
+	}
+	__sprt_errno = EINVAL;
+	return (__SPRT_ID(wctrans_t))0;
+}
+
+__SPRT_ID(wint_t)
+__towctrans_fallback(__SPRT_ID(wint_t) wc, __SPRT_ID(wctrans_t) desc) __SPRT_NOEXCEPT {
+	if (desc == SPRT_WCTRANS_UPPER) {
+		return ::towupper(wc);
+	}
+	if (desc == SPRT_WCTRANS_LOWER) {
+		return ::towlower(wc);
+	}
+	// A null or unrecognised mapping is the identity (towctrans(wc, 0) == wc).
+	return wc;
+}
+
+} // namespace sprt
+
+
+#include <sprt/c/__sprt_langinfo.h>
+#include <sprt/c/__sprt_nl_types.h>
+#include <sprt/c/__sprt_errno.h>
+
+// Internal-named (strong) fallback implementations for the message-catalog
+// (<nl_types.h>) and langinfo (<langinfo.h>) entry points. They carry the honest
+// C/POSIX behaviour in ONE place; the libc layers build the public symbols on top
+// of them: libc_impl uses them to implement its strong plain catopen/nl_langinfo,
+// and the libc_wrapper falls back to them via a weak-reference null-check when the
+// platform offers no real symbol (Android < 26). Strong + internal-named so there
+// is never a clash with a platform definition of the plain C name.
+
+namespace sprt {
+
+// C/POSIX default langinfo strings: the answer in the C locale and the universal
+// fallback. Reused by libc_impl's WinAPI nl_langinfo (C-locale branch) and the
+// wrapper's nl_langinfo fallback -- one table, no per-module copies.
+char *__nl_langinfo_default(__SPRT_ID(nl_item) item) {
+	static const char *const abday[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+	static const char *const day[7] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday",
+		"Friday", "Saturday"};
+	static const char *const abmon[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
+		"Sep", "Oct", "Nov", "Dec"};
+	static const char *const mon[12] = {"January", "February", "March", "April", "May", "June",
+		"July", "August", "September", "October", "November", "December"};
+
+	const char *r;
+	if (item >= __SPRT_ABDAY_1 && item < __SPRT_ABDAY_1 + 7) {
+		r = abday[item - __SPRT_ABDAY_1];
+	} else if (item >= __SPRT_DAY_1 && item < __SPRT_DAY_1 + 7) {
+		r = day[item - __SPRT_DAY_1];
+	} else if (item >= __SPRT_ABMON_1 && item < __SPRT_ABMON_1 + 12) {
+		r = abmon[item - __SPRT_ABMON_1];
+	} else if (item >= __SPRT_MON_1 && item < __SPRT_MON_1 + 12) {
+		r = mon[item - __SPRT_MON_1];
+	} else {
+		switch (item) {
+		case __SPRT_AM_STR: r = "AM"; break;
+		case __SPRT_PM_STR: r = "PM"; break;
+		case __SPRT_D_T_FMT: r = "%a %b %e %H:%M:%S %Y"; break;
+		case __SPRT_D_FMT: r = "%m/%d/%y"; break;
+		case __SPRT_T_FMT: r = "%H:%M:%S"; break;
+		case __SPRT_T_FMT_AMPM: r = "%I:%M:%S %p"; break;
+		case __SPRT_CODESET: r = "UTF-8"; break; // the runtime is UTF-8 throughout
+		case __SPRT_RADIXCHAR: r = "."; break;
+		case __SPRT_THOUSEP: r = ""; break;
+		case __SPRT_YESEXPR: r = "^[yY]"; break;
+		case __SPRT_NOEXPR: r = "^[nN]"; break;
+		default: r = ""; break; // CRNCYSTR and anything else
+		}
+	}
+	return (char *)r;
+}
+
+// Honest empty message catalog: no catalog backend, so catopen "succeeds" with a
+// sentinel handle, catgets returns the caller's default message, and catclose
+// accepts that handle. Address-only sentinel -- only its identity matters.
+static char s_emptyCatalog;
+
+__SPRT_ID(nl_catd) __catopen_empty(const char *name, int flag) {
+	(void)name;
+	(void)flag;
+	return (__SPRT_ID(nl_catd)) & s_emptyCatalog;
+}
+
+char *__catgets_empty(__SPRT_ID(nl_catd) catd, int set_id, int msg_id, const char *msg) {
+	(void)catd;
+	(void)set_id;
+	(void)msg_id;
+	return (char *)msg;
+}
+
+int __catclose_empty(__SPRT_ID(nl_catd) catd) {
+	if (catd == (__SPRT_ID(nl_catd)) & s_emptyCatalog) {
+		return 0;
+	}
+	__sprt_errno = EBADF;
+	return -1;
+}
+
+} // namespace sprt
+
+
+// Targets with a platform <sys/utsname.h> to forward to. The freestanding ones
+// (Windows, wasm, Embox EL0) each answer in their own file below -- there is no
+// platform header on their include path at all, so this is a compile-time split,
+// not a runtime one.
+#if !defined(SPRT_WINDOWS) && !defined(SPRT_WASM) && !defined(SPRT_EMBOX_USER)
 #include <sys/utsname.h>
+#include <sprt/c/sys/__sprt_utsname.h>
 
 namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(uname)(struct __SPRT_UTSNAME_NAME *buf) {
-	return ::uname((struct utsname *)buf);
+	sprt::memset(buf, 0, sizeof(struct __SPRT_UTSNAME_NAME));
+
+	struct utsname _native;
+	sprt::memset(&_native, 0, sizeof(struct utsname));
+	auto ret = ::uname(&_native);
+	if (ret == 0) {
+		if (_native.sysname[0]) {
+			sprt::memcpy(buf->sysname, _native.sysname,
+					sprt::strnlen(_native.sysname, __SPRT_SYS_NAMELEN - 1));
+		}
+		if (_native.nodename[0]) {
+			sprt::memcpy(buf->nodename, _native.nodename,
+					sprt::strnlen(_native.nodename, __SPRT_SYS_NAMELEN - 1));
+		}
+		if (_native.release[0]) {
+			sprt::memcpy(buf->release, _native.release,
+					sprt::strnlen(_native.release, __SPRT_SYS_NAMELEN - 1));
+		}
+		if (_native.version[0]) {
+			sprt::memcpy(buf->version, _native.version,
+					sprt::strnlen(_native.version, __SPRT_SYS_NAMELEN - 1));
+		}
+		if (_native.machine[0]) {
+			sprt::memcpy(buf->machine, _native.machine,
+					sprt::strnlen(_native.machine, __SPRT_SYS_NAMELEN - 1));
+		}
+		// domainname is a Linux extension to POSIX utsname; Apple and NuttX both
+		// ship the plain struct without it.
+#if !SPRT_APPLE && !SPRT_HOSTED_RTOS
+		if (_native.domainname[0]) {
+			sprt::memcpy(buf->domainname, _native.domainname,
+					sprt::strnlen(_native.domainname, __SPRT_SYS_NAMELEN - 1));
+		}
+#endif
+		return 0;
+	}
+	return ret;
 }
 
 } // namespace sprt
+
+#elif SPRT_WASM
+
+#include "wasm/uname.cc"
+
+#elif SPRT_EMBOX_USER
+
+#include "embox_user/uname.cc"
 
 #else
 

@@ -31,8 +31,12 @@ EXPORTS
 	SetConsoleOutputCP
 	GetConsoleMode
 	SetConsoleMode
+	SetConsoleTextAttribute
+	SetConsoleCursorPosition
+	WriteConsoleW
 	CreateFileW
 	CreateFileA
+	DeviceIoControl
 	FlushFileBuffers
 	GetFinalPathNameByHandleW
 	SetFileAttributesW
@@ -60,6 +64,11 @@ EXPORTS
 	SetCurrentDirectoryW
 	GetVolumeInformationW
 	GetDiskFreeSpaceExW
+	GetDiskFreeSpaceExA
+	GetVolumePathNameW
+	GetDriveTypeW
+	SetFileTime
+	FindFirstFileExW
 	CreateHardLinkW
 	CreateSymbolicLinkW
 	CreatePipe
@@ -73,6 +82,22 @@ EXPORTS
 	CreateWaitableTimerExW
 	SetWaitableTimerEx
 	EnumProcessModules
+	EnumProcessModulesEx
+	GetProcessMemoryInfo
+	GetLogicalProcessorInformationEx
+	GetProcessGroupAffinity
+	FlushInstructionCache
+	GetLargePageMinimum
+	GetLongPathNameW
+	CreateJobObjectW
+	AssignProcessToJobObject
+	SetInformationJobObject
+	GetThreadId
+	GetProcessAffinityMask
+	SetProcessAffinityMask
+	SetThreadGroupAffinity
+	GetThreadGroupAffinity
+	SearchPathW
 	QueryWorkingSetEx
 	GetNativeSystemInfo
 	GetSystemInfo

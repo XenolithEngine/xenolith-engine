@@ -2,6 +2,77 @@
 
 namespace sprt {
 
+// ── ntdll preload contract ──────────────────────────────────────────────────
+// Single source of truth for the ntdll functions that DllTable::init() resolves
+// eagerly. The preload is mandatory: if any of these cannot be resolved, init()
+// returns false, DllLoader::load() returns LOADER_ERROR_FAIL_TO_PRELOAD, and
+// mainCRTStartup aborts the process before any code runs. Consequently these —
+// and only these — functions may be invoked through a raw `.fn` pointer without
+// a runtime null check.
+//
+// This list drives BOTH NtdllTable::__preloads[] (below) and the compile-time
+// SPWIN_NTDLL_PRELOADED_FN() guard used at every raw `.fn` call site, so the two
+// can never silently drift apart.
+#define SPWIN_NTDLL_PRELOAD_LIST(X) \
+	X(RtlCaptureContext) \
+	X(RtlRestoreContext) \
+	X(RtlLookupFunctionEntry) \
+	X(RtlUnwindEx) \
+	X(RtlVirtualUnwind) \
+	X(__C_specific_handler) \
+	X(longjmp) \
+	X(_setjmpex) \
+	X(memcmp) \
+	X(memcpy) \
+	X(memmove) \
+	X(memset) \
+	X(strcpy) \
+	X(strlen) \
+	X(strncpy) \
+	X(strnlen) \
+	X(strstr) \
+	X(strchr) \
+	X(strcmp) \
+	X(strncmp) \
+	X(wcscpy) \
+	X(wcslen) \
+	X(wcsncpy) \
+	X(wcsnlen) \
+	X(wcsstr)
+
+constexpr bool __sprt_ntdll_streq(const char *a, const char *b) {
+	while (*a && *a == *b) {
+		++a;
+		++b;
+	}
+	return *a == *b;
+}
+
+// True iff `name` is in SPWIN_NTDLL_PRELOAD_LIST (evaluated at compile time).
+constexpr bool isNtdllPreloaded(const char *name) {
+#define SPWIN_NTDLL_PRELOAD_NAME_TEST(n) \
+	if (__sprt_ntdll_streq(name, #n)) { \
+		return true; \
+	}
+	SPWIN_NTDLL_PRELOAD_LIST(SPWIN_NTDLL_PRELOAD_NAME_TEST)
+#undef SPWIN_NTDLL_PRELOAD_NAME_TEST
+	return false;
+}
+
+template <bool Preloaded>
+SPRT_FORCEINLINE FARPROC __sprt_require_preloaded(FARPROC fn) {
+	static_assert(Preloaded,
+			"this ntdll symbol is dereferenced via a raw .fn pointer but is not in "
+			"SPWIN_NTDLL_PRELOAD_LIST. Add it there (so DllTable::init preloads it and the process "
+			"aborts at startup if it is missing) or call it through DllTable::call<>().");
+	return fn;
+}
+
+// Wrap a raw `loaderPtr->ntdll.<member>.fn` access so the preload guarantee that
+// makes the missing null-check safe is verified at compile time.
+#define SPWIN_NTDLL_PRELOADED_FN(loaderPtr, member) \
+	::sprt::__sprt_require_preloaded<::sprt::isNtdllPreloaded(#member)>((loaderPtr)->ntdll.member.fn)
+
 struct NtdllTable : DllTable {
 	NtdllTable() : DllTable(L"ntdll.dll", &__ntdll_begin, &__ntdll_end, __preloads) { }
 
@@ -1461,34 +1532,15 @@ struct NtdllTable : DllTable {
 	SPWIN_DEFINE_PROTO(wcstoul)
 	DllTableRecord __ntdll_end;
 
+	// Generated from SPWIN_NTDLL_PRELOAD_LIST (the single source of truth). The
+	// fixed bound [count+1] also makes adding to the list without resizing a
+	// compile error, so the array and the list cannot drift.
+#define SPWIN_NTDLL_PRELOAD_ADDR(n) &n,
 	DllTableRecord *__preloads[26] = {
-		&RtlCaptureContext,
-		&RtlRestoreContext,
-		&RtlLookupFunctionEntry,
-		&RtlUnwindEx,
-		&RtlVirtualUnwind,
-		&__C_specific_handler,
-		&longjmp,
-		&_setjmpex,
-		&memcmp,
-		&memcpy,
-		&memmove,
-		&memset,
-		&strcpy,
-		&strlen,
-		&strncpy,
-		&strnlen,
-		&strstr,
-		&strchr,
-		&strcmp,
-		&strncmp,
-		&wcscpy,
-		&wcslen,
-		&wcsncpy,
-		&wcsnlen,
-		&wcsstr,
+		SPWIN_NTDLL_PRELOAD_LIST(SPWIN_NTDLL_PRELOAD_ADDR) //
 		nullptr,
 	};
+#undef SPWIN_NTDLL_PRELOAD_ADDR
 };
 
 } // namespace sprt

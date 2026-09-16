@@ -28,7 +28,6 @@ THE SOFTWARE.
 #include <sprt/runtime/detail/dtoa.h>
 #include <sprt/runtime/utils/notnull.h>
 
-#include <sprt/cxx/array>
 
 #include <sprt/c/__sprt_string.h>
 
@@ -76,8 +75,8 @@ constexpr inline size_t itoa(uint64_t number, CharType *buffer, size_t bufSize) 
 /*
 	Fast dtoa implementation
 
-	Data will be written from beginning, no trailing zero (do not try to use strlen on it!);
-	Designed to be used with StringView: StringView(buf, ret)
+	Data will be written at the END of buffer (right-aligned, like itoa), no trailing zero (do not
+	try to use strlen on it!); Designed to be used with StringView: StringView(buf + bufSize - ret, ret)
 
 	Returns number size on symbols
 	Use nullptr buffer to calculate expected buffer length.

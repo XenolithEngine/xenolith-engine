@@ -27,6 +27,10 @@ THE SOFTWARE.
 #include <sprt/c/cross/__sprt_fstypes.h>
 #include <sprt/c/cross/__sprt_dir_ptr.h>
 
+// The Linux/BSD d_type codes, shared by every platform whose libc uses them.
+// A libc that numbers them differently (Embox) defines its own set in its
+// cross/<platform>/dir_ptr.h, included just above - hence the #ifndef.
+#ifndef __SPRT_DT_UNKNOWN
 #define __SPRT_DT_UNKNOWN 0
 #define __SPRT_DT_FIFO 1
 #define __SPRT_DT_CHR 2
@@ -36,6 +40,7 @@ THE SOFTWARE.
 #define __SPRT_DT_LNK 10
 #define __SPRT_DT_SOCK 12
 #define __SPRT_DT_WHT 14
+#endif
 
 #ifndef d_fileno
 #define d_fileno d_ino

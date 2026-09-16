@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_uint32_t.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_null.h>
+#include <sprt/c/bits/__sprt_wchar_t.h>
 #include <sprt/c/cross/__sprt_locale.h>
 #include <sprt/c/cross/__sprt_mbstate.h>
 
@@ -218,6 +219,7 @@ SPRT_API __SPRT_ID(lldiv_t) __SPRT_ID(lldiv_impl)(long long, long long);
 SPRT_API int __SPRT_ID(posix_memalign)(void **, __SPRT_ID(size_t), __SPRT_ID(size_t));
 SPRT_API int __SPRT_ID(setenv)(const char *, const char *, int);
 SPRT_API int __SPRT_ID(unsetenv)(const char *);
+SPRT_API int __SPRT_ID(putenv)(char *);
 SPRT_API int __SPRT_ID(mkstemp)(char *);
 SPRT_API int __SPRT_ID(mkostemp)(char *, int);
 SPRT_API char *__SPRT_ID(mkdtemp)(char *);
@@ -276,6 +278,11 @@ SPRT_FORCEINLINE void *__sprt_alloca_wrapper(void *ptr) {
 // We allocate a block from the heap, mark it and return the user part
 SPRT_FORCEINLINE void *__sprt_alloca_malloc(__SPRT_ID(size_t) sz) {
 	void *ptr = __SPRT_ID(malloc_impl)(sz);
+	if (!ptr) {
+		// allocation failed: return NULL so the caller's null check works (writing
+		// the marker first would null-deref before the caller could see failure)
+		return ptr;
+	}
 	*((__SPRT_ID(uint32_t) *)ptr) = 1;
 	return (void *)((const char *)ptr + __SPRT_MALLOCA_OFFSET);
 }
@@ -298,28 +305,22 @@ SPRT_FORCEINLINE void __sprt_alloca_freea(void *ptr) {
 
 // Bionic/BSD specific functions
 //
-// Expose them only for C++ to avoid C __SPRT_ID(wchar_t) definitiom
+// Expose them only for C++ to avoid C __SPRT_ID(wchar_t) definition
 
-#if __SPRT_CONFIG_HAVE_STDLIB_MB || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+SPRT_API __SPRT_ID(size_t)
+		__SPRT_ID(mbstowcs)(__SPRT_ID(wchar_t) * __dst, const char *__src, __SPRT_ID(size_t) __n);
 
-__SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
-__SPRT_ID(size_t)
-__SPRT_ID(mbstowcs)(__SPRT_ID(wchar_t) * __dst, const char *__src, __SPRT_ID(size_t) __n);
+SPRT_API int __SPRT_ID(mblen)(const char *__s, __SPRT_ID(size_t) __n);
 
-__SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
-int __SPRT_ID(mbtowc)(__SPRT_ID(wchar_t) * __wc_ptr, const char *__s, __SPRT_ID(size_t) __n);
+SPRT_API int __SPRT_ID(
+		mbtowc)(__SPRT_ID(wchar_t) * __wc_ptr, const char *__s, __SPRT_ID(size_t) __n);
 
-__SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
-int __SPRT_ID(wctomb)(char *__dst, __SPRT_ID(wchar_t) __wc);
+SPRT_API int __SPRT_ID(wctomb)(char *__dst, __SPRT_ID(wchar_t) __wc);
 
-__SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
-__SPRT_ID(size_t)
-__SPRT_ID(wcstombs)(char *__dst, const __SPRT_ID(wchar_t) * __src, __SPRT_ID(size_t) __n);
+SPRT_API __SPRT_ID(size_t)
+		__SPRT_ID(wcstombs)(char *__dst, const __SPRT_ID(wchar_t) * __src, __SPRT_ID(size_t) __n);
 
-__SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
-__SPRT_ID(size_t) __SPRT_ID(__ctype_get_mb_cur_max)(void);
-
-#endif
+SPRT_API __SPRT_ID(size_t) __SPRT_ID(__ctype_get_mb_cur_max)(void);
 
 __SPRT_END_DECL
 

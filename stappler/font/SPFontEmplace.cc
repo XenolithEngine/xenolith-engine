@@ -145,8 +145,8 @@ bool LayoutNodeMemory::insert(LayoutNodeMemoryStorage &storage, void *c) {
 		}
 
 		//(decide which way to split)
-		int16_t dw = _rc.width - iwidth;
-		int16_t dh = _rc.height - iheight;
+		int32_t dw = int32_t(_rc.width) - int32_t(iwidth);
+		int32_t dh = int32_t(_rc.height) - int32_t(iheight);
 
 		if (dw > dh) {
 			_child[0] = storage.alloc(URect{_rc.x, _rc.y, iwidth, _rc.height});
@@ -213,6 +213,10 @@ Extent2 emplaceChars(const EmplaceCharInterface &iface, const SpanView<void *> &
 
 	LayoutNodeMemoryStorage storage(&iface, memory::pool::acquire());
 
+	// hard cap so the doubling below can never overflow w/h back to 0 (which would
+	// spin forever) when the glyph set cannot be packed
+	static constexpr uint32_t MaxAtlasDimension = 1 << 15; // 32768
+
 	while (true) {
 		auto l = storage.alloc(URect{0, 0, w, h});
 		for (auto &it : layoutData) {
@@ -227,10 +231,21 @@ Extent2 emplaceChars(const EmplaceCharInterface &iface, const SpanView<void *> &
 			storage.release(l);
 			break;
 		} else {
+			if (w >= MaxAtlasDimension && h >= MaxAtlasDimension) {
+				// cannot pack the glyph set within the maximum atlas size
+				storage.release(l);
+				break;
+			}
 			if (s) {
 				w *= 2;
 			} else {
 				h *= 2;
+			}
+			if (w > MaxAtlasDimension) {
+				w = MaxAtlasDimension;
+			}
+			if (h > MaxAtlasDimension) {
+				h = MaxAtlasDimension;
 			}
 			sq2 *= 2;
 			s = !s;

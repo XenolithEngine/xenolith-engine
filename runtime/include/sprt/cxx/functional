@@ -26,6 +26,8 @@ THE SOFTWARE.
 #include <sprt/cxx/__type_traits/constants.h>
 #include <sprt/cxx/__utility/common.h>
 #include <sprt/cxx/__functional/compare.h>
+#include <sprt/cxx/__functional/operations.h>
+#include <sprt/cxx/__functional/bind.h>
 
 #include <sprt/cxx/detail/hash.h>
 

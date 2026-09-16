@@ -323,12 +323,11 @@ void GestureTapRecognizer::update(uint64_t dt) {
 
 	auto now = Time::now();
 	if (_gesture.count > 0 && _gesture.time - now > TapIntervalAllowed) {
-		_gesture.event = GestureEvent::Activated;
-		_gesture.input = _events.empty() ? &_tmpEvent : &_events.front();
-		_callback(_gesture);
-		_gesture.event = GestureEvent::Cancelled;
-		_gesture.input = nullptr;
-		_gesture.time = Time();
+		// An immediate recognizer has already reported every tap, so expiry only closes the series.
+		// It can still be updated when another recognizer on the listener requests updates.
+		if (!_info.isImmediate()) {
+			sendTap();
+		}
 		_gesture.cleanup();
 	}
 }
@@ -339,7 +338,9 @@ void GestureTapRecognizer::cancel() {
 }
 
 InputEventState GestureTapRecognizer::addEvent(const InputEvent &ev, float density) {
-	if (_gesture.count > 0
+	// A running series must stay in one place; after the interval a tap anywhere starts a new one.
+	// Checked here because an immediate recognizer may have no update() to expire it.
+	if (_gesture.count > 0 && Time::now() - _gesture.time < TapIntervalAllowed
 			&& _gesture.pos.distance(ev.currentLocation) > TapDistanceAllowedMulti * density) {
 		_gesture.cleanup();
 		return InputEventState::Declined;
@@ -367,10 +368,10 @@ InputEventState GestureTapRecognizer::removeEvent(const InputEvent &ev, bool suc
 		if (successful
 				&& _gesture.pos.distance(ev.currentLocation) <= TapDistanceAllowed * density) {
 			if (!registerTap()) {
-				ret = _info.exclusive ? InputEventState::DelayedCaptured
-									  : InputEventState::DelayedProcessed;
+				ret = _info.isExclusive() ? InputEventState::DelayedCaptured
+										  : InputEventState::DelayedProcessed;
 			} else {
-				ret = _info.exclusive ? InputEventState::Captured : InputEventState::Processed;
+				ret = _info.isExclusive() ? InputEventState::Captured : InputEventState::Processed;
 			}
 		} else {
 			ret = InputEventState::Processed;
@@ -399,17 +400,32 @@ bool GestureTapRecognizer::registerTap() {
 	}
 
 	_gesture.time = currentTime;
+
+	if (_info.isImmediate()) {
+		// Report now with the tap's number in the series; the event is never Delayed*, so no
+		// listener is kept alive to wait the interval out.
+		sendTap();
+		if (_gesture.count >= _info.maxTapCount) {
+			// the series is complete - the next tap counts from one again
+			_gesture.cleanup();
+		}
+		return true;
+	}
+
 	if (_gesture.count == _info.maxTapCount) {
-		_gesture.event = GestureEvent::Activated;
-		_gesture.input = _events.empty() ? &_tmpEvent : &_events.front();
-		_callback(_gesture);
-		_gesture.event = GestureEvent::Cancelled;
-		_gesture.input = nullptr;
+		sendTap();
 		_gesture.cleanup();
 		return true;
-	} else {
-		return false;
 	}
+	return false;
+}
+
+void GestureTapRecognizer::sendTap() {
+	_gesture.event = GestureEvent::Activated;
+	_gesture.input = _events.empty() ? &_tmpEvent : &_events.front();
+	_callback(_gesture);
+	_gesture.event = GestureEvent::Cancelled;
+	_gesture.input = nullptr;
 }
 
 bool GesturePressRecognizer::init(InputCallback &&cb, InputPressInfo &&info) {
@@ -830,11 +846,13 @@ InputEventState GestureScrollRecognizer::handleInputEvent(const InputEvent &even
 	_gesture.input = &event;
 	_gesture.pos = event.currentLocation;
 	_gesture.amount = Vec2(event.data.point.valueX, event.data.point.valueY);
+
+	bool consumed = false;
 	if (_callback) {
-		_callback(_gesture);
+		consumed = _callback(_gesture);
 	}
 	_gesture.event = GestureEvent::Cancelled;
-	return InputEventState::Captured;
+	return consumed ? InputEventState::Captured : InputEventState::Declined;
 }
 
 
@@ -989,24 +1007,11 @@ InputEventState GestureMouseOverRecognizer::handleInputEvent(const InputEvent &e
 		}
 		break;
 	case InputEventName::MouseMove:
-		if (auto tar = _listener->getOwner()) {
-			auto v = tar->isTouched(event.currentLocation, _info.padding);
-			if (_hasMouseOver != v) {
-				_hasMouseOver = v;
-				stateChanged = true;
-				if (v) {
-					ret = InputEventState::Retain;
-				} else {
-					ret = InputEventState::Release;
-				}
-			} else if (_hasMouseOver) {
-				stateChanged = true;
-			}
-		} else {
-			if (_hasMouseOver) {
-				stateChanged = true;
-				_hasMouseOver = false;
-			}
+		ret = updateMouseOver(event, stateChanged);
+
+		// The pointer moved inside the owner: no transition, but the gesture reports the motion
+		if (ret == InputEventState::Processed && _hasMouseOver) {
+			stateChanged = true;
 		}
 		break;
 	default: break;
@@ -1015,6 +1020,36 @@ InputEventState GestureMouseOverRecognizer::handleInputEvent(const InputEvent &e
 		updateState(event);
 	}
 	return ret;
+}
+
+InputEventState GestureMouseOverRecognizer::updateMouseOver(const InputEvent &event,
+		bool &stateChanged) {
+	auto tar = _listener ? _listener->getOwner() : nullptr;
+
+	// No owner is the same answer as an owner the pointer is nowhere near
+	auto v = tar ? tar->isTouched(event.currentLocation, _info.padding) : false;
+	if (_hasMouseOver == v) {
+		return InputEventState::Processed;
+	}
+
+	_hasMouseOver = v;
+	stateChanged = true;
+
+	/* Retain/Release, not just Processed: an entered listener must keep receiving MouseMove after
+	   the pointer leaves, since InputListener::_shouldProcessEvent hit-tests before delivering.
+	   The geometry path reports it the same way. */
+	return v ? InputEventState::Retain : InputEventState::Release;
+}
+
+InputEventState GestureMouseOverRecognizer::handleGeometryUpdate(const InputEvent &event) {
+	bool stateChanged = false;
+	auto ret = updateMouseOver(event, stateChanged);
+	if (stateChanged) {
+		updateState(event);
+	}
+
+	// Nothing to report when the answer did not change; Processed would retain MouseMove needlessly
+	return stateChanged ? ret : InputEventState::Declined;
 }
 
 void GestureMouseOverRecognizer::onEnter(InputListener *l) {

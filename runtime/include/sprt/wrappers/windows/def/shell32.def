@@ -5,3 +5,9 @@ EXPORTS
 	ShellExecuteW
 	CommandLineToArgvW
 	ShellExecuteExW
+	ILCreateFromPathW
+	ILFree
+	SHCreateItemFromIDList
+	SHCreateItemFromParsingName
+	SHOpenFolderAndSelectItems
+	SHFileOperationW

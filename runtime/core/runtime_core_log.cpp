@@ -28,6 +28,13 @@
 
 #if SPRT_ANDROID
 #include <sprt/c/sys/__sprt_alog.h>
+#undef _GNU_SOURCE
+#include <string.h>
+#endif
+
+#if SPRT_APPLE
+#undef _GNU_SOURCE
+#include <string.h>
 #endif
 
 #if SPRT_LINUX
@@ -36,8 +43,19 @@
 #include <string.h>
 #endif
 
-#if SPRT_WINDOWS
-__SPRT_C_FUNC int strerror_r(__SPRT_ID(errno_t) errnum, char *buf, __SPRT_ID(rsize_t) bufsz);
+// The freestanding targets have no platform <string.h> to declare it; the sprt
+// libc provides strerror_r itself, so declare what we link against.
+#if SPRT_WINDOWS || SPRT_WASM || SPRT_EMBOX_USER
+__SPRT_C_FUNC int strerror_r(__SPRT_ID(errno_t) errnum, char *buf,
+		__SPRT_ID(rsize_t) bufsz) __SPRT_NOEXCEPT;
+#endif
+
+#if SPRT_HOSTED_RTOS
+// Both RTOS libcs declare strerror_r in <string.h>; pull it the same way the
+// Linux path does (they have strerror_r, no __STDC_LIB_EXT1__ bounds-checked
+// variant).
+#undef _GNU_SOURCE
+#include <string.h>
 #endif
 
 namespace sprt {
@@ -85,6 +103,11 @@ static bool parseLogFeatures(BytesView data, LogFeaturesInit &ret) {
 	uint32_t offset = 0;
 	bool useI32 = false;
 	auto header = data.readSpan<uint16_t>(6);
+	// readSpan clamps to the available bytes, and SpanView::at is unchecked, so a
+	// short file would otherwise read header.at(1..5) out of bounds.
+	if (header.size() < 6) {
+		return false;
+	}
 	if (header.at(0) == 0x021e) {
 		useI32 = true;
 	} else if (header.at(0) != 0x011A) {
@@ -128,27 +151,26 @@ static bool parseLogFeatures(BytesView data, LogFeaturesInit &ret) {
 		return false;
 	}
 
+	// Bound every lookup against the actual parsed span size (not the declared
+	// count): the spans may be shorter than declared, and SpanView::at is unchecked.
 	auto readInteger = [&](uint16_t index) -> int32_t {
-		if (index > numbersCount) {
-			return 0;
-		}
 		if (useI32) {
-			return numbers32.at(index);
+			return index < numbers32.size() ? numbers32.at(index) : 0;
 		} else {
-			return numbers16.at(index);
+			return index < numbers16.size() ? numbers16.at(index) : 0;
 		}
 	};
 
 	// not used for now, maybe layer?
 	SPRT_UNUSED auto readBool = [&](uint16_t index) -> bool {
-		if (index > boolsBytes) {
+		if (index >= bools.size()) {
 			return false;
 		}
 		return bools.at(index) > 0;
 	};
 
 	auto readString = [&](uint16_t index) -> StringView {
-		if (index > stringOffsetsCount) {
+		if (index >= stringOffsets.size()) {
 			return StringView();
 		}
 		auto offset = stringOffsets.at(index);
@@ -171,7 +193,7 @@ static bool parseLogFeatures(BytesView data, LogFeaturesInit &ret) {
 
 	if (!drop.empty()) {
 		ret.drop = ret.copy(drop);
-		if (__sprt_memcmp(ret.drop.data(), "\033(", 2) == 0) {
+		if (ret.drop.size() >= 2 && __sprt_memcmp(ret.drop.data(), "\033(", 2) == 0) {
 			ret.features |= LogFeatures::AnsiCompatible;
 		}
 	}
@@ -230,15 +252,19 @@ static bool checkLogFeatureWithFilename(StringView str, LogFeaturesInit &ret) {
 	struct __SPRT_STAT_NAME s;
 	auto r = ::__sprt_stat(str.data(), &s);
 	if (r == 0 && s.st_size > 0) {
+		// __sprt_malloca falls back to the heap for large files, which can return NULL;
+		// guard it before fread() (and skip __sprt_freea on NULL).
 		auto buf = (uint8_t *)__sprt_malloca(s.st_size);
-		auto f = __sprt_fopen(str.data(), "r");
-		if (f) {
-			if (__sprt_fread(buf, s.st_size, 1, f) > 0) {
-				result = parseLogFeatures(BytesView(buf, s.st_size), ret);
+		if (buf) {
+			auto f = __sprt_fopen(str.data(), "r");
+			if (f) {
+				if (__sprt_fread(buf, s.st_size, 1, f) > 0) {
+					result = parseLogFeatures(BytesView(buf, s.st_size), ret);
+				}
+				__sprt_fclose(f);
 			}
-			__sprt_fclose(f);
+			__sprt_freea(buf);
 		}
-		__sprt_freea(buf);
 	}
 	return result;
 }
@@ -320,7 +346,7 @@ static void checkLogFeaturesSupport(LogFeaturesInit &result) {
 }
 #endif
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 
 static void checkLogFeaturesSupport(LogFeaturesInit &ret) {
 	ret.features = LogFeatures::AnsiCompatible | LogFeatures::Colors | LogFeatures::Bold
@@ -407,6 +433,16 @@ static void checkLogFeaturesSupport(LogFeaturesInit &ret) {
 #endif
 
 #if SPRT_ANDROID
+
+static void checkLogFeaturesSupport(LogFeaturesInit &ret) { }
+
+#endif
+
+// No terminal to interrogate: wasm writes to a console the page owns, the RTOS
+// targets to a serial line, and Embox EL0 to the kernel console through write(64).
+// None has TERM/TERMINFO or an escape-sequence capability database, so the
+// truthful answer is that no feature is supported -- not that detection failed.
+#if SPRT_WASM || SPRT_HOSTED_RTOS || SPRT_EMBOX_USER
 
 static void checkLogFeaturesSupport(LogFeaturesInit &ret) { }
 
@@ -525,6 +561,12 @@ LogFeaturesInit::LogFeaturesInit() {
 }
 
 StringView LogFeaturesInit::copy(StringView str) {
+	// Bound the append to the fixed tmpbuf: the strings come from a terminfo file
+	// (TERM/TERMINFO controlled) and could otherwise overflow the 256-byte global.
+	size_t avail = (tmpbuf + sizeof(tmpbuf)) - tmpTarget;
+	if (str.size() > avail) {
+		return StringView();
+	}
 	::__sprt_memcpy(tmpTarget, str.data(), str.size());
 	StringView ret(tmpTarget, str.size());
 	tmpTarget += str.size();

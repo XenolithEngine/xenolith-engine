@@ -110,6 +110,31 @@ CommandLineParser<ContextConfig> ContextConfig::getCommandLineParser() {
 		target.context->bundleName = StringView(args[0]).str<sprt::window::String>();
 		return true;
 	}},
+		CommandLineOption<ContextConfig>{.patterns = {"--gapi <api>"},
+			.description = StringView(
+					"Select graphics API backend (vulkan, webgpu, metal, soft, gles)"),
+			.callback = [](ContextConfig &target, StringView pattern,
+								SpanView<StringView> args) -> bool {
+		if (!target.instance) {
+			target.instance = Rc<core::InstanceInfo>::alloc();
+		}
+		auto api = StringView(args[0]);
+		if (api == "vulkan") {
+			target.instance->api = core::InstanceApi::Vulkan;
+		} else if (api == "webgpu") {
+			target.instance->api = core::InstanceApi::WebGPU;
+		} else if (api == "metal") {
+			target.instance->api = core::InstanceApi::Metal;
+		} else if (api == "soft") {
+			target.instance->api = core::InstanceApi::Software;
+		} else if (api == "gles") {
+			target.instance->api = core::InstanceApi::GLES;
+		} else {
+			log::source().error("ContextConfig", "Unknown gAPI: ", api);
+			return false;
+		}
+		return true;
+	}},
 		CommandLineOption<ContextConfig>{.patterns = {"--renderdoc"},
 			.description = StringView("Open connection for renderdoc"),
 			.callback = [](ContextConfig &target, StringView pattern,
@@ -128,6 +153,30 @@ CommandLineParser<ContextConfig> ContextConfig::getCommandLineParser() {
 			target.instance = Rc<core::InstanceInfo>::alloc();
 		}
 		target.instance->flags |= core::InstanceFlags::Validation;
+		return true;
+	}},
+		CommandLineOption<ContextConfig>{.patterns = {"--headless"},
+			.description = StringView(
+					"Run without a window system: render into offscreen images and accept control "
+					"over the inspector socket"),
+			.callback = [](ContextConfig &target, StringView pattern,
+								SpanView<StringView> args) -> bool {
+		if (!target.context) {
+			target.context = Rc<ContextInfo>::alloc();
+		}
+		target.context->flags |= sprt::window::ContextFlags::Headless;
+		return true;
+	}},
+		CommandLineOption<ContextConfig>{.patterns = {"--headless-no-pointer"},
+			.description = StringView(
+					"Headless only: report windows as having no pointing device, so a widget that "
+					"adapts to the input devices available takes its touch-shaped branch"),
+			.callback = [](ContextConfig &target, StringView pattern,
+								SpanView<StringView> args) -> bool {
+		if (!target.context) {
+			target.context = Rc<ContextInfo>::alloc();
+		}
+		target.context->flags |= sprt::window::ContextFlags::HeadlessNoPointer;
 		return true;
 	}},
 		CommandLineOption<ContextConfig>{.patterns = {"--decor <decoration-description>"},

@@ -63,15 +63,15 @@ LIBS := \
 	libtiff.a \
 	libfreetype.a \
 	libharfbuzz.a \
+	libSheenBidi.a \
 	libsqlite3.a \
 	libnghttp3.a \
+	libngtcp2.a \
 	libssl.a \
 	libgost_engine.a \
 	libmbedtls.a \
 	libcurl-openssl.a \
 	libcurl-mbedtls.a \
-	libzip-openssl.a \
-	libzip-mbedtls.a \
 	libiwasm-release.a \
 	libiwasm-debug.a \
 	libbacktrace.a
@@ -323,10 +323,18 @@ $(SP_INSTALL_PREFIX)/usr/lib/libfreetype.a: ../common/freetype.mk $(SP_INSTALL_P
 $(SP_INSTALL_PREFIX)/usr/lib/libharfbuzz.a:../common/harfbuzz.mk $(SP_INSTALL_PREFIX)/usr/lib/libfreetype.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
+$(SP_INSTALL_PREFIX)/usr/lib/libSheenBidi.a: ../common/sheenbidi.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
 $(SP_INSTALL_PREFIX)/usr/lib/libsqlite3.a: ../common/sqlite.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a:  ../common/nghttp3.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+# ngtcp2 QUIC transport with the OpenSSL (ossl) crypto backend: libngtcp2.a +
+# libngtcp2_crypto_ossl.a, consumed by curl for HTTP/3 (USE_NGTCP2).
+$(SP_INSTALL_PREFIX)/usr/lib/libngtcp2.a:  ../common/ngtcp2.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/libssl.a: $(MAKE_ROOT)openssl.mk
@@ -343,14 +351,10 @@ $(SP_INSTALL_PREFIX)/usr/lib/libcurl-mbedtls.a: ../common/curl.mk $(SP_INSTALL_P
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=mbedtls
 
 $(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
+		$(SP_INSTALL_PREFIX)/usr/lib/libngtcp2.a \
+		$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a \
 		$(SP_INSTALL_PREFIX)/usr/include/idn2.h
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
-
-$(SP_INSTALL_PREFIX)/usr/lib/libzip-openssl.a: ../common/libzip.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a $(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a
-	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
-
-$(SP_INSTALL_PREFIX)/usr/lib/libzip-mbedtls.a: ../common/libzip.mk $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a
-	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=mbedtls
 
 $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-release.a $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-debug.a:  ../common/wamr.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a
 	$(MAKE) -f $< $(FORWARD_VARS)
@@ -358,9 +362,9 @@ $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-release.a $(SP_INSTALL_PREFIX)/usr/lib/lib
 $(SP_INSTALL_PREFIX)/usr/lib/libbacktrace.a: $(MAKE_ROOT)backtrace.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/include/idn2.h: replacements/idn2.h
+$(SP_INSTALL_PREFIX)/usr/include/idn2.h: $(MAKE_ROOT)../../include/sprt/compat/idn2.h
 	$(MKDIR) $(SP_INSTALL_PREFIX)/usr/include
-	cp -f replacements/idn2.h $@
+	cp -f $< $@
 
 $(SP_INSTALL_PREFIX)/usr/include/spirv/unified1/spirv.h: ../common/spirv-headers.mk
 	$(MAKE) -f $< $(FORWARD_VARS)

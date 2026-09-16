@@ -50,13 +50,6 @@ static void atomicStoreRelease(unsigned *ptr, unsigned value) {
 	__atomic_store_n(ptr, value, __ATOMIC_RELEASE);
 }
 
-// Ignore -1 error in debug mode - it indicated debugger interrupt
-#if DEBUG
-static constexpr int DEBUG_ERROR_THRESHOLD = -1;
-#else
-static constexpr int DEBUG_ERROR_THRESHOLD = 0;
-#endif
-
 bool URingData::checkSupport() {
 	struct __SPRT_UTSNAME_NAME buffer;
 
@@ -210,9 +203,10 @@ URingData::SqeBlock URingData::getNextSqe(uint32_t count) {
 	if (!sqe) {
 		int ret = submitSqe(flushSqe(), 0, true);
 		if (ret < 0) {
+			// submitSqe()/io_uring_enter() return -1/errno (libc convention).
 			oslog::vperror(__SPRT_LOCATION, "dispatch::URingData",
-					"getNextSqe(): io_uring_enter failed: ", ret);
-			return SqeBlock{nullptr, 0, 0, Status(getErrnoStatus(ret))};
+					"getNextSqe(): io_uring_enter failed: ", __sprt_errno);
+			return SqeBlock{nullptr, 0, 0, sprt::status::errnoToStatus(__sprt_errno)};
 		}
 		sqe = tryGetNextSqe(count);
 		if (!sqe) {
@@ -252,7 +246,7 @@ Status URingData::pushSqe(sprt::initializer_list<uint8_t> ops,
 			ptr->flags = 0;
 			cb(ptr, n);
 
-			if (linked && n < sqe.count) {
+			if (linked && n + 1 < sqe.count) {
 				ptr->flags |= IOSQE_IO_LINK;
 			}
 
@@ -277,6 +271,14 @@ Status URingData::pushSqe(sprt::initializer_list<uint8_t> ops,
 				sprt::retain(ptr,
 						reinterpret_cast<uintptr_t>(this)
 								^ reinterpret_cast<uintptr_t>(handlesToRetain[i]));
+#if DEBUG
+				auto it = _retainedHandles.find(ptr);
+				if (it != _retainedHandles.end()) {
+					++it->second;
+				} else {
+					_retainedHandles.emplace(ptr, 1);
+				}
+#endif
 			}
 		}
 	}
@@ -364,15 +366,16 @@ int URingData::submitSqe(unsigned sub, unsigned wait, bool waitAvailable, bool f
 
 int URingData::submitPending(bool force) { return submitSqe(flushSqe(), 0, false, force); }
 
-Status URingData::pushRead(int fd, uint8_t *buf, size_t bsize, uint64_t userdata) {
+Status URingData::pushRead(int fd, uint8_t *buf, size_t bsize, uint64_t userdata, uint64_t offset) {
 	return pushSqe({IORING_OP_READ}, [&](io_uring_sqe *sqe, uint32_t) {
-		updateIoSqe(sqe, fd, buf, unsigned(bsize), -1, userdata);
+		updateIoSqe(sqe, fd, buf, unsigned(bsize), offset, userdata);
 	}, URingPushFlags::Submit);
 }
 
-Status URingData::pushWrite(int fd, const uint8_t *buf, size_t bsize, uint64_t userdata) {
+Status URingData::pushWrite(int fd, const uint8_t *buf, size_t bsize, uint64_t userdata,
+		uint64_t offset) {
 	return pushSqe({IORING_OP_WRITE}, [&](io_uring_sqe *sqe, uint32_t) {
-		updateIoSqe(sqe, fd, buf, unsigned(bsize), -1, userdata);
+		updateIoSqe(sqe, fd, buf, unsigned(bsize), offset, userdata);
 	}, URingPushFlags::Submit);
 }
 
@@ -419,6 +422,26 @@ Status URingData::cancelFd(int fd, URingCancelFlags cancelFlags) {
 				| (hasFlag(cancelFlags, URingCancelFlags::Any) ? IORING_ASYNC_CANCEL_ANY : 0)
 				| (hasFlag(cancelFlags, URingCancelFlags::FixedFile) ? IORING_ASYNC_CANCEL_FD_FIXED
 																	 : 0);
+	}, URingPushFlags::Submit);
+}
+
+void URingData::dropStaleOp(uint64_t userdata) {
+	// Match by the exact user_data the kernel holds for this op (serial included). Both
+	// removal ops complete with URING_USERDATA_IGNORED so their CQEs are no-ops; the op's
+	// own terminal CQE (F_MORE cleared) is what releases the ring retain, in processEvent.
+	pushSqe({IORING_OP_ASYNC_CANCEL}, [&](io_uring_sqe *sqe, uint32_t) {
+		updateIoSqe(sqe, -1, userdata, 0, 0, URING_USERDATA_IGNORED);
+		sqe->cancel_flags = 0;
+	}, URingPushFlags::None);
+
+	// A multishot timeout is not reliably reaped by ASYNC_CANCEL; TIMEOUT_REMOVE goes
+	// straight to io_timeout_cancel. Harmless -ENOENT for non-timeout ops.
+	pushSqe({IORING_OP_TIMEOUT_REMOVE}, [&](io_uring_sqe *sqe, uint32_t) {
+		sqe->addr = userdata;
+		sqe->len = 0;
+		sqe->off = 0;
+		sqe->timeout_flags = 0;
+		sqe->user_data = URING_USERDATA_IGNORED;
 	}, URingPushFlags::Submit);
 }
 
@@ -533,11 +556,18 @@ void URingData::processEvent(int32_t res, uint32_t flags, uint64_t userdata) {
 		if (h->isResumable()) {
 			if ((h->getTimeline() & URING_USERDATA_SERIAL_MASK)
 					!= (userFlags & URING_USERDATA_SERIAL_MASK)) {
-				// messages from previous submission
-
+				// A CQE from a previous submission: its serial no longer matches the
+				// handle's current timeline.
 				if (retainedByRing && (flags & IORING_CQE_F_MORE) == 0) {
-					sprt::release(h,
-							reinterpret_cast<uintptr_t>(this) ^ reinterpret_cast<uintptr_t>(h));
+					// Terminal CQE of the old op — drop the ring retain, op is gone.
+					releaseRetainedHandle(h);
+				} else if (retainedByRing) {
+					// F_MORE still set: a retained multishot op outlived its generation and
+					// keeps firing. The disarm-time cancel never reached it (disarm targets
+					// the handle's *current* serial, not this op's). Tear it down here by its
+					// EXACT user_data, which the kernel definitely holds; its resulting
+					// terminal CQE then releases the retain via the branch above.
+					dropStaleOp(userdata);
 				}
 				return;
 			}
@@ -560,7 +590,7 @@ void URingData::processEvent(int32_t res, uint32_t flags, uint64_t userdata) {
 
 		// do not release handles, if IORING_CQE_F_MORE flags is set, only release if it's last CQE
 		if (retainedByRing && (flags & IORING_CQE_F_MORE) == 0) {
-			sprt::release(h, reinterpret_cast<uintptr_t>(this) ^ reinterpret_cast<uintptr_t>(h));
+			releaseRetainedHandle(h);
 		}
 	} else {
 		oslog::vpinfo(__SPRT_LOCATION, "dispatch::URingData", "no userdata: ", res, " ", flags);
@@ -599,20 +629,40 @@ uint32_t URingData::wait(TimeInterval ival) {
 
 	auto events = doPoll();
 	if (events == 0 && ival) {
-		while (true) {
-			_linux_timespec ts;
+		// Infinite waits block with no timeout (nullptr) — matching run(). A finite
+		// interval arms a relative timeout; setNanoTimespec(Infinite) would instead
+		// clamp to ~Max<uint32_t> microseconds (~71 min), making an "infinite" wait
+		// wake spuriously. Computed once; the timeout is re-applied on each retry.
+		_linux_timespec ts;
+		bool hasTimeout = (ival != TimeInterval::Infinite);
+		if (hasTimeout) {
 			setNanoTimespec(ts, ival);
-
-			int err = enter(0, 1, IORING_ENTER_GETEVENTS, ival ? &ts : nullptr);
+		}
+		while (true) {
+			int err = enter(0, 1, IORING_ENTER_GETEVENTS, hasTimeout ? &ts : nullptr);
 
 			events += doPoll();
 
-			if (err < DEBUG_ERROR_THRESHOLD) {
-				oslog::vperror(__SPRT_LOCATION, "dispatch::URingData", "io_uring_enter: ", -err);
-				break;
-			} else if (err >= 0) {
+			// io_uring_enter() can be interrupted by a signal *after* the kernel has
+			// already posted completions to the CQ ring, returning -1/EINTR even though
+			// doPoll() just delivered events. Returning on events > 0 regardless of err
+			// hands those completions back to the caller (the looper contract is "wait
+			// returns on any event"); retrying enter() here instead would block again on
+			// an empty ring and never return, while the caller's queued work — unblocked
+			// by the very completion we just delivered — is never dispatched (a hang).
+			if (err >= 0 || events > 0) {
 				break;
 			}
+
+			// enter() failed and nothing was reaped: retry on EINTR (signal/debugger),
+			// otherwise report and stop waiting.
+			auto status = sprt::status::errnoToStatus(__sprt_errno);
+			if (status == Status::ErrorInterrupted) {
+				continue;
+			}
+			oslog::vperror(__SPRT_LOCATION, "dispatch::URingData",
+					"io_uring_enter: ", __sprt_errno);
+			break;
 		}
 	}
 
@@ -646,9 +696,16 @@ Status URingData::run(TimeInterval ival, WakeupFlags flags, TimeInterval wakeupT
 	while (ctx.state == RunContext::Running || ctx.state == RunContext::Stopping) {
 		int err = enter(0, 1, IORING_ENTER_GETEVENTS, nullptr);
 		doPoll();
-		if (err < DEBUG_ERROR_THRESHOLD) {
-			oslog::vperror(__SPRT_LOCATION, "dispatch::URingData", "io_uring_enter: ", -err);
-			ctx.wakeupStatus = getErrnoStatus(err);
+		if (err < 0) {
+			// io_uring_enter() returns -1/errno (libc convention). EINTR is routine
+			// (signals, debugger) — retry rather than tearing down the event loop.
+			auto status = sprt::status::errnoToStatus(__sprt_errno);
+			if (status == Status::ErrorInterrupted || status == Status::ErrorAgain) {
+				continue;
+			}
+			oslog::vpwarn(__SPRT_LOCATION, "dispatch::URingData", "io_uring_enter: ", __sprt_errno,
+					" ", status);
+			ctx.wakeupStatus = status;
 			break;
 		}
 	}
@@ -659,6 +716,21 @@ Status URingData::run(TimeInterval ival, WakeupFlags flags, TimeInterval wakeupT
 			sqe->addr = reinterpret_cast<uintptr_t>(&ctx);
 			sqe->user_data = URING_USERDATA_IGNORED;
 		}, URingPushFlags::Submit);
+
+		// Reap the removal's completions NOW, while &ctx is still the active context:
+		// the cancelled timeout produces an ECANCELED CQE whose user_data is &ctx (a
+		// stack address). If it lingers past this run, a later run() whose RunContext
+		// lands at the same stack address matches it (hasContext -> stops early), and
+		// at teardown (no active context) processEvent misreads it as a Handle and
+		// dereferences freed stack memory -> SIGSEGV. Draining here consumes it as a
+		// no-op stopContext on the already-stopped ctx. Bounded so a missing CQE
+		// cannot hang the loop.
+		for (int i = 0; i < 4; ++i) {
+			enter(0, 0, IORING_ENTER_GETEVENTS, nullptr);
+			if (doPoll() == 0) {
+				break;
+			}
+		}
 	}
 
 	popContext(&ctx);
@@ -707,6 +779,36 @@ void URingData::cancel() {
 	if (_runContext) {
 		_eventFd->write(1, toInt(WakeupFlags::ContextDefault) | URING_CANCEL_FLAG);
 	}
+}
+
+void URingData::shutdown() {
+	RunContext ctx;
+	pushContext(&ctx, RunContext::Poll);
+
+	// Disarm every suspendable handle: suspend() -> disarm() cancels the handle's
+	// in-flight op and bumps its serial, so the cancellation completion is treated as a
+	// stale submission in processEvent and releases the ring retain there — without
+	// notifying the handle, so it does not re-arm.
+	_data->suspendAll(nullptr);
+
+	if (hasFlag(_uflags, URingFlags::AsyncCancelAnyAllSupported)) {
+		cancelOp(0, URingCancelFlags::All | URingCancelFlags::Any);
+	}
+
+	submitPending();
+
+	// Reap the resulting completions until the ring is quiescent. Bounded, with short
+	// blocking waits, so a completion that never arrives cannot hang teardown.
+	for (int i = 0; i < 16; ++i) {
+		_linux_timespec ts;
+		setNanoTimespec(ts, TimeInterval::milliseconds(10));
+		enter(0, 1, IORING_ENTER_GETEVENTS, &ts);
+		if (doPoll() == 0) {
+			break;
+		}
+	}
+
+	popContext(&ctx);
 }
 
 URingData::URingData(QueueRef *q, Queue::Data *data, const QueueInfo &info, SpanView<int> sigs)
@@ -770,6 +872,18 @@ URingData::URingData(QueueRef *q, Queue::Data *data, const QueueInfo &info, Span
 	int ringFd = -1;
 
 	auto cleanup = [&]() {
+		if (sq.sqes && sq.sqes != MAP_FAILED) {
+			::munmap(sq.sqes, _params.sq_entries * sizeof(io_uring_sqe));
+			sq.sqes = nullptr;
+		}
+		if (cq.ring && cq.ring != MAP_FAILED && cq.ring != sq.ring) {
+			::munmap(cq.ring, cq.ringSize);
+			cq.ring = nullptr;
+		}
+		if (sq.ring && sq.ring != MAP_FAILED) {
+			::munmap(sq.ring, sq.ringSize);
+			sq.ring = nullptr;
+		}
 		if (ringFd >= 0) {
 			::close(ringFd);
 		}
@@ -1026,9 +1140,46 @@ URingData::URingData(QueueRef *q, Queue::Data *data, const QueueInfo &info, Span
 	_ringFd = ringFd;
 }
 
+void URingData::releaseRetainedHandle(Handle *h) {
+#if DEBUG
+	auto it = _retainedHandles.find(h);
+	if (it != _retainedHandles.end()) {
+		if (--it->second == 0) {
+			_retainedHandles.erase(it);
+		}
+	}
+#endif
+	sprt::release(h, reinterpret_cast<uintptr_t>(this) ^ reinterpret_cast<uintptr_t>(h));
+}
+
 URingData::~URingData() {
+#if DEBUG
+	while (!_retainedHandles.empty()) {
+		auto it = _retainedHandles.begin();
+		auto h = it->first;
+		if (--it->second == 0) {
+			_retainedHandles.erase(it);
+		}
+		oslog::vpdebug(__SPRT_LOCATION, "URingData", "Unreleased handle: ", h);
+		sprt::release(h, reinterpret_cast<uintptr_t>(this) ^ reinterpret_cast<uintptr_t>(h));
+	}
+#endif
+
 	_signalFd = nullptr;
 	_eventFd = nullptr;
+
+	if (sq.sqes && sq.sqes != MAP_FAILED) {
+		::munmap(sq.sqes, _params.sq_entries * sizeof(io_uring_sqe));
+		sq.sqes = nullptr;
+	}
+	if (cq.ring && cq.ring != MAP_FAILED && cq.ring != sq.ring) {
+		::munmap(cq.ring, cq.ringSize);
+		cq.ring = nullptr;
+	}
+	if (sq.ring && sq.ring != MAP_FAILED) {
+		::munmap(sq.ring, sq.ringSize);
+		sq.ring = nullptr;
+	}
 
 	if (_ringFd >= 0) {
 		::close(_ringFd);

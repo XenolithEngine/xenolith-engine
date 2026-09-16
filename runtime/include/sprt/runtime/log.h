@@ -98,7 +98,10 @@ SPRT_API void vprint(LogType type, const source_location &loc, StringView tag, A
 		auto fileNameLen = __builtin_strlen(name);
 		features = LogFeatures::acquire();
 
-		// add space for SourceLocation encoding
+		// add space for SourceLocation encoding. itoa(.., nullptr, 0) returns the
+		// decimal length only (it does not write), and that length equals what
+		// strappend(uint64_t) writes below (same digit count); strappend also
+		// clamps to the remaining size, so the buffer cannot overflow.
 		bufSize += (1 + features.underline.size() + features.dim.size() + fileNameLen + 1
 				+ itoa(uint64_t(loc.line()), (char *)nullptr, 0) + features.drop.size());
 	}

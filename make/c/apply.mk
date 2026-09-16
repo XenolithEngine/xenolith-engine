@@ -39,7 +39,17 @@ BUILD_LIBS := \
 endif # ANDROID
 
 # Список полных путей к прекомпилируемым заголовкам
-TOOLKIT_PRECOMPILED_HEADERS := $(call sp_toolkit_resolve_prefix_files,$(TOOLKIT_PRECOMPILED_HEADERS))
+TOOLKIT_PRECOMPILED_HEADERS := $(sort $(call sp_toolkit_resolve_prefix_files,$(TOOLKIT_PRECOMPILED_HEADERS)))
+
+# Предкомпилированные заголовки уровня приложения (по аналогии с MODULE_*_PRECOMPILED_HEADERS).
+# Задаются в Makefile приложения через LOCAL_PRECOMPILED_HEADERS; относительные пути
+# разрешаются относительно каталога приложения (LOCAL_ROOT). Позволяют приложению держать
+# собственный PCH — например, при отладке через live reload считать заголовки движка
+# стабильными и запечь их в PCH. Потребление — через LOCAL_PRIVATE_INCLUDE_PCH.
+# Вливаются в общий список PCH, поэтому GCH для них строятся и для lib, и для exec,
+# а зависимости и счётчики прогресса подхватываются существующими правилами.
+LOCAL_PRECOMPILED_HEADERS := $(sort $(call sp_local_resolve_prefix_files,$(LOCAL_PRECOMPILED_HEADERS)))
+TOOLKIT_PRECOMPILED_HEADERS := $(sort $(TOOLKIT_PRECOMPILED_HEADERS) $(LOCAL_PRECOMPILED_HEADERS))
 
 # Список полных путей к копиям прекомпилируемых заголовков в директории сборки
 # Копирование необходимо, чтобы обеспечить приоритет включения предкомпилируемых заголовков
@@ -166,13 +176,14 @@ BUILD_CONFIG_VALUES := $(GLOBAL_CONFIG_VALUES) $(TOOLKIT_CONFIG_VALUES)
 BUILD_CONFIG_STRINGS := $(GLOBAL_CONFIG_STRINGS) $(TOOLKIT_CONFIG_STRINGS)
 
 BUILD_ALL_FLAGS := \
+	$(filter-out -fdiagnostics-color=always,\
 	$(BUILD_EXEC_CFLAGS) \
 	$(BUILD_EXEC_CXXFLAGS) \
 	$(BUILD_LIB_CFLAGS) \
 	$(BUILD_LIB_CXXFLAGS) \
 	$(BUILD_CONFIG_FLAGS) \
 	$(BUILD_CONFIG_VALUES) \
-	$(BUILD_CONFIG_STRINGS)
+	$(BUILD_CONFIG_STRINGS))
 
 # Сравниваем итоговые флаги с кешированными
 ifndef BUILD_ARCH
@@ -188,7 +199,6 @@ BUILD_ALL_FLAGS_DIFF := \
 	$(filter-out $(BUILD_ALL_FLAGS_CACHED), $(BUILD_ALL_FLAGS))
 
 # Игнорируем секцию для stappler-build
-ifndef SPBUILDTOOL
 ifneq ($(strip $(BUILD_ALL_FLAGS_CACHED)),$(strip $(BUILD_ALL_FLAGS)))
 
 $(call print_verbose,(c/apply.mk) Build flags changed: $(BUILD_ALL_FLAGS_DIFF))
@@ -202,7 +212,6 @@ $(TOOLKIT_CACHED_FLAGS):
 	@$(call rule_mkdir,$(BUILD_С_OUTDIR))
 	@echo '$(BUILD_ALL_FLAGS)' > $(TOOLKIT_CACHED_FLAGS)
 
-endif
 endif
 
 $(call print_verbose,(c/apply.mk) Build precompiled headers list)
@@ -221,10 +230,14 @@ $(foreach target,$(TOOLKIT_PRECOMPILED_HEADERS),\
 $(call print_verbose,(c/apply.mk) Build target source list)
 
 # Список полных путей к компилируемым файлам фреймворка
-TOOLKIT_SRCS := $(call sp_toolkit_source_list, $(TOOLKIT_SRCS_DIRS), $(TOOLKIT_SRCS_OBJS))
+# Сгенерированные BundleFS файлы добавляются отдельно: их ещё не существует на чистой сборке,
+# а sp_*_source_list проходит через $(realpath), который отбросил бы несуществующий путь
+TOOLKIT_SRCS := $(call sp_toolkit_source_list, $(TOOLKIT_SRCS_DIRS), $(TOOLKIT_SRCS_OBJS)) \
+	$(BUILD_EMBED_TOOLKIT_SRCS)
 
 # Список полных путей к компилируемым файлам приложения
-BUILD_SRCS := $(call sp_local_source_list,$(LOCAL_SRCS_DIRS),$(LOCAL_SRCS_OBJS))
+BUILD_SRCS := $(call sp_local_source_list,$(LOCAL_SRCS_DIRS),$(LOCAL_SRCS_OBJS)) \
+	$(BUILD_EMBED_LOCAL_SRCS)
 
 BUILD_MAIN_SRC := $(if $(LOCAL_MAIN),$(realpath $(addprefix $(LOCAL_ROOT)/,$(LOCAL_MAIN))))
 
@@ -268,9 +281,28 @@ endif
 
 $(call print_verbose,(c/apply.mk) include dependencies)
 
+# Защита от исходников, перемещённых или удалённых после предыдущей сборки.
+$(foreach pat,$(subst *.,%.,$(SP_SOURCE_FILES_PATTERN) *.mm),$(eval $(pat): ;))
+
+# Побочный эффект правила выше: встроенные правила make вида "%: %.cpp" (собрать исполняемый
+# файл X прямо из X.cpp) теперь считают, что недостающий исходник можно получить, и запускают
+# бессмысленную компиляцию.
+%: %.c
+%: %.C
+%: %.cc
+%: %.cpp
+%: %.m
+%: %.s
+%: %.S
+%: %.o
+
 # include dependencies
--include $(patsubst %.o,%.o.d,$(BUILD_EXEC_OBJS) $(BUILD_LIB_OBJS))
--include $(patsubst %.h$(OSTYPE_GCH_SUFFIX),%.h$(OSTYPE_GCH_SUFFIX).d,$(TOOLKIT_EXEC_GCH) $(TOOLKIT_LIB_GCH))
+#
+# $(wildcard ...) убирает попытки построить отсутствующие .d (на чистой сборке отсутствуют все):
+# перестраивать их нечем, а поиск неявного правила для каждого - лишняя работа make на каждой
+# сборке.
+-include $(wildcard $(patsubst %.o,%.o.d,$(BUILD_EXEC_OBJS) $(BUILD_LIB_OBJS)))
+-include $(wildcard $(patsubst %.h$(OSTYPE_GCH_SUFFIX),%.h$(OSTYPE_GCH_SUFFIX).d,$(TOOLKIT_EXEC_GCH) $(TOOLKIT_LIB_GCH)))
 
 $(call print_verbose,(c/apply.mk) prepare compilation database)
 

@@ -22,27 +22,54 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 #define _FILE_OFFSET_BITS 64
+// musl only exposes the *64 file API when _LARGEFILE64_SOURCE is set (its plain
+// symbols are already 64-bit); on glibc this is already implied by _GNU_SOURCE.
+#define _LARGEFILE64_SOURCE 1
 
 #include <sprt/c/__sprt_fcntl.h>
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_stdio.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_stdarg.h>
+#include <sprt/c/sys/__sprt_ioctl.h>
 
 #include <sprt/runtime/log.h>
 
 #if __STDC_HOSTED__ == 0
 #include "unistd.h"
 #include "fcntl.h"
+#include "sys/ioctl.h"
 #else
 
 #include <fcntl.h>
+#include <sys/ioctl.h>
+#if SPRT_EMBOX
+#include <unistd.h>
+#include <limits.h>
+
+#include "../platform/embox/dirfd.h"
+#endif
+
+// musl diverges from the glibc/bionic ABI for a couple of O_* constants checked
+// below (Android is bionic and SPRT_ANDROID, not SPRT_LINUX, so it keeps the
+// strict checks). <fcntl.h> has already pulled in <features.h> here.
+#if SPRT_LINUX && !defined(__GLIBC__)
+#define __SPRT_FCNTL_MUSL 1
+#else
+#define __SPRT_FCNTL_MUSL 0
+#endif
 
 static_assert(SEEK_SET == __SPRT_SEEK_SET);
 static_assert(SEEK_CUR == __SPRT_SEEK_CUR);
 static_assert(SEEK_END == __SPRT_SEEK_END);
 
+#if __SPRT_FCNTL_MUSL
+// musl widens O_ACCMODE to (03 | O_SEARCH); the SPRT ABI keeps the classic 03
+// access-mode mask and the wrapper never masks native flags with O_ACCMODE.
+static_assert((O_ACCMODE & 03) == __SPRT_O_ACCMODE);
+#else
 static_assert(O_ACCMODE == __SPRT_O_ACCMODE);
+#endif
 static_assert(O_RDONLY == __SPRT_O_RDONLY);
 static_assert(O_WRONLY == __SPRT_O_WRONLY);
 static_assert(O_RDWR == __SPRT_O_RDWR);
@@ -53,7 +80,9 @@ static_assert(O_NOCTTY == __SPRT_O_NOCTTY);
 static_assert(O_TRUNC == __SPRT_O_TRUNC);
 static_assert(O_APPEND == __SPRT_O_APPEND);
 static_assert(O_NONBLOCK == __SPRT_O_NONBLOCK);
+#if !SPRT_EMBOX || defined(O_DSYNC) // Embox has no O_DSYNC (sprt answers with O_SYNC)
 static_assert(O_DSYNC == __SPRT_O_DSYNC);
+#endif
 static_assert(O_SYNC == __SPRT_O_SYNC);
 static_assert(O_DIRECTORY == __SPRT_O_DIRECTORY);
 static_assert(O_NOFOLLOW == __SPRT_O_NOFOLLOW);
@@ -67,7 +96,9 @@ static_assert(O_EXEC == __SPRT_O_EXEC);
 static_assert(O_SEARCH == __SPRT_O_SEARCH);
 #endif
 
+#if !SPRT_EMBOX || defined(O_ASYNC) // Embox has no O_ASYNC
 static_assert(O_ASYNC == __SPRT_O_ASYNC);
+#endif
 static_assert(O_NDELAY == __SPRT_O_NDELAY);
 
 #ifdef __SPRT_O_RSYNC
@@ -79,7 +110,13 @@ static_assert(O_DIRECT == __SPRT_O_DIRECT);
 #endif
 
 #ifdef __SPRT_O_LARGEFILE
+#if __SPRT_FCNTL_MUSL
+// musl defines O_LARGEFILE (0100000) even on 64-bit archs and ORs it into
+// open() itself, so the SPRT ABI deliberately keeps __SPRT_O_LARGEFILE == 0.
+static_assert(__SPRT_O_LARGEFILE == 0);
+#else
 static_assert(O_LARGEFILE == __SPRT_O_LARGEFILE);
+#endif
 #endif
 
 #ifdef __SPRT_O_NOATIME
@@ -101,13 +138,22 @@ static_assert(F_SETFD == __SPRT_F_SETFD);
 static_assert(F_GETFL == __SPRT_F_GETFL);
 static_assert(F_SETFL == __SPRT_F_SETFL);
 
+#if !SPRT_EMBOX || defined(F_SETOWN) // Embox has no socket-owner commands
 static_assert(F_SETOWN == __SPRT_F_SETOWN);
 static_assert(F_GETOWN == __SPRT_F_GETOWN);
+#endif
 
 static_assert(F_DUPFD_CLOEXEC == __SPRT_F_DUPFD_CLOEXEC);
+
+// Open-file-description locks are a Linux extension; NuttX has none, and sprt
+// leaves __SPRT_F_OFD_* undefined there (include_libc/fcntl.h keys the family off
+// the same guard). Two-sided on purpose: a libc that grows F_OFD_GETLK while sprt
+// still lacks it - or the reverse - must fail the build, not skip the check.
+#if defined(__SPRT_F_OFD_GETLK) || defined(F_OFD_GETLK)
 static_assert(F_OFD_GETLK == __SPRT_F_OFD_GETLK);
 static_assert(F_OFD_SETLK == __SPRT_F_OFD_SETLK);
 static_assert(F_OFD_SETLKW == __SPRT_F_OFD_SETLKW);
+#endif
 
 #ifdef F_SETPIPE_SZ
 static_assert(F_SETPIPE_SZ == __SPRT_F_SETPIPE_SZ);
@@ -185,29 +231,68 @@ __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 	__SPRT_ID(mode_t) __mode = 0;
 
 	if ((__flags & __SPRT_O_CREAT)
-#if !defined(SPRT_MACOS)
+// Keyed off the constant rather than a platform name: __SPRT_O_TMPFILE is left
+// undefined on every platform whose libc has no O_TMPFILE (Apple, Embox), and
+// include_libc/fcntl.h keys its own inline open() the same way.
+#ifdef __SPRT_O_TMPFILE
 			|| (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE
 #endif
 	) {
 		__sprt_va_list ap;
 		__sprt_va_start(ap, __flags);
-		__mode = __sprt_va_arg(ap, __SPRT_ID(mode_t));
+		__mode = __SPRT_VA_ARG_MODE_T(ap);
 		__sprt_va_end(ap);
 	}
 
 #if SPRT_ANDROID
 	return platform::_open64(path, __flags, __mode);
-#elif SPRT_MACOS
+#elif SPRT_EMBOX
+	// O_DIRECTORY must never reach Embox's open(): it opens with
+	// `assert(~__oflag & O_DIRECTORY)` (compat/posix/fs/oldfs/open_oldfs.c) and
+	// panics the kernel. Directories are handled by the shim instead.
+	if (__flags & O_DIRECTORY) {
+		return platform::openDirFd(path);
+	}
+	return open(path, __flags, __mode);
+#elif SPRT_APPLE || SPRT_HOSTED_RTOS
+	// NuttX has no LFS open64 — plain open is the only spelling.
 	return open(path, __flags, __mode);
 #else
 	return open64(path, __flags, __mode);
 #endif
 }
 
+/*
+	Device control.
+
+	Variadic in the public interface, but the umbrella inline in <sys/ioctl.h> has
+	already collapsed the variadic argument to a single intptr_t by the time it calls
+	in here - that is the whole point of routing through __sprt_*, since a va_list
+	cannot cross the ABI boundary. So this takes one intptr_t and hands it straight to
+	the platform, which is what every request expects: a flags word or a pointer to a
+	request-specific struct, at pointer width so neither is truncated on LLP64.
+
+	__sprt_fcntl is the same shape but lives in core/runtime_core_defaults.cpp, next
+	to the other descriptor-level defaults.
+
+	The request parameter is int on the SPRT ABI. glibc declares ioctl's as unsigned
+	long and musl/bionic/Darwin as int; the value is a bit pattern in every case and
+	the conversion is value-preserving for every defined request.
+*/
+__SPRT_C_FUNC int __SPRT_ID(ioctl)(int __fd, int __cmd, ...) __SPRT_NOEXCEPT {
+	__SPRT_ID(intptr_t) arg;
+	__sprt_va_list ap;
+	__sprt_va_start(ap, __cmd);
+	arg = __sprt_va_arg(ap, __SPRT_ID(intptr_t));
+	__sprt_va_end(ap);
+
+	return ::ioctl(__fd, __cmd, arg);
+}
+
 __SPRT_C_FUNC int __SPRT_ID(creat)(const char *path, __SPRT_ID(mode_t) __mode) {
 #if SPRT_ANDROID
 	return platform::_creat64(path, __mode);
-#elif SPRT_MACOS
+#elif SPRT_APPLE || SPRT_HOSTED_RTOS
 	return creat(path, __mode);
 #else
 	return creat64(path, __mode);
@@ -218,20 +303,35 @@ __SPRT_C_FUNC int __SPRT_ID(openat)(int __dir_fd, const char *path, int __flags,
 	__SPRT_ID(mode_t) __mode = 0;
 
 	if ((__flags & __SPRT_O_CREAT)
-#if !defined(SPRT_MACOS)
+// Keyed off the constant rather than a platform name: __SPRT_O_TMPFILE is left
+// undefined on every platform whose libc has no O_TMPFILE (Apple, Embox), and
+// include_libc/fcntl.h keys its own inline open() the same way.
+#ifdef __SPRT_O_TMPFILE
 			|| (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE
 #endif
 	) {
 		__sprt_va_list ap;
 		__sprt_va_start(ap, __flags);
-		__mode = __sprt_va_arg(ap, __SPRT_ID(mode_t));
+		__mode = __SPRT_VA_ARG_MODE_T(ap);
 		__sprt_va_end(ap);
 	}
 
 
 #if SPRT_ANDROID
 	return platform::_openat64(__dir_fd, path, __flags, __mode);
-#elif SPRT_MACOS
+#elif SPRT_EMBOX
+	// Embox's own openat() drops the descriptor and calls open(path), so a
+	// relative path silently resolved against the cwd. Resolve it here instead.
+	char buffer[PATH_MAX];
+	auto target = platform::resolveAtPath(__dir_fd, path, buffer, sizeof(buffer));
+	if (!target) {
+		return -1;
+	}
+	if (__flags & O_DIRECTORY) {
+		return platform::openDirFd(target);
+	}
+	return open(target, __flags, __mode);
+#elif SPRT_APPLE || SPRT_HOSTED_RTOS
 	return openat(__dir_fd, path, __flags, __mode);
 #else
 	return openat64(__dir_fd, path, __flags, __mode);

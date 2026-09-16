@@ -32,7 +32,7 @@ STAGE0_LIBCXX := $(STAGE0_SYSROOT)/lib/libc++.a
 STAGE0_LIBCRT := $(STAGE0_SYSROOT)/lib/linux/liborc_rt-$(SP_ARCH).a
 STAGE0_CLANG_CC := $(STAGE0_SYSROOT)/bin/clang
 STAGE0_CLANG_CXX := $(STAGE0_SYSROOT)/bin/clang++
-STAGE0_CLANG_RTLIB := $(STAGE0_SYSROOT)/lib/clang/21/lib/$(SP_ARCH_CLANG)/libclang_rt.builtins.a
+STAGE0_CLANG_RTLIB := $(STAGE0_SYSROOT)/lib/clang/$(SP_LLVM_VER)/lib/$(SP_ARCH_CLANG)/libclang_rt.builtins.a
 
 STAGE0_CMAKE_GCC_TOOLCHAIN := $(STAGE0_SYSROOT)/gcc.cmake
 STAGE0_CMAKE_CLANG_TOOLCHAIN := $(STAGE0_SYSROOT)/clang.cmake
@@ -47,14 +47,14 @@ $(STAGE0_SYSROOT)/sysroot: $(LINUX_HEADERS_DIR)
 	cd $(STAGE0_SYSROOT)/usr; ln -s ../lib lib
 	touch $(STAGE0_SYSROOT)/sysroot
 
-$(STAGE0_GCC_MAKE): $(STAGE0_SYSROOT)/sysroot $(MAKE_SRC_DIR)
+$(STAGE0_GCC_MAKE): $(STAGE0_SYSROOT)/sysroot $(MAKE_SRC_DIR) | download
 	rm -rf build/stage0-make
 	mkdir -p build/stage0-make
 	cd build/stage0-make; $(abspath $(MAKE_SRC_DIR))/configure --prefix $(abspath $(STAGE0_SYSROOT))
 	make -C build/stage0-make $(SP_NJOBS)
 	make -C build/stage0-make install
 
-$(STAGE0_GCC_GLIBC): $(STAGE0_GCC_MAKE) $(GLIBC_MIN_SRC_DIR)
+$(STAGE0_GCC_GLIBC): $(STAGE0_GCC_MAKE) $(GLIBC_MIN_SRC_DIR) | download
 	rm -rf build/stage0-glibc
 	mkdir -p build/stage0-glibc
 	cd build/stage0-glibc; $(abspath $(GLIBC_MIN_SRC_DIR))/configure \
@@ -76,7 +76,7 @@ STAGE0_GCC_CC_CFLAGS := \
 	-I$(abspath $(GCC_SRC_DIR))/include \
 	-I$(abspath $(STAGE0_SYSROOT))/include
 
-$(STAGE0_GCC_CC): $(STAGE0_GCC_GLIBC)
+$(STAGE0_GCC_CC): $(STAGE0_GCC_GLIBC) | download
 	rm -rf build/stage0-gcc
 	mkdir -p build/stage0-gcc
 	ln -f -s ../gmp  $(abspath $(GCC_SRC_DIR))/gmp

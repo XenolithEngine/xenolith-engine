@@ -59,7 +59,7 @@ typedef __INT16_TYPE__ __SPRT_ID(int16_t);
 #ifdef __INT16_C_SUFFIX__
 #define __INT16_C_SUFFIX __INT16_C_SUFFIX__
 #else
-#error "Compiler-assisted __INT16_FMTx__ is not defined"
+#error "Compiler-assisted __INT16_C_SUFFIX__ is not defined"
 #endif
 
 #else // __INT16_TYPE__

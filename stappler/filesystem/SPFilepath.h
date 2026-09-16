@@ -78,7 +78,7 @@ template <typename Interface>
 SP_PUBLIC auto merge(SpanView<StringView>) -> typename Interface::StringType;
 
 template <typename Interface>
-SP_PUBLIC auto merge(stappler::memory::StandartInterface::StringType &&str) ->
+SP_PUBLIC auto merge(stappler::mem_std::Interface::StringType &&str) ->
 		typename Interface::StringType;
 
 template <typename Interface>

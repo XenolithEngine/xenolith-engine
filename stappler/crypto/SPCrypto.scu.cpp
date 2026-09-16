@@ -40,9 +40,9 @@ struct BackendCtx {
 	void (*finalize)(BackendCtx &) = nullptr;
 
 	bool (*encryptBlock)(const BlockKey256 &key, BytesView d,
-			const Callback<void(BytesView)> &cb) = nullptr;
+			const Callback<void(BytesView)> &cb, BytesView iv) = nullptr;
 	bool (*decryptBlock)(const BlockKey256 &key, BytesView d,
-			const Callback<void(BytesView)> &cb) = nullptr;
+			const Callback<void(BytesView)> &cb, BytesView iv) = nullptr;
 
 	bool (*hash256)(Sha256::Buf &, const Callback<void(const HashCoderCallback &upd)> &cb,
 			HashFunction func);
@@ -242,47 +242,76 @@ static SignAlgorithm getSignForBlockCipher(const PrivateKey &key) {
 	return SignAlgorithm::RSA_SHA512;
 }
 
-bool encryptBlock(const BlockKey256 &key, BytesView data, const Callback<void(BytesView)> &cb) {
+bool encryptBlock(const BlockKey256 &key, BytesView data, const Callback<void(BytesView)> &cb,
+		BytesView iv) {
+	if (!key.valid) {
+		return false; // refuse a key whose derivation failed (CRYPTO-10)
+	}
 	auto b = findBackendForBlock(key.cipher);
-	return b->encryptBlock(key, data, cb);
+	if (!b || !b->encryptBlock) {
+		return false;
+	}
+	return b->encryptBlock(key, data, cb, iv);
 }
 
 bool encryptBlock(Backend b, const BlockKey256 &key, BytesView data,
-		const Callback<void(BytesView)> &cb) {
+		const Callback<void(BytesView)> &cb, BytesView iv) {
+	if (!key.valid) {
+		return false;
+	}
 	auto backend = BackendCtx::get(b);
 	if (!backend || !backend->encryptBlock) {
 		return false;
 	}
-	return backend->encryptBlock(key, data, cb);
+	return backend->encryptBlock(key, data, cb, iv);
 }
 
-bool decryptBlock(const BlockKey256 &key, BytesView data, const Callback<void(BytesView)> &cb) {
+bool decryptBlock(const BlockKey256 &key, BytesView data, const Callback<void(BytesView)> &cb,
+		BytesView iv) {
+	if (!key.valid) {
+		return false;
+	}
 	auto b = findBackendForBlock(key.cipher);
-	return b->decryptBlock(key, data, cb);
+	if (!b || !b->decryptBlock) {
+		return false;
+	}
+	return b->decryptBlock(key, data, cb, iv);
 }
 
 bool decryptBlock(Backend b, const BlockKey256 &key, BytesView data,
-		const Callback<void(BytesView)> &cb) {
+		const Callback<void(BytesView)> &cb, BytesView iv) {
+	if (!key.valid) {
+		return false;
+	}
 	auto backend = BackendCtx::get(b);
 	if (!backend || !backend->decryptBlock) {
 		return false;
 	}
-	return backend->decryptBlock(key, data, cb);
+	return backend->decryptBlock(key, data, cb, iv);
 }
 
 BlockKey256 makeBlockKey(Backend b, BytesView pkey, BytesView hash, BlockCipher c,
 		uint32_t version) {
+	if (version == 0) {
+		// version 0 is the intentional public-data / shared-secret derived key
+		return BlockKey256{0, c, string::Sha256().update(hash).update(pkey).final(), true};
+	}
+
 	crypto::PrivateKey pk(b, pkey);
-	if (pk && version > 0) {
+	if (pk) {
+		// `pkey` is a real private key: derive the key from a signature. If signing
+		// fails, ret.valid stays false and ret.version is 0 — do NOT silently fall
+		// back to Sha256(hash || pkey), which would be a weaker, downgraded key
+		// (CRYPTO-10). encryptBlock/decryptBlock refuse an invalid key.
 		auto ret = makeBlockKey(pk, hash, c, version);
-		if (ret.version == 0) {
-			ret.data = string::Sha256().update(hash).update(pkey).final();
-		}
 		ret.cipher = c;
 		return ret;
-	} else {
-		return BlockKey256{0, c, string::Sha256().update(hash).update(pkey).final()};
 	}
+
+	// `pkey` is not a private key — treat it as a shared secret and derive the key
+	// symmetrically. The secret is not public, so this is a valid KDF (this is the
+	// path the secret-based AesToken relies on).
+	return BlockKey256{0, c, string::Sha256().update(hash).update(pkey).final(), true};
 }
 
 BlockKey256 makeBlockKey(BytesView pkey, BytesView hash, BlockCipher b, uint32_t version) {
@@ -311,12 +340,14 @@ BlockKey256 makeBlockKey(const PrivateKey &pkey, BytesView hash, BlockCipher b, 
 			pkey.sign([&](BytesView data) {
 				ret.version = version;
 				ret.data = hash256(pkey.getBackend(), CoderSource(data), HashFunction::SHA_2);
+				ret.valid = true;
 			}, hash, getSignForBlockCipher(pkey));
 			break;
 		case BlockCipher::Gost3412_2015_CTR_ACPKM:
 			pkey.fingerprint([&](BytesView data) {
 				ret.version = version;
 				ret.data = Gost3411_256::hmac(hash, data);
+				ret.valid = true;
 			}, hash);
 			break;
 		}
@@ -326,8 +357,10 @@ BlockKey256 makeBlockKey(const PrivateKey &pkey, BytesView hash, BlockCipher b, 
 			ret.data = hash256(pkey.getBackend(), CoderSource(BytesView(data, s)),
 					HashFunction::SHA_2);
 			ret.version = version;
+			ret.valid = true;
 		}, hash, getSignForBlockCipher(pkey))) {
 			ret.version = 0;
+			ret.valid = false;
 		}
 	} else {
 		ret.version = 0;
@@ -547,6 +580,9 @@ PublicKey PrivateKey::exportPublic() const { return PublicKey(*this); }
 
 Backend PrivateKey::getBackend() const {
 	auto backend = static_cast<BackendCtx *>(_key.backendCtx);
+	if (!backend) {
+		return Backend::Default;
+	}
 	return backend->name;
 }
 
@@ -807,6 +843,9 @@ bool PublicKey::importOpenSSH(StringView r) {
 
 Backend PublicKey::getBackend() const {
 	auto backend = static_cast<BackendCtx *>(_key.backendCtx);
+	if (!backend) {
+		return Backend::Default;
+	}
 	return backend->name;
 }
 
@@ -862,7 +901,8 @@ bool PublicKey::encrypt(const Callback<void(BytesView)> &cb, const CoderSource &
 	return false;
 }
 
-static uint8_t *writeRSAKey(uint8_t *buf, BytesViewNetwork mod, BytesViewNetwork exp) {
+static uint8_t *writeRSAKey(uint8_t *buf, uint8_t *bufEnd, BytesViewNetwork mod,
+		BytesViewNetwork exp) {
 	size_t modSize = 1;
 	size_t expSize = 1;
 
@@ -897,6 +937,13 @@ static uint8_t *writeRSAKey(uint8_t *buf, BytesViewNetwork mod, BytesViewNetwork
 
 	modSize += readSize(mod.size()) + mod.size();
 	expSize += readSize(exp.size()) + exp.size();
+
+	// total output = SEQUENCE tag (1) + its length field + the two INTEGER TLVs;
+	// bail before writing anything if it would overflow the caller's buffer
+	size_t total = 1 + size_t(readSize(modSize + expSize)) + modSize + expSize;
+	if (!buf || !bufEnd || size_t(bufEnd - buf) < total) {
+		return nullptr;
+	}
 
 	*buf = uint8_t(0x30);
 	++buf;

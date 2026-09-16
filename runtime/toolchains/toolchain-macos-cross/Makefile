@@ -51,8 +51,9 @@ $(ZLIB_DIR): $(ZLIB_TARBALL)
 	touch $(ZLIB_DIR)
 
 
-LLVM_MAJOR := 21
-LLVM_V := $(LLVM_MAJOR).1.8
+include ../common/utils/llvm-version.mk
+LLVM_MAJOR := $(SP_LLVM_VER)
+LLVM_V := $(SP_LLVM_V)
 LLVM_VER := llvm-project-$(LLVM_V).src
 LLVM_DIR := $(LLVM_VER)
 LLVM_TARBALL := $(addsuffix .tar.xz,$(LLVM_VER))

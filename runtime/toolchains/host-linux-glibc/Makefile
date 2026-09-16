@@ -18,14 +18,18 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+GIT_TAG ?= $(shell git describe --tags --abbrev=0)
+
 LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
 SP_NJOBS ?= -j16
-SP_ARCH ?= x86_64
-SP_ARCH_LD ?= x86-64
-SP_ARCH_CLANG ?= $(SP_ARCH)-unknown-linux-gnu
-SP_ARCH_LLVM ?= X86
-SP_LLVM_VER := 21
+unexport SP_ARCH ?= x86_64
+unexport SP_ARCH_LD ?= x86-64
+unexport SP_ARCH_CLANG ?= $(SP_ARCH)-unknown-linux-gnu
+unexport SP_ARCH_LLVM ?= X86
+
+include ../common/utils/llvm-version.mk
+unexport SP_LLVM_VER
 
 include glibc.mk
 
@@ -47,10 +51,13 @@ include stage0.mk
 include stage1.mk
 include stage2.mk
 
-OUT_SYSROOT ?= ../hosts/$(SP_ARCH_CLANG)
+unexport OUT_SYSROOT ?= ../hosts/$(SP_ARCH_CLANG)
+
+unexport ROOT_DIR := $(abspath ..)
+unexport TARGET_SYSROOT := $(ROOT_DIR)/targets/$(SP_ARCH_CLANG)
 
 OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
-	clang-21 \
+	clang-$(SP_LLVM_VER) \
 	clang-format \
 	clang-installapi \
 	diagtool \
@@ -77,6 +84,7 @@ OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
 	llvm-pdbutil \
 	llvm-rc \
 	llvm-readobj \
+	llvm-readtapi \
 	llvm-size \
 	llvm-strings \
 	llvm-symbolizer \
@@ -96,11 +104,11 @@ OUT_LIBS := $(addprefix $(OUT_SYSROOT)/lib/,\
 	libc++.so.1.0 \
 	libc++abi.so.1.0 \
 	libunwind.so.1.0 \
-	libLTO.so.21.1 \
-	liblldb.so.21.1.8 \
-	liblldbIntelFeatures.so.21.1 \
-	libLLVM.so.21.1 \
-	libRemarks.so.21.1)
+	libLTO.so.$(SP_LLVM_SOVER) \
+	liblldb.so.$(SP_LLVM_V) \
+	liblldbIntelFeatures.so.$(SP_LLVM_SOVER) \
+	libLLVM.so.$(SP_LLVM_SOVER) \
+	libRemarks.so.$(SP_LLVM_SOVER))
 
 OUT_INCLUDES := $(addprefix $(OUT_SYSROOT)/include/,\
 	clang \
@@ -157,22 +165,35 @@ $(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'HOST_LIB_CXXFLAGS :=' >> $@
 	@echo 'HOST_LIB_LDFLAGS :=' >> $@
 
-$(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
+$(TARGET_SYSROOT)/target.mk:
+	$(MAKE) -C $(ROOT_DIR) target-$(SP_ARCH_CLANG) HOST_REQUIRED=0
+
+$(OUT_SYSROOT)/bin/xlmake: $(TARGET_SYSROOT)/target.mk $(OUT_SYSROOT)/host.mk
+	rm -rf build/xlmake
+	$(MAKE) $(SP_NJOBS) -C $(ROOT_DIR)/../../utils/xlmake install \
+		STAPPLER_HOST_FILE=$(OUT_SYSROOT)/host.mk \
+		STAPPLER_TARGET_FILE=$(TARGET_SYSROOT)/target.mk \
+		STAPPLER_TARGET=$(SP_ARCH_CLANG) \
+		LOCAL_INSTALL_DIR=$(abspath $(OUT_SYSROOT)/bin) \
+		LOCAL_OUTDIR=$(abspath build/xlmake) \
+		RELEASE=1
+
+$(OUT_SYSROOT)/release: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++abi.so.1.0 libc++abi.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++abi.so.1.0 libc++abi.so.1
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++.so.1.0 libc++.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++.so.1.0 libc++.so.1
 	cd $(OUT_SYSROOT)/lib; ln -fs libunwind.so.1.0 libunwind.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libunwind.so.1.0 libunwind.so.1
-	cd $(OUT_SYSROOT)/lib; ln -fs liblldbIntelFeatures.so.21.1 liblldbIntelFeatures.so
-	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.21.1 liblldb.so
-	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.21.1.8 liblldb.so.21.1
-	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.21.1 libLLVM-21.so
-	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.21.1 libLLVM.so
-	cd $(OUT_SYSROOT)/lib; ln -fs libLTO.so.21.1 libLTO.so
-	cd $(OUT_SYSROOT)/lib; ln -fs libRemarks.so.21.1 libRemarks.so
+	cd $(OUT_SYSROOT)/lib; ln -fs liblldbIntelFeatures.so.$(SP_LLVM_SOVER) liblldbIntelFeatures.so
+	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.$(SP_LLVM_SOVER) liblldb.so
+	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.$(SP_LLVM_V) liblldb.so.$(SP_LLVM_SOVER)
+	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.$(SP_LLVM_SOVER) libLLVM-$(SP_LLVM_VER).so
+	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.$(SP_LLVM_SOVER) libLLVM.so
+	cd $(OUT_SYSROOT)/lib; ln -fs libLTO.so.$(SP_LLVM_SOVER) libLTO.so
+	cd $(OUT_SYSROOT)/lib; ln -fs libRemarks.so.$(SP_LLVM_SOVER) libRemarks.so
 
-	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 clang
+	cd $(OUT_SYSROOT)/bin; ln -fs clang-$(SP_LLVM_VER) clang
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang++
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang-cl
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang-cpp
@@ -193,15 +214,16 @@ $(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_
 	cd $(OUT_SYSROOT)/bin; ln -fs llvm-rc llvm-windres
 	cd $(OUT_SYSROOT)/bin; ln -fs lld wasm-ld
 
-	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 cc
-	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 c++
+	cd $(OUT_SYSROOT)/bin; ln -fs clang-$(SP_LLVM_VER) cc
+	cd $(OUT_SYSROOT)/bin; ln -fs clang-$(SP_LLVM_VER) c++
 	cd $(OUT_SYSROOT)/bin; ln -fs llvm-ar ar
 
+	echo "$(GIT_TAG)" > $@
 	touch $@
 
-download: $(LINUX_HEADERS_DIR)
+download: $(LINUX_HEADERS_DIR) src/gmp src/mpfr src/mpc src/isl src/gettext
 
-out: $(OUT_SYSROOT)/sysroot
+out: $(OUT_SYSROOT)/release $(OUT_SYSROOT)/bin/xlmake
 
 all: stage0 stage1 stage2
 

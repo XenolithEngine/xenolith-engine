@@ -31,21 +31,27 @@ BUILD_ANDROID_ARGS := \
 	APP_BUILD_SCRIPT=$(LOCAL_ANDROID_MK) \
 	NDK_OUT=$(BUILD_С_OUTDIR)/obj \
 	NDK_LIBS_OUT=$(BUILD_С_OUTDIR)/libs \
-	NDK_APPLICATION_MK:=$(LOCAL_APPLICATION_MK) \
+	NDK_APPLICATION_MK:=$(ANDROID_EXPORT_PATH)/Application.mk \
 	APP_PLATFORM=$(LOCAL_ANDROID_PLATFORM)
 
 ifndef RELEASE
 BUILD_ANDROID_ARGS += NDK_DEBUG=1
 endif
 
+NDK_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+
 android-export: $(BUILD_SHADERS_EMBEDDED) $(TOOLKIT_SHADERS_EMBEDDED) \
 	$(BUILD_LIB_CONFIG) $(BUILD_EXEC_CONFIG) $(BUILD_EXEC_CONFIG) $(BUILD_APP_CONFIG_SOURCE)
 
 all: android-export $(BUILD_COMPILATION_DATABASE) $(BUILD_SHADERS_EMBEDDED) $(TOOLKIT_SHADERS_EMBEDDED)
-	$(NDK)/ndk-build $(BUILD_ANDROID_ARGS) $(LOCAL_ANDROID_TARGET) --no-print-directory
+	MAKEFLAGS= MFLAGS= $(NDK)/ndk-build -j$(NDK_JOBS) $(BUILD_ANDROID_ARGS) $(LOCAL_ANDROID_TARGET) --no-print-directory
+
+# Use line-buffer for xlmake
+all:.TARGET_BUFFER := line
 
 clean_local:
-	$(GLOBAL_RM) -r $(BUILD_С_OUTDIR) $(BUILD_SHADERS_OUTDIR)
+	$(call rule_rm,$(BUILD_С_OUTDIR))
+	$(call rule_rm,$(BUILD_SHADERS_OUTDIR))
 
 clean: clean_local
 .PHONY: clean_local clean .prebuild_local all static

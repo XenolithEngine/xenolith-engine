@@ -1,0 +1,7 @@
+--- !tapi-tbd
+tbd-version:     4
+targets:         [ x86_64-macos, arm64-macos ]
+install-name:    '/System/Library/Frameworks/Metal.framework/Versions/A/Metal'
+current-version: 0
+compatibility-version: 0
+...

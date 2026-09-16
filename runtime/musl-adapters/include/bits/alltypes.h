@@ -8,6 +8,7 @@
 #include <sprt/c/__sprt_stdint.h>
 #include <sprt/c/__sprt_float.h>
 #include <sprt/c/bits/__sprt_ssize_t.h>
+#include <sprt/c/bits/__sprt_ptrdiff_t.h>
 #include <sprt/c/bits/pthread.h>
 #include <sprt/c/cross/__sprt_signal.h>
 
@@ -33,13 +34,24 @@ typedef __SPRT_ID(clock_t) clock_t;
 typedef __SPRT_ID(time_t) time_t;
 typedef __SPRT_ID(timer_t) timer_t;
 typedef __SPRT_ID(size_t) size_t;
+typedef __SPRT_ID(ptrdiff_t) ptrdiff_t;
 typedef __SPRT_ID(off_t) off_t;
 typedef __SPRT_ID(ssize_t) ssize_t;
+// regoff_t: musl's <regex.h> pulls it from here via __NEED_regoff_t. Same
+// underlying type as ssize_t (pointer-sized signed, musl's _Addr).
+typedef __SPRT_ID(ssize_t) regoff_t;
 typedef __SPRT_ID(locale_t) locale_t;
 typedef __SPRT_ID(uid_t) uid_t;
 typedef __SPRT_ID(pid_t) pid_t;
 typedef __SPRT_ID(gid_t) gid_t;
 typedef __SPRT_ID(mode_t) mode_t;
+// Filesystem types pulled by <sys/stat.h> + <dirent.h> (musl's bits/stat.h /
+// bits/dirent.h), needed once glob.c joined the regex adapter SCU.
+typedef __SPRT_ID(dev_t) dev_t;
+typedef __SPRT_ID(ino_t) ino_t;
+typedef __SPRT_ID(nlink_t) nlink_t;
+typedef __SPRT_ID(blksize_t) blksize_t;
+typedef __SPRT_ID(blkcnt_t) blkcnt_t;
 
 typedef __SPRT_ID(pthread_t) pthread_t;
 typedef __SPRT_ID(pthread_once_t) pthread_once_t;
@@ -65,9 +77,12 @@ typedef __SPRT_ID(uint16_t) wchar_t;
 typedef __SPRT_ID(uint16_t) wint_t;
 typedef __SPRT_ID(uint16_t) wctype_t;
 #else
-// Musl expects 32-bit wchar_t
+// Musl expects 32-bit wchar_t and wint_t (upstream alltypes.h.in: `unsigned wint_t`).
+// wint_t must stay 32-bit on LP64 too: sprt's own <wctype.h> functions take a 32-bit
+// wint_t, and wasm64 links by exact signature, so a 64-bit one here turns every
+// isw*/tow* call between musl and sprt into a trapping stub.
 typedef __SPRT_ID(uint32_t) wchar_t;
-typedef unsigned long wint_t;
+typedef unsigned int wint_t;
 typedef unsigned long wctype_t;
 #endif
 #endif

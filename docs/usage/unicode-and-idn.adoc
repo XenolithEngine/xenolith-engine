@@ -1,0 +1,431 @@
+# Working with Unicode text and domain names
+
+A guide to `sprt::unicode` and `sprt::idn`: changing case, comparing and sorting
+text, finding word boundaries, and validating internationalized domain names.
+
+Everything here is computed from tables compiled into the binary. There is no
+system library on any path, no locale read from the environment, and no
+initialization to perform — **every target and every machine gives the same
+answer**. Unicode 17.0.0 throughout.
+
+    #include <sprt/runtime/stringview.h>   // sprt::unicode
+    #include <sprt/runtime/utils/idn.h>    // sprt::idn
+
+Related: [api/runtime/unicode.adoc](../api/runtime/unicode.adoc) is the reference
+for encoding and transcoding;
+[design/unicode-and-idn.adoc](../design/unicode-and-idn.adoc) explains how it
+works inside; [codestyle/core/unicode-and-text.adoc](codestyle/core/unicode-and-text.adoc)
+is the rule set for writing this kind of code.
+
+---
+
+## Pick the operation
+
+| You want to… | Call |
+|---|---|
+| compare two strings for a **key, index, protocol or test** | `unicode::compareCodepoints(a, b)` |
+| compare **case-insensitively** | `unicode::compareFolded(a, b)` |
+| **sort a list a person will read** | `unicode::collate(a, b, locale)` |
+| sort a large list, or store an order in an index | `unicode::sortKey(cb, s, locale)` then `memcmp` |
+| uppercase / lowercase / titlecase a string | `unicode::toupper(cb, s)` etc. |
+| change the case of a single character | `unicode::toupper(c)` etc. |
+| iterate code points of UTF-8 | `StringViewUtf8` |
+| convert between UTF-8 / UTF-16 / UTF-32 | `unicode::toUtf8` / `toUtf16` / `toUtf32` |
+| turn a domain name into its `xn--` form | `idn::to_ascii(cb, name)` |
+| turn `xn--` back into readable text | `idn::to_unicode(cb, name)` |
+| check a TLD against the IANA list | `idn::is_known_tld(tld)` |
+
+### The three comparisons, and why it matters which
+
+This is the single most consequential choice in this API, so it is first.
+
+|  | `compareCodepoints` | `compareFolded` | `collate` |
+|---|---|---|---|
+| Orders by | code point | code point after full case folding | the reading order of a language |
+| Depends on a locale | no | no | **yes** |
+| Same answer in every build | **yes** | **yes** | no — see `hasCollation` |
+| Stable across Unicode versions | yes | mostly | **no** |
+| Use for | keys, indexes, protocols, reproducible tests | case-insensitive equality | lists shown to a person |
+
+`compareCodepoints` and `compareFolded` are total orders over arbitrary input,
+including input that is not well-formed UTF-8, and they return the sign like
+`strcmp`. Note that for UTF-16 code-point order is *not* the order of the code
+units: a supplementary character sorts after every BMP one, where its leading
+surrogate would sort before U+E000.
+
+`compareFolded` uses the **full** case folding of the UCD, so mappings of one
+character to several are included: `"ß"` and `"ss"` compare equal, as do the
+three forms of sigma. Compare against `0` for case-insensitive equality.
+
+`collate` is the linguistic order, and it is a matter of convention rather than
+fact. **Never persist it and never build an index on it.** Two builds of the
+runtime can legitimately order the same list differently.
+
+[source,cpp]
+----
+// Right: a map keyed by a name.
+if (unicode::compareCodepoints(a, b) == 0) { /* the same string */ }
+
+// Right: a case-insensitive header lookup.
+if (unicode::compareFolded(header, StringView("content-type")) == 0) { /* … */ }
+
+// Right: the list in the UI.
+sort(names.begin(), names.end(), [&](StringView l, StringView r) {
+    return unicode::collate(l, r, uiLocale) < 0;
+});
+----
+
+---
+
+## Case mapping
+
+Two shapes. The single-character form is the **simple** mapping and always
+returns one code point:
+
+[source,cpp]
+----
+char32_t u = unicode::toupper(U'ß');   // U+00DF — unchanged: SS is two characters
+----
+
+The string form is the **full** mapping, and it is callback-shaped because the
+result can be longer than the input, can depend on surrounding text, and can
+depend on the language:
+
+[source,cpp]
+----
+unicode::toupper([](StringView s) {
+    use(s);            // "STRASSE" — ß really did become SS here
+}, StringView("straße"));
+----
+
+Available for `StringView` (UTF-8) and `WideStringView` (UTF-16), as
+`toupper` / `tolower` / `totitle`. They return `bool`; the callback fires
+**exactly once on success**, including for empty input, and **not at all on
+failure** (the only failure is being unable to allocate a working buffer).
+
+WARNING: The `StringView` handed to the callback points into a temporary buffer
+freed when the callback returns. Copy what you need to keep.
+
+### Titlecasing works on words
+
+`totitle` finds word boundaries with UAX #29 rather than uppercasing the first
+character:
+
+|  Input | Result | Rule |
+|---|---|---|
+| `"hello world"` | `"Hello World"` | two words |
+| `"O'Brien"` | `"O'Brien"` | an apostrophe between letters does not break |
+| `"well-known"` | `"Well-Known"` | a hyphen does |
+| `"x1_2"` | `"X1_2"` | an underscore joins |
+| `"'hello'"` | `"'Hello'"` | the quote is not what gets titlecased |
+
+The titlecase mapping is not always the uppercase one: `ǆ` uppercases to `Ǆ` but
+titlecases to `ǅ`.
+
+NOTE: Thai, Lao, Khmer and Burmese write without spaces and need a dictionary to
+segment; that is not implemented, so a run of such text counts as one word. It is
+harmless for casing, because those scripts are uncased.
+
+### Language-specific casing
+
+Six languages case differently from the root, and there are overloads that take a
+language tag for them:
+
+| Tag | Difference |
+|---|---|
+| `tr`, `az` | dotted and dotless I: `i → İ`, `I → ı` |
+| `lt` | a lowercase `i` keeps its dot under an accent |
+| `el` | uppercasing drops the tonos |
+| `nl` | the IJ digraph: `ijsland → IJsland`, titlecase only |
+| `hy` | the ech-yiwn ligature `և` |
+
+[source,cpp]
+----
+unicode::toupper([](StringView s) { use(s); }, StringView("istanbul"), StringView("tr"));
+// "İSTANBUL", not "ISTANBUL"
+----
+
+Only the **language subtag** is read, in either case and in either the 2- or
+3-letter form; everything from the first `-` or `_` on is ignored, so `"tr"`,
+`"tr-TR"` and `"TUR"` are the same request. Every other tag, including an empty
+one, means root.
+
+**Prefer the no-locale overloads.** They are the root locale, which is the
+deterministic choice: the result does not depend on the machine the code runs on.
+Pass a locale only when the text is *known* to be in one of those six languages.
+
+---
+
+## Collation: sorting for a person
+
+[source,cpp]
+----
+int r = unicode::collate(a, b, StringView("sv"));   // sign, like strcmp
+----
+
+An unknown or empty locale means the CLDR **root** order, which is already
+correct for a great many languages — German, French, Italian, Portuguese,
+Russian, Greek, Hebrew and more. A tailoring exists only where a language departs
+from it.
+
+### Options
+
+[source,cpp]
+----
+unicode::CollateOptions options;
+options.strength = unicode::Strength::Primary;   // default is Tertiary
+options.numeric  = true;
+options.shifted  = true;
+options.caseFirst = unicode::CaseFirst::Upper;
+
+unicode::collate(a, b, locale, options);
+----
+
+**Strength** is how deep the comparison goes. Each level is only consulted when
+every level above it ties:
+
+| Strength | Distinguishes | Example |
+|---|---|---|
+| `Primary` | base letters only | `resume` == `résumé` == `RESUME`, and `resume` < `rhyme` |
+| `Secondary` | accents too | `resume` < `résumé`, `résumé` == `RÉSUMÉ` |
+| `Tertiary` *(default)* | case and letter variants | `résumé` < `RÉSUMÉ` |
+| `Quaternary` | punctuation that `shifted` moved down | |
+| `Identical` | the code points themselves, as a last resort | |
+
+`Primary` is what a search box wants: it makes accents and case irrelevant.
+`Identical` compares NFD, so canonically equivalent strings are still equal —
+`"e" + U+0301` and `"é"` tie at every level.
+
+| Option | Effect |
+|---|---|
+| `numeric` | digit runs sort as numbers: `item2` before `item10` |
+| `shifted` | punctuation and spaces are ignored until the quaternary level, so `de luge` and `de-luge` sort together |
+| `caseFirst` | which case sorts first, for languages that care (Danish, Maltese put uppercase first). `Off` means the tertiary level decides |
+
+### Sort keys
+
+A byte string whose `memcmp` order is the `collate` order. Sorting N strings
+costs N key computations instead of N log N comparisons, and a key fits in an
+index or a database column where a comparison function does not.
+
+[source,cpp]
+----
+unicode::sortKey([&](BytesView key) {
+    store(key);          // valid only inside the callback
+}, name, locale, options);
+----
+
+Canonically equivalent strings produce byte-identical keys, and a lower strength
+produces a shorter key.
+
+IMPORTANT: A key is only meaningful against keys built with the **same locale,
+the same options and the same build of the runtime**. It is not a stable
+identifier: do not persist it across a Unicode version, and do not ship it
+between binaries built with different `SPRT_COLLATION` sets.
+
+### `hasCollation` and the build knob
+
+Which tailorings a binary carries is a build option, `SPRT_COLLATION`. Ask at run
+time rather than assuming:
+
+[source,cpp]
+----
+if (unicode::hasCollation(StringView("cs"))) { /* this build sorts Czech properly */ }
+----
+
+`collate` always works. Without the tailoring it answers with the root order,
+which is a defensible order for every language and the *correct* one for many.
+
+TRAP: `hasCollation("de")` is **false**, and that is not a gap — German has no
+tailoring because the root order already *is* German's order. `hasCollation`
+answers "is there a table for this tag", not "can this build sort this language".
+
+Tags resolve with CLDR subtag-dropping fallback: `sv_SE` finds `sv`,
+`zh_Hans_CN` finds `zh`, `sr_Latn_RS` finds `sr_Latn`. `-` and `_` are
+interchangeable and case is ignored, so `sv-se`, `sv_SE` and `SV_SE` are one
+request.
+
+### What the build sets contain
+
+| `SPRT_COLLATION` | Size on the object | Contents |
+|---|---|---|
+| `full` *(default)* | 1.99 MiB | all 102 locales |
+| `no-cjk` | 1.54 MiB | everything but `ja`, `ko`, `zh`, `yue` |
+| `european` | 1.11 MiB | Latin, Cyrillic, Greek, Armenian, Georgian |
+| `root` | 657 KiB | no tailorings — the root order only |
+
+Or name the groups: `SPRT_COLLATION="LatinNordic Cyrillic"`.
+
+| Group | Languages |
+|---|---|
+| `LatinNordic` | da fo fi is kl no se smn sv et af fy dsb hsb lb nl de de_AT wae |
+| `LatinSlavic` | bs cs hr pl sk sl sr_Latn lt lv |
+| `LatinRomance` | br ca cy eo es fr fr_CA gl ga hu it mt pt ro sq |
+| `LatinTurkic` | az tk tr uz vi |
+| `LatinOther` | blo ceb ee ff ff_Adlm fil ha haw id ig ku lkt ln ms nso om st sw tn to wo xh yo zu |
+| `Cyrillic` | be bg bs_Cyrl kk ky mk mn ru sr sr_Cyrl tg uk |
+| `Greek` | el hy ka |
+| `Semitic` | ar ars fa fa_AF he kk_Arab ps ug ur yi |
+| `Indic` | as bn gu hi kn kok ml mr ne or pa sa si ta te |
+| `SouthEastAsia` | bo dz km lo my th |
+| `Other` | am chr en_US_POSIX |
+| `Cjk` | ja ko zh yue |
+
+The root table is not optional — it is the order every tailoring is expressed as
+a difference from.
+
+### What a tailoring actually changes
+
+[source,cpp]
+----
+unicode::collate("z", "ö", "sv") < 0    // Swedish: ö comes after z
+unicode::collate("z", "ö", "de") > 0    // German (root): ö sorts inside o
+unicode::collate("h", "ch", "cs") < 0   // Czech: ch is one letter, after h
+unicode::collate("ı", "i", "tr") < 0    // Turkish: dotless ı first
+unicode::collate("г", "ґ", "uk") < 0    // Ukrainian: ґ right after г
+unicode::collate("y", "j", "lt") < 0    // Lithuanian: y sits between į and j
+----
+
+---
+
+## Domain names
+
+`sprt::idn` implements UTS-46 (IDNA) plus the raw Punycode codec.
+
+[source,cpp]
+----
+Status st = idn::to_ascii([](StringView ascii) {
+    use(ascii);                     // "xn--80ak6aa92e.com"
+}, StringView("аррӏе.com"));
+
+idn::to_unicode([](StringView text) {
+    show(text);
+}, StringView("xn--80ak6aa92e.com"));
+----
+
+The callback fires **exactly once on success and not at all on failure**, so a
+buffer filled by the callback is empty exactly when the status is not `Ok`. The
+view is valid only inside the call.
+
+`label_to_ascii` / `label_to_unicode` are the single-label forms: a dot in the
+input is an error rather than a separator.
+
+### Option profiles
+
+| Profile | Meaning |
+|---|---|
+| `Options::Default` | what the WHATWG URL Standard prescribes, and what a browser does — `CheckBidi \| CheckContextJ \| NonTransitionalToAscii \| NonTransitionalToUnicode` |
+| `Options::Idna2008` | `Default` plus `CheckContextO` — the full profile a registry applies |
+| `Options::None` | mapping only |
+
+Individual bits: `UseStd3Rules` (restrict ASCII to letters, digits and hyphen —
+off by default, because underscores are common in practice), `CheckBidi`
+(RFC 5893), `CheckContextJ` (ZWJ/ZWNJ only where a script needs them),
+`CheckContextO` (middle dot, Greek keraia, Hebrew geresh, Katakana middle dot,
+and no mixing the two Arabic-Indic digit sets), `NonTransitionalToAscii` /
+`NonTransitionalToUnicode` (keep sharp s, final sigma and the joiners rather than
+folding them).
+
+The optional `transitionalDifferent` out-parameter reports whether transitional
+and nontransitional processing would disagree about this name. `true` is not a
+failure, and it is filled in on the success path too.
+
+### Failure
+
+A name can break several rules at once; the `Status` returned is the most
+specific one:
+
+`ErrorIdnPunycode`, `ErrorIdnInvalidAceLabel`, `ErrorIdnLabelHasDot`,
+`ErrorIdnEmptyLabel`, `ErrorIdnDisallowed`, `ErrorIdnBidi`, `ErrorIdnContextJ`,
+`ErrorIdnContextOPunctuation`, `ErrorIdnContextODigits`,
+`ErrorIdnLeadingCombiningMark`, `ErrorIdnLeadingHyphen`,
+`ErrorIdnTrailingHyphen`, `ErrorIdnHyphen34`, `ErrorIdnLabelTooLong`,
+`ErrorIdnDomainNameTooLong`.
+
+Plus `ErrorInvalidArguemnt` for empty input and `ErrorOutOfHostMemory` if a
+working buffer could not be allocated.
+
+### Raw Punycode
+
+[source,cpp]
+----
+idn::puny_encode(cb, text, /* makeUrlPrefix */ true);   // adds "xn--"
+idn::puny_decode(cb, text, /* prefixed */ true);        // expects and strips it
+----
+
+This is the RFC 3492 bootstring codec and **nothing else**: no mapping, no
+normalization, no validation. Use `to_ascii` for domain names.
+
+### TLDs
+
+[source,cpp]
+----
+if (idn::is_known_tld(StringView("рф"))) { /* … */ }
+----
+
+The IANA list, baked in, accepting both Punycode and native UTF-8 spellings.
+
+---
+
+## Encoding and iteration
+
+Full reference: [api/runtime/unicode.adoc](../api/runtime/unicode.adoc). The
+essentials:
+
+[source,cpp]
+----
+// Iterate code points of UTF-8 without converting.
+StringViewUtf8 utf8(source);
+utf8.foreach([](char32_t c) { handle(c); });
+
+// Convert, callback form (allocates a temporary; view is transient).
+unicode::toUtf16([](WideStringView u16) { consume(u16); }, source);
+
+// Convert, buffer form (you size it).
+size_t need = unicode::getUtf8Length(wide);
+auto buf = (char *)alloca(need + 1);
+size_t written = 0;
+if (unicode::toUtf8(buf, need + 1, wide, &written) == Status::Ok) { /* … */ }
+----
+
+Size a buffer with the `getUtf*Length` that pairs with the `toUtf*` you call, and
+add one for a terminator. Mixing a plain length with an HTML conversion yields a
+spurious `ErrorBufferOverflow`.
+
+---
+
+## Pitfalls
+
+| Trap | What happens | Do instead |
+|---|---|---|
+| Using `collate` for a map key or an index | the order changes between builds and Unicode versions | `compareCodepoints` |
+| Persisting a sort key | same | store the text; rebuild keys on read |
+| Keeping the `StringView` a callback was handed | dangling — the buffer is freed on return | copy it |
+| Reading the callback's output after a non-`Ok` status | it never fired; you read stale memory | check the `Status` first |
+| Uppercasing character by character | `ß`, `ﬁ`, final sigma and Turkish `i` all come out wrong | the string overload |
+| Assuming `hasCollation(x) == false` means "cannot sort x" | German is false and sorts correctly | it means "no tailoring table"; `collate` always works |
+| Assuming UTF-16 code-unit order is code-point order | supplementary characters land in the wrong place | `compareCodepoints` handles it |
+| `StringView(ptr, len)` over data containing NUL | truncated at the first NUL by design | `set()` for binary data |
+| Passing a locale to `compareFolded` | there is no such overload — folding is language-independent by design | — |
+| Routing text above U+10FFFF through `WideStringView` | dropped silently; UTF-16 cannot carry it | keep it in UTF-8 or UTF-32 |
+
+---
+
+## Guarantees
+
+* **Deterministic.** No locale from the environment, no system library, no host
+  call. The same input gives the same output on Linux, Windows, macOS, Android,
+  wasm, NuttX and Embox.
+* **No initialization.** The tables are `constexpr`; there is no lazy static, no
+  first-use lock and no failure mode for the data itself.
+* **No allocation on a comparison.** `compareCodepoints`, `compareFolded` and
+  `collate` allocate nothing. The callback-returning functions allocate one
+  temporary via `__sprt_malloca` (stack for small inputs) and free it before
+  returning.
+* **Thread-safe.** Everything is a read from immutable data.
+* **Malformed input is ordered, not rejected.** Ill-formed bytes sort above every
+  real character and the order stays total; the collator maps them to U+FFFD.
+* **Verified.** 868 210 collation checks against both official UCA conformance
+  sets, 21 223 IDNA checks against `IdnaTestV2.txt`, all 1 944 cases of
+  `WordBreakTest.txt`, and every case mapping in the UCD — 0 failures on Linux,
+  Windows and wasm. See [the design document](../design/unicode-and-idn.adoc).

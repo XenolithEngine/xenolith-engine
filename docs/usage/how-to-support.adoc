@@ -1,0 +1,89 @@
+# Contributing to the project
+
+We welcome any help with the project, whether material or through hands-on work.
+
+## If you are a developer
+
+The project is large, and there are many areas where you can contribute.
+
+### Improving C support
+
+* Auditing the current headers and functions for standard conformance
+* Adding missing functions
+* Removing config gates: implementing functions that were previously unavailable on a platform
+* Implementing new functionality (https://en.wikipedia.org/wiki/Iconv[iconv], atomics,
+  https://en.cppreference.com/w/c/thread[C11 threads])
+* A complete implementation of Annex K (bounds-checking interfaces) on all platforms
+
+IMPORTANT: When working with the C interface you must also preserve ABI-level compatibility — that
+is, you must not introduce symbols that conflict with the host platform.
+
+### Improving C++ support
+
+The SPRT C++ functions are implemented as the minimum needed to support the language. They can be
+extended with support for:
+
+* `std`-compatible containers: currently only `string`, `vector`, `map` and `set`. Unordered
+  containers are not behaviorally compatible and were never intended to be.
+* unimplemented metaprogramming utilities
+* https://en.cppreference.com/w/cpp/ranges[ranges]
+* hardening for C++ functions
+* other C++ features not covered by the current set
+
+When implementing, keep in mind that:
+
+* exceptions will never be supported — they would break the principle of ABI compatibility on
+  certain platforms; this limitation must be worked around by other means;
+* containers must support memory-pool-based allocators;
+* compatibility with the platform's full standard library must be maintained, at least at the level
+  of the `SPRT_USE_STL` flag (see
+  link:../../runtime/include/sprt/c/bits/__sprt_config.h[`include/sprt/c/bits/__sprt_config.h`]).
+
+### Window functions
+
+The following needs to be implemented:
+
+* drag-and-drop on all platforms (and a unified interface to it based on `WindowLayer`)
+* click-through for specific regions of a window (also via `WindowLayer`)
+* support for auxiliary windows (menus, popups)
+* full input capture
+
+NOTE: This work requires knowledge of the low-level APIs of the specific windowing system.
+
+### General engine features
+
+Many things are still at the discussion stage, which you can influence by proposing an
+implementation:
+
+* an audio engine
+* an approach to 3D rendering and its integration into the application's 2D model
+* gamepad/controller support
+* anything else you can think of that a game engine or an application engine needs
+
+### Support for other platforms and architectures
+
+The current development queue for platform support is:
+
+1. iOS
+2. https://webassembly.org/[WebAssembly]
+3. BSD
+
+You can influence the process by implementing support before the engine team gets to it.
+
+Adding a new platform is split into two parts:
+
+#### Building a toolchain
+
+Here you need to create the host part of the toolchain that can build for the target platform, along
+with at least one key part of the target toolchain (this includes building the dependencies). See
+link:../../runtime/toolchains/README.adoc[`runtime/toolchains/`] for the existing toolchains.
+
+#### libc support
+
+On the link:../../runtime/include/sprt/c[`include/sprt/c`] side you need to add configuration macros
+for the new OS and architecture. Use the existing layout in
+link:../../runtime/include/sprt/c/cross[`include/sprt/c/cross`] to understand exactly what to add to
+get the platform up and running.
+
+After adding what is needed to the headers, you must verify that the dependencies interpret these
+headers the same way they would the headers of the original libc.

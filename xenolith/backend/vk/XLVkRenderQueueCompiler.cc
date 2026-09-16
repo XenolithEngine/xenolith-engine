@@ -175,12 +175,13 @@ bool RenderQueueAttachmentHandle::setup(FrameQueue &handle, Function<void(bool)>
 void RenderQueueAttachmentHandle::submitInput(FrameQueue &q, Rc<core::AttachmentInputData> &&data,
 		Function<void(bool)> &&cb) {
 	_input = (RenderQueueInput *)data.get();
-	_targetQueueName = _input->queue->getName().str<Interface>();
 
 	if (!_input || q.isFinalized()) {
 		cb(false);
 		return;
 	}
+
+	_targetQueueName = _input->queue->getName().str<Interface>();
 
 	q.getFrame()->waitForDependencies(data->waitDependencies,
 			[this, cb = sp::move(cb)](FrameHandle &handle, bool success) mutable {

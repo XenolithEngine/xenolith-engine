@@ -68,6 +68,11 @@ struct Decoder : public Interface::AllocBaseType {
 	StringType buf;
 	ValueType *back;
 	typename InterfaceType::template ArrayType<ValueType *> stack;
+
+	// bound nesting depth (shared limit): deeply nested arrays/maps/tags would
+	// otherwise recurse through decode() until the native stack is exhausted
+	static constexpr size_t MaxDepth = MaxDecodeDepth;
+	uint32_t depth = 0;
 };
 
 template <typename Interface>
@@ -153,7 +158,9 @@ void Decoder<Interface>::decodeArray(uint8_t type, ValueType &ret) {
 	ret._type = ValueType::Type::ARRAY;
 	ret.arrayVal = new (sprt::nothrow) ArrayType();
 	if (size != maxOf<size_t>()) {
-		ret.arrayVal->reserve(size);
+		// Each element consumes at least one input byte, so the remaining input
+		// length is a safe upper bound; clamp to avoid an OOM from a forged count.
+		ret.arrayVal->reserve(min(size, r.size()));
 	}
 
 	while ((!r.empty()
@@ -202,7 +209,9 @@ void Decoder<Interface>::decodeMap(uint8_t type, ValueType &ret) {
 	ret.dictVal = new (sprt::nothrow) DictionaryType();
 
 	if (size != maxOf<size_t>()) {
-		ret.dictVal->reserve(size);
+		// Each entry consumes at least one input byte, so the remaining input
+		// length is a safe upper bound; clamp to avoid an OOM from a forged count.
+		ret.dictVal->reserve(min(size, r.size()));
 	}
 
 	while (!r.empty() && size > 0
@@ -226,7 +235,7 @@ void Decoder<Interface>::decodeMap(uint8_t type, ValueType &ret) {
 				decodeUndefinedLength(parsedKey, MajorTypeEncoded::ByteString);
 				key = StringView(parsedKey);
 			} else {
-				auto size = size_t(_readIntValue(r, type));
+				auto size = min(r.size(), size_t(_readIntValue(r, type)));
 				key = StringView((char *)r.data(), size);
 				r += size;
 			}
@@ -236,7 +245,7 @@ void Decoder<Interface>::decodeMap(uint8_t type, ValueType &ret) {
 				decodeUndefinedLength(parsedKey, MajorTypeEncoded::CharString);
 				key = StringView(parsedKey);
 			} else {
-				auto size = size_t(_readIntValue(r, type));
+				auto size = min(r.size(), size_t(_readIntValue(r, type)));
 				key = StringView((char *)r.data(), size);
 				r += size;
 			}
@@ -321,6 +330,11 @@ void Decoder<Interface>::decodeSimpleValue(uint8_t type, ValueType &ret) {
 
 template <typename Interface>
 void Decoder<Interface>::decode(MajorTypeEncoded majorType, uint8_t type, ValueType &ret) {
+	if (depth >= MaxDepth) {
+		// abort overly-nested input; ret stays EMPTY
+		return;
+	}
+	++depth;
 	switch (majorType) {
 	case MajorTypeEncoded::Unsigned: decodePositiveInt(type, ret); break;
 	case MajorTypeEncoded::Negative: decodeNegativeInt(type, ret); break;
@@ -331,6 +345,7 @@ void Decoder<Interface>::decode(MajorTypeEncoded majorType, uint8_t type, ValueT
 	case MajorTypeEncoded::Tag: decodeTaggedValue(type, ret); break;
 	case MajorTypeEncoded::Simple: decodeSimpleValue(type, ret); break;
 	}
+	--depth;
 }
 
 template <typename Interface>

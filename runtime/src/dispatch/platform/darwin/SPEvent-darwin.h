@@ -27,7 +27,7 @@
 #include "../../detail/SPRuntimeDispatchHandleClass.h"
 #include "../../detail/SPRuntimeDispatchQueueData.h"
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 
 namespace sprt::dispatch {
 
@@ -37,9 +37,16 @@ struct KQueueData;
 struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _kqueueThreadClass;
 	HandleClass _kqueueTimerClass;
+	HandleClass _kqueuePollFdClass;
+	HandleClass _kqueueProcessClass;
+	HandleClass _kqueueFileClass;
+	HandleClass _kqueueWatchClass;
 
 	HandleClass _runloopThreadClass;
 	HandleClass _runloopTimerClass;
+	HandleClass _runloopProcessClass;
+	HandleClass _runloopFileClass;
+	HandleClass _runloopWatchClass;
 
 	Data(QueueRef *q, const QueueInfo &info);
 };

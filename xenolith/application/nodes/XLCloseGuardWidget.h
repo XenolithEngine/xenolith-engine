@@ -34,7 +34,7 @@ public:
 	virtual bool init() override;
 
 	virtual void handleContentSizeDirty() override;
-	virtual void handleLayout(Node *) override;
+	virtual void handleLayoutInParent(Node *) override;
 
 	virtual void handleExit() override;
 

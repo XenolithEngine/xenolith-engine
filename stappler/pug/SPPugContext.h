@@ -102,11 +102,19 @@ public:
 
 	void loadDefaults();
 
+	// Cascade variable/function lookup into an ancestor Context: names not found in
+	// this Context's scope chain fall through to `parent`'s global scope (and, transitively,
+	// its own parent). Pass nullptr to detach. The parent Context (and the memory pool it
+	// was built under) must outlive this one.
+	void setParentContext(Context *parent);
+	Context *getParentContext() const { return _parent; }
+
 protected:
 	IncludeCallback _includeCallback;
 	VarScope *currentScope = nullptr;
 	VarScope globalScope;
 	Map<String, VarClass> classes;
+	Context *_parent = nullptr;
 };
 
 } // namespace stappler::pug

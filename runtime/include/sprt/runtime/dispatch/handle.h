@@ -100,7 +100,11 @@ protected:
 
 	bool reset();
 
-	// platform data block
+	// Platform data block: each backend placement-constructs its own POD
+	// "Source" struct here. Contract enforced at every construction site with
+	// `static_assert(sizeof(XxxSource) <= DataSize && is_standard_layout)`; such
+	// structs hold fds/pointers/callbacks, so alignof(void*) is sufficient. A
+	// backend needing stronger alignment must raise this alignment to match.
 	alignas(void *) uint8_t _data[DataSize];
 
 	HandleClass *_class = nullptr;
@@ -133,6 +137,123 @@ public:
 	// Be careful, when resetting timers with Function callback
 	//  - this callback will become invalid when new 'completion' set
 	virtual bool reset(TimerInfo &&) = 0;
+};
+
+// Handle representing a spawned child process (see Looper::spawnProcess).
+// The handle's completion fires once, when the process exits, with the exit
+// code in the completion `value`. getNativeHandle() returns the OS exit-wait
+// primitive (pidfd on Linux, process HANDLE on Windows, -1 where the pid is
+// carried internally). A separate internal reader sub-handle delivers the
+// process output to the ProcessInfo::reader callback.
+class SPRT_API ProcessHandle : public PollHandle {
+public:
+	virtual ~ProcessHandle() = default;
+
+	// Exit code of the finished process, valid once the handle completes
+	// (getStatus() == Status::Done). 128 + signal number if the process was
+	// terminated by a signal; -1 while still running or if unknown.
+	int getExitCode() const { return _exitCode; }
+
+	// true while the process is still running (handle has not completed)
+	bool isRunning() const { return getStatus() == Status::Ok; }
+
+	// Process handles are not re-armable
+	virtual bool reset(PollFlags) override { return false; }
+
+protected:
+	int _exitCode = -1;
+};
+
+// Handle representing an asynchronous file-operation channel (see
+// Looper::readFile / Looper::writeFile). A single FileHandle owns (when opened
+// from a path) or borrows (when adopting a caller's fd) one file descriptor and
+// runs a queue of read/write operations strictly sequentially. Each operation
+// reports completion through its own callback; reader callbacks and completions
+// fire on the looper thread. The handle stays alive while it has queued or
+// in-flight operations and finalizes (closing an owned fd) once its queue drains.
+class SPRT_API FileHandle : public Handle {
+public:
+	virtual ~FileHandle() = default;
+
+	// The fd the handle operates on; -1 once an owned fd has been closed.
+	virtual NativeHandle getNativeHandle() const = 0;
+
+	// true while at least one operation is queued or in flight
+	bool isBusy() const;
+
+	// Append a new operation to this handle's serial queue; it runs after all
+	// currently queued/in-flight operations on the same open file. `reader`
+	// receives read chunks; `onDone` receives the final Status. Returns
+	// Status::Ok when queued; on a handle that has already terminated, fires
+	// `onDone` with ErrorCancelled and returns that status.
+	Status appendRead(Function<void(BytesView)> &&reader, Function<void(Status)> &&onDone);
+	Status appendWrite(BytesView data, Function<void(Status)> &&onDone);
+};
+
+// Handle representing a filesystem file-watch (see Looper/Queue::watchFile).
+// The completion fires each time the watched name changes, with the observed
+// WatchFlags in the completion `value`; it stays armed until the handle is
+// cancelled. getPath() is the watched path as supplied; getLastEvent() is the
+// WatchFlags most recently delivered.
+class SPRT_API WatchHandle : public Handle {
+public:
+	virtual ~WatchHandle() = default;
+
+	StringView getPath() const { return _path; }
+	WatchFlags getMask() const { return _mask; }
+	WatchFlags getLastEvent() const { return _last; }
+
+protected:
+	String _path;
+	WatchFlags _mask = WatchFlags::None;
+	WatchFlags _last = WatchFlags::None;
+};
+
+// Handle representing a listening stream socket (see Looper/Queue::listenSocket).
+// ListenInfo::onAccept runs on the looper thread once per accepted connection;
+// the handle's completion fires once when the listener terminates. Cancel the
+// handle to stop listening (an owned unix socket path is unlinked on teardown).
+class SPRT_API ListenHandle : public Handle {
+public:
+	virtual ~ListenHandle() = default;
+
+	// The address the socket is actually bound to: for TCP with port 0 the
+	// resolved ephemeral port, otherwise the address as configured.
+	const SocketAddress &getAddress() const;
+
+	// The underlying socket descriptor (for diagnostics; owned by the handle).
+	SocketHandle getSocket() const;
+};
+
+// Handle representing one stream-socket connection - either accepted by a
+// ListenHandle or created by Looper/Queue::connectSocket. All callbacks run on
+// the looper thread. The handle finalizes once both directions are finished
+// (peer EOF + local shutdownWrite, an error, or cancel()).
+class SPRT_API StreamHandle : public Handle {
+public:
+	virtual ~StreamHandle() = default;
+
+	// Start async reading: `reader` receives each incoming chunk; an empty
+	// BytesView signals EOF (the peer closed its write side). Return anything
+	// other than Status::Ok to stop further read delivery (the connection and
+	// its write side stay usable). Only one reader is active at a time; calling
+	// read() again replaces it.
+	Status read(Function<Status(BytesView)> &&reader);
+
+	// Copy `data` into the outgoing queue; it is flushed to the socket as
+	// writability allows. Returns Ok when queued (or fully sent inline).
+	Status write(BytesView data);
+
+	// Flush everything already queued, then shut down the write direction
+	// (the peer observes EOF). Further write() calls fail.
+	Status shutdownWrite();
+
+	// Optional terminal notification, fired once with the final status when the
+	// connection finishes (in addition to the Handle completion).
+	void setCloseCallback(Function<void(Status)> &&);
+
+	// The underlying socket descriptor (for diagnostics; owned by the handle).
+	SocketHandle getSocket() const;
 };
 
 class SPRT_API ThreadHandle : public Handle, public PerformInterface {

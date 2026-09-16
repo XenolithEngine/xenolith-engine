@@ -45,11 +45,11 @@ bool CloseGuardWidget::init() {
 
 void CloseGuardWidget::handleContentSizeDirty() { Node::handleContentSizeDirty(); }
 
-void CloseGuardWidget::handleLayout(Node *parent) { Node::handleLayout(parent); }
+void CloseGuardWidget::handleLayoutInParent(Node *parent) { Node::handleLayoutInParent(parent); }
 
 void CloseGuardWidget::handleExit() {
 	if (_director && _rejectWhenExit) {
-		_director->getWindow()->disableState(WindowState::CloseRequest);
+		_director->getRenderServer()->disableState(WindowState::CloseRequest);
 	}
 	Node::handleExit();
 }
@@ -63,12 +63,12 @@ void CloseGuardWidget::updateWindowState(WindowState state) {
 
 void CloseGuardWidget::commit() {
 	_rejectWhenExit = false;
-	_director->getWindow()->enableState(WindowState::CloseRequest);
+	_director->getRenderServer()->enableState(WindowState::CloseRequest);
 	close();
 }
 void CloseGuardWidget::reject() {
 	_rejectWhenExit = false;
-	_director->getWindow()->disableState(WindowState::CloseRequest);
+	_director->getRenderServer()->disableState(WindowState::CloseRequest);
 	close();
 }
 

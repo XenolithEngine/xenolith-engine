@@ -331,8 +331,14 @@ __SPRT_C_FUNC void *dlsym(void *__SPRT_RESTRICT __handle,
 /* See https://docs.microsoft.com/en-us/archive/msdn-magazine/2002/march/inside-windows-an-in-depth-look-into-the-win32-portable-executable-file-format-part-2
  * for details */
 
-/* Get specific image section */
-static BOOL get_image_section(HMODULE module, int index, void **ptr, DWORD *size) {
+/* Get specific image section.
+ *
+ * If imageSize is not null, it receives the module's SizeOfImage, which callers
+ * can use to bounds-check RVAs read out of the returned directory. The returned
+ * directory itself is verified to lie fully within [module, module + SizeOfImage).
+ */
+static BOOL get_image_section(HMODULE module, int index, void **ptr, DWORD *size,
+		DWORD *imageSize = nullptr) {
 	IMAGE_DOS_HEADER *dosHeader;
 	IMAGE_NT_HEADERS64 *ntHeaders;
 	IMAGE_OPTIONAL_HEADER64 *optionalHeader;
@@ -360,32 +366,86 @@ static BOOL get_image_section(HMODULE module, int index, void **ptr, DWORD *size
 		return FALSE;
 	}
 
-	if (optionalHeader->DataDirectory[index].Size == 0
-			|| optionalHeader->DataDirectory[index].VirtualAddress == 0) {
+	DWORD dirRva = optionalHeader->DataDirectory[index].VirtualAddress;
+	DWORD dirSize = optionalHeader->DataDirectory[index].Size;
+
+	if (dirSize == 0 || dirRva == 0) {
 		return FALSE;
 	}
 
-	if (size != nullptr) {
-		*size = optionalHeader->DataDirectory[index].Size;
+	/* The directory must lie fully inside the mapped image. SizeOfImage is the
+	 * loader's mapped size; use it to reject malformed/partially-mapped modules
+	 * before any RVA is dereferenced (guard against integer overflow too). */
+	DWORD szImage = optionalHeader->SizeOfImage;
+	if (szImage == 0 || dirRva > szImage || dirSize > szImage - dirRva) {
+		return FALSE;
 	}
 
-	*ptr = (void *)((BYTE *)module + optionalHeader->DataDirectory[index].VirtualAddress);
+	if (imageSize != nullptr) {
+		*imageSize = szImage;
+	}
+
+	if (size != nullptr) {
+		*size = dirSize;
+	}
+
+	*ptr = (void *)((BYTE *)module + dirRva);
 
 	return TRUE;
 }
 
-/* Return symbol name for a given address from export table */
+/* Bounds-check a [rva, rva + count * elemSize) span against the image size. */
+static BOOL rva_array_in_image(DWORD rva, DWORD count, DWORD elemSize, DWORD imageSize) {
+	if (rva == 0 || rva > imageSize) {
+		return FALSE;
+	}
+	/* count * elemSize without overflow, then span must fit after rva */
+	if (count != 0 && count > (0xffff'ffffu / elemSize)) {
+		return FALSE;
+	}
+	DWORD bytes = count * elemSize;
+	if (bytes > imageSize - rva) {
+		return FALSE;
+	}
+	return TRUE;
+}
+
+/* Return symbol name for a given address from export table.
+ *
+ * imageSize is the module's SizeOfImage and is used to bounds-check every RVA
+ * and array index taken from the (potentially malformed) export directory
+ * before it is dereferenced.
+ */
 static const char *get_export_symbol_name(HMODULE module, IMAGE_EXPORT_DIRECTORY *ied,
-		const void *addr, void **func_address) {
+		DWORD imageSize, const void *addr, void **func_address) {
 	DWORD i;
 	void *candidateAddr = nullptr;
 	int candidateIndex = -1;
 	BYTE *base = (BYTE *)module;
-	DWORD *functionAddressesOffsets = (DWORD *)(base + (DWORD)ied->AddressOfFunctions);
-	DWORD *functionNamesOffsets = (DWORD *)(base + (DWORD)ied->AddressOfNames);
-	USHORT *functionNameOrdinalsIndexes = (USHORT *)(base + (DWORD)ied->AddressOfNameOrdinals);
+	DWORD addressOfFunctions = ied->AddressOfFunctions;
+	DWORD addressOfNames = ied->AddressOfNames;
+	DWORD addressOfNameOrdinals = ied->AddressOfNameOrdinals;
+	DWORD numberOfFunctions = ied->NumberOfFunctions;
+	DWORD numberOfNames = ied->NumberOfNames;
 
-	for (i = 0; i < ied->NumberOfFunctions; i++) {
+	/* Validate the three parallel arrays lie entirely within the mapped image
+	 * before walking them; bail out as "not found" on any out-of-range value. */
+	if (!rva_array_in_image(addressOfFunctions, numberOfFunctions, sizeof(DWORD), imageSize)
+			|| !rva_array_in_image(addressOfNames, numberOfNames, sizeof(DWORD), imageSize)
+			|| !rva_array_in_image(addressOfNameOrdinals, numberOfNames, sizeof(USHORT),
+					imageSize)) {
+		return nullptr;
+	}
+
+	DWORD *functionAddressesOffsets = (DWORD *)(base + addressOfFunctions);
+	DWORD *functionNamesOffsets = (DWORD *)(base + addressOfNames);
+	USHORT *functionNameOrdinalsIndexes = (USHORT *)(base + addressOfNameOrdinals);
+
+	for (i = 0; i < numberOfFunctions; i++) {
+		/* Each function RVA must resolve to an address inside the image. */
+		if (functionAddressesOffsets[i] == 0 || functionAddressesOffsets[i] >= imageSize) {
+			continue;
+		}
 		if ((void *)(base + functionAddressesOffsets[i]) > addr
 				|| candidateAddr >= (void *)(base + functionAddressesOffsets[i])) {
 			continue;
@@ -401,9 +461,15 @@ static const char *get_export_symbol_name(HMODULE module, IMAGE_EXPORT_DIRECTORY
 
 	*func_address = candidateAddr;
 
-	for (i = 0; i < ied->NumberOfNames; i++) {
+	for (i = 0; i < numberOfNames; i++) {
 		if (functionNameOrdinalsIndexes[i] == candidateIndex) {
-			return (const char *)(base + functionNamesOffsets[i]);
+			DWORD nameRva = functionNamesOffsets[i];
+			/* The name string must start inside the image (it is NUL-terminated
+			 * within the mapped pages of a well-formed module). */
+			if (nameRva == 0 || nameRva >= imageSize) {
+				return nullptr;
+			}
+			return (const char *)(base + nameRva);
 		}
 	}
 
@@ -599,6 +665,7 @@ __SPRT_C_FUNC int dladdr(const void *__handle, __SPRT_ID(Dl_info) * __info) __SP
 	}
 
 	IMAGE_EXPORT_DIRECTORY *ied;
+	DWORD imageSize = 0;
 	void *funcAddress = nullptr;
 
 	size_t uLen = 0;
@@ -610,8 +677,9 @@ __SPRT_C_FUNC int dladdr(const void *__handle, __SPRT_ID(Dl_info) * __info) __SP
 	__info->dli_fbase = (void *)hModule;
 
 	/* Find function name and function address in module's export table */
-	if (get_image_section(hModule, IMAGE_DIRECTORY_ENTRY_EXPORT, (void **)&ied, nullptr)) {
-		__info->dli_sname = get_export_symbol_name(hModule, ied, __handle, &funcAddress);
+	if (get_image_section(hModule, IMAGE_DIRECTORY_ENTRY_EXPORT, (void **)&ied, nullptr,
+				&imageSize)) {
+		__info->dli_sname = get_export_symbol_name(hModule, ied, imageSize, __handle, &funcAddress);
 	} else {
 		__info->dli_sname = nullptr;
 	}

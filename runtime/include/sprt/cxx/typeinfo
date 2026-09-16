@@ -24,8 +24,25 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_CXX_TYPEINFO_H_
 
 #include <sprt/runtime/init.h>
+#include <sprt/cxx/__type_traits/constants.h> // sprt::integral_constant (used below)
+#include <sprt/cxx/exception> // std::exception base for bad_cast / bad_typeid
 
+#if __SPRT_USE_STL
+
+// A real STL is present: it owns std::type_info; sprt just re-exports it.
+#include <typeinfo>
 namespace sprt {
+using std::type_info;
+}
+
+#else
+
+// With __SPRT_USE_STL unset the runtime IS the STL, so type_info is defined
+// directly in namespace std (a real class, not a using-alias) — this lets
+// libc++abi provide std::type_info's out-of-line ABI body and derive
+// std::bad_cast / std::bad_typeid from it — and is re-exported into sprt. The
+// implementation helpers stay sprt-qualified.
+namespace std {
 
 #if SPRT_WINDOWS
 
@@ -275,17 +292,38 @@ public:
 
 #endif // SPRT_WINDOWS
 
+// The RTTI-comparison exception types. libc++abi implements their out-of-line
+// bodies (stdlib_typeinfo.cpp) and throws them from __dynamic_cast / typeid.
+class SPRT_API bad_cast : public exception {
+public:
+	bad_cast() noexcept;
+	~bad_cast() noexcept override;
+	const char *what() const noexcept override;
+};
+
+class SPRT_API bad_typeid : public exception {
+public:
+	bad_typeid() noexcept;
+	~bad_typeid() noexcept override;
+	const char *what() const noexcept override;
+};
+
+} // namespace std
+
+namespace sprt {
+using std::type_info;
+using std::bad_cast;
+using std::bad_typeid;
 } // namespace sprt
 
-#ifndef SPRT_USE_STL
-namespace std {
-using sprt::type_info;
-}
-#endif
+#endif // __SPRT_USE_STL
 
-namespace abi {
+// Declared in the Itanium ABI vendor namespace (aliased as `abi`), matching
+// libc++abi's <cxxabi.h> so the two agree instead of colliding.
+namespace __cxxabiv1 {
 extern "C" char *__cxa_demangle(const char *mangled_name, char *output_buffer,
 		__SPRT_ID(size_t) * length, int *status);
 }
+namespace abi = __cxxabiv1;
 
 #endif

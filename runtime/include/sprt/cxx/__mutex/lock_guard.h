@@ -26,6 +26,7 @@
 #include <sprt/c/__sprt_assert.h>
 
 namespace sprt {
+inline namespace __cxx_mutex {
 
 struct defer_lock_t {
 	explicit defer_lock_t() = default;
@@ -67,6 +68,7 @@ public:
 	lock_guard &operator=(lock_guard const &) = delete;
 };
 
+} // inline namespace __cxx_mutex
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___MUTEX_LOCK_GUARD_H_

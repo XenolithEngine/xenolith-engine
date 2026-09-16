@@ -37,8 +37,8 @@ typedef __SPRT_ID(uint32_t) __SPRT_ID(sprt_lock_flags_t);
 	sprt_qlock_t is a platform-independent FUTEX API implementation.
 	It uses uint32_t as a value for all platforms.
 
-	sprt_qlock_t is small, fast and minimal in it's capabilites.
-	Potentialiy, it has no priority inversion mitigation, use with care.
+	sprt_qlock_t is small, fast and minimal in it's capabilities.
+	Potentially, it has no priority inversion mitigation, use with care.
 
 	Implementation:
 	- Windows - WaitOnAddress
@@ -55,7 +55,7 @@ typedef __SPRT_ID(uint32_t) __SPRT_ID(sprt_qlock_t);
 	(see sprt/runtime/thread/rmutex.h for the complete mutex implementation)
 
 	Note that sprt_rlock_t may not implement PI by itself, but serves as
-	a platform for it's implemntation by more complex types
+	a platform for it's implementation by more complex types
 
 	Implementation:
 	- Windows - WaitOnAddress (WinAPI Priority boost)
@@ -100,7 +100,7 @@ typedef void *__SPRT_ID(sprt_plock_t);
 // returns -1 with EOWNERDIED in errno
 // Note that if you free/delete memory pointer with sprt_plock_t on it,
 // allocator can immediately reuse sprt_plock_t address for other resource, before you call
-// `sprt_plock_unlock`, and SPRT_LOCK_FLAG_RESOURCE_DIED will be asigned to new resource address.
+// `sprt_plock_unlock`, and SPRT_LOCK_FLAG_RESOURCE_DIED will be assigned to new resource address.
 // To mitigate this, do `sprt_plock_unlock` before free/delete resource by address, when you use
 // SPRT_LOCK_FLAG_RESOURCE_DIED
 #define __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED 8
@@ -161,7 +161,7 @@ __SPRT_ID(clockid_t) __SPRT_ID(sprt_qlock_getclock)(__SPRT_ID(sprt_lock_flags_t)
 */
 
 // Check for runtime support of the combination of flags for sprt_rlock_t
-// Usage of flags compination, for that sprt_rlock_supports returns -1 leads to undefined behavior
+// Usage of flags combination, for that sprt_rlock_supports returns -1 leads to undefined behavior
 SPRT_API
 int __SPRT_ID(sprt_rlock_supports)(__SPRT_ID(sprt_lock_flags_t));
 

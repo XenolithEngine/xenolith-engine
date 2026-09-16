@@ -57,7 +57,21 @@ using glsl::Rect2DIndex;
 using glsl::RoundedRect2DIndex;
 using glsl::Polygon2DIndex;
 
-using font::Autofit;
+using stappler::font::Autofit;
+
+/* Which of the two 2d render graphs a queue is. Written into core::QueueData::typeTag by the
+ * backend pass makers, so hand-built queues are tagged too; Scene2d re-exports it as
+ * Scene2d::QueueType. Values start at 1 (0 is `typeTag` unset) and must not be renumbered: clients
+ * match against a server's.
+ */
+enum class QueueType : uint32_t {
+	// full-featured queue: shadows, pseudo-SDF, particles, depth buffer, post-processing
+	Default = 1,
+
+	// lightweight queue: no shadows, no particles, no depth buffer, no post-processing
+	// (Vulkan only; the WebGPU, Metal, GLES and Software queues are already of this shape)
+	Flat = 2,
+};
 using core::SamplerIndex;
 
 using glsl::ParticleIndirectCommand;
@@ -100,6 +114,9 @@ struct VertexSpan {
 struct alignas(16) VertexData : public Ref {
 	Vector<Vertex> data;
 	Vector<uint32_t> indexes;
+	DataIdentity identity;
+
+	bool getBounds(Rect &out) const;
 };
 
 struct InstanceVertexData {
@@ -188,9 +205,28 @@ public:
 	bool isReady() const { return _timeline.try_wait(SignalValue); }
 	bool isWaitOnReady() const { return _waitOnReady; }
 
+#if XL_FRAME_ACCOUNT
+	/* Work time of the task, stamped by the task before it raises the signal (the consumer cannot
+	separate work from queue latency). A sum across threads that may exceed the frame, reported
+	apart from the wait. Plain, not atomic: written before the timeline signal, read after it. */
+	void setWorkTime(uint64_t ns) { _workTime = ns; }
+
+	/* Taken, not read: a result is re-pushed every frame while its content is unchanged, so the
+	work is attributed once, to the frame that paid for it, and later frames report zero. */
+	uint64_t takeWorkTime() {
+		auto ret = _workTime;
+		_workTime = 0;
+		return ret;
+	}
+#endif
+
 protected:
 	bool _waitOnReady = true;
 	mutable sprt::qtimeline _timeline;
+
+#if XL_FRAME_ACCOUNT
+	uint64_t _workTime = 0;
+#endif
 };
 
 SP_DEFINE_ENUM_AS_MASK(DeferredVertexResult::Flags)

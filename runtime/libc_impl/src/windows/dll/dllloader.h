@@ -44,6 +44,7 @@ THE SOFTWARE.
 #include "dll_oleaut32.h"
 #include "dll_dbghelp.h"
 #include "dll_crypt32.h"
+#include "dll_iphlpapi.h"
 
 // Mark all loader functions with this to remove buffer checks from functions,
 // that can be called before security cookie initialization
@@ -76,6 +77,7 @@ struct DllLoader {
 
 	decltype(&::GetProcAddress) __GetProcAddress = nullptr;
 	decltype(&::LoadLibraryW) __LoadLibraryW = nullptr;
+	decltype(&::LoadLibraryExW) __LoadLibraryExW = nullptr;
 	decltype(&::FreeLibrary) __FreeLibrary = nullptr;
 	decltype(&::ExitProcess) __ExitProcess = nullptr;
 
@@ -98,8 +100,9 @@ struct DllLoader {
 	Oleaut32Table oleaut32; // 16
 	DbghelpTable dbghelp; // 17
 	Crypt32Table crypt32; // 18
+	IphlpapiTable iphlpapi; // 19
 
-	DllTable *__tables[20];
+	DllTable *__tables[21];
 
 	DllLoader()
 	: __tables{
@@ -122,6 +125,7 @@ struct DllLoader {
 		  &oleaut32,
 		  &dbghelp,
 		  &crypt32,
+		  &iphlpapi,
 		  nullptr,
 	  } { }
 

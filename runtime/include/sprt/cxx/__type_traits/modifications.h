@@ -26,6 +26,7 @@
 #include <sprt/cxx/__type_traits/constants.h>
 
 namespace sprt {
+inline namespace __cxx_type_traits {
 
 template <typename Type>
 struct remove_const {
@@ -162,6 +163,7 @@ struct remove_cvref {
 template <typename Type>
 using remove_cvref_t = __remove_cvref(Type);
 
+} // inline namespace __cxx_type_traits
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_MODIFICATIONS_H_

@@ -35,10 +35,10 @@ Sha1::Buf Sha1::make(const CoderSource &source, const StringView &salt) {
 
 Sha1::Buf Sha1::hmac(const CoderSource &data, const CoderSource &key) {
 	Buf ret;
-	sprt::array<uint8_t, Length * 2> keyData = {0};
+	sprt::array<uint8_t, BlockSize> keyData = {0};
 
 	Sha1 shaCtx;
-	if (key.size() > Length * 2) {
+	if (key.size() > BlockSize) {
 		shaCtx.update(key).final(keyData.data());
 	} else {
 		sprt::memcpy(keyData.data(), key.data(), key.size());
@@ -61,8 +61,12 @@ Sha1 &Sha1::init() {
 }
 
 Sha1 &Sha1::update(const uint8_t *ptr, size_t len) {
-	if (len > 0) {
-		sprt::sha1::sha_process(ctx, ptr, (uint32_t)len);
+	// sha_process takes a uint32_t length; chunk so inputs >= 4 GiB are not truncated.
+	while (len > 0) {
+		uint32_t n = uint32_t(min(len, size_t(0xFFFFF000)));
+		sprt::sha1::sha_process(ctx, ptr, n);
+		ptr += n;
+		len -= n;
 	}
 	return *this;
 }
@@ -82,10 +86,10 @@ Sha512::Buf Sha512::make(const CoderSource &source, const StringView &salt) {
 
 Sha512::Buf Sha512::hmac(const CoderSource &data, const CoderSource &key) {
 	Buf ret;
-	sprt::array<uint8_t, Length * 2> keyData = {0};
+	sprt::array<uint8_t, BlockSize> keyData = {0};
 
 	Sha512 shaCtx;
-	if (key.size() > Length * 2) {
+	if (key.size() > BlockSize) {
 		shaCtx.update(key).final(keyData.data());
 	} else {
 		sprt::memcpy(keyData.data(), key.data(), key.size());
@@ -108,8 +112,12 @@ Sha512 &Sha512::init() {
 }
 
 Sha512 &Sha512::update(const uint8_t *ptr, size_t len) {
-	if (len > 0) {
-		sprt::sha512::sha_process(ctx, ptr, (uint32_t)len);
+	// sha_process takes a uint32_t length; chunk so inputs >= 4 GiB are not truncated.
+	while (len > 0) {
+		uint32_t n = uint32_t(min(len, size_t(0xFFFFF000)));
+		sprt::sha512::sha_process(ctx, ptr, n);
+		ptr += n;
+		len -= n;
 	}
 	return *this;
 }
@@ -130,11 +138,11 @@ Sha256::Buf Sha256::make(const CoderSource &source, const StringView &salt) {
 
 Sha256::Buf Sha256::hmac(const CoderSource &data, const CoderSource &key) {
 	Buf ret;
-	sprt::array<uint8_t, Length * 2> keyData = {0};
+	sprt::array<uint8_t, BlockSize> keyData = {0};
 	sprt::memset(keyData.data(), 0, keyData.size());
 
 	Sha256 shaCtx;
-	if (key.size() > Length * 2) {
+	if (key.size() > BlockSize) {
 		shaCtx.init().update(key).final(keyData.data());
 	} else {
 		sprt::memcpy(keyData.data(), key.data(), key.size());
@@ -157,8 +165,12 @@ Sha256 &Sha256::init() {
 }
 
 Sha256 &Sha256::update(const uint8_t *ptr, size_t len) {
-	if (len) {
-		sprt::sha256::sha_process(ctx, ptr, (uint32_t)len);
+	// sha_process takes a uint32_t length; chunk so inputs >= 4 GiB are not truncated.
+	while (len > 0) {
+		uint32_t n = uint32_t(min(len, size_t(0xFFFFF000)));
+		sprt::sha256::sha_process(ctx, ptr, n);
+		ptr += n;
+		len -= n;
 	}
 	return *this;
 }

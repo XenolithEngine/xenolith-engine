@@ -24,10 +24,15 @@
 #include "XLCommon.h" // IWYU pragma: keep
 
 #include "XL2dCommandList.cc"
+#include "XL2dDamage.cc"
+
+// backend-neutral draw plan: must precede every backend pass that consumes it
+#include "XL2dVertexPlan.cc"
 #include "XL2dVertexArray.cc"
 #include "XL2dFrameContext.cc"
 
 #include "XL2dSprite.cc"
+#include "XL2dScale9Sprite.cc"
 #include "XL2dLayer.cc"
 #include "XL2dLabel.cc"
 #include "XL2dScene.cc"
@@ -40,7 +45,6 @@
 #include "XL2dVectorSprite.cc"
 
 #include "XL2dActionAcceleratedMove.cc"
-#include "XL2dImageLayer.cc"
 #include "XL2dLayerRounded.cc"
 #include "XL2dLinearProgress.cc"
 #include "XL2dRoundedProgress.cc"
@@ -56,6 +60,7 @@
 #include "backend/vk/XL2dVkShadow.cc"
 #include "backend/vk/XL2dVkParticlePass.cc"
 #include "backend/vk/XL2dVkShadowPass.cc"
+#include "backend/vk/XL2dVkFlatPass.cc"
 #endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {

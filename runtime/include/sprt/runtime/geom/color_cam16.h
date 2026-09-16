@@ -169,7 +169,7 @@ struct SPRT_API Cam16 {
 
 	static constexpr Cam16 create(const Color4F &color,
 			const ViewingConditions &viewing_conditions) {
-		const Float red_l = linearized(color.a);
+		const Float red_l = linearized(color.r);
 		const Float green_l = linearized(color.g);
 		const Float blue_l = linearized(color.b);
 
@@ -217,7 +217,7 @@ struct SPRT_API Cam16 {
 				* (viewing_conditions.aw + 4.0) * viewing_conditions.fl_root;
 		const Float hue_prime = _hue < 20.14 ? _hue + 360 : _hue;
 		const Float e_hue =
-				0.25 * (sprt::cos(Float(hue_prime * sprt::numbers::Pi<Float> / 180.0 + 2.0) + 3.8));
+				0.25 * (sprt::cos(Float(hue_prime * sprt::numbers::Pi<Float> / 180.0 + 2.0)) + 3.8);
 		const Float p1 = 50000.0 / 13.0 * e_hue * viewing_conditions.n_c * viewing_conditions.ncb;
 		const Float t = p1 * sprt::sqrt(a * a + b * b) / (u + Float(0.305));
 		const Float alpha = sprt::pow(t, Float(0.9))

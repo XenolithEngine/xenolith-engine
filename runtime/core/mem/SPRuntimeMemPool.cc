@@ -26,6 +26,7 @@ THE SOFTWARE.
 #include <sprt/runtime/mem/context.h>
 #include <sprt/runtime/log.h>
 #include <sprt/cxx/new>
+#include <sprt/cxx/mutex>
 #include <sprt/c/__sprt_assert.h>
 #include <sprt/c/__sprt_unistd.h>
 
@@ -51,12 +52,54 @@ pool_t *get_zero_pool() {
 	return (pool_t *)s_struct._pool;
 }
 
+#if SPRT_HOSTED_RTOS
+// Thread pool for a thread sprt does not manage - on an RTOS that is the process
+// entry point, a kernel task rather than a pthread. Deliberately NOT the zero
+// pool: dispatch::_dispose() calls pool::clear() on whatever this function
+// returned, and the zero pool also carries process-lifetime data (the Ref map in
+// SPRuntimeRef.cpp, the MIME tables in runtime_core_filepath.cpp) that such a
+// clear would drop from under live pointers.
+static pool_t *get_unmanaged_thread_pool() {
+	struct UnmanagedPoolStruct {
+		impl::Allocator _alloc;
+		impl::Pool *_pool = nullptr;
+
+		UnmanagedPoolStruct() { _pool = impl::Pool::create(&_alloc); }
+		~UnmanagedPoolStruct() {
+			impl::Pool::destroy(_pool);
+			_pool = nullptr;
+		}
+	};
+
+	static UnmanagedPoolStruct s_struct;
+	return (pool_t *)s_struct._pool;
+}
+#endif
+
 pool_t *get_thread_support_pool() {
+#if SPRT_HOSTED_RTOS
+	// An sprt thread has its own allocator and pool (pthread.cc gives every
+	// thread a threadAlloc/threadMemPool before it starts), so hand back that
+	// one - a pool is bump-allocated without a lock, so two threads sharing one
+	// corrupt it, and _dispose() clears the pool it was given, which must
+	// therefore belong to the thread doing the clearing.
+	//
+	// Only the RTOS entry point has no thread of its own. That is what this
+	// branch originally existed for: __sprt_pthread_self() attaches a thread_t
+	// on demand, and on a kernel task it produced a handle whose threadMemPool
+	// was garbage, so the next palloc data-aborted. _noattach_np() is the same
+	// query WITHOUT the attach, so it simply reports null there.
+	if (auto thread = __sprt_pthread_self_noattach_np()) {
+		return reinterpret_cast<_thread::thread_base_t *>(thread)->threadMemPool;
+	}
+	return get_unmanaged_thread_pool();
+#else
 	auto thread = __sprt_pthread_self();
 	if (thread) {
 		return reinterpret_cast<_thread::thread_base_t *>(thread)->threadMemPool;
 	}
 	return nullptr;
+#endif
 }
 
 } // namespace sprt::memory
@@ -68,6 +111,13 @@ static Allocator *s_global_allocator = nullptr;
 static Pool *s_global_pool = nullptr;
 static atomic<int> s_global_init = 0;
 static atomic<size_t> s_nPools = 0;
+
+// Serializes initialize()/terminate(): a concurrent initialize() must block until the
+// first caller has fully constructed s_global_pool (not just bumped the refcount), and
+// the refcount may cycle 0->1->0->1 (e.g. the dispatch looper), so a once-latch is not
+// enough. qmutex zero-initializes statically and is futex-based (no heap), so it is safe
+// to use before the pool exists.
+static qmutex s_global_init_mutex;
 
 static void Pool_performCleanup(Pool *pool) {
 	// Run default cleanups first...
@@ -222,9 +272,14 @@ void *Pool::palloc_self(size_t in_size) {
 }
 
 void *Pool::calloc(size_t count, size_t eltsize) {
+	if (eltsize != 0 && count > Max<size_t> / eltsize) {
+		return nullptr;
+	}
 	size_t s = count * eltsize;
 	auto ptr = alloc(s);
-	__builtin_memset(ptr, 0, s);
+	if (ptr) {
+		__builtin_memset(ptr, 0, s);
+	}
 	return ptr;
 }
 
@@ -233,7 +288,9 @@ void *Pool::pmemdup(const void *m, size_t n) {
 		return nullptr;
 	}
 	void *res = palloc(n);
-	__builtin_memcpy(res, m, n);
+	if (res) {
+		__builtin_memcpy(res, m, n);
+	}
 	return res;
 }
 
@@ -366,7 +423,7 @@ Pool *Pool::make_child(Allocator *allocator) {
 	return pool;
 }
 
-void Pool::cleanup_register(const void *data, Cleanup::Callback cb, pool::cleanup_flags flags) {
+Status Pool::cleanup_register(const void *data, Cleanup::Callback cb, pool::cleanup_flags flags) {
 	Cleanup *c;
 
 	if (free_cleanups) {
@@ -375,6 +432,9 @@ void Pool::cleanup_register(const void *data, Cleanup::Callback cb, pool::cleanu
 		free_cleanups = c->next;
 	} else {
 		c = (Cleanup *)palloc(sizeof(Cleanup));
+		if (!c) {
+			return Status::ErrorOutOfHostMemory;
+		}
 	}
 
 	c->data = data;
@@ -382,9 +442,11 @@ void Pool::cleanup_register(const void *data, Cleanup::Callback cb, pool::cleanu
 	c->flags = flags;
 	c->next = cleanups;
 	cleanups = c;
+	return Status::Ok;
 }
 
-void Pool::pre_cleanup_register(const void *data, Cleanup::Callback cb, pool::cleanup_flags flags) {
+Status Pool::pre_cleanup_register(const void *data, Cleanup::Callback cb,
+		pool::cleanup_flags flags) {
 	Cleanup *c;
 
 	if (free_cleanups) {
@@ -393,12 +455,16 @@ void Pool::pre_cleanup_register(const void *data, Cleanup::Callback cb, pool::cl
 		free_cleanups = c->next;
 	} else {
 		c = (Cleanup *)palloc(sizeof(Cleanup));
+		if (!c) {
+			return Status::ErrorOutOfHostMemory;
+		}
 	}
 	c->data = data;
 	c->fn = cb;
 	c->flags = flags;
 	c->next = pre_cleanups;
 	pre_cleanups = c;
+	return Status::Ok;
 }
 
 void Pool::cleanup_kill(void *data, Cleanup::Callback cb) {
@@ -444,17 +510,23 @@ void Pool::cleanup_run(void *data, Cleanup::Callback cb) {
 Status Pool::userdata_set(const void *data, const char *key, Cleanup::Callback cleanup) {
 	if (user_data == nullptr) {
 		user_data = HashTable::make(this);
+		if (user_data == nullptr) {
+			return Status::ErrorOutOfHostMemory;
+		}
 	}
 
 	if (user_data->get(key, -1) == nullptr) {
 		char *new_key = pstrdup(key);
+		if (new_key == nullptr) {
+			return Status::ErrorOutOfHostMemory;
+		}
 		user_data->set(new_key, -1, data);
 	} else {
 		user_data->set(key, -1, data);
 	}
 
 	if (cleanup) {
-		cleanup_register(data, cleanup, pool::cleanup_flags::cleanup_flags_none);
+		return cleanup_register(data, cleanup, pool::cleanup_flags::cleanup_flags_none);
 	}
 	return Status::Ok;
 }
@@ -462,12 +534,15 @@ Status Pool::userdata_set(const void *data, const char *key, Cleanup::Callback c
 Status Pool::userdata_setn(const void *data, const char *key, Cleanup::Callback cleanup) {
 	if (user_data == nullptr) {
 		user_data = HashTable::make(this);
+		if (user_data == nullptr) {
+			return Status::ErrorOutOfHostMemory;
+		}
 	}
 
 	user_data->set(key, -1, data);
 
 	if (cleanup) {
-		cleanup_register(data, cleanup, pool::cleanup_flags::cleanup_flags_none);
+		return cleanup_register(data, cleanup, pool::cleanup_flags::cleanup_flags_none);
 	}
 	return Status::Ok;
 }
@@ -491,7 +566,10 @@ Status Pool::userdata_get(void **data, const char *key, size_t klen) {
 }
 
 void initialize() {
-	// We do not know, what thread calls this first!
+	// We do not know, what thread calls this first! Hold the lock across the whole
+	// construction so a concurrent initialize() blocks until s_global_pool is ready,
+	// rather than returning with the refcount bumped but the pool still null.
+	unique_lock<qmutex> lock(s_global_init_mutex);
 	if (s_global_init.fetch_add(1) == 0) {
 		if (!s_global_allocator) {
 			s_global_allocator =
@@ -503,6 +581,7 @@ void initialize() {
 }
 
 void terminate() {
+	unique_lock<qmutex> lock(s_global_init_mutex);
 	if (s_global_init.fetch_sub(1) == 1) {
 		if (s_global_pool) {
 			Pool::destroy(s_global_pool);

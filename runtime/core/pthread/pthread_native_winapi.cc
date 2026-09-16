@@ -86,12 +86,20 @@ static void __closeNativeHandle(void *handle) {
 	CloseHandle((HANDLE)handle); //
 }
 
-static void __initNativeHandle(thread_t *thread) {
-	if (!DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(),
-				&thread->handle, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
-		__deallocateThread(thread);
-		return;
+static bool __initNativeHandle(thread_t *thread) {
+	// Get a real (non-pseudo) handle to the current thread. Duplicate into a local
+	// first: for SPRT-created threads thread->handle already holds the CreateThread
+	// handle, which must be closed before we replace it or it leaks. On failure we
+	// leave thread->handle untouched so the create()-side reclaim can close it.
+	HANDLE dup = nullptr;
+	if (!DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &dup, 0,
+				FALSE, DUPLICATE_SAME_ACCESS)) {
+		return false;
 	}
+	if (thread->handle) {
+		CloseHandle((HANDLE)thread->handle);
+	}
+	thread->handle = dup;
 
 	GetCurrentThreadStackLimits(&thread->lowStack, &thread->highStack);
 
@@ -106,6 +114,8 @@ static void __initNativeHandle(thread_t *thread) {
 	} else {
 		thread->attr.prio = __unmapPriority(GetThreadPriority(thread->handle));
 	}
+
+	return true;
 }
 
 static bool __isNativeHandleValid(thread_t *thread) {
@@ -220,7 +230,7 @@ static bool __fillCpuSet(SpanView<ULONG> ids, size_t cpusetsize, __sprt_cpu_set_
 
 	auto buf = (SYSTEM_CPU_SET_INFORMATION *)__sprt_malloc(bufferSize);
 	if (!GetSystemCpuSetInformation(buf, bufferSize, &bufferSize, GetCurrentProcess(), 0)) {
-		__sprt_freea(buf);
+		__sprt_free(buf);
 		return false;
 	}
 
@@ -236,14 +246,17 @@ static bool __fillCpuSet(SpanView<ULONG> ids, size_t cpusetsize, __sprt_cpu_set_
 					break;
 				}
 			}
+			// idx is the logical CPU index, so advance it only for CpuSet entries
+			// (not for interleaved entries of another Type).
+			++idx;
 		}
 
-		offset += buf->Size;
+		// Entries are variable-sized; advance by this entry's Size, not the first's.
+		offset += target->Size;
 		target = (SYSTEM_CPU_SET_INFORMATION *)(((char *)target) + target->Size);
-		++idx;
 	}
 
-	__sprt_freea(buf);
+	__sprt_free(buf);
 	return true;
 }
 
@@ -261,8 +274,8 @@ static uint32_t __fillCpuIds(ULONG *cpuids, size_t cpusetsize, const __sprt_cpu_
 
 	auto buf = (SYSTEM_CPU_SET_INFORMATION *)__sprt_malloc(bufferSize);
 	if (!GetSystemCpuSetInformation(buf, bufferSize, &bufferSize, GetCurrentProcess(), 0)) {
-		__sprt_freea(buf);
-		return false;
+		__sprt_free(buf);
+		return 0;
 	}
 
 	uint32_t ncpus = 0;
@@ -276,14 +289,16 @@ static uint32_t __fillCpuIds(ULONG *cpuids, size_t cpusetsize, const __sprt_cpu_
 				*cpuids++ = target->CpuSet.Id;
 				++ncpus;
 			}
+			// idx is the logical CPU index, so advance it only for CpuSet entries.
+			++idx;
 		}
 
-		offset += buf->Size;
+		// Entries are variable-sized; advance by this entry's Size, not the first's.
+		offset += target->Size;
 		target = (SYSTEM_CPU_SET_INFORMATION *)(((char *)target) + target->Size);
-		++idx;
 	}
 
-	__sprt_freea(buf);
+	__sprt_free(buf);
 	return ncpus;
 }
 

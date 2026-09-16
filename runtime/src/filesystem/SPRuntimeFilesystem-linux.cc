@@ -148,7 +148,7 @@ void _initSystemPaths(LookupData &data) {
 	auto ldPathEnv = ::getenv("LD_LIBRARY_PATH");
 	if (ldPathEnv) {
 		auto &res = data._resourceLocations[toInt(LocationCategory::Library)];
-		StringView(pathEnv).split<StringView::Chars<':'>>([&](StringView value) {
+		StringView(ldPathEnv).split<StringView::Chars<':'>>([&](StringView value) {
 			res.paths.emplace_back(LocationInfo{
 				value.pdup(data._pool),
 				LookupFlags::Shared,
@@ -383,15 +383,21 @@ void _initSystemPaths(LookupData &data) {
 		auto off = toInt(LocationCategory::AppData) - toInt(LocationCategory::CommonData);
 		for (auto it :
 				each<LocationCategory, LocationCategory::AppData, LocationCategory::AppRuntime>()) {
+			auto &common = data._resourceLocations[toInt(it) - off];
+			if (common.paths.empty()) {
+				// the matching Common<X> base dir was not resolved - nothing to derive from
+				continue;
+			}
+
 			auto &res = data._resourceLocations[toInt(it)];
 			filepath::merge([&](StringView path) {
 				res.paths.emplace_back(LocationInfo{
 					path.pdup(data._pool),
-					LookupFlags::Private | LookupFlags::Public,
-					LocationFlags::Locateable,
+					LookupFlags::Private | LookupFlags::Public | LookupFlags::Writable,
+					LocationFlags::Locateable | LocationFlags::Writable,
 					defaultInterface,
 				});
-			}, data._resourceLocations[toInt(it) - off].paths.front().path, appConfig.bundleName);
+			}, common.paths.front().path, appConfig.bundleName);
 		}
 	} else {
 		auto bundlePath = filepath::root(execPath);

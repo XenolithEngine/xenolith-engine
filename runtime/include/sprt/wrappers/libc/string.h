@@ -14,22 +14,29 @@
 
 namespace sprt {
 
-
 inline namespace _cstring_dll {
+
+#if __SPRT_WIN_USE_IMPORT_STRING_LIB
+using ::memcmp;
+using ::memcpy;
+using ::memmove;
+using ::memset;
+#else
 SPRT_FORCEINLINE int memcmp(const void *s1, const void *s2, size_t n) {
 	return __builtin_memcmp(s1, s2, n);
 }
-SPRT_FORCEINLINE void *memcpy(void *s1, const void *s2, size_t n) {
+SPRT_FORCEINLINE void *memcpy(void *__SPRT_RESTRICT s1, const void *__SPRT_RESTRICT s2, size_t n) {
 	return __builtin_memcpy(s1, s2, n);
 }
 SPRT_FORCEINLINE void *memmove(void *s1, const void *s2, size_t n) {
 	return __builtin_memmove(s1, s2, n);
 }
+SPRT_FORCEINLINE void *memset(void *s, int c, size_t n) { return __builtin_memset(s, c, n); }
+#endif
 SPRT_FORCEINLINE char *strcpy(char *s1, const char *s2) { return __builtin_strcpy(s1, s2); }
 SPRT_FORCEINLINE char *strncpy(char *s1, const char *s2, size_t n) {
 	return __builtin_strncpy(s1, s2, n);
 }
-SPRT_FORCEINLINE void *memset(void *s, int c, size_t n) { return __builtin_memset(s, c, n); }
 
 SPRT_FORCEINLINE constexpr size_t strlen(const char *s) { return __constexpr_strlen(s); }
 SPRT_FORCEINLINE constexpr size_t strlen(const char16_t *s) { return __constexpr_strlen(s); }
@@ -99,20 +106,19 @@ SPRT_FORCEINLINE char *strerror(int errnum) { return __sprt_strerror(errnum); }
 #if !defined(__SPRT_BUILD)
 #if !__SPRT_WIN_USE_IMPORT_STRING_LIB
 using namespace sprt::_cstring_dll;
+#else
+using sprt::_cstring_dll::strchr;
+using sprt::_cstring_dll::strstr;
+using sprt::_cstring::strstr;
 #endif
 using namespace sprt::_cstring;
 #endif
 
-#ifdef __SPRT_AS_STD
-namespace std {
-using namespace sprt::_cstring_dll;
-using namespace sprt::_cstring;
-} // namespace std
-#endif
 #endif // __cplusplus
 
 
-#if !defined(__SPRT_BUILD) && !defined(__cplusplus)
+#if (!defined(__SPRT_BUILD) && !defined(__cplusplus)) \
+		|| (defined(__SPRT_BUILD) && __STDC_HOSTED__ == 0)
 __SPRT_BEGIN_DECL
 
 
@@ -208,13 +214,18 @@ char *strchr(const char *str, int c) SPRT_UMBRELLA_END
 #endif
 #endif
 
-SPRT_UMBRELLA_FUNC
-const void *memchr(const void *str, int c, size_t size) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_memchr(str, c, size);
-}
-#endif
+// memchr is a PROTOTYPE, not an umbrella inline, and must stay one.
+//
+// LLVM synthesises memchr calls on its own - folding `strchr(<constant string>, c)`
+// into `memchr(<constant string>, c, len + 1)` is the common case - and resolves
+// them BY NAME against whatever the module already contains. A forced-inline
+// internal-linkage function named `memchr` is therefore not merely an inline:
+// interprocedural constant propagation may specialise it on the arguments of the
+// one call the source actually wrote, and the call LLVM synthesises afterwards
+// inherits those constants, silently searching for the wrong byte. Any -O2 or
+// higher translation unit that called memchr AND did strchr() over a string
+// literal was miscompiled that way.
+__SPRT_C_FUNC void *memchr(const void *str, int c, size_t size) __SPRT_NOEXCEPT;
 
 SPRT_UMBRELLA_FUNC
 char *strcat(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src) SPRT_UMBRELLA_END
@@ -302,18 +313,28 @@ __SPRT_END_DECL
 #endif
 
 
-#if !defined(__SPRT_BUILD)
+#if !defined(__SPRT_BUILD) || __STDC_HOSTED__ == 0
 __SPRT_BEGIN_DECL
 
 
 #if !__SPRT_WIN_USE_IMPORT_STRING_LIB
 
+// In a C++ APPLICATION build the block above has already pulled the constexpr
+// sprt::strnlen(const char *, size_t) into the global namespace with
+// `using namespace sprt::_cstring_dll`. Declaring the C one as well puts two functions
+// with the SAME signature in the same scope, and every unqualified strnlen() call
+// becomes ambiguous. strlen never had the problem: its C declaration lives in the block
+// above, which excludes C++ outright. The runtime's own build (__SPRT_BUILD) issues no
+// using-directive, so there ::strnlen must stay - runtime/libc_wrapper/c/
+// SPRuntimeCString.cpp calls it to implement the umbrella.
+#if !defined(__cplusplus) || defined(__SPRT_BUILD)
 SPRT_UMBRELLA_FUNC
 size_t strnlen(const char *str, size_t n) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_strnlen(str, n);
 }
+#endif
 #endif
 
 #endif
@@ -342,11 +363,21 @@ char *strdup(const char *str) SPRT_UMBRELLA_END
 }
 #endif
 
+#ifndef strdup
 SPRT_UMBRELLA_FUNC
 char *_strdup(const char *str) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_strdup(str);
+}
+#endif
+#endif // strdup
+
+SPRT_UMBRELLA_FUNC
+errno_t strerror_r(errno_t errnum, char *buf, rsize_t bufsz) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strerror_s(buf, bufsz, errnum);
 }
 #endif
 
@@ -358,13 +389,21 @@ errno_t strerror_s(char *buf, rsize_t bufsz, errno_t errnum) SPRT_UMBRELLA_END
 }
 #endif
 
+// The case-insensitive comparators are also exposed through <strings.h>; guard
+// each so the two headers can be co-included without duplicating the inline
+// definition (see the matching __SPRT_DEFINED_* guards in <strings.h>).
+#ifndef __SPRT_DEFINED_strcasecmp
+#define __SPRT_DEFINED_strcasecmp
 SPRT_UMBRELLA_FUNC int strcasecmp(const char *s1, const char *s2) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_strcasecmp(s1, s2);
 }
 #endif
+#endif // __SPRT_DEFINED_strcasecmp
 
+#ifndef __SPRT_DEFINED_strncasecmp
+#define __SPRT_DEFINED_strncasecmp
 SPRT_UMBRELLA_FUNC int strncasecmp(const char *s1, const char *s2,
 		__SPRT_ID(rsize_t) size) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -372,7 +411,37 @@ SPRT_UMBRELLA_FUNC int strncasecmp(const char *s1, const char *s2,
 	return __sprt_strncasecmp(s1, s2, size);
 }
 #endif
+#endif // __SPRT_DEFINED_strncasecmp
 
+// The MSVC spellings of the same two comparators. Separate entry points rather than
+// macros so a caller can take their address, and routed to the same __sprt_* backends -
+// on this libc the "current locale" the MSVC forms are documented against is the UTF-8
+// one, where case folding of the ASCII range is what both pairs do.
+SPRT_UMBRELLA_FUNC int _stricmp(const char *s1, const char *s2) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strcasecmp(s1, s2);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC int _strnicmp(const char *s1, const char *s2,
+		__SPRT_ID(rsize_t) size) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strncasecmp(s1, s2, size);
+}
+#endif
+
+// Pre-standard alias MSVC still ships for _stricmp; same function.
+SPRT_UMBRELLA_FUNC int _strcmpi(const char *s1, const char *s2) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strcasecmp(s1, s2);
+}
+#endif
+
+#ifndef __SPRT_DEFINED_strcasecmp_l
+#define __SPRT_DEFINED_strcasecmp_l
 SPRT_UMBRELLA_FUNC int strcasecmp_l(const char *s1, const char *s2,
 		__SPRT_ID(locale_t) l) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -380,7 +449,10 @@ SPRT_UMBRELLA_FUNC int strcasecmp_l(const char *s1, const char *s2,
 	return __sprt_strcasecmp_l(s1, s2, l);
 }
 #endif
+#endif // __SPRT_DEFINED_strcasecmp_l
 
+#ifndef __SPRT_DEFINED_strncasecmp_l
+#define __SPRT_DEFINED_strncasecmp_l
 SPRT_UMBRELLA_FUNC int strncasecmp_l(const char *s1, const char *s2, __SPRT_ID(rsize_t) size,
 		__SPRT_ID(locale_t) l) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -388,6 +460,30 @@ SPRT_UMBRELLA_FUNC int strncasecmp_l(const char *s1, const char *s2, __SPRT_ID(r
 	return __sprt_strncasecmp_l(s1, s2, size, l);
 }
 #endif
+#endif // __SPRT_DEFINED_strncasecmp_l
+
+#ifndef __SPRT_DEFINED_strcoll_l
+#define __SPRT_DEFINED_strcoll_l
+SPRT_UMBRELLA_FUNC int strcoll_l(const char *s1, const char *s2,
+		__SPRT_ID(locale_t) l) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strcoll_l(s1, s2, l);
+}
+#endif
+#endif // __SPRT_DEFINED_strcoll_l
+
+#ifndef __SPRT_DEFINED_strxfrm_l
+#define __SPRT_DEFINED_strxfrm_l
+SPRT_UMBRELLA_FUNC __SPRT_ID(size_t)
+		strxfrm_l(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src,
+				__SPRT_ID(size_t) size, __SPRT_ID(locale_t) l) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strxfrm_l(dest, src, size, l);
+}
+#endif
+#endif // __SPRT_DEFINED_strxfrm_l
 
 __SPRT_END_DECL
 #endif

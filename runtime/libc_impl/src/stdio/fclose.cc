@@ -2,6 +2,9 @@
 #include <stdlib.h>
 
 __SPRT_C_FUNC int fclose(FILE *f) __SPRT_NOEXCEPT {
+	if (!f) {
+		return EOF; // defensive: closing a null stream is a no-op error
+	}
 	int r;
 
 	if (sprt_plock_lock(f, 0, nullptr) == -1) {

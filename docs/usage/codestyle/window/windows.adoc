@@ -1,0 +1,562 @@
+# Windows: opening them, owning them, closing them
+
+**TL;DR**
+
+* One process, many windows. The **root** window is built for you from the
+  command line / platform handle; every other one the application asks for.
+* Ask through `Context::createWindow(Rc<WindowInfo> &&, complete)`. What the
+  window **is** — its scene, its prebuilt queue, what happens when it dies —
+  travels *with the request*, as `WindowInfo::appData` = `Rc<WindowSceneInfo>`.
+* **Never look a window up by `id` afterwards.** The runtime re-uniques a
+  colliding id, so the id you asked for is not necessarily the one that exists.
+* The `Rc<WindowSceneInfo>` the opener keeps **is** the handle. `getWindow()` is
+  null until the window actually appears — creation is asynchronous.
+* A popup / dialog / tooltip that belongs to another window is
+  **`ui::SubWindow`**, not a hand-built `WindowInfo`: it becomes a native
+  subwindow where the platform has them and an in-scene overlay where it does
+  not, with the same placement and dismiss rules on both paths.
+* **Check `WindowCapabilities` before asking.** Fullscreen, subwindows,
+  decoration state, mode switching — each of them is missing somewhere.
+* Closing is `AppWindow::close(graceful)` / `hide()` / `SubWindow::dismiss()`.
+  The close callback fires **exactly once**, however the window went away.
+
+## The three kinds of window
+
+| | What it is | How you get it |
+|---|---|---|
+| **Root window** | the application's own top-level window, its own taskbar entry | built by the context at start-up; the scene comes from the `makeScene` symbol |
+| **Another root window** | a second, equally independent top-level window in the same process | `Context::createWindow` with `WindowType::Root` |
+| **Auxiliary surface** | `Dialog`, `Utility`, `Popup`, `Tooltip` — hangs off a parent window | `ui::SubWindow::open` |
+
+`WindowType` ([window_info.h](../../../../runtime/include/sprt/runtime/window/window_info.h))
+is immutable after creation, and everything except `Root` requires
+`WindowInfo::parent` to name a **live** window.
+
+## The root window
+
+You do not create it. The context does, from `ContextConfig` (command line on
+desktop, the native handle on Android/iOS). What you supply is the scene, as a
+process-wide symbol:
+
+[source,cpp]
+----
+// ExampleScene.cpp
+DEFINE_PRIMARY_SCENE_CLASS(ExampleScene)
+----
+
+That macro defines the `makeScene` symbol
+([XLEntryPoint.h](../../../../xenolith/application/XLEntryPoint.h)) which the
+engine calls for any window that did not bring a scene of its own — above all the
+root one, whose `WindowInfo` exists before the app thread does. A window that
+*did* bring one (see below) never reaches this symbol.
+
+## Opening another top-level window
+
+Fill a `WindowInfo`, attach a `WindowSceneInfo` as its `appData`, hand it to the
+context. `tests/window/src/window/SecondaryWindow.cpp` is the whole pattern:
+
+[source,cpp]
+----
+auto sceneInfo = Rc<WindowSceneInfo>::create(
+		// SceneBuilder: runs on the app thread when this window needs its scene.
+		[builder = sp::move(builder), id = id.str<Interface>()](NotNull<AppThread> app,
+				NotNull<core::RenderServerChannel> window,
+				const core::FrameConstraints &c) mutable -> Rc<Scene> {
+	return Rc<SecondaryScene>::create(app, window, c, id, sp::move(builder));
+}, sp::move(onClose));
+
+auto info = Rc<sprt::window::WindowInfo>::create();
+info->id = id.str<Interface>();
+info->title = toString("testapp ", id);
+info->type = sprt::window::WindowType::Root; // no parent, no Subwindows capability needed
+info->rect = IRect(0, 0, int32_t(size.width), int32_t(size.height));
+info->appData = sceneInfo;                   // the payload IS the window's identity
+
+ctx->createWindow(sp::move(info));
+return sceneInfo;                            // ... and the caller's handle
+----
+
+Points that are easy to get wrong:
+
+* **`createWindow` is safe from any thread**, but `info` (and its `appData`) must
+  not be touched after the call — the runtime has taken it.
+* **The completion is not the first frame.** `complete(Status, StringView id)`
+  runs on the app thread and reports that the window system accepted the window.
+  The scene arrives separately, through `WindowSceneInfo::makeScene`, so poll
+  `getWindow()` / `getScene()` rather than assuming either exists on return.
+* **`id` may be renamed.** A collision with a live window is resolved by
+  re-uniquing (`ContextController::configureWindow`), which is exactly why the
+  scene builder is carried in `appData` instead of being parked in a table keyed
+  by the id you chose. `complete` reports the final id;
+  `WindowSceneInfo::getId()` returns it once the window exists.
+* **A second `Root` window works headless.** It needs no parent and no
+  `WindowCapabilities::Subwindows`, and the headless controller builds one window
+  per call — which is what makes multi-window behaviour testable with no display
+  at all (`tests/window`, layout `multi-window`). Auxiliary windows work there
+  too; see below.
+
+### The handle and its thread
+
+`WindowSceneInfo` ([XLWindowSceneInfo.h](../../../../xenolith/application/XLWindowSceneInfo.h))
+is **app-thread only**: constructed, used and destroyed there, and a DEBUG build
+asserts it in the destructor. The one thing that silently breaks it is leaving
+the payload on a `WindowInfo` that dies on the *context* thread — hence
+`WindowInfo::takeAppData()`, which is legal from any thread because moving an
+`Rc` does not touch the pointee.
+
+`CloseCallback` fires exactly once, on the app thread, however the window went
+away: its own close, the parent's teardown, a WM-side dismiss, or a creation that
+never succeeded. Do not write a separate "it failed to open" path.
+
+## Auxiliary surfaces: `ui::SubWindow`
+
+A menu, a tooltip, a modal dialog of your own drawing — do **not** hand-build a
+`WindowInfo` with `WindowType::Popup`. Use
+[XLUiSubWindow.h](../../../../xenolith/renderer/ui/XLUiSubWindow.h):
+
+[source,cpp]
+----
+auto popup = ui::SubWindow::openPopup(window, placement, Extent2(240, 320),
+		[](NotNull<ui::SubWindow> self) -> Rc<basic2d::SceneLayout2d> {
+	return Rc<MyMenu>::create(self); // the content can dismiss itself
+});
+…
+popup->dismiss();                    // idempotent; onClose still fires once
+----
+
+Why this and not `createWindow`: the same call materializes as a **native
+subwindow** where the platform advertises `WindowCapabilities::Subwindows`, and
+as an **in-scene overlay** on the parent's `SceneContent2d` where it does not
+(Android, wasm, direct output). Both honour the same placement, the same dismiss
+rules and the same close callback, so the caller never branches on the platform.
+`isNative()` tells you which one you got, if you care.
+
+**Headless is on the native side of that line.** The pseudo-controller stands in
+for the window manager — a virtual screen the size of the root window, placement
+through the same `computeWindowPlacement`, focus and pointer ownership, the
+dismiss cascade — and every auxiliary window gets a **pseudo-swapchain of its
+own**. So a menu, a dialog or a palette is a real, separately renderable window
+with no display in play, and `--headless` exercises the same code path a desktop
+run does instead of the overlay fallback. Drive them over the inspector socket
+with the `windows` command and the per-command `window` argument (see
+[SceneInspector](../../../../xenolith/application/nodes/XLSceneInspector.h)) —
+each window renders on demand, so `frame` is per window too.
+
+* `openPopup` / `openDialog` / `openUtility` / `showTooltip` are the shorthands;
+  `open(parent, Config &&)` is the full form.
+* `Config` takes **exactly one** of `content` (a `SceneLayout2d`, portable) or
+  `scene` (your own `Scene` subclass, native path only — with no subwindow
+  support `open` fails rather than quietly producing something else).
+* Tooltips default to `preferNative = false`: a native tip costs a swapchain for
+  a few hundred milliseconds of hint and takes hover away from the node it
+  describes.
+* Per-window hint and menu bookkeeping — one tip at a time, a menu superseding a
+  tip, the hide timer — is `ui::SubWindowSession::get(window)`
+  ([XLUiSubWindowSession.h](../../../../xenolith/renderer/ui/XLUiSubWindowSession.h)),
+  not something to re-implement per screen. `showTip(text, …)` is the one-line
+  hint; `showTip(Config &&, key, …)` takes a surface of your own and keys the slot
+  so re-showing the same thing refreshes the timer instead of flapping.
+
+**Headless also advertises `WindowCapabilities::UserSpaceDecorations`**, and for
+the plainest of reasons: the capability says the window system draws *no* frame
+and the application draws its own, and that is what a pseudo-window is by
+construction. So the flag survives `Context::configureWindow`, `SceneContent`
+builds the decorations node, and a headless capture is the frame a decorated
+desktop window presents. It is not a courtesy bit either — a press on one of
+those grips is acted on: `HeadlessWindow` moves and resizes itself on the virtual
+screen it already owns, where every other backend hands the press to the WM
+(`_NET_WM_MOVERESIZE`, `xdg_toplevel::move`, `HTCAPTION`). Two things to know
+before writing a check against it:
+
+* **while a grip drag runs, an injected coordinate is read against the window
+  rect as it was when the press landed** — a synthetic pointer has no root
+  coordinates to report, so a drag from `(x0, y0)` to `(x1, y1)` moves the window
+  by exactly `(x1 - x0, y0 - y1)`;
+* the emulated theme sets `decorations.resizeInset = 6pt` and leaves
+  `borderRadius`/`shadowWidth` at **zero**. The inset is the Win32 figure rather
+  than the X11 one because `WindowDecorations` hangs each resize bar outside the
+  content box and `inset` back in: with a surface that IS the window, an inset of
+  zero puts all eight of them out of reach. The radius and the shadow stay off
+  because a pseudo-window has nothing behind it — a rounded corner would cut
+  pixels out of the capture with nothing to show through.
+
+A grip press is **swallowed**, as it is everywhere else, so a widget drawn on a
+title bar needs `WindowLayerFlags::GripGuard` over itself or its click is a window
+drag. `Popup` and `Tooltip` are excluded: they inherit the flag from their owner
+and must not be draggable by their own edges.
+
+**A `Popup` or a `Tooltip` is a SHAPED window**, and the engine asks for it to be
+blended: `Context::handleAppWindowSurfaceUpdate` picks premultiplied alpha for
+those two types (and for anything with `UserSpaceDecorations`) whenever the
+compositor offers it, and `ui::SubWindowScene` clears their scene to nothing
+rather than to white. Both halves are needed and neither is optional to
+understand: such a window is sized to its panel exactly, so a `border-radius` on
+that panel leaves the window's four corners outside everything that is drawn —
+they show the clear colour, and white specks at the corners of every menu is what
+that looked like. Where the compositor will not blend, the surface stays opaque
+and the corners come out black instead of transparent. `Dialog` and `Utility`
+are left alone: they are ordinary rectangles with a frame the window system
+draws.
+
+### A panel on a surface: `ui::openPopupSurface`
+
+`SubWindow` gives you the WINDOW. What every popup then has to do with it is the
+same six things, and each of them is a thing to get wrong exactly once — so they
+live in one function
+([XLUiPopupSurface.h](../../../../xenolith/renderer/ui/XLUiPopupSurface.h)) that
+a menu, a search palette and a colour picker all open through:
+
+[source,cpp]
+----
+ui::PopupSurfaceConfig config;
+config.size = Extent2(258, 114);              // settled BEFORE any node exists
+config.panelType = "color-picker";            // what a stylesheet addresses it as
+config.styleSource = anchor;                  // whose sheet the surface inherits
+config.content = [](NotNull<ui::SubWindow> surface, NotNull<ui::Panel> panel) {
+	// panel is already named, typed, placed, sized and painted
+};
+
+auto surface = ui::openPopupSurface(window, ui::placementForNode(anchor), sp::move(config));
+----
+
+What it does, and why each one is not the caller's business:
+
+. **The sheet.** A native popup is a scene of its own, and the `ui::StyleSystem`
+  carrying the application's sheet lives in the parent window's scene, out of its
+  reach — so the sheet is handed over: the one in force for `styleSource` (the
+  widget the popup belongs to; the parent window's top layout when it is unset)
+  is shared with the surface's own scene, parsed once. `stylesheet` /
+  `stylesheetSource` replace it for a surface whose look is its own. All of this
+  is the native path only; on the overlay path the panel is pushed under the
+  parent's content and is already inside the outer sheet's scope.
+. **A colour of its own.** `fallbackColor` is what it paints when no sheet ever
+  arrives — a `ui::Panel` with nothing declared is opaque **white**.
+. **The native extent.** The panel fills whatever the window system settled on,
+  which is not necessarily what was asked for.
+. **The overlay placement.** `pushOverlay` stretches the layout over the whole
+  parent and puts its origin at the bottom left, so the panel goes at the rect the
+  placement resolved — converted out of that rect's Y-**down** space into the
+  scene's Y-**up** one. The layout is also lifted onto
+  **`RenderingLevel::Overlay`** — a pass of its own, drawn last, at zero depth —
+  which is what puts the surface above the scene. That used to be
+  `RenderingLevel::Solid` on the panel, one node at a time, and it cost every
+  popup the ability to be translucent; `setOverlay` is inherited by the whole
+  subtree and cannot be escaped from inside, so marking the layout marks the
+  popup. The window decorations are on the overlay too, at `ZOrder::max() - 1`,
+  so the frame still covers a menu.
+. **The tap outside, and the input the overlay stands in front of.** A native
+  `Popup` is dismissed by the window system; an overlay has no such contract and
+  takes itself down. `onOutsideTap` overrides that for a surface that is one link
+  of something bigger — a submenu closes the whole chain rather than itself.
++
+  What keeps the press off the scene *under* an overlay is an **exclusive
+  `FocusGroup`** on its layout, not a swallowing listener, and the two are not
+  interchangeable: a swallowed event makes its own listener the exclusive owner of
+  the rest of the gesture, so a layout-wide listener that answers "handled" to
+  every press takes the `End` with it and every tap inside the popup dies between
+  its halves. The group instead drops everyone outside it from the dispatch
+  without owning anything. It is `EventMaskTouch` and `Propagate`, so the keyboard
+  is untouched and the content is free to carry groups of its own.
+  `basic2d::OverlaySurface` is the same pattern.
+
+`makePanel` is for a surface whose panel is a class of its own (`ui::SearchPicker`
+passes its content that way); left unset, a plain `ui::Panel` is made. The extent
+stays the caller's: a menu measures its source before any node exists, a palette
+opens at its full height so it does not resize under the pointer.
+
+### Hints on hover: `ui::TooltipSystem`
+
+Do **not** hand-roll "pointer entered → start a timer → show a tip". Declare the
+hint on the node and let
+[XLUiTooltipSystem.h](../../../../xenolith/renderer/ui/XLUiTooltipSystem.h) run it:
+
+[source,cpp]
+----
+ui::setTooltip(node, "Save the document");
+
+ui::setTooltip(node, ui::TooltipInfo{
+	.text = "Save the document",
+	.factory = [](NotNull<ui::SubWindow> w, const ui::TooltipRequest &req) { … },
+	.placement = ui::TooltipPlacement{ .anchorMode = ui::TooltipAnchorMode::Pointer },
+});
+
+// the coordinator installs itself on SceneContent on first use
+auto *tips = ui::TooltipSystem::acquireForNode(node);
+tips->setHoverDelay(TimeInterval::milliseconds(400));
+----
+
+* **`TooltipSystem` is the coordinator, `ui::TooltipComponent` the declaration.**
+  The dwell delay, the subwindow config and `TooltipMode` (`Overlay` vs `Native`)
+  are the system's, so hints behave alike everywhere; the factory and the placement
+  are the node's, with the system's as defaults. There is deliberately no per-node
+  delay. `setTooltipText`, `setTooltipEnabled` and `removeTooltip` edit a hint
+  afterwards, and rebuild one that is currently up.
+* **The delay is a dwell, not a timeout since entry** — every pointer move within
+  the node restarts it. It is an `Action` on purpose: a running action keeps
+  `Director::hasActiveInteractions()` true, so the delay actually elapses in an
+  app that renders on demand, which a looper timer would not.
+* **The hint is data; one listener on the scene resolves which node the pointer is
+  on.** It used to be an `InputListener` per hinted node — a registration, a sort
+  entry and a hit test per event apiece, for a hint used perhaps once a session.
+  Now the node publishes itself into the frame's hit-test registry
+  (`HitTestFlags::Tooltip`) and `TooltipSystem` asks that registry: on every
+  pointer move, and once per frame besides, which is what notices a node sliding
+  out from under a pointer that has not moved.
+* **Declare it whenever you like, including before the node is in a scene.** A
+  hint declared while a widget is being built parks a one-shot system on the node
+  that installs the coordinator on the node's first visit and then removes itself.
+  It is the only per-node object left, and it does not survive that frame.
+* **Leave `mode` at `Overlay`.** Under `Native` the tip takes the pointer off the
+  parent window, so the target reports a leave it never had — `hideOnLeave` is
+  ignored there and only the hide timer closes the hint.
+* A content builder that names its own root keeps that name; only an unnamed one
+  is called `aux-tip`.
+
+### Placement
+
+`Popup` and `Tooltip` are placed by `WindowPlacement`, modelled on
+`xdg_positioner`: the surface attaches to the `anchor` point of `anchorRect` (in
+**parent window logical coordinates**) and opens in the `gravity` direction,
+shifted by `offset`, with `adjustment` saying how it may slide/flip/resize at a
+work-area edge. `Dialog` and `Utility` are placed by the window manager.
+
+**There are no global coordinates in this API.** On Wayland the compositor
+computes the position; elsewhere the engine computes the same thing
+(`computeWindowPlacement`). Do not try to convert to screen coordinates yourself.
+
+**Do not build `anchorRect` by hand — ask `ui::placementAnchorRect(node)`**, or
+`ui::placementAnchorPoint(inScene, worldLocation)` for a point
+([XLUiSubWindow.h](../../../../xenolith/renderer/ui/XLUiSubWindow.h)). It is the
+one answer to "where is the anchor", and there is a reason it is one: the box has
+to come from the node's four **corners** (it may be rotated or scaled), be
+converted into the scene **content's** space — `convertToWorldSpace` alone answers
+in scene space, which is *physical pixels*, while a `WindowPlacement` is in
+logical points — then scaled by `density / surfaceDensity`, and flipped into Y-down
+at the end. Miss the second step and
+the surface lands correctly at density 1 and further and further off as the
+anchor moves down a HiDPI window, which is how a tooltip drifted for a while
+before this became one function. Miss the third and it lands correctly on every
+window whose `WindowInfo::density` is 1 and off by that factor on every other —
+the content's space is pixels over the *full* density and a placement is pixels
+over the *display's* alone. `--density 1.5` was enough to move every menu in a
+window a third of the way from its own widget.
+
+Two things about `gravity` and `offset` are worth knowing before you tune a
+placement:
+
+* **`gravity` names the edge of the SURFACE that lands on the anchor point**, not
+  the direction the surface opens in — so `gravity = Top` puts the surface
+  *below* the anchor. The Wayland backend inverts it when handing it to
+  `xdg_positioner`, whose gravity means the opposite.
+* **`offset` pushes the surface away from the anchor**, and a flip inverts it
+  along with the anchor and the gravity. So an `offset` of `{0, 8}` is an 8px gap
+  under the anchor rect, and stays an 8px gap above it once `FlipY` fires.
+
+## Where the window is: reading its geometry
+
+A scene can ask where its window is and how big it is, in the same logical units
+`WindowInfo::rect` uses — so the answer can be handed straight back to
+`createWindow` to reopen the window where the user left it:
+
+[source,cpp]
+----
+auto server = _director->getRenderServer();
+auto &geometry = server->getWindowGeometry();
+
+if (geometry.hasPosition) {
+    saveWindowRect(geometry.rect);   // logical units, content rect
+}
+----
+
+and be told when it changes:
+
+[source,cpp]
+----
+void MyScene::handleWindowGeometryChanged(const sprt::window::WindowGeometry &g) override {
+    Scene2d::handleWindowGeometryChanged(g);
+    // fires on a move as well as a resize; the snapshot above is readable at any time
+}
+----
+
+* **`hasPosition` is not optional to check.** Where it is false the origin is
+  zero because nothing knows it, not because the window is in the corner. Saving
+  that and restoring it puts the window at the top-left on the next run.
+* **This is not `FrameConstraints`.** Those say what to *render* — an extent in
+  device pixels, a density, a transform — and a scene is resized from them.
+  Geometry says where the window *is*, in logical units. `WindowGeometry`
+  deliberately carries neither the pixel extent nor the density: those are the
+  constraints' answer, and reporting them twice invites the two copies to
+  disagree.
+* The rect is the **content** rect, without server-side decorations. Restoring a
+  frame origin would walk the window down and right by the decoration thickness
+  on every save/restore cycle.
+
+### Restoring it
+
+`WindowInfo::rect`'s x/y is a request, and only when the flag says so:
+
+[source,cpp]
+----
+info->rect = IRect(saved.x, saved.y, int32_t(saved.width), int32_t(saved.height));
+info->flags |= WindowCreationFlags::UsePosition;
+----
+
+The flag exists because `rect` defaults to `IRect(0, 0, 1024, 768)` and `(0, 0)`
+is a legitimate position — without it a backend cannot tell "put it here" from
+"you choose". It is a **hint**: a window manager may place the window elsewhere,
+and a tiling one certainly will.
+
+| Platform | reports a position | honours one at creation |
+|---|---|---|
+| X11 (xcb) | yes — translated to the root, so a reparenting WM does not skew it | yes, as a hint to the WM |
+| Windows | yes — the client rect in screen coordinates | yes |
+| macOS | yes — flipped out of Cocoa's Y-up space | yes |
+| headless | yes — it owns its own geometry, so a request is exact | yes |
+| Wayland | **no** — xdg-shell never tells a toplevel where it is | no |
+| direct output (DRM/KMS) | **no** — the mode is the geometry | no |
+
+`WindowCapabilities::WindowPosition` is the one bit that answers both columns;
+`hasPosition` on the snapshot follows it.
+
+### What cannot be asked for at creation
+
+The geometry can. The two STATES an application is just as likely to want back —
+maximized and fullscreen — mostly cannot, and each for its own reason.
+
+`WindowInfo::fullscreen` is the initial fullscreen mode and is applied as the
+window maps, on X11. No other backend reads it today, so an application that must
+open fullscreen everywhere asks again from the app thread as well; the second ask
+is free when the first one worked, because the window already carries the flag.
+
+There is **no maximized equivalent at all**. `WindowInfo::state` is the runtime's
+own record of what the window IS rather than a request, and no
+`WindowCreationFlags` stands for it — so a window that should open maximized opens
+at its normal size and is maximized by `enableState(WindowState::Maximized)` a
+moment later.
+
+That moment is later than it looks. `getUpdatableStateFlags()` is read off the
+`Allowed*` flags the window manager reports, and those arrive in a state change of
+their own — **after** the one that says the window is mapped. Asking at the map
+event asks a window that has not yet said it may be maximized, and `enableState`
+declines it with an error in the log. Wait for the flag, and put a deadline on the
+wait: a state change at any later moment is the USER doing something, and applying
+a start-up restore to it makes the application fight its own user.
+
+One more thing follows from doing it late: between the ask and the window
+manager's answer the window may already report the maximized geometry while its
+state still says otherwise. A saver that takes that rect as the normal one
+replaces the geometry the user wants back with the size of their screen,
+permanently. Ignore geometry while a state you asked for has not arrived.
+
+## Capabilities, state and fullscreen
+
+Every interesting window operation is behind a `WindowCapabilities` bit, and each
+of them is absent on some platform. Ask before you offer the button:
+
+[source,cpp]
+----
+auto w = _director->getRenderServer();
+if (hasFlag(w->getCapabilities(), WindowCapabilities::Fullscreen)) {
+	w->setFullscreen(FullscreenInfo(FullscreenInfo::Current), [](Status s) {
+		if (s != Status::Ok) {
+			log::error("…", "Fail to set fullscreen: ", s);
+		}
+	});
+}
+----
+
+* `FullscreenInfo::Current` / `None` need only `Fullscreen`; anything else needs
+  `FullscreenWithMode`, exclusive output needs `FullscreenExclusive`, and without
+  `FullscreenSeamlessModeSwitch` the engine exits and re-enters fullscreen to
+  change mode.
+* Monitors and their modes come from `acquireScreenInfo(cb, ref)` — asynchronous,
+  answered on the app thread — and change under you: listen for
+  `SystemNotification::DisplayChanged` and re-read rather than caching.
+* `enableState` / `disableState` take **one** flag per call and only the flags in
+  `getUpdatableStateFlags()`. `WindowState::CloseRequest` is the close-guard seam:
+  setting it when unset runs `close()` (so an exit guard can veto), setting it
+  again forces the close.
+* `WindowInfo` describes the window **on the context thread**. From the app
+  thread read `getWindowState()` / `getCapabilities()`, not `getInfo()` — only
+  its constant fields are safe there.
+
+`tests/window`, layout `default` (`src/app/GeneralLayout.cpp`) is the live
+example of all of this: it rebuilds its menu from the capability bits and from
+`ScreenInfo`.
+
+### Three questions about a pointer, three different answers
+
+These get confused, and the confusion is expensive: a widget wired to the wrong
+one behaves correctly in every test and wrongly on somebody's machine.
+
+| Ask this | Read this | True when |
+|---|---|---|
+| is a pointing device attached at all? | `WindowState::InputPointer` | a mouse, trackpad or trackball exists for this window — the pair of `WindowState::InputTouch`. Independent of where the cursor is, or whether there is one on screen |
+| is the cursor over this window right now? | `WindowState::Pointer` | the pointer is inside the window. It drops the moment the cursor leaves, and comes back when it returns |
+| did THIS event come from a finger? | `InputModifier::Touch` on the event | the backend marked this one event as touch-sourced. Nothing to do with what devices exist |
+
+The rule of thumb: **`InputPointer` decides what a widget OFFERS, `Pointer` decides
+what it is doing this instant, and `InputModifier::Touch` decides how one gesture
+is interpreted.** A scroll bar is the worked example of all three — it is wide and
+grabbable while a pointing device exists (`InputPointer`), it lights up while the
+cursor is on it (`Pointer`, through `:hover`), and it coasts after the release only
+for a finger (`InputModifier::Touch`). Wiring the first of those to `Pointer`
+instead makes the bar shrink and stop answering every time the cursor leaves the
+window.
+
+Platforms answer `InputPointer` where they can: wayland from the seat's
+capabilities, xcb from the enabled non-XTEST slave pointers (a master pointer
+exists in every session, including a mouseless one, so counting those would make
+the flag a constant), windows from `SM_MOUSEPRESENT`, macOS unconditionally.
+Android and iOS do not set it. Headless sets it by default, and
+`--headless-no-pointer` takes it away — which is what makes the other branch
+testable at all.
+
+## Sharing a compiled render queue
+
+A scene normally builds and compiles its own render graph, which is the slow part
+of opening a window. `WindowSceneInfo::setQueue()` makes the new scene **adopt**
+an already-compiled queue instead:
+
+[source,cpp]
+----
+cache->acquire(kQueueName, server, [app](core::Queue::Builder &builder) {
+	// The extent here is a placeholder: FrameQueue::setup rewrites every image
+	// attachment from the frame's constraints - that is why one graph serves
+	// windows of different sizes.
+	return basic2d::Scene2d::buildQueue(app, info, builder);
+}, [this](Rc<core::Queue> &&queue) { _prewarmed = sp::move(queue); });
+----
+
+The queue can be built and compiled before any window that uses it exists
+(`QueueCache`, `AppThread::getExtension<QueueCache>()`); a scene adopting one
+does not own it. `tests/window`, layout `queue-cache`, opens three windows on one
+prewarmed graph.
+
+## Traps
+
+| Trap | What actually happens |
+|---|---|
+| looking a window up by the `id` you passed | the runtime may have re-uniqued it; put the payload in `appData` instead |
+| using the handle right after `createWindow` | the window is asynchronous — `getWindow()` is null until it exists |
+| destroying a `WindowSceneInfo` off the app thread | DEBUG assert; move the payload out with `takeAppData()` if the `WindowInfo` may die on the context thread |
+| a separate "creation failed" path | `CloseCallback` already covers it — it fires once, including when the window never appeared |
+| hand-building a `Popup` window | fails on every platform without `Subwindows`; `ui::SubWindow` falls back to an overlay |
+| calling `setFullscreen` / `enableState` without checking capabilities | the call is declined and your UI shows a control that never works |
+| `enableState(Maximized)` at the map event | the WM's `Allowed*` flags have not arrived yet, so it is declined; wait for them |
+| saving the geometry of a maximized window | it comes back the size of the screen, with nothing to un-maximize to |
+| reading `getInfo()` from the app thread | that is the context thread's view; use `getWindowState()` / `getWindowGeometry()` |
+| saving `WindowGeometry::rect` without checking `hasPosition` | on Wayland the origin is zero because it is unknown, and the window reopens in the corner |
+| setting `WindowInfo::rect`'s x/y without `WindowCreationFlags::UsePosition` | the position is ignored: `(0, 0)` is the default and cannot be told from a request |
+| a native tooltip | it steals hover from the node it describes — leave `preferNative` false |
+| hand-rolling a hover delay | `ui::setTooltip` + `ui::TooltipSystem`; a looper timer will not even fire in an app that renders on demand |
+| reading `WindowPlacement::gravity` as "the direction it opens" | it names which **edge of the surface** lands on the anchor point, so `gravity = Top` puts the surface *below* |
+| treating a `Scroll` event's amount as a count of wheel clicks | it is a scroll **amount** — a trackpad has no clicks to count — and one detent is `sprt::window::InputScrollNotch` of it; divide before using a per-notch step, or the step is applied ten times over |
+
+## Related
+
+* [dialogs.adoc](dialogs.adoc) — OS dialogs and shell actions, which are parented to a window the same way
+* [threads-and-dispatch.adoc](../core/threads-and-dispatch.adoc) — which thread runs what, and how completions get back
+* [memory-and-ownership.adoc](../core/memory-and-ownership.adoc) — `Rc`, handles, and why the request is the token
+* [node-system-event-pipeline.adoc](../../../design/node-system-event-pipeline.adoc) — what a scene does once the window has one
+* `tests/window` — layouts `multi-window`, `queue-cache` and `default`; `tests/auxui` — subwindow types end to end

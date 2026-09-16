@@ -24,20 +24,32 @@
 
 #include "nodes/XLNode.cc"
 #include "nodes/XLScene.cc"
+#include "nodes/XLSceneInspector.cc"
 #include "nodes/XLSceneContent.cc"
 #include "nodes/XLCloseGuardWidget.cc"
 #include "nodes/XLWindowDecorations.cc"
 #include "nodes/XLSystem.cc"
 #include "nodes/XLComponent.cc"
+#include "nodes/XLInheritedStyle.cc"
 #include "nodes/XLDynamicStateSystem.cc"
 #include "nodes/XLSubscriptionListener.cc"
 #include "nodes/XLEventListener.cc"
 
+#include "input/XLHotkey.cc"
 #include "input/XLGestureRecognizer.cc"
 #include "input/XLInputDispatcher.cc"
+#include "input/XLInteractiveComponent.cc"
+#include "input/XLFocusWithin.cc" // after the component: the one state it does not keep
+#include "input/XLSelection.cc" // beside FocusWithin: the same marker shape, for the selection
 #include "input/XLInputListener.cc"
 #include "input/XLFocusGroup.cc"
 #include "input/XLTextInputManager.cc"
+#include "input/XLSelectionSystem.cc" // after the Selection marker it writes and the Scene it installs itself on
+
+#include "drag/XLDragTypes.cc"
+#include "drag/XLDropTarget.cc"
+#include "drag/XLDragSystem.cc"
+#include "drag/XLDragSource.cc"
 
 #include "actions/XLAction.cc"
 #include "actions/XLActionEase.cc"

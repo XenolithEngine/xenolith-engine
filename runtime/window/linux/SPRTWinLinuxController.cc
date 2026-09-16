@@ -1,0 +1,671 @@
+/**
+ Copyright (c) 2025 Stappler Team <admin@stappler.org>
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
+
+#include "SPRTWinLinuxController.h"
+#include "dbus/SPRTWinLinuxDBusController.h"
+#include "dbus/SPRTWinLinuxDBusPortal.h"
+#include "xcb/SPRTWinLinuxXcbConnection.h"
+#include "xcb/SPRTWinLinuxXcbWindow.h"
+#include "xcb/SPRTWinLinuxXcbLibrary.h"
+#include "wayland/SPRTWinLinuxWaylandDisplay.h"
+#include "wayland/SPRTWinLinuxWaylandWindow.h"
+#include "wayland/SPRTWinLinuxWaylandLibrary.h"
+#include "wayland/SPRTWinLinuxWaylandSeat.h"
+#include "wayland/SPRTWinLinuxWaylandDataDevice.h"
+#include "wayland/SPRTWinLinuxWaylandKdeDisplayConfigManager.h"
+#include "SPRTWinLinuxDisplay.h"
+#include "SPRTWinLinuxXkbLibrary.h"
+#include "drm/SPRTWinLinuxDrmLibrary.h"
+#include "drm/SPRTWinLinuxDrmDisplayConfigManager.h"
+
+#include <sprt/runtime/utils/verutils.h>
+
+#include <stdlib.h>
+#include <unistd.h>
+
+namespace sprt::window {
+
+// Opens the DRM/KMS device on first use, so we can render directly to a display
+// without any window system. Cached: the fd stays open for the whole session --
+// the gAPI acquires the display through it and stays DRM master.
+bool LinuxContextController::hasDrmDevice() {
+	if (!_drmDevice) {
+		if (!_drm) {
+			// Null where libdrm is missing at build or at run time; then no device
+			// is ever opened and direct-to-display mode simply stays off.
+			_drm = Rc<DrmLibrary>::create();
+		}
+		if (_drm) {
+			_drmDevice = DrmDevice::openFirst(_drm);
+			if (_drmDevice) {
+				_drmDevice->logConnectors();
+			}
+		}
+	}
+	return _drmDevice != nullptr;
+}
+
+void LinuxContextController::acquireDefaultConfig(ContextConfig &config,
+		NativeContextHandle *handle) {
+	if (config.instance->api == gapi::InstanceApi::None) {
+		config.instance->api = gapi::InstanceApi::Vulkan;
+	}
+
+	if (config.context) {
+		config.context->flags |= ContextFlags::DestroyWhenAllWindowsClosed;
+
+		auto &cfg = getAppConfig();
+
+		if (!cfg.bundleName.empty()) {
+			config.context->bundleName = cfg.bundleName.str<String>();
+		}
+		if (!cfg.appName.empty()) {
+			config.context->appName = cfg.appName.str<String>();
+		}
+		if (cfg.versionCode) {
+			config.context->appVersionCode = cfg.versionCode;
+			config.context->appVersion = StreamTraits<char>::toString<String>(
+					SPRT_VERSION_MAJOR(config.context->appVersionCode), ".",
+					SPRT_VERSION_MINOR(config.context->appVersionCode), ".",
+					SPRT_VERSION_PATCH(config.context->appVersionCode));
+		}
+	}
+
+	if (config.loop) {
+		config.loop->defaultFormat = ImageFormat::B8G8R8A8_UNORM;
+	}
+
+	if (config.window) {
+		if (config.window->imageFormat == ImageFormat::Undefined) {
+			config.window->imageFormat = ImageFormat::B8G8R8A8_UNORM;
+		}
+		config.window->flags |= WindowCreationFlags::Regular
+				| WindowCreationFlags::PreferServerSideDecoration
+				| WindowCreationFlags::PreferServerSideCursors;
+	}
+}
+
+Rc<LinuxContextController> LinuxContextController::create(NotNull<Context> ctx, ContextConfig &&cfg,
+		NotNull<dispatch::Looper> looper) {
+	return Rc<LinuxContextController>::create(ctx, sprt::move(cfg), looper);
+}
+
+LinuxContextController::~LinuxContextController() { }
+
+bool LinuxContextController::init(NotNull<Context> ctx, ContextConfig &&config,
+		NotNull<dispatch::Looper> looper) {
+	if (!ContextController::init(ctx, looper)) {
+		return false;
+	}
+
+	_contextInfo = move(config.context);
+	_windowInfo = move(config.window);
+	_instanceInfo = move(config.instance);
+	_loopInfo = move(config.loop);
+
+	_xcb = Rc<XcbLibrary>::create();
+	_xkb = Rc<XkbLibrary>::create();
+	_dbus = Rc<dbus::Library>::create();
+	_wayland = Rc<WaylandLibrary>::create();
+
+	handleThemeInfoChanged(ThemeInfo{ThemeInfo::SchemeDefault.str<String>()});
+
+	return true;
+}
+
+int LinuxContextController::run(NotNull<ContextContainer> container) {
+	_context->handleConfigurationChanged(move(_contextInfo));
+
+	_contextInfo = nullptr;
+	// _dbus is null when libdbus-1.so is absent (e.g. a minimal direct-KMS image).
+	// dbus::Controller::create takes NotNull<Library>, so guard it -- otherwise the
+	// null->NotNull conversion asserts even though KMS mode never uses D-Bus.
+	// Every _dbusController use below is already null-checked.
+	if (_dbus) {
+		_dbusController = Rc<dbus::Controller>::create(_dbus, _looper, this);
+	}
+
+	detectDialogBackends();
+
+	_looper->performOnThread([this] {
+		Rc<gapi::Instance> instance;
+
+		auto sessionType = ::getenv("SP_SESSION_TYPE");
+		if (!sessionType) {
+			sessionType = ::getenv("XDG_SESSION_TYPE");
+		}
+
+		// In direct-display (KMS) mode there is no session/system bus to talk to;
+		// skip D-Bus entirely so it does not log spurious connection failures.
+		bool willBeKms = StringView(sessionType) != "wayland" && StringView(sessionType) != "x11"
+				&& hasDrmDevice();
+		if (!willBeKms && _dbusController) {
+			_dbusController->setup();
+		}
+
+		if (StringView(sessionType) == "wayland") {
+			if (_wayland && _xkb) {
+				_waylandDisplay = Rc<WaylandDisplay>::create(_wayland, _xkb);
+			}
+
+			if (!_waylandDisplay) {
+				if (_xcb && _xkb) {
+					_xcbConnection = Rc<XcbConnection>::create(_xcb, _xkb);
+				}
+
+				if (!_xcbConnection) {
+					oslog::vperror(__SPRT_LOCATION, "LinuxContextController",
+							"Fail to connect to X server or Wayland server");
+					_resultCode = -1;
+					destroy();
+					return;
+				}
+			}
+
+			instance = _context->makeInstance(_instanceInfo);
+			if (instance && !hasFlag(_context->getInfo()->flags, ContextFlags::Headless)
+					&& _waylandDisplay) {
+				// Try to load with Wayland only, then check if we have device to present images
+				// If not, try to use XWayland
+				if (!instance->isPresentationSupported()) {
+					// Load x11 server for XWayland, then recreate instance
+					if (_xcb && _xkb) {
+						_xcbConnection = Rc<XcbConnection>::create(_xcb, _xkb);
+					}
+					instance = _context->makeInstance(_instanceInfo);
+				}
+			}
+		} else if (StringView(sessionType) == "x11") {
+			// X11 session
+
+			if (_xcb && _xkb) {
+				_xcbConnection = Rc<XcbConnection>::create(_xcb, _xkb);
+			}
+			instance = _context->makeInstance(_instanceInfo);
+		} else if (hasDrmDevice()) {
+			// No window system, but a DRM/KMS device is present: render directly
+			// to the display via VK_KHR_display (no Wayland/X11/D-Bus).
+			_kmsMode = true;
+
+			instance = _context->makeInstance(_instanceInfo);
+		} else {
+			oslog::vperror(__SPRT_LOCATION, "LinuxContextController",
+									"No X11 or Wayland session detected and no DRM device found; "
+									"If there were, please consider to "
+									"set XDG_SESSION_TYPE appropiriately");
+
+			destroy();
+			return;
+		}
+
+		if (!instance) {
+			oslog::vperror(__SPRT_LOCATION, "LinuxContextController", "Fail to load gAPI instance");
+			_resultCode = -1;
+			destroy();
+			return;
+		} else {
+			if (auto loop = _context->makeLoop(instance, _loopInfo)) {
+				_context->handleGraphicsLoaded(loop);
+			}
+		}
+
+		if (_xcbConnection) {
+			_xcbConnection->setSystemNotificationHandler([this](SystemNotification notification) {
+				_context->handleSystemNotification(notification);
+			});
+
+			_xcbPollHandle = _looper->listenPollableHandle(_xcbConnection->getSocket(),
+					filesystem::PollFlags::In | filesystem::PollFlags::AllowMulti,
+					[this](native_handle fd, filesystem::PollFlags flags) {
+				retainPollDepth();
+				_xcbConnection->poll();
+				releasePollDepth();
+
+				notifyPendingWindows();
+
+				return Status::Ok;
+			}, this);
+		}
+
+		if (_waylandDisplay) {
+			_waylandPollHandle = _looper->listenPollableHandle(_waylandDisplay->getFd(),
+					filesystem::PollFlags::In | filesystem::PollFlags::Out
+							| filesystem::PollFlags::AllowMulti,
+					[this](native_handle fd, filesystem::PollFlags flags) {
+				if (hasFlag(flags, filesystem::PollFlags::Err)) {
+					return Status::ErrorCancelled;
+				}
+				if (hasFlag(flags, filesystem::PollFlags::Out)) {
+					_waylandDisplay->flush();
+				}
+				if (hasFlag(flags, filesystem::PollFlags::In)) {
+					retainPollDepth();
+					auto alive = _waylandDisplay->poll();
+					releasePollDepth();
+
+					if (!alive) {
+						// The display named the failure and is dead for good. Stop listening
+						// rather than spin on a socket that will never deliver again — the same
+						// answer the PollFlags::Err branch above gives.
+						notifyPendingWindows();
+						return Status::ErrorCancelled;
+					}
+				}
+
+				notifyPendingWindows();
+
+				return Status::Ok;
+			}, this);
+		}
+
+		if (_kmsMode) {
+			// No D-Bus to drive startup: kick it ourselves once graphics are loaded.
+			_looper->performOnThread([this] { tryStart(); }, this);
+		}
+	}, this);
+
+	_looper->run();
+
+	return ContextController::run(container);
+}
+
+bool LinuxContextController::isCursorSupported(WindowCursor cursor, bool serverSize) const {
+	if (_xcbConnection) {
+		return _xcbConnection->isCursorSupported(cursor);
+	} else if (_waylandDisplay) {
+		return _waylandDisplay->isCursorSupported(cursor, serverSize);
+	}
+	return false;
+}
+
+WindowCapabilities LinuxContextController::getCapabilities() const {
+	// Dialogs are a property of the desktop session, not of the display backend, so they are ORed
+	// on top of whatever the backend reports.
+	auto dialogs = getShellDialogCapabilities(_shellDialogTool)
+			| dbus::getPortalDialogCapabilities(_portalDialogs);
+
+	if (_xcbConnection) {
+		// Only X11 can hand a native parent to a dialog today: the portal wants an
+		// "x11:<xid>"/"wayland:<handle>" string, and xdg-foreign (which is what produces the
+		// Wayland form) is not bound in SPRTWinLinuxWaylandProtocols.c.
+		if (dialogs != WindowCapabilities::None) {
+			dialogs |= WindowCapabilities::NativeDialogParenting;
+		}
+		return _xcbConnection->getCapabilities() | dialogs;
+	} else if (_waylandDisplay) {
+		return _waylandDisplay->getCapabilities() | dialogs;
+	} else if (_kmsMode) {
+		// Direct display is inherently an exclusive fullscreen plane.
+		return WindowCapabilities::Fullscreen | WindowCapabilities::FullscreenExclusive
+				| WindowCapabilities::FullscreenWithMode;
+	}
+	return WindowCapabilities::None;
+}
+
+void LinuxContextController::notifyScreenChange(NotNull<DisplayConfigManager> info) {
+	if (_waylandDisplay) {
+		_waylandDisplay->notifyScreenChange();
+	}
+	if (_xcbConnection) {
+		_xcbConnection->notifyScreenChange();
+	}
+
+	_context->handleSystemNotification(SystemNotification::DisplayChanged);
+}
+
+void LinuxContextController::detectDialogBackends() {
+	// Probed once, at startup, and never revisited. getCapabilities() must answer the same thing for
+	// the whole run, so what it reports has to describe the machine — what is installed — and not
+	// what happens to be reachable at the moment it is asked.
+	_shellDialogTool = detectShellDialogTool();
+	_portalDialogs = _dbus ? dbus::detectDesktopPortal() : false;
+
+	oslog::vpdebug(__SPRT_LOCATION, "LinuxContextController",
+			"Dialog backends: portal=", _portalDialogs ? "yes" : "no",
+			", helper=", getShellDialogToolName(_shellDialogTool));
+
+	if (!_portalDialogs && _shellDialogTool == ShellDialogTool::None) {
+		oslog::vpdebug(__SPRT_LOCATION, "LinuxContextController",
+				"No dialog backend found; system dialogs will report ErrorNotSupported");
+	}
+}
+
+bool LinuxContextController::canUsePortalDialogs() const {
+	// Detection at startup is not the whole answer: the session bus has to still be there. A user
+	// D-Bus daemon does die under running applications, and when it does the portal becomes
+	// unreachable for the rest of the run — which is exactly why the shell helper is kept around
+	// even on a machine that has a perfectly good portal installed.
+	return _portalDialogs && _dbusController && _dbusController->isSessionBusAlive();
+}
+
+void LinuxContextController::handleDBusDisconnected() {
+	// Every portal dialog on screen is now orphaned: its Response can never arrive. Answer them
+	// rather than leave their callers waiting forever. Dialogs drawn by the shell helper are child
+	// processes of ours and are untouched by somebody else's daemon dying, which is why the decision
+	// belongs to each handle rather than to this loop.
+	//
+	// Copy first: handleBackendLost finalizes, which unregisters and so mutates _dialogs.
+	Vector<Rc<DialogHandle>> handles;
+	for (auto &it : _dialogs) {
+		for (auto &handle : it.second) { handles.emplace_back(handle); }
+	}
+	for (auto &handle : handles) {
+		if (handle && handle->isActive()) {
+			handle->handleBackendLost();
+		}
+	}
+}
+
+String LinuxContextController::getDialogParentHandle(NativeWindow *parent) const {
+	// The portal's window identifier. Only the X11 form can be produced today: the Wayland one comes
+	// from xdg-foreign, which SPRTWinLinuxWaylandProtocols.c does not bind. An empty string is
+	// legal — the portal then places the dialog on its own.
+	if (parent && _xcbConnection) {
+		// Every window is an XcbWindow whenever the XCB connection is the active backend.
+		auto window = uint64_t(static_cast<XcbWindow *>(parent)->getWindow());
+
+		// The portal parses the tail with strtol(…, 16), so plain unpadded lowercase hex.
+		char digits[sizeof(window) * 2];
+		size_t count = 0;
+		do {
+			digits[count++] = "0123456789abcdef"[window & 0xF];
+			window >>= 4;
+		} while (window);
+
+		String out("x11:");
+		while (count > 0) { out.push_back(digits[--count]); }
+		return out;
+	}
+	return String();
+}
+
+bool LinuxContextController::isDialogSupported(DialogType type) const {
+	if (type == DialogType::RestoreFromTrash) {
+		// Served by the shell backend itself, against the freedesktop trash spec, so it needs
+		// neither a helper on PATH nor the portal - which has no restore verb at all.
+		return true;
+	}
+	return ContextController::isDialogSupported(type);
+}
+
+Status LinuxContextController::openShellDialog(NotNull<dispatch::Looper> target,
+		Rc<DialogRequest> &&req, NativeWindow *parent) {
+	// RestoreFromTrash is the backend's own work rather than a helper's, so it is offered even on a
+	// machine with no picker installed at all.
+	if (_shellDialogTool != ShellDialogTool::None || req->type == DialogType::RestoreFromTrash) {
+		auto handle = Rc<ShellDialogHandle>::create(this, target, Rc<DialogRequest>(req), parent,
+				_shellDialogTool);
+		if (handle) {
+			registerDialog(handle);
+			return Status::Ok;
+		}
+		// init() refused: this helper has no command for this dialog type.
+	}
+
+	return declineDialog(target, sprt::move(req), Status::ErrorNotSupported);
+}
+
+Status LinuxContextController::openDialog(NotNull<dispatch::Looper> target,
+		Rc<DialogRequest> &&req) {
+	if (!req || !req->callback) {
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	NativeWindow *parent = nullptr;
+	if (!req->parentWindowId.empty()) {
+		parent = findWindow(req->parentWindowId);
+		if (!parent) {
+			// A named parent that is already gone — the window closed between the request being
+			// built on the app thread and it arriving here. Answer rather than un-parenting it.
+			return declineDialog(target, sprt::move(req), Status::ErrorCancelled);
+		}
+	}
+
+	// The portal comes first where it can serve the type at all: it is the desktop's own picker, it
+	// honours the session's file permissions, and it is the only backend that works from inside a
+	// sandbox. Colors and fonts have no portal interface and always take the helper.
+	if (canUsePortalDialogs() && dbus::isPortalDialogType(req->type)) {
+		auto handle = Rc<dbus::PortalDialogHandle>::create(this, _dbusController, target,
+				Rc<DialogRequest>(req), parent, getDialogParentHandle(parent),
+				[this, target = Rc<dispatch::Looper>(target), parent](Rc<DialogRequest> &&req) {
+			// The portal turned the call down before showing anything, so the helper can still take
+			// over without the user noticing anything happened.
+			openShellDialog(target, sprt::move(req), parent);
+		});
+		if (handle) {
+			registerDialog(handle);
+			return Status::Ok;
+		}
+		// init() refused before the request went out — fall through to the helper.
+	}
+
+	return openShellDialog(target, sprt::move(req), parent);
+}
+
+Status LinuxContextController::readFromClipboard(Rc<ClipboardRequest> &&req) {
+	if (_xcbConnection) {
+		return _xcbConnection->readFromClipboard(sprt::move(req));
+	}
+	if (_waylandDisplay) {
+		return _waylandDisplay->readFromClipboard(sprt::move(req));
+	}
+	return Status::ErrorNotSupported;
+}
+
+Status LinuxContextController::probeClipboard(Rc<ClipboardProbe> &&probe) {
+	if (_xcbConnection) {
+		return _xcbConnection->probeClipboard(sprt::move(probe));
+	}
+	if (_waylandDisplay) {
+		return _waylandDisplay->probeClipboard(sprt::move(probe));
+	}
+	return Status::ErrorNotSupported;
+}
+
+Status LinuxContextController::writeToClipboard(Rc<ClipboardData> &&data) {
+	if (_xcbConnection) {
+		return _xcbConnection->writeToClipboard(sprt::move(data));
+	}
+	if (_waylandDisplay) {
+		return _waylandDisplay->writeToClipboard(sprt::move(data));
+	}
+	return Status::ErrorNotImplemented;
+}
+
+void LinuxContextController::handleThemeInfoChanged(ThemeInfo &&newThemeInfo) {
+	newThemeInfo.decorations.borderRadius = 16.0f;
+	newThemeInfo.decorations.shadowWidth = 20.0f;
+	newThemeInfo.decorations.shadowOffset = Vec2(0.0f, 3.0f);
+
+	// disable shadow drawing in gAPI backend for wayland;
+	// On X11, gAPI should draw shadows by itself to fill the gaps in canvas
+	if (_waylandDisplay) {
+		newThemeInfo.decorations.shadowMinValue = 0;
+		newThemeInfo.decorations.shadowMaxValue = 0;
+	}
+
+	if (_themeInfo != newThemeInfo) {
+		if (_waylandDisplay) {
+			_waylandDisplay->updateThemeInfo(newThemeInfo);
+		}
+		ContextController::handleThemeInfoChanged(sprt::move(newThemeInfo));
+	}
+}
+
+void LinuxContextController::openUrl(StringView str) {
+	auto string = toString("xdg-open '", str, "'");
+	auto ret = ::system(string.data());
+	if (ret != 0) {
+		oslog::vperror(__SPRT_LOCATION, "LinuxContextController", "Fail to open URL: ", str);
+	}
+}
+
+SurfaceSupportInfo LinuxContextController::getSupportInfo() const {
+	SurfaceSupportInfo info;
+	if (_waylandDisplay) {
+		info.backendMask.set(toInt(SurfaceBackend::Wayland));
+		info.wayland.display = _waylandDisplay->display;
+	}
+	if (_xcbConnection) {
+		info.backendMask.set(toInt(SurfaceBackend::Xcb));
+		info.xcb.connection = _xcbConnection->getConnection();
+		info.xcb.visual_id = _xcbConnection->getDefaultScreen()->root_visual;
+	}
+	if (_kmsMode && _drmDevice) {
+		// Enable the direct-display backend so the instance enumerates
+		// displays/planes/modes and presentation support counts that path.
+		info.backendMask.set(toInt(SurfaceBackend::Display));
+		info.display.fd = _drmDevice->getFd();
+		info.display.connectorId = _drmDevice->getConnectorId();
+	}
+	return info;
+}
+
+void LinuxContextController::tryStart() {
+	if (_kmsMode) {
+		// Direct-display: no D-Bus and no window-system connection, but the DRM
+		// device itself enumerates monitors and modes.
+		if (_drmDevice && !_displayConfigManager) {
+			_displayConfigManager = Rc<DrmDisplayConfigManager>::create(_drmDevice,
+					[this](NotNull<DisplayConfigManager> m) { notifyScreenChange(m); });
+		}
+		_looper->performOnThread([this] {
+			if (!resume()) {
+				oslog::vperror(__SPRT_LOCATION, "LinuxContextController", "Fail to resume Context");
+				destroy();
+				return;
+			}
+
+			if (_windowInfo) {
+				if (createWindow(sprt::move(_windowInfo)) != Status::Ok) {
+					oslog::vperror(__SPRT_LOCATION, "LinuxContextController",
+							"Fail to load root native window");
+					destroy();
+				}
+			}
+		}, this);
+		return;
+	}
+
+	if (_dbusController && _dbusController->isConnectied() && (_xcbConnection || _waylandDisplay)) {
+		// native KDE output-management protocol reports applied/failed directly from
+		// the compositor, so prefer it over the DBus KScreen path
+		if (_waylandDisplay) {
+			_displayConfigManager = _waylandDisplay->makeDisplayConfigManager(
+					[this](NotNull<DisplayConfigManager> m) { notifyScreenChange(m); });
+		}
+
+		if (!_displayConfigManager) {
+			_displayConfigManager = _dbusController->makeDisplayConfigManager(
+					[this](NotNull<DisplayConfigManager> m) { notifyScreenChange(m); });
+		}
+
+		if (!_displayConfigManager && _xcbConnection) {
+			_displayConfigManager = _xcbConnection->makeDisplayConfigManager(
+					[this](NotNull<DisplayConfigManager> m) { notifyScreenChange(m); });
+		}
+
+		_looper->performOnThread([this] {
+			if (!resume()) {
+				oslog::vperror(__SPRT_LOCATION, "LinuxContextController", "Fail to resume Context");
+				destroy();
+			}
+
+			// check if root window is defined
+			if (_windowInfo) {
+				if (createWindow(move(_windowInfo)) != Status::Ok) {
+					oslog::vperror(__SPRT_LOCATION, "LinuxContextController",
+							"Fail to load root native window");
+					destroy();
+				}
+			}
+		}, this);
+	}
+}
+
+bool LinuxContextController::loadWindow(Rc<WindowInfo> &&wInfo) {
+	Rc<NativeWindow> window;
+	if (_kmsMode) {
+		window = Rc<DisplayWindow>::create(this, Rc<DrmDevice>(_drmDevice), move(wInfo));
+		if (window) {
+			notifyWindowCreated(window);
+		}
+		return window != nullptr;
+	}
+
+	if (_waylandDisplay) {
+		window = Rc<WaylandWindow>::create(_waylandDisplay, move(wInfo), this);
+		_waylandDisplay->flush();
+		if (window) {
+			_activeWindows.emplace(window);
+		}
+	}
+	if (!window && _xcbConnection) {
+		window = Rc<XcbWindow>::create(_xcbConnection, move(wInfo), this);
+		if (window) {
+			notifyWindowCreated(window);
+		}
+	}
+
+	return window != nullptr;
+}
+
+void LinuxContextController::handleContextWillDestroy() {
+	if (_xcbPollHandle) {
+		_xcbPollHandle->cancel();
+		_xcbPollHandle->setUserdata(nullptr);
+		_xcbPollHandle = nullptr;
+	}
+
+	if (_waylandPollHandle) {
+		_waylandPollHandle->cancel();
+		_waylandPollHandle->setUserdata(nullptr);
+		_waylandPollHandle = nullptr;
+	}
+
+	if (_dbusController) {
+		_dbusController->cancel();
+		_dbusController = nullptr;
+	}
+
+	_looper->poll();
+
+	ContextController::handleContextWillDestroy();
+}
+
+void LinuxContextController::handleContextDidDestroy() {
+	ContextController::handleContextDidDestroy();
+
+	_xcbConnection = nullptr;
+	_waylandDisplay = nullptr;
+	_dbus = nullptr;
+	_xkb = nullptr;
+	// Closes the DRM fd; safe here, every surface built from it is already gone.
+	_drmDevice = nullptr;
+	_drm = nullptr;
+
+	if (_looper) {
+		_looper->wakeup(dispatch::WakeupFlags::Graceful);
+	}
+}
+
+} // namespace sprt::window

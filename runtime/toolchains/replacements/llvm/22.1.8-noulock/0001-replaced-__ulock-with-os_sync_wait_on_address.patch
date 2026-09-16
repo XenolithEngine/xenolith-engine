@@ -1,0 +1,55 @@
+From 5cab9587bb0b6a61a628ba44027e4f6b5b4cde99 Mon Sep 17 00:00:00 2001
+From: SBKarr <sbkarr@stappler.org>
+Date: Tue, 24 Feb 2026 02:26:36 +0800
+Subject: [PATCH] replaced __ulock with os_sync_wait_on_address
+
+---
+ libcxx/src/atomic.cpp | 34 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+
+diff --git a/libcxx/src/atomic.cpp b/libcxx/src/atomic.cpp
+index 3948f8b03..4debb658d 100644
+--- a/libcxx/src/atomic.cpp
++++ b/libcxx/src/atomic.cpp
+@@ -90,6 +90,40 @@ static void __platform_wake_by_address(void const* __ptr, bool __notify_one) {
+   _LIBCPP_FUTEX(__ptr, FUTEX_WAKE_PRIVATE, __notify_one ? 1 : INT_MAX, 0, 0, 0);
+ }
+ 
++#elif defined(__APPLE__) && defined(_LIBCPP_USE_OS_SYNC_WAIT_ON_ADDRESS)
++
++#include <os/os_sync_wait_on_address.h>
++
++template <std::size_t _Size, class MaybeTimeout>
++static void __platform_wait_on_address(void const* __ptr, void const* __val, MaybeTimeout maybe_timeout_ns) {
++  static_assert(_Size == 8 || _Size == 4, "Can only wait on 8 bytes or 4 bytes value");
++  // os_sync takes the expected value as a uint64_t whatever the width is and compares
++  // only the leading _Size bytes; zero-extending is exact on the little-endian targets
++  // this branch is reachable on.
++  uint64_t __value = 0;
++  std::memcpy(&__value, const_cast<const void*>(__val), _Size);
++  if constexpr (is_same_v<MaybeTimeout, NoTimeout>) {
++    os_sync_wait_on_address(const_cast<void*>(__ptr), __value, _Size, OS_SYNC_WAIT_ON_ADDRESS_NONE);
++  } else {
++    os_sync_wait_on_address_with_timeout(
++        const_cast<void*>(__ptr),
++        __value,
++        _Size,
++        OS_SYNC_WAIT_ON_ADDRESS_NONE,
++        OS_CLOCK_MACH_ABSOLUTE_TIME,
++        maybe_timeout_ns);
++  }
++}
++
++template <std::size_t _Size>
++static void __platform_wake_by_address(void const* __ptr, bool __notify_one) {
++  static_assert(_Size == 8 || _Size == 4, "Can only wake up on 8 bytes or 4 bytes value");
++  // Waking everyone is always correct - a waiter that loses the race re-checks the
++  // value and waits again - so keep this branch on the unconditional call.
++  (void)__notify_one;
++  os_sync_wake_by_address_all(const_cast<void*>(__ptr), _Size, OS_SYNC_WAKE_BY_ADDRESS_NONE);
++}
++
+ #elif defined(__APPLE__) && defined(_LIBCPP_USE_ULOCK)
+ 
+ extern "C" int __ulock_wait(
+

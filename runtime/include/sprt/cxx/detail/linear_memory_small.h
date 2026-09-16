@@ -23,8 +23,9 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_DETAIL_LINEAR_MEMORY_SMALL_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_DETAIL_LINEAR_MEMORY_SMALL_H_
 
+#include <sprt/c/__sprt_assert.h>
 #include <sprt/cxx/detail/ctypes.h>
-#include <sprt/cxx/array>
+#include <sprt/cxx/detail/inline_buffer.h>
 
 namespace sprt::detail {
 
@@ -37,7 +38,7 @@ struct linear_memory_small {
 	using size_type = size_t;
 	using allocator = Allocator;
 
-	using strage_type = array<uint8_t, ByteCount>;
+	using strage_type = sprt::detail::inline_buffer<uint8_t, ByteCount>;
 
 	// For both little and big endians
 	static constexpr uint8_t CommonSmallMask = 0b1000'0001;
@@ -74,7 +75,7 @@ struct linear_memory_small {
 
 	static void drop_unused(strage_type &storage) {
 		const auto unused = ((storage.back() & ~CommonSmallMask) >> 1);
-		if (unused < max_capacity()) {
+		if (unused <= max_capacity()) {
 			const auto s = max_capacity() - unused;
 			// data is already garbage, bypass -Wclass-memaccess
 			__builtin_memset((void *)(storage.data() + s * sizeof(Type)), 0, unused * sizeof(Type));
@@ -82,12 +83,17 @@ struct linear_memory_small {
 	}
 
 	static void set_size(strage_type &storage, size_t s) {
+		// Invariant (enforced by the SOO router in linear_memory_soo): small
+		// storage is only used while s <= max_capacity(). Otherwise the encoding
+		// `(max_capacity() - s)` underflows and corrupts the length byte.
+		sprt_passert(s <= max_capacity(), "linear_memory_small: size exceeds SSO capacity");
 		storage.back() = uint8_t((max_capacity() - s) << 1) & ~CommonSmallMask;
 		drop_unused(storage);
 	}
 
 	static size_t modify_size(strage_type &storage, intptr_t diff) {
 		auto newSize = size(storage) + diff;
+		sprt_passert(newSize <= max_capacity(), "linear_memory_small: size exceeds SSO capacity");
 		storage.back() = uint8_t((max_capacity() - newSize) << 1) & ~CommonSmallMask;
 		return newSize;
 	}

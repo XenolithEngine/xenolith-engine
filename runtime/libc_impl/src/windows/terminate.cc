@@ -23,9 +23,12 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/cxx/detail/ctypes.h>
+#include <sprt/cxx/mutex>
+#include <sprt/cxx/atomic>
 
 #include <sprt/wrappers/windows/dl_api.h>
 #include <sprt/wrappers/windows/thread_api.h>
+#include <sprt/wrappers/windows/basic_api.h>
 
 #include "sprt/c/__sprt_stdlib.h"
 #include "stdlib.h"
@@ -53,6 +56,15 @@ static FunctionListNode s_atexit_head;
 static FunctionListNode *s_at_quick_exit_list = nullptr;
 static FunctionListNode s_at_quick_exit_head;
 
+// Serializes mutations of the two process-global lists above (atexit /
+// at_quick_exit). The thread-local list below is single-owner and needs no lock.
+static sprt::mutex s_atexit_mutex;
+
+// exit() must run teardown exactly once. Holds the id of the thread performing
+// it (0 = none); used to distinguish a recursive exit() (from a handler) from a
+// concurrent exit() on another thread.
+static sprt::atomic<DWORD> s_exitingThread{0};
+
 static __declspec(thread) FunctionListNode *tl_dtors_list = nullptr;
 static __declspec(thread) FunctionListNode tl_dtors_head;
 
@@ -79,16 +91,14 @@ static bool __addDtor(FunctionListNode **list, FunctionListNode *head, __funcptr
 	return true;
 }
 
-static bool __callDtors(FunctionListNode **listptr) {
-	auto list = *listptr;
-	*listptr = nullptr; // prevent recursive loop if called from destructor
-
-	__funcptr fn = 0;
+// Walk and run a list previously detached from its head pointer. Runs with NO
+// lock held: a handler may legally re-register (atexit) or run for a long time.
+static void __runDtorList(FunctionListNode *list) {
 	FunctionListNode *plist = nullptr;
 	while (list) {
 		auto counter = list->used;
 		while (counter > 0) {
-			fn = list->data[--counter];
+			__funcptr fn = list->data[--counter];
 			if (fn) {
 				fn();
 			}
@@ -99,7 +109,26 @@ static bool __callDtors(FunctionListNode **listptr) {
 			__sprt_local_free(plist, 0);
 		}
 	}
+}
+
+// Thread-local list: single owner, no lock required.
+static bool __callDtors(FunctionListNode **listptr) {
+	auto list = *listptr;
+	*listptr = nullptr; // prevent recursive loop if called from destructor
+	__runDtorList(list);
 	return true;
+}
+
+// Global lists: detach the list under the lock (atomic w.r.t. atexit's
+// __addDtor), then run the handlers with the lock released.
+static void __callGlobalDtors(FunctionListNode **listptr) {
+	FunctionListNode *list;
+	{
+		sprt::unique_lock lock(s_atexit_mutex);
+		list = *listptr;
+		*listptr = nullptr;
+	}
+	__runDtorList(list);
 }
 
 static VOID __callTlsDtors(PVOID DllHandle, DWORD Reason, PVOID Reserved) {
@@ -115,6 +144,7 @@ extern const PIMAGE_TLS_CALLBACK __dyn_tls_dtor_callback = __callTlsDtors;
 static __declspec(allocate(".CRT$XLC")) PIMAGE_TLS_CALLBACK __tls_dtors_delegate = __callTlsDtors;
 
 __SPRT_C_FUNC int atexit(__funcptr fn) __SPRT_NOEXCEPT {
+	sprt::unique_lock lock(s_atexit_mutex);
 	if (!__addDtor(&s_atexit_list, &s_atexit_head, fn)) {
 		return ENOMEM;
 	}
@@ -122,6 +152,7 @@ __SPRT_C_FUNC int atexit(__funcptr fn) __SPRT_NOEXCEPT {
 }
 
 __SPRT_C_FUNC int at_quick_exit(__funcptr fn) __SPRT_NOEXCEPT {
+	sprt::unique_lock lock(s_atexit_mutex);
 	if (!__addDtor(&s_at_quick_exit_list, &s_at_quick_exit_head, fn)) {
 		return ENOMEM;
 	}
@@ -144,29 +175,40 @@ __SPRT_C_FUNC int __tlregdtor(__funcptr fn) __SPRT_NOEXCEPT {
 }
 
 __SPRT_C_FUNC void exit(int result) __SPRT_NOEXCEPT {
-	// call atexit registrations
+	// Run teardown exactly once. A recursive call (an atexit handler that calls
+	// exit) must finish via ExitProcess; a concurrent call from another thread
+	// must park and let the in-progress exit terminate it — never re-run the
+	// handlers or double-tear-down global state.
+	DWORD self = GetCurrentThreadId();
+	DWORD expected = 0;
+	if (!s_exitingThread.compare_exchange_strong(expected, self)) {
+		if (expected == self) {
+			ExitProcess((UINT)result);
+		}
+		Sleep(INFINITE); // the in-progress exit() will ExitProcess and terminate us
+		ExitProcess((UINT)result); // unreachable safety net
+	}
 
+	// Run this thread's TLS destructors, the global atexit handlers, and the C++
+	// static destructors, then flush/close streams.
 	__sprt_libc_thread_exit(false);
 
-	__callDtors(&s_atexit_list);
+	__callGlobalDtors(&s_atexit_list);
 
 	__initterm(__c_preterm_start, __c_preterm_end, true);
 	__initterm(__c_term_start, __c_term_end, true);
 
 	__stdio_exit();
 
-	sprt::destroy_at(sprt::__libc::get());
-
-	auto loader = sprt::DllLoader::get();
-	loader->unload();
-
-	sprt::destroy_at(loader);
-
+	// Do NOT destroy __libc / unload the loader here: other threads may still be
+	// executing libc calls that route through them (use-after-free). ExitProcess
+	// terminates every other thread first, after which the OS runs
+	// DLL_PROCESS_DETACH and reclaims all process memory, handles, and modules.
 	ExitProcess((UINT)result);
 }
 
 __SPRT_C_FUNC void quick_exit(int result) __SPRT_NOEXCEPT {
-	__callDtors(&s_at_quick_exit_list);
+	__callGlobalDtors(&s_at_quick_exit_list);
 
 	ExitProcess((UINT)result);
 }

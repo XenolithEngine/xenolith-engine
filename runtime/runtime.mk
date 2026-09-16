@@ -19,181 +19,86 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+#
+# Runtime module definitions
+#
+# Note that it is not used when you build application using toolchain
+# with integrated runtime (+sprt targets)
+#
+
 RUNTIME_MODULE_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-#
-# Runtime core functions, that can be used to build runtime_libc_impl
-#
+# Communicate with <root>/runtime/Makefile. SPRT_BUILD_RUNTIME marks "this is sprt's own
+# runtime code": it is always set for the runtime module's own sources (so they keep the
+# hand-written value-types via __stl_value_provider.h, rather than the hosted-only libc++
+# projection which is not on the runtime's include path). External consumers that merely
+# link the runtime never see this define and get the libc++ value-type projection.
+MODULE_RUNTIME_COMMON_CFLAGS := -DSPRT_BUILD_RUNTIME
 
-MODULE_RUNTIME_CORE_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
-MODULE_RUNTIME_CORE_PRIVATE_STANDALONE := 1
-MODULE_RUNTIME_CORE_SRCS_DIRS := \
-	$(RUNTIME_MODULE_DIR)/core
-MODULE_RUNTIME_CORE_PRIVATE_INCLUDES := \
-	$(RUNTIME_MODULE_DIR)/include
-
-ifdef TARGET_INCLUDE_DIR_LIBC
-MODULE_RUNTIME_CORE_PRIVATE_CFLAGS += $(addprefix -idirafter ,$(TARGET_INCLUDE_DIR_LIBC))
-MODULE_RUNTIME_CORE_PRIVATE_CXXFLAGS += $(addprefix -idirafter ,$(TARGET_INCLUDE_DIR_LIBC))
+# SPRT_STARTUP_TRACE=1 turns on the startup trace in the freestanding EL0 backend
+# (libc_impl/src/embox_user/startup.cc): one mark per startup step and one per
+# static constructor, written with a raw write(2) syscall. It is the only way to
+# see how far startup got on a target with no debugger and no stdio until step 4,
+# and it is off by default because every mark is a syscall.
+ifeq ($(SPRT_STARTUP_TRACE),1)
+MODULE_RUNTIME_COMMON_CFLAGS += -D__SPRT_EL0_STARTUP_TRACE=1
 endif
 
-$(call define_module, runtime_core, MODULE_RUNTIME_CORE)
-
-
-#
-# jemalloc for builtin libc
-#
-
-MODULE_RUNTIME_MALLOC_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
-MODULE_RUNTIME_MALLOC_PRIVATE_STANDALONE := 1
-MODULE_RUNTIME_MALLOC_SRCS_OBJS := \
-	$(RUNTIME_MODULE_DIR)/libc_impl/mimalloc/mimalloc.scu.c
-MODULE_RUNTIME_MALLOC_PRIVATE_INCLUDES := \
-	$(RUNTIME_MODULE_DIR)/include \
-	$(RUNTIME_MODULE_DIR)/include/sprt/wrappers/windows \
-	$(RUNTIME_MODULE_DIR)/include_libc \
-	$(RUNTIME_MODULE_DIR)/libc_impl/mimalloc/include
-
-MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS := \
-	-nostdinc \
-	-ffreestanding \
-	-fbuiltin \
-	 -funwind-tables -fasynchronous-unwind-tables \
-	-DMALLOC_NO_PRIVATE_NAMESPACE
-
-MODULE_RUNTIME_MALLOC_PRIVATE_CFLAGS += $(MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS)
-MODULE_RUNTIME_MALLOC_PRIVATE_CXXFLAGS += $(MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS)
-
-$(call define_module, runtime_malloc, MODULE_RUNTIME_MALLOC)
-
-
-#
-# Adapters for musl libc functions
-#
-
-MODULE_RUNTIME_MUSL_LIBC_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
-MODULE_RUNTIME_MUSL_LIBC_PRIVATE_STANDALONE := 1
-MODULE_RUNTIME_MUSL_LIBC_DEPENDS_ON := runtime_malloc runtime_core
-MODULE_RUNTIME_MUSL_LIBC_SRCS_DIRS := \
-	$(RUNTIME_MODULE_DIR)/musl-adapters
-MODULE_RUNTIME_MUSL_LIBC_PRIVATE_INCLUDES := \
-	$(RUNTIME_MODULE_DIR)/musl-adapters/include \
-	$(RUNTIME_MODULE_DIR)/musl-libc/arch/$(TARGET_ARCH) \
-	$(RUNTIME_MODULE_DIR)/musl-libc/arch/generic \
-	$(RUNTIME_MODULE_DIR)/musl-libc/src/internal \
-	$(RUNTIME_MODULE_DIR)/musl-libc/src/include \
-	$(RUNTIME_MODULE_DIR)/musl-libc/include \
-	$(RUNTIME_MODULE_DIR)/include \
-
-MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_FLAGS := \
-	-Wno-pointer-to-int-cast \
-	-Werror=implicit-function-declaration \
-	-Werror=implicit-int \
-	-Werror=pointer-sign \
-	-Werror=pointer-arith \
-	-Werror=int-conversion \
-	-Werror=incompatible-pointer-types \
-	-Werror=ignored-qualifiers \
-	-Waddress \
-	-Warray-bounds \
-	-Wchar-subscripts \
-	-Wduplicate-decl-specifier \
-	-Winit-self \
-	-Wreturn-type \
-	-Wsequence-point \
-	-Wstrict-aliasing \
-	-Wunused-function \
-	-Wunused-label \
-	-Wunused-variable \
-	-Wno-bitwise-op-parentheses \
-	-Wno-shift-op-parentheses \
-	-Wno-unused-but-set-variable
-
-MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_CFLAGS := \
-	$(MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_FLAGS) \
-	-nostdinc \
-	-ffreestanding \
-	-fbuiltin \
-	-fexcess-precision=standard \
-	-frounding-math \
-	-fno-strict-aliasing \
-	-fomit-frame-pointer \
-	-funwind-tables \
-	-fasynchronous-unwind-tables
-
-MODULE_RUNTIME_MUSL_LIBC_PRIVATE_CFLAGS += $(MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_CFLAGS) 
-	-std=c99 -pipe
-MODULE_RUNTIME_MUSL_LIBC_PRIVATE_CXXFLAGS += $(MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_CFLAGS)
-
-$(call define_module, runtime_musl_libc, MODULE_RUNTIME_MUSL_LIBC)
-
-
-#
-# Standalone libc implementation, based on musl-libc with platform-specific extensions
-#
-
-MODULE_RUNTIME_LIBC_IMPL_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
-MODULE_RUNTIME_LIBC_IMPL_PRIVATE_STANDALONE := 1
-MODULE_RUNTIME_LIBC_IMPL_DEPENDS_ON := runtime_malloc runtime_musl_libc runtime_core
-MODULE_RUNTIME_LIBC_IMPL_SRCS_DIRS := \
-	$(RUNTIME_MODULE_DIR)/libc_impl/src \
-	$(RUNTIME_MODULE_DIR)/libc_impl/asm/$(TARGET_SYSTEM)/$(TARGET_ARCH)
-MODULE_RUNTIME_LIBC_IMPL_PRIVATE_INCLUDES := \
-	$(RUNTIME_MODULE_DIR)/include \
-	$(RUNTIME_MODULE_DIR)/include_libc
-
-MODULE_RUNTIME_LIBC_IMPL_PRIVATE_COMMON_CFLAGS := -nostdinc \
-	-ffreestanding -fbuiltin -funwind-tables -fasynchronous-unwind-tables
-
-MODULE_RUNTIME_LIBC_IMPL_PRIVATE_SFLAGS += $(MODULE_RUNTIME_LIBC_IMPL_PRIVATE_COMMON_FLAGS)
-MODULE_RUNTIME_LIBC_IMPL_PRIVATE_CFLAGS += $(MODULE_RUNTIME_LIBC_IMPL_PRIVATE_COMMON_CFLAGS) 
-	-std=c99 -pipe
-MODULE_RUNTIME_LIBC_IMPL_PRIVATE_CXXFLAGS += $(MODULE_RUNTIME_LIBC_IMPL_PRIVATE_COMMON_CFLAGS)
-
-$(call define_module, runtime_libc_impl, MODULE_RUNTIME_LIBC_IMPL)
-
-
-#
-# Libc umbrella wrapper, that uses libc_impl or platform libc
-#
-
-MODULE_RUNTIME_LIBC_WRAPPER_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
-MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_STANDALONE := 1
-MODULE_RUNTIME_LIBC_WRAPPER_LIBS :=
-MODULE_RUNTIME_LIBC_WRAPPER_FLAGS :=
-MODULE_RUNTIME_LIBC_WRAPPER_GENERAL_CFLAGS :=
-MODULE_RUNTIME_LIBC_WRAPPER_GENERAL_CXXFLAGS :=
-MODULE_RUNTIME_LIBC_WRAPPER_SRCS_DIRS := $(RUNTIME_MODULE_DIR)/libc_wrapper
-MODULE_RUNTIME_LIBC_WRAPPER_SRCS_OBJS :=
-MODULE_RUNTIME_LIBC_WRAPPER_INCLUDES_DIRS :=
-MODULE_RUNTIME_LIBC_WRAPPER_INCLUDES_OBJS :=
-MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_INCLUDES := \
-	$(RUNTIME_MODULE_DIR)/include
-
-MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CXXFLAGS := -nostdinc++ -Wno-unused-command-line-argument
-
-ifdef TARGET_INCLUDE_DIR_LIBC
-MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += $(addprefix -idirafter ,$(TARGET_INCLUDE_DIR_LIBC))
-MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CXXFLAGS += $(addprefix -idirafter ,$(TARGET_INCLUDE_DIR_LIBC))
+# Set by <root>/runtime/Makefile when SPRT_SHARED=1. Flips SPRT_API/SPRT_GLOBAL to the
+# export side of the ABI (__declspec(dllexport) on Windows) and swaps the freestanding
+# entry point from mainCRTStartup to _DllMainCRTStartup.
+ifeq ($(SPRT_SHARED),1)
+# This alone also settles libc++: __config_site derives _LIBCPP_BUILDING_LIBRARY from it,
+# so every TU of the shared runtime agrees that the visibility annotations mean dllexport.
+MODULE_RUNTIME_COMMON_CFLAGS += -DSPRT_BUILD_SHARED_RUNTIME
 endif
 
-ifeq ($(TARGET_SYSTEM),Darwin)
-# Change include ordering by duplicating HOST flags before SDK's flags
-MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += $(HOST_GENERAL_CFLAGS) \
-	-idirafter $(OSTYPE_SDK_PATH)/usr/include -F$(OSTYPE_SDK_PATH)/System/Library/Frameworks
-MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CXXFLAGS += $(HOST_GENERAL_CFLAGS) \
-	-idirafter $(OSTYPE_SDK_PATH)/usr/include -F$(OSTYPE_SDK_PATH)/System/Library/Frameworks
+# Which collation tailorings this build carries, as SPRT_COLLATION=<set>. Every
+# group is on unless this says otherwise: an application that sorts a list for a
+# person to read should get the right order for their language by default, and a
+# target that cannot afford 1.2 MB of tables should have to say so.
+#
+#   full      every group, and Chinese/Japanese/Korean with them (the default)
+#   no-cjk    everything except zh/ja/ko - saves 0.7 MB
+#   european  Latin, Cyrillic, Greek, Armenian and Georgian
+#   root      no tailorings at all: the CLDR root order, which is already correct
+#             for German, French, Italian, Russian, Greek, Hebrew and many more
+#
+# Or list the groups: SPRT_COLLATION="LatinNordic Cyrillic". The names are the
+# ones in runtime/src/unicode/data/gen-collation-tables.py.
+#
+# The root table itself is not optional - it is the order everything else is
+# expressed as a difference from. hasCollation() tells an application at run time
+# which languages this binary actually knows.
+SPRT_COLLATION_ALL_GROUPS := LATINNORDIC LATINSLAVIC LATINROMANCE LATINTURKIC LATINOTHER \
+	CYRILLIC GREEK SEMITIC INDIC SOUTHEASTASIA OTHER CJK
+
+ifeq ($(SPRT_COLLATION),)
+SPRT_COLLATION := full
 endif
 
-ifeq ($(TARGET_SYSTEM),Windows)
-MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_INCLUDES += \
-	$(TARGET_INCLUDE_DIR) \
-	$(RUNTIME_MODULE_DIR)/include_libc
-MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += -ffreestanding -fbuiltin -funwind-tables -fasynchronous-unwind-tables
-MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CXXFLAGS += -ffreestanding -fbuiltin -funwind-tables -fasynchronous-unwind-tables
+ifeq ($(SPRT_COLLATION),full)
+SPRT_COLLATION_GROUPS := $(SPRT_COLLATION_ALL_GROUPS)
+else ifeq ($(SPRT_COLLATION),no-cjk)
+SPRT_COLLATION_GROUPS := $(filter-out CJK,$(SPRT_COLLATION_ALL_GROUPS))
+else ifeq ($(SPRT_COLLATION),european)
+SPRT_COLLATION_GROUPS := LATINNORDIC LATINSLAVIC LATINROMANCE LATINTURKIC CYRILLIC GREEK
+else ifeq ($(SPRT_COLLATION),root)
+SPRT_COLLATION_GROUPS :=
+else
+SPRT_COLLATION_GROUPS := $(shell echo $(SPRT_COLLATION) | tr 'a-z-' 'A-Z_')
 endif
 
-$(call define_module, runtime_libc_wrapper, MODULE_RUNTIME_LIBC_WRAPPER)
+MODULE_RUNTIME_COMMON_CFLAGS += $(foreach g,$(SPRT_COLLATION_ALL_GROUPS),\
+	-DSPRT_COLLATION_$(g)=$(if $(filter $(g),$(SPRT_COLLATION_GROUPS)),1,0))
+
+include $(RUNTIME_MODULE_DIR)/core/core.mk
+include $(RUNTIME_MODULE_DIR)/musl-adapters/musl_libc.mk
+include $(RUNTIME_MODULE_DIR)/libc_impl/malloc.mk
+include $(RUNTIME_MODULE_DIR)/libc_impl/libc.mk
+include $(RUNTIME_MODULE_DIR)/libc_wrapper/libc-wrapper.mk
+include $(RUNTIME_MODULE_DIR)/libcxx/libcxx.mk
+include $(RUNTIME_MODULE_DIR)/window/window.mk
 
 
 MODULE_RUNTIME_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
@@ -216,41 +121,103 @@ MODULE_RUNTIME_PRIVATE_INCLUDES := \
 	$(RUNTIME_MODULE_DIR)/include_libc \
 	$(RUNTIME_MODULE_DIR)/src
 
-MODULE_RUNTIME_DEPENDS_ON := runtime_libc_wrapper runtime_core
-MODULE_RUNTIME_PRIVATE_CXXFLAGS := -nostdinc++ -Wno-unused-command-line-argument
+MODULE_RUNTIME_DEPENDS_ON := \
+	runtime_libc_wrapper \
+	runtime_core \
+	runtime_libcxx
 
+MODULE_RUNTIME_PRIVATE_CFLAGS := $(MODULE_RUNTIME_COMMON_CFLAGS) -nostdinc++ -Wno-unused-command-line-argument
+MODULE_RUNTIME_PRIVATE_CXXFLAGS := $(MODULE_RUNTIME_COMMON_CFLAGS) -nostdinc++ -Wno-unused-command-line-argument
+MODULE_RUNTIME_GENERAL_LDFLAGS :=
 
 ifeq ($(TARGET_SYSTEM),Linux)
-MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
-MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
-MODULE_RUNTIME_LIBS += -l:libbacktrace.a -l:libc++abi.a -lm
+MODULE_RUNTIME_GENERAL_CFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_LIBS += -l:libbacktrace.a -l:libc++abi.a -lm -ldl
 endif
 
 
 ifeq ($(TARGET_SYSTEM),Android)
-MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
-MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a -landroid -llog
 endif
 
 
 ifeq ($(TARGET_SYSTEM),Android-NDK)
-MODULE_RUNTIME_GENERAL_CFLAGS +=
-MODULE_RUNTIME_GENERAL_CXXFLAGS +=
+MODULE_RUNTIME_GENERAL_CFLAGS += -nostdinc++
+MODULE_RUNTIME_GENERAL_CXXFLAGS += -nostdinc++
 MODULE_RUNTIME_INCLUDES_OBJS += \
+	$(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	$(RUNTIME_MODULE_DIR)/libcxx/include \
 	$(RUNTIME_MODULE_DIR)/include_libc \
 	$(RUNTIME_MODULE_DIR)/src
 MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a
 endif
 
 
-ifeq ($(TARGET_SYSTEM),Darwin)
+ifeq ($(TARGET_SYSTEM),NuttX)
 MODULE_RUNTIME_GENERAL_CFLAGS += \
-	-idirafter $(RUNTIME_MODULE_DIR)/include_libc \
-	-idirafter $(RUNTIME_MODULE_DIR)/include_libc/darwin
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_GENERAL_CXXFLAGS += \
-	-idirafter $(RUNTIME_MODULE_DIR)/include_libc \
-	-idirafter $(RUNTIME_MODULE_DIR)/include_libc/darwin
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_LIBS += -l:libc++abi.a -l:libunwind.a \
+	-l:libclang_rt.builtins-$(TARGET_ARCH).a -l:libsme_stub.a -lm
+endif
+
+ifeq ($(TARGET_SYSTEM),Embox)
+MODULE_RUNTIME_GENERAL_CFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+# Do not pass -lm: -Wl,-r would bake libm into the relocatable and shadow
+# the kernel's sqrtf. Embox's default math_simple sqrtf is incorrect.
+MODULE_RUNTIME_LIBS += -l:libc++abi.a -l:libunwind.a \
+	-l:libclang_rt.builtins-$(TARGET_ARCH).a -l:libsme_stub.a
+endif
+
+
+# Shared Darwin family (macOS + iOS): same libSystem/Foundation/Metal stack.
+# Differs only in the UI framework (AppKit on macOS, UIKit on iOS), handled below.
+ifneq ($(filter Darwin iOS,$(TARGET_SYSTEM)),)
+ifeq ($(findstring +open,$(TARGET_SYSROOT)),)
+MODULE_RUNTIME_GENERAL_CFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/darwin
+MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/darwin
+else
+# +open (Xcode-SDK-free): the sysroot usr/include carries only the apple-oss BASE
+# libc, so the runtime's own libc wrappers (include_libc) must be found BEFORE it:
+#   - the runtime's __SPRT_BUILD sources then #include_next through to the base;
+#   - consumers (tests/apps) get the full SPRT-extended libc API (strverscmp, the
+#     *_l locale variants, ...) routed to <sprt/wrappers/libc/*> instead of the
+#     bare apple-oss headers.
+# -isystem places them ahead of the --sysroot search; GENERAL so consumers inherit.
+MODULE_RUNTIME_GENERAL_CFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/darwin
+MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/darwin
+endif
 MODULE_RUNTIME_GENERAL_LDFLAGS += -L$(TARGET_LIB_DIR) \
 	-F$(OSTYPE_SDK_PATH)/System/Library/Frameworks \
 	-framework CoreFoundation \
@@ -258,13 +225,40 @@ MODULE_RUNTIME_GENERAL_LDFLAGS += -L$(TARGET_LIB_DIR) \
 	-framework SystemConfiguration \
 	-framework Security \
 	-framework UniformTypeIdentifiers \
-	-framework AppKit \
 	-framework Network \
 	-framework IOKit \
 	-framework QuartzCore \
-	-framework Metal \
-	-L$(OSTYPE_SDK_PATH)/usr/lib -lSystem -licucore -lobjc -liconv -lc++abi
+	-framework CoreGraphics \
+	-L$(OSTYPE_SDK_PATH)/usr/lib -lSystem -lobjc -lc++abi
 MODULE_RUNTIME_LIBS += -l:libbacktrace.a
+
+# On a "+open" (Xcode-SDK-free) target, OSTYPE_SDK_PATH points at the target
+# sysroot itself, so the -F/-L above resolve against the generated .tbd link
+# stubs (target-apple/open-sysroot.mk + gen-oss-stubs.sh). The stubs place every
+# symbol in the SAME library as the real SDK, so the link line matches the stock
+# one: libiconv resolves via its own stub, CoreText is added (font deps pull it in
+# via functions_<arch>.txt); only Metal (provided through MoltenVK) is dropped.
+# The baked stubs are complete, so the link uses the default two-level namespace
+# with NO -undefined dynamic_lookup escape hatch — any symbol not carried by a
+# stub is a hard link error (re-bake to add it).
+#
+# libicucore is deliberately NOT linked. Its only use was uidna_* for IDN, which
+# the runtime now implements itself (runtime/src/idn); those are Apple-private,
+# version-unstable symbols, and dropping them removes that exposure entirely.
+# Case mapping and collation go through CoreFoundation, not ICU.
+ifeq ($(findstring +open,$(TARGET_SYSROOT)),)
+MODULE_RUNTIME_GENERAL_LDFLAGS += -framework Metal -liconv
+else
+MODULE_RUNTIME_GENERAL_LDFLAGS += -framework CoreText -liconv
+endif
+endif
+
+ifeq ($(TARGET_SYSTEM),Darwin)
+MODULE_RUNTIME_GENERAL_LDFLAGS += -framework AppKit
+endif
+
+ifeq ($(TARGET_SYSTEM),iOS)
+MODULE_RUNTIME_GENERAL_LDFLAGS += -framework UIKit
 endif
 
 
@@ -273,11 +267,69 @@ MODULE_RUNTIME_DEPENDS_ON += runtime_libc_impl
 MODULE_RUNTIME_PRIVATE_INCLUDES += $(TARGET_INCLUDE_DIR)
 MODULE_RUNTIME_INCLUDES_OBJS += $(TARGET_INCLUDE_DIR) \
 	$(RUNTIME_MODULE_DIR)/include/sprt/wrappers/windows \
+	$(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	$(RUNTIME_MODULE_DIR)/libcxx/include \
 	$(RUNTIME_MODULE_DIR)/include_libc
 
 MODULE_RUNTIME_LIBS += -limport
+# The runtime links freestanding (-nostdlib), so clang does not auto-link the
+# compiler-rt builtins. Link it explicitly for the out-of-line builtins the
+# runtime does not provide itself — notably the C99 _Complex __mulXc3/__divXc3
+# helpers (clang-cl makes CMake drop them from the archive; compiler_rt.mk
+# rebuilds them). It is a static archive, so members are pulled only on demand.
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/lib/clang/lib/windows/clang_rt.builtins-$(TARGET_ARCH).lib
 MODULE_RUNTIME_GENERAL_CFLAGS +=
-MODULE_RUNTIME_GENERAL_CXXFLAGS += 
+MODULE_RUNTIME_GENERAL_CXXFLAGS +=
+MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
+endif
+
+
+ifeq ($(TARGET_SYSTEM),EmboxUser)
+# Freestanding, so the same shape as WASM and Windows: our own libc, our own
+# STL headers, an explicit -nostdlib link that pulls the toolchain runtimes by
+# name. What differs from WASM is only which archives exist and where.
+MODULE_RUNTIME_DEPENDS_ON += runtime_libc_impl
+# simde, from the sysroot; -nostdinc dropped the default paths.
+MODULE_RUNTIME_PRIVATE_INCLUDES += $(TARGET_SYSROOT)/usr/include
+# Export the sprt libc + STL headers to consumers: with -nostdinc, <stdio.h> and
+# <optional> have to resolve here or not at all.
+MODULE_RUNTIME_INCLUDES_OBJS += \
+	$(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	$(RUNTIME_MODULE_DIR)/libcxx/include \
+	$(RUNTIME_MODULE_DIR)/include_libc
+
+# compiler-rt builtins: the out-of-line 128-bit soft-float and integer helpers
+# clang emits calls to but does not inline. Static, so members come in on demand.
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/lib/clang/lib/embox_user/libclang_rt.builtins-$(TARGET_ARCH).a
+# libc++abi + libunwind: guards, RTTI, __dynamic_cast, and the EH personality.
+# Whether throw/catch actually unwinds depends on libunwind finding
+# PT_GNU_EH_FRAME at run time, which is contour L4's problem, not this line's.
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libc++abi.a
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libunwind.a
+MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
+endif
+
+
+ifeq ($(TARGET_SYSTEM),WASM)
+MODULE_RUNTIME_DEPENDS_ON += runtime_libc_impl
+# The sysroot's usr/include carries simde (SIMD-everywhere), needed by the geom
+# SIMD headers; expose it to the module sources (-nostdinc drops default paths).
+MODULE_RUNTIME_PRIVATE_INCLUDES += $(TARGET_SYSROOT)/usr/include
+# Export the sprt libc + STL headers to consumers (freestanding -nostdinc means
+# <stdio.h>/<optional>/... must resolve here, exactly like the Windows path).
+MODULE_RUNTIME_INCLUDES_OBJS += \
+	$(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	$(RUNTIME_MODULE_DIR)/libcxx/include \
+	$(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CXXFLAGS += -nostdinc++
+
+# Freestanding link (-nostdlib): pull the toolchain static runtimes explicitly —
+# compiler-rt builtins (out-of-line 128-bit soft-float / int helpers), plus
+# libc++abi + libunwind for the C++ ABI (guards, RTTI, __dynamic_cast, EH). All
+# are static archives, so members are pulled only on demand.
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/lib/clang/lib/wasi/libclang_rt.builtins-$(TARGET_ARCH).a
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libc++abi.a
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libunwind.a
 MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
 endif
 

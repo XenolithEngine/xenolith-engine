@@ -21,6 +21,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+// The threading / task-queue / thread-pool subsystem is pthread-backed and works
+// on wasm (real threads over shared memory); the event subsystem depends on it
+// (Thread::getCurrentThreadId etc.), so it is compiled on every platform.
+
 #include "SPRuntimeDispatchThreadInfo.cc"
 
 #include "SPRuntimeDispatchTask.cc"

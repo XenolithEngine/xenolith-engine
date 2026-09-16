@@ -21,6 +21,7 @@ THE SOFTWARE.
 **/
 
 #include <sprt/c/__sprt_locale.h>
+#include <sprt/c/__sprt_wctype.h>
 
 #include "../include/__impl_libc.h"
 
@@ -32,6 +33,18 @@ THE SOFTWARE.
 #if SPRT_WINDOWS
 #include "windows/wchar.cc"
 #endif
+
+namespace sprt {
+
+// Look up a standard mapping by name; "toupper"/"tolower" yield a sentinel
+// handle, anything else null (with EINVAL).
+__SPRT_ID(wctrans_t) __wctrans_fallback(const char *name) __SPRT_NOEXCEPT;
+
+// Apply a handle from __wctrans_fallback; a null/unknown handle returns wc.
+__SPRT_ID(wint_t)
+__towctrans_fallback(__SPRT_ID(wint_t) wc, __SPRT_ID(wctrans_t) desc) __SPRT_NOEXCEPT;
+
+} // namespace sprt
 
 namespace sprt {
 
@@ -73,7 +86,7 @@ extern "C" {
 
 __sprt_wint_t towlower(__sprt_wint_t ch) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_CTYPE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		return __towlower(ch);
 	}
 	return __towlower_l(ch, map);
@@ -81,15 +94,36 @@ __sprt_wint_t towlower(__sprt_wint_t ch) __SPRT_NOEXCEPT {
 
 __sprt_wint_t towupper(__sprt_wint_t ch) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_CTYPE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		return __towupper(ch);
 	}
 	return __towupper_l(ch, map);
 }
 
+// glibc-style wide-char transformations. wctrans() returns a pointer-based
+// handle (a __sprt_wctrans_t == const int *) that towctrans() interprets by
+// address identity; only the standard "toupper"/"tolower" mappings are supported
+// (no locale-defined ones). The implementation is the shared runtime_core
+// fallback (sprt::__wctrans_fallback / __towctrans_fallback), so libc_impl and
+// the Android wrapper bridge produce identical handles.
+__sprt_wctrans_t wctrans(const char *name) __SPRT_NOEXCEPT { return __wctrans_fallback(name); }
+
+__sprt_wint_t towctrans(__sprt_wint_t wc, __sprt_wctrans_t desc) __SPRT_NOEXCEPT {
+	return __towctrans_fallback(wc, desc);
+}
+
+__sprt_wctrans_t wctrans_l(const char *name, __sprt_locale_t) __SPRT_NOEXCEPT {
+	return __wctrans_fallback(name);
+}
+
+__sprt_wint_t towctrans_l(__sprt_wint_t wc, __sprt_wctrans_t desc,
+		__sprt_locale_t) __SPRT_NOEXCEPT {
+	return __towctrans_fallback(wc, desc);
+}
+
 int wcscmp(const wchar_t *l, const wchar_t *r) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_COLLATE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		return __wcscmp(l, r);
 	}
 	return __wcscmp_l(l, r, map);
@@ -97,7 +131,7 @@ int wcscmp(const wchar_t *l, const wchar_t *r) __SPRT_NOEXCEPT {
 
 int wcsncmp(const wchar_t *l, const wchar_t *r, size_t n) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_COLLATE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		return __wcsncmp(l, r, n);
 	}
 	return __wcsncmp_l(l, r, n, map);
@@ -105,7 +139,7 @@ int wcsncmp(const wchar_t *l, const wchar_t *r, size_t n) __SPRT_NOEXCEPT {
 
 int wcscasecmp(const wchar_t *l, const wchar_t *r) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_COLLATE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		return __wcscasecmp(l, r);
 	}
 	return __wcscasecmp_l(l, r, map);
@@ -113,7 +147,7 @@ int wcscasecmp(const wchar_t *l, const wchar_t *r) __SPRT_NOEXCEPT {
 
 int wcsncasecmp(const wchar_t *l, const wchar_t *r, size_t n) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_COLLATE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		return __wcsncasecmp(l, r, n);
 	}
 	return __wcsncasecmp_l(l, r, n, map);
@@ -121,7 +155,7 @@ int wcsncasecmp(const wchar_t *l, const wchar_t *r, size_t n) __SPRT_NOEXCEPT {
 
 int wcscoll(const wchar_t *l, const wchar_t *r) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_COLLATE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		return wcscmp(l, r);
 	}
 	return __wcscoll_l(l, r, map);
@@ -129,7 +163,7 @@ int wcscoll(const wchar_t *l, const wchar_t *r) __SPRT_NOEXCEPT {
 
 size_t wcsxfrm(wchar_t *__restrict dest, const wchar_t *__restrict src, size_t n) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_COLLATE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		size_t l = wcslen(src);
 		if (l < n) {
 			wmemcpy(dest, src, l + 1);

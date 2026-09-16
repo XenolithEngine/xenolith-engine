@@ -127,7 +127,7 @@ public:
 	Quaternion(const Mat4 &m);
 
 	constexpr Quaternion(const Vec3 &eulerAngles) {
-		float halfRadx = eulerAngles.x / 2.f, halfRady = eulerAngles.y,
+		float halfRadx = eulerAngles.x / 2.f, halfRady = eulerAngles.y / 2.f,
 			  halfRadz = -eulerAngles.z / 2.f;
 		float coshalfRadx = sprt::cos(halfRadx), sinhalfRadx = sprt::sin(halfRadx),
 			  coshalfRady = sprt::cos(halfRady), sinhalfRady = sprt::sin(halfRady),

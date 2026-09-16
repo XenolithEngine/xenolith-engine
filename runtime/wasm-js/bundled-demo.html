@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Xenolith · bundled resource (fetch)</title>
+<style>:root{color-scheme:dark}body{margin:0;background:#0b0e14;color:#c8d3f5;font:13px/1.6 ui-monospace,Menlo,monospace}
+header{padding:16px 20px;border-bottom:1px solid #1c2333}h1{margin:0;font-size:14px;color:#7aa2f7}
+header p{margin:5px 0 0;color:#5a668a;font-size:12px}#term{padding:16px 20px;white-space:pre-wrap}</style></head><body>
+<header><h1>Bundled resource via browser fetch → wasm fopen()</h1>
+<p>the worker fetches <code>rom/data.txt</code>, mounts it as a bundled file; the wasm libc opens it by path</p></header>
+<pre id="term"></pre>
+<script type="module">
+import { run } from "./loader.mjs";
+const term = document.getElementById("term");
+let buf = "";
+const code = await run("./bundled-demo.wasm", {
+	// "боевые данные": real external files the browser pulls, keyed by the path the app opens.
+	bundle: { "/rom/data.txt": "./rom/data.txt" },
+	onStdout: (s) => { buf += s; term.textContent = buf; },
+	onStderr: (s) => { buf += s; term.textContent = buf; },
+	onExit: (c) => { buf += `\n[proc_exit ${c}]\n`; },
+});
+buf += `\n✓ external file read through the browser, in a Web Worker (exit ${code})`;
+term.textContent = buf;
+document.title = "bundled exit=" + code;
+</script></body></html>

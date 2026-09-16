@@ -30,6 +30,7 @@ THE SOFTWARE.
 
 #include <sprt/cxx/detail/allocator_malloc.h>
 #include <sprt/cxx/detail/allocator_pool.h>
+#include <sprt/cxx/detail/allocator_std.h>
 #include <sprt/cxx/detail/rbtree.h>
 
 namespace sprt {
@@ -40,7 +41,7 @@ concept __set_compatible_key = requires(const typename Set::key_type &k, const E
 };
 
 template <typename Value, typename Comp, typename Allocator>
-class __set : public Allocator::base_class {
+class __set : public detail::__allocator_base_t<Allocator> {
 public:
 	using key_type = Value;
 	using value_type = Value;
@@ -53,7 +54,8 @@ public:
 	using reference = Value &;
 	using const_reference = const Value &;
 
-	using tree_type = detail::RbTree<Value, Value, Comp, allocator_type>;
+	using __sprt_allocator = detail::__select_sprt_allocator<allocator_type>;
+	using tree_type = detail::RbTree<Value, Value, Comp, __sprt_allocator>;
 
 	using iterator = typename tree_type::const_iterator;
 	using const_iterator = typename tree_type::const_iterator;
@@ -70,7 +72,7 @@ public:
 	__set(InputIterator first, InputIterator last, const key_compare &comp = key_compare(),
 			const allocator_type &alloc = allocator_type()) noexcept
 	: _tree(comp, alloc) {
-		for (auto it = first; it != last; it++) { emplace(*it); }
+		for (auto it = first; it != last; ++it) { emplace(*it); }
 	}
 
 	__set(const __set &x) noexcept
@@ -124,7 +126,13 @@ public:
 		return *this;
 	}
 
-	allocator_type get_allocator() const noexcept { return _tree.get_allocator(); }
+	allocator_type get_allocator() const noexcept {
+		if constexpr (detail::__sprt_extended_allocator<Allocator>) {
+			return _tree.get_allocator();
+		} else {
+			return allocator_type(_tree.get_allocator().get());
+		}
+	}
 
 	iterator begin() noexcept { return _tree.begin(); }
 	iterator end() noexcept { return _tree.end(); }
@@ -177,7 +185,7 @@ public:
 
 	template < typename InputIt >
 	void insert(InputIt first, InputIt last) noexcept {
-		for (auto it = first; it != last; it++) { emplace(*it); }
+		for (auto it = first; it != last; ++it) { emplace(*it); }
 	}
 
 	void insert(initializer_list<value_type> ilist) noexcept {
@@ -213,7 +221,7 @@ public:
 	size_type count(const key_type &x) const { return _tree.count_unique(x); }
 	template < __set_compatible_key<__set> K >
 	size_t count(const K &x) const {
-		return _tree.count_unique(x);
+		return _tree.count(x);
 	}
 
 	bool contains(const key_type &x) const { return _tree.find(x) != _tree.end(); }

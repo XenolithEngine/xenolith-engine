@@ -114,6 +114,35 @@ void TextLayout::getLabelRects(Vector<Rect> &ret, uint32_t firstCharId, uint32_t
 			density, origin, p);
 }
 
+Rect TextLayout::getObjectRect(uint32_t rangeIndex, float density, const Vec2 &origin) const {
+	if (rangeIndex >= _data.ranges.size()) {
+		return Rect::ZERO;
+	}
+
+	auto &range = _data.ranges[rangeIndex];
+	if (range.count == 0 || range.start + range.count > _data.chars.size()) {
+		return Rect::ZERO;
+	}
+
+	// The box is the range's last cell: `read(w, h)` appends exactly one (same as the document
+	// layout engine).
+	auto charIndex = range.start + range.count - 1;
+	auto &spec = _data.chars[charIndex];
+
+	auto line = _data.getLine(charIndex);
+	if (!line) {
+		return Rect::ZERO;
+	}
+
+	/* The box sits on the baseline, above the descender: `line->pos` is the line's foot, so the
+	box's foot is higher by the descent, and its top one box-height above. */
+	auto descent = float(range.metrics.height) - float(range.metrics.size);
+	auto top = (float(line->pos) - float(range.height) - descent) / density;
+
+	return Rect(float(spec.pos) / density + origin.x, top + origin.y, float(spec.advance) / density,
+			float(range.height) / density);
+}
+
 LabelBase::DescriptionStyle::DescriptionStyle() {
 	font.fontFamily = StringView("default");
 	font.fontSize = FontSize(14);
@@ -338,6 +367,69 @@ void LabelBase::setAlignment(TextAlign alignment) {
 
 TextAlign LabelBase::getAlignment() const { return _alignment; }
 
+void LabelBase::setTextDirection(TextDirection dir) {
+	if (_direction != dir) {
+		_direction = dir;
+		setLabelDirty();
+	}
+}
+
+TextDirection LabelBase::getTextDirection() const { return _direction; }
+
+void LabelBase::setBidiEnabled(bool value) {
+	if (_bidiEnabled != value) {
+		_bidiEnabled = value;
+		setLabelDirty();
+	}
+}
+
+bool LabelBase::isBidiEnabled() const { return _bidiEnabled; }
+
+void LabelBase::setShapingEnabled(bool value) {
+	if (_shapingEnabled != value) {
+		_shapingEnabled = value;
+		setLabelDirty();
+	}
+}
+
+bool LabelBase::isShapingEnabled() const { return _shapingEnabled; }
+
+void LabelBase::setBidiMode(BidiMode value) {
+	if (_bidiMode != value) {
+		_bidiMode = value;
+		setLabelDirty();
+	}
+}
+
+BidiMode LabelBase::getBidiMode() const { return _bidiMode; }
+
+void LabelBase::setLetterSpacing(float value) {
+	if (_letterSpacing != value) {
+		_letterSpacing = value;
+		setLabelDirty();
+	}
+}
+
+float LabelBase::getLetterSpacing() const { return _letterSpacing; }
+
+void LabelBase::setWordSpacing(float value) {
+	if (_wordSpacing != value) {
+		_wordSpacing = value;
+		setLabelDirty();
+	}
+}
+
+float LabelBase::getWordSpacing() const { return _wordSpacing; }
+
+void LabelBase::setLigaturesEnabled(bool value) {
+	if (_enableLigatures != value) {
+		_enableLigatures = value;
+		setLabelDirty();
+	}
+}
+
+bool LabelBase::isLigaturesEnabled() const { return _enableLigatures; }
+
 void LabelBase::setWidth(float width) {
 	if (_width != width) {
 		_width = width;
@@ -500,7 +592,11 @@ void LabelBase::setFillerChar(char32_t c) {
 }
 char32_t LabelBase::getFillerChar() const { return _fillerChar; }
 
+/* An explicit call latches: `setLocaleEnabled(false)` disables tag auto-detection in `setString`
+for good, so a label showing data (a file line starting with `@Locale:` or holding `%foo%`) is
+never localized. Widgets showing user text call it once in their constructor. */
 void LabelBase::setLocaleEnabled(bool value) {
+	_localeAuto = false;
 	if (_localeEnabled != value) {
 		_localeEnabled = value;
 		setLabelDirty();
@@ -524,9 +620,7 @@ void LabelBase::setString(const StringView &newString) {
 
 	_string8 = newString.str<Interface>();
 	_string16 = string::toUtf16<Interface>(newString);
-	if (!_localeEnabled && locale::hasLocaleTagsFast(_string16)) {
-		setLocaleEnabled(true);
-	}
+	enableLocaleIfTagged();
 	setLabelDirty();
 	clearStyles();
 }
@@ -538,9 +632,7 @@ void LabelBase::setString(const WideStringView &newString) {
 
 	_string8 = string::toUtf8<Interface>(newString);
 	_string16 = newString.str<Interface>();
-	if (!_localeEnabled && locale::hasLocaleTagsFast(_string16)) {
-		setLocaleEnabled(true);
-	}
+	enableLocaleIfTagged();
 	setLabelDirty();
 	clearStyles();
 }
@@ -548,6 +640,14 @@ void LabelBase::setString(const WideStringView &newString) {
 void LabelBase::setLocalizedString(size_t idx) {
 	setString(localeIndex(idx));
 	setLocaleEnabled(true);
+}
+
+// The auto-detection half of `setString`; a no-op once anyone decided explicitly. Assigns the
+// member directly, because the setter latches and detection must not count as a decision.
+void LabelBase::enableLocaleIfTagged() {
+	if (_localeAuto && !_localeEnabled && locale::hasLocaleTagsFast(_string16)) {
+		_localeEnabled = true;
+	}
 }
 
 WideStringView LabelBase::getString() const { return _string16; }
@@ -625,6 +725,19 @@ void LabelBase::prependTextWithStyle(const WideStringView &str, Style &&style) {
 	setTextRangeStyle(0, str.size(), sp::move(style));
 }
 
+void LabelBase::setInlineObjects(Vector<InlineObject> &&objects) {
+	_inlineObjects = sp::move(objects);
+	setLabelDirty();
+}
+
+void LabelBase::clearInlineObjects() {
+	if (_inlineObjects.empty()) {
+		return;
+	}
+	_inlineObjects.clear();
+	setLabelDirty();
+}
+
 void LabelBase::clearStyles() {
 	_styles.clear();
 	setLabelDirty();
@@ -644,9 +757,17 @@ void LabelBase::setStyles(const StyleVec &vec) {
 }
 
 bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledStyles, float density,
-		uint8_t _adjustValue) {
+		uint8_t _adjustValue, font::Formatter::ContentRequest request) {
 	bool success = true;
 	uint16_t adjustValue = maxOf<uint16_t>();
+
+	EffectiveStyle eff;
+	makeEffectiveStyle(eff);
+	if (!eff.fontFamilyStorage.empty()) {
+		// fontFamily is a non-owning view: re-point it at the owning storage only after
+		// the EffectiveStyle reached its final address
+		eff.style.font.fontFamily = eff.fontFamilyStorage;
+	}
 
 	do {
 		if (adjustValue == maxOf<uint16_t>()) {
@@ -661,18 +782,29 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 			return format->getLayout(f);
 		}, format->getData());
 		formatter.setWidth(static_cast<uint16_t>(roundf(_width * density)));
-		formatter.setTextAlignment(_alignment);
+		formatter.setRequest(request);
+		formatter.setTextAlignment(eff.alignment);
+
+		/* A `Neutral` base direction requires bidi: only the bidi pass resolves it, and without it
+		Formatter silently keeps LeftToRight, so RTL paragraphs would align `start` to the left. */
+		if (eff.direction == TextDirection::Neutral) {
+			eff.bidiEnabled = true;
+		}
+
+		formatter.setTextDirection(eff.direction);
+		formatter.setBidiEnabled(eff.bidiEnabled);
+		formatter.setShapingEnabled(eff.shapingEnabled);
 		formatter.setMaxWidth(static_cast<uint16_t>(roundf(_maxWidth * density)));
 		formatter.setMaxLines(_maxLines);
 		formatter.setOpticalAlignment(_opticalAlignment);
 		formatter.setFillerChar(_fillerChar);
 		formatter.setEmplaceAllChars(_emplaceAllChars);
 
-		if (_lineHeight != 0.0f) {
-			if (_isLineHeightAbsolute) {
-				formatter.setLineHeightAbsolute(static_cast<uint16_t>(_lineHeight * density));
+		if (eff.lineHeight != 0.0f) {
+			if (eff.lineHeightAbsolute) {
+				formatter.setLineHeightAbsolute(static_cast<uint16_t>(eff.lineHeight * density));
 			} else {
-				formatter.setLineHeightRelative(_lineHeight);
+				formatter.setLineHeightRelative(eff.lineHeight);
 			}
 		}
 
@@ -680,15 +812,89 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 
 		size_t drawedChars = 0;
 		for (auto &it : compiledStyles) {
-			DescriptionStyle params = _style.merge(
+			DescriptionStyle params = eff.style.merge(
 					dynamic_cast<font::FontController *>(format->getController()), it.style);
 			specializeStyle(params, density);
 			if (adjustValue > 0) {
 				params.font.fontSize -= FontSize(adjustValue);
 			}
+			// CSS `unicode-bidi` for the label's text: inject the span's bidi mode + direction so
+			// the formatter brackets it with the matching Unicode controls.
+			if (eff.bidiMode != BidiMode::Normal) {
+				params.text.bidi = eff.bidiMode;
+				params.text.direction = eff.direction;
+			}
+			// CSS letter/word-spacing + font-variant-ligatures
+			if (_letterSpacing != 0.0f) {
+				params.text.letterSpacing = int16_t(roundf(_letterSpacing * density));
+			}
+			if (_wordSpacing != 0.0f) {
+				params.text.wordSpacing = int16_t(roundf(_wordSpacing * density));
+			}
+			if (!_enableLigatures) {
+				params.text.enableLigatures = false;
+			}
 
 			auto start = _string16.c_str() + it.start;
 			auto len = it.length;
+
+			/* A span with an inline object is read in pieces: text before, a box in place of the
+			object's character, text after, so the layout keeps one cell per character. Locale
+			tags are not resolved on such a span, since that would move the indexes. */
+			if (!_inlineObjects.empty()) {
+				size_t pos = it.start;
+				size_t end = it.start + it.length;
+				bool ok = true;
+
+				for (auto &object : _inlineObjects) {
+					if (object.charIndex < pos || object.charIndex >= end) {
+						continue;
+					}
+
+					if (object.charIndex > pos) {
+						if (!formatter.read(params.font, params.text, _string16.c_str() + pos,
+									object.charIndex - pos)) {
+							ok = false;
+							break;
+						}
+					}
+
+					/* An object wider than the line is scaled to fit, keeping its aspect;
+					re-decided on every re-wrap. */
+					auto size = object.size;
+					if (_width > 0.0f && size.width > _width) {
+						size.height *= _width / size.width;
+						size.width = _width;
+					}
+
+					if (!formatter.read(params.font, params.text,
+								uint16_t(roundf(size.width * density)),
+								uint16_t(roundf(size.height * density)))) {
+						ok = false;
+						break;
+					}
+
+					// The range the reservation just produced: the only handle back to the box.
+					object.rangeIndex = uint32_t(format->getData()->ranges.size() - 1);
+					pos = object.charIndex + 1;
+				}
+
+				if (ok && pos < end) {
+					ok = formatter.read(params.font, params.text, _string16.c_str() + pos,
+							end - pos);
+				}
+
+				if (!ok) {
+					success = false;
+					break;
+				}
+
+				if (!format->getData()->ranges.empty()) {
+					format->getData()->ranges.back().colorDirty = params.colorDirty;
+					format->getData()->ranges.back().opacityDirty = params.opacityDirty;
+				}
+				continue;
+			}
 
 			if (_localeEnabled && hasLocaleTags(WideStringView(start, len))) {
 				WideString str(resolveLocaleTags(WideStringView(start, len)));
@@ -803,6 +1009,20 @@ void LabelBase::specializeStyle(DescriptionStyle &style, float density) const {
 	style.font.persistent = _persistentGlyphData;
 }
 
-void LabelBase::setLabelDirty() { _labelDirty = true; }
+void LabelBase::makeEffectiveStyle(EffectiveStyle &out) const {
+	out.style = _style;
+	out.alignment = _alignment;
+	out.direction = _direction;
+	out.bidiMode = _bidiMode;
+	out.bidiEnabled = _bidiEnabled;
+	out.shapingEnabled = _shapingEnabled;
+	out.lineHeight = _lineHeight;
+	out.lineHeightAbsolute = _isLineHeightAbsolute;
+}
+
+void LabelBase::setLabelDirty() {
+	_labelDirty = true;
+	++_labelRevision;
+}
 
 } // namespace stappler::xenolith::font

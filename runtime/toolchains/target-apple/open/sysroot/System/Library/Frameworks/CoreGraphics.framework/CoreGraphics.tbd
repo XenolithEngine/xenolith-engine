@@ -1,0 +1,46 @@
+--- !tapi-tbd
+tbd-version:     4
+targets:         [ x86_64-macos, arm64-macos ]
+install-name:    '/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics'
+current-version: 0
+compatibility-version: 0
+exports:
+  - targets:         [ x86_64-macos, arm64-macos ]
+    symbols:         [
+        _CGAffineTransformIdentity,
+        _CGAffineTransformScale,
+        _CGBeginDisplayConfiguration,
+        _CGCompleteDisplayConfiguration,
+        _CGConfigureDisplayWithDisplayMode,
+        _CGDataProviderCreateWithData,
+        _CGDataProviderRelease,
+        _CGDisplayCopyAllDisplayModes,
+        _CGDisplayCopyDisplayMode,
+        _CGDisplayIsActive,
+        _CGDisplayModeGetHeight,
+        _CGDisplayModeGetIODisplayModeID,
+        _CGDisplayModeGetIOFlags,
+        _CGDisplayModeGetPixelHeight,
+        _CGDisplayModeGetPixelWidth,
+        _CGDisplayModeGetRefreshRate,
+        _CGDisplayModeGetWidth,
+        _CGDisplayModelNumber,
+        _CGDisplayPrimaryDisplay,
+        _CGDisplayRegisterReconfigurationCallback,
+        _CGDisplayRemoveReconfigurationCallback,
+        _CGDisplayScreenSize,
+        _CGDisplaySerialNumber,
+        _CGDisplayUnitNumber,
+        _CGDisplayVendorNumber,
+        _CGFontCopyGlyphNameForGlyph,
+        _CGFontCopyPostScriptName,
+        _CGFontCopyTableForTag,
+        _CGFontCreateWithDataProvider,
+        _CGFontRelease,
+        _CGFontRetain,
+        _CGGetOnlineDisplayList,
+        _CGPathApply,
+        _CGRestorePermanentDisplayConfiguration,
+        _kCGDisplayShowDuplicateLowResolutionModes,
+    ]
+...

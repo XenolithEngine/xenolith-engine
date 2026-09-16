@@ -23,6 +23,7 @@ THE SOFTWARE.
 
 #include "SPDbContinueToken.h"
 #include "SPDbScheme.h"
+#include "SPDbQueryList.h"
 
 namespace STAPPLER_VERSIONIZED stappler::db {
 
@@ -39,7 +40,10 @@ ContinueToken::ContinueToken(const StringView &str) {
 	if (d.isArray() && d.size() == 6) {
 		field = d.getString(0);
 		initVec = d.getValue(1);
-		count = (size_t)d.getInteger(2);
+		// clamp page size to the same bounds as the begin path, so a forged/tampered
+		// continue token cannot request an unbounded result page
+		count = (size_t)stappler::math::clamp(d.getInteger(2), QueryList::MinSoftLimit,
+				QueryList::MaxSoftLimit);
 		fetched = (size_t)d.getInteger(3);
 		total = (size_t)d.getInteger(4);
 		flags |= Flags(d.getInteger(5));
@@ -146,7 +150,7 @@ Value ContinueToken::perform(const Scheme &scheme, const Transaction &t, Query &
 			Value(initVec));
 
 	auto d = scheme.select(t, q);
-	if (d.isArray()) {
+	if (d.isArray() && !d.empty()) {
 		_numResults = d.size();
 		if (hasFlag(Flags::Reverse)) {
 			fetched -= (sprt::min(fetched, _numResults));

@@ -27,6 +27,8 @@ THE SOFTWARE.
 #include <sprt/cxx/detail/constexpr.h>
 
 #include <stdlib.h>
+// strlen() below: glibc/musl/Bionic pull it in through <stdlib.h>, Embox does not.
+#include <string.h>
 
 #if SPRT_WINDOWS
 
@@ -48,6 +50,8 @@ __SPRT_C_FUNC int __SPRT_ID(setenv)(const char *n, const char *v, int r) { retur
 
 __SPRT_C_FUNC int __SPRT_ID(unsetenv)(const char *n) { return unsetenv(n); }
 
+__SPRT_C_FUNC int __SPRT_ID(putenv)(char *s) { return putenv(s); }
+
 __SPRT_C_FUNC char *__SPRT_ID(getenv_impl)(const char *name) { return getenv(name); }
 
 __SPRT_C_FUNC int getenv_s(size_t *ret, char *buf, rsize_t bufSize,
@@ -56,14 +60,46 @@ __SPRT_C_FUNC int getenv_s(size_t *ret, char *buf, rsize_t bufSize,
 		return EINVAL;
 	}
 	auto env = getenv(name);
-	auto len = strlen(env);
-	if (ret) {
-		*ret = len + 1;
+	if (!env) {
+		*ret = 0;
+		return 0;
 	}
+	auto len = strlen(env);
+	*ret = len + 1;
 	if (buf && bufSize < len + 1) {
 		return ERANGE;
 	}
-	memcpy(buf, env, len + 1);
+	if (buf && bufSize >= len + 1) {
+		memcpy(buf, env, len + 1);
+	}
+	return 0;
+}
+
+// The allocating member of the same MSVC secure-CRT family as getenv_s: on success *buf
+// owns a malloc'd copy the caller frees. A missing variable is not an error - *buf comes
+// back null, which is how callers distinguish "unset" from a failure.
+__SPRT_C_FUNC int _dupenv_s(char **buf, size_t *bufSize, const char *name) __SPRT_NOEXCEPT {
+	if (!buf || !name) {
+		return EINVAL;
+	}
+	*buf = nullptr;
+	if (bufSize) {
+		*bufSize = 0;
+	}
+	auto env = getenv(name);
+	if (!env) {
+		return 0;
+	}
+	auto len = strlen(env);
+	auto mem = static_cast<char *>(malloc(len + 1));
+	if (!mem) {
+		return ENOMEM;
+	}
+	memcpy(mem, env, len + 1);
+	*buf = mem;
+	if (bufSize) {
+		*bufSize = len + 1;
+	}
 	return 0;
 }
 

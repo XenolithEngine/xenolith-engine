@@ -682,9 +682,8 @@ void Binder::writeBind(StringStream &query,
 		_iface->bindMoveString(*this, query, sp::move(str));
 		break;
 	}
-	default: break;
+	default: _iface->bindMoveString(*this, query, "NULL"); break;
 	}
-	_iface->bindMoveString(*this, query, "NULL");
 }
 void Binder::writeBind(StringStream &query, const Vector<int64_t> &vec) {
 	_iface->bindIntVector(*this, query, vec);

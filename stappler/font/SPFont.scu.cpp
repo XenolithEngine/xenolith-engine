@@ -30,3 +30,5 @@
 #include "SPFontLibrary.cc"
 #include "SPFontHyphenMap.cc"
 #include "SPFontFormatter.cc"
+#include "SPFontBidi.cc"
+#include "SPFontShape.cc"

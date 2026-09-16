@@ -30,6 +30,14 @@
 #include "XLCoreAttachment.h"
 #include "XLCoreDynamicImage.h"
 
+namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
+
+// Remote queue codec; grants access to the private material state below so the client can rebuild an
+// immutable MaterialSet mirror directly from the wire (see XLRemoteSerialize.cc).
+class QueueCodec;
+
+} // namespace stappler::xenolith::remote
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 class Material;
@@ -39,11 +47,18 @@ class MaterialAttachment;
 using MaterialId = uint32_t;
 
 struct SP_PUBLIC MaterialInputData : AttachmentInputData {
-	const MaterialAttachment *attachment;
+	const MaterialAttachment *attachment = nullptr;
+
+	// Keeps the render queue alive: compilation is asynchronous, and `attachment` lives in the
+	// queue's pool. Always set the pair through setAttachment().
+	Rc<Ref> attachmentOwner;
+
 	Vector<Rc<Material>> materialsToAddOrUpdate;
 	Vector<MaterialId> materialsToRemove;
 	Vector<MaterialId> dynamicMaterialsToUpdate;
 	Function<void()> callback;
+
+	void setAttachment(const MaterialAttachment *);
 };
 
 struct SP_PUBLIC MaterialImage {
@@ -58,8 +73,11 @@ struct SP_PUBLIC MaterialImage {
 	bool canAlias(const MaterialImage &) const;
 };
 
+// Immutable acting material set
 class SP_PUBLIC MaterialSet final : public Ref {
 public:
+	friend class ::stappler::xenolith::remote::QueueCodec;
+
 	using ImageSlot = MaterialImageSlot;
 
 	virtual ~MaterialSet() = default;
@@ -89,7 +107,9 @@ public:
 
 protected:
 	void removeMaterial(Material *oldMaterial);
-	void emplaceMaterialImages(Material *oldMaterial, Material *newMaterial,
+	// Returns false if an image view could not be created (callback returned null); the caller
+	// must then abandon the material instead of installing it.
+	bool emplaceMaterialImages(Material *oldMaterial, Material *newMaterial,
 			const Callback<Rc<ImageView>(const MaterialImage &)> &);
 
 	uint32_t _imagesInSet = 16;
@@ -138,6 +158,7 @@ public:
 protected:
 	friend class MaterialSet;
 	friend class MaterialAttachment;
+	friend class ::stappler::xenolith::remote::QueueCodec;
 
 	void setLayoutIndex(uint32_t);
 	void setBuffer(Rc<BufferObject> &&);
@@ -154,8 +175,10 @@ protected:
 };
 
 // this attachment should provide material data buffer for rendering
-class SP_PUBLIC MaterialAttachment : public GenericAttachment {
+class SP_PUBLIC MaterialAttachment : public Attachment {
 public:
+	friend class ::stappler::xenolith::remote::QueueCodec;
+
 	virtual ~MaterialAttachment();
 
 	virtual bool init(AttachmentBuilder &builder, const TextureSetLayoutData *);
@@ -188,7 +211,7 @@ public:
 	Queue *getCompiler() const;
 
 protected:
-	using GenericAttachment::init;
+	using Attachment::init;
 
 	void setMaterialBuffer(NotNull<Material>, Rc<BufferObject> &&) const;
 

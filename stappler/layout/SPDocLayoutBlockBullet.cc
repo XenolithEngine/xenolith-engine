@@ -99,9 +99,13 @@ static LayoutBlock::WideString Layout_getRomanBullet(int64_t v, bool uppercase) 
 	if (v <= 12) {
 		result += (uppercase ? (u'Ⅰ' + (v - 1)) : (u'ⅰ' + (v - 1)));
 	} else {
+		// cap the output: a huge list index would otherwise append millions of
+		// numerals (the value==1 step loops `v` times) — a memory/CPU DoS
+		static constexpr size_t MaxBulletSymbols = 64;
 		auto romandata = uppercase ? romandata_upper : romandata_lower;
-		for (romandata_t const *current = romandata; current->value > 0; ++current) {
-			while (v >= current->value) {
+		for (romandata_t const *current = romandata;
+				current->value > 0 && result.size() < MaxBulletSymbols; ++current) {
+			while (v >= current->value && result.size() < MaxBulletSymbols) {
 				result += current->numeral;
 				v -= current->value;
 			}
@@ -120,34 +124,44 @@ auto LayoutBlock::getListItemBulletString() -> WideString {
 	case ListStyleType::Disc: str += u"• "; break;
 	case ListStyleType::Square: str += u"■ "; break;
 	case ListStyleType::XMdash: str += u"— "; break;
-	case ListStyleType::Decimal:
-		str += string::toUtf16<Interface>(string::toString<Interface>(parent->listItemIndex, ". "));
-		parent->listItemIndex += ((parent->listItem == LayoutBlock::ListReversed) ? -1 : 1);
-		break;
-	case ListStyleType::DecimalLeadingZero:
-		str += string::toUtf16<Interface>(
-				string::toString<Interface>("0", parent->listItemIndex, ". "));
-		parent->listItemIndex += ((parent->listItem == LayoutBlock::ListReversed) ? -1 : 1);
-		break;
-	case ListStyleType::LowerAlpha:
-		str.append(Layout_getLatinBullet(parent->listItemIndex, false)).append(u". ");
-		parent->listItemIndex += ((parent->listItem == LayoutBlock::ListReversed) ? -1 : 1);
-		break;
-	case ListStyleType::LowerGreek:
-		str.append(Layout_getGreekBullet(parent->listItemIndex)).append(u". ");
-		parent->listItemIndex += ((parent->listItem == LayoutBlock::ListReversed) ? -1 : 1);
-		break;
-	case ListStyleType::LowerRoman:
-		str.append(Layout_getRomanBullet(parent->listItemIndex, false)).append(u". ");
-		parent->listItemIndex += ((parent->listItem == LayoutBlock::ListReversed) ? -1 : 1);
-		break;
-	case ListStyleType::UpperAlpha:
-		str.append(Layout_getLatinBullet(parent->listItemIndex, true)).append(u". ");
-		parent->listItemIndex += ((parent->listItem == LayoutBlock::ListReversed) ? -1 : 1);
-		break;
-	case ListStyleType::UpperRoman:
-		str.append(Layout_getRomanBullet(parent->listItemIndex, true)).append(u". ");
-		parent->listItemIndex += ((parent->listItem == LayoutBlock::ListReversed) ? -1 : 1);
+	default:
+		// numeric bullet styles need the enclosing list layout for the running
+		// index; with no parent layout there is nothing to number
+		if (parent) {
+			switch (node.block.listStyleType) {
+			case ListStyleType::Decimal:
+				str += string::toUtf16<Interface>(
+						string::toString<Interface>(parent->listItemIndex, ". "));
+				parent->listItemIndex += ((parent->listItem == LayoutBlock::ListReversed) ? -1 : 1);
+				break;
+			case ListStyleType::DecimalLeadingZero:
+				str += string::toUtf16<Interface>(
+						string::toString<Interface>("0", parent->listItemIndex, ". "));
+				parent->listItemIndex += ((parent->listItem == LayoutBlock::ListReversed) ? -1 : 1);
+				break;
+			case ListStyleType::LowerAlpha:
+				str.append(Layout_getLatinBullet(parent->listItemIndex, false)).append(u". ");
+				parent->listItemIndex += ((parent->listItem == LayoutBlock::ListReversed) ? -1 : 1);
+				break;
+			case ListStyleType::LowerGreek:
+				str.append(Layout_getGreekBullet(parent->listItemIndex)).append(u". ");
+				parent->listItemIndex += ((parent->listItem == LayoutBlock::ListReversed) ? -1 : 1);
+				break;
+			case ListStyleType::LowerRoman:
+				str.append(Layout_getRomanBullet(parent->listItemIndex, false)).append(u". ");
+				parent->listItemIndex += ((parent->listItem == LayoutBlock::ListReversed) ? -1 : 1);
+				break;
+			case ListStyleType::UpperAlpha:
+				str.append(Layout_getLatinBullet(parent->listItemIndex, true)).append(u". ");
+				parent->listItemIndex += ((parent->listItem == LayoutBlock::ListReversed) ? -1 : 1);
+				break;
+			case ListStyleType::UpperRoman:
+				str.append(Layout_getRomanBullet(parent->listItemIndex, true)).append(u". ");
+				parent->listItemIndex += ((parent->listItem == LayoutBlock::ListReversed) ? -1 : 1);
+				break;
+			default: break;
+			}
+		}
 		break;
 	}
 

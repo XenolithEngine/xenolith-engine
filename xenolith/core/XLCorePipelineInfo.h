@@ -225,8 +225,6 @@ public:
 				|| this->lineWidth != tmp2.lineWidth || this->imageViewType != tmp2.imageViewType;
 	}
 
-	bool isMatch(const PipelineMaterialInfo &tmp2) const;
-
 	size_t hash() const { return sprt::hashSize((const char *)this, sizeof(PipelineMaterialInfo)); }
 
 	String data() const;

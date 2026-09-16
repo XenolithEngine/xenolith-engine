@@ -32,21 +32,6 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
 
-class SP_PUBLIC BufferAttachment : public core::BufferAttachment {
-public:
-	virtual ~BufferAttachment() = default;
-
-	virtual Rc<AttachmentHandle> makeFrameHandle(const FrameQueue &) override;
-};
-
-class SP_PUBLIC ImageAttachment : public core::ImageAttachment {
-public:
-	virtual ~ImageAttachment() = default;
-
-	virtual Rc<AttachmentHandle> makeFrameHandle(const FrameQueue &) override;
-};
-
-
 class SP_PUBLIC BufferAttachmentHandle : public core::AttachmentHandle {
 public:
 	struct BufferView {
@@ -100,6 +85,21 @@ public:
 	virtual bool writeDescriptor(const core::QueuePassHandle &, core::DescriptorBufferViewInfo &) {
 		return false;
 	}
+};
+
+// BufferAttachment can not use core::AttachmentTyped: it wires static buffers
+// into the handle after creation
+class SP_PUBLIC BufferAttachment : public core::BufferAttachment {
+public:
+	virtual ~BufferAttachment() = default;
+
+	virtual Rc<AttachmentHandle> makeFrameHandle(const FrameQueue &) override;
+};
+
+class SP_PUBLIC ImageAttachment
+	: public core::AttachmentTyped<ImageAttachmentHandle, core::ImageAttachment> {
+public:
+	virtual ~ImageAttachment() = default;
 };
 
 } // namespace stappler::xenolith::vk

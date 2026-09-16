@@ -591,6 +591,10 @@ Value Transaction::performQueryListField(const QueryList &list, const Field &f) 
 	}
 
 	auto ids = performQueryListForIds(list, count);
+	// TODO (design check): performQueryListForIds now returns ALL matched ids (it previously
+	// stopped after the first row, see DB-OBJ-002). This consumer only handles the single-id
+	// case; verify whether a multi-id result here is expected/possible and, if so, how the
+	// View/Set field resolution below should behave for it.
 	if (ids.size() == 1) {
 		auto id = ids.front();
 		auto scheme = list.getItems().at(count - 1).scheme;
@@ -605,8 +609,8 @@ Value Transaction::performQueryListField(const QueryList &list, const Field &f) 
 			if ((r && r->onField) || (d && d->onField) || f.getSlot()->readFilterFn) {
 				if ((obj = acquireObject(w.scheme(), id))) {
 					Value tmp;
-					if (!d->onField(Action::Get, w, obj, f, tmp)
-							|| !r->onField(Action::Get, w, obj, f, tmp)) {
+					if ((d && d->onField && !d->onField(Action::Get, w, obj, f, tmp))
+							|| (r && r->onField && !r->onField(Action::Get, w, obj, f, tmp))) {
 						return Value();
 					}
 				}

@@ -237,17 +237,18 @@ struct NodeBlockAllocatorHelper {
 
 			while (*segment) {
 				auto node = *segment;
+				auto next = static_cast<Node *>(node->getNextStorage());
 				if (!node->isPrealloc()) {
 					// node is not indexed - just deallocate it
-					auto next = static_cast<Node *>(node->getNextStorage());
-
 					auto size = node->getSize();
 					alloc.destroy(node);
 					alloc.__deallocate(node, 1, size);
-
-					*segment = next;
 					++ret;
 				}
+				// Always advance. nblocks == 0 means there are no preallocated
+				// blocks, so a prealloc node here is unexpected; unlink and skip
+				// it (it cannot be freed individually) rather than spin forever.
+				*segment = next;
 			}
 			return ret;
 		}

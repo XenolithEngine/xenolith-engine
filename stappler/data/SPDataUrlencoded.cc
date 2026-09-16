@@ -292,10 +292,10 @@ SP_PUBLIC auto readUrlencoded<memory::PoolInterface>(StringView r, size_t maxVar
 }
 
 template <>
-SP_PUBLIC auto readUrlencoded<memory::StandartInterface>(StringView r, size_t maxVarSize)
-		-> ValueTemplate<memory::StandartInterface> {
-	ValueTemplate<memory::StandartInterface> ret;
-	UrlencodeParser<memory::StandartInterface> parser(ret, r.size(), maxVarSize);
+SP_PUBLIC auto readUrlencoded<mem_std::Interface>(StringView r, size_t maxVarSize)
+		-> ValueTemplate<mem_std::Interface> {
+	ValueTemplate<mem_std::Interface> ret;
+	UrlencodeParser<mem_std::Interface> parser(ret, r.size(), maxVarSize);
 	parser.read((const uint8_t *)r.data(), r.size());
 	return ret;
 }

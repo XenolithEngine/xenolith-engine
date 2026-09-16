@@ -24,6 +24,12 @@ THE SOFTWARE.
 #include <sprt/cxx/__mutex/unique_lock.h>
 #include <sprt/runtime/hash.h>
 #include <sprt/runtime/thread/qmutex.h>
+
+// NuttX <stdlib.h> defines srandom() as a macro expanding to srand(); the
+// static helper below is also named srandom, which the macro would corrupt.
+#if SPRT_HOSTED_RTOS
+#undef srandom
+#endif
 #include <sprt/thirdparty/pcg_random.hpp>
 
 namespace sprt::libc {
@@ -48,7 +54,7 @@ template <>
 struct _RandState<4> {
 	template <typename IntType>
 	static uint64_t toSeed(IntType base) {
-		return hash64((const char *)&base, sizeof(unsigned));
+		return hash64((const char *)&base, sizeof(IntType));
 	}
 
 	pcg32 rng;
@@ -59,7 +65,7 @@ template <>
 struct _RandState<8> {
 	template <typename IntType>
 	static uint64_t toSeed(IntType base) {
-		return hash64((const char *)&base, sizeof(unsigned));
+		return hash64((const char *)&base, sizeof(IntType));
 	}
 
 	pcg64 rng;
@@ -84,7 +90,7 @@ static _RandState<sizeof(unsigned long)> s_randomState;
 static long int random(void) {
 	unique_lock lock(s_randomState.lock);
 	auto value = s_randomState.rng();
-	return static_cast<long int>(value & __SPRT_LONG_MAX);
+	return static_cast<long int>(value & __SPRT_RAND_MAX);
 }
 
 static void srandom(unsigned int base) {

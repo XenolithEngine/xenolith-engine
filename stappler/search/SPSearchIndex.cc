@@ -49,7 +49,7 @@ void SearchIndex::add(const StringView &v, int64_t id, int64_t tag) {
 			}
 			auto s = canonical.size();
 			canonical.append(str.str<Interface>());
-			onToken(_tokens, str, idx, Slice{uint16_t(s), uint16_t(str.size())});
+			onToken(_tokens, str, idx, Slice{uint32_t(s), uint32_t(str.size())});
 		}
 	};
 
@@ -93,10 +93,10 @@ SearchIndex::Result SearchIndex::performSearch(const StringView &v, size_t minMa
 					if (ret_it == res.nodes.end() || ret_it->node != node) {
 						res.nodes.emplace(ret_it,
 								ResultNode{0.0f, node,
-									{ResultToken{wordIndex, uint16_t(str.size()), lb->slice}}});
+									{ResultToken{wordIndex, uint32_t(str.size()), lb->slice}}});
 					} else {
 						ret_it->matches.emplace_back(
-								ResultToken{wordIndex, uint16_t(str.size()), lb->slice});
+								ResultToken{wordIndex, uint32_t(str.size()), lb->slice});
 					}
 				}
 				++lb;
@@ -114,6 +114,28 @@ SearchIndex::Result SearchIndex::performSearch(const StringView &v, size_t minMa
 	} else {
 		StringView r(origin);
 		r.split<DefaultSep>(tokenFn);
+	}
+
+	// `minMatch` is the number of DISTINCT query words a node has to answer, not the number of
+	// matched tokens: two hits on the same word are one word answered. Applied before the
+	// heuristic, so a node that was never a candidate never costs a scoring call.
+	if (minMatch > 1) {
+		auto it = res.nodes.begin();
+		while (it != res.nodes.end()) {
+			uint32_t distinct = 0;
+			uint32_t prev = maxOf<uint32_t>();
+			for (auto &m : it->matches) {
+				if (m.word != prev) {
+					++distinct;
+					prev = m.word;
+				}
+			}
+			if (distinct < minMatch) {
+				it = res.nodes.erase(it);
+			} else {
+				++it;
+			}
+		}
 	}
 
 	if (cb) {
@@ -143,7 +165,7 @@ SearchIndex::Slice SearchIndex::convertToken(const Node &node, const ResultToken
 		auto start = ret.slice.start + node.alignment.diff_original(ret.slice.start);
 		auto end = ret.slice.start + ret.match;
 		end += node.alignment.diff_original(end, true);
-		return Slice{uint16_t(start), uint16_t(end - start)};
+		return Slice{uint32_t(start), uint32_t(end - start)};
 	}
 }
 

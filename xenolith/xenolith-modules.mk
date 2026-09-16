@@ -23,17 +23,26 @@ XENOLITH_MODULE_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 XENOLITH_VERSION_API := 3
 XENOLITH_VERSION_REV := 1
-XENOLITH_VERSION_BUILD := $(firstword $(call sp_detect_build_number,$(XENOLITH_MODULE_DIR)))
+XENOLITH_VERSION_BUILD := $(firstword $(call sp_detect_build_number,$(abspath $(XENOLITH_MODULE_DIR)/..)))
 
 TOOLKIT_MODULE_LIST += \
 	$(XENOLITH_MODULE_DIR)/core/core.mk \
 	$(XENOLITH_MODULE_DIR)/application/application.mk \
+	$(XENOLITH_MODULE_DIR)/remote/remote.mk \
 	$(XENOLITH_MODULE_DIR)/font/font.mk \
 	$(XENOLITH_MODULE_DIR)/backend/vk/vk.mk \
+	$(XENOLITH_MODULE_DIR)/backend/webgpu/webgpu.mk \
+	$(XENOLITH_MODULE_DIR)/backend/mtl/mtl.mk \
+	$(XENOLITH_MODULE_DIR)/backend/soft/soft.mk \
+	$(XENOLITH_MODULE_DIR)/backend/gles/gles.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/basic2d/basic2d.mk \
-	$(XENOLITH_MODULE_DIR)/renderer/material2d/material2d.mk \
+	$(XENOLITH_MODULE_DIR)/renderer/basic2d/backend/webgpu/basic2d-webgpu.mk \
+	$(XENOLITH_MODULE_DIR)/renderer/basic2d/backend/mtl/basic2d-mtl.mk \
+	$(XENOLITH_MODULE_DIR)/renderer/basic2d/backend/soft/basic2d-soft.mk \
+	$(XENOLITH_MODULE_DIR)/renderer/basic2d/backend/gles/basic2d-gles.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/richtext/richtext.mk \
-	$(XENOLITH_MODULE_DIR)/renderer/simpleui/simpleui.mk \
+	$(XENOLITH_MODULE_DIR)/renderer/pug/pug.mk \
+	$(XENOLITH_MODULE_DIR)/renderer/ui/ui.mk \
 	$(XENOLITH_MODULE_DIR)/resources/storage/storage.mk \
 	$(XENOLITH_MODULE_DIR)/resources/network/network.mk \
 	$(XENOLITH_MODULE_DIR)/resources/assets/assets.mk

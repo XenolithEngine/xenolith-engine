@@ -67,7 +67,15 @@ struct Looper::Data : public detail::AllocPool {
 		sprt::memory::pool::initialize();
 		sprt::unique_lock lock(l->_mutex);
 
-		d->queue->poll();
+		// cleanup() is not guaranteed to run only once: it is invoked both directly
+		// from ~Looper and from the threadMemPool cleanup that ~Looper kills, and a
+		// late thread teardown (e.g. the file-epoll worker exiting via TLS
+		// destructors after the queue was already released) can re-enter here with
+		// queue already nulled (see the guarded use below). Guard the drain the same
+		// way; otherwise this is a null deref -> SIGSEGV.
+		if (d->queue) {
+			d->queue->poll();
+		}
 
 		auto tmp = sprt::move(d->buses);
 		d->buses.clear();
@@ -81,6 +89,8 @@ struct Looper::Data : public detail::AllocPool {
 		}
 
 		d->threadPoolInfo.ref = nullptr;
+
+		d->queue->shutdown();
 
 		if (d->threadHandle) {
 			d->threadHandle->cancel();
@@ -134,7 +144,9 @@ struct Looper::Data : public detail::AllocPool {
 Looper *Looper::acquire(LooperInfo &&info) {
 	return acquire(move(info),
 			QueueInfo{
-				.flags = QueueFlags::SubmitImmediate | QueueFlags::ThreadNative,
+				// SubmitImmediate activates SQPOLL for I/O heavy work, impractical for GUI and defaults
+				// .flags = QueueFlags::SubmitImmediate | QueueFlags::ThreadNative,
+				.flags = QueueFlags::ThreadNative,
 				.engineMask = info.engineMask,
 				.osIdleInterval = TimeInterval::milliseconds(100),
 			});
@@ -193,6 +205,60 @@ Rc<PollHandle> Looper::listenPollableHandle(NativeHandle fd, PollFlags flags,
 	return _data->queue->listenPollableHandle(fd, flags, sprt::move(cb), ref);
 }
 
+Rc<ProcessHandle> Looper::spawnProcess(ProcessInfo &&info, Ref *ref) {
+	return _data->queue->spawnProcess(move(info), ref);
+}
+
+Rc<ProcessHandle> Looper::spawnProcess(StringView command, Function<void(StringView)> &&reader,
+		Function<void(int exitCode, Status)> &&onExit, Ref *ref) {
+	return _data->queue->spawnProcess(command, sprt::move(reader), sprt::move(onExit), ref);
+}
+
+Rc<FileHandle> Looper::readFile(FileReadInfo &&info, Ref *ref) {
+	return _data->queue->readFile(move(info), ref);
+}
+
+Rc<FileHandle> Looper::writeFile(FileWriteInfo &&info, Ref *ref) {
+	return _data->queue->writeFile(move(info), ref);
+}
+
+Rc<FileHandle> Looper::readFile(StringView path, Function<void(BytesView)> &&reader,
+		Function<void(Status)> &&onDone, Ref *ref) {
+	return _data->queue->readFile(path, sprt::move(reader), sprt::move(onDone), ref);
+}
+
+Rc<FileHandle> Looper::writeFile(StringView path, BytesView data, OpenFlags flags,
+		Function<void(Status)> &&onDone, Ref *ref) {
+	return _data->queue->writeFile(path, data, flags, sprt::move(onDone), ref);
+}
+
+Rc<WatchHandle> Looper::watchFile(WatchInfo &&info, Ref *ref) {
+	return _data->queue->watchFile(move(info), ref);
+}
+
+Rc<WatchHandle> Looper::watchFile(StringView path, WatchFlags mask,
+		Function<Status(WatchFlags)> &&onChange, Ref *ref) {
+	return _data->queue->watchFile(path, mask, sprt::move(onChange), ref);
+}
+
+Rc<ListenHandle> Looper::listenSocket(ListenInfo &&info, Ref *ref) {
+	return _data->queue->listenSocket(move(info), ref);
+}
+
+Rc<ListenHandle> Looper::listenSocket(const SocketAddress &addr,
+		ListenInfo::AcceptCallback &&onAccept, Ref *ref) {
+	return _data->queue->listenSocket(addr, sprt::move(onAccept), ref);
+}
+
+Rc<StreamHandle> Looper::connectSocket(ConnectInfo &&info, Ref *ref) {
+	return _data->queue->connectSocket(move(info), ref);
+}
+
+Rc<StreamHandle> Looper::connectSocket(const SocketAddress &addr,
+		Function<void(StreamHandle *, Status)> &&onConnect, Ref *ref) {
+	return _data->queue->connectSocket(addr, sprt::move(onConnect), ref);
+}
+
 Status Looper::performOnThread(Rc<Task> &&task, bool immediate) {
 	bool isOnThread = isOnThisThread();
 	if (immediate && isOnThread) {
@@ -222,11 +288,17 @@ Status Looper::performOnThread(dispatch::Function<void()> &&func, Ref *target, b
 }
 
 Status Looper::performAsync(Rc<Task> &&task, bool first) {
+	if (_data->threadPoolInfo.threadCount == 0) {
+		return performOnThread(sprt::move(task), true);
+	}
 	return _data->getThreadPool()->perform(sprt::move(task), first);
 }
 
 Status Looper::performAsync(dispatch::Function<void()> &&func, Ref *target, bool first,
 		StringView tag) {
+	if (_data->threadPoolInfo.threadCount == 0) {
+		return performOnThread(sprt::move(func), target, true, tag);
+	}
 	return _data->getThreadPool()->perform(sprt::move(func), target, first, tag);
 }
 
@@ -260,7 +332,7 @@ Status Looper::wakeup(WakeupFlags flags) {
 	return _data->queue->wakeup(flags);
 }
 
-uint16_t Looper::getWorkersCount() const { return _data->threadPool->getInfo().threadCount; }
+uint16_t Looper::getWorkersCount() const { return _data->threadPoolInfo.threadCount; }
 
 memory::pool_t *Looper::getThreadMemPool() const { return _data->threadMemPool; }
 

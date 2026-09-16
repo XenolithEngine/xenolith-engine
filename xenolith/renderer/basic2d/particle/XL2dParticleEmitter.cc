@@ -33,6 +33,10 @@ bool ParticleEmitter::init(NotNull<ParticleSystem> s) {
 	}
 
 	_system = s;
+
+	// The emitter has no CPU geometry at all (particles are simulated on the GPU) and they can
+	// fly outside contentSize, so damage tracking can neither version nor bound it.
+	addCommandFlags(CommandFlags::AlwaysDirty | CommandFlags::UnknownBounds);
 	return true;
 }
 
@@ -42,6 +46,10 @@ bool ParticleEmitter::init(NotNull<ParticleSystem> s, StringView texName) {
 	}
 
 	_system = s;
+
+	// The emitter has no CPU geometry at all (particles are simulated on the GPU) and they can
+	// fly outside contentSize, so damage tracking can neither version nor bound it.
+	addCommandFlags(CommandFlags::AlwaysDirty | CommandFlags::UnknownBounds);
 	return true;
 }
 
@@ -51,6 +59,10 @@ bool ParticleEmitter::init(NotNull<ParticleSystem> s, Rc<Texture> &&tex) {
 	}
 
 	_system = s;
+
+	// The emitter has no CPU geometry at all (particles are simulated on the GPU) and they can
+	// fly outside contentSize, so damage tracking can neither version nor bound it.
+	addCommandFlags(CommandFlags::AlwaysDirty | CommandFlags::UnknownBounds);
 	return true;
 }
 

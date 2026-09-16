@@ -79,15 +79,20 @@ public:
 		virtual core::TextCursor getTextCursor() const { return _cursor; }
 		virtual void setTextCursor(core::TextCursor c) { _cursor = c; }
 
+		// Union of the quads currently emplaced, in this node's own space. Empty when nothing is
+		// highlighted.
+		const Rect &getBounds() const { return _bounds; }
+
 	protected:
 		virtual void updateVertexes(FrameInfo &frame) override;
 
 		core::TextCursor _cursor = core::TextCursor::InvalidCursor;
+		Rect _bounds = Rect::ZERO;
 	};
 
 	static void writeQuads(VertexArray &vertexes,
-			const font::TextLayoutData<memory::StandartInterface> *format,
-			Vector<ColorMask> &colorMap, float layer);
+			const font::TextLayoutData<mem_std::Interface> *format, Vector<ColorMask> &colorMap,
+			float layer);
 	static void writeQuads(VertexArray &vertexes,
 			const font::TextLayoutData<memory::PoolInterface> *format, Vector<ColorMask> &colorMap,
 			float layer);
@@ -106,7 +111,18 @@ public:
 	virtual void handleEnter(xenolith::Scene *) override;
 	virtual void handleExit() override;
 
+	virtual void handleComponentsDirty(const ComponentMask &) override;
+
 	virtual void tryUpdateLabel();
+
+	// Measure the natural text size under the given constraints without
+	// committing any node state (content measurement protocol; served to
+	// layout engines via the label's internal HandleMeasure system)
+	Size2 measureContent(const MeasureConstraints &);
+
+	// Apply a size assigned by a layout engine: re-wrap the text to the new
+	// width synchronously, then adopt the assigned box as contentSize
+	void applyMeasuredSize(const Size2 &);
 
 	virtual void setStyle(const DescriptionStyle &);
 	virtual const DescriptionStyle &getStyle() const;
@@ -128,6 +144,11 @@ public:
 
 	virtual Vec2 getCursorPosition(uint32_t charIndex, bool prefix = true) const;
 	virtual Vec2 getCursorOrigin() const;
+
+	/* Where an inline object's box ended up, in this node's own space (Y-up from its origin).
+	`index` is into `getInlineObjects()`. Empty until the text is shaped, and it moves with every
+	re-wrap, so callers drawing over it must ask again after layout changes. */
+	virtual Rect getInlineObjectRect(uint32_t index) const;
 
 	/*
 	returns character index in FormatSpec for position in label or maxOf<uint32_t>()
@@ -152,6 +173,12 @@ public:
 	virtual void setSelectionColor(const Color4F &);
 	virtual Color4F getSelectionColor() const;
 
+	/* Where the highlight is actually drawn, in the label's own space; empty without a selection.
+	Unlike getSelectionCursor() (what the label was told to highlight) this is the built geometry;
+	they differ when the quads were computed against a stale size. */
+	virtual Rect getSelectionRect() const;
+	virtual Rect getMarkedRect() const;
+
 	virtual void setMarkedCursor(core::TextCursor);
 	virtual core::TextCursor getMarkedCursor() const;
 
@@ -161,13 +188,25 @@ public:
 protected:
 	using Sprite::init;
 
+	Rc<LabelDeferredResult> runDeferredCounted(sprt::dispatch::Looper *, TextLayout *format,
+			const Color4F &);
+
 	virtual Rc<LabelDeferredResult> runDeferred(sprt::dispatch::Looper *, TextLayout *format,
 			const Color4F &color);
 
 	virtual void applyLayout(TextLayout *);
 
+	virtual void makeEffectiveStyle(font::LabelBase::EffectiveStyle &) const override;
+
 	virtual void updateLabel();
+
+	virtual void setLabelDirty() override;
 	virtual void onFontSourceUpdated();
+
+	// Re-resolve the tags on a locale change, and keep bidi/shaping in step with the locale's
+	// direction.
+	virtual void handleLocaleChanged();
+	void applyLocaleTextFeatures();
 	virtual void onFontSourceLoaded();
 	virtual void onLayoutUpdated();
 	virtual void updateColor() override;
@@ -177,6 +216,7 @@ protected:
 	virtual void updateQuadsForeground(font::FontController *, TextLayout *, Vector<ColorMask> &);
 
 	virtual bool checkVertexDirty() const override;
+	virtual void refreshPendingDependencies() override;
 
 	virtual NodeVisitFlags processParentFlags(FrameInfo &info, NodeVisitFlags parentFlags) override;
 
@@ -184,9 +224,23 @@ protected:
 
 	void updateLabelScale(const Mat4 &parent);
 
+	// density refresh half of updateLabelScale: no re-shaping, only marks
+	// the label dirty when the accumulated world scale changed
+	void updateLabelDensity(const Mat4 &parent);
+
+	// Held while handleLayoutApplied writes the measured box back, so that the assignment does not
+	// re-expire the measurement it came from.
+	bool _applyingMeasuredSize = false;
+
 	EventListener *_listener = nullptr;
+	sprt::dispatch::BusDelegate *_localeDelegate = nullptr; // owned by _listener, cleared with it
+	bool _localeTextFeatures =
+			false; // bidi + shaping were turned on by the locale, not by a caller
 	Time _quadRequestTime;
 	Rc<font::FontController> _source;
+	// Glyph generation this label's quads were laid out against. Its CharIds are only resolvable
+	// while the atlas holds that generation - see refreshPendingDependencies().
+	uint64_t _glyphGeneration = 0;
 	Rc<TextLayout> _format;
 	Vector<ColorMask> _colorMap;
 
@@ -194,6 +248,21 @@ protected:
 
 	uint8_t _adjustValue = 0;
 	size_t _updateCount = 0;
+
+	/* Cached measurement results, so the same question is not shaped again within a layout pass.
+	Keyed by the label's revision and density, which cover everything that changes the answer; a
+	handful of entries is enough. */
+	struct MeasureCacheEntry {
+		MeasureMode mode = MeasureMode::Normal;
+		float maxWidth = 0.0f;
+		Size2 result;
+	};
+
+	static constexpr size_t MaxMeasureCache = 4;
+
+	uint64_t _measureRevision = 0;
+	float _measureDensity = 0.0f;
+	Vector<MeasureCacheEntry> _measureCache;
 
 	Selection *_selection = nullptr;
 	Selection *_marked = nullptr;

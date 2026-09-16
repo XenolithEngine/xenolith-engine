@@ -1,0 +1,11 @@
+# Windows MSVC host toolchain build directory
+
+Toolchain for Windows being built here.
+
+The build is performed on Windows using the built-in version of powershell; GNU Make (you can take one from previous Xenolith Runtime release) and cmake is also required. Manually installed versions of powershell have not been tested. Also, pre-built LLVM tools are required for the build, they can be obtained from the official repository.
+
+GNU make is built using MSVC. Other components is built in a single pass using LLVM tools. 
+
+At least Windows 10 is required.
+
+WARNING: building from GNU environment (Cygwin, MSYS) is not supported at all.

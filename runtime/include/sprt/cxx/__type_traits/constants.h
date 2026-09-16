@@ -23,15 +23,8 @@
 #ifndef RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_CONSTANTS_H_
 #define RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_CONSTANTS_H_
 
-#define __SPRT_STL_BOOL_BUILTIN(Name) \
-	template <typename Type> \
-	struct Name { \
-		static constexpr bool value = __##Name(Type);\
-	}; \
-	template <typename Type> \
-	inline constexpr bool Name##_v =  __##Name(Type);
-
 namespace sprt {
+inline namespace __cxx_type_traits {
 
 using nullptr_t = decltype(nullptr);
 
@@ -71,6 +64,7 @@ struct type_identity {
 template <typename Type>
 using type_identity_t = typename type_identity<Type>::type;
 
+} // namespace __cxx_type_traits
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_CONSTANTS_H_

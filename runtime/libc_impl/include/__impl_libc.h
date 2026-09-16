@@ -28,6 +28,7 @@ THE SOFTWARE.
 #include <sprt/c/sys/__sprt_stat.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 
+#include <sprt/cxx/atomic>
 #include <sprt/cxx/mutex>
 #include <sprt/cxx/unordered_map>
 #include <sprt/cxx/unordered_set>
@@ -43,6 +44,11 @@ THE SOFTWARE.
 #include "sys/uio.h"
 
 #include "../../core/include/__plock.h"
+
+// Defined at global scope further down (it embeds sprt::__locale_struct). Forward
+// declared here so the sprt::__get_default_locale_struct() prototype below, which
+// appears before the definition, can name it.
+struct __freestanding_locale_struct;
 
 namespace sprt {
 
@@ -68,6 +74,13 @@ struct __fd_slot {
 	uint64_t padding;
 	uint32_t flags;
 	uint32_t mode;
+#if __SIZEOF_POINTER__ == 4
+	// On 32-bit targets (wasm32, arm, riscv32) the two pointers above are 4 bytes
+	// each, leaving __fd_slot at 24 bytes — which does not tile FD_MEMORY_PAGE_SIZE
+	// (16K) evenly and breaks the __fd_page static_assert. Pad back to the 32-byte
+	// layout the 64-bit build already has so the page math is arch-independent.
+	uint32_t __ptr_pad[2];
+#endif
 };
 
 enum class __fd_ops_mask : uint32_t {
@@ -146,6 +159,10 @@ struct __libc {
 	uint32_t egid = 0;
 	bool isAppContainer = false;
 
+	// Separate from defaultLocaleMutex: setlocale() holds defaultLocaleMutex and
+	// then resolves a name through get_cached_locale(), so the cache must use its
+	// own lock to avoid a self-deadlock.
+	mutable mutex localeCacheMutex;
 	__local_unordered_map<StringView, __locale_map *> localeCache;
 
 	mutex fdMutex;
@@ -188,6 +205,13 @@ __freestanding_locale_struct *__get_default_locale_struct();
 __locale_map *__get_locale(int cat, const char *, size_t);
 void __free_locale(__locale_map *);
 
+// True for the C-family locales — the UTF-8 default ("C.UTF8") AND the single-byte
+// "C"/"POSIX" locale — plus the null/global handle. These use raw ASCII/codepoint
+// ctype and POSIX byte collation, NOT the platform's locale services (their names
+// "C"/"C.UTF8" are not valid Windows locale names, so CompareStringEx/LCMapStringEx
+// would fail). The two differ ONLY in MB_CUR_MAX (1 vs 4); everything else is C/POSIX.
+bool __locale_is_c(const __locale_map *);
+
 bool __init_exceptions();
 void __cleanup_exceptions();
 
@@ -210,6 +234,34 @@ int __wcsncasecmp_l(const wchar_t *, const wchar_t *, __sprt_size_t, const __loc
 int __wcscoll_l(const wchar_t *, const wchar_t *, const __locale_map *);
 size_t __wcsxfrm_l(wchar_t *__restrict, const wchar_t *__restrict, __sprt_size_t,
 		const __locale_map *);
+int __strcoll_l(const char *, const char *, const __locale_map *);
+size_t __strxfrm_l(char *__restrict, const char *__restrict, __sprt_size_t,
+		const __locale_map *);
+
+// Locale-token retrieval for the platform-independent libc_impl sources (e.g.
+// the strtod/scanf number parsers), so they need no platform headers. Returns
+// the LC_NUMERIC radix ("decimal point") character of the given locale map; the
+// C/POSIX (default) map and a null map yield '.'. Backed by the platform locale
+// data (WinAPI on Windows).
+char __get_numeric_radix(const __locale_map *);
+
+// Radix of the current effective LC_NUMERIC locale (the common non-_l case).
+char __get_effective_numeric_radix();
+
+// LC_NUMERIC formatting view used by printf: the decimal point plus the optional
+// '%'' digit grouping. `thousands_sep` is the (single-byte) group separator and
+// `grouping` the uniform group size in digits; both are 0 when the locale offers
+// no usable grouping (e.g. the C/POSIX locale, or a multi-byte separator). All
+// fields are resolved once per call (cached in the locale map), so the formatter
+// core needs no platform headers.
+struct __numeric_fmt {
+	char radix;
+	char thousands_sep;
+	unsigned char grouping;
+};
+
+__numeric_fmt __get_numeric_fmt(const __locale_map *);
+__numeric_fmt __get_effective_numeric_fmt();
 
 int __scandir(__SPRT_ID(DIR) * d, struct __SPRT_DIRENT_NAME ***__name_list,
 		int (*__filter)(const struct __SPRT_DIRENT_NAME *),
@@ -222,5 +274,15 @@ struct __freestanding_locale_struct {
 	sprt::__locale_struct data;
 	__sprt_uint32_t refcount;
 };
+
+// Radix ("decimal point") for an explicit locale handle (the global/unset handle
+// falls back to the current effective locale). Shared by the locale-aware number
+// formatters/parsers (strtod, printf/scanf _l).
+char __get_locale_numeric_radix(struct __freestanding_locale_struct *);
+
+// Numeric formatting view (radix + grouping) for an explicit locale handle; the
+// global/unset handle falls back to the current effective locale. Used by the
+// printf _l family.
+sprt::__numeric_fmt __get_locale_numeric_fmt(struct __freestanding_locale_struct *);
 
 #endif // RUNTIME_FREESTANDING_INCLUDE_IMPL_LIBC_H_

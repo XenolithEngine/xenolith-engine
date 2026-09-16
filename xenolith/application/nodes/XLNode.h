@@ -39,6 +39,17 @@ class ActionManager;
 class Director;
 class FrameContext;
 
+/* Internal and CSS identity of a scene-graph node: what selectors are matched against. */
+struct SP_PUBLIC NodeIdentity {
+	static ComponentId Id;
+
+	uint64_t tag = InvalidTag;
+	String type; // element/tag name ("label", "layer", "flex", ...)
+	String name; // css #id
+	HashSet<String, sprt::hash<void>> classes; // css .classes
+	Value value;
+};
+
 struct SP_PUBLIC ActionStorage : public Ref {
 	Vector<Rc<Action>> actionToStart;
 
@@ -49,6 +60,78 @@ struct SP_PUBLIC ActionStorage : public Ref {
 	void removeAllActionsByTag(uint32_t);
 	Action *getActionByTag(uint32_t);
 };
+
+#if XL_FRAME_ACCOUNT
+/* Time spent in the visit's phases (named as in `Node::processParentFlags`/`runChildrenPhases`):
+
+  components       phase 1: component updates and the ancestor notifications they publish
+  measure          phase 2: fixing the node's own size, HandleMeasure included
+  transform        phase 3a: the transform notification
+  globalTransform  phase 3b: the world transform notification (Label re-shape, VectorSprite
+                   re-tesselation)
+  contentSize      phase 4: handleContentSizeDirty
+  children         phases 5 and 6: child reorder and handleLayoutChildren
+  self             visitSelf: hit-test publish and the node's own draw commands
+
+Buckets nest (a layout in `children` measures children, also counted in their `measure`), so the
+sum may exceed the visit; read them as shares. App thread only, reset by Director::acquireFrame. */
+struct SP_PUBLIC VisitAccount {
+	uint64_t components = 0;
+	uint64_t measure = 0;
+	// Phase 3 split: `globalTransform` is where world-scale-dependent work (text shaping) happens
+	uint64_t transform = 0;
+	uint64_t globalTransform = 0;
+	uint64_t contentSize = 0;
+	uint64_t children = 0;
+	uint64_t self = 0;
+	uint32_t nodes = 0;
+
+	// Times the transform phase ran, and system callbacks it dispatched
+	uint32_t transformCalls = 0;
+	uint32_t transformSystems = 0;
+
+	// basic2d::Label: world-scale derivations (a Mat4 decompose each) and the re-shapes they caused
+	uint32_t labelDensity = 0;
+	uint32_t labelShapes = 0;
+
+	// Re-shapes caused by a density change under 1% (`Label::updateLabelDensity` compares exactly)
+	uint32_t labelShapeJitter = 0;
+
+	// Time in `Label::updateLabel`, and the characters shaped
+	uint64_t labelShapeNs = 0;
+	uint32_t labelShapeChars = 0;
+
+	// The transform phase split: world-scale derivation vs. dispatch to the node's systems
+	uint64_t labelDensityNs = 0;
+	uint64_t transformSystemNs = 0;
+
+	// `ui::StyleResolver::resolveForNode` calls (one per node per resolve) and their time
+	uint32_t styleResolves = 0;
+	uint64_t styleNs = 0;
+
+	/* One resolve in parts: the prologue (ancestor chain, Bloom prefix, scopes, level gather),
+	pass 1 (custom properties) and pass 2 (parameters). `styleLevels` counts level gathers that
+	ran, `styleLevelHits` those answered by the match cache (see `Node::getStyleMatchId`). */
+	uint64_t styleChainNs = 0;
+	uint64_t stylePass1Ns = 0;
+	uint64_t stylePass2Ns = 0;
+	uint32_t styleLevels = 0;
+	uint32_t styleLevelHits = 0;
+
+	// `ScrollController::onScrollPosition` passes that did work, their convergence rounds, items
+	// walked (twice per pass), nodes built and removed, and time
+	uint32_t scrollPasses = 0;
+	uint32_t scrollRounds = 0;
+	uint32_t scrollItems = 0;
+	uint32_t scrollBuilt = 0;
+	uint32_t scrollRemoved = 0;
+	uint64_t scrollNs = 0;
+
+	void clear() { *this = VisitAccount(); }
+};
+
+SP_PUBLIC VisitAccount &getVisitAccount();
+#endif
 
 class SP_PUBLIC Node : public Ref, public ComponentContainer {
 public:
@@ -118,8 +201,36 @@ public:
 	virtual void setContentSize(const Size2 &contentSize);
 	virtual Size2 getContentSize() const { return _contentSize; }
 
+	// Force handleComponentsDirty processing on the next visit
+	void markComponentsDirty() { _componentsDirty = true; }
+
+	// Force handleContentSizeDirty processing on the next visit
+	void markContentSizeDirty() { _contentSizeDirty = true; }
+
+	// Opt into the measure phase: handleMeasure will run on the next visit to (re)fix the
+	// node's own size via the SystemFlags::HandleMeasure protocol
+	void markMeasureDirty() { _measureDirty = true; }
+
+	// Request the layout-children phase on the next visit (a layout engine re-runs its pass
+	// over the children, e.g. after a child's content size changed)
+	void markLayoutChildrenDirty() { _layoutChildrenDirty = true; }
+
+	void markIntrinsicSizeDirty() {
+		for (auto p = _parent; p; p = p->_parent) { p->_layoutChildrenDirty = true; }
+	}
+
 	virtual void setVisible(bool visible);
 	virtual bool isVisible() const { return _visible; }
+
+	// The visibility wrapVisit actually honors: the explicit setVisible flag combined with a
+	// style-driven VisibilityComponent (display: none / visibility: hidden). When false, the
+	// node reacts at visit exactly like setVisible(false) — the whole subtree is skipped.
+	bool isEffectivelyVisible() const;
+
+	// Whether the node occupies a layout box: false when explicitly invisible or hidden via
+	// `display: none`; a `visibility: hidden` node stays displayed (keeps its box), matching
+	// CSS semantics. Used by layout engines to decide which children to collapse.
+	bool isDisplayed() const;
 
 	virtual void setRotation(float rotationInRadians);
 	virtual void setRotation(const Vec3 &rotationInRadians);
@@ -149,6 +260,42 @@ public:
 
 	virtual SpanView<Rc<Node>> getChildren() const { return _children; }
 	virtual size_t getChildrenCount() const { return _children.size(); }
+
+	/** Monotonic counter of changes to the child list: add, remove and reorder each bump it.
+	 * Consumers whose result depends on a child's position among its siblings (CSS structural
+	 * selectors such as `:nth-child`) use it to detect that their cached answer is stale.
+	 * `sortAllChildren` does not bump it - the sort only applies a reorder already counted. */
+	uint32_t getChildrenVersion() const { return _childrenVersion; }
+
+	/* The CSS match stamp: whether a cached "which rules match this node" answer is still valid.
+	`ui::StyleResolver` caches per-level match sets and checks them against three numbers folded
+	over the node and its ancestors:
+
+	  getStyleMatchId()         unique per node for the process lifetime, so a freed node's entry
+	                            is never read for a new node at the same address
+	  getComponentsVersion()    anything a selector reads about this node (identity, interactive
+	                            state, focus-within / selection markers, sheet version)
+	  getChildrenStyleVersion() anything a selector reads about the child list (`:empty`,
+	                            `:nth-child`, `+`, `~`, `:nth-of-type`)
+
+	Not covered: a sibling's interactive state (`input:checked + label`), which the resolver does
+	not re-resolve on an interactive flip anyway. */
+	uint64_t getStyleMatchId() const { return _styleMatchId; }
+
+	/** Child-list version for the CSS matcher: bumped by add/remove/reorder and by a child's
+	 * identity change (`.a + .b`, `:nth-of-type`). Separate from `getChildrenVersion()`, which
+	 * feeds the resolver's freshness map, where one child's identity change must not stale every
+	 * sibling. */
+	uint64_t getChildrenStyleVersion() const { return _childrenStyleVersion; }
+
+	/** The child list changed (add / remove / reorder): bump the version and, while running,
+	 * re-arm every remaining child's content-size phase, since sibling position feeds style
+	 * (`:nth-child`) and layout. */
+	void markChildrenStructureDirty();
+
+	/** An identity change (`setName`/`setType`/`addStyleClass`/...) bumps the parent's child-list
+	 * style version, since siblings' selectors read it - see getChildrenStyleVersion(). */
+	void markStyleIdentityDirty();
 
 	virtual void setParent(Node *parent);
 	virtual Node *getParent() const { return _parent; }
@@ -219,7 +366,32 @@ public:
 		return nullptr;
 	}
 
+	// Add a system with an explicit dispatch priority (lower is dispatched earlier),
+	// overriding the system's own default priority
+	template <typename C>
+	auto addSystem(C *system, uint32_t priority) -> C * {
+		if (addSystemItem(system, priority)) {
+			return system;
+		}
+		return nullptr;
+	}
+
+	template <typename C>
+	auto addSystem(const Rc<C> &system, uint32_t priority) -> C * {
+		if (addSystemItem(system.get(), priority)) {
+			return system.get();
+		}
+		return nullptr;
+	}
+
+	// Adds the system using its own (default) priority for ordering
 	virtual bool addSystemItem(System *);
+	// Adds the system, assigning the given priority for ordering
+	virtual bool addSystemItem(System *, uint32_t priority);
+
+	// Re-sort an already-added system after its priority changed (called by
+	// System::setSystemPriority; not intended for direct use)
+	void updateSystemPriority(System *);
 	virtual bool removeSystem(System *);
 	virtual bool removeSystemByTag(uint64_t);
 	virtual bool removeAllSystemByTag(uint64_t);
@@ -231,8 +403,19 @@ public:
 	template <typename T>
 	T *getSystemByType(uint64_t tag) const;
 
+	SpanView<Rc<System>> getSystems() const { return _systems; }
+
 	virtual StringView getName() const;
 	virtual void setName(StringView str);
+
+	virtual StringView getType() const;
+	virtual void setType(StringView str);
+
+	virtual void addStyleClass(StringView cl);
+	virtual void removeStyleClass(StringView cl);
+	virtual void toggleStyleClass(StringView cl);
+	virtual bool hasStyleClass(StringView cl) const;
+	virtual const HashSet<String, sprt::hash<void>> *getStyleClasses() const;
 
 	virtual const Value &getDataValue() const;
 	virtual void setDataValue(Value &&val);
@@ -245,20 +428,50 @@ public:
 	virtual void setEventFlags(NodeEventFlags);
 	virtual NodeEventFlags getEventFlags() const { return _eventFlags; }
 
+	/* Bring the node up to date before it is asked how big it is. */
+	void settleForMeasure();
+
+	void settlePointerState();
+
+	// Raised by a system whose pointer-derived state has to be settled before it is read
+	void markPointerStateDirty() { _pointerStateDirty = true; }
+
 	// Node was added to scene
 	virtual void handleEnter(Scene *);
 
 	// Node was removed from scene
 	virtual void handleExit();
 
+	// The node's own size is being fixed for this frame (phase 2, requires _measureDirty).
+	// Runs the SystemFlags::HandleMeasure protocol and commits the result via setContentSize.
+	// Must not change components. Opt-in: set via markMeasureDirty()
+	virtual void handleMeasure();
+
 	// New ContentSize applied for the node
 	// There you can setup Node's appearance and layout it's subnodes
-	// ContentSize processed after Transform, be sure not to modify it there
+	// ContentSize processed after Measure/Transform, size is fixed here
 	virtual void handleContentSizeDirty();
 
 	// Some of node's components was updated
 	// Components processed after ContentSize and Transform, be sure not to modify them here
-	virtual void handleComponentsDirty();
+	virtual void handleComponentsDirty(const ComponentMask &);
+
+	// Some of an ancestor's components was updated. Dispatched to systems that opted in
+	// via SystemFlags::HandleAncestorComponents; Node subclasses can override (calling base)
+	// to react to ancestor component changes. Only reaches nodes whose subtree contains a
+	// listener (see setWantsAncestorComponents / _ancestorComponentsListeners)
+	virtual void handleAncestorComponentsDirty();
+
+	// Register this node itself as an ancestor-components listener (for Node subclasses that
+	// override handleAncestorComponentsDirty instead of attaching a System). Feeds the same
+	// subtree counter that gates ancestor ComponentsDirty propagation
+	void setWantsAncestorComponents(bool);
+	bool getWantsAncestorComponents() const { return _wantsAncestorComponents; }
+
+	// Apply `delta` to this node's ancestor-components listener counter and to all ancestors.
+	// Called by owned Systems (when their HandleAncestorComponents/enabled state changes) and
+	// by child attach/detach; not intended for direct use
+	void adjustAncestorComponentsListeners(int32_t delta);
 
 	// New Transform applied for the node
 	// Node was repositioned or scaled within it's parent
@@ -266,19 +479,39 @@ public:
 
 	// Node was repositioned or scaled within scene
 	// There global parameters (like pixel density) can be recalculated
-	// Called after `handleTransformDirty` if node's transform was also dirty
+	// Called after `handleTransformDirty` if node's transform was also dirty.
+	// The transform phase runs after Measure, so the node's size is already fixed here
 	virtual void handleGlobalTransformDirty(const Mat4 &);
 
 	// Children array was updated somehow
 	// Called after all other processing
 	virtual void handleReorderChildDirty();
 
-	// Node should be positioned within parent
-	virtual void handleLayout(Node *);
+	// Lay out this node's children (phase 6, requires _layoutChildrenDirty). Runs after child
+	// reorder with this node's own size and child order fixed; dispatched to systems with
+	// SystemFlags::HandleLayoutChildren (this is where a layout engine positions/sizes children)
+	virtual void handleLayoutChildren();
+
+	// Node should be positioned within parent (parent's content size changed)
+	virtual void handleLayoutInParent(Node *);
+
+	// Immediate direct-parent fallback for a child content-size change: called from the child's
+	// setContentSize/setEventFlags and dispatched to this (parent) node's own systems flagged
+	// SystemFlags::HandleChildNodeEvents. The primary channel is the frame stack - during a
+	// descendant's visit, handleContentSizeDirty(FrameInfo&) delivers the event to the nearest
+	// opted-in ancestor system (see handleContentSizeDirty(FrameInfo&) / SystemFlags::AddToFrameStack);
+	// this method stays as a mutation-time notification for changes made outside the visit loop
+	virtual void notifyChildContentSizeDirty(Node *child);
 
 	virtual void cleanup();
 
+	// This node's box in the parent's space
 	virtual Rect getBoundingBox() const;
+
+	/* This node's box in world space (surface pixels). Not `convertToWorldSpace(Vec2::ZERO)` plus
+	`getContentSize()`: the scene root is scaled by surface density, so that mixes spaces on HiDPI.
+	Use it for world rects handed to the renderer (capture regions, scissors). */
+	virtual Rect getWorldBoundingBox() const;
 
 	virtual void resume();
 	virtual void pause();
@@ -318,11 +551,13 @@ public:
 	virtual void setDepthIndex(float value) { _depthIndex = value; }
 	virtual float getDepthIndex() const { return _depthIndex; }
 
-	virtual void draw(FrameInfo &, NodeVisitFlags flags);
+	/* Draw this node and its whole subtree on the Overlay level, drawn last and after the frame is
+	captured (see FrameCapture), so e.g. a drag ghost never appears in its own cutout. Inherited and
+	not escapable by descendants. */
+	void setOverlay(bool);
+	bool isOverlay() const { return _overlay; }
 
-	// visit on unsorted nodes, commit most of geometry changes
-	// on this step, we process child-to-parent changes (like nodes, based on label's size)
-	virtual bool visitGeometry(FrameInfo &, NodeVisitFlags parentFlags);
+	virtual void draw(FrameInfo &, NodeVisitFlags flags);
 
 	// visit on sorted nodes, push draw commands
 	// on this step, we also process parent-to-child geometry changes
@@ -336,16 +571,42 @@ public:
 	virtual bool isTouched(const Vec2 &location, float padding = 0.0f);
 	virtual bool isTouchedNodeSpace(const Vec2 &location, float padding = 0.0f);
 
+	/* The world transform this node was drawn with, as of its last visit. Unlike
+	getNodeToWorldTransform() it is not recomputed; frame-consistent queries (input) use it. */
+	const Mat4 &getModelTransform() const { return _modelViewTransform; }
+
+	// Its inverse, computed on demand and kept until the next visit rebuilds the transform
+	const Mat4 &getModelToNodeTransform() const;
+
+	/* isTouched against the last drawn frame rather than the live tree, as input events need.
+	A node that has never been visited answers false. */
+	bool isTouchedAsDrawn(const Vec2 &worldLocation, float padding = 0.0f) const;
+
+	/* Which per-frame hit-test registries this node publishes itself into; see HitTestFlags.
+	Maintained by the component setters and InputListener; applications use bits in
+	HitTestFlags::ApplicationMask. */
+	void setHitTestFlags(HitTestFlags);
+	void addHitTestFlags(HitTestFlags);
+	void removeHitTestFlags(HitTestFlags);
+	HitTestFlags getHitTestFlags() const { return _hitTestFlags; }
+
 	// Callbacks bound with default CallbackSystem to reduce common node memory footprint.
 	// System will be created when first callback attached, and marked with DefaultCallbackSystemTag
 	// to separate it from user-defined systems
 	virtual void setEnterCallback(Function<void(Scene *)> &&);
 	virtual void setExitCallback(Function<void()> &&);
 	virtual void setContentSizeDirtyCallback(Function<void()> &&);
-	virtual void setComponentsDirtyCallback(Function<void()> &&);
+	virtual void setComponentsDirtyCallback(Function<void(const ComponentMask &mask)> &&);
 	virtual void setTransformDirtyCallback(Function<void(const Mat4 &)> &&);
 	virtual void setReorderChildDirtyCallback(Function<void()> &&);
 	virtual void setLayoutCallback(Function<void(Node *)> &&);
+
+	// content measurement protocol (see System::handleMeasure): return true and
+	// fill the Size2 to answer, return false to fall through to other systems
+	virtual void setMeasureCallback(Function<bool(const MeasureConstraints &, Size2 &)> &&);
+
+	// a layout engine committed the size to this node (see System::handleLayoutApplied)
+	virtual void setLayoutAppliedCallback(Function<void(const Size2 &)> &&);
 
 	float getInputDensity() const { return _inputDensity; }
 
@@ -392,6 +653,38 @@ protected:
 		mutable Vector<Rc<System>> visitableSystems;
 	};
 
+	void handleMeasure(FrameInfo &);
+	void handleComponentsDirty(FrameInfo &, const ComponentMask &);
+	void handleContentSizeDirty(FrameInfo &);
+	void handleLayoutChildren(FrameInfo &);
+
+	bool runComponentsPhase(FrameInfo &, bool ancestorDirty); // phase 1
+	void runMeasurePhase(FrameInfo &); // phase 2
+	bool runContentSizePhase(FrameInfo &, bool parentResized); // phase 4
+	bool runChildrenPhases(FrameInfo &, bool parentReordered); // phases 5-6
+
+	// Brings FrameInfo::systemStack to the state this node would have seen, and restores it
+	struct VisitCatchUp;
+
+	// Has the frame's pass already run this node's phases? See the .cc.
+	bool isVisitPassed(const FrameInfo &) const;
+
+public:
+	/* Defers the mid-frame catch-up (re-measure and re-layout) of a node the visit has passed
+	while the scope is open, performing it once at the end; otherwise each add repeats it. */
+	struct SP_PUBLIC BulkChildren {
+		explicit BulkChildren(NotNull<Node>);
+		~BulkChildren();
+
+		BulkChildren(const BulkChildren &) = delete;
+		BulkChildren &operator=(const BulkChildren &) = delete;
+
+		Node *_node = nullptr;
+	};
+
+protected:
+	void runPendingPhases(FrameInfo &);
+
 	virtual void updateCascadeOpacity();
 	virtual void disableCascadeOpacity();
 	virtual void updateCascadeColor();
@@ -419,13 +712,45 @@ protected:
 	bool _cascadeColorEnabled = false;
 	bool _cascadeOpacityEnabled = true;
 
+	// bumped on every add/remove/reorder of a child - see getChildrenVersion()
+	uint32_t _childrenVersion = 0;
+
+	// the CSS match stamp's other two halves - see getStyleMatchId()
+	uint64_t _styleMatchId = 0;
+	uint64_t _childrenStyleVersion = 0;
+
+	bool _inPendingPhases = false;
 	bool _contentSizeDirty = true;
 	bool _reorderChildDirty = true;
+
+	// The child list changed and the children have not been told yet; see
+	// markChildrenStructureDirty
+	bool _childrenFanoutDirty = false;
+
+	// Depth of open BulkChildren scopes, and whether one of them owes a catch-up.
+	uint32_t _bulkChildren = 0;
+	bool _bulkCatchUpOwed = false;
 	bool _transformDirty = true;
+	bool _measureDirty = false; // opt-in measure phase (see markMeasureDirty)
+	bool _pointerStateDirty = false; // opt-in pull, see settlePointerState
+	bool _layoutChildrenDirty = true; // run handleLayoutChildren on next visit
 	mutable bool _transformCacheDirty = true; // dynamic value
 	mutable bool _transformInverseDirty = true; // dynamic value
+	bool _overlay = false; // this subtree draws on the Overlay level (see setOverlay)
 
 	NodeEventFlags _eventFlags = NodeEventFlags::None;
+
+	// Which hit-test registries this node publishes itself into (see setHitTestFlags)
+	HitTestFlags _hitTestFlags = HitTestFlags::None;
+
+	// This node's own opt-in as an ancestor-components listener (see setWantsAncestorComponents)
+	bool _wantsAncestorComponents = false;
+
+	// Number of active ancestor-components listeners in this node's subtree (self + all
+	// descendants): enabled Systems with SystemFlags::HandleAncestorComponents plus nodes
+	// with _wantsAncestorComponents. When > 0, ancestor ComponentsDirty is propagated into
+	// this subtree during visit; when 0, the subtree is pruned
+	uint32_t _ancestorComponentsListeners = 0;
 
 	ZOrder _zOrder = ZOrder(0);
 
@@ -448,6 +773,14 @@ protected:
 	mutable Mat4 _transform = Mat4::IDENTITY;
 	mutable Mat4 _inverse = Mat4::IDENTITY;
 	Mat4 _modelViewTransform = Mat4::IDENTITY;
+
+	// Inverse of _modelViewTransform, built on demand by getModelToNodeTransform and thrown away
+	// wherever the visit rebuilds the transform itself
+	mutable Mat4 _modelViewInverse = Mat4::IDENTITY;
+	mutable bool _modelViewInverseDirty = true;
+
+	// Whether _modelViewTransform comes from an actual visit; isTouchedAsDrawn is false until then
+	bool _modelViewValid = false;
 
 	Vector<Rc<Node>> _children;
 	Node *_parent = nullptr;
@@ -526,7 +859,7 @@ bool Node::enumerateChildsWithComponent(
 			}
 		}
 		if (depth != maxDepth) {
-			if (it->enumerateChildsWithComponent(cb, maxDepth, depth + 1, shouldStop, found)) {
+			if (it->enumerateChildsWithComponent(cb, maxDepth, depth + 1, shouldStop)) {
 				found = true;
 			}
 			if (shouldStop == true) {

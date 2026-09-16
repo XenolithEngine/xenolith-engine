@@ -26,10 +26,17 @@
 
 #include "XLCorePipelineInfo.h"
 #include "XLCoreResource.h"
+#include "XLCoreFrameDamage.h"
+
+#include <sprt/runtime/window/gapi.h>
 
 #include <sprt/cxx/typeindex>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
+
+// Also declared by XLCoreInstance.h; a using-declaration may legally appear more than once at
+// namespace scope, and QueueData needs the name without pulling the whole Instance header in.
+using sprt::window::gapi::InstanceApi;
 
 class Instance;
 class Queue;
@@ -193,6 +200,10 @@ struct SP_PUBLIC PipelineDescriptor : NamedMem {
 	AttachmentLayout layout = AttachmentLayout::Ignored;
 	uint32_t count = 1;
 	uint32_t index = maxOf<uint32_t>();
+
+	// for standalone sampler descriptors (DescriptorType::Sampler, attachment == nullptr);
+	// backends without immutable samplers (WebGPU) bind such samplers as separate entries
+	SamplerInfo sampler;
 
 	// note that UpdateAfterBind requested by default, engine uses it to optimize command buffer setup,
 	// executing buffer write and descriptors write in separate threads
@@ -417,6 +428,19 @@ struct SP_PUBLIC QueuePassData : NamedMem {
 			completeCallbacks;
 };
 
+// Thread on which a backend records and submits command buffers for a queue's
+// passes. Only backends whose recording is otherwise inline on the loop thread
+// honor this (currently Metal); Vulkan already records on the worker pool and
+// WebGPU always records inline, both ignore it.
+enum class PassRecordingMode {
+	// backend default: Metal records on a worker, others keep their own model
+	Default,
+	// force recording + submit on the loop (presentation) thread
+	Inline,
+	// force recording + submit on the worker pool, off the loop thread
+	Threaded,
+};
+
 struct SP_PUBLIC QueueData : NamedMem {
 	memory::pool_t *pool = nullptr;
 	mem_pool::Vector<AttachmentData *> input;
@@ -438,6 +462,18 @@ struct SP_PUBLIC QueueData : NamedMem {
 	uint64_t order = 0;
 	Queue *queue = nullptr;
 	FrameRenderPassState defaultSyncPassState = FrameRenderPassState::Submitted;
+	PassRecordingMode recordingMode = PassRecordingMode::Default;
+	QueueDamageFlags damage = QueueDamageFlags::None;
+
+	// Which backend this graph was described for: its passes name pipelines and formats only one
+	// gAPI can compile. Set by whoever builds the graph (e.g. basic2d pass makers); None if unset.
+	// A remote client relies on it, having no device to inspect.
+	sprt::window::gapi::InstanceApi api = sprt::window::gapi::InstanceApi::None;
+
+	// Renderer-defined shape tag, opaque to core. basic2d writes its Scene2d::QueueType here so a
+	// remote scene can ask for "the flat one" without knowing the server's queue names; another
+	// renderer may use it for whatever distinction it needs. 0 == unset.
+	uint32_t typeTag = 0;
 
 	mem_pool::HashMap<sprt::type_index, Attachment *> typedInput;
 	mem_pool::HashMap<sprt::type_index, Attachment *> typedOutput;

@@ -27,6 +27,7 @@ THE SOFTWARE.
 
 #include <sprt/cxx/detail/ctypes.h>
 
+#include <sprt/wrappers/windows/basic_api.h>
 #include <sprt/wrappers/windows/thread_api.h>
 #include <sprt/wrappers/windows/process_api.h>
 #include <sprt/wrappers/windows/time_api.h>
@@ -110,11 +111,21 @@ __SPRT_C_FUNC int clock_gettime(__SPRT_ID(clockid_t) clk_id,
 	// Note that this will not work for thread id greather then 0x7FFF'FFFF,
 	// pthread_getcpuclockid will return ESRCH for them
 	if (clk_id & ThreadIdBit) {
-		FILETIME creation, exit, kernel, user;
-
 		HANDLE hThread = OpenThread(THREAD_QUERY_INFORMATION, FALSE, clk_id & ~ThreadIdBit);
+		if (!hThread) {
+			// No such thread (or access denied) — do not read uninitialized times.
+			__sprt_errno = ESRCH;
+			return -1;
+		}
 
-		GetThreadTimes(hThread, &creation, &exit, &kernel, &user);
+		FILETIME creation, exit, kernel, user;
+		BOOL ok = GetThreadTimes(hThread, &creation, &exit, &kernel, &user);
+		CloseHandle(hThread); // OpenThread returns a real handle that must be released
+
+		if (!ok) {
+			__sprt_errno = ESRCH;
+			return -1;
+		}
 
 		ULARGE_INTEGER ul;
 		ul.LowPart = user.dwLowDateTime;
@@ -166,10 +177,12 @@ __SPRT_C_FUNC int clock_gettime(__SPRT_ID(clockid_t) clk_id,
 		LARGE_INTEGER pc;
 		QueryPerformanceCounter(&pc);
 
-		// Nanoseconds since some monotonic epoch
-		auto ns = pc.QuadPart * 1'000'000'000ULL / qpc_freq.QuadPart;
-		tp->tv_sec = ns / 1'000'000'000ULL;
-		tp->tv_nsec = ns % 1'000'000'000ULL;
+		// Split before scaling: `pc.QuadPart * 1e9` overflows uint64 within minutes
+		// of uptime (counts reach ~1.8e10), wrapping the clock. Dividing first keeps
+		// the sub-second remainder (< freq) well within range for the *1e9 scale.
+		auto freq = qpc_freq.QuadPart;
+		tp->tv_sec = pc.QuadPart / freq;
+		tp->tv_nsec = (pc.QuadPart % freq) * 1'000'000'000ULL / freq;
 		return 0;
 	}
 

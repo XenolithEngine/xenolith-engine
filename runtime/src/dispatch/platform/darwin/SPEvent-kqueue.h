@@ -26,6 +26,7 @@
 #include <sprt/runtime/dispatch/queue.h>
 #include <sprt/runtime/dispatch/handle.h>
 #include "../../detail/SPRuntimeDispatchQueueData.h"
+#include "../fd/SPEventProcess.h"
 
 #include <sys/types.h>
 #include <sys/event.h>
@@ -110,6 +111,105 @@ public:
 
 protected:
 	sprt::mutex _mutex;
+};
+
+// Pollable-fd handle over EVFILT_READ (+ EVFILT_WRITE when PollFlags::Out is
+// requested — needed by the stream-socket machinery for writability and
+// non-blocking connect). kqueue has no generic listenPollableHandle path of its
+// own; this provides one so the process reader sub-handle (and any other fd
+// watcher) can reuse it.
+struct SPRT_API ReadKQueueSource {
+	// which filters are actually registered (rearm sets, disarm consumes) —
+	// `flags` alone is not enough: reset() rewrites it before the disarm runs
+	static constexpr uint16_t ArmedRead = 1 << 0;
+	static constexpr uint16_t ArmedWrite = 1 << 1;
+
+	int fd = -1;
+	PollFlags flags = PollFlags::None;
+	uint16_t armed = 0;
+
+	bool init(int, PollFlags);
+	void cancel();
+};
+
+class SPRT_API ReadKQueueHandle : public PollHandle {
+public:
+	virtual ~ReadKQueueHandle() = default;
+
+	bool init(HandleClass *, int fd, PollFlags, CompletionHandle<PollHandle> &&);
+
+	Status rearm(KQueueData *, ReadKQueueSource *);
+	Status disarm(KQueueData *, ReadKQueueSource *);
+
+	void notify(KQueueData *, ReadKQueueSource *, const NotifyData &);
+
+	virtual NativeHandle getNativeHandle() const override;
+	virtual bool reset(PollFlags) override;
+};
+
+// EVFILT_PROC process-exit handle: fires NOTE_EXIT when the child terminates.
+struct SPRT_API ProcessKQueueSource {
+	int pid = -1;
+	bool exited = false; // child reaped via the exit path; cancel() must not kill a recycled pid
+
+	bool init(int);
+	void cancel();
+};
+
+class SPRT_API ProcessKQueueHandle : public ProcessHandle {
+public:
+	virtual ~ProcessKQueueHandle() = default;
+
+	bool init(HandleClass *, int pid, CompletionHandle<ProcessHandle> &&);
+
+	Status rearm(KQueueData *, ProcessKQueueSource *);
+	Status disarm(KQueueData *, ProcessKQueueSource *);
+
+	void notify(KQueueData *, ProcessKQueueSource *, const NotifyData &);
+
+	virtual NativeHandle getNativeHandle() const override;
+};
+
+// Full spawn for the kqueue backend: posix child + EVFILT_READ reader + EVFILT_PROC exit handle.
+Rc<ProcessHandle> spawnProcessKQueue(QueueData *data, HandleClass *processClass, ProcessInfo &&info,
+		Ref *ref);
+
+// EVFILT_VNODE file-watch: two O_EVTONLY vnode watches under one handle — the
+// parent directory (tracks the watched *name*: create/delete/rename-over, and
+// the directory's own lifecycle) plus the current file inode (tracks content /
+// attribute changes). Both kevents carry `this` as udata; processEvents marshals
+// ident/fflags through NotifyData so notify() can tell which vnode fired.
+struct SPRT_API KQueueWatchSource {
+	int dirFd = -1;
+	int fileFd = -1;
+
+	void cancel();
+};
+
+class SPRT_API KQueueWatchHandle : public WatchHandle {
+public:
+	virtual ~KQueueWatchHandle() = default;
+
+	bool init(HandleClass *, StringView path, WatchFlags, CompletionHandle<WatchHandle> &&);
+
+	Status rearm(KQueueData *, KQueueWatchSource *);
+	Status disarm(KQueueData *, KQueueWatchSource *);
+
+	void notify(KQueueData *, KQueueWatchSource *, const NotifyData &);
+
+protected:
+	// Open the file (if present) and register its vnode kevent; refreshes
+	// _exists/_ino from the opened fd.
+	Status registerFile(KQueueData *, KQueueWatchSource *);
+	// Deregister + close the file vnode watch (the directory watch stays).
+	void closeFile(KQueueData *, KQueueWatchSource *);
+	// Re-stat the watched name after a directory write and reconcile: reports
+	// Created / MovedTo (inode changed) / Deleted and re-targets the file watch.
+	void rescan(KQueueData *, KQueueWatchSource *, WatchFlags &pending);
+
+	String _dir; // parent directory, null-terminated for open()
+	uint64_t _ino = 0; // inode currently occupying the watched name (0 = none)
+	bool _exists = false;
 };
 
 } // namespace sprt::dispatch

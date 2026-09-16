@@ -96,42 +96,56 @@ thread::id thread::get_id() const noexcept {
 
 uint32_t thread::hardware_concurrency() noexcept {
 	long result = __sprt_sysconf(__SPRT_SC_NPROCESSORS_ONLN);
-	if (result < 0) {
-		return 0;
-	}
-	return static_cast<unsigned>(result);
-}
-
-struct __ThreadData {
-	__malloc_function<void()> fn;
-	thread *th = nullptr;
-};
-
-static void *__threadWrapper(void *ptr) {
-	auto d = reinterpret_cast<__ThreadData *>(ptr);
-
-	if (d->fn) {
-		d->fn();
+	// > 1, not >= 0: callers size worker pools with integer `hardware_concurrency() / 2`, so a
+	// report of 1 (what the wasm sysconf stub returns) collapses to 0 workers and every
+	// performAsync task (font glyph rasterization, deferred work, ...) is queued but never runs.
+	// Only trust a genuine multi-core report; otherwise default to a small pool.
+	// TODO(wasm): expose navigator.hardwareConcurrency via a host import for an accurate count.
+	if (result > 1) {
+		return static_cast<unsigned>(result);
 	}
 
-	__delete(d);
-	return nullptr;
+#if SPRT_WASM
+	return 4;
+#else
+	return 1;
+#endif
 }
 
-int thread::__makeThread(__malloc_function<void()> &&fn) {
-	auto d = new (sprt::nothrow) __ThreadData{
-		sprt::move(fn),
-		this,
-	};
+int thread::__makeThread(void *(*cb)(uint8_t *st, size_t stSize),
+		const Callback<void(uint8_t *st, size_t stSize)> &wcb) {
+	_thread::thread_t *__t = nullptr;
 
-	return __sprt_pthread_create(&__native, nullptr, __threadWrapper, d);
+	// sprt::thread should not be affected by default pthread args
+	_thread::attr_t def;
+
+	auto ret = _thread::thread_t::create(&__t, &def, [](_thread::thread_base_t *t) -> void * {
+		auto tcb = reinterpret_cast<decltype(cb)>(t->arg);
+		tcb(t->storage, THREAD_STORAGE_BLOCK_SIZE);
+		return (void *)0;
+	}, (void *)cb, wcb);
+	if (ret == 0) {
+		__native = __t;
+	}
+	return ret;
 }
 
 } // namespace sprt
 
-namespace sprt::this_thread {
+// this_thread is declared inside the inline namespace __cxx_thread in <sprt/cxx/thread>,
+// so its out-of-line definitions must go through that inline namespace to match
+// (the qualified form `namespace sprt::this_thread` would define a different namespace).
+namespace sprt {
+inline namespace __cxx_thread {
+namespace this_thread {
 
-thread::id get_id() noexcept { return {_thread::thread_t::self()->threadId}; }
+thread::id get_id() noexcept {
+#if SPRT_HOSTED_RTOS
+	return {__sprt_gettid()};
+#else
+	return {_thread::thread_t::self()->threadId};
+#endif
+}
 
 void yield() noexcept { __sprt_sched_yield(); }
 
@@ -144,4 +158,6 @@ void sleep_for(const timeout_t &rel_time) {
 	__sprt_nanosleep(&ts, nullptr);
 }
 
-} // namespace sprt::this_thread
+} // namespace this_thread
+} // namespace __cxx_thread
+} // namespace sprt

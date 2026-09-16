@@ -63,6 +63,15 @@ else ifeq ($(UNAME),Linux)
 
 HOST_ANDROID := linux-$(HOST_ARCH)
 
+ifdef XLMAKE_VERSION
+ifdef XL_GLIBC_VERSION # exact glibc
+HOST_ID := $(HOST_ARCH)-unknown-linux-gnu
+HOST_TOOLCHAIN := host-linux-glibc
+else # assume musl
+HOST_ID := $(HOST_ARCH)-unknown-linux-musl
+HOST_TOOLCHAIN := host-linux-musl
+endif
+else # XLMAKE_VERSION
 ifeq ($(shell ldd /bin/ls 2>&1 | grep -q 'musl'),)
 HOST_ID := $(HOST_ARCH)-unknown-linux-gnu
 HOST_TOOLCHAIN := host-linux-glibc
@@ -70,6 +79,7 @@ else
 HOST_ID := $(HOST_ARCH)-unknown-linux-musl
 HOST_TOOLCHAIN := host-linux-musl
 endif # MUSL
+endif # XLMAKE_VERSION
 
 # Native android host will be implemented later
 #

@@ -33,15 +33,14 @@ MODULE_XENOLITH_APPLICATION_INCLUDES_OBJS := \
 	$(XENOLITH_MODULE_DIR)/application \
 	$(XENOLITH_MODULE_DIR)/application/actions \
 	$(XENOLITH_MODULE_DIR)/application/director \
+	$(XENOLITH_MODULE_DIR)/application/drag \
 	$(XENOLITH_MODULE_DIR)/application/input \
 	$(XENOLITH_MODULE_DIR)/application/resources \
 	$(XENOLITH_MODULE_DIR)/application/nodes
 
-MODULE_XENOLITH_APPLICATION_DEPENDS_ON := xenolith_core xenolith_font stappler_data
+MODULE_XENOLITH_APPLICATION_DEPENDS_ON := xenolith_core xenolith_font xenolith_remote stappler_data
 
-ifndef LOCAL_MAIN
-MODULE_XENOLITH_APPLICATION_DEPENDS_ON += xenolith_application_main
-endif
+MODULE_XENOLITH_APPLICATION_EXEC_LDFLAGS :=
 
 ifdef WIN32
 MODULE_XENOLITH_APPLICATION_LIBS +=

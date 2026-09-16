@@ -35,6 +35,10 @@ struct VectorCanvasPathOutput {
 	uint32_t material = 0;
 	uint32_t objects = 0;
 	const VectorCanvasConfig *config = nullptr;
+
+	// Where this path's own frame sits in image space. The tesselator is handed the path centred
+	// on zero and every vertex it returns is put back here - see `draw`.
+	Vec2 origin;
 };
 
 struct VectorCanvasPathDrawer : VectorCanvasConfig {
@@ -57,9 +61,15 @@ struct VectorCanvasCacheData {
 	geom::Tesselator::RelocateRule relocateRule = geom::Tesselator::RelocateRule::Auto;
 	vg::DrawFlags style = vg::DrawFlags::Fill;
 
+	// Digest of every geometry-changing path parameter without a field of its own here (stroke
+	// width, dash pattern, cap), so paths sharing a cacheId do not collide.
+	uint64_t paramsHash = 0;
+
 	bool operator<(const VectorCanvasCacheData &other) const {
 		if (style != other.style) {
 			return toInt(style) < toInt(other.style);
+		} else if (paramsHash != other.paramsHash) {
+			return paramsHash < other.paramsHash;
 		} else if (name != other.name) {
 			return name < other.name;
 		} else if (quality != other.quality) {
@@ -71,6 +81,34 @@ struct VectorCanvasCacheData {
 		}
 	}
 };
+
+// Colours are deliberately left out: writeCacheData multiplies them into the cached vertexes
+// afterwards, so two paths that differ only in colour can share an entry.
+static uint64_t VectorCanvasCacheData_hashParams(const vg::PathParams &params) {
+	struct alignas(8) Key {
+		float strokeWidth;
+		float miterLimit;
+		float dashOffset;
+		uint32_t lineCup;
+		uint32_t lineJoin;
+		uint32_t winding;
+		uint32_t dashCount;
+		uint32_t isAntialiased;
+		float dash[vg::DashPattern::MaxCount];
+	} key{};
+
+	key.strokeWidth = params.strokeWidth;
+	key.miterLimit = params.miterLimit;
+	key.dashOffset = params.dash.offset;
+	key.lineCup = toInt(params.lineCup);
+	key.lineJoin = toInt(params.lineJoin);
+	key.winding = toInt(params.winding);
+	key.dashCount = params.dash.count;
+	key.isAntialiased = params.isAntialiased ? 1 : 0;
+	for (uint32_t i = 0; i < params.dash.count; ++i) { key.dash[i] = params.dash.lengths[i]; }
+
+	return sprt::hash64(reinterpret_cast<const char *>(&key), sizeof(key));
+}
 
 struct VectorCanvasCache {
 	static sprt::mutex s_cacheMutex;
@@ -136,9 +174,10 @@ static void VectorCanvasPathDrawer_pushVertex(void *ptr, uint32_t idx, const Vec
 		out->vertexes->data.resize(idx + 1);
 	}
 
-	out->vertexes->data[idx] = Vertex{Vec4(pt, 0.0f, 1.0f),
+	const Vec2 p = pt + out->origin;
+	out->vertexes->data[idx] = Vertex{Vec4(p, 0.0f, 1.0f),
 		Vec4(out->color.r, out->color.g, out->color.b, out->color.a * vertexValue),
-		out->transform.transformPoint(pt), out->material, 0};
+		out->transform.transformPoint(p), out->material, 0};
 }
 
 static void VectorCanvasPathDrawer_pushSdf(void *ptr, uint32_t idx, const Vec2 &pt,
@@ -148,7 +187,7 @@ static void VectorCanvasPathDrawer_pushSdf(void *ptr, uint32_t idx, const Vec2 &
 		out->vertexes->data.resize(idx + 1);
 	}
 
-	out->vertexes->data[idx] = Vertex{Vec4(pt, 0.0f, 1.0f),
+	out->vertexes->data[idx] = Vertex{Vec4(pt + out->origin, 0.0f, 1.0f),
 		Vec4(out->color.r, norm.x, norm.y, vertexValue),
 		Vec2(out->config->sdfBoundaryInset, out->config->sdfBoundaryOffset), out->material, 0};
 }
@@ -354,8 +393,13 @@ void VectorCanvas::Data::doDraw(const VectorPath &path, StringView id, StringVie
 			transform.getScale(&scaleVec);
 			float scale = sprt::max(scaleVec.x, scaleVec.y);
 
-			VectorCanvasCacheData data{nullptr, 0, 0, 0, cache.str<Interface>(), quality, scale,
-				pathDrawer.relocateRule, style};
+			VectorCanvasCacheData data;
+			data.name = cache.str<Interface>();
+			data.quality = quality;
+			data.scale = scale;
+			data.relocateRule = pathDrawer.relocateRule;
+			data.style = style;
+			data.paramsHash = VectorCanvasCacheData_hashParams(path.getParams());
 
 			if (auto it = VectorCanvasCache::getCacheData(data)) {
 				if (!it->data->indexes.empty()) {
@@ -459,32 +503,91 @@ uint32_t VectorCanvasPathDrawer::draw(memory::pool_t *pool, const VectorPath &p,
 	transform.getScale(&scale);
 	approxScale = sprt::max(scale.x, scale.y);
 
+	// `params` has to outlive `line`: StrokeConfig::dashArray is a view into params.dash,
+	// and getParams() returns by value - binding the view to the temporary would dangle.
+	const auto params = path->getParams();
+
+	geom::StrokeConfig strokeConfig{params.strokeWidth, params.lineJoin, params.lineCup,
+		params.miterLimit, params.dash.getLengths(), params.dash.offset};
+
 	geom::LineDrawer line(approxScale * quality, Rc<geom::Tesselator>(fillTess),
-			Rc<geom::Tesselator>(strokeTess), Rc<geom::Tesselator>(sdfTess),
-			path->getStrokeWidth());
+			Rc<geom::Tesselator>(strokeTess), Rc<geom::Tesselator>(sdfTess), strokeConfig);
+
+	/* The path is handed over centred on its own bounding box, which halves the largest
+	coordinate magnitude and so the precision spent on position (the tesselator and `LineDrawer`
+	can only normalize on the first point they see). Only positions move: an arc's radii (`d[0]`)
+	and flags (`d[2]`) are not translated. */
+	Vec2 origin;
+	{
+		Vec2 bmin(maxOf<float>(), maxOf<float>());
+		Vec2 bmax(-maxOf<float>(), -maxOf<float>());
+		bool any = false;
+		auto add = [&](const vg::CommandData &pt) {
+			bmin.x = sprt::min(bmin.x, pt.p.x);
+			bmin.y = sprt::min(bmin.y, pt.p.y);
+			bmax.x = sprt::max(bmax.x, pt.p.x);
+			bmax.y = sprt::max(bmax.y, pt.p.y);
+			any = true;
+		};
+
+		auto d = path->getPoints().data();
+		for (auto &it : path->getCommands()) {
+			switch (it) {
+			case vg::Command::MoveTo:
+			case vg::Command::LineTo:
+				add(d[0]);
+				++d;
+				break;
+			case vg::Command::QuadTo:
+				add(d[0]);
+				add(d[1]);
+				d += 2;
+				break;
+			case vg::Command::CubicTo:
+				add(d[0]);
+				add(d[1]);
+				add(d[2]);
+				d += 3;
+				break;
+			case vg::Command::ArcTo:
+				add(d[1]); // d[0] is the radii and d[2] the flags - not positions
+				d += 3;
+				break;
+			default: break;
+			}
+		}
+
+		if (any) {
+			origin = Vec2((bmin.x + bmax.x) * 0.5f, (bmin.y + bmax.y) * 0.5f);
+		}
+	}
+
+	const float ox = origin.x, oy = origin.y;
 
 	auto d = path->getPoints().data();
 
 	for (auto &it : path->getCommands()) {
 		switch (it) {
 		case vg::Command::MoveTo:
-			line.drawBegin(d[0].p.x, d[0].p.y);
+			line.drawBegin(d[0].p.x - ox, d[0].p.y - oy);
 			++d;
 			break;
 		case vg::Command::LineTo:
-			line.drawLine(d[0].p.x, d[0].p.y);
+			line.drawLine(d[0].p.x - ox, d[0].p.y - oy);
 			++d;
 			break;
 		case vg::Command::QuadTo:
-			line.drawQuadBezier(d[0].p.x, d[0].p.y, d[1].p.x, d[1].p.y);
+			line.drawQuadBezier(d[0].p.x - ox, d[0].p.y - oy, d[1].p.x - ox, d[1].p.y - oy);
 			d += 2;
 			break;
 		case vg::Command::CubicTo:
-			line.drawCubicBezier(d[0].p.x, d[0].p.y, d[1].p.x, d[1].p.y, d[2].p.x, d[2].p.y);
+			line.drawCubicBezier(d[0].p.x - ox, d[0].p.y - oy, d[1].p.x - ox, d[1].p.y - oy,
+					d[2].p.x - ox, d[2].p.y - oy);
 			d += 3;
 			break;
 		case vg::Command::ArcTo:
-			line.drawArc(d[0].p.x, d[0].p.y, d[2].f.v, d[2].f.a, d[2].f.b, d[1].p.x, d[1].p.y);
+			line.drawArc(d[0].p.x, d[0].p.y, d[2].f.v, d[2].f.a, d[2].f.b, d[1].p.x - ox,
+					d[1].p.y - oy);
 			d += 3;
 			break;
 		case vg::Command::ClosePath: line.drawClose(true); break;
@@ -494,6 +597,7 @@ uint32_t VectorCanvasPathDrawer::draw(memory::pool_t *pool, const VectorPath &p,
 	line.drawClose(false);
 
 	VectorCanvasPathOutput target{transform, targetSize, Color4F::WHITE, out};
+	target.origin = origin;
 	target.transform.scale(1.0f / targetSize.width, 1.0f / targetSize.height, 1.0f);
 
 	target.transform =
@@ -593,6 +697,28 @@ uint32_t VectorCanvasPathDrawer::draw(memory::pool_t *pool, const VectorPath &p,
 		if (verbose) {
 			log::source().error("VectorCanvasPathDrawer", "Failed path:\n", path->toString(true));
 		}
+		// A failed path draws nothing and logs without naming the path. The disabled block below
+		// dumps the first few to XL_TESS_DUMP for replay through `vg-tess-frame`.
+		/*if (auto dir = ::getenv("XL_TESS_DUMP")) {
+			static sprt::atomic<uint32_t> s_dumpIndex(0);
+			auto idx = s_dumpIndex.fetch_add(1);
+			if (idx < 8) {
+				auto name = mem_std::toString(dir, "/tess-fail-", idx, ".txt");
+				if (auto f = ::fopen(name.data(), "w")) {
+					auto header = mem_std::toString("# style=", uint32_t(toInt(style)),
+							" winding=", uint32_t(toInt(path->getWindingRule())), " approxScale=",
+							approxScale, " inset=", boundaryInset / approxScale, " offset=",
+							boundaryOffset / approxScale, " antialiased=",
+							path->isAntialiased() ? 1 : 0, " commands=",
+							path->getCommands().size(), " points=", path->getPoints().size(), "\n");
+					::fwrite(header.data(), 1, header.size(), f);
+					auto body = path->toString(true);
+					::fwrite(body.data(), 1, body.size(), f);
+					::fclose(f);
+					log::source().error("VectorCanvasPathDrawer", "Failed path dumped to ", name);
+				}
+			}
+		}*/
 	}
 
 	return target.objects;
@@ -652,9 +778,11 @@ VectorCanvasCache::VectorCanvasCache() {
 	auto path = FileInfo("vector_cache.cbor", FileCategory::AppCache);
 
 	if (filesystem::exists(path)) {
-		auto val = data::readFile<Interface>(path);
+		// Read-only: the file may be truncated or foreign. A const Value answers bad reads with the
+		// shared null container instead of asserting, so a bad cache is skipped.
+		const auto val = data::readFile<Interface>(path);
 		for (auto &it : val.asArray()) {
-			if (it.getInteger("version") != 2) {
+			if (it.getInteger("version") != 3) {
 				continue;
 			}
 
@@ -664,6 +792,7 @@ VectorCanvasCache::VectorCanvasCache() {
 			data.scale = it.getDouble("scale");
 			data.relocateRule = geom::Tesselator::RelocateRule(it.getInteger("rule"));
 			data.style = geom::DrawFlags(it.getInteger("style"));
+			data.paramsHash = uint64_t(it.getInteger("params"));
 			data.fillIndexes = uint32_t(it.getInteger("fill"));
 			data.strokeIndexes = uint32_t(it.getInteger("stroke"));
 			data.sdfIndexes = uint32_t(it.getInteger("sdf"));
@@ -671,11 +800,18 @@ VectorCanvasCache::VectorCanvasCache() {
 			auto &vertexes = it.getBytes("vertexes");
 			auto &indexes = it.getBytes("indexes");
 
+			// reject malformed cache entries whose byte length is not a whole
+			// number of elements (would otherwise read past the buffer)
+			if ((vertexes.size() % sizeof(Vertex)) != 0
+					|| (indexes.size() % sizeof(uint32_t)) != 0) {
+				continue;
+			}
+
 			data.data = Rc<VertexData>::alloc();
-			data.data->data.assign(reinterpret_cast<Vertex *>(vertexes.data()),
-					reinterpret_cast<Vertex *>(vertexes.data() + vertexes.size()));
-			data.data->indexes.assign(reinterpret_cast<uint32_t *>(indexes.data()),
-					reinterpret_cast<uint32_t *>(indexes.data() + indexes.size()));
+			data.data->data.assign(reinterpret_cast<const Vertex *>(vertexes.data()),
+					reinterpret_cast<const Vertex *>(vertexes.data() + vertexes.size()));
+			data.data->indexes.assign(reinterpret_cast<const uint32_t *>(indexes.data()),
+					reinterpret_cast<const uint32_t *>(indexes.data() + indexes.size()));
 
 			cacheData.emplace(move(data));
 		}
@@ -698,7 +834,8 @@ VectorCanvasCache::~VectorCanvasCache() {
 		data.setInteger(it.fillIndexes, "fill");
 		data.setInteger(it.strokeIndexes, "stroke");
 		data.setInteger(it.sdfIndexes, "sdf");
-		data.setInteger(2, "version");
+		data.setInteger(int64_t(it.paramsHash), "params");
+		data.setInteger(3, "version");
 
 		data.setBytes(BytesView(reinterpret_cast<uint8_t *>(it.data->data.data()),
 							  it.data->data.size() * sizeof(Vertex)),

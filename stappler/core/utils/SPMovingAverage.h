@@ -42,7 +42,7 @@ public:
 			s += _values[i];
 			++c;
 		}
-		return s / c;
+		return c ? (s / c) : T(0);
 	}
 	T step(T value) {
 		addValue(value);

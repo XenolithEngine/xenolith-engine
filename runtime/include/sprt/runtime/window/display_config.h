@@ -31,7 +31,7 @@
 
 namespace sprt::window {
 
-struct NativeId {
+struct SPRT_API NativeId {
 	union {
 		uintptr_t xid = 0; // mode id
 		void *ptr;
@@ -55,7 +55,7 @@ struct NativeId {
 	bool operator!=(void *other) const { return ptr != other; }
 };
 
-struct DisplayMode {
+struct SPRT_API DisplayMode {
 	static DisplayMode None;
 
 	NativeId xid = uintptr_t(0);
@@ -72,7 +72,7 @@ struct DisplayMode {
 	bool operator==(const ModeInfo &m) const noexcept { return mode == m; }
 };
 
-struct PhysicalDisplay {
+struct SPRT_API PhysicalDisplay {
 	NativeId xid = uintptr_t(0);
 	uint32_t index = 0;
 	MonitorId id;
@@ -86,7 +86,7 @@ struct PhysicalDisplay {
 	bool operator!=(const PhysicalDisplay &m) const noexcept = default;
 };
 
-struct LogicalDisplay {
+struct SPRT_API LogicalDisplay {
 	NativeId xid = uintptr_t(0);
 	IRect rect;
 	float scale = 1.0f;
@@ -99,7 +99,7 @@ struct LogicalDisplay {
 	bool operator==(const LogicalDisplay &m) const noexcept = default;
 };
 
-struct DisplayConfig : public Ref {
+struct SPRT_API DisplayConfig : public Ref {
 	uint32_t serial = 0;
 	IRect desktopRect;
 	Vector<PhysicalDisplay> monitors;
@@ -119,7 +119,7 @@ struct DisplayConfig : public Ref {
 	Extent2 getSizeMM() const;
 };
 
-class DisplayConfigManager : public Ref {
+class SPRT_API DisplayConfigManager : public Ref {
 public:
 	virtual ~DisplayConfigManager() = default;
 

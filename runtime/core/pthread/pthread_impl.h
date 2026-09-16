@@ -88,7 +88,7 @@ struct alignas(COMMON_ALIGNMENT) mutex_t {
 enum class CondAttrFlags : uint32_t {
 	None = 0,
 	Shared = 1,
-	ClockRealtime = 2,
+	ClockMonotonic = 2,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(CondAttrFlags)
@@ -171,6 +171,11 @@ struct __thread_slot {
 struct __thread_pool {
 	static __thread_pool *get();
 
+	// Initial capacity reserved for the per-thread lookup tables (activeThreads /
+	// activeThreadsByTid) at construction, so inserts done under `mutex` from a
+	// newly-spawned thread's registerThread() stay allocation-free (see the ctor).
+	static constexpr uint32_t ThreadTableReserve = 128;
+
 	int fifoPrioMin = 0;
 	int fifoPrioMax = 0;
 	int rrPrioMin = 0;
@@ -183,6 +188,11 @@ struct __thread_pool {
 
 	// Thread locators are system-specific type with 64-bit width max
 	sprt::__malloc_unordered_map<uint64_t, thread_t *> activeThreads;
+
+	// Threads keyed by kernel thread id (__sprt_gettid). The priority-inheritance
+	// boost path resolves owners by the tid stored in the rmutex owner field, which
+	// is a different id space than the native id used by `activeThreads` above.
+	sprt::__malloc_unordered_map<uint32_t, thread_t *> activeThreadsByTid;
 
 	// thread_t *active = nullptr;
 	thread_t *free = nullptr;
@@ -228,7 +238,7 @@ SPRT_UNUSED static int __createThread(thread_t *thread, const attr_t *__SPRT_RES
 
 // Setup thread with actual native thread's attributes;
 // Also, this will replace temporary native handle with the permanent one
-SPRT_UNUSED static void __initNativeHandle(thread_t *thread);
+SPRT_UNUSED static bool __initNativeHandle(thread_t *thread);
 
 SPRT_UNUSED static void __closeNativeHandle(void *handle);
 

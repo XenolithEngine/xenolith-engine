@@ -32,7 +32,7 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-__SPRT_ID(ssize_t) __SPRT_ID(getrandom)(void *, __SPRT_ID(size_t), unsigned);
+SPRT_API __SPRT_ID(ssize_t) __SPRT_ID(getrandom)(void *, __SPRT_ID(size_t), unsigned);
 
 __SPRT_END_DECL
 

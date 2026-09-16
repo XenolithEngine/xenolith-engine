@@ -34,10 +34,18 @@ __SPRT_C_FUNC int __SPRT_ID(
 
 	auto pool = __thread_pool::get();
 
-	*key = pool->nkeys.fetch_add(1);
-
 	unique_lock lock(pool->mutex);
-	pool->keys.emplace(*key, __key_data{cb, 1});
+
+	// POSIX: report EAGAIN once the per-process key limit is reached.
+	if (pool->keys.size() >= __SPRT_PTHREAD_KEYS_MAX) {
+		return EAGAIN;
+	}
+
+	// Publish *key only after the table entry is committed, so a caller never sees
+	// a key index with no backing entry.
+	auto k = pool->nkeys.fetch_add(1);
+	pool->keys.emplace(k, __key_data{cb, 1});
+	*key = k;
 	return 0;
 }
 
@@ -59,7 +67,9 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_key_delete)(__SPRT_ID(pthread_key_t) key) {
 __SPRT_C_FUNC void *__SPRT_ID(pthread_getspecific)(__SPRT_ID(pthread_key_t) key) {
 	// we dont want to attach this thread
 	auto self = thread_t::self_noattach();
-	if (!self) {
+	// Null storage: the thread is past TLS teardown (key destructors already ran in
+	// __runthead); POSIX leaves values unspecified here, so report "no value".
+	if (!self || !self->threadKeyStorage) {
 		return nullptr;
 	}
 
@@ -74,7 +84,9 @@ __SPRT_C_FUNC void *__SPRT_ID(pthread_getspecific)(__SPRT_ID(pthread_key_t) key)
 __SPRT_C_FUNC int __SPRT_ID(pthread_setspecific)(__SPRT_ID(pthread_key_t) key, const void *val) {
 	auto self = thread_t::self();
 
-	if (!self) {
+	// Null storage: past TLS teardown — a value set now could never have its
+	// destructor run, so refuse instead of resurrecting the map.
+	if (!self || !self->threadKeyStorage) {
 		return EINVAL;
 	}
 

@@ -33,6 +33,9 @@ EXPORTS
 	WSASocketA
 	WSASocketW
 	WSAIoctl
+	WSAPoll
+	WSASendTo
+	WSARecvFrom
 	WSAStartup
 	WSACleanup
 	WSASetLastError
@@ -45,3 +48,4 @@ EXPORTS
 	WSAResetEvent
 	WSACloseEvent
 	__WSAFDIsSet
+	WSADuplicateSocketW

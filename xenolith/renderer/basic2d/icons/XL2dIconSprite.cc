@@ -23,8 +23,13 @@
 
 #include "XL2dIconSprite.h"
 #include "XLAction.h"
+#include "XLInheritedStyle.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
+
+bool IconSprite::init() {
+	return IconSprite::init(IconName::None); //
+}
 
 bool IconSprite::init(IconName icon) {
 	if (!VectorSprite::init(Size2(24.0f, 24.0f))) {
@@ -40,6 +45,24 @@ bool IconSprite::init(IconName icon) {
 	}
 
 	return true;
+}
+
+void IconSprite::handleComponentsDirty(const ComponentMask &mask) {
+	VectorSprite::handleComponentsDirty(mask);
+
+	// Inherited-style components on the label's own node changed (typically by
+	// ui::StyleResolver) - re-shape with the new effective style. Changes on ancestors are not
+	// tracked here (see XLInheritedStyle.h).
+	if (mask.contains(InheritedColorStyle::Id.value)) {
+		if (auto c = getComponent<InheritedColorStyle>()) {
+			if (c->defined & InheritedColorStyle::DefinedColor) {
+				setColor(Color4F(c->color), false);
+			}
+			if (c->defined & InheritedColorStyle::DefinedOpacity) {
+				setOpacity(c->opacity / 255.0f);
+			}
+		}
+	}
 }
 
 void IconSprite::setIconName(IconName name) {

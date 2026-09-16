@@ -1,0 +1,408 @@
+# Stappler Runtime view classes
+
+This document describes the non-owning "view" types in `runtime/include/sprt/runtime/stringview.h`:
+lightweight `(pointer, length)` windows over existing memory for reading strings,
+byte streams and typed arrays without copying.
+
+Sources:
+
+* Declarations and implementation: [stringview.h](../../../runtime/include/sprt/runtime/stringview.h)
+* Character classes used by the scanners: [chargroup.h](../../../runtime/include/sprt/runtime/chargroup.h)
+* `Status` / `Result<T>`: [status.h](../../../runtime/include/sprt/runtime/status.h)
+* Unicode primitives used by `StringViewUtf8`: [unicode.h](../../../runtime/include/sprt/runtime/unicode.h)
+
+NOTE: All identifiers are in namespace `sprt`.
+
+---
+
+## The view family
+
+[cols="1,2,2"]
+|===
+| Type | Element | Purpose
+
+| `BytesReader<C>`          | `C`        | Common base: storage, accessors, search
+| `StringViewBase<C>`       | `C`        | Text view with parsing/navigation
+| `StringView`              | `char`     | `= StringViewBase<char>` (UTF-8 bytes / ASCII)
+| `WideStringView`          | `char16_t` | `= StringViewBase<char16_t>` (UTF-16 units)
+| `StringViewUtf8`          | `char`     | UTF-8 view that iterates by *codepoint*
+| `BytesViewTemplate<E>`    | `uint8_t`  | Binary reader with endianness `E`
+| `BytesView` / `BytesViewHost` | `uint8_t` | `= BytesViewTemplate<endian::native>`
+| `BytesViewNetwork`        | `uint8_t`  | `= BytesViewTemplate<endian::network>`
+| `SpanView<T>`             | `T`        | Read-only view over an array of `T`
+|===
+
+All of them are **non-owning** and **read-only**: a view does not allocate, copy
+or free; it just points at memory you already hold. You are responsible for
+keeping the underlying buffer alive for as long as any view references it.
+
+---
+
+## Common semantics (`BytesReader`)
+
+Every view exposes a `(data(), size())` pair and shares this behavior:
+
+```c
+const C   *data() const;       // start pointer
+size_t     size() const;       // element count
+bool       empty() const;      // size()==0 || data()==nullptr
+
+C    at(size_t i) const;       // bounds-checked: returns C(0) past the end
+C    operator[](size_t i) const; // bounds-checked (BytesReader); returns C(0) past the end
+C    front() const;            // C(0) on an empty view
+C    back() const;             // C(0) on an empty view
+
+void   offset(size_t n);       // advance start by n (clamped to size())
+void   clear();                // make empty
+bool   terminated() const;     // true if data()[size()] == 0
+```
+
+* *Advancing* — `operator++`, `operator++(int)`, `operator+=(n)` and `offset(n)`
+  move the start forward and shrink the length; all are clamped, so over-advancing
+  yields an empty view rather than running past the buffer.
+* *Search* — `find`/`rfind` (by element or substring), `equals`, `starts_with` /
+  `prefix`, `ends_with`. The C-string overloads use a length-limited scan, so they
+  are safe against a missing terminator.
+* *`performWithTerminated(cb)`* — invokes `cb(const C*, size_t)` with a guaranteed
+  NUL-terminated copy (using the original buffer directly when it is already
+  terminated, otherwise a temporary).
+
+WARNING: `at`/`operator[]`/`front`/`back` are bounds-checked on `BytesReader` and
+its string subclasses (returning `C(0)`), but on `SpanView` they follow
+`std::span` semantics and are **unchecked** (see below).
+
+---
+
+## Construction and the NUL-truncation rule
+
+```c
+StringView a;                       // empty
+StringView b("literal");            // strlen-terminated
+StringView c(ptr, n);               // first NUL within n, or n
+StringView d = someStdString;       // from anything with .data()/.size()
+```
+
+IMPORTANT: the pointer constructors are **NUL-truncating**. They scan for a
+terminating `'\0'` and the resulting length is `min(len, distance-to-first-NUL)`.
+The single-argument form does an unbounded `strlen`, so it requires a
+NUL-terminated string. To wrap a buffer that may contain embedded NULs (binary
+data) *without* truncation, use `set(ptr, len)`, which assigns the pair verbatim:
+
+```c
+StringView v;
+v.set(ptr, len);   // no strlen, no truncation — keeps embedded NULs
+```
+
+The `sub(pos, len)` method and the `(view, pos, len)` constructors clamp `pos` and
+`len` to the source size, so an out-of-range `pos` yields an empty view (never an
+out-of-bounds pointer).
+
+---
+
+## `StringViewBase` / `StringView` / `WideStringView`
+
+A text view with a rich, allocation-free scanning interface. The scanners are
+parameterized by *character-class matchers* (see "Character classes" below).
+
+### Navigation and tokenizing
+
+```c
+// skip/consume runs of matching (or non-matching) characters, in place
+template <typename... M> void skipChars();     // advance over chars in the class
+template <typename... M> void skipUntil();      // advance until a char in the class
+template <typename... M> void backwardSkipChars();
+template <typename... M> void backwardSkipUntil();
+
+bool skipString(const Self &);                  // consume an exact prefix
+bool skipUntilString(const Self &, bool stopBefore = true);
+
+// read = the skipped span is returned as a sub-view
+template <typename... M> Self readChars();
+template <typename... M> Self readUntil();
+template <typename... M> Self backwardReadChars();
+template <typename... M> Self backwardReadUntil();
+Self readUntilString(const Self &);
+
+template <typename... M> void trimChars();      // strip from both ends
+template <typename... M> void trimUntil();
+
+template <typename Sep, typename Cb> void split(const Cb &) const; // tokenize
+```
+
+`split` invokes `cb(StringView)` per non-empty token; if `cb` returns `bool`,
+returning `false` stops iteration early.
+
+### Number parsing
+
+```c
+Result<float>   readFloat();
+Result<double>  readDouble();
+Result<int64_t> readInteger(int base = 0);
+```
+
+These skip leading whitespace, parse a number from the front, advance the view
+past what was consumed, and return a `Result<T>` (`valid()`/`operator bool`,
+`unwrap(cb)`, `grab(out)`). Parsing reads through a bounded 32-byte stack buffer,
+so it never over-reads the source.
+
+### Conversion, duplication, hashing
+
+```c
+Self sub(size_t pos = 0, size_t len = Max<size_t>) const;
+Self pdup(memory::pool_t * = nullptr) const;       // NUL-terminated copy in a pool
+Self ptolower_c(memory::pool_t * = nullptr) const; // ASCII lower, pool copy
+Self ptoupper_c(memory::pool_t * = nullptr) const; // ASCII upper, pool copy
+template <typename Interface> auto str() const;    // owning string of Interface
+uint64_t hash() const;
+```
+
+`pdup`/`ptolower_c`/`ptoupper_c` allocate from the given pool (or the current
+context pool if `nullptr`) and the returned view points into that pool's memory.
+
+### Joining
+
+```c
+template <typename Interface, typename... Args>            static auto merge(Args&&...);
+template <typename Interface, CharType Sep, typename... Args> static auto merge(Args&&...);
+```
+
+`merge` concatenates string-like arguments into an `Interface` string; the
+separator overload inserts `Sep` between non-empty, trimmed parts.
+
+---
+
+## `StringViewUtf8`
+
+A `char`-backed view that understands UTF-8 and operates on **codepoints**
+(`char32_t`), while still exposing the raw bytes via `data()`/`size()`.
+
+```c
+char32_t getChar() const;        // decode the leading codepoint (0 if invalid)
+char32_t readChar();             // decode and advance one codepoint
+char32_t operator*() const;      // == getChar()
+Self     letter() const;         // sub-view of just the leading codepoint
+void     offset(size_t n);       // advance by n codepoints (not bytes)
+Self    &operator++();           // advance one codepoint
+size_t   code_size() const;      // number of codepoints in the view
+template <typename Cb> void foreach(const Cb &) const; // cb(char32_t) per codepoint
+```
+
+`skipChars`/`readUntil`/`trimChars`/`split` etc. work as on `StringViewBase`, but
+match against decoded `char32_t` values and advance by whole codepoints. Matching
+is bounded — a truncated multibyte sequence at the end of the view decodes to `0`
+and is never read past.
+
+NOTE: `StringViewUtf8` treats the buffer as length-delimited; iteration (`foreach`,
+`code_size`) walks the whole view, while the codepoint scanners follow the same
+bounds rules as the byte ones.
+
+---
+
+## `BytesViewTemplate` / `BytesView`
+
+A `uint8_t` view for parsing binary data, with a compile-time endianness that is
+applied to multi-byte integer/float reads. Each `read*` consumes from the front
+and returns `0` (an empty view / default) if not enough bytes remain.
+
+```c
+uint64_t readUnsigned64();   uint32_t readUnsigned32();
+uint32_t readUnsigned24();   uint16_t readUnsigned16();   uint8_t readUnsigned();
+
+double   readFloat64();      float    readFloat32();       float   readFloat16();
+
+StringView readString();            // NUL-terminated string (consumes the NUL)
+StringView readString(size_t n);    // fixed-size string (clamped to remaining)
+StringView toStringView() const;    // reinterpret remaining bytes as text
+
+template <endian Target = E> BytesViewTemplate<Target> readBytes(size_t n);
+template <typename T>        SpanView<T> readSpan(size_t count);
+```
+
+* Every fixed-width read is length-guarded (`if (len >= N)`), so it never reads
+  past the buffer; a short buffer yields `0`/empty and leaves the view unchanged.
+* `readSpan<T>(count)` clamps `count` to the remaining element capacity using an
+  overflow-safe check, so a large `count` cannot produce an over-sized span.
+
+Endianness conversion uses the `Converter` traits; `BytesView`/`BytesViewHost`
+read in native order, `BytesViewNetwork` in big-endian.
+
+---
+
+## `SpanView<T>`
+
+A read-only view over a contiguous array of `T`.
+
+```c
+SpanView<T> s(ptr, count);
+SpanView<T> s(begin, end);
+auto s = makeSpanView(stdVectorLikeOrArray);
+auto s = SpanView<T>::alloc(pool, count);   // allocate backing storage in a pool
+
+s.size(); s.empty(); s.data();
+s.begin(); s.end(); s.rbegin(); s.rend();   // iterators (range-for ready)
+s.first(n); s.last(n);                       // clamped sub-spans
+s.pop_front(n); s.pop_back(n);               // consume and return a sub-span
+s.sub(pos, len);                             // clamped sub-span
+s.bytes();                                    // BytesView over the raw bytes
+s.vec<Interface>(); s.pdup(pool);             // copy out / duplicate into a pool
+```
+
+WARNING: matching `std::span`, `SpanView::operator[]`, `at`, `front` and `back`
+are **not** bounds-checked — indexing past `size()` is undefined behavior. Use
+`size()`/iterators to stay in range. (`first`/`last`/`sub`/`pop_*` *are* clamped.)
+
+---
+
+## Character classes (matchers)
+
+The `skip*`/`read*`/`trim*`/`split` templates take one or more *matcher* types.
+Define sets of characters with these (in namespace `sprt::chars`, also surfaced as
+nested aliases on the views):
+
+```c
+chars::Chars<C, 'a', 'b', 'c'>          // an explicit set of characters
+chars::Range<C, '0', '9'>               // an inclusive range
+chars::Compose<C, A, B, ...>            // union of other matchers
+chars::CharGroup<C, CharGroupId::Foo>   // a named Unicode/ASCII group
+```
+
+`StringViewBase` exposes shortcuts: `Chars<...>`, `Range<...>`, `Compose<...>`,
+`CharGroup<...>`, plus ready-made groups `Numbers`, `Latin`, `WhiteSpace`,
+`LatinLowercase`, `LatinUppercase`, `Alphanumeric`, `Hexadecimial`, `Base64`.
+
+Useful `CharGroupId` values (see [chargroup.h](../../../runtime/include/sprt/runtime/chargroup.h)
+for the full list): `Numbers`, `Latin`, `Cyrillic`, `WhiteSpace`, `Controls`,
+`Alphanumeric`, `Hexadecimial`, `Base64`, `PunctuationBasic`, `Math`, `Currency`.
+
+```c
+SPRT_API bool inCharGroup(CharGroupId mask, char16_t);     // exact group test
+SPRT_API bool inCharGroupMask(CharGroupId mask, char16_t); // any bit in mask
+```
+
+---
+
+## Comparison
+
+```c
+l == r,  l != r,  l <=> r          // for StringView, WideStringView, BytesView, SpanView
+```
+
+* String views compare by C-locale (`compare_c`) by default; `StringViewUtf8`'s
+  `<=>` is Unicode-aware (`compare_u`).
+* `Comparator`-templated members (`equals`, `prefix`, `starts_with`, …) accept a
+  policy: `BytesComparator` (raw bytes), `StringComparator`,
+  `StringCaseComparator`, `StringUnicodeComparator`, `StringUnicodeCaseComparator`.
+* All view types specialize `sprt::hash<>` for use as keys.
+
+---
+
+## Lifetime and safety
+
+* *Views never own memory.* The backing buffer must outlive every view over it.
+  Returning a view to a local/temporary is a dangling-pointer bug.
+* *Pool-returning helpers* (`pdup`, `ptolower_c`, `ptoupper_c`, `SpanView::alloc`,
+  `SpanView::pdup`) point into pool memory — valid only until that pool is cleared
+  or destroyed (see the [memory pool docs](mempool.adoc)).
+* *Embedded NULs* — pointer constructors truncate at NUL; use `set()` to preserve
+  them (see "Construction" above).
+* *Bounds* — advancing, `sub`, search and the fixed-width binary reads are all
+  clamped/guarded. The exceptions are the deliberately-unchecked `std::span`-style
+  accessors on `SpanView` and `front()`/`back()` on a `SpanView` (UB on empty).
+
+---
+
+## Usage examples
+
+### Parse `key=value` pairs
+
+```cpp
+using namespace sprt;
+
+void parse(StringView input) {
+    input.split<StringView::Chars<'&'>>([](StringView pair) {
+        StringView key = pair.readUntil<StringView::Chars<'='>>();
+        pair.skipChars<StringView::Chars<'='>>();
+        StringView value = pair;          // the rest
+        use(key, value);
+    });
+}
+```
+
+### Read a number and the rest of a line
+
+```cpp
+StringView s = "  42 remaining text";
+if (auto r = s.readInteger()) {           // r.valid()
+    int64_t n = r.result;                 // 42; s now == " remaining text"
+    s.skipChars<StringView::WhiteSpace>();
+    handle(n, s);
+}
+```
+
+### Trim and tokenize whitespace-separated words
+
+```cpp
+StringView s = "  alpha   beta  gamma ";
+s.trimChars<StringView::WhiteSpace>();
+s.split<StringView::WhiteSpace>([](StringView word) {
+    emit(word);                            // "alpha", "beta", "gamma"
+});
+```
+
+### Iterate UTF-8 by codepoint
+
+```cpp
+StringViewUtf8 u8("héllo 😀");
+u8.foreach([](char32_t cp) {
+    render(cp);
+});
+// or pull one at a time:
+while (!u8.empty()) {
+    char32_t cp = u8.readChar();
+    handle(cp);
+}
+```
+
+### Decode a binary record (network order)
+
+```cpp
+BytesViewNetwork in(buf, bufLen);
+uint32_t magic = in.readUnsigned32();
+uint16_t count = in.readUnsigned16();
+auto samples = in.readSpan<float>(count);  // clamped to remaining bytes
+StringView name = in.readString();         // NUL-terminated
+```
+
+### Wrap binary data without NUL truncation
+
+```cpp
+StringView blob;
+blob.set(reinterpret_cast<const char *>(ptr), len);  // keeps embedded NULs
+```
+
+### Span over an array
+
+```cpp
+int values[] = {1, 2, 3, 4};
+auto span = makeSpanView(values);
+for (int v : span) { use(v); }
+auto tail = span.last(2);   // {3, 4}
+```
+
+---
+
+## Caveats
+
+* *Dangling views.* The most common bug is a view outliving its buffer (a local
+  string, a temporary, or a cleared pool). Copy out with `str()`/`pdup()` if the
+  data must outlive the source.
+* *NUL truncation.* `StringView(ptr, len)` stops at the first NUL; use `set()` for
+  binary data. The single-arg `StringView(ptr)` requires NUL termination.
+* *Unchecked `SpanView` indexing.* `operator[]`/`at`/`front`/`back` on `SpanView`
+  do not bounds-check (by design, like `std::span`). Prefer iterators or the
+  clamped `first`/`last`/`sub`.
+* *Short binary reads return defaults.* `BytesView::read*` returning `0`/empty can
+  mean either a genuine zero value or insufficient bytes — check `size()` first if
+  the distinction matters.
+* *`readSpan` reinterprets memory.* It does no alignment or content validation; the
+  resulting `SpanView<T>` aliases the original bytes.

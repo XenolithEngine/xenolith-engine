@@ -373,7 +373,7 @@ inline auto perform_temporary(const Callback &cb, pool_t *p, const char *source)
 	auto pool = pool::create(p ? p : pool::acquire());
 	context<decltype(p)> holder(pool, context<decltype(p)>::destroy, source);
 	if constexpr (is_invocable_v<Callback, pool_t *>) {
-		return cb(p);
+		return cb(pool);
 	} else {
 		static_assert(is_invocable_v<Callback>, "Callback should receive pool_t * or nothing");
 		return cb();
@@ -386,7 +386,7 @@ inline auto perform_temporary(const Callback &cb, pool_t *p, uint32_t tag, void 
 	auto pool = pool::create(p ? p : pool::acquire());
 	context<decltype(p)> holder(pool, tag, ptr, context<decltype(p)>::destroy, source);
 	if constexpr (is_invocable_v<Callback, pool_t *>) {
-		return cb(p);
+		return cb(pool);
 	} else {
 		static_assert(is_invocable_v<Callback>, "Callback should receive pool_t * or nothing");
 		return cb();

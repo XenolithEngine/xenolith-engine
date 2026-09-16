@@ -1,0 +1,11 @@
+# Umbrella libc wrappers
+
+The main umbrella functions of the Xenolith runtime are implemented here.
+
+In most cases, these are simple redirects from SPRT functions to system functions.
+
+In some cases, functions are implemented from scratch (such as the rand() function).
+
+If a function is not implemented on the target platform but can be implemented — its implementation will be in this module.
+
+Additionally, functions that require access to the system libc are also implemented here.

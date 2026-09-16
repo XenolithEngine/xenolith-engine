@@ -18,7 +18,24 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-sp_detect_git = $(shell git -C $(1) rev-parse --git-dir 2> /dev/null)
+ifdef XLMAKE_VERSION
+
+ifeq ($(UNAME),Windows)
+sp_detect_git = $(shell git -C "$(1)" rev-parse --git-dir 2>nul)
+else
+sp_detect_git = $(shell git -C "$(1)" rev-parse --git-dir 2> /dev/null)
+endif
+
+else # XLMAKE_VERSION
+
+ifdef POWERSHELL
+sp_detect_git = $(shell git -C "$(1)" rev-parse --git-dir 2>$null)
+else
+sp_detect_git = $(shell git -C "$(1)" rev-parse --git-dir 2> /dev/null)
+endif
+
+endif # XLMAKE_VERSION
+
 sp_detect_build_write_rev = $(firstword $(2) $(call shell_override_file, $(1)/.build_number,$(2)))
 
 sp_detect_build_number_git = $(shell git -C $(1) rev-list --count HEAD)

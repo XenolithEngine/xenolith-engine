@@ -47,8 +47,6 @@ protected:
 
 class SP_PUBLIC GraphicPipeline : public core::GraphicPipeline {
 public:
-	static bool comparePipelineOrdering(const PipelineInfo &l, const PipelineInfo &r);
-
 	virtual ~GraphicPipeline() { }
 
 	bool init(Device &dev, const PipelineData &params, const SubpassData &, const Queue &);

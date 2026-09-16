@@ -660,7 +660,7 @@ Value Scheme::updateObject(Worker &w, Value &obj, Value &changeSet) const {
 									it,
 									[](stappler::Pair<const ViewScheme *, Vector<uint64_t>> &l,
 											const ViewScheme *r) -> bool { return l.first < r; });
-							if (lb == viewsToUpdate.end() && lb->first != it) {
+							if (lb == viewsToUpdate.end() || lb->first != it) {
 								viewsToUpdate.emplace(lb, stappler::pair(it, Vector<uint64_t>()));
 							}
 						}
@@ -1463,7 +1463,7 @@ void Scheme::updateView(const Transaction &t, const Value &obj, const ViewScheme
 
 	if (scheme->autoField) {
 		for (auto &it : orig) {
-			auto ids_it = sprt::find(ids.begin(), ids.begin(), it);
+			auto ids_it = sprt::find(ids.begin(), ids.end(), it);
 			if (ids_it != ids.end()) {
 				ids.erase(ids_it);
 			}

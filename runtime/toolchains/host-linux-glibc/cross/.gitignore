@@ -1,0 +1,6 @@
+/build/
+/src/
+/sysroot/
+/resource/
+*.cmake
+*.log

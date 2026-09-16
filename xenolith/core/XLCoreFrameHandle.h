@@ -74,6 +74,19 @@ public:
 	uint64_t getTimeEnd() const { return _timeEnd; }
 	uint64_t getOrder() const { return _order; }
 	uint64_t getGen() const { return _gen; }
+#if XL_FRAME_ACCOUNT
+	/* Time this frame spent waiting on DependencyEvents (glyph atlas, materials) before attachments
+	took their input, in nanoseconds, summed over all waits. `count` is every event waited on,
+	`waited` only those not yet signalled when the wait began. */
+	uint64_t getDependencyWaitTime() const { return _depWaitTime.load(); }
+	uint32_t getDependencyCount() const { return _depCount.load(); }
+	uint32_t getDependencyWaited() const { return _depWaited.load(); }
+
+	// Called by the file-local wait account in the .cc; public only for that helper.
+	void accountDependencies(const Vector<Rc<DependencyEvent>> &);
+	void accountDependencyWait(uint64_t ns) { _depWaitTime.fetch_add(ns); }
+#endif
+
 	uint64_t getSubmissionTime() const { return _submissionTime; }
 	uint64_t getDeviceTime() const { return _deviceTime; }
 	Loop *getLoop() const { return _loop; }
@@ -162,6 +175,13 @@ protected:
 	uint64_t _order = 0;
 	uint64_t _submissionTime = 0;
 	uint64_t _deviceTime = 0;
+#if XL_FRAME_ACCOUNT
+	/* See getDependencyWaitTime. Atomic: waits of one frame can open and close on different
+	threads. */
+	sprt::atomic<uint64_t> _depWaitTime = 0;
+	sprt::atomic<uint32_t> _depCount = 0;
+	sprt::atomic<uint32_t> _depWaited = 0;
+#endif
 	sprt::atomic<uint32_t> _tasksRequired = 0;
 	uint32_t _tasksCompleted = 0;
 	uint32_t _queuesSubmitted = 0;

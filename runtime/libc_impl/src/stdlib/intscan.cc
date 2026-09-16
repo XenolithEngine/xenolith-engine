@@ -64,7 +64,10 @@ unsigned long long __intscan(FILE *f, unsigned base, int pok, unsigned long long
 		if (val[c] >= base) {
 			shunget(f);
 			shlim(f, 0);
-			errno = EINVAL;
+			// No conversion performed. musl reports EINVAL here, but glibc — the
+			// reference Linux libc this runtime is matched against — leaves errno
+			// untouched on a no-conversion strtol/strtoul. Do the same so the
+			// observable behaviour is identical across targets.
 			return 0;
 		}
 	}

@@ -1,5 +1,7 @@
 /**
-Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>Permission is hereby granted, free of charge, to any person obtaining a copy
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
@@ -23,7 +25,7 @@ int pthread_create(pthread_t *__SPRT_RESTRICT thread, const pthread_attr_t *__SP
 	return __sprt_pthread_create(thread, attr, cb, arg);
 }
 int pthread_detach(pthread_t thread) __SPRT_NOEXCEPT { return __sprt_pthread_detach(thread); }
-__SPRT_NORETURN void pthread_exit(void *ret) __SPRT_NOEXCEPT { __sprt_pthread_exit(ret); }
+__SPRT_NORETURN void pthread_exit(void *ret) { __sprt_pthread_exit(ret); }
 int pthread_join(pthread_t thread, void **ret) __SPRT_NOEXCEPT {
 	return __sprt_pthread_join(thread, ret);
 }
@@ -37,8 +39,8 @@ int pthread_setcancelstate(int v, int *p) __SPRT_NOEXCEPT {
 int pthread_setcanceltype(int v, int *p) __SPRT_NOEXCEPT {
 	return __sprt_pthread_setcanceltype(v, p);
 }
-void pthread_testcancel(void) __SPRT_NOEXCEPT { __sprt_pthread_testcancel(); }
-int pthread_cancel(pthread_t thread) __SPRT_NOEXCEPT { return __sprt_pthread_cancel(thread); }
+void pthread_testcancel(void) { __sprt_pthread_testcancel(); }
+int pthread_cancel(pthread_t thread) { return __sprt_pthread_cancel(thread); }
 int pthread_getschedparam(pthread_t thread, int *__SPRT_RESTRICT n,
 		struct __SPRT_SCHED_PARAM_NAME *__SPRT_RESTRICT p) __SPRT_NOEXCEPT {
 	return __sprt_pthread_getschedparam(thread, n, p);
@@ -334,12 +336,16 @@ int pthread_atfork(void (*prepare)(void), void (*parent)(void),
 int pthread_getconcurrency(void) __SPRT_NOEXCEPT { return __sprt_pthread_getconcurrency(); }
 int pthread_setconcurrency(int v) __SPRT_NOEXCEPT { return __sprt_pthread_setconcurrency(v); }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wattribute-warning"
 int pthread_getaffinity_np(pthread_t thread, size_t n, cpu_set_t *set) __SPRT_NOEXCEPT {
 	return __sprt_pthread_getaffinity_np(thread, n, set);
 }
 int pthread_setaffinity_np(pthread_t thread, size_t n, const cpu_set_t *set) __SPRT_NOEXCEPT {
 	return __sprt_pthread_setaffinity_np(thread, n, set);
 }
+#pragma clang diagnostic pop
+
 int pthread_getattr_np(pthread_t thread, pthread_attr_t *attr) __SPRT_NOEXCEPT {
 	return __sprt_pthread_getattr_np(thread, attr);
 }

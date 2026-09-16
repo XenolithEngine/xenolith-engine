@@ -39,15 +39,9 @@ void LayerRounded::handleContentSizeDirty() {
 			_borderRadius);
 
 	if (radius != _realBorderRadius || _contentSize != _image->getImageSize()) {
-		if (radius <= 0.0f) {
-			if (_realBorderRadius != 0.0f) {
-				setImage(Rc<VectorImage>::create(_contentSize));
-				return;
-			}
-
-			_realBorderRadius = 0.0f;
-		}
-
+		// Radius 0 still draws a filled rect (Panel CmdReset briefly hits 0 before CSS re-applies
+		// border-radius), and `_realBorderRadius` must be updated on every path, or a later
+		// restore of the same positive radius is seen as "no change".
 		auto img = Rc<VectorImage>::create(_contentSize);
 		auto path = img->addPath();
 		path->openForWriting([&](vg::PathWriter &writer) {
@@ -62,7 +56,7 @@ void LayerRounded::handleContentSizeDirty() {
 					.arcTo(radius, radius, 0.0f, false, true, 0.0f, _contentSize.height - radius)
 					.closePath();
 		})
-				.setAntialiased(false)
+				.setAntialiased(true)
 				.setFillColor(_pathColor)
 				.setStyle(vg::DrawFlags::Fill);
 

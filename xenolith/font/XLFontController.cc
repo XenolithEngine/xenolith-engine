@@ -1,5 +1,6 @@
 /**
  Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -23,15 +24,50 @@
 #include "XLFontController.h"
 
 #include "XLAppThread.h"
-#include "XLTemporaryResource.h"
-#include "XLTexture.h"
-#include "XLFontComponent.h"
+#include "XLCoreAttachment.h"
+#include "XLCoreDynamicImage.h" // atlas extent, for getControllerInfo
 #include "SPFilesystem.h"
+
+#include <stdlib.h> // getenv, for the eviction debug knobs
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 
 XL_DECLARE_EVENT_CLASS(FontController, onLoaded)
 XL_DECLARE_EVENT_CLASS(FontController, onFontSourceUpdated)
+
+// Debug knob (XL_FONT_EVICT_ALWAYS): drop every font set nobody holds on every update, ignoring
+// the pressure threshold.
+static bool getEvictAlwaysDefault() {
+	static const bool s_value = [] {
+		auto v = ::getenv("XL_FONT_EVICT_ALWAYS");
+		return v && StringView(v) != "0";
+	}();
+	return s_value;
+}
+
+// Debug knob (XL_FONT_EVICT_THRESHOLD): move the pressure threshold, to exercise eviction without
+// filling a real atlas.
+static float getEvictThresholdDefault() {
+	static const float s_value = [] {
+		auto v = ::getenv("XL_FONT_EVICT_THRESHOLD");
+		// StringView's parser, not strtod: the runtime's strtod is locale-sensitive and can read
+		// "0.01" as 0.
+		return v ? float(StringView(v).readFloat().get(config::FontCacheEvictionThreshold))
+				 : config::FontCacheEvictionThreshold;
+	}();
+	return s_value;
+}
+
+static bool getCacheLogDefault() {
+	static const bool s_value = [] {
+		auto v = ::getenv("XL_FONT_CACHE_LOG");
+		return v && StringView(v) != "0";
+	}();
+	return s_value;
+}
+
+FontController::FontController()
+: _evictAlways(getEvictAlwaysDefault()), _evictionThreshold(getEvictThresholdDefault()) { }
 
 struct FontController::Builder::Data {
 	String name;
@@ -312,33 +348,25 @@ void FontController::Builder::addSources(FamilyQuery *query, Vector<const FontSo
 	query->addInFront = front;
 }
 
-FontController::~FontController() { invalidate(nullptr); }
-
-bool FontController::init(FontComponent *comp, StringView name) {
-	_component = comp;
-	_name = name.str<Interface>();
-	return true;
-}
-
 void FontController::extend(AppThread *app, const Callback<bool(FontController::Builder &)> &cb) {
 	Builder builder(this);
 	if (cb(builder)) {
-		_component->acquireController(app->getLooper(), move(builder));
+		applyBuilder(app, move(builder));
 	}
 }
 
-void FontController::initialize(AppThread *app) {
-	_image = FontComponent::makeInitialImage(_name);
-	static_cast<core::Loop *>(app->getContext()->getGlLoop())
-			->compileImage(_image, [app = Rc<AppThread>(app)](bool success) { });
-	_texture = Rc<Texture>::create(_image);
-}
-
-void FontController::invalidate(AppThread *) {
-	if (_image) {
-		// image need to be finalized to remove cycled refs
-		_image->finalize();
-		_image = nullptr;
+/* A family that gained a face drops the sets it already built: a `FontFaceSet` keeps the face list
+it was created with, so otherwise the new face reaches only sets created later. Current users keep
+their `Rc` until `onFontSourceUpdated` sends them back for a new set; the cost is re-rasterizing
+that family's glyphs once. */
+void FontController::dropLayoutsForFamily(StringView family) {
+	auto it = _layouts.begin();
+	while (it != _layouts.end()) {
+		if (it->second && it->second->getFamily() == family) {
+			it = _layouts.erase(it);
+		} else {
+			++it;
+		}
 	}
 }
 
@@ -355,6 +383,8 @@ void FontController::addFont(StringView family, Rc<FontFaceData> &&data, bool fr
 	} else {
 		familyIt->second.data.emplace_back(move(data));
 	}
+
+	dropLayoutsForFamily(family);
 
 	_dirty = true;
 	lock.unlock();
@@ -379,6 +409,8 @@ void FontController::addFont(StringView family, Vector<Rc<FontFaceData>> &&data,
 			for (auto &it : data) { familyIt->second.data.emplace_back(move(it)); }
 		}
 	}
+
+	dropLayoutsForFamily(family);
 
 	_dirty = true;
 	lock.unlock();
@@ -474,7 +506,7 @@ Rc<FontFaceSet> FontController::getLayout(FontParameters style) {
 
 	// create layout
 	ret = Rc<FontFaceSet>::create(sp::move(cfgName), style.fontFamily, sp::move(spec),
-			sp::move(data), _component->getLibrary());
+			sp::move(data), _library);
 	_layouts.emplace(ret->getName(), ret);
 	ret->touch(_clock, style.persistent);
 
@@ -501,10 +533,73 @@ Rc<FontFaceSet> FontController::getLayoutForString(const FontParameters &f, cons
 
 Rc<core::DependencyEvent> FontController::addTextureChars(const Rc<FontFaceSet> &l,
 		SpanView<CharLayoutData> chars) {
+	// The caller needs a gating dependency whenever the glyphs it laid out may not be in the atlas
+	// yet, which is not the same as "are they new": FontFaceObject::_required is process-wide and
+	// reports "new" only to the first requester. So the gate is "is the atlas confirmed current":
+	// no batch running and the generation uploaded (batches overlap and can land out of order).
 	if (l->addTextureChars(chars)) {
+		// New characters: they are in _required but in no batch, so the caller waits for the batch
+		// that will carry them.
+		++_glyphGeneration;
 		initDependency();
+		return _dependency;
 	}
-	// return dependency if it set
+
+	if (_uploadsInFlight.load() > 0 || _uploadedGeneration.load() < _glyphGeneration) {
+		// Nothing new from this caller, but the atlas is behind. acquireGatingDependency decides
+		// whether that means "wait for the batch already running" or "wait for the next one".
+		return acquireGatingDependency();
+	}
+	return nullptr;
+}
+
+void FontController::resetSubmittedGlyphs() {
+	sprt::shared_lock lock(_layoutSharedMutex);
+	for (auto &it : _layouts) {
+		for (auto &iit : it.second->getFaces()) {
+			if (iit) {
+				iit->resetCharsSubmitted();
+			}
+		}
+	}
+}
+
+bool FontController::hasPendingGlyphs() const {
+	sprt::shared_lock lock(_layoutSharedMutex);
+	for (auto &it : _layouts) {
+		for (auto &iit : it.second->getFaces()) {
+			if (iit && iit->hasPendingChars()) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+Rc<core::DependencyEvent> FontController::acquireGatingDependency() {
+	if (!hasPendingGlyphs()) {
+		// Everything required has been sent. A flush submits the whole required set, so the batch
+		// in flight covers these glyphs; opening another one here would queue successors forever.
+		if (_submittedDependency) {
+			if (!_submittedDependency->isSignaled()) {
+				return _submittedDependency;
+			}
+			// It landed; from here on this controller has nothing outstanding to wait for.
+			_submittedDependency = nullptr;
+		}
+
+		// A batch is being accumulated for the next flush (_dirty raised without a required
+		// character, e.g. a font or alias was added); it will be submitted, so wait on it.
+		if (_dependency) {
+			return _dependency;
+		}
+
+		// Nothing pending, nothing in flight: the atlas holds everything and the caller's own
+		// generation check will agree on the next frame.
+		return nullptr;
+	}
+
+	initDependency();
 	return _dependency;
 }
 
@@ -525,16 +620,179 @@ StringView FontController::getFamilyName(uint32_t idx) const {
 	return StringView();
 }
 
+void FontController::enumerateLayouts(const Callback<void(const LayoutInfo &)> &cb) const {
+	sprt::shared_lock lock(_layoutSharedMutex);
+
+	const auto clock = _clock.load();
+
+	Vector<FaceInfo> faces;
+	for (auto &it : _layouts) {
+		auto &set = it.second;
+
+		faces.clear();
+		for (auto &face : set->getFaces()) {
+			if (!face) {
+				continue; // a source the library could not open
+			}
+			faces.emplace_back(FaceInfo{
+				.name = face->getName(),
+				.source = face->getData() ? face->getData()->getName() : StringView(),
+				.id = face->getId(),
+				.plane = face->getPlane(),
+				.usage = face->getUsage(),
+			});
+		}
+
+		const auto access = set->getAccessTime();
+		cb(LayoutInfo{
+			.name = set->getName(),
+			.family = set->getFamily(),
+			.spec = set->getSpec(),
+			.metrics = set->getMetrics(),
+			// _layouts holds one reference itself; anything above that is a live user
+			.users = uint32_t(set->getReferenceCount() - 1),
+			.persistent = set->isPersistent(),
+			.idleTime = clock > access ? clock - access : 0,
+			.faces = faces,
+		});
+	}
+}
+
+auto FontController::getControllerInfo() const -> ControllerInfo {
+	ControllerInfo ret;
+	ret.name = _name;
+	ret.loaded = _loaded;
+	ret.dirty = _dirty;
+	ret.batches = _submittedBatches;
+	ret.glyphGeneration = _glyphGeneration;
+	ret.submittedGeneration = _submittedGeneration.load();
+	ret.uploadedGeneration = _uploadedGeneration.load();
+	ret.uploadsInFlight = _uploadsInFlight.load();
+
+	enumerateLayouts([&](const LayoutInfo &layout) {
+		++ret.layouts;
+		ret.faces += layout.faces.size();
+		for (auto &face : layout.faces) {
+			ret.chars += face.usage.chars;
+			ret.charsMemory += face.usage.charsMemory;
+			ret.kerningPairs += face.usage.kerningPairs;
+			ret.requiredChars += face.usage.requiredChars;
+		}
+	});
+
+	{
+		sprt::shared_lock lock(_layoutSharedMutex);
+		ret.families = _families.size();
+		ret.aliases = _aliases.size();
+	}
+
+	ret.cachePressure = getCachePressure();
+	ret.evictionThreshold = _evictionThreshold;
+	ret.evictAlways = _evictAlways.load();
+	ret.atlasBudget = config::FontCacheAtlasBudget;
+
+	if (auto &image = getImage()) {
+		auto extent = image->getExtent();
+		ret.atlasWidth = extent.width;
+		ret.atlasHeight = extent.height;
+		ret.atlasBytes = uint64_t(extent.width) * uint64_t(extent.height); // R8_UNORM: 1 byte/texel
+
+		// Atlas coverage by glyphs - a diagnostic only, never the gate (see
+		// config::FontCacheAtlasBudget). The DataAtlas stores each glyph's four normalized corners,
+		// so rectangle areas sum to the covered fraction.
+		if (auto instance = image->getInstance()) {
+			if (auto atlas = instance->data.atlas.get()) {
+				const auto stride = atlas->getObjectSize();
+				const auto count =
+						stride ? uint32_t(atlas->getData().size() / stride) : uint32_t(0);
+
+				// Counted off the raw data, not getObjectsCount(), which counts name-map entries
+				// and differs when an id repeats.
+				if (count >= 4 && ret.atlasBytes > 4) {
+					float covered = 0.0f;
+					for (uint32_t i = 0; i + 4 <= count; i += 4) {
+						Vec2 lo(1.0f, 1.0f), hi(0.0f, 0.0f);
+						for (uint32_t c = 0; c < 4; ++c) {
+							auto v = reinterpret_cast<const FontAtlasValue *>(
+									atlas->getObjectByOrder(i + c));
+							if (!v) {
+								continue;
+							}
+							// min/max over the four; the corner order is backend-defined
+							lo.x = sprt::min(lo.x, v->tex.x);
+							lo.y = sprt::min(lo.y, v->tex.y);
+							hi.x = sprt::max(hi.x, v->tex.x);
+							hi.y = sprt::max(hi.y, v->tex.y);
+						}
+						covered += (hi.x - lo.x) * (hi.y - lo.y);
+					}
+					ret.atlasOccupancy = covered;
+				}
+			}
+		}
+	}
+
+	return ret;
+}
+
+float FontController::getCachePressure() const {
+	float ret = 0.0f;
+
+	{
+		// The bound that is always available: it limits a controller with no atlas of its own, and
+		// keeps the 14-bit face-id space from running out (ids are released only when a face is
+		// reaped).
+		sprt::shared_lock lock(_layoutSharedMutex);
+		ret = float(_layouts.size()) / float(config::FontCacheMaxLayouts);
+	}
+
+	// Outside the lock: this takes DynamicImage's own mutex (as getControllerInfo() does).
+	if (auto &image = getImage()) {
+		auto extent = image->getExtent();
+		const uint64_t area = uint64_t(extent.width) * uint64_t(extent.height);
+
+		// 2x2 is FontComponent::makeInitialImage's placeholder and 1x1 is the software rasterizer's
+		// stand-in; neither reflects the cache.
+		if (area > 4) {
+			ret = sprt::max(ret, float(double(area) / double(config::FontCacheAtlasBudget)));
+		}
+	}
+
+	return ret;
+}
+
 void FontController::update(AppThread *app, const UpdateTime &clock, bool) {
 	_clock = clock.global;
 	removeUnusedLayouts();
+	flushPendingGlyphs(app);
+}
+
+void FontController::flushPendingGlyphs(AppThread *app) {
+	if (_uploadFailed.exchange(false)) {
+		// A batch never reached the atlas. Its characters are still required and the flush below
+		// skips a set that has not grown, so drop the submission record to resend everything.
+		resetSubmittedGlyphs();
+		_dirty = true;
+	}
+
 	if (_dirty && _loaded) {
 		Vector<FontUpdateRequest> objects;
+
+		// Is there anything not sent yet? The batch carries the whole required set because the
+		// atlas is rebuilt from scratch on every upload, so a flush of an unchanged set only costs
+		// a rebuild and material recompiles. _dirty cannot tell: every gated node raises it each
+		// frame while the atlas is behind.
+		bool hasPending = false;
+
 		sprt::shared_lock lock(_layoutSharedMutex);
 		for (auto &it : _layouts) {
 			for (auto &iit : it.second->getFaces()) {
 				if (!iit) {
 					continue;
+				}
+
+				if (iit->hasPendingChars()) {
+					hasPending = true;
 				}
 
 				auto lb = sprt::lower_bound(objects.begin(), objects.end(), iit,
@@ -556,21 +814,89 @@ void FontController::update(AppThread *app, const UpdateTime &clock, bool) {
 				}
 			}
 		}
-		if (!objects.empty()) {
-			_component->updateImage(app->getLooper(), _image, sp::move(objects), move(_dependency),
-					[app = Rc<AppThread>(app)](bool) {
-				// perform views update
-				app->wakeup();
-			});
+		// `_dependency` forces the batch through even with nothing new: callers already wait on it
+		// and only a submission signals it. It is never minted for a set that has not grown (see
+		// acquireGatingDependency).
+		if (!objects.empty() && (hasPending || _dependency)) {
+			// Every flush replaces the atlas instance and makes each window recompile the materials
+			// that sample it, so every flush needs a gating dependency, including ones raised by
+			// removeUnusedLayouts() or addFont(). Minting it here also puts the batch into
+			// _uploadsInFlight, which makes addTextureChars() gate layouts while it runs.
+			if (!_dependency) {
+				_dependency = makeDependency();
+			}
+
+			// Hand the batch (+ gating dependency) to the leaf's gAPI endpoint (local:
+			// FontComponent -> gl Loop; remote: proxy -> server). The dependency gates the frame
+			// that uses these glyphs.
+			auto dep = move(_dependency);
 			_dependency = nullptr;
+
+			// This batch carries every glyph required so far: the generation the atlas holds once
+			// every outstanding batch has landed.
+			const uint64_t submitted = _glyphGeneration;
+			auto prevSubmitted = _submittedGeneration.load();
+			while (prevSubmitted < submitted
+					&& !_submittedGeneration.compare_exchange_weak(prevSubmitted, submitted)) { }
+
+			if (dep) {
+				if (dep->isSignaled()) {
+					// No queues to wait on (FontControllerRemote: the server gates on its own
+					// mirror event), so nothing signals it here; confirm the batch at submission or
+					// the generation never advances.
+					_uploadedGeneration.store(submitted);
+				} else {
+					_uploadsInFlight.fetch_add(1);
+					// Fires once, on the signalling thread; fields are atomic, so no thread hop.
+					// The Rc keeps the controller alive until the upload lands. Only the batch that
+					// empties the queue publishes a generation. The event outlives its callback, so
+					// the raw pointer is safe and avoids a cycle through the stored Function.
+					dep->setSignalCallback([self = Rc<FontController>(this), e = dep.get()] {
+						if (!e->isSuccessful()) {
+							self->_uploadFailed.store(true);
+						}
+						if (self->_uploadsInFlight.fetch_sub(1) == 1) {
+							self->_uploadedGeneration.store(self->_submittedGeneration.load());
+						}
+					});
+				}
+			}
+			// dep == nullptr: _dirty was raised by something other than a glyph request, so this
+			// batch is ungated and must not mark the generation current. The next flush carries a
+			// real dependency while the atlas is behind.
+
+			// Record what this batch carries before handing it over. The count is the snapshot's,
+			// not the face's current one: layouts keep adding to _required meanwhile, and those
+			// characters belong to the next batch.
+			for (auto &it : objects) {
+				if (it.object) {
+					it.object->setCharsSubmitted(it.chars.size());
+				}
+			}
+
+			if (getCacheLogDefault()) {
+				size_t chars = 0;
+				for (auto &it : objects) { chars += it.chars.size(); }
+				log::source().debug("FontController", "atlas batch: generation=", submitted,
+						" faces=", objects.size(), " chars=", chars, " gated=", dep ? "yes" : "no");
+			}
+
+			// Keep the batch reachable for as long as it is in flight: a caller that lays out
+			// nothing new waits on this instead of opening another one.
+			_submittedDependency = dep;
+
+			// Hand-over stamp: the time from minting the event (in addTextureChars) to here is the
+			// batch waiting to be sent, up to one application update. Reported with
+			// `XL_DEP_ACCOUNT=1`.
+			if (dep) {
+				dep->markSent();
+			}
+
+			++_submittedBatches;
+			submitGlyphs(app, sp::move(objects), sp::move(dep));
 		}
 		_dirty = false;
 	}
-}
-
-void FontController::setImage(Rc<core::DynamicImage> &&image) {
-	_image = sp::move(image);
-	_texture = Rc<Texture>::create(_image);
 }
 
 void FontController::setLoaded(bool value) {
@@ -698,33 +1024,78 @@ FontSpecializationVector FontController::findSpecialization(const FamilySpec &fa
 }
 
 void FontController::removeUnusedLayouts() {
+	// Runs on every app update, so checks go cheapest first; the common answer (nothing to drop)
+	// costs one map walk under a shared lock.
+	bool hasCandidates = false;
+	bool hasFreeCandidates = false;
+	{
+		sprt::shared_lock lock(_layoutSharedMutex);
+		for (auto &it : _layouts) {
+			// _layouts holds one reference itself, so refcount 1 means nothing else does
+			if (it.second->isPersistent() || it.second->getReferenceCount() != 1) {
+				continue;
+			}
+			hasCandidates = true;
+			if (it.second->getRequiredCharsCount() == 0) {
+				hasFreeCandidates = true;
+				break;
+			}
+		}
+	}
+
+	if (!hasCandidates) {
+		return;
+	}
+
+	// A set that never required a glyph occupies nothing in the atlas, so pressure never points
+	// at it; sweep such sets anyway, or measurement-only calls (getStringWidth, getLabelSize)
+	// accumulate them. Dropping one is free: only sets with required chars affect the atlas.
+	bool sweepAll = _evictAlways.load();
+
+	if (!sweepAll) {
+		if (_uploadsInFlight.load() > 0) {
+			// The atlas is being rebuilt, so its current size is stale; deciding on it would sweep
+			// every frame until the upload lands.
+			sweepAll = false;
+		} else {
+			sweepAll = getCachePressure() >= _evictionThreshold;
+		}
+
+		if (!sweepAll && !hasFreeCandidates) {
+			// Under the threshold and nothing free to drop: a spare set costs nothing until the
+			// cache fills, while dropping it costs an atlas rebuild when it is needed again.
+			return;
+		}
+	}
+
 	sprt::unique_lock lock(_layoutSharedMutex);
 	auto it = _layouts.begin();
 	while (it != _layouts.end()) {
-		if (it->second->isPersistent()) {
+		// Re-tested rather than acted on from the scan above: the shared lock was released in
+		// between, so getLayout() may have handed one of these sets to a caller.
+		if (it->second->isPersistent() || it->second->getReferenceCount() != 1) {
 			++it;
 			continue;
 		}
 
-		if (/*_clock - it->second->getAccessTime                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           () > _unusedInterval.toMicros() &&*/ it
-						->second->getReferenceCount()
-				== 1) {
-			auto c = it->second->getRequiredCharsCount();
-			log::source().debug("FontController", "Removed: ", it->first);
-			it = _layouts.erase(it);
-			if (c > 0) {
-				_dirty = true;
-			}
-		} else {
+		auto c = it->second->getRequiredCharsCount();
+		if (!sweepAll && c > 0) {
 			++it;
+			continue;
+		}
+
+		log::source().debug("FontController", "Removed: ", it->first);
+		it = _layouts.erase(it);
+		if (c > 0) {
+			// Its glyphs leave the required set, so the next flush packs a smaller atlas.
+			_dirty = true;
 		}
 	}
 }
 
 void FontController::initDependency() {
 	if (!_dependency) {
-		_dependency = Rc<core::DependencyEvent>::alloc(
-				core::DependencyEvent::QueueSet{_component->getQueue()}, "FontController");
+		_dependency = makeDependency();
 	}
 	_dirty = true;
 }

@@ -1,0 +1,550 @@
+# Stappler Runtime memory pool subsystem
+
+The memory pool subsystem provides fast region-based ("arena") allocation. Memory
+taken from a pool does **not** need to be freed individually; instead every block
+is released at once when the pool is cleared or destroyed. This trades fine-grained
+control for speed and for the elimination of an entire class of leak and
+use-after-free bugs *within* a well-scoped lifetime.
+
+A pool is normally tied to a unit of work — handling a network request, building a
+frame, parsing a document — and everything done inside that unit allocates from it.
+When the work ends, the pool is dropped and all of its memory disappears in O(1).
+
+NOTE: It is the caller's responsibility to ensure no pool-allocated pointer is used
+after the owning pool is cleared or destroyed. The subsystem does not track these
+references for you.
+
+Sources:
+
+* Public pool API: [pool.h](../../../runtime/include/sprt/runtime/mem/pool.h)
+* Context stack / RAII helpers: [context.h](../../../runtime/include/sprt/runtime/mem/context.h)
+* Pool-stored user data: [userdata.h](../../../runtime/include/sprt/runtime/mem/userdata.h)
+* Pool-allocated object base: [allocator_pool.h](../../../runtime/include/sprt/cxx/detail/allocator_pool.h)
+* Opaque handle types: [new](../../../runtime/include/sprt/cxx/new)
+* Implementation: [runtime_core_memory.cpp](../../../runtime/core/runtime_core_memory.cpp)
+  (aggregates the `runtime/core/mem/SPRuntimeMem*.cc` units)
+
+---
+
+## Concepts
+
+### Allocators and pools
+
+The subsystem has two layers:
+
+* An *allocator* (`allocator_t`) owns large OS-level memory regions ("nodes") and a
+  free-list of them, bucketed by size. Allocators are **thread-safe** and may be
+  shared between threads.
+* A *pool* (`pool_t`) hands out bytes from the nodes supplied by its allocator.
+  Allocating from a pool is **not** thread-safe — a pool belongs to one thread (or
+  must be externally synchronized) at a time.
+
+A pool is either:
+
+* *self-contained* — it creates and owns a private allocator (`pool::create()`); or
+* *attached* — it draws from an allocator you supply (`pool::create(allocator_t *)`),
+  letting several pools recycle the same node pool.
+
+The handle types `pool_t` and `allocator_t` are **opaque** — declared in
+[new](../../../runtime/include/sprt/cxx/new) as `OpaquePool` / `OpaqueAllocator` and
+never defined. Always pass them by pointer.
+
+### Pool hierarchy and managed lifetime
+
+Pools form a tree. A *managed* (child) pool is created from a parent with
+`pool::create(parent)`; it is automatically destroyed when its parent is cleared or
+destroyed, and **cannot outlive the parent**. Passing `app_root_pool` (`nullptr`)
+creates a child of the global root pool established by `pool::initialize()`.
+
+An *unmanaged* pool (`pool::create()` / `pool::create(allocator_t *)`) has no parent
+and must be destroyed explicitly.
+
+### The context stack
+
+Each thread keeps a stack of "current" pools. The pool on top is the one returned by
+`pool::acquire()` and the one used implicitly by pool-aware containers, the
+`store`/`get` helpers, and `new (pool::acquire()) T`. You manipulate this stack
+through the RAII `context` class or — preferably — the `perform*` helpers, never by
+calling `pool::push`/`pool::pop` directly.
+
+### Cleanups
+
+A pool can hold *cleanup callbacks* that run when it is cleared or destroyed. This is
+how non-memory resources (file handles, C++ destructors, etc.) are tied to a pool's
+lifetime. `pre_cleanup` callbacks run before regular `cleanup` callbacks.
+
+### Returning large blocks
+
+Unlike a classic arena, this pool *can* take memory back for reuse via
+`pool::free`, but only for blocks `>=` `config::BlockThreshold` (256 bytes). Smaller
+frees are ignored (the memory is reclaimed at pool teardown). Judicious use of large-
+block return — e.g. reusing a scratch buffer across iterations — can sharply cut peak
+memory for temporary work; overuse can hurt throughput. See the container helper
+`reserve_block_optimal` for the intended pattern.
+
+---
+
+## Initialization
+
+```c
+SPRT_API void pool::initialize();
+SPRT_API void pool::terminate();
+```
+
+`initialize` brings up the global root pool and (when built with APR support) the APR
+pool layer. It is thread-safe and **reference-counted**: every `initialize` must be
+balanced by a `terminate`. Until the subsystem is initialized you may only use
+self-contained pools and pools with a dedicated allocator (managed/root-derived pools
+require it).
+
+```c
+SPRT_API pool_t *get_zero_pool();
+SPRT_API pool_t *get_thread_support_pool();
+SPRT_API bool    is_apr_available();
+```
+
+* `get_zero_pool()` — a process-wide, self-contained pool safe to use during static
+  initialization (when ordering relative to `pool::initialize` is undefined).
+* `get_thread_support_pool()` — a lazily created, self-contained pool whose lifetime
+  matches the calling thread; destroyed when the thread exits (for the main thread it
+  is the zero pool). Do not `clear` it — it may hold critical per-thread state — and
+  do not call it during static initialization.
+* `is_apr_available()` — whether the Apache Portable Runtime backend is present.
+
+---
+
+## Allocator API — `sprt::memory::allocator`
+
+```c
+SPRT_API allocator_t *create();
+SPRT_API allocator_t *create_apr(void *mutex = nullptr);
+SPRT_API void         destroy(allocator_t *);
+
+SPRT_API void      owner_set(allocator_t *, pool_t *);
+SPRT_API pool_t   *owner_get(allocator_t *);
+SPRT_API void      max_free_set(allocator_t *, size_t size);
+
+SPRT_API void initialize(allocator_t *);   // for statically-stored storage
+SPRT_API void terminate(allocator_t *);    // pairs with initialize
+```
+
+* `create` / `destroy` — heap-allocate / free an allocator. The pools using it must
+  not outlive it.
+* `initialize` / `terminate` — construct an allocator **in storage you already own**
+  (e.g. a static buffer). Use `terminate`, not `destroy`, on these; mismatching the
+  two is a logged error. After `terminate`, all memory ever handed out by that
+  allocator is invalid.
+* `max_free_set` — cap how much freed memory the allocator retains for reuse before
+  returning it to the system (in `BOUNDARY_SIZE` units internally). The default is
+  *unlimited* retention (`ALLOCATOR_MAX_FREE_UNLIMITED`).
+* `owner_set` / `owner_get` — associate an allocator with the pool responsible for
+  destroying it.
+
+All allocators are thread-safe, so they may be moved between threads freely.
+
+---
+
+## Pool lifecycle — `sprt::memory::pool`
+
+```c
+SPRT_API pool_t *create();                         // unmanaged, self-contained
+SPRT_API pool_t *create(allocator_t *);            // unmanaged, shared allocator
+SPRT_API pool_t *create(pool_t *parent);           // managed child (nullptr = root)
+SPRT_API pool_t *create_tagged(const char *tag);
+SPRT_API pool_t *create_tagged(pool_t *parent, const char *tag);
+
+SPRT_API pool_t *create_apr(allocator_t * = nullptr);
+SPRT_API pool_t *create_apr_tagged(const char *tag);
+
+SPRT_API void destroy(pool_t *);
+SPRT_API void clear(pool_t *);
+```
+
+* `create(pool_t *)` makes a child that is destroyed with its parent; pass
+  `app_root_pool` to root it at the global pool.
+* `clear` runs the pool's cleanups, destroys its children, and resets it to empty
+  **without** destroying the pool object itself — ideal for reusing one pool across
+  many iterations.
+* `destroy` runs cleanups, destroys children, and releases the pool.
+* `create_tagged` attaches a human-readable name (retrievable via `get_tag`), useful
+  for diagnostics.
+
+NOTE: In `DEBUG` builds, calling `clear` or `destroy` on a pool that is currently on
+the context stack aborts with a diagnostic — that situation is otherwise impossible to
+detect and always a bug.
+
+---
+
+## Allocation
+
+```c
+SPRT_API void *alloc(pool_t *, size_t &size);                    // size is in/out
+SPRT_API void *alloc(pool_t *, size_t &size, uint32_t alignment);
+SPRT_API void *palloc(pool_t *, size_t size);
+SPRT_API void *palloc(pool_t *, size_t size, uint32_t alignment);
+SPRT_API void *calloc(pool_t *, size_t count, size_t eltsize);
+SPRT_API void  free(pool_t *, void *ptr, size_t size);
+
+SPRT_API void *pmemdup(pool_t *, const void *m, size_t n);
+SPRT_API char *pstrdup(pool_t *, const char *s);
+```
+
+* `alloc` takes `size` **by reference**: on return it holds the *actual* block size,
+  which may be larger than requested. Use this when you can take advantage of the
+  extra capacity.
+* `palloc` is the fixed-size variant (no size feedback).
+* `alignment` below `config::DefaultAlignment` (16) is ignored; all allocations are at
+  least 16-byte aligned. APR pools cannot satisfy explicit alignment and return
+  `nullptr` for the aligned overloads.
+* `calloc` zero-initializes; it rejects `count * eltsize` overflow (returns `nullptr`).
+* `free` only reclaims blocks `>= config::BlockThreshold`; smaller sizes are a no-op.
+  The `size` you pass must match the original allocation size.
+* `pmemdup` / `pstrdup` copy a buffer / C-string into the pool (returning `nullptr` on
+  allocation failure).
+
+NOTE: There is no per-block `realloc`. Grow by allocating a new block and copying, or
+use a pool-backed container.
+
+---
+
+## Context stack and `perform` helpers — `sprt::memory`
+
+The recommended way to use pools is to make one *current* for the duration of a task,
+then allocate implicitly against `pool::acquire()`.
+
+```c
+SPRT_API pool_t      *pool::acquire();   // current (top-of-stack) pool
+SPRT_API PoolCtxInfo  pool::info();      // tag/ptr/source of current context
+```
+
+### RAII: `context<>`
+
+```c
+template <typename _Pool = pool_t *>
+class context {
+    enum finalize_flag { discard, conditional, clear, destroy };
+    explicit context(const pool_type &, finalize_flag = discard, ...);
+    ...
+};
+```
+
+While a `context` object is alive, its pool is on top of the stack. The
+`finalize_flag` controls what happens on scope exit:
+
+* `discard` — just pop (default);
+* `conditional` — only push if the pool is not already on top (avoids redundant
+  nesting), pop accordingly;
+* `clear` — pop, then `pool::clear`;
+* `destroy` — pop, then `pool::destroy`.
+
+### `perform*` wrappers (preferred)
+
+These run a callback with a pool made current, handling push/pop for you. The callback
+may take a `pool_t *` or no arguments.
+
+```c
+template <typename Callback> auto perform(const Callback &, pool_t *, ...);
+template <typename Callback> auto perform_conditional(const Callback &, pool_t *, ...);
+template <typename Callback> auto perform_clear(const Callback &, pool_t *, ...);
+template <typename Callback> auto perform_temporary(const Callback &, pool_t * = nullptr, ...);
+```
+
+* `perform` — push `p`, run, pop.
+* `perform_conditional` — same, but skips the push if `p` is already current.
+* `perform_clear` — push `p`, run, pop, then `clear` `p` (reuse the pool next time).
+* `perform_temporary` — create a fresh child of `p` (or of the current pool if `p` is
+  null), run with it current, then destroy it. The callback receives that temporary
+  pool as its `pool_t *` argument (equivalently, `pool::acquire()` returns it).
+
+Each variant also has an overload taking a `uint32_t tag` and `void *userdata` that are
+recorded in the context for diagnostics.
+
+---
+
+## Cleanups
+
+```c
+enum cleanup_flags { cleanup_flags_none = 0, cleanup_flags_plain = 1 };
+using cleanup_fn = Status (*)(void *);
+
+SPRT_API void cleanup_register(pool_t *, void *, cleanup_fn, cleanup_flags = cleanup_flags_none);
+SPRT_API void pre_cleanup_register(pool_t *, void *, cleanup_fn, cleanup_flags = cleanup_flags_none);
+SPRT_API void cleanup_kill(pool_t *, void *, cleanup_fn);
+```
+
+* Registered callbacks run (in LIFO order) when the pool is cleared or destroyed.
+* `pre_cleanup` callbacks run before regular cleanups — use them for teardown that
+  must happen while the rest of the pool's data is still valid.
+* `cleanup_kill` removes a previously registered (matching data + function) callback.
+
+The C++ convenience overloads in `context.h` accept a `__pool_function<void()>` so you
+can register a lambda/closure directly:
+
+```c
+SPRT_API void pool::cleanup_register(pool_t *, __pool_function<void()> &&);
+SPRT_API void pool::pre_cleanup_register(pool_t *, __pool_function<void()> &&);
+```
+
+NOTE: APR pools do not support `cleanup_flags`; passing anything other than
+`cleanup_flags_none` to them logs a warning.
+
+---
+
+## Pool-stored user data
+
+Pools carry a small string-keyed map for attaching arbitrary data to a pool's lifetime.
+
+```c
+SPRT_API Status userdata_set (const void *data, const char *key, cleanup_fn, pool_t *);
+SPRT_API Status userdata_setn(const void *data, const char *key, cleanup_fn, pool_t *);
+SPRT_API Status userdata_get (void **data, const char *key, pool_t *);
+SPRT_API Status userdata_get (void **data, const char *key, size_t klen, pool_t *);
+```
+
+* `userdata_set` duplicates the key into the pool; `userdata_setn` stores the key
+  pointer as-is (the key must outlive the pool).
+* The `klen` overload accepts a non-NUL-terminated key.
+
+The higher-level, type-safe helpers in [userdata.h](../../../runtime/include/sprt/runtime/mem/userdata.h)
+are usually what you want:
+
+```c
+template <typename T = void> T *pool::get(pool_t *, const StringView &key);
+template <typename T = void> T *pool::get(const StringView &key);            // current pool
+void pool::store(pool_t *, void *ptr, const StringView &key, __pool_function<void()> && = nullptr);
+void pool::store(void *ptr, const StringView &key, __pool_function<void()> && = nullptr); // current pool
+```
+
+`store` associates `ptr` with `key` and optionally registers a cleanup closure that
+runs when the pool is destroyed; `get<T>` retrieves it (or `nullptr`).
+
+---
+
+## Allocating C++ objects from a pool
+
+Derive from `sprt::detail::AllocPool` to enable placement of objects directly into a
+pool via `operator new (pool_t *)`:
+
+```cpp
+#include <sprt/cxx/detail/allocator_pool.h>
+
+struct Node : sprt::detail::AllocPool {
+    int value;
+};
+
+// allocate from an explicit pool
+Node *n = new (pool) Node();
+
+// allocate from the current (top-of-stack) pool
+Node *m = new (sprt::memory::pool::acquire()) Node();
+```
+
+The object's storage is reclaimed when the pool is dropped. If the type needs its
+destructor run, register it with `AllocPool::registerCleanupDestructor` (or rely on a
+pool-aware container). Note that the general `AllocBase::operator new(pool_t *)` is
+deliberately `= delete`d — only `AllocPool`-derived types may be pool-allocated.
+
+---
+
+## Introspection and diagnostics
+
+```c
+SPRT_API const char *get_tag(pool_t *);
+SPRT_API void        set_pool_info(pool_t *, uint32_t tag, const void *ptr);
+
+SPRT_API size_t get_allocated_bytes(pool_t *);  // total handed out
+SPRT_API size_t get_return_bytes(pool_t *);     // reclaimed via free
+SPRT_API size_t get_active_count();             // live pools process-wide
+
+// context.h
+SPRT_API void foreach_info(void *userdata,
+        bool (*)(void *userdata, pool_t *, const PoolCtxInfo &));
+```
+
+`foreach_info` walks the current thread's context stack (top to bottom), which is
+invaluable for "which pool am I in?" diagnostics and for the `DEBUG` checks that catch
+clearing/destroying an in-use pool.
+
+---
+
+## Apache Portable Runtime (APR) compatibility
+
+When built with the `stappler_apr` module (`config::AprCompatible`), the subsystem is
+*partially* interoperable with APR:
+
+* Any APR pool/allocator works transparently through these stappler functions; the
+  functions detect the kind at runtime via a magic value (`config::POOL_MAGIC`).
+* Stappler pools/allocators do **not** work inside native APR APIs.
+* You can create child APR pools from a base APR pool with the stappler `create`
+  functions, and the results remain valid APR pools.
+
+Mixing a stappler allocator with an APR pool (or vice versa) is forbidden and logged.
+
+---
+
+## Configuration constants — `sprt::memory::config`
+
+[pool.h](../../../runtime/include/sprt/runtime/mem/pool.h) exposes the compile-time
+tunables:
+
+|===
+| Constant | Value | Meaning
+
+| `AprCompatible`               | `1`      | Build with APR interop
+| `BlockThreshold`              | `256`    | Minimum block size eligible for `free`/reuse
+| `DefaultAlignment`            | `16`     | Baseline alignment (SSE/128-bit SIMD safe)
+| `BOUNDARY_INDEX`              | `13`     | Node size granularity exponent
+| `BOUNDARY_SIZE`               | `8192`   | Node size granularity (`1 << BOUNDARY_INDEX`)
+| `MIN_ALLOC`                   | `16384`  | Smallest OS-level node (`2 * BOUNDARY_SIZE`)
+| `MAX_INDEX`                   | `20`     | Number of size buckets in an allocator
+| `ALLOCATOR_MAX_FREE_UNLIMITED`| `0`      | Sentinel: retain freed nodes without limit
+| `POOL_MAGIC`                  | `0xDEAD7fffDEAD7fff` | stappler-vs-APR discriminator
+|===
+
+NOTE: These must be identical across every translation unit and against the prebuilt
+runtime; do not redefine them per-TU.
+
+---
+
+## Threading rules
+
+* *Allocators are thread-safe.* Share them, move them between threads.
+* *Pools are not.* A pool must be used by one thread at a time. Do not allocate from,
+  clear, or destroy the same pool concurrently.
+* *Do not share pool memory across threads* except for immutable blocks.
+* *The context stack is thread-local.* `pool::acquire`, `perform*`, `store`/`get`
+  (current-pool overloads), and `foreach_info` operate on the calling thread only.
+
+---
+
+## Usage examples
+
+### A scoped task pool
+
+```cpp
+#include <sprt/runtime/mem/context.h>
+
+using namespace sprt::memory;
+
+void handle_request() {
+    // child of the global root pool; destroyed at scope exit
+    pool_t *p = pool::create(app_root_pool);
+
+    perform([&] {
+        // everything here allocates from `p` via acquire()
+        char *buf = pool::pstrdup(pool::acquire(), "scratch");
+        (void) buf;
+    }, p);
+
+    pool::destroy(p);
+}
+```
+
+### Reusing one pool across iterations
+
+```cpp
+pool_t *scratch = pool::create_tagged(app_root_pool, "frame-scratch");
+
+for (int frame = 0; frame < frames; ++frame) {
+    // run work with `scratch` current, then clear it for the next frame
+    perform_clear([] {
+        build_frame(pool::acquire());
+    }, scratch);
+}
+
+pool::destroy(scratch);
+```
+
+### Throwaway temporary pool
+
+```cpp
+// create a child of the current pool, use it, destroy it automatically;
+// the callback receives the temporary pool directly
+auto total = perform_temporary([](pool_t *tmp) {
+    size_t n = 4096;
+    void *staging = pool::alloc(tmp, n);   // n updated to the real size
+    return crunch(staging, n);
+});
+```
+
+### Explicit allocator shared by several pools
+
+```cpp
+allocator_t *alloc = allocator::create();
+
+pool_t *a = pool::create(alloc);
+pool_t *b = pool::create(alloc);
+// ... a and b recycle nodes through the same allocator ...
+pool::destroy(a);
+pool::destroy(b);
+
+allocator::destroy(alloc);   // must outlive every pool created from it
+```
+
+### Pool-allocated object with a destructor cleanup
+
+```cpp
+#include <sprt/cxx/detail/allocator_pool.h>
+
+struct Connection : sprt::detail::AllocPool {
+    ~Connection();
+};
+
+Connection *open_connection(pool_t *p) {
+    auto *c = new (p) Connection();
+    // tie ~Connection() to the pool's lifetime
+    sprt::detail::AllocPool::registerCleanupDestructor(c, p);
+    return c;
+}
+```
+
+### Attaching data to a pool with `store` / `get`
+
+```cpp
+#include <sprt/runtime/mem/userdata.h>
+
+struct Cache { /* ... */ };
+
+void seed_cache(pool_t *p) {
+    auto *cache = new (p) Cache();
+    // store under a key, with a cleanup closure run on pool teardown
+    pool::store(p, cache, "request.cache", [cache] { cache->flush(); });
+}
+
+Cache *current_cache() {
+    return pool::get<Cache>("request.cache");  // looks up the current pool
+}
+```
+
+### Returning a large temporary block
+
+```cpp
+void process(pool_t *p) {
+    size_t cap = 64 * 1024;            // well above BlockThreshold
+    void *big = pool::alloc(p, cap);   // cap may grow
+
+    use(big, cap);
+
+    // hand it back so the next large allocation in this pool can reuse it
+    pool::free(p, big, cap);
+}
+```
+
+---
+
+## Caveats and pitfalls
+
+* *Never use pool memory after the pool is cleared/destroyed.* This includes objects
+  whose storage lives in the pool and any container backed by it.
+* *Child pools die with their parents.* A managed pool cannot outlive its parent; do
+  not hold a child pointer past the parent's teardown.
+* *Match `free` sizes.* `pool::free` requires the original size and only acts on blocks
+  `>= BlockThreshold`; passing a wrong size corrupts the allocator's accounting.
+* *Aligned allocation is stappler-only.* The aligned `alloc`/`palloc` overloads return
+  `nullptr` on APR pools.
+* *Balance `initialize`/`terminate`.* The subsystem is reference-counted; an unbalanced
+  call leaves the root pool either uninitialized or leaked.
+* *Don't push/pop the context stack by hand.* Use `context` or `perform*`; in `DEBUG`
+  builds an unbalanced stack aborts.
+* *Static initialization order.* Use `get_zero_pool()` for allocations during static
+  init; do not call `get_thread_support_pool()` or rely on the root pool there.

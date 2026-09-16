@@ -76,6 +76,10 @@ SwapchainImage *PresentationFrame::getSwapchainImage() const {
 
 core::AttachmentData *PresentationFrame::setupOutputAttachment() {
 	auto &queue = _frameRequest->getQueue();
+	if (!queue.get()) {
+		return nullptr;
+	}
+
 	auto a = queue->getPresentImageOutput();
 	if (!a) {
 		a = queue->getTransferImageOutput();
@@ -90,6 +94,11 @@ core::AttachmentData *PresentationFrame::setupOutputAttachment() {
 core::FrameHandle *PresentationFrame::submitFrame() {
 	_frameHandle = _engine->submitNextFrame(Rc<core::FrameRequest>(_frameRequest));
 
+	if (!_frameHandle) {
+		invalidate();
+		return nullptr;
+	}
+
 	if (_target) {
 		_target->setFrameIndex(_frameHandle->getOrder());
 	}
@@ -102,6 +111,11 @@ core::FrameHandle *PresentationFrame::submitFrame() {
 
 bool PresentationFrame::assignSwapchainImage(Swapchain::SwapchainAcquiredImage *acquiredImage) {
 	auto sw = getSwapchainImage();
+	if (!sw) {
+		log::source().error("core::PresentationFrame",
+				"assignSwapchainImage called on a frame without a swapchain image target");
+		return false;
+	}
 
 	if (acquiredImage->swapchain != _swapchain) {
 		log::source().error("core::PresentationFrame",
@@ -110,8 +124,12 @@ bool PresentationFrame::assignSwapchainImage(Swapchain::SwapchainAcquiredImage *
 	}
 
 	sw->setAcquisitionTime(sp::platform::clock(ClockType::Monotonic));
-	sw->setImage(move(acquiredImage->swapchain), *acquiredImage->data, move(acquiredImage->sem));
+	// Keep the SwapchainAcquiredImage intact (copy the swapchain handle instead of moving it) and retain
+	// it: if this frame is discarded before rendering starts, invalidate() hands this untouched image
+	// straight back to the engine's reuse pool instead of dropping the acquired swapchain slot.
+	sw->setImage(Rc<Swapchain>(acquiredImage->swapchain), *acquiredImage->data, acquiredImage->sem);
 	sw->setReady(true);
+	_acquiredImage = acquiredImage;
 	_flags |= ImageAcquired;
 	return true;
 }
@@ -137,7 +155,25 @@ void PresentationFrame::invalidate() {
 	auto refId = sprt::retain(this);
 
 	if (auto sw = getSwapchainImage()) {
-		sw->invalidateImage();
+		if (_engine && _acquiredImage && !sp::hasFlag(_flags, InputAcquired) && _swapchain
+				&& _swapchain->isValid()) {
+			// Discarded before rendering started (image acquired, but no frame data / queue yet): the
+			// image is untouched, so detach it from this frame (without releasing it) and hand it back to
+			// the engine's reuse pool for the next frame.
+			sw->detachImage();
+			if (_swapchain) {
+				if (!_swapchain->isDeprecated()) {
+					_engine->reclaimAcquiredImage(sp::move(_acquiredImage));
+				} else {
+					_swapchain->invalidateImage(_acquiredImage->imageIndex, true);
+				}
+			} else {
+				sw->invalidateImage();
+			}
+		} else {
+			// Rendering had started (or the swapchain is gone): return the image directly to the swapchain.
+			sw->invalidateImage();
+		}
 	}
 
 	if (_target) {
@@ -161,6 +197,8 @@ void PresentationFrame::invalidate() {
 
 	_swapchain = nullptr;
 	_target = nullptr;
+	_acquiredImage =
+			nullptr; // dropped here for the direct-return path; already moved out for pool reuse
 	_frameRequest = nullptr;
 
 	sprt::release(this, refId);
@@ -172,6 +210,8 @@ void PresentationFrame::cancelFrameHandle() {
 }
 
 void PresentationFrame::setSubmitted() { _flags |= QueueSubmitted; }
+
+void PresentationFrame::markRemote() { _flags |= Remote; }
 
 void PresentationFrame::setPresented(Status st) {
 	_flags |= ImagePresented;

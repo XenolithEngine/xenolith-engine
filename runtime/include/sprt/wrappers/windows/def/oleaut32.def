@@ -3,4 +3,6 @@ EXPORTS
 	VariantInit
 	VariantClear
 	VariantCopy
+	SysAllocString
+	SysStringLen
 	SysFreeString

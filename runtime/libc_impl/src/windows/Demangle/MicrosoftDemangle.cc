@@ -1798,6 +1798,18 @@ sprt::pair<Qualifiers, bool> Demangler::demangleQualifiers(sprt::StringView &Man
 // <variable-type> ::= <type> <cvr-qualifiers>
 //                 ::= <type> <pointee-cvr-qualifiers> # pointers, references
 TypeNode *Demangler::demangleType(sprt::StringView &MangledName, QualifierMangleMode QMM) {
+	// demangleType is the central funnel of the recursive-descent parser: nested
+	// pointers, arrays, function types/parameters and template arguments all
+	// recurse back through here. Cap the depth so attacker-supplied deeply nested
+	// symbols degrade into an ordinary parse error instead of exhausting the
+	// stack. The counter is restored on every return path by ScopedOverride.
+	llvm::itanium_demangle::ScopedOverride<unsigned> RecursionGuard(RecursionLevel,
+			RecursionLevel + 1);
+	if (RecursionLevel > MaxRecursionLevel) {
+		Error = true;
+		return nullptr;
+	}
+
 	Qualifiers Quals = Q_None;
 	if (QMM == QualifierMangleMode::Mangle) {
 		auto ret = demangleQualifiers(MangledName);

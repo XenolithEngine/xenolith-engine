@@ -26,11 +26,13 @@ THE SOFTWARE.
 #include <sprt/cxx/detail/constexpr.h>
 #include <sprt/cxx/__algorithm/find.h>
 #include <sprt/cxx/__algorithm/minmax.h>
+#include <sprt/cxx/__iterator/iterator_ops.h> // sprt::distance
 #include <sprt/cxx/functional>
 #include <sprt/cxx/__functional/invoke.h>
 #include <sprt/cxx/compare>
 
 namespace sprt {
+inline namespace __cxx_algorithm {
 
 struct lexicographical_type_compare {
 	template <typename Type1, typename Type2>
@@ -50,7 +52,7 @@ struct lexicographical_type_compare {
 struct lexicographical_type_compare_three_way {
 	template <typename Type1, typename Type2>
 	constexpr auto operator()(const Type1 &__t, const Type2 &__u) const noexcept {
-		return __t <=> __u;
+		return sprt::__synth_three_way(__t, __u);
 	}
 
 	using is_transparent = void;
@@ -61,8 +63,8 @@ constexpr auto lexicographical_compare_pointer(PtrType1 __first1, PtrType1 __las
 		PtrType2 __first2, PtrType2 __last2, _Cmp &&__comp)
 		-> decltype(__comp(*__first1, *__first2)) {
 
-	auto __len1 = __last1 - __first1;
-	auto __len2 = __last2 - __first2;
+	auto __len1 = sprt::distance(__first1, __last1);
+	auto __len2 = sprt::distance(__first2, __last2);
 	auto __min_len = min(__len1, __len2);
 
 	for (decltype(__min_len) __i = 0; __i < __min_len; ++__i) {
@@ -113,7 +115,11 @@ template <typename Type, typename _Comp,
 				int> = 0>
 constexpr bool __lexicographical_compare(Type *__first1, Type *__last1, Type *__first2,
 		Type *__last2, _Comp &) {
-	if constexpr (__is_trivially_lexicographically_comparable_v<Type, Type>) {
+	// Only byte-wise memcmp ordering that matches element-wise `<`: size-1
+	// unsigned types. Signed `char` (memcmp is unsigned) and multi-byte types
+	// (byte order != value order on little-endian) must use the element-wise
+	// path below, even though they are trivially memcmp-able for *equality*.
+	if constexpr (sizeof(Type) == 1 && is_unsigned_v<Type>) {
 		auto __res = sprt::__constexpr_memcmp(__first1, __first2,
 				sprt::min(__last1 - __first1, __last2 - __first2));
 		if (__res == 0) {
@@ -132,15 +138,23 @@ constexpr bool __lexicographical_compare(Type *__first1, Type *__last1, Type *__
 	}
 }
 
+template <typename _InputIterator1, typename _InputIterator2, typename _Compare>
+[[nodiscard]]
+inline constexpr bool lexicographical_compare(_InputIterator1 __first1, _InputIterator1 __last1,
+		_InputIterator2 __first2, _InputIterator2 __last2, _Compare __comp) {
+	// __lexicographical_compare takes the comparator by reference; give it an lvalue.
+	return sprt::__lexicographical_compare(__first1, __last1, __first2, __last2, __comp);
+}
+
 template <typename _InputIterator1, typename _InputIterator2>
 [[nodiscard]]
 inline constexpr bool lexicographical_compare(_InputIterator1 __first1, _InputIterator1 __last1,
 		_InputIterator2 __first2, _InputIterator2 __last2) {
-	identity __proj;
-	return sprt::__lexicographical_compare(__first1, __last1, __first2, __last2, sprt::less<void>(),
-			__proj, __proj);
+	sprt::less<void> __comp;
+	return sprt::__lexicographical_compare(__first1, __last1, __first2, __last2, __comp);
 }
 
+} // namespace __cxx_algorithm
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___ALGORITHM_LEXICOGRAPHICAL_COMPARE_H_

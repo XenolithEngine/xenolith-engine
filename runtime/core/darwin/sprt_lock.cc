@@ -55,6 +55,17 @@ static int sprt_qlock_wait(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_qlock
 	return result;
 }
 
+// os_sync_wake_by_address_* reports "nobody was waiting" as -1/ENOENT, while the futex contract
+// this shim exposes (see the Linux implementation) treats a wake with no waiters as ordinary
+// success and reserves non-zero for real errors. Waking an address with no parked thread is
+// routine for every lock here — the Waiters flag is set optimistically — so translate it.
+static int sprt_qlock_wake_result(int result) {
+	if (result != 0 && __sprt_errno == ENOENT) {
+		return 0;
+	}
+	return result;
+}
+
 static int sprt_qlock_wake_one(__SPRT_ID(sprt_qlock_t) * value,
 		__SPRT_ID(sprt_lock_flags_t) flags) {
 	int result = 0;
@@ -63,7 +74,7 @@ static int sprt_qlock_wake_one(__SPRT_ID(sprt_qlock_t) * value,
 		_flags = os_sync_wake_by_address_flags_t(_flags | OS_SYNC_WAKE_BY_ADDRESS_SHARED);
 	}
 	result = os_sync_wake_by_address_any((void *)value, sizeof(uint32_t), _flags);
-	return result;
+	return sprt_qlock_wake_result(result);
 }
 
 static int sprt_qlock_wake_all(__SPRT_ID(sprt_qlock_t) * value,
@@ -74,7 +85,7 @@ static int sprt_qlock_wake_all(__SPRT_ID(sprt_qlock_t) * value,
 		_flags = os_sync_wake_by_address_flags_t(_flags | OS_SYNC_WAKE_BY_ADDRESS_SHARED);
 	}
 	result = os_sync_wake_by_address_all((void *)value, sizeof(uint32_t), _flags);
-	return result;
+	return sprt_qlock_wake_result(result);
 }
 
 static int sprt_rlock_supports(__SPRT_ID(sprt_lock_flags_t) flags) {
@@ -116,7 +127,8 @@ static int sprt_rlock_wake(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_lock_
 		_flags = os_sync_wake_by_address_flags_t(_flags | OS_SYNC_WAKE_BY_ADDRESS_SHARED);
 	}
 	_atomic::storeSeq(&value->u64, uint64_t(0));
-	return os_sync_wake_by_address_any((void *)&value->u64, sizeof(uint64_t), _flags);
+	return sprt_qlock_wake_result(
+			os_sync_wake_by_address_any((void *)&value->u64, sizeof(uint64_t), _flags));
 }
 
 static __SPRT_ID(clockid_t) sprt_qlock_getclock(__SPRT_ID(sprt_lock_flags_t) flags) {

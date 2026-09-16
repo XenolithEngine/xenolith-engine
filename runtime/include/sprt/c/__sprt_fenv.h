@@ -24,6 +24,7 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_FENV_H_
 
 #include <sprt/c/cross/__sprt_fenv_t.h>
+#include <sprt/c/cross/__sprt_math.h>
 
 __SPRT_BEGIN_DECL
 

@@ -40,7 +40,7 @@ SP_USED static Format s_epubFormat([](memory::pool_t *, FileInfo str, StringView
 }, 0);
 
 bool DocumentEpub::isEpub(BytesView data) {
-	ZipArchive<memory::StandartInterface> zip(data, true);
+	ZipArchive<mem_std::Interface> zip(data, true);
 	if (!zip) {
 		return false;
 	}
@@ -56,7 +56,7 @@ bool DocumentEpub::isEpub(BytesView data) {
 }
 
 bool DocumentEpub::isEpub(FileInfo path) {
-	ZipArchive<memory::StandartInterface> zip(path);
+	ZipArchive<mem_std::Interface> zip(path);
 	if (!zip) {
 		return false;
 	}
@@ -541,7 +541,8 @@ static void _epubReadNcxNav(EpubData *data, StringView content, StringView fileP
 			case NavPoint:
 				if (tag.name.equals<StringCaseComparator>("navpoint")) {
 					contents.pop_back();
-					if (p.tagStack.at(p.tagStack.size() - 2)
+					if (p.tagStack.size() >= 2
+							&& p.tagStack.at(p.tagStack.size() - 2)
 									.name.equals<StringCaseComparator>("navmap")) {
 						section = NavMap;
 					}
@@ -690,11 +691,13 @@ static void _epubReadXmlNav(EpubData *data, StringView content, StringView fileP
 						|| tag.name.equals<StringCaseComparator>("ol")
 						|| tag.name.equals<StringCaseComparator>("a")
 						|| tag.name.equals<StringCaseComparator>("span")) {
-					auto &last = p.tagStack.at(p.tagStack.size() - 2);
-					if (last.name.equals<StringCaseComparator>("nav")) {
-						section = Nav;
-					} else if (last.name.equals<StringCaseComparator>("li")) {
-						section = Li;
+					if (p.tagStack.size() >= 2) {
+						auto &last = p.tagStack.at(p.tagStack.size() - 2);
+						if (last.name.equals<StringCaseComparator>("nav")) {
+							section = Nav;
+						} else if (last.name.equals<StringCaseComparator>("li")) {
+							section = Li;
+						}
 					}
 				}
 				break;

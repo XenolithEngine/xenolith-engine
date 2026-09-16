@@ -26,6 +26,7 @@
 
 #include "XLContext.h"
 #include "XLFontController.h"
+#include "XLFontGapi.h"
 #include "XLCoreAttachment.h"
 #include "SPFontLibrary.h"
 
@@ -41,7 +42,7 @@ struct SP_PUBLIC RenderFontInput : public core::AttachmentInputData {
 	Function<void(const core::ImageInfoData &, BytesView)> output;
 };
 
-class SP_PUBLIC FontComponent : public ContextComponent {
+class SP_PUBLIC FontComponent : public ContextComponent, public FontGapi {
 public:
 	using DefaultFontName = FontLibrary::DefaultFontName;
 
@@ -71,12 +72,15 @@ public:
 
 	Rc<FontController> acquireController(sprt::dispatch::Looper *, FontController::Builder &&);
 
-	// run font rendering query for DynamicImage
+	// FontGapi: compile/upload the glyph atlas image on the GPU (forwards to the gl Loop).
+	virtual void compileImage(const Rc<core::DynamicImage> &, Function<void(bool)> &&) override;
+
+	// FontGapi: run font rendering query for DynamicImage.
 	// Looper will be used for async font rendering via FreeType
 	// Rendering will use all of Looper's async threads, so, avoid to stall main (GL) looper
-	void updateImage(sprt::dispatch::Looper *, const Rc<core::DynamicImage> &,
+	virtual void updateImage(sprt::dispatch::Looper *, const Rc<core::DynamicImage> &,
 			Vector<FontUpdateRequest> &&, Rc<core::DependencyEvent> &&,
-			Function<void(bool)> &&complete);
+			Function<void(bool)> &&complete) override;
 
 protected:
 	void handleActivated();

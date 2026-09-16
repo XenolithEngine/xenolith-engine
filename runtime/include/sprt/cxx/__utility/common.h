@@ -97,7 +97,9 @@ constexpr typename remove_reference<Type>::type &&move_unsafe(Type &&value) noex
 template <typename _T1, typename _T2 = _T1>
 inline constexpr _T1 exchange(_T1 &__obj, _T2 &&__new_value) noexcept(
 		is_nothrow_move_constructible<_T1>::value && is_nothrow_assignable<_T1 &, _T2>::value) {
-	_T1 __old_value = sprt::move(__obj);
+	// move_unsafe (not the pointer-restricted sprt::move) so std::exchange also works
+	// for pointer _T1, matching the standard.
+	_T1 __old_value = sprt::move_unsafe(__obj);
 	__obj = sprt::forward<_T2>(__new_value);
 	return __old_value;
 }

@@ -157,6 +157,11 @@ WINAPI int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds
 	return DLL_LOAD_AND_CALL(loader, ws2_32, select, nfds, readfds, writefds, exceptfds, timeout);
 }
 
+WINAPI int WSAPoll(LPWSAPOLLFD fdArray, ULONG fds, INT timeout) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, ws2_32, WSAPoll, fdArray, fds, timeout);
+}
+
 WINAPI int send(SOCKET s, const char *buf, int len, int flags) {
 	auto loader = sprt::DllLoader::get();
 	return DLL_LOAD_AND_CALL(loader, ws2_32, send, s, buf, len, flags);
