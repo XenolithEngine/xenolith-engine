@@ -37,17 +37,20 @@
 #define __SPRT_CONFIG_HAVE_URING 0
 #endif
 
-// futex(98) is M2/K6 - the point at which threads become real. Until then
-// sprt_lock has no blocking primitive to gate on and must spin/yield, exactly as
-// the hosted Embox target does. Flip together with __SPRT_SYSCALL_futex.
+// futex(98) is real since K6, and with it the locks stopped spinning. The
+// wrappers in libc_wrapper/sys/SPRuntimeCSysFutex.cpp reach it through
+// __el0_futex rather than syscall(2), which this target does not have; the PI
+// operations and futex2 answer ENOSYS, because the kernel does not offer them
+// (docs/EMBOX-SYSCALL-ABI.md section 6.2).
 #ifndef __SPRT_CONFIG_HAVE_FUTEX
-#define __SPRT_CONFIG_HAVE_FUTEX 0
+#define __SPRT_CONFIG_HAVE_FUTEX 1
 #endif
 
-// ppoll(73) is M2. Note this is the one gate whose 0 costs something today: the
-// dispatch layer falls back to blocking reads.
+// ppoll(73) landed with M2. poll() is built on it here rather than the other way
+// round: the kernel has only the timespec form, and a millisecond timeout is the
+// lossy one to derive.
 #ifndef __SPRT_CONFIG_HAVE_POLL
-#define __SPRT_CONFIG_HAVE_POLL 0
+#define __SPRT_CONFIG_HAVE_POLL 1
 #endif
 
 // --- Process model: absent by design, not by phase. ---
@@ -110,9 +113,12 @@
 
 // --- Descriptors and file plumbing. ---
 
-// dup3(24) is M2. dup(23) goes with it.
+// dup3(24) landed with M2, and dup(23) with it. Note what a duplicate is here:
+// the KERNEL descriptor is duplicated too, because a libc slot holds a kernel fd
+// number rather than a reference-counted object -- two slots sharing one number
+// would be two closes of the same descriptor.
 #ifndef __SPRT_CONFIG_HAVE_UNISTD_DUP3
-#define __SPRT_CONFIG_HAVE_UNISTD_DUP3 0
+#define __SPRT_CONFIG_HAVE_UNISTD_DUP3 1
 #endif
 
 #ifndef __SPRT_CONFIG_HAVE_UNISTD_COPY_FILE_RANGE

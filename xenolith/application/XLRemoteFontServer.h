@@ -25,6 +25,7 @@
 
 #include "XLCommon.h"
 #include "XLCoreAttachment.h" // core::DependencyEvent
+#include "XLRemotePeer.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -32,15 +33,22 @@ namespace core {
 struct DynamicImageInstance;
 } // namespace core
 
-// Server-side endpoint serving remote::Domain::Font for a connected client: owns a network-only
-// FontController (its own FontLibrary and atlas), a persistent content-hash font store, and the
-// registry of dependency events that gate client frames.
+// Server-side endpoint serving remote::Domain::Font for one connected client: owns a network-only
+// FontController (its own FontLibrary and atlas, so FaceIds of different clients never meet) and the
+// registry of dependency events that gate the client's frames. The content-hash font store is shared
+// by all endpoints of a server.
+//
+// An endpoint outlives its session: the server keeps idle ones with a compiled atlas and binds one
+// to each new session (setPeer), so a client never waits for an atlas to be created.
 //
 // Declared here so the server can drive it without depending on xenolith_font; the concrete
 // RemoteFontServerEndpoint lives in xenolith_font and is created via a SharedModule factory.
 class SP_PUBLIC RemoteFontServer : public Ref {
 public:
 	virtual ~RemoteFontServer() = default;
+
+	// Bind the endpoint to the session it serves; replies and notifications go there.
+	virtual void setPeer(RemotePeer *) = 0;
 
 	// Route a Domain::Font request/notification (SourcesAnnounce, GlyphRequest, ...). Always
 	// consumes.
@@ -63,8 +71,8 @@ public:
 	// forwarded font material as atlas-tracked. Returns null if the id is not the pinned atlas id.
 	virtual Rc<core::DynamicImageInstance> resolveAtlasInstance(uint64_t imageId) = 0;
 
-	// Drop per-connection state (the dependency registry) on disconnect; the font store and network
-	// atlas persist.
+	// Unbind from the session and drop per-connection state (the dependency registry) on disconnect;
+	// the font store and network atlas persist for the next session.
 	virtual void reset() = 0;
 
 	// Final teardown, unlike reset(): release the network atlas. Not a registered extension, so the

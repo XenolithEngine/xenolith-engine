@@ -25,12 +25,12 @@
 
 #include "XLCommon.h"
 #include "XLRemoteProtocol.h"
+#include "XLRemotePeer.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-class AppThread;
-
-// Bidirectional large-binary block transfer over remote::Domain::Data, owned by AppThread. Outgoing
+// Bidirectional large-binary block transfer over remote::Domain::Data, one per connection (owned by
+// the client AppThread, or by a server RemoteSession). Outgoing
 // transfers are keyed by our id in _outgoing, incoming ones by the peer's id in _incoming; each
 // message is routed by the role it implies, so the id spaces never collide.
 //
@@ -38,14 +38,14 @@ class AppThread;
 // means accepted; Packet is a raw notification [u64 id][u32 index][chunk] (LZ4 from the transport);
 // Complete/Release/Unavailable are small CBOR {id} notifications.
 //
-// All methods run on the owning AppThread and use only its remoteSend* facade.
+// All methods run on the peer thread and send only through the RemotePeer.
 class SP_PUBLIC BlockTransferManager : public Ref {
 public:
 	using DataType = remote::DataType;
 
 	virtual ~BlockTransferManager() = default;
 
-	bool init(AppThread *owner);
+	bool init(RemotePeer *owner);
 
 	// Sender entry. Packetizes and hashes a copy of `data`, sends the Announce with `meta` (opaque,
 	// type-specific) and `reason` (the triggering message). On accept it streams all packets, then
@@ -90,6 +90,9 @@ public:
 
 	// Drop every in-flight transfer (on disconnect).
 	void reset();
+
+	// reset() and forget the peer, which is going away; a pump still scheduled then does nothing.
+	void invalidate();
 
 protected:
 	struct OutgoingTransfer {
@@ -144,7 +147,7 @@ protected:
 	bool handleUnavailable(const remote::MessageHeader &, BytesView payload);
 	bool handleCancel(const remote::MessageHeader &, BytesView payload);
 
-	AppThread *_owner = nullptr;
+	RemotePeer *_owner = nullptr;
 	uint64_t _nextId = 1;
 	HashMap<uint64_t, OutgoingTransfer> _outgoing; // keyed by our id (we are the sender)
 	HashMap<uint64_t, IncomingTransfer> _incoming; // keyed by the peer's id (we are the receiver)

@@ -31,6 +31,7 @@
 #include "../epoll/SPEvent-epoll.h"
 #include "../android/SPEvent-alooper.h"
 #include "../fd/SPEventInotify.h"
+#include "../fd/SPEventAddressWait.h"
 
 namespace sprt::dispatch {
 
@@ -47,6 +48,8 @@ struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _uringSocketListenClass;
 	HandleClass _uringSocketStreamClass;
 	HandleClass _uringSocketSendClass;
+	HandleClass _uringAddressWaitFutexClass;
+	HandleClass _uringAddressWaitEventFdClass;
 
 	HandleClass _epollThreadClass;
 	HandleClass _epollTimerFdClass;
@@ -56,6 +59,7 @@ struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _epollProcessFdClass;
 	HandleClass _epollFileClass;
 	HandleClass _epollInotifyReaderClass;
+	HandleClass _epollAddressWaitClass;
 
 	HandleClass _alooperThreadClass;
 	HandleClass _alooperTimerFdClass;

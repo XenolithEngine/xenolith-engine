@@ -47,6 +47,7 @@ THE SOFTWARE.
 namespace sprt::dispatch {
 
 class EmboxThreadHandle;
+class EmboxAddressWaitHandle;
 
 // One armed timer, held in the reactor's deadline list.
 struct EmboxTimerEntry {
@@ -60,6 +61,12 @@ struct SPRT_API EmboxData : public PlatformQueueData {
 	// a pipe (see file comment).
 	alignas(4) int32_t _wakeupReq = 0;
 
+	// Threads inside spinWait()'s futex wait. notifyWakeup() calls the wake only
+	// when this is non-zero, so a post to a looper that is busy costs an atomic
+	// load and not a trip into the kernel. The waiter counts itself in BEFORE it
+	// compares the word, which is what makes skipping the wake safe.
+	alignas(4) int32_t _sleepers = 0;
+
 	// Active timers, scanned for the nearest deadline each loop iteration.
 	Queue::Vector<EmboxTimerEntry> _timers;
 
@@ -69,6 +76,12 @@ struct SPRT_API EmboxData : public PlatformQueueData {
 	static constexpr size_t MaxThreadHandles = 8;
 	EmboxThreadHandle *_threadHandles[MaxThreadHandles] = {};
 	size_t _threadHandleCount = 0;
+
+	// Words watched by waitOnAddress. Another process can not raise `_wakeupReq`, so the idle spin
+	// checks these itself.
+	static constexpr size_t MaxAddressHandles = 16;
+	EmboxAddressWaitHandle *_addressHandles[MaxAddressHandles] = {};
+	size_t _addressHandleCount = 0;
 
 	static constexpr int32_t WakeupPresent = int32_t(1) << 30;
 	static constexpr int32_t WakeupCancel = int32_t(1) << 29;
@@ -94,6 +107,11 @@ struct SPRT_API EmboxData : public PlatformQueueData {
 	void registerThreadHandle(EmboxThreadHandle *);
 	void unregisterThreadHandle(EmboxThreadHandle *);
 	uint32_t fireThreadHandles(RunContext *);
+
+	bool registerAddressHandle(EmboxAddressWaitHandle *);
+	void unregisterAddressHandle(EmboxAddressWaitHandle *);
+	uint32_t fireAddressHandles(RunContext *);
+	bool hasChangedAddress() const;
 
 	// Cross-thread wakeup: set `_wakeupReq` so the idle spin returns.
 	void notifyWakeup();
@@ -164,9 +182,27 @@ protected:
 	EmboxData *_embox = nullptr;
 };
 
+struct EmboxAddressWaitSource {
+	void cancel() { }
+};
+
+class EmboxAddressWaitHandle : public AddressWaitHandle {
+public:
+	virtual ~EmboxAddressWaitHandle() = default;
+
+	bool init(HandleClass *, AddressWaitInfo &&);
+
+	Status rearm(EmboxData *, EmboxAddressWaitSource *);
+	Status disarm(EmboxData *, EmboxAddressWaitSource *);
+	void notify(EmboxData *, EmboxAddressWaitSource *, const NotifyData &);
+
+	uint32_t load() const { return __atomic_load_n(_address, __ATOMIC_SEQ_CST); }
+};
+
 struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _emboxTimerClass;
 	HandleClass _emboxThreadClass;
+	HandleClass _emboxAddressWaitClass;
 
 	Data(QueueRef *q, const QueueInfo &info);
 };

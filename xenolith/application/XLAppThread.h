@@ -29,6 +29,8 @@
 #include "XLEvent.h"
 #include "XLRemotePeerInfo.h"
 #include "XLRemoteProtocol.h"
+#include "XLRemoteReplyTable.h"
+#include "XLRemotePeer.h"
 #include "XLResourceCache.h"
 #include "XLScene.h"
 #include "XLTemporaryResource.h" // IWYU pragma: keep
@@ -46,18 +48,17 @@ class Director;
 class AppWindow;
 class BlockTransferManager;
 
-// Font remote endpoints (xenolith_font, downstream) send Domain::Font messages through this
-// thread's remoteSend* facade; forward-declared only to befriend them.
+// The client font controller (xenolith_font, downstream) sends Domain::Font messages through this
+// thread's remoteSend* facade; forward-declared only to befriend it.
 namespace font {
 class FontControllerRemote;
-class RemoteFontServerEndpoint;
 } // namespace font
 
 // Base application thread: thread, extension and update machinery. It holds no Context reference;
 // context-derived services are reached through the protected virtual hooks below. Concrete
 // subclasses: ServerAppThread (owns a Context, windows, the listener) and ClientAppThread (owns a
 // standalone ClientContext).
-class SP_PUBLIC AppThread : public sprt::dispatch::Thread {
+class SP_PUBLIC AppThread : public sprt::dispatch::Thread, public RemotePeer {
 public:
 	static EventHeader onNetworkState;
 	static EventHeader onThemeInfo;
@@ -208,13 +209,13 @@ public:
 
 	/* Abandon every Domain::Data block still streaming from this side: sends Cancel to the peer and
 	fails each waiting caller. Returns the number cancelled. App thread only. */
-	size_t cancelOutgoingTransfers();
+	virtual size_t cancelOutgoingTransfers();
+
+	virtual AppThread *getPeerThread() const override { return const_cast<AppThread *>(this); }
 
 protected:
-	// The block-transfer manager and the font remote endpoints drive the remoteSend* facade below.
-	friend class BlockTransferManager;
+	// The client font controller drives the remoteSend* facade below.
 	friend class font::FontControllerRemote;
-	friend class font::RemoteFontServerEndpoint;
 
 	virtual bool startListening();
 	virtual bool stopListening();
@@ -239,17 +240,23 @@ protected:
 	// timed out; the caller should then reset the connection.
 	bool failTimedOutRequests();
 
-	// Connection send facade for the block-transfer manager. The base has no connection and returns
-	// false; subclasses route to their active connection. remoteSendCborWithReply registers the
+	// Run `cb` on this thread when a transport has work: readiness of `handle` when it is valid,
+	// otherwise a change of `wait`. Null when there is neither; the update tick then services it.
+	Rc<sprt::dispatch::Handle> watchTransport(sprt::dispatch::NativeHandle handle,
+			remote::TransportWaitAddress wait, Function<void()> &&cb);
+
+	// RemotePeer: the base has no connection and returns false; the client routes to its
+	// connection. A server sends through its sessions instead. remoteSendCborWithReply registers the
 	// reply waiter via waitForReply.
 	virtual bool remoteSendCbor(remote::Domain, uint8_t code, const Value &,
-			uint32_t *outSerial = nullptr);
+			uint32_t *outSerial = nullptr) override;
 	virtual bool remoteSendRaw(remote::Domain, uint8_t code, BytesView,
-			uint32_t *outSerial = nullptr);
-	virtual bool remoteSendCborReply(uint32_t serial, remote::Domain, uint8_t code, const Value &);
-	virtual bool remoteSendError(remote::Domain, uint8_t code, uint32_t serial);
+			uint32_t *outSerial = nullptr) override;
+	virtual bool remoteSendCborReply(uint32_t serial, remote::Domain, uint8_t code,
+			const Value &) override;
+	virtual bool remoteSendError(remote::Domain, uint8_t code, uint32_t serial) override;
 	virtual bool remoteSendCborWithReply(remote::Domain, uint8_t code, const Value &,
-			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs);
+			ReplyCallback &&, uint64_t timeoutUs) override;
 
 	sprt::dispatch::Looper *_appLooper = nullptr;
 	Rc<sprt::dispatch::TimerHandle> _timer;
@@ -268,15 +275,8 @@ protected:
 	HashMap<sprt::type_index, Rc<ApplicationExtension>> _extensions;
 	Map<Rc<Ref>, Function<void(const UpdateTime &, bool)>> _listeners;
 
-	// One outstanding request awaiting a reply: its completion callback plus its own absolute reply
-	// deadline (monotonic-clock us; 0 == no deadline). Watched by failTimedOutRequests().
-	struct PendingReply {
-		Function<void(const remote::MessageHeader &, BytesView payload)> cb;
-		uint64_t deadline = 0;
-	};
-
 	// Requests waiting for a response from the remote side, keyed by message serial.
-	HashMap<uint32_t, PendingReply> _requests;
+	remote::ReplyTable _replies;
 
 	// Bidirectional block transfer (remote::Domain::Data), constructed in threadInit.
 	Rc<BlockTransferManager> _blockTransfer;

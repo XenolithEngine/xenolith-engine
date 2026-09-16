@@ -144,27 +144,102 @@ static int __file_close(__fd_slot *fp) {
 	return ret;
 }
 
+// Duplicate the KERNEL descriptor as well as the slot. A slot holds a kernel fd
+// number rather than a reference-counted object, so two slots sharing one number
+// would be two closes of the same descriptor -- the second of them eventually
+// closing somebody else's file.
+static int __file_dup(__fd_slot *fp, int *target, uint32_t flags) {
+	if (!fp->handle) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
+	auto kdup = (int)__el0_ret(__el0_dup(__el0_kfd(fp)));
+	if (kdup < 0) {
+		return -1;
+	}
+
+	// There is no exec at EL0, so close-on-exec is bookkeeping either way --
+	// but it is bookkeeping POSIX expects to round-trip, and the kernel now
+	// keeps its own copy, so both are set and F_GETFD reads the slot's.
+	uint32_t newFlags = (flags & __SPRT_FD_CLOEXEC)
+			? (fp->flags | (uint32_t)__SPRT_O_CLOEXEC)
+			: (fp->flags & ~(uint32_t)__SPRT_O_CLOEXEC);
+	__el0_fcntl(kdup, __SPRT_F_SETFD, (flags & __SPRT_FD_CLOEXEC) ? __SPRT_FD_CLOEXEC : 0);
+
+	auto libc = __libc::get();
+
+	if (!target) {
+		int fd = libc->create_fd(__el0_handle(kdup), &libc->fdFileOps, newFlags, fp->mode);
+		if (fd < 0) {
+			__el0_close(kdup);
+			__sprt_errno = EMFILE;
+			return -1;
+		}
+		return fd;
+	}
+
+	unique_lock lock(libc->fdMutex);
+	libc->fdDispatch->bits.set(*target);
+	auto fdSlot = libc->get_fd_slot(*target);
+	if (fdSlot->handle && fdSlot->ops && fdSlot->ops->fo_close) {
+		fdSlot->ops->fo_close(fdSlot);
+	}
+	*fdSlot = __fd_slot{.handle = __el0_handle(kdup),
+		.ops = &libc->fdFileOps,
+		.flags = newFlags,
+		.mode = fp->mode};
+	return *target;
+}
+
 static int __file_ioctl(__fd_slot *fp, int fd, int cmd, intptr_t arg, __fd_ctl_mode mode) {
 	(void)fd;
 	if (mode == __fd_ctl_mode::fnctl) {
-		// fcntl(25) is M2. The two commands worth answering locally are
-		// answered locally: the flags live in the slot, not in the kernel.
 		switch (cmd) {
-		case __SPRT_F_GETFL: return (int)fp->flags;
-		case __SPRT_F_GETFD: return 0; // no FD_CLOEXEC: there is no exec (D5)
-		case __SPRT_F_SETFD: return 0;
-		default: __sprt_errno = ENOSYS; return -1;
+		case __SPRT_F_DUPFD: return __file_dup(fp, nullptr, 0);
+		case __SPRT_F_DUPFD_CLOEXEC: return __file_dup(fp, nullptr, __SPRT_FD_CLOEXEC);
+
+		// FD_CLOEXEC is answered from the slot rather than from the kernel: the
+		// libc fd and the kernel fd are different numbers, and what a caller
+		// setting it here means is "this libc descriptor", which is the one
+		// this layer owns. The kernel's copy is kept in step so that a
+		// descriptor duplicated on either side agrees with itself.
+		case __SPRT_F_GETFD:
+			return (fp->flags & (uint32_t)__SPRT_O_CLOEXEC) ? __SPRT_FD_CLOEXEC : 0;
+		case __SPRT_F_SETFD:
+			if (arg & __SPRT_FD_CLOEXEC) {
+				fp->flags |= (uint32_t)__SPRT_O_CLOEXEC;
+			} else {
+				fp->flags &= ~(uint32_t)__SPRT_O_CLOEXEC;
+			}
+			__el0_fcntl(__el0_kfd(fp), __SPRT_F_SETFD, (long)(arg & __SPRT_FD_CLOEXEC));
+			return 0;
+
+		// The kernel is the one that knows: Embox's own flags accessor masks
+		// the access mode off, so the dispatcher reads the descriptor directly
+		// and this is the only place the true O_RDONLY/WRONLY/RDWR comes from.
+		case __SPRT_F_GETFL: {
+			auto ret = (int)__el0_ret(__el0_fcntl(__el0_kfd(fp), __SPRT_F_GETFL, 0));
+			if (ret < 0) {
+				return (int)fp->flags; // the slot's record, better than nothing
+			}
+			return ret;
+		}
+		case __SPRT_F_SETFL: {
+			auto ret = (int)__el0_ret(__el0_fcntl(__el0_kfd(fp), __SPRT_F_SETFL, (long)arg));
+			if (ret == 0) {
+				fp->flags = (uint32_t)arg;
+			}
+			return ret;
+		}
+
+		// Record locks reach the kernel and come back EINVAL: Embox routes them
+		// to a file's ioctl, which answers about ioctls. Forwarded rather than
+		// answered here, so there is one place that decides.
+		default: return (int)__el0_ret(__el0_fcntl(__el0_kfd(fp), cmd, (long)arg));
 		}
 	}
 	return (int)__el0_ret(__el0_ioctl(__el0_kfd(fp), (unsigned long)cmd, (void *)arg));
-}
-
-static int __file_dup(__fd_slot *fp, int *target, uint32_t flags) {
-	(void)fp;
-	(void)target;
-	(void)flags;
-	__sprt_errno = ENOSYS; // dup(23)/dup3(24) are M2
-	return -1;
 }
 
 static int __file_chmod(__fd_slot *fp, mode_t mode) {
