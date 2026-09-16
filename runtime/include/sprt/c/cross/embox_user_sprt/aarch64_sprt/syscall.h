@@ -54,6 +54,21 @@
 // syscall that blocks by design.
 #define __SPRT_SYSCALL_futex           98
 
+// Threads (K6/L3b). clone is the thread flavour only: CLONE_VM and CLONE_THREAD
+// are required and anything outside the pthread set is -EINVAL, because a clone
+// without CLONE_VM is fork and fork is never implemented (ABI doc section 6.4).
+// set_tid_address registers the word the kernel zeroes and wakes when the
+// thread ends -- which is how a joiner learns the thread's stack may be
+// unmapped, not how pthread_join waits.
+#define __SPRT_SYSCALL_set_tid_address  96
+#define __SPRT_SYSCALL_clone           220
+
+// Time. Both were spins here until K6; a sleeping thread that spins holds a
+// core, which with real threads is no longer merely wasteful.
+#define __SPRT_SYSCALL_nanosleep       101
+#define __SPRT_SYSCALL_clock_nanosleep 115
+#define __SPRT_SYSCALL_sched_yield     124
+
 #define __SPRT_SYSCALL_clock_gettime  113
 #define __SPRT_SYSCALL_uname          160
 #define __SPRT_SYSCALL_getpid         172
@@ -78,9 +93,7 @@
 //     17 getcwd          23 dup             24 dup3            25 fcntl
 //     34 mkdirat         35 unlinkat        38 renameat        46 ftruncate
 //     48 faccessat       49 chdir           59 pipe2           61 getdents64
-//     73 ppoll           78 readlinkat      82 fsync           96 set_tid_address
-//    101 nanosleep      115 clock_nanosleep 124 sched_yield    220 clone
-//    278 getrandom
+//     73 ppoll           78 readlinkat      82 fsync          278 getrandom
 //
 //   17 getcwd already has a number in the kernel's xl_abi.h but no dispatcher
 //   case, so it answers ENOSYS; it stays out of this file until it does not.
