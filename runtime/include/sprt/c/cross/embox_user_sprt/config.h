@@ -37,11 +37,13 @@
 #define __SPRT_CONFIG_HAVE_URING 0
 #endif
 
-// futex(98) is M2/K6 - the point at which threads become real. Until then
-// sprt_lock has no blocking primitive to gate on and must spin/yield, exactly as
-// the hosted Embox target does. Flip together with __SPRT_SYSCALL_futex.
+// futex(98) is real since K6, and with it the locks stopped spinning. The
+// wrappers in libc_wrapper/sys/SPRuntimeCSysFutex.cpp reach it through
+// __el0_futex rather than syscall(2), which this target does not have; the PI
+// operations and futex2 answer ENOSYS, because the kernel does not offer them
+// (docs/EMBOX-SYSCALL-ABI.md section 6.2).
 #ifndef __SPRT_CONFIG_HAVE_FUTEX
-#define __SPRT_CONFIG_HAVE_FUTEX 0
+#define __SPRT_CONFIG_HAVE_FUTEX 1
 #endif
 
 // ppoll(73) is M2. Note this is the one gate whose 0 costs something today: the

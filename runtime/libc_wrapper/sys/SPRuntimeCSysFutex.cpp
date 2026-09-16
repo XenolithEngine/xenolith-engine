@@ -29,7 +29,14 @@
 #include <sprt/runtime/log.h>
 
 #if __SPRT_CONFIG_HAVE_FUTEX
+#if SPRT_EMBOX_USER
+// No syscall(2) on this target -- the EL0 libc issues `svc` through typed
+// wrappers instead, and that is what these bodies call.
+#include "../../core/include/__el0_syscall.h"
+#define __sprt_futex_syscall(...) __el0_futex(__VA_ARGS__)
+#else
 #include <unistd.h>
+#endif
 #endif
 
 namespace sprt {
@@ -39,66 +46,108 @@ namespace sprt {
 // FUTEX_WAKE(2const): https://man7.org/linux/man-pages/man2/FUTEX_WAKE.2const.html
 __SPRT_C_FUNC long __SPRT_ID(futex_wake)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) val) {
+#if SPRT_EMBOX_USER
+	return __el0_futex((__SPRT_ID(uint32_t) *)uaddr,
+			(int)(__SPRT_FUTEX_WAKE | (flags & __SPRT_FUTEX_FLAG_MASK)), val, nullptr, 0);
+#else
 	return ::syscall(__SPRT_SYSCALL_futex, uaddr,
 			__SPRT_FUTEX_WAKE | (flags & __SPRT_FUTEX_FLAG_MASK), val);
+#endif
 }
 
 // FUTEX_WAIT(2const): https://man7.org/linux/man-pages/man2/FUTEX_WAIT.2const.html
 __SPRT_C_FUNC long __SPRT_ID(futex_wait)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) val, __SPRT_TIMESPEC_NAME *timespec) {
+#if SPRT_EMBOX_USER
+	return __el0_futex((__SPRT_ID(uint32_t) *)uaddr,
+			(int)(__SPRT_FUTEX_WAIT | (flags & __SPRT_FUTEX_FLAG_MASK)), val, timespec, 0);
+#else
 	return ::syscall(__SPRT_SYSCALL_futex, uaddr,
 			__SPRT_FUTEX_WAIT | (flags & __SPRT_FUTEX_FLAG_MASK), val, timespec);
+#endif
 }
 
 // FUTEX_WAIT_BITSET(2const): https://man7.org/linux/man-pages/man2/FUTEX_WAIT_BITSET.2const.html
 __SPRT_C_FUNC long __SPRT_ID(futex_wait_bitset)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) val, __SPRT_TIMESPEC_NAME *timespec,
 		__SPRT_ID(uint32_t) bitset) {
+#if SPRT_EMBOX_USER
+	return __el0_futex((__SPRT_ID(uint32_t) *)uaddr,
+			(int)(__SPRT_FUTEX_WAIT_BITSET | (flags & __SPRT_FUTEX_FLAG_MASK)), val, timespec,
+			bitset);
+#else
 	return ::syscall(__SPRT_SYSCALL_futex, uaddr,
 			__SPRT_FUTEX_WAIT_BITSET | (flags & __SPRT_FUTEX_FLAG_MASK), val, timespec, nullptr,
 			bitset);
+#endif
 }
 
 // FUTEX_WAIT_BITSET(2const): https://man7.org/linux/man-pages/man2/FUTEX_WAIT_BITSET.2const.html
 __SPRT_C_FUNC long __SPRT_ID(futex_wake_bitset)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) val, __SPRT_ID(uint32_t) bitset) {
+#if SPRT_EMBOX_USER
+	return __el0_futex((__SPRT_ID(uint32_t) *)uaddr,
+			(int)(__SPRT_FUTEX_WAKE_BITSET | (flags & __SPRT_FUTEX_FLAG_MASK)), val, nullptr,
+			bitset);
+#else
 	return ::syscall(__SPRT_SYSCALL_futex, uaddr,
 			__SPRT_FUTEX_WAKE_BITSET | (flags & __SPRT_FUTEX_FLAG_MASK), val, nullptr, nullptr,
 			bitset);
+#endif
 }
 
 // FUTEX_LOCK_PI(2const): https://man7.org/linux/man-pages/man2/FUTEX_LOCK_PI.2const.html
 __SPRT_C_FUNC long __SPRT_ID(futex_lock_pi)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_TIMESPEC_NAME *timespec) {
+#if SPRT_EMBOX_USER
+	return -__SPRT_ENOSYS; // priority inheritance and futex2 are not in this ABI
+#else
 	return ::syscall(__SPRT_SYSCALL_futex, uaddr,
 			__SPRT_FUTEX_LOCK_PI | (flags & __SPRT_FUTEX_FLAG_MASK), 0, timespec);
+#endif
 }
 
 // FUTEX_TRYLOCK_PI(2const): https://man7.org/linux/man-pages/man2/FUTEX_TRYLOCK_PI.2const.html
 __SPRT_C_FUNC long __SPRT_ID(
 		futex_trylock_pi)(volatile __SPRT_ID(uint32_t) * uaddr, __SPRT_ID(uint32_t) flags) {
+#if SPRT_EMBOX_USER
+	return -__SPRT_ENOSYS; // priority inheritance and futex2 are not in this ABI
+#else
 	return ::syscall(__SPRT_SYSCALL_futex, uaddr,
 			__SPRT_FUTEX_TRYLOCK_PI | (flags & __SPRT_FUTEX_FLAG_MASK));
+#endif
 }
 
 // FUTEX_UNLOCK_PI(2const): https://man7.org/linux/man-pages/man2/FUTEX_UNLOCK_PI.2const.html
 __SPRT_C_FUNC long __SPRT_ID(
 		futex_unlock_pi)(volatile __SPRT_ID(uint32_t) * uaddr, __SPRT_ID(uint32_t) flags) {
+#if SPRT_EMBOX_USER
+	return -__SPRT_ENOSYS; // priority inheritance and futex2 are not in this ABI
+#else
 	return ::syscall(__SPRT_SYSCALL_futex, uaddr,
 			__SPRT_FUTEX_UNLOCK_PI | (flags & __SPRT_FUTEX_FLAG_MASK));
+#endif
 }
 
 // Futex2 API
 
 __SPRT_C_FUNC long __SPRT_ID(futex2_wake)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) bitset, int nr_wake, __SPRT_ID(uint32_t) flags) {
+#if SPRT_EMBOX_USER
+	return -__SPRT_ENOSYS; // priority inheritance and futex2 are not in this ABI
+#else
 	return syscall(__SPRT_SYSCALL_futex_wake, uaddr, bitset, nr_wake, flags);
+#endif
 }
 
 __SPRT_C_FUNC long __SPRT_ID(futex2_wait)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) val, __SPRT_ID(uint32_t) bitset, __SPRT_ID(uint32_t) flags,
 		__SPRT_TIMESPEC_NAME *timespec, __SPRT_ID(clockid_t) clockid) {
+#if SPRT_EMBOX_USER
+	return -__SPRT_ENOSYS; // priority inheritance and futex2 are not in this ABI
+#else
 	return syscall(__SPRT_SYSCALL_futex_wait, uaddr, val, bitset, flags, timespec, clockid);
+#endif
 }
 
 #else
