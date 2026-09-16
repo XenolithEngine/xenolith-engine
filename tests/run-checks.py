@@ -42,6 +42,10 @@ regenerates its corpus with a `gen-big-md.py` that is not in the repository. `te
 (Windows under wine, macOS, wasm) and belong to `docs/agents/cross-target.md`, not to an iteration
 loop on Linux.
 
+`computetest` needs a Vulkan device and is not in the `console` tier; `xenolith/core` and
+`xenolith/backend/vk` owe it. On a host with no loader or no device it prints SKIP, counts 0 checks
+and exits 0 - a skip is not a pass, so read the `device` line before calling the GPU path covered.
+
 The exit status is the number of RED jobs, and every FAIL line of every harness is reprinted at the
 end: a runner that reports the count and throws away which check failed is worse than no runner.
 """
@@ -72,6 +76,7 @@ CLI = [
     ("tests/git", "gittest", [], False),
     ("tests/thirdparty", "thirdpartytest", [], False),
     ("tests/remote", "remotetest", [], False),
+    ("tests/compute", "computetest", [], False),
 ]
 
 # Which console harnesses a directory owes. First match wins, so the specific paths lead.
@@ -83,6 +88,8 @@ OWES = [
     ("stappler", ["stapplertest"]),
     ("xenolith/font", ["localetest", "stapplertest"]),
     ("xenolith/renderer/ui/layout", ["uilayouttest"]),
+    ("xenolith/backend/vk", ["computetest"]),
+    ("xenolith/core", ["computetest"]),
     ("xenolith", []),
 ]
 
@@ -106,7 +113,7 @@ COST = {
     "window/hotkey-check.py": 9, "window/style-check.py": 8, "window/geometry-check.py": 8,
     "window/panel-check.py": 4, "window/clipboard-check.py": 4, "window/scale9-check.py": 3,
     "window/render-level-check.py": 4, "window/overflow-check.py": 3,
-    "gittest": 19, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
+    "gittest": 19, "computetest": 6, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
     "uilayouttest": 1,
 }
 

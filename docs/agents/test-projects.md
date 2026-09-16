@@ -10,6 +10,7 @@
 | `tests/libc` | `libctest` | the internal libc implementation — `runtime/libc_impl` **and** the `runtime_libc_wrapper` wrappers (including the substitute/replacement functions the wrappers supply when a function is missing on the platform). Built for the host **and** `x86_64-pc-windows-msvc`; `compare.sh` diffs the two for behavioural identity | CLI, host-vs-Windows diff |
 | `tests/stappler` | `stapplertest` | the `stappler_*` app modules (core/data/bitmap/crypto/db/document/font/vg/pug/makefile/layout/network) — **fast smoke build** | CLI |
 | `tests/tess` | `tesstest` | the tesselator (`stappler/tess`) and the vector layer, against the whole 2d icon set — a pinned digest per icon **and** a pinned raster per icon, plus a deterministic wire benchmark. No device, no window, no frame | CLI, golden |
+| `tests/compute` | `computetest` | Vulkan compute with no window (`xenolith_backend_vk` + `xenolith_core`): a `core::Queue` with one compute pass, `Loop::runRenderQueue`, `Loop::captureBuffer`, and a lost device through `vk::Device::setTestFault`. Needs a Vulkan device; without one it prints SKIP. `computetest timings` is the round-trip benchmark ([Measuring compute](measuring-compute.md)) | CLI, GPU |
 | `tests/window` | `testapp` | full xenolith GUI stack (`xenolith_application` + `renderer_ui` + `backend_vk` + `resources_assets`); transitively compiles the stappler modules | GUI |
 
 **Which to use:**
@@ -22,6 +23,15 @@
   the other way round, so neither alone is the check. `--write` re-pins a golden,
   and re-pinning is a decision to record in the commit message, not a way to make
   a run green.
+- Changed `xenolith/core` or `xenolith/backend/vk` → `tests/compute` (the runner
+  owes it for both). It covers the round trip on 1 … 10⁵ records and the device-lost
+  refusals: a request after `VK_ERROR_DEVICE_LOST` gets exactly one failed callback
+  and nothing hangs. Read its `device` line: SKIP counts 0 checks and proves
+  nothing. `XL_COMPUTE_DEVICE=<n>` picks a device, `XL_COMPUTE_VALIDATION=1` turns
+  the validation layer on. Every section runs twice, once per fence path: `export/`
+  (sync_fd on the looper, Linux with a device that can export) and `polled/` (the
+  loop's timer, what Windows and Android use). `export/fences-used` fails if nothing
+  was really exported, and `export/fd` if the fds leak.
 - Changed the runtime (`runtime`/`runtime_core`/wrapper) → `tests/runtime`; for
   the libc wrappers themselves also run `tests/libc`.
 - Changed `runtime/libc_impl` (or the libc wrappers) → `tests/libc` (its

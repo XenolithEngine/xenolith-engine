@@ -54,6 +54,15 @@ protected:
 	Map<void *, Rc<DeviceMemoryPool>> _memPools;
 };
 
+// A simulated VK_ERROR_DEVICE_LOST, for tests only: the device itself stays healthy, the engine is
+// told it is gone. Setting a fault cannot be undone.
+enum class DeviceTestFault : uint8_t {
+	None,
+	LoseOnSubmit, // every submit fails
+	LoseOnFenceCheck, // a submit goes through; the check of a fence that has signaled says lost
+	LoseWithoutSignal, // as LoseOnFenceCheck, and an exported sync_fd is dropped as if it never fired
+};
+
 class SP_PUBLIC Device : public core::Device {
 public:
 	using Features = DeviceInfo::Features;
@@ -128,6 +137,17 @@ public:
 	void readBuffer(Loop &loop, const Rc<Buffer> &,
 			Function<void(const BufferInfo &, BytesView)> &&);
 
+	void setTestFault(DeviceTestFault fault) { _testFault.store(toInt(fault)); }
+	DeviceTestFault getTestFault() const { return DeviceTestFault(_testFault.load()); }
+
+	// With export on (the default) and a device that supports it, a scheduled fence is exported as a
+	// sync_fd and waits on the looper; off, fences are polled on the loop's timer. Read per fence.
+	void setFenceExportEnabled(bool value) { _fenceExport.store(value); }
+	bool isFenceExportEnabled() const { return _fenceExport.load(); }
+
+	uint64_t getExportedFenceCount() const { return _exportedFences.load(); }
+	void noteFenceExported() { ++_exportedFences; }
+
 private:
 	using core::Device::init;
 
@@ -157,6 +177,9 @@ private:
 
 	sprt::condition_variable _resourceQueueCond;
 	sprt::mutex _queueMutex;
+	sprt::atomic<uint8_t> _testFault = 0;
+	sprt::atomic<bool> _fenceExport = true;
+	sprt::atomic<uint64_t> _exportedFences = 0;
 };
 
 } // namespace stappler::xenolith::vk

@@ -74,7 +74,9 @@ is itself: one runner at a time.
 
 The console harnesses go by directory, which is [the test-projects table](test-projects.md) as code (`OWES` in the
 runner): `runtime/` owes `runtimetest` and `libctest`, `runtime/libc_impl` the same pair the other way round,
-`stappler/tess` the two `tesstest` goldens, `stappler/` `stapplertest`, `xenolith/font` `localetest`.
+`stappler/tess` the two `tesstest` goldens, `stappler/` `stapplertest`, `xenolith/font` `localetest`,
+`xenolith/core` and `xenolith/backend/vk` `computetest`. `computetest` is not in the `console` tier because it needs
+a Vulkan device; on a host without one it prints SKIP and counts no checks, and the runner shows it green.
 
 The window checks go **by name**, because this repository names each script after the widget it drives:
 `XLUiSlider.cc` selects `slider-check.py`, `XLUiInlineEditor.cc` selects `inline-edit-check.py`. The file name is
