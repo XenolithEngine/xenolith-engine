@@ -445,15 +445,29 @@ void Device::runTask(Loop &loop, Rc<DeviceQueueTask> &&t) {
 		Rc<Fence> fence;
 
 		Rc<core::DeviceQueueTask> task;
+		sprt::atomic<bool> completed = false;
 
 		DeviceQueueTaskData(Device *dev, Rc<Loop> &&l, Rc<core::DeviceQueueTask> &&t)
 		: device(dev), loop(move(l)), task(move(t)) { }
+
+		// A failed submit reports from its own callback and again from the fence it never armed.
+		void complete(bool success) {
+			if (!completed.exchange(true)) {
+				task->handleComplete(success);
+			}
+		}
 	};
 
 	auto taskData = Rc<DeviceQueueTaskData>::alloc(this, &loop, move(t));
 
+	if (isDeviceLost()) {
+		taskData->complete(false);
+		return;
+	}
+
 	taskData->loop->performOnThread([this, taskData] {
-		taskData->device->acquireQueue(taskData->task->getQueueFlags(), *taskData->loop,
+		auto scheduled = taskData->device->acquireQueue(taskData->task->getQueueFlags(),
+				*taskData->loop,
 				[this, taskData](core::Loop &loop, const Rc<core::DeviceQueue> &queue) {
 			taskData->fence =
 					ref_cast<Fence>(taskData->loop->acquireFence(core::FenceType::Default));
@@ -464,12 +478,15 @@ void Device::runTask(Loop &loop, Rc<DeviceQueueTask> &&t) {
 			if (!taskData->task->handleQueueAcquired(*taskData->device, *queue)) {
 				taskData->device->releaseQueue(move(taskData->queue));
 				taskData->device->releaseCommandPool(*taskData->loop, move(taskData->pool));
+				taskData->fence->schedule(*taskData->loop);
+				taskData->fence = nullptr;
+				taskData->complete(false);
 				return;
 			}
 
 			taskData->fence->addRelease([taskData](bool success) {
 				taskData->device->releaseCommandPool(*taskData->loop, move(taskData->pool));
-				taskData->task->handleComplete(success);
+				taskData->complete(success);
 			}, this, "TextureSetLayout::readImage transferBuffer->dropPendingBarrier");
 
 			loop.performInQueue(Rc<sprt::dispatch::Task>::create(
@@ -488,13 +505,23 @@ void Device::runTask(Loop &loop, Rc<DeviceQueueTask> &&t) {
 					taskData->device->releaseQueue(move(taskData->queue));
 				}
 				if (!success) {
-					taskData->task->handleComplete(false);
+					taskData->complete(false);
 				}
 				taskData->fence->schedule(*taskData->loop);
 				taskData->fence = nullptr;
 			}));
-		}, [taskData](core::Loop &) { taskData->task->handleComplete(false); });
+		}, [taskData](core::Loop &) { taskData->complete(false); });
+
+		if (!scheduled) {
+			taskData->complete(false);
+		}
 	}, taskData, true);
+}
+
+void Device::markDeviceLost(StringView source) {
+	if (!_deviceLost.exchange(true)) {
+		log::source().error("core::Device", "Device lost: ", source);
+	}
 }
 
 void Device::invalidateSemaphore(Rc<Semaphore> &&sem) const {

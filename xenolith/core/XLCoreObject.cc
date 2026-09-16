@@ -498,20 +498,72 @@ bool Fence::check(Loop &loop, bool lockfree) {
 			return check(loop, false);
 		}
 		return false;
-	default: break;
+	case Status::Timeout: return false;
+	default:
+		lock.unlock();
+		releaseFailed(loop, status);
+		return true;
 	}
 	return false;
 }
 
+bool Fence::checkExternal(Loop &loop, bool signaled) {
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
+	if (_state != Armed) {
+		return true;
+	}
+
+	Status status = signaled && _object.device->isDeviceLost() ? Status::ErrorDeviceLost
+															   : doCheckFence(true);
+
+	switch (status) {
+	case Status::Ok:
+		_state = Signaled;
+		lock.unlock();
+		setSignaled(loop);
+		return true;
+	case Status::Suspended:
+	case Status::Declined:
+	case Status::Timeout:
+		// An exported sync_fd may leave the fence unsignaled; the handle's readiness is the signal.
+		if (signaled) {
+			_state = Signaled;
+			lock.unlock();
+			setSignaled(loop);
+			return true;
+		}
+		return false;
+	default:
+		lock.unlock();
+		releaseFailed(loop, status);
+		return true;
+	}
+	return false;
+}
+
+void Fence::releaseFailed(Loop &loop, Status status) {
+	// The fence will never signal: release it as failed, so its callbacks run and nobody polls it
+	// again.
+	_state = Signaled;
+	if (status == Status::ErrorDeviceLost) {
+		_object.device->markDeviceLost(_tag.empty() ? StringView("Fence::check") : _tag);
+	} else {
+		slog().error("core::Fence", "Fence check failed: ", status, ": ", _tag);
+	}
+	setReleased(loop, false);
+}
+
 void Fence::autorelease(Rc<Ref> &&ref) { _autorelease.emplace_back(move(ref)); }
 
-void Fence::setSignaled(Loop &loop) {
+void Fence::setSignaled(Loop &loop) { setReleased(loop, true); }
+
+void Fence::setReleased(Loop &loop, bool success) {
 	_state = Signaled;
 	if (loop.isOnThisThread()) {
-		doRelease(&loop, true);
+		doRelease(&loop, success);
 		scheduleReset(loop);
 	} else {
-		scheduleReleaseReset(loop, true);
+		scheduleReleaseReset(loop, success);
 	}
 }
 

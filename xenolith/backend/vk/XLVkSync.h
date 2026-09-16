@@ -28,6 +28,7 @@ THE SOFTWARE.
 #include "XLCoreObject.h"
 
 #include <sprt/runtime/dispatch/handle.h>
+#include <sprt/cxx/atomic>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
 
@@ -67,7 +68,14 @@ public:
 
 	VkFence getFence() const { return _fence; }
 
-	Rc<sprt::dispatch::Handle> exportFence(Loop &, Function<void()> &&);
+	// Exports the fence as a sync_fd and listens to it on the loop's looper. Null when the device
+	// cannot export, export is off, or the fence has already signaled - the caller polls it then.
+	// `onReleased` runs on the looper once the handle has released the fence.
+	//
+	// The export moves the pending signal into the fd: the fence itself may stay unsignaled for good
+	// (NVIDIA does). An exported fence is released through `checkExternal` only - `check` without
+	// `lockfree` would wait on it forever. Its status is still good for one thing: a lost device.
+	Rc<sprt::dispatch::PollHandle> exportFence(Loop &, Function<void()> &&onReleased);
 
 protected:
 	using core::Object::init;
@@ -77,6 +85,7 @@ protected:
 
 	VkFence _fence = VK_NULL_HANDLE;
 	bool _exportable = false;
+	sprt::atomic<bool> _externalSignal = false; // the exported sync_fd has fired since the last reset
 };
 
 } // namespace stappler::xenolith::vk

@@ -24,6 +24,8 @@ THE SOFTWARE.
 #include "XLVkSync.h"
 #include "XLVkDevice.h"
 
+#include <sprt/runtime/dispatch/looper.h>
+
 #ifndef XL_VKAPI_LOG
 #define XL_VKAPI_LOG(...)
 #endif
@@ -98,17 +100,16 @@ bool Fence::init(Device &dev, core::FenceType type) {
 	return false;
 }
 
-Rc<sprt::dispatch::Handle> Fence::exportFence(Loop &loop, Function<void()> &&cb) {
+Rc<sprt::dispatch::PollHandle> Fence::exportFence(Loop &loop, Function<void()> &&onReleased) {
 	using namespace sprt::dispatch;
 
-	if (!_exportable) {
+	auto dev = static_cast<Device *>(_object.device);
+	if (!_exportable || !dev->isFenceExportEnabled() || dev->isDeviceLost()) {
 		return nullptr;
 	}
 
 	if constexpr (config::UseExternalFenceSync) {
-#if SP_POSIX
-		auto dev = static_cast<Device *>(_object.device);
-
+#if LINUX
 		int fd = -1;
 		VkFenceGetFdInfoKHR getFenceFdInfo;
 		getFenceFdInfo.sType = VK_STRUCTURE_TYPE_FENCE_GET_FD_INFO_KHR;
@@ -117,29 +118,43 @@ Rc<sprt::dispatch::Handle> Fence::exportFence(Loop &loop, Function<void()> &&cb)
 		getFenceFdInfo.handleType = VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT;
 
 		auto status = dev->getTable()->vkGetFenceFdKHR(dev->getDevice(), &getFenceFdInfo, &fd);
-
-		if (status == VK_SUCCESS) {
-			if (fd < 0) {
-				return nullptr;
+		if (status != VK_SUCCESS) {
+			if (status != VK_ERROR_FEATURE_NOT_PRESENT) {
+				log::source().error("Fence", "Fail to export fence fd: ", getStatus(status));
 			}
-
-			return PollFdHandle::create(loop.getLooper()->getQueue(), fd,
-					PollFlags::In | PollFlags::CloseFd,
-					[this, completeCb = sp::move(cb), l = &loop](int fd,
-							PollFlags flags) -> Status {
-				if (hasFlag(flags, PollFlags::In)) {
-					if (completeCb) {
-						completeCb();
-					}
-					setSignaled(*l);
-					return Status::Done;
-				}
-				return Status::Ok;
-			},
-					this);
-		} else if (status != VK_ERROR_FEATURE_NOT_PRESENT) {
-			log::source().error("Fence", "Fail to export fence fd");
+			return nullptr;
 		}
+
+		// -1 stands for a fence that has already signaled.
+		if (fd < 0) {
+			return nullptr;
+		}
+
+		auto handle = loop.getLooper()->listenPollableHandle(NativeHandle(fd),
+				PollFlags::In | PollFlags::CloseFd,
+				[this, dev, l = &loop, onReleased = sp::move(onReleased)](NativeHandle,
+						PollFlags flags) -> Status {
+			if (!hasFlag(flags, PollFlags::In) && !hasFlag(flags, PollFlags::Err)
+					&& !hasFlag(flags, PollFlags::HungUp)) {
+				return Status::Ok;
+			}
+			_externalSignal = true;
+			if (dev->getTestFault() == DeviceTestFault::LoseWithoutSignal) {
+				// The work is done, the fd is dropped, and the fence stays armed: only the loop's
+				// watch can see it, through a check that says lost.
+				return Status::Done;
+			}
+			checkExternal(*l, true);
+			if (onReleased) {
+				onReleased();
+			}
+			return Status::Done;
+		}, this);
+
+		if (handle) {
+			dev->noteFenceExported();
+		}
+		return handle;
 #endif
 	}
 	return nullptr;
@@ -156,10 +171,20 @@ Status Fence::doCheckFence(bool lockfree) {
 			status = table.vkWaitForFences(device, 1, &_fence, VK_TRUE, UINT64_MAX);
 		}
 	});
+	// The simulated loss waits for the real work: releasing buffers a running command still uses is
+	// not what a lost device does. An exported fence may stay unsignaled after its fd fired, so the
+	// fd counts as the signal.
+	auto fault = dev->getTestFault();
+	if ((status == VK_SUCCESS || _externalSignal)
+			&& (fault == DeviceTestFault::LoseOnFenceCheck
+					|| fault == DeviceTestFault::LoseWithoutSignal)) {
+		return Status::ErrorDeviceLost;
+	}
 	return getStatus(status);
 }
 
 void Fence::doResetFence() {
+	_externalSignal = false;
 	auto dev = static_cast<Device *>(_object.device);
 	dev->getTable()->vkResetFences(dev->getDevice(), 1, &_fence);
 }

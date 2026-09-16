@@ -33,6 +33,10 @@ static constexpr bool UseExternalFenceSync = false;
 static constexpr bool UseExternalFenceSync = true;
 #endif
 
+/* How often the loop checks fences exported as sync_fd, in microseconds. The fd is the signal; the
+check only catches a lost device whose fd never becomes readable. */
+static constexpr uint64_t ExportedFenceWatchInterval = 100'000;
+
 /* Number of frames, that can be performed in suboptimal swapchain modes */
 static constexpr uint32_t MaxSuboptimalFrames = 24;
 
