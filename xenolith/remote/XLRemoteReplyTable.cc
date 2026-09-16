@@ -24,8 +24,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
-void ReplyTable::wait(uint32_t serial, ReplyCallback &&cb, uint64_t deadlineUs) {
-	_requests.insert_or_assign(serial, PendingReply{sp::move(cb), deadlineUs});
+void ReplyTable::wait(uint32_t serial, ReplyCallback &&cb, uint64_t deadlineUs, bool fatal) {
+	_requests.insert_or_assign(serial, PendingReply{sp::move(cb), deadlineUs, fatal});
 }
 
 bool ReplyTable::dispatch(const MessageHeader &h, BytesView payload) {
@@ -60,16 +60,21 @@ bool ReplyTable::failExpired(uint64_t nowUs, MessageType errorType) {
 		return false;
 	}
 
+	bool fatalExpired = false;
 	for (auto serial : expired) {
 		auto it = _requests.find(serial);
 		if (it == _requests.end()) {
 			continue;
 		}
 		auto cb = sp::move(it->second.cb);
+		auto fatal = it->second.fatal;
 		_requests.erase(it);
 
-		log::source().warn("remote::ReplyTable", "request ", serial,
-				" timed out without a reply; failing with local protocol error");
+		fatalExpired = fatalExpired || fatal;
+		if (fatal) {
+			log::source().warn("remote::ReplyTable", "request ", serial,
+					" timed out without a reply; failing with local protocol error");
+		}
 
 		if (cb) {
 			MessageHeader h{};
@@ -80,7 +85,7 @@ bool ReplyTable::failExpired(uint64_t nowUs, MessageType errorType) {
 			cb(h, BytesView());
 		}
 	}
-	return true;
+	return fatalExpired;
 }
 
 } // namespace stappler::xenolith::remote

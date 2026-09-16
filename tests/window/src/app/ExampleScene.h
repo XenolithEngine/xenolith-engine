@@ -89,6 +89,9 @@ protected:
 	// Handle of the second window offered to the remote session (`remote-share-second`). Kept so a
 	// repeated command is a no-op rather than a second window, and cleared by its close callback.
 	Rc<WindowSceneInfo> _secondSharedWindow;
+
+	// Windows opened by `open-windows` for a measurement run; kept so they live as long as the app.
+	Vector<Rc<WindowSceneInfo>> _benchWindows;
 	sprt::window::WindowGeometry _lastGeometry;
 };
 

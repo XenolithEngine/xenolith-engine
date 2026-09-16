@@ -769,8 +769,22 @@ void ServerAppThread::pumpListener() {
 
 		auto now = sp::platform::clock(ClockType::Monotonic);
 
+		/* Frame watchdog: a client that answered too late, or never committed the input it
+		promised, loses that frame -- not its session. Checked here, so the cancel and the window's
+		nudge happen outside the connection's own poll. */
+		if (auto client = session->getRenderClient()) {
+			if (client->checkFrameDeadlines(now)) {
+				log::source().info("AppThread", "client ", session->getId(), " was late with ",
+						client->getConsecutiveLateFrames(),
+						" frames in a row; terminating the session");
+				resetSession(session);
+				continue;
+			}
+		}
+
 		// Request watchdog: if the client left a request unanswered past its reply deadline, the
-		// waiters were already failed locally, so drop the connection.
+		// waiters were already failed locally, so drop the connection. A late frame is not one of
+		// those requests (see ReplyTable::wait).
 		if (session->failExpiredRequests(now)) {
 			log::source().info("AppThread",
 					"request reply timeout; terminating unresponsive client ", session->getId());
@@ -939,6 +953,12 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			}
 
 			conn->sendReply(h.serial, remote::Domain(h.domain), h.code, data);
+			return true;
+		};
+		case remote::WindowCode::AcquireFrame: {
+			// The client's answer to a frame we already gave up on (see checkFrameDeadlines): the
+			// waiter is gone, so the reply falls through to here. Consumed in silence -- a frame
+			// that arrived too late is not a protocol error.
 			return true;
 		};
 		case remote::WindowCode::FrameInput: {

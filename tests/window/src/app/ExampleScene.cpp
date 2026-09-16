@@ -39,6 +39,7 @@
 #include "app/LiveReloadAppThread.h" // live-reload session addr+key, when active
 #include "XLRemoteProtocol.h"
 #include "XLServerAppThread.h" // ServerAppThread: listener state for the `remote` command
+#include "XLRemoteRenderClient.h" // per-session frame statistics for the same command
 
 #include "window/MonitorModeSelectionLayout.cc"
 
@@ -372,6 +373,11 @@ void ExampleScene::registerCommands() {
 			auto &v = sessions.emplace();
 			v.setInteger(int64_t(it->getId()), "id");
 			v.setInteger(it->getPeerPid(), "pid");
+			// Frames this client was late with. A cancelled frame leaves no other trace: the
+			// session survives it by design.
+			if (auto client = it->getRenderClient()) {
+				v.setInteger(int64_t(client->getLateFrameCount()), "lateFrames");
+			}
 			auto &names = v.emplace("windows");
 			names.setArray(Value::ArrayType());
 			if (objs) {
@@ -407,6 +413,66 @@ void ExampleScene::registerCommands() {
 		}
 		auto fp = app->getListenerFingerprint();
 		result.setString(fp.empty() ? String() : base16::encode<Interface>(fp), "spki");
+		done(sp::move(result));
+	});
+
+	/* Open N more windows in THIS process: { count, width, height }.
+
+	What the milestone-M1 measurement needs and nothing else has: `remote-share-second` opens one
+	window, once, and offers it to a remote session. These are plain local windows with the same
+	content in each, so the only difference between the 1-window and the 4-window run is how many
+	windows there are. */
+	inspector::addCommand(content, "open-windows",
+			"Open N more windows in this process: { count, width, height }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		Value result;
+		auto server = getDirector() ? getDirector()->getRenderServer() : nullptr;
+		if (!server) {
+			result.setBool(false, "ok");
+			result.setString("no render server on this window", "error");
+			done(sp::move(result));
+			return;
+		}
+
+		auto count = uint32_t(req.getInteger("count", 1));
+		auto width = uint32_t(req.getInteger("width", 800));
+		auto height = uint32_t(req.getInteger("height", 600));
+		uint32_t opened = 0;
+		for (uint32_t i = 0; i < count; ++i) {
+			auto id = toString("bench-", _benchWindows.size() + 1);
+			auto handle = SecondaryWindow::open(static_cast<AppWindow *>(server), id,
+					Extent2(width, height), [](StringView) -> Rc<basic2d::SceneLayout2d> {
+				// A plain UI-shaped scene: a grid of rounded layers over a backdrop, the same in
+				// every window, so what is measured is the number of windows and nothing else.
+				auto layout = Rc<basic2d::SceneLayout2d>::create();
+				auto backdrop =
+						layout->addChild(Rc<basic2d::LayerRounded>::create(Color::Grey_100, 0.0f));
+				Vector<basic2d::LayerRounded *> cells;
+				for (uint32_t c = 0; c < 12; ++c) {
+					cells.emplace_back(layout->addChild(Rc<basic2d::LayerRounded>::create(
+							c % 2 ? Color::Blue_400 : Color::Teal_300, 8.0f)));
+				}
+				layout->setLayoutCallback([backdrop, cells](Node *node) {
+					auto size = node->getContentSize();
+					backdrop->setContentSize(size);
+					auto cellSize = Size2(size.width / 4.0f - 12.0f, size.height / 3.0f - 12.0f);
+					for (size_t i = 0; i < cells.size(); ++i) {
+						cells[i]->setContentSize(cellSize);
+						cells[i]->setPosition(Vec2(6.0f + float(i % 4) * (cellSize.width + 12.0f),
+								6.0f + float(i / 4) * (cellSize.height + 12.0f)));
+					}
+				});
+				return layout;
+			});
+			if (handle) {
+				_benchWindows.emplace_back(sp::move(handle));
+				++opened;
+			}
+		}
+
+		result.setBool(opened == count, "ok");
+		result.setInteger(int64_t(opened), "opened");
 		done(sp::move(result));
 	});
 

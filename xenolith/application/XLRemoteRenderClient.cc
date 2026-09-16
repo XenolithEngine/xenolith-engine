@@ -40,9 +40,22 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-// A client must answer AcquireFrame within this budget; the presentation engine is waiting, so a
-// client that misses it is treated as gone (the watchdog fails the waiter, the connection drops).
+/* A client must answer AcquireFrame within this budget, and must have committed its input within
+kFrameInputDeadlineUs of answering. Both are about ONE FRAME, not about the client: missing them
+cancels the frame (the window keeps showing what it last presented) and the session lives on --
+whether the client is still there is the keepalive's question, and only its answer drops a session.
+
+A client that misses them again and again is serving nothing, so kMaxConsecutiveLateFrames in a row
+does drop it. */
 static constexpr uint64_t kAcquireFrameReplyTimeoutUs = 2'000'000; // 2s
+
+/* The input deadline is deliberately generous: it guards against a client that stopped mid-frame,
+not against a slow one. A client's first frames legitimately take seconds -- fonts are announced,
+glyphs rasterized, materials compiled, all of it round trips -- and cancelling those would drop
+frames that were about to arrive. */
+static constexpr uint64_t kFrameInputDeadlineUs = 10'000'000; // 10s
+
+static constexpr uint32_t kMaxConsecutiveLateFrames = 3;
 
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
@@ -177,9 +190,17 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 			[this, pending, frameId, windowId, localProxy](const remote::MessageHeader &h,
 					BytesView payload) {
 		if (remote::isError(h)) {
+			// The watchdog synthesizes this header when the deadline passed with no answer; a
+			// client that refused outright answers with a real error. Both mean this frame is not
+			// coming, and neither means the client is gone.
 			log::source().warn("RemoteRenderClient", "AcquireFrame ", frameId, " rejected (code ",
 					uint32_t(h.code), ")");
+			++_lateFrames;
+			++_consecutiveLateFrames;
+			// The queue was never selected, so the frame invalidates itself when the engine finds
+			// nothing to render; all the window needs is the nudge to start another one.
 			pending->cb(false);
+			nudgeWindow(windowId);
 			return;
 		}
 
@@ -198,15 +219,108 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 		//log::source().info("RemoteRenderClient", "AcquireFrame ", frameId, " -> queue '",
 		//		sq->queue->getName(), "' (id ", queueId, ")");
 		localProxy->selectQueue(sq->queue);
-		_pendingFrames.emplace(frameId, PendingFrame{localProxy, windowId});
+
+		/* From here the client owes us input, and until it commits, this frame holds the window:
+		nothing else can be scheduled for it. The engine's own per-frame timer cancels it at the
+		deadline (it is armed from FrameRequest::getDeadline once the frame is submitted); the
+		deadline kept here is what lets the server notice, count it and nudge the window. */
+		auto deadline = sp::platform::clock(ClockType::Monotonic) + kFrameInputDeadlineUs;
+		if (auto request = localProxy->getRequest()) {
+			request->setDeadline(deadline);
+		}
+		_pendingFrames.emplace(frameId, PendingFrame{localProxy, windowId, deadline});
+		_consecutiveLateFrames = 0;
 		submitServerOwnedInputs(frameId, windowId, localProxy);
 		pending->cb(true);
 	},
-			kAcquireFrameReplyTimeoutUs);
+			kAcquireFrameReplyTimeoutUs, /* fatal */ false);
 
 	if (!sent) {
 		pending->cb(false);
 	}
+}
+
+AppWindow *RemoteRenderClient::resolveWindow(uint64_t windowId) const {
+	auto registry = _host ? _host->getSharedObjects() : nullptr;
+	return static_cast<AppWindow *>(registry ? registry->resolveWindow(windowId) : nullptr);
+}
+
+void RemoteRenderClient::nudgeWindow(uint64_t windowId) {
+	/* A cancelled frame reschedules nothing by itself: the engine frees the slot and stops there, so
+	without a nudge the window waits for the next thing that happens to ask for a frame -- on a
+	headless server, possibly nothing.
+
+	It has to be asked LATER, not now: `setReadyForNextFrame` only schedules when no frame is active,
+	and the frame being cancelled still is. So the window is remembered and asked on the next pump,
+	by which time the cancel has gone through. */
+	for (auto it : _nudgeWindows) {
+		if (it == windowId) {
+			return;
+		}
+	}
+	_nudgeWindows.emplace_back(windowId);
+}
+
+void RemoteRenderClient::flushNudges() {
+	if (_nudgeWindows.empty()) {
+		return;
+	}
+	auto windows = sp::move(_nudgeWindows);
+	_nudgeWindows.clear();
+	for (auto windowId : windows) {
+		if (auto w = resolveWindow(windowId)) {
+			w->setReadyForNextFrame();
+		}
+	}
+}
+
+void RemoteRenderClient::cancelFrame(uint64_t frameId, uint64_t windowId,
+		Rc<core::LocalFrameRequestProxy> &&proxy, StringView reason) {
+	++_lateFrames;
+	++_consecutiveLateFrames;
+	log::source().warn("RemoteRenderClient", "frame ", frameId, " of window ", windowId, ": ",
+			reason, "; cancelling it (", _consecutiveLateFrames, " in a row)");
+
+	/* Through the window rather than through the frame: invalidating is presentation-thread work,
+	and going there by hand would race the nudge below. A window holds at most one frame at a time
+	(nothing else is scheduled while one is active), so "the window's remote frames" is this frame. */
+	(void)proxy;
+	if (auto w = resolveWindow(windowId)) {
+		w->invalidateRemoteFrames();
+	}
+
+	nudgeWindow(windowId);
+}
+
+bool RemoteRenderClient::checkFrameDeadlines(uint64_t nowUs) {
+	// Windows whose frame was cancelled since the last pump: by now the cancel has gone through, so
+	// asking for another frame takes effect.
+	flushNudges();
+
+	if (_pendingFrames.empty()) {
+		return _consecutiveLateFrames >= kMaxConsecutiveLateFrames;
+	}
+
+	// Collected first: cancelling erases from the map.
+	Vector<uint64_t> expired;
+	for (auto &it : _pendingFrames) {
+		if (it.second.inputDeadline != 0 && nowUs >= it.second.inputDeadline) {
+			expired.emplace_back(it.first);
+		}
+	}
+
+	for (auto frameId : expired) {
+		auto it = _pendingFrames.find(frameId);
+		if (it == _pendingFrames.end()) {
+			continue;
+		}
+		auto windowId = it->second.windowId;
+		auto proxy = sp::move(it->second.proxy);
+		_pendingFrames.erase(it);
+		cancelFrame(frameId, windowId, sp::move(proxy), "the client never committed its input");
+	}
+
+	return _consecutiveLateFrames >= kMaxConsecutiveLateFrames;
 }
 
 /* Feeds the inputs a remote client can not produce. `FrameCapture` is server state (armed on the
@@ -322,7 +436,12 @@ void RemoteRenderClient::handleFrameInput(uint64_t frameId, SpanView<StringView>
 	}
 }
 
-void RemoteRenderClient::handleFrameCommit(uint64_t frameId) { _pendingFrames.erase(frameId); }
+void RemoteRenderClient::handleFrameCommit(uint64_t frameId) {
+	if (_pendingFrames.erase(frameId) > 0) {
+		// The client delivered a whole frame, so whatever it was late with before is behind it.
+		_consecutiveLateFrames = 0;
+	}
+}
 
 Rc<core::DependencyEvent> RemoteRenderClient::reconcileDependency(uint32_t depId) {
 	auto it = _materialDeps.find(depId);
