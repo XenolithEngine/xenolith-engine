@@ -69,6 +69,12 @@
 #define __SPRT_SYSCALL_clock_nanosleep 115
 #define __SPRT_SYSCALL_sched_yield     124
 
+// Directories. Embox has no directory descriptor at all: opendir/readdir over a
+// DIR*, and its open() ASSERTS on O_DIRECTORY rather than refusing it. So the
+// kernel invents the descriptor, out of a reserved high range -- which is why a
+// directory fd here is not the ordinary small integer Linux hands back.
+#define __SPRT_SYSCALL_getdents64      61
+
 #define __SPRT_SYSCALL_clock_gettime  113
 #define __SPRT_SYSCALL_uname          160
 #define __SPRT_SYSCALL_getpid         172
@@ -92,8 +98,8 @@
 // M2 - "kiosk with a picture and threads" (K6, K7):
 //     17 getcwd          23 dup             24 dup3            25 fcntl
 //     34 mkdirat         35 unlinkat        38 renameat        46 ftruncate
-//     48 faccessat       49 chdir           59 pipe2           61 getdents64
-//     73 ppoll           78 readlinkat      82 fsync          278 getrandom
+//     48 faccessat       49 chdir           59 pipe2           73 ppoll
+//     78 readlinkat      82 fsync          278 getrandom
 //
 //   17 getcwd already has a number in the kernel's xl_abi.h but no dispatcher
 //   case, so it answers ENOSYS; it stays out of this file until it does not.
