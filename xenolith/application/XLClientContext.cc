@@ -78,6 +78,32 @@ void ClientContext::handleWindowDisconnected(NotNull<ClientAppThread> thread,
 	}
 }
 
+void ClientContext::createWindow(Rc<sprt::window::WindowInfo> &&info,
+		Function<void(Status, StringView id)> &&complete) {
+	if (!_appThread) {
+		if (complete) {
+			complete(Status::ErrorNotSupported, StringView());
+		}
+		return;
+	}
+	_appThread->performOnAppThread(
+			[thread = _appThread, info = sp::move(info), complete = sp::move(complete)]() mutable {
+		thread->createWindow(sp::move(info), sp::move(complete));
+	}, this);
+}
+
+void ClientContext::handleServerInfo(NotNull<ClientAppThread> thread,
+		const remote::PeerInfo &info) {
+	if (_onServerInfo) {
+		_onServerInfo(thread, info);
+	}
+}
+
+void ClientContext::setServerInfoCallback(
+		Function<void(NotNull<ClientAppThread>, const remote::PeerInfo &)> &&cb) {
+	_onServerInfo = sp::move(cb);
+}
+
 void ClientContext::setWindowConnectedCallback(Function<bool(NotNull<RemoteWindow>)> &&cb) {
 	_onWindowConnected = sp::move(cb);
 }

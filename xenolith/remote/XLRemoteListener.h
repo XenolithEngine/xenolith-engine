@@ -43,6 +43,16 @@ public:
 	// GlobalError::Busy) so the peer learns why instead of waiting out its own handshake deadline.
 	// The caller closes the connection afterwards.
 	GlobalError reject(GlobalError status);
+
+	// The same handshake a step at a time, for a host that runs many at once (ServerHandshake).
+	ServerHandshake &getHandshake() { return _handshake; }
+
+	// After the step-at-a-time handshake replied Ok: take the negotiated dictionary and start the
+	// message serials, as handshake() does.
+	void adoptHandshake();
+
+protected:
+	ServerHandshake _handshake;
 };
 
 // A bound endpoint, owned by the host AppThread. It owns no thread: the host registers

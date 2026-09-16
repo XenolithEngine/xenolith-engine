@@ -48,6 +48,11 @@ GlobalError ServerConnection::handshake(BytesView expectedKey, BytesView serverD
 	return ret;
 }
 
+void ServerConnection::adoptHandshake() {
+	_dict = _handshake.getNegotiatedDict().bytes<Interface>();
+	_serial = 1; // begin a new serial session
+}
+
 GlobalError ServerConnection::reject(GlobalError status) {
 	if (!_transport) {
 		return GlobalError::BadProtocol;

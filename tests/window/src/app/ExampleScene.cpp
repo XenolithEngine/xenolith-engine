@@ -119,6 +119,38 @@ void ExampleScene::handleWindowGeometryChanged(const sprt::window::WindowGeometr
 
 void ExampleScene::handleEnter(Scene *scene) { Scene2d::handleEnter(scene); }
 
+/* What a window asked for by a REMOTE CLIENT is on this server.
+
+The engine creates the window and owns the policy; what it can not do is build a scene -- the
+application layer is where a 2d queue can be described at all. The scene is a SecondaryScene that
+shares itself with the session as soon as it is presented, which is the same path
+`remote-share-second` takes; its content is deliberately unlike the primary scene and unlike the
+second shared window, because the driver tells the three apart by screenshot. */
+void ExampleScene::installClientWindowHandler(ServerAppThread *app) {
+	if (auto env = ::getenv("XL_REMOTE_MAX_CLIENT_WINDOWS")) {
+		app->setMaxClientWindows(uint32_t(StringView(env).readInteger(10).get(4)));
+	}
+	app->setClientWindowHandler(
+			[](NotNull<RemoteSession> session, NotNull<sprt::window::WindowInfo> info,
+					Rc<WindowSceneInfo> &out) -> Status {
+		// Only Root windows exist headless, and the title says whose window it is.
+		info->type = sprt::window::WindowType::Root;
+		info->title = toString("testapp client ", session->getId());
+		out = SecondaryWindow::makeSceneInfo(info->id, [](StringView) {
+			auto layout = Rc<basic2d::SceneLayout2d>::create();
+			auto marker =
+					layout->addChild(Rc<basic2d::LayerRounded>::create(Color::Green_500, 0.0f));
+			marker->setAnchorPoint(Anchor::Middle);
+			marker->setContentSize(Size2(120, 120));
+			marker->setPositionZ(0.0f);
+			layout->setLayoutCallback(
+					[marker](Node *node) { marker->setPosition(node->getContentSize() / 2.0f); });
+			return layout;
+		}, nullptr, nullptr, /* shareRemote */ true);
+		return out ? Status::Ok : Status::Declined;
+	});
+}
+
 // Сцена была собрана и запущена режиссёром
 void ExampleScene::handlePresented(Director *dir) {
 	Scene2d::handlePresented(dir);
@@ -190,9 +222,35 @@ void ExampleScene::handlePresented(Director *dir) {
 		}
 
 		if (!shareAddr.empty()) {
-			log::source().info("ExampleScene", "sharing this window at ", shareAddr);
-			dir->shareQueue(sp::move(builder), shareAddr,
-					BytesView(shareKey.data(), shareKey.size()));
+			auto app = dynamic_cast<ServerAppThread *>(dir->getApplication());
+
+			// XL_REMOTE_MAX_CLIENTS=<n>: serve several clients at once (one by default), what
+			// remote-multi-check.py drives.
+			if (auto env = ::getenv("XL_REMOTE_MAX_CLIENTS")) {
+				if (app) {
+					app->setMaxRemoteClients(uint32_t(StringView(env).readInteger(10).get(1)));
+				}
+			}
+
+			// XL_REMOTE_CLIENT_WINDOWS=1: answer window requests from clients. Off by default, so
+			// the feature is observable in both states -- a server that does not offer it must
+			// refuse without costing the session.
+			if (app && ::getenv("XL_REMOTE_CLIENT_WINDOWS")) {
+				installClientWindowHandler(app);
+			}
+
+			// XL_REMOTE_SHARE_PRIMARY=0: listen without offering this window, the shape a window
+			// manager has -- every window there belongs to a client.
+			auto sharePrimary = ::getenv("XL_REMOTE_SHARE_PRIMARY");
+			if (app && sharePrimary && StringView(sharePrimary) == "0") {
+				log::source().info("ExampleScene", "listening at ", shareAddr,
+						" without sharing this window");
+				app->startSession(shareAddr, BytesView(shareKey.data(), shareKey.size()));
+			} else {
+				log::source().info("ExampleScene", "sharing this window at ", shareAddr);
+				dir->shareQueue(sp::move(builder), shareAddr,
+						BytesView(shareKey.data(), shareKey.size()));
+			}
 		}
 	}
 #endif
@@ -283,8 +341,9 @@ void ExampleScene::registerCommands() {
 	// the same scene through the same window. So the state that decides it is reported directly:
 	// whether the listener is up, the SPKI the client must pin (only knowable after the listener
 	// opens, which is why the driver polls for it), and whether a client holds the connection.
-	inspector::addCommand(content, "remote", "Remote render session status: { listening, spki, "
-										 "clientConnected }",
+	inspector::addCommand(content, "remote",
+			"Remote render session status: { listening, spki, clientConnected, clients, "
+			"sessions: [{ id, pid, windows }], windows: [{ name, owner, assigned }] }",
 			[this](Value &&, Function<void(Value &&)> &&done) {
 		Value result;
 		auto app = dynamic_cast<ServerAppThread *>(getDirector()->getApplication());
@@ -302,8 +361,115 @@ void ExampleScene::registerCommands() {
 		// window make it into the announce" has no other observable answer.
 		auto objs = app->getSharedObjects();
 		result.setInteger(objs ? int64_t(objs->getWindows().size()) : 0, "sharedWindows");
+		// gAPI objects the registry is keeping alive. A window opened and closed in a loop must not
+		// grow this: what a queue's encoding minted goes with the queue.
+		result.setInteger(objs ? int64_t(objs->size()) : 0, "sharedObjects");
+
+		// Who serves what: a session is known to the driver by the pid of its client process.
+		auto &sessions = result.emplace("sessions");
+		sessions.setArray(Value::ArrayType());
+		for (auto &it : app->getRemoteSessions()) {
+			auto &v = sessions.emplace();
+			v.setInteger(int64_t(it->getId()), "id");
+			v.setInteger(it->getPeerPid(), "pid");
+			auto &names = v.emplace("windows");
+			names.setArray(Value::ArrayType());
+			if (objs) {
+				for (auto &w : objs->getWindows()) {
+					if (w.second.ownerSession == it->getId() && w.second.window) {
+						names.addString(w.second.window->getId());
+					}
+				}
+			}
+		}
+		result.setInteger(int64_t(app->getRemoteSessions().size()), "clients");
+
+		// How many of the shared windows exist because a client asked for them.
+		size_t clientWindows = 0;
+		for (auto &it : app->getRemoteSessions()) {
+			clientWindows += app->getClientWindowCount(it->getId());
+		}
+		result.setInteger(int64_t(clientWindows), "clientWindows");
+
+		auto &windows = result.emplace("windows");
+		windows.setArray(Value::ArrayType());
+		if (objs) {
+			for (auto &w : objs->getWindows()) {
+				if (!w.second.window) {
+					continue;
+				}
+				auto &v = windows.emplace();
+				v.setString(w.second.window->getId(), "name");
+				v.setInteger(int64_t(w.second.ownerSession), "owner");
+				v.setInteger(int64_t(w.second.assignedSession), "assigned");
+				v.setInteger(int64_t(w.second.creatorSession), "creator");
+			}
+		}
 		auto fp = app->getListenerFingerprint();
 		result.setString(fp.empty() ? String() : base16::encode<Interface>(fp), "spki");
+		done(sp::move(result));
+	});
+
+	/* Open a window for a connected client, as if that client had asked for it:
+	{ session, id, width, height }.
+
+	The wire request lands in the same ServerAppThread::createClientWindow; driving it from here
+	exercises the server half -- policy, reservation, close-with-the-session -- without a client
+	that knows the message. */
+	inspector::addCommand(content, "remote-create-window",
+			"Open a window for a session, as its client would: { session, id, width, height }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		Value result;
+		auto app = dynamic_cast<ServerAppThread *>(getDirector()->getApplication());
+		auto session = app ? app->getRemoteSession(uint64_t(req.getInteger("session"))) : nullptr;
+		if (!session) {
+			result.setBool(false, "ok");
+			result.setString(app ? "unknown session" : "not a server app thread", "error");
+			done(sp::move(result));
+			return;
+		}
+
+		auto info = Rc<sprt::window::WindowInfo>::create();
+		auto name = req.getString("id");
+		info->id = name.empty() ? String("window") : String(name.data(), name.size());
+		info->rect = IRect(0, 0, int32_t(req.getInteger("width", 320)),
+				int32_t(req.getInteger("height", 240)));
+
+		// The answer waits for the window system, exactly as the client's reply does.
+		app->createClientWindow(session, sp::move(info), 0,
+				[done = sp::move(done)](Status st, StringView id,
+						const sprt::window::WindowInfo *granted) mutable {
+			Value result;
+			result.setBool(st == Status::Ok, "ok");
+			result.setInteger(int64_t(toInt(st)), "status");
+			result.setString(id, "id");
+			if (granted) {
+				result.setInteger(int64_t(granted->rect.width), "width");
+				result.setInteger(int64_t(granted->rect.height), "height");
+			}
+			done(sp::move(result));
+		});
+	});
+
+	/* Reserve a shared window for one client: { window, session } (session 0 lifts it).
+
+	The server decides who may see a window; this is that decision made by hand. It can come before
+	the window exists -- the reservation waits for a window shared under that name. */
+	inspector::addCommand(content, "remote-assign",
+			"Reserve a shared window for a session: { window, session }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		Value result;
+		auto app = dynamic_cast<ServerAppThread *>(getDirector()->getApplication());
+		if (!app || !req.isString("window")) {
+			result.setBool(false, "ok");
+			result.setString(app ? "window name is required" : "not a server app thread", "error");
+			done(sp::move(result));
+			return;
+		}
+		app->assignSharedWindow(req.getString("window"), uint64_t(req.getInteger("session")));
+		result.setBool(true, "ok");
 		done(sp::move(result));
 	});
 

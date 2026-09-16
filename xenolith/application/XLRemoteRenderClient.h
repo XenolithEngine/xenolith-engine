@@ -30,6 +30,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class ServerAppThread;
+class RemoteSession;
 
 // Server-side proxy for a connected remote client: implements core::RenderClientChannel by
 // serializing the calls over the connection to the real client.
@@ -37,18 +38,20 @@ class SP_PUBLIC RemoteRenderClient : public core::RenderClientChannel {
 public:
 	virtual ~RemoteRenderClient();
 
-	// `host` is the owning thread (raw back-ref: the host owns this client); it provides the
-	// request/reply transport (sendMessageWithReply) and the shared-object registry.
-	bool init(NotNull<ServerAppThread> host, Rc<remote::ServerConnection> &&);
+	// `host` provides the shared-object registry and the GPU loop; `session` (which owns this
+	// client) the connection, the replies and the font endpoint. Both are raw back-refs.
+	bool init(NotNull<ServerAppThread> host, NotNull<RemoteSession> session);
 
 	// True once the underlying connection has begun terminating (client disconnected).
 	bool isClosed();
 
-	void closeConnection();
+	// The session is closing: forget it and every frame in flight. A window may still hold the
+	// client until it is switched back; everything it asks is refused from here on.
+	void detach();
 
-	// The accepted connection (for the host AppThread to drive the async message dispatch loop).
-	remote::ServerConnection *getConnection() const { return _connection; }
+	remote::ServerConnection *getConnection() const;
 
+	// Send the windows this client's session can see.
 	void announce(NotNull<remote::ObjectRegistry>);
 
 	virtual void acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> proxy,
@@ -96,7 +99,7 @@ protected:
 	Rc<core::DependencyEvent> reconcileDependency(uint32_t depId);
 
 	ServerAppThread *_host = nullptr;
-	Rc<remote::ServerConnection> _connection;
+	RemoteSession *_session = nullptr;
 	uint64_t _nextFrameId = 1; // monotonic wire token correlating an AcquireFrame request/reply
 
 	// In-flight frames the client is still streaming input for, keyed by wire frame id; app thread

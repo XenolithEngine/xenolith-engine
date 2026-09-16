@@ -35,7 +35,7 @@ static constexpr uint64_t kAnnounceReplyTimeoutUs = 5'000'000; // 5s
 // 12-byte binary header of a Data packet: [u64 id][u32 index], network byte order, then the chunk.
 static constexpr size_t kPacketPrefixSize = sizeof(uint64_t) + sizeof(uint32_t);
 
-bool BlockTransferManager::init(AppThread *owner) {
+bool BlockTransferManager::init(RemotePeer *owner) {
 	_owner = owner;
 	return true;
 }
@@ -167,13 +167,16 @@ void BlockTransferManager::schedulePump() {
 	_pumpScheduled = true;
 	// Keep the manager alive across the deferral: the connection can go away first.
 	auto self = Rc<BlockTransferManager>(this);
-	_owner->performOnAppThread([self] {
+	_owner->getPeerThread()->performOnAppThread([self] {
 		self->_pumpScheduled = false;
 		self->pumpOutgoing();
-	}, _owner, true);
+	}, this, true);
 }
 
 void BlockTransferManager::pumpOutgoing() {
+	if (!_owner) {
+		return;
+	}
 	auto sel = selectNextTransfer();
 	if (!sel) {
 		return; // nothing accepted and unfinished
@@ -225,7 +228,10 @@ void BlockTransferManager::deliverIncoming(IncomingTransfer &t) {
 	// sender sends Release or we evict it (markUnavailable).
 	Value done;
 	done.setInteger(int64_t(t.id), "id");
-	_owner->remoteSendCbor(remote::Domain::Data, toInt(remote::DataCode::Complete), done, nullptr);
+	if (_owner) {
+		_owner->remoteSendCbor(remote::Domain::Data, toInt(remote::DataCode::Complete), done,
+				nullptr);
+	}
 }
 
 bool BlockTransferManager::handleAnnounce(const remote::MessageHeader &h, BytesView payload) {
@@ -517,6 +523,11 @@ void BlockTransferManager::reset() {
 	_incoming.clear();
 	_lastServed = 0;
 	// _nextId stays monotonic across reconnects so transfer ids remain unambiguous in logs.
+}
+
+void BlockTransferManager::invalidate() {
+	reset();
+	_owner = nullptr;
 }
 
 } // namespace stappler::xenolith

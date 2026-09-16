@@ -83,7 +83,7 @@ bool AppWindow::init(NotNull<Context> ctx, NotNull<ServerAppThread> app, NotNull
 	if (auto data = _window->takeAppData()) {
 		_sceneInfo = static_cast<WindowSceneInfo *>(data.get());
 		if (_sceneInfo) {
-			_sceneInfo->setWindow(this);
+			_sceneInfo->setChannel(this);
 		} else {
 			log::source().error("AppWindow", "WindowInfo::appData is not a WindowSceneInfo");
 		}
@@ -143,7 +143,7 @@ void AppWindow::releaseSceneInfo() {
 	// Destroyed on the app thread: it holds scene-graph objects captured by the opener. `this` is
 	// not captured, the window may be gone by then.
 	_application->performOnAppThread([sceneInfo = move(_sceneInfo)]() mutable {
-		sceneInfo->setWindow(nullptr);
+		sceneInfo->setChannel(nullptr);
 		sceneInfo->fireClose();
 		sceneInfo = nullptr;
 	}, _application);
@@ -178,7 +178,7 @@ void AppWindow::end() {
 		if (sceneInfo) {
 			// Every teardown route (own close, parent cascade, WM dismiss) reaches here, so the
 			// opener's callback fires here.
-			sceneInfo->setWindow(nullptr);
+			sceneInfo->setChannel(nullptr);
 			sceneInfo->fireClose();
 			sceneInfo = nullptr;
 		}
@@ -220,6 +220,9 @@ void AppWindow::close(bool graceful) {
 
 		if (!graceful) {
 			end();
+			// As in both branches below: the native window is on its way out, and what end() sets
+			// in motion (the Director's teardown cancels text input) reaches _window afterwards.
+			_window = nullptr;
 		} else if (_presentationEngine) {
 			_presentationEngine->updateConstraints(core::UpdateConstraintsFlags::EndOfLife,
 					[this, w = Rc<NativeWindow>(w)](bool) {

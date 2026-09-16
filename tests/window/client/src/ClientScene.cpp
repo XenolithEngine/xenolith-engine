@@ -190,6 +190,49 @@ void ClientScene::handleEnter(Scene *scene) {
 void ClientScene::registerCommands() {
 	auto content = getContent();
 
+	/* Ask the server for another window: { id, width, height }.
+
+	The first window a client has is asked for at startup (XL_CLIENT_CREATE_WINDOW) because an
+	inspector needs a window to exist at all; this is the same request, driven from outside. */
+	inspector::addCommand(content, "client-create-window",
+			"Ask the server for a window: { id, width, height }; answers { ok, status, id }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		auto thread =
+				_director ? dynamic_cast<ClientAppThread *>(_director->getApplication()) : nullptr;
+		if (!thread) {
+			Value result;
+			result.setBool(false, "ok");
+			result.setString("not a remote client", "error");
+			done(sp::move(result));
+			return;
+		}
+
+		auto info = Rc<sprt::window::WindowInfo>::create();
+		auto name = req.getString("id");
+		info->id = sprt::window::String(name.data(), name.size());
+		info->rect = IRect(0, 0, int32_t(req.getInteger("width", 320)),
+				int32_t(req.getInteger("height", 240)));
+		info->appData = Rc<WindowSceneInfo>::create(
+				[](NotNull<AppThread>, NotNull<core::RenderServerChannel>,
+						const core::FrameConstraints &) -> Rc<Scene> {
+			// Null falls through to the process-wide makeScene symbol -- this scene's own class.
+			return nullptr;
+		},
+				[](NotNull<WindowSceneInfo> handle) {
+			log::source().info("client", "window '", handle->getId(), "' is gone");
+		});
+
+		thread->createWindow(sp::move(info),
+				[done = sp::move(done)](Status st, StringView id) mutable {
+			Value result;
+			result.setBool(st == Status::Ok, "ok");
+			result.setInteger(int64_t(toInt(st)), "status");
+			result.setString(id, "id");
+			done(sp::move(result));
+		});
+	});
+
 	inspector::addCommand(content, "client-state",
 			"What the client's window knows about itself: "
 			"{ sceneWidth, sceneHeight, constraintsWidth, constraintsHeight, density, "

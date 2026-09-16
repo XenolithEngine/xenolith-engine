@@ -47,6 +47,12 @@ static constexpr uint32_t kClientDependencyEventMask = 0x8000'0000u;
 // Keepalive: disconnect if the server has not pinged us within this window (it pings ~1/s).
 static constexpr uint64_t kKeepalivePingTimeoutUs = 5'000'000; // 5s
 
+/* Creating a window is a hop to the server's context thread plus the window system's own work; it
+is NOT the window becoming drawable (that needs a presented frame and a compiled queue, which is why
+the reply does not wait for it -- see the announce's creator serial). Generous, because an
+unanswered request past its deadline is treated as a dead server. */
+static constexpr uint64_t kCreateWindowReplyTimeoutUs = 10'000'000; // 10s
+
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
 ClientAppThread::~ClientAppThread() { }
@@ -83,6 +89,17 @@ bool ClientAppThread::worker() {
 			log::source().error("ClientAppThread", "failed to connect to ", addr.description());
 			return false;
 		}
+
+#if DEBUG
+		// XL_REMOTE_HANDSHAKE_DELAY_MS=<n>: hold the connection open without a hello, the way a
+		// stalled peer would, so a test can check that the server does not wait on it.
+		if (auto env = ::getenv("XL_REMOTE_HANDSHAKE_DELAY_MS")) {
+			auto delayMs = StringView(env).readInteger(10).get(0);
+			log::source().warn("ClientAppThread", "XL_REMOTE_HANDSHAKE_DELAY_MS: waiting ", delayMs,
+					"ms before the handshake");
+			sp::platform::sleep(uint64_t(delayMs) * 1'000);
+		}
+#endif
 
 		// Connected: run the X11-like setup handshake (auth + window info + dictionary negotiation).
 		auto code = conn->handshake(_clientContext->getBearerKey(),
@@ -135,6 +152,133 @@ bool ClientAppThread::sendMessageWithReply(remote::Domain d, uint8_t message, co
 	return false;
 }
 
+bool ClientAppThread::isWindowCreationSupported() const {
+	auto info = getServerInfo();
+	if (!info) {
+		return false;
+	}
+	// Two questions: the mask says this build knows the message, the feature bit says this server
+	// will actually serve it (a silent peer's mask reads as "supports everything").
+	return info->supports(remote::Domain::Window, toInt(remote::WindowCode::CreateWindow))
+			&& hasFlag(info->features, remote::PeerFeatures::ClientWindows);
+}
+
+void ClientAppThread::createWindow(Rc<sprt::window::WindowInfo> &&info,
+		Function<void(Status, StringView id)> &&complete) {
+	Rc<WindowSceneInfo> handle;
+	if (info) {
+		if (auto payload = info->takeAppData()) {
+			handle = dynamic_cast<WindowSceneInfo *>(payload.get());
+			if (!handle) {
+				log::source().error("ClientAppThread",
+						"createWindow: WindowInfo::appData is not a WindowSceneInfo");
+			}
+		}
+	}
+
+	auto refuse = [&](Status st) {
+		if (complete) {
+			complete(st, StringView());
+		}
+		if (handle) {
+			handle->fireClose();
+		}
+	};
+
+	if (!info) {
+		refuse(Status::ErrorInvalidArguemnt);
+		return;
+	}
+	if (!isWindowCreationSupported()) {
+		// Answered here: a server that does not serve window requests must not be sent one, and a
+		// refusal must not cost the session.
+		log::source().warn("ClientAppThread",
+				"createWindow: the server does not open windows on " "request");
+		refuse(Status::ErrorNotSupported);
+		return;
+	}
+
+	uint32_t serial = 0;
+	if (_connection
+			&& _connection->sendCborMessage(remote::Domain::Window,
+					   toInt(remote::WindowCode::CreateWindow),
+					   remote::serializeWindowRequest(*info), &serial)
+					== remote::GlobalError::Ok) {
+		waitForReply(serial, [this, serial](const remote::MessageHeader &h, BytesView payload) {
+			auto rec = findPendingWindow(serial, StringView());
+			if (!rec) {
+				return;
+			}
+			auto complete = sp::move(rec->complete);
+			rec->complete = nullptr;
+
+			Status st = Status::ErrorNotImplemented;
+			String id;
+			if (!remote::isError(h)) {
+				auto val = data::read<Interface>(payload);
+				st = Status(int32_t(val.getInteger("st")));
+				id = val.getString("id");
+				rec->grantedId = id;
+			}
+
+			if (complete) {
+				complete(st, id);
+			}
+			// A refused request has no window coming: settle the handle now.
+			if (st != Status::Ok) {
+				if (auto again = findPendingWindow(serial, StringView())) {
+					auto handle = again->handle;
+					dropPendingWindow(serial);
+					if (handle) {
+						handle->fireClose();
+					}
+				}
+			}
+		}, kCreateWindowReplyTimeoutUs);
+
+		_pendingWindows.emplace_back(
+				PendingWindow{serial, sp::move(handle), sp::move(complete), String(), false});
+		return;
+	}
+
+	refuse(Status::ErrorNotSupported);
+}
+
+ClientAppThread::PendingWindow *ClientAppThread::findPendingWindow(uint32_t serial, StringView id) {
+	for (auto &it : _pendingWindows) {
+		if (serial != 0 && it.serial == serial) {
+			return &it;
+		}
+		// A server that does not echo the serial leaves the granted id as the only handle on it.
+		if (!id.empty() && !it.grantedId.empty() && StringView(it.grantedId) == id) {
+			return &it;
+		}
+	}
+	return nullptr;
+}
+
+void ClientAppThread::dropPendingWindow(uint32_t serial) {
+	for (auto it = _pendingWindows.begin(); it != _pendingWindows.end(); ++it) {
+		if (it->serial == serial) {
+			_pendingWindows.erase(it);
+			return;
+		}
+	}
+}
+
+void ClientAppThread::failPendingWindows(Status st) {
+	auto pending = sp::move(_pendingWindows);
+	_pendingWindows.clear();
+	for (auto &it : pending) {
+		if (it.complete) {
+			it.complete(st, StringView(it.grantedId));
+		}
+		if (it.handle) {
+			it.handle->fireClose();
+		}
+	}
+}
+
 bool ClientAppThread::remoteSendCbor(remote::Domain d, uint8_t code, const Value &v,
 		uint32_t *outSerial) {
 	if (!_connection || !_connection->isOpen()) {
@@ -173,7 +317,12 @@ bool ClientAppThread::remoteSendCborWithReply(remote::Domain d, uint8_t code, co
 
 void ClientAppThread::handleThreadInitialized() { _clientContext->handleAppThreadCreated(this); }
 
-void ClientAppThread::handleThreadDisposed() { _clientContext->handleAppThreadDestroyed(this); }
+void ClientAppThread::handleThreadDisposed() {
+	// Backstop for a path that did not go through the disconnect above: a handle destroyed without
+	// its callback firing warns in debug builds, and that is the diagnostic worth keeping honest.
+	failPendingWindows(Status::ErrorCancelled);
+	_clientContext->handleAppThreadDestroyed(this);
+}
 
 void ClientAppThread::handleThreadUpdated(const UpdateTime &time) {
 	_clientContext->handleAppThreadUpdate(this, time);
@@ -293,6 +442,23 @@ void ClientAppThread::pumpConnection() {
 				}
 			}
 		}
+
+		/* Tear the windows down as the announce would if they had simply gone away: end the
+		Directors, answer the handles, and drop the maps -- a RemoteWindow references this thread,
+		so leaving them here leaks both. */
+		auto windows = sp::move(_windows);
+		_windows.clear();
+		_queues.clear();
+		for (auto &it : windows) {
+			if (auto dir = dynamic_cast<Director *>(it.second->getRenderClient())) {
+				dir->end();
+			}
+			if (auto sceneInfo = it.second->getSceneInfo()) {
+				sceneInfo->fireClose();
+			}
+			handleWindowDisconnected(it.second);
+		}
+		failPendingWindows(Status::ErrorCancelled);
 
 		if (_blockTransfer) {
 			_blockTransfer->reset();
@@ -608,6 +774,10 @@ void ClientAppThread::handleServerInfo(const remote::MessageHeader &h, BytesView
 		_connection->sendCborReply(h.serial, remote::Domain::Global,
 				toInt(remote::GlobalCode::ServerInfo), remote::serializePeerInfo(local));
 	}
+
+	// The earliest point at which a client knows what this server can do -- and therefore the
+	// earliest at which it may ask for a window of its own.
+	_clientContext->handleServerInfo(this, _serverInfo);
 }
 
 void ClientAppThread::handleAnnounce(const Value &data) {
@@ -679,10 +849,22 @@ void ClientAppThread::handleAnnounce(const Value &data) {
 			if (auto dir = dynamic_cast<Director *>(it->getRenderClient())) {
 				dir->end();
 			}
+			// The opener asked for this window and is owed an answer however it went away.
+			if (auto sceneInfo = it->getSceneInfo()) {
+				dropPendingWindow(it->getCreatorSerial());
+				sceneInfo->fireClose();
+			}
 			handleWindowDisconnected(it);
 		}
 
 		for (auto &it : connectedWindows) {
+			// A window this client asked for carries its request's serial, so the scene it was
+			// asked with is bound before the Director is built (makeScene consults it).
+			if (auto rec = findPendingWindow(it->getCreatorSerial(), it->getId())) {
+				rec->bound = true;
+				it->setSceneInfo(Rc<WindowSceneInfo>(rec->handle));
+			}
+
 			auto wIt = _windows.find(it->getServerId());
 			if (wIt != _windows.end()) {
 				if (handleWindowConnected(wIt->second)) {

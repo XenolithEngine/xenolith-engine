@@ -25,6 +25,7 @@
 #include "XLRemoteProtocol.h"
 #include "XLRemoteObject.h" // shared queue / window resolution
 #include "XLServerAppThread.h"
+#include "XLRemoteSession.h"
 #include "XLRemoteFontServer.h" // reconcile remote font dependency ids + resolve the atlas image
 #include "XLAppWindow.h" // window->compileMaterials
 #include "XLCoreFrameRequestProxy.h"
@@ -49,27 +50,35 @@ RemoteRenderClient::~RemoteRenderClient() = default;
 
 __SPRT_POP_ALLOW_CXXABI_ALLOC
 
-bool RemoteRenderClient::init(NotNull<ServerAppThread> host, Rc<remote::ServerConnection> &&conn) {
+bool RemoteRenderClient::init(NotNull<ServerAppThread> host, NotNull<RemoteSession> session) {
 	_host = host;
-	_connection = sp::move(conn);
-	return _connection != nullptr;
+	_session = session;
+	return true;
 }
 
-bool RemoteRenderClient::isClosed() { return !_connection || _connection->isClosed(); }
+bool RemoteRenderClient::isClosed() { return !_session || _session->isClosed(); }
 
-void RemoteRenderClient::closeConnection() {
-	if (_connection) {
-		_connection->close(); // graceful QUIC shutdown (bounded); then drop it
-		_connection = nullptr;
-	}
+void RemoteRenderClient::detach() {
+	_session = nullptr;
 	_pendingFrames.clear();
 	_drawStats.clear();
 }
 
+remote::ServerConnection *RemoteRenderClient::getConnection() const {
+	return _session ? _session->getConnection() : nullptr;
+}
+
 void RemoteRenderClient::announce(NotNull<remote::ObjectRegistry> registry) {
+	if (isClosed()) {
+		return;
+	}
+
 	Value data;
 	auto &windows = data.emplace("windows");
 	for (auto &it : registry->getWindows()) {
+		if (!registry->isWindowVisible(it.first, _session->getId())) {
+			continue;
+		}
 		auto &v = windows.emplace();
 		v.addInteger(it.first);
 		v.addString(it.second.window->getId());
@@ -104,9 +113,16 @@ void RemoteRenderClient::announce(NotNull<remote::ObjectRegistry> registry) {
 		// [8] Geometry at connect time, so the client's mirror is valid before the window first
 		// moves.
 		v.addValue(remote::serializeWindowGeometry(it.second.window->getWindowGeometry()));
+
+		// [9] The CreateWindow request this window answers, for the session that sent it: the
+		// client's own name for the window before the server renamed it, and what lets it bind the
+		// scene it built the request with. 0 for every window nobody asked for.
+		v.addInteger(it.second.creatorSession == _session->getId()
+						? int64_t(it.second.creatorSerial)
+						: 0);
 	}
 
-	_connection->sendCborMessage(remote::Domain::Global,
+	getConnection()->sendCborMessage(remote::Domain::Global,
 			toInt(remote::GlobalCode::SharedObjectsAnnounce), data);
 }
 
@@ -156,7 +172,7 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 	auto localProxy = Rc<core::LocalFrameRequestProxy>(
 			static_cast<core::LocalFrameRequestProxy *>(proxy.get()));
 
-	auto sent = _host->sendMessageWithReply(remote::Domain::Window,
+	auto sent = _session->sendMessageWithReply(remote::Domain::Window,
 			toInt(remote::WindowCode::AcquireFrame), req,
 			[this, pending, frameId, windowId, localProxy](const remote::MessageHeader &h,
 					BytesView payload) {
@@ -313,7 +329,7 @@ Rc<core::DependencyEvent> RemoteRenderClient::reconcileDependency(uint32_t depId
 	if (it != _materialDeps.end()) {
 		return it->second;
 	}
-	if (auto fs = _host->getFontServer()) {
+	if (auto fs = _session ? _session->getFontServer() : nullptr) {
 		return fs->reconcileDependency(depId);
 	}
 	return nullptr;
@@ -324,8 +340,8 @@ void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
 	auto windowId = uint64_t(v.getInteger("window"));
 
 	auto reg = _host->getSharedObjects();
-	auto fontServer = _host->getFontServer();
-	if (!reg) {
+	auto fontServer = _session ? _session->getFontServer() : nullptr;
+	if (!reg || !_session) {
 		return;
 	}
 
@@ -479,7 +495,7 @@ void RemoteRenderClient::handleWindowGeometryChanged(uint64_t windowId,
 	msg.addInteger(int64_t(windowId));
 	msg.addValue(remote::serializeWindowGeometry(g));
 
-	_connection->sendCborMessage(remote::Domain::Window,
+	getConnection()->sendCborMessage(remote::Domain::Window,
 			toInt(remote::WindowCode::WindowGeometryChanged), msg);
 }
 
@@ -487,14 +503,14 @@ void RemoteRenderClient::handleInputEvents(uint64_t windowId,
 		Vector<core::InputEventData> &&events) {
 	// The server's window dispatches platform input here while a remote client is attached. Forward
 	// the batch in the typed wire format (see serializeInputEvents).
-	if (!_connection || _connection->isClosed() || windowId == 0 || events.empty()) {
+	if (isClosed() || windowId == 0 || events.empty()) {
 		return;
 	}
 
 	Bytes blob;
 	remote::serializeInputEvents(blob, windowId, events);
 
-	_connection->sendMessage(remote::Domain::Window, toInt(remote::WindowCode::InputEvents),
+	getConnection()->sendMessage(remote::Domain::Window, toInt(remote::WindowCode::InputEvents),
 			BytesView(blob.data(), blob.size()));
 }
 
@@ -509,8 +525,8 @@ void RemoteRenderClient::handleTextInput(uint64_t windowId, const core::TextInpu
 	msg.addInteger(int64_t(windowId));
 	msg.addValue(remote::serializeTextInputState(state));
 
-	_connection->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::TextInputState),
-			msg);
+	getConnection()->sendCborMessage(remote::Domain::Window,
+			toInt(remote::WindowCode::TextInputState), msg);
 }
 void RemoteRenderClient::handleFramePresented(uint64_t) {
 	// Not forwarded: nothing on the receiving side uses it. A presented-frame signal, when needed,
@@ -531,7 +547,7 @@ void RemoteRenderClient::pushDrawStat(uint64_t windowId, const core::DrawStat &s
 
 void RemoteRenderClient::handleMaterialsUpdated(uint64_t queue, NotNull<core::MaterialSet> set,
 		NotNull<remote::ObjectRegistry> registry) {
-	if (!_connection || _connection->isClosed()) {
+	if (isClosed()) {
 		return;
 	}
 
@@ -540,7 +556,7 @@ void RemoteRenderClient::handleMaterialsUpdated(uint64_t queue, NotNull<core::Ma
 		return;
 	}
 
-	_connection->sendMessage(remote::Domain::Window, toInt(remote::WindowCode::UpdateMaterials),
+	getConnection()->sendMessage(remote::Domain::Window, toInt(remote::WindowCode::UpdateMaterials),
 			data);
 }
 

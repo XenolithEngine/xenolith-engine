@@ -63,6 +63,45 @@ int main(int argc, const char *argv[]) {
 
 		ctx->setWindowConnectedCallback([](NotNull<RemoteWindow>) { return true; });
 
+		/* XL_CLIENT_CREATE_WINDOW=<id>:<w>x<h> -- ask the server for a window of our own instead of
+		waiting to be offered one.
+
+		At startup, because a client with no window has no inspector either (it is a System on a
+		SceneContent), so the first window is the one request nobody can drive from outside. */
+		if (auto env = ::getenv("XL_CLIENT_CREATE_WINDOW")) {
+			StringView spec(env);
+			auto id = spec.readUntil<StringView::Chars<':'>>();
+			spec.skipChars<StringView::Chars<':'>>();
+			auto width = spec.readInteger(10).get(400);
+			spec.skipChars<StringView::Chars<'x', 'X'>>();
+			auto height = spec.readInteger(10).get(300);
+
+			// Asked for once the server has said what it can do -- nothing is announced before
+			// that, and a server that does not open windows on request is answered locally.
+			ctx->setServerInfoCallback(
+					[id = id.str<Interface>(), width, height](NotNull<ClientAppThread> thread,
+							const remote::PeerInfo &) {
+				auto info = Rc<sprt::window::WindowInfo>::create();
+				info->id = sprt::window::String(id.data(), id.size());
+				info->rect = IRect(0, 0, int32_t(width), int32_t(height));
+				info->appData = Rc<WindowSceneInfo>::create(
+						[](NotNull<AppThread>, NotNull<core::RenderServerChannel>,
+								const core::FrameConstraints &) -> Rc<Scene> {
+					// Null falls through to the process-wide makeScene symbol, which is where this
+					// client's scene lives; the handle is here for the answer below.
+					return nullptr;
+				},
+						[](NotNull<WindowSceneInfo> handle) {
+					log::source().info("client", "window '", handle->getId(), "' is gone");
+				});
+
+				thread->createWindow(sp::move(info), [](Status st, StringView id) {
+					log::source().info("client", "createWindow: ", sprt::status::getStatusName(st),
+							" id '", id, "'");
+				});
+			});
+		}
+
 		ctx->run();
 		return 0;
 	});

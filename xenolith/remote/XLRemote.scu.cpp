@@ -36,6 +36,7 @@
 #include "XLRemoteTransportUnix.cc"
 #include "XLRemoteTransportShm.cc"
 #include "XLRemoteProtocol.cc"
+#include "XLRemoteReplyTable.cc"
 #include "XLRemotePeerInfo.cc"
 #include "XLRemoteObject.cc"
 #include "XLRemoteSerialize.cc"
