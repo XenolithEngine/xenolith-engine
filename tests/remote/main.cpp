@@ -57,6 +57,9 @@ static const TestEntry s_testList[] = {
 	{"shm-transport", &stappler::xenolith::remote::performShmTransportTests},
 	{"shm-peer", &stappler::xenolith::remote::performShmPeerProcess},
 	{"shm-local", &stappler::xenolith::remote::performShmLocalTests},
+	{"handshake", &stappler::xenolith::remote::performHandshakeTests},
+	{"replytable", &stappler::xenolith::remote::performReplyTableTests},
+	{"ownership", &stappler::xenolith::remote::performOwnershipTests},
 };
 
 int main(int argc, const char *argv[]) {

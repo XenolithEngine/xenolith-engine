@@ -33,6 +33,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class AppThread;
 class AppWindow;
+class RemoteWindow;
 class Scene;
 
 namespace core {
@@ -48,6 +49,10 @@ class RenderServerChannel;
 //
 // This object is the window handle; keep the Rc the opener returned. getWindow() is non-null from
 // the moment the AppWindow reaches the app thread until the window is torn down.
+//
+// A client of a remote session opens windows the same way (ClientAppThread::createWindow), and what
+// it gets back is a RemoteWindow, not an AppWindow -- hence the handle remembers the channel, and
+// getWindow() is the server-side reading of it.
 //
 // Thread contract: constructed, used and destroyed on the app thread (asserted in debug builds).
 class SP_PUBLIC WindowSceneInfo : public Ref {
@@ -70,8 +75,12 @@ public:
 	const Rc<core::Queue> &getQueue() const { return _queue; }
 	void setQueue(Rc<core::Queue> &&q) { _queue = sp::move(q); }
 
-	// The live window, or null before creation and after teardown.
-	AppWindow *getWindow() const { return _window; }
+	// The live window, or null before creation and after teardown. Server-side: a window of this
+	// process. A remote client's window answers null here and getChannel() instead.
+	AppWindow *getWindow() const;
+
+	// The live window whichever kind it is (AppWindow on a server, RemoteWindow on a client).
+	core::RenderServerChannel *getChannel() const { return _channel; }
 
 	// The final, uniqued WindowInfo::id. Empty until the window exists.
 	StringView getId() const;
@@ -88,8 +97,9 @@ public:
 
 protected:
 	friend class AppWindow;
+	friend class RemoteWindow;
 
-	void setWindow(AppWindow *w) { _window = w; }
+	void setChannel(core::RenderServerChannel *w) { _channel = w; }
 
 	SceneBuilder _builder;
 	CloseCallback _onClose;
@@ -97,7 +107,7 @@ protected:
 	Rc<Ref> _userData;
 
 	// Non-owning back-reference: the window owns this object, not the other way round.
-	AppWindow *_window = nullptr;
+	core::RenderServerChannel *_channel = nullptr;
 
 	bool _closeFired = false;
 
@@ -106,6 +116,10 @@ protected:
 	sprt::dispatch::Looper *_owner = nullptr;
 #endif
 };
+
+// The handle behind a window, whichever kind it is: an AppWindow's payload on the server, the
+// handle a client bound to its RemoteWindow. Null for a window nobody opened with one.
+SP_PUBLIC WindowSceneInfo *getWindowSceneInfo(NotNull<core::RenderServerChannel>);
 
 } // namespace stappler::xenolith
 

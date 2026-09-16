@@ -92,6 +92,21 @@ public:
 	bool sendMessageWithReply(remote::Domain, uint8_t message, const Value &,
 			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs);
 
+	/* Ask the server for a window. The mirror of Context::createWindow, deliberately: the scene and
+	the close behaviour travel in WindowInfo::appData as a WindowSceneInfo, so application code that
+	opens a window reads the same locally and remotely. The payload never leaves this process -- the
+	server builds its own handle for its own side.
+
+	`complete` runs on the app thread with the server's verdict and the final id it assigned (the
+	server may rename, resize or refuse). It says the server accepted the window, not that the
+	window is drawable: the scene is built when the window is announced. */
+	void createWindow(Rc<sprt::window::WindowInfo> &&,
+			Function<void(Status, StringView id)> && = nullptr);
+
+	// Whether this server opens windows on request: it must implement the message and have an
+	// application handler installed for it.
+	bool isWindowCreationSupported() const;
+
 protected:
 	// Block-transfer send facade: route through the server connection.
 	virtual bool remoteSendCbor(remote::Domain, uint8_t code, const Value &,
@@ -154,6 +169,25 @@ protected:
 	// Keepalive (monotonic us): the server pings us periodically; if no ping arrives within the
 	// timeout the server is presumed gone and the client disconnects. Reset on connect and each ping.
 	uint64_t _lastPingTime = 0;
+
+	// A window asked for and not yet bound to an announced one. Kept until the window arrives, the
+	// request is refused, or the session ends.
+	struct PendingWindow {
+		uint32_t serial = 0;
+		Rc<WindowSceneInfo> handle;
+		Function<void(Status, StringView id)> complete;
+		String grantedId; // the id the server settled on; empty until it replies
+		bool bound = false;
+	};
+
+	PendingWindow *findPendingWindow(uint32_t serial, StringView id);
+	void dropPendingWindow(uint32_t serial);
+
+	// Answer every request still waiting and release the handles: the windows they were for will
+	// never arrive.
+	void failPendingWindows(Status);
+
+	Vector<PendingWindow> _pendingWindows;
 
 	Map<uint64_t, Rc<RemoteWindow>> _windows;
 	Map<uint64_t, AppQueueInfo> _queues;

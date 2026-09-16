@@ -26,6 +26,10 @@
 #include "XL2dScene.h"
 #include "XL2dScrollView.h"
 
+namespace STAPPLER_VERSIONIZED stappler::xenolith {
+class ServerAppThread;
+} // namespace stappler::xenolith
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 struct TestInfo;
@@ -68,6 +72,10 @@ protected:
 	// one. Together with the commands each layout registers for itself (TestLayout::addCommand)
 	// this is what lets a headless run walk the whole app - see README.
 	void registerCommands();
+
+	// Teach this server what a window a remote client asks for is (see ServerAppThread's
+	// ClientWindowHandler); installed only under XL_REMOTE_CLIENT_WINDOWS.
+	void installClientWindowHandler(ServerAppThread *);
 
 	// Replace the on-screen layout and answer `done` once it has been rendering for `settle`
 	// seconds. Layout switching and the settle delay are one action sequence, so the scene is

@@ -75,6 +75,10 @@ bool RemoteWindow::init(NotNull<ClientAppThread> thread, const Value &val) {
 		_appWindowGeometry = remote::deserializeWindowGeometry(val.getValue(8));
 	}
 
+	// [9] The CreateWindow request this window answers, or 0 -- including from a server that does
+	// not emit the slot at all.
+	_creatorSerial = uint32_t(val.getValue(9).getInteger());
+
 	if (_queues.empty()) {
 		slog().warn("RemoteWindow", "No shared queues for a window, it's unusable as shared");
 		return false;
@@ -551,6 +555,18 @@ void RemoteWindow::updateLayers(sprt::window::Vector<sprt::window::WindowLayer> 
 	slog().info("RemoteWindow", "updateLayers: forwarding ", layers.size(), " layer(s)");
 	conn->sendMessage(remote::Domain::Window, toInt(remote::WindowCode::UpdateLayers),
 			BytesView(blob.data(), blob.size()));
+}
+
+void RemoteWindow::setSceneInfo(Rc<WindowSceneInfo> &&s) {
+	if (_sceneInfo) {
+		_sceneInfo->setChannel(nullptr);
+	}
+	_sceneInfo = sp::move(s);
+	if (_sceneInfo) {
+		// The handle's window: a client's windows are RemoteWindows, so getWindow() stays null and
+		// getChannel() is what answers.
+		_sceneInfo->setChannel(this);
+	}
 }
 
 } // namespace stappler::xenolith
