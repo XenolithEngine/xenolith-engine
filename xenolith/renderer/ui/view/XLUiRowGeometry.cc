@@ -213,4 +213,89 @@ size_t getRowBoundaryAt(const RowGeometrySource &source, const Vec2 &viewLocatio
 	return boundary;
 }
 
+bool scrollRowIntoView(basic2d::ScrollView *scroll, const basic2d::ScrollController *controller,
+		size_t index) {
+	if (!scroll || !controller) {
+		return false;
+	}
+
+	auto &items = controller->getItems();
+	if (index >= items.size()) {
+		return false;
+	}
+
+	// Item::pos.y is the distance from the top of the content, the space of the scroll position
+	auto &item = items.at(index);
+	const float top = item.pos.y;
+	const float bottom = top + item.size.height;
+	const float position = scroll->getScrollPosition();
+	const float size = scroll->getScrollSize();
+	if (sprt::isnan(top) || sprt::isnan(bottom) || size <= 0.0f) {
+		return false;
+	}
+
+	if (top < position) {
+		scroll->setScrollPosition(top);
+	} else if (bottom > position + size) {
+		scroll->setScrollPosition(bottom - size);
+	}
+	return true;
+}
+
+size_t getEnteringRow(const RowGeometrySource &source, SelectionDirection dir,
+		const Rect &fromWorld) {
+	if (source.empty()) {
+		return maxOf<size_t>();
+	}
+
+	auto &items = source.controller->getItems();
+	if (items.empty()) {
+		return maxOf<size_t>();
+	}
+
+	const float position = source.scroll->getScrollPosition();
+	const float size = source.scroll->getScrollSize();
+	const auto &toWorld = source.view->getModelTransform();
+
+	size_t first = maxOf<size_t>();
+	size_t last = maxOf<size_t>();
+	size_t best = maxOf<size_t>();
+	double bestScore = 0.0;
+
+	for (size_t i = 0; i < items.size(); ++i) {
+		auto &item = items.at(i);
+		if (item.pos.y + item.size.height <= position) {
+			continue;
+		}
+		if (item.pos.y >= position + size) {
+			break; // ordered by pos.y
+		}
+
+		if (first == maxOf<size_t>()) {
+			first = i;
+		}
+		last = i;
+
+		Rect rect;
+		if (!getRowRect(source, i, rect)) {
+			continue;
+		}
+
+		double score = 0.0;
+		if (getSelectionDirectionScore(dir, fromWorld, TransformRect(rect, toWorld), score)
+				&& (best == maxOf<size_t>() || score < bestScore)) {
+			best = i;
+			bestScore = score;
+		}
+	}
+
+	if (best != maxOf<size_t>()) {
+		return best;
+	}
+	if (first == maxOf<size_t>()) {
+		return 0;
+	}
+	return (dir == SelectionDirection::Up) ? last : first;
+}
+
 } // namespace stappler::xenolith::ui

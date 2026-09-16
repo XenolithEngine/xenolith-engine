@@ -32,7 +32,12 @@
 namespace sprt {
 
 struct SPRT_API __rmutex_data {
-#if SPRT_LINUX || SPRT_ANDROID
+// SPRT_EMBOX_USER shares this layout for a reason of its own: its kernel futex
+// compares four bytes (syscall 98), so the waiters bit has to live inside those
+// four. The wide layout below keeps it in the upper half of a 64-bit word,
+// where a four-byte compare cannot see it -- and a waiter that cannot see it
+// sleeps through an unlock and relock by the same owner.
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_EMBOX_USER
 	// Futex PI Values
 	using tid_type = uint32_t;
 

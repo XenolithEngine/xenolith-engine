@@ -44,8 +44,6 @@ AppThread::~AppThread() { }
 void AppThread::run() { Thread::run(); }
 
 void AppThread::threadInit() {
-	_requests.reserve(16);
-
 	// Bidirectional block-transfer manager (Domain::Data); both subclasses share it.
 	_blockTransfer = Rc<BlockTransferManager>::create(this);
 
@@ -247,8 +245,8 @@ bool AppThread::remoteSendCborReply(uint32_t, remote::Domain, uint8_t, const Val
 	return false;
 }
 bool AppThread::remoteSendError(remote::Domain, uint8_t, uint32_t) { return false; }
-bool AppThread::remoteSendCborWithReply(remote::Domain, uint8_t, const Value &,
-		Function<void(const remote::MessageHeader &, BytesView)> &&, uint64_t) {
+bool AppThread::remoteSendCborWithReply(remote::Domain, uint8_t, const Value &, ReplyCallback &&,
+		uint64_t) {
 	return false;
 }
 
@@ -259,52 +257,32 @@ size_t AppThread::cancelOutgoingTransfers() {
 void AppThread::waitForReply(uint32_t serial,
 		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb, uint64_t timeoutUs) {
 	uint64_t deadline = timeoutUs ? sp::platform::clock(ClockType::Monotonic) + timeoutUs : 0;
-	_requests.insert_or_assign(serial, PendingReply{sp::move(cb), deadline});
+	_replies.wait(serial, sp::move(cb), deadline);
+}
+
+Rc<sprt::dispatch::Handle> AppThread::watchTransport(sprt::dispatch::NativeHandle handle,
+		remote::TransportWaitAddress wait, Function<void()> &&cb) {
+	if (handle.fd >= 0) {
+		return _appLooper->listenPollableHandle(handle, sprt::dispatch::PollFlags::In,
+				[cb = sp::move(cb)](auto, auto) -> Status {
+			cb();
+			return Status::Ok;
+		}, this);
+	}
+	if (wait.address) {
+		return _appLooper->waitOnAddress(wait.address, wait.value,
+				[cb = sp::move(cb)](uint32_t) -> Status {
+			cb();
+			return Status::Ok;
+		}, this);
+	}
+	return nullptr;
 }
 
 bool AppThread::failTimedOutRequests() {
-	if (_requests.empty()) {
-		return false;
-	}
-
-	auto now = sp::platform::clock(ClockType::Monotonic);
-
-	// Collect expired serials first: a waiter's callback may register or erase requests.
-	Vector<uint32_t> expired;
-	for (auto &it : _requests) {
-		if (it.second.deadline != 0 && now >= it.second.deadline) {
-			expired.emplace_back(it.first);
-		}
-	}
-	if (expired.empty()) {
-		return false;
-	}
-
-	// Synthesize a local protocol-error reply, tagged as coming from the peer role that owed it.
-	// code == NetworkBackend marks a local/transport-level failure.
-	auto errType =
-			isServerThread() ? remote::MessageType::ClientError : remote::MessageType::ServerError;
-	for (auto serial : expired) {
-		auto it = _requests.find(serial);
-		if (it == _requests.end()) {
-			continue;
-		}
-		auto cb = sp::move(it->second.cb);
-		_requests.erase(it);
-
-		log::source().warn("AppThread", "request ", serial,
-				" timed out without a reply; failing with local protocol error");
-
-		if (cb) {
-			remote::MessageHeader h{};
-			h.msgtype = toInt(errType);
-			h.domain = toInt(remote::Domain::Error);
-			h.code = toInt(remote::GlobalError::NetworkBackend);
-			h.serial = serial;
-			cb(h, BytesView());
-		}
-	}
-	return true;
+	// The waiter is told the error came from the peer role that owed the reply.
+	return _replies.failExpired(sp::platform::clock(ClockType::Monotonic),
+			isServerThread() ? remote::MessageType::ClientError : remote::MessageType::ServerError);
 }
 
 void AppThread::performAppUpdate(const UpdateTime &time, bool wakeup) {
@@ -348,18 +326,7 @@ void AppThread::finalizeExtensions() {
 }
 
 bool AppThread::dispatchMessage(const remote::MessageHeader &h, BytesView payload) {
-	if (remote::isReplyOrError(h)) {
-		auto reqIt = _requests.find(h.serial);
-		if (reqIt != _requests.end()) {
-			auto cb = sp::move(reqIt->second.cb);
-			_requests.erase(reqIt);
-			if (cb) {
-				cb(h, payload);
-			}
-			return true;
-		}
-	}
-	return false;
+	return _replies.dispatch(h, payload);
 }
 
 } // namespace stappler::xenolith

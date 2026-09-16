@@ -75,6 +75,10 @@ bool RemoteWindow::init(NotNull<ClientAppThread> thread, const Value &val) {
 		_appWindowGeometry = remote::deserializeWindowGeometry(val.getValue(8));
 	}
 
+	// [9] The CreateWindow request this window answers, or 0 -- including from a server that does
+	// not emit the slot at all.
+	_creatorSerial = uint32_t(val.getValue(9).getInteger());
+
 	if (_queues.empty()) {
 		slog().warn("RemoteWindow", "No shared queues for a window, it's unusable as shared");
 		return false;
@@ -165,6 +169,18 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 	// client app thread (Director::performOnRenderThread resolves there), which owns the
 	// connection.
 	auto thread = _thread;
+
+	/* A frame this client was told to answer for and then abandon: it names a queue, so the server
+	arms the frame and waits for input that never comes -- which is what the server's input deadline
+	is for. The scene is not driven at all, so the client itself stays healthy; only this one frame
+	is left hanging, exactly as a scene that died mid-frame would leave it. */
+	if (thread->takeSilentFrame()) {
+		auto queueId = _queues.empty() ? uint64_t(0) : _queues.front().id;
+		slog().warn("RemoteWindow", "abandoning frame ", frameId, " after answering for it");
+		reply(queueId);
+		return;
+	}
+
 	auto proxy = Rc<core::RemoteFrameRequestProxy>::create(c, frameId,
 			[thread, frameId](SpanView<const core::AttachmentData *> atts, BytesView bytes) {
 		if (auto conn = thread->getConnection()) {
@@ -551,6 +567,18 @@ void RemoteWindow::updateLayers(sprt::window::Vector<sprt::window::WindowLayer> 
 	slog().info("RemoteWindow", "updateLayers: forwarding ", layers.size(), " layer(s)");
 	conn->sendMessage(remote::Domain::Window, toInt(remote::WindowCode::UpdateLayers),
 			BytesView(blob.data(), blob.size()));
+}
+
+void RemoteWindow::setSceneInfo(Rc<WindowSceneInfo> &&s) {
+	if (_sceneInfo) {
+		_sceneInfo->setChannel(nullptr);
+	}
+	_sceneInfo = sp::move(s);
+	if (_sceneInfo) {
+		// The handle's window: a client's windows are RemoteWindows, so getWindow() stays null and
+		// getChannel() is what answers.
+		_sceneInfo->setChannel(this);
+	}
 }
 
 } // namespace stappler::xenolith

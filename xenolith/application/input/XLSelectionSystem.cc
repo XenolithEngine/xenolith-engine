@@ -24,10 +24,66 @@
 #include "XLInputDispatcher.h" // the storage the chain is published into
 #include "XLScene.h"
 #include "XLSceneContent.h"
+#include "XLInputListener.h"
+#include "XLHotkey.h"
+#include "XLDirector.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 uint64_t SelectionSystem::Id = System::GetNextSystemId();
+
+bool getSelectionDirectionScore(SelectionDirection dir, const Rect &from, const Rect &to,
+		double &score) {
+	// Shared edges of adjacent nodes are rounded differently on either side
+	static constexpr float Tolerance = 1.0f;
+
+	float major = 0.0f;
+	float minor = 0.0f;
+	bool inBeam = false;
+
+	// World space is Y-up: Up is towards larger y
+	switch (dir) {
+	case SelectionDirection::Left:
+		if (to.getMaxX() > from.getMinX() + Tolerance) {
+			return false;
+		}
+		major = from.getMinX() - to.getMaxX();
+		break;
+	case SelectionDirection::Right:
+		if (to.getMinX() < from.getMaxX() - Tolerance) {
+			return false;
+		}
+		major = to.getMinX() - from.getMaxX();
+		break;
+	case SelectionDirection::Up:
+		if (to.getMinY() < from.getMaxY() - Tolerance) {
+			return false;
+		}
+		major = to.getMinY() - from.getMaxY();
+		break;
+	case SelectionDirection::Down:
+		if (to.getMaxY() > from.getMinY() + Tolerance) {
+			return false;
+		}
+		major = from.getMinY() - to.getMaxY();
+		break;
+	}
+
+	if (dir == SelectionDirection::Left || dir == SelectionDirection::Right) {
+		inBeam = to.getMaxY() > from.getMinY() && to.getMinY() < from.getMaxY();
+		minor = to.getMidY() - from.getMidY();
+	} else {
+		inBeam = to.getMaxX() > from.getMinX() && to.getMinX() < from.getMaxX();
+		minor = to.getMidX() - from.getMidX();
+	}
+
+	major = sprt::max(major, 0.0f);
+
+	static constexpr double OutOfBeam = 1.0e15;
+	score = (inBeam ? 0.0 : OutOfBeam) + 13.0 * double(major) * double(major)
+			+ double(minor) * double(minor);
+	return true;
+}
 
 SelectionSystem *SelectionSystem::findForNode(Node *node) {
 	while (node) {
@@ -76,6 +132,43 @@ void SelectionSystem::handleAdded(Node *owner) {
 
 	// findForNode returns the nearest system, so a nested one would split the scene's selection
 	sprt_passert(findForNode(owner->getParent()) == nullptr, "SelectionSystem must not be nested");
+
+	_listener = Rc<InputListener>::create();
+
+	auto &hotkeys = EngineHotkeys::get();
+	auto onArrow = [this](HotkeyId id, const InputEvent &) {
+		auto &hotkeys = EngineHotkeys::get();
+		if (id == hotkeys.selectLeft) {
+			return moveSelection(SelectionDirection::Left);
+		} else if (id == hotkeys.selectRight) {
+			return moveSelection(SelectionDirection::Right);
+		} else if (id == hotkeys.selectUp) {
+			return moveSelection(SelectionDirection::Up);
+		} else if (id == hotkeys.selectDown) {
+			return moveSelection(SelectionDirection::Down);
+		}
+		return false;
+	};
+
+	const HotkeyId ids[] = {hotkeys.selectLeft, hotkeys.selectRight, hotkeys.selectUp,
+		hotkeys.selectDown};
+	for (auto id : ids) {
+		_listener->addHotkey(id, onArrow, HotkeyFlags::Repeatable | HotkeyFlags::Unhandled);
+	}
+
+	owner->addSystem(_listener);
+}
+
+void SelectionSystem::handleRemoved() {
+	if (_listener) {
+		// System::getOwner: the node, not the SelectionOwner this class also names
+		if (auto node = System::getOwner()) {
+			node->removeSystem(_listener);
+		}
+		_listener = nullptr;
+	}
+
+	System::handleRemoved();
 }
 
 void SelectionSystem::handleExit() {
@@ -117,6 +210,100 @@ bool SelectionSystem::selectNode(NotNull<Node> node) {
 }
 
 bool SelectionSystem::clear() { return applyState(nullptr, nullptr, SpanView<SelectionItem>()); }
+
+static bool isRelatedNode(const Node *a, const Node *b) {
+	for (auto node = a; node; node = node->getParent()) {
+		if (node == b) {
+			return true;
+		}
+	}
+	for (auto node = b; node; node = node->getParent()) {
+		if (node == a) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool SelectionSystem::moveSelection(SelectionDirection dir) {
+	if (!_ownerNode) {
+		return false;
+	}
+
+	// Rc: the owner's own step may deliver a change that drops the node
+	Rc<Node> ownerNode = _ownerNode;
+
+	if (_owner && _owner->moveSelection(dir)) {
+		return true;
+	}
+
+	auto scene = ownerNode->getScene();
+	auto director = scene ? scene->getDirector() : nullptr;
+	auto dispatcher = director ? director->getInputDispatcher() : nullptr;
+	if (!dispatcher) {
+		return false;
+	}
+
+	// As drawn, like the candidates: both come from the frame the user saw
+	Node *source = _anchor ? _anchor.get() : ownerNode.get();
+	const Rect from =
+			TransformRect(Rect(Vec2(0, 0), source->getContentSize()), source->getModelTransform());
+
+	struct Candidate {
+		Rc<Node> node;
+		Rect rect;
+		double score;
+	};
+
+	Vector<Candidate> candidates;
+	dispatcher->foreachHitTest(HitTestFlags::Selectable,
+			[&](const InputListenerStorage::HitTestRec &rec) {
+		if (rec.opacity <= 0.0f || isRelatedNode(rec.node, ownerNode)
+				|| !getNodeSelectable(rec.node)) {
+			return true;
+		}
+
+		Rect rect = rec.worldRect;
+		if (rec.scissorEnabled) {
+			const Rect clip(float(rec.scissor.x), float(rec.scissor.y), float(rec.scissor.width),
+					float(rec.scissor.height));
+			const float minX = sprt::max(rect.getMinX(), clip.getMinX());
+			const float minY = sprt::max(rect.getMinY(), clip.getMinY());
+			const float maxX = sprt::min(rect.getMaxX(), clip.getMaxX());
+			const float maxY = sprt::min(rect.getMaxY(), clip.getMaxY());
+			if (maxX <= minX || maxY <= minY) {
+				return true; // clipped away entirely
+			}
+			rect = Rect(minX, minY, maxX - minX, maxY - minY);
+		}
+
+		double score = 0.0;
+		if (getSelectionDirectionScore(dir, from, rect, score)) {
+			candidates.emplace_back(Candidate{rec.node, rect, score});
+		}
+		return true;
+	});
+
+	sprt::sort(candidates.begin(), candidates.end(),
+			[](const Candidate &l, const Candidate &r) { return l.score < r.score; });
+
+	for (auto &it : candidates) {
+		// Re-read: an owner refusing may have changed components on the way
+		auto selectable = getNodeSelectable(it.node);
+		if (!selectable || !it.node->isRunning()) {
+			continue;
+		}
+		if (selectable->owner) {
+			if (selectable->owner->enterSelection(dir, from)) {
+				return true;
+			}
+		} else {
+			selectNode(it.node);
+			return true;
+		}
+	}
+	return false;
+}
 
 bool SelectionSystem::applyState(SelectionOwner *owner, Node *ownerNode,
 		SpanView<SelectionItem> items) {
@@ -203,6 +390,18 @@ bool SelectionSystem::applyState(SelectionOwner *owner, Node *ownerNode,
 
 // --- projection ------------------------------------------------------------
 
+// The same anchor reparented (a panel dragged to another frame) needs a new chain as well
+static bool isChainCurrent(SpanView<Rc<Node>> chain, Node *anchor) {
+	auto node = anchor;
+	for (auto &it : chain) {
+		if (it.get() != node) {
+			return false;
+		}
+		node = node->getParent();
+	}
+	return node == nullptr;
+}
+
 void SelectionSystem::syncProjection() {
 	Node *anchor = nullptr;
 
@@ -240,7 +439,7 @@ void SelectionSystem::syncProjection() {
 		_itemNodes.clear();
 	}
 
-	if (_anchor != anchor) {
+	if (_anchor != anchor || (anchor && !isChainCurrent(_chain, anchor))) {
 		/* Build the new chain from the live graph and release the old one from storage, never by
 		re-walking: the leaving anchor may already be detached. */
 		Vector<Rc<Node>> next;

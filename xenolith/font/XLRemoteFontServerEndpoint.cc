@@ -35,26 +35,38 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 
-Rc<RemoteFontServer> RemoteFontServerEndpoint::createServerFontEndpoint(AppThread *owner,
-		FontComponent *comp) {
-	return Rc<RemoteFontServerEndpoint>::create(owner, comp);
+Rc<RemoteFontServer> RemoteFontServerEndpoint::createServerFontEndpoint(AppThread *thread,
+		FontComponent *comp, Rc<Ref> &store) {
+	return Rc<RemoteFontServerEndpoint>::create(thread, comp, store);
 }
 
 RemoteFontServerEndpoint::~RemoteFontServerEndpoint() { }
 
-bool RemoteFontServerEndpoint::init(AppThread *owner, FontComponent *comp) {
-	_owner = owner;
+bool RemoteFontServerEndpoint::init(AppThread *thread, FontComponent *comp, Rc<Ref> &store) {
+	_thread = thread;
 	_component = comp;
 	// Dedicated network library + controller: a FaceId space fully isolated from the server's
-	// local-scene controller, with its own atlas (the one a connected client references).
+	// local-scene controller and from other clients, with its own atlas (the one its client
+	// references).
 	_library = Rc<FontLibrary>::alloc();
 	_controller =
 			Rc<FontControllerLocal>::create(comp, "RemoteFontServerController", _library.get());
 	if (_controller) {
-		_controller->initialize(_owner);
+		_controller->initialize(_thread);
 	}
-	preloadDefaultFonts();
+	if (store) {
+		_store = static_cast<FontStore *>(store.get());
+	} else {
+		_store = Rc<FontStore>::alloc();
+		preloadDefaultFonts();
+		store = _store;
+	}
 	return true;
+}
+
+void RemoteFontServerEndpoint::setPeer(RemotePeer *peer) {
+	_peer = peer;
+	++_peerGeneration;
 }
 
 void RemoteFontServerEndpoint::preloadDefaultFonts() {
@@ -80,7 +92,7 @@ void RemoteFontServerEndpoint::preloadDefaultFonts() {
 			return FontLibrary::FontData(BytesView(), false);
 		});
 		if (data) {
-			_store.emplace(data->getContentHash(), data);
+			_store->fonts.emplace(data->getContentHash(), data);
 		}
 	}
 }
@@ -103,7 +115,7 @@ bool RemoteFontServerEndpoint::dispatch(uint8_t code, uint32_t serial, BytesView
 }
 
 void RemoteFontServerEndpoint::handleSourcesAnnounce(uint32_t serial, BytesView payload) {
-	if (!_owner) {
+	if (!_peer) {
 		return;
 	}
 	auto v = data::read<Interface>(payload);
@@ -112,7 +124,7 @@ void RemoteFontServerEndpoint::handleSourcesAnnounce(uint32_t serial, BytesView 
 	Value missing;
 	for (auto &s : v.getValue("sources").asArray()) {
 		auto hash = uint64_t(s.getInteger("hash"));
-		if (_store.find(hash) == _store.end()) {
+		if (_store->fonts.find(hash) == _store->fonts.end()) {
 			missing.addInteger(int64_t(hash));
 		}
 	}
@@ -129,14 +141,14 @@ void RemoteFontServerEndpoint::handleSourcesAnnounce(uint32_t serial, BytesView 
 	Value reply;
 	reply.setValue(sp::move(missing), "missing");
 	reply.setInteger(int64_t(atlasId), "atlas");
-	_owner->remoteSendCborReply(serial, remote::Domain::Font, toInt(remote::FontCode::SourcesReady),
+	_peer->remoteSendCborReply(serial, remote::Domain::Font, toInt(remote::FontCode::SourcesReady),
 			reply);
 	log::source().info("RemoteFontServerEndpoint", "SourcesReady: atlas id ", atlasId, ", ",
 			reply.getValue("missing").size(), " missing");
 }
 
 void RemoteFontServerEndpoint::handleGlyphRequest(BytesView payload) {
-	if (!_owner || !_component || !_controller) {
+	if (!_peer || !_component || !_controller) {
 		return;
 	}
 	uint32_t depId = 0;
@@ -149,8 +161,8 @@ void RemoteFontServerEndpoint::handleGlyphRequest(BytesView payload) {
 
 	Vector<FontUpdateRequest> requests;
 	for (auto &f : faces) {
-		auto sit = _store.find(f.contentHash);
-		if (sit == _store.end()) {
+		auto sit = _store->fonts.find(f.contentHash);
+		if (sit == _store->fonts.end()) {
 			log::source().warn("RemoteFontServerEndpoint", "glyph request for unknown font hash ",
 					f.contentHash);
 			continue;
@@ -169,15 +181,22 @@ void RemoteFontServerEndpoint::handleGlyphRequest(BytesView payload) {
 	// signal dependency (FontComponent::updateImage adds it) and the render frame's wait dependency
 	// (reconciled in RemoteRenderClient::handleFrameInput) -- so the frame can't render until these
 	// glyphs are packed.
-	_component->updateImage(_owner->getLooper(), _controller->getImage(), sp::move(requests),
-			Rc<core::DependencyEvent>(dep), [this, depId](bool ok) {
-		// Hop to the app thread (the connection is app-thread-only) to notify the client.
-		_owner->performOnAppThread([this, depId, ok]() {
+	_component->updateImage(_thread->getLooper(), _controller->getImage(), sp::move(requests),
+			Rc<core::DependencyEvent>(dep),
+			[self = Rc<RemoteFontServerEndpoint>(this), thread = Rc<AppThread>(_thread),
+					generation = _peerGeneration, depId](bool ok) {
+		// Hop to the app thread (the connection is app-thread-only) to notify the client, if it is
+		// still the one that asked.
+		thread->performOnAppThread([self, generation, depId, ok]() {
+			if (!self->_peer || self->_peerGeneration != generation) {
+				return;
+			}
 			Value r;
 			r.setInteger(int64_t(depId), "dep");
 			r.setInteger(ok ? 1 : 0, "ok");
-			_owner->remoteSendCbor(remote::Domain::Font, toInt(remote::FontCode::AtlasReady), r);
-		}, this);
+			self->_peer->remoteSendCbor(remote::Domain::Font, toInt(remote::FontCode::AtlasReady),
+					r);
+		}, self.get());
 	});
 }
 
@@ -194,8 +213,14 @@ Rc<core::DependencyEvent> RemoteFontServerEndpoint::getOrCreateDep(uint32_t depI
 	// refcount (Rc captured now, while `this` is alive) and hop to the app thread, where _deps
 	// lives. A later frame referencing a removed id finds nothing in reconcileDependency and treats
 	// it as already satisfied.
-	dep->setSignalCallback([self = Rc<RemoteFontServerEndpoint>(this), depId]() {
-		self->_owner->performOnAppThread([self, depId]() { self->_deps.erase(depId); }, self.get());
+	dep->setSignalCallback(
+			[self = Rc<RemoteFontServerEndpoint>(this), thread = Rc<AppThread>(_thread),
+					generation = _peerGeneration, depId]() {
+		thread->performOnAppThread([self, generation, depId]() {
+			if (self->_peerGeneration == generation) {
+				self->_deps.erase(depId);
+			}
+		}, self.get());
 	});
 	_deps.emplace(depId, dep);
 	return dep;
@@ -209,21 +234,21 @@ Rc<core::DependencyEvent> RemoteFontServerEndpoint::reconcileDependency(uint32_t
 }
 
 void RemoteFontServerEndpoint::receiveFontData(uint64_t contentHash, BytesView bytes) {
-	if (bytes.empty() || _store.find(contentHash) != _store.end()) {
+	if (bytes.empty() || _store->fonts.find(contentHash) != _store->fonts.end()) {
 		return;
 	}
 	// TODO(e2e): route through FontLibrary::openFontData so variable-font params are inspected. A
 	// direct FontFaceData is enough to pin the bytes for compile-stage / the block-transfer path.
 	if (auto data = Rc<FontFaceData>::create(toString("remote:", contentHash), bytes, false)) {
-		_store.emplace(contentHash, data);
+		_store->fonts.emplace(contentHash, data);
 	}
 }
 
 uint64_t RemoteFontServerEndpoint::pinAtlasImage() {
-	if (!_owner || !_controller) {
+	if (!_thread || !_controller) {
 		return _atlasStableId;
 	}
-	auto reg = static_cast<ServerAppThread *>(_owner)->getSharedObjects();
+	auto reg = static_cast<ServerAppThread *>(_thread)->getSharedObjects();
 	if (!reg) {
 		return _atlasStableId;
 	}
@@ -249,8 +274,10 @@ Rc<core::DynamicImageInstance> RemoteFontServerEndpoint::resolveAtlasInstance(ui
 
 void RemoteFontServerEndpoint::reset() {
 	// Drop per-connection gating events; keep the persistent font store and the network atlas for
-	// the next client (font data is stored persistently across reconnects). The pinned atlas id is
-	// also dropped: a new connection re-shares (a fresh ObjectRegistry is used per connection).
+	// the next client. The pinned atlas id is also dropped: the next session re-shares it (the
+	// registry may have been recreated since).
+	_peer = nullptr;
+	++_peerGeneration;
 	_deps.clear();
 	_atlasStableId = 0;
 }
@@ -263,14 +290,14 @@ void RemoteFontServerEndpoint::invalidate() {
 	// Dropping the controller without it leaves the image (and its device memory) alive past the
 	// gapi device.
 	if (_controller) {
-		_controller->invalidate(_owner);
+		_controller->invalidate(_thread);
 		_controller = nullptr;
 	}
 
-	_store.clear();
+	_store = nullptr;
 	_library = nullptr;
 	_component = nullptr;
-	_owner = nullptr;
+	_thread = nullptr;
 }
 
 } // namespace stappler::xenolith::font

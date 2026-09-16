@@ -24,6 +24,8 @@
 #include "agentchat/ChatBubble.h"
 #include "XLUiStyleSystem.h"
 #include "XLUiScrollSystem.h"
+#include "XLInputListener.h"
+#include "XLSelectionSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
@@ -65,6 +67,18 @@ bool ChatBubble::init(StringView styleClass, bool markdown) {
 
 	addStyleClass("bubble");
 	addStyleClass(styleClass);
+
+	// A card is something the user can point at: a tap selects it, and the arrow keys then walk
+	// the conversation card by card. Selecting text in an answer selects inside the card, so the
+	// same `:selection-within` rule marks it either way
+	setNodeSelectable(this, true);
+	auto listener = addSystem(Rc<InputListener>::create());
+	listener->addTapRecognizer([this](const GestureTap &) {
+		if (auto system = SelectionSystem::acquireForNode(this)) {
+			system->selectNode(this);
+		}
+		return true;
+	});
 
 	// Z-order is document order here, and document order is what the flex column lays out by. The
 	// reasoning label is built later than the body but has to appear above it, so it is given the

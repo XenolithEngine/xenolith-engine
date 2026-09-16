@@ -29,6 +29,8 @@
 #include "XL2dIconSprite.h"
 #include "XL2dLayer.h"
 #include "XLAction.h"
+#include "XLInputListener.h"
+#include "XLSelectionSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
@@ -155,7 +157,11 @@ label.xl-ui-tooltip-label { color: var(--text); font-size: 12px; }
 /* Each body declares its own `--accent` with ui::setStyleVariable, so one rule paints six panels
    in six colours: a per-node property is inherited by the subtree and beats every rule that
    matched the same node. */
-.panel-body       { display: flex; flex-direction: column; row-gap: 8px; }
+.panel-body       { display: flex; flex-direction: column; row-gap: 8px; padding: 8px;
+                    border-radius: 5px; background-color: transparent; }
+/* A body is a panel: a tap selects it, the arrows move the selection to the next visible one, and
+   the panel holding the selection is outlined in its own accent */
+.panel-body:selection-within { outline-color: var(--accent); outline-width: 2px; }
 .panel-head       { display: flex; flex-direction: row; align-items: center; column-gap: 9px; }
 .panel-head > icon{ width: 22px; height: 22px; color: var(--accent); }
 .panel-title      { color: var(--text); font-size: 15px; }
@@ -253,7 +259,7 @@ static ui::DockLayoutSpec makeSpec() {
 // A panel's content: the icon and the name it is known by, a rule in its own colour, and one line
 // saying what to try with it. Built at most once, on first show, and kept across every move.
 static Rc<Node> makePanelBody(const PanelInfo &info, size_t builds) {
-	auto body = Rc<Node>::create();
+	auto body = Rc<ui::Panel>::create();
 	body->setName(info.id); // its CSS #id, so a rule can address one panel by name
 	body->addStyleClass("panel-body");
 	body->setAnchorPoint(Anchor::BottomLeft);
@@ -284,6 +290,16 @@ static Rc<Node> makePanelBody(const PanelInfo &info, size_t builds) {
 	auto hint = body->addChild(Rc<basic2d::Label>::create(), ZOrder(3));
 	hint->addStyleClass("panel-hint");
 	hint->setString(info.hint);
+
+	// A tap selects the panel; the arrow keys then move the selection between the visible panels
+	setNodeSelectable(body, true);
+	auto listener = body->addSystem(Rc<InputListener>::create());
+	listener->addTapRecognizer([node = body.get()](const GestureTap &) {
+		if (auto system = SelectionSystem::acquireForNode(node)) {
+			system->selectNode(node);
+		}
+		return true;
+	});
 
 	return body;
 }

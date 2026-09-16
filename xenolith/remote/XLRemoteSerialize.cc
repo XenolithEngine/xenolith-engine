@@ -715,6 +715,60 @@ Rc<sprt::window::WindowInfo> deserializeWindowInfo(const Value &v) {
 	return info;
 }
 
+Value serializeWindowRequest(const sprt::window::WindowInfo &c) {
+	Value v;
+	v.setString(StringView(c.id), "id");
+	v.setString(StringView(c.title), "title");
+	v.setInteger(int64_t(c.rect.x), "x");
+	v.setInteger(int64_t(c.rect.y), "y");
+	v.setInteger(int64_t(c.rect.width), "w");
+	v.setInteger(int64_t(c.rect.height), "h");
+	v.setInteger(int64_t(c.minExtent.width), "minW");
+	v.setInteger(int64_t(c.minExtent.height), "minH");
+	v.setInteger(int64_t(c.maxExtent.width), "maxW");
+	v.setInteger(int64_t(c.maxExtent.height), "maxH");
+	v.setDouble(c.density, "density");
+	v.setInteger(ei(c.flags), "flags");
+	v.setInteger(ei(c.type), "type");
+	return v;
+}
+
+Rc<sprt::window::WindowInfo> deserializeWindowRequest(const Value &v) {
+	// Absent means "not requested", so every field keeps the default a locally created window would
+	// have had; a malformed payload is a request for a default window, not for a window of zeros.
+	auto info = Rc<sprt::window::WindowInfo>::alloc();
+	if (!v.isDictionary()) {
+		return info;
+	}
+	auto take = [&](StringView key, auto &target, auto convert) {
+		if (v.hasValue(key)) {
+			target = convert(v.getValue(key));
+		}
+	};
+	auto asInt = [](const Value &n) { return n.getInteger(); };
+	auto asDouble = [](const Value &n) { return n.getDouble(); };
+
+	if (v.isString("id")) {
+		info->id = StringView(v.getString("id")).str<sprt::window::String>();
+	}
+	if (v.isString("title")) {
+		info->title = StringView(v.getString("title")).str<sprt::window::String>();
+	}
+	take("x", info->rect.x, [&](const Value &n) { return int32_t(asInt(n)); });
+	take("y", info->rect.y, [&](const Value &n) { return int32_t(asInt(n)); });
+	take("w", info->rect.width, [&](const Value &n) { return uint32_t(asInt(n)); });
+	take("h", info->rect.height, [&](const Value &n) { return uint32_t(asInt(n)); });
+	take("minW", info->minExtent.width, [&](const Value &n) { return uint32_t(asInt(n)); });
+	take("minH", info->minExtent.height, [&](const Value &n) { return uint32_t(asInt(n)); });
+	take("maxW", info->maxExtent.width, [&](const Value &n) { return uint32_t(asInt(n)); });
+	take("maxH", info->maxExtent.height, [&](const Value &n) { return uint32_t(asInt(n)); });
+	take("density", info->density, [&](const Value &n) { return float(asDouble(n)); });
+	take("flags", info->flags,
+			[&](const Value &n) { return sprt::window::WindowCreationFlags(asInt(n)); });
+	take("type", info->type, [&](const Value &n) { return sprt::window::WindowType(asInt(n)); });
+	return info;
+}
+
 Value serializeSwapchainConfig(const core::SwapchainConfig &c) {
 	// Compact flat array. Fixed field order:
 	// [presentMode, presentModeFast, imageFormat, colorSpace, alpha, transform, imageCount,
@@ -1275,6 +1329,8 @@ static DataValue encodeMaterialSet(const core::MaterialAttachment *att, core::Ma
 Bytes QueueCodec::encodeQueue(const core::Queue &queue,
 		const HashMap<const core::MaterialAttachment *, Rc<core::MaterialSet>> &materials,
 		ObjectRegistry &registry) {
+	// Everything this encoding shares belongs to the queue being encoded, and is released with it.
+	ObjectRegistry::QueueScope scope(registry, registry.get(const_cast<core::Queue *>(&queue)));
 	QueueEncoder enc(registry);
 
 	// reach into the queue via the public getters (encode is read-only)
@@ -1892,6 +1948,7 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 
 Bytes QueueCodec::encodeMaterials(uint64_t queueId, core::MaterialSet &set,
 		ObjectRegistry &registry) {
+	ObjectRegistry::QueueScope scope(registry, queueId);
 	auto owner = set.getOwner();
 	if (!owner || !owner->getData()) {
 		return Bytes();

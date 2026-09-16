@@ -27,6 +27,7 @@
 #include "XLUiConfig.h"
 #include "XL2dScrollView.h"
 #include "XL2dScrollController.h"
+#include "XLSelectionSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -64,6 +65,15 @@ SP_PUBLIC size_t getRowBoundaryAt(const RowGeometrySource &, const Vec2 &viewLoc
 // The rectangle of a boundary index, for a caller that already knows which one it wants.
 SP_PUBLIC bool getRowBoundaryRect(const RowGeometrySource &, size_t boundary, Rect &out,
 		float thickness = 2.0f);
+
+// Scroll by the least distance that shows the whole row. False when there is no such row.
+SP_PUBLIC bool scrollRowIntoView(basic2d::ScrollView *, const basic2d::ScrollController *,
+		size_t index);
+
+/* The row a selection arriving from `fromWorld` in `dir` lands on: the closest visible row by
+getSelectionDirectionScore, else the first or last visible one. maxOf<size_t>() with no rows. */
+SP_PUBLIC size_t getEnteringRow(const RowGeometrySource &, SelectionDirection dir,
+		const Rect &fromWorld);
 
 } // namespace stappler::xenolith::ui
 

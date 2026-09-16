@@ -210,14 +210,16 @@ protected:
 
 	void clearKey(const InputEventData &);
 	EventHandlersInfo *resetKey(const InputEventData &);
-	void handleKey(const InputEventData &, bool clear);
+	// Returns whether any listener of the key's chain is still accepting it
+	bool handleKey(const InputEventData &, bool clear);
 
 	/* Global hotkeys, delivered ahead of the ordinary key route (see XLHotkey.h).
 
 	   Returns true when a subscriber consumed the combination: the key never reaches the listener
 	   storage, so no chain is opened and the matching release is a no-op. Returns false (also
-	   for a hotkey nobody handled) and the key is dispatched normally. */
-	bool handleHotkey(const InputEventData &, bool repeated);
+	   for a hotkey nobody handled) and the key is dispatched normally. With `unhandled` it is the
+	   pass after the ordinary route declined the key, offering only HotkeyFlags::Unhandled. */
+	bool handleHotkey(const InputEventData &, bool repeated, bool unhandled);
 
 	// The Exclusive focus group that would scope this event, by the same rule
 	// EventHandlersInfo::addListenersFromStorage uses. Null when no group claims it.

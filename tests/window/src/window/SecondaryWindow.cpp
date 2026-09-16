@@ -33,16 +33,10 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
-Rc<WindowSceneInfo> SecondaryWindow::open(NotNull<AppWindow> anyWindow, StringView id, Extent2 size,
-		ContentBuilder &&builder, WindowSceneInfo::CloseCallback &&onClose, Rc<core::Queue> &&queue,
-		sprt::optional<IVec2> origin, bool shareRemote) {
+Rc<WindowSceneInfo> SecondaryWindow::makeSceneInfo(StringView id, ContentBuilder &&builder,
+		WindowSceneInfo::CloseCallback &&onClose, Rc<core::Queue> &&queue, bool shareRemote) {
 	if (!builder || id.empty()) {
-		log::source().error("SecondaryWindow", "open: id and builder are required");
-		return nullptr;
-	}
-
-	auto ctx = anyWindow->getContext();
-	if (!ctx) {
+		log::source().error("SecondaryWindow", "makeSceneInfo: id and builder are required");
 		return nullptr;
 	}
 
@@ -61,8 +55,24 @@ Rc<WindowSceneInfo> SecondaryWindow::open(NotNull<AppWindow> anyWindow, StringVi
 	},
 			sp::move(onClose));
 
-	if (queue) {
+	if (sceneInfo && queue) {
 		sceneInfo->setQueue(sp::move(queue));
+	}
+	return sceneInfo;
+}
+
+Rc<WindowSceneInfo> SecondaryWindow::open(NotNull<AppWindow> anyWindow, StringView id, Extent2 size,
+		ContentBuilder &&builder, WindowSceneInfo::CloseCallback &&onClose, Rc<core::Queue> &&queue,
+		sprt::optional<IVec2> origin, bool shareRemote) {
+	auto ctx = anyWindow->getContext();
+	if (!ctx) {
+		return nullptr;
+	}
+
+	auto sceneInfo =
+			makeSceneInfo(id, sp::move(builder), sp::move(onClose), sp::move(queue), shareRemote);
+	if (!sceneInfo) {
+		return nullptr;
 	}
 
 	auto info = Rc<sprt::window::WindowInfo>::create();
@@ -103,9 +113,9 @@ void SecondaryWindow::close(WindowSceneInfo *handle) {
 bool SecondaryScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 		const core::FrameConstraints &constraints, StringView id,
 		SecondaryWindow::ContentBuilder &&builder) {
-	// Adopt the queue the opener prewarmed, if any - see QueueCache.
-	auto appWindow = dynamic_cast<AppWindow *>(window.get());
-	auto sceneInfo = appWindow ? appWindow->getSceneInfo() : nullptr;
+	// Adopt the queue the opener prewarmed, if any - see QueueCache. The same scene runs for a
+	// window a remote client asked for, where the handle hangs off a RemoteWindow.
+	auto sceneInfo = getWindowSceneInfo(window);
 	auto queue = sceneInfo ? sceneInfo->getQueue() : nullptr;
 
 	if (queue) {

@@ -646,7 +646,7 @@ void VertexPassHandle::drawSpans(core::MaterialSet *materials, CommandBuffer &bu
 
 		applyDynamicState(commands, buf, materialVertexSpan.state);
 
-		if (materialVertexSpan.particleSystemId > 0) {
+		if (materialVertexSpan.particleEmitterId > 0) {
 			if (!_particles) {
 				return;
 			}
@@ -654,7 +654,7 @@ void VertexPassHandle::drawSpans(core::MaterialSet *materials, CommandBuffer &bu
 			auto particleVertexes = _particles->getVertices();
 
 			auto emitterRenderInfo =
-					_particles->getEmitterRenderInfo(materialVertexSpan.particleSystemId);
+					_particles->getEmitterRenderInfo(materialVertexSpan.particleEmitterId);
 
 			if (particleVertexes && emitterRenderInfo) {
 				VertexConstantData pcbParticle = pcb;
