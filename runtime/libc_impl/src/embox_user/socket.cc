@@ -142,9 +142,15 @@ struct protoent *getprotobynumber(int) { return (struct protoent *)0; }
 void setprotoent(int) { }
 void endprotoent(void) { }
 
-// --- <poll.h> / <sys/select.h> --------------------------------------------------
-
-int poll(struct pollfd *, nfds_t, int) noexcept { errno = ENOSYS; return -1; }
+// --- <sys/select.h> -------------------------------------------------------------
+//
+// poll() and ppoll() used to be ENOSYS stubs here, beside the socket ones,
+// because nothing on this target was pollable. Since M2 they are real and live
+// in pipe_poll.cc; what stays here is select, which has no syscall of its own.
+// It could be built on ppoll -- an fd_set is a poll array with the bits spelled
+// differently -- but that is a call M2 was not asked for, and a select that
+// quietly handled only the cases poll covers would be worse than one that says
+// it is not here.
 
 int select(int, fd_set *, fd_set *, fd_set *, const struct timeval *) noexcept {
 	errno = ENOSYS;

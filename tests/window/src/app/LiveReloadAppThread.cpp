@@ -121,14 +121,12 @@ void LiveReloadAppThread::launchClient(StringView stagedExe) {
 
 	// The client we just killed was SIGKILLed (uncatchable), so it never sent a QUIC CONNECTION_CLOSE.
 	// The server (this ServerAppThread, whose listener runs on this same thread) therefore still holds
-	// that now-dead client in its single-connection slot and would REJECT the replacement we are about
+	// that now-dead client in its connection slot and would REJECT the replacement we are about
 	// to launch ("remote client already connected"), freeing the slot only after the ~5s keepalive
 	// timeout — by which point the one-shot client has already failed its handshake and exited. So drop
 	// the stale connection ourselves now (reverts shared windows to their local Directors and sends a
 	// server-side CONNECTION_CLOSE); the fresh client is then accepted immediately.
-	if (_remoteClient) {
-		resetRemoteClient();
-	}
+	resetRemoteSessions();
 
 	// `'<exe>' <address> <token> <spki>` run via the app looper (/bin/sh -c). The client reads argv[1]
 	// as the server address to dial, argv[2] as the token (key = Sha512(token)) and argv[3] as our

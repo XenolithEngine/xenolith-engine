@@ -734,8 +734,8 @@ void ContextController::handleContextDidStart() {
 }
 
 void ContextController::handleAllWindowsClosed() {
-	if (_context
-			&& hasFlag(_context->getInfo()->flags, ContextFlags::DestroyWhenAllWindowsClosed)) {
+	if (_context && hasFlag(_context->getInfo()->flags, ContextFlags::DestroyWhenAllWindowsClosed)
+			&& !hasFlag(_context->getInfo()->flags, ContextFlags::KeepRunningWithoutWindows)) {
 		if (_displayConfigManager && _displayConfigManager->hasSavedMode()) {
 			_displayConfigManager->restoreMode([this](Status) {
 				_looper->performOnThread([this] {

@@ -100,6 +100,7 @@ Long-form tutorials for one subsystem, referenced from the articles above.
 
 | Guide | Read it when |
 |---|---|
+| [basic2d/particles.adoc](../basic2d/particles.adoc) | using or changing the GPU particles — what each parameter means against Godot, the emission cycle, feedback and snapshots, the limits and how the GPU is checked against the CPU reference |
 | [data/value.adoc](../data/value.adoc) | working with `data::Value` in depth — accessors, serialization, custom encoders, the `Value::Null` trap |
 | [unicode-and-idn.adoc](../unicode-and-idn.adoc) | `sprt::unicode` and `sprt::idn` in depth — the three comparisons, collation strength and sort keys, locale coverage, UTS-46 options and errors |
 | [ui/content-measurement.adoc](../ui/content-measurement.adoc) | making a node or system answer `fit-content` measurement |

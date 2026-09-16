@@ -43,10 +43,21 @@ public:
 	// GlobalError::Busy) so the peer learns why instead of waiting out its own handshake deadline.
 	// The caller closes the connection afterwards.
 	GlobalError reject(GlobalError status);
+
+	// The same handshake a step at a time, for a host that runs many at once (ServerHandshake).
+	ServerHandshake &getHandshake() { return _handshake; }
+
+	// After the step-at-a-time handshake replied Ok: take the negotiated dictionary and start the
+	// message serials, as handshake() does.
+	void adoptHandshake();
+
+protected:
+	ServerHandshake _handshake;
 };
 
 // A bound endpoint, owned by the host AppThread. It owns no thread: the host registers
-// getPollHandle() with its Looper (PollFlags::In) and drives handleEvents()/getEventTimeout().
+// getPollHandle() (or, without one, getWaitAddress()) with its Looper and drives
+// handleEvents()/getEventTimeout().
 //
 // The transport underneath is chosen by the address's scheme, so this class knows nothing about
 // QUIC -- only how to turn accepted transport connections into protocol sessions.
@@ -64,6 +75,9 @@ public:
 
 	// The handle to register with Looper::listenPollableHandle (PollFlags::In).
 	sprt::dispatch::NativeHandle getPollHandle() const;
+
+	// For a transport without a pollable handle: the word for Looper::waitOnAddress.
+	TransportWaitAddress getWaitAddress();
 
 	// Pump the transport and accept any pending connections (onAccept per new connection).
 	void handleEvents(const AcceptCallback &onAccept);

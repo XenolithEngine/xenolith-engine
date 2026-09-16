@@ -48,6 +48,75 @@
 #define __SPRT_SYSCALL_exit            93
 #define __SPRT_SYSCALL_exit_group      94
 
+// futex: WAIT, WAKE and their BITSET forms with BITSET_MATCH_ANY, private or
+// not (there are no mappings shared between tasks). No PI, no requeue, no
+// CLOCK_REALTIME -- those answer ENOSYS (ABI doc section 6.2). The first
+// syscall that blocks by design.
+#define __SPRT_SYSCALL_futex           98
+
+// Threads (K6/L3b). clone is the thread flavour only: CLONE_VM and CLONE_THREAD
+// are required and anything outside the pthread set is -EINVAL, because a clone
+// without CLONE_VM is fork and fork is never implemented (ABI doc section 6.4).
+// set_tid_address registers the word the kernel zeroes and wakes when the
+// thread ends -- which is how a joiner learns the thread's stack may be
+// unmapped, not how pthread_join waits.
+#define __SPRT_SYSCALL_set_tid_address  96
+#define __SPRT_SYSCALL_clone           220
+
+// Time. Both were spins here until K6; a sleeping thread that spins holds a
+// core, which with real threads is no longer merely wasteful.
+#define __SPRT_SYSCALL_nanosleep       101
+#define __SPRT_SYSCALL_clock_nanosleep 115
+#define __SPRT_SYSCALL_sched_yield     124
+
+// Directories. Embox has no directory descriptor at all: opendir/readdir over a
+// DIR*, and its open() ASSERTS on O_DIRECTORY rather than refusing it. So the
+// kernel invents the descriptor, out of a reserved high range -- which is why a
+// directory fd here is not the ordinary small integer Linux hands back.
+#define __SPRT_SYSCALL_getdents64      61
+
+// Paths. All five are built on top of the plain calls, because Embox has almost
+// no *at family: the kernel resolves a dirfd by remembering the path behind it.
+// Two of them answer differently than a Linux caller may expect, and neither
+// difference is detectable from here, so they are written down instead:
+// renameat is copy-then-delete and therefore NOT atomic, and readlinkat is
+// always EINVAL because no filesystem in the image has symbolic links.
+#define __SPRT_SYSCALL_mkdirat          34
+#define __SPRT_SYSCALL_unlinkat         35
+#define __SPRT_SYSCALL_renameat         38
+#define __SPRT_SYSCALL_faccessat        48
+#define __SPRT_SYSCALL_readlinkat       78
+
+// The working directory, which under Embox's oldfs is the PWD environment
+// variable and nothing else. The environment holds 64-byte rows, so a path
+// longer than 59 characters cannot be entered at all: chdir answers
+// ENAMETOOLONG well below PATH_MAX.
+#define __SPRT_SYSCALL_getcwd           17
+#define __SPRT_SYSCALL_chdir            49
+
+// Descriptors. Every fcntl command number differs from Embox's, and the
+// collision is the dangerous one -- Linux F_DUPFD is 0, Embox F_GETFD is 0 --
+// so the kernel translates rather than forwards. F_GETFL cannot report
+// O_CLOEXEC (Embox does not keep it in the flags word); F_GETFD does.
+// fsync is a no-op that succeeds: nothing in this image has a write-back
+// cache, so there is nothing to force and saying so is not a promise.
+#define __SPRT_SYSCALL_dup              23
+#define __SPRT_SYSCALL_dup3             24
+#define __SPRT_SYSCALL_fcntl            25
+#define __SPRT_SYSCALL_ftruncate        46
+#define __SPRT_SYSCALL_fsync            82
+
+// Pipes and poll. POLLOUT and POLLPRI are swapped between the two systems and
+// the kernel translates both ways; ppoll refuses a non-NULL sigmask, because
+// there are no signals here and pretending to block them would be a lie.
+#define __SPRT_SYSCALL_pipe2            59
+#define __SPRT_SYSCALL_ppoll            73
+
+// getrandom over /dev/urandom, which on this board is an LCG stirred with the
+// clock. It is not a CSPRNG, there is no entropy pool, and GRND_RANDOM is
+// refused rather than served by the source that is not it.
+#define __SPRT_SYSCALL_getrandom       278
+
 #define __SPRT_SYSCALL_clock_gettime  113
 #define __SPRT_SYSCALL_uname          160
 #define __SPRT_SYSCALL_getpid         172
@@ -67,14 +136,6 @@
 // These are the numbers the calls WILL have, recorded here so that implementing
 // one is a move rather than a lookup, and so that nothing gets accidentally
 // numbered twice (ABI doc section 9 forbids ever reusing a number).
-//
-// M2 - "kiosk with a picture and threads" (K6, K7):
-//     17 getcwd          23 dup             24 dup3            25 fcntl
-//     34 mkdirat         35 unlinkat        38 renameat        46 ftruncate
-//     48 faccessat       49 chdir           59 pipe2           61 getdents64
-//     73 ppoll           78 readlinkat      82 fsync           96 set_tid_address
-//     98 futex          101 nanosleep      115 clock_nanosleep 124 sched_yield
-//    220 clone          278 getrandom
 //
 //   17 getcwd already has a number in the kernel's xl_abi.h but no dispatcher
 //   case, so it answers ENOSYS; it stays out of this file until it does not.

@@ -196,6 +196,19 @@ enum class WindowCode {
 	// server -> client notification: [windowId, TextInputState], the state the processor settled
 	// on. The only source of truth for the client's widget: it must not apply its own request.
 	TextInputState = 14,
+
+	/* client -> server request: open a window for me. Payload is a keyed map -- the subset of
+	WindowInfo a client may ask for (see serializeWindowRequest); the server is free to alter or
+	ignore any of it.
+
+	Reply: {"st": Status, "id": the final window id, "win": what was granted}. A refusal is a
+	Status, not a protocol error: it is policy (no handler, a type this window system can not make,
+	the session's window budget), and it must not cost the session.
+
+	The reply says the window was CREATED, not that it is drawable: it becomes drawable when its
+	scene has shared a queue and the announce carries it, with the serial of this request in the
+	last announce slot so the asking client knows which of its requests it answers. */
+	CreateWindow = 15,
 };
 
 // Every WindowCode has a handler on the side that receives it; see the note on codeBit.
@@ -206,7 +219,8 @@ constexpr uint64_t kSupportedWindowCodes = codeBit(WindowCode::CompileQueue)
 		| codeBit(WindowCode::RequestScreenshot) | codeBit(WindowCode::CompileMaterials)
 		| codeBit(WindowCode::InputEvents) | codeBit(WindowCode::UpdateLayers)
 		| codeBit(WindowCode::WindowGeometryChanged) | codeBit(WindowCode::WindowControl)
-		| codeBit(WindowCode::TextInputControl) | codeBit(WindowCode::TextInputState);
+		| codeBit(WindowCode::TextInputControl) | codeBit(WindowCode::TextInputState)
+		| codeBit(WindowCode::CreateWindow);
 
 
 // Operations carried by WindowCode::TextInputControl.
@@ -566,6 +580,83 @@ protected:
 	Vector<Message> _pending; // complete messages awaiting a successful dispatch
 };
 
+// The server side of the setup handshake, advanced a step at a time. No call blocks: step() takes
+// what the transport has and returns, so many handshakes can run on one thread and a silent peer
+// holds nothing up. Time is passed in, which also makes deadlines testable.
+class SP_PUBLIC ServerHandshake {
+public:
+	enum class State {
+		Idle,
+		ReadingHello,
+		HelloReceived, // negotiate() and reply() decide the answer
+		Replying,
+		Done, // the ServerHello was written
+		Failed, // closed, malformed frame, or past the deadline
+	};
+
+	void begin(uint64_t deadlineUs);
+	void setDeadline(uint64_t deadlineUs) { _deadline = deadlineUs; }
+
+	// Reads no more than the hello still needs, so bytes a client sends after it stay in the
+	// stream for the connection.
+	State step(TransportConnection &, uint64_t nowUs);
+
+	// From HelloReceived: check magic, version, auth mode and key, and choose the dictionary.
+	GlobalError negotiate(BytesView expectedKey, BytesView serverDict, bool requireBearerKey);
+
+	// Queue the ServerHello. From ReadingHello or Failed it answers without a hello, which a refusal
+	// does after waiting a little (see serverHandshakeReject).
+	void reply(GlobalError, BytesView serverDict);
+
+	State getState() const { return _state; }
+	GlobalError getReplied() const { return _replied; }
+	BytesView getNegotiatedDict() const { return _negotiatedDict; }
+
+protected:
+	State _state = State::Idle;
+	uint64_t _deadline = 0;
+	Bytes _in;
+	Bytes _out;
+	size_t _outOffset = 0;
+	bool _helloValid = false;
+	ClientHello _hello; // views into _in
+	DictSource _dictSource = DictSource::None;
+	Bytes _negotiatedDict;
+	GlobalError _replied = GlobalError::BadProtocol;
+};
+
+// The client side, likewise non-blocking.
+class SP_PUBLIC ClientHandshake {
+public:
+	enum class State {
+		Idle,
+		Writing,
+		ReadingReply,
+		Done, // a ServerHello arrived: getResult() is Ok or the server's refusal
+		Failed, // NetworkBackend (closed, deadline) or BadProtocol (malformed reply)
+	};
+
+	// Queue the ClientHello.
+	void begin(BytesView bearerKey, BytesView dict, uint64_t deadlineUs);
+
+	State step(TransportConnection &, uint64_t nowUs);
+
+	State getState() const { return _state; }
+	GlobalError getResult() const { return _result; }
+
+	// Valid in Done; its dictionary points into this handshake.
+	const ServerHello &getServerHello() const { return _hello; }
+
+protected:
+	State _state = State::Idle;
+	uint64_t _deadline = 0;
+	Bytes _in;
+	Bytes _out;
+	size_t _outOffset = 0;
+	ServerHello _hello;
+	GlobalError _result = GlobalError::NetworkBackend;
+};
+
 // Client side: send ClientHello (bearer key + suggested dict), read ServerHello into `out`, and fill
 // `negotiatedDict` with the dictionary to use for subsequent data frames. Returns true iff
 // out.status == Ok.
@@ -583,8 +674,8 @@ SP_PUBLIC GlobalError serverHandshake(TransportConnection &, BytesView expectedK
 		bool requireBearerKey = true);
 
 // Server side: answer a connection with `status` instead of negotiating (e.g. GlobalError::Busy),
-// so the peer does not wait out its handshake deadline. The ClientHello is not read, so this only
-// blocks on the write.
+// so the peer does not wait out its handshake deadline. Waits briefly for the ClientHello first
+// (kRejectHelloWaitUs) and answers regardless.
 // Returns `status`; the caller closes the connection afterwards.
 SP_PUBLIC GlobalError serverHandshakeReject(TransportConnection &, GlobalError status,
 		uint64_t deadlineUs);

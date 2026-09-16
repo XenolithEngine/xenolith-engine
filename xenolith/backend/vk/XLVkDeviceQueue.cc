@@ -118,32 +118,39 @@ Status DeviceQueue::doSubmit(const FrameSync *sync, core::CommandPool *commandPo
 	}, nullptr, "DeviceQueue::submit");
 #endif
 
-	VkResult result;
+	VkResult result = VK_ERROR_DEVICE_LOST;
 	auto dev = static_cast<Device *>(_device);
 
-	dev->makeQueueApiCall([&, this](const DeviceTable &table, VkDevice device) {
-		if (hasFlag(idle, core::DeviceIdleFlags::PreDevice)) {
-			table.vkDeviceWaitIdle(dev->getDevice());
-		} else if (hasFlag(idle, core::DeviceIdleFlags::PreQueue)) {
-			table.vkQueueWaitIdle(_queue);
-		}
+	// A lost device is not asked again: the submit fails, and the caller's failure path runs.
+	if (!dev->isDeviceLost() && dev->getTestFault() != DeviceTestFault::LoseOnSubmit) {
+		dev->makeQueueApiCall([&, this](const DeviceTable &table, VkDevice device) {
+			if (hasFlag(idle, core::DeviceIdleFlags::PreDevice)) {
+				table.vkDeviceWaitIdle(dev->getDevice());
+			} else if (hasFlag(idle, core::DeviceIdleFlags::PreQueue)) {
+				table.vkQueueWaitIdle(_queue);
+			}
 #if XL_VKAPI_DEBUG
-		auto t = sp::platform::clock(ClockType::Monotonic);
-		result =
-				table.vkQueueSubmit(_queue, 1, &submitInfo, static_cast<Fence &>(fence).getFence());
-		XL_VKAPI_LOG("[", _frameIdx, "] vkQueueSubmit: ", result, " ", (void *)_queue, " [",
-				sp::platform::clock(ClockType::Monotonic) - t, "]");
+			auto t = sp::platform::clock(ClockType::Monotonic);
+			result = table.vkQueueSubmit(_queue, 1, &submitInfo,
+					static_cast<Fence &>(fence).getFence());
+			XL_VKAPI_LOG("[", _frameIdx, "] vkQueueSubmit: ", result, " ", (void *)_queue, " [",
+					sp::platform::clock(ClockType::Monotonic) - t, "]");
 #else
-		result =
-				table.vkQueueSubmit(_queue, 1, &submitInfo, static_cast<Fence &>(fence).getFence());
+			result = table.vkQueueSubmit(_queue, 1, &submitInfo,
+					static_cast<Fence &>(fence).getFence());
 #endif
 
-		if (hasFlag(idle, core::DeviceIdleFlags::PostDevice)) {
-			table.vkDeviceWaitIdle(dev->getDevice());
-		} else if (hasFlag(idle, core::DeviceIdleFlags::PostQueue)) {
-			table.vkQueueWaitIdle(_queue);
-		}
-	});
+			if (hasFlag(idle, core::DeviceIdleFlags::PostDevice)) {
+				table.vkDeviceWaitIdle(dev->getDevice());
+			} else if (hasFlag(idle, core::DeviceIdleFlags::PostQueue)) {
+				table.vkQueueWaitIdle(_queue);
+			}
+		});
+	}
+
+	if (result == VK_ERROR_DEVICE_LOST) {
+		dev->markDeviceLost("vkQueueSubmit");
+	}
 
 	if (result == VK_SUCCESS) {
 		// mark semaphores

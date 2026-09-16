@@ -18,6 +18,10 @@
   restricts a binding to that pass.
 * **Nothing is derived from focus.** Selection is set by an explicit call and by
   nothing else; "focusing me selects me" is one line in a widget that wants it.
+* **Arrows move the selection** (`SelectionSystem::moveSelection`): first inside the
+  owner, then to the closest node registered with **`setNodeSelectable`** that was
+  drawn in that direction. They reach the system only when the ordinary key route
+  did not take them.
 
 ## Why it exists
 
@@ -193,6 +197,56 @@ state is dropped before any callback runs. That stops `A -> A`. It does **not**
 stop two owners selecting each other, because neither request ever equals the
 current state, so the loop is bounded at `MaxRedirects` and says so in the log.
 
+## Arrow navigation
+
+[source,cpp]
+----
+// A plain node the arrows may select
+setNodeSelectable(card, true);
+
+// A container: the arrows enter it through its SelectionOwner
+setNodeSelectable(this, true, this);
+
+system->moveSelection(SelectionDirection::Down);
+----
+
+`SelectionSystem` subscribes its own listener to `EngineHotkeys::selectLeft`,
+`selectRight`, `selectUp` and `selectDown` with `HotkeyFlags::Unhandled |
+Repeatable`, so a key reaches it only after the ordinary key route declined it.
+A focused `ui::Slider`, `ui::ChipRow`, `ui::Select`, a menu or a text view keeps
+its arrows; the selection moves when nothing else wanted them. A modal dialog's
+`Exclusive` group scopes the pass as usual.
+
+One step is:
+
+. **Inside the owner.** `SelectionOwner::moveSelection(dir)` — `true` when it
+  handled the key, `false` at its edge. Both new owner methods have defaults that
+  answer `false`, so an owner that knows nothing about arrows is simply left.
+. **Otherwise by geometry.** The source is the anchor's rect as it was drawn. The
+  candidates are the committed frame's hit-test records with
+  `HitTestFlags::Selectable`, clipped by their scissor, excluding the owner node,
+  its ancestors and its descendants. A candidate must lie entirely past the source's
+  near edge (1px tolerance). Candidates that overlap the source across the
+  direction win; among the rest `13 * major² + minor²` decides
+  (`getSelectionDirectionScore`).
+. **Entering.** A plain node is selected with `selectNode`. A node registered with
+  an owner is offered `SelectionOwner::enterSelection(dir, fromWorld)`; a refusal
+  passes to the next candidate.
+
+Directions are physical: Left is left in a right-to-left window too. What they
+*mean* inside an owner is the owner's business. `ui::TreeView` steps rows on
+Up/Down, and on the inline-start arrow collapses an open category or goes to the
+parent, on the inline-end arrow expands a closed one or enters its first child —
+both follow `isInlineRtl`. `ui::TableView` steps rows on Up/Down and leaves on
+Left/Right. Both register themselves while `isSelectionOwned()`, scroll the new
+row into view, report it through the select callback like a tap, and enter on
+the closest visible row.
+
+Only **drawn** nodes are candidates: a node scrolled out of its clip, hidden or
+not yet visited is not in the registry. There is no generic scroll-into-view for
+plain nodes, so arrows do not scroll a list of cards past what is shown; a
+virtualized owner scrolls itself.
+
 ## Traps
 
 [cols="1,3"]
@@ -230,6 +284,15 @@ current state, so the loop is bounded at `MaxRedirects` and says so in the log.
   even then it carries only hover and tap. "The element's own listener receives
   the hotkey" is a contract the application opts into by subscribing on the row.
 
+| Registering a view that sits inside a selectable node
+| `ui::MarkdownView` is not a candidate on purpose: inside a selectable bubble it
+  would compete with the bubble for the same arrow. Register the outermost thing
+  the user means.
+
+| Expecting arrows to reach the selection past a focused widget
+| `HotkeyFlags::Unhandled`: the key route goes first. A widget that captures every
+  key while focused hides the arrows from the selection until it is blurred.
+
 | `Node::cleanup()` and the markers
 | `removeFromParent()` defaults to `cleanup()`, which calls `removeAllComponents()`
   — taking the selection markers *and* the node's name, which is also a component.
@@ -238,6 +301,8 @@ current state, so the loop is bounded at `MaxRedirects` and says so in the log.
 ## Verification
 
 `XL_SELECTION_TEST` (`widgets/selection`) and `tests/window/selection-check.py`.
+Arrow navigation: `XL_SELECTION_NAV_TEST` (`widgets/selection-nav`) and
+`tests/window/selection-nav-check.py`, which sends real arrow keys.
 The stand covers the system and the markers; the driver covers everything that
 only exists across frames — the chain spelled out deepest-first, the delivery
 order of a chord along it, and that holding one selection still for a hundred

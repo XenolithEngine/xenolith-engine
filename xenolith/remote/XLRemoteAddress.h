@@ -36,6 +36,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 //   "tcp://host:4480"             TLS 1.3 over TCP
 //   "unix:/run/xenolith.sock"     AF_UNIX stream socket
 //   "mem:name"                    in-process loopback, for tests
+//   "shm:/dev/shm/xenolith"       shared-memory rings between processes of one machine
 //
 // An empty host means "all interfaces" on the listen side and loopback on the connect side.
 enum class AddressScheme {
@@ -43,7 +44,10 @@ enum class AddressScheme {
 	Tcp, // network host:port over TLS/TCP
 	Unix, // filesystem path
 	Mem, // in-process pair, named by `path`
+	Shm, // shared-memory block, rendezvous file at `path`
 };
+
+constexpr size_t kAddressSchemeCount = size_t(AddressScheme::Shm) + 1;
 
 SP_PUBLIC StringView getSchemeName(AddressScheme);
 
@@ -56,7 +60,10 @@ struct SP_PUBLIC Address {
 	static Address parse(StringView);
 
 	// True for a scheme addressed by a path rather than host:port.
-	bool isPathBased() const { return scheme == AddressScheme::Unix || scheme == AddressScheme::Mem; }
+	bool isPathBased() const {
+		return scheme == AddressScheme::Unix || scheme == AddressScheme::Mem
+				|| scheme == AddressScheme::Shm;
+	}
 
 	// Kept for callers written before schemes existed.
 	bool isUnix() const { return scheme == AddressScheme::Unix; }

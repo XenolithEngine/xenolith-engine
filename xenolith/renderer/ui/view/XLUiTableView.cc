@@ -358,6 +358,9 @@ void TableView::setSelectionOwned(bool value) {
 	}
 	_selectionOwned = value;
 
+	// A candidate for arrow navigation only while it can hold the selection
+	setNodeSelectable(this, _selectionOwned, this);
+
 	// The reorder bindings are gated on ownership, so they have to be re-flagged when it changes
 	bindReorderHotkeys();
 
@@ -409,6 +412,47 @@ Node *TableView::resolveSelectionNode(const SelectionItem &item) const {
 		}
 	}
 	return nullptr;
+}
+
+bool TableView::moveSelection(SelectionDirection dir) {
+	if (!_selectionOwned || _selectedRow >= _rows.size()) {
+		return false;
+	}
+
+	if (dir == SelectionDirection::Up && _selectedRow > 0) {
+		selectRowFromKeyboard(_selectedRow - 1);
+		return true;
+	} else if (dir == SelectionDirection::Down && _selectedRow + 1 < _rows.size()) {
+		selectRowFromKeyboard(_selectedRow + 1);
+		return true;
+	}
+	return false;
+}
+
+bool TableView::enterSelection(SelectionDirection dir, const Rect &fromWorld) {
+	if (!_selectionOwned || _rows.empty()) {
+		return false;
+	}
+
+	auto index = getEnteringRow(makeGeometrySource(), dir, fromWorld);
+	if (index >= _rows.size()) {
+		return false;
+	}
+	selectRowFromKeyboard(index);
+	return true;
+}
+
+void TableView::selectRowFromKeyboard(size_t index) {
+	if (index >= _rows.size()) {
+		return;
+	}
+
+	setSelectedRow(index);
+	scrollRowIntoView(_scroll, _controller, index);
+
+	if (_selectCallback && index < _rows.size()) {
+		_selectCallback(index, _rows[index]);
+	}
 }
 
 void TableView::handleSelectionChanged(SpanView<SelectionItem> items) {

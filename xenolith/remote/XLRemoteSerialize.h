@@ -83,6 +83,21 @@ SP_PUBLIC core::FrameConstraints deserializeFrameConstraints(const Value &);
 SP_PUBLIC Value serializeWindowInfo(const sprt::window::WindowInfo &);
 SP_PUBLIC Rc<sprt::window::WindowInfo> deserializeWindowInfo(const Value &);
 
+/* What a client may ASK for when it wants a window (WindowCode::CreateWindow), and what the server
+answers it actually granted.
+
+A keyed map, unlike the announce's positional WindowInfo: the server is free to alter or drop any
+field, so "absent" has to mean "not requested" whatever its position, and this message will grow
+(icon, output, WM role) where the announce will not. It is sent once per window, so the keys cost
+nothing that matters.
+
+Carried: id(hint), title, x, y, w, h, minW, minH, maxW, maxH, density, flags, type, parent.
+NOT carried: capabilities, state and decorationInsets (the window system's answers -- they come back
+in the announce), the icon (a raster blob), fullscreen (needs a monitor identity a client can not
+name), appData (local by definition -- see WindowSceneInfo). */
+SP_PUBLIC Value serializeWindowRequest(const sprt::window::WindowInfo &);
+SP_PUBLIC Rc<sprt::window::WindowInfo> deserializeWindowRequest(const Value &);
+
 SP_PUBLIC Value serializeSwapchainConfig(const core::SwapchainConfig &);
 SP_PUBLIC core::SwapchainConfig deserializeSwapchainConfig(const Value &);
 

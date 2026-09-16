@@ -243,6 +243,63 @@ void performSerializeTests() {
 		auto wrong = deserializeWindowInfo(announce.getValue(AnnounceQueues));
 		check(!wrong || StringView(wrong->title) != StringView("announced window"),
 				"announce: the queue array does not decode as the WindowInfo");
+
+		// [8] geometry, then [9] the request this window answers for the session being told about
+		// it. A short announce -- every server before these slots existed -- reads as zeros.
+		announce.addValue(serializeWindowGeometry(sprt::window::WindowGeometry()));
+		announce.addInteger(77);
+		check(announce.size() == 10 && uint32_t(announce.getValue(9).getInteger()) == 77,
+				"announce: index 9 carries the CreateWindow serial");
+		Value legacy;
+		check(uint32_t(legacy.getValue(9).getInteger()) == 0,
+				"announce: a server that emits no serial reads as 0");
+	}
+
+	{
+		/* What a client may ask for when it wants a window, and what the server answers it granted.
+
+		A keyed map rather than the announce's positional array, because the fields that matter here
+		are exactly the ones serializeWindowInfo does not carry -- type, and the size bounds -- and
+		because the server may drop any of them, which "absent" has to be able to say. */
+		sprt::window::WindowInfo request;
+		request.id = "asked";
+		request.title = "a window";
+		request.rect = IRect(10, 20, 640, 480);
+		request.minExtent = Extent2(320, 240);
+		request.maxExtent = Extent2(1'920, 1'080);
+		request.density = 2.0f;
+		request.flags = sprt::window::WindowCreationFlags::UsePosition;
+		request.type = sprt::window::WindowType::Dialog;
+
+		auto restored = deserializeWindowRequest(serializeWindowRequest(request));
+		check(restored != nullptr, "window request: decodes");
+		if (restored) {
+			check(StringView(restored->id) == StringView("asked")
+							&& StringView(restored->title) == StringView("a window"),
+					"window request: names survive");
+			check(restored->rect.x == 10 && restored->rect.y == 20 && restored->rect.width == 640
+							&& restored->rect.height == 480,
+					"window request: the rect survives");
+			check(restored->minExtent == request.minExtent
+							&& restored->maxExtent == request.maxExtent
+							&& restored->type == request.type && restored->flags == request.flags,
+					"window request: the fields the announce can not carry survive");
+		}
+
+		// Absent means "not requested", so what comes back is the window a local opener would have
+		// got by default -- not a window of zeros.
+		sprt::window::WindowInfo defaults;
+		auto empty = deserializeWindowRequest(Value());
+		check(empty && empty->rect == defaults.rect && empty->type == defaults.type
+						&& empty->density == defaults.density,
+				"window request: an empty payload asks for a default window");
+
+		// Forward compatibility in the direction that will happen: a newer client adds a key.
+		auto grown = serializeWindowRequest(request);
+		grown.setInteger(1, "outputPreference");
+		auto tolerant = deserializeWindowRequest(grown);
+		check(tolerant && tolerant->rect.width == 640 && tolerant->type == request.type,
+				"window request: an unknown key is ignored");
 	}
 }
 

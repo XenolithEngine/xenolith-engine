@@ -236,7 +236,7 @@ struct pcg16_state_t {
 };
 
 SP_GLSL_INLINE uint pcg_rotr_16(uint value, uint rot) {
-	return (value >> rot) | (value << ((-rot) & 15));
+	return ((value >> rot) | (value << ((-rot) & 15))) & 0xFFFFu;
 }
 
 SP_GLSL_INLINE void pcg16_srandom_r(SP_GLSL_INOUT(pcg16_state_t) rng, uint initstate,
@@ -254,11 +254,15 @@ SP_GLSL_INLINE uint pcg16_random_r(SP_GLSL_INOUT(pcg16_state_t) rng) {
 
 	rng.state = rng.state * PCG_DEFAULT_MULTIPLIER_32 + rng.inc;
 
-	return (value >> rot) | (value << ((-rot) & 15));
+	// uint is 32-bit: without the mask the rotation leaks bits above the 16-bit output
+	return pcg_rotr_16(value & 0xFFFFu, rot);
 }
 
 SP_GLSL_INLINE uint pcg16_random_full_r(SP_GLSL_INOUT(pcg16_state_t) rng) {
-	return (pcg16_random_r(rng) & 0xFFFF) << 16 | (pcg16_random_r(rng) & 0xFFFF);
+	// Two statements: C++ does not order the operands of one expression
+	uint high = pcg16_random_r(rng);
+	uint low = pcg16_random_r(rng);
+	return (high << 16u) | low;
 }
 
 SP_GLSL_INLINE float pcg16_random_float_r(SP_GLSL_INOUT(pcg16_state_t) rng) {
@@ -269,8 +273,9 @@ SP_GLSL_INLINE float pcg16_random_full_float_r(SP_GLSL_INOUT(pcg16_state_t) rng)
 	return ldexp(float(pcg16_random_full_r(rng)), -32);
 }
 
+// bound is at most 65536
 SP_GLSL_INLINE uint pcg16_boundedrand_r(SP_GLSL_INOUT(pcg16_state_t) rng, uint bound) {
-	uint threshold = (uint(~bound - 1)) % bound;
+	uint threshold = (65536u - bound) % bound;
 	for (;;) {
 		uint r = pcg16_random_r(rng);
 		if (r >= threshold) {

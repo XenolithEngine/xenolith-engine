@@ -94,6 +94,8 @@ struct SPRT_API QueueData : public PerformEngine {
 	// (io_uring native, IOCP/overlapped native, or the portable inline handle).
 	using MakeFileHandleCallback = Rc<FileHandle> (*)(QueueData *, void *, Rc<FileState> &&);
 	using WatchFileCallback = Rc<WatchHandle> (*)(QueueData *, void *, WatchInfo &&, Ref *);
+	using AddressWaitCallback =
+			Rc<AddressWaitHandle> (*)(QueueData *, void *, AddressWaitInfo &&, Ref *);
 	// Per-backend readiness poll for a socket descriptor - the single primitive
 	// the shared stream-socket state machine (SPEventSocket) needs from a
 	// backend for the readiness-based strategy. Takes the socket directly (not
@@ -134,6 +136,7 @@ struct SPRT_API QueueData : public PerformEngine {
 	SpawnProcessCallback _spawnProcess = nullptr;
 	MakeFileHandleCallback _makeFileHandle = nullptr;
 	WatchFileCallback _watchFile = nullptr;
+	AddressWaitCallback _addressWait = nullptr;
 	SocketPollCallback _socketPoll = nullptr;
 	MakeSocketListenCallback _makeSocketListen = nullptr;
 	MakeSocketStreamCallback _makeSocketStream = nullptr;
@@ -194,6 +197,7 @@ struct SPRT_API QueueData : public PerformEngine {
 	Rc<FileHandle> readFile(FileReadInfo &&, Ref *);
 	Rc<FileHandle> writeFile(FileWriteInfo &&, Ref *);
 	Rc<WatchHandle> watchFile(WatchInfo &&, Ref *);
+	Rc<AddressWaitHandle> waitOnAddress(AddressWaitInfo &&, Ref *);
 	// Implemented in SPEventSocket.cc; nullptr when _socketPoll is not wired.
 	Rc<ListenHandle> listenSocket(ListenInfo &&, Ref *);
 	Rc<StreamHandle> connectSocket(ConnectInfo &&, Ref *);

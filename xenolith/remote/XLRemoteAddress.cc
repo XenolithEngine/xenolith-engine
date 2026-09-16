@@ -30,6 +30,7 @@ StringView getSchemeName(AddressScheme s) {
 	case AddressScheme::Tcp: return StringView("tcp"); break;
 	case AddressScheme::Unix: return StringView("unix"); break;
 	case AddressScheme::Mem: return StringView("mem"); break;
+	case AddressScheme::Shm: return StringView("shm"); break;
 	}
 	return StringView();
 }
@@ -46,6 +47,11 @@ Address Address::parse(StringView str) {
 	}
 	if (str.starts_with("mem:")) {
 		addr.scheme = AddressScheme::Mem;
+		addr.path = str.sub(4).str<Interface>();
+		return addr;
+	}
+	if (str.starts_with("shm:")) {
+		addr.scheme = AddressScheme::Shm;
 		addr.path = str.sub(4).str<Interface>();
 		return addr;
 	}

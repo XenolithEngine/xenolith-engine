@@ -26,6 +26,10 @@
 #include "XL2dScene.h"
 #include "XL2dScrollView.h"
 
+namespace STAPPLER_VERSIONIZED stappler::xenolith {
+class ServerAppThread;
+} // namespace stappler::xenolith
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 struct TestInfo;
@@ -69,6 +73,10 @@ protected:
 	// this is what lets a headless run walk the whole app - see README.
 	void registerCommands();
 
+	// Teach this server what a window a remote client asks for is (see ServerAppThread's
+	// ClientWindowHandler); installed only under XL_REMOTE_CLIENT_WINDOWS.
+	void installClientWindowHandler(ServerAppThread *);
+
 	// Replace the on-screen layout and answer `done` once it has been rendering for `settle`
 	// seconds. Layout switching and the settle delay are one action sequence, so the scene is
 	// driven exactly as it would be by a person clicking through the menu.
@@ -81,6 +89,9 @@ protected:
 	// Handle of the second window offered to the remote session (`remote-share-second`). Kept so a
 	// repeated command is a no-op rather than a second window, and cleared by its close callback.
 	Rc<WindowSceneInfo> _secondSharedWindow;
+
+	// Windows opened by `open-windows` for a measurement run; kept so they live as long as the app.
+	Vector<Rc<WindowSceneInfo>> _benchWindows;
 	sprt::window::WindowGeometry _lastGeometry;
 };
 

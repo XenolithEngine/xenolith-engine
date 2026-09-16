@@ -303,7 +303,10 @@ lifetime, or for error detection. Details and examples:
     retained and release exactly it — re-walking `getParent()` strands every
     counter above a row that was detached in between. Focus coupling is one
     explicit call in the widget that wants it, and it is asymmetric: taking focus
-    may select, losing focus must not clear.
+    may select, losing focus must not clear. Arrows move the selection inside the
+    owner (`SelectionOwner::moveSelection`) and then to the closest DRAWN node
+    registered with `setNodeSelectable`; they are `HotkeyFlags::Unhandled`, so a
+    focused widget that takes the arrow keeps it.
 
 31. **Comments are short and describe working code.** One to three lines as a
     rule; no capital-letter headings or words stressed in capitals
@@ -345,6 +348,7 @@ lifetime, or for error detection. Details and examples:
 | Asking the OS for a file/folder/colour/font; reveal-in-file-manager, move-to-trash, restore-from-trash, and asking whether one type is served at all | [dialogs.adoc](../../../docs/usage/codestyle/window/dialogs.adoc) |
 | **`data::Value` in depth** — accessors, container access, custom encoders, interface conversion, the `Value::Null` trap, pitfalls table | [data/value.adoc](../../../docs/usage/data/value.adoc) |
 | **`sprt::unicode` / `sprt::idn` in depth** — the three comparisons, collation strength/options/sort keys, locale coverage and `SPRT_COLLATION`, UTS-46 options and errors | [unicode-and-idn.adoc](../../../docs/usage/unicode-and-idn.adoc) |
+| GPU particles: what a `ParticleSystem` parameter means (against Godot), `ParticleEmitter`, feedback and snapshots, checking the GPU against the CPU reference | [basic2d/particles.adoc](../../../docs/usage/basic2d/particles.adoc) |
 | Everything, plus topics not yet written up | [index.adoc](../../../docs/usage/codestyle/index.adoc) |
 
 Adjacent skills: `xenolith-build` (how to build/verify), `css-engine` (CSS

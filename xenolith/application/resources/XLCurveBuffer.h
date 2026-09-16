@@ -71,6 +71,9 @@ public:
 	bool init(uint32_t npoints, const sprt::array<Interpolation, 3> &);
 	bool init(uint32_t npoints, const sprt::array<Interpolation, 4> &);
 
+	// Takes already sampled values: getElementSize() floats per point
+	bool init(CurveBufferType, SpanView<float> values);
+
 	float getFloat(float) const;
 	Vec2 getVec2(float) const;
 	Vec3 getVec3(float) const;

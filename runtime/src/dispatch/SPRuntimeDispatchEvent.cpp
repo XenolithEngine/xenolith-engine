@@ -46,6 +46,7 @@
 #include "platform/fd/SPEventProcess.cc"
 #include "platform/fd/SPEventProcessFd.cc"
 #include "platform/fd/SPEventFileFd.cc"
+#include "platform/fd/SPEventAddressWait.cc"
 #endif
 
 #if SPRT_WINDOWS

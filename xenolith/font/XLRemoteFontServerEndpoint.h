@@ -38,13 +38,16 @@ class FontComponent;
 class SP_PUBLIC RemoteFontServerEndpoint : public RemoteFontServer {
 public:
 	// SharedModule factory. Returns the abstract interface so the server can hold it without a font
-	// dep.
-	static Rc<RemoteFontServer> createServerFontEndpoint(AppThread *owner, FontComponent *);
+	// dep. `store` is the server's shared font store, opaque to it: null on the first call, which
+	// creates the store and returns it there for the next endpoints.
+	static Rc<RemoteFontServer> createServerFontEndpoint(AppThread *thread, FontComponent *,
+			Rc<Ref> &store);
 
 	virtual ~RemoteFontServerEndpoint();
 
-	bool init(AppThread *owner, FontComponent *);
+	bool init(AppThread *thread, FontComponent *, Rc<Ref> &store);
 
+	virtual void setPeer(RemotePeer *) override;
 	virtual bool dispatch(uint8_t code, uint32_t serial, BytesView payload) override;
 	virtual void receiveFontData(uint64_t contentHash, BytesView bytes) override;
 	virtual Rc<core::DependencyEvent> reconcileDependency(uint32_t depId) override;
@@ -54,16 +57,26 @@ public:
 	virtual void invalidate() override;
 
 protected:
+	// Fonts by content hash, persistent and shared by every endpoint of the server.
+	struct FontStore : public Ref {
+		Map<uint64_t, Rc<FontFaceData>> fonts;
+	};
+
 	void preloadDefaultFonts();
 	void handleSourcesAnnounce(uint32_t serial, BytesView payload);
 	void handleGlyphRequest(BytesView payload);
 	Rc<core::DependencyEvent> getOrCreateDep(uint32_t depId);
 
-	AppThread *_owner = nullptr;
+	// A server thread outlives its endpoints, so work completing on other threads hops through it
+	// and checks `_peer` there.
+	AppThread *_thread = nullptr;
+	RemotePeer *_peer = nullptr;
+	// Bumped on every setPeer/reset, so an answer computed for one session never reaches the next.
+	uint64_t _peerGeneration = 0;
 	FontComponent *_component = nullptr;
 	Rc<FontLibrary> _library; // dedicated network library: isolated FaceId space
 	Rc<FontControllerLocal> _controller; // network atlas owner (uses _library)
-	Map<uint64_t, Rc<FontFaceData>> _store; // persistent font store, keyed by content hash
+	Rc<FontStore> _store;
 	Map<uint32_t, Rc<core::DependencyEvent>>
 			_deps; // depId -> server-local gating event (per-connection)
 	uint64_t _atlasStableId = 0; // constant wire id pinned to the current atlas image

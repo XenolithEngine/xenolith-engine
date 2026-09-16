@@ -102,6 +102,9 @@ public:
 	virtual Rc<core::PresentationEngine> makePresentationEngine(NotNull<core::PresentationWindow>,
 			core::PresentationOptions) override;
 
+	// Null when no device could be created for the loop.
+	Device *getDevice() const;
+
 protected:
 	using core::Loop::init;
 

@@ -437,7 +437,11 @@ public:
 	bool schedule(Loop &);
 
 	bool check(Loop &, bool lockfree = true);
-	// void reset(Loop &, Function<void(Rc<Fence> &&)> &&);
+
+	// For a fence whose completion is observed elsewhere (an exported sync_fd): never blocks.
+	// `signaled` - the external handle reported completion. Returns true when the fence was
+	// released, successfully or, on a lost device, as failed.
+	bool checkExternal(Loop &, bool signaled);
 
 	void autorelease(Rc<Ref> &&);
 
@@ -445,6 +449,8 @@ protected:
 	using Object::init;
 
 	void setSignaled(Loop &loop);
+	void setReleased(Loop &loop, bool success);
+	void releaseFailed(Loop &loop, Status);
 
 	void scheduleReset(Loop &);
 	void scheduleReleaseReset(Loop &, bool s);

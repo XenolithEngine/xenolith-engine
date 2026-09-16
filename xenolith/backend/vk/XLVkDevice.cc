@@ -23,6 +23,8 @@
 **/
 
 #include "XLVkDevice.h"
+
+#include <sprt/c/__sprt_stdlib.h>
 #include "XLVk.h"
 #include "XLVkPipeline.h"
 #include "XLVkTextureSet.h"
@@ -209,6 +211,11 @@ Device::~Device() {
 
 bool Device::init(const vk::Instance *inst, DeviceInfo &&info, const Features &features,
 		const Vector<StringView> &extensions) {
+	// XL_VK_FENCE_EXPORT=0 keeps every fence on the polled path, to tell the two apart in the field.
+	if (auto env = __sprt_getenv("XL_VK_FENCE_EXPORT")) {
+		_fenceExport = StringView(env) != "0";
+	}
+
 	Set<uint32_t> uniqueQueueFamilies = {info.graphicsFamily.index, info.presentFamily.index,
 		info.transferFamily.index, info.computeFamily.index};
 

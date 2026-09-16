@@ -218,6 +218,18 @@ bool CurveBuffer::init(uint32_t npoints, const sprt::array<Interpolation, 4> &t)
 	return true;
 }
 
+bool CurveBuffer::init(CurveBufferType type, SpanView<float> values) {
+	_type = type;
+	auto eltSize = getElementSize();
+	if (values.empty() || values.size() % eltSize != 0) {
+		return false;
+	}
+
+	_id = s_curveBufferId.fetch_add(1);
+	_data = values.vec<Interface>();
+	return true;
+}
+
 template <typename Vec>
 static auto CurveBuffer_getVec(const CurveBuffer &buf, float val) {
 	auto eltSize = buf.getElementSize();

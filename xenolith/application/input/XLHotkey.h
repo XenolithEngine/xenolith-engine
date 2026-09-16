@@ -116,6 +116,11 @@ enum class HotkeyFlags : uint32_t {
 	   SelectionSystem and InputDispatcher::handleHotkey). It narrows who is offered the chord; a
 	   handler with nothing to do must still return false. */
 	SelectedOnly = 1 << 3,
+
+	/* Offer this binding only after the ordinary key route declined the key, and never before it.
+	   For keys a focused widget may want for itself: arrows move a slider's value first and the
+	   selection only when nothing took them. */
+	Unhandled = 1 << 4,
 };
 
 SP_DEFINE_ENUM_AS_MASK(HotkeyFlags)
@@ -134,6 +139,9 @@ struct SP_PUBLIC HotkeyContext {
 
 	// This listener's owner is on the committed selection chain
 	bool inSelection = false;
+
+	// The pass after the ordinary key route declined the key; only Unhandled bindings take it
+	bool unhandled = false;
 };
 
 // Return true to consume the hotkey: the dispatcher stops the walk and the ordinary key route
@@ -230,6 +238,13 @@ struct SP_PUBLIC EngineHotkeys {
 	   virtualized list may have no node to drop on. */
 	HotkeyId moveItemUp; // Alt+Up
 	HotkeyId moveItemDown; // Alt+Down
+
+	/* Move the scene's selection to the next element in a direction (SelectionSystem). Offered
+	   only when the ordinary key route declined the arrow, see HotkeyFlags::Unhandled. */
+	HotkeyId selectLeft; // Left
+	HotkeyId selectRight; // Right
+	HotkeyId selectUp; // Up
+	HotkeyId selectDown; // Down
 
 	HotkeyId textSelectAll; // Ctrl+A
 	HotkeyId textCopy; // Ctrl+C

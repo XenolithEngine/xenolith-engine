@@ -5,29 +5,22 @@
 // covers sleeping and local time, and brings the public time/errno names into
 // scope for the generic builtin_time.cpp body.
 //
-// SLEEPING IS A BUSY WAIT, and that is a deliberate choice for this milestone,
-// not an oversight. nanosleep(101), clock_nanosleep(115) and futex(98) are all
-// M2/K6: today an EL0 thread has NO way to ask the kernel to stop running it.
-// The two candidates were:
+// SLEEPING WAS A BUSY WAIT until K6, because nanosleep(101) and
+// clock_nanosleep(115) did not exist and an EL0 thread had no way to ask the
+// kernel to stop running it. It spun on the monotonic clock: correct in the one
+// sense that matters -- the time really had elapsed on return -- and wasteful in
+// every other, which stopped being tolerable the moment threads became real and
+// a sleeping thread meant a held core.
 //
-//   ENOSYS -- honest, and useless: every frame-paced loop in the engine calls
-//             sleep, and a libc where sleep fails is not one an application can
-//             be brought up on.
-//   spin   -- wasteful, but correct in the only sense that matters to a caller:
-//             the requested time really has elapsed when it returns.
-//
-// The spin is safe here because Embox is preemptive with a running timer tick
-// (el0test measures ~500 ticks passing during an EL0 loop), so other threads
-// still get the CPU -- this burns a core, it does not hang the system. The
-// hosted Embox target already polls for the same reason (core/embox/sprt_lock.cc).
-//
-// K6 replaces both functions with the real syscalls. Nothing else has to change:
-// the seam is exactly these two.
+// Both are syscalls now. The spin is kept for one case the kernel cannot answer:
+// a clock the kernel refuses (it takes MONOTONIC and REALTIME only), where
+// returning ENOSYS would fail a call that used to work.
 
 #include <time.h>
 #include <errno.h>
 
 #include "../../include/__impl_libc.h"
+#include "../../../core/include/__el0_syscall.h"
 
 namespace sprt {
 
@@ -74,9 +67,13 @@ __SPRT_C_FUNC int nanosleep(const struct __SPRT_TIMESPEC_NAME *req,
 		__sprt_errno = EINVAL;
 		return -1;
 	}
-	__el0_spin_ns((long long)req->tv_sec * EL0_NS_PER_SEC + req->tv_nsec);
+	auto res = __el0_nanosleep(req, rem);
+	if (res < 0) {
+		__sprt_errno = (int)-res;
+		return -1;
+	}
 	if (rem) {
-		// Nothing interrupts the spin -- there are no signals at EL0 yet (K8) --
+		// Nothing interrupts the sleep -- there are no signals at EL0 yet (K8) --
 		// so the remaining time is always zero.
 		rem->tv_sec = 0;
 		rem->tv_nsec = 0;
@@ -96,6 +93,24 @@ __SPRT_C_FUNC int clock_nanosleep(__SPRT_ID(clockid_t) clock, int flags,
 		return -1;
 	}
 
+	if (clock == __SPRT_CLOCK_MONOTONIC || clock == __SPRT_CLOCK_REALTIME) {
+		// TIMER_ABSTIME is 1 on the wire (Linux) and 2 in this runtime's
+		// headers; __el0_clock_nanosleep takes the wire value.
+		int wire = (flags & __SPRT_TIMER_ABSTIME) ? 1 : 0;
+		auto res = __el0_clock_nanosleep((int)clock, wire, req, rem);
+		if (res < 0) {
+			__sprt_errno = (int)-res;
+			return -1;
+		}
+		if (rem && !(flags & __SPRT_TIMER_ABSTIME)) {
+			rem->tv_sec = 0;
+			rem->tv_nsec = 0;
+		}
+		return 0;
+	}
+
+	// A clock the kernel does not take: the old spin, so that a call which used
+	// to work does not start failing.
 	long long ns;
 	if (flags & __SPRT_TIMER_ABSTIME) {
 		auto now = __el0_now_ns(clock);

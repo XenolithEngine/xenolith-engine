@@ -7,7 +7,10 @@
 // the priority bounds collapse to a single band: reporting a range the caller
 // cannot actually select within would invite a setter call that then fails.
 //
-// sched_yield spins a `yield` hint. That is not a scheduling operation -- the
+// sched_yield is a real syscall (124) since K6; the setters are still ENOSYS.
+// What follows describes the state before that.
+//
+// sched_yield spun a `yield` hint. That is not a scheduling operation -- the
 // kernel's timer interrupt is what actually preempts this thread -- but it is
 // the correct instruction to execute while waiting, and it lets the caller's
 // spin loop be written as if a yield existed. Same posture as time.cc's sleep.
@@ -17,6 +20,8 @@
 #endif
 
 #include <sprt/c/__sprt_sched.h>
+
+#include "../include/__el0_syscall.h"
 #include <sprt/c/__sprt_errno.h>
 
 namespace sprt {
@@ -60,7 +65,10 @@ __SPRT_C_FUNC int sched_rr_get_interval(__SPRT_ID(pid_t),
 }
 
 __SPRT_C_FUNC int sched_yield(void) __SPRT_NOEXCEPT {
-	__asm__ __volatile__("yield" ::: "memory");
+	// A real syscall since K6: the kernel moves this thread to the end of its
+	// run queue. The `yield` hint it replaced did nothing the scheduler could
+	// see -- it only asked the core to be polite to its other hardware thread.
+	__el0_sched_yield();
 	return 0;
 }
 

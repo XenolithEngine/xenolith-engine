@@ -221,6 +221,12 @@ public:
 	virtual Node *resolveSelectionNode(const SelectionItem &) const override;
 	virtual void handleSelectionChanged(SpanView<SelectionItem>) override;
 
+	// Up and Down step through the rows; Left and Right leave the table
+	virtual bool moveSelection(SelectionDirection) override;
+
+	// The closest visible row to `fromWorld`
+	virtual bool enterSelection(SelectionDirection, const Rect &fromWorld) override;
+
 	// Re-derive the rows and re-request their data.
 	virtual void invalidateSource();
 
@@ -302,6 +308,9 @@ protected:
 	void bindReorderHotkeys();
 
 	SelectionItem makeSelectionItem(size_t index) const;
+
+	// A keyboard pick: selects, scrolls the row into view and reports it like a tap
+	void selectRowFromKeyboard(size_t index);
 	virtual void rebuildHeader();
 	virtual Rc<Node> makeRow(size_t index);
 	virtual Rc<Node> buildRowNode(RowBuilder &);

@@ -27,24 +27,83 @@
 
 #ifndef SP_GLSL
 namespace STAPPLER_VERSIONIZED stappler::glsl {
+
+using namespace sprt::glsl;
+
 #endif
 
+// ParticleEmitterData::flags, the same bits as basic2d::ParticleSystemFlags
+#define XL_PARTICLE_FLAG_LOCAL_COORDS 1
+#define XL_PARTICLE_FLAG_ALIGN_WITH_VELOCITY 2
+#define XL_PARTICLE_FLAG_ORDER_BY_LIFETIME 4
+#define XL_PARTICLE_FLAG_USE_LIFETIME_MAX 8
+
 struct ParticleConstantData {
+	uvec2 frameDataPointer;
 	uvec2 outVerticesPointer;
-	uvec2 outCommandPointer;
+	uint emitterIndex;
+	uint padding12;
+};
+
+// One emitter in the frame data buffer
+struct ParticleFrameData {
+	// [0-15]
 	uvec2 emitterPointer;
-	uvec2 feedbackPointer;
-	uint materialIndex;
+	uint vertexOffset;
 	uint particleBufferIndex;
 
-	float timeline; // (1.0 - explosiveness) * lifetime / count
+	// [16-31]
+	uint materialIndex;
+	uint framesInGen; // steps in one emission cycle
+	uint genframe; // step of the cycle the first simulated step starts at
+	uint nframes; // steps to simulate
 
-	uint framesInGen;
-	uint genframe;
-	float gentime;
-	float gendt;
+	// [32-47]
+	uint cycle;
+	uint seed; // phase hash seed
 	float dt;
-	uint nframes;
+	float transformRotation; // rotation of the node's transform, radians
+
+	// [48-63]
+	vec4 transformX; // node to scene: x' = transformX.x * x + transformX.y * y + transformX.z
+
+	// [64-79]
+	vec4 transformY; // node to scene: y' = transformY.x * x + transformY.y * y + transformY.z
+
+	// [80-95]
+	float transformScale; // sqrt(|det|) of the node's transform
+	uint padding84;
+	// ParticleFeedbackRecord per particle, for the feedback pipeline only. At 88: std430 aligns a
+	// uvec2 to 8 bytes.
+	uvec2 feedbackPointer;
+
+	// [96-111]
+	vec4 textureRect; // the emitter's texture region: origin.x, origin.y, width, height
+
+	// [112-127]
+	vec4 nodeColor; // the emitter node's displayed color, straight alpha
+
+	// [128-143]
+	uint hFrames; // animation frame grid inside textureRect, row 0 at the top of the image
+	uint vFrames;
+	uint newest; // index of the last born particle, for XL_PARTICLE_FLAG_ORDER_BY_LIFETIME
+	uint padding140;
+
+	// [144]
+};
+
+// What one particle did in a frame, written by the feedback pipeline to the particle's own record:
+// no two invocations write the same memory, the CPU sums the records
+struct ParticleFeedbackRecord {
+	uint births;
+	uint steps; // steps a living particle aged by
+	uint alive; // 1 - the particle is alive after the frame and draws a quad
+	uint padding12;
+};
+
+struct ParticleUpdateCounters {
+	uint births;
+	uint steps;
 };
 
 struct ParticleIndirectCommand {
@@ -67,6 +126,12 @@ struct ParticleVec2Param {
 struct ParticleEmissionPoints {
 	uint count;
 	uint padding4;
+};
+
+// Header of a curve in the emitter's extra data buffer, followed by count * components floats
+struct ParticleCurveHeader {
+	uint count;
+	uint components;
 };
 
 struct ParticleEmitterData {
@@ -135,54 +200,44 @@ struct ParticleEmitterData {
 	// [224]
 };
 
+// State of one particle. Parameters are chosen at birth; positions are in the node's space with
+// XL_PARTICLE_FLAG_LOCAL_COORDS, in the scene's otherwise
 struct ParticleData {
 	// [0-15]
 	pcg16_state_t rng;
 	vec2 position;
 
 	// [16-31]
-	vec2 sizeNormal;
-	vec2 angle;
+	vec2 velocity;
+	vec2 origin; // center of the orbital, radial and tangential motion
 
 	// [32-47]
 	vec4 color;
 
 	// [48-63]
-	float sizeValue;
-	uint fullLifetime;
-	uint currentLifetime; // in frames
-	uint padding60;
+	float angle; // quad rotation, radians
+	float angularVelocity; // radians per second
+	float scale; // quad size multiplier
+	float hue;
 
 	// [64-79]
-	vec2 normal;
-	vec2 linearVelocity;
+	uint fullLifetime; // in steps
+	uint currentLifetime; // in steps, 0 - dead
+	float orbitalVelocity; // radians per second around origin
+	float radialVelocity; // dp per second away from origin
 
 	// [80-95]
-	float velocity;
-	float hue;
-	float animFrame;
-	float qAcceleration; // квантованное по dt ускорение
+	vec2 linearAcceleration; // dp per second^2
+	float acceleration; // along the velocity, dp per second^2
+	float radialAcceleration; // away from origin, dp per second^2
 
 	// [96-111]
-	vec2 qAngularVelocity; // квантованная по dt скорость вращения
-	float orbitalVelocity; // скорость вращения вокруг origin, радианы в секунду
-	float radialVelocity; // скорость движения от origin, dp в секунду
+	float tangentialAcceleration; // perpendicular to the direction from origin, dp per second^2
+	uint padding100;
+	uint padding104;
+	uint padding108;
 
-	// [112-127]
-	vec2 qLinearAcceleration; // квантованное по dt ускорение
-	float radialAcceleration; // ускорение от origin, dp в секунду^2
-	float tangentialAcceleration; // ускорение перпендикулярно движению, dp в секунду^2
-
-	// [128]
-};
-
-struct ParticleFeedback {
-	uint emissionCount;
-	uint simulationCount;
-	uint skippedCount;
-	uint nframes;
-	ParticleData emitted;
-	uint written;
+	// [112]
 };
 
 #ifndef SP_GLSL

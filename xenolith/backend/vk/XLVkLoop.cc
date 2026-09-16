@@ -127,6 +127,8 @@ struct Loop::Internal final : memory::AllocPool {
 		while (it != scheduledFences.end()) {
 			if ((*it)->check(*loop, lockfree)) {
 				it = scheduledFences.erase(it);
+			} else {
+				++it;
 			}
 		}
 
@@ -145,6 +147,62 @@ struct Loop::Internal final : memory::AllocPool {
 		if (device) {
 			// wait for device
 			device->waitIdle();
+		}
+
+		// An exported fence is never waited on: after export its own status may stay unsignaled. The
+		// device is idle now, so whatever it was waiting for has finished.
+		auto exported = sp::move(exportedFences);
+		exportedFences.clear();
+		for (auto &it : exported) {
+			it.second.fence->checkExternal(*loop, true);
+			if (it.second.handle) {
+				it.second.handle->cancel();
+			}
+		}
+	}
+
+	// Releases the exported fences that finished without their fd firing, or on a lost device.
+	void watchExported() {
+		auto lost = device && device->isDeviceLost();
+		auto it = exportedFences.begin();
+		while (it != exportedFences.end()) {
+			if (it->second.fence->checkExternal(*loop, lost)) {
+				if (it->second.handle) {
+					it->second.handle->cancel();
+				}
+				it = exportedFences.erase(it);
+			} else {
+				++it;
+			}
+		}
+		if (exportedFences.empty() && exportWatchHandle) {
+			exportWatchHandle->pause();
+		}
+	}
+
+	void forgetExported(Fence *fence) {
+		auto it = exportedFences.find(fence);
+		if (it != exportedFences.end()) {
+			// Called from the handle's own completion: its reference is dropped later, not inside it.
+			loop->performOnThread([entry = sp::move(it->second)]() { }, nullptr, false);
+			exportedFences.erase(it);
+		}
+	}
+
+	void startExportWatch() {
+		if (!exportWatchHandle) {
+			exportWatchHandle = loop->getLooper()->scheduleTimer(sprt::dispatch::TimerInfo{
+				.completion = sprt::dispatch::TimerInfo::Completion::create<Loop>(loop,
+						[](Loop *loop, sprt::dispatch::TimerHandle *, uint32_t, Status) {
+				if (loop->_internal) {
+					loop->_internal->watchExported();
+				}
+			}),
+				.interval = TimeInterval::microseconds(config::ExportedFenceWatchInterval),
+				.count = sprt::dispatch::TimerInfo::Infinite});
+		} else {
+			// A running watch answers ErrorNoSuchProcess, which is fine.
+			exportWatchHandle->resume();
 		}
 	}
 
@@ -170,6 +228,16 @@ struct Loop::Internal final : memory::AllocPool {
 
 		if (!device) {
 			log::source().error("vk::Loop", "No device to compileQueue");
+			if (cb) {
+				cb(false);
+			}
+			return;
+		}
+
+		if (device->isDeviceLost()) {
+			if (cb) {
+				cb(false);
+			}
 			return;
 		}
 
@@ -299,8 +367,12 @@ struct Loop::Internal final : memory::AllocPool {
 			return;
 		}
 
-		if (auto handle = fence->exportFence(*loop, nullptr)) {
-			loop->getLooper()->performHandle(handle);
+		auto raw = fence.get();
+		if (auto handle = fence->exportFence(*loop, [this, raw] { forgetExported(raw); })) {
+			mem_pool::perform([&] {
+				exportedFences.emplace(raw, ExportedFence{sp::move(fence), sp::move(handle)});
+			}, pool);
+			startExportWatch();
 		} else {
 			if (scheduledFences.empty()) {
 #if XL_VK_PAUSE_TIMER
@@ -321,6 +393,7 @@ struct Loop::Internal final : memory::AllocPool {
 	Rc<core::LoopInfo> info;
 
 	Rc<sprt::dispatch::TimerHandle> updateTimerHandle;
+	Rc<sprt::dispatch::TimerHandle> exportWatchHandle;
 
 	Map<DependencyEvent *, Vector<Rc<DependencyRequest>>> dependencyRequests;
 
@@ -331,6 +404,13 @@ struct Loop::Internal final : memory::AllocPool {
 	mem_pool::Vector<Rc<Fence>> defaultFences;
 	mem_pool::Vector<Rc<Fence>> swapchainFences;
 	mem_pool::Set<Rc<Fence>> scheduledFences;
+
+	struct ExportedFence {
+		Rc<Fence> fence;
+		Rc<sprt::dispatch::PollHandle> handle;
+	};
+
+	mem_pool::Map<Fence *, ExportedFence> exportedFences;
 
 	Rc<RenderQueueCompiler> renderQueueCompiler;
 	Rc<TransferQueue> transferQueue;
@@ -440,6 +520,11 @@ void Loop::stop() {
 			_internal->updateTimerHandle->setUserdata(nullptr);
 			_internal->updateTimerHandle = nullptr;
 
+			if (_internal->exportWatchHandle) {
+				_internal->exportWatchHandle->cancel();
+				_internal->exportWatchHandle = nullptr;
+			}
+
 			_internal->transferQueue = nullptr;
 			_internal->renderQueueCompiler = nullptr;
 			_internal->materialQueue = nullptr;
@@ -506,6 +591,15 @@ void Loop::compileImage(const Rc<core::DynamicImage> &img, Function<void(bool)> 
 		}
 		if (!_internal->device) {
 			slog().error("vk::Loop", "No device loaded");
+			if (callback) {
+				callback(false);
+			}
+			return;
+		}
+		if (_internal->device->isDeviceLost()) {
+			if (callback) {
+				callback(false);
+			}
 			return;
 		}
 		_internal->device->compileImage(*this, img, sp::move(callback));
@@ -519,7 +613,13 @@ void Loop::runRenderQueue(Rc<FrameRequest> &&req, uint64_t gen, Function<void(bo
 		}
 
 		auto frame = makeFrame(move(req), gen);
-		if (frame && callback) {
+		if (!frame) {
+			if (callback) {
+				callback(false);
+			}
+			return;
+		}
+		if (callback) {
 			frame->setCompleteCallback([this, callback = sp::move(callback)](FrameHandle &handle) {
 				if (!_internal || !_internal->_running.load()) {
 					return;
@@ -527,7 +627,11 @@ void Loop::runRenderQueue(Rc<FrameRequest> &&req, uint64_t gen, Function<void(bo
 				callback(handle.isValid());
 			});
 		}
-		if (frame) {
+		// On a lost device the frame is refused before it records anything; invalidation still
+		// finalizes the request and signals its dependencies.
+		if (_internal->device->isDeviceLost()) {
+			frame->invalidate();
+		} else {
 			frame->update(true);
 		}
 	}, this, true);
@@ -567,6 +671,9 @@ void Loop::performOnThread(Function<void()> &&func, Ref *target, bool immediate,
 }
 
 auto Loop::makeFrame(Rc<FrameRequest> &&req, uint64_t gen) -> Rc<FrameHandle> {
+	if (!_internal->device) {
+		return nullptr;
+	}
 	return Rc<DeviceFrameHandle>::create(*this, *_internal->device, move(req), gen);
 }
 
@@ -701,6 +808,10 @@ void Loop::waitIdle() {
 void Loop::captureImage(Function<void(const ImageInfoData &info, BytesView view)> &&cb,
 		const Rc<core::ImageObject> &image, core::AttachmentLayout l) {
 	performOnThread([this, cb = sp::move(cb), image, l]() mutable {
+		if (!_internal->device || _internal->device->isDeviceLost()) {
+			cb(image->getInfo(), BytesView());
+			return;
+		}
 		_internal->device->readImage(*this, image.cast<Image>(), l, sp::move(cb));
 	}, this, true);
 }
@@ -710,9 +821,15 @@ void Loop::captureBuffer(Function<void(const BufferInfo &info, BytesView view)> 
 	if ((buf->getInfo().usage & core::BufferUsage::TransferSrc) != core::BufferUsage::TransferSrc) {
 		log::source().error("vk::Loop::captureBuffer", "Buffer '", buf->getName(),
 				"' has no BufferUsage::TransferSrc flag to being captured");
+		cb(buf->getInfo(), BytesView());
+		return;
 	}
 
 	performOnThread([this, cb = sp::move(cb), buf]() mutable {
+		if (!_internal->device || _internal->device->isDeviceLost()) {
+			cb(buf->getInfo(), BytesView());
+			return;
+		}
 		_internal->device->readBuffer(*this, buf.cast<Buffer>(), sp::move(cb));
 	}, this, true);
 }
@@ -727,6 +844,8 @@ Rc<core::PresentationEngine> Loop::makePresentationEngine(NotNull<core::Presenta
 	}
 	return nullptr;
 }
+
+Device *Loop::getDevice() const { return _internal ? _internal->device.get() : nullptr; }
 
 void Loop::performInit() { }
 

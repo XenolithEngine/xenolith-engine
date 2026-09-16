@@ -312,6 +312,15 @@ void AccordionView::handleContentSizeDirty() {
 	}
 }
 
+// The parent's layout can commit this view's size after its content-size phase, so the viewport
+// follows it here as well
+void AccordionView::handleLayoutChildren() {
+	Panel::handleLayoutChildren();
+	if (_viewport) {
+		_viewport->setContentSize(_contentSize);
+	}
+}
+
 // --- panels ----------------------------------------------------------------
 
 void AccordionView::registerPanel(DockPanelDescriptor &&desc) {

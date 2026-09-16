@@ -22,6 +22,7 @@
 
 #include "XLWindowSceneInfo.h"
 #include "XLAppWindow.h"
+#include "XLRemoteWindow.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -50,8 +51,10 @@ bool WindowSceneInfo::init(SceneBuilder &&builder, CloseCallback &&onClose) {
 	return true;
 }
 
+AppWindow *WindowSceneInfo::getWindow() const { return dynamic_cast<AppWindow *>(_channel); }
+
 StringView WindowSceneInfo::getId() const {
-	if (auto info = _window ? _window->getInfo() : nullptr) {
+	if (auto info = _channel ? _channel->getInfo() : nullptr) {
 		return info->id;
 	}
 	return StringView();
@@ -77,6 +80,16 @@ void WindowSceneInfo::fireClose() {
 	if (cb) {
 		cb(this);
 	}
+}
+
+WindowSceneInfo *getWindowSceneInfo(NotNull<core::RenderServerChannel> channel) {
+	if (auto w = dynamic_cast<AppWindow *>(channel.get())) {
+		return w->getSceneInfo();
+	}
+	if (auto w = dynamic_cast<RemoteWindow *>(channel.get())) {
+		return w->getSceneInfo();
+	}
+	return nullptr;
 }
 
 } // namespace stappler::xenolith

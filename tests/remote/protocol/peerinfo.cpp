@@ -187,6 +187,8 @@ void performPeerInfoTests() {
 				"peerinfo: this build advertises the window codes it handles");
 		check(local.supports(Domain::Data, toInt(DataCode::Cancel)),
 				"peerinfo: Cancel is advertised, so a peer knows a transfer can be called off");
+		check(local.supports(Domain::Window, toInt(WindowCode::CreateWindow)),
+				"peerinfo: CreateWindow is advertised, so a client knows it may ask for a window");
 
 		// THE entry that makes the mask more than a restatement of the enum: FontCode::CompileImage
 		// is declared and dispatched by nobody.
@@ -206,6 +208,17 @@ void performPeerInfoTests() {
 		auto back = deserializePeerInfo(data::read<Interface>(bytes));
 		check(back.windowCodes == local.windowCodes && back.fontCodes == local.fontCodes,
 				"peerinfo: the masks survive a CBOR round trip");
+
+		/* The feature bit beside the mask, and why both exist: the mask says this build knows the
+		message, the bit says this server will serve it. A client that only checked the mask would
+		ask a server with no handler, and a silent peer's mask reads as "supports everything". */
+		auto serving = local;
+		serving.features |= PeerFeatures::ClientWindows;
+		auto servingBack = deserializePeerInfo(data::read<Interface>(
+				data::write<Interface>(serializePeerInfo(serving), data::EncodeFormat::Cbor)));
+		check(hasFlag(servingBack.features, PeerFeatures::ClientWindows)
+						&& !hasFlag(back.features, PeerFeatures::ClientWindows),
+				"peerinfo: the client-windows feature travels, and is absent unless offered");
 
 		// And the report names what is missing rather than only that something is.
 		auto older = local;

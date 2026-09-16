@@ -190,6 +190,84 @@ void ClientScene::handleEnter(Scene *scene) {
 void ClientScene::registerCommands() {
 	auto content = getContent();
 
+	/* Ask the server for another window: { id, width, height }.
+
+	The first window a client has is asked for at startup (XL_CLIENT_CREATE_WINDOW) because an
+	inspector needs a window to exist at all; this is the same request, driven from outside. */
+	inspector::addCommand(content, "client-create-window",
+			"Ask the server for a window: { id, width, height }; answers { ok, status, id }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		auto thread =
+				_director ? dynamic_cast<ClientAppThread *>(_director->getApplication()) : nullptr;
+		if (!thread) {
+			Value result;
+			result.setBool(false, "ok");
+			result.setString("not a remote client", "error");
+			done(sp::move(result));
+			return;
+		}
+
+		auto info = Rc<sprt::window::WindowInfo>::create();
+		auto name = req.getString("id");
+		info->id = sprt::window::String(name.data(), name.size());
+		info->rect = IRect(0, 0, int32_t(req.getInteger("width", 320)),
+				int32_t(req.getInteger("height", 240)));
+		info->appData = Rc<WindowSceneInfo>::create(
+				[](NotNull<AppThread>, NotNull<core::RenderServerChannel>,
+						const core::FrameConstraints &) -> Rc<Scene> {
+			// Null falls through to the process-wide makeScene symbol -- this scene's own class.
+			return nullptr;
+		},
+				[](NotNull<WindowSceneInfo> handle) {
+			log::source().info("client", "window '", handle->getId(), "' is gone");
+		});
+
+		thread->createWindow(sp::move(info),
+				[done = sp::move(done)](Status st, StringView id) mutable {
+			Value result;
+			result.setBool(st == Status::Ok, "ok");
+			result.setInteger(int64_t(toInt(st)), "status");
+			result.setString(id, "id");
+			done(sp::move(result));
+		});
+	});
+
+	/* Be late with the next frames on purpose: { ms, frames }.
+
+	What the server does with a late frame -- drop the frame, keep the session -- cannot be
+	observed otherwise, because a healthy client answers AcquireFrame at once. */
+	inspector::
+			addCommand(content, "client-frame-delay",
+					"Be late with the next frames: { ms, frames, silent }; `silent` answers on "
+					"time and " "then sends no input at all",
+					[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		Value result;
+		auto thread =
+				_director ? dynamic_cast<ClientAppThread *>(_director->getApplication()) : nullptr;
+		if (!thread) {
+			result.setBool(false, "ok");
+			result.setString("not a remote client", "error");
+			done(sp::move(result));
+			return;
+		}
+		auto ms = uint64_t(req.getInteger("ms", 3'000));
+		auto frames = uint32_t(req.getInteger("frames", 1));
+		if (req.getBool("silent")) {
+			// Answer on time, then abandon the frame: the server's input deadline is a different
+			// deadline from the one on the answer, so the test drives them apart.
+			thread->setSilentFrames(frames);
+		} else {
+			thread->setFrameDelay(ms * 1'000, frames);
+		}
+		result.setBool(true, "ok");
+		result.setInteger(int64_t(ms), "ms");
+		result.setInteger(int64_t(frames), "frames");
+		result.setBool(req.getBool("silent"), "silent");
+		done(sp::move(result));
+	});
+
 	inspector::addCommand(content, "client-state",
 			"What the client's window knows about itself: "
 			"{ sceneWidth, sceneHeight, constraintsWidth, constraintsHeight, density, "

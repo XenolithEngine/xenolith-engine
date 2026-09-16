@@ -189,6 +189,16 @@ public:
 	Rc<WatchHandle> watchFile(StringView path, WatchFlags,
 			dispatch::Function<Status(WatchFlags)> &&onChange, Ref * = nullptr);
 
+	// Wait for a 32-bit word to change, possibly in memory shared with another process (see
+	// AddressWaitInfo). Returns nullptr where the backend has no implementation (wasm, Windows,
+	// Darwin, NuttX, ALooper). Uses the Handle userdata slot for the Ref.
+	Rc<AddressWaitHandle> waitOnAddress(AddressWaitInfo &&, Ref * = nullptr);
+
+	// Convenience form: `onChange` receives the new value; return anything other than Status::Ok
+	// to cancel the wait. Uses the Handle userdata slot for private data.
+	Rc<AddressWaitHandle> waitOnAddress(uint32_t *address, uint32_t expected,
+			dispatch::Function<Status(uint32_t)> &&onChange, Ref * = nullptr);
+
 	Rc<ThreadHandle> addThreadHandle();
 
 	// run custom handle

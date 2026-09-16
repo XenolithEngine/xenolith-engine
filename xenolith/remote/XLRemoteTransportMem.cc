@@ -152,16 +152,8 @@ public:
 
 	virtual const PeerIdentity &getPeerIdentity() const override { return _peer; }
 
-	virtual Status handleEvents() override {
-		// Nothing to service: a write already delivered.
-		if (_onReadable
-				&& (_control->getIn()->pending() > 0 || _bulk->getIn()->pending() > 0)) {
-			_onReadable();
-		}
-		return Status::Ok;
-	}
-
-	virtual void setOnReadable(Function<void()> &&cb) override { _onReadable = sp::move(cb); }
+	// Nothing to service: a write already delivered.
+	virtual Status handleEvents() override { return Status::Ok; }
 
 	// Liveness belongs to the connection, so it is read off the control pipe alone; both pipes are
 	// closed together below.
@@ -182,7 +174,6 @@ protected:
 	Rc<MemStream> _control;
 	Rc<MemStream> _bulk;
 	PeerIdentity _peer;
-	Function<void()> _onReadable;
 	bool _closed = false;
 };
 

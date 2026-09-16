@@ -34,6 +34,7 @@ require the target platform.
 | [Common pitfalls](docs/agents/pitfalls.md) | asking why something does not build |
 | [Code style](docs/agents/code-style.md) | writing a line of C++ |
 | [Measuring a frame](docs/agents/measuring-frames.md) | quoting any number that is a time rather than a count |
+| [Measuring compute](docs/agents/measuring-compute.md) | quoting a GPU compute round-trip time (upload → dispatch → read) |
 
 The rest of the documentation is under [docs/](docs/): `api/`, `usage/`, `design/`, `articles/`
 and `platforms/`.

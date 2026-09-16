@@ -138,6 +138,11 @@ public:
 	// defers its API call (see vk::TextureSet) must run it immediately here.
 	bool isFinalizingObjects() const { return _finalizingObjects; }
 
+	// Set once the backend reports the device lost (VK_ERROR_DEVICE_LOST). It is never cleared: the
+	// loop refuses everything after it, and a new device needs a new loop.
+	bool isDeviceLost() const { return _deviceLost.load(); }
+	void markDeviceLost(StringView source);
+
 protected:
 	friend class Loop;
 
@@ -146,6 +151,7 @@ protected:
 
 	bool _started = false;
 	bool _finalizingObjects = false;
+	sprt::atomic<bool> _deviceLost = false;
 	const Instance *_glInstance = nullptr;
 	sprt::mutex _shaderMutex;
 	sprt::mutex _objectMutex;

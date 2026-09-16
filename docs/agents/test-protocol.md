@@ -10,17 +10,17 @@ runner that decides all three.*
 
 ```sh
 tests/run-checks.py                  # FAST    - what the working tree's diff can break
-tests/run-checks.py console          # CONSOLE - the five console harnesses, no window at all
+tests/run-checks.py console          # CONSOLE - the six console harnesses, no window at all
 tests/run-checks.py suite window     # every headless window check
-tests/run-checks.py full             # THE GATE - every console harness and all 29 window checks
+tests/run-checks.py full             # THE GATE - every console harness and every window check
 tests/run-checks.py --list           # the plan, without running it
 ```
 
 | Tier | What it runs | Cost here | When |
 |---|---|---|---|
-| `console` | `runtimetest`, `libctest`, `localetest`, `uilayouttest`, `stapplertest` | **12 s**, 3253 assertions | after any edit under `runtime/` or `stappler/` |
+| `console` | `runtimetest`, `libctest`, `localetest`, `uilayouttest`, `stapplertest`, `particlestest` | **12 s**, 3253 assertions | after any edit under `runtime/` or `stappler/` |
 | `fast` (default) | `console`, plus the harnesses the changed directories owe, plus the window checks named after the changed files | 20 s – 2 min | after an edit, before the next one |
-| `suite window` | all 29 headless window checks | 226 s at `-j4` | when the work is in `xenolith/renderer/ui` |
+| `suite window` | every headless window check | 226 s at `-j4` (29 checks, before `particles-check`) | when the work is in `xenolith/renderer/ui` |
 | `full` | everything above plus `gittest`, `thirdpartytest`, `remotetest` and `tesstest`'s two goldens | 223 s at `-j4`, 124 s at `-j8` | **before a commit** |
 
 **The gate is `full`.** A `fast` run selects by name and by directory, so a change that breaks a widget it is not
@@ -58,6 +58,10 @@ Each script starts its own `testapp` on its own socket (`/tmp/xl-<name>.sock`, o
 `XENOLITH_INSPECTOR_SOCK`) and quits it at the end, so nothing is shared but the machine. What a script collides with
 is itself: one runner at a time.
 
+**One window check starts another binary.** `particles-check.py` drives `examples/window/particles` rather than
+`testapp` (`WINDOW_BINARIES` in the runner, 42 s): the runner hands it the binary, skips it as *not built* when the
+example is not, and treats its leftover process as a stale `testapp`.
+
 **Stale `testapp`s are killed before every run and reported after it.** A script that dies between its start and its
 `quit` leaves a headless binary alive for ever, and the next run then talks to whatever the socket is bound to.
 
@@ -74,10 +78,14 @@ is itself: one runner at a time.
 
 The console harnesses go by directory, which is [the test-projects table](test-projects.md) as code (`OWES` in the
 runner): `runtime/` owes `runtimetest` and `libctest`, `runtime/libc_impl` the same pair the other way round,
-`stappler/tess` the two `tesstest` goldens, `stappler/` `stapplertest`, `xenolith/font` `localetest`.
+`stappler/tess` the two `tesstest` goldens, `stappler/` `stapplertest`, `xenolith/font` `localetest`,
+`xenolith/core` and `xenolith/backend/vk` `computetest`. `computetest` is not in the `console` tier because it needs
+a Vulkan device; on a host without one it prints SKIP and counts no checks, and the runner shows it green.
 
 The window checks go **by name**, because this repository names each script after the widget it drives:
-`XLUiSlider.cc` selects `slider-check.py`, `XLUiInlineEditor.cc` selects `inline-edit-check.py`. The file name is
+`XLUiSlider.cc` selects `slider-check.py`, `XLUiInlineEditor.cc` selects `inline-edit-check.py`,
+`XL2dVkParticlePass.cc` selects `particles-check.py`. `examples/` is outside the plan, except an example a window check
+drives (`EXAMPLE_CHECKS`: `examples/window/particles` selects `particles-check.py`). The file name is
 split on camel case rather than searched as a string - a substring search answers `text-input-check` for
 `XLContext.cc`, and a plan with four wrong scripts in it is one nobody reads.
 

@@ -21,15 +21,23 @@ THE SOFTWARE.
 
 // Embox futex-style lock backend.
 //
-// Embox has no futex(2). The first implementation emulated wait/wake with
-// pthread_cond. That deadlocks when CONFIG_INIT_ENTRYPOINT is a kernel
-// task, not a pthread: pthread_cond_wait/signal from a task never wakes.
-// AppThread::run() then sits forever in thread_t::create's InternalInit wait
-// (qtimeline → qlock_wait) and the scene never presents.
+// Embox has no futex(2); the Xenolith image carries one of its own
+// (xenolith-os board/embox-qemu/drivers/xlfutex): xl_futex_wait() and
+// xl_futex_wake(), which the application reaches directly because it is linked
+// into the kernel image. They sleep on the calling thread's schedee and wake it
+// by schedee, so they work from the init TASK as well as from a pthread --
+// which is the case that sank the first backend: it emulated wait/wake with
+// pthread_cond, a wait from a task never woke, and AppThread::run() sat forever
+// in thread_t::create's InternalInit wait (qtimeline -> qlock_wait).
 //
-// Wait polls the word and usleep(1ms). sched_yield from the init TASK does
-// not run a newly created pthread (FIFO / higher-priority init). Wake is a
-// no-op: the waiter re-checks the word.
+// The two are declared weak. An image without them -- the Pi 4 today -- links
+// with both null and gets the poll below, and so does any image run with
+// SPRT_EMBOX_FUTEX=0 in the environment: the fallback is the A/B for measuring
+// what the futex bought, and it must keep working.
+//
+// The poll: re-check the word and usleep(1ms). sched_yield from the init TASK
+// does not run a newly created pthread (FIFO / higher-priority init), so it has
+// to be a real sleep. Wake is a no-op there: the waiter re-checks the word.
 
 #ifndef __SPRT_BUILD
 #define __SPRT_BUILD 1
@@ -40,10 +48,57 @@ THE SOFTWARE.
 #include <sprt/c/cross/__sprt_sysid.h>
 #include <sprt/c/__sprt_errno.h>
 
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
+// xenolith-os drivers/xlfutex/xl_futex.h. Negative Embox errno on failure:
+// -EAGAIN (the word changed), -ETIMEDOUT, -EINTR; the wait answers 0 when woken.
+extern "C" int xl_futex_wait(void *addr, unsigned size, uint64_t expected, int64_t timeout_ns)
+		__attribute__((weak));
+extern "C" int xl_futex_wake(void *addr, int nr) __attribute__((weak));
+
 namespace sprt {
+
+// Whether the image has the futex, and whether the environment asked for the
+// poll instead. Cached in a plain word and NOT in a function-local static: the
+// static's guard is itself a lock, and on Embox that lock waits through this
+// very backend -- two threads racing to initialise it recursed into the guard
+// and aborted the kiosk at start ("__cxa_guard_acquire detected recursive
+// initialization"). Two threads computing the answer at once agree on it.
+static int emboxFutexState = 0; // 0 unknown, 1 futex, 2 poll
+
+static bool emboxHasFutex() {
+	int state = __atomic_load_n(&emboxFutexState, __ATOMIC_RELAXED);
+	if (state == 0) {
+		bool futex = xl_futex_wait && xl_futex_wake;
+		if (futex) {
+			// "0" polls everywhere; "looper" keeps the futex for the dispatch
+			// looper only (SPEvent-embox.cc) and polls here. Anything else: futex.
+			auto env = ::getenv("SPRT_EMBOX_FUTEX");
+			futex = !(env && (::strcmp(env, "0") == 0 || ::strcmp(env, "looper") == 0));
+		}
+		state = futex ? 1 : 2;
+		__atomic_store_n(&emboxFutexState, state, __ATOMIC_RELAXED);
+	}
+	return state == 1;
+}
+
+static int64_t emboxFutexTimeout(__SPRT_ID(sprt_timeout_t) timeout) {
+	return (timeout > static_cast<__SPRT_ID(sprt_timeout_t)>(INT64_MAX)) ? -1
+																		  : static_cast<int64_t>(timeout);
+}
+
+// The futex answer in this backend's contract: 0, or -1 with errno.
+static int emboxFutexResult(int res) {
+	if (res == 0) {
+		return 0;
+	}
+	__sprt_errno = -res;
+	return -1;
+}
 
 static int toAbsTimeout(__SPRT_ID(sprt_timeout_t) timeout, struct timespec &ts) {
 	if (timeout == __SPRT_SPRT_TIMEOUT_INFINITE) {
@@ -80,6 +135,10 @@ static int sprt_qlock_supports(__SPRT_ID(sprt_lock_flags_t) flags) {
 static int sprt_qlock_wait(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_qlock_t) expected,
 		__SPRT_ID(sprt_timeout_t) timeout, __SPRT_ID(sprt_lock_flags_t) flags) {
 	(void)flags;
+	if (emboxHasFutex()) {
+		return emboxFutexResult(xl_futex_wait(value, 4, expected, emboxFutexTimeout(timeout)));
+	}
+
 	struct timespec ts;
 	int hasDeadline = toAbsTimeout(timeout, ts);
 
@@ -93,11 +152,17 @@ static int sprt_qlock_wait(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_qlock
 	return 0;
 }
 
-static int sprt_qlock_wake_one(__SPRT_ID(sprt_qlock_t) *, __SPRT_ID(sprt_lock_flags_t)) {
+static int sprt_qlock_wake_one(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_lock_flags_t)) {
+	if (emboxHasFutex()) {
+		xl_futex_wake(value, 1);
+	}
 	return 0;
 }
 
-static int sprt_qlock_wake_all(__SPRT_ID(sprt_qlock_t) *, __SPRT_ID(sprt_lock_flags_t)) {
+static int sprt_qlock_wake_all(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_lock_flags_t)) {
+	if (emboxHasFutex()) {
+		xl_futex_wake(value, INT_MAX);
+	}
 	return 0;
 }
 
@@ -111,6 +176,14 @@ static int sprt_rlock_supports(__SPRT_ID(sprt_lock_flags_t) flags) {
 static int sprt_rlock_wait(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_rlock_t) * expected,
 		__SPRT_ID(sprt_timeout_t) timeout, __SPRT_ID(sprt_lock_flags_t) flags) {
 	(void)flags;
+	if (emboxHasFutex()) {
+		// All eight bytes: the waiters bit of a non-Linux rmutex is in the upper
+		// half, and a wait that compared only the owner's tid would sleep through
+		// an unlock-and-relock by the same owner.
+		return emboxFutexResult(
+				xl_futex_wait(&value->u64, 8, expected->u64, emboxFutexTimeout(timeout)));
+	}
+
 	struct timespec ts;
 	int hasDeadline = toAbsTimeout(timeout, ts);
 
@@ -129,7 +202,15 @@ static int sprt_rlock_try_wait(__SPRT_ID(sprt_rlock_t) *, __SPRT_ID(sprt_lock_fl
 	return -1;
 }
 
-static int sprt_rlock_wake(__SPRT_ID(sprt_rlock_t) *, __SPRT_ID(sprt_lock_flags_t)) { return 0; }
+static int sprt_rlock_wake(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_lock_flags_t)) {
+	if (emboxHasFutex()) {
+		// As the Linux and Darwin backends do: the word is released before the
+		// wake, so the woken thread finds it free.
+		__atomic_store_n(&value->u64, uint64_t(0), __ATOMIC_SEQ_CST);
+		xl_futex_wake(&value->u64, 1);
+	}
+	return 0;
+}
 
 static __SPRT_ID(clockid_t) sprt_qlock_getclock(__SPRT_ID(sprt_lock_flags_t) flags) {
 	if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME))) {

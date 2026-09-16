@@ -635,6 +635,18 @@ void PresentationEngine::handleFrameInvalidated(NotNull<PresentationFrame> frame
 		}
 	} else {
 		acquireScheduledImage();
+
+		/* Start the next frame if one was asked for while this one was in flight, as a presented
+		frame does (see handleFrameReady).
+
+		Without it an invalidated frame stops the window for good in on-demand mode:
+		setReadyForNextFrame only schedules when it flips the flag, so once the flag is up and the
+		slot is busy, every later request is a no-op and nothing is left to notice that the slot
+		became free. Which is what a cancelled remote frame does -- see RemoteRenderClient. */
+		if (canScheduleNextFrame()) {
+			XL_COREPRESENT_LOG("handleFrameInvalidated - scheduleNextImage");
+			scheduleNextImage();
+		}
 	}
 }
 

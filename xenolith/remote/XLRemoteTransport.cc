@@ -56,12 +56,14 @@ String PeerIdentity::getDescription() const {
 void registerMemTransport();
 void registerQuicTransport();
 void registerUnixTransport();
+void registerShmTransport();
 
 void initializeTransports() {
 	static bool s_done = [] {
 		registerMemTransport();
 		registerQuicTransport();
 		registerUnixTransport();
+		registerShmTransport();
 		return true;
 	}();
 	(void)s_done;
@@ -73,7 +75,7 @@ void initializeTransports() {
 namespace {
 
 struct RegistryData {
-	Rc<Transport> transports[4];
+	Rc<Transport> transports[kAddressSchemeCount];
 
 	static RegistryData &get() {
 		static RegistryData s_data;

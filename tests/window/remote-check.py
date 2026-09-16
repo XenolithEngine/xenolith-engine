@@ -17,7 +17,7 @@ and then asserts the things a screenshot cannot:
   * frames actually flow: the server's window keeps presenting while the client renders it;
   * a client started with the WRONG token is refused - the bearer key is load-bearing, not decorative.
 
-    tests/window/remote-check.py [--transport quic|unix] [--gapi vulkan|soft|gles]
+    tests/window/remote-check.py [--transport quic|unix|shm] [--gapi vulkan|soft|gles] [--keep-running]
                                 [path-to-testapp] [path-to-clientapp]
 
 `--gapi` runs the server on another backend (the backend has to be linked in:
@@ -32,6 +32,12 @@ point of the transport abstraction and the only way to show it holds: the protoc
 does not change a line, and the two runs differ only in how the peer is authenticated -- a pinned
 SPKI for QUIC, kernel-vouched credentials (SO_PEERCRED) for unix, where the bearer key is not
 required at all.
+
+`--keep-running` starts the server with the flag of the same name: when the remote scene closes
+the last window the server must stay up and still accept a client, instead of exiting.
+
+`--transport shm` runs it over shared-memory rings in /dev/shm. Identity works as for unix (the
+owner of the block files), and the server has no descriptor to poll: it waits on the doorbell word.
 
 Prints "N checks, M failures"; exit status is the result.
 """
@@ -112,7 +118,7 @@ def check(name, ok, detail=""):
         print(f"  FAIL {name} {detail}")
 
 
-def start_server(binary, addr, share, token, gapi=None):
+def start_server(binary, addr, share, token, gapi=None, keep_running=False):
     env = dict(os.environ)
     env["XENOLITH_INSPECTOR_ADDRESS"] = "unix:" + addr
     env["XL_REMOTE_SHARE"] = share
@@ -130,6 +136,8 @@ def start_server(binary, addr, share, token, gapi=None):
     cmd = [binary, "--headless", "--width", "800", "--height", "600"]
     if gapi:
         cmd += ["--gapi", gapi]
+    if keep_running:
+        cmd += ["--keep-running"]
     proc = subprocess.Popen(cmd,
             env=env, cwd=os.path.dirname(os.path.abspath(binary)) or None,
             stdout=open(SERVER_LOG, "w"), stderr=subprocess.STDOUT)
@@ -206,9 +214,13 @@ def kill(proc):
 def main():
     transport = "quic"
     gapi = None
+    keep_running = False
     argv = [a for a in sys.argv[1:]]
     while argv and argv[0].startswith("--"):
         opt, argv = argv[0], argv[1:]
+        if opt == "--keep-running":
+            keep_running = True
+            continue
         if "=" in opt:
             opt, value = opt.split("=", 1)
         else:
@@ -221,7 +233,7 @@ def main():
             gapi = value
         else:
             raise SystemExit(f"unknown option: {opt}")
-    if transport not in ("quic", "unix"):
+    if transport not in ("quic", "unix", "shm"):
         raise SystemExit(f"unknown transport: {transport}")
 
     root = os.path.dirname(os.path.abspath(__file__))
@@ -245,6 +257,9 @@ def main():
     if transport == "unix":
         # No port, no certificate: the path IS the endpoint and its permissions are the access control.
         share = f"unix:/tmp/xl-remote-check-{os.getpid()}.xlsock"
+    elif transport == "shm":
+        # The rendezvous block; connection blocks appear next to it as <path>.<token>.
+        share = f"shm:/dev/shm/xl-remote-check-{os.getpid()}"
     else:
         port = 24000 + (os.getpid() % 20000)
         share = f"quic://127.0.0.1:{port}"
@@ -253,10 +268,11 @@ def main():
     server = None
     client = None
     bad_client = None
+    silent = None
     try:
         print(f"transport: {transport}\ngapi:   {gapi or 'default'}\nserver: {server_bin}\n"
                 f"client: {client_bin}\nshare:  {share}")
-        server = start_server(server_bin, sock, share, token, gapi=gapi)
+        server = start_server(server_bin, sock, share, token, gapi=gapi, keep_running=keep_running)
         s = Session(sock)
         s.ok("frame", count=3)
 
@@ -267,9 +283,9 @@ def main():
         if transport == "quic":
             check("listener reports an SPKI fingerprint", len(spki) == 64, f"got {spki!r}")
         else:
-            # A unix socket has no certificate to pin, and must not invent one: the peer is
-            # identified by credentials instead.
-            check("a unix listener reports no certificate", spki == "", f"got {spki!r}")
+            # A unix socket or a shared block has no certificate to pin, and must not invent one:
+            # the peer is identified by credentials instead.
+            check(f"a {transport} listener reports no certificate", spki == "", f"got {spki!r}")
         if not status.get("listening"):
             raise SystemExit("the server never started sharing - nothing left to check")
 
@@ -341,11 +357,11 @@ def main():
 
         # Both sides must SAY that the builds differ. Silently carrying on would lose the one thing
         # the tag is still good for -- explaining a later symptom.
-        dump = s.ok("logs") or {}
-        lines = "\n".join(str(x) for x in (dump.get("lines") or []))
+        # The log file, for the same reason as the authentication check further down.
+        server_log = open(SERVER_LOG, errors="replace").read() if os.path.exists(SERVER_LOG) else ""
         check("the server reports the mismatch instead of acting on it",
-                "different wire contract" in lines,
-                "not in %d log lines" % len(dump.get("lines") or []))
+                "different wire contract" in server_log,
+                "not in %d bytes of server log" % len(server_log))
         bad_log = open(CLIENT_LOG).read() if os.path.exists(CLIENT_LOG) else ""
         check("the client says so too, naming both builds",
                 "different wire contract" in bad_log and "server:" in bad_log
@@ -386,15 +402,39 @@ def main():
             s.ok("frame", count=1)
             time.sleep(0.1)
 
+        # --- a silent peer first ------------------------------------------------------------------
+        #
+        # It opens a connection and says nothing for a while. The handshake used to run one
+        # connection at a time on the app thread, so such a peer held the server for its whole
+        # deadline and every connection arriving meanwhile was refused as Busy. Each handshake is
+        # stepped on its own now; the real client below starts while this one is still silent.
+        silent = spawn_client(client_bin, share, token, spki,
+                extra_env={"XL_REMOTE_HANDSHAKE_DELAY_MS": "4000"})
+        time.sleep(0.5)
+
         # --- the real client ---------------------------------------------------------------------
         client = spawn_client(client_bin, share, token, spki, inspector=client_sock)
         st = wait_for(s, lambda x: x.get("clientConnected"), timeout=25.0)
         check("the client is connected and authenticated", bool(st.get("clientConnected")), str(st))
+        check("a silent connection opened first did not hold it back",
+                bool(st.get("clientConnected")) and silent.poll() is None,
+                "the silent peer had already given up" if silent.poll() is not None else str(st))
+        for _ in range(100):
+            if silent.poll() is not None:
+                break
+            s.ok("frame", count=1)
+            time.sleep(0.1)
+        check("the silent peer is let go once it finally speaks", silent.poll() is not None,
+                "still running 10s later")
+        kill(silent)
+        silent = None
 
-        dump = s.ok("logs") or {}
-        lines = "\n".join(str(x) for x in (dump.get("lines") or []))
-        check("server logged the authentication", "client authenticated" in lines,
-                "not in %d log lines" % len(dump.get("lines") or []))
+        # From the log FILE, not the inspector's ring buffer: a busy server can push thousands of
+        # lines through the ring between the handshake and this check, and a line that scrolled out
+        # of a buffer is not a line that was never written.
+        server_log = open(SERVER_LOG, errors="replace").read() if os.path.exists(SERVER_LOG) else ""
+        check("server logged the authentication", "client authenticated" in server_log,
+                "not in %d bytes of server log" % len(server_log))
 
         # One long-lived session to the CLIENT's own inspector. It used to be opened and closed for
         # a single `scene` call; from here on the driver talks to both sides throughout, and the
@@ -630,6 +670,53 @@ def main():
         check("unmarking commits the composed text", st.get("text") == "Hiabにほ"
                         and st.get("markedLength") == 0, str(st))
 
+        # --- a late frame costs the frame, not the session (S5) --------------------------------
+        #
+        # A remote scene that takes too long to draw used to end the session: the AcquireFrame
+        # waiter expired, the request watchdog read that as "the peer is gone" and dropped the
+        # client. Android shows the previous frame instead, and that is the policy here -- the frame
+        # is cancelled, the window keeps what it last presented, and liveness stays the keepalive's
+        # question alone.
+        #
+        # The client is told to answer ONE frame later than the server's 2s budget. It does so
+        # without blocking its own thread, so pings keep being answered: what the server sees is a
+        # late frame and nothing else.
+        st = s.invoke("remote") or {}
+        late_before = ((st.get("sessions") or [{}])[0]).get("lateFrames", 0)
+        presented_before = (s.ok("frame", count=0) or {}).get("presented", 0)
+
+        c.invoke("client-frame-delay", ms=3000, frames=1)
+        deadline = time.monotonic() + 12.0
+        late_after = late_before
+        while time.monotonic() < deadline:
+            s.ok("frame", count=1)
+            time.sleep(0.2)
+            st = s.invoke("remote") or {}
+            late_after = ((st.get("sessions") or [{}])[0]).get("lateFrames", 0)
+            if late_after > late_before:
+                break
+        check("a frame the client is late with is given up on", late_after > late_before,
+                f"{late_before} -> {late_after} late frames")
+        check("and the client keeps its session", bool(st.get("clientConnected"))
+                        and client.poll() is None, str(st))
+
+        # The window is not stuck on the cancelled frame: it presents again. Without the nudge that
+        # follows a cancel, a headless window would simply stop here.
+        presented_after = presented_before
+        deadline = time.monotonic() + 15.0
+        while time.monotonic() < deadline:
+            s.ok("frame", count=1)
+            time.sleep(0.2)
+            presented_after = (s.ok("frame", count=0) or {}).get("presented", 0)
+            if presented_after > presented_before:
+                break
+        check("frames resume after the cancelled one",
+                presented_after > presented_before,
+                f"presented {presented_before} -> {presented_after}")
+        shot = grab(s)
+        check("and the window still draws the remote scene",
+                shot.startswith(b"\x89PNG") and shot != before, f"{len(shot)} bytes")
+
         # --- one connection, two windows (M5) --------------------------------------------------
         #
         # Everything up to here is one server window served by one client, which is the shape the
@@ -769,6 +856,25 @@ def main():
         finally:
             kill(second)
 
+        # A silent peer arriving while the session runs is turned away without pausing it.
+        silent = spawn_client(client_bin, share, token, spki,
+                extra_env={"XL_REMOTE_HANDSHAKE_DELAY_MS": "4000"})
+        time.sleep(0.5)
+        shot = grab(s)
+        check("frames keep coming while a silent peer waits", shot.startswith(b"\x89PNG"),
+                f"{len(shot)} bytes")
+        st = s.invoke("remote") or {}
+        check("and the session is not disturbed by it", bool(st.get("clientConnected")), str(st))
+        for _ in range(100):
+            if silent.poll() is not None:
+                break
+            s.ok("frame", count=1)
+            time.sleep(0.1)
+        check("the silent peer is refused once it speaks", silent.poll() is not None,
+                "still running 10s later")
+        kill(silent)
+        silent = None
+
         # --- a bulk transfer can be called off (M5.5) ------------------------------------------
         #
         # A screenshot is the one thing on this connection that keeps streaming long after the
@@ -850,23 +956,60 @@ def main():
         # The server answers the request BEFORE it closes, or the reply would die with the
         # connection and the client would sit out its deadline for a window that had already gone.
         c.ok("window", op="close")
-        closed = False
-        for _ in range(100):
-            if server.poll() is not None:
-                closed = True
-                break
-            time.sleep(0.1)
-        check("the remote scene can close the window it draws into", closed,
-                "the server was still running 10s later")
-        if not closed:
-            # Report the failure rather than hanging on it.
-            s.ok("quit")
-        s.close()
+        if keep_running:
+            # The inspector lives in the window's scene, so from here on only the logs can say what
+            # the server does.
+            time.sleep(2.0)
+            check("with --keep-running the server outlives its last window", server.poll() is None,
+                    f"exited with {server.returncode}")
+            kill(client)
+            client = None
+            # Let the server notice the departed client (keepalive on QUIC takes seconds).
+            time.sleep(7.0)
+            authenticated = open(SERVER_LOG, errors="replace").read().count("client authenticated")
+            late = spawn_client(client_bin, share, token, spki)
+            accepted = False
+            try:
+                for _ in range(150):
+                    log = open(SERVER_LOG, errors="replace").read()
+                    if log.count("client authenticated") > authenticated:
+                        accepted = True
+                        break
+                    time.sleep(0.1)
+            finally:
+                kill(late)
+            check("and still accepts a client with no window left", accepted,
+                    "no new authentication in the server log")
+            try:
+                s.close()
+            except OSError:
+                pass
+        else:
+            closed = False
+            for _ in range(100):
+                if server.poll() is not None:
+                    closed = True
+                    break
+                time.sleep(0.1)
+            check("the remote scene can close the window it draws into", closed,
+                    "the server was still running 10s later")
+            if not closed:
+                # Report the failure rather than hanging on it.
+                s.ok("quit")
+            s.close()
     finally:
         kill(bad_client)
+        kill(silent)
         kill(client)
         kill(server)
-        for path in (sock, client_sock, share[5:] if share.startswith("unix:") else ""):
+        share_path = share.split(":", 1)[1] if share.startswith(("unix:", "shm:")) else ""
+        leftovers = []
+        if share.startswith("shm:"):
+            # A killed server leaves its connection blocks next to the rendezvous file.
+            base = os.path.basename(share_path) + "."
+            leftovers = [os.path.join("/dev/shm", n) for n in os.listdir("/dev/shm")
+                    if n.startswith(base)]
+        for path in [sock, client_sock, share_path] + leftovers:
             if not path:
                 continue
             try:

@@ -399,19 +399,24 @@ void InputDispatcher::handleInputEvent(const InputEventData &event) {
 		break;
 	}
 	case InputEventName::KeyPressed: {
-		if (handleHotkey(event, false)) {
+		if (handleHotkey(event, false, false)) {
 			break;
 		}
 		auto v = resetKey(event);
 		v->addListenersFromStorage(_events);
 		v->handle(true);
+		if (!v->exclusive && v->listeners.empty()) {
+			handleHotkey(event, false, true);
+		}
 		break;
 	}
 	case InputEventName::KeyRepeated:
-		if (handleHotkey(event, true)) {
+		if (handleHotkey(event, true, false)) {
 			break;
 		}
-		handleKey(event, false);
+		if (!handleKey(event, false)) {
+			handleHotkey(event, true, true);
+		}
 		break;
 	case InputEventName::KeyReleased:
 	case InputEventName::KeyCanceled: handleKey(event, true); break;
@@ -637,7 +642,7 @@ FocusGroup *InputDispatcher::getExclusiveGroup(const InputEvent &event) const {
 	return ret;
 }
 
-bool InputDispatcher::handleHotkey(const InputEventData &data, bool repeated) {
+bool InputDispatcher::handleHotkey(const InputEventData &data, bool repeated, bool unhandled) {
 	if (!_events) {
 		return false;
 	}
@@ -678,7 +683,7 @@ bool InputDispatcher::handleHotkey(const InputEventData &data, bool repeated) {
 
 	auto contextFor = [&](const InputListenerStorage::Rec &l, bool focusedOverride) {
 		return HotkeyContext{focusedOverride || isFocused(l), repeated, isScoped(l),
-			isInSelection(l)};
+			isInSelection(l), unhandled};
 	};
 
 	// The listener that owns the keyboard is offered first. Only a SingleFocus group designates
@@ -803,27 +808,26 @@ InputDispatcher::EventHandlersInfo *InputDispatcher::resetKey(const InputEventDa
 	}
 }
 
-void InputDispatcher::handleKey(const InputEventData &event, bool clear) {
+bool InputDispatcher::handleKey(const InputEventData &event, bool clear) {
+	auto process = [&](auto &map, auto key) {
+		auto v = map.find(key);
+		if (v == map.end()) {
+			return false;
+		}
+		updateEventInfo(v->second.event, event);
+		v->second.handle(!clear);
+		bool accepted = v->second.exclusive || !v->second.listeners.empty();
+		if (clear) {
+			v->second.clear(false);
+			map.erase(v);
+		}
+		return accepted;
+	};
+
 	if (event.key.keycode == InputKeyCode::Unknown) {
-		auto v = _activeKeySyms.find(event.key.keysym);
-		if (v != _activeKeySyms.end()) {
-			updateEventInfo(v->second.event, event);
-			v->second.handle(!clear);
-			if (clear) {
-				v->second.clear(false);
-				_activeKeySyms.erase(v);
-			}
-		}
+		return process(_activeKeySyms, event.key.keysym);
 	} else {
-		auto v = _activeKeys.find(event.key.keycode);
-		if (v != _activeKeys.end()) {
-			updateEventInfo(v->second.event, event);
-			v->second.handle(!clear);
-			if (clear) {
-				v->second.clear(false);
-				_activeKeys.erase(v);
-			}
-		}
+		return process(_activeKeys, event.key.keycode);
 	}
 }
 

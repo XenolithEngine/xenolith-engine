@@ -207,32 +207,6 @@ static bool streamReadFull(TransportConnection &conn, uint8_t *buf, size_t n, ui
 	return true;
 }
 
-// Write exactly n bytes, bounded by an absolute deadline. Handshake-only.
-static bool streamWriteAll(TransportConnection &conn, const uint8_t *buf, size_t n,
-		uint64_t deadline) {
-	auto stream = conn.getStream(StreamClass::Control);
-	if (!stream) {
-		return false;
-	}
-	size_t off = 0;
-	while (off < n) {
-		size_t w = 0;
-		if (stream->write(BytesView(buf + off, n - off), w) != Status::Ok) {
-			return false; // closed or fatal
-		}
-		if (w > 0) {
-			off += w;
-			continue;
-		}
-		conn.handleEvents();
-		if (sp::platform::clock(ClockType::Monotonic) >= deadline) {
-			return false;
-		}
-		sp::platform::sleep(1'000);
-	}
-	return true;
-}
-
 static bool readMessagePayloadWithHeader(BytesViewNetwork view, const MessageHeader &h,
 		BytesView dict, const Callback<void(const MessageHeader &, BytesView)> &cb) {
 
@@ -590,30 +564,6 @@ float readFloatBits(BytesViewNetwork &in) {
 	return v;
 }
 
-[[nodiscard]]
-static uint8_t *writeValue8(uint8_t *buf, uint8_t t) {
-	buf[0] = t;
-	return buf + 1;
-}
-
-[[nodiscard]]
-static uint8_t *writeValue16(uint8_t *buf, uint16_t t) {
-	__sprt_memcpy(buf, &t, sizeof(uint16_t));
-	return buf + sizeof(uint16_t);
-}
-
-[[nodiscard]]
-static uint8_t *writeValue32(uint8_t *buf, uint32_t t) {
-	__sprt_memcpy(buf, &t, sizeof(uint32_t));
-	return buf + sizeof(uint32_t);
-}
-
-[[nodiscard]]
-static uint8_t *writeData(uint8_t *buf, BytesView d) {
-	__sprt_memcpy(buf, d.data(), d.size());
-	return buf + d.size();
-}
-
 static bool decodeServerHello(BytesViewNetwork in, ServerHello &h) {
 	h.magic = in.readUnsigned32();
 	h.version = in.readUnsigned16();
@@ -659,67 +609,125 @@ static uint16_t announcedProtocolVersion() {
 	return kProtocolVersion;
 }
 
-static uint8_t *writeMessageHeader(uint8_t *buf, MessageType type, MessageFlags flags,
-		Domain domain, uint8_t code, uint32_t serial, uint32_t messageSize) {
-	buf = writeValue8(buf, uint8_t(toInt(type)));
-	buf = writeValue8(buf, uint8_t(toInt(flags)));
-	buf = writeValue8(buf, uint8_t(toInt(domain)));
-	buf = writeValue8(buf, uint8_t(code));
-	buf = writeValue32(buf, sprt::byteorder::HostToNetwork(serial));
-	buf = writeValue32(buf, sprt::byteorder::HostToNetwork(messageSize));
-	return buf;
+// Read what a hello frame still needs: the header, then exactly its payload, never more. True once
+// the frame is complete; `failed` on a closed stream or an oversized frame.
+static bool readHelloFrame(TransportStream *stream, Bytes &buf, bool &failed) {
+	failed = false;
+	for (;;) {
+		size_t need = 0;
+		if (buf.size() < sizeof(MessageHeader)) {
+			need = sizeof(MessageHeader) - buf.size();
+		} else {
+			MessageHeader h;
+			__sprt_memcpy(&h, buf.data(), sizeof(MessageHeader));
+			auto size = sprt::byteorder::NetworkToHost(h.size);
+			if (size > kMaxFrameSize) {
+				failed = true;
+				return false;
+			}
+			auto total = sizeof(MessageHeader) + size_t(size);
+			if (buf.size() >= total) {
+				return true;
+			}
+			need = total - buf.size();
+		}
+
+		uint8_t tmp[512];
+		size_t got = 0;
+		if (stream->read(tmp, sprt::min(need, sizeof(tmp)), got) != Status::Ok) {
+			failed = true;
+			return false;
+		}
+		if (got == 0) {
+			return false;
+		}
+		buf.insert(buf.end(), tmp, tmp + got);
+	}
 }
 
-GlobalError clientHandshake(TransportConnection &conn, BytesView key, BytesView dict,
-		uint64_t deadline,
-		const Callback<void(const ServerHello &out)> &cb) {
-	uint32_t clientHelloSize = sizeof(uint32_t) * 3 + key.size() + dict.size();
-
-	auto d = __sprt_typed_malloca(uint8_t, clientHelloSize + sizeof(MessageHeader));
-
-	auto buf = writeMessageHeader(d, MessageType::Client, MessageFlags::None, Domain::Global,
-			toInt(GlobalCode::ClientHello), 0, clientHelloSize);
-
-	buf = writeValue32(buf, sprt::byteorder::HostToNetwork(kProtocolMagic));
-	buf = writeValue16(buf, sprt::byteorder::HostToNetwork(announcedProtocolVersion()));
-	buf = writeValue8(buf, toInt(AuthMode::BearerKey));
-	buf = writeValue8(buf, toInt(ClientHelloFlags::None));
-	buf = writeValue16(buf, sprt::byteorder::HostToNetwork(static_cast<uint16_t>(key.size())));
-	buf = writeValue16(buf, sprt::byteorder::HostToNetwork(static_cast<uint16_t>(dict.size())));
-	buf = writeData(buf, key);
-	if (!dict.empty()) {
-		buf = writeData(buf, dict);
-	}
-
-	// Free before branching: `d` may be heap-allocated by __sprt_malloca.
-	auto sent = streamWriteAll(conn, d, clientHelloSize + sizeof(MessageHeader), deadline);
-
-	__sprt_freea(d);
-
-	if (!sent) {
-		return GlobalError::NetworkBackend;
-	}
-
-	GlobalError result = GlobalError::NetworkBackend;
-
-	if (!readFrame(conn, deadline, BytesView(), [&](const MessageHeader &h, BytesView d) {
-		ServerHello sh;
-		if (!decodeServerHello(d, sh)) {
-			result = GlobalError::BadProtocol;
-			return;
+// Write what the transport takes; true once everything is out.
+static bool flushHelloFrame(TransportStream *stream, const Bytes &out, size_t &offset,
+		bool &failed) {
+	failed = false;
+	while (offset < out.size()) {
+		size_t written = 0;
+		if (stream->write(BytesView(out.data() + offset, out.size() - offset), written)
+				!= Status::Ok) {
+			failed = true;
+			return false;
 		}
-
-		if (sh.status != toInt(GlobalError::Ok)) {
-			result = GlobalError(sh.status);
-			return;
+		if (written == 0) {
+			return false;
 		}
-
-		cb(sh);
-		result = GlobalError::Ok;
-	})) {
-		return GlobalError::NetworkBackend;
+		offset += written;
 	}
-	return result;
+	return true;
+}
+
+// The frame header of a hello: never compressed, serial 0.
+static void writeHelloHeader(WireWriter &w, MessageType type, GlobalCode code, uint32_t size) {
+	w.writeU8(uint8_t(toInt(type)));
+	w.writeU8(uint8_t(toInt(MessageFlags::None)));
+	w.writeU8(uint8_t(toInt(Domain::Global)));
+	w.writeU8(uint8_t(toInt(code)));
+	w.writeU32(0);
+	w.writeU32(size);
+}
+
+static void encodeClientHello(Bytes &out, BytesView key, BytesView dict) {
+	auto size = uint32_t(sizeof(uint32_t) * 3 + key.size() + dict.size());
+	WireWriter w(out);
+	writeHelloHeader(w, MessageType::Client, GlobalCode::ClientHello, size);
+	w.writeU32(kProtocolMagic);
+	w.writeU16(announcedProtocolVersion());
+	w.writeU8(toInt(AuthMode::BearerKey));
+	w.writeU8(toInt(ClientHelloFlags::None));
+	w.writeU16(uint16_t(key.size()));
+	w.writeU16(uint16_t(dict.size()));
+	w.writeBytes(key);
+	w.writeBytes(dict);
+}
+
+static void encodeServerHello(Bytes &out, GlobalError status, DictSource dictSource,
+		BytesView serverDict) {
+	bool withDict = (status == GlobalError::Ok && dictSource == DictSource::Server);
+	auto size = uint32_t(sizeof(uint32_t) * 2);
+	if (withDict) {
+		size += sizeof(uint16_t) + serverDict.size();
+	}
+	WireWriter w(out);
+	writeHelloHeader(w, MessageType::Server, GlobalCode::ServerHello, size);
+	w.writeU32(kProtocolMagic);
+	w.writeU16(kProtocolVersion);
+	w.writeU8(toInt(status));
+	w.writeU8(toInt(withDict ? DictSource::Server : dictSource));
+	if (withDict) {
+		w.writeU16(uint16_t(serverDict.size()));
+		w.writeBytes(serverDict);
+	}
+}
+
+static void decodeClientHello(BytesView payload, ClientHello &ch) {
+	auto in = BytesViewNetwork(payload);
+	ch.magic = in.readUnsigned32();
+	ch.version = in.readUnsigned16();
+	ch.authMode = in.readUnsigned();
+	ch.clientHelloFlags = in.readUnsigned();
+	auto authDataSize = in.readUnsigned16();
+	auto dictSize = in.readUnsigned16();
+	ch.authData = in.readBytes<sprt::endian::native>(authDataSize);
+	ch.suggestedDict = in.readBytes<sprt::endian::native>(dictSize);
+}
+
+// The payload of a complete hello frame, or false when the frame is not a plain hello.
+static bool helloPayload(const Bytes &frame, BytesView &payload) {
+	MessageHeader h;
+	__sprt_memcpy(&h, frame.data(), sizeof(MessageHeader));
+	if ((h.msgflags & toInt(MessageFlags::Compressed)) != 0) {
+		return false;
+	}
+	payload = BytesView(frame.data() + sizeof(MessageHeader), frame.size() - sizeof(MessageHeader));
+	return true;
 }
 
 static GlobalError negotiateHello(const ClientHello &ch, BytesView expectedKey,
@@ -743,79 +751,176 @@ static GlobalError negotiateHello(const ClientHello &ch, BytesView expectedKey,
 	return status;
 }
 
-// Emit the ServerHello reply. Shared by the negotiating path and by serverHandshakeReject, so the
-// refusal answer cannot drift from the accepting one.
-static bool writeServerHello(TransportConnection &conn, GlobalError status, DictSource dictSource,
-		BytesView serverDict, uint64_t deadline) {
-	size_t serverHello = sizeof(uint32_t) * 2;
-	bool withDict = (status == GlobalError::Ok && dictSource == DictSource::Server);
-	if (withDict) {
-		serverHello += sizeof(uint16_t) + serverDict.size();
+void ServerHandshake::begin(uint64_t deadlineUs) {
+	_state = State::ReadingHello;
+	_deadline = deadlineUs;
+	_in.clear();
+	_out.clear();
+	_outOffset = 0;
+	_helloValid = false;
+	_hello = ClientHello();
+	_dictSource = DictSource::None;
+	_negotiatedDict.clear();
+	_replied = GlobalError::BadProtocol;
+}
+
+ServerHandshake::State ServerHandshake::step(TransportConnection &conn, uint64_t nowUs) {
+	auto stream = conn.getStream(StreamClass::Control);
+	if (!stream) {
+		_state = State::Failed;
+		return _state;
 	}
 
-	auto d = __sprt_typed_malloca(uint8_t, serverHello + sizeof(MessageHeader));
+	bool failed = false;
+	switch (_state) {
+	case State::ReadingHello:
+		if (readHelloFrame(stream, _in, failed)) {
+			BytesView payload;
+			_helloValid = helloPayload(_in, payload);
+			if (_helloValid) {
+				decodeClientHello(payload, _hello);
+			}
+			_state = State::HelloReceived;
+		} else if (failed || nowUs >= _deadline) {
+			_state = State::Failed;
+		}
+		break;
+	case State::Replying:
+		if (flushHelloFrame(stream, _out, _outOffset, failed)) {
+			_state = State::Done;
+		} else if (failed || nowUs >= _deadline) {
+			_state = State::Failed;
+		}
+		break;
+	default: break;
+	}
+	return _state;
+}
 
-	auto buf = writeMessageHeader(d, MessageType::Server, MessageFlags::None, Domain::Global,
-			toInt(GlobalCode::ServerHello), 0, serverHello);
+GlobalError ServerHandshake::negotiate(BytesView expectedKey, BytesView serverDict,
+		bool requireBearerKey) {
+	if (_state != State::HelloReceived || !_helloValid) {
+		return GlobalError::BadProtocol;
+	}
+	auto status = negotiateHello(_hello, expectedKey, requireBearerKey);
+	if (status == GlobalError::Ok) {
+		if (serverDict.empty() && !_hello.suggestedDict.empty()) {
+			_dictSource = DictSource::Client;
+			_negotiatedDict = _hello.suggestedDict.bytes<Interface>();
+		} else if (!serverDict.empty()) {
+			_dictSource = DictSource::Server;
+		}
+	}
+	return status;
+}
 
-	buf = writeValue32(buf, sprt::byteorder::HostToNetwork(kProtocolMagic));
-	buf = writeValue16(buf, sprt::byteorder::HostToNetwork(kProtocolVersion));
-	buf = writeValue8(buf, toInt(status));
-	buf = writeValue8(buf, toInt(dictSource));
+void ServerHandshake::reply(GlobalError status, BytesView serverDict) {
+	if (_state == State::Idle || _state == State::Replying || _state == State::Done) {
+		return;
+	}
+	_replied = status;
+	_out.clear();
+	_outOffset = 0;
+	encodeServerHello(_out, status, status == GlobalError::Ok ? _dictSource : DictSource::None,
+			serverDict);
+	_state = State::Replying;
+}
 
-	if (withDict) {
-		// Network byte order, like every other size on the wire (decodeServerHello reads it through
-		// a BytesViewNetwork).
-		buf = writeValue16(buf, sprt::byteorder::HostToNetwork(uint16_t(serverDict.size())));
-		buf = writeData(buf, serverDict);
+void ClientHandshake::begin(BytesView bearerKey, BytesView dict, uint64_t deadlineUs) {
+	_state = State::Writing;
+	_deadline = deadlineUs;
+	_in.clear();
+	_out.clear();
+	_outOffset = 0;
+	_hello = ServerHello();
+	_result = GlobalError::NetworkBackend;
+	encodeClientHello(_out, bearerKey, dict);
+}
+
+ClientHandshake::State ClientHandshake::step(TransportConnection &conn, uint64_t nowUs) {
+	auto stream = conn.getStream(StreamClass::Control);
+	if (!stream) {
+		_state = State::Failed;
+		return _state;
 	}
 
-	// Free the allocation `d`, not the advanced write cursor `buf`.
-	auto result = streamWriteAll(conn, d, serverHello + sizeof(MessageHeader), deadline);
-	__sprt_freea(d);
-	return result;
+	bool failed = false;
+	if (_state == State::Writing) {
+		if (flushHelloFrame(stream, _out, _outOffset, failed)) {
+			_state = State::ReadingReply;
+		} else if (failed || nowUs >= _deadline) {
+			_result = GlobalError::NetworkBackend;
+			_state = State::Failed;
+			return _state;
+		}
+	}
+
+	if (_state == State::ReadingReply) {
+		if (readHelloFrame(stream, _in, failed)) {
+			BytesView payload;
+			if (!helloPayload(_in, payload) || !decodeServerHello(payload, _hello)) {
+				_result = GlobalError::BadProtocol;
+				_state = State::Failed;
+			} else {
+				_result = GlobalError(_hello.status);
+				_state = State::Done;
+			}
+		} else if (failed || nowUs >= _deadline) {
+			_result = GlobalError::NetworkBackend;
+			_state = State::Failed;
+		}
+	}
+	return _state;
+}
+
+static uint64_t handshakeNow() { return sp::platform::clock(ClockType::Monotonic); }
+
+GlobalError clientHandshake(TransportConnection &conn, BytesView key, BytesView dict,
+		uint64_t deadline, const Callback<void(const ServerHello &out)> &cb) {
+	ClientHandshake handshake;
+	handshake.begin(key, dict, deadline);
+	for (;;) {
+		auto state = handshake.step(conn, handshakeNow());
+		if (state == ClientHandshake::State::Done || state == ClientHandshake::State::Failed) {
+			break;
+		}
+		conn.handleEvents();
+		sp::platform::sleep(1'000);
+	}
+	if (handshake.getResult() == GlobalError::Ok) {
+		cb(handshake.getServerHello());
+	}
+	return handshake.getResult();
+}
+
+// Drive a server handshake to its end with the transport pumped in between.
+static void runServerHandshake(TransportConnection &conn, ServerHandshake &handshake,
+		ServerHandshake::State until) {
+	for (;;) {
+		auto state = handshake.step(conn, handshakeNow());
+		if (state == until || state == ServerHandshake::State::Done
+				|| state == ServerHandshake::State::Failed) {
+			return;
+		}
+		conn.handleEvents();
+		sp::platform::sleep(1'000);
+	}
 }
 
 GlobalError serverHandshake(TransportConnection &conn, BytesView expectedKey, BytesView serverDict,
 		Bytes &negotiatedDict, uint64_t deadline, bool requireBearerKey) {
 	negotiatedDict.clear();
 
-	GlobalError outStatus = GlobalError::BadProtocol;
-	DictSource dictSource = DictSource::None;
+	ServerHandshake handshake;
+	handshake.begin(deadline);
+	runServerHandshake(conn, handshake, ServerHandshake::State::HelloReceived);
 
-	// || !decodeClientHello(payload, ch)
-	if (!readFrame(conn, deadline, BytesView(), [&](const MessageHeader &, BytesView b) {
-		ClientHello ch;
+	auto status = handshake.negotiate(expectedKey, serverDict, requireBearerKey);
+	handshake.reply(status, serverDict);
+	runServerHandshake(conn, handshake, ServerHandshake::State::Done);
 
-		auto networkBytes = BytesViewNetwork(b);
-
-		ch.magic = networkBytes.readUnsigned32();
-		ch.version = networkBytes.readUnsigned16();
-		ch.authMode = networkBytes.readUnsigned();
-		ch.clientHelloFlags = networkBytes.readUnsigned();
-
-		auto authDataSize = networkBytes.readUnsigned16();
-		auto dictSize = networkBytes.readUnsigned16();
-
-		ch.authData = networkBytes.readBytes<sprt::endian::native>(authDataSize);
-		ch.suggestedDict = networkBytes.readBytes<sprt::endian::native>(dictSize);
-
-		outStatus = negotiateHello(ch, expectedKey, requireBearerKey);
-
-		if (outStatus == GlobalError::Ok) {
-			if (serverDict.empty() && !ch.suggestedDict.empty()) {
-				dictSource = DictSource::Client;
-				negotiatedDict = ch.suggestedDict.bytes<Interface>();
-			} else if (!serverDict.empty()) {
-				dictSource = DictSource::Server;
-			}
-		}
-	})) {
-		outStatus = GlobalError::BadProtocol;
-	}
-
-	writeServerHello(conn, outStatus, dictSource, serverDict, deadline);
-	return outStatus;
+	negotiatedDict = handshake.getNegotiatedDict().bytes<Interface>();
+	return status;
 }
 
 StringView getGlobalErrorName(GlobalError e) {
@@ -841,11 +946,15 @@ GlobalError serverHandshakeReject(TransportConnection &conn, GlobalError status,
 	 * server writing before the client's stream arrives creates its own stream the client never
 	 * reads, so the read binds the default stream. The wait is short and separate from `deadline`,
 	 * so a silent peer cannot park this thread. */
-	auto helloDeadline = sprt::min(deadline,
-			sp::platform::clock(ClockType::Monotonic) + kRejectHelloWaitUs);
-	readFrame(conn, helloDeadline, BytesView(), [](const MessageHeader &, BytesView) { });
+	ServerHandshake handshake;
+	handshake.begin(sprt::min(deadline, handshakeNow() + kRejectHelloWaitUs));
+	runServerHandshake(conn, handshake, ServerHandshake::State::HelloReceived);
 
-	if (!writeServerHello(conn, status, DictSource::None, BytesView(), deadline)) {
+	handshake.setDeadline(deadline);
+	handshake.reply(status, BytesView());
+	runServerHandshake(conn, handshake, ServerHandshake::State::Done);
+
+	if (handshake.getState() != ServerHandshake::State::Done) {
 		log::source().error("remote::Protocol", "failed to deliver the refusal (",
 				getGlobalErrorName(status), "); the peer will only learn of it by timing out");
 	}

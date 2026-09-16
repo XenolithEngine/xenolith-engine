@@ -91,8 +91,8 @@ Rc<PollHandle> Queue::listenPollableHandle(NativeHandle handle, PollFlags flags,
 	Rc<PollHandle> h = _data->listenHandle(handle, flags, move(cb));
 	if (h) {
 		h->setUserdata(ref);
+		_data->runHandle(h);
 	}
-	_data->runHandle(h);
 	return h;
 }
 
@@ -263,6 +263,40 @@ Rc<WatchHandle> Queue::watchFile(StringView path, WatchFlags mask,
 	});
 
 	return watchFile(move(info), data);
+}
+
+Rc<AddressWaitHandle> Queue::waitOnAddress(AddressWaitInfo &&info, Ref *ref) {
+	auto h = _data->waitOnAddress(move(info), ref);
+	if (h) {
+		_data->runHandle(h);
+	}
+	return h;
+}
+
+Rc<AddressWaitHandle> Queue::waitOnAddress(uint32_t *address, uint32_t expected,
+		dispatch::Function<Status(uint32_t)> &&onChange, Ref *ref) {
+	struct AddressWaitCbData : public Ref {
+		dispatch::Function<Status(uint32_t)> cb;
+		Rc<Ref> ref;
+	};
+
+	auto data = Rc<AddressWaitCbData>::alloc();
+	data->cb = sprt::move(onChange);
+	data->ref = ref;
+
+	AddressWaitInfo info;
+	info.address = address;
+	info.expected = expected;
+	info.completion = AddressWaitInfo::Completion::create<AddressWaitCbData>(data,
+			[](AddressWaitCbData *data, AddressWaitHandle *handle, uint32_t value, Status st) {
+		if (st == Status::Ok) {
+			if (data->cb && data->cb(value) != Status::Ok) {
+				handle->cancel();
+			}
+		}
+	});
+
+	return waitOnAddress(move(info), data);
 }
 
 Rc<ListenHandle> Queue::listenSocket(ListenInfo &&info, Ref *ref) {

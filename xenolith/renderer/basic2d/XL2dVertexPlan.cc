@@ -951,7 +951,7 @@ void VertexPlan::drawWritePlan(Context &ctx, WriteTarget &writeTarget,
 					.gradientCount = statePlan.gradientCount,
 					.outlineOffset =
 							(statePlan.stateData ? statePlan.stateData->outlineOffset : 0.0f),
-					.particleSystemId = it->id});
+					.particleEmitterId = it->id});
 			}
 		}
 	};

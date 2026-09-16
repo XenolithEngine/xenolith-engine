@@ -170,6 +170,7 @@ public:
 	virtual void handleEnter(Scene *) override;
 	virtual void handleExit() override;
 	virtual void handleContentSizeDirty() override;
+	virtual void handleLayoutChildren() override;
 
 	// --- PanelHost ---------------------------------------------------------
 

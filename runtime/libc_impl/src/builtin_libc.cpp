@@ -42,6 +42,7 @@ THE SOFTWARE.
 #include "embox_user/libc_file_ops.cc"
 #include "embox_user/libc_dir_ops.cc"
 #include "embox_user/libc_path.cc"
+#include "embox_user/pipe_poll.cc"
 #endif
 
 namespace sprt {

@@ -212,8 +212,21 @@ uint64_t ObjectRegistry::share(core::Object *obj) {
 	auto id = allocateId();
 	_objectByPtr.emplace(obj, id);
 	_objectById.emplace(id, Rc<core::Object>(obj));
+	if (_queueScope) {
+		auto qIt = _queueById.find(_queueScope);
+		if (qIt != _queueById.end()) {
+			qIt->second.objects.emplace_back(id);
+		}
+	}
 	return id;
 }
+
+ObjectRegistry::QueueScope::QueueScope(ObjectRegistry &r, uint64_t queueId) : registry(r) {
+	previous = registry._queueScope;
+	registry._queueScope = queueId;
+}
+
+ObjectRegistry::QueueScope::~QueueScope() { registry._queueScope = previous; }
 
 void ObjectRegistry::pinObject(core::Object *obj, uint64_t id) {
 	if (!obj || !id) {
@@ -293,9 +306,50 @@ uint64_t ObjectRegistry::get(core::Object *obj) const {
 
 void ObjectRegistry::drop(core::RenderServerChannel *window) {
 	auto it = _windowByPtr.find(window);
-	if (it != _windowByPtr.end()) {
-		_windowById.erase(it->second);
-		_windowByPtr.erase(it);
+	if (it == _windowByPtr.end()) {
+		return;
+	}
+
+	// Take the queue ids before the window entry goes: they are what has to be reconsidered.
+	auto queues = sp::move(_windowById.find(it->second)->second.queues);
+	_windowById.erase(it->second);
+	_windowByPtr.erase(it);
+
+	for (auto queueId : queues) {
+		bool used = false;
+		for (auto &wIt : _windowById) {
+			for (auto q : wIt.second.queues) { used = used || q == queueId; }
+		}
+		if (used) {
+			continue;
+		}
+		auto qIt = _queueById.find(queueId);
+		if (qIt == _queueById.end()) {
+			continue;
+		}
+
+		// The objects the queue's encoding minted go with it, unless another queue shared the same
+		// object (two windows of one application can reference one image).
+		for (auto objectId : qIt->second.objects) {
+			bool shared = false;
+			for (auto &other : _queueById) {
+				if (other.first == queueId) {
+					continue;
+				}
+				for (auto o : other.second.objects) { shared = shared || o == objectId; }
+			}
+			if (shared) {
+				continue;
+			}
+			auto oIt = _objectById.find(objectId);
+			if (oIt != _objectById.end()) {
+				_objectByPtr.erase(oIt->second.get());
+				_objectById.erase(oIt);
+			}
+		}
+
+		_queueByPtr.erase(qIt->second.queue.get());
+		_queueById.erase(qIt);
 	}
 }
 
@@ -328,6 +382,90 @@ const ObjectRegistry::SharedQueueInfo *ObjectRegistry::resolveQueue(uint64_t id)
 core::RenderServerChannel *ObjectRegistry::resolveWindow(uint64_t id) const {
 	auto it = _windowById.find(id);
 	return (it != _windowById.end()) ? it->second.window : nullptr;
+}
+
+bool ObjectRegistry::isWindowVisible(uint64_t windowId, uint64_t session) const {
+	auto it = _windowById.find(windowId);
+	if (it == _windowById.end() || session == 0) {
+		return false;
+	}
+	if (it->second.ownerSession != 0) {
+		return it->second.ownerSession == session;
+	}
+	return it->second.assignedSession == 0 || it->second.assignedSession == session;
+}
+
+bool ObjectRegistry::isQueueVisible(uint64_t queueId, uint64_t session) const {
+	for (auto &it : _windowById) {
+		for (auto q : it.second.queues) {
+			if (q == queueId && isWindowVisible(it.first, session)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+bool ObjectRegistry::claimWindow(uint64_t windowId, uint64_t session) {
+	if (!isWindowVisible(windowId, session)) {
+		return false;
+	}
+	auto &info = _windowById.find(windowId)->second;
+	for (auto &it : _windowById) {
+		if (it.first == windowId || it.second.ownerSession == 0
+				|| it.second.ownerSession == session) {
+			continue;
+		}
+		for (auto q : it.second.queues) {
+			for (auto own : info.queues) {
+				if (q == own) {
+					return false;
+				}
+			}
+		}
+	}
+	info.ownerSession = session;
+	return true;
+}
+
+bool ObjectRegistry::assignWindow(uint64_t windowId, uint64_t session) {
+	auto it = _windowById.find(windowId);
+	if (it == _windowById.end()) {
+		return false;
+	}
+	it->second.assignedSession = session;
+	return true;
+}
+
+bool ObjectRegistry::setWindowCreator(uint64_t windowId, uint64_t session, uint32_t serial) {
+	auto it = _windowById.find(windowId);
+	if (it == _windowById.end()) {
+		return false;
+	}
+	it->second.creatorSession = session;
+	it->second.creatorSerial = serial;
+	return true;
+}
+
+Vector<uint64_t> ObjectRegistry::releaseSession(uint64_t session) {
+	Vector<uint64_t> ret;
+	if (session == 0) {
+		return ret;
+	}
+	for (auto &it : _windowById) {
+		if (it.second.assignedSession == session) {
+			it.second.assignedSession = 0;
+		}
+		if (it.second.creatorSession == session) {
+			it.second.creatorSession = 0;
+			it.second.creatorSerial = 0;
+		}
+		if (it.second.ownerSession == session) {
+			it.second.ownerSession = 0;
+			ret.emplace_back(it.first);
+		}
+	}
+	return ret;
 }
 
 void ObjectRegistry::clear() {

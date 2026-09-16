@@ -70,6 +70,13 @@ struct SP_PUBLIC PeerIdentity {
 	String getDescription() const;
 };
 
+// A 32-bit word in shared memory that changes when a transport has work, and the value it held
+// when read: the pair Looper::waitOnAddress takes.
+struct TransportWaitAddress {
+	uint32_t *address = nullptr;
+	uint32_t value = 0;
+};
+
 // One ordered byte channel. Every operation is non-blocking: a transport never parks the caller's
 // thread, because that thread is usually the app thread building a frame.
 class SP_PUBLIC TransportStream : public Ref {
@@ -103,10 +110,13 @@ public:
 
 	// --- integration with the host looper ---
 
-	// The handle to wait on, when the transport declares Pollable. A transport that does not (a
-	// browser one, driven by callbacks) returns an invalid handle and calls the readable callback
-	// instead.
+	// The handle to wait on, when the transport declares Pollable; invalid otherwise.
 	virtual sprt::dispatch::NativeHandle getPollHandle() const { return sprt::dispatch::NativeHandle(-1); }
+
+	// For a transport with no pollable handle: the word to wait on with Looper::waitOnAddress.
+	// Asking arms wakeups, so the peer wakes a waiter on every change from then on. Empty where the
+	// transport is pollable.
+	virtual TransportWaitAddress getWaitAddress() { return TransportWaitAddress(); }
 
 	// Microseconds until this transport next needs servicing regardless of IO (retransmit timers);
 	// maxOf<uint64_t>() means "only when readable".
@@ -115,10 +125,6 @@ public:
 	// Service the transport: read datagrams, run timers, complete writes. Called from the looper on
 	// readiness and on every update tick.
 	virtual Status handleEvents() = 0;
-
-	// For a transport with no pollable handle: invoked when bytes have arrived. Ignored by the
-	// pollable ones.
-	virtual void setOnReadable(Function<void()> &&) { }
 
 	virtual bool isClosed() = 0;
 	virtual void close(bool graceful = true) = 0;
@@ -129,6 +135,9 @@ public:
 struct SP_PUBLIC TransportServerConfig {
 	// Filesystem permissions for a path-based transport; ignored elsewhere.
 	uint32_t socketMode = 0600;
+
+	// Largest shared-memory block a `shm:` client may hand the server.
+	uint32_t shmMaxBlockSize = 64u << 20;
 };
 
 struct SP_PUBLIC TransportClientConfig {
@@ -137,6 +146,10 @@ struct SP_PUBLIC TransportClientConfig {
 	// server is not authenticated (the bearer key goes to whoever answered). Ignored by transports
 	// that authenticate by other means.
 	Bytes expectedFingerprint;
+
+	// Ring capacities of the block a `shm:` client creates; powers of two.
+	uint32_t shmControlCapacity = 1u << 20;
+	uint32_t shmBulkCapacity = 16u << 20;
 };
 
 // A bound endpoint accepting connections.
@@ -150,6 +163,9 @@ public:
 
 	virtual sprt::dispatch::NativeHandle getPollHandle() const = 0;
 	virtual uint64_t getEventTimeout() const = 0;
+
+	// As TransportConnection::getWaitAddress: the word that changes when a connection is waiting.
+	virtual TransportWaitAddress getWaitAddress() { return TransportWaitAddress(); }
 
 	// Accept whatever is ready. Implementations bound how many they take per call so a burst cannot
 	// monopolise the caller's thread inside one looper iteration.

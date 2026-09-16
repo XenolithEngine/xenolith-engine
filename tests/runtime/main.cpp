@@ -79,6 +79,7 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"runtime_dispatch", &sprt::performDispatchTests},
 	{"runtime_bus", &sprt::performBusTests},
 	{"runtime_watch", &sprt::performWatchFileTests},
+	{"runtime_address_wait", &sprt::performAddressWaitTests},
 	{"runtime_process", &sprt::performProcessTests},
 	{"runtime_file", &sprt::performFileTests},
 	{"runtime_socket", &sprt::performSocketTests},

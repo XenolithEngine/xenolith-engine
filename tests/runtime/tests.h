@@ -62,6 +62,7 @@ void performRefTests();
 void performDispatchTests();
 void performBusTests();
 void performWatchFileTests();
+void performAddressWaitTests();
 void performProcessTests();
 void performFileTests();
 void performSocketTests();

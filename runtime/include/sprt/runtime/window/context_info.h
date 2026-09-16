@@ -44,6 +44,10 @@ enum class ContextFlags : uint32_t {
 	// one, so this exists to reach the touch-shaped branch of a widget that adapts to the input
 	// devices available - the branch no amount of injected input can otherwise produce.
 	HeadlessNoPointer = 1 << 2,
+
+	// Windows come and go, the application stays: a server clients reconnect to. Overrides
+	// DestroyWhenAllWindowsClosed, which every controller sets by default.
+	KeepRunningWithoutWindows = 1 << 3,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(ContextFlags)

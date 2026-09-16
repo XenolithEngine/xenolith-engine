@@ -500,6 +500,24 @@ void performJsonGitTests() {
 		}
 		check(badDouble.empty(), "json-git: a double read back prints the same text");
 
+		// The circle cannot see a digit lost in printing - the wrong text reads back and prints the
+		// same wrong text - so the value itself must survive. Zeros right after the point, and in
+		// a scientific fraction, used to be dropped: 1.0278 printed as 1.278, 1.05e21 as 1.5e21.
+		const double valued[] = {1.0278, 12.0034, 100.001, -27.078264236450195, 3.05, 0.5, 1.05e21,
+			1.0005e-9, 123.0, 7.000001};
+		StringView badValue;
+		for (auto d : valued) {
+			auto t = encode(Value(d));
+			if (data::read<Interface>(t).getDouble() != d && badValue.empty()) {
+				badValue = StringView(t).pdup();
+			}
+		}
+		checkEq(badValue, StringView(), "json-git: a double reads back as the same value");
+		checkEq(encode(Value(1.0278)), StringView("1.0278\n"),
+				"json-git: a zero right after the point is printed");
+		checkEq(encode(Value(1.05e21)), StringView("1.05e21\n"),
+				"json-git: a zero in a scientific fraction is printed");
+
 		const int64_t ints[] = {0, -1, 1, maxOf<int64_t>(), minOf<int64_t>()};
 		StringView badInt;
 		for (auto i : ints) {

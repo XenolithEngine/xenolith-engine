@@ -108,6 +108,16 @@ public:
 	Rc<WatchHandle> watchFile(StringView path, WatchFlags,
 			Function<Status(WatchFlags)> &&onChange, Ref * = nullptr);
 
+	// Wait for a 32-bit word to change, possibly in memory shared with another
+	// process (see AddressWaitInfo). Returns nullptr where the backend has no
+	// implementation.
+	Rc<AddressWaitHandle> waitOnAddress(AddressWaitInfo &&, Ref * = nullptr);
+
+	// Convenience form: `onChange` receives the new value; return anything other
+	// than Status::Ok to cancel the wait.
+	Rc<AddressWaitHandle> waitOnAddress(uint32_t *address, uint32_t expected,
+			Function<Status(uint32_t)> &&onChange, Ref * = nullptr);
+
 	// Listen for stream-socket connections on ListenInfo::address (see
 	// SocketAddress for the accepted text forms): onAccept runs on this thread
 	// once per connection, the completion fires once when the listener

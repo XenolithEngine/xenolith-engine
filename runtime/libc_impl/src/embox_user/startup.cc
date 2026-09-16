@@ -280,6 +280,16 @@ __SPRT_ID(size_t) __el0_align_up(__SPRT_ID(size_t) v, __SPRT_ID(size_t) a) {
 
 // Returns false only if there is a PT_TLS segment that could not be honoured;
 // a program with no thread_local data has none and that is a success.
+// The program's PT_TLS, remembered at startup so that a thread created later
+// can build its own block from it (L3b). A program with no thread_local data
+// leaves size zero and every thread gets no block at all.
+struct {
+	const void *image;
+	__SPRT_ID(size_t) filesz;
+	__SPRT_ID(size_t) memsz;
+	__SPRT_ID(size_t) align;
+} s_tls;
+
 bool __el0_setup_tls(const __el0_phdr *phdr, unsigned long phnum, unsigned long phent) {
 	if (!phdr || phnum == 0 || phent < sizeof(__el0_phdr)) {
 		return true; // no program headers handed over: nothing to set up
@@ -297,6 +307,11 @@ bool __el0_setup_tls(const __el0_phdr *phdr, unsigned long phnum, unsigned long 
 	if (!tls) {
 		return true;
 	}
+
+	s_tls.image = (const void *)tls->p_vaddr;
+	s_tls.filesz = (__SPRT_ID(size_t))tls->p_filesz;
+	s_tls.memsz = (__SPRT_ID(size_t))tls->p_memsz;
+	s_tls.align = (__SPRT_ID(size_t))(tls->p_align ? tls->p_align : 1);
 
 	auto align = (__SPRT_ID(size_t))(tls->p_align ? tls->p_align : 1);
 	// The gap between the thread pointer and the image. This IS the linker's
@@ -326,6 +341,50 @@ bool __el0_setup_tls(const __el0_phdr *phdr, unsigned long phnum, unsigned long 
 }
 
 } // namespace
+
+// --- per-thread TLS (L3b) ---------------------------------------------------
+//
+// The main thread's block is built above, from the program headers the kernel
+// handed to _start. A thread created later has no headers to look at, so it
+// copies the same image: same gap, same alignment, same size. The pointer goes
+// to the kernel through clone's CLONE_SETTLS, because a thread cannot set its
+// own TPIDR_EL0 before it can touch errno.
+//
+// Returns null when the program has no thread_local data at all, which is a
+// success: a thread with no block is exactly right for it.
+extern "C" void *__el0_tls_alloc(void) {
+	if (s_tls.memsz == 0) {
+		return nullptr;
+	}
+
+	auto align = s_tls.align;
+	auto gap = (__SPRT_ID(size_t))__el0_tls_gap(align);
+	auto total = gap + s_tls.memsz;
+
+	auto raw = __el0_mmap(nullptr, total + align, __SPRT_PROT_READ | __SPRT_PROT_WRITE,
+			__SPRT_MAP_PRIVATE | __SPRT_MAP_ANONYMOUS, -1, 0);
+	if (__el0_is_err(raw)) {
+		return nullptr;
+	}
+
+	auto tp = (unsigned char *)__el0_align_up((__SPRT_ID(size_t))raw, align);
+	__builtin_memcpy(tp + gap, s_tls.image, s_tls.filesz);
+	__builtin_memset(tp, 0, __SPRT_EL0_TCB_SIZE);
+
+	// The mapping is freed by its length, and the thread pointer is not its
+	// start: remember the start in the TCB, which is otherwise reserved.
+	((void **)tp)[1] = (void *)raw;
+	return tp;
+}
+
+extern "C" void __el0_tls_free(void *tp) {
+	if (!tp) {
+		return;
+	}
+	auto align = s_tls.align;
+	auto gap = (__SPRT_ID(size_t))__el0_tls_gap(align);
+	__el0_munmap(((void **)tp)[1], gap + s_tls.memsz + align);
+}
 
 // --- .init_array ------------------------------------------------------------
 //

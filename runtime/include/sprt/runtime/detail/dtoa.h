@@ -154,7 +154,12 @@ constexpr inline size_t dtoa(Char *buffer, T value, size_t bufferSize,
 			}
 			buffer[bufferSize - ret++ - 1] = 'e';
 
-			ret += _itoa::unsigned_to_decimal(buffer, result.significand % pow10, bufferSize - ret);
+			// The fraction is exactly intLen - 1 digits (at least one): 1.05e10 keeps its zero
+			auto fracLen = size_t((intLen > 1) ? intLen - 1 : 1);
+			auto written = _itoa::unsigned_to_decimal(buffer, result.significand % pow10,
+					bufferSize - ret);
+			ret += written;
+			for (; written < fracLen; ++written) { buffer[bufferSize - ret++ - 1] = '0'; }
 			buffer[bufferSize - ret++ - 1] = '.';
 			ret += _itoa::unsigned_to_decimal(buffer, result.significand / pow10, bufferSize - ret);
 		};
@@ -190,7 +195,13 @@ constexpr inline size_t dtoa(Char *buffer, T value, size_t bufferSize,
 			auto top = result.significand / pow10;
 			auto bottom = result.significand % pow10;
 
-			ret += _itoa::unsigned_to_decimal(buffer, bottom, bufferSize - ret);
+			// The fraction is exactly -exponent digits: 1.0278 is 10278e-4, and its bottom 278
+			// needs the zero in front of it
+			auto written = _itoa::unsigned_to_decimal(buffer, bottom, bufferSize - ret);
+			ret += written;
+			for (; written < size_t(-result.exponent); ++written) {
+				buffer[bufferSize - ret++ - 1] = '0';
+			}
 			buffer[bufferSize - ret++ - 1] = '.';
 			ret += _itoa::unsigned_to_decimal(buffer, top, bufferSize - ret);
 		}
@@ -240,7 +251,7 @@ constexpr size_t dtoa_len(T value, dtoa_options opts = dtoa_options()) {
 			ret += 2;
 		}
 
-		ret += _itoa::unsigned_to_decimal_len(result.significand % pow10);
+		ret += size_t((intLen > 1) ? intLen - 1 : 1);
 		ret += _itoa::unsigned_to_decimal_len(result.significand / pow10);
 	};
 
@@ -265,9 +276,8 @@ constexpr size_t dtoa_len(T value, dtoa_options opts = dtoa_options()) {
 		auto pow10 = POWERS_OF_10[-result.exponent];
 
 		auto top = result.significand / pow10;
-		auto bottom = result.significand % pow10;
 
-		ret += _itoa::unsigned_to_decimal_len(bottom);
+		ret += size_t(-result.exponent);
 		ret++;
 		ret += _itoa::unsigned_to_decimal_len(top);
 	}

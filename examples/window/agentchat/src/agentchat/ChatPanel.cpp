@@ -99,6 +99,10 @@ panel.bubble > label.title     { color: var(--text); font-size: 13px; font-weigh
 
 panel.bubble.error > label.meta     { color: var(--danger); }
 
+/* The card holding the scene's selection: picked by a tap or the arrow keys, or holding selected
+   answer text. After the role rules, which declare an outline of the same specificity. */
+panel.bubble:selection-within { outline-width: 2px; outline-color: var(--accent); }
+
 /* ---- the answer, as a document ---------------------------------------- */
 
 /* ui::MarkdownView arrives with a stylesheet of its own so that a document is readable before an

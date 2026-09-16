@@ -152,6 +152,11 @@ __SPRT_C_FUNC int __SPRT_ID(
 	return -1;
 #elif SPRT_WINDOWS
 	return ::WSAPoll(__fds, (ULONG)__nfds, __timeout);
+#elif SPRT_EMBOX_USER
+	// sprt IS the libc here, so there is no separate native struct to cast to:
+	// <poll.h> declares poll() over this very type. The cast the hosted branch
+	// performs would name a ::pollfd that does not exist.
+	return ::poll(__fds, __nfds, __timeout);
 #else
 	return ::poll((struct ::pollfd *)__fds, (::nfds_t)__nfds, __timeout);
 #endif
@@ -181,6 +186,10 @@ __SPRT_C_FUNC int __SPRT_ID(ppoll)(struct __SPRT_ID(pollfd) * __fds, __SPRT_ID(n
 	}
 	(void)__sigmask;
 	return __SPRT_ID(poll)(__fds, __nfds, __ms);
+#elif SPRT_EMBOX_USER
+	// A real ppoll, and the timespec form is the one the kernel has -- poll() is
+	// derived from it here rather than the other way round.
+	return ::ppoll(__fds, __nfds, __timeout, __sigmask);
 #else
 	struct timespec __ts;
 	if (__timeout) {

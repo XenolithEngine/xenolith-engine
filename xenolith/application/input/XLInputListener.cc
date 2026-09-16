@@ -475,6 +475,9 @@ bool InputListener::hasHotkey(HotkeyId id) const { return _hotkeys.find(id) != _
 
 bool InputListener::isHotkeyEligible(const HotkeyBinding &binding,
 		const HotkeyContext &ctx) const {
+	if (hasFlag(binding.flags, HotkeyFlags::Unhandled) != ctx.unhandled) {
+		return false;
+	}
 	if (ctx.repeated && !hasFlag(binding.flags, HotkeyFlags::Repeatable)) {
 		return false;
 	}

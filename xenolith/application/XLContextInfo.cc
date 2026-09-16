@@ -167,6 +167,18 @@ CommandLineParser<ContextConfig> ContextConfig::getCommandLineParser() {
 		target.context->flags |= sprt::window::ContextFlags::Headless;
 		return true;
 	}},
+		CommandLineOption<ContextConfig>{.patterns = {"--keep-running"},
+			.description = StringView(
+					"Keep running after the last window closes, with the remote listener still "
+					"accepting clients"),
+			.callback = [](ContextConfig &target, StringView pattern,
+								SpanView<StringView> args) -> bool {
+		if (!target.context) {
+			target.context = Rc<ContextInfo>::alloc();
+		}
+		target.context->flags |= sprt::window::ContextFlags::KeepRunningWithoutWindows;
+		return true;
+	}},
 		CommandLineOption<ContextConfig>{.patterns = {"--headless-no-pointer"},
 			.description = StringView(
 					"Headless only: report windows as having no pointing device, so a widget that "
@@ -280,6 +292,9 @@ Value encodeContextInfo(const ContextInfo &info) {
 	Value f;
 	if (hasFlag(info.flags, ContextFlags::DestroyWhenAllWindowsClosed)) {
 		f.addString("DestroyWhenAllWindowsClosed");
+	}
+	if (hasFlag(info.flags, ContextFlags::KeepRunningWithoutWindows)) {
+		f.addString("KeepRunningWithoutWindows");
 	}
 	if (!f.empty()) {
 		ret.setValue(move(f), "flags");

@@ -48,6 +48,11 @@ GlobalError ServerConnection::handshake(BytesView expectedKey, BytesView serverD
 	return ret;
 }
 
+void ServerConnection::adoptHandshake() {
+	_dict = _handshake.getNegotiatedDict().bytes<Interface>();
+	_serial = 1; // begin a new serial session
+}
+
 GlobalError ServerConnection::reject(GlobalError status) {
 	if (!_transport) {
 		return GlobalError::BadProtocol;
@@ -75,6 +80,10 @@ bool Listener::isOpen() const { return _listener && _listener->isOpen(); }
 
 sprt::dispatch::NativeHandle Listener::getPollHandle() const {
 	return _listener ? _listener->getPollHandle() : sprt::dispatch::NativeHandle(-1);
+}
+
+TransportWaitAddress Listener::getWaitAddress() {
+	return _listener ? _listener->getWaitAddress() : TransportWaitAddress();
 }
 
 uint64_t Listener::getEventTimeout() const {

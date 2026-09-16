@@ -13,6 +13,7 @@ even compiles, build its target. Match the change to the verification:
 | Android-only code (`runtime/window/android/*`, dispatch `*-alooper*`, JNI/unicode) | **Android NDK target** ([per-platform detail, 3.3](platforms.md)): `STAPPLER_TARGET=unknown-ndk-linux-android` |
 | macOS-only code (`runtime/window/macos/*.mm`, darwin dispatch/clock/lock) | **macOS cross-compile** ([per-platform detail, 3.4](platforms.md)): `STAPPLER_TARGET=x86_64-apple-macosx` (compile-verify when no Mac is available) |
 | arm64 Windows code / shared headers | **full cross-build** ([per-platform detail, 3.2](platforms.md)): `STAPPLER_TARGET=aarch64-pc-windows-msvc` (build-verify only — no emulator on Linux). For a quick header/SCU check, host clang `--target=aarch64-pc-windows-msvc` compile-only. |
+| Fence polling and device-loss handling in `xenolith/core` / `xenolith/backend/vk` | **`tests/compute` on Linux and under Wine**: `make -C tests/compute STAPPLER_TARGET=x86_64-pc-windows-msvc -j8`, then `WINEDEBUG=-all wine tests/compute/stappler-build/x86_64-pc-windows-msvc/debug/cc/computetest.exe`. Linux runs both fence paths (`export/` and `polled/`); Windows has only the polled one, and the Wine run is what proves it builds and runs there. winevulkan forwards to the host driver. |
 | Linux/glibc, the runtime umbrella, stappler/xenolith app code | native build + run the relevant CLI test ([the test projects](test-projects.md)) |
 
 If a rebuild reports "nothing to do" after you edited a file that *should* be in

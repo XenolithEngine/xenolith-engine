@@ -41,11 +41,46 @@ public:
 
 	virtual void pushCommands(FrameInfo &, NodeVisitFlags flags) override;
 
+	// Keys the particle buffers on the GPU: two emitters sharing a system simulate separately
+	uint64_t getEmitterId() const { return _emitterId; }
+
+	ParticleSystem *getParticleSystem() const { return _system; }
+
+	// Animation frames as an h x v grid inside the texture rect, row 0 at the top of the image;
+	// the system's animation frame curve picks the frame
+	void setFrameGrid(uint32_t h, uint32_t v);
+	UVec2 getFrameGrid() const { return _frameGrid; }
+
+	// Particles carry their own alpha: without an explicit level the emitter is transparent
+	virtual RenderingLevel getRealRenderingLevel() const override;
+
+	// With feedback enabled the renderer reports the simulation after every frame; counters come
+	// only from the feedback pipeline, enabled by XL_PARTICLE_FEEDBACK=1
+	void setFeedbackEnabled(bool);
+	bool isFeedbackEnabled() const { return _feedbackEnabled; }
+
+	// The latest report; empty before the first frame or without feedback
+	const ParticleFeedback &getFeedback() const;
+
+	uint64_t getFeedbackTotalBirths() const;
+	uint64_t getFeedbackTotalSteps() const;
+
+	// The first `count` particles (at most the system's count) after the next rendered frame. Enables
+	// feedback. The callback runs on the application thread once, with success = false if the
+	// emitter leaves the scene first.
+	void requestSnapshot(uint32_t count, Function<void(ParticleSnapshot &&)> &&);
+
 protected:
+	void updateFeedback();
+
+	UVec2 _frameGrid = UVec2(1, 1);
+	uint64_t _emitterId = 0;
 	Rc<ParticleSystem> _system;
 	uint32_t _maxFramesPerCall = 2;
 
 	Action *_actionRenderLock = nullptr;
+	bool _feedbackEnabled = false;
+	Rc<ParticleFeedbackReceiver> _feedback; // exists while enabled and once on a scene
 };
 
 } // namespace stappler::xenolith::basic2d

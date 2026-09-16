@@ -65,6 +65,13 @@ using ContentBuilder = Function<Rc<basic2d::SceneLayout2d>(StringView id)>;
 // may override.
 // `shareRemote` offers the window to a remote render session as soon as it is presented - see
 // SecondaryScene::shareWithRemoteSession. Requires a session to be running already.
+// The scene half of open(): the handle a window needs, without asking for a window. Used by open()
+// and by a server answering a client's window request, which is handed a WindowInfo to fill and has
+// to answer with a handle rather than create anything itself.
+Rc<WindowSceneInfo> makeSceneInfo(StringView id, ContentBuilder &&,
+		WindowSceneInfo::CloseCallback && = nullptr, Rc<core::Queue> && = nullptr,
+		bool shareRemote = false);
+
 Rc<WindowSceneInfo> open(NotNull<AppWindow> anyWindow, StringView id, Extent2 size,
 		ContentBuilder &&builder, WindowSceneInfo::CloseCallback &&onClose = nullptr,
 		Rc<core::Queue> &&queue = nullptr, sprt::optional<IVec2> origin = sprt::nullopt,

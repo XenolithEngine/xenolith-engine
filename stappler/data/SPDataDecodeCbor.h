@@ -163,12 +163,23 @@ void Decoder<Interface>::decodeArray(uint8_t type, ValueType &ret) {
 		ret.arrayVal->reserve(min(size, r.size()));
 	}
 
-	while ((!r.empty()
-				   || ((majorType == MajorTypeEncoded::Unsigned
-							   || majorType == MajorTypeEncoded::Negative
-							   || majorType == MajorTypeEncoded::Simple)
-						   && type < toInt(Flags::MaxAdditionalNumber)))
-			&& size > 0
+	// The element's head byte is already read, so the input may end here and the element still be
+	// whole: a number or simple value held in the head, or a string, array or map of length zero.
+	auto isComplete = [&] {
+		switch (majorType) {
+		case MajorTypeEncoded::Unsigned:
+		case MajorTypeEncoded::Negative:
+		case MajorTypeEncoded::Simple: return type < toInt(Flags::MaxAdditionalNumber);
+		case MajorTypeEncoded::ByteString:
+		case MajorTypeEncoded::CharString:
+		case MajorTypeEncoded::Array:
+		case MajorTypeEncoded::Map: return type == 0;
+		case MajorTypeEncoded::Tag: return false;
+		}
+		return false;
+	};
+
+	while ((!r.empty() || isComplete()) && size > 0
 			&& !(majorType == MajorTypeEncoded::Simple && type == toInt(Flags::UndefinedLength))) {
 		ret.arrayVal->emplace_back(ValueType::Type::EMPTY);
 		decode(majorType, type, ret.arrayVal->back());

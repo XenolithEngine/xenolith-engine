@@ -161,6 +161,32 @@ void performDataValueTests() {
 	blank.setValue(Value(8), 3);
 	check(blank.isArray() && blank.size() == 1 && blank.getInteger(0) == 8,
 			"an indexed write converts an empty value without padding");
+
+	// CBOR: an element of length zero at the very end of the input used to be dropped - its head
+	// byte is the last byte, and the loop only let a number or a simple value through there.
+	auto roundTrip = [](const Value &v) {
+		auto bytes = data::write<mem_std::Interface>(v, data::EncodeFormat::Cbor);
+		BytesView view(bytes);
+		return data::read<mem_std::Interface>(view);
+	};
+	Value tail(Value::Type::ARRAY);
+	tail.addInteger(1);
+	tail.addValue(Value(Value::Type::ARRAY));
+	check(roundTrip(tail) == tail, "cbor: an empty array last in an array survives");
+	Value tailString(Value::Type::ARRAY);
+	tailString.addInteger(1);
+	tailString.addString("");
+	check(roundTrip(tailString) == tailString, "cbor: an empty string last in an array survives");
+	Value tailDict(Value::Type::ARRAY);
+	tailDict.addValue(Value());
+	tailDict.addValue(Value(Value::Type::DICTIONARY));
+	check(roundTrip(tailDict) == tailDict, "cbor: an empty dictionary last in an array survives");
+	Value nested(Value::Type::ARRAY);
+	nested.addValue(tail);
+	check(roundTrip(nested) == nested, "cbor: and so does one nested at the end of the end");
+	Value dict;
+	dict.setValue(Value(Value::Type::ARRAY), "last");
+	check(roundTrip(dict) == dict, "cbor: an empty array as the last value of a dictionary survives");
 }
 
 } // namespace stappler
