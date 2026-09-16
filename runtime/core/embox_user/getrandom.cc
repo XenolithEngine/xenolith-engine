@@ -22,36 +22,28 @@
 #include <sprt/c/__sprt_time.h>
 #include <sprt/c/__sprt_errno.h>
 
+#include "../include/__el0_syscall.h"
+
 namespace sprt {
 
-// Mixed into the seed so two calls in the same clock tick do not repeat.
-static __SPRT_ID(uint32_t) s_el0_random_counter = 0;
-
-static void __el0_fill_random(void *buffer, __SPRT_ID(size_t) length) {
-	auto p = static_cast<unsigned char *>(buffer);
-	struct __SPRT_TIMESPEC_NAME ts = {0, 0};
-	__sprt_clock_gettime(__SPRT_CLOCK_MONOTONIC, &ts);
-	auto seed = static_cast<__SPRT_ID(uint32_t)>(ts.tv_nsec)
-			^ static_cast<__SPRT_ID(uint32_t)>(ts.tv_sec) ^ 0xA5A5'A5A5u
-			^ (++s_el0_random_counter * 2'654'435'761u);
-	for (__SPRT_ID(size_t) i = 0; i < length; ++i) {
-		seed = seed * 1'664'525u + 1'013'904'223u;
-		// The high bits of an LCG are the least bad ones.
-		p[i] = static_cast<unsigned char>(seed >> 16);
-	}
-}
-
-// The two entry points runtime_core_random.cpp forwards to, with the same
-// signatures the wasm sibling provides.
+// WHAT CHANGED AND WHY. This used to be a linear congruential generator seeded
+// from the clock, right here in the process -- which was not merely weak, it was
+// undetectably weak: a caller had no way to learn that the bytes it asked the
+// operating system for had never left userspace. getrandom(278) does not make
+// them strong. /dev/urandom on this board is itself an LCG stirred with clock(),
+// and the syscall's own documentation (ABI section 6.2) says so. What it does is
+// put the claim where a caller can read it, and put one generator behind every
+// asker instead of one per process.
+//
+// GRND_RANDOM is passed through and the kernel refuses it, for the same reason:
+// it asks for the entropy-accounted source specifically, and there is none.
 
 static __SPRT_ID(ssize_t) getrandom(void *__buffer, __SPRT_ID(size_t) __length, unsigned flags) {
-	(void)flags; // GRND_RANDOM / GRND_NONBLOCK are meaningless without a pool
 	if (!__buffer) {
 		__sprt_errno = EFAULT;
 		return -1;
 	}
-	__el0_fill_random(__buffer, __length);
-	return static_cast<__SPRT_ID(ssize_t)>(__length);
+	return (__SPRT_ID(ssize_t))__el0_ret(__el0_getrandom(__buffer, __length, flags));
 }
 
 static int getentropy(void *__buffer, __SPRT_ID(size_t) __length) {
@@ -59,7 +51,16 @@ static int getentropy(void *__buffer, __SPRT_ID(size_t) __length) {
 		__sprt_errno = EINVAL;
 		return -1;
 	}
-	__el0_fill_random(__buffer, __length);
+	// getentropy promises all or nothing, and the syscall may answer short.
+	__SPRT_ID(size_t) done = 0;
+	while (done < __length) {
+		auto n = __el0_ret(
+				__el0_getrandom((unsigned char *)__buffer + done, __length - done, 0));
+		if (n <= 0) {
+			return -1;
+		}
+		done += (__SPRT_ID(size_t))n;
+	}
 	return 0;
 }
 
