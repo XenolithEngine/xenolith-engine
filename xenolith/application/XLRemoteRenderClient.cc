@@ -25,6 +25,7 @@
 #include "XLRemoteProtocol.h"
 #include "XLRemoteObject.h" // shared queue / window resolution
 #include "XLServerAppThread.h"
+#include "XLRemoteSession.h"
 #include "XLRemoteFontServer.h" // reconcile remote font dependency ids + resolve the atlas image
 #include "XLAppWindow.h" // window->compileMaterials
 #include "XLCoreFrameRequestProxy.h"
@@ -39,9 +40,22 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-// A client must answer AcquireFrame within this budget; the presentation engine is waiting, so a
-// client that misses it is treated as gone (the watchdog fails the waiter, the connection drops).
+/* A client must answer AcquireFrame within this budget, and must have committed its input within
+kFrameInputDeadlineUs of answering. Both are about ONE FRAME, not about the client: missing them
+cancels the frame (the window keeps showing what it last presented) and the session lives on --
+whether the client is still there is the keepalive's question, and only its answer drops a session.
+
+A client that misses them again and again is serving nothing, so kMaxConsecutiveLateFrames in a row
+does drop it. */
 static constexpr uint64_t kAcquireFrameReplyTimeoutUs = 2'000'000; // 2s
+
+/* The input deadline is deliberately generous: it guards against a client that stopped mid-frame,
+not against a slow one. A client's first frames legitimately take seconds -- fonts are announced,
+glyphs rasterized, materials compiled, all of it round trips -- and cancelling those would drop
+frames that were about to arrive. */
+static constexpr uint64_t kFrameInputDeadlineUs = 10'000'000; // 10s
+
+static constexpr uint32_t kMaxConsecutiveLateFrames = 3;
 
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
@@ -49,27 +63,35 @@ RemoteRenderClient::~RemoteRenderClient() = default;
 
 __SPRT_POP_ALLOW_CXXABI_ALLOC
 
-bool RemoteRenderClient::init(NotNull<ServerAppThread> host, Rc<remote::ServerConnection> &&conn) {
+bool RemoteRenderClient::init(NotNull<ServerAppThread> host, NotNull<RemoteSession> session) {
 	_host = host;
-	_connection = sp::move(conn);
-	return _connection != nullptr;
+	_session = session;
+	return true;
 }
 
-bool RemoteRenderClient::isClosed() { return !_connection || _connection->isClosed(); }
+bool RemoteRenderClient::isClosed() { return !_session || _session->isClosed(); }
 
-void RemoteRenderClient::closeConnection() {
-	if (_connection) {
-		_connection->close(); // graceful QUIC shutdown (bounded); then drop it
-		_connection = nullptr;
-	}
+void RemoteRenderClient::detach() {
+	_session = nullptr;
 	_pendingFrames.clear();
 	_drawStats.clear();
 }
 
+remote::ServerConnection *RemoteRenderClient::getConnection() const {
+	return _session ? _session->getConnection() : nullptr;
+}
+
 void RemoteRenderClient::announce(NotNull<remote::ObjectRegistry> registry) {
+	if (isClosed()) {
+		return;
+	}
+
 	Value data;
 	auto &windows = data.emplace("windows");
 	for (auto &it : registry->getWindows()) {
+		if (!registry->isWindowVisible(it.first, _session->getId())) {
+			continue;
+		}
 		auto &v = windows.emplace();
 		v.addInteger(it.first);
 		v.addString(it.second.window->getId());
@@ -104,9 +126,16 @@ void RemoteRenderClient::announce(NotNull<remote::ObjectRegistry> registry) {
 		// [8] Geometry at connect time, so the client's mirror is valid before the window first
 		// moves.
 		v.addValue(remote::serializeWindowGeometry(it.second.window->getWindowGeometry()));
+
+		// [9] The CreateWindow request this window answers, for the session that sent it: the
+		// client's own name for the window before the server renamed it, and what lets it bind the
+		// scene it built the request with. 0 for every window nobody asked for.
+		v.addInteger(it.second.creatorSession == _session->getId()
+						? int64_t(it.second.creatorSerial)
+						: 0);
 	}
 
-	_connection->sendCborMessage(remote::Domain::Global,
+	getConnection()->sendCborMessage(remote::Domain::Global,
 			toInt(remote::GlobalCode::SharedObjectsAnnounce), data);
 }
 
@@ -156,14 +185,22 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 	auto localProxy = Rc<core::LocalFrameRequestProxy>(
 			static_cast<core::LocalFrameRequestProxy *>(proxy.get()));
 
-	auto sent = _host->sendMessageWithReply(remote::Domain::Window,
+	auto sent = _session->sendMessageWithReply(remote::Domain::Window,
 			toInt(remote::WindowCode::AcquireFrame), req,
 			[this, pending, frameId, windowId, localProxy](const remote::MessageHeader &h,
 					BytesView payload) {
 		if (remote::isError(h)) {
+			// The watchdog synthesizes this header when the deadline passed with no answer; a
+			// client that refused outright answers with a real error. Both mean this frame is not
+			// coming, and neither means the client is gone.
 			log::source().warn("RemoteRenderClient", "AcquireFrame ", frameId, " rejected (code ",
 					uint32_t(h.code), ")");
+			++_lateFrames;
+			++_consecutiveLateFrames;
+			// The queue was never selected, so the frame invalidates itself when the engine finds
+			// nothing to render; all the window needs is the nudge to start another one.
 			pending->cb(false);
+			nudgeWindow(windowId);
 			return;
 		}
 
@@ -182,15 +219,108 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 		//log::source().info("RemoteRenderClient", "AcquireFrame ", frameId, " -> queue '",
 		//		sq->queue->getName(), "' (id ", queueId, ")");
 		localProxy->selectQueue(sq->queue);
-		_pendingFrames.emplace(frameId, PendingFrame{localProxy, windowId});
+
+		/* From here the client owes us input, and until it commits, this frame holds the window:
+		nothing else can be scheduled for it. The engine's own per-frame timer cancels it at the
+		deadline (it is armed from FrameRequest::getDeadline once the frame is submitted); the
+		deadline kept here is what lets the server notice, count it and nudge the window. */
+		auto deadline = sp::platform::clock(ClockType::Monotonic) + kFrameInputDeadlineUs;
+		if (auto request = localProxy->getRequest()) {
+			request->setDeadline(deadline);
+		}
+		_pendingFrames.emplace(frameId, PendingFrame{localProxy, windowId, deadline});
+		_consecutiveLateFrames = 0;
 		submitServerOwnedInputs(frameId, windowId, localProxy);
 		pending->cb(true);
 	},
-			kAcquireFrameReplyTimeoutUs);
+			kAcquireFrameReplyTimeoutUs, /* fatal */ false);
 
 	if (!sent) {
 		pending->cb(false);
 	}
+}
+
+AppWindow *RemoteRenderClient::resolveWindow(uint64_t windowId) const {
+	auto registry = _host ? _host->getSharedObjects() : nullptr;
+	return static_cast<AppWindow *>(registry ? registry->resolveWindow(windowId) : nullptr);
+}
+
+void RemoteRenderClient::nudgeWindow(uint64_t windowId) {
+	/* A cancelled frame reschedules nothing by itself: the engine frees the slot and stops there, so
+	without a nudge the window waits for the next thing that happens to ask for a frame -- on a
+	headless server, possibly nothing.
+
+	It has to be asked LATER, not now: `setReadyForNextFrame` only schedules when no frame is active,
+	and the frame being cancelled still is. So the window is remembered and asked on the next pump,
+	by which time the cancel has gone through. */
+	for (auto it : _nudgeWindows) {
+		if (it == windowId) {
+			return;
+		}
+	}
+	_nudgeWindows.emplace_back(windowId);
+}
+
+void RemoteRenderClient::flushNudges() {
+	if (_nudgeWindows.empty()) {
+		return;
+	}
+	auto windows = sp::move(_nudgeWindows);
+	_nudgeWindows.clear();
+	for (auto windowId : windows) {
+		if (auto w = resolveWindow(windowId)) {
+			w->setReadyForNextFrame();
+		}
+	}
+}
+
+void RemoteRenderClient::cancelFrame(uint64_t frameId, uint64_t windowId,
+		Rc<core::LocalFrameRequestProxy> &&proxy, StringView reason) {
+	++_lateFrames;
+	++_consecutiveLateFrames;
+	log::source().warn("RemoteRenderClient", "frame ", frameId, " of window ", windowId, ": ",
+			reason, "; cancelling it (", _consecutiveLateFrames, " in a row)");
+
+	/* Through the window rather than through the frame: invalidating is presentation-thread work,
+	and going there by hand would race the nudge below. A window holds at most one frame at a time
+	(nothing else is scheduled while one is active), so "the window's remote frames" is this frame. */
+	(void)proxy;
+	if (auto w = resolveWindow(windowId)) {
+		w->invalidateRemoteFrames();
+	}
+
+	nudgeWindow(windowId);
+}
+
+bool RemoteRenderClient::checkFrameDeadlines(uint64_t nowUs) {
+	// Windows whose frame was cancelled since the last pump: by now the cancel has gone through, so
+	// asking for another frame takes effect.
+	flushNudges();
+
+	if (_pendingFrames.empty()) {
+		return _consecutiveLateFrames >= kMaxConsecutiveLateFrames;
+	}
+
+	// Collected first: cancelling erases from the map.
+	Vector<uint64_t> expired;
+	for (auto &it : _pendingFrames) {
+		if (it.second.inputDeadline != 0 && nowUs >= it.second.inputDeadline) {
+			expired.emplace_back(it.first);
+		}
+	}
+
+	for (auto frameId : expired) {
+		auto it = _pendingFrames.find(frameId);
+		if (it == _pendingFrames.end()) {
+			continue;
+		}
+		auto windowId = it->second.windowId;
+		auto proxy = sp::move(it->second.proxy);
+		_pendingFrames.erase(it);
+		cancelFrame(frameId, windowId, sp::move(proxy), "the client never committed its input");
+	}
+
+	return _consecutiveLateFrames >= kMaxConsecutiveLateFrames;
 }
 
 /* Feeds the inputs a remote client can not produce. `FrameCapture` is server state (armed on the
@@ -306,14 +436,19 @@ void RemoteRenderClient::handleFrameInput(uint64_t frameId, SpanView<StringView>
 	}
 }
 
-void RemoteRenderClient::handleFrameCommit(uint64_t frameId) { _pendingFrames.erase(frameId); }
+void RemoteRenderClient::handleFrameCommit(uint64_t frameId) {
+	if (_pendingFrames.erase(frameId) > 0) {
+		// The client delivered a whole frame, so whatever it was late with before is behind it.
+		_consecutiveLateFrames = 0;
+	}
+}
 
 Rc<core::DependencyEvent> RemoteRenderClient::reconcileDependency(uint32_t depId) {
 	auto it = _materialDeps.find(depId);
 	if (it != _materialDeps.end()) {
 		return it->second;
 	}
-	if (auto fs = _host->getFontServer()) {
+	if (auto fs = _session ? _session->getFontServer() : nullptr) {
 		return fs->reconcileDependency(depId);
 	}
 	return nullptr;
@@ -324,8 +459,8 @@ void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
 	auto windowId = uint64_t(v.getInteger("window"));
 
 	auto reg = _host->getSharedObjects();
-	auto fontServer = _host->getFontServer();
-	if (!reg) {
+	auto fontServer = _session ? _session->getFontServer() : nullptr;
+	if (!reg || !_session) {
 		return;
 	}
 
@@ -479,7 +614,7 @@ void RemoteRenderClient::handleWindowGeometryChanged(uint64_t windowId,
 	msg.addInteger(int64_t(windowId));
 	msg.addValue(remote::serializeWindowGeometry(g));
 
-	_connection->sendCborMessage(remote::Domain::Window,
+	getConnection()->sendCborMessage(remote::Domain::Window,
 			toInt(remote::WindowCode::WindowGeometryChanged), msg);
 }
 
@@ -487,14 +622,14 @@ void RemoteRenderClient::handleInputEvents(uint64_t windowId,
 		Vector<core::InputEventData> &&events) {
 	// The server's window dispatches platform input here while a remote client is attached. Forward
 	// the batch in the typed wire format (see serializeInputEvents).
-	if (!_connection || _connection->isClosed() || windowId == 0 || events.empty()) {
+	if (isClosed() || windowId == 0 || events.empty()) {
 		return;
 	}
 
 	Bytes blob;
 	remote::serializeInputEvents(blob, windowId, events);
 
-	_connection->sendMessage(remote::Domain::Window, toInt(remote::WindowCode::InputEvents),
+	getConnection()->sendMessage(remote::Domain::Window, toInt(remote::WindowCode::InputEvents),
 			BytesView(blob.data(), blob.size()));
 }
 
@@ -509,8 +644,8 @@ void RemoteRenderClient::handleTextInput(uint64_t windowId, const core::TextInpu
 	msg.addInteger(int64_t(windowId));
 	msg.addValue(remote::serializeTextInputState(state));
 
-	_connection->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::TextInputState),
-			msg);
+	getConnection()->sendCborMessage(remote::Domain::Window,
+			toInt(remote::WindowCode::TextInputState), msg);
 }
 void RemoteRenderClient::handleFramePresented(uint64_t) {
 	// Not forwarded: nothing on the receiving side uses it. A presented-frame signal, when needed,
@@ -531,7 +666,7 @@ void RemoteRenderClient::pushDrawStat(uint64_t windowId, const core::DrawStat &s
 
 void RemoteRenderClient::handleMaterialsUpdated(uint64_t queue, NotNull<core::MaterialSet> set,
 		NotNull<remote::ObjectRegistry> registry) {
-	if (!_connection || _connection->isClosed()) {
+	if (isClosed()) {
 		return;
 	}
 
@@ -540,7 +675,7 @@ void RemoteRenderClient::handleMaterialsUpdated(uint64_t queue, NotNull<core::Ma
 		return;
 	}
 
-	_connection->sendMessage(remote::Domain::Window, toInt(remote::WindowCode::UpdateMaterials),
+	getConnection()->sendMessage(remote::Domain::Window, toInt(remote::WindowCode::UpdateMaterials),
 			data);
 }
 

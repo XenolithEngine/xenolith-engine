@@ -55,7 +55,7 @@ struct SP_PUBLIC CmdVertexArray : CmdInfo {
 
 struct SP_PUBLIC CmdParticleEmitter : CmdInfo {
 	Mat4 transform;
-	uint64_t id = 0;
+	uint64_t id = 0; // ParticleEmitter::getEmitterId
 	uint32_t transformIndex = 0;
 };
 

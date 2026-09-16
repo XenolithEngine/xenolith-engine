@@ -76,6 +76,13 @@ void performTransportTests();
 void performStreamTests();
 void performWireTests();
 void performPeerInfoTests();
+void performShmTests();
+void performShmTransportTests();
+void performShmPeerProcess();
+void performShmLocalTests();
+void performHandshakeTests();
+void performReplyTableTests();
+void performOwnershipTests();
 
 } // namespace stappler::xenolith::remote
 

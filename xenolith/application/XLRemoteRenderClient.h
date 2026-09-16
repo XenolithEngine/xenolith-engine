@@ -30,6 +30,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class ServerAppThread;
+class RemoteSession;
 
 // Server-side proxy for a connected remote client: implements core::RenderClientChannel by
 // serializing the calls over the connection to the real client.
@@ -37,18 +38,20 @@ class SP_PUBLIC RemoteRenderClient : public core::RenderClientChannel {
 public:
 	virtual ~RemoteRenderClient();
 
-	// `host` is the owning thread (raw back-ref: the host owns this client); it provides the
-	// request/reply transport (sendMessageWithReply) and the shared-object registry.
-	bool init(NotNull<ServerAppThread> host, Rc<remote::ServerConnection> &&);
+	// `host` provides the shared-object registry and the GPU loop; `session` (which owns this
+	// client) the connection, the replies and the font endpoint. Both are raw back-refs.
+	bool init(NotNull<ServerAppThread> host, NotNull<RemoteSession> session);
 
 	// True once the underlying connection has begun terminating (client disconnected).
 	bool isClosed();
 
-	void closeConnection();
+	// The session is closing: forget it and every frame in flight. A window may still hold the
+	// client until it is switched back; everything it asks is refused from here on.
+	void detach();
 
-	// The accepted connection (for the host AppThread to drive the async message dispatch loop).
-	remote::ServerConnection *getConnection() const { return _connection; }
+	remote::ServerConnection *getConnection() const;
 
+	// Send the windows this client's session can see.
 	void announce(NotNull<remote::ObjectRegistry>);
 
 	virtual void acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> proxy,
@@ -80,6 +83,20 @@ public:
 	// All inputs for a frame were submitted; stop routing further input for it.
 	void handleFrameCommit(uint64_t frameId);
 
+	/* Cancel every frame this client is too late with, and tell the caller whether it has been late
+	once too often.
+
+	A late frame is a slow scene, not a dead client: the frame is dropped, the window keeps showing
+	what it last presented, and the session lives on -- liveness is the keepalive's question. But a
+	client that is late again and again is serving nothing, so after kMaxConsecutiveLateFrames in a
+	row it is dropped after all. */
+	bool checkFrameDeadlines(uint64_t nowUs);
+
+	// How many frames this client was late with, in total and in a row. Reported by the inspector,
+	// which is how a test sees a cancelled frame at all.
+	uint32_t getLateFrameCount() const { return _lateFrames; }
+	uint32_t getConsecutiveLateFrames() const { return _consecutiveLateFrames; }
+
 	// Feed inputs the client can not produce because they are server state (FrameCapture); an unfed
 	// input attachment wedges the frame.
 	void submitServerOwnedInputs(uint64_t frameId, uint64_t windowId,
@@ -96,7 +113,7 @@ protected:
 	Rc<core::DependencyEvent> reconcileDependency(uint32_t depId);
 
 	ServerAppThread *_host = nullptr;
-	Rc<remote::ServerConnection> _connection;
+	RemoteSession *_session = nullptr;
 	uint64_t _nextFrameId = 1; // monotonic wire token correlating an AcquireFrame request/reply
 
 	// In-flight frames the client is still streaming input for, keyed by wire frame id; app thread
@@ -105,12 +122,34 @@ protected:
 	struct PendingFrame {
 		Rc<core::LocalFrameRequestProxy> proxy;
 		uint64_t windowId = 0;
+		// Absolute monotonic us by which the client must have committed its input. The engine has
+		// its own timer for the same moment (FrameRequest::setDeadline); this one is what lets the
+		// server notice, count it and let the window go on.
+		uint64_t inputDeadline = 0;
 	};
 	Map<uint64_t, PendingFrame> _pendingFrames;
 
 	// Client-minted material dependency ids -> server-local events signalled by the forwarded
 	// compile. Reconciled in handleFrameInput.
 	Map<uint32_t, Rc<core::DependencyEvent>> _materialDeps;
+
+	// The shared window by its id, or null when it is gone.
+	AppWindow *resolveWindow(uint64_t windowId) const;
+
+	// Remember to ask this window for another frame; see flushNudges.
+	void nudgeWindow(uint64_t windowId);
+
+	// Ask the remembered windows, on a later pump than the cancel that queued them.
+	void flushNudges();
+
+	// A frame the client answered too late, or never committed input for. Cancels it, frees the
+	// window and counts it.
+	void cancelFrame(uint64_t frameId, uint64_t windowId, Rc<core::LocalFrameRequestProxy> &&proxy,
+			StringView reason);
+
+	Vector<uint64_t> _nudgeWindows;
+	uint32_t _lateFrames = 0;
+	uint32_t _consecutiveLateFrames = 0;
 
 	// The last DrawStat per window, waiting for that window's next frame request; `dirty` prevents
 	// re-sending unchanged numbers. App thread only.

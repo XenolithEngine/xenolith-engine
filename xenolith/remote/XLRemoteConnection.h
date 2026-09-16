@@ -44,9 +44,10 @@ public:
 	TransportConnection *getTransport() const { return _transport; }
 	Role getRole() const { return _role; }
 
-	// The handle for Looper::listenPollableHandle. Invalid on a transport without one, which then
-	// drives poll() through setOnReadable instead.
+	// The handle for Looper::listenPollableHandle. Invalid on a transport without one; that one
+	// offers getWaitAddress() for Looper::waitOnAddress instead.
 	sprt::dispatch::NativeHandle getPollHandle() const;
+	TransportWaitAddress getWaitAddress();
 
 	// True once the underlying connection has begun terminating (peer closed, local close, or an idle
 	// timeout).
@@ -97,7 +98,7 @@ protected:
 	Bytes _dict; // negotiated LZ4 dictionary (empty == none)
 
 	// One serial space for the whole connection, not one per stream (a request and its reply ride
-	// the same stream), so AppThread::_requests stays a plain map keyed by serial.
+	// the same stream), so a remote::ReplyTable stays a plain map keyed by serial.
 	uint32_t _serial = 1; // the handshake is always serial 0
 	bool _shutdown = false;
 

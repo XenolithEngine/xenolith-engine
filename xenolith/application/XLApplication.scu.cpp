@@ -35,6 +35,7 @@
 #include "XLClientAppThread.cc"
 #include "XLClientContext.cc"
 #include "XLAppWindow.cc"
+#include "XLRemoteSession.cc"
 #include "XLRemoteRenderClient.cc"
 #include "XLRemoteWindow.cc"
 #include "XLRemoteBlockTransfer.cc"

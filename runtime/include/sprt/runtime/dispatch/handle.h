@@ -209,6 +209,20 @@ protected:
 	WatchFlags _last = WatchFlags::None;
 };
 
+// Handle waiting for a 32-bit word to change (see Looper/Queue::waitOnAddress). The completion
+// fires with the new value each time the word differs from getLastValue().
+class SPRT_API AddressWaitHandle : public Handle {
+public:
+	virtual ~AddressWaitHandle() = default;
+
+	uint32_t *getAddress() const { return _address; }
+	uint32_t getLastValue() const { return _last; }
+
+protected:
+	uint32_t *_address = nullptr;
+	uint32_t _last = 0;
+};
+
 // Handle representing a listening stream socket (see Looper/Queue::listenSocket).
 // ListenInfo::onAccept runs on the looper thread once per accepted connection;
 // the handle's completion fires once when the listener terminates. Cancel the

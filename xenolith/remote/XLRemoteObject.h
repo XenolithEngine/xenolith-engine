@@ -107,11 +107,19 @@ public:
 	struct SharedQueueInfo {
 		Rc<core::Queue> queue;
 		HashMap<const core::MaterialAttachment *, Rc<core::MaterialSet>> materials;
+		// The gAPI objects this queue's encoding minted, so they can be released with it. See
+		// QueueScope.
+		Vector<uint64_t> objects;
 	};
 
+	// Sessions are the server's ids for its connected clients; 0 is none.
 	struct SharedWindowInfo {
 		core::RenderServerChannel *window = nullptr;
 		Vector<uint64_t> queues;
+		uint64_t assignedSession = 0; // only this session may see and take the window
+		uint64_t ownerSession = 0; // the session serving the window's frames
+		uint64_t creatorSession = 0; // the session that asked for this window (0: a server window)
+		uint32_t creatorSerial = 0; // its CreateWindow serial, echoed in that session's announce
 	};
 
 	virtual ~ObjectRegistry();
@@ -132,10 +140,27 @@ public:
 
 	uint64_t attachMaterials(NotNull<core::MaterialSet>);
 
+	/* While one of these is alive, every gAPI object newly shared is recorded as belonging to
+	`queueId` and is released when that queue is (see drop(RenderServerChannel *)).
+
+	Without it a server that opens and closes windows -- which is what a client asking for one
+	does -- accumulates a queue's worth of objects per window, for as long as it listens. Objects
+	shared outside a scope (the font atlas image) stay until the registry is cleared, which is what
+	they need: they outlive any one queue. */
+	struct SP_PUBLIC QueueScope {
+		QueueScope(ObjectRegistry &, uint64_t queueId);
+		~QueueScope();
+
+		ObjectRegistry &registry;
+		uint64_t previous = 0;
+	};
+
 	uint64_t get(core::RenderServerChannel *) const;
 	uint64_t get(core::Queue *) const;
 	uint64_t get(core::Object *) const;
 
+	// Drop the window and the queues nothing else references. A queue can serve two windows (see
+	// claimWindow), so one is released only when no remaining window lists it.
 	void drop(core::RenderServerChannel *);
 	void drop(core::Queue *);
 	void drop(core::Object *);
@@ -151,10 +176,37 @@ public:
 
 	const Map<uint64_t, SharedWindowInfo> &getWindows() const { return _windowById; }
 
+	// A window is visible to the session that owns it; one without an owner, to every session when
+	// unassigned and to its assigned session otherwise.
+	bool isWindowVisible(uint64_t windowId, uint64_t session) const;
+
+	// A queue is visible through any window visible to the session that uses it.
+	bool isQueueVisible(uint64_t queueId, uint64_t session) const;
+
+	// The session takes the window. Refused when the window is not visible to it, or when one of the
+	// window's queues serves a window owned by another session: materials belong to the queue, so
+	// two clients would overwrite each other's.
+	bool claimWindow(uint64_t windowId, uint64_t session);
+
+	// Reserve a window for one session (0 lifts the reservation). An owner keeps the window until it
+	// leaves. False for an unknown window.
+	bool assignWindow(uint64_t windowId, uint64_t session);
+
+	// Remember that `session` asked for this window with request `serial`; the announce echoes the
+	// serial back to that session so it can tell which of its requests the window answers.
+	bool setWindowCreator(uint64_t windowId, uint64_t session, uint32_t serial);
+
+	// A session left: its windows lose their owner, and windows reserved for it are open to all
+	// again. Returns the ids of the windows it owned.
+	Vector<uint64_t> releaseSession(uint64_t session);
+
 protected:
 	uint64_t _next = 1;
 	Map<core::Object *, uint64_t> _objectByPtr;
 	Map<uint64_t, Rc<core::Object>> _objectById;
+
+	// The queue whose encoding is running, if any (see QueueScope).
+	uint64_t _queueScope = 0;
 
 	Map<core::Queue *, uint64_t> _queueByPtr;
 	Map<uint64_t, SharedQueueInfo> _queueById;

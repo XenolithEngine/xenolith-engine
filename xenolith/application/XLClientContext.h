@@ -64,18 +64,31 @@ public:
 
 	ClientAppThread *getAppThread() const { return _appThread; }
 
+	/* Ask the server for a window; the mirror of Context::createWindow, and safe from any thread
+	(the request is posted to the app thread, where the connection lives). The scene and the close
+	behaviour travel in WindowInfo::appData as a WindowSceneInfo. */
+	virtual void createWindow(Rc<sprt::window::WindowInfo> &&,
+			Function<void(Status, StringView id)> && = nullptr);
+
 	// Lifecycle callbacks issued by the ClientAppThread (mirrors Context::handleAppThread*).
 	virtual void handleAppThreadCreated(NotNull<ClientAppThread>);
 	virtual void handleAppThreadDestroyed(NotNull<ClientAppThread>);
 	virtual void handleAppThreadUpdate(NotNull<ClientAppThread>, const UpdateTime &);
 
+	// The server answered who it is (GlobalCode::ServerInfo): what it runs on, and which of the
+	// optional parts of the protocol it serves. Nothing is announced before this.
+	virtual void handleServerInfo(NotNull<ClientAppThread>, const remote::PeerInfo &);
+
 	virtual bool handleWindowConnected(NotNull<ClientAppThread>, NotNull<RemoteWindow>);
 	virtual void handleWindowDisconnected(NotNull<ClientAppThread>, NotNull<RemoteWindow>);
 
+	void setServerInfoCallback(
+			Function<void(NotNull<ClientAppThread>, const remote::PeerInfo &)> &&);
 	void setWindowConnectedCallback(Function<bool(NotNull<RemoteWindow>)> &&);
 	void setWindowDisconnectedCallback(Function<void(NotNull<RemoteWindow>)> &&);
 
 protected:
+	Function<void(NotNull<ClientAppThread>, const remote::PeerInfo &)> _onServerInfo;
 	Rc<ContextInfo> _info;
 	Rc<ClientAppThread> _appThread;
 	remote::Address _serverAddress;

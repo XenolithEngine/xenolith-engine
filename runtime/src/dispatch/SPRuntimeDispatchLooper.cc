@@ -241,6 +241,15 @@ Rc<WatchHandle> Looper::watchFile(StringView path, WatchFlags mask,
 	return _data->queue->watchFile(path, mask, sprt::move(onChange), ref);
 }
 
+Rc<AddressWaitHandle> Looper::waitOnAddress(AddressWaitInfo &&info, Ref *ref) {
+	return _data->queue->waitOnAddress(move(info), ref);
+}
+
+Rc<AddressWaitHandle> Looper::waitOnAddress(uint32_t *address, uint32_t expected,
+		Function<Status(uint32_t)> &&onChange, Ref *ref) {
+	return _data->queue->waitOnAddress(address, expected, sprt::move(onChange), ref);
+}
+
 Rc<ListenHandle> Looper::listenSocket(ListenInfo &&info, Ref *ref) {
 	return _data->queue->listenSocket(move(info), ref);
 }

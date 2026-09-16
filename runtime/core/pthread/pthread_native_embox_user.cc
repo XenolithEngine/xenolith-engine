@@ -51,8 +51,22 @@ THE SOFTWARE.
 #if SPRT_EMBOX_USER
 
 #include <sprt/c/cross/embox_user_sprt/aarch64_sprt/memmap.h>
+#include <sprt/c/sys/__sprt_futex.h>
+#include <sprt/c/sys/__sprt_mman.h>
+#include <sprt/c/__sprt_stdlib.h>
 
 #include "../include/__el0_syscall.h"
+
+// libc_impl/src/embox_user/startup.cc: a per-thread copy of the program's
+// PT_TLS image, built the same way the main thread's was. Null when the program
+// has no thread_local data.
+extern "C" void *__el0_tls_alloc(void);
+extern "C" void __el0_tls_free(void *tp);
+
+// libc_impl/asm/EmboxUser/aarch64/clone.s: the one place where parent and child
+// are the same instruction stream.
+extern "C" long __el0_clone_thread(void *stack_top, void *tls, int *ctid,
+		void *(*entry)(void *), void *arg);
 
 // Itanium thread-local destructor registration. clang lowers thread_local
 // destructors to __cxa_thread_atexit on ELF, same as the POSIX path.
@@ -83,21 +97,141 @@ static void __registerForDestruction(void (*cb)(void)) {
 	__cxa_thread_atexit(__doDestroy, (void *)cb, __dso_handle);
 }
 
-// The one hook that needs the kernel. clone(220) is M2; until it lands there is
-// no way to get a second EL0 context, and no amount of userspace code changes
-// that.
+// What the parent has to remember about a thread it started, because the two
+// things that must be given back -- the stack and the TLS block -- are mappings
+// the thread is still standing on when it announces that it is finished.
 //
-// ENOSYS rather than EAGAIN deliberately: EAGAIN means "no resources, try
-// later", which invites a retry loop that can never succeed. ENOSYS says the
-// operation does not exist, which is the truth and which callers handle by
-// falling back to synchronous work.
+// `ctid` is the word the kernel zeroes and wakes AFTER the thread's last
+// instruction (clone's CLONE_CHILD_CLEARTID). Waiting on it is the only way to
+// know the mappings are free; the pthread layer's own StateFinalized is set by
+// the thread itself, while it is still running.
+// The ABI fixes a 4 KiB granule for every board (docs/EMBOX-SYSCALL-ABI.md
+// section 2.2), and mmap rounds to it.
+#define EL0_PAGE 4096u
+
+struct el0_thread {
+	int ctid;
+	int tid;
+	void *stack;
+	__SPRT_ID(size_t) stackSize;
+	void *tls;
+	el0_thread *next;
+};
+
+// Threads that ended detached: they cannot free their own stack, because they
+// are running on it when the last hook fires. Somebody else does it later, and
+// "later" is safe because ctid says when.
+static el0_thread *s_el0_zombies = nullptr;
+
+static void __el0_release(el0_thread *rec) {
+	if (rec->tls) {
+		__el0_tls_free(rec->tls);
+	}
+	if (rec->stack) {
+		__el0_munmap(rec->stack, rec->stackSize);
+	}
+	__sprt_free(rec);
+}
+
+// Wait until the kernel says the thread is gone. EAGAIN means it already was.
+static void __el0_wait_gone(el0_thread *rec) {
+	while (__atomic_load_n(&rec->ctid, __ATOMIC_SEQ_CST) != 0) {
+		__el0_futex(reinterpret_cast<__SPRT_ID(uint32_t) *>(&rec->ctid),
+				__SPRT_FUTEX_WAIT | __SPRT_FUTEX_PRIVATE_FLAG, 1, nullptr, 0);
+	}
+}
+
+// Called with the handle pool's mutex held, so the list needs no lock of its
+// own; both the pusher and the reaper are inside it.
+static void __el0_reap(void) {
+	el0_thread **link = &s_el0_zombies;
+
+	while (*link) {
+		el0_thread *rec = *link;
+		if (__atomic_load_n(&rec->ctid, __ATOMIC_SEQ_CST) == 0) {
+			*link = rec->next;
+			__el0_release(rec);
+		}
+		else {
+			link = &rec->next;
+		}
+	}
+}
+
+// Default stack for a thread the caller did not size. Small next to the main
+// thread's 8 MiB: these are the engine's pool workers, and the address space
+// they come out of is an arena shared with every other mapping.
+#define EL0_THREAD_STACK_DEFAULT (256u * 1024u)
+
 static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 		__thread_pool *pool) {
-	(void)thread;
-	(void)attr;
-	(void)pool;
-	return ENOSYS;
+	__SPRT_ID(size_t) stackSize = (attr && attr->stackSize) ? attr->stackSize
+															: EL0_THREAD_STACK_DEFAULT;
+	__SPRT_ID(size_t) guardSize = (attr && attr->guardSize) ? attr->guardSize : EL0_PAGE;
+
+	stackSize = (stackSize + EL0_PAGE - 1) & ~(__SPRT_ID(size_t))(EL0_PAGE - 1);
+	guardSize = (guardSize + EL0_PAGE - 1) & ~(__SPRT_ID(size_t))(EL0_PAGE - 1);
+
+	auto rec = (el0_thread *)__sprt_calloc(1, sizeof(el0_thread));
+	if (!rec) {
+		return EAGAIN;
+	}
+
+	auto total = stackSize + guardSize;
+	auto raw = __el0_mmap(nullptr, total, __SPRT_PROT_READ | __SPRT_PROT_WRITE,
+			__SPRT_MAP_PRIVATE | __SPRT_MAP_ANONYMOUS, -1, 0);
+	if (__el0_is_err(raw)) {
+		__sprt_free(rec);
+		return EAGAIN;
+	}
+
+	// The guard is the lowest page of the mapping: a stack that runs past its
+	// end faults instead of quietly writing over whatever is mapped below.
+	if (guardSize
+			&& __el0_is_err(__el0_mprotect((void *)raw, guardSize, __SPRT_PROT_NONE))) {
+		__el0_munmap((void *)raw, total);
+		__sprt_free(rec);
+		return EAGAIN;
+	}
+
+	rec->stack = (void *)raw;
+	rec->stackSize = total;
+	rec->tls = __el0_tls_alloc();
+	rec->ctid = 1;
+
+	auto stackTop = (char *)raw + total;
+
+	// Registered before the child can run, as every other backend does: the
+	// child looks itself up by tid the moment it starts, and a lookup that
+	// misses builds a second, crippled thread_t.
+	unique_lock globalLock(pool->mutex);
+
+	__el0_reap();
+
+	long tid = __el0_clone_thread(stackTop, rec->tls, &rec->ctid, &__runthead, thread);
+	if (tid < 0) {
+		globalLock.unlock();
+		__el0_release(rec);
+		return (int)-tid;
+	}
+	rec->tid = (int)tid;
+
+	thread->handle = rec;
+	thread->attr.stack = (void *)((char *)raw + guardSize);
+	thread->attr.stackSize = (uint32_t)stackSize;
+	thread->attr.guardSize = (uint32_t)guardSize;
+	thread->lowStack = (uintptr_t)raw + guardSize;
+	thread->highStack = (uintptr_t)stackTop;
+
+	__attachNativeThread(thread, thread->handle, (uint64_t)tid, globalLock);
+	globalLock.unlock();
+
+	return 0;
 }
+
+// The main thread's tid, learned when its handle is initialised. It is what
+// tells "this thread is ending" from "the program is ending".
+static int s_el0_main_tid = 0;
 
 static bool __initNativeHandle(thread_t *thread) {
 	// Called for the thread that is already running -- the main one, since it is
@@ -106,6 +240,7 @@ static bool __initNativeHandle(thread_t *thread) {
 	// in toolchain-managed linear memory with no queryable bounds) the real
 	// numbers are known and worth reporting: pthread_getattr_np and the stack
 	// checks in the pool read them.
+	s_el0_main_tid = (int)__el0_gettid();
 	thread->handle = reinterpret_cast<void *>(uintptr_t(1));
 	thread->attr.stack = reinterpret_cast<void *>(__SPRT_EL0_STACK_BASE);
 	thread->attr.stackSize = __SPRT_EL0_STACK_TOP - __SPRT_EL0_STACK_BASE;
@@ -114,16 +249,39 @@ static bool __initNativeHandle(thread_t *thread) {
 	return true;
 }
 
-static void __closeNativeHandle(void *handle) { (void)handle; }
+// Runs on the joiner for a joined thread, and ON THE THREAD ITSELF for a
+// detached one (pthread.cc: __runthead calls __detachAndDeallocateThread). The
+// two cases cannot share an answer: a thread standing on the stack it would
+// unmap has to hand the job over instead.
+static void __closeNativeHandle(void *handle) {
+	if (!handle || handle == reinterpret_cast<void *>(uintptr_t(1))) {
+		return; // the main thread: its stack is the kernel's, not ours
+	}
+
+	auto rec = (el0_thread *)handle;
+
+	if (rec->tid == (int)__el0_gettid()) {
+		rec->next = s_el0_zombies;
+		s_el0_zombies = rec;
+		return;
+	}
+
+	__el0_wait_gone(rec);
+	__el0_release(rec);
+	__el0_reap();
+}
 
 static bool __isNativeHandleValid(thread_t *thread) { return thread->handle != nullptr; }
 
-// The only thread's exit is the process's exit. exit_group(94) is answered in
-// the trap handler itself, which unwinds the EL0 thread rather than returning to
-// it -- so this genuinely does not come back.
+// exit(93) ends this thread, exit_group(94) ends the program -- since K6 the
+// kernel tells them apart, so the main thread's exit is still the process's and
+// nobody else's takes the program down with it.
 static void __exitNativeThread(void *ret) {
 	(void)ret;
-	__el0_exit_group(0);
+	if ((int)__el0_gettid() == s_el0_main_tid) {
+		__el0_exit_group(0);
+	}
+	__el0_exit(0);
 	__builtin_unreachable();
 }
 
@@ -153,10 +311,10 @@ static int __applyThreadPrio(thread_t *thread, int32_t dprio) {
 // The kernel places the stack; a caller-provided one has nowhere to be honoured.
 SPRT_UNUSED static bool validate_attr_setstack(void *, size_t) { return false; }
 
-// No guard page below a thread stack: there are no thread stacks to guard yet.
+// A guard page is one mprotect(PROT_NONE) below the stack __createThread maps.
 SPRT_UNUSED static bool validate_attr_setguardsize(size_t size) {
 	(void)size;
-	return false;
+	return true;
 }
 
 // Accepted and stored; __createThread is what refuses to use it.

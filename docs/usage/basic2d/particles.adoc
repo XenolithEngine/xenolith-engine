@@ -1,0 +1,221 @@
+# GPU particles: `ParticleSystem`, `ParticleEmitter` and what each parameter means
+
+**TL;DR**
+
+* A `basic2d::ParticleSystem` is the **parameters**; a `basic2d::ParticleEmitter` is a sprite node
+  that **draws** a system. The particles live on the GPU: one compute dispatch per emitter per frame
+  simulates them and writes their quads. One system may be shared by several emitters, and each
+  emitter still simulates its own particles.
+* The parameters mean what the same names mean in Godot (`GPUParticles2D` + `ParticleProcessMaterial`),
+  and the step is Godot's `cpu_particles_2d` model. Where the two differ, the table below says so.
+* A parameter is a range `[init, init + rnd]`, chosen **per particle at birth**. Angles are radians.
+* The simulation is a fixed-step one (`frameInterval`, 60 steps per second by default). A late frame
+  simulates at most two steps and **drops** the rest of the lag instead of catching up.
+* Emission and the step are one text, [XL2dGlslParticleSim.h](../../../xenolith/renderer/basic2d/glsl/include/XL2dGlslParticleSim.h),
+  compiled by the update shader **and** as C++: the CPU reference is exact, and it is what the
+  checks compare the GPU against.
+* Vulkan only, the `Default` queue only, and the device must index storage buffer arrays
+  dynamically. Anything else draws no particles (see [Limits](#limits)).
+
+## Making particles
+
+```cpp
+auto system = Rc<basic2d::ParticleSystem>::create();   // Godot defaults: 8 particles, 1 s
+system->setCount(220);
+system->setLifetime(1.0f, 0.5f);                        // 1 .. 1.5 s
+system->setNormal(M_PI_2 - 0.3f, 0.6f);                 // up, spread 0.3 rad each side
+system->setVelocity(60.0f, 80.0f);                      // dp per second
+system->setLinearAcceleration(Vec2(0.0f, 120.0f));      // Godot's gravity, scene axes
+system->setRandomness(1.0f);
+
+auto emitter = Rc<basic2d::ParticleEmitter>::create(system, Rc<Texture>(texture));
+emitter->setContentSize(Size2(24.0f, 24.0f));
+parent->addChild(move(emitter));
+```
+
+The emitter is a `Sprite`: its texture, texture rect, color and opacity apply to every particle
+(the node color multiplies the particle color, as Godot's `modulate`). Without an explicit rendering
+level it is `Transparent`, because particles carry their own alpha.
+
+A flipbook is a grid of frames inside the texture rect, set on the **node**, and a curve on the
+**system** that maps the lifetime fraction to the frame:
+
+```cpp
+emitter->setFrameGrid(4, 4);                            // row 0 is the top of the image
+system->setAnimFrameCurve(
+        Rc<CurveBuffer>::create(uint32_t(64), interpolation::Type::Linear, SpanView<float>()));
+```
+
+`ParticleSystem::encode()` writes every parameter to a `data::Value`, `apply(value)` sets only the
+keys present, `init(value)` builds a system from one - the format `examples/window/particles` saves.
+
+## The parameters
+
+| Parameter | Godot | Meaning | Units |
+|---|---|---|---|
+| `count` | `amount` | particles in one emission cycle; the rate is `count / lifetime` | — |
+| `frameInterval` | `fixed_fps` | the fixed step | µs (`getDt()` in s) |
+| `explosiveness` | `explosiveness` | share of the cycle the births are squeezed out of; 1 — all at once | 0..1 |
+| `randomness` | `randomness` | random shift of a particle's birth, up to one slot of the cycle | 0..1 |
+| `lifetime` | `lifetime` + `lifetime_randomness` | particle lifetime; the cycle is the lower bound (see `UseLifetimeMax`) | s |
+| `emissionPoints` | `emission_shape = POINTS` / `POINT` | a random point of the list; an empty list is the point `(0, 0)` | dp, node space |
+| `origin` | the emitter's origin | center of the orbital, radial and tangential motion | dp, node space |
+| `normal` | `direction` + `spread` | direction of the initial velocity, one-sided: `[init, init + rnd]` | rad |
+| `velocity` | `initial_velocity` | speed along `normal` | dp/s |
+| `linearVelocity` | `directional_velocity` without a curve | added to the initial velocity | dp/s |
+| `acceleration` | `linear_accel` | along the **current** velocity | dp/s² |
+| `linearAcceleration` | `gravity` | constant vector | dp/s² |
+| `radialAcceleration` | `radial_accel` | away from `origin` | dp/s² |
+| `tangentialAcceleration` | `tangential_accel` | perpendicular to the direction from `origin` | dp/s² |
+| `orbitalVelocity` | `orbit_velocity` | rotation of the position around `origin`, not accumulated into the velocity | **rad/s** |
+| `radialVelocity` | `radial_velocity` | displacement away from `origin`, not accumulated | dp/s |
+| `angle` | `angle` | initial rotation of the quad | rad |
+| `angularVelocity` | `angular_velocity` | rotation speed of the quad | rad/s |
+| `scale` | `scale` | multiplier of the base size | — |
+| `particleSize` | the texture size | base quad size; zero is the emitter's texture region | dp |
+| `color` | `color` | initial color, multiplied by the texture | RGBA |
+| `colorCurve` | `color_ramp` | color over the lifetime fraction, multiplied by `color` | vec4 curve |
+| `hue` | `hue_variation` | hue rotation chosen at birth (Godot's matrix) | turns, −1..1 |
+| `animFrameCurve` | `anim_offset` + `anim_offset_curve` | lifetime fraction → frame, 0 the first, 1 the last | float curve |
+| `LocalCoords` | `local_coords` | particles follow the node; without it they live in the scene | flag |
+| `AlignWithVelocity` | `particle_flag_align_y` | the quad's Y axis follows the velocity instead of `angle` | flag |
+| `OrderByLifetime` | `draw_order = LIFETIME` | newer particles are drawn over older ones | flag |
+| `UseLifetimeMax` | — | the cycle is the upper lifetime bound | flag |
+
+Translating from Godot: `direction = d, spread = s` is `setNormal(d − s, 2s)`;
+`lifetime_randomness = r` is `setLifetime(L, −L·r)`; `orbit_velocity` in turns per second is
+multiplied by 2π.
+
+## The model
+
+**Emission.** Particle `i` has the phase `i / count` of the cycle. With `randomness > 0` a hash of
+`(seed, cycle, i)` shifts it by up to `randomness / count`; then the phase is multiplied by
+`1 − explosiveness`. A particle is born on the step its phase falls on, **every** cycle: one still
+alive then is born again, as in Godot. The cycle is `lifetime.init` steps long, or the upper bound
+with `UseLifetimeMax` - the flag that guarantees nobody is reborn alive.
+
+**A step** (`particleStep`):
+
+```
+force = linearAcceleration + acceleration · normalize(v)
+      + radialAcceleration · normalize(pos − origin) + tangentialAcceleration · perp(that)
+v    += force · dt
+pos  += v · dt
+pos   = origin + rotate(pos − origin, orbitalVelocity · dt)
+pos  += normalize(pos − origin) · radialVelocity · dt
+angle += angularVelocity · dt
+```
+
+`normalize` of a zero vector is zero. A lifetime of L steps covers the birth step and L − 1 more.
+
+**Coordinates.** With `LocalCoords` a particle lives in the node's space and is drawn through the
+node's transform. Without it (the default, as in Godot) a newborn particle is moved into the dp space
+of the scene content by the node's affine transform - position, `origin` and the initial velocity,
+the node's rotation added to `angle`, `sqrt(|det|)` multiplying `scale` - and stays there when the
+node moves. `linearAcceleration` stays in scene axes. Switching `LocalCoords` restarts the system.
+
+**Drawing.** Every particle owns six vertices of its emitter; a dead one writes a degenerate quad.
+The order is the index; `OrderByLifetime` rotates the slots so the newest particle is last. With a
+random lifetime the order by *remaining* life is approximate - there is no GPU sort.
+
+**Curves** are sampled at `i / n` and read with linear interpolation, so a frame curve must end at 1
+to reach the last frame. The color is `color · colorCurve(t)`, then the hue rotation, then the node
+color.
+
+**Changes cost what they change.** A parameter change re-uploads the emitter data and the curves;
+a new `count` reallocates the particle buffer and keeps the particles that still fit;
+`restart()` reinitializes the particles. Setting a seed is a restart.
+
+**Seeds.** `setSeed(n)` fixes both the per-particle generators and the phase hash: the same seed,
+the same restart, the same number of steps give bit-identical integer state (generators,
+lifetimes). Without a seed both come from the OS on every restart.
+
+## Feedback and snapshots
+
+```cpp
+emitter->setFeedbackEnabled(true);
+const basic2d::ParticleFeedback &f = emitter->getFeedback();   // after every rendered frame
+// f.cycle, f.cycleFrame of f.framesInGen, f.nframes, f.sequence, f.restartGeneration
+
+emitter->requestSnapshot(16, [](basic2d::ParticleSnapshot &&s) {
+    // s.success, s.feedback (of the frame it was taken after), s.particles: ParticleData x 16
+});
+```
+
+The state of the cycle comes back always. **Counters** - births, aging steps and living particles in
+the frame, plus running totals - come only from a second compute pipeline, built when the process
+starts with `XL_PARTICLE_FEEDBACK=1`. Every particle writes its own `ParticleFeedbackRecord`, and
+the CPU sums them: no atomic writes, and the vertex order stays deterministic.
+
+A snapshot is a copy of the particle buffer in the same command buffer, after the simulation. It
+does not need the feedback pipeline. A snapshot requested by an emitter that leaves the scene first
+completes with `success = false`.
+
+Everything is read on the loop thread when the frame's fence signals and delivered on the
+application thread; `sequence` orders reports of frames that completed out of order (a screenshot
+frame overlapping a presented one).
+
+## What is not implemented
+
+- emission shapes `SPHERE`, `BOX`, `RING`, `DIRECTED_POINTS`;
+- `damping`, `scale_over_velocity`, `anim_speed`, per-parameter curves, `color_initial_ramp`,
+  `alpha_curve`;
+- `emitting`, `one_shot`, `preprocess`, `speed_scale`, `amount_ratio`, `interpolate`, `fract_delta`;
+- trails, sub-emitters, collisions, turbulence, attractors;
+- an exact sort by remaining lifetime; shadows from particles;
+- WebGPU, Metal, GLES, the software backend; particles in a remote render session
+  (`FrameContextHandle2d::serialize` skips them).
+
+## Limits
+
+- **Vulkan, `Default` queue, dynamic indexing of storage buffer arrays.** The pass is disabled
+  without `shaderStorageBufferArrayDynamicIndexing` (the log says `ParticleUpdateComp pipeline
+  disabled`), and the Flat queue has no particle pass.
+- **No additive blending.** The `Default` queue has no pipeline for `BlendFactor::One`; a sprite
+  with it is not drawn (`No pipeline for attachment 'MaterialInput2d'`). Use alpha blending.
+- **At most two steps per frame** (`maxFramesPerCall`): below 30 frames per second the simulation
+  runs slower than real time instead of jumping.
+
+## Traps
+
+| Trap | What actually happens |
+|---|---|
+| Editing `XL2dGlslParticle.h` or `XL2dGlslParticleSim.h` | the shader build does not track included headers: `touch xl_2d_particle_update.comp`, or the old SPIR-V stays |
+| A `uvec2` after a `float` in `ParticleFrameData` | std430 aligns a `uvec2` to 8 bytes and C++ to 4; the shader reads the next field. The pass has a `static_assert` on the offset |
+| clang-format over the shared header | it inserts digit separators into long literals (`0x5eed'0000`), which GLSL cannot parse: keep such tables inside `// clang-format off` |
+| A texture created by `addExternalImage` with a zero lifetime and assigned later | it is unloaded before anyone draws it |
+| Reading the particles' state through the inspector | `data::Value` doubles in JSON: before 2026-09 `sprt::dtoa` dropped zeros right after the point (1.0278 printed as 1.278), which looked like particles disagreeing with physics |
+| Comparing a snapshot with the CPU reference | the step count is the snapshot's own `cycle · framesInGen + cycleFrame`, never the frames asked for; the system needs a seed and must not have changed since the restart |
+
+## Checking it
+
+```sh
+tests/particles/stappler-build/x86_64-unknown-linux-gnu/debug/cc/particlestest   # the model, no GPU
+xenolith-cli build examples/window/particles --engine $PWD
+tests/window/particles-check.py        # GPU against the reference, 7 presets + all parameters
+XL_PARTICLE_FEEDBACK=1 examples/window/particles/stappler-build/x86_64-unknown-linux-gnu/debug/cc/particles
+```
+
+- `tests/particles` drives the shared header on the CPU: emission windows, cycles, randomness,
+  steps across frames, kinematics, curves, hue, counters.
+- `tests/window/particles-check.py` starts the example headless. For every preset and for a system
+  with every parameter and flag set it compares a GPU snapshot of all particles with the CPU
+  reference the example computes (`particles.snapshot {reference: true}`): integers for equality,
+  floats within 1e-3 at the 95th percentile and 1e-2 at worst (measured: ~3e-3 worst after 200 steps).
+  It also checks image features - particles visible, flipbook frames, fire turning red with age -
+  and, with the feedback pipeline, the counters. `tests/run-checks.py` selects it for the particle
+  sources and for the example.
+- The example's inspector commands are `particles.*`: `preset`, `set`, `restart`, `seed`, `move`,
+  `stats` (with `feedback`), `snapshot`, `json.get/set/save/load`, `panel.state/set`.
+
+## Related
+
+- [XL2dParticleSystem.h](../../../xenolith/renderer/basic2d/particle/XL2dParticleSystem.h) — the
+  parameters, the feedback types.
+- [XL2dParticleEmitter.h](../../../xenolith/renderer/basic2d/particle/XL2dParticleEmitter.h) — the node.
+- [XL2dVkParticlePass.cc](../../../xenolith/renderer/basic2d/backend/vk/XL2dVkParticlePass.cc) —
+  buffers, frames, the feedback read back.
+- [XL2dGlslParticleSim.h](../../../xenolith/renderer/basic2d/glsl/include/XL2dGlslParticleSim.h) —
+  emission and the step, for the shader and the CPU.
+- [examples/window/particles](../../../examples/window/particles) — every parameter behind a panel,
+  presets, JSON, the CPU reference (`ParticleReference.cpp`).
