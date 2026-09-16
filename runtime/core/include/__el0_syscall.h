@@ -102,8 +102,15 @@ SPRT_FORCEINLINE long __el0_writev(int __fd, const void *__iov, int __cnt) {
 	return __sprt_svc3(__SPRT_SYSCALL_writev, __fd, (long)__iov, __cnt);
 }
 
-// dirfd is AT_FDCWD only -- the kernel answers ENOSYS for anything else, because
-// Embox has no dirfd-relative lookup to resolve against (M2).
+// Since M2 a dirfd other than AT_FDCWD works: Embox has no dirfd-relative
+// lookup, so the kernel remembers the path behind every directory descriptor it
+// hands out and joins the relative name to it.
+//
+// O_DIRECTORY is served entirely inside the kernel and never reaches Embox,
+// whose open() ASSERTS on the bit. What comes back is a descriptor out of a
+// reserved high range rather than the ordinary small integer Linux gives -- it
+// is fine to close, fstat, getdents64 and dup, and it is not fine to assume it
+// fits in a short.
 SPRT_FORCEINLINE long __el0_openat(int __dirfd, const char *__path, int __flags,
 		unsigned int __mode) {
 	return __sprt_svc4(__SPRT_SYSCALL_openat, __dirfd, (long)__path, __flags, (long)__mode);
@@ -135,6 +142,104 @@ SPRT_FORCEINLINE long __el0_fstat(int __fd, void *__kstat) {
 SPRT_FORCEINLINE long __el0_newfstatat(int __dirfd, const char *__path, void *__kstat,
 		int __flags) {
 	return __sprt_svc4(__SPRT_SYSCALL_newfstatat, __dirfd, (long)__path, (long)__kstat, __flags);
+}
+
+SPRT_FORCEINLINE long __el0_getdents64(int __fd, void *__buf, __SPRT_ID(size_t) __n) {
+	return __sprt_svc3(__SPRT_SYSCALL_getdents64, __fd, (long)__buf, (long)__n);
+}
+
+// --- paths ------------------------------------------------------------------
+//
+// All five are built on the plain calls inside the kernel. Two answer
+// differently than a Linux caller may expect and nothing here can detect it, so
+// it is said instead: renameat is copy-then-delete and therefore NOT atomic,
+// and readlinkat is always EINVAL on a path that exists, because no filesystem
+// in this image has symbolic links.
+
+SPRT_FORCEINLINE long __el0_mkdirat(int __dirfd, const char *__path, unsigned int __mode) {
+	return __sprt_svc3(__SPRT_SYSCALL_mkdirat, __dirfd, (long)__path, (long)__mode);
+}
+
+SPRT_FORCEINLINE long __el0_unlinkat(int __dirfd, const char *__path, int __flags) {
+	return __sprt_svc3(__SPRT_SYSCALL_unlinkat, __dirfd, (long)__path, __flags);
+}
+
+SPRT_FORCEINLINE long __el0_renameat(int __olddirfd, const char *__old, int __newdirfd,
+		const char *__new) {
+	return __sprt_svc4(__SPRT_SYSCALL_renameat, __olddirfd, (long)__old, __newdirfd, (long)__new);
+}
+
+// There is no user model on this system, so R_OK and W_OK are answered by the
+// path existing -- which is what a caller running as root would get anyway --
+// and only X_OK can fail.
+SPRT_FORCEINLINE long __el0_faccessat(int __dirfd, const char *__path, int __mode, int __flags) {
+	return __sprt_svc4(__SPRT_SYSCALL_faccessat, __dirfd, (long)__path, __mode, __flags);
+}
+
+SPRT_FORCEINLINE long __el0_readlinkat(int __dirfd, const char *__path, char *__buf,
+		__SPRT_ID(size_t) __n) {
+	return __sprt_svc4(__SPRT_SYSCALL_readlinkat, __dirfd, (long)__path, (long)__buf, (long)__n);
+}
+
+// The raw syscall answers with the length INCLUDING the terminator, which is
+// not what the libc function of the same name returns.
+SPRT_FORCEINLINE long __el0_getcwd(char *__buf, __SPRT_ID(size_t) __n) {
+	return __sprt_svc2(__SPRT_SYSCALL_getcwd, (long)__buf, (long)__n);
+}
+
+SPRT_FORCEINLINE long __el0_chdir(const char *__path) {
+	return __sprt_svc1(__SPRT_SYSCALL_chdir, (long)__path);
+}
+
+SPRT_FORCEINLINE long __el0_ftruncate(int __fd, long __len) {
+	return __sprt_svc2(__SPRT_SYSCALL_ftruncate, __fd, __len);
+}
+
+// Succeeds without doing anything, and that is not a lie here: no filesystem in
+// this image has a write-back cache, so a write that returned is already where
+// fsync would put it. A descriptor that does not exist is still EBADF.
+SPRT_FORCEINLINE long __el0_fsync(int __fd) {
+	return __sprt_svc1(__SPRT_SYSCALL_fsync, __fd);
+}
+
+// --- descriptors ------------------------------------------------------------
+
+SPRT_FORCEINLINE long __el0_dup(int __fd) { return __sprt_svc1(__SPRT_SYSCALL_dup, __fd); }
+
+SPRT_FORCEINLINE long __el0_dup3(int __old, int __new, int __flags) {
+	return __sprt_svc3(__SPRT_SYSCALL_dup3, __old, __new, __flags);
+}
+
+// `arg` is an integer for every command the kernel implements -- the record-lock
+// commands, which would take a pointer, are refused with EINVAL rather than
+// forwarded to something that answers about ioctls.
+SPRT_FORCEINLINE long __el0_fcntl(int __fd, int __cmd, long __arg) {
+	return __sprt_svc3(__SPRT_SYSCALL_fcntl, __fd, __cmd, __arg);
+}
+
+// --- pipes and poll ---------------------------------------------------------
+
+SPRT_FORCEINLINE long __el0_pipe2(int *__fds, int __flags) {
+	return __sprt_svc2(__SPRT_SYSCALL_pipe2, (long)__fds, __flags);
+}
+
+// sigmask MUST be null: there are no signals on this system, so the atomicity
+// ppoll exists for cannot be provided, and the kernel refuses rather than
+// pretending. A null timeout waits forever.
+SPRT_FORCEINLINE long __el0_ppoll(void *__fds, unsigned long __nfds, const void *__timeout,
+		const void *__sigmask) {
+	return __sprt_svc5(__SPRT_SYSCALL_ppoll, (long)__fds, (long)__nfds, (long)__timeout,
+			(long)__sigmask, 8L);
+}
+
+// --- randomness -------------------------------------------------------------
+//
+// Over /dev/urandom, which on this board is a linear congruential generator
+// stirred with the clock. It is not a CSPRNG and there is no entropy pool
+// behind it; GRND_RANDOM is refused rather than served by the source that is
+// not it.
+SPRT_FORCEINLINE long __el0_getrandom(void *__buf, __SPRT_ID(size_t) __n, unsigned int __flags) {
+	return __sprt_svc3(__SPRT_SYSCALL_getrandom, (long)__buf, (long)__n, (long)__flags);
 }
 
 // --- memory -----------------------------------------------------------------
