@@ -33,15 +33,22 @@ class SP_PUBLIC ReplyTable {
 public:
 	using ReplyCallback = Function<void(const MessageHeader &, BytesView payload)>;
 
-	// `deadlineUs` is absolute (monotonic clock); 0 means none.
-	void wait(uint32_t serial, ReplyCallback &&, uint64_t deadlineUs);
+	/* `deadlineUs` is absolute (monotonic clock); 0 means none.
+
+	`fatal` says what an expired waiter means. For almost every request it means the peer stopped
+	answering at all, and the caller drops the connection. A frame is the exception: a scene that
+	took too long to draw is late, not gone, so its waiter is completed (the frame is cancelled
+	locally) without condemning the session -- see failExpired. */
+	void wait(uint32_t serial, ReplyCallback &&, uint64_t deadlineUs, bool fatal = true);
 
 	// Complete the waiter a reply or error belongs to. False when the message is not a reply this
 	// table waits for.
 	bool dispatch(const MessageHeader &, BytesView payload);
 
-	// Complete every waiter past its deadline with a local error header of `errorType` (Domain::Error,
-	// GlobalError::NetworkBackend). True when any expired; the caller then drops the connection.
+	// Complete every waiter past its deadline with a local error header of `errorType`
+	// (Domain::Error, GlobalError::NetworkBackend). True when a FATAL one expired; the caller then
+	// drops the connection. A non-fatal waiter is completed just the same, but is not an answer to
+	// "is the peer still there".
 	bool failExpired(uint64_t nowUs, MessageType errorType);
 
 	// Drop every waiter without calling it.
@@ -54,6 +61,7 @@ protected:
 	struct PendingReply {
 		ReplyCallback cb;
 		uint64_t deadline = 0;
+		bool fatal = true;
 	};
 
 	HashMap<uint32_t, PendingReply> _requests;

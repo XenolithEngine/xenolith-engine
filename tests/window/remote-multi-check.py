@@ -162,7 +162,10 @@ def main():
         # --- a window reserved for the second client ---------------------------------------------
         s.invoke("remote-assign", window=SECOND, session=id_b)
         s.invoke("remote-share-second")
-        st = rc.wait_for(s, lambda x: window_entry(x, SECOND).get("owner") == id_b, timeout=30.0)
+        # Generous: a window shares itself when its scene is first PRESENTED, and a window opened
+        # while another one is drawing flat out can wait a long time for that first frame -- the
+        # windows of one process are served by a single thread and do not take turns (see M1).
+        st = rc.wait_for(s, lambda x: window_entry(x, SECOND).get("owner") == id_b, timeout=90.0)
         check("the reserved window goes to the client it was reserved for",
                 window_entry(st, SECOND).get("owner") == id_b
                         and window_entry(st, SECOND).get("assigned") == id_b, str(st))
@@ -188,6 +191,34 @@ def main():
         check("both windows produce frames, each its own picture",
                 shot1.startswith(b"\x89PNG") and shot2.startswith(b"\x89PNG") and shot1 != shot2,
                 f"{len(shot1)} / {len(shot2)} bytes")
+
+        # --- a frame started and abandoned (S5) ---------------------------------------------------
+        #
+        # The other deadline: the client answers AcquireFrame on time, so the server arms the frame
+        # and holds the window for input -- and then sends none. Nothing used to time that out, so
+        # the window stopped presenting for good. It is cancelled now, and the session is untouched.
+        if cb:
+            st = s.invoke("remote") or {}
+            late_before = next((it.get("lateFrames", 0) for it in (st.get("sessions") or [])
+                    if it.get("id") == id_b), 0)
+            cb.invoke("client-frame-delay", frames=1, silent=True)
+            late_after = late_before
+            deadline = time.monotonic() + 20.0
+            while time.monotonic() < deadline:
+                s.ok("frame", count=1)
+                time.sleep(0.2)
+                st = s.invoke("remote") or {}
+                late_after = next((it.get("lateFrames", 0) for it in (st.get("sessions") or [])
+                        if it.get("id") == id_b), 0)
+                if late_after > late_before:
+                    break
+            check("a frame whose input never arrives is given up on", late_after > late_before,
+                    f"{late_before} -> {late_after} late frames")
+            check("and its client keeps the session",
+                    st.get("clients") == 2 and b.poll() is None, str(st))
+            shot = rc.grab(s, window=SECOND)
+            check("the window goes on presenting", shot.startswith(b"\x89PNG"),
+                    f"{len(shot)} bytes")
 
         # --- a third client is refused ------------------------------------------------------------
         third = rc.spawn_client(client_bin, share, token, spki)
@@ -259,6 +290,35 @@ def main():
         shot = rc.grab(s)
         check("and draws them", shot.startswith(b"\x89PNG") and shot != before,
                 "the frame is the server's own scene")
+
+        # --- late once is a frame, late always is a client (S5) -----------------------------------
+        #
+        # The limit is what keeps "a late frame is not fatal" from meaning "a client that never
+        # draws is welcome forever": after a few in a row the session goes. Last, because it ends
+        # the only session still running.
+        cc = open_inspector(sock_c)
+        if cc:
+            cc.invoke("client-frame-delay", ms=3000, frames=8)
+            gone = False
+            deadline = time.monotonic() + 90.0
+            while time.monotonic() < deadline:
+                s.ok("frame", count=1)
+                s.ok("frame", count=1, window=SECOND)
+                time.sleep(0.2)
+                st = s.invoke("remote") or {}
+                if st.get("clients") == 0:
+                    gone = True
+                    break
+            check("a client that is late again and again is dropped", gone, str(st))
+            check("and the windows it served are free again",
+                    window_entry(st, PRIMARY).get("owner") == 0
+                            and window_entry(st, SECOND).get("owner") == 0, str(st))
+            check("the server itself is untouched", server.poll() is None,
+                    f"exited with {server.returncode}")
+            try:
+                cc.close()
+            except OSError:
+                pass
         if cb:
             cb.close()
     finally:

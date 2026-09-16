@@ -107,6 +107,20 @@ public:
 	// application handler installed for it.
 	bool isWindowCreationSupported() const;
 
+	/* Answer the next `frames` AcquireFrame requests `delayUs` late, the way a scene that took too
+	long to draw would. Debug-only seam for the tests: what the server must do with a late frame
+	(drop the frame, keep the session) has no other way of being exercised, since a healthy client
+	answers at once. */
+	void setFrameDelay(uint64_t delayUs, uint32_t frames);
+
+	/* Answer the next `frames` AcquireFrame requests and then say nothing more about them: no
+	FrameInput, no FrameCommit. The other half of the same seam -- a scene that started a frame and
+	never finished it, which is what the server's input deadline is for.
+
+	`takeSilentFrame` consumes one; it is what RemoteWindow asks per frame. */
+	void setSilentFrames(uint32_t frames);
+	bool takeSilentFrame();
+
 protected:
 	// Block-transfer send facade: route through the server connection.
 	virtual bool remoteSendCbor(remote::Domain, uint8_t code, const Value &,
@@ -165,6 +179,11 @@ protected:
 	// Set by a dispatcher that ended the session; acted on in pumpConnection, the only place
 	// allowed to drop the connection (a dispatcher runs inside its poll).
 	bool _disconnectRequested = false;
+
+	// See setFrameDelay.
+	uint64_t _frameDelayUs = 0;
+	uint32_t _frameDelayFrames = 0;
+	uint32_t _silentFrames = 0;
 
 	// Keepalive (monotonic us): the server pings us periodically; if no ping arrives within the
 	// timeout the server is presumed gone and the client disconnects. Reset on connect and each ping.

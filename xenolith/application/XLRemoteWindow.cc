@@ -169,6 +169,18 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 	// client app thread (Director::performOnRenderThread resolves there), which owns the
 	// connection.
 	auto thread = _thread;
+
+	/* A frame this client was told to answer for and then abandon: it names a queue, so the server
+	arms the frame and waits for input that never comes -- which is what the server's input deadline
+	is for. The scene is not driven at all, so the client itself stays healthy; only this one frame
+	is left hanging, exactly as a scene that died mid-frame would leave it. */
+	if (thread->takeSilentFrame()) {
+		auto queueId = _queues.empty() ? uint64_t(0) : _queues.front().id;
+		slog().warn("RemoteWindow", "abandoning frame ", frameId, " after answering for it");
+		reply(queueId);
+		return;
+	}
+
 	auto proxy = Rc<core::RemoteFrameRequestProxy>::create(c, frameId,
 			[thread, frameId](SpanView<const core::AttachmentData *> atts, BytesView bytes) {
 		if (auto conn = thread->getConnection()) {

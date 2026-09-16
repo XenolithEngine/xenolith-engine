@@ -99,7 +99,7 @@ bool RemoteSession::updateKeepalive(uint64_t now, uint64_t pingIntervalUs, uint6
 }
 
 bool RemoteSession::sendMessageWithReply(remote::Domain d, uint8_t code, const Value &val,
-		ReplyCallback &&cb, uint64_t timeoutUs) {
+		ReplyCallback &&cb, uint64_t timeoutUs, bool fatal) {
 	if (isClosed()) {
 		return false;
 	}
@@ -109,7 +109,7 @@ bool RemoteSession::sendMessageWithReply(remote::Domain d, uint8_t code, const V
 		return false;
 	}
 	auto deadline = timeoutUs ? sp::platform::clock(ClockType::Monotonic) + timeoutUs : 0;
-	_replies.wait(serial, sp::move(cb), deadline);
+	_replies.wait(serial, sp::move(cb), deadline, fatal);
 	return true;
 }
 

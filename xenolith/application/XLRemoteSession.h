@@ -78,7 +78,8 @@ public:
 	// Replies and errors to this session's requests.
 	bool dispatchReply(const remote::MessageHeader &, BytesView payload);
 
-	// Fail waiters past their deadline; true when any expired (the session is then dropped).
+	// Fail waiters past their deadline; true when a FATAL one expired (the session is then dropped).
+	// A late frame is not fatal -- see ReplyTable::wait.
 	bool failExpiredRequests(uint64_t now);
 
 	// A dispatcher ended the session; the host acts on it outside the connection's poll.
@@ -90,8 +91,9 @@ public:
 	// Ping when due. False once the client has not answered a ping for `pongTimeoutUs`.
 	bool updateKeepalive(uint64_t now, uint64_t pingIntervalUs, uint64_t pongTimeoutUs);
 
+	// `fatal` decides what an unanswered request means for the session; see ReplyTable::wait.
 	bool sendMessageWithReply(remote::Domain, uint8_t code, const Value &, ReplyCallback &&,
-			uint64_t timeoutUs);
+			uint64_t timeoutUs, bool fatal = true);
 
 	// Drop waiters and transfers, close the connection. Returns the font endpoint, unbound, for
 	// the host to reuse. Idempotent.

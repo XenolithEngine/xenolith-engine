@@ -342,27 +342,36 @@ size_t ImageData::writeData(uint8_t *mem, size_t expected) const {
 	}
 
 	if (!data.empty()) {
-		auto size = data.size();
-		sprt::memcpy(mem, data.data(), size);
+		// Clamped: `expectedSize` is what the format says the image takes, `data` is what the
+		// resource actually carries, and a resource that carries more than the target holds would
+		// otherwise be copied past the end of it.
+		auto size = sprt::min(data.size(), size_t(expected));
+		if (mem && size) {
+			sprt::memcpy(mem, data.data(), size);
+		}
 		return size;
-	} else if (memCallback) {
-		size_t size = expectedSize;
+	} else {
+		/* A callback may answer in pieces, so each piece copies ITS OWN size, clamped to what is
+		left of the target: copying `expectedSize` from a piece reads past that piece and writes
+		past the target, which is what a release build of the software backend crashed on while
+		uploading the font atlas. */
 		size_t writeSize = 0;
-		memCallback(mem, expectedSize, [&](BytesView data) {
-			writeSize += data.size();
-			sprt::memcpy(mem, data.data(), size);
-			mem += data.size();
-		});
-		return writeSize != 0 ? writeSize : size;
-	} else if (stdCallback) {
-		size_t size = expectedSize;
-		size_t writeSize = 0;
-		stdCallback(mem, expectedSize, [&](BytesView data) {
-			writeSize += data.size();
-			sprt::memcpy(mem, data.data(), size);
-			mem += data.size();
-		});
-		return writeSize != 0 ? writeSize : size;
+		auto writer = [&](BytesView data) {
+			auto n = sprt::min(data.size(), size_t(expectedSize) - writeSize);
+			if (mem && data.data() && n) {
+				sprt::memcpy(mem, data.data(), n);
+				mem += n;
+				writeSize += n;
+			}
+		};
+		if (memCallback) {
+			memCallback(mem, expectedSize, writer);
+		} else if (stdCallback) {
+			stdCallback(mem, expectedSize, writer);
+		} else {
+			return 0;
+		}
+		return writeSize != 0 ? writeSize : size_t(expectedSize);
 	}
 	return 0;
 }

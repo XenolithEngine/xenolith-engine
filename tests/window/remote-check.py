@@ -357,11 +357,11 @@ def main():
 
         # Both sides must SAY that the builds differ. Silently carrying on would lose the one thing
         # the tag is still good for -- explaining a later symptom.
-        dump = s.ok("logs") or {}
-        lines = "\n".join(str(x) for x in (dump.get("lines") or []))
+        # The log file, for the same reason as the authentication check further down.
+        server_log = open(SERVER_LOG, errors="replace").read() if os.path.exists(SERVER_LOG) else ""
         check("the server reports the mismatch instead of acting on it",
-                "different wire contract" in lines,
-                "not in %d log lines" % len(dump.get("lines") or []))
+                "different wire contract" in server_log,
+                "not in %d bytes of server log" % len(server_log))
         bad_log = open(CLIENT_LOG).read() if os.path.exists(CLIENT_LOG) else ""
         check("the client says so too, naming both builds",
                 "different wire contract" in bad_log and "server:" in bad_log
@@ -429,10 +429,12 @@ def main():
         kill(silent)
         silent = None
 
-        dump = s.ok("logs") or {}
-        lines = "\n".join(str(x) for x in (dump.get("lines") or []))
-        check("server logged the authentication", "client authenticated" in lines,
-                "not in %d log lines" % len(dump.get("lines") or []))
+        # From the log FILE, not the inspector's ring buffer: a busy server can push thousands of
+        # lines through the ring between the handshake and this check, and a line that scrolled out
+        # of a buffer is not a line that was never written.
+        server_log = open(SERVER_LOG, errors="replace").read() if os.path.exists(SERVER_LOG) else ""
+        check("server logged the authentication", "client authenticated" in server_log,
+                "not in %d bytes of server log" % len(server_log))
 
         # One long-lived session to the CLIENT's own inspector. It used to be opened and closed for
         # a single `scene` call; from here on the driver talks to both sides throughout, and the
@@ -667,6 +669,53 @@ def main():
         st = c.invoke("client-text") or {}
         check("unmarking commits the composed text", st.get("text") == "Hiabにほ"
                         and st.get("markedLength") == 0, str(st))
+
+        # --- a late frame costs the frame, not the session (S5) --------------------------------
+        #
+        # A remote scene that takes too long to draw used to end the session: the AcquireFrame
+        # waiter expired, the request watchdog read that as "the peer is gone" and dropped the
+        # client. Android shows the previous frame instead, and that is the policy here -- the frame
+        # is cancelled, the window keeps what it last presented, and liveness stays the keepalive's
+        # question alone.
+        #
+        # The client is told to answer ONE frame later than the server's 2s budget. It does so
+        # without blocking its own thread, so pings keep being answered: what the server sees is a
+        # late frame and nothing else.
+        st = s.invoke("remote") or {}
+        late_before = ((st.get("sessions") or [{}])[0]).get("lateFrames", 0)
+        presented_before = (s.ok("frame", count=0) or {}).get("presented", 0)
+
+        c.invoke("client-frame-delay", ms=3000, frames=1)
+        deadline = time.monotonic() + 12.0
+        late_after = late_before
+        while time.monotonic() < deadline:
+            s.ok("frame", count=1)
+            time.sleep(0.2)
+            st = s.invoke("remote") or {}
+            late_after = ((st.get("sessions") or [{}])[0]).get("lateFrames", 0)
+            if late_after > late_before:
+                break
+        check("a frame the client is late with is given up on", late_after > late_before,
+                f"{late_before} -> {late_after} late frames")
+        check("and the client keeps its session", bool(st.get("clientConnected"))
+                        and client.poll() is None, str(st))
+
+        # The window is not stuck on the cancelled frame: it presents again. Without the nudge that
+        # follows a cancel, a headless window would simply stop here.
+        presented_after = presented_before
+        deadline = time.monotonic() + 15.0
+        while time.monotonic() < deadline:
+            s.ok("frame", count=1)
+            time.sleep(0.2)
+            presented_after = (s.ok("frame", count=0) or {}).get("presented", 0)
+            if presented_after > presented_before:
+                break
+        check("frames resume after the cancelled one",
+                presented_after > presented_before,
+                f"presented {presented_before} -> {presented_after}")
+        shot = grab(s)
+        check("and the window still draws the remote scene",
+                shot.startswith(b"\x89PNG") and shot != before, f"{len(shot)} bytes")
 
         # --- one connection, two windows (M5) --------------------------------------------------
         #

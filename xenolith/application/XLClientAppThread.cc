@@ -152,6 +152,27 @@ bool ClientAppThread::sendMessageWithReply(remote::Domain d, uint8_t message, co
 	return false;
 }
 
+void ClientAppThread::setFrameDelay(uint64_t delayUs, uint32_t frames) {
+	_frameDelayUs = delayUs;
+	_frameDelayFrames = frames;
+	log::source().warn("ClientAppThread", "holding back the next ", frames, " frame(s) by ",
+			delayUs / 1'000, "ms");
+}
+
+void ClientAppThread::setSilentFrames(uint32_t frames) {
+	_silentFrames = frames;
+	log::source().warn("ClientAppThread", "abandoning the next ", frames,
+			" frame(s) after answering for them");
+}
+
+bool ClientAppThread::takeSilentFrame() {
+	if (_silentFrames == 0) {
+		return false;
+	}
+	--_silentFrames;
+	return true;
+}
+
 bool ClientAppThread::isWindowCreationSupported() const {
 	auto info = getServerInfo();
 	if (!info) {
@@ -563,6 +584,26 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 		case remote::WindowCode::AcquireFrame: {
 			// server -> client: drive the window's scene graph to select a render queue; reply with
 			// that queue's server id.
+
+			/* A scene that takes too long is what setFrameDelay imitates, and the answer is held
+			back rather than slept through: the looper keeps polling, so pings are still answered
+			and what the server sees is a late FRAME, not a peer that went quiet. */
+			if (_frameDelayFrames > 0 && _frameDelayUs > 0) {
+				--_frameDelayFrames;
+				auto header = h;
+				auto bytes = payload.bytes<Interface>();
+				_appLooper->schedule(sprt::dispatch::TimeInterval::microseconds(_frameDelayUs),
+						[this, header, bytes = sp::move(bytes)](sprt::dispatch::Handle *,
+								bool success) mutable {
+					if (success) {
+						dispatchMessage(header, BytesView(bytes.data(), bytes.size()));
+					}
+					return true;
+				},
+						this);
+				return true;
+			}
+
 			auto val = data::read<Interface>(payload);
 			auto frameId = uint64_t(val.getInteger(0));
 			auto windowId = uint64_t(val.getInteger(1));
