@@ -4,7 +4,7 @@
     tests/run-checks.py                  # FAST - what the working tree's diff can break
     tests/run-checks.py console          # the console harnesses alone, no window at all
     tests/run-checks.py suite window     # every headless window check
-    tests/run-checks.py full             # THE GATE: every console harness and all 29 window checks
+    tests/run-checks.py full             # THE GATE: every console harness and every window check
     tests/run-checks.py --list           # print the plan and run nothing
 
 WHY THIS EXISTS, AND WHAT IT COSTS. Measured on a 16-core Linux host on 2026-09-13, debug builds,
@@ -26,6 +26,11 @@ is split on camel case rather than searched as a string, because a substring sea
 change that names no widget still gets `WINDOW_SMOKE` - five cheap scripts that between them touch
 layout, style, hit-testing, the canvas and hotkeys - and a path that matches nothing at all widens
 the plan to everything. `full` is what a commit is gated on regardless.
+
+A WINDOW CHECK WITH ITS OWN BINARY. `particles-check.py` drives `examples/window/particles`, not
+`testapp` (`WINDOW_BINARIES`): it is selected by name like the rest (`XL2dParticleSystem.cc`,
+`XL2dVkParticlePass.cc`), and also by a change under the example itself (`EXAMPLE_CHECKS`), which is
+otherwise outside the plan. An unbuilt example skips it the way an unbuilt harness is skipped.
 
 PARALLELISM. Every window check starts its own `testapp` on its own unix socket (`/tmp/xl-*.sock`,
 overridable through `XENOLITH_INSPECTOR_SOCK`), so two of them share nothing but the machine.
@@ -109,9 +114,21 @@ COST = {
     "window/hotkey-check.py": 9, "window/style-check.py": 8, "window/geometry-check.py": 8,
     "window/panel-check.py": 4, "window/clipboard-check.py": 4, "window/scale9-check.py": 3,
     "window/render-level-check.py": 4, "window/overflow-check.py": 3,
+    "window/particles-check.py": 42,
     "gittest": 19, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
     "uilayouttest": 1, "particlestest": 1,
 }
+
+# Window checks that start a binary other than tests/window's testapp: (project, binary). The runner
+# passes the binary as the script's argument and skips the script when it is not built.
+WINDOW_BINARIES = {
+    "particles-check.py": ("examples/window/particles", "particles"),
+}
+
+# `examples/` is outside the plan, except the examples a window check drives
+EXAMPLE_CHECKS = [
+    ("examples/window/particles", ["particles-check.py"]),
+]
 
 # Scripts that are not checks, or cannot be part of an automated run - see the docstring.
 NOT_CHECKS = {"markdown-perf-check.py"}
@@ -163,8 +180,10 @@ def select_window(paths):
 
 
 class Job:
-    def __init__(self, name, argv, cwd=ROOT, timeout=1800):
+    def __init__(self, name, argv, cwd=ROOT, timeout=1800, requires=None):
         self.name, self.argv, self.cwd, self.timeout = name, argv, cwd, timeout
+        # the binary the job cannot run without: the harness itself, or a window check's own app
+        self.requires = requires if requires else (None if argv[0] == sys.executable else argv[0])
         self.cost = COST.get(name, 10)
         self.secs, self.rc, self.checks, self.fails = 0.0, None, None, []
 
@@ -208,8 +227,15 @@ def cli_jobs(names=None, console_only=False):
 
 
 def window_jobs(scripts):
-    return [Job("window/" + s, [sys.executable, os.path.join(ROOT, "tests/window", s)])
-            for s in scripts]
+    jobs = []
+    for s in scripts:
+        argv = [sys.executable, os.path.join(ROOT, "tests/window", s)]
+        requires = None
+        if s in WINDOW_BINARIES:
+            requires = binary(*WINDOW_BINARIES[s])
+            argv.append(requires)
+        jobs.append(Job("window/" + s, argv, requires=requires))
+    return jobs
 
 
 def dedup(jobs):
@@ -239,9 +265,15 @@ def plan(args):
             sys.exit("suite: name `window`, `cli`, or a harness (runtime, libc, stappler, tess, ...)")
         return dedup(jobs), " ".join(args.names)
 
-    paths = [p for p in changed_paths(args.since)
+    all_paths = changed_paths(args.since)
+    examples = sorted({s for prefix, names in EXAMPLE_CHECKS for s in names
+                       if any(p.startswith(prefix + "/") for p in all_paths)})
+    paths = [p for p in all_paths
              if not p.startswith(("docs/", "examples/")) and not p.endswith(".md")]
     if not paths:
+        if examples:
+            return (dedup(cli_jobs(console_only=True) + window_jobs(examples)),
+                    f"only examples changed - the console harnesses and {', '.join(examples)}")
         return cli_jobs(console_only=True), "the working tree is clean - the console harnesses only"
     owed, wide = set(), None
     for p in paths:
@@ -258,13 +290,15 @@ def plan(args):
     scripts = select_window(paths)
     if not scripts and any(p.startswith("xenolith/") for p in paths):
         scripts = WINDOW_SMOKE
+    scripts = scripts + [s for s in examples if s not in scripts]
     jobs = dedup(cli_jobs(console_only=True) + cli_jobs(names=owed) + window_jobs(scripts))
     return jobs, f"{len(paths)} changed paths -> {len(jobs)} jobs"
 
 
 def stale(kill):
     out = subprocess.run(["ps", "-eo", "pid,args"], capture_output=True, text=True).stdout
-    found = [l for l in out.splitlines() if "--headless" in l and "cc/testapp" in l]
+    apps = ["cc/testapp"] + ["cc/" + name for _, name in WINDOW_BINARIES.values()]
+    found = [l for l in out.splitlines() if "--headless" in l and any(a in l for a in apps)]
     if kill:
         for l in found:
             try:
@@ -299,9 +333,9 @@ def main():
         print(f"  ({len(jobs)} jobs, ~{sum(j.cost for j in jobs)}s of work)")
         return 0
 
-    missing = [j for j in jobs if j.argv[0] != sys.executable and not os.path.exists(j.argv[0])]
+    missing = [j for j in jobs if j.requires and not os.path.exists(j.requires)]
     for j in missing:
-        print(f"! not built, skipped: {j.name} ({os.path.relpath(j.argv[0], ROOT)})")
+        print(f"! not built, skipped: {j.name} ({os.path.relpath(j.requires, ROOT)})")
     jobs = [j for j in jobs if j not in missing]
     if not jobs:
         print("nothing to run")

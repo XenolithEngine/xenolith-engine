@@ -11,6 +11,7 @@
 | `tests/stappler` | `stapplertest` | the `stappler_*` app modules (core/data/bitmap/crypto/db/document/font/vg/pug/makefile/layout/network) — **fast smoke build** | CLI |
 | `tests/particles` | `particlestest` | `runtime` only + the header-only `XL2dGlslParticleSim.h` — the CPU reference of the GPU particle emission cycle, the same text the particle update shader compiles | CLI, self-checking |
 | `tests/tess` | `tesstest` | the tesselator (`stappler/tess`) and the vector layer, against the whole 2d icon set — a pinned digest per icon **and** a pinned raster per icon, plus a deterministic wire benchmark. No device, no window, no frame | CLI, golden |
+| `examples/window/particles` | `particles` | the GPU particles of `basic2d` behind a control panel; `tests/window/particles-check.py` runs it headless and compares a GPU snapshot of the particles with the CPU reference the example computes from the same `XL2dGlslParticleSim.h` | GUI, driven by a check |
 | `tests/window` | `testapp` | full xenolith GUI stack (`xenolith_application` + `renderer_ui` + `backend_vk` + `resources_assets`); transitively compiles the stappler modules | GUI |
 
 **Which to use:**
@@ -24,9 +25,11 @@
   and re-pinning is a decision to record in the commit message, not a way to make
   a run green.
 - Changed the basic2d particle system or its GLSL (`xenolith/renderer/basic2d/particle`,
-  `glsl/include/XL2dGlslParticle*.h`, `xl_2d_particle_update.comp`) → `tests/particles`, then the
-  GPU side in `examples/window/particles` headless. The shader build does not track included
-  headers: touch the `.comp` after editing one.
+  `glsl/include/XL2dGlslParticle*.h`, `xl_2d_particle_update.comp`, `backend/vk/XL2dVkParticlePass`)
+  → `tests/particles`, then build `examples/window/particles` and run
+  `tests/window/particles-check.py` (the runner selects both). The shader build does not track
+  included headers: touch the `.comp` after editing one. The model and the checks are described in
+  [the particles guide](../usage/basic2d/particles.adoc).
 - Changed the runtime (`runtime`/`runtime_core`/wrapper) → `tests/runtime`; for
   the libc wrappers themselves also run `tests/libc`.
 - Changed `runtime/libc_impl` (or the libc wrappers) → `tests/libc` (its
