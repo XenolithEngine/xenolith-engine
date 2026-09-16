@@ -24,6 +24,7 @@
 #define EXAMPLES_WINDOW_PARTICLES_SRC_PARTICLES_PARTICLEDEMOLAYOUT_H_
 
 #include "particles/ParticleParamsPanel.h"
+#include "particles/ParticleReference.h"
 #include "XL2dSceneLayout.h"
 #include "XL2dLabel.h"
 #include "XL2dLayer.h"
@@ -135,6 +136,13 @@ protected:
 	Value encodeStats() const;
 	Value encodeFeedback(const EmitterSlot &) const;
 	Value encodeFeedback(const basic2d::ParticleFeedback &) const;
+
+	// What the renderer takes from the emitter's node, for the CPU reference
+	ParticleReferenceInput getReferenceInput(const EmitterSlot &) const;
+
+	// {steps, reference: [...]} at the steps of the snapshot's frame, or {referenceError}
+	void addReference(Value &, uint64_t emitterId, const basic2d::ParticleFeedback &,
+			uint32_t count) const;
 
 	void registerCommands();
 	void addCommand(StringView name, StringView description,

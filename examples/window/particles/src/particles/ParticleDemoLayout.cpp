@@ -775,30 +775,91 @@ Value ParticleDemoLayout::encodeFeedback(const basic2d::ParticleFeedback &feedba
 }
 
 static Value encodeParticle(uint32_t index, const basic2d::ParticleData &p) {
-	auto vec2 = [](const auto &v) {
+	auto vec = [](std::initializer_list<double> values) {
 		Value ret(Value::Type::ARRAY);
-		ret.addDouble(v.x);
-		ret.addDouble(v.y);
+		for (auto v : values) { ret.addDouble(v); }
 		return ret;
 	};
 
 	Value ret;
 	ret.setInteger(int64_t(index), "index");
-	ret.setValue(vec2(p.position), "position");
-	ret.setValue(vec2(p.velocity), "velocity");
-	ret.setValue(vec2(p.origin), "origin");
-	Value color(Value::Type::ARRAY);
-	color.addDouble(p.color.x);
-	color.addDouble(p.color.y);
-	color.addDouble(p.color.z);
-	color.addDouble(p.color.w);
-	ret.setValue(sp::move(color), "color");
+	Value rng(Value::Type::ARRAY);
+	rng.addInteger(int64_t(p.rng.state));
+	rng.addInteger(int64_t(p.rng.inc));
+	ret.setValue(sp::move(rng), "rng");
+	ret.setValue(vec({p.position.x, p.position.y}), "position");
+	ret.setValue(vec({p.velocity.x, p.velocity.y}), "velocity");
+	ret.setValue(vec({p.origin.x, p.origin.y}), "origin");
+	ret.setValue(vec({p.color.x, p.color.y, p.color.z, p.color.w}), "color");
 	ret.setDouble(p.angle, "angle");
+	ret.setDouble(p.angularVelocity, "angularVelocity");
 	ret.setDouble(p.scale, "scale");
 	ret.setDouble(p.hue, "hue");
-	ret.setInteger(int64_t(p.currentLifetime), "currentLifetime");
 	ret.setInteger(int64_t(p.fullLifetime), "fullLifetime");
+	ret.setInteger(int64_t(p.currentLifetime), "currentLifetime");
+	ret.setDouble(p.orbitalVelocity, "orbitalVelocity");
+	ret.setDouble(p.radialVelocity, "radialVelocity");
+	ret.setValue(vec({p.linearAcceleration.x, p.linearAcceleration.y}), "linearAcceleration");
+	ret.setDouble(p.acceleration, "acceleration");
+	ret.setDouble(p.radialAcceleration, "radialAcceleration");
+	ret.setDouble(p.tangentialAcceleration, "tangentialAcceleration");
 	return ret;
+}
+
+ParticleReferenceInput ParticleDemoLayout::getReferenceInput(const EmitterSlot &slot) const {
+	ParticleReferenceInput ret;
+	ret.system = slot.system->pop();
+
+	// As ParticleEmitter::pushCommands derives them
+	auto node = slot.node;
+	if (auto &texture = node->getTexture()) {
+		auto extent = texture->getExtent();
+		auto &rect = node->getTextureRect();
+		ret.defaultSize = Size2(extent.width * rect.size.width, extent.height * rect.size.height);
+	}
+	if (!hasFlag(basic2d::ParticleSystemFlags(ret.system->data.flags),
+				basic2d::ParticleSystemFlags::LocalCoords)) {
+		Mat4 content;
+		if (auto scene = node->getScene(); scene && scene->getContent()) {
+			content = scene->getContent()->getModelTransform();
+		}
+		ret.nodeToScene = content.getInversed() * node->getModelTransform();
+	}
+	return ret;
+}
+
+void ParticleDemoLayout::addReference(Value &ret, uint64_t emitterId,
+		const basic2d::ParticleFeedback &feedback, uint32_t count) const {
+	const EmitterSlot *slot = nullptr;
+	for (auto &it : _emitters) {
+		if (it.node->getEmitterId() == emitterId) {
+			slot = &it;
+		}
+	}
+
+	// The steps count from the restart only while the snapshot belongs to the current restart
+	if (!slot) {
+		ret.setString("the emitter is gone", "referenceError");
+		return;
+	}
+	if (feedback.restartGeneration != slot->system->getRestartGeneration()) {
+		ret.setString("the system restarted after the snapshot", "referenceError");
+		return;
+	}
+
+	auto steps = uint64_t(feedback.cycle) * feedback.framesInGen + feedback.cycleFrame;
+	Vector<basic2d::ParticleData> result;
+	if (!simulateParticleReference(getReferenceInput(*slot), steps, count, result)) {
+		ret.setString("no fixed seed", "referenceError");
+		return;
+	}
+
+	ret.setInteger(int64_t(steps), "steps");
+	Value particles(Value::Type::ARRAY);
+	for (uint32_t i = 0; i < result.size(); ++i) {
+		particles.addValue(encodeParticle(i, result[i]));
+	}
+	ret.setValue(sp::move(particles), "reference");
 }
 
 // ---- the scene tools ----------------------------------------------------------------------
@@ -1297,8 +1358,11 @@ void ParticleDemoLayout::registerCommands() {
 		auto &slot = _emitters[index];
 		auto n = uint32_t(sprt::clamp(args.getInteger("n", 16), int64_t(1),
 				int64_t(slot.system->getCount())));
+		auto reference = args.getBool("reference");
+		auto emitterId = slot.node->getEmitterId();
 		slot.node->requestSnapshot(n,
-				[this, done = sp::move(done)](basic2d::ParticleSnapshot &&snapshot) {
+				[this, done = sp::move(done), reference, emitterId, n](
+						basic2d::ParticleSnapshot &&snapshot) {
 			Value ret;
 			ret.setBool(snapshot.success, "ok");
 			if (snapshot.success) {
@@ -1308,6 +1372,9 @@ void ParticleDemoLayout::registerCommands() {
 					particles.addValue(encodeParticle(i, snapshot.particles[i]));
 				}
 				ret.setValue(sp::move(particles), "particles");
+				if (reference) {
+					addReference(ret, emitterId, snapshot.feedback, n);
+				}
 			} else {
 				ret.setString("the emitter left the scene before a frame", "reason");
 			}
