@@ -133,6 +133,13 @@ public:
 	virtual bool canHandleEvent(const InputEvent &event) const;
 	virtual InputEventState handleInputEvent(const InputEvent &, float density);
 
+	/* The owner's geometry has just been recomputed, while the pointer stayed where it was.*/
+	virtual InputEventState handleGeometryUpdate(const InputEvent &) {
+		return InputEventState::Declined;
+	}
+
+	virtual bool requiresGeometryUpdate() const { return false; }
+
 	virtual void onEnter(InputListener *);
 	virtual void onExit();
 
@@ -193,7 +200,7 @@ protected:
 
 class SP_PUBLIC GestureTapRecognizer : public GestureRecognizer {
 public:
-	using InputCallback = Function<void(const GestureTap &)>;
+	using InputCallback = Function<bool(const GestureTap &)>;
 	using ButtonMask = sprt::bitset<toInt(InputMouseButton::Max)>;
 
 	virtual ~GestureTapRecognizer() = default;
@@ -203,7 +210,8 @@ public:
 	virtual void update(uint64_t dt) override;
 	virtual void cancel() override;
 
-	virtual bool requiresUpdate() const override { return true; }
+	// An immediate recognizer reports every tap as it happens and needs no interval timer
+	virtual bool requiresUpdate() const override { return !_info.isImmediate(); }
 
 protected:
 	using GestureRecognizer::init;
@@ -215,6 +223,9 @@ protected:
 
 	// return true if tap was sent
 	virtual bool registerTap();
+
+	// hands the current _gesture to the callback as GestureEvent::Activated
+	void sendTap();
 
 	GestureTap _gesture;
 	InputCallback _callback;
@@ -232,6 +243,9 @@ public:
 
 	virtual void update(uint64_t dt) override;
 	virtual void cancel() override;
+
+	// The hold is counted in update(), so this recognizer requests updates itself.
+	virtual bool requiresUpdate() const override { return true; }
 
 protected:
 	using GestureRecognizer::init;
@@ -280,7 +294,7 @@ protected:
 
 class SP_PUBLIC GesturePinchRecognizer : public GestureRecognizer {
 public:
-	using InputCallback = Function<void(const GesturePinch &)>;
+	using InputCallback = Function<bool(const GesturePinch &)>;
 
 	virtual ~GesturePinchRecognizer() = default;
 
@@ -379,12 +393,17 @@ public:
 	virtual bool init(InputCallback &&, InputMouseOverInfo &&);
 
 	virtual InputEventState handleInputEvent(const InputEvent &, float density) override;
+	virtual InputEventState handleGeometryUpdate(const InputEvent &) override;
+	virtual bool requiresGeometryUpdate() const override { return true; }
 
 	virtual void onEnter(InputListener *) override;
 	virtual void onExit() override;
 
 protected:
 	using GestureRecognizer::init;
+
+	// The owner-under-the-pointer test, shared by the event and the geometry paths
+	InputEventState updateMouseOver(const InputEvent &, bool &stateChanged);
 
 	void updateState(const InputEvent &);
 

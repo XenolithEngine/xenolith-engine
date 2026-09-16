@@ -26,6 +26,12 @@ else
 sp_compile_dep = -MMD -MP -MF $(addsuffix .d,$(1)) $(2)
 endif
 
+ifdef POWERSHELL
+SP_SOURCE_FILES_PATTERN := *.cpp *.c *.s
+else
+SP_SOURCE_FILES_PATTERN := *.cpp *.c *.S *.s
+endif
+
 # $(1) - compiler
 # $(2) - filetype flags
 # $(3) - compile flags
@@ -36,25 +42,20 @@ sp_compile_command = $(1) $(2) $(call sp_compile_dep, $(5), $(3)) -c -o $(5) $(4
 
 sp_compile_command_asm = $(1) $(2) $(3) -c -o $(5) $(4)
 
-sp_compile_gch = $(GLOBAL_QUIET_CPP) $(call rule_mkdir,$(dir $@));\
-	$(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_GCH_FILE),$(1),$<,$@)
+sp_compile_gch = $(VERBOSE_GUARD) $(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_GCH_FILE),$(1),$<,$@)
 
-sp_compile_S = $(GLOBAL_QUIET_CC) $(call rule_mkdir,$(dir $@));\
-	$(call sp_compile_command_asm,$(GLOBAL_CC),,$(1),$<,$@)
+sp_compile_S = $(VERBOSE_GUARD) $(call sp_compile_command_asm,$(GLOBAL_CC),,$(1),$<,$@)
 
-sp_compile_c = $(GLOBAL_QUIET_CC) $(call rule_mkdir,$(dir $@));\
-	$(call sp_compile_command,$(GLOBAL_CC),$(OSTYPE_C_FILE),$(1),$<,$@)
+sp_compile_c = $(VERBOSE_GUARD) $(call sp_compile_command,$(GLOBAL_CC),$(OSTYPE_C_FILE),$(1),$<,$@)
 
-sp_compile_cpp = $(GLOBAL_QUIET_CPP) $(call rule_mkdir,$(dir $@));\
-	$(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_CPP_FILE),$(1),$<,$@)
+sp_compile_cpp = $(VERBOSE_GUARD) $(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_CPP_FILE),$(1),$<,$@)
 
-sp_compile_mm = $(GLOBAL_QUIET_CPP) $(call rule_mkdir,$(dir $@));\
-	$(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_MM_FILE),$(1) -fobjc-arc,$<,$@)
+sp_compile_mm = $(VERBOSE_GUARD) $(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_MM_FILE),$(1) -fobjc-arc,$<,$@)
 
-sp_copy_header = @$(call rule_mkdir,$(dir $@)); $(GLOBAL_CP) $< $@
+sp_copy_header = $(VERBOSE_GUARD) $(call rule_cp,$<,$@)
 
 sp_toolkit_source_list_c = $(call sp_make_general_source_list,$(1),$(2),$(GLOBAL_ROOT),\
-	*.cpp *.c *.S *.s $(if $(BUILD_OBJC),*.mm),\
+	$(SP_SOURCE_FILES_PATTERN) $(if $(BUILD_OBJC),*.mm),\
 	$(if $(BUILD_OBJC),,%.mm))
 
 sp_toolkit_source_list = $(call sp_toolkit_source_list_c,$(1),$(filter-out %.wit,$(2)))
@@ -66,6 +67,13 @@ sp_toolkit_object_list = \
 
 sp_toolkit_resolve_prefix_files = \
 	$(realpath $(addprefix $(GLOBAL_ROOT)/,$(call sp_list_relpaths,$(1)))) \
+	$(realpath $(call sp_list_abspaths,$(1)))
+
+# Аналог sp_toolkit_resolve_prefix_files для файлов уровня приложения:
+# относительные пути разрешаются относительно каталога приложения (LOCAL_ROOT),
+# а не корня фреймворка (GLOBAL_ROOT)
+sp_local_resolve_prefix_files = \
+	$(realpath $(addprefix $(LOCAL_ROOT)/,$(call sp_list_relpaths,$(1)))) \
 	$(realpath $(call sp_list_abspaths,$(1)))
 
 sp_toolkit_prefix_files_list = \
@@ -109,7 +117,7 @@ sp_local_private_flags = \
 
 
 sp_local_source_list_c = $(call sp_make_general_source_list,$(1),$(2),$(LOCAL_ROOT),\
-	*.cpp *.c *.S *.s $(if $(BUILD_OBJC),*.mm),\
+	$(SP_SOURCE_FILES_PATTERN) $(if $(BUILD_OBJC),*.mm),\
 	$(if $(BUILD_OBJC),,%.mm))
 
 sp_local_source_list = $(call sp_local_source_list_c,$(1),$(filter-out %.wit,$(2)))
@@ -148,20 +156,26 @@ sp_cdb_process_arg = \
 		$(if $(filter /%,$(1)),$(call sp_cdb_convert_cmd,$(1)),$(1))\
 	)
 
+comma := ,
+
 sp_cdb_split_arguments_cmd = \
 	"$(call sp_cdb_which_cmd,$(1))"\
-	$(foreach arg,$(2),,"$(foreach a,$(call sp_cdb_process_arg,$(arg)),$(a))")
+	$(foreach arg,$(2),$(comma)"$(foreach a,$(call sp_cdb_process_arg,$(arg)),$(a))")
 
+build_cdb_entry = \
+	{"directory":"$(strip $(call sp_cdb_convert_cmd,$(BUILD_WORKDIR)))"$(comma)\
+	"file":"$(strip $(call sp_cdb_convert_cmd,$(1)))"$(comma)\
+	"output":"$(strip $(call sp_cdb_convert_cmd,$(2)))"$(comma)\
+	"arguments":[$(call sp_cdb_split_arguments_cmd,$(5),$(call sp_compile_command,,$(OSTYPE_CPP_FILE),$(4),$(1),$(2)))]}$(comma)
 
-define BUILD_cdb_json_file
-
-endef
 
 # $(1) - source path
 # $(2) - target path
 define BUILD_include_rule
 $(2): $(1) $$(LOCAL_MAKEFILE) $$($TOOLKIT_MODULES)
+	@$$(call rule_mkdir,$$(dir $$@))
 	$$(call sp_copy_header,$(1),$(2))
+$(2):.TARGET_NAME = [Copy header] $(notdir $(1))
 endef
 
 # $(1) - source path
@@ -170,7 +184,10 @@ endef
 define BUILD_gch_rule
 $(abspath $(1)): $(patsubst %.h$(OSTYPE_GCH_SUFFIX),%.h,$(1)) \
 		$$(LOCAL_MAKEFILE) $$($TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) $(3)
+	@$$(call rule_mkdir,$$(dir $$@))
+	$$(GLOBAL_QUIET_CPP)
 	$$(call sp_compile_gch,$(2))
+$(abspath $(1)):.TARGET_NAME = [Precompiled header] $(notdir $(1))
 endef
 
 # $(1) - source path
@@ -180,14 +197,14 @@ endef
 define BUILD_c_rule
 $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 	@$(call rule_mkdir,$$(dir $$@))
-	@echo '{"directory":"$$(strip $$(call sp_cdb_convert_cmd,$$(BUILD_WORKDIR)))",\
-"file":"$$(strip $$(call sp_cdb_convert_cmd,$(1)))",\
-"output":"$$(strip $$(call sp_cdb_convert_cmd,$(2)))",\
-"arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CC),$$(call sp_compile_command,,$$(OSTYPE_C_FILE),$(4),$(1),$(2)))]},' > $$@
-	@$(GLOBAL_ECHO) "[Compilation database entry]: $(notdir $(1))"
+	@$(WRITE_START) '$$(call build_cdb_entry,$(1),$(2),$(3),$(4),$$(GLOBAL_CXX))' $(WRITE_END) 
+	$(call target_log,"[Compilation database entry]: $(notdir $(1))")
+$(2).json:.TARGET_NAME := [Compilation database entry] $(notdir $(1))
 
 $(2): $(1) $(3) $$(LOCAL_MAKEFILE) \
 		$$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) | $(2).json $$(BUILD_COMPILATION_DATABASE)
+	@$$(call rule_mkdir,$$(dir $$@))
+	$$(GLOBAL_QUIET_CC)
 	$$(call sp_compile_c,$(4))
 endef
 
@@ -198,7 +215,10 @@ endef
 define BUILD_S_rule
 $(2): \
 		$(1) $(3)
+	@$$(call rule_mkdir,$$(dir $$@))
+	$$(GLOBAL_QUIET_CC)
 	$$(call sp_compile_S,$(4))
+$(2):.TARGET_NAME = [ASM] $(notdir $(1))
 endef
 
 # $(1) - source path
@@ -208,14 +228,14 @@ endef
 define BUILD_cpp_rule
 $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 	@$(call rule_mkdir,$$(dir $$@))
-	@echo '{"directory":"$$(strip $$(call sp_cdb_convert_cmd,$$(BUILD_WORKDIR)))",\
-"file":"$$(strip $$(call sp_cdb_convert_cmd,$(1)))",\
-"output":"$$(strip $$(call sp_cdb_convert_cmd,$(2)))",\
-"arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CXX),$$(call sp_compile_command,,$$(OSTYPE_CPP_FILE),$(4),$(1),$(2)))]},' > $$@
-	@$(GLOBAL_ECHO) "[Compilation database entry]: $(notdir $(1))"
+	@$(WRITE_START) '$$(call build_cdb_entry,$(1),$(2),$(3),$(4),$$(GLOBAL_CXX))' $(WRITE_END) 
+	$(call target_log,"[Compilation database entry]: $(notdir $(1))")
+$(2).json:.TARGET_NAME := [Compilation database entry] $(notdir $(1))
 
 $(2): $(1) $(3) $$(LOCAL_MAKEFILE) \
 		$$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) | $(2).json $$(BUILD_COMPILATION_DATABASE)
+	@$$(call rule_mkdir,$$(dir $$@))
+	$$(GLOBAL_QUIET_CPP)
 	$$(call sp_compile_cpp,$(4))
 endef
 
@@ -226,14 +246,14 @@ endef
 define BUILD_mm_rule
 $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 	@$(call rule_mkdir,$$(dir $$@))
-	@echo '{"directory":"$$(strip $$(call sp_cdb_convert_cmd,$$(BUILD_WORKDIR)))",\
-"file":"$$(strip $$(call sp_cdb_convert_cmd,$(1)))",\
-"output":"$$(strip $$(call sp_cdb_convert_cmd,$(2)))",\
-"arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CXX),$$(call sp_compile_command,,$$(OSTYPE_MM_FILE),$(4),$(1),$(2)))]},' > $$@
-	@$(GLOBAL_ECHO) "[Compilation database entry]: $(notdir $(1))"
+	@$(WRITE_START) '$$(call build_cdb_entry,$(1),$(2),$(3),$(4),$$(GLOBAL_CXX))' $(WRITE_END) 
+	$(call target_log,"[Compilation database entry]: $(notdir $(1))")
+$(2).json:.TARGET_NAME := [Compilation database entry] $(notdir $(1))
 
 $(2): $(1) $(3) $$(LOCAL_MAKEFILE) \
 		$$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) | $(2).json $$(BUILD_COMPILATION_DATABASE)
+	@$$(call rule_mkdir,$$(dir $$@))
+	$$(GLOBAL_QUIET_CPP)
 	$$(call sp_compile_mm,$(4))
 endef
 

@@ -1,0 +1,25 @@
+Subject: [PATCH 4/4] [lldb] Adapt POSIX-Wine-DYLD to the 22.1 CreateBreakpoint API
+
+LLVM 22.1 removed Target::CreateBreakpoint's single-`const char *func_name`
+overload. It was only a convenience wrapper: it forwarded to the names-array
+overload, which builds a BreakpointResolverName from (func_names, num_names).
+The Wine DYLD plugin sets breakpoints on one symbol at a time, so pass a
+one-element array and the matching count.
+
+Kept separate from 0002 so that patch stays the upstream-carried plugin as
+posted; this is our port of it to the newer lldb API.
+--- a/lldb/source/Plugins/DynamicLoader/POSIX-Wine-DYLD/DynamicLoaderPOSIXWineDYLD.cpp
++++ b/lldb/source/Plugins/DynamicLoader/POSIX-Wine-DYLD/DynamicLoaderPOSIXWineDYLD.cpp
+@@ -540,8 +540,11 @@
+   const bool hardware = false;
+   const LazyBool skip_prologue = eLazyBoolCalculate;
+   const lldb::addr_t offset = 0;
++  // LLVM 22.1 dropped the single-`const char *func_name` convenience overload;
++  // it was a wrapper around the names-array one, so pass a one-element array.
++  const char *symbol_names[] = {symbol};
+   BreakpointSP bp_sp = m_process->GetTarget().CreateBreakpoint(
+-      &module_spec_list, nullptr, symbol, eFunctionNameTypeAuto,
++      &module_spec_list, nullptr, symbol_names, 1, eFunctionNameTypeAuto,
+       eLanguageTypeUnknown, offset, skip_prologue, internal, hardware);
+ 
+   if (bp_sp->GetNumLocations() == 0) {

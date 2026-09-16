@@ -1,0 +1,237 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_INT_SET_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_INT_SET_H_
+
+#include <sprt/cxx/__algorithm/bounds.h>
+#include <sprt/cxx/__memory/allocator_traits.h>
+#include <sprt/cxx/initializer_list>
+
+#include <sprt/cxx/detail/int_hash_memory.h>
+#include <sprt/cxx/detail/access_token.h>
+#include <sprt/cxx/detail/allocator_pool.h>
+#include <sprt/cxx/detail/allocator_malloc.h>
+
+namespace sprt {
+
+// unordered_set-like container for uint32_t/uint64_t keys, backed by int_hash_memory: a value is
+// its own hash, so there is no hasher, no key_equal and no per-node value storage — a node is just
+// the integer plus chain bits (8 bytes for uint32_t, 16 for uint64_t).
+template <typename Key, typename Allocator>
+class __int_set : public Allocator::base_class {
+public:
+	// types
+	using key_type = Key;
+	using value_type = Key;
+	using allocator_type = Allocator;
+	using pointer = typename allocator_traits<Allocator>::pointer;
+	using const_pointer = typename allocator_traits<Allocator>::const_pointer;
+	using reference = const value_type &;
+	using const_reference = const value_type &;
+	using size_type = size_t;
+	using difference_type = ptrdiff_t;
+
+	using container_type = detail::int_hash_memory<key_type, Allocator>;
+
+	using iterator = container_type::const_iterator;
+	using const_iterator = container_type::const_iterator;
+	using node_type = container_type::node_type;
+
+	~__int_set() { }
+
+	// construct/copy/destroy
+	__int_set() : _container(0, allocator_type()) { }
+
+	explicit __int_set(size_type n, const allocator_type &a = allocator_type()) noexcept
+	: _container(n, a) { }
+
+	template <typename InputIter,
+			enable_if_t<__has_input_iterator_category<InputIter>::value, int> = 0>
+	__int_set(InputIter f, InputIter l, size_type n = 0,
+			const allocator_type &a = allocator_type()) noexcept
+	: _container(n, a) {
+		while (f != l) { _container.insert(*f++); }
+	}
+
+	__int_set(const __int_set &other) noexcept
+	: _container(0,
+			  sprt::allocator_traits<allocator_type>::select_on_container_copy_construction(
+					  other.get_allocator())) {
+		_container.max_load_factor(other.max_load_factor());
+		_container.copy_from(other._container);
+	}
+
+	__int_set(__int_set &&other) noexcept : _container(0, other.get_allocator()) {
+		_container.max_load_factor(other.max_load_factor());
+		_container.move_from(sprt::move(other._container));
+	}
+
+	explicit __int_set(const Allocator &a) noexcept : _container(0, a) { }
+
+	__int_set(const __int_set &other, const type_identity_t<Allocator> &a) noexcept
+	: _container(0, allocator_type(a)) {
+		_container.max_load_factor(other.max_load_factor());
+		_container.copy_from(other._container);
+	}
+	__int_set(__int_set &&other, const type_identity_t<Allocator> &a) noexcept
+	: _container(0, allocator_type(a)) {
+		_container.max_load_factor(other.max_load_factor());
+		_container.move_from(sprt::move(other._container));
+	}
+
+	__int_set(initializer_list<value_type> il, size_type n = 0,
+			const allocator_type &a = allocator_type()) noexcept
+	: _container(sprt::max(static_cast<size_type>(n),
+						 static_cast<size_type>(
+								 __builtin_floorf(il.size() * container_type::CoverageLoadFactor))),
+			  a) {
+		for (auto &it : il) { _container.insert(it); }
+	}
+
+	__int_set &operator=(const __int_set &other) noexcept {
+		using traits = sprt::allocator_traits<allocator_type>;
+
+		if constexpr (traits::propagate_on_container_copy_assignment::value) {
+			_container.set_allocator(other.get_allocator());
+		}
+
+		_container.copy_from(other._container);
+		return *this;
+	}
+	__int_set &operator=(__int_set &&other) noexcept {
+		using traits = sprt::allocator_traits<allocator_type>;
+
+		if constexpr (traits::propagate_on_container_move_assignment::value) {
+			_container.set_allocator(other.get_allocator());
+		}
+
+		_container.move_from(sprt::move(other._container));
+		return *this;
+	}
+	__int_set &operator=(initializer_list<value_type> il) noexcept {
+		clear();
+		rehash(__builtin_floorf(il.size() * container_type::CoverageLoadFactor));
+		for (auto &it : il) { _container.insert(it); }
+		return *this;
+	}
+
+	allocator_type get_allocator() const noexcept { return _container.get_allocator(); }
+
+	// iterators
+	const_iterator begin() const noexcept { return _container.begin(); }
+	const_iterator end() const noexcept { return _container.end(); }
+	const_iterator cbegin() const noexcept { return _container.begin(); }
+	const_iterator cend() const noexcept { return _container.end(); }
+
+	// capacity
+	bool empty() const noexcept { return _container.size() == 0; }
+	size_type size() const noexcept { return _container.size(); }
+	size_type max_size() const noexcept { return _container.max_size(); }
+
+	// modifiers
+	template <typename... Args>
+	pair<iterator, bool> emplace(Args &&...args) noexcept {
+		return insert(value_type(sprt::forward<Args>(args)...));
+	}
+	pair<iterator, bool> insert(value_type obj) noexcept {
+		return _container.template insert<iterator>(obj);
+	}
+	iterator insert(const_iterator hint, value_type obj) noexcept {
+		// there is no hinted variant for int_hash_memory backend
+		return insert(obj).first;
+	}
+	template <typename InputIter,
+			enable_if_t<__has_input_iterator_category<InputIter>::value, int> = 0>
+	void insert(InputIter first, InputIter last) noexcept {
+		while (first != last) { _container.insert(*first++); }
+	}
+	void insert(initializer_list<value_type> il) noexcept {
+		for (auto &it : il) { _container.insert(it); }
+	}
+
+	iterator erase(const_iterator position) { return _container.erase(position); }
+	size_type erase(const key_type &k) {
+		auto it = _container.find(k);
+		if (it != _container.end()) {
+			_container.erase(it);
+			return 1;
+		}
+		return 0;
+	}
+	iterator erase(const_iterator first, const_iterator last) {
+		auto e = end();
+		while (first != last && first != e) { first = _container.erase(first); }
+		return first;
+	}
+
+	void swap(__int_set &other) noexcept { _container.swap(other._container); }
+	void clear() noexcept { _container.clear_free(); }
+
+	// set operations
+	const_iterator find(const key_type &k) const { return _container.find(k); }
+
+	size_type count(const key_type &k) const { return _container.count(k); }
+
+	bool contains(const key_type &k) const {
+		return _container.find(k) != _container.end(); //
+	}
+
+	// hash policy
+	float load_factor() const noexcept { return _container.load_factor(); }
+	float max_load_factor() const noexcept { return _container.max_load_factor(); }
+	void max_load_factor(float z) { _container.max_load_factor(z); }
+	void rehash(size_type n) { _container.rehash(n); }
+	void reserve(size_type n) { rehash(__builtin_ceilf(n / max_load_factor())); }
+
+protected:
+	container_type _container;
+};
+
+template <typename Value>
+using __pool_int_set = __int_set<Value, detail::AllocatorPool<Value>>;
+
+template <typename Value>
+using __malloc_int_set = __int_set<Value, detail::AllocatorMalloc<Value>>;
+
+template <typename Value, typename Allocator>
+inline void swap(__int_set<Value, Allocator> &__x, __int_set<Value, Allocator> &__y) noexcept {
+	__x.swap(__y);
+}
+
+template <typename Value, typename Allocator>
+inline bool operator==(const __int_set<Value, Allocator> &__x,
+		const __int_set<Value, Allocator> &__y) noexcept {
+	if (__x.size() != __y.size()) {
+		return false;
+	}
+	for (auto &it : __x) {
+		if (!__y.contains(it)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_INT_SET_H_

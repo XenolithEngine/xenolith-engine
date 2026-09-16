@@ -56,7 +56,8 @@ enum class QueueEngine : uint32_t {
 	IOCP = 1 << 3, // Windows IOCP
 	KQueue = 1 << 4, // BSD/MacOS kqueue
 	RunLoop = 1 << 5, // MacOS CFRunLoop
-	Any = URing | EPoll | ALooper | IOCP | KQueue | RunLoop,
+	Wasm = 1 << 6, // WebAssembly futex/condvar reactor (no fds)
+	Any = URing | EPoll | ALooper | IOCP | KQueue | RunLoop | Wasm,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(QueueEngine)
@@ -125,6 +126,69 @@ public:
 	Rc<PollHandle> listenPollableHandle(NativeHandle, PollFlags,
 			dispatch::Function<Status(NativeHandle, PollFlags)> &&, Ref * = nullptr);
 
+	// Spawn a child process running `command` via the system shell. The returned
+	// handle represents the process; its completion fires once on exit with the
+	// exit code in `value`. ProcessInfo::reader receives merged stdout/stderr.
+	Rc<ProcessHandle> spawnProcess(ProcessInfo &&, Ref * = nullptr);
+
+	// Convenience form: `reader` receives output chunks; `onExit` receives the
+	// exit code and final Status. Uses the Handle userdata slot for private data.
+	Rc<ProcessHandle> spawnProcess(StringView command,
+			dispatch::Function<void(StringView)> &&reader,
+			dispatch::Function<void(int exitCode, Status)> &&onExit, Ref * = nullptr);
+
+	// Asynchronous file read: streams the file contents to FileReadInfo::reader
+	// (each chunk on the looper thread) and fires the completion once when the
+	// whole file is read (value = total bytes) or on error.
+	Rc<FileHandle> readFile(FileReadInfo &&, Ref * = nullptr);
+
+	// Asynchronous file write: writes FileWriteInfo::data (honoring Append /
+	// CreateExclusive) and fires the completion when all bytes are written.
+	Rc<FileHandle> writeFile(FileWriteInfo &&, Ref * = nullptr);
+
+	// Convenience forms (path + plain callbacks). Chain further operations onto
+	// the returned handle with FileHandle::appendRead / appendWrite.
+	Rc<FileHandle> readFile(StringView path, dispatch::Function<void(BytesView)> &&reader,
+			dispatch::Function<void(Status)> &&onDone, Ref * = nullptr);
+	Rc<FileHandle> writeFile(StringView path, BytesView data, OpenFlags,
+			dispatch::Function<void(Status)> &&onDone, Ref * = nullptr);
+
+	// Watch a single file by name for filesystem changes. The completion fires on
+	// each change with the observed WatchFlags in `value` and stays armed until
+	// the handle is cancelled. Returns nullptr where the backend has no file-watch
+	// implementation (currently non-Linux/Android). Uses the Handle userdata slot
+	// for the Ref.
+	Rc<WatchHandle> watchFile(WatchInfo &&, Ref * = nullptr);
+
+	// Listen for stream-socket connections on ListenInfo::address:
+	// ListenInfo::onAccept runs on the looper thread once per accepted
+	// connection; the completion fires once when the listener terminates.
+	// Returns nullptr (firing the completion with ErrorNotImplemented) where the
+	// backend has no socket support (wasm, CFRunLoop), or with the error when
+	// bind/listen fails.
+	Rc<ListenHandle> listenSocket(ListenInfo &&, Ref * = nullptr);
+
+	// Convenience form: address + accept callback.
+	Rc<ListenHandle> listenSocket(const SocketAddress &, ListenInfo::AcceptCallback &&onAccept,
+			Ref * = nullptr);
+
+	// Open a stream-socket connection to ConnectInfo::address (non-blocking):
+	// the completion fires exactly once - Status::Ok when established, the error
+	// otherwise (possibly synchronously, before this method returns). Reads and
+	// writes may be issued on the returned handle right away.
+	Rc<StreamHandle> connectSocket(ConnectInfo &&, Ref * = nullptr);
+
+	// Convenience form: `onConnect` receives the connect result. Uses the Handle
+	// userdata slot for private data.
+	Rc<StreamHandle> connectSocket(const SocketAddress &,
+			dispatch::Function<void(StreamHandle *, Status)> &&onConnect, Ref * = nullptr);
+
+	// Convenience form: `onChange` receives the WatchFlags of each change; return
+	// anything other than Status::Ok to cancel the watch. Uses the Handle userdata
+	// slot for private data.
+	Rc<WatchHandle> watchFile(StringView path, WatchFlags,
+			dispatch::Function<Status(WatchFlags)> &&onChange, Ref * = nullptr);
+
 	Rc<ThreadHandle> addThreadHandle();
 
 	// run custom handle
@@ -154,6 +218,10 @@ public:
 	Status wakeup(WakeupFlags = WakeupFlags::ContextDefault);
 
 	void cancel();
+
+	// shutdown any pending async ops in true-async (uring) mode.
+	// noop on non-async modes
+	void shutdown();
 
 	Data *getData() const { return _data; }
 

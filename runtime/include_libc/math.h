@@ -31,8 +31,8 @@ THE SOFTWARE.
 	Each real function comes in three precisions: the bare name takes/returns double,
 	the f-suffixed name float, and the l-suffixed name long double (e.g. cos/cosf/cosl).
 	In C++ the functions instead live in namespace sprt::_cmath (pulled into the global
-	scope when hosted-and-not-SPRT-build, and into std:: under __SPRT_AS_STD) as
-	type-generic overloads plus arithmetic-promoting templates; the classification and
+	scope when hosted-and-not-SPRT-build) as type-generic overloads plus
+	arithmetic-promoting templates; the classification and
 	comparison entries below are real functions in C++ but macros in C.
 
 	Macros:
@@ -69,6 +69,17 @@ THE SOFTWARE.
 #else
 
 #include <sprt/wrappers/libc/math.h>
+
+// ISO C error-handling macros (the __SPRT_* backings come in via the wrapper).
+#ifndef MATH_ERRNO
+#define MATH_ERRNO __SPRT_MATH_ERRNO
+#endif
+#ifndef MATH_ERREXCEPT
+#define MATH_ERREXCEPT __SPRT_MATH_ERREXCEPT
+#endif
+#ifndef math_errhandling
+#define math_errhandling __SPRT_math_errhandling
+#endif
 
 #endif
 

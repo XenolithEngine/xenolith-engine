@@ -26,6 +26,7 @@
 #include <sprt/cxx/__functional/reference_wrapper.h>
 
 namespace sprt {
+inline namespace __cxx_type_traits {
 
 template <typename _Tp>
 struct unwrap_reference {
@@ -46,6 +47,7 @@ using unwrap_reference_t = typename unwrap_reference<_Tp>::type;
 template <typename _Tp>
 struct unwrap_ref_decay : unwrap_reference<decay_t<_Tp> > { };
 
+} // inline namespace __cxx_type_traits
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_UNWRAP_REF_H_

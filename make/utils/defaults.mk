@@ -48,10 +48,18 @@ print_verbose =
 endif
 
 
+ifdef XLMAKE_VERSION
+MAKE_4_1 := 1 # xlmake is 4.1-compatible
+$(info Using xlmake (4.1-compatible): $(XLMAKE_VERSION) on $(XL_UNAME_SYSNAME) $(XL_UNAME_MACHINE))
+
+else
+
 ifeq (4.1,$(firstword $(sort $(MAKE_VERSION) 4.1)))
 MAKE_4_1 := 1
 else
 $(info COMPATIBILITY MODE: Some functions may not work. Minimal required make version: 4.1)
+endif
+
 endif
 
 
@@ -80,6 +88,8 @@ LOCAL_EXEC_LIVE_RELOAD ?= 0
 
 LOCAL_ROOT := $(subst \,/,$(LOCAL_ROOT))
 LOCAL_OUTDIR := $(subst \,/,$(LOCAL_OUTDIR))
+
+LOCAL_MACOS_BUNDLE ?= 1
 
 ifneq ($(filter %/,$(LOCAL_ROOT)),)
 LOCAL_ROOT := $(patsubst %/,%,$(LOCAL_ROOT))
@@ -162,13 +172,15 @@ APPCONFIG_VERSION_API ?= 0
 APPCONFIG_VERSION_REV ?= 0
 APPCONFIG_VERSION_BUILD ?= 0
 
-
+ifdef XLMAKE_VERSION
+include $(BUILD_ROOT)/utils/init-xlmake.mk
+else
 ifeq ($(findstring Windows,$(OS)),Windows)
 include $(BUILD_ROOT)/utils/init-powershell.mk
 else # Windows
 include $(BUILD_ROOT)/utils/init-sh.mk
 endif # Windows
-
+endif
 
 ifdef SHARED_PREFIX
 GLOBAL_ROOT := $(SHARED_PREFIX)
@@ -218,6 +230,8 @@ endif
 # Find target toolchain's half
 #
 
+STAPPLER_TARGET_DIR :=
+
 ifndef STAPPLER_TARGET
 $(call print_verbose,(defaults.mk) No user-provided target, use STAPPLER_HOST: $(STAPPLER_HOST))
 STAPPLER_TARGET := $(STAPPLER_HOST)
@@ -229,16 +243,18 @@ ifdef STAPPLER_TARGET_FILE
 
 $(call print_verbose,(defaults.mk) Use user-provided host file: $(STAPPLER_TARGET_FILE))
 include $(STAPPLER_TARGET_FILE)
-
+STAPPLER_TARGET_DIR := $(dir $(STAPPLER_TARGET_FILE))
 else
 
 $(call print_verbose,(defaults.mk) Try to find target file in GLOBAL_ROOT: $(GLOBAL_ROOT)/toolchains/targets/$(STAPPLER_TARGET)/target.mk)
 
 -include $(GLOBAL_ROOT)/toolchains/targets/$(STAPPLER_TARGET)/target.mk
+STAPPLER_TARGET_DIR := $(GLOBAL_ROOT)/toolchains/targets/$(STAPPLER_TARGET)
 
 ifndef TARGET_SYSROOT
 $(call print_verbose,(defaults.mk) Failed! Try runtime root: $(GLOBAL_ROOT)/runtime/toolchains/targets/$(STAPPLER_TARGET)/target.mk)
 -include $(GLOBAL_ROOT)/runtime/toolchains/targets/$(STAPPLER_TARGET)/target.mk
+STAPPLER_TARGET_DIR := $(GLOBAL_ROOT)/runtime/toolchains/targets/$(STAPPLER_TARGET)
 endif
 
 endif
@@ -249,7 +265,18 @@ endif
 
 
 LOCAL_INSTALL_DIR ?= $(LOCAL_OUTDIR)/$(STAPPLER_TARGET)
-BUILD_OUTDIR := $(LOCAL_OUTDIR)/$(STAPPLER_TARGET)/$(BUILD_TYPE)
+
+# Канонизируем корень каталога сборки так же, как GLOBAL_ROOT (через realpath).
+# Иначе -I на генерируемые каталоги внутри BUILD_OUTDIR (каталог шейдеров, копии
+# предкомпилированных заголовков) сохраняют написание пути, с которым вызвали make
+# (симлинк, bind-mount, путь с ".."), тогда как пути от GLOBAL_ROOT всегда каноничны.
+# Наборы -I расходятся, cached_flags.mk не совпадает — и запускается полная пересборка
+# при каждом обращении к тому же дереву через другое написание пути.
+# Листовой каталог сборки может ещё не существовать, поэтому берём realpath самого
+# глубокого существующего родителя и дописываем недостающий остаток.
+sp_realpath = $(if $(realpath $(1)),$(realpath $(1)),$(addsuffix /$(notdir $(1)),$(call sp_realpath,$(patsubst %/,%,$(dir $(1))))))
+
+BUILD_OUTDIR := $(abspath $(call sp_realpath,$(LOCAL_OUTDIR))/$(STAPPLER_TARGET)/$(BUILD_TYPE))
 
 $(call print_verbose,(defaults.mk) STAPPLER_TARGET: $(STAPPLER_TARGET))
 $(call print_verbose,(defaults.mk) BUILD_OUTDIR: $(BUILD_OUTDIR))

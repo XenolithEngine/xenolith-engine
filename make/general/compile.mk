@@ -40,10 +40,10 @@ include $(BUILD_ROOT)/shaders/compiler.mk
 $(call print_verbose,(general/compile.mk) include c/compiler.mk)
 include $(BUILD_ROOT)/c/compiler.mk
 
-$(call print_verbose,(general/compile.mk) include wasm/compiler.mk)
-include $(BUILD_ROOT)/wasm/compiler.mk
-
 # Вычисляем цели для сборки (библиотеки и приложение)
+$(call print_verbose,(general/compile.mk) include embed/compiler.mk)
+include $(BUILD_ROOT)/embed/compiler.mk
+
 $(call print_verbose,(general/compile.mk) include utils/build-targets.mk)
 include $(BUILD_ROOT)/utils/build-targets.mk
 
@@ -55,8 +55,8 @@ include $(BUILD_ROOT)/utils/resolve-modules.mk
 $(call print_verbose,(general/compile.mk) include shaders/apply.mk)
 include $(BUILD_ROOT)/shaders/apply.mk
 
-$(call print_verbose,(general/compile.mk) include wasm/apply.mk)
-include $(BUILD_ROOT)/wasm/apply.mk
+$(call print_verbose,(general/compile.mk) include embed/apply.mk)
+include $(BUILD_ROOT)/embed/apply.mk
 
 $(call print_verbose,(general/compile.mk) include c/apply.mk)
 include $(BUILD_ROOT)/c/apply.mk

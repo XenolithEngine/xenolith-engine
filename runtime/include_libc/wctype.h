@@ -73,6 +73,12 @@ typedef __SPRT_ID(wctype_t) wctype_t;
 typedef __SPRT_ID(wctrans_t) wctrans_t;
 typedef __SPRT_ID(locale_t) locale_t;
 
+// ISO C requires <wctype.h> to define WEOF (the __SPRT_WEOF backing arrives via
+// <sprt/c/cross/__sprt_mbstate.h>, included by <sprt/c/__sprt_wctype.h>).
+#ifndef WEOF
+#define WEOF __SPRT_WEOF
+#endif
+
 __SPRT_BEGIN_DECL
 
 SPRT_UMBRELLA_FUNC
@@ -175,7 +181,7 @@ SPRT_UMBRELLA_FUNC
 int iswctype(wint_t ch, wctype_t t) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_iswctype(ch);
+	return __sprt_iswctype(ch, t);
 }
 #endif
 
@@ -183,10 +189,14 @@ SPRT_UMBRELLA_FUNC
 wint_t towctrans(wint_t ch, wctrans_t t) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_towctrans(ch);
+	return __sprt_towctrans(ch, t);
 }
 #endif
 
+// towlower/towupper are also exposed through <wchar.h>; guard so the two
+// headers can be co-included without duplicating the inline definition.
+#ifndef __SPRT_DEFINED_towlower
+#define __SPRT_DEFINED_towlower
 SPRT_UMBRELLA_FUNC
 wint_t towlower(wint_t ch) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -194,7 +204,10 @@ wint_t towlower(wint_t ch) SPRT_UMBRELLA_END
 	return __sprt_towlower(ch);
 }
 #endif
+#endif // __SPRT_DEFINED_towlower
 
+#ifndef __SPRT_DEFINED_towupper
+#define __SPRT_DEFINED_towupper
 SPRT_UMBRELLA_FUNC
 wint_t towupper(wint_t ch) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -202,12 +215,13 @@ wint_t towupper(wint_t ch) SPRT_UMBRELLA_END
 	return __sprt_towupper(ch);
 }
 #endif
+#endif // __SPRT_DEFINED_towupper
 
 SPRT_UMBRELLA_FUNC
 wctrans_t wctrans(const char *str) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_wctrans(ch);
+	return __sprt_wctrans(str);
 }
 #endif
 
@@ -215,7 +229,7 @@ SPRT_UMBRELLA_FUNC
 wctype_t wctype(const char *str) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_wctype(ch);
+	return __sprt_wctype(str);
 }
 #endif
 
@@ -224,7 +238,7 @@ SPRT_UMBRELLA_FUNC
 int iswalnum_l(wint_t ch, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_iswalnum_l(ch);
+	return __sprt_iswalnum_l(ch, loc);
 }
 #endif
 
@@ -232,7 +246,7 @@ SPRT_UMBRELLA_FUNC
 int iswalpha_l(wint_t ch, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_iswalpha_l(ch);
+	return __sprt_iswalpha_l(ch, loc);
 }
 #endif
 
@@ -240,7 +254,7 @@ SPRT_UMBRELLA_FUNC
 int iswblank_l(wint_t ch, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_iswblank_l(ch);
+	return __sprt_iswblank_l(ch, loc);
 }
 #endif
 
@@ -248,7 +262,7 @@ SPRT_UMBRELLA_FUNC
 int iswcntrl_l(wint_t ch, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_iswcntrl_l(ch);
+	return __sprt_iswcntrl_l(ch, loc);
 }
 #endif
 
@@ -256,7 +270,7 @@ SPRT_UMBRELLA_FUNC
 int iswdigit_l(wint_t ch, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_iswdigit_l(ch);
+	return __sprt_iswdigit_l(ch, loc);
 }
 #endif
 
@@ -264,7 +278,7 @@ SPRT_UMBRELLA_FUNC
 int iswgraph_l(wint_t ch, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_iswgraph_l(ch);
+	return __sprt_iswgraph_l(ch, loc);
 }
 #endif
 
@@ -272,7 +286,7 @@ SPRT_UMBRELLA_FUNC
 int iswlower_l(wint_t ch, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_iswlower_l(ch);
+	return __sprt_iswlower_l(ch, loc);
 }
 #endif
 
@@ -280,7 +294,7 @@ SPRT_UMBRELLA_FUNC
 int iswprint_l(wint_t ch, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_iswprint_l(ch);
+	return __sprt_iswprint_l(ch, loc);
 }
 #endif
 
@@ -288,7 +302,7 @@ SPRT_UMBRELLA_FUNC
 int iswpunct_l(wint_t ch, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_iswpunct_l(ch);
+	return __sprt_iswpunct_l(ch, loc);
 }
 #endif
 
@@ -296,7 +310,7 @@ SPRT_UMBRELLA_FUNC
 int iswspace_l(wint_t ch, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_iswspace_l(ch);
+	return __sprt_iswspace_l(ch, loc);
 }
 #endif
 
@@ -304,7 +318,7 @@ SPRT_UMBRELLA_FUNC
 int iswupper_l(wint_t ch, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_iswupper_l(ch);
+	return __sprt_iswupper_l(ch, loc);
 }
 #endif
 
@@ -312,7 +326,7 @@ SPRT_UMBRELLA_FUNC
 int iswxdigit_l(wint_t ch, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_iswxdigit_l(ch);
+	return __sprt_iswxdigit_l(ch, loc);
 }
 #endif
 
@@ -320,7 +334,7 @@ SPRT_UMBRELLA_FUNC
 int iswctype_l(wint_t ch, wctype_t t, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_iswctype_l(ch);
+	return __sprt_iswctype_l(ch, t, loc);
 }
 #endif
 
@@ -328,7 +342,7 @@ SPRT_UMBRELLA_FUNC
 wint_t towlower_l(wint_t ch, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_towlower_l(ch);
+	return __sprt_towlower_l(ch, loc);
 }
 #endif
 
@@ -336,7 +350,7 @@ SPRT_UMBRELLA_FUNC
 wint_t towupper_l(wint_t ch, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_towupper_l(ch);
+	return __sprt_towupper_l(ch, loc);
 }
 #endif
 
@@ -344,7 +358,7 @@ SPRT_UMBRELLA_FUNC
 wint_t towctrans_l(wint_t ch, wctrans_t t, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_towctrans_l(ch);
+	return __sprt_towctrans_l(ch, t, loc);
 }
 #endif
 
@@ -352,7 +366,7 @@ SPRT_UMBRELLA_FUNC
 wctrans_t wctrans_l(const char *str, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_wctrans_l(ch);
+	return __sprt_wctrans_l(str, loc);
 }
 #endif
 
@@ -360,7 +374,7 @@ SPRT_UMBRELLA_FUNC
 wctype_t wctype_l(const char *str, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_wctype_l(ch);
+	return __sprt_wctype_l(str, loc);
 }
 #endif
 

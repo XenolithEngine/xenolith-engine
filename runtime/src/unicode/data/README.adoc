@@ -1,0 +1,299 @@
+= Unicode tables for the case mapper and the collator
+
+Everything in this directory except the two `.py` files and this one is
+**generated**. Two generators write them:
+
+`gen-case-tables.py`:: `SPRuntimeUnicodeCaseData.cc` and
+  `SPRuntimeUnicodeWordBreakData.cc` — case mapping and word breaking.
+`gen-collation-tables.py`:: `SPRuntimeCollation*.cc` — collation, and the
+  canonical decomposition it needs.
+
+Do not edit the output by hand; run the generator and commit what it writes.
+
+They are `.cc` subunits, so the build never compiles them on their own; they are
+`#include`d by `SPRuntimeUnicodeCase.cpp` and `SPRuntimeCollation.cpp`. That is
+deliberate: each trie is parsed into a `constexpr` object at compile time, which
+only works if the array and the reader are in the same translation unit.
+
+The first half of this file is the case tables; the collation ones are further
+down.
+
+== What is in it
+
+[cols="2,1,4"]
+|===
+| Array | Size | Contents
+
+| `s_caseTrieIndex`
+| 26 KiB
+| `UTrie2` over the 16-bit case properties word: the case type (none / lower /
+  upper / title), the case-ignorable, sensitive and soft-dotted bits, and either
+  a 9-bit signed mapping delta or an index into the exceptions.
+
+| `s_caseExceptions`
+| 3 KiB
+| Everything a delta cannot express — mappings to a distant code point, the 1:N
+  mappings, the conditional ones — addressed by the props word.
+
+| `s_caseLatinTo*`
+| 1.5 KiB
+| Four linear tables of signed byte deltas covering U+0000..U+017F, the range the
+  string mappers walk without touching the trie. Two per direction, because
+  tr/az/lt differ from every other locale down here.
+
+| `s_caseGreekData*`
+| 800 B
+| The uppercase form of each Greek letter plus flags saying whether it is a vowel
+  and what it carries. Greek uppercasing drops the tonos and moves the dialytika,
+  which no per-character mapping expresses, so this feeds a state machine.
+
+| `s_wordBreakRanges`,
+  `s_wordBreakAscii`
+| 10.5 KiB
+| The `Word_Break` property of UAX #29, plus four flags derived from
+  `Extended_Pictographic` and `General_Category`. Titlecasing works on words, and
+  these say where words end. A sorted range table rather than a trie: the
+  property is flat over most of the code space, so 2620 ranges cover all of it.
+|===
+
+Total: **43504 bytes (42.5 KiB)** of read-only data, in every binary that links
+the runtime (the build links objects directly and does not `--gc-sections`, so
+nothing is dropped for an application that never changes case).
+
+Two ICU arrays are deliberately not carried:
+
+`ucase_props_unfold` (740 B):: the reverse full case folding, read only by
+  `ucase_addCaseClosure` for `UnicodeSet`. Case closure is not ported.
+`ucase_props_indexes`:: the array lengths, which are checked at generation and
+  then have nothing left to say at run time.
+
+== Current version
+
+**Unicode 17.0.0**, from ICU4C 78.3, `ucase` format version 4.
+
+The version is compiled in as `s_caseUnicodeVersion`, read out of the data itself
+rather than written down by hand, so it cannot drift from the tables. The
+generator also refuses to run if it disagrees with the Unicode version of the
+UTS-46 tables in `runtime/src/idn/data` — the two are in the same binary and must
+implement the same Unicode.
+
+== Regenerating
+
+The pipeline is icu4c -> this directory, with no intermediate extract.
+`runtime/toolchains/src.mk` already clones icu4c into
+`runtime/toolchains/src/icu4c`, and everything is read out of five files there:
+
+[cols="2,3"]
+|===
+| `source/common/ucase_props_data.h` | the properties trie and the exceptions
+| `source/common/ucase.cpp` | `LatinCase`, the ASCII/Latin-1 fast path
+| `source/common/ustrcase.cpp` | `GreekUpper`, the Greek uppercasing data
+| `source/common/ucase.h`, `ucasemap_imp.h` | the constants the two above are written in
+| `source/data/unidata/ppucd.txt` | `Word_Break`, `Extended_Pictographic`, `General_Category`
+|===
+
+`ppucd.txt` is ICU's preparsed UCD, and the one place in the checkout that
+carries `Word_Break` in a readable form — ICU's own build puts it in the general
+property vectors (`propsVectorsTrie` plus `propsVectors`, 113 KiB for the whole
+property database) and reaches it through a rule-based break iterator, neither of
+which is worth carrying for one property. Its format inherits: `defaults`, then
+`block`, then `cp`; `unassigned` goes back to the defaults rather than to the
+block it sits inside, which is why the reader is written out rather than treated
+as "paint the ranges in order".
+
+`ucase.cpp` and `ustrcase.cpp` are ICU *source*, not generated data, and their
+entries are expressions (`EXC`, `0x0391 | HAS_VOWEL`) rather than literals — so
+the generator carries a small expression evaluator whose names come from the two
+headers. They are read rather than copied for the same reason the trie descriptor
+is: they move with the Unicode version, and a transcription slip in a delta table
+does not fail, it cases a handful of characters wrong.
+
+[source,sh]
+----
+python3 runtime/src/unicode/data/gen-case-tables.py
+# or, against a checkout elsewhere:
+python3 runtime/src/unicode/data/gen-case-tables.py /path/to/icu4c --out runtime/src/unicode/data
+----
+
+Then re-run the tests — a table refresh without them is how a silently-wrong
+mapping gets in:
+
+[source,sh]
+----
+runtimetest runtime_unicode                   # must be 0 failures
+runtimetest runtime_unicode_case_conformance  # every column must read 100%
+runtimetest runtime_wordbreak_conformance     # must be 0 failures
+----
+
+Since ICU 64 the case properties ship as a generated C header with plain arrays
+and no `udata` container, so unlike the normalization data in
+`runtime/src/idn/data` nothing has to be taken apart here: the generator renames
+the arrays and reads the `UTrie2` descriptor out of `ucase_props_singleton`.
+
+=== What the generator checks
+
+* the `ucase` format version, against the one `case_props.cc` implements;
+* `UCASE_IX_TOP == 16`, and the exceptions / unfold lengths in
+  `ucase_props_indexes` against the actual arrays;
+* the `UTrie2` invariants the runtime reader depends on —
+  `indexLength + dataLength == length`, data16 at `+indexLength`. The descriptor
+  is read from the ICU initializer rather than written down here: all three
+  UTrie2 descriptors in the UTS-46 tables changed between ICU 70 and 78, and a
+  hardcoded `indexLength` survives a version bump silently;
+* `LatinCase::EXC == -0x80` (the port tells it apart from a real delta by that
+  value), `LONG_S` inside `[0, LIMIT)`, and all four tables exactly `LIMIT` long;
+* the two `GreekUpper` arrays against the code point ranges they cover, and every
+  entry in range for its type;
+* for the word-break table: that `ppucd.txt`'s `defaults` line covers every code
+  point, that every `Word_Break` value the file declares is either implemented or
+  listed as retired, that no retired value has come back, that no implemented
+  value has gone unused, and that a start plus a value still fit in the 21 + 9
+  bits they are packed into;
+* the Unicode version against the UTS-46 tables.
+
+The `GreekUpper` flag values are emitted next to the data they encode rather than
+written into `case_string.cc`, so a bit that moves in a future ICU moves in both
+places at once and cannot be read with the wrong layout.
+
+=== What it does NOT check
+
+**The bit layouts it does not emit.** `case_props.cc` transcribes the props word
+and the exception slot layout from `ucase.h`, and the data does not describe
+them, so a change there passes generation and then returns a valid mapping for
+the wrong code point. When the ICU version moves, re-read `ucase.h` by hand. This
+is not hypothetical: the same thing happened to `UPROPS_SCRIPT_X_MASK` in the
+UTS-46 port at ICU 70 -> 78, and the conformance suite did not catch it.
+
+The behavioural checks that do catch a mis-read table are in
+`tests/runtime/runtime/unicode.cpp`. `runtime_unicode` sweeps all 0x110000 code
+points and asserts that every one the UCD gives no mapping comes back unchanged;
+`runtime_unicode_case_conformance` checks the 2989 that do map against
+`UnicodeData.txt` and the 103 unconditional `SpecialCasing.txt` rows through both
+string encodings. Together they cover the whole code space. The 16 conditional
+`SpecialCasing.txt` rows cannot be checked that way — they need a purpose-built
+input — so `runtime_unicode` carries hand-written vectors for them and asserts
+that every condition in the file is claimed by one.
+
+The word-break half has its own suite, `runtime_wordbreak_conformance`, which
+asserts all 1944 cases of `WordBreakTest.txt`. Note that the standard is the
+file, not ICU: ICU's break iterator adds dictionary breaking and locale
+tailorings on top of UAX #29 and does not itself pass all of it.
+
+The case *folding* in the trie has no conformance file of its own here, and is
+checked instead by being read two ways: `compareFolded` folds one code point at a
+time as it compares, and `runtime_unicode` runs every one of the 0x110000 code
+points through it against the batch folder that the string mapper uses. The two
+share the table but not the code that walks it.
+
+== The collation tables
+
+A second, much larger set, written by `gen-collation-tables.py`. They are `.cc`
+subunits of `runtime/src/unicode/SPRuntimeCollation.cpp` — a separate compile
+unit from the case mapper, because an application that never sorts a list for a
+person to read should not pay compile time for two megabytes of tables.
+
+[cols="2,1,4"]
+|===
+| File | Size | Contents
+
+| `SPRuntimeCollationRootData.cc`
+| 557 KiB
+| The CLDR root collation: a `UTrie2` over the 32-bit CE32 values, the expansion
+  and contraction data, the script boundaries and the Latin fast-path table. This
+  is the order every locale is expressed as a difference from, and it is not
+  divisible - one trie covers the whole code space.
+
+| `SPRuntimeCollationData*.cc`
+| 1.20 MiB
+| Per-locale tailorings, in twelve groups by script. Each is a table that answers
+  "fall back to the root" for every character its language does not move, so a
+  7 KB Polish table sits on top of the 557 KB root. Which groups are compiled in
+  is a build option, `SPRT_COLLATION`.
+
+| `SPRuntimeCollationNormData.cc`
+| 30 KiB
+| Canonical decomposition (NFD) and the FCD quick test. Collation compares text in
+  FCD order and normalizes the segments that are not, so it needs the decomposing
+  half of normalization - which is the half the UTS-46 engine next door does not
+  carry.
+
+| `SPRuntimeCollationTables.cc`
+| 12 KiB
+| The aggregates over those arrays and the tag -> tailoring table.
+|===
+
+The whole of it is 1.99 MiB with every group compiled in, and 657 KiB with none
+(`SPRT_COLLATION=root`), measured on the compile unit's object.
+
+=== Where it comes from
+
+Unlike everything else here, this is not built from a Unicode data file: it is
+ICU's own *build output*, in ICU's own serialization.
+
+[cols="2,3"]
+|===
+| `source/data/in/coll/ucadata-unihan.icu` | the root collation, as ICU builds it from FractionalUCA.txt
+| `source/data/in/icudt78l.dat` | the tailorings, as `%%CollationBin` inside `coll/<locale>.res`
+| `source/data/unidata/UnicodeData.txt` | the canonical decompositions and combining classes
+|===
+
+Taking ICU's built tables rather than the CLDR rules they were built from is what
+keeps this port to 6 178 lines: the rule compiler is another 11 936, and it would
+have to be right about weight allocation as well as about parsing.
+
+The Han ordering is `unihan` - radical-stroke - because that is what ICU itself
+ships (`coll_han_type` defaults to it in ICU's build), and therefore what every
+tailoring in the `.dat` was built against. The `implicithan` variant is 400 KB
+smaller and orders Han by code point; using it would need the tailorings rebuilt,
+which needs the rule compiler.
+
+=== What the collation generator checks
+
+* the `UCol` format version, which is 5, and the UCA version of every tailoring
+  against the root's - a tailoring built against a different root must not load;
+* the fast Latin table version, in two places: the byte in `indexes[IX_OPTIONS]`
+  and the first word of the table itself;
+* the `UTrie2` invariants, and that the trie is a 32-bit-value one;
+* the `scriptStarts` sentinels `CollationDataReader` asserts on;
+* that every tailoring carrying reorder codes also carries a reorder table -
+  ICU has a path that regenerates the ranges when it does not, and that path is
+  not ported, so the generator stops rather than sort wrongly;
+* that every locale with a tailoring is assigned to a build group. A locale
+  silently dropped here is a language that quietly sorts wrong, so a new CLDR
+  release adding one has to be a decision;
+* NFD, against all 20 034 rows of `NormalizationTest.txt`.
+
+=== What it does NOT check
+
+The bit layouts of a CE32 and of a mini CE, which `collation_core.cc` and
+`collation_fastlatin.cc` transcribe from ICU headers and the data does not
+describe. The same warning as for the case tables applies, and more sharply: a
+field read one bit wide yields a valid weight for the wrong character, and two
+words swap places in the middle of a sorted list.
+
+What does catch that is `runtime_collation_conformance`: both official UCA
+conformance sets, 434 107 sequences, in both encodings, with the sort keys
+cross-checked against the comparisons on every pair. It is the reason to trust
+any of this.
+
+=== Regenerating
+
+[source,sh]
+----
+python3 runtime/src/unicode/data/gen-collation-tables.py
+python3 runtime/src/unicode/data/gen-collation-tables.py --report   # sizes only
+python3 tests/runtime/tools/gen_collation_test.py                   # the conformance data
+----
+
+[source,sh]
+----
+runtimetest runtime_collation              # must be 0 failures
+runtimetest runtime_collation_conformance  # 868 210 checks, must be 0 failures
+----
+
+== Licence
+
+The tables are derived from the Unicode Character Database via ICU and are
+covered by the Unicode licence (http://www.unicode.org/copyright.html),
+reproduced in the header of the generated file alongside the engine's own notice.
+Redistribution requires keeping those notices intact.

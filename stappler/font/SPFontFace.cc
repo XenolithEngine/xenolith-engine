@@ -25,9 +25,12 @@
 #include "SPFontLibrary.h"
 #include "SPLog.h"
 
+#include <sprt/runtime/hash.h>
+
 #include "ft2build.h" // IWYU pragma: keep
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
+#include FT_OUTLINE_H
 #include FT_MULTIPLE_MASTERS_H
 #include FT_TRUETYPE_TABLES_H
 #include FT_SFNT_NAMES_H
@@ -228,6 +231,14 @@ void FontFaceData::inspectVariableFont(FontLayoutParameters params, FT_Library l
 
 BytesView FontFaceData::getView() const { return _view; }
 
+uint64_t FontFaceData::getContentHash() const {
+	auto v = getView();
+	if (v.empty()) {
+		return 0;
+	}
+	return sprt::xxh64::hash(reinterpret_cast<const char *>(v.data()), v.size(), 0);
+}
+
 FontSpecializationVector FontFaceData::getSpecialization(
 		const FontSpecializationVector &vec) const {
 	return _variations.getSpecialization(vec);
@@ -235,6 +246,10 @@ FontSpecializationVector FontFaceData::getSpecialization(
 
 bool FontFaceObject::init(StringView name, const Rc<FontFaceData> &data, FT_Library lib,
 		FT_Face face, const FontSpecializationVector &spec, uint16_t id, uint16_t plane) {
+	if (!face) {
+		// newFontFace() returns null on malformed/corrupt font data
+		return false;
+	}
 	auto err = FT_Select_Charmap(face, FT_ENCODING_UNICODE);
 	if (err != FT_Err_Ok) {
 		return false;
@@ -325,35 +340,25 @@ char16_t FontFaceObject::getCharId(char32_t theChar) const {
 	return char16_t(theChar & 0xFFFF);
 }
 
-bool FontFaceObject::acquireTexture(char32_t theChar,
-		const Callback<void(const CharTexture &)> &cb) {
-	sprt::unique_lock lock(_faceMutex);
 
-	return acquireTextureUnsafe(theChar, cb);
-}
-
-bool FontFaceObject::acquireTextureUnsafe(char32_t theChar,
+// `glyphIndex` is a FreeType glyph index (the glyph HarfBuzz/the layout selected for rendering), not
+// a code point -- the codepoint->glyph mapping already happened during layout (FontFaceObject::getChar
+// or HarfBuzz shaping). Rasterize the glyph directly and key the resulting texture by its glyph index.
+bool FontFaceObject::acquireTextureUnsafe(char32_t glyphIndex,
 		const Callback<void(const CharTexture &)> &cb) {
-	auto plane = ((theChar >> 16) & 0xFFFF);
-	if (plane != _plane) {
+	if (!glyphIndex) {
 		return false;
 	}
 
-	int glyph_index = FT_Get_Char_Index(_face, theChar);
-	if (!glyph_index) {
-		return false;
-	}
-
-	auto err = FT_Load_Glyph(_face, glyph_index, FT_LOAD_DEFAULT | FT_LOAD_RENDER);
+	auto err = FT_Load_Glyph(_face, FT_UInt(glyphIndex), FT_LOAD_DEFAULT | FT_LOAD_RENDER);
 	if (err != FT_Err_Ok) {
 		return false;
 	}
 
-	//log::format("Texture", "%s: %d '%s'", data.layout->getName().c_str(), theChar.charID, string::toUtf8(theChar.charID).c_str());
-
 	if (_face->glyph->bitmap.buffer != nullptr) {
 		if (_face->glyph->bitmap.pixel_mode == FT_PIXEL_MODE_GRAY) {
-			cb(CharTexture{theChar, static_cast<int16_t>(_face->glyph->metrics.horiBearingX >> 6),
+			cb(CharTexture{glyphIndex,
+				static_cast<int16_t>(_face->glyph->metrics.horiBearingX >> 6),
 				static_cast<int16_t>(-(_face->glyph->metrics.horiBearingY >> 6)),
 				static_cast<uint16_t>(_face->glyph->metrics.width >> 6),
 				static_cast<uint16_t>(_face->glyph->metrics.height >> 6),
@@ -365,12 +370,148 @@ bool FontFaceObject::acquireTextureUnsafe(char32_t theChar,
 			return true;
 		}
 	} else {
-		if (!sprt::chars::isspace(theChar) && theChar != char16_t(0x0A)) {
-			log::format(sprt::oslog::Warn, "Font", SP_LOCATION, "error: no bitmap for (%d) '%s'",
-					theChar, string::toUtf8<Interface>(theChar).data());
-		}
+		log::format(sprt::oslog::Warn, "Font", SP_LOCATION, "error: no bitmap for glyph %u",
+				uint32_t(glyphIndex));
 	}
 	return false;
+}
+
+// Same glyph as acquireTextureUnsafe, rasterized straight into the caller's storage.
+//
+// FreeType does not expose the grid-fitting its own renderer applies before allocating the slot
+// bitmap, so it is repeated here: floor the control box down to the pixel grid, ceil it up, and
+// translate the outline into the resulting box. Getting this wrong does not fail - it shifts the
+// glyph by a pixel or clips it - which is why the equality test in tests/font exists.
+bool FontFaceObject::renderTextureUnsafe(char32_t glyphIndex,
+		const Callback<GlyphTarget(const CharTexture &)> &cb) {
+	if (!glyphIndex) {
+		return false;
+	}
+
+	// FT_LOAD_DEFAULT, not FT_LOAD_NO_BITMAP: a face with embedded strikes must resolve the same
+	// way it does under FT_LOAD_RENDER, or the two paths would disagree on such fonts.
+	auto err = FT_Load_Glyph(_face, FT_UInt(glyphIndex), FT_LOAD_DEFAULT);
+	if (err != FT_Err_Ok) {
+		return false;
+	}
+
+	auto slot = _face->glyph;
+
+	auto makeTexture = [&](uint16_t bitmapWidth, uint16_t bitmapRows) {
+		return CharTexture{glyphIndex, static_cast<int16_t>(slot->metrics.horiBearingX >> 6),
+			static_cast<int16_t>(-(slot->metrics.horiBearingY >> 6)),
+			static_cast<uint16_t>(slot->metrics.width >> 6),
+			static_cast<uint16_t>(slot->metrics.height >> 6), bitmapWidth, bitmapRows,
+			int16_t(bitmapWidth), _id, nullptr};
+	};
+
+	// An outline flagged as self-overlapping is rendered by FreeType with oversampling ("quadruples
+	// the rendering time", per FT_OUTLINE_OVERLAP) - and that happens in the renderer module, not in
+	// the raster FT_Outline_Get_Bitmap reaches. Rasterizing such a glyph ourselves produces visibly
+	// different pixels (measured: up to 73/255 on RobotoFlex, which sets the flag on nearly every
+	// glyph, while DejaVu never does). Reproducing the oversampling by hand would be guesswork tied
+	// to a FreeType version, so those glyphs go through the renderer and pay for one copy.
+	const bool canRasterizeDirect = slot->format == FT_GLYPH_FORMAT_OUTLINE
+			&& (slot->outline.flags & FT_OUTLINE_OVERLAP) == 0;
+
+	if (canRasterizeDirect) {
+		FT_Pos originX = 0;
+		FT_Pos originY = 0;
+		uint16_t bitmapWidth = 0;
+		uint16_t bitmapRows = 0;
+
+		if (slot->bitmap.width > 0 && slot->bitmap.rows > 0) {
+			// FreeType presets the bitmap geometry while loading the glyph, and its own renderer
+			// then uses exactly these numbers. Taking them verbatim is the only way to be sure the
+			// two paths agree - a hand-rolled control box matches for some faces and drifts by a
+			// fraction of a pixel for others (measured: identical on DejaVu, off on RobotoFlex).
+			bitmapWidth = uint16_t(slot->bitmap.width);
+			bitmapRows = uint16_t(slot->bitmap.rows);
+			originX = FT_Pos(slot->bitmap_left) * 64;
+			originY = FT_Pos(slot->bitmap_top - int(bitmapRows)) * 64;
+		} else {
+			// No preset (older FreeType, or a renderer that does not fill it in): fall back to the
+			// grid-fitted control box, which is what the preset is computed from.
+			FT_BBox cbox;
+			FT_Outline_Get_CBox(&slot->outline, &cbox);
+
+			cbox.xMin &= ~63; // FT_PIX_FLOOR
+			cbox.yMin &= ~63;
+			cbox.xMax = (cbox.xMax + 63) & ~63; // FT_PIX_CEIL
+			cbox.yMax = (cbox.yMax + 63) & ~63;
+
+			bitmapWidth = uint16_t((cbox.xMax - cbox.xMin) >> 6);
+			bitmapRows = uint16_t((cbox.yMax - cbox.yMin) >> 6);
+			originX = cbox.xMin;
+			originY = cbox.yMin;
+		}
+
+		if (bitmapWidth == 0 || bitmapRows == 0) {
+			return false; // whitespace: nothing to store and nothing to draw
+		}
+
+		auto target = cb(makeTexture(bitmapWidth, bitmapRows));
+		if (!target.buffer) {
+			return false;
+		}
+
+		FT_Outline_Translate(&slot->outline, -originX, -originY);
+
+		FT_Bitmap bitmap;
+		sprt::memset(&bitmap, 0, sizeof(bitmap));
+		bitmap.buffer = target.buffer;
+		bitmap.width = bitmapWidth;
+		bitmap.rows = bitmapRows;
+		bitmap.pitch = target.pitch ? target.pitch : int(bitmapWidth);
+		bitmap.pixel_mode = FT_PIXEL_MODE_GRAY;
+		bitmap.num_grays = 256;
+
+		// Composites into the target, so it has to arrive zeroed - see GlyphTarget.
+		err = FT_Outline_Get_Bitmap(slot->library, &slot->outline, &bitmap);
+		if (err != FT_Err_Ok) {
+			log::format(sprt::oslog::Warn, "Font", SP_LOCATION,
+					"error: fail to rasterize glyph %u", uint32_t(glyphIndex));
+			return false;
+		}
+		return true;
+	}
+
+	// The copying path: overlapping outlines (above) and bitmap-only faces (embedded strikes,
+	// colour fonts). FreeType owns the pixels here, so this is the one case that still copies -
+	// once, when the glyph is first rasterized, not per frame. Keeping it inside this function
+	// means callers never branch on the glyph format.
+	if (slot->format != FT_GLYPH_FORMAT_BITMAP) {
+		err = FT_Render_Glyph(slot, FT_RENDER_MODE_NORMAL);
+		if (err != FT_Err_Ok) {
+			return false;
+		}
+	}
+
+	if (!slot->bitmap.buffer || slot->bitmap.pixel_mode != FT_PIXEL_MODE_GRAY) {
+		return false;
+	}
+
+	auto bitmapWidth = uint16_t(slot->bitmap.width);
+	auto bitmapRows = uint16_t(slot->bitmap.rows);
+	if (bitmapWidth == 0 || bitmapRows == 0) {
+		return false;
+	}
+
+	auto target = cb(makeTexture(bitmapWidth, bitmapRows));
+	if (!target.buffer) {
+		return false;
+	}
+
+	auto pitch = target.pitch ? target.pitch : int32_t(bitmapWidth);
+	auto srcPitch = slot->bitmap.pitch ? ptrdiff_t(slot->bitmap.pitch) : ptrdiff_t(bitmapWidth);
+
+	// The pitch is signed and is the step from one row to the next, so it indexes rows directly -
+	// a negative one just walks the buffer backwards.
+	for (uint16_t row = 0; row < bitmapRows; ++row) {
+		sprt::memcpy(target.buffer + ptrdiff_t(pitch) * row, slot->bitmap.buffer + srcPitch * row,
+				bitmapWidth);
+	}
+	return true;
 }
 
 bool FontFaceObject::addChars(const Vector<char32_t> &chars, bool expand,
@@ -450,6 +591,59 @@ size_t FontFaceObject::getRequiredCharsCount() const {
 	return _required.size();
 }
 
+bool FontFaceObject::hasPendingChars() const {
+	sprt::unique_lock lock(_requiredMutex);
+	return _required.size() > _submittedChars;
+}
+
+void FontFaceObject::setCharsSubmitted(size_t count) {
+	sprt::unique_lock lock(_requiredMutex);
+	// Never move it backwards: two batches can be assembled from overlapping snapshots, and the
+	// later one to be recorded is not necessarily the larger.
+	if (count > _submittedChars) {
+		_submittedChars = count;
+	}
+}
+
+void FontFaceObject::resetCharsSubmitted() {
+	sprt::unique_lock lock(_requiredMutex);
+	_submittedChars = 0;
+}
+
+auto FontFaceObject::getUsage() const -> Usage {
+	Usage ret;
+
+	{
+		sprt::shared_lock lock(_charsMutex);
+		// A cell is zeroed when it is allocated and charID 0 is never shaped, so a non-zero charID
+		// is exactly an occupied slot.
+		_chars.foreach ([&](const CharShape16 &c) {
+			if (c.charID) {
+				++ret.chars;
+			}
+		});
+		ret.charsMemory = _chars.getMemoryUsage();
+		ret.kerningPairs = _kerning.size();
+	}
+
+	{
+		sprt::unique_lock lock(_requiredMutex);
+		ret.requiredChars = _required.size();
+		ret.submittedChars = _submittedChars;
+		ret.pendingChars = _required.size() > _submittedChars;
+	}
+
+	return ret;
+}
+
+uint16_t FontFaceObject::getGlyphIndex(char32_t theChar) {
+	if (!_face) {
+		return 0;
+	}
+	sprt::unique_lock lock(_faceMutex);
+	return uint16_t(FT_Get_Char_Index(_face, theChar));
+}
+
 CharShape FontFaceObject::getChar(char32_t c) const {
 	auto plane = ((c >> 16) & 0xFFFF);
 	if (plane != _plane) {
@@ -460,7 +654,8 @@ CharShape FontFaceObject::getChar(char32_t c) const {
 	sprt::shared_lock lock(_charsMutex);
 	auto l = _chars.get(ch);
 	if (l && l->charID == ch) {
-		return CharShape{char32_t(l->charID) | (char32_t(_plane) << 16), l->xAdvance};
+		return CharShape{char32_t(l->charID) | (char32_t(_plane) << 16), l->xAdvance,
+			l->glyphIndex};
 	}
 	return CharShape{0};
 }
@@ -533,6 +728,7 @@ bool FontFaceObject::addChar(char16_t theChar, bool &updated) {
 			CharShape16{
 				char16_t(theChar),
 				static_cast<uint16_t>(advance >> 16),
+				static_cast<uint16_t>(cIdx),
 			});
 
 	if (!sprt::chars::isspace(theChar)) {
@@ -581,7 +777,8 @@ bool FontFaceObject::addChar(char16_t theChar, bool &updated) {
 
 auto FontFaceSet::constructName(StringView family, const FontSpecializationVector &vec) -> String {
 	return FontParameters::getFontConfigName<Interface>(family, vec.fontSize, vec.fontStyle,
-			vec.fontWeight, vec.fontStretch, vec.fontGrade, FontVariant::Normal, false);
+			vec.fontWeight, vec.fontStretch, vec.fontGrade, FontVariant::Normal, vec.density,
+			false);
 }
 
 bool FontFaceSet::init(String &&name, StringView family, FontSpecializationVector &&spec,
@@ -704,6 +901,9 @@ Metrics FontFaceSet::getMetrics() const { return _metrics; }
 CharShape FontFaceSet::getChar(char32_t ch, uint16_t &face) const {
 	sprt::shared_lock lock(_mutex);
 	for (auto &it : _faces) {
+		if (!it) {
+			continue;
+		}
 		auto l = it->getChar(ch);
 		if (l.charID != 0) {
 			face = it->getId();
@@ -735,7 +935,7 @@ bool FontFaceSet::addTextureChars(SpanView<CharLayoutData> chars) const {
 
 		for (auto &f : _faces) {
 			if (f && f->getId() == it.face) {
-				if (f->addRequiredChar(it.charID)) {
+				if (f->addRequiredChar(it.gid)) {
 					++_texturesCount;
 					ret = true;
 					break;

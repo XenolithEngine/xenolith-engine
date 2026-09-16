@@ -26,33 +26,86 @@ THE SOFTWARE.
 
 #if SPRT_WINDOWS
 #include "windows/getrandom.cc"
+#elif SPRT_WASM
+#include "wasm/getrandom.cc"
+#elif SPRT_EMBOX_USER
+#include "embox_user/getrandom.cc"
 #else
 #include <stdlib.h>
+#include <unistd.h>
+#if !SPRT_IOS && !SPRT_EMBOX
+// iOS ships no <sys/random.h> and does not declare getentropy(); it uses
+// SecRandomCopyBytes from Security.framework instead (see below).
+// Embox has neither the header nor getrandom(2).
 #include <sys/random.h>
 #endif
+#endif
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include <Security/SecRandom.h>
 #endif
 
 #if SPRT_ANDROID
-#include "../platform/android/getrandom.cc"
+#include "android/getrandom.cc"
+#endif
+
+#if SPRT_EMBOX
+#include <time.h>
+#include <stdint.h>
+
+static void emboxFillRandom(void *buffer, size_t length) {
+	auto *p = static_cast<unsigned char *>(buffer);
+	uint32_t seed = static_cast<uint32_t>(clock()) ^ 0xA5A5A5A5u;
+	for (size_t i = 0; i < length; ++i) {
+		seed = seed * 1'664'525u + 1'013'904'223u;
+		p[i] = static_cast<unsigned char>(seed >> 16);
+	}
+}
 #endif
 
 namespace sprt {
 
+// Thin pass-through to the platform getentropy(). getentropy() is all-or-nothing
+// (it fills the whole buffer or fails, and the platform caps __length at 256), so it
+// never returns a partial result and needs no retry loop here.
 __SPRT_C_FUNC int __SPRT_ID(getentropy)(void *__buffer, __SPRT_ID(size_t) __length) {
+#if SPRT_IOS
+	// iOS does not expose getentropy(); SecRandomCopyBytes is all-or-nothing too,
+	// matching getentropy()'s 0-on-success / -1-on-failure contract.
+	return (SecRandomCopyBytes(kSecRandomDefault, __length, __buffer) == 0) ? 0 : -1;
+#elif SPRT_EMBOX
+	emboxFillRandom(__buffer, __length);
+	return 0;
+#else
 	return getentropy(__buffer, __length);
+#endif
 }
 
+// Thin pass-through to the platform CSPRNG; the raw return value is forwarded as-is.
+//
+// CALLER CONTRACT: this wrapper does NOT loop. On Linux/Android the underlying
+// getrandom(2) may return a SHORT count (fewer than __length bytes, e.g. for buffers
+// larger than 256 bytes or when interrupted by a signal -> -1/EINTR). A non-negative
+// return is the number of bytes actually written and MAY be less than __length, so a
+// caller that needs the buffer fully populated must loop until __length bytes have
+// been read, retrying on EINTR. (Looping is left to the caller deliberately: this is
+// the low-level ABI wrapper; higher-level helpers add the loop.)
+//
+// On macOS the call is all-or-nothing: SecRandomCopyBytes fills the entire buffer and
+// we return __length, or it fails and we return -1. There is no weak/predictable
+// fallback on any platform — a hard failure returns -1 (fails closed).
 __SPRT_C_FUNC __SPRT_ID(ssize_t)
 		__SPRT_ID(getrandom)(void *__buffer, __SPRT_ID(size_t) __length, unsigned __flags) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	auto ret = SecRandomCopyBytes(kSecRandomDefault, __length, __buffer);
 	if (ret == 0) {
 		return __length;
 	}
 	return -1;
+#elif SPRT_EMBOX
+	(void)__flags;
+	emboxFillRandom(__buffer, __length);
+	return static_cast<__SPRT_ID(ssize_t)>(__length);
 #else
 	return getrandom(__buffer, __length, __flags);
 #endif

@@ -28,6 +28,12 @@
 #include "../fd/SPEventFd.h"
 #include "../fd/SPEventTimerFd.h"
 #include "../fd/SPEventPollFd.h"
+#include "../fd/SPEventProcessFd.h"
+#include "../fd/SPEventFile.h"
+#include "../fd/SPEventFileFd.h"
+#include "../fd/SPEventInotify.h"
+#include "../fd/SPEventSocket.h"
+#include "../fd/SPEventSocketFd.h"
 #include "../epoll/SPEvent-epoll.h"
 #include "../epoll/SPEventThreadHandle-epoll.h"
 #include "../uring/SPEventThreadHandle-uring.h"
@@ -56,6 +62,11 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				&_alooperSignalFdClass, true);
 		setupALooperHandleClass<PollFdALooperHandle, PollFdSource>(&_info, &_alooperPollFdClass,
 				true);
+		setupALooperHandleClass<InotifyReaderALooperHandle, InotifySource>(&_info,
+				&_alooperInotifyReaderClass, true);
+		setupInotifyWatchClass(&_info, &_inotifyWatchClass);
+		setupInlineFileHandleClass(&_info, &_alooperFileClass);
+		setupSocketHandleClasses(&_info, this);
 
 		auto alooper = new (memory::pool::acquire())
 				ALooperData(_info.queue, this, info, SignalsToIntercept);
@@ -84,6 +95,45 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return Rc<ThreadEPollHandle>::create(&data->_alooperThreadClass);
 			};
 
+			_listenHandle = [](QueueData *d, void *ptr, NativeHandle handle, PollFlags flags,
+									CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<PollFdALooperHandle>::create(&data->_alooperPollFdClass, handle.fd, flags,
+						sprt::move(cb));
+			};
+
+			_socketPoll = [](QueueData *d, void *ptr, SocketHandle sock, PollFlags flags,
+									 CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<PollFdALooperHandle>::create(&data->_alooperPollFdClass, int(sock), flags,
+						sprt::move(cb));
+			};
+
+			_makeFileHandle = [](QueueData *d, void *ptr, Rc<FileState> &&state) -> Rc<FileHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeFileInlineHandle(d, &data->_alooperFileClass, sprt::move(state));
+			};
+
+			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info,
+								 Ref *ref) -> Rc<WatchHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				if (!data->_inotifyReader) {
+					auto reader = Rc<InotifyReaderALooperHandle>::create(
+							&data->_alooperInotifyReaderClass);
+					if (!reader || !reader->isValid()) {
+						return nullptr;
+					}
+					data->runHandle(reader);
+					data->_inotifyReader = reader;
+				}
+				auto h = Rc<InotifyWatchHandle>::create(&data->_inotifyWatchClass, info.path,
+						info.mask, sprt::move(info.completion), data->_inotifyReader.get());
+				if (h && ref) {
+					h->setUserdata(ref);
+				}
+				return h;
+			};
+
 			_platformQueue = alooper;
 			alooper->runInternalHandles();
 			_engine = QueueEngine::ALooper;
@@ -102,6 +152,15 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupUringHandleClass<SignalFdURingHandle, SignalFdSource>(&_info, &_uringSignalFdClass,
 				true);
 		setupUringHandleClass<PollFdURingHandle, PollFdSource>(&_info, &_uringPollFdClass, true);
+		setupUringHandleClass<ProcessFdURingHandle, ProcessFdSource>(&_info, &_uringProcessFdClass,
+				true);
+		setupUringHandleClass<FileURingHandle, FileSource>(&_info, &_uringFileClass, true);
+		setupUringHandleClass<InotifyReaderURingHandle, InotifySource>(&_info,
+				&_uringInotifyReaderClass, true);
+		setupInotifyWatchClass(&_info, &_inotifyWatchClass);
+		setupSocketHandleClasses(&_info, this);
+		setupUringSocketClasses(&_info, &_uringSocketListenClass, &_uringSocketStreamClass,
+				&_uringSocketSendClass);
 
 		auto uring = new (memory::pool::acquire())
 				URingData(_info.queue, this, info, SignalsToIntercept);
@@ -118,6 +177,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return reinterpret_cast<URingData *>(ptr)->wakeup(flags);
 			};
 			_cancel = [](void *ptr) { reinterpret_cast<URingData *>(ptr)->cancel(); };
+			_shutdown = [](void *ptr) { reinterpret_cast<URingData *>(ptr)->shutdown(); };
 			_destroy = [](void *ptr) { delete reinterpret_cast<URingData *>(ptr); };
 
 			_timer = [](QueueData *d, void *ptr, TimerInfo &&info) -> Rc<TimerHandle> {
@@ -145,6 +205,59 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 						sprt::move(cb));
 			};
 
+			_socketPoll = [](QueueData *d, void *ptr, SocketHandle sock, PollFlags flags,
+									 CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<PollFdURingHandle>::create(&data->_uringPollFdClass, int(sock), flags,
+						sprt::move(cb));
+			};
+
+			// native strategy: operations as SQEs instead of readiness polling
+			_makeSocketListen = [](QueueData *d, void *ptr,
+										   Rc<ListenState> &&state) -> Rc<ListenHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeSocketListenUringHandle(d, &data->_uringSocketListenClass,
+						sprt::move(state));
+			};
+
+			_makeSocketStream = [](QueueData *d, void *ptr,
+										   Rc<StreamState> &&state) -> Rc<StreamHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeSocketStreamUringHandle(d, &data->_uringSocketStreamClass,
+						&data->_uringSocketSendClass, sprt::move(state));
+			};
+
+			_spawnProcess = [](QueueData *d, void *ptr, ProcessInfo &&info,
+									Ref *ref) -> Rc<ProcessHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return spawnProcessFd(d, &data->_uringProcessFdClass, true, sprt::move(info), ref);
+			};
+
+			_makeFileHandle = [](QueueData *d, void *ptr, Rc<FileState> &&state) -> Rc<FileHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeFileUringHandle(d, &data->_uringFileClass, sprt::move(state));
+			};
+
+			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info,
+								 Ref *ref) -> Rc<WatchHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				if (!data->_inotifyReader) {
+					auto reader =
+							Rc<InotifyReaderURingHandle>::create(&data->_uringInotifyReaderClass);
+					if (!reader || !reader->isValid()) {
+						return nullptr;
+					}
+					data->runHandle(reader);
+					data->_inotifyReader = reader;
+				}
+				auto h = Rc<InotifyWatchHandle>::create(&data->_inotifyWatchClass, info.path,
+						info.mask, sprt::move(info.completion), data->_inotifyReader.get());
+				if (h && ref) {
+					h->setUserdata(ref);
+				}
+				return h;
+			};
+
 			_platformQueue = uring;
 			uring->runInternalHandles();
 			_engine = QueueEngine::URing;
@@ -162,6 +275,13 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupEpollHandleClass<SignalFdEPollHandle, SignalFdSource>(&_info, &_epollSignalFdClass,
 				true);
 		setupEpollHandleClass<PollFdEPollHandle, PollFdSource>(&_info, &_epollPollFdClass, true);
+		setupEpollHandleClass<ProcessFdEPollHandle, ProcessFdSource>(&_info, &_epollProcessFdClass,
+				true);
+		setupEpollHandleClass<InotifyReaderEPollHandle, InotifySource>(&_info,
+				&_epollInotifyReaderClass, true);
+		setupInotifyWatchClass(&_info, &_inotifyWatchClass);
+		setupInlineFileHandleClass(&_info, &_epollFileClass);
+		setupSocketHandleClasses(&_info, this);
 
 		auto epoll = new (memory::pool::acquire())
 				EPollData(_info.queue, this, info, SignalsToIntercept);
@@ -194,6 +314,44 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				auto data = reinterpret_cast<Queue::Data *>(d);
 				return Rc<PollFdEPollHandle>::create(&data->_epollPollFdClass, handle.fd, flags,
 						sprt::move(cb));
+			};
+
+			_socketPoll = [](QueueData *d, void *ptr, SocketHandle sock, PollFlags flags,
+									 CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<PollFdEPollHandle>::create(&data->_epollPollFdClass, int(sock), flags,
+						sprt::move(cb));
+			};
+
+			_spawnProcess = [](QueueData *d, void *ptr, ProcessInfo &&info,
+									Ref *ref) -> Rc<ProcessHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return spawnProcessFd(d, &data->_epollProcessFdClass, false, sprt::move(info), ref);
+			};
+
+			_makeFileHandle = [](QueueData *d, void *ptr, Rc<FileState> &&state) -> Rc<FileHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeFileInlineHandle(d, &data->_epollFileClass, sprt::move(state));
+			};
+
+			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info,
+								 Ref *ref) -> Rc<WatchHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				if (!data->_inotifyReader) {
+					auto reader =
+							Rc<InotifyReaderEPollHandle>::create(&data->_epollInotifyReaderClass);
+					if (!reader || !reader->isValid()) {
+						return nullptr;
+					}
+					data->runHandle(reader);
+					data->_inotifyReader = reader;
+				}
+				auto h = Rc<InotifyWatchHandle>::create(&data->_inotifyWatchClass, info.path,
+						info.mask, sprt::move(info.completion), data->_inotifyReader.get());
+				if (h && ref) {
+					h->setUserdata(ref);
+				}
+				return h;
 			};
 
 			_platformQueue = epoll;

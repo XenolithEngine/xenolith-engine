@@ -100,7 +100,13 @@ bool QueuePassHandle::prepare(FrameQueue &q, Function<void(bool)> &&cb) {
 }
 
 void QueuePassHandle::submit(FrameQueue &, Rc<FrameSync> &&, Function<void(bool)> &&onSubmited,
-		Function<void(bool)> &&onComplete) { }
+		Function<void(bool)> &&onComplete) {
+	// the default handle can not submit GPU work; without an explicit failure
+	// the frame would stall in Submission state forever with no diagnostics
+	log::source().error("core::QueuePassHandle", "submit() is not implemented for pass '",
+			getName(), "', backend-specific QueuePassHandle expected");
+	onSubmited(false);
+}
 
 void QueuePassHandle::finalize(FrameQueue &, bool successful) { }
 

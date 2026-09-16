@@ -55,7 +55,7 @@ public:
 	constexpr access_token &operator=(const mapped_type &value) noexcept {
 		if (_container) {
 			if (_iterator == sprt::end(*_container)) {
-				_iterator = _container->emplace_with_token(sprt::move_unsafe(_key.ref(), value));
+				_iterator = _container->emplace_with_token(sprt::move_unsafe(_key.ref()), value);
 				if (_iterator != sprt::end(*_container)) {
 					sprt::destroy_at(_key.ptr());
 				}
@@ -87,8 +87,8 @@ public:
 	constexpr access_token &emplace(Args &&...args) noexcept {
 		if (_container) {
 			if (_iterator == sprt::end(*_container)) {
-				_iterator = _container->emplace_with_token(
-						sprt::move_unsafe(_key.ref(), sprt::forward<Args>(args)...));
+				_iterator = _container->emplace_with_token(sprt::move_unsafe(_key.ref()),
+						sprt::forward<Args>(args)...);
 				if (_iterator != sprt::end(*_container)) {
 					sprt::destroy_at(_key.ptr());
 				}
@@ -147,6 +147,18 @@ public:
 					*_iterator);
 		}
 		return alt;
+	}
+
+	// std-like reference access: makes `container[key]` usable where std::map returns
+	// mapped_type& (e.g. `T x = m[k];`, `m[k] += n`, `f(m[k])`). Since this is a lazy proxy,
+	// insertion still happens through operator= — reading a MISSING key has no value to
+	// reference, so it is a hard abort (defined behaviour, all build modes) rather than a
+	// dangling reference.
+	constexpr operator mapped_type &() const noexcept {
+		if (_iterator == sprt::end(*_container)) {
+			__builtin_trap();
+		}
+		return aligned_storage_kv_traits<container_key_type, value_type>::extract_value(*_iterator);
 	}
 
 	constexpr explicit operator bool() const noexcept {
@@ -247,6 +259,15 @@ public:
 					*_iterator);
 		}
 		return alt;
+	}
+
+	// std-like reference access (const): makes `const_map.at(key)` usable where std::map
+	// returns const mapped_type&. A missing key is a hard abort (std::map::at would throw).
+	constexpr operator const mapped_type &() const noexcept {
+		if (_iterator == sprt::end(*_container)) {
+			__builtin_trap();
+		}
+		return aligned_storage_kv_traits<container_key_type, value_type>::extract_value(*_iterator);
 	}
 
 	constexpr explicit operator bool() const noexcept {

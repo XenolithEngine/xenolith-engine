@@ -10,6 +10,8 @@
 #include "../stdlib/floatscan.h"
 
 #include "../../include/__impl_file.h"
+#include "../../include/__impl_libc.h"
+#include <locale.h>
 
 #define SIZE_hh -2
 #define SIZE_h  -1
@@ -42,8 +44,8 @@ static void *arg_n(va_list ap, unsigned int n) {
 	return p;
 }
 
-__SPRT_C_FUNC int vfscanf(FILE *__restrict f, const char *__restrict fmt,
-		va_list ap) __SPRT_NOEXCEPT {
+// scanf core parameterised by the decimal-point radix (resolved once per call).
+static int __vfscanf_l(FILE *__restrict f, const char *__restrict fmt, va_list ap, int radix) {
 	int width;
 	int size;
 	int alloc = 0;
@@ -343,7 +345,7 @@ int_common:
 		case 'F':
 		case 'g':
 		case 'G':
-			y = __floatscan(f, size, 0);
+			y = __floatscan(f, size, 0, radix);
 			if (!shcnt(f)) {
 				goto match_fail;
 			}
@@ -396,21 +398,73 @@ static size_t string_read(FILE *f, unsigned char *buf, size_t len) {
 	return len;
 }
 
-__SPRT_C_FUNC int vsscanf(const char *__restrict s, const char *__restrict fmt,
+__SPRT_C_FUNC int vfscanf(FILE *__restrict f, const char *__restrict fmt,
 		va_list ap) __SPRT_NOEXCEPT {
+	return __vfscanf_l(f, fmt, ap, sprt::__get_effective_numeric_radix());
+}
+
+static int __vsscanf_l(const char *__restrict s, const char *__restrict fmt, va_list ap, int radix) {
 	FILE f = {
 		.read = string_read,
 		.buf = (unsigned char *)s,
 		.cookie = (void *)s,
 		.__lock_pid = -1,
 	};
-	return vfscanf(&f, fmt, ap);
+	return __vfscanf_l(&f, fmt, ap, radix);
+}
+
+__SPRT_C_FUNC int vsscanf(const char *__restrict s, const char *__restrict fmt,
+		va_list ap) __SPRT_NOEXCEPT {
+	return __vsscanf_l(s, fmt, ap, sprt::__get_effective_numeric_radix());
 }
 
 weak_alias(vsscanf, __isoc99_vsscanf);
 
 __SPRT_C_FUNC int vscanf(const char *__restrict fmt, va_list ap) __SPRT_NOEXCEPT {
 	return vfscanf(stdin, fmt, ap);
+}
+
+// --- Locale-aware (_l) variants: resolve the explicit locale's radix and feed
+// the same cores. ---
+
+__SPRT_C_FUNC int vfscanf_l(FILE *__restrict f, locale_t loc, const char *__restrict fmt,
+		va_list ap) __SPRT_NOEXCEPT {
+	return __vfscanf_l(f, fmt, ap, __get_locale_numeric_radix(loc));
+}
+
+__SPRT_C_FUNC int vsscanf_l(const char *__restrict s, locale_t loc, const char *__restrict fmt,
+		va_list ap) __SPRT_NOEXCEPT {
+	return __vsscanf_l(s, fmt, ap, __get_locale_numeric_radix(loc));
+}
+
+__SPRT_C_FUNC int vscanf_l(locale_t loc, const char *__restrict fmt, va_list ap) __SPRT_NOEXCEPT {
+	return __vfscanf_l(stdin, fmt, ap, __get_locale_numeric_radix(loc));
+}
+
+__SPRT_C_FUNC int scanf_l(locale_t loc, const char *__restrict fmt, ...) __SPRT_NOEXCEPT {
+	va_list ap;
+	va_start(ap, fmt);
+	int ret = __vfscanf_l(stdin, fmt, ap, __get_locale_numeric_radix(loc));
+	va_end(ap);
+	return ret;
+}
+
+__SPRT_C_FUNC int fscanf_l(FILE *__restrict f, locale_t loc, const char *__restrict fmt,
+		...) __SPRT_NOEXCEPT {
+	va_list ap;
+	va_start(ap, fmt);
+	int ret = __vfscanf_l(f, fmt, ap, __get_locale_numeric_radix(loc));
+	va_end(ap);
+	return ret;
+}
+
+__SPRT_C_FUNC int sscanf_l(const char *__restrict s, locale_t loc, const char *__restrict fmt,
+		...) __SPRT_NOEXCEPT {
+	va_list ap;
+	va_start(ap, fmt);
+	int ret = __vsscanf_l(s, fmt, ap, __get_locale_numeric_radix(loc));
+	va_end(ap);
+	return ret;
 }
 
 __SPRT_C_FUNC int sscanf(const char *__restrict s, const char *__restrict fmt,

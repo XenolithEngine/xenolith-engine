@@ -27,6 +27,12 @@
 
 namespace sprt::base64 {
 
+// NOTE (intentionally not guarded against overflow): getEncodeSize grows the input by
+// ~4/3 and getDecodeSize by ~3/4, and the callback-form encoders add `+ 1` for a NUL.
+// These products/sums only overflow size_t for multi-exabyte inputs (l > ~3/4 * SIZE_MAX),
+// which cannot be allocated or reached on any real platform — the malloca/allocation would
+// fail long before. Adding a check here would only add cost to every call for a case that
+// cannot occur, so it is deliberately omitted.
 SPRT_API constexpr inline size_t getEncodeSize(size_t l) {
 	constexpr int BinaryUnit = 3;
 	constexpr int Base64Unit = 4;
@@ -46,6 +52,10 @@ SPRT_API size_t encode(const uint8_t *in, size_t insize, char *out, size_t outsi
 SPRT_API size_t encode(const uint8_t *in, size_t insize,
 		const callback<void(const char *, size_t)> &);
 
+// Lenient decoder (by design): non-alphabet bytes (whitespace, newlines, stray
+// chars) are skipped and '=' padding is not validated — it best-effort decodes
+// whatever alphabet bytes it finds and never signals an error. Callers that must
+// reject malformed/untrusted input should validate the alphabet/padding first.
 SPRT_API size_t decode(const char *in, size_t insize, uint8_t *out, size_t outsize);
 
 SPRT_API size_t decode(const char *in, size_t insize,

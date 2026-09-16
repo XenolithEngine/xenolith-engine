@@ -104,6 +104,16 @@ public:
 			core::FullScreenExclusiveMode fullscreenMode, void *fullscreenHandle) const;
 	VkExtent2D getSurfaceExtent(VkSurfaceKHR, VkPhysicalDevice) const;
 
+	// Create a VK_KHR_display surface on the primary display of the first device
+	// that drives one. Used for direct-to-display (no window system) startup.
+	//
+	// The connector to use and the target mode come from the window system through
+	// SurfaceInterfaceInfo::display (a DRM fd it keeps open plus a connector id);
+	// the nearest advertised mode to that size is chosen. Nothing is discovered
+	// here — see sprt::window::DrmDevice for the connector/mode policy.
+	// Returns VK_NULL_HANDLE if no display is available.
+	VkSurfaceKHR createDisplayPlaneSurface(const sprt::window::SurfaceInterfaceInfo &) const;
+
 	VkInstance getInstance() const;
 
 	void printDevicesInfo(const CallbackStream &stream, bool initOnly = false) const;
@@ -126,6 +136,12 @@ private:
 			const DeviceInfo::OptVec &, uint32_t) const;
 
 	void getDeviceInfo(DeviceInfo &, VkPhysicalDevice device) const;
+
+	// Build a VK_KHR_display plane surface on a resolved VkDisplayKHR (shared by
+	// the auto-enumerated and acquire-drm-display paths of createDisplayPlaneSurface).
+	// prefW/prefH is the window system's mode; the nearest advertised one is used.
+	VkSurfaceKHR makeDisplayPlaneSurface(VkPhysicalDevice, VkDisplayKHR, StringView name,
+			uint32_t prefW, uint32_t prefH) const;
 
 	SurfaceBackendMask checkPresentationSupport(VkPhysicalDevice device, uint32_t) const;
 

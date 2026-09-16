@@ -22,7 +22,20 @@
 
 #include "XLFontDeferredRequest.h"
 
+#include <stdlib.h> // getenv
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
+
+// Debug knob (XL_FONT_GLYPH_DELAY_US): sleep this long after rasterising each glyph on the worker,
+// widening the gap between batch submission and atlas update so glyph gating can be tested end to
+// end. Off unless set.
+static uint64_t getGlyphRenderDelay() {
+	static const uint64_t s_delay = [] {
+		auto v = ::getenv("XL_FONT_GLYPH_DELAY_US");
+		return v ? uint64_t(::strtoull(v, nullptr, 10)) : uint64_t(0);
+	}();
+	return s_delay;
+}
 
 void DeferredRequest::runFontRenderer(sprt::dispatch::Looper *queue, const Rc<FontComponent> &ext,
 		const Vector<FontUpdateRequest> &req,
@@ -32,7 +45,28 @@ void DeferredRequest::runFontRenderer(sprt::dispatch::Looper *queue, const Rc<Fo
 	data->onTexture = sp::move(onTex);
 	data->onComplete = sp::move(onComp);
 
-	for (uint32_t i = 0; i < queue->getThreadPool()->getInfo().threadCount; ++i) {
+	uint32_t n = queue->getWorkersCount();
+	if (n == 0) {
+		n = 1;
+	}
+	for (uint32_t i = 0; i < n; ++i) {
+		queue->performAsync([data]() { data->runThread(); });
+	}
+}
+
+void DeferredRequest::runFontRendererDirect(sprt::dispatch::Looper *queue,
+		const Rc<FontComponent> &ext, const Vector<FontUpdateRequest> &req,
+		Function<GlyphTarget(uint32_t reqIdx, const CharTexture &texData)> &&onRender,
+		Function<void()> &&onComp) {
+	auto data = Rc<DeferredRequest>::alloc(ext, req);
+	data->onRender = sp::move(onRender);
+	data->onComplete = sp::move(onComp);
+
+	uint32_t n = queue->getWorkersCount();
+	if (n == 0) {
+		n = 1;
+	}
+	for (uint32_t i = 0; i < n; ++i) {
 		queue->performAsync([data]() { data->runThread(); });
 	}
 }
@@ -52,14 +86,27 @@ DeferredRequest::DeferredRequest(const Rc<FontComponent> &ext, const Vector<Font
 }
 
 void DeferredRequest::runThread() {
+	// The batch is fanned out to every worker of the pool, so most of the threads below may find
+	// nothing to do. Completion has to be reported exactly once, by whoever finishes the last
+	// request — see the guard at the end.
 	Vector<Rc<FontFaceObjectHandle>> threadFaces;
 	threadFaces.resize(faces.size(), nullptr);
+
+	// An empty batch still has to report: the frame waiting on this input has no other way to
+	// become ready (and `nrequests - 1` below would underflow).
+	if (nrequests == 0) {
+		if (!completed.exchange(true)) {
+			onComplete();
+		}
+		return;
+	}
+
 	uint32_t target = current.fetch_add(1);
-	uint32_t c = 0;
+	bool finishedLast = false;
 	while (target < nrequests) {
 		auto &v = fontRequests[target];
 		if (v.second == 0) {
-			c = complete.fetch_add(1);
+			finishedLast = (complete.fetch_add(1) + 1 == nrequests);
 			target = current.fetch_add(1);
 			continue;
 		}
@@ -68,13 +115,25 @@ void DeferredRequest::runThread() {
 			threadFaces[v.first] = ext->getLibrary()->makeThreadHandle(faces[v.first]);
 		}
 
-		threadFaces[v.first]->acquireTexture(v.second,
-				[&, this](const font::CharTexture &tex) { onTexture(v.first, tex); });
-		c = complete.fetch_add(1);
+		if (onRender) {
+			threadFaces[v.first]->renderTexture(v.second,
+					[&, this](const font::CharTexture &tex) { return onRender(v.first, tex); });
+		} else {
+			threadFaces[v.first]->acquireTexture(v.second,
+					[&, this](const font::CharTexture &tex) { onTexture(v.first, tex); });
+		}
+
+		if (auto delay = getGlyphRenderDelay()) {
+			sprt::platform::sleep(delay);
+		}
+
+		finishedLast = (complete.fetch_add(1) + 1 == nrequests);
 		target = current.fetch_add(1);
 	}
 	threadFaces.clear();
-	if (c == nrequests - 1) {
+
+	// Only the thread that pushed the counter to nrequests reports, and only once.
+	if (finishedLast && !completed.exchange(true)) {
 		onComplete();
 	}
 }

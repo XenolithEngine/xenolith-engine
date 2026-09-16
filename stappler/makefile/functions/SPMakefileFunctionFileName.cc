@@ -24,28 +24,64 @@
 #include "SPFilesystem.h"
 #include "SPMakefileVariable.h"
 
+#include <stdlib.h> // realpath()
+
 namespace STAPPLER_VERSIONIZED stappler::makefile {
+
+// GNU make's $(dir)/$(notdir)/$(suffix)/$(basename) operate purely on the text of each
+// word (last '/', last '.') rather than touching the filesystem or normalizing the path,
+// so they are implemented here directly instead of via Stappler's filepath helpers
+// (which canonicalize and strip the leading '.' of an extension).
+
+// Index of the last occurrence of `c`, or maxOf<size_t>() if there is none.
+static size_t fnLastIndexOf(StringView s, char c) {
+	for (size_t i = s.size(); i > 0; --i) {
+		if (s[i - 1] == c) {
+			return i - 1;
+		}
+	}
+	return maxOf<size_t>();
+}
+
+// Directory part: everything up to and including the last '/', or "./" when there is none.
+static StringView fnDir(StringView w) {
+	auto sl = fnLastIndexOf(w, '/');
+	return sl == maxOf<size_t>() ? StringView("./") : w.sub(0, sl + 1);
+}
+
+// File-within-directory part: everything after the last '/', or the whole word when there
+// is none (may be empty, e.g. for "a/" or "/").
+static StringView fnNotdir(StringView w) {
+	auto sl = fnLastIndexOf(w, '/');
+	return sl == maxOf<size_t>() ? w : w.sub(sl + 1);
+}
+
+// Index of the '.' that starts the suffix (the last '.' lying in the last path component),
+// or maxOf<size_t>() when the word has no suffix.
+static size_t fnSuffixDot(StringView w) {
+	auto dot = fnLastIndexOf(w, '.');
+	if (dot == maxOf<size_t>()) {
+		return maxOf<size_t>();
+	}
+	auto sl = fnLastIndexOf(w, '/');
+	if (sl != maxOf<size_t>() && dot < sl) {
+		return maxOf<size_t>(); // the only '.' is in the directory part
+	}
+	return dot;
+}
 
 static bool Function_dir(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
-	bool start = false;
+	bool first = true;
 	for (auto &arg : args) {
 		auto content = engine.resolve(arg, 0, *engine.getCallContext()->err);
 		content.split<StringView::WhiteSpace>([&](StringView str) {
-			if (!start) {
-				start = true;
+			if (first) {
+				first = false;
 			} else {
 				out << ' ';
 			}
-			auto d = filepath::root(str);
-			if (!d.empty()) {
-				out << d;
-				if (!d.ends_with("/")) {
-					out << '/';
-				}
-			} else {
-				out << '/';
-			}
+			out << fnDir(str);
 		});
 	}
 	return true;
@@ -53,21 +89,16 @@ static bool Function_dir(const Callback<void(StringView)> &out, void *, Variable
 
 static bool Function_notdir(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
-	bool start = false;
+	bool first = true;
 	for (auto &arg : args) {
 		auto content = engine.resolve(arg, 0, *engine.getCallContext()->err);
 		content.split<StringView::WhiteSpace>([&](StringView str) {
-			if (!start) {
-				start = true;
+			if (first) {
+				first = false;
 			} else {
 				out << ' ';
 			}
-			auto d = filepath::lastComponent(str);
-			if (!d.empty()) {
-				out << d;
-			} else {
-				out << '/';
-			}
+			out << fnNotdir(str);
 		});
 	}
 	return true;
@@ -75,18 +106,19 @@ static bool Function_notdir(const Callback<void(StringView)> &out, void *, Varia
 
 static bool Function_suffix(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
-	bool start = false;
+	bool first = true;
 	for (auto &arg : args) {
 		auto content = engine.resolve(arg, 0, *engine.getCallContext()->err);
 		content.split<StringView::WhiteSpace>([&](StringView str) {
-			auto d = filepath::lastExtension(str);
-			if (!d.empty()) {
-				if (!start) {
-					start = true;
+			auto dot = fnSuffixDot(str);
+			if (dot != maxOf<size_t>()) {
+				// words without a suffix produce no output (and no separator)
+				if (first) {
+					first = false;
 				} else {
 					out << ' ';
 				}
-				out << d;
+				out << str.sub(dot); // includes the leading '.'
 			}
 		});
 	}
@@ -95,18 +127,18 @@ static bool Function_suffix(const Callback<void(StringView)> &out, void *, Varia
 
 static bool Function_basename(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
-	bool start = false;
+	bool first = true;
 	for (auto &arg : args) {
 		auto content = engine.resolve(arg, 0, *engine.getCallContext()->err);
 		content.split<StringView::WhiteSpace>([&](StringView str) {
-			auto d = filepath::lastExtension(str);
-			if (!start) {
-				start = true;
+			if (first) {
+				first = false;
 			} else {
 				out << ' ';
 			}
-			if (!d.empty()) {
-				out << str.sub(0, str.size() - d.size());
+			auto dot = fnSuffixDot(str);
+			if (dot != maxOf<size_t>()) {
+				out << str.sub(0, dot); // drop the suffix, including the '.'
 			} else {
 				out << str;
 			}
@@ -152,51 +184,225 @@ static bool Function_addprefix(const Callback<void(StringView)> &out, void *,
 
 static bool Function_join(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
-	engine.getCallContext()->err->reportError("Function not implemented");
-	return false; // not implemented
+	auto l1 = engine.resolve(args[0], 0, *engine.getCallContext()->err);
+	auto l2 = engine.resolve(args[1], 0, *engine.getCallContext()->err);
+
+	Vector<StringView> a;
+	Vector<StringView> b;
+	l1.split<StringView::WhiteSpace>([&](StringView s) { a.emplace_back(s); });
+	l2.split<StringView::WhiteSpace>([&](StringView s) { b.emplace_back(s); });
+
+	// concatenate element-wise; surplus elements of the longer list pass through unchanged
+	auto count = a.size() > b.size() ? a.size() : b.size();
+	bool first = true;
+	for (size_t i = 0; i < count; ++i) {
+		if (first) {
+			first = false;
+		} else {
+			out << ' ';
+		}
+		if (i < a.size()) {
+			out << a[i];
+		}
+		if (i < b.size()) {
+			out << b[i];
+		}
+	}
+	return true;
+}
+
+// Shell-style glob match for a single path component: '*' matches any run (including empty),
+// '?' matches one character, everything else (including '.') is literal. Iterative with
+// backtracking on '*', so patterns like `*.*` or `xl_*_shadow.*` work — not just a single '*'.
+static bool Function_wildcard_match(StringView pat, StringView str) {
+	size_t p = 0, s = 0;
+	size_t starP = maxOf<size_t>(), starS = 0;
+	while (s < str.size()) {
+		if (p < pat.size() && (pat[p] == '?' || pat[p] == str[s])) {
+			++p;
+			++s;
+		} else if (p < pat.size() && pat[p] == '*') {
+			starP = p++;
+			starS = s;
+		} else if (starP != maxOf<size_t>()) {
+			p = starP + 1;
+			s = ++starS;
+		} else {
+			return false;
+		}
+	}
+	while (p < pat.size() && pat[p] == '*') { ++p; }
+	return p == pat.size();
+}
+
+// Emit a resolved filesystem path in the form GNU make uses on each platform. On POSIX the path is
+// emitted verbatim. On Windows, GNU make reports resolved paths as Windows paths but with '/' as the
+// separator (e.g. `C:/dir/file`); our filesystem layer yields the internal posix form (`/c/dir`), so
+// rewrite the drive prefix (`/c` -> `C:`) and flip any backslashes to forward slashes. This is the
+// emit choke-point for the filesystem-resolving functions ($(wildcard)/$(realpath)/$(abspath)); the
+// text-slicing functions ($(dir)/$(notdir)/...) intentionally pass their input through unchanged,
+// exactly as GNU make does.
+static void emitResolvedPath(const Callback<void(StringView)> &out, StringView path) {
+#if SPRT_WINDOWS
+	auto isDriveLetter = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); };
+	auto upper = [](char c) { return (c >= 'a' && c <= 'z') ? char(c - 'a' + 'A') : c; };
+
+	auto s = path.str<Interface>(); // mutable, same-length rewrite (kept alive across the emit)
+	if (!s.empty()) {
+		char *d = s.data();
+		size_t n = s.size();
+		// internal posix drive form `/c[/...]` -> `C:[/...]` (same length: "/c" -> "C:")
+		if (n >= 2 && d[0] == '/' && isDriveLetter(d[1]) && (n == 2 || d[2] == '/')) {
+			d[0] = upper(d[1]);
+			d[1] = ':';
+		}
+		for (size_t i = 0; i < n; ++i) {
+			if (d[i] == '\\') {
+				d[i] = '/';
+			} else if (d[i] == ' ') {
+				// A space discovered on disk must survive the engine's whitespace word-splitting:
+				// encode it to PathSpacePlaceholder (same-length, in-place). Decoded at OS boundaries.
+				d[i] = PathSpacePlaceholder;
+			}
+		}
+		// uppercase a native drive letter (e.g. from a path that was already `c:/...`)
+		if (n >= 2 && isDriveLetter(d[0]) && d[1] == ':') {
+			d[0] = upper(d[0]);
+		}
+	}
+	out << StringView(s);
+#else
+	// Encode any space discovered on disk to PathSpacePlaceholder so the path stays one make word.
+	mem_std::Interface::StringType spaceStorage;
+	out << encodePathSpaces(path, spaceStorage);
+#endif
+}
+
+// True when a path component carries a glob metacharacter and therefore has to be resolved
+// against the filesystem rather than appended literally.
+static bool Function_wildcard_isGlob(StringView comp) {
+	for (auto c : comp) {
+		if (c == '*' || c == '?') {
+			return true;
+		}
+	}
+	return false;
 }
 
 static bool Function_wildcard(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
 	auto patterns = engine.resolve(args[0], 0, *engine.getCallContext()->err);
 	bool first = true;
-	patterns.split<StringView::WhiteSpace>([&](StringView pattern) {
-		//sprt::cout << "Pattern: " << pattern << "\n";
 
-		StringView path = pattern.readUntil<StringView::Chars<'*'>>();
-		StringView pathSuffix;
-		if (pattern.is('*')) {
-			++pattern;
-			pathSuffix = pattern;
+	auto emit = [&](StringView path, bool wantDir) {
+		if (first) {
+			first = false;
+		} else {
+			out << ' ';
+		}
+		emitResolvedPath(out, path);
+		if (wantDir) {
+			out << "/";
+		}
+	};
+
+	patterns.split<StringView::WhiteSpace>([&](StringView pattern) {
+		// A trailing '/' restricts the match to directories (e.g. `dir/*/`).
+		bool wantDir = pattern.ends_with("/");
+		StringView pat = wantDir ? pattern.sub(0, pattern.size() - 1) : pattern;
+		if (pat.empty()) {
+			return;
 		}
 
-		auto targetPath = engine.getAbsolutePath(path);
+		// A glob may sit in ANY path component (`a/*/b`, `*/*.mk`), not just the last one, so the
+		// pattern is expanded component by component: everything before the first glob-bearing
+		// component is a literal prefix resolved once, and each later component either filters the
+		// current candidate directories or is appended verbatim.
+		size_t globStart = pat.size(); // offset where the first glob-bearing component begins
+		size_t compStart = 0;
+		for (size_t i = 0; i <= pat.size(); ++i) {
+			if (i == pat.size() || pat[i] == '/') {
+				if (Function_wildcard_isGlob(pat.sub(compStart, i - compStart))) {
+					globStart = compStart;
+					break;
+				}
+				compStart = i + 1;
+			}
+		}
 
-		filesystem::ftw(FileInfo{targetPath}, [&](const FileInfo &info, FileType type) {
-			if (info.path != targetPath) {
-				if (pathSuffix == "/" && type == FileType::Dir) {
-					if (first) {
-						first = false;
+		StringView literalPrefix = pat.sub(0, globStart); // "" or ends with '/'
+		StringView tail = pat.sub(globStart);
+
+		auto basePath =
+				engine.getAbsolutePath(literalPrefix.empty() ? StringView(".") : literalPrefix);
+		if (basePath.empty()) {
+			return;
+		}
+
+		if (tail.empty()) {
+			// No glob at all: `$(wildcard path)` is an existence test.
+			filesystem::Stat stat;
+			if (filesystem::stat(FileInfo{basePath}, stat)
+					&& (!wantDir || stat.type == FileType::Dir)) {
+				emit(basePath, wantDir);
+			}
+			return;
+		}
+
+		Vector<String> current;
+		current.emplace_back(basePath.str<Interface>());
+
+		size_t pos = 0;
+		while (pos < tail.size() && !current.empty()) {
+			auto next = tail.sub(pos).readUntil<StringView::Chars<'/'>>();
+			StringView comp(next);
+			pos += comp.size() + 1; // skip the separator (past-the-end when it was the last one)
+			bool isLast = pos >= tail.size();
+			if (comp.empty()) {
+				continue; // tolerate a doubled '/'
+			}
+
+			Vector<String> produced;
+			for (auto &dir : current) {
+				if (Function_wildcard_isGlob(comp)) {
+					StringView dirPath(dir);
+					filesystem::ftw(FileInfo{dirPath}, [&](const FileInfo &info, FileType type) {
+						if (info.path == dirPath) {
+							return true;
+						}
+						// An intermediate component can only continue through a directory.
+						if ((!isLast || wantDir) && type != FileType::Dir) {
+							return true;
+						}
+						if (Function_wildcard_match(comp, filepath::lastComponent(info.path))) {
+							if (isLast) {
+								emit(info.path, wantDir);
+							} else {
+								produced.emplace_back(info.path.str<Interface>());
+							}
+						}
+						return true;
+					}, 1);
+				} else {
+					String path;
+					path.reserve(dir.size() + 1 + comp.size());
+					path.append(dir).append("/").append(comp.data(), comp.size());
+					if (isLast) {
+						filesystem::Stat stat;
+						if (filesystem::stat(FileInfo{StringView(path)}, stat)
+								&& (!wantDir || stat.type == FileType::Dir)) {
+							emit(path, wantDir);
+						}
 					} else {
-						out << ' ';
+						produced.emplace_back(move(path));
 					}
-					out << info.path << "/";
-					//sprt::cout << info.path << "/" << "\n";
-				} else if (info.path.ends_with(pathSuffix)) {
-					if (first) {
-						first = false;
-					} else {
-						out << ' ';
-					}
-					out << info.path;
-					//sprt::cout << info.path << "\n";
 				}
 			}
-			return true;
-		}, 1);
+			current = move(produced);
+		}
 	});
 
-	return true; // not implemented
+	return true;
 }
 
 static bool Function_realpath(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
@@ -206,15 +412,21 @@ static bool Function_realpath(const Callback<void(StringView)> &out, void *, Var
 		auto content = engine.resolve(arg, 0, *engine.getCallContext()->err);
 		content.split<StringView::WhiteSpace>([&](StringView str) {
 			auto path = engine.getAbsolutePath(str);
-			if (!path.empty()) {
-				if (filesystem::exists(FileInfo{path})) {
-					if (!start) {
-						start = true;
-					} else {
-						out << ' ';
-					}
-					out << path;
+			if (path.empty()) {
+				return;
+			}
+			// GNU make's $(realpath) canonicalizes AND resolves symlinks, returning the
+			// empty string for a path that does not exist. The OS realpath() does exactly
+			// this (and returns nullptr for a missing path).
+			auto cpath = path.str<Interface>();
+			char buf[4_KiB] = {0}; // realpath needs a PATH_MAX-sized buffer
+			if (::realpath(cpath.data(), buf)) {
+				if (!start) {
+					start = true;
+				} else {
+					out << ' ';
 				}
+				emitResolvedPath(out, StringView(buf));
 			}
 		});
 	}
@@ -235,7 +447,7 @@ static bool Function_abspath(const Callback<void(StringView)> &out, void *, Vari
 				} else {
 					out << ' ';
 				}
-				out << path;
+				emitResolvedPath(out, path);
 			}
 		});
 	}

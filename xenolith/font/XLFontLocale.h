@@ -89,20 +89,29 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::locale {
 //
 // Tag %=<number>% (like %=1234%) can be used to insert localized string by numeric index
 //
-// Tag $?<number>:<key>% works with special form of localization definition.
+// Tag %?<number>:<key>% works with special form of localization definition.
 // You can define a list of words as one term like "WORD_ONE:WORD_TWO:WORD_THREE"
-// When you define tag like $?<number>:<key>%, definition with this <key> assumed
+// When you define tag like %?<number>:<key>%, definition with this <key> assumed
 // to be word-list definition, and <number> defines specific word within it.
 // e.g. for definition NUMBER_LIST = "ONE:TWO:THREE:FOUR", after substitution
-// "2 is %=2:NUMBER_LIST%" become "2 is TWO".
-// It's useful when some term has variadic spelling on some condition
+// "2 is %?1:NUMBER_LIST%" become "2 is TWO" (the index is 0-based).
+// It's useful when some term has variadic spelling on some condition:
+// `locale::pluralForm(n)` is what the <number> normally is.
+//
+// Tag %<number>% (like %1%, one-based) is a positional argument, replaced by the
+// n-th argument of the `resolveLocaleTags` / `format` overload that takes a span.
+// Without arguments such a tag is looked up in the table like any other.
 //
 
 // Locale can be set in POSIX format (en_US.utf8, [language[_territory][.codeset]]) or
-// LOWERCASE XML format (en-us, [language]-[subscript])
+// lowercase XML format (en-us, [language]-[subscript])
 //
-// For definitions (`define`) you should always use LOWERCASE XML format.
+// For definitions (`define`) you should always use lowercase XML format.
 
+
+// `using namespace stappler::font` in XLFontConfig.h reaches xenolith::font and not here, and a
+// `font::` qualification would resolve to xenolith::font first.
+using TextDirection = stappler::font::TextDirection;
 
 using LocaleInitList = sprt::initializer_list<Pair<StringView, StringView>>;
 using LocaleIndexList = sprt::initializer_list<Pair<uint32_t, StringView>>;
@@ -126,12 +135,16 @@ enum class TimeTokens {
 };
 
 //Event: Locale was changed
-extern EventHeader onLocale;
+// Exported: subscribers outside this module link against it (every Label in
+// xenolith_renderer_basic2d redraws on a locale change).
+SP_PUBLIC extern EventHeader onLocale;
 
-// Defines key-value pairs for locale-based substitutuion, locale must be an lowercased XML land-territory pair
+// Defines key-value pairs for locale-based substitutuion, locale must be an lowercased XML
+// land-territory pair
 SP_PUBLIC void define(const StringView &locale, LocaleInitList &&);
 
-// Defines index-value pairs for locale-based substitutuion, locale must be an lowercased XML land-territory pair
+// Defines index-value pairs for locale-based substitutuion, locale must be an lowercased XML
+// land-territory pair
 SP_PUBLIC void define(const StringView &locale, LocaleIndexList &&);
 SP_PUBLIC void define(const StringView &locale,
 		const sprt::array<StringView, toInt(TimeTokens::Max)> &);
@@ -158,21 +171,60 @@ SP_PUBLIC LocaleInfo getLocaleInfo();
 SP_PUBLIC WideStringView string(const WideStringView &);
 SP_PUBLIC WideStringView string(size_t);
 
+// The key is widened into a local and the view is taken of that (a WideStringView of a temporary
+// would dangle). The result points into the manager's pool, not into the key.
+// The argument is the bare key (`"MyKey"_meta`); a `"MyKey"_locale` literal carries the `@Locale:`
+// prefix and belongs in `setString` / `resolveLocaleTags`, which strip it.
 template <char... Chars>
 SP_PUBLIC WideStringView string(const metastring::metastring<Chars...> &str) {
-	return string(WideStringView(str.to_std_ustring()));
+	auto key = str.template string<WideString>();
+	return string(WideStringView(key));
 }
 
 SP_PUBLIC WideStringView numeric(const WideStringView &, uint32_t);
 
 template <char... Chars>
 SP_PUBLIC WideStringView numeric(const metastring::metastring<Chars...> &str, uint32_t n) {
-	return numeric(WideStringView(str.to_std_ustring()), n);
+	auto key = str.template string<WideString>();
+	return numeric(WideStringView(key), n);
 }
 
 SP_PUBLIC bool hasLocaleTagsFast(const WideStringView &);
 SP_PUBLIC bool hasLocaleTags(const WideStringView &);
 SP_PUBLIC WideString resolveLocaleTags(const WideStringView &);
+
+// The same, with positional arguments for the `%1%`..`%9%` tags.
+SP_PUBLIC WideString resolveLocaleTags(const WideStringView &, SpanView<WideStringView> args);
+
+// Resolves the key and substitutes the arguments, in UTF-8. The key is taken with or without the
+// `@Locale:` prefix. The template holds the word order, so `format("Studio:Menu:Undo", {name})`
+// places the value where each language needs it. With no arguments it is a plain UTF-8 lookup
+// (window titles, OS dialog captions, inspector strings).
+SP_PUBLIC String format(StringView key, SpanView<StringView> args = SpanView<StringView>());
+
+// Which form of a word a count takes in the current locale, as the <number> of a %?n:key% tag or the
+// second argument of `numeric`: 0-based, and 0 for a language that has only one form.
+//
+// The definition carries the forms in CLDR order, separated by ':' -
+//   ru "файл:файла:файлов"   en "file:files"   zh "文件"   fa "پرونده:پرونده"
+// - so a language is added by writing its words, not by changing a call site.
+SP_PUBLIC uint32_t pluralForm(uint32_t n);
+
+/* A sentence with a count in it, in the form the count takes in the current language. `key`
+names a word list, the form is chosen by `pluralForm(count)`; the count is `%1%` and `extra`
+continues from `%2%`:
+
+	en  "%1% error:%1% errors"
+	ru  "%1% ошибка:%1% ошибки:%1% ошибок"
+	zh  "%1% 个错误"
+*/
+SP_PUBLIC String pluralFormat(StringView key, uint32_t count,
+		SpanView<StringView> extra = SpanView<StringView>());
+
+// Base text direction (CSS `direction`) of the current locale, or of a language code. Never
+// `Neutral`: that resolves a direction from the text, and this answers about the locale.
+SP_PUBLIC TextDirection getTextDirection();
+SP_PUBLIC TextDirection getTextDirection(StringView language);
 
 SP_PUBLIC StringView timeToken(TimeTokens);
 

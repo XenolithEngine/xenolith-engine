@@ -116,6 +116,18 @@ void LayoutTable::processRow(const Row &row, size_t colsCount) {
 			auto colSpan = Cell_getColSpan(*it);
 			auto rowSpan = Cell_getRowSpan(*it);
 
+			// clamp spans to the grid so downstream consumers (row/col-span layout
+			// and the collapsed-border fill) never index past the rows/cols arrays —
+			// here colsCount == cols.size() and rowsCount == rows.size()
+			size_t colAvail = (colIndex < colsCount) ? (colsCount - colIndex) : 0;
+			size_t rowAvail = (rowIndex < rowsCount) ? (size_t(rowsCount) - rowIndex) : 0;
+			if (colSpan > colAvail) {
+				colSpan = uint16_t(colAvail);
+			}
+			if (rowSpan > rowAvail) {
+				rowSpan = uint16_t(rowAvail);
+			}
+
 			cells.emplace_back(Cell{it, rowIndex, colIndex, rowSpan, colSpan});
 
 			for (uint16_t i = 0; i < colSpan; ++i) {
@@ -1275,14 +1287,14 @@ void LayoutTable::Borders::make(LayoutTable &table, LayoutResult *res) {
 }
 
 BorderParams LayoutTable::Borders::getHorz(size_t row, size_t col) const {
-	if (col < numCols && row <= numCols) {
+	if (col < numCols && row <= numRows) {
 		return horizontal[row * numCols + col];
 	}
 	return BorderParams();
 }
 
 BorderParams LayoutTable::Borders::getVert(size_t row, size_t col) const {
-	if (col <= numCols && row < numCols) {
+	if (col <= numCols && row < numRows) {
 		return vertical[row * (numCols + 1) + col];
 	}
 	return BorderParams();

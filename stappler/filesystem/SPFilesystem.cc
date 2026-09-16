@@ -178,32 +178,64 @@ bool remove(const FileInfo &info, bool recursive) {
 		return false;
 	}
 
-	if (info.category == FileCategory::Bundled) {
-		return false; // we can not remove anything from bundle
+	if (info.category == FileCategory::Bundled || info.category == FileCategory::Embedded) {
+		return false; // we can not remove anything from a bundle or from embedded data
 	}
 
-	bool found = false;
-	enumerateWritablePaths(info, Access::Exists, [&](const LocationInfo &info, StringView str) {
-		struct stat st;
-		if (info.interface->_stat(info, str, &st) == Status::Ok) {
-			if (S_ISDIR(st.st_mode)) {
-				if (!recursive) {
-					slog().error("filesystem",
-							"Fail to remove directory in non recursive mode: ", str);
-					found = false;
-					return false;
-				}
-
-				info.interface->_ftw(info, str, [&](StringView isource, FileType type) {
-					sprt::filepath::merge([&](StringView path) {
-						info.interface->_remove(info, path);
-					}, str, isource);
-					return true; //
-				}, -1, false);
-			} else {
-				found = info.interface->_remove(info, str) == Status::Ok;
+	// Recursively remove a directory's contents and then the directory itself. _ftw walks entries
+	// depth-first (dirFirst == false), so a directory is always empty by the time its own callback
+	// fires; the root is reported last (empty relative path -> merge yields `root`) and removed too.
+	// Returns true only when the walk completed and every removal reported success.
+	auto removeTree = [](const LocationInfo &loc, StringView root) -> bool {
+		bool ok = true;
+		auto st = loc.interface->_ftw(loc, root, [&](StringView isource, FileType type) {
+			if (isource.empty()) {
+				// The root directory itself (reported last because dirFirst == false). Remove it
+				// explicitly after the walk instead of via merge(root, "") — an empty trailing
+				// component yields a path some platforms (Windows) reject in remove().
+				return true;
 			}
-		};
+			sprt::filepath::merge([&](StringView path) {
+				if (loc.interface->_remove(loc, path) != Status::Ok) {
+					ok = false;
+				}
+			}, root, isource);
+			return true;
+		}, -1, false);
+		if (st != Status::Ok) {
+			return false;
+		}
+		// Contents are gone (depth-first walk); remove the now-empty root directory.
+		if (loc.interface->_remove(loc, root) != Status::Ok) {
+			ok = false;
+		}
+		return ok;
+	};
+
+	bool found = false;
+	enumerateWritablePaths(info, Access::Exists, [&](const LocationInfo &loc, StringView str) {
+		// Classify with stat when available, but do NOT require it: on some platforms (notably
+		// Windows/wine) stat-by-CreateFile can fail for an entry that plainly exists, and a removal
+		// must not silently no-op because of that. _remove maps to the platform remove(), which
+		// deletes a regular file or an empty directory directly.
+		struct stat st;
+		bool haveStat = (loc.interface->_stat(loc, str, &st) == Status::Ok);
+
+		if (haveStat && S_ISDIR(st.st_mode)) {
+			if (!recursive) {
+				slog().error("filesystem", "Fail to remove directory in non recursive mode: ", str);
+				return false;
+			}
+			found = removeTree(loc, str);
+		} else {
+			// A regular file, or stat was unavailable: try a direct removal first.
+			if (loc.interface->_remove(loc, str) == Status::Ok) {
+				found = true;
+			} else if (recursive) {
+				// Direct removal failed and we could not stat it: it may be a non-empty directory.
+				found = removeTree(loc, str);
+			}
+		}
 		return false;
 	});
 	return found;
@@ -214,8 +246,8 @@ bool touch(const FileInfo &info) {
 		return false;
 	}
 
-	if (info.category == FileCategory::Bundled) {
-		return false; // we can not remove anything from bundle
+	if (info.category == FileCategory::Bundled || info.category == FileCategory::Embedded) {
+		return false; // we can not remove anything from a bundle or from embedded data
 	}
 
 	bool found = false;
@@ -282,7 +314,7 @@ bool ftw(const FileInfo &info, const Callback<bool(const FileInfo &, FileType)> 
 	}
 
 	auto fn = [&](StringView p, FileType t) -> bool {
-		auto tmpPath = filepath::merge<memory::StandartInterface>(info.path, p);
+		auto tmpPath = filepath::merge<mem_std::Interface>(info.path, p);
 		FileInfo newInfo = info;
 		newInfo.path = tmpPath;
 		return cb(newInfo, t);
@@ -307,8 +339,7 @@ static bool doCopyFile(const LocationInfo &fromLoc, StringView from, const Locat
 		auto fTo =
 				File::open(toLoc, to, OpenFlags::Write | OpenFlags::Create | OpenFlags::Truncate);
 		if (fFrom && fTo) {
-			BufferTemplate<memory::StandartInterface> buffer(
-					sprt::min(size_t(4_MiB), fFrom.size()));
+			BufferTemplate<mem_std::Interface> buffer(sprt::min(size_t(4_MiB), fFrom.size()));
 			if (io::read(io::Producer(fFrom), io::Consumer(fTo), io::Buffer(buffer)) > 0) {
 				return true;
 			}
@@ -323,15 +354,15 @@ bool move(const FileInfo &isource, const FileInfo &idest) {
 	}
 
 	struct __SPRT_STAT_NAME stat;
-	memory::StandartInterface::StringType source;
+	mem_std::Interface::StringType source;
 	const LocationInfo *sourceLoc = nullptr;
 
-	memory::StandartInterface::StringType dest;
+	mem_std::Interface::StringType dest;
 	const LocationInfo *destLoc = nullptr;
 
 	enumerateWritablePaths(isource, Access::Exists, [&](const LocationInfo &info, StringView str) {
 		info.interface->_stat(info, str, &stat);
-		source = str.str<memory::StandartInterface>();
+		source = str.str<mem_std::Interface>();
 		sourceLoc = &info;
 		return false;
 	});
@@ -341,7 +372,7 @@ bool move(const FileInfo &isource, const FileInfo &idest) {
 	}
 
 	enumerateWritablePaths(idest, Access::None, [&](const LocationInfo &info, StringView str) {
-		dest = str.str<memory::StandartInterface>();
+		dest = str.str<mem_std::Interface>();
 		destLoc = &info;
 		return false;
 	});
@@ -360,7 +391,7 @@ bool move(const FileInfo &isource, const FileInfo &idest) {
 		// copy directory recursive
 		if (sourceLoc->interface->_ftw(*sourceLoc, source,
 					[&](StringView isource, FileType type) {
-			auto idest = filepath::replace<memory::StandartInterface>(isource, source, dest);
+			auto idest = filepath::replace<mem_std::Interface>(isource, source, dest);
 
 			if (type == FileType::Dir) {
 				return destLoc->interface->_mkdir(*destLoc, idest,
@@ -396,17 +427,17 @@ bool copy(const FileInfo &isource, const FileInfo &idest, bool stopOnError) {
 	}
 
 	struct __SPRT_STAT_NAME sourceStat;
-	memory::StandartInterface::StringType source;
+	mem_std::Interface::StringType source;
 	const LocationInfo *sourceLoc = nullptr;
 
 	bool destExists = false;
 	struct __SPRT_STAT_NAME destStat;
-	memory::StandartInterface::StringType dest;
+	mem_std::Interface::StringType dest;
 	const LocationInfo *destLoc = nullptr;
 
 	enumeratePaths(isource, Access::Exists, [&](const LocationInfo &info, StringView str) {
 		info.interface->_stat(info, str, &sourceStat);
-		source = str.str<memory::StandartInterface>();
+		source = str.str<mem_std::Interface>();
 		sourceLoc = &info;
 		return false;
 	});
@@ -420,7 +451,7 @@ bool copy(const FileInfo &isource, const FileInfo &idest, bool stopOnError) {
 		if (info.interface->_stat(info, str, &destStat) == Status::Ok) {
 			destExists = true;
 		}
-		dest = str.str<memory::StandartInterface>();
+		dest = str.str<mem_std::Interface>();
 		destLoc = &info;
 		return false;
 	});
@@ -437,10 +468,10 @@ bool copy(const FileInfo &isource, const FileInfo &idest, bool stopOnError) {
 	if (dest.back() == '/') {
 		// cp sourcedir targetdir/
 		// extend dest with the first source component
-		dest = filepath::merge<memory::StandartInterface>(dest, sourceLastComponent);
+		dest = filepath::merge<mem_std::Interface>(dest, sourceLastComponent);
 	} else if (destExists && S_ISDIR(destStat.st_mode)
 			&& sourceLastComponent != filepath::lastComponent(dest)) {
-		dest = filepath::merge<memory::StandartInterface>(dest, sourceLastComponent);
+		dest = filepath::merge<mem_std::Interface>(dest, sourceLastComponent);
 	} else if (destExists) {
 		slog().error("filesystem", "Fail to copy '", source, "' to '", dest,
 				"': destination exists");
@@ -483,8 +514,8 @@ bool write(const FileInfo &ipath, const unsigned char *data, size_t len, bool _o
 	bool success = false;
 	enumerateWritablePaths(ipath, _override ? Access::None : Access::Empty,
 			[&](const LocationInfo &info, StringView str) {
-		success = info.interface->_write_oneshot(info, str, data, len, _override,
-						  getModeFromProtFlags(ProtFlags::Default))
+		success = info.interface->_write_oneshot(info, str, data, len,
+						  getModeFromProtFlags(ProtFlags::WriteDefault), _override)
 				== Status::Ok;
 		return false;
 	});

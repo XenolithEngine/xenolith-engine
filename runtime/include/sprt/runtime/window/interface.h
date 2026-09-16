@@ -34,10 +34,12 @@ namespace sprt::window {
 
 class SPRT_API AppWindow : public Ref {
 public:
-	virtual ~AppWindow() = default;
+	virtual ~AppWindow();
 
 	virtual void run() = 0;
 	virtual void close(bool force) = 0;
+	// Dismiss a Popup/Tooltip. Auxiliary windows are not reused, so this is a graceful close.
+	virtual void hide() { close(true); }
 	virtual void setReadyForNextFrame() = 0;
 	virtual void update(PresentationUpdateFlags) = 0;
 

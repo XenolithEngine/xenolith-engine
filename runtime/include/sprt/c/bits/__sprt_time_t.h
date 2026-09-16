@@ -68,10 +68,17 @@ struct __SPRT_TIMESPEC_NAME {
 	__SPRT_ID(int64_t) tv_nsec;
 };
 
+#if SPRT_WINDOWS
+struct __SPRT_TIMEVAL_NAME {
+	long tv_sec;
+	long tv_usec;
+};
+#else
 struct __SPRT_TIMEVAL_NAME {
 	__SPRT_ID(time_t) tv_sec;
 	__SPRT_ID(suseconds_t) tv_usec;
 };
+#endif
 
 #ifndef _TIME_H
 struct __SPRT_ITIMERSPEC_NAME {

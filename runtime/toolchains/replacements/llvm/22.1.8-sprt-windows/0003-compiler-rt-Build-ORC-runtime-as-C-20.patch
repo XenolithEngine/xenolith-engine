@@ -1,0 +1,21 @@
+Subject: [PATCH 3/6] [compiler-rt] Build the ORC runtime as C++20
+
+The sprt freestanding STL headers the ORC runtime is compiled against use C++20
+concepts and requires-clauses unconditionally, which compiler-rt's default C++17
+rejects. Raise the standard for this directory only.
+
+diff --git a/compiler-rt/lib/orc/CMakeLists.txt b/compiler-rt/lib/orc/CMakeLists.txt
+index b8d1b03b7..bcfcede6d 100644
+--- a/compiler-rt/lib/orc/CMakeLists.txt
++++ b/compiler-rt/lib/orc/CMakeLists.txt
+@@ -1,5 +1,10 @@
+ # Build for all components of the ORC runtime support library.
+ 
++# The sprt freestanding STL headers this runtime is built against use C++20
++# concepts/requires unconditionally, so build the ORC runtime at C++20 rather
++# than compiler-rt's default C++17 (directory-scoped override).
++set(CMAKE_CXX_STANDARD 20)
++
+ # ORC runtime library common implementation files.
+ set(ORC_COMMON_SOURCES
+   debug.cpp

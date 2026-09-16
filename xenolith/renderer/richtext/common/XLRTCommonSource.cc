@@ -326,7 +326,7 @@ bool CommonSource::readExternalAsset(SourceAssetLock *asset, DocumentAssetMeta &
 
 		meta.mtime = mtime;
 		if (tmp.imageWidth != meta.imageWidth || tmp.imageHeight != meta.imageHeight
-				|| mtime != tmp.imageHeight) {
+				|| mtime != tmp.mtime) {
 			return true;
 		}
 	} else if (StringView(meta.type).is("text/css")) {

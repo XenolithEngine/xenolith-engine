@@ -32,11 +32,24 @@ THE SOFTWARE.
 
 #include <math.h>
 
+#if SPRT_EMBOX
+// Embox declares almost none of the C99 math surface - see the shim. The
+// definitions the forwarders below reach are the musl port in
+// c/math/embox_math_{flt,dbl,ldbl}.c.
+#include "math/embox_math_shim.h"
+#endif
+
+// Neither NuttX nor Embox declares any of the MATH_* error-reporting bits, so
+// there is nothing to pin against there. Named rather than a bare #ifdef so the
+// check stays unconditional everywhere else, and comes back on either platform
+// the moment it grows them.
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(MATH_ERRNO)
 static_assert(MATH_ERRNO == __SPRT_MATH_ERRNO);
 static_assert(MATH_ERREXCEPT == __SPRT_MATH_ERREXCEPT);
 
-#if !defined(SPRT_MACOS)
+#if !defined(SPRT_APPLE)
 static_assert(math_errhandling == __SPRT_math_errhandling);
+#endif
 #endif
 
 static_assert(FP_NAN == __SPRT_FP_NAN);
@@ -69,53 +82,76 @@ static_assert(HUGE_VALL == __SPRT_HUGE_VALL);
 
 namespace sprt {
 
+// The freestanding targets (Windows, wasm, Embox EL0) forward to the
+// __fpclassify*/__signbit* helpers their own libm exports -- musl's, for the two
+// that link runtime_musl_libc. The generic branches below need an `fpclassify`
+// macro or function from a platform <math.h>, and on a -nostdinc target there is
+// none.
 __SPRT_C_FUNC int __SPRT_ID(__fpclassify)(double v) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return ::__fpclassifyd(v);
-#elif SPRT_WINDOWS
+#elif SPRT_WINDOWS || SPRT_WASM || SPRT_EMBOX_USER
 	return ::__fpclassify(v);
+#elif defined(fpclassify)
+	return fpclassify(v);
 #else
 	return ::fpclassify(v);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(__fpclassifyf)(float v) {
-#if SPRT_MACOS || SPRT_WINDOWS
+#if SPRT_APPLE || SPRT_WINDOWS || SPRT_WASM || SPRT_EMBOX_USER
 	return ::__fpclassifyf(v);
+#elif defined(fpclassify)
+	return fpclassify(v);
 #else
 	return ::fpclassify(v);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(__fpclassifyl)(long double v) {
-#if SPRT_MACOS || SPRT_WINDOWS
+#if SPRT_APPLE || SPRT_WINDOWS || SPRT_WASM || SPRT_EMBOX_USER
 	return ::__fpclassifyl(v);
+#elif defined(fpclassify)
+	return fpclassify(v);
 #else
 	return ::fpclassify(v);
 #endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(__signbit)(double v) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return ::__inline_signbitd(v);
-#elif SPRT_WINDOWS
+#elif SPRT_WINDOWS || SPRT_EMBOX_USER
 	return ::__signbit(v);
+#elif SPRT_WASM
+	return __builtin_signbit(v);
+#elif defined(signbit)
+	return signbit(v);
 #else
 	return ::signbit(v);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(__signbitf)(float v) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return ::__inline_signbitf(v);
-#elif SPRT_WINDOWS
+#elif SPRT_WINDOWS || SPRT_EMBOX_USER
 	return ::__signbitf(v);
+#elif SPRT_WASM
+	return __builtin_signbit(v);
+#elif defined(signbit)
+	return signbit(v);
 #else
 	return ::signbit(v);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(__signbitl)(long double v) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return ::__inline_signbitl(v);
-#elif SPRT_WINDOWS
+#elif SPRT_WINDOWS || SPRT_EMBOX_USER
 	return ::__signbitl(v);
+#elif SPRT_WASM
+	return __builtin_signbit(v);
+#elif defined(signbit)
+	return signbit(v);
 #else
 	return ::signbit(v);
 #endif

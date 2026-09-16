@@ -1,0 +1,96 @@
+# Copyright (c) 2026 Xenolith Team <admin@senolith.studio>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
+#
+# mimalloc for builtin libc
+#
+
+MODULE_RUNTIME_MALLOC_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
+MODULE_RUNTIME_MALLOC_PRIVATE_STANDALONE := 1
+
+ifeq ($(TARGET_SYSTEM),WASM)
+
+# wasm has no mmap/VirtualAlloc, but mimalloc ships a "wasi" OS-primitive layer
+# (src/prim/wasi/prim.c) that grows the heap through sbrk — which the freestanding
+# wasm libc now implements over memory.grow (libc_impl/src/wasm/unistd.cc). Build
+# the same mimalloc SCU as every other target; -D__wasi__ selects that prim layer.
+#
+# -DMI_USE_PTHREADS keeps mimalloc MULTI-THREADED: the sprt wasm runtime has full
+# pthreads, so mimalloc uses its normal per-thread heaps, a pthread mutex around
+# memory growth, and a pthread-key destructor to reclaim a thread's heap on exit
+# (see the atomic.h + wasi/prim.c overrides) instead of the wasi single-thread stub.
+MODULE_RUNTIME_MALLOC_SRCS_OBJS := \
+	$(RUNTIME_MODULE_DIR)/libc_impl/mimalloc/mimalloc.scu.c
+MODULE_RUNTIME_MALLOC_PRIVATE_INCLUDES := \
+	$(RUNTIME_MODULE_DIR)/include \
+	$(RUNTIME_MODULE_DIR)/include_libc \
+	$(RUNTIME_MODULE_DIR)/libc_impl/mimalloc/include
+
+MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS := \
+	$(MODULE_RUNTIME_COMMON_CFLAGS) \
+	-nostdinc \
+	-ffreestanding \
+	-fbuiltin \
+	-D__wasi__ \
+	-DMI_USE_PTHREADS \
+	-DMALLOC_NO_PRIVATE_NAMESPACE \
+	-DMI_DEFAULT_ARENA_RESERVE=32*1024
+
+else # ($(TARGET_SYSTEM),WASM)
+
+MODULE_RUNTIME_MALLOC_SRCS_OBJS := \
+	$(RUNTIME_MODULE_DIR)/libc_impl/mimalloc/mimalloc.scu.c
+MODULE_RUNTIME_MALLOC_PRIVATE_INCLUDES := \
+	$(RUNTIME_MODULE_DIR)/include \
+	$(RUNTIME_MODULE_DIR)/include/sprt/wrappers/windows \
+	$(RUNTIME_MODULE_DIR)/include_libc \
+	$(RUNTIME_MODULE_DIR)/libc_impl/mimalloc/include
+
+MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS := \
+	$(MODULE_RUNTIME_COMMON_CFLAGS) \
+	-nostdinc \
+	-ffreestanding \
+	-fbuiltin \
+	 -funwind-tables -fasynchronous-unwind-tables \
+	-DMALLOC_NO_PRIVATE_NAMESPACE
+
+ifeq ($(TARGET_SYSTEM),EmboxUser)
+# mimalloc reserves an arena of virtual address space up front and lets the OS
+# back it lazily; on Linux the default 1 GiB costs nothing until touched. Embox
+# EL0 has no demand paging -- every mapping is physical memory the kernel hands
+# over on the spot -- so that default is a request for the whole machine. It is
+# not a slow start either: the kernel's page allocator answers an impossible
+# request by walking every free run it has, so the first malloc() of the first
+# program never returned. See xenolith-os docs/EMBOX-USERSPACE.md, K5.
+#
+# 32 MiB is mimalloc's own MI_SEGMENT_SIZE, which is the smallest value it will
+# actually use (mi_arena_reserve rounds up to it). Further arenas are reserved on
+# demand, so this is a starting size and not a ceiling.
+#
+# The value is in KiB, as mi_option_arena_reserve is.
+MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS += -DMI_DEFAULT_ARENA_RESERVE=32*1024
+endif
+
+endif # ($(TARGET_SYSTEM),WASM)
+
+MODULE_RUNTIME_MALLOC_PRIVATE_CFLAGS := $(MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS)
+MODULE_RUNTIME_MALLOC_PRIVATE_CXXFLAGS := $(MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS)
+
+$(call define_module, runtime_malloc, MODULE_RUNTIME_MALLOC)

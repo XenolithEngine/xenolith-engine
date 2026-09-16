@@ -34,7 +34,7 @@ struct MmapStorage {
 	uint64_t offset;
 };
 
-#define SP_TERMINATED_DATA(view) (view.terminated()?view.data():view.str<memory::StandartInterface>().data())
+#define SP_TERMINATED_DATA(view) (view.terminated()?view.data():view.str<mem_std::Interface>().data())
 
 uint8_t *_mapFile(uint8_t storage[16], StringView path, MappingType type, ProtFlags prot,
 		size_t offset, size_t len) {

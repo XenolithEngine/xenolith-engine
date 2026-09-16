@@ -13,6 +13,8 @@ EXPORTS
 	OutputDebugStringA
 	OutputDebugStringW
 	RtlLookupFunctionEntry
+	RtlAddFunctionTable
+	RtlDeleteFunctionTable
 	RtlUnwindEx
 	RtlVirtualUnwind
 	RtlCaptureStackBackTrace
@@ -30,6 +32,9 @@ EXPORTS
 	RtlPcToFileHeader
 	ReadFile
 	WriteFile
+	ReadDirectoryChangesW
+	CancelIoEx
+	GetOverlappedResult
 	SetFilePointerEx
 	SetEndOfFile
 	SetFileInformationByHandle
@@ -45,6 +50,8 @@ EXPORTS
 	GetDiskFreeSpaceA
 	GetDiskFreeSpaceW
 	GetFullPathNameW
+	GetShortPathNameW
+	GetShortPathNameA
 	GetFullPathNameA
 	LockFile
 	LockFileEx
@@ -69,6 +76,7 @@ EXPORTS
 	GetCommandLineW
 	CreateProcessW
 	TerminateProcess
+	IsProcessorFeaturePresent
 	CreateThread
 	OpenThread
 	GetCurrentThread
@@ -98,6 +106,8 @@ EXPORTS
 	CreateMutexW
 	CreateSemaphoreW
 	CreateSemaphoreA
+	OpenSemaphoreW
+	OpenSemaphoreA
 	CreateEventW
 	SetEvent
 	ResetEvent
@@ -136,9 +146,14 @@ EXPORTS
 	SetWaitableTimer
 	CancelWaitableTimer
 	RegOpenKeyExW
+	RegOpenKeyExA
 	RegGetValueW
 	RegEnumValueW
 	RegCloseKey
+	ExpandEnvironmentStringsW
+	LoadLibraryExA
+	SetUnhandledExceptionFilter
+	SetConsoleCtrlHandler
 	GetComputerNameW
 	GetActiveProcessorCount
 	GetLogicalProcessorInformation
@@ -154,6 +169,7 @@ EXPORTS
 	GetLocaleInfoEx
 	IsValidLocaleName
 	GetUserDefaultLocaleName
+	GetUserPreferredUILanguages
 	IdnToAscii
 	IdnToUnicode
 	GetVersionExA
@@ -161,6 +177,7 @@ EXPORTS
 	GetACP
 	ReadConsoleA
 	ReadConsoleW
+	FlushConsoleInputBuffer
 	GetSystemDirectoryA
 	GetSystemDirectoryW
 	WaitForMultipleObjects
@@ -178,3 +195,54 @@ EXPORTS
 	DeleteTimerQueueTimer
 	DeleteTimerQueue
 	DeleteTimerQueueEx
+	RegisterWaitForSingleObject
+	UnregisterWaitEx
+	UnregisterWait
+	CreateNamedPipeW
+	SetNamedPipeHandleState
+	CompareStringOrdinal
+	FreeEnvironmentStringsW
+	GetModuleFileNameA
+	GetWindowsDirectoryW
+	OpenFileMappingW
+	ContinueDebugEvent
+	CreateEventA
+	CreateNamedPipeA
+	DebugActiveProcess
+	DebugActiveProcessStop
+	DebugBreakProcess
+	GetErrorMode
+	GetProcessId
+	Module32FirstW
+	Module32NextW
+	QueryFullProcessImageNameW
+	ReadProcessMemory
+	SuspendThread
+	VirtualAllocEx
+	VirtualFreeEx
+	VirtualQueryEx
+	WaitForDebugEvent
+	WriteProcessMemory
+	GetLogicalDriveStringsW
+	GetThreadContext
+	QueryDosDeviceW
+	QueueUserAPC
+	SetThreadContext
+	Wow64GetThreadContext
+	Wow64SetThreadContext
+	CreateMemoryResourceNotification
+	GetCommandLineA
+	CreateProcessA
+	GetTempFileNameA
+	DebugBreak
+	AllocConsole
+	FreeConsole
+	SearchPathA
+	GetCurrentDirectoryA
+	SetCurrentDirectoryA
+	SetStdHandle
+	GlobalAlloc
+	GlobalFree
+	GlobalLock
+	GlobalUnlock
+	GlobalSize

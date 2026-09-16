@@ -1,6 +1,7 @@
 /**
  Copyright (c) 2023-2025 Stappler LLC <admin@stappler.dev>
  Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -26,19 +27,36 @@
 
 #include "XLContextInfo.h"
 #include "XLEvent.h"
+#include "XLRemotePeerInfo.h"
+#include "XLRemoteProtocol.h"
 #include "XLResourceCache.h"
 #include "XLScene.h"
 #include "XLTemporaryResource.h" // IWYU pragma: keep
 #include "XLApplicationExtension.h"
-#include "XLEventListener.h"
-#include "XLLiveReload.h"
 
 #include <sprt/runtime/dispatch/handle.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-class Director;
+namespace core {
+class Loop;
+} // namespace core
 
+class Director;
+class AppWindow;
+class BlockTransferManager;
+
+// Font remote endpoints (xenolith_font, downstream) send Domain::Font messages through this
+// thread's remoteSend* facade; forward-declared only to befriend them.
+namespace font {
+class FontControllerRemote;
+class RemoteFontServerEndpoint;
+} // namespace font
+
+// Base application thread: thread, extension and update machinery. It holds no Context reference;
+// context-derived services are reached through the protected virtual hooks below. Concrete
+// subclasses: ServerAppThread (owns a Context, windows, the listener) and ClientAppThread (owns a
+// standalone ClientContext).
 class SP_PUBLIC AppThread : public sprt::dispatch::Thread {
 public:
 	static EventHeader onNetworkState;
@@ -51,8 +69,6 @@ public:
 
 	virtual ~AppThread();
 
-	virtual bool init(NotNull<Context>);
-
 	virtual void run();
 
 	virtual void threadInit() override;
@@ -61,10 +77,11 @@ public:
 
 	virtual void stop() override;
 
-	virtual void wakeup();
+	virtual void wakeup(Function<void()> &&fn = nullptr);
 
 	virtual void handleNetworkStateChanged(NetworkFlags);
 	virtual void handleThemeInfoChanged(const ThemeInfo &);
+	virtual void handleMatrialsUpdated(NotNull<core::MaterialSet>);
 
 	/* If current thread is main thread: executes function/task
 	   If not: adds function/task to main thread queue */
@@ -84,25 +101,34 @@ public:
 	/* Performs task in thread, identified by id */
 	void perform(Rc<Task> &&task, bool performFirst) const;
 
+	// Platform-services interface (clipboard / screen-info / URL). On the server these delegate to
+	// the OS via the Context; on the client they are routed to the remote server (stubbed for now).
+
+	// Whether this process can reach a system clipboard at all. False on a remote client, where the
+	// calls below are safe but writes go nowhere. This is about the transport; platform clipboard
+	// support is reported by WindowCapabilities.
+	virtual bool hasClipboard() const { return true; }
+
 	// Read data from OS clipboard
 	//
 	// - dataCallback will receive data with selected type in this thread
 	// - selectCallback will be called in unknown OS thread and should select one of available data
 	// types by return it, or return StringView() to discard request
 	// - ref is preserved for all operation direction
-	void readFromClipboard(Function<void(Status, BytesView, StringView)> &&dataCallback,
-			Function<StringView(SpanView<StringView>)> &&selectCallback, Ref *ref = nullptr);
+	virtual void readFromClipboard(Function<void(Status, BytesView, StringView)> &&dataCallback,
+			Function<StringView(SpanView<StringView>)> &&selectCallback, Ref *ref = nullptr) = 0;
 
 	// Test, which data is available to read from clipboard (if any)
 	//
 	// - cb will receive a list of types, available to read in this thread
 	// - ref is preserved for all operation direction
-	void probeClipboard(Function<void(Status, SpanView<StringView>)> &&cb, Ref *ref = nullptr);
+	virtual void probeClipboard(Function<void(Status, SpanView<StringView>)> &&cb,
+			Ref *ref = nullptr) = 0;
 
 	// Provide static data for OS clipboard with specific type
 	// - ref is preserved until clibpoard data remains actial for OS
-	void writeToClipboard(BytesView data, StringView contentType = StringView("text/plain"),
-			Ref *ref = nullptr, StringView label = StringView());
+	virtual void writeToClipboard(BytesView data, StringView contentType = StringView("text/plain"),
+			Ref *ref = nullptr, StringView label = StringView()) = 0;
 
 	// Provide data for OS clipboard via callback
 	//
@@ -110,12 +136,29 @@ public:
 	// Callback is preserved until clibpoard data remains actial for OS
 	// - types - list of types, that can be accessed with provided callback
 	// - ref is preserved until clibpoard data remains actial for OS
-	void writeToClipboard(sprt::window::Function<sprt::window::Bytes(StringView)> &&dataCallback,
-			SpanView<StringView> types, Ref *ref = nullptr, StringView label = StringView());
+	virtual void writeToClipboard(
+			sprt::window::Function<sprt::window::Bytes(StringView)> &&dataCallback,
+			SpanView<StringView> types, Ref *ref = nullptr, StringView label = StringView()) = 0;
 
-	void acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&, Ref * = nullptr);
+	// Provide already-assembled clipboard data (the same object an OS drag carries).
+	// `data->owner` keeps the encode callback's captures alive.
+	virtual void writeToClipboard(Rc<sprt::window::ClipboardData> &&data) = 0;
 
-	Context *getContext() const { return _context; }
+	virtual void acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&, Ref * = nullptr) = 0;
+
+	virtual void openUrl(StringView) = 0;
+
+	// Config source for the base thread machinery (looper/timer) and external consumers (network).
+	virtual const ContextInfo *getContextInfo() const = 0;
+
+	// Local GPU loop, server-only; nullptr on a client (no local rendering).
+	virtual core::Loop *getGlLoop() const { return nullptr; }
+
+	// Who owns the window this thread draws into: the OS, the window system and the gAPI. Locally
+	// this process; on a client, the server. Null while unknown (client before ServerInfo, server
+	// before its gAPI loop exists); callers should then keep their previous behaviour.
+	virtual const remote::PeerInfo *getServerInfo() const { return nullptr; }
+
 	sprt::dispatch::Looper *getLooper() const { return _appLooper; }
 
 	NetworkFlags getNetworkFlags() const { return _networkFlags; }
@@ -124,19 +167,64 @@ public:
 	bool addListener(NotNull<Ref>, Function<void(const UpdateTime &, bool)> &&);
 	bool removeListener(NotNull<Ref>);
 
+	/* Send the font controller's pending glyph batch now, rather than on the next update().
+	Glyph requests made during the visit gate the frame being built, so frame producers call this
+	once the frame is out (remote: before FrameInput; local: after commit). No-op without the font
+	module or controller. */
+	void flushPendingFontGlyphs();
+
 	template <typename T>
 	auto addExtension(Rc<T> &&) -> T *;
 
 	template <typename T>
 	T *getExtension() const;
 
+	// Window lifecycle seams (called by AppWindow through an AppThread*). Meaningful only on the
+	// server, which owns windows; the base defaults are no-ops so a client carries no window state.
 	virtual Rc<Director> handleAppWindowCreated(NotNull<AppWindow>,
 			const core::FrameConstraints &c);
 	virtual void handleAppWindowDestroyed(NotNull<AppWindow>, Rc<Director> &&);
 
-	virtual void openUrl(StringView);
+	// Server-side listener seams (called by the local-only Director API through an AppThread*).
+	// No-ops on the base / client; the server subclass drives an actual listener.
+	virtual bool isServerThread() const; // can listen for connections
+	virtual bool isListening() const;
+	virtual bool setListenAddress(StringView);
+
+	virtual bool shareWindow(AppWindow *, SpanView<core::Queue *>,
+			const HashMap<const core::MaterialAttachment *, Rc<core::MaterialSet>> & = {});
+
+	// Remote auth/compression config (server-side): the bearer key a client must present (empty
+	// rejects all) and the server's LZ4 dictionary (overrides the client's suggestion). No-ops on
+	// the base / client.
+	virtual bool setBearerKey(BytesView);
+	virtual bool setCompressionDictionary(BytesView);
+
+	// Register a reply waiter for `serial`. `timeoutUs` is the relative reply deadline
+	// (microseconds): on expiry failTimedOutRequests() completes the waiter with a local protocol
+	// error and the connection is reset. 0 means no deadline.
+	virtual void waitForReply(uint32_t,
+			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs);
+
+	/* Abandon every Domain::Data block still streaming from this side: sends Cancel to the peer and
+	fails each waiting caller. Returns the number cancelled. App thread only. */
+	size_t cancelOutgoingTransfers();
 
 protected:
+	// The block-transfer manager and the font remote endpoints drive the remoteSend* facade below.
+	friend class BlockTransferManager;
+	friend class font::FontControllerRemote;
+	friend class font::RemoteFontServerEndpoint;
+
+	virtual bool startListening();
+	virtual bool stopListening();
+
+	// Context-bridge hooks (the decoupling seam). The base calls these; subclasses route them to
+	// their own context (server -> Context, client -> ClientContext).
+	virtual void handleThreadInitialized();
+	virtual void handleThreadDisposed();
+	virtual void handleThreadUpdated(const UpdateTime &);
+
 	virtual void performAppUpdate(const UpdateTime &, bool wakeup);
 	virtual void performUpdate(bool wakeup);
 
@@ -144,18 +232,25 @@ protected:
 	virtual void initializeExtensions();
 	virtual void finalizeExtensions();
 
-	virtual bool shouldPreserveDirector(NotNull<AppWindow>, NotNull<Director>);
-	virtual void preserveDirector(NotNull<AppWindow>, Rc<Director> &&);
+	virtual bool dispatchMessage(const remote::MessageHeader &, BytesView payload);
 
-	virtual bool hasPreservedDirector(NotNull<AppWindow>);
-	virtual Rc<Director> acquirePreservedDirector(NotNull<AppWindow>);
+	// Watchdog over pending reply waiters, run on the keepalive cadence. Expired requests are
+	// completed with a synthesized local protocol-error header and dropped. Returns true if any
+	// timed out; the caller should then reset the connection.
+	bool failTimedOutRequests();
 
-	virtual Rc<Director> makeDirector(NotNull<AppWindow>, const core::FrameConstraints &);
-	virtual Rc<Scene> makeScene(NotNull<AppWindow> w, const core::FrameConstraints &c);
+	// Connection send facade for the block-transfer manager. The base has no connection and returns
+	// false; subclasses route to their active connection. remoteSendCborWithReply registers the
+	// reply waiter via waitForReply.
+	virtual bool remoteSendCbor(remote::Domain, uint8_t code, const Value &,
+			uint32_t *outSerial = nullptr);
+	virtual bool remoteSendRaw(remote::Domain, uint8_t code, BytesView,
+			uint32_t *outSerial = nullptr);
+	virtual bool remoteSendCborReply(uint32_t serial, remote::Domain, uint8_t code, const Value &);
+	virtual bool remoteSendError(remote::Domain, uint8_t code, uint32_t serial);
+	virtual bool remoteSendCborWithReply(remote::Domain, uint8_t code, const Value &,
+			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs);
 
-	virtual void performLiveReload(NotNull<LiveReloadLibrary> lib);
-
-	Context *_context = nullptr;
 	sprt::dispatch::Looper *_appLooper = nullptr;
 	Rc<sprt::dispatch::TimerHandle> _timer;
 	UpdateTime _time;
@@ -173,10 +268,18 @@ protected:
 	HashMap<sprt::type_index, Rc<ApplicationExtension>> _extensions;
 	Map<Rc<Ref>, Function<void(const UpdateTime &, bool)>> _listeners;
 
-	Set<AppWindow *> _windows;
-	HashMap<String, Rc<Director>> _preservedDirectors;
+	// One outstanding request awaiting a reply: its completion callback plus its own absolute reply
+	// deadline (monotonic-clock us; 0 == no deadline). Watched by failTimedOutRequests().
+	struct PendingReply {
+		Function<void(const remote::MessageHeader &, BytesView payload)> cb;
+		uint64_t deadline = 0;
+	};
 
-	Rc<EventDelegate> _liveReloadListener;
+	// Requests waiting for a response from the remote side, keyed by message serial.
+	HashMap<uint32_t, PendingReply> _requests;
+
+	// Bidirectional block transfer (remote::Domain::Data), constructed in threadInit.
+	Rc<BlockTransferManager> _blockTransfer;
 };
 
 template <typename T>
@@ -184,7 +287,9 @@ auto AppThread::addExtension(Rc<T> &&t) -> T * {
 	auto it = _extensions.find(sprt::type_index(typeid(T)));
 	if (it == _extensions.end()) {
 		auto ref = t.get();
-		it = _extensions.emplace(sprt::type_index(typeid(*t.get())), move(t)).first;
+		// Key on the declared type T, not the dynamic type, so a leaf (e.g. FontControllerLocal)
+		// can be registered and retrieved under its abstract base (font::FontController).
+		it = _extensions.emplace(sprt::type_index(typeid(T)), move(t)).first;
 		if (_extensionsInitialized) {
 			ref->initialize(this);
 		}

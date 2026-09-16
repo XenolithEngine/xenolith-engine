@@ -79,6 +79,11 @@ public:
 		// On-demand frame can not be CorrectableFrame
 		CorrectableFrame = 1 << 10,
 
+		// Frame whose data is produced by a remote render client (served over the wire). Such a frame can
+		// stall indefinitely if the client stops answering; the engine tracks these so they can be force-
+		// invalidated when the client connection is reset (see PresentationEngine::invalidateRemoteFrames).
+		Remote = 1 << 11,
+
 		InitFlags = OffscreenTarget | DoNotPresent,
 	};
 
@@ -88,6 +93,11 @@ public:
 			Flags flags, Function<void(PresentationFrame *, bool)> &&completeCallback = nullptr);
 
 	bool hasFlag(Flags f) const { return sp::hasFlag(_flags, f); }
+
+	// Tag this frame as produced by a remote render client (see Flags::Remote). Set on the presentation
+	// thread before the frame is handed to the client so the engine can force-invalidate it if the
+	// connection drops. (Out-of-line: the Flags mask operators are defined below the class.)
+	void markRemote();
 
 	bool isValid() const;
 
@@ -126,6 +136,9 @@ protected:
 	Flags _flags = None;
 	Status _presentationStatus = Status::Ok;
 	Rc<ImageStorage> _target;
+	// The swapchain image this frame acquired, kept intact so that if the frame is discarded before
+	// rendering starts it can be handed back to the engine's reuse pool (see invalidate()).
+	Rc<Swapchain::SwapchainAcquiredImage> _acquiredImage;
 	Rc<FrameRequest> _frameRequest;
 	Rc<FrameHandle> _frameHandle;
 	Rc<Swapchain> _swapchain;

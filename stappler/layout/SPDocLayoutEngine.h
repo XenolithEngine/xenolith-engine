@@ -33,8 +33,8 @@ namespace STAPPLER_VERSIONIZED stappler::document {
 class LayoutResult;
 struct LayoutBlock;
 
-using ExternalAssetsMap = memory::StandartInterface::MapType<memory::StandartInterface::StringType,
-		DocumentAssetMeta>;
+using ExternalAssetsMap =
+		mem_std::Interface::MapType<mem_std::Interface::StringType, DocumentAssetMeta>;
 
 class SP_PUBLIC LayoutEngine : public StyleInterface,
 							   public InterfaceObject<memory::PoolInterface> {

@@ -25,6 +25,7 @@ THE SOFTWARE.
 #include "../../include/__impl_libc.h"
 
 #include <sprt/runtime/stringview.h>
+#include <sprt/c/__sprt_langinfo.h>
 #include <sprt/wrappers/windows/windows.h>
 #include <sprt/cxx/mutex>
 #include <sprt/cxx/type_traits>
@@ -36,16 +37,46 @@ namespace sprt {
 struct __locale_map {
 	wchar_t wname[LOCALE_NAME_MAX_LENGTH + 1];
 	char name[LOCALE_NAME_MAX_LENGTH + 1];
+	// LC_NUMERIC radix ("decimal point"), resolved once at locale creation so the
+	// hot number parsers (strtod/scanf) need no per-call WinAPI query.
+	char radix;
+	// LC_NUMERIC digit grouping for the printf '%'' flag, likewise resolved once.
+	// `thousands_sep` is the single-byte separator and `grouping` the uniform
+	// group size; both 0 when the locale offers no usable grouping.
+	char thousands_sep;
+	unsigned char grouping;
+	// LC_CTYPE multibyte width (MB_CUR_MAX): 1 for the single-byte "C"/"POSIX"
+	// locale, 4 for UTF-8 locales. Per ISO C the "C" locale is single-byte; only
+	// *.UTF-8 locales are multibyte. Drives __ctype_get_mb_cur_max() and the
+	// mb/wc conversion width in builtin_multibyte.cpp.
+	unsigned char mb_cur_max;
 };
 
 static_assert(sprt::is_trivially_constructible_v<__locale_map>);
 
+// The single-byte "C"/"POSIX" locale (MB_CUR_MAX == 1) and the UTF-8 locale
+// (MB_CUR_MAX == 4) are DISTINCT. sprt's program default stays UTF-8 (the native
+// convention, matching the other targets); s_localeMapC backs ONLY an explicit
+// "C"/"POSIX" request (e.g. libc++'s classic codecvt, newlocale(LC_ALL,"C",0)),
+// which ISO C defines as single-byte.
+static __locale_map s_localeMapC;
 static __locale_map s_localeMapCUtf8;
 static __freestanding_locale_struct s_localeStructCUtf8;
 
 void __init_locale() {
+	memcpy(s_localeMapC.name, "C", 2);
+	memcpy(s_localeMapC.wname, L"C", 2 * sizeof(wchar_t));
+	s_localeMapC.radix = '.'; // C/POSIX radix
+	s_localeMapC.thousands_sep = 0; // C/POSIX: no digit grouping
+	s_localeMapC.grouping = 0;
+	s_localeMapC.mb_cur_max = 1; // ISO C: the "C" locale is single-byte
+
 	memcpy(s_localeMapCUtf8.name, "C.UTF8", 7);
 	memcpy(s_localeMapCUtf8.wname, L"C.UTF8", 7 * sizeof(wchar_t));
+	s_localeMapCUtf8.radix = '.'; // C/POSIX radix
+	s_localeMapCUtf8.thousands_sep = 0; // C/POSIX: no digit grouping
+	s_localeMapCUtf8.grouping = 0;
+	s_localeMapCUtf8.mb_cur_max = 4; // UTF-8
 
 	s_localeStructCUtf8 = __freestanding_locale_struct{
 		__locale_struct{
@@ -64,38 +95,133 @@ __locale_map *__get_default_locale() { return &s_localeMapCUtf8; }
 
 __freestanding_locale_struct *__get_default_locale_struct() { return &s_localeStructCUtf8; }
 
+bool __locale_is_c(const __locale_map *m) {
+	return m == nullptr || m == &s_localeMapC || m == &s_localeMapCUtf8;
+}
+
+// Copy a bounded, NUL-terminated narrow string into a fixed locale-name field.
+static void __copy_locale_name(char *dst, size_t dstCap, const char *src, size_t srcLen) {
+	size_t cnt = sprt::min(srcLen, dstCap - 1);
+	memcpy(dst, src, cnt);
+	dst[cnt] = 0;
+}
+
+// Copy a bounded, NUL-terminated wide string into a fixed locale-name field.
+static void __copy_locale_wname(wchar_t *dst, size_t dstCap, const wchar_t *src, size_t srcLen) {
+	size_t cnt = sprt::min(srcLen, dstCap - 1);
+	memcpy(dst, src, cnt * sizeof(wchar_t));
+	dst[cnt] = 0;
+}
+
+// Resolve a locale's LC_NUMERIC radix by name. Only a single-character ASCII
+// radix (e.g. '.' or ',') can be honoured by the byte-oriented number parsers;
+// anything else (a multi-byte separator) falls back to the C radix.
+static char __query_numeric_radix(const wchar_t *wname) {
+	wchar_t buf[8] = {};
+	if (GetLocaleInfoEx(wname, LOCALE_SDECIMAL, buf, 8) > 0) {
+		if (buf[0] != 0 && buf[1] == 0 && buf[0] < 128) {
+			return (char)buf[0];
+		}
+	}
+	return '.';
+}
+
+// Resolve a locale's LC_NUMERIC digit grouping for the printf '%'' flag. Only a
+// single-character ASCII separator can be emitted by the byte-oriented
+// formatter; a multi-byte separator (or none) disables grouping. The group size
+// is taken from LOCALE_SGROUPING, whose value is a ';'-separated list of group
+// sizes (e.g. "3;0"); we honour the primary group, which covers every common
+// locale (uniform groups of 3) and the bulk of the rest.
+static void __query_numeric_grouping(const wchar_t *wname, char *sepOut, unsigned char *grpOut) {
+	*sepOut = 0;
+	*grpOut = 0;
+
+	wchar_t sep[8] = {};
+	if (GetLocaleInfoEx(wname, LOCALE_STHOUSAND, sep, 8) <= 0) {
+		return;
+	}
+	if (sep[0] == 0 || sep[1] != 0 || sep[0] >= 128) {
+		return; // empty or multi-byte separator: grouping cannot be emitted
+	}
+
+	wchar_t grp[16] = {};
+	if (GetLocaleInfoEx(wname, LOCALE_SGROUPING, grp, 16) <= 0) {
+		return;
+	}
+	int g = 0;
+	for (const wchar_t *p = grp; *p >= L'0' && *p <= L'9'; ++p) {
+		g = g * 10 + (*p - L'0');
+		if (g >= 100) {
+			return; // implausible group size
+		}
+	}
+	if (g <= 0) {
+		return; // "0" / empty grouping: no grouping
+	}
+
+	*sepOut = (char)sep[0];
+	*grpOut = (unsigned char)g;
+}
+
 __locale_map *__get_locale(int cat, const char *localeName, size_t len) {
 	if (!localeName) {
 		return nullptr;
 	}
 	auto n = StringView(localeName, len);
-	if (n == "C" || n == "POSIX" || n == "C.UTF8") {
-		return &s_localeMapCUtf8;
+	if (n == "C" || n == "POSIX") {
+		return &s_localeMapC; // single-byte
+	}
+	if (n == "C.UTF8" || n == "C.UTF-8") {
+		return &s_localeMapCUtf8; // UTF-8
 	}
 	if (localeName[0] == 0) {
-		wchar_t wname[LOCALE_NAME_MAX_LENGTH + 1];
-		char name[LOCALE_NAME_MAX_LENGTH + 1];
-		if (!GetUserDefaultLocaleName(wname, LOCALE_NAME_MAX_LENGTH)) {
+		wchar_t wname[LOCALE_NAME_MAX_LENGTH + 1] = {};
+		char name[LOCALE_NAME_MAX_LENGTH + 1] = {};
+		// Returns the char count INCLUDING the NUL terminator, or 0 on failure.
+		int wlen = GetUserDefaultLocaleName(wname, LOCALE_NAME_MAX_LENGTH + 1);
+		if (wlen <= 0) {
 			return nullptr;
 		}
+		size_t wnameLen = (size_t)(wlen - 1);
+
+		size_t nameLen = 0;
 		unicode::toUtf8([&](StringView str) {
-			memcpy(name, str.data(), sprt::min(str.size(), size_t(LOCALE_NAME_MAX_LENGTH)));
+			nameLen = sprt::min(str.size(), size_t(LOCALE_NAME_MAX_LENGTH));
+			memcpy(name, str.data(), nameLen);
+			name[nameLen] = 0;
 		}, WideStringView((char16_t *)wname));
 
-		return __libc::get()->get_cached_locale(name, strlen(name), [&]() {
+		return __libc::get()->get_cached_locale(name, nameLen, [&]() -> __locale_map * {
 			auto map = new (nothrow) __locale_map;
-			memcpy(map->name, name, strlen(name));
-			memcpy(map->wname, wname, strlen(wname) * sizeof(wchar_t));
+			if (!map) {
+				return nullptr;
+			}
+			__copy_locale_name(map->name, sizeof(map->name), name, nameLen);
+			__copy_locale_wname(map->wname, LOCALE_NAME_MAX_LENGTH + 1, wname, wnameLen);
+			map->radix = __query_numeric_radix(map->wname);
+			__query_numeric_grouping(map->wname, &map->thousands_sep, &map->grouping);
+			// Named locales are converted through sprt's UTF-8 mb/wc backend.
+			map->mb_cur_max = 4;
 			return map;
 		});
 	} else {
 		__locale_map *m = nullptr;
+		size_t srcNameLen = strlen(localeName);
 		unicode::toUtf16([&](WideStringView str) {
 			if (IsValidLocaleName((wchar_t *)str.data())) {
-				m = __libc::get()->get_cached_locale(localeName, strlen(localeName), [&]() {
+				m = __libc::get()->get_cached_locale(localeName, srcNameLen,
+						[&]() -> __locale_map * {
 					auto map = new (nothrow) __locale_map;
-					memcpy(map->name, localeName, strlen(localeName));
-					memcpy(map->wname, str.data(), str.size() * sizeof(wchar_t));
+					if (!map) {
+						return nullptr;
+					}
+					__copy_locale_name(map->name, sizeof(map->name), localeName, srcNameLen);
+					__copy_locale_wname(map->wname, LOCALE_NAME_MAX_LENGTH + 1,
+							(const wchar_t *)str.data(), str.size());
+					map->radix = __query_numeric_radix(map->wname);
+					__query_numeric_grouping(map->wname, &map->thousands_sep, &map->grouping);
+					// Named locales are converted through sprt's UTF-8 mb/wc backend.
+					map->mb_cur_max = 4;
 					return map;
 				});
 			}
@@ -209,7 +335,7 @@ static char *__allocateBuffer(const wchar_t *str, char **buf, size_t *bufSize) {
 		if (*bufSize >= len) {
 			ret = *buf;
 			memcpy(*buf, str.data(), len);
-			*bufSize += len;
+			*bufSize -= len;
 			*buf += len;
 		}
 	}, (char16_t *)str);
@@ -223,10 +349,13 @@ static char *__convertGrouping(const wchar_t *grouping, char **buf, size_t *bufS
 
 	// Convert grouping to ASCII format (e.g., "\x03\x02\x01\x00")
 	int len = (int)wcslen(grouping);
-	if (*bufSize >= len + 1) {
+	if (*bufSize >= size_t(len) + 1) {
 		char *result = *buf;
-		*bufSize += len;
-		*buf += len;
+		// `len` data bytes plus the NUL terminator are written below; consume
+		// and advance past all len+1 of them so the next allocation does not
+		// overlap this string (and so *bufSize cannot wrap past the buffer).
+		*bufSize -= size_t(len) + 1;
+		*buf += len + 1;
 
 		for (int i = 0; i < len; i++) { result[i] = (char)(grouping[i] - L'0'); }
 		result[len] = '\0';
@@ -345,9 +474,54 @@ static bool __populate_lconv(lconv *lconv, const wchar_t *localeNameNimeric,
 	return true;
 }
 
+// ISO C "C"/"POSIX" locale lconv (C standard 7.11): radix '.', every other string
+// field empty (NOT null), every numeric field the CHAR_MAX "unset" sentinel that
+// libc++'s moneypunct_byname/numpunct_byname::init test for. Windows locale APIs do
+// not recognise the "C" name, so localeconv() must synthesise this — otherwise
+// __populate_lconv leaves the string fields NULL (from its memset) and a NULL
+// mon_decimal_point crashes moneypunct_byname::init (locale.cpp:5348, wine exit=5).
+static void __fill_c_lconv(lconv *lc) {
+	static char s_dot[] = ".";
+	static char s_empty[] = "";
+	sprt::memset(lc, 0, sizeof(*lc));
+	// CHAR_MAX for the target's (signed) char — the exact sentinel libc++ compares to.
+	constexpr char kUnset = static_cast<char>(-1) < 0 ? static_cast<char>(127) : static_cast<char>(255);
+	lc->decimal_point = s_dot;
+	lc->thousands_sep = s_empty;
+	lc->grouping = s_empty;
+	lc->int_curr_symbol = s_empty;
+	lc->currency_symbol = s_empty;
+	lc->mon_decimal_point = s_empty;
+	lc->mon_thousands_sep = s_empty;
+	lc->mon_grouping = s_empty;
+	lc->positive_sign = s_empty;
+	lc->negative_sign = s_empty;
+	lc->int_frac_digits = kUnset;
+	lc->frac_digits = kUnset;
+	lc->p_cs_precedes = kUnset;
+	lc->p_sep_by_space = kUnset;
+	lc->n_cs_precedes = kUnset;
+	lc->n_sep_by_space = kUnset;
+	lc->p_sign_posn = kUnset;
+	lc->n_sign_posn = kUnset;
+	lc->int_p_cs_precedes = kUnset;
+	lc->int_p_sep_by_space = kUnset;
+	lc->int_n_cs_precedes = kUnset;
+	lc->int_n_sep_by_space = kUnset;
+	lc->int_p_sign_posn = kUnset;
+	lc->int_n_sign_posn = kUnset;
+}
+
 lconv *localeconv(void) __SPRT_NOEXCEPT {
-	if (__populate_lconv(&tl_lconv, __get_effective_locale_map(__SPRT_LC_NUMERIC)->wname,
-				__get_effective_locale_map(__SPRT_LC_MONETARY)->wname)) {
+	auto *numeric = __get_effective_locale_map(__SPRT_LC_NUMERIC);
+	auto *monetary = __get_effective_locale_map(__SPRT_LC_MONETARY);
+	// The "C"/"POSIX"/"C.UTF8" locale (including the program default) is not a valid
+	// Windows locale name; synthesise its ISO C lconv rather than querying Win32 with "C".
+	if (__locale_is_c(numeric) && __locale_is_c(monetary)) {
+		__fill_c_lconv(&tl_lconv);
+		return &tl_lconv;
+	}
+	if (__populate_lconv(&tl_lconv, numeric->wname, monetary->wname)) {
 		return &tl_lconv;
 	}
 	return nullptr;
@@ -425,7 +599,7 @@ int __wcscmp_l(const wchar_t *l, const wchar_t *r, const __locale_map *locMap) {
 		locName = locMap->wname;
 	}
 
-	auto res = CompareStringEx(locName, NORM_IGNOREWIDTH, l, strlen(l), r, strlen(r), nullptr,
+	auto res = CompareStringEx(locName, NORM_IGNOREWIDTH, l, wcslen(l), r, wcslen(r), nullptr,
 			nullptr, 0);
 	if (res != 0) {
 		return res - 2;
@@ -442,8 +616,8 @@ int __wcsncmp_l(const wchar_t *l, const wchar_t *r, size_t n, const __locale_map
 		locName = locMap->wname;
 	}
 
-	auto res = CompareStringEx(locName, NORM_IGNOREWIDTH, l, sprt::min(strlen(l), n), r,
-			sprt::min(strlen(r), n), nullptr, nullptr, 0);
+	auto res = CompareStringEx(locName, NORM_IGNOREWIDTH, l, sprt::min(wcslen(l), n), r,
+			sprt::min(wcslen(r), n), nullptr, nullptr, 0);
 	if (res != 0) {
 		return res - 2;
 	}
@@ -459,8 +633,8 @@ int __wcscasecmp_l(const wchar_t *l, const wchar_t *r, const __locale_map *locMa
 		locName = locMap->wname;
 	}
 
-	auto res = CompareStringEx(locName, NORM_IGNORECASE | NORM_IGNOREWIDTH, l, strlen(l), r,
-			strlen(r), nullptr, nullptr, 0);
+	auto res = CompareStringEx(locName, NORM_IGNORECASE | NORM_IGNOREWIDTH, l, wcslen(l), r,
+			wcslen(r), nullptr, nullptr, 0);
 	if (res != 0) {
 		return res - 2;
 	}
@@ -477,7 +651,7 @@ int __wcsncasecmp_l(const wchar_t *l, const wchar_t *r, size_t n, const __locale
 	}
 
 	auto res = CompareStringEx(locName, NORM_IGNORECASE | NORM_IGNOREWIDTH, l,
-			sprt::min(strlen(l), n), r, sprt::min(strlen(r), n), nullptr, nullptr, 0);
+			sprt::min(wcslen(l), n), r, sprt::min(wcslen(r), n), nullptr, nullptr, 0);
 	if (res != 0) {
 		return res - 2;
 	}
@@ -493,11 +667,33 @@ int __wcscoll_l(const wchar_t *l, const wchar_t *r, const __locale_map *locMap) 
 		locName = locMap->wname;
 	}
 
-	auto res = CompareStringEx(locName, 0, l, strlen(l), r, strlen(r), nullptr, nullptr, 0);
+	auto res = CompareStringEx(locName, 0, l, wcslen(l), r, wcslen(r), nullptr, nullptr, 0);
 	if (res != 0) {
 		return res - 2;
 	}
 	return 0;
+}
+
+// Narrow collation, locale-aware. Mirrors __wcscoll_l but bridges each operand from
+// UTF-8 to UTF-16 first (like __strxfrm_l), then defers to the same CompareStringEx sort.
+int __strcoll_l(const char *l, const char *r, const __locale_map *locMap) {
+	if (!l || !r) {
+		return 0;
+	}
+
+	const wchar_t *locName = locMap ? locMap->wname : LOCALE_NAME_USER_DEFAULT;
+
+	int ret = 0;
+	unicode::toUtf16([&](WideStringView wl) {
+		unicode::toUtf16([&](WideStringView wr) {
+			auto res = CompareStringEx(locName, 0, (const wchar_t *)wl.data(), (int)wl.size(),
+					(const wchar_t *)wr.data(), (int)wr.size(), nullptr, nullptr, 0);
+			if (res != 0) {
+				ret = res - 2;
+			}
+		}, StringView(r));
+	}, StringView(l));
+	return ret;
 }
 
 size_t __wcsxfrm_l(wchar_t *__restrict dest, const wchar_t *__restrict src, size_t destSize,
@@ -510,7 +706,7 @@ size_t __wcsxfrm_l(wchar_t *__restrict dest, const wchar_t *__restrict src, size
 	}
 
 	// Get source string length
-	auto src_len = strlen(src);
+	auto src_len = wcslen(src);
 
 	// Use default locale if none specified
 	const wchar_t *locName = nullptr;
@@ -568,5 +764,296 @@ size_t __wcsxfrm_l(wchar_t *__restrict dest, const wchar_t *__restrict src, size
 	// Return length excluding null terminator
 	return (size_t)(dest_len - 1);
 }
+
+// Narrow strxfrm: produce a byte sort key from a UTF-8 source such that two keys
+// compared with strcmp() order the same way strcoll() would. The source is
+// converted to UTF-16 and run through LCMapStringEx(LCMAP_SORTKEY); the Windows
+// sort key is a NUL-terminated byte string designed for byte comparison, so it
+// is written directly into the narrow destination buffer.
+size_t __strxfrm_l(char *__restrict dest, const char *__restrict src, size_t destSize,
+		const __locale_map *locMap) {
+	if (src == NULL) {
+		if (dest != NULL && destSize > 0) {
+			dest[0] = '\0';
+		}
+		return 0;
+	}
+
+	const wchar_t *locName = locMap ? locMap->wname : LOCALE_NAME_USER_DEFAULT;
+
+	size_t ret = 0;
+	bool ok = true;
+	unicode::toUtf16([&](WideStringView w) {
+		const wchar_t *wsrc = (const wchar_t *)w.data();
+		int wlen = (int)w.size();
+
+		// LCMAP_SORTKEY measures and writes BYTES; the returned length includes
+		// the trailing NUL terminator.
+		int required = LCMapStringEx(locName, LCMAP_SORTKEY, wsrc, wlen, nullptr, 0, nullptr,
+				nullptr, 0);
+		if (required <= 0) {
+			ok = false;
+			return;
+		}
+		ret = (size_t)(required - 1);
+
+		// Only emit when the whole key (including terminator) fits; otherwise
+		// leave dest unspecified and just report the required length, as POSIX
+		// allows.
+		if ((size_t)required <= destSize) {
+			int written = LCMapStringEx(locName, LCMAP_SORTKEY, wsrc, wlen, (wchar_t *)dest,
+					required, nullptr, nullptr, 0);
+			if (written <= 0) {
+				ok = false;
+				return;
+			}
+			dest[written - 1] = '\0';
+		}
+	}, StringView(src));
+
+	if (!ok) {
+		if (dest != NULL && destSize > 0) {
+			dest[0] = '\0';
+		}
+		return 0;
+	}
+	return ret;
+}
+
+char __get_numeric_radix(const __locale_map *locMap) {
+	// Cached at locale creation (see __query_numeric_radix); a null map is the
+	// C/POSIX radix.
+	return locMap ? locMap->radix : '.';
+}
+
+__numeric_fmt __get_numeric_fmt(const __locale_map *locMap) {
+	// All fields cached at locale creation; a null map is the C/POSIX locale
+	// (radix '.', no grouping).
+	if (!locMap) {
+		return __numeric_fmt{'.', 0, 0};
+	}
+	return __numeric_fmt{locMap->radix, locMap->thousands_sep, locMap->grouping};
+}
+
+// --- LC_TIME token provider for the runtime_core strftime ---
+
+// Translate a Windows date/time "picture" (e.g. L"dd.MM.yyyy" or L"HH:mm:ss")
+// into a strftime() pattern ("%d.%m.%Y" / "%H:%M:%S"). Recognises the standard
+// field letters and single-quoted literal runs; unknown ASCII characters pass
+// through verbatim (with '%' escaped). Returns the number of bytes written.
+static size_t __win_picture_to_strftime(const wchar_t *pic, char *out, size_t outCap) {
+	size_t o = 0;
+	auto puts = [&](const char *str) {
+		while (*str && o + 1 < outCap) {
+			out[o++] = *str++;
+		}
+	};
+	auto putlit = [&](char c) {
+		if (c == '%') {
+			if (o + 2 < outCap) {
+				out[o++] = '%';
+				out[o++] = '%';
+			}
+		} else if (o + 1 < outCap) {
+			out[o++] = c;
+		}
+	};
+	const wchar_t *p = pic;
+	while (*p) {
+		wchar_t c = *p;
+		if (c == L'\'') { // quoted literal run
+			++p;
+			while (*p) {
+				if (*p == L'\'') {
+					if (p[1] == L'\'') {
+						putlit('\'');
+						p += 2;
+						continue;
+					}
+					++p;
+					break;
+				}
+				if (*p < 128) {
+					putlit((char)*p);
+				}
+				++p;
+			}
+			continue;
+		}
+		if (c == L'd' || c == L'M' || c == L'y' || c == L'H' || c == L'h' || c == L'm' || c == L's'
+				|| c == L't' || c == L'g') {
+			int cnt = 0;
+			while (p[cnt] == c) {
+				++cnt;
+			}
+			switch (c) {
+			case L'd': puts(cnt >= 4 ? "%A" : cnt == 3 ? "%a" : cnt == 2 ? "%d" : "%-d"); break;
+			case L'M': puts(cnt >= 4 ? "%B" : cnt == 3 ? "%b" : cnt == 2 ? "%m" : "%-m"); break;
+			case L'y': puts(cnt >= 4 ? "%Y" : "%y"); break;
+			case L'H': puts(cnt >= 2 ? "%H" : "%-H"); break;
+			case L'h': puts(cnt >= 2 ? "%I" : "%-I"); break;
+			case L'm': puts(cnt >= 2 ? "%M" : "%-M"); break;
+			case L's': puts(cnt >= 2 ? "%S" : "%-S"); break;
+			case L't': puts("%p"); break; // AM/PM designator
+			case L'g': break; // era - not representable, drop
+			}
+			p += cnt;
+			continue;
+		}
+		if (c < 128) {
+			putlit((char)c);
+		}
+		++p;
+	}
+	out[o < outCap ? o : outCap - 1] = 0;
+	return o;
+}
+
+// Copy a WinAPI-queried wide string for `lctype` into a thread-local UTF-8 buffer.
+static const char *__time_name_token(const wchar_t *wname, LCTYPE lctype, char *buf, size_t cap) {
+	wchar_t wbuf[128] = {};
+	if (GetLocaleInfoEx(wname, lctype, wbuf, 128) <= 0) {
+		return nullptr;
+	}
+	const char *ret = nullptr;
+	unicode::toUtf8([&](StringView str) {
+		size_t len = sprt::min(str.size(), cap - 1);
+		memcpy(buf, str.data(), len);
+		buf[len] = 0;
+		ret = buf;
+	}, WideStringView((char16_t *)wbuf));
+	return ret;
+}
+
+// nl_langinfo string for a non-C locale `map`, via WinAPI; nullptr when the item
+// has no WinAPI source (the caller then uses the C/POSIX default). Keyed on the
+// SPRT nl_item ids (see <sprt/c/cross/windows_sprt/langinfo.h>).
+static const char *__win_langinfo(const __locale_map *map, int item) {
+	const wchar_t *wname = map->wname;
+
+	// Names/AM-PM/numeric share one buffer (each is consumed before the next
+	// query); format patterns use a separate buffer so a pattern survives while
+	// the names inside it are resolved during the recursive strftime.
+	static thread_local char tl_name[128];
+	static thread_local char tl_fmt[192];
+
+	if (item >= __SPRT_ABDAY_1 && item < __SPRT_ABDAY_1 + 7) {
+		int w = (item - __SPRT_ABDAY_1 + 6) % 7; // POSIX Sun..Sat -> Win Mon..Sun
+		return __time_name_token(wname, LOCALE_SABBREVDAYNAME1 + w, tl_name, sizeof(tl_name));
+	}
+	if (item >= __SPRT_DAY_1 && item < __SPRT_DAY_1 + 7) {
+		int w = (item - __SPRT_DAY_1 + 6) % 7;
+		return __time_name_token(wname, LOCALE_SDAYNAME1 + w, tl_name, sizeof(tl_name));
+	}
+	if (item >= __SPRT_ABMON_1 && item < __SPRT_ABMON_1 + 12) {
+		int m = item - __SPRT_ABMON_1;
+		return __time_name_token(wname, LOCALE_SABBREVMONTHNAME1 + m, tl_name, sizeof(tl_name));
+	}
+	if (item >= __SPRT_MON_1 && item < __SPRT_MON_1 + 12) {
+		int m = item - __SPRT_MON_1;
+		return __time_name_token(wname, LOCALE_SMONTHNAME1 + m, tl_name, sizeof(tl_name));
+	}
+	if (item == __SPRT_AM_STR) {
+		return __time_name_token(wname, LOCALE_S1159, tl_name, sizeof(tl_name));
+	}
+	if (item == __SPRT_PM_STR) {
+		return __time_name_token(wname, LOCALE_S2359, tl_name, sizeof(tl_name));
+	}
+	if (item == __SPRT_CRNCYSTR) {
+		return __time_name_token(wname, LOCALE_SCURRENCY, tl_name, sizeof(tl_name));
+	}
+	if (item == __SPRT_RADIXCHAR) {
+		tl_name[0] = map->radix ? map->radix : '.';
+		tl_name[1] = 0;
+		return tl_name;
+	}
+	if (item == __SPRT_THOUSEP) {
+		tl_name[0] = map->thousands_sep; // 0 -> "" (multi-byte / none)
+		tl_name[1] = 0;
+		return tl_name;
+	}
+
+	wchar_t pic[128] = {};
+	if (item == __SPRT_D_FMT) {
+		if (GetLocaleInfoEx(wname, LOCALE_SSHORTDATE, pic, 128) <= 0) {
+			return nullptr;
+		}
+		__win_picture_to_strftime(pic, tl_fmt, sizeof(tl_fmt));
+		return tl_fmt;
+	}
+	if (item == __SPRT_T_FMT) {
+		if (GetLocaleInfoEx(wname, LOCALE_STIMEFORMAT, pic, 128) <= 0) {
+			return nullptr;
+		}
+		__win_picture_to_strftime(pic, tl_fmt, sizeof(tl_fmt));
+		return tl_fmt;
+	}
+	if (item == __SPRT_D_T_FMT) {
+		// Compose %c as "<long date> <time>".
+		if (GetLocaleInfoEx(wname, LOCALE_SLONGDATE, pic, 128) <= 0) {
+			return nullptr;
+		}
+		size_t k = __win_picture_to_strftime(pic, tl_fmt, sizeof(tl_fmt));
+		if (k + 1 < sizeof(tl_fmt)) {
+			tl_fmt[k++] = ' ';
+		}
+		if (GetLocaleInfoEx(wname, LOCALE_STIMEFORMAT, pic, 128) > 0) {
+			__win_picture_to_strftime(pic, tl_fmt + k, sizeof(tl_fmt) - k);
+		} else {
+			tl_fmt[k] = 0;
+		}
+		return tl_fmt;
+	}
+
+	// CODESET, T_FMT_AMPM, YESEXPR, NOEXPR: no WinAPI source -> C/POSIX default.
+	return nullptr;
+}
+
+// The C/POSIX langinfo defaults live in runtime_core's weak nl_langinfo fallback
+// (runtime_core_locale.cpp); reuse that single table for the C-locale / no-WinAPI-
+// data branch instead of duplicating it here.
+char *__nl_langinfo_default(__sprt_nl_item item);
+
+// The LC_* category that owns an item, so nl_langinfo can resolve the right map.
+static int __langinfo_category(int item) {
+	if (item == __SPRT_CODESET) {
+		return __SPRT_LC_CTYPE;
+	}
+	if (item == __SPRT_RADIXCHAR || item == __SPRT_THOUSEP) {
+		return __SPRT_LC_NUMERIC;
+	}
+	if (item == __SPRT_CRNCYSTR) {
+		return __SPRT_LC_MONETARY;
+	}
+	if (item == __SPRT_YESEXPR || item == __SPRT_NOEXPR) {
+		return __SPRT_LC_MESSAGES;
+	}
+	return __SPRT_LC_TIME; // all the day/month/format items
+}
+
+static char *__nl_langinfo_map(const __locale_map *map, int item) {
+	if (map && !__locale_is_c(map)) {
+		if (const char *w = __win_langinfo(map, item)) {
+			return (char *)w;
+		}
+	}
+	return __nl_langinfo_default(item);
+}
+
+extern "C" {
+
+char *nl_langinfo_l(__sprt_nl_item item, __sprt_locale_t loc) __SPRT_NOEXCEPT {
+	int cat = __langinfo_category(item);
+	const __locale_map *map = (loc == nullptr || loc == __SPRT_LC_GLOBAL_LOCALE)
+			? __get_effective_locale_map(cat)
+			: loc->data.cat[cat];
+	return __nl_langinfo_map(map, item);
+}
+
+char *nl_langinfo(__sprt_nl_item item) __SPRT_NOEXCEPT {
+	return __nl_langinfo_map(__get_effective_locale_map(__langinfo_category(item)), item);
+}
+
+} // extern "C"
 
 } // namespace sprt

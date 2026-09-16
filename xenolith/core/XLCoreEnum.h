@@ -58,6 +58,7 @@ enum class FrameAttachmentState {
 enum class AttachmentType {
 	Image,
 	Buffer,
+	Material, // Special type for attachments with material list
 	Generic
 };
 
@@ -385,16 +386,9 @@ enum class ImageHints : uint32_t {
 
 SP_DEFINE_ENUM_AS_MASK(ImageHints);
 
-// VkComponentSwizzle
-enum class ComponentMapping : uint32_t {
-	Identity = 0,
-	Zero = 1,
-	One = 2,
-	R = 3,
-	G = 4,
-	B = 5,
-	A = 6,
-};
+// VkComponentSwizzle. Defined in sprt::geom next to the colour types: the permutation is a
+// property of colour data, and the CPU rasterizer needs it without knowing about xenolith.
+using sprt::geom::ComponentMapping;
 
 // VkFilter
 enum class Filter {
@@ -478,7 +472,12 @@ enum class RenderingLevel {
 	Default,
 	Solid,
 	Surface,
-	Transparent
+	Transparent,
+
+	// Drawn last, in a pass of its own, after the frame has been captured (see FrameCapture);
+	// otherwise behaves as Transparent (painter's order by zPath). Must stay the last value:
+	// inherited levels (Node::setOverlay) are resolved with sprt::max over this enum.
+	Overlay
 };
 
 enum class ObjectType {

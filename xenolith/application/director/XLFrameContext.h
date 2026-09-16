@@ -24,10 +24,12 @@
 #define XENOLITH_APPLICATION_DIRECTOR_XLFRAMECONTEXT_H_
 
 #include "XLCoreQueueData.h"
+#include "XLCoreRenderSession.h"
 #include "XLResourceOwner.h"
 #include "XLCoreQueue.h"
 #include "XLCoreMaterial.h"
 #include "XLCoreFrameRequest.h"
+#include "XLCoreFrameRequestProxy.h"
 #include "XLNodeInfo.h"
 #include "XLSystem.h"
 
@@ -37,6 +39,7 @@ struct FrameInfo;
 struct FrameContextHandle;
 class InputListenerStorage;
 
+class Node;
 class Scene;
 class Director;
 class FrameStateOwnerInterface;
@@ -113,7 +116,13 @@ struct SP_PUBLIC FrameContextHandle : public core::AttachmentInputData {
 	virtual ~FrameContextHandle() = default;
 
 	uint64_t clock;
-	Rc<Director> director; // allow to access director from rendering pipeline (to send stats)
+	Rc<core::RenderClientChannel> client; // (to send stats)
+
+	/* Which shared window this frame is for, as RenderClientChannel numbers them (0 = local).
+	Carried with the frame input because the DrawStat is reported later on another thread and
+	`client` is shared by all windows. Always set together with `client`. */
+	uint64_t windowId = 0;
+
 	FrameContext *context = nullptr;
 
 	Vector<sprt::pair<StateId, FrameStateOwnerInterface *>> stateStack;
@@ -157,7 +166,7 @@ public:
 struct SP_PUBLIC FrameInfo {
 	Rc<sprt::PoolRef> pool;
 
-	Rc<core::FrameRequest> request;
+	Rc<core::FrameRequestProxy> request;
 	Rc<Director> director;
 	Rc<Scene> scene;
 	Rc<InputListenerStorage> input;
@@ -176,14 +185,19 @@ struct SP_PUBLIC FrameInfo {
 	// (child node must be higher than or at the same level as parent)
 	mem_pool::Vector<float> depthStack;
 
+	// Nesting depth inside Node::setOverlay subtrees; a counter, since overlays nest.
+	uint32_t overlayDepth = 0;
+
 	// Stack of context manipulators. The context corresponds to a separate render queue
 	// to which data will be sent when the context is popped from the stack
 	mem_pool::Vector<Rc<FrameContextHandle>> contextStack;
 
-	// A set of system stacks by their ID
+	// A set of system stacks by their ID (FrameTag)
 	// A node can add a new system of a certain type to the stack;
 	// this system will be placed on the stack corresponding to its ID and thereby replace
-	// for child nodes the system that was added to this stack earlier
+	// for descendant nodes the system that was added to this stack earlier (back() == nearest ancestor).
+	// Descendants read it via getSystem<T>(tag), and also deliver their own layout events back up to
+	// the nearest opted-in ancestor here (see Node::handle{Measure,ContentSizeDirty,LayoutChildren})
 	mem_pool::Map<uint64_t, mem_pool::Vector<Rc<System>>> systemStack;
 
 	// Render queue attachments for which data has already been prepared are added here
@@ -191,10 +205,18 @@ struct SP_PUBLIC FrameInfo {
 
 	FrameContextHandle *currentContext = nullptr;
 
+	// The deepest node the pass has fully entered - the one systemStack describes. Set by
+	// Node::wrapVisit when it pushes that node's systems, and by the mid-frame catch-up when it
+	// reproduces the same state (see Node::isVisitPassed / Node::VisitCatchUp). Non-owning.
+	Node *currentNode = nullptr;
+
+	// Whether what is being drawn right now belongs to the Overlay level
+	bool isOverlay() const { return overlayDepth > 0; }
+
 	mem_pool::Vector<Rc<System>> *pushSystem(const Rc<System> &comp) {
 		auto it = systemStack.find(comp->getFrameTag());
 		if (it == systemStack.end()) {
-			it = systemStack.emplace(comp->getFrameTag()).first;
+			it = systemStack.emplace(comp->getFrameTag(), mem_pool::Vector<Rc<System>>()).first;
 		}
 		it->second.emplace_back(comp);
 		return &it->second;

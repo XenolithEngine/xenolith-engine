@@ -139,6 +139,25 @@ protected:
 	mutable Vector<Rc<Ref>> _autorelease;
 };
 
+/* Typed pass base: creates HandleType in makeFrameHandle.
+ *
+ * Prefer this over overriding makeFrameHandle by hand: inside a derived member function an
+ * unqualified handle name resolves to the base QueuePassHandle alias and silently creates the
+ * no-op core handle. HandleType must be complete at the point of class instantiation.
+ */
+template <typename HandleType, typename BasePass = QueuePass>
+class QueuePassTyped : public BasePass {
+public:
+	virtual ~QueuePassTyped() = default;
+
+	virtual Rc<QueuePassHandle> makeFrameHandle(const FrameQueue &queue) override {
+		if (this->_frameHandleCallback) {
+			return this->_frameHandleCallback(*this, queue);
+		}
+		return Rc<HandleType>::create(*this, queue);
+	}
+};
+
 } // namespace stappler::xenolith::core
 
 #endif /* XENOLITH_CORE_XLCOREQUEUEPASS_H_ */

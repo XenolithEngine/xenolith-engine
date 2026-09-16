@@ -87,6 +87,11 @@ public:
 	using SubpassData = core::SubpassData;
 	using Queue = core::Queue;
 
+	// Draw-order preference between two pipelines: depth-writing first, then non-blending.
+	// It reads nothing but PipelineMaterialInfo, so it belongs to the backend-neutral layer -
+	// the 2d write plan sorts by it and must be usable from a backend without a GPU.
+	static bool comparePipelineOrdering(const PipelineInfo &l, const PipelineInfo &r);
+
 	virtual ~GraphicPipeline() { }
 };
 
@@ -410,7 +415,7 @@ public:
 	uint64_t getFrame() const { return _frame; }
 
 	void setScheduleCallback(Function<bool()> &&schedule);
-	void setReleaseCallback(Function<bool()> &&release);
+	void setReleaseCallback(Function<void()> &&release);
 
 	uint64_t getArmedTime() const { return _armedTime; }
 

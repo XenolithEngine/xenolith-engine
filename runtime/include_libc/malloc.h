@@ -26,7 +26,6 @@ THE SOFTWARE.
 /*
 	Dispatch header for <malloc.h> (a non-standard, allocator-focused header):
 	- hosted SPRT build      -> forwards to the system <malloc.h> (#include_next)
-	- __SPRT_AS_STD in C++    -> includes <cstdlib>
 	- otherwise               -> includes <stdlib.h>
 
 	This header defines no functions of its own; the allocation family (malloc,
@@ -35,11 +34,9 @@ THE SOFTWARE.
 
 	Macros:
 	  _aligned_malloc(Size, Align) - allocate Size bytes aligned to Align;
-	                                 maps to aligned_alloc(Align, Size)
-	                                 (sprt::aligned_alloc under __SPRT_AS_STD)
+	                                 maps to __sprt_aligned_alloc(Align, Size)
 	  _aligned_free(Ptr)           - free a block from _aligned_malloc;
-	                                 maps to aligned_free (sprt::aligned_free
-	                                 under __SPRT_AS_STD)
+	                                 maps to __sprt_aligned_free
 
 	Note: these macros are not defined on the hosted SPRT build path, which uses the
 	platform's own <malloc.h>.
@@ -49,19 +46,58 @@ THE SOFTWARE.
 
 #include_next <malloc.h>
 
-#elif defined(__SPRT_AS_STD) && defined(__cplusplus)
-
-#include <cstdlib>
-
-#define _aligned_malloc(Size, Align) sprt::aligned_alloc(Align, Size)
-#define _aligned_free(Ptr) sprt::aligned_free(Ptr)
-
 #else
 
 #include <stdlib.h>
 
-#define _aligned_malloc(Size, Align) aligned_alloc(Align, Size)
-#define _aligned_free(Ptr) aligned_free(Ptr)
+// <stdlib.h> already surfaces these on Windows (mirroring MSVC's corecrt); guard so
+// including <malloc.h> after <stdlib.h> is not a macro redefinition.
+#ifndef _aligned_malloc
+#define _aligned_malloc(Size, Align) __sprt_aligned_alloc(Align, Size)
+#endif
+#ifndef _aligned_free
+#define _aligned_free(Ptr) __sprt_aligned_free(Ptr)
+#endif
+
+// MSVC heap-walk API (_HEAPINFO / _heapwalk), used by llvm's Process.inc
+// GetMallocUsage. mimalloc is not a walkable free-list, so instead of enumerating
+// blocks we report the whole current heap usage (__sprt_malloc_usage, summed by
+// mimalloc's mi_heap_visit_blocks in the runtime) as a single virtual entry, then
+// end. A caller that sums _size across the walk gets the real total.
+#ifndef _HEAPOK
+typedef struct _heapinfo {
+	int *_pentry;
+	size_t _size;
+	int _useflag;
+} _HEAPINFO;
+
+#define _HEAPEMPTY (-1)
+#define _HEAPOK (-2)
+#define _HEAPBADBEGIN (-3)
+#define _HEAPBADNODE (-4)
+#define _HEAPEND (-5)
+#define _HEAPBADPTR (-6)
+#define _FREEENTRY 0
+#define _USEDENTRY 1
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+size_t __sprt_malloc_usage(void);
+#ifdef __cplusplus
+}
+#endif
+
+static inline int _heapwalk(_HEAPINFO *_EntryInfo) {
+	if (_EntryInfo->_pentry == 0) {
+		_EntryInfo->_pentry = (int *)(size_t)1; // sentinel: total already reported
+		_EntryInfo->_size = __sprt_malloc_usage();
+		_EntryInfo->_useflag = _USEDENTRY;
+		return _HEAPOK;
+	}
+	return _HEAPEND;
+}
+#endif // _HEAPOK
 
 #endif
 

@@ -32,6 +32,19 @@ define BUILD_write_appconfig_string
 @echo '$(tab)SharedSymbol("$(2)", $(2)),' >> $(1)$(newline)$(tab)
 endef
 
+# BundleFS codegen: turn a directory into a translation unit (see make/embed/apply.mk)
+# $(1) - target .cpp
+# $(2) - bundle name
+# $(3) - source directory
+# $(4) - compression flag (0/1)
+# $(5) - content prerequisites
+define BUILD_embed_source
+$(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) $(5)
+	@$(call rule_mkdir,$(dir $(1)))
+	@sh $(BUILD_ROOT)/embed/embedfs.sh $(1) $(2) $(3) $(4)
+$(1):.TARGET_NAME := [embed] $(2)
+endef
+
 define BUILD_appconfig_source
 $(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) $(BUILD_APP_CONFIG)
 	@$(call rule_mkdir,$(dir $(1)))
@@ -50,6 +63,7 @@ $(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) $(BUILD_AP
 	@echo "" >> $(1)
 	@echo "}" >> $(1)
 	@echo "" >> $(1)
+$(1):.TARGET_NAME := [codegen] $(notdir $(1))
 endef
 
 # $(1) - target path
@@ -95,6 +109,7 @@ $(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 	@echo "" >> $(1)
 	@echo "#endif // __cplusplus" >> $(1)
 	@echo "#endif // STAPPLER_CONFIG_$(2)_H_" >> $(1)
+$(1):.TARGET_NAME := [codegen] $(notdir $(1))
 endef
 
 
@@ -110,5 +125,6 @@ $(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) $(2)
 	@echo "[" > $(1)
 	$(foreach file,$(2),$(call BUILD_write_cdb_entry,$(1),$(file)))
 	@echo "]" >> $(1)
-	@echo "[Compilation database] $(1)"
+	$(call target_log,"[Compilation database] $(1)")
+$(1):.TARGET_NAME := [Compilation database]
 endef

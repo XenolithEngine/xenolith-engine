@@ -25,6 +25,7 @@
 
 #include "XLApplicationConfig.h" // IWYU pragma: keep
 #include "XLCorePresentationEngine.h" // IWYU pragma: keep
+#include "SPFilepath.h" // IWYU pragma: keep
 
 #include <sprt/runtime/window/window_info.h>
 
@@ -41,6 +42,11 @@ using core::FullscreenInfo;
 using core::ViewConstraints;
 using core::WindowState;
 
+using sprt::window::WindowType;
+using sprt::window::WindowAnchor;
+using sprt::window::WindowPlacementAdjustment;
+using sprt::window::WindowPlacement;
+using sprt::window::getWindowTypeName;
 using sprt::window::WindowCursor;
 using sprt::window::WindowLayerFlags;
 using sprt::window::WindowLayer;
@@ -48,9 +54,26 @@ using sprt::window::WindowCreationFlags;
 using sprt::window::WindowAttributes;
 using sprt::window::WindowCapabilities;
 using sprt::window::WindowInfo;
+using sprt::window::WindowIcon;
+using sprt::window::WindowIconImage;
 
 SP_PUBLIC Value encodeWindowInfo(const WindowInfo &info);
 SP_PUBLIC StringView getWindowCursorName(WindowCursor);
+
+// Decode an image into a WindowInfo::icon, producing one square raster per requested size. Lives
+// here because runtime_window has no image decoder (see sprt::window::WindowIcon).
+//
+// `sizes` defaults to getDefaultWindowIconSizes(). Sizes larger than the source are skipped, not
+// upscaled; the source's own size is always emitted. A non-square source is center-cropped.
+//
+// Returns nullptr when the file is missing or does not decode.
+SP_PUBLIC Rc<WindowIcon> makeWindowIcon(const FileInfo &, SpanView<uint32_t> sizes = SpanView<uint32_t>());
+SP_PUBLIC Rc<WindowIcon> makeWindowIcon(BytesView imageData,
+		SpanView<uint32_t> sizes = SpanView<uint32_t>());
+
+// 16..256: the sizes desktop window systems actually ask for (Win32 SM_CXSMICON/SM_CXICON are 16
+// and 32, WMs pick from _NET_WM_ICON, compositors advertise sizes via xdg_toplevel_icon_manager).
+SP_PUBLIC SpanView<uint32_t> getDefaultWindowIconSizes();
 
 } // namespace stappler::xenolith
 

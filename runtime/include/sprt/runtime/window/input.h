@@ -27,6 +27,62 @@
 
 namespace sprt::window {
 
+/* The live state a node publishes to the selector machine: one bit per interactive pseudo-class.
+A rule asks for bits that must be SET (`pseudoRequire`) or CLEAR (`pseudoForbid`), so every state
+below answers a PAIR of pseudo-classes and the second half costs nothing.
+
+READ THE "CLEAR" HALF CAREFULLY. A node carrying no state at all reads as 0, so `:valid`,
+`:read-write`, `:optional` and `:disabled` - all of which are "the bit is not set" - match ANY node,
+including one that is not a control and never could be. That is not new with the states added here:
+it is what `:disabled` has always done, and it has already cost one bug (see the writer's comment in
+xenolith/application/input/XLInteractiveComponent.h). Qualify such a selector with a type or a class -
+`text-input:valid`, not `:valid`. */
+enum class InteractiveFlags : uint32_t {
+	None = 0,
+	Enabled = 1 << 0, // :enabled     / :disabled      (clear)
+	Focus = 1 << 1, // :focus
+	Hover = 1 << 2, // :hover
+	Active = 1 << 3, // :active
+	Checked = 1 << 4, // :checked
+
+	// The value written here is wrong - NOT "this may not be written to", which is ReadOnly below.
+	// Two different words with two different remedies; see XLUiControlLock.h.
+	Invalid = 1 << 5, // :invalid     / :valid         (clear)
+
+	// The control refuses edits: its own read-only mode, or an edit lock owning its value
+	ReadOnly = 1 << 6, // :read-only  / :read-write    (clear)
+
+	// There is no honest value to show: a progress bar with no total
+	Indeterminate = 1 << 7, // :indeterminate
+
+	// The form refuses to submit while this field is empty
+	Required = 1 << 8, // :required   / :optional      (clear)
+
+	// The form's default button: what Enter activates from a field that does not consume it
+	Default = 1 << 9, // :default
+
+	// Focus that arrived by keyboard, and therefore wants to be SEEN. Written by the focus owner,
+	// not by the widget - a widget cannot know how focus reached it.
+	FocusVisible = 1 << 10, // :focus-visible
+
+	// Focus is on this node or somewhere below it. Unlike every other flag here, it is published by
+	// a separate marker component rather than by the node's own interactive state - see
+	// XLUiFocusWithin.h for why a container must not be given interactive state to carry it.
+	FocusWithin = 1 << 11, // :focus-within
+
+	// This node is one of the items of the scene's current selection - what the user is working ON,
+	// as opposed to where typing goes. Published by a marker component, for the same reason
+	// FocusWithin is: a selectable node is often a plain container, and handing it interactive state
+	// just to carry a bit would switch :enabled on for it. See XLSelection.h.
+	Selected = 1 << 12, // :selected
+
+	// The selection is on this node or somewhere below it - the ancestor half, so a stylesheet can
+	// light up the whole hierarchy that leads down to what is selected.
+	SelectionWithin = 1 << 13, // :selection-within
+};
+
+SPRT_DEFINE_ENUM_AS_MASK(InteractiveFlags)
+
 enum class InputFlags : uint32_t {
 	None,
 	TouchMouseInput = 1 << 0,
@@ -96,6 +152,11 @@ enum class InputModifier : uint32_t {
 
 	ScrollLock = 1 << 24,
 
+	// Event originates directly from a touchscreen, as opposed to any other input device
+	// (mouse, trackpad, stylus, keyboard). Set per-event by the platform backend.
+	// See WindowState::InputTouch for touchscreen *presence*.
+	Touch = 1 << 25,
+
 	Command = Mod3, // MacOS Command
 	Meta = Mod3, // Android Meta
 	Function = Mod4, // Android Function
@@ -110,6 +171,9 @@ enum class InputModifier : uint32_t {
 	// boolean value for switch event (background/focus)
 	ValueFalse = None,
 	ValueTrue = uint32_t(1) << uint32_t(31),
+	// Intentionally shares bit 31 with ValueTrue: the two are never used on the
+	// same event (ValueTrue on switch events, Unmanaged on input events), so the
+	// bit is reused. getValue() therefore also reports true for Unmanaged events.
 	Unmanaged = ValueTrue
 };
 
@@ -264,6 +328,23 @@ enum class InputKeyCode : uint16_t {
 	PAUSE = 126, // "PAUS"
 	DELETE = 127, // "DELE"; ASCII-compatible
 
+	/* Extended keys without an XKB equivalent, surfaced from platform input
+	   (e.g. Android stylus/macro/system keys). Numbered contiguously after the
+	   XKB-derived range; `Max` stays the sentinel/array-size. */
+	STYLUS_BUTTON_PRIMARY = 128,
+	STYLUS_BUTTON_SECONDARY = 129,
+	STYLUS_BUTTON_TERTIARY = 130,
+	STYLUS_BUTTON_TAIL = 131,
+	MACRO_1 = 132,
+	MACRO_2 = 133,
+	MACRO_3 = 134,
+	MACRO_4 = 135,
+	EMOJI_PICKER = 136,
+	SCREENSHOT = 137,
+	KEYBOARD_BACKLIGHT_DOWN = 138,
+	KEYBOARD_BACKLIGHT_UP = 139,
+	KEYBOARD_BACKLIGHT_TOGGLE = 140,
+
 	Max
 };
 
@@ -326,6 +407,22 @@ static constexpr struct {
 
 	{InputEventName::WindowState, InputEventType::Input, InputEventDataType::Window},
 };
+
+/* WHAT ONE DETENT OF A MOUSE WHEEL IS WORTH in `InputEventData::point.valueX/valueY`.
+
+A Scroll event carries an AMOUNT, not a count of clicks, because the devices do not agree that there
+are clicks: a notched wheel steps, a trackpad and a free-spinning wheel do not, and a backend that
+reported "one" for a detent would have nothing to report for the other two. So the amount is a
+distance in an abstract scroll unit, and this is the size of the step a detent makes - the figure the
+discrete backends emit (xcb, Windows) and the figure the continuous ones land near (Wayland's
+libinput axis, one detent's worth).
+
+A consumer that scrolls CONTENT multiplies the amount by a step of its own and never looks at this;
+ui::ScrollSystem and the text views do exactly that. A consumer that wants NOTCHES - anything whose
+step is stated per click of the wheel, a zoom above all - divides by this first. Getting that
+division wrong is not a small error: at a tenth per notch, treating the amount as a count of notches
+compounds it ten times and one click of the wheel becomes two and a half times the scale. */
+constexpr float InputScrollNotch = 10.0f;
 
 struct SPRT_API InputEventData {
 	static InputEventData BoolEvent(InputEventName event, bool value) {
@@ -420,14 +517,21 @@ struct SPRT_API InputEventData {
 		return false;
 	}
 
-	bool hasInput() const { return InputEventInfo[toInt(event)].type == InputEventType::Input; }
+	// `event` comes from platform back-ends; bounds-check before indexing the
+	// fixed-size InputEventInfo table (an out-of-enum value would read OOB).
+	bool hasInput() const {
+		return toInt(event) < toInt(InputEventName::Max)
+				&& InputEventInfo[toInt(event)].type == InputEventType::Input;
+	}
 
 	bool isPointEvent() const {
-		return InputEventInfo[toInt(event)].dataType == InputEventDataType::Point;
+		return toInt(event) < toInt(InputEventName::Max)
+				&& InputEventInfo[toInt(event)].dataType == InputEventDataType::Point;
 	}
 
 	bool isKeyEvent() const {
-		return InputEventInfo[toInt(event)].dataType == InputEventDataType::Key;
+		return toInt(event) < toInt(InputEventName::Max)
+				&& InputEventInfo[toInt(event)].dataType == InputEventDataType::Key;
 	}
 
 	InputMouseButton getButton() const {

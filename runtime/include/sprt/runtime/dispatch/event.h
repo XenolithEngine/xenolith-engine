@@ -36,6 +36,11 @@ class Handle;
 class TimerHandle;
 class ThreadHandle;
 class PollHandle;
+class ProcessHandle;
+class FileHandle;
+class WatchHandle;
+class ListenHandle;
+class StreamHandle;
 
 struct BufferChain;
 
@@ -44,6 +49,12 @@ using NativeHandle = sprt::native_handle;
 using filesystem::OpenFlags;
 using filesystem::PollFlags;
 
+// Type-erased completion callback. The reinterpret_casts below cast between
+// function-pointer types that differ only in a pointer parameter's pointee
+// (T* vs void* userdata, and Result* across CompletionHandle<Other>). Calling
+// through a differently-typed function pointer is technically UB, but it is safe
+// on every supported ABI (all object pointers share representation and calling
+// convention), and it is the intentional erasure mechanism here.
 template <typename Result = Handle>
 struct SPRT_API CompletionHandle {
 	using Fn = void (*)(void *, Result *, uint32_t value, Status);
@@ -100,6 +111,163 @@ struct SPRT_API TimerInfo {
 	// Note: that resetable timer CAN be less performant then regular as a timer,
 	// but 'reset' for this timer can save some syscalls and kernel resources
 	bool resetable = false;
+};
+
+// Parameters for Looper/Queue::spawnProcess.
+//
+// The command is launched through the system shell (/bin/sh -c on POSIX,
+// cmd.exe /c on Windows); stdout and stderr are merged onto a single pipe.
+// `reader` is invoked on the looper thread with each chunk of output as it
+// arrives (it may be called many times, or never). The returned ProcessHandle's
+// completion fires once when the process exits, with `value` carrying the exit
+// code (128 + signal number if the process was killed by a signal).
+struct SPRT_API ProcessInfo {
+	using ReaderCallback = Function<void(StringView)>;
+	using Completion = CompletionHandle<ProcessHandle>;
+
+	StringView command;
+	ReaderCallback reader;
+	Completion completion;
+};
+
+// Parameters for Looper/Queue::readFile.
+//
+// Streams the contents of a file to `reader` in chunks, each invoked on the
+// looper thread, and fires `completion` once when the whole file has been read
+// (value = total bytes) or on error. The file is identified by exactly one of:
+// `path` (opened and owned by the handle; closed when it finishes) or `fd` (a
+// caller-owned descriptor that is never closed). An empty file produces no
+// reader call and a successful completion with value 0.
+struct SPRT_API FileReadInfo {
+	using ReaderCallback = Function<void(BytesView)>;
+	using Completion = CompletionHandle<FileHandle>;
+
+	StringView path;
+	NativeHandle fd = NativeHandle(-1);
+	OpenFlags flags = OpenFlags::Read;
+	ReaderCallback reader;
+	Completion completion;
+};
+
+// Parameters for Looper/Queue::writeFile.
+//
+// Writes `data` to a file, honoring OpenFlags::Append and
+// OpenFlags::CreateExclusive, then fires `completion` once when all bytes have
+// been written (value = total bytes) or on error. The file is identified as in
+// FileReadInfo. `data` is referenced, not copied: it must stay valid until the
+// completion fires.
+struct SPRT_API FileWriteInfo {
+	using Completion = CompletionHandle<FileHandle>;
+
+	StringView path;
+	NativeHandle fd = NativeHandle(-1);
+	OpenFlags flags = OpenFlags::Write | OpenFlags::Create | OpenFlags::Truncate;
+	BytesView data;
+	Completion completion;
+};
+
+// Filesystem change events reported by a WatchHandle (see Looper/Queue::watchFile).
+// Delivered as a bitmask in the completion `value`: several kinds may be OR-ed
+// together when they arrive in a single notification batch.
+enum class WatchFlags : uint32_t {
+	None = 0,
+	Created = 1 << 0, // the watched name appeared (created in place)
+	Modified = 1 << 1, // contents were written / the writer closed after writing
+	Deleted = 1 << 2, // the watched name was removed
+	MovedTo = 1 << 3, // something was renamed onto the watched name (atomic replace)
+	MovedFrom = 1 << 4, // the watched name was renamed away
+	Attrib = 1 << 5, // metadata (permissions, timestamps, ...) changed
+	MoveSelf = 1 << 6, // the containing directory was moved
+	DeleteSelf = 1 << 7, // the containing directory was removed (watch becomes dead)
+	Overflow = 1 << 8, // the kernel event queue overflowed; some events were lost
+
+	Any = Created | Modified | Deleted | MovedTo | MovedFrom | Attrib,
+};
+
+SPRT_DEFINE_ENUM_AS_MASK(WatchFlags)
+
+// Cross-platform socket descriptor as it travels through the dispatch layer:
+// wide enough for both a POSIX int fd and the 64-bit winsock SOCKET, without
+// pulling socket headers into this public header. -1 is the invalid value on
+// every platform (INVALID_SOCKET is the all-ones pattern on winsock).
+using SocketHandle = intptr_t;
+static constexpr SocketHandle InvalidSocket = SocketHandle(-1);
+
+// Stream-socket endpoint address for Looper/Queue::listenSocket/connectSocket.
+// Parsed from and serialized to a single text form:
+//   "unix:/path/to.sock" - unix-domain (AF_UNIX) filesystem socket
+//   "unix:@name"         - unix-domain abstract-namespace socket (Linux/Android only)
+//   "host:port"          - numeric IPv4 endpoint (no DNS resolution)
+//   "[v6-literal]:port"  - numeric IPv6 endpoint (e.g. "[::1]:4490"; no zone ids)
+//   ":port"              - IPv4 loopback (listen and connect default to 127.0.0.1;
+//                          a debug-friendly secure default, not all-interfaces)
+// DNS names are future work.
+struct SPRT_API SocketAddress {
+	enum class Family : uint8_t {
+		None,
+		Unix,
+		IPv4,
+		IPv6,
+	};
+
+	Family family = Family::None;
+	String host; // numeric IPv4/IPv6 text (no brackets); empty = loopback
+	String path; // unix path; leading '@' marks the abstract namespace
+	uint16_t port = 0;
+
+	static SocketAddress parse(StringView);
+
+	bool isValid() const { return family != Family::None; }
+
+	String description() const;
+};
+
+// Parameters for Looper/Queue::listenSocket.
+//
+// Binds and listens on `address`; `onAccept` runs on the looper thread once per
+// accepted connection with a ready StreamHandle (already registered on the
+// queue). Dropping the passed Rc without calling StreamHandle::cancel leaves
+// the connection open until the peer disconnects. `completion` fires once when
+// the listener terminates. With port 0 the actually bound port is available via
+// ListenHandle::getAddress().
+struct SPRT_API ListenInfo {
+	using AcceptCallback = Function<void(Rc<StreamHandle> &&)>;
+	using Completion = CompletionHandle<ListenHandle>;
+
+	SocketAddress address;
+	uint32_t backlog = 8;
+	AcceptCallback onAccept;
+	Completion completion;
+};
+
+// Parameters for Looper/Queue::connectSocket.
+//
+// Starts a non-blocking connect to `address`; `completion` fires exactly once
+// on the looper thread - with Status::Ok when the connection is established, or
+// with the error otherwise. Reads/writes may be issued on the returned
+// StreamHandle right away; they are queued until the connect finishes.
+struct SPRT_API ConnectInfo {
+	using Completion = CompletionHandle<StreamHandle>;
+
+	SocketAddress address;
+	Completion completion;
+};
+
+// Parameters for Looper/Queue::watchFile.
+//
+// Watches a single file identified by `path` (name-based): on Linux this is
+// implemented by watching the parent directory and filtering by the file name,
+// so it survives editor "save = write temp + rename" replacements and reports a
+// file that does not exist yet once it is created. `mask` selects which change
+// kinds are reported; `completion` fires on the looper thread with the observed
+// WatchFlags in `value` and stays armed until the handle is cancelled (or the
+// containing directory disappears).
+struct SPRT_API WatchInfo {
+	using Completion = CompletionHandle<WatchHandle>;
+
+	StringView path;
+	WatchFlags mask = WatchFlags::Any;
+	Completion completion;
 };
 
 } // namespace sprt::dispatch

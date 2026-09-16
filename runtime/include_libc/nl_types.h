@@ -46,7 +46,9 @@ THE SOFTWARE.
 	  catclose - close a message catalog
 */
 
-#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
+#include <sprt/c/bits/__sprt_def.h>
+
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1 && !SPRT_EMBOX
 
 #include_next <nl_types.h>
 
@@ -61,8 +63,6 @@ __SPRT_BEGIN_DECL
 
 typedef __SPRT_ID(nl_item) nl_item;
 typedef __SPRT_ID(nl_catd) nl_catd;
-
-#if __SPRT_CONFIG_HAVE_NLTYPES_CAT || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 
 SPRT_UMBRELLA_FUNC
 nl_catd catopen(const char *path, int v) SPRT_UMBRELLA_END
@@ -86,8 +86,6 @@ int catclose(nl_catd cat) SPRT_UMBRELLA_END
 {
 	return __sprt_catclose(cat);
 }
-#endif
-
 #endif
 
 __SPRT_END_DECL

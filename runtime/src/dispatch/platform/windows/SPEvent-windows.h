@@ -37,7 +37,14 @@ struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _iocpThreadClass;
 	HandleClass _iocpTimerClass;
 	HandleClass _iocpPollClass;
+	HandleClass _iocpReadClass;
+	HandleClass _iocpProcessClass;
 	HandleClass _winTimerClass;
+	HandleClass _iocpFileClass; // overlapped-capable fds (IOCP native)
+	HandleClass _iocpFileInlineClass; // synchronous fds (inline chunked)
+	HandleClass _iocpWatchClass; // ReadDirectoryChangesW file-watch
+	HandleClass _iocpSocketPollClass; // WSAEventSelect socket-readiness adapter
+	HandleClass _iocpSocketStreamClass; // overlapped WSARecvFrom/WSASendTo native stream
 
 	Data(QueueRef *q, const QueueInfo &info);
 };

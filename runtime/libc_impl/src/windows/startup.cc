@@ -32,6 +32,9 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/context_api.h>
 #include <sprt/wrappers/windows/process_api.h>
 #include <sprt/wrappers/windows/basic_api.h>
+#include <sprt/wrappers/windows/constants.h>
+#include <sprt/wrappers/windows/winsock.h>
+#include <sprt/wrappers/windows/app_startup.h>
 
 #include "stdlib.h"
 #include "stdio.h"
@@ -40,89 +43,25 @@ THE SOFTWARE.
 #include "initterm.h"
 #include "dll/dllloader.h"
 
-#define DEFAULT_SECURITY_COOKIE 0x0000'2B99'2DDF'A232ll
-
+#if !defined(SPRT_BUILD_SHARED_RUNTIME)
 __cdecl int main(int argc, const char *argv[]);
+#endif
 
 struct NonTrivialType {
 	NonTrivialType() { printf("%s\n", "constructed"); }
 	~NonTrivialType() { printf("%s\n", "destroyed"); }
 };
 
-extern "C" {
-
-/*
-	Static initializers
-*/
-
-static __declspec(allocate(".CRT$XIA")) __ifuncptr __c_init_start[] = {nullptr};
-static __declspec(allocate(".CRT$XIZ")) __ifuncptr __c_init_end[] = {nullptr};
-static __declspec(allocate(".CRT$XCA")) __funcptr __cxx_init_start[] = {nullptr};
-static __declspec(allocate(".CRT$XCZ")) __funcptr __cxx_init_end[] = {nullptr};
-
-/*
-	TLS routines
-*/
-
-void WINAPI __dyn_tls_init(PVOID, DWORD dwReason, LPVOID) noexcept;
-
-ULONG _tls_index = 0;
-
-#pragma data_seg(".tls")
-
-static __declspec(allocate(".tls")) char _tls_index_start = 0;
-
-#pragma data_seg(".tls$ZZZ")
-
-static __declspec(allocate(".tls$ZZZ")) char _tls_index_end = 0;
-
-#pragma data_seg()
-
-static __declspec(allocate(".CRT$XLA")) PIMAGE_TLS_CALLBACK __tls_storage_start = 0;
-static __declspec(allocate(".CRT$XLZ")) PIMAGE_TLS_CALLBACK __tls_storage_end = 0;
-
-__declspec(allocate(".rdata$T")) extern const IMAGE_TLS_DIRECTORY64 _tls_used = {
-	(ULONGLONG)&_tls_index_start,
-	(ULONGLONG)&_tls_index_end,
-	(ULONGLONG)&_tls_index,
-	(ULONGLONG)(&__tls_storage_start + 1),
-	(ULONG)0,
-	{(ULONG)0},
-};
-
-extern const PIMAGE_TLS_CALLBACK __dyn_tls_init_callback = __dyn_tls_init;
-
-static __declspec(allocate(".CRT$XLC")) PIMAGE_TLS_CALLBACK __tls_delegate = __dyn_tls_init;
-static __declspec(allocate(".CRT$XDA")) __funcptr __tls_init_start_fn = nullptr;
-static __declspec(allocate(".CRT$XDZ")) __funcptr __tls_init_end_fn = nullptr;
-
-thread_local bool __tls_guard = false;
-
-void __dyn_tls_init(PVOID, DWORD dwReason, LPVOID) noexcept {
-	if (dwReason != DLL_THREAD_ATTACH || __tls_guard == true) {
-		return;
-	}
-
-	__tls_guard = true;
-
-	__initterm(&__tls_init_start_fn, &__tls_init_end_fn);
-}
-
-void __dyn_tls_on_demand_init() noexcept {
-	__dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr); //
-}
-
-int _fltused;
-
-} // extern "C"
-
+// The .CRT initializer sections, the TLS directory and _fltused - everything a PE image
+// carries for itself rather than sharing with the rest of the process. The executable
+// half of the shared-runtime build includes the same subunit; see its header comment.
+#include "crt_image.cc"
 
 /*
 	/Zc:threadSafeInit support
 */
 
 __SPRT_C_FUNC sprt::atomic<int> _Init_global_epoch = sprt::Min<int>;
-__SPRT_C_FUNC __declspec(thread) int _Init_thread_epoch = sprt::Min<int>;
 
 // With some compiler support, it's implementable with a pure futex, but not today...
 static sprt::mutex s_threadGuardMutex;
@@ -163,27 +102,24 @@ __SPRT_C_FUNC void __cdecl _Init_thread_footer(__sprt_uint32_t *const pOnce) noe
 	GS support (based on https://github.com/sysfce2/nocrt/blob/main/nocrt_exe.c)
 */
 
-__SPRT_C_FUNC __declspec(selectany) UINT_PTR __security_cookie = DEFAULT_SECURITY_COOKIE;
-__SPRT_C_FUNC __declspec(selectany) UINT_PTR __security_cookie_complement =
-		~(DEFAULT_SECURITY_COOKIE);
-
-__SPRT_C_FUNC void __fastcall __security_check_cookie(UINT_PTR cookie) __SPRT_NOEXCEPT {
-	if (cookie != __security_cookie) {
-		__debugbreak();
-	}
-}
-
-SAFELOADER UINT_PTR __gencookie() {
-	auto loader = sprt::DllLoader::get();
+// The cookie variables and __security_check_cookie live in crt_image.cc: they are
+// per-image, and the executable half of a shared-runtime build needs its own set. Only
+// the entropy source is here, because reaching it needs the DLL loader.
+//
+// Exported so that half can seed its own cookie from the same source; declared in
+// <sprt/wrappers/windows/app_startup.h>.
+__SPRT_C_FUNC SPRT_API __declspec(safebuffers) UINT_PTR __sprt_gencookie() {
 	UINT_PTR cookie = 0;
-	if (__security_cookie != DEFAULT_SECURITY_COOKIE) {
+
+	auto loader = sprt::DllLoader::get();
+	if (loader) {
 		HMODULE BCryptPrimitives = loader->__LoadLibraryW(L"BCryptPrimitives.dll");
 		if (BCryptPrimitives) {
 			BOOL (*ProcessPrng)(PBYTE, SIZE_T) = nullptr;
 			ProcessPrng = reinterpret_cast<decltype(ProcessPrng)>(
 					loader->__GetProcAddress(BCryptPrimitives, "ProcessPrng"));
-			if (ProcessPrng) {
-				ProcessPrng((PBYTE)&__security_cookie, sizeof(__security_cookie));
+			if (ProcessPrng && !ProcessPrng((PBYTE)&cookie, sizeof(cookie))) {
+				cookie = 0;
 			}
 			loader->__FreeLibrary(BCryptPrimitives);
 		}
@@ -192,25 +128,21 @@ SAFELOADER UINT_PTR __gencookie() {
 	if (cookie == 0) {
 		// Failed to use ProcessPrng, fallback to processor counter,
 		// No other available entropy source at this moment;
-		cookie = (__rdtsc() ^ 0x7A2D'9F1B'4E63'C082ll) & 0x0000'ffff'ffff'ffffll;
+#if defined(_M_ARM64) || defined(__aarch64__)
+		unsigned long long counter;
+		__asm__ volatile("mrs %0, cntvct_el0" : "=r"(counter));
+#else
+		unsigned long long counter = __rdtsc();
+#endif
+		cookie = (counter ^ 0x7A2D'9F1B'4E63'C082ll) & 0x0000'ffff'ffff'ffffll;
 	}
 
-	if (cookie == DEFAULT_SECURITY_COOKIE) {
-		cookie = DEFAULT_SECURITY_COOKIE + 1;
+	// The default doubles as an "uninitialized" marker for callers, so never hand it back.
+	if (cookie == __SPRT_DEFAULT_SECURITY_COOKIE) {
+		cookie = __SPRT_DEFAULT_SECURITY_COOKIE + 1;
 	}
 
 	return cookie;
-}
-
-SAFELOADER void __security_init_cookie() {
-	if (__security_cookie != DEFAULT_SECURITY_COOKIE) {
-		return;
-	}
-
-	auto cookie = __gencookie();
-
-	__security_cookie = cookie;
-	__security_cookie_complement = ~cookie;
 }
 
 // The libc struct lives in this uninitialized static memory block,
@@ -220,7 +152,48 @@ sprt::__libc *sprt::__libc::get() { return reinterpret_cast<__libc *>(s_libcBuff
 
 __SPRT_C_FUNC __sprt_uint64_t __libc_main_thread = 0;
 
-__SPRT_C_FUNC int mainCRTStartup() {
+// -----------------------------------------------------------------------------
+// Clean-crash policy for headless / non-interactive runs.
+//
+// By default an unhandled hardware fault (an access violation, or the
+// __builtin_trap()/ud2 that backs a default SIGABRT and every failed
+// assertion) propagates to the OS top-level handler, which under Windows pops a
+// modal "program error" dialog (winedbg under wine) and BLOCKS until it is
+// dismissed. A headless harness (CI, the conformance runner, wine without a
+// desktop) then looks hung until an external timeout kills it, and the real
+// exit status is lost. Suppress the fault UI (SetErrorMode) and install a
+// top-level filter that terminates the process immediately, carrying the
+// exception code as a non-zero exit status, so a crash is a clean, promptly
+// observable failure instead of a hang.
+extern "C" __SPRT_WIN_IMPORT WINAPI UINT SetErrorMode(UINT uMode);
+
+static LONG WINAPI __sprt_clean_crash_filter(EXCEPTION_POINTERS *info) {
+	UINT code = (info && info->ExceptionRecord) ? (UINT)info->ExceptionRecord->ExceptionCode : 3u;
+	if (code == 0) {
+		code = 3u; // 3 == C runtime abort() exit convention
+	}
+	TerminateProcess(GetCurrentProcess(), code);
+	return __SPRT_EXCEPTION_EXECUTE_HANDLER; // unreachable: process is already gone
+}
+
+static void __sprt_install_clean_crash() {
+	SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+	SetUnhandledExceptionFilter(&__sprt_clean_crash_filter);
+}
+
+// Bring the runtime up inside the image that owns it. Shared by the freestanding
+// executable entry (mainCRTStartup) and the shared-runtime library entry
+// (_DllMainCRTStartup) - the sequence is identical, only what follows it differs:
+// the executable goes on to call main(), the DLL returns to the loader, which then
+// initializes the rest of the process.
+//
+// The __sprt_image_init_* helpers come from crt_image.cc and act on the image this
+// translation unit was linked into, so the DLL runs the DLL's initializers here and the
+// application runs its own from its startup stub.
+// safebuffers: this function seeds the image's /GS cookie partway through, so it must
+// not be instrumented itself - a prologue that captured the pre-seed value would check
+// against the seeded one on return and trap.
+__declspec(safebuffers) static int __sprt_runtime_attach() {
 	// Load all required DLLs for SPRT.
 	// If some DLLs are missed, or some required functions are missed - abort immediately
 	auto loader = sprt::DllLoader::construct();
@@ -229,8 +202,13 @@ __SPRT_C_FUNC int mainCRTStartup() {
 		return ret;
 	}
 
-	// Init security cookie for stack protection
-	{ __security_init_cookie(); }
+	// Turn any later unhandled fault into a clean, immediate, non-zero exit rather
+	// than a modal crash dialog that blocks headless runs (see the filter above).
+	// Installed before static initializers and main() so a crash anywhere is covered.
+	__sprt_install_clean_crash();
+
+	// Seed this image's /GS cookie. Needs the loader, so it goes after load() above.
+	__sprt_image_init_cookie();
 
 	// Create __libc struct in static memory block
 	// this will initialize fds locales, exceptions and all other required libc features
@@ -238,65 +216,172 @@ __SPRT_C_FUNC int mainCRTStartup() {
 
 	__libc_main_thread = libc->mainThread;
 
-	// Show legacy floating point library support flag
-	_fltused = 1;
-
-	// At this moment, there are no other code running in application, except for mainCRTStartup.
-	// No other code -> no other threads -> no race conditions possible -> no need for locking
-	// This will change after static initializers calling.
+	// At this moment, there are no other code running in application, except for the
+	// entry point. No other code -> no other threads -> no race conditions possible ->
+	// no need for locking. This will change after static initializers calling.
 
 	// Call c initializers
-	if (__initterm(__c_init_start, __c_init_end) != 0) {
+	if (__sprt_image_init_c() != 0) {
 		return LOADER_ERROR_STATIC_C_INIT_FAILED; // Error in c initialization
 	}
 
 	// Call static c++ constructors
-	if (__initterm(__cxx_init_start, __cxx_init_end) != 0) {
+	if (__sprt_image_init_cxx() != 0) {
 		return LOADER_ERROR_STATIC_CXX_INIT_FAILED; // Error in c++ initialization
 	}
 
-	// Call thread_local constructors for the main thread.
-	// If static initializers uses thread_local variables - thread_local
-	// constructors should be already called, but, __tls_guard handles this case
-	__dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr);
+	// Call thread_local constructors for the main thread
+	__sprt_image_init_tls();
 
 	// This will attach and initialize main thread as pthread, if it was not initializd before
 	__sprt_pthread_self();
 
+	return 0;
+}
+
+#if defined(SPRT_BUILD_SHARED_RUNTIME)
+
+// Shared runtime: this image owns the process-wide C/C++ runtime state, and the loader
+// initializes it before the executable's entry point runs - so by the time application
+// static initializers execute, the heap, stdio, TLS and exception machinery are live.
+//
+// lld-link uses _DllMainCRTStartup as the default entry point for /DLL, so no explicit
+// -Wl,-entry: is needed.
+__SPRT_C_FUNC __declspec(safebuffers) BOOL WINAPI _DllMainCRTStartup(void *, DWORD reason, void *) {
+	switch (reason) {
+	case DLL_PROCESS_ATTACH:
+		if (__sprt_runtime_attach() != 0) {
+			return FALSE;
+		}
+
+		// load WSA unconditionally so c socket API should work natively
+		{
+			WSADATA wsaData;
+			if (WSAStartup(0x0202, &wsaData) != 0) { // winsock 2.2
+				return FALSE;
+			}
+			if (LOBYTE(wsaData.wVersion) != 2 || HIBYTE(wsaData.wVersion) != 2) {
+				WSACleanup();
+				return FALSE;
+			}
+		}
+		break;
+	case DLL_THREAD_ATTACH:
+		// Run thread_local constructors for threads created by code that does not go
+		// through sprt::thread (the loader calls us for every thread in the process).
+		__dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr);
+		break;
+	case DLL_PROCESS_DETACH: WSACleanup(); break;
+	case DLL_THREAD_DETACH:
+	default: break;
+	}
+	return TRUE;
+}
+
+#endif // SPRT_BUILD_SHARED_RUNTIME
+
+// Convert the (attacker-controlled) wide command line into argv and hand control to
+// main(). Never returns: it ends in exit(), which drains atexit handlers and static
+// destructors.
+//
+// manageWsa is false when the caller already brought Winsock up for the whole process
+// (the shared runtime does so in DLL_PROCESS_ATTACH and tears it down in
+// DLL_PROCESS_DETACH); the freestanding executable owns that lifetime itself.
+
+__SPRT_C_FUNC SPRT_API int __argc = 0;
+__SPRT_C_FUNC SPRT_API char **__argv = nullptr;
+
+static int __sprt_invoke_main(__sprt_main_fn mainFn, bool manageWsa) {
+	int ret = 0;
+
 	// __try/__finally wrapper is required for windows CRT/Loader interoperability logic
 	__try {
 		auto wCommandLine = GetCommandLineW();
-		if (wCommandLine) {
-			int argc = 0;
-			auto wargv = CommandLineToArgvW(wCommandLine, &argc);
+		int argc = 0;
+		wchar_t **wargv = wCommandLine ? CommandLineToArgvW(wCommandLine, &argc) : nullptr;
 
-			size_t blockSize = argc * sizeof(char *);
-			for (size_t i = 0; i < argc; ++i) {
-				blockSize += wcstombs(nullptr, wargv[i], 0) + 2; //
+		char *buf = nullptr;
+		char **argvTarget = nullptr;
+		int outArgc = 0;
+
+		// The command line is attacker-controlled. wcstombs returns (size_t)-1
+		// for any argument containing a character not representable in the
+		// active multibyte locale; using that as a length under-allocates and
+		// then performs a wild out-of-bounds store. Validate every conversion
+		// and every Win32 return; on any failure fall back to an empty argv
+		// rather than corrupting memory before main() runs.
+		if (wargv && argc > 0) {
+			size_t blockSize = (size_t)argc * sizeof(char *);
+			bool ok = true;
+			for (int i = 0; i < argc; ++i) {
+				size_t len = wcstombs(nullptr, wargv[i], 0);
+				if (len == (size_t)-1) {
+					ok = false;
+					break;
+				}
+				blockSize += len + 2;
 			}
 
-			char *buf = (char *)malloc(blockSize);
-			char **argvTarget = (char **)buf;
-			auto stringsTarget = buf + argc * sizeof(char *);
-			size_t bufferSize = blockSize - argc * sizeof(char *);
-
-			for (size_t i = 0; i < argc; ++i) {
-				auto strlen = wcstombs(stringsTarget, wargv[i], bufferSize);
-				stringsTarget[strlen] = 0;
-
-				argvTarget[i] = stringsTarget;
-				stringsTarget += strlen + 1;
-				bufferSize -= strlen + 1;
+			if (ok) {
+				buf = (char *)malloc(blockSize);
 			}
 
-			LocalFree(wargv);
+			if (buf) {
+				argvTarget = (char **)buf;
+				char *stringsTarget = buf + (size_t)argc * sizeof(char *);
+				size_t bufferSize = blockSize - (size_t)argc * sizeof(char *);
 
-			ret = main(argc, (const char **)argvTarget);
+				for (int i = 0; i < argc; ++i) {
+					size_t len = wcstombs(stringsTarget, wargv[i], bufferSize);
+					if (len == (size_t)-1 || len >= bufferSize) {
+						ok = false;
+						break;
+					}
+					stringsTarget[len] = 0;
 
-			free(buf);
-		} else {
-			ret = main(0, nullptr);
+					argvTarget[i] = stringsTarget;
+					stringsTarget += len + 1;
+					bufferSize -= len + 1;
+				}
+
+				if (ok) {
+					outArgc = argc;
+				} else {
+					// Partial/failed conversion: do not hand main() a
+					// half-populated argv.
+					argvTarget = nullptr;
+				}
+			}
 		}
+
+		if (wargv) {
+			LocalFree(wargv);
+		}
+
+		// load WSA unconditionally so c socket API should work natively
+		int wsaStartupResult = -1;
+		if (manageWsa) {
+			WSADATA wsaData;
+			wsaStartupResult = WSAStartup(0x0202, &wsaData); // winsock 2.2
+
+			if (wsaStartupResult != 0) {
+				printf("WSAStartup failed: %d\n", wsaStartupResult);
+			} else if (LOBYTE(wsaData.wVersion) != 2 || HIBYTE(wsaData.wVersion) != 2) {
+				printf("Could not find a usable version of Winsock.dll\n");
+				WSACleanup();
+			}
+		}
+
+		__argc = outArgc;
+		__argv = argvTarget;
+
+		ret = mainFn(outArgc, (const char **)argvTarget);
+
+		if (manageWsa && wsaStartupResult == 0) {
+			WSACleanup();
+		}
+
+		free(buf); // free(nullptr) is a no-op
 	}
 	__finally {
 	}
@@ -309,3 +394,31 @@ __SPRT_C_FUNC int mainCRTStartup() {
 
 	return ret;
 }
+
+#if defined(SPRT_BUILD_SHARED_RUNTIME)
+
+// Entry point body for applications that link the shared runtime. The application
+// image keeps only a tiny stub (see include/sprt/wrappers/windows/app_startup.h): the
+// stub runs its own .CRT initializers - which are per-image and therefore invisible
+// from here - and then hands its main() to this exported function. Everything the stub
+// would otherwise have to duplicate (command-line conversion, exit sequencing) stays in
+// the one image that owns the runtime.
+__SPRT_C_FUNC SPRT_API int __sprt_app_startup(__sprt_main_fn mainFn) {
+	return __sprt_invoke_main(mainFn, false);
+}
+
+#else // SPRT_BUILD_SHARED_RUNTIME
+
+// weak for the same reason as the shared-runtime stub's entry point: an application that
+// links the static runtime and wants to own its entry point can define mainCRTStartup
+// itself, and the strong definition wins rather than colliding with this one.
+__SPRT_C_FUNC __attribute__((weak)) __declspec(safebuffers) int mainCRTStartup() {
+	auto ret = __sprt_runtime_attach();
+	if (ret != 0) {
+		return ret;
+	}
+
+	return __sprt_invoke_main(&main, true);
+}
+
+#endif // SPRT_BUILD_SHARED_RUNTIME

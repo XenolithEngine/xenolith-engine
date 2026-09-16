@@ -26,6 +26,7 @@
 #include "XL2dVkMaterial.h"
 #include "XL2dCommandList.h"
 #include "XLCoreDevice.h"
+#include "XLCoreRenderSession.h"
 
 #if MODULE_XENOLITH_BACKEND_VK
 
@@ -82,9 +83,16 @@ class SP_PUBLIC ParticleEmitterAttachment : public BufferAttachment {
 public:
 	virtual ~ParticleEmitterAttachment() = default;
 
-	virtual bool init(AttachmentBuilder &builder);
+	virtual bool init(AttachmentBuilder &builder) override;
 
 	ParticlePersistentData *getData() const { return _data; }
+
+	// Remote render session: the per-frame input this attachment consumes is a
+	// FrameContextHandle2d.
+	virtual Rc<core::AttachmentInputData> makeInputData(NotNull<core::RenderClientChannel> client,
+			uint64_t windowId) const override {
+		return makeFrameContextInput(client, windowId);
+	}
 
 protected:
 	void handleInput(FrameQueue &, ParticleEmitterAttachmentHandle &, core::AttachmentInputData *,
@@ -130,6 +138,8 @@ public:
 
 	virtual bool init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilder,
 			const AttachmentData *);
+
+	virtual void prepare(core::Device &) override;
 
 	const AttachmentData *getEmitters() const { return _emitters; }
 

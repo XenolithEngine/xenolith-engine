@@ -1,0 +1,391 @@
+/**
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
+
+#include "XLUiStyleSheet.h"
+#include "XLFocusWithin.h"
+#include "XLSelection.h"
+#include "XLNode.h"
+#include "XLInteractiveComponent.h"
+#include "SPDocument.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
+
+/* Adapts the scene-graph `Node` tree to StyleContainer::matchComplex. A compound matches the
+node's `NodeIdentity` and live `InteractiveComponent` state; without an identity only `*`
+matches. Sibling order (`+`, `~`, `:nth-child`) is the parent's child list, i.e. z-order once
+sorted, not insertion order. */
+struct SceneNodeAccess {
+	// the node owning the nearest stylesheet scope; what `:root` matches
+	const Node *scopeRoot = nullptr;
+
+	bool valid(Node *n) const { return n != nullptr; }
+
+	Node *parent(Node *n) const { return n->getParent(); }
+
+	Node *prevSibling(Node *n) const {
+		auto p = n->getParent();
+		if (!p) {
+			return nullptr;
+		}
+		auto children = p->getChildren();
+		for (size_t i = 0; i < children.size(); ++i) {
+			if (children[i].get() == n) {
+				return (i == 0) ? nullptr : children[i - 1].get();
+			}
+		}
+		return nullptr;
+	}
+
+	bool isEmpty(Node *n) const { return n->getChildrenCount() == 0; }
+
+	bool isRoot(Node *n) const {
+		return scopeRoot ? (n == scopeRoot) : (n->getParent() == nullptr);
+	}
+
+	// 1-based index of `n` among its parent's children and their total count; with
+	// `sameTypeOnly` only siblings sharing the node's CSS type are counted (`:nth-of-type`)
+	bool siblingIndex(Node *n, bool sameTypeOnly, uint32_t &index, uint32_t &total) const {
+		auto p = n->getParent();
+		if (!p) {
+			return false;
+		}
+		StringView type;
+		if (sameTypeOnly) {
+			if (auto identity = n->getComponent<NodeIdentity>()) {
+				type = StringView(identity->type);
+			}
+		}
+		index = 0;
+		total = 0;
+		for (auto &child : p->getChildren()) {
+			if (sameTypeOnly) {
+				auto identity = child->getComponent<NodeIdentity>();
+				auto childType = identity ? StringView(identity->type) : StringView();
+				if (childType != type) {
+					continue;
+				}
+			}
+			++total;
+			if (child.get() == n) {
+				index = total;
+			}
+		}
+		return index != 0;
+	}
+
+	// The live interactive state of a node, as the selector machine sees it
+	uint32_t interactiveState(Node *n) const {
+		uint32_t state = 0;
+		if (auto ic = n ? n->getComponent<InteractiveComponent>() : nullptr) {
+			state = uint32_t(ic->state);
+		}
+		// `:focus-within` comes from a marker component, so containers need no interactive state
+		if (hasFocusWithin(n)) {
+			state |= uint32_t(InteractiveState::FocusWithin);
+		}
+		// selection state also comes from marker components, for the same reason
+		if (hasSelectionWithin(n)) {
+			state |= uint32_t(InteractiveState::SelectionWithin);
+		}
+		if (isNodeSelected(n)) {
+			state |= uint32_t(InteractiveState::Selected);
+		}
+		return state;
+	}
+
+	// one argument of `:not()`/`:is()`/`:where()`: the compound tests without nested arguments
+	bool matchArg(Node *n, const document::StyleContainer::SelectorArg &a) const {
+		auto identity = n ? n->getComponent<NodeIdentity>() : nullptr;
+		if (!a.universal && !a.tag.empty()) {
+			if (!identity || StringView(identity->type) != StringView(a.tag.data(), a.tag.size())) {
+				return false;
+			}
+		}
+		if (!a.id.empty()) {
+			if (!identity || StringView(identity->name) != StringView(a.id.data(), a.id.size())) {
+				return false;
+			}
+		}
+		for (auto &cl : a.classes) {
+			if (!identity
+					|| identity->classes.find(StringView(cl.data(), cl.size()))
+							== identity->classes.end()) {
+				return false;
+			}
+		}
+		if (a.pseudoRequire != 0 || a.pseudoForbid != 0) {
+			if (!a.matchesPseudo(interactiveState(n))) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool matchCompound(Node *n, const document::StyleContainer::CompoundSelector &c) const {
+		auto identity = n ? n->getComponent<NodeIdentity>() : nullptr;
+		if (!c.universal && !c.tag.empty()) {
+			if (!identity || StringView(identity->type) != StringView(c.tag.data(), c.tag.size())) {
+				return false;
+			}
+		}
+		if (!c.id.empty()) {
+			if (!identity || StringView(identity->name) != StringView(c.id.data(), c.id.size())) {
+				return false;
+			}
+		}
+		for (auto &cl : c.classes) {
+			if (!identity
+					|| identity->classes.find(StringView(cl.data(), cl.size()))
+							== identity->classes.end()) {
+				return false;
+			}
+		}
+		// interactive pseudo-classes (:hover/:focus/:active/:enabled/:disabled/:checked) read
+		// the node's live InteractiveComponent state (its InteractiveFlags bits)
+		if (c.pseudoRequire != 0 || c.pseudoForbid != 0) {
+			if (!c.matchesPseudo(interactiveState(n))) {
+				return false;
+			}
+		}
+
+		// `:not(...)` - none of them may match
+		for (auto &neg : c.negations) {
+			if (matchArg(n, neg)) {
+				return false;
+			}
+		}
+
+		// `:is(...)` / `:where(...)` - each list needs one option that does
+		for (auto &any : c.anyOf) {
+			bool matched = false;
+			for (auto &opt : any.options) {
+				if (matchArg(n, opt)) {
+					matched = true;
+					break;
+				}
+			}
+			if (!matched) {
+				return false;
+			}
+		}
+		return true;
+	}
+};
+
+/* Subclass gives access to the protected rule map `_styles` and adds identity-based
+matching plus an inline-style cache (all pool-backed, living in the sheet's pool). */
+struct StyleSheet::Container : document::StyleContainer {
+	using PoolString = memory::PoolInterface::StringType;
+
+	template <typename K, typename V>
+	using PoolMap = memory::PoolInterface::MapType<K, V>;
+
+	Container(document::DocumentData *data) : StyleContainer(data) { }
+
+	// append every matching rule with specificity + source order, without merging (see
+	// StyleSheet::collectMatches)
+	template <typename Vec>
+	void collectMatches(Vec &out, Node *node, uint64_t filterBits, uint64_t orderBias,
+			SpanView<bool> media, const Node *scopeRoot) const {
+		auto identity = node->getComponent<NodeIdentity>();
+		PoolString key;
+
+		// simple rules
+		auto addSimple = [&](StringView k) {
+			auto it = _styles.find(k);
+			if (it != _styles.end()) {
+				out.push_back(MatchedRule{&it->second.style, media, _document->strings,
+					it->second.specificity, orderBias | it->second.order});
+			}
+		};
+		addSimple(StringView("*"));
+		if (identity) {
+			if (!identity->type.empty()) {
+				addSimple(StringView(identity->type));
+			}
+			for (auto &cl : identity->classes) {
+				key.clear();
+				key.append(1, '.').append(cl.data(), cl.size());
+				addSimple(StringView(key));
+				if (!identity->type.empty()) {
+					key.clear();
+					key.append(identity->type.data(), identity->type.size())
+							.append(1, '.')
+							.append(cl.data(), cl.size());
+					addSimple(StringView(key));
+				}
+			}
+			if (!identity->name.empty()) {
+				key.clear();
+				key.append(1, '#').append(identity->name.data(), identity->name.size());
+				addSimple(StringView(key));
+				if (!identity->type.empty()) {
+					key.clear();
+					key.append(identity->type.data(), identity->type.size())
+							.append(1, '#')
+							.append(identity->name.data(), identity->name.size());
+					addSimple(StringView(key));
+				}
+			}
+		}
+
+		// structured combinator/pseudo rules, matched right-to-left
+		if (!_complexStyles.empty()) {
+			SceneNodeAccess access{scopeRoot};
+			auto tryBucket = [&](StringView bkey) {
+				auto bit = _complexStyles.find(bkey);
+				if (bit == _complexStyles.end()) {
+					return;
+				}
+				for (auto sel : bit->second) {
+					// ancestor Bloom fast-reject before the expensive backtracking walk
+					if ((filterBits & sel->ancestorFilterBits) != sel->ancestorFilterBits) {
+						continue;
+					}
+					if (matchComplex(*sel, node, access)) {
+						out.push_back(MatchedRule{&sel->style, media, _document->strings,
+							sel->specificity, orderBias | sel->order});
+					}
+				}
+			};
+			tryBucket(StringView("*"));
+			if (identity) {
+				if (!identity->type.empty()) {
+					tryBucket(StringView(identity->type));
+				}
+				for (auto &cl : identity->classes) {
+					key.clear();
+					key.append(1, '.').append(cl.data(), cl.size());
+					tryBucket(StringView(key));
+				}
+				if (!identity->name.empty()) {
+					key.clear();
+					key.append(1, '#').append(identity->name.data(), identity->name.size());
+					tryBucket(StringView(key));
+				}
+			}
+		}
+	}
+
+	// parse-once cache for inline `style="..."` declaration lists
+	const document::StyleList *getInlineStyle(StringView css) {
+		auto it = _inlineStyles.find(css);
+		if (it != _inlineStyles.end()) {
+			return it->second;
+		}
+
+		auto style = new (sprt::nothrow) document::StyleList();
+		StringReader r(css.data(), css.size());
+		readStyle(*style, r);
+		_inlineStyles.emplace(PoolString(css.data(), css.size()), style);
+		return style;
+	}
+
+	PoolMap<PoolString, document::StyleList *> _inlineStyles;
+};
+
+StyleSheet::~StyleSheet() {
+	if (_pool) {
+		// _data and _container are pool-allocated, destroyed with the pool
+		memory::pool::destroy(_pool);
+		_pool = nullptr;
+	}
+}
+
+bool StyleSheet::init(uint32_t initVersion) {
+	_version = initVersion;
+	_pool = memory::pool::create(static_cast<memory::pool_t *>(nullptr));
+	memory::perform([&] {
+		_data = new (_pool) document::DocumentData(_pool);
+		_container = new (_pool) Container(_data);
+	}, _pool);
+	return _data != nullptr && _container != nullptr;
+}
+
+bool StyleSheet::init(StringView css, uint32_t initVersion) {
+	if (!init(initVersion)) {
+		return false;
+	}
+	if (!addStyle(css)) {
+		return false;
+	}
+	return true;
+}
+
+bool StyleSheet::init(const FileInfo &file, uint32_t initVersion) {
+	if (!init(initVersion)) {
+		return false;
+	}
+	if (!addStyle(file)) {
+		return false;
+	}
+	return true;
+}
+
+bool StyleSheet::addStyle(StringView css) {
+	bool ret = false;
+	memory::perform([&] {
+		Container::StringReader r(css.data(), css.size());
+		ret = _container->readStyle(r);
+	}, _pool);
+	if (ret) {
+		++_version;
+	}
+	return ret;
+}
+
+bool StyleSheet::addStyle(const FileInfo &file) {
+	bool ret = false;
+	memory::perform([&] { ret = _container->readStyle(file); }, _pool);
+	if (ret) {
+		++_version;
+	}
+	return ret;
+}
+
+void StyleSheet::collectMatches(Vector<document::StyleContainer::MatchedRule> &out,
+		NotNull<Node> node, uint64_t ancestorFilterBits, uint64_t orderBias,
+		SpanView<bool> mediaResolved, const Node *scopeRoot) const {
+	_container->collectMatches(out, node, ancestorFilterBits, orderBias, mediaResolved, scopeRoot);
+}
+
+bool StyleSheet::hasStructuralSelectors() const { return _container->hasStructuralSelectors(); }
+
+bool StyleSheet::hasCustomProperties() const { return _container->hasCustomProperties(); }
+
+const document::StyleList *StyleSheet::getInlineStyle(StringView css) {
+	if (css.empty()) {
+		return nullptr;
+	}
+
+	const document::StyleList *ret = nullptr;
+	memory::perform([&] { ret = _container->getInlineStyle(css); }, _pool);
+	return ret;
+}
+
+Vector<bool> StyleSheet::resolveMedia(const document::MediaParameters &media) const {
+	return media.resolveMediaQueries<mem_std::Interface>(_data->queries);
+}
+
+SpanView<StringView> StyleSheet::getStrings() const { return _data->strings; }
+
+} // namespace stappler::xenolith::ui

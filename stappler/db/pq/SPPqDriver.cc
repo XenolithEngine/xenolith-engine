@@ -209,7 +209,7 @@ struct DriverLibStorage {
 	DriverSym *openLib(StringView lib) {
 		sprt::unique_lock<sprt::mutex> lock(s_driverMutex);
 
-		auto target = lib.str<stappler::memory::StandartInterface>();
+		auto target = lib.str<stappler::mem_std::Interface>();
 		auto it = s_driverLibs.find(target);
 		if (it != s_driverLibs.end()) {
 			++it->second.refCount;
@@ -231,7 +231,7 @@ struct DriverLibStorage {
 	void closeLib(DriverSym *sym) {
 		sprt::unique_lock<sprt::mutex> lock(s_driverMutex);
 		if (sym->refCount == 1) {
-			s_driverLibs.erase(sym->name.str<stappler::memory::StandartInterface>());
+			s_driverLibs.erase(sym->name.str<stappler::mem_std::Interface>());
 		} else {
 			--sym->refCount;
 		}
@@ -410,8 +410,8 @@ Driver::Handle Driver::connect(const Map<StringView, StringView> &params) const 
 					|| it.first == "target_session_attrs") {
 				keywords.emplace_back(it.first.data());
 				values.emplace_back(it.second.data());
-			} else if (it.first != "driver" && it.first == "nmin" && it.first == "nkeep"
-					&& it.first == "nmax" && it.first == "exptime" && it.first == "persistent") {
+			} else if (it.first != "driver" && it.first != "nmin" && it.first != "nkeep"
+					&& it.first != "nmax" && it.first != "exptime" && it.first != "persistent") {
 				log::source().error("pq::Driver", "unknown connection parameter: ", it.first, "=",
 						it.second);
 			}
@@ -682,22 +682,22 @@ Driver::Driver(pool_t *pool, ApplicationInterface *app, StringView path, const v
 			_handle = nullptr;
 		});
 
-		auto it = _customFields.emplace(FieldIntArray::FIELD_NAME);
+		auto it = _customFields.emplace(FieldIntArray::FIELD_NAME, CustomFieldInfo{});
 		if (!FieldIntArray::registerForPostgres(it.first->second)) {
 			_customFields.erase(it.first);
 		}
 
-		it = _customFields.emplace(FieldBigIntArray::FIELD_NAME);
+		it = _customFields.emplace(FieldBigIntArray::FIELD_NAME, CustomFieldInfo{});
 		if (!FieldBigIntArray::registerForPostgres(it.first->second)) {
 			_customFields.erase(it.first);
 		}
 
-		it = _customFields.emplace(FieldPoint::FIELD_NAME);
+		it = _customFields.emplace(FieldPoint::FIELD_NAME, CustomFieldInfo{});
 		if (!FieldPoint::registerForPostgres(it.first->second)) {
 			_customFields.erase(it.first);
 		}
 
-		it = _customFields.emplace(FieldTextArray::FIELD_NAME);
+		it = _customFields.emplace(FieldTextArray::FIELD_NAME, CustomFieldInfo{});
 		if (!FieldTextArray::registerForPostgres(it.first->second)) {
 			_customFields.erase(it.first);
 		}
@@ -773,9 +773,11 @@ BytesView ResultCursor::toBytes(size_t field) const {
 		auto val = driver->getValue(result, currentRow, field);
 		auto len = driver->getLength(result, currentRow, field);
 		if (len > 2 && sprt::memcmp(val, "\\x", 2) == 0) {
-			auto d = new (sprt::nothrow) Bytes(
-					stappler::base16::decode<Interface>(stappler::CoderSource(val + 2, len - 2)));
-			return BytesView(*d);
+			// DB-PQ-002: decode into a temporary and pdup the bytes into the active pool, so the
+			// buffer is pool-scoped (reclaimed on pool clear) rather than a leaked heap container.
+			return BytesView(
+					stappler::base16::decode<Interface>(stappler::CoderSource(val + 2, len - 2)))
+					.pdup();
 		}
 		return BytesView((uint8_t *)val, len);
 	}

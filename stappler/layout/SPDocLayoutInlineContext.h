@@ -37,31 +37,31 @@ struct SP_PUBLIC InlineContext : public memory::AllocPool,
 	using NodeCallback = Function<void(InlineContext &ctx)>;
 
 	struct RefPosInfo {
-		uint16_t firstCharId;
-		uint16_t lastCharId;
+		uint32_t firstCharId;
+		uint32_t lastCharId;
 
 		String target;
 		String mode;
 	};
 
 	struct OutlinePosInfo {
-		uint16_t firstCharId;
-		uint16_t lastCharId;
+		uint32_t firstCharId;
+		uint32_t lastCharId;
 
 		OutlineParameters style;
 	};
 
 	struct BackgroundPosInfo {
-		uint16_t firstCharId;
-		uint16_t lastCharId;
+		uint32_t firstCharId;
+		uint32_t lastCharId;
 
 		BackgroundParameters background;
 		Padding padding;
 	};
 
 	struct IdPosInfo {
-		uint16_t firstCharId;
-		uint16_t lastCharId;
+		uint32_t firstCharId;
+		uint32_t lastCharId;
 
 		StringView id;
 	};

@@ -33,7 +33,7 @@ class DocumentAsset;
 class DocumentAssetLock;
 
 struct SP_PUBLIC DocumentAssetMeta {
-	using String = memory::StandartInterface::StringType;
+	using String = mem_std::Interface::StringType;
 
 	int64_t mtime;
 	String type;
@@ -49,10 +49,10 @@ struct SP_PUBLIC DocumentAssetMeta {
 
 class SP_PUBLIC DocumentAssetLock : public Ref {
 public:
-	using Bytes = memory::StandartInterface::BytesType;
+	using Bytes = mem_std::Interface::BytesType;
 
 	template <typename T>
-	using Function = memory::StandartInterface::FunctionType<T>;
+	using Function = mem_std::Interface::FunctionType<T>;
 
 	virtual ~DocumentAssetLock();
 
@@ -79,10 +79,10 @@ protected:
 	Rc<Ref> _lock;
 };
 
-class SP_PUBLIC DocumentAsset : public SubscriptionTemplate<memory::StandartInterface> {
+class SP_PUBLIC DocumentAsset : public SubscriptionTemplate<mem_std::Interface> {
 public:
-	using Value = data::ValueTemplate<memory::StandartInterface>;
-	using Bytes = memory::StandartInterface::BytesType;
+	using Value = data::ValueTemplate<mem_std::Interface>;
+	using Bytes = mem_std::Interface::BytesType;
 
 	using StringDocument = document::StringDocument;
 	using Document = document::Document;

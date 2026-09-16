@@ -117,7 +117,10 @@ struct SPRT_API FrameConstraints {
 
 	Padding getRotatedPadding() const {
 		Padding out = contentPadding;
-		switch (transform) {
+		// strip the PreRotated bit (as getScreenSize does); switching on the raw
+		// `transform` missed every rotation case when PreRotated was OR'd in, so
+		// padding was left unrotated while the screen size was rotated.
+		switch (getPureTransform(transform)) {
 		case SurfaceTransformFlags::Rotate90:
 			out.left = contentPadding.top;
 			out.top = contentPadding.right;
@@ -166,6 +169,13 @@ struct SPRT_API SwapchainConfig {
 	Extent2 extent;
 	bool clipped = false;
 	bool transfer = true;
+
+	// Whether the presented images may be READ - copied out of, in place, by whatever rendered
+	// them. The spec guarantees only ColorAttachment for a swapchain image, so this is a request
+	// that a surface is free to refuse (SurfaceInfo::supportedUsageFlags is what answers), and
+	// anything relying on it needs a path for the refusal.
+	bool transferSrc = false;
+
 	bool liveResize = false;
 
 	// Used when gAPI support for the fullscreen mode required
@@ -179,16 +189,16 @@ struct SPRT_API SwapchainConfig {
 };
 
 struct SPRT_API SurfaceInfo {
-	uint32_t minImageCount;
-	uint32_t maxImageCount;
+	uint32_t minImageCount = 0;
+	uint32_t maxImageCount = 0;
 	Extent2 currentExtent;
 	Extent2 minImageExtent;
 	Extent2 maxImageExtent;
-	uint32_t maxImageArrayLayers;
-	CompositeAlphaFlags supportedCompositeAlpha;
-	SurfaceTransformFlags supportedTransforms;
-	SurfaceTransformFlags currentTransform;
-	ImageUsage supportedUsageFlags;
+	uint32_t maxImageArrayLayers = 0;
+	CompositeAlphaFlags supportedCompositeAlpha = {};
+	SurfaceTransformFlags supportedTransforms = {};
+	SurfaceTransformFlags currentTransform = {};
+	ImageUsage supportedUsageFlags = {};
 	Vector<pair<ImageFormat, ColorSpace>> formats;
 	Vector<PresentMode> presentModes;
 
@@ -213,11 +223,17 @@ enum class SurfaceBackend {
 	GoogleGames,
 	IOS,
 	MacOS,
+	Canvas, // browser <canvas> (WebGPU via navigator.gpu)
 	VI,
 	Metal,
 	QNX,
 	OpenHarmony,
 	Display,
+	// No window system at all: the gAPI renders into ordinary offscreen images that imitate
+	// swapchain images (see HeadlessWindow). Carries no native handle, and is deliberately never
+	// reported in SurfaceSupportInfo::backendMask - an empty mask is what makes the gAPI skip
+	// every WSI instance extension.
+	Headless,
 	Max
 };
 
@@ -233,6 +249,12 @@ struct SPRT_API SurfaceSupportInfo {
 	struct {
 		void *display = nullptr;
 	} wayland;
+	// Direct-to-display (KMS): the DRM primary node opened by the window system.
+	// fd >= 0 means a usable device with a connected connector was found.
+	struct {
+		int fd = -1;
+		uint32_t connectorId = 0;
+	} display;
 };
 
 struct SPRT_API SurfaceInterfaceInfo {
@@ -260,6 +282,20 @@ struct SPRT_API SurfaceInterfaceInfo {
 		struct {
 			void *layer;
 		} metal;
+		struct {
+			void *handle; // opaque; the JS binding owns the OffscreenCanvas
+		} canvas;
+		// Direct-to-display (no window system). The fd is owned by the window
+		// system (DrmDevice) and outlives the surface; the gAPI must not close it.
+		struct {
+			int fd;
+			uint32_t connectorId;
+			uint32_t crtcId;
+			uint32_t width; // mode picked by the window system, not WindowInfo
+			uint32_t height;
+			uint32_t rate; // FPS multiplied by 1000
+			// largest variant, so it carries the union's default initializer
+		} display = {};
 	};
 };
 

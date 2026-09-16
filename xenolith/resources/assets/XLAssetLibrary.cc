@@ -327,7 +327,7 @@ bool AssetLibrary::acquireAssets(SpanView<AssetRequest> vec, AssetVecCallback &&
 
 	Vector<Rc<Asset>> *retVec = nullptr;
 	AssetVecCallback *cb = nullptr;
-	if (cb) {
+	if (icb) {
 		retVec = new Vector<Rc<Asset>>;
 		cb = new AssetVecCallback(sp::move(icb));
 	}

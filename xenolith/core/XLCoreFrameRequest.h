@@ -98,8 +98,25 @@ public:
 
 	bool isPersistentMapping() const { return _persistentMappings; }
 
-	void setSceneId(uint64_t val) { _sceneId = val; }
-	uint64_t getSceneId() const { return _sceneId; }
+	// Keeps whatever produced this frame's content alive for the frame's whole lifetime.
+	void setSceneRef(Rc<Ref> &&ref) { _sceneRef = sp::move(ref); }
+	Ref *getSceneRef() const { return _sceneRef; }
+
+	// Damage snapshot for this frame. Written once by the worker that builds the renderer's
+	// vertex data, before the attachment signals readiness; read afterwards on the loop thread.
+	void setDamageState(Rc<FrameDamageState> &&val) { _damage = sp::move(val); }
+	const Rc<FrameDamageState> &getDamageState() const { return _damage; }
+
+	// Set when a pass found the target image already holding this exact frame and recorded nothing.
+	// Informational for present (which still runs, against its own baseline) and for damage logging.
+	void setRedrawSkipped(bool val) { _redrawSkipped = val; }
+	bool isRedrawSkipped() const { return _redrawSkipped; }
+
+	// Absolute monotonic-clock deadline (microseconds) by which this frame must complete; 0 = none.
+	// The PresentationEngine cancels the frame if it is still pending at the deadline (e.g. an input
+	// or dependency that never arrives). It seeds a default if the caller leaves it unset.
+	void setDeadline(uint64_t val) { _deadline = val; }
+	uint64_t getDeadline() const { return _deadline; }
 
 	const Vector<Rc<DependencyEvent>> &getSignalDependencies() const { return _signalDependencies; }
 
@@ -126,7 +143,10 @@ protected:
 
 	// try to map per-frame GPU memory persistently
 	bool _persistentMappings = true;
-	uint64_t _sceneId = 0;
+	Rc<Ref> _sceneRef;
+	Rc<FrameDamageState> _damage;
+	bool _redrawSkipped = false;
+	uint64_t _deadline = 0; // absolute monotonic-clock deadline (us); 0 = none
 
 	Map<const ImageAttachment *, ImageInfoData> _imageSpecialization;
 	Map<const AttachmentData *, Rc<FrameOutputBinding>> _output;

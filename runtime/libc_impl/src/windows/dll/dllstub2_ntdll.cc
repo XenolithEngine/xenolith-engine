@@ -67,7 +67,7 @@ EXCEPTION_DISPOSITION __C_specific_handler(struct _EXCEPTION_RECORD *ExceptionRe
 		struct _DISPATCHER_CONTEXT *DispatcherContext) {
 	auto loader = sprt::DllLoader::get();
 	auto ptr = reinterpret_cast<decltype(&__C_specific_handler)>(
-			loader->ntdll.__C_specific_handler.fn);
+			SPWIN_NTDLL_PRELOADED_FN(loader, __C_specific_handler));
 	return ptr(ExceptionRecord, EstablisherFrame, ContextRecord, DispatcherContext);
 }
 }

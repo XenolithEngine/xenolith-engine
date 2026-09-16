@@ -23,6 +23,7 @@
 #include "XLContext.h"
 #include "SPString.h"
 #include "XLAppThread.h"
+#include "XLServerAppThread.h"
 #include "XLAppWindow.h"
 #include "XLContextInfo.h"
 #include "XLCoreEnum.h"
@@ -31,6 +32,10 @@
 
 #if MODULE_XENOLITH_BACKEND_VK
 #include "XLVkInstance.h"
+#endif
+
+#if MODULE_XENOLITH_BACKEND_GLES
+#include "XLGlesInstance.h"
 #endif
 
 #include <sprt/runtime/window/native_window.h>
@@ -58,10 +63,6 @@ ContentInitializer::ContentInitializer(ContentInitializer &&other) {
 	tmpPool = other.tmpPool;
 	init = other.init;
 
-	liveReloadPath = sp::move(other.liveReloadPath);
-	liveReloadCachePath = sp::move(other.liveReloadCachePath);
-	liveReloadLibrary = sp::move(other.liveReloadLibrary);
-
 	other.tmpPool = nullptr;
 	other.pool = nullptr;
 	other.init = false;
@@ -73,10 +74,6 @@ ContentInitializer &ContentInitializer::operator=(ContentInitializer &&other) {
 	pool = other.pool;
 	tmpPool = other.tmpPool;
 	init = other.init;
-
-	liveReloadPath = sp::move(other.liveReloadPath);
-	liveReloadCachePath = sp::move(other.liveReloadCachePath);
-	liveReloadLibrary = sp::move(other.liveReloadLibrary);
 
 	other.tmpPool = nullptr;
 	other.pool = nullptr;
@@ -116,12 +113,17 @@ void ContentInitializer::terminate() {
 XL_DECLARE_EVENT_CLASS(Context, onNetworkStateChanged);
 XL_DECLARE_EVENT_CLASS(Context, onThemeChanged);
 XL_DECLARE_EVENT_CLASS(Context, onSystemNotification);
-XL_DECLARE_EVENT_CLASS(Context, onLiveReload);
 XL_DECLARE_EVENT_CLASS(Context, onMessageToken)
 XL_DECLARE_EVENT_CLASS(Context, onRemoteNotification)
 
 static int Context_runWithConfig(ContextConfig &&config, ContentInitializer &&init) {
 	Rc<Context> ctx;
+
+	auto makeConfigSymbol = SharedModule::acquireTypedSymbol<Context::SymbolMakeConfigSignature>(
+			buildconfig::MODULE_APPCOMMON_NAME, Context::SymbolMakeConfigName);
+	if (makeConfigSymbol) {
+		makeConfigSymbol(config);
+	}
 
 	auto makeContextSymbol = SharedModule::acquireTypedSymbol<Context::SymbolMakeContextSignature>(
 			buildconfig::MODULE_APPCOMMON_NAME, Context::SymbolMakeContextName);
@@ -142,7 +144,7 @@ static int Context_runWithConfig(ContextConfig &&config, ContentInitializer &&in
 
 	auto ret = container->controller->run(container);
 
-#if DEBUG
+#if SPRT_REF_DEBUG
 	if (container->controller->getReferenceCount() > 1) {
 		auto c = container->controller.get();
 		container->controller = nullptr;
@@ -197,35 +199,6 @@ int Context::run(int argc, const char **argv) {
 	ContentInitializer init;
 	init.initialize(argc, argv);
 
-#ifdef EXEC_LIVE_RELOAD
-	// clear live reload cache first
-	filesystem::mkdir(FileInfo("live_reload_cache", FileInfo::AppRuntime));
-	auto liveReloadCache =
-			filesystem::findPath<Interface>(FileInfo("live_reload_cache", FileInfo::AppRuntime));
-	filesystem::remove(FileInfo(liveReloadCache), true, false);
-
-	auto liveReloadLib = SharedModule::acquireTypedSymbol<const char *>(
-			buildconfig::MODULE_APPCONFIG_NAME, "APPCONFIG_EXEC_LIVE_RELOAD_LIBRARY");
-	auto libName = filepath::lastComponent(liveReloadLib);
-	auto execPath = filesystem::platform::_getApplicationPath<Interface>();
-	auto execDir = filepath::root(execPath);
-
-	auto libPath = filepath::merge<Interface>(execDir, libName);
-	filesystem::Stat stat;
-	if (filesystem::stat(FileInfo(libPath), stat)) {
-		auto targetPath = toString(liveReloadCache, "/", libName, ".1");
-		filesystem::copy(FileInfo{libPath}, FileInfo(targetPath));
-
-		init.liveReloadLibrary = Rc<LiveReloadLibrary>::create(targetPath, stat.mtime, 1, nullptr);
-
-		if (init.liveReloadLibrary) {
-			init.liveReloadPath = libPath;
-			init.liveReloadCachePath = liveReloadCache;
-			slog().debug("Context", "Run with Live reload library: ", targetPath);
-		}
-	}
-#endif
-
 	auto cfgSymbol = SharedModule::acquireTypedSymbol<SymbolParseConfigCmdSignature>(
 			buildconfig::MODULE_APPCOMMON_NAME, SymbolParseConfigCmdName);
 	if (cfgSymbol) {
@@ -265,6 +238,10 @@ bool Context::init(ContextConfig &&info, ContentInitializer &&init) {
 	engineMask = sprt::dispatch::QueueEngine::EPoll;
 #endif
 
+#if SPRT_HOSTED_RTOS
+	engineMask = sprt::dispatch::QueueEngine::None;
+#endif
+
 	_looper = sprt::dispatch::Looper::acquire(sprt::dispatch::LooperInfo{
 		.workersCount = info.context->mainThreadsCount,
 		.engineMask = engineMask,
@@ -277,6 +254,10 @@ bool Context::init(ContextConfig &&info, ContentInitializer &&init) {
 		return false;
 	}
 
+	// Route runtime window diagnostics into the app log, so scene-side log capture sees them.
+	_controller->setWindowDiagSink(
+			[](StringView line) { log::source().debug("WindowDiag", line); });
+
 #if MODULE_XENOLITH_FONT
 	auto setLocale = SharedModule::acquireTypedSymbol<decltype(&locale::setLocale)>(
 			buildconfig::MODULE_XENOLITH_FONT_NAME, "locale::setLocale");
@@ -288,21 +269,6 @@ bool Context::init(ContextConfig &&info, ContentInitializer &&init) {
 		}
 	}
 #endif
-
-	if (!_initializer.liveReloadPath.empty()) {
-		_actualLiveReloadLibrary = _initializer.liveReloadLibrary;
-		// add timer-based watchdog
-		// later we implement watchdog, based on event queue
-		_liveReloadWatchdog = _looper->scheduleTimer(
-				sprt::dispatch::TimerInfo{
-					.completion = sprt::dispatch::TimerInfo::Completion::create<Context>(this,
-							[](Context *ctx, sprt::dispatch::TimerHandle *, uint32_t value,
-									Status) { ctx->updateLiveReload(); }),
-					.interval = TimeInterval::milliseconds(250),
-					.count = sprt::dispatch::TimerInfo::Infinite,
-				},
-				this);
-	}
 
 	return true;
 }
@@ -318,6 +284,10 @@ bool Context::isCursorSupported(WindowCursor cursor, bool serverSide) const {
 
 WindowCapabilities Context::getWindowCapabilities() const { return _controller->getCapabilities(); }
 
+bool Context::isDialogSupported(sprt::window::DialogType type) const {
+	return _controller->isDialogSupported(type);
+}
+
 Status Context::readFromClipboard(sprt::window::Function<void(Status, BytesView, StringView)> &&cb,
 		sprt::window::Function<StringView(SpanView<StringView>)> &&tcb, Ref *target) {
 	auto request = Rc<sprt::window::ClipboardRequest>::create();
@@ -326,6 +296,30 @@ Status Context::readFromClipboard(sprt::window::Function<void(Status, BytesView,
 	request->target = target;
 
 	return _controller->readFromClipboard(sp::move(request));
+}
+
+Status Context::openDialog(NotNull<sprt::dispatch::Looper> target,
+		Rc<sprt::window::DialogRequest> &&req) {
+	if (_looper->isOnThisThread()) {
+		return _controller->openDialog(target, sp::move(req));
+	}
+
+	// Off the context thread the answer is delivered through the completion, as for a real dialog.
+	performOnThread(
+			[this, target = Rc<sprt::dispatch::Looper>(target), req = sp::move(req)]() mutable {
+		_controller->openDialog(target, sp::move(req));
+	}, this);
+	return Status::Ok;
+}
+
+Status Context::cancelDialog(NotNull<sprt::window::DialogRequest> req) {
+	if (_looper->isOnThisThread()) {
+		return _controller->cancelDialog(req);
+	}
+	performOnThread([this, req = Rc<sprt::window::DialogRequest>(req)]() mutable {
+		_controller->cancelDialog(req);
+	}, this);
+	return Status::Ok;
 }
 
 Status Context::probeClipboard(sprt::window::Function<void(Status, SpanView<StringView>)> &&cb,
@@ -349,6 +343,10 @@ Status Context::writeToClipboard(sprt::window::Function<sprt::window::Bytes(Stri
 	data->owner = ref;
 
 	return _controller->writeToClipboard(move(data));
+}
+
+Status Context::writeToClipboard(Rc<sprt::window::ClipboardData> &&data) {
+	return _controller->writeToClipboard(sp::move(data));
 }
 
 void Context::handleConfigurationChanged(Rc<ContextInfo> &&info) { _info = move(info); }
@@ -402,9 +400,23 @@ core::SwapchainConfig Context::handleAppWindowSurfaceUpdate(NotNull<AppWindow> w
 	core::PresentMode preferredPresentMode =
 			windowInfo ? windowInfo->preferredPresentMode : core::PresentMode::Mailbox;
 	core::ImageFormat imageFormat =
-			windowInfo ? windowInfo->imageFormat : core::ImageFormat::R8G8B8A8_UNORM;
+			windowInfo ? windowInfo->imageFormat : core::ImageFormat::Undefined;
 	core::ColorSpace colorSpace =
 			windowInfo ? windowInfo->colorSpace : core::ColorSpace::SRGB_NONLINEAR_KHR;
+
+	// if we do not know format - use defaults
+	if (imageFormat == core::ImageFormat::Undefined) {
+		// Direct-KMS embed (Pi / QEMU Display): prefer RGB565 when offered (half the scanout
+		// bandwidth of RGBA8). Desktop WM paths keep their own default.
+		const bool embedDisplay = w->getSurfaceBackend() == sprt::window::SurfaceBackend::Display;
+		if (embedDisplay) {
+			imageFormat = core::ImageFormat::R5G6B5_UNORM_PACK16;
+		} else {
+			imageFormat = core::ImageFormat::R8G8B8A8_UNORM;
+		}
+	}
+	log::source().info("Context", "handleAppWindowSurfaceUpdate: preferred format=",
+			core::getImageFormatName(imageFormat), " / ", core::getColorSpaceName(colorSpace));
 
 	if (preferredPresentMode != core::PresentMode::Unsupported) {
 		for (auto &it : info.presentModes) {
@@ -455,11 +467,19 @@ core::SwapchainConfig Context::handleAppWindowSurfaceUpdate(NotNull<AppWindow> w
 		ret.colorSpace = it->second;
 	}
 
-	if (hasFlag(w->getInfo()->flags, WindowCreationFlags::UserSpaceDecorations)
-			&& hasFlag(info.supportedCompositeAlpha, core::CompositeAlphaFlags::Premultiplied)) {
-		// For user-space decoration, compositor can provide Premultiplied alpha mode, use it
+	/* A non-rectangular window must be blended: user-space decorations round the corners and draw a
+	shadow, and an undecorated Popup/Tooltip is sized exactly to its panel, so a `border-radius`
+	leaves corners outside the shape. Blending is requested, not required: without compositor
+	support (`supportedCompositeAlpha`) the window stays opaque and corners show the clear
+	colour. */
+	const bool shaped = windowInfo
+			&& (hasFlag(windowInfo->flags, WindowCreationFlags::UserSpaceDecorations)
+					|| windowInfo->type == WindowType::Popup
+					|| windowInfo->type == WindowType::Tooltip);
+
+	if (shaped && hasFlag(info.supportedCompositeAlpha, core::CompositeAlphaFlags::Premultiplied)) {
 		ret.alpha = core::CompositeAlphaFlags::Premultiplied;
-	} else if (hasFlag(w->getInfo()->flags, WindowCreationFlags::UserSpaceDecorations)
+	} else if (shaped
 			&& hasFlag(info.supportedCompositeAlpha, core::CompositeAlphaFlags::Postmultiplied)) {
 		ret.alpha = core::CompositeAlphaFlags::Postmultiplied;
 	} else if (hasFlag(info.supportedCompositeAlpha, core::CompositeAlphaFlags::Opaque)) {
@@ -513,6 +533,13 @@ void Context::handleNativeWindowConstraintsChanged(NotNull<NativeWindow> w,
 	}
 }
 
+void Context::handleNativeWindowGeometryChanged(NotNull<NativeWindow> w) {
+	auto appWindow = static_cast<AppWindow *>(w->getAppWindow());
+	if (appWindow) {
+		appWindow->notifyWindowGeometry();
+	}
+}
+
 void Context::handleNativeWindowInputEvents(NotNull<NativeWindow> w,
 		Vector<core::InputEventData> &&events) {
 	auto appWindow = static_cast<AppWindow *>(w->getAppWindow());
@@ -548,6 +575,7 @@ void Context::handleWillDestroy() {
 		_loop = nullptr;
 	}
 }
+
 void Context::handleDidDestroy() { log::source().info("Context", "handleDidDestroy"); }
 
 void Context::handleWillStop() {
@@ -650,7 +678,45 @@ bool Context::configureWindow(NotNull<WindowInfo> w) {
 		}
 	}
 
+	// Drop an icon the platform will not use, so backends need not check the capability and
+	// encodeWindowInfo reports what the window got. Not a warning: apps set icons unconditionally.
+	if (w->icon && !hasFlag(caps, WindowCapabilities::WindowIcon)) {
+		w->icon = nullptr;
+	}
+
 	return true;
+}
+
+void Context::createWindow(Rc<WindowInfo> &&info, Function<void(Status, StringView)> &&complete) {
+	performOnThread([this, info = move(info), complete = move(complete)]() mutable {
+		// Keep our own reference: the controller moves the argument away, but we still need the
+		// final id for the completion, and the payload back if creation failed.
+		auto status = _controller->createWindow(Rc<WindowInfo>(info));
+		if (status != Status::Ok) {
+			log::source().error("Context",
+					"Fail to create native window: ", sprt::status::getStatusName(status));
+
+			// This frame holds the last reference to an app-thread payload that may own scene-graph
+			// objects. Do not release it here: hand it back so its close callback answers the
+			// opener.
+			if (auto payload = info->takeAppData()) {
+				_application->performOnAppThread([payload = move(payload)]() mutable {
+					if (auto sceneInfo = dynamic_cast<WindowSceneInfo *>(payload.get())) {
+						sceneInfo->fireClose();
+					}
+					payload = nullptr;
+				}, this);
+			}
+		}
+
+		if (complete) {
+			auto id = status == Status::Ok ? info->id : String();
+			_application->performOnAppThread(
+					[complete = move(complete), status, id = move(id)]() mutable {
+				complete(status, id);
+			}, this);
+		}
+	}, this);
 }
 
 void Context::updateMessageToken(BytesView tok) {
@@ -741,6 +807,21 @@ Rc<sprt::window::gapi::Instance> Context::makeInstance(
 					ret.set(toInt(vk::SurfaceBackend::Metal));
 				}
 #endif
+
+#if defined(VK_KHR_display)
+				if (supportInfo.backendMask.test(toInt(vk::SurfaceBackend::Display))) {
+					// Direct-display presentation is supported if the device drives
+					// at least one display through VK_KHR_display.
+					uint32_t ndisplays = 0;
+					inst->vkGetPhysicalDeviceDisplayPropertiesKHR(device, &ndisplays, nullptr);
+					// Software/headless drivers (lavapipe) report 0 displays but can
+					// still drive the KMS connector the window system opened, which we
+					// acquire through its fd. See Instance::createDisplayPlaneSurface().
+					if (ndisplays > 0 || supportInfo.display.fd >= 0) {
+						ret.set(toInt(vk::SurfaceBackend::Display));
+					}
+				}
+#endif
 				return ret;
 			};
 			return true;
@@ -749,6 +830,45 @@ Rc<sprt::window::gapi::Instance> Context::makeInstance(
 		instanceInfo->backend = move(instanceBackendInfo);
 	}
 #endif
+
+#if MODULE_XENOLITH_BACKEND_WEBGPU
+	if (!instanceInfo && info->api == core::InstanceApi::WebGPU) {
+		instanceInfo = Rc<sprt::window::gapi::InstanceInfo>::alloc();
+		instanceInfo->api = info->api;
+		instanceInfo->flags = info->flags;
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_MTL
+	if (!instanceInfo && info->api == core::InstanceApi::Metal) {
+		instanceInfo = Rc<sprt::window::gapi::InstanceInfo>::alloc();
+		instanceInfo->api = info->api;
+		instanceInfo->flags = info->flags;
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_SOFT
+	if (!instanceInfo && info->api == core::InstanceApi::Software) {
+		instanceInfo = Rc<sprt::window::gapi::InstanceInfo>::alloc();
+		instanceInfo->api = info->api;
+		instanceInfo->flags = info->flags;
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_GLES
+	if (!instanceInfo && info->api == core::InstanceApi::GLES) {
+		instanceInfo = Rc<sprt::window::gapi::InstanceInfo>::alloc();
+		instanceInfo->api = info->api;
+		instanceInfo->flags = info->flags;
+
+		// EGL picks both its display and its window surface from the window system handles, so
+		// the instance needs the same support snapshot the Vulkan branch consumes.
+		auto instanceBackendInfo = Rc<gles::InstanceBackendInfo>::create();
+		instanceBackendInfo->supportInfo = _controller->getSupportInfo();
+		instanceInfo->backend = move(instanceBackendInfo);
+	}
+#endif
+
 	if (instanceInfo) {
 		return core::Instance::create(move(instanceInfo));
 	}
@@ -782,33 +902,87 @@ Rc<sprt::window::gapi::Loop> Context::makeLoop(NotNull<sprt::window::gapi::Insta
 			Vector<StringView> ret;
 			if (!isHeadless) {
 				ret.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+
+				// The VK_KHR_display swapchain path (Mesa wsi_common_drm) calls vkGetMemoryFdKHR
+				// and the DRM modifier queries unconditionally; they are null unless those device
+				// extensions are enabled, so enable them when advertised (harmless for windowed
+				// surfaces).
+				auto has = [&](const char *ext) {
+					return sprt::find(dev.availableExtensions.begin(),
+								   dev.availableExtensions.end(), String(ext))
+							!= dev.availableExtensions.end();
+				};
+				for (auto ext : {VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
+						 VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
+						 VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME,
+						 VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME}) {
+					if (has(ext)) {
+						ret.emplace_back(ext);
+					}
+				}
 			}
 			return ret;
 		};
 		loopInfo->backend = data;
 	}
 #endif
+
+#if MODULE_XENOLITH_BACKEND_WEBGPU
+	if (!loopInfo && instance->getApi() == core::InstanceApi::WebGPU) {
+		loopInfo = Rc<sprt::window::gapi::LoopInfo>::alloc();
+		loopInfo->deviceIdx = info->deviceIdx;
+		loopInfo->defaultFormat = info->defaultFormat;
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_MTL
+	if (!loopInfo && instance->getApi() == core::InstanceApi::Metal) {
+		loopInfo = Rc<sprt::window::gapi::LoopInfo>::alloc();
+		loopInfo->deviceIdx = info->deviceIdx;
+		loopInfo->defaultFormat = info->defaultFormat;
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_SOFT
+	if (!loopInfo && instance->getApi() == core::InstanceApi::Software) {
+		loopInfo = Rc<sprt::window::gapi::LoopInfo>::alloc();
+		loopInfo->deviceIdx = info->deviceIdx;
+		loopInfo->defaultFormat = info->defaultFormat;
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_GLES
+	if (!loopInfo && instance->getApi() == core::InstanceApi::GLES) {
+		loopInfo = Rc<sprt::window::gapi::LoopInfo>::alloc();
+		loopInfo->deviceIdx = info->deviceIdx;
+		loopInfo->defaultFormat = info->defaultFormat;
+	}
+#endif
+
 	if (loopInfo) {
 		return static_cast<core::Instance *>(instance.get())->makeLoop(_looper, move(loopInfo));
 	}
 	return nullptr;
 }
 
-Rc<AppThread> Context::makeAppThread() {
+Rc<ServerAppThread> Context::makeAppThread() {
 	auto makeAppThreadSymbol =
 			SharedModule::acquireTypedSymbol<Context::SymbolMakeAppThreadSignature>(
 					buildconfig::MODULE_APPCOMMON_NAME, Context::SymbolMakeAppThreadName);
 	if (makeAppThreadSymbol) {
 		auto thread = makeAppThreadSymbol(this);
-		if (thread) {
-			return thread;
+		if (auto serverThread = dynamic_cast<ServerAppThread *>(thread.get())) {
+			return serverThread;
 		} else {
 			slog().error("Context",
-					"Fail to create thread with function provided, fallback to default AppThread");
+						"Fail to create thread with function provided, fallback to default "
+						"AppThread");
 		}
 	}
 
-	return Rc<AppThread>::create(this);
+	// Default (local / single-process) app thread is the server side: it owns the windows and runs
+	// the in-process Director client.
+	return Rc<ServerAppThread>::create(this);
 }
 
 Rc<AppWindow> Context::makeAppWindow(NotNull<NativeWindow> w) {
@@ -816,40 +990,5 @@ Rc<AppWindow> Context::makeAppWindow(NotNull<NativeWindow> w) {
 }
 
 void Context::initializeComponent(NotNull<ContextComponent> comp) { }
-
-void Context::updateLiveReload() {
-	if (!_initializer.liveReloadPath.empty() && _actualLiveReloadLibrary) {
-		auto mtime = _actualLiveReloadLibrary->mtime;
-
-		filesystem::Stat stat;
-		if (filesystem::stat(FileInfo{_initializer.liveReloadPath}, stat)) {
-			if (stat.mtime != mtime) {
-				performLiveReload(stat);
-			}
-		}
-	}
-}
-
-void Context::performLiveReload(const filesystem::Stat &stat) {
-	if (_initializer.liveReloadPath.empty() || !_initializer.liveReloadLibrary) {
-		return;
-	}
-
-	uint32_t version = _actualLiveReloadLibrary->library.getVersion();
-
-	++version;
-
-	auto targetPath = toString(_initializer.liveReloadCachePath, "/",
-			filepath::lastComponent(_initializer.liveReloadPath), ".", version);
-
-	if (filesystem::copy(FileInfo(_initializer.liveReloadPath), FileInfo(targetPath))) {
-		auto newLib = Rc<LiveReloadLibrary>::create(targetPath, stat.mtime, version, _looper);
-		if (newLib) {
-			_unloadedLiveReloadLibrary = sp::move(_actualLiveReloadLibrary);
-			_actualLiveReloadLibrary = sp::move(newLib);
-			onLiveReload(this, _actualLiveReloadLibrary.get());
-		}
-	}
-}
 
 } // namespace stappler::xenolith

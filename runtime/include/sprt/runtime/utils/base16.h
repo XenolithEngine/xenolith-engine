@@ -33,6 +33,10 @@ SPRT_API uint8_t toChar(const char &c);
 
 SPRT_API uint8_t toChar(const char &c, const char &d);
 
+// NOTE (intentionally not guarded against overflow): getEncodeSize doubles the input and
+// the callback-form encoder adds `+ 1` for a NUL; this only overflows size_t for inputs
+// near SIZE_MAX/2, which cannot be allocated or reached on any real platform. A guard would
+// add cost to every call for an impossible case, so it is deliberately omitted.
 SPRT_API constexpr inline size_t getEncodeSize(size_t l) { return l * 2; }
 
 SPRT_API constexpr inline size_t getDecodeSize(size_t l) { return l / 2; }
@@ -43,6 +47,9 @@ SPRT_API size_t encode(const uint8_t *in, size_t insize, char *out, size_t outsi
 SPRT_API size_t encode(const uint8_t *in, size_t insize,
 		const callback<void(const char *, size_t)> &, bool upper = true);
 
+// Lenient decoder (by design): non-hex bytes map to 0 rather than being
+// rejected, and an odd-length input silently drops the trailing nibble. It never
+// signals an error. Callers needing strict validation must check the input first.
 SPRT_API size_t decode(const char *in, size_t insize, uint8_t *out, size_t outsize);
 
 SPRT_API size_t decode(const char *in, size_t insize,

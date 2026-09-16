@@ -29,10 +29,12 @@ endif
 
 include ../common/configure.mk
 
+BROTLI_CONFIGURE := $(CONFIGURE_CMAKE) -DBROTLI_BUILD_TOOLS=OFF -DBROTLI_DISABLE_TESTS=ON
+
 all:
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_mkdir,$(LIBNAME))
-	cd $(LIBNAME); cmake -G "Ninja" $(CONFIGURE_CMAKE) $(LIB_SRC_DIR)/$(LIBNAME)
+	cd $(LIBNAME); cmake -G "Ninja" $(BROTLI_CONFIGURE) $(LIB_SRC_DIR)/$(LIBNAME)
 	cd $(LIBNAME); cmake  --build . --config Release --target install --parallel
 	$(if $(LINUX),sed -i -e 's/ -lbrotlidec/ -lbrotlidec -lbrotlicommon/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libbrotlidec.pc)
 	$(if $(LINUX),sed -i -e 's/ -lbrotlienc/ -lbrotlienc -lbrotlicommon/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libbrotlienc.pc)

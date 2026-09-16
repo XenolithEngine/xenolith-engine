@@ -125,6 +125,193 @@ Rc<PollHandle> Queue::listenPollableHandle(NativeHandle handle, PollFlags flags,
 	return h;
 }
 
+Rc<ProcessHandle> Queue::spawnProcess(ProcessInfo &&info, Ref *ref) {
+	auto h = _data->spawnProcess(move(info), ref);
+	if (h) {
+		_data->runHandle(h);
+	}
+	return h;
+}
+
+Rc<ProcessHandle> Queue::spawnProcess(StringView command,
+		dispatch::Function<void(StringView)> &&reader,
+		dispatch::Function<void(int exitCode, Status)> &&onExit, Ref *ref) {
+	struct ProcessCbData : public Ref {
+		dispatch::Function<void(StringView)> reader;
+		dispatch::Function<void(int, Status)> onExit;
+		Rc<Ref> ref;
+	};
+
+	auto data = Rc<ProcessCbData>::alloc();
+	data->reader = sprt::move(reader);
+	data->onExit = sprt::move(onExit);
+	data->ref = ref;
+
+	ProcessInfo info;
+	info.command = command;
+	if (data->reader) {
+		info.reader = [data](StringView bytes) { data->reader(bytes); };
+	}
+	info.completion = ProcessInfo::Completion::create<ProcessCbData>(data,
+			[](ProcessCbData *data, ProcessHandle *handle, uint32_t value, Status st) {
+		if (data->onExit) {
+			data->onExit(int(value), st);
+		}
+	});
+
+	return spawnProcess(move(info), data);
+}
+
+Rc<FileHandle> Queue::readFile(FileReadInfo &&info, Ref *ref) {
+	auto h = _data->readFile(move(info), ref);
+	if (h) {
+		_data->runHandle(h);
+	}
+	return h;
+}
+
+Rc<FileHandle> Queue::writeFile(FileWriteInfo &&info, Ref *ref) {
+	auto h = _data->writeFile(move(info), ref);
+	if (h) {
+		_data->runHandle(h);
+	}
+	return h;
+}
+
+Rc<FileHandle> Queue::readFile(StringView path, dispatch::Function<void(BytesView)> &&reader,
+		dispatch::Function<void(Status)> &&onDone, Ref *ref) {
+	struct FileCbData : public Ref {
+		dispatch::Function<void(BytesView)> reader;
+		dispatch::Function<void(Status)> onDone;
+		Rc<Ref> ref;
+	};
+
+	auto data = Rc<FileCbData>::alloc();
+	data->reader = sprt::move(reader);
+	data->onDone = sprt::move(onDone);
+	data->ref = ref;
+
+	FileReadInfo info;
+	info.path = path;
+	if (data->reader) {
+		info.reader = [data](BytesView bytes) { data->reader(bytes); };
+	}
+	info.completion = FileReadInfo::Completion::create<FileCbData>(data,
+			[](FileCbData *data, FileHandle *handle, uint32_t value, Status st) {
+		if (data->onDone) {
+			data->onDone(st);
+		}
+	});
+
+	return readFile(move(info), data);
+}
+
+Rc<FileHandle> Queue::writeFile(StringView path, BytesView wdata, OpenFlags flags,
+		dispatch::Function<void(Status)> &&onDone, Ref *ref) {
+	struct FileCbData : public Ref {
+		dispatch::Function<void(Status)> onDone;
+		Rc<Ref> ref;
+	};
+
+	auto data = Rc<FileCbData>::alloc();
+	data->onDone = sprt::move(onDone);
+	data->ref = ref;
+
+	FileWriteInfo info;
+	info.path = path;
+	info.data = wdata;
+	info.flags = flags;
+	info.completion = FileWriteInfo::Completion::create<FileCbData>(data,
+			[](FileCbData *data, FileHandle *handle, uint32_t value, Status st) {
+		if (data->onDone) {
+			data->onDone(st);
+		}
+	});
+
+	return writeFile(move(info), data);
+}
+
+Rc<WatchHandle> Queue::watchFile(WatchInfo &&info, Ref *ref) {
+	auto h = _data->watchFile(move(info), ref);
+	if (h) {
+		_data->runHandle(h);
+	}
+	return h;
+}
+
+Rc<WatchHandle> Queue::watchFile(StringView path, WatchFlags mask,
+		dispatch::Function<Status(WatchFlags)> &&onChange, Ref *ref) {
+	struct WatchCbData : public Ref {
+		dispatch::Function<Status(WatchFlags)> cb;
+		Rc<Ref> ref;
+	};
+
+	auto data = Rc<WatchCbData>::alloc();
+	data->cb = sprt::move(onChange);
+	data->ref = ref;
+
+	WatchInfo info;
+	info.path = path;
+	info.mask = mask;
+	info.completion = WatchInfo::Completion::create<WatchCbData>(data,
+			[](WatchCbData *data, WatchHandle *handle, uint32_t value, Status st) {
+		if (st == Status::Ok) {
+			if (data->cb && data->cb(WatchFlags(value)) != Status::Ok) {
+				handle->cancel();
+			}
+		}
+	});
+
+	return watchFile(move(info), data);
+}
+
+Rc<ListenHandle> Queue::listenSocket(ListenInfo &&info, Ref *ref) {
+	auto h = _data->listenSocket(move(info), ref);
+	if (h) {
+		_data->runHandle(h);
+	}
+	return h;
+}
+
+Rc<ListenHandle> Queue::listenSocket(const SocketAddress &addr,
+		ListenInfo::AcceptCallback &&onAccept, Ref *ref) {
+	ListenInfo info;
+	info.address = addr;
+	info.onAccept = sprt::move(onAccept);
+	return listenSocket(move(info), ref);
+}
+
+Rc<StreamHandle> Queue::connectSocket(ConnectInfo &&info, Ref *ref) {
+	auto h = _data->connectSocket(move(info), ref);
+	if (h) {
+		_data->runHandle(h);
+	}
+	return h;
+}
+
+Rc<StreamHandle> Queue::connectSocket(const SocketAddress &addr,
+		dispatch::Function<void(StreamHandle *, Status)> &&onConnect, Ref *ref) {
+	struct ConnectCbData : public Ref {
+		dispatch::Function<void(StreamHandle *, Status)> cb;
+		Rc<Ref> ref;
+	};
+
+	auto data = Rc<ConnectCbData>::alloc();
+	data->cb = sprt::move(onConnect);
+	data->ref = ref;
+
+	ConnectInfo info;
+	info.address = addr;
+	info.completion = ConnectInfo::Completion::create<ConnectCbData>(data,
+			[](ConnectCbData *data, StreamHandle *handle, uint32_t value, Status st) {
+		if (data->cb) {
+			data->cb(handle, st);
+		}
+	});
+
+	return connectSocket(move(info), data);
+}
+
 Rc<ThreadHandle> Queue::addThreadHandle() {
 	auto h = _data->addThreadHandle();
 	_data->runHandle(h);
@@ -178,6 +365,8 @@ void Queue::cancel() {
 	delete _data;
 	_data = nullptr;
 }
+
+void Queue::shutdown() { _data->shutdown(); }
 
 QueueFlags Queue::getFlags() const { return _data->_flags; }
 

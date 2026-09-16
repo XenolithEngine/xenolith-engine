@@ -22,13 +22,38 @@
 
 #include "SPFilesystemLookup.h"
 #include "SPFilesystem.h"
+#include "SPFilesystemEmbedded.h"
 #include "SPString.h"
 #include <sprt/runtime/stream.h>
+#include <stdio.h> // __sprt_fpath_is_native / __sprt_fpath_to_posix + SPRT_WINDOWS
 
 namespace STAPPLER_VERSIONIZED stappler::filesystem {
 
+StringView toPosixPath(StringView path, mem_std::Interface::StringType &storage) {
+#if SPRT_WINDOWS
+	// Accept a Windows-native path from the caller but operate in posix internally: detect it and
+	// rewrite it (C:\dir -> /c/dir, '\\' -> '/', strip the \\?\ prefix). fpath_to_posix is
+	// idempotent on posix input. On POSIX builds fpath_is_native is a constant 1 and fpath_to_posix
+	// is not even built, so this whole block is compiled out and the input passes through.
+	if (!path.empty() && __sprt_fpath_is_native(path.data(), path.size())) {
+		storage.resize(path.size() + 4); // output is never longer than the input + a leading '/'
+		auto n = __sprt_fpath_to_posix(path.data(), path.size(), storage.data(), storage.size());
+		if (n > 0) {
+			storage.resize(n);
+			return StringView(storage.data(), storage.size());
+		}
+	}
+#endif
+	return path;
+}
+
 void enumeratePaths(FileCategory cat, StringView filename, FileFlags flags, Access a,
 		const Callback<bool(const LocationInfo &, StringView)> &cb) {
+	embedded::ensureRegistered();
+
+	mem_std::Interface::StringType posixStorage;
+	filename = toPosixPath(filename, posixStorage);
+
 	if (filepath::isAboveRoot(filename)) {
 		return;
 	}
@@ -38,13 +63,15 @@ void enumeratePaths(FileCategory cat, StringView filename, FileFlags flags, Acce
 		if (!res) {
 			slog().warn("filesystem", "No runtime locations for category (", toInt(cat),
 					") defined");
+			return;
 		}
 
 		if (hasFlag(flags, FileFlags::MakeDir)) {
 			flags |= FileFlags::Writable;
 		}
 
-		if (hasFlag(flags, FileFlags::PathMask)) {
+		// the category's own defaults only apply when the caller did not pick a path class itself
+		if (!hasFlag(flags, FileFlags::PathMask)) {
 			flags |= res->defaultLookupFlags;
 		}
 
@@ -55,6 +82,9 @@ void enumeratePaths(FileCategory cat, StringView filename, FileFlags flags, Acce
 		sprt::filesystem::getCurrentDir([&](StringView path) {
 			auto &info = sprt::filesystem::getCurrentLocation();
 			if (a == Access::None || info.interface->_access(info, filename, a) == Status::Ok) {
+				if (hasFlag(flags, FileFlags::MakeDir)) {
+					mkdir_recursive(FileInfo(filepath::root(path), FileCategory::Custom));
+				}
 				cb(info, path);
 			}
 		}, filename);
@@ -63,6 +93,11 @@ void enumeratePaths(FileCategory cat, StringView filename, FileFlags flags, Acce
 
 FileCategory detectResourceCategory(StringView ipath,
 		const Callback<void(const ReverseLookupInfo &)> &cb, Access access) {
+	embedded::ensureRegistered();
+
+	mem_std::Interface::StringType posixStorage;
+	ipath = toPosixPath(ipath, posixStorage);
+
 	if (filepath::isAboveRoot(ipath)) {
 		return FileCategory::Custom;
 	}
@@ -205,6 +240,11 @@ FileCategory detectResourceCategory(StringView ipath,
 
 FileCategory detectResourceCategory(FileCategory category, StringView ipath, FileFlags flags,
 		const Callback<void(const ReverseLookupInfo &)> &cb, Access access) {
+	embedded::ensureRegistered();
+
+	mem_std::Interface::StringType posixStorage;
+	ipath = toPosixPath(ipath, posixStorage);
+
 	if (category == FileCategory::Custom) {
 		return detectResourceCategory(ipath, cb, access);
 	}
@@ -302,6 +342,7 @@ bool enumeratePrefixedPath(StringView ipath, FileFlags flags, Access a,
 		if (ipath.empty()) {
 			if (a == Access::None) {
 				enumeratePaths(cat, flags, cb);
+				return true;
 			} else {
 				return false;
 			}

@@ -213,6 +213,14 @@ void Sprite::draw(FrameInfo &frame, NodeVisitFlags flags) {
 		_vertexColorDirty = false;
 	}
 
+	// Before the material is resolved, and in the same frame it changes: the overlay decides the
+	// blend and depth state (Transparent-class, so the overlay never writes depth), and the command
+	// pushed further down this same call has to match the material it will be drawn with.
+	if (frame.isOverlay() != _inOverlay) {
+		_inOverlay = frame.isOverlay();
+		_materialDirty = true;
+	}
+
 	if (_materialDirty) {
 		updateBlendAndDepth();
 
@@ -229,11 +237,24 @@ void Sprite::draw(FrameInfo &frame, NodeVisitFlags flags) {
 		_materialDirty = false;
 	}
 
-	for (auto &it : _pendingDependencies) {
-		emplace_ordered(frame.currentContext->waitDependencies, move(it));
+	// Gate every frame that would draw before the data is on the GPU, not only the one that
+	// re-rendered: continuous rendering produces more frames during the upload (for a Label,
+	// unresolved CharIds collapse to missing text). The dependency is kept until it fires. Re-armed
+	// here since the resource can be replaced after layout.
+	refreshPendingDependencies();
+
+	auto depIt = _pendingDependencies.begin();
+	while (depIt != _pendingDependencies.end()) {
+		if ((*depIt)->isSignaled()) {
+			depIt = _pendingDependencies.erase(depIt);
+		} else {
+			emplace_ordered(frame.currentContext->waitDependencies,
+					Rc<core::DependencyEvent>(*depIt));
+			++depIt;
+		}
 	}
 
-	if (_linearGradient || _outlineOffset > 0.0f) {
+	if (_linearGradient || _shadedOutlineOffset > 0.0f) {
 		auto context = frame.contextStack.back();
 
 		DrawStateValues state;
@@ -253,9 +274,9 @@ void Sprite::draw(FrameInfo &frame, NodeVisitFlags flags) {
 			newData->gradient = _linearGradient->pop();
 		}
 
-		if (_outlineOffset > 0.0f) {
-			newData->outlineOffset = _outlineOffset * _inputDensity * _textureScale;
-			newData->outlineColor = _outlineColor;
+		if (_shadedOutlineOffset > 0.0f) {
+			newData->outlineOffset = _shadedOutlineOffset * _inputDensity * _textureScale;
+			newData->outlineColor = _shadedOutlineColor;
 		}
 
 		state.data = newData;
@@ -271,8 +292,6 @@ void Sprite::draw(FrameInfo &frame, NodeVisitFlags flags) {
 	if (hasExtraState) {
 		frame.contextStack.back()->stateStack.pop_back();
 	}
-
-	_pendingDependencies.clear();
 }
 
 void Sprite::handleEnter(Scene *scene) {
@@ -347,6 +366,8 @@ void Sprite::setRenderingLevel(RenderingLevel level) {
 		_renderingLevel = level;
 		if (_running) {
 			updateBlendAndDepth();
+		} else {
+			_materialDirty = true;
 		}
 	}
 }
@@ -384,9 +405,9 @@ void Sprite::setTextureLoadedCallback(Function<void()> &&cb) {
 	_textureLoadedCallback = sp::move(cb);
 }
 
-void Sprite::setOutlineOffset(float val) { _outlineOffset = val; }
+void Sprite::setShadedOutlineOffset(float val) { _shadedOutlineOffset = val; }
 
-void Sprite::setOutlineColor(const Color4F &color) { _outlineColor = color; }
+void Sprite::setShadedOutlineColor(const Color4F &color) { _shadedOutlineColor = color; }
 
 void Sprite::pushCommands(FrameInfo &frame, NodeVisitFlags flags) {
 	auto data = _vertexes.pop();
@@ -474,6 +495,9 @@ void Sprite::updateBlendAndDepth() {
 		shouldWriteDepth = false;
 		break;
 	case RenderingLevel::Transparent:
+	// A sprite never resolves to Overlay on its own: the level is applied to the command from the
+	// visit (see Sprite::buildCmdInfo). This case handles a direct setRenderingLevel(Overlay).
+	case RenderingLevel::Overlay:
 		shouldBlendColors = true;
 		shouldWriteDepth = false;
 		break;
@@ -506,7 +530,8 @@ void Sprite::updateBlendAndDepth() {
 		}
 	}
 	if (_realRenderingLevel == RenderingLevel::Surface
-			|| _realRenderingLevel == RenderingLevel::Transparent) {
+			|| _realRenderingLevel == RenderingLevel::Transparent
+			|| _realRenderingLevel == RenderingLevel::Overlay) {
 		if (depth.compare != toInt(core::CompareOp::LessOrEqual)) {
 			depth.compare = toInt(core::CompareOp::LessOrEqual);
 			_materialDirty = true;
@@ -530,6 +555,12 @@ void Sprite::updateBlendAndDepth() {
 }
 
 RenderingLevel Sprite::getRealRenderingLevel() const {
+	// The Overlay level outranks everything a sprite could resolve for itself, including an
+	// explicit setRenderingLevel: a subtree lifted onto the overlay goes as a whole.
+	if (_inOverlay) {
+		return RenderingLevel::Overlay;
+	}
+
 	auto level = _renderingLevel;
 	if (level == RenderingLevel::Default) {
 		RenderingLevel parentLevel = RenderingLevel::Default;
@@ -574,7 +605,11 @@ bool Sprite::checkVertexDirty() const { return _vertexesDirty; }
 
 CmdInfo Sprite::buildCmdInfo(const FrameInfo &frame) const {
 	auto handle = static_cast<const FrameContextHandle2d *>(frame.currentContext);
-	return CmdInfo{frame.zPath, _materialId, handle->getCurrentState(), _realRenderingLevel,
+	// The overlay wins over whatever this sprite resolved for itself, so a lifted subtree moves as
+	// a whole. getRealRenderingLevel does the same for the material; this covers the command in the
+	// frame before they agree.
+	return CmdInfo{frame.zPath, _materialId, handle->getCurrentState(),
+		frame.isOverlay() ? RenderingLevel::Overlay : _realRenderingLevel,
 		_displayedColor.a > 0.0f ? frame.depthStack.back() : 0.0f};
 }
 

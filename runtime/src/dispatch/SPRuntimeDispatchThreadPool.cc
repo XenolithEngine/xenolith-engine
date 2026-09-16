@@ -164,18 +164,27 @@ void ThreadPool::WorkerContext::spawn() {
 }
 
 void ThreadPool::WorkerContext::cancel() {
-	finalized = true;
-
 	if (!workers.empty()) {
 		for (auto &it : workers) { it->stop(); }
 
-		inputCondition.notify_all();
+		{
+			// Publish `finalized` and wake waiters under `inputMutexQueue`, per the
+			// qcondvar contract (the mutex must be held while signalling, otherwise a
+			// worker that has not yet published its wait state misses the wakeup and
+			// blocks forever). Release the lock before joining, since the workers
+			// re-acquire `inputMutexQueue` on their way out of wait().
+			sprt::unique_lock lock(inputMutexQueue);
+			finalized = true;
+			inputCondition.notify_all();
+		}
 
 		for (auto &it : workers) {
 			it->waitStopped();
 			__delete(it);
 		}
 		workers.clear();
+	} else {
+		finalized = true;
 	}
 
 	inputQueue.foreach ([&](PriorityQueue<Rc<Task>>::PriorityType p, const Rc<Task> &t) {
@@ -212,7 +221,11 @@ Status ThreadPool::WorkerContext::perform(Rc<Task> &&task, bool first) {
 	++tasksInExecution;
 	++tasksInQueue;
 	inputQueue.push(task->getPriority().get(), first, sprt::move(task));
-	inputCondition.notify_one();
+
+	{
+		sprt::unique_lock lock(inputMutexQueue);
+		inputCondition.notify_one();
+	}
 	return Status::Ok;
 }
 

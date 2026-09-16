@@ -745,7 +745,9 @@ String Configuration::makeHeadlines(const HeadlineConfig &cfg,
 					if (it != stemList.end() && sprt::detail::caseCompare_u(*it, stem) == 0) {
 						if (isComplexWord(tok)) {
 							enabledComplex = true;
-						} else {
+						} else if (wordCount < 32) {
+							// stemWord may emit more than one stem per token; the outer
+							// wordCount<32 guard is checked once, so re-check per write
 							wordsMatch[wordCount] = WordIndex{word, idx};
 							++wordCount;
 						}

@@ -23,7 +23,9 @@
 
 #include "XLCoreQueueData.h"
 #include "XLCoreQueuePass.h"
-#include "SPIRV-Reflect/spirv_reflect.h"
+#if !SPRT_WASM && !SPRT_HOSTED_RTOS
+#include "SPIRV-Reflect/spirv_reflect.h" // SPIR-V reflection unused on wasm (WGSL path) and NuttX (soft rasterizer)
+#endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
@@ -63,6 +65,16 @@ void QueueData::clear() {
 
 
 void ProgramData::inspect(SpanView<uint32_t> data) {
+	// non-SPIR-V programs (e.g. WGSL text for WebGPU backend) can not be reflected,
+	// their metadata must be provided explicitly via ProgramInfo
+	static constexpr uint32_t SpirVMagicNumber = 0x0723'0203;
+	if (data.empty() || data.front() != SpirVMagicNumber) {
+		return;
+	}
+
+#if SPRT_WASM || SPRT_HOSTED_RTOS
+	return; // no SPIR-V reflection on wasm (WGSL) or NuttX (soft rasterizer)
+#else
 	SpvReflectShaderModule shader;
 
 	spvReflectCreateShaderModule(data.size() * sizeof(uint32_t), data.data(), &shader);
@@ -106,6 +118,7 @@ void ProgramData::inspect(SpanView<uint32_t> data) {
 	}
 
 	spvReflectDestroyShaderModule(&shader);
+#endif
 }
 
 SpecializationInfo::SpecializationInfo(const ProgramData *d) : data(d) { }

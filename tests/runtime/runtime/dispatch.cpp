@@ -24,8 +24,6 @@ THE SOFTWARE.
 #include <sprt/runtime/dispatch/handle.h>
 #include <sprt/runtime/platform.h>
 
-#include <sprt/cxx/chrono>
-
 namespace sprt {
 
 void performDispatchTests() {
@@ -53,19 +51,19 @@ void performDispatchTests() {
 		.completion = dispatch::TimerInfo::Completion::create<bool>(&wakeup1Perfromed,
 				[](bool *data, dispatch::TimerHandle *self, uint32_t value, Status status) {
 		if (status != Status::Ok) {
-			sprt::cout << "Timer1 ended: " << value << " " << status << "\n";
+			sprt::cout << self << " Timer1 ended: " << value << " " << status << "\n";
 		} else {
-			sprt::cout << "Timer1: " << value << " " << status << "\n";
+			sprt::cout << self << " Timer1: " << value << " " << status << "\n";
 		}
 
 		if (value >= 5) {
-			sprt::cout << "Timer1: cancelling;\n";
+			sprt::cout << self << " Timer1: cancelling;\n";
 			self->cancel();
 		}
 
 		if (value > 2 && !*data) {
 			*data = true;
-			sprt::cout << "Timer1: wakeup;\n";
+			sprt::cout << self << " Timer1: wakeup;\n";
 			dispatch::Looper::acquire()->wakeup(dispatch::WakeupFlags::Graceful);
 		}
 	}),
@@ -77,48 +75,50 @@ void performDispatchTests() {
 	(void)looper->scheduleTimer(dispatch::TimerInfo{
 		.completion = dispatch::TimerInfo::Completion::create<bool>(&wakeup2Perfromed,
 				[](bool *data, dispatch::TimerHandle *self, uint32_t value, Status status) {
-		sprt::cout << "Timer2: " << value << " " << status << "\n";
+		sprt::cout << self << " Timer2: " << value << " " << status << "\n";
 
 		if (value >= 10) {
-			sprt::cout << "Timer2: resetting;\n";
+			sprt::cout << self << " Timer2: resetting;\n";
 			self->reset(dispatch::TimerInfo{
-				.interval = dispatch::TimeInterval::milliseconds(1'000),
+				.interval = dispatch::TimeInterval::milliseconds(500),
 				.count = 5,
 			});
 			return;
 		}
 
 		if (status == Status::Done) {
-			sprt::cout << "Timer2: complete and wakeup;\n";
+			sprt::cout << self << " Timer2: complete and wakeup;\n";
 			dispatch::Looper::acquire()->wakeup(dispatch::WakeupFlags::Graceful);
 		}
 	}),
-		.timeout = dispatch::TimeInterval::milliseconds(3'000),
+		.timeout = dispatch::TimeInterval::milliseconds(2'000),
 		.interval = dispatch::TimeInterval::milliseconds(250),
 		.count = 50,
 	});
 
 	sprt::thread thread([](dispatch::Looper *looper) {
-		sprt::this_thread::sleep_for(sprt::chrono::milliseconds(100));
+		sprt::this_thread::sleep_for(100'000'000); // 100ms in nanoseconds
 		looper->performOnThread([] {
 			sprt::cout << "From thread1\n"; //
 		}, nullptr);
-		sprt::this_thread::sleep_for(sprt::chrono::milliseconds(500));
+		sprt::this_thread::sleep_for(500'000'000); // 500ms in nanoseconds
 		looper->performOnThread([] {
 			sprt::cout << "From thread1\n"; //
 		}, nullptr);
 	}, looper);
+	thread.detach();
 
 	sprt::thread thread2([](dispatch::Looper *looper) {
-		sprt::this_thread::sleep_for(sprt::chrono::milliseconds(100));
+		sprt::this_thread::sleep_for(100'000'000); // 100ms in nanoseconds
 		looper->performOnThread([] {
 			sprt::cout << "From thread2\n"; //
 		}, nullptr);
-		sprt::this_thread::sleep_for(sprt::chrono::milliseconds(500));
+		sprt::this_thread::sleep_for(500'000'000); // 500ms in nanoseconds
 		looper->performOnThread([] {
 			sprt::cout << "From thread2\n"; //
 		}, nullptr);
 	}, looper);
+	thread2.detach();
 
 	auto status = looper->run();
 

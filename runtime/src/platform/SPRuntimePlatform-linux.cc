@@ -31,8 +31,7 @@
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_stdio.h>
 #include <sprt/c/__sprt_locale.h>
-
-#include "private/SPRTDso.h"
+#include <sprt/runtime/utils/dso.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,6 +51,9 @@ StringView getOsLocale() {
 	if (!locale) {
 		locale = ::getenv("LANG");
 	}
+	if (!locale) {
+		return StringView();
+	}
 	return StringView(locale, ::__sprt_strlen(locale));
 }
 
@@ -64,14 +66,15 @@ StringView getUniqueDeviceId() {
 		if (stat("/etc/machine-id", &st) == 0) {
 			auto buf = __sprt_malloca(st.st_size + 1);
 			auto fd = open("/etc/machine-id", 0);
-			if (fd > 0) {
+			if (fd >= 0) {
 				auto v = ::read(fd, buf, st.st_size);
 				if (v == st.st_size) {
 					auto id = StringView((const char *)buf, v);
 					id.trimChars<StringView::WhiteSpace>();
 					unique_lock lock(s_globalConfig.infoMutex);
-					s_globalConfig.uniqueIdBuf = id.pdup(s_globalConfig._pool);
+					s_globalConfig.uniqueIdBuf = id.pdup(s_globalConfig.pool());
 				}
+				::close(fd);
 			}
 			__sprt_freea(buf);
 		}
@@ -89,7 +92,7 @@ StringView getExecPath() {
 		auto v = ::readlink("/proc/self/exe", buf, PATH_MAX);
 		if (v > 0) {
 			unique_lock lock(s_globalConfig.infoMutex);
-			s_globalConfig.execPathBuf = StringView(buf, v).pdup(s_globalConfig._pool);
+			s_globalConfig.execPathBuf = StringView(buf, v).pdup(s_globalConfig.pool());
 		}
 		__sprt_freea(buf);
 	}
@@ -105,14 +108,17 @@ StringView getHomePath() {
 		auto path = StringView(getenv("HOME"));
 
 		unique_lock lock(s_globalConfig.infoMutex);
-		s_globalConfig.homePathBuf = path.pdup(s_globalConfig._pool);
+		s_globalConfig.homePathBuf = path.pdup(s_globalConfig.pool());
 	}
 	return s_globalConfig.homePathBuf;
 }
 
 bool initialize(AppConfig &&cfg, int &resultCode) {
-	s_globalConfig.config.bundleName = cfg.bundleName.pdup(s_globalConfig._pool);
-	s_globalConfig.config.bundlePath = cfg.bundlePath.pdup(s_globalConfig._pool);
+	// The config pool is per initialize()/terminate() cycle, not per process;
+	// see GlobalConfig::_pool in private/SPRTPrivate.h.
+	s_globalConfig.init();
+	s_globalConfig.config.bundleName = cfg.bundleName.pdup(s_globalConfig.pool());
+	s_globalConfig.config.bundlePath = cfg.bundlePath.pdup(s_globalConfig.pool());
 	s_globalConfig.config.pathScheme = cfg.pathScheme;
 
 	s_globalConfig.current.lookupType = filesystem::LookupFlags::Public
@@ -121,15 +127,15 @@ bool initialize(AppConfig &&cfg, int &resultCode) {
 	s_globalConfig.current.interface = filesystem::getDefaultInterface();
 
 	filesystem::getCurrentDir([&](StringView path) {
-		s_globalConfig.current.path = path.pdup(s_globalConfig._pool);
+		s_globalConfig.current.path = path.pdup(s_globalConfig.pool());
 	});
 
 	return true;
 }
 
-void terminate() { }
+void terminate() { s_globalConfig.term(); }
 
-memory::pool_t *getConfigPool() { return s_globalConfig._pool; }
+memory::pool_t *getConfigPool() { return s_globalConfig.pool(); }
 
 } // namespace sprt::platform
 

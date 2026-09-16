@@ -324,14 +324,11 @@ bool DescriptorPool::init(Device &dev, PipelineLayout *layout) {
 }
 
 bool RenderPass::Data::cleanup(Device &dev) {
-	if (renderPass) {
-		dev.getTable()->vkDestroyRenderPass(dev.getDevice(), renderPass, nullptr);
-		renderPass = VK_NULL_HANDLE;
-	}
-
-	if (renderPassAlternative) {
-		dev.getTable()->vkDestroyRenderPass(dev.getDevice(), renderPassAlternative, nullptr);
-		renderPassAlternative = VK_NULL_HANDLE;
+	for (auto &it : renderPasses) {
+		if (it) {
+			dev.getTable()->vkDestroyRenderPass(dev.getDevice(), it, nullptr);
+			it = VK_NULL_HANDLE;
+		}
 	}
 
 	layouts.clear();
@@ -352,11 +349,12 @@ bool RenderPass::init(Device &dev, QueuePassData &data) {
 	return false;
 }
 
-VkRenderPass RenderPass::getRenderPass(bool alt) const {
-	if (alt && _data->renderPassAlternative) {
-		return _data->renderPassAlternative;
+VkRenderPass RenderPass::getRenderPass(Variant variant) const {
+	if (auto v = _data->renderPasses[toInt(variant)]) {
+		return v;
 	}
-	return _data->renderPass;
+	// a variant that was not built (the pass does not present, or partial redraw is off)
+	return _data->renderPasses[toInt(Variant::Default)];
 }
 
 Rc<DescriptorPool> RenderPass::acquireDescriptorPool(Device &dev, uint32_t idx) {
@@ -712,18 +710,27 @@ bool RenderPass::writeDescriptors(const QueuePassHandle &handle, DescriptorPool 
 	return true;
 }
 
-void RenderPass::perform(const QueuePassHandle &handle, CommandBuffer &buf,
-		const Callback<void()> &cb, bool writeBarriers) {
-	bool useAlternative = false;
+bool RenderPass::usesAlternativeAttachments(const QueuePassHandle &handle) const {
 	for (auto &it : _variableAttachments) {
 		if (auto aHandle = handle.getAttachmentHandle(it->attachment)) {
 			if (aHandle->getQueueData()->image
 					&& !aHandle->getQueueData()->image->isSwapchainImage()) {
-				useAlternative = true;
-				break;
+				return true;
 			}
 		}
 	}
+	return false;
+}
+
+void RenderPass::perform(const QueuePassHandle &handle, CommandBuffer &buf,
+		const Callback<void()> &cb, bool writeBarriers) {
+	if (handle.isRedrawSkipped()) {
+		// The target image already holds this frame in PRESENT_SRC; an empty command buffer
+		// leaves the layout untouched for the present.
+		return;
+	}
+
+	bool useAlternative = usesAlternativeAttachments(handle);
 
 	Vector<QueuePassHandle::ImageInputOutputBarrier> imageBarriersData;
 	Vector<QueuePassHandle::BufferInputOutputBarrier> bufferBarriersData;
@@ -814,9 +821,20 @@ void RenderPass::perform(const QueuePassHandle &handle, CommandBuffer &buf,
 		}
 	}
 
-	if (_data->renderPass) {
+	if (_data->renderPasses[toInt(Variant::Default)]) {
+		// A partial redraw keeps the previous content and renders only the damaged rectangle;
+		// it is mutually exclusive with the offscreen variant, which must always be complete.
+		auto variant = useAlternative ? Variant::Offscreen : Variant::Default;
+		const VkRect2D *renderArea = nullptr;
+		VkRect2D area;
+
+		if (!useAlternative && handle.hasPartialRedrawArea(area)) {
+			variant = Variant::Load;
+			renderArea = &area;
+		}
+
 		buf.cmdBeginRenderPass(this, (Framebuffer *)handle.getFramebuffer(),
-				VK_SUBPASS_CONTENTS_INLINE, useAlternative);
+				VK_SUBPASS_CONTENTS_INLINE, variant, renderArea);
 
 		cb();
 
@@ -980,6 +998,23 @@ bool RenderPass::initGraphicsPass(Device &dev, QueuePassData &data) {
 		}
 	}
 
+	// Compute the exact number of attachment references that will be pushed below.
+	// Stored pointers into _attachmentReferences (subpass.pInputAttachments etc.) would
+	// dangle if a push triggered reallocation, so the reserve must be exact (or larger).
+	attachmentReferences = 0;
+	for (auto &it : data.subpasses) {
+		attachmentReferences += it->inputImages.size();
+		attachmentReferences += it->outputImages.size();
+		if (!it->resolveImages.empty()) {
+			attachmentReferences += (it->resolveImages.size() < it->outputImages.size())
+					? it->outputImages.size()
+					: it->resolveImages.size();
+		}
+		if (it->depthStencil) {
+			attachmentReferences += 1;
+		}
+	}
+
 	_attachmentReferences.reserve(attachmentReferences);
 
 	for (auto &it : data.subpasses) {
@@ -1097,7 +1132,7 @@ bool RenderPass::initGraphicsPass(Device &dev, QueuePassData &data) {
 	renderPassInfo.pDependencies = _subpassDependencies.data();
 
 	if (dev.getTable()->vkCreateRenderPass(dev.getDevice(), &renderPassInfo, nullptr,
-				&pass.renderPass)
+				&pass.renderPasses[toInt(Variant::Default)])
 			!= VK_SUCCESS) {
 		return pass.cleanup(dev);
 	}
@@ -1107,10 +1142,65 @@ bool RenderPass::initGraphicsPass(Device &dev, QueuePassData &data) {
 		renderPassInfo.pAttachments = _attachmentDescriptionsAlternative.data();
 
 		if (dev.getTable()->vkCreateRenderPass(dev.getDevice(), &renderPassInfo, nullptr,
-					&pass.renderPassAlternative)
+					&pass.renderPasses[toInt(Variant::Offscreen)])
 				!= VK_SUCCESS) {
 			return pass.cleanup(dev);
 		}
+	}
+
+	// Partial redraw variant: initial layout PRESENT_SRC preserves contents outside the render area
+	// (UNDEFINED would discard them). A CLEAR load op is kept, since the background comes from the
+	// clear; other non-LOAD ops are switched to LOAD. Built only for the presented attachment of a
+	// queue with PartialRedraw.
+	if (hasAlternative && hasFlag(data.queue->damage, core::QueueDamageFlags::PartialRedraw)) {
+		auto loadDescriptions = _attachmentDescriptions;
+		for (auto &desc : data.attachments) {
+			if (desc->finalLayout == core::AttachmentLayout::PresentSrc) {
+				auto &d = loadDescriptions[desc->index];
+				if (d.loadOp != VK_ATTACHMENT_LOAD_OP_CLEAR) {
+					d.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+				}
+				d.initialLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			}
+		}
+
+		renderPassInfo.attachmentCount = uint32_t(loadDescriptions.size());
+		renderPassInfo.pAttachments = loadDescriptions.data();
+
+		if (dev.getTable()->vkCreateRenderPass(dev.getDevice(), &renderPassInfo, nullptr,
+					&pass.renderPasses[toInt(Variant::Load)])
+				!= VK_SUCCESS) {
+			return pass.cleanup(dev);
+		}
+	}
+
+	/* The Overlay level is a second instance over the same framebuffer, after the frame is drawn
+	and copied out. Its variants differ only in load op (load) and initial layout (the base pass's
+	final one); everything else must stay identical so base-pass pipelines remain compatible. */
+	auto makeOverlayVariant = [&](const Vector<VkAttachmentDescription> &base,
+									  Variant variant) -> bool {
+		auto descriptions = base;
+		for (auto &d : descriptions) {
+			d.initialLayout = d.finalLayout;
+			d.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+			d.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+		}
+
+		renderPassInfo.attachmentCount = uint32_t(descriptions.size());
+		renderPassInfo.pAttachments = descriptions.data();
+
+		return dev.getTable()->vkCreateRenderPass(dev.getDevice(), &renderPassInfo, nullptr,
+					   &pass.renderPasses[toInt(variant)])
+				== VK_SUCCESS;
+	};
+
+	if (!makeOverlayVariant(_attachmentDescriptions, Variant::Overlay)) {
+		return pass.cleanup(dev);
+	}
+
+	if (hasAlternative
+			&& !makeOverlayVariant(_attachmentDescriptionsAlternative, Variant::OverlayOffscreen)) {
+		return pass.cleanup(dev);
 	}
 
 	if (initDescriptors(dev, data, pass)) {
@@ -1122,7 +1212,8 @@ bool RenderPass::initGraphicsPass(Device &dev, QueuePassData &data) {
 			auto l = (Data *)ptr;
 			l->cleanup(*d);
 			sprt::__delete(l);
-		}, core::ObjectType::RenderPass, ObjectHandle(_data->renderPass), l);
+		}, core::ObjectType::RenderPass, ObjectHandle(_data->renderPasses[toInt(Variant::Default)]),
+				l);
 	}
 
 	return pass.cleanup(dev);
@@ -1139,7 +1230,8 @@ bool RenderPass::initComputePass(Device &dev, QueuePassData &data) {
 			auto l = (Data *)ptr;
 			l->cleanup(*d);
 			sprt::__delete(l);
-		}, core::ObjectType::RenderPass, ObjectHandle(_data->renderPass), l);
+		}, core::ObjectType::RenderPass, ObjectHandle(_data->renderPasses[toInt(Variant::Default)]),
+				l);
 	}
 
 	return pass.cleanup(dev);
@@ -1155,7 +1247,7 @@ bool RenderPass::initTransferPass(Device &dev, QueuePassData &) {
 		auto l = (Data *)ptr;
 		l->cleanup(*d);
 		sprt::__delete(l);
-	}, core::ObjectType::RenderPass, ObjectHandle(_data->renderPass), l);
+	}, core::ObjectType::RenderPass, ObjectHandle(_data->renderPasses[toInt(Variant::Default)]), l);
 }
 
 bool RenderPass::initGenericPass(Device &dev, QueuePassData &) {
@@ -1168,7 +1260,7 @@ bool RenderPass::initGenericPass(Device &dev, QueuePassData &) {
 		auto l = (Data *)ptr;
 		l->cleanup(*d);
 		sprt::__delete(l);
-	}, core::ObjectType::RenderPass, ObjectHandle(_data->renderPass), l);
+	}, core::ObjectType::RenderPass, ObjectHandle(_data->renderPasses[toInt(Variant::Default)]), l);
 }
 
 bool RenderPass::initDescriptors(Device &dev, const QueuePassData &data, Data &pass) {

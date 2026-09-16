@@ -28,11 +28,17 @@ THE SOFTWARE.
 
 #include <sprt/runtime/log.h>
 
+#if SPRT_HOSTED_RTOS
+// The RTOS <time.h> declares tzset(), CLOCK_*, and struct tm; pull it directly
+// because the sprt __sprt_time.h umbrella does not re-export tzset.
+#include <time.h>
+#endif
+
 #if SPRT_ANDROID && !defined(__LP64__)
 #include <time64.h>
 #endif
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include <xlocale.h>
 #include <unistd.h>
 #endif
@@ -45,18 +51,28 @@ THE SOFTWARE.
 
 #include "time/time_internals.h"
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #define CLOCK_MONOTONIC_COARSE CLOCK_MONOTONIC_RAW_APPROX
 #define CLOCK_BOOTTIME CLOCK_UPTIME_RAW
 #endif
 
 static_assert(CLOCK_REALTIME == __SPRT_CLOCK_REALTIME);
 static_assert(CLOCK_MONOTONIC == __SPRT_CLOCK_MONOTONIC);
+// Embox has two clocks, MONOTONIC and REALTIME; it declares no CPU-time or
+// boot-time clock at all.
+#if !SPRT_EMBOX || defined(CLOCK_PROCESS_CPUTIME_ID)
 static_assert(CLOCK_PROCESS_CPUTIME_ID == __SPRT_CLOCK_PROCESS_CPUTIME_ID);
 static_assert(CLOCK_THREAD_CPUTIME_ID == __SPRT_CLOCK_THREAD_CPUTIME_ID);
-static_assert(CLOCK_MONOTONIC_RAW == __SPRT_CLOCK_MONOTONIC_RAW);
-static_assert(CLOCK_MONOTONIC_COARSE == __SPRT_CLOCK_MONOTONIC_COARSE);
 static_assert(CLOCK_BOOTTIME == __SPRT_CLOCK_BOOTTIME);
+#endif
+
+#if !SPRT_NUTTX || defined(CLOCK_MONOTONIC_RAW)
+static_assert(CLOCK_MONOTONIC_RAW == __SPRT_CLOCK_MONOTONIC_RAW);
+#endif
+
+#if (!SPRT_NUTTX && !SPRT_EMBOX) || defined(CLOCK_MONOTONIC_COARSE)
+static_assert(CLOCK_MONOTONIC_COARSE == __SPRT_CLOCK_MONOTONIC_COARSE);
+#endif
 
 #ifdef CLOCK_REALTIME_COARSE
 static_assert(CLOCK_REALTIME_COARSE == __SPRT_CLOCK_REALTIME_COARSE);
@@ -133,7 +149,7 @@ __SPRT_C_FUNC struct __SPRT_TM_NAME *__SPRT_ID(gmtime)(const __SPRT_ID(time_t) *
 }
 
 __SPRT_C_FUNC struct __SPRT_TM_NAME *__SPRT_ID(localtime)(const __SPRT_ID(time_t) * t) {
-	__SPRT_ID(localtime_r)(t, &s_gmtime_val);
+	__SPRT_ID(localtime_r)(t, &s_localtime_val);
 	return &s_localtime_val;
 }
 
@@ -173,7 +189,7 @@ __SPRT_C_FUNC struct __SPRT_TM_NAME *__SPRT_ID(
 #if __STDC_HOSTED__ == 0
 	return ::gmtime_r(t, _tm);
 #else
-	auto native = internal::getNativeTm(_tm);
+	struct tm native{};
 #if SPRT_ANDROID && !defined(__LP64__)
 	::time64_t nativeT = *t;
 	auto ret = ::gmtime64_r(&nativeT, &native);
@@ -207,7 +223,7 @@ __SPRT_C_FUNC struct __SPRT_TM_NAME *__SPRT_ID(
 #if __STDC_HOSTED__ == 0
 	return ::localtime_r(t, _tm);
 #else
-	auto native = internal::getNativeTm(_tm);
+	struct tm native{};
 #if SPRT_ANDROID && !defined(__LP64__)
 	::time64_t nativeT = *t;
 	auto ret = ::localtime64_r(&nativeT, &native);
@@ -236,8 +252,13 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(strftime_l)(char *__SPRT_RESTRICT buf,
 #if __STDC_HOSTED__ == 0
 	return ::strftime_l(buf, size, fmt, ts, loc);
 #else
+	(void)loc;
 	auto native = internal::getNativeTm(ts);
+#if SPRT_EMBOX
+	return ::strftime(buf, size, fmt, &native);
+#else
 	return ::strftime_l(buf, size, fmt, &native, loc);
+#endif
 #endif
 }
 
@@ -249,6 +270,18 @@ __SPRT_C_FUNC char *__SPRT_ID(
 	auto native = internal::getNativeTm(ts);
 #if SPRT_ANDROID && !defined(__LP64__)
 	return ::asctime64_r(&native, buf);
+#elif SPRT_EMBOX
+	char *s = ::asctime(&native);
+	if (!s || !buf) {
+		return nullptr;
+	}
+	for (int i = 0; i < 26; ++i) {
+		buf[i] = s[i];
+		if (s[i] == '\0') {
+			break;
+		}
+	}
+	return buf;
 #else
 	return ::asctime_r(&native, buf);
 #endif
@@ -293,11 +326,12 @@ __SPRT_C_FUNC int __SPRT_ID(clock_nanosleep)(__SPRT_ID(clockid_t) clock, int v,
 		const __SPRT_TIMESPEC_NAME *ts, __SPRT_TIMESPEC_NAME *out) {
 #if SPRT_WINDOWS
 	return clock_nanosleep(clock, v, ts, out);
-#elif SPRT_MACOS
+#elif SPRT_APPLE
 	if (clock == CLOCK_REALTIME && v == 0) {
 		if (__sprt_nanosleep(ts, out) != 0) {
 			return *__sprt___errno_location();
 		}
+		return 0;
 	}
 	return EINVAL;
 #else
@@ -319,7 +353,7 @@ __SPRT_C_FUNC int __SPRT_ID(clock_nanosleep)(__SPRT_ID(clockid_t) clock, int v,
 
 __SPRT_C_FUNC int __SPRT_ID(
 		clock_getcpuclockid)(__SPRT_ID(pid_t) pid, __SPRT_ID(clockid_t) * clock) {
-#if SPRT_WINDOWS || SPRT_MACOS
+#if SPRT_WINDOWS || SPRT_APPLE || SPRT_EMBOX
 	if (pid != __sprt_getpid()) {
 		return ENOSYS;
 	}

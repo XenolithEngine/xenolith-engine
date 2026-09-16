@@ -23,6 +23,23 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_ASSERT_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_ASSERT_H_
 
+/*
+	Dispatch header for <assert.h>:
+	- hosted SPRT build -> forwards to the system <assert.h> (#include_next)
+	- otherwise         -> SPRT's own definition via sprt/wrappers/libc/assert.h
+
+	This header declares only the assert macro (no types or functions):
+
+	  assert(expr) - if NDEBUG is defined, expands to a no-op void expression;
+	                 otherwise evaluates expr and, when it is false, calls the
+	                 failure handler with the stringized expression, __FILE__,
+	                 __LINE__ and the enclosing function name (which aborts).
+
+	Note: standard <assert.h> is meant to be re-includable so NDEBUG can toggle assert
+	per translation unit, but this wrapper guards with #ifndef assert, so the first
+	include's definition wins for the rest of the unit.
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <assert.h>

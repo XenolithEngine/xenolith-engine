@@ -20,14 +20,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#define SPRT_BUILD 1
+#define __SPRT_BUILD 1
 
 #include <sprt/cxx/debugging>
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include <sys/types.h>
 #include <sys/sysctl.h>
+#if !SPRT_IOS
+// iOS ships no <sys/user.h>; struct kinfo_proc comes from <sys/sysctl.h> there.
 #include <sys/user.h>
+#endif
 #include <unistd.h>
 #elif SPRT_LINUX || SPRT_ANDROID
 #include <stdio.h>
@@ -62,7 +65,7 @@ bool is_debugger_present() noexcept {
 		return true;
 	}
 	return false;
-#elif SPRT_MACOS
+#elif SPRT_APPLE
 	int mib[4];
 	struct kinfo_proc info;
 	size_t size;
@@ -86,8 +89,19 @@ bool is_debugger_present() noexcept {
 	return (info.kp_proc.p_flag & P_TRACED) != 0;
 #elif SPRT_WINDOWS
 	return IsDebuggerPresent();
+#elif SPRT_WASM
+	// No debugger-detection facility in a wasm sandbox.
+	return false;
+#elif SPRT_HOSTED_RTOS
+	// No debugger-detection facility in a NuttX flat build.
+	return false;
+#elif SPRT_EMBOX_USER
+	// Nothing to ask: there is no ptrace, no /proc and no second process to
+	// attach one (D5). A JTAG debugger on the board sees the whole system at
+	// once, so even a truthful answer would not mean what a caller expects.
+	return false;
 #else
-#error "Not implemented
+#error "Not implemented"
 #endif
 }
 

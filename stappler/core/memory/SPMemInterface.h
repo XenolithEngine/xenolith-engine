@@ -117,7 +117,7 @@ struct SP_PUBLIC PoolInterface final {
 	static constexpr bool UsesMemoryPool = true;
 };
 
-struct SP_PUBLIC StandartInterface final {
+struct SP_PUBLIC StandardInterface final {
 	using AllocBaseType = sprt::AllocBase;
 
 	template <typename T>
@@ -149,6 +149,9 @@ struct SP_PUBLIC StandartInterface final {
 
 	static constexpr bool UsesMemoryPool = false;
 };
+
+// historical spelling
+using StandartInterface = StandardInterface;
 
 } // namespace stappler::memory
 
@@ -212,7 +215,7 @@ protected:
 namespace STAPPLER_VERSIONIZED stappler {
 
 template <typename T>
-auto StringToNumber(const memory::StandartInterface::StringType &str) -> T {
+auto StringToNumber(const memory::StandardInterface::StringType &str) -> T {
 	return StringToNumber<T>(str.data(), nullptr, 0);
 }
 

@@ -31,13 +31,15 @@
 #define __SPRT_UTSNAME_NAME utsname
 #endif
 
+#define __SPRT_SYS_NAMELEN 256
+
 struct __SPRT_UTSNAME_NAME {
-	char sysname[65];
-	char nodename[65];
-	char release[65];
-	char version[65];
-	char machine[65];
-	char domainname[65];
+	char sysname[__SPRT_SYS_NAMELEN];
+	char nodename[__SPRT_SYS_NAMELEN];
+	char release[__SPRT_SYS_NAMELEN];
+	char version[__SPRT_SYS_NAMELEN];
+	char machine[__SPRT_SYS_NAMELEN];
+	char domainname[__SPRT_SYS_NAMELEN];
 };
 
 __SPRT_BEGIN_DECL

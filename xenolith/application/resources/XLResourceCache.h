@@ -110,7 +110,15 @@ protected:
 	AppThread *_application = nullptr;
 	const core::Loop *_loop = nullptr;
 	Map<StringView, core::ImageData> _images;
-	Map<StringView, Rc<core::Resource>> _resources;
+	// Refcounted by name: several scenes can register the same resource (every scene built from
+	// Queue::Builder("Loader") registers "Loader_resource"), and the entry must stay until the last
+	// one releases it.
+	struct ResourceSlot {
+		Rc<core::Resource> resource;
+		uint32_t refCount = 0;
+	};
+
+	Map<StringView, ResourceSlot> _resources;
 	Map<StringView, Rc<TemporaryResource>> _temporaries;
 };
 

@@ -30,7 +30,29 @@
 #include "XLInputListener.h"
 #include "XLSceneContent.h"
 #include "XLAppWindow.h"
+#include "XLRemoteWindow.h"
+
+#if MODULE_XENOLITH_BACKEND_VK
 #include "backend/vk/XL2dVkShadowPass.h"
+#include "backend/vk/XL2dVkFlatPass.h"
+#endif
+
+#if MODULE_XENOLITH_RENDERER_BASIC2D_WEBGPU
+#include "XL2dWgpuVertexPass.h"
+#endif
+
+#if MODULE_XENOLITH_RENDERER_BASIC2D_MTL
+#include "XL2dMtlVertexPass.h"
+#endif
+
+#if MODULE_XENOLITH_RENDERER_BASIC2D_SOFT
+#include "XL2dSoftFlatPass.h"
+#endif
+
+#if MODULE_XENOLITH_RENDERER_BASIC2D_GLES
+#include "XL2dGlesClearPass.h"
+#include "XL2dGlesFlatPass.h"
+#endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
@@ -77,7 +99,9 @@ bool Scene2d::FpsDisplay::init() {
 	_label->setFontSize(16);
 	_label->setContentSizeDirtyCallback([this] { setContentSize(_label->getContentSize()); });
 	_label->setPersistentGlyphData(true);
-	_label->addCommandFlags(CommandFlags::DoNotCount);
+	// the text changes every frame, so rebuilding its identity each time would only churn the
+	// damage entry list; state the fact instead
+	_label->addCommandFlags(CommandFlags::DoNotCount | CommandFlags::AlwaysDirty);
 
 	addCommandFlags(CommandFlags::DoNotCount);
 	scheduleUpdate();
@@ -95,7 +119,7 @@ void Scene2d::FpsDisplay::update(const UpdateTime &) {
 		auto tm = _director->getDirectorFrameTime();
 		auto vertex = stat.vertexInputTime / float(1'000);
 
-		auto &cfg = _director->getWindow()->getAppSwapchainConfig();
+		auto &cfg = _director->getRenderServer()->getAppSwapchainConfig();
 
 		String configData;
 		switch (cfg.presentMode) {
@@ -106,12 +130,20 @@ void Scene2d::FpsDisplay::update(const UpdateTime &) {
 		case core::PresentMode::Mailbox: configData = toString("M", cfg.imageCount); break;
 		}
 
+		// Only a CPU rasterizer reports this; a GPU backend leaves pixelsTotal at 0, and "0/0"
+		// would read as a measurement.
+		String pixelData;
+		if (stat.pixelsTotal != 0) {
+			pixelData = toString("\nPx: ", stat.pixelsFilled, "/", stat.pixelsTotal, " ",
+					float(stat.pixelsFilled) / float(stat.pixelsTotal), "x");
+		}
+
 		if (_label) {
 			String str;
 			switch (_mode) {
 			case Fps:
 				str = toString(configData, " ", "FPS: ", fps, " SPF: ", spf, "\nGPU: ", fenceTime,
-						" (", timestampTime, ")", "\nDir: ", tm, " Ver: ", vertex,
+						" (", timestampTime, ")", "\nDir: ", tm, " Ver: ", vertex, pixelData,
 						"\nF12 to switch");
 				break;
 			case Vertexes:
@@ -130,7 +162,7 @@ void Scene2d::FpsDisplay::update(const UpdateTime &) {
 						" C:", stat.drawCalls, " M: ", stat.materials, "\n", stat.solidCmds, "/",
 						stat.surfaceCmds, "/", stat.transparentCmds, "\n",
 						"Cache:", stat.cachedFramebuffers, "/", stat.cachedImages, "/",
-						stat.cachedImageViews, "\nF12 to switch");
+						stat.cachedImageViews, pixelData, "\nF12 to switch");
 				break;
 			default: break;
 			}
@@ -171,48 +203,200 @@ void Scene2d::FpsDisplay::show() {
 	}
 }
 
-bool Scene2d::init(NotNull<AppThread> app, NotNull<AppWindow> window,
+bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 		const core::FrameConstraints &constraints) {
 	return init(app, window, [](Queue::Builder &) { }, constraints);
 }
 
-bool Scene2d::init(NotNull<AppThread> app, NotNull<AppWindow> window,
-		const Callback<void(Queue::Builder &)> &cb, const core::FrameConstraints &constraints) {
-	core::Queue::Builder builder("Loader");
-
-	QueueInfo queueInfo{
-		Extent2(constraints.extent.width, constraints.extent.height),
-		Color4F::WHITE,
-	};
-
-	buildQueueResources(queueInfo, builder);
-
-#if MODULE_XENOLITH_BACKEND_VK
-
-	basic2d::vk::ShadowPass::RenderQueueInfo info{
-		static_cast<core::Loop *>(app->getContext()->getGlLoop()),
-		queueInfo.extent,
-		basic2d::vk::ShadowPass::Flags::None,
-		queueInfo.backgroundColor,
-	};
-
-	basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
-
-	cb(builder);
-
-	if (!init(move(builder), constraints)) {
-		return false;
+// Fill `builder` with the standard 2d render graph for the current gAPI.
+//
+// Static: needs no Scene, so a queue can be built, cached and compiled before the scene or window
+// exists. See QueueCache.
+bool Scene2d::buildQueue(NotNull<AppThread> app, QueueInfo &queueInfo,
+		core::Queue::Builder &builder) {
+	if (queueInfo.damage == core::QueueDamageFlags(maxOf<uint32_t>())) {
+		// Partial redraw and frame skipping need an image preserved between frames, which only the
+		// lightweight queue can do; the full queue tracks damage only when asked.
+		queueInfo.damage = (queueInfo.type == QueueType::Flat)
+				? (core::QueueDamageFlags::PresentHint | core::QueueDamageFlags::PartialRedraw
+						  | core::QueueDamageFlags::SkipEmptyFrames)
+				: core::QueueDamageFlags::None;
 	}
 
-	return true;
-#else
-	log::source().error("Scene2d", "No available GAPI found");
-	return false;
+	[[maybe_unused]]
+	auto api = static_cast<core::Loop *>(app->getGlLoop())->getInstance()->getApi();
+	bool queueBuilt = false;
+
+#if MODULE_XENOLITH_BACKEND_VK
+	if (!queueBuilt && api == core::InstanceApi::Vulkan) {
+		if (queueInfo.type == QueueType::Flat) {
+			basic2d::vk::FlatPass::RenderQueueInfo info{
+				app->getGlLoop(),
+				queueInfo.extent,
+				queueInfo.backgroundColor,
+				queueInfo.damage,
+			};
+
+			basic2d::vk::FlatPass::makeRenderQueue(builder, info);
+		} else {
+			basic2d::vk::ShadowPass::RenderQueueInfo info{
+				app->getGlLoop(),
+				queueInfo.extent,
+				basic2d::vk::ShadowPass::Flags::None,
+				queueInfo.backgroundColor,
+				queueInfo.damage,
+			};
+
+			basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
+		}
+		queueBuilt = true;
+	}
 #endif
+
+#if MODULE_XENOLITH_RENDERER_BASIC2D_WEBGPU
+	if (!queueBuilt && api == core::InstanceApi::WebGPU) {
+		basic2d::webgpu::MaterialVertexPass::RenderQueueInfo info{
+			app->getGlLoop(),
+			queueInfo.extent,
+			queueInfo.backgroundColor,
+		};
+
+		basic2d::webgpu::MaterialVertexPass::makeRenderQueue(builder, info);
+		queueBuilt = true;
+	}
+#endif
+
+#if MODULE_XENOLITH_RENDERER_BASIC2D_MTL
+	if (!queueBuilt && api == core::InstanceApi::Metal) {
+		basic2d::mtl::MaterialVertexPass::RenderQueueInfo info{
+			app->getGlLoop(),
+			queueInfo.extent,
+			queueInfo.backgroundColor,
+		};
+
+		basic2d::mtl::MaterialVertexPass::makeRenderQueue(builder, info);
+		queueBuilt = true;
+	}
+#endif
+
+#if MODULE_XENOLITH_RENDERER_BASIC2D_SOFT
+	if (!queueBuilt && api == core::InstanceApi::Software) {
+		// The CPU rasterizer implements the flat contract only - there is no shadow/SDF/particle
+		// path to fall back to, so a Default request is served with the flat queue anyway.
+		if (queueInfo.type != QueueType::Flat) {
+			log::source()
+					.info("Scene2d",
+							"Software backend supports the flat queue only, building it instead of "
+							"the " "default one");
+		}
+
+		basic2d::soft::FlatPass::RenderQueueInfo info{
+			app->getGlLoop(),
+			queueInfo.extent,
+			queueInfo.backgroundColor,
+			queueInfo.damage,
+		};
+
+		basic2d::soft::FlatPass::makeRenderQueue(builder, info);
+		queueBuilt = true;
+	}
+#endif
+
+#if MODULE_XENOLITH_RENDERER_BASIC2D_GLES
+	if (!queueBuilt && api == core::InstanceApi::GLES) {
+		// The flat queue is the only one this backend implements - there is no shadow/SDF/particle
+		// path to fall back to, so a Default request is served with the flat queue anyway.
+		if (queueInfo.type != QueueType::Flat) {
+			log::source()
+					.info("Scene2d", "GLES backend supports the flat queue only, building it "
+							"instead of the default one");
+		}
+
+		basic2d::gles::FlatPass::RenderQueueInfo info{
+			app->getGlLoop(),
+			queueInfo.extent,
+			queueInfo.backgroundColor,
+			queueInfo.damage,
+		};
+
+		basic2d::gles::FlatPass::makeRenderQueue(builder, info);
+		queueBuilt = true;
+	}
+#endif
+
+	if (!queueBuilt) {
+		log::source().error("Scene2d", "No available GAPI found");
+		return false;
+	}
+	return true;
+}
+
+bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
+		const Callback<void(Queue::Builder &)> &cb, const core::FrameConstraints &constraints) {
+	// direct gAPI initialization
+	if (app->isServerThread()) {
+		core::Queue::Builder builder("Loader");
+
+		QueueInfo queueInfo{
+			Extent2(constraints.extent.width, constraints.extent.height),
+			Color4F::WHITE,
+		};
+
+		describeQueue(queueInfo);
+		buildQueueResources(queueInfo, builder);
+
+		if (!buildQueue(app, queueInfo, builder)) {
+			return false;
+		}
+
+		cb(builder);
+
+		if (!init(move(builder), constraints)) {
+			return false;
+		}
+
+		return true;
+	} else {
+		// client mode - we should select a scene, instead of creating it
+		QueueInfo queueInfo{
+			Extent2(constraints.extent.width, constraints.extent.height),
+			Color4F::WHITE,
+		};
+
+		// Only the describing half runs here: buildQueueResources adds resources to a builder, and
+		// on this path the graph is the server's -- there is nothing to add them to.
+		describeQueue(queueInfo);
+
+		auto serverQueue = selectServerQueue(app, window, queueInfo);
+		if (serverQueue.empty()) {
+			log::source().error("Scene2d", "Fail to select remote queue");
+			return false;
+		}
+
+		core::Queue::Builder builder(serverQueue);
+
+		if (!init(move(builder), constraints)) {
+			return false;
+		}
+		return true;
+	}
 }
 
 bool Scene2d::init(Queue::Builder &&builder, const core::FrameConstraints &constraints) {
 	if (!xenolith::Scene::init(move(builder), constraints)) {
+		return false;
+	}
+
+	initialize();
+
+	return true;
+}
+
+bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
+		Rc<core::Queue> &&queue, const core::FrameConstraints &constraints) {
+	// Adopting a cached queue skips building and compiling; buildQueueResources is not called,
+	// since the resources belong to the shared queue.
+	if (!xenolith::Scene::init(sp::move(queue), constraints)) {
 		return false;
 	}
 
@@ -253,13 +437,14 @@ void Scene2d::buildQueueResources(QueueInfo &, core::Queue::Builder &) { }
 
 void Scene2d::initialize() {
 	_listener = addSystem(Rc<InputListener>::create());
-	_listener->addKeyRecognizer([this](const GestureData &ev) {
-		if (ev.event == GestureEvent::Ended) {
-			_fps->incrementMode();
-		}
+	_listener->addHotkey(EngineHotkeys::get().toggleFps,
+			[this](HotkeyId, const InputEvent &) -> bool {
+		_fps->incrementMode();
 		return true;
-	}, InputKeyInfo{makeKeyMask({InputKeyCode::F12})});
+	});
 
+	// Not a hotkey: the pointer overlay shows while the key is held, which needs the press/release
+	// pair a recognizer gives.
 	_listener->addKeyRecognizer([this](const GestureData &ev) {
 		_pointerReal->setVisible(
 				ev.event != GestureEvent::Ended && ev.event != GestureEvent::Cancelled);
@@ -293,7 +478,7 @@ void Scene2d::initialize() {
 
 				sprt::window::Vector<InputEventData> events{_data1, _data2};
 
-				_scene->getDirector()->getWindow()->handleInputEvents(sp::move(events));
+				_scene->getDirector()->getRenderServer()->handleInputEvents(sp::move(events));
 			}
 			return false;
 		}
@@ -311,7 +496,7 @@ void Scene2d::initialize() {
 
 		sprt::window::Vector<InputEventData> events{_data1, _data2};
 
-		_scene->getDirector()->getWindow()->handleInputEvents(sp::move(events));
+		_scene->getDirector()->getRenderServer()->handleInputEvents(sp::move(events));
 
 		return true;
 	}, InputTouchInfo(makeButtonMask({InputMouseButton::MouseRight})));
@@ -413,6 +598,58 @@ void Scene2d::updateInputEventData(InputEventData &data, const InputEventData &s
 	data.input.y = pos.y;
 	data.input.button = InputMouseButton::Touch;
 	data.input.modifiers |= InputModifier::Unmanaged;
+}
+
+void Scene2d::describeQueue(QueueInfo &) { }
+
+StringView Scene2d::selectServerQueue(NotNull<AppThread> app,
+		NotNull<core::RenderServerChannel> window, const QueueInfo &info) {
+	auto rw = dynamic_cast<RemoteWindow *>(window.get());
+	if (!rw) {
+		log::source().error("Scene2d", "selectServerQueue: window is not a remote one");
+		return StringView();
+	}
+
+	// What the server can actually run. Null while the peer exchange has not happened (a version-1
+	// server); then api filtering is simply skipped rather than guessed at.
+	auto serverApi = core::InstanceApi::None;
+	if (auto peer = app->getServerInfo()) {
+		serverApi = peer->api;
+	}
+
+	const RemoteWindow::RemoteQueueInfo *exact = nullptr;
+	const RemoteWindow::RemoteQueueInfo *compatible = nullptr;
+
+	for (auto &it : rw->getQueues()) {
+		// A queue built for another backend is unusable on this server. An untagged queue (or a
+		// version-1 server) is not excluded.
+		if (serverApi != core::InstanceApi::None && it.api != core::InstanceApi::None
+				&& it.api != serverApi) {
+			continue;
+		}
+		if (it.typeTag == toInt(info.type)) {
+			exact = &it;
+			break;
+		}
+		if (!compatible) {
+			compatible = &it;
+		}
+	}
+
+	if (exact) {
+		return exact->name;
+	}
+	if (compatible) {
+		// Both graphs draw the same 2d content and differ in shadows, particles and depth; taking
+		// the other one is the same downgrade buildQueue performs locally, so log and continue.
+		log::source().info("Scene2d", "no server queue of the requested type (", toInt(info.type),
+				"); rendering through '", compatible->name, "' (type ", compatible->typeTag, ")");
+		return compatible->name;
+	}
+
+	log::source().error("Scene2d", "no server queue is usable by this client (server api ",
+			toInt(serverApi), ")");
+	return StringView();
 }
 
 } // namespace stappler::xenolith::basic2d

@@ -86,7 +86,35 @@ void ScrollController::onScrollPosition(bool force) {
 		return;
 	}
 
+#if XL_FRAME_ACCOUNT
+	/* Pass cost and counts for the visit account; the cost is dominated by item node functions. */
+	auto &account = getVisitAccount();
+	++account.scrollPasses;
+	const auto passStart = core::getAccountClock();
+	struct PassClose {
+		VisitAccount *a;
+		uint64_t start;
+		~PassClose() { a->scrollNs += core::getAccountClock() - start; }
+	} passClose{&account, passStart};
+#endif
+
+	// Convergence loop: a built node may differ in size from its item, shifting following items
+	// (resizeItem) and re-dirtying the info, so the visible window is recomputed and the pass
+	// repeated (normally one or two rounds). An item whose node reports a fresh size on every build
+	// never converges, so the loop is bounded like the component cascade in Node::visit.
+	uint32_t guard = 0;
 	do {
+#if XL_FRAME_ACCOUNT
+		++account.scrollRounds;
+#endif
+		if (++guard > 12) {
+			log::source().warn("ScrollController",
+					"item sizes did not converge in 12 passes - a node function that returns a "
+					"different size on every call keeps re-dirtying the layout");
+			_infoDirty = false;
+			break;
+		}
+
 		if (_infoDirty || force) {
 			float start = nan();
 			float end = nan();
@@ -184,11 +212,19 @@ void ScrollController::reset(float origPosition, float origSize) {
 	_windowBegin = windowBegin;
 	_windowEnd = windowEnd;
 
+#if XL_FRAME_ACCOUNT
+	// Twice over every item: the window above, the add/remove below.
+	getVisitAccount().scrollItems += uint32_t(_nodes.size() * 2);
+#endif
+
 	for (auto &it : _nodes) {
 		auto nodePos = _scroll->getNodeScrollPosition(it.pos);
 		auto nodeSize = _scroll->getNodeScrollSize(it.size);
 		if (nodePos + nodeSize <= position || nodePos >= position + size) {
 			if (it.node && (!_keepNodes || it.node->isVisible())) {
+#if XL_FRAME_ACCOUNT
+				++getVisitAccount().scrollRemoved;
+#endif
 				removeScrollNode(it);
 			}
 		} else {
@@ -206,6 +242,9 @@ void ScrollController::onNextObject(Item &h, float pos, float size) {
 	}
 
 	if (!h.node && h.nodeFunction) {
+#if XL_FRAME_ACCOUNT
+		++getVisitAccount().scrollBuilt;
+#endif
 		auto node = h.nodeFunction(h);
 		if (node) {
 			bool forward = true;

@@ -91,7 +91,10 @@ static off_t __stdio_seek(FILE *f, off_t off, int whence) { return lseek(f->fd, 
 
 static int __stdio_close(FILE *f) { return close(f->fd); }
 
-static void __stdio_exit(void) {
+// Non-static: declared in __impl_file.h and called from the platform terminate
+// path (e.g. windows/terminate.cc, wasm/terminate.cc) to flush/close streams at
+// exit. A static definition here conflicts with that external declaration.
+void __stdio_exit(void) {
 	FILE *f;
 	for (f = *__ofl_lock(); f; f = f->next) { close_file(f); }
 	close_file(__stdin_used);

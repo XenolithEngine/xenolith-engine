@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: SBKarr <sbkarr@stappler.org>
+Date: Sun, 13 Sep 2026 12:00:00 +0800
+Subject: [PATCH] compiler-rt: int comparison results on wasm
+
+---
+diff --git a/compiler-rt/lib/builtins/fp_compare_impl.inc b/compiler-rt/lib/builtins/fp_compare_impl.inc
+index f883338c4..e45eacb9d 100644
+--- a/compiler-rt/lib/builtins/fp_compare_impl.inc
++++ b/compiler-rt/lib/builtins/fp_compare_impl.inc
+@@ -15,6 +15,12 @@
+ #if defined(__aarch64__) || defined(__arm64ec__)
+ // AArch64 GCC overrides libgcc_cmp_return to use int instead of long.
+ typedef int CMP_RESULT;
++#elif defined(__wasm__)
++// LLVM lowers the soft-float comparison libcalls with an i32 result on
++// WebAssembly (TargetLoweringBase::getCmpLibcallReturnType). On wasm32 long is
++// that already; on wasm64 it would be i64, and wasm-ld links by exact
++// signature, so every fp128 comparison would resolve to a trapping stub.
++typedef int CMP_RESULT;
+ #elif __SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 4
+ // LLP64 ABIs use long long instead of long.
+ typedef long long CMP_RESULT;
+-- 
+2.54.0

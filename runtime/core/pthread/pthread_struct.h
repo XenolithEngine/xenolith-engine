@@ -32,17 +32,24 @@ namespace sprt {
 
 void __sprt_libc_thread_exit(bool);
 
-}
+static constexpr size_t THREAD_STORAGE_BLOCK_SIZE = 48;
+
+} // namespace sprt
 
 namespace sprt::_thread {
 
 struct thread_base_t {
 	thread_base_t *next = nullptr;
 	void *handle = nullptr;
+	uint64_t nativeId = 0;
 	__sprt_pid_t threadId = 0;
 
-	void *(*cb)(void *) = nullptr;
+	void *(*cb)(thread_base_t *) = nullptr;
 	void *arg = nullptr;
+
+	// uninitialized data storage
+	// Optimization to pass thread creation argument over thread boundary without malloc
+	uint8_t storage[THREAD_STORAGE_BLOCK_SIZE];
 
 	uintptr_t lowStack = 0;
 	uintptr_t highStack = 0;

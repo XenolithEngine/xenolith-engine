@@ -28,6 +28,7 @@
 #include "XLAppWindow.h"
 #include "XLWindowDecorations.h"
 #include "XLCloseGuardWidget.h"
+#include "XLSceneInspector.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -40,20 +41,21 @@ bool SceneContent::init() {
 
 	_inputListener = addSystem(Rc<InputListener>::create());
 	_inputListener->setPriority(-1);
-	_inputListener->addKeyRecognizer([this](GestureData data) {
-		if (data.event == GestureEvent::Ended) {
-			if (!handleBackButton()) {
-				// propagate back button to Window
-				if (_director) {
-					if (auto w = _director->getWindow()) {
-						w->handleBackButton();
-					}
+
+	// The scene-wide back/close hotkey. Priority -1 puts it in the post-scene band, so focused
+	// widgets (e.g. a form resetting on Escape) handle it first.
+	_inputListener->addHotkey(EngineHotkeys::get().back,
+			[this](HotkeyId, const InputEvent &) -> bool {
+		if (!handleBackButton()) {
+			// propagate back button to Window
+			if (_director) {
+				if (auto w = _director->getRenderServer()) {
+					w->handleBackButton();
 				}
 			}
-			return true;
 		}
-		return data.event == GestureEvent::Began;
-	}, InputKeyInfo{makeKeyMask(InputKeyCode::ESCAPE)});
+		return true;
+	});
 
 	_inputListener->setWindowStateCallback([this](WindowState state, WindowState changes) -> bool {
 		handleWindowStateChanged(state, changes);
@@ -64,6 +66,9 @@ bool SceneContent::init() {
 
 	_scissor = addSystem(Rc<DynamicStateSystem>::create());
 
+	// debug-only: expose the live node tree over a local socket for an external inspector.
+	inspector::attach(this);
+
 	return true;
 }
 
@@ -71,11 +76,11 @@ void SceneContent::handleEnter(Scene *scene) {
 	Node::handleEnter(scene);
 
 	if (_closeGuard && !_closeGuardRetained) {
-		_director->getWindow()->enableState(WindowState::CloseGuard);
+		_director->getRenderServer()->enableState(WindowState::CloseGuard);
 		_closeGuardRetained = true;
 	}
 
-	if (hasFlag(_director->getWindow()->getInfo()->flags,
+	if (hasFlag(_director->getRenderServer()->getInfo()->flags,
 				WindowCreationFlags::UserSpaceDecorations)) {
 		if (!_userDecorations && _windowDecorationsConstructor) {
 			_userDecorations = addChild(_windowDecorationsConstructor(this));
@@ -93,7 +98,7 @@ void SceneContent::handleEnter(Scene *scene) {
 
 void SceneContent::handleExit() {
 	if (_closeGuard && _closeGuardRetained) {
-		_director->getWindow()->disableState(WindowState::CloseGuard);
+		_director->getRenderServer()->disableState(WindowState::CloseGuard);
 		_closeGuardRetained = false;
 	}
 
@@ -139,10 +144,10 @@ void SceneContent::setCloseGuardEnabled(bool value) {
 		_closeGuard = value;
 		if (_running) {
 			if (_closeGuard && !_closeGuardRetained) {
-				_director->getWindow()->enableState(WindowState::CloseGuard);
+				_director->getRenderServer()->enableState(WindowState::CloseGuard);
 				_closeGuardRetained = true;
 			} else if (!_closeGuard && _closeGuardRetained) {
-				_director->getWindow()->disableState(WindowState::CloseGuard);
+				_director->getRenderServer()->disableState(WindowState::CloseGuard);
 				_closeGuardRetained = false;
 			}
 		}
@@ -179,7 +184,7 @@ void SceneContent::setWindowDecorationsContructor(WindowDecorationsCallback &&cb
 	_windowDecorationsConstructor = sp::move(cb);
 
 	if (_running
-			&& hasFlag(_director->getWindow()->getInfo()->flags,
+			&& hasFlag(_director->getRenderServer()->getInfo()->flags,
 					WindowCreationFlags::UserSpaceDecorations)) {
 		if (_windowDecorationsConstructor) {
 			if (_userDecorations) {

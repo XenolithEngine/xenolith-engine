@@ -36,6 +36,9 @@ EXPORTS
 	EnableWindow
 	IsWindowEnabled
 	GetWindowRect
+	GetClientRect
+	ClientToScreen
+	ScreenToClient
 	AdjustWindowRect
 	AdjustWindowRectEx
 	DefWindowProcW
@@ -52,9 +55,27 @@ EXPORTS
 	SetMenuItemInfoW
 	SetMenuDefaultItem
 	TrackPopupMenu
+	CreatePopupMenu
+	DestroyMenu
 	GetCapture
 	SetCapture
 	ReleaseCapture
 	TrackMouseEvent
 	MapVirtualKeyW
 	MessageBoxW
+	CreateIconIndirect
+	DestroyIcon
+	OpenClipboard
+	CloseClipboard
+	EmptyClipboard
+	SetClipboardData
+	GetClipboardData
+	EnumClipboardFormats
+	CountClipboardFormats
+	IsClipboardFormatAvailable
+	RegisterClipboardFormatW
+	GetClipboardFormatNameW
+	GetClipboardOwner
+	AddClipboardFormatListener
+	RemoveClipboardFormatListener
+	GetClipboardSequenceNumber

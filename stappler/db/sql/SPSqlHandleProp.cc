@@ -53,7 +53,10 @@ Value SqlHandle::getFileField(Worker &w, SqlQuery &query, uint64_t oid, uint64_t
 
 		auto ret = selectValueQuery(*fs, query, resv.getVirtuals());
 		if (ret.isArray()) {
-			ret = sp::move(ret.getValue(0));
+			// DB-HANDLE-002: getValue(0) on an empty array returns the shared Null singleton;
+			// moving out of it would corrupt that global. Map the empty case to a plain empty
+			// Value (matches the prior moved-from-Null result, which is also EMPTY/falsy).
+			ret = ret.empty() ? Value() : sp::move(ret.getValue(0));
 		}
 		return ret;
 	}
@@ -133,7 +136,10 @@ Value SqlHandle::getObjectField(Worker &w, SqlQuery &query, uint64_t oid, uint64
 
 		auto ret = selectValueQuery(*fs, query, resv.getVirtuals());
 		if (ret.isArray()) {
-			ret = sp::move(ret.getValue(0));
+			// DB-HANDLE-002: getValue(0) on an empty array returns the shared Null singleton;
+			// moving out of it would corrupt that global. Map the empty case to a plain empty
+			// Value (matches the prior moved-from-Null result, which is also EMPTY/falsy).
+			ret = ret.empty() ? Value() : sp::move(ret.getValue(0));
 		}
 		return ret;
 	}
@@ -291,7 +297,10 @@ Value SqlHandle::getSimpleField(Worker &w, SqlQuery &query, uint64_t oid, const 
 		sel.from(w.scheme().getName()).where("__oid", Comparation::Equal, oid).finalize();
 		auto ret = selectValueQuery(w.scheme(), query, Vector<const Field *>({&f}));
 		if (ret.isArray()) {
-			ret = sp::move(ret.getValue(0));
+			// DB-HANDLE-002: getValue(0) on an empty array returns the shared Null singleton;
+			// moving out of it would corrupt that global. Map the empty case to a plain empty
+			// Value (matches the prior moved-from-Null result, which is also EMPTY/falsy).
+			ret = ret.empty() ? Value() : sp::move(ret.getValue(0));
 		}
 		if (ret.isDictionary()) {
 			ret = ret.getValue(f.getName());
@@ -301,7 +310,10 @@ Value SqlHandle::getSimpleField(Worker &w, SqlQuery &query, uint64_t oid, const 
 		query.select(f.getName()).from(w.scheme().getName()).where("__oid", Comparation::Equal, oid).finalize();
 		auto ret = selectValueQuery(w.scheme(), query, Vector<const Field *>());
 		if (ret.isArray()) {
-			ret = sp::move(ret.getValue(0));
+			// DB-HANDLE-002: getValue(0) on an empty array returns the shared Null singleton;
+			// moving out of it would corrupt that global. Map the empty case to a plain empty
+			// Value (matches the prior moved-from-Null result, which is also EMPTY/falsy).
+			ret = ret.empty() ? Value() : sp::move(ret.getValue(0));
 		}
 		if (ret.isDictionary()) {
 			ret = ret.getValue(f.getName());

@@ -643,7 +643,7 @@ auto BitmapTemplate<Interface>::write(StringView fmt, bool invert) const -> Byte
 
 namespace STAPPLER_VERSIONIZED stappler::mem_std {
 
-using Bitmap = bitmap::BitmapTemplate<memory::StandartInterface>;
+using Bitmap = bitmap::BitmapTemplate<mem_std::Interface>;
 
 }
 

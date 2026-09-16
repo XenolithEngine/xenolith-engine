@@ -1,5 +1,6 @@
 /**
  Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -29,6 +30,16 @@ namespace STAPPLER_VERSIONIZED stappler::makefile {
 
 struct Stmt;
 struct StmtValue;
+
+// Reserved byte standing in for a space *inside a path* while the path flows through the make engine,
+// which uses whitespace as its universal word separator (30+ `split<WhiteSpace>` sites). Because the
+// byte is not whitespace, an encoded path stays a single word everywhere; because it is a same-length
+// 1:1 substitution, textual operations (`%` patterns, $(dir)/$(notdir)/$(patsubst)) keep working. It
+// is decoded back to a real space only at OS boundaries (filesystem access, recipe spawn, display).
+// 0x1F (US) is distinct from the 0x01-prefixed in-process directive markers in xlmake's Executor.h.
+// The lexer converts an authored "\ " to this byte; encode/decodePathSpaces (SPMakefileVariable.h)
+// convert at the engine boundaries.
+constexpr char PathSpacePlaceholder = '\x1F';
 
 enum class Keyword {
 	None,
@@ -114,11 +125,14 @@ struct SP_PUBLIC Stmt : AllocBase {
 
 	static StringView readLine(StringView &, ErrorReporter &err);
 
-	static Stmt *readWord(StringView &str, ReadContext, ErrorReporter &err);
+	static Stmt *readWord(StringView &str, ReadContext, ErrorReporter &err, uint32_t &nestedDepth);
 
 	static Stmt *readScoped(StringView &str, StmtType type, ReadContext, ErrorReporter &err);
 
 	StmtType type = StmtType::Word;
+	// set on a WordList parsed from a `define`/Multiline value: its whitespace (newlines
+	// and indentation) is stored verbatim as tokens, so resolve() must emit it as-is
+	bool multiline = false;
 	StmtValue *value = nullptr;
 	StmtValue *tail = nullptr;
 	FileLocation loc;

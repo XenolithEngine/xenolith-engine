@@ -42,12 +42,13 @@ public:
 
 	/**
 	 * Called after the action has finished. It will set the 'target' to nil.
-	 * IMPORTANT: You should never call "Action::stop()" manually. Instead, use: "target->stopAction(action);".
+	 * You should never call "Action::stop()" manually. Instead, use: "target->stopAction(action);".
 	 */
 	virtual void invalidate();
 	virtual void stop();
 
-	/** Called every frame with it's delta time, dt in seconds. DON'T override unless you know what you are doing */
+	/** Called every frame with it's delta time, dt in seconds. Don't override unless you know what
+	 * you are doing */
 	virtual void step(float dt);
 
 	/**
@@ -472,6 +473,27 @@ public:
 protected:
 	Vec3 _startPosition;
 	Vec3 _endPosition;
+};
+
+// Displaces a node in discrete jumps: it stays put for a step's time, then jumps to the next
+// position, never producing an intermediate one.
+class SP_PUBLIC MoveStep : public ActionInterval {
+public:
+	virtual ~MoveStep() = default;
+
+	// `offset` is applied once per step, so the node ends at start + offset * steps
+	virtual bool init(float duration, const Vec2 &offset, uint32_t steps = 1);
+
+	virtual void startWithTarget(Node *target) override;
+	virtual void update(float time) override;
+
+	uint32_t getCurrentStep() const { return _currentStep; }
+
+protected:
+	Vec3 _startPosition;
+	Vec3 _offset;
+	uint32_t _steps = 1;
+	uint32_t _currentStep = maxOf<uint32_t>();
 };
 
 class SP_PUBLIC ScaleTo : public ActionInterval {

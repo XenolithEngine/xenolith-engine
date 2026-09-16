@@ -53,39 +53,49 @@ int _mi_prim_free(void* addr, size_t size ) {
     return p;
   }
 #elif defined(__wasi__)
-  static void* mi_memory_grow( size_t size ) {
-    size_t base = (size > 0 ? __builtin_wasm_memory_grow(0,_mi_divide_up(size, _mi_os_page_size()))
-                            : __builtin_wasm_memory_size(0));
-    if (base == SIZE_MAX) return NULL;
-    return (void*)(base * _mi_os_page_size());
-  }
+  // sprt: direct memory.grow is forbidden. sbrk (libc_impl/src/wasm/unistd.cc)
+  // is the single growth path on this target - it owns the one lock that
+  // serializes grow across wasm agents, and it also maintains the program
+  // break this allocator allocates from. A direct grow here would both bypass
+  // that lock (interleaved grows corrupt page metadata) and desynchronize the
+  // break, so it must not compile.
+  #error "sprt: direct memory.grow on wasi must go through sbrk (single grow lock)"
 #endif
 
-#if defined(MI_USE_PTHREADS)
+#if defined(__wasi__)
+// sprt: there is exactly ONE lock for linear-memory growth and it lives in the
+// libc (libc_impl/src/wasm/unistd.cc), because brk/sbrk own the program break
+// and must take it anyway. This layer does not add a second one; it takes that
+// same lock across the probe+grow pair below, and the sbrk it calls in between
+// simply re-enters it (the lock is recursive).
+//
+// Why it is needed at all: memory.grow is not atomic across wasm agents and a
+// pthread_mutex wait is instance-local, so without a shared-memory lock two
+// concurrent grows overlap, mimalloc metadata is corrupted, and the next page
+// init divides by a block_size of 0.
+#include <unistd.h> // __sprt_wasm_grow_lock
+static void mi_grow_lock(void) { __sprt_wasm_grow_lock(); }
+static void mi_grow_unlock(void) { __sprt_wasm_grow_unlock(); }
+#elif defined(MI_USE_PTHREADS)
 static pthread_mutex_t mi_heap_grow_mutex = PTHREAD_MUTEX_INITIALIZER;
+static void mi_grow_lock(void) { pthread_mutex_lock(&mi_heap_grow_mutex); }
+static void mi_grow_unlock(void) { pthread_mutex_unlock(&mi_heap_grow_mutex); }
+#else
+static void mi_grow_lock(void) { }
+static void mi_grow_unlock(void) { }
 #endif
 
 static void* mi_prim_mem_grow(size_t size, size_t try_alignment) {
   void* p = NULL;
   if (try_alignment <= 1) {
-    // `sbrk` is not thread safe in general so try to protect it (we could skip this on WASM but leave it in for now)
-    #if defined(MI_USE_PTHREADS)
-    pthread_mutex_lock(&mi_heap_grow_mutex);
-    #endif
+    mi_grow_lock();
     p = mi_memory_grow(size);
-    #if defined(MI_USE_PTHREADS)
-    pthread_mutex_unlock(&mi_heap_grow_mutex);
-    #endif
+    mi_grow_unlock();
   }
   else {
     void* base = NULL;
     size_t alloc_size = 0;
-    // to allocate aligned use a lock to try to avoid thread interaction
-    // between getting the current size and actual allocation
-    // (also, `sbrk` is not thread safe in general)
-    #if defined(MI_USE_PTHREADS)
-    pthread_mutex_lock(&mi_heap_grow_mutex);
-    #endif
+    mi_grow_lock();
     {
       void* current = mi_memory_grow(0);  // get current size
       if (current != NULL) {
@@ -94,9 +104,7 @@ static void* mi_prim_mem_grow(size_t size, size_t try_alignment) {
         base = mi_memory_grow(alloc_size);
       }
     }
-    #if defined(MI_USE_PTHREADS)
-    pthread_mutex_unlock(&mi_heap_grow_mutex);
-    #endif
+    mi_grow_unlock();
     if (base != NULL) {
       p = _mi_align_up_ptr(base, try_alignment);
       if ((uint8_t*)p + size > (uint8_t*)base + alloc_size) {
@@ -271,6 +279,40 @@ bool _mi_prim_random_buf(void* buf, size_t buf_len) {
 // Thread init/done
 //----------------------------------------------------------------
 
+#if defined(MI_USE_PTHREADS)
+
+// sprt: the freestanding wasm runtime provides full pthreads, including key
+// destructors that run on thread exit. Detect thread termination with a pthread
+// key exactly like the unix prim, so mimalloc reclaims a thread's heap (abandons
+// its segments for other threads to pick up) when the thread ends instead of
+// leaking it. Without this the wasi prim assumes a single thread and never runs
+// _mi_thread_done.
+static pthread_key_t mi_wasm_heap_done_key = (pthread_key_t)(-1);
+
+static void mi_wasm_pthread_done(void* value) {
+  if (value != NULL) {
+    _mi_thread_done((mi_heap_t*)value);
+  }
+}
+
+void _mi_prim_thread_init_auto_done(void) {
+  pthread_key_create(&mi_wasm_heap_done_key, &mi_wasm_pthread_done);
+}
+
+void _mi_prim_thread_done_auto_done(void) {
+  if (mi_wasm_heap_done_key != (pthread_key_t)(-1)) {  // do not leak the key
+    pthread_key_delete(mi_wasm_heap_done_key);
+  }
+}
+
+void _mi_prim_thread_associate_default_heap(mi_heap_t* heap) {
+  if (mi_wasm_heap_done_key != (pthread_key_t)(-1)) {
+    pthread_setspecific(mi_wasm_heap_done_key, heap);
+  }
+}
+
+#else
+
 void _mi_prim_thread_init_auto_done(void) {
   // nothing
 }
@@ -282,3 +324,5 @@ void _mi_prim_thread_done_auto_done(void) {
 void _mi_prim_thread_associate_default_heap(mi_heap_t* heap) {
   MI_UNUSED(heap);
 }
+
+#endif

@@ -30,7 +30,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 
-class SP_PUBLIC TextLayout : public Ref, public InterfaceObject<memory::StandartInterface> {
+class SP_PUBLIC TextLayout : public Ref, public InterfaceObject<mem_std::Interface> {
 public:
 	virtual ~TextLayout();
 	TextLayout(FontController *h, size_t = 0, size_t = 0);
@@ -75,11 +75,16 @@ public:
 	Vector<Rect> getLabelRects(uint32_t first, uint32_t last, float density, const Vec2 & = Vec2(),
 			const Padding &p = Padding()) const;
 
+	/* Where a reserved inline box ended up, by the index of the range that reserved it (the only
+	handle the layout keeps). Empty when the index names no range or the cell was dropped (e.g.
+	past `maxLines`). Same space as `getLineRect`. */
+	Rect getObjectRect(uint32_t rangeIndex, float density, const Vec2 & = Vec2()) const;
+
 	void getLabelRects(Vector<Rect> &, uint32_t first, uint32_t last, float density,
 			const Vec2 & = Vec2(), const Padding &p = Padding()) const;
 
 protected:
-	TextLayoutData<memory::StandartInterface> _data;
+	TextLayoutData<mem_std::Interface> _data;
 	Rc<FontController> _handle;
 	Set<Rc<FontFaceSet>> _fonts;
 };
@@ -301,7 +306,7 @@ public:
 
 	template <char... Chars>
 	void setString(metastring::metastring<Chars...> &&str) {
-		setString(str.to_std_string());
+		setString(StringView(str.template string<String>()));
 	}
 
 	virtual void setString(const StringView &);
@@ -329,6 +334,26 @@ public:
 
 	virtual void clearStyles();
 
+	/* An inline object: a box in the line where a glyph would be, reserved with
+	`Formatter::read(font, text, w, h)`; lines break around it like a word. It stands in for
+	exactly one character of the string (should be U+FFFC), so caret, selection and source indexes
+	stay consistent. The label draws nothing; the caller draws over the box using `getObjectRect`
+	after shaping. */
+	struct InlineObject {
+		uint32_t charIndex = 0;
+		Size2 size;
+
+		// Filled in by the layout: the range the reservation produced, which is the handle
+		// `TextLayout::getObjectRect` takes. maxOf when this object was not laid out.
+		uint32_t rangeIndex = maxOf<uint32_t>();
+	};
+
+	// Ascending by `charIndex`; the caller keeps them so. Setting the string does not clear them
+	// (set the string first, then the objects).
+	virtual void setInlineObjects(Vector<InlineObject> &&);
+	const Vector<InlineObject> &getInlineObjects() const { return _inlineObjects; }
+	virtual void clearInlineObjects();
+
 	virtual const StyleVec &getStyles() const;
 	virtual const StyleVec &getCompiledStyles() const;
 
@@ -336,7 +361,8 @@ public:
 	virtual void setStyles(const StyleVec &);
 
 	virtual bool updateFormatSpec(TextLayout *, const StyleVec &, float density,
-			uint8_t adjustValue);
+			uint8_t adjustValue,
+			font::Formatter::ContentRequest = font::Formatter::ContentRequest::Normal);
 
 	virtual bool empty() const { return _string16.empty(); }
 
@@ -345,6 +371,23 @@ public:
 
 	void setAlignment(TextAlign alignment);
 	TextAlign getAlignment() const;
+
+	// base text direction (CSS `direction`) plus opt-in Unicode Bidirectional Algorithm (UAX #9)
+	// and HarfBuzz shaping during layout
+	void setTextDirection(TextDirection);
+	TextDirection getTextDirection() const;
+	void setBidiEnabled(bool);
+	bool isBidiEnabled() const;
+	void setShapingEnabled(bool);
+	bool isShapingEnabled() const;
+	void setBidiMode(BidiMode); // CSS `unicode-bidi`: Embed / Isolate / Override / Plaintext
+	BidiMode getBidiMode() const;
+	void setLetterSpacing(float); // CSS letter-spacing, in unscaled px
+	float getLetterSpacing() const;
+	void setWordSpacing(float); // CSS word-spacing, in unscaled px
+	float getWordSpacing() const;
+	void setLigaturesEnabled(bool); // font-variant-ligatures (false drops common ligatures)
+	bool isLigaturesEnabled() const;
 
 	// line width for line wrapping
 	void setWidth(float width);
@@ -405,6 +448,8 @@ public:
 	void setFillerChar(char32_t);
 	char32_t getFillerChar() const;
 
+	// Latches: once called, `setString` stops auto-detecting locale tags. Widgets showing user text
+	// or file contents call `setLocaleEnabled(false)` once.
 	void setLocaleEnabled(bool);
 	bool isLocaleEnabled() const;
 
@@ -416,13 +461,44 @@ public:
 	void setPersistentGlyphData(bool);
 	bool isPersistentGlyphData() const;
 
+	// Effective label-wide layout inputs consumed by updateFormatSpec. The default
+	// makeEffectiveStyle() mirrors the label's stored fields (_style/_alignment/_lineHeight); a
+	// subclass overlays external values (e.g. inherited style components) without mutating the
+	// stored fields, which win again once the overlay source disappears.
+	struct EffectiveStyle {
+		DescriptionStyle style;
+		TextAlign alignment = TextAlign::Left;
+
+		/* The bidi settings in force. Precedence: stylesheet, then an explicit `setTextDirection`,
+		then the locale default. The cascade never writes the stored members, so a sheet that stops
+		declaring `direction` restores what the caller asked for. */
+		TextDirection direction = TextDirection::LeftToRight;
+		BidiMode bidiMode = BidiMode::Normal;
+		bool bidiEnabled = false;
+		bool shapingEnabled = false;
+
+		float lineHeight = 0.0f;
+		bool lineHeightAbsolute = false;
+		// owning storage: when non-empty, updateFormatSpec re-points
+		// style.font.fontFamily (a non-owning view) at it
+		String fontFamilyStorage;
+	};
+
 protected:
+	void enableLocaleIfTagged();
+
 	virtual bool hasLocaleTags(const WideStringView &) const;
 	virtual WideString resolveLocaleTags(const WideStringView &) const;
 
 	virtual void specializeStyle(DescriptionStyle &style, float density) const;
 
+	virtual void makeEffectiveStyle(EffectiveStyle &) const;
+
 	virtual void setLabelDirty();
+
+	/* Changes whenever a measurement of this label would answer differently (everything that
+	invalidates shaping goes through setLabelDirty); a safe key for a measured-size cache. */
+	uint64_t getLabelRevision() const { return _labelRevision; }
 
 	WideString _string16;
 	String _string8;
@@ -432,9 +508,18 @@ protected:
 	float _labelDensity = 1.0f;
 
 	TextAlign _alignment = TextAlign::Left;
+	TextDirection _direction = TextDirection::LeftToRight;
+	bool _bidiEnabled = false;
+	bool _shapingEnabled = false;
+	BidiMode _bidiMode = BidiMode::Normal;
+	float _letterSpacing = 0.0f;
+	float _wordSpacing = 0.0f;
+	bool _enableLigatures = true;
 
 	bool _localeEnabled = false;
+	bool _localeAuto = true; // cleared by the first setLocaleEnabled() call, whichever way it went
 	bool _labelDirty = true;
+	uint64_t _labelRevision = 1;
 
 	bool _isLineHeightAbsolute = false;
 	float _lineHeight = 0;
@@ -442,6 +527,7 @@ protected:
 	String _fontFamilyStorage;
 	DescriptionStyle _style;
 	StyleVec _styles;
+	Vector<InlineObject> _inlineObjects;
 	StyleVec _compiledStyles;
 
 	uint16_t _charsWidth;

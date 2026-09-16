@@ -141,6 +141,11 @@ enum class LocationCategory {
 
 	Bundled, // some files, bundled with app executable
 
+	// Read-only files, embedded directly into the app binary at build time (BundleFS).
+	// Unlike Bundled, this category has no on-disk location: it is served by a
+	// LocationInterface over data in .rodata. See stappler/filesystem/SPFilesystemEmbedded.h
+	Embedded,
+
 	Custom, // can be absolute or cwd-relative path
 	Absolute = Custom,
 	Max = Custom,
@@ -312,6 +317,20 @@ SPRT_API const LocationInfo &getCurrentLocation();
 
 SPRT_API const LookupInfo *getLookupInfo(LocationCategory);
 
+/*
+	Adds an extra search location to a category.
+
+	Intended for higher-level modules that serve a category through a non-standard
+	LocationInterface, which the runtime itself knows nothing about (the embedded
+	read-only bundle FS in stappler_filesystem is the reason this exists). System
+	locations are still set up by the platform in _initSystemPaths.
+
+	`path` is copied into the category's pool, so the caller keeps no ownership.
+	Returns ErrorInvalidArguemnt for a category without a lookup table (Custom).
+*/
+SPRT_API Status addLocation(LocationCategory, StringView path, LookupFlags, LocationFlags,
+		const LocationInterface *);
+
 // Paths above root is allowed
 SPRT_API bool getCurrentDir(const callback<void(StringView)> &, StringView = StringView());
 
@@ -360,6 +379,7 @@ struct io_traits<filesystem::LocationCategory> {
 		case LocationCategory::AppCache: stream << "LocationCategory::AppCache"; break;
 		case LocationCategory::AppRuntime: stream << "LocationCategory::AppRuntime"; break;
 		case LocationCategory::Bundled: stream << "LocationCategory::Bundled"; break;
+		case LocationCategory::Embedded: stream << "LocationCategory::Embedded"; break;
 		case LocationCategory::Custom: stream << "LocationCategory::Custom"; break;
 		}
 	}

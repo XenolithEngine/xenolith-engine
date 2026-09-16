@@ -312,6 +312,12 @@ void QueueData::cancel() {
 	cleanup();
 }
 
+void QueueData::shutdown() {
+	if (_shutdown) {
+		_shutdown(_platformQueue);
+	}
+}
+
 Rc<TimerHandle> QueueData::scheduleTimer(TimerInfo &&info) {
 	if (_timer) {
 		return _timer(this, _platformQueue, move(info));
@@ -323,6 +329,20 @@ Rc<PollHandle> QueueData::listenHandle(NativeHandle handle, PollFlags flags,
 		CompletionHandle<PollHandle> &&cb) {
 	if (_listenHandle) {
 		return _listenHandle(this, _platformQueue, handle, flags, move(cb));
+	}
+	return nullptr;
+}
+
+Rc<ProcessHandle> QueueData::spawnProcess(ProcessInfo &&info, Ref *ref) {
+	if (_spawnProcess) {
+		return _spawnProcess(this, _platformQueue, move(info), ref);
+	}
+	return nullptr;
+}
+
+Rc<WatchHandle> QueueData::watchFile(WatchInfo &&info, Ref *ref) {
+	if (_watchFile) {
+		return _watchFile(this, _platformQueue, move(info), ref);
 	}
 	return nullptr;
 }

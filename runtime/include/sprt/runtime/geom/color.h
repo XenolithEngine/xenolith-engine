@@ -71,8 +71,45 @@ enum class ColorMask : uint8_t {
 
 SPRT_DEFINE_ENUM_AS_MASK(ColorMask)
 
+// Per-channel source of a colour after a permutation: what a graphics API calls a component
+// swizzle. Lives here rather than in a rendering layer because it is a property of colour data,
+// not of any one backend - a CPU rasterizer applies it while sampling, a GPU one hands it to the
+// driver, and both need the same vocabulary.
+//
+// The numeric values are VkComponentSwizzle's and MUST stay as they are: backends pass them into
+// the API structure by a plain cast.
+enum class ComponentMapping : uint32_t {
+	Identity = 0,
+	Zero = 1,
+	One = 2,
+	R = 3,
+	G = 4,
+	B = 5,
+	A = 6,
+};
+
 SPRT_API bool readColor(const StringView &str, Color4B &color);
 SPRT_API bool readColor(const StringView &str, Color3B &color);
+
+/* RGB <-> HSL and RGB <-> HSV, in floats, for a caller that EDITS a colour.
+
+`h` is in [0, 360) and `s` / `l` / `v` in [0, 1]. Both directions round-trip: hslToRgb(rgbToHsl(c))
+answers `c` for every one of the 2^24 sRGB colours, and so does the HSV pair - which is the property
+a picker needs and the only reason these take floats. A slider dragged from one end to the other and
+back must land on the colour it started from, and a conversion that quantized the intermediate would
+walk the value a step at a time.
+
+A GREY HAS NO HUE, and these report 0 for it rather than leaving the parameter untouched: an
+undefined output is one a caller reads by accident. A widget that wants to KEEP the hue a grey was
+made from has to keep it itself - that is a property of the editing session, not of the colour.
+
+These are NOT what the Material palette in `Color` is built on. That one has file-static conversions
+of its own, over packed integers, and its exact rounding is baked into every level of every named
+colour - so the two live side by side rather than one on top of the other. */
+SPRT_API void rgbToHsl(const Color3B &, float &h, float &s, float &l);
+SPRT_API void rgbToHsv(const Color3B &, float &h, float &s, float &v);
+SPRT_API Color3B hslToRgb(float h, float s, float l);
+SPRT_API Color3B hsvToRgb(float h, float s, float v);
 
 /*
  * Based on cocos2d-x sources

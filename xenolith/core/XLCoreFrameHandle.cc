@@ -25,6 +25,10 @@
 #include "XLCoreLoop.h"
 #include "XLCoreFrameRequest.h"
 #include "XLCoreFrameQueue.h"
+#if XL_FRAME_ACCOUNT
+// getAccountClock: one clock for every account site, so the numbers can be subtracted across modules.
+#include "XLCoreRenderSession.h"
+#endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
@@ -301,7 +305,7 @@ void FrameHandle::invalidate() {
 			for (auto &it : _queues) {
 				for (auto &iit : it->getAttachments()) {
 					if (iit.second->handle->isOutput()) {
-						attachments.emplace(iit.first, (FrameAttachmentData *)&iit.second);
+						attachments.emplace(iit.first, iit.second.get());
 					}
 				}
 				it->invalidate();
@@ -398,10 +402,49 @@ void FrameHandle::onOutputAttachmentInvalidated(FrameAttachmentData *data) {
 	_request->onOutputInvalidated(*_loop, *data);
 }
 
+#if XL_FRAME_ACCOUNT
+void FrameHandle::accountDependencies(const Vector<Rc<DependencyEvent>> &events) {
+	// Counted before the wait: `_depWaited` counts events not yet signalled when we asked.
+	_depCount.fetch_add(uint32_t(events.size()));
+	for (auto &it : events) {
+		if (!it->isSignaled()) {
+			_depWaited.fetch_add(1);
+		}
+	}
+}
+#endif
+
+/* Accounts one dependency wait; empty without XL_FRAME_ACCOUNT. Each wait carries its own start,
+since waits of one frame can overlap (attachments submit input concurrently). */
+namespace {
+struct DependencyWaitAccount {
+#if XL_FRAME_ACCOUNT
+	FrameHandle *frame = nullptr;
+	uint64_t start = 0;
+
+	DependencyWaitAccount(FrameHandle *f, const Vector<Rc<DependencyEvent>> &events)
+	: frame(f), start(getAccountClock()) {
+		f->accountDependencies(events);
+	}
+
+	void close() const { frame->accountDependencyWait(getAccountClock() - start); }
+#else
+	DependencyWaitAccount(FrameHandle *, const Vector<Rc<DependencyEvent>> &) { }
+
+	void close() const { }
+#endif
+};
+} // namespace
+
 void FrameHandle::waitForDependencies(const Vector<Rc<DependencyEvent>> &events,
 		Function<void(FrameHandle &, bool)> &&cb) {
 	auto linkId = sprt::retain(this);
-	_loop->waitForDependencies(events, [this, cb = sp::move(cb), linkId](bool success) {
+
+	// Every frame and pass waits through here, so the account lives here.
+	DependencyWaitAccount account(this, events);
+
+	_loop->waitForDependencies(events, [this, cb = sp::move(cb), linkId, account](bool success) {
+		account.close();
 		cb(*this, success);
 		sprt::release(this, linkId);
 	});
@@ -435,7 +478,7 @@ void FrameHandle::onComplete() {
 		for (auto &it : _queues) {
 			for (auto &iit : it->getAttachments()) {
 				if (iit.second->handle->isOutput()) {
-					attachments.emplace(iit.first, (FrameAttachmentData *)&iit.second);
+					attachments.emplace(iit.first, iit.second.get());
 				}
 			}
 		}

@@ -1,0 +1,77 @@
+# Linux glibc host toolchain build directory
+
+Toolchain for Linux with glibc being built here.
+
+The principle of choosing Linux and glibc versions: the smallest supported LTS version of the Linux kernel with the highest build number is selected, and then the glibc version corresponding to this kernel version is selected.
+
+## Cross build (simplified)
+
+The `cross/` subdirectory builds the same glibc host toolchain WITHOUT the
+3-stage GCC/glibc bootstrap, analogous to `host-linux-musl/cross`,
+`host-macos/cross` and `host-windows-msvc/cross`. It is driven from the root
+Makefile as `make host-cross-<triple>-unknown-linux-gnu`, which depends on the
+matching `target-<triple>-unknown-linux-gnu` (cross hosts are built FROM
+targets; see the toolchains-level README).
+
+Unlike musl (whose libc clang can build on the fly), glibc cannot be built
+without GCC, so the cross build *reuses the already-built glibc sysroot of the
+corresponding target* (`target-linux/glibc/sysroot-target-<triple>`: pinned
+glibc + compiler-rt + headers). On top of it, the build machine's clang
+(`hosts/<HOST_ID>`) cross-compiles fresh shared runtimes (libc++/libc++abi/
+libunwind) and the final clang/lld/lldb. Because the target sysroot ships a
+*static, non-PIC* libc++, the cross build assembles a clean sysroot (target
+glibc, no static libc++) and links the shipped clang against its own shared,
+PIC libc++ — so `libLLVM.so` links cleanly and the result links against the
+*pinned* glibc (verified: required `GLIBC_` symbols stay at the pinned version,
+not the build machine's newer glibc), keeping the toolchain portable.
+
+[source,sh]
+----
+# From runtime/toolchains, after `make host` and `make target-<triple>-unknown-linux-gnu`
+make host-cross-x86_64-unknown-linux-gnu
+----
+
+General building principle:
+
+## Prerequisites
+
+The build is performed on Linux based on glibc; the version is not critical. For building, the following are required:
+
+* GCC
+* GNU make
+* cmake
+
+## Stage 0
+
+Building clang with GCC backend
+
+1. Build GNU Make 4.3 with the build compiler; newer versions won't be able to build old glibc
+2. Build glibc 2.26 with the build compiler; This version is the last one that doesn't generate dependencies on libstdc++.
+3. Build GCC based on glibc 2.26; the GCC version must be sufficient for building the target LLVM version.
+4. Build llvm-libc++ and compiler-rt using the built GCC.
+5. Build clang and lld using the built GCC, libc++, and compiler-rt
+
+## Stage 1
+
+Building Clang with its own backend
+
+1. Using GCC, build the target version of glibc
+2. Using Stage 0 Clang, build llvm-libc++ and compiler-rt
+3. Using Stage 0 Clang and the built llvm-libc++, compiler-rt, build Stage 1 Clang and LLD.
+
+## Stage 2
+
+Building the final set of tools
+
+1. Using Stage 1 clang, build llvm-libc++ and compiler-rt
+2. Using Stage 1 clang and the built llvm-libc++, compiler-rt, build Stage 2 clang, lld, lldb
+3. Using Stage 2 clang, build glslc and spirv-link
+
+## Other dependencies
+
+* target Linux headers
+* libxml2
+* libz
+* spirv-headers
+* vulkan-headers
+

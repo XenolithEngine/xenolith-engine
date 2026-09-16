@@ -31,6 +31,12 @@ THE SOFTWARE.
 
 namespace STAPPLER_VERSIONIZED stappler::data {
 
+// Maximum container nesting depth accepted by the CBOR/JSON/Serenity decoders.
+// The decoders are iterative, but the resulting Value tree is destroyed and
+// re-encoded recursively, so an unbounded depth would overflow the native stack
+// on teardown/encode. Shared so all decoders agree on the limit.
+static constexpr size_t MaxDecodeDepth = 256;
+
 template <typename Interface>
 class JsonBuffer;
 template <typename Interface>
@@ -120,14 +126,16 @@ public:
 
 	explicit ValueTemplate(nullptr_t) : _type(Type::EMPTY) { }
 	explicit ValueTemplate(bool v) : _type(Type::BOOLEAN) { boolVal = v; }
-	explicit ValueTemplate(int32_t v) : _type(Type::INTEGER) { intVal = int64_t(v); }
-	explicit ValueTemplate(int64_t v) : _type(Type::INTEGER) { intVal = v; }
-	explicit ValueTemplate(uint32_t v) : _type(Type::INTEGER) { intVal = int64_t(v); }
-	explicit ValueTemplate(uint64_t v) : _type(Type::INTEGER) { intVal = int64_t(v); }
 
-#if SP_HAVE_DEDICATED_SIZE_T
-	explicit ValueTemplate(size_t v) : _type(Type::INTEGER) { intVal = int64_t(v); }
-#endif
+	template <sprt::unsigned_integer IntType>
+	ValueTemplate(IntType v) : _type(Type::INTEGER) {
+		intVal = int64_t(v);
+	}
+
+	template <sprt::signed_integer IntType>
+	ValueTemplate(IntType v) : _type(Type::INTEGER) {
+		intVal = int64_t(v);
+	}
 
 	explicit ValueTemplate(Time v) : _type(Type::INTEGER) { intVal = int64_t(v.toMicros()); }
 	explicit ValueTemplate(TimeInterval v) : _type(Type::INTEGER) {
@@ -181,50 +189,48 @@ public:
 	Self &operator=(const ValueTemplate<OtherInterface> &) noexcept;
 
 	Self &operator=(nullptr_t) {
+		if (isNullSentinel()) {
+			return *this;
+		}
 		clear();
 		_type = Type::EMPTY;
 		return *this;
 	}
+	// These write the union member themselves, so they must not do it when reset() refused —
+	// that is what `if (reset(...))` is for; see reset()'s note on the Null sentinel.
 	Self &operator=(bool v) {
-		reset(Type::BOOLEAN);
-		boolVal = v;
+		if (reset(Type::BOOLEAN)) {
+			boolVal = v;
+		}
 		return *this;
 	}
-	Self &operator=(int32_t v) {
-		reset(Type::INTEGER);
-		intVal = int64_t(v);
+
+	template <sprt::unsigned_integer IntType>
+	Self &operator=(IntType v) {
+		if (reset(Type::INTEGER)) {
+			intVal = int64_t(v);
+		}
 		return *this;
 	}
-	Self &operator=(uint32_t v) {
-		reset(Type::INTEGER);
-		intVal = int64_t(v);
+
+	template <sprt::signed_integer IntType>
+	Self &operator=(IntType v) {
+		if (reset(Type::INTEGER)) {
+			intVal = int64_t(v);
+		}
 		return *this;
 	}
-	Self &operator=(uint64_t v) {
-		reset(Type::INTEGER);
-		intVal = int64_t(v);
-		return *this;
-	}
-	Self &operator=(int64_t v) {
-		reset(Type::INTEGER);
-		intVal = int64_t(v);
-		return *this;
-	}
-#if SP_HAVE_DEDICATED_SIZE_T
-	Self &operator=(size_t v) {
-		reset(Type::INTEGER);
-		intVal = int64_t(v);
-		return *this;
-	}
-#endif
+
 	Self &operator=(float v) {
-		reset(Type::DOUBLE);
-		doubleVal = double(v);
+		if (reset(Type::DOUBLE)) {
+			doubleVal = double(v);
+		}
 		return *this;
 	}
 	Self &operator=(double v) {
-		reset(Type::DOUBLE);
-		doubleVal = double(v);
+		if (reset(Type::DOUBLE)) {
+			doubleVal = double(v);
+		}
 		return *this;
 	}
 	Self &operator=(const char *v) { return (*this = Self(v)); }
@@ -255,7 +261,9 @@ public:
 	bool operator==(const StringView &v) const {
 		return isString() ? sprt::detail::compare_c(*strVal, v) == 0 : false;
 	}
-	bool operator==(const BytesView &v) const { return isBytes() ? (*bytesVal) == v : false; }
+	bool operator==(const BytesView &v) const {
+		return isBytes() ? BytesView(*bytesVal) == v : false;
+	}
 	bool operator==(const ArrayType &v) const { return isArray() ? compare(*arrayVal, v) : false; }
 	bool operator==(const DictionaryType &v) const {
 		return isDictionary() ? compare(*dictVal, v) : false;
@@ -359,13 +367,16 @@ public:
 	}
 
 	void setNull() {
+		if (isNullSentinel()) {
+			return;
+		}
 		clear();
 		_type = Type::EMPTY;
 	}
 	void setBool(bool value) { *this = value; }
 	void setInteger(int32_t value) { *this = value; }
 	void setInteger(int64_t value) { *this = value; }
-	void setInteger(size_t value) { *this = value; }
+	void setInteger(size_t value) { *this = int64_t(value); }
 	void setDouble(float value) { *this = value; }
 	void setDouble(double value) { *this = value; }
 	void setString(const char *value) { *this = value; }
@@ -399,8 +410,20 @@ public:
 	int64_t getInteger(int64_t def = 0) const { return isBasicType() ? asInteger() : def; }
 	double getDouble(double def = 0) const { return isBasicType() ? asDouble() : def; }
 
-	StringType &getString() { return isString() ? *strVal : getStringNull(); }
-	BytesType &getBytes() { return isBytes() ? *bytesVal : getBytesNull(); }
+	StringType &getString() {
+		if (isString()) {
+			return *strVal;
+		}
+		assertMutableNullAccess();
+		return getStringNull();
+	}
+	BytesType &getBytes() {
+		if (isBytes()) {
+			return *bytesVal;
+		}
+		assertMutableNullAccess();
+		return getBytesNull();
+	}
 	ArrayType &getArray() { return asArray(); }
 	DictionaryType &getDict() { return asDict(); }
 
@@ -459,10 +482,22 @@ public:
 	StringType asString() const;
 	BytesType asBytes() const;
 
-	ArrayType &asArray() { return isArray() ? *arrayVal : getArrayNull(); }
+	ArrayType &asArray() {
+		if (isArray()) {
+			return *arrayVal;
+		}
+		assertMutableNullAccess();
+		return getArrayNull();
+	}
 	const ArrayType &asArray() const { return isArray() ? *arrayVal : getArrayNullConst(); }
 
-	DictionaryType &asDict() { return isDictionary() ? *dictVal : getDictionaryNull(); }
+	DictionaryType &asDict() {
+		if (isDictionary()) {
+			return *dictVal;
+		}
+		assertMutableNullAccess();
+		return getDictionaryNull();
+	}
 	const DictionaryType &asDict() const {
 		return isDictionary() ? *dictVal : getDictionaryNullConst();
 	}
@@ -534,6 +569,41 @@ protected:
 	template <typename Iface>
 	friend class ValueTemplate;
 
+	// Tag for the one and only Type::NONE object, `Null`. Separate from ValueTemplate(Type)
+	// because that constructor maps NONE onto EMPTY (a NONE value is a "not found" answer, not
+	// a state a user can ask for) — and because it must be constexpr: `Null` is
+	// constant-initialized so it lands in read-only memory, which turns a write into the
+	// shared sentinel from silent global corruption into an immediate fault. `intVal` has to
+	// be initialized here: a union with no active member is not a constant expression.
+	struct NullTag { };
+	constexpr ValueTemplate(NullTag) noexcept : _type(Type::NONE), intVal(0) { }
+
+	// True for `Null` — the single Type::NONE object, which every failed lookup and every
+	// rejected write hands back as a non-const reference. Writing into it is always a bug, so
+	// every mutating path asks first: a debug build stops right at the offending write, a
+	// release build drops it (and the read-only placement of `Null` catches whatever gets past
+	// these guards). Reading the sentinel stays valid — that is what keeps
+	// `v.getValue("a").getValue("b").getInteger()` from crashing on a missing key.
+	bool isNullSentinel() const noexcept {
+		sprt_passert(_type != Type::NONE,
+				"data::Value: write into the shared Null sentinel — a lookup that failed returned "
+				"it; check the lookup (hasValue/is*) before assigning, or insert by key");
+		return _type == Type::NONE;
+	}
+
+	// Called on the failure path of a NON-CONST get*()/as*(): the type does not match (or the key
+	// is missing), so the accessor is about to hand out a mutable reference to a shared,
+	// process-global "null" container. Every caller that misses the same way shares that one
+	// object, so a write through it corrupts unrelated code — and a read of it silently hides the
+	// type error. A debug build stops here; a release build keeps handing the null out.
+	// The const accessors are the sanctioned way to read defensively and never come here.
+	static void assertMutableNullAccess() noexcept {
+		sprt_passert(false,
+				"data::Value: non-const get*()/as*() on a missing key or a value of another type "
+				"returns the shared null container — check with is*()/hasValue() first, or read "
+				"through a const reference");
+	}
+
 	static const StringType &getStringNullConst();
 	static const BytesType &getBytesNullConst();
 	static const ArrayType &getArrayNullConst();
@@ -544,10 +614,21 @@ protected:
 	static ArrayType &getArrayNull();
 	static DictionaryType &getDictionaryNull();
 
-	void reset(Type type);
+	// False when the value must not be touched at all (the Null sentinel): callers that write
+	// the union member themselves have to check, or they would write into read-only storage.
+	bool reset(Type type);
 
 	bool convertToDict();
-	bool convertToArray(int size = 0);
+
+	// Make this value an array: an EMPTY one becomes an empty array, an array stays as it is,
+	// anything else refuses.
+	bool convertToArray();
+
+	// Resolve the element an indexed write lands in: the requested one when it already exists,
+	// otherwise the next free one — so one indexed write appends at most one element, and never
+	// punches holes. nullptr when the value cannot take an indexed write at all (a scalar, the
+	// Null sentinel) or the index is negative.
+	Self *resolveArraySlot(int64_t index);
 
 	bool compare(const ArrayType &a1, const ArrayType &a2) const;
 	bool compare(const DictionaryType &a1, const DictionaryType &a2) const;
@@ -566,9 +647,24 @@ protected:
 	};
 };
 
+// `Null` is what every failed lookup and every rejected write returns, so it is handed out as a
+// non-const reference all over the tree. Constant-initializing it puts it in .rodata, where the
+// loader makes it read-only: a write that slips past the Type::NONE guards below faults instead
+// of silently poisoning every later missing-key read in the process. `no_destroy` is what keeps
+// it there — a registered atexit destructor would force it back into writable data — and is safe
+// because ~ValueTemplate on a NONE value does nothing. Platforms without page protection (wasm)
+// keep only the guards and their debug asserts.
+#if __has_cpp_attribute(clang::no_destroy)
+#define SP_DATA_VALUE_NULL_NO_DESTROY [[clang::no_destroy]]
+#else
+#define SP_DATA_VALUE_NULL_NO_DESTROY
+#endif
+
 template <typename Interface>
-const typename ValueTemplate<Interface>::Self ValueTemplate<Interface>::Null(
-		ValueTemplate<Interface>::Type::NONE);
+SP_DATA_VALUE_NULL_NO_DESTROY constinit const typename ValueTemplate<Interface>::Self
+		ValueTemplate<Interface>::Null(typename ValueTemplate<Interface>::NullTag{});
+
+#undef SP_DATA_VALUE_NULL_NO_DESTROY
 
 template <typename Interface>
 ValueTemplate<Interface>::ValueTemplate() noexcept { }
@@ -662,7 +758,7 @@ ValueTemplate<Interface>::ValueTemplate(InitializerList<Pair<StringType, Self>> 
 
 template <typename Interface>
 auto ValueTemplate<Interface>::operator=(const Self &other) noexcept -> Self & {
-	if (_type == Type::NONE) {
+	if (isNullSentinel()) {
 		return *this;
 	}
 	if (this != &other) {
@@ -692,7 +788,7 @@ auto ValueTemplate<Interface>::operator=(const Self &other) noexcept -> Self & {
 
 template <typename Interface>
 auto ValueTemplate<Interface>::operator=(Self &&other) noexcept -> Self & {
-	if (_type == Type::NONE) {
+	if (isNullSentinel()) {
 		return *this;
 	}
 	if (this != &other) {
@@ -744,7 +840,7 @@ bool ValueTemplate<Interface>::operator==(const Self &v) const {
 
 template <typename Interface>
 auto ValueTemplate<Interface>::emplace() -> Self & {
-	if (convertToArray(-1)) {
+	if (convertToArray()) {
 		arrayVal->emplace_back(Type::EMPTY);
 		return arrayVal->back();
 	}
@@ -888,6 +984,9 @@ bool ValueTemplate<Interface>::empty() const noexcept {
 
 template <typename Interface>
 bool ValueTemplate<Interface>::convertToDict() {
+	if (isNullSentinel()) {
+		return false;
+	}
 	switch (_type) {
 	case Type::DICTIONARY: return true; break;
 	case Type::EMPTY:
@@ -900,29 +999,34 @@ bool ValueTemplate<Interface>::convertToDict() {
 }
 
 template <typename Interface>
-bool ValueTemplate<Interface>::convertToArray(int size) {
-	if (size < 0) {
-		switch (_type) {
-		case Type::ARRAY: return true; break;
-		case Type::EMPTY:
-			reset(Type::ARRAY);
-			return true;
-			break;
-		default: return false; break;
-		}
-		return false;
-	} else if (_type == Type::ARRAY) {
-		if (size == 0 || (int)arrayVal->size() > size) {
-			return true;
-		}
-	} else if (_type == Type::EMPTY) {
-		reset(Type::ARRAY);
-		arrayVal->resize(size + 1);
-		return true;
-	} else {
+bool ValueTemplate<Interface>::convertToArray() {
+	if (isNullSentinel()) {
 		return false;
 	}
+	switch (_type) {
+	case Type::ARRAY: return true; break;
+	case Type::EMPTY:
+		reset(Type::ARRAY);
+		return true;
+		break;
+	default: return false; break;
+	}
 	return false;
+}
+
+template <typename Interface>
+auto ValueTemplate<Interface>::resolveArraySlot(int64_t index) -> Self * {
+	if (index < 0 || !convertToArray()) {
+		return nullptr;
+	}
+	if (size_t(index) >= arrayVal->size()) {
+		// Past the end: take the next free slot rather than resizing up to the index (which used
+		// to fill the gap with nulls when converting an EMPTY value, and to drop the write
+		// outright on an array that was merely too short).
+		arrayVal->emplace_back(Type::EMPTY);
+		return &arrayVal->back();
+	}
+	return &arrayVal->at(size_t(index));
 }
 
 template <typename Interface>
@@ -984,9 +1088,12 @@ void ValueTemplate<Interface>::clear() {
 }
 
 template <typename Interface>
-void ValueTemplate<Interface>::reset(Type type) {
-	if (_type == Type::NONE && _type == type) {
-		return;
+bool ValueTemplate<Interface>::reset(Type type) {
+	// The sentinel is never re-typed: this is the path every scalar operator= goes through, so
+	// without the check `Null = 42` would rewrite the shared object (it used to: the condition
+	// here also compared _type to the requested type, which can never hold for NONE).
+	if (isNullSentinel()) {
+		return false;
 	}
 
 	clear();
@@ -1001,15 +1108,16 @@ void ValueTemplate<Interface>::reset(Type type) {
 	}
 
 	_type = type;
+	return true;
 }
 
 template <typename Interface>
 template <class Val, class Key>
 auto ValueTemplate<Interface>::setValue(Val &&value, Key &&key) -> Self & {
 	if constexpr (sprt::is_integral_v<sprt::remove_reference_t<Key>>) {
-		if (convertToArray((int)key)) {
-			arrayVal->at(key) = sprt::forward<Val>(value);
-			return arrayVal->at(key);
+		if (auto slot = resolveArraySlot(int64_t(key))) {
+			*slot = sprt::forward<Val>(value);
+			return *slot;
 		}
 		return const_cast<Self &>(Null);
 	} else {
@@ -1044,7 +1152,7 @@ auto ValueTemplate<Interface>::setValue(Val &&value) -> Self & {
 template <typename Interface>
 template <class Val>
 auto ValueTemplate<Interface>::addValue(Val &&value) -> Self & {
-	if (convertToArray(-1)) {
+	if (convertToArray()) {
 		arrayVal->emplace_back(sprt::forward<Val>(value));
 		return arrayVal->back();
 	}
@@ -1099,8 +1207,11 @@ auto ValueTemplate<Interface>::emplace(Key &&key) -> Self & {
 	if (convertToDict()) {
 		auto it = dictVal->find(key);
 		if (it == dictVal->end()) {
+			// remove_reference_t, not remove_reference: without the _t this compares StringView
+			// against the trait itself, never matches, and a StringView key falls into the branch
+			// below - where the dictionary cannot build its key from a view
 			if constexpr (sprt::is_same_v<StringView,
-								  sprt::remove_cv_t<typename sprt::remove_reference<Key>>>) {
+								  sprt::remove_cv_t<sprt::remove_reference_t<Key>>>) {
 				return dictVal->emplace(key.template str<Interface>(), Type::EMPTY).first->second;
 			} else {
 				return dictVal->emplace(sprt::forward<Key>(key), Type::EMPTY).first->second;
@@ -1165,6 +1276,7 @@ auto ValueTemplate<Interface>::getString(Key &&key) -> StringType & {
 	if (!v.isNull()) {
 		return v.getString();
 	}
+	assertMutableNullAccess();
 	return getStringNull();
 }
 
@@ -1185,6 +1297,7 @@ auto ValueTemplate<Interface>::getBytes(Key &&key) -> BytesType & {
 	if (ret.isBytes()) {
 		return ret.getBytes();
 	}
+	assertMutableNullAccess();
 	return getBytesNull();
 }
 
@@ -1205,6 +1318,7 @@ auto ValueTemplate<Interface>::getArray(Key &&key) -> ArrayType & {
 	if (!v.isNull()) {
 		return v.getArray();
 	}
+	assertMutableNullAccess();
 	return getArrayNull();
 }
 
@@ -1225,6 +1339,7 @@ auto ValueTemplate<Interface>::getDict(Key &&key) -> DictionaryType & {
 	if (!v.isNull()) {
 		return v.getDict();
 	}
+	assertMutableNullAccess();
 	return getDictionaryNull();
 }
 
@@ -1273,6 +1388,9 @@ void ValueTemplate<Interface>::encode(Stream &stream) const {
 		stream.onValue(*this);
 	}
 	switch (_type) {
+	// NONE reaches here when a caller encodes the reference a failed lookup returned; it is
+	// still a null value and must serialize as one, not as nothing at all.
+	case Type::NONE:
 	case Type::EMPTY: stream.write(nullptr); break;
 	case Type::BOOLEAN: stream.write(boolVal); break;
 	case Type::INTEGER: stream.write(intVal); break;
@@ -1408,6 +1526,47 @@ auto ValueTemplate<Interface>::getType(Key &&key) const -> Type {
 	}
 }
 
+// The two concrete Value specializations are explicitly instantiated in SPData.cc.
+// Suppress re-instantiation in every other translation unit that includes this header.
+// SPData.cc defines SP_DATA_VALUE_EXPLICIT_INSTANTIATION so it does NOT see these
+// declarations: it holds explicit specializations of several Value members, which
+// would be ill-formed if they followed an explicit instantiation of the class.
+#ifndef SP_DATA_VALUE_EXPLICIT_INSTANTIATION
+extern template class ValueTemplate<memory::PoolInterface>;
+extern template class ValueTemplate<mem_std::Interface>;
+#endif
+
 } // namespace stappler::data
+
+// Value's storage containers — Value::ArrayType == Vector<Value> and
+// Value::DictionaryType == Map<String, Value> — are the biggest remaining per-TU
+// instantiation cost after Value itself. They are explicitly instantiated in SPData.cc
+// alongside Value; suppress re-instantiation everywhere else. Explicit instantiation
+// declarations for sprt::__vector / sprt::__map must live in their own namespace (sprt).
+#ifndef SP_DATA_VALUE_EXPLICIT_INSTANTIATION
+namespace sprt {
+
+#define SP_DATA_VALUE_POOL ::stappler::data::ValueTemplate<::stappler::memory::PoolInterface>
+#define SP_DATA_VALUE_STD ::stappler::data::ValueTemplate<::stappler::mem_std::Interface>
+
+extern template class __vector<SP_DATA_VALUE_POOL,
+		SP_DATA_VALUE_POOL::InterfaceType::Allocator<SP_DATA_VALUE_POOL>>;
+extern template class __vector<SP_DATA_VALUE_STD,
+		SP_DATA_VALUE_STD::InterfaceType::Allocator<SP_DATA_VALUE_STD>>;
+
+extern template class __map<SP_DATA_VALUE_POOL::InterfaceType::StringType, SP_DATA_VALUE_POOL,
+		less<void>,
+		SP_DATA_VALUE_POOL::InterfaceType::Allocator<
+				pair<const SP_DATA_VALUE_POOL::InterfaceType::StringType, SP_DATA_VALUE_POOL>>>;
+extern template class __map<SP_DATA_VALUE_STD::InterfaceType::StringType, SP_DATA_VALUE_STD,
+		less<void>,
+		SP_DATA_VALUE_STD::InterfaceType::Allocator<
+				pair<const SP_DATA_VALUE_STD::InterfaceType::StringType, SP_DATA_VALUE_STD>>>;
+
+#undef SP_DATA_VALUE_POOL
+#undef SP_DATA_VALUE_STD
+
+} // namespace sprt
+#endif
 
 #endif /* STAPPLER_DATA_SPDATAVALUE_H_ */

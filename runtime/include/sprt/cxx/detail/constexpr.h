@@ -23,10 +23,10 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_DETAIL_CONSTEXPR_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_DETAIL_CONSTEXPR_H_
 
-#include <sprt/cxx/type_traits>
+#include <sprt/cxx/__type_traits/modifications.h>
+#include <sprt/cxx/__type_traits/queries.h>
 #include <sprt/cxx/detail/ctypes.h>
-
-#include <sprt/cxx/array>
+#include <sprt/cxx/detail/inline_buffer.h>
 
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_ctype.h>
@@ -51,7 +51,11 @@ constexpr _Tp *__constexpr_memset(_Tp *dest, const _Tp &source, size_t __count) 
 template <typename _Tp>
 constexpr _Tp *__constexpr_memcpy(_Tp *dest, const _Tp *source, size_t __count) {
 	if (is_constant_evaluated()) {
-		while (__count-- > 0) { *(dest++) = *(source++); }
+		if constexpr (__is_assignable(_Tp &, const _Tp &)) {
+			while (__count-- > 0) { *(dest++) = *(source++); }
+		} else {
+			__builtin_memcpy(dest, source, __count * sizeof(_Tp));
+		}
 	} else {
 		return (_Tp *)__builtin_memcpy(dest, source, __count * sizeof(_Tp));
 	}
@@ -64,14 +68,17 @@ constexpr _Tp *__constexpr_memmove(_Tp *dest, const _Tp *source, size_t __count)
 			return dest; // No copy needed if src and dest are the same
 		}
 
-		// Check for overlap: if destination starts within the source range
-		if (dest > source && dest < source + __count) {
-			dest += __count;
-			source += __count;
+		if constexpr (__is_assignable(_Tp &, const _Tp &)) {
+			if (dest > source && dest < source + __count) {
+				dest += __count;
+				source += __count;
 
-			while (__count-- > 0) { *(--dest) = *(--source); }
+				while (__count-- > 0) { *(--dest) = *(--source); }
+			} else {
+				while (__count-- > 0) { *(dest++) = *(source++); }
+			}
 		} else {
-			while (__count-- > 0) { *(dest++) = *(source++); }
+			__builtin_memmove(dest, source, __count * sizeof(_Tp));
 		}
 
 		return dest; // Return the original destination pointer
@@ -86,11 +93,19 @@ constexpr int __constexpr_memcmp(const _Tp *__lhs, const _Up *__rhs, size_t __co
 			"_Tp and _Up have to be trivially lexicographically comparable");
 
 	if (is_constant_evaluated()) {
+		// Compare through the unsigned element type so that signed `char` matches
+		// the unsigned, byte-wise ordering of the runtime __builtin_memcmp below
+		// (and of std::char_traits<char>). Among the types that satisfy the trait
+		// above only `char` is signed; the conditional leaves every other type
+		// untouched (and sidesteps make_unsigned<bool>, which is ill-formed).
+		using _UCmp = conditional_t<is_same_v<remove_cv_t<_Tp>, char>, unsigned char, _Tp>;
 		while (__count != 0) {
-			if (*__lhs < *__rhs) {
+			_UCmp __l = static_cast<_UCmp>(*__lhs);
+			_UCmp __r = static_cast<_UCmp>(*__rhs);
+			if (__l < __r) {
 				return -1;
 			}
-			if (*__rhs < *__lhs) {
+			if (__r < __l) {
 				return 1;
 			}
 
@@ -148,6 +163,15 @@ inline constexpr size_t __constexpr_strlen(const char32_t *str) {
 	return static_cast<size_t>(end - str);
 }
 
+inline constexpr size_t __constexpr_strlen(const char8_t *str) {
+	if (str == nullptr) {
+		return 0;
+	}
+	const char8_t *end = str;
+	while (*end != u8'\0') { ++end; }
+	return static_cast<size_t>(end - str);
+}
+
 inline constexpr size_t __constexpr_strnlen(const char *str, size_t c) {
 	if (str == nullptr) {
 		return 0;
@@ -188,6 +212,15 @@ inline constexpr size_t __constexpr_strnlen(const char32_t *str, size_t c) {
 	return static_cast<size_t>(end - str);
 }
 
+inline constexpr size_t __constexpr_strnlen(const char8_t *str, size_t c) {
+	if (str == nullptr) {
+		return 0;
+	}
+	const char8_t *end = str;
+	while (c-- > 0 && *end != u8'\0') { ++end; }
+	return static_cast<size_t>(end - str);
+}
+
 template <typename CharType>
 constexpr inline bool __constexpr_chareq(CharType c1, CharType c2) {
 	return c1 == c2;
@@ -208,9 +241,33 @@ constexpr inline bool __constexpr_charlt<char>(char c1, char c2) {
 	return static_cast<unsigned char>(c1) < static_cast<unsigned char>(c2);
 }
 
+// std::char_traits-style ordering of a character range. Unlike a raw memcmp this
+// orders multi-byte element types (char16_t/char32_t/wchar_t) by element *value*
+// rather than by object bytes, so the result is endianness-independent and matches
+// the standard on little-endian targets.
 template <typename CharType>
 constexpr inline int __constexpr_strcompare(const CharType *s1, const CharType *s2, size_t count) {
-	return __constexpr_memcmp(s1, s2, count);
+	if constexpr (sizeof(CharType) == 1) {
+		// Single-byte elements: byte order == value order, so the (now unsigned)
+		// __constexpr_memcmp already matches char_traits, including signed `char`.
+		return __constexpr_memcmp(s1, s2, count);
+	} else {
+		// Multi-byte elements: a byte-wise memcmp would order by the low vs high
+		// byte on little-endian and diverge from std::char_traits, so compare each
+		// element by its (unsigned) value instead.
+		using U = make_unsigned_t<CharType>;
+		for (size_t i = 0; i < count; ++i) {
+			U a = static_cast<U>(s1[i]);
+			U b = static_cast<U>(s2[i]);
+			if (a < b) {
+				return -1;
+			}
+			if (b < a) {
+				return 1;
+			}
+		}
+		return 0;
+	}
 }
 
 template <typename CharType>
@@ -229,6 +286,17 @@ constexpr inline const CharType *__constexpr_strfind(const CharType *ptr, size_t
 template <>
 constexpr inline const char *__constexpr_strfind<char>(const char *ptr, size_t count,
 		const char &ch) {
+	// __builtin_memchr's void* casts are ill-formed in a constant expression; use the
+	// plain loop there (equality is signedness-independent, so it matches memchr) and the
+	// faster builtin at runtime. This keeps char_traits<char>::find constexpr-usable.
+	if (__builtin_is_constant_evaluated()) {
+		for (size_t __i = 0; __i < count; ++__i) {
+			if (ptr[__i] == ch) {
+				return ptr + __i;
+			}
+		}
+		return nullptr;
+	}
 	return (const char *)__builtin_memchr((void *)ptr, ch, count);
 }
 
@@ -304,8 +372,8 @@ static constexpr const char *s_ctable[] = {
 };
 // clang-format on
 
-constexpr sprt::array<uint16_t, 128> __genctable() {
-	sprt::array<uint16_t, 128> ret;
+constexpr sprt::detail::inline_buffer<uint16_t, 128> __genctable() {
+	sprt::detail::inline_buffer<uint16_t, 128> ret{};
 	for (int i = 0; i <= 127; ++i) {
 		uint16_t value = 0;
 		uint16_t idx = 0;
@@ -445,16 +513,18 @@ constexpr inline bool __constexpr_isxdigit_c(int c) {
 	return 0;
 }
 
+// __constexpr_memset's count is an ELEMENT count (it scales by sizeof internally), so pass the
+// number of elements -- `size`, not `size * sizeof(T)` (which over-wrote 2x/4x for wide chars).
 constexpr inline void __constexpr_nullify(char *ptr, size_t size) {
-	__constexpr_memset(ptr, char(0), size * sizeof(char));
+	__constexpr_memset(ptr, char(0), size);
 }
 
 constexpr inline void __constexpr_nullify(char16_t *ptr, size_t size) {
-	__constexpr_memset(ptr, char16_t(0), size * sizeof(char16_t));
+	__constexpr_memset(ptr, char16_t(0), size);
 }
 
 constexpr inline void __constexpr_nullify(char32_t *ptr, size_t size) {
-	__constexpr_memset(ptr, char32_t(0), size * sizeof(char16_t));
+	__constexpr_memset(ptr, char32_t(0), size);
 }
 
 } // namespace sprt

@@ -1,0 +1,25 @@
+# Xenolith runtime libc headers
+
+This is a universal set of headers for a POSIX-compatible libc built on top of Xenolith Runtime functions.
+
+Headers can be used in three modes:
+
+* As a redirect to real system libc headers
+* As internal libc headers for its standalone implementation
+* As an umbrella libc where functions are redirected to their specific internal implementations
+
+Only the last mode is intended for use by third-party applications.
+
+In addition to standard headers, some target OS auxiliary headers are also implemented, such as `darwin/AvailabilityMacros.h` and `android/api-level.h``.
+
+The basic idea of the headers is to provide a unified API in all cases. For this reason we do not implement various gate macros like `GNU_SOURCE` or `BSD_SOURCE`; instead, the most general implementation of functions is chosen.
+
+For functions that are not implemented on the target platform, macros `__SPRT_CONFIG_HAVE_<X>` are provided. By default behavior, if a function is not implemented on the platform, its use will generate a warning, and the function itself will correctly report an error (typically via `errno = ENOSYS`).
+
+If behavior is needed where functions are undefined, define the macro `__SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS=0`.
+
+Functions that cannot be implemented uniformly at the libc level (such as networking ones) are not intended to be implemented. This should be handled by higher-level modules.
+
+It should also be noted that for external applications, headers ALWAYS work in umbrella mode, even when under the "umbrella" is not a system but a custom implementation of libc. This is part of the overall uniformity policy.
+
+If a function is not defined in the target system, but is implemented in SPRT, its behavior either follows general OS rules if such apply to it. Otherwise, it is implemented in accordance with Linux documentation.

@@ -28,6 +28,14 @@
 #include "XLCoreQueueData.h"
 #include "XLCoreInfo.h"
 
+namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
+
+// Deserializes a client-side queue mirror; needs to set Queue::_data directly (it bypasses
+// Queue::init, which assumes real QueuePass back-wiring). See xenolith/remote/XLRemoteSerialize.h.
+class QueueCodec;
+
+} // namespace stappler::xenolith::remote
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 /* RenderQueue/RenderGraph implementation notes:
@@ -71,6 +79,14 @@ public:
 	virtual StringView getName() const override;
 
 	FrameRenderPassState getDefaultSyncPassState() const;
+	PassRecordingMode getRecordingMode() const;
+
+	// Which backend the graph was described for, what the renderer tagged it as, and what it opts
+	// into for damage. Set at build time (see Builder below); they describe the graph, so they are
+	// readable on a queue that was never compiled, or on a remote mirror.
+	InstanceApi getApi() const;
+	uint32_t getTypeTag() const;
+	QueueDamageFlags getDamageFlags() const;
 
 	const HashTable<ProgramData *> &getPrograms() const;
 	const HashTable<QueuePassData *> &getPasses() const;
@@ -119,6 +135,8 @@ public:
 	void describe(const Callback<void(StringView)> &);
 
 protected:
+	friend class remote::QueueCodec;
+
 	QueueData *_data = nullptr;
 };
 
@@ -171,7 +189,7 @@ protected:
 class SP_PUBLIC DescriptorSetBuilder final {
 public:
 	// add single descriptor
-	// compiler CAN inspect shaders to modify descriptors count, if descriptor is actually an array
+	// compiler can inspect shaders to modify descriptors count, if descriptor is actually an array
 	// if descriptor array size defined by spec constant - use addDescriptorArray instead
 	// note: UpdateAfterBind flag is set up by default
 	bool addDescriptor(const AttachmentPassData *, DescriptorType = DescriptorType::Unknown,
@@ -194,6 +212,11 @@ public:
 	// Please, specify it manually, if you have no specific intent to disable it
 	bool addDescriptorArray(const AttachmentPassData *, uint32_t count, DescriptorFlags,
 			DescriptorType = DescriptorType::Unknown, AttachmentLayout = AttachmentLayout::Ignored);
+
+	// add standalone sampler descriptor (not bound to an attachment)
+	// for backends without immutable samplers (WebGPU) sampler is created from SamplerInfo;
+	// Vulkan backend does not support standalone samplers, use TextureSetLayout instead
+	bool addSampler(StringView key, SamplerInfo && = SamplerInfo());
 
 protected:
 	friend class PipelineLayoutBuilder;
@@ -330,6 +353,19 @@ public:
 	~Builder();
 
 	void setDefaultSyncPassState(FrameRenderPassState);
+
+	// Select the thread on which passes of this queue record and submit their
+	// command buffers (see PassRecordingMode). Backend-dependent: only Metal
+	// currently honors it.
+	void setRecordingMode(PassRecordingMode);
+
+	// What this queue opts into for per-frame damage tracking; see QueueDamageFlags.
+	void setDamageFlags(QueueDamageFlags);
+
+	// Which backend this graph is described for, and the renderer's own shape tag for it (see
+	// QueueData::api / QueueData::typeTag). Set by the pass makers that emit the passes.
+	void setApi(InstanceApi);
+	void setTypeTag(uint32_t);
 
 	const AttachmentData *addAttachemnt(StringView name,
 			const Callback<Rc<Attachment>(AttachmentBuilder &)> &);

@@ -23,9 +23,11 @@
 #ifndef XENOLITH_APPLICATION_DIRECTOR_XLDIRECTOR_H_
 #define XENOLITH_APPLICATION_DIRECTOR_XLDIRECTOR_H_
 
+#include "XLRemoteAddress.h"
 #include "XLResourceCache.h"
 #include "XLAppThread.h"
 #include "XLInput.h" // IWYU pragma: keep
+#include "XLCoreRenderSession.h"
 #include "SPMovingAverage.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
@@ -37,7 +39,7 @@ class TextInputManager;
 class ActionManager;
 class DirectorWindow;
 
-class SP_PUBLIC Director : public Ref {
+class SP_PUBLIC Director : public core::RenderClientChannel {
 public:
 	using FrameRequest = core::FrameRequest;
 
@@ -45,24 +47,58 @@ public:
 
 	Director();
 
-	bool init(NotNull<AppThread>, const core::FrameConstraints &, NotNull<AppWindow>);
+	bool init(NotNull<AppThread>, const core::FrameConstraints &,
+			NotNull<core::RenderServerChannel>);
 
 	void setFrameConstraints(const core::FrameConstraints &);
 
 	void runScene(Rc<Scene> &&);
 
-	bool acquireFrame(FrameRequest *);
+	// For server, compile and share Director's windo with a new queue;
+	// For client - returns null;
+	Rc<core::Queue> shareQueue(core::Queue::Builder &&, StringView addr, BytesView key,
+			BytesView dict = BytesView());
+
+	/* The same, for a window joining a session that is already running. Credentials and the listen
+	address are set once by the session opener (setBearerKey fails while the listener is up). A
+	connected client is re-announced, so the window appears without reconnecting. */
+	Rc<core::Queue> shareQueue(core::Queue::Builder &&);
+
+	// core::RenderClientChannel (server -> client). The server's PresentationEngine pulls a
+	// command batch via acquireFrame(); other entries deliver platform events / contract changes.
+	virtual void acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy>,
+			Function<void(bool)> &&) override;
+	virtual void handleRenderQueueAttached(const Rc<core::Queue> &) override;
+	virtual void handleConstraintsChanged(const core::FrameConstraints &) override;
+	// windowId is ignored: a Director drives exactly one window. The id exists for the remote
+	// channel, which drives many.
+	virtual void handleWindowGeometryChanged(uint64_t windowId,
+			const sprt::window::WindowGeometry &) override;
+	virtual void handleInputEvents(uint64_t windowId, Vector<core::InputEventData> &&) override;
+	virtual void handleTextInput(uint64_t windowId, const core::TextInputState &) override;
+	virtual void handleFramePresented(uint64_t frameOrder) override;
 
 	void update(uint64_t t);
 
 	// Can be nullptr to disconnect director from window
-	void setWindow(AppWindow *);
+	void setServer(core::RenderServerChannel *);
 
 	void end();
 
 	AppThread *getApplication() const { return _application; }
+
+	// Server-side endpoint of the render-session boundary; client-side code (e.g. FrameContext)
+	// issues render-graph / resource / material compilation through it.
+	core::RenderServerChannel *getRenderServer() const { return _server; }
+
+	// The 2D renderer still reaches the gapi loop directly to schedule frame-input attachment on
+	// the render-loop thread.
 	core::Loop *getGlLoop() const;
-	AppWindow *getWindow() const { return _window; }
+
+	// Run `cb` on the thread that consumes per-frame input: the gapi loop thread on a server/local
+	// director, or the (GL-loop-less) client app thread on a remote client. Used by frame-input
+	// submission so it resolves correctly on both sides.
+	void performOnRenderThread(Function<void()> &&cb, Ref *ref = nullptr);
 
 	Scheduler *getScheduler() const { return _scheduler; }
 	ActionManager *getActionManager() const { return _actionManager; }
@@ -76,7 +112,7 @@ public:
 
 	const core::FrameConstraints &getFrameConstraints() const { return _constraints; }
 
-	void pushDrawStat(const DrawStat &);
+	virtual void pushDrawStat(uint64_t windowId, const DrawStat &) override;
 
 	const UpdateTime &getUpdateTime() const { return _time; }
 	const DrawStat &getDrawStat() const { return _drawStat; }
@@ -89,6 +125,22 @@ public:
 
 	float getDirectorFrameTime() const { return _avgFrameTimeValue / 1000.0f; }
 
+#if XL_FRAME_ACCOUNT
+	/* The app half of the last frame, exact, in nanoseconds (not an average): `acquireFrame` whole,
+	including the update and the scene visit, and handing tesselation to a worker but not waiting
+	for it. */
+	uint64_t getLastAppFrameTime() const { return _lastAppFrameTime; }
+
+	// The render half of the last completed frame, exact, with its frame id: vertex plan, wait on
+	// deferred work, buffer writes and device submission. Does not include the visit.
+	core::FrameTimingInfo getFrameTiming() const;
+
+	/* Deferred tasks started during that frame's visit (the producing side). VertexPlan reports
+	what a frame waited for, which differs; a steady frame reports zero on both. */
+	uint32_t getLastDeferredSpawned() const { return _lastDeferredSpawned; }
+	void countDeferredSpawned() { ++_deferredSpawned; }
+#endif
+
 	void autorelease(Ref *);
 
 protected:
@@ -100,14 +152,29 @@ protected:
 	bool hasActiveInteractions();
 
 	Rc<AppThread> _application;
-	Rc<AppWindow> _window;
-	Rc<core::PresentationEngine> _engine;
+
+	Rc<Ref> _window;
+
+	// Server-side endpoint of the render-session boundary (client -> server calls): the AppWindow
+	// locally, a RemoteWindow on a remote client.
+	core::RenderServerChannel *_server = nullptr;
+
+	// Render queues the server has announced as available (via handleRenderQueueAttached), keyed
+	// by name. The client selects one per frame through the FrameRequestProxy.
+	Map<StringView, Rc<core::Queue>> _availableQueues;
 
 	core::FrameConstraints _constraints;
 
 	uint64_t _startTime = 0;
 	UpdateTime _time;
 	DrawStat _drawStat;
+
+#if XL_FRAME_ACCOUNT
+	uint64_t _pendingAppTime = 0; // the update half, until the visit closes the account
+	uint64_t _lastAppFrameTime = 0;
+	uint32_t _deferredSpawned = 0; // counted during the visit
+	uint32_t _lastDeferredSpawned = 0; // what the visit that just ended counted
+#endif
 
 	Rc<Scene> _scene;
 	Rc<Scene> _nextScene;

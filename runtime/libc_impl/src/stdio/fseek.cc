@@ -37,6 +37,10 @@ int __fseeko_unlocked(FILE *f, off_t off, int whence) {
 }
 
 __SPRT_C_FUNC int fseeko(FILE *f, off_t off, int whence) __SPRT_NOEXCEPT {
+	if (!f) {
+		errno = EBADF;
+		return -1;
+	}
 	int result;
 	FLOCK(f);
 	result = __fseeko_unlocked(f, off, whence);
@@ -64,6 +68,10 @@ off_t __ftello_unlocked(FILE *f) {
 }
 
 __SPRT_C_FUNC off_t ftello(FILE *f) __SPRT_NOEXCEPT {
+	if (!f) {
+		errno = EBADF;
+		return -1;
+	}
 	off_t pos;
 	FLOCK(f);
 	pos = __ftello_unlocked(f);
@@ -71,9 +79,15 @@ __SPRT_C_FUNC off_t ftello(FILE *f) __SPRT_NOEXCEPT {
 	return pos;
 }
 
+// sprt's ftell returns off_t — a deliberate 64-bit extension over ISO C's long, so the
+// default API never silently truncates a large offset (ftello is the explicit 64-bit
+// query). The ISO/MSVCRT `long` prototype is presented to libc++ only, in <stdio.h>.
 __SPRT_C_FUNC off_t ftell(FILE *f) __SPRT_NOEXCEPT { return ftello(f); }
 
 __SPRT_C_FUNC void rewind(FILE *f) __SPRT_NOEXCEPT {
+	if (!f) {
+		return;
+	}
 	FLOCK(f);
 	__fseeko_unlocked(f, 0, SEEK_SET);
 	f->flags &= ~F_ERR;

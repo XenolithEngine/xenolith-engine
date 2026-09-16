@@ -34,11 +34,16 @@ struct in_addr inet_makeaddr(in_addr_t n, in_addr_t h) SPRT_NOEXCEPT {
 	} else {
 		h |= n << 8;
 	}
-	return (struct in_addr){.S_un{.S_addr = h}};
+	// Assign through s_addr rather than a designated initializer: the field is a
+	// direct member on POSIX/wasm but a macro (S_un.S_addr) on Windows, and plain
+	// member assignment is valid for both while nested designators are not.
+	struct in_addr result;
+	result.s_addr = htonl(h);
+	return result;
 }
 
 in_addr_t inet_lnaof(struct in_addr in) SPRT_NOEXCEPT {
-	uint32_t h = in.s_addr;
+	uint32_t h = ntohl(in.s_addr);
 	if (h >> 24 < 128) {
 		return h & 0xff'ffff;
 	}
@@ -49,7 +54,7 @@ in_addr_t inet_lnaof(struct in_addr in) SPRT_NOEXCEPT {
 }
 
 in_addr_t inet_netof(struct in_addr in) SPRT_NOEXCEPT {
-	uint32_t h = in.s_addr;
+	uint32_t h = ntohl(in.s_addr);
 	if (h >> 24 < 128) {
 		return h >> 24;
 	}

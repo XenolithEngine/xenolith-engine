@@ -25,6 +25,16 @@
 
 #include <unistd.h>
 #include <sprt/runtime/log.h>
+#include <sprt/runtime/filesystem/filepath.h>
+#include <sprt/c/__sprt_fcntl.h>
+#include <sprt/c/__sprt_unistd.h>
+#include <sprt/c/__sprt_errno.h>
+#include <sprt/c/sys/__sprt_stat.h>
+#include <sprt/c/cross/__sprt_fstypes.h>
+
+// macOS provides waitpid() in libSystem, but the runtime's freestanding include path does not expose
+// <sys/wait.h>; declare the prototype directly (the exit code is decoded via decodeWaitStatus()).
+extern "C" int waitpid(int __pid, int *__status, int __options);
 
 namespace sprt::dispatch {
 
@@ -74,26 +84,64 @@ Status KQueueData::runPoll(TimeInterval ival) {
 }
 
 uint32_t KQueueData::processEvents(RunContext *ctx) {
-	uint32_t count = 0;
+	// Snapshot this batch into a private buffer and clear the shared counters BEFORE
+	// dispatching anything. A handler reached through notify() can re-enter the loop (a
+	// nested run()/wait()/poll() — e.g. a recipe whose completion synchronously drives
+	// more work, as a recursive $(MAKE) does), and that nested runPoll() calls kevent()
+	// straight back into the shared _events buffer. Iterating _events directly here
+	// would then dispatch overwritten/stale kevents to the wrong handles and fds —
+	// closing a since-reused descriptor and killing an unrelated child with SIGPIPE.
+	//
+	// The snapshot is a stack local (not a KQueueData member) so each — possibly
+	// nested — invocation iterates its own copy. Every handle-bearing event is pinned
+	// (retain) up front while all udata pointers are still valid, so an earlier
+	// callback dropping the queue's last reference to a later event's handle cannot turn
+	// it into a use-after-free. Mirrors EPollData::processEvents.
+	struct Slot {
+		struct kevent ev;
+		uint64_t refId;
+	};
+	Queue::Vector<Slot> batch;
+	batch.reserve(_receivedEvents - _processedEvents);
+	for (uint32_t i = _processedEvents; i < _receivedEvents; ++i) {
+		auto &ev = _events.at(i);
+		uint64_t refId = (ev.udata && ev.udata != this)
+				? sprt::retain(reinterpret_cast<Handle *>(ev.udata))
+				: uint64_t(0);
+		batch.emplace_back(Slot{ev, refId});
+	}
+	_receivedEvents = _processedEvents = 0;
 
+	// the handle is kept alive by its snapshot pin (released after dispatch below)
 	auto processHandleEvent = [&](const struct kevent &ev) {
 		if (ev.udata && ev.udata != this) {
-			auto h = (Handle *)ev.udata;
-			auto refId = sprt::retain(h);
-
 			NotifyData data;
 			data.result = ev.data;
 			data.queueFlags = ev.flags;
 			data.userFlags = 0;
 
-			_data->notify(h, data);
+			if (ev.filter == EVFILT_VNODE) {
+				// EVFILT_VNODE: `data` carries nothing, the change set is in fflags
+				// and the vnode identity is the ident fd — a handle registering
+				// several vnodes (see KQueueWatchHandle) needs both to route the
+				// event, so marshal ident through `result` and fflags through
+				// `userFlags` (unused by every other filter).
+				data.result = intptr_t(ev.ident);
+				data.userFlags = ev.fflags;
+			} else {
+				// carry the filter so a handle registered with several filters
+				// (ReadKQueueHandle polling both EVFILT_READ and EVFILT_WRITE for
+				// sockets) can tell which one fired
+				data.userFlags = uint32_t(int32_t(ev.filter));
+			}
 
-			sprt::release(h, refId);
+			_data->notify(reinterpret_cast<Handle *>(ev.udata), data);
 		}
 	};
 
-	while (_processedEvents < _receivedEvents) {
-		auto &ev = _events.at(_processedEvents++);
+	uint32_t count = 0;
+	for (auto &slot : batch) {
+		auto &ev = slot.ev;
 		switch (ev.filter) {
 		case EVFILT_TIMER:
 			if (ev.udata == this) {
@@ -120,9 +168,11 @@ uint32_t KQueueData::processEvents(RunContext *ctx) {
 		default: processHandleEvent(ev); break;
 		}
 
+		if (slot.refId) {
+			sprt::release(reinterpret_cast<Handle *>(ev.udata), slot.refId);
+		}
 		++count;
 	}
-	_receivedEvents = _processedEvents = 0;
 	return count;
 }
 
@@ -135,7 +185,7 @@ uint32_t KQueueData::poll() {
 	pushContext(&ctx, RunContext::Poll);
 
 	auto status = runPoll(TimeInterval());
-	if (toInt(status) > 0) {
+	if (status == Status::Ok) {
 		result = processEvents(&ctx);
 	}
 
@@ -165,12 +215,15 @@ Status KQueueData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval 
 	ctx.runWakeupFlags = wakeupFlags;
 
 	struct kevent events[1];
-	if (ival && ival != TimeInterval::Infinite) {
+	// A self-wakeup timer is registered only for a finite, non-zero interval.
+	const bool hasTimer = (ival && ival != TimeInterval::Infinite);
+	if (hasTimer) {
+		// udata must be `this` (the KQueueData sentinel processEvents() checks to
+		// recognise the self-timer); the RunContext* is carried in `ident`.
 		EV_SET(&events[0], reinterpret_cast<intptr_t>(&ctx), EVFILT_TIMER, EV_ADD | EV_ONESHOT,
-				NOTE_USECONDS, ival.toMicros(), reinterpret_cast<void *>(toInt(wakeupFlags)));
+				NOTE_USECONDS, ival.toMicros(), this);
+		update(sprt::makeSpanView(events, 1));
 	}
-
-	update(sprt::makeSpanView(events, ival ? 2 : 1));
 
 	pushContext(&ctx, RunContext::Run);
 
@@ -185,7 +238,7 @@ Status KQueueData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval 
 		}
 	}
 
-	if (ival) {
+	if (hasTimer) {
 		events[0].flags = EV_DELETE;
 		update(sprt::makeSpanView(events, 1));
 	}
@@ -238,7 +291,7 @@ KQueueData::KQueueData(QueueRef *q, Queue::Data *data, const QueueInfo &info, Sp
 
 	EV_SET(&ev.emplace_back(), reinterpret_cast<uintptr_t>(this), EVFILT_USER, EV_ADD | EV_CLEAR,
 			NOTE_FFNOP, 0, this);
-	for (auto &it : sigs) { EV_SET(&ev.emplace_back(), it, EV_ADD, EVFILT_SIGNAL, 0, 0, this); }
+	for (auto &it : sigs) { EV_SET(&ev.emplace_back(), it, EVFILT_SIGNAL, EV_ADD, 0, 0, this); }
 
 	update(ev);
 
@@ -437,6 +490,424 @@ Status KQueueThreadHandle::perform(dispatch::Function<void()> &&func, Ref *targe
 	q->update(ev);
 
 	return Status::Ok;
+}
+
+bool ReadKQueueSource::init(int f, PollFlags fl) {
+	fd = f;
+	flags = fl;
+	return true;
+}
+
+void ReadKQueueSource::cancel() {
+	if (hasFlag(flags, PollFlags::CloseFd) && fd >= 0) {
+		::close(fd);
+		fd = -1;
+	}
+}
+
+bool ReadKQueueHandle::init(HandleClass *cl, int fd, PollFlags flags,
+		CompletionHandle<PollHandle> &&c) {
+	static_assert(sizeof(ReadKQueueSource) <= DataSize
+			&& sprt::is_standard_layout<ReadKQueueSource>::value);
+	if (!Handle::init(cl, move(c))) {
+		return false;
+	}
+	auto source = new (_data) ReadKQueueSource();
+	return source->init(fd, flags);
+}
+
+Status ReadKQueueHandle::rearm(KQueueData *queue, ReadKQueueSource *source) {
+	auto status = prepareRearm();
+	if (status == Status::Ok) {
+		// EVFILT_READ also carries EV_EOF, so it serves In, HungUp and Err
+		// interest; EVFILT_WRITE is registered only when writability is wanted
+		const bool wantRead = !hasFlag(source->flags, PollFlags::Out)
+				|| hasFlag(source->flags, PollFlags::In);
+		const bool wantWrite = hasFlag(source->flags, PollFlags::Out);
+		source->armed = 0;
+		if (wantRead) {
+			struct kevent ev;
+			EV_SET(&ev, source->fd, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, this);
+			status = queue->update(ev);
+			if (status != Status::Ok) {
+				return status;
+			}
+			source->armed |= ReadKQueueSource::ArmedRead;
+		}
+		if (wantWrite) {
+			struct kevent ev;
+			EV_SET(&ev, source->fd, EVFILT_WRITE, EV_ADD | EV_CLEAR, 0, 0, this);
+			status = queue->update(ev);
+			if (status != Status::Ok) {
+				return status;
+			}
+			source->armed |= ReadKQueueSource::ArmedWrite;
+		}
+	}
+	return status;
+}
+
+Status ReadKQueueHandle::disarm(KQueueData *queue, ReadKQueueSource *source) {
+	auto status = prepareDisarm();
+	if (status == Status::Ok) {
+		// delete exactly what rearm registered; tolerate individual failures
+		// (kqueue removes filters itself when the descriptor is closed)
+		if (source->armed & ReadKQueueSource::ArmedRead) {
+			struct kevent ev;
+			EV_SET(&ev, source->fd, EVFILT_READ, EV_DELETE, 0, 0, this);
+			(void)queue->update(ev);
+		}
+		if (source->armed & ReadKQueueSource::ArmedWrite) {
+			struct kevent ev;
+			EV_SET(&ev, source->fd, EVFILT_WRITE, EV_DELETE, 0, 0, this);
+			(void)queue->update(ev);
+		}
+		source->armed = 0;
+		status = Status::Ok;
+		++_timeline;
+	} else if (status == Status::ErrorAlreadyPerformed) {
+		return Status::Ok;
+	}
+	return status;
+}
+
+void ReadKQueueHandle::notify(KQueueData *queue, ReadKQueueSource *source, const NotifyData &data) {
+	if (_status != Status::Ok) {
+		return;
+	}
+	// userFlags carries ev.filter (see KQueueData::runPoll)
+	PollFlags pollFlags = (int32_t(data.userFlags) == EVFILT_WRITE) ? PollFlags::Out : PollFlags::In;
+	if (data.queueFlags & EV_EOF) {
+		pollFlags |= PollFlags::HungUp;
+	}
+	if (data.queueFlags & EV_ERROR) {
+		pollFlags |= PollFlags::Err;
+	}
+	sendCompletion(toInt(pollFlags), Status::Ok);
+}
+
+NativeHandle ReadKQueueHandle::getNativeHandle() const {
+	return reinterpret_cast<const ReadKQueueSource *>(_data)->fd;
+}
+
+bool ReadKQueueHandle::reset(PollFlags flags) {
+	reinterpret_cast<ReadKQueueSource *>(_data)->flags = flags;
+	return Handle::reset();
+}
+
+bool ProcessKQueueSource::init(int p) {
+	pid = p;
+	return true;
+}
+
+void ProcessKQueueSource::cancel() {
+	// If the handle is cancelled while the child is still running (the exit path never
+	// ran), terminate and reap it so it neither outlives its handle nor leaks a zombie.
+	// `exited` guards against signalling an already-reaped (recycled) pid.
+	if (!exited && pid > 0) {
+		killProcessChild(pid);
+		exited = true;
+	}
+}
+
+bool ProcessKQueueHandle::init(HandleClass *cl, int pid, CompletionHandle<ProcessHandle> &&c) {
+	static_assert(sizeof(ProcessKQueueSource) <= DataSize
+			&& sprt::is_standard_layout<ProcessKQueueSource>::value);
+	if (!Handle::init(cl, move(c))) {
+		return false;
+	}
+	auto source = new (_data) ProcessKQueueSource();
+	return source->init(pid);
+}
+
+Status ProcessKQueueHandle::rearm(KQueueData *queue, ProcessKQueueSource *source) {
+	auto status = prepareRearm();
+	if (status == Status::Ok) {
+		struct kevent ev;
+		EV_SET(&ev, source->pid, EVFILT_PROC, EV_ADD | EV_ONESHOT, NOTE_EXIT | NOTE_EXITSTATUS, 0,
+				this);
+		status = queue->update(ev);
+	}
+	return status;
+}
+
+Status ProcessKQueueHandle::disarm(KQueueData *queue, ProcessKQueueSource *source) {
+	auto status = prepareDisarm();
+	if (status == Status::Ok) {
+		struct kevent ev;
+		EV_SET(&ev, source->pid, EVFILT_PROC, EV_DELETE, 0, 0, this);
+		status = queue->update(ev);
+		++_timeline;
+	} else if (status == Status::ErrorAlreadyPerformed) {
+		return Status::Ok;
+	}
+	return status;
+}
+
+void ProcessKQueueHandle::notify(KQueueData *queue, ProcessKQueueSource *source,
+		const NotifyData &data) {
+	if (_status != Status::Ok) {
+		return;
+	}
+
+	// the child exited (NOTE_EXIT). data.result carries the wait-status when NOTE_EXITSTATUS is set,
+	// but the zombie must still be reaped; use the reap status for the exit code.
+	int status = 0;
+	::waitpid(source->pid, &status, 0);
+	_exitCode = decodeWaitStatus(status);
+	source->exited = true; // reaped here: cancel() must not kill a recycled pid
+
+	auto state = static_cast<ProcessState *>(getUserdata());
+	if (state) {
+		drainProcessPipe(state->readFd, state); // flush any final output first
+		state->readFd = -1;
+		if (state->readerHandle) {
+			state->readerHandle->cancel();
+		}
+	}
+
+	// EVFILT_PROC was registered EV_ONESHOT and is already consumed, so skip the disarm.
+	_status = Status::Suspended;
+	cancel(Status::Done, uint32_t(_exitCode));
+}
+
+NativeHandle ProcessKQueueHandle::getNativeHandle() const {
+	return reinterpret_cast<const ProcessKQueueSource *>(_data)->pid;
+}
+
+Rc<ProcessHandle> spawnProcessKQueue(QueueData *data, HandleClass *processClass, ProcessInfo &&info,
+		Ref *ref) {
+	int pid = -1;
+	int readFd = -1;
+	if (!posixSpawnPipe(info.command, &pid, &readFd)) {
+		return nullptr;
+	}
+
+	auto state = Rc<ProcessState>::alloc();
+	state->reader = sprt::move(info.reader);
+	state->userRef = ref;
+	state->readFd = readFd;
+
+	auto proc = Rc<ProcessKQueueHandle>::create(processClass, pid, sprt::move(info.completion));
+	if (!proc) {
+		::close(readFd);
+		int status = 0;
+		::waitpid(pid, &status, 0);
+		return nullptr;
+	}
+
+	// the process handle owns ProcessState (userdata); ProcessState owns the reader sub-handle.
+	proc->setUserdata(state);
+	state->readerHandle = createProcessReader(data, readFd, state.get());
+	return proc;
+}
+
+//
+// KQueueWatchHandle — EVFILT_VNODE file-watch
+//
+
+// the directory's own lifecycle plus entry changes under it
+static constexpr uint32_t KQueueWatchDirNotes = NOTE_WRITE | NOTE_DELETE | NOTE_RENAME
+		| NOTE_REVOKE;
+// the watched inode: content, metadata and leaving-the-name events
+static constexpr uint32_t KQueueWatchFileNotes = NOTE_WRITE | NOTE_EXTEND | NOTE_ATTRIB
+		| NOTE_DELETE | NOTE_RENAME;
+
+void KQueueWatchSource::cancel() {
+	// closing an fd drops its knote from the kqueue automatically
+	if (fileFd >= 0) {
+		::__sprt_close(fileFd);
+		fileFd = -1;
+	}
+	if (dirFd >= 0) {
+		::__sprt_close(dirFd);
+		dirFd = -1;
+	}
+}
+
+bool KQueueWatchHandle::init(HandleClass *cl, StringView path, WatchFlags mask,
+		CompletionHandle<WatchHandle> &&c) {
+	static_assert(sizeof(KQueueWatchSource) <= DataSize
+			&& sprt::is_standard_layout<KQueueWatchSource>::value);
+
+	if (!Handle::init(cl, move(c))) {
+		return false;
+	}
+
+	_path = path.str<decltype(_path)>();
+	_mask = (mask == WatchFlags::None) ? WatchFlags::Any : mask;
+
+	auto dir = filepath::root(_path);
+	if (dir.empty()) {
+		_dir = ".";
+	} else {
+		_dir = String(dir.data(), dir.size());
+	}
+
+	if (filepath::lastComponent(_path).empty()) {
+		return false;
+	}
+
+	return true;
+}
+
+Status KQueueWatchHandle::registerFile(KQueueData *queue, KQueueWatchSource *source) {
+	source->fileFd = ::__sprt_open(_path.c_str(), __SPRT_O_EVTONLY);
+	if (source->fileFd < 0) {
+		_exists = false;
+		_ino = 0;
+		return sprt::status::errnoToStatus(__sprt_errno);
+	}
+
+	struct __SPRT_STAT_NAME st;
+	if (::__sprt_fstat(source->fileFd, &st) == 0) {
+		_exists = true;
+		_ino = uint64_t(st.st_ino);
+	}
+
+	struct kevent ev;
+	EV_SET(&ev, source->fileFd, EVFILT_VNODE, EV_ADD | EV_CLEAR, KQueueWatchFileNotes, 0, this);
+	return queue->update(ev);
+}
+
+void KQueueWatchHandle::closeFile(KQueueData *queue, KQueueWatchSource *source) {
+	if (source->fileFd >= 0) {
+		struct kevent ev;
+		EV_SET(&ev, source->fileFd, EVFILT_VNODE, EV_DELETE, 0, 0, this);
+		queue->update(ev);
+		::__sprt_close(source->fileFd);
+		source->fileFd = -1;
+	}
+}
+
+void KQueueWatchHandle::rescan(KQueueData *queue, KQueueWatchSource *source, WatchFlags &pending) {
+	struct __SPRT_STAT_NAME st;
+	if (::__sprt_stat(_path.c_str(), &st) == 0) {
+		auto ino = uint64_t(st.st_ino);
+		if (!_exists) {
+			pending |= WatchFlags::Created;
+		} else if (ino != _ino) {
+			// a different inode took the watched name: atomic replace
+			pending |= WatchFlags::MovedTo;
+		}
+		if (!_exists || ino != _ino || source->fileFd < 0) {
+			// re-target the file vnode watch onto the inode now under the name
+			closeFile(queue, source);
+			registerFile(queue, source);
+		}
+		// same inode still in place: the directory write was about another entry
+	} else {
+		if (_exists) {
+			pending |= WatchFlags::Deleted;
+		}
+		closeFile(queue, source);
+		_exists = false;
+		_ino = 0;
+	}
+}
+
+Status KQueueWatchHandle::rearm(KQueueData *queue, KQueueWatchSource *source) {
+	auto status = prepareRearm();
+	if (status != Status::Ok) {
+		return status;
+	}
+
+	source->dirFd = ::__sprt_open(_dir.c_str(), __SPRT_O_EVTONLY);
+	if (source->dirFd < 0) {
+		return sprt::status::errnoToStatus(__sprt_errno);
+	}
+
+	struct __SPRT_STAT_NAME st;
+	if (::__sprt_fstat(source->dirFd, &st) != 0 || !__SPRT_S_ISDIR(st.st_mode)) {
+		::__sprt_close(source->dirFd);
+		source->dirFd = -1;
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	struct kevent ev;
+	EV_SET(&ev, source->dirFd, EVFILT_VNODE, EV_ADD | EV_CLEAR, KQueueWatchDirNotes, 0, this);
+	status = queue->update(ev);
+	if (status != Status::Ok) {
+		::__sprt_close(source->dirFd);
+		source->dirFd = -1;
+		return status;
+	}
+
+	// the watched file may not exist yet — that is fine, the directory watch
+	// reports its creation and registerFile() re-runs from rescan()
+	registerFile(queue, source);
+	return Status::Ok;
+}
+
+Status KQueueWatchHandle::disarm(KQueueData *queue, KQueueWatchSource *source) {
+	auto status = prepareDisarm();
+	if (status == Status::Ok) {
+		closeFile(queue, source);
+		if (source->dirFd >= 0) {
+			struct kevent ev;
+			EV_SET(&ev, source->dirFd, EVFILT_VNODE, EV_DELETE, 0, 0, this);
+			queue->update(ev);
+			::__sprt_close(source->dirFd);
+			source->dirFd = -1;
+		}
+		++_timeline;
+	} else if (status == Status::ErrorAlreadyPerformed) {
+		return Status::Ok;
+	}
+	return status;
+}
+
+void KQueueWatchHandle::notify(KQueueData *queue, KQueueWatchSource *source,
+		const NotifyData &data) {
+	if (_status != Status::Ok) {
+		return;
+	}
+
+	auto fd = int(data.result); // marshalled kevent ident (see processEvents)
+	auto fflags = data.userFlags; // marshalled kevent fflags
+
+	WatchFlags pending = WatchFlags::None;
+	bool dead = false;
+
+	if (fd == source->dirFd) {
+		if (fflags & (NOTE_DELETE | NOTE_REVOKE)) {
+			pending |= WatchFlags::DeleteSelf;
+			dead = true;
+		} else if (fflags & NOTE_RENAME) {
+			pending |= WatchFlags::MoveSelf;
+			dead = true;
+		} else if (fflags & NOTE_WRITE) {
+			rescan(queue, source, pending);
+		}
+	} else if (fd == source->fileFd) {
+		if (fflags & (NOTE_WRITE | NOTE_EXTEND)) {
+			pending |= WatchFlags::Modified;
+		}
+		if (fflags & NOTE_ATTRIB) {
+			pending |= WatchFlags::Attrib;
+		}
+		if (fflags & (NOTE_DELETE | NOTE_RENAME)) {
+			// the watched inode left the name; drop its watch and re-check what
+			// (if anything) the name now refers to
+			if (fflags & NOTE_RENAME) {
+				pending |= WatchFlags::MovedFrom;
+			}
+			closeFile(queue, source);
+			rescan(queue, source, pending);
+		}
+	}
+
+	// the user mask narrows only the maskable kinds; lifecycle events always pass
+	pending = (pending & _mask) | (pending & ~WatchFlags::Any);
+
+	if (pending != WatchFlags::None) {
+		_last = pending;
+		sendCompletion(toInt(pending), Status::Ok);
+	}
+
+	if (dead && _status == Status::Ok) {
+		cancel(Status::Done);
+	}
 }
 
 } // namespace sprt::dispatch

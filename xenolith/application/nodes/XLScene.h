@@ -29,6 +29,7 @@
 #include "XLCoreAttachment.h"
 #include "XLCoreMaterial.h"
 #include "XLCoreFrameRequest.h"
+#include "XLCoreFrameRequestProxy.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -46,8 +47,15 @@ public:
 
 	virtual bool init(Queue::Builder &&, const core::FrameConstraints &);
 
-	virtual void renderRequest(const Rc<FrameRequest> &, sprt::PoolRef *pool);
+	// Adopt an already-built (usually compiled) queue. The scene does not register its internal
+	// resource: ResourceCache is name-keyed with no refcount, so the queue's owner does that.
+	virtual bool init(Rc<Queue> &&, const core::FrameConstraints &);
+
+	virtual void renderRequest(const Rc<core::FrameRequestProxy> &, sprt::PoolRef *pool);
 	virtual void render(FrameInfo &info);
+
+	// The frame currently being visited, or null outside render().
+	FrameInfo *getFrameInfo() const { return _frameInfo; }
 
 	virtual void handleEnter(Scene *) override;
 	virtual void handleExit() override;
@@ -63,22 +71,18 @@ public:
 	virtual void handlePresented(Director *);
 	virtual void handleFinished(Director *);
 
-	virtual void handleFrameStarted(FrameRequest &);
-	virtual void handleFrameEnded(FrameRequest &);
-
-	virtual void handleFrameAttached(const FrameHandle *);
-	virtual void handleFrameDetached(const FrameHandle *);
-
 	virtual void setFrameConstraints(const core::FrameConstraints &);
+
+	/* The window moved or changed size. Notification only: scene geometry follows
+	FrameConstraints. For scenes that care where the window is; the same snapshot is available
+	from Director::getRenderServer()->getWindowGeometry(). App thread. */
+	virtual void handleWindowGeometryChanged(const sprt::window::WindowGeometry &);
 	const core::FrameConstraints &getFrameConstraints() const { return _constraints; }
 
 	virtual Size2 getContentSize() const override;
 
 	virtual void setClipContent(bool);
 	virtual bool isClipContent() const;
-
-	virtual void setLiveReloadAllowed(bool);
-	virtual bool isLiveReloadAllowed() const { return _liveReloadAllowed; }
 
 protected:
 	using Node::init;
@@ -96,10 +100,16 @@ protected:
 	Director *_director = nullptr;
 	SceneContent *_content = nullptr;
 
+	// non-owning; valid only for the duration of visitDraw inside render()
+	FrameInfo *_frameInfo = nullptr;
+
 	Rc<Queue> _queue;
 
+	// False when the queue was adopted (see init(Rc<Queue>&&)): the scene then neither registers
+	// nor unregisters the queue's internal resource.
+	bool _ownsQueue = true;
+
 	core::FrameConstraints _constraints;
-	bool _liveReloadAllowed = false;
 };
 
 } // namespace stappler::xenolith

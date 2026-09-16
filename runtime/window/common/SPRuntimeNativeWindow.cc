@@ -1,0 +1,630 @@
+/**
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
+
+#include <sprt/runtime/window/native_window.h>
+#include <sprt/runtime/window/interface.h>
+#include <sprt/runtime/window/display_config.h>
+#include <sprt/runtime/window/controller.h>
+#include <sprt/runtime/log.h>
+
+namespace sprt::window {
+
+AppWindow::~AppWindow() { }
+
+NativeWindow::~NativeWindow() {
+	if (_controller && _allocated) {
+		_controller->notifyWindowDeallocated(this);
+	}
+	if (_appWindow) {
+		_appWindow = nullptr;
+	}
+}
+
+bool NativeWindow::init(NotNull<ContextController> c, Rc<WindowInfo> &&info,
+		WindowCapabilities caps) {
+	_controller = c;
+	_info = move(info);
+	_info->capabilities = caps;
+	_textInput = Rc<TextInputProcessor>::create(TextInputInfo{
+		.update = [this](const TextInputRequest &req) -> bool { return updateTextInput(req); },
+		.propagate =
+				[this](const TextInputState &state) {
+		_controller->notifyWindowTextInput(this, state);
+	},
+		.cancel = [this]() { cancelTextInput(); },
+	});
+
+	_controller->notifyWindowAllocated(this);
+	_allocated = true;
+
+	return true;
+}
+
+SurfaceInfo NativeWindow::getSurfaceOptions(SurfaceInfo &&info) const { return sprt::move(info); }
+
+FrameConstraints NativeWindow::exportConstraints(uint64_t &serial) const {
+	FrameConstraints c;
+	c.density = _info->density;
+
+	if (c.density == 0.0f) {
+		c.density = 1.0f;
+	}
+
+	auto e = getExtent();
+	if (e.width != 0 && e.height != 0) {
+		c.extent = Extent3(e.width, e.height, 1);
+	} else {
+		c.extent = Extent3(_info->rect.width, _info->rect.height, 1);
+	}
+	c.contentPadding = _info->decorationInsets;
+
+	return move(c);
+}
+
+IRect NativeWindow::getContentScreenRect() const {
+	// No position to report. Deliberately not a guess from _info->rect: on the backends that reach
+	// this default, that field either was never a screen position (Wayland popups store a
+	// parent-relative one) or is whatever the caller asked for and the window system ignored.
+	auto e = getExtent();
+	return IRect(0, 0, int32_t(e.width), int32_t(e.height));
+}
+
+WindowGeometry NativeWindow::getWindowGeometry() const {
+	WindowGeometry ret;
+
+	ret.hasPosition = hasFlag(_info->capabilities, WindowCapabilities::WindowPosition);
+	ret.rect = getContentScreenRect();
+	if (!ret.hasPosition) {
+		// The size is still worth reporting; the origin is not, and zeroing it here means a backend
+		// cannot leak a stale or parent-relative x/y through a capability it never claimed.
+		ret.rect.x = 0;
+		ret.rect.y = 0;
+	}
+
+	return ret;
+}
+
+void NativeWindow::handleLayerEnter(const WindowLayer &layer) {
+	// Notification only - the aggregate state is recomputed in updateLayerState()
+}
+
+void NativeWindow::handleLayerExit(const WindowLayer &layer) {
+	// Notification only - the aggregate state is recomputed in updateLayerState()
+}
+
+/* Everything a layer says about the POINTER, as opposed to about the application.
+
+The grip and the two window-menu flags are all answers to "what does pressing here do", and so is
+the cursor: they belong to one layer and are taken from one layer. What is left - BackButtonHandler
+- is not positional at all; it asks whether anything in the application handles the system back
+action, and is accumulated over every layer instead. */
+static constexpr auto s_pointerLayerFlags = WindowLayerFlags::GripMask
+		| WindowLayerFlags::WindowMenuLeft | WindowLayerFlags::WindowMenuRight;
+
+void NativeWindow::updateLayerState() {
+	auto cursor = WindowCursor::Undefined;
+	auto pointerFlags = WindowLayerFlags::None;
+	bool hasTopLayer = false;
+
+	_currentLayerFlags = WindowLayerFlags::None;
+
+	for (auto &it : _layers) {
+		bool entered = false;
+		for (auto &cit : _currentLayers) {
+			if (cit == it) {
+				entered = true;
+				break;
+			}
+		}
+		if (!entered) {
+			continue;
+		}
+
+		if (!hasTopLayer
+				&& (it.cursor != WindowCursor::Undefined
+						|| (it.flags & s_pointerLayerFlags) != WindowLayerFlags::None)) {
+			hasTopLayer = true;
+			cursor = it.cursor;
+			pointerFlags = it.flags & s_pointerLayerFlags;
+		}
+
+		_currentLayerFlags |= it.flags & ~s_pointerLayerFlags;
+	}
+
+	_currentLayerFlags |= pointerFlags & ~WindowLayerFlags::GripMask;
+
+	/* GripGuard wins the contest above, then publishes NOTHING.*/
+	_gripFlags = pointerFlags & WindowLayerFlags::GripMask;
+	if (_gripFlags == WindowLayerFlags::GripGuard) {
+		_gripFlags = WindowLayerFlags::None;
+	}
+
+
+	// No layer under the pointer asks for a shape - that means the default arrow, not "keep
+	// whatever was set last". Undefined is not a shape a backend can apply: the Wayland
+	// cursor-shape protocol has no value for it, so handing it down would leave the pointer
+	// frozen in the shape of the layer it just left.
+	if (cursor == WindowCursor::Undefined) {
+		cursor = WindowCursor::Default;
+	}
+
+	if (cursor != _layerCursor) {
+		_layerCursor = cursor;
+		setCursor(cursor);
+	}
+}
+
+void NativeWindow::acquireTextInput(const TextInputRequest &req) { _textInput->run(req); }
+
+void NativeWindow::releaseTextInput() { _textInput->cancel(); }
+
+void NativeWindow::performTextInput(const TextInputCommand &cmd) {
+	if (!_textInput) {
+		return;
+	}
+
+	switch (cmd.op) {
+	case TextInputCommandOp::Insert:
+		if (cmd.replacement == TextCursor::InvalidCursor) {
+			_textInput->insertText(cmd.text, cmd.compose);
+		} else {
+			_textInput->insertText(cmd.text, cmd.replacement);
+		}
+		break;
+	case TextInputCommandOp::SetMarked:
+		_textInput->setMarkedText(cmd.text, cmd.replacement, cmd.marked);
+		break;
+	case TextInputCommandOp::Unmark: _textInput->unmarkText(); break;
+	case TextInputCommandOp::DeleteBackward: _textInput->deleteBackward(); break;
+	case TextInputCommandOp::DeleteForward: _textInput->deleteForward(); break;
+	case TextInputCommandOp::Cancel: _textInput->cancel(); break;
+	}
+}
+
+void NativeWindow::setAppWindow(Rc<AppWindow> &&w) {
+	_appWindow = move(w);
+	_appWindow->run();
+}
+
+AppWindow *NativeWindow::getAppWindow() const { return _appWindow; }
+
+void NativeWindow::updateLayers(Vector<WindowLayer> &&layers) {
+	if (_layers != layers) {
+		_layers = sprt::move(layers);
+		if (_handleLayerForMotion) {
+			handleMotionEvent(InputEventData{
+				0,
+				InputEventName::MouseMove,
+				{{
+					InputMouseButton::None,
+					InputModifier::None,
+					_layerLocation.x,
+					_layerLocation.y,
+				}},
+			});
+		}
+	}
+}
+
+void NativeWindow::setFullscreen(FullscreenInfo &&info, Function<void(Status)> &&cb, Ref *ref) {
+	/* A COMPLETION IS OPTIONAL, and the runtime's own caller relies on that: XcbWindow::mapWindow
+	asks for WindowInfo::fullscreen - the documented "initial fullscreen mode" - with no callback at
+	all, and so does anything else that wants the state changed rather than reported.
+
+	Normalized once, here, because every branch below answers through `cb` and there are fifteen of
+	them, several already moved into continuations. An empty sprt::function is not a callable that
+	does nothing; calling one aborts the process. So a window asked to open fullscreen crashed on
+	the frame it mapped, on the only backend that honours the field. */
+	if (!cb) {
+		cb = [](Status) { };
+	}
+
+	if (!hasFlag(_info->capabilities, WindowCapabilities::Fullscreen)) {
+		cb(Status::ErrorNotSupported);
+		return;
+	}
+
+	if (_hasPendingFullscreenOp) {
+		cb(Status::ErrorAgain);
+		return;
+	}
+
+	auto hasModeSetting = false;
+	auto hasSeamlessModeSetting = false;
+	if (hasFlag(_info->capabilities, WindowCapabilities::FullscreenWithMode)) {
+		hasModeSetting = true;
+	}
+
+	if (hasFlag(_info->capabilities, WindowCapabilities::FullscreenSeamlessModeSwitch)) {
+		hasSeamlessModeSetting = true;
+	}
+
+	auto dcm = _controller->getDisplayConfigManager();
+
+	if (info == FullscreenInfo::None) {
+		// restore saved mode
+		dcm->restoreMode(nullptr, this);
+
+		// remove fullscreen state
+		if (hasFlag(_info->state, WindowState::Fullscreen)) {
+			_controller->retainPollDepth();
+			auto st = setFullscreenState(sprt::move(info));
+			_controller->releasePollDepth();
+			cb(st);
+		} else {
+			// not in fullsreen
+			cb(Status::Declined);
+		}
+	} else if (info == FullscreenInfo::Current) {
+		if (!hasFlag(_info->state, WindowState::Fullscreen)) {
+			_controller->retainPollDepth();
+			auto st = setFullscreenState(sprt::move(info));
+			_controller->releasePollDepth();
+			cb(st);
+		} else {
+			cb(Status::Declined);
+		}
+	} else {
+		auto config = dcm->getCurrentConfig();
+
+		auto mon = config->getMonitor(info.id);
+		if (!mon) {
+			cb(Status::ErrorInvalidArguemnt);
+			return;
+		}
+
+		auto m = mon->getMode(info.mode);
+		auto &current = mon->getCurrent();
+		if (!m) {
+			cb(Status::ErrorInvalidArguemnt);
+			return;
+		}
+
+		// update info with concrete parameters
+		info.id = mon->id;
+		info.mode = m->mode;
+
+		if (hasFlag(_info->state, WindowState::Fullscreen)) {
+			// we already in fullscreen mode
+			if (_info->fullscreen.id != info.id) {
+				// switch monitor
+
+				if (info.mode == ModeInfo::Current || info.mode == current) {
+					if (!dcm->hasSavedMode()) {
+						// no saved mode - just switch to another monitor
+						_controller->retainPollDepth();
+						auto st = setFullscreenState(sprt::move(info));
+						_controller->releasePollDepth();
+						cb(st);
+						return;
+					} else {
+						// with fullscreen engine, mode for other monitor should not be other then saved-current
+						// so, restore saved mode, then fullscreen window on other monitor
+						if (!hasModeSetting) {
+							cb(Status::ErrorNotSupported);
+							return;
+						}
+						dcm->restoreMode(
+								[this, cb = sprt::move(cb), info = sprt::move(info),
+										ref = Rc<Ref>(ref)](Status st) mutable {
+							if (st == Status::Ok) {
+								_controller->retainPollDepth();
+								auto st = setFullscreenState(sprt::move(info));
+								_controller->releasePollDepth();
+								cb(st);
+							} else {
+								oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION,
+										"NativeWindow", "Fail to reset mode for fullscreen: ", st);
+								cb(st);
+							}
+							ref = nullptr;
+						},
+								this);
+						return;
+					}
+				} else {
+					// requested fullscreen to another monitor with custom mode
+					if (!hasModeSetting) {
+						cb(Status::ErrorNotSupported);
+						return;
+					}
+					// unset fullscreen, then set on other monitor with `setModeExclusive`
+					_controller->retainPollDepth();
+					auto st = setFullscreenState(FullscreenInfo(FullscreenInfo::None));
+					_controller->releasePollDepth();
+					cb(st);
+				}
+			} else {
+				// requested mode-switch for current monitor
+				if (info.mode == ModeInfo::Current || info.mode == current) {
+					// already on mede, decline
+					cb(Status::Declined);
+					return;
+				} else {
+					if (!hasModeSetting) {
+						cb(Status::ErrorNotSupported);
+						return;
+					}
+
+					if (!hasSeamlessModeSetting) {
+						// exit from fullscreen before mode switch
+						_controller->retainPollDepth();
+						auto st = setFullscreenState(FullscreenInfo(FullscreenInfo::None));
+						_controller->releasePollDepth();
+						cb(st);
+					}
+				}
+			}
+		} else {
+			// not in fullscreen
+			// check if requested mode is current
+			if (info.mode == ModeInfo::Current || info.mode == current) {
+				// if it is, - just set fullscreen flag
+				_controller->retainPollDepth();
+				auto st = setFullscreenState(sprt::move(info));
+				_controller->releasePollDepth();
+				cb(st);
+				return;
+			}
+			// now - just set mode
+		}
+
+		if (!hasModeSetting) {
+			cb(Status::ErrorNotSupported);
+			return;
+		}
+
+		// set new mode for monitor
+		dcm->setModeExclusive(mon->id, m->mode,
+				[this, cb = sprt::move(cb), info = sprt::move(info), ref = Rc<Ref>(ref)](
+						Status st) mutable {
+			if (st == Status::Ok) {
+				_controller->retainPollDepth();
+				auto status = setFullscreenState(sprt::move(info));
+				_controller->releasePollDepth();
+				if (status != Status::Ok && status != Status::Declined) {
+					auto dcm = _controller->getDisplayConfigManager();
+					dcm->restoreMode(nullptr, nullptr);
+					cb(status);
+				} else {
+					cb(status);
+				}
+			} else {
+				oslog::vprint(oslog::Error, __SPRT_LOCATION, "NativeWindow",
+						"Fail to set mode for fullscreen: ", st);
+				cb(st);
+			}
+			ref = nullptr;
+		},
+				this);
+	}
+}
+
+void NativeWindow::handleInputEvents(Vector<InputEventData> &&events) {
+	for (auto &event : events) {
+		switch (event.event) {
+		case InputEventName::MouseMove: handleMotionEvent(event); break;
+		case InputEventName::KeyPressed:
+		case InputEventName::KeyRepeated:
+		case InputEventName::KeyReleased:
+		case InputEventName::KeyCanceled:
+			if (_handleTextInputFromKeyboard && isTextInputEnabled() && _textInput
+					&& _textInput->canHandleInputEvent(event)) {
+				// forward to text input
+				if (_textInput->handleInputEvent(event)) {
+					event.event = InputEventName::KeyCanceled; // force-cancel processed key
+				}
+			}
+			break;
+		default: break;
+		}
+	}
+
+	_controller->notifyWindowInputEvents(this, sprt::move(events));
+}
+
+void NativeWindow::dispatchPendingEvents() {
+	if (!_pendingEvents.empty()) {
+		handleInputEvents(sprt::move(_pendingEvents));
+	}
+	_pendingEvents.clear();
+}
+
+bool NativeWindow::enableState(WindowState state) {
+	if (hasFlag(state, WindowState::Fullscreen)) {
+		setFullscreen(FullscreenInfo(FullscreenInfo::Current), [](Status) { }, nullptr);
+		return true;
+	} else if (hasFlag(state, WindowState::CloseRequest)) {
+		if (!hasFlag(_info->state, WindowState::CloseRequest)) {
+			_appWindow->close(true);
+			return true;
+		} else {
+			updateState(0, _info->state & ~WindowState::CloseGuard);
+			_appWindow->close(true);
+			return true;
+		}
+	} else if (hasFlag(state, WindowState::CloseGuard)) {
+		updateState(0, _info->state | WindowState::CloseGuard);
+		return true;
+	}
+	return false;
+}
+
+bool NativeWindow::disableState(WindowState state) {
+	if (hasFlag(state, WindowState::Fullscreen)) {
+		setFullscreen(FullscreenInfo(FullscreenInfo::None), [](Status) { }, nullptr);
+		return true;
+	} else if (hasFlag(state, WindowState::CloseGuard)) {
+		updateState(0, _info->state & ~WindowState::CloseGuard);
+	} else if (hasFlag(state, WindowState::CloseRequest)) {
+		updateState(0, _info->state & ~WindowState::CloseRequest);
+	}
+
+	return false;
+}
+
+void NativeWindow::openWindowMenu(Vec2 pos) {
+	// do nothing
+}
+
+void NativeWindow::handleBackButton() {
+	// do nothing
+}
+
+Status NativeWindow::setPreferredFrameRate(float) { return Status::ErrorNotImplemented; }
+
+static bool containsPoint(const Rect &rect, const Vec2 &point, float padding = 0.0f) {
+	bool bRet = false;
+
+	if (point.x >= rect.origin.x - padding && point.x <= (rect.origin.x + rect.size.width) + padding
+			&& point.y >= rect.origin.y - padding
+			&& point.y <= (rect.origin.y + rect.size.height) + padding) {
+		bRet = true;
+	}
+
+	return bRet;
+}
+
+void NativeWindow::handleMotionEvent(const InputEventData &event) {
+	if (!_handleLayerForMotion) {
+		return;
+	}
+
+	_layerLocation = event.getLocation();
+
+	auto isInLayerSet = [this](const WindowLayer &layer) {
+		for (auto &it : _layers) {
+			if (it == layer) {
+				return true;
+			}
+		}
+		return false;
+	};
+
+	// A layer stays entered only while it is both under the pointer and still in the layer set.
+	// The application replaces the whole set on every input commit, so a layer that was dropped
+	// while the pointer stood still - a menu item whose own click replaced the layout - has to be
+	// exited as well. Otherwise it lingers in _currentLayers and keeps imposing its cursor and
+	// flags for as long as the pointer stays within the rect it used to occupy.
+	Vector<WindowLayer> layersToExit;
+	auto it = _currentLayers.begin();
+	while (it != _currentLayers.end()) {
+		if (!containsPoint(it->rect, _layerLocation) || !isInLayerSet(*it)) {
+			layersToExit.emplace_back(*it);
+			it = _currentLayers.erase(it);
+		} else {
+			++it;
+		}
+	}
+
+	Vector<WindowLayer> layersToEnter;
+	for (auto &lit : _layers) {
+		if (!containsPoint(lit.rect, _layerLocation)) {
+			continue;
+		}
+		bool found = false;
+		for (auto &cit : _currentLayers) {
+			if (cit == lit) {
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			layersToEnter.emplace_back(_currentLayers.emplace_back(lit));
+		}
+	}
+
+	/* Aggregate once, so a batch of exits does not walk the cursor through intermediate shapes -
+	and unconditionally, ahead of the early-out below.
+
+	The resolution is top-first, so it depends on the ORDER of `_layers` and not only on which of
+	them are entered: a commit that reorders the array - a widget that came to the front over a
+	grip it already overlapped - changes the answer while entering and exiting nothing. Both calls
+	it can arrive by are equality-guarded further down (setCursor), so a pointer moving inside one
+	layer still costs nothing. */
+	updateLayerState();
+
+	if (layersToExit.empty() && layersToEnter.empty()) {
+		return;
+	}
+
+	for (auto &it : layersToExit) { handleLayerExit(it); }
+	for (auto &it : layersToEnter) { handleLayerEnter(it); }
+}
+
+void NativeWindow::emitAppFrame() {
+	if (_appWindow) {
+		_appWindow->setReadyForNextFrame();
+		_appWindow->update(PresentationUpdateFlags::DisplayLink);
+	}
+}
+
+void NativeWindow::setModalBlocked(bool blocked) {
+	// Only the observable bit here; the actual input cut-off is in the controller, and the OS
+	// hint (if the platform has one) is added by the override.
+	if (blocked) {
+		updateState(0, _info->state & ~WindowState::Enabled);
+	} else {
+		updateState(0, _info->state | WindowState::Enabled);
+	}
+}
+
+void NativeWindow::updateState(uint32_t id, WindowState state) {
+	if (state == _info->state) {
+		return;
+	}
+
+	auto changes = state ^ _info->state;
+
+	_info->state = state;
+
+	// A menu must not outlive focus; the controller defers the decision because focus may simply
+	// be moving onto the popup itself.
+	if (hasFlag(changes, WindowState::Focused) && !hasFlag(state, WindowState::Focused)) {
+		_controller->notifyWindowFocusLost(this);
+	}
+
+	// try to rewrite state in already pending event
+	for (auto &it : _pendingEvents) {
+		if (it.event == InputEventName::WindowState) {
+			it.window.state = state;
+			it.window.changes |= changes;
+			return;
+		}
+	}
+
+	// add new event
+	InputEventData event{
+		id,
+		InputEventName::WindowState,
+		{.input = {InputMouseButton::None, InputModifier::None, NaN<float>, NaN<float>}},
+		{.window = {state, changes}},
+	};
+
+	_pendingEvents.emplace_back(sprt::move(event));
+
+	if (!_controller->isWithinPoll()) {
+		dispatchPendingEvents();
+	}
+}
+
+} // namespace sprt::window

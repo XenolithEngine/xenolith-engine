@@ -811,6 +811,14 @@ StringView Queue::getName() const { return _data->key; }
 
 FrameRenderPassState Queue::getDefaultSyncPassState() const { return _data->defaultSyncPassState; }
 
+PassRecordingMode Queue::getRecordingMode() const { return _data->recordingMode; }
+
+InstanceApi Queue::getApi() const { return _data->api; }
+
+uint32_t Queue::getTypeTag() const { return _data->typeTag; }
+
+QueueDamageFlags Queue::getDamageFlags() const { return _data->damage; }
+
 const HashTable<ProgramData *> &Queue::getPrograms() const { return _data->programs; }
 
 const HashTable<QueuePassData *> &Queue::getPasses() const { return _data->passes; }
@@ -1209,6 +1217,25 @@ bool DescriptorSetBuilder::addDescriptorArray(const AttachmentPassData *attachme
 
 	_data->descriptors.emplace_back(p);
 	((AttachmentPassData *)attachment)->descriptors.emplace_back(p);
+
+	return true;
+}
+
+bool DescriptorSetBuilder::addSampler(StringView key, SamplerInfo &&info) {
+	auto pool = _data->layout->pass->queue->pool;
+	memory::context ctx(pool);
+
+	auto p = new (pool) PipelineDescriptor;
+	p->key = key.pdup(pool);
+	p->set = _data;
+	p->attachment = nullptr;
+	p->type = DescriptorType::Sampler;
+	p->layout = AttachmentLayout::Ignored;
+	p->count = 1;
+	p->index = uint32_t(_data->descriptors.size());
+	p->sampler = move(info);
+
+	_data->descriptors.emplace_back(p);
 
 	return true;
 }
@@ -1627,7 +1654,14 @@ Queue::Builder::Builder(StringView name)
 
 Queue::Builder::~Builder() {
 	if (_data) {
+		// A Builder owns the Rc<> attachments/passes/programs it created (stored in
+		// pool-allocated *Data structs). If the Builder is never consumed by
+		// Queue::init(), destroying the pool alone frees the structs without running
+		// their destructors, orphaning those refcounted objects. Release them
+		// explicitly, mirroring Queue::~Queue().
+		_data->clear();
 		auto p = _data->pool;
+		_data->~QueueData();
 		memory::pool::destroy(p);
 		_data = nullptr;
 	}
@@ -1638,6 +1672,14 @@ static sprt::atomic<uint64_t> s_AttachmentCurrentIndex = 1;
 void Queue::Builder::setDefaultSyncPassState(FrameRenderPassState val) {
 	_data->defaultSyncPassState = val;
 }
+
+void Queue::Builder::setRecordingMode(PassRecordingMode val) { _data->recordingMode = val; }
+
+void Queue::Builder::setDamageFlags(QueueDamageFlags val) { _data->damage = val; }
+
+void Queue::Builder::setApi(InstanceApi val) { _data->api = val; }
+
+void Queue::Builder::setTypeTag(uint32_t val) { _data->typeTag = val; }
 
 const AttachmentData *Queue::Builder::addAttachemnt(StringView name,
 		const Callback<Rc<Attachment>(AttachmentBuilder &)> &cb) {

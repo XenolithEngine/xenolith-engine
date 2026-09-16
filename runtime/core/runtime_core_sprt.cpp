@@ -50,10 +50,22 @@ THE SOFTWARE.
 
 #if SPRT_LINUX || SPRT_ANDROID
 #include "linux/sprt_lock.cc"
-#elif SPRT_MACOS
+#elif SPRT_APPLE
 #include "darwin/sprt_lock.cc"
 #elif SPRT_WINDOWS
 #include "windows/sprt_lock.cc"
+#elif SPRT_WASM
+#include "wasm/sprt_lock.cc"
+#elif SPRT_NUTTX
+#include "nuttx/sprt_lock.cc"
+#include "nuttx/emutls.cc"
+#elif SPRT_EMBOX_USER
+// No emutls sibling: the EL0 startup sets up a real PT_TLS block and
+// TPIDR_EL0 (libc_impl embox_user/startup.cc), so thread_local is native.
+#include "embox_user/sprt_lock.cc"
+#elif SPRT_EMBOX
+#include "embox/sprt_lock.cc"
+#include "embox/emutls.cc"
 #else
 #error Not implemented
 #endif
@@ -526,6 +538,24 @@ bool recursive_timed_mutex::try_lock() noexcept {
 		++_mutex.counter;
 		return true;
 		break;
+	default: break;
+	}
+	return false;
+}
+
+bool recursive_timed_mutex::try_lock_for(const timeout_type &rel_time) {
+	// Timed variant of lock(): same recursive re-lock path, but with the recursive-lock
+	// clock (__sprt_sprt_rlock_now) and a finite, mutable timeout that the futex wait
+	// loop decrements. Status::Timeout falls through to `false`.
+	__sprt_sprt_rlock_t tid;
+	*rmutex_base::getNativeValue(tid) = __sprt_gettid();
+
+	timeout_type timeout = rel_time;
+	auto res = rmutex_base::_lock<__sprt_sprt_rlock_wait, __sprt_sprt_rlock_now,
+			bool(__SPRT_SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(_mutex.value, tid, &timeout, 0);
+	switch (res) {
+	case Status::Ok:
+	case Status::Propagate: ++_mutex.counter; return true;
 	default: break;
 	}
 	return false;

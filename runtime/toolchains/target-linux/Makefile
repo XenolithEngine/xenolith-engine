@@ -46,7 +46,6 @@ LIBS := \
 	liblzma.a \
 	libzstd.a \
 	libbrotlienc.a \
-	libicuuc.a \
 	libjpeg.a \
 	libpng16.a \
 	libgif.a \
@@ -54,23 +53,23 @@ LIBS := \
 	libtiff.a \
 	libfreetype.a \
 	libharfbuzz.a \
+	libSheenBidi.a \
 	libsqlite3.a \
 	libmbedtls.a \
 	libnghttp3.a \
+	libngtcp2.a \
 	libssl.a \
 	libgost_engine.a \
-	libidn2.a \
 	libcurl-openssl.a \
-	libzip-openssl.a \
 	libcurl-mbedtls.a \
-	libzip-mbedtls.a \
 	libiwasm-release.a \
 	libiwasm-debug.a \
 	libbacktrace.a \
 	libxml2.a \
 	libffi.a \
 	libexpat.a \
-	libwayland-client.a
+	libwayland-client.a \
+	libdrm.so.2
 
 WASM_LIBS := \
 	libiwasm-release.a \
@@ -87,48 +86,41 @@ INCLUDES := \
 
 ifndef SP_ARCH
 
-ARCHS := e2k x86_64
+# Цели задаются полным триплетом (роутинг как у target-apple). libc выбирается
+# по суффиксу: -unknown-linux-gnu -> glibc/, -unknown-linux-musl -> musl/.
+# Сборка сторонних библиотек (ветка SP_ARCH ниже) libc-агностична и общая.
+GNU_ARCHS := x86_64 aarch64 riscv64
+MUSL_ARCHS := x86_64 aarch64 riscv64
 
-all: $(ARCHS)
+# По умолчанию — e2k + x86_64 (glibc), как раньше.
+all: e2k x86_64-unknown-linux-gnu
 
 clean:
 
-x86_64:
-	$(MAKE) -C glibc out SP_ARCH_TARGET=x86_64 \
-		OUT_HOST=$(abspath $(MAKE_ROOT)../hosts/$(HOST_ID)) \
-		OUT_SYSROOT=$(OUT_SYSROOT)/x86_64-unknown-linux-gnu
-	$(MAKE) -f $(THIS_FILE) SP_ARCH=x86_64 SP_TARGET=x86_64-unknown-linux-gnu \
-		OUT_SYSROOT=$(OUT_SYSROOT)/x86_64-unknown-linux-gnu
-	$(MAKE) -f $(INSTALL_TARGET_FILE) \
-		T_INTERMEDIATE=$(OUT_SYSROOT)/x86_64-unknown-linux-gnu \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu
+# $(1)=арка, $(2)=суффикс libc (gnu|musl), $(3)=подкаталог libc (glibc|musl).
+define linux_target =
+$(1)-unknown-linux-$(2):
+	$$(MAKE) -C $(3) out SP_ARCH_TARGET=$(1) \
+		OUT_HOST=$$(abspath $$(MAKE_ROOT)../hosts/$$(HOST_ID)) \
+		OUT_SYSROOT=$$(OUT_SYSROOT)/$(1)-unknown-linux-$(2)
+	$$(MAKE) -f $$(THIS_FILE) SP_ARCH=$(1) SP_TARGET=$(1)-unknown-linux-$(2) \
+		OUT_SYSROOT=$$(OUT_SYSROOT)/$(1)-unknown-linux-$(2)
+	$$(MAKE) -f $$(INSTALL_TARGET_FILE) \
+		T_INTERMEDIATE=$$(OUT_SYSROOT)/$(1)-unknown-linux-$(2) \
+		T_TARGET=$$(TOOLCHAIN_TARGETS)/$(1)-unknown-linux-$(2)
+endef
 
-aarch64:
-	$(MAKE) -C glibc out SP_ARCH_TARGET=aarch64 \
-		OUT_HOST=$(abspath $(MAKE_ROOT)../hosts/$(HOST_ID)) \
-		OUT_SYSROOT=$(OUT_SYSROOT)/aarch64-unknown-linux-gnu
-	$(MAKE) -f $(THIS_FILE) SP_ARCH=aarch64 SP_TARGET=aarch64-unknown-linux-gnu \
-		OUT_SYSROOT=$(OUT_SYSROOT)/aarch64-unknown-linux-gnu
-	$(MAKE) -f $(INSTALL_TARGET_FILE) \
-		T_INTERMEDIATE=$(OUT_SYSROOT)/aarch64-unknown-linux-gnu \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-unknown-linux-gnu
-
-riscv64:
-	$(MAKE) -C glibc out SP_ARCH_TARGET=riscv64 \
-		OUT_HOST=$(abspath $(MAKE_ROOT)../hosts/$(HOST_ID)) \
-		OUT_SYSROOT=$(OUT_SYSROOT)/riscv64-unknown-linux-gnu
-	$(MAKE) -f $(THIS_FILE) SP_ARCH=riscv64 SP_TARGET=riscv64-unknown-linux-gnu \
-		OUT_SYSROOT=$(OUT_SYSROOT)/riscv64-unknown-linux-gnu
-	$(MAKE) -f $(INSTALL_TARGET_FILE) \
-		T_INTERMEDIATE=$(OUT_SYSROOT)/riscv64-unknown-linux-gnu \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/riscv64-unknown-linux-gnu
+$(foreach a,$(GNU_ARCHS),$(eval $(call linux_target,$(a),gnu,glibc)))
+$(foreach a,$(MUSL_ARCHS),$(eval $(call linux_target,$(a),musl,musl)))
 
 e2k:
 	@mkdir -p $(abspath ../e2k-unknown-linux) $(abspath ../e2k-unknown-linux/include) $(abspath ../e2k-unknown-linux/lib) $(abspath ../e2k-unknown-linux/bin)
 	$(MAKE) -f $(THIS_FILE) SP_ARCH=e2k SP_TARGET=e2k-unknown-linux \
 		OUT_SYSROOT=$(OUT_SYSROOT)/e2k-unknown-linux SP_TOOLCHAIN_PREFIX=$(LCC_TOOLCHAIN_PATH)/fs
 
-.PHONY: all x86_64 aarch64 riscv64 e2k
+.PHONY: all clean e2k \
+	$(addsuffix -unknown-linux-gnu,$(GNU_ARCHS)) \
+	$(addsuffix -unknown-linux-musl,$(MUSL_ARCHS))
 
 else # SP_ARCH
 
@@ -166,7 +158,11 @@ ifdef SP_IS_NATIVE
 FORWARD_VARS += SP_NATIVE=1
 endif
 
+# compiler-rt asan: для glibc собирается через compiler_rt.mk. Для musl libc++ и
+# compiler-rt уже даёт подкаталог musl/ (asan под musl в первой версии не строим).
+ifeq (,$(findstring musl,$(SP_TARGET)))
 INTERNAL_LIBS += clang/lib/linux/libclang_rt.asan-$(SP_ARCH).a
+endif
 
 ARCH_LIBS = \
 	$(addprefix $(SP_INSTALL_PREFIX)/lib/,$(INTERNAL_LIBS)) \
@@ -218,6 +214,9 @@ $(SP_INSTALL_PREFIX)/usr/lib/libfreetype.a: ../common/freetype.mk $(SP_INSTALL_P
 $(SP_INSTALL_PREFIX)/usr/lib/libharfbuzz.a:../common/harfbuzz.mk $(SP_INSTALL_PREFIX)/usr/lib/libfreetype.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
+$(SP_INSTALL_PREFIX)/usr/lib/libSheenBidi.a: ../common/sheenbidi.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
 $(SP_INSTALL_PREFIX)/usr/lib/libsqlite3.a: ../common/sqlite.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
@@ -227,29 +226,41 @@ $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a: ../common/mbedtls.mk
 $(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a:  ../common/nghttp3.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
+# ngtcp2 QUIC transport with the OpenSSL (ossl) crypto backend: libngtcp2.a +
+# libngtcp2_crypto_ossl.a, consumed by curl for HTTP/3 (USE_NGTCP2).
+$(SP_INSTALL_PREFIX)/usr/lib/libngtcp2.a:  ../common/ngtcp2.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
 $(SP_INSTALL_PREFIX)/usr/lib/libssl.a: $(MAKE_ROOT)openssl.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a:  ../common/gost.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-# Actually, use libuidna to mimic libidn2
-$(SP_INSTALL_PREFIX)/usr/lib/libidn2.a: $(MAKE_ROOT)uidna.mk $(SP_INSTALL_PREFIX)/usr/lib/libicuuc.a
-	$(MAKE) -f $< $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/include/idn2.h: $(MAKE_ROOT)../../include/sprt/compat/idn2.h
+	@$(MKDIR) $(SP_INSTALL_PREFIX)/usr/include
+	cp -f $< $@
+
+# ICU is deliberately NOT in LIBS: nothing links it any more (the runtime does its
+# own case mapping, collation and IDN), and it is by far the most expensive library
+# here - the cross build needs a full native ICU built first just to generate its
+# data. The rule stays so a real libicuuc can still be produced on demand, for
+# comparing the runtime's Unicode behaviour against the reference implementation:
+#
+#     make -C target-linux x86_64-unknown-linux-gnu   # sysroot, no ICU
+#     make -C target-linux icu SP_ARCH=... SP_TARGET=...
+#
+# The icu4c *sources* are still downloaded by src.mk - they are the UCD and
+# conformance data the generators read. See the icu4c block there.
+icu: $(SP_INSTALL_PREFIX)/usr/lib/libicuuc.a
 
 $(SP_INSTALL_PREFIX)/usr/lib/libicuuc.a: $(MAKE_ROOT)icu.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a $(SP_INSTALL_PREFIX)/usr/lib/libidn2.a
+$(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a $(SP_INSTALL_PREFIX)/usr/lib/libngtcp2.a $(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a $(SP_INSTALL_PREFIX)/usr/include/idn2.h
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
-$(SP_INSTALL_PREFIX)/usr/lib/libcurl-mbedtls.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a $(SP_INSTALL_PREFIX)/usr/lib/libidn2.a
-	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=mbedtls
-
-$(SP_INSTALL_PREFIX)/usr/lib/libzip-openssl.a: ../common/libzip.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a $(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a
-	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
-
-$(SP_INSTALL_PREFIX)/usr/lib/libzip-mbedtls.a: ../common/libzip.mk $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a
+$(SP_INSTALL_PREFIX)/usr/lib/libcurl-mbedtls.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a $(SP_INSTALL_PREFIX)/usr/include/idn2.h
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=mbedtls
 
 $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-release.a $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-debug.a:  ../common/wamr.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a
@@ -270,6 +281,12 @@ $(SP_INSTALL_PREFIX)/usr/lib/libexpat.a: $(MAKE_ROOT)expat.mk
 $(SP_INSTALL_PREFIX)/usr/lib/libwayland-client.a: $(MAKE_ROOT)wayland.mk $(SP_INSTALL_PREFIX)/usr/lib/libxml2.a $(SP_INSTALL_PREFIX)/usr/lib/libffi.a $(SP_INSTALL_PREFIX)/usr/lib/libexpat.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
+# The only shared library in the set (for why, see common/libdrm.mk). Direct KMS
+# rendering needs it, and there must be exactly ONE per process: the GPU driver
+# links it too.
+$(SP_INSTALL_PREFIX)/usr/lib/libdrm.so.2: ../common/libdrm.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
 $(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h: ../common/vulkan-headers.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 	touch $(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h
@@ -287,6 +304,6 @@ $(SP_INSTALL_PREFIX)/share/licenses:
 	cp -rf runtime/include/* $(SP_INSTALL_PREFIX)/include
 	cp -rf ../licenses $(SP_INSTALL_PREFIX)/share/licenses
 
-.PHONY: all
+.PHONY: all icu
 
 endif

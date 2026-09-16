@@ -23,6 +23,8 @@
 
 #include <sprt/runtime/dispatch/event.h>
 
+#include <sprt/c/bits/__sprt_def.h> // SPRT_WASM
+
 #if SPRT_LINUX || SPRT_ANDROID
 
 #include "platform/linux/SPEvent-linux.cc"
@@ -38,8 +40,12 @@
 
 #include "platform/fd/SPEventEventFd.cc"
 #include "platform/fd/SPEventSignalFd.cc"
+#include "platform/fd/SPEventInotify.cc"
 #include "platform/fd/SPEventTimerFd.cc"
 #include "platform/fd/SPEventPollFd.cc"
+#include "platform/fd/SPEventProcess.cc"
+#include "platform/fd/SPEventProcessFd.cc"
+#include "platform/fd/SPEventFileFd.cc"
 #endif
 
 #if SPRT_WINDOWS
@@ -49,12 +55,70 @@
 #include "platform/windows/SPEventTimerWin.cc"
 #include "platform/windows/SPEventThreadIocp.cc"
 #include "platform/windows/SPEventPollIocp.cc"
+#include "platform/windows/SPEventProcessIocp.cc"
+#include "platform/windows/SPEventFileIocp.cc"
+#include "platform/windows/SPEventWatchIocp.cc"
 #endif
 
-#if SPRT_MACOS
+#if SPRT_APPLE
+#include "platform/fd/SPEventProcess.cc"
 #include "platform/darwin/SPEvent-darwin.cc"
 #include "platform/darwin/SPEvent-kqueue.cc"
 #include "platform/darwin/SPEvent-runloop.cc"
+#endif
+
+// WebAssembly: a pure futex/timer-heap reactor (no fds). Completes Queue::Data
+// with the wasm engine + the timer handle. Threads/sockets/processes/files are
+// not wired yet (see wasm-dispatch-design).
+#if SPRT_WASM
+#include "platform/wasm/SPEvent-wasm.cc"
+#endif
+
+#if SPRT_NUTTX
+#include "platform/nuttx/SPEvent-nuttx.cc"
+#endif
+
+// Both Embox models share this backend, which is what SPRT_EMBOX_ANY is for.
+// It asks nothing of the platform beyond usleep, clock_gettime and atomics: a
+// timer heap plus an atomic wakeup word, no descriptors and no readiness
+// primitive -- because hosted Embox has neither epoll nor futex, and EL0 has no
+// ppoll syscall either (that is milestone M2). The two arrive at the same
+// reactor from opposite directions.
+#if SPRT_EMBOX_ANY
+#include "platform/embox/SPEvent-embox.cc"
+#endif
+
+// Platform-neutral async file I/O (shared op-state machine + inline handle +
+// QueueData::readFile/writeFile). The io_uring-native handle lives in
+// SPEventFileFd.cc (Linux/Android only); the inline handle here serves every
+// other backend.
+#include "platform/fd/SPEventFile.cc"
+
+// Portable stat-polling file-watch (a repeating reactor timer diffing stat
+// snapshots) for backends without a native filesystem-notification primitive
+// (CFRunLoop, wasm). Linux/Android use inotify, Windows uses
+// ReadDirectoryChangesW, kqueue uses EVFILT_VNODE instead.
+#include "platform/fd/SPEventStatWatch.cc"
+
+// Platform-neutral stream-socket API (shared state machine + SocketAddress +
+// QueueData::listenSocket/connectSocket + the portable probe poller). Each
+// backend contributes a readiness poll (QueueData::_socketPoll) and may
+// override the strategy with native handles (_makeSocketListen/_makeSocketStream
+// - io_uring below); wasm keeps everything null and the factories return
+// nullptr. Compiles against the ENOSYS socket stubs on wasm but is never
+// invoked there.
+#include "platform/fd/SPEventSocket.cc"
+
+#if SPRT_LINUX || SPRT_ANDROID
+// io_uring-native socket strategy (ACCEPT/RECV/SEND SQEs); uses helpers from
+// SPEventSocket.cc, so it must follow it in this SCU
+#include "platform/fd/SPEventSocketFd.cc"
+#endif
+
+#if SPRT_WINDOWS
+// WSAEventSelect readiness adapter + IOCP-native overlapped stream strategy;
+// uses helpers from SPEventSocket.cc, so it must follow it in this SCU
+#include "platform/windows/SPEventSocketIocp.cc"
 #endif
 
 #include "detail/SPRuntimeDispatchHandleClass.cc"

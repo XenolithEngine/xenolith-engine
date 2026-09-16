@@ -71,12 +71,19 @@ struct Source::SliceRequest : public Ref {
 	bool onSliceData(Slice *ptr, Map<Id, Value> &val) {
 		ptr->recieved = true;
 
-		auto front = val.begin()->first;
-		for (auto &it : val) {
-			if (it.first != Self) {
-				data.emplace(it.first + Id(ptr->offset) - front, sp::move(it.second));
-			} else {
-				data.emplace(Id(ptr->offset), sp::move(it.second));
+		// An empty answer still completes its slice. The rebase below reads val.begin(), so a
+		// source that returned nothing would otherwise take the whole request down with it.
+		if (!val.empty()) {
+			// Keys are rebased on the SMALLEST key actually returned, which is why a
+			// BatchSourceCallback must answer with exactly first..first+size-1: a sparse answer
+			// silently shifts every value onto the wrong index.
+			auto front = val.begin()->first;
+			for (auto &it : val) {
+				if (it.first != Self) {
+					data.emplace(it.first + Id(ptr->offset) - front, sp::move(it.second));
+				} else {
+					data.emplace(Id(ptr->offset), sp::move(it.second));
+				}
 			}
 		}
 
@@ -107,15 +114,31 @@ struct Source::BatchRequest {
 
 	static void request(const BatchCallback &cb, Id::Type first, size_t size, Source *cat,
 			const DataSourceCallback &scb) {
-		new (sprt::nothrow) BatchRequest(cb, first, size, cat, scb);
+		// Nothing to wait for: an empty range (or a category with no item accessor at all) would
+		// build a request whose counter can never reach zero - one that never answers and never
+		// frees itself. Complete it here instead.
+		if (size == 0 || !scb) {
+			Map<Id, Value> empty;
+			cb(empty);
+			return;
+		}
+
+		if (auto req = new (sprt::nothrow) BatchRequest(cb, first, size, cat)) {
+			req->run(scb);
+		}
 	}
 
-	BatchRequest(const BatchCallback &cb, Id::Type first, size_t size, Source *cat,
-			const DataSourceCallback &scb)
+	BatchRequest(const BatchCallback &cb, Id::Type first, size_t size, Source *cat)
 	: cb(cb), cat(cat) {
 		for (auto i = first; i < first + size; i++) { vec.emplace_back(i); }
 
-		requests += vec.size();
+		// The loop in run() counts as a pending request of its own. A DataSourceCallback that
+		// answers inline - a directory walk, a cache hit - would otherwise drive the counter to
+		// zero on the last item and delete this object while the loop is still walking its vector.
+		requests = vec.size() + 1;
+	}
+
+	void run(const DataSourceCallback &scb) {
 		for (auto &it : vec) {
 			scb([this, it](Value &&val) {
 				if (val.isArray()) {
@@ -125,18 +148,27 @@ struct Source::BatchRequest {
 				}
 			}, it);
 		}
+		complete();
 	}
 
 	void onData(Id id, Value &&val) {
 		map.insert(sprt::make_pair(id, sp::move(val)));
-		requests--;
+		complete();
+	}
 
+	void complete() {
+		--requests;
 		if (requests == 0) {
 			cb(map);
 			sprt::__delete(this);
 		}
 	}
 };
+
+void Source::updateCount() {
+	_count = _orphanCount;
+	for (auto &it : _subCats) { _count += it->getGlobalCount(); }
+}
 
 void Source::clear() {
 	_subCats.clear();
@@ -175,10 +207,12 @@ Source::Id Source::getId() const { return _categoryId; }
 
 void Source::setSubCategories(Vector<Rc<Source>> &&vec) {
 	_subCats = sp::move(vec);
+	updateCount();
 	setDirty();
 }
 void Source::setSubCategories(const Vector<Rc<Source>> &vec) {
 	_subCats = vec;
+	updateCount();
 	setDirty();
 }
 auto Source::getSubCategories() const -> const Vector<Rc<Source>> & { return _subCats; }
@@ -191,6 +225,64 @@ void Source::setChildsCount(size_t count) {
 }
 
 size_t Source::getChildsCount() const { return _orphanCount; }
+
+auto Source::getChildsState() const -> ChildsState { return _childsState; }
+
+bool Source::hasChildsSource() const { return _childsCallback != nullptr; }
+
+bool Source::requestChilds(Function<void()> &&onComplete) {
+	switch (_childsState) {
+	case ChildsState::Empty:
+	case ChildsState::Loaded:
+		if (onComplete) {
+			onComplete();
+		}
+		return _childsState == ChildsState::Loaded;
+	case ChildsState::Loading:
+		if (onComplete) {
+			_childsComplete.emplace_back(sp::move(onComplete));
+		}
+		return true;
+	case ChildsState::Pending: break;
+	}
+
+	if (onComplete) {
+		_childsComplete.emplace_back(sp::move(onComplete));
+	}
+	_childsState = ChildsState::Loading;
+
+	// The completion may outlive every other reference to this category - a fetch that answers
+	// after the view that asked for it went away - so it carries one of its own. resetChilds() is
+	// the escape hatch for the completion that will never fire.
+	auto linkId = sprt::retain(this);
+	_childsCallback(this, [this, linkId] {
+		_childsState = ChildsState::Loaded;
+
+		// Moved out before they run: a completion is free to ask for more children, and the
+		// vector it would append to must not be the one being walked.
+		auto complete = sp::move(_childsComplete);
+		_childsComplete.clear();
+
+		setDirty();
+		for (auto &it : complete) { it(); }
+
+		sprt::release(this, linkId);
+	});
+	return true;
+}
+
+void Source::resetChilds() {
+	if (!_childsCallback) {
+		return;
+	}
+
+	_childsComplete.clear();
+	_childsState = ChildsState::Pending;
+	_subCats.clear();
+	_orphanCount = 0;
+	updateCount();
+	setDirty();
+}
 
 void Source::setData(const Value &val) { _data = val; }
 
@@ -245,8 +337,15 @@ bool Source::getItemData(const DataCallback &cb, Id index) {
 		return false;
 	}
 
+	// The category's own record is served from _data when it has one. Falling through to the item
+	// accessor below would deliver the same row a second time.
 	if (index == Self && _data) {
 		cb(Value(_data));
+		return true;
+	}
+
+	if (!_sourceCallback) {
+		return false;
 	}
 
 	_sourceCallback(cb, index);
@@ -291,6 +390,8 @@ bool Source::removeItem(Id index, const Value &v) {
 	if (_removeCallback && index != Self) {
 		if (_removeCallback(index, v)) {
 			_orphanCount -= 1;
+			_count -= 1;
+			setDirty();
 			return true;
 		}
 	}
@@ -418,6 +519,14 @@ void Source::onSlice(sprt::__malloc_vector<Slice> &vec, size_t &first, size_t &c
 void Source::onSliceRequest(const BatchCallback &cb, Id::Type first, size_t size) {
 	if (first == Self.get()) {
 		if (!_data) {
+			// A category with neither its own record nor an item accessor has nothing to answer
+			// with. Complete the request empty rather than leave the caller waiting forever.
+			if (!_sourceCallback) {
+				Map<Id, Value> map;
+				cb(map);
+				return;
+			}
+
 			_sourceCallback([cb](Value &&val) {
 				Map<Id, Value> map;
 				if (val.isArray()) {
@@ -472,6 +581,17 @@ bool Source::initValue(const Value &val) {
 
 bool Source::initValue(Value &&val) {
 	_data = sp::move(val);
+	return true;
+}
+
+bool Source::initValue(const ChildsSourceCallback &cb) {
+	_childsCallback = cb;
+	_childsState = ChildsState::Pending;
+	return true;
+}
+
+bool Source::initValue(const RemoveSourceCallback &cb) {
+	_removeCallback = cb;
 	return true;
 }
 

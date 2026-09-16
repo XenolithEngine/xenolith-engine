@@ -27,7 +27,7 @@ OSTYPE_LIB_PREFIX :=
 
 OSTYPE_CONFIG_FLAGS := WIN32
 
-OSTYPE_CFLAGS := -Wall -D_MT -Wno-vla-cxx-extension -Wno-microsoft-include
+OSTYPE_CFLAGS := -Wall -D_MT -Wno-vla-cxx-extension -Wno-microsoft-include -Wno-unused-command-line-argument
 
 ifeq ($(RELEASE),1)
 OSTYPE_CFLAGS +=

@@ -23,13 +23,15 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_THREAD_RMUTEX_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_THREAD_RMUTEX_H_
 
-#include <sprt/cxx/atomic>
+#include <sprt/cxx/__atomic/ops.h>
+#include <sprt/runtime/math.h>
+#include <sprt/runtime/callback.h>
 #include <sprt/c/sys/__sprt_sprt.h>
 #include <sprt/runtime/status.h>
 
 namespace sprt {
 
-struct __rmutex_data {
+struct SPRT_API __rmutex_data {
 #if SPRT_LINUX || SPRT_ANDROID
 	// Futex PI Values
 	using tid_type = uint32_t;
@@ -70,7 +72,7 @@ struct __rmutex_data {
 	uint32_t counter = 0;
 };
 
-class rmutex_base {
+class SPRT_API rmutex_base {
 public:
 	using value_type = __sprt_sprt_rlock_t;
 	using tid_type = __rmutex_data::tid_type;
@@ -137,7 +139,7 @@ public:
 				}
 
 				if constexpr (ClockFn != nullptr) {
-					if (*timeout && timeout == 0) {
+					if (timeout && *timeout == 0) {
 						return Status::Timeout;
 					}
 				}
@@ -149,7 +151,14 @@ public:
 				}
 
 				Status st = Status::Ok;
-				if constexpr (SyscallLock) {
+				// The syscall-lock protocol (kernel acquires the futex word itself,
+				// FUTEX_LOCK_PI) only exists for PI locks. A non-PI lock on a
+				// SyscallLock platform must still use the manual waiters protocol:
+				// its WaitFn is a plain FUTEX_WAIT that acquires nothing, so going
+				// through the syscall branch would sleep WITHOUT announcing the
+				// waiter (no WAITERS_BIT) — the owner's unlock then fast-CASes to 0
+				// and never wakes it.
+				if (SyscallLock && (flags & flags_type(__SPRT_SPRT_LOCK_FLAG_PI)) != 0) {
 					if (WaitFn(&data, &expected, timeout ? *timeout : __SPRT_SPRT_TIMEOUT_INFINITE,
 								flags)
 							!= 0) {
@@ -240,15 +249,17 @@ public:
 			}
 
 			if constexpr (TryLockFn != nullptr) {
-				if (TryLockFn(&data, flags) != 0) {
-					auto st = status::errnoToStatus(__sprt_errno);
-					if (st == Status::ErrorDeadLock) {
-						// The futex word at uaddr is already locked by the caller.
-						return Status::Propagate;
+				if ((flags & __SPRT_SPRT_LOCK_FLAG_PI) != 0) {
+					if (TryLockFn(&data, flags) != 0) {
+						auto st = status::errnoToStatus(__sprt_errno);
+						if (st == Status::ErrorDeadLock) {
+							// The futex word at uaddr is already locked by the caller.
+							return Status::Propagate;
+						}
+						return st;
+					} else {
+						return Status::Ok;
 					}
-					return st;
-				} else {
-					return Status::Ok;
 				}
 			}
 			return Status::ErrorBusy;
@@ -286,6 +297,23 @@ public:
 			return Status::Propagate;
 		}
 
+		if ((flags & flags_type(__SPRT_SPRT_LOCK_FLAG_PI)) != 0) {
+			// PI unlock: the KERNEL performs the handoff (FUTEX_UNLOCK_PI writes the
+			// new owner's tid). The futex word must still hold our tid when the
+			// syscall runs — force-storing 0 first makes the kernel see uval != our
+			// tid (EPERM) and strands the pi_state waiters forever.
+			if ((*getNativeValue(expected) & WAITERS_BIT) == 0
+					&& _atomic::compareSwap(getNativeValue(data), getNativeValue(expected),
+							*getNativeValue(zero))) {
+				return Status::Done;
+			}
+			// Waiters known, or one raced in between the load and the CAS.
+			if (WakeFn(&data, flags) != 0) {
+				return status::errnoToStatus(__sprt_errno);
+			}
+			return Status::Ok;
+		}
+
 		// We check if we already know about the waiting threads.
 		// If we don’t know, then we try to atomically unlock the mutex.
 		bool unlocked = false;
@@ -313,7 +341,7 @@ public:
 	A slower mutex that supports recursive locking and priority
 	inheritance features. Use as a general purpose mutex.
 */
-class rmutex final : private rmutex_base {
+class SPRT_API rmutex final : private rmutex_base {
 public:
 	enum init_type {
 		enabled,
@@ -325,6 +353,12 @@ public:
 	rmutex(init_type t = enabled) {
 		switch (t) {
 		case enabled: break;
+		// "disabled" is encoded as the all-ones pattern across the whole 64-bit
+		// union. is_enabled() compares the full u64 against Max. Invariant: a live
+		// lock word (THREAD_ID_MASK | counter | flag bits, in the u32_2 native slot
+		// on Linux/Android) can never naturally reach all-ones, so it is never
+		// mistaken for "disabled". enable() must clear the full u64, not just the
+		// native slot, to restore this.
 		case disabled: _data.value.u64 = Max<uint64_t>; break;
 		}
 	}

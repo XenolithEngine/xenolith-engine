@@ -22,34 +22,34 @@ $(call print_verbose,(init-sh.mk) Init with sh)
 
 " := "
 
+ifdef XLMAKE_VERSION
+UNAME = $(XL_UNAME_SYSNAME)
+else
 # Проверяем хостовую систему, у Darwin нет опции -o для uname
 UNAME := $(shell uname)
+endif
 
 SH := 1
 
 GLOBAL_SHELL := sh
 
-GLOBAL_RM ?= rm -f
-GLOBAL_CP ?= cp -f
-GLOBAL_MAKE ?= $(MAKE)
 GLOBAL_MKDIR ?= mkdir -p
 GLOBAL_AR ?= ar rcs
 GLOBAL_ECHO ?= echo
 
-shell_mkdir = $(shell $(GLOBAL_MKDIR) $(1))
-
+rule_rm = rm -rf $(1)
+rule_cp = cp -f $(1) $(2)
 rule_mkdir = $(GLOBAL_MKDIR) $(1)
 
-shell_override_file = \
-	$(shell echo '$(2)' > $(1))
-
-shell_append_file = \
-	$(shell echo '$(2)' >> $(1))
-
-shell_cat = \
-	$(shell cat $(1) 2> /dev/null)
+WRITE_START = echo
+WRITE_END = > $$@
 
 shell_arith = $(shell echo $$($(1)) )
+
+shell_mkdir = $(shell $(GLOBAL_MKDIR) $(1))
+shell_override_file = $(shell echo '$(2)' > $(1))
+shell_append_file = $(shell echo '$(2)' >> $(1))
+shell_cat = $(shell cat $(1) 2> /dev/null)
 
 STAPPLER_HOST_ARCH ?= $(shell uname -m)
 

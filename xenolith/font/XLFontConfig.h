@@ -32,7 +32,21 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::config {
 // max chars count, used by locale::hasLocaleTagsFast
 static constexpr size_t MaxFastLocaleChars = size_t(127);
 
-}
+// How full the glyph cache must be before FontController::update() drops font sets nobody holds.
+// Below it spare sets are kept: re-creating one costs a full atlas rebuild and material recompiles.
+static constexpr float FontCacheEvictionThreshold = 0.75f;
+
+// Atlas image budget, in bytes (R8_UNORM, one byte per texel). Not a fill ratio: the packer picks
+// the smallest fitting 128*2^k extent on every rebuild (font::emplaceChars), so the image is always
+// tight and its size is what grows with the cache.
+static constexpr uint64_t FontCacheAtlasBudget = uint64_t(1'024) * uint64_t(1'024);
+
+// Live set limit for controllers with no atlas image (software rasterizer, remote client). Also
+// guards the 14-bit face-id space CharIds are built from: FontLibrary::getNextId aborts when it
+// runs out, and ids are released only when a face is reaped.
+static constexpr size_t FontCacheMaxLayouts = size_t(256);
+
+} // namespace stappler::xenolith::config
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 

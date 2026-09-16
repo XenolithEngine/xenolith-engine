@@ -34,3 +34,4 @@
 
 #include "XLVkSwapchain.cc"
 #include "XLVkPresentationEngine.cc"
+#include "XLVkHeadlessPresentation.cc"

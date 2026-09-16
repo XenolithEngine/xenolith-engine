@@ -44,18 +44,18 @@ void HashTable::init(HashTable *ht, Pool *pool) {
 	ht->seed = (unsigned int)((now >> 32) ^ now ^ (uintptr_t)pool ^ (uintptr_t)ht ^ (uintptr_t)&now)
 			- 1;
 	ht->array = alloc_array(ht, ht->max);
-	ht->hash_func = nullptr;
 }
 
 HashTable *HashTable::make(Pool *pool) {
 	HashTable *ht = (HashTable *)pool->palloc(sizeof(HashTable));
+	if (!ht) {
+		return nullptr;
+	}
 	init(ht, pool);
-	return ht;
-}
-
-HashTable *HashTable::make(Pool *pool, HashFunc hash_func) {
-	HashTable *ht = make(pool);
-	ht->hash_func = hash_func;
+	if (!ht->array) {
+		// alloc_array() failed inside init(); the table would be unusable
+		return nullptr;
+	}
 	return ht;
 }
 
@@ -87,6 +87,9 @@ HashIndex *HashTable::first(Pool *p) {
 	HashIndex *hi;
 	if (p) {
 		hi = (HashIndex *)p->palloc(sizeof(*hi));
+		if (!hi) {
+			return nullptr;
+		}
 	} else {
 		hi = &iterator;
 	}
@@ -105,6 +108,10 @@ static void expand_array(HashTable *ht) {
 
 	new_max = ht->max * 2 + 1;
 	new_array = alloc_array(ht, new_max);
+	if (!new_array) {
+		// Expansion is only a collision-rate optimization; keep the existing array.
+		return;
+	}
 	for (hi = ht->first(nullptr); hi; hi = hi->next()) {
 		uint32_t i = hi->_self->hash & new_max;
 		hi->_self->next = new_array[i];
@@ -119,18 +126,22 @@ static uint32_t s_hashfunc_default(const char *char_key, size_t *klen, uint32_t 
 		*klen = __builtin_strlen(char_key);
 	}
 
-	return sprt::hash32(char_key, uint32_t(*klen), 0);
+	// hashSize takes a size_t length, so the full key length is hashed (hash32 would
+	// truncate *klen to 32 bits, mis-hashing keys >= 4 GiB). It also uses the native
+	// width per platform (xxh32 on 32-bit, xxh64 on 64-bit). Fold the result to the
+	// 32-bit bucket value: the bucket index is masked, so only the output width is
+	// reduced, never the input length.
+	//
+	// Use the per-table seed (hash-flooding resistance); a hard-coded 0 would make the
+	// randomized seed computed in init() inert and the bucket mapping predictable.
+	return uint32_t(sprt::hashSize(char_key, *klen, hash));
 }
 
 static HashEntry **find_entry(HashTable *ht, const void *key, size_t klen, const void *val) {
 	HashEntry **hep, *he;
 	unsigned int hash;
 
-	if (ht->hash_func) {
-		hash = ht->hash_func((const char *)key, &klen);
-	} else {
-		hash = s_hashfunc_default((const char *)key, &klen, ht->seed);
-	}
+	hash = s_hashfunc_default((const char *)key, &klen, ht->seed);
 
 	/* scan linked list */
 	for (hep = &ht->array[hash & ht->max], he = *hep; he; hep = &he->next, he = *hep) {
@@ -147,6 +158,11 @@ static HashEntry **find_entry(HashTable *ht, const void *key, size_t klen, const
 		ht->free = he->next;
 	} else {
 		he = (HashEntry *)ht->pool->palloc(sizeof(*he));
+		if (!he) {
+			// Allocation failed: cannot insert. *hep is still null, so get() reports
+			// not-found and set() leaves the table unchanged instead of crashing.
+			return hep;
+		}
 	}
 	he->next = nullptr;
 	he->hash = hash;
@@ -165,12 +181,14 @@ HashTable *HashTable::copy(Pool *pool) const {
 
 	ht = (HashTable *)pool->palloc(
 			sizeof(HashTable) + sizeof(*ht->array) * (max + 1) + sizeof(HashEntry) * count);
+	if (!ht) {
+		return nullptr;
+	}
 	ht->pool = pool;
 	ht->free = nullptr;
 	ht->count = count;
 	ht->max = max;
 	ht->seed = seed;
-	ht->hash_func = hash_func;
 	ht->array = (HashEntry **)((char *)ht + sizeof(HashTable));
 
 	new_vals = (HashEntry *)((char *)(ht) + sizeof(HashTable) + sizeof(*ht->array) * (max + 1));
@@ -247,9 +265,11 @@ HashTable *HashTable::merge(Pool *p, const HashTable *overlay, merge_fn merger,
 	uint32_t i, j, k, hash;
 
 	res = (HashTable *)p->palloc(sizeof(HashTable));
+	if (!res) {
+		return nullptr;
+	}
 	res->pool = p;
 	res->free = nullptr;
-	res->hash_func = this->hash_func;
 	res->count = this->count;
 	res->max = (overlay->max > this->max) ? overlay->max : this->max;
 	if (this->count + overlay->count > res->max) {
@@ -257,8 +277,14 @@ HashTable *HashTable::merge(Pool *p, const HashTable *overlay, merge_fn merger,
 	}
 	res->seed = this->seed;
 	res->array = alloc_array(res, res->max);
+	if (!res->array) {
+		return nullptr;
+	}
 	if (this->count + overlay->count) {
 		new_vals = (HashEntry *)p->palloc(sizeof(HashEntry) * (this->count + overlay->count));
+		if (!new_vals) {
+			return nullptr;
+		}
 	}
 	j = 0;
 	for (k = 0; k <= this->max; k++) {
@@ -276,11 +302,9 @@ HashTable *HashTable::merge(Pool *p, const HashTable *overlay, merge_fn merger,
 
 	for (k = 0; k <= overlay->max; k++) {
 		for (iter = overlay->array[k]; iter; iter = iter->next) {
-			if (res->hash_func) {
-				hash = res->hash_func((const char *)iter->key, &iter->klen);
-			} else {
-				hash = s_hashfunc_default((const char *)iter->key, &iter->klen, res->seed);
-			}
+			// use a local length copy so the (const) overlay's entries are not mutated
+			size_t klen = iter->klen;
+			hash = s_hashfunc_default((const char *)iter->key, &klen, res->seed);
 			i = hash & res->max;
 			for (ent = res->array[i]; ent; ent = ent->next) {
 				if ((ent->klen == iter->klen)

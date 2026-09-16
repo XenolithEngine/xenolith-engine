@@ -56,6 +56,7 @@ THE SOFTWARE.
 #include "windows/dll/dllstub2_userenv.cc"
 #include "windows/dll/dllstub2_uxtheme.cc"
 #include "windows/dll/dllstub2_ws2_32.cc"
+#include "windows/dll/dllstub2_iphlpapi.cc"
 
 #endif
 
@@ -64,4 +65,12 @@ THE SOFTWARE.
 #include "windows/memory.cc"
 #include "windows/except.cc"
 #include "windows/specific.cc"
+#elif SPRT_WASM
+#include "wasm/startup.cc"
+#include "wasm/terminate.cc"
+#include "wasm/except.cc"
+#elif SPRT_EMBOX_USER
+#include "embox_user/startup.cc"
+#include "embox_user/terminate.cc"
+#include "embox_user/except.cc"
 #endif

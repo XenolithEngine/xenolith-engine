@@ -46,6 +46,12 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"libc_unistd", &sprt::performUnistdTest},
 	{"libc_dir", &sprt::performDirTest},
 	{"libc_link", &sprt::performLinkTest},
+	{"libc_fcntl", &sprt::performFcntlTest},
+	{"libc_memalign", &sprt::performMemalignTest},
+	{"libc_memalign_macro", &sprt::performMemalignMacroTest},
+	{"libc_at", &sprt::performAtFunctionsTest},
+	{"libc_setjmp", &sprt::performSetjmpTest},
+	{"libc_locale", &sprt::performLocaleTest},
 	{"libc_time", &sprt::performLibcTimeTest},
 	{"libc_pthread", &sprt::performPthreadCreateTest},
 	{"libc_pthread_mutex", &sprt::performPthreadMutexTest},
@@ -53,15 +59,16 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"libc_pthread_rwlock", &sprt::performPthreadRwlockTest},
 	{"libc_pthread_barrier", &sprt::performPthreadBarrierTest},
 	{"libc_pthread_spinlock", &sprt::performPthreadSpinlockTest},
+	{"libc_wasm64_abi", &sprt::performWasm64AbiTest},
+	{"libc_wasm64_highmem", &sprt::performWasm64HighMemTest},
 
 	{"libcxx_malloc_string", &sprt::performMallocStringTests},
 	{"libcxx_malloc_unordered_map", &sprt::performMallocUnorderedMapTests},
 	{"libcxx_malloc_unordered_set", &sprt::performMallocUnorderedSetTests},
+	{"libcxx_int_set", &sprt::performIntSetTests},
 	{"libcxx_malloc_list", &sprt::performMallocListTests},
 	{"libcxx_malloc_forward_list", &sprt::performMallocForwardListTests},
 	{"libcxx_thread", &sprt::performThreadTests},
-	{"libcxx_variant", &sprt::performVariantTests},
-	{"libcxx_optional", &sprt::performOptionalTests},
 	{"libcxx_sort", &sprt::performSortTests},
 	{"libcxx_constexpr", &sprt::performConstexprTest},
 	{"libcxx_shared_mutex", &sprt::performSharedMutexStressTests},
@@ -70,8 +77,20 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 
 	{"runtime_ref", &sprt::performRefTests},
 	{"runtime_dispatch", &sprt::performDispatchTests},
+	{"runtime_bus", &sprt::performBusTests},
+	{"runtime_watch", &sprt::performWatchFileTests},
+	{"runtime_process", &sprt::performProcessTests},
+	{"runtime_file", &sprt::performFileTests},
+	{"runtime_socket", &sprt::performSocketTests},
 	{"runtime_unicode", &sprt::performUnicodeTests},
+	{"runtime_unicode_case_conformance", &sprt::performUnicodeCaseConformanceTests},
+	{"runtime_wordbreak_conformance", &sprt::performWordBreakConformanceTests},
+	{"runtime_collation", &sprt::performCollationTests},
+	{"runtime_collation_conformance", &sprt::performCollationConformanceTests},
+	{"runtime_collation_bench", &sprt::performCollationBench},
 	{"runtime_dtoa", &sprt::performDtoaTests},
+	{"runtime_idn", &sprt::performIdnTests},
+	{"runtime_idn_conformance", &sprt::performIdnConformanceTests},
 };
 
 int main(int argc, const char *argv[]) {
@@ -85,14 +104,10 @@ int main(int argc, const char *argv[]) {
 
 	fputws(wstr, stdout);
 
-	_wfopen(L"тестовая строка", L"rwa+");
-
-	auto path = _fullpath(nullptr, "..", 0);
-
 	srand(clock_gettime_nsec_np(CLOCK_REALTIME));
 	auto v = rand();
 
-	printf("%s %f %f\n", path, sin(1.0f / (v % 20)), cos(1.0f / (v % 20)));
+	printf("%f %f\n", sin(1.0f / (v % 20)), cos(1.0f / (v % 20)));
 
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);

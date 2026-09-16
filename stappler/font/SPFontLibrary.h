@@ -31,8 +31,18 @@ namespace STAPPLER_VERSIONIZED stappler::font {
 
 class FontLibrary;
 
-class SP_PUBLIC FontFaceObjectHandle : public Ref,
-									   public InterfaceObject<memory::StandartInterface> {
+class SP_PUBLIC FontLibraryHandle : public Ref {
+public:
+	FontLibraryHandle();
+	virtual ~FontLibraryHandle();
+
+	FT_Library getLibrary() const { return _library; }
+
+protected:
+	FT_Library _library = nullptr;
+};
+
+class SP_PUBLIC FontFaceObjectHandle : public Ref, public InterfaceObject<mem_std::Interface> {
 public:
 	virtual ~FontFaceObjectHandle();
 
@@ -43,13 +53,17 @@ public:
 
 	bool acquireTexture(char32_t, const Callback<void(const CharTexture &)> &);
 
+	// Zero-copy counterpart: rasterize into storage the callback picks. See
+	// FontFaceObject::renderTextureUnsafe.
+	bool renderTexture(char32_t, const Callback<GlyphTarget(const CharTexture &)> &);
+
 protected:
 	Rc<FontLibrary> _library;
 	Rc<FontFaceObject> _face;
 	Function<void(const FontFaceObjectHandle *)> _onDestroy;
 };
 
-class SP_PUBLIC FontLibrary : public Ref, public InterfaceObject<memory::StandartInterface> {
+class SP_PUBLIC FontLibrary : public Ref, public InterfaceObject<mem_std::Interface> {
 public:
 	enum class DefaultFontName {
 		None,
@@ -88,7 +102,8 @@ public:
 
 	Rc<FontFaceObject> openFontFace(StringView, const FontSpecializationVector &,
 			const Callback<FontData()> &);
-	Rc<FontFaceObject> openFontFace(const Rc<FontFaceData> &, const FontSpecializationVector &);
+	Rc<FontFaceObject> openFontFace(const Rc<FontFaceData> &, const FontSpecializationVector &,
+			uint16_t forcedId = sprt::Max<uint16_t>);
 
 	void invalidate();
 
@@ -100,7 +115,7 @@ public:
 	Rc<FontFaceObjectHandle> makeThreadHandle(const Rc<FontFaceObject> &);
 
 protected:
-	FT_Face newFontFace(BytesView);
+	FT_Face newFontFace(FontLibraryHandle *, BytesView);
 	void doneFontFace(FT_Face);
 
 	sprt::mutex _mutex;
@@ -108,7 +123,9 @@ protected:
 	Map<StringView, Rc<FontFaceObject>> _faces;
 	Map<StringView, Rc<FontFaceData>> _data;
 	Map<FontFaceObject *, Map<sprt::dispatch::Thread::Id, Rc<FontFaceObjectHandle>>> _threads;
-	FT_Library _library = nullptr;
+
+	Rc<FontLibraryHandle> _library;
+	sprt::__malloc_unordered_map<sprt::thread::id, Rc<FontLibraryHandle>> _threadLibrary;
 
 	sprt::bitset<1'024 * 16> _fontIds;
 };

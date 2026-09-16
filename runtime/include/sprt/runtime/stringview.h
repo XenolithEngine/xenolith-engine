@@ -23,6 +23,8 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_STRINGVIEW_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_STRINGVIEW_H_
 
+#include <sprt/c/__sprt_assert.h>
+
 #include <sprt/runtime/math.h>
 #include <sprt/runtime/chargroup.h>
 #include <sprt/runtime/string.h>
@@ -184,8 +186,8 @@ public:
 	bool operator<(const size_t &val) const { return len < val; }
 	bool operator<=(const size_t &val) const { return len <= val; }
 
-	CharType front() const { return *ptr; }
-	CharType back() const { return ptr[len - 1]; }
+	CharType front() const { return len > 0 ? *ptr : CharType(0); }
+	CharType back() const { return len > 0 ? ptr[len - 1] : CharType(0); }
 
 	CharType at(const size_t &s) const { return s < len ? ptr[s] : 0; }
 	CharType operator[](const size_t &s) const { return s < len ? ptr[s] : 0; }
@@ -194,6 +196,10 @@ public:
 	void clear() { len = 0; }
 	bool empty() const { return len == 0 || !ptr; }
 
+	// Precondition: the underlying buffer must have at least len+1 readable bytes
+	// (this reads ptr[len]). Holds for views over NUL-terminated sources (c_str,
+	// string literals); do NOT call this (or performWithTerminated) on a view
+	// set() over a non-terminated binary buffer.
 	bool terminated() const { return ptr && ptr[len] == 0; }
 
 	template <typename Callback>
@@ -206,10 +212,16 @@ public:
 			cb(data(), size());
 		} else {
 			auto buf = __sprt_typed_malloca(CharType, size() + 1);
-			__sprt_memcpy(buf, data(), size() * sizeof(CharType));
-			buf[size()] = 0;
-			cb((const CharType *)buf, size());
-			__sprt_freea(buf);
+			if (buf) {
+				__sprt_memcpy(buf, data(), size() * sizeof(CharType));
+				buf[size()] = 0;
+				cb((const CharType *)buf, size());
+				__sprt_freea(buf);
+			} else {
+				// allocation failed: hand the callback a valid empty terminated buffer
+				const CharType empty[1] = {0};
+				cb(empty, 0);
+			}
 		}
 	}
 
@@ -263,6 +275,13 @@ public:
 	static void merge(const callback<void(StringViewBase<CharType>)> &, Args &&...args);
 
 	constexpr StringViewBase() = default;
+
+	// NOTE: the pointer-based constructors below are NUL-truncating. They scan for a
+	// terminating '\0' (via detail::length) and the resulting view length is the
+	// smaller of `len` and the distance to the first NUL. The single-argument form
+	// (len defaulted) performs an unbounded strlen and therefore requires a
+	// NUL-terminated string. To wrap a buffer that may contain embedded NULs (e.g.
+	// binary data) WITHOUT truncation, use set() instead — it assigns ptr/len verbatim.
 	constexpr StringViewBase(const CharType *ptr, size_t len = Max<size_t>);
 	constexpr StringViewBase(const CharType *ptr, size_t pos, size_t len);
 	constexpr StringViewBase(const Self &, size_t pos, size_t len);
@@ -293,7 +312,9 @@ public:
 		return sprt::StringViewBase<CharType>(this->data(), this->size());
 	}
 
-	// unsafe set, without length-check
+	// unsafe set, without length-check: assigns ptr/len verbatim (no NUL truncation,
+	// no strlen). Use this instead of the pointer constructors to wrap data that may
+	// contain embedded NULs.
 	Self &set(const CharType *p, size_t l);
 
 	bool is(const CharType &c) const;
@@ -479,6 +500,11 @@ public:
 	using Base64 = MatchCharGroup<CharGroupId::Base64>;
 
 	StringViewUtf8();
+
+	// NOTE: NUL-truncating, like StringViewBase. The pointer-based constructors scan
+	// for a terminating '\0' and the view length is min(len, distance-to-first-NUL);
+	// the single-argument form requires a NUL-terminated string. To wrap a buffer with
+	// embedded NULs without truncation, use set() instead.
 	StringViewUtf8(const char *ptr, size_t len = Max<size_t>);
 	StringViewUtf8(const char *ptr, size_t pos, size_t len);
 	StringViewUtf8(const StringViewUtf8 &, size_t len);
@@ -497,6 +523,8 @@ public:
 		return *this;
 	}
 
+	// unsafe set, without length-check: assigns ptr/len verbatim (no NUL truncation).
+	// Use this instead of the pointer constructors to wrap data with embedded NULs.
 	Self &set(const char *p, size_t l);
 
 	bool is(const char &c) const;
@@ -870,12 +898,26 @@ public:
 		return true;
 	}
 
-	const Type &front() const { return *ptr; }
-	const Type &back() const { return ptr[len - 1]; }
+	// front/back/operator* require a non-empty span (like std::span); back() on an
+	// empty span would otherwise read ptr[size_t(-1)].
+	const Type &front() const {
+		sprt_passert(len > 0, "SpanView::front on empty span");
+		return *ptr;
+	}
+	const Type &back() const {
+		sprt_passert(len > 0, "SpanView::back on empty span");
+		return ptr[len - 1];
+	}
 
-	const Type &at(const size_t &s) const { return ptr[s]; }
+	const Type &at(const size_t &s) const {
+		sprt_passert(s < len, "SpanView::at index out of range");
+		return ptr[s];
+	}
 	const Type &operator[](const size_t &s) const { return ptr[s]; }
-	const Type &operator*() const { return *ptr; }
+	const Type &operator*() const {
+		sprt_passert(len > 0, "SpanView::operator* on empty span");
+		return *ptr;
+	}
 
 	void clear() { len = 0; }
 	bool empty() const { return len == 0 || !ptr; }
@@ -1003,11 +1045,124 @@ SPRT_API bool toupper(const callback<void(WideStringView)> &, WideStringView);
 SPRT_API bool totitle(const callback<void(WideStringView)> &, WideStringView);
 SPRT_API bool tolower(const callback<void(WideStringView)> &, WideStringView);
 
-SPRT_API bool compare(StringView l, StringView r, int *result);
-SPRT_API bool compare(WideStringView l, WideStringView r, int *result);
+// Case mapping for a specific language. `locale` is a language identifier such
+// as "tr", "tr-TR" or "TUR": only the language subtag is read, in either case
+// and in either the 2- or 3-letter form, and everything from the first '-' or
+// '_' on is ignored. Six languages case differently from the root locale -
+// tr/az (dotted and dotless I), lt (a lowercase i keeps its dot under an
+// accent), el (uppercasing drops the tonos), nl (the IJ digraph, titlecase
+// only) and hy (the ech-yiwn ligature); every other identifier, including an
+// empty one, means root.
+//
+// The overloads above are the root locale, which is the deterministic choice:
+// the result does not depend on the machine the code runs on. Pass a locale
+// explicitly when the text is known to be in one of those six languages.
+SPRT_API bool toupper(const callback<void(StringView)> &, StringView, StringView locale);
+SPRT_API bool tolower(const callback<void(StringView)> &, StringView, StringView locale);
+SPRT_API bool totitle(const callback<void(StringView)> &, StringView, StringView locale);
 
-SPRT_API bool caseCompare(StringView l, StringView r, int *result);
-SPRT_API bool caseCompare(WideStringView l, WideStringView r, int *result);
+SPRT_API bool toupper(const callback<void(WideStringView)> &, WideStringView, StringView locale);
+SPRT_API bool tolower(const callback<void(WideStringView)> &, WideStringView, StringView locale);
+SPRT_API bool totitle(const callback<void(WideStringView)> &, WideStringView, StringView locale);
+
+// Ordering. Both of these are pure functions of the compiled-in Unicode tables:
+// no locale is read, no system library is consulted, and the answer is the same
+// on every target and every machine. Both are total orders over arbitrary input,
+// including input that is not well-formed. They return the sign, like strcmp.
+//
+// Neither is collation. Collation is the language-dependent ordering shown to a
+// user - where ё goes relative to the rest of the Russian alphabet, whether å
+// sits next to a or after z, whether uppercase sorts before lowercase - and it
+// needs CLDR tailoring data the runtime does not carry. Do not use these to sort
+// a list a person will read.
+//
+// compareCodepoints is the order of the Unicode code points. Use it for keys,
+// indexes, protocols and reproducible tests. Note that for UTF-16 this is not
+// the order of the code units: a supplementary character sorts after every BMP
+// one, where its leading surrogate would sort before U+E000.
+SPRT_API int compareCodepoints(StringView l, StringView r);
+SPRT_API int compareCodepoints(WideStringView l, WideStringView r);
+SPRT_API int compareCodepoints(StringViewBase<char32_t> l, StringViewBase<char32_t> r);
+
+// compareFolded applies the full case folding of the UCD and then compares code
+// points, so it is case-insensitive in the way Unicode defines it: mappings of
+// one character to several are included, and "ß" and "ss" compare equal, as do
+// the three forms of sigma. Compare against 0 for case-insensitive equality.
+// Folding is language-independent by design and takes no locale.
+SPRT_API int compareFolded(StringView l, StringView r);
+SPRT_API int compareFolded(WideStringView l, WideStringView r);
+SPRT_API int compareFolded(StringViewBase<char32_t> l, StringViewBase<char32_t> r);
+
+// Collation: the order two strings appear in for a person reading them, which
+// depends on their language. This is the one Unicode operation the runtime cannot
+// derive - it needs the CLDR tables - and the one whose answer is a matter of
+// convention rather than of fact. `ö` follows `z` in Swedish and sits inside `o`
+// in German; `ch` is one letter in Czech; `ё` has two accepted places in Russian.
+//
+// Use it to order a list someone will read. Do NOT use it for keys, indexes or
+// anything that has to compare the same everywhere and forever - that is what
+// compareCodepoints is for. Which locales are compiled in is a build option, so
+// two builds of the runtime can order the same list differently; hasCollation
+// answers whether this one knows the language asked for.
+//
+// Everything above the primary level is optional, and what each level means:
+//
+//   Primary     base letters:      resume < rhyme, resume == résumé == RESUME
+//   Secondary   accents:           resume < résumé, résumé == RÉSUMÉ
+//   Tertiary    case and variants: résumé < RÉSUMÉ  (the default)
+//   Quaternary  punctuation that `shifted` moved off the primary level
+//   Identical   the code points themselves, as a last resort
+enum class Strength {
+	Primary,
+	Secondary,
+	Tertiary,
+	Quaternary,
+	Identical,
+};
+
+// Whether upper- or lowercase sorts first, for the languages that care (Danish
+// and Maltese put uppercase first). Off means the tertiary level decides.
+enum class CaseFirst {
+	Off,
+	Upper,
+	Lower,
+};
+
+struct CollateOptions {
+	Strength strength = Strength::Tertiary;
+	// Digit runs sort as numbers: "item2" before "item10".
+	bool numeric = false;
+	// Punctuation and spaces are ignored until the quaternary level, so that
+	// "de luge" and "de-luge" sort together.
+	bool shifted = false;
+	CaseFirst caseFirst = CaseFirst::Off;
+};
+
+// The sign, like strcmp. `locale` is a language tag; an unknown or empty one
+// means the CLDR root order, which is already correct for most languages -
+// including German, French, Italian, Russian, Greek and Hebrew.
+SPRT_API int collate(StringView l, StringView r, StringView locale,
+		CollateOptions = CollateOptions());
+SPRT_API int collate(WideStringView l, WideStringView r, StringView locale,
+		CollateOptions = CollateOptions());
+
+// The same ordering as a byte string: memcmp on two keys gives the sign collate()
+// would. Sorting a list costs one key per string instead of one comparison per
+// pair, and a key can go into an index or a database column where a comparison
+// function cannot.
+//
+// The key is only meaningful against keys made with the same locale, the same
+// options and the same build of the runtime - it is not a stable identifier and
+// must not be persisted across a Unicode version. The callback is invoked exactly
+// once on success and not at all on failure.
+SPRT_API bool sortKey(const callback<void(BytesView)> &, StringView, StringView locale,
+		CollateOptions = CollateOptions());
+SPRT_API bool sortKey(const callback<void(BytesView)> &, WideStringView, StringView locale,
+		CollateOptions = CollateOptions());
+
+// Whether this build has a tailoring for `locale`. False means collate() will
+// answer with the root order rather than that language's own.
+SPRT_API bool hasCollation(StringView locale);
 
 } // namespace sprt::unicode
 
@@ -1161,17 +1316,19 @@ constexpr size_t length(const uint8_t *__p, size_t max) {
 template <typename T, typename Char>
 inline auto readNumber(const Char *ptr, size_t len, int base, uint8_t &offset) -> Result<T> {
 	// prevent to read out of bounds, copy symbols to stack buffer
-	char buf[32] = {0}; // int64_t/scientific double character length max
+	char buf[32]; // int64_t/scientific double character length max
 	size_t m = min(size_t(31), len);
 	size_t i = 0;
 	for (; i < m; i++) {
 		auto c = ptr[i];
-		if (c < 127) {
-			buf[i] = c;
+		// treat as ASCII via unsigned compare: a signed `char` >= 0x80 must stop, not copy
+		if (make_unsigned_t<Char>(c) < 127) {
+			buf[i] = char(c);
 		} else {
 			break;
 		}
 	}
+	buf[i] = 0;
 
 	// read number from internal buffer
 	char *ret = nullptr;
@@ -1211,13 +1368,13 @@ inline int compare_c(const L &l, const R &r) {
 	return compare_c(l.data(), l.size(), r.data(), r.size());
 }
 
+// Unicode-aware counterparts of compare_c / caseCompare_c below. They used to
+// carry a fallback to the byte-wise versions, because the implementation was the
+// platform's and could be missing; it comes from the compiled-in tables now and
+// always answers.
 template <typename L, typename R, typename CharType>
 inline int compare_u(const L &l, const R &r) {
-	int ret = 0;
-	if (unicode::compare(StringViewBase<CharType>(l), StringViewBase<CharType>(r), &ret)) {
-		return ret;
-	}
-	return compare_c(l, r);
+	return unicode::compareCodepoints(StringViewBase<CharType>(l), StringViewBase<CharType>(r));
 }
 
 template <typename L, typename R, typename CharType>
@@ -1244,11 +1401,7 @@ inline int caseCompare_c(const L &l, const R &r) {
 
 template <typename L, typename R, typename CharType>
 inline int caseCompare_u(const L &l, const R &r) {
-	int ret = 0;
-	if (unicode::caseCompare(StringViewBase<CharType>(l), StringViewBase<CharType>(r), &ret)) {
-		return ret;
-	}
-	return caseCompare_c(l, r);
+	return unicode::compareFolded(StringViewBase<CharType>(l), StringViewBase<CharType>(r));
 }
 
 } // namespace sprt::detail
@@ -1575,7 +1728,8 @@ inline constexpr StringViewBase<_CharType>::StringViewBase(const CharType *ptr, 
 
 template <typename _CharType>
 inline constexpr StringViewBase<_CharType>::StringViewBase(const Self &ptr, size_t pos, size_t len)
-: BytesReader<_CharType>(ptr.data() + pos, min(len, ptr.size() - pos)) { }
+: BytesReader<_CharType>(ptr.data() + min(pos, ptr.size()),
+		  min(len, ptr.size() > pos ? ptr.size() - pos : 0)) { }
 
 template <typename _CharType>
 inline constexpr StringViewBase<_CharType>::StringViewBase(const Self &ptr, size_t len)
@@ -1617,7 +1771,8 @@ auto StringViewBase<_CharType>::pdup(memory::pool_t *p) const -> Self {
 	if (this->size() > 0) {
 		auto buf =
 				(_CharType *)sprt::memory::pool::palloc(p, (this->size() + 1) * sizeof(_CharType));
-		__constexpr_memcpy(buf, this->data(), this->size() * sizeof(_CharType));
+		// __constexpr_memcpy's count is an ELEMENT count, so copy size() elements (not bytes).
+		__constexpr_memcpy(buf, this->data(), this->size());
 		buf[this->size()] = 0;
 		return Self(buf, this->size());
 	}
@@ -1747,8 +1902,13 @@ auto StringViewBase<_CharType>::readFloat() -> Result<float> {
 	tmp.skipChars<typename Self::template CharGroup<CharGroupId::WhiteSpace>>();
 	uint8_t offset = 0;
 	auto ret = detail::readNumber<float>(tmp.ptr, tmp.len, 0, offset);
-	this->ptr += offset;
-	this->len -= offset;
+	if (offset > 0) {
+		// offset is measured from tmp.ptr (after leading whitespace was skipped),
+		// so add the skipped whitespace to advance the original view correctly.
+		const auto consumed = size_t(tmp.ptr - this->ptr) + offset;
+		this->ptr += consumed;
+		this->len -= consumed;
+	}
 	return ret;
 }
 
@@ -1758,8 +1918,13 @@ auto StringViewBase<_CharType>::readDouble() -> Result<double> {
 	tmp.skipChars<typename Self::template CharGroup<CharGroupId::WhiteSpace>>();
 	uint8_t offset = 0;
 	auto ret = detail::readNumber<double>(tmp.ptr, tmp.len, 0, offset);
-	this->ptr += offset;
-	this->len -= offset;
+	if (offset > 0) {
+		// offset is measured from tmp.ptr (after leading whitespace was skipped),
+		// so add the skipped whitespace to advance the original view correctly.
+		const auto consumed = size_t(tmp.ptr - this->ptr) + offset;
+		this->ptr += consumed;
+		this->len -= consumed;
+	}
 	return ret;
 }
 
@@ -1769,8 +1934,13 @@ auto StringViewBase<_CharType>::readInteger(int base) -> Result<int64_t> {
 	tmp.skipChars<typename Self::template CharGroup<CharGroupId::WhiteSpace>>();
 	uint8_t offset = 0;
 	auto ret = detail::readNumber<int64_t>(tmp.ptr, tmp.len, base, offset);
-	this->ptr += offset;
-	this->len -= offset;
+	if (offset > 0) {
+		// offset is measured from tmp.ptr (after leading whitespace was skipped),
+		// so add the skipped whitespace to advance the original view correctly.
+		const auto consumed = size_t(tmp.ptr - this->ptr) + offset;
+		this->ptr += consumed;
+		this->len -= consumed;
+	}
 	return ret;
 }
 
@@ -1933,7 +2103,8 @@ inline StringViewUtf8::StringViewUtf8(const StringViewUtf8 &ptr, size_t len)
 : StringViewUtf8(ptr, 0, len) { }
 
 inline StringViewUtf8::StringViewUtf8(const StringViewUtf8 &ptr, size_t pos, size_t len)
-: BytesReader(ptr.data() + pos, min(len, ptr.size() - pos)) { }
+: BytesReader(ptr.data() + min(pos, ptr.size()),
+		  min(len, ptr.size() > pos ? ptr.size() - pos : 0)) { }
 
 inline auto StringViewUtf8::set(const char *p, size_t l) -> Self & {
 	ptr = p;
@@ -1991,10 +2162,10 @@ inline char32_t StringViewUtf8::readChar() {
 		auto ret = sprt::unicode::utf8Decode32(this->ptr, this->len, off);
 		if (off > len) {
 			// invalid codepoint in view
-			offset(len);
+			BytesReader<char>::offset(len);
 			return 0;
 		}
-		offset(off);
+		BytesReader<char>::offset(off);
 		return ret;
 	} else {
 		return 0;
@@ -2076,6 +2247,11 @@ inline void StringViewUtf8::foreach (const Callback &cb) const {
 		const uint8_t len = sprt::unicode::utf8_length_data[uint8_t(*p)];
 		uint32_t ret = *p++ & mask;
 		for (uint8_t c = 1; c < len; ++c) {
+			if (p >= e) {
+				// truncated sequence at end of view — do not read past the end
+				ret = 0;
+				break;
+			}
 			const auto ch = *p++;
 			if ((ch & 0xc0) != 0x80) {
 				ret = 0;
@@ -2094,7 +2270,9 @@ inline size_t StringViewUtf8::code_size() const {
 	const auto e = ptr + len;
 	while (p < e) {
 		++ret;
-		p += sprt::unicode::utf8_length_data[uint8_t(*p)];
+		auto step = sprt::unicode::utf8_length_data[uint8_t(*p)];
+		// step is 0 for a NUL lead byte: advance at least 1 (avoid a stall) and never past the end
+		p += sprt::min(size_t(step ? step : 1), size_t(e - p));
 	}
 	return ret;
 }
@@ -2108,8 +2286,13 @@ inline Result<float> StringViewUtf8::readFloat() {
 	tmp.skipChars<CharGroup<CharGroupId::WhiteSpace>>();
 	uint8_t offset = 0;
 	auto ret = detail::readNumber<float>(tmp.ptr, tmp.len, 0, offset);
-	this->ptr += offset;
-	this->len -= offset;
+	if (offset > 0) {
+		// offset is measured from tmp.ptr (after leading whitespace was skipped),
+		// so add the skipped whitespace to advance the original view correctly.
+		const auto consumed = size_t(tmp.ptr - this->ptr) + offset;
+		this->ptr += consumed;
+		this->len -= consumed;
+	}
 	return ret;
 }
 inline Result<double> StringViewUtf8::readDouble() {
@@ -2117,8 +2300,13 @@ inline Result<double> StringViewUtf8::readDouble() {
 	tmp.skipChars<CharGroup<CharGroupId::WhiteSpace>>();
 	uint8_t offset = 0;
 	auto ret = detail::readNumber<double>(tmp.ptr, tmp.len, 0, offset);
-	this->ptr += offset;
-	this->len -= offset;
+	if (offset > 0) {
+		// offset is measured from tmp.ptr (after leading whitespace was skipped),
+		// so add the skipped whitespace to advance the original view correctly.
+		const auto consumed = size_t(tmp.ptr - this->ptr) + offset;
+		this->ptr += consumed;
+		this->len -= consumed;
+	}
 	return ret;
 }
 inline Result<int64_t> StringViewUtf8::readInteger(int base) {
@@ -2126,8 +2314,13 @@ inline Result<int64_t> StringViewUtf8::readInteger(int base) {
 	tmp.skipChars<CharGroup<CharGroupId::WhiteSpace>>();
 	uint8_t offset = 0;
 	auto ret = detail::readNumber<int64_t>(tmp.ptr, tmp.len, 0, offset);
-	this->ptr += offset;
-	this->len -= offset;
+	if (offset > 0) {
+		// offset is measured from tmp.ptr (after leading whitespace was skipped),
+		// so add the skipped whitespace to advance the original view correctly.
+		const auto consumed = size_t(tmp.ptr - this->ptr) + offset;
+		this->ptr += consumed;
+		this->len -= consumed;
+	}
 	return ret;
 }
 
@@ -2330,7 +2523,8 @@ template <endian Endianess>
 template <endian OtherEndianess>
 inline constexpr BytesViewTemplate<Endianess>::BytesViewTemplate(
 		const BytesViewTemplate<OtherEndianess> ptr, size_t pos, size_t len)
-: BytesReader(ptr.data() + pos, min(len, ptr.size() - pos)) { }
+: BytesReader(ptr.data() + min(pos, ptr.size()),
+		  min(len, ptr.size() > pos ? ptr.size() - pos : 0)) { }
 
 template <endian Endianess>
 auto BytesViewTemplate<Endianess>::set(const uint8_t *p, size_t l) -> Self & {
@@ -2630,7 +2824,8 @@ auto BytesViewTemplate<Endianess>::readBytes(size_t s) -> BytesViewTemplate<Targ
 template <endian Endianess>
 template <typename T>
 auto BytesViewTemplate<Endianess>::readSpan(size_t s) -> SpanView<T> {
-	if (len < s * sizeof(T)) {
+	// divide-form bound to avoid overflow of `s * sizeof(T)` for attacker-controlled `s`
+	if (s > len / sizeof(T)) {
 		s = len / sizeof(T);
 	}
 

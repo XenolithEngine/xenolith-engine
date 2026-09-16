@@ -26,6 +26,14 @@ void performUnameTest();
 void performUnistdTest();
 void performDirTest();
 void performLinkTest();
+void performFcntlTest();
+void performMemalignTest();
+void performMemalignMacroTest();
+void performAtFunctionsTest();
+void performSetjmpTest();
+void performLocaleTest();
+void performWasm64AbiTest();
+void performWasm64HighMemTest();
 
 void performPthreadCreateTest();
 void performPthreadMutexTest();
@@ -40,11 +48,10 @@ void performMallocStringTests();
 
 void performMallocUnorderedMapTests();
 void performMallocUnorderedSetTests();
+void performIntSetTests();
 void performMallocListTests();
 void performThreadTests();
 void performMallocForwardListTests();
-void performVariantTests();
-void performOptionalTests();
 void performSortTests();
 void performConstexprTest();
 void performSharedMutexStressTests();
@@ -53,7 +60,22 @@ void performRttiTests();
 
 void performRefTests();
 void performDispatchTests();
+void performBusTests();
+void performWatchFileTests();
+void performProcessTests();
+void performFileTests();
+void performSocketTests();
 void performUnicodeTests();
+void performUnicodeCaseConformanceTests();
+void performWordBreakConformanceTests();
+
+void performCollationTests();
+
+void performCollationConformanceTests();
+
+void performCollationBench();
 void performDtoaTests();
+void performIdnTests();
+void performIdnConformanceTests();
 
 } // namespace sprt

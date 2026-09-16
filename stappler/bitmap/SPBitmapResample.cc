@@ -28,7 +28,10 @@ class Resampler : public memory::AllocPool {
 public:
 	using Real = float; // float or double
 
-	static constexpr uint32_t MaxDimensions = 16'384;
+	// use the shared decoder dimension cap (SPBitmapFormat.h) as the single source
+	// of truth; pixel indices below are stored as unsigned short, so the cap must
+	// stay within that range
+	static_assert(MaxImageDimension <= 65'535, "MaxImageDimension must fit in unsigned short");
 
 	struct Contrib {
 		Real weight;
@@ -110,7 +113,7 @@ private:
 
 	// The maximum number of scanlines that can be buffered at one time.
 	enum {
-		MAX_SCAN_BUF_SIZE = MaxDimensions
+		MAX_SCAN_BUF_SIZE = MaxImageDimension
 	};
 
 	struct Scan_Buf {
@@ -1273,17 +1276,29 @@ auto BitmapTemplate<memory::PoolInterface>::resample(ResampleFilter f, uint32_t 
 		return ret;
 	}
 
-	if ((min(width, height) <= 1) || (max(height, height) > Resampler::MaxDimensions)) {
+	/* The TARGET. Zero is the refusal and one is not: the resampler's own precondition is
+	`dst_x > 0` (see the constructor's assertions), and a one-pixel target is a legal downscale that
+	`make_clist` answers by summing the whole row - which is exactly what `N x 1` means. This used
+	to read `<= 1` and returned an EMPTY bitmap for it, indistinguishable from a failed allocation,
+	so a half-scale profile over a two-pixel sprite made the picture vanish rather than shrink.
+
+	And BOTH extents are compared against the cap. This used to read `max(height, height)`, so the
+	target's width was the one dimension nothing bounded - which matters more than a missing
+	diagnostic: `alloc` below computes `w * bpp` and `stride * h` in 32 bits, and that is the
+	overflow `checkImageDataSize` exists to prevent on the decode path. */
+	if (width == 0 || height == 0 || (max(width, height) > MaxImageDimension)) {
 		log::format(sprt::oslog::Error, "Bitmap", SP_LOCATION,
 				"Invalid resample width/height (%u x %u), max dimension is %u", width, height,
-				Resampler::MaxDimensions);
+				MaxImageDimension);
 		return ret;
 	}
 
-	if ((max(_width, _height) > Resampler::MaxDimensions)) {
+	// The SOURCE, and the message says so: it used to print the target's extent while testing this
+	// one, which is a sentence that sends a reader to the wrong number.
+	if ((max(_width, _height) > MaxImageDimension)) {
 		log::format(sprt::oslog::Error, "Bitmap", SP_LOCATION,
-				"Bitmap is too large (%u x %u), max dimension is %u", width, height,
-				Resampler::MaxDimensions);
+				"Bitmap is too large (%u x %u), max dimension is %u", _width, _height,
+				MaxImageDimension);
 		return ret;
 	}
 
@@ -1311,24 +1326,27 @@ auto BitmapTemplate<memory::PoolInterface>::resample(uint32_t width, uint32_t he
 }
 
 template <>
-auto BitmapTemplate<memory::StandartInterface>::resample(ResampleFilter f, uint32_t width,
-		uint32_t height, uint32_t stride) const -> BitmapTemplate<memory::StandartInterface> {
-	BitmapTemplate<memory::StandartInterface> ret;
+auto BitmapTemplate<mem_std::Interface>::resample(ResampleFilter f, uint32_t width, uint32_t height,
+		uint32_t stride) const -> BitmapTemplate<mem_std::Interface> {
+	BitmapTemplate<mem_std::Interface> ret;
 	if (empty()) {
 		return ret;
 	}
 
-	if ((min(width, height) <= 1) || (max(height, height) > Resampler::MaxDimensions)) {
+	// The same two guards as the pool-interface overload above, where the argument for them is
+	// written out. The two are one text on purpose: a difference between them would be a bitmap
+	// that resamples through one interface and refuses through the other.
+	if (width == 0 || height == 0 || (max(width, height) > MaxImageDimension)) {
 		log::format(sprt::oslog::Error, "Bitmap", SP_LOCATION,
 				"Invalid resample width/height (%u x %u), max dimension is %u", width, height,
-				Resampler::MaxDimensions);
+				MaxImageDimension);
 		return ret;
 	}
 
-	if ((max(_width, _height) > Resampler::MaxDimensions)) {
+	if ((max(_width, _height) > MaxImageDimension)) {
 		log::format(sprt::oslog::Error, "Bitmap", SP_LOCATION,
-				"Bitmap is too large (%u x %u), max dimension is %u", width, height,
-				Resampler::MaxDimensions);
+				"Bitmap is too large (%u x %u), max dimension is %u", _width, _height,
+				MaxImageDimension);
 		return ret;
 	}
 
@@ -1350,8 +1368,8 @@ auto BitmapTemplate<memory::StandartInterface>::resample(ResampleFilter f, uint3
 }
 
 template <>
-auto BitmapTemplate<memory::StandartInterface>::resample(uint32_t width, uint32_t height,
-		uint32_t stride) const -> BitmapTemplate<memory::StandartInterface> {
+auto BitmapTemplate<mem_std::Interface>::resample(uint32_t width, uint32_t height,
+		uint32_t stride) const -> BitmapTemplate<mem_std::Interface> {
 	return resample(ResamplerData::Filter::Default, width, height, stride);
 }
 

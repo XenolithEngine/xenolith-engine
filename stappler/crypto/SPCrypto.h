@@ -119,6 +119,10 @@ struct SP_PUBLIC BlockKey256 {
 	uint16_t version = 0; // keygen version
 	BlockCipher cipher = BlockCipher::AES_CBC;
 	sprt::array<uint8_t, BlockKeySize256> data = {0};
+	// false unless key derivation genuinely succeeded. A signature/fingerprint-based
+	// key whose signing failed must NOT be silently replaced by a weaker public-data
+	// key — it is marked invalid instead, and encryptBlock/decryptBlock refuse it.
+	bool valid = false;
 
 	bool operator==(const BlockKey256 &) const = default;
 	bool operator!=(const BlockKey256 &) const = default;
@@ -238,13 +242,23 @@ SP_PUBLIC void listBackends(const Callback<void(Backend, StringView, BackendFlag
 
 SP_PUBLIC bool isPemKey(BytesView data);
 
-SP_PUBLIC bool encryptBlock(const BlockKey256 &, BytesView, const Callback<void(BytesView)> &);
+// `iv`: optional 16-byte initialization vector. When omitted (or shorter than 16
+// bytes) an all-zero IV is used, which is only safe if the key is unique per
+// message (as in the AesToken flow). For any key that may be reused across
+// messages, pass a fresh random IV per encryption and store it alongside the
+// ciphertext so the matching decryptBlock() call can supply the same IV.
+SP_PUBLIC bool encryptBlock(const BlockKey256 &, BytesView, const Callback<void(BytesView)> &,
+		BytesView iv = BytesView());
 SP_PUBLIC bool encryptBlock(Backend b, const BlockKey256 &, BytesView,
-		const Callback<void(BytesView)> &);
+		const Callback<void(BytesView)> &, BytesView iv = BytesView());
 
-SP_PUBLIC bool decryptBlock(const BlockKey256 &, BytesView, const Callback<void(BytesView)> &);
+SP_PUBLIC bool decryptBlock(const BlockKey256 &, BytesView, const Callback<void(BytesView)> &,
+		BytesView iv = BytesView());
 SP_PUBLIC bool decryptBlock(Backend b, const BlockKey256 &, BytesView,
-		const Callback<void(BytesView)> &);
+		const Callback<void(BytesView)> &, BytesView iv = BytesView());
+
+// crypto::isEqualConstantTime is defined in core (SPCoreCrypto.h, included above) so that
+// lower-level code (e.g. password validation in core/utils) can share the same primitive.
 
 SP_PUBLIC BlockKey256 makeBlockKey(Backend, BytesView pkey, BytesView hash,
 		BlockCipher = BlockCipher::AES_CBC, uint32_t version = 2);

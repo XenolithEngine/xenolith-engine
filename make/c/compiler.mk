@@ -62,6 +62,19 @@ BUILD_TYPE_CFLAGS_DEBUG := -g -funwind-tables
 BUILD_TYPE_CXXFLAGS_DEBUG := -g -funwind-tables
 BUILD_TYPE_LDFLAGS_DEBUG :=
 
+ifeq ($(TARGET_SYSTEM),Linux)
+BUILD_TYPE_CFLAGS_DEBUG += -ftime-trace
+BUILD_TYPE_CXXFLAGS_DEBUG += -ftime-trace
+# use --ld-path=mold for fast linking
+BUILD_TYPE_LDFLAGS_DEBUG := -Wl,-O0 -Wl,--build-id=none -ldl
+
+ifneq ($(TARGET_ARCH),riscv64)
+BUILD_TYPE_CFLAGS_DEBUG += -gsplit-dwarf
+BUILD_TYPE_CXXFLAGS_DEBUG += -gsplit-dwarf
+BUILD_TYPE_LDFLAGS_DEBUG += -gsplit-dwarf
+endif # ($(TARGET_ARCH),riscv64)
+endif # ($(TARGET_SYSTEM),Linux)
+
 BUILD_TYPE_CFLAGS_COVERAGE := -g -fprofile-arcs -ftest-coverage
 BUILD_TYPE_CXXFLAGS_COVERAGE := -g -fprofile-arcs -ftest-coverage
 BUILD_TYPE_LDFLAGS_COVERAGE := -fprofile-arcs -ftest-coverage
@@ -106,12 +119,17 @@ GLOBAL_GENERAL_CXXFLAGS := $(GLOBAL_GENERAL_CXXFLAGS) -std=$(GLOBAL_STDXX)
 GLOBAL_GENERAL_CFLAGS := $(GLOBAL_GENERAL_CFLAGS) -std=$(GLOBAL_STD)
 GLOBAL_GENERAL_LDFLAGS := $(GLOBAL_GENERAL_LDFLAGS)
 
+ifeq ($(XLMAKE_COLOR),1)
+GLOBAL_GENERAL_CFLAGS := $(GLOBAL_GENERAL_CFLAGS) -fdiagnostics-color=always
+GLOBAL_GENERAL_CXXFLAGS := $(GLOBAL_GENERAL_CXXFLAGS) -fdiagnostics-color=always
+endif
+
 ifdef BUILD_SHARED
 GLOBAL_CONFIG_FLAGS += STAPPLER_SHARED
 endif
 
 include $(BUILD_ROOT)/c/rules.mk
 
-BUILD_С_OUTDIR := $(BUILD_OUTDIR)/$(notdir $(GLOBAL_CC))
+BUILD_С_OUTDIR := $(abspath $(BUILD_OUTDIR)/$(notdir $(GLOBAL_CC)))
 
 BUILD_COMPILATION_DATABASE := ./compile_commands.json

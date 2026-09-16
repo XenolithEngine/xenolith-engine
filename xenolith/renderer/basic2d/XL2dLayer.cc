@@ -27,8 +27,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
-const Vec2 SimpleGradient::Horizontal(0.0f, 1.0f);
-const Vec2 SimpleGradient::Vertical(-1.0f, 0.0f);
+/* The direction each name means, as a vector in the node's own space: X to the right, Y up. */
+const Vec2 SimpleGradient::Horizontal(1.0f, 0.0f);
+const Vec2 SimpleGradient::Vertical(0.0f, 1.0f);
 
 SimpleGradient SimpleGradient::progress(const SimpleGradient &a, const SimpleGradient &b, float p) {
 	SimpleGradient ret;
@@ -153,12 +154,7 @@ void Layer::updateVertexes(FrameInfo &frame) {
 								_flippedY, _rotated);
 
 	Color4F color[4];
-	for (int i = 0; i < 4; i++) {
-		color[i] = Color4F(_displayedColor.r * (_gradient.colors[i].r / 255.0f),
-				_displayedColor.g * (_gradient.colors[i].g / 255.0f),
-				_displayedColor.b * (_gradient.colors[i].b / 255.0f),
-				_displayedColor.a * _gradient.colors[i].a / 255.0f);
-	}
+	writeGradientColors(color);
 
 	quad.setColor(makeSpanView(color, 4));
 }
@@ -166,18 +162,33 @@ void Layer::updateVertexes(FrameInfo &frame) {
 void Layer::updateVertexesColor() {
 	if (!_vertexes.empty()) {
 		Color4F color[4];
-		for (int i = 0; i < 4; i++) {
-			color[i] = Color4F(_displayedColor.r * (_gradient.colors[i].r / 255.0f),
-					_displayedColor.g * (_gradient.colors[i].g / 255.0f),
-					_displayedColor.b * (_gradient.colors[i].b / 255.0f),
-					_displayedColor.a * _gradient.colors[i].a / 255.0f);
-		}
+		writeGradientColors(color);
 
 		_vertexes.getQuad(0, 0).setColor(makeSpanView(color, 4));
 	}
 }
 
+/* The gradient's four corners in quad order: SimpleGradient::colors is `bl, br, tl, tr`, while
+VertexArray::Quad expects `tl, bl, tr, br`. */
+void Layer::writeGradientColors(Color4F *out) const {
+	auto apply = [&](const Color4B &c) {
+		return Color4F(_displayedColor.r * (c.r / 255.0f), _displayedColor.g * (c.g / 255.0f),
+				_displayedColor.b * (c.b / 255.0f), _displayedColor.a * (c.a / 255.0f));
+	};
+
+	out[0] = apply(_gradient.colors[2]); // tl
+	out[1] = apply(_gradient.colors[0]); // bl
+	out[2] = apply(_gradient.colors[3]); // tr
+	out[3] = apply(_gradient.colors[1]); // br
+}
+
 RenderingLevel Layer::getRealRenderingLevel() const {
+	// The Overlay level outranks everything a sprite could resolve for itself, including an
+	// explicit setRenderingLevel: a subtree lifted onto the overlay goes as a whole.
+	if (_inOverlay) {
+		return RenderingLevel::Overlay;
+	}
+
 	auto level = _renderingLevel;
 	if (level == RenderingLevel::Default) {
 		if (_displayedColor.a < 1.0f || _gradient.hasAlpha() || !_texture

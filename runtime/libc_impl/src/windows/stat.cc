@@ -21,6 +21,7 @@ THE SOFTWARE.
 **/
 
 #include <sprt/c/sys/__sprt_stat.h>
+#include <sprt/c/sys/__sprt_statvfs.h>
 #include <sprt/c/__sprt_time.h>
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/log.h>
@@ -28,6 +29,7 @@ THE SOFTWARE.
 #include <io.h>
 #include "specific.h" // IWYU pragma: keep
 #include "sys/stat.h" // IWYU pragma: keep
+#include "sys/statvfs.h" // IWYU pragma: keep
 
 #include <sprt/wrappers/windows/file_api.h>
 #include <sprt/wrappers/windows/security_api.h>
@@ -43,23 +45,26 @@ int hstat(HANDLE h, struct __SPRT_STAT_NAME *__stat) {
 	FILE_STANDARD_INFO standardInfo;
 	BY_HANDLE_FILE_INFORMATION data;
 	if (!GetFileInformationByHandle(h, &data)) {
-		CloseHandle(h);
+		// The HANDLE is owned by the caller (__wstat / __file_stat); do not
+		// close it here, or it will be closed twice.
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
 
 	if (!GetFileInformationByHandleEx(h, FileStandardInfo, &standardInfo,
 				sizeof(FILE_STANDARD_INFO))) {
-		CloseHandle(h);
+		// The HANDLE is owned by the caller (__wstat / __file_stat); do not
+		// close it here, or it will be closed twice.
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
 
+	// FileStorageInfo only feeds the advisory st_blksize/st_blocks fields and is not implemented on
+	// every backend (notably wine), so its absence must NOT fail stat(): fall back to a 512-byte
+	// sector. (Compare GetSecurityInfo below, which is likewise tolerated when unavailable.)
 	if (!GetFileInformationByHandleEx(h, FileStorageInfo, &storageInfo,
 				sizeof(FILE_STORAGE_INFO))) {
-		CloseHandle(h);
-		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		return -1;
+		storageInfo.LogicalBytesPerSector = 512;
 	}
 
 	if (GetSecurityInfo(h, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION,
@@ -115,15 +120,16 @@ int hutimens(HANDLE hFile, const struct __SPRT_TIMESPEC_NAME *times) {
 	if (times == nullptr) {
 		fbi.LastWriteTime = fbi.LastAccessTime = __toFiletime(&now);
 	} else {
+		// times[0] = access time, times[1] = modification time (POSIX).
 		if (times[0].tv_nsec == __SPRT_UTIME_NOW) {
 			fbi.LastAccessTime = __toFiletime(&now);
 		} else if (times[0].tv_nsec != __SPRT_UTIME_OMIT) {
 			fbi.LastAccessTime = __toFiletime(&times[0]);
 		}
 
-		if (times[0].tv_nsec == __SPRT_UTIME_NOW) {
+		if (times[1].tv_nsec == __SPRT_UTIME_NOW) {
 			fbi.LastWriteTime = __toFiletime(&now);
-		} else if (times[0].tv_nsec != __SPRT_UTIME_OMIT) {
+		} else if (times[1].tv_nsec != __SPRT_UTIME_OMIT) {
 			fbi.LastWriteTime = __toFiletime(&times[1]);
 		}
 	}
@@ -133,6 +139,83 @@ int hutimens(HANDLE hFile, const struct __SPRT_TIMESPEC_NAME *times) {
 		return -1;
 	}
 	return 0;
+}
+
+// Fill a POSIX statvfs from the volume that `root` (a "X:\" / mount-point path from
+// GetVolumePathNameW) belongs to. Windows exposes allocation units (clusters), so the
+// POSIX block == cluster; inodes have no counterpart on NTFS/FAT and read back as 0.
+static int __wstatvfs_root(const wchar_t *root, struct __SPRT_STATVFS_NAME *buf) {
+	DWORD sectorsPerCluster = 0, bytesPerSector = 0, freeClusters = 0, totalClusters = 0;
+	if (!GetDiskFreeSpaceW(root, &sectorsPerCluster, &bytesPerSector, &freeClusters,
+				&totalClusters)) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+
+	unsigned long clusterSize = (unsigned long)bytesPerSector * (unsigned long)sectorsPerCluster;
+	if (clusterSize == 0) {
+		clusterSize = 4'096;
+	}
+
+	// GetDiskFreeSpaceEx is the accurate source on volumes > 2 GiB and honours per-user
+	// quotas (f_bavail); GetDiskFreeSpace's cluster counts are the fallback if it fails.
+	ULARGE_INTEGER availBytes, totalBytes, freeBytes;
+	if (GetDiskFreeSpaceExW(root, &availBytes, &totalBytes, &freeBytes)) {
+		buf->f_blocks = (__SPRT_ID(fsblkcnt_t))(totalBytes.QuadPart / clusterSize);
+		buf->f_bfree = (__SPRT_ID(fsblkcnt_t))(freeBytes.QuadPart / clusterSize);
+		buf->f_bavail = (__SPRT_ID(fsblkcnt_t))(availBytes.QuadPart / clusterSize);
+	} else {
+		buf->f_blocks = totalClusters;
+		buf->f_bfree = freeClusters;
+		buf->f_bavail = freeClusters;
+	}
+
+	buf->f_bsize = clusterSize;
+	buf->f_frsize = clusterSize;
+	buf->f_files = 0;
+	buf->f_ffree = 0;
+	buf->f_favail = 0;
+
+	DWORD serial = 0, maxComp = 0, fsFlags = 0;
+	if (GetVolumeInformationW(root, nullptr, 0, &serial, &maxComp, &fsFlags, nullptr, 0)) {
+		buf->f_fsid = serial;
+		buf->f_namemax = maxComp;
+		buf->f_flag = (fsFlags & FILE_READ_ONLY_VOLUME) ? ST_RDONLY : 0;
+	} else {
+		buf->f_fsid = 0;
+		buf->f_namemax = 255;
+		buf->f_flag = 0;
+	}
+	return 0;
+}
+
+// statvfs backend keyed by an open HANDLE: resolve it to a path, then to its volume
+// root. Shared by fstatvfs() (builtin_stat.cpp) on Windows.
+int hstatvfs(HANDLE h, struct __SPRT_STATVFS_NAME *buf) {
+	auto pathLen = GetFinalPathNameByHandleW(h, nullptr, 0, 0);
+	if (pathLen == 0) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+
+	auto pbuf = __sprt_typed_malloca(wchar_t, pathLen + 1);
+	auto writtenLen = GetFinalPathNameByHandleW(h, pbuf, pathLen + 1, 0);
+	if (writtenLen == 0) {
+		__sprt_freea(pbuf);
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+
+	wchar_t root[MAX_PATH];
+	int ret;
+	if (GetVolumePathNameW(pbuf, root, MAX_PATH)) {
+		ret = __wstatvfs_root(root, buf);
+	} else {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		ret = -1;
+	}
+	__sprt_freea(pbuf);
+	return ret;
 }
 
 } // namespace sprt::platform
@@ -261,6 +344,38 @@ __SPRT_C_FUNC int mkdirat(int __fd, const char *__path, __SPRT_ID(mode_t) mode) 
 	return ret;
 }
 
+// MSVC <io.h>/<direct.h> wide surface (see wrappers/unistd/io.h).
+//
+// These are NOT the wide halves of chmod/mkdir above. chmod() takes an sprt path
+// and maps it to a native one before it reaches __wchmod; a wchar_t path handed
+// over by MSVC-surface code IS the native path already, so mapping it again would
+// be wrong. That is the whole difference, and the reason these are three lines
+// rather than a call into performWithNativePath.
+
+__SPRT_C_FUNC int _wchmod(const wchar_t *__path, int __pmode) __SPRT_NOEXCEPT {
+	if (!__path) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	// _S_IREAD/_S_IWRITE are __SPRT_S_IRUSR/__SPRT_S_IWUSR (io.h), which is what
+	// __wchmod reads - it only ever maps the write bit onto FILE_ATTRIBUTE_READONLY.
+	return __wchmod(__path, __SPRT_ID(mode_t)(__pmode));
+}
+
+__SPRT_C_FUNC int _wmkdir(const wchar_t *__path) __SPRT_NOEXCEPT {
+	if (!__path) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	// No mode argument in the MSVC form: the directory takes the inherited ACL,
+	// which is also what __wmkdir ends up with for 0777.
+	if (!CreateDirectoryW(__path, nullptr)) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+	return 0;
+}
+
 __SPRT_C_FUNC int utimensat(int __fd, const char *__path, const __SPRT_TIMESPEC_NAME *times,
 		int flags) __SPRT_NOEXCEPT {
 	int ret = -1;
@@ -277,9 +392,27 @@ __SPRT_C_FUNC int utimensat(int __fd, const char *__path, const __SPRT_TIMESPEC_
 			ret = -1;
 		} else {
 			ret = platform::hutimens(hFile, times);
+			CloseHandle(hFile);
 		}
 	});
 	return ret;
+}
+
+__SPRT_C_FUNC int statvfs(const char *__SPRT_RESTRICT path,
+		struct __SPRT_STATVFS_NAME *__SPRT_RESTRICT buf) __SPRT_NOEXCEPT {
+	return platform::performWithNativePath(path, [&](const char *target) {
+		auto wpath = __MALLOCA_WSTRING(target);
+		wchar_t root[MAX_PATH];
+		int ret;
+		if (GetVolumePathNameW(wpath, root, MAX_PATH)) {
+			ret = platform::__wstatvfs_root(root, buf);
+		} else {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			ret = -1;
+		}
+		__sprt_freea(wpath);
+		return ret;
+	}, -1);
 }
 
 } // namespace sprt

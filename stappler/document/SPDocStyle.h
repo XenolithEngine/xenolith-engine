@@ -30,6 +30,7 @@
 #include <sprt/runtime/geom/color.h>
 #include <sprt/runtime/geom/geom.h>
 #include <sprt/runtime/geom/padding.h>
+#include <sprt/runtime/window/input.h>
 
 namespace STAPPLER_VERSIONIZED stappler::document {
 
@@ -75,6 +76,8 @@ using font::FontVariant;
 using font::TextTransform;
 using font::TextDecoration;
 using font::TextAlign;
+using font::TextDirection;
+using font::BidiMode;
 using font::WhiteSpace;
 using font::Hyphens;
 using font::VerticalAlign;
@@ -105,6 +108,73 @@ enum class Display : EnumSize {
 	TableCell,
 	TableColumn,
 	TableCaption,
+	Flex,
+	InlineFlex,
+	Grid,
+	InlineGrid,
+	TableRow,
+};
+
+enum class Visibility : EnumSize {
+	Visible,
+	Hidden,
+	Collapse,
+};
+
+// CSS `overflow-x` / `overflow-y`. `Clip` differs from `Hidden` only in that it is not a scroll
+// container - nothing can scroll it, not even programmatically.
+enum class Overflow : EnumSize {
+	Visible,
+	Hidden,
+	Clip,
+	Scroll,
+	Auto,
+};
+
+enum class FlexDirection : EnumSize {
+	Row,
+	RowReverse,
+	Column,
+	ColumnReverse,
+};
+
+enum class FlexWrap : EnumSize {
+	NoWrap,
+	Wrap,
+	WrapReverse,
+};
+
+enum class GridAutoFlow : EnumSize {
+	Row,
+	Column,
+	RowDense,
+	ColumnDense,
+};
+
+/* Unified CSS Box Alignment keyword (justify/align - content/items/self).
+
+Covers self-position, content-distribution and baseline values; not every keyword
+is valid for every property, but the parser accepts the full set (validation is a
+consumer concern). */
+enum class Align : EnumSize {
+	Auto,
+	Normal,
+	Stretch,
+	Baseline,
+	FirstBaseline,
+	LastBaseline,
+	Center,
+	Start,
+	End,
+	SelfStart,
+	SelfEnd,
+	FlexStart,
+	FlexEnd,
+	Left,
+	Right,
+	SpaceBetween,
+	SpaceAround,
+	SpaceEvenly,
 };
 
 enum class Float : EnumSize {
@@ -118,6 +188,14 @@ enum class Clear : EnumSize {
 	Left,
 	Right,
 	Both,
+};
+
+enum class Position : EnumSize {
+	Static,
+	Relative,
+	Absolute,
+	Fixed,
+	Sticky,
 };
 
 enum class BackgroundRepeat : EnumSize {
@@ -170,6 +248,39 @@ enum class Scripting : EnumSize {
 	Enabled,
 };
 
+// Host platform the application runs on, exposed to CSS through the custom `platform` media feature
+// (e.g. `@media (platform: linux) { ... }`). Not a standard CSS feature.
+enum class Platform : EnumSize {
+	Unknown,
+	MacOS,
+	Ios,
+	Windows,
+	Android,
+	Linux,
+	Web, // WebAssembly / browser
+};
+
+// The platform this binary was built for. MediaParameters::platform defaults to it, so the
+// `platform` media feature resolves against the real host without any extra wiring (the runtime
+// SPRT_* macros are compile-time constants; a server rendering for another client can override it).
+constexpr Platform getBuildPlatform() {
+#if SPRT_MACOS
+	return Platform::MacOS;
+#elif SPRT_IOS
+	return Platform::Ios;
+#elif SPRT_WINDOWS
+	return Platform::Windows;
+#elif SPRT_ANDROID
+	return Platform::Android;
+#elif SPRT_LINUX
+	return Platform::Linux;
+#elif SPRT_WASM
+	return Platform::Web;
+#else
+	return Platform::Unknown;
+#endif
+}
+
 enum class ListStylePosition : EnumSize {
 	Outside,
 	Inside,
@@ -193,6 +304,16 @@ enum class CaptionSide : EnumSize {
 	Bottom,
 };
 
+enum class TableLayout : EnumSize {
+	Auto,
+	Fixed,
+};
+
+// The live interactive state of a node, one bit per interactive pseudo-class. Defined in the
+// runtime beside the other input enums, because the state belongs to the INPUT model rather than to
+// the document one - the selector machine here is only its most demanding reader.
+using InteractiveFlags = sprt::window::InteractiveFlags;
+
 enum class ParameterName : NameSize {
 	/* css-selectors */
 
@@ -209,6 +330,17 @@ enum class ParameterName : NameSize {
 	CssTextTransform, // enum
 	CssTextDecoration, // enum
 	CssTextAlign, // enum
+
+	/* CSS `direction` and `unicode-bidi` (UAX #9). `direction` is INHERITED and is what makes the
+	   inline axis of a flow run right-to-left; `unicode-bidi` is not inherited and describes how
+	   ONE box takes part in the bidirectional algorithm.
+
+	   Note what `direction` does NOT do: it does not swap `padding-left` for `padding-right`. The
+	   physical sides stay physical, exactly as on the web, and what follows the direction is the
+	   inline axis plus the `*-inline-*` properties below. */
+	CssDirection, // enum (TextDirection)
+	CssUnicodeBidi, // enum (BidiMode)
+
 	CssWhiteSpace, // enum
 	CssHyphens, // enum
 	CssDisplay, // enum
@@ -222,6 +354,17 @@ enum class ParameterName : NameSize {
 	CssMarginRight, // size
 	CssMarginBottom, // size
 	CssMarginLeft, // size
+
+	/* The INLINE-AXIS margins. Their own names rather than a fold onto left/right, because which
+	   physical side they land on is a fact about the NODE (its computed `direction`), and a parser
+	   sees only a declaration. Resolved in ui::StyleResolver::applyLayout, the one place that knows
+	   both. Not inherited.
+
+	   There is no `*-block-*` counterpart in this vocabulary: with no `writing-mode` the block axis
+	   is always vertical, so `margin-block-start` folds onto `margin-top` AT PARSE TIME, where the
+	   mapping is a constant and the fold is exact. */
+	CssMarginInlineStart, // size
+	CssMarginInlineEnd, // size
 	CssWidth, // size
 	CssHeight, // size
 	CssMinWidth, // size
@@ -232,6 +375,8 @@ enum class ParameterName : NameSize {
 	CssPaddingRight, // size
 	CssPaddingBottom, // size
 	CssPaddingLeft, // size
+	CssPaddingInlineStart, // size - see CssMarginInlineStart
+	CssPaddingInlineEnd, // size
 	CssFontFamily, // string id
 	CssBackgroundColor, // color4
 	CssBackgroundImage, // string id
@@ -253,6 +398,12 @@ enum class ParameterName : NameSize {
 	CssBorderLeftStyle, // enum
 	CssBorderLeftWidth, // size
 	CssBorderLeftColor, // color4
+	CssBorderInlineStartStyle, // enum - see CssMarginInlineStart
+	CssBorderInlineStartWidth, // size
+	CssBorderInlineStartColor, // color4
+	CssBorderInlineEndStyle, // enum
+	CssBorderInlineEndWidth, // size
+	CssBorderInlineEndColor, // color4
 	CssOutlineStyle, // enum
 	CssOutlineWidth, // size
 	CssOutlineColor, // color4
@@ -267,6 +418,66 @@ enum class ParameterName : NameSize {
 	CssCaptionSide, // enum
 	CssOrphans, // uint
 	CssWidows, // uint
+
+	/* xenolith ui-only positioning parameters (ignored by the document layout
+	   engine, consumed by xenolith::ui::StyleResolver) */
+	CssPosition, // enum (Position)
+	CssTop, // size
+	CssRight, // size
+	CssBottom, // size
+	CssLeft, // size
+	CssInsetInlineStart, // size - see CssMarginInlineStart
+	CssInsetInlineEnd, // size
+	CssXlAnchorPointX, // float
+	CssXlAnchorPointY, // float
+	CssXlPositionX, // size
+	CssXlPositionY, // size
+	CssXlZOrder, // int (Node ZOrder; drives child placement order in flex/grid, applied pre-reorder)
+
+	/* flexbox & grid (parsed, not yet consumed by any layout) */
+	CssFlexDirection, // enum (FlexDirection)
+	CssFlexWrap, // enum (FlexWrap)
+	CssOrder, // int
+	CssFlexGrow, // float
+	CssFlexShrink, // float
+	CssFlexBasis, // size
+	CssJustifyContent, // enum (Align)
+	CssAlignContent, // enum (Align)
+	CssJustifyItems, // enum (Align)
+	CssAlignItems, // enum (Align)
+	CssJustifySelf, // enum (Align)
+	CssAlignSelf, // enum (Align)
+	CssRowGap, // size
+	CssColumnGap, // size
+	CssGridAutoFlow, // enum (GridAutoFlow)
+	CssGridTemplateColumns, // string id (raw track list)
+	CssGridTemplateRows, // string id (raw track list)
+	CssGridTemplateAreas, // string id (raw)
+	CssGridAutoColumns, // string id (raw track list)
+	CssGridAutoRows, // string id (raw track list)
+	CssGridColumnStart, // string id (raw line)
+	CssGridColumnEnd, // string id (raw line)
+	CssGridRowStart, // string id (raw line)
+	CssGridRowEnd, // string id (raw line)
+
+	CssTableLayout, // enum (TableLayout)
+	CssBorderSpacingHorizontal, // size (the `border-spacing` shorthand fills both)
+	CssBorderSpacingVertical, // size
+	CssXlColumnSpan, // uint (-xl-column-span)
+	CssXlRowSpan, // uint (-xl-row-span)
+
+	CssBorderRadius, // size (uniform corner radius; transitional shorthand = first value)
+	// per-corner radii (the `border-radius` shorthand expands 1-4 values into these; elliptical
+	// "h / v" form is not supported). Order matches the CSS corner order.
+	CssBorderTopLeftRadius, // size
+	CssBorderTopRightRadius, // size
+	CssBorderBottomRightRadius, // size
+	CssBorderBottomLeftRadius, // size
+
+	CssVisibility, // enum (Visibility; inheritable, unlike display)
+
+	CssOverflowX, // enum (Overflow; the `overflow` shorthand fills both)
+	CssOverflowY, // enum (Overflow)
 	__EndCssParameters,
 
 	/* media - specific */
@@ -274,6 +485,7 @@ enum class ParameterName : NameSize {
 	CssMediaType,
 	CssMediaOrientation,
 	CssMediaPointer,
+	CssMediaPlatform, // enum (Platform) - custom: host platform
 	CssMediaHover,
 	CssMediaLightLevel,
 	CssMediaScripting,
@@ -285,6 +497,20 @@ enum class ParameterName : NameSize {
 	CssMediaMaxResolution,
 	CssMediaOption,
 	__EndCssMediaParameters,
+
+	// === Pseudo-parameters (commands)
+	// No CSS syntax produces these; they are synthesized by the consumer and delivered through
+	// the same per-attribute channel as real parameters.
+	__BeginCmds,
+	// "Drop everything you took from a previous style pass." Sent BEFORE the parameters of a
+	// style application, so a consumer starts from a clean slate. It exists because a style pass
+	// can only carry the declarations that ARE present: when a rule stops matching (a class
+	// flip, an edited stylesheet), its properties simply go missing from the resolved style and
+	// nothing would otherwise tell the consumer to undo them. See ui::StyleResolver.
+	CmdReset,
+	__EndCmds,
+
+	Max,
 };
 
 using FontStyleParameters = font::FontParameters;
@@ -387,7 +613,9 @@ struct SP_PUBLIC OutlineParameters {
 
 class SP_PUBLIC StyleInterface {
 public:
+	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 	virtual ~StyleInterface() = default;
+	__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 	virtual bool resolveMediaQuery(MediaQueryId queryId) const = 0;
 	virtual StringView resolveString(StringId) const = 0;
@@ -400,7 +628,9 @@ public:
 
 class SP_PUBLIC SimpleStyleInterface : public StyleInterface {
 public:
+	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 	virtual ~SimpleStyleInterface() = default;
+	__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 	SimpleStyleInterface();
 	SimpleStyleInterface(SpanView<bool>, SpanView<StringView>, float density, float fontScale);
@@ -427,14 +657,19 @@ union SP_PUBLIC StyleValue {
 	TextTransform textTransform;
 	TextDecoration textDecoration;
 	TextAlign textAlign;
+	TextDirection textDirection;
+	BidiMode bidiMode;
 	WhiteSpace whiteSpace;
 	Hyphens hyphens;
 	Display display;
+	Visibility visibility;
+	Overflow overflow;
 	Float floating;
 	Clear clear;
 	MediaType mediaType;
 	Orientation orientation;
 	Pointer pointer;
+	Platform platform;
 	Hover hover;
 	LightLevel lightLevel;
 	Scripting scripting;
@@ -445,8 +680,14 @@ union SP_PUBLIC StyleValue {
 	ListStylePosition listStylePosition;
 	PageBreak pageBreak;
 	Autofit autofit;
+	Position position;
+	FlexDirection flexDirection;
+	FlexWrap flexWrap;
+	GridAutoFlow gridAutoFlow;
+	Align align;
 	BorderCollapse borderCollapse;
 	CaptionSide captionSide;
+	TableLayout tableLayout;
 	Color3B color;
 	FontSize fontSize;
 	uint8_t opacity;
@@ -486,12 +727,41 @@ struct SP_PUBLIC StyleList : public memory::AllocPool {
 
 	using StyleVec = Vector<Pair<String, String>>;
 
+	/* A `--name: value` declaration. Custom properties have no fixed type, so both the name and
+	the raw value text are interned into the document's string table instead of being converted
+	into a StyleValue. They cannot be StyleParameters: `set(p, force)` overwrites by
+	ParameterName, so every custom property would collapse into one slot. */
+	struct CustomProperty {
+		StringId name = StringIdNone;
+		StringId value = StringIdNone;
+		MediaQueryId mediaQuery = MediaQueryIdNone;
+		StyleRule rule = StyleRule::None;
+	};
+
+	/* A declaration whose value text contains `var()`. It cannot be parsed until the element's
+	custom properties are known, so the raw text is kept and re-parsed at resolve time (see
+	expandCssVariables). The property name is kept as TEXT: a name maps to a parse function,
+	not to a ParameterName, and a shorthand yields several parameters at once.
+
+	Pending declarations are never inherited - only the variable is (plain CSS: `width:
+	var(--w)` on a parent does not become the child's width; the child's own `var(--w)` sees the
+	inherited variable). */
+	struct PendingParameter {
+		StringId nameText = StringIdNone;
+		StringId rawValue = StringIdNone;
+		MediaQueryId mediaQuery = MediaQueryIdNone;
+		StyleRule rule = StyleRule::None;
+	};
+
 	static bool isInheritable(ParameterName name);
 
 	template <ParameterName Name, class Value>
 	void set(const Value &value, MediaQueryId mediaQuery = MediaQueryIdNone);
 	void set(const StyleParameter &p, bool force = false);
 
+	// `merge` deliberately carries only `data`: `custom` and `pending` are rule-local inputs to
+	// the cascade, which reads them off each matched rule (their StringIds index the string
+	// table of the sheet that parsed them, so they cannot be pooled into one merged list).
 	void merge(const StyleList &, bool inherit = false);
 	void merge(const StyleList &, const SpanView<bool> &, bool inherit = false);
 
@@ -514,7 +784,18 @@ struct SP_PUBLIC StyleList : public memory::AllocPool {
 	String css(const StyleInterface * = nullptr) const;
 
 	Vector<StyleParameter> data;
+	Vector<CustomProperty> custom; // `--name: value` declarations
+	Vector<PendingParameter> pending; // declarations still holding an unexpanded var()
 };
+
+/* Substitute every `var(--name[, fallback])` in a raw declaration value and stream the result
+to `out`. `lookup` returns a custom property's raw text, or an empty view when it is not
+declared; the substituted text is itself expanded, so a variable may be defined in terms of
+another. Returns false when a reference resolves to nothing and has no fallback, or when the
+expansion nests deeper than a fixed limit (which is how a `--a: var(--b); --b: var(--a)` cycle
+ends) - in CSS both make the declaration invalid, and the caller drops it. */
+SP_PUBLIC bool expandCssVariables(StringView value, const Callback<StringView(StringView)> &lookup,
+		const Callback<void(StringView)> &out, uint32_t depth = 0);
 
 struct SP_PUBLIC MediaQuery : public memory::AllocPool {
 	template <typename T, typename V>
@@ -546,12 +827,12 @@ struct SP_PUBLIC MediaQuery : public memory::AllocPool {
 
 struct SP_PUBLIC MediaParameters {
 	template <typename T, typename V>
-	using Map = memory::StandartInterface::MapType<T, V>;
+	using Map = mem_std::Interface::MapType<T, V>;
 
 	template <typename T>
-	using Vector = memory::StandartInterface::VectorType<T>;
+	using Vector = mem_std::Interface::VectorType<T>;
 
-	using String = memory::StandartInterface::StringType;
+	using String = mem_std::Interface::StringType;
 
 	Size2 surfaceSize;
 
@@ -562,6 +843,7 @@ struct SP_PUBLIC MediaParameters {
 	MediaType mediaType = MediaType::Screen;
 	Orientation orientation = Orientation::Landscape;
 	Pointer pointer = Pointer::Coarse;
+	Platform platform = getBuildPlatform(); // host platform, for the `platform` media feature
 	Hover hover = Hover::None;
 	LightLevel lightLevel = LightLevel::Normal;
 	Scripting scripting = Scripting::None;

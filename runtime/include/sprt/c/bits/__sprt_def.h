@@ -25,10 +25,9 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_config.h>
 
-/* External configuraion:
+/* External configuration:
 
-	__SPRT_AS_STD - define std namespace as sprt alias
-	__SPRT_WINDOWS - force tu use windows platform definition (for specific cross-compilation targets)
+	__SPRT_WINDOWS - force to use windows platform definition (for specific cross-compilation targets)
 */
 
 /*
@@ -52,6 +51,24 @@ THE SOFTWARE.
 #define __SPRT_PLATFORM_NAME_LINUX linux_sprt
 #define __SPRT_PLATFORM_ID_LINUX 6
 
+#define __SPRT_PLATFORM_NAME_WASM wasm_sprt
+#define __SPRT_PLATFORM_ID_WASM 7
+
+#define __SPRT_PLATFORM_NAME_NUTTX nuttx_sprt
+#define __SPRT_PLATFORM_ID_NUTTX 8
+
+#define __SPRT_PLATFORM_NAME_EMBOX embox_sprt
+#define __SPRT_PLATFORM_ID_EMBOX 9
+
+// Embox in user mode: the application is a real EL0 process on its own
+// freestanding libc (runtime/libc_impl), reaching the kernel only through the
+// syscall boundary. Deliberately a SEPARATE platform from EMBOX rather than a
+// flag on it - the two share a kernel but not a libc, not a set of types, and
+// not an address space, so nothing that is true of one is automatically true of
+// the other. See xenolith-os docs/EMBOX-USERSPACE.md.
+#define __SPRT_PLATFORM_NAME_EMBOX_USER embox_user_sprt
+#define __SPRT_PLATFORM_ID_EMBOX_USER 10
+
 
 /*
 	Defines one of:
@@ -62,25 +79,46 @@ THE SOFTWARE.
 	SPRT_WINDOWS
 	SPRT_ANDROID
 	SPRT_LINUX
+	SPRT_WASM
+	SPRT_NUTTX
+	SPRT_EMBOX
+	SPRT_EMBOX_USER
 
-	for platform detection
+	for platform detection. SPRT_HOSTED_RTOS is 1 on NuttX and hosted Embox
+	(flat hosted POSIX, no epoll/futex/fork) - it means "links against the
+	RTOS's own libc", so SPRT_EMBOX_USER, which brings its own, is NOT in it.
+
+	SPRT_EMBOX_ANY is 1 in both Embox modes. Use it only for what is true of the
+	Embox KERNEL regardless of where the code runs (device names, /dev/fb0
+	geometry, board quirks); anything about Embox's libc, its types, or its flat
+	address space is SPRT_EMBOX alone.
+
+	Additionally defines SPRT_APPLE on any Apple/Darwin platform (macOS, iOS,
+	darwin-unknown) - use it for libSystem/XNU behavior that is shared across the
+	whole family, and SPRT_MACOS / SPRT_IOS only for genuinely OS-specific code.
 */
 #ifdef __APPLE__
-#if TARGET_OS_MAC
-#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_MACOS
-#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_MACOS
-#define SPRT_MACOS __SPRT_PLATFORM_ID_MACOS
-#define SPRT_HAVE_DEDICATED_SIZE_T 1
-#elif TARGET_OS_IPHONE
+// NB: clang predefines every TARGET_OS_* macro for Apple targets (even without
+// <TargetConditionals.h> in scope). TARGET_OS_MAC is 1 on EVERY Apple OS - it
+// means "is a Darwin/Apple platform", not "is macOS" - so iOS/tvOS/watchOS
+// (TARGET_OS_IPHONE) MUST be tested before the desktop macOS (TARGET_OS_OSX)
+// branch, otherwise an iOS target is misdetected as macOS.
+#if TARGET_OS_IPHONE
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_IOS
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_IOS
 #define SPRT_IOS __SPRT_PLATFORM_ID_IOS
+#define SPRT_HAVE_DEDICATED_SIZE_T 1
+#elif TARGET_OS_OSX || TARGET_OS_MAC
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_MACOS
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_MACOS
+#define SPRT_MACOS __SPRT_PLATFORM_ID_MACOS
 #define SPRT_HAVE_DEDICATED_SIZE_T 1
 #else
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_DARWIN_UNKNOWN
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_DARWIN_UNKNOWN
 #define SPRT_DARWIN_UNKNOWN __SPRT_PLATFORM_ID_DARWIN_UNKNOWN
 #endif
+#define SPRT_APPLE __SPRT_PLATFORM_ID
 #elif defined(_WIN32) || defined(_WIN64) || defined(__SPRT_WINDOWS)
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_WINDOWS
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_WINDOWS
@@ -89,12 +127,60 @@ THE SOFTWARE.
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_ANDROID
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_ANDROID
 #define SPRT_ANDROID __SPRT_PLATFORM_ID_ANDROID
+#elif defined(__EMBOX_USER__)
+// Embox RTOS, user mode (EL0). Driven by the target-embox toolchain's `+user`
+// variant, which defines __EMBOX_USER__ and NOT __EMBOX__: none of the Embox
+// libc headers are on the include path for this target, so every branch keyed on
+// SPRT_EMBOX (which assumes them) must stay off. Tested before __EMBOX__ anyway,
+// so that a build that defines both still resolves to the more specific one
+// rather than silently compiling the hosted paths against a libc that is absent.
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_EMBOX_USER
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_EMBOX_USER
+#define SPRT_EMBOX_USER __SPRT_PLATFORM_ID_EMBOX_USER
+#elif defined(__EMBOX__)
+// Embox RTOS. LLVM has no "embox" OSType, so the toolchain drives -D__EMBOX__
+// explicitly from target-embox. Tested before __linux__ because Embox may leak
+// linux-ish macros. Platform layer: runtime/core/embox/.
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_EMBOX
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_EMBOX
+#define SPRT_EMBOX __SPRT_PLATFORM_ID_EMBOX
+#elif defined(__NuttX__)
+// NuttX RTOS. LLVM has no "nuttx" OSType, so the toolchain drives -D__NuttX__
+// explicitly from target-nuttx (TARGET_GENERAL_CFLAGS in the generated
+// target.mk). NuttX does NOT predefine __linux__; the order here keeps the
+// detection explicit regardless. The platform layer lives in runtime/core/nuttx/
+// and libc_wrapper forwards to the NuttX libc the way Linux does to glibc.
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_NUTTX
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_NUTTX
+#define SPRT_NUTTX __SPRT_PLATFORM_ID_NUTTX
 #elif defined(__linux__)
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_LINUX
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_LINUX
 #define SPRT_LINUX __SPRT_PLATFORM_ID_LINUX
+#elif defined(__wasm__) || defined(__SPRT_WASM)
+// Freestanding WebAssembly (browser / wasi host). No host OS defines a platform
+// macro here, so wasm is detected purely from the compiler's __wasm__ predefine
+// (or an explicit __SPRT_WASM override). The platform layer lives in src/wasm/ and
+// runtime/core/wasm/; errno/fcntl/etc. reuse the Linux numeric values (see
+// cross/wasm_sprt).
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_WASM
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_WASM
+#define SPRT_WASM __SPRT_PLATFORM_ID_WASM
 #else
 #error "Unknown platform"
+#endif
+
+// "Hosted on an RTOS": there is a platform libc to forward to, and it is neither
+// glibc nor Darwin's. SPRT_EMBOX_USER is deliberately absent - it has no platform
+// libc at all, so it takes the freestanding paths, not these.
+#if SPRT_NUTTX || SPRT_EMBOX
+#define SPRT_HOSTED_RTOS 1
+#endif
+
+// Either Embox mode. For code that depends on the Embox KERNEL and not on which
+// side of the EL0 boundary it runs (see the note above the platform detection).
+#if SPRT_EMBOX || SPRT_EMBOX_USER
+#define SPRT_EMBOX_ANY 1
 #endif
 
 
@@ -288,14 +374,38 @@ THE SOFTWARE.
 
 #endif // SPRT_WINDOWS
 
+/*
+	Empty-base optimization opt-in. The Microsoft ABI needs __declspec(empty_bases)
+	for multiple empty base classes to occupy zero space; the Itanium ABI does it
+	automatically. Used by types that mix in empty bases (e.g. sprt::optional, which
+	derives from a storage base plus empty SFINAE mixins) so their size stays compact
+	and identical across targets. Expands to nothing where it does not apply.
+*/
+#if SPRT_WINDOWS && defined(__has_declspec_attribute)
+#if __has_declspec_attribute(empty_bases)
+#define __SPRT_EMPTY_BASES __declspec(empty_bases)
+#endif
+#endif
+#ifndef __SPRT_EMPTY_BASES
+#define __SPRT_EMPTY_BASES
+#endif
 
 // Defined if we actually build runtime, not using it
 #if SPRT_BUILD_RUNTIME
 
 #if SPRT_WINDOWS
+// SPRT_BUILD_SHARED_RUNTIME is set by <root>/runtime/Makefile when SPRT_SHARED=1. Only
+// then does the runtime need an export surface; the default (static sprt.lib) leaves the
+// macros empty so nothing lands in an export directory.
+#if defined(SPRT_BUILD_SHARED_RUNTIME)
 #define SPRT_GLOBAL __SPRT_DLLEXPORT
 #define SPRT_API __SPRT_DLLEXPORT
 #define SPRT_LOCAL
+#else
+#define SPRT_GLOBAL
+#define SPRT_API
+#define SPRT_LOCAL
+#endif
 #else
 #define SPRT_GLOBAL __SPRT_VISIBLE
 #define SPRT_API __SPRT_VISIBLE
@@ -311,12 +421,14 @@ THE SOFTWARE.
 #define SPRT_LOCAL
 #else // SPRT_WINDOWS
 #define SPRT_GLOBAL __SPRT_VISIBLE
-#define SPRT_API __SPRT_HIDDEN
+#define SPRT_API __SPRT_VISIBLE
 #define SPRT_LOCAL __SPRT_HIDDEN
 #endif // SPRT_WINDOWS
 
-// If we build with integerated runtime
+// If we build with integrated runtime
 #else
+
+// SPRT_BUILD_RUNTIME or SPRT_SHARED_RUNTIME is not defined, assume static application
 
 #if SPRT_WINDOWS
 #define SPRT_GLOBAL
@@ -330,15 +442,29 @@ THE SOFTWARE.
 
 #endif
 
+// For class templates and their partial specializations. dllexport/dllimport has no
+// meaning there - only instantiations have linkage on Windows, and clang warns the
+// attribute away on partial specializations - while ELF/Mach-O visibility does apply.
+#if SPRT_WINDOWS
+#define SPRT_TEMPLATE_API
+#else
+#define SPRT_TEMPLATE_API SPRT_API
+#endif
+
 // clang-format off
 #if defined(_WIN32) || defined(_WIN64) || defined(__SPRT_WINDOWS)
 #define SPRT_ALIGNAS(N) __declspec(align(N))
-#else
-#if __STDC_VERSION__ >= 201112L
+#elif defined(__GNUC__) || defined(__clang__)
+// GNU/clang: use the attribute form. It is valid where SPRT_ALIGNAS is used
+// (`typedef struct SPRT_ALIGNAS(N) { ... }`), whereas the C11 `_Alignas(N)` keyword
+// is a syntax error between `struct` and `{`. Matters for plain-C freestanding
+// builds (e.g. the wasm third-party deps) where __STDC_VERSION__ >= C11 but the
+// struct-tag position rules out _Alignas.
+#define SPRT_ALIGNAS(N) __SPRT_FALLBACK_ATTR(aligned(N))
+#elif __STDC_VERSION__ >= 201112L
 #define SPRT_ALIGNAS(N) _Alignas(N)
 #else
 #define SPRT_ALIGNAS(N) __SPRT_FALLBACK_ATTR(aligned(N))
-#endif
 #endif
 // clang-format on
 

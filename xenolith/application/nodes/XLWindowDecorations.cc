@@ -41,6 +41,7 @@ bool WindowDecorations::init() {
 		auto l = node->addSystem(Rc<InputListener>::create());
 		l->setLayerFlags(flag);
 		l->setCursor(cursor);
+		l->setPriority(DecorationsInputPriority);
 		return node;
 	};
 
@@ -78,7 +79,7 @@ bool WindowDecorations::init() {
 }
 
 bool WindowDecorations::shouldBePresentedOnScene(Scene *scene) const {
-	auto window = scene->getDirector()->getWindow();
+	auto window = scene->getDirector()->getRenderServer();
 	if (hasFlag(window->getInfo()->flags, WindowCreationFlags::UserSpaceDecorations)
 			&& !hasFlag(window->getWindowState(), core::WindowState::Fullscreen)) {
 		return true;
@@ -89,9 +90,9 @@ bool WindowDecorations::shouldBePresentedOnScene(Scene *scene) const {
 void WindowDecorations::handleEnter(Scene *scene) {
 	Node::handleEnter(scene);
 
-	_capabilities = _director->getWindow()->getInfo()->capabilities;
+	_capabilities = _director->getRenderServer()->getInfo()->capabilities;
 
-	updateWindowState(_director->getWindow()->getWindowState());
+	updateWindowState(_director->getRenderServer()->getWindowState());
 }
 
 void WindowDecorations::handleContentSizeDirty() {
@@ -131,8 +132,8 @@ void WindowDecorations::handleContentSizeDirty() {
 	_resizeLeft->setPosition(Vec2(inset, _contentSize.height / 2));
 }
 
-void WindowDecorations::handleLayout(Node *parent) {
-	Node::handleLayout(parent);
+void WindowDecorations::handleLayoutInParent(Node *parent) {
+	Node::handleLayoutInParent(parent);
 
 	if (!shouldBePresentedOnScene(parent->getScene())) {
 		setVisible(false);
@@ -147,9 +148,13 @@ void WindowDecorations::handleLayout(Node *parent) {
 	setAnchorPoint(Anchor::Middle);
 	setLocalZOrder(ZOrder::max() - ZOrder(1));
 
-	auto newState = parent->getDirector()->getWindow()->getWindowState();
+	// On the overlay level, like a drag ghost: excluded from frame cutouts; this ZOrder keeps it
+	// above the ghost.
+	setOverlay(true);
+
+	auto newState = parent->getDirector()->getRenderServer()->getWindowState();
 	if (newState != _currentState) {
-		updateWindowState(parent->getDirector()->getWindow()->getWindowState());
+		updateWindowState(parent->getDirector()->getRenderServer()->getWindowState());
 	}
 	updateWindowTheme(parent->getDirector()->getApplication()->getThemeInfo());
 }

@@ -28,7 +28,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::font {
 
-class SP_PUBLIC Formatter : public InterfaceObject<memory::StandartInterface> {
+class FontFaceObject;
+
+class SP_PUBLIC Formatter : public InterfaceObject<mem_std::Interface> {
 public:
 	struct LinePosition {
 		uint16_t offset;
@@ -45,12 +47,12 @@ public:
 	};
 
 	Formatter();
-	Formatter(FontCallback &&, TextLayoutData<memory::StandartInterface> *);
+	Formatter(FontCallback &&, TextLayoutData<mem_std::Interface> *);
 	Formatter(FontCallback &&, TextLayoutData<memory::PoolInterface> *);
 
 	void setFontCallback(FontCallback &&);
 
-	void reset(TextLayoutData<memory::StandartInterface> *);
+	void reset(TextLayoutData<mem_std::Interface> *);
 	void reset(TextLayoutData<memory::PoolInterface> *);
 	void reset();
 	void finalize();
@@ -58,6 +60,9 @@ public:
 	void setLinePositionCallback(const LinePositionCallback &);
 	void setWidth(uint16_t w);
 	void setTextAlignment(TextAlign align);
+	void setTextDirection(TextDirection); // base/paragraph direction (CSS `direction`)
+	void setBidiEnabled(bool); // run the Unicode Bidirectional Algorithm (UAX #9) during layout
+	void setShapingEnabled(bool); // shape glyphs with HarfBuzz during layout
 	void setLineHeightAbsolute(uint16_t);
 	void setLineHeightRelative(float);
 
@@ -80,6 +85,9 @@ public:
 	uint16_t getWidth() const;
 	uint16_t getMaxLineX() const;
 	uint16_t getLineHeight() const;
+	TextDirection getTextDirection() const;
+	bool isBidiEnabled() const;
+	bool isShapingEnabled() const;
 
 protected:
 	bool isSpecial(char32_t) const;
@@ -114,7 +122,38 @@ protected:
 	bool pushLineBreak();
 	bool pushLineBreakChar();
 
+	// CSS-relative text alignment: resolves `start`/`end` against a line's base direction.
+	TextAlign resolveTextAlign(TextDirection lineDirection) const;
+
+	// Lay out a finished line in VISUAL order: resolve UAX #9 embedding levels, reorder its runs
+	// (rules L1-L2) and assign each char its on-screen x. When shaping is enabled each same-face run
+	// is shaped with HarfBuzz (glyph indices + advances/offsets); otherwise chars are repositioned by
+	// the advances measured while reading. Returns the line's visual right edge (used for alignment).
+	uint16_t layoutLine(uint16_t first, uint16_t len);
+
+	// Shape and place one single-level bidi run for layoutLine: splits it into maximal same-face
+	// sub-runs and lays them left-to-right, reversing sub-run order for an RTL run. Returns advanced x.
+	int32_t shapeVisualRun(uint16_t runFirst, uint16_t runLen, bool rtl, int32_t x);
+
+	// Loaded face object with the given id within the primary font set, or nullptr.
+	FontFaceObject *faceById(uint16_t id) const;
+
+	// Emit a zero-width Unicode bidi control (LRE/RLE/LRO/RLO/LRI/RLI/FSI/PDF/PDI) into the char
+	// stream so the resolver applies it; the control renders nothing. Realises CSS `unicode-bidi`.
+	void pushBidiControl(char32_t control);
+
+	// Splice the extra glyphs gathered from 1->N shaping decompositions into _output.chars after their
+	// source char (as ContinuationChar entries) and re-index lines/ranges to stay consistent.
+	void expandGlyphContinuations();
+
+	// Extra advance to add after a grapheme: CSS letter-spacing, plus word-spacing for a space. #9
+	int16_t graphemeSpacing(char32_t cp) const;
+
 	void updateLineHeight(uint16_t first, uint16_t last);
+
+	// The uint16_t layout domain is full (charNum, lineX or lineY cannot grow further): raise the
+	// output overflow flag, log once per layout, and answer false so the caller stops reading.
+	bool reportOverflow(const char *reason);
 
 	struct Output {
 		uint16_t *width = nullptr;
@@ -127,7 +166,7 @@ protected:
 		VectorAdapter<LineLayoutData> lines;
 
 		Output() = default;
-		Output(TextLayoutData<memory::StandartInterface> *);
+		Output(TextLayoutData<mem_std::Interface> *);
 		Output(TextLayoutData<memory::PoolInterface> *);
 
 		Output &operator=(Output &&) = default;
@@ -170,12 +209,26 @@ protected:
 	uint16_t wordWrapPos = 0;
 
 	bool bufferedSpace = false;
+	bool _overflowReported = false; // one error line per layout, not one per character
 
 	uint16_t maxWidth = 0;
 	size_t maxLines = 0;
 
 	char32_t _fillerChar = 0;
 	TextAlign alignment = TextAlign::Left;
+	TextDirection _defaultDirection = TextDirection::LeftToRight;
+	// Resolved base direction of the paragraph being laid out; propagates the first line's base level
+	// to wrapped continuation lines under `auto` direction. Reset on each hard break and on reset().
+	TextDirection _paragraphDirection = TextDirection::Neutral;
+	bool _bidiEnabled = false;
+	bool _shapingEnabled = false;
+
+	// Extra shaped glyphs from 1->N decompositions, spliced into _output.chars at finalize().
+	struct PendingGlyph {
+		uint32_t insertAfter; // source char index this glyph follows
+		CharLayoutData data;
+	};
+	Vector<PendingGlyph> _pendingContinuations;
 
 	ContentRequest request = ContentRequest::Normal;
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Stappler Team <admin@stappler.org>
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -17,6 +17,8 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
+
+GIT_TAG ?= $(shell git describe --tags --abbrev=0)
 
 T_INTERMEDIATE ?= $(abspath $(LIBS_MAKE_ROOT))/intermediate/x86_64-unknown-linux-gnu
 T_TARGET ?= $(abspath $(LIBS_MAKE_ROOT))/targets/x86_64-unknown-linux-gnu
@@ -55,8 +57,13 @@ $(T_TARGET)/share/licenses: | $(T_TARGET)
 	rm -rf $@
 	cp -rf ../licenses $(T_TARGET)/share
 
+$(T_TARGET)/release: $(T_TARGET)
+	echo "$(GIT_TAG)" > $@
+	touch $@
+
 all: $(ALL_INSTALL_STATIC_LIBS) \
 	$(T_TARGET)/include_libc $(T_TARGET)/lib $(T_TARGET)/usr/include $(T_TARGET)/share/licenses $(T_TARGET)/target.mk \
+	$(T_TARGET)/release \
 	$(T_TARGET)
 
 .PHONY: all

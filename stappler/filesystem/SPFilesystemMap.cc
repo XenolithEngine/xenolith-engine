@@ -86,22 +86,39 @@ MemoryMappedRegion::~MemoryMappedRegion() {
 }
 
 MemoryMappedRegion::MemoryMappedRegion(MemoryMappedRegion &&other) {
+	_location = other._location;
 	_region = other._region;
+	_size = other._size;
 	_storage = sp::move(other._storage);
 	_type = other._type;
 	_prot = other._prot;
 
+	other._location = nullptr;
 	other._region = nullptr;
+	other._size = 0;
 	sprt::memset(other._storage.data(), 0, other._storage.size());
 }
 
 MemoryMappedRegion &MemoryMappedRegion::operator=(MemoryMappedRegion &&other) {
+	if (this == &other) {
+		return *this;
+	}
+
+	if (_region && _location) {
+		_location->interface->_munmap(_region, _storage.data());
+		_region = nullptr;
+	}
+
+	_location = other._location;
 	_region = other._region;
+	_size = other._size;
 	_storage = sp::move(other._storage);
 	_type = other._type;
 	_prot = other._prot;
 
+	other._location = nullptr;
 	other._region = nullptr;
+	other._size = 0;
 	sprt::memset(other._storage.data(), 0, other._storage.size());
 	return *this;
 }

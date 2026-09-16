@@ -33,7 +33,7 @@ THE SOFTWARE.
 #include <sprt/runtime/enum.h>
 #include <sprt/jni/jni.h>
 
-#include "private/SPRTFilesystem.h"
+#include "../src/private/SPRTFilesystem.h"
 
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/sys/__sprt_mman.h>
@@ -501,7 +501,7 @@ void PathInfo::initSystemPaths(LookupData &data) {
 	}
 
 	if (!_filesDir.empty()) {
-		auto locationFlags = LocationFlags::Locateable;
+		auto locationFlags = LocationFlags::Locateable | LocationFlags::Writable;
 		auto lookupFlags = LookupFlags::Writable | LookupFlags::Private;
 
 		filepath::merge([&](StringView mergadPath) {
@@ -540,7 +540,7 @@ void PathInfo::initSystemPaths(LookupData &data) {
 	}
 
 	if (!_cacheDir.empty()) {
-		auto locationFlags = LocationFlags::Locateable;
+		auto locationFlags = LocationFlags::Locateable | LocationFlags::Writable;
 		auto lookupFlags = LookupFlags::Writable | LookupFlags::Private;
 
 		filepath::merge([&](StringView mergadPath) {

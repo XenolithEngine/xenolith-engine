@@ -185,6 +185,87 @@
 #define SCNxMAX     __SPRT_UINTMAX_FMTx
 #define SCNxPTR		__SPRT_UINTPTR_FMTx
 
+// intmax_t/uintmax_t are long long/unsigned long long and there is no dedicated
+// platform backend for the imax string conversions, so express strtoimax /
+// strtoumax (and their _l and wide forms) through the existing strtoll / strtoull
+// / wcstoll / wcstoull family.
+#include <sprt/c/__sprt_stdlib.h>
+#include <sprt/c/__sprt_wchar.h>
+
+__SPRT_BEGIN_DECL
+
+SPRT_UMBRELLA_FUNC
+__SPRT_ID(intmax_t) strtoimax(const char *__s, char **__p, int __base) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strtoll(__s, __p, __base);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+__SPRT_ID(uintmax_t) strtoumax(const char *__s, char **__p, int __base) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strtoull(__s, __p, __base);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+__SPRT_ID(intmax_t)
+strtoimax_l(const char *__s, char **__p, int __base, __SPRT_ID(locale_t) __loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(strtoll_l)(__s, __p, __base, __loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+__SPRT_ID(uintmax_t)
+strtoumax_l(const char *__s, char **__p, int __base, __SPRT_ID(locale_t) __loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(strtoull_l)(__s, __p, __base, __loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+__SPRT_ID(intmax_t)
+wcstoimax(const __SPRT_ID(wchar_t) * __s, __SPRT_ID(wchar_t) * *__p, int __base) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(wcstoll)(__s, __p, __base);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+__SPRT_ID(uintmax_t)
+wcstoumax(const __SPRT_ID(wchar_t) * __s, __SPRT_ID(wchar_t) * *__p, int __base) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(wcstoull)(__s, __p, __base);
+}
+#endif
+
+// imaxabs/imaxdiv are pure arithmetic (intmax_t == long long here), so they are
+// provided as inline definitions on every target rather than out-of-line symbols.
+typedef struct {
+	__SPRT_ID(intmax_t) quot;
+	__SPRT_ID(intmax_t) rem;
+} imaxdiv_t;
+
+SPRT_FORCEINLINE __SPRT_ID(intmax_t) imaxabs(__SPRT_ID(intmax_t) __j) {
+	return __j < 0 ? -__j : __j;
+}
+
+SPRT_FORCEINLINE imaxdiv_t imaxdiv(__SPRT_ID(intmax_t) __numer, __SPRT_ID(intmax_t) __denom) {
+	imaxdiv_t __r;
+	__r.quot = __numer / __denom;
+	__r.rem = __numer % __denom;
+	return __r;
+}
+
+__SPRT_END_DECL
+
 #endif
 
 #endif // CORE_RUNTIME_INCLUDE_SPRT_WRAPPERS_LIBC_INTTYPES_H_

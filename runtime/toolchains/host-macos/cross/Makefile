@@ -18,23 +18,49 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+GIT_TAG ?= $(shell git describe --tags --abbrev=0)
+
+SP_USE_STAPPLER_DISTRIB ?= 1
+
 LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 LOCAL_ROOT := $(dir $(THIS_FILE))
 
 include $(LOCAL_ROOT)../../common/utils/detect-platform.mk
 
-SP_NJOBS := -j16
-SP_ARCH := aarch64
-SP_ARCH_LD := aarch64
-SP_ARCH_APPLE := arm64
-SP_ARCH_CLANG ?= $(SP_ARCH)-apple-macosx
+SP_ARCH_HOST ?= x86_64
 
-SP_LLVM_VER := 21
+ifeq ($(SP_ARCH_HOST),aarch64)
+SP_ARCH_APPLE := arm64
+else
+SP_ARCH_APPLE := x86_64
+endif
+
+
+SP_NJOBS := -j16
+SP_ARCH_CLANG ?= $(SP_ARCH_HOST)-apple-macosx
+
+unexport ROOT_DIR := $(abspath ../..)
+# xlmake is built against the SDK-free "+open" target export (SDK-less end to end).
+unexport OUT_TARGET_SYSROOT := $(ROOT_DIR)/targets/$(SP_ARCH_CLANG)+open
+
+include $(LOCAL_ROOT)../../common/utils/llvm-version.mk
+
+# lldb builds against the +open sysroot too: libedit/ncurses headers + tbd stubs
+# come from apple-oss (open-sysroot.mk), the Foundation/CF surface its .mm host
+# layer needs is hand-written in the overlay. debugserver is NOT built
+# (LLDB_USE_SYSTEM_DEBUGSERVER) — it needs task_for_pid entitlements + code
+# signing; on a real Mac the CLT/Xcode debugserver is used at run time.
+SP_LLVM_PROJECTS ?= lld;clang;lldb
 
 MAKE_SRC_VER := 4.4.1
 MAKE_SRC_TARBALL := src/make-$(MAKE_SRC_VER).tar.lz
 MAKE_SRC_DIR := src/make-$(MAKE_SRC_VER)
+
+ifdef SP_USE_STAPPLER_DISTRIB
+MAKE_SRC_URL := ftp://stappler.dev/infrastructure/make-$(MAKE_SRC_VER)/make-$(MAKE_SRC_VER).tar.lz
+else
 MAKE_SRC_URL := https://ftp.gnu.org/gnu/make/make-$(MAKE_SRC_VER).tar.lz
+endif
 
 $(MAKE_SRC_TARBALL):
 	mkdir -p src
@@ -46,7 +72,16 @@ $(MAKE_SRC_DIR): $(MAKE_SRC_TARBALL)
 	touch $(MAKE_SRC_DIR)
 
 LLVM_DIR := $(realpath $(LOCAL_ROOT)../../src/llvm-project)
-SDK_DIR ?= $(realpath $(LOCAL_ROOT)../../src/MacOSX.sdk)
+
+# The target sysroot is the SDK-free "+open" export (target-apple), NOT MacOSX.sdk:
+# apple-oss headers in include_libc, baked .tbd link stubs + deps in usr/lib, the
+# framework bundles in System/Library/Frameworks. Resolution order: an installed
+# release under targets/, then the in-repo target-apple export, then the working
+# intermediate.
+OPEN_TARGET_DIR ?= $(firstword $(wildcard \
+	$(LOCAL_ROOT)../../targets/$(SP_ARCH_CLANG)+open \
+	$(LOCAL_ROOT)../../target-apple/targets/$(SP_ARCH_CLANG)+open \
+	$(LOCAL_ROOT)../../target-apple/intermediate/$(SP_ARCH_CLANG)+open))
 
 VULKAN_HEADERS_DIR := $(realpath $(LOCAL_ROOT)../../src/vulkan-headers)
 SPIRV_HEADERS_DIR := $(realpath $(LOCAL_ROOT)../../src/spirv-headers)
@@ -69,30 +104,66 @@ CODESIGN ?= $(realpath ~/.cargo/bin/rcodesign)
 export LIBTOOL=$(abspath $(HOST_LLVM_LIBTOOL))
 export LIPO=$(abspath $(HOST_LLVM_LIPO))
 
-TARGET_SYSROOT := sysroot-target
-TARGET_TOOLCHAIN_FILE := sysroot-target/toolchain.cmake
+TARGET_SYSROOT := sysroot-target/$(SP_ARCH_HOST)
+TARGET_TOOLCHAIN_FILE := sysroot-target/$(SP_ARCH_HOST)/toolchain.cmake
 
 TARGET_CLANG_CC := $(TARGET_SYSROOT)/bin/clang
 TARGET_CLANG_CXX := $(TARGET_SYSROOT)/bin/clang++
 
+# +open header/platform flags for sub-builds that OVERRIDE the toolchain's
+# CMAKE_*_FLAGS_INIT with their own explicit CMAKE_*_FLAGS (spirv-tools, glslang)
+# or bypass cmake entirely (GNU make's configure): the SDK-like headers live in
+# include_libc (C++ first, so libc++'s include_next ordering holds). The
+# XNU_PLATFORM_MacOSX selector (modern conformance symbols, no $UNIX2003) is
+# baked into the sysroot's <sys/cdefs.h> by open-sysroot.mk — no define needed.
+# -mmacosx-version-min: a bare --target=<arch>-apple-macosx defaults to an ANCIENT
+# deployment target, which makes the driver link crt1.o + -lgcc_s.1 (neither is a
+# +open thing to provide) — pin the sysroot's own OS version.
+TARGET_OPEN_CFLAGS := -mmacosx-version-min=14.5 \
+	-isystem $(abspath $(TARGET_SYSROOT))/include_libc
+TARGET_OPEN_CXXFLAGS := -mmacosx-version-min=14.5 \
+	-isystem $(abspath $(TARGET_SYSROOT))/include_libc/c++/v1 \
+	-isystem $(abspath $(TARGET_SYSROOT))/include_libc
+
+ifeq ($(SP_ARCH_HOST),x86_64)
+TARGET_CLANG_CFLAGS := -march=x86-64
+else
+TARGET_CLANG_CFLAGS :=
+endif
+
 $(TARGET_SYSROOT)/sysroot:
+	@test -n "$(OPEN_TARGET_DIR)" || { echo "no +open sysroot found — build target-$(SP_ARCH_CLANG)+open first"; exit 1; }
 	mkdir -p $(dir $@)
-	cp -rf $(SDK_DIR)/System $(dir $@)
-	cp -rf $(SDK_DIR)/usr $(dir $@)
+	cp -a $(OPEN_TARGET_DIR)/System $(dir $@)
+	cp -a $(OPEN_TARGET_DIR)/usr $(dir $@)
+	cp -a $(OPEN_TARGET_DIR)/include_libc $(dir $@)
+	@# hermetic-build search path: clang's Darwin driver looks at
+	@# <sysroot>/usr/local/include BEFORE usr/include (the export ships no usr/local).
+	mkdir -p $(dir $@)usr/local
+	ln -sfn ../../include_libc $(dir $@)usr/local/include
 	touch $@
 
 $(TARGET_TOOLCHAIN_FILE): $(TARGET_SYSROOT)/sysroot # $(LOCAL_MAKEFILE)
 	@echo "set(CMAKE_SYSTEM_NAME Darwin)" > $@
-	@echo "set(CMAKE_OSX_DEPLOYMENT_TARGET \"14.4\")" >> $@
+	@echo "set(CMAKE_OSX_DEPLOYMENT_TARGET \"14.5\")" >> $@
 	@echo "set(CMAKE_OSX_SYSROOT \"$(abspath $(TARGET_SYSROOT))\")" >> $@
 	@echo "set(CMAKE_SYSROOT \"$(abspath $(TARGET_SYSROOT))\")" >> $@
 	@echo "set(CMAKE_C_COMPILER_TARGET \"$(SP_ARCH_CLANG)\")" >> $@
 	@echo "set(CMAKE_CXX_COMPILER_TARGET \"$(SP_ARCH_CLANG)\")" >> $@
-	@echo "set(CMAKE_C_FLAGS_INIT \"\")" >> $@
-	@echo "set(CMAKE_CXX_FLAGS_INIT \"\")" >> $@
+	@echo "set(CMAKE_ASM_COMPILER_TARGET \"$(SP_ARCH_CLANG)\")" >> $@
+	@# +open layout: SDK-like headers live in include_libc (see target-apple); C++ must
+	@# see OUR c++/v1 first (libc++'s include_next relies on the libc headers coming
+	@# AFTER it). C code resolves include_libc via the staged usr/local/include link,
+	@# but keep it explicit for try_compiles that bypass the driver defaults.
+	@# XNU_PLATFORM_MacOSX (plain conformance symbols, no $UNIX2003 suffixes) is
+	@# baked into the sysroot's <sys/cdefs.h> by open-sysroot.mk — no define here.
+	@echo "set(CMAKE_C_FLAGS_INIT \"$(TARGET_CLANG_CFLAGS) -isystem $(abspath $(TARGET_SYSROOT))/include_libc\")" >> $@
+	@echo "set(CMAKE_CXX_FLAGS_INIT \"$(TARGET_CLANG_CFLAGS) -isystem $(abspath $(TARGET_SYSROOT))/include_libc/c++/v1 -isystem $(abspath $(TARGET_SYSROOT))/include_libc\")" >> $@
+	@echo "set(CMAKE_ASM_FLAGS_INIT \"$(TARGET_CLANG_CFLAGS)\")" >> $@
 	@echo "set(CMAKE_LINKER_TYPE LLD)" >> $@
 	@echo "set(CMAKE_C_COMPILER \"$(abspath $(HOST_CC))\")" >> $@
 	@echo "set(CMAKE_CXX_COMPILER \"$(abspath $(HOST_CXX))\")" >> $@
+	@echo "set(CMAKE_ASM_COMPILER \"$(abspath $(HOST_CXX))\")" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)" >> $@
@@ -111,14 +182,17 @@ $(TARGET_CLANG_CC): $(TARGET_TOOLCHAIN_FILE)
 		-G Ninja -S $(LLVM_DIR)/llvm -B build/target-llvm \
 		-DCMAKE_C_COMPILER="$(abspath $(HOST_CC))" \
 		-DCMAKE_CXX_COMPILER="$(abspath $(HOST_CXX))" \
-		-DLLVM_ENABLE_PROJECTS="lld;clang;lldb" \
+		-DLLVM_ENABLE_PROJECTS="$(SP_LLVM_PROJECTS)" \
 		-DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV;WebAssembly" \
 		-DLLVM_ENABLE_PIC=On \
 		-DLLVM_ENABLE_LIBXML2=FORCE_ON \
+		-DHAVE_LIBXML2=1 \
+		-DCMAKE_PROJECT_INCLUDE=$(abspath llvm-libxml2-iconv.cmake) \
 		-DLLVM_BUILD_LLVM_DYLIB=ON \
 		-DLLVM_LINK_LLVM_DYLIB=ON \
 		-DLLVM_ENABLE_LTO=Full \
 		-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
+		-DLLVM_PARALLEL_LINK_JOBS=4 \
 		-DCLANG_DEFAULT_CXX_STDLIB=libc++ \
 		-DCLANG_DEFAULT_RTLIB=compiler-rt \
 		-DCLANG_DEFAULT_LINKER=lld \
@@ -130,6 +204,7 @@ $(TARGET_CLANG_CC): $(TARGET_TOOLCHAIN_FILE)
 		-DLLDB_NO_INSTALL_DEFAULT_RPATH=On \
 		-DLLDB_ENABLE_PYTHON=Off \
 		-DLLDB_INCLUDE_TESTS=OFF \
+		-DLLDB_USE_SYSTEM_DEBUGSERVER=ON \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX=$(abspath $(TARGET_SYSROOT)) \
 		-DCMAKE_MACOSX_RPATH=On \
@@ -175,8 +250,8 @@ $(TARGET_SYSROOT)/bin/spirv-opt: $(TARGET_SYSROOT)/include/spirv/unified1/spirv.
 		-DCMAKE_INSTALL_PREFIX=$(abspath $(TARGET_SYSROOT)) \
 		-DCMAKE_C_FLAGS_INIT="-flto" \
 		-DCMAKE_CXX_FLAGS_INIT="-flto" \
-		-DCMAKE_C_FLAGS="-flto" \
-		-DCMAKE_CXX_FLAGS="-flto" \
+		-DCMAKE_C_FLAGS="-flto $(TARGET_OPEN_CFLAGS)" \
+		-DCMAKE_CXX_FLAGS="-flto $(TARGET_OPEN_CXXFLAGS)" \
 		-DCMAKE_EXE_LINKER_FLAGS="-flto" \
 		-DCMAKE_SHARED_LINKER_FLAGS="-flto" \
 		-DCMAKE_MACOSX_RPATH=On \
@@ -202,8 +277,8 @@ $(TARGET_SYSROOT)/bin/glslang: $(TARGET_SYSROOT)/bin/spirv-opt $(TARGET_SYSROOT)
 		-DCMAKE_INSTALL_PREFIX=$(abspath $(TARGET_SYSROOT)) \
 		-DCMAKE_C_FLAGS_INIT="-flto" \
 		-DCMAKE_CXX_FLAGS_INIT="-flto" \
-		-DCMAKE_C_FLAGS="-flto" \
-		-DCMAKE_CXX_FLAGS="-flto" \
+		-DCMAKE_C_FLAGS="-flto $(TARGET_OPEN_CFLAGS)" \
+		-DCMAKE_CXX_FLAGS="-flto $(TARGET_OPEN_CXXFLAGS)" \
 		-DCMAKE_EXE_LINKER_FLAGS="-flto" \
 		-DCMAKE_SHARED_LINKER_FLAGS="-flto" \
 		-DCMAKE_MACOSX_RPATH=On \
@@ -219,9 +294,9 @@ $(TARGET_SYSROOT)/bin/make: $(TARGET_TOOLCHAIN_FILE) $(MAKE_SRC_DIR)
 		--host=$(SP_ARCH_CLANG) \
 		CC=$(abspath $(HOST_CC)) \
 		CXX=$(abspath $(HOST_CXX)) \
-		CPPFLAGS="-std=gnu11 -arch $(SP_ARCH_APPLE) --target=$(SP_ARCH_CLANG) --sysroot $(realpath $(TARGET_SYSROOT))" \
+		CPPFLAGS="-std=gnu11 -arch $(SP_ARCH_APPLE) --target=$(SP_ARCH_CLANG) --sysroot $(realpath $(TARGET_SYSROOT)) $(TARGET_OPEN_CFLAGS)" \
 		CFLAGS=" -flto" \
-		LDFLAGS=" -arch $(SP_ARCH_APPLE) --target=$(SP_ARCH_CLANG) --sysroot $(realpath $(TARGET_SYSROOT)) -flto"
+		LDFLAGS=" -arch $(SP_ARCH_APPLE) --target=$(SP_ARCH_CLANG) --sysroot $(realpath $(TARGET_SYSROOT)) -mmacosx-version-min=14.5 -flto"
 	make -C build/target-make
 	make -C build/target-make install
 
@@ -235,7 +310,7 @@ target: $(TARGET_CLANG_CC) \
 OUT_SYSROOT ?= ../../hosts/$(SP_ARCH_CLANG)
 
 OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
-	clang-21 \
+	clang-$(SP_LLVM_VER) \
 	clang-format \
 	clang-installapi \
 	diagtool \
@@ -262,6 +337,7 @@ OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
 	llvm-pdbutil \
 	llvm-rc \
 	llvm-readobj \
+	llvm-readtapi \
 	llvm-size \
 	llvm-strings \
 	llvm-symbolizer \
@@ -278,7 +354,7 @@ OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
 	spirv-val)
 
 OUT_LIBS := $(addprefix $(OUT_SYSROOT)/lib/,\
-	liblldb.21.1.8.dylib \
+	liblldb.$(SP_LLVM_V).dylib \
 	libLLVM.dylib \
 	libLTO.dylib \
 	libRemarks.dylib \
@@ -351,11 +427,12 @@ $(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'HOST_LIB_CXXFLAGS :=' >> $@
 	@echo 'HOST_LIB_LDFLAGS :=' >> $@
 
-$(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
-	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.21.1.8.dylib liblldb.dylib
-	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.dylib libLLVM-21.dylib
+$(OUT_SYSROOT)/release: $(TARGET_CLANG_CC) \
+		$(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
+	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.$(SP_LLVM_V).dylib liblldb.dylib
+	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.dylib libLLVM-$(SP_LLVM_VER).dylib
 
-	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 clang
+	cd $(OUT_SYSROOT)/bin; ln -fs clang-$(SP_LLVM_VER) clang
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang++
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang-cl
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang-cpp
@@ -376,13 +453,27 @@ $(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_
 	cd $(OUT_SYSROOT)/bin; ln -fs llvm-rc llvm-windres
 	cd $(OUT_SYSROOT)/bin; ln -fs lld wasm-ld
 
-	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 cc
-	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 c++
+	cd $(OUT_SYSROOT)/bin; ln -fs clang-$(SP_LLVM_VER) cc
+	cd $(OUT_SYSROOT)/bin; ln -fs clang-$(SP_LLVM_VER) c++
 	cd $(OUT_SYSROOT)/bin; ln -fs llvm-ar ar
 
+	echo "$(GIT_TAG)" > $@
 	touch $@
 
-out: $(OUT_SYSROOT)/sysroot
+$(OUT_TARGET_SYSROOT)/target.mk:
+	$(MAKE) -C $(ROOT_DIR) target-$(SP_ARCH_CLANG)+open HOST_REQUIRED=0
+
+$(OUT_SYSROOT)/bin/xlmake: $(OUT_TARGET_SYSROOT)/target.mk $(OUT_SYSROOT)/host.mk
+	rm -rf build/xlmake
+	$(MAKE) $(SP_NJOBS) -C $(ROOT_DIR)/../../utils/xlmake install \
+		STAPPLER_HOST_FILE=$(HOST_ROOT)/host.mk \
+		STAPPLER_TARGET_FILE=$(OUT_TARGET_SYSROOT)/target.mk \
+		STAPPLER_TARGET=$(SP_ARCH_CLANG)+open \
+		LOCAL_INSTALL_DIR=$(abspath $(OUT_SYSROOT)/bin) \
+		LOCAL_OUTDIR=$(abspath build/xlmake) \
+		RELEASE=1
+
+out: $(OUT_SYSROOT)/release $(OUT_SYSROOT)/bin/xlmake
 
 all: host target
 

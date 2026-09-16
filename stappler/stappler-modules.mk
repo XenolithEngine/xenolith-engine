@@ -23,7 +23,7 @@ STAPPLER_MODULE_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 STAPPLER_VERSION_API := 6
 STAPPLER_VERSION_REV := 1
-STAPPLER_VERSION_BUILD := $(firstword $(call sp_detect_build_number,$(STAPPLER_MODULE_DIR)))
+STAPPLER_VERSION_BUILD := $(firstword $(call sp_detect_build_number,$(abspath $(STAPPLER_MODULE_DIR)/..)))
 
 STAPPLER_CRYPTO_DEFAULT ?= openssl
 
@@ -35,9 +35,11 @@ TOOLKIT_MODULE_LIST += \
 	$(STAPPLER_MODULE_DIR)/filesystem/filesystem.mk \
 	$(STAPPLER_MODULE_DIR)/crypto/crypto.mk \
 	$(STAPPLER_MODULE_DIR)/network/network.mk \
+	$(STAPPLER_MODULE_DIR)/git/git.mk \
 	$(STAPPLER_MODULE_DIR)/search/search.mk \
 	$(STAPPLER_MODULE_DIR)/sql/sql.mk \
 	$(STAPPLER_MODULE_DIR)/font/font.mk \
+	$(STAPPLER_MODULE_DIR)/raster/raster.mk \
 	$(STAPPLER_MODULE_DIR)/tess/tess.mk \
 	$(STAPPLER_MODULE_DIR)/vg/vg.mk \
 	$(STAPPLER_MODULE_DIR)/zip/zip.mk \
@@ -45,5 +47,6 @@ TOOLKIT_MODULE_LIST += \
 	$(STAPPLER_MODULE_DIR)/makefile/makefile.mk \
 	$(STAPPLER_MODULE_DIR)/pug/pug.mk \
 	$(STAPPLER_MODULE_DIR)/document/document.mk \
+	$(STAPPLER_MODULE_DIR)/markdown/markdown.mk \
 	$(STAPPLER_MODULE_DIR)/layout/layout.mk \
 	$(STAPPLER_MODULE_DIR)/experimental/abi/abi.mk

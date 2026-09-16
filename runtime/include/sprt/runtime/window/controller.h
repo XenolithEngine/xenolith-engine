@@ -37,6 +37,8 @@
 #include <sprt/runtime/window/context.h>
 #include <sprt/runtime/window/gapi.h>
 #include <sprt/runtime/window/clipboard.h>
+#include <sprt/runtime/window/dialog.h>
+#include <sprt/cxx/function>
 
 namespace sprt::window {
 
@@ -76,7 +78,7 @@ struct ContextConfig {
 	Rc<gapi::LoopInfo> loop;
 };
 
-class ContextController : public Ref {
+class SPRT_API ContextController : public Ref {
 public:
 	static Rc<ContextController> create(NotNull<Context>, ContextConfig &&info,
 			NotNull<dispatch::Looper>);
@@ -104,11 +106,56 @@ public:
 
 	virtual bool configureWindow(NotNull<WindowInfo>);
 
+	// Find a live window by its WindowInfo::id
+	NativeWindow *findWindow(StringView id) const;
+
+	// Last pointer/button serial seen by the backend. xdg_popup.grab needs the serial of a fresh
+	// input event; other platforms ignore it.
+	void notePointerSerial(uint32_t serial) { _lastPointerSerial = serial; }
+	uint32_t getLastPointerSerial() const { return _lastPointerSerial; }
+
+	// Common entry point for window creation, safe to call at any point when context is active.
+	// Validates type/parent requirements and id uniqueness, then hands off to the backend
+	// implementation (`loadWindow`).
+	// Returns Status::ErrorNotSupported if the platform can not create this kind of window;
+	// caller may then fall back to an in-scene emulation.
+	virtual Status createWindow(Rc<WindowInfo> &&);
+
+	// Dismiss the whole menu chain `w` belongs to: walks up to the outermost Popup/Tooltip and
+	// closes it, which cascades back down through every nested level. This is the "clicked
+	// outside" / "Esc" / "lost focus" path — a single level must never be dismissed alone,
+	// or the parent menus stay on screen with no way to reach them.
+	void dismissPopupChain(NotNull<NativeWindow> w);
+
+	// Take down every Popup/Tooltip owned by `parent` (the cascade carries on to nested levels).
+	// Called when something happens to the owner that a menu must not survive: a press inside it,
+	// or the window system raising, moving or resizing it.
+	void dismissChildPopups(NotNull<NativeWindow> parent, StringView reason);
+
+	// A window lost WindowState::Focused. Menus must not outlive focus, but the check has to be
+	// deferred: on Wayland an xdg_popup grab moves keyboard focus off the toplevel and onto the
+	// popup itself, so "the parent lost focus" alone would dismiss the menu that just opened.
+	void notifyWindowFocusLost(NotNull<NativeWindow>);
+
+	// Optional sink so app-layer log capture (SceneInspector) sees window diagnostics.
+	void setWindowDiagSink(Function<void(StringView line)> &&sink) {
+		_windowDiagSink = sprt::move(sink);
+	}
+
 	// Native window was created on WM side and now operational
 	virtual void notifyWindowCreated(NotNull<NativeWindow>);
 
 	// Native window's size, pixel density or transform was changed by WM
 	virtual void notifyWindowConstraintsChanged(NotNull<NativeWindow>, UpdateConstraintsFlags);
+
+	/* Native window was moved or resized by the WM.
+
+	Separate from notifyWindowConstraintsChanged, and cheaper: it touches no presentation state and
+	never deprecates a swapchain, because moving a window changes nothing about what is drawn into
+	it. A backend that reports both a move and a resize calls both - the resize path is what the
+	swapchain cares about, this one is what the application cares about.
+	*/
+	virtual void notifyWindowGeometryChanged(NotNull<NativeWindow>);
 
 	// Some input should be transferred to application
 	virtual void notifyWindowInputEvents(NotNull<NativeWindow>, Vector<InputEventData> &&);
@@ -130,6 +177,54 @@ public:
 	virtual Status readFromClipboard(Rc<ClipboardRequest> &&);
 	virtual Status probeClipboard(Rc<ClipboardProbe> &&);
 	virtual Status writeToClipboard(Rc<ClipboardData> &&);
+
+	/* Whether openDialog can actually serve `type` on this platform, in this build, right now.
+
+	The question a capability bit cannot answer. WindowCapabilities::SystemFileActions says the
+	backend has shell actions at all, and covers three of them - one of which, RestoreFromTrash, has
+	no primitive on macOS. A caller that offers a feature built on a dialog type asks this first;
+	the alternative is opening a request in order to be told ErrorNotSupported, which on a
+	destructive action means finding out too late.
+
+	Safe to call from any thread: the answer is a property of the backend, settled at startup, and
+	never changes for the life of the controller.
+
+	The base implementation answers from the capability bits, which is the whole truth for every
+	type whose support IS one bit. A backend with a per-type answer overrides it. */
+	virtual bool isDialogSupported(DialogType) const;
+
+	// Open an OS dialog described by `req`; its completion runs on `target`. Call on this
+	// controller's looper. `req->parentWindowId`, when set, must name a live window: the dialog is
+	// parented to it, DialogFlags::Modal blocks it, and the dialog is cancelled if it closes.
+	//
+	// Status::Ok means the dialog was handed to the OS. ANY other return means the completion has
+	// ALREADY been posted to `target` with that same status — callers never answer their own
+	// callback.
+	virtual Status openDialog(NotNull<dispatch::Looper> target, Rc<DialogRequest> &&req);
+
+	// Dismiss a dialog opened with `req`; its completion still runs, with Status::ErrorCancelled.
+	// Status::ErrorNotFound if it already finished.
+	virtual Status cancelDialog(NotNull<DialogRequest> req);
+
+	// Refuse `req` with `st`, delivering the completion on `target` rather than dropping it.
+	// Returns `st`, so a caller can `return declineDialog(...)`.
+	Status declineDialog(NotNull<dispatch::Looper> target, Rc<DialogRequest> &&req, Status st);
+
+	// Cancel every dialog owned by `w`, completing each callback with `st`. A dialog must never
+	// outlive its parent window.
+	void cancelWindowDialogs(NotNull<NativeWindow> w, Status st = Status::ErrorCancelled);
+
+	// The user poked a window blocked by a modal dialog: ask its dialogs to come forward. On
+	// platforms with real OS parenting the WM has already done this and the backends no-op.
+	void raiseWindowDialogs(NotNull<NativeWindow> w);
+
+	bool isModalBlocked(NotNull<NativeWindow> w) const;
+
+	// Backends call these once the OS has accepted / finished a dialog. registerDialog also takes
+	// the modal block on the parent; unregisterDialog releases it, which is why every completion
+	// path must go through DialogHandle::finalize (that is where unregisterDialog is called from).
+	void registerDialog(NotNull<DialogHandle>);
+	void unregisterDialog(NotNull<DialogHandle>);
 
 	virtual Rc<ScreenInfo> getScreenInfo() const;
 
@@ -172,6 +267,33 @@ public:
 protected:
 	virtual void notifyPendingWindows();
 
+	// Backend part of `createWindow`: create the native window for an already validated
+	// and configured WindowInfo. Platforms that can not create windows on demand
+	// (Android, iOS - windows come from the OS) keep the default.
+	virtual bool loadWindow(Rc<WindowInfo> &&) { return false; }
+
+	void emitWindowDiag(StringView line) const;
+
+	void retainModalBlock(NotNull<NativeWindow>);
+	void releaseModalBlock(NotNull<NativeWindow>);
+
+	// Note which pointers/keys go down and come back up, so that cancelWindowInput knows what to
+	// release. Called for every dispatched input batch.
+	void trackHeldInput(NotNull<NativeWindow>, const Vector<InputEventData> &);
+
+	// Release anything the scene is holding down before input to `w` is cut off.
+	void cancelWindowInput(NotNull<NativeWindow>);
+
+	// Request a close on every live window matching `pred`, re-scanning after each step because a
+	// close cascades into children. Returns the number of windows asked to close; the teardown
+	// itself may be deferred to the end of the poll iteration.
+	uint32_t closeWindows(StringView reason, const callback<bool(const WindowInfo &)> &pred);
+
+	// Actually retire a window: unmap it, tell the Context (which winds down its AppWindow and
+	// presentation engine) and drop the controller's reference. Idempotent — a window that is no
+	// longer active is silently skipped, which is what makes the cascade safe to re-enter.
+	void performWindowTeardown(NotNull<NativeWindow>);
+
 	int _resultCode = 0;
 	ContextState _state = ContextState::Created;
 	Context *_context = nullptr;
@@ -190,10 +312,28 @@ protected:
 	Set<Rc<NativeWindow>> _activeWindows;
 	Set<NativeWindow *> _allWindows;
 
+	// Dialogs on screen, grouped by the window that owns them (nullptr = parentless). Drained in
+	// performWindowTeardown while the native parent is still valid.
+	Map<NativeWindow *, Vector<Rc<DialogHandle>>> _dialogs;
+
+	// How many modal dialogs currently block each window. Counted, so nested modals compose and
+	// the parent is only unblocked when the last one goes away.
+	Map<NativeWindow *, uint32_t> _modalBlocks;
+
+	// Pointers and keys currently down in each window: the Begin / KeyPressed event that has not
+	// yet been matched by an End / Cancel / KeyReleased. Kept only so that cancelWindowInput can
+	// echo them back as Cancel / KeyCanceled when input to the window is cut off — otherwise the
+	// scene keeps a phantom press for as long as a modal dialog is up, and past it.
+	Map<NativeWindow *, Vector<InputEventData>> _heldInput;
+
+	uint32_t _lastPointerSerial = 0;
 	uint32_t _pollDepth = 0;
+	bool _focusDismissScheduled = false;
 
 	Vector<pair<NativeWindow *, UpdateConstraintsFlags>> _resizedWindows;
-	Vector<pair<NativeWindow *, WindowCloseOptions>> _closedWindows;
+	Vector<pair<Rc<NativeWindow>, WindowCloseOptions>> _closedWindows;
+
+	Function<void(StringView)> _windowDiagSink;
 };
 
 } // namespace sprt::window

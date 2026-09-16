@@ -40,8 +40,8 @@
 
 typedef int __SPRT_ID(sig_atomic_t);
 
-#define __SPRT_SIG_ATOMIC_MIN __SPRT_INT_MAX
-#define __SPRT_SIG_ATOMIC_MAX (-1-__SPRT_INT_MAX)
+#define __SPRT_SIG_ATOMIC_MIN (-1-__SPRT_INT_MAX)
+#define __SPRT_SIG_ATOMIC_MAX __SPRT_INT_MAX
 
 #define __SPRT_SIGSET_WORDS 1
 

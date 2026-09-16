@@ -24,17 +24,36 @@ LIBNAME = openssl
 
 include ../common/configure.mk
 
+# Pick the OpenSSL Configure target by arch (both defined in
+# replacements/openssl/49-xwin-clang.conf). Without this, aarch64 fell back to the
+# hardcoded x64 target and produced x86_64 crypto.lib/ssl.lib.
+ifeq ($(SP_ARCH),aarch64)
+OPENSSL_TARGET := mingw-xwin-clang-arm64
+else
 OPENSSL_TARGET := mingw-xwin-clang-x64
+endif
 
 export CMAKECONFIGDIR=$(SP_INSTALL_PREFIX)/usr/lib/cmake
 export PKGCONFIGDIR=$(SP_INSTALL_PREFIX)/usr/lib/pkgconfig
 export libdir=$(SP_INSTALL_PREFIX)/usr/lib
+
+# RANLIB must be llvm-ranlib, NOT the host GNU binutils ranlib. OpenSSL's build
+# creates each archive with $(AR) (llvm-ar, which writes a correct COFF symbol
+# index) and then re-indexes it with $(RANLIB). Left to autodetect, RANLIB
+# resolves to /usr/bin/ranlib, whose BFD only knows pe-x86-64 - on the aarch64
+# target it fails to parse the ARM64 COFF members and rewrites the archive with
+# an EMPTY symbol index. lld-link then cannot pull members by symbol, so ssl.lib
+# links but exports nothing findable (e.g. ngtcp2's check_symbol_exists for
+# SSL_set_quic_tls_cbs fails -> "lack of QUIC support"). llvm-ranlib understands
+# aarch64 COFF and preserves the index; it is correct for x64 too.
+SP_RANLIB := $(dir $(SP_AR))llvm-ranlib
 
 CONFIGURE := $(OPENSSL_TARGET) \
 	--prefix=$(SP_INSTALL_PREFIX)/usr \
 	CC=$(SP_CC) \
 	CXX=$(SP_CXX) \
 	AR=$(SP_AR) \
+	RANLIB=$(SP_RANLIB) \
 	RC=$(SP_RC) \
 	CFLAGS="$(SP_WINDOWS_INCLIUDES) -Xclang --dependent-lib=sprt" \
 	no-tests \
@@ -60,5 +79,7 @@ all:
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/libcrypto.a,$(SP_INSTALL_PREFIX)/usr/lib/crypto.lib)
 	$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/libssl.a,$(SP_INSTALL_PREFIX)/usr/lib/ssl.lib)
+	$(call rule_symlink,crypto.lib,$(SP_INSTALL_PREFIX)/usr/lib/libcrypto.a)
+	$(call rule_symlink,ssl.lib,$(SP_INSTALL_PREFIX)/usr/lib/libssl.a)
 
 .PHONY: all

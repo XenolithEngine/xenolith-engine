@@ -1,5 +1,5 @@
 /**
-Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,200 +21,77 @@ THE SOFTWARE.
 **/
 
 #include "SPCommon.h"
-#include "SPString.h"
-#include "SPMemInterface.h"
 
-#include "SPFilesystem.h"
-//#include "SPThread.h"
+#include <sprt/cxx/unordered_map>
 
-//#include "SPData.h"
-//#include "SPDataValue.h"
-
-#include <sprt/runtime/platform.h>
-#include <sprt/runtime/utils/backtrace.h>
-#include <sprt/runtime/utils/compress.h>
-#include <sprt/runtime/utils/idn.h>
+#include "tests.h"
 
 using namespace stappler;
 
-/*static sprt::rmutex s_mutex;
-
-class TestThread : public thread::Thread {
-public:
-	virtual void threadInit() override {
-		sprt::unique_lock lock(s_mutex);
-		Thread::threadInit();
-		slog().debug("Thread", "threadInit: ", getThreadId());
-	}
-	virtual void threadDispose() override {
-		sprt::unique_lock lock(s_mutex);
-		Thread::threadDispose();
-		slog().debug("Thread", "threadDispose: ", getThreadId());
-	}
-	virtual bool worker() override {
-		sprt::unique_lock lock(s_mutex);
-		slog().debug("Thread", "worker: ", getThreadId());
-		return false;
-	}
+// One entry per module test (defined in the matching per-topic subdirectory). Run all with no
+// argument, or some of them by name: `stapplertest filesystem raster`.
+//
+// An array, not a hash map: the run order has to be the order written here. With an unordered_map
+// the order is a function of the hash of the names, so adding one test silently reshuffles all the
+// others - which turns any interaction between two of them into a bug that appears and disappears
+// as unrelated tests are added.
+struct TestEntry {
+	sprt::StringView name;
+	void (*fn)();
 };
 
-static void performIdnTests() {
-	sprt::idn::puny_encode([](StringView str) {
-		std::cout << str << "\n"; //
-	}, "рф", true);
-
-	sprt::idn::puny_decode([](StringView str) {
-		std::cout << str << "\n"; //
-	}, "p1ai", true);
-
-	sprt::idn::puny_decode([](StringView str) {
-		std::cout << str << "\n"; //
-	}, "xn--p1ai", true);
-
-	sprt::idn::puny_decode([](StringView str) {
-		std::cout << str << "\n"; //
-	}, "XN--P1AI", true);
-
-	std::cout << sprt::idn::is_known_tld("рф") << "\n";
-}
-
-static void performThreadTests() {
-	s_mutex.lock();
-
-	auto t = Rc<TestThread>::create();
-	t->run();
-
-	sprt::platform::sleep(1'000);
-
-	slog().debug("Thread", "performThreadTests");
-
-	s_mutex.unlock();
-
-	t->waitStopped();
-}
-
-static void performDynAllocTests() {
-	sprt::String str;
-	str += "test 1234567890 1234567890 1234567890\n";
-
-	std::cout << str;
-
-	auto str2 = sprt::StreamTraits<char>::toString("test", 1, " ", 0.56, " 123456 |", '\n');
-
-	std::cout << str2;
-}
-
-static void performPathTests() {
-	std::cout << "UniqueDeviceId: " << sprt::platform::getUniqueDeviceId() << "\n";
-	std::cout << "ExecPath: " << sprt::platform::getExecPath() << "\n";
-	std::cout << "HomePath: " << sprt::platform::getHomePath() << "\n";
-
-	for (auto it : each<LocationCategory>()) {
-		filesystem::enumeratePaths(it, [&](const LocationInfo &, StringView path) {
-			std::cout << it << ": " << path << "\n";
-			return true;
-		});
-	}
-
-	auto execDir = filepath::root(sprt::platform::getExecPath());
-
-	filesystem::copy(FileInfo("exec_objs", LocationCategory::Bundled),
-			FileInfo("", LocationCategory::AppRuntime));
-
-	filesystem::move(FileInfo("exec_objs", LocationCategory::AppRuntime),
-			FileInfo("exec_objs", LocationCategory::AppCache));
-
-	filesystem::remove(FileInfo("exec_objs", LocationCategory::AppCache), true);
-
-	filesystem::ftw(FileInfo(execDir), [](const FileInfo &info, FileType t) {
-		std::cout << info << " (" << t << ")\n";
-		return true;
-	});
-
-	filesystem::ftw(FileInfo("exec_objs", LocationCategory::Bundled),
-			[](const FileInfo &info, FileType t) {
-		std::cout << info << " (" << t << ")\n";
-		return true;
-	});
-}
-
-static void performTimeTests() {
-	char timebuf[sprt::time::time_exp_t::Iso8601BufferSize] = {0};
-	auto tm1 = sprt::time::time_exp_t::get(false);
-	tm1.encodeIso8601(timebuf, sprt::time::time_exp_t::Iso8601BufferSize, 6);
-	std::cout << timebuf << "\n";
-	tm1.encodeRfc822(timebuf, sprt::time::time_exp_t::Iso8601BufferSize);
-	std::cout << timebuf << "\n";
-
-	auto tm2 = sprt::time::time_exp_t::get(true);
-	tm2.encodeIso8601(timebuf, sprt::time::time_exp_t::Iso8601BufferSize, 6);
-	std::cout << timebuf << "\n";
-	tm2.encodeRfc822(timebuf, sprt::time::time_exp_t::Iso8601BufferSize);
-	std::cout << timebuf << "\n";
-
-	auto tnow = sprt::platform::clock(sprt::platform::ClockType::Realtime);
-	sprt::time::time_exp_t tm3(tnow);
-	tm3.encodeIso8601(timebuf, sprt::time::time_exp_t::Iso8601BufferSize, 6);
-	std::cout << timebuf << "\n";
-	tm3.encodeRfc822(timebuf, sprt::time::time_exp_t::Iso8601BufferSize);
-	std::cout << timebuf << "\n";
-
-	sprt::time::time_exp_t tm4(tnow, true);
-	tm4.encodeIso8601(timebuf, sprt::time::time_exp_t::Iso8601BufferSize, 6);
-	std::cout << timebuf << "\n";
-	tm4.encodeRfc822(timebuf, sprt::time::time_exp_t::Iso8601BufferSize);
-	std::cout << timebuf << "\n";
-
-	sprt::time::time_exp_t tm5("2025-12-31T20:21:28.039509+08:00");
-	tm5.encodeIso8601(timebuf, sprt::time::time_exp_t::Iso8601BufferSize, 6);
-	std::cout << timebuf << "\n";
-}
-
-static void performUnicodeTests() {
-	StringView test1 = "Тест";
-	StringView test2 = "ТЕСТ";
-	StringView test3 = "ТЕСТ";
-
-	WideStringView wtest1 = u"Тест1";
-	WideStringView wtest2 = u"ТЕСТ1";
-	WideStringView wtest3 = u"тест1";
-
-	std::cout << platform::toupper<memory::StandartInterface>(test1) << "\n";
-	std::cout << platform::tolower<memory::StandartInterface>(test1) << "\n";
-	std::cout << platform::totitle<memory::StandartInterface>(test1) << "\n";
-
-	std::cout << platform::toupper<memory::StandartInterface>(test2) << "\n";
-	std::cout << platform::tolower<memory::StandartInterface>(test2) << "\n";
-	std::cout << platform::totitle<memory::StandartInterface>(test2) << "\n";
-
-	std::cout << "StringUnicodeCaseComparator: "
-			  << test1.equals<sprt::StringUnicodeCaseComparator>(test2) << "\n";
-	std::cout << "StringCaseComparator: " << test1.equals<sprt::StringCaseComparator>(test2)
-			  << "\n";
-
-	std::cout << "StringUnicodeCaseComparator: "
-			  << wtest1.equals<sprt::StringUnicodeCaseComparator>(wtest2) << "\n";
-	std::cout << "StringCaseComparator: " << wtest1.equals<sprt::StringCaseComparator>(wtest2)
-			  << "\n";
-
-	std::cout << (test3 < test1) << " " << (test3 > test1) << '\n';
-}*/
+static const TestEntry s_testList[] = {
+	{"makefile", &stappler::performMakefileTests},
+	{"filesystem", &stappler::performFilesystemTests},
+	{"fs-locations", &stappler::performFilesystemLocationTests},
+	{"embedded", &stappler::performEmbeddedFilesystemTests},
+	{"bidi", &stappler::performBidiTests},
+	{"shape", &stappler::performShapeTests},
+	{"glyph", &stappler::performGlyphTests},
+	{"pug", &stappler::performPugTests},
+	{"css", &stappler::performCssTests},
+	{"css-flexgrid", &stappler::performFlexboxGridCssTests},
+	{"css-table", &stappler::performTableCssTests},
+	{"markdown", &stappler::performMarkdownTests},
+	{"cmdline", &stappler::performCommandLineTests},
+	{"raster", &stappler::performRasterTests},
+	{"datavalue", &stappler::performDataValueTests},
+	{"zip", &stappler::performZipTests},
+	{"zipformat", &stappler::performZipFormatTests},
+	{"zipfuzz", &stappler::performZipFuzzTests},
+	{"iosource", &stappler::performIoSourceTests},
+	{"datamodel", &stappler::performDataModelTests},
+	{"vg-stroke", &stappler::performVgStrokeTests},
+	{"vg-tess-frame", &stappler::performVgTessFrameTests},
+	{"search-fuzzy", &stappler::performSearchFuzzyTests},
+	{"command-history", &stappler::performCommandHistoryTests},
+	{"image-format", &stappler::performImageFormatTests},
+	{"diag-registry", &stappler::performDiagnosticRegistryTests},
+	{"json-git", &stappler::performJsonGitTests},
+	{"bitmap-resample", &stappler::performBitmapResampleTests},
+};
 
 int main(int argc, const char *argv[]) {
-	return perform_main(argc, argv, []() {
-		//printCaseTables();
-		//runDataCoverter();
+	return perform_main(argc, argv, [&]() -> int {
+		if (argc <= 1) {
+			for (auto &it : s_testList) { it.fn(); }
+		} else {
+			for (int i = 1; i < argc; ++i) {
+				const TestEntry *found = nullptr;
+				for (auto &it : s_testList) {
+					if (it.name == sprt::StringView(argv[i])) {
+						found = &it;
+					}
+				}
+				if (!found) {
+					sprt::cerr << "Test not found: " << argv[i] << "\n";
+					return -1;
+				}
+				found->fn();
+			}
+		}
 
-		/*performThreadTests();
-		performIdnTests();
-		performDynAllocTests();
-		performPathTests();
-		performTimeTests();
-		performUnicodeTests();*/
-
-		sprt::backtrace::getBacktrace(0,
-				[](uintptr_t, StringView str) { sprt::cout << str << "\n"; });
-
-		return 0;
+		sprt::cout << "\ntotal failures: " << stappler::test::failures() << "\n";
+		return stappler::test::failures();
 	});
 }

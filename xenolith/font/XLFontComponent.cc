@@ -1,6 +1,7 @@
 /**
  Copyright (c) 2023-2025 Stappler LLC <admin@stappler.dev>
  Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -22,6 +23,7 @@
  **/
 
 #include "XLFontComponent.h"
+#include "XLFontControllerLocal.h"
 #include "XLCoreLoop.h"
 #include "XLCoreQueue.h"
 #include "XLCoreImageStorage.h"
@@ -29,6 +31,10 @@
 #include "XLCoreFrameQueue.h"
 #include "XLAppThread.h"
 #include "XLVkFontQueue.h"
+#include "XLWgpuFontQueue.h"
+#include "XLMtlFontQueue.h"
+#include "XLSoftFontQueue.h"
+#include "XLGlesFontQueue.h"
 
 #include <sprt/runtime/dispatch/looper.h>
 
@@ -55,7 +61,7 @@ Rc<FontController> FontComponent::createDefaultController(FontComponent *ext,
 
 static Bytes openResourceFont(FontLibrary::DefaultFontName name) {
 	auto d = FontLibrary::getFont(name);
-	return data::decompress<memory::StandartInterface>(d.data(), d.size());
+	return data::decompress<mem_std::Interface>(d.data(), d.size());
 }
 
 static String getResourceFontName(FontLibrary::DefaultFontName name) {
@@ -135,8 +141,45 @@ void FontComponent::handleStart(Context *a) {
 	}
 #endif
 
+#if MODULE_XENOLITH_BACKEND_WEBGPU
+	if (!_queue) {
+		if (static_cast<core::Loop *>(a->getGlLoop())->getInstance()->getApi()
+				== core::InstanceApi::WebGPU) {
+			_queue = Rc<webgpu::FontQueue>::create("FontQueue");
+		}
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_MTL
+	if (!_queue) {
+		if (static_cast<core::Loop *>(a->getGlLoop())->getInstance()->getApi()
+				== core::InstanceApi::Metal) {
+			_queue = Rc<mtl::FontQueue>::create("FontQueue");
+		}
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_SOFT
+	if (!_queue) {
+		if (static_cast<core::Loop *>(a->getGlLoop())->getInstance()->getApi()
+				== core::InstanceApi::Software) {
+			_queue = Rc<soft::FontQueue>::create("FontQueue");
+		}
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_GLES
+	if (!_queue) {
+		if (static_cast<core::Loop *>(a->getGlLoop())->getInstance()->getApi()
+				== core::InstanceApi::GLES) {
+			_queue = Rc<gles::FontQueue>::create("FontQueue");
+		}
+	}
+#endif
+
 	if (!_queue) {
 		log::source().error("FontComponent", "Fail to create FontQueue for GAPI");
+		return;
 	}
 
 	if (_queue->isCompiled()) {
@@ -233,14 +276,13 @@ Rc<FontController> FontComponent::acquireController(sprt::dispatch::Looper *loop
 	builder->looper = looper;
 	builder->ext = this;
 	if (!hasController) {
-		builder->controller = Rc<FontController>::create(this, builder->builder.getName());
+		builder->controller = Rc<FontControllerLocal>::create(this, builder->builder.getName());
 	}
 
 	builder->pendingData = builder->builder.getDataQueries().size();
 
 	for (auto &it : builder->builder.getDataQueries()) {
-		looper->performAsync(
-				[this, name = it.first, sourcePtr = &it.second, builder]() mutable -> bool {
+		auto task = [this, name = it.first, sourcePtr = &it.second, builder]() mutable -> bool {
 			sourcePtr->data = _library->openFontData(name, sourcePtr->params,
 					sourcePtr->preconfiguredParams, [&]() -> FontLibrary::FontData {
 				if (sourcePtr->fontCallback) {
@@ -264,10 +306,16 @@ Rc<FontController> FontComponent::acquireController(sprt::dispatch::Looper *loop
 				builder->onDataLoaded(false);
 			}
 			return true;
-		});
+		};
+
+		looper->performAsync(sp::move(task));
 	}
 
 	return builder->controller;
+}
+
+void FontComponent::compileImage(const Rc<core::DynamicImage> &image, Function<void(bool)> &&cb) {
+	static_cast<core::Loop *>(_context->getGlLoop())->compileImage(image, sp::move(cb));
 }
 
 void FontComponent::updateImage(sprt::dispatch::Looper *looper, const Rc<core::DynamicImage> &image,

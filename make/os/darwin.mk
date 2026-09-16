@@ -20,15 +20,19 @@
 
 OSTYPE_IS_MACOS := 1
 
+# A "+open" target sysroot is self-contained: it carries the Apple open-source
+# headers (compiled via --sysroot) and the generated .tbd link stubs under
+# usr/lib + System/Library/Frameworks (target-apple/open-sysroot.mk). Point the
+# framework/library search there instead of an Xcode SDK — no SDK required.
+ifneq ($(findstring +open,$(TARGET_SYSROOT)),)
+OSTYPE_SDK_PATH := $(TARGET_SYSROOT)
+else
 OSTYPE_SDK_PATH := $(shell xcrun --sdk $(TARGET_SDK_NAME) --show-sdk-path 2> /dev/null)
-
-$(info OSTYPE_SDK_PATH $(OSTYPE_SDK_PATH))
 
 ifeq ($(OSTYPE_SDK_PATH),)
 OSTYPE_SDK_PATH := $(TARGET_SDK_FALLBACK)
 endif
-
-$(info OSTYPE_SDK_PATH $(OSTYPE_SDK_PATH))
+endif
 
 OSTYPE_EXEC_SUFFIX :=
 OSTYPE_DSO_SUFFIX := .dylib
@@ -43,13 +47,14 @@ OSTYPE_EXEC_CFLAGS :=
 
 # -Wno-overloaded-virtual: complains about 'hides overloaded virtual function', that is normal for Stappler/Xenolith
 OSTYPE_GENERAL_CXXFLAGS := -Wall -Wno-vla-cxx-extension -Wno-overloaded-virtual -Wno-elaborated-enum-base \
-	-frtti -fvisibility=hidden -fvisibility-inlines-hidden
+	-frtti -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions
+
 OSTYPE_LIB_CXXFLAGS := -fPIC -DPIC
 OSTYPE_EXEC_CXXFLAGS :=
 
 OSTYPE_GENERAL_LDFLAGS := -Xlinker -all_load
-OSTYPE_EXEC_LDFLAGS := 
-OSTYPE_LIB_LDFLAGS := -rdynamic -Wl,--exclude-libs,ALL
+OSTYPE_EXEC_LDFLAGS := -Wl,-rpath,@executable_path/../Frameworks
+OSTYPE_LIB_LDFLAGS := -rdynamic
 
 ifdef BUILD_SHARED
 
@@ -60,3 +65,10 @@ endif # BUILD_SHARED
 OSTYPE_LIBS_REALPATH := 1
 BUILD_OBJC := 1
 DARWIN := 1
+
+# darwin.mk is shared by macOS and iOS (see make/utils/apply-toolchain.mk). iOS app
+# bundles use a flat layout (executable + Info.plist + Frameworks at the .app root)
+# instead of the macOS .app/Contents/{MacOS,Frameworks} layout; this flag selects it.
+ifeq ($(TARGET_SYSTEM),iOS)
+OSTYPE_IS_IOS := 1
+endif

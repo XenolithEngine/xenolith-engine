@@ -41,9 +41,9 @@ auto encode<memory::PoolInterface>(const CoderSource &source) ->
 }
 
 template <>
-auto encode<memory::StandartInterface>(const CoderSource &source) ->
-		typename memory::StandartInterface::StringType {
-	typename memory::StandartInterface::StringType output;
+auto encode<mem_std::Interface>(const CoderSource &source) ->
+		typename mem_std::Interface::StringType {
+	typename mem_std::Interface::StringType output;
 	output.resize(encodeSize(source.size()));
 	output.resize(sprt::base64::encode(source.data(), source.size(), output.data(), output.size()));
 	return output;
@@ -64,9 +64,9 @@ auto decode<memory::PoolInterface>(const CoderSource &source) ->
 }
 
 template <>
-auto decode<memory::StandartInterface>(const CoderSource &source) ->
-		typename memory::StandartInterface::BytesType {
-	typename memory::StandartInterface::BytesType output;
+auto decode<mem_std::Interface>(const CoderSource &source) ->
+		typename mem_std::Interface::BytesType {
+	typename mem_std::Interface::BytesType output;
 	output.resize(decodeSize(source.size()));
 	output.resize(sprt::base64::decode((const char *)source.data(), source.size(), output.data(),
 			output.size()));
@@ -92,9 +92,9 @@ auto encode<memory::PoolInterface>(const CoderSource &source) ->
 }
 
 template <>
-auto encode<memory::StandartInterface>(const CoderSource &source) ->
-		typename memory::StandartInterface::StringType {
-	typename memory::StandartInterface::StringType output;
+auto encode<mem_std::Interface>(const CoderSource &source) ->
+		typename mem_std::Interface::StringType {
+	typename mem_std::Interface::StringType output;
 	output.resize(encodeSize(source.size()));
 	output.resize(
 			sprt::base64url::encode(source.data(), source.size(), output.data(), output.size()));
@@ -109,7 +109,9 @@ size_t encode(char *buf, size_t bsize, const CoderSource &source) {
 
 namespace STAPPLER_VERSIONIZED stappler::base16 {
 
-size_t encodeSize(size_t length) { return length * 2; }
+size_t encodeSize(size_t length) {
+	return length > maxOf<size_t>() / 2 ? maxOf<size_t>() : length * 2;
+}
 size_t decodeSize(size_t length) { return length / 2; }
 
 const char *charToHex(const char &c, bool upper) {
@@ -131,9 +133,9 @@ auto encode<memory::PoolInterface>(const CoderSource &source, bool upper) ->
 }
 
 template <>
-auto encode<memory::StandartInterface>(const CoderSource &source, bool upper) ->
-		typename memory::StandartInterface::StringType {
-	typename memory::StandartInterface::StringType output;
+auto encode<mem_std::Interface>(const CoderSource &source, bool upper) ->
+		typename mem_std::Interface::StringType {
+	typename mem_std::Interface::StringType output;
 	output.resize(encodeSize(source.size()));
 	output.resize(sprt::base16::encode(source.data(), source.size(), output.data(), output.size(),
 			upper));
@@ -155,9 +157,9 @@ auto decode<memory::PoolInterface>(const CoderSource &source) ->
 }
 
 template <>
-auto decode<memory::StandartInterface>(const CoderSource &source) ->
-		typename memory::StandartInterface::BytesType {
-	typename memory::StandartInterface::BytesType output;
+auto decode<mem_std::Interface>(const CoderSource &source) ->
+		typename mem_std::Interface::BytesType {
+	typename mem_std::Interface::BytesType output;
 	output.resize(decodeSize(source.size()));
 	output.resize(sprt::base16::decode((const char *)source.data(), source.size(), output.data(),
 			output.size()));

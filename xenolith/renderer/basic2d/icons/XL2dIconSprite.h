@@ -33,7 +33,10 @@ class SP_PUBLIC IconSprite : public VectorSprite {
 public:
 	virtual ~IconSprite() = default;
 
+	virtual bool init() override;
 	virtual bool init(IconName);
+
+	virtual void handleComponentsDirty(const ComponentMask &) override;
 
 	virtual IconName getIconName() const { return _iconName; }
 	virtual void setIconName(IconName);

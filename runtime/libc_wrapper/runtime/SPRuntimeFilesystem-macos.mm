@@ -24,7 +24,7 @@
 
 #include <sprt/runtime/platform.h>
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/stream.h>
@@ -32,12 +32,11 @@
 #include <sprt/cxx/vector>
 #include <sprt/runtime/enum.h>
 #include <sprt/c/__sprt_unistd.h>
-#include "private/SPRTFilesystem.h"
+#include <stdlib.h> // ::getenv (was pulled transitively via Foundation.h, now hidden)
+#include "../src/private/SPRTFilesystem.h"
 
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(rsize_t) rsize_t;
-
-#define NULL __SPRT_NULL
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -50,6 +49,10 @@ typedef __SPRT_ID(rsize_t) rsize_t;
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include <mach-o/dyld.h>
+
+#ifndef NULL
+#define NULL __SPRT_NULL
+#endif
 
 namespace sprt::filesystem::detail {
 
@@ -179,7 +182,16 @@ void _initSystemPaths(LookupData &data) {
 	updateDirs(NSDocumentDirectory, LocationCategory::UserDocuments);
 	updateDirs(NSDesktopDirectory, LocationCategory::UserDesktop);
 
-	if (!s_isSandboxed) {
+	// Under App Sandbox the NSSearchPath*/NSTemporaryDirectory APIs already answer with
+	// container-relative paths (~/Library/Containers/<id>/Data/...), so the very same setup yields
+	// the container's own Application Support / Caches / tmp. App<X> has to be defined either way -
+	// it is the app's read-write storage - so this runs sandboxed or not.
+	{
+		// A sandboxed container is the app's own private storage; without the sandbox the same
+		// App<X> dirs sit in the user's Library, where other apps can reach them.
+		auto appLookupFlags = (s_isSandboxed ? LookupFlags::Private : LookupFlags::Public)
+				| LookupFlags::Writable;
+
 		auto updateDataDirs = [&](NSSearchPathDirectory nsdir, LocationCategory common,
 									  LocationCategory app) {
 			auto &commonRes = data._resourceLocations[toInt(common)];
@@ -203,7 +215,7 @@ void _initSystemPaths(LookupData &data) {
 					filepath::merge([&](StringView appPath) {
 						appRes.paths.emplace_back(LocationInfo{
 							appPath.pdup(data._pool),
-							LookupFlags::Public | LookupFlags::Writable,
+							appLookupFlags,
 							LocationFlags::Locateable
 									| (isWritable ? LocationFlags::Writable : LocationFlags::None),
 							defaultInterface,
@@ -272,12 +284,12 @@ void _initSystemPaths(LookupData &data) {
 
 				appRuntime.paths.emplace_back(LocationInfo{
 					appRuntimePath.pdup(data._pool),
-					LookupFlags::Public | LookupFlags::Writable,
+					appLookupFlags,
 					LocationFlags::Locateable
 							| (isWritable ? LocationFlags::Writable : LocationFlags::None),
 					defaultInterface,
 				});
-			}, commonPath, "Fonts");
+			}, commonPath, appConfig.bundleName);
 
 			auto libDirs = NSSearchPathForDirectoriesInDomains(NSAllLibrariesDirectory,
 					NSUserDomainMask, YES);
@@ -289,7 +301,7 @@ void _initSystemPaths(LookupData &data) {
 
 						appConfigRes.paths.emplace_back(LocationInfo{
 							appConfigPath.pdup(data._pool),
-							LookupFlags::Public | LookupFlags::Writable,
+							appLookupFlags,
 							LocationFlags::Locateable | LocationFlags::Writable,
 							defaultInterface,
 						});
@@ -335,8 +347,6 @@ void _initSystemPaths(LookupData &data) {
 				}
 			}
 		}
-	} else {
-		// @TODO
 	}
 
 	if (!s_isBundled) {

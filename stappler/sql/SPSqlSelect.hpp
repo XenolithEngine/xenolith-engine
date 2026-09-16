@@ -60,7 +60,8 @@ auto Query<Binder, Interface>::Select::count(const String &alias) -> Select & {
 	} else {
 		this->query->stream << ",";
 	}
-	this->query->stream << " COUNT(*) AS \"" << alias << "\"";
+	this->query->stream << " COUNT(*) AS ";
+	Query_writeQuotedId(this->query->stream, alias);
 	return *this;
 }
 
@@ -152,7 +153,8 @@ auto Query<Binder, Interface>::SelectFrom::from(const Field &field) -> SelectFro
 		this->query->target = field.name;
 	}
 	if (!field.alias.empty()) {
-		this->query->stream << " \"" << field.alias << "\"";
+		this->query->stream << " ";
+		Query_writeQuotedId(this->query->stream, field.alias);
 	}
 	return *this;
 }

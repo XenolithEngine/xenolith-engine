@@ -1,0 +1,102 @@
+= NuttX target (`target-nuttx`)
+
+Hosted-POSIX Xenolith target running on the NuttX RTOS kernel with NuttX's own
+libc. The runtime does NOT build a second libc — it forwards to the NuttX libc
+through the existing `libc_wrapper` "hosted" path (the same model as
+Linux/glibc and Android/Bionic), with musl adapters filling the gaps the way
+they do for Android.
+
+How to assemble the sysroot: `docs/platforms/nuttx.adoc`.
+
+== Why hosted, not freestanding
+
+NuttX's kernel exposes services to userspace only through its own libc and
+syscall stubs; there is no stable raw syscall ABI the way Linux has. A flat
+build links application code into one image with the kernel, where the NuttX
+libc is already present. A second libc (our musl-derived `libc_impl`) in the
+same image is a guaranteed `malloc`/`stdio`/`errno`/`pthread` conflict and
+cuts userspace off from `/dev/*`. The `libc_wrapper` umbrella mode exists
+precisely for this case — see `runtime/libc_wrapper/README.adoc`.
+
+== Where the sysroot comes from
+
+The sysroot is **imported**, not built from scratch. The input is a NuttX
+`make export` package (`nuttx-export-<ver>.tar.gz`), produced by a configured
+NuttX source tree. The package contains:
+
+* `include/`   — NuttX libc + kernel + per-arch chip/board headers
+* `libs/`      — `libc.a`, `libmm.a`, `libsched.a`, `libdrivers.a`,
+                 `libboards.a`, `libarch.a`, `libfs.a`, `libbinfmt.a`,
+                 `libm.a` (if `CONFIG_LIBM`), `libnet.a` (if `CONFIG_NET`),
+                 `libnx.a` (if `CONFIG_NX`), `libapps.a`, ...
+* `startup/`   — `head.o` / `crt0`-equivalent objects for the final image link
+* `scripts/Make.defs` — `CROSSDEV`, `ARCHCPUFLAGS` (`-mcpu`/`-march`/...),
+                        `ARCHCFLAGS`, `ARCHCXXFLAGS`, `LDFLAGS`, `LDELFFLAGS`
+* `.config`    — the full NuttX `CONFIG_*` set for this board
+
+The import step lays these out as `sysroot/usr/{include,lib}`, extracts the
+arch flags into `nuttx-arch-flags.mk`, and turns interesting `CONFIG_*` values
+into make variables in `nuttx-config.mk`. `init-target.mk` then generates the
+standard `target.mk` + `toolchain.cmake` contract from those.
+
+== Usage
+
+Once `$NUTTX_EXPORT` exists and `runtime/toolchains/src/{zlib,freetype,llvm-project,…}`
+are populated (see `docs/platforms/nuttx.adoc`):
+
+[source,sh]
+----
+# PATH: Xenolith GNU make 4.x + the SDK clang first. Do NOT use Apple /usr/bin/make.
+make -C runtime/toolchains/target-nuttx target-aarch64 \
+    NUTTX_EXPORT=/path/to/nuttx-export-0.0.0.tar.gz
+----
+
+Then symlink into the CLI store — NuttX is not in the SDK catalogue:
+
+----
+ln -sfn <engine>/runtime/toolchains/target-nuttx/targets/aarch64-nuttx-none-elf \
+    <engine>/runtime/toolchains/targets/aarch64-nuttx-none-elf
+ln -sfn <engine>/runtime/toolchains/targets/aarch64-nuttx-none-elf \
+    ~/.local/share/xenolith/data/toolchains/targets/aarch64-nuttx-none-elf
+
+xenolith-cli build tests/runtime --engine <engine> --target aarch64-nuttx-none-elf
+----
+
+Do **not** `make -C runtime/toolchains download` and do **not**
+`make -C runtime/toolchains target-aarch64-nuttx-none-elf` (parent `host` goal
+rebuilds clang).
+
+== Triple naming
+
+LLVM has no `OSType nuttx`, so the OS field cannot carry "nuttx" — clang would
+parse the triple as unknown. NuttX rides in the **vendor** field and the OS
+stays `none` (baremetal ELF) for real boards and `linux` for the sim target
+(which is a normal Linux process):
+
+[cols="1,1,2", options="header"]
+|===
+| STAPPLER_TARGET                | clang --target            | Use
+| `aarch64-nuttx-none-elf`       | `aarch64-none-elf`        | ARMv8-A boards
+| `riscv64-nuttx-none-elf`       | `riscv64-none-elf`        | RISC-V boards
+| `arm-nuttx-none-eabi`          | `arm-none-eabi`           | Cortex-M/-R/32-bit -A boards
+| `x86_64-nuttx-sim-linux-gnu`   | `x86_64-unknown-linux-gnu` | NuttX sim target
+|===
+
+Per-board profiles arrive as a `+<board>` suffix mirroring the existing
+`+dll`/`+sprt` scheme — the suffix selects a specific export package and the
+arch flags it carries. The base triple (no suffix) is what CI uses for
+compile-only checks.
+
+== License / distribution
+
+NuttX is Apache-2.0. The target is therefore built at the user's site from
+their export package and is **not** published into the SDK release archive
+(see `toolchains/Makefile` at the repo root — no `target-*-nuttx-*` targets
+are registered there). Only the build glue in this directory ships in our
+source tree.
+
+== Pinned version
+
+M0 status (2026-08): validated against NuttX master commit `87260499`
+(2026-08-09). When upgrading, re-run `import-export.mk` against a fresh export
+and diff `nuttx-arch-flags.mk` + `nuttx-config.mk` to catch Make.defs drift.

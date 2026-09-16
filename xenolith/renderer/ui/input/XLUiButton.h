@@ -1,0 +1,113 @@
+/**
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
+
+#ifndef XENOLITH_RENDERER_UI_ATOMS_XLUIBUTTON_H_
+#define XENOLITH_RENDERER_UI_ATOMS_XLUIBUTTON_H_
+
+#include "XLUiPanel.h"
+#include "XLInteractiveComponent.h"
+#include "XL2dIconSprite.h"
+#include "XL2dLabel.h"
+#include "XLUiControlLock.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
+
+enum class ButtonType {
+	General,
+	OsMinimize,
+	OsMaximize,
+	OsClose,
+	OsMenu,
+	OsFullscreen
+};
+
+enum class ButtonIconTheme {
+	Default,
+	Apple,
+};
+
+// An interactive Panel: the fill / outline / border-radius chrome and its CSS appliers come from
+// Panel (type "button"), the button itself adds the label, the icon and the input handling. CSS:
+//   button { background-color:#1e88e5; outline-color:#0d47a1; outline-width:2px;
+//            border-radius:20px; display:flex; align-items:center; ... }
+//   button > label { color:#ffffff; font-size:16px; }
+class SP_PUBLIC Button : public Panel, public EditLockTarget {
+public:
+	virtual ~Button();
+
+	virtual bool init(ButtonType, Function<void()> && = nullptr);
+	virtual bool init(Function<void()> && = nullptr);
+
+	// convenience: a general button that carries a label from the start
+	virtual bool init(StringView, Function<void()> && = nullptr);
+
+	virtual void handleEnter(Scene *scene) override;
+	virtual void handleComponentsDirty(const ComponentMask &) override;
+
+	// Fallback placement without a stylesheet: with no LayoutSystem on the button, the label and
+	// the icon are centered here; a styled button is laid out by the flex pass instead.
+	virtual void handleContentSizeDirty() override;
+
+	virtual void setString(StringView);
+	virtual StringView getString() const;
+
+	virtual void setCallback(Function<void()> &&);
+
+	// CSS `:disabled`: flips the InteractiveComponent flag (so `button:disabled` rules match) and
+	// stops the tap callbacks from firing
+	virtual void setEnabled(bool) override;
+	virtual bool isEnabled() const override { return isControlEnabled(this); }
+
+	virtual void setIcon(IconName);
+	virtual IconName getIcon() const;
+
+	// Direct label styling for buttons with no stylesheet in scope (auxiliary windows); forwards to
+	// the internal label. Styled buttons use CSS `color`/`font-weight`.
+	virtual void setLabelColor(const Color4F &);
+	virtual void setLabelFontWeight(font::FontWeight);
+	virtual basic2d::Label *getLabel() const;
+
+	// The icon node, for size and colour without a stylesheet; getIcon() returns the IconName.
+	virtual basic2d::IconSprite *getIconSprite() const;
+
+protected:
+	virtual void updateState();
+
+	virtual bool handleLeftTap();
+	virtual bool handleRightTap();
+
+	ButtonType _type = ButtonType::General;
+	ButtonIconTheme _theme = ButtonIconTheme::Default;
+	WindowState _windowState = WindowState::None;
+
+	Function<void()> _leftCallback;
+	Function<void()> _rightCallback;
+
+	InputListener *_listener = nullptr;
+
+	basic2d::Label *_label = nullptr;
+	basic2d::IconSprite *_icon = nullptr;
+};
+
+} // namespace stappler::xenolith::ui
+
+#endif // XENOLITH_RENDERER_UI_ATOMS_XLUIBUTTON_H_

@@ -92,6 +92,12 @@ int __wfmodeflags(const wchar_t *mode) {
 #include "windows/popen.cc"
 #endif
 
+#if SPRT_WASM
+#include "wasm/popen.cc"
+#elif SPRT_EMBOX_USER
+#include "embox_user/popen.cc"
+#endif
+
 #include "stdio/__overflow.cc"
 #include "stdio/__stdio.cc"
 
@@ -112,6 +118,21 @@ int __wfmodeflags(const wchar_t *mode) {
 #include "stdio/fget.cc"
 #include "stdio/flockfile.cc"
 #include "stdio/fseek.cc"
+
+// ISO C fgetpos/fsetpos. fpos_t carries an absolute byte offset, round-tripped
+// through ftello/fseeko (mbstate is not preserved — UTF-8 streams are stateless).
+__SPRT_C_FUNC int fgetpos(FILE *f, fpos_t *pos) __SPRT_NOEXCEPT {
+	off_t off = ftello(f);
+	if (off < 0) {
+		return -1;
+	}
+	pos->__pos = off;
+	return 0;
+}
+
+__SPRT_C_FUNC int fsetpos(FILE *f, const fpos_t *pos) __SPRT_NOEXCEPT {
+	return fseeko(f, (off_t)pos->__pos, SEEK_SET);
+}
 
 namespace sprt {
 extern "C" {
@@ -143,7 +164,13 @@ ssize_t getdelim(char **__SPRT_RESTRICT __lineptr, size_t *__SPRT_RESTRICT __n, 
 			break;
 		}
 		if (nread >= (ssize_t)(*__n - 1)) {
-			size_t newn = *__n * 2;
+			size_t newn;
+			// guard against size_t overflow on the grow: *__n * 2 would wrap
+			// to a smaller-than-needed allocation and overflow the heap buffer
+			if (__builtin_mul_overflow(*__n, (size_t)2, &newn)) {
+				__sprt_errno = ENOMEM;
+				return -1;
+			}
 			char *newptr = (char *)realloc(*__lineptr, newn);
 			if (newptr == nullptr) {
 				//fseterr(stream);

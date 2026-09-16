@@ -28,7 +28,7 @@ THE SOFTWARE.
 
 namespace STAPPLER_VERSIONIZED stappler::vg {
 
-using Interface = memory::StandartInterface;
+using Interface = mem_std::Interface;
 
 struct PathXRef {
 	Interface::StringType id;
@@ -58,7 +58,7 @@ public:
 	bool init(const FileInfo &);
 	bool init(BytesView);
 
-	bool init(const PathData<memory::StandartInterface> &);
+	bool init(const PathData<mem_std::Interface> &);
 	bool init(const PathData<memory::PoolInterface> &);
 
 	VectorPath &addPath(const VectorPath &);
@@ -99,6 +99,17 @@ public:
 
 	VectorPath &setMiterLimit(float);
 	float getMiterLimit() const;
+
+	// Dash pattern for the stroke, in path units (SVG `stroke-dasharray`). An empty span, or any
+	// negative length, leaves the stroke solid. Patterns longer than DashPattern::MaxCount are
+	// truncated. Note that a dash pattern is a stroke parameter, so it is not carried by
+	// encode()/toString() - see PathParams.
+	VectorPath &setDashArray(SpanView<float>);
+	SpanView<float> getDashArray() const;
+
+	// SVG `stroke-dashoffset`: how far into the pattern the first subpath starts.
+	VectorPath &setDashOffset(float);
+	float getDashOffset() const;
 
 	VectorPath &setStyle(DrawStyle s);
 	DrawStyle getStyle() const;

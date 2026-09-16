@@ -49,6 +49,7 @@ public:
 		Extent2 extent;
 		Flags flags = Flags::None;
 		Color4F backgroundColor = Color4F::WHITE;
+		core::QueueDamageFlags damage = core::QueueDamageFlags::None;
 	};
 
 	struct PassCreateInfo {
@@ -58,6 +59,7 @@ public:
 		Color4F backgroundColor = Color4F::WHITE;
 
 		const AttachmentData *particleAttachment = nullptr;
+		core::QueueDamageFlags damage = core::QueueDamageFlags::None;
 	};
 
 	static bool makeRenderQueue(Queue::Builder &, RenderQueueInfo &);
@@ -100,6 +102,8 @@ public:
 
 protected:
 	virtual void prepareMaterialCommands(core::MaterialSet *materials, CommandBuffer &buf) override;
+
+	virtual void recordOverlaySubpasses(CommandBuffer &buf, SpanView<VertexSpan> spans) override;
 
 	// shadows
 	const ShadowLightDataAttachmentHandle *_shadowData = nullptr;

@@ -52,7 +52,26 @@
 #define freopen64 freopen
 #endif
 
+// ISO C minimum-concurrent-streams / temp-name limits. Use the per-platform
+// __SPRT_* value where one is provided, otherwise a conforming default.
+#ifndef FOPEN_MAX
+#ifdef __SPRT_FOPEN_MAX
+#define FOPEN_MAX __SPRT_FOPEN_MAX
+#else
+#define FOPEN_MAX 20
+#endif
+#endif
+
+#ifndef TMP_MAX
+#ifdef __SPRT_TMP_MAX
+#define TMP_MAX __SPRT_TMP_MAX
+#else
+#define TMP_MAX 308'915'776
+#endif
+#endif
+
 typedef __SPRT_ID(FILE) FILE;
+typedef __SPRT_ID(fpos_t) fpos_t;
 
 #if __STDC_HOSTED__ == 1
 #define stdin  __SPRT_ID(stdin_impl)()
@@ -90,12 +109,6 @@ inline namespace _cstdio {
 #if __STDC_HOSTED__ == 1 && !defined(__SPRT_BUILD)
 using namespace sprt::_cstdio;
 #endif
-
-#ifdef __SPRT_AS_STD
-namespace std {
-using namespace sprt::_cstdio;
-}
-#endif
 #endif // __cplusplus
 
 
@@ -116,6 +129,9 @@ __SPRT_BEGIN_DECL
 __SPRT_END_DECL
 
 #endif
+
+
+#include <sprt/wrappers/unistd/io.h>
 
 #define _scanf_l(fmt, loc, ...) scanf_l(loc, fmt, __VA_ARGS__)
 #define _fscanf_l(stream, fmt, loc, ...) fscanf_l(stream, loc, fmt, __VA_ARGS__)

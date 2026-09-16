@@ -224,7 +224,7 @@ static bool _validateEmailData(StringView r, typename Interface::StringType *tar
 			if (target) {
 				target->append(host.data(), host.size());
 			}
-		}, r, false);
+		}, r);
 
 		if (!hasHost) {
 			return false;
@@ -282,8 +282,8 @@ bool validateEmail(memory::PoolInterface::StringType &str) {
 	return _validateEmail<memory::PoolInterface>(str);
 }
 
-bool validateEmail(memory::StandartInterface::StringType &str) {
-	return _validateEmail<memory::StandartInterface>(str);
+bool validateEmail(mem_std::Interface::StringType &str) {
+	return _validateEmail<mem_std::Interface>(str);
 }
 
 template <typename Interface>
@@ -300,9 +300,13 @@ static bool _validateUrl(typename Interface::StringType &str) {
 	}
 
 	if (!oldHost.empty()) {
-		if (!sprt::idn::to_ascii([&](StringView host) {
+		// UseStd3Rules is what the old `validate` flag amounted to: reject anything
+		// outside letters, digits and hyphen. UTS-46 now applies the real rule
+		// rather than the byte-range approximation this used to do.
+		if (sprt::idn::to_ascii([&](StringView host) {
 			newHost = host.str<decltype(newHost)>(); //
-		}, oldHost, true)) {
+		}, oldHost, sprt::idn::Options::Default | sprt::idn::Options::UseStd3Rules)
+				!= Status::Ok) {
 			return false;
 		}
 
@@ -322,8 +326,8 @@ bool validateUrl(memory::PoolInterface::StringType &str) {
 	return _validateUrl<memory::PoolInterface>(str);
 }
 
-bool validateUrl(memory::StandartInterface::StringType &str) {
-	return _validateUrl<memory::StandartInterface>(str);
+bool validateUrl(mem_std::Interface::StringType &str) {
+	return _validateUrl<mem_std::Interface>(str);
 }
 
 bool validateNumber(const StringView &str) {
@@ -373,18 +377,19 @@ bool validateBase64(const StringView &str) {
 
 size_t makeRandomBytes(uint8_t *buf, size_t count) {
 	size_t generated = 0;
-	auto ret = ::getrandom(buf, count, GRND_RANDOM | GRND_NONBLOCK);
-	if (ret < ssize_t(count)) {
-		buf += ret;
-		count -= ret;
-		generated += ret;
-
-		ret = ::getrandom(buf, count, GRND_NONBLOCK | GRND_INSECURE);
-		if (ret >= 0) {
-			generated += ret;
+	// getrandom() can return a short count, or -1 (EINTR, or EAGAIN with GRND_NONBLOCK when the
+	// pool isn't seeded early in boot). Treat any negative result as zero progress so the buffer
+	// pointer/length are never rewound past their bounds, and spin a bounded number of times to
+	// fill the request — this absorbs short reads and transient EINTR/EAGAIN without busy-looping
+	// forever. The loop is bounded so a persistently-unavailable RNG cannot hang the caller;
+	// DB-AUTH-003: callers MUST check the returned count and fail (rather than proceed with weak
+	// or zero entropy) when it is short. Uses GRND_NONBLOCK (urandom CSPRNG) and never falls back
+	// to GRND_INSECURE, so the bytes are always cryptographic-quality or the call comes up short.
+	for (int attempt = 0; generated < count && attempt < 64; ++attempt) {
+		auto ret = ::getrandom(buf + generated, count - generated, GRND_NONBLOCK);
+		if (ret > 0) {
+			generated += size_t(ret);
 		}
-	} else {
-		generated += ret;
 	}
 	return generated;
 }
@@ -398,20 +403,23 @@ auto makeRandomBytes<memory::PoolInterface>(size_t count) -> memory::PoolInterfa
 }
 
 template <>
-auto makeRandomBytes<memory::StandartInterface>(size_t count)
-		-> memory::StandartInterface::BytesType {
-	memory::StandartInterface::BytesType ret;
+auto makeRandomBytes<mem_std::Interface>(size_t count) -> mem_std::Interface::BytesType {
+	mem_std::Interface::BytesType ret;
 	ret.resize(count);
 	makeRandomBytes(ret.data(), count);
 	return ret;
 }
 
-static void makePassword_buf(uint8_t *passwdKey, const StringView &str, const StringView &key) {
+static bool makePassword_buf(uint8_t *passwdKey, const StringView &str, const StringView &key) {
 	string::Sha512::Buf source = string::Sha512::make(str, Config_getInternalPasswordKey());
 
 	passwdKey[0] = 0;
 	passwdKey[1] = 1; // version code
-	makeRandomBytes(passwdKey + 2, 14);
+	// DB-AUTH-003: require the full 14-byte random salt; never proceed with a short/zero salt
+	// (a weak salt would undermine the per-record uniqueness the storage format relies on).
+	if (makeRandomBytes(passwdKey + 2, 14) != 14) {
+		return false;
+	}
 
 	string::Sha512 hash_ctx;
 	hash_ctx.update(passwdKey, 16);
@@ -420,6 +428,7 @@ static void makePassword_buf(uint8_t *passwdKey, const StringView &str, const St
 	}
 	hash_ctx.update(source);
 	hash_ctx.final(passwdKey + 16);
+	return true;
 }
 
 template <>
@@ -431,20 +440,24 @@ auto makePassword<memory::PoolInterface>(const StringView &str, const StringView
 
 	memory::PoolInterface::BytesType passwdKey;
 	passwdKey.resize(16 + string::Sha512::Length);
-	makePassword_buf(passwdKey.data(), str, key);
+	if (!makePassword_buf(passwdKey.data(), str, key)) {
+		return memory::PoolInterface::BytesType();
+	}
 	return passwdKey;
 }
 
 template <>
-auto makePassword<memory::StandartInterface>(const StringView &str, const StringView &key)
-		-> memory::StandartInterface::BytesType {
+auto makePassword<mem_std::Interface>(const StringView &str, const StringView &key)
+		-> mem_std::Interface::BytesType {
 	if (str.empty() || key.empty()) {
-		return memory::StandartInterface::BytesType();
+		return mem_std::Interface::BytesType();
 	}
 
-	memory::StandartInterface::BytesType passwdKey;
+	mem_std::Interface::BytesType passwdKey;
 	passwdKey.resize(16 + string::Sha512::Length);
-	makePassword_buf(passwdKey.data(), str, key);
+	if (!makePassword_buf(passwdKey.data(), str, key)) {
+		return mem_std::Interface::BytesType();
+	}
 	return passwdKey;
 }
 
@@ -470,11 +483,10 @@ bool validatePassord(const StringView &str, const BytesView &passwd, const Strin
 	hash_ctx.update(source);
 	hash_ctx.final(controlKey + 16);
 
-	if (sprt::memcmp(passwd.data() + 16, controlKey + 16, string::Sha512::Length) == 0) {
-		return true;
-	} else {
-		return false;
-	}
+	// DB-AUTH-001: constant-time comparison of the stored vs computed hash, so verification time
+	// does not leak how many leading bytes matched (timing side channel).
+	return crypto::isEqualConstantTime(BytesView(passwd.data() + 16, string::Sha512::Length),
+			BytesView(controlKey + 16, string::Sha512::Length));
 }
 
 #define PSWD_NUMBERS "12345679"
@@ -532,14 +544,13 @@ auto generatePassword<memory::PoolInterface>(size_t len) -> memory::PoolInterfac
 }
 
 template <>
-auto generatePassword<memory::StandartInterface>(size_t len)
-		-> memory::StandartInterface::StringType {
+auto generatePassword<mem_std::Interface>(size_t len) -> mem_std::Interface::StringType {
 	if (len < MIN_GENPASSWORD_LENGTH) {
-		return memory::StandartInterface::StringType();
+		return mem_std::Interface::StringType();
 	}
 
-	auto bytes = makeRandomBytes<memory::StandartInterface>(len + 2);
-	memory::StandartInterface::StringType ret;
+	auto bytes = makeRandomBytes<mem_std::Interface>(len + 2);
+	mem_std::Interface::StringType ret;
 	ret.reserve(len);
 	generatePassword_buf(len, bytes.data(), [&](char c) { ret.push_back(c); });
 	return ret;

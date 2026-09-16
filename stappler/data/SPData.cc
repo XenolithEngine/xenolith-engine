@@ -22,6 +22,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+// This TU holds the explicit instantiation of the two concrete Value specializations
+// (see bottom of file) and explicit specializations of several of their members, so it
+// must not pull in the extern-template declarations from SPDataValue.h.
+#define SP_DATA_VALUE_EXPLICIT_INSTANTIATION 1
+
 #include "SPData.h"
 #include "SPMemInterface.h"
 #include "SPString.h"
@@ -77,55 +82,53 @@ auto ValueTemplate<memory::PoolInterface>::convert<memory::PoolInterface>() cons
 
 template <>
 template <>
-auto ValueTemplate<memory::StandartInterface>::convert<memory::StandartInterface>() const
-		-> ValueTemplate<memory::StandartInterface> {
-	return ValueTemplate<memory::StandartInterface>(*this);
+auto ValueTemplate<mem_std::Interface>::convert<mem_std::Interface>() const
+		-> ValueTemplate<mem_std::Interface> {
+	return ValueTemplate<mem_std::Interface>(*this);
 }
 
 template <>
 template <>
-auto ValueTemplate<memory::PoolInterface>::convert<memory::StandartInterface>() const
-		-> ValueTemplate<memory::StandartInterface> {
+auto ValueTemplate<memory::PoolInterface>::convert<mem_std::Interface>() const
+		-> ValueTemplate<mem_std::Interface> {
 	switch (_type) {
-	case Type::INTEGER: return ValueTemplate<memory::StandartInterface>(intVal); break;
-	case Type::DOUBLE: return ValueTemplate<memory::StandartInterface>(doubleVal); break;
-	case Type::BOOLEAN: return ValueTemplate<memory::StandartInterface>(boolVal); break;
+	case Type::INTEGER: return ValueTemplate<mem_std::Interface>(intVal); break;
+	case Type::DOUBLE: return ValueTemplate<mem_std::Interface>(doubleVal); break;
+	case Type::BOOLEAN: return ValueTemplate<mem_std::Interface>(boolVal); break;
 	case Type::CHARSTRING:
-		return ValueTemplate<memory::StandartInterface>(
-				memory::StandartInterface::StringType(strVal->data(), strVal->size()));
+		return ValueTemplate<mem_std::Interface>(
+				mem_std::Interface::StringType(strVal->data(), strVal->size()));
 		break;
 	case Type::BYTESTRING:
-		return ValueTemplate<memory::StandartInterface>(memory::StandartInterface::BytesType(
-				bytesVal->data(), bytesVal->data() + bytesVal->size()));
+		return ValueTemplate<mem_std::Interface>(mem_std::Interface::BytesType(bytesVal->data(),
+				bytesVal->data() + bytesVal->size()));
 		break;
 	case Type::ARRAY: {
-		ValueTemplate<memory::StandartInterface> ret(
-				ValueTemplate<memory::StandartInterface>::Type::ARRAY);
+		ValueTemplate<mem_std::Interface> ret(ValueTemplate<mem_std::Interface>::Type::ARRAY);
 		auto &arr = ret.asArray();
 		arr.reserve(arrayVal->size());
-		for (auto &it : *arrayVal) { arr.emplace_back(it.convert<memory::StandartInterface>()); }
+		for (auto &it : *arrayVal) { arr.emplace_back(it.convert<mem_std::Interface>()); }
 		return ret;
 		break;
 	}
 	case Type::DICTIONARY: {
-		ValueTemplate<memory::StandartInterface> ret(
-				ValueTemplate<memory::StandartInterface>::Type::DICTIONARY);
+		ValueTemplate<mem_std::Interface> ret(ValueTemplate<mem_std::Interface>::Type::DICTIONARY);
 		auto &dict = ret.asDict();
 		for (auto &it : *dictVal) {
-			dict.emplace(StringView(it.first).str<memory::StandartInterface>(),
-					it.second.convert<memory::StandartInterface>());
+			dict.emplace(StringView(it.first).str<mem_std::Interface>(),
+					it.second.convert<mem_std::Interface>());
 		}
 		return ret;
 		break;
 	}
 	default: break;
 	}
-	return ValueTemplate<memory::StandartInterface>();
+	return ValueTemplate<mem_std::Interface>();
 }
 
 template <>
 template <>
-auto ValueTemplate<memory::StandartInterface>::convert<memory::PoolInterface>() const
+auto ValueTemplate<mem_std::Interface>::convert<memory::PoolInterface>() const
 		-> ValueTemplate<memory::PoolInterface> {
 	switch (_type) {
 	case Type::INTEGER: return ValueTemplate<memory::PoolInterface>(intVal); break;
@@ -328,9 +331,9 @@ auto compress<memory::PoolInterface>(const uint8_t *src, size_t size, EncodeForm
 }
 
 template <>
-auto compress<memory::StandartInterface>(const uint8_t *src, size_t size,
-		EncodeFormat::Compression c, bool conditional) -> memory::StandartInterface::BytesType {
-	return doCompress<memory::StandartInterface>(src, size, c, conditional);
+auto compress<mem_std::Interface>(const uint8_t *src, size_t size, EncodeFormat::Compression c,
+		bool conditional) -> mem_std::Interface::BytesType {
+	return doCompress<mem_std::Interface>(src, size, c, conditional);
 }
 
 template <>
@@ -340,9 +343,9 @@ auto compress<memory::PoolInterface>(BytesView src, EncodeFormat::Compression c,
 }
 
 template <>
-auto compress<memory::StandartInterface>(BytesView src, EncodeFormat::Compression c,
-		bool conditional) -> memory::StandartInterface::BytesType {
-	return doCompress<memory::StandartInterface>(src.data(), src.size(), c, conditional);
+auto compress<mem_std::Interface>(BytesView src, EncodeFormat::Compression c, bool conditional)
+		-> mem_std::Interface::BytesType {
+	return doCompress<mem_std::Interface>(src.data(), src.size(), c, conditional);
 }
 
 using decompress_ptr = const uint8_t *;
@@ -352,6 +355,15 @@ static inline auto doDecompressLZ4(BytesView data, bool sh) -> ValueTemplate<Int
 	size_t size = sh ? data.readUnsigned16() : data.readUnsigned32();
 
 	ValueTemplate<Interface> ret;
+	// reject decompression bombs: the declared output may not exceed 16x the
+	// compressed payload, with an 8 MiB floor for small inputs
+	size_t maxOutput = data.size() * 16;
+	if (maxOutput < (size_t(8) << 20)) {
+		maxOutput = size_t(8) << 20;
+	}
+	if (size > maxOutput) {
+		return ret;
+	}
 	if (size <= sizeof(tl_compressBuffer)) {
 		if (sprt::lz4_decompressData(data.data(), data.size(), tl_compressBuffer, size)) {
 			ret = data::read<Interface>(BytesView(tl_compressBuffer, size));
@@ -374,8 +386,8 @@ auto decompressLZ4(const uint8_t *srcPtr, size_t srcSize, bool sh)
 
 template <>
 auto decompressLZ4(const uint8_t *srcPtr, size_t srcSize, bool sh)
-		-> ValueTemplate<memory::StandartInterface> {
-	return doDecompressLZ4<memory::StandartInterface>(BytesView(srcPtr, srcSize), sh);
+		-> ValueTemplate<mem_std::Interface> {
+	return doDecompressLZ4<mem_std::Interface>(BytesView(srcPtr, srcSize), sh);
 }
 
 #ifdef MODULE_STAPPLER_BROTLI_LIB
@@ -389,6 +401,15 @@ static inline auto doDecompressBrotli(BytesView data, bool sh) -> ValueTemplate<
 	size_t size = sh ? data.readUnsigned16() : data.readUnsigned32();
 
 	ValueTemplate<Interface> ret;
+	// reject decompression bombs: the declared output may not exceed 16x the
+	// compressed payload, with an 8 MiB floor for small inputs
+	size_t maxOutput = data.size() * 16;
+	if (maxOutput < (size_t(8) << 20)) {
+		maxOutput = size_t(8) << 20;
+	}
+	if (size > maxOutput) {
+		return ret;
+	}
 	if (size <= sizeof(tl_compressBuffer)) {
 		if (doDecompressBrotliFrame(data.data(), data.size(), tl_compressBuffer, size)) {
 			ret = data::read<Interface>(BytesView(tl_compressBuffer, size));
@@ -411,8 +432,8 @@ auto decompressBrotli(const uint8_t *srcPtr, size_t srcSize, bool sh)
 
 template <>
 auto decompressBrotli(const uint8_t *srcPtr, size_t srcSize, bool sh)
-		-> ValueTemplate<memory::StandartInterface> {
-	return doDecompressBrotli<memory::StandartInterface>(BytesView(srcPtr, srcSize), sh);
+		-> ValueTemplate<mem_std::Interface> {
+	return doDecompressBrotli<mem_std::Interface>(BytesView(srcPtr, srcSize), sh);
 }
 
 #endif
@@ -491,20 +512,20 @@ size_t getDecompressedSize(const uint8_t *d, size_t size) {
 }
 
 template <>
-const typename ValueTemplate<memory::StandartInterface>::StringType
-		ValueTemplate<memory::StandartInterface>::StringNull{};
+const typename ValueTemplate<mem_std::Interface>::StringType
+		ValueTemplate<mem_std::Interface>::StringNull{};
 
 template <>
-const typename ValueTemplate<memory::StandartInterface>::BytesType
-		ValueTemplate<memory::StandartInterface>::BytesNull{};
+const typename ValueTemplate<mem_std::Interface>::BytesType
+		ValueTemplate<mem_std::Interface>::BytesNull{};
 
 template <>
-const typename ValueTemplate<memory::StandartInterface>::ArrayType
-		ValueTemplate<memory::StandartInterface>::ArrayNull{};
+const typename ValueTemplate<mem_std::Interface>::ArrayType
+		ValueTemplate<mem_std::Interface>::ArrayNull{};
 
 template <>
-const typename ValueTemplate<memory::StandartInterface>::DictionaryType
-		ValueTemplate<memory::StandartInterface>::DictionaryNull{};
+const typename ValueTemplate<mem_std::Interface>::DictionaryType
+		ValueTemplate<mem_std::Interface>::DictionaryNull{};
 
 
 template <>
@@ -524,22 +545,22 @@ const typename ValueTemplate<memory::PoolInterface>::DictionaryType
 		ValueTemplate<memory::PoolInterface>::DictionaryNull(sprt::memory::get_zero_pool());
 
 template <>
-auto ValueTemplate<memory::StandartInterface>::getStringNullConst() -> const StringType & {
+auto ValueTemplate<mem_std::Interface>::getStringNullConst() -> const StringType & {
 	return StringNull;
 }
 
 template <>
-auto ValueTemplate<memory::StandartInterface>::getBytesNullConst() -> const BytesType & {
+auto ValueTemplate<mem_std::Interface>::getBytesNullConst() -> const BytesType & {
 	return BytesNull;
 }
 
 template <>
-auto ValueTemplate<memory::StandartInterface>::getArrayNullConst() -> const ArrayType & {
+auto ValueTemplate<mem_std::Interface>::getArrayNullConst() -> const ArrayType & {
 	return ArrayNull;
 }
 
 template <>
-auto ValueTemplate<memory::StandartInterface>::getDictionaryNullConst() -> const DictionaryType & {
+auto ValueTemplate<mem_std::Interface>::getDictionaryNullConst() -> const DictionaryType & {
 	return DictionaryNull;
 }
 
@@ -564,22 +585,22 @@ auto ValueTemplate<memory::PoolInterface>::getDictionaryNullConst() -> const Dic
 }
 
 template <>
-auto ValueTemplate<memory::StandartInterface>::getStringNull() -> StringType & {
+auto ValueTemplate<mem_std::Interface>::getStringNull() -> StringType & {
 	return const_cast<StringType &>(StringNull);
 }
 
 template <>
-auto ValueTemplate<memory::StandartInterface>::getBytesNull() -> BytesType & {
+auto ValueTemplate<mem_std::Interface>::getBytesNull() -> BytesType & {
 	return const_cast<BytesType &>(BytesNull);
 }
 
 template <>
-auto ValueTemplate<memory::StandartInterface>::getArrayNull() -> ArrayType & {
+auto ValueTemplate<mem_std::Interface>::getArrayNull() -> ArrayType & {
 	return const_cast<ArrayType &>(ArrayNull);
 }
 
 template <>
-auto ValueTemplate<memory::StandartInterface>::getDictionaryNull() -> DictionaryType & {
+auto ValueTemplate<mem_std::Interface>::getDictionaryNull() -> DictionaryType & {
 	return const_cast<DictionaryType &>(DictionaryNull);
 }
 
@@ -603,4 +624,36 @@ auto ValueTemplate<memory::PoolInterface>::getDictionaryNull() -> DictionaryType
 	return const_cast<DictionaryType &>(DictionaryNull);
 }
 
+// Explicit instantiation of the two concrete Value specializations. Together with the
+// matching `extern template` declarations in SPDataValue.h this keeps every other
+// translation unit from re-instantiating ValueTemplate and its members.
+// Must follow all member specializations above.
+template class ValueTemplate<memory::PoolInterface>;
+template class ValueTemplate<mem_std::Interface>;
+
 } // namespace stappler::data
+
+// Value's Array/Dictionary storage containers (Vector<Value> / Map<String, Value>).
+// Instantiated here so no other TU re-instantiates them; see SPDataValue.h for the
+// matching extern-template declarations. Must be in the containers' own namespace.
+namespace sprt {
+
+#define SP_DATA_VALUE_POOL ::stappler::data::ValueTemplate<::stappler::memory::PoolInterface>
+#define SP_DATA_VALUE_STD ::stappler::data::ValueTemplate<::stappler::mem_std::Interface>
+
+template class __vector<SP_DATA_VALUE_POOL,
+		SP_DATA_VALUE_POOL::InterfaceType::Allocator<SP_DATA_VALUE_POOL>>;
+template class __vector<SP_DATA_VALUE_STD,
+		SP_DATA_VALUE_STD::InterfaceType::Allocator<SP_DATA_VALUE_STD>>;
+
+template class __map<SP_DATA_VALUE_POOL::InterfaceType::StringType, SP_DATA_VALUE_POOL, less<void>,
+		SP_DATA_VALUE_POOL::InterfaceType::Allocator<
+				pair<const SP_DATA_VALUE_POOL::InterfaceType::StringType, SP_DATA_VALUE_POOL>>>;
+template class __map<SP_DATA_VALUE_STD::InterfaceType::StringType, SP_DATA_VALUE_STD, less<void>,
+		SP_DATA_VALUE_STD::InterfaceType::Allocator<
+				pair<const SP_DATA_VALUE_STD::InterfaceType::StringType, SP_DATA_VALUE_STD>>>;
+
+#undef SP_DATA_VALUE_POOL
+#undef SP_DATA_VALUE_STD
+
+} // namespace sprt

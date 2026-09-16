@@ -21,8 +21,6 @@
  **/
 
 #include "XLRTView.h"
-#include "XLRTTooltip.h"
-#include "XLRTImageLayout.h"
 #include "XLEventListener.h"
 #include "XLRTRenderer.h"
 #include "XL2dLinearProgress.h"
@@ -194,7 +192,7 @@ void View::setSource(CommonSource *source) {
 void View::setProgressColor(const Color &color) { _progress->setBarColor(color); }
 
 void View::onLink(StringView ref, StringView target, WideStringView text, Vec2 vec) {
-	if (ref.front() == '#') {
+	if (!ref.empty() && ref.front() == '#') {
 		if (target == "_self") {
 			onPositionRef(StringView(ref.data() + 1, ref.size() - 1), false);
 		} else if (target == "table") {
@@ -233,7 +231,7 @@ void View::onId(StringView ref, StringView target, WideStringView text, Vec2 vec
 	string::split(ref, ",", [&ids](const StringView &r) { ids.push_back(r.str<Interface>()); });
 
 	for (auto &it : ids) {
-		if (it.front() == '#') {
+		if (!it.empty() && it.front() == '#') {
 			it = it.substr(1);
 		}
 	}
@@ -470,18 +468,7 @@ void View::onFigure(const document::Node *node) {
 }
 
 void View::onImageFigure(StringView src, StringView alt, const document::Node *node) {
-	/*Rc<ImageLayout> image;
-	if (!node || node->getHtmlId().empty()) {
-		image = Rc<ImageLayout>::create(_renderer->getResult(), StringView(), src, alt);
-	} else {
-		image = Rc<ImageLayout>::create(_renderer->getResult(), node->getHtmlId(), src, alt);
-	}
-	if (image) {
-		auto content = dynamic_cast<material2d::SceneContent2d *>(_scene->getContent());
-		if (content) {
-			content->pushLayout(image);
-		}
-	}*/
+	// TODO: full-screen image viewer, to be built on the ui kit.
 }
 
 void View::onVideoFigure(StringView src) { _director->getApplication()->openUrl(src); }

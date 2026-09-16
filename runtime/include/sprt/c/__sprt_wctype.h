@@ -2,7 +2,7 @@
 Copyright (c) 2025 Stappler Team <admin@stappler.org>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation flies (the "Software"), to deal
+of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
@@ -28,7 +28,14 @@ THE SOFTWARE.
 #include <sprt/c/cross/__sprt_mbstate.h>
 #include <sprt/c/cross/__sprt_locale.h>
 
-typedef __SPRT_ID(wchar_t) __SPRT_ID(wctrans_t);
+// Default (glibc / libc_impl) representation: const __int32_t *. wctrans()
+// returns an opaque pointer-based handle that towctrans() interprets. Sharing the
+// platform ABI lets a hosted build forward straight to the platform libc; a
+// platform whose libc uses a different wctrans_t (e.g. macOS, where it is a plain
+// int) overrides this in its cross/<platform>/mbstate.h.
+#ifndef __SPRT_WCTRANS_T_DEFINED
+typedef const int *__SPRT_ID(wctrans_t);
+#endif
 
 __SPRT_BEGIN_DECL
 
@@ -66,8 +73,10 @@ SPRT_API int __SPRT_ID(iswxdigit_l)(__SPRT_ID(wint_t), __SPRT_ID(locale_t));
 SPRT_API int __SPRT_ID(iswctype_l)(__SPRT_ID(wint_t), __SPRT_ID(wctype_t), __SPRT_ID(locale_t));
 SPRT_API __SPRT_ID(wint_t) __SPRT_ID(towlower_l)(__SPRT_ID(wint_t), __SPRT_ID(locale_t));
 SPRT_API __SPRT_ID(wint_t) __SPRT_ID(towupper_l)(__SPRT_ID(wint_t), __SPRT_ID(locale_t));
+
 SPRT_API __SPRT_ID(wint_t)
-SPRT_API __SPRT_ID(towctrans_l)(__SPRT_ID(wint_t), __SPRT_ID(wctrans_t), __SPRT_ID(locale_t));
+		__SPRT_ID(towctrans_l)(__SPRT_ID(wint_t), __SPRT_ID(wctrans_t), __SPRT_ID(locale_t));
+
 SPRT_API __SPRT_ID(wctrans_t) __SPRT_ID(wctrans_l)(const char *, __SPRT_ID(locale_t));
 SPRT_API __SPRT_ID(wctype_t) __SPRT_ID(wctype_l)(const char *, __SPRT_ID(locale_t));
 

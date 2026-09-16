@@ -93,7 +93,7 @@ public:
 	constexpr inline pointer address(reference r) const noexcept { return &r; }
 	constexpr inline const_pointer address(const_reference r) const noexcept { return &r; }
 
-	constexpr size_type max_size() const noexcept { return Max<size_type>; }
+	constexpr size_type max_size() const noexcept { return Max<size_type> / sizeof(T); }
 
 	template <typename... Args>
 	constexpr void construct(pointer p, Args &&...args) const noexcept;
@@ -113,9 +113,9 @@ template <typename T>
 constexpr inline auto AllocatorMalloc<T>::allocate(size_t n) const noexcept -> T * {
 	T *ptr = n == 1 ? sprt::memory::allocate<T>() : sprt::memory::allocate<T>(n);
 	if (!ptr) {
-		__sprt_perror("allocation error");
+		__sprt_perror("AllocatorMalloc::allocate");
 	}
-	sprt_passert(ptr, "allocation should always be successful");
+	sprt_passert(ptr, "AllocatorMalloc::allocate failed");
 	return ptr;
 }
 
@@ -123,21 +123,27 @@ template <typename T>
 constexpr inline auto AllocatorMalloc<T>::__allocate(size_t &n) const noexcept -> T * {
 	T *ptr = sprt::memory::allocate<T>(n);
 	if (!ptr) {
-		__sprt_perror("allocation error");
+		__sprt_perror("AllocatorMalloc::__allocate (capacity)");
 	}
-	sprt_passert(ptr, "allocation should always be successful");
+	sprt_passert(ptr, "AllocatorMalloc::__allocate (capacity) failed");
 	return ptr;
 }
 
 template <typename T>
 constexpr inline auto AllocatorMalloc<T>::__allocate(size_t n, size_t &bytes) const noexcept
 		-> T * {
+	if (__builtin_mul_overflow(n, sizeof(T), &bytes)) {
+		// n * sizeof(T) overflows size_t: never under-allocate.
+		__sprt_perror("AllocatorMalloc::__allocate (n * sizeof(T) overflows size_t)");
+		sprt_passert(false, "AllocatorMalloc::__allocate: n * sizeof(T) overflows size_t");
+		bytes = 0;
+		return nullptr;
+	}
 	T *ptr = sprt::memory::allocate<T>(n);
 	if (!ptr) {
-		__sprt_perror("allocation error");
+		__sprt_perror("AllocatorMalloc::__allocate (sized)");
 	}
-	sprt_passert(ptr, "allocation should always be successful");
-	bytes = n * sizeof(T);
+	sprt_passert(ptr, "AllocatorMalloc::__allocate (sized) failed");
 	return ptr;
 }
 

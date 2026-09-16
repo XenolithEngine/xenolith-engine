@@ -52,7 +52,7 @@ bool VectorPath::init(BytesView data) {
 	return _data.getWriter().readFromBytes(data);
 }
 
-bool VectorPath::init(const PathData<memory::StandartInterface> &data) {
+bool VectorPath::init(const PathData<mem_std::Interface> &data) {
 	_data.clear();
 	_data = data;
 	return true;
@@ -173,6 +173,18 @@ VectorPath &VectorPath::setMiterLimit(float value) {
 	return *this;
 }
 float VectorPath::getMiterLimit() const { return _data.params.miterLimit; }
+
+VectorPath &VectorPath::setDashArray(SpanView<float> value) {
+	_data.params.dash.set(value);
+	return *this;
+}
+SpanView<float> VectorPath::getDashArray() const { return _data.params.dash.getLengths(); }
+
+VectorPath &VectorPath::setDashOffset(float value) {
+	_data.params.dash.offset = value;
+	return *this;
+}
+float VectorPath::getDashOffset() const { return _data.params.dash.offset; }
 
 VectorPath &VectorPath::setStyle(DrawStyle s) {
 	_data.params.style = s;

@@ -30,12 +30,19 @@ THE SOFTWARE.
 #include <ctype.h>
 #include <limits.h>
 #include <sys/time.h>
+#include <locale.h>
 
 static const char __utc[] = "UTC";
 
 #if SPRT_WINDOWS
 #include "windows/time.cc"
 #include "windows/tz.cc"
+#elif SPRT_WASM
+#include "wasm/time.cc"
+#include "wasm/tz.cc"
+#elif SPRT_EMBOX_USER
+#include "embox_user/time.cc"
+#include "embox_user/tz.cc"
 #endif
 
 __SPRT_C_FUNC time_t time(time_t *t) __SPRT_NOEXCEPT {
@@ -56,7 +63,17 @@ __SPRT_C_FUNC size_t strftime_l(char *__restrict s, size_t n, const char *__rest
 		return -1;
 	}
 	sprt::time::time_exp_t exp(*tm);
-	return exp.strftime(s, n, f);
+	// The runtime_core formatter pulls localized tokens for the *current effective*
+	// locale, so honour an explicit locale by installing it on this thread for the
+	// duration of the call, then restoring the previous thread locale (or the
+	// global locale when none was set).
+	if (loc == nullptr || loc == LC_GLOBAL_LOCALE) {
+		return exp.strftime(s, n, f);
+	}
+	locale_t prev = uselocale(loc);
+	size_t ret = exp.strftime(s, n, f);
+	uselocale(prev ? prev : LC_GLOBAL_LOCALE);
+	return ret;
 }
 
 __SPRT_C_FUNC size_t strftime(char *__restrict s, size_t n, const char *__restrict f,
@@ -66,7 +83,7 @@ __SPRT_C_FUNC size_t strftime(char *__restrict s, size_t n, const char *__restri
 
 __SPRT_C_FUNC size_t wcsftime_l(wchar_t *__restrict ptr, size_t s, const wchar_t *__restrict fmt,
 		const struct tm *__restrict value, locale_t loc) __SPRT_NOEXCEPT {
-	if (!ptr || fmt || value) {
+	if (!ptr || !fmt || !value) {
 		errno = EINVAL;
 		return -1;
 	}
@@ -75,7 +92,11 @@ __SPRT_C_FUNC size_t wcsftime_l(wchar_t *__restrict ptr, size_t s, const wchar_t
 	sprt::unicode::toUtf8([&](sprt::StringView str) {
 		auto buf = __sprt_typed_malloca(char, s + 1);
 		auto len = strftime_l(buf, s, str.data(), value, loc);
-		sprt::unicode::toUtf16((char16_t *)ptr, s, sprt::StringView(buf, len), &ret);
+		// strftime_l returns (size_t)-1 on error; never use that as a length.
+		if (len != (size_t)-1) {
+			sprt::unicode::toUtf16((char16_t *)ptr, s, sprt::StringView(buf, len), &ret);
+		}
+		__sprt_freea(buf);
 	}, sprt::WideStringView((char16_t *)fmt));
 	return ret;
 }
@@ -94,7 +115,17 @@ __SPRT_C_FUNC char *asctime_r(const struct tm *__restrict tm,
 
 __SPRT_C_FUNC time_t mktime(struct tm *tm) __SPRT_NOEXCEPT {
 	sprt::time::time_exp_t exp(*tm);
-	return exp.gmt_geti();
+
+	time_t t = (time_t)(exp.geti() / (int64_t)sprt::time::__USEC_PER_SEC);
+
+	struct tm probe;
+	if (localtime_r(&t, &probe)) {
+		t -= (time_t)probe.tm_gmtoff;
+
+		localtime_r(&t, tm);
+	}
+
+	return t;
 }
 
 __SPRT_C_FUNC int gettimeofday(struct timeval *__SPRT_RESTRICT __tv,
@@ -103,7 +134,7 @@ __SPRT_C_FUNC int gettimeofday(struct timeval *__SPRT_RESTRICT __tv,
 		struct __SPRT_TIMESPEC_NAME ts;
 		if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
 			__tv->tv_sec = ts.tv_sec;
-			__tv->tv_usec = ts.tv_nsec / 100;
+			__tv->tv_usec = ts.tv_nsec / 1'000;
 		} else {
 			return -1;
 		}
@@ -116,6 +147,23 @@ __SPRT_C_FUNC int gettimeofday(struct timeval *__SPRT_RESTRICT __tv,
 	}
 
 	return 0;
+}
+
+__SPRT_C_FUNC int settimeofday(const struct timeval *__tv,
+		const struct timezone *__tz) __SPRT_NOEXCEPT {
+	(void)__tz;
+
+	if (!__tv || __tv->tv_usec < 0 || __tv->tv_usec >= 1'000'000) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+
+	struct __SPRT_TIMESPEC_NAME ts;
+	ts.tv_sec = __tv->tv_sec;
+	ts.tv_nsec = (long)__tv->tv_usec * 1'000;
+	// The runtime entry point, not the plain name: unlike clock_gettime, the setter has
+	// no unprefixed definition in this layer - it lives in core (runtime_core_defaults).
+	return __SPRT_ID(clock_settime)(__SPRT_CLOCK_REALTIME, &ts);
 }
 
 /* 2000-03-01 (mod 400 year, immediately after feb29 */

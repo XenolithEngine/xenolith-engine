@@ -37,6 +37,10 @@ extern SpanView<uint32_t> PseudoSdfShadowFrag;
 extern SpanView<uint32_t> PseudoSdfShadowVert;
 extern SpanView<uint32_t> FrameClipperFrag;
 
+// lightweight (flat) render queue
+extern SpanView<uint32_t> FlatFrag;
+extern SpanView<uint32_t> FlatVert;
+
 extern SpanView<uint32_t> ParticleUpdateComp;
 
 } // namespace stappler::xenolith::basic2d::shaders

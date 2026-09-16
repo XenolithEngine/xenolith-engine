@@ -69,12 +69,21 @@ static_assert(SIGINFO == __SPRT_SIGINFO);
 static_assert(SIGUSR1 == __SPRT_SIGUSR1);
 static_assert(SIGUSR2 == __SPRT_SIGUSR2);
 
+#if !SPRT_EMBOX
+// Embox's SIG_DFL is ((sighandler_t)0x1), which is not a null-pointer constant
+// and therefore not a valid static_assert operand.
 static_assert(SIG_DFL == __SPRT_SIG_DFL);
+#endif
 //static_assert(SIG_IGN == __SPRT_SIG_IGN);
 //static_assert(SIG_HOLD == __SPRT_SIG_HOLD);
 //static_assert(SIG_ERR == __SPRT_SIG_ERR);
 
 static_assert(sprt::is_same_v<sig_atomic_t, __sprt_sig_atomic_t>);
+
+static_assert(sizeof(sigset_t) <= sizeof(__SPRT_ID(sigset_t)),
+		"native sigset_t does not fit in the SPRT sigset_t");
+static_assert(alignof(sigset_t) <= alignof(__SPRT_ID(sigset_t)),
+		"native sigset_t is more strictly aligned than SPRT's");
 
 #endif // __STDC_HOSTED__
 
@@ -113,6 +122,10 @@ __SPRT_C_FUNC void (*__SPRT_ID(signal)(int sig, void (*cb)(int)))(int) {
 
 __SPRT_C_FUNC int __SPRT_ID(raise)(int sig) {
 	return ::raise(sig); //
+}
+
+__SPRT_C_FUNC int __SPRT_ID(kill)(__SPRT_ID(pid_t) pid, int sig) {
+	return ::kill(pid, sig); //
 }
 
 } // namespace sprt

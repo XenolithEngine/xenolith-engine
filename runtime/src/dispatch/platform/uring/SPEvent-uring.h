@@ -159,6 +159,10 @@ struct SPRT_API alignas(32) URingData : public PlatformQueueData {
 	uint16_t _bufferGroupId = 1;
 	Queue::Vector<uint16_t> _unregistredBuffers;
 
+#if DEBUG
+	Map<Handle *, uint32_t> _retainedHandles;
+#endif
+
 	uint16_t registerBufferGroup(uint32_t count, uint32_t size, uint8_t *data,
 			io_uring_sqe *sqe = nullptr);
 
@@ -193,16 +197,33 @@ struct SPRT_API alignas(32) URingData : public PlatformQueueData {
 	int submitSqe(unsigned sub, unsigned wait, bool waitAvailable, bool force = false);
 	int submitPending(bool force = false);
 
-	Status pushRead(int fd, uint8_t *buf, size_t bsize, uint64_t userdata);
+	// offset is the file offset; -1 uses (but does not reliably advance) the OS file
+	// position, so callers doing multi-chunk regular-file I/O must pass an explicit
+	// offset. eventfd-style callers keep the -1 default.
+	Status pushRead(int fd, uint8_t *buf, size_t bsize, uint64_t userdata,
+			uint64_t offset = uint64_t(-1));
 
-	Status pushWrite(int fd, const uint8_t *buf, size_t bsize, uint64_t userdata);
+	Status pushWrite(int fd, const uint8_t *buf, size_t bsize, uint64_t userdata,
+			uint64_t offset = uint64_t(-1));
 
 	Status cancelOp(uint64_t userdata, URingCancelFlags = URingCancelFlags::None);
 
 	Status cancelFd(int fd, URingCancelFlags = URingCancelFlags::None);
 
+	// Force-tear-down a single ring op by its EXACT user_data (as read from a live CQE),
+	// used to reap a retained multishot op that outlived its generation (stale serial) yet
+	// keeps delivering CQEs. Type-agnostic: issues ASYNC_CANCEL (matches poll/read/timeout
+	// by user_data) and TIMEOUT_REMOVE (guarantees a multishot timeout is removed); the
+	// non-matching one completes -ENOENT and is ignored. Unlike a handle's disarm(), which
+	// targets the handle's *current* serial, this targets the op the kernel actually holds.
+	void dropStaleOp(uint64_t userdata);
+
 	uint32_t pop();
 	void processEvent(int32_t res, uint32_t flags, uint64_t userdata);
+
+	// Release a handle's ring retain (URING_USERDATA_RETAIN_BIT) and drop its
+	// bookkeeping entry; used both on CQE completion and on ring teardown.
+	void releaseRetainedHandle(Handle *h);
 
 	uint32_t doPoll();
 
@@ -220,6 +241,7 @@ struct SPRT_API alignas(32) URingData : public PlatformQueueData {
 	void runInternalHandles();
 
 	void cancel();
+	void shutdown();
 
 	URingData(QueueRef *, Queue::Data *data, const QueueInfo &info, SpanView<int> sigs);
 	~URingData();

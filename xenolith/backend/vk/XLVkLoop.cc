@@ -33,6 +33,7 @@
 #include "XLVkMeshCompiler.h"
 #include "XLVkMaterialCompiler.h"
 #include "XLVkPresentationEngine.h"
+#include "XLVkHeadlessPresentation.h"
 
 #include <sprt/runtime/dispatch/looper.h>
 #include <sprt/runtime/dispatch/handle.h>
@@ -213,27 +214,40 @@ struct Loop::Internal final : memory::AllocPool {
 
 	void signalDependencies(const Vector<Rc<DependencyEvent>> &events, Queue *queue, bool success) {
 		for (auto &it : events) {
-			if (it->signal(queue, success)) {
-				auto iit = dependencyRequests.find(it.get());
-				if (iit != dependencyRequests.end()) {
-					for (auto &v : iit->second) {
-						if (!success) {
-							v->success = false;
-						}
-						++v->signaled;
-						if (v->signaled == v->events.size()) {
-#if XL_VK_DEPS_DEBUG
-							StringStream str;
-							str << "signalDependencies:";
-							for (auto &it : v->events) { str << " " << it->getId(); }
-							str << "\n";
-							log::source().debug("vk::Loop", "Signal: ", str.str());
-#endif
-							v->callback(v->success);
-						}
-					}
+			if (!it->signal(queue, success)) {
+				continue;
+			}
+
+			auto iit = dependencyRequests.find(it.get());
+			if (iit == dependencyRequests.end()) {
+				// Nothing waits on this event
+				continue;
+			}
+
+			// Detach the waiter list and drop the map entry before running any callback: a
+			// callback starts the next frame, which re-enters waitForDependencies (and through it
+			// signalDependencies) and mutates this very map. Iterating it across a callback — and
+			// erasing with an iterator taken before one — walks freed nodes.
+			Vector<Rc<DependencyRequest>> waiters;
+			mem_pool::perform([&] {
+				waiters = sp::move(iit->second);
+				dependencyRequests.erase(iit);
+			}, pool);
+
+			for (auto &v : waiters) {
+				if (!success) {
+					v->success = false;
 				}
-				mem_pool::perform([&] { dependencyRequests.erase(iit); }, pool);
+				++v->signaled;
+				if (v->signaled == v->events.size()) {
+#if XL_VK_DEPS_DEBUG
+					StringStream str;
+					str << "signalDependencies:";
+					for (auto &e : v->events) { str << " " << e->getId(); }
+					log::source().debug("vk::Loop", "Signal: ", str.str());
+#endif
+					v->callback(v->success);
+				}
 			}
 		}
 	}
@@ -423,6 +437,7 @@ void Loop::stop() {
 			_internal->update(false);
 
 			_internal->updateTimerHandle->cancel();
+			_internal->updateTimerHandle->setUserdata(nullptr);
 			_internal->updateTimerHandle = nullptr;
 
 			_internal->transferQueue = nullptr;
@@ -433,14 +448,14 @@ void Loop::stop() {
 			_internal->defaultFences.clear();
 			_internal->swapchainFences.clear();
 
-#if SP_REF_DEBUG
+#if SPRT_REF_DEBUG
 			if (_internal->loop->getReferenceCount() > 1) {
 				_internal->loop->foreachBacktrace(
-						[](uint64_t id, Time time, const sprt::vector<sprt::string> &backtrace) {
-					StringStream out;
-					out << id << ": " << time.toHttp<Interface>() << ":\n";
-					for (auto &it : backtrace) { out << "\t" << it << "\n"; }
-					log::debug("Contexnt", "Loop refs:\n", out.str());
+						[](uint64_t id, time_t t, const sprt::__pool_list<StringView> &list) {
+					sprt::cout << "(Loop) Ref:" << id << "\n";
+					for (auto &it : list) {
+						sprt::cout << "\t" << it << "\n"; //
+					}
 				});
 			}
 #endif
@@ -705,6 +720,9 @@ void Loop::captureBuffer(Function<void(const BufferInfo &info, BytesView view)> 
 Rc<core::PresentationEngine> Loop::makePresentationEngine(NotNull<core::PresentationWindow> w,
 		core::PresentationOptions opts) {
 	if (_internal->device) {
+		if (opts.headless) {
+			return Rc<HeadlessPresentationEngine>::create(this, _internal->device.get(), w, opts);
+		}
 		return Rc<PresentationEngine>::create(this, _internal->device.get(), w, opts);
 	}
 	return nullptr;

@@ -28,6 +28,12 @@ THE SOFTWARE.
 #include <sprt/c/cross/__sprt_locale.h>
 
 // clang-format off
+// Default (glibc/Linux/Bionic) category numbers and masks. These are forwarded
+// verbatim to the platform locale API on a hosted build, so a platform whose
+// libc numbers the categories differently (e.g. macOS/BSD) overrides them in its
+// cross/<platform>/locale.h (included above); the common.cc bridge static-asserts
+// that the active values match the platform's.
+#ifndef __SPRT_LC_CTYPE
 #define __SPRT_LC_CTYPE    0
 #define __SPRT_LC_NUMERIC  1
 #define __SPRT_LC_TIME     2
@@ -35,16 +41,25 @@ THE SOFTWARE.
 #define __SPRT_LC_MONETARY 4
 #define __SPRT_LC_MESSAGES 5
 #define __SPRT_LC_ALL      6
+#endif
 
 #define __SPRT_LC_GLOBAL_LOCALE ((__sprt_locale_t)-1)
 
+#ifndef __SPRT_LC_CTYPE_MASK
 #define __SPRT_LC_CTYPE_MASK    (1<<__SPRT_LC_CTYPE)
 #define __SPRT_LC_NUMERIC_MASK  (1<<__SPRT_LC_NUMERIC)
 #define __SPRT_LC_TIME_MASK     (1<<__SPRT_LC_TIME)
 #define __SPRT_LC_COLLATE_MASK  (1<<__SPRT_LC_COLLATE)
 #define __SPRT_LC_MONETARY_MASK (1<<__SPRT_LC_MONETARY)
 #define __SPRT_LC_MESSAGES_MASK (1<<__SPRT_LC_MESSAGES)
-#define __SPRT_LC_ALL_MASK      0x7fffffff
+// OR of the supported category masks. NOT 1<<LC_ALL: LC_ALL is a setlocale()
+// selector, not a category bit. On a hosted build this value is forwarded
+// straight to the platform newlocale(), so it must stay a subset of the
+// platform's own LC_ALL_MASK (the common.cc bridge static-asserts this).
+#define __SPRT_LC_ALL_MASK (__SPRT_LC_CTYPE_MASK | __SPRT_LC_NUMERIC_MASK \
+		| __SPRT_LC_TIME_MASK | __SPRT_LC_COLLATE_MASK | __SPRT_LC_MONETARY_MASK \
+		| __SPRT_LC_MESSAGES_MASK)
+#endif
 // clang-format on
 
 __SPRT_BEGIN_DECL
@@ -69,12 +84,34 @@ struct __SPRT_ID(lconv) {
 	char n_sep_by_space;
 	char p_sign_posn;
 	char n_sign_posn;
+	// glibc, BSD/macOS and the RTOS libcs each order the international p/n currency
+	// flags differently; localeconv() casts the platform's lconv* to this type, so
+	// the field order must match the platform's (the platform sets
+	// __SPRT_LCONV_BSD_INTL_ORDER / __SPRT_LCONV_INTL_NEGATIVE_FIRST in its
+	// cross/<platform>/locale.h; the bridge static-asserts the offsets).
+#if defined(__SPRT_LCONV_INTL_NEGATIVE_FIRST)
+	// NuttX and Embox group the negative triple first instead of interleaving p/n.
+	char int_n_cs_precedes;
+	char int_n_sep_by_space;
+	char int_n_sign_posn;
+	char int_p_cs_precedes;
+	char int_p_sep_by_space;
+	char int_p_sign_posn;
+#elif defined(__SPRT_LCONV_BSD_INTL_ORDER)
+	char int_p_cs_precedes;
+	char int_n_cs_precedes;
+	char int_p_sep_by_space;
+	char int_n_sep_by_space;
+	char int_p_sign_posn;
+	char int_n_sign_posn;
+#else
 	char int_p_cs_precedes;
 	char int_p_sep_by_space;
 	char int_n_cs_precedes;
 	char int_n_sep_by_space;
 	char int_p_sign_posn;
 	char int_n_sign_posn;
+#endif
 };
 
 SPRT_API char *__SPRT_ID(setlocale)(int, const char *);
@@ -90,4 +127,4 @@ SPRT_API __SPRT_ID(locale_t) __SPRT_ID(uselocale)(__SPRT_ID(locale_t));
 
 __SPRT_END_DECL
 
-#endif // CORE_RUNTIME_INCLUDE_C___SPRT_LIMITS_H_
+#endif // CORE_RUNTIME_INCLUDE_C___SPRT_LOCALE_H_

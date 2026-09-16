@@ -41,8 +41,10 @@ struct ForwardListNodeBase {
 
 	constexpr ForwardListNodeBase() noexcept : flag(Flag{0, 0, 0}) { }
 
-	// make default zero-ring
-	constexpr void reset() { next = this; }
+	// The forward list is LINEAR (nullptr-terminated), unlike the circular double
+	// list: end() must compare different from before_begin() ([forwardlist.iter]),
+	// which a shared ring sentinel cannot provide.
+	constexpr void reset() { next = nullptr; }
 
 	constexpr inline void setPrealloc(bool v) { flag.prealloc = v ? 1 : 0; }
 	constexpr inline bool isPrealloc() const { return flag.prealloc != 0; }
@@ -70,19 +72,33 @@ struct ForwardListNode : ForwardListNodeBase<Allocator> {
 		return node;
 	}
 
-	template <template <typename U> typename NodeAllocator>
-	constexpr static ForwardListNode *copyValue(const NodeAllocator<ForwardListNode> &alloc,
-			ForwardListNode *dest, ForwardListNode *target) {
-		using value_allocator = typename NodeAllocator<ForwardListNode>::template rebind<T>::other;
+	// NodeAllocator is any allocator following the sprt rebind protocol (including
+	// detail::AllocatorStd, whose template argument is the wrapped allocator rather
+	// than the node type, so a template-template parameter cannot express it).
+	template <typename NodeAllocator>
+	constexpr static ForwardListNode *copyValue(const NodeAllocator &alloc, ForwardListNode *dest,
+			ForwardListNode *target) {
+		using value_allocator = typename NodeAllocator::template rebind<T>::other;
 
 		dest->value.construct(value_allocator(alloc), target->value.ref());
 		return dest;
 	}
 
-	template <template <typename U> typename NodeAllocator>
-	constexpr static ForwardListNode *destroyValue(const NodeAllocator<ForwardListNode> &alloc,
+	// Move-relocating variant of copyValue for move-only element types (the
+	// unequal-allocator move path cannot steal nodes and cannot copy either).
+	template <typename NodeAllocator>
+	constexpr static ForwardListNode *moveValue(const NodeAllocator &alloc, ForwardListNode *dest,
+			ForwardListNode *target) {
+		using value_allocator = typename NodeAllocator::template rebind<T>::other;
+
+		dest->value.construct(value_allocator(alloc), sprt::move_unsafe(target->value.ref()));
+		return dest;
+	}
+
+	template <typename NodeAllocator>
+	constexpr static ForwardListNode *destroyValue(const NodeAllocator &alloc,
 			ForwardListNode *node) {
-		using value_allocator = typename NodeAllocator<ForwardListNode>::template rebind<T>::other;
+		using value_allocator = typename NodeAllocator::template rebind<T>::other;
 
 		node->value.destroy(value_allocator(alloc));
 		return node;
@@ -101,6 +117,8 @@ template <typename T, typename Allocator>
 struct ForwardListIterator {
 	using iterator_category = forward_iterator_tag;
 
+	using value_type = typename remove_cv<T>::type;
+	using difference_type = ptrdiff_t;
 	using node_type = ForwardListNodeBase<Allocator>;
 	using list_node_type = ForwardListNode<T, Allocator>;
 	using reference = T &;
@@ -141,6 +159,8 @@ template <typename T, typename Allocator>
 struct ForwardListConstIterator {
 	using iterator_category = forward_iterator_tag;
 
+	using value_type = typename remove_cv<T>::type;
+	using difference_type = ptrdiff_t;
 	using node_type = ForwardListNodeBase<Allocator>;
 	using list_node_type = ForwardListNode<T, Allocator>;
 	using reference = const T &;
@@ -223,15 +243,8 @@ public:
 			sprt::swap(this->_alloc, other._alloc);
 			sprt::swap(this->_size, other._size);
 			sprt::swap(this->_root, other._root);
-
-			// fix ring pointers
-			auto n = &this->_root;
-			while (n->next != &other._root) { n = n->next; }
-			n->next = &this->_root;
-
-			n = &other._root;
-			while (n->next != &this->_root) { n = n->next; }
-			n->next = &other._root;
+			// linear (nullptr-terminated) list: swapping the heads is complete,
+			// the tails already point at nullptr on both sides
 
 			sprt::swap(this->_storage, other._storage);
 		};
@@ -248,12 +261,12 @@ public:
 		++this->_size;
 	}
 
-	constexpr void insert_front(node_type *node) { insert(&this->_root, node); }
+	constexpr void insert_front(node_type *node) { insert(sprt::addressof(this->_root), node); }
 
 	// add count nodes with ConstructCallback to fill it
 	template <typename ConstructCallback>
 	constexpr basic_node_type *expand_front(size_t count, const ConstructCallback &cb) {
-		return expand(&this->_root, count, cb);
+		return expand(sprt::addressof(this->_root), count, cb);
 	}
 
 	template <typename ConstructCallback>
@@ -335,6 +348,69 @@ public:
 		return ret;
 	}
 
+	// LWG 526-safe remove_if: matching nodes are UNLINKED during the pass and
+	// destroyed only afterwards, so a predicate (or value) referring into the
+	// list stays valid while the scan runs.
+	template <typename NodePred>
+	constexpr size_t remove_if_nodes(NodePred pred) {
+		basic_node_type *sent = sprt::addressof(this->_root);
+		basic_node_type *prev = sent;
+		node_type *deferred = nullptr; // stack of unlinked nodes, chained via next
+		size_t removed = 0;
+		while (prev->next != nullptr) {
+			auto *cur = static_cast<node_type *>(prev->next);
+			if (pred(cur)) {
+				prev->next = cur->next;
+				cur->next = deferred;
+				deferred = cur;
+				++removed;
+				--this->_size;
+			} else {
+				prev = cur;
+			}
+		}
+		while (deferred) {
+			auto *next = static_cast<node_type *>(deferred->next);
+			node_type::destroyValue(this->_alloc, deferred);
+			this->destroyNode(deferred);
+			deferred = next;
+		}
+		return removed;
+	}
+
+	// Relink-based stable merge for [forwardlist.ops]: nodes are transferred
+	// between the (circular, sentinel-terminated) lists, so iterators and
+	// references into `other` stay valid and end up pointing into *this.
+	// Precondition (standard): get_allocator() == other.get_allocator().
+	// `comp` orders two node pointers; on ties elements of *this precede
+	// elements of `other` (stability).
+	template <typename NodeCompare>
+	constexpr void merge_nodes(forward_list_base &other, NodeCompare comp) {
+		if (this == sprt::addressof(other)) {
+			return;
+		}
+		basic_node_type *osent = sprt::addressof(other._root);
+		basic_node_type *prev = sprt::addressof(this->_root);
+		basic_node_type *onode = osent->next;
+		while (onode != nullptr) {
+			auto *cur = prev->next;
+			// advance past every element of *this that is not strictly greater
+			while (cur != nullptr
+					&& !comp(static_cast<node_type *>(onode), static_cast<node_type *>(cur))) {
+				prev = cur;
+				cur = cur->next;
+			}
+			auto *onext = onode->next;
+			onode->next = cur;
+			prev->next = onode;
+			prev = onode;
+			onode = onext;
+		}
+		this->_size += other._size;
+		other._size = 0;
+		osent->next = nullptr;
+	}
+
 protected:
 	constexpr void __clone(const forward_list_base &other) {
 		auto preallocTmp = this->memory_persistent();
@@ -351,19 +427,18 @@ protected:
 	}
 
 	constexpr void __move(forward_list_base &&other) {
-		if (other.get_allocator() != this->get_allocator()) {
+		// Same allocator (always true for stateless/always-equal allocators such as
+		// std::allocator): steal the storage outright.
+		if (other.get_allocator() == this->get_allocator()) {
 			this->memory_persistent(false);
 			this->clear();
 			this->shrink_to_fit();
 
-			memory_persistent(other.memory_persistent());
+			this->memory_persistent(other.memory_persistent());
 			this->_size = other._size;
 			this->_root = other._root;
 			this->_storage = other._storage;
-
-			auto n = &this->_root;
-			while (n->next != &other._root) { n = n->next; }
-			n->next = &this->_root;
+			// linear list: the stolen chain already terminates at nullptr
 
 			other._size = 0;
 			other._root.reset();
@@ -371,9 +446,29 @@ protected:
 			other._root.flag.size = 0;
 			other._root.flag.prealloc = 0;
 			other._storage = nullptr;
-		} else {
-			__clone(other);
+		} else if constexpr (!sprt::is_empty_v<node_allocator_type>) {
+			// Different (stateful) allocators: cannot steal. Copyable elements keep
+			// the historical copy; move-only ones are move-relocated element-wise.
+			if constexpr (sprt::is_copy_constructible_v<T>) {
+				__clone(other);
+			} else {
+				__clone_move(other);
+			}
 		}
+	}
+
+	constexpr void __clone_move(forward_list_base &other) {
+		auto preallocTmp = this->memory_persistent();
+		this->memory_persistent(true);
+		this->clear();
+		this->memory_persistent(preallocTmp);
+
+		basic_node_type *source = other._root.next;
+
+		expand_front(other.size(), [&](auto alloc, node_type *dest) SPRT_LAMBDAINLINE {
+			node_type::moveValue(this->_alloc, dest, static_cast<node_type *>(source));
+			source = source->next;
+		});
 	}
 };
 

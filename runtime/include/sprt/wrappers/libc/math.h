@@ -30,7 +30,7 @@
 #define M_PI_2 __SPRT_M_PI_2
 #define M_PI_4 __SPRT_M_PI_4
 #define M_1_PI __SPRT_M_1_PI
-#define M_2_PI__SPRT_M_2_PI
+#define M_2_PI __SPRT_M_2_PI
 #define M_2_SQRTPI __SPRT_M_2_SQRTPI
 #define M_SQRT2 __SPRT_M_SQRT2
 #define M_SQRT1_2 __SPRT_M_SQRT1_2
@@ -47,6 +47,7 @@ typedef __SPRT_ID(double_t) double_t;
 
 #include <sprt/runtime/math.h>
 #include <sprt/cxx/detail/promote.h>
+#include <sprt/cxx/detail/ctypes.h>
 
 namespace sprt {
 inline namespace _cmath {
@@ -96,7 +97,7 @@ static constexpr auto _FP_ILOGBNAN = __SPRT_FP_ILOGBNAN;
 static constexpr auto _MATH_ERRNO = __SPRT_MATH_ERRNO;
 static constexpr auto _MATH_ERREXCEPT = __SPRT_MATH_ERREXCEPT;
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 // _math_errhandling is a function in Mac SDK
 #define _math_errhandling __SPRT_math_errhandling
 #else
@@ -229,6 +230,12 @@ SPRT_FORCEINLINE auto log10(double x) { return __builtin_log10(x); }
 SPRT_FORCEINLINE auto log10(long double x) { return __builtin_log10l(x); }
 SPRT_FORCEINLINE auto log10l(long double x) { return __builtin_log10l(x); }
 
+template <typename _Ip>
+requires (__is_integral(_Ip))
+SPRT_FORCEINLINE auto log10(_Ip x) {
+	return __builtin_log10(static_cast<double>(x));
+}
+
 SPRT_FORCEINLINE auto log1p(float x) { return __builtin_log1pf(x); }
 SPRT_FORCEINLINE auto log1pf(float x) { return __builtin_log1pf(x); }
 SPRT_FORCEINLINE auto log1p(double x) { return __builtin_log1p(x); }
@@ -240,6 +247,11 @@ SPRT_FORCEINLINE auto log2f(float x) { return __builtin_log2f(x); }
 SPRT_FORCEINLINE auto log2(double x) { return __builtin_log2(x); }
 SPRT_FORCEINLINE auto log2(long double x) { return __builtin_log2l(x); }
 SPRT_FORCEINLINE auto log2l(long double x) { return __builtin_log2l(x); }
+template <typename _Ip>
+requires (__is_integral(_Ip))
+SPRT_FORCEINLINE auto log2(_Ip x) {
+	return __builtin_log2(static_cast<double>(x));
+}
 
 SPRT_FORCEINLINE auto logb(float x) { return __builtin_logbf(x); }
 SPRT_FORCEINLINE auto logbf(float x) { return __builtin_logbf(x); }
@@ -461,6 +473,16 @@ SPRT_FORCEINLINE auto fmin(double x, double y) { return __builtin_fmin(x, y); }
 SPRT_FORCEINLINE auto fmin(long double x, long double y) { return __builtin_fminl(x, y); }
 SPRT_FORCEINLINE auto fminl(long double x, long double y) { return __builtin_fminl(x, y); }
 
+SPRT_FORCEINLINE auto fma(float x, float y, float z) { return __builtin_fmaf(x, y, z); }
+SPRT_FORCEINLINE auto fmaf(float x, float y, float z) { return __builtin_fmaf(x, y, z); }
+SPRT_FORCEINLINE auto fma(double x, double y, double z) { return __builtin_fma(x, y, z); }
+SPRT_FORCEINLINE auto fma(long double x, long double y, long double z) {
+	return __builtin_fmal(x, y, z);
+}
+SPRT_FORCEINLINE auto fmal(long double x, long double y, long double z) {
+	return __builtin_fmal(x, y, z);
+}
+
 template <typename Type>
 constexpr SPRT_FORCEINLINE Type __lerp(Type a, Type b, Type t) noexcept {
 	if ((a <= 0 && b >= 0) || (a >= 0 && b <= 0)) {
@@ -499,6 +521,7 @@ constexpr SPRT_FORCEINLINE sprt::detail::promote_t<_A1, _A2, _A3> lerp(_A1 __a, 
 	return sprt::_cmath::__lerp((__result_type)__a, (__result_type)__b, (__result_type)__t);
 }
 
+#ifndef fpclassify
 SPRT_FORCEINLINE auto fpclassify(float x) {
 	return __builtin_fpclassify(_FP_NAN, _FP_INFINITE, _FP_NORMAL, _FP_SUBNORMAL, _FP_ZERO, x);
 }
@@ -510,58 +533,124 @@ SPRT_FORCEINLINE auto fpclassify(double x) {
 SPRT_FORCEINLINE auto fpclassify(long double x) {
 	return __builtin_fpclassify(_FP_NAN, _FP_INFINITE, _FP_NORMAL, _FP_SUBNORMAL, _FP_ZERO, x);
 }
+#endif
 
+#ifndef isfinite
 SPRT_FORCEINLINE bool isfinite(float x) { return __builtin_isfinite(x); }
 SPRT_FORCEINLINE bool isfinite(double x) { return __builtin_isfinite(x); }
 SPRT_FORCEINLINE bool isfinite(long double x) { return __builtin_isfinite(x); }
+// C++ requires the classification functions to accept integral arguments as if
+// converted to double (over.built); without this an integral call is ambiguous
+// between the three floating-point overloads.
+template <typename _Ip>
+requires (__is_integral(_Ip))
+SPRT_FORCEINLINE bool isfinite(_Ip x) { return __builtin_isfinite((double)x); }
+#endif
 
+#ifndef isinf
 SPRT_FORCEINLINE bool isinf(float x) { return __builtin_isinf(x); }
 SPRT_FORCEINLINE bool isinf(double x) { return __builtin_isinf(x); }
 SPRT_FORCEINLINE bool isinf(long double x) { return __builtin_isinf(x); }
+template <typename _Ip>
+requires (__is_integral(_Ip))
+SPRT_FORCEINLINE bool isinf(_Ip x) { return __builtin_isinf((double)x); }
+#endif
 
+#ifndef isnan
 SPRT_FORCEINLINE bool isnan(float x) { return __builtin_isnan(x); }
 SPRT_FORCEINLINE bool isnan(double x) { return __builtin_isnan(x); }
 SPRT_FORCEINLINE bool isnan(long double x) { return __builtin_isnan(x); }
+template <typename _Ip>
+requires (__is_integral(_Ip))
+SPRT_FORCEINLINE bool isnan(_Ip x) { return __builtin_isnan((double)x); }
+#endif
 
+#ifndef isnormal
 SPRT_FORCEINLINE bool isnormal(float x) { return __builtin_isnormal(x); }
 SPRT_FORCEINLINE bool isnormal(double x) { return __builtin_isnormal(x); }
 SPRT_FORCEINLINE bool isnormal(long double x) { return __builtin_isnormal(x); }
+template <typename _Ip>
+requires (__is_integral(_Ip))
+SPRT_FORCEINLINE bool isnormal(_Ip x) { return __builtin_isnormal((double)x); }
+#endif
 
+#ifndef signbit
 SPRT_FORCEINLINE bool signbit(float x) { return __builtin_signbit(x); }
 SPRT_FORCEINLINE bool signbit(double x) { return __builtin_signbit(x); }
 SPRT_FORCEINLINE bool signbit(long double x) { return __builtin_signbit(x); }
+template <typename _Ip>
+requires (__is_integral(_Ip))
+SPRT_FORCEINLINE bool signbit(_Ip x) { return __builtin_signbit((double)x); }
+#endif
 
+// The two-argument comparison functions take a common real floating type: long
+// double if either operand is long double, otherwise double (integral operands
+// participate as double). C++ requires overloads accepting mixed / integral
+// arguments; without them a call like isgreater(float, double) or isgreater(int,
+// int) is ambiguous between the three same-type floating-point overloads. This
+// template covers every arithmetic pair; when both operands are the same floating
+// type the exact non-template overload above is preferred, so it only fires for
+// the mixed/integral cases. __SPRT_FCMP_MIXED emits it.
+#define __SPRT_FCMP_MIXED(_Name) \
+	template <typename _A1, typename _A2> \
+	requires (__is_arithmetic(_A1) && __is_arithmetic(_A2)) \
+	SPRT_FORCEINLINE bool _Name(_A1 x, _A2 y) { \
+		using _Tp = sprt::conditional_t<sprt::is_same_v<_A1, long double> \
+				|| sprt::is_same_v<_A2, long double>, long double, double>; \
+		return __builtin_##_Name((_Tp)x, (_Tp)y); \
+	}
+
+#ifndef isgreater
 SPRT_FORCEINLINE bool isgreater(float x, float y) { return __builtin_isgreater(x, y); }
 SPRT_FORCEINLINE bool isgreater(double x, double y) { return __builtin_isgreater(x, y); }
 SPRT_FORCEINLINE bool isgreater(long double x, long double y) { return __builtin_isgreater(x, y); }
+__SPRT_FCMP_MIXED(isgreater)
+#endif
 
+#ifndef isgreaterequal
 SPRT_FORCEINLINE bool isgreaterequal(float x, float y) { return __builtin_isgreaterequal(x, y); }
 SPRT_FORCEINLINE bool isgreaterequal(double x, double y) { return __builtin_isgreaterequal(x, y); }
 SPRT_FORCEINLINE bool isgreaterequal(long double x, long double y) {
 	return __builtin_isgreaterequal(x, y);
 }
+__SPRT_FCMP_MIXED(isgreaterequal)
+#endif
 
+#ifndef isless
 SPRT_FORCEINLINE bool isless(float x, float y) { return __builtin_isless(x, y); }
 SPRT_FORCEINLINE bool isless(double x, double y) { return __builtin_isless(x, y); }
 SPRT_FORCEINLINE bool isless(long double x, long double y) { return __builtin_isless(x, y); }
+__SPRT_FCMP_MIXED(isless)
+#endif
 
+#ifndef islessequal
 SPRT_FORCEINLINE bool islessequal(float x, float y) { return __builtin_islessequal(x, y); }
 SPRT_FORCEINLINE bool islessequal(double x, double y) { return __builtin_islessequal(x, y); }
 SPRT_FORCEINLINE bool islessequal(long double x, long double y) {
 	return __builtin_islessequal(x, y);
 }
+__SPRT_FCMP_MIXED(islessequal)
+#endif
 
+#ifndef islessgreater
 SPRT_FORCEINLINE bool islessgreater(float x, float y) { return __builtin_islessgreater(x, y); }
 SPRT_FORCEINLINE bool islessgreater(double x, double y) { return __builtin_islessgreater(x, y); }
 SPRT_FORCEINLINE bool islessgreater(long double x, long double y) {
 	return __builtin_islessgreater(x, y);
 }
+__SPRT_FCMP_MIXED(islessgreater)
+#endif
 
+#ifndef isunordered
 SPRT_FORCEINLINE bool isunordered(float x, float y) { return __builtin_isunordered(x, y); }
 SPRT_FORCEINLINE bool isunordered(double x, double y) { return __builtin_isunordered(x, y); }
 SPRT_FORCEINLINE bool isunordered(long double x, long double y) {
 	return __builtin_isunordered(x, y);
 }
+__SPRT_FCMP_MIXED(isunordered)
+#endif
+
+#undef __SPRT_FCMP_MIXED
 
 // From libc++, comments preserved
 //
@@ -615,19 +704,30 @@ sprt::detail::promote_t<_A1, _A2, _A3> hypot(_A1 __x, _A2 __y, _A3 __z) noexcept
 } // namespace _cmath
 } // namespace sprt
 
-#if __STDC_HOSTED__ == 1 && !defined(__SPRT_BUILD)
+// Re-export the sprt C++ math overloads into the global namespace only when this
+// header is NOT reached through libc++. libc++ owns <cmath>/<math.h> and already
+// re-exports std::fabs/abs/... globally, so a second, identical overload set makes
+// every unqualified fabs()/abs() call ambiguous. libc++'s <math.h> pulls <__config>
+// (=> _LIBCPP_VERSION) before its #include_next <math.h> reaches us, so that macro
+// being defined is a precise "loaded through libc++" signal.
+#if __STDC_HOSTED__ == 1 && !defined(__SPRT_BUILD) && !defined(_LIBCPP_VERSION)
 using namespace sprt::_cmath;
-#endif
-
-#ifdef __SPRT_AS_STD
-namespace std {
-using namespace sprt::_cmath;
-}
+#elif defined(_LIBCPP_VERSION) && defined(_LIBCPP_MSVCRT)
+using sprt::_cmath::isfinite;
+using sprt::_cmath::isinf;
+using sprt::_cmath::isnan;
+using sprt::_cmath::isnormal;
+using sprt::_cmath::isgreater;
+using sprt::_cmath::isgreaterequal;
+using sprt::_cmath::isless;
+using sprt::_cmath::islessequal;
+using sprt::_cmath::islessgreater;
+using sprt::_cmath::isunordered;
 #endif
 #endif // __cplusplus
 
-
-#if !defined(__cplusplus) && __STDC_HOSTED__ == 1
+#if !defined(__cplusplus)
+#ifndef fpclassify
 #define fpclassify(x) __sprt_fpclassify(x)
 #define isinf(x) __sprt_isinf(x)
 #define isnan(x) __sprt_isnan(x)
@@ -635,7 +735,7 @@ using namespace sprt::_cmath;
 #define isfinite(x) __sprt_isfinite(x)
 #define signbit(x) __sprt_signbit(x)
 #endif
-
+#endif
 
 #if __STDC_HOSTED__ == 0
 __SPRT_BEGIN_DECL
@@ -649,1431 +749,28 @@ __SPRT_END_DECL
 #endif
 
 
-#if __STDC_HOSTED__ == 0 || (!defined(__SPRT_BUILD) && !defined(__cplusplus))
+// Emit the C math surface as extern-C declarations when:
+//   - freestanding, or the hosted C (non-C++) path (the original cases); or
+//   - hosted C++ UNDER libc++ (_LIBCPP_VERSION): libc++ owns the C++ overloads and
+//     re-exports its own std::__math::fabs/acos/... globally as _LIBCPP_PREFERRED_
+//     OVERLOADs. Those dominate a C-linkage acos(double)/fabs(double) without
+//     ambiguity (exactly the glibc coexistence model), while the suffixed C names
+//     (acosf/fabsl/...) libc++ does NOT provide are supplied here for it to
+//     re-export. The sprt C++ overload block above is kept out of the global
+//     namespace in this case (see the _LIBCPP_VERSION guard on its `using`).
+#if __STDC_HOSTED__ == 0 || (!defined(__SPRT_BUILD) && !defined(__cplusplus)) \
+		|| (defined(_LIBCPP_VERSION) && !defined(__SPRT_BUILD))
 __SPRT_BEGIN_DECL
 
-SPRT_UMBRELLA_FUNC
-double acos(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_acos(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float acosf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_acosf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double acosl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_acosl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double acosh(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_acosh(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float acoshf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_acoshf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double acoshl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_acoshl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double asin(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_asin(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float asinf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_asinf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double asinl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_asinl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double asinh(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_asinh(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float asinhf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_asinhf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double asinhl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_asinhl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double atan(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_atan(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float atanf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_atanf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double atanl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_atanl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double atan2(double a, double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_atan2(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float atan2f(float a, float b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_atan2f(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double atan2l(long double a, long double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_atan2l(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double atanh(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_atanh(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float atanhf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_atanhf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double atanhl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_atanhl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double cbrt(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_cbrt(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float cbrtf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_cbrtf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double cbrtl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_cbrtl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double ceil(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_ceil(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float ceilf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_ceilf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double ceill(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_ceill(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double copysign(double a, double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_copysign(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float copysignf(float a, float b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_copysignf(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double copysignl(long double a, long double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_copysignl(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double cos(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_cos(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float cosf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_cosf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double cosl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_cosl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double cosh(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_cosh(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float coshf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_coshf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double coshl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_coshl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double erf(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_erf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float erff(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_erff(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double erfl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_erfl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double erfc(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_erfc(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float erfcf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_erfcf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double erfcl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_erfcl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double exp(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_exp(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float expf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_expf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double expl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_expl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double exp2(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_exp2(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float exp2f(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_exp2f(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double exp2l(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_exp2l(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double expm1(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_expm1(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float expm1f(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_expm1f(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double expm1l(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_expm1l(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double fabs(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fabs(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float fabsf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fabsf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double fabsl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fabsl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double fdim(double a, double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fdim(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float fdimf(float a, float b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fdimf(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double fdiml(long double a, long double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fdiml(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double floor(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_floor(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float floorf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_floorf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double floorl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_floorl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double fma(double a, double b, double c) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fma(a, b, c);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float fmaf(float a, float b, float c) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fmaf(a, b, c);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double fmal(long double a, long double b, long double c) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fmal(a, b, c);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double fmax(double a, double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fmax(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float fmaxf(float a, float b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fmaxf(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double fmaxl(long double a, long double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fmaxl(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double fmin(double a, double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fmin(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float fminf(float a, float b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fminf(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double fminl(long double a, long double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fminl(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double fmod(double a, double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fmod(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float fmodf(float a, float b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fmodf(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double fmodl(long double a, long double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fmodl(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double frexp(double a, int *b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_frexp(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float frexpf(float a, int *b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_frexpf(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double frexpl(long double a, int *b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_frexpl(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double hypot(double a, double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_hypot(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float hypotf(float a, float b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_hypotf(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double hypotl(long double a, long double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_hypotl(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-int ilogb(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_ilogb(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-int ilogbf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_ilogbf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-int ilogbl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_ilogbl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double ldexp(double a, int b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_ldexp(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float ldexpf(float a, int b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_ldexpf(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double ldexpl(long double a, int b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_ldexpl(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double lgamma(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_lgamma(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float lgammaf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_lgammaf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double lgammal(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_lgammal(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-long long llrint(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_llrint(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long long llrintf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_llrintf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long long llrintl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_llrintl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-long long llround(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_llround(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long long llroundf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_llroundf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long long llroundl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_llroundl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double log(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_log(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float logf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_logf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double logl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_logl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double log10(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_log10(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float log10f(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_log10f(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double log10l(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_log10l(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double log1p(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_log1p(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float log1pf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_log1pf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double log1pl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_log1pl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double log2(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_log2(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float log2f(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_log2f(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double log2l(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_log2l(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double logb(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_logb(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float logbf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_logbf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double logbl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_logbl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-long lrint(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_lrint(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long lrintf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_lrintf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long lrintl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_lrintl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-long lround(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_lround(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long lroundf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_lroundf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long lroundl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_lroundl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double modf(double a, double *b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_modf(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float modff(float a, float *b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_modff(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double modfl(long double a, long double *b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_modfl(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double nan(const char *value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_nan(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float nanf(const char *value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_nanf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double nanl(const char *value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_nanl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double nearbyint(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_nearbyint(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float nearbyintf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_nearbyintf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double nearbyintl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_nearbyintl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double nextafter(double a, double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_nextafter(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float nextafterf(float a, float b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_nextafterf(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double nextafterl(long double a, long double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_nextafterl(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double nexttoward(double a, long double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_nexttoward(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float nexttowardf(float a, long double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_nexttowardf(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double nexttowardl(long double a, long double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_nexttowardl(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double pow(double a, double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_pow(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float powf(float a, float b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_powf(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double powl(long double a, long double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_powl(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double remainder(double a, double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_remainder(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float remainderf(float a, float b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_remainderf(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double remainderl(long double a, long double b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_remainderl(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double remquo(double a, double b, int *c) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_remquo(a, b, c);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float remquof(float a, float b, int *c) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_remquof(a, b, c);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double remquol(long double a, long double b, int *c) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_remquol(a, b, c);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-double rint(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_rint(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float rintf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_rintf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double rintl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_rintl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double round(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_round(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float roundf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_roundf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double roundl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_roundl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double scalbln(double a, long b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_scalbln(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float scalblnf(float a, long b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_scalblnf(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double scalblnl(long double a, long b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_scalblnl(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double scalbn(double a, int b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_scalbn(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float scalbnf(float a, int b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_scalbnf(a, b);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double scalbnl(long double a, int b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_scalbnl(a, b);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double sin(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_sin(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float sinf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_sinf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double sinl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_sinl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double sinh(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_sinh(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float sinhf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_sinhf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double sinhl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_sinhl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double sqrt(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_sqrt(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float sqrtf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_sqrtf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double sqrtl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_sqrtl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double tan(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_tan(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float tanf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_tanf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double tanl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_tanl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double tanh(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_tanh(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float tanhf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_tanhf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double tanhl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_tanhl(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double tgamma(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_tgamma(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float tgammaf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_tgammaf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double tgammal(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_tgammal(value);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-double trunc(double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_trunc(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-float truncf(float value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_truncf(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-long double truncl(long double value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_truncl(value);
-}
-#endif
+#define SPRT_FUNC_BEGIN SPRT_UMBRELLA_FUNC
+#define SPRT_FUNC_END SPRT_UMBRELLA_END
+#define SPRT_FUNC_BODY SPRT_UMBRELLA_REQUIRED
+
+#include <sprt/wrappers/libc/math_impl.h>
+
+#undef SPRT_FUNC_BEGIN
+#undef SPRT_FUNC_END
+#undef SPRT_FUNC_BODY
 
 __SPRT_END_DECL
 #endif

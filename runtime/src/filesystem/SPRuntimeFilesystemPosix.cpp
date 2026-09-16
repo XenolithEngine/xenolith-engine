@@ -23,7 +23,7 @@
 #include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/runtime/filesystem/filepath.h>
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS || SPRT_WINDOWS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_WINDOWS || SPRT_WASM || SPRT_HOSTED_RTOS
 
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_unistd.h>
@@ -50,8 +50,11 @@ static void performWithPath(const LocationInfo &loc, StringView path, const Call
 	}
 }
 
-static constexpr int OpenDirFlags =
-		__SPRT_O_DIRECTORY | __SPRT_O_RDONLY | __SPRT_O_NDELAY | __SPRT_O_CLOEXEC;
+// No O_NONBLOCK/O_NDELAY here: it is redundant for opening a directory (open never blocks on one,
+// and O_DIRECTORY already rejects non-directories), and the Windows libc returns ENOSYS for
+// O_NONBLOCK — which would make every directory open fail there, breaking ftw / recursive remove /
+// recursive copy on Windows.
+static constexpr int OpenDirFlags = __SPRT_O_DIRECTORY | __SPRT_O_RDONLY | __SPRT_O_CLOEXEC;
 
 static Status _ftw_fn(int dirfd, const callback<bool(StringView, FileType)> &callback, int depth,
 		bool dirFirst, const char *origBuf, char *buf, size_t bufMax) {
@@ -67,6 +70,13 @@ static Status _ftw_fn(int dirfd, const callback<bool(StringView, FileType)> &cal
 		struct dirent *read() { return ::__sprt_readdir(dp); }
 
 		int getFd() { return ::__sprt_dirfd(dp); }
+
+		void close() {
+			if (dp) {
+				::__sprt_closedir(dp);
+				dp = nullptr;
+			}
+		}
 
 		explicit operator bool() const { return dp != nullptr; }
 
@@ -151,6 +161,11 @@ static Status _ftw_fn(int dirfd, const callback<bool(StringView, FileType)> &cal
 			}
 		}
 		if (!dirFirst) {
+			// Release this directory's handle before reporting the directory itself: a post-order
+			// consumer (recursive remove/move) may delete or rename it, which Windows refuses while
+			// any handle to the directory is still open. Harmless on POSIX (rmdir tolerates an open
+			// fd). All entries have already been read and any subdirectories fully recursed.
+			dp.close();
 			buf[0] = 0;
 			if (!callback(StringView(origBuf, buf - origBuf), FileType::Dir)) {
 				return Status::Suspended;
@@ -272,6 +287,7 @@ static LocationInterface s_defaultInterface = {
 		if (st) {
 			*st = sprt::status::errnoToStatus(__sprt_errno);
 		}
+		return 0;
 	}
 	if (st) {
 		*st = Status::Ok;
@@ -285,6 +301,7 @@ static LocationInterface s_defaultInterface = {
 		if (st) {
 			*st = sprt::status::errnoToStatus(__sprt_errno);
 		}
+		return 0;
 	}
 	if (st) {
 		*st = Status::Ok;
@@ -298,6 +315,7 @@ static LocationInterface s_defaultInterface = {
 		if (st) {
 			*st = sprt::status::errnoToStatus(__sprt_errno);
 		}
+		return 0;
 	}
 	if (st) {
 		*st = Status::Ok;
@@ -311,6 +329,7 @@ static LocationInterface s_defaultInterface = {
 		if (st) {
 			*st = sprt::status::errnoToStatus(__sprt_errno);
 		}
+		return 0;
 	}
 	if (st) {
 		*st = Status::Ok;
@@ -479,13 +498,13 @@ static LocationInterface s_defaultInterface = {
 
 		int mProt = 0;
 		if ((prot & __SPRT_S_IROTH) != 0) {
-			mProt = __SPRT_PROT_READ;
+			mProt |= __SPRT_PROT_READ;
 		}
 		if ((prot & __SPRT_S_IWOTH) != 0) {
-			mProt = __SPRT_PROT_WRITE;
+			mProt |= __SPRT_PROT_WRITE;
 		}
 		if ((prot & __SPRT_S_IXOTH) != 0) {
-			mProt = __SPRT_PROT_EXEC;
+			mProt |= __SPRT_PROT_EXEC;
 		}
 
 		int mFlags = 0;
@@ -530,6 +549,7 @@ static LocationInterface s_defaultInterface = {
 		if (::__sprt_msync(region, size_t(s->length), __SPRT_MS_SYNC) != 0) {
 			return sprt::status::errnoToStatus(__sprt_errno);
 		}
+		return Status::Ok;
 	}
 	return Status::ErrorInvalidArguemnt;
 },

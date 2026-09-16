@@ -610,10 +610,29 @@ void DataScrollView::updateIndicatorPosition() {
 	const float max = getScrollMaxPosition()
 			+ (_itemsCount - _currentSliceStart.get() - _currentSliceLen) * itemSize;
 
-	const float value = (_scrollPosition - min) / (max - min);
+	const float value = (max > min) ? ((getScrollPosition() - min) / (max - min)) : 0.0f;
 
 	ScrollView::updateIndicatorPosition(_indicator,
-			(isVertical() ? scrollHeight : scrollWidth) / scrollLength, value, true, 20.0f);
+			(isVertical() ? scrollHeight : scrollWidth) / scrollLength, value, true,
+			IndicatorMinLength);
+}
+
+float DataScrollView::getIndicatorRelativePosition() const {
+	const float itemSize = getScrollLength() / _currentSliceLen;
+	const float min = getScrollMinPosition() - _currentSliceStart.get() * itemSize;
+	const float max = getScrollMaxPosition()
+			+ (_itemsCount - _currentSliceStart.get() - _currentSliceLen) * itemSize;
+
+	if (sprt::isnan(min) || sprt::isnan(max) || max <= min) {
+		return 0.0f;
+	}
+	return sprt::clamp((getScrollPosition() - min) / (max - min), 0.0f, 1.0f);
+}
+
+void DataScrollView::setIndicatorRelativePosition(float value) {
+	/* Inert: the thumb maps over the whole data set, most of it not loaded, so the inverse would be
+	a request for a slice rather than a scroll position. The bar shows the position in the set but
+	cannot be dragged; loading a slice from a fraction is the data source's decision (setSource). */
 }
 
 void DataScrollView::onOverscroll(float delta) {

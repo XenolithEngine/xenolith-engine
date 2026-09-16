@@ -81,9 +81,10 @@ void DynamicStateSystem::setStateApplyMode(DynamicStateApplyMode value) {
 
 void DynamicStateSystem::setIgnoreParentState(bool val) { _ignoreParentState = val; }
 
-void DynamicStateSystem::enableScissor(Padding outline) {
+void DynamicStateSystem::enableScissor(Padding outline, ScissorAxes axes) {
 	_scissorEnabled = true;
 	_scissorOutline = outline;
+	_scissorAxes = axes;
 }
 
 void DynamicStateSystem::disableScissor() { _scissorEnabled = false; }
@@ -108,9 +109,24 @@ DrawStateValues DynamicStateSystem::updateDynamicState(const DrawStateValues &va
 			bottomLeft.y = b;
 		}
 
-		return URect{uint32_t(roundf(bottomLeft.x)), uint32_t(roundf(bottomLeft.y)),
-			uint32_t(roundf(topRight.x - bottomLeft.x)),
-			uint32_t(roundf(topRight.y - bottomLeft.y))};
+		float x0 = sprt::max(roundf(bottomLeft.x), 0.0f);
+		float y0 = sprt::max(roundf(bottomLeft.y), 0.0f);
+		float x1 = sprt::max(roundf(topRight.x), x0);
+		float y1 = sprt::max(roundf(topRight.y), y0);
+
+		// An unclipped axis is opened past any surface, so the intersection below keeps only an
+		// ancestor's clip. Not the type's maximum: offset + extent must fit a signed 32-bit rect.
+		constexpr float kOpen = float(1 << 24);
+		if (!hasFlag(_scissorAxes, ScissorAxes::Horizontal)) {
+			x0 = 0.0f;
+			x1 = kOpen;
+		}
+		if (!hasFlag(_scissorAxes, ScissorAxes::Vertical)) {
+			y0 = 0.0f;
+			y1 = kOpen;
+		}
+
+		return URect{uint32_t(x0), uint32_t(y0), uint32_t(x1 - x0), uint32_t(y1 - y0)};
 	};
 
 
@@ -120,12 +136,21 @@ DrawStateValues DynamicStateSystem::updateDynamicState(const DrawStateValues &va
 		if ((ret.enabled & core::DynamicState::Scissor) == core::DynamicState::None) {
 			ret.enabled |= core::DynamicState::Scissor;
 			ret.scissor = viewRect;
-		} else if (ret.scissor.intersectsRect(viewRect)) {
+		} else {
+			// A nested scissor is the intersection, so extents come from the clamped edges;
+			// non-overlapping boxes collapse to an empty rect.
+			const uint32_t minX = sprt::max(ret.scissor.x, viewRect.x);
+			const uint32_t minY = sprt::max(ret.scissor.y, viewRect.y);
+			const uint32_t maxX =
+					sprt::min(ret.scissor.x + ret.scissor.width, viewRect.x + viewRect.width);
+			const uint32_t maxY =
+					sprt::min(ret.scissor.y + ret.scissor.height, viewRect.y + viewRect.height);
+
 			ret.scissor = URect{
-				sprt::max(ret.scissor.x, viewRect.x),
-				sprt::max(ret.scissor.y, viewRect.y),
-				sprt::min(ret.scissor.width, viewRect.width),
-				sprt::min(ret.scissor.height, viewRect.height),
+				minX,
+				minY,
+				(maxX > minX) ? maxX - minX : 0U,
+				(maxY > minY) ? maxY - minY : 0U,
 			};
 		}
 	}

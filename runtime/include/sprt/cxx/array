@@ -23,8 +23,32 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_ARRAY_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_ARRAY_H_
 
+#include <sprt/cxx/detail/__stl_value_provider.h>
+
+#if __SPRT_STL_LIBCXX_VALUETYPES
+// Project libc++'s <array> into namespace sprt (sprt::array IS std::array): a single
+// implementation shared with the vendored value-types. libc++'s <tuple> forward-declares
+// std::array via <__fwd/array.h>, so a hand-written sprt::array re-exported as std::array
+// would be a SECOND array in the owned std and make `std::array` ambiguous — projecting the
+// vendored array is what dissolves that clash. Uses only the cycle-free value-type bridge
+// (array is foundational: <string>/<span>/<function> include it early).
+#include <libcxx/__sprt_valuetype_bridge.h>
+#include <__sprt_valuetype_utility.h>
+#include <libcxx/array>
+
+namespace sprt {
+using std::array;
+using std::get;
+using std::to_array;
+} // namespace sprt
+
+#else // hosted sprt build: hand-written <array>
+
+#include <sprt/c/__sprt_assert.h>
 #include <sprt/cxx/__algorithm/bounds.h>
+#include <sprt/cxx/__utility/swap.h>
 #include <sprt/cxx/detail/ctypes.h>
+#include <sprt/cxx/compare>
 
 namespace sprt {
 
@@ -48,6 +72,10 @@ struct array {
 		for (size_t i = 0; i < Size; ++i) { _elems[i] = v; }
 	}
 
+	constexpr void swap(array &other) noexcept(is_nothrow_swappable_v<Type>) {
+		for (size_t i = 0; i < Size; ++i) { sprt::swap(_elems[i], other._elems[i]); }
+	}
+
 	// iterators:
 	constexpr iterator begin() noexcept { return iterator(data()); }
 	constexpr const_iterator begin() const noexcept { return const_iterator(data()); }
@@ -68,9 +96,15 @@ struct array {
 	constexpr reference operator[](size_type n) noexcept { return _elems[n]; }
 	constexpr const_reference operator[](size_type n) const noexcept { return _elems[n]; }
 
-	constexpr reference at(size_type n) { return _elems[n]; }
+	constexpr reference at(size_type n) {
+		sprt_passert(n < Size, "array::at: index out of range");
+		return _elems[n];
+	}
 
-	constexpr const_reference at(size_type n) const { return _elems[n]; }
+	constexpr const_reference at(size_type n) const {
+		sprt_passert(n < Size, "array::at: index out of range");
+		return _elems[n];
+	}
 
 	constexpr reference front() noexcept { return (*this)[0]; }
 	constexpr const_reference front() const noexcept { return (*this)[0]; }
@@ -81,10 +115,37 @@ struct array {
 	constexpr const value_type *data() const noexcept { return _elems; }
 
 	constexpr bool operator==(const array &other) const {
-		return sprt::equal(begin(), other.begin(), end());
+		return sprt::equal(begin(), end(), other.begin());
 	}
 };
 
+// [array.cons] class template argument deduction: array{a, b, c} deduces the element
+// type from the first argument and the size from the argument count ([array.overview]).
+template <typename _Tp, typename... _Up>
+array(_Tp, _Up...) -> array<_Tp, 1 + sizeof...(_Up)>;
+
+// C++20 [array.syn]: lexicographical three-way comparison (== is the member above,
+// which also yields the rewritten !=). Uses the shared synth-three-way so element
+// types that have only operator< still order (as a synthesized weak_ordering).
+template <typename _Tp, size_t _Np>
+constexpr __synth_three_way_result_t<_Tp> operator<=>(const array<_Tp, _Np> &__x,
+		const array<_Tp, _Np> &__y) {
+	for (size_t __i = 0; __i < _Np; ++__i) {
+		if (auto __c = sprt::__synth_three_way(__x[__i], __y[__i]); __c != 0) {
+			return __c;
+		}
+	}
+	return static_cast<__synth_three_way_result_t<_Tp>>(strong_ordering::equal);
+}
+
+// C++20 [array.syn]: free swap, found by ADL on sprt::array (mirrors array::swap).
+template <typename _Tp, size_t _Np>
+constexpr void swap(array<_Tp, _Np> &__x, array<_Tp, _Np> &__y) noexcept(noexcept(__x.swap(__y))) {
+	__x.swap(__y);
+}
+
 } // namespace sprt
+
+#endif // __SPRT_STL_LIBCXX_VALUETYPES
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_ARRAY_H_

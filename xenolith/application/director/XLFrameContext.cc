@@ -233,21 +233,29 @@ void FrameContext::submitMaterials(const FrameInfo &info) {
 	if (!_pendingMaterialsToAdd.empty() || !_pendingMaterialsToRemove.empty()) {
 		Vector<Rc<core::DependencyEvent>> events;
 		if (_materialDependency) {
+			// Stamped at hand-over, like the font batch: the event was minted by this frame's first
+			// addPendingMaterial. See core::DependencyEvent::markSent.
+			_materialDependency->markSent();
 			events.emplace_back(_materialDependency);
 		}
 
 		if (!_pendingMaterialsToAdd.empty() || !_pendingMaterialsToRemove.empty()) {
 			auto req = Rc<core::MaterialInputData>::alloc();
-			req->attachment = _materialAttachment;
+			req->setAttachment(_materialAttachment);
 			req->materialsToAddOrUpdate = sp::move(_pendingMaterialsToAdd);
 			req->materialsToRemove = sp::move(_pendingMaterialsToRemove);
-			req->callback = [app = Rc<AppThread>(info.director->getApplication())] {
-				app->wakeup();
+			req->callback =
+					[app = Rc<AppThread>(info.director->getApplication()),
+							a = Rc<core::MaterialAttachment>(
+									const_cast<core::MaterialAttachment *>(_materialAttachment))] {
+				app->wakeup([app, set = a->getMaterials()] {
+					app->handleMatrialsUpdated(set); //
+				});
 			};
 
 			for (auto &it : req->materialsToRemove) { emplace_ordered(_revokedIds, it); }
 
-			info.director->getGlLoop()->compileMaterials(move(req), events);
+			info.director->getRenderServer()->compileMaterials(move(req), events);
 		}
 
 		_pendingMaterialsToAdd.clear();

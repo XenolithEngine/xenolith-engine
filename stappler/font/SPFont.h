@@ -46,7 +46,7 @@ struct SP_PUBLIC CharVector final {
 	void addString(const WideStringView &);
 	void addString(const CharVector &);
 
-	bool empty() const { return !chars.empty(); }
+	bool empty() const { return chars.empty(); }
 
 	mem_std::Vector<char32_t> chars;
 };
@@ -101,13 +101,29 @@ struct SP_PUBLIC CharId final {
 struct SP_PUBLIC CharShape16 final {
 	char16_t charID = 0;
 	uint16_t xAdvance = 0;
+	uint16_t glyphIndex = 0; // FreeType glyph index for charID (the glyph to rasterize/render)
 };
 
 struct SP_PUBLIC CharShape final {
 	char32_t charID = 0;
 	uint16_t xAdvance = 0;
+	uint16_t glyphIndex = 0; // FreeType glyph index for charID (the glyph to rasterize/render)
 
 	operator char32_t() const { return charID; }
+};
+
+// One shaped glyph proposed by HarfBuzz. `glyphId` is the glyph index to RENDER (after shaping it is
+// no longer a Unicode code point); `cluster` maps it back to the source code point it belongs to; the
+// advance/offset fields are the POSITIONING metrics, in pixels (matching CharShape::xAdvance). A run
+// of code points may shape to a different number of glyphs (ligatures collapse, decompositions
+// expand), so shaped glyphs are not 1:1 with input code points.
+struct SP_PUBLIC ShapedGlyph final {
+	uint32_t glyphId = 0;
+	uint32_t cluster = 0;
+	int16_t xAdvance = 0;
+	int16_t yAdvance = 0;
+	int16_t xOffset = 0;
+	int16_t yOffset = 0;
 };
 
 struct SP_PUBLIC CharTexture final {
@@ -125,6 +141,18 @@ struct SP_PUBLIC CharTexture final {
 	uint16_t fontID = 0;
 
 	uint8_t *bitmap;
+};
+
+// Where a caller wants a glyph rasterized. Returned from the measuring callback of
+// FontFaceObject::renderTextureUnsafe, which then makes FreeType write there directly instead of
+// into its own slot bitmap - so a glyph reaches an atlas, a staging buffer or a glyph cache
+// without an intermediate copy.
+//
+// The memory must be zeroed: FreeType composites (ORs) coverage into the target rather than
+// overwriting it. A bump-allocated slab whose pages are cleared once satisfies this for free.
+struct SP_PUBLIC GlyphTarget final {
+	uint8_t *buffer = nullptr; // nullptr skips the glyph
+	int32_t pitch = 0; // bytes per row; may exceed the glyph width
 };
 
 struct SP_PUBLIC FontAtlasValue {
@@ -174,6 +202,28 @@ struct SP_PUBLIC FontCharStorage {
 				for (auto &iit : *it) { cb(iit); }
 			}
 		}
+	}
+
+	template <typename Callback>
+	void foreach (const Callback &cb) const {
+		static_assert(sprt::is_invocable_v<Callback, const Value &>, "Invalid callback type");
+		for (auto &it : cells) {
+			if (it) {
+				for (auto &iit : *it) { cb(iit); }
+			}
+		}
+	}
+
+	// What the table costs. It is sparse - one 256-entry cell is allocated for each 256 code points
+	// that has at least one entry - so the number of stored values says nothing about its size.
+	size_t getMemoryUsage() const {
+		size_t ret = 0;
+		for (auto &it : cells) {
+			if (it) {
+				ret += sizeof(CellType);
+			}
+		}
+		return ret;
 	}
 
 	sprt::array<CellType *, 256> cells;

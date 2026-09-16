@@ -25,7 +25,9 @@
 #include "XLCoreInfo.h"
 #include "XLCoreDevice.h"
 #include "XLCoreDeviceQueue.h"
+#if !SPRT_WASM && !SPRT_HOSTED_RTOS
 #include "SPIRV-Reflect/spirv_reflect.h"
+#endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
@@ -97,12 +99,19 @@ bool DataAtlas::init(Type t, uint32_t count, uint32_t objectSize, Extent2 imageS
 	_objectSize = objectSize;
 	_imageExtent = imageSize;
 	_data.reserve(count * objectSize);
+
+	/* Reserve the name index too: unreserved inserts into this hash map are expensive, and
+	addObject runs several times per glyph on every full atlas repack. Callers should include all
+	objects (persistent copies too) in `count`. */
+	_intNames.reserve(count);
 	return true;
 }
 
 void DataAtlas::compile() {
 	auto bufferObjectSize = sizeof(uint32_t) * 2 + _objectSize;
-	auto bufferObjectCount = math::npot(uint32_t(_intNames.size()));
+	// over-allocate by one to guarantee at least one empty slot, so linear-probe
+	// lookups for absent keys always terminate at a sentinel (npot(n)==n for powers of two)
+	auto bufferObjectCount = math::npot(uint32_t(_intNames.size()) + 1);
 
 	Bytes dataStorage;
 	dataStorage.resize(bufferObjectCount * bufferObjectSize, uint8_t(0xFFU));
@@ -290,6 +299,10 @@ void CommandBuffer::bindFramebuffer(Framebuffer *fb) {
 }
 
 String Shader::inspectShader(SpanView<uint32_t> data) {
+#if SPRT_WASM || SPRT_HOSTED_RTOS
+	(void)data;
+	return String(); // no SPIR-V reflection on wasm (WGSL) or NuttX (soft rasterizer)
+#else
 	SpvReflectShaderModule shader;
 
 	spvReflectCreateShaderModule(data.size() * sizeof(uint32_t), data.data(), &shader);
@@ -331,6 +344,7 @@ String Shader::inspectShader(SpanView<uint32_t> data) {
 	spvReflectDestroyShaderModule(&shader);
 
 	return out.str();
+#endif
 }
 
 String Shader::inspect(SpanView<uint32_t> data) { return inspectShader(data); }
@@ -377,7 +391,7 @@ void Fence::setFrame(Function<bool()> &&schedule, Function<void()> &&release, ui
 
 void Fence::setScheduleCallback(Function<bool()> &&schedule) { _scheduleFn = sp::move(schedule); }
 
-void Fence::setReleaseCallback(Function<bool()> &&release) { _releaseFn = sp::move(release); }
+void Fence::setReleaseCallback(Function<void()> &&release) { _releaseFn = sp::move(release); }
 
 void Fence::bindQueries(NotNull<QueryPool> q) { _queries.emplace_back(q); }
 
@@ -569,6 +583,22 @@ void Fence::doRelease(Loop *loop, bool success) {
 
 	_tag = StringView();
 	autorelease.clear();
+}
+
+bool GraphicPipeline::comparePipelineOrdering(const PipelineInfo &l, const PipelineInfo &r) {
+	if (l.material.getDepthInfo().writeEnabled != r.material.getDepthInfo().writeEnabled) {
+		if (l.material.getDepthInfo().writeEnabled) {
+			return true; // pipelines with depth write comes first
+		}
+		return false;
+	} else if (l.material.getBlendInfo().enabled != r.material.getBlendInfo().enabled) {
+		if (!l.material.getBlendInfo().enabled) {
+			return true; // pipelines without blending comes first
+		}
+		return false;
+	} else {
+		return &l < &r;
+	}
 }
 
 } // namespace stappler::xenolith::core

@@ -62,6 +62,22 @@ public:
 	VectorPathRef &setStrokeWidth(float width);
 	float getStrokeWidth() const;
 
+	VectorPathRef &setLineCup(vg::LineCup);
+	vg::LineCup getLineCup() const;
+
+	VectorPathRef &setLineJoin(vg::LineJoin);
+	vg::LineJoin getLineJoin() const;
+
+	VectorPathRef &setMiterLimit(float);
+	float getMiterLimit() const;
+
+	// SVG `stroke-dasharray` / `stroke-dashoffset` - see VectorPath for the accepted values.
+	VectorPathRef &setDashArray(SpanView<float>);
+	SpanView<float> getDashArray() const;
+
+	VectorPathRef &setDashOffset(float);
+	float getDashOffset() const;
+
 	VectorPathRef &setWindingRule(vg::Winding);
 	vg::Winding getWindingRule() const;
 

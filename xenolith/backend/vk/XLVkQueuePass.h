@@ -47,21 +47,6 @@ struct SP_PUBLIC MaterialTransferData {
 	Rc<Buffer> target;
 };
 
-class SP_PUBLIC QueuePass : public core::QueuePass {
-public:
-	virtual ~QueuePass();
-
-	virtual bool init(QueuePassBuilder &passBuilder) override;
-	virtual void invalidate() override;
-
-	virtual Rc<core::QueuePassHandle> makeFrameHandle(const FrameQueue &) override;
-
-	core::QueueFlags getQueueOps() const { return _queueOps; }
-
-protected:
-	core::QueueFlags _queueOps = core::QueueFlags::Graphics;
-};
-
 class SP_PUBLIC QueuePassHandle : public core::QueuePassHandle {
 public:
 	static VkRect2D rotateScissor(const core::FrameConstraints &constraints, const URect &scissor);
@@ -101,7 +86,27 @@ public:
 
 	void setQueueIdleFlags(core::DeviceIdleFlags);
 
+	// Fills `out` with the rectangle this frame is allowed to restrict rendering to, and returns
+	// true when partial redraw applies. Computed once in prepare(), because the render pass needs
+	// it before recording starts.
+	bool hasPartialRedrawArea(VkRect2D &out) const;
+
+	// True when the target image already holds this exact frame, so the pass must record nothing at
+	// all - no barriers, no render pass, no draws. The image keeps its content and its PRESENT_SRC
+	// layout, and is presented untouched.
+	bool isRedrawSkipped() const { return _skipRedraw; }
+
 protected:
+	// Diff this frame against the swapchain image it will be rendered into, and commit the
+	// resulting snapshot. Committing here — rather than at present — keeps the invariant that a
+	// snapshot describes what was last *rendered into* that image, which is what LOAD_OP_LOAD
+	// relies on.
+	void preparePartialRedraw(FrameQueue &);
+
+	bool _partialRedraw = false;
+	bool _skipRedraw = false;
+	VkRect2D _partialRedrawArea = {};
+
 	virtual Vector<const core::CommandBuffer *> doPrepareCommands(FrameHandle &);
 	virtual bool doSubmit(FrameHandle &frame, Function<void(bool)> &&onSubmited);
 
@@ -140,6 +145,19 @@ protected:
 	Vector<const core::CommandBuffer *> _buffers;
 	Rc<FrameSync> _sync;
 	core::FrameConstraints _constraints;
+};
+
+class SP_PUBLIC QueuePass : public core::QueuePassTyped<QueuePassHandle> {
+public:
+	virtual ~QueuePass();
+
+	virtual bool init(QueuePassBuilder &passBuilder) override;
+	virtual void invalidate() override;
+
+	core::QueueFlags getQueueOps() const { return _queueOps; }
+
+protected:
+	core::QueueFlags _queueOps = core::QueueFlags::Graphics;
 };
 
 } // namespace stappler::xenolith::vk

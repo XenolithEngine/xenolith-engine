@@ -22,6 +22,8 @@ LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
 SHELL = powershell.exe
 
+GIT_TAG ?= $(shell git describe --tags --abbrev=0)
+
 rule_mkdir = powershell New-Item -ItemType Directory -Force -Path "$(1)" | Out-Null
 rule_rm = powershell 'if (Test-Path "$(1)") { Remove-Item -Recurse -Force -ErrorAction Ignore -Path "$(1)" }'
 rule_cp = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force
@@ -30,9 +32,8 @@ rule_echo = Add-Content  -Encoding UTF8 -Path "$(1)" -Value
 rule_touch = (Get-Item "$(1)").LastWriteTime = $$(Get-Date);
 
 SP_NJOBS := -j16
-SP_ARCH := x86_64
-SP_ARCH_LD := x86-64
-SP_ARCH_CLANG ?= $(SP_ARCH)-pc-windows-msvc
+SP_ARCH_HOST := x86_64
+SP_ARCH_CLANG ?= $(SP_ARCH_HOST)-pc-windows-msvc
 SP_ARCH_LINUX := x86
 
 # https://ftp.gnu.org/gnu/make/make-4.4.1.tar.lz
@@ -61,8 +62,8 @@ $(MAKE_SRC_DIR): $(MAKE_SRC_TARBALL)
 $(MAKE_SRC_EXE): $(MAKE_SRC_DIR)
 	cd $(MAKE_SRC_DIR); cmd.exe /c 'start cmd.exe /c "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat" x86_amd64 && build_w32.bat --verbose --without-guile'
 
-SP_LLVM_VER := 21
-LLVM_V := $(SP_LLVM_VER).1.8
+include ../common/utils/llvm-version.mk
+LLVM_V := $(SP_LLVM_V)
 LLVM_VER := ../src/llvm-project
 LLVM_DIR := $(LLVM_VER)
 
@@ -77,11 +78,12 @@ OUT_SYSROOT := ../$(SP_ARCH_CLANG)
 
 include stage0.mk
 
-$(OUT_SYSROOT): $(MAKE_SRC_EXE) $(STAGE0_CLANG_CC) $(STAGE0_GLSLANG)
+$(OUT_SYSROOT)/release: $(MAKE_SRC_EXE) $(STAGE0_CLANG_CC) $(STAGE0_GLSLANG)
 	$(call rule_rm,$(OUT_SYSROOT))
 	$(call rule_mkdir,$(OUT_SYSROOT))
 	$(call rule_mkdir,$(OUT_SYSROOT)/lib)
 	$(call rule_cpr,$(STAGE0_SYSROOT)/lib/clang,$(OUT_SYSROOT)/lib)
+	$(call rule_rm,$(OUT_SYSROOT)/lib/clang/$(SP_LLVM_VER)/lib)
 	$(call rule_mkdir,$(OUT_SYSROOT)/bin)
 	$(call rule_cp,$(STAGE0_SYSROOT)/bin/glslang.exe,$(OUT_SYSROOT)/bin)
 	$(call rule_cp,$(STAGE0_SYSROOT)/bin/spirv-link.exe,$(OUT_SYSROOT)/bin)
@@ -98,6 +100,7 @@ $(OUT_SYSROOT): $(MAKE_SRC_EXE) $(STAGE0_CLANG_CC) $(STAGE0_GLSLANG)
 #	$(call rule_cp,$(STAGE0_SYSROOT)/bin/LLVM-C.dll,$(OUT_SYSROOT)/bin)
 #	$(call rule_cp,$(STAGE0_SYSROOT)/bin/libclang.dll,$(OUT_SYSROOT)/bin)
 #	$(call rule_cpr,$(STAGE0_SYSROOT)/include,$(OUT_SYSROOT))
+	Set-Content  -Encoding UTF8 -Path "$@" -Value '$(GIT_TAG)' | Out-Null
 
 $(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))
 	Set-Content  -Encoding UTF8 -Path "$@" -Value 'HOST_ROOT := $$(patsubst %/,%,$$(dir $$(lastword $$(MAKEFILE_LIST))))' | Out-Null
@@ -121,7 +124,7 @@ download: $(MAKE_SRC_DIR) $(LLVM_DIR)
 
 make: $(MAKE_SRC_EXE)
 
-out: stage0 $(OUT_SYSROOT) $(OUT_SYSROOT)/host.mk
+out: stage0 $(OUT_SYSROOT)/release $(OUT_SYSROOT)/host.mk
 
 all: stage0
 

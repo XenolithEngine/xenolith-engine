@@ -38,6 +38,14 @@ else ifeq ($(TARGET_SYSTEM),Android)
 	include $(BUILD_ROOT)/os/linux.mk
 else ifeq ($(TARGET_SYSTEM),Android-NDK)
 	include $(BUILD_ROOT)/os/android-ndk.mk
+else ifeq ($(TARGET_SYSTEM),WASM)
+	include $(BUILD_ROOT)/os/wasm.mk
+else ifeq ($(TARGET_SYSTEM),NuttX)
+	include $(BUILD_ROOT)/os/nuttx.mk
+else ifeq ($(TARGET_SYSTEM),Embox)
+	include $(BUILD_ROOT)/os/embox.mk
+else ifeq ($(TARGET_SYSTEM),EmboxUser)
+	include $(BUILD_ROOT)/os/embox-user.mk
 else
 $(error Unknown TARGET_SYSTEM: $(TARGET_SYSTEM))
 endif
@@ -196,6 +204,7 @@ $(call print_verbose,(apply-toolchain.mk) SPIRV_LINK: $(SPIRV_LINK))
 # Find runtime for toolchain
 ifeq ($(patsubst %$+sprt,,$(STAPPLER_TARGET)),)
 $(call print_verbose,(apply-toolchain.mk) $(STAPPLER_TARGET) uses integrated stappler runtime)
+include $(STAPPLER_TARGET_DIR)/runtime.mk
 else
 $(call print_verbose,(apply-toolchain.mk) $(STAPPLER_TARGET) requires internal runtime)
 include $(GLOBAL_ROOT)/runtime/runtime.mk

@@ -79,6 +79,11 @@ THE SOFTWARE.
 #else
 
 #include <sprt/c/__sprt_time.h>
+#include <sprt/c/bits/__sprt_null.h>
+
+#ifndef NULL
+#define NULL __SPRT_NULL
+#endif
 
 #define CLOCKS_PER_SEC __SPRT_CLOCKS_PER_SEC
 #define TIME_UTC __SPRT_TIME_UTC
@@ -208,6 +213,17 @@ struct tm *localtime_r(const time_t *t, struct tm *_tm) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_localtime_r(t, _tm);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int localtime_s(struct tm *_tm, const time_t *t) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	if (!_tm || !t) {
+		return -1;
+	}
+	return __sprt_localtime_r(t, _tm) != __SPRT_NULL ? 0 : -1;
 }
 #endif
 

@@ -58,7 +58,22 @@ bool Scene::init(Queue::Builder &&builder, const core::FrameConstraints &constra
 	return true;
 }
 
-void Scene::renderRequest(const Rc<FrameRequest> &req, sprt::PoolRef *pool) {
+bool Scene::init(Rc<Queue> &&queue, const core::FrameConstraints &constraints) {
+	if (!queue || !Node::init()) {
+		return false;
+	}
+
+	setLocalZOrder(ZOrderTransparent);
+
+	_queue = sp::move(queue);
+	_ownsQueue = false;
+
+	setFrameConstraints(_constraints);
+
+	return true;
+}
+
+void Scene::renderRequest(const Rc<core::FrameRequestProxy> &req, sprt::PoolRef *pool) {
 	if (!_director) {
 		return;
 	}
@@ -95,10 +110,14 @@ void Scene::render(FrameInfo &info) {
 
 	info.input = eventDispatcher->acquireNewStorage();
 
-	visitGeometry(info, NodeVisitFlags::None);
+	// Valid during the visit only; a node attached mid-frame uses getFrameInfo() to catch up.
+	_frameInfo = &info;
+
 	visitDraw(info, NodeVisitFlags::None);
 
-	eventDispatcher->commitStorage(_director->getWindow(), move(info.input));
+	_frameInfo = nullptr;
+
+	eventDispatcher->commitStorage(_director->getRenderServer(), move(info.input));
 }
 
 void Scene::handleEnter(Scene *scene) { Node::handleEnter(scene); }
@@ -135,12 +154,16 @@ void Scene::handlePresented(Director *dir) {
 		setContentSize(Size2(_constraints.getScreenSize()) / _constraints.density);
 	}
 
-	if (auto res = _queue->getInternalResource()) {
-		auto cache = dir->getResourceCache();
-		if (cache) {
-			cache->addResource(res);
-		} else {
-			log::source().error("Director", "ResourceCache is not loaded");
+	// Only for a queue this scene built; a shared queue's resource is registered by its owner
+	// (QueueCache), and ResourceCache is name-keyed with no refcount.
+	if (_ownsQueue) {
+		if (auto res = _queue->getInternalResource()) {
+			auto cache = dir->getResourceCache();
+			if (cache) {
+				cache->addResource(res);
+			} else {
+				log::source().error("Director", "ResourceCache is not loaded");
+			}
 		}
 	}
 
@@ -151,24 +174,18 @@ void Scene::handleFinished(Director *dir) {
 	handleExit();
 
 	if (_director == dir) {
-		if (auto res = _queue->getInternalResource()) {
-			auto cache = dir->getResourceCache();
-			if (cache) {
-				cache->removeResource(res->getName());
+		if (_ownsQueue) {
+			if (auto res = _queue->getInternalResource()) {
+				auto cache = dir->getResourceCache();
+				if (cache) {
+					cache->removeResource(res->getName());
+				}
 			}
 		}
 
 		_director = nullptr;
 	}
 }
-
-void Scene::handleFrameStarted(FrameRequest &req) { req.setSceneId(sprt::retain(this)); }
-
-void Scene::handleFrameEnded(FrameRequest &req) { sprt::release(this, req.getSceneId()); }
-
-void Scene::handleFrameAttached(const FrameHandle *frame) { }
-
-void Scene::handleFrameDetached(const FrameHandle *frame) { }
 
 void Scene::setFrameConstraints(const core::FrameConstraints &constraints) {
 	if (_constraints != constraints) {
@@ -184,6 +201,10 @@ void Scene::setFrameConstraints(const core::FrameConstraints &constraints) {
 
 		updateContentNode(_content);
 	}
+}
+
+void Scene::handleWindowGeometryChanged(const sprt::window::WindowGeometry &) {
+	// Nothing by default: size arrives as FrameConstraints, and position does not affect layout.
 }
 
 Size2 Scene::getContentSize() const { return _content ? _content->getContentSize() : _contentSize; }
@@ -202,14 +223,9 @@ void Scene::setClipContent(bool value) {
 
 bool Scene::isClipContent() const { return _content ? _content->isScissorEnabled() : false; }
 
-void Scene::setLiveReloadAllowed(bool value) { _liveReloadAllowed = value; }
-
 auto Scene::makeQueue(Queue::Builder &&builder) -> Rc<Queue> {
-	builder.setBeginCallback([this](FrameRequest &frame) { handleFrameStarted(frame); });
-	builder.setEndCallback([this](FrameRequest &frame) { handleFrameEnded(frame); });
-	builder.setAttachCallback([this](const FrameHandle *frame) { handleFrameAttached(frame); });
-	builder.setDetachCallback([this](const FrameHandle *frame) { handleFrameDetached(frame); });
-
+	// No queue callbacks capture the scene, so queues can be shared; the frame pins the scene via
+	// FrameRequestProxy::setSceneRef instead.
 	return Rc<Queue>::create(move(builder));
 }
 

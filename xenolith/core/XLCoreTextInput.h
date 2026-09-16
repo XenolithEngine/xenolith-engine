@@ -40,6 +40,8 @@ using sprt::window::TextInputFlags;
 using sprt::window::TextInputString;
 using sprt::window::TextInputInfo;
 using sprt::window::TextInputProcessor;
+using sprt::window::TextInputCommand;
+using sprt::window::TextInputCommandOp;
 
 } // namespace stappler::xenolith::core
 

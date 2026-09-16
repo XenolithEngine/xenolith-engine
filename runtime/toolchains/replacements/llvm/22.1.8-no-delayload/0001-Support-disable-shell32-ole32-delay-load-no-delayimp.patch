@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xenolith Team <admin@xenolith.studio>
+Date: Thu, 17 Jul 2026 00:00:00 +0000
+Subject: [PATCH] Drop delay-loading everywhere (no delayimp)
+
+The freestanding sprt Windows runtime ships no MSVC delay-load helper
+(__delayLoadHelper2 / delayimp.lib), so nothing may be delay-loaded.
+
+llvm/lib/Support: link shell32.dll and ole32.dll as ordinary imports (they are
+already in system_libs) instead of delay-loading them. Startup cost is negligible
+for the tools.
+
+lldb: the lldb driver delay-loads liblldb for the sake of
+LLDB_PYTHON_DLL_RELATIVE_PATH; link it as an ordinary import instead. The Python
+scripting layer is not built here (LLDB_ENABLE_PYTHON=Off), so nothing is lost.
+---
+ lldb/cmake/modules/AddLLDB.cmake |  7 +++++--
+ llvm/lib/Support/CMakeLists.txt  | 13 +++++--------
+ 2 files changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/lldb/cmake/modules/AddLLDB.cmake b/lldb/cmake/modules/AddLLDB.cmake
+index 6493df27f..8f0922902 100644
+--- a/lldb/cmake/modules/AddLLDB.cmake
++++ b/lldb/cmake/modules/AddLLDB.cmake
+@@ -171,8 +171,11 @@ function(add_lldb_executable name)
+     list(FIND ARG_LINK_LIBS liblldb LIBLLDB_INDEX)
+     if(NOT LIBLLDB_INDEX EQUAL -1)
+       if (MSVC)
+-        target_link_options(${name} PRIVATE "/DELAYLOAD:$<TARGET_FILE_NAME:liblldb>")
+-        target_link_libraries(${name} PRIVATE delayimp)
++        # Delay loading liblldb is disabled for the sprt Windows target: the freestanding
++        # sprt runtime ships no MSVC delay-load helper (__delayLoadHelper2 / delayimp.lib),
++        # so liblldb is linked as an ordinary import. The only thing lost is
++        # LLDB_PYTHON_DLL_RELATIVE_PATH, and the Python scripting layer is not built here
++        # (LLDB_ENABLE_PYTHON=Off).
+       elseif (MINGW AND LINKER_IS_LLD)
+         # LLD can delay load just by passing a --delayload flag, as long as the import
+         # library is a short type import library (which LLD and MS link.exe produce).
+diff --git a/llvm/lib/Support/CMakeLists.txt b/llvm/lib/Support/CMakeLists.txt
+index 099b0e555..4be53b630 100644
+--- a/llvm/lib/Support/CMakeLists.txt
++++ b/llvm/lib/Support/CMakeLists.txt
+@@ -82,15 +82,12 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.25"
+   set(WL "$<$<OR:$<LINK_LANG_AND_ID:C,IntelLLVM>,$<LINK_LANG_AND_ID:CXX,IntelLLVM>,$<LINK_LANG_AND_ID:Fortran,IntelLLVM>>:-Qoption,link,>")
+ endif()
+ 
+-# Delay load shell32.dll if possible to speed up process startup.
++# Delay loading of shell32.dll / ole32.dll is disabled for the sprt Windows target:
++# the freestanding sprt runtime ships no MSVC delay-load helper (__delayLoadHelper2 /
++# delayimp.lib), so shell32/ole32 are linked as ordinary imports instead (they are
++# already in system_libs above). The lost startup optimisation is negligible for the
++# LLVM tools. Keep delayload_flags defined (empty) so the link line below is unchanged.
+ set (delayload_flags)
+-if (MSVC)
+-  # When linking with Swift, `swiftc.exe` is used as the linker drive rather
+-  # than invoking `link.exe` directly.  In such a case, the flags should be
+-  # marked as `-Xlinker` to pass them directly to the linker.  As a temporary
+-  # workaround simply elide the delay loading.
+-  set (delayload_flags $<$<NOT:$<LINK_LANGUAGE:Swift>>:delayimp ${WL}-delayload:shell32.dll ${WL}-delayload:ole32.dll>)
+-endif()
+ 
+ # Link Z3 if the user wants to build it.
+ if(LLVM_WITH_Z3)
+-- 
+2.43.0

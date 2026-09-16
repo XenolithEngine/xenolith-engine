@@ -31,12 +31,55 @@ THE SOFTWARE.
 
 #include <sprt/c/sys/__sprt_select.h>
 
+#if SPRT_WINDOWS
+#include <sprt/wrappers/windows/basic_types.h> // __SPRT_WIN_IMPORT WINAPI
+#endif
+
 typedef __SPRT_ID(fd_set) fd_set;
+
+#ifndef FD_SETSIZE
+#define FD_SETSIZE __SPRT_FD_SETSIZE
+#endif
 
 #define FD_CLR(fd, set) __SPRT_FD_CLR(fd, set)
 #define FD_SET(fd, set) __SPRT_FD_SET(fd, set)
 #define FD_ZERO(set) __SPRT_FD_ZERO(set)
 #define FD_ISSET(fd, set) __SPRT_FD_ISSET(fd, set)
+
+__SPRT_BEGIN_DECL
+
+#if SPRT_WINDOWS
+// winsock forward declaration
+
+__SPRT_WIN_IMPORT WINAPI int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+		const struct __SPRT_TIMEVAL_NAME *timeout);
+
+#else
+// sprt own umbrella
+
+SPRT_UMBRELLA_FUNC int select(int __nfds, __SPRT_ID(fd_set) * __SPRT_RESTRICT __rfds,
+		__SPRT_ID(fd_set) * __SPRT_RESTRICT __wfds, __SPRT_ID(fd_set) * __SPRT_RESTRICT __efds,
+		const struct __SPRT_TIMEVAL_NAME *__SPRT_RESTRICT __tv) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(select)(__nfds, __rfds, __wfds, __efds, __tv);
+}
+#endif
+
+#endif // SPRT_WINDOWS
+
+
+SPRT_UMBRELLA_FUNC int pselect(int __nfds, __SPRT_ID(fd_set) * __SPRT_RESTRICT __rfds,
+		__SPRT_ID(fd_set) * __SPRT_RESTRICT __wfds, __SPRT_ID(fd_set) * __SPRT_RESTRICT __efds,
+		const struct __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT __tv,
+		const __SPRT_ID(sigset_t) * __SPRT_RESTRICT __sig) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(pselect)(__nfds, __rfds, __wfds, __efds, __tv, __sig);
+}
+#endif
+
+__SPRT_END_DECL
 
 #endif
 

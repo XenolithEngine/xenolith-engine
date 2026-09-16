@@ -1,5 +1,6 @@
 /**
  Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -27,6 +28,7 @@
 #include "functions/SPMakefileFunctionFileName.cc"
 #include "functions/SPMakefileFunctionString.cc"
 #include "functions/SPMakefileFunctionConditional.cc"
+#include "functions/SPMakefileFunctionExtension.cc"
 
 namespace STAPPLER_VERSIONIZED stappler::makefile {
 
@@ -76,6 +78,14 @@ static sprt::__malloc_unordered_map< StringView, Function > s_functions{
 	makeFn("if", 2, 3, Function_if),
 	makeFn("or", 1, maxOf<uint32_t>(), Function_or),
 	makeFn("and", 1, maxOf<uint32_t>(), Function_and),
+
+	// extended (non-GNU) file I/O
+	makeFn("xl_cat", 1, 1, Function_xl_cat),
+	makeFn("xl_write", 2, 2, Function_xl_write),
+	makeFn("xl_append", 2, 2, Function_xl_append),
+	makeFn("xl_mkdir", 1, 1, Function_xl_mkdir),
+	makeFn("xl_make_path", 1, 1, Function_xl_make_path),
+	makeFn("xl_make_plain", 1, 1, Function_xl_make_plain),
 };
 
 StringView getOriginName(Origin o) {
@@ -102,7 +112,9 @@ bool VariableEngine::init(memory::pool_t *pool) {
 	_callContext = &_rootContext;
 
 	set(".STAPPLER_BUILD", Origin::Override, "1");
-	set("MAKE_VERSION", Origin::Override, "0.0");
+	// Report a GNU-compatible version (the engine targets GNU make 4.4 semantics) with origin
+	// "default", so a makefile may still override it — matching GNU, where MAKE_VERSION is a default.
+	set("MAKE_VERSION", Origin::Default, "4.4.1");
 
 	return true;
 }
@@ -113,6 +125,10 @@ const Variable *VariableEngine::getIfDefined(StringView str) const {
 		return &it->second;
 	}
 	return nullptr;
+}
+
+void VariableEngine::foreachVariable(const Callback<void(StringView, const Variable &)> &cb) const {
+	for (auto &it : _variables) { cb(it.first, it.second); }
 }
 
 const Variable *VariableEngine::get(StringView str) {
@@ -179,6 +195,22 @@ bool VariableEngine::clear(StringView name, Origin o) {
 	return false;
 }
 
+void VariableEngine::forceSet(StringView name, const Variable &v) {
+	auto it = _variables.find(name);
+	if (it != _variables.end()) {
+		it->second = v;
+	} else {
+		_variables.emplace(name.pdup(_pool), v);
+	}
+}
+
+void VariableEngine::forceErase(StringView name) {
+	auto it = _variables.find(name);
+	if (it != _variables.end()) {
+		_variables.erase(it);
+	}
+}
+
 void VariableEngine::addSubstitutionCallback(Origin o, VariableCallback::Fn fn, void *udata) {
 	addSubstitutionCallback(new (_pool) VariableCallback(o, udata, fn));
 }
@@ -187,6 +219,42 @@ void VariableEngine::addSubstitutionCallback(VariableCallback *cb) {
 	sprt::emplace_ordered(_varCallbacks, cb, [](VariableCallback *l, VariableCallback *r) {
 		return toInt(l->origin) > toInt(r->origin);
 	});
+}
+
+void VariableEngine::setExportFlag(StringView name, bool exported) {
+	auto it = _exportFlags.find(name);
+	if (it != _exportFlags.end()) {
+		it->second = exported;
+	} else {
+		_exportFlags.emplace(name.pdup(_pool), exported);
+	}
+}
+
+int VariableEngine::getExportFlag(StringView name) const {
+	auto it = _exportFlags.find(name);
+	if (it != _exportFlags.end()) {
+		return it->second ? 1 : 0;
+	}
+	return -1;
+}
+
+void VariableEngine::setEvalCallback(EvalFn fn, void *udata) {
+	_evalFn = fn;
+	_evalUserdata = udata;
+}
+
+bool VariableEngine::evalText(StringView content, ErrorReporter &err, const FileLocation *stmtLoc) {
+	if (!_evalFn) {
+		err.reportError("$(eval ...) is not supported: no eval callback registered");
+		return false;
+	}
+
+	StringView blockName("eval");
+	if (stmtLoc) {
+		auto str = mem_pool::toString("eval(", stmtLoc->filename, ":", stmtLoc->lineno, ")");
+		blockName = StringView(str).pdup();
+	}
+	return _evalFn(_evalUserdata, blockName, content);
 }
 
 void VariableEngine::setRootPath(StringView str) {
@@ -222,9 +290,16 @@ StringView VariableEngine::resolve(Stmt *stmt, ErrorReporter &err, memory::pool_
 		return stmt->value->str;
 	}
 
-	BufferTemplate<Interface> b(256);
+	auto tmp = _currentBuffer;
 
-	resolve([&](StringView out) { b.put(out.data(), out.size()); }, stmt, err);
+	BufferTemplate<Interface> b(256);
+	_currentBuffer = &b;
+
+	resolve([&](StringView out) {
+		b.put(out.data(), out.size()); //
+	}, stmt, err);
+
+	_currentBuffer = tmp;
 
 	return StringView(b.get()).pdup(pool);
 }
@@ -276,6 +351,23 @@ void VariableEngine::resolve(Output out, Stmt *stmt, ErrorReporter &_err) {
 		} while (val);
 		break;
 	case StmtType::WordList:
+		if (stmt->multiline) {
+			// A multiline (`define`) WordList stores its whitespace — newlines and recipe
+			// indentation — as explicit tokens. Emit everything verbatim, with no synthetic
+			// word separators, so the value round-trips exactly (e.g. for $(eval)). Nested
+			// $(...) expansions still resolve normally.
+			do {
+				if (val->isStmt) {
+					if (val->stmt) {
+						resolve(out, val->stmt, _err);
+					}
+				} else {
+					out << val->str;
+				}
+				val = val->next;
+			} while (val);
+			break;
+		}
 		do {
 			if (val != stmt->value) {
 				if (!spaceValue && (val->isStmt || !isWhitespaceStarted(val->str))) {
@@ -312,7 +404,11 @@ void VariableEngine::resolve(Output out, Stmt *stmt, ErrorReporter &_err) {
 		if (val->next) {
 			ErrorReporter err(stmt->loc, &_err);
 
-			Stmt valueRoot(stmt->loc, StmtType::WordList, val->next, val->next);
+			// The single argument spans every value after the name (val->next .. stmt->tail).
+			// Use the real tail, not val->next: otherwise the single-word optimization in
+			// resolve(Stmt*) sees value==tail and, when val->next is a plain string, returns
+			// just that token and drops the rest of the argument.
+			Stmt valueRoot(stmt->loc, StmtType::WordList, val->next, stmt->tail);
 			StmtValue fakeValue(&valueRoot);
 
 			Stmt fakeRoot(stmt->loc, StmtType::ArgumentList, &fakeValue, &fakeValue);
@@ -340,16 +436,17 @@ bool VariableEngine::call(Output out, StringView name, SpanView<StmtValue *> arg
 		return false;
 	}
 
-	StringView expandedArgs[args.size()];
-
-	for (uint32_t i = 0; i < args.size(); ++i) { new (&expandedArgs[i]) StringView(); }
+	// pool-backed (was a stack VLA sized by the argument count; a crafted makefile
+	// with a huge argument list could overflow the stack before the maxArgs check)
+	Vector<StringView> expandedArgs;
+	expandedArgs.resize(args.size());
 
 	CallContext ctx{_callContext};
 	ctx.functionName = name;
 	ctx.err = &err;
 	ctx.args = args;
 	ctx.fn = &it->second;
-	ctx.expandedArgs = expandedArgs;
+	ctx.expandedArgs = expandedArgs.data();
 	ctx.pool = memory::pool::create(_pool);
 
 	auto ret = mem_pool::perform([&] {
@@ -375,31 +472,56 @@ bool VariableEngine::call(Output out, StringView name, SpanView<StmtValue *> arg
 	return ret;
 }
 
-static bool VariableEngine_MAKEFILE_LIST(const Callback<void(StringView)> &out, Block *block) {
-	bool ret = false;
-	if (block->outer) {
-		ret = VariableEngine_MAKEFILE_LIST(out, block->outer);
-	}
-	if (block->type == Keyword::None) {
-		if (ret) {
-			out(" ");
-		}
-		out(block->content);
-		return true;
-	}
-	return ret;
-}
-
 void VariableEngine::substitute(const Callback<void(StringView)> &out, StringView var,
 		ErrorReporter &err) {
 	var.trimChars<StringView::WhiteSpace>();
 	if (var == "$") {
 		out << "$";
 		return;
-	} else if (var == "MAKEFILE_LIST") {
-		VariableEngine_MAKEFILE_LIST(out, _currentBlock);
-		return;
-	} else if (_callContext) {
+	}
+	// MAKEFILE_LIST is not handled here: it is maintained as a real, immediately-resolved variable
+	// (appendMakefileList(), called as each makefile is parsed), so it expands like any other
+	// variable — crucially also after parsing, when there is no block stack (e.g. recipe export).
+
+	// Directory/file modifiers of an automatic variable: $(@D) $(@F) $(<D) $(<F) and so on.
+	// The base autos (@ < ^ + ? * |) are injected as plain variables of Origin::Automatic
+	// while a recipe is expanded; only intercept the two-character form when the base is
+	// actually one of them so a real variable is never shadowed.
+	if (var.size() == 2 && (var[1] == 'D' || var[1] == 'F')) {
+		switch (var[0]) {
+		case '@':
+		case '<':
+		case '^':
+		case '+':
+		case '?':
+		case '*':
+		case '|':
+			if (auto v = getIfDefined(StringView(var.data(), 1))) {
+				if (v->origin == Origin::Automatic && v->type == Variable::Type::String) {
+					bool wantDir = (var[1] == 'D');
+					bool first = true;
+					v->str.split<StringView::WhiteSpace>([&](StringView tok) {
+						if (first) {
+							first = false;
+						} else {
+							out << ' ';
+						}
+						if (wantDir) {
+							auto d = filepath::root(tok);
+							out << (d.empty() ? StringView(".") : d);
+						} else {
+							out << filepath::lastComponent(tok);
+						}
+					});
+					return;
+				}
+			}
+			break;
+		default: break;
+		}
+	}
+
+	if (_callContext) {
 		// try indexed args
 		StringView tmp(var);
 		auto val = tmp.readInteger(10);
@@ -446,7 +568,9 @@ void VariableEngine::substitute(const Callback<void(StringView)> &out, StringVie
 			}
 			break;
 		default:
-			err.reportWarning(toString("Fail to substitute function ", var, " into string"));
+			if (warnEnabled(EngineFlags::WarnSubstituteFunction)) {
+				err.reportWarning(toString("Fail to substitute function ", var, " into string"));
+			}
 			break;
 		}
 	}
@@ -477,9 +601,94 @@ static uint32_t VariableEngine_parseArguments(StmtType t, StmtValue *args, StmtV
 	return count;
 }
 
+StringView encodePathSpaces(StringView in, mem_std::Interface::StringType &storage) {
+	if (in.find(' ') == maxOf<size_t>()) {
+		return in;
+	}
+	storage.assign(in.data(), in.size());
+	for (auto &c : storage) {
+		if (c == ' ') {
+			c = PathSpacePlaceholder;
+		}
+	}
+	return StringView(storage.data(), storage.size());
+}
+
+StringView decodePathSpaces(StringView in, mem_std::Interface::StringType &storage) {
+	if (in.find(PathSpacePlaceholder) == maxOf<size_t>()) {
+		return in;
+	}
+	storage.assign(in.data(), in.size());
+	for (auto &c : storage) {
+		if (c == PathSpacePlaceholder) {
+			c = ' ';
+		}
+	}
+	return StringView(storage.data(), storage.size());
+}
+
+void decodePathSpacesForShell(const Callback<void(StringView)> &out, StringView in, bool noEscape) {
+	if (in.find(PathSpacePlaceholder) == maxOf<size_t>()) {
+		out(in); // no placeholder: hand over the whole input in one chunk
+		return;
+	}
+	bool inSingle = false; // POSIX single-quote state (cmd.exe does not honor ' as a quote)
+	bool inDouble = false;
+	size_t run = 0; // start of the current verbatim span (flushed whole before each replacement)
+	for (size_t i = 0; i < in.size(); ++i) {
+		char c = in[i];
+		if (c == PathSpacePlaceholder) {
+			if (i > run) {
+				out(in.sub(run, i - run));
+			}
+			if (noEscape || inSingle || inDouble) {
+				out(StringView(" ")); // author quotes (or opted out) -- a literal space
+			} else {
+#if SPRT_WINDOWS
+				out(StringView("\" \""));
+#else
+				out(StringView("\\ "));
+#endif
+			}
+			run = i + 1;
+			continue;
+		}
+#if !SPRT_WINDOWS
+		if (c == '\'' && !inDouble) {
+			inSingle = !inSingle;
+		} else if (c == '"' && !inSingle) {
+			inDouble = !inDouble;
+		}
+#else
+		if (c == '"') {
+			inDouble = !inDouble;
+		}
+#endif
+	}
+	if (run < in.size()) {
+		out(in.sub(run, in.size() - run)); // trailing verbatim span
+	}
+}
+
 StringView VariableEngine::getAbsolutePath(StringView str) const {
+	// A path arrives in the make-visible form, where any space inside it is PathSpacePlaceholder.
+	// Decode it back to a real space first: everything below (toPosixPath/merge/reconstruct/findPath)
+	// and every consumer of the result (stat, ::realpath, file open) needs the real filesystem path.
+	// $(realpath)/$(abspath) re-encode their result via emitResolvedPath.
+	mem_std::Interface::StringType spaceStorage;
+	str = decodePathSpaces(str, spaceStorage);
+
+	// A path may arrive in the platform-native form — on Windows that includes the `C:/dir` form the
+	// path functions emit (and `C:\dir`, `c:/dir`). Normalize it to the internal posix form (`/c/dir`)
+	// so the posix-based logic below recognizes a drive-rooted path as absolute instead of mistaking
+	// it for a relative path and merging it onto the root. toPosixPath is a no-op on POSIX builds.
+	mem_std::Interface::StringType posixStorage;
+	str = filesystem::toPosixPath(str, posixStorage);
+
 	if (filepath::isAbsolute(str)) {
-		return StringView(filepath::reconstructPath<Interface>(str)).pdup(_pool);
+		auto ret = StringView(filepath::reconstructPath<Interface>(str)).pdup(_pool);
+		ret.backwardSkipChars<StringView::Chars<'/'>>();
+		return ret;
 	} else {
 		if (!_rootPath.empty()) {
 			return StringView(filepath::reconstructPath<Interface>(
@@ -499,10 +708,12 @@ bool VariableEngine::call(const Callback<void(StringView)> &out, StringView fn, 
 		StmtValue *args, ErrorReporter &err) {
 	uint32_t nargs = VariableEngine_parseArguments(type, args, nullptr);
 
-	StmtValue *argsBuf[nargs];
-	VariableEngine_parseArguments(type, args, argsBuf);
+	// pool-backed (was a stack VLA sized by the parsed argument count)
+	Vector<StmtValue *> argsBuf;
+	argsBuf.resize(nargs);
+	VariableEngine_parseArguments(type, args, argsBuf.data());
 
-	return call(out, fn, SpanView(argsBuf, nargs), err);
+	return call(out, fn, SpanView(argsBuf.data(), nargs), err);
 }
 
 bool VariableEngine::checkRecursion(StringView name, Stmt *stmt, ErrorReporter &err) {
@@ -514,11 +725,33 @@ bool VariableEngine::checkRecursion(StringView name, Stmt *stmt, ErrorReporter &
 	}
 }
 
+void VariableEngine::appendMakefileList(StringView name) {
+	// Accumulate makefile names into MAKEFILE_LIST as each file begins parsing (GNU make
+	// semantics). Keeping it a real simple variable means $(MAKEFILE_LIST) — and idioms like
+	// $(lastword $(MAKEFILE_LIST)) — resolve immediately and stay valid once parsing is over and
+	// the block stack is gone (recipe / recursive-variable expansion), instead of crashing.
+	// A makefile path may contain a space (e.g. ".../runtime 2/Makefile"); encode it so the list stays
+	// one word per file and $(lastword)/$(dir $(lastword …)) keep resolving the whole path.
+	mem_std::Interface::StringType spaceStorage;
+	name = encodePathSpaces(name, spaceStorage);
+
+	StringView value;
+	auto cur = getIfDefined("MAKEFILE_LIST");
+	if (cur && cur->type == Variable::Type::String && !cur->str.empty()) {
+		value = StringView(mem_pool::toString(cur->str, " ", name)).pdup(_pool);
+	} else {
+		value = name.pdup(_pool);
+	}
+	forceSet("MAKEFILE_LIST", Variable(Origin::File, value));
+}
+
 void VariableEngine::pushBlock(Block *block) {
 	block->outer = _currentBlock;
 	_currentBlock = block;
 }
 
-void VariableEngine::popBlock() { _currentBlock = _currentBlock->outer; }
+void VariableEngine::popBlock() {
+	_currentBlock = _currentBlock->outer; //
+}
 
 } // namespace stappler::makefile

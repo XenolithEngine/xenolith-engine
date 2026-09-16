@@ -27,6 +27,7 @@
 #include <sprt/runtime/window/text_input.h>
 #include <sprt/runtime/window/interface.h>
 #include <sprt/runtime/window/surface_info.h>
+#include <sprt/runtime/window/software_surface.h>
 #include <sprt/runtime/window/window_info.h>
 #include <sprt/runtime/window/presentation.h>
 #include <sprt/runtime/window/gapi.h>
@@ -37,7 +38,7 @@ namespace sprt::window {
 
 class ContextController;
 
-class NativeWindow : public Ref {
+class SPRT_API NativeWindow : public Ref {
 public:
 	using InputEventData = sprt::window::InputEventData;
 	using InputEventName = sprt::window::InputEventName;
@@ -53,7 +54,15 @@ public:
 	virtual void mapWindow() = 0;
 	virtual void unmapWindow() = 0;
 
-	// true if successfully closed
+	// Stop presenting / input monitors. Safe to call multiple times.
+	virtual void prepareClose() { }
+
+	virtual bool isMapped() const { return false; }
+
+	// Resize the native content area (points). Keeps the top-left corner fixed when possible.
+	virtual bool setContentExtent(Extent2) { return false; }
+
+	// true if successfully closed (destroyed)
 	virtual bool close() = 0;
 
 	virtual void handleFrameReady(const PresentationFrameInfo &) { }
@@ -62,16 +71,40 @@ public:
 
 	virtual SurfaceInterfaceInfo getSurfaceInterfaceInfo() const = 0;
 
+	// CPU-writable presentation, for a gAPI that rasterizes on the host (see software_surface.h).
+	// Null means this window system cannot hand out a pixel buffer, which is the only check a
+	// caller needs; getSurfaceInterfaceInfo() stays the seam for GPU surfaces.
+	virtual Rc<SoftwareSurface> makeSoftwareSurface() { return nullptr; }
+
 	virtual SurfaceInfo getSurfaceOptions(SurfaceInfo &&info) const;
 
 	virtual FrameConstraints exportConstraints(uint64_t &serial) const;
 
 	virtual Extent2 getExtent() const = 0;
 
-	// Pointer enter layer
+	/* The window's content rect in screen coordinates, in LOGICAL units - the same space as
+	WindowInfo::rect, so the result can be handed back to createWindow to reopen the window where
+	it was.
+
+	The CONTENT rect, not the frame: restoring a frame origin would walk the window down and right
+	by the thickness of the decoration on every save/restore cycle.
+
+	The base answers `IRect(0, 0, extent)` - the honest answer for a window system that does not
+	tell a client where its window is (Wayland) or has no notion of one (direct output). A backend
+	that CAN answer overrides this and sets WindowCapabilities::WindowPosition, which is what tells
+	the two zeroes apart from a window really at the origin. Context thread. */
+	virtual IRect getContentScreenRect() const;
+
+	// The snapshot an application reads. Assembled from getContentScreenRect(), getExtent() and
+	// the window's density; `hasPosition` follows WindowCapabilities::WindowPosition, so a backend
+	// that overrides getContentScreenRect() gets this for free. Context thread.
+	virtual WindowGeometry getWindowGeometry() const;
+
+	// Pointer enter layer. Notification: the aggregate pointer state (cursor, layer flags, grips)
+	// is already recomputed by the time this is called.
 	virtual void handleLayerEnter(const WindowLayer &);
 
-	// Pointer exit layer
+	// Pointer exit layer. Notification, see handleLayerEnter.
 	virtual void handleLayerExit(const WindowLayer &);
 
 	virtual PresentationOptions getPreferredOptions() const { return PresentationOptions(); }
@@ -79,9 +112,15 @@ public:
 	void setFrameOrder(uint64_t v) { _frameOrder = v; }
 	uint64_t getFrameOrder() const { return _frameOrder; }
 
-	bool isTextInputEnabled() const { return _textInput->isRunning(); }
+	bool isTextInputEnabled() const { return _textInput && _textInput->isRunning(); }
 
 	const WindowInfo *getInfo() const { return _info; }
+
+	// Move the application payload off the window info (see WindowInfo::appData). Meant to be
+	// called exactly once, by whichever layer owns this window's content, so the payload does not
+	// have to be destroyed on the context thread together with the WindowInfo. Returns null once
+	// taken, or when the window was not created with one.
+	Rc<Ref> takeAppData() { return _info ? _info->takeAppData() : nullptr; }
 
 	ContextController *getController() const { return _controller; }
 
@@ -89,11 +128,18 @@ public:
 	void acquireTextInput(const TextInputRequest &);
 	void releaseTextInput();
 
+	// Drive this window's TextInputProcessor as the platform IME would. Used by a test harness to
+	// reproduce composition, autocorrection and paste - edits that arrive without a keystroke and
+	// therefore cannot be injected as input events. Context thread.
+	void performTextInput(const TextInputCommand &);
+
 	void setAppWindow(Rc<AppWindow> &&);
 	AppWindow *getAppWindow() const;
 
 	virtual void updateLayers(Vector<WindowLayer> &&);
 
+	// `cb` is optional: pass nothing to change the state without being told the outcome, which is
+	// what the map-time application of WindowInfo::fullscreen does.
 	virtual void setFullscreen(FullscreenInfo &&, Function<void(Status)> &&cb, Ref *ref);
 
 	virtual void handleInputEvents(Vector<InputEventData> &&events);
@@ -109,6 +155,20 @@ public:
 
 	virtual Status setPreferredFrameRate(float);
 
+	// Resize the window from within the application. Only windows that own their extent outright
+	// (the headless pseudo-window) can honour this; with a window system in play the size is the
+	// WM's to decide. From the context thread.
+	virtual Status setExtent(Extent2) { return Status::ErrorNotSupported; }
+
+	// A modal dialog opened on top of this window, or the last one closed.
+	//
+	// The base clears/sets WindowState::Enabled so the application can SEE that it is blocked —
+	// input to it is dropped in ContextController::notifyWindowInputEvents regardless. An override
+	// should call the base and then add the advisory OS hint (Win32 EnableWindow,
+	// _NET_WM_STATE_MODAL, xdg_dialog_v1); macOS needs none, a sheet blocks its parent by itself.
+	// Context thread.
+	virtual void setModalBlocked(bool);
+
 protected:
 	// Run text input mode or update text input buffer
 	//
@@ -122,6 +182,10 @@ protected:
 	virtual void cancelTextInput() = 0; // from view thread
 
 	virtual void handleMotionEvent(const InputEventData &);
+
+	// Recompute cursor, layer flags and grips from the layers currently under the pointer, and
+	// push the cursor down to the window system if the result changed.
+	void updateLayerState();
 
 	virtual Status setFullscreenState(FullscreenInfo &&) { return Status::ErrorNotImplemented; }
 
@@ -160,6 +224,10 @@ protected:
 
 	WindowLayerFlags _currentLayerFlags = WindowLayerFlags::None;
 	WindowLayerFlags _gripFlags = WindowLayerFlags::None;
+
+	// Last cursor pushed to setCursor(). Starts at the shape a window with no layers already has,
+	// so a window the pointer never visited does not touch the window system's cursor at all.
+	WindowCursor _layerCursor = WindowCursor::Default;
 };
 
 } // namespace sprt::window

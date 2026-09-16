@@ -64,10 +64,15 @@ static FILE *__wfopen(const wchar_t *__restrict filename, const wchar_t *__restr
 		fcntl(fd, __SPRT_F_SETFD, __SPRT_FD_CLOEXEC);
 	}
 
-	auto modeLen = wcstombs(nullptr, wmode, 0) + 1;
-	if (modeLen != (size_t)-1 && modeLen != (size_t)-2) {
+	auto modeLen = wcstombs(nullptr, wmode, 0);
+	if (modeLen == (size_t)-1) {
+		// Mode string is not representable in the active multibyte locale.
+		// Close the fd we just opened so it does not leak.
+		close(fd);
+		__sprt_errno = EINVAL;
 		return nullptr;
 	}
+	++modeLen; // room for the NUL terminator
 
 	auto mode = __sprt_typed_malloca(char, modeLen);
 	wcstombs(mode, wmode, modeLen);
@@ -129,6 +134,9 @@ __SPRT_C_FUNC FILE *wfreopen(const wchar_t *__restrict filename, const wchar_t *
 fail2:
 	fclose(f2);
 fail:
+	/* Release the FLOCK before fclose frees f, so the plock entry does not
+	 * outlive the FILE object (see freopen). */
+	FUNLOCK(f);
 	fclose(f);
 	return NULL;
 }

@@ -27,9 +27,20 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-// Window header for user-space window decorations
+/* Window header for user-space window decorations.
+
+Eight invisible resize grips over the content (edges and corners): plain Nodes whose InputListener
+declares a WindowLayerFlags::Resize*Grip and cursor; the window system performs the resize.
+
+Listeners use DecorationsInputPriority (post-scene band), so they are declared last. NativeWindow
+resolves window layers top-first, so an application layer over a grip wins, and a layer with only
+WindowLayerFlags::GripGuard suppresses the grip. The high z-order only makes handleLayoutInParent
+run after the covered content; input order is set by priority. */
 class SP_PUBLIC WindowDecorations : public Node {
 public:
+	// Below SceneContent's own -1, so the grips are asked about a pointer last.
+	static constexpr int32_t DecorationsInputPriority = -1'000;
+
 	virtual ~WindowDecorations() = default;
 
 	virtual bool init() override;
@@ -42,7 +53,7 @@ public:
 
 	virtual void handleEnter(Scene *) override;
 	virtual void handleContentSizeDirty() override;
-	virtual void handleLayout(Node *) override;
+	virtual void handleLayoutInParent(Node *) override;
 
 protected:
 	virtual void updateWindowState(WindowState);

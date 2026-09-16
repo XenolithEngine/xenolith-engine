@@ -32,7 +32,7 @@ namespace sprt {
 
 static constexpr unsigned ThreadIdBit = 0x8000'0000;
 
-static int _clock_getres(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
+static int clock_getres(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
 	if (clk_id & ThreadIdBit) {
 		if (out) {
 			out->tv_nsec = 1'000;
@@ -50,7 +50,7 @@ static int _clock_getres(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
 	}
 }
 
-static int _clock_gettime(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
+static int clock_gettime(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
 	if (clk_id & ThreadIdBit) {
 		thread_inspect_t mach_thread = static_cast<thread_inspect_t>(clk_id & ~ThreadIdBit);
 
@@ -76,9 +76,11 @@ static int _clock_gettime(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
 			total_usec = total_usec % 1'000'000;
 		}
 
-		// 4. Fill timespec
-		out->tv_sec = total_sec;
-		out->tv_nsec = total_usec * 1'000;
+		// 4. Fill timespec (guard out like the other branches / clock_getres do)
+		if (out) {
+			out->tv_sec = total_sec;
+			out->tv_nsec = total_usec * 1'000;
+		}
 		return 0;
 	} else {
 		struct timespec rem;
@@ -96,6 +98,13 @@ static int _clock_settime(unsigned clk_id, const struct __SPRT_TIMESPEC_NAME *ts
 		__sprt_errno = EINVAL;
 		return -1;
 	} else {
+#if SPRT_IOS
+		// iOS marks clock_settime() unavailable - a sandboxed app cannot set the
+		// system clock. Fail closed with EPERM, as the platform would.
+		(void)ts;
+		__sprt_errno = EPERM;
+		return -1;
+#else
 		struct timespec native;
 		if (ts) {
 			native.tv_nsec = ts->tv_nsec;
@@ -103,6 +112,7 @@ static int _clock_settime(unsigned clk_id, const struct __SPRT_TIMESPEC_NAME *ts
 		}
 
 		return ::clock_settime(clockid_t(clk_id), ts ? &native : nullptr);
+#endif
 	}
 }
 

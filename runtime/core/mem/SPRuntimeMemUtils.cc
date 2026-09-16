@@ -156,14 +156,9 @@ void Cleanup::run(Cleanup **cref, bool plain) {
 
 namespace sprt::memory::pool {
 
-struct Pool_StoreHandle : detail::AllocPool {
-	void *pointer;
-	__pool_function<void()> callback;
-};
-
 static Status sa_request_store_custom_cleanup(void *ptr) {
 	if (ptr) {
-		auto ref = (Pool_StoreHandle *)ptr;
+		auto ref = (StoreHandle *)ptr;
 		if (ref->callback) {
 			memory::perform_conditional([&] { ref->callback(); }, ref->callback.get_allocator());
 		}
@@ -177,7 +172,7 @@ void store(pool_t *pool, void *ptr, const StringView &key, __pool_function<void(
 	void *ret = nullptr;
 	pool::userdata_get(&ret, key.data(), key.size(), pool);
 	if (ret) {
-		auto h = (Pool_StoreHandle *)ret;
+		auto h = (StoreHandle *)ret;
 		h->pointer = ptr;
 		if (cb) {
 			h->callback = sprt::move(cb);
@@ -185,7 +180,7 @@ void store(pool_t *pool, void *ptr, const StringView &key, __pool_function<void(
 			h->callback = nullptr;
 		}
 	} else {
-		auto h = new (pool) Pool_StoreHandle();
+		auto h = new (pool) StoreHandle();
 		h->pointer = ptr;
 		if (cb) {
 			h->callback = sprt::move(cb);
@@ -193,18 +188,15 @@ void store(pool_t *pool, void *ptr, const StringView &key, __pool_function<void(
 
 		if (key.terminated()) {
 			pool::userdata_set(h, key.data(), sa_request_store_custom_cleanup, pool);
-		} else {
-#ifdef __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wvla-cxx-extension"
-#endif
-			char buf[key.size() + 1];
+		} else if (key.size() != Max<size_t>) {
+			// userdata_set needs a NUL-terminated key; build a terminated copy. The size
+			// guard keeps key.size() + 1 from overflowing to 0 (not reachable for a real
+			// StringView, but it would under-size the malloca while memcpy copied size bytes).
+			auto buf = __sprt_typed_malloca(char, key.size() + 1);
 			__builtin_memcpy(buf, key.data(), key.size());
 			buf[key.size()] = 0;
-			pool::userdata_set(h, key.data(), sa_request_store_custom_cleanup, pool);
-#ifdef __clang__
-#pragma clang diagnostic pop
-#endif
+			pool::userdata_set(h, buf, sa_request_store_custom_cleanup, pool);
+			__sprt_freea(buf);
 		}
 	}
 }

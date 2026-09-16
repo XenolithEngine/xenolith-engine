@@ -52,6 +52,9 @@ static constexpr uint64_t POWERS_OF_10[] = {
 	10'000'000'000'000'000,
 	100'000'000'000'000'000,
 	1'000'000'000'000'000'000,
+	// 10^19: covers the full digit count of a uint64 significand (up to 20
+	// digits), so POWERS_OF_10[intLen - 1] / [off] / [-exponent] stay in bounds.
+	10'000'000'000'000'000'000ull,
 };
 
 struct dtoa_options {
@@ -64,58 +67,67 @@ struct dtoa_options {
 	mode mode = fixed;
 };
 
+// Precondition: bufferSize >= dtoa_len(value, opts) (DOUBLE_MAX_DIGITS is a safe
+// upper bound). For performance there is no per-write bounds check; digits are
+// written backwards from buffer[bufferSize-1]. dtoa() and dtoa_len() below share
+// the same branch structure so their sizes always agree — keep them in lockstep.
 template <typename Char, floating_point T>
 constexpr inline size_t dtoa(Char *buffer, T value, size_t bufferSize,
 		dtoa_options opts = dtoa_options()) {
 	if (isnan(value)) {
 		if constexpr (sizeof(Char) == sizeof(char)) {
-			__constexpr_memcpy(buffer, "NaN", 3);
+			__constexpr_memcpy(buffer + bufferSize - 3, "NaN", 3);
 			return 3;
 		} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
-			__constexpr_memcpy(buffer, u"NaN", 3);
+			__constexpr_memcpy(buffer + bufferSize - 3, u"NaN", 3);
 			return 3;
 		} else {
 			return 0;
 		}
 	} else if (value == Infinity<T>) {
 		if constexpr (sizeof(Char) == sizeof(char)) {
-			__constexpr_memcpy(buffer, "inf", 3);
+			__constexpr_memcpy(buffer + bufferSize - 3, "inf", 3);
 			return 3;
 		} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
-			__constexpr_memcpy(buffer, u"inf", 3);
+			__constexpr_memcpy(buffer + bufferSize - 3, u"inf", 3);
 			return 3;
 		} else {
 			return 0;
 		}
 	} else if (value == -Infinity<T>) {
 		if constexpr (sizeof(Char) == sizeof(char)) {
-			__constexpr_memcpy(buffer, "-inf", 4);
+			__constexpr_memcpy(buffer + bufferSize - 4, "-inf", 4);
 			return 4;
 		} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
-			__constexpr_memcpy(buffer, u"-inf", 4);
+			__constexpr_memcpy(buffer + bufferSize - 4, u"-inf", 4);
 			return 4;
 		} else {
 			return 0;
 		}
 	} else if (value == T(0.0)) {
-		if constexpr (sizeof(Char) == sizeof(char)) {
-			__constexpr_memcpy(buffer, "0.0", 3);
-			return 3;
-		} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
-			__constexpr_memcpy(buffer, u"0.0", 3);
-			return 3;
+		// +0.0 and -0.0 both compare equal to 0.0, so the sign bit is what tells them apart.
+		// (The former separate `value == -T(0.0)` branch was dead code -- that comparison can
+		// never be reached, since -0.0 == 0.0 already matches here.) __count is an element count.
+		if (__builtin_signbit(value)) {
+			if constexpr (sizeof(Char) == sizeof(char)) {
+				__constexpr_memcpy(buffer + bufferSize - 4, "-0.0", 4);
+				return 4;
+			} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
+				__constexpr_memcpy(buffer + bufferSize - 4, u"-0.0", 4);
+				return 4;
+			} else {
+				return 0;
+			}
 		} else {
-			return 0;
-		}
-	} else if (value == -T(0.0)) {
-		if constexpr (sizeof(Char) == sizeof(char)) {
-			__constexpr_memcpy(buffer, "-0.0", 3);
-			return 3;
-		} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
-			__constexpr_memcpy(buffer, u"-0.0", 3);
-			return 3;
-		} else {
-			return 0;
+			if constexpr (sizeof(Char) == sizeof(char)) {
+				__constexpr_memcpy(buffer + bufferSize - 3, "0.0", 3);
+				return 3;
+			} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
+				__constexpr_memcpy(buffer + bufferSize - 3, u"0.0", 3);
+				return 3;
+			} else {
+				return 0;
+			}
 		}
 	} else {
 		auto result = jkj::dragonbox::to_decimal(value, jkj::dragonbox::policy::sign::return_sign,
@@ -199,9 +211,8 @@ constexpr size_t dtoa_len(T value, dtoa_options opts = dtoa_options()) {
 	} else if (value == -Infinity<T>) {
 		return 4;
 	} else if (value == T(0.0)) {
-		return 3;
-	} else if (value == -T(0.0)) {
-		return 4;
+		// -0.0 renders as "-0.0" (4), +0.0 as "0.0" (3); keep this in lockstep with dtoa().
+		return __builtin_signbit(value) ? 4 : 3;
 	}
 
 	auto result = jkj::dragonbox::to_decimal(value, jkj::dragonbox::policy::sign::return_sign,

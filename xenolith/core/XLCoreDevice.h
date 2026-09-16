@@ -133,6 +133,11 @@ public:
 
 	virtual void waitIdle() const;
 
+	// True while invalidateObjects() is running the destroy callbacks of everything that outlived
+	// the device. The device is still usable, for the last time: a destroy callback that normally
+	// defers its API call (see vk::TextureSet) must run it immediately here.
+	bool isFinalizingObjects() const { return _finalizingObjects; }
+
 protected:
 	friend class Loop;
 
@@ -140,6 +145,7 @@ protected:
 	void invalidateObjects();
 
 	bool _started = false;
+	bool _finalizingObjects = false;
 	const Instance *_glInstance = nullptr;
 	sprt::mutex _shaderMutex;
 	sprt::mutex _objectMutex;

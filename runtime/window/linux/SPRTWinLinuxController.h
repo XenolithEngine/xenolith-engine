@@ -1,0 +1,148 @@
+/**
+ Copyright (c) 2025 Stappler Team <admin@stappler.org>
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
+
+#ifndef CORE_RUNTIME_PRIVATE_WINDOW_LINUX_SPRTWINLINUXCONTROLLER_H_
+#define CORE_RUNTIME_PRIVATE_WINDOW_LINUX_SPRTWINLINUXCONTROLLER_H_
+
+#include <sprt/runtime/dispatch/handle.h>
+#include <sprt/runtime/window/controller.h>
+
+#if SPRT_LINUX
+
+#include "drm/SPRTWinLinuxDrmDevice.h"
+#include "SPRTWinLinuxDialogShell.h"
+
+namespace sprt::window::dbus {
+
+class Library;
+class Controller;
+
+} // namespace sprt::window::dbus
+
+namespace sprt::window {
+
+class NativeWindow;
+class XcbConnection;
+class XcbLibrary;
+class XkbLibrary;
+class WaylandLibrary;
+struct WaylandDisplay;
+
+class LinuxContextController : public ContextController {
+public:
+	static void acquireDefaultConfig(ContextConfig &, NativeContextHandle *);
+
+	static Rc<LinuxContextController> create(NotNull<Context>, ContextConfig &&,
+			NotNull<dispatch::Looper>);
+
+	virtual ~LinuxContextController();
+
+	virtual bool init(NotNull<Context>, ContextConfig &&, NotNull<dispatch::Looper>);
+
+	virtual int run(NotNull<ContextContainer>) override;
+
+	virtual bool isCursorSupported(WindowCursor, bool serverSide) const override;
+	virtual WindowCapabilities getCapabilities() const override;
+
+	XcbConnection *getXcbConnection() const { return _xcbConnection; }
+	WaylandDisplay *getWaylandDisplay() const { return _waylandDisplay; }
+
+	void notifyScreenChange(NotNull<DisplayConfigManager>);
+
+	virtual Status readFromClipboard(Rc<ClipboardRequest> &&) override;
+	virtual Status probeClipboard(Rc<ClipboardProbe> &&) override;
+	virtual Status writeToClipboard(Rc<ClipboardData> &&) override;
+
+	virtual bool isDialogSupported(DialogType) const override;
+
+	virtual Status openDialog(NotNull<dispatch::Looper>, Rc<DialogRequest> &&) override;
+
+	// The session bus went away under us. Called from dbus::Controller.
+	void handleDBusDisconnected();
+
+	virtual void handleThemeInfoChanged(ThemeInfo &&) override;
+
+	void tryStart();
+
+	virtual void openUrl(StringView) override;
+
+	virtual SurfaceSupportInfo getSupportInfo() const override;
+
+	// Opens (once, then caches) the DRM/KMS device used for direct-to-display mode
+	bool hasDrmDevice();
+
+protected:
+	virtual bool loadWindow(Rc<WindowInfo> &&) override;
+
+	// Find out, once, which dialog backends this session has. Called from run().
+	void detectDialogBackends();
+
+	// Should the portal serve this dialog? Detection alone is not enough: the session bus has to be
+	// alive right now as well.
+	bool canUsePortalDialogs() const;
+
+	// The portal's identifier for `parent` ("x11:<hex xid>"), or empty when the session cannot
+	// produce one.
+	String getDialogParentHandle(NativeWindow *parent) const;
+
+	// The zenity/kdialog path. Also the portal's fallback: it is called a second time when the
+	// portal rejects a request before showing anything.
+	Status openShellDialog(NotNull<dispatch::Looper>, Rc<DialogRequest> &&, NativeWindow *parent);
+
+	virtual void handleContextWillDestroy() override;
+	virtual void handleContextDidDestroy() override;
+
+#if SPRT_REF_DEBUG
+	virtual bool isRetainTrackerEnabled() const override { return true; }
+#endif
+
+	Rc<XcbLibrary> _xcb;
+	Rc<WaylandLibrary> _wayland;
+	Rc<XkbLibrary> _xkb;
+	Rc<dbus::Library> _dbus;
+
+	Rc<dbus::Controller> _dbusController;
+	Rc<XcbConnection> _xcbConnection;
+	Rc<WaylandDisplay> _waylandDisplay;
+
+	Rc<dispatch::Handle> _xcbPollHandle;
+	Rc<dispatch::Handle> _waylandPollHandle;
+
+	// Probed once at startup by detectDialogBackends(), because a capability bit has to be a stable
+	// property of the machine rather than of whichever backend happened to answer last. Which of
+	// the two is actually used for a given dialog is decided per request, in openDialog.
+	ShellDialogTool _shellDialogTool = ShellDialogTool::None;
+	bool _portalDialogs = false;
+
+	Rc<DrmLibrary> _drm;
+	Rc<DrmDevice> _drmDevice;
+
+	// Direct-to-display (KMS) mode: no Wayland/X11/D-Bus.
+	// Set in run() when no session type is detected but a usable DRM device exists.
+	bool _kmsMode = false;
+};
+
+} // namespace sprt::window
+
+#endif
+
+#endif /* CORE_RUNTIME_PRIVATE_WINDOW_LINUX_SPRTWINLINUXCONTROLLER_H_ */

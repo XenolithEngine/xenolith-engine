@@ -1,0 +1,225 @@
+# Xenolith Toolchains repository
+
+The purpose of this repository is to provide universal complete toolchain for C/C++ development with Xenolith Runtime on MacOS, Windows and Linux.
+
+**Work in progress**: toolchains on beta stage now. It works, compiles and mostly tested.
+
+## Hardware requirements
+
+At least 32G RAM and 100G disk space required for full build (all hosts + all targets).
+
+Most heavy host toolchains is windows, if it compiles - all other will not OOM too.
+
+Release toolchains assembled on x86_64 linux, other platform were not tested for full builds.
+
+Note: Apple hardware is required due licensing limitations to build apple hosts and targets.
+
+## What's included
+
+### General
+
+* C language library where possible
+* [clang](https://clang.llvm.org/) with llvm tooling
+
+### Vulkan essentials
+
+* [SPIR-V Headers](https://github.com/KhronosGroup/SPIRV-Headers)
+* [SPIR-V Tools](https://github.com/KhronosGroup/SPIRV-Tools)
+* [Vulkan Headers](https://github.com/KhronosGroup/Vulkan-Headers)
+* [glslang](https://github.com/KhronosGroup/glslang) shader compiler/validator
+
+### Xenolith dependencies
+
+* [zlib](https://www.zlib.net/)
+* [bzip2](https://sourceware.org/bzip2/downloads.html)
+* [xz](https://tukaani.org/xz/#_source_packages)
+* [zstd](https://github.com/facebook/zstd/releases/tag/v1.5.7)
+* [libjpeg-turbo](https://github.com/libjpeg-turbo/libjpeg-turbo/releases)
+* [libpng](http://www.libpng.org/pub/png/libpng.html)
+* [giflib](https://giflib.sourceforge.net/)
+* [WebP](https://github.com/webmproject/libwebp)
+* [TIFF](https://download.osgeo.org/libtiff/?C=M&O=D)
+* [FreeType](https://freetype.org/)
+* [harfbuzz](https://github.com/harfbuzz/harfbuzz/releases/)
+* [brotli](https://github.com/google/brotli/releases) compression library
+* [MbedTLS](https://github.com/Mbed-TLS/mbedtls) crypto library
+* [OpenSSL](https://openssl-library.org/source/index.html) crypto library
+* [openssl-gost-engine](https://github.com/gost-engine/engine) for GOST crypto support
+* [nghttp3](https://github.com/ngtcp2/nghttp3/releases)
+* [libcurl](https://curl.se/download.html) in MbedTLS and OpenSSL variants. Only OpenSSL variant supports HTTP/3
+* [sqlite3](https://www.sqlite.org/download.html)
+* [iwasm](https://github.com/bytecodealliance/wasm-micro-runtime) WebAssembly runtime library
+
+IDN is implemented by the runtime itself (`runtime/src/idn`), so no IDN2 library is
+bundled. Unicode case mapping and collation are the runtime's own too.
+
+### Downloaded but not built
+
+* [ICU4C](https://github.com/unicode-org/icu/releases) — the Unicode reference. No
+  target links it; the sources are the UCD and the UCA/UTS-46 conformance data that
+  the table generators and test suites read, and the version pinned in `src.mk` is
+  the Unicode version the runtime claims to support. A real `libicuuc` can still be
+  built on demand with `make -C target-linux icu` when the runtime's behaviour needs
+  to be compared against the reference.
+
+### Linux essential headers (libraries not included)
+
+* DBus (libdbus-1)
+* XCB
+* XKB
+* Wayland-client
+
+### Russian CA certificates and GOST cyphers
+
+libcurl in this toolchains bundled with CA certificates, that contains russian national CA authorities.
+
+GOST cyphers can be loaded statically with stappler_crypto module.
+
+## Build steps
+
+### Download sources
+
+Download dependencies to build
+
+[source,sh]
+----
+# From runtime/toolchains
+make download
+----
+
+Every download is checked before it is allowed into `src/`: the transfer has to
+succeed, the archive has to match the SHA-256 pinned in `src.mk`, and the
+fourteen dependencies whose upstreams publish a detached OpenPGP signature are
+verified against the keys committed in `keys/`. Anything that fails stops the
+build instead of leaving a partial tree behind. Sources fetched with git are
+pinned by commit, so a moved tag is refused too.
+
+Install `gpg` to get the signature checks; without it they are skipped with a
+warning and the SHA-256 pins still apply. For release and CI builds, make that
+skip an error:
+
+[source,sh]
+----
+# From runtime/toolchains
+make download SP_REQUIRE_SIGNATURES=1
+----
+
+See `keys/README.adoc` for the key fingerprints, where each was confirmed, and
+what to do when one stops verifying.
+
+### Build host toolchain
+
+See README.md in host-* directory for concrete steps performed and prerequisites.
+
+[source,sh]
+----
+# From runtime/toolchains
+make host
+----
+
+
+### Build target sysroot
+
+[source,sh]
+----
+# From runtime/toolchains
+make target-<target-triple>
+----
+
+Supported targets:
+
+* target-x86_64-unknown-linux-gnu
+* target-aarch64-unknown-linux-gnu
+* target-riscv64-unknown-linux-gnu
+* target-x86_64-unknown-linux-musl
+* target-aarch64-unknown-linux-musl
+* target-riscv64-unknown-linux-musl
+* target-unknown-ndk-linux-android - special target to use with Android NDK
+* target-aarch64-unknown-linux-android
+* target-armv7a-unknown-linux-androideabi
+* target-i686-unknown-linux-android
+* target-x86_64-unknown-linux-android
+* target-x86_64-apple-macosx
+* target-aarch64-apple-macosx
+* target-aarch64-apple-ios
+* target-x86_64-apple-ios-simulator
+* target-aarch64-apple-ios-simulator
+* target-x86_64-pc-windows-msvc
+* target-aarch64-pc-windows-msvc
+
+The Apple targets (`*-apple-macosx`, `*-apple-ios`, `*-apple-ios-simulator`) need
+the matching Apple SDKs. On a macOS host they are located automatically through
+`xcrun`. When cross-building from a non-Darwin host they must be provided under
+`src/` as `MacOSX.sdk`, `iPhoneOS.sdk` and `iPhoneSimulator.sdk` (these are not
+fetched by `make download` — they are extracted from Xcode / the Command Line
+Tools and are subject to the Apple SDK license). The deployment targets are
+`SP_MACOS_VER` / `SP_IOS_VER` in `target-apple/Makefile`. There are three iOS
+sysroots: `target-aarch64-apple-ios` (device) plus the
+`target-{x86_64,aarch64}-apple-ios-simulator` simulators; `make target-ios`
+builds all three. On iOS the Vulkan validation layer is shipped as
+`VkLayer_khronos_validation.framework` (upstream forces a framework there)
+instead of a flat `.dylib`.
+
+### Build cross host toolchains
+
+Besides the native host toolchain (`make host`, built with a multi-stage
+bootstrap for the build machine), additional host toolchains for *other*
+platforms (or a simplified rebuild for the same one) can be produced by
+*cross-compiling* them with the already-built native host's clang.
+
+The overall build order is:
+
+1. Build **one** native host toolchain for the build machine — `make host`.
+   This is the only toolchain produced by a full bootstrap.
+2. Build the **targets** — `make target-<triple>`. Each target sysroot already
+   contains a complete libc of the required version (glibc/musl), libc++ and
+   compiler-rt.
+3. Build the **cross host toolchains** *from the targets* (where necessary) —
+   `make host-cross-<triple>`. The cross host build reuses the native host's
+   clang as the cross-compiler and, where the libc cannot be produced by clang
+   alone (glibc needs GCC), the pre-built libc sysroot of the corresponding
+   target. Therefore each `host-cross-*` recipe depends on the matching
+   `target-*` in this Makefile.
+
+[source,sh]
+----
+# From runtime/toolchains, after `make host` and the relevant `make target-...`
+make host-cross-x86_64-unknown-linux-gnu     # reuses target-x86_64-unknown-linux-gnu glibc
+make host-cross-x86_64-unknown-linux-musl     # musl libc is built inline (no target needed)
+make host-cross-x86_64-pc-windows-msvc        # reuses the Windows SDK (xwin)
+make host-cross-x86_64-apple-macosx           # reuses the macOS SDK
+----
+
+Supported cross hosts: `host-cross-{x86_64,aarch64,riscv64}-unknown-linux-{gnu,musl}`,
+`host-cross-{x86_64,aarch64}-pc-windows-msvc`, `host-cross-{x86_64,aarch64}-apple-macosx`.
+See the `cross/` subdirectory and `README.adoc` of each `host-*` directory.
+
+## Sources list policy
+
+The list of sources for source codes must be updated regularly. After the build of a new version is confirmed, the date of its update is placed next to the corresponding source in the format `revised: 22 feb 2026`.
+
+Official sources are used, however, for sources whose access is restricted based on download region, an alternative method should be used (for example, direct download from the repository).
+
+Each entry in `src.mk` carries what it is verified by. Bumping a version means
+updating that too, on a host with `gpg` installed:
+
+* an archive gets a `_SHA256`, computed from a download whose signature you have
+  just verified - not copied from a checksum the same server published;
+* a git source gets a `_COMMIT` next to its `_TAG`. `make src-pins` re-resolves
+  every tag to the commit it points at today. A line that comes back changed for
+  a tag nobody touched means upstream re-tagged, which is worth understanding
+  before the pin is updated;
+* a source with no signature says so in its block, and why that is acceptable.
+
+Verification failures are not build breakage to route around. A SHA-256 mismatch
+or a bad signature is the check doing its job; find out why before changing a pin.
+
+## Code style
+
+Most of the build scripts here can be used both in the GNU environment and in PowerShell on Windows. For this purpose, standard commands (cp, rm, and others) are implemented as functions `rule_*`, which ensures their uniform behavior.
+
+## License
+
+All build scripts and distribution itself licensed under MIT. No GPL restrictions implied on software, that uses this toolchains.
+
+DBus headers licensed under AFL-2.1 OR GPL-2.0.

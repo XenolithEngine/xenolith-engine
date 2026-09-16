@@ -26,6 +26,7 @@
 #include <sprt/runtime/geom/geom.h>
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/window/mode.h>
+#include <sprt/runtime/window/window_icon.h>
 #include <sprt/runtime/stream.h>
 
 namespace sprt::window {
@@ -44,6 +45,77 @@ enum class ViewConstraints : uint32_t {
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(ViewConstraints)
+
+// Window role within the application window hierarchy, immutable after creation.
+// Defines how the window is mapped to OS/WM concepts and what behavior engine enforces.
+// Every type except Root requires WindowInfo::parent to name a live window.
+enum class WindowType : uint8_t {
+	// Independent top-level window with its own taskbar/Alt-Tab entry.
+	// `parent` is optional and used only for window grouping.
+	Root,
+
+	// Transient window: stays above its parent, minimized with it, no taskbar entry.
+	// With WindowCreationFlags::Modal, engine blocks input in the parent chain while open.
+	Dialog,
+
+	// Floating tool palette above its parent; does not take activation away from it.
+	Utility,
+
+	// Menu/dropdown/combobox: undecorated, placed by WindowInfo::placement, grabs input,
+	// dismissed on outside click. Parent can be any type including another Popup
+	// (submenu chains). Creation requires a recent input event on some WM (Wayland grab).
+	Popup,
+
+	// Like Popup, but never takes focus and never grabs input.
+	Tooltip,
+};
+
+SPRT_API StringView getWindowTypeName(WindowType);
+
+// Point on the anchor rectangle (WindowPlacement::anchor) or direction in which the window
+// opens relative to the anchor point (WindowPlacement::gravity).
+// None means the center of the rectangle / centered on the anchor point.
+enum class WindowAnchor : uint8_t {
+	None,
+	Top,
+	Bottom,
+	Left,
+	Right,
+	TopLeft,
+	BottomLeft,
+	TopRight,
+	BottomRight,
+};
+
+// How placement may be adjusted when the window would cross a work-area edge
+enum class WindowPlacementAdjustment : uint32_t {
+	None = 0,
+	SlideX = 1 << 0,
+	SlideY = 1 << 1,
+	FlipX = 1 << 2,
+	FlipY = 1 << 3,
+	ResizeX = 1 << 4,
+	ResizeY = 1 << 5,
+	All = SlideX | SlideY | FlipX | FlipY | ResizeX | ResizeY,
+};
+
+SPRT_DEFINE_ENUM_AS_MASK(WindowPlacementAdjustment)
+
+// Relative placement rule for auxiliary windows, modeled after xdg_positioner:
+// the window is attached to the `anchor` point of `anchorRect` (in parent window logical
+// coordinates) and opens in the `gravity` direction, shifted by `offset`.
+// There are no global coordinates in this API: on Wayland placement is computed by
+// the compositor, on other systems - by a common engine implementation with the same semantics.
+struct WindowPlacement {
+	IRect anchorRect = IRect(0, 0, 0, 0);
+	WindowAnchor anchor = WindowAnchor::None;
+	WindowAnchor gravity = WindowAnchor::None;
+	IVec2 offset = IVec2{0, 0};
+	WindowPlacementAdjustment adjustment = WindowPlacementAdjustment::None;
+
+	bool operator==(const WindowPlacement &) const = default;
+	bool operator!=(const WindowPlacement &) const = default;
+};
 
 // Cross-OS window state flags
 // Some OS/WN can support only some subset of this flags
@@ -128,6 +200,21 @@ enum class WindowState : uint64_t {
 	DecorationState = DecorationStatusBarVisible | DecorationNavigationVisible
 			| DecorationStatusBarLight | DecorationNavigationLight | DecorationShowBySwipe,
 
+	// A touchscreen is available as an input device for this window.
+	// This is about the device being *available*, not about where an event came from:
+	// for per-event source detection use InputModifier::Touch.
+	InputTouch = 1LLU << 23,
+
+	// A pointing device - a mouse, a trackpad, a trackball - is available as an input device for
+	// this window. The pair of InputTouch, and about the device being *available* in exactly the
+	// same sense.
+	//
+	// Three neighbouring questions that are easy to confuse, and are answered by three different
+	// things: "is there a pointing device at all" is THIS; "is the cursor over the window right
+	// now" is WindowState::Pointer, which drops the moment it leaves; "did THIS event come from a
+	// finger" is InputModifier::Touch.
+	InputPointer = 1LLU << 24,
+
 	// Extra space here
 
 	// Values for allowed window actions
@@ -165,7 +252,7 @@ enum class WindowState : uint64_t {
 
 	All = Modal | Sticky | Maximized | Shaded | SkipTaskbar | Minimized | Fullscreen | Above | Below
 			| DemandsAttention | Focused | Resizing | Pointer | CloseGuard | CloseRequest | Enabled
-			| DecorationState | AllowedActionsMask | TilingMask,
+			| DecorationState | InputTouch | InputPointer | AllowedActionsMask | TilingMask,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(WindowState)
@@ -219,8 +306,25 @@ enum class WindowCursor : uint8_t {
 
 enum class WindowLayerFlags : uint32_t {
 	None,
-	MoveGrip,
-	ResizeTopLeftGrip,
+
+	/* The low nibble is a GRIP: what a press at this point does to the window itself.
+
+	One layer carries at most one of them, and the value is a LADDER, listed here weakest first.
+	Which grip applies at a point is decided by stacking - the topmost layer under the pointer that
+	has an opinion answers alone, see NativeWindow::updateLayerState - so the ladder is not what
+	resolves an overlap. It is what ranks the grips where one value has to stand for a position:
+	MoveGrip therefore sits ABOVE every resize grip, because a title bar drawn over a window edge
+	is asking to move the window and not to resize it, and GripGuard above all of them because it
+	is a restriction rather than an action - it is how a widget says "no grip here" without having
+	to know which grip it is standing on.
+
+	GripGuard therefore takes part in the contest and then RESOLVES TO NOTHING: updateLayerState
+	drops it, so a backend sees an empty grip and treats the press as ordinary input. It must never
+	be handed down as a grip value - a backend has no reason to enumerate this ladder before acting,
+	so a non-empty grip reads as "a grip is engaged" and the press is given to the window system,
+	which swallows the drag that followed. The one place it survives as itself is the Windows
+	hit-test, which walks the layers directly so it can keep the system frame border resizable. */
+	ResizeTopLeftGrip = 1,
 	ResizeTopGrip,
 	ResizeTopRightGrip,
 	ResizeRightGrip,
@@ -228,7 +332,8 @@ enum class WindowLayerFlags : uint32_t {
 	ResizeBottomGrip,
 	ResizeBottomLeftGrip,
 	ResizeLeftGrip,
-	GripGuard, // to restrict grip for some layers
+	MoveGrip,
+	GripGuard,
 
 	GripMask = 0xF,
 
@@ -303,6 +408,19 @@ enum class WindowCreationFlags : uint32_t {
 
 	// On android, allows setPreferredFrameRate only if seamless
 	OnlySeamlessFrameRateSwitch = 1 << 7,
+
+	// For WindowType::Dialog: block input in the parent chain while this window is open.
+	// OS-side hints (xdg_dialog_v1, _NET_WM_STATE_MODAL, EnableWindow, sheets) are advisory;
+	// input blocking is enforced by the engine itself.
+	Modal = 1 << 8,
+
+	// Place the window at WindowInfo::rect's x/y instead of letting the window system choose.
+	//
+	// Opt-in rather than "a non-zero x/y means place me": `rect` defaults to IRect(0, 0, 1024, 768)
+	// and (0, 0) is a legitimate position, so without a flag there is no way to tell a requested
+	// origin from an unset one. Ignored where WindowCapabilities::WindowPosition is absent, and it
+	// is a HINT everywhere else - a window manager is free to place the window elsewhere.
+	UsePosition = 1 << 9,
 
 	// Use direct output to display, bypassing whole WM stack
 	// Check if it actually supported with WindowCapabilities::DirectOutput
@@ -405,14 +523,83 @@ enum class WindowCapabilities : uint32_t {
 	// to next window with this id
 	PreserveDirector = 1 << 19,
 
-	// setPreferredModeSwitch is available
+	// setPreferredFrameRate is available
 	PreferredFrameRate = 1 << 20,
 
 	// Decoration state can be changed by application (mostly Android)
 	DecorationState = 1 << 21,
+
+	// ContextController::openDialog serves OpenFile / OpenDirectory / SaveFile
+	FileDialogs = 1 << 22,
+
+	// ... DialogType::Color
+	ColorDialog = 1 << 23,
+
+	// ... DialogType::Font
+	FontDialog = 1 << 24,
+
+	// ... RevealInFileManager and MoveToTrash
+	SystemFileActions = 1 << 25,
+
+	// DialogFlags::Modal additionally gets a real OS parent relationship (owner HWND, a macOS
+	// sheet, portal parent_window), so clicking the blocked parent raises the dialog. Without this
+	// bit Modal still blocks input — the OS just does not help, and the application should show
+	// that the window is blocked itself.
+	NativeDialogParenting = 1 << 26,
+
+	// WindowInfo::icon is honored: the platform can take pixel data for the window's OS icon
+	// (taskbar, Alt-Tab, title bar, Dock). Absent where the icon comes from outside the process
+	// instead - the Android manifest, a .desktop file, a Wayland compositor without
+	// xdg_toplevel_icon_v1 - and on the windowless backends.
+	WindowIcon = 1 << 27,
+
+	// The platform tells a client where its window is, and honours a requested position at
+	// creation (WindowCreationFlags::UsePosition). Read it before offering "restore my window
+	// where it was": without this bit WindowGeometry::hasPosition is always false and a saved
+	// position is not merely inaccurate, it is unknowable.
+	//
+	// Absent on Wayland (xdg-shell never reports a toplevel's position, by design) and on the
+	// windowless backends.
+	WindowPosition = 1 << 28,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(WindowCapabilities)
+
+/* Where a window is and how big it is, as the application may read it.
+
+WHY THIS EXISTS SEPARATELY FROM WindowInfo. WindowInfo is the context thread's own record and is
+mutated there as the window system reports changes; an application thread may read only its
+constant fields (see xenolith::AppWindow::getInfo). This is the snapshot that crosses the thread
+boundary instead - taken on the context thread, mirrored for the app thread, and never a pointer
+into live state.
+
+AND SEPARATELY FROM FrameConstraints. Those describe what to RENDER: an extent in device pixels, a
+density, a transform. This describes where the window IS, in logical units. They change for
+different reasons and a consumer of one is rarely a consumer of the other - putting a screen
+position into FrameConstraints would make every drag of a title bar look like a resize to everything
+that compares them.
+
+Deliberately NOT carrying the pixel extent or the density: those are FrameConstraints' answer and
+only its answer. Reporting them twice invites the two copies to disagree, and on a backend whose
+getExtent() is in logical units they promptly did.
+
+`rect` is in LOGICAL units, the same space as WindowInfo::rect, so what is read here can be handed
+straight back to createWindow to reopen a window where it was. */
+struct WindowGeometry {
+	// Content rect (excluding server-side decorations) in logical units. When `hasPosition` is
+	// false, x/y are zero - which is not a position, it is the absence of one.
+	IRect rect;
+
+	/* False where the platform never tells a client where its window is: Wayland (xdg-shell has no
+	such event, deliberately - the compositor owns placement) and the windowless backends.
+
+	Check it before saving a position. A caller that ignores it saves (0, 0) and restores a window
+	to the corner of the screen on the next run. */
+	bool hasPosition = false;
+
+	bool operator==(const WindowGeometry &) const = default;
+	bool operator!=(const WindowGeometry &) const = default;
+};
 
 struct SPRT_API WindowInfo final : public Ref {
 	String id;
@@ -424,7 +611,24 @@ struct SPRT_API WindowInfo final : public Ref {
 	// initial fullscreen mode
 	FullscreenInfo fullscreen = FullscreenInfo::None;
 
-	// TODO: extra window attributes go here
+	// Minimum / maximum content size in logical units (same space as `rect`).
+	// Set at creation, immutable at runtime. A dimension of 0 means "unconstrained" for that
+	// dimension (e.g. minExtent = {320, 0} floors width at 320 and leaves height free).
+	// A backend clamps `rect` into [minExtent, maxExtent] and forwards the bounds to the WM/OS,
+	// converting logical units into device pixels / full-window sizes as it does for `rect`.
+	// Note: Android and WASM have no meaningful window size limits and ignore these fields.
+	Extent2 minExtent = Extent2::ZERO;
+	Extent2 maxExtent = Extent2::ZERO;
+
+	// Window role; immutable after creation
+	WindowType type = WindowType::Root;
+
+	// `id` of the parent window (transient-for / popup parent).
+	// Must name a live window at creation time for any type except Root
+	String parent;
+
+	// Relative placement for Popup/Tooltip windows; other types are placed by the WM
+	WindowPlacement placement;
 
 	PresentMode preferredPresentMode = PresentMode::Mailbox;
 	ImageFormat imageFormat = ImageFormat::Undefined;
@@ -439,9 +643,44 @@ struct SPRT_API WindowInfo final : public Ref {
 	// Insets for decorations, that appears above user-drawing space
 	// Canvas inside this inset always be visible for user
 	Padding decorationInsets;
+
+	// Optional OS icon for this window (taskbar, Alt-Tab, title bar, Dock).
+	//
+	// Consumed exactly once, when the window is created, the same way `title` is - there is no
+	// runtime setter. Shared by Rc, so one decoded icon can serve every window an application
+	// opens. Build one with xenolith::makeWindowIcon; the runtime has no image decoder.
+	//
+	// Dropped by Context::configureWindow where WindowCapabilities::WindowIcon is absent, so a
+	// backend only ever sees an icon it will actually use.
+	Rc<WindowIcon> icon;
+
+	// Opaque application payload, carried unchanged from createWindow() through to the thread that
+	// owns the window's content, and never interpreted by the runtime. It is how an application
+	// says what a window IS (which scene it runs, what happens when it closes) at the moment it
+	// asks for the window, instead of looking that up later by `id` — which it must not do,
+	// because `id` is re-uniqued below if it collides with a live window.
+	//
+	// Ownership: the runtime moves it and never copies it. It drops its reference only when this
+	// WindowInfo is destroyed, and that happens on the context thread — so an application whose
+	// payload must not die there is responsible for calling takeAppData() from a thread that may
+	// destroy it. See xenolith::WindowSceneInfo for the engine's contract.
+	Rc<Ref> appData;
+
+	// Move the payload out. Legal from any thread: moving a Rc does not touch the pointee.
+	Rc<Ref> takeAppData() { return sprt::move(appData); }
 };
 
 SPRT_API void getWindowStateDescription(const callback<void(StringView)> &, WindowState);
+
+// Clamp `e` into [minExtent, maxExtent], honoring the per-dimension "0 = unconstrained" rule.
+// If a maxExtent dimension is non-zero and below the corresponding minExtent, minExtent wins.
+SPRT_API Extent2 clampWindowExtent(Extent2 e, Extent2 minExtent, Extent2 maxExtent);
+
+// Resolve WindowPlacement into a content rect, in the same Y-down space as `parentContentRect`
+// and `workArea` (the space WindowPlacement::anchorRect uses). Wayland hands the same inputs to
+// xdg_positioner instead; X11/Win32/macOS use the returned rect.
+SPRT_API IRect computeWindowPlacement(const WindowPlacement &placement, Extent2 windowSize,
+		IRect parentContentRect, IRect workArea);
 
 } // namespace sprt::window
 

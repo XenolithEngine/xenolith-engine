@@ -44,6 +44,9 @@ struct SP_PUBLIC CmdInfo {
 	StateId state = StateIdNone;
 	RenderingLevel renderingLevel = RenderingLevel::Solid;
 	float depthValue = 0.0f;
+
+	// Optional model-space AABB
+	Rect bounds;
 };
 
 struct SP_PUBLIC CmdVertexArray : CmdInfo {
@@ -135,7 +138,18 @@ struct SP_PUBLIC FrameContextHandle2d : public FrameContextHandle {
 	Rc<CommandList> commands;
 
 	mem_pool::Map<uint64_t, ParticleSystemRenderInfo> particleEmitters;
+
+	// Remote render-session wire format for the 2D command batch (see XLCoreFrameRequestProxy.h;
+	// layout described in the .cc).
+	virtual bool serialize(const Callback<void(BytesView)> &) const override;
+	virtual bool deserialize(BytesView, Vector<uint32_t> *remoteDeps = nullptr) override;
 };
+
+// Mint an empty FrameContextHandle2d for a remote client's frame input. Shared by every backend's
+// vertex attachment, since the input type is a basic2d fact. See core::Attachment::makeInputData,
+// whose default null means the queue cannot serve a remote frame.
+SP_PUBLIC Rc<core::AttachmentInputData> makeFrameContextInput(NotNull<core::RenderClientChannel>,
+		uint64_t windowId);
 
 } // namespace stappler::xenolith::basic2d
 

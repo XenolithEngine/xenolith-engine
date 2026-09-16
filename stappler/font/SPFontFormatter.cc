@@ -22,12 +22,13 @@
 
 #include "SPFontFormatter.h"
 #include "SPFontFace.h"
+#include "SPFontBidi.h"
 
 namespace STAPPLER_VERSIONIZED stappler::font {
 
 Formatter::Formatter() { }
 
-Formatter::Formatter(FontCallback &&cb, TextLayoutData<memory::StandartInterface> *d)
+Formatter::Formatter(FontCallback &&cb, TextLayoutData<mem_std::Interface> *d)
 : fontCallback(sp::move(cb)) {
 	reset(d);
 }
@@ -39,7 +40,7 @@ Formatter::Formatter(FontCallback &&cb, TextLayoutData<memory::PoolInterface> *d
 
 void Formatter::setFontCallback(FontCallback &&cb) { fontCallback = sp::move(cb); }
 
-void Formatter::reset(TextLayoutData<memory::StandartInterface> *d) {
+void Formatter::reset(TextLayoutData<mem_std::Interface> *d) {
 	_output = Output(d);
 	reset();
 }
@@ -73,6 +74,20 @@ void Formatter::reset() {
 	wordWrapPos = 0;
 
 	bufferedSpace = false;
+	_overflowReported = false;
+
+	_paragraphDirection = TextDirection::Neutral;
+	_pendingContinuations.clear();
+}
+
+bool Formatter::reportOverflow(const char *reason) {
+	*_output.overflow = true;
+	if (!_overflowReported) {
+		_overflowReported = true;
+		log::format(sprt::oslog::Error, "RichTextFormatter", SP_LOCATION,
+				"Layout overflow: %s; the layout is truncated at the overflow point", reason);
+	}
+	return false;
 }
 
 void Formatter::finalize() {
@@ -98,9 +113,67 @@ void Formatter::finalize() {
 		}
 	}
 
+	// #7: splice extra glyphs from 1->N decompositions into the char stream now that it is final
+	expandGlyphContinuations();
+
 	*_output.width = getWidth();
 	*_output.height = getHeight();
 	*_output.maxAdvance = getMaxLineX();
+}
+
+// Splice the 1->N decomposition glyphs gathered during layout into the char stream as ContinuationChar
+// entries placed right after their source char, then re-index lines and ranges to remain consistent.
+// Insertions reference indices in the append-only char stream that stay valid until finalize, so this
+// runs exactly once, here.
+void Formatter::expandGlyphContinuations() {
+	if (_pendingContinuations.empty()) {
+		return;
+	}
+
+	// stable insertion sort by source index (the number of 1->N glyphs per layout is tiny); equal
+	// indices keep their visual (insertion) order so a multi-glyph cluster stays ordered
+	for (size_t i = 1; i < _pendingContinuations.size(); ++i) {
+		const PendingGlyph key = _pendingContinuations[i];
+		size_t j = i;
+		while (j > 0 && _pendingContinuations[j - 1].insertAfter > key.insertAfter) {
+			_pendingContinuations[j] = _pendingContinuations[j - 1];
+			--j;
+		}
+		_pendingContinuations[j] = key;
+	}
+
+	const size_t origChars = _output.chars.size();
+
+	// insBefore[i] = number of continuations to be inserted before original index i
+	Vector<uint32_t> insBefore(origChars + 1, 0);
+	for (auto &p : _pendingContinuations) {
+		if (size_t(p.insertAfter) + 1 <= origChars) {
+			insBefore[p.insertAfter + 1] += 1;
+		}
+	}
+	for (size_t i = 1; i <= origChars; ++i) { insBefore[i] += insBefore[i - 1]; }
+
+	// shift each line/range by the insertions before its start, grow it by those within its span
+	auto reindex = [&](auto &collection) {
+		for (auto &it : collection) {
+			const uint32_t s = it.start;
+			const uint32_t e = sprt::min(s + it.count, uint32_t(origChars));
+			it.start = s + insBefore[s];
+			it.count = (e + insBefore[e]) - it.start;
+		}
+	};
+	reindex(_output.lines);
+	reindex(_output.ranges);
+
+	// splice the glyphs in ascending order, tracking how many were already inserted
+	uint32_t inserted = 0;
+	for (auto &p : _pendingContinuations) {
+		const size_t at = sprt::min(size_t(p.insertAfter) + 1 + inserted, _output.chars.size());
+		_output.chars.insert(at, CharLayoutData(p.data));
+		++inserted;
+	}
+
+	_pendingContinuations.clear();
 }
 
 void Formatter::setLinePositionCallback(const LinePositionCallback &func) {
@@ -113,6 +186,338 @@ void Formatter::setWidth(uint16_t w) {
 }
 
 void Formatter::setTextAlignment(TextAlign align) { alignment = align; }
+
+void Formatter::setTextDirection(TextDirection dir) { _defaultDirection = dir; }
+
+void Formatter::setBidiEnabled(bool value) { _bidiEnabled = value; }
+
+void Formatter::setShapingEnabled(bool value) { _shapingEnabled = value; }
+
+TextDirection Formatter::getTextDirection() const { return _defaultDirection; }
+
+bool Formatter::isBidiEnabled() const { return _bidiEnabled; }
+
+bool Formatter::isShapingEnabled() const { return _shapingEnabled; }
+
+// CSS `text-align: start | end` resolves against the line's base direction; the other keywords are
+// already absolute. This keeps direction-relative alignment CSS-compatible.
+TextAlign Formatter::resolveTextAlign(TextDirection lineDirection) const {
+	const bool rtl = (lineDirection == TextDirection::RightToLeft);
+	switch (alignment) {
+	case TextAlign::Start: return rtl ? TextAlign::Right : TextAlign::Left;
+	case TextAlign::End: return rtl ? TextAlign::Left : TextAlign::Right;
+	default: return alignment;
+	}
+}
+
+FontFaceObject *Formatter::faceById(uint16_t id) const {
+	if (!_primaryFontSet) {
+		return nullptr;
+	}
+	for (auto &f : _primaryFontSet->getFaces()) {
+		if (f && f->getId() == id) {
+			return f.get();
+		}
+	}
+	return nullptr;
+}
+
+// Emit a zero-width Unicode bidi control into the char stream. It carries its real code point (so the
+// resolver in layoutLine applies the embedding/isolate/override) but has no glyph and zero advance, so
+// it renders nothing and takes no space. HarfBuzz drops it (default-ignorable) on the shaping path.
+void Formatter::pushBidiControl(char32_t control) {
+	if (control == 0) {
+		return;
+	}
+	if (charNum == maxOf<uint16_t>()) {
+		reportOverflow("more than 65535 characters in one layout");
+		return;
+	}
+	charNum++;
+	_output.chars.emplace_back(CharLayoutData{control, lineX, 0, faceId});
+}
+
+int16_t Formatter::graphemeSpacing(char32_t cp) const {
+	int32_t sp = _textStyle.letterSpacing;
+	if (cp == char32_t(' ') || cp == char32_t(0x00A0)) {
+		sp += _textStyle.wordSpacing;
+	}
+	return int16_t(sp);
+}
+
+// Lay out a finished line in VISUAL order. Resolves UAX #9 embedding levels, reorders the line's runs
+// into visual order (rules L1-L2) and assigns each char its on-screen x. Two paths share the run walk:
+//   * shaping on  -> each same-face sub-run is shaped with HarfBuzz (glyph indices + advances/offsets)
+//   * shaping off -> chars are repositioned by the advances measured while reading (kerning is kept
+//                    only on the fast single-LTR-run path; HarfBuzz handles kerning when shaping is on)
+// Returns the line's visual right edge (absolute x) -- the true post-reorder, post-shape width used
+// for alignment/justification, not the logical-last char's edge (#3).
+uint16_t Formatter::layoutLine(uint16_t first, uint16_t len) {
+	if (len == 0 || _output.lines.empty()) {
+		return 0;
+	}
+
+	auto &line = _output.lines.back();
+	const uint16_t lineEnd = uint16_t(first + len);
+
+	// --- Bidi resolution: per-char levels, paragraph base direction, and visual run order ---
+	Vector<BidiRun> runs;
+	if (_bidiEnabled) {
+		// Extract the line's code points (placeholder/filler chars become spaces -> neutral).
+		Vector<char32_t> buf;
+		buf.reserve(len);
+		for (uint16_t i = first; i < lineEnd; ++i) {
+			auto ch = _output.chars.at(i).charID;
+			buf.emplace_back(ch == CharLayoutData::InvalidChar ? char32_t(0x20) : ch);
+		}
+
+		// Base level: explicit `direction` wins; for `auto` reuse the paragraph's already-resolved
+		// base so wrapped continuation lines stay consistent (#2), else derive it from this line.
+		const TextDirection base = (_defaultDirection == TextDirection::Neutral)
+				? _paragraphDirection
+				: _defaultDirection;
+
+		// TextBidi allocates from the current pool; run it in a transient pool scope so the Formatter
+		// does not depend on an ambient pool context.
+		auto pool = memory::pool::create((memory::pool_t *)nullptr);
+		memory::perform([&] {
+			TextBidi bidi;
+			if (!bidi.init(buf.data(), buf.size(), base)) {
+				return;
+			}
+			// resolved embedding levels + the line's paragraph base direction
+			bidi.foreachParagraph([&](uint32_t off, uint32_t length, uint8_t baseLevel,
+										  SpanView<uint8_t> levels) {
+				for (uint32_t i = 0; i < length && i < uint32_t(levels.size()) && (off + i) < len;
+						++i) {
+					_output.chars.at(uint16_t(first + off + i)).bidiLevel = levels[i];
+				}
+				if (off == 0) {
+					const auto resolved = (baseLevel & 1) ? TextDirection::RightToLeft
+														  : TextDirection::LeftToRight;
+					line.direction = resolved;
+					// remember the paragraph base so the next wrapped line resolves the same way (#2)
+					if (_defaultDirection == TextDirection::Neutral
+							&& _paragraphDirection == TextDirection::Neutral) {
+						_paragraphDirection = resolved;
+					}
+				}
+			});
+			// visual run order (rules L1-L2): runs come back already ordered left-to-right
+			bidi.foreachVisualRun(0, len, [&](const BidiRun &run) { runs.emplace_back(run); });
+		}, pool);
+		memory::pool::destroy(pool);
+	}
+
+	if (runs.empty()) {
+		// bidi disabled (or the resolver failed): a single left-to-right run in logical order
+		runs.emplace_back(BidiRun{0, len, 0});
+	}
+
+	// Fast path: with no shaping, a single LTR run and no extra spacing, visual order == logical order
+	// and the positions computed while reading already stand (they carry kerning and optical
+	// alignment) -- leave them. Letter/word-spacing forces the re-layout branch below so the gaps land.
+	if (!_shapingEnabled && runs.size() == 1 && !runs.front().isRightToLeft()
+			&& _textStyle.letterSpacing == 0 && _textStyle.wordSpacing == 0) {
+		return getLineAdvancePos(uint16_t(first + len - 1));
+	}
+
+	const uint16_t unshapedEnd = getLineAdvancePos(uint16_t(first + len - 1));
+
+	// --- Visual placement: walk runs left-to-right from the line's left edge ---
+	const int16_t lineLeft = _output.chars.at(first).pos;
+	if (_shapingEnabled) {
+		for (uint16_t i = first; i < lineEnd; ++i) {
+			auto &cd = _output.chars.at(i);
+
+			/* A reserved box is not shaped and must keep the width it was reserved with.
+
+			It has no face (`face == 0`, and face ids start at 1), so `shapeVisualRun` never
+			reaches it to put an advance back - zeroing it here would collapse the box and shift
+			everything after it to the left. A swallowed control character wears the same marker
+			but has no width to lose. */
+			if (cd.charID == CharLayoutData::InvalidChar && cd.advance > 0) {
+				continue;
+			}
+
+			cd.gid = 0;
+			cd.advance = 0;
+			cd.yOffset = 0;
+		}
+	}
+
+	int32_t x = lineLeft;
+	for (auto &run : runs) {
+		const uint16_t runFirst = uint16_t(first + run.offset);
+		const uint16_t runEnd = uint16_t(runFirst + run.length);
+		const bool rtl = run.isRightToLeft();
+
+		if (_shapingEnabled) {
+			x = shapeVisualRun(runFirst, uint16_t(run.length), rtl, x);
+		} else if (!rtl) {
+			for (uint16_t i = runFirst; i < runEnd; ++i) {
+				auto &cd = _output.chars.at(i);
+				// A reserved box has the width it asked for; letter-spacing is a property of
+				// text and would quietly widen the hole an image sits in.
+				if (cd.charID != CharLayoutData::InvalidChar) {
+					if (const int16_t sp = graphemeSpacing(cd.charID)) {
+						cd.advance = uint16_t(
+								cd.advance + sp); // letter/word-spacing folds into the cell
+					}
+				}
+				cd.pos = int16_t(x);
+				x += cd.advance;
+			}
+		} else {
+			// RTL run with no shaping: visual order is reverse-logical. Mirror Bidi_Mirrored chars
+			// (UAX #9 L4) by swapping in the mirror glyph while keeping the logical code point (so
+			// copy/measure still see '('). The shaping path lets HarfBuzz mirror instead.
+			for (uint16_t i = runEnd; i-- > runFirst;) {
+				auto &cd = _output.chars.at(i);
+				if (const char32_t mirror = TextBidi::mirrorCodepoint(cd.charID)) {
+					if (auto *face = faceById(cd.face)) {
+						if (const uint16_t gi = face->getGlyphIndex(mirror)) {
+							cd.gid = gi;
+						}
+					}
+				}
+				if (cd.charID != CharLayoutData::InvalidChar) {
+					if (const int16_t sp = graphemeSpacing(cd.charID)) {
+						cd.advance = uint16_t(cd.advance + sp);
+					}
+				}
+				cd.pos = int16_t(x);
+				x += cd.advance;
+			}
+		}
+	}
+
+	const uint16_t shapedEnd = uint16_t(x < lineLeft ? lineLeft : x);
+	if (request == ContentRequest::Normal) {
+		return shapedEnd;
+	}
+	return (unshapedEnd > shapedEnd) ? unshapedEnd : shapedEnd;
+}
+
+// Shape one single-level bidi run and place it starting at x. The run is split into maximal same-face
+// sub-runs; sub-runs lay out left-to-right, but in REVERSE logical order for an RTL run (its first
+// logical sub-run is visually rightmost). HarfBuzz reverses glyphs within an RTL sub-run itself. A
+// sub-run whose face is unknown, or that fails to shape, leaves its chars at gid 0 (renders nothing).
+// Each glyph maps back to its source char by cluster; cluster members with no glyph (e.g. the tail of
+// a ligature) keep gid 0 and collapse onto the ligature.
+//
+// Limitation (later refinement): one glyph per source cluster -- a decomposition that expands one code
+// point into N glyphs keeps only the last.
+int32_t Formatter::shapeVisualRun(uint16_t runFirst, uint16_t runLen, bool rtl, int32_t x) {
+	if (runLen == 0 || !_primaryFontSet) {
+		return x;
+	}
+	const uint16_t runEnd = uint16_t(runFirst + runLen);
+
+	// maximal same-face sub-runs, in logical order
+	struct SubRun {
+		uint16_t first;
+		uint16_t len;
+	};
+	Vector<SubRun> subs;
+	for (uint16_t s = runFirst; s < runEnd;) {
+		const uint16_t f = _output.chars.at(s).face;
+		uint16_t e = s;
+		while (e < runEnd && _output.chars.at(e).face == f) { ++e; }
+		subs.emplace_back(SubRun{s, uint16_t(e - s)});
+		s = e;
+	}
+
+	Vector<char32_t> buf;
+	Vector<ShapedGlyph> glyphs;
+
+	auto placeSub = [&](uint16_t subFirst, uint16_t subLen) {
+		FontFaceObject *face = faceById(_output.chars.at(subFirst).face);
+		if (!face) {
+			/* A sub-run with no face is not text to shape. The case that matters is a RESERVED
+			BOX - an inline object, which has no face by construction (ids start at 1) and already
+			carries the width it was reserved with. It still has to be placed and still has to
+			move the pen: returning here left it at a stale position and drew everything after it
+			on top of it. */
+			for (uint16_t i = subFirst; i < uint16_t(subFirst + subLen); ++i) {
+				auto &cd = _output.chars.at(i);
+				cd.pos = int16_t(x);
+				x += cd.advance;
+			}
+			return;
+		}
+
+		buf.clear();
+		buf.reserve(subLen);
+		for (uint16_t i = subFirst; i < uint16_t(subFirst + subLen); ++i) {
+			auto ch = _output.chars.at(i).charID;
+			buf.emplace_back(ch == CharLayoutData::InvalidChar ? char32_t(0x20) : ch);
+		}
+
+		glyphs.clear();
+		if (!face->shape(buf.data(), buf.size(),
+					rtl ? TextDirection::RightToLeft : TextDirection::LeftToRight, glyphs,
+					_textStyle.enableLigatures)) {
+			return;
+		}
+		// Place one glyph per source char. A cluster that shapes to several glyphs (a 1->N
+		// decomposition) keeps its first glyph on the base char and routes the rest to continuation
+		// entries spliced in at finalize (#7). HarfBuzz emits a cluster's glyphs contiguously.
+		// Letter/word-spacing (#9) is added once per grapheme, after the whole cluster.
+		uint32_t prevCluster = 0xFFFF'FFFFu;
+		uint16_t prevBaseIdx = 0;
+		auto closeGrapheme = [&]() {
+			if (prevCluster == 0xFFFF'FFFFu) {
+				return;
+			}
+			auto &pcd = _output.chars.at(prevBaseIdx);
+			if (const int16_t sp = graphemeSpacing(pcd.charID)) {
+				pcd.advance = uint16_t(pcd.advance + sp);
+				x += sp;
+			}
+		};
+		for (auto &g : glyphs) {
+			if (g.cluster >= uint32_t(subLen)) {
+				continue;
+			}
+			const uint16_t baseIdx = uint16_t(subFirst + g.cluster);
+			if (g.cluster != prevCluster) {
+				closeGrapheme(); // letter/word-spacing gap before the next grapheme
+				auto &cd = _output.chars.at(baseIdx);
+				cd.gid = uint16_t(g.glyphId);
+				cd.pos = int16_t(x + g.xOffset);
+				cd.advance = uint16_t(g.xAdvance < 0 ? 0 : g.xAdvance);
+				cd.yOffset = g.yOffset;
+				prevCluster = g.cluster;
+				prevBaseIdx = baseIdx;
+			} else {
+				// extra glyph of the same source char -> continuation (virtual ContinuationChar)
+				auto &base = _output.chars.at(baseIdx);
+				base.flags |= CharLayoutData::FlagHasContinuation;
+				CharLayoutData cont{};
+				cont.charID = CharLayoutData::ContinuationChar;
+				cont.flags = CharLayoutData::FlagGlyphContinuation;
+				cont.face = base.face;
+				cont.bidiLevel = base.bidiLevel;
+				cont.gid = uint16_t(g.glyphId);
+				cont.pos = int16_t(x + g.xOffset);
+				cont.advance = uint16_t(g.xAdvance < 0 ? 0 : g.xAdvance);
+				cont.yOffset = g.yOffset;
+				_pendingContinuations.emplace_back(PendingGlyph{baseIdx, cont});
+			}
+			x += g.xAdvance;
+		}
+		closeGrapheme(); // trailing spacing for the last grapheme of the sub-run
+	};
+
+	if (!rtl) {
+		for (auto &s : subs) { placeSub(s.first, s.len); }
+	} else {
+		for (size_t i = subs.size(); i-- > 0;) { placeSub(subs[i].first, subs[i].len); }
+	}
+
+	return x;
+}
 
 void Formatter::setLineHeightAbsolute(uint16_t val) {
 	lineHeight = val;
@@ -290,13 +695,19 @@ void Formatter::pushLineFiller(bool replaceLastChar) {
 		auto &bc = _output.chars.back();
 		bc.charID = _fillerChar;
 		bc.advance = charDef.xAdvance;
-	} else {
-		_output.chars.emplace_back(CharLayoutData{_fillerChar, lineX, charDef.xAdvance, faceId});
+		bc.gid = charDef.glyphIndex;
+	} else if (charNum < maxOf<uint16_t>()) { // the filler is not worth wrapping the index for
+		_output.chars.emplace_back(
+				CharLayoutData{_fillerChar, lineX, charDef.xAdvance, faceId, charDef.glyphIndex});
 		charNum++;
 	}
 }
 
 bool Formatter::pushChar(char32_t ch) {
+	if (charNum == maxOf<uint16_t>()) {
+		return reportOverflow("more than 65535 characters in one layout");
+	}
+
 	if (_textStyle.textTransform == TextTransform::Uppercase) {
 		ch = sprt::unicode::toupper(ch);
 	} else if (_textStyle.textTransform == TextTransform::Lowercase) {
@@ -322,7 +733,7 @@ bool Formatter::pushChar(char32_t ch) {
 
 	auto posX = lineX;
 
-	CharLayoutData spec{charDef.charID, posX, charDef.xAdvance, faceId};
+	CharLayoutData spec{charDef.charID, posX, charDef.xAdvance, faceId, charDef.glyphIndex};
 
 	if (ch == static_cast<char32_t>(0x00AD)) {
 		if (_textStyle.hyphens == Hyphens::Manual || _textStyle.hyphens == Hyphens::Auto) {
@@ -337,22 +748,28 @@ bool Formatter::pushChar(char32_t ch) {
 			wordWrapPos = charNum + 1;
 		}
 		auto newlineX = lineX + charDef.xAdvance;
+		if (newlineX > maxOf<int16_t>()) {
+			return reportOverflow("line x position exceeds 32767 layout units");
+		}
 		if (maxWidth && lineX > maxWidth) {
 			pushLineFiller();
 			return false;
 		}
-		lineX = newlineX;
+		lineX = int16_t(newlineX);
 	} else if (charDef) {
 		if (charNum == firstInLine && isSpecial(ch)) {
 			spec.pos -= charDef.xAdvance / 2;
 			lineX += charDef.xAdvance / 2;
 		} else {
 			auto newlineX = lineX + charDef.xAdvance;
+			if (newlineX > maxOf<int16_t>()) {
+				return reportOverflow("line x position exceeds 32767 layout units");
+			}
 			if (maxWidth && lineX > maxWidth) {
 				pushLineFiller(true);
 				return false;
 			}
-			lineX = newlineX;
+			lineX = int16_t(newlineX);
 		}
 	}
 	charNum++;
@@ -372,11 +789,23 @@ bool Formatter::pushSpace(bool wrap) {
 }
 
 bool Formatter::pushTab() {
+	if (charNum == maxOf<uint16_t>()) {
+		return reportOverflow("more than 65535 characters in one layout");
+	}
+
 	CharShape charDef = _primaryFontSet->getChar(' ', faceId);
 
 	auto posX = lineX;
-	auto tabPos = (lineX + charDef.xAdvance) / (charDef.xAdvance * 4) + 1;
-	lineX = tabPos * charDef.xAdvance * 4;
+	if (charDef.xAdvance > 0) {
+		auto tabPos = (lineX + charDef.xAdvance) / (charDef.xAdvance * 4) + 1;
+		// A tab advances up to 4 space widths at once, so it hits the int16_t x ceiling
+		// four times sooner than a regular char would
+		const int32_t newX = tabPos * charDef.xAdvance * 4;
+		if (newX > maxOf<int16_t>()) {
+			return reportOverflow("line x position exceeds 32767 layout units");
+		}
+		lineX = int16_t(newX);
+	}
 
 	charNum++;
 	_output.chars.emplace_back(
@@ -417,24 +846,64 @@ bool Formatter::pushLine(uint16_t first, uint16_t len, bool forceAlign) {
 		return false;
 	}
 
+	if (uint32_t(lineY) + currentLineHeight > maxOf<uint16_t>()) {
+		// The line that would not fit is dropped whole, chars included: a line entry cannot
+		// carry a wrapped baseline, and chars without a line would be re-attributed to the
+		// previous baseline by finalize()'s count fixup - a subtler lie than a clean cut.
+		if (charNum > first) {
+			_output.chars.resize(first);
+			charNum = first;
+			if (!_pendingContinuations.empty()) {
+				size_t w = 0;
+				for (size_t i = 0; i < _pendingContinuations.size(); ++i) {
+					if (_pendingContinuations[i].insertAfter < first) {
+						_pendingContinuations[w++] = _pendingContinuations[i];
+					}
+				}
+				_pendingContinuations.resize(w);
+			}
+		}
+		firstInLine = charNum;
+		wordWrapPos = charNum;
+		return reportOverflow("total layout height exceeds 65535 layout units");
+	}
+
 	uint16_t linePos = lineY + currentLineHeight;
 
 	if (len > 0) {
 		_output.lines.emplace_back(LineLayoutData{first, len, linePos, currentLineHeight});
-		uint16_t advance = getLineAdvancePos(first + len - 1);
+
+		/* Resolve the line's base direction (CSS `direction`) and, when bidi is enabled, the UAX #9
+		embedding levels of its characters. `start`/`end` alignment is then resolved against the
+		line's base direction, CSS-style.
+
+		This is a PROVISIONAL answer for the `Neutral` case. layoutLine, just below, overwrites it
+		with the base the bidi pass actually resolved - but only when bidi is ENABLED. With bidi
+		off there is nothing to resolve a neutral base against, so it stays LeftToRight and a
+		Persian paragraph would align `start` to the left with no complaint. That combination is
+		refused upstream: LabelBase::updateFormatSpec turns bidi on whenever the direction is
+		Neutral, and this comment is the reason it does. */
+		_output.lines.back().direction = (_defaultDirection == TextDirection::Neutral)
+				? TextDirection::LeftToRight
+				: _defaultDirection;
+
+		// Resolve bidi levels, reorder the line into visual order and (when enabled) shape it; the
+		// return value is the line's true visual width, consumed by the alignment/justify below (#3).
+		uint16_t advance = layoutLine(first, len);
+		const TextAlign align = resolveTextAlign(_output.lines.back().direction);
 		uint16_t offsetLeft =
 				(advance < (width + lineOffset)) ? ((width + lineOffset) - advance) : 0;
-		if (offsetLeft > 0 && alignment == TextAlign::Right) {
+		if (offsetLeft > 0 && align == TextAlign::Right) {
 			for (uint16_t i = first; i < first + len; i++) {
 				_output.chars.at(i).pos += offsetLeft;
 			}
-		} else if (offsetLeft > 0 && alignment == TextAlign::Center) {
+		} else if (offsetLeft > 0 && align == TextAlign::Center) {
 			offsetLeft /= 2;
 			for (uint16_t i = first; i < first + len; i++) {
 				_output.chars.at(i).pos += offsetLeft;
 			}
-		} else if ((offsetLeft > 0 || (advance > width + lineOffset))
-				&& alignment == TextAlign::Justify && forceAlign && len > 0) {
+		} else if ((offsetLeft > 0 || (advance > width + lineOffset)) && align == TextAlign::Justify
+				&& forceAlign && len > 0) {
 			int16_t joffset =
 					(advance > width + lineOffset) ? (width + lineOffset - advance) : offsetLeft;
 			uint16_t spacesCount = 0;
@@ -511,7 +980,7 @@ void Formatter::updateLineHeight(uint16_t first, uint16_t last) {
 	}
 }
 
-Formatter::Output::Output(TextLayoutData<memory::StandartInterface> *d)
+Formatter::Output::Output(TextLayoutData<mem_std::Interface> *d)
 : width(&d->width)
 , height(&d->height)
 , maxAdvance(&d->maxAdvance)
@@ -535,7 +1004,7 @@ bool Formatter::pushLineBreak() {
 		return true;
 	}
 
-	if (firstInLine >= wordWrapPos - 1 && (maxLines != 0 && _output.lines.size() + 1 != maxLines)) {
+	if (firstInLine + 1 >= wordWrapPos && (maxLines != 0 && _output.lines.size() + 1 != maxLines)) {
 		return true;
 	}
 
@@ -599,6 +1068,9 @@ bool Formatter::pushLineBreak() {
 }
 
 bool Formatter::pushLineBreakChar() {
+	if (charNum == maxOf<uint16_t>()) {
+		return reportOverflow("more than 65535 characters in one layout");
+	}
 	charNum++;
 	_output.chars.emplace_back(CharLayoutData{char32_t(0x0A), lineX, 0, 0});
 
@@ -606,6 +1078,7 @@ bool Formatter::pushLineBreakChar() {
 		return false;
 	}
 	lineX = 0;
+	_paragraphDirection = TextDirection::Neutral; // a hard break ends the paragraph
 
 	return true;
 }
@@ -662,6 +1135,9 @@ bool Formatter::readChars(WideStringView &r, const Vector<uint8_t> &hyph) {
 
 		if (c < char32_t(0x20)) {
 			if (emplaceAllChars) {
+				if (charNum == maxOf<uint16_t>()) {
+					return reportOverflow("more than 65535 characters in one layout");
+				}
 				charNum++;
 				_output.chars.emplace_back(
 						CharLayoutData{CharLayoutData::InvalidChar, lineX, 0, 0});
@@ -930,6 +1406,9 @@ bool Formatter::read(const FontParameters &f, const TextParameters &s, uint16_t 
 	_primaryFontSet = nullptr;
 
 	Rc<FontFaceSet> primaryLayout = fontCallback(f);
+	if (!primaryLayout) {
+		return false;
+	}
 	return readWithRange(RangeLayoutData{false, false, s.textDecoration, s.verticalAlign,
 							 uint32_t(_output.chars.size()), 0, Color4B(s.color, s.opacity),
 							 blockHeight, primaryLayout->getMetrics(), primaryLayout},
@@ -964,6 +1443,43 @@ bool Formatter::readWithRange(RangeLayoutData &&range, const TextParameters &s, 
 	b = 0;
 
 	lineX += frontOffset;
+
+	// #6: realise CSS `unicode-bidi` by bracketing the span with the Unicode bidi controls the
+	// resolver understands. No-op unless bidi is enabled and the mode opens an embedding/isolate.
+	char32_t bidiClose = 0, bidiClose2 = 0;
+	if (_bidiEnabled && _textStyle.bidi != BidiMode::Normal) {
+		const bool rtl = (_textStyle.direction == TextDirection::RightToLeft);
+		const bool neutral = (_textStyle.direction == TextDirection::Neutral);
+		char32_t open = 0, open2 = 0;
+		switch (_textStyle.bidi) {
+		case BidiMode::Embed: // LRE / RLE ... PDF
+			open = rtl ? 0x202B : 0x202A;
+			bidiClose = 0x202C;
+			break;
+		case BidiMode::BidiOverride: // LRO / RLO ... PDF
+			open = rtl ? 0x202E : 0x202D;
+			bidiClose = 0x202C;
+			break;
+		case BidiMode::Isolate: // LRI / RLI / FSI ... PDI
+			open = neutral ? 0x2068 : (rtl ? 0x2067 : 0x2066);
+			bidiClose = 0x2069;
+			break;
+		case BidiMode::IsolateOverride: // isolate + override ... PDF PDI
+			open = neutral ? 0x2068 : (rtl ? 0x2067 : 0x2066);
+			open2 = rtl ? 0x202E : 0x202D;
+			bidiClose = 0x202C;
+			bidiClose2 = 0x2069;
+			break;
+		case BidiMode::Plaintext: // FSI ... PDI (base level resolved per isolated run)
+			open = 0x2068;
+			bidiClose = 0x2069;
+			break;
+		case BidiMode::Normal: break;
+		}
+		pushBidiControl(open);
+		pushBidiControl(open2);
+	}
+
 	WideStringView r(str, len);
 	if (_textStyle.hyphens == Hyphens::Auto && _hyphens) {
 		while (!r.empty()) {
@@ -981,6 +1497,10 @@ bool Formatter::readWithRange(RangeLayoutData &&range, const TextParameters &s, 
 	} else {
 		readChars(r);
 	}
+
+	// close the unicode-bidi embedding/isolate opened above (reverse order)
+	pushBidiControl(bidiClose);
+	pushBidiControl(bidiClose2);
 
 	range.count = uint32_t(_output.chars.size() - range.start);
 	if (range.count > 0) {
@@ -1029,6 +1549,13 @@ bool Formatter::readWithRange(RangeLayoutData &&range, const TextParameters &s, 
 
 	if (charNum == firstInLine && lineOffset > 0) {
 		lineX += lineOffset;
+	}
+
+	if (charNum == maxOf<uint16_t>()) {
+		return reportOverflow("more than 65535 characters in one layout");
+	}
+	if (int32_t(lineX) + blockWidth > maxOf<int16_t>()) {
+		return reportOverflow("line x position exceeds 32767 layout units");
 	}
 
 	CharLayoutData spec{CharLayoutData::InvalidChar, lineX, blockWidth, 0};

@@ -79,20 +79,17 @@ static bool isWebp(const uint8_t *data, size_t dataLen) {
 
 static bool getWebpImageSize(const io::Producer &file, StackBuffer<512> &data, uint32_t &width,
 		uint32_t &height) {
-	if (isWebp(data.data(), data.size())) {
-		auto reader = BytesViewTemplate<sprt::endian::little>(data.data() + 24, 6);
+	if (isWebp(data.data(), data.size()) && data.size() >= 30) {
+		// simple VP8 (lossy) key frame: after the 3-byte frame tag and the
+		// 0x9d 0x01 0x2a start code (offsets 23-25), the width and height are
+		// little-endian 16-bit fields whose low 14 bits hold the dimension.
+		auto reader = BytesViewTemplate<sprt::endian::little>(data.data() + 26, 4);
 
-		auto b0 = reader.readUnsigned();
-		auto b1 = reader.readUnsigned();
-		auto b2 = reader.readUnsigned();
-		auto b3 = reader.readUnsigned();
-		auto b4 = reader.readUnsigned();
-		auto b5 = reader.readUnsigned();
+		auto w = reader.readUnsigned16();
+		auto h = reader.readUnsigned16();
 
-		// first 14 bits - width, last 14 bits - height
-
-		width = (b0 | (b1 << 8) | (b2 << 8)) + 1;
-		height = (b3 | (b4 << 8) | (b5 << 8)) + 1;
+		width = w & 0x3FFF;
+		height = h & 0x3FFF;
 
 		return true;
 	}
@@ -138,12 +135,16 @@ static bool loadWebp(const uint8_t *inputData, size_t size, BitmapWriter &output
 				(uint32_t)outputData.width * getBytesPerPixel(outputData.color));
 	}
 
-	outputData.resize(outputData.target, outputData.stride * outputData.height);
+	uint32_t dataLen = 0;
+	if (!checkImageDataSize(outputData, dataLen)) {
+		return false;
+	}
+	outputData.resize(outputData.target, dataLen);
 
 	config.output.colorspace = config.input.has_alpha ? MODE_RGBA : MODE_RGB;
 	config.output.u.RGBA.rgba = outputData.getData(outputData.target, 0);
 	config.output.u.RGBA.stride = outputData.stride;
-	config.output.u.RGBA.size = outputData.stride * outputData.height;
+	config.output.u.RGBA.size = dataLen;
 	config.output.is_external_memory = 1;
 
 	if (WebPDecode(inputData, size, &config) != VP8_STATUS_OK) {

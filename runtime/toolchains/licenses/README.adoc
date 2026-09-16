@@ -1,0 +1,3 @@
+# OSS licenses
+
+Here are stored licenses for all used open-source software, which may be included in toolchains and target sets.

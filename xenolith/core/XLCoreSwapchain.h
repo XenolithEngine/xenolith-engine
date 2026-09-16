@@ -26,6 +26,7 @@
 
 #include "XLCoreInstance.h"
 #include "XLCoreImageStorage.h"
+#include "XLCoreFrameDamage.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
@@ -45,6 +46,68 @@ public:
 protected:
 	Rc<Ref> _window;
 	Rc<Instance> _instance;
+};
+
+// What is handed to the platform present call. `damage` being empty means "the whole surface
+// changed"; a non-empty list is a hint that only those regions differ from the previously
+// presented image.
+struct SP_PUBLIC PresentInfo {
+	uint64_t presentWindow = 0;
+	SpanView<URect> damage;
+};
+
+// Turns "current frame vs a stored snapshot of what was drawn" into a list of damaged rectangles.
+//
+// Two snapshots are kept:
+//
+//   * per swapchain image index - what that image buffer already holds; bounds a LOAD_OP_LOAD
+//     partial redraw (indexes are reused out of order, and dropped frames update nothing).
+//
+//   * the presented snapshot - what is on screen; the baseline for VK_KHR_incremental_present
+//     rectangles, which are relative to the previously presented image.
+class SP_PUBLIC SwapchainDamage {
+public:
+	// beyond this, the compositor gains nothing over a plain full present
+	static constexpr size_t MaxRects = 8;
+
+	void resize(uint32_t imageCount);
+
+	// What has to be re-rendered into image `imageIndex` for it to hold this frame. Commits the
+	// per-index snapshot. Returns false when the whole image must be re-rendered; an empty `out`
+	// with a true return means the image already holds exactly this frame.
+	bool computeRedrawArea(uint32_t imageIndex, const FrameDamageState *, Extent2 imageExtent,
+			Vector<URect> &out);
+
+	// What changed on screen. Commits the presented snapshot. Returns false when the whole surface
+	// must be considered damaged; an empty `out` with a true return means the screen already shows
+	// this frame.
+	bool computePresentDamage(const FrameDamageState *, Extent2 imageExtent, Vector<URect> &out);
+
+	void invalidateImage(uint32_t imageIndex);
+	void invalidateAll();
+
+protected:
+	struct ImageState {
+		Vector<DamageEntry> snapshot;
+		bool valid = false;
+	};
+
+	// Shared body of both diffs. Callers hold the lock and have already established that `state` is
+	// usable and `prev` is valid; they also commit the snapshot afterwards.
+	bool diff(const ImageState &prev, const FrameDamageState *, Extent2 imageExtent,
+			Vector<URect> &out);
+
+	// Store what this frame drew as the new baseline. A frame that could not be described at all
+	// (`full`) leaves the baseline unusable, so the next frame starts over from a full redraw.
+	static void commit(ImageState &, const FrameDamageState *);
+
+	// A resize invalidates every stored rectangle
+	void checkExtent(Extent2 imageExtent);
+
+	Vector<ImageState> _images;
+	ImageState _presented;
+	Extent2 _extent;
+	mutable sprt::mutex _mutex;
 };
 
 class SP_PUBLIC Swapchain : public Object {
@@ -93,7 +156,16 @@ public:
 
 	virtual Rc<SwapchainAcquiredImage> acquire(bool lockfree, const Rc<Fence> &fence, Status &) = 0;
 
-	virtual Status present(DeviceQueue &queue, ImageStorage *, uint64_t presentWindow) = 0;
+	// `queue` is null when isPresentQueueRequired() is false; only a real WSI swapchain
+	// (vkQueuePresentKHR) actually needs it.
+	virtual Status present(DeviceQueue *queue, ImageStorage *, const PresentInfo &) = 0;
+
+	// Whether presentation goes through a queue from the Present family. A headless device has no
+	// such family at all, so its pseudo-swapchain answers false and the presentation engine skips
+	// the acquisition entirely.
+	virtual bool isPresentQueueRequired() const { return true; }
+
+	SwapchainDamage &getDamage() { return _damage; }
 	virtual void invalidateImage(const ImageStorage *, bool release) = 0;
 	virtual void invalidateImage(uint32_t, bool release) = 0;
 
@@ -120,6 +192,9 @@ protected:
 
 	sprt::mutex _resourceMutex;
 	Rc<Surface> _surface;
+
+	// owned by the swapchain, so recreation resets the history for free
+	SwapchainDamage _damage;
 
 	Vector<Rc<Semaphore>> _invalidatedSemaphores;
 };
@@ -158,6 +233,11 @@ public:
 	const Rc<Swapchain> &getSwapchain() const { return _swapchain; }
 
 	void invalidateImage();
+
+	// Relinquish the acquired image without returning it to the swapchain. Used when the image
+	// is handed back to the engine's reuse pool (a frame discarded before rendering): clearing _image
+	// makes the destructor's invalidateImage a no-op, so the pooled image is accounted for exactly once.
+	void detachImage();
 
 protected:
 	using core::ImageStorage::init;

@@ -1,0 +1,28 @@
+# tbd: install-name=/usr/lib/libiconv.2.dylib current-version=7.0.0 compatibility-version=7.0.0
+# SDK export list — regenerate the stub via `make -f open-sysroot.mk bake-stubs`.
+_iconv
+_iconv_open
+_iconv_close
+_iconvctl
+_iconvlist
+_iconv_canonicalize
+_iconv_open_into
+_libiconv_set_relocation_prefix
+__libiconv_version
+___iconv
+___iconv_free_list
+___iconv_get_list
+__citrus_iconv_open
+__citrus_iconv_close
+__citrus_iconv_canonicalize
+___bsd_iconv
+___bsd_iconv_open
+___bsd_iconv_close
+___bsd_iconvctl
+___bsd_iconvlist
+___bsd_iconv_canonicalize
+___bsd_iconv_open_into
+___bsd_iconv_set_relocation_prefix
+___bsd___iconv
+___bsd___iconv_free_list
+___bsd___iconv_get_list

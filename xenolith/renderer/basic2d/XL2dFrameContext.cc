@@ -26,6 +26,7 @@
 #include "XLCoreLoop.h"
 #include "XLCoreFrameRequest.h"
 #include "XLCoreFrameQueue.h"
+#include "XLCoreRenderSession.h"
 #include "XLDirector.h"
 #include "SPBitmap.h"
 
@@ -74,7 +75,9 @@ void FrameContext2d::onExit() { FrameContext::onExit(); }
 Rc<FrameContextHandle> FrameContext2d::makeHandle(FrameInfo &frame) {
 	auto h = Rc<FrameContextHandle2d>::alloc();
 	h->clock = frame.director->getUpdateTime().app;
-	h->director = frame.director;
+	h->client = frame.director;
+	// Locally built frame: the client is this window's Director, so the id is the local-request 0.
+	h->windowId = 0;
 	h->context = this;
 	h->commands = Rc<CommandList>::create(frame.pool);
 	return h;
@@ -91,16 +94,39 @@ void FrameContext2d::submitHandle(FrameInfo &frame, FrameContextHandle *handle) 
 		handle->waitDependencies.emplace_back(_materialDependency);
 	}
 
-	frame.director->getGlLoop()->performOnThread(
+	// Submit materials (which forwards CompileMaterials on the remote path) before the frame input,
+	// so the server registers the material gating dependency before reconciling the frame against
+	// it. Locally the order does not matter.
+	FrameContext::submitHandle(frame, handle);
+
+	/* Rectangles of this frame the window wants copied out. Taken on the app thread, where the
+	request lives, so no two frames carry the same capture. Submitted every frame, empty when
+	nothing is armed: an unfed input attachment would stall the frame. */
+	Rc<core::FrameCaptureInput> capture;
+	if (_captureAttachmentData) {
+		if (auto server = frame.director->getRenderServer()) {
+			capture = server->takeFrameCaptureInput();
+		}
+		if (!capture) {
+			capture = Rc<core::FrameCaptureInput>::alloc();
+		}
+		frame.resolvedInputs.emplace(_captureAttachmentData);
+	}
+
+	frame.director->performOnRenderThread(
 			[this, req = frame.request, q = _queue, dir = frame.director,
-					h = Rc<FrameContextHandle2d>(h)]() mutable {
-		req->addInput(_vertexAttachmentData, Rc<FrameContextHandle2d>(h));
-		req->addInput(_lightAttachmentData, Rc<FrameContextHandle2d>(h));
-		req->addInput(_particleEmitterAttachmentData, Rc<FrameContextHandle2d>(h));
+					capture = sp::move(capture), h = Rc<FrameContextHandle2d>(h)]() mutable {
+		// One shared handle feeds all three attachments: dedup so the (potentially large) batch is
+		// serialized + shipped only once on the remote path.
+		const core::AttachmentData *atts[] = {_vertexAttachmentData, _lightAttachmentData,
+			_particleEmitterAttachmentData};
+		req->addInput(makeSpanView(atts, 3), Rc<FrameContextHandle2d>(h));
+
+		if (capture) {
+			req->addInput(_captureAttachmentData, sp::move(capture));
+		}
 	},
 			this);
-
-	FrameContext::submitHandle(frame, handle);
 }
 
 bool FrameContext2d::initWithQueue(core::Queue *queue) {
@@ -120,6 +146,8 @@ bool FrameContext2d::initWithQueue(core::Queue *queue) {
 			_lightAttachmentData = it;
 		} else if (it->key == ParticleEmittersAttachment) {
 			_particleEmitterAttachmentData = it;
+		} else if (it->key == core::FrameCaptureAttachmentName) {
+			_captureAttachmentData = it;
 		}
 	}
 

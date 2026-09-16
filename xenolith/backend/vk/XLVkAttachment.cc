@@ -99,14 +99,6 @@ auto BufferAttachment::makeFrameHandle(const FrameQueue &queue) -> Rc<Attachment
 	}
 }
 
-auto ImageAttachment::makeFrameHandle(const FrameQueue &queue) -> Rc<AttachmentHandle> {
-	if (_frameHandleCallback) {
-		return _frameHandleCallback(*this, queue);
-	} else {
-		return Rc<ImageAttachmentHandle>::create(this, queue);
-	}
-}
-
 core::ImageStorage *ImageAttachmentHandle::getImage() const { return _queueData->image; }
 
 bool ImageAttachmentHandle::writeDescriptor(const core::QueuePassHandle &queue,
@@ -140,9 +132,21 @@ uint32_t ImageAttachmentHandle::enumerateDirtyDescriptors(const PassHandle &pass
 
 void ImageAttachmentHandle::enumerateAttachmentObjects(
 		const Callback<void(core::Object *, const core::SubresourceRangeInfo &)> &cb) {
+	/* An ImageStorage without an image is legal (a SwapchainImage before acquire, after
+	setPresented or invalidateImage), and invalidation can race with barrier recording on a worker
+	thread, so report nothing then. The frame's draw targets are retained by
+	FrameQueue::onRenderPassReady; only barrier bookkeeping is skipped. */
 	auto img = getImage();
-	cb(img->getImage(),
-			core::SubresourceRangeInfo(core::ObjectType::Image, img->getImage()->getAspects()));
+	if (!img) {
+		return;
+	}
+
+	auto obj = img->getImage();
+	if (!obj) {
+		return;
+	}
+
+	cb(obj.get(), core::SubresourceRangeInfo(core::ObjectType::Image, obj->getAspects()));
 }
 
 } // namespace stappler::xenolith::vk

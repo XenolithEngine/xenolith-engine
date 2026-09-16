@@ -265,7 +265,10 @@ SP_ATTR_OPTIMIZE_INLINE_FN inline void crossVec3_impl(const float *v1, const flo
 			"ld1 {v0.s}[2],  [%1]           \n\t"
 			"mov v0.s[3], v0.s[0]         \n\t" // q0 = (v1y, v1z, v1x, v1x)
 
-			"ld1 {v1.4s},  [%3]           \n\t"
+			// load v2 as 3 separate floats (a {v1.4s} load would read one float
+			// past the 3-element Vec3 = 4-byte OOB read); lane 3 is set below
+			"ld1 {v1.2s},  [%3]           \n\t"
+			"ld1 {v1.s}[2],  [%4]           \n\t"
 			"mov v1.s[3], v1.s[0]           \n\t"// q1 = (v2x, v2y, v2z, v2x)
 
 			"fmul v2.4s, v0.4s, v1.4s            \n\t"// x = v1y * v2z, y = v1z * v2x
@@ -291,7 +294,7 @@ SP_ATTR_OPTIMIZE_INLINE_FN inline void crossVec3_impl(const float *v1, const flo
 			"st1 {v2.2s},       [%0], 8      \n\t"// V[x, y]
 			"st1 {v2.s}[2],     [%0]         \n\t"// V[z]
 			:
-			: "r"(dst), "r"(v1), "r"((v1+1)), "r"(v2), "r"((v2+1))
+			: "r"(dst), "r"(v1), "r"((v1+1)), "r"(v2), "r"((v2+2))
 			: "v0", "v1", "v2", "memory"
 	);
 }

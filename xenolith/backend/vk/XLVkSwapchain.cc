@@ -160,6 +160,10 @@ bool SwapchainHandle::init(Device &dev, const core::SurfaceInfo &info,
 		data->images.reserve(imageCount);
 		data->presentSemaphores.resize(imageCount);
 
+		// not carried over from `old`: the new images have undefined content, so the
+		// first frame into each index must report full-surface damage
+		_damage.resize(imageCount);
+
 		if (old) {
 			sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 			sprt::unique_lock<sprt::mutex > lock2(old->_resourceMutex);
@@ -229,6 +233,9 @@ SpanView<SwapchainHandle::SwapchainImageData> SwapchainHandle::getImages() const
 auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Status &status)
 		-> Rc<SwapchainAcquiredImage> {
 	if (_deprecated) {
+		// PresentationEngine retries only on Timeout/Declined; a dead swapchain must not
+		// leave status unset (that looked like Ok and cancelled the acquisition timer).
+		status = Status::ErrorCancelled;
 		return nullptr;
 	}
 
@@ -264,7 +271,6 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 		XL_VKAPI_LOG("vkAcquireNextImageKHR: ", imageIndex, " ", ret, " [",
 				sp::platform::clock(ClockType::Monotonic) - t, "]");
 #endif
-		table.vkDeviceWaitIdle(device);
 	});
 
 	if (result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT) {
@@ -272,7 +278,6 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 				"acquire: VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT");
 	}
 
-	Rc<SwapchainAcquiredImage> image;
 	switch (result) {
 	case VK_SUCCESS: {
 		if (sem) {
@@ -293,9 +298,9 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 			++_acquiredImages;
 		}
 
+		status = Status::Ok;
 		return Rc<SwapchainAcquiredImage>::alloc(imageIndex, &_data->images.at(imageIndex),
 				move(sem), this);
-		break;
 	}
 	case VK_SUBOPTIMAL_KHR: {
 		if (sem) {
@@ -317,32 +322,41 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 			++_acquiredImages;
 		}
 
+		status = Status::Ok;
 		return Rc<SwapchainAcquiredImage>::alloc(imageIndex, &_data->images.at(imageIndex),
 				move(sem), this);
-		break;
 	}
 	case VK_ERROR_OUT_OF_DATE_KHR:
 	case VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT:
 		_deprecated = true;
 		releaseSemaphore(ref_cast<Semaphore>(move(sem)));
+		status = getStatus(result);
 		break;
 	case VK_TIMEOUT:
-		releaseSemaphore(ref_cast<Semaphore>(move(sem))); //
+	case VK_NOT_READY:
+		// Lockfree miss (or drawable not ready yet). PresentationEngine arms its
+		// acquisition timer only when status is Timeout or Declined — write it.
+		releaseSemaphore(ref_cast<Semaphore>(move(sem)));
+		status = getStatus(result);
 		break;
 	default:
 		releaseSemaphore(ref_cast<Semaphore>(move(sem)));
-		log::source().error("vk::SwapchainHandle", "Fail to acquire image: ", getStatus(result));
+		status = getStatus(result);
+		log::source().error("vk::SwapchainHandle", "Fail to acquire image: ", status,
+				" (VkResult ", int32_t(result), ")");
 		break;
 	}
 
 	return nullptr;
 }
 
-Status SwapchainHandle::present(core::DeviceQueue &queue, core::ImageStorage *image,
-		uint64_t presentWindow) {
+Status SwapchainHandle::present(core::DeviceQueue *queue, core::ImageStorage *image,
+		const core::PresentInfo &info) {
 	if (_invalid) {
 		return Status::ErrorCancelled;
 	}
+
+	const auto presentWindow = info.presentWindow;
 
 	auto waitSem = (Semaphore *)image->getSignalSem().get();
 	auto waitSemObj = waitSem->getSemaphore();
@@ -373,17 +387,40 @@ Status SwapchainHandle::present(core::DeviceQueue &queue, core::ImageStorage *im
 		nullptr,
 	};
 
-	if (dev->hasExtension(OptionalDeviceExtension::DisplayTiming)) {
+	// Skip VK_GOOGLE_display_timing on portability devices: on MoltenVK a desiredPresentTime freezes
+	// the window on its first frame. Pacing there comes from the OS display link.
+	if (!dev->isPortabilityMode() && dev->hasExtension(OptionalDeviceExtension::DisplayTiming)) {
 		presentTimeInfo.pNext = presentInfo.pNext;
 		presentInfo.pNext = &presentTimeInfo;
 	}
 
+	// VK_KHR_incremental_present: a hint of which regions changed; `rects` must outlive the call.
+	// An empty damage list means "full surface": chain nothing, since rectangleCount == 0
+	// would claim nothing changed.
+	Vector<VkRectLayerKHR> rects;
+	VkPresentRegionKHR region{};
+	VkPresentRegionsKHR regions{VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR, nullptr, 1, &region};
+
+	if (!info.damage.empty() && dev->hasExtension(OptionalDeviceExtension::IncrementalPresent)) {
+		rects.reserve(info.damage.size());
+		for (auto &it : info.damage) {
+			rects.emplace_back(
+					VkRectLayerKHR{{int32_t(it.x), int32_t(it.y)}, {it.width, it.height}, 0});
+		}
+
+		region.rectangleCount = uint32_t(rects.size());
+		region.pRectangles = rects.data();
+
+		regions.pNext = presentInfo.pNext;
+		presentInfo.pNext = &regions;
+	}
+
 	VkResult result = VK_ERROR_UNKNOWN;
-	dev->makeApiCall([&](const DeviceTable &table, VkDevice device) {
+	dev->makeQueueApiCall([&](const DeviceTable &table, VkDevice device) {
 #if XL_VKAPI_DEBUG
 		auto t = sp::platform::clock(ClockType::Monotonic);
 		result =
-				table.vkQueuePresentKHR(static_cast<DeviceQueue &>(queue).getQueue(), &presentInfo);
+				table.vkQueuePresentKHR(static_cast<DeviceQueue *>(queue)->getQueue(), &presentInfo);
 		XL_VKAPI_LOG("[", image->getFrameIndex(), "] vkQueuePresentKHR: ", imageIndex, " ", result,
 				" [", sp::platform::clock(ClockType::Monotonic) - t,
 				"] [timeout: ", t - _presentTime,
@@ -391,7 +428,7 @@ Status SwapchainHandle::present(core::DeviceQueue &queue, core::ImageStorage *im
 		_presentTime = t;
 #else
 		result =
-				table.vkQueuePresentKHR(static_cast<DeviceQueue &>(queue).getQueue(), &presentInfo);
+				table.vkQueuePresentKHR(static_cast<DeviceQueue *>(queue)->getQueue(), &presentInfo);
 #endif
 	});
 
@@ -443,12 +480,22 @@ void SwapchainHandle::invalidateImage(const core::ImageStorage *image, bool rele
 }
 
 void SwapchainHandle::invalidateImage(uint32_t idx, bool release) {
+	// The image is going back without having been presented: whatever was rendered into it (if
+	// anything) is unknown, so the snapshot describing it can no longer be trusted as the base
+	// for a LOAD_OP_LOAD partial redraw.
+	_damage.invalidateImage(idx);
+
 	sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 	auto it = _acquiredIndexes.find(idx);
 	if (it != _acquiredIndexes.end()) {
 		_acquiredIndexes.erase(it);
 		auto dev = static_cast<Device *>(_object.device);
-		if (release && dev->getInfo().features.deviceSwapchainMaintenance1.swapchainMaintenance1
+		// Never release images back to a swapchain that has been invalidated (e.g. a frame discarded
+		// *because* its swapchain was invalidated): the handle is on its way out and
+		// vkReleaseSwapchainImagesEXT on it is illegal. The --_acquiredImages bookkeeping below still
+		// runs; the images are reclaimed when the swapchain itself is destroyed.
+		if (release && !_invalid
+				&& dev->getInfo().features.deviceSwapchainMaintenance1.swapchainMaintenance1
 				&& dev->getTable()->vkReleaseSwapchainImagesEXT) {
 			VkReleaseSwapchainImagesInfoEXT info;
 			info.sType = VK_STRUCTURE_TYPE_RELEASE_SWAPCHAIN_IMAGES_INFO_EXT;

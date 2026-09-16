@@ -47,12 +47,17 @@ SP_ATTR_OPTIMIZE_INLINE_FN inline f32x4 load(float v1, float v2, float v3, float
 	return simde_mm_set_ps(v4, v3, v2, v1);
 }
 
-SP_ATTR_OPTIMIZE_INLINE_FN inline f32x4 load(const float v[4]) { return simde_mm_load_ps(v); }
+// Generic pointer-taking load/store: use the UNALIGNED ops. The signature gives
+// no 16-byte alignment guarantee, so an aligned load_ps/store_ps would fault if
+// these are ever called on a non-16-aligned buffer (e.g. &Vec3.x or a raw
+// float[3]). On aligned data loadu/storeu are as fast as the aligned form on
+// modern x86; the alignas(16) Vec4/Mat4 fast paths still use the aligned macros.
+SP_ATTR_OPTIMIZE_INLINE_FN inline f32x4 load(const float v[4]) { return simde_mm_loadu_ps(v); }
 
 SP_ATTR_OPTIMIZE_INLINE_FN inline f32x4 load(float v) { return simde_mm_load1_ps(&v); }
 
 SP_ATTR_OPTIMIZE_INLINE_FN inline void store(float target[4], const f32x4 &v) {
-	simde_mm_store_ps(target, v);
+	simde_mm_storeu_ps(target, v);
 }
 
 SP_ATTR_OPTIMIZE_INLINE_FN inline f32x4 mul(const f32x4 &v1, const f32x4 &v2) {

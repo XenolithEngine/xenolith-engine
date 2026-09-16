@@ -1,5 +1,6 @@
 /**
  Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -30,10 +31,37 @@
 #include "XlCoreMonitorInfo.h"
 #include "director/XLDirector.h"
 #include "input/XLInputDispatcher.h"
+#include "XLServerAppThread.h"
+#include "resources/XLFrameCapture.h"
+
+#include <stdlib.h> // getenv
 
 #if MODULE_XENOLITH_BACKEND_VK
 #include "XLVkInstance.h"
 #include "XLVkSwapchain.h"
+#include "XLVkHeadlessPresentation.h"
+#endif
+
+#if MODULE_XENOLITH_BACKEND_WEBGPU
+#include "XLWgpuInstance.h"
+#include "XLWgpuPresentation.h"
+#endif
+
+#if MODULE_XENOLITH_BACKEND_MTL
+#include "XLMtlInstance.h"
+#include "XLMtlPresentation.h"
+#endif
+
+#if MODULE_XENOLITH_BACKEND_SOFT
+#include "XLSoftInstance.h"
+#include "XLSoftPresentation.h"
+#include "XLSoftHeadlessPresentation.h"
+#endif
+
+#if MODULE_XENOLITH_BACKEND_GLES
+#include "XLGlesInstance.h"
+#include "XLGlesHeadlessPresentation.h"
+#include "XLGlesWindowedPresentation.h"
 #endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
@@ -42,12 +70,24 @@ XL_DECLARE_EVENT_CLASS(AppWindow, onWindowState);
 
 AppWindow::~AppWindow() { log::source().info("AppWindow", "~AppWindow"); }
 
-bool AppWindow::init(NotNull<Context> ctx, NotNull<AppThread> app, NotNull<NativeWindow> w) {
+bool AppWindow::init(NotNull<Context> ctx, NotNull<ServerAppThread> app, NotNull<NativeWindow> w) {
 	_context = ctx;
 	_application = app;
 	_window = w;
 	_capabilities = _window->getInfo()->capabilities;
 	_windowId = StringView(_window->getInfo()->id).str<String>();
+
+	// Take the application's payload off the WindowInfo here: the WindowInfo is destroyed on the
+	// context thread, but the payload holds app-thread objects (an Rc move is thread-safe). It goes
+	// back to the app thread in end().
+	if (auto data = _window->takeAppData()) {
+		_sceneInfo = static_cast<WindowSceneInfo *>(data.get());
+		if (_sceneInfo) {
+			_sceneInfo->setWindow(this);
+		} else {
+			log::source().error("AppWindow", "WindowInfo::appData is not a WindowSceneInfo");
+		}
+	}
 
 	_presentationEngine = static_cast<core::Loop *>(_context->getGlLoop())
 								  ->makePresentationEngine(this, w->getPreferredOptions());
@@ -56,19 +96,36 @@ bool AppWindow::init(NotNull<Context> ctx, NotNull<AppThread> app, NotNull<Nativ
 }
 
 void AppWindow::runWithQueue(const Rc<core::Queue> &queue) {
-	if (!_presentationEngine->isRunning()) {
-		_presentationEngine->run();
+	// attachRenderQueue defers this to the context thread, and an auxiliary window can be dismissed
+	// before then; starting the engine on a closing window strands a swapchain and breaks
+	// presenting.
+	if (!_window || !_presentationEngine || _inCloseRequest) {
+		log::source().debug("WindowDiag", "runWithQueue skipped (dismissed) id=", _windowId);
+		return;
+	}
 
-		_presentationEngine->scheduleNextImage([this](core::PresentationFrame *, bool success) {
-			// Map windows after frame was rendered
+	if (!_presentationEngine->isRunning()) {
+		// Every non-Root window maps before its first present. Popup/Tooltip need a placed window
+		// for hit-testing and dismiss monitors. Dialog/Utility avoid the deferred map, which breaks
+		// presenting for surviving windows when two deferred decorated windows exist and one is
+		// torn down. Root defers, so it does not show an unpainted window at startup.
+		const auto type = _window->getInfo()->type;
+		if (type != sprt::window::WindowType::Root) {
 			_window->mapWindow();
-		});
+		} else {
+			_mapOnFirstFrame = true;
+		}
+
+		_presentationEngine->run();
+		_presentationEngine->scheduleNextImage(nullptr);
 	}
 }
 
 void AppWindow::run() {
 	auto c = _presentationEngine->getFrameConstraints();
 	_application->performOnAppThread([this, c]() mutable {
+		// _client is set by Director::init (during makeDirector below), before the initial scene
+		// runs, so queue announcements reach the client.
 		_director = _application->handleAppWindowCreated(this, c);
 	}, this);
 }
@@ -79,8 +136,25 @@ void AppWindow::update(core::PresentationUpdateFlags flags) {
 	}
 }
 
+void AppWindow::releaseSceneInfo() {
+	if (!_sceneInfo) {
+		return;
+	}
+	// Destroyed on the app thread: it holds scene-graph objects captured by the opener. `this` is
+	// not captured, the window may be gone by then.
+	_application->performOnAppThread([sceneInfo = move(_sceneInfo)]() mutable {
+		sceneInfo->setWindow(nullptr);
+		sceneInfo->fireClose();
+		sceneInfo = nullptr;
+	}, _application);
+	_sceneInfo = nullptr;
+}
+
 void AppWindow::end() {
 	if (!_presentationEngine) {
+		// The engine never came up (or end() ran twice); the payload still has to be released on
+		// the app thread.
+		releaseSceneInfo();
 		synchronizeClose();
 		return;
 	}
@@ -92,14 +166,22 @@ void AppWindow::end() {
 		engine->end();
 	}
 
-	// Preserve final window capabilities
-	// On Android, through capabilities we know if Director should be preserved
+	// Preserve final window capabilities; on Android they decide whether the Director is preserved.
 	if (_window) {
 		_capabilities = _window->getInfo()->capabilities;
 	}
 
-	_application->performOnAppThread([this, engine = move(engine)]() mutable {
+	_application->performOnAppThread(
+			[this, engine = move(engine), sceneInfo = move(_sceneInfo)]() mutable {
+		_client = nullptr; // the Director (client endpoint) is being destroyed below
 		_application->handleAppWindowDestroyed(this, sp::move(_director));
+		if (sceneInfo) {
+			// Every teardown route (own close, parent cascade, WM dismiss) reaches here, so the
+			// opener's callback fires here.
+			sceneInfo->setWindow(nullptr);
+			sceneInfo->fireClose();
+			sceneInfo = nullptr;
+		}
 		_context->performOnThread([this, engine = move(engine)]() mutable {
 			if (_syncClose) {
 				engine->synchronizeClose();
@@ -116,12 +198,15 @@ void AppWindow::close(bool graceful) {
 		return;
 	}
 
-	if (_context->getLooper()->isOnThisThread()
+	if (_context->getLooper()->isOnThisThread() && _presentationEngine
 			&& _presentationEngine->getOptions().syncConstraintsUpdate) {
 		_syncClose = true;
 	}
 
 	_inCloseRequest = true;
+
+	// Auxiliary windows use the same teardown path: the EndOfLife handshake below makes the app
+	// thread release the window before the engine goes away.
 	_context->performOnThread([this, w = Rc<NativeWindow>(_window), graceful] {
 		if (w) {
 			if (!w->close()) {
@@ -135,23 +220,43 @@ void AppWindow::close(bool graceful) {
 
 		if (!graceful) {
 			end();
-		} else {
+		} else if (_presentationEngine) {
 			_presentationEngine->updateConstraints(core::UpdateConstraintsFlags::EndOfLife,
 					[this, w = Rc<NativeWindow>(w)](bool) {
-				// successful stop
 				end();
 				_window = nullptr;
 			});
+		} else {
+			end();
+			_window = nullptr;
 		}
-	}, this);
+	}, this, true);
 
 	if (_syncClose) {
-		// run looper until successful close
-		// wakeup signal should be in AppWindow::end()
 		_context->getLooper()->run();
 		_syncClose = true;
 		_window = nullptr;
 	}
+}
+
+void AppWindow::hide() {
+	// Auxiliary windows are not pooled, so a dismiss is just a graceful close.
+	close(true);
+}
+
+void AppWindow::setContentExtent(Extent2 extent) {
+	_context->performOnThread([this, extent] {
+		if (_window && _window->setContentExtent(extent)) {
+			if (_presentationEngine) {
+				_presentationEngine->updateConstraints(core::UpdateConstraintsFlags::WindowResized);
+			}
+		}
+	}, this);
+}
+
+uint64_t AppWindow::getSharedWindowId() const {
+	auto objs = _application ? _application->getSharedObjects() : nullptr;
+	return objs ? objs->get(const_cast<AppWindow *>(this)) : 0;
 }
 
 void AppWindow::handleInputEvents(Vector<InputEventData> &&events) {
@@ -168,9 +273,35 @@ void AppWindow::handleInputEvents(Vector<InputEventData> &&events) {
 	}
 
 	_application->performOnAppThread([this, events = sp::move(events)]() mutable {
-		for (auto &event : events) { propagateInputEvent(event); }
+		if (!_client) {
+			return;
+		}
+		// Window-state bookkeeping owned by AppWindow (state mirror + app-side event),
+		// then dispatch the whole batch to the client endpoint of the render session.
+		for (auto &event : events) {
+			if (event.event == InputEventName::WindowState) {
+				_state = event.window.state;
+				onWindowState(this,
+						Value({
+							pair("state", Value(toInt(event.window.state))),
+							pair("changes", Value(toInt(event.window.changes))),
+						}));
+			}
+		}
+		_client->handleInputEvents(getSharedWindowId(), sp::move(events));
 		setReadyForNextFrame();
 	}, this, true);
+}
+
+void AppWindow::handleNativeInputEvents(Vector<InputEventData> &&events) {
+	// Not handleInputEvents(): enter at the native window, so events pass through
+	// NativeWindow::handleInputEvents (pointer bookkeeping, text-input interception) first; it
+	// calls back into handleInputEvents() through the controller.
+	_context->performOnThread([this, events = sp::move(events)]() mutable {
+		if (_window) {
+			_window->handleInputEvents(sp::move(events));
+		}
+	}, this);
 }
 
 void AppWindow::handleTextInput(const TextInputState &state) {
@@ -178,8 +309,11 @@ void AppWindow::handleTextInput(const TextInputState &state) {
 		return;
 	}
 
-	_application->performOnAppThread([this, state = state]() mutable { propagateTextInput(state); },
-			this, true);
+	_application->performOnAppThread([this, state = state]() mutable {
+		if (_client) {
+			_client->handleTextInput(getSharedWindowId(), state);
+		}
+	}, this, true);
 	setReadyForNextFrame();
 }
 
@@ -188,6 +322,13 @@ const WindowInfo *AppWindow::getInfo() const {
 		return _window->getInfo();
 	}
 	return nullptr;
+}
+
+sprt::window::SurfaceBackend AppWindow::getSurfaceBackend() const {
+	if (_window) {
+		return _window->getSurfaceInterfaceInfo().backend;
+	}
+	return sprt::window::SurfaceBackend::Surface;
 }
 
 core::ImageInfo AppWindow::getSwapchainImageInfo(const core::SwapchainConfig &cfg) const {
@@ -200,6 +341,11 @@ core::ImageInfo AppWindow::getSwapchainImageInfo(const core::SwapchainConfig &cf
 	swapchainImageInfo.usage = core::ImageUsage::ColorAttachment;
 	if (cfg.transfer) {
 		swapchainImageInfo.usage |= core::ImageUsage::TransferDst;
+	}
+	// Frame capture requires presented images readable by the pass that drew them; selectConfig()
+	// requests this where the surface allows it.
+	if (cfg.transferSrc) {
+		swapchainImageInfo.usage |= core::ImageUsage::TransferSrc;
 	}
 	return swapchainImageInfo;
 }
@@ -234,6 +380,26 @@ core::ImageViewInfo AppWindow::getSwapchainImageViewInfo(const core::ImageInfo &
 
 core::SwapchainConfig AppWindow::selectConfig(const core::SurfaceInfo &cfg, bool fastMode) {
 	auto c = _context->handleAppWindowSurfaceUpdate(this, cfg, fastMode);
+
+	// Ask for readable presented images where offered. Vulkan guarantees only ColorAttachment for
+	// swapchain images, so a refusal is normal (FrameCapture has a fallback); logged since it
+	// varies by driver and compositor.
+	c.transferSrc = hasFlag(cfg.supportedUsageFlags, core::ImageUsage::TransferSrc);
+
+	// XL_NO_SWAPCHAIN_TRANSFER_SRC=1 pretends the surface refused, to exercise the offscreen path.
+	if (auto value = ::getenv("XL_NO_SWAPCHAIN_TRANSFER_SRC")) {
+		if (StringView(value) != "0") {
+			c.transferSrc = false;
+		}
+	}
+
+	if (!c.transferSrc) {
+		log::source()
+				.info("AppWindow",
+						"Surface does not support TransferSrc on presented images: frame capture "
+						"will need " "an offscreen frame");
+	}
+
 	// preserve selected config for app thread
 	_application->performOnAppThread([this, c, fastMode] {
 		_appSwapchainConfig = c;
@@ -246,18 +412,46 @@ core::SwapchainConfig AppWindow::selectConfig(const core::SurfaceInfo &cfg, bool
 
 void AppWindow::acquireFrameData(NotNull<core::PresentationFrame> frame,
 		Function<void(NotNull<core::PresentationFrame>)> &&cb) {
+	// Tag the frame remote up front, on the presentation thread, so the engine tracks it for
+	// connection-reset cleanup while it awaits the client's reply. Read the atomic mirror, not
+	// `_client`, which is written on the app thread.
+	if (_clientIsRemote.load(sprt::memory_order_acquire)) {
+		frame->markRemote();
+	}
+
+
 	_application->performOnAppThread(
 			[this, frame = Rc<core::PresentationFrame>(frame), cb = sp::move(cb),
 					req = Rc<core::FrameRequest>(frame->getRequest())]() mutable {
-		if (_director->acquireFrame(req)) {
-			_context->performOnThread(
-					[frame = move(frame), cb = sp::move(cb)]() mutable { cb(frame); }, this);
+		auto proxy = Rc<core::LocalFrameRequestProxy>::create(req);
+		if (_client && proxy) {
+			_client->acquireFrame(getSharedWindowId(), proxy,
+					[guard = Rc<AppWindow>(this), frame, cb = sp::move(cb)](bool success) mutable {
+				guard->_context->performOnThread(
+						[frame = move(frame), cb = sp::move(cb)]() mutable {
+					cb(frame); //
+				}, guard);
+			});
+		} else {
+			// No client (or proxy): the window is mid-teardown or never got a Director. Invalidate
+			// the frame so the completion runs; dropping it would wedge EndOfLife.
+			log::source().debug("WindowDiag", "acquireFrameData dropped id=", _windowId);
+			_context->performOnThread([frame = move(frame)]() mutable {
+				if (frame) {
+					frame->invalidate();
+				}
+			}, this);
 		}
 	},
 			this);
 }
 
 void AppWindow::handleFrameReady(NotNull<core::PresentationFrame> frame) {
+	_firstFrameCompleted = true;
+	if (_mapOnFirstFrame && !_inCloseRequest && _window) {
+		_mapOnFirstFrame = false;
+		_window->mapWindow();
+	}
 	if (_window) {
 		_window->handleFrameReady(frame->getInfo());
 	}
@@ -276,13 +470,141 @@ void AppWindow::handleSwapchainUpdated(const core::FrameConstraints &c) {
 }
 
 Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
-	auto info = _window->getSurfaceInterfaceInfo();
+#if MODULE_XENOLITH_BACKEND_WEBGPU
+	if (cinstance->getApi() == core::InstanceApi::WebGPU) {
+		auto ifaceInfo = _window->getSurfaceInterfaceInfo();
+		auto instance = static_cast<webgpu::Instance *>(cinstance.get());
+
+		WGPUSurfaceDescriptor desc = WGPU_SURFACE_DESCRIPTOR_INIT;
+
+		WGPUSurfaceSourceXCBWindow xcbSrc = WGPU_SURFACE_SOURCE_XCB_WINDOW_INIT;
+		WGPUSurfaceSourceWaylandSurface waylandSrc = WGPU_SURFACE_SOURCE_WAYLAND_SURFACE_INIT;
+
+		switch (ifaceInfo.backend) {
+		case sprt::window::SurfaceBackend::Xcb:
+			xcbSrc.connection = ifaceInfo.xcb.connection;
+			xcbSrc.window = ifaceInfo.xcb.window;
+			desc.nextInChain = &xcbSrc.chain;
+			break;
+		case sprt::window::SurfaceBackend::Wayland:
+			waylandSrc.display = ifaceInfo.wayland.display;
+			waylandSrc.surface = ifaceInfo.wayland.surface;
+			desc.nextInChain = &waylandSrc.chain;
+			break;
+		case sprt::window::SurfaceBackend::Canvas:
+			desc.nextInChain = nullptr; // the JS binding returns the OffscreenCanvas surface
+			break;
+		default:
+			log::source().error("AppWindow",
+					"Surface backend is not supported for WebGPU: ", toInt(ifaceInfo.backend));
+			return nullptr;
+		}
+
+		auto surface = wgpuInstanceCreateSurface(instance->getInstance(), &desc);
+		if (!surface) {
+			log::source().error("AppWindow", "Fail to create WGPUSurface");
+			return nullptr;
+		}
+
+		return Rc<webgpu::Surface>::create(instance, surface);
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_MTL
+	if (cinstance->getApi() == core::InstanceApi::Metal) {
+		auto ifaceInfo = _window->getSurfaceInterfaceInfo();
+		if (ifaceInfo.backend != sprt::window::SurfaceBackend::Metal || !ifaceInfo.metal.layer) {
+			log::source().error("AppWindow",
+					"Surface backend is not supported for Metal: ", toInt(ifaceInfo.backend));
+			return nullptr;
+		}
+
+		return Rc<mtl::Surface>::create(static_cast<mtl::Instance *>(cinstance.get()),
+				ifaceInfo.metal.layer, this);
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_SOFT
+	if (cinstance->getApi() == core::InstanceApi::Software) {
+		auto instance = static_cast<soft::Instance *>(cinstance.get());
+		auto ifaceInfo = _window->getSurfaceInterfaceInfo();
+
+		if (ifaceInfo.backend == sprt::window::SurfaceBackend::Headless) {
+			// No window system: the surface is synthesized from the window extent and backs a
+			// pseudo-swapchain of ordinary bitmaps.
+			return Rc<soft::HeadlessSurface>::create(instance, _window->getExtent(), this);
+		}
+
+		if (ifaceInfo.backend == sprt::window::SurfaceBackend::Display) {
+			log::source().error("AppWindow",
+					"Direct-display (KMS) presentation is not implemented for the software "
+					"backend: it needs dumb buffers and page flipping, which the DRM binding does "
+					"not carry yet");
+			return nullptr;
+		}
+
+		// Otherwise use the window system's CPU buffers, so the rasterizer writes directly into
+		// what is presented. A window system without them returns null; there is no copying
+		// fallback.
+		auto software = _window->makeSoftwareSurface();
+		if (!software) {
+			log::source()
+					.error("AppWindow",
+							"Window system cannot provide a CPU-writable buffer for the software "
+							"backend " "(surface backend ",
+							toInt(ifaceInfo.backend), ")");
+			return nullptr;
+		}
+
+		return Rc<soft::Surface>::create(instance, sp::move(software), this);
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_GLES
+	if (cinstance->getApi() == core::InstanceApi::GLES) {
+		auto instance = static_cast<gles::Instance *>(cinstance.get());
+		auto ifaceInfo = _window->getSurfaceInterfaceInfo();
+
+		if (ifaceInfo.backend == sprt::window::SurfaceBackend::Headless) {
+			// No window system: the surface is synthesized from the window extent and backs a
+			// pseudo-swapchain of GL textures.
+			return Rc<gles::HeadlessSurface>::create(instance, _window->getExtent(), this);
+		}
+
+		if (ifaceInfo.backend == sprt::window::SurfaceBackend::Wayland) {
+			// The device's EGL display was opened on the session's wl_display, so the surface is
+			// the wl_surface itself and the swapchain builds an EGLWindowSurface from it.
+			return Rc<gles::WindowedSurface>::create(instance, ifaceInfo.backend,
+					ifaceInfo.wayland.display, ifaceInfo.wayland.surface, _window->getExtent(),
+					this);
+		}
+
+		if (ifaceInfo.backend == sprt::window::SurfaceBackend::Xcb) {
+			return Rc<gles::WindowedSurface>::create(instance, ifaceInfo.backend,
+					ifaceInfo.xcb.connection, reinterpret_cast<void *>(ifaceInfo.xcb.window),
+					_window->getExtent(), this);
+		}
+
+		log::source().error("AppWindow",
+				"Windowed presentation is not implemented for the GLES backend: surface backend ",
+				toInt(ifaceInfo.backend));
+		return nullptr;
+	}
+#endif
+
 #if MODULE_XENOLITH_BACKEND_VK
+	auto info = _window->getSurfaceInterfaceInfo();
 	if (cinstance->getApi() != core::InstanceApi::Vulkan) {
 		return nullptr;
 	}
 
 	auto instance = static_cast<vk::Instance *>(cinstance.get());
+
+	if (info.backend == sprt::window::SurfaceBackend::Headless) {
+		// No window system: the surface is synthesized from the window extent and backs a
+		// pseudo-swapchain of ordinary device images.
+		return Rc<vk::HeadlessSurface>::create(instance, _window->getExtent(), this);
+	}
 
 	VkSurfaceKHR surface = VK_NULL_HANDLE;
 
@@ -371,6 +693,18 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 			return nullptr;
 		}
 #endif
+		break;
+	}
+	case sprt::window::SurfaceBackend::Display: {
+#if defined(VK_KHR_display)
+		// Direct-to-display (no window system): create a plane surface on the connector the window
+		// system opened, at the mode it resolved, both from info.display, not WindowInfo.
+		surface = instance->createDisplayPlaneSurface(info);
+		if (surface == VK_NULL_HANDLE) {
+			return nullptr;
+		}
+#endif
+		break;
 	}
 	default: break;
 	}
@@ -384,7 +718,36 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 }
 
 core::FrameConstraints AppWindow::exportConstraints(uint64_t &serial) const {
-	return _window->exportConstraints(serial);
+	auto c = _window->exportConstraints(serial);
+	_application->performOnAppThread([this, c] {
+		const_cast<sprt::window::FrameConstraints &>(_appFrameConstraints) = c;
+	}, const_cast<AppWindow *>(this));
+
+	// A resize changes geometry too, and both are read here on the context thread, so the geometry
+	// mirror is updated in the same pass.
+	notifyWindowGeometry();
+	return c;
+}
+
+void AppWindow::notifyWindowGeometry() const {
+	if (!_window) {
+		return;
+	}
+
+	auto geometry = _window->getWindowGeometry();
+	_application->performOnAppThread([this, geometry] {
+		if (_appWindowGeometry == geometry) {
+			// Nothing moved or resized; compared here since the context thread has no copy of the
+			// mirror.
+			return;
+		}
+		// The mirror is `const` to readers; this is the single writer, on the app thread (as with
+		// _appFrameConstraints).
+		const_cast<sprt::window::WindowGeometry &>(_appWindowGeometry) = geometry;
+		if (_client) {
+			_client->handleWindowGeometryChanged(getSharedWindowId(), geometry);
+		}
+	}, const_cast<AppWindow *>(this));
 }
 
 void AppWindow::setFrameOrder(uint64_t frameOrder) {
@@ -395,6 +758,11 @@ void AppWindow::setFrameOrder(uint64_t frameOrder) {
 
 void AppWindow::updateConstraints(core::UpdateConstraintsFlags flags) {
 	_context->performOnThread([this, flags] {
+		// While closing, only EndOfLife may touch the engine: a resize deprecate here would
+		// recreate a swapchain on a window that is already tearing down.
+		if (_inCloseRequest && !hasFlag(flags, core::UpdateConstraintsFlags::EndOfLife)) {
+			return;
+		}
 		if (_presentationEngine) {
 			_presentationEngine->updateConstraints(flags);
 		}
@@ -403,10 +771,36 @@ void AppWindow::updateConstraints(core::UpdateConstraintsFlags flags) {
 
 void AppWindow::setReadyForNextFrame() {
 	_context->performOnThread([this] {
+		if (_inCloseRequest) {
+			return;
+		}
 		if (_presentationEngine) {
 			_presentationEngine->setReadyForNextFrame();
 		}
 	}, this, true);
+}
+
+void AppWindow::invalidateRemoteFrames() {
+	_context->performOnThread([this] {
+		if (_presentationEngine) {
+			_presentationEngine->invalidateRemoteFrames();
+		}
+	}, this);
+}
+
+void AppWindow::setRenderClient(core::RenderClientChannel *c) {
+	core::RenderServerChannel::setRenderClient(c);
+	// Publish after the base has stored the pointer, so a presentation-thread reader that sees the
+	// flag also sees everything the app thread wrote before it.
+	_clientIsRemote.store(c && c->isRemote(), sprt::memory_order_release);
+}
+
+void AppWindow::resetForRenderClientChange() {
+	_context->performOnThread([this] {
+		if (_presentationEngine) {
+			_presentationEngine->resetForRenderClientChange();
+		}
+	}, this);
 }
 
 bool AppWindow::waitUntilFrame() {
@@ -444,54 +838,114 @@ uint64_t AppWindow::getPresentationFrameInterval() const {
 	return _presentationEngine ? _presentationEngine->getTargetFrameInterval() : 0;
 }
 
-WindowState AppWindow::getUpdatableStateFlags() const {
-	auto caps = getCapabilities();
-	WindowState flags = WindowState::None;
+// --- core::RenderServerChannel (client -> server) ---
 
-	if (hasFlag(caps, WindowCapabilities::AboveBelowState)) {
-		flags |= WindowState::Above | WindowState::Below;
-	}
-
-	if (hasFlag(caps, WindowCapabilities::DemandsAttentionState)) {
-		flags |= WindowState::DemandsAttention;
-	}
-
-	if (hasFlag(caps, WindowCapabilities::SkipTaskbarState)) {
-		flags |= WindowState::SkipTaskbar | WindowState::SkipPager;
-	}
-
-	if (hasFlag(caps, WindowCapabilities::CloseGuard)) {
-		flags |= WindowState::CloseGuard | WindowState::CloseRequest;
-	}
-
-	if (hasFlag(caps, WindowCapabilities::DecorationState)) {
-		flags |= WindowState::DecorationState;
-	}
-
-	for (auto it : sp::flags(_state)) {
-		switch (it) {
-		case WindowState::AllowedMinimize: flags |= WindowState::Minimized; break;
-		case WindowState::AllowedShade: flags |= WindowState::Shaded; break;
-		case WindowState::AllowedStick: flags |= WindowState::Sticky; break;
-		case WindowState::AllowedMaximizeVert: flags |= WindowState::MaximizedVert; break;
-		case WindowState::AllowedMaximizeHorz: flags |= WindowState::MaximizedHorz; break;
-		case WindowState::AllowedClose: flags |= WindowState::CloseRequest; break;
-		case WindowState::AllowedFullscreen: flags |= WindowState::Fullscreen; break;
-		default: break;
-		}
-	}
-	return flags;
+void AppWindow::compileRenderQueue(const Rc<core::Queue> &queue, Function<void(bool)> &&cb) {
+	static_cast<core::Loop *>(_context->getGlLoop())->compileQueue(queue, sp::move(cb));
 }
 
-bool AppWindow::enableState(WindowState state) {
-	auto c = sprt::popcount(toInt(state));
-	if (c != 1 && state != WindowState::Maximized) {
-		log::source().error("AppWindow", "enableState: only one flag should be defined in state");
+void AppWindow::compileResource(Rc<core::Resource> &&res, Function<void(bool)> &&cb, bool preload) {
+	static_cast<core::Loop *>(_context->getGlLoop())
+			->compileResource(sp::move(res), sp::move(cb), preload);
+}
+
+void AppWindow::compileMaterials(Rc<core::MaterialInputData> &&req,
+		const Vector<Rc<core::DependencyEvent>> &deps) {
+	static_cast<core::Loop *>(_context->getGlLoop())->compileMaterials(sp::move(req), deps);
+}
+
+FrameCapture *AppWindow::getFrameCapture() {
+	if (!_frameCapture) {
+		_frameCapture = Rc<FrameCapture>::create(_application, this);
+	}
+
+	// Re-read, not latched: the surface answers only once a swapchain is configured.
+	_frameCapture->setSurfaceSupported(_appSwapchainConfig.transferSrc);
+	return _frameCapture;
+}
+
+bool AppWindow::scheduleOffscreenFrame(Function<void(bool)> &&cb) {
+	if (!_presentationEngine) {
 		return false;
 	}
 
-	if ((state & getUpdatableStateFlags()) != state) {
-		log::source().error("AppWindow", "enableState:", state, " is not updatable");
+	_context->performOnThread([this, cb = sp::move(cb)]() mutable {
+		_presentationEngine->scheduleOffscreenFrame(sp::move(cb));
+	}, this);
+	return true;
+}
+
+Rc<core::FrameCaptureInput> AppWindow::takeFrameCaptureInput() {
+	// Not getFrameCapture(): runs every frame, and must not create a capture object.
+	if (!_frameCapture || !_frameCapture->hasPending()) {
+		return nullptr;
+	}
+
+	auto targets = _frameCapture->takePending();
+
+	auto input = Rc<core::FrameCaptureInput>::alloc();
+	input->regions.reserve(targets.size());
+	for (auto &it : targets) {
+		if (auto image = it->getImage()) {
+			input->regions.emplace_back(
+					core::FrameCaptureInput::Region{Rc<core::ImageObject>(image), it->getRegion()});
+		}
+	}
+
+	if (input->regions.empty()) {
+		// Nothing survived: report the batch so targets do not wait for a copy that will never
+		// happen.
+		_frameCapture->handleCaptured(targets, false);
+		return nullptr;
+	}
+
+	// finalize() runs on the loop thread; everything the targets touch is app-thread state.
+	input->completion = [this, targets = sp::move(targets), guard = Rc<AppWindow>(this)](
+								bool success) mutable {
+		_application->performOnAppThread(
+				[this, targets = sp::move(targets), success, guard = sp::move(guard)] {
+			if (_frameCapture) {
+				_frameCapture->handleCaptured(targets, success);
+			}
+		}, this);
+	};
+
+	return input;
+}
+
+void AppWindow::compileImage(const Rc<core::DynamicImage> &img, Function<void(bool)> &&cb) {
+	static_cast<core::Loop *>(_context->getGlLoop())->compileImage(img, sp::move(cb));
+}
+
+void AppWindow::attachRenderQueue(const Rc<core::Queue> &queue) {
+	// Announce it to the client (the Director) so it can resolve this graph by name per frame.
+	if (_client && queue) {
+		_client->handleRenderQueueAttached(queue);
+	}
+
+	_context->performOnThread([this, queue] {
+		runWithQueue(queue);
+		setReadyForNextFrame();
+	}, this, false);
+}
+
+void AppWindow::setPreferredFrameInterval(uint64_t value) { setPresentationFrameInterval(value); }
+
+core::FrameTimingInfo AppWindow::getFrameTiming() const {
+	core::FrameTimingInfo info;
+	if (_presentationEngine) {
+		info.lastFrameInterval = _presentationEngine->getLastFrameInterval();
+		info.avgFrameInterval = _presentationEngine->getAvgFrameInterval();
+		info.lastFrameTime = _presentationEngine->getLastFrameTime();
+		info.lastFenceFrameTime = _presentationEngine->getLastFenceFrameTime();
+		info.lastTimestampFrameTime = _presentationEngine->getLastTimestampFrameTime();
+		info.lastFrameOrder = _presentationEngine->getLastFrameOrder();
+	}
+	return info;
+}
+
+bool AppWindow::enableState(WindowState state) {
+	if (!validateStateChange(state, "enableState")) {
 		return false;
 	}
 
@@ -500,18 +954,15 @@ bool AppWindow::enableState(WindowState state) {
 }
 
 bool AppWindow::disableState(WindowState state) {
-	auto c = sprt::popcount(toInt(state));
-	if (c != 1 && state != WindowState::Maximized) {
-		log::source().error("AppWindow", "enableState: only one flag should be defined in state");
+	if (!validateStateChange(state, "disableState")) {
 		return false;
 	}
 
-	if ((state & getUpdatableStateFlags()) != state) {
-		log::source().error("AppWindow", "disableState:", state, " is not updatable");
-		return false;
-	}
-
-	_context->performOnThread([this, state]() { _window->disableState(state); }, this);
+	_context->performOnThread([this, state]() {
+		if (_window) {
+			_window->disableState(state);
+		}
+	}, this);
 	return true;
 }
 
@@ -527,6 +978,14 @@ void AppWindow::releaseTextInput() {
 	_context->performOnThread([this]() {
 		if (_window) {
 			_window->releaseTextInput();
+		}
+	}, this);
+}
+
+void AppWindow::performTextInput(TextInputCommand &&cmd) {
+	_context->performOnThread([this, cmd = sp::move(cmd)]() {
+		if (_window) {
+			_window->performTextInput(cmd);
 		}
 	}, this);
 }
@@ -586,9 +1045,85 @@ bool AppWindow::setFullscreen(FullscreenInfo &&info, Function<void(Status)> &&cb
 	return true;
 }
 
+void AppWindow::setWindowExtent(Extent2 extent, Function<void(Status)> &&cb, Ref *ref) {
+	_context->performOnThread([this, extent, cb = sp::move(cb), ref = Rc<Ref>(ref)]() mutable {
+		auto st = _window ? _window->setExtent(extent) : Status::ErrorInvalidArguemnt;
+		_application->performOnAppThread([st, cb = sp::move(cb), ref = move(ref)]() mutable {
+			if (cb) {
+				cb(st);
+			}
+			ref = nullptr;
+		}, this);
+	}, this);
+}
+
+bool AppWindow::isDialogSupported(sprt::window::DialogType type) const {
+	return _context->isDialogSupported(type);
+}
+
+Status AppWindow::openDialog(NotNull<sprt::window::DialogRequest> req) {
+	if (!req->callback) {
+		return Status::ErrorInvalidArguemnt;
+	}
+
+	// This window owns the dialog: it parents it, blocks for it, and takes it down with itself.
+	req->parentWindowId = _windowId;
+	_pendingDialogs.emplace_back(req);
+
+	// Wrap the caller's callback so the pending list is pruned on the thread that owns it. The
+	// completion is delivered on the app looper, which is this same thread.
+	auto cb = sp::move(req->callback);
+	req->callback = [this, self = Rc<AppWindow>(this), r = Rc<sprt::window::DialogRequest>(req),
+							cb = sp::move(cb)](const sprt::window::DialogResult &res) mutable {
+		for (auto it = _pendingDialogs.begin(); it != _pendingDialogs.end(); ++it) {
+			if (*it == r) {
+				_pendingDialogs.erase(it);
+				break;
+			}
+		}
+		cb(res);
+	};
+
+	_context->performOnThread([this, req = Rc<sprt::window::DialogRequest>(req)]() mutable {
+		auto looper = _application->getLooper();
+		if (!looper) {
+			return; // app thread already gone; nothing can deliver a completion any more
+		}
+		// A closing window needs no special case: openDialog declines with ErrorCancelled if the
+		// parent is already gone, or performWindowTeardown cancels the dialog; both answer the
+		// callback.
+		_context->openDialog(looper, sp::move(req));
+	}, this);
+	return Status::Ok;
+}
+
+Status AppWindow::cancelDialog(NotNull<sprt::window::DialogRequest> req) {
+	_context->performOnThread([this, req = Rc<sprt::window::DialogRequest>(req)]() mutable {
+		_context->cancelDialog(req);
+	}, this);
+	return Status::Ok;
+}
+
+bool AppWindow::setPreferredFrameRate(float value, Function<void(Status)> &&cb) {
+	_context->performOnThread([this, cb = sp::move(cb), value]() mutable {
+		auto st = _window->setPreferredFrameRate(value);
+		_application->performOnAppThread([st, cb = sp::move(cb)]() mutable { cb(st); }, this);
+	}, this);
+	return true;
+}
+
 void AppWindow::captureScreenshot(
 		Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) {
 	_context->performOnThread([this, cb = sp::move(cb)]() mutable {
+		/* The engine may be gone by the time this runs: `end()` clears `_presentationEngine` on the
+		context thread, so a window closed during a capture leaves a null. Answer empty rather than
+		dropping the callback; callers handle an empty capture as a failure. */
+		if (!_presentationEngine) {
+			if (cb) {
+				cb(core::ImageInfoData(), BytesView());
+			}
+			return;
+		}
 		_presentationEngine->captureScreenshot(sp::move(cb));
 	}, this);
 }
@@ -605,32 +1140,6 @@ void AppWindow::handleBackButton() {
 	if (_window) {
 		_context->performOnThread([this]() { _window->handleBackButton(); }, this);
 	}
-}
-
-void AppWindow::propagateInputEvent(core::InputEventData &event) {
-	if (event.isPointEvent()) {
-		event.point.density =
-				_presentationEngine ? _presentationEngine->getFrameConstraints().density : 1.0f;
-	}
-
-	switch (event.event) {
-	case InputEventName::WindowState:
-		_state = event.window.state;
-		;
-		onWindowState(this,
-				Value({
-					pair("state", Value(toInt(event.window.state))),
-					pair("changes", Value(toInt(event.window.changes))),
-				}));
-		break;
-	default: break;
-	}
-
-	_director->getInputDispatcher()->handleInputEvent(event);
-}
-
-void AppWindow::propagateTextInput(TextInputState &state) {
-	_director->getTextInputManager()->handleInputUpdate(state);
 }
 
 void AppWindow::handleContextStateUpdate(WindowState state) {

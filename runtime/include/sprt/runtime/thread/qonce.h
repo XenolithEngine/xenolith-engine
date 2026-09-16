@@ -27,16 +27,23 @@
 
 namespace sprt {
 
-class qonce final {
+class SPRT_API qonce final {
 public:
 	using value_type = __sprt_sprt_qlock_t;
 	using flags_type = __sprt_sprt_lock_flags_t;
 
+	// Take the callback by forwarding reference, not const&: std::call_once wraps the
+	// user callable in a `mutable` lambda (non-const operator()), which cannot be
+	// invoked through a const reference.
 	template <typename Callback>
-	static int perform(value_type *value, const Callback &cb, flags_type f = 0) {
+	static int perform(value_type *value, Callback &&cb, flags_type f = 0) {
 		auto val = _atomic::fetchOr(value, qmutex_base::LOCK_BIT);
 		if (val == 0) {
-			// The First One
+			// The First One.
+			// Contract: cb() must return normally. If it never completes (the
+			// runtime is built -fno-exceptions, so this means abort/longjmp/hang)
+			// COMPLETE_BIT is never set and other threads block forever on it -
+			// the same one-shot-initialization guarantee std::call_once gives.
 			cb();
 
 			// set complete flag and check for a waiters
@@ -63,8 +70,8 @@ public:
 	~qonce() { }
 
 	template <typename Callback>
-	void operator()(const Callback &cb) {
-		perform(&_data, cb);
+	void operator()(Callback &&cb) {
+		perform(&_data, static_cast<Callback &&>(cb));
 	}
 
 	bool is_set() const {

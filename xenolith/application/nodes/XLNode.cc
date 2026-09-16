@@ -23,6 +23,7 @@
 #include "XLNode.h"
 
 #include "XLInputListener.h"
+#include "XLInputDispatcher.h"
 #include "XLScene.h"
 #include "XLDirector.h"
 #include "XLScheduler.h"
@@ -31,19 +32,33 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-// Component to store additional Node's data (to reduce Node's memory footprint)
-// Most nodes does not need this data to be stored within it
-//
-// When you use setTag, setName or setValue, this component will be added into Node
-struct NodeData {
-	static ComponentId Id;
+#if XL_FRAME_ACCOUNT
+VisitAccount &getVisitAccount() {
+	// One frame at a time on one thread - see the declaration
+	static VisitAccount s_account;
+	return s_account;
+}
 
-	uint64_t tag = InvalidTag;
-	String name;
-	Value value;
+namespace {
+// Adds its own span to one bucket when it goes out of scope, covering every exit path.
+struct VisitPhase {
+	uint64_t *bucket;
+	uint64_t start;
+
+	explicit VisitPhase(uint64_t &b) : bucket(&b), start(core::getAccountClock()) { }
+
+	~VisitPhase() { *bucket += core::getAccountClock() - start; }
 };
+} // namespace
 
-ComponentId NodeData::Id;
+#define XL_VISIT_PHASE(name) VisitPhase _visitPhase_##name(getVisitAccount().name)
+#else
+#define XL_VISIT_PHASE(name)
+#endif
+
+ComponentId NodeIdentity::Id;
+ComponentId MeasureComponent::Id;
+ComponentId VisibilityComponent::Id;
 
 void ActionStorage::addAction(Rc<Action> &&a) { actionToStart.emplace_back(move(a)); }
 
@@ -87,6 +102,13 @@ Action *ActionStorage::getActionByTag(uint32_t tag) {
 		}
 	}
 	return nullptr;
+}
+
+uint64_t DataIdentity::allocate() {
+	// data sets are also built on worker threads (VectorCanvas, deferred Label), so this must be
+	// atomic; 0 is reserved for "no identity"
+	static sprt::atomic<uint64_t> s_dataIdentity(1);
+	return s_dataIdentity.fetch_add(1);
 }
 
 String MaterialInfo::description() const {
@@ -153,7 +175,14 @@ Mat4 Node::getChainParentToNodeTransform(Node *parent, Node *node, bool withPare
 	return ret;
 }
 
-Node::Node() { }
+/* Unique per node for the life of the process - see Node::getStyleMatchId(). Atomic: nodes are
+built on worker threads too. Only uniqueness is guaranteed, not order. */
+static uint64_t allocateStyleMatchId() {
+	static sprt::atomic<uint64_t> s_styleMatchId(1);
+	return s_styleMatchId.fetch_add(1);
+}
+
+Node::Node() : _styleMatchId(allocateStyleMatchId()) { }
 
 Node::~Node() {
 	for (auto &child : _children) { child->_parent = nullptr; }
@@ -313,6 +342,10 @@ void Node::setContentSize(const Size2 &size) {
 
 	_contentSize = size;
 	_transformInverseDirty = _transformCacheDirty = _transformDirty = _contentSizeDirty = true;
+
+	if (_parent) {
+		_parent->notifyChildContentSizeDirty(this);
+	}
 }
 
 void Node::setVisible(bool visible) {
@@ -323,6 +356,12 @@ void Node::setVisible(bool visible) {
 	if (_visible) {
 		_contentSizeDirty = _transformInverseDirty = _transformCacheDirty = _transformDirty = true;
 	}
+}
+
+void Node::setOverlay(bool value) {
+	// Read by the next visit and carried on FrameInfo, so nothing to invalidate. No damage is
+	// produced: a live flip on a settled node needs a setVisible() cycle or a geometry change.
+	_overlay = value;
 }
 
 void Node::setRotation(float rotation) {
@@ -355,6 +394,102 @@ void Node::setRotation(const Quaternion &quat) {
 	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
 }
 
+// Push the AddToFrameStack systems of one node, the way wrapVisit does, recording where they went
+// so they can be taken back off in reverse (several nodes may share a tag).
+static void pushNodeSystems(FrameInfo &info, Node *node,
+		mem_pool::Vector<mem_pool::Vector<Rc<System>> *> &pushed) {
+	for (auto &it : node->getSystems()) {
+		if (it->isEnabled() && hasFlag(it->getSystemFlags(), SystemFlags::AddToFrameStack)
+				&& it->getFrameTag() != InvalidTag) {
+			pushed.emplace_back(info.pushSystem(it));
+		}
+	}
+}
+
+// Same, for the chain (info.currentNode .. node], root-first
+static void pushChainSystems(FrameInfo &info, Node *node,
+		mem_pool::Vector<mem_pool::Vector<Rc<System>> *> &pushed) {
+	if (!node || node == info.currentNode) {
+		return;
+	}
+
+	pushChainSystems(info, node->getParent(), pushed); // root first: nearest ancestor on top
+	pushNodeSystems(info, node, pushed);
+}
+
+/* Puts the frame's system stack into the state this node would have seen, and takes it back off.
+
+Catch-up events (`handleChildComponentsDirty`, `handleChildContentSizeDirty`,
+`handleChildLayoutChildren`) go to `back()` of each tag. isVisitPassed() guarantees the stack holds
+a prefix of this node's chain, so pushing the missing ancestors in visit order is enough. A node's
+own systems are pushed only for its children (as in wrapVisit), never for its own events. */
+struct Node::VisitCatchUp {
+	// `info` null: no frame in flight, or the pass has not gone past this node - every method is
+	// then a no-op, so the call sites stay linear
+	VisitCatchUp(FrameInfo *info, Node *node) : _info(info) {
+		if (_info) {
+			pushChainSystems(*_info, node->getParent(), _pushed);
+		}
+	}
+
+	~VisitCatchUp() {
+		leaveSelf();
+		popTo(0);
+	}
+
+	VisitCatchUp(const VisitCatchUp &) = delete;
+	VisitCatchUp &operator=(const VisitCatchUp &) = delete;
+
+	// The pass is now inside `node`: its systems join the stack and it becomes info.currentNode, as
+	// in wrapVisit
+	void enterSelf(Node *node) {
+		if (!_info) {
+			return;
+		}
+
+		_ownFrom = _pushed.size();
+		pushNodeSystems(*_info, node, _pushed);
+		_prevNode = _info->currentNode;
+		_info->currentNode = node;
+		_inSelf = true;
+	}
+
+	void leaveSelf() {
+		if (!_inSelf) {
+			return;
+		}
+
+		_inSelf = false;
+		_info->currentNode = _prevNode;
+		popTo(_ownFrom);
+	}
+
+	void popTo(size_t size) {
+		while (_pushed.size() > size) {
+			_info->popSystem(_pushed.back());
+			_pushed.pop_back();
+		}
+	}
+
+	FrameInfo *_info;
+	mem_pool::Vector<mem_pool::Vector<Rc<System>> *> _pushed;
+	Node *_prevNode = nullptr;
+	size_t _ownFrom = 0;
+	bool _inSelf = false;
+};
+
+bool Node::isVisitPassed(const FrameInfo &info) const {
+	// info.currentNode is the deepest node the pass has entered. If it is this node or an ancestor,
+	// this node's phases have already run and a catch-up is needed; otherwise the pass has not
+	// reached here or is in another branch.
+	for (auto n = this; n; n = n->getParent()) {
+		if (n == info.currentNode) {
+			return true;
+		}
+	}
+	return false;
+}
+
 void Node::addChildNode(Node *child) { addChildNode(child, child->_zOrder, InvalidTag); }
 
 void Node::addChildNode(Node *child, ZOrder localZOrder) {
@@ -371,26 +506,87 @@ void Node::addChildNode(Node *child, ZOrder localZOrder, uint64_t tag) {
 		}
 	}
 
-	_reorderChildDirty = true;
 	_children.push_back(child);
+	markChildrenStructureDirty();
 	child->setLocalZOrder(localZOrder);
 	if (tag != InvalidTag) {
 		child->setTag(tag);
 	}
 	child->setParent(this);
 
-	if (_running) {
-		child->handleEnter(_scene);
-		child->handleLayout(this);
+	// pull the child subtree's ancestor-components listeners into this chain
+	if (child->_ancestorComponentsListeners) {
+		adjustAncestorComponentsListeners(int32_t(child->_ancestorComponentsListeners));
 	}
 
+	if (_running) {
+		child->handleEnter(_scene);
+		child->handleLayoutInParent(this);
+
+		// The child arrived after this node measured and laid out for this frame; redo both, with
+		// the child caught up by its handleEnter. A node with nothing to measure commits no size.
+		if (_bulkChildren > 0) {
+			// Owed: BulkChildren performs it once when the scope closes.
+			_bulkCatchUpOwed = true;
+		} else {
+			auto info = _scene ? _scene->getFrameInfo() : nullptr;
+			if (info && isVisitPassed(*info)) {
+				VisitCatchUp scope(info, this);
+				markMeasureDirty();
+				markLayoutChildrenDirty();
+				runPendingPhases(*info);
+			}
+		}
+	}
+
+	/* Only the new child's subtree is recoloured: gaining a child does not change this node's
+	displayed values, and recolouring the whole subtree makes filling a container quadratic. */
 	if (_cascadeColorEnabled) {
-		updateCascadeColor();
+		child->updateDisplayedColor(_displayedColor);
 	}
 
 	if (_cascadeOpacityEnabled) {
-		updateCascadeOpacity();
+		child->updateDisplayedOpacity(_displayedColor.a);
 	}
+}
+
+Node::BulkChildren::BulkChildren(NotNull<Node> node) : _node(node) { ++_node->_bulkChildren; }
+
+Node::BulkChildren::~BulkChildren() {
+	if (--_node->_bulkChildren > 0 || !_node->_bulkCatchUpOwed) {
+		return;
+	}
+
+	_node->_bulkCatchUpOwed = false;
+	if (!_node->_running) {
+		return;
+	}
+
+	auto info = _node->_scene ? _node->_scene->getFrameInfo() : nullptr;
+	if (info && _node->isVisitPassed(*info)) {
+		VisitCatchUp scope(info, _node);
+		_node->markMeasureDirty();
+		_node->markLayoutChildrenDirty();
+		_node->runPendingPhases(*info);
+	} else {
+		_node->markMeasureDirty();
+		_node->markLayoutChildrenDirty();
+	}
+}
+
+void Node::markChildrenStructureDirty() {
+	_reorderChildDirty = true;
+	++_childrenVersion;
+	// the child list is an input of its children's selectors - see getChildrenStyleVersion()
+	++_childrenStyleVersion;
+	if (!_running) {
+		// nothing has been resolved or laid out yet - building a scene must stay O(n)
+		return;
+	}
+
+	/* The fan-out to the children is recorded here and performed once in runChildrenPhases, which
+	applies the reorder; doing it per call makes filling a container quadratic. */
+	for (auto &child : _children) { child->markContentSizeDirty(); }
 }
 
 Node *Node::getChildByTag(uint64_t tag) const {
@@ -433,9 +629,18 @@ void Node::removeChild(Node *child, bool cleanup) {
 			child->cleanup();
 		}
 
+		// release the child subtree's remaining ancestor-components listeners from this chain,
+		// before detaching (cleanup already decremented any removed systems while still linked)
+		if (child->_ancestorComponentsListeners) {
+			adjustAncestorComponentsListeners(-int32_t(child->_ancestorComponentsListeners));
+		}
+
 		// set parent nil at the end
 		child->setParent(nullptr);
 		_children.erase(it);
+		// the child list is also the layout order, so a removal must re-run the reorder and
+		// layout-children phases just like an insertion does
+		markChildrenStructureDirty();
 	}
 }
 
@@ -451,7 +656,13 @@ void Node::removeChildByTag(uint64_t tag, bool cleanup) {
 }
 
 void Node::removeAllChildren(bool cleanup) {
-	for (const auto &child : _children) {
+	auto childs = sp::move(_children);
+	_children.clear();
+	if (!childs.empty()) {
+		markChildrenStructureDirty(); // no children left to nudge - this only bumps the version
+	}
+
+	for (const auto &child : childs) {
 		if (_running) {
 			child->handleExit();
 		}
@@ -459,15 +670,23 @@ void Node::removeAllChildren(bool cleanup) {
 		if (cleanup) {
 			child->cleanup();
 		}
+
+		// release the child subtree's remaining ancestor-components listeners from this chain
+		if (child->_ancestorComponentsListeners) {
+			adjustAncestorComponentsListeners(-int32_t(child->_ancestorComponentsListeners));
+		}
+
 		// set parent nil at the end
 		child->setParent(nullptr);
 	}
-
-	_children.clear();
 }
 
 void Node::reorderChild(Node *child, ZOrder localZOrder) {
 	XLASSERT(child != nullptr, "Child must be non-nil");
+	// the child list is ordered by z-order, so a reorder changes sibling positions. Marked
+	// unconditionally: setLocalZOrder writes _zOrder before delegating here, so comparing
+	// against the child's current value would always see them equal.
+	markChildrenStructureDirty();
 	_reorderChildDirty = true;
 	child->setLocalZOrder(localZOrder);
 }
@@ -478,7 +697,6 @@ bool Node::sortAllChildren() {
 		sprt::sort(sprt::begin(_children), sprt::end(_children), [&](const Node *l, const Node *r) {
 			return l->getLocalZOrder() < r->getLocalZOrder();
 		});
-		handleReorderChildDirty();
 		ret = true;
 	}
 	_reorderChildDirty = false;
@@ -560,45 +778,124 @@ size_t Node::getNumberOfRunningActions() const {
 }
 
 StringView Node::getName() const {
-	if (auto d = getComponent<NodeData>()) {
+	if (auto d = getComponent<NodeIdentity>()) {
 		return d->name;
 	}
 	return StringView();
 }
 
+/* An identity change feeds siblings' selectors (`.a + .b`, `:nth-of-type`), so the parent's
+child-list stamp moves too. O(1): the siblings themselves are not touched. */
+void Node::markStyleIdentityDirty() {
+	if (_parent) {
+		++_parent->_childrenStyleVersion;
+	}
+}
+
 void Node::setName(StringView str) {
-	setOrUpdateComponent<NodeData>([&](NodeData *data) {
+	setOrUpdateComponent<NodeIdentity>([&](NodeIdentity *data) {
 		if (data->name != str) {
 			data->name = str.str<Interface>();
 			return true;
 		}
 		return false;
 	});
+	markStyleIdentityDirty();
+}
+
+StringView Node::getType() const {
+	if (auto d = getComponent<NodeIdentity>()) {
+		return d->type;
+	}
+	return StringView();
+}
+
+void Node::setType(StringView str) {
+	setOrUpdateComponent<NodeIdentity>([&](NodeIdentity *data) {
+		if (data->type != str) {
+			data->type = str.str<Interface>();
+			return true;
+		}
+		return false;
+	});
+	markStyleIdentityDirty();
+}
+
+void Node::addStyleClass(StringView cl) {
+	setOrUpdateComponent<NodeIdentity>([&](NodeIdentity *d) {
+		auto it = d->classes.find(cl);
+		if (it == d->classes.end()) {
+			d->classes.emplace(cl.str<Interface>());
+			return true;
+		}
+		return false;
+	});
+	markStyleIdentityDirty();
+}
+
+void Node::removeStyleClass(StringView cl) {
+	updateComponent<NodeIdentity>([&](NodeIdentity *d) {
+		auto it = d->classes.find(cl);
+		if (it != d->classes.end()) {
+			d->classes.erase(it);
+			return true;
+		}
+		return false;
+	});
+	markStyleIdentityDirty();
+}
+
+void Node::toggleStyleClass(StringView cl) {
+	setOrUpdateComponent<NodeIdentity>([&](NodeIdentity *d) {
+		auto it = d->classes.find(cl);
+		if (it == d->classes.end()) {
+			d->classes.emplace(cl.str<Interface>());
+		} else {
+			d->classes.erase(it);
+		}
+		return true;
+	});
+	markStyleIdentityDirty();
+}
+
+bool Node::hasStyleClass(StringView cl) const {
+	if (auto d = getComponent<NodeIdentity>()) {
+		auto it = d->classes.find(cl);
+		return it != d->classes.end();
+	}
+	return false;
+}
+
+const HashSet<String, sprt::hash<void>> *Node::getStyleClasses() const {
+	if (auto d = getComponent<NodeIdentity>()) {
+		return &d->classes;
+	}
+	return nullptr;
 }
 
 const Value &Node::getDataValue() const {
-	if (auto d = getComponent<NodeData>()) {
+	if (auto d = getComponent<NodeIdentity>()) {
 		return d->value;
 	}
 	return Value::Null;
 }
 
 void Node::setDataValue(Value &&val) {
-	setOrUpdateComponent<NodeData>([&](NodeData *data) {
+	setOrUpdateComponent<NodeIdentity>([&](NodeIdentity *data) {
 		data->value = sp::move(val);
 		return true;
 	});
 }
 
 uint64_t Node::getTag() const {
-	if (auto d = getComponent<NodeData>()) {
+	if (auto d = getComponent<NodeIdentity>()) {
 		return d->tag;
 	}
 	return InvalidTag;
 }
 
 void Node::setTag(uint64_t tag) {
-	setOrUpdateComponent<NodeData>([&](NodeData *data) {
+	setOrUpdateComponent<NodeIdentity>([&](NodeIdentity *data) {
 		if (data->tag != tag) {
 			data->tag = tag;
 			return true;
@@ -608,13 +905,31 @@ void Node::setTag(uint64_t tag) {
 }
 
 
-void Node::setEventFlags(NodeEventFlags flags) { _eventFlags = flags; }
+void Node::setEventFlags(NodeEventFlags flags) {
+	_eventFlags = flags;
+	if (_parent) {
+		_parent->notifyChildContentSizeDirty(this);
+	}
+}
 
-bool Node::addSystemItem(System *com) {
+bool Node::addSystemItem(System *com) { return addSystemItem(com, com->getSystemPriority()); }
+
+bool Node::addSystemItem(System *com, uint32_t priority) {
 	XLASSERT(com != nullptr, "Argument must be non-nil");
 	XLASSERT(com->getOwner() == nullptr, "System already added. It can't be added again");
 
-	_systems.push_back(com);
+	com->setSystemPriority(priority);
+
+	// keep _systems sorted by ascending priority: lower priority is dispatched earlier.
+	// stable — a new system is inserted after existing systems of equal priority (add order)
+	size_t pos = _systems.size();
+	for (size_t i = 0; i < _systems.size(); ++i) {
+		if (_systems[i]->getSystemPriority() > priority) {
+			pos = i;
+			break;
+		}
+	}
+	_systems.insert(_systems.begin() + pos, com);
 
 	com->handleAdded(this);
 
@@ -625,25 +940,67 @@ bool Node::addSystemItem(System *com) {
 	return true;
 }
 
+void Node::updateSystemPriority(System *com) {
+	auto it = sprt::find(_systems.begin(), _systems.end(), com);
+	if (it == _systems.end()) {
+		return;
+	}
+
+	const size_t idx = size_t(it - _systems.begin());
+	const uint32_t priority = com->getSystemPriority();
+
+	// nothing to do if the current position already keeps _systems sorted
+	const bool ordered = (idx == 0 || _systems[idx - 1]->getSystemPriority() <= priority)
+			&& (idx + 1 == _systems.size() || _systems[idx + 1]->getSystemPriority() >= priority);
+	if (ordered) {
+		return;
+	}
+
+	// hold a reference across the erase, then re-insert at the sorted position
+	Rc<System> sys = *it;
+	_systems.erase(it);
+
+	size_t pos = _systems.size();
+	for (size_t i = 0; i < _systems.size(); ++i) {
+		if (_systems[i]->getSystemPriority() > priority) {
+			pos = i;
+			break;
+		}
+	}
+	_systems.insert(_systems.begin() + pos, sp::move(sys));
+}
+
 bool Node::removeSystem(System *com) {
 	if (_systems.empty()) {
 		return false;
 	}
 
-	for (auto iter = _systems.begin(); iter != _systems.end(); ++iter) {
-		if ((*iter) == com) {
-			if (this->isRunning()
-					&& hasFlag(com->getSystemFlags(), SystemFlags::HandleSceneEvents)) {
-				com->handleExit();
-			}
-
-			com->handleRemoved();
-
-			_systems.erase(iter);
-			return true;
-		}
+	/* Erase after the callbacks, looking the position up again: handleExit/handleRemoved may remove
+	other systems from this node (e.g. DragSystem its cursor layer), shifting indices. */
+	auto it = sprt::find(_systems.begin(), _systems.end(), com);
+	if (it == _systems.end()) {
+		return false;
 	}
-	return false;
+
+	// The list is about to stop holding it, and the callbacks below run on it
+	Rc<System> ref = com;
+
+	if (com->isAncestorComponentsCounted()) {
+		adjustAncestorComponentsListeners(-1);
+		com->clearAncestorComponentsCounted();
+	}
+
+	if (this->isRunning() && hasFlag(com->getSystemFlags(), SystemFlags::HandleSceneEvents)) {
+		com->handleExit();
+	}
+
+	com->handleRemoved();
+
+	it = sprt::find(_systems.begin(), _systems.end(), com);
+	if (it != _systems.end()) {
+		_systems.erase(it);
+	}
+	return true;
 }
 
 bool Node::removeSystemByTag(uint64_t tag) {
@@ -653,7 +1010,13 @@ bool Node::removeSystemByTag(uint64_t tag) {
 
 	for (auto iter = _systems.begin(); iter != _systems.end(); ++iter) {
 		if ((*iter)->getFrameTag() == tag) {
-			auto com = (*iter);
+			// Same rule as removeSystem: the callbacks may remove other systems from this node, so
+			// the position is looked up again for the erase
+			Rc<System> com = *iter;
+			if (com->isAncestorComponentsCounted()) {
+				adjustAncestorComponentsListeners(-1);
+				com->clearAncestorComponentsCounted();
+			}
 			if (this->isRunning()
 					&& hasFlag(com->getSystemFlags(), SystemFlags::HandleSceneEvents)) {
 				com->handleExit();
@@ -661,7 +1024,10 @@ bool Node::removeSystemByTag(uint64_t tag) {
 			if (hasFlag(com->getSystemFlags(), SystemFlags::HandleOwnerEvents)) {
 				com->handleRemoved();
 			}
-			_systems.erase(iter);
+			auto pos = sprt::find(_systems.begin(), _systems.end(), com.get());
+			if (pos != _systems.end()) {
+				_systems.erase(pos);
+			}
 			return true;
 		}
 	}
@@ -673,20 +1039,29 @@ bool Node::removeAllSystemByTag(uint64_t tag) {
 		return false;
 	}
 
-	auto iter = _systems.begin();
-	while (iter != _systems.end()) {
-		if ((*iter)->getFrameTag() == tag) {
-			auto com = (*iter);
-			if (this->isRunning()
-					&& hasFlag(com->getSystemFlags(), SystemFlags::HandleSceneEvents)) {
-				com->handleExit();
-			}
-			if (hasFlag(com->getSystemFlags(), SystemFlags::HandleOwnerEvents)) {
-				com->handleRemoved();
-			}
-			iter = _systems.erase(iter);
-		} else {
-			++iter;
+	// Collected first, removed after: the callbacks below may remove systems of their own from this
+	// node, and a loop walking the live list would erase whatever slid into the hole
+	Vector<Rc<System>> matched;
+	for (auto &it : _systems) {
+		if (it->getFrameTag() == tag) {
+			matched.emplace_back(it);
+		}
+	}
+
+	for (auto &com : matched) {
+		if (com->isAncestorComponentsCounted()) {
+			adjustAncestorComponentsListeners(-1);
+			com->clearAncestorComponentsCounted();
+		}
+		if (this->isRunning() && hasFlag(com->getSystemFlags(), SystemFlags::HandleSceneEvents)) {
+			com->handleExit();
+		}
+		if (hasFlag(com->getSystemFlags(), SystemFlags::HandleOwnerEvents)) {
+			com->handleRemoved();
+		}
+		auto pos = sprt::find(_systems.begin(), _systems.end(), com.get());
+		if (pos != _systems.end()) {
+			_systems.erase(pos);
 		}
 	}
 	return false;
@@ -697,6 +1072,10 @@ void Node::removeAllSystems() {
 	_systems.clear();
 
 	for (auto iter : tmp) {
+		if (iter->isAncestorComponentsCounted()) {
+			adjustAncestorComponentsListeners(-1);
+			iter->clearAncestorComponentsCounted();
+		}
 		if (this->isRunning() && hasFlag(iter->getSystemFlags(), SystemFlags::HandleSceneEvents)) {
 			iter->handleExit();
 		}
@@ -742,6 +1121,25 @@ void Node::handleEnter(Scene *scene) {
 		}
 	}
 
+	// Entering mid-visit after the pass went past this place: catch the phases up now, not next
+	// frame. Otherwise there is nothing to catch up.
+	auto frameInfo = scene->getFrameInfo();
+	if (frameInfo && !(_parent && _parent->isVisitPassed(*frameInfo))) {
+		frameInfo = nullptr;
+	}
+
+	// Brings the frame's system stack to what this node would have seen; unwound by the destructor
+	VisitCatchUp catchUp(frameInfo, this);
+
+	if (frameInfo) {
+		// Components run on the way down, the direction style cascades: a container must be
+		// resolved before its children map their item properties onto it.
+		runComponentsPhase(*frameInfo, false);
+
+		// From here on the pass is at this node, as in wrapVisit while it visits children
+		catchUp.enterSelf(this);
+	}
+
 	auto childs = _children;
 	for (auto &child : childs) { child->handleEnter(scene); }
 
@@ -751,6 +1149,13 @@ void Node::handleEnter(Scene *scene) {
 
 	_running = true;
 	this->resume();
+
+	// Size and layout catch up on the way out, so a container lays out styled, sized children.
+	// leaveSelf() first: a node's own phases run with only its ancestors on the stack.
+	if (frameInfo) {
+		catchUp.leaveSelf();
+		runPendingPhases(*frameInfo);
+	}
 }
 
 void Node::handleExit() {
@@ -787,6 +1192,147 @@ void Node::handleExit() {
 	_director = nullptr;
 }
 
+void Node::handleMeasure() {
+	// fix the node's own size via the HandleMeasure protocol (see LayoutSystem::measureNode /
+	// dispatchLayoutApplied, but applied to self). Must not change components.
+	// Constraints: treat the currently-assigned box as available (a non-zero dimension
+	// constrains wrapping); unconstrained axes fall back to maxOf<float>()
+	MeasureConstraints c;
+	if (_contentSize.width > 0.0f) {
+		c.maxWidth = _contentSize.width;
+	}
+	if (_contentSize.height > 0.0f) {
+		c.maxHeight = _contentSize.height;
+	}
+
+	auto tmpSystems = _systems;
+	bool measured = false;
+	for (auto &it : tmpSystems) {
+		if (it->isEnabled() && hasFlag(it->getSystemFlags(), SystemFlags::HandleMeasure)) {
+			Size2 result;
+			if (it->handleMeasure(c, result)) {
+				setContentSize(result);
+				measured = true;
+				break;
+			}
+		}
+	}
+
+	// fallback: use the precomputed size stored in a MeasureComponent, if present. A per-axis value
+	// < 0 means "unspecified" (the style resolver only fills the axes CSS gave), so keep the current
+	// size on those axes rather than committing a negative size
+	if (!measured) {
+		if (auto mc = getComponent<MeasureComponent>()) {
+			Size2 cs = _contentSize;
+			const Size2 req = mc->measure(c);
+			if (req.width >= 0.0f) {
+				cs.width = req.width;
+			}
+			if (req.height >= 0.0f) {
+				cs.height = req.height;
+			}
+			setContentSize(cs);
+		}
+	}
+
+	for (auto &it : tmpSystems) {
+		if (it->isEnabled() && hasFlag(it->getSystemFlags(), SystemFlags::HandleMeasure)) {
+			it->handleLayoutApplied(_contentSize);
+		}
+	}
+}
+
+// Deliver a descendant event to the nearest opted-in ancestor system on each frame-stack tag.
+// The node's own systems are not on the stack yet during its phase processing (pushed later in
+// wrapVisit), so only strict ancestors receive it
+template <typename Fn>
+static void notifyStackChildEvent(FrameInfo &info, SystemFlags flag, const Fn &fn) {
+	for (auto &it : info.systemStack) {
+		if (it.second.empty()) {
+			continue;
+		}
+		auto &sys = it.second.back();
+		if (sys->isEnabled() && hasFlag(sys->getSystemFlags(), flag)) {
+			fn(sys.get());
+		}
+	}
+}
+
+void Node::handleComponentsDirty(FrameInfo &info, const ComponentMask &mask) {
+	handleComponentsDirty(mask);
+	notifyStackChildEvent(info, SystemFlags::HandleChildComponents,
+			[&](System *sys) { sys->handleChildComponentsDirty(this, mask); });
+}
+
+void Node::handleMeasure(FrameInfo &info) {
+	handleMeasure();
+	notifyStackChildEvent(info, SystemFlags::HandleChildMeasure,
+			[&](System *sys) { sys->handleChildMeasure(this); });
+}
+
+void Node::handleContentSizeDirty(FrameInfo &info) {
+	handleContentSizeDirty();
+	notifyStackChildEvent(info, SystemFlags::HandleChildNodeEvents,
+			[&](System *sys) { sys->handleChildContentSizeDirty(this); });
+}
+
+void Node::settleForMeasure() {
+	if (!_componentsDirty || !_running || !_scene) {
+		return;
+	}
+
+	auto info = _scene->getFrameInfo();
+	if (!info || !_parent || !_parent->isVisitPassed(*info)) {
+		return;
+	}
+
+	VisitCatchUp scope(info, this);
+	runComponentsPhase(*info, false);
+}
+
+void Node::settlePointerState() {
+	if (!_pointerStateDirty) {
+		return;
+	}
+
+	// Cleared first: a system may attach a node from here (a tooltip on hover), and a re-entry
+	// into this settle would then run the same systems again
+	_pointerStateDirty = false;
+
+	auto tmpSystems = _systems;
+	for (auto &it : tmpSystems) {
+		if (it->isEnabled()) {
+			it->settlePointerState();
+		}
+	}
+}
+
+void Node::runPendingPhases(FrameInfo &info) {
+	if (_inPendingPhases) {
+		return;
+	}
+
+	_inPendingPhases = true;
+
+	// The visit's phase bodies in the same order, with no parent flags. Phase 1 usually ran in
+	// handleEnter; repeated for a node that gained a child after entering (a flag read otherwise).
+	runComponentsPhase(info, false);
+	runMeasurePhase(info);
+	runContentSizePhase(info, false);
+
+	// New children have already caught up (deepest first, in handleEnter), so layout sees styled,
+	// sized children.
+	runChildrenPhases(info, false);
+
+	_inPendingPhases = false;
+}
+
+void Node::handleLayoutChildren(FrameInfo &info) {
+	handleLayoutChildren();
+	notifyStackChildEvent(info, SystemFlags::HandleChildLayoutChildren,
+			[&](System *sys) { sys->handleChildLayoutChildren(this); });
+}
+
 void Node::handleContentSizeDirty() {
 	auto tmpSystems = _systems;
 	for (auto &it : tmpSystems) {
@@ -796,25 +1342,82 @@ void Node::handleContentSizeDirty() {
 	}
 
 	auto tmp = _children;
-	for (auto &it : tmp) { it->handleLayout(this); }
+	for (auto &it : tmp) { it->handleLayoutInParent(this); }
 }
 
-void Node::handleComponentsDirty() {
+void Node::handleComponentsDirty(const ComponentMask &mask) {
 	auto tmpSystems = _systems;
 	for (auto &it : tmpSystems) {
 		if (hasFlag(it->getSystemFlags(), SystemFlags::HandleComponents)) {
-			it->handleComponentsDirty();
+			it->handleComponentsDirty(mask);
 		}
 	}
 }
 
+void Node::handleAncestorComponentsDirty() {
+	auto tmpSystems = _systems;
+	for (auto &it : tmpSystems) {
+		if (it->isEnabled()
+				&& hasFlag(it->getSystemFlags(), SystemFlags::HandleAncestorComponents)) {
+			it->handleComponentsDirty(ComponentMask());
+		}
+	}
+}
+
+void Node::adjustAncestorComponentsListeners(int32_t delta) {
+	if (delta == 0) {
+		return;
+	}
+	for (Node *n = this; n; n = n->_parent) {
+		XLASSERT(delta >= 0 || n->_ancestorComponentsListeners >= uint32_t(-delta),
+				"ancestor-components listener counter underflow");
+		n->_ancestorComponentsListeners =
+				uint32_t(int32_t(n->_ancestorComponentsListeners) + delta);
+	}
+}
+
+void Node::setWantsAncestorComponents(bool b) {
+	if (b == _wantsAncestorComponents) {
+		return;
+	}
+	_wantsAncestorComponents = b;
+	adjustAncestorComponentsListeners(b ? 1 : -1);
+}
+
 void Node::handleTransformDirty(const Mat4 &parentTransform) {
+#if XL_FRAME_ACCOUNT
+	++getVisitAccount().transformCalls;
+#endif
+
+	// The copy below lets a system remove itself from its callback; skipped when there are none
+	if (_systems.empty()) {
+		return;
+	}
+#if XL_FRAME_ACCOUNT
+	const auto dispatchStart = core::getAccountClock();
+#endif
 	auto tmpSystems = _systems;
 	for (auto &it : tmpSystems) {
 		if (hasFlag(it->getSystemFlags(), SystemFlags::HandleNodeEvents)) {
+#if XL_FRAME_ACCOUNT
+			++getVisitAccount().transformSystems;
+			const auto oneStart = core::getAccountClock();
+#endif
 			it->handleTransformDirty(parentTransform);
+#if XL_FRAME_ACCOUNT
+			// Names a system that spends over a millisecond answering one transform
+			const auto oneTime = core::getAccountClock() - oneStart;
+			if (oneTime > 1'000'000) {
+				log::source().debug("visit::account", "a system spent ",
+						double(oneTime) / 1'000'000.0,
+						"ms answering one transform: ", typeid(*it).name());
+			}
+#endif
 		}
 	}
+#if XL_FRAME_ACCOUNT
+	getVisitAccount().transformSystemNs += core::getAccountClock() - dispatchStart;
+#endif
 }
 
 void Node::handleGlobalTransformDirty(const Mat4 &parentTransform) {
@@ -846,11 +1449,29 @@ void Node::handleReorderChildDirty() {
 	}
 }
 
-void Node::handleLayout(Node *parent) {
+void Node::handleLayoutInParent(Node *parent) {
 	auto tmpSystems = _systems;
 	for (auto &it : tmpSystems) {
 		if (hasFlag(it->getSystemFlags(), SystemFlags::HandleNodeEvents)) {
-			it->handleLayout(parent);
+			it->handleLayoutInParent(parent);
+		}
+	}
+}
+
+void Node::handleLayoutChildren() {
+	auto tmpSystems = _systems;
+	for (auto &it : tmpSystems) {
+		if (it->isEnabled() && hasFlag(it->getSystemFlags(), SystemFlags::HandleLayoutChildren)) {
+			it->handleLayoutChildren();
+		}
+	}
+}
+
+void Node::notifyChildContentSizeDirty(Node *child) {
+	auto tmpSystems = _systems;
+	for (auto &it : tmpSystems) {
+		if (hasFlag(it->getSystemFlags(), SystemFlags::HandleChildNodeEvents)) {
+			it->handleChildContentSizeDirty(child);
 		}
 	}
 }
@@ -863,14 +1484,21 @@ void Node::cleanup() {
 		this->unscheduleUpdate();
 	}
 
-	for (auto &child : _children) { child->cleanup(); }
+	auto childs = _children;
+	for (auto &child : childs) { child->cleanup(); }
 
 	this->removeAllSystems();
+	this->removeAllComponents();
 }
 
 Rect Node::getBoundingBox() const {
 	Rect rect(0, 0, _contentSize.width, _contentSize.height);
 	return TransformRect(rect, getNodeToParentTransform());
+}
+
+Rect Node::getWorldBoundingBox() const {
+	Rect rect(0, 0, _contentSize.width, _contentSize.height);
+	return TransformRect(rect, getNodeToWorldTransform());
 }
 
 void Node::resume() {
@@ -1111,22 +1739,6 @@ void Node::disableCascadeColor() {
 
 void Node::draw(FrameInfo &info, NodeVisitFlags flags) { }
 
-bool Node::visitGeometry(FrameInfo &info, NodeVisitFlags parentFlags) {
-	VisitInfo visitInfo;
-
-	visitInfo.visitNodesBelow = [](const VisitInfo &visitInfo, SpanView<Rc<Node>> nodes) {
-		for (auto &it : nodes) { it->visitGeometry(*visitInfo.frameInfo, visitInfo.flags); }
-	};
-
-	visitInfo.visitNodesAbove = [](const VisitInfo &visitInfo, SpanView<Rc<Node>> nodes) {
-		for (auto &it : nodes) { it->visitGeometry(*visitInfo.frameInfo, visitInfo.flags); }
-	};
-
-	visitInfo.node = this;
-
-	return wrapVisit(info, parentFlags, visitInfo, false);
-}
-
 bool Node::visitDraw(FrameInfo &info, NodeVisitFlags parentFlags) {
 	VisitInfo visitInfo;
 
@@ -1186,6 +1798,31 @@ bool Node::isTouched(const Vec2 &location, float padding) {
 	return isTouchedNodeSpace(point, padding);
 }
 
+const Mat4 &Node::getModelToNodeTransform() const {
+	if (_modelViewInverseDirty) {
+		_modelViewInverse = _modelViewTransform.getInversed();
+		_modelViewInverseDirty = false;
+	}
+	return _modelViewInverse;
+}
+
+bool Node::isTouchedAsDrawn(const Vec2 &worldLocation, float padding) const {
+	// Never visited: no drawn frame to test against
+	if (!_modelViewValid || !_visible) {
+		return false;
+	}
+
+	auto point = getModelToNodeTransform().transformPoint(worldLocation);
+	return point.x > -padding && point.y > -padding && point.x < _contentSize.width + padding
+			&& point.y < _contentSize.height + padding;
+}
+
+void Node::setHitTestFlags(HitTestFlags flags) { _hitTestFlags = flags; }
+
+void Node::addHitTestFlags(HitTestFlags flags) { _hitTestFlags |= flags; }
+
+void Node::removeHitTestFlags(HitTestFlags flags) { _hitTestFlags &= ~flags; }
+
 bool Node::isTouchedNodeSpace(const Vec2 &point, float padding) {
 	if (!isVisible()) {
 		return false;
@@ -1214,9 +1851,9 @@ void Node::setContentSizeDirtyCallback(Function<void()> &&cb) {
 			[cb = sp::move(cb)](CallbackSystem *) { cb(); });
 }
 
-void Node::setComponentsDirtyCallback(Function<void()> &&cb) {
+void Node::setComponentsDirtyCallback(Function<void(const ComponentMask &mask)> &&cb) {
 	makeDefaultCallbackSystem()->setComponentsDirtyCallback(
-			[cb = sp::move(cb)](CallbackSystem *) { cb(); });
+			[cb = sp::move(cb)](CallbackSystem *, const ComponentMask &mask) { cb(mask); });
 }
 
 void Node::setTransformDirtyCallback(Function<void(const Mat4 &)> &&cb) {
@@ -1234,52 +1871,182 @@ void Node::setLayoutCallback(Function<void(Node *)> &&cb) {
 			[cb = sp::move(cb)](CallbackSystem *, Node *node) { cb(node); });
 }
 
+void Node::setMeasureCallback(Function<bool(const MeasureConstraints &, Size2 &)> &&cb) {
+	makeDefaultCallbackSystem()->setMeasureCallback(
+			[cb = sp::move(cb)](CallbackSystem *, const MeasureConstraints &c, Size2 &result) {
+		return cb(c, result);
+	});
+}
+
+void Node::setLayoutAppliedCallback(Function<void(const Size2 &)> &&cb) {
+	makeDefaultCallbackSystem()->setLayoutAppliedCallback(
+			[cb = sp::move(cb)](CallbackSystem *, const Size2 &size) { cb(size); });
+}
+
 Mat4 Node::transform(const Mat4 &parentTransform) {
 	return parentTransform * this->getNodeToParentTransform();
 }
 
+bool Node::runComponentsPhase(FrameInfo &info, bool ancestorDirty) {
+	// Before style resolution: the resolver reads `:hover`, which a just-attached node has not hit
+	// tested yet. A flip re-dirties components, which the loop below absorbs
+	settlePointerState();
+
+	// Handlers may change node structure and the node's own components. If a handler re-dirties
+	// components, repeat handleComponentsDirty (bounded to 12 iterations)
+	const bool ownComponentsDirty = _componentsDirty;
+	if (ancestorDirty) {
+		handleAncestorComponentsDirty(); // may set _componentsDirty
+	}
+	for (int guard = 0; _componentsDirty;) {
+		auto mask = _componentsDirtyMask;
+		resetComponentsDirty();
+		handleComponentsDirty(info, mask); // may re-dirty components / change structure
+		if (++guard >= 12) {
+			if (_componentsDirty) {
+				log::source().warn("Node",
+						"handleComponentsDirty did not converge in 12 iterations");
+				_componentsDirty = false; // do not clear dirty mask
+			}
+			break;
+		}
+	}
+	return ownComponentsDirty || ancestorDirty;
+}
+
+void Node::runMeasurePhase(FrameInfo &info) {
+	if (_measureDirty) {
+		_measureDirty = false;
+		handleMeasure(info);
+	}
+}
+
+bool Node::runContentSizePhase(FrameInfo &info, bool parentResized) {
+	if (!_contentSizeDirty && !parentResized) {
+		return false;
+	}
+
+	handleContentSizeDirty(info);
+	_contentSizeDirty = false;
+	_layoutChildrenDirty = true; // own size changed -> re-lay-out children
+	return true;
+}
+
+bool Node::runChildrenPhases(FrameInfo &info, bool parentReordered) {
+	XL_VISIT_PHASE(children);
+
+	// Phase 5: child order. handleReorderChildDirty must not change geometry or components, so it
+	// runs last of the two - sortAllChildren() only applies a reorder already asked for
+	bool reordered = false;
+	if (sortAllChildren() || parentReordered) {
+		// The structure change recorded by markChildrenStructureDirty, once per visit
+		handleReorderChildDirty();
+		_layoutChildrenDirty = true; // child order changed -> re-lay-out children
+		reordered = true;
+	}
+
+	// Phase 6: lay out the children, with this node's own size and their order both fixed
+	if (_layoutChildrenDirty) {
+		_layoutChildrenDirty = false;
+		handleLayoutChildren(info);
+	}
+
+	return reordered;
+}
+
 NodeVisitFlags Node::processParentFlags(FrameInfo &info, NodeVisitFlags parentFlags) {
 	NodeVisitFlags flags = parentFlags;
+	const Mat4 &parentWorld = info.modelTransformStack.back();
 
+#if XL_FRAME_ACCOUNT
+	++getVisitAccount().nodes;
+#endif
+
+	// Phase 1: components
+	{
+		XL_VISIT_PHASE(components);
+		if (runComponentsPhase(info, hasFlag(parentFlags, NodeVisitFlags::ComponentsDirty))) {
+			// propagate downward only into subtrees that actually contain a listener; otherwise
+			// strip the flag so listener-less subtrees are skipped entirely
+			if (_ancestorComponentsListeners > 0) {
+				flags |= NodeVisitFlags::ComponentsDirty;
+			} else {
+				flags &= ~NodeVisitFlags::ComponentsDirty;
+			}
+		}
+	}
+
+	// Phase 2: measure - fix the node's size. Runs before the transform phase so a measure-induced
+	// setContentSize (which re-dirties _contentSizeDirty/_transformDirty) is visible to the transform
+	// notifications below. Must not change components. Feeds phase 4 and the matrix rebuild
+	{
+		XL_VISIT_PHASE(measure);
+		runMeasurePhase(info);
+	}
+
+	// The transform phase and model-matrix rebuild are visit-only: both need the parent's final
+	// world matrix, so runPendingPhases skips them.
+
+	// Phase 3: transform notifications - the node's position is fixed. The world matrix itself
+	// is rebuilt below, once the size is final (the matrix depends on content size)
 	if (_transformDirty
 			|| (hasFlag(_eventFlags, NodeEventFlags::HandleParentTransform)
 					&& hasFlag(parentFlags, NodeVisitFlags::TransformDirty))) {
-		handleTransformDirty(info.modelTransformStack.back());
+		XL_VISIT_PHASE(transform);
+		handleTransformDirty(parentWorld);
 	}
-
 	if ((flags & NodeVisitFlags::GlobalTransformDirtyMask) != NodeVisitFlags::None
 			|| _transformDirty || _contentSizeDirty) {
-		_modelViewTransform = this->transform(info.modelTransformStack.back());
-
-		handleGlobalTransformDirty(info.modelTransformStack.back());
+		XL_VISIT_PHASE(globalTransform);
+		handleGlobalTransformDirty(parentWorld);
 	}
 
+	// Phase 4: content size - the node's size is now fixed
+	{
+		XL_VISIT_PHASE(contentSize);
+		if (runContentSizePhase(info,
+					hasFlag(_eventFlags, NodeEventFlags::HandleParentContentSize)
+							&& hasFlag(parentFlags, NodeVisitFlags::ContentSizeDirty))) {
+			flags |= NodeVisitFlags::ContentSizeDirty;
+		}
+	}
+
+	// Model matrix: build it with the final size (the anchor offset depends on content size), and
+	// publish TransformDirty to children if the transform changed this visit
+	if (_transformDirty
+			|| (flags & NodeVisitFlags::GlobalTransformDirtyMask) != NodeVisitFlags::None) {
+		_modelViewTransform = this->transform(parentWorld);
+		_modelViewInverseDirty = true;
+		_modelViewValid = true;
+	}
 	if (_transformDirty) {
 		_transformDirty = false;
 		flags |= NodeVisitFlags::TransformDirty;
-	}
-
-	if (_contentSizeDirty
-			|| (hasFlag(_eventFlags, NodeEventFlags::HandleParentContentSize)
-					&& hasFlag(parentFlags, NodeVisitFlags::ContentSizeDirty))) {
-		handleContentSizeDirty();
-		_contentSizeDirty = false;
-		flags |= NodeVisitFlags::ContentSizeDirty;
-	}
-
-	if (_componentsDirty
-			|| (hasFlag(_eventFlags, NodeEventFlags::HandleComponents)
-					&& hasFlag(parentFlags, NodeVisitFlags::ComponentsDirty))) {
-		handleComponentsDirty();
-		_componentsDirty = false;
-		flags |= NodeVisitFlags::ComponentsDirty;
 	}
 
 	return flags;
 }
 
 void Node::visitSelf(FrameInfo &info, NodeVisitFlags flags, bool visibleByCamera) {
-	for (auto &it : _systems) {
+	XL_VISIT_PHASE(self);
+
+	/* Publish this node into the frame's hit-test registry: the rect is the drawn one, order is
+	paint order, and nodes the visit does not reach are not registered. */
+	if (_hitTestFlags != HitTestFlags::None && info.input) {
+		const URect *scissor = nullptr;
+		if (auto ctx = info.currentContext) {
+			if (auto state = ctx->getState(ctx->getCurrentState())) {
+				if (state->isScissorEnabled()) {
+					scissor = &state->scissor;
+				}
+			}
+		}
+		info.input->addHitTest(this, _modelViewTransform, _contentSize, _hitTestFlags, getOpacity(),
+				scissor);
+	}
+
+	auto tmpSystems = _systems;
+	for (auto &it : tmpSystems) {
 		if (hasFlag(it->getSystemFlags(), SystemFlags::HandleVisitSelf)) {
 			it->handleVisitSelf(info, this, flags);
 		}
@@ -1289,6 +2056,26 @@ void Node::visitSelf(FrameInfo &info, NodeVisitFlags flags, bool visibleByCamera
 	if (visibleByCamera) {
 		this->draw(info, flags);
 	}
+}
+
+bool Node::isEffectivelyVisible() const {
+	if (!_visible) {
+		return false;
+	}
+	if (auto c = getComponent<VisibilityComponent>()) {
+		return c->visible();
+	}
+	return true;
+}
+
+bool Node::isDisplayed() const {
+	if (!_visible) {
+		return false;
+	}
+	if (auto c = getComponent<VisibilityComponent>()) {
+		return !c->displayNone;
+	}
+	return true;
 }
 
 bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInfo &visitInfo,
@@ -1307,7 +2094,9 @@ bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInf
 
 	NodeVisitFlags flags = processParentFlags(info, parentFlags);
 
-	if (!_running || !_visible) {
+	// Style-driven visibility (VisibilityComponent) cuts the visit here, after the node's own data
+	// phases (unlike _visible): no draw, children or input, but styling can still un-hide it.
+	if (!_running || !isEffectivelyVisible()) {
 		if (hasFrameContext) {
 			info.popContext();
 		}
@@ -1327,9 +2116,35 @@ bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInf
 		info.depthStack.push_back(sprt::max(info.depthStack.back(), _depthIndex));
 	}
 
+	// Entered, never left: a descendant cannot step back out of an overlay (see setOverlay)
+	if (_overlay) {
+		++info.overlayDepth;
+	}
+
+	size_t i = 0;
+
+	visitInfo.flags = flags;
+	visitInfo.frameInfo = &info;
+	visitInfo.visibleByCamera = visibleByCamera;
+
+	// Phases 5 and 6: child order, then lay the children out with this node's own size and their
+	// order both fixed
+	if (runChildrenPhases(info,
+				hasFlag(_eventFlags, NodeEventFlags::HandleParentReorderChild)
+						&& hasFlag(parentFlags, NodeVisitFlags::ReorderChildDirty))) {
+		visitInfo.flags |= NodeVisitFlags::ReorderChildDirty;
+	}
+
+	// End of node-local processing.
+	// Publish AddToFrameStack systems onto info.systemStack after this node's own phases ran, so a
+	// node only sees ancestor systems on the stack - how child events in
+	// handle{Measure,ContentSizeDirty,LayoutChildren}(FrameInfo&) bubble up.
+	// The stack stays live while children are visited below, and is popped once they are done
+
 	mem_pool::Vector< mem_pool::Vector<Rc<System>> * > systems;
 
-	for (auto &it : _systems) {
+	auto tmpSystems = _systems;
+	for (auto &it : tmpSystems) {
 		if (it->isEnabled() && hasFlag(it->getSystemFlags(), SystemFlags::AddToFrameStack)
 				&& it->getFrameTag() != InvalidTag) {
 			systems.emplace_back(info.pushSystem(it));
@@ -1339,18 +2154,10 @@ bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInf
 		}
 	}
 
-	size_t i = 0;
-
-	visitInfo.flags = flags;
-	visitInfo.frameInfo = &info;
-	visitInfo.visibleByCamera = visibleByCamera;
-
-	if (!_reorderChildDirty && hasFlag(_eventFlags, NodeEventFlags::HandleParentReorderChild)
-			&& hasFlag(parentFlags, NodeVisitFlags::ReorderChildDirty)) {
-		handleReorderChildDirty();
-	} else if (sortAllChildren()) {
-		visitInfo.flags |= NodeVisitFlags::ReorderChildDirty;
-	}
+	// The stack now describes this node, and stays that way while its children are visited: that
+	// is what a node attached down there compares itself against (Node::isVisitPassed)
+	auto prevNode = info.currentNode;
+	info.currentNode = this;
 
 	if (visitInfo.visitBegin) {
 		visitInfo.visitBegin(visitInfo);
@@ -1399,7 +2206,13 @@ bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInf
 		visitInfo.visitEnd(visitInfo);
 	}
 
+	info.currentNode = prevNode;
+
 	for (auto &it : systems) { info.popSystem(it); }
+
+	if (_overlay) {
+		--info.overlayDepth;
+	}
 
 	if (_depthIndex > 0.0f) {
 		info.depthStack.pop_back();

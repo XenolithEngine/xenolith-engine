@@ -106,10 +106,10 @@ template <typename Interface>
 auto LocaleIdentifier::getPosixName() -> typename Interface::StringType {
 	if (codeset.empty()) {
 		return sprt::StreamTraits<char>::toString<Interface::Allocator>(language, "_",
-				string::toupper<memory::StandartInterface>(country));
+				string::toupper<mem_std::Interface>(country));
 	} else {
 		return sprt::StreamTraits<char>::toString<Interface::Allocator>(language, "_",
-				string::toupper<memory::StandartInterface>(country), ".", codeset);
+				string::toupper<mem_std::Interface>(country), ".", codeset);
 	}
 }
 

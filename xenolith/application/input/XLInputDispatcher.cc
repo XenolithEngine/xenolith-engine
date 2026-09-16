@@ -38,6 +38,9 @@ InputListenerStorage::InputListenerStorage(PoolRef *p) : PoolRef(p) {
 		_focus = new (_pool) mem_pool::Map<FocusGroup *, mem_pool::Vector<Rec *>>;
 		_focus->memory_persistent(true);
 
+		_hitTest = new (_pool) mem_pool::Vector<HitTestRec>;
+		_selectionChain = new (_pool) mem_pool::Vector<Rc<Node>>;
+
 		_sceneEvents->reserve(256);
 	});
 }
@@ -48,6 +51,13 @@ void InputListenerStorage::clear() {
 		_preSceneEvents->clear();
 		_sceneEvents->clear();
 		_postSceneEvents->clear();
+		_hitTest->clear();
+		_hitTestMask = HitTestFlags::None;
+
+		// The storage is reused across frames; a stale chain would fire SelectedOnly hotkeys
+		// with nothing selected
+		_selectionChain->clear();
+
 		_order = 0;
 	});
 }
@@ -56,55 +66,133 @@ void InputListenerStorage::reserve(const InputListenerStorage *st) {
 	_preSceneEvents->reserve(st->_preSceneEvents->size());
 	_sceneEvents->reserve(st->_sceneEvents->size());
 	_postSceneEvents->reserve(st->_postSceneEvents->size());
+	_hitTest->reserve(st->_hitTest->size());
+	_selectionChain->reserve(st->_selectionChain->size());
+}
+
+void InputListenerStorage::setSelectionChain(SpanView<Rc<Node>> chain) {
+	perform([&, this] {
+		_selectionChain->clear();
+		for (auto &node : chain) { _selectionChain->emplace_back(node); }
+	});
+}
+
+size_t InputListenerStorage::getSelectionDepth(const Node *node) const {
+	if (!node) {
+		return maxOf<size_t>();
+	}
+	for (size_t i = 0; i < _selectionChain->size(); ++i) {
+		if (_selectionChain->at(i).get() == node) {
+			return i;
+		}
+	}
+	return maxOf<size_t>();
 }
 
 void InputListenerStorage::addListener(NotNull<InputListener> input, FocusGroup *focus,
 		WindowLayer &&layer) {
 	perform([&, this] {
-		Rec *record = nullptr;
 		auto p = input->getPriority();
 		if (p == 0) {
-			record =
-					&_sceneEvents->emplace_back(Rec{input.get(), focus, sp::move(layer), ++_order});
+			_sceneEvents->emplace_back(Rec{input.get(), focus, sp::move(layer), ++_order});
 		} else if (p < 0) {
 			auto lb = sprt::lower_bound(_postSceneEvents->begin(), _postSceneEvents->end(),
 					Rec{input.get(), focus}, [](const Rec &l, const Rec &r) {
 				return l.listener->getPriority() < r.listener->getPriority();
 			});
 
-			if (lb == _postSceneEvents->end()) {
-				record = &_postSceneEvents->emplace_back(
-						Rec{input.get(), focus, sp::move(layer), ++_order});
-			} else {
-				record = &*_postSceneEvents->emplace(lb,
-						Rec{input.get(), focus, sp::move(layer), ++_order});
-			}
+			_postSceneEvents->emplace(lb, Rec{input.get(), focus, sp::move(layer), ++_order});
 		} else {
 			auto lb = sprt::lower_bound(_preSceneEvents->begin(), _preSceneEvents->end(),
 					Rec{input.get(), focus}, [](const Rec &l, const Rec &r) {
 				return l.listener->getPriority() < r.listener->getPriority();
 			});
 
-			if (lb == _preSceneEvents->end()) {
-				record = &_preSceneEvents->emplace_back(
-						Rec{input.get(), focus, sp::move(layer), ++_order});
-			} else {
-				record = &*_preSceneEvents->emplace(lb,
-						Rec{input.get(), focus, sp::move(layer), ++_order});
-			}
+			_preSceneEvents->emplace(lb, Rec{input.get(), focus, sp::move(layer), ++_order});
 		}
-		if (focus) {
-			auto it = _focus->find(focus);
-			if (it == _focus->end()) {
-				it = _focus->emplace(focus, mem_pool::Vector<Rec *>()).first;
-				it->second.reserve_block_optimal();
-			}
-			it->second.emplace_back(record);
-		}
+
+		/* Focus groups are not recorded here: emplace moves existing Recs, so a pointer taken now
+		would dangle. They are collected in sort(), once every Rec has its final address. */
 	});
 }
 
+bool InputListenerStorage::HitTestRec::contains(const Vec2 &world, float padding) const {
+	// The AABB first: a cheap reject before the matrix-vector test below
+	if (!worldRect.containsPoint(world, padding)) {
+		return false;
+	}
+
+	if (scissorEnabled) {
+		// Float, not URect::containsPoint(UVec2): a location off the window can be negative and
+		// would wrap into the rect when cast to unsigned
+		if (world.x < float(scissor.x) || world.y < float(scissor.y)
+				|| world.x >= float(scissor.x + scissor.width)
+				|| world.y >= float(scissor.y + scissor.height)) {
+			return false;
+		}
+	}
+
+	return node && node->isTouchedAsDrawn(world, padding);
+}
+
+void InputListenerStorage::addHitTest(NotNull<Node> node, const Mat4 &worldTransform,
+		const Size2 &size, HitTestFlags flags, float opacity, const URect *scissor) {
+	perform([&, this] {
+		HitTestRec rec{Rc<Node>(node.get()), TransformRect(Rect(Vec2(0, 0), size), worldTransform),
+			URect(), opacity, flags, ++_order, false};
+		if (scissor) {
+			rec.scissor = *scissor;
+			rec.scissorEnabled = true;
+		}
+		_hitTest->emplace_back(sp::move(rec));
+		_hitTestMask |= flags;
+	});
+}
+
+bool InputListenerStorage::foreachHitTest(HitTestFlags mask,
+		const Callback<bool(const HitTestRec &)> &cb) const {
+	// Backwards: registration order is paint order, so the last match is the topmost
+	for (size_t i = _hitTest->size(); i > 0; --i) {
+		const auto &rec = _hitTest->at(i - 1);
+		if ((rec.flags & mask) == HitTestFlags::None) {
+			continue;
+		}
+		if (!rec.node) {
+			continue;
+		}
+		if (!cb(rec)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+size_t InputListenerStorage::getHitTestCount() const { return _hitTest->size(); }
+
 void InputListenerStorage::sort() {
+	// Rebuilt from scratch: this is the first moment every Rec has its final address.
+	_focus->clear();
+
+	auto collect = [this](mem_pool::Vector<Rec> *vec) {
+		for (auto &rec : *vec) {
+			if (!rec.focus) {
+				continue;
+			}
+			auto it = _focus->find(rec.focus.get());
+			if (it == _focus->end()) {
+				it = _focus->emplace(rec.focus.get(), mem_pool::Vector<Rec *>()).first;
+				it->second.reserve_block_optimal();
+			}
+			it->second.emplace_back(&rec);
+		}
+	};
+
+	perform([&, this] {
+		collect(_preSceneEvents);
+		collect(_sceneEvents);
+		collect(_postSceneEvents);
+	});
+
 	for (auto &it : *_focus) {
 		sprt::sort(it.second.begin(), it.second.end(), [](const Rec *l, const Rec *r) {
 			auto lp = l->listener->getPriority();
@@ -153,12 +241,15 @@ Rc<InputListenerStorage> InputDispatcher::acquireNewStorage() {
 	return req;
 }
 
-void InputDispatcher::commitStorage(AppWindow *window, Rc<InputListenerStorage> &&storage) {
+void InputDispatcher::commitStorage(core::RenderServerChannel *window,
+		Rc<InputListenerStorage> &&storage) {
 	_tmpEvents = move(_events);
 	_events = move(storage);
 	if (_tmpEvents) {
 		_tmpEvents->clear();
 	}
+
+	_events->_generation = ++_generation;
 
 	// Sort focus groups
 	_events->sort();
@@ -172,7 +263,11 @@ void InputDispatcher::commitStorage(AppWindow *window, Rc<InputListenerStorage> 
 	}, nullptr);
 
 	sprt::window::Vector<WindowLayer> layers;
-	_events->foreachListener([&](const InputListenerStorage::Rec &rec) {
+	_events->foreachListener([&, this](const InputListenerStorage::Rec &rec) {
+		// Stamped at commit, not at visit (the visited storage is not committed yet). A listener
+		// reached outside this walk compares its stamp; see InputListener::_shouldProcessEvent
+		rec.listener->_visitGeneration = _generation;
+
 		if (rec.layer) {
 			layers.emplace_back(rec.layer);
 		}
@@ -180,6 +275,26 @@ void InputDispatcher::commitStorage(AppWindow *window, Rc<InputListenerStorage> 
 	}, nullptr);
 
 	window->updateLayers(sp::move(layers));
+}
+
+bool InputDispatcher::foreachHitTest(HitTestFlags mask,
+		const Callback<bool(const InputListenerStorage::HitTestRec &)> &cb) const {
+	if (!_events) {
+		return true;
+	}
+	return _events->foreachHitTest(mask, cb);
+}
+
+HitTestFlags InputDispatcher::getHitTestMask() const {
+	return _events ? _events->getHitTestMask() : HitTestFlags::None;
+}
+
+SpanView<Rc<Node>> InputDispatcher::getSelectionChain() const {
+	return _events ? _events->getSelectionChain() : SpanView<Rc<Node>>();
+}
+
+uint64_t InputDispatcher::getCommittedGeneration() const {
+	return _events ? _events->getGeneration() : 0;
 }
 
 void InputDispatcher::handleInputEvent(const InputEventData &event) {
@@ -227,20 +342,31 @@ void InputDispatcher::handleInputEvent(const InputEventData &event) {
 		break;
 	}
 	case InputEventName::MouseMove: {
-		_pointerLocation = event.getLocation();
-
 		EventHandlersInfo handlers{getEventInfo(event)};
+
+		// Kept for re-running hit tests later without an event - see getPointerEvent()
+		_pointerEvent = handlers.event;
+		_hasPointerEvent = true;
+
 		handlers.addListenersFromStorage(_events);
 		handlers.handle(false);
 
-		for (auto &it : _activeEvents) {
-			if ((it.second.event.data.input.modifiers & InputModifier::Unmanaged)
+		Vector<uint32_t> ids;
+		ids.reserve(_activeEvents.size());
+		for (auto &it : _activeEvents) { ids.emplace_back(it.first); }
+
+		for (auto id : ids) {
+			auto it = _activeEvents.find(id);
+			if (it == _activeEvents.end()) {
+				continue;
+			}
+			if ((it->second.event.data.input.modifiers & InputModifier::Unmanaged)
 					== InputModifier::None) {
-				it.second.event.data.input.x = event.input.x;
-				it.second.event.data.input.y = event.input.y;
-				it.second.event.data.event = InputEventName::Move;
-				it.second.event.data.input.modifiers = event.input.modifiers;
-				handleInputEvent(it.second.event.data);
+				it->second.event.data.input.x = event.input.x;
+				it->second.event.data.input.y = event.input.y;
+				it->second.event.data.event = InputEventName::Move;
+				it->second.event.data.input.modifiers = event.input.modifiers;
+				handleInputEvent(it->second.event.data);
 			}
 		}
 		break;
@@ -273,12 +399,20 @@ void InputDispatcher::handleInputEvent(const InputEventData &event) {
 		break;
 	}
 	case InputEventName::KeyPressed: {
+		if (handleHotkey(event, false)) {
+			break;
+		}
 		auto v = resetKey(event);
 		v->addListenersFromStorage(_events);
 		v->handle(true);
 		break;
 	}
-	case InputEventName::KeyRepeated: handleKey(event, false); break;
+	case InputEventName::KeyRepeated:
+		if (handleHotkey(event, true)) {
+			break;
+		}
+		handleKey(event, false);
+		break;
 	case InputEventName::KeyReleased:
 	case InputEventName::KeyCanceled: handleKey(event, true); break;
 	}
@@ -308,6 +442,10 @@ void InputDispatcher::setListenerExclusiveForKey(const InputListener *l, InputKe
 	if (it != _activeKeys.end()) {
 		setListenerExclusive(it->second, l);
 	}
+}
+
+bool InputDispatcher::isEventActive(uint32_t id) const {
+	return _activeEvents.find(id) != _activeEvents.end();
 }
 
 bool InputDispatcher::hasActiveInput() const {
@@ -479,6 +617,144 @@ void InputDispatcher::EventHandlersInfo::addListenersFromStorage(
 
 void InputDispatcher::setListenerExclusive(EventHandlersInfo &info, const InputListener *l) const {
 	info.setExclusive(l);
+}
+
+FocusGroup *InputDispatcher::getExclusiveGroup(const InputEvent &event) const {
+	FocusGroup *ret = nullptr;
+	_events->foreachListener([&](const InputListenerStorage::Rec &l) {
+		if (l.focus && hasFlag(l.focus->getFlags(), FocusGroup::Flags::Exclusive)
+				&& l.focus->canHandleEvent(event)) {
+			// Same arbitration as addListenersFromStorage: higher priority wins, and at equal
+			// priority the innermost group does
+			if (!ret || l.focus->getPriority() > ret->getPriority()
+					|| (l.focus->getPriority() <= ret->getPriority()
+							&& l.focus->isParentGroup(ret))) {
+				ret = l.focus;
+			}
+		}
+		return true;
+	}, nullptr);
+	return ret;
+}
+
+bool InputDispatcher::handleHotkey(const InputEventData &data, bool repeated) {
+	if (!_events) {
+		return false;
+	}
+
+	// Materialized once: the walk offers the same set to every listener, and sided and base
+	// bindings live in different buckets
+	Vector<HotkeyId> ids;
+	HotkeyRegistry::getInstance()->match(data, [&](HotkeyId id) {
+		ids.emplace_back(id);
+		return true;
+	});
+	if (ids.empty()) {
+		return false;
+	}
+
+	auto event = getEventInfo(data);
+	auto exclusiveGroup = getExclusiveGroup(event);
+
+	// "Focused" by the group's own rule, not InputListener::isFocused(), so ui::FormSystem focus
+	// covers a field's whole subtree - see XLHotkey.h
+	auto isFocused = [&](const InputListenerStorage::Rec &l) {
+		return !l.focus || l.focus->canHandleEventWithListener(event, l.listener);
+	};
+
+	// Outside the winning exclusive group only BypassExclusive bindings may fire
+	auto isScoped = [&](const InputListenerStorage::Rec &l) {
+		if (!exclusiveGroup) {
+			return false;
+		}
+		return l.focus != exclusiveGroup && !(l.focus && l.focus->isParentGroup(exclusiveGroup));
+	};
+
+	// Whether a listener's owner is on the committed selection chain (for SelectedOnly). Read
+	// from the storage, never from the live SelectionSystem; see setSelectionChain
+	auto isInSelection = [&](const InputListenerStorage::Rec &l) {
+		return _events->getSelectionDepth(l.listener->getOwner()) != maxOf<size_t>();
+	};
+
+	auto contextFor = [&](const InputListenerStorage::Rec &l, bool focusedOverride) {
+		return HotkeyContext{focusedOverride || isFocused(l), repeated, isScoped(l),
+			isInSelection(l)};
+	};
+
+	// The listener that owns the keyboard is offered first. Only a SingleFocus group designates
+	// one; any other group lets everybody through.
+	Rc<InputListener> focusedListener;
+	HotkeyContext focusedContext;
+	_events->foreachListener([&](const InputListenerStorage::Rec &l) {
+		if (l.focus && hasFlag(l.focus->getFlags(), FocusGroup::Flags::SingleFocus) && isFocused(l)
+				&& l.listener->canHandleHotkey(ids, contextFor(l, true))) {
+			focusedListener = l.listener;
+			focusedContext = contextFor(l, true);
+			return false;
+		}
+		return true;
+	}, nullptr);
+
+	if (focusedListener && focusedListener->handleHotkey(ids, event, focusedContext)) {
+		return true;
+	}
+
+	/* Pass B: the selection chain, deepest first - the selected element's listener, its parents,
+	then the owning container, so an Undo reaches the history the user works in. A separate pass
+	because paint order means nothing within the selection. A chain listener that declines is not
+	offered the key again below. */
+	Vector<Rc<InputListener>> chainOffered;
+
+	if (!_events->getSelectionChain().empty()) {
+		struct Candidate {
+			const InputListenerStorage::Rec *rec;
+			size_t depth;
+			uint32_t order;
+		};
+
+		Vector<Candidate> candidates;
+		uint32_t seq = 0;
+		_events->foreachListener([&](const InputListenerStorage::Rec &l) {
+			auto depth = _events->getSelectionDepth(l.listener->getOwner());
+			if (depth != maxOf<size_t>() && l.listener != focusedListener) {
+				candidates.emplace_back(Candidate{&l, depth, seq});
+			}
+			++seq;
+			return true;
+		}, nullptr);
+
+		// Depth first, then the ordinary walk order within one depth (explicit `seq` tie-break)
+		sprt::sort(candidates.begin(), candidates.end(), [](const Candidate &l, const Candidate &r) {
+			return (l.depth != r.depth) ? (l.depth < r.depth) : (l.order < r.order);
+		});
+
+		for (auto &c : candidates) { chainOffered.emplace_back(c.rec->listener); }
+
+		for (auto &c : candidates) {
+			// Re-checked per candidate: an earlier hotkey callback may have torn the scene down
+			if (c.rec->listener->handleHotkey(ids, event, contextFor(*c.rec, false))) {
+				return true;
+			}
+		}
+	}
+
+	bool handled = false;
+	_events->foreachListener([&](const InputListenerStorage::Rec &l) {
+		if (l.listener == focusedListener) {
+			return true; // already had its turn
+		}
+		if (sprt::find(chainOffered.begin(), chainOffered.end(), l.listener)
+				!= chainOffered.end()) {
+			return true; // offered along the chain above, and declined
+		}
+		if (l.listener->handleHotkey(ids, event, contextFor(l, false))) {
+			handled = true;
+			return false;
+		}
+		return true;
+	}, nullptr);
+
+	return handled;
 }
 
 void InputDispatcher::clearKey(const InputEventData &event) {

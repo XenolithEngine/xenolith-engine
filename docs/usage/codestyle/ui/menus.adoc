@@ -1,0 +1,573 @@
+# Menus: `MenuSource`, `MenuSystem` and the popup chain
+
+**TL;DR**
+
+* A menu is **data plus a consumer**: `ui::MenuSource` is the model, and
+  `ui::MenuSystem` is one system on the node the menu is built into.
+  `node->addSystem(Rc<ui::MenuSystem>::create(source))` and the rows appear.
+* A **popup** is that same pair inside a `ui::SubWindow` — `ui::openMenuForNode`.
+  There is nothing popup-specific in the model or in the system.
+* **One measurement decides everything**: `MenuSystem::measure` resolves the
+  column widths and every row height, and the same call answers "how large a
+  surface do I ask the window system for" (before any node exists), "how big is
+  this menu" for a `fit-content` ancestor, and "how tall is this row once its
+  text has wrapped".
+* **The columns are shared by every row.** That is what lines the icons up and
+  puts the accelerators in one right-hand column, and it is why the text column
+  — and therefore where the text wraps — is only known once every item has been
+  measured.
+* An item carries **two texts** (title, subtitle), **two icons** (leading,
+  trailing), an **accelerator** bound to a named `HotkeyId`, a callback, and
+  optionally a **submenu**. A `MenuSourceCustom` carries a node factory instead.
+* `MenuSystem` **owns its children's geometry**, like `DockSystem`: the menu node
+  must not also carry a `LayoutSystem`, and it is marked `SystemManagedLayout`.
+* **`bindMenuHotkeys(listener, source)`** subscribes the listener to every hotkey
+  the menu declares, so the menu is the single place a command is written down.
+
+## Building a menu
+
+[source,cpp]
+----
+auto source = Rc<ui::MenuSource>::create();
+
+source->addButton("open", "Open…", IconName::File_folder_open_solid,
+        [this](NotNull<ui::MenuSourceButton>) { openDocument(); });
+
+auto save = source->addButton("save", "Save", IconName::Content_save_solid,
+        [this](NotNull<ui::MenuSourceButton>) { saveDocument(); });
+save->setHotkey("org.example.editor.save", "Ctrl+S", "Save the document");
+
+auto recent = source->addButton("recent", "Recent files");
+recent->setSubtitle("The last five documents you opened");
+
+source->addSeparator();
+
+auto wrap = source->addButton("wrap", "Wrap long lines",
+        [](NotNull<ui::MenuSourceButton> item) { item->setChecked(!item->isChecked()); });
+wrap->setKeepOpen(true);
+
+source->addSubmenu("export", "Export as", IconName::None,
+        [this](NotNull<ui::MenuSourceButton>) { return buildExportMenu(); });
+----
+
+`addButton`, `addSubmenu`, `addCustom` and `addSeparator` append; `insertItem`
+and `removeItem` are there for a menu that changes shape. **The first argument
+is the name**, and the name is the identity: it becomes the row node's name
+(hence its CSS `#id`), it is what the activate callback reports, and it is what
+a test drives the item by. The title is presentation.
+
+Every mutation marks the source dirty and every `MenuSystem` showing it rebuilds
+on the next visit — **directly**, not through a scheduled check, because an
+application that renders on demand owes the frame loop a reason to run and "the
+menu changed" is one.
+
+### The item vocabulary
+
+[cols="1,3"]
+|===
+| `MenuSourceButton` | a command: title, subtitle, leading icon, trailing icon, accelerator, callback, and/or a submenu
+| `MenuSourceCustom` | an arbitrary node from a **factory**, sized by its own **measure function**
+| `MenuSourceItem` | a separator (the base class's own type)
+|===
+
+`MenuItemFlags` says what the model thinks of an item:
+
+[cols="1,3"]
+|===
+| `Disabled` | drawn, reachable, does nothing — CSS `:disabled` and the `disabled` class. A hotkey bound to it **declines**, so the combination carries on down the dispatcher's walk
+| `Hidden` | not built at all: no row, and not in the metrics
+| `Checked` | occupies the leading column, so a menu with one checkable item indents every row alike instead of shifting when the mark appears
+| `KeepOpen` | activating it does **not** take the menu down — for the toggles a user flips several of in a row
+|===
+
+`Disabled` is an explicit flag on purpose. The removed material2d model derived
+it from "has no callback", which made a submenu-only row indistinguishable from
+a greyed-out command and left no way to grey out one that does have a callback.
+
+### A custom node
+
+The measurement is **separate from the factory and must work without it**,
+because the menu's size is settled before any node exists:
+
+[source,cpp]
+----
+source->addCustom(
+    [](NotNull<ui::MenuSystem>, NotNull<ui::MenuSourceCustom>) -> Rc<Node> {
+        return Rc<ColorPickerStrip>::create();
+    },
+    [](NotNull<ui::MenuSourceCustom>, const MeasureConstraints &c) {
+        return Size2(240.0f, c.mode == MeasureMode::MaxContent ? 32.0f : 32.0f);
+    },
+    "colors");
+
+// or, for a node of a fixed size
+source->addCustom(factory, Size2(200.0f, 28.0f), "colors");
+----
+
+The factory runs **at most once per menu**: rows are reused across every rebuild,
+keyed on item identity, so flipping a check or renaming a title does not drop the
+node — which is what keeps an open menu from flickering, and what the test counts.
+
+## Measuring: the columns and the wrap
+
+`MenuSystem::measure(controller, source, style, constraints, density)` is the
+single place a width or a height is decided. In order:
+
+. The **leading** column exists if any visible item has a leading icon or is
+  checked; the **trailing** column if any has a trailing icon or a submenu; the
+  **accelerator** column is the widest rendered combination. A column that is not
+  there takes its gap with it — a menu with no icons is not indented by an empty
+  one.
+. The natural width is the widest caption between those columns, or the widest
+  custom node across the whole row.
+. That is clamped into `[MenuStyle::minWidth, min(maxWidth, constraints.maxWidth)]`.
+  **`maxWidth` is what turns a long command into a wrapped one** instead of a
+  menu running off the screen.
+. The **text column is what is left**, and every title and subtitle is measured
+  wrapped to it. A row is `max(itemMinHeight, padding + titleHeight + subtitleHeight)`.
+
+`measureAtWidth` is the same thing for a width that is already decided — an
+inline menu sized by its parent, or a surface being rebuilt at the extent the
+window system actually gave it.
+
+**`density` must be the density the labels will be shaped at.** `getLabelSize`
+divides the shaped extent by it, so a mismatch is a menu measured for one display
+and drawn on another. `measureForNode` reads it off the node.
+
+`MenuStyle` is numbers, not CSS, and deliberately so: the surface's `Extent2` has
+to be known before a single node exists, so it cannot come from a stylesheet that
+is only consulted once the nodes are there. Colours, fonts and corners are CSS's.
+Same split as `DockSystem::setSplitterThickness`.
+
+### Why the rows are not flex containers
+
+A row is placed arithmetically from the metrics. That is a **correctness**
+requirement, not an optimization: a flex column measures its items' *main* axis
+with `MeasureMode::MaxContent`, and for a `Label` max-content means "do not wrap
+at all". A title stacked over a subtitle inside a column flex would be measured
+as one line each and the row would come out too short for the text it is about to
+draw. `LayoutMode::Table` has the same problem from the other side — it measures
+cells only at max-content and never re-measures them at the resolved column
+width.
+
+## Opening it as a popup
+
+[source,cpp]
+----
+ui::MenuConfig config;
+config.stylesheet = String("resources/style.css");
+config.onActivate = [this](NotNull<ui::MenuSourceItem> item) { run(item->getName()); };
+
+_menu = ui::openMenuForNode(window, _hamburger, source, sp::move(config));
+----
+
+The returned `Rc<SubWindow>` **is** the handle — keep it. It becomes a native
+subwindow where the platform has them and an in-scene overlay where it does not,
+and **headless is on the native side**, so a menu is a separately renderable
+window with no display in play.
+
+`placementForNode` adds the **side** to `ui::placementAnchorRect`, which is the
+arithmetic every hand-written popup in this tree has got wrong at least once: the
+anchor rect comes from the node's four **corners** (the node may be rotated or
+scaled), converted into the scene *content's* space (which undoes the density
+scale — scene space is physical pixels, `WindowPlacement` is logical points),
+scaled by `density / surfaceDensity` (the application's own `WindowInfo::density`,
+which is 1 unless something asked for another — see below), and
+flipped into Y-down at the end. It lives in
+[XLUiSubWindow.h](../../../../xenolith/renderer/ui/XLUiSubWindow.h) rather than
+here because a menu, a dropdown and a hint have to answer "where is the anchor"
+the same way — `ui::TooltipSystem` once answered it differently, and its hints
+landed tens of points off on any window whose density was not 1.
+
+**There are two densities and only one of them is the window system's.**
+`FrameConstraints::surfaceDensity` is the display's, and it is what the window
+system scales by: every backend divides pixels by it to say where a window is and
+multiplies by it to be told where to put one. `FrameConstraints::density` is that
+times the application's own `WindowInfo::density` — the factor `--density` sets —
+and it is what the scene graph is laid out in. So the content's space is pixels
+over the second and a `WindowPlacement` is pixels over the first, and the step
+between them is the ratio. It is 1 for an application that never asks for a
+density of its own, which is why this went unnoticed until one did: with
+`--density 1.5` every menu in the window opened a third of the way from the widget
+it belonged to. `tests/window/menu-check.py` runs the stand twice, once at each
+density, and asserts that the popup follows its anchor.
+
+**The surface itself is not the menu's.** `openMenu` builds it through
+`ui::openPopupSurface`
+([XLUiPopupSurface.h](../../../../xenolith/renderer/ui/XLUiPopupSurface.h)), which
+is what every popup in the kit opens through — the sheet on the native path, the
+panel's rendering level, the overlay placement, the tap that closes it. What stays
+here is what is actually a menu: the measurement that settles the extent before
+any node exists, `MenuPopupChain`, and the keyboard. Clicking away from a submenu
+therefore takes the whole chain down rather than that one link, which is what
+`PopupSurfaceConfig::onOutsideTap` is for.
+
+**The sheet is inherited; pass one only to override it.** A native popup is a
+scene of its own, and the `ui::StyleSystem` carrying the application's sheet lives
+in the *parent* window's scene — so `ui::openPopupSurface` shares that sheet with
+the popup, and a styled application gets a styled menu without saying anything.
+`MenuConfig::stylesheet` names a file and `stylesheetSource` carries CSS as a
+literal, for a menu whose look is genuinely not the application's; they replace
+the inherited sheet rather than composing with it. Where there is no sheet at all
+— a test stand, a tool — the menu paints itself with its own neutral colours
+rather than coming up black on black.
+
+### Submenus
+
+A submenu is another popup, parented to the menu it opened from — a `Popup` under
+a `Popup`, which is what the window type is for. `MenuPopupChain` links them, and
+the ownership is strictly downward: a parent holds its child's *surface*, a child
+points back with a raw pointer. So there is no cycle to break, and a parent going
+away takes its descendants with it through `handleExit`.
+
+* Opening a submenu is **navigation, not a choice**: the item's own callback does
+  not run and nothing is reported.
+* Activating a leaf takes the **whole chain** down and reports through the
+  **root's** `onActivate`, once.
+* A lazy `SubmenuFactory` runs on first open and the result is cached, so a
+  submenu keeps its state when it is reopened.
+
+#### Opening one by hover
+
+A row with a submenu opens it when the pointer *stops on it*, and any other row
+takes the open one back down. Both go through the same two seams a click uses —
+`MenuSystem::setSubmenuHandler` and its pair `setSubmenuCloseHandler` — so a menu
+that opens submenus its own way closes them its own way, and a menu with neither
+behaves exactly as it did before.
+
+**The two delays are not the same number**, and `MenuHoverConfig` is where they
+live (`openSubmenu`, `openDelay` 220 ms, `closeDelay` 400 ms). Opening is a
+decision the user made by stopping on a row; *closing may be no decision at all*
+— the pointer on its way into an open submenu crosses the rows below the one that
+opened it, and every one of those is a hover that would otherwise take the
+submenu away from under it. So the close waits longer, and any hover arriving in
+the meantime cancels it. That is what makes the diagonal trip survivable without
+tracking which direction the pointer came from.
+
+`MenuConfig::hover` carries the same numbers down the whole chain, like `style`,
+so every level of one menu answers the pointer alike; an inline menu is told with
+`MenuSystem::setHoverConfig`. `openSubmenu = false` returns the old behaviour
+exactly: a click and `Right`, nothing else.
+
+**Arriving in a level cancels the close the level above had armed**, and nothing
+re-arms it until the pointer goes back to a row up there. The delay alone was
+never enough: it makes the diagonal trip *survivable*, not certain, and a pointer
+that took longer than 400 ms — or that simply stopped on the way — had the
+submenu taken down from under it. So the level that was arrived at says so, up
+the whole chain (`MenuSystem::setPointerEnterHandler` →
+`MenuPopupChain::handlePointerEntered` → `cancelSubmenuDelay` on every level
+above). It is reported for the MENU, not for a row of it: a pointer resting on a
+separator, on the padding or in the gap between two rows is still in that menu,
+and none of those is a row that hovers.
+
+A hover in a menu is reported at all only because the row's mouse-over recognizer
+does **not** require the window to hold the keyboard focus
+(`InputMouseOverInfo::onlyFocused`): a popup surface never takes focus, so a menu
+gated on it would never highlight a row and never open a level by pointing. That
+is `ui::Button`'s setting, and every widget built on one inherits it.
+
+**`MenuPopupChain::openSubmenu` is idempotent for the row that is already open.**
+Not an optimization: the pointer leaving a submenu back onto the row that opened
+it asks again on every entering edge, and rebuilding the level would flicker it
+and drop whatever was open below it. The chain is also the *only* record of which
+submenu is up — `MenuSystem` deliberately keeps none, because a copy would go
+stale the moment a level is taken down by something else (`Left` asks the chain
+directly) and a stale copy would then refuse to reopen the row it named.
+
+### Activation order
+
+`willActivate` → the item's own callback → `activate`. The popup dismisses in the
+first, which is why an action is free to put another surface up in its place
+without leaving the menu standing behind it.
+
+## Context menus
+
+A menu the user asks for by right-clicking, or by holding a finger down, is
+declared per node and driven once per scene:
+
+[source,cpp]
+----
+#include "XLUiContextMenu.h"
+
+// a fixed menu
+ui::setContextMenu(node, source);
+
+// or one built for the point it was asked at
+ui::setContextMenu(view, [this](const ui::ContextMenuRequest &req) -> Rc<ui::MenuSource> {
+    return buildMenuForRow(view->getRowIndexAt(req.location));
+});
+
+// the scene's coordinator, for what every menu in it should look like
+auto menus = ui::ContextMenuSystem::acquireForNode(node);
+menus->setMenuConfigCallback([](ui::MenuConfig &config) {
+    config.stylesheetSource = String(s_css);   // only to OVERRIDE the inherited sheet
+});
+----
+
+**The declaration has no input of its own, and no lifecycle either.**
+`ContextMenuComponent` is data on the node: a listener per element is the obvious
+implementation and the wrong one, since a menu is declared on many nodes and used
+on almost none, and in a virtualized view the node that would carry it exists only
+while it is on screen. `setContextMenu` also raises `HitTestFlags::ContextMenu`,
+which makes the node publish the rect it was drawn with into the window's hit-test
+registry — the same one drop targets and tooltips use, with the same three
+consequences: the rect is exactly the one that was drawn, registration order is
+paint order so the topmost answers, and a node that is not visited is not a target
+at all.
+
+`setContextMenuEnabled` turns one off without removing it, `removeContextMenu`
+takes both the component and the flag away, and `getContextMenu` reads it back.
+Use them rather than the raw component API — the flag is a cache of the
+component's presence.
+
+`ContextMenuRequest::location` is in the **declaring node's** space, which is what
+lets a view resolve its own row from it (`TreeView::getRowIndexAt`) without
+converting anything.
+
+### What stops a menu
+
+"Only if nobody else took the press" cannot be asked: the dispatcher does not
+record whether an event was handled, and `InputEventState::Processed` does not
+even stop the walk. There are two mechanisms instead, and a widget that wants the
+right button to itself has to use one of them:
+
+* **capture it.** A listener that swallows the press
+  (`setSwallowEvent(InputEventName::Begin)`), or that takes the pointer
+  exclusively — which is what `DragSource` does when a drag starts — turns the
+  coordinator's gesture into a `Cancel`, and no menu opens;
+* **declare an empty target.** A `ContextMenuComponent` whose builder returns
+  null **blocks**: the search stops at the topmost target and does not fall
+  through to the region under it. That is how a control says "no menu here" inside
+  a panel that has one.
+
+A plain `Processed` is deliberately invisible. `ui::Button` already answers a
+right tap and does not swallow it, and a button must not stop the panel around it
+from opening its menu.
+
+### An open menu covers the scene
+
+A click outside an open menu **dismisses it and reaches nothing else**; the next
+click is an ordinary one. That is what every desktop menu does, and it is why the
+coordinator has *two* listeners rather than one: opening is asked last, after
+every widget has had its chance, while closing has to be asked FIRST — a dismiss
+listener in the post-scene band would be told about a press the widget under the
+pointer had already acted on. The dismissing one swallows the press
+(`Processed` → `Captured`, which cancels everyone else for that chain) and is
+enabled only while a menu is up.
+
+One rule for every button: a *right* click while a menu is open closes it too,
+rather than replacing it with another menu. "A click outside is spent on the
+dismissal" is easier to predict than a rule per button.
+
+On a real window system a native popup holds a pointer grab and the parent never
+sees the press at all, so none of this runs there. It is for the in-scene overlay
+path — and for headless, where the emulated window manager delivers to the parent.
+
+### The two gestures
+
+The mouse opens on **release** — a tap recognizer, press-and-release without
+moving past the tap tolerance. That is what desktop applications do, and it is
+what leaves a right-button drag possible; `ui::CanvasView` pans with one.
+
+The touchscreen opens on a **long press** (`setLongPressInterval`, 500 ms by
+default), and the recognizer has to read `InputModifier::Touch` off the event to
+know it was a finger: `InputMouseButton::Touch` *is* `MouseLeft`, so the button
+says nothing. It is deliberately **not** a capturing press recognizer — this
+listener is the last one asked and every press in the window reaches it, so
+capturing would take the pointer away from whatever was actually being pressed.
+
+`ContextMenuSystem::openAt(worldLocation)` is the same call without the pointer,
+which is what a test drives and what a keyboard binding would use.
+
+## Hotkeys
+
+An item stores a `HotkeyId`; the accelerator column renders it through
+`HotkeyCombo::encode`. `MenuSourceButton::setHotkey(name, combo, description)`
+registers and remembers the id in one step, so the menu is where the command is
+declared.
+
+[source,cpp]
+----
+ui::bindMenuHotkeys(_listener, source);
+----
+
+subscribes the listener to every hotkey in the menu. A disabled item's
+subscription **declines**, so the combination is not eaten by a greyed-out
+command. `recursive` descends into submenus that have **already been built** — a
+keystroke must never have the side effect of materializing a menu nobody opened,
+so a command behind a lazy factory has to be bound where it is declared.
+
+The rendered text is the **engine's** spelling (`Mod3+S`, `LEFT`), not the
+platform's. For `⌘`/`⇧` set `setShortcutText()`, which overrides the label without
+touching the binding.
+
+## Styling
+
+[source,css]
+----
+menu                  { background-color: #202026; }   /* see "a surface is a ground" below */
+menu-item             { background-color: #00000000; }
+menu-item:hover       { background-color: #2f2f38; }
+menu-item:disabled    { }                       /* Button gives :disabled and .disabled */
+menu-item.checked     { background-color: #2a2a44; }
+menu-item.submenu     { }
+menu-item > label     { color: #e8e8e8; font-size: 14px; }
+menu-item-subtitle    { color: #9a9aa4; }
+menu-item-shortcut    { color: #9a9aa4; }
+menu-separator        { background-color: #3d3d3d; }
+----
+
+The row's own type is `menu-item` (a `Button` underneath, so `:hover`, `:active`
+and `:disabled` come for free); the separator row is `menu-separator-row` and
+paints nothing, while the line inside it is `menu-separator`.
+
+## Traps
+
+[cols="1,2"]
+|===
+| Trap | What actually happens
+
+| A `LayoutSystem` on the menu node
+| Two systems write every row's `ContentSize` and neither wins. `handleAdded`
+  asserts; never write `display: flex` for a menu node
+
+| Expecting `LayoutMode::Table` to align the columns
+| It measures cells only at max-content, so a row with wrapped text comes out one
+  line tall
+
+| A native popup unstyled in an application that has no `ui::StyleSystem`
+| There is no sheet to inherit, so the menu falls back to its own neutral
+  colours — install one, or pass `MenuConfig::stylesheet`/`stylesheetSource`
+
+| A recognizer with `onlyFocused = true` inside a menu
+| `WindowType::Popup` never carries `WindowState::Focused`, so it never fires
+
+| Reading a row's box right after changing the model
+| The model updates immediately, the rows follow on the next layout pass
+
+| Measuring at the wrong density
+| The menu is measured for one display and drawn on another; use
+  `measureForNode`, or pass the node's `getInputDensity()`
+
+| A `ui::Panel` in a menu with no fill declared
+| It is opaque **white**, not transparent
+
+| A rounded or translucent-edged panel on a NATIVE popup
+| The window it hangs off gave it `UserSpaceDecorations`, so its surface is
+  transparent by construction; a panel that is not a `Solid` draw never writes the
+  destination alpha and the window behind shows through it. See below
+
+| Expecting `bindMenuHotkeys` to reach a lazy submenu
+| It binds only submenus that have been built; declare the command where it lives
+|===
+
+## A surface is a ground, and a ground is `Solid`
+
+`ui::Panel` resolves its own rendering level: an opaque, hard-edged rectangle is
+**`RenderingLevel::Solid`**, and everything else is `Surface`. That is not a
+performance note — it decides whether the panel writes the framebuffer's **alpha**.
+`Solid` draws with blending off, so the fragment's alpha lands; `Surface` and
+`Transparent` blend, and a blended draw leaves the destination alpha exactly where
+it found it.
+
+On the window an application owns that is invisible: the surface starts opaque. A
+**native popup** does not — it inherits `WindowCreationFlags::UserSpaceDecorations`
+from the window it hangs off, so its surface is transparent by construction and the
+desktop's rounded corner is cut out of it by the `FrameClipper` pass. A menu whose
+panel is not a ground therefore comes up at alpha 0: the colours are right, the
+text is right, and the window behind it shows through all of it.
+
+Three things make a panel non-solid, and a panel is **one image**, so any one of
+them decides the level for the whole surface:
+
+* a `border-radius` — a curve has to be rasterized antialiased;
+* a translucent `background-color`;
+* a translucent `outline-color`, even a 1px one.
+
+An axis-aligned outline is not one of them: a straight edge needs no antialiasing
+and an opaque one keeps the panel solid. So a popup's own surface should carry
+neither a radius (**the window's corner is the window's**, cut from the desktop
+theme's radius) nor a translucent edge; mix the edge down against the fill instead
+of blending it.
+
+## The keyboard is a mode, and it is a `FocusGroup`
+
+`MenuSystem::setKeyboardEnabled(true)` puts a `FocusGroup` and a key listener on
+the menu's node. `Up`/`Down` walk the rows (skipping separators, custom rows and
+disabled items, wrapping at the ends), `Home`/`End` go to the edges,
+`Enter`/`Space` activate, `Right` opens the highlighted row's submenu, `Left`
+takes that level back down and `Escape` takes the whole chain down. The row the
+keyboard is on carries the style class `highlighted`.
+
+**Why a group and not just a listener.** Key events are not hit-tested — they are
+offered to every listener in the window. Without a group the arrows of an open
+menu would also reach the scroll view, the text field and the canvas behind it.
+The group is `Exclusive`, so the dispatcher re-collects the receivers scoped to
+it and the menu owns the keyboard while it is up; it is also `Propagate`, so a
+`MenuSourceCustom` row carrying a focus group of its own (a search field inside a
+menu) still gets its keys. One consequence is deliberate: an open menu also
+**swallows** the keys it does not use — `Ctrl+S` with a menu up must not save.
+
+**Off by default.** An inline menu is a list of commands in somebody else's
+panel, and a permanently exclusive group there would hold the window's arrows
+forever. `openMenu` turns the mode on for the menu it builds — a popup is a scene
+of its own, with nothing to take the keyboard from — and an application turns it
+on for an inline menu the user is driving. `MenuConfig::keyboard` is the switch,
+and `MenuConfig::highlight` names the row the keyboard starts on (a `ui::Select`
+passes its current value, so a list opened from the keyboard begins at what is
+already chosen).
+
+There is one notion of "the current row", not two: the pointer entering a row
+moves the highlight onto it, so a menu never shows a keyboard cursor on one row
+and a hover on another.
+
+## Exercising it
+
+The context-menu half has a stand of its own behind `XL_CONTEXT_MENU_TEST=1`
+(`src/widgets/ContextMenuLayout.cpp`): nested regions that answer differently, an
+invisible target, one that offers nothing, and a widget that swallows the right
+button. `tests/window/context-menu-check.py` drives it — 36 checks, headless.
+`examples/window/dndtree` is the worked example: a right click on a row offers
+Rename and Delete, and on a category Expand/Collapse as well, built by
+`DndTreeView::buildContextMenu` from the row the point resolved to. Rename is the
+one that leaves the menu behind — it opens a `ui::InlineEditSession` over the row's
+rectangle, which is a second place the sheet has to be carried by hand: an inline
+editor lives on an overlay of the scene's content node, outside the subtree the
+application's `ui::StyleResolver` walks, exactly as a popup is a scene of its own.
+
+`tests/window` carries the stand behind `XL_MENU_TEST=1`
+(`src/widgets/MenuLayout.cpp`): one model shown twice, inline and as a popup,
+with a `ui::TextInput` beside the inline one. Inspector commands: `menu.metrics`,
+`menu.state`, `menu.open`, `menu.close`, `menu.activate`, `menu.set-checked`,
+`menu.set-enabled`, `menu.set-visible`, `menu.set-title`, `menu.set-width`,
+`menu.keyboard`, `menu.highlight`, `menu.focus-neighbour`,
+`menu.reset-counters`, `menu.hover`, `menu.hover-config`, `menu.chain`.
+
+`menu.hover` reports a pointer entering a row at a given level of the open chain
+(0 is the inline menu), through the very call `ui::MenuItem` makes on the
+entering edge of a real hover. It has to be a seam: the mouse-over recognizer
+gates on `WindowState::Pointer`, and an injected `MouseMove` cannot put a
+headless window's pointer over a row. So the check covers everything above that
+call, and that `MenuItem` makes it needs a real pointer to see.
+
+[source,sh]
+----
+tests/window/menu-check.py          # 84 checks, headless, no display
+----
+
+The load-bearing assertion is that the metrics *are* the layout: `menu.metrics`
+reports what the measurement produced and `menu.state` reports the boxes the rows
+were drawn at, and the two must agree. A menu whose reported and drawn row heights
+differ is a menu whose popup surface is the wrong size.
+
+The keyboard section asserts the group rather than the keys: with the inline
+menu's keyboard off the arrows move the caret in the field beside it, and with it
+on they move the highlight and the field does not see them at all.
+
+## Related
+
+* [node-system-component.adoc](../scene/node-system-component.adoc) — why a menu is a `System` and not a `Node` subclass
+* [../../ui/content-measurement.adoc](../../ui/content-measurement.adoc) — the measurement protocol a custom item and an inline menu answer
+* [../window/windows.adoc](../window/windows.adoc) — `ui::SubWindow`, placement, and why `gravity` is not the direction it opens
+* [../scene/hotkeys.adoc](../scene/hotkeys.adoc) — the registry the accelerators come from
+* [docking.adoc](docking.adoc) — the same "system owns its children's geometry" shape

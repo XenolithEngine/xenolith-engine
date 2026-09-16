@@ -32,6 +32,14 @@ struct SP_PUBLIC DeferredRequest : Ref {
 			const Vector<FontUpdateRequest> &req,
 			Function<void(uint32_t reqIdx, const CharTexture &texData)> &&, Function<void()> &&);
 
+	// Same fan-out, but the glyph is rasterized straight into storage the callback picks instead of
+	// being handed over as a bitmap to copy. The callback runs on a worker thread, so whatever it
+	// allocates from has to be thread-safe.
+	static void runFontRendererDirect(sprt::dispatch::Looper *, const Rc<FontComponent> &,
+			const Vector<FontUpdateRequest> &req,
+			Function<GlyphTarget(uint32_t reqIdx, const CharTexture &texData)> &&,
+			Function<void()> &&);
+
 	virtual ~DeferredRequest();
 
 	DeferredRequest(const Rc<FontComponent> &lib, const Vector<FontUpdateRequest> &req);
@@ -40,12 +48,14 @@ struct SP_PUBLIC DeferredRequest : Ref {
 
 	sprt::atomic<uint32_t> current = 0;
 	sprt::atomic<uint32_t> complete = 0;
+	sprt::atomic<bool> completed = false;
 	uint32_t nrequests = 0;
 	Vector<Rc<font::FontFaceObject>> faces;
 	Vector<Pair<uint32_t, char32_t>> fontRequests;
 
 	Rc<font::FontComponent> ext;
 	Function<void(uint32_t reqIdx, const font::CharTexture &texData)> onTexture;
+	Function<font::GlyphTarget(uint32_t reqIdx, const font::CharTexture &texData)> onRender;
 	Function<void()> onComplete;
 };
 

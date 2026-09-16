@@ -3,12 +3,17 @@ typedef int __SPRT_ID(socklen_t);
 typedef unsigned short ADDRESS_FAMILY;
 typedef ADDRESS_FAMILY __SPRT_ID(sa_family_t);
 
-struct __SPRT_SOCKADDR_NAME {
+typedef struct __SPRT_SOCKADDR_NAME {
 	ADDRESS_FAMILY sa_family;
 	char sa_data[14];
-};
+} SOCKADDR, *PSOCKADDR, *LPSOCKADDR;
+
+#define INVALID_SOCKET  (SOCKET)(~0)
+#define SOCKET_ERROR            (-1)
 
 typedef unsigned long long SOCKET;
+typedef char sockdata_t;
+typedef int socksize_t;
 
 typedef __SPRT_ID(uint16_t) __SPRT_ID(in_port_t);
 typedef __SPRT_ID(uint32_t) __SPRT_ID(in_addr_t);
@@ -116,8 +121,8 @@ typedef struct addrinfo {
 #define WSASYS_STATUS_LEN       128
 
 typedef struct WSAData {
-	unsigned long wVersion;
-	unsigned long wHighVersion;
+	unsigned short wVersion;
+	unsigned short wHighVersion;
 	unsigned short iMaxSockets;
 	unsigned short iMaxUdpDg;
 	char *lpVendorInfo;
@@ -130,9 +135,53 @@ typedef struct WSAData {
 #define _SS_PAD1SIZE (_SS_ALIGNSIZE - sizeof(unsigned short))
 #define _SS_PAD2SIZE (_SS_MAXSIZE - (sizeof(unsigned short) + _SS_PAD1SIZE + _SS_ALIGNSIZE))
 
-typedef struct sockaddr_storage {
+typedef struct __SPRT_SOCKADDR_STORAGE_NAME {
 	ADDRESS_FAMILY ss_family;
 	char __ss_pad1[_SS_PAD1SIZE];
 	__SPRT_ID(int64_t) __ss_align;
 	char __ss_pad2[_SS_PAD2SIZE];
 } SOCKADDR_STORAGE_LH, *PSOCKADDR_STORAGE_LH, *LPSOCKADDR_STORAGE_LH;
+
+// --- message / control structs -----------------------------------------------------
+// Windows has no POSIX msghdr; this is the SPRT libc's own portable shape, translated
+// to winsock's WSABUF/WSASendTo in SPRuntimeCSysSocket.cpp. Ancillary data (msg_control)
+// is not carried through winsock.
+
+struct __SPRT_LINGER_NAME {
+	// winsock's `struct linger` uses u_short fields (4 bytes total), not the POSIX
+	// int/int; setsockopt(SO_LINGER) forwards this straight through, so it must match.
+	unsigned short l_onoff;
+	unsigned short l_linger;
+};
+
+struct __SPRT_MSGHDR_NAME {
+	void *msg_name;
+	__SPRT_ID(socklen_t) msg_namelen;
+	struct __SPRT_IOVEC_NAME *msg_iov;
+	__SPRT_ID(size_t) msg_iovlen;
+	void *msg_control;
+	__SPRT_ID(size_t) msg_controllen;
+	int msg_flags;
+};
+
+struct __SPRT_CMSGHDR_NAME {
+	__SPRT_ID(size_t) cmsg_len;
+	int cmsg_level;
+	int cmsg_type;
+};
+
+struct __SPRT_MMSGHDR_NAME {
+	struct __SPRT_MSGHDR_NAME msg_hdr;
+	unsigned int msg_len;
+};
+
+#define __SPRT_CMSG_ALIGN(len) \
+	(((len) + sizeof(__SPRT_ID(size_t)) - 1) & (__SPRT_ID(size_t)) ~(sizeof(__SPRT_ID(size_t)) - 1))
+#define __SPRT_CMSG_DATA(cmsg) ((unsigned char *)((struct __SPRT_CMSGHDR_NAME *)(cmsg) + 1))
+#define __SPRT_CMSG_SPACE(len) \
+	(__SPRT_CMSG_ALIGN(len) + __SPRT_CMSG_ALIGN(sizeof(struct __SPRT_CMSGHDR_NAME)))
+#define __SPRT_CMSG_LEN(len) (__SPRT_CMSG_ALIGN(sizeof(struct __SPRT_CMSGHDR_NAME)) + (len))
+#define __SPRT_CMSG_FIRSTHDR(mhdr) \
+	((__SPRT_ID(size_t))(mhdr)->msg_controllen >= sizeof(struct __SPRT_CMSGHDR_NAME) \
+					? (struct __SPRT_CMSGHDR_NAME *)(mhdr)->msg_control \
+					: (struct __SPRT_CMSGHDR_NAME *)0)
