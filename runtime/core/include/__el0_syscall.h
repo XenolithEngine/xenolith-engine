@@ -189,6 +189,38 @@ SPRT_FORCEINLINE long __el0_futex(__SPRT_ID(uint32_t) * __addr, int __op, __SPRT
 
 SPRT_FORCEINLINE long __el0_gettid(void) { return __sprt_svc0(__SPRT_SYSCALL_gettid); }
 
+// --- threads ----------------------------------------------------------------
+//
+// Linux argument order for aarch64: clone(flags, child_stack, parent_tid, tls,
+// child_tid). The child returns 0 and resumes at the caller's return address on
+// `child_stack`; the parent gets the child's tid. Everything else about the
+// child's state is the caller's to arrange -- see the ABI doc, section 3.
+SPRT_FORCEINLINE long __el0_clone(unsigned long __flags, void *__child_stack, int *__ptid,
+		void *__tls, int *__ctid) {
+	return __sprt_svc5(__SPRT_SYSCALL_clone, (long)__flags, (long)__child_stack, (long)__ptid,
+			(long)__tls, (long)__ctid);
+}
+
+SPRT_FORCEINLINE long __el0_set_tid_address(int *__tid) {
+	return __sprt_svc1(__SPRT_SYSCALL_set_tid_address, (long)__tid);
+}
+
+// --- time -------------------------------------------------------------------
+
+SPRT_FORCEINLINE long __el0_nanosleep(const void *__req, void *__rem) {
+	return __sprt_svc2(__SPRT_SYSCALL_nanosleep, (long)__req, (long)__rem);
+}
+
+SPRT_FORCEINLINE long __el0_clock_nanosleep(int __clock, int __flags, const void *__req,
+		void *__rem) {
+	return __sprt_svc4(__SPRT_SYSCALL_clock_nanosleep, __clock, __flags, (long)__req,
+			(long)__rem);
+}
+
+SPRT_FORCEINLINE long __el0_sched_yield(void) {
+	return __sprt_svc0(__SPRT_SYSCALL_sched_yield);
+}
+
 // --- exit -------------------------------------------------------------------
 //
 // Answered by the trap handler itself, before the dispatcher: they have to
