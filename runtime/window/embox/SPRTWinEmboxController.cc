@@ -87,7 +87,9 @@ bool EmboxContextController::init(NotNull<Context> ctx, ContextConfig &&config,
 }
 
 WindowCapabilities EmboxContextController::getCapabilities() const {
-	return WindowCapabilities::None;
+	// rk3588 simplefb is DRAM under the scanout. This controller does not
+	// run on firmware-composited fbs (bcm2711).
+	return WindowCapabilities::DirectOutput;
 }
 
 void EmboxContextController::openUrl(StringView) {

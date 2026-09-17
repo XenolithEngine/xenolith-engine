@@ -22,6 +22,7 @@
 
 #include "XLCoreLoop.h"
 #include "XLCoreInstance.h"
+#include "XLCoreDynamicImage.h"
 #include "SPBitmap.h"
 
 #include <sprt/runtime/dispatch/looper.h>
@@ -39,6 +40,19 @@ bool Loop::init(NotNull<sprt::dispatch::Looper> looper, NotNull<Instance> inst,
 }
 
 bool Loop::isOnThisThread() const { return _looper->isOnThisThread(); }
+
+void Loop::updateImage(const Rc<DynamicImage> &, BytesView,
+		Function<void(bool)> &&cb) const {
+	log::source().warn("core::Loop", "updateImage is not implemented by this backend");
+	if (cb) {
+		cb(false);
+	}
+}
+
+void Loop::updateImageStable(const Rc<DynamicImage> &image, BytesView data,
+		Function<void(bool)> &&cb) const {
+	updateImage(image, data, sp::move(cb));
+}
 
 void Loop::captureImage(const FileInfo &file, const Rc<core::ImageObject> &image,
 		core::AttachmentLayout l) {

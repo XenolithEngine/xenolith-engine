@@ -943,6 +943,16 @@ void AppWindow::compileImage(const Rc<core::DynamicImage> &img, Function<void(bo
 	static_cast<core::Loop *>(_context->getGlLoop())->compileImage(img, sp::move(cb));
 }
 
+void AppWindow::updateImage(const Rc<core::DynamicImage> &img, BytesView data,
+		Function<void(bool)> &&cb) {
+	static_cast<core::Loop *>(_context->getGlLoop())->updateImage(img, data, sp::move(cb));
+}
+
+void AppWindow::updateImageStable(const Rc<core::DynamicImage> &img, BytesView data,
+		Function<void(bool)> &&cb) {
+	static_cast<core::Loop *>(_context->getGlLoop())->updateImageStable(img, data, sp::move(cb));
+}
+
 void AppWindow::attachRenderQueue(const Rc<core::Queue> &queue) {
 	// Announce it to the client (the Director) so it can resolve this graph by name per frame.
 	// Director::handleRenderQueueAttached / _availableQueues had no caller at all before this.

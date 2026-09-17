@@ -91,6 +91,18 @@ public:
 						 : BytesView(_storage.data(), _storage.size());
 	}
 
+	/* Re-point at an externally owned frame slot. Image identity (and
+	 * MaterialInfo hashes) stays. Loop thread only; slot must remain valid
+	 * until the next call (staging ring, one frame of headroom). */
+	void setExternalData(uint8_t *external, uint32_t stride, size_t size) {
+		if (_external == nullptr && !_storage.empty()) {
+			_storage = Bytes(); // release the malloc'd backing; external from now on
+		}
+		_external = external;
+		_externalSize = size;
+		_stride = stride;
+	}
+
 	// Address of the first pixel of a layer, or null if the layer is out of range.
 	uint8_t *getLayerData(uint32_t layer) const;
 

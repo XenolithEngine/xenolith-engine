@@ -31,7 +31,246 @@
 
 #include <sprt/cxx/atomic>
 
+#include <cmath>
+#include <cstdlib>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
+
+/* RGA2 blit (weak). */
+extern "C" __attribute__((weak)) int rga2_blit(uintptr_t dst, uint32_t dst_stride, uint32_t dst_swap,
+		int dx, int dy, int dw, int dh, uintptr_t src, uint32_t src_stride, uint32_t src_swap,
+		int sx, int sy, int sw, int sh);
+
+/* Scanout mapping for RGA video, or 0 if the fb cannot take direct writes. */
+extern "C" __attribute__((weak)) uintptr_t xenolith_soft_scanout_fb(uint32_t *stride);
+
+/* Last frame went to scanout via RGA; present() skips the shadow copy.
+ * A composed frame clears it; empty draw lists leave it. */
+static bool s_scanoutDirectSticky = false;
+
+namespace {
+
+struct RgaBlitInfo {
+	int32_t dx = 0, dy = 0, dw = 0, dh = 0;
+	int32_t sx = 0, sy = 0, sw = 0, sh = 0;
+	uint32_t srcStride = 0;
+	const uint8_t *srcPixels = nullptr;
+};
+
+// Fullscreen video sprite: one opaque axis-aligned nearest-sampled
+// unswizzled white RGBA8 quad (6 indexes / 4 vertices).
+bool findRgaBlit(const raster::DrawList &list, RgaBlitInfo &out) {
+	if (list.entries.size() != 1 || list.indexes.size() < 6 || list.vertexes.size() < 4) {
+		return false;
+	}
+	const auto &entry = list.entries.front();
+	if (entry.type != raster::DrawEntry::Triangles) {
+		return false;
+	}
+	const auto &cmd = list.commands[entry.index];
+	if (cmd.kind != raster::TextureKind::Texture2D || cmd.indexCount != 6) {
+		return false;
+	}
+	if (cmd.blend != raster::BlendMode::Solid && cmd.blend != raster::BlendMode::Transparent) {
+		return false;
+	}
+	if (cmd.sampler.filter != raster::Filter::Nearest) {
+		return false;
+	}
+	const auto &tex = list.textures[cmd.texture];
+	// BGRA only: rga2-lite rejects channel-swap on scaled paths.
+	if (tex.format != raster::PixelFormat::BGRA8888 || tex.width < 2 || tex.height < 2) {
+		return false;
+	}
+	for (auto &c : tex.swizzle) {
+		if (c != raster::ComponentMapping::Identity) {
+			return false;
+		}
+	}
+
+	uint32_t idx[6];
+	for (size_t i = 0; i < 6; ++i) {
+		idx[i] = list.indexes[cmd.firstIndex + i];
+	}
+
+	float minX = 1e9f, maxX = -1e9f, minY = 1e9f, maxY = -1e9f;
+	float minU = 1e9f, maxU = -1e9f, minV = 1e9f, maxV = -1e9f;
+	for (auto i : idx) {
+		const auto &v = list.vertexes[i];
+		if (v.x < minX) { minX = v.x; }
+		if (v.x > maxX) { maxX = v.x; }
+		if (v.y < minY) { minY = v.y; }
+		if (v.y > maxY) { maxY = v.y; }
+		if (v.u < minU) { minU = v.u; }
+		if (v.u > maxU) { maxU = v.u; }
+		if (v.v < minV) { minV = v.v; }
+		if (v.v > maxV) { maxV = v.v; }
+		if (v.color.r < 0.999f || v.color.g < 0.999f || v.color.b < 0.999f || v.color.a < 0.999f) {
+			return false;
+		}
+	}
+	for (auto i : idx) {
+		const auto &v = list.vertexes[i];
+		if ((fabsf(v.x - minX) > 0.01f && fabsf(v.x - maxX) > 0.01f)
+				|| (fabsf(v.y - minY) > 0.01f && fabsf(v.y - maxY) > 0.01f)) {
+			return false;
+		}
+	}
+
+	out.dx = int32_t(minX + 0.5f);
+	out.dy = int32_t(minY + 0.5f);
+	out.dw = int32_t(maxX + 0.5f) - out.dx;
+	out.dh = int32_t(maxY + 0.5f) - out.dy;
+	out.sx = int32_t(minU * float(tex.width) + 0.5f);
+	out.sy = int32_t(minV * float(tex.height) + 0.5f);
+	out.sw = int32_t((maxU - minU) * float(tex.width) + 0.5f);
+	out.sh = int32_t((maxV - minV) * float(tex.height) + 0.5f);
+	out.srcStride = tex.stride;
+	out.srcPixels = tex.pixels;
+	return out.dw > 0 && out.dh > 0 && out.sw > 0 && out.sh > 0;
+}
+
+// First declines dump the command shape so a wrong predicate is visible on-target.
+void logRgaDecline(const raster::DrawList &list) {
+	static uint32_t dumped = 0;
+	static uint32_t lastEntries = 0xFFFFFFFFu;
+	if (list.entries.empty()) {
+		return;
+	}
+	if (list.entries.size() == lastEntries && dumped >= 10) {
+		return;
+	}
+	lastEntries = list.entries.size();
+	++dumped;
+	const auto &entry = list.entries.front();
+	if (entry.type == raster::DrawEntry::Glyph) {
+		log::source().info("soft::QueuePass", "rga-decline: glyph first, entries=",
+				list.entries.size());
+		return;
+	}
+	const auto &cmd = list.commands[entry.index];
+	uint32_t fmt = cmd.texture < list.textures.size()
+			? uint32_t(list.textures[cmd.texture].format) : 0xFFu;
+	log::source().info("soft::QueuePass", "rga-decline: entries=", list.entries.size(),
+			" kind=", uint32_t(cmd.kind), " n=", cmd.indexCount,
+			" blend=", uint32_t(cmd.blend), " fmt=", fmt,
+			" filter=", uint32_t(cmd.sampler.filter));
+}
+
+uint32_t s_rgaTried = 0, s_rgaOk = 0, s_rgaErr = 0, s_rgaDecline = 0;
+uint64_t s_rgaNsTotal = 0;
+
+bool tryRgaVideoBlit(CommandBuffer &buf, const raster::Target &target,
+		const Vector<URect> &areas, const Color4F &clearColor) {
+	static const bool enabled = [] {
+		auto e = ::getenv("XL_SOFT_RGA");
+		return !e || ::atoi(e) != 0;
+	}();
+	static uint32_t s_calls = 0;
+	static uint32_t s_skips = 0;
+	if (++s_calls % 600 == 0) {
+		log::source().info("soft::QueuePass", "rga-call #", s_calls,
+				" enabled=", enabled ? 1 : 0,
+				" sym=", rga2_blit ? 1 : 0);
+	}
+	if (!enabled || !rga2_blit) {
+		if (s_skips++ < 2) {
+			log::source().info("soft::QueuePass", "rga-skip: enabled/sym gate");
+		}
+		return false;
+	}
+	if (target.format != getRasterFormat(core::ImageFormat::B8G8R8A8_UNORM)) {
+		if (s_skips++ < 2) {
+			log::source().info("soft::QueuePass", "rga-skip: target fmt=",
+					uint32_t(target.format));
+		}
+		++s_rgaDecline;
+		return false;
+	}
+
+	RgaBlitInfo b;
+	if (!findRgaBlit(buf.getDrawList(), b)) {
+		logRgaDecline(buf.getDrawList());
+		++s_rgaDecline;
+		return false;
+	}
+
+	uint32_t x0 = target.width, y0 = target.height, x1 = 0, y1 = 0;
+	for (auto &a : areas) {
+		if (a.x < x0) { x0 = a.x; }
+		if (a.y < y0) { y0 = a.y; }
+		if (a.x + a.width > x1) { x1 = a.x + a.width; }
+		if (a.y + a.height > y1) { y1 = a.y + a.height; }
+	}
+
+	// Damage at >60% coverage is the whole surface. Fill the letterbox
+	// strips, blit the intersection. Direct scanout writes the fb mapping
+	// and sets s_scanoutDirectSticky so present() skips the shadow copy.
+	uint32_t fbStride = 0;
+	uintptr_t fbPixels = xenolith_soft_scanout_fb ? xenolith_soft_scanout_fb(&fbStride) : 0;
+	raster::Target dst = target;
+	if (fbPixels) {
+		dst.pixels = reinterpret_cast<uint8_t *>(fbPixels);
+		dst.stride = fbStride;
+	}
+	if (b.dy > int32_t(y0) || b.dy + b.dh < int32_t(y1)) {
+		++s_rgaDecline;
+		return false;
+	}
+	if (b.dx > int32_t(x0)) {
+		uint32_t w = uint32_t(b.dx) - x0;
+		raster::fillRect(dst, URect(x0, y0, w, y1 - y0), clearColor);
+	}
+	int32_t right = b.dx + b.dw;
+	if (right < int32_t(x1)) {
+		uint32_t rx = uint32_t(right > int32_t(x0) ? right : int32_t(x0));
+		raster::fillRect(dst, URect(rx, y0, x1 - rx, y1 - y0), clearColor);
+	}
+	// clip the blit to the damage bounding box, mapping back to source px
+	int32_t bx0 = b.dx > int32_t(x0) ? b.dx : int32_t(x0);
+	int32_t bx1 = right < int32_t(x1) ? right : int32_t(x1);
+	if (bx1 <= bx0) {
+		++s_rgaDecline;
+		return false;
+	}
+	int32_t bw = bx1 - bx0;
+	float scaleX = float(b.sw) / float(b.dw);
+	int32_t isx = b.sx + int32_t(float(bx0 - b.dx) * scaleX + 0.5f);
+	int32_t isw = int32_t(float(bw) * scaleX + 0.5f);
+	if (isw < 1) { isw = 1; }
+	b.dx = bx0; b.dw = bw; b.sx = isx; b.sw = isw;
+
+	++s_rgaTried;
+	struct timespec ts0, ts1;
+	::clock_gettime(CLOCK_MONOTONIC, &ts0);
+	bool ok = rga2_blit(uintptr_t(dst.pixels), uint32_t(dst.stride), 2,
+			b.dx, b.dy, b.dw, b.dh,
+			uintptr_t(b.srcPixels), b.srcStride, 2,
+			b.sx, b.sy, b.sw, b.sh) == 0;
+	::clock_gettime(CLOCK_MONOTONIC, &ts1);
+	s_rgaNsTotal += uint64_t(ts1.tv_sec - ts0.tv_sec) * 1000000000ull
+			+ uint64_t(ts1.tv_nsec - ts0.tv_nsec);
+	if (ok) {
+		++s_rgaOk;
+		if (fbPixels) {
+			s_scanoutDirectSticky = true;
+		}
+	} else {
+		++s_rgaErr;
+	}
+	if ((s_rgaTried + s_rgaDecline) >= 300) {
+		double avg = s_rgaTried ? double(s_rgaNsTotal) / double(s_rgaTried) / 1.0e6 : 0.0;
+		log::source().info("soft::QueuePass", "rga-offload tried=", s_rgaTried,
+				" ok=", s_rgaOk, " err=", s_rgaErr, " decline=", s_rgaDecline,
+				" avg_ms=", avg);
+		s_rgaTried = s_rgaOk = s_rgaErr = s_rgaDecline = 0;
+		s_rgaNsTotal = 0;
+	}
+	return ok;
+}
+
+
+}
 
 bool RenderPass::init(Device &dev, const core::QueuePassData &data) {
 	return core::Object::init(dev,
@@ -555,6 +794,37 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		// then narrows it further at draw time.
 		buf->setScissor(QueuePassHandle_boundingRect(redrawAreas));
 
+		// Record first: an empty draw list must not clear the previous frame
+		// (dynamic-image mid-rebind used to publish a black frame).
+		{
+			FrameStageTimer timer(FrameStage::Record);
+			recordSubpass(q, *subpass, *buf);
+		}
+
+		if (buf->getDrawList().empty()) {
+			return true;
+		}
+
+		{
+			static uint32_t s_seen = 0;
+			static uint32_t s_lastEntries = 0xFFFFFFFFu;
+			uint32_t n = uint32_t(buf->getDrawList().entries.size());
+			if (++s_seen % 600 == 0 || (n != s_lastEntries && s_seen < 300)) {
+				s_lastEntries = n;
+				log::source().info("soft::QueuePass", "runpass entries=", n,
+						" cmds=", buf->getDrawList().commands.size());
+			}
+		}
+
+		auto clearAttachment =
+				static_cast<core::ImageAttachment *>(out->pass->attachment->attachment.get());
+		if (tryRgaVideoBlit(*buf, target, redrawAreas, clearAttachment->getClearColor())) {
+			return true;
+		}
+
+		// Composed into the shadow: present() must copy again.
+		s_scanoutDirectSticky = false;
+
 		// Load op. Clear is the only one that touches memory, and only inside the damaged regions:
 		// outside them the image keeps the previous frame, which is exactly what makes the partial
 		// redraw correct rather than merely cheaper.
@@ -568,11 +838,6 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 			for (auto &it : redrawAreas) {
 				raster::fillRect(target, it, imgAttachment->getClearColor(), &clearFill);
 			}
-		}
-
-		{
-			FrameStageTimer timer(FrameStage::Record);
-			recordSubpass(q, *subpass, *buf);
 		}
 
 		// The command list is built once; only the rasterization repeats, per tile of per region,
@@ -640,7 +905,11 @@ void QueuePassHandle::submit(core::FrameQueue &q, Rc<core::FrameSync> &&sync,
 
 	auto fence = move(_fence);
 	_fence = nullptr;
-	fence->schedule(*_loop);
+		fence->schedule(*_loop);
 }
 
-} // namespace stappler::xenolith::soft
+}
+
+extern "C" int xenolith_soft_rga_direct_presented(void) {
+	return stappler::xenolith::soft::s_scanoutDirectSticky ? 1 : 0;
+}

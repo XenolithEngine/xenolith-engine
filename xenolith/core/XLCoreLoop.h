@@ -75,6 +75,15 @@ public:
 	virtual void compileImage(const Rc<DynamicImage> &,
 			Function<void(bool)> && = nullptr) const = 0;
 
+	// Swap compiled DynamicImage content (per-frame video). Default: fail.
+	virtual void updateImage(const Rc<DynamicImage> &, BytesView,
+			Function<void(bool)> && = nullptr) const;
+
+	// Like updateImage, but `data` must stay valid until the next call.
+	// Soft backend skips the per-frame copy; others fall through to updateImage.
+	virtual void updateImageStable(const Rc<DynamicImage> &image, BytesView data,
+			Function<void(bool)> &&cb = nullptr) const;
+
 	// run frame with RenderQueue
 	virtual void runRenderQueue(Rc<FrameRequest> &&req, uint64_t gen = 0,
 			Function<void(bool)> && = nullptr) = 0;

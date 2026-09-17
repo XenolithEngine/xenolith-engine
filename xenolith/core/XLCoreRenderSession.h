@@ -334,6 +334,16 @@ public:
 			const Vector<Rc<DependencyEvent>> & = Vector<Rc<DependencyEvent>>()) = 0;
 	virtual void compileImage(const Rc<DynamicImage> &, Function<void(bool)> && = nullptr) = 0;
 
+	/* See Loop::updateImage. */
+	virtual void updateImage(const Rc<DynamicImage> &, BytesView,
+			Function<void(bool)> && = nullptr) { }
+
+	/* See Loop::updateImageStable. Falls back to updateImage. */
+	virtual void updateImageStable(const Rc<DynamicImage> &img, BytesView data,
+			Function<void(bool)> &&cb = nullptr) {
+		updateImage(img, data, sp::move(cb));
+	}
+
 	/* What this window wants copied out of the frame that is being built, or null when nothing.
 
 	Called once per frame while the frame's inputs are assembled, and it TAKES the request: two

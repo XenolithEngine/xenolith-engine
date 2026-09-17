@@ -57,6 +57,8 @@ public:
 			const Vector<Rc<DependencyEvent>> & = Vector<Rc<DependencyEvent>>()) const override;
 	virtual void compileImage(const Rc<core::DynamicImage> &,
 			Function<void(bool)> && = nullptr) const override;
+	virtual void updateImage(const Rc<core::DynamicImage> &, BytesView,
+			Function<void(bool)> && = nullptr) const override;
 
 	// run frame with RenderQueue
 	virtual void runRenderQueue(Rc<FrameRequest> &&req, uint64_t gen = 0,

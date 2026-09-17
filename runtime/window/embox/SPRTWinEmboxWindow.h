@@ -25,6 +25,9 @@
 
 #include <sprt/runtime/window/native_window.h>
 #include <sprt/runtime/window/software_surface.h>
+#include <sprt/runtime/window/input.h>
+#include <sprt/cxx/atomic>
+#include <stdint.h>
 
 #if SPRT_EMBOX
 
@@ -64,6 +67,8 @@ public:
 protected:
 	EmboxWindow *_owner = nullptr;
 	Extent2 _extent;
+	/* CPU shadow: composed frames clear-then-draw off-screen. RGA video
+	 * writes the scanout and flags present() to skip the copy. */
 	uint8_t *_shadow = nullptr;
 	size_t _shadowSize = 0;
 };
@@ -89,6 +94,8 @@ public:
 	uint8_t *getMapping() const { return _mapping; }
 	uint32_t getStride() const { return _stride; }
 	size_t getMappingSize() const { return _mappingSize; }
+	/* rk3588 simplefb: true. Firmware-composited fb: false. XL_DIRECT_FB=0 forces off. */
+	bool useDirectScanout() const { return _directScanout; }
 
 protected:
 	virtual bool updateTextInput(const TextInputRequest &,
@@ -99,12 +106,40 @@ protected:
 
 	void teardown();
 
+	/* UART keyboard: stdin is the console. ASCII maps 1:1; CSI/SS3 for
+	 * arrows/F-keys; lone ESC is ESCAPE. Serial has no key-release:
+	 * auto-release after s_uartKeyHoldUs unless auto-repeat refreshes.
+	 * XL_UART_KEYS=0 disables. HID make/break arrives on a side ring. */
+	void startUartInput();
+	void stopUartInput();
+	static void *uartInputThread(void *);
+	void uartInputLoop();
+	void uartFeed(uint8_t byte, uint64_t nowUs);
+	void uartFlushSequence(uint64_t nowUs);
+	void uartExpireHeld(uint64_t nowUs);
+	void uartPost(InputKeyCode, InputEventName);
+	void hidPost(InputKeyCode, InputEventName);
+	void uartPostCancel();
+
 	int _fd = -1;
 	uint8_t *_mapping = nullptr;
 	size_t _mappingSize = 0;
 	uint32_t _stride = 0;
 	Extent2 _extent;
+	bool _directScanout = false;
 	bool _closed = false;
+
+	void *_uartThread = nullptr;
+	sprt::atomic<bool> _uartRunning = false;
+	uint8_t _uartSeq[8] = {};
+	size_t _uartSeqLen = 0;
+	uint64_t _uartSeqStartUs = 0;
+	struct UartHeldKey {
+		InputKeyCode keycode;
+		uint64_t lastSeenUs;
+	};
+	UartHeldKey _uartHeld[16] = {};
+	size_t _uartHeldCount = 0;
 };
 
 } // namespace sprt::window

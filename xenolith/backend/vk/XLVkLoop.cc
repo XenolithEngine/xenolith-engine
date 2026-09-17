@@ -512,6 +512,20 @@ void Loop::compileImage(const Rc<core::DynamicImage> &img, Function<void(bool)> 
 	}, const_cast<Loop *>(this), true);
 }
 
+void Loop::updateImage(const Rc<core::DynamicImage> &img, BytesView data,
+		Function<void(bool)> &&callback) const {
+	performOnThread([this, img, data, callback = sp::move(callback)]() mutable {
+		if (!_internal) {
+			return;
+		}
+		if (!_internal->device) {
+			slog().error("vk::Loop", "No device loaded");
+			return;
+		}
+		_internal->device->updateImage(*this, img, data, sp::move(callback));
+	}, const_cast<Loop *>(this), true);
+}
+
 void Loop::runRenderQueue(Rc<FrameRequest> &&req, uint64_t gen, Function<void(bool)> &&callback) {
 	performOnThread([this, req = sp::move(req), gen, callback = sp::move(callback)]() mutable {
 		if (!_internal || !_internal->_running.load()) {
