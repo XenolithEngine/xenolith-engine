@@ -22,6 +22,8 @@
   owner, then to the closest node registered with **`setNodeSelectable`** that was
   drawn in that direction. They reach the system only when the ordinary key route
   did not take them.
+* **A press may select** (`SelectionSystem::setSelectOnPress`, off by default): the
+  topmost selectable node under the pointer, leaving rows to their owner's own tap.
 
 ## Why it exists
 
@@ -160,7 +162,12 @@ anything, so `TableView` adds the flag only while `isSelectionOwned()`.
 ## Focus
 
 **Nothing here watches focus, and no engine rule ties the two.** The coupling is
-one call in the widget that wants it:
+one call in the widget that wants it. `ui::TextInput` and `ui::FormSystem` make it
+when a field takes focus, through `SelectionSystem::selectEnclosing`: the nearest
+selectable ancestor without an owner (the panel the field is in) is selected,
+unless the selection already runs through it. Where typing goes is then also what
+is selected, and a dock frame outline (see `ui/docking.adoc`) shows it. A widget of
+your own does the same:
 
 [source,cpp]
 ----
@@ -222,6 +229,10 @@ One step is:
 . **Inside the owner.** `SelectionOwner::moveSelection(dir)` â€” `true` when it
   handled the key, `false` at its edge. Both new owner methods have defaults that
   answer `false`, so an owner that knows nothing about arrows is simply left.
+. **Into a container inside a plain node.** When a plain node is selected (a dock
+  frame, a panel), each selectable owner drawn inside it is offered
+  `enterSelection`, topmost first. A selected panel therefore hands the first
+  arrow to its tree or table instead of jumping to the next panel.
 . **Otherwise by geometry.** The source is the anchor's rect as it was drawn. The
   candidates are the committed frame's hit-test records with
   `HitTestFlags::Selectable`, clipped by their scissor, excluding the owner node,
@@ -240,12 +251,49 @@ parent, on the inline-end arrow expands a closed one or enters its first child â
 both follow `isInlineRtl`. `ui::TableView` steps rows on Up/Down and leaves on
 Left/Right. Both register themselves while `isSelectionOwned()`, scroll the new
 row into view, report it through the select callback like a tap, and enter on
-the closest visible row.
+the closest visible row. Inside that callback `isSelectingFromKeyboard()` is
+`true`, so a list that opens what is picked waits for the activation instead:
+while it owns the selection, Enter (`formSubmit`, `SelectedOnly`) calls the
+activate callback on the selected row, as a double tap does.
 
 Only **drawn** nodes are candidates: a node scrolled out of its clip, hidden or
 not yet visited is not in the registry. There is no generic scroll-into-view for
 plain nodes, so arrows do not scroll a list of cards past what is shown; a
 virtualized owner scrolls itself.
+
+## Mirroring a selection made elsewhere
+
+A list that shows what another surface selected (an outline beside a canvas, a
+table following the document) moves its row with `showSelectedRow`, not
+`setSelectedRow`. The row moves either way; `showSelectedRow` hands it to the
+`SelectionSystem` only while the view already holds the selection, so the mirror
+never takes the keyboard away from the canvas the author clicked. A tap on a row,
+including the one already selected, always takes the selection.
+
+## Selecting on press
+
+[source,cpp]
+----
+SelectionSystem::acquireForNode(root)->setSelectOnPress(true);
+----
+
+With it on, a pointer press (any of the three buttons) is observed by a listener
+that runs ahead of the scene and never takes the event. It looks up the topmost
+drawn node registered with `setNodeSelectable` under the pointer:
+
+* nothing happens when the selection already runs through that node, so a press
+  anywhere inside the selected panel keeps a row selected in it;
+* a node registered **with an owner** is left to the owner, which selects its row
+  on its own tap. When the selection is outside the owner, its nearest selectable
+  ancestor without an owner is selected first, so a press on an empty part of a
+  list still moves the selection to the panel holding it;
+* any other node is selected with `selectNode`.
+
+A tap is reported only once the double-tap window has passed, so the row replaces
+the panel a moment after the press. A check that clicks a row polls for the row.
+
+The option is off by default because it changes what a click means for the whole
+scene: an application that marks its panels selectable turns it on once.
 
 ## Traps
 

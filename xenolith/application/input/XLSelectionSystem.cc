@@ -156,19 +156,27 @@ void SelectionSystem::handleAdded(Node *owner) {
 		_listener->addHotkey(id, onArrow, HotkeyFlags::Repeatable | HotkeyFlags::Unhandled);
 	}
 
-	owner->addSystem(_listener);
+	attachListeners();
 }
 
 void SelectionSystem::handleRemoved() {
-	if (_listener) {
-		// System::getOwner: the node, not the SelectionOwner this class also names
-		if (auto node = System::getOwner()) {
-			node->removeSystem(_listener);
+	// System::getOwner: the node, not the SelectionOwner this class also names
+	for (auto listener : {&_listener, &_pressListener}) {
+		if (*listener) {
+			auto node = System::getOwner();
+			if (node && (*listener)->getOwner() == node) {
+				node->removeSystem(listener->get());
+			}
+			*listener = nullptr;
 		}
-		_listener = nullptr;
 	}
 
 	System::handleRemoved();
+}
+
+void SelectionSystem::handleEnter(Scene *scene) {
+	System::handleEnter(scene);
+	attachListeners();
 }
 
 void SelectionSystem::handleExit() {
@@ -211,6 +219,142 @@ bool SelectionSystem::selectNode(NotNull<Node> node) {
 
 bool SelectionSystem::clear() { return applyState(nullptr, nullptr, SpanView<SelectionItem>()); }
 
+void SelectionSystem::setSelectOnPress(bool value) {
+	if (_selectOnPress == value) {
+		return;
+	}
+	_selectOnPress = value;
+
+	if (!value) {
+		if (_pressListener) {
+			auto node = System::getOwner();
+			if (node && _pressListener->getOwner() == node) {
+				node->removeSystem(_pressListener);
+			}
+			_pressListener = nullptr;
+		}
+		return;
+	}
+
+	attachListeners();
+}
+
+void SelectionSystem::attachListeners() {
+	auto node = System::getOwner();
+	if (!node || !node->isRunning()) {
+		return;
+	}
+
+	if (_listener && !_listener->getOwner()) {
+		node->addSystem(_listener);
+	}
+
+	if (!_selectOnPress) {
+		return;
+	}
+
+	if (!_pressListener) {
+		_pressListener = Rc<InputListener>::create(PressListenerPriority);
+		_pressListener->addTouchRecognizer([this](const GestureData &data) {
+			if (data.event == GestureEvent::Began) {
+				handlePress(data.location());
+			}
+			// declined: the press goes on to the scene as if this listener were not there
+			return false;
+		}, InputTouchInfo{makeButtonMask({InputMouseButton::MouseLeft,
+			   InputMouseButton::MouseRight, InputMouseButton::MouseMiddle})});
+	}
+	if (!_pressListener->getOwner()) {
+		node->addSystem(_pressListener);
+	}
+}
+
+static bool isAncestorOf(const Node *ancestor, const Node *node) {
+	for (auto it = node; it; it = it->getParent()) {
+		if (it == ancestor) {
+			return true;
+		}
+	}
+	return false;
+}
+
+Node *SelectionSystem::findPressTarget(const Vec2 &world) const {
+	auto node = System::getOwner();
+	auto director = node ? node->getDirector() : nullptr;
+	auto dispatcher = director ? director->getInputDispatcher() : nullptr;
+	if (!dispatcher) {
+		return nullptr;
+	}
+
+	Node *target = nullptr;
+	Node *owned = nullptr; // the topmost owner hit, while looking for its ancestor
+
+	dispatcher->foreachHitTest(HitTestFlags::Selectable,
+			[&](const InputListenerStorage::HitTestRec &rec) {
+		auto selectable = getNodeSelectable(rec.node);
+		if (!selectable || rec.opacity <= 0.0f || !rec.node->isRunning()
+				|| !rec.contains(world)) {
+			return true;
+		}
+
+		if (owned) {
+			// only an ancestor of the owner stands in for it
+			if (!selectable->owner && isAncestorOf(rec.node, owned)) {
+				target = rec.node;
+				return false;
+			}
+			return true;
+		}
+
+		if (selectable->owner) {
+			owned = rec.node;
+			return true;
+		}
+
+		target = rec.node;
+		return false;
+	});
+
+	if (!target) {
+		return nullptr;
+	}
+
+	// The selection already runs through the node the press would select, or through the owner
+	// that will select on its own
+	for (auto &it : _chain) {
+		if (it.get() == target || (owned && it.get() == owned)) {
+			return nullptr;
+		}
+	}
+	return target;
+}
+
+bool SelectionSystem::selectEnclosing(NotNull<Node> node) {
+	Node *target = nullptr;
+	for (Node *it = node; it; it = it->getParent()) {
+		auto selectable = getNodeSelectable(it);
+		if (selectable && !selectable->owner) {
+			target = it;
+			break;
+		}
+	}
+	if (!target) {
+		return false;
+	}
+	for (auto &it : _chain) {
+		if (it.get() == target) {
+			return false;
+		}
+	}
+	return selectNode(target);
+}
+
+void SelectionSystem::handlePress(const Vec2 &world) {
+	if (auto target = findPressTarget(world)) {
+		selectNode(target);
+	}
+}
+
 static bool isRelatedNode(const Node *a, const Node *b) {
 	for (auto node = a; node; node = node->getParent()) {
 		if (node == b) {
@@ -248,6 +392,27 @@ bool SelectionSystem::moveSelection(SelectionDirection dir) {
 	Node *source = _anchor ? _anchor.get() : ownerNode.get();
 	const Rect from =
 			TransformRect(Rect(Vec2(0, 0), source->getContentSize()), source->getModelTransform());
+
+	if (!_owner) {
+		// A plain node (a panel) hands the step to a container inside it before looking outside
+		Vector<Rc<Node>> inner;
+		dispatcher->foreachHitTest(HitTestFlags::Selectable,
+				[&](const InputListenerStorage::HitTestRec &rec) {
+			auto selectable = getNodeSelectable(rec.node);
+			if (selectable && selectable->owner && rec.opacity > 0.0f && rec.node != ownerNode
+					&& isAncestorOf(ownerNode, rec.node)) {
+				inner.emplace_back(rec.node);
+			}
+			return true;
+		});
+		for (auto &it : inner) {
+			auto selectable = getNodeSelectable(it);
+			if (selectable && selectable->owner && it->isRunning()
+					&& selectable->owner->enterSelection(dir, from)) {
+				return true;
+			}
+		}
+	}
 
 	struct Candidate {
 		Rc<Node> node;
@@ -455,6 +620,12 @@ void SelectionSystem::syncProjection() {
 
 void SelectionSystem::handleVisitSelf(FrameInfo &frame, Node *node, NodeVisitFlags flags) {
 	System::handleVisitSelf(frame, node, flags);
+
+	// acquireForNode from a descendant's handleEnter adds this system before its owner runs
+	if ((_listener && !_listener->getOwner())
+			|| (_selectOnPress && (!_pressListener || !_pressListener->getOwner()))) {
+		attachListeners();
+	}
 
 	if (!_ownerNode) {
 		return;

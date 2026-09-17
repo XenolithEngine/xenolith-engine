@@ -26,6 +26,7 @@
 #include "XLUiDockSplitter.h"
 #include "XLUiLayoutSystem.h"
 #include "XLUiStyleSystem.h"
+#include "XLSelectionSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -52,7 +53,7 @@ bool DockSystem::init(Rc<PanelRegistry> &&registry) {
 	setSystemFlags(SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents
 			| SystemFlags::HandleNodeEvents | SystemFlags::HandleLayoutChildren
 			| SystemFlags::HandleMeasure | SystemFlags::HandleChildNodeEvents
-			| SystemFlags::AddToFrameStack);
+			| SystemFlags::AddToFrameStack | SystemFlags::HandleVisitSelf);
 	setFrameTag(SystemFrameTag);
 	return true;
 }
@@ -1044,6 +1045,9 @@ void DockSystem::syncNodes() {
 			auto frame = Rc<DockFrame>::create(n.params, n.self);
 			// the collapsed flag comes from the tree
 			frame->setCollapsed(n.collapsed);
+			if (_framesSelectable) {
+				setNodeSelectable(frame, true);
+			}
 			n.node = frame;
 			_owner->addChild(frame, FrameZOrder);
 			updateFrameContent(n);
@@ -1053,6 +1057,55 @@ void DockSystem::syncNodes() {
 			_owner->addChild(splitter, SplitterZOrder);
 		}
 	});
+}
+
+void DockSystem::setFramesSelectable(bool value) {
+	if (_framesSelectable == value) {
+		return;
+	}
+	_framesSelectable = value;
+
+	_tree.each([&](DockTreeNode &n) {
+		if (n.node && n.isLeaf()) {
+			setNodeSelectable(n.node, value);
+		}
+	});
+}
+
+void DockSystem::handleVisitSelf(FrameInfo &info, Node *node, NodeVisitFlags flags) {
+	System::handleVisitSelf(info, node, flags);
+	updateCurrentFrame();
+}
+
+void DockSystem::updateCurrentFrame() {
+	DockFrame *current = nullptr;
+	if (auto selection = SelectionSystem::findForNode(_owner)) {
+		for (auto &it : selection->getChain()) {
+			if (it->getComponent<DockFrameComponent>()) {
+				// the deepest frame decides, whichever dock it belongs to
+				if (it->getParent() == _owner) {
+					current = static_cast<DockFrame *>(it.get());
+				}
+				break;
+			}
+		}
+	}
+
+	if (current && (current->isCollapsed() || !current->isRunning())) {
+		current = nullptr;
+	}
+
+	if (_currentFrame.get() == current) {
+		return;
+	}
+
+	if (_currentFrame) {
+		_currentFrame->setCurrent(false);
+	}
+	_currentFrame = current;
+	if (_currentFrame) {
+		_currentFrame->setCurrent(true);
+	}
 }
 
 } // namespace stappler::xenolith::ui

@@ -127,6 +127,7 @@ public:
 
 	virtual void handleAdded(Node *) override;
 	virtual void handleRemoved() override;
+	virtual void handleEnter(Scene *) override;
 	virtual void handleExit() override;
 
 	virtual void handleVisitSelf(FrameInfo &, Node *, NodeVisitFlags) override;
@@ -138,6 +139,12 @@ public:
 	/* Select a plain node that is its own identity (a canvas object, a card, a dock panel): the
 	node is both the owner and the only item. */
 	virtual bool selectNode(NotNull<Node>);
+
+	/* Select the nearest ancestor of `node` (itself included) registered with setNodeSelectable
+	without an owner - the panel the node sits in - unless the selection already runs through it.
+	For a widget taking focus: where typing goes is then also what is selected. False when nothing
+	changed. */
+	virtual bool selectEnclosing(NotNull<Node>);
 
 	// Drop the selection. Answers false when there was none
 	virtual bool clear();
@@ -167,7 +174,28 @@ public:
 	// (see _applying)
 	void setSelectionCallback(Function<void(const SelectionState &)> &&);
 
+	/* A pointer press selects the topmost node registered with setNodeSelectable under it, unless
+	the selection already runs through that node. An owner (TreeView, TableView) selects its rows
+	on its own tap, so for one the press only selects its nearest selectable ancestor without an
+	owner, and only when the selection is outside the owner. The press is observed, never taken.
+	Off by default. */
+	void setSelectOnPress(bool);
+	bool isSelectOnPress() const { return _selectOnPress; }
+
 protected:
+	// Runs before the scene's listeners and a menu's dismiss listener, so the press that closes a
+	// menu still selects
+	static constexpr int32_t PressListenerPriority = 0x2100;
+
+	// The node a press at `world` selects, or null; see setSelectOnPress
+	virtual Node *findPressTarget(const Vec2 &world) const;
+
+	virtual void handlePress(const Vec2 &world);
+
+	/* The listeners join only a running owner: a listener that never entered refuses events, and
+	acquireForNode may run from a descendant's handleEnter, before the owner runs. Retried from
+	handleEnter and the visit. */
+	void attachListeners();
 	// Re-resolve the item nodes and the anchor against the live graph, moving the markers to match.
 	// Cheap and idempotent; run on every change and once per frame
 	virtual void syncProjection();
@@ -213,6 +241,9 @@ protected:
 
 	// Receives the arrow hotkeys, after the ordinary key route declined them
 	Rc<InputListener> _listener;
+
+	Rc<InputListener> _pressListener;
+	bool _selectOnPress = false;
 };
 
 } // namespace stappler::xenolith

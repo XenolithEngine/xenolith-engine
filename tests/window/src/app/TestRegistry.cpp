@@ -34,6 +34,7 @@
 #include "dock/DockLayoutLayout.h"
 #include "dock/DockSplitterLayout.h"
 #include "dock/DockTabsLayout.h"
+#include "dock/DockFocusLayout.h"
 #include "dock/DockPersistLayout.h"
 #include "render/DamageLayout.h"
 #include "render/FrameCaptureLayout.h"
@@ -711,6 +712,15 @@ static const TestInfo s_dockTests[] = {
 				   "accordion's panels alone. The run must end with 0 failures. Inspector: "
 				   "accordion.sections, accordion.host, accordion.probe."),
 		TestRegistry_make<AccordionLayout>},
+
+	TestInfo{StringView("dock-focus"), StringView("XL_DOCK_FOCUS_TEST"),
+		StringView("The current dock frame"),
+		StringView("A tree beside a nested dock. A press selects what is under it, and the deepest "
+				   "frame the selection runs through is current: exactly one frame across both "
+				   "docks carries an outline, drawn over the opaque panel. Arrows move inside the "
+				   "tree and Enter activates the row. Inspector: dock-focus.state, dock-focus.probe, "
+				   "dock-focus.press-select, dock-focus.clear."),
+		TestRegistry_make<DockFocusLayout>},
 };
 
 // One entry per directory. Nesting is arbitrary - a group may declare `groups` of its own - but the

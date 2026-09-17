@@ -210,6 +210,15 @@ public:
 	virtual void setSelectedRow(size_t); // maxOf<size_t>() clears
 	size_t getSelectedRow() const { return _selectedRow; }
 
+	/* Follow a selection made elsewhere (a canvas, a document): moves the row, and hands it to the
+	scene's SelectionSystem only while this view already holds the selection, so a mirror never
+	takes the keyboard from the surface the author is working in. */
+	virtual void showSelectedRow(size_t);
+
+	/* True inside the select callback when the pick came from an arrow key rather than a tap: a
+	callback that opens what was picked should wait for the activation (Enter or a double tap). */
+	bool isSelectingFromKeyboard() const { return _keyboardSelect; }
+
 	/* Join the scene-wide selection, as TreeView::setSelectionOwned. It also scopes the reorder
 	keys to the table that owns the selection. */
 	virtual void setSelectionOwned(bool);
@@ -311,6 +320,10 @@ protected:
 
 	// A keyboard pick: selects, scrolls the row into view and reports it like a tap
 	void selectRowFromKeyboard(size_t index);
+
+	// Enter on the selected row, while this view owns the scene's selection
+	void bindActivateHotkeys();
+	bool activateSelectedRow();
 	virtual void rebuildHeader();
 	virtual Rc<Node> makeRow(size_t index);
 	virtual Rc<Node> buildRowNode(RowBuilder &);
@@ -380,6 +393,8 @@ protected:
 	ItemId _selectedId = ItemId(0);
 
 	bool _selectionOwned = false;
+	bool _keyboardSelect = false;
+	InputListener *_activateKeys = nullptr;
 
 	// Set while applying a change that came from the system; see TreeView
 	bool _applyingSelection = false;

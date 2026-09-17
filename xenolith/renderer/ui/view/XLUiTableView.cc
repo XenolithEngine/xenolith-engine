@@ -24,6 +24,7 @@
 #include "XLUiDragScrollSystem.h"
 #include "XLUiStyleSystem.h"
 #include "XLInteractiveComponent.h"
+#include "XLHotkey.h"
 #include "XL2dLabel.h"
 #include "XL2dIconSprite.h"
 
@@ -352,6 +353,15 @@ void TableView::bindReorderHotkeys() {
 	// No touch filter: InputListener::handleHotkey consults neither canHandleEvent nor the filter.
 }
 
+void TableView::showSelectedRow(size_t index) {
+	auto system = _selectionOwned ? SelectionSystem::findForNode(this) : nullptr;
+	const bool ours = system && system->getOwner() == this;
+	const bool applying = _applyingSelection;
+	_applyingSelection = applying || !ours;
+	setSelectedRow(index);
+	_applyingSelection = applying;
+}
+
 void TableView::setSelectionOwned(bool value) {
 	if (_selectionOwned == value) {
 		return;
@@ -365,6 +375,7 @@ void TableView::setSelectionOwned(bool value) {
 	bindReorderHotkeys();
 
 	if (_selectionOwned) {
+		bindActivateHotkeys();
 		publishSelection();
 	} else if (auto system = SelectionSystem::findForNode(this)) {
 		// Only if it was ours; see TreeView::setSelectionOwned
@@ -451,8 +462,33 @@ void TableView::selectRowFromKeyboard(size_t index) {
 	scrollRowIntoView(_scroll, _controller, index);
 
 	if (_selectCallback && index < _rows.size()) {
+		_keyboardSelect = true;
 		_selectCallback(index, _rows[index]);
+		_keyboardSelect = false;
 	}
+}
+
+void TableView::bindActivateHotkeys() {
+	if (_activateKeys || !_selectionOwned) {
+		return;
+	}
+
+	auto &hk = EngineHotkeys::get();
+	_activateKeys = addSystem(Rc<InputListener>::create());
+	// SelectedOnly: offered on the selection chain, ahead of a form's own Enter
+	for (auto id : {hk.formSubmit, hk.formSubmitKeypad}) {
+		_activateKeys->addHotkey(id,
+				[this](HotkeyId, const InputEvent &) { return activateSelectedRow(); },
+				HotkeyFlags::SelectedOnly);
+	}
+}
+
+bool TableView::activateSelectedRow() {
+	if (!_selectionOwned || !_activateCallback || _selectedRow >= _rows.size()) {
+		return false;
+	}
+	_activateCallback(_selectedRow, _rows[_selectedRow]);
+	return true;
 }
 
 void TableView::handleSelectionChanged(SpanView<SelectionItem> items) {
@@ -1279,6 +1315,8 @@ void TableView::handleRowTap(size_t index, uint32_t count) {
 		return;
 	}
 	setSelectedRow(index);
+	// a tap on the row already selected still takes the scene's selection back
+	publishSelection();
 
 	// Sent here, not from setSelectedRow(): it reports a user pick, as in TreeView.
 	if (_selectCallback) {

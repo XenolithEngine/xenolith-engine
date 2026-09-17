@@ -337,6 +337,38 @@ the CSS subset has no `icon` property. The **divider thickness is a system
 parameter** (`setSplitterThickness`), not CSS: it is an input of the layout, and
 CSS has no way to feed one.
 
+### The current frame
+
+The frame the keyboard is working in is **the deepest frame on the scene's
+selection chain** (see link:../scene/selection.adoc[the selection chain]). Each
+dock checks the chain once per visit and marks its own frame when it is that one,
+so across nested docks exactly one frame is current: an editor's own frame wins
+over the frame that holds the editor. A collapsed frame is never current.
+
+[source,cpp]
+----
+dock->setFramesSelectable(true);                  // a press or an arrow may select a frame
+SelectionSystem::acquireForNode(root)->setSelectOnPress(true);
+----
+
+[source,css]
+----
+dock-frame-outline.current { outline-width: 1px; outline-style: solid; outline-color: #fcb400; }
+----
+
+The current frame gets the class `current`, and so does its **`dock-frame-outline`**,
+an empty `ui::Panel` every frame carries over its strip and body. It is the only
+place an edge can be drawn: the frame's own `outline-*` is painted under its
+children, and a panel's opaque ground hides it. The outline node is shown only
+while its frame is current, has a transparent fill, and is style-able only
+through its own class: a rule keyed on the frame's class
+(`dock-frame.current > dock-frame-outline`) would not be re-resolved when the
+class changes.
+
+`setFramesSelectable` is off by default. Leave it off on a dock whose frames
+only hold other docks: a press there would select the container rather than the
+panel inside it.
+
 ## Persistence
 
 [source,cpp]
@@ -398,6 +430,7 @@ XL_DOCK_SPLITTER_TEST=1 ./testapp --headless   # dividers, clamping, the drag fi
 XL_DOCK_TABS_TEST=1     ./testapp --headless   # tabs, lazy content, the drop zones
 XL_DOCK_PERSIST_TEST=1  ./testapp --headless   # save / rearrange / restore round trip
 XL_ACCORDION_TEST=1     ./testapp --headless   # a dock and an accordion over ONE panel registry
+XL_DOCK_FOCUS_TEST=1    ./testapp --headless   # the current frame and its outline (dock-focus-check.py)
 ----
 
 They are also in the test registry as the `dock` group, so the inspector reaches

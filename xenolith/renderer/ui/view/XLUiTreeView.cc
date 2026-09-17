@@ -26,6 +26,7 @@
 #include "XLAction.h" // Sequence: the auto-expand dwell, see armDropExpand
 #include "XL2dLayer.h"
 #include "XLInteractiveComponent.h"
+#include "XLHotkey.h"
 #include "XLUiStyleSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
@@ -280,6 +281,15 @@ void TreeView::setSelectedIdentity(ItemId id, uint64_t offset) {
 	publishSelection();
 }
 
+void TreeView::showSelectedRow(size_t index) {
+	auto system = _selectionOwned ? SelectionSystem::findForNode(this) : nullptr;
+	const bool ours = system && system->getOwner() == this;
+	const bool applying = _applyingSelection;
+	_applyingSelection = applying || !ours;
+	setSelectedRow(index);
+	_applyingSelection = applying;
+}
+
 void TreeView::setSelectionOwned(bool value) {
 	if (_selectionOwned == value) {
 		return;
@@ -290,6 +300,7 @@ void TreeView::setSelectionOwned(bool value) {
 	setNodeSelectable(this, _selectionOwned, this);
 
 	if (_selectionOwned) {
+		bindActivateHotkeys();
 		publishSelection();
 	} else if (auto system = SelectionSystem::findForNode(this)) {
 		// Clear the scene's selection only if this view owns it
@@ -412,8 +423,33 @@ void TreeView::selectRowFromKeyboard(size_t index) {
 	scrollRowIntoView(_scroll, _controller, index);
 
 	if (_selectCallback && index < _rows.size()) {
+		_keyboardSelect = true;
 		_selectCallback(index, _rows[index]);
+		_keyboardSelect = false;
 	}
+}
+
+void TreeView::bindActivateHotkeys() {
+	if (_activateKeys || !_selectionOwned) {
+		return;
+	}
+
+	auto &hk = EngineHotkeys::get();
+	_activateKeys = addSystem(Rc<InputListener>::create());
+	// SelectedOnly: offered on the selection chain, ahead of a form's own Enter
+	for (auto id : {hk.formSubmit, hk.formSubmitKeypad}) {
+		_activateKeys->addHotkey(id,
+				[this](HotkeyId, const InputEvent &) { return activateSelectedRow(); },
+				HotkeyFlags::SelectedOnly);
+	}
+}
+
+bool TreeView::activateSelectedRow() {
+	if (!_selectionOwned || !_activateCallback || _selectedRow >= _rows.size()) {
+		return false;
+	}
+	_activateCallback(_selectedRow, _rows[_selectedRow]);
+	return true;
 }
 
 void TreeView::handleSelectionChanged(SpanView<SelectionItem> items) {
@@ -1243,6 +1279,8 @@ void TreeView::handleRowTap(size_t index, uint32_t count) {
 	}
 
 	setSelectedRow(index);
+	// a tap on the row already selected still takes the scene's selection back
+	publishSelection();
 
 	if (_selectCallback) {
 		_selectCallback(index, _rows[index]);

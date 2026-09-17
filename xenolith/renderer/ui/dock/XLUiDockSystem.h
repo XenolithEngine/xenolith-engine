@@ -84,6 +84,7 @@ public:
 	virtual void handleLayoutChildren() override;
 	virtual bool handleMeasure(const MeasureConstraints &, Size2 &) override;
 	virtual void handleChildContentSizeDirty(Node *) override;
+	virtual void handleVisitSelf(FrameInfo &, Node *, NodeVisitFlags) override;
 
 	// The nearest DockSystem at or above `node`. Walks the parent chain, not the frame stack, so it
 	// works outside a visit.
@@ -169,6 +170,16 @@ public:
 	void setOverflowPolicy(DockOverflowPolicy);
 	DockOverflowPolicy getOverflowPolicy() const { return _overflowPolicy; }
 
+	/* Register every frame of this dock with setNodeSelectable, so arrow navigation and
+	SelectionSystem::setSelectOnPress can make a frame the selection. Off by default: a dock whose
+	frames only hold other docks should leave the choice to those. */
+	void setFramesSelectable(bool);
+	bool isFramesSelectable() const { return _framesSelectable; }
+
+	/* The frame of this dock that is the deepest frame on the scene's selection chain, or null.
+	It carries DockFrame::setCurrent; a nested dock's frame outranks the frame that holds it. */
+	DockFrame *getCurrentFrame() const { return _currentFrame; }
+
 	// --- persistence -------------------------------------------------------
 
 	// Saves shape and membership only; titles, icons and minimums come from the descriptors.
@@ -237,6 +248,9 @@ protected:
 
 	void commitGeometry();
 
+	// follow the selection chain onto one frame; see getCurrentFrame
+	void updateCurrentFrame();
+
 	// re-parent the active panel's content into a frame's body, building it on first show, and
 	// bring the tab strip in line with the frame's panel list
 	void updateFrameContent(DockTreeNode &);
@@ -281,6 +295,10 @@ protected:
 
 	// guards the placement pass against the ContentSize notifications it causes itself
 	bool _inPlacement = false;
+	bool _framesSelectable = false;
+
+	// Rc: a closed frame is removed before the next visit can clear its state
+	Rc<DockFrame> _currentFrame;
 
 	LayoutChangedCallback _layoutChangedCallback;
 	PanelCallback _panelOpenedCallback;

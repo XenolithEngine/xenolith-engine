@@ -35,12 +35,18 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 // strip and body are a flex column (a row for a Left/Right strip) run by a LayoutSystem; the frame
 // carries SystemManagedLayout so a stylesheet cannot reconfigure that layout.
 //
-// CSS type "dock-frame"; the body is "dock-frame-body".
+// CSS type "dock-frame"; the body is "dock-frame-body", and "dock-frame-outline" is an empty
+// Panel drawn over both, shown only while the frame is current (see setCurrent).
 class SP_PUBLIC DockFrame : public Panel {
 public:
+	// above the strip and the body, which the frame's own paint is under
+	static constexpr ZOrder OutlineZOrder = ZOrder(16);
+
 	virtual ~DockFrame() = default;
 
 	virtual bool init(const DockFrameParams &, DockNodeHandle);
+
+	virtual void handleContentSizeDirty() override;
 
 	DockNodeHandle getHandle() const { return _handle; }
 
@@ -58,6 +64,15 @@ public:
 
 	DockTabBar *getTabBar() const { return _tabBar; }
 
+	/* The deepest frame the scene's selection runs through; DockSystem decides and calls this.
+	Adds the class `current` to the frame and to its outline node: a rule on the outline itself,
+	`dock-frame-outline.current { outline: 1px solid ... }`, is what draws over the content, since
+	a rule keyed on the frame's class is not re-resolved for its children. */
+	virtual void setCurrent(bool);
+	bool isCurrent() const { return _current; }
+
+	Panel *getOutline() const { return _outline; }
+
 	// The strip's rect in this frame's space, as of the last layout.
 	Rect getTabBarRect() const;
 
@@ -71,7 +86,9 @@ protected:
 	DockFrameParams _params;
 	DockTabBar *_tabBar = nullptr;
 	Node *_body = nullptr;
+	Panel *_outline = nullptr;
 	bool _collapsed = false;
+	bool _current = false;
 };
 
 } // namespace stappler::xenolith::ui

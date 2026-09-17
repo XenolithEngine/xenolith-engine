@@ -79,8 +79,52 @@ bool DockFrame::init(const DockFrameParams &params, DockNodeHandle handle) {
 		.alignItems = FlexAlign::Stretch,
 	}));
 
+	auto outline = Rc<Panel>::create();
+	outline->setType("dock-frame-outline");
+	outline->removeStyleClass("xl-ui-panel");
+	registerStyleAppliers("dock-frame-outline");
+	outline->setAnchorPoint(Anchor::BottomLeft);
+	// own paint, so a style reset leaves it transparent instead of the Panel's white
+	outline->setPathColor(Color4B(0, 0, 0, 0), true);
+	// blended over the content, which may be drawn at the Solid level
+	outline->setRenderingLevel(RenderingLevel::Transparent);
+	outline->setVisible(false);
+	// before parenting, so the flex layout never takes it as an item
+	outline->setComponent<OutOfFlowComponent>(OutOfFlowComponent{false});
+	_outline = addChild(outline, OutlineZOrder);
+
 	setParams(params);
 	return true;
+}
+
+void DockFrame::handleContentSizeDirty() {
+	Panel::handleContentSizeDirty();
+	if (_outline) {
+		_outline->setPosition(Vec2::ZERO);
+		_outline->setContentSize(_contentSize);
+	}
+}
+
+void DockFrame::setCurrent(bool value) {
+	if (value == _current) {
+		return;
+	}
+	_current = value;
+
+	if (_current) {
+		addStyleClass("current");
+	} else {
+		removeStyleClass("current");
+	}
+
+	if (_outline) {
+		if (_current) {
+			_outline->addStyleClass("current");
+		} else {
+			_outline->removeStyleClass("current");
+		}
+		_outline->setVisible(_current);
+	}
 }
 
 void DockFrame::setParams(const DockFrameParams &params) {

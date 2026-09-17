@@ -26,6 +26,7 @@
 #include "XLDirector.h"
 #include "XLInheritedStyle.h" // the colour a Label actually paints with
 #include "XLUiTextDocument.h" // TextDocument::diff - what the platform echo changed
+#include "XLSelectionSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -1202,7 +1203,12 @@ void TextInput::handleTextInput(const TextInputState &data) {
 	// Focus follows what the platform granted, not what was asked for.
 	if (_focused != data.enabled) {
 		_focused = data.enabled;
-		if (!_focused) {
+		if (_focused) {
+			// where typing goes is also where the selection is (asymmetric: a blur clears nothing)
+			if (auto selection = SelectionSystem::findForNode(this)) {
+				selection->selectEnclosing(this);
+			}
+		} else {
 			_focusListener->setEnabled(false);
 			_selectionAnchor = maxOf<uint32_t>();
 			// Cancel a pending paste here too: focus is usually taken by the platform, not

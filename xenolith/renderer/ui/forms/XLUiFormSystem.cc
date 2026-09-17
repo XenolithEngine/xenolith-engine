@@ -23,6 +23,7 @@
 #include "XLUiFormSystem.h"
 #include "XLFocusWithin.h"
 #include "XLNode.h"
+#include "XLSelectionSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -467,6 +468,13 @@ void FormSystem::updateWithListeners(SpanView<InputListener *> listeners) {
 			target->getOwner());
 
 	target->applyFocus(true, this, backwards);
+
+	// a field taking focus selects the panel it is in; see SelectionSystem::selectEnclosing
+	if (auto owner = target->getOwner()) {
+		if (auto selection = SelectionSystem::findForNode(owner)) {
+			selection->selectEnclosing(owner);
+		}
+	}
 
 	if (previousFocused) {
 		previousFocused->applyFocus(false, this, backwards);
