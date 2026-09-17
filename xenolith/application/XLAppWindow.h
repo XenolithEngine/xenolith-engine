@@ -191,6 +191,10 @@ public:
 	virtual bool scheduleOffscreenFrame(Function<void(bool)> && = nullptr) override;
 	virtual void compileImage(const Rc<core::DynamicImage> &,
 			Function<void(bool)> && = nullptr) override;
+	virtual void updateImage(const Rc<core::DynamicImage> &, BytesView,
+			Function<void(bool)> && = nullptr) override;
+	virtual void updateImageStable(const Rc<core::DynamicImage> &, BytesView,
+			Function<void(bool)> && = nullptr) override;
 	virtual void attachRenderQueue(const Rc<core::Queue> &) override;
 	virtual void setPreferredFrameInterval(uint64_t intervalUs) override;
 	virtual core::FrameTimingInfo getFrameTiming() const override;

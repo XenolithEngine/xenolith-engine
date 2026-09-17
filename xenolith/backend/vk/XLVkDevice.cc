@@ -575,11 +575,24 @@ void Device::waitIdle() const {
 
 void Device::compileImage(const Loop &loop, const Rc<core::DynamicImage> &img,
 		Function<void(bool)> &&cb) {
+	doImageTransfer(loop, img, BytesView(), false, sp::move(cb));
+}
+
+// Per-frame video: bytes from the caller, swapped through updateInstance.
+void Device::updateImage(const Loop &loop, const Rc<core::DynamicImage> &img, BytesView data,
+		Function<void(bool)> &&cb) {
+	doImageTransfer(loop, img, data, true, sp::move(cb));
+}
+
+void Device::doImageTransfer(const Loop &loop, const Rc<core::DynamicImage> &img, BytesView data,
+		bool isUpdate, Function<void(bool)> &&cb) {
 	struct CompileImageTask : public Ref {
 		Function<void(bool)> callback;
 		Rc<core::DynamicImage> image;
 		Rc<Loop> loop;
 		Rc<Device> device;
+		Bytes updateData;
+		bool isUpdate = false;
 
 		Rc<Buffer> transferBuffer;
 		Rc<Image> resultImage;
@@ -593,17 +606,27 @@ void Device::compileImage(const Loop &loop, const Rc<core::DynamicImage> &img,
 	task->image = img;
 	task->loop = (Loop *)&loop;
 	task->device = this;
+	task->isUpdate = isUpdate;
+	task->updateData = Bytes(data.data(), data.data() + data.size());
 
 	loop.performInQueue([this, task]() {
 		// make transfer buffer
 
-		task->image->acquireData([&](BytesView view) {
+		if (task->isUpdate) {
 			task->transferBuffer = task->device->getAllocator()->spawnPersistent(
 					AllocationUsage::HostTransitionSource,
 					BufferInfo(core::ForceBufferUsage(core::BufferUsage::TransferSrc),
 							core::PassType::Transfer),
-					view);
-		});
+					BytesView(task->updateData));
+		} else {
+			task->image->acquireData([&](BytesView view) {
+				task->transferBuffer = task->device->getAllocator()->spawnPersistent(
+						AllocationUsage::HostTransitionSource,
+						BufferInfo(core::ForceBufferUsage(core::BufferUsage::TransferSrc),
+								core::PassType::Transfer),
+						view);
+			});
+		}
 
 		sprt_passert(!task->image->getInfo().key.empty(), "Unnamed dynamic image");
 
@@ -612,7 +635,7 @@ void Device::compileImage(const Loop &loop, const Rc<core::DynamicImage> &img,
 						task->image->getInfo().key, task->image->getInfo(), false);
 
 		if (!task->transferBuffer) {
-			task->loop->performOnThread([task] { task->callback(false); });
+			task->loop->performOnThread([task] { if (task->callback) { task->callback(false); } });
 			return;
 		}
 
@@ -653,15 +676,28 @@ void Device::compileImage(const Loop &loop, const Rc<core::DynamicImage> &img,
 						task->device->releaseQueue(move(task->queue));
 					}
 					if (success) {
-						task->image->setImage(task->resultImage.get());
-						task->callback(true);
+						bool updated = false;
+						if (task->isUpdate && task->image->getInstance()) {
+							ImageViewInfo viewInfo;
+							viewInfo.setup(task->resultImage->getInfo());
+							viewInfo.setup(core::ColorMode::SolidColor, true);
+							auto view = Rc<ImageView>::create(*task->device, task->resultImage,
+									viewInfo);
+							task->image->updateInstance(*task->loop, task->resultImage, nullptr,
+									nullptr, Vector<Rc<core::DependencyEvent>>(), sp::move(view));
+							updated = true;
+						}
+						if (!updated) {
+							task->image->setImage(task->resultImage.get());
+						}
+						if (task->callback) { task->callback(true); }
 					} else {
-						task->callback(false);
+						if (task->callback) { task->callback(false); }
 					}
 					task->fence->schedule(*task->loop);
 					task->fence = nullptr;
 				})));
-			}, [task](core::Loop &) { task->callback(false); });
+			}, [task](core::Loop &) { if (task->callback) { task->callback(false); } });
 		});
 	}, task);
 }
