@@ -131,7 +131,7 @@ public:
 	virtual void waitIdle() const override;
 
 	void compileImage(const Loop &loop, const Rc<core::DynamicImage> &, Function<void(bool)> &&);
-	void updateImage(const Loop &loop, const Rc<core::DynamicImage> &, BytesView,
+	void updateImage(const Loop &loop, const Rc<core::DynamicImage> &, Bytes &&,
 			Function<void(bool)> &&);
 
 	void readImage(Loop &loop, const Rc<Image> &, core::AttachmentLayout,
@@ -153,7 +153,7 @@ public:
 private:
 	using core::Device::init;
 
-	void doImageTransfer(const Loop &loop, const Rc<core::DynamicImage> &, BytesView, bool isUpdate,
+	void doImageTransfer(const Loop &loop, const Rc<core::DynamicImage> &, Bytes &&, bool isUpdate,
 			Function<void(bool)> &&);
 
 	friend class DeviceQueue;

@@ -31,6 +31,8 @@
 
 #if SPRT_EMBOX
 
+#include <termios.h> // the saved console state (see _uartSavedTermios)
+
 namespace sprt::window {
 
 class EmboxContextController;
@@ -131,6 +133,10 @@ protected:
 
 	void *_uartThread = nullptr;
 	sprt::atomic<bool> _uartRunning = false;
+	// stdin belongs to the process, not to this window: both are put back in stopUartInput.
+	struct termios _uartSavedTermios = {};
+	bool _uartTermiosSaved = false;
+	int _uartSavedFlags = -1;
 	uint8_t _uartSeq[8] = {};
 	size_t _uartSeqLen = 0;
 	uint64_t _uartSeqStartUs = 0;

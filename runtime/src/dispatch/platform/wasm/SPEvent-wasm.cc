@@ -279,12 +279,11 @@ static void parseDashO(StringView cmd, char *dst, size_t cap) {
 		}
 		size_t k = i + 2;
 		if (k < n && p[k] != ' ' && p[k] != '\t') {
-			// -opath
-		} else {
-			while (k < n && (p[k] == ' ' || p[k] == '\t')) {
-				++k;
-			}
+			// Only "-o" itself takes an attached operand. Anything else starting with -o is a
+			// different flag (-object..., -optimize...) and its text is not an output path.
+			continue;
 		}
+		while (k < n && (p[k] == ' ' || p[k] == '\t')) { ++k; }
 		size_t e = k;
 		while (e < n && p[e] != ' ' && p[e] != '\t') {
 			++e;
@@ -492,6 +491,9 @@ uint32_t WasmData::fireProcessHandles(RunContext *) {
 			}
 		}
 		if (!found) {
+			// A completion for a handle that is gone (cancelled, or disarmed before the host job
+			// finished). There is no host-side cancel to call, so the only thing left is to drop
+			// it - keep draining so a live handle behind it is still seen.
 			continue;
 		}
 		auto refId = sprt::retain(found);

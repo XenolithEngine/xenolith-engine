@@ -44,9 +44,15 @@ extern "C" __attribute__((weak)) int rga2_blit(uintptr_t dst, uint32_t dst_strid
 /* Scanout mapping for RGA video, or 0 if the fb cannot take direct writes. */
 extern "C" __attribute__((weak)) uintptr_t xenolith_soft_scanout_fb(uint32_t *stride);
 
-/* Last frame went to scanout via RGA; present() skips the shadow copy.
- * A composed frame clears it; empty draw lists leave it. */
-static bool s_scanoutDirectSticky = false;
+/* Last frame went to scanout via RGA; present() skips the shadow copy. A composed frame clears it;
+ * empty draw lists leave it. Atomic: present() need not run on the thread that ran the pass. */
+static sprt::atomic<bool> s_scanoutDirectSticky{false};
+
+/* A direct-scanout frame never touched the pass's own image, so the damage tracker's snapshot of
+ * that image is a frame behind what is on screen. Left set, the next composed frame would present
+ * a shadow whose video area still holds whatever was there before the blits. One full repaint on
+ * the way back closes that; on every backend without a scanout mapping the flag is never set. */
+static sprt::atomic<bool> s_scanoutDirectPending{false};
 
 namespace {
 
@@ -130,68 +136,22 @@ bool findRgaBlit(const raster::DrawList &list, RgaBlitInfo &out) {
 	return out.dw > 0 && out.dh > 0 && out.sw > 0 && out.sh > 0;
 }
 
-// First declines dump the command shape so a wrong predicate is visible on-target.
-void logRgaDecline(const raster::DrawList &list) {
-	static uint32_t dumped = 0;
-	static uint32_t lastEntries = 0xFFFFFFFFu;
-	if (list.entries.empty()) {
-		return;
-	}
-	if (list.entries.size() == lastEntries && dumped >= 10) {
-		return;
-	}
-	lastEntries = list.entries.size();
-	++dumped;
-	const auto &entry = list.entries.front();
-	if (entry.type == raster::DrawEntry::Glyph) {
-		log::source().info("soft::QueuePass", "rga-decline: glyph first, entries=",
-				list.entries.size());
-		return;
-	}
-	const auto &cmd = list.commands[entry.index];
-	uint32_t fmt = cmd.texture < list.textures.size()
-			? uint32_t(list.textures[cmd.texture].format) : 0xFFu;
-	log::source().info("soft::QueuePass", "rga-decline: entries=", list.entries.size(),
-			" kind=", uint32_t(cmd.kind), " n=", cmd.indexCount,
-			" blend=", uint32_t(cmd.blend), " fmt=", fmt,
-			" filter=", uint32_t(cmd.sampler.filter));
-}
-
-uint32_t s_rgaTried = 0, s_rgaOk = 0, s_rgaErr = 0, s_rgaDecline = 0;
-uint64_t s_rgaNsTotal = 0;
-
+// XL_SOFT_RGA=0 forces the CPU path.
 bool tryRgaVideoBlit(CommandBuffer &buf, const raster::Target &target,
 		const Vector<URect> &areas, const Color4F &clearColor) {
 	static const bool enabled = [] {
 		auto e = ::getenv("XL_SOFT_RGA");
 		return !e || ::atoi(e) != 0;
 	}();
-	static uint32_t s_calls = 0;
-	static uint32_t s_skips = 0;
-	if (++s_calls % 600 == 0) {
-		log::source().info("soft::QueuePass", "rga-call #", s_calls,
-				" enabled=", enabled ? 1 : 0,
-				" sym=", rga2_blit ? 1 : 0);
-	}
 	if (!enabled || !rga2_blit) {
-		if (s_skips++ < 2) {
-			log::source().info("soft::QueuePass", "rga-skip: enabled/sym gate");
-		}
 		return false;
 	}
 	if (target.format != getRasterFormat(core::ImageFormat::B8G8R8A8_UNORM)) {
-		if (s_skips++ < 2) {
-			log::source().info("soft::QueuePass", "rga-skip: target fmt=",
-					uint32_t(target.format));
-		}
-		++s_rgaDecline;
 		return false;
 	}
 
 	RgaBlitInfo b;
 	if (!findRgaBlit(buf.getDrawList(), b)) {
-		logRgaDecline(buf.getDrawList());
-		++s_rgaDecline;
 		return false;
 	}
 
@@ -203,9 +163,22 @@ bool tryRgaVideoBlit(CommandBuffer &buf, const raster::Target &target,
 		if (a.y + a.height > y1) { y1 = a.y + a.height; }
 	}
 
-	// Damage at >60% coverage is the whole surface. Fill the letterbox
-	// strips, blit the intersection. Direct scanout writes the fb mapping
-	// and sets s_scanoutDirectSticky so present() skips the shadow copy.
+	// The sprite must span the damage vertically, or the rows it does not cover would keep the
+	// previous frame while the rest advances.
+	if (b.dy > int32_t(y0) || b.dy + b.dh < int32_t(y1)) {
+		return false;
+	}
+
+	// Clip the blit to the damage bounding box, mapping back to source px.
+	int32_t right = b.dx + b.dw;
+	int32_t bx0 = b.dx > int32_t(x0) ? b.dx : int32_t(x0);
+	int32_t bx1 = right < int32_t(x1) ? right : int32_t(x1);
+	if (bx1 <= bx0) {
+		return false;
+	}
+
+	// Every rejection is behind us: nothing above has written a pixel, so a decline cannot leave
+	// half a frame in the scanout.
 	uint32_t fbStride = 0;
 	uintptr_t fbPixels = xenolith_soft_scanout_fb ? xenolith_soft_scanout_fb(&fbStride) : 0;
 	raster::Target dst = target;
@@ -213,26 +186,17 @@ bool tryRgaVideoBlit(CommandBuffer &buf, const raster::Target &target,
 		dst.pixels = reinterpret_cast<uint8_t *>(fbPixels);
 		dst.stride = fbStride;
 	}
-	if (b.dy > int32_t(y0) || b.dy + b.dh < int32_t(y1)) {
-		++s_rgaDecline;
-		return false;
-	}
+
+	// Fill the letterbox strips, blit the intersection.
 	if (b.dx > int32_t(x0)) {
 		uint32_t w = uint32_t(b.dx) - x0;
 		raster::fillRect(dst, URect(x0, y0, w, y1 - y0), clearColor);
 	}
-	int32_t right = b.dx + b.dw;
 	if (right < int32_t(x1)) {
 		uint32_t rx = uint32_t(right > int32_t(x0) ? right : int32_t(x0));
 		raster::fillRect(dst, URect(rx, y0, x1 - rx, y1 - y0), clearColor);
 	}
-	// clip the blit to the damage bounding box, mapping back to source px
-	int32_t bx0 = b.dx > int32_t(x0) ? b.dx : int32_t(x0);
-	int32_t bx1 = right < int32_t(x1) ? right : int32_t(x1);
-	if (bx1 <= bx0) {
-		++s_rgaDecline;
-		return false;
-	}
+
 	int32_t bw = bx1 - bx0;
 	float scaleX = float(b.sw) / float(b.dw);
 	int32_t isx = b.sx + int32_t(float(bx0 - b.dx) * scaleX + 0.5f);
@@ -240,31 +204,14 @@ bool tryRgaVideoBlit(CommandBuffer &buf, const raster::Target &target,
 	if (isw < 1) { isw = 1; }
 	b.dx = bx0; b.dw = bw; b.sx = isx; b.sw = isw;
 
-	++s_rgaTried;
-	struct timespec ts0, ts1;
-	::clock_gettime(CLOCK_MONOTONIC, &ts0);
-	bool ok = rga2_blit(uintptr_t(dst.pixels), uint32_t(dst.stride), 2,
-			b.dx, b.dy, b.dw, b.dh,
-			uintptr_t(b.srcPixels), b.srcStride, 2,
-			b.sx, b.sy, b.sw, b.sh) == 0;
-	::clock_gettime(CLOCK_MONOTONIC, &ts1);
-	s_rgaNsTotal += uint64_t(ts1.tv_sec - ts0.tv_sec) * 1000000000ull
-			+ uint64_t(ts1.tv_nsec - ts0.tv_nsec);
-	if (ok) {
-		++s_rgaOk;
-		if (fbPixels) {
-			s_scanoutDirectSticky = true;
-		}
-	} else {
-		++s_rgaErr;
-	}
-	if ((s_rgaTried + s_rgaDecline) >= 300) {
-		double avg = s_rgaTried ? double(s_rgaNsTotal) / double(s_rgaTried) / 1.0e6 : 0.0;
-		log::source().info("soft::QueuePass", "rga-offload tried=", s_rgaTried,
-				" ok=", s_rgaOk, " err=", s_rgaErr, " decline=", s_rgaDecline,
-				" avg_ms=", avg);
-		s_rgaTried = s_rgaOk = s_rgaErr = s_rgaDecline = 0;
-		s_rgaNsTotal = 0;
+	bool ok = rga2_blit(uintptr_t(dst.pixels), uint32_t(dst.stride), 2, b.dx, b.dy, b.dw, b.dh,
+					  uintptr_t(b.srcPixels), b.srcStride, 2, b.sx, b.sy, b.sw, b.sh)
+			== 0;
+	// Only a blit that actually reached the scanout lets present() skip the shadow copy. On failure
+	// the caller clears the flag and present() copies the shadow over whatever landed here.
+	if (ok && fbPixels) {
+		s_scanoutDirectSticky.store(true);
+		s_scanoutDirectPending.store(true);
 	}
 	return ok;
 }
@@ -341,16 +288,8 @@ URect QueuePassHandle::rotateScissor(const core::FrameConstraints &constraints,
 	return URect{uint32_t(x), uint32_t(y), width, height};
 }
 
-// How much of the presented image this frame actually has to repaint.
-//
-// The machinery is the swapchain's and is shared with every backend: it diffs this frame's damage
-// snapshot against what the target image already holds. What differs here is the payoff. A GPU
-// backend saves the load/store of a render pass; a software rasterizer saves the rasterization
-// itself, which is the whole cost of the frame - so a blinking cursor stops costing a full screen.
-//
-// Returns false when the frame can be skipped entirely; `area` is the region to repaint.
-// The single rectangle the regions would collapse into. Used as the recording scissor, and as the
-// number the damage log compares against so it is visible when keeping them apart bought anything.
+// The bounding rectangle of the redraw regions. Used as the recording scissor and reported in the
+// damage log for comparison with the separate regions.
 static URect QueuePassHandle_boundingRect(SpanView<URect> areas) {
 	if (areas.empty()) {
 		return URect{0, 0, 0, 0};
@@ -378,15 +317,19 @@ bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Targe
 		return value && StringView(value) != "0";
 	}();
 
-	// XL_SOFT_FORCE_FULL_REDRAW=1 repaints the whole surface every frame. It exists for the
-	// benchmark: with damage tracking on, a static scene skips its frames entirely and every kernel
-	// set measures the same zero. Never for production - it throws away all of damage tracking.
+	// XL_SOFT_FORCE_FULL_REDRAW=1 repaints the whole surface every frame, for benchmarks (a static
+	// scene otherwise skips its frames). Disables damage tracking; not for production.
 	static const bool forceFull = [] {
 		auto value = ::getenv("XL_SOFT_FORCE_FULL_REDRAW");
 		return value && StringView(value) != "0";
 	}();
 
 	if (forceFull) {
+		return true;
+	}
+
+	// See s_scanoutDirectPending: the previous frame bypassed this image entirely.
+	if (s_scanoutDirectPending.exchange(false)) {
 		return true;
 	}
 
@@ -462,15 +405,9 @@ bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Targe
 		return true;
 	}
 
-	// Keep the regions apart rather than collapsing them into their bounding box. The damage
-	// tracker already merged the list down to at most SwapchainDamage::MaxRects, and it merged the
-	// pairs that wasted the least area doing so - taking the union here would throw that away, and
-	// two small changes in opposite corners would cost a full-screen repaint.
-	//
-	// They do have to be pairwise disjoint, though: each region is a separate rasterization pass,
-	// so a pixel covered twice would have every transparent command blended into it twice. The
-	// outward one-pixel padding the tracker applies is enough to make neighbours touch, so this is
-	// not a theoretical case.
+	// Keep the regions apart (the tracker already merged them to at most MaxRects), but make them
+	// pairwise disjoint: each region is a separate rasterization pass, and an overlap would blend
+	// transparent commands twice. The tracker's one-pixel padding makes neighbours touch.
 	areas.clear();
 	for (auto &it : damage) {
 		auto rect = it;
@@ -512,17 +449,8 @@ bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Targe
 	return true;
 }
 
-/* ---- the frame budget ---------------------------------------------------------------------------
-
-Counters are cumulative and every report is a running average over the whole run, like the
-rasterizer profile. That is what makes a short interval usable: any one frame of a software
-renderer is noise (a font atlas batch, a scheduler tick), and the average is the only form in which
-these numbers can be compared between two builds.
-
-Atomic because `present` need not be the thread that ran the pass - the presentation engine calls
-it wherever the swapchain lives - and because being wrong about that would show up as a plausible
-number rather than as a crash. Five relaxed increments a frame cost nothing next to the work being
-measured. */
+/* Frame budget counters: cumulative, so every report is a running average over the whole run.
+Atomic because `present` may run on a different thread than the pass. */
 static sprt::atomic<uint64_t> s_budgetStage[toInt(FrameStage::Count)] = {};
 static sprt::atomic<uint64_t> s_budgetFrames{0};
 static sprt::atomic<uint64_t> s_budgetPeriod{0};
@@ -553,9 +481,8 @@ void addFrameStageTime(FrameStage stage, uint64_t micros) {
 	}
 }
 
-// When the last present returned. Zero until the first one, which is what makes the first frame
-// of a run contribute nothing: it has no previous present to measure a gap from, and charging it
-// with everything that happened before the window existed would poison the average for good.
+// When the last present returned. Zero until the first one, so the first frame of a run
+// contributes nothing.
 static Time s_budgetPresented;
 
 void openFrameBudget() {
@@ -593,14 +520,11 @@ void closeFrameBudget() {
 
 	auto period = s_budgetPeriod.load();
 
-	// `other` is a subtraction, so it can come out negative: the stages are timed on the loop
-	// thread while the period is measured at present, and on the very first reports the two have
-	// not yet covered the same frames. Report it clamped rather than as a wrapped unsigned - a
-	// negative residual means "not enough frames yet", not "the app half is free".
+	// `other` can come out negative on the first reports (stages and period have not yet covered
+	// the same frames), so clamp it instead of wrapping.
 	auto other = period > accounted ? period - accounted : 0;
 
-	// Percentages of the period, not of the accounted total: the whole question is how much of the
-	// frame the render half is, and normalizing to itself would hide exactly that.
+	// Percentages of the period, not of the accounted total.
 	auto pct = [&] (uint64_t v) { return period ? double(v) * 100.0 / double(period) : 0.0; };
 	auto per = [&] (uint64_t v) { return double(v) / double(frames); };
 
@@ -621,21 +545,12 @@ void closeFrameBudget() {
 			" other=", per(other), "us ", pct(other), "%");
 }
 
-// XL_SOFT_PROFILE=1 reports what the rasterizer actually costs.
-//
-// It times raster::draw and nothing else, deliberately. A frame-level number would be useless
-// here: in a debug build everything except this module is unoptimized, so the scene graph and the
-// renderer would swamp the pixel loops - which are the only thing an ISA kernel can change.
-//
-// Runs on the loop thread only, so the counters need no synchronization. Tiles are fanned out to a
-// pool now, but the timing is still taken here - around the whole fork and join - so the counters
-// are still touched by one thread and the number still covers all the work, not one worker's share
-// of it.
+// XL_SOFT_PROFILE reports what the rasterizer costs: it times raster::draw only, around the whole
+// tile fork and join. Runs on the loop thread only, so the counters need no synchronization.
 static void QueuePassHandle_profileFrame(TimeInterval elapsed, SpanView<URect> areas,
 		const raster::TilingStats &tiling, Extent2 surface) {
-	// XL_SOFT_PROFILE=N reports every N frames; =1 is every frame, unset or =0 is off. The
-	// interval is settable because the counters are cumulative - every line is the running
-	// average over the whole run, so a short run just needs a short interval to say anything.
+	// XL_SOFT_PROFILE=N reports every N frames; =1 is every frame, unset or =0 is off. Counters are
+	// cumulative: every line is the running average over the whole run.
 	static const uint64_t reportEvery = [] () -> uint64_t {
 		auto value = ::getenv("XL_SOFT_PROFILE");
 		if (!value) {
@@ -675,14 +590,8 @@ static void QueuePassHandle_profileFrame(TimeInterval elapsed, SpanView<URect> a
 		return;
 	}
 
-	// Mpx/s is the number to compare between kernel sets: it is independent of how much of the
-	// surface the damage tracker happened to hand over on these particular frames.
-	// kernels=, threads= and tiles/frame= are reported for the same reason: a benchmark must never
-	// print a number under a label it did not actually run. A fallback that went unnoticed produces
-	// a real measurement of the wrong thing, and nothing in the picture gives it away.
-	// threads= and tiles/frame= are what the rasterizer *did*, not what it was asked for: a pool
-	// that could not supply the workers, or a region too small to cut, turns a measurement of the
-	// parallel path into one of the serial path and looks exactly the same from here.
+	// Mpx/s compares kernel sets independently of the damage size. kernels=, threads= and
+	// tiles/frame= report what actually ran, not what was requested, so fallbacks are visible.
 	auto usec = sprt::max(micros, uint64_t(1));
 	log::source().debug("soft::profile", "kernels=", raster::getActiveKernelSetName(),
 			" threads=", double(workerCount) / double(frames), " frames=", frames,
@@ -690,16 +599,11 @@ static void QueuePassHandle_profileFrame(TimeInterval elapsed, SpanView<URect> a
 			" tiles/frame=", double(tileCount) / double(frames), " px/frame=", pixels / frames,
 			" us/frame=", double(micros) / double(frames), " Mpx/s=", double(pixels) / double(usec));
 
-	// Three different quantities, and the whole point is that they are different:
+	//   surface  - the window.
+	//   damage   - what the tracker handed the rasterizer.
+	//   filled   - what the kernels wrote; above damage is overdraw.
 	//
-	//   surface  - the window. Fixed.
-	//   damage   - what the tracker handed the rasterizer. surface means the damage protocol did
-	//              not narrow anything, whatever the reason.
-	//   filled   - what the kernels actually wrote. Above damage is overdraw (a pixel covered by
-	//              several commands); at or below it, the commands are sparse inside the region.
-	//
-	// damage/surface is therefore the answer to "is this a full repaint", and filled/damage the
-	// answer to "and how much work is spent inside whatever it repaints".
+	// damage/surface tells a full repaint apart; filled/damage is the work inside the repaint.
 	auto denom = sprt::max(pixels, uint64_t(1));
 	log::source().debug("soft::profile", "fill: surface/frame=", surfacePixels / frames,
 			" damage/frame=", pixels / frames, " filled/frame=", fill.total() / frames,
@@ -805,17 +709,6 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 			return true;
 		}
 
-		{
-			static uint32_t s_seen = 0;
-			static uint32_t s_lastEntries = 0xFFFFFFFFu;
-			uint32_t n = uint32_t(buf->getDrawList().entries.size());
-			if (++s_seen % 600 == 0 || (n != s_lastEntries && s_seen < 300)) {
-				s_lastEntries = n;
-				log::source().info("soft::QueuePass", "runpass entries=", n,
-						" cmds=", buf->getDrawList().commands.size());
-			}
-		}
-
 		auto clearAttachment =
 				static_cast<core::ImageAttachment *>(out->pass->attachment->attachment.get());
 		if (tryRgaVideoBlit(*buf, target, redrawAreas, clearAttachment->getClearColor())) {
@@ -823,7 +716,7 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		}
 
 		// Composed into the shadow: present() must copy again.
-		s_scanoutDirectSticky = false;
+		s_scanoutDirectSticky.store(false);
 
 		// Load op. Clear is the only one that touches memory, and only inside the damaged regions:
 		// outside them the image keeps the previous frame, which is exactly what makes the partial
@@ -840,11 +733,9 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 			}
 		}
 
-		// The command list is built once; only the rasterization repeats, per tile of per region,
-		// and a command outside a tile is rejected before any pixel work. The tiling and the
-		// thread count come from the process settings - untiled and single-threaded unless
-		// SP_RASTER_TILE / SP_RASTER_THREADS say otherwise - so this is the same one call per
-		// region it always was until something asks for more.
+		// The command list is built once; rasterization repeats per tile of each region. Tiling and
+		// thread count come from SP_RASTER_TILE / SP_RASTER_THREADS (untiled, single-threaded by
+		// default).
 		raster::TilingStats tiling;
 		auto started = Time::now();
 		raster::drawTiled(target, buf->getDrawList(), redrawAreas, raster::getDefaultTiling(),
@@ -854,9 +745,7 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		QueuePassHandle_profileFrame(elapsed, redrawAreas, tiling,
 				Extent2(target.width, target.height));
 
-		// The same span the profile above reports, charged to the budget as well: the two
-		// instruments are turned on separately, and the budget must not depend on the profile
-		// being on to know what the rasterizer cost.
+		// The same span, charged to the budget independently of the profile.
 		if (isFrameBudgetEnabled()) {
 			addFrameStageTime(FrameStage::Raster, elapsed.toMicros());
 		}
@@ -894,9 +783,8 @@ void QueuePassHandle::submit(core::FrameQueue &q, Rc<core::FrameSync> &&sync,
 		onComplete(fenceSuccess);
 	}, this, "soft::QueuePassHandle::submit");
 
-	// Nothing armed this fence on a device queue - there is no queue - so arm it by hand. Without
-	// this core::Fence::check short-circuits on a non-Armed state and the release callbacks (which
-	// is how the frame graph learns the pass completed) never run.
+	// No device queue armed this fence, so arm it by hand; otherwise core::Fence::check skips it
+	// and the release callbacks that complete the pass never run.
 	_fence->setArmed();
 
 	for (auto &it : _data->submittedCallbacks) { it(q, *_data, success); }
@@ -905,11 +793,13 @@ void QueuePassHandle::submit(core::FrameQueue &q, Rc<core::FrameSync> &&sync,
 
 	auto fence = move(_fence);
 	_fence = nullptr;
-		fence->schedule(*_loop);
+	fence->schedule(*_loop);
 }
 
-}
+} // namespace stappler::xenolith::soft
 
+// Read by the embox swapchain's present(): the last frame already reached the scanout, so the
+// shadow copy can be skipped (a cache clean is still needed).
 extern "C" int xenolith_soft_rga_direct_presented(void) {
-	return stappler::xenolith::soft::s_scanoutDirectSticky ? 1 : 0;
+	return stappler::xenolith::soft::s_scanoutDirectSticky.load() ? 1 : 0;
 }

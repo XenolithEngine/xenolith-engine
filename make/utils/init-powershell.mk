@@ -40,10 +40,15 @@ rule_rm = powershell 'if (Test-Path "$(1)") { Remove-Item -Recurse -Force -Error
 rule_cp = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force
 rule_mkdir = powershell New-Item -ItemType Directory -Force -Path $(1) | Out-Null
 
+# See the note in init-sh.mk: the $$@ form is for recipes generated through $(call)+eval only.
 WRITE_START = echo
 WRITE_END = > $$@
 APPEND_START = echo
 APPEND_END = >> $$@
+
+# $(1) - destination path, $(2) - the line to write. For recipes written directly (no eval).
+rule_write = echo $(2) > $(1)
+rule_append = echo $(2) >> $(1)
 
 shell_override_file = \
 	$(call print_verbose,Powershell (override): $(shell Set-Content "$(strip $(1))" '$(strip $(2))') )

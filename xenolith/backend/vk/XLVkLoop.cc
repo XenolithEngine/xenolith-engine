@@ -608,15 +608,24 @@ void Loop::compileImage(const Rc<core::DynamicImage> &img, Function<void(bool)> 
 
 void Loop::updateImage(const Rc<core::DynamicImage> &img, BytesView data,
 		Function<void(bool)> &&callback) const {
-	performOnThread([this, img, data, callback = sp::move(callback)]() mutable {
-		if (!_internal) {
+	// Copy at call time: the task runs on the loop thread, and updateImage does not ask the caller
+	// to keep its staging buffer alive past the call (updateImageStable is the one that does).
+	Bytes copy(data.size());
+	if (!data.empty()) {
+		sprt::memcpy(copy.data(), data.data(), data.size());
+	}
+
+	performOnThread([this, img, copy = sp::move(copy), callback = sp::move(callback)]() mutable {
+		if (!_internal || !_internal->device) {
+			if (_internal) {
+				slog().error("vk::Loop", "No device loaded");
+			}
+			if (callback) {
+				callback(false);
+			}
 			return;
 		}
-		if (!_internal->device) {
-			slog().error("vk::Loop", "No device loaded");
-			return;
-		}
-		_internal->device->updateImage(*this, img, data, sp::move(callback));
+		_internal->device->updateImage(*this, img, sp::move(copy), sp::move(callback));
 	}, const_cast<Loop *>(this), true);
 }
 

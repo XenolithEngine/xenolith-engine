@@ -554,9 +554,8 @@ void Builder::spawn(Job *job) {
 					filesystem::OpenFlags::Write | filesystem::OpenFlags::Create
 							| filesystem::OpenFlags::Append);
 			if (file) {
-				file.write(data.data(), data.size());
+				writeOk = file.write(data.data(), data.size()) == data.size();
 				file.close();
-				writeOk = true;
 			}
 		}
 		onCommandDone(job, writeOk ? 0 : -1);
@@ -575,11 +574,10 @@ void Builder::spawn(Job *job) {
 		job->cmdSettled = false;
 		auto h = _looper->writeFile(path, data, flags, [this, job](sprt::Status st) {
 			int code = isSuccessful(st) ? 0 : -1;
-			// Drop the last handle reference BEFORE reporting the line done:
-			// the close is what pushes the file content to the host (wasm
-			// file_put). If make advances a dependent target first, the JS
-			// worker pool captures a stale, mid-append snapshot of generated
-			// headers (stappler-buildconfig.h truncation).
+			// Drop the last handle reference BEFORE reporting the line done, so a dependent target
+			// scheduled right after cannot observe the file with its close still pending. (The wasm
+			// truncation this was first written for is handled by the synchronous branch above;
+			// closing before the line reports done is the right ordering regardless.)
 			job->file = nullptr;
 			if (job->inSyncWindow) {
 				job->cmdSettled = true;

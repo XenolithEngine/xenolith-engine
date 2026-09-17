@@ -29,6 +29,9 @@ GLOBAL_SHELL := xlmake
 GLOBAL_AR ?= ar rcs
 GLOBAL_ECHO ?= $(ECHO)
 
+# See the note in init-sh.mk: the $$@ form is for recipes generated through $(call)+eval only. In a
+# directly written recipe it reaches the directive parser as the literal text "$@" and the payload
+# lands in a file of that name - use rule_write/rule_append there.
 WRITE_START = $(WRITE) $$@
 WRITE_END =
 APPEND_START = $(APPEND) $$@
@@ -37,7 +40,9 @@ APPEND_END =
 rule_rm = $(REMOVE) $(1)
 rule_cp = $(CP) $(1) $(2)
 rule_mkdir = $(MKDIR) $(1)
-rule_write = $(WRITE) $(2) $(1)
+# $(1) - destination path, $(2) - the line to write. For recipes written directly (no eval).
+rule_write = $(WRITE) $(1) $(2)
+rule_append = $(APPEND) $(1) $(2)
 
 shell_arith = 
 
@@ -85,7 +90,6 @@ else ifeq ($(UNAME),WASM)
 ANDROID_HOST := wasm-$(ANDROID_DISTRIB_ARCH)
 
 STAPPLER_HOST := wasm32-unknown-unknown
-
 
 else
 

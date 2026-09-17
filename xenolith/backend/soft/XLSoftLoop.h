@@ -56,6 +56,10 @@ public:
 	virtual void updateImageStable(const Rc<core::DynamicImage> &, BytesView,
 			Function<void(bool)> && = nullptr) const override;
 
+	// Shared body of both: publish `bytes` into the compiled instance. Loop thread.
+	void swapImageData(const Rc<core::DynamicImage> &, BytesView bytes, bool external,
+			Function<void(bool)> &&) const;
+
 	virtual void runRenderQueue(Rc<FrameRequest> &&req, uint64_t gen = 0,
 			Function<void(bool)> && = nullptr) override;
 

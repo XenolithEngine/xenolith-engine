@@ -30,7 +30,6 @@
 #include <linux/fb.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <sys/select.h>
 #include <sys/time.h>
 #include <termios.h>
 #include <fcntl.h>
@@ -118,6 +117,21 @@ extern "C" __attribute__((weak)) int rga2_blit(uintptr_t dst, uint32_t dst_strid
 		int dx, int dy, int dw, int dh, uintptr_t src, uint32_t src_stride, uint32_t src_swap,
 		int sx, int sy, int sw, int sh);
 
+/* fb_dev.c XENOLITH_FB_FLUSH_CACHE ('F', 0x30). rk3588_simplefb is cacheable and the scanout is
+ * not IO-coherent; ENOSYS means there is no such ioctl (QEMU ramfb) and nothing to clean. */
+static constexpr int XenolithFbFlushCache = 0x4630;
+
+static void flushScanout(int fd, void *ptr, size_t len) {
+	if (len == 0) {
+		return;
+	}
+	struct FlushRange {
+		void *ptr;
+		size_t len;
+	} flush = {ptr, len};
+	(void)::ioctl(fd, XenolithFbFlushCache, (unsigned long)(uintptr_t)&flush);
+}
+
 static int rgaPresentCopy(uint8_t *dst, const uint8_t *shadow, uint32_t w, uint32_t h,
 		uint32_t stride) {
 	if (!rga2_blit) {
@@ -127,13 +141,8 @@ static int rgaPresentCopy(uint8_t *dst, const uint8_t *shadow, uint32_t w, uint3
 			uintptr_t(shadow), stride, 2, 0, 0, int(w), int(h));
 }
 
-static int (*const s_rgaPresent)(uint8_t *, const uint8_t *, uint32_t, uint32_t, uint32_t)
-		= rgaPresentCopy;
-
 /* Soft backend: last frame already landed in scanout via RGA (weak). */
 extern "C" __attribute__((weak)) int xenolith_soft_rga_direct_presented(void);
-
-static int (*const s_scanoutDirectDone)() = xenolith_soft_rga_direct_presented;
 
 /* Scanout mapping for RGA video, or 0 if the fb cannot take direct writes. */
 static EmboxWindow *s_theScanoutWindow = nullptr;
@@ -199,22 +208,16 @@ Status EmboxSoftwareSwapchain::present(uint32_t index, SpanView<geom::URect> dam
 	const uint32_t stride = _owner->getStride();
 
 	/* RGA already wrote the visible frame into scanout; still need a cache clean. */
-	if (s_scanoutDirectDone && s_scanoutDirectDone()) {
-		struct FlushRange {
-			void *ptr;
-			size_t len;
-		} flush = { dst, _shadowSize };
-		constexpr int XenolithFbFlushCache = 0x4630;
-		(void)::ioctl(_owner->getFd(), XenolithFbFlushCache,
-				(unsigned long)(uintptr_t)&flush);
+	if (xenolith_soft_rga_direct_presented && xenolith_soft_rga_direct_presented()) {
+		flushScanout(_owner->getFd(), dst, _shadowSize);
 		return Status::Ok;
 	}
 
-	if (s_rgaPresent && damage.empty()) {
+	if (damage.empty()) {
 		// CPU memcpy of 8.3MB + flush ioctl is 15-25ms at -O0; rga2_blit
 		// does the cache clean/invalidate itself.
-		if (s_rgaPresent(dst, _shadow, uint32_t(_extent.width),
-					uint32_t(_extent.height), stride) == 0) {
+		if (rgaPresentCopy(dst, _shadow, uint32_t(_extent.width), uint32_t(_extent.height), stride)
+				== 0) {
 			return Status::Ok;
 		}
 		/* fall through to the CPU path on error */
@@ -230,28 +233,13 @@ Status EmboxSoftwareSwapchain::present(uint32_t index, SpanView<geom::URect> dam
 		}
 	}
 
-	// rk3588_simplefb is cacheable and the scanout is not IO-coherent.
-	// Uncached 1080p writes cost 30-80ms. ENOSYS = no ioctl (QEMU ramfb).
-	struct FlushRange {
-		void *ptr;
-		size_t len;
-	} flush;
+	// Uncached 1080p writes cost 30-80ms, so the mapping is cached and cleaned by hand instead.
 	if (damage.empty()) {
-		flush.ptr = dst;
-		flush.len = _shadowSize;
+		flushScanout(_owner->getFd(), dst, _shadowSize);
 	} else if (area.w > 0 && area.h > 0) {
-		flush.ptr = dst + size_t(area.y) * stride + size_t(area.x) * 4;
-		flush.len = size_t(area.h - 1) * stride + size_t(area.w) * 4;
-	} else {
-		flush.len = 0;
+		flushScanout(_owner->getFd(), dst + size_t(area.y) * stride + size_t(area.x) * 4,
+				size_t(area.h - 1) * stride + size_t(area.w) * 4);
 	}
-	if (flush.len > 0) {
-		// fb_dev.c XENOLITH_FB_FLUSH_CACHE ('F', 0x30)
-		constexpr int XenolithFbFlushCache = 0x4630;
-		(void)::ioctl(_owner->getFd(), XenolithFbFlushCache,
-				(unsigned long)(uintptr_t)&flush);
-	}
-
 
 #ifdef FBIO_UPDATE
 	// Some scanouts need FBIO_UPDATE; live mappings return ENOTTY/ENOSYS
@@ -333,9 +321,8 @@ bool EmboxWindow::init(NotNull<EmboxContextController> c, Rc<WindowInfo> &&info)
 	struct FlushProbe {
 		void *ptr;
 		size_t len;
-	} flushProbe = { nullptr, 0 };
-	_directScanout = ::ioctl(_fd, 0x4630 /* XENOLITH_FB_FLUSH_CACHE */,
-			(unsigned long)(uintptr_t)&flushProbe) == 0;
+	} flushProbe = {nullptr, 0};
+	_directScanout = ::ioctl(_fd, XenolithFbFlushCache, (unsigned long)(uintptr_t)&flushProbe) == 0;
 	if (const char *env = ::getenv("XL_DIRECT_FB")) {
 		if (strcmp(env, "0") == 0) {
 			_directScanout = false;
@@ -354,7 +341,11 @@ bool EmboxWindow::init(NotNull<EmboxContextController> c, Rc<WindowInfo> &&info)
 	oslog::vpinfo(__SPRT_LOCATION, "EmboxWindow", s_fbPath, " ", _extent.width, "x", _extent.height,
 			" stride=", _stride, _directScanout ? " direct-scanout" : " shadow");
 
-	if (!NativeWindow::init(c, sprt::move(info), WindowCapabilities::None)) {
+	// The same capability EmboxContextController::getCapabilities() advertises, and only when this
+	// fb actually took the flush ioctl - a firmware-composited scanout must not claim it.
+	auto caps = _directScanout ? WindowCapabilities::DirectOutput : WindowCapabilities::None;
+	if (!NativeWindow::init(c, sprt::move(info), caps)) {
+		teardown(); // drops s_theScanoutWindow; the fd and the mapping stay by design
 		return false;
 	}
 
@@ -503,9 +494,12 @@ void EmboxWindow::startUartInput() {
 	}
 	oslog::vpinfo(__SPRT_LOCATION, "EmboxWindow", "uart keys: hold=", s_uartKeyHoldUs, "us");
 
-	// Canonical stdin never delivers bytes without a newline; pad keys have none.
+	// Canonical stdin never delivers bytes without a newline; pad keys have none. stdin is process
+	// state, not ours: keep the original so stopUartInput can hand the console back.
 	struct termios tio = {};
 	if (::tcgetattr(STDIN_FILENO, &tio) == 0) {
+		_uartSavedTermios = tio;
+		_uartTermiosSaved = true;
 		tio.c_lflag &= ~(tcflag_t)(ICANON | ECHO);
 		tio.c_cc[VMIN] = 1;
 		tio.c_cc[VTIME] = 0;
@@ -514,6 +508,7 @@ void EmboxWindow::startUartInput() {
 		oslog::vpwarn(__SPRT_LOCATION, "EmboxWindow", "tcgetattr(stdin) failed: ", errno,
 				" - keys need a newline");
 	}
+	_uartSavedFlags = ::fcntl(STDIN_FILENO, F_GETFL, 0);
 
 	pthread_t thread = 0;
 	pthread_attr_t attr;
@@ -536,18 +531,28 @@ void EmboxWindow::stopUartInput() {
 	_uartRunning = false;
 	::pthread_join(reinterpret_cast<pthread_t>(_uartThread), nullptr);
 	_uartThread = nullptr;
+
+	// Only after the reader is gone: it owns stdin until then.
+	if (_uartSavedFlags >= 0) {
+		::fcntl(STDIN_FILENO, F_SETFL, _uartSavedFlags);
+		_uartSavedFlags = -1;
+	}
+	if (_uartTermiosSaved) {
+		::tcsetattr(STDIN_FILENO, TCSANOW, &_uartSavedTermios);
+		_uartTermiosSaved = false;
+	}
 }
 
 void EmboxWindow::uartInputLoop() {
 	uint8_t buf[32];
-	int fl = ::fcntl(STDIN_FILENO, F_GETFL, 0);
-	if (fl >= 0) {
-		::fcntl(STDIN_FILENO, F_SETFL, fl | O_NONBLOCK);
+	if (_uartSavedFlags >= 0) {
+		::fcntl(STDIN_FILENO, F_SETFL, _uartSavedFlags | O_NONBLOCK);
 	}
 	oslog::vpinfo(__SPRT_LOCATION, "EmboxWindow", "uart input loop running");
 	while (_uartRunning.load()) {
 		uint64_t now = uartNowUs();
-		/* embox select() can ignore the timeout and block on UART; poll the HID ring. */
+		/* A non-blocking read plus a sleep, not select(): embox select() can ignore its timeout and
+		 * block on the UART, which would starve the HID rings below. */
 		for (;;) {
 			auto t = s_hidEvtTail.load();
 			if (t == s_hidEvtHead.load()) {
@@ -783,14 +788,6 @@ void EmboxWindow::uartPost(InputKeyCode code, InputEventName event) {
 		const char *env = ::getenv("XL_UART_DIRECT");
 		return env && strcmp(env, "1") == 0;
 	}();
-	{
-		static uint32_t s_posted;
-		if (s_posted < 16) {
-			oslog::vpinfo(__SPRT_LOCATION, "EmboxWindow", "uartPost code=", int(code),
-					" event=", int(event));
-			++s_posted;
-		}
-	}
 
 	if (s_direct && !_handleTextInputFromKeyboard) {
 		Vector<InputEventData> events;

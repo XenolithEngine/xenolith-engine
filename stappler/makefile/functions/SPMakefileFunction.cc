@@ -126,9 +126,14 @@ static bool Function_shell(const Callback<void(StringView)> &out, void *, Variab
 
 	FILE *fp = popen(cmd.data(), "r");
 	if (fp == NULL) {
-		// GNU make: $(shell) of a missing command is empty, not a parse error.
-		// Wasm has no popen; git/uname/etc. in detect-build-number.mk must not
-		// abort the include of compile.mk (that left ifdef STAPPLER_TARGET open).
+		// GNU make answers $(shell) of a command it cannot run with an empty string, not with a
+		// parse error, and wasm has no popen at all: git/uname in detect-build-number.mk must not
+		// abort the include of compile.mk (that left `ifdef STAPPLER_TARGET` open). Where popen
+		// does exist, a null means the process could not be started - report it and keep going.
+#if !SPRT_WASM
+		engine.getCallContext()->err->reportWarning(
+				toString("Failed to run command: '", cmd, '\''));
+#endif
 		return true;
 	}
 

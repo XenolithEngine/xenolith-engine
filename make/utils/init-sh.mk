@@ -41,10 +41,17 @@ rule_rm = rm -rf $(1)
 rule_cp = cp -f $(1) $(2)
 rule_mkdir = $(GLOBAL_MKDIR) $(1)
 
+# For a recipe inside a `define` expanded through $(call)+eval: the $$@ survives that extra
+# expansion and becomes the target's $@ in the generated rule (see BUILD_c_rule in make/c/rules.mk).
+# A recipe written directly in a makefile is expanded once less and must use rule_write/rule_append.
 WRITE_START = echo
 WRITE_END = > $$@
 APPEND_START = echo
 APPEND_END = >> $$@
+
+# $(1) - destination path, $(2) - the line to write. For recipes written directly (no eval).
+rule_write = echo $(2) > $(1)
+rule_append = echo $(2) >> $(1)
 
 shell_arith = $(shell echo $$($(1)) )
 

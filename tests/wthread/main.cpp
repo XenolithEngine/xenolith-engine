@@ -164,7 +164,8 @@ void *sbrkWorker(void *arg) {
 
 int main(int, char **) {
 #if defined(__wasm__)
-	const uintptr_t brkStart = reinterpret_cast<uintptr_t>(sbrk(0));
+	void *brkStartPtr = sbrk(0);
+	const uintptr_t brkStart = reinterpret_cast<uintptr_t>(brkStartPtr);
 #endif
 
 	pthread_t threads[kWorkers];
@@ -231,9 +232,14 @@ int main(int, char **) {
 			(overlaps == 0 && sbrkFails == 0) ? "PASS" : "FAIL");
 
 #if defined(__wasm__)
-	const unsigned long growKiB = static_cast<unsigned long>(
-			(reinterpret_cast<uintptr_t>(sbrk(0)) - brkStart) / 1024);
-	const bool grew = growKiB >= kMinGrowBytes / 1024;
+	void *brkEndPtr = sbrk(0);
+	const bool brkOk = brkStartPtr != reinterpret_cast<void *>(-1)
+			&& brkEndPtr != reinterpret_cast<void *>(-1);
+	const unsigned long growKiB = brkOk
+			? static_cast<unsigned long>(
+					  (reinterpret_cast<uintptr_t>(brkEndPtr) - brkStart) / 1'024)
+			: 0;
+	const bool grew = brkOk && growKiB >= kMinGrowBytes / 1'024;
 	printf("wthread: heap growth=%lu KiB (min %lu KiB) -> %s\n",
 			growKiB, static_cast<unsigned long>(kMinGrowBytes / 1024),
 			grew ? "PASS" : "FAIL");

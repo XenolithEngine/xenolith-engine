@@ -87,9 +87,20 @@ public:
 						 : BytesView(_storage.data(), _storage.size());
 	}
 
-	/* Re-point at an externally owned frame slot. Image identity (and
-	 * MaterialInfo hashes) stays. Loop thread only; slot must remain valid
-	 * until the next call (staging ring, one frame of headroom). */
+	bool isExternal() const { return _external != nullptr; }
+
+	// Bytes the image itself needs, whichever buffer it is currently bound to. getView().size() is
+	// the size of that buffer instead, so it is not the number to size a frame against.
+	size_t getRequiredSize() const {
+		return size_t(_layerSize) * sprt::max(uint32_t(getInfo().arrayLayers.get()), uint32_t(1))
+				* sprt::max(getInfo().extent.depth, 1U);
+	}
+
+	/* Re-point at an externally owned frame slot. Image identity (and MaterialInfo hashes) stays.
+	 * Loop thread only; the slot must remain valid until the next call (staging ring, one frame of
+	 * headroom) and must hold at least getRequiredSize() bytes with this image's packed stride.
+	 * Once external the image has no backing of its own: to write into it again, the caller must
+	 * hand over another slot, not call getData(). */
 	void setExternalData(uint8_t *external, uint32_t stride, size_t size) {
 		if (_external == nullptr && !_storage.empty()) {
 			_storage = Bytes(); // release the malloc'd backing; external from now on

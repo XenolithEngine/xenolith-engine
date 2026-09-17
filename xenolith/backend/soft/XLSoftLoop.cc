@@ -33,8 +33,6 @@
 #include "XLCoreResource.h"
 #include "XLCoreDynamicImage.h"
 
-#include <ctime>
-
 namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 
 bool Loop::init(NotNull<sprt::dispatch::Looper> looper, NotNull<core::Instance> instance,
@@ -429,34 +427,55 @@ void Loop::compileImage(const Rc<core::DynamicImage> &image, Function<void(bool)
 
 void Loop::updateImage(const Rc<core::DynamicImage> &image, BytesView data,
 		Function<void(bool)> &&cb) const {
-	// Copy at call time: a queued task would capture the view, and the
-	// caller's staging buffer is rewritten next frame.
-	// Bytes(n) then memcpy, not the iterator constructor: at -O0 embox
-	// the iterator path was 68.8ms for 229KB; memcpy is ~0.4ms.
-	static uint64_t s_copyNs = 0, s_postNs = 0, s_calls = 0;
-	struct timespec c0, c1, c2;
-	::clock_gettime(CLOCK_MONOTONIC, &c0);
+	// Copy at call time: the task below runs on the loop thread, and the caller's staging buffer is
+	// rewritten next frame. Bytes(n) + memcpy, not the iterator constructor: at -O0 the iterator
+	// path costs two orders of magnitude more for a frame-sized buffer.
 	Bytes copy(data.size());
 	if (!data.empty()) {
 		sprt::memcpy(copy.data(), data.data(), data.size());
 	}
-	::clock_gettime(CLOCK_MONOTONIC, &c1);
-	s_copyNs += uint64_t(c1.tv_sec - c0.tv_sec) * 1000000000ull
-			+ uint64_t(c1.tv_nsec - c0.tv_nsec);
 
 	performOnThread([this, image, copy = sp::move(copy), cb = sp::move(cb)]() mutable {
-		auto info = image->getInfo();
-		BytesView bytes(copy);
+		swapImageData(image, BytesView(copy), false, sp::move(cb));
+	}, const_cast<Loop *>(this), true);
+}
 
-		// Reuse the instance Image; do not updateInstance. A new Image
-		// re-hashes MaterialInfo, the material set rebinds a turn later,
-		// and the screen paints black then clone-sets every frame.
-		// Loop FIFO serializes this memcpy with the raster passes.
-		if (auto inst = image->getInstance()) {
-			auto img = dynamic_cast<Image *>(inst->data.image.get());
-			if (img && img->getInfo().extent == info.extent
-					&& img->getInfo().format == info.format) {
-				auto size = sprt::min(size_t(bytes.size()), size_t(img->getView().size()));
+void Loop::updateImageStable(const Rc<core::DynamicImage> &image, BytesView data,
+		Function<void(bool)> &&cb) const {
+	// The caller keeps `data` valid until the next call (staging ring, one frame of headroom), so
+	// the instance image can be pointed straight at it instead of copying.
+	performOnThread([this, image, data, cb = sp::move(cb)]() mutable {
+		swapImageData(image, data, true, sp::move(cb));
+	}, const_cast<Loop *>(this), true);
+}
+
+/* Publish `bytes` as the content of an already compiled DynamicImage. Loop thread.
+
+`external` hands the instance image the caller's slot instead of copying into it; it is only taken
+when the slot can back the whole image, because from then on the image HAS no storage of its own
+(see Image::setExternalData) and a later short frame must not be written through getData().
+
+The instance image is reused rather than replaced: a new Image re-hashes MaterialInfo, the material
+set rebinds a turn later, and the screen paints black and then clone-sets on every frame. The loop
+FIFO is what serializes the write against the raster passes. */
+void Loop::swapImageData(const Rc<core::DynamicImage> &image, BytesView bytes, bool external,
+		Function<void(bool)> &&cb) const {
+	auto info = image->getInfo();
+
+	if (auto inst = image->getInstance()) {
+		auto img = dynamic_cast<Image *>(inst->data.image.get());
+		if (img && img->getInfo().extent == info.extent && img->getInfo().format == info.format) {
+			auto required = img->getRequiredSize();
+			if (external && bytes.size() >= required) {
+				img->setExternalData(const_cast<uint8_t *>(bytes.data()), img->getStride(),
+						bytes.size());
+				if (cb) {
+					cb(true);
+				}
+				return;
+			}
+			if (!img->isExternal()) {
+				auto size = sprt::min(size_t(bytes.size()), required);
 				if (size > 0) {
 					sprt::memcpy(img->getData(), bytes.data(), size);
 				}
@@ -465,120 +484,39 @@ void Loop::updateImage(const Rc<core::DynamicImage> &image, BytesView data,
 				}
 				return;
 			}
+			// Bound to a previous caller slot and this frame cannot back the image: rebuild below
+			// rather than write through getData(), which still points into that slot.
 		}
-
-		auto img = Rc<Image>::create(*_device, info.key, core::ImageInfoData(info));
-		if (!img) {
-			log::source().error("soft::Loop", "updateImage: fail to create image");
-			if (cb) {
-				cb(false);
-			}
-			return;
-		}
-
-		auto size = sprt::min(size_t(bytes.size()), size_t(img->getView().size()));
-		if (size > 0) {
-			sprt::memcpy(img->getData(), bytes.data(), size);
-		}
-
-		if (image->getInstance()) {
-			core::ImageViewInfo viewInfo;
-			viewInfo.setup(img->getInfo());
-			viewInfo.setup(core::ColorMode::SolidColor, true);
-
-			auto view = Rc<ImageView>::create(*_device, Rc<core::ImageObject>(img.get()), viewInfo);
-			image->updateInstance(*const_cast<Loop *>(this), img, nullptr, nullptr,
-					Vector<Rc<DependencyEvent>>(), sp::move(view));
-		} else {
-			image->setImage(img.get());
-		}
-
-		if (cb) {
-			cb(true);
-		}
-	}, const_cast<Loop *>(this), true);
-
-	::clock_gettime(CLOCK_MONOTONIC, &c2);
-	s_postNs += uint64_t(c2.tv_sec - c1.tv_sec) * 1000000000ull
-			+ uint64_t(c2.tv_nsec - c1.tv_nsec);
-	if (++s_calls % 60 == 0) {
-		log::source().info("soft:img", "calls=", s_calls,
-				" copy_ms=", double(s_copyNs) / 60.0 / 1.0e6,
-				" post_ms=", double(s_postNs) / 60.0 / 1.0e6);
-		s_copyNs = s_postNs = 0;
 	}
-}
 
-void Loop::updateImageStable(const Rc<core::DynamicImage> &image, BytesView data,
-		Function<void(bool)> &&cb) const {
-	// Caller keeps `data` valid until the next call (staging ring, one frame
-	// of headroom). Same frozen-binding path as updateImage, without the copy.
-	static uint64_t s_post2Ns = 0, s_calls2 = 0;
-	struct timespec c0, c1;
-	::clock_gettime(CLOCK_MONOTONIC, &c0);
-
-	performOnThread([this, image, data, cb = sp::move(cb)]() mutable {
-		auto info = image->getInfo();
-
-		if (auto inst = image->getInstance()) {
-			auto img = dynamic_cast<Image *>(inst->data.image.get());
-			if (img && img->getInfo().extent == info.extent
-					&& img->getInfo().format == info.format) {
-				// Slot becomes sampled storage; image identity stays (no MaterialInfo re-hash).
-				if (data.size() >= img->getView().size()) {
-					img->setExternalData(const_cast<uint8_t *>(data.data()),
-							uint32_t(info.extent.width * 4), data.size());
-				} else {
-					auto size = sprt::min(size_t(data.size()), size_t(img->getView().size()));
-					if (size > 0) {
-						sprt::memcpy(img->getData(), data.data(), size);
-					}
-				}
-				if (cb) {
-					cb(true);
-				}
-				return;
-			}
-		}
-
-		auto img = Rc<Image>::create(*_device, info.key, core::ImageInfoData(info));
-		if (!img) {
-			log::source().error("soft::Loop", "updateImageStable: fail to create image");
-			if (cb) {
-				cb(false);
-			}
-			return;
-		}
-
-		auto size = sprt::min(size_t(data.size()), size_t(img->getView().size()));
-		if (size > 0) {
-			sprt::memcpy(img->getData(), data.data(), size);
-		}
-
-		if (image->getInstance()) {
-			core::ImageViewInfo viewInfo;
-			viewInfo.setup(img->getInfo());
-			viewInfo.setup(core::ColorMode::SolidColor, true);
-
-			auto view = Rc<ImageView>::create(*_device, Rc<core::ImageObject>(img.get()), viewInfo);
-			image->updateInstance(*const_cast<Loop *>(this), img, nullptr, nullptr,
-					Vector<Rc<DependencyEvent>>(), sp::move(view));
-		} else {
-			image->setImage(img.get());
-		}
-
+	auto img = Rc<Image>::create(*_device, info.key, core::ImageInfoData(info));
+	if (!img) {
+		log::source().error("soft::Loop", "updateImage: fail to create image");
 		if (cb) {
-			cb(true);
+			cb(false);
 		}
-	}, const_cast<Loop *>(this), true);
+		return;
+	}
 
-	::clock_gettime(CLOCK_MONOTONIC, &c1);
-	s_post2Ns += uint64_t(c1.tv_sec - c0.tv_sec) * 1000000000ull
-			+ uint64_t(c1.tv_nsec - c0.tv_nsec);
-	if (++s_calls2 % 60 == 0) {
-		log::source().info("soft:img", "stable_calls=", s_calls2,
-				" post_ms=", double(s_post2Ns) / 60.0 / 1.0e6);
-		s_post2Ns = 0;
+	auto size = sprt::min(size_t(bytes.size()), size_t(img->getView().size()));
+	if (size > 0) {
+		sprt::memcpy(img->getData(), bytes.data(), size);
+	}
+
+	if (image->getInstance()) {
+		core::ImageViewInfo viewInfo;
+		viewInfo.setup(img->getInfo());
+		viewInfo.setup(core::ColorMode::SolidColor, true);
+
+		auto view = Rc<ImageView>::create(*_device, Rc<core::ImageObject>(img.get()), viewInfo);
+		image->updateInstance(*const_cast<Loop *>(this), img, nullptr, nullptr,
+				Vector<Rc<DependencyEvent>>(), sp::move(view));
+	} else {
+		image->setImage(img.get());
+	}
+
+	if (cb) {
+		cb(true);
 	}
 }
 

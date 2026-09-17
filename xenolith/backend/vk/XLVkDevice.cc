@@ -575,16 +575,17 @@ void Device::waitIdle() const {
 
 void Device::compileImage(const Loop &loop, const Rc<core::DynamicImage> &img,
 		Function<void(bool)> &&cb) {
-	doImageTransfer(loop, img, BytesView(), false, sp::move(cb));
+	doImageTransfer(loop, img, Bytes(), false, sp::move(cb));
 }
 
-// Per-frame video: bytes from the caller, swapped through updateInstance.
-void Device::updateImage(const Loop &loop, const Rc<core::DynamicImage> &img, BytesView data,
+// Per-frame video: bytes from the caller, swapped through updateInstance. Takes the buffer by
+// value - the staging copy is made on the calling thread, before any hop (see Loop::updateImage).
+void Device::updateImage(const Loop &loop, const Rc<core::DynamicImage> &img, Bytes &&data,
 		Function<void(bool)> &&cb) {
-	doImageTransfer(loop, img, data, true, sp::move(cb));
+	doImageTransfer(loop, img, sp::move(data), true, sp::move(cb));
 }
 
-void Device::doImageTransfer(const Loop &loop, const Rc<core::DynamicImage> &img, BytesView data,
+void Device::doImageTransfer(const Loop &loop, const Rc<core::DynamicImage> &img, Bytes &&data,
 		bool isUpdate, Function<void(bool)> &&cb) {
 	struct CompileImageTask : public Ref {
 		Function<void(bool)> callback;
@@ -607,7 +608,7 @@ void Device::doImageTransfer(const Loop &loop, const Rc<core::DynamicImage> &img
 	task->loop = (Loop *)&loop;
 	task->device = this;
 	task->isUpdate = isUpdate;
-	task->updateData = Bytes(data.data(), data.data() + data.size());
+	task->updateData = sp::move(data);
 
 	loop.performInQueue([this, task]() {
 		// make transfer buffer
