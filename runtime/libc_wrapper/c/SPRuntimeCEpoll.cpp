@@ -33,6 +33,7 @@
 #include <sys/epoll.h>
 #include <sys/utsname.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #endif
 
@@ -62,11 +63,31 @@ __SPRT_C_FUNC int __SPRT_ID(epoll_pwait)(int efd, struct __SPRT_EPOLL_EVENT_NAME
 // epoll_pwait2(2) exists from Linux 5.10 only. On older Android kernels
 // (API 26 images run 5.4) the seccomp policy KILLS the process for the
 // unknown syscall number - bionic's SIGSYS handler aborts before errno can
-// say ENOSYS - so the syscall must never be issued there at all. The
-// kernel release is probed once per process (uname is seccomp-safe).
+// say ENOSYS - so the syscall must never be issued there at all. AND the
+// seccomp app allowlist is per-ANDROID-RELEASE, not per-kernel: the API 33
+// image runs kernel 5.15 (so uname says "fine") yet its app seccomp policy
+// still disallows syscall 441 - apps may issue it only from API 34+. Both
+// gates are probed once per process (uname and __system_property_get are
+// seccomp-safe).
+extern "C" int __system_property_get(const char *, char *);
+
 static bool s_haveEpollPwait2() {
 	static const bool have = [] {
-#if defined(__SPRT_ANDROID) || defined(__linux__)
+#if defined(__ANDROID__)
+		char sdk[8] = {0};
+		if (__system_property_get("ro.build.version.sdk", sdk) <= 0 || ::atoi(sdk) < 34) {
+			return false;
+		}
+		struct utsname u;
+		if (::uname(&u) != 0 || u.release[0] == '\0') {
+			return false;
+		}
+		int a = 0, b = 0;
+		if (sscanf(u.release, "%d.%d", &a, &b) != 2) {
+			return false;
+		}
+		return a > 5 || (a == 5 && b >= 10);
+#elif defined(__linux__)
 		struct utsname u;
 		if (::uname(&u) != 0 || u.release[0] == '\0') {
 			return false;
