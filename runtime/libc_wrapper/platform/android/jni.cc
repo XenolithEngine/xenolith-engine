@@ -400,7 +400,13 @@ App::~App() {
 	auto env = Env::getEnv();
 	auto jAppRef = jApplication.ref(env);
 
-	Application.setNative(jAppRef, 0);
+	// nativeOnly: jApplication was never bound, the ref is null - calling
+	// setNative would be a JNI call on a null object and ART's check-JNI
+	// aborts the process ("obj == null"), e.g. on any graceful exit that
+	// runs static destructors.
+	if (jAppRef) {
+		Application.setNative(jAppRef, 0);
+	}
 
 	if (config) {
 		AConfiguration_delete(config);

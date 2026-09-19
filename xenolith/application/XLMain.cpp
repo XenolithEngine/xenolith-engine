@@ -34,6 +34,8 @@
 #include <sprt/jni/jni.h>
 #include <sprt/jni/native_activity.h>
 
+#include <unistd.h> // _exit
+
 // bionic libc symbol (stable ABI since API 1); declared inline to avoid
 // dragging the sys/system_properties.h include chain into every TU.
 extern "C" int __system_property_get(const char *, char *);
@@ -103,7 +105,20 @@ SP_EXTERN_C JNIEXPORT void ANativeActivity_onCreate(ANativeActivity *activity, v
 	// from the activity itself before anything can use jni::Env.
 	if (!sprt::jni::Env::getApp()) {
 		if (!runXenolithNative(activity->vm)) {
-			abort();
+			// The run failed on an environment limit (the run loop has
+			// logged the cause - e.g. no Vulkan ICD on the device), not on
+			// an app bug: exit immediately instead of abort(). abort()
+			// raises the system crash dialog, which also blocks any UI
+			// automation running after us (device matrix). NOTE: _exit is
+			// NOT immediate here - the libc wrapper maps it to the full
+			// exit() (atexit + static destructors), and the static-dtor
+			// pass runs jni::App::~App, whose setNative() is a JNI call on
+			// a null proxy in nativeOnly mode - ART's check-JNI aborts the
+			// process right back into the crash dialog. _Exit is the real
+			// immediate termination.
+			STAPPLER_VERSIONIZED_NAMESPACE::slog().error("main",
+					"Xenolith native run failed, exiting");
+			::_Exit(1);
 		}
 	}
 
