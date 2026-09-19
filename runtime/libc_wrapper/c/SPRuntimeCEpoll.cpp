@@ -31,6 +31,8 @@
 
 #if __SPRT_CONFIG_HAVE_EPOLL
 #include <sys/epoll.h>
+#include <sys/utsname.h>
+#include <stdio.h>
 #include <unistd.h>
 #endif
 
@@ -57,11 +59,47 @@ __SPRT_C_FUNC int __SPRT_ID(epoll_pwait)(int efd, struct __SPRT_EPOLL_EVENT_NAME
 	return ::epoll_pwait(efd, (struct epoll_event *)ev, maxevents, timeout, (const sigset_t *)sig);
 }
 
+// epoll_pwait2(2) exists from Linux 5.10 only. On older Android kernels
+// (API 26 images run 5.4) the seccomp policy KILLS the process for the
+// unknown syscall number - bionic's SIGSYS handler aborts before errno can
+// say ENOSYS - so the syscall must never be issued there at all. The
+// kernel release is probed once per process (uname is seccomp-safe).
+static bool s_haveEpollPwait2() {
+	static const bool have = [] {
+#if defined(__SPRT_ANDROID) || defined(__linux__)
+		struct utsname u;
+		if (::uname(&u) != 0 || u.release[0] == '\0') {
+			return false;
+		}
+		int a = 0, b = 0;
+		if (sscanf(u.release, "%d.%d", &a, &b) != 2) {
+			return false;
+		}
+		return a > 5 || (a == 5 && b >= 10);
+#else
+		return false;
+#endif
+	}();
+	return have;
+}
+
 __SPRT_C_FUNC int __SPRT_ID(epoll_pwait2)(int efd, struct __SPRT_EPOLL_EVENT_NAME *ev,
 		int maxevents, const struct __SPRT_TIMESPEC_NAME *tv, const __SPRT_ID(sigset_t) * sig) {
-	// if timeout was not specified - it's safe to call epoll_pwait
-	if (tv == nullptr) {
-		return ::epoll_pwait(efd, (struct epoll_event *)ev, maxevents, 0, (const sigset_t *)sig);
+	// Pre-5.10 kernels: never issue the syscall (seccomp kills, see above);
+	// a null timeout also does not need it.
+	if (tv == nullptr || !s_haveEpollPwait2()) {
+		long long millis64 = 0;
+		if (tv != nullptr) {
+			millis64 = (long long)tv->tv_sec * 1'000 + (long long)tv->tv_nsec / 1'000'000;
+		}
+		if (millis64 < 1 && tv != nullptr) {
+			millis64 = 1; // at least 1 millisecond to wait
+		} else if (millis64 > __SPRT_INT_MAX) {
+			millis64 = __SPRT_INT_MAX; // clamp to epoll_pwait's int timeout
+		}
+
+		return ::epoll_pwait(efd, (struct epoll_event *)ev, maxevents, (int)millis64,
+				(const sigset_t *)sig);
 	}
 
 	auto ret = syscall(__SPRT_SYSCALL_epoll_pwait2, efd, (struct epoll_event *)ev, maxevents, tv,
