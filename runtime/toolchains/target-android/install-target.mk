@@ -52,13 +52,22 @@ $(T_TARGET)/usr/include: $(T_INTERMEDIATE)/usr/include | $(T_TARGET)
 $(T_TARGET)/lib: $(T_INTERMEDIATE)/lib | $(T_TARGET)
 	@mkdir -p $(dir $@)
 	rm -rf $@
-	cp -rf $< $@
-	rm -rf $@/clang/include
+	# Copy by parts: a plain `cp -rf` on the whole lib dereferences the
+	# clang/include -> host symlink inside and dies on the self-intersection.
+	mkdir -p $@/clang
+	cp -f $(T_INTERMEDIATE)/lib/*.o $(T_INTERMEDIATE)/lib/*.so $@/
+	cp -rf $(T_INTERMEDIATE)/lib/clang/lib $@/clang/lib
 	# The freestanding flow compiles with -resource-dir <sysroot>/lib/clang,
-	# so builtin headers (stddef.h etc) must resolve inside the sysroot:
-	# relink them to the host toolchain, wasm-target style (see target-wasm).
-	cd $(T_TARGET); ln -fs ../../hosts/$(HOST_ID) host
-	cd $@/clang; ln -fs ../../host/lib/clang/$(HOST_CLANG_RESOURCE)/include include
+	# so builtin headers (stddef.h etc) must resolve inside the sysroot.
+	# Copy ONLY the pure-builtin clang headers - the wrapper headers there
+	# (stdint.h, inttypes.h, limits.h, tgmath.h) use #include_next and would
+	# shadow bionic's own copies in include_libc, leaving types undefined.
+	mkdir -p $@/clang/include
+	cd $(dir $(THIS_FILE))../hosts/$(HOST_ID)/lib/clang/$(HOST_CLANG_RESOURCE)/include; \
+		cp -f stddef.h __stddef_max_align_t.h stdarg.h stdbool.h stdalign.h \
+			stdatomic.h float.h iso646.h stdnoreturn.h unwind.h \
+			arm_acle.h arm_bf16.h arm_fp16.h arm_neon.h arm_vector_types.h \
+			$(T_TARGET)/lib/clang/include/
 	touch $@
 
 $(T_TARGET)/%: $(T_INTERMEDIATE)/% | $(T_TARGET)

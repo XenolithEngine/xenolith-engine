@@ -2238,7 +2238,7 @@ static_assert(__SPRT_TCP_IPV4 == TCP_IPV4, "TCP_IPV4 differs from native");
 #if defined(__SPRT_TCP_IPV6) || defined(TCP_IPV6)
 static_assert(__SPRT_TCP_IPV6 == TCP_IPV6, "TCP_IPV6 differs from native");
 #endif
-#if defined(__SPRT_TCP_IS_MPTCP) || defined(TCP_IS_MPTCP)
+#if defined(__SPRT_TCP_IS_MPTCP) && defined(TCP_IS_MPTCP) // bionic has no TCP_IS_MPTCP
 static_assert(__SPRT_TCP_IS_MPTCP == TCP_IS_MPTCP, "TCP_IS_MPTCP differs from native");
 #endif
 #if defined(__SPRT_TCP_KEEPALIVE) || defined(TCP_KEEPALIVE)

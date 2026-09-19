@@ -33,7 +33,7 @@
 #include <sprt/jni/jni.h>
 #include <sprt/jni/native_activity.h>
 
-SP_EXTERN_C JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
+static bool runXenolithNative(JavaVM *vm) {
 	sprt::jni::Env::loadJava(vm);
 #if MODULE_XENOLITH_APPLICATION
 	auto runFn = STAPPLER_VERSIONIZED_NAMESPACE::SharedModule::acquireTypedSymbol<
@@ -43,19 +43,26 @@ SP_EXTERN_C JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 	if (runFn) {
 		auto app = sprt::jni::Env::getApp()->getCurrentInfo();
 		if (runFn(app.get()) != 0) {
-			return -1;
+			return false;
 		}
 	} else {
 		STAPPLER_VERSIONIZED_NAMESPACE::slog().error("main",
 				"Fail to load entry point `Context::run` from MODULE_XENOLITH_APPLICATION_NAME");
-		return -1;
+		return false;
 	}
-	return JNI_VERSION_1_6;
+	return true;
 #else
 	STAPPLER_VERSIONIZED_NAMESPACE::log::source().error("main",
 			"MODULE_XENOLITH_APPLICATION is not defined for the default entry point");
-	return -1;
+	return false;
 #endif
+}
+
+SP_EXTERN_C JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
+	if (!runXenolithNative(vm)) {
+		return -1;
+	}
+	return JNI_VERSION_1_6;
 }
 
 SP_EXTERN_C JNIEXPORT void JNI_OnUnload(JavaVM *vm, void *unused) {
@@ -64,6 +71,15 @@ SP_EXTERN_C JNIEXPORT void JNI_OnUnload(JavaVM *vm, void *unused) {
 
 SP_EXTERN_C JNIEXPORT void ANativeActivity_onCreate(ANativeActivity *activity, void *savedState,
 		size_t savedStateSize) {
+	// A hasCode="false" APK loads the library through NativeActivity's own
+	// dlopen: JNI_OnLoad never runs, so the JVM binding must be bootstrapped
+	// from the activity itself before anything can use jni::Env.
+	if (!sprt::jni::Env::getApp()) {
+		if (!runXenolithNative(activity->vm)) {
+			abort();
+		}
+	}
+
 	auto app = sprt::jni::Env::getApp();
 
 	auto savedData = sprt::BytesView((const uint8_t *)savedState, savedStateSize);

@@ -195,8 +195,8 @@ $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(THIS_FILE)
 	@echo 'TARGET_INCLUDE_DIR_LIBC := $$(TARGET_SYSROOT)/include_libc' >> $@
 	@echo 'TARGET_LIB_DIR := $$(TARGET_SYSROOT)/usr/lib' >> $@
 	@echo 'TARGET_LIB_DIR_LIBC := $$(TARGET_SYSROOT)/lib' >> $@
-	@echo 'TARGET_GENERAL_CFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang' >> $@
-	@echo 'TARGET_GENERAL_CXXFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang' >> $@
+	@echo 'TARGET_GENERAL_CFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -fPIC' >> $@
+	@echo 'TARGET_GENERAL_CXXFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -fPIC' >> $@
 	@echo 'TARGET_GENERAL_LDFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -lc++abi -lm' >> $@
 	@echo 'TARGET_EXEC_CFLAGS :=' >> $@
 	@echo 'TARGET_EXEC_CXXFLAGS :=' >> $@
@@ -235,6 +235,9 @@ $(TARGET_LIBCXX): $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake \
 	cd $(LIBNAME); cmake \
 		-DCMAKE_TOOLCHAIN_FILE=$(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake \
 		-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+		-DLIBUNWIND_HAS_PTHREAD_LIB=Off \
+		-DLIBCXXABI_HAS_PTHREAD_LIB=Off \
+		-DLIBCXX_HAS_PTHREAD_LIB=Off \
 		-G "Ninja" -S $(dir $(THIS_FILE))../src/$(LIBNAME)/runtimes \
 		-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind;compiler-rt" \
 		-DLLVM_INSTALL_TOOLCHAIN_ONLY=On \
