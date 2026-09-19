@@ -495,6 +495,20 @@ export function makeImports({ memory, memory64 = isMemory64(memory), bundle = {}
 				return n;
 			},
 			bundle_read(p, l, buf, cap) { const f = bundleFile(bkey(p, l)); if (!f) return -1; const n = Math.min(cap, f.length); u8().set(f.subarray(0, n), buf); return n; },
+			// CSPRNG for the guest (getrandom.cc's host import; also backs the
+			// guest's /dev/urandom): 0 on success, -errno (EIO) on failure.
+			// Chunked to crypto.getRandomValues' 65536-byte limit.
+			random_get(buf, len) {
+				const view = u8();
+				try {
+					for (let at = buf; at < buf + len; at += 65536) {
+						crypto.getRandomValues(view.subarray(at, Math.min(at + 65536, buf + len)));
+					}
+					return 0;
+				} catch {
+					return -5; /* -EIO */
+				}
+			},
 			file_put(p, l, buf, n) {
 				if (!onFilePut || n <= 0) {
 					return;

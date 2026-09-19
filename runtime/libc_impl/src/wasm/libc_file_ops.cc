@@ -65,6 +65,17 @@ __attribute__((import_module("sprt"), import_name("bundle_size"))) int __sprt_ho
 		const char *path, __SPRT_ID(size_t) pathLen);
 __attribute__((import_module("sprt"), import_name("bundle_read"))) int __sprt_host_bundle_read(
 		const char *path, __SPRT_ID(size_t) pathLen, void *buf, __SPRT_ID(size_t) cap);
+// Lists a bundled directory: returns the byte count of the NUL-separated
+// entry names (directories carry a trailing '/'); when the count exceeds
+// `cap` nothing is written and the count is the size to allocate.
+__attribute__((import_module("sprt"), import_name("bundle_dir"))) int __sprt_host_bundle_dir(
+		const char *path, __SPRT_ID(size_t) pathLen, char *buf, __SPRT_ID(size_t) cap);
+// The engine's CSPRNG host import (see runtime/core/wasm/getrandom.cc, the
+// canonical declaration): stock OpenSSL seeds its RAND by reading
+// /dev/urandom (rand_unix), so the guest materializes that device on top
+// of this import — no openssl rebuild needed.
+__attribute__((import_module("sprt"), import_name("random_get"))) int __sprt_host_random_get(
+		void *buf, __SPRT_ID(size_t) len);
 
 // clock_gettime is defined by wasm/time.cc in this same libc. The __sprt_time.h
 // prototype is namespaced when this TU is built without __SPRT_BUILD, so declare
@@ -94,6 +105,10 @@ struct __memfs_inode {
 	bool opfs; // backed by the persistent /opfs (OPFS) mount
 	bool dirty; // in-memory content differs from OPFS — write back on close/fsync
 	bool readonly; // read-only overlay (JS bundle) — reject writes
+	bool bundledStub; // bundled placeholder from __memfs_hydrate_bundle_dir: size
+	                  // known, content loads from the bundle on first open
+	bool isUrandom; // /dev/urandom: an endless stream, every read is fresh
+	                // host CSPRNG bytes (content fields unused)
 	// POSIX timestamps. The wall clock comes from the host (JS Date, via
 	// clock_gettime REALTIME); set at creation and advanced on write/truncate/
 	// chmod, and settable via utimensat/futimens/utimes.
@@ -185,6 +200,22 @@ static ssize_t __file_read(struct __fd_slot *fp, void *buf, size_t nbytes, off64
 			return -1;
 		}
 		return r;
+	}
+	if (n->ino->isUrandom) {
+		// Endless stream: fresh host CSPRNG bytes per read (the host chunks
+		// to the 65536-byte getRandomValues limit); offsets are meaningless.
+		if (nbytes == 0) {
+			return 0;
+		}
+		int r = __sprt_host_random_get(buf, nbytes);
+		if (r != 0) {
+			__sprt_errno = -r;
+			return -1;
+		}
+		if (!offset) {
+			n->pos = 0;
+		}
+		return (ssize_t)nbytes;
 	}
 	// memfs
 	__SPRT_ID(off_t) at = offset ? *offset : n->pos;
@@ -816,6 +847,8 @@ static __memfs_inode *__memfs_create(const char *abspath, bool isDir, __SPRT_ID(
 	n->opfs = false;
 	n->dirty = false;
 	n->readonly = false;
+	n->bundledStub = false;
+	n->isUrandom = false;
 	static __SPRT_ID(ino_t) s_nextInum = 1;
 	n->inum = s_nextInum++;
 	__memfs_now(&n->mtim);
@@ -856,6 +889,93 @@ static __memfs_inode *__memfs_load_bundle(const char *abspath) {
 		ino->size = (rd > 0) ? (__SPRT_ID(size_t))rd : 0;
 	}
 	return ino;
+}
+
+// Virtual cwd (chdir writes it, getcwd reads it; the browser has none).
+char s_cwd[4096] = { '/', '\0' };
+
+// Hydrate a bundled directory into memfs: list it once through the host
+// bundle_dir and materialize the immediate children, so opendir()/readdir()
+// see real names instead of only the files touched so far. Child directories
+// become read-only stub dirs (their own children hydrate on THEIR opendir —
+// that is what the "always hydrate" note in opendir() relies on); child files
+// become lazy placeholders — stat() reports the real bundle size immediately,
+// content is pulled from the bundle exactly once, on first open. Returns
+// true when `abspath` is a materialized (or root) directory afterwards.
+bool __memfs_hydrate_bundle_dir(const char *abspath) {
+	__SPRT_ID(size_t) plen = __builtin_strlen(abspath);
+	bool isRoot = plen == 1 && abspath[0] == '/';
+	if (!isRoot) {
+		if (__sprt_host_bundle_size(abspath, plen) != __SPRT_BUNDLE_DIR) {
+			return false; // not a bundled directory
+		}
+		if (!__memfs_find(abspath)) {
+			auto d = __memfs_create(abspath, true, 0555);
+			if (!d) {
+				return false;
+			}
+			d->readonly = true;
+		}
+	}
+	int need = __sprt_host_bundle_dir(abspath, plen, nullptr, 0);
+	if (need <= 0) {
+		return true; // empty listing (or an older host): the dir node exists
+	}
+	auto buf = (char *)__sprt_malloc((__SPRT_ID(size_t))need);
+	if (!buf) {
+		return false;
+	}
+	int n = __sprt_host_bundle_dir(abspath, plen, buf, (__SPRT_ID(size_t))need);
+	if (n <= 0 || n > need) {
+		__sprt_free(buf);
+		return false;
+	}
+	auto child = (char *)__sprt_malloc(plen + (__SPRT_ID(size_t))need + 2);
+	if (!child) {
+		__sprt_free(buf);
+		return false;
+	}
+	__builtin_memcpy(child, abspath, plen);
+	__SPRT_ID(size_t) off = plen;
+	if (!isRoot) {
+		child[off++] = '/';
+	}
+	for (int i = 0; i < n;) {
+		int j = i;
+		while (j < n && buf[j] != '\0') {
+			++j;
+		}
+		__SPRT_ID(size_t) nl = (__SPRT_ID(size_t))(j - i);
+		bool childDir = nl > 1 && buf[j - 1] == '/';
+		if (childDir) {
+			--nl; // drop the trailing '/'
+		}
+		if (nl > 0 && buf[i] != '.') { // "." / ".." are synthesized by readdir
+			__builtin_memcpy(child + off, buf + i, nl);
+			child[off + nl] = '\0';
+			if (!__memfs_find(child)) {
+				if (childDir) {
+					auto d = __memfs_create(child, true, 0555);
+					if (d) {
+						d->readonly = true;
+					}
+				} else {
+					auto f = __memfs_create(child, false, 0444);
+					if (f) {
+						int csz = __sprt_host_bundle_size(child, off + nl);
+						if (csz > 0) {
+							f->size = (__SPRT_ID(size_t))csz;
+							f->bundledStub = true;
+						}
+					}
+				}
+			}
+		}
+		i = j + 1;
+	}
+	__sprt_free(child);
+	__sprt_free(buf);
+	return true;
 }
 
 // Remove a file (dir=false) or empty directory (dir=true) from the registry.
@@ -922,6 +1042,18 @@ static int __memfs_openfd(const char *path, int flags, __SPRT_ID(mode_t) mode) {
 			return -1;
 		}
 	}
+	// /dev/urandom (and its alias): there is no device in the guest — stock
+	// OpenSSL's rand_unix opens this path to seed its RAND. Materialize it
+	// as an endless stream (see __file_read) backed by the host CSPRNG.
+	if (!__builtin_strcmp(abs, "/dev/urandom") || !__builtin_strcmp(abs, "/dev/random")) {
+		if (!__memfs_find(abs)) {
+			auto u = __memfs_create(abs, false, 0444);
+			if (u) {
+				u->readonly = true;
+				u->isUrandom = true;
+			}
+		}
+	}
 	__memfs_inode *ino = __memfs_find(abs);
 	if (!ino && __vfs_is_opfs(abs)) {
 		// Persistent mount: hydrate from OPFS (or create there). Handles O_CREAT/
@@ -944,6 +1076,19 @@ static int __memfs_openfd(const char *path, int flags, __SPRT_ID(mode_t) mode) {
 				return -1;
 			}
 		} else {
+			if (ino->bundledStub) {
+				// Lazy bundled placeholder (from __memfs_hydrate_bundle_dir):
+				// stat() already reported the size; load the content now, once.
+				auto stubLen = __builtin_strlen(abs);
+				if (__memfs_reserve(ino, ino->size)) {
+					int rd = __sprt_host_bundle_read(abs, stubLen, ino->data, ino->size);
+					ino->size = (rd > 0) ? (__SPRT_ID(size_t))rd : 0;
+					ino->bundledStub = false;
+				} else {
+					__sprt_errno = ENOMEM;
+					return -1;
+				}
+			}
 			if ((flags & __SPRT_O_CREAT) && (flags & __SPRT_O_EXCL)) {
 				__sprt_errno = EEXIST;
 				return -1;
