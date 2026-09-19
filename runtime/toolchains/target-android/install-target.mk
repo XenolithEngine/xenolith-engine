@@ -20,6 +20,14 @@
 
 GIT_TAG ?= $(shell git describe --tags --abbrev=0)
 
+THIS_FILE := $(lastword $(MAKEFILE_LIST))
+
+include $(dir $(THIS_FILE))../common/utils/detect-platform.mk
+
+# The host toolchain's clang major moves with rebuilds and can disagree with
+# the pinned SP_LLVM_VER; discover the installed resource dir instead.
+HOST_CLANG_RESOURCE := $(notdir $(firstword $(wildcard $(dir $(THIS_FILE))../hosts/$(HOST_ID)/lib/clang/*)))
+
 T_INTERMEDIATE ?= $(abspath $(LIBS_MAKE_ROOT))/intermediate/x86_64-unknown-linux-gnu
 T_TARGET ?= $(abspath $(LIBS_MAKE_ROOT))/targets/x86_64-unknown-linux-gnu
 
@@ -46,6 +54,11 @@ $(T_TARGET)/lib: $(T_INTERMEDIATE)/lib | $(T_TARGET)
 	rm -rf $@
 	cp -rf $< $@
 	rm -rf $@/clang/include
+	# The freestanding flow compiles with -resource-dir <sysroot>/lib/clang,
+	# so builtin headers (stddef.h etc) must resolve inside the sysroot:
+	# relink them to the host toolchain, wasm-target style (see target-wasm).
+	cd $(T_TARGET); ln -fs ../../hosts/$(HOST_ID) host
+	cd $@/clang; ln -fs ../../host/lib/clang/$(HOST_CLANG_RESOURCE)/include include
 	touch $@
 
 $(T_TARGET)/%: $(T_INTERMEDIATE)/% | $(T_TARGET)

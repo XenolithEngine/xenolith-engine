@@ -41,9 +41,18 @@ endif
 
 include $(dir $(THIS_FILE))../common/utils/detect-platform.mk
 
+# NDK releases before r29 ship a single universal darwin-x86_64 prebuilt dir
+# even on arm64 hosts; pick the prebuilt tag that actually exists in this NDK.
+ifeq ($(wildcard $(NDK)/toolchains/llvm/prebuilt/$(HOST_ANDROID)/*),)
+NDK_HOST_FALLBACK := $(notdir $(firstword $(wildcard $(NDK)/toolchains/llvm/prebuilt/darwin-*)))
+ifdef NDK_HOST_FALLBACK
+HOST_ANDROID := $(NDK_HOST_FALLBACK)
+endif
+endif
+
 NDKPATH = $(NDK)/toolchains/llvm/prebuilt/$(HOST_ANDROID)/bin
 
-ANDROID_PLATFORM_LEVEL = 24
+ANDROID_PLATFORM_LEVEL = 26
 
 INCLUDES := \
 	idn2.h \

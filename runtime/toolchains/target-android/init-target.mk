@@ -31,6 +31,15 @@ include $(dir $(THIS_FILE))../common/utils/find-recursive.mk
 include $(dir $(THIS_FILE))../common/utils/names.mk
 include $(dir $(THIS_FILE))../common/utils/llvm-version.mk
 
+# NDK releases before r29 ship a single universal darwin-x86_64 prebuilt dir
+# even on arm64 hosts; pick the prebuilt tag that actually exists in this NDK.
+ifeq ($(wildcard $(NDK)/toolchains/llvm/prebuilt/$(HOST_ANDROID)/*),)
+NDK_HOST_FALLBACK := $(notdir $(firstword $(wildcard $(NDK)/toolchains/llvm/prebuilt/darwin-*)))
+ifdef NDK_HOST_FALLBACK
+HOST_ANDROID := $(NDK_HOST_FALLBACK)
+endif
+endif
+
 NDK_INCLUDES = $(NDK)/toolchains/llvm/prebuilt/$(HOST_ANDROID)/sysroot/usr/include
 NDK_LIBDIR = $(NDK)/toolchains/llvm/prebuilt/$(HOST_ANDROID)/sysroot/usr/lib/$(ANDROID_TARGET)/$(ANDROID_PLATFORM_LEVEL)
 
@@ -48,6 +57,11 @@ ANDROID_HEADERS += $(wildcard $(addsuffix /*.h, \
 	$(call sp_find_dirs_recursive,$(NDK_INCLUDES)/bits) \
 	$(call sp_find_dirs_recursive,$(NDK_INCLUDES)/camera) \
 	$(call sp_find_dirs_recursive,$(NDK_INCLUDES)/drm) \
+	$(call sp_find_dirs_recursive,$(NDK_INCLUDES)/EGL) \
+	$(call sp_find_dirs_recursive,$(NDK_INCLUDES)/GLES) \
+	$(call sp_find_dirs_recursive,$(NDK_INCLUDES)/GLES2) \
+	$(call sp_find_dirs_recursive,$(NDK_INCLUDES)/GLES3) \
+	$(call sp_find_dirs_recursive,$(NDK_INCLUDES)/KHR) \
 	$(call sp_find_dirs_recursive,$(NDK_INCLUDES)/linux) \
 	$(call sp_find_dirs_recursive,$(NDK_INCLUDES)/media) \
 	$(call sp_find_dirs_recursive,$(NDK_INCLUDES)/misc) \
@@ -83,15 +97,22 @@ ANDROID_LIBS := $(addprefix $(NDK_LIBDIR)/, \
 	libcamera2ndk.so \
 	libc.so \
 	libdl.so \
+	libEGL.so \
+	libGLESv3.so \
 	libjnigraphics.so \
 	liblog.so \
 	libmediandk.so \
 	libm.so \
 	libOpenMAXAL.so \
 	libOpenSLES.so \
+	libvulkan.so \
 )
 
 TARGET_LIBCXX := $(TOOLCHAIN_OUTPUT_DIR)/usr/lib/libc++.a
+
+# The host toolchain's clang major moves with rebuilds and can disagree with
+# the pinned SP_LLVM_VER; discover the installed resource dir instead.
+HOST_CLANG_RESOURCE := $(notdir $(firstword $(wildcard $(dir $(THIS_FILE))../hosts/$(HOST_ID)/lib/clang/*)))
 
 TARGET_HEADERS := $(patsubst $(NDK_INCLUDES)/%,$(TARGET_INCLUDES)/%,$(ANDROID_HEADERS))
 
@@ -127,7 +148,7 @@ $(TOOLCHAIN_OUTPUT_DIR)/usr/include/android/api-level.h: $(TARGET_INCLUDES)/andr
 
 TOOLCHAIN_CFLAGS :=  -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(SP_ARCH_TARGET_CLANG)$(ANDROID_PLATFORM_LEVEL)
 
-$(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(lastword $(MAKEFILE_LIST)) $(TOOLCHAIN_OUTPUT_DIR)/usr/include/android/api-level.h
+$(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(THIS_FILE) $(TOOLCHAIN_OUTPUT_DIR)/usr/include/android/api-level.h
 	@echo 'set(CMAKE_SYSTEM_NAME Android)' > $@
 	@echo 'set(CMAKE_ANDROID_ARCH "$(ANDROID_ARCH)")' >> $@
 	@echo 'set(CMAKE_ANDROID_ARCH_ABI "$(ANDROID_ARCH_ABI)")' >> $@
@@ -143,6 +164,8 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(lastword $(MAKEFILE_LIST)) $(TOOLCHAI
 	@echo 'set(CMAKE_SHARED_LINKER_FLAGS_INIT "$${SP_SHARED_LINKER_FLAGS} $(TOOLCHAIN_CFLAGS)" CACHE STRING "" FORCE)' >> $@
 	@echo 'set(CMAKE_C_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang")' >> $@
 	@echo 'set(CMAKE_CXX_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang")' >> $@
+	@echo 'set(CMAKE_ASM_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang")' >> $@
+	@echo 'set(CMAKE_ASM_COMPILER_TARGET "$(SP_ARCH_TARGET_CLANG)$(ANDROID_PLATFORM_LEVEL)")' >> $@
 	@echo 'set(CMAKE_FIND_USE_CMAKE_SYSTEM_PATH Off)' >> $@
 	@echo 'set(CMAKE_FIND_ROOT_PATH "$${CMAKE_CURRENT_LIST_DIR};$${CMAKE_CURRENT_LIST_DIR}/usr")' >> $@
 	@echo 'set(PKG_CONFIG_PATH "$${CMAKE_CURRENT_LIST_DIR}/usr/lib/pkgconfig")' >> $@
@@ -160,9 +183,9 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(lastword $(MAKEFILE_LIST)) $(TOOLCHAI
 	rm -f $(TOOLCHAIN_OUTPUT_DIR)/host
 	cd $(TOOLCHAIN_OUTPUT_DIR); ln -fs ../../../hosts/$(HOST_ID) host
 	mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/lib/clang
-	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/$(SP_LLVM_VER)/include include
+	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/$(HOST_CLANG_RESOURCE)/include include
 
-$(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
+$(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(THIS_FILE)
 	@echo 'Build $@'
 	@echo 'TARGET_SYSROOT := $$(patsubst %/,%,$$(dir $$(lastword $$(MAKEFILE_LIST))))' > $@
 	@echo 'TARGET_SYSTEM := Android' >> $@
@@ -200,7 +223,9 @@ ANDROID_RT_BUILTINS_LIB := $(ANDROID_CLANG_RESOURCE)/lib/linux/libclang_rt.built
 TMP_UNWIND_LIB := $(TOOLCHAIN_OUTPUT_DIR)/lib/libunwind.a
 TMP_RT_BUILTINS_LIB := $(TOOLCHAIN_OUTPUT_DIR)/lib/clang/lib/linux/libclang_rt.builtins-$(SP_RES_ARCH)-android.a
 
-$(TARGET_LIBCXX): $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake
+$(TARGET_LIBCXX): $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake \
+	$(TOOLCHAIN_OUTPUT_DIR)/bin/$(ANDROID_TARGET)-gcc \
+	$(TOOLCHAIN_OUTPUT_DIR)/bin/$(ANDROID_TARGET)-g++
 	@echo "Build TARGET_LIBCXX $(TARGET_LIBCXX)"
 	mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/lib/clang/lib/linux
 	cp -f $(ANDROID_UNWIND_LIB) $(TMP_UNWIND_LIB)
@@ -209,6 +234,7 @@ $(TARGET_LIBCXX): $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake
 	mkdir -p $(LIBNAME)
 	cd $(LIBNAME); cmake \
 		-DCMAKE_TOOLCHAIN_FILE=$(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake \
+		-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
 		-G "Ninja" -S $(dir $(THIS_FILE))../src/$(LIBNAME)/runtimes \
 		-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind;compiler-rt" \
 		-DLLVM_INSTALL_TOOLCHAIN_ONLY=On \
@@ -280,6 +306,24 @@ $(TOOLCHAIN_OUTPUT_DIR)/bin/$(ANDROID_TARGET)-clang:
 	@echo 'else' >> $@
 	@echo '    "$$bin_dir/../host/bin/clang" "$$@"' >> $@
 	@echo 'fi' >> $@
+	@chmod +x $@
+
+# CMake's Android standalone-toolchain module only looks for *-gcc / *-g++
+# wrapper names in bin/ (the historical NDK convention); provide them as
+# clang wrappers so homebrew cmake accepts the toolchain. The shebang is
+# required: cmake execve()s the wrapper directly, no shell fallback.
+$(TOOLCHAIN_OUTPUT_DIR)/bin/$(ANDROID_TARGET)-gcc:
+	@mkdir -p $(dir $@)
+	@echo '#!/bin/sh' > $@
+	@echo 'bin_dir=`dirname "$$0"`' >> $@
+	@echo '"$$bin_dir/../host/bin/clang" --target=$(ANDROID_TARGET)$(ANDROID_PLATFORM_LEVEL) "$$@"' >> $@
+	@chmod +x $@
+
+$(TOOLCHAIN_OUTPUT_DIR)/bin/$(ANDROID_TARGET)-g++:
+	@mkdir -p $(dir $@)
+	@echo '#!/bin/sh' > $@
+	@echo 'bin_dir=`dirname "$$0"`' >> $@
+	@echo '"$$bin_dir/../host/bin/clang++" --target=$(ANDROID_TARGET)$(ANDROID_PLATFORM_LEVEL) "$$@"' >> $@
 	@chmod +x $@
 
 $(TOOLCHAIN_OUTPUT_DIR)/bin/$(ANDROID_TARGET)-llvm-ar:
