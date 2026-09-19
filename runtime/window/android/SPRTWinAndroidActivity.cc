@@ -110,10 +110,15 @@ bool AndroidActivity::init(AndroidContextController *controller, ANativeActivity
 	_activity = a;
 	_proxy = Rc<ActivityProxy>::create(a);
 
-	auto thiz = jni::Ref(a->clazz, a->env);
-	_proxy->Activity.setNative(thiz, reinterpret_cast<jlong>(this));
+	if (!jni::Env::getApp()->nativeOnly) {
+		// setNative/registerActivityMethods bind our legacy java-side
+		// helpers; a hasCode="false" APK has none - the ANativeActivity
+		// callbacks below are fully native and do not need them.
+		auto thiz = jni::Ref(a->clazz, a->env);
+		_proxy->Activity.setNative(thiz, reinterpret_cast<jlong>(this));
 
-	registerActivityMethods(thiz.getClass());
+		registerActivityMethods(thiz.getClass());
+	}
 
 	return true;
 }
@@ -289,10 +294,17 @@ void AndroidActivity::finish() {
 
 void AndroidActivity::handleBackButton() {
 	XL_ANDROID_LOG("AndroidActivity::handleBackButton");
-	_proxy->Activity.onBackPressed(jni::Ref(_activity->clazz, jni::Env::getEnv()));
+	if (!jni::Env::getApp()->nativeOnly) {
+		_proxy->Activity.onBackPressed(jni::Ref(_activity->clazz, jni::Env::getEnv()));
+	}
 }
 
 void AndroidActivity::setBackButtonHandlerEnabled(bool enabled) {
+	if (jni::Env::getApp()->nativeOnly) {
+		// setBackButtonHandlerEnabled is our legacy java-side helper; the
+		// stock android.app.NativeActivity has no such method.
+		return;
+	}
 	_proxy->Activity.setBackButtonHandlerEnabled(jni::Ref(_activity->clazz, jni::Env::getEnv()),
 			jboolean(enabled));
 }

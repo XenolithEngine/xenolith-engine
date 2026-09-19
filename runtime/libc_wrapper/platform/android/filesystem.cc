@@ -378,6 +378,16 @@ bool PathInfo::initialize(sprt::jni::App *app, const sprt::jni::Ref &ctx, String
 		}
 	});
 
+	if (app->nativeOnly || !ctx) {
+		// hasCode="false": no java Context to ask for the dir layout - the
+		// platform LocationInfo carries the writable dir; the asset manager
+		// is attached by the first ANativeActivity (App::loadActivity).
+		_assetManager = app->nAssetManager;
+		_documentsInit = false;
+		_cacheInit = false;
+		return true;
+	}
+
 	auto contextClass = ctx.getClass();
 
 	auto filesDir = app->Application.getFilesDir(ctx);
@@ -416,9 +426,13 @@ void PathInfo::initSystemPaths(LookupData &data) {
 	auto app = sprt::jni::Env::getApp();
 	auto env = sprt::jni::Env::getEnv();
 
-	auto thiz = sprt::jni::Ref(app->jApplication, env);
-
-	initialize(app, thiz, app->classLoader.getApkPath());
+	if (app->nativeOnly) {
+		// apk path from the /proc/self/fd platform scan
+		initialize(app, sprt::jni::Ref(nullptr, env), sprt::platform::getExecPath());
+	} else {
+		auto thiz = sprt::jni::Ref(app->jApplication, env);
+		initialize(app, thiz, app->classLoader.getApkPath());
+	}
 
 	auto &resBundled = data._resourceLocations[toInt(LocationCategory::Bundled)];
 
@@ -564,6 +578,12 @@ void PathInfo::initSystemPaths(LookupData &data) {
 			});
 			resConfig.init = false;
 		}, _cacheDir, "runtime");
+	}
+
+	if (app->nativeOnly) {
+		// The rest of this function enumerates public storage dirs through
+		// the java Application object; a hasCode="false" product has none.
+		return;
 	}
 
 	if (!hasFlag(externalState, Access::Read)) {

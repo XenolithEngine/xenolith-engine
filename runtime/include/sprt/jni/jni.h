@@ -678,10 +678,18 @@ struct SPRT_API App : public sprt::Ref {
 	Function<void()> lowMemoryHandler;
 
 	static App *alloc(const RefClass &);
+	static App *alloc();
 
 	virtual ~App();
 
 	App(const RefClass &);
+	App();
+
+	// A hasCode="false" APK ships no classes: the legacy
+	// org.stappler.runtime.Application glue cannot exist and the App runs
+	// without the java side (assets/sdkVersion arrive with the first
+	// ANativeActivity, info is assembled by the caller).
+	bool nativeOnly = false;
 
 	void inspectDrawables(const callback<void(StringView, jint)> &);
 
@@ -741,6 +749,13 @@ public:
 
 	LocalClass findClass(const char *name) const {
 		auto ret = LocalClass(_env->FindClass(name), _env);
+		if (!ret) {
+			// A missing class leaves a pending NoClassDefFoundError behind;
+			// clear it or the very next JNI call aborts the whole runtime
+			// (ART enforces "no pending exception expected"). Null class
+			// proxies degrade softly - Method/Field warn and go inert.
+			_env->ExceptionClear();
+		}
 #if JNIDEBUG
 		checkErrors();
 #endif

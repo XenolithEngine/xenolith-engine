@@ -44,6 +44,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_unistd.h>
 #include <sprt/c/__sprt_dirent.h>
 #include <sprt/c/__sprt_limits.h>
+#include <sprt/c/__sprt_stdlib.h>
 
 #include <android/configuration.h>
 
@@ -89,6 +90,11 @@ static bool checkApkFile(StringView path) {
 }
 
 bool initialize(sprt::AppConfig &&appcfg, int &resultCode) {
+	// The pool used to be created from the java-side native callbacks; in a
+	// hasCode="false" process nothing does that, so follow the linux pattern
+	// and own it here (init() is idempotent).
+	s_globalConfig.init();
+
 	s_globalConfig.config.bundleName = appcfg.bundleName.pdup(s_globalConfig._pool);
 	s_globalConfig.config.bundlePath = appcfg.bundlePath.pdup(s_globalConfig._pool);
 	s_globalConfig.config.pathScheme = appcfg.pathScheme;
@@ -106,7 +112,12 @@ bool initialize(sprt::AppConfig &&appcfg, int &resultCode) {
 	auto app = jni::Env::getApp();
 	auto env = jni::Env::getEnv();
 
-	auto apkPath = app->classLoader.getApkPath();
+	// In native-only mode (hasCode="false" APK) there is no java class
+	// loader to ask - the /proc/self/fd scan below is the apk source.
+	StringView apkPath;
+	if (!app->nativeOnly) {
+		apkPath = app->classLoader.getApkPath();
+	}
 
 	if (apkPath.empty() || !checkApkFile(apkPath)) {
 		char fullpath[__SPRT_PATH_MAX] = "/proc/self/fd/";
@@ -133,6 +144,27 @@ bool initialize(sprt::AppConfig &&appcfg, int &resultCode) {
 		__sprt_closedir(dir);
 	} else {
 		s_globalConfig.execPathBuf = apkPath.pdup(s_globalConfig._pool);
+	}
+
+	if (app->nativeOnly) {
+		// No java side: the writable dir is /data/data/<bundle>/files by
+		// platform convention (what File.getFilesDir would return).
+		if (s_globalConfig.current.path.empty() && !s_globalConfig.config.bundleName.empty()) {
+			auto bundle = s_globalConfig.config.bundleName;
+			StringView suffix("/files");
+			auto buf = __sprt_typed_malloca(char, bundle.size() + suffix.size() + 1);
+			__sprt_memcpy(buf, bundle.data(), bundle.size());
+			__sprt_memcpy(buf + bundle.size(), suffix.data(), suffix.size() + 1);
+			s_globalConfig.current = filesystem::LocationInfo{
+				StringView(buf, bundle.size() + suffix.size()).pdup(s_globalConfig._pool),
+				filesystem::LookupFlags::Private | filesystem::LookupFlags::Writable,
+				filesystem::LocationFlags::Locateable,
+				filesystem::getDefaultInterface(),
+			};
+			s_globalConfig.homePathBuf = StringView(s_globalConfig.current.path);
+			__sprt_freea(buf);
+		}
+		return true;
 	}
 
 	auto thiz = sprt::jni::Ref(app->jApplication, env);

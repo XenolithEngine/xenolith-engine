@@ -59,15 +59,14 @@ $(T_TARGET)/lib: $(T_INTERMEDIATE)/lib | $(T_TARGET)
 	cp -rf $(T_INTERMEDIATE)/lib/clang/lib $@/clang/lib
 	# The freestanding flow compiles with -resource-dir <sysroot>/lib/clang,
 	# so builtin headers (stddef.h etc) must resolve inside the sysroot.
-	# Copy ONLY the pure-builtin clang headers - the wrapper headers there
-	# (stdint.h, inttypes.h, limits.h, tgmath.h) use #include_next and would
-	# shadow bionic's own copies in include_libc, leaving types undefined.
+	# Copy the full clang builtin set, then drop the libc wrappers
+	# (stdint.h, inttypes.h, limits.h, tgmath.h): they use #include_next and
+	# would shadow bionic's own copies in include_libc, leaving types
+	# undefined. Everything else (incl. the __stddef_*/arm_* partials) stays.
 	mkdir -p $@/clang/include
 	cd $(dir $(THIS_FILE))../hosts/$(HOST_ID)/lib/clang/$(HOST_CLANG_RESOURCE)/include; \
-		cp -f stddef.h __stddef_max_align_t.h stdarg.h stdbool.h stdalign.h \
-			stdatomic.h float.h iso646.h stdnoreturn.h unwind.h \
-			arm_acle.h arm_bf16.h arm_fp16.h arm_neon.h arm_vector_types.h \
-			$(T_TARGET)/lib/clang/include/
+		cp -f *.h $(T_TARGET)/lib/clang/include/
+	rm -f $(addprefix $(T_TARGET)/lib/clang/include/,stdint.h inttypes.h limits.h tgmath.h)
 	touch $@
 
 $(T_TARGET)/%: $(T_INTERMEDIATE)/% | $(T_TARGET)

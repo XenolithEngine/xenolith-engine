@@ -23,6 +23,7 @@
 #include "SPCommon.h" // IWYU pragma: keep
 #include "SPSharedModule.h"
 #include "SPLog.h"
+#include "SPCore.h"
 
 #if MODULE_XENOLITH_APPLICATION
 #include "XLContext.h"
@@ -33,8 +34,34 @@
 #include <sprt/jni/jni.h>
 #include <sprt/jni/native_activity.h>
 
+// bionic libc symbol (stable ABI since API 1); declared inline to avoid
+// dragging the sys/system_properties.h include chain into every TU.
+extern "C" int __system_property_get(const char *, char *);
+
 static bool runXenolithNative(JavaVM *vm) {
 	sprt::jni::Env::loadJava(vm);
+
+	if (auto japp = sprt::jni::Env::getApp(); japp && japp->nativeOnly) {
+		// hasCode="false" APK: assemble the application info natively - there
+		// is no java Application to ask. Names come from the appconfig,
+		// the emulator flag from the qemu system property.
+		auto info = sprt::Rc<sprt::jni::ApplicationInfo>::alloc();
+		if (auto name = STAPPLER_VERSIONIZED_NAMESPACE::getAppconfigBundleName()) {
+			info->bundleName = name;
+		}
+		if (auto name = STAPPLER_VERSIONIZED_NAMESPACE::getAppconfigAppName()) {
+			info->applicationName = name;
+		}
+		info->applicationVersion = "1.0";
+		info->locale = "en-us";
+
+		char qemu[2] = {0};
+		if (__system_property_get("ro.kernel.qemu", qemu) > 0 && qemu[0] == '1') {
+			info->isEmulator = true;
+		}
+
+		japp->currentInfo = info;
+	}
 #if MODULE_XENOLITH_APPLICATION
 	auto runFn = STAPPLER_VERSIONIZED_NAMESPACE::SharedModule::acquireTypedSymbol<
 			STAPPLER_VERSIONIZED_NAMESPACE::xenolith::Context::SymbolRunNativeSignature>(

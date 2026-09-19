@@ -155,32 +155,34 @@ bool AndroidContextController::init(NotNull<Context> ctx, ContextConfig &&config
 	auto env = jni::Env::getEnv();
 	auto app = jni::Env::getApp();
 
-	auto clipboardContentProviderClass = ClipboardContentProvider.getClass().ref(env);
+	if (!app->nativeOnly) {
+		auto clipboardContentProviderClass = ClipboardContentProvider.getClass().ref(env);
 
-	auto cat = filesystem::getLookupInfo(filesystem::LocationCategory::AppCache);
-	if (cat) {
-		filesystem::enumeratePaths(*cat, "clipboard_content", filesystem::LookupFlags::None,
-				filesystem::Access::None, [](const filesystem::LocationInfo &loc, StringView path) {
-			loc.interface->_ftw(loc, path, [&](StringView fpath, filesystem::FileType) {
-				loc.interface->_remove(loc, fpath);
-				return true;
-			}, -1, false);
-			return false;
-		});
-	}
+		auto cat = filesystem::getLookupInfo(filesystem::LocationCategory::AppCache);
+		if (cat) {
+			filesystem::enumeratePaths(*cat, "clipboard_content", filesystem::LookupFlags::None,
+					filesystem::Access::None, [](const filesystem::LocationInfo &loc, StringView path) {
+				loc.interface->_ftw(loc, path, [&](StringView fpath, filesystem::FileType) {
+					loc.interface->_remove(loc, fpath);
+					return true;
+				}, -1, false);
+				return false;
+			});
+		}
 
-	registerClipboardContentProviderMethods(clipboardContentProviderClass);
+		registerClipboardContentProviderMethods(clipboardContentProviderClass);
 
-	// try to bind with clipboard content provider
-	ClipboardContentProvider.thiz = ClipboardContentProvider.Self(clipboardContentProviderClass);
+		// try to bind with clipboard content provider
+		ClipboardContentProvider.thiz = ClipboardContentProvider.Self(clipboardContentProviderClass);
 
-	if (ClipboardContentProvider.thiz) {
-		ClipboardContentProvider.setNative(ClipboardContentProvider.thiz.ref(env),
-				reinterpret_cast<jlong>(this));
-		_clipboardAuthority = StringView(
-				ClipboardContentProvider.getAuthority(ClipboardContentProvider.thiz.ref(env))
-						.getString())
-									  .str<String>();
+		if (ClipboardContentProvider.thiz) {
+			ClipboardContentProvider.setNative(ClipboardContentProvider.thiz.ref(env),
+					reinterpret_cast<jlong>(this));
+			_clipboardAuthority = StringView(
+					ClipboardContentProvider.getAuthority(ClipboardContentProvider.thiz.ref(env))
+							.getString())
+											  .str<String>();
+		}
 	}
 
 	_contextInfo = move(config.context);
@@ -189,7 +191,7 @@ bool AndroidContextController::init(NotNull<Context> ctx, ContextConfig &&config
 	_loopInfo = move(config.loop);
 
 	auto classLoader = jni::Env::getClassLoader();
-	if (classLoader) {
+	if (classLoader && !app->nativeOnly) {
 		auto ctx = app->jApplication.ref(jni::Env::getEnv());
 		_networkConnectivity = Rc<NetworkConnectivity>::create(ctx, [this](NetworkFlags flags) {
 			if (_looper) {
@@ -214,10 +216,12 @@ bool AndroidContextController::init(NotNull<Context> ctx, ContextConfig &&config
 int AndroidContextController::run(NotNull<ContextContainer> c) {
 	memory::context ctx(dispatch::thread_info::get()->threadPool);
 
-	_displayConfigManager =
-			Rc<AndroidDisplayConfigManager>::create(this, [this](NotNull<DisplayConfigManager> m) {
-		handleSystemNotification(SystemNotification::DisplayChanged);
-	});
+	if (!jni::Env::getApp()->nativeOnly) {
+		_displayConfigManager =
+				Rc<AndroidDisplayConfigManager>::create(this, [this](NotNull<DisplayConfigManager> m) {
+			handleSystemNotification(SystemNotification::DisplayChanged);
+		});
+	}
 
 	auto instance = _context->makeInstance(_instanceInfo);
 	if (!instance) {

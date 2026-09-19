@@ -394,6 +394,7 @@ GlobalClass RefClass::getGlobal() const { return GlobalClass(*this); }
 static sprt::qmutex s_infoMutex;
 
 App *App::alloc(const RefClass &cl) { return RefAlloc::__new<App>(cl); }
+App *App::alloc() { return RefAlloc::__new<App>(); }
 
 App::~App() {
 	auto env = Env::getEnv();
@@ -408,6 +409,8 @@ App::~App() {
 
 	classLoader.finalize();
 }
+
+App::App() { nativeOnly = true; }
 
 App::App(const RefClass &cl) : Application(cl) {
 	jApplication = Application.s_application(cl);
@@ -633,6 +636,17 @@ Rc<jni::ApplicationInfo> App::makeInfo(const jni::Ref &ref) {
 }
 
 bool App::loadActivity(ANativeActivity *a, BytesView data) {
+	if (nativeOnly) {
+		// The ANativeActivity struct carries everything the java side used
+		// to provide at startup.
+		if (!nAssetManager && a->assetManager) {
+			nAssetManager = a->assetManager;
+		}
+		if (!sdkVersion) {
+			sdkVersion = a->sdkVersion;
+		}
+	}
+
 	if (!activityLoader) {
 		return false;
 	}
@@ -740,6 +754,11 @@ void Env::loadJava(JavaVM *vm) {
 	}
 
 	auto applicationClass = LocalClass(env->FindClass("org/stappler/runtime/Application"), env);
+	if (!applicationClass) {
+		// The failed lookup leaves a pending NoClassDefFoundError; ART aborts
+		// on the next JNI call made with it pending.
+		env->ExceptionClear();
+	}
 
 	if (applicationClass) {
 		s_app = Rc<App>::alloc(RefClass(applicationClass));
@@ -747,12 +766,15 @@ void Env::loadJava(JavaVM *vm) {
 	}
 
 	if (!s_app) {
-		oslog:: vprint(oslog::LogType::Fatal, __SPRT_LOCATION, "JNI",
-						"Fail to load AppProxy; org/stappler/runtime/Application class was not "
-						"defined " "properly?");
+		// A hasCode="false" APK ships no classes at all: the legacy
+		// org.stappler.runtime.Application glue cannot exist. Run without
+		// the java side - assets and sdkVersion arrive with the first
+		// ANativeActivity, the info is assembled by the caller.
+		s_app = Rc<App>::alloc();
+		s_app->vm = vm;
+	} else {
+		applicationClass.registerNatives(s_AppNativeMethods);
 	}
-
-	applicationClass.registerNatives(s_AppNativeMethods);
 }
 
 void Env::finalizeJava() { s_app = nullptr; }
