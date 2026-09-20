@@ -51,6 +51,9 @@ What is here is exactly what the consumers agreed on and nothing they disagreed 
     A run of keystrokes coalescing into one undo entry is the same mechanism, from the other end.
   - TIME ARRIVES AS AN ARGUMENT. Nothing here reads a clock: a test advances a counter and never
     sleeps, and a UI calls tickIdle() once a frame.
+  - THE LOG CAN BE LISTED AND JUMPED INTO. Every entry carries a name, the one thing its edit named
+    and who it came from; moveTo() takes the cursor to any of them by stepping. That is what a
+    history panel draws.
 
 What is NOT here, deliberately: a WITNESS of the outside world and the rule "a refused undo drops
 the log". Those exist in the studio shell's own file history because the filesystem is a shared
@@ -90,6 +93,34 @@ inline StringView getDirectionName(Direction d) {
 	return StringView("?");
 }
 
+// Who an entry came from. A property of whoever applies a command, not of the command: the same
+// edit is the same edit whoever makes it, and a session belonging to an agent or to a peer brackets
+// a series of them.
+enum class Source : uint8_t {
+	User,
+	Agent, // an AI agent acting in this program
+	Remote, // another person, over the network
+};
+
+// A table for getDirectionName's reason: a log, a dump and whatever drives this from a socket must
+// spell it identically.
+inline StringView getSourceName(Source s) {
+	switch (s) {
+	case Source::User: return StringView("user");
+	case Source::Agent: return StringView("agent");
+	case Source::Remote: return StringView("remote");
+	}
+	return StringView("?");
+}
+
+// One entry as a listing sees it. `name` and `detail` point into the entry, so they live as long as
+// the entry does.
+struct EntryInfo {
+	StringView name;
+	StringView detail;
+	Source source = Source::User;
+};
+
 // One undoable edit.
 //
 // The inverse data lives in the command's own fields rather than in a payload the bus hands back:
@@ -105,6 +136,11 @@ public:
 	// The history entry's name: what an event log reports and what a dump of the history reads as.
 	// Points at a literal, so it outlives the command.
 	virtual StringView getName() const = 0;
+
+	// The one thing this edit named - a file, a node, a field - for a listing to show beside the
+	// name. A view into the command's own storage; the bus copies it when the entry commits. Empty
+	// when the edit names nothing, or names several things.
+	virtual StringView getDetail() const { return StringView(); }
 
 	virtual Status apply(Context &) = 0;
 	virtual Status undo(Context &) = 0;
@@ -294,21 +330,58 @@ public:
 	and a group of a hundred identical keystrokes is named the same whichever one is asked. Empty
 	when there is nothing on that side. The result points at whatever Command::getName() returns,
 	which the contract there requires to outlive the command. */
-	StringView getUndoName() const {
-		if (!canUndo()) {
-			return StringView();
+	StringView getUndoName() const { return canUndo() ? _log[_cursor - 1].name : StringView(); }
+
+	StringView getRedoName() const { return canRedo() ? _log[_cursor].name : StringView(); }
+
+	// One entry by index into the log, oldest first. False past the end.
+	bool getEntry(uint32_t index, EntryInfo &out) const {
+		if (index >= uint32_t(_log.size())) {
+			return false;
 		}
-		auto &e = _log[_cursor - 1];
-		return e.commands.empty() ? StringView() : e.commands.front()->getName();
+		auto &e = _log[index];
+		out.name = e.name;
+		out.detail = e.detail;
+		out.source = e.source;
+		return true;
 	}
 
-	StringView getRedoName() const {
-		if (!canRedo()) {
-			return StringView();
+	void foreachEntry(const Callback<void(uint32_t, const EntryInfo &)> &cb) const {
+		for (uint32_t i = 0; i < uint32_t(_log.size()); ++i) {
+			EntryInfo info;
+			getEntry(i, info);
+			cb(i, info);
 		}
-		auto &e = _log[_cursor];
-		return e.commands.empty() ? StringView() : e.commands.front()->getName();
 	}
+
+	/* Take the document to the state the cursor `target` names, by stepping undo() or redo(). Each
+	step is a whole entry and leaves a consistent document, so observers hear one round per step.
+
+	False when `target` is past the log or the cursor did not move. A step that refuses stops the
+	walk where it stands. */
+	bool moveTo(uint32_t target) {
+		if (target > uint32_t(_log.size())) {
+			return false;
+		}
+		const auto from = _cursor;
+		while (_cursor > target) {
+			if (!undo()) {
+				break;
+			}
+		}
+		while (_cursor < target) {
+			if (!redo()) {
+				break;
+			}
+		}
+		return _cursor != from;
+	}
+
+	/* Who the entries committed from now on are attributed to. Set around a series of commands -
+	an agent's turn, a peer's message - and put back afterwards; the default is the person at the
+	keyboard. */
+	void setSource(Source value) { _source = value; }
+	Source getSource() const { return _source; }
 
 	// A nested call joins the outer one: only the outermost commits, so a multi-step operation built
 	// out of smaller ones is still a SINGLE undo entry. A body that returns anything but success
@@ -433,8 +506,16 @@ public:
 
 private:
 	// A group and a transaction produce the SAME entry shape, and a lone command is an entry of one.
+	//
+	// The three fields beside the commands are taken from the FIRST command when the entry commits,
+	// as getUndoName() has always picked its name: a listing must not reach into the commands. The
+	// name stays a view - Command::getName points at a literal - while the detail is copied, since
+	// it is the command's own storage and may be composed.
 	struct Entry {
 		mem_std::Vector<CommandType *> commands;
+		StringView name;
+		mem_std::String detail;
+		Source source = Source::User;
 	};
 
 	void clearEntry(Entry &e) {
@@ -470,6 +551,9 @@ private:
 		}
 		truncateRedo();
 		Entry e;
+		e.name = commands.front()->getName();
+		e.detail = commands.front()->getDetail().template str<mem_std::Interface>();
+		e.source = _source;
 		e.commands = sprt::move(commands);
 		_log.emplace_back(sprt::move(e));
 		++_cursor;
@@ -498,6 +582,9 @@ private:
 
 	mem_std::Vector<Entry> _log;
 	uint32_t _cursor = 0;
+
+	// Stamped onto every entry that commits from here on.
+	Source _source = Source::User;
 
 	// Open buffers. A transaction wins over a group when both are open.
 	mem_std::Vector<CommandType *> *_transaction = nullptr;
