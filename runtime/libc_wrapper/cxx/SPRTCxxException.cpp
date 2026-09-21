@@ -50,8 +50,10 @@ THE SOFTWARE.
 
 #if !SPRT_WINDOWS
 // libc++abi provides these Itanium ABI primitives; the std uncaught_exception[s]
-// wrappers forward to them.
-extern "C" bool __cxa_uncaught_exception() noexcept;
+// wrappers forward to them. Only the plural is used: the deprecated singular
+// __cxa_uncaught_exception is not exported by every libc++abi build the
+// binaries run against (macOS 14's system libc++ drops it -> dyld kills the
+// process at launch with "Symbol missing").
 extern "C" unsigned int __cxa_uncaught_exceptions() noexcept;
 #endif
 
@@ -215,7 +217,7 @@ void nested_exception::rethrow_nested() const {
 bool uncaught_exception() noexcept { return false; }
 int uncaught_exceptions() noexcept { return 0; }
 #else
-bool uncaught_exception() noexcept { return __cxa_uncaught_exception(); }
+bool uncaught_exception() noexcept { return __cxa_uncaught_exceptions() != 0; }
 int uncaught_exceptions() noexcept { return static_cast<int>(__cxa_uncaught_exceptions()); }
 #endif
 
