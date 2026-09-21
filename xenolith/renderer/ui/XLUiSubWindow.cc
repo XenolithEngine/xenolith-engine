@@ -249,14 +249,22 @@ bool SubWindow::openOverlay(NotNull<AppWindow> parent, Config &&config) {
 		return false;
 	}
 
-	// Resolve the placement as the window backends do (`anchor`, `gravity`, `offset`, flip/slide),
-	// so callers need not branch on the platform. The scene is the overlay's work area. Resolved
-	// before the content builder, which reads it via getOverlayRect().
 	const auto contentSize = content->getContentSize();
 	const auto workArea = IRect(0, 0, int32_t(std::lround(contentSize.width)),
 			int32_t(std::lround(contentSize.height)));
+
+	auto placement = config.placement;
+	if (const auto k = placementPointScale(content); k > 0.0f && k != 1.0f) {
+		const auto toContent = [k](int32_t v) { return int32_t(std::lround(float(v) / k)); };
+		placement.anchorRect =
+				IRect(toContent(placement.anchorRect.x), toContent(placement.anchorRect.y),
+						uint32_t(toContent(int32_t(placement.anchorRect.width))),
+						uint32_t(toContent(int32_t(placement.anchorRect.height))));
+		placement.offset = IVec2(toContent(placement.offset.x), toContent(placement.offset.y));
+	}
+
 	const auto placed =
-			sprt::window::computeWindowPlacement(config.placement, config.size, workArea, workArea);
+			sprt::window::computeWindowPlacement(placement, config.size, workArea, workArea);
 	_overlayRect = placed;
 
 	// Everything but a tip is pushed as a full-parent overlay, so the builder positions the visible

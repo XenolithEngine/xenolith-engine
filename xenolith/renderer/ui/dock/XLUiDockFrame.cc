@@ -88,8 +88,7 @@ bool DockFrame::init(const DockFrameParams &params, DockNodeHandle handle) {
 	outline->setPathColor(Color4B(0, 0, 0, 0), true);
 	// blended over the content, which may be drawn at the Solid level
 	outline->setRenderingLevel(RenderingLevel::Transparent);
-	outline->setVisible(false);
-	// before parenting, so the flex layout never takes it as an item
+
 	outline->setComponent<OutOfFlowComponent>(OutOfFlowComponent{false});
 	_outline = addChild(outline, OutlineZOrder);
 
@@ -117,13 +116,14 @@ void DockFrame::setCurrent(bool value) {
 		removeStyleClass("current");
 	}
 
+	// The class, and nothing else: see the outline's own comment in init() for why its visibility
+	// is not what decides whether an edge is drawn.
 	if (_outline) {
 		if (_current) {
 			_outline->addStyleClass("current");
 		} else {
 			_outline->removeStyleClass("current");
 		}
-		_outline->setVisible(_current);
 	}
 }
 

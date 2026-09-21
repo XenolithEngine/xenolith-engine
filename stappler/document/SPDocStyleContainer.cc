@@ -508,17 +508,6 @@ bool StyleContainer::readStyle(StringReader &s) {
 			blockStack.emplace_back(
 					BlockData{_document->addQuery(sp::move(query)), blockStack.back().disabled});
 
-			/* CONSUME THE BRACE HERE, and check for comments after it.
-
-			`readMediaQueryList` stops at the `{` and leaves it. The next pass round the loop then
-			runs its comment check against a `{` - finds none, because the comment is on the far
-			side of it - and hands the rest to `skipUntil<CssSelectorStart>`, which stops on the
-			`*` of the opening `/*`, because `*` is the universal selector. `readCssSelector` then
-			reads the comment body as a selector, fails, and the WHOLE stylesheet is dropped.
-
-			So a comment as the first thing inside an `@media` block took the sheet down with it -
-			the same shape as the leading-comment bug fixed at the top of this loop, one level in.
-			Consuming the brace and checking again puts the comment where the loop can see it. */
 			if (s.is('{')) {
 				++s;
 			}

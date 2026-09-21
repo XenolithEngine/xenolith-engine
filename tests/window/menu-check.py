@@ -648,9 +648,22 @@ try:
         win = [w for w in s.ok("windows")["windows"] if w["type"] == "Popup"][0]
         return {"anchorX": x, "anchorYDown": content_h - y, "x": win["x"], "y": win["y"]}
 
+    def overlay_placement():
+        """Where the IN-SCENE form of the same menu landed, in the scene content's own points."""
+        s.invoke("menu.close")
+        s.ok("frame", count=2)
+        opened = s.invoke("menu.open", overlay=True)
+        s.ok("frame", count=3)
+        time.sleep(0.3)
+        if not opened.get("ok") or "overlayRect" not in opened:
+            return opened
+        return {"native": opened.get("native"), "rect": opened["overlayRect"]}
+
     plain = anchor_and_popup()
     check("at the default density a popup opens on its anchor's own left edge",
           plain["x"] == round(plain["anchorX"]), plain)
+
+    plain_overlay = overlay_placement()
 
     s.call("quit")
     try:
@@ -676,6 +689,51 @@ try:
     check("and the popup follows it, a density-and-a-half further along",
           dense["x"] == round(plain["x"] * 1.5) and dense["y"] == round(plain["y"] * 1.5),
           (plain, dense))
+
+    # =============================================================================================
+    # AND THE OTHER FORM IS PLACED IN THE OTHER SPACE, which is the half nothing here asserted.
+    #
+    # An overlay is not a window: it is a NODE, placed in the scene content's own points, and its
+    # work area is that content's size. The anchor it is handed comes from the same
+    # `placementAnchorRect` the native path uses, which answers in WINDOW points - so the overlay
+    # path has to divide that scaling back out, and while nothing passed `--density` it was not
+    # doing so. Every overlay popup in every application - a menu where the platform has no
+    # subwindows, a Select, a ChipRow, a tooltip, a palette - opened at `density` times the
+    # coordinate it was asked for.
+    #
+    # ASSERTED AS AN EQUALITY BETWEEN THE TWO RUNS, which is the mirror image of the native claim
+    # above and needs no placement arithmetic of its own: the anchor is at the same LAYOUT position
+    # at either density, an overlay is placed in layout points, so it must land on the same number.
+    # The native one must NOT, and that pair is the whole of the distinction.
+    #
+    # THE Y AXIS ONLY, and that is a decision rather than an omission. At 1.5 the content is two
+    # thirds as many points wide while the menu keeps its width, so X legitimately hits `SlideX`
+    # and is pushed back to the content's edge - a correct answer that is not the same number. Y
+    # has room in both runs. Asserting the axis that slides would be asserting the absence of a
+    # feature.
+
+    dense_overlay = overlay_placement()
+
+    check("the stand can open the in-scene form on purpose",
+          dense_overlay is not None and dense_overlay.get("native") is False, dense_overlay)
+    check("an overlay lands on the same layout coordinate at either density",
+          plain_overlay and dense_overlay
+          and abs(dense_overlay["rect"]["y"] - plain_overlay["rect"]["y"]) <= 1.0,
+          (plain_overlay, dense_overlay))
+
+    # THE NEGATIVE CONTROL, and without it the equality above would pass on any number that happened
+    # to be stable: the defect put the overlay at 1.5x, so the scaled value has to be far enough
+    # from the true one to tell them apart.
+    check("... which the scaling this path used to apply would not have been",
+          plain_overlay and abs(round(plain_overlay["rect"]["y"] * 1.5)
+                                - plain_overlay["rect"]["y"]) > 1.0, plain_overlay)
+
+    # AND THE TWO FORMS DISAGREE BY EXACTLY THE DENSITY, which says the conversion is that number
+    # and not merely "some correction": the native popup is placed in window points from the same
+    # anchor, so it is the overlay's own answer scaled up.
+    check("... and the native form of the same menu is that answer times the density",
+          dense_overlay and abs(dense["y"] - round(dense_overlay["rect"]["y"] * 1.5)) <= 1.0,
+          (dense, dense_overlay))
 
 finally:
     try:

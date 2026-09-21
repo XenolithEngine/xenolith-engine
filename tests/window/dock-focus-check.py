@@ -167,8 +167,11 @@ def drive(s, c, probe):
     c.expect(top.get("outlineFits") is True, "the outline is not sized to its frame")
     c.expect(top.get("outlineAbove") is True, "the outline is not above the body")
     c.expect(top.get("outlineFillAlpha") == 0, "the outline node paints a fill over the panel")
+    # A NON-CURRENT FRAME HAS NO EDGE BECAUSE THE SHEET GIVES IT NONE, not because its outline node
+    # is hidden: the node is always visible and paints a transparent fill, so `outline-width` is the
+    # whole answer. This stand styles only `.current`, so here that width is zero.
     right = st.get("outer-right", {})
-    c.expect(right.get("outlineVisible") is False and right.get("outlineWidth") == 0.0,
+    c.expect(right.get("outlineWidth") == 0.0,
             "a frame that is not current shows an outline: %s" % right)
 
     # --- a plain panel: its frame is the selection ------------------------------

@@ -60,7 +60,14 @@ protected:
 
 	// The popup form of the same menu. One body for the button and for `menu.open`, so that what a
 	// check opens is what a click opens - the hover config included.
-	bool openPopup();
+	/* `overlay` forces the IN-SCENE form even where the platform has subwindows.
+
+	The two forms resolve their placement in DIFFERENT SPACES - a native popup is placed by the
+	window system in window points, an overlay is a node placed in the scene content's own points -
+	and the conversion between them is `density / surfaceDensity`, which is 1 unless `--density`
+	says otherwise. A stand that could only open the native one left the other half unwitnessed,
+	which is how the overlay's placement came to be scaled by that number. */
+	bool openPopup(bool overlay = false);
 
 	// Re-measure the inline menu through the measurement protocol, which is also what a
 	// `fit-content` ancestor would do.

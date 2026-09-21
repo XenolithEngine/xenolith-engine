@@ -844,12 +844,17 @@ Size2 DockSystem::measureLeaf(const DockTreeNode &leaf) const {
 		}
 	}
 
-	// The strip adds to one axis and floors the other, measured the same way as its
-	// `flex-basis: fit-content` inside the frame.
+	/* The strip adds to one axis and floors the other, measured the same way as its
+	`flex-basis: fit-content` inside the frame - which is `measureItem` and not `measureNode`,
+	because a stylesheet may pin the strip (`dock-tab-bar.vertical { min-width: 54px }`) and a
+	floor computed from the bare measurement would be the floor of a strip nobody draws. The
+	frame's own direction says which axis the clamp is on: a side strip is an item of a row. */
 	auto frame = static_cast<const DockFrame *>(leaf.node.get());
 	if (frame && frame->getTabBar()) {
-		const Size2 strip = LayoutSystem::measureNode(frame->getTabBar(),
-				MeasureConstraints{MeasureMode::MaxContent});
+		const bool sideStrip = leaf.params.tabBarSide == DockTabBarSide::Left
+				|| leaf.params.tabBarSide == DockTabBarSide::Right;
+		const Size2 strip = LayoutSystem::measureItem(frame->getTabBar(),
+				MeasureConstraints{MeasureMode::MaxContent}, sideStrip);
 		switch (leaf.params.tabBarSide) {
 		case DockTabBarSide::Top:
 		case DockTabBarSide::Bottom:

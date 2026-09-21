@@ -38,6 +38,8 @@ class DockSystem;
 // "dock-tab-close".
 class SP_PUBLIC DockTab : public PanelHandle {
 public:
+	static constexpr uint8_t CaptionAdjustSteps = 4;
+
 	virtual ~DockTab() = default;
 
 	virtual bool init(NotNull<DockSystem>, DockNodeHandle frame, StringView panelId);
@@ -50,6 +52,9 @@ public:
 
 	virtual void setActive(bool);
 	bool isActive() const { return _active; }
+
+	virtual void setVerticalCaption(bool);
+	bool isVerticalCaption() const { return _verticalCaption; }
 
 	// mirrors DockPanelFlags::Closable; hides the close affordance when off
 	virtual void setClosable(bool);
@@ -65,6 +70,7 @@ protected:
 	DockNodeHandle _frame;
 	Button *_close = nullptr;
 	bool _active = false;
+	bool _verticalCaption = false;
 };
 
 } // namespace stappler::xenolith::ui

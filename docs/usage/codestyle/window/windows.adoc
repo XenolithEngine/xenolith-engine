@@ -341,6 +341,20 @@ the content's space is pixels over the *full* density and a placement is pixels
 over the *display's* alone. `--density 1.5` was enough to move every menu in a
 window a third of the way from its own widget.
 
+**And the in-scene fallback has to undo that last step.** `placementAnchorRect`
+answers in window points because that is what a real subwindow's backend is
+handed; `SubWindow`'s overlay path is not a backend — its work area is the scene
+content's own size and its answer is written straight onto a scene node — so it
+divides `density / surfaceDensity` back out before calling
+`computeWindowPlacement`, whose own contract is that the anchor, the size, the
+parent rect and the work area are all in one space. The size needs no conversion:
+what a caller measures (a menu against `content->getContentSize()`, a palette's
+fixed card) is already in content points. This was wrong for as long as no check
+passed `--density`, and it moved every overlay popup — a menu where the platform
+has no subwindows, a `ui::Select`, a `ChipRow`, a tooltip, a palette — by that
+factor. Both halves are pinned in `tests/window/menu-check.py`: the native form
+must scale with the density and the overlay form must not.
+
 Two things about `gravity` and `offset` are worth knowing before you tune a
 placement:
 
