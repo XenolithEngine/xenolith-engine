@@ -175,7 +175,7 @@ bool MenuLayout::init() {
 	return true;
 }
 
-bool MenuLayout::openPopup() {
+bool MenuLayout::openPopup(bool overlay) {
 	if (_popup || !_openButton) {
 		return _popup != nullptr;
 	}
@@ -199,6 +199,10 @@ bool MenuLayout::openPopup() {
 		_activationLog.emplace_back(_lastActivated);
 	};
 	config.onClose = [this] { _popup = nullptr; };
+
+	// The one difference between the two forms, and what it buys is the second half of the
+	// placement arithmetic - see the header.
+	config.preferNative = !overlay;
 
 	_popup = ui::openMenuForNode(window, _openButton, _source, sp::move(config));
 	return _popup != nullptr;
@@ -576,9 +580,21 @@ void MenuLayout::registerCommands() {
 		return ackValue(true);
 	});
 
-	addCommand("open", "Open the popup form of the same menu", [this](Value &&) {
-		openPopup();
-		return ackValue(_popup != nullptr);
+	addCommand("open", "Open the popup form of the same menu; {overlay} forces the in-scene one",
+			[this](Value &&args) {
+		openPopup(args.getBool("overlay"));
+		Value ret = ackValue(_popup != nullptr);
+		// WHICH FORM CAME UP, because a platform without subwindows answers the overlay to both
+		// asks and an assertion about one of them would silently be about the other.
+		ret.setBool(_popup && _popup->isNative(), "native");
+		if (_popup && !_popup->isNative()) {
+			auto rect = _popup->getOverlayRect();
+			Value box;
+			box.setInteger(rect.x, "x");
+			box.setInteger(rect.y, "y");
+			ret.setValue(sp::move(box), "overlayRect");
+		}
+		return ret;
 	});
 
 	addCommand("close", "Dismiss the popup and everything it opened", [this](Value &&) {

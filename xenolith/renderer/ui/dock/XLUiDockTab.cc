@@ -53,7 +53,36 @@ bool DockTab::init(NotNull<DockSystem> system, DockNodeHandle frame, StringView 
 		.padding = Padding(4.0f, 10.0f),
 	}));
 
+	if (_label) {
+		_label->setLayoutAppliedCallback([this](const Size2 &size) {
+			if (!_verticalCaption || !_label) {
+				return;
+			}
+			if (_label->getMaxWidth() != size.width) {
+				_label->setMaxWidth(size.width);
+			}
+		});
+	}
+
 	return true;
+}
+
+void DockTab::setVerticalCaption(bool value) {
+	if (value == _verticalCaption || !_label) {
+		return;
+	}
+	_verticalCaption = value;
+
+	if (_verticalCaption) {
+		_label->setMaxLines(1);
+		_label->setAdjustValue(CaptionAdjustSteps);
+	} else {
+		// back to the defaults a Label is built with, so a tab that left a rail carries none of
+		// this into the labelled strip it landed in
+		_label->setMaxLines(0);
+		_label->setAdjustValue(0);
+		_label->setMaxWidth(0.0f);
+	}
 }
 
 void DockTab::setString(StringView value) {

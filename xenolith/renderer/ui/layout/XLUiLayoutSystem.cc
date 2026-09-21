@@ -546,4 +546,20 @@ Size2 LayoutSystem::measureNode(Node *node, const MeasureConstraints &c) {
 	return cs;
 }
 
+Size2 LayoutSystem::measureItem(Node *node, const MeasureConstraints &c, bool parentIsRow) {
+	Size2 size = measureNode(node, c);
+	auto item = node->getComponent<FlexItemInfo>();
+	if (!item) {
+		return size;
+	}
+	// The same two lines computeFlexLines applies to a base main size, and deliberately in the
+	// same order: the maximum has the last word.
+	float &main = parentIsRow ? size.width : size.height;
+	main = sprt::max(main, item->minMain);
+	if (item->maxMain >= 0.0f) {
+		main = sprt::min(main, item->maxMain);
+	}
+	return size;
+}
+
 } // namespace stappler::xenolith::ui

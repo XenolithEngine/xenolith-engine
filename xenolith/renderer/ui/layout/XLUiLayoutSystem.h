@@ -167,6 +167,7 @@ public:
 	// nodes without one report their current content size (the same value the
 	// legacy flex-basis:auto fallback reads)
 	static Size2 measureNode(Node *, const MeasureConstraints &);
+	static Size2 measureItem(Node *, const MeasureConstraints &, bool parentIsRow);
 
 	/* True when the node really answers a measurement: a system with `SystemFlags::HandleMeasure`
 	or a `MeasureComponent`. Otherwise `measureNode` just echoes the current ContentSize, which must

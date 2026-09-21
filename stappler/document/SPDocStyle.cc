@@ -1407,6 +1407,25 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			case TextAlign::End: stream << "end"; break;
 			};
 			break; // enum
+		case ParameterName::CssDirection:
+			stream << "direction: ";
+			switch (it.value.textDirection) {
+			case TextDirection::Neutral: stream << "auto"; break;
+			case TextDirection::LeftToRight: stream << "ltr"; break;
+			case TextDirection::RightToLeft: stream << "rtl"; break;
+			};
+			break; // enum
+		case ParameterName::CssUnicodeBidi:
+			stream << "unicode-bidi: ";
+			switch (it.value.bidiMode) {
+			case BidiMode::Normal: stream << "normal"; break;
+			case BidiMode::Embed: stream << "embed"; break;
+			case BidiMode::Isolate: stream << "isolate"; break;
+			case BidiMode::IsolateOverride: stream << "isolate-override"; break;
+			case BidiMode::BidiOverride: stream << "bidi-override"; break;
+			case BidiMode::Plaintext: stream << "plaintext"; break;
+			};
+			break; // enum
 		case ParameterName::CssWhiteSpace:
 			stream << "white-space: ";
 			switch (it.value.whiteSpace) {
@@ -1542,6 +1561,14 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			stream << "margin-left: ";
 			writeStyle(stream, it.value.sizeValue);
 			break; // size
+		case ParameterName::CssMarginInlineStart:
+			stream << "margin-inline-start: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssMarginInlineEnd:
+			stream << "margin-inline-end: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
 		case ParameterName::CssWidth:
 			stream << "width: ";
 			writeStyle(stream, it.value.sizeValue);
@@ -1580,6 +1607,14 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			break; // size
 		case ParameterName::CssPaddingLeft:
 			stream << "padding-left: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssPaddingInlineStart:
+			stream << "padding-inline-start: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssPaddingInlineEnd:
+			stream << "padding-inline-end: ";
 			writeStyle(stream, it.value.sizeValue);
 			break; // size
 		case ParameterName::CssFontFamily:
@@ -1696,6 +1731,40 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			break; // size
 		case ParameterName::CssBorderLeftColor:
 			stream << "border-left-color: ";
+			writeStyle(stream, it.value.color4);
+			break; // color4
+		case ParameterName::CssBorderInlineStartStyle:
+			stream << "border-inline-start-style: ";
+			switch (it.value.borderStyle) {
+			case BorderStyle::None: stream << "none"; break;
+			case BorderStyle::Solid: stream << "solid"; break;
+			case BorderStyle::Dotted: stream << "dotted"; break;
+			case BorderStyle::Dashed: stream << "dashed"; break;
+			};
+			break; // enum
+		case ParameterName::CssBorderInlineStartWidth:
+			stream << "border-inline-start-width: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssBorderInlineStartColor:
+			stream << "border-inline-start-color: ";
+			writeStyle(stream, it.value.color4);
+			break; // color4
+		case ParameterName::CssBorderInlineEndStyle:
+			stream << "border-inline-end-style: ";
+			switch (it.value.borderStyle) {
+			case BorderStyle::None: stream << "none"; break;
+			case BorderStyle::Solid: stream << "solid"; break;
+			case BorderStyle::Dotted: stream << "dotted"; break;
+			case BorderStyle::Dashed: stream << "dashed"; break;
+			};
+			break; // enum
+		case ParameterName::CssBorderInlineEndWidth:
+			stream << "border-inline-end-width: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssBorderInlineEndColor:
+			stream << "border-inline-end-color: ";
 			writeStyle(stream, it.value.color4);
 			break; // color4
 		case ParameterName::CssBorderCollapse:
@@ -1817,6 +1886,14 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			break; // size
 		case ParameterName::CssLeft:
 			stream << "left: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssInsetInlineStart:
+			stream << "inset-inline-start: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssInsetInlineEnd:
+			stream << "inset-inline-end: ";
 			writeStyle(stream, it.value.sizeValue);
 			break; // size
 		case ParameterName::CssXlAnchorPointX:

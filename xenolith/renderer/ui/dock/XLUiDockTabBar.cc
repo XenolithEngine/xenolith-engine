@@ -89,6 +89,10 @@ void DockTabBar::applyOrientation(DockTab *tab) const {
 	tab->removeStyleClass(vertical ? StringView("horizontal") : StringView("vertical"));
 	tab->addStyleClass(want);
 
+	// What a caption does with a width it cannot have is a property of the KIND of strip, not of
+	// the tab, and a tab dragged across changes kind: see DockTab::setVerticalCaption.
+	tab->setVerticalCaption(vertical);
+
 	// Restyle the tab's children too: rules like `dock-tab.vertical > label` target them, and the
 	// resolver does not revisit a child whose own identity did not change.
 	DockTabBar_restyleSubtree(tab);

@@ -179,6 +179,15 @@ here because a menu, a dropdown and a hint have to answer "where is the anchor"
 the same way — `ui::TooltipSystem` once answered it differently, and its hints
 landed tens of points off on any window whose density was not 1.
 
+The answer is in WINDOW points, which is what a native popup's backend wants. A
+menu that comes up as an **overlay** instead — no subwindows, or
+`preferNative = false` — is a node in the scene, so `SubWindow` divides that
+scaling back out before placing it. Nothing a caller writes changes between the
+two forms; it is named here only because the two are placed in different spaces
+and a hand-written popup that skipped the conversion opened at `density` times
+the point it asked for. See the placement section of
+[windows.adoc](../window/windows.adoc).
+
 **There are two densities and only one of them is the window system's.**
 `FrameConstraints::surfaceDensity` is the display's, and it is what the window
 system scales by: every backend divides pixels by it to say where a window is and
