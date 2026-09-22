@@ -27,10 +27,11 @@ change that names no widget still gets `WINDOW_SMOKE` - five cheap scripts that 
 layout, style, hit-testing, the canvas and hotkeys - and a path that matches nothing at all widens
 the plan to everything. `full` is what a commit is gated on regardless.
 
-A WINDOW CHECK WITH ITS OWN BINARY. `particles-check.py` drives `examples/window/particles`, not
-`testapp` (`WINDOW_BINARIES`): it is selected by name like the rest (`XL2dParticleSystem.cc`,
-`XL2dVkParticlePass.cc`), and also by a change under the example itself (`EXAMPLE_CHECKS`), which is
-otherwise outside the plan. An unbuilt example skips it the way an unbuilt harness is skipped.
+A WINDOW CHECK WITH ITS OWN BINARY. `particles-check.py` drives `examples/window/particles` and
+`filesystem-explorer-check.py` drives `examples/window/fileexplorer`, not `testapp` (`WINDOW_BINARIES`):
+each is selected by name like the rest (`XL2dParticleSystem.cc`, `XLUiFilesystemModel.cc`), and
+also by a change under its own example (`EXAMPLE_CHECKS`), which is otherwise outside the plan. An
+unbuilt example skips it the way an unbuilt harness is skipped.
 
 PARALLELISM. Every window check starts its own `testapp` on its own unix socket (`/tmp/xl-*.sock`,
 overridable through `XENOLITH_INSPECTOR_SOCK`), so two of them share nothing but the machine.
@@ -121,7 +122,8 @@ COST = {
     "window/hotkey-check.py": 9, "window/style-check.py": 8, "window/geometry-check.py": 8,
     "window/panel-check.py": 4, "window/clipboard-check.py": 4, "window/scale9-check.py": 3,
     "window/render-level-check.py": 4, "window/overflow-check.py": 3,
-    "window/particles-check.py": 42, "window/remote-example-check.py": 24,
+    "window/particles-check.py": 42, "window/filesystem-explorer-check.py": 15,
+    "window/remote-example-check.py": 24,
     "window/remote-window-check.py": 20, "window/virtual-window-check.py": 88,
     "window/damage-check.py": 21, "window/remote-render-check.py": 33,
     "gittest": 19, "computetest": 6, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
@@ -132,11 +134,13 @@ COST = {
 # passes the binary as the script's argument and skips the script when it is not built.
 WINDOW_BINARIES = {
     "particles-check.py": ("examples/window/particles", "particles"),
+    "filesystem-explorer-check.py": ("examples/window/fileexplorer", "fileexplorer"),
 }
 
 # `examples/` is outside the plan, except the examples a window check drives
 EXAMPLE_CHECKS = [
     ("examples/window/particles", ["particles-check.py"]),
+    ("examples/window/fileexplorer", ["filesystem-explorer-check.py"]),
     ("examples/window/dndtree", ["remote-example-check.py"]),
     ("examples/window/form", ["remote-example-check.py"]),
     ("examples/window/dock", ["remote-example-check.py"]),
