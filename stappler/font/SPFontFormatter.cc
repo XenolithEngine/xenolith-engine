@@ -751,7 +751,7 @@ bool Formatter::pushChar(char32_t ch) {
 		if (newlineX > maxOf<int16_t>()) {
 			return reportOverflow("line x position exceeds 32767 layout units");
 		}
-		if (maxWidth && lineX > maxWidth) {
+		if (maxWidth && newlineX > maxWidth) {
 			pushLineFiller();
 			return false;
 		}
@@ -765,8 +765,8 @@ bool Formatter::pushChar(char32_t ch) {
 			if (newlineX > maxOf<int16_t>()) {
 				return reportOverflow("line x position exceeds 32767 layout units");
 			}
-			if (maxWidth && lineX > maxWidth) {
-				pushLineFiller(true);
+			if (maxWidth && newlineX > maxWidth) {
+				pushLineFiller(charNum > firstInLine);
 				return false;
 			}
 			lineX = int16_t(newlineX);
@@ -898,7 +898,7 @@ bool Formatter::pushLine(uint16_t first, uint16_t len, bool forceAlign) {
 				_output.chars.at(i).pos += offsetLeft;
 			}
 		} else if (offsetLeft > 0 && align == TextAlign::Center) {
-			offsetLeft /= 2;
+			offsetLeft = (offsetLeft + 1) / 2;
 			for (uint16_t i = first; i < first + len; i++) {
 				_output.chars.at(i).pos += offsetLeft;
 			}

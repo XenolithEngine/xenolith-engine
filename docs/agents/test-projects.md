@@ -13,6 +13,7 @@
 | `tests/tess` | `tesstest` | the tesselator (`stappler/tess`) and the vector layer, against the whole 2d icon set — a pinned digest per icon **and** a pinned raster per icon, plus a deterministic wire benchmark. No device, no window, no frame | CLI, golden |
 | `tests/compute` | `computetest` | Vulkan compute with no window (`xenolith_backend_vk` + `xenolith_core`): a `core::Queue` with one compute pass, `Loop::runRenderQueue`, `Loop::captureBuffer`, and a lost device through `vk::Device::setTestFault`. Needs a Vulkan device; without one it prints SKIP. `computetest timings` is the round-trip benchmark ([Measuring compute](measuring-compute.md)) | CLI, GPU |
 | `examples/window/particles` | `particles` | the GPU particles of `basic2d` behind a control panel; `tests/window/particles-check.py` runs it headless and compares a GPU snapshot of the particles with the CPU reference the example computes from the same `XL2dGlslParticleSim.h` | GUI, driven by a check |
+| `examples/window/fileexplorer` | `fileexplorer` | `ui::FilesystemModel` behind a two-pane navigator - a places tree, and a right pane that is either `ui::TableView` or the example's own virtualized icon grid, with image thumbnails decoded off the app thread; `tests/window/filesystem-explorer-check.py` builds a directory tree of its own and drives the app headless over it. It is the only coverage `ui::FilesystemModel` has | GUI, driven by a check |
 | `tests/window` | `testapp` | full xenolith GUI stack (`xenolith_application` + `renderer_ui` + `backend_vk` + `resources_assets`); transitively compiles the stappler modules | GUI |
 
 **Which to use:**
@@ -25,6 +26,12 @@
   the other way round, so neither alone is the check. `--write` re-pins a golden,
   and re-pinning is a decision to record in the commit message, not a way to make
   a run green.
+- Changed `ui::FilesystemModel` (`xenolith/renderer/ui/view/XLUiFilesystemModel.*`) or
+  `stappler/filesystem` → build `examples/window/fileexplorer` and run
+  `tests/window/filesystem-explorer-check.py` (the runner selects it by name for either). The check
+  writes its own tree - subdirectories, files, a dot-file and a directory of single-colour PNGs -
+  so it asserts a known listing rather than whatever the machine happens to have; the only thing it
+  reads about the real filesystem is that `/` is among the places.
 - Changed the basic2d particle system or its GLSL (`xenolith/renderer/basic2d/particle`,
   `glsl/include/XL2dGlslParticle*.h`, `xl_2d_particle_update.comp`, `backend/vk/XL2dVkParticlePass`)
   → `tests/particles`, then build `examples/window/particles` and run
