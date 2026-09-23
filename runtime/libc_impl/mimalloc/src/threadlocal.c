@@ -13,6 +13,9 @@ that can be allocated.
 
 #include "mimalloc.h"
 #include "mimalloc/internal.h"
+#if defined(MI_TLS_EMBOX_TPIDR)
+#include "mimalloc/prim.h"  // sprt patch: mi_embox_tcb
+#endif
 #include "mimalloc/prim.h"
 
 /* -----------------------------------------------------------
@@ -32,7 +35,19 @@ typedef struct mi_thread_locals_s {
 
 static mi_thread_locals_t mi_thread_locals_empty = { 0, {{0,NULL}} };
 
+#if defined(MI_TLS_EMBOX_TPIDR)
+// sprt patch: in the thread's block (mi_embox_tcb_t, mimalloc/prim.h) rather
+// than a `__thread`, which on Embox EL1 is emulated TLS that allocates. A
+// block starts with NULL, which reads as the empty set here.
+static inline mi_thread_locals_t** mi_embox_thread_locals_slot(void) {
+  mi_embox_tcb_t* t = mi_embox_tcb();
+  if (t->locals == NULL) t->locals = &mi_thread_locals_empty;
+  return (mi_thread_locals_t**)&t->locals;
+}
+#define mi_thread_locals (*mi_embox_thread_locals_slot())
+#else
 mi_decl_thread mi_thread_locals_t* mi_thread_locals = &mi_thread_locals_empty;  // always point to a valid `mi_thread_locals_t`
+#endif
 
 
 /* -----------------------------------------------------------

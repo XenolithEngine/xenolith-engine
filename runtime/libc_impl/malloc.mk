@@ -83,12 +83,18 @@ ifeq ($(TARGET_SYSTEM),EmboxUser)
 # request by walking every free run it has, so the first malloc() of the first
 # program never returned. See xenolith-os docs/EMBOX-USERSPACE.md, K5.
 #
-# 32 MiB is mimalloc's own MI_SEGMENT_SIZE, which is the smallest value it will
-# actually use (mi_arena_reserve rounds up to it). Further arenas are reserved on
-# demand, so this is a starting size and not a ceiling.
-#
-# The value is in KiB, as mi_option_arena_reserve is.
-MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS += -DMI_DEFAULT_ARENA_RESERVE=32*1024
+MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS += \
+	-DMI_DEFAULT_ARENA_RESERVE=0 \
+	-DMI_SEGMENT_SHIFT=22
+endif
+
+ifeq ($(TARGET_SYSTEM),Embox)
+MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS += \
+	-DSPRT_UMBRELLA_REQUIRED=1 \
+	-DMI_DEFAULT_ARENA_RESERVE=0 \
+	-DMI_SEGMENT_SHIFT=22 \
+	-DMI_TLS_EMBOX_TPIDR \
+	-DMI_USE_BUILTIN_THREAD_POINTER=0
 endif
 
 endif # ($(TARGET_SYSTEM),WASM)

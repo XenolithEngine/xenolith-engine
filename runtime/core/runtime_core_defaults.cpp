@@ -350,6 +350,7 @@ __SPRT_C_FUNC void __SPRT_ID(qsort_impl)(void *array, size_t n, size_t size,
 	qsort(array, n, size, comparator);
 }
 
+#if !SPRT_EMBOX
 __SPRT_C_FUNC void *__SPRT_ID(malloc_impl)(size_t size) __SPRT_NOEXCEPT { return ::malloc(size); }
 
 __SPRT_C_FUNC void *__SPRT_ID(calloc_impl)(size_t n, size_t size) __SPRT_NOEXCEPT {
@@ -394,6 +395,16 @@ __SPRT_C_FUNC void __SPRT_ID(local_free)(void *value, size_t size) __SPRT_NOEXCE
 	return ::free(value);
 #endif
 }
+
+#else // !SPRT_EMBOX
+
+__SPRT_C_FUNC void __sprt_embox_kernel_free(void *ptr) { ::free(ptr); }
+
+__SPRT_C_FUNC void *__sprt_embox_kernel_realloc(void *ptr, size_t size) {
+	return ::realloc(ptr, size);
+}
+
+#endif // !SPRT_EMBOX
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(abort_impl)(void) { ::abort(); }
 

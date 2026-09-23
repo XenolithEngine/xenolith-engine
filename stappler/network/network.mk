@@ -38,6 +38,10 @@ ifeq ($(TARGET_SYSTEM),Linux)
 MODULE_STAPPLER_NETWORK_LIBS += 
 endif
 
+ifdef EMBOX
+MODULE_STAPPLER_NETWORK_LIBS += -l:libz.a
+endif
+
 ifdef MACOS
 MODULE_STAPPLER_NETWORK_GENERAL_LDFLAGS += -framework SystemConfiguration -framework CoreFoundation -framework Security -liconv
 endif

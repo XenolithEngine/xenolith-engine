@@ -47,7 +47,7 @@
 #include "SPRuntimeFilesystem-nuttx.cc"
 #endif
 
-#if SPRT_EMBOX
+#if SPRT_EMBOX_ANY // the same volumes from EL1 and EL0
 #include "SPRuntimeFilesystem-embox.cc"
 #endif
 

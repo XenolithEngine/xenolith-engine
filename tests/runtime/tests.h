@@ -29,6 +29,7 @@ void performLinkTest();
 void performFcntlTest();
 void performMemalignTest();
 void performMemalignMacroTest();
+void performMallocThreadsTest();
 void performAtFunctionsTest();
 void performSetjmpTest();
 void performLocaleTest();
