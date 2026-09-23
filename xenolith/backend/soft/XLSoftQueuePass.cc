@@ -255,7 +255,17 @@ bool tryRgaVideoBlit(CommandBuffer &buf, const raster::Target &target,
 		return false;
 	}
 	s_scanoutCpuRectCount = 0;
-	if (b.dx > int32_t(x0)) {
+	/* The letterbox strips are the constant clear colour forever (the
+	 * composed path paints them the same), so repaint them only when
+	 * their geometry changes -- a steady game frame re-fills ~1.5 Mpx
+	 * and flushes ~2 MB of fb for nothing (measured 2.2 ms of every
+	 * direct present on zero3e). Keyed on the strip geometry. */
+	static bool s_stripsValid = false;
+	static int32_t s_stripsBlitX = 0, s_stripsBlitW = 0, s_stripsY0 = 0, s_stripsY1 = 0;
+	const bool stripsCurrent = s_stripsValid && s_stripsBlitX == b.dx
+			&& s_stripsBlitW == b.dw && s_stripsY0 == int32_t(y0) && s_stripsY1 == int32_t(y1);
+	int32_t right = b.dx + b.dw;
+	if (!stripsCurrent && b.dx > int32_t(x0)) {
 		uint32_t w = uint32_t(b.dx) - x0;
 		raster::fillRect(dst, URect(x0, y0, w, y1 - y0), clearColor);
 		if (fbPixels && s_scanoutCpuRectCount < 2) {
@@ -266,8 +276,7 @@ bool tryRgaVideoBlit(CommandBuffer &buf, const raster::Target &target,
 			++s_scanoutCpuRectCount;
 		}
 	}
-	int32_t right = b.dx + b.dw;
-	if (right < int32_t(x1)) {
+	if (!stripsCurrent && right < int32_t(x1)) {
 		uint32_t rx = uint32_t(right > int32_t(x0) ? right : int32_t(x0));
 		raster::fillRect(dst, URect(rx, y0, x1 - rx, y1 - y0), clearColor);
 		if (fbPixels && s_scanoutCpuRectCount < 2) {
@@ -278,6 +287,11 @@ bool tryRgaVideoBlit(CommandBuffer &buf, const raster::Target &target,
 			++s_scanoutCpuRectCount;
 		}
 	}
+	s_stripsValid = true;
+	s_stripsBlitX = b.dx;
+	s_stripsBlitW = b.dw;
+	s_stripsY0 = int32_t(y0);
+	s_stripsY1 = int32_t(y1);
 	// clip the blit to the damage bounding box, mapping back to source px
 	int32_t bx0 = b.dx > int32_t(x0) ? b.dx : int32_t(x0);
 	int32_t bx1 = right < int32_t(x1) ? right : int32_t(x1);
