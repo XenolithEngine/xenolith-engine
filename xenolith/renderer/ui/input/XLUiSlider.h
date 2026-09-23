@@ -58,10 +58,14 @@ ui::applyControlEnabled and ui::setEditLock. `:hover`, `:focus`, `:active` and `
 InteractiveComponent, as they do for ui::Select. All three parts are Panels, and a Panel with no
 fill declared is opaque white, so all three need a colour.
 
+The fill and the handle carry the widget's own interactive state, so a sheet paints them through
+their own pseudo-classes (`slider-thumb:hover`); a state on the widget does not reach them.
+
     slider              { width:220px; height:20px; }
     slider-fill         { background-color:#FCB400; border-radius:2px; }
     slider-thumb        { width:16px; height:16px; border-radius:8px; background-color:#E8E8E8; }
-    slider:focus > slider-thumb { background-color:#FCB400; } */
+    slider-thumb:hover  { background-color:#FFFFFF; }
+    slider-thumb:focus  { background-color:#FCB400; } */
 class SP_PUBLIC Slider : public Panel, public EditLockTarget {
 public:
 	// The index now chosen; the value is `getValue()`.
@@ -150,6 +154,9 @@ protected:
 
 	virtual void updateGeometry();
 	virtual void updateInteractiveState();
+
+	// Give one part (the fill, the handle) the widget's interactive state as its own.
+	void updatePartState(Panel *, InteractiveState);
 
 	Panel *_fill = nullptr;
 	Panel *_thumb = nullptr;

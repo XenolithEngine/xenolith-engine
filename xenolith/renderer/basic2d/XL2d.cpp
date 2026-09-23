@@ -34,6 +34,7 @@
 #include "XL2dSprite.cc"
 #include "XL2dScale9Sprite.cc"
 #include "XL2dLayer.cc"
+#include "XL2dPixelGrid.cc"
 #include "XL2dLabel.cc"
 #include "XL2dScene.cc"
 #include "XL2dSceneContent.cc"

@@ -144,6 +144,12 @@ Same after anything that changes the scene: `invoke_command` / `send_input` /
 `window_control resize` → `step_frame` → `screenshot`. If a screenshot looks
 stale, you skipped the step.
 
+In a window on a real display the screenshot renders a frame of its own, and the
+scene renders continuously while any screenshot is pending, so a scene that
+renders on demand still produces the frame; it goes back to on-demand once the
+reply is sent. A frame invalidated under the capture (a swapchain recreated by a
+resize or a fullscreen switch) answers `capture failed` rather than a picture.
+
 **Stepping is a REQUEST; `presented` is the receipt.** `step_frame` sets the
 presentation engine's ready flag and returns — measured at a tenth of a
 millisecond, with nothing drawn yet — so a read taken straight afterwards races

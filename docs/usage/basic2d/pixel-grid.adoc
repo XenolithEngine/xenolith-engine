@@ -1,0 +1,75 @@
+# Pixel grid: `basic2d::PixelGrid` and the canvas background
+
+**TL;DR**
+
+* `basic2d::PixelGrid` draws a grid of lines one **device** pixel wide over a zoomable plane. It is
+  a `Sprite` that writes thin quads straight in surface pixels: one command, one batch, every
+  backend.
+* The levels are powers of four: 1, 4, 16, 64 and on. A level whose step on screen is under
+  `minStep` device pixels (4 by default, never under 1) is skipped, so zooming out moves drawing up
+  the ladder by itself.
+* Every line is snapped to a whole device pixel. `basic2d::snapToPixels` is the same formula, for
+  anything that has to stand on a grid line.
+* The geometry is rebuilt only when the transform, size, mapping or colour changes. A still frame
+  reuses it; a pan frame writes at most `width / minStep + height / minStep` quads.
+* `ui::CanvasView::setGridEnabled(true)` puts one behind the canvas world, following its pan and zoom.
+
+## Mapping
+
+Grid unit `i` is at `origin + i * unit` of the node, on both axes:
+
+```cpp
+auto grid = parent->addChild(Rc<basic2d::PixelGrid>::create(), ZOrder(5));
+grid->setAnchorPoint(Vec2(0.0f, 0.0f));
+grid->setContentSize(parent->getContentSize());
+grid->setMapping(imageCorner, pixelsPerImagePixel);   // node space
+grid->setBounds(imageRect);                            // lines only over the image
+grid->setEdgesVisible(true);                           // and its outline, outside it
+grid->setColors(Color4F(1, 1, 1, 0.06f), Color4F(1, 1, 1, 0.22f));
+```
+
+`setMinLevel` sets the finest level there is; the default 0 means a step never goes below one unit.
+The rank of a line is counted from `origin`, so the 4 and 16 lines of an image start at its corner.
+
+For a plane that is panned by writing a sibling's transform, `setMappingSource(sibling)` reads the
+sibling's position as the origin and its x scale as the unit on every frame. That is what
+`CanvasView` does with its world.
+
+## Colour
+
+A line belongs to the highest level dividing its index and is drawn once. Its colour depends on
+how many levels its step is above `minStep`, as a real number `over`: the base level's
+`log4(step / minStep)`, held under one, plus the line's level above the base.
+
+* `tone = clamp(over / 3)` runs from `minor` to `major`;
+* `fade = clamp(over * 2)` multiplies the alpha, so the finest level fades in over the first half
+  of a level instead of appearing at once.
+
+The three levels from the base up (1, 4 and 16 at the closest zoom) are always told apart, the
+fourth and above are all `major`, and a zoom never makes a line jump: when the base level drops
+out, the next one takes over at the tone it already had.
+Node opacity and colour multiply the result.
+
+## Pixels
+
+When the node's transform to the surface is axis-aligned, a line at device position `v` covers
+`[floor(v + 0.5), floor(v + 0.5) + 1)`. The vertices are written in surface pixels and pushed with
+the view projection alone. With a rotation or skew there are no whole pixels to snap to; the grid
+is then built in node space, one pixel wide at the node's scale, and `getState().snapped` is false.
+
+`snapToPixels(node->getNodeToWorldTransform(), point)` moves a point of the node onto the same
+boundary. A marker placed through it, one device pixel wide (`1 / scale` in node units), covers
+exactly the pixel column of the grid line.
+
+## State and checks
+
+`getState()` returns what the last build decided: `baseLevel` (-1 when nothing is drawn), `baseStep`
+in device pixels, `lines`, `rebuilds` and `snapped`. `tests/window/canvas-check.py` checks the ladder,
+the cache, and, from a snapshot at density 1 and 2, that every line is one pixel on the column the
+formula predicts.
+
+## Why quads and not a shader
+
+A procedural fragment shader would need a pipeline in every backend's material pass and a channel
+for its parameters, and neither exists. A repeating texture scales with the zoom, so its lines stop
+being one pixel wide. At a few hundred lines per frame, CPU quads cost nothing noticeable.

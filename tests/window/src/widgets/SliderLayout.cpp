@@ -61,7 +61,8 @@ slider-thumb {
 	border-radius: 8px;
 	background-color: #e8e8e8;
 }
-slider:focus > slider-thumb {
+/* On the handle: it carries the widget's state, and a state on the widget would not reach it. */
+slider-thumb:focus {
 	background-color: #fcb400;
 }
 slider.locked > slider-thumb {

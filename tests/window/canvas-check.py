@@ -35,7 +35,7 @@ widget replaces:
 With no argument it expects the debug x86_64-linux binary in place. It starts its own app instance,
 runs the checks and prints "N checks, M failures"; exit status is the result.
 """
-import json, os, socket, struct, subprocess, sys, time
+import base64, json, math, os, socket, struct, subprocess, sys, time, zlib
 
 ADDR = os.environ.get("XENOLITH_INSPECTOR_SOCK", "/tmp/xl-canvas-check.sock")
 
@@ -147,6 +147,92 @@ def wheel_events(x, y, amount):
 
 checks = 0
 failures = 0
+
+
+def read_png(raw):
+    """Minimal PNG reader: 8-bit RGB/RGBA, non-interlaced, which is what the inspector writes.
+    Returns (width, height, rows) with rows[y][x] = (r, g, b), y from the top."""
+    assert raw[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG"
+    pos, idat, width, height, channels = 8, b"", 0, 0, 4
+    while pos < len(raw):
+        length = struct.unpack(">I", raw[pos:pos + 4])[0]
+        kind = raw[pos + 4:pos + 8]
+        body = raw[pos + 8:pos + 8 + length]
+        pos += 12 + length
+        if kind == b"IHDR":
+            width, height, depth, color = struct.unpack(">IIBB", body[:10])
+            assert depth == 8 and color in (2, 6), (depth, color)
+            channels = 3 if color == 2 else 4
+        elif kind == b"IDAT":
+            idat += body
+        elif kind == b"IEND":
+            break
+    data = zlib.decompress(idat)
+    stride = width * channels
+    rows, prev, at = [], bytearray(stride), 0
+    for _ in range(height):
+        filt = data[at]
+        line = bytearray(data[at + 1:at + 1 + stride])
+        at += 1 + stride
+        for i in range(stride):
+            a = line[i - channels] if i >= channels else 0
+            b = prev[i]
+            c = prev[i - channels] if i >= channels else 0
+            if filt == 1:
+                line[i] = (line[i] + a) & 0xFF
+            elif filt == 2:
+                line[i] = (line[i] + b) & 0xFF
+            elif filt == 3:
+                line[i] = (line[i] + (a + b) // 2) & 0xFF
+            elif filt == 4:
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                pred = a if pa <= pb and pa <= pc else (b if pb <= pc else c)
+                line[i] = (line[i] + pred) & 0xFF
+        rows.append([tuple(line[x * channels:x * channels + 3]) for x in range(width)])
+        prev = line
+    return width, height, rows
+
+
+def grid_lines(session, density, lo, hi, axis):
+    """Where the stand's grid puts its lines in device pixels, by the formula the node documents:
+    level lines every 4^k world units, each at floor(v + 0.5) of its device position."""
+    st = session.invoke("canvas.state", settle=0.0)
+    view, grid = st["viewport"], st["grid"]
+    period = 4 ** grid["baseLevel"]
+    off = view["x"] if axis == 0 else view["y"]
+    unit = view["zoom"] * density
+    out = set()
+    n = math.ceil((lo / density - off) / (period * view["zoom"])) - 1
+    while True:
+        at = math.floor(density * off + n * period * unit + 0.5)
+        if at > hi:
+            break
+        if at >= lo:
+            out.add(at)
+        n += 1
+    return out
+
+
+def snapshot(session):
+    session.ok("frame", count=1)
+    time.sleep(0.06)
+    data = session.ok("screenshot")["data"]
+    blob = data[7:]
+    return read_png(base64.urlsafe_b64decode(blob + "=" * (-len(blob) % 4)))
+
+
+def grid_columns(session, density, x0, x1):
+    """The columns of one scanline that are not the ground, found in a real snapshot, and the ones
+    the formula predicts. The scanline is put between two horizontal lines, so it crosses only the
+    vertical ones."""
+    w, h, rows = snapshot(session)
+    rows_at = grid_lines(session, density, 0, h, 1)
+    y = next(y for y in range(int(20 * density), h // 3) if all(abs(y - r) > 1 for r in rows_at))
+    row = rows[h - 1 - y]
+    ground = max(set(row[x0:x1]), key=row[x0:x1].count)
+    seen = {x for x in range(x0, x1) if max(abs(a - b) for a, b in zip(row[x], ground)) > 24}
+    return seen, grid_lines(session, density, x0, x1 - 1, 0)
 
 
 def check(name, ok, detail=""):
@@ -514,6 +600,59 @@ try:
     step()
     check("... and back on", state()["zoomControl"]["enabled"] is True, state()["zoomControl"])
 
+    # ---- the background grid --------------------------------------------------------------------
+    #
+    # The ladder, the cache and the snapping. The level a zoom picks is the node's arithmetic and is
+    # read back as state; that the lines are one device pixel each and stand where the formula puts
+    # them is only visible in a snapshot, so the last check reads one.
+    print("\n-- the background grid --")
+
+    check("there is no grid until one is asked for", state()["grid"]["enabled"] is False,
+          state()["grid"])
+    MAGENTA = [1.0, 0.0, 1.0, 1.0]
+    s.invoke("canvas.grid", enabled=True, minor=MAGENTA, major=MAGENTA, settle=0.0)
+    set_view(0.0, 0.0, 1.0)
+    step()
+    g = state()["grid"]
+    check("at 1:1 a unit is one pixel, under the step, so drawing starts a level up",
+          g["enabled"] and g["baseLevel"] == 1 and near(g["baseStep"], 4.0), g)
+    check("... in whole device pixels", g["snapped"] is True, g)
+
+    set_view(0.0, 0.0, 0.25)
+    step()
+    g = state()["grid"]
+    check("zooming out to a quarter moves it up again, to every 16 units",
+          g["baseLevel"] == 2 and near(g["baseStep"], 4.0), g)
+
+    s.invoke("canvas.grid", minStep=1.0, settle=0.0)
+    set_view(0.0, 0.0, 1.0)
+    step()
+    g = state()["grid"]
+    check("with a one-pixel threshold the unit itself is drawn", g["baseLevel"] == 0, g)
+    s.invoke("canvas.grid", minStep=0.25, settle=0.0)
+    step()
+    g = state()["grid"]
+    check("... and the threshold never goes under a pixel", near(g["minStep"], 1.0), g)
+    s.invoke("canvas.grid", minStep=4.0, settle=0.0)
+
+    set_view(123.37, 211.61, 1.37)
+    step(3)
+    before = state()["grid"]["rebuilds"]
+    step(3)
+    check("a still frame reuses the lines", state()["grid"]["rebuilds"] == before,
+          (before, state()["grid"]["rebuilds"]))
+    # 131.93 + n * 5.48 never ends in .5, so no line sits on a rounding tie the check could read
+    # differently from the node.
+    set_view(131.93, 211.61, 1.37)
+    step()
+    check("... and a pan rebuilds them", state()["grid"]["rebuilds"] > before,
+          (before, state()["grid"]["rebuilds"]))
+
+    seen, predicted = grid_columns(s, 1.0, 300, 1000)
+    check("every line is one whole pixel where the formula puts it, at a fractional pan and zoom",
+          seen == predicted and len(seen) > 20,
+          (sorted(seen - predicted)[:8], sorted(predicted - seen)[:8], len(seen)))
+
     # ---- no parallax ----------------------------------------------------------------------------
     #
     # THE PROPERTY, NOT A NUMBER: a pan must leave the world point under the pointer under the
@@ -553,6 +692,15 @@ try:
         moved = pan_holds(hidpi, "... and at density 2, where a raw delta moved it twice as far",
                           600.0, 600.0, 920.0, 760.0)
         check("... having panned there too", abs(moved["x"]) > 1.0 and abs(moved["y"]) > 1.0, moved)
+
+        hidpi.invoke("canvas.grid", enabled=True, minor=MAGENTA, major=MAGENTA, settle=0.0)
+        hidpi.invoke("canvas.set-view", x=57.3, y=40.8, zoom=0.61, settle=0.0)
+        hidpi.ok("frame", count=2)
+        time.sleep(0.15)
+        seen, predicted = grid_columns(hidpi, 2.0, 600, 2000)
+        check("... and at density 2 the grid is still one device pixel on the formula's columns",
+              seen == predicted and len(seen) > 20,
+              (sorted(seen - predicted)[:8], sorted(predicted - seen)[:8], len(seen)))
     finally:
         try:
             hidpi.close()

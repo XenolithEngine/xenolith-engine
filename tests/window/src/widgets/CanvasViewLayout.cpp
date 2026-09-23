@@ -163,6 +163,18 @@ Value CanvasViewLayout::encodeState() const {
 		z.setBool(false, "enabled");
 	}
 
+	auto &grid = ret.newDict("grid");
+	grid.setBool(_canvas->isGridEnabled(), "enabled");
+	if (auto g = _canvas->getGrid()) {
+		auto &st = g->getState();
+		grid.setInteger(st.baseLevel, "baseLevel");
+		grid.setDouble(st.baseStep, "baseStep");
+		grid.setInteger(st.lines, "lines");
+		grid.setInteger(st.rebuilds, "rebuilds");
+		grid.setBool(st.snapped, "snapped");
+		grid.setDouble(g->getMinStep(), "minStep");
+	}
+
 	auto &markers = ret.newDict("markers");
 	for (auto &it : _markers) {
 		auto &m = markers.newDict(it.first.name);
@@ -299,6 +311,29 @@ void CanvasViewLayout::registerCommands() {
 		// copy of one of them could not have seen it.
 		ret.setDouble(sprt::window::InputScrollNotch, "notchAmount");
 		return ret;
+	});
+
+	// Colours are {r, g, b, a} in 0..1; an opaque pair lets a check find every line in a snapshot.
+	addCommand("grid", "The background grid: {enabled, minor, major, minStep}", [this](Value &&args) {
+		const Value &in = args;
+		if (in.hasValue("enabled")) {
+			_canvas->setGridEnabled(in.getBool("enabled"));
+		}
+		if (auto g = _canvas->getGrid()) {
+			auto color = [](const Value &v, const Color4F &def) {
+				if (!v.isArray() || v.size() != 4) {
+					return def;
+				}
+				return Color4F(float(v.getDouble(0)), float(v.getDouble(1)), float(v.getDouble(2)),
+						float(v.getDouble(3)));
+			};
+			g->setColors(color(in.getValue("minor"), g->getMinorColor()),
+					color(in.getValue("major"), g->getMajorColor()));
+			if (in.hasValue("minStep")) {
+				g->setMinStep(float(in.getDouble("minStep")));
+			}
+		}
+		return encodeState();
 	});
 
 	addCommand("zoom-control", "Turn the floating control on or off: {enabled}",

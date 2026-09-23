@@ -23,6 +23,7 @@
 #include "XLCommon.h" // IWYU pragma: keep
 
 #include "fileexplorer/IconGridView.h"
+#include "XLDynamicStateSystem.h"
 #include "XLUiDragScrollSystem.h"
 #include "XLUiLayoutSystem.h"
 #include "XLUiStyleSystem.h"
@@ -44,6 +45,10 @@ bool IconGridView::init(ThumbnailCache *cache) {
 	// This widget places its own scroll view, and its rows place their own tiles: a stylesheet
 	// must not become a second writer of either.
 	setComponent<ui::SystemManagedLayout>();
+
+	// The rows at either end of the viewport are laid out whole, so the viewport clips them.
+	// ApplyForAll: ApplyForNodesBelow covers only negative z-orders, not ordinary children.
+	addSystem(Rc<DynamicStateSystem>::create(DynamicStateApplyMode::ApplyForAll))->enableScissor();
 
 	_scroll = addChild(Rc<basic2d::ScrollView>::create(basic2d::ScrollView::Vertical), ZOrder(0));
 	_scroll->setName("grid-scroll");
@@ -509,8 +514,9 @@ bool IconGridView::TileRowNode::init(IconGridView *view, ThumbnailCache *cache, 
 
 	// A row always holds a full set of tiles; the ones past the end of the listing are hidden
 	// rather than absent, so the row's shape never depends on where it is.
+	// From 1, as in FileTile: a child at z 0 shares the plane its parent's background draws in.
 	for (size_t i = 0; i < sprt::max(tileCount, size_t(1)); ++i) {
-		auto tile = addChild(Rc<FileTile>::create(view, cache), ZOrder(int16_t(i)));
+		auto tile = addChild(Rc<FileTile>::create(view, cache), ZOrder(int16_t(i + 1)));
 		_tiles.emplace_back(tile);
 	}
 

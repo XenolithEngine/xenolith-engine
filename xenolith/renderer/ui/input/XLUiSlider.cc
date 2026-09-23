@@ -142,8 +142,10 @@ bool Slider::init() {
 	_focusListener->setEnabled(false);
 
 	/* The InteractiveComponent must exist from the start: without one the state reads as 0 and
-	`slider:disabled` would match. */
+	`slider:disabled` would match. `applyControlEnabled` writes this node alone, so the parts get
+	theirs from the call below. */
 	applyControlEnabled(this, true);
+	updateInteractiveState();
 
 	return true;
 }
@@ -445,6 +447,24 @@ void Slider::updateInteractiveState() {
 		}
 		return dirty;
 	});
+
+	// The two parts carry the widget's state as their own; see updatePartState.
+	if (auto component = getComponent<InteractiveComponent>()) {
+		const auto state = component->state;
+		updatePartState(_fill, state);
+		updatePartState(_thumb, state);
+	}
+}
+
+/* The part is selected by its own pseudo-class (`slider-thumb:hover`), because a state on an
+ancestor does not restyle its descendants. It keeps no counters of its own: nothing reaches it with
+a hover or a focus, so the state is written whole from the widget's. */
+void Slider::updatePartState(Panel *part, InteractiveState state) {
+	if (!part) {
+		return;
+	}
+	part->setOrUpdateComponent<InteractiveComponent>(
+			[state](NotNull<InteractiveComponent> c) { return c->updateState(state); });
 }
 
 } // namespace stappler::xenolith::ui
