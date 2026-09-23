@@ -57,6 +57,11 @@ THE SOFTWARE.
 
 #include <dirent.h>
 
+#if SPRT_EMBOX
+extern "C" long telldir(DIR *);
+extern "C" void seekdir(DIR *, long);
+#endif
+
 // musl provides neither scandirat() nor scandirat64(), so it needs a dedicated
 // fallback below. Detect it now that <dirent.h> has pulled in <features.h>
 // (Android uses bionic and is SPRT_ANDROID, not SPRT_LINUX, so it keeps using
@@ -154,12 +159,7 @@ __SPRT_C_FUNC int __SPRT_ID(rewinddir)(__SPRT_ID(DIR) * __dir) {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(seekdir)(__SPRT_ID(DIR) * __dir, long __location) {
-#if SPRT_EMBOX
-	(void)__dir;
-	(void)__location;
-	*__sprt___errno_location() = ENOSYS;
-	return -1;
-#elif __STDC_HOSTED__ == 1
+#if __STDC_HOSTED__ == 1
 	::seekdir((DIR *)__dir, __location);
 	return 0;
 #else
@@ -167,15 +167,7 @@ __SPRT_C_FUNC int __SPRT_ID(seekdir)(__SPRT_ID(DIR) * __dir, long __location) {
 #endif
 }
 
-__SPRT_C_FUNC long __SPRT_ID(telldir)(__SPRT_ID(DIR) * __dir) {
-#if SPRT_EMBOX
-	(void)__dir;
-	*__sprt___errno_location() = ENOSYS;
-	return -1;
-#else
-	return telldir((DIR *)__dir);
-#endif
-}
+__SPRT_C_FUNC long __SPRT_ID(telldir)(__SPRT_ID(DIR) * __dir) { return telldir((DIR *)__dir); }
 
 __SPRT_C_FUNC int __SPRT_ID(dirfd)(__SPRT_ID(DIR) * __dir) {
 #if SPRT_EMBOX

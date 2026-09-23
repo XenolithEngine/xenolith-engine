@@ -104,6 +104,7 @@ __SPRT_C_FUNC unsigned long long __SPRT_ID(
 }
 #endif
 
+#if !SPRT_EMBOX // Embox EL1: mimalloc (libc_impl/mimalloc/mimalloc.scu.c)
 __SPRT_C_FUNC void *__SPRT_ID(aligned_alloc)(size_t align, size_t size) __SPRT_NOEXCEPT {
 #if SPRT_ANDROID
 	if (align <= _Alignof(__SPRT_ID(max_align_t))) {
@@ -136,6 +137,8 @@ __SPRT_C_FUNC void __SPRT_ID(aligned_free)(void *memblock) {
 	::free(memblock);
 #endif
 }
+
+#endif // !SPRT_EMBOX
 
 __SPRT_C_FUNC int __SPRT_ID(system_impl)(const char *cmd) {
 #if SPRT_IOS
@@ -179,10 +182,12 @@ __SPRT_C_FUNC __SPRT_ID(lldiv_t) __SPRT_ID(lldiv_impl)(long long a, long long b)
 }
 
 
+#if !SPRT_EMBOX // Embox EL1: mimalloc (libc_impl/mimalloc/mimalloc.scu.c)
 __SPRT_C_FUNC int __SPRT_ID(
 		posix_memalign)(void **ptr, __SPRT_ID(size_t) size, __SPRT_ID(size_t) align) {
 	return posix_memalign(ptr, align, size);
 }
+#endif // !SPRT_EMBOX
 __SPRT_C_FUNC int __SPRT_ID(mkstemp)(char *tpl) { return mkstemp(tpl); }
 __SPRT_C_FUNC int __SPRT_ID(mkostemp)(char *tpl, int n) {
 #if SPRT_HOSTED_RTOS

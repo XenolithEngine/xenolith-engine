@@ -150,7 +150,9 @@ mi_threadid_t _mi_thread_id(void) mi_attr_noexcept {
 }
 
 // the thread-local default heap for allocation
+#if !defined(MI_TLS_EMBOX_TPIDR)
 mi_decl_thread mi_heap_t* _mi_heap_default = (mi_heap_t*)&_mi_heap_empty;
+#endif
 
 extern mi_decl_hidden mi_heap_t _mi_heap_main;
 
@@ -553,6 +555,8 @@ void _mi_heap_set_default_direct(mi_heap_t* heap)  {
   *mi_prim_tls_pthread_heap_slot() = heap;
   #elif defined(MI_TLS_PTHREAD)
   // we use _mi_heap_default_key
+  #elif defined(MI_TLS_EMBOX_TPIDR)
+  mi_embox_tcb()->heap = heap;  // sprt patch
   #else
   _mi_heap_default = heap;
   #endif

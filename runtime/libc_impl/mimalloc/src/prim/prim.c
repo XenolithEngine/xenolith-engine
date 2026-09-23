@@ -14,6 +14,9 @@ terms of the MIT license. A copy of the license can be found in the file
 #elif defined(__APPLE__)
 #include "osx/prim.c"      // macOSX (actually defers to mmap in unix/prim.c)
 
+#elif defined(__EMBOX__) && !defined(__EMBOX_USER__)
+#include "embox/prim.c"     // sprt patch: Embox EL1 -- phymem, and the thread's block in TPIDR_EL0
+
 #elif defined(__wasi__)
 #define MI_USE_SBRK
 #include "wasi/prim.c"     // memory-grow or sbrk (Wasm)

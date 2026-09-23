@@ -307,7 +307,54 @@ typedef int (*backtrace_full_callback)(void *data, __SPRT_ID(uintptr_t) pc, cons
 extern "C" int backtrace_full(struct backtrace_state *state, int skip,
 		backtrace_full_callback callback, backtrace_error_callback error_callback, void *data);
 
-#ifndef SPRT_WASM
+#if SPRT_EMBOX_USER
+
+// EL0 on Embox has no libbacktrace, but it links libunwind, and the unwinder
+// finds the program's own PT_GNU_EH_FRAME (it is what C++ exceptions use
+// here). So the frames are real; only the names are missing -- nothing on the
+// board could turn an address into one. A crash report gets the return
+// addresses, and addr2line on the host does the rest.
+#include <unwind.h>
+
+namespace {
+
+struct EmboxUserBacktrace {
+	backtrace_full_callback callback;
+	void *data;
+	int skip;
+};
+
+_Unwind_Reason_Code embox_user_backtrace_step(struct _Unwind_Context *ctx, void *arg) {
+	auto bt = static_cast<EmboxUserBacktrace *>(arg);
+	auto pc = __SPRT_ID(uintptr_t)(_Unwind_GetIP(ctx));
+
+	if (pc == 0) {
+		return _URC_END_OF_STACK;
+	}
+	if (bt->skip > 0) {
+		--bt->skip;
+		return _URC_NO_REASON;
+	}
+	return bt->callback(bt->data, pc, nullptr, 0, nullptr) ? _URC_END_OF_STACK : _URC_NO_REASON;
+}
+
+} // namespace
+
+// Any non-null state will do: there is nothing to load and nothing to free.
+extern "C" struct backtrace_state *backtrace_create_state(const char *filename, int threaded,
+		backtrace_error_callback error_callback, void *data) {
+	static int s_state;
+	return reinterpret_cast<struct backtrace_state *>(&s_state);
+}
+
+extern "C" int backtrace_full(struct backtrace_state *state, int skip,
+		backtrace_full_callback callback, backtrace_error_callback error_callback, void *data) {
+	EmboxUserBacktrace bt{callback, data, skip + 1 /* this function */};
+	_Unwind_Backtrace(embox_user_backtrace_step, &bt);
+	return 0;
+}
+
+#elif !defined(SPRT_WASM)
 #warning "No <backtrace.h> available, replacing with forward declaration"
 
 #else

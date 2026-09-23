@@ -23,7 +23,8 @@
 #include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/runtime/filesystem/filepath.h>
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_WINDOWS || SPRT_WASM || SPRT_HOSTED_RTOS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_WINDOWS || SPRT_WASM || SPRT_HOSTED_RTOS \
+		|| SPRT_EMBOX_USER
 
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_unistd.h>

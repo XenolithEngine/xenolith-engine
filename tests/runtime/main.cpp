@@ -49,6 +49,7 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"libc_fcntl", &sprt::performFcntlTest},
 	{"libc_memalign", &sprt::performMemalignTest},
 	{"libc_memalign_macro", &sprt::performMemalignMacroTest},
+	{"libc_malloc_threads", &sprt::performMallocThreadsTest},
 	{"libc_at", &sprt::performAtFunctionsTest},
 	{"libc_setjmp", &sprt::performSetjmpTest},
 	{"libc_locale", &sprt::performLocaleTest},

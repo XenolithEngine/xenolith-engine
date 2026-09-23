@@ -246,6 +246,12 @@ void performSelectPollTest() {
 	struct sockaddr_in ba;
 	loopback(&ba, 0);
 	SOCKET rcv = socket(AF_INET, SOCK_DGRAM, 0);
+	if (!sockOk(rcv)) {
+		// No sockets on this platform (Embox EL0 before M3, WASM): FD_SET of -1
+		// below would write outside the set.
+		printf("socket unavailable: select/poll skipped\n");
+		return;
+	}
 	bind(rcv, sa(&ba), sizeof(ba));
 	struct sockaddr_in la;
 	::memset(&la, 0, sizeof(la));

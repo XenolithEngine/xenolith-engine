@@ -436,24 +436,9 @@ $(OUT)/sysroot/usr/include/stdarg.h:
 		'#endif' \
 		> $@
 
-# Embox's <stdatomic.h> is a 2-typedef stub (atomic_uintptr_t /
-# atomic_uint_least32_t only). It sits on the -idirafter sysroot path and
-# shadows clang's complete C11 header, so sheenbidi (USE_C11_ATOMICS) fails
-# with unknown type name 'atomic_flag'. The file already exists after
-# import-sysroot, so a normal make target would be considered up to date and
-# never replace the stub. Phony-overwrite after every import; include_next
-# reaches host/lib/clang/$(SP_LLVM_VER)/include/stdatomic.h.
 .PHONY: embox-stdatomic-shim embox-lib-aliases
 embox-stdatomic-shim:
-	@mkdir -p $(OUT)/sysroot/usr/include
-	printf '%s\n' \
-		'/* Auto-generated shim: Embox <stdatomic.h> is a 2-typedef stub.' \
-		'   Forward to clang resource dir stdatomic.h (C11 atomics). */' \
-		'#ifndef __EMBOX_STDATOMIC_SHIM_H' \
-		'#define __EMBOX_STDATOMIC_SHIM_H' \
-		'#include_next <stdatomic.h>' \
-		'#endif' \
-		> $(OUT)/sysroot/usr/include/stdatomic.h
+	rm -f $(OUT)/sysroot/usr/include/stdatomic.h
 
 # cmake feature-probes and many deps pass -lm / -lpthread. Embox has a single
 # archive (libc.a -> embox.a); alias libm/libpthread to it so ld.lld can
