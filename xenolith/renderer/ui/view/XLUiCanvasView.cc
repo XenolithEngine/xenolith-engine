@@ -45,6 +45,9 @@ constexpr Color4F ZoomControlInk = Color4F(0.94f, 0.94f, 0.96f, 1.0f);
 // Above the world and anything the caller puts in it.
 constexpr ZOrder ZoomControlZOrder = ZOrder(1'000);
 
+// Below the world, which is at zero; this node draws nothing of its own.
+constexpr ZOrder GridZOrder = ZOrder(-1);
+
 } // namespace
 
 bool CanvasView::init() { return init(sprt::geom::InteractiveZoom); }
@@ -71,6 +74,27 @@ void CanvasView::handleContentSizeDirty() {
 
 	// The viewport needs no update (size is read on demand); the control follows its corner.
 	layoutZoomControl();
+
+	if (_grid) {
+		_grid->setContentSize(_contentSize);
+	}
+}
+
+void CanvasView::setGridEnabled(bool value) {
+	if (value == (_grid != nullptr)) {
+		return;
+	}
+	if (!value) {
+		_grid->removeFromParent();
+		_grid = nullptr;
+		return;
+	}
+	_grid = addChild(Rc<basic2d::PixelGrid>::create(), GridZOrder);
+	_grid->setName("canvas-grid");
+	_grid->setAnchorPoint(Vec2(0.0f, 0.0f));
+	_grid->setPosition(Vec2(0.0f, 0.0f));
+	_grid->setContentSize(_contentSize);
+	_grid->setMappingSource(_world);
 }
 
 void CanvasView::handleGlobalTransformDirty(const Mat4 &parentTransform) {

@@ -154,6 +154,11 @@ protected:
 	core::RenderServerChannel *getRenderServer() const;
 
 	void handleScreenshot(NotNull<Session>, int64_t serial, Value &&args);
+
+	// A screenshot is taken from a frame that has to be rendered, and a scene rendering on demand
+	// may never produce one. The scene renders continuously while any screenshot is pending.
+	void holdScreenshotRender();
+	void releaseScreenshotRender();
 	void handleInvoke(NotNull<Session>, int64_t serial, Value &&args);
 	void handleInput(NotNull<Session>, int64_t serial, Value &&args);
 	void handleText(NotNull<Session>, int64_t serial, Value &&args);
@@ -162,6 +167,9 @@ protected:
 	Rc<sprt::dispatch::ListenHandle> _listener;
 	Set<Rc<Session>> _sessions;
 	Map<String, Command> _commands;
+
+	// Screenshots requested and not yet answered; see holdScreenshotRender.
+	uint32_t _screenshotsPending = 0;
 };
 
 namespace inspector {

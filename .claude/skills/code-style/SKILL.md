@@ -152,7 +152,13 @@ lifetime, or for error detection. Details and examples:
     always has a real answer (for a row: it is outside the scroll window — scroll
     to it). Geometry: Y up, `anchorPoint` normalized,
     `contentSize` untransformed, rotation in radians; convert points with
-    `convertToNodeSpace`/`convertToWorldSpace`. Node identity feeds CSS
+    `convertToNodeSpace`/`convertToWorldSpace`. **Draw order is the z-path, not the
+    traversal**: number a painted widget's children from `ZOrder(1)` (a child at 0
+    shares its parent's plane, where the winner is material batching rather than
+    submission order), give siblings distinct orders, and use a scissor
+    (`DynamicStateSystem::enableScissor`) when the question is clipping rather
+    than order — [design/draw-order.adoc](../../../docs/design/draw-order.adoc).
+    Node identity feeds CSS
     (`NodeIdentity` component): `setType()` → tag selector, **`setName()` → `#id`
     selector** (a node's name *is* its CSS id, and names are not unique),
     `addStyleClass()` → `.class`; numeric `setTag()` is invisible to CSS.
@@ -336,6 +342,7 @@ lifetime, or for error detection. Details and examples:
 | Adding behaviour or data to a node — `System`, `Component`, and why not to subclass `Node` | [node-system-component.adoc](../../../docs/usage/codestyle/scene/node-system-component.adoc) |
 | Making a node draggable or droppable; the payload a drag shares with the clipboard | [drag-and-drop.adoc](../../../docs/usage/codestyle/scene/drag-and-drop.adoc) |
 | Binding a key combination; registering a named hotkey, subscribing an `InputListener`, delivery order vs focus | [hotkeys.adoc](../../../docs/usage/codestyle/scene/hotkeys.adoc) |
+| **Which of two draws lands on top** — z-path and planes, render levels, why a child at `ZOrder(0)` is covered by its parent's background, clipping with a scissor | [design/draw-order.adoc](../../../docs/design/draw-order.adoc) |
 | **Which node phase / `SystemFlags` / `handle*` hook to use** — phase order, dirty flags, frame-stack child events, dispatch priority | [design/node-system-event-pipeline.adoc](../../../docs/design/node-system-event-pipeline.adoc) |
 | Calling libc, POSIX paths and Windows conversion, what's missing per platform, `sprt` vs `std::` | [runtime-libc.adoc](../../../docs/usage/codestyle/platform/runtime-libc.adoc) |
 | Reading/writing a `data::Value`, JSON/CBOR/Serenity, config and IPC payloads | [data-value.adoc](../../../docs/usage/codestyle/core/data-value.adoc) |
@@ -349,6 +356,7 @@ lifetime, or for error detection. Details and examples:
 | **`data::Value` in depth** — accessors, container access, custom encoders, interface conversion, the `Value::Null` trap, pitfalls table | [data/value.adoc](../../../docs/usage/data/value.adoc) |
 | **`sprt::unicode` / `sprt::idn` in depth** — the three comparisons, collation strength/options/sort keys, locale coverage and `SPRT_COLLATION`, UTS-46 options and errors | [unicode-and-idn.adoc](../../../docs/usage/unicode-and-idn.adoc) |
 | GPU particles: what a `ParticleSystem` parameter means (against Godot), `ParticleEmitter`, feedback and snapshots, checking the GPU against the CPU reference | [basic2d/particles.adoc](../../../docs/usage/basic2d/particles.adoc) |
+| A pixel grid over a zoomable plane or an image (`basic2d::PixelGrid`, `CanvasView::setGridEnabled`), snapping to device pixels | [basic2d/pixel-grid.adoc](../../../docs/usage/basic2d/pixel-grid.adoc) |
 | Everything, plus topics not yet written up | [index.adoc](../../../docs/usage/codestyle/index.adoc) |
 
 Adjacent skills: `xenolith-build` (how to build/verify), `css-engine` (CSS

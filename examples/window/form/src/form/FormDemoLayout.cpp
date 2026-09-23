@@ -128,7 +128,7 @@ select > icon, search-picker > icon   { width: 18px; height: 18px; color: var(--
 slider       { flex-grow: 1; height: 18px; background-color: var(--control); border-radius: 3px; }
 slider-fill  { background-color: var(--accent); border-radius: 3px; }
 slider-thumb { width: 14px; height: 14px; border-radius: 7px; background-color: #f2f2f2; }
-slider:focus > slider-thumb { background-color: #fcb400; }
+slider-thumb:focus { background-color: #fcb400; } /* the handle carries the widget's state */
 
 chip-row { flex-grow: 1; display: flex; flex-direction: row; flex-wrap: wrap; align-items: center;
            column-gap: 6px; row-gap: 6px; padding: 3px 6px;

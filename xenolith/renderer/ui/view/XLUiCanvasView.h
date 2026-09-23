@@ -28,6 +28,7 @@
 #include "XLNode.h"
 #include "XLInputListener.h"
 #include "XLDynamicStateSystem.h"
+#include "XL2dPixelGrid.h"
 
 #include <sprt/runtime/geom/viewport.h>
 
@@ -123,6 +124,12 @@ public:
 	// default, (1,1) the top-right. `margin` is in points, on both axes.
 	void setZoomControlPlacement(const Vec2 &corner, float margin = ZoomControlMargin);
 
+	/* A pixel grid behind the world, following its pan and zoom: a world unit is a grid unit. Off
+	by default; the caller colours it through getGrid(). */
+	void setGridEnabled(bool);
+	bool isGridEnabled() const { return _grid != nullptr; }
+	basic2d::PixelGrid *getGrid() const { return _grid; }
+
 	// The control itself, null while it is off. Its type is `canvas-zoom`, with ordinary `button`
 	// and `label` children, so a stylesheet reaches it too.
 	Node *getZoomControl() const { return _zoomControl; }
@@ -134,6 +141,7 @@ protected:
 	void layoutZoomControl();
 
 	Node *_world = nullptr;
+	basic2d::PixelGrid *_grid = nullptr;
 	DynamicStateSystem *_scissor = nullptr;
 	sprt::geom::ZoomLimits _limits = sprt::geom::InteractiveZoom;
 	bool _clipped = true;

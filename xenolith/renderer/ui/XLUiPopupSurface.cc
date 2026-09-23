@@ -55,6 +55,7 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 
 	// Read here: on the native path the builder runs in another scene.
 	const float parentHeight = parentContent ? parentContent->getContentSize().height : 0.0f;
+	const float parentWidth = parentContent ? parentContent->getContentSize().width : 0.0f;
 
 	/* Resolved here for the same reason: `styleSource` lives in this scene. The parsed sheet is
 	shared, not re-read. Skipped when a sheet was named, so `:root` stays on the surface's own. */
@@ -92,7 +93,7 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 	/* Captured by copy, not moved: on the native path this runs after the opener may be gone, and
 	SubWindow::Config holds title and id prefix as StringViews into the config above. */
 	surfaceConfig.content =
-			[config = config, parentHeight, inheritedSheet](
+			[config = config, parentWidth, parentHeight, inheritedSheet](
 					NotNull<SubWindow> surface) mutable -> Rc<basic2d::SceneLayout2d> {
 		auto layout = Rc<basic2d::SceneLayout2d>::create();
 		layout->setName(config.layoutName.empty() ? StringView("popup-layout")
@@ -169,7 +170,21 @@ Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
 			// origin, so the panel goes at the resolved placement (Y-down from the top).
 			panel->addStyleClass("overlay");
 			const auto rect = surface->getOverlayRect();
-			panel->setPosition(Vec2(float(rect.x), parentHeight - float(rect.y)));
+
+			/* The rect is in the parent content's points, and the layout may be scaled after it is
+			pushed - an application that scales its interface scales every layout it pushes, this one
+			included. So the corner is mapped through the ratio of the layout's own size to the
+			parent's, which is 1 when nothing scales it. */
+			auto place = [layout = layout.get(), panel, rect, parentWidth, parentHeight] {
+				const auto s = layout->getContentSize();
+				const float kx = (parentWidth > 0.0f && s.width > 0.0f) ? s.width / parentWidth : 1.0f;
+				const float ky =
+						(parentHeight > 0.0f && s.height > 0.0f) ? s.height / parentHeight : 1.0f;
+				const float h = s.height > 0.0f ? s.height : parentHeight;
+				panel->setPosition(Vec2(float(rect.x) * kx, h - float(rect.y) * ky));
+			};
+			place();
+			layout->setContentSizeDirtyCallback(sp::move(place));
 		}
 
 		if (config.content) {

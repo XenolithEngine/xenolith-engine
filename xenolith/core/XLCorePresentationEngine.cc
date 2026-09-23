@@ -808,8 +808,15 @@ void PresentationEngine::captureScreenshot(
 	scheduleSwapchainImage(Rc<PresentationFrame>::create(this, _constraints, _frameOrder, _serial,
 			PresentationFrame::OffscreenTarget | PresentationFrame::DoNotPresent,
 			[this, cb = sp::move(cb)](PresentationFrame *frame, bool success) mutable {
-		auto target = frame->getTarget();
-		_loop->captureImage(sp::move(cb), target->getImage(), target->getLayout());
+		// A frame invalidated before it rendered - a swapchain recreated under it - reports failure
+		// and may have no target yet; the caller gets an empty view, as for a lost device.
+		auto target = success ? frame->getTarget() : nullptr;
+		auto image = target ? target->getImage() : nullptr;
+		if (!image) {
+			cb(ImageInfoData(), BytesView());
+			return;
+		}
+		_loop->captureImage(sp::move(cb), image, target->getLayout());
 	}));
 }
 

@@ -29,6 +29,7 @@
 #include "XLUiButton.h"
 #include "XL2dLabel.h"
 #include "XL2dLayer.h"
+#include "XLDynamicStateSystem.h"
 #include "XLScene.h"
 #include "XL2dSceneContent.h" // the definition Scene::getContent() needs to become a Node here
 #include "XLSceneInspector.h"
@@ -268,9 +269,12 @@ file-tile.selected { background-color: var(--row-selected); }
 
 .fe-label { flex-shrink: 0; color: var(--text-dim); font-size: 12px; white-space: nowrap; }
 
-slider       { flex: 0 0 110px; height: 20px; }
+slider       { flex: 0 0 110px; height: 20px; background-color: #2f3742; border-radius: 4px; }
 slider-fill  { background-color: #3949ab; border-radius: 2px; }
-slider-thumb { background-color: #ffffff; border-radius: 7px; }
+/* On the handle: it carries the widget's state, and a state on the widget would not reach it. */
+slider-thumb        { background-color: #d7dbe0; border-radius: 7px; }
+slider-thumb:hover  { background-color: #ffffff; }
+slider-thumb:active { background-color: #9fa9f5; }
 
 checkbox          { flex: 0 0 18px; height: 18px; background-color: #2f3742; border-radius: 3px; }
 checkbox:checked  { background-color: #3949ab; }
@@ -385,6 +389,10 @@ Rc<ui::TreeView> FileExplorerLayout::makePlacesTree() {
 	tree->setRootVisible(false);
 	tree->setSelectionEnabled(true);
 	tree->setRowHeight(_settings.fontSize * 2.0f);
+
+	// Clips for the same reason the browser pane does: a virtualized row is laid out whole.
+	tree->addSystem(Rc<DynamicStateSystem>::create(DynamicStateApplyMode::ApplyForAll))
+			->enableScissor();
 
 	// After it is in a scene: the dock builds a panel's node before parking it, and a widget that
 	// opts into the scene's selection has to have a scene to opt into.

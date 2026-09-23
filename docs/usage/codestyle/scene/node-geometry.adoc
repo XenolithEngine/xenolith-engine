@@ -28,7 +28,7 @@
 | `scale` | `Vec3` | `setScale(float)` sets X and Y |
 | `rotation` | `float` (Z) / `Vec3` / `Quaternion` | **radians** |
 | `skew` | `Vec2` | `setSkewX` / `setSkewY` |
-| `localZOrder` | `ZOrder` | sibling ordering; `ZOrderTransparent` keeps the node out of the z-path |
+| `localZOrder` | `ZOrder` | sibling ordering; `ZOrderTransparent` keeps the node out of the z-path — see [draw order](../../../design/draw-order.adoc) |
 | `depthIndex` | `float` | depth for the render pass |
 
 `anchorPoint` and `contentSize` together define the box: the node's own origin
@@ -96,6 +96,34 @@ Two questions, two answers:
   collapses it; `visibility: hidden` keeps the box, matching CSS.
 
 A layout engine must consult `isDisplayed()`, not `isVisible()`.
+
+## Drawing order
+
+The full mechanism is [design/draw-order.adoc](../../../design/draw-order.adoc);
+three rules cover almost every widget:
+
+* **Number a painted widget's children from 1.** Draws are ordered by *z-path* —
+  the chain of `localZOrder`s from the root — and a path compares with its
+  missing tail read as `0`, so a child at `ZOrder(0)` draws in the same plane as
+  its parent's own sprite. A `ui::Panel`'s background is that sprite, so a child
+  at 0 competes with it and the winner is decided by material batching rather
+  than by the traversal. `ui::Button` puts its label at 1 and its icon at 2.
+* **Give siblings distinct ZOrders.** `sortAllChildren()` is a plain sort, not a
+  stable one, so two children sharing a number come out in either order.
+* An ancestor's order outranks any number a descendant carries: two nodes are
+  compared at the first place their paths differ.
+
+Ordering is not clipping: a node that must not draw outside its box needs a
+scissor, which is a `DynamicStateSystem` state
+([XLDynamicStateSystem.h](../../../../xenolith/application/nodes/XLDynamicStateSystem.h)):
+
+[source,cpp]
+----
+addSystem(Rc<DynamicStateSystem>::create(DynamicStateApplyMode::ApplyForAll))->enableScissor();
+----
+
+`ApplyForAll` is the one to use for children: `ApplyForNodesBelow` covers only
+the negative z-orders.
 
 ## The Overlay draw level
 
@@ -232,6 +260,7 @@ layout, input and data belong in a `System` or a `Component`.
 ## Related
 
 * [scene/node-system-component.adoc](../scene/node-system-component.adoc) — why to prefer systems and components
+* [design/draw-order.adoc](../../../design/draw-order.adoc) — what decides which of two draws lands on top
 * [node-system-event-pipeline.adoc](../../../design/node-system-event-pipeline.adoc) — the visit phases in detail
 * [content-measurement.adoc](../../ui/content-measurement.adoc) — making a node measurable
 * [css-subset.adoc](../../ui/css-subset.adoc) — styling and placing a node from CSS; z-order vs `order`

@@ -59,24 +59,24 @@ bool FileTile::init(IconGridView *view, ThumbnailCache *cache) {
 	ui::Panel::registerStyleAppliers("file-tile");
 	setAnchorPoint(Anchor::BottomLeft);
 
-	_icon = addChild(Rc<basic2d::IconSprite>::create(basic2d::IconName::Empty), ZOrder(0));
+	_icon = addChild(Rc<basic2d::IconSprite>::create(basic2d::IconName::Empty), ZOrder(1));
 	_icon->setAnchorPoint(Anchor::BottomLeft);
 	_icon->addStyleClass("fe-tile-icon");
 
-	_thumb = addChild(Rc<basic2d::Sprite>::create(), ZOrder(1));
+	_thumb = addChild(Rc<basic2d::Sprite>::create(), ZOrder(2));
 	_thumb->setAnchorPoint(Anchor::BottomLeft);
 	_thumb->setTextureAutofit(basic2d::Autofit::Contain);
 	_thumb->setVisible(false);
 
 	for (size_t i = 0; i < ThumbnailCache::FolderPreviewCount; ++i) {
-		auto preview = addChild(Rc<basic2d::Sprite>::create(), ZOrder(2 + int16_t(i)));
+		auto preview = addChild(Rc<basic2d::Sprite>::create(), ZOrder(3 + int16_t(i)));
 		preview->setAnchorPoint(Anchor::BottomLeft);
 		preview->setTextureAutofit(basic2d::Autofit::Cover);
 		preview->setVisible(false);
 		_previews.emplace_back(preview);
 	}
 
-	_label = addChild(Rc<basic2d::Label>::create(), ZOrder(8));
+	_label = addChild(Rc<basic2d::Label>::create(), ZOrder(9));
 	_label->setAnchorPoint(Anchor::TopLeft);
 	_label->setAlignment(font::TextAlign::Center);
 	_label->setMaxLines(2);
@@ -268,7 +268,13 @@ void FileTile::handleContentSizeDirty() {
 	}
 
 	_label->setPosition(Vec2(pad, iconBottom - pad));
-	_label->setWidth(size.width - pad * 2.0f);
+
+	/* Where a line wraps and where it is cut: a name with no break opportunity only obeys the cut,
+	and an overflowing line is not centred. The cut is one em wider than the wrap, since the
+	formatter tests it while pushing a glyph and the wrap only after - equal widths never wrap. */
+	const float text = size.width - pad * 2.0f;
+	_label->setWidth(sprt::max(text - _label->getFontSize().val(), 0.0f));
+	_label->setMaxWidth(text);
 }
 
 } // namespace stappler::xenolith::examples

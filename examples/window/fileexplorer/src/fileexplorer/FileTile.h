@@ -50,8 +50,8 @@ What is under the picture depends on the entry:
     each waits for its own texture and appears on its own, and the folder glyph is a VectorSprite
     that rasterizes deferred.
 
-Every overlapping child is given an explicit ZOrder: a tile outlives the row it is in only by
-being reused, and child insertion order is not what decides drawing order after that. */
+Every overlapping child is given an explicit ZOrder, counted from 1: a child at z 0 draws in the
+same plane as the tile's own background, where the order between them is not the traversal's. */
 class FileTile : public ui::Panel {
 public:
 	virtual ~FileTile() = default;

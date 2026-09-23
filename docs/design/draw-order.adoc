@@ -1,0 +1,162 @@
+# Draw order: z-path, planes and render levels
+
+What decides which of two draws lands on top. The scene graph does **not** draw
+in traversal order: the traversal produces commands, each command carries a
+**z-path** and a **rendering level**, and the frame's `VertexPlan` turns those
+into a depth value and a draw sequence. This document is the reference for that,
+and for the rules a widget has to follow to come out the way it was written.
+
+Sources:
+
+* [XLNode.cc](../../xenolith/application/nodes/XLNode.cc) — `wrapVisit`: the z-path is pushed and popped there
+* [XLNodeInfo.h](../../xenolith/application/nodes/XLNodeInfo.h) — `ZOrderLess`, the comparator that defines a *plane*
+* [XL2dVertexPlan.h](../../xenolith/renderer/basic2d/XL2dVertexPlan.h) / [XL2dVertexPlan.cc](../../xenolith/renderer/basic2d/XL2dVertexPlan.cc) — the four write plans, `updatePathsDepth`, `resolveSurfaceOrder`, `drawWritePlan`
+* [XLCoreEnum.h](../../xenolith/core/XLCoreEnum.h) — `RenderingLevel`
+* [XL2dSprite.cc](../../xenolith/renderer/basic2d/XL2dSprite.cc) — `Sprite::getRealRenderingLevel`, which level a node resolves to
+
+**TL;DR**
+
+* Three things decide the order, in this priority: the **band** (content or
+  overlay), the **plane** (the z-path), and — inside one plane — whatever order
+  the plan draws its materials in.
+* The z-path is the stack of `localZOrder`s from the root down to the node. A
+  node pushes its own before drawing **itself and its children**.
+* Paths are compared with the missing tail read as `0`, so `[3]` and `[3,0]` are
+  the **same plane**. A child at `ZOrder(0)` shares the plane its parent draws
+  in.
+* **Number a painted widget's children from 1.** `ui::Panel` draws its background
+  as the node's own sprite, so a child at 0 competes with it and the winner is
+  decided by material batching, not by the traversal.
+* Order is guaranteed **between** planes only. Give siblings distinct ZOrders —
+  `sortAllChildren` is not a stable sort.
+
+## The z-path
+
+Every visited node pushes its `localZOrder` onto `FrameInfo::zPath` before its
+own draw and pops it after its children:
+
+[source,cpp]
+----
+auto order = getLocalZOrder();
+if (order != ZOrderTransparent) {
+    info.zPath.push_back(order);
+}
+// ... children with z < 0, then this node's own draw, then children with z >= 0
+if (order != ZOrderTransparent) {
+    info.zPath.pop_back();
+}
+----
+
+So a command's z-path is the whole chain of sibling orders above it, and two
+nodes are compared by the first place their chains differ — an ancestor's order
+outranks any number a descendant carries.
+
+`ZOrderTransparent` (`ZOrder::min()`) pushes **nothing**: the node and its whole
+subtree draw in the parent's plane. It is for wrappers that must not become a
+level of ordering of their own.
+
+Within one node the traversal is: children with `z < 0`, the node's own draw,
+children with `z >= 0`. That is the *submission* order — it decides the outcome
+only inside one plane and one material (see below).
+
+## Planes: the zero tail
+
+`ZOrderLess` walks both paths to the length of the longer one and reads a
+missing element as `ZOrder(0)`:
+
+[source,cpp]
+----
+auto len = sprt::max(l.size(), r.size());
+for (size_t i = 0; i < len; ++i) {
+    auto valL = (i < l.size()) ? l.at(i) : ZOrder(0);
+    auto valR = (i < r.size()) ? r.at(i) : ZOrder(0);
+    if (valL != valR) { return valL < valR; }
+}
+return false;
+----
+
+Paths that compare equal are one **plane**: one key in the plan's maps, one depth
+value, no ordering between them.
+
+| path A | path B | relation |
+|---|---|---|
+| `[3]` | `[3, 0]` | **equal** — a parent and its child at `ZOrder(0)` |
+| `[3]` | `[3, 1]` | A is farther (drawn first) |
+| `[3, 9]` | `[4]` | A is farther — the first difference wins |
+| `[0]` | `[0, 0, 0]` | **equal** — any depth of zero tail |
+
+This is what the "number children from 1" rule is about. `ui::Panel` — and every
+widget built on one, which is most of `renderer/ui/` — draws its background as
+the node's *own* sprite, not as a child. A child at `ZOrder(0)` therefore lands
+in the same plane as that background, and which of the two ends up on top is
+decided by the plan, not by the fact that the child was submitted later. The
+widgets follow the rule: `ui::Button` puts its label at 1 and its icon at 2,
+`ui::Slider` its fill at 1 and its handle at 2.
+
+## The bands and the four plans
+
+Each command carries a `RenderingLevel`, and the level picks the plan it is
+written into ([XL2dVertexPlan.cc](../../xenolith/renderer/basic2d/XL2dVertexPlan.cc), `pushVertexData`):
+
+| Level | Depth | Blend | Plan and order |
+|---|---|---|---|
+| `Solid` | writes | no | `solidWritePlan`; drawn first, in any order — the depth buffer sorts it |
+| `Surface` | tests only | yes | `surfaceWritePlan`; drawn next, batched by material. A surface writes no depth, so two surfaces cannot sort each other |
+| `Transparent` | tests only | yes | `transparentWritePlan`, **one plan per z-path**; the plans are drawn in path order, which is painter's order between planes |
+| `Overlay` | near plane | yes | `overlayWritePlan`, in a pass of its own after the frame is captured; inherited by the whole subtree and not escapable |
+
+Depth values are handed out per plane, not per command: `updatePathsDepth` spaces
+every distinct content path evenly over the depth range, farthest path first, and
+puts every overlay path at `0` (the near plane). So the depth buffer enforces the
+plane order for everything that tests against it, and the overlay band is simply
+in front of all content.
+
+Two consequences worth knowing:
+
+* **A surface that painter geometry actually covers is promoted.**
+  `resolveSurfaceOrder` checks every deferred surface against the geometry
+  already in painter's order: if something with a strictly farther path overlaps
+  where the surface draws, the surface is moved into the transparent plan at its
+  own path (and then counts as painter geometry itself). Without it a translucent
+  panel would be drawn before the label it is supposed to cover.
+* **Inside one plan, draws are ordered by pipeline and material** (`drawWritePlan`
+  sorts the materials to minimize pipeline and descriptor switching). Traversal
+  order survives only within one material and one state, where the command chain
+  keeps it. This is the whole reason a plane is not an ordering.
+
+`FlatPass` (no depth buffer) sets `flatOrder`: every plan is drawn in painter's
+order instead, tie-broken by the traversal stamp each command reserved.
+
+## Which level a node resolves to
+
+`Sprite::getRealRenderingLevel()`, in order:
+
+1. a node inside an overlay subtree → `Overlay`, whatever it asked for;
+2. an explicit `setRenderingLevel()` → that;
+3. otherwise derived: a translucent colour, no texture or a stroked material →
+   `Transparent`; an opaque texture with no alpha → `Solid`; and the maximum of
+   any explicit level an ancestor declared.
+
+`ui::Panel` overrides it: an opaque, hard-edged, non-antialiased rectangle draws
+at `Solid` (it writes destination alpha, which a transparent window needs), and
+everything else — rounded corners, any translucency — at `Surface`.
+
+`depthIndex` is **not** part of this. It travels to the shadow pass as the
+instance's `shadowValue`; a node that has to be below another wants a lower
+ZOrder, not a depth value.
+
+## Symptoms
+
+| What you see | What it is |
+|---|---|
+| A widget's hover/selected background swallows its own icon | a child at `ZOrder(0)`, sharing the parent's plane — number the children from 1 |
+| Two siblings swap places between frames or runs | they share a `ZOrder`; `sortAllChildren` is a plain `sprt::sort` and is not stable |
+| A node with the larger `ZOrder` still draws underneath | compare the whole paths from the root, not the two numbers — an ancestor's order decides first |
+| Something draws over a panel it is inside | order is not clipping: a scissor is a `DynamicStateSystem` state, see [node-geometry.adoc](../usage/codestyle/scene/node-geometry.adoc) |
+| A node cannot be covered by anything | it is on the overlay band (`setOverlay`), which is drawn after the content pass |
+
+## Related
+
+* [usage/codestyle/scene/node-geometry.adoc](../usage/codestyle/scene/node-geometry.adoc) — `localZOrder`, the overlay level, the tree API
+* [node-system-event-pipeline.adoc](node-system-event-pipeline.adoc) — the visit phases these commands are produced in
+* [usage/ui/css-subset.adoc](../usage/ui/css-subset.adoc) — z-order versus the CSS `order` property

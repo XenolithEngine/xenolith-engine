@@ -1050,6 +1050,20 @@ void SceneInspector::handleInvoke(NotNull<Session> session, int64_t serial, Valu
 					Value &&result) { sendResponse(session, serial, sp::move(result)); });
 }
 
+static constexpr uint32_t ScreenshotRenderTag = "XLInspectorShot"_tag;
+
+void SceneInspector::holdScreenshotRender() {
+	if (_screenshotsPending++ == 0 && _owner) {
+		_owner->runAction(Rc<RenderContinuously>::create(), ScreenshotRenderTag);
+	}
+}
+
+void SceneInspector::releaseScreenshotRender() {
+	if (_screenshotsPending > 0 && --_screenshotsPending == 0 && _owner) {
+		_owner->stopAllActionsByTag(ScreenshotRenderTag);
+	}
+}
+
 void SceneInspector::handleScreenshot(NotNull<Session> session, int64_t serial, Value &&request) {
 	auto server = getRenderServer();
 	if (!server) {
@@ -1064,6 +1078,8 @@ void SceneInspector::handleScreenshot(NotNull<Session> session, int64_t serial, 
 		sendError(session, serial, "no application thread");
 		return;
 	}
+
+	holdScreenshotRender();
 
 	server->captureScreenshot(
 			[this, session = Rc<Session>(session), serial, raw, app = Rc<AppThread>(app)](
@@ -1097,6 +1113,7 @@ void SceneInspector::handleScreenshot(NotNull<Session> session, int64_t serial, 
 		// the socket lives on the app looper, so the reply must be posted back to it
 		app->performOnAppThread(
 				[this, session = sp::move(session), serial, result = sp::move(result)]() mutable {
+			releaseScreenshotRender();
 			if (result.isString("error")) {
 				sendError(session, serial, result.getString("error"));
 			} else {

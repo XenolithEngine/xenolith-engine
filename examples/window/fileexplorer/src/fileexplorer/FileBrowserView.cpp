@@ -23,6 +23,7 @@
 #include "XLCommon.h" // IWYU pragma: keep
 
 #include "fileexplorer/FileBrowserView.h"
+#include "XLDynamicStateSystem.h"
 #include "XLUiLayoutSystem.h"
 #include "XLUiStyleSystem.h"
 #include "SPFilepath.h"
@@ -49,6 +50,10 @@ bool FileBrowserView::init(ThumbnailCache *cache) {
 	removeStyleClass("xl-ui-panel");
 	ui::Panel::registerStyleAppliers("file-browser");
 	setComponent<ui::SystemManagedLayout>();
+
+	// Nothing this pane holds draws outside it: a virtualized row is laid out whole, however
+	// little of it is in view.
+	addSystem(Rc<DynamicStateSystem>::create(DynamicStateApplyMode::ApplyForAll))->enableScissor();
 
 	buildHeader();
 
