@@ -21,6 +21,36 @@
  **/
 
 #include "XLSoftQueuePass.h"
+
+/* XENOLITH_B3 frame probes (zero3e perf campaign): CNTVCT register read,
+ * not a clock_gettime syscall. 60-pass averages, Main-thread render side. */
+static inline uint64_t xbxVct() {
+	uint64_t v;
+	__asm__ volatile("mrs %0, cntvct_el0" : "=r"(v));
+	return v;
+}
+static inline double xbxVctMs(uint64_t delta) {
+	uint64_t frq;
+	__asm__ volatile("mrs %0, cntfrq_el0" : "=r"(frq));
+	return frq ? double(delta) * 1000.0 / double(frq) : 0.0;
+}
+static uint64_t g_xbxPassNs = 0;
+static uint32_t g_xbxPassN = 0;
+static uint32_t g_xbxPassEntries = 0;
+namespace {
+struct XbxPassTimer {
+	uint64_t t0 = xbxVct();
+	~XbxPassTimer() {
+		g_xbxPassNs += xbxVct() - t0;
+		if (++g_xbxPassN >= 60) {
+			stappler::log::source().info("soft::QueuePass", "xbx:pass run_ms=",
+					xbxVctMs(g_xbxPassNs) / 60.0, " entries=", g_xbxPassEntries);
+			g_xbxPassNs = 0;
+			g_xbxPassN = 0;
+		}
+	}
+};
+}
 #include "XLSoftObject.h"
 #include "XLSoftLoop.h"
 
@@ -733,6 +763,7 @@ static void QueuePassHandle_profileFrame(TimeInterval elapsed, SpanView<URect> a
 }
 
 bool QueuePassHandle::runPass(core::FrameQueue &q) {
+	XbxPassTimer xbxPassTimer;
 	auto getViewForAttachment =
 			[&](const core::AttachmentSubpassData *desc) -> Rc<core::ImageView> {
 		auto aIt = _queueData->attachmentMap.find(desc->pass->attachment);
@@ -836,6 +867,7 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 				log::source().info("soft::QueuePass", "runpass entries=", n,
 						" cmds=", buf->getDrawList().commands.size());
 			}
+			g_xbxPassEntries = n;
 		}
 
 		auto clearAttachment =

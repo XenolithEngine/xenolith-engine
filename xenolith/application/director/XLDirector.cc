@@ -22,6 +22,20 @@
 
 #include "XLDirector.h"
 
+/* XENOLITH_B3 frame probes (zero3e perf campaign): CNTVCT is a register
+ * read (~ns), not a syscall like clock_gettime on Embox (~0.3 ms), so
+ * the probes do not inflate what they measure. 60-frame averages. */
+static inline uint64_t xbxVct() {
+	uint64_t v;
+	__asm__ volatile("mrs %0, cntvct_el0" : "=r"(v));
+	return v;
+}
+static inline double xbxVctMs(uint64_t delta) {
+	uint64_t frq;
+	__asm__ volatile("mrs %0, cntfrq_el0" : "=r"(frq));
+	return frq ? double(delta) * 1000.0 / double(frq) : 0.0;
+}
+
 #include "XLResourceCache.h"
 #include "XLScheduler.h"
 #include "XLScene.h"
@@ -286,7 +300,18 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 
 	setFrameConstraints(req->getFrameConstraints());
 
-	update(t);
+	{
+		const uint64_t xbxUpd0 = xbxVct();
+		update(t);
+		static uint64_t s_updNs = 0;
+		static uint32_t s_updN = 0;
+		s_updNs += xbxVct() - xbxUpd0;
+		if (++s_updN >= 60) {
+			log::source().info("xbx:dir", "upd_ms=", xbxVctMs(s_updNs) / 60.0);
+			s_updNs = 0;
+			s_updN = 0;
+		}
+	}
 
 	// Pick this frame's render graph by name; the server resolves it against its registry of
 	// compiled queues (selectQueue logs if the name is unknown).
@@ -323,6 +348,7 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 #endif
 
 		auto pool = Rc<sprt::PoolRef>::alloc(_allocator);
+		const uint64_t xbxVisit0 = xbxVct();
 
 		pool->perform([&, this] {
 			_scene->renderRequest(req, pool);
@@ -360,7 +386,18 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 		10.3/7.6/15.4 with it, and in every single run the number was the length of that frame's visit.
 		A request minted early in a long visit cannot be sent before that visit ends, so this half of
 		the wait is the VISIT's cost wearing another name. */
-		_application->flushPendingFontGlyphs();
+			_application->flushPendingFontGlyphs();
+
+			{
+				static uint64_t s_visitNs = 0;
+				static uint32_t s_visitN = 0;
+				s_visitNs += xbxVct() - xbxVisit0;
+				if (++s_visitN >= 60) {
+					log::source().info("xbx:dir", "visit_ms=", xbxVctMs(s_visitNs) / 60.0);
+					s_visitNs = 0;
+					s_visitN = 0;
+				}
+			}
 
 #if XL_FRAME_ACCOUNT
 		/* The app half is CLOSED here, not where acquireFrame returns.
@@ -384,6 +421,14 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 	auto appTime = sp::platform::clock(ClockType::Monotonic) - t;
 	_avgFrameTime.addValue(appTime);
 	_avgFrameTimeValue = _avgFrameTime.getAverage();
+	{
+		static uint32_t s_frameN = 0;
+		if (++s_frameN >= 60) {
+			s_frameN = 0;
+			// _avgFrameTimeValue is microseconds (sp::platform::clock)
+			log::source().info("xbx:dir", "frame_ms=", double(_avgFrameTimeValue) / 1000.0);
+		}
+	}
 
 #if XL_FRAME_ACCOUNT
 	// Half of the account; the lambda above adds the visit and publishes the total.
