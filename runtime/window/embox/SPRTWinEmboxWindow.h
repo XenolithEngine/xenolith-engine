@@ -69,9 +69,13 @@ public:
 protected:
 	EmboxWindow *_owner = nullptr;
 	Extent2 _extent;
-	/* CPU shadow: composed frames clear-then-draw off-screen. RGA video
-	 * writes the scanout and flags present() to skip the copy. */
-	uint8_t *_shadow = nullptr;
+	/* CPU shadows: composed frames clear-then-draw off-screen. RGA video
+	 * writes the scanout and flags present() to skip the copy. Two, so
+	 * acquire() can hand one to the rasterizer while the other presents:
+	 * with a single image the frame pipeline serialized into the SUM of
+	 * the compose and render threads (measured 28 ms on zero3e) instead
+	 * of their max (12.6 ms) -- probes of 2026-09-23. */
+	uint8_t *_shadows[2] = {nullptr, nullptr};
 	size_t _shadowSize = 0;
 };
 

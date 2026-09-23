@@ -54,8 +54,8 @@ bool EmboxSoftwareSurface::init(NotNull<EmboxWindow> window) {
 }
 
 SurfaceInfo EmboxSoftwareSurface::getSurfaceOptions(SurfaceInfo &&info) const {
-	info.minImageCount = 1;
-	info.maxImageCount = 1;
+	info.minImageCount = 2;
+	info.maxImageCount = 2;
 	info.currentExtent = _owner ? _owner->getExtent() : Extent2(0, 0);
 	info.minImageExtent = Extent2(1, 1);
 	info.maxImageExtent = info.currentExtent;
@@ -99,16 +99,26 @@ bool EmboxSoftwareSwapchain::init(NotNull<EmboxWindow> window, const SoftwareSwa
 
 	// CPU-composed frames clear-then-draw; that must stay off-screen or the
 	// beam sees black stripes. RGA video writes the scanout directly and
-	// present() skips the copy.
-	_shadow = static_cast<uint8_t *>(::malloc(_shadowSize));
-	if (!_shadow) {
-		oslog::vperror(__SPRT_LOCATION, "EmboxSoftwareSwapchain",
-				"Failed to allocate ", _shadowSize, "-byte present shadow");
-		return false;
+	// present() skips the copy. Allocate what the requester asked for (the
+	// surface offers two): the second image is what lets the pipeline
+	// overlap compose with rasterize+present instead of serializing them.
+	uint32_t imageCount = info.imageCount;
+	if (imageCount < 1) {
+		imageCount = 1;
 	}
-
-	_buffers.emplace_back(SoftwareBuffer{_shadow, stride, _shadowSize});
-	_busy.resize(1, false);
+	if (imageCount > 2) {
+		imageCount = 2;
+	}
+	for (uint32_t i = 0; i < imageCount; ++i) {
+		_shadows[i] = static_cast<uint8_t *>(::malloc(_shadowSize));
+		if (!_shadows[i]) {
+			oslog::vperror(__SPRT_LOCATION, "EmboxSoftwareSwapchain",
+					"Failed to allocate ", _shadowSize, "-byte present shadow");
+			return false;
+		}
+		_buffers.emplace_back(SoftwareBuffer{_shadows[i], stride, _shadowSize});
+	}
+	_busy.resize(imageCount, false);
 	return true;
 }
 
@@ -162,9 +172,10 @@ extern "C" uintptr_t xenolith_soft_scanout_fb(uint32_t *stride) {
 }
 
 Status EmboxSoftwareSwapchain::present(uint32_t index, SpanView<geom::URect> damage) {
-	if (_invalid || !_owner || !_shadow || index != 0) {
+	if (_invalid || !_owner || _buffers.empty() || index >= _buffers.size()) {
 		return Status::ErrorCancelled;
 	}
+	const uint8_t *shadow = _buffers[index].data;
 
 	struct {
 		uint32_t x = 0;
@@ -242,20 +253,20 @@ Status EmboxSoftwareSwapchain::present(uint32_t index, SpanView<geom::URect> dam
 	if (damage.empty()) {
 		// CPU memcpy of 8.3MB + flush ioctl is 15-25ms at -O0; rga2_blit
 		// does the cache clean/invalidate itself.
-		if (rgaPresentCopy(dst, _shadow, uint32_t(_extent.width), uint32_t(_extent.height), stride)
+		if (rgaPresentCopy(dst, shadow, uint32_t(_extent.width), uint32_t(_extent.height), stride)
 				== 0) {
 			return Status::Ok;
 		}
 		/* fall through to the CPU path on error */
 	}
 	if (damage.empty()) {
-		::memcpy(dst, _shadow, _shadowSize);
+		::memcpy(dst, shadow, _shadowSize);
 	} else if (area.w > 0 && area.h > 0) {
 		const size_t rowBytes = size_t(area.w) * 4;
 		const size_t xOff = size_t(area.x) * 4;
 		for (uint32_t row = 0; row < area.h; ++row) {
 			const size_t off = size_t(area.y + row) * stride + xOff;
-			::memcpy(dst + off, _shadow + off, rowBytes);
+			::memcpy(dst + off, shadow + off, rowBytes);
 		}
 	}
 
@@ -293,9 +304,11 @@ void EmboxSoftwareSwapchain::invalidate() {
 	_owner = nullptr;
 	_buffers.clear();
 	_busy.clear();
-	if (_shadow) {
-		::free(_shadow);
-		_shadow = nullptr;
+	for (auto &s : _shadows) {
+		if (s) {
+			::free(s);
+			s = nullptr;
+		}
 	}
 	_shadowSize = 0;
 }
