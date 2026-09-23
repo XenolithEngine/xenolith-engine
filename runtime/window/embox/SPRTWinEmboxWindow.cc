@@ -133,6 +133,10 @@ static int (*const s_rgaPresent)(uint8_t *, const uint8_t *, uint32_t, uint32_t,
 /* Soft backend: last frame already landed in scanout via RGA (weak). */
 extern "C" __attribute__((weak)) int xenolith_soft_rga_direct_presented(void);
 
+/* CPU-written fb subrects of the last direct-RGA frame (strong, from
+ * XLSoftQueuePass.cc): present() flushes exactly these. */
+extern "C" int xenolith_soft_rga_take_cpu_rects(uint32_t *out);
+
 static int (*const s_scanoutDirectDone)() = xenolith_soft_rga_direct_presented;
 
 /* Scanout mapping for RGA video, or 0 if the fb cannot take direct writes. */
@@ -198,15 +202,29 @@ Status EmboxSoftwareSwapchain::present(uint32_t index, SpanView<geom::URect> dam
 	auto *dst = _owner->getMapping();
 	const uint32_t stride = _owner->getStride();
 
-	/* RGA already wrote the visible frame into scanout; still need a cache clean. */
+	/* RGA (a DMA master) already wrote the visible frame straight to
+	 * scanout; only the letterbox strips the pass painted around the
+	 * blit went through the CPU cache. Flush exactly those rects; a
+	 * steady game frame paints none and skips the ioctl entirely --
+	 * the old whole-fb clean walked 8.3 MB every frame for nothing. */
 	if (s_scanoutDirectDone && s_scanoutDirectDone()) {
-		struct FlushRange {
-			void *ptr;
-			size_t len;
-		} flush = { dst, _shadowSize };
 		constexpr int XenolithFbFlushCache = 0x4630;
-		(void)::ioctl(_owner->getFd(), XenolithFbFlushCache,
-				(unsigned long)(uintptr_t)&flush);
+		uint32_t rects[8];
+		int n = xenolith_soft_rga_take_cpu_rects(rects);
+		for (int i = 0; i < n; ++i) {
+			const uint32_t x = rects[i * 4 + 0], y = rects[i * 4 + 1];
+			const uint32_t w = rects[i * 4 + 2], h = rects[i * 4 + 3];
+			if (w == 0 || h == 0) {
+				continue;
+			}
+			struct FlushRange {
+				void *ptr;
+				size_t len;
+			} flush = { dst + size_t(y) * stride + size_t(x) * 4,
+				size_t(h - 1) * stride + size_t(w) * 4 };
+			(void)::ioctl(_owner->getFd(), XenolithFbFlushCache,
+					(unsigned long)(uintptr_t)&flush);
+		}
 		return Status::Ok;
 	}
 
