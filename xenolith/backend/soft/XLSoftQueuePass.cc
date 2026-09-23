@@ -62,6 +62,13 @@ static sprt::atomic<bool> s_scanoutDirectSticky{false};
  * the way back closes that; on every backend without a scanout mapping the flag is never set. */
 static sprt::atomic<bool> s_scanoutDirectPending{false};
 
+/* CPU-written fb subrects of the last direct-RGA frame: the letterbox
+ * strips raster::fillRect painted around the blit. present() flushes
+ * exactly these; a steady game frame has damage == the blit, paints no
+ * strips, and the 8.3 MB whole-fb cache clean goes away entirely. */
+static uint32_t s_scanoutCpuRects[2][4] = {}; // x, y, w, h
+static uint32_t s_scanoutCpuRectCount = 0;
+
 namespace {
 
 struct RgaBlitInfo {
@@ -196,13 +203,28 @@ bool tryRgaVideoBlit(CommandBuffer &buf, const raster::Target &target,
 	}
 
 	// Fill the letterbox strips, blit the intersection.
+	s_scanoutCpuRectCount = 0;
 	if (b.dx > int32_t(x0)) {
 		uint32_t w = uint32_t(b.dx) - x0;
 		raster::fillRect(dst, URect(x0, y0, w, y1 - y0), clearColor);
+		if (fbPixels && s_scanoutCpuRectCount < 2) {
+			s_scanoutCpuRects[s_scanoutCpuRectCount][0] = x0;
+			s_scanoutCpuRects[s_scanoutCpuRectCount][1] = y0;
+			s_scanoutCpuRects[s_scanoutCpuRectCount][2] = w;
+			s_scanoutCpuRects[s_scanoutCpuRectCount][3] = y1 - y0;
+			++s_scanoutCpuRectCount;
+		}
 	}
 	if (right < int32_t(x1)) {
 		uint32_t rx = uint32_t(right > int32_t(x0) ? right : int32_t(x0));
 		raster::fillRect(dst, URect(rx, y0, x1 - rx, y1 - y0), clearColor);
+		if (fbPixels && s_scanoutCpuRectCount < 2) {
+			s_scanoutCpuRects[s_scanoutCpuRectCount][0] = rx;
+			s_scanoutCpuRects[s_scanoutCpuRectCount][1] = y0;
+			s_scanoutCpuRects[s_scanoutCpuRectCount][2] = x1 - rx;
+			s_scanoutCpuRects[s_scanoutCpuRectCount][3] = y1 - y0;
+			++s_scanoutCpuRectCount;
+		}
 	}
 
 	int32_t bw = bx1 - bx0;
@@ -1288,4 +1310,18 @@ void QueuePassHandle::finishSubmit(core::FrameQueue &q, bool success,
 // shadow copy can be skipped (a cache clean is still needed).
 extern "C" int xenolith_soft_rga_direct_presented(void) {
 	return stappler::xenolith::soft::s_scanoutDirectSticky.load() ? 1 : 0;
+}
+
+/* Hand present() the CPU-written fb subrects of the last direct-RGA
+ * frame and clear them; 0 means the frame needs no cache clean at all. */
+extern "C" int xenolith_soft_rga_take_cpu_rects(uint32_t *out) {
+	using stappler::xenolith::soft::s_scanoutCpuRects;
+	using stappler::xenolith::soft::s_scanoutCpuRectCount;
+
+	int n = s_scanoutCpuRectCount > 2 ? 2 : int(s_scanoutCpuRectCount);
+	for (int i = 0; i < n * 4; ++i) {
+		out[i] = reinterpret_cast<const uint32_t *>(s_scanoutCpuRects)[i];
+	}
+	s_scanoutCpuRectCount = 0;
+	return n;
 }
