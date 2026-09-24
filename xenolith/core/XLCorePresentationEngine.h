@@ -28,6 +28,7 @@
 #include "XLCoreInfo.h"
 #include "XLCoreSwapchain.h"
 #include "XLCorePresentationFrame.h"
+#include "XLCorePlaneSource.h"
 #include "SPMovingAverage.h"
 #include "XlCoreMonitorInfo.h"
 
@@ -66,6 +67,10 @@ public:
 
 	// Stable id for multi-window diagnostics (WindowInfo::id). Empty if unknown.
 	virtual StringView getPresentationDebugId() const { return StringView(); }
+
+	// Where this window's presented images are published for a compositor to read, or null when
+	// nobody reads them (see PlaneSource). Asked by the swapchain as it is created.
+	virtual PlaneSource *getPlaneSource() const { return nullptr; }
 };
 
 using sprt::window::UpdateConstraintsFlags;

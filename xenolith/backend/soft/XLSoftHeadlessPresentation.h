@@ -50,6 +50,10 @@ protected:
 //
 // Acquisition is synchronous and hands out no semaphore; present is bookkeeping only. The last
 // presented image stays addressable, so a screenshot can read it without rendering a frame.
+//
+// With a plane source attached (a virtual window, see core::PlaneSource) every presented image is
+// published as a frame and its slot stays pinned - skipped by acquire - until the last reader lets
+// go. The bitmap is final at present, so the frame is readable at once; letting go only unpins.
 class SP_PUBLIC HeadlessSwapchain final : public SwapchainBase {
 public:
 	virtual ~HeadlessSwapchain();
@@ -63,10 +67,15 @@ public:
 	virtual Status present(core::DeviceQueue *, core::ImageStorage *,
 			const core::PresentInfo &) override;
 
+	// Publish every presented image to `source` from now on, and hand it this generation's slots.
+	void attachPlaneSource(NotNull<core::PlaneSource>);
+
 protected:
 	using SwapchainBase::init;
 
 	uint32_t _nextIndex = 0;
+	Rc<core::PlaneSlotTable> _slots;
+	Rc<core::PlaneSource> _planeSource;
 };
 
 // Presentation engine for a headless window. Inherits run()/recreateSwapchain() unchanged - they

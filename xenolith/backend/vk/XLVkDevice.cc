@@ -87,6 +87,18 @@ public:
 
 		buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0,
 				makeSpanView(&bufferOutBarrier, 1));
+
+		/* Hand the image back in the layout it was read in. Whoever uses it next assumes it: a
+		swapchain image's next partial redraw starts with initialLayout = PRESENT_SRC and LOAD, and a
+		published plane frame is sampled as SHADER_READ_ONLY. Undefined has nothing to go back to. */
+		const auto layout = VkImageLayout(_layout);
+		if (layout != VK_IMAGE_LAYOUT_UNDEFINED && layout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+			auto outImageBarrier = ImageMemoryBarrier(_image, VK_ACCESS_TRANSFER_READ_BIT,
+					VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
+					VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, layout);
+			buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
+					VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, makeSpanView(&outImageBarrier, 1));
+		}
 	}
 
 	virtual void handleComplete(bool success) override {

@@ -122,7 +122,8 @@ COST = {
     "window/panel-check.py": 4, "window/clipboard-check.py": 4, "window/scale9-check.py": 3,
     "window/render-level-check.py": 4, "window/overflow-check.py": 3,
     "window/particles-check.py": 42, "window/remote-example-check.py": 24,
-    "window/remote-window-check.py": 20, "window/virtual-window-check.py": 36,
+    "window/remote-window-check.py": 20, "window/virtual-window-check.py": 66,
+    "window/damage-check.py": 15,
     "gittest": 19, "computetest": 6, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
     "uilayouttest": 1, "particlestest": 1,
 }

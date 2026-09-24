@@ -127,7 +127,8 @@ bool PresentationFrame::assignSwapchainImage(Swapchain::SwapchainAcquiredImage *
 	// Keep the SwapchainAcquiredImage intact (copy the swapchain handle instead of moving it) and retain
 	// it: if this frame is discarded before rendering starts, invalidate() hands this untouched image
 	// straight back to the engine's reuse pool instead of dropping the acquired swapchain slot.
-	sw->setImage(Rc<Swapchain>(acquiredImage->swapchain), *acquiredImage->data, acquiredImage->sem);
+	sw->setImage(Rc<Swapchain>(acquiredImage->swapchain), *acquiredImage->data, acquiredImage->sem,
+			acquiredImage->imageIndex);
 	sw->setReady(true);
 	_acquiredImage = acquiredImage;
 	_flags |= ImageAcquired;

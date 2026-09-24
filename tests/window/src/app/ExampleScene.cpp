@@ -748,6 +748,47 @@ void ExampleScene::registerCommands() {
 		done(sp::move(result));
 	});
 
+	/* A virtual window of this process showing a test layout: no OS window, its frames published for
+	a compositor (core::PlaneSource). What damage-check.py runs the damage stand in, with frames held
+	by `window op=plane-hold` while the square walks. The reply says the window was REQUESTED; it
+	shows up in `windows` with `virtual: true`. */
+	inspector::addCommand(content, "open-virtual",
+			"Open a virtual Root window showing a test layout: { layout, width, height }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		Value result;
+		auto server = getDirector() ? getDirector()->getRenderServer() : nullptr;
+		auto test = findTest(req.getString("layout"));
+		if (!server || !test || !test->make) {
+			result.setBool(false, "ok");
+			result.setString(server ? "unknown layout" : "no render server on this window",
+					"error");
+			done(sp::move(result));
+			return;
+		}
+
+		auto id = toString("virtual-", test->name);
+		auto size = Extent2(uint32_t(req.getInteger("width", 640)),
+				uint32_t(req.getInteger("height", 480)));
+		auto handle = SecondaryWindow::open(static_cast<AppWindow *>(server), id, size,
+				[make = test->make](StringView) { return make(); },
+				[this](NotNull<WindowSceneInfo> info) {
+			for (auto it = _virtualWindows.begin(); it != _virtualWindows.end(); ++it) {
+				if (*it == info.get()) {
+					_virtualWindows.erase(it);
+					break;
+				}
+			}
+		}, nullptr, sprt::nullopt, /* shareRemote */ false, /* virtualWindow */ true);
+
+		result.setBool(handle != nullptr, "ok");
+		result.setString(id, "id");
+		if (handle) {
+			_virtualWindows.emplace_back(sp::move(handle));
+		}
+		done(sp::move(result));
+	});
+
 	inspector::addCommand(content, "layout",
 			"Show a test layout: { name, settle } - name is \"nth\" or \"css/nth\"; "
 			"answers once it has settled",

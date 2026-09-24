@@ -56,6 +56,12 @@ protected:
 //
 // Acquisition is synchronous and hands out no semaphore (an unsignalled one would deadlock the
 // submit). The engine must run with acquireImageWithoutFence: vk::Fence has no host-signal path.
+//
+// With a plane source attached (a virtual window, see core::PlaneSource) every presented image is
+// published as a frame, and its slot stays pinned - skipped by acquire - until the last reader lets
+// go. Ownership moves by layout: a device task takes the image PresentSrc -> ShaderReadOnly before
+// the frame is published, and back to PresentSrc before the slot is unpinned. Between the two the
+// image is read by any number of compositor frames and written by none.
 class SP_PUBLIC HeadlessSwapchain final : public core::Swapchain {
 public:
 	virtual ~HeadlessSwapchain();
@@ -85,6 +91,12 @@ public:
 	// The image holding the most recently presented frame - the "current screen". Null until the
 	// first frame is presented.
 	core::ImageObject *getLastPresentedImage() const;
+	uint32_t getLastPresentedSlot() const { return _lastPresentedIndex; }
+
+	// Publish every presented image to `source` from now on, and hand it this generation's slots.
+	void attachPlaneSource(NotNull<core::PlaneSource>);
+
+	core::PlaneSlotTable *getSlotTable() const { return _slots; }
 
 	// Run every view's release callback and destroy the VkImageView, up front and in one place.
 	// Doing it lazily (letting the views die with the swapchain) makes their callbacks fire from
@@ -95,10 +107,17 @@ public:
 protected:
 	using core::Object::init;
 
+	// Move a presented image into the plane: layout task, then publish (loop thread).
+	void publishPlaneFrame(uint32_t slot, Rc<Image> &&);
+
 	Vector<SwapchainImageData> _images;
 	Vector<bool> _acquired;
 	uint32_t _nextIndex = 0;
 	uint32_t _lastPresentedIndex = maxOf<uint32_t>();
+
+	core::Loop *_loop = nullptr;
+	Rc<core::PlaneSlotTable> _slots;
+	Rc<core::PlaneSource> _planeSource;
 };
 
 // Presentation engine for a headless window.
@@ -106,7 +125,8 @@ protected:
 // Inherits the Vulkan engine's run()/recreateSwapchain() (they only talk to PresentationWindow and
 // to createSwapchain, both of which work unchanged) and replaces:
 //  - createSwapchain: builds the pseudo-swapchain instead of a VkSwapchainKHR;
-//  - captureScreenshot: reads back the last presented image instead of rendering an extra frame.
+//  - captureScreenshot: reads back the latest published plane frame, or the last presented image,
+//    instead of rendering an extra frame.
 class SP_PUBLIC HeadlessPresentationEngine final : public PresentationEngine {
 public:
 	virtual ~HeadlessPresentationEngine() = default;

@@ -72,10 +72,12 @@ Rc<WindowSceneInfo> makeSceneInfo(StringView id, ContentBuilder &&,
 		WindowSceneInfo::CloseCallback && = nullptr, Rc<core::Queue> && = nullptr,
 		bool shareRemote = false);
 
+// `virtualWindow` opens it with WindowCreationFlags::Virtual: no OS window, frames published to
+// its plane source.
 Rc<WindowSceneInfo> open(NotNull<AppWindow> anyWindow, StringView id, Extent2 size,
 		ContentBuilder &&builder, WindowSceneInfo::CloseCallback &&onClose = nullptr,
 		Rc<core::Queue> &&queue = nullptr, sprt::optional<IVec2> origin = sprt::nullopt,
-		bool shareRemote = false);
+		bool shareRemote = false, bool virtualWindow = false);
 
 // The scene of the window behind `handle`, or null while it has none. Lets a test reach into the
 // other window's graph.
@@ -101,6 +103,8 @@ public:
 	virtual void handleEnter(Scene *) override;
 	virtual void handleExit() override;
 	virtual void handlePresented(Director *) override;
+
+	virtual void describeQueue(QueueInfo &) override;
 
 	StringView getWindowId() const { return _windowId; }
 

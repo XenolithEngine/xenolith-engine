@@ -343,8 +343,9 @@ Rc<core::ImageView> SwapchainImage::makeView(const ImageViewInfo &info) {
 }
 
 void SwapchainImage::setImage(Rc<Swapchain> &&handle, const Swapchain::SwapchainImageData &image,
-		const Rc<Semaphore> &sem) {
+		const Rc<Semaphore> &sem, uint32_t slot) {
 	_image = image.image.get();
+	_slot = slot;
 	for (auto &it : image.views) { _views.emplace(it.first, it.second); }
 	if (sem) {
 		_waitSem = sem.get();

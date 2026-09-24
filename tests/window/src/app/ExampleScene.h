@@ -93,6 +93,9 @@ protected:
 	// repeated command is a no-op rather than a second window, and cleared by its close callback.
 	Rc<WindowSceneInfo> _secondSharedWindow;
 
+	// Virtual windows opened by `open-virtual`, kept until they close.
+	Vector<Rc<WindowSceneInfo>> _virtualWindows;
+
 	// Windows opened by `open-windows` for a measurement run; kept so they live as long as the app.
 	Vector<Rc<WindowSceneInfo>> _benchWindows;
 	sprt::window::WindowGeometry _lastGeometry;

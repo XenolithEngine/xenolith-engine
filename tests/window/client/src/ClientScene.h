@@ -87,6 +87,9 @@ protected:
 	// Команды инспектора, через которые драйвер читает состояние клиента напрямую, а не угадывает
 	// его по картинке.
 	void registerCommands();
+
+	void startAnimation();
+	void stopAnimation();
 	void registerTextCommand();
 
 	// Очередь сервера НЕ выбирается здесь: раньше сцена искала её по имени "RemoteClientQueue",

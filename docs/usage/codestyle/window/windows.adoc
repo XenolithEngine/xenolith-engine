@@ -587,6 +587,31 @@ the same process reads: four images, `Sampled` included
 `tests/window/virtual-window-check.py` drives all of it through the inspector
 (`window` operations `virtual-state`, `external-display-link`, `display-link`).
 
+### Reading its frames: the plane source
+
+What a virtual window presents is published to its `core::PlaneSource`
+(`AppWindow::getPlaneSource()`, also on `core::PresentationWindow`):
+
+* `getLatest()` is the newest finished frame (`core::PlaneFrame`: serial, slot, image), from any
+  thread; `setListener` hears about each new one on the presentation thread.
+* **Holding the `Rc` is the lock.** The frame's slot stays pinned — the swapchain's `acquire`
+  skips it — until the last reference goes away, from whatever thread. A compositor keeps the
+  frame for as long as its own frame reads it, and several of its frames can hold different
+  images at once.
+* **On Vulkan the layout moves with the owner.** A device task takes the image PresentSrc →
+  ShaderReadOnly before the frame is published, and back to PresentSrc before the slot is
+  unpinned; between the two nothing writes it. The CPU backend publishes at once and only
+  unpins.
+* The source outlives swapchains: a frame of a replaced generation still holds its image, and
+  releasing it returns nothing to a ring that is gone.
+
+A screenshot of a virtual window is a copy of the latest published frame, held for the copy.
+Partial redraw works on these images — the per-slot damage snapshot is keyed by
+`SwapchainImage::getSwapchainSlot()`, not by the image id — and `tests/window/damage-check.py`
+checks it by the picture, with frames held. The inspector reads a plane with `window op=plane`
+(`serial`, `slot`, `pinned`, `imageCount`, `published`), holds one like a slow compositor with
+`op=plane-hold {ms}`, and renders an offscreen frame with `op=offscreen`.
+
 ## Traps
 
 | Trap | What actually happens |
@@ -598,6 +623,7 @@ the same process reads: four images, `Sampled` included
 | hand-building a `Popup` window | fails on every platform without `Subwindows`; `ui::SubWindow` falls back to an overlay |
 | `dynamic_cast<AppWindow *>` to open a popup | null on a remote client, and the popup silently never opens; take `ui::getSubWindowParent(node)` |
 | claiming a virtual window's frames (`setExternalDisplayLink(true)`) and not ticking it | nothing is drawn: each `emitDisplayLink` starts at most one frame |
+| keeping a `PlaneFrame` past the compositor frame that read it | its slot stays out of the ring; hold three of four and the application draws through the last one, hold all and it stops |
 | calling `setFullscreen` / `enableState` without checking capabilities | the call is declined and your UI shows a control that never works |
 | `enableState(Maximized)` at the map event | the WM's `Allowed*` flags have not arrived yet, so it is declined; wait for them |
 | saving the geometry of a maximized window | it comes back the size of the screen, with nothing to un-maximize to |
