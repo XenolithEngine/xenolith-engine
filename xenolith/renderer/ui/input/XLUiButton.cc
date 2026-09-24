@@ -207,9 +207,14 @@ void Button::handleContentSizeDirty() {
 	}
 
 	const bool hasIcon = _icon && _icon->isVisible();
-	if (hasIcon) {
+	const bool hasLabel = _label && _label->isVisible();
+	if (hasIcon && hasLabel) {
 		_icon->setAnchorPoint(Anchor::MiddleLeft);
 		_icon->setPosition(Vec2(s_labelPadding, _contentSize.height / 2.0f));
+	} else if (hasIcon) {
+		// alone, the icon is the whole content and is centered like a label would be
+		_icon->setAnchorPoint(Anchor::Middle);
+		_icon->setPosition(Vec2(_contentSize.width / 2.0f, _contentSize.height / 2.0f));
 	}
 
 	if (_label) {

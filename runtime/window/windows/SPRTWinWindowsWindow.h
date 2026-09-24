@@ -37,6 +37,7 @@ namespace sprt::window {
 
 class WindowsContextController;
 class WindowClass;
+class WindowsDropTarget;
 
 // Whether a touchscreen is attached right now. Defined in SPRTWinWindowsWindow.cc, declared here
 // because the controller re-probes it on WM_DEVICECHANGE and comes earlier in the SCU.
@@ -141,6 +142,9 @@ public:
 	void pushCommand(WPARAM);
 	void popCommand(WPARAM);
 
+	// An OLE drag over this window, at a screen point, with IDropTarget's key state
+	void emitDropEvent(DropPhase, NotNull<DropOffer>, POINTL, DWORD keys);
+
 protected:
 	virtual bool updateTextInput(const TextInputRequest &,
 			TextInputFlags flags = TextInputFlags::RunIfDisabled) override;
@@ -154,6 +158,7 @@ protected:
 	// EnableWindow on top of the base's WindowState::Enabled bit: with the OS itself refusing input
 	// to the parent, a click on it makes Windows flash and raise the dialog that owns it.
 	virtual void setModalBlocked(bool) override;
+
 
 	char32_t makeKeyChar(char32_t);
 
@@ -176,6 +181,9 @@ protected:
 	Rc<WindowClass> _class;
 	HWND _window = nullptr;
 	WideString _wTitle;
+
+	// Registered with RegisterDragDrop for a root or normal window; COM owns its lifetime
+	WindowsDropTarget *_dropTarget = nullptr;
 
 	// WM_SETICON does not take ownership, so these are ours to destroy. Kept for the window's
 	// lifetime rather than released after the message: the window keeps using them.

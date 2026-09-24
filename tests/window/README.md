@@ -46,7 +46,7 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     inline-edit-check.py      headless assertions for the ui::InlineEditor demo
                               (label, table cell, and a FACTORY-built editor)
     table-reorder-check.py    headless assertions for ui::TableView geometry and reorder
-    drag-check.py             runs the four drag-and-drop stands, one process each, and
+    drag-check.py             runs the five drag-and-drop stands, one process each, and
                               reports the summary each of them prints
     scrollbar-check.py        headless assertions for basic2d::ScrollView's scroll bar:
                               geometry, the drag, the paint, and the pointing device
@@ -65,6 +65,8 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     geometry-check.py         headless assertions for window geometry and monitors
     text-undo-check.py        headless assertions for ui::TextHistory (the text-view stand)
     xcb-side-check.py         left/right modifiers on a REAL X11 window (not headless)
+    xdnd-check.py             drops from another client on a REAL X11 window: python-xlib
+                              plays the XDND source (not headless, takes no focus)
 
 The registry mirrors that tree: one `TestInfo` array per directory, tied together by the `TestGroup`
 list at the bottom of `src/app/TestRegistry.cpp`. So a test is addressed the way its sources are -
@@ -108,6 +110,9 @@ line - which is what an editor covering a list row gets - can tell centred from 
 because it drives a real window with XTEST. That is the only way to check that the backend reports
 which *side* of a modifier was pressed - the inspector injects a modifier bitmask directly and
 never exercises xcb at all. Run it by hand after touching key handling in `XcbWindow`.
+`xdnd-check.py` needs the same live server for the same reason on the other side of the protocol:
+it is the other application of an XDND drag, and checks the status, the selection read and the
+finish the X11 backend answers with.
 
 Three things a screenshot is especially bad at, and all three are asserted rather
 than looked at. A **unit** beside a number (`number.set-unit`, `vector.set-unit`)
@@ -276,8 +281,9 @@ first assertion - and the one that would silently break every hint an applicatio
 building a widget. The last section slides a node out from under a pointer that does not move, which
 is the case no synthetic pointer movement would ever catch.
 
-`drag-check.py` is the odd one out: it asserts nothing itself. The four drag stands
-(`drag/drag-basic`, `drag/drag-actions`, `drag/drag-payload`, `drag/drag-text`) run their phases
+`drag-check.py` is the odd one out: it asserts nothing itself. The five drag stands
+(`drag/drag-basic`, `drag/drag-actions`, `drag/drag-payload`, `drag/drag-text`,
+`drag/drag-external`) run their phases
 from a `Sequence` of `DelayTime`s and do their own checking, ending with a
 `SUMMARY: N checks, M failures` line, so what a driver owes them is time - and in headless there is
 no time except the frames it asks for. The script steps frames until that line appears rather than

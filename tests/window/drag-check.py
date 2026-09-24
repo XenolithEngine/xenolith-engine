@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the four drag-and-drop stands headless and report what each of them concluded.
+"""Run the five drag-and-drop stands headless and report what each of them concluded.
 
 Unlike the other check scripts here, this one asserts nothing of its own: each stand runs its
 phases from a Sequence of DelayTimes and does its own checking, ending with
@@ -30,6 +30,7 @@ STANDS = [
     # where the controller keeps the data in process
     ("drag-payload", "XL_DRAG_PAYLOAD_TEST", "DragPayloadTest"),
     ("drag-text", "XL_DRAG_TEXT_TEST", "DragTextTest"),
+    ("drag-external", "XL_DRAG_EXTERNAL_TEST", "DragExternalTest"),
 ]
 
 # The whole sequence is under two seconds of stand time; this is the budget for a debug build on a

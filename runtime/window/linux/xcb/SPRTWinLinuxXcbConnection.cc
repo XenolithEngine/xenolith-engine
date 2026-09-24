@@ -366,7 +366,7 @@ uint32_t XcbConnection::poll() {
 								"Unknown protocol message: ", event->window, " of type ",
 								event->type, ": ", event->data.data32[0]);
 					}
-				} else {
+				} else if (!w->handleXdndMessage(event)) {
 					oslog::vperror(__SPRT_LOCATION, "XcbView",
 							"Unknown client message: ", event->window, " of type ", event->type,
 							": ", event->data.data32[0]);
@@ -716,6 +716,13 @@ bool XcbConnection::createWindow(const WindowInfo *winfo, XcbWindowInfo &xinfo) 
 		_xcb->xcb_change_property(_connection, XCB_PROP_MODE_REPLACE, xinfo.window,
 				_atoms[toInt(XcbAtomIndex::WM_PROTOCOLS)].value, XCB_ATOM_ATOM, 32, nProtocols,
 				protocolAtoms);
+	}
+
+	// Drags from other clients are received (XDND version 5)
+	if (auto xdndAware = _atoms[toInt(XcbAtomIndex::XdndAware)].value) {
+		uint32_t xdndVersion = 5;
+		_xcb->xcb_change_property(_connection, XCB_PROP_MODE_REPLACE, xinfo.window, xdndAware,
+				XCB_ATOM_ATOM, 32, 1, &xdndVersion);
 	}
 
 	xinfo.outputWindow = doCreate(xinfo.visual, xinfo.colormap, xinfo.window, xinfo.depth,

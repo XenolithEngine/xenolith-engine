@@ -73,11 +73,15 @@ public:
 
 	virtual SurfaceSupportInfo getSupportInfo() const override;
 
+	// OLE is up on the context thread, so windows can register as drop targets
+	bool isOleInitialized() const { return _oleInitialized; }
+
 protected:
 	virtual bool loadWindow(Rc<WindowInfo> &&) override;
 
 	Rc<MessageWindow> _messageWindow;
 	Map<WideStringView, Rc<WindowClass>> _classes;
+	bool _oleInitialized = false;
 };
 
 } // namespace sprt::window

@@ -152,6 +152,9 @@ public:
 
 	void handleDecorConfigure(zxdg_toplevel_decoration_v1 *decor, uint32_t mode);
 
+	// A drag from another client over this surface, at the protocol's surface coordinates
+	void emitDropEvent(DropPhase, NotNull<DropOffer>, wl_fixed_t surface_x, wl_fixed_t surface_y);
+
 	void handlePointerEnter(wl_fixed_t surface_x, wl_fixed_t surface_y);
 	void handlePointerLeave();
 	void handlePointerMotion(uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y);

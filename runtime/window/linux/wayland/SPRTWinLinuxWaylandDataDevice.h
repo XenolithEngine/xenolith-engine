@@ -35,6 +35,7 @@
 #include <sprt/runtime/window/types.h>
 #include <sprt/runtime/window/clipboard.h>
 #include <sprt/runtime/window/interface.h>
+#include <sprt/runtime/window/drop.h>
 
 #include <wayland-client.h>
 
@@ -43,6 +44,8 @@ namespace sprt::window {
 struct WaylandDisplay;
 struct WaylandDataDevice;
 struct WaylandSeat;
+
+class WaylandWindow;
 
 class WaylandLibrary;
 
@@ -67,11 +70,10 @@ struct SPRT_API WaylandDataOffer : public Ref {
 	uint32_t actions = 0;
 	uint32_t selectedAction = 0;
 
-	bool attached = false;
 	uint32_t serial = 0;
 	struct wl_surface *surface = nullptr;
-	wl_fixed_t x;
-	wl_fixed_t y;
+	wl_fixed_t x = 0;
+	wl_fixed_t y = 0;
 
 	Vector<String> types;
 };
@@ -126,6 +128,31 @@ struct SPRT_API WaylandDataSource : public Ref {
 	Rc<ClipboardData> data;
 };
 
+/** A drag from another client over one of our windows, answered through its wl_data_offer.
+
+The offer outlives the drag on the device: after the drop the application may still read it, and
+only finish() releases the proxy. */
+class SPRT_API WaylandDropOffer : public DropOffer {
+public:
+	virtual ~WaylandDropOffer() = default;
+
+	virtual bool init(NotNull<dispatch::Looper>, NotNull<WaylandDataDevice>,
+			NotNull<WaylandDataOffer>);
+
+protected:
+	virtual void handleRead(StringView type, ReadCallback &&) override;
+	virtual void handleStatus(DragActions) override;
+	virtual void handleFinish(DragActions) override;
+
+	void flush();
+
+	Rc<WaylandDataDevice> _device;
+	Rc<WaylandDataOffer> _offer;
+
+	bool _statusSent = false;
+	DragActions _sentStatus = DragActions::None;
+};
+
 struct SPRT_API WaylandDataDevice : public Ref {
 	virtual ~WaylandDataDevice();
 
@@ -134,9 +161,14 @@ struct SPRT_API WaylandDataDevice : public Ref {
 	void setSelection(NotNull<WaylandDataOffer>);
 	void clearSelection();
 
-	void enter(NotNull<WaylandDataOffer>);
+	// `window` is null when the surface is not one of our windows
+	void enter(NotNull<WaylandDataOffer>, WaylandWindow *window);
+	void motion(wl_fixed_t x, wl_fixed_t y);
 	void leave();
 	void drop();
+
+	// The window is going away: a drag over it reports nothing more
+	void clearWindow(WaylandWindow *);
 
 	Status readFromClipboard(Rc<ClipboardRequest> &&req);
 	Status probeClipboard(Rc<ClipboardProbe> &&probe);
@@ -147,9 +179,17 @@ struct SPRT_API WaylandDataDevice : public Ref {
 	WaylandSeat *seat = nullptr;
 	wl_data_device *device = nullptr;
 
+	// An offer the compositor announced but has not yet used for a selection or a drag. Replaced
+	// by the next announcement, which destroys an offer nothing claimed
+	Rc<WaylandDataOffer> pendingOffer;
+
 	Rc<WaylandDataOffer> selectionOffer;
 	Rc<WaylandDataSource> selectionSource;
 	Rc<WaylandDataOffer> dnd;
+
+	// The drag over one of our windows, reported to that window
+	Rc<WaylandDropOffer> dropOffer;
+	WaylandWindow *dropWindow = nullptr;
 };
 
 } // namespace sprt::window

@@ -21,14 +21,47 @@
  **/
 
 #include "XLDragTypes.h"
+#include "XLAppThread.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
+
+// App thread only, so the counters need no atomics
+struct DragData::External : public Ref {
+	Rc<sprt::window::DropOffer> offer;
+	Rc<AppThread> app;
+	uint32_t pending = 0;
+	DragActions performed = DragActions::None;
+	bool settled = false;
+	bool finished = false;
+
+	void tryFinish() {
+		if (settled && pending == 0 && !finished) {
+			finished = true;
+			offer->finish(performed);
+		}
+	}
+};
 
 bool DragData::init(Rc<sprt::window::ClipboardData> &&data, Rc<Ref> &&local, StringView localType) {
 	_clipboard = sp::move(data);
 	_local = sp::move(local);
 	_localType = localType.str<Interface>();
 	return true;
+}
+
+bool DragData::init(NotNull<sprt::window::DropOffer> offer, NotNull<AppThread> app) {
+	_clipboard = Rc<sprt::window::ClipboardData>::create();
+	for (auto &it : offer->getTypes()) { _clipboard->types.emplace_back(it); }
+
+	auto ext = Rc<External>::alloc();
+	ext->offer = offer.get();
+	ext->app = app.get();
+	_external = sp::move(ext);
+	return true;
+}
+
+DragData::External *DragData::getExternal() const {
+	return static_cast<External *>(_external.get());
 }
 
 SpanView<sprt::window::String> DragData::getTypes() const {
@@ -62,6 +95,48 @@ sprt::window::Bytes DragData::encode(StringView type) const {
 		return sprt::window::Bytes();
 	}
 	return _clipboard->encodeCallback(type);
+}
+
+bool DragData::read(StringView type, ReadCallback &&cb, Ref *target) {
+	if (!cb || !hasType(type)) {
+		return false;
+	}
+
+	auto ext = getExternal();
+	if (!ext) {
+		auto bytes = encode(type);
+		cb(bytes.empty() ? Status::Declined : Status::Ok, bytes);
+		return true;
+	}
+
+	if (ext->finished) {
+		return false;
+	}
+
+	++ext->pending;
+
+	Rc<External> state = ext;
+	Rc<Ref> keep = target;
+	ext->offer->read(type, [state, keep, cb = sp::move(cb)](Status st, BytesView data) mutable {
+		// Copied here: the view is borrowed for this call only, and the answer moves threads
+		state->app->performOnAppThread(
+				[state, keep, cb = sp::move(cb), st, bytes = data.bytes<Interface>()]() mutable {
+			cb(st, bytes);
+			--state->pending;
+			state->tryFinish();
+		}, state);
+	});
+	return true;
+}
+
+void DragData::settle(DragActions performed) {
+	if (auto ext = getExternal()) {
+		if (!ext->settled) {
+			ext->settled = true;
+			ext->performed = performed;
+			ext->tryFinish();
+		}
+	}
 }
 
 Rc<sprt::window::ClipboardData> DragOffer::takeClipboardData(Ref *owner) {

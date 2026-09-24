@@ -58,6 +58,10 @@ public:
 
 	void cancelTransfer(xcb_window_t w, xcb_atom_t p);
 
+	// Convert XdndSelection to `target` at the drag's timestamp. One conversion is in flight at a
+	// time; the callback runs once, with the whole value
+	void readDndSelection(xcb_atom_t target, xcb_timestamp_t, Function<void(Status, BytesView)> &&);
+
 	void continueClipboardProcessing();
 	void finalizeClipboardWaiters(BytesView, xcb_atom_t);
 	void handleSelectionNotify(xcb_selection_notify_event_t *);
@@ -221,6 +225,17 @@ protected:
 		xcb_key_symbols_t *keysyms = nullptr;
 	};
 
+	struct DndRead {
+		xcb_atom_t target = 0;
+		xcb_timestamp_t time = XCB_CURRENT_TIME;
+		Function<void(Status, BytesView)> callback;
+	};
+
+	void continueDndProcessing();
+	void finalizeDndRead(Status, BytesView);
+	void handleDndSelectionNotify(xcb_selection_notify_event_t *);
+	void handleDndPropertyNotify(xcb_property_notify_event_t *);
+
 	ClipboardTransfer *addTransfer(xcb_window_t w, xcb_atom_t p, ClipboardTransfer &&t);
 
 	ClipboardTransfer *getTransfer(xcb_window_t w, xcb_atom_t p);
@@ -258,6 +273,13 @@ protected:
 	xcb_timestamp_t _selectionTimestamp = XCB_CURRENT_TIME;
 
 	Map<uint64_t, ClipboardTransfer> _transfers;
+
+	// XdndSelection reads, front first; the front one is converted into XENOLITH_DND
+	Vector<DndRead> _dndReads;
+	bool _dndRequested = false;
+	bool _dndIncr = false;
+	Vector<Bytes> _dndIncrBuffer;
+	size_t _dndIncrSize = 0;
 };
 
 } // namespace sprt::window

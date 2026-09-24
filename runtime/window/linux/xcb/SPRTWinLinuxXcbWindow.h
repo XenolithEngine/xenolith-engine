@@ -40,6 +40,38 @@ namespace sprt::window {
 class XcbConnection;
 class LinuxContextController;
 
+/** A drag from another client (XDND), answered with ClientMessages to the source window. The data
+is XdndSelection, converted at the timestamp of the last position or of the drop. */
+class XcbDropOffer : public DropOffer {
+public:
+	virtual ~XcbDropOffer() = default;
+
+	virtual bool init(NotNull<dispatch::Looper>, NotNull<XcbConnection>, xcb_window_t target,
+			xcb_window_t source, uint32_t version, SpanView<xcb_atom_t> types);
+
+	xcb_window_t getSource() const { return _source; }
+
+	void setTimestamp(xcb_timestamp_t time) { _time = time; }
+
+	DragActions readAction(xcb_atom_t) const;
+
+protected:
+	virtual void handleRead(StringView type, ReadCallback &&) override;
+	virtual void handleStatus(DragActions) override;
+	virtual void handleFinish(DragActions) override;
+
+	xcb_atom_t writeAction(DragActions) const;
+
+	void send(xcb_atom_t type, uint32_t d1, uint32_t d2, uint32_t d3, uint32_t d4);
+
+	Rc<XcbConnection> _connection;
+	xcb_window_t _target = 0;
+	xcb_window_t _source = 0;
+	uint32_t _version = 0;
+	xcb_timestamp_t _time = XCB_CURRENT_TIME;
+	Map<String, xcb_atom_t> _atoms;
+};
+
 enum class XcbMoveResize {
 	SizeTopLeft = 0,
 	SizeTop = 1,
@@ -98,6 +130,10 @@ public:
 
 	void handleSyncRequest(xcb_timestamp_t, xcb_sync_int64_t);
 	void handleCloseRequest();
+
+	// XdndEnter, XdndPosition, XdndLeave or XdndDrop; false for any other message
+	bool handleXdndMessage(xcb_client_message_event_t *);
+	void updateDropEvent(DropPhase, DragActions preferred);
 
 	void notifyScreenChange();
 
@@ -197,6 +233,12 @@ protected:
 
 	Map<MonitorId, ModeInfo> _capturedModes;
 	sprt::bitset<64> _buttons;
+
+	// The XDND drag over this window. Enter is reported on its first position, which XdndEnter
+	// does not carry
+	Rc<XcbDropOffer> _dropOffer;
+	Vec2 _dropLocation;
+	bool _dropEntered = false;
 
 	int16_t _lastPointerRootX = 0;
 	int16_t _lastPointerRootY = 0;

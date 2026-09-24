@@ -88,6 +88,10 @@ public:
 	virtual void handleNativeInputEvents(Vector<InputEventData> &&) override;
 	virtual void handleTextInput(const TextInputState &);
 
+	// One step of an OS drag, from the native window; delivered to the client on the app thread
+	virtual void handleDropEvent(core::DropEvent &&);
+	virtual void handleNativeDropEvent(core::DropEvent &&) override;
+
 	/* The id this window was given when shared, or 0 when not shared. Every RenderClientChannel
 	call carries it, since one channel serves all shared windows. Looked up in the registry each
 	time, not cached. App thread only. */

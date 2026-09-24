@@ -40,6 +40,8 @@
 
 #include "SPRTWinMacos.h"
 
+#include <sprt/runtime/window/drop.h>
+
 // The view IS the IME on this platform.
 //
 // Unlike X11/Wayland/Win32, where TextInputProcessor does the editing itself, here AppKit's input
@@ -48,8 +50,12 @@
 // exists only to hold the state and propagate it to the application. Every NSTextInputClient query
 // is answered out of that same state — AppKit must see the document the application sees, or
 // composition lands in the wrong place.
+//
+// It is also the drop destination: a drag from another application is reported to the window as
+// DropEvents, and the pasteboard is copied out when the drop is performed.
 @interface SPRTMacosView
-: NSView <NSTextInputClient, NSViewLayerContentScaleDelegate, CALayerDelegate> {
+: NSView <NSTextInputClient, NSViewLayerContentScaleDelegate, CALayerDelegate,
+		NSDraggingDestination> {
 	NSSPWIN::MacosWindow *_window;
 	NSArray<NSAttributedStringKey> *_validAttributesForMarkedText;
 
@@ -60,6 +66,9 @@
 
 	NSTrackingArea *_mainArea;
 	NSArray<NSTrackingArea *> *_cursorAreas;
+
+	// The drag from another application over this view, between entered and exited/performed
+	sprt::Rc<NSSPWIN::DropOffer> _dropOffer;
 };
 
 - (instancetype)initWithFrame:(NSRect)frameRect window:(NSSPWIN::MacosWindow *)window;

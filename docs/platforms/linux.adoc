@@ -43,6 +43,13 @@ The display server's file descriptor is registered with the dispatch queue
 (`listenPollableHandle()`), so windowing events flow through the same event loop
 as everything else rather than a dedicated thread.
 
+Both backends receive drags from other applications (see
+[drag and drop](../usage/codestyle/scene/drag-and-drop.adoc)). Wayland answers the
+drag's `wl_data_offer` with `accept`/`set_actions`, reads it through a pipe and
+`finish`es it after the application's reads; X11 is an XDND target (version 5,
+`XdndAware` on the top-level window) that converts `XdndSelection` into a property
+of the support window, INCR included.
+
 ## Vulkan surfaces
 
 [../../xenolith/backend/vk/platform/linux/XLVkPlatformLinux.cc](../../xenolith/backend/vk/platform/linux/XLVkPlatformLinux.cc)

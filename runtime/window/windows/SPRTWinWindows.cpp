@@ -229,6 +229,7 @@ InputModifier KeyCodes::getKeyMods() {
 #include "SPRTWinWindowsContextController.cc"
 #include "SPRTWinWindowsDialog.cc"
 #include "SPRTWinWindowsDisplayConfigManager.cc"
+#include "SPRTWinWindowsDropTarget.cc"
 #include "SPRTWinWindowsMessageWindow.cc"
 #include "SPRTWinWindowsWindow.cc"
 #include "SPRTWinWindowsWindowClass.cc"

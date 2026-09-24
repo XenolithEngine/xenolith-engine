@@ -25,6 +25,7 @@
 #include "SPRTWinWindowsContextController.h"
 #include "SPRTWinWindowsWindow.h"
 #include "SPRTWinWindowsWindowClass.h"
+#include "SPRTWinWindowsDropTarget.h"
 
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/enum.h>
@@ -97,6 +98,12 @@ WindowsWindow::~WindowsWindow() {
 		if (GetCapture() == _window) {
 			_popupCapture = false;
 			ReleaseCapture();
+		}
+		if (_dropTarget) {
+			WindowsOle_revokeDragDrop(_window);
+			_dropTarget->detach();
+			_dropTarget->Release();
+			_dropTarget = nullptr;
 		}
 		SetWindowLongPtrW(_window, GWLP_USERDATA, 0);
 		DestroyWindow(_window);
@@ -329,6 +336,16 @@ bool WindowsWindow::init(NotNull<WindowsContextController> c, Rc<WindowInfo> &&i
 		SetWindowLongPtrW(_window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
 
 		setupWindowIcon();
+
+		if (!auxiliary
+				&& static_cast<WindowsContextController *>(_controller.get())->isOleInitialized()) {
+			_dropTarget = new (sprt::nothrow) WindowsDropTarget(this);
+			if (_dropTarget && FAILED(WindowsOle_registerDragDrop(_window, _dropTarget))) {
+				_dropTarget->detach();
+				_dropTarget->Release();
+				_dropTarget = nullptr;
+			}
+		}
 
 		if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations) && !auxiliary) {
 			// To force-enable rounded corners and shadows - uncomment this
@@ -996,6 +1013,20 @@ Status WindowsWindow::handleChar(char32_t c) {
 		_textInput->insertText(WideStringView(buf, len), InputKeyComposeState::Forced);
 	}
 	return Status::Ok;
+}
+
+void WindowsWindow::emitDropEvent(DropPhase phase, NotNull<DropOffer> offer, POINTL pt,
+		DWORD keys) {
+	POINT point{pt.x, pt.y};
+	ScreenToClient(_window, &point);
+
+	DropEvent ev;
+	ev.phase = phase;
+	ev.offer = offer.get();
+	ev.location = Vec2(point.x, int32_t(_currentState.extent.height) - point.y - 1);
+	ev.preferred = WindowsDrop_readKeys(keys);
+	ev.modifiers = WindowsDrop_readModifiers(keys);
+	handleDropEvent(sprt::move(ev));
 }
 
 Status WindowsWindow::handleMouseMove(IVec2 pos, bool nonclient) {

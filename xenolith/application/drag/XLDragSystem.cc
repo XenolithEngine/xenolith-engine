@@ -26,6 +26,7 @@
 #include "XLSceneContent.h"
 #include "XLInputDispatcher.h"
 #include "director/XLDirector.h"
+#include "XLAppThread.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -59,6 +60,23 @@ bool DragSession::init(NotNull<DragSystem> system, DragOffer &&offer, Rc<Ref> &&
 	}
 
 	return true;
+}
+
+bool DragSession::init(NotNull<DragSystem> system, NotNull<sprt::window::DropOffer> offer,
+		NotNull<AppThread> app, DragActions preferred) {
+	_system = system;
+	_external = offer.get();
+	_offer.allowedActions = offer->getAllowedActions();
+	setExternalPreferred(preferred);
+
+	_data = Rc<DragData>::create(offer, app);
+	return _data != nullptr;
+}
+
+void DragSession::setExternalPreferred(DragActions preferred) {
+	// Without a preference from the OS, a drop from outside copies
+	auto want = pickAction(preferred & _offer.allowedActions);
+	_offer.defaultAction = (want != DragActions::None) ? want : DragActions::Copy;
 }
 
 void DragSession::setDecorator(Rc<Node> &&node) {
@@ -109,7 +127,10 @@ void DragSession::update(const Vec2 &world, InputModifier mods) {
 
 	_world = world;
 	_modifiers = mods;
-	_preferred = modifiersToActions(mods, _offer.allowedActions, _offer.defaultAction);
+
+	// For an external drag the OS has already turned the modifiers into its preference
+	_preferred = modifiersToActions(_external ? InputModifier::None : mods, _offer.allowedActions,
+			_offer.defaultAction);
 
 	Node *next = nullptr;
 	DragActions resolved = DragActions::None;
@@ -157,6 +178,11 @@ void DragSession::update(const Vec2 &world, InputModifier mods) {
 	}
 
 	updateDecorator();
+
+	if (_external) {
+		_external->status(_resolved);
+		return;
+	}
 
 	// No target shows Grabbing; a refused action shows NoDrop via actionToCursor
 	auto cursor = (cursorOverride != WindowCursor::Undefined)
@@ -223,7 +249,7 @@ void DragSession::teardown() {
 		_decorator = nullptr;
 	}
 	_decoratorParent = nullptr;
-	if (_system) {
+	if (_system && !_external) {
 		_system->setCursor(WindowCursor::Undefined);
 	}
 }
@@ -265,6 +291,14 @@ void DragSession::finish(bool performDrop) {
 	}
 
 	_target = nullptr;
+
+	if (_external) {
+		if (!performDrop) {
+			// Cancelled from this side while the OS still thinks the drop is welcome
+			_external->status(DragActions::None);
+		}
+		_data->settle(dropped ? resolved : DragActions::None);
+	}
 
 	if (completion) {
 		completion(dropped ? resolved : DragActions::None);
@@ -451,6 +485,59 @@ void DragSystem::commitDrag() {
 	auto session = sp::move(_session);
 	_session = nullptr;
 	session->finish(true);
+}
+
+void DragSystem::handleExternalDrop(const sprt::window::DropEvent &ev) {
+	auto offer = ev.offer.get();
+	if (!offer) {
+		return;
+	}
+
+	bool own = _session && _session->getExternalOffer() == offer;
+
+	// The OS runs one drag at a time: a new one means the old one ended without telling us
+	if (!own && _session && _session->isExternal() && ev.phase == sprt::window::DropPhase::Enter) {
+		cancelDrag();
+	}
+
+	switch (ev.phase) {
+	case sprt::window::DropPhase::Enter:
+	case sprt::window::DropPhase::Motion:
+		if (!own) {
+			// A Motion with no Enter is a drag that was already over the window when the scene
+			// appeared: start it here
+			auto director = _owner ? _owner->getDirector() : nullptr;
+			auto app = director ? director->getApplication() : nullptr;
+			if (_session || !app || offer->getAllowedActions() == DragActions::None) {
+				offer->refuse(ev.phase);
+				return;
+			}
+
+			auto session = Rc<DragSession>::create(this, offer, app, ev.preferred);
+			if (!session) {
+				offer->refuse(ev.phase);
+				return;
+			}
+			_session = sp::move(session);
+		}
+		_session->setExternalPreferred(ev.preferred);
+		_session->update(ev.location, ev.modifiers);
+		break;
+	case sprt::window::DropPhase::Leave:
+		if (own) {
+			cancelDrag();
+		}
+		break;
+	case sprt::window::DropPhase::Drop:
+		if (!own) {
+			offer->refuse(ev.phase);
+			return;
+		}
+		_session->setExternalPreferred(ev.preferred);
+		_session->update(ev.location, ev.modifiers);
+		commitDrag();
+		break;
+	}
 }
 
 void DragSystem::cancelDrag(Ref *source) {

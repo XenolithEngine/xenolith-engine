@@ -18,8 +18,10 @@
   so a drop target and a paste target are the same handler.
 * `DragActions{Copy, Move, Link}`: the source offers a set, the modifier states a
   **preference**, the target has the last word.
-* v1 is in-process only. The OS path is not implemented, but nothing in the
-  source or target API has to change when it is.
+* **A drag from another application reaches the same targets.** The window
+  reports it, the `DragSystem` runs it as an *external* session, and its bytes
+  come only through `DragData::read`, asynchronously. Dragging *out* of the
+  application is not implemented.
 
 ## Making a node draggable
 
@@ -203,19 +205,21 @@ it is not.
 `DragData` has two ways in, and a target should normally be written against the
 second one:
 
-| | `getLocal()` / `isLocal(type)` | `getTypes()` / `preferType()` / `encode()` |
-|---|---|---|
-| What it is | the live object, by pointer | MIME types and a lazy encoder |
-| Cost | nothing | one call to the encoder, per type actually asked for |
-| Works for a drag from another process | **no** — it is null | yes |
+| | `getLocal()` / `isLocal(type)` | `getTypes()` / `preferType()` / `encode()` | `read(type, cb)` |
+|---|---|---|---|
+| What it is | the live object, by pointer | MIME types and a lazy encoder | the bytes of one type, delivered to a callback |
+| Cost | nothing | one call to the encoder, per type actually asked for | the same, or a transfer from the other application |
+| Works for a drag from another process | **no** — it is null | the types yes, `encode()` **no** — it is empty | yes |
 
 Listing and matching types never materializes bytes. `encode()` is the only thing
-that runs the encoder, and only for a type that was actually offered.
+that runs the encoder, and only for a type that was actually offered. `read()` is the
+call that works for both kinds of drag: in-process data answers before it returns,
+external data later, on the app thread, exactly once.
 
 **An encode callback must be thread-agnostic**: capture copies of what it needs,
-never capture a scene node, never touch the scene graph. In v1 it happens to run on
-the app thread; the contract it is stored under (`sprt::window::ClipboardData`) says
-it may run anywhere, and once the OS path exists it will.
+never capture a scene node, never touch the scene graph. It happens to run on the app
+thread; the contract it is stored under (`sprt::window::ClipboardData`) says it may
+run anywhere.
 
 The same `DragOffer` describes a payload for the clipboard — and the clipboard has
 a description of its own, `ClipboardOffer`, which is the same three fields without
@@ -415,16 +419,55 @@ drawn scene rather than the one on screen; for a ghost that is an improvement,
 since such a frame cannot contain the ghost. `XL_NO_SWAPCHAIN_TRANSFER_SRC=1`
 forces that route for testing.
 
-## What is not implemented
+## Drags from other applications
 
-Only the in-process path. There is no OS-level drag: nothing calls
-`wl_data_device.start_drag`, `DoDragDrop` or the XDND protocol, and an incoming
-drop from another application is discarded by the backends.
+A file dragged out of a file manager, or text out of a browser, arrives the way the
+backends report it: `NativeWindow::handleDropEvent` with a `sprt::window::DropEvent`
+(`Enter`, `Motion`, `Leave`, `Drop`, at a point in the window's pixels) and a
+`DropOffer` for the other application's side. It then takes the path input takes -
+the controller, `AppWindow`, the app thread, `Director` - to
+`DragSystem::handleExternalDrop`, which runs it as a session of its own:
 
-The seams are in place — `DragData` already holds the `ClipboardData` an OS drag
-would carry, `DragSession::isExternal()` already exists so a local-only target can
-branch on it today, and `DragOffer::externalPolicy` marks where the decision goes.
-Two things will genuinely change, and are worth knowing now:
+* **the same targets answer it.** `accept`/`enter`/`over`/`leave`/`drop` are called
+  as for an in-process drag, and `DragSession::isExternal()` /
+  `DragData::isExternal()` tell a target that cares;
+* **there is no source, no decorator and no cursor:** the OS draws the drag and owns
+  the cursor. The preference comes from the OS (the modifiers as it read them), not
+  from the scene;
+* **a drag already in flight refuses it** - one drag at a time, as for `beginDrag`;
+* **the data is read, not encoded.** `DragData::read` goes to the other application
+  and answers on the app thread. The OS is told the outcome once the `drop` slot has
+  returned *and* every read it started has answered; a drop nobody took is reported
+  as `DragActions::None`, and a drag that only passed through is never reported at
+  all.
+
+What a platform delivers, normalized in the backend:
+
+| Type | Wayland, X11 | Windows | macOS |
+|---|---|---|---|
+| `text/uri-list` | as the source offers it | from `CF_HDROP` | from the pasteboard's file URLs |
+| `text/plain` | `UTF8_STRING` on X11 becomes `text/plain` | from `CF_UNICODETEXT` | from the pasteboard's string |
+| anything else | as offered | - | - |
+
+A file list is RFC 2483: `stappler::UrlView::readUriList` splits it and
+`UrlView::readFilePath` turns a `file:` URI into a local path (a Windows drive comes
+back in the runtime's `/c/dir` form).
+
+**The answer to the OS is one step late.** The application decides on its own thread,
+so what a backend tells the source on a move is what was decided for the previous one.
+On Wayland and X11 that is an asynchronous reply anyway; `IDropTarget::DragOver` and
+`draggingUpdated:` return it from a cache. On Windows and macOS the data object lives
+only as long as the OS call, so the backend copies every representation out when the
+drop arrives, and a later `read` is answered from that copy.
+
+A window blocked by a modal dialog refuses drops, and so does a remote client: the
+wire protocol does not carry them.
+
+### What is not implemented
+
+Dragging *out* of the application: nothing calls `wl_data_device.start_drag`,
+`DoDragDrop` or acts as an XDND source, and `DragOffer::externalPolicy` other than
+`Never` is refused. Two things will change when it is:
 
 * **"start internally, escalate when the pointer leaves the window" is not
   implementable.** Wayland's `start_drag` needs the serial of a live button press
@@ -453,7 +496,9 @@ Two things will genuinely change, and are worth knowing now:
 | Drawing a cutout without `ColorMode(R,G,B,One)` | the presented image's alpha is not a transparency; the ghost blends away to nothing |
 | Ending a drag because its source left the scene | the rows of a virtualized view are recycled by the scroll, so that is the ordinary case, not an error. The release is detected from the press chain instead — see "A source leaving the scene" |
 | Calling `refreshDrag()` every frame | it re-runs `over` on the current target, so a list under a parked drag would fire it at 60 Hz. Call it only on a frame where something actually moved, and from `update()` rather than a visit hook |
-| An encode callback capturing `this` of a node | it may run on any thread once the OS path lands. Capture copies |
+| An encode callback capturing `this` of a node | it may run on any thread. Capture copies |
+| `encode()` in a `drop` slot | for a drag from another application it is empty, and the drop is silently not done. `read()` works for both |
+| Keeping `DragData` and reading it after the drop | the OS offer is finished once the reads begun by the `drop` slot answered; a read started later returns `false` |
 | Expecting a clipboard round trip to work in a windowed test | taking the OS selection needs an input serial from a focused window. Run those headless, where the controller keeps the data in process |
 
 ## Trying it
@@ -464,11 +509,22 @@ XL_DRAG_BASIC_TEST=1   ./testapp   # roster, bracket, topmost-wins, exactly-once
 XL_DRAG_ACTIONS_TEST=1 ./testapp   # modifiers, negotiation, cursor
 XL_DRAG_TEXT_TEST=1    ./testapp   # a text field receiving a drop
 XL_DRAG_PAYLOAD_TEST=1 ./testapp --headless   # lazy encoding + clipboard round trip
+XL_DRAG_EXTERNAL_TEST=1 ./testapp --headless  # a drag from another application, synthetic
 ```
 
-The same four are in the registry as the `drag` group, so the inspector reaches them
+`drag-external` injects its drags at the native window with a
+`sprt::window::MemoryDropOffer` standing in for the OS, so everything above the
+backend is the real path. The inspector's `drop` command does the same from outside:
+`{"cmd": "drop", "phase": "enter", "x": 180, "y": 360, "data": {"text/plain": "hi"}}`,
+then `motion`, `drop` or `leave`, and `state` to read what the application answered.
+The backends themselves are checked against the real OS:
+`tests/window/xdnd-check.py` plays the XDND source on a live X server, and on Windows
+the stand drives its window's registered `IDropTarget` with a `CF_HDROP` data object.
+A drop from a file manager onto the stand, by hand, is logged with its path.
+
+The same five are in the registry as the `drag` group, so the inspector reaches them
 without restarting the app: `layout drag/drag-basic`, `drag/drag-actions`,
-`drag/drag-payload`, `drag/drag-text`. Each runs its phases on a timeline of
+`drag/drag-payload`, `drag/drag-text`, `drag/drag-external`. Each runs its phases on a timeline of
 `DelayTime`s and ends with a `SUMMARY: N checks, M failures` line in the log, so
 what a driver waits for is that line, not a frame count.
 

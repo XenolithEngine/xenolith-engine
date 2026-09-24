@@ -519,6 +519,19 @@ enum class XcbAtomIndex {
 	XNULL,
 	XENOLITH_CLIPBOARD,
 	_XSETTINGS_SETTINGS,
+	XdndAware,
+	XdndEnter,
+	XdndPosition,
+	XdndStatus,
+	XdndLeave,
+	XdndDrop,
+	XdndFinished,
+	XdndSelection,
+	XdndTypeList,
+	XdndActionCopy,
+	XdndActionMove,
+	XdndActionLink,
+	XENOLITH_DND,
 };
 
 struct XcbAtomInfo {
@@ -601,6 +614,19 @@ static XcbAtomInfo s_atomRequests[] = {
 	DEFINE_ATOM_REQUEST(XNULL, false),
 	DEFINE_ATOM_REQUEST(XENOLITH_CLIPBOARD, false),
 	DEFINE_ATOM_REQUEST(_XSETTINGS_SETTINGS, false),
+	DEFINE_ATOM_REQUEST(XdndAware, false),
+	DEFINE_ATOM_REQUEST(XdndEnter, false),
+	DEFINE_ATOM_REQUEST(XdndPosition, false),
+	DEFINE_ATOM_REQUEST(XdndStatus, false),
+	DEFINE_ATOM_REQUEST(XdndLeave, false),
+	DEFINE_ATOM_REQUEST(XdndDrop, false),
+	DEFINE_ATOM_REQUEST(XdndFinished, false),
+	DEFINE_ATOM_REQUEST(XdndSelection, false),
+	DEFINE_ATOM_REQUEST(XdndTypeList, false),
+	DEFINE_ATOM_REQUEST(XdndActionCopy, false),
+	DEFINE_ATOM_REQUEST(XdndActionMove, false),
+	DEFINE_ATOM_REQUEST(XdndActionLink, false),
+	DEFINE_ATOM_REQUEST(XENOLITH_DND, false),
 };
 
 #undef DEFINE_ATOM_REQUEST

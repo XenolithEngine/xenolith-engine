@@ -1016,17 +1016,30 @@ bool TextInput::handleTextDrop(const DragEvent &event) {
 		return false;
 	}
 
+	auto insert = [this](BytesView bytes) {
+		auto text = string::toUtf16<Interface>(
+				StringView(reinterpret_cast<const char *>(bytes.data()), bytes.size()));
+
+		// the caret as it is now, as a paste does; filtering happens in validateInput()
+		HistoryEditName name(this, TextHistory::NameDrop);
+		insertText(WideStringView(text), insertionCursor());
+	};
+
+	if (event.data->isExternal()) {
+		// Another application's text arrives after the drop, like a paste from the clipboard
+		return event.data->read(type, [this, insert](Status st, BytesView bytes) {
+			if (sprt::status::isSuccessful(st) && !bytes.empty() && !isReadOnly()) {
+				insert(bytes);
+			}
+		}, this);
+	}
+
 	auto bytes = event.data->encode(type);
 	if (bytes.empty()) {
 		return false;
 	}
 
-	auto text = string::toUtf16<Interface>(
-			StringView(reinterpret_cast<const char *>(bytes.data()), bytes.size()));
-
-	// the caret as it is now, as a paste does; filtering happens in validateInput()
-	HistoryEditName name(this, TextHistory::NameDrop);
-	insertText(WideStringView(text), insertionCursor());
+	insert(bytes);
 	return true;
 }
 

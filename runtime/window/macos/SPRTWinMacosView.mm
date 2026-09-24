@@ -54,6 +54,129 @@
 
 static const NSRange kEmptyRange = {NSNotFound, 0};
 
+namespace sprt::window {
+
+/** A drag from another application. The pasteboard is read while the drag is live, and copied out
+when the drop is performed, since the session may end before the application reads it. */
+class MacosDropOffer : public DropOffer {
+public:
+	virtual ~MacosDropOffer() = default;
+
+	using DropOffer::init;
+
+	virtual bool init(NotNull<dispatch::Looper> looper, NSPasteboard *pasteboard,
+			DragActions allowed) {
+		_pasteboard = pasteboard;
+		return DropOffer::init(looper, readTypes(pasteboard), allowed);
+	}
+
+	void snapshot() {
+		if (_snapped || !_pasteboard) {
+			return;
+		}
+		_snapped = true;
+		for (auto &it : _types) { _snapshot.emplace_back(Representation{it, readData(it)}); }
+		_pasteboard = nil;
+	}
+
+protected:
+	struct Representation {
+		String type;
+		Bytes data;
+	};
+
+	static NSDictionary *fileOptions() {
+		return @{NSPasteboardURLReadingFileURLsOnlyKey: @YES};
+	}
+
+	static Vector<String> readTypes(NSPasteboard *pasteboard) {
+		Vector<String> ret;
+		if ([pasteboard canReadObjectForClasses:@[[NSURL class]] options:fileOptions()]) {
+			ret.emplace_back("text/uri-list");
+		}
+		if ([pasteboard availableTypeFromArray:@[NSPasteboardTypeString]]) {
+			ret.emplace_back("text/plain");
+		}
+		return ret;
+	}
+
+	Bytes readData(StringView type) const {
+		if (!_pasteboard) {
+			return Bytes();
+		}
+
+		if (type == "text/uri-list") {
+			NSArray<NSURL *> *urls = [_pasteboard readObjectsForClasses:@[[NSURL class]]
+																options:fileOptions()];
+			Vector<String> paths;
+			for (NSURL *url in urls) {
+				if (url.fileURL && url.path) {
+					paths.emplace_back(StringView(url.path.UTF8String).str<String>());
+				}
+			}
+			Vector<StringView> views;
+			for (auto &it : paths) { views.emplace_back(it); }
+			auto list = makeFileUriList(views);
+			return Bytes(reinterpret_cast<const uint8_t *>(list.data()),
+					reinterpret_cast<const uint8_t *>(list.data()) + list.size());
+		} else if (type == "text/plain") {
+			NSString *str = [_pasteboard stringForType:NSPasteboardTypeString];
+			if (str) {
+				auto utf8 = StringView(str.UTF8String);
+				return Bytes(reinterpret_cast<const uint8_t *>(utf8.data()),
+						reinterpret_cast<const uint8_t *>(utf8.data()) + utf8.size());
+			}
+		}
+		return Bytes();
+	}
+
+	virtual void handleRead(StringView type, ReadCallback &&cb) override {
+		if (_snapped) {
+			for (auto &it : _snapshot) {
+				if (StringView(it.type) == type) {
+					cb(it.data.empty() ? Status::ErrorNotFound : Status::Ok, it.data);
+					return;
+				}
+			}
+			cb(Status::ErrorNotFound, BytesView());
+			return;
+		}
+
+		auto bytes = readData(type);
+		cb(bytes.empty() ? Status::ErrorNotFound : Status::Ok, bytes);
+	}
+
+	NSPasteboard *_pasteboard = nil;
+	Vector<Representation> _snapshot;
+	bool _snapped = false;
+};
+
+static DragActions MacosDrop_readOperations(NSDragOperation ops) {
+	auto ret = DragActions::None;
+	if (ops & NSDragOperationCopy) {
+		ret |= DragActions::Copy;
+	}
+	if (ops & (NSDragOperationMove | NSDragOperationGeneric)) {
+		ret |= DragActions::Move;
+	}
+	if (ops & NSDragOperationLink) {
+		ret |= DragActions::Link;
+	}
+	return ret;
+}
+
+static NSDragOperation MacosDrop_writeOperation(DragActions action) {
+	switch (action) {
+	case DragActions::Copy: return NSDragOperationCopy;
+	case DragActions::Move: return NSDragOperationMove;
+	case DragActions::Link: return NSDragOperationLink;
+	default: break;
+	}
+	return NSDragOperationNone;
+}
+
+} // namespace sprt::window
+
 @implementation SPRTMacosView
 
 + (Class)layerClass {
@@ -72,7 +195,96 @@ static const NSRange kEmptyRange = {NSNotFound, 0};
 	//self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 	self.layerContentsRedrawPolicy = NSViewLayerContentsRedrawDuringViewResize;
 	self.layerContentsPlacement = NSViewLayerContentsPlacementCenter;
+
+	[self registerForDraggedTypes:@[NSPasteboardTypeFileURL, NSPasteboardTypeString]];
 	return self;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Drops from other applications. The answer to each call is the one the application gave for the
+// previous position: it decides on its own thread.
+// ---------------------------------------------------------------------------------------------
+
+- (void)emitDrop:(NSSPWIN::DropPhase)phase sender:(id<NSDraggingInfo>)sender {
+	if (!_window || !_dropOffer) {
+		return;
+	}
+
+	auto pointInView = [self convertPoint:sender.draggingLocation fromView:nil];
+	auto loc = CGPoint([self convertPointToBacking:pointInView]);
+
+	// The source mask narrows to what the modifiers ask for: that is the OS's preference
+	auto mask = NSSPWIN::MacosDrop_readOperations(sender.draggingSourceOperationMask);
+	auto preferred = NSSPWIN::DragActions::None;
+	if (mask == NSSPWIN::DragActions::Copy || mask == NSSPWIN::DragActions::Move
+			|| mask == NSSPWIN::DragActions::Link) {
+		preferred = mask;
+	}
+
+	NSSPWIN::DropEvent ev;
+	ev.phase = phase;
+	ev.offer = _dropOffer;
+	ev.location = NSSPWIN::Vec2(loc.x, loc.y);
+	ev.preferred = preferred;
+	ev.modifiers = NSSPWIN::getInputModifiers(uint32_t(NSEvent.modifierFlags));
+	_window->handleDropEvent(sprt::move(ev));
+}
+
+- (NSDragOperation)dropAnswer:(id<NSDraggingInfo>)sender {
+	if (!_dropOffer) {
+		return NSDragOperationNone;
+	}
+	return NSSPWIN::MacosDrop_writeOperation(_dropOffer->getStatus())
+			& sender.draggingSourceOperationMask;
+}
+
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
+	_dropOffer = nullptr;
+	if (!_window) {
+		return NSDragOperationNone;
+	}
+
+	auto allowed = NSSPWIN::MacosDrop_readOperations(sender.draggingSourceOperationMask);
+	auto looper = _window->getController()->getLooper();
+	if (allowed == NSSPWIN::DragActions::None || !looper) {
+		return NSDragOperationNone;
+	}
+
+	auto offer =
+			sprt::Rc<NSSPWIN::MacosDropOffer>::create(looper, sender.draggingPasteboard, allowed);
+	if (!offer || offer->getTypes().empty()) {
+		return NSDragOperationNone;
+	}
+
+	_dropOffer = offer;
+	[self emitDrop:NSSPWIN::DropPhase::Enter sender:sender];
+	return [self dropAnswer:sender];
+}
+
+- (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
+	[self emitDrop:NSSPWIN::DropPhase::Motion sender:sender];
+	return [self dropAnswer:sender];
+}
+
+- (void)draggingExited:(id<NSDraggingInfo>)sender {
+	[self emitDrop:NSSPWIN::DropPhase::Leave sender:sender];
+	_dropOffer = nullptr;
+}
+
+- (BOOL)prepareForDragOperation:(id<NSDraggingInfo>)sender {
+	return [self dropAnswer:sender] != NSDragOperationNone;
+}
+
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
+	if (!_dropOffer) {
+		return NO;
+	}
+
+	auto accepted = [self dropAnswer:sender] != NSDragOperationNone;
+	static_cast<NSSPWIN::MacosDropOffer *>(_dropOffer.get())->snapshot();
+	[self emitDrop:NSSPWIN::DropPhase::Drop sender:sender];
+	_dropOffer = nullptr;
+	return accepted;
 }
 
 - (BOOL)wantsUpdateLayer {

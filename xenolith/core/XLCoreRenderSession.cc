@@ -170,6 +170,12 @@ __SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
 RenderClientChannel::~RenderClientChannel() = default;
 
+void RenderClientChannel::handleDropEvent(uint64_t, DropEvent &&ev) {
+	if (ev.offer) {
+		ev.offer->refuse(ev.phase);
+	}
+}
+
 RenderServerChannel::~RenderServerChannel() = default;
 
 __SPRT_POP_ALLOW_CXXABI_ALLOC
@@ -263,6 +269,12 @@ void RenderServerChannel::handleNativeInputEvents(Vector<InputEventData> &&event
 	// No native window to route through: deliver straight to the client, which is what
 	// handleInputEvents does anyway.
 	handleInputEvents(sp::move(events));
+}
+
+void RenderServerChannel::handleNativeDropEvent(DropEvent &&ev) {
+	if (ev.offer) {
+		ev.offer->refuse(ev.phase);
+	}
 }
 
 void RenderServerChannel::setRenderClient(core::RenderClientChannel *c) {

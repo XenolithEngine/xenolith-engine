@@ -32,6 +32,7 @@
 
 #include <sprt/wrappers/windows/user_api.h>
 #include <sprt/wrappers/windows/monitor_api.h>
+#include "SPRTWinWindowsDropTarget.h"
 
 namespace sprt::window {
 
@@ -85,6 +86,15 @@ bool WindowsContextController::init(NotNull<Context> ctx, ContextConfig &&config
 int WindowsContextController::run(NotNull<ContextContainer> ctx) {
 	_context->handleConfigurationChanged(move(_contextInfo));
 
+	// Drag and drop from other applications is OLE's, on the thread that owns the windows
+	auto oleResult = WindowsOle_initialize();
+	_oleInitialized = SUCCEEDED(oleResult);
+	if (!_oleInitialized) {
+		oslog::vpwarn(__SPRT_LOCATION, "WindowsContextController",
+				"OleInitialize failed, drops from other applications are disabled: ",
+				uint32_t(oleResult));
+	}
+
 	// platform main loop
 
 	_messageWindow = Rc<MessageWindow>::create(this);
@@ -135,6 +145,11 @@ int WindowsContextController::run(NotNull<ContextContainer> ctx) {
 	_looper->run();
 
 	destroy();
+
+	if (_oleInitialized) {
+		WindowsOle_uninitialize();
+		_oleInitialized = false;
+	}
 
 	return ContextController::run(ctx);
 }
