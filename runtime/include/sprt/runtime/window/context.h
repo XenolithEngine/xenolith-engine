@@ -29,6 +29,7 @@
 #include <sprt/runtime/window/text_input.h>
 #include <sprt/runtime/window/presentation.h>
 #include <sprt/runtime/window/gapi.h>
+#include <sprt/runtime/window/drop.h>
 
 namespace sprt::window {
 
@@ -55,6 +56,9 @@ public:
 	virtual void handleNativeWindowInputEvents(NotNull<NativeWindow>,
 			Vector<InputEventData> &&) = 0;
 	virtual void handleNativeWindowTextInput(NotNull<NativeWindow>, const TextInputState &) = 0;
+
+	// A drag from another application. The default refuses it
+	virtual void handleNativeWindowDrop(NotNull<NativeWindow>, DropEvent &&);
 
 	virtual void handleSystemNotification(SystemNotification) = 0;
 

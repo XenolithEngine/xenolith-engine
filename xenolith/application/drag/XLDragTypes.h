@@ -28,25 +28,16 @@
 #include "XLClipboard.h" // IWYU pragma: keep - preferMimeType and ClipboardOffer
 
 #include <sprt/runtime/window/clipboard.h>
+#include <sprt/runtime/window/drop.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class Node;
 class DragSession;
+class AppThread;
 
-// What a drop does with the payload; maps onto XdndAction*, DROPEFFECT_*, NSDragOperation* and
-// wl_data_device_manager_dnd_action. A mask means "any of these"; a resolved action is one bit.
-enum class DragActions : uint32_t {
-	None = 0,
-
-	Copy = 1 << 0,
-	Move = 1 << 1,
-	Link = 1 << 2,
-
-	All = Copy | Move | Link,
-};
-
-SP_DEFINE_ENUM_AS_MASK(DragActions)
+// What a drop does with the payload. A mask means "any of these"; a resolved action is one bit.
+using DragActions = sprt::window::DragActions;
 
 // Whether this drag may leave the process. Only Never is implemented; beginDrag rejects Always.
 // Set on the offer: Wayland and X11 need a live press serial/grab, so it cannot change mid-drag.
@@ -59,16 +50,23 @@ enum class DragExternalPolicy : uint8_t {
 
 `getLocal()` is the in-process path: a live object keyed by `getLocalType()`, null for a drag from
 another process. The clipboard half (MIME types plus a lazy encoder) is all an external drag can
-carry, so targets should prefer `getTypes()`/`encode()` when the data is expressible as bytes.
+carry, so targets should prefer `getTypes()` and `read()` when the data is expressible as bytes.
 
 `encode()` runs the encode callback on the caller's thread, which may be any thread: the callback
-must capture copies and never touch the scene graph. */
+must capture copies and never touch the scene graph. A drag from another application has no
+encoder: its bytes come only through `read()`, and only until the drop is finished. */
 class SP_PUBLIC DragData : public Ref {
 public:
+	// The bytes are borrowed for the call
+	using ReadCallback = Function<void(Status, BytesView)>;
+
 	virtual ~DragData() = default;
 
 	virtual bool init(Rc<sprt::window::ClipboardData> &&, Rc<Ref> && = nullptr,
 			StringView localType = StringView());
+
+	// A drag from another application, answered by `offer` through the app thread
+	virtual bool init(NotNull<sprt::window::DropOffer>, NotNull<AppThread>);
 
 	sprt::window::ClipboardData *getClipboardData() const { return _clipboard; }
 
@@ -79,9 +77,20 @@ public:
 	// prefix, so a preference of "text/plain" also selects "text/plain;charset=utf-8"
 	StringView preferType(SpanView<StringView> preference) const;
 
-	// Materialize the bytes for one type. Empty if the type is not on offer or the encoder
-	// declined. See the threading note above
+	// Materialize the bytes for one type. Empty if the type is not on offer, the encoder
+	// declined, or the data is external. See the threading note above
 	sprt::window::Bytes encode(StringView type) const;
+
+	/* The bytes of one type, for any drag. The callback runs exactly once on the app thread:
+	in-process data answers before this returns, external data later. `target` is retained until
+	then. False, with no callback, when the type is not on offer or the drop is already finished.
+
+	The OS hears the outcome of an external drop once the `drop` slot returned and every read begun
+	by then has answered. */
+	bool read(StringView type, ReadCallback &&, Ref *target = nullptr);
+
+	// A drag from another application
+	bool isExternal() const { return _external != nullptr; }
 
 	// The live object, for a drag that started in this process; null otherwise
 	Ref *getLocal() const { return _local; }
@@ -90,9 +99,21 @@ public:
 	bool isLocal(StringView type) const { return _local && _localType == type; }
 
 protected:
+	friend class DragSession;
+
+	struct External;
+
+	External *getExternal() const;
+
+	// The drop is decided; an external offer is finished as soon as no read is outstanding
+	void settle(DragActions performed);
+
 	Rc<sprt::window::ClipboardData> _clipboard;
 	Rc<Ref> _local;
 	String _localType;
+
+	// External, held as Rc<Ref>: the type is private to the .cc
+	Rc<Ref> _external;
 };
 
 /** What a source declares when it starts a drag.

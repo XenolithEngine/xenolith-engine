@@ -145,6 +145,12 @@ wraps the Win32 windowing model:
   window for system notifications.
 * `WindowsDisplayConfigManager` queries monitors and applies display-mode / DPI
   changes.
+* `WindowsDropTarget` (`SPRTWinWindowsDropTarget.*`) is the `IDropTarget` a root
+  or normal window registers, so drags from other applications arrive (see
+  [drag and drop](../usage/codestyle/scene/drag-and-drop.adoc)). `CF_HDROP` becomes
+  `text/uri-list` and `CF_UNICODETEXT` `text/plain`, copied out when the drop
+  arrives. OLE is initialised on the context thread, and its entry points are
+  resolved from `ole32.dll` at run time rather than through `import.lib`.
 
 ## Vulkan surfaces
 

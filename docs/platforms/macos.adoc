@@ -25,7 +25,10 @@ The decisive detail is that the content view's `+layerClass` returns
 `NSView`'s normal drawing path. Frame pacing uses `CADisplayLink` added to the
 run loop in `NSRunLoopCommonModes`, and input arrives through `NSTrackingArea`
 plus the `NSTextInputClient` protocol, mapped to engine key codes via static
-lookup tables.
+lookup tables. The same view is the `NSDraggingDestination` for drags from other
+applications: file URLs and strings on the dragging pasteboard become
+`text/uri-list` and `text/plain`, copied out in `performDragOperation:` (see
+[drag and drop](../usage/codestyle/scene/drag-and-drop.adoc)).
 
 ## Vulkan over Metal (MoltenVK)
 

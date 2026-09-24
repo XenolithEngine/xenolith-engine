@@ -54,6 +54,7 @@ static const TestEntry s_testList[] = {
 	{"css-table", &stappler::performTableCssTests},
 	{"markdown", &stappler::performMarkdownTests},
 	{"cmdline", &stappler::performCommandLineTests},
+	{"uri-list", &stappler::performUriListTests},
 	{"raster", &stappler::performRasterTests},
 	{"datavalue", &stappler::performDataValueTests},
 	{"zip", &stappler::performZipTests},

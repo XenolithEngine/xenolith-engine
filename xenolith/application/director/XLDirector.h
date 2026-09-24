@@ -76,6 +76,8 @@ public:
 			const sprt::window::WindowGeometry &) override;
 	virtual void handleInputEvents(uint64_t windowId, Vector<core::InputEventData> &&) override;
 	virtual void handleTextInput(uint64_t windowId, const core::TextInputState &) override;
+	// Routed to the DragSystem of the scene content; refused without a scene
+	virtual void handleDropEvent(uint64_t windowId, core::DropEvent &&) override;
 	virtual void handleFramePresented(uint64_t frameOrder) override;
 
 	void update(uint64_t t);

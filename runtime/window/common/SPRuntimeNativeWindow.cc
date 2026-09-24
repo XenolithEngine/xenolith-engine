@@ -442,6 +442,16 @@ void NativeWindow::handleInputEvents(Vector<InputEventData> &&events) {
 	_controller->notifyWindowInputEvents(this, sprt::move(events));
 }
 
+void NativeWindow::handleDropEvent(DropEvent &&ev) {
+	if (!ev.offer) {
+		return;
+	}
+	if (ev.phase == DropPhase::Drop) {
+		ev.offer->setDropped();
+	}
+	_controller->notifyWindowDropEvent(this, sprt::move(ev));
+}
+
 void NativeWindow::dispatchPendingEvents() {
 	if (!_pendingEvents.empty()) {
 		handleInputEvents(sprt::move(_pendingEvents));

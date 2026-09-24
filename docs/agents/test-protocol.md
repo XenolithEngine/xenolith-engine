@@ -65,11 +65,14 @@ example is not, and treats its leftover process as a stale `testapp`.
 **Stale `testapp`s are killed before every run and reported after it.** A script that dies between its start and its
 `quit` leaves a headless binary alive for ever, and the next run then talks to whatever the socket is bound to.
 
-## Two exceptions, and they are exceptions on purpose
+## Three exceptions, and they are exceptions on purpose
 
 - **`xcb-side-check.py` is not headless and cannot be in any tier.** It drives a real X11 session with XTEST and takes
   the keyboard focus, so it fails whenever another window holds it. Run it by hand after touching `XcbWindow`'s key
   handling or `getKeySideModifier`: `XL_TEST_DISPLAY=:1 tests/window/xcb-side-check.py`.
+- **`xdnd-check.py` needs a live X server as well**, though it takes no focus: python-xlib plays the XDND source
+  against the `drag-external` stand. Run it by hand after touching the XDND target in `XcbWindow` or the selection
+  reads in `XcbSupportWindow`: `XL_TEST_DISPLAY=:1 tests/window/xdnd-check.py`.
 - **`markdown-perf-check.py` measures rather than checks**, and as things stand it cannot run at all: it regenerates
   its corpus with a `gen-big-md.py` that is not in the repository. Times belong to
   [measuring a frame](measuring-frames.md) anyway - a release build and a quiet machine.

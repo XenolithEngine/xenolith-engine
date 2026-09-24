@@ -25,6 +25,7 @@
 #include "SPRuntimeController.cc"
 #include "SPRuntimeDialog.cc"
 #include "SPRuntimeDisplayConfig.cc"
+#include "SPRuntimeDrop.cc"
 #include "SPRuntimeInput.cc"
 #include "SPRuntimeNativeWindow.cc"
 #include "SPRuntimeSoftwareSurface.cc"

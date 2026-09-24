@@ -752,6 +752,22 @@ void WaylandWindow::handleDecorConfigure(zxdg_toplevel_decoration_v1 *decor, uin
 	XL_WAYLAND_LOG("handleDecorConfigure:", mode);
 }
 
+void WaylandWindow::emitDropEvent(DropPhase phase, NotNull<DropOffer> offer, wl_fixed_t surface_x,
+		wl_fixed_t surface_y) {
+	float d = _density;
+	if (d == 0.0f) {
+		d = 1.0f;
+	}
+
+	DropEvent ev;
+	ev.phase = phase;
+	ev.offer = offer.get();
+	ev.location = Vec2(wl_fixed_to_double(surface_x) * d,
+			_currentExtent.height * d - wl_fixed_to_double(surface_y) * d);
+	ev.modifiers = _activeModifiers;
+	handleDropEvent(sprt::move(ev));
+}
+
 void WaylandWindow::handlePointerEnter(wl_fixed_t surface_x, wl_fixed_t surface_y) {
 	if (!_pointerInit || _display->seat->hasPointerFrames) {
 		auto &ev = _pointerEvents.emplace_back(PointerEvent{PointerEvent::Enter});
@@ -869,16 +885,16 @@ void WaylandWindow::handlePointerMotion(uint32_t time, wl_fixed_t surface_x, wl_
 		ev.motion.x = surface_x;
 		ev.motion.y = surface_y;
 	} else {
+		float d = _density;
+		if (d == 0.0f) {
+			d = 1.0f;
+		}
+
 		_surfaceFX = surface_x;
 		_surfaceFY = surface_y;
 
-		_surfaceX = wl_fixed_to_double(surface_x);
-		_surfaceY = _currentExtent.height - wl_fixed_to_double(surface_y);
-
-		if (_density != 0.0f) {
-			_surfaceX *= _density;
-			_surfaceX *= _density;
-		}
+		_surfaceX = wl_fixed_to_double(surface_x) * d;
+		_surfaceY = _currentExtent.height * d - wl_fixed_to_double(surface_y) * d;
 
 		_pendingEvents.emplace_back(InputEventData({
 			Max<uint32_t>,

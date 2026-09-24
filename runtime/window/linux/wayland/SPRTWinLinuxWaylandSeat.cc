@@ -456,6 +456,9 @@ void WaylandSeat::update() {
 void WaylandSeat::clearWindow(WaylandWindow *window) {
 	pointerViews.erase(window);
 	keyboardViews.erase(window);
+	if (dataDevice) {
+		dataDevice->clearWindow(window);
+	}
 }
 
 InputKeyCode WaylandSeat::translateKey(uint32_t scancode) const {

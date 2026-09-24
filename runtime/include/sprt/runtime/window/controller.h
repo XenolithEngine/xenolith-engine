@@ -38,6 +38,7 @@
 #include <sprt/runtime/window/gapi.h>
 #include <sprt/runtime/window/clipboard.h>
 #include <sprt/runtime/window/dialog.h>
+#include <sprt/runtime/window/drop.h>
 #include <sprt/cxx/function>
 
 namespace sprt::window {
@@ -162,6 +163,10 @@ public:
 
 	// Internal text input buffer was changed
 	virtual void notifyWindowTextInput(NotNull<NativeWindow>, const TextInputState &);
+
+	// A drag from another application over a window. A window blocked by a modal dialog refuses
+	// it here
+	virtual void notifyWindowDropEvent(NotNull<NativeWindow>, DropEvent &&);
 
 	// Window was closed (or ask to be closed) by WM
 	// true if window should be closed, false otherwise (e.g. ExitGuard)

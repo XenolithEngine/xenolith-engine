@@ -32,6 +32,8 @@
 #include "XLCoreFrameRequest.h"
 #include "XLContext.h"
 #include "XLAppWindow.h"
+#include "XLSceneContent.h"
+#include "XLDragSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -370,6 +372,16 @@ void Director::handleInputEvents(uint64_t, Vector<core::InputEventData> &&events
 void Director::handleTextInput(uint64_t, const core::TextInputState &state) {
 	auto copy = state;
 	_textInput->handleInputUpdate(copy);
+}
+
+void Director::handleDropEvent(uint64_t, core::DropEvent &&ev) {
+	auto content = _scene ? _scene->getContent() : nullptr;
+	auto drag = content ? DragSystem::acquireForNode(content) : nullptr;
+	if (drag) {
+		drag->handleExternalDrop(ev);
+	} else {
+		ev.offer->refuse(ev.phase);
+	}
 }
 
 void Director::handleFramePresented(uint64_t frameOrder) {

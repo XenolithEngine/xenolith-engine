@@ -26,6 +26,7 @@
 
 #include "XLCore.h"
 #include <sprt/runtime/window/input.h>
+#include <sprt/runtime/window/drop.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
@@ -40,6 +41,12 @@ using sprt::window::InputEventDataType;
 using sprt::window::InputEventData;
 
 using sprt::window::InteractiveFlags;
+
+using sprt::window::DragActions;
+using sprt::window::DropPhase;
+using sprt::window::DropOffer;
+using sprt::window::MemoryDropOffer;
+using sprt::window::DropEvent;
 
 using sprt::window::getInputKeyCodeName;
 using sprt::window::getInputKeyCodeKeyName;

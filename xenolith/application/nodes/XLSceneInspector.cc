@@ -30,6 +30,8 @@
 #include "XLInheritedStyle.h"
 #include "XLDirector.h"
 #include "XLAppThread.h"
+#include "XLServerAppThread.h"
+#include "XLContext.h"
 #include "XLCoreRenderSession.h"
 #include "XLTextInputManager.h"
 
@@ -963,6 +965,8 @@ void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
 		target->handleInput(session, serial, sp::move(request));
 	} else if (cmd == "text") {
 		target->handleText(session, serial, sp::move(request));
+	} else if (cmd == "drop") {
+		target->handleDrop(session, serial, sp::move(request));
 	} else if (cmd == "frame") {
 		auto server = target->getRenderServer();
 		if (!server) {
@@ -1245,6 +1249,124 @@ void SceneInspector::handleText(NotNull<Session> session, int64_t serial, Value 
 	result.setString(op, "op");
 	result.setBool(true, "applied");
 	sendResponse(session, serial, sp::move(result));
+}
+
+static core::DragActions readDragActions(const Value &val, core::DragActions dflt) {
+	auto one = [](StringView name) {
+		if (name == "copy") {
+			return core::DragActions::Copy;
+		} else if (name == "move") {
+			return core::DragActions::Move;
+		} else if (name == "link") {
+			return core::DragActions::Link;
+		}
+		return core::DragActions::None;
+	};
+
+	if (val.isString()) {
+		return one(val.getString());
+	} else if (val.isArray()) {
+		auto ret = core::DragActions::None;
+		for (auto &it : val.asArray()) { ret |= one(it.getString()); }
+		return ret;
+	}
+	return dflt;
+}
+
+static Value writeDragActions(core::DragActions actions) {
+	Value ret(Value::Type::ARRAY);
+	if (hasFlag(actions, core::DragActions::Copy)) {
+		ret.addString("copy");
+	}
+	if (hasFlag(actions, core::DragActions::Move)) {
+		ret.addString("move");
+	}
+	if (hasFlag(actions, core::DragActions::Link)) {
+		ret.addString("link");
+	}
+	return ret;
+}
+
+void SceneInspector::handleDrop(NotNull<Session> session, int64_t serial, Value &&request) {
+	const Value &req = request;
+	auto phaseName = req.getString("phase");
+
+	auto writeState = [&] {
+		Value result;
+		result.setString(phaseName, "phase");
+		if (_dropOffer) {
+			result.setValue(writeDragActions(_dropOffer->getLastStatus()), "status");
+			result.setValue(writeDragActions(_dropOffer->getPerformed()), "performed");
+			result.setBool(_dropOffer->hasFinished(), "finished");
+			result.setInteger(int64_t(_dropOffer->getReadCount()), "reads");
+		}
+		sendResponse(session, serial, sp::move(result));
+	};
+
+	if (phaseName == "state") {
+		writeState();
+		return;
+	}
+
+	core::DropPhase phase;
+	if (phaseName == "enter") {
+		phase = core::DropPhase::Enter;
+	} else if (phaseName == "motion") {
+		phase = core::DropPhase::Motion;
+	} else if (phaseName == "leave") {
+		phase = core::DropPhase::Leave;
+	} else if (phaseName == "drop") {
+		phase = core::DropPhase::Drop;
+	} else {
+		sendError(session, serial,
+				toString("unknown drop phase: ", phaseName,
+						"; expected enter, motion, leave, drop or state"));
+		return;
+	}
+
+	auto server = getRenderServer();
+	auto director = _owner ? _owner->getDirector() : nullptr;
+	auto app = director ? dynamic_cast<ServerAppThread *>(director->getApplication()) : nullptr;
+	if (!server || !app || !app->getContext()) {
+		sendError(session, serial, "no native window");
+		return;
+	}
+
+	if (phase == core::DropPhase::Enter) {
+		// {"text/plain": "hello", ...}: one representation per MIME type, in the given order
+		Vector<core::MemoryDropOffer::Representation> data;
+		for (auto &it : req.getDict("data")) {
+			auto &rep = data.emplace_back();
+			rep.type = StringView(it.first).str<sprt::window::String>();
+			auto bytes = it.second.isBytes() ? BytesView(it.second.getBytes())
+											 : BytesView(StringView(it.second.getString()));
+			rep.data = bytes.bytes<sprt::window::Bytes>();
+		}
+
+		auto allowed = readDragActions(req.getValue("allowed"), core::DragActions::All);
+		_dropOffer = Rc<core::MemoryDropOffer>::create(app->getContext()->getLooper(),
+				sp::move(data), allowed);
+		_dropOfferEnded = false;
+	}
+
+	if (!_dropOffer || _dropOfferEnded) {
+		sendError(session, serial, "no drag in flight: start one with phase \"enter\"");
+		return;
+	}
+
+	// An OS drag ends with its drop or its leave; the next step belongs to another one
+	_dropOfferEnded = (phase == core::DropPhase::Drop || phase == core::DropPhase::Leave);
+
+	core::DropEvent ev;
+	ev.phase = phase;
+	ev.offer = _dropOffer;
+	ev.location = Vec2(float(req.getDouble("x")), float(req.getDouble("y")));
+	ev.preferred = readDragActions(req.getValue("preferred"), core::DragActions::None);
+
+	server->handleNativeDropEvent(sp::move(ev));
+
+	// The application answers on its own thread: step a frame and ask for "state" to see it
+	writeState();
 }
 
 void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Value &&request) {

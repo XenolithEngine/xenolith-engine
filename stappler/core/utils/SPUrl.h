@@ -39,6 +39,15 @@ struct SP_PUBLIC UrlView : public sprt::UrlView {
 	template <typename Interface>
 	static auto parsePath(StringView) -> typename Interface::template VectorType<StringView>;
 
+	// The entries of a text/uri-list (RFC 2483): one URI per line, CRLF or a bare LF, lines that
+	// start with '#' skipped. The views point into `list`
+	static void readUriList(StringView list, const Callback<void(StringView)> &);
+
+	// The local path of a `file:` URI, percent-decoded, or an empty string for another scheme or
+	// a remote host. A Windows drive (`file:///C:/dir`) becomes the runtime's `/c/dir`
+	template <typename Interface>
+	static auto readFilePath(StringView uri) -> typename Interface::StringType;
+
 #if MODULE_STAPPLER_DATA
 	template <typename Interface>
 	static auto parseArgs(StringView, size_t max) -> data::ValueTemplate<Interface>;

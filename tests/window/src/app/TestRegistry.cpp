@@ -93,6 +93,7 @@
 #include "drag/DragActionsLayout.h"
 #include "drag/DragPayloadLayout.h"
 #include "drag/DragTextLayout.h"
+#include "drag/DragExternalLayout.h"
 
 #include <stdlib.h> // getenv
 
@@ -661,6 +662,15 @@ static const TestInfo s_dragTests[] = {
 				   "read-only field must refuse both, and neither may invent a type the payload "
 				   "never offered. The run must end with 0 failures."),
 		TestRegistry_make<DragTextLayout>},
+
+	TestInfo{StringView("drag-external"), StringView("XL_DRAG_EXTERNAL_TEST"),
+		StringView("A drag from another application"),
+		StringView("An OS drag injected at the native window, with an offer standing in for the "
+				   "platform. It must reach the same targets as an in-process drag, answer the OS "
+				   "on every step, read its data only asynchronously, and finish the OS offer once "
+				   "the drop and its read are done - never for a drag that left, and with no action "
+				   "for a drop nobody took. The run must end with 0 failures."),
+		TestRegistry_make<DragExternalLayout>},
 };
 
 // src/dock - the docking system: the split tree, dividers, tabs and the saved layout

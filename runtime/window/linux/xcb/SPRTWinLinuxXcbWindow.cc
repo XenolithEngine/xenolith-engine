@@ -25,6 +25,7 @@
 #include "../SPRTWinLinux.h"
 #include "SPRTWinLinuxXcbDisplayConfigManager.h"
 #include "SPRTWinLinuxXcbSoftwareSurface.h"
+#include "SPRTWinLinuxXcbSupportWindow.h"
 
 #include <sprt/runtime/enum.h>
 
@@ -1145,6 +1146,232 @@ void XcbWindow::handleSyncRequest(xcb_timestamp_t syncTime, xcb_sync_int64_t val
 // WM_DELETE_WINDOW. Routed through close() rather than straight to the controller, so a guarded
 // window raises WindowState::CloseRequest and the application gets to answer for it.
 void XcbWindow::handleCloseRequest() { close(); }
+
+bool XcbDropOffer::init(NotNull<dispatch::Looper> looper, NotNull<XcbConnection> connection,
+		xcb_window_t target, xcb_window_t source, uint32_t version, SpanView<xcb_atom_t> types) {
+	_connection = connection;
+	_target = target;
+	_source = source;
+	_version = version;
+
+	// UTF8_STRING is the X11 name for text; it is offered as text/plain unless the source already
+	// names a text/plain type itself
+	Vector<String> names;
+	xcb_atom_t textAtom = 0;
+	bool hasText = false;
+	connection->getAtomNames(types, [&](SpanView<StringView> list) {
+		for (size_t i = 0; i < list.size() && i < types.size(); ++i) {
+			auto name = list[i];
+			if (name.empty()) {
+				continue;
+			}
+			if (name == "UTF8_STRING") {
+				textAtom = types[i];
+				continue;
+			}
+			if (name.starts_with("text/plain")) {
+				hasText = true;
+			}
+			names.emplace_back(name.str<String>());
+			_atoms.emplace(name.str<String>(), types[i]);
+		}
+	});
+
+	if (textAtom && !hasText) {
+		names.emplace_back("text/plain");
+		_atoms.emplace(String("text/plain"), textAtom);
+	}
+
+	// XDND states one requested action per position, not a set: offer the three and let the
+	// position's action be the preference
+	return DropOffer::init(looper, sprt::move(names),
+			DragActions::Copy | DragActions::Move | DragActions::Link);
+}
+
+DragActions XcbDropOffer::readAction(xcb_atom_t action) const {
+	if (action == _connection->getAtom(XcbAtomIndex::XdndActionCopy)) {
+		return DragActions::Copy;
+	} else if (action == _connection->getAtom(XcbAtomIndex::XdndActionMove)) {
+		return DragActions::Move;
+	} else if (action == _connection->getAtom(XcbAtomIndex::XdndActionLink)) {
+		return DragActions::Link;
+	}
+	return DragActions::None;
+}
+
+xcb_atom_t XcbDropOffer::writeAction(DragActions action) const {
+	switch (action) {
+	case DragActions::Copy: return _connection->getAtom(XcbAtomIndex::XdndActionCopy);
+	case DragActions::Move: return _connection->getAtom(XcbAtomIndex::XdndActionMove);
+	case DragActions::Link: return _connection->getAtom(XcbAtomIndex::XdndActionLink);
+	default: break;
+	}
+	return XCB_NONE;
+}
+
+void XcbDropOffer::handleRead(StringView type, ReadCallback &&cb) {
+	auto it = _atoms.find(type.str<String>());
+	auto support = _connection->getSupportWindow();
+	if (it == _atoms.end() || !support) {
+		cb(Status::ErrorNotFound, BytesView());
+		return;
+	}
+
+	support->readDndSelection(it->second, _time,
+			[cb = sprt::move(cb)](Status st, BytesView data) { cb(st, data); });
+}
+
+void XcbDropOffer::handleStatus(DragActions action) {
+	// Bit 1 asks for a position on every move, since targets differ inside the window
+	uint32_t flags = (action != DragActions::None ? 1 : 0) | 2;
+	send(_connection->getAtom(XcbAtomIndex::XdndStatus), flags, 0, 0, writeAction(action));
+}
+
+void XcbDropOffer::handleFinish(DragActions performed) {
+	if (_version >= 5) {
+		send(_connection->getAtom(XcbAtomIndex::XdndFinished),
+				performed != DragActions::None ? 1 : 0, writeAction(performed), 0, 0);
+	} else {
+		send(_connection->getAtom(XcbAtomIndex::XdndFinished), 0, 0, 0, 0);
+	}
+}
+
+void XcbDropOffer::send(xcb_atom_t type, uint32_t d1, uint32_t d2, uint32_t d3, uint32_t d4) {
+	auto xcb = _connection->getXcb();
+
+	xcb_client_message_event_t ev;
+	__sprt_memset(&ev, 0, sizeof(ev));
+	ev.response_type = XCB_CLIENT_MESSAGE;
+	ev.format = 32;
+	ev.window = _source;
+	ev.type = type;
+	ev.data.data32[0] = _target;
+	ev.data.data32[1] = d1;
+	ev.data.data32[2] = d2;
+	ev.data.data32[3] = d3;
+	ev.data.data32[4] = d4;
+
+	xcb->xcb_send_event(_connection->getConnection(), 0, _source, XCB_EVENT_MASK_NO_EVENT,
+			(const char *)&ev);
+	xcb->xcb_flush(_connection->getConnection());
+}
+
+bool XcbWindow::handleXdndMessage(xcb_client_message_event_t *event) {
+	auto type = event->type;
+	auto &data = event->data.data32;
+
+	if (type == _connection->getAtom(XcbAtomIndex::XdndEnter)) {
+		auto version = data[1] >> 24;
+		Vector<xcb_atom_t> types;
+		if (data[1] & 1) {
+			// More than three types: the list is a property of the source window
+			auto cookie = _xcb->xcb_get_property_unchecked(_connection->getConnection(), 0, data[0],
+					_connection->getAtom(XcbAtomIndex::XdndTypeList), XCB_ATOM_ATOM, 0, 1'024);
+			auto reply = _connection->perform(_xcb->xcb_get_property_reply, cookie);
+			if (reply) {
+				auto list = (xcb_atom_t *)_xcb->xcb_get_property_value(reply);
+				auto len = _xcb->xcb_get_property_value_length(reply) / sizeof(xcb_atom_t);
+				types.insert(types.end(), list, list + len);
+			}
+		} else {
+			for (size_t i = 2; i < 5; ++i) {
+				if (data[i]) {
+					types.emplace_back(data[i]);
+				}
+			}
+		}
+
+		if (_dropOffer && _dropEntered && !_dropOffer->isDropped()) {
+			updateDropEvent(DropPhase::Leave, DragActions::None);
+		}
+
+		_dropEntered = false;
+		_dropOffer = nullptr;
+
+		if (auto looper = dispatch::Looper::getIfExists()) {
+			_dropOffer = Rc<XcbDropOffer>::create(looper, _connection.get(), _xinfo.window, data[0],
+					version, SpanView<xcb_atom_t>(types.data(), types.size()));
+		}
+		return true;
+	}
+
+	if (type == _connection->getAtom(XcbAtomIndex::XdndPosition)) {
+		if (!_dropOffer || _dropOffer->getSource() != data[0]) {
+			// A position for a drag we never saw enter still waits for an answer
+			xcb_client_message_event_t ev;
+			__sprt_memset(&ev, 0, sizeof(ev));
+			ev.response_type = XCB_CLIENT_MESSAGE;
+			ev.format = 32;
+			ev.window = data[0];
+			ev.type = _connection->getAtom(XcbAtomIndex::XdndStatus);
+			ev.data.data32[0] = _xinfo.window;
+			_xcb->xcb_send_event(_connection->getConnection(), 0, data[0], XCB_EVENT_MASK_NO_EVENT,
+					(const char *)&ev);
+			_xcb->xcb_flush(_connection->getConnection());
+			return true;
+		}
+
+		int16_t rootX = int16_t(data[2] >> 16);
+		int16_t rootY = int16_t(data[2] & 0xFFFF);
+		_dropOffer->setTimestamp(data[3]);
+
+		auto cookie = _xcb->xcb_translate_coordinates(_connection->getConnection(),
+				_defaultScreen->root, _xinfo.window, rootX, rootY);
+		auto reply = _connection->perform(_xcb->xcb_translate_coordinates_reply, cookie);
+		if (reply) {
+			auto ext = getExtent();
+			_dropLocation = Vec2(float(reply->dst_x - _xinfo.contentRect.x),
+					float(int32_t(ext.height) - (reply->dst_y - _xinfo.contentRect.y)));
+		}
+
+		auto preferred = _dropOffer->readAction(data[4]);
+		if (!_dropEntered) {
+			_dropEntered = true;
+			updateDropEvent(DropPhase::Enter, preferred);
+		} else {
+			updateDropEvent(DropPhase::Motion, preferred);
+		}
+		return true;
+	}
+
+	if (type == _connection->getAtom(XcbAtomIndex::XdndLeave)) {
+		if (_dropOffer && _dropOffer->getSource() == data[0]) {
+			if (_dropEntered) {
+				updateDropEvent(DropPhase::Leave, DragActions::None);
+			}
+			_dropOffer = nullptr;
+			_dropEntered = false;
+		}
+		return true;
+	}
+
+	if (type == _connection->getAtom(XcbAtomIndex::XdndDrop)) {
+		if (_dropOffer && _dropOffer->getSource() == data[0]) {
+			_dropOffer->setTimestamp(data[2]);
+			if (_dropEntered) {
+				updateDropEvent(DropPhase::Drop, DragActions::None);
+			} else {
+				// Dropped before any position was answered
+				_dropOffer->setDropped();
+				_dropOffer->refuse(DropPhase::Drop);
+			}
+			_dropOffer = nullptr;
+			_dropEntered = false;
+		}
+		return true;
+	}
+
+	return false;
+}
+
+void XcbWindow::updateDropEvent(DropPhase phase, DragActions preferred) {
+	DropEvent ev;
+	ev.phase = phase;
+	ev.offer = _dropOffer;
+	ev.location = _dropLocation;
+	ev.preferred = preferred;
+	handleDropEvent(sprt::move(ev));
+}
 
 void XcbWindow::notifyScreenChange() {
 	auto newFrameRate = getCurrentFrameRate();

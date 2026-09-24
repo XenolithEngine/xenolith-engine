@@ -42,6 +42,8 @@ the gate can be run at on an idle machine; `-j1` is what a suspicious failure is
 WHAT IS NOT HERE. `tests/window/xcb-side-check.py` drives a REAL X11 session with XTEST and takes
 the keyboard focus, so it fails whenever another window holds it: run it by hand
 (`XL_TEST_DISPLAY=:1 tests/window/xcb-side-check.py`) after touching XcbWindow's key handling.
+`xdnd-check.py` needs a live X server too (it takes no focus): run it by hand after touching the
+XDND target or XcbSupportWindow's selection reads.
 `markdown-perf-check.py` MEASURES rather than checks, and cannot run at all as things stand - it
 regenerates its corpus with a `gen-big-md.py` that is not in the repository. `tests/com`,
 `tests/wwin`, `tests/wthread`, `tests/mtl`, `tests/auxui` and `tests/wasm` are cross-target harnesses
@@ -142,7 +144,7 @@ EXAMPLE_CHECKS = [
 
 # Scripts that are not checks, or cannot be part of an automated run - see the docstring.
 NOT_CHECKS = {"markdown-perf-check.py"}
-MANUAL = {"xcb-side-check.py"}
+MANUAL = {"xcb-side-check.py", "xdnd-check.py"}
 
 
 def window_scripts():

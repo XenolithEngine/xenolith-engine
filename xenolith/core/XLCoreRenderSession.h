@@ -215,6 +215,10 @@ public:
 	virtual void handleInputEvents(uint64_t windowId, Vector<InputEventData> &&) = 0;
 	virtual void handleTextInput(uint64_t windowId, const TextInputState &) = 0;
 
+	// A drag from another application over the window. The default refuses it, which is the
+	// answer of a client that cannot take one (a remote client)
+	virtual void handleDropEvent(uint64_t windowId, DropEvent &&);
+
 	// Frame-lifecycle feedback for client-side pacing/stats (a frame finished presenting).
 	virtual void handleFramePresented(uint64_t frameOrder) = 0;
 
@@ -327,6 +331,10 @@ public:
 	// processor claims printable keys, Backspace, Delete and Escape before the scene sees them
 	// (handleInputEvents() bypasses it). Non-pure: without a native window it falls back to that.
 	virtual void handleNativeInputEvents(Vector<InputEventData> &&events);
+
+	// Inject one step of an OS drag at the native-window level, as a backend reports it. Non-pure:
+	// without a native window the drag is refused
+	virtual void handleNativeDropEvent(DropEvent &&);
 
 	virtual void updateLayers(sprt::window::Vector<sprt::window::WindowLayer> &&) = 0;
 

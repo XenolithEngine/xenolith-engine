@@ -31,6 +31,7 @@
 #include <sprt/runtime/window/window_info.h>
 #include <sprt/runtime/window/presentation.h>
 #include <sprt/runtime/window/gapi.h>
+#include <sprt/runtime/window/drop.h>
 #include <sprt/cxx/vector>
 #include <sprt/cxx/function>
 
@@ -143,6 +144,9 @@ public:
 	virtual void setFullscreen(FullscreenInfo &&, Function<void(Status)> &&cb, Ref *ref);
 
 	virtual void handleInputEvents(Vector<InputEventData> &&events);
+
+	// A drag from another application moved over this window. Context thread
+	virtual void handleDropEvent(DropEvent &&);
 
 	virtual void dispatchPendingEvents();
 

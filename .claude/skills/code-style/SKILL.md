@@ -273,7 +273,10 @@ lifetime, or for error detection. Details and examples:
     model — a live object for the in-process path plus a lazy MIME encoder — so a
     drop target and a paste target are one handler, and an encode callback must be
     thread-agnostic. Actions are a negotiation: the source offers a mask, the
-    modifier states a *preference*, the target has the last word.
+    modifier states a *preference*, the target has the last word. A drag from
+    another application reaches the same targets as an external session: its data
+    has no local object and arrives only through `DragData::read`, on the app
+    thread, after the drop - so a drop slot reads, it does not `encode()`.
 
 29. **Never call a platform text API, and pick the comparison on purpose.**
     `sprt::unicode` / `sprt::idn` are the implementation on every target — no

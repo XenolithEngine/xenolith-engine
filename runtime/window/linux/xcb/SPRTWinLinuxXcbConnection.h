@@ -128,6 +128,8 @@ public:
 	xcb_connection_t *getConnection() const { return _connection; }
 	xcb_screen_t *getDefaultScreen() const { return _screen; }
 
+	XcbSupportWindow *getSupportWindow() const { return _support; }
+
 	bool hasErrors() const;
 
 	// get code from keysym mapping table

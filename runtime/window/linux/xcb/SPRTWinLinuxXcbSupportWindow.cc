@@ -400,7 +400,109 @@ static void addWaiter(Map<xcb_atom_t, Vector<Rc<ClipboardRequest>>> &waiters, xc
 	}
 }
 
+void XcbSupportWindow::readDndSelection(xcb_atom_t target, xcb_timestamp_t time,
+		Function<void(Status, BytesView)> &&cb) {
+	_dndReads.emplace_back(DndRead{target, time, sprt::move(cb)});
+	continueDndProcessing();
+}
+
+void XcbSupportWindow::continueDndProcessing() {
+	if (_dndRequested || _dndReads.empty()) {
+		return;
+	}
+
+	auto &front = _dndReads.front();
+	_dndRequested = true;
+	_xcb->xcb_convert_selection(_connection->getConnection(), _window,
+			_connection->getAtom(XcbAtomIndex::XdndSelection), front.target,
+			_connection->getAtom(XcbAtomIndex::XENOLITH_DND), front.time);
+	_xcb->xcb_flush(_connection->getConnection());
+}
+
+void XcbSupportWindow::finalizeDndRead(Status st, BytesView data) {
+	_dndRequested = false;
+	_dndIncr = false;
+	_dndIncrBuffer.clear();
+	_dndIncrSize = 0;
+
+	if (!_dndReads.empty()) {
+		auto cb = sprt::move(_dndReads.front().callback);
+		_dndReads.erase(_dndReads.begin());
+		if (cb) {
+			cb(st, data);
+		}
+	}
+
+	continueDndProcessing();
+}
+
+void XcbSupportWindow::handleDndSelectionNotify(xcb_selection_notify_event_t *event) {
+	if (!_dndRequested) {
+		return;
+	}
+
+	if (event->property == XCB_NONE) {
+		// The source refused the conversion
+		finalizeDndRead(Status::ErrorNotFound, BytesView());
+		return;
+	}
+
+	auto cookie = _xcb->xcb_get_property_unchecked(_connection->getConnection(), 1, _window,
+			_connection->getAtom(XcbAtomIndex::XENOLITH_DND), XCB_GET_PROPERTY_TYPE_ANY, 0,
+			Max<uint32_t> / 4);
+	auto reply = _connection->perform(_xcb->xcb_get_property_reply, cookie);
+	if (!reply) {
+		finalizeDndRead(Status::ErrorUnknown, BytesView());
+		return;
+	}
+
+	if (reply->type == _connection->getAtom(XcbAtomIndex::INCR)) {
+		// The value follows in chunks; deleting the property above asked for the first one
+		_dndIncr = true;
+		return;
+	}
+
+	finalizeDndRead(Status::Ok,
+			BytesView((const uint8_t *)_xcb->xcb_get_property_value(reply),
+					_xcb->xcb_get_property_value_length(reply)));
+}
+
+void XcbSupportWindow::handleDndPropertyNotify(xcb_property_notify_event_t *ev) {
+	auto cookie = _xcb->xcb_get_property_unchecked(_connection->getConnection(), 1, _window,
+			_connection->getAtom(XcbAtomIndex::XENOLITH_DND), XCB_GET_PROPERTY_TYPE_ANY, 0,
+			Max<uint32_t> / 4);
+	auto reply = _connection->perform(_xcb->xcb_get_property_reply, cookie);
+	if (!reply) {
+		finalizeDndRead(Status::ErrorUnknown, BytesView());
+		return;
+	}
+
+	auto len = size_t(_xcb->xcb_get_property_value_length(reply));
+	if (len > 0) {
+		_dndIncrSize += len;
+		if (_dndIncrSize > MaxClipboardTransferSize) {
+			finalizeDndRead(Status::ErrorInvalidArguemnt, BytesView());
+		} else {
+			_dndIncrBuffer.emplace_back(
+					BytesView((const uint8_t *)_xcb->xcb_get_property_value(reply), len)
+							.bytes<Bytes>());
+		}
+		return;
+	}
+
+	// A zero-length chunk ends the value
+	Bytes data;
+	data.reserve(_dndIncrSize);
+	for (auto &it : _dndIncrBuffer) { data.insert(data.end(), it.begin(), it.end()); }
+	finalizeDndRead(Status::Ok, data);
+}
+
 void XcbSupportWindow::handleSelectionNotify(xcb_selection_notify_event_t *event) {
+	if (event->selection == _connection->getAtom(XcbAtomIndex::XdndSelection)) {
+		handleDndSelectionNotify(event);
+		return;
+	}
+
 	if (event->property == _connection->getAtom(XcbAtomIndex::XENOLITH_CLIPBOARD)) {
 		if (event->target == _connection->getAtom(XcbAtomIndex::TARGETS)) {
 			auto cookie = _xcb->xcb_get_property_unchecked(_connection->getConnection(), 1, _window,
@@ -510,6 +612,13 @@ void XcbSupportWindow::handleSelectionClear(xcb_selection_clear_event_t *ev) {
 }
 
 void XcbSupportWindow::handlePropertyNotify(xcb_property_notify_event_t *ev) {
+	if (ev->window == _window && ev->atom == _connection->getAtom(XcbAtomIndex::XENOLITH_DND)) {
+		if (ev->state == XCB_PROPERTY_NEW_VALUE && _dndIncr) {
+			handleDndPropertyNotify(ev);
+		}
+		return;
+	}
+
 	if (ev->window == _window && ev->atom == _connection->getAtom(XcbAtomIndex::XENOLITH_CLIPBOARD)
 			&& ev->state == XCB_PROPERTY_NEW_VALUE && _incr) {
 		auto cookie = _xcb->xcb_get_property_unchecked(_connection->getConnection(), 1, _window,

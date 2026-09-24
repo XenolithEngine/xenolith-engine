@@ -26,6 +26,7 @@
 #include "SPRTWinLinuxWaylandLibrary.h"
 #include "SPRTWinLinuxWaylandDisplay.h"
 #include "SPRTWinLinuxWaylandSeat.h"
+#include "SPRTWinLinuxWaylandWindow.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -81,13 +82,18 @@ static struct wl_data_offer_listener s_dataOfferListener {
 static struct wl_data_device_listener s_dataDeviceListener{
 	.data_offer = [](void *data, struct wl_data_device *wl_data_device, struct wl_data_offer *id) {
 		auto device = reinterpret_cast<WaylandDataDevice *>(data);
-		auto offer = Rc<WaylandDataOffer>::create(device->wayland, id);
-		sprt::retain(offer, 0);
+		device->pendingOffer = Rc<WaylandDataOffer>::create(device->wayland, id);
 	},
 
 	.enter = [](void *data, struct wl_data_device *wl_data_device, uint32_t serial, struct wl_surface *surface,
 		wl_fixed_t x, wl_fixed_t y, struct wl_data_offer *id) {
 		auto device = reinterpret_cast<WaylandDataDevice *>(data);
+		if (!id) {
+			// A drag with no data source, e.g. one confined to another client
+			device->leave();
+			return;
+		}
+
 		auto offer = reinterpret_cast<WaylandDataOffer *>(
 				wl_data_offer_get_user_data(id));
 
@@ -96,31 +102,26 @@ static struct wl_data_device_listener s_dataDeviceListener{
 		offer->x = x;
 		offer->y = y;
 
-		device->enter(offer);
-		//log::source().debug("WaylandDataDevice", "enter");
+		WaylandWindow *window = nullptr;
+		if (surface && !device->seat->root->isDecoration(surface)
+				&& device->wayland->ownsProxy(surface)) {
+			window = reinterpret_cast<WaylandWindow *>(wl_surface_get_user_data(surface));
+		}
+
+		device->enter(offer, window);
 	},
 
 	.leave = [](void *data, struct wl_data_device *wl_data_device) {
-		auto device = reinterpret_cast<WaylandDataDevice *>(data);
-		device->leave();
-		//log::source().debug("WaylandDataDevice", "leave");
+		reinterpret_cast<WaylandDataDevice *>(data)->leave();
 	},
 
 	.motion = [](void *data, struct wl_data_device *wl_data_device,
-			uint32_t serial, wl_fixed_t x, wl_fixed_t y) {
-		auto device = reinterpret_cast<WaylandDataDevice *>(data);
-		if (device->dnd) {
-			device->dnd->serial = serial;
-			device->dnd->x = x;
-			device->dnd->y = y;
-		}
-		//log::source().debug("WaylandDataDevice", "motion");
+			uint32_t time, wl_fixed_t x, wl_fixed_t y) {
+		reinterpret_cast<WaylandDataDevice *>(data)->motion(x, y);
 	},
 
 	.drop = [](void *data, struct wl_data_device *wl_data_device) {
-		auto device = reinterpret_cast<WaylandDataDevice *>(data);
-		device->drop();
-		//log::source().debug("WaylandDataDevice", "drop");
+		reinterpret_cast<WaylandDataDevice *>(data)->drop();
 	},
 
 	.selection = [](void *data, struct wl_data_device *wl_data_device, struct wl_data_offer *id) {
@@ -155,7 +156,12 @@ bool WaylandDataDeviceManager::init(NotNull<WaylandDisplay> disp, wl_registry *r
 	return true;
 }
 
-WaylandDataOffer::~WaylandDataOffer() { }
+WaylandDataOffer::~WaylandDataOffer() {
+	if (offer) {
+		wl_data_offer_destroy(offer);
+		offer = nullptr;
+	}
+}
 
 bool WaylandDataOffer::init(NotNull<WaylandLibrary> w, wl_data_offer *o) {
 	wayland = w;
@@ -345,8 +351,9 @@ WaylandDataSource::~WaylandDataSource() {
 	}
 }
 
-bool WaylandDataSource::init(NotNull<WaylandDataDevice> device, Rc<ClipboardData> &&d) {
-	wayland = device->wayland;
+bool WaylandDataSource::init(NotNull<WaylandDataDevice> dev, Rc<ClipboardData> &&d) {
+	wayland = dev->wayland;
+	device = dev;
 	data = sprt::move(d);
 
 	source = wl_data_device_manager_create_data_source(device->manager->manager);
@@ -374,12 +381,123 @@ void WaylandDataSource::send(StringView type, int32_t fd) {
 }
 
 void WaylandDataSource::cancel() {
-	if (device->selectionSource == this) {
+	if (device && device->selectionSource == this) {
 		device->selectionSource = nullptr;
 	}
 }
 
+static DragActions WaylandDropOffer_readActions(uint32_t actions) {
+	auto ret = DragActions::None;
+	if (actions & WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY) {
+		ret |= DragActions::Copy;
+	}
+	if (actions & WL_DATA_DEVICE_MANAGER_DND_ACTION_MOVE) {
+		ret |= DragActions::Move;
+	}
+	return ret;
+}
+
+static uint32_t WaylandDropOffer_writeAction(DragActions action) {
+	switch (action) {
+	case DragActions::Copy: return WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY;
+	case DragActions::Move: return WL_DATA_DEVICE_MANAGER_DND_ACTION_MOVE;
+	default: break;
+	}
+	return WL_DATA_DEVICE_MANAGER_DND_ACTION_NONE;
+}
+
+bool WaylandDropOffer::init(NotNull<dispatch::Looper> looper, NotNull<WaylandDataDevice> device,
+		NotNull<WaylandDataOffer> offer) {
+	// Before version 3 a drag carries no actions at all, and means a copy
+	auto allowed = WaylandDropOffer_readActions(offer->actions);
+	if (wl_data_offer_get_version(offer->offer) < 3) {
+		allowed = DragActions::Copy;
+	}
+
+	if (!DropOffer::init(looper, Vector<String>(offer->types), allowed)) {
+		return false;
+	}
+
+	_device = device;
+	_offer = offer;
+	return true;
+}
+
+void WaylandDropOffer::handleRead(StringView type, ReadCallback &&cb) {
+	if (!_offer) {
+		cb(Status::ErrorCancelled, BytesView());
+		return;
+	}
+
+	auto req = Rc<ClipboardRequest>::create();
+	req->dataCallback = [cb](Status st, BytesView data, StringView) { cb(st, data); };
+
+	auto transfer = Rc<WaylandDataInputTransfer>::create(type, _offer, sprt::move(req));
+	if (!transfer) {
+		cb(Status::ErrorUnknown, BytesView());
+		return;
+	}
+
+	flush();
+	transfer->schedule(_looper);
+}
+
+void WaylandDropOffer::handleStatus(DragActions action) {
+	if (!_offer || (_statusSent && _sentStatus == action)) {
+		return;
+	}
+
+	_statusSent = true;
+	_sentStatus = action;
+
+	// The compositor only delivers a drop the client accepted with a type
+	const char *type = nullptr;
+	if (action != DragActions::None && !_types.empty()) {
+		type = _types.front().data();
+	}
+	wl_data_offer_accept(_offer->offer, _offer->serial, type);
+
+	// Only the resolved action is offered: a compositor choosing another one on a modifier would
+	// let the source delete what the target only copied
+	if (wl_data_offer_get_version(_offer->offer) >= WL_DATA_OFFER_SET_ACTIONS_SINCE_VERSION) {
+		auto wlAction = WaylandDropOffer_writeAction(action);
+		wl_data_offer_set_actions(_offer->offer, wlAction, wlAction);
+	}
+
+	flush();
+}
+
+void WaylandDropOffer::handleFinish(DragActions performed) {
+	// finish() is a protocol error unless the compositor has settled on an action; without it the
+	// source learns the outcome from the offer being destroyed
+	if (_offer && performed != DragActions::None && _offer->selectedAction != 0
+			&& wl_data_offer_get_version(_offer->offer) >= WL_DATA_OFFER_FINISH_SINCE_VERSION) {
+		wl_data_offer_finish(_offer->offer);
+		flush();
+	}
+
+	_offer = nullptr;
+	_device = nullptr;
+}
+
+void WaylandDropOffer::flush() {
+	if (_device && _device->seat) {
+		wl_display_flush(_device->seat->root->display);
+	}
+}
+
 WaylandDataDevice::~WaylandDataDevice() {
+	dropOffer = nullptr;
+	dropWindow = nullptr;
+	pendingOffer = nullptr;
+	selectionOffer = nullptr;
+	dnd = nullptr;
+
+	if (selectionSource) {
+		selectionSource->device = nullptr;
+		selectionSource = nullptr;
+	}
+
 	if (device) {
 		wl_data_device_release(device);
 		device = nullptr;
@@ -401,12 +519,13 @@ bool WaylandDataDevice::init(NotNull<WaylandDataDeviceManager> m, NotNull<Waylan
 }
 
 void WaylandDataDevice::setSelection(NotNull<WaylandDataOffer> offer) {
+	// The pending reference may be the only one: hold the offer before letting it go
+	Rc<WaylandDataOffer> held(offer.get());
+	if (held == pendingOffer) {
+		pendingOffer = nullptr;
+	}
 	if (offer != selectionOffer) {
 		selectionOffer = offer;
-		if (!offer->attached) {
-			offer->attached = true;
-			sprt::release(offer, 0);
-		}
 		seat->root->handleClipboardChanged();
 	}
 }
@@ -418,19 +537,73 @@ void WaylandDataDevice::clearSelection() {
 	}
 }
 
-void WaylandDataDevice::enter(NotNull<WaylandDataOffer> offer) {
-	if (offer != dnd) {
-		dnd = offer;
-		if (!offer->attached) {
-			offer->attached = true;
-			sprt::release(offer, 0);
-		}
+void WaylandDataDevice::enter(NotNull<WaylandDataOffer> offer, WaylandWindow *window) {
+	// As in setSelection: the offer outlives the pending reference it is taken from
+	Rc<WaylandDataOffer> held(offer.get());
+	if (held == pendingOffer) {
+		pendingOffer = nullptr;
+	}
+
+	if (dropOffer && dropOffer->isDropped()) {
+		// The drag that dropped lives on with the application until it is finished
+		dropOffer = nullptr;
+		dropWindow = nullptr;
+	} else if (dropOffer && offer != dnd) {
+		leave();
+	}
+
+	dnd = offer;
+
+	if (!window || dropOffer) {
+		return;
+	}
+
+	auto looper = dispatch::Looper::getIfExists();
+	if (!looper) {
+		return;
+	}
+
+	dropOffer = Rc<WaylandDropOffer>::create(looper, this, offer);
+	dropWindow = window;
+	if (dropOffer) {
+		dropWindow->emitDropEvent(DropPhase::Enter, dropOffer, offer->x, offer->y);
 	}
 }
 
-void WaylandDataDevice::leave() { dnd = nullptr; }
+void WaylandDataDevice::motion(wl_fixed_t x, wl_fixed_t y) {
+	if (dnd) {
+		dnd->x = x;
+		dnd->y = y;
+	}
+	if (dropOffer && dropWindow && !dropOffer->isDropped()) {
+		dropWindow->emitDropEvent(DropPhase::Motion, dropOffer, x, y);
+	}
+}
 
-void WaylandDataDevice::drop() { dnd = nullptr; }
+void WaylandDataDevice::leave() {
+	// A compositor sends leave after a drop as well; that drag is already over for the window
+	if (dropOffer && dropWindow && !dropOffer->isDropped()) {
+		dropWindow->emitDropEvent(DropPhase::Leave, dropOffer, dnd ? dnd->x : 0, dnd ? dnd->y : 0);
+	}
+	dropOffer = nullptr;
+	dropWindow = nullptr;
+	dnd = nullptr;
+}
+
+void WaylandDataDevice::drop() {
+	if (dropOffer && dropWindow && !dropOffer->isDropped()) {
+		dropWindow->emitDropEvent(DropPhase::Drop, dropOffer, dnd ? dnd->x : 0, dnd ? dnd->y : 0);
+	}
+}
+
+void WaylandDataDevice::clearWindow(WaylandWindow *window) {
+	if (dropWindow == window) {
+		if (dropOffer && !dropOffer->isDropped()) {
+			dropOffer->refuse(DropPhase::Motion);
+		}
+		dropWindow = nullptr;
+	}
+}
 
 Status WaylandDataDevice::readFromClipboard(Rc<ClipboardRequest> &&req) {
 	if (!selectionOffer) {

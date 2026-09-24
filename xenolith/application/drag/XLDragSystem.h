@@ -45,6 +45,10 @@ public:
 
 	virtual bool init(NotNull<DragSystem>, DragOffer &&, Rc<Ref> &&source, uint32_t inputEventId);
 
+	// A drag from another application: no source, no decorator, and the cursor is the OS's
+	virtual bool init(NotNull<DragSystem>, NotNull<sprt::window::DropOffer>, NotNull<AppThread>,
+			DragActions preferred);
+
 	DragData *getData() const { return _data; }
 	Ref *getSource() const { return _source; }
 	// The node the drag is currently over, or null. Its DropTargetComponent is what answered
@@ -72,8 +76,11 @@ public:
 	// Reserved for a Wayland start_drag serial or an X11 grab timestamp
 	uint32_t getInputEventId() const { return _inputEventId; }
 
-	// Always false for now (no external drags). A target limited to in-process data should check it
-	bool isExternal() const { return false; }
+	// A drag from another application. Its data has no local object and is read asynchronously
+	bool isExternal() const { return _external != nullptr; }
+
+	// The OS side of an external drag; null for an in-process one
+	sprt::window::DropOffer *getExternalOffer() const { return _external; }
 
 	bool isFinished() const { return _finished; }
 
@@ -81,6 +88,9 @@ protected:
 	friend class DragSystem;
 
 	virtual void update(const Vec2 &world, InputModifier);
+
+	// The action the OS asks for, standing in for the modifiers of an in-process drag
+	void setExternalPreferred(DragActions);
 
 	// The single funnel. `performDrop` false means cancel. Runs its body at most once
 	virtual void finish(bool performDrop);
@@ -103,6 +113,7 @@ protected:
 
 	// Rc, not raw: the source is routinely destroyed by the very drop that ends this drag
 	Rc<Ref> _source;
+	Rc<sprt::window::DropOffer> _external;
 	Rc<Node> _target;
 	Rc<Node> _decorator;
 	Rc<Node> _decoratorParent;
@@ -172,6 +183,11 @@ public:
 	virtual void refreshDrag();
 
 	virtual void commitDrag();
+
+	/* One step of a drag from another application, as the window reports it. Enter starts a
+	session (refused while another drag is in flight), Motion updates it, Leave cancels it and Drop
+	commits it. The resolved action goes back to the OS on every step. */
+	virtual void handleExternalDrop(const sprt::window::DropEvent &);
 
 	// `source` guards against a stale abort: only that source's own drag is cancelled
 	virtual void cancelDrag(Ref *source = nullptr);

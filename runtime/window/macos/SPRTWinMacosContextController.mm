@@ -228,14 +228,15 @@ Status MacosContextController::readFromClipboard(Rc<ClipboardRequest> &&req) {
 	};
 
 	for (NSPasteboardType v in types) {
+		// A known type without a MIME name (public.utf8-plain-text, public.file-url) falls through
+		// to the names below
 		auto type = [UTType typeWithIdentifier:v];
-		if (type) {
-			auto mime = type.preferredMIMEType;
-			if (mime) {
-				addType(v, mime.UTF8String);
-				continue;
-			}
-		} else if ([v isEqualToString:NSPasteboardTypeString]) {
+		if (type && type.preferredMIMEType) {
+			addType(v, type.preferredMIMEType.UTF8String);
+			continue;
+		}
+
+		if ([v isEqualToString:NSPasteboardTypeString]) {
 			addType(v, "text/plain");
 		} else if ([v isEqualToString:NSPasteboardTypeTabularText]) {
 			addType(v, "text/x-tabular");

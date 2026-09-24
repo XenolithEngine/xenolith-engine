@@ -320,6 +320,34 @@ void AppWindow::handleTextInput(const TextInputState &state) {
 	setReadyForNextFrame();
 }
 
+void AppWindow::handleDropEvent(core::DropEvent &&ev) {
+	if (!_presentationEngine) {
+		ev.offer->refuse(ev.phase);
+		return;
+	}
+
+	_application->performOnAppThread([this, ev = sp::move(ev)]() mutable {
+		if (!_client) {
+			ev.offer->refuse(ev.phase);
+			return;
+		}
+		_client->handleDropEvent(getSharedWindowId(), sp::move(ev));
+		// Drop targets are found in the hit-test registry of the last committed frame
+		setReadyForNextFrame();
+	}, this, true);
+}
+
+void AppWindow::handleNativeDropEvent(core::DropEvent &&ev) {
+	// Through the native window, as a backend reports it: the controller's modal block applies
+	_context->performOnThread([this, ev = sp::move(ev)]() mutable {
+		if (_window) {
+			_window->handleDropEvent(sp::move(ev));
+		} else if (ev.offer) {
+			ev.offer->refuse(ev.phase);
+		}
+	}, this);
+}
+
 const WindowInfo *AppWindow::getInfo() const {
 	if (_window) {
 		return _window->getInfo();

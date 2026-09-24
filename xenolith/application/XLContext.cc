@@ -556,6 +556,15 @@ void Context::handleNativeWindowTextInput(NotNull<NativeWindow> w,
 	}
 }
 
+void Context::handleNativeWindowDrop(NotNull<NativeWindow> w, core::DropEvent &&ev) {
+	auto appWindow = static_cast<AppWindow *>(w->getAppWindow());
+	if (appWindow) {
+		appWindow->handleDropEvent(sp::move(ev));
+	} else {
+		ev.offer->refuse(ev.phase);
+	}
+}
+
 void Context::handleSystemNotification(SystemNotification note) {
 	log::source().info("Context", "handleSystemNotification");
 	for (auto &it : _components) { it.second->handleSystemNotification(this, note); }

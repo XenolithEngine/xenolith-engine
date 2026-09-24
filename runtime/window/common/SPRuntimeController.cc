@@ -446,6 +446,14 @@ void ContextController::notifyWindowTextInput(NotNull<NativeWindow> w,
 	_context->handleNativeWindowTextInput(w, state);
 }
 
+void ContextController::notifyWindowDropEvent(NotNull<NativeWindow> w, DropEvent &&ev) {
+	if (isModalBlocked(w)) {
+		ev.offer->refuse(ev.phase);
+		return;
+	}
+	_context->handleNativeWindowDrop(w, sprt::move(ev));
+}
+
 bool ContextController::notifyWindowClosed(NotNull<NativeWindow> w, WindowCloseOptions opts) {
 	auto info = w->getInfo();
 

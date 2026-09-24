@@ -163,6 +163,7 @@ protected:
 	void handleInput(NotNull<Session>, int64_t serial, Value &&args);
 	void handleText(NotNull<Session>, int64_t serial, Value &&args);
 	void handleWindow(NotNull<Session>, int64_t serial, Value &&args);
+	void handleDrop(NotNull<Session>, int64_t serial, Value &&args);
 
 	Rc<sprt::dispatch::ListenHandle> _listener;
 	Set<Rc<Session>> _sessions;
@@ -170,6 +171,10 @@ protected:
 
 	// Screenshots requested and not yet answered; see holdScreenshotRender.
 	uint32_t _screenshotsPending = 0;
+
+	// The synthetic OS drag of the `drop` command, from its enter to the next one
+	Rc<core::MemoryDropOffer> _dropOffer;
+	bool _dropOfferEnded = false;
 };
 
 namespace inspector {

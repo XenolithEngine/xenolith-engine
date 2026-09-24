@@ -104,6 +104,7 @@ void performFlexboxGridCssTests();
 void performTableCssTests();
 void performMarkdownTests();
 void performCommandLineTests();
+void performUriListTests();
 void performRasterTests();
 void performDataValueTests();
 void performZipTests();

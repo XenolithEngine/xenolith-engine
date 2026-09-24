@@ -226,6 +226,7 @@ public:
 			Vector<core::InputEventData> &&) override;
 	virtual void handleNativeWindowTextInput(NotNull<NativeWindow>,
 			const core::TextInputState &) override;
+	virtual void handleNativeWindowDrop(NotNull<NativeWindow>, core::DropEvent &&) override;
 
 	virtual void handleSystemNotification(SystemNotification) override;
 
