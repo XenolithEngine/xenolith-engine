@@ -35,11 +35,7 @@ static ssize_t __file_read(__fd_slot *fp, void *buf, size_t nbytes, off64_t *off
 		uint32_t flags) {
 	(void)flags;
 	if (offset) {
-		// pread64(67) is not in the table (M2). Emulating it with
-		// lseek/read/lseek would be a different call: it moves the file
-		// position, which is the one thing pread promises not to do.
-		__sprt_errno = ENOSYS;
-		return -1;
+		return (ssize_t)__el0_ret(__el0_pread(__el0_kfd(fp), buf, nbytes, (long)*offset));
 	}
 	return (ssize_t)__el0_ret(__el0_read(__el0_kfd(fp), buf, nbytes));
 }
@@ -48,8 +44,7 @@ static ssize_t __file_write(__fd_slot *fp, const void *buf, size_t nbytes, off64
 		uint32_t flags) {
 	(void)flags;
 	if (offset) {
-		__sprt_errno = ENOSYS; // pwrite64(68), same reason as pread above
-		return -1;
+		return (ssize_t)__el0_ret(__el0_pwrite(__el0_kfd(fp), buf, nbytes, (long)*offset));
 	}
 	return (ssize_t)__el0_ret(__el0_write(__el0_kfd(fp), buf, nbytes));
 }
