@@ -29,6 +29,8 @@
 
 #include <sprt/runtime/geom/color.h>
 #include <sprt/runtime/geom/geom.h>
+#include <sprt/runtime/thread/qtimeline.h>
+#include <sprt/cxx/atomic>
 
 // CPU rasterizer. This layer takes plain data in and writes pixels out: it knows nothing about a
 // graphics API, a window system or a scene graph, and depends on nothing but stappler_core. That
@@ -332,6 +334,80 @@ struct SP_PUBLIC TilingStats {
 // Returns commands rasterized, counted once per tile - a work count, not a command count.
 SP_PUBLIC uint32_t drawTiled(const Target &, const DrawList &, SpanView<URect> regions,
 		const TilingInfo &, TilingStats * = nullptr);
+
+// What drawTiledAsync is asked to do. The regions follow the rules of drawTiled.
+struct SP_PUBLIC TiledDrawRequest {
+	Target target;
+	const DrawList *list = nullptr; // must outlive the completion
+	Vector<URect> regions;
+	TilingInfo tiling;
+
+	// Load op Clear, applied per tile before the draw. The tiles cover the regions exactly, so this
+	// equals clearing the regions first.
+	bool clear = false;
+	Color4F clearColor;
+
+	// Count FillStats; without it the pixel loops skip the counters.
+	bool collectStats = false;
+};
+
+// Called once per drawTiledAsync. `success` is false when the pool dropped a worker unrun, in which
+// case some tiles may be left unpainted.
+using TiledDrawCallback = Function<void(bool success, uint32_t drawn, const TilingStats &)>;
+
+class TiledDrawJob;
+
+// Rasterize like drawTiled, but only on the thread pool of the calling thread's looper: the caller
+// returns at once and `complete` runs on its looper thread when the last worker is done. With no
+// pool the tiles are drawn in place and `complete` runs before this returns.
+//
+// The returned job is what a teardown waits on before it frees the target. Null when `complete`
+// has already run.
+SP_PUBLIC Rc<TiledDrawJob> drawTiledAsync(TiledDrawRequest &&, TiledDrawCallback &&complete,
+		Ref *owner = nullptr);
+
+class SP_PUBLIC TiledDrawJob final : public Ref {
+public:
+	virtual ~TiledDrawJob() = default;
+
+	// True once every worker has finished writing; the completion may still be on its way.
+	bool isDrawn() const;
+
+	// Block until every worker has finished writing. The completion is not waited for: it runs on
+	// the looper thread, which may be the one calling this.
+	void waitDrawn();
+
+protected:
+	friend Rc<TiledDrawJob> drawTiledAsync(TiledDrawRequest &&, TiledDrawCallback &&, Ref *);
+
+	// Worker thread: take tiles until none is left.
+	void drawShare();
+
+	// Looper thread, or the thread that shuts the pool down when the worker was dropped unrun.
+	void handleWorkerComplete(bool executed);
+
+	TilingStats getStats() const;
+
+	Target _target;
+	const DrawList *_list = nullptr;
+	Vector<URect> _tiles;
+	bool _clear = false;
+	Color4F _clearColor;
+	bool _collectStats = false;
+
+	TiledDrawCallback _complete;
+	uint32_t _workers = 0;
+
+	sprt::atomic<uint32_t> _nextTile{0};
+	sprt::atomic<uint32_t> _drawn{0};
+	sprt::atomic<uint32_t> _pending{0};
+	sprt::atomic<uint64_t> _spanPixels{0};
+	sprt::atomic<uint64_t> _glyphPixels{0};
+	sprt::atomic<uint64_t> _fillPixels{0};
+
+	// One signal per worker that has finished writing or will never start.
+	mutable sprt::qtimeline _finished;
+};
 
 // The tiling a caller with no opinion of its own should use, resolved once. Overridden entirely by
 // SP_RASTER_TILE=WxH|off and SP_RASTER_THREADS=N, which is how the benchmark measures the two

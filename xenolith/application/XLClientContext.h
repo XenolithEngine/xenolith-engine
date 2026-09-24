@@ -38,6 +38,9 @@ public:
 
 	virtual bool init();
 
+	// With the application's own ContextInfo (bundle, app name, threads); null takes the defaults.
+	virtual bool init(Rc<ContextInfo> &&);
+
 	const ContextInfo *getInfo() const { return _info; }
 
 	// The server endpoint to dial; assigned by the client's main() before run().
@@ -82,6 +85,14 @@ public:
 	virtual bool handleWindowConnected(NotNull<ClientAppThread>, NotNull<RemoteWindow>);
 	virtual void handleWindowDisconnected(NotNull<ClientAppThread>, NotNull<RemoteWindow>);
 
+	// Handed to the app thread as run() creates it, so the server learns of it with the client's
+	// peer info (see ClientAppThread::setAppMessageHandler).
+	void setAppMessageHandler(ClientAppThread::AppMessageHandler &&);
+
+	// Safe from any thread: posted to the app thread, where the connection lives.
+	void sendAppNotification(Value &&);
+	void sendAppRequest(Value &&, Function<void(Status, Value &&)> &&, uint64_t timeoutUs);
+
 	void setServerInfoCallback(
 			Function<void(NotNull<ClientAppThread>, const remote::PeerInfo &)> &&);
 	void setWindowConnectedCallback(Function<bool(NotNull<RemoteWindow>)> &&);
@@ -98,6 +109,7 @@ protected:
 
 	Function<bool(NotNull<RemoteWindow>)> _onWindowConnected;
 	Function<void(NotNull<RemoteWindow>)> _onWindowDisconnected;
+	ClientAppThread::AppMessageHandler _appMessageHandler;
 };
 
 } // namespace stappler::xenolith

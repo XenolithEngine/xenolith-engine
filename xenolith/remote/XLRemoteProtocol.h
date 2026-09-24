@@ -102,6 +102,13 @@ enum class GlobalCode {
 	// refuses with GlobalError::IncompatiblePeer. A NotImplemented answer continues the session
 	// without peer info.
 	ServerInfo = 5,
+
+	// Application messages, in either direction: the payload is any CBOR Value the two applications
+	// agree on; the engine only carries it (PeerFeatures::AppMessages says a handler is installed).
+	// A request is answered with a CBOR Value, or with GlobalError::NotImplemented when the receiver
+	// has no handler; a notification is not answered.
+	AppRequest = 6,
+	AppNotify = 7,
 };
 
 enum class GlobalError : uint8_t {
@@ -133,7 +140,8 @@ constexpr uint64_t codeBit(Code c) {
 
 constexpr uint64_t kSupportedGlobalCodes = codeBit(GlobalCode::ClientHello)
 		| codeBit(GlobalCode::ServerHello) | codeBit(GlobalCode::Ping) | codeBit(GlobalCode::Pong)
-		| codeBit(GlobalCode::SharedObjectsAnnounce) | codeBit(GlobalCode::ServerInfo);
+		| codeBit(GlobalCode::SharedObjectsAnnounce) | codeBit(GlobalCode::ServerInfo)
+		| codeBit(GlobalCode::AppRequest) | codeBit(GlobalCode::AppNotify);
 
 // A name for a handshake/global failure, for logs.
 SP_PUBLIC StringView getGlobalErrorName(GlobalError);
@@ -611,6 +619,10 @@ public:
 	State getState() const { return _state; }
 	GlobalError getReplied() const { return _replied; }
 	BytesView getNegotiatedDict() const { return _negotiatedDict; }
+
+	// The key the client sent, from HelloReceived on; empty before that. A view into the hello,
+	// valid until the next begin().
+	BytesView getPresentedKey() const;
 
 protected:
 	State _state = State::Idle;

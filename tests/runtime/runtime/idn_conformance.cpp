@@ -41,6 +41,7 @@
 #include <sprt/c/__sprt_string.h>
 
 #include "data/idna_test_v2.cc"
+#include "../tests.h"
 
 namespace sprt {
 
@@ -92,10 +93,11 @@ static void runOne(ConformanceResult &res, StringView source, StringView opName,
 	if (failed != expectedToFail) {
 		if (res.report()) {
 			if (failed) {
-				sprt::cerr << "  FAIL " << opName << "('" << source << "'): rejected with "
-						   << status << ", the standard accepts it as '" << expectedResult << "'\n";
+				sprt::cerr << sprt::test::failed("  FAIL ") << opName << "('" << source
+						   << "'): rejected with " << status << ", the standard accepts it as '"
+						   << expectedResult << "'\n";
 			} else {
-				sprt::cerr << "  FAIL " << opName << "('" << source
+				sprt::cerr << sprt::test::failed("  FAIL ") << opName << "('" << source
 						   << "'): accepted, the standard rejects it\n";
 			}
 		}
@@ -106,8 +108,8 @@ static void runOne(ConformanceResult &res, StringView source, StringView opName,
 		++res.checks;
 		if (result != expectedResult) {
 			if (res.report()) {
-				sprt::cerr << "  FAIL " << opName << "('" << source << "'): got '" << result
-						   << "', expected '" << expectedResult << "'\n";
+				sprt::cerr << sprt::test::failed("  FAIL ") << opName << "('" << source
+						   << "'): got '" << result << "', expected '" << expectedResult << "'\n";
 			}
 		}
 	}

@@ -45,6 +45,7 @@
 #include <sprt/runtime/unicode.h>
 
 #include "data/collation_test.cc"
+#include "../tests.h"
 
 namespace sprt {
 
@@ -223,15 +224,16 @@ static int32_t runFile(StringView what, const uint8_t *data, int32_t length, int
 				++failures;
 				if (reported < 20) {
 					++reported;
-					sprt::cerr << "  FAIL: " << what << " line " << count
+					sprt::cerr << sprt::test::failed("  FAIL: ") << what << " line " << count
 							   << ": could not build a sort key\n";
 				}
 			} else if (sign(keys) != sign(utf16)) {
 				++failures;
 				if (reported < 20) {
 					++reported;
-					sprt::cerr << "  FAIL: " << what << " line " << count << ": sort keys say "
-							   << keys << ", compare says " << utf16 << "\n    previous:";
+					sprt::cerr << sprt::test::failed("  FAIL: ") << what << " line " << count
+							   << ": sort keys say " << keys << ", compare says " << utf16
+							   << "\n    previous:";
 					printSequence(previous);
 					sprt::cerr << "\n    current: ";
 					printSequence(current);
@@ -243,8 +245,8 @@ static int32_t runFile(StringView what, const uint8_t *data, int32_t length, int
 				++failures;
 				if (reported < 20) {
 					++reported;
-					sprt::cerr << "  FAIL: " << what << " line " << count << ": utf-8 " << utf8
-							   << ", utf-16 " << utf16 << "\n    previous:";
+					sprt::cerr << sprt::test::failed("  FAIL: ") << what << " line " << count
+							   << ": utf-8 " << utf8 << ", utf-16 " << utf16 << "\n    previous:";
 					printSequence(previous);
 					sprt::cerr << "\n    current: ";
 					printSequence(current);
@@ -258,8 +260,8 @@ static int32_t runFile(StringView what, const uint8_t *data, int32_t length, int
 	}
 
 	if (count != expectedCount) {
-		sprt::cerr << "  FAIL: " << what << " decoded " << count << " sequences, expected "
-				   << expectedCount << "\n";
+		sprt::cerr << sprt::test::failed("  FAIL: ") << what << " decoded " << count
+				   << " sequences, expected " << expectedCount << "\n";
 		++failures;
 	}
 	if (failures > reported) {

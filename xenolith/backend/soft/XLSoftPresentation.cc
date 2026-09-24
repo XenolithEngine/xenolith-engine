@@ -302,7 +302,7 @@ Status Swapchain::present(core::DeviceQueue *, core::ImageStorage *image,
 		++_presentedFrames;
 		_presentTime = sp::platform::clock(ClockType::Monotonic);
 
-		// Close the account here, not in runPass: frames skipped by the damage tracker never
+		// Close the account here, not in the pass: frames skipped by the damage tracker never
 		// reach the pass but still count toward the frame rate.
 		closeFrameBudget();
 	} while (0);

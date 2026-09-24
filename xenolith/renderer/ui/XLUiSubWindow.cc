@@ -51,8 +51,8 @@ static String nextSubWindowId(StringView prefix, sprt::window::WindowType type) 
 	return toString(prefix, "-", ++s_subWindowCounter);
 }
 
-static basic2d::SceneContent2d *contentForWindow(AppWindow *w) {
-	auto director = w ? w->getDirector() : nullptr;
+static basic2d::SceneContent2d *contentForWindow(core::RenderServerChannel *w) {
+	auto director = getWindowDirector(w);
 	auto scene = director ? director->getScene() : nullptr;
 	return scene ? dynamic_cast<basic2d::SceneContent2d *>(scene->getContent()) : nullptr;
 }
@@ -128,18 +128,42 @@ IRect placementAnchorPoint(NotNull<Node> inScene, const Vec2 &worldLocation) {
 			int32_t(std::lround((content->getContentSize().height - at.y) * k)), 0, 0);
 }
 
-SubWindow::~SubWindow() { }
-
-bool SubWindow::platformSupportsSubwindows(NotNull<AppWindow> parent) {
-	return hasFlag(parent->getCapabilities(), sprt::window::WindowCapabilities::Subwindows);
+core::RenderServerChannel *getSubWindowParent(const Node *node) {
+	auto scene = node ? node->getScene() : nullptr;
+	auto director = scene ? scene->getDirector() : nullptr;
+	return director ? director->getRenderServer() : nullptr;
 }
 
-Rc<SubWindow> SubWindow::open(NotNull<AppWindow> parent, Config &&config) {
+Director *getWindowDirector(core::RenderServerChannel *window) {
+	if (!window) {
+		return nullptr;
+	}
+	// A local window may be served by a remote session, so its render client is not always the
+	// Director; a remote window's always is.
+	if (auto local = dynamic_cast<AppWindow *>(window)) {
+		return local->getDirector();
+	}
+	return dynamic_cast<Director *>(window->getRenderClient());
+}
+
+bool isWindowClosing(core::RenderServerChannel *window) {
+	auto local = dynamic_cast<AppWindow *>(window);
+	return local && local->isInCloseRequest();
+}
+
+SubWindow::~SubWindow() { }
+
+bool SubWindow::platformSupportsSubwindows(NotNull<core::RenderServerChannel> parent) {
+	return dynamic_cast<AppWindow *>(parent.get())
+			&& hasFlag(parent->getCapabilities(), sprt::window::WindowCapabilities::Subwindows);
+}
+
+Rc<SubWindow> SubWindow::open(NotNull<core::RenderServerChannel> parent, Config &&config) {
 	if (!config.content && !config.scene) {
 		log::source().error("SubWindow", "open: either content or scene builder is required");
 		return nullptr;
 	}
-	if (parent->isInCloseRequest()) {
+	if (isWindowClosing(parent)) {
 		return nullptr;
 	}
 
@@ -151,11 +175,12 @@ Rc<SubWindow> SubWindow::open(NotNull<AppWindow> parent, Config &&config) {
 
 	// A tooltip is an overlay even where subwindows exist (showTooltip sets preferNative=false);
 	// a caller can still ask for a native one explicitly.
-	const bool wantNative = config.preferNative && parent->getContext() && parent->getInfo()
+	auto local = dynamic_cast<AppWindow *>(parent.get());
+	const bool wantNative = config.preferNative && local && local->getContext() && local->getInfo()
 			&& platformSupportsSubwindows(parent);
 
 	if (wantNative) {
-		if (ret->openNative(parent, sp::move(config))) {
+		if (ret->openNative(local, sp::move(config))) {
 			return ret;
 		}
 		// Fall through to an overlay. `config` is untouched: openNative moves nothing until it can
@@ -242,7 +267,7 @@ bool SubWindow::openNative(NotNull<AppWindow> parent, Config &&config) {
 	return true;
 }
 
-bool SubWindow::openOverlay(NotNull<AppWindow> parent, Config &&config) {
+bool SubWindow::openOverlay(NotNull<core::RenderServerChannel> parent, Config &&config) {
 	auto content = contentForWindow(parent);
 	if (!content) {
 		log::source().warn("SubWindow", "in-scene fallback needs a SceneContent2d; id=", _id);
@@ -384,8 +409,9 @@ void SubWindow::handleClosed() {
 	_panel = nullptr;
 }
 
-Rc<SubWindow> SubWindow::openPopup(NotNull<AppWindow> parent, const WindowPlacement &placement,
-		Extent2 size, ContentBuilder &&builder, StringView title) {
+Rc<SubWindow> SubWindow::openPopup(NotNull<core::RenderServerChannel> parent,
+		const WindowPlacement &placement, Extent2 size, ContentBuilder &&builder,
+		StringView title) {
 	Config config;
 	config.type = WindowType::Popup;
 	config.placement = placement;
@@ -395,7 +421,7 @@ Rc<SubWindow> SubWindow::openPopup(NotNull<AppWindow> parent, const WindowPlacem
 	return open(parent, sp::move(config));
 }
 
-Rc<SubWindow> SubWindow::openDialog(NotNull<AppWindow> parent, Extent2 size,
+Rc<SubWindow> SubWindow::openDialog(NotNull<core::RenderServerChannel> parent, Extent2 size,
 		ContentBuilder &&builder, bool modal, StringView title) {
 	Config config;
 	config.type = WindowType::Dialog;
@@ -410,7 +436,7 @@ Rc<SubWindow> SubWindow::openDialog(NotNull<AppWindow> parent, Extent2 size,
 	return open(parent, sp::move(config));
 }
 
-Rc<SubWindow> SubWindow::openUtility(NotNull<AppWindow> parent, Extent2 size,
+Rc<SubWindow> SubWindow::openUtility(NotNull<core::RenderServerChannel> parent, Extent2 size,
 		ContentBuilder &&builder, StringView title) {
 	Config config;
 	config.type = WindowType::Utility;
@@ -422,8 +448,9 @@ Rc<SubWindow> SubWindow::openUtility(NotNull<AppWindow> parent, Extent2 size,
 	return open(parent, sp::move(config));
 }
 
-Rc<SubWindow> SubWindow::showTooltip(NotNull<AppWindow> parent, const WindowPlacement &placement,
-		Extent2 size, ContentBuilder &&builder, StringView title) {
+Rc<SubWindow> SubWindow::showTooltip(NotNull<core::RenderServerChannel> parent,
+		const WindowPlacement &placement, Extent2 size, ContentBuilder &&builder,
+		StringView title) {
 	Config config;
 	config.type = WindowType::Tooltip;
 	config.placement = placement;

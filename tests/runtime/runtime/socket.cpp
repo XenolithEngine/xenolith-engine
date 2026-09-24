@@ -32,6 +32,7 @@ THE SOFTWARE.
 
 #include <sprt/cxx/thread>
 #include <sprt/c/__sprt_unistd.h>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -48,7 +49,7 @@ using dispatch::SocketAddress;
 using dispatch::StreamHandle;
 
 static bool report(bool ok, StringView name, int &failed) {
-	sprt::cout << (ok ? "PASS  " : "FAIL  ") << name << "\n";
+	sprt::cout << (ok ? "PASS  " : sprt::test::failed("FAIL  ")) << name << "\n";
 	if (!ok) {
 		++failed;
 	}
@@ -428,7 +429,7 @@ void performSocketTests() {
 #else
 	auto looper = dispatch::Looper::acquire();
 	if (!looper) {
-		sprt::cout << "FAIL  could not acquire looper\n";
+		sprt::cout << sprt::test::failed("FAIL  could not acquire looper\n");
 		return;
 	}
 
@@ -461,8 +462,8 @@ void performSocketTests() {
 	}
 #endif
 
-	sprt::cout << "socket tests: " << (failed == 0 ? "ALL PASS" : "FAILURES") << " (" << failed
-			   << " failed)\n";
+	sprt::cout << "socket tests: " << (failed == 0 ? "ALL PASS" : sprt::test::failed("FAILURES"))
+			   << " (" << failed << " failed)\n";
 #endif
 }
 

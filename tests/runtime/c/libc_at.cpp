@@ -52,6 +52,7 @@ THE SOFTWARE.
 
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/platform.h>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -61,7 +62,7 @@ int s_failures = 0;
 int s_skipped = 0;
 
 void check(bool cond, const char *msg) {
-	printf("  %s: %s\n", cond ? "PASS" : "FAIL", msg);
+	printf("  %s: %s\n", cond ? "PASS" : sprt::test::failed("FAIL"), msg);
 	if (!cond) {
 		++s_failures;
 	}
@@ -416,7 +417,7 @@ void performAtFunctionsTest() {
 	check(accepted == 32, "at_quick_exit accepts 32 handlers");
 
 	printf("performAtFunctionsTest: %s (%d failures, %d skipped)\n",
-			s_failures == 0 ? "ALL PASS" : "FAILED", s_failures, s_skipped);
+			s_failures == 0 ? "ALL PASS" : sprt::test::failed("FAILED"), s_failures, s_skipped);
 }
 
 } // namespace sprt

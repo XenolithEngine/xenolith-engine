@@ -275,8 +275,12 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 	req->setSceneRef(Rc<Ref>(_scene.get()));
 
 	// break current stack frame, perform on next one
-	_application->performOnAppThread([this, req = Rc<core::FrameRequestProxy>(req.get())] {
-		if (!_scene || !req) {
+	//
+	// The window can be destroyed before that: a preserved Director keeps its scene but loses the
+	// server, and the frame belongs to the server it was acquired for.
+	_application->performOnAppThread(
+			[this, server = _server, req = Rc<core::FrameRequestProxy>(req.get())] {
+		if (!_scene || !req || !_server || _server != server) {
 			return;
 		}
 

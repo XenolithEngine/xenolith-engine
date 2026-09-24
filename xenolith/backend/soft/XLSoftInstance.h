@@ -30,6 +30,14 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 
 class Device;
 
+struct SP_PUBLIC LoopBackendInfo : core::LoopBackendInfo {
+	// The loop thread does not rasterize: tiles go to the looper's pool only, and the frame is
+	// submitted from the completion. For a server, whose loop thread serves every window.
+	bool asyncRaster = false;
+
+	virtual Value encode() const override;
+};
+
 // There is exactly one "device" and it is the CPU this process runs on, so device enumeration
 // is a constant: no probing, no driver load, nothing that can fail.
 class SP_PUBLIC Instance final : public core::Instance {

@@ -82,6 +82,7 @@ void performShmPeerProcess();
 void performShmLocalTests();
 void performHandshakeTests();
 void performReplyTableTests();
+void performBearerKeyTests();
 void performOwnershipTests();
 
 } // namespace stappler::xenolith::remote

@@ -107,6 +107,9 @@ public:
 
 	const BackendFeatures &getBackendFeatures() const { return _backendFeatures; }
 
+	// See LoopBackendInfo::asyncRaster.
+	bool isAsyncRaster() const { return _asyncRaster; }
+
 	void scheduleFence(Rc<core::Fence> &&);
 
 	// assign texture slots, create image views, write texture sets and fill per-material data;
@@ -133,6 +136,7 @@ protected:
 	Rc<sprt::dispatch::TimerHandle> _updateTimerHandle;
 	Vector<Rc<core::Fence>> _scheduledFences;
 	sprt::atomic<bool> _running = false;
+	bool _asyncRaster = false;
 };
 
 } // namespace stappler::xenolith::soft

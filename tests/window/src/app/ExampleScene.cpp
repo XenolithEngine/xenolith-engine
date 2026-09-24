@@ -152,6 +152,55 @@ void ExampleScene::installClientWindowHandler(ServerAppThread *app) {
 	});
 }
 
+// Application notifications the server received, newest last, for the `remote` command. Kept apart
+// from the scene: the handler belongs to the app thread and may outlive it.
+static Vector<Value> s_appNotifications;
+
+/* Application messages (GlobalCode::AppRequest/AppNotify) as a test peer: a request is answered
+with an echo of itself and the asking session, `{delay: ms}` holds the answer back that long, and
+each session is greeted with a notification as it starts. */
+void ExampleScene::installAppMessageHandler(ServerAppThread *app) {
+	app->setAppMessageHandler(
+			[app](NotNull<RemoteSession> session, Value &&val, Rc<AppReply> &&reply) {
+		if (!reply) {
+			if (s_appNotifications.size() >= 32) {
+				s_appNotifications.erase(s_appNotifications.begin());
+			}
+			Value entry;
+			entry.setInteger(int64_t(session->getId()), "session");
+			entry.setString(session->getLabel(), "label");
+			entry.setValue(sp::move(val), "value");
+			s_appNotifications.emplace_back(sp::move(entry));
+			return;
+		}
+
+		const Value &req = val;
+		auto delay = req.isDictionary() ? req.getInteger("delay") : 0;
+
+		Value answer;
+		answer.setValue(req, "echo");
+		answer.setInteger(int64_t(session->getId()), "session");
+		answer.setString(session->getLabel(), "label");
+		if (delay > 0) {
+			app->getLooper()->schedule(sprt::dispatch::TimeInterval::milliseconds(delay),
+					[reply = sp::move(reply), answer = sp::move(answer)](sprt::dispatch::Handle *,
+							bool) mutable { reply->send(answer); },
+					app);
+		} else {
+			reply->send(answer);
+		}
+	});
+
+	app->setSessionObserver(
+			[app](NotNull<RemoteSession> session, ServerAppThread::SessionEvent event) {
+		if (event == ServerAppThread::SessionEvent::Started) {
+			Value hello;
+			hello.setString(session->getLabel(), "hello");
+			app->sendAppNotification(session, hello);
+		}
+	});
+}
+
 // Сцена была собрана и запущена режиссёром
 void ExampleScene::handlePresented(Director *dir) {
 	Scene2d::handlePresented(dir);
@@ -238,6 +287,17 @@ void ExampleScene::handlePresented(Director *dir) {
 			// refuse without costing the session.
 			if (app && ::getenv("XL_REMOTE_CLIENT_WINDOWS")) {
 				installClientWindowHandler(app);
+			}
+
+			// XL_REMOTE_APP_ECHO=1: answer application messages (see installAppMessageHandler).
+			if (app && ::getenv("XL_REMOTE_APP_ECHO")) {
+				installAppMessageHandler(app);
+			}
+
+			// XL_REMOTE_LABELLED_KEYS=1: accept only clients presenting a key added with
+			// remote-add-key, even on a transport that vouches for its peer.
+			if (app && ::getenv("XL_REMOTE_LABELLED_KEYS")) {
+				app->setRequireLabelledKeys(true);
 			}
 
 			// XL_REMOTE_SHARE_PRIMARY=0: listen without offering this window, the shape a window
@@ -373,6 +433,7 @@ void ExampleScene::registerCommands() {
 			auto &v = sessions.emplace();
 			v.setInteger(int64_t(it->getId()), "id");
 			v.setInteger(it->getPeerPid(), "pid");
+			v.setString(it->getLabel(), "label");
 			// Frames this client was late with. A cancelled frame leaves no other trace: the
 			// session survives it by design.
 			if (auto client = it->getRenderClient()) {
@@ -411,9 +472,78 @@ void ExampleScene::registerCommands() {
 				v.setInteger(int64_t(w.second.creatorSession), "creator");
 			}
 		}
+		auto &notifications = result.emplace("appNotifications");
+		notifications.setArray(Value::ArrayType());
+		for (auto &it : s_appNotifications) { notifications.addValue(it); }
+
 		auto fp = app->getListenerFingerprint();
 		result.setString(fp.empty() ? String() : base16::encode<Interface>(fp), "spki");
 		done(sp::move(result));
+	});
+
+	/* Issue a labelled key: { token, label, single }. key = Sha512(token), as a client derives it
+	from the token it was launched with; `single` (true by default) retires the key once a session
+	holds it. */
+	inspector::addCommand(content, "remote-add-key",
+			"Accept clients presenting Sha512(token) under a label: { token, label, single }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		Value result;
+		auto app = dynamic_cast<ServerAppThread *>(getDirector()->getApplication());
+		if (!app || !req.isString("token") || !req.isString("label")) {
+			result.setBool(false, "ok");
+			result.setString(app ? "token and label are required" : "not a server app thread",
+					"error");
+			done(sp::move(result));
+			return;
+		}
+		auto h = crypto::Sha512::perform(req.getString("token"));
+		app->addBearerKey(BytesView(h.data(), h.size()), req.getString("label"),
+				req.isBool("single") ? req.getBool("single") : true);
+		result.setBool(true, "ok");
+		done(sp::move(result));
+	});
+
+	// Send a session an application notification: { session, value }.
+	inspector::addCommand(content, "remote-app-notify",
+			"Send a session an application notification: { session, value }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		Value result;
+		auto app = dynamic_cast<ServerAppThread *>(getDirector()->getApplication());
+		auto session = app ? app->getRemoteSession(uint64_t(req.getInteger("session"))) : nullptr;
+		result.setBool(session && app->sendAppNotification(session, req.getValue("value")), "ok");
+		done(sp::move(result));
+	});
+
+	// Ask a session's application something: { session, value, timeout } -> { ok, status, reply }.
+	inspector::addCommand(content, "remote-app-request",
+			"Send a session an application request: { session, value, timeout (ms) }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		auto app = dynamic_cast<ServerAppThread *>(getDirector()->getApplication());
+		auto session = app ? app->getRemoteSession(uint64_t(req.getInteger("session"))) : nullptr;
+		if (!session) {
+			Value result;
+			result.setBool(false, "ok");
+			result.setString("unknown session", "error");
+			done(sp::move(result));
+			return;
+		}
+		auto timeout = uint64_t(req.getInteger("timeout", 5'000)) * 1'000;
+		if (!app->sendAppRequest(session, req.getValue("value"),
+					[done](Status st, Value &&reply) mutable {
+			Value result;
+			result.setBool(st == Status::Ok, "ok");
+			result.setString(sprt::status::getStatusName(st), "status");
+			result.setValue(sp::move(reply), "reply");
+			done(sp::move(result));
+		}, timeout)) {
+			Value result;
+			result.setBool(false, "ok");
+			result.setString("the session takes no application messages", "error");
+			done(sp::move(result));
+		}
 	});
 
 	/* Open N more windows in THIS process: { count, width, height }.

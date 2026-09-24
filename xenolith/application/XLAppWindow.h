@@ -301,6 +301,11 @@ protected:
 	Rc<ServerAppThread> _application;
 	Rc<Director> _director;
 	NativeWindow *_window = nullptr;
+
+	// The native window's info, pinned: the app thread reads it after the context thread has
+	// released the native window.
+	Rc<WindowInfo> _info;
+
 	Rc<core::PresentationEngine> _presentationEngine;
 
 	// Taken off WindowInfo::appData in init() (context thread), handed to the app thread in end()

@@ -855,7 +855,8 @@ static int runXlmake(int argc, const char *argv[]) {
 			// The GNU `-p` database dump is an xlmake CLI/inspection concern; the engine executor only
 			// invokes this hook (when bc.printDatabase is set), keeping stappler_makefile free of the
 			// Inspector.
-			Callback<void()> printDatabaseHook([&]() { xlmake::printDatabase(mk, err); });
+			auto dumpDatabase = [&]() { xlmake::printDatabase(mk, err); };
+			Callback<void()> printDatabaseHook(dumpDatabase);
 			bc.printDatabaseHook = &printDatabaseHook;
 			result = xlmake::runBuild(mk, bc, err);
 		}

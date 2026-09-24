@@ -614,147 +614,194 @@ static void QueuePassHandle_profileFrame(TimeInterval elapsed, SpanView<URect> a
 			" filled/damage=", double(fill.total()) / double(denom));
 }
 
-bool QueuePassHandle::runPass(core::FrameQueue &q) {
-	auto getViewForAttachment =
-			[&](const core::AttachmentSubpassData *desc) -> Rc<core::ImageView> {
-		auto aIt = _queueData->attachmentMap.find(desc->pass->attachment);
-		if (aIt == _queueData->attachmentMap.end() || !aIt->second->image) {
-			return nullptr;
-		}
-
-		auto imgAttachment =
-				static_cast<core::ImageAttachment *>(desc->pass->attachment->attachment.get());
-		auto viewInfo = imgAttachment->getImageViewInfo(aIt->second->image->getInfo(), *desc->pass);
-		return aIt->second->image->getView(viewInfo);
-	};
-
-	for (auto &subpass : _data->subpasses) {
-		if (subpass->outputImages.empty()) {
-			log::source().error("soft::QueuePassHandle", "Subpass has no colour output: ",
-					subpass->key);
-			return false;
-		}
-
-		// MRT is out of scope: the flat contract writes exactly one colour attachment, and
-		// quietly rasterizing into the first of several would be worse than refusing.
-		if (subpass->outputImages.size() > 1) {
-			log::source().error("soft::QueuePassHandle",
-					"Multiple colour outputs are not supported: ", subpass->key);
-			return false;
-		}
-
-		auto out = subpass->outputImages.front();
-		auto view = getViewForAttachment(out);
-		if (!view) {
-			log::source().error("soft::QueuePassHandle", "No image view for attachment: ",
-					out->key);
-			return false;
-		}
-
-		auto image = view->getImage().get_cast<Image>();
-		if (!image) {
-			log::source().error("soft::QueuePassHandle", "Attachment is not a software image: ",
-					out->key);
-			return false;
-		}
-
-		auto &info = image->getInfo();
-
-		raster::Target target;
-		target.pixels = image->getData();
-		target.width = info.extent.width;
-		target.height = info.extent.height;
-		target.stride = image->getStride();
-		target.format = getRasterFormat(info.format);
-
-		if (target.empty() || raster::getPixelSize(target.format) == 0) {
-			log::source().error("soft::QueuePassHandle", "Attachment is not rasterizable: ",
-					out->key, " (format ", core::getImageFormatName(info.format), ")");
-			return false;
-		}
-
-		_frameFill = raster::FillStats();
-		_frameSurface = Extent2(target.width, target.height);
-
-		Vector<URect> redrawAreas;
-		if (!computeRedrawArea(q, target, redrawAreas)) {
-			// the image already holds this frame; leave every pixel untouched
-			return true;
-		}
-
-		if (redrawAreas.empty()) {
-			return true;
-		}
-
-		auto buf = Rc<CommandBuffer>::create(*_device);
-		if (!buf) {
-			return false;
-		}
-
-		buf->setTarget(target);
-
-		// The base scissor is the bounding box of the damage: it bounds the work done while
-		// *recording* (clipping, span setup), which is per command and not per region. Each region
-		// then narrows it further at draw time.
-		buf->setScissor(QueuePassHandle_boundingRect(redrawAreas));
-
-		// Record first: an empty draw list must not clear the previous frame
-		// (dynamic-image mid-rebind used to publish a black frame).
-		{
-			FrameStageTimer timer(FrameStage::Record);
-			recordSubpass(q, *subpass, *buf);
-		}
-
-		if (buf->getDrawList().empty()) {
-			return true;
-		}
-
-		auto clearAttachment =
-				static_cast<core::ImageAttachment *>(out->pass->attachment->attachment.get());
-		if (tryRgaVideoBlit(*buf, target, redrawAreas, clearAttachment->getClearColor())) {
-			return true;
-		}
-
-		// Composed into the shadow: present() must copy again.
-		s_scanoutDirectSticky.store(false);
-
-		// Load op. Clear is the only one that touches memory, and only inside the damaged regions:
-		// outside them the image keeps the previous frame, which is exactly what makes the partial
-		// redraw correct rather than merely cheaper.
-		// The clear writes real pixels and belongs in the same budget as the draw - on a frame
-		// whose damage is the whole surface it is the single largest writer.
-		raster::FillStats clearFill;
-		if (out->pass->loadOp == core::AttachmentLoadOp::Clear) {
-			FrameStageTimer timer(FrameStage::Clear);
-			auto imgAttachment =
-					static_cast<core::ImageAttachment *>(out->pass->attachment->attachment.get());
-			for (auto &it : redrawAreas) {
-				raster::fillRect(target, it, imgAttachment->getClearColor(), &clearFill);
-			}
-		}
-
-		// The command list is built once; rasterization repeats per tile of each region. Tiling and
-		// thread count come from SP_RASTER_TILE / SP_RASTER_THREADS (untiled, single-threaded by
-		// default).
-		raster::TilingStats tiling;
-		auto started = Time::now();
-		raster::drawTiled(target, buf->getDrawList(), redrawAreas, raster::getDefaultTiling(),
-				&tiling);
-		auto elapsed = Time::now() - started;
-		tiling.fill.add(clearFill);
-		QueuePassHandle_profileFrame(elapsed, redrawAreas, tiling,
-				Extent2(target.width, target.height));
-
-		// The same span, charged to the budget independently of the profile.
-		if (isFrameBudgetEnabled()) {
-			addFrameStageTime(FrameStage::Raster, elapsed.toMicros());
-		}
-
-		_frameFill.add(tiling.fill);
-		handlePassRasterized(q);
+bool QueuePassHandle::prepareSubpass(core::FrameQueue &q, const core::SubpassData &subpass,
+		RasterItem &item) {
+	if (subpass.outputImages.empty()) {
+		log::source().error("soft::QueuePassHandle", "Subpass has no colour output: ", subpass.key);
+		return false;
 	}
 
+	// MRT is out of scope: the flat contract writes exactly one colour attachment, and quietly
+	// rasterizing into the first of several would be worse than refusing.
+	if (subpass.outputImages.size() > 1) {
+		log::source().error("soft::QueuePassHandle",
+				"Multiple colour outputs are not supported: ", subpass.key);
+		return false;
+	}
+
+	auto out = subpass.outputImages.front();
+	auto imgAttachment =
+			static_cast<core::ImageAttachment *>(out->pass->attachment->attachment.get());
+
+	Rc<core::ImageView> view;
+	auto aIt = _queueData->attachmentMap.find(out->pass->attachment);
+	if (aIt != _queueData->attachmentMap.end() && aIt->second->image) {
+		auto viewInfo = imgAttachment->getImageViewInfo(aIt->second->image->getInfo(), *out->pass);
+		view = aIt->second->image->getView(viewInfo);
+	}
+	if (!view) {
+		log::source().error("soft::QueuePassHandle", "No image view for attachment: ", out->key);
+		return false;
+	}
+
+	auto image = view->getImage().get_cast<Image>();
+	if (!image) {
+		log::source().error("soft::QueuePassHandle",
+				"Attachment is not a software image: ", out->key);
+		return false;
+	}
+
+	auto &info = image->getInfo();
+
+	raster::Target target;
+	target.pixels = image->getData();
+	target.width = info.extent.width;
+	target.height = info.extent.height;
+	target.stride = image->getStride();
+	target.format = getRasterFormat(info.format);
+
+	if (target.empty() || raster::getPixelSize(target.format) == 0) {
+		log::source().error("soft::QueuePassHandle", "Attachment is not rasterizable: ", out->key,
+				" (format ", core::getImageFormatName(info.format), ")");
+		return false;
+	}
+
+	_frameFill = raster::FillStats();
+	_frameSurface = Extent2(target.width, target.height);
+
+	Vector<URect> redrawAreas;
+	if (!computeRedrawArea(q, target, redrawAreas)) {
+		// the image already holds this frame; leave every pixel untouched
+		return true;
+	}
+
+	if (redrawAreas.empty()) {
+		return true;
+	}
+
+	auto buf = Rc<CommandBuffer>::create(*_device);
+	if (!buf) {
+		return false;
+	}
+
+	buf->setTarget(target);
+
+	// The base scissor is the bounding box of the damage: it bounds the work done while
+	// *recording* (clipping, span setup), which is per command and not per region. Each region
+	// then narrows it further at draw time.
+	buf->setScissor(QueuePassHandle_boundingRect(redrawAreas));
+
+	// Record first: an empty draw list must not clear the previous frame
+	// (dynamic-image mid-rebind used to publish a black frame).
+	{
+		FrameStageTimer timer(FrameStage::Record);
+		recordSubpass(q, subpass, *buf);
+	}
+
+	if (buf->getDrawList().empty()) {
+		return true;
+	}
+
+	if (tryRgaVideoBlit(*buf, target, redrawAreas, imgAttachment->getClearColor())) {
+		return true;
+	}
+
+	// Composed into the shadow: present() must copy again.
+	s_scanoutDirectSticky.store(false);
+
+	item.target = target;
+	item.buffer = sp::move(buf);
+	item.redrawAreas = sp::move(redrawAreas);
+	item.clear = out->pass->loadOp == core::AttachmentLoadOp::Clear;
+	item.clearColor = imgAttachment->getClearColor();
 	return true;
+}
+
+void QueuePassHandle::rasterize(core::FrameQueue &q, RasterItem &item) {
+	// Load op. Clear is the only one that touches memory, and only inside the damaged regions:
+	// outside them the image keeps the previous frame, which is exactly what makes the partial
+	// redraw correct rather than merely cheaper.
+	// The clear writes real pixels and belongs in the same budget as the draw - on a frame
+	// whose damage is the whole surface it is the single largest writer.
+	raster::FillStats clearFill;
+	if (item.clear) {
+		FrameStageTimer timer(FrameStage::Clear);
+		for (auto &it : item.redrawAreas) {
+			raster::fillRect(item.target, it, item.clearColor, &clearFill);
+		}
+	}
+
+	// The command list is built once; rasterization repeats per tile of each region. Tiling and
+	// thread count come from SP_RASTER_TILE / SP_RASTER_THREADS.
+	raster::TilingStats tiling;
+	auto started = Time::now();
+	raster::drawTiled(item.target, item.buffer->getDrawList(), item.redrawAreas,
+			raster::getDefaultTiling(), &tiling);
+	tiling.fill.add(clearFill);
+
+	handleSubpassRasterized(q, Time::now() - started, item.redrawAreas, tiling);
+}
+
+void QueuePassHandle::rasterizeAsync(Rc<core::FrameQueue> &&q, size_t index,
+		Function<void(bool)> &&onSubmited, Function<void(bool)> &&onComplete) {
+	while (index < _data->subpasses.size()) {
+		RasterItem item;
+		if (!prepareSubpass(*q, *_data->subpasses[index], item)) {
+			finishSubmit(*q, false, sp::move(onSubmited), sp::move(onComplete));
+			return;
+		}
+
+		if (!item.buffer) {
+			break;
+		}
+
+		++index;
+
+		raster::TiledDrawRequest req;
+		req.target = item.target;
+		req.list = &item.buffer->getDrawList();
+		req.regions = item.redrawAreas;
+		req.tiling = raster::getDefaultTiling();
+		req.clear = item.clear;
+		req.clearColor = item.clearColor;
+		req.collectStats = true;
+
+		// The clear runs per tile inside the job, so its time is charged to the raster stage.
+		auto started = Time::now();
+		auto job = raster::drawTiledAsync(sp::move(req),
+				[this, q = sp::move(q), index, item = sp::move(item), started,
+						onSubmited = sp::move(onSubmited), onComplete = sp::move(onComplete)](
+						bool success, uint32_t, const raster::TilingStats &tiling) mutable {
+			handleSubpassRasterized(*q, Time::now() - started, item.redrawAreas, tiling);
+
+			if (!success || !_softLoop->isRunning()) {
+				finishSubmit(*q, false, sp::move(onSubmited), sp::move(onComplete));
+			} else {
+				rasterizeAsync(sp::move(q), index, sp::move(onSubmited), sp::move(onComplete));
+			}
+		},
+				this);
+
+		if (job) {
+			_device->addRasterJob(sp::move(job));
+		}
+		return;
+	}
+
+	finishSubmit(*q, true, sp::move(onSubmited), sp::move(onComplete));
+}
+
+void QueuePassHandle::handleSubpassRasterized(core::FrameQueue &q, TimeInterval elapsed,
+		SpanView<URect> areas, const raster::TilingStats &tiling) {
+	QueuePassHandle_profileFrame(elapsed, areas, tiling, _frameSurface);
+
+	// The same span, charged to the budget independently of the profile.
+	if (isFrameBudgetEnabled()) {
+		addFrameStageTime(FrameStage::Raster, elapsed.toMicros());
+	}
+
+	_frameFill.add(tiling.fill);
+	handlePassRasterized(q);
 }
 
 bool QueuePassHandle::prepare(core::FrameQueue &q, Function<void(bool)> &&cb) {
@@ -766,10 +813,38 @@ bool QueuePassHandle::prepare(core::FrameQueue &q, Function<void(bool)> &&cb) {
 
 void QueuePassHandle::submit(core::FrameQueue &q, Rc<core::FrameSync> &&sync,
 		Function<void(bool)> &&onSubmited, Function<void(bool)> &&onComplete) {
-	// Rasterization is synchronous: by the time the pass returns, the pixels are written. The
-	// fence is acquired anyway because the frame graph drives completion through it.
-	auto success = runPass(q);
+	if (_softLoop->isAsyncRaster()) {
+		rasterizeAsync(Rc<core::FrameQueue>(&q), 0, sp::move(onSubmited), sp::move(onComplete));
+		return;
+	}
 
+	// A subpass with nothing to draw ends the pass: the image already holds this frame.
+	bool success = true;
+	for (auto &subpass : _data->subpasses) {
+		RasterItem item;
+		if (!prepareSubpass(q, *subpass, item)) {
+			success = false;
+			break;
+		}
+		if (!item.buffer) {
+			break;
+		}
+		rasterize(q, item);
+	}
+
+	finishSubmit(q, success, sp::move(onSubmited), sp::move(onComplete));
+}
+
+void QueuePassHandle::finishSubmit(core::FrameQueue &q, bool success,
+		Function<void(bool)> &&onSubmited, Function<void(bool)> &&onComplete) {
+	// An asynchronous rasterization can finish after the loop stopped and released the device.
+	if (!_softLoop->isRunning()) {
+		onSubmited(false);
+		return;
+	}
+
+	// The pixels are written by now. The fence is acquired anyway because the frame graph drives
+	// completion through it.
 	_fence = _loop->acquireFence(core::FenceType::Default);
 	if (!_fence) {
 		onSubmited(false);

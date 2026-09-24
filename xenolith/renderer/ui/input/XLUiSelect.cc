@@ -326,7 +326,7 @@ bool Select::open() {
 		return false;
 	}
 
-	auto window = getAppWindow();
+	auto window = getParentWindow();
 	if (!window) {
 		return false;
 	}
@@ -499,11 +499,6 @@ void Select::updateInteractiveState() {
 	});
 }
 
-AppWindow *Select::getAppWindow() const {
-	auto scene = getScene();
-	auto director = scene ? scene->getDirector() : nullptr;
-	auto server = director ? director->getRenderServer() : nullptr;
-	return server ? dynamic_cast<AppWindow *>(server) : nullptr;
-}
+core::RenderServerChannel *Select::getParentWindow() const { return getSubWindowParent(this); }
 
 } // namespace stappler::xenolith::ui

@@ -32,6 +32,7 @@ THE SOFTWARE.
 #include <sprt/cxx/thread>
 #include <sprt/c/__sprt_unistd.h>
 #include <sprt/c/__sprt_fcntl.h>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -101,7 +102,7 @@ static Status readFileSync(dispatch::Looper *looper, StringView path, ReadBuffer
 }
 
 static bool report(bool ok, StringView name, int &failed) {
-	sprt::cout << (ok ? "PASS  " : "FAIL  ") << name << "\n";
+	sprt::cout << (ok ? "PASS  " : sprt::test::failed("FAIL  ")) << name << "\n";
 	if (!ok) {
 		++failed;
 	}
@@ -264,7 +265,7 @@ void performFileTests() {
 
 	auto looper = dispatch::Looper::acquire();
 	if (!looper) {
-		sprt::cout << "FAIL  could not acquire looper\n";
+		sprt::cout << sprt::test::failed("FAIL  could not acquire looper\n");
 		return;
 	}
 
@@ -297,7 +298,7 @@ void performFileTests() {
 	}
 #endif
 
-	sprt::cout << "file tests: " << (failed == 0 ? "ALL PASS" : "FAILURES")
+	sprt::cout << "file tests: " << (failed == 0 ? "ALL PASS" : sprt::test::failed("FAILURES"))
 			   << " (failures=" << failed << ")\n";
 }
 

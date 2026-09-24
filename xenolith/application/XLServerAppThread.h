@@ -28,6 +28,7 @@
 #include "XLAppThread.h"
 #include "XLRemoteAddress.h"
 #include "XLRemoteObject.h"
+#include "XLRemoteBearerKeys.h"
 #include "XLRemoteSession.h"
 #include "XLWindowSceneInfo.h"
 
@@ -111,6 +112,43 @@ public:
 	// Start listening without sharing a window: the shape a window manager needs, where every window
 	// belongs to a client.
 	bool startSession(StringView address, BytesView key);
+
+	/* A key issued to one client, typically a process this server launches with it: the session
+	that presents it gets `label` (RemoteSession::getLabel). Accepted on every transport, including
+	the ones that vouch for their peer and need no key otherwise. A single-use key stops matching
+	once a session holds it. Can be added while listening. */
+	void addBearerKey(BytesView key, StringView label, bool singleUse = true);
+	bool removeBearerKey(StringView label);
+
+	// Refuse every client that did not present a labelled key, even on a peer-authenticating
+	// transport (AuthFailed).
+	void setRequireLabelledKeys(bool);
+	bool isRequireLabelledKeys() const { return _requireLabelledKeys; }
+
+	/* Application messages from the clients (GlobalCode::AppRequest/AppNotify), on the app thread.
+	`reply` is null for a notification; a request left unanswered is refused with NotImplemented
+	when the last reference to its reply goes away. Installing a handler advertises
+	PeerFeatures::AppMessages. */
+	using AppMessageHandler =
+			Function<void(NotNull<RemoteSession>, Value &&, Rc<AppReply> &&reply)>;
+	void setAppMessageHandler(AppMessageHandler &&);
+
+	// False when the session is closed or does not receive application messages. A request's
+	// callback runs once with the answer, a timeout or a refusal (see getAppReplyStatus), but not
+	// when the session closes first; an unanswered request never costs the session.
+	bool sendAppNotification(NotNull<RemoteSession>, const Value &);
+	bool sendAppRequest(NotNull<RemoteSession>, const Value &, Function<void(Status, Value &&)> &&,
+			uint64_t timeoutUs);
+
+	// Started: the session exchanged peer info and got its first announce. Closed: it is being torn
+	// down, still with its id and label; it comes for every session, started or not.
+	enum class SessionEvent {
+		Started,
+		Closed,
+	};
+
+	using SessionObserver = Function<void(NotNull<RemoteSession>, SessionEvent)>;
+	void setSessionObserver(SessionObserver &&);
 
 	/* Reserve the shared window with this name for one session: only that session sees it, and no
 	other can take it. 0 lifts the reservation. Applies at once to a window already shared (other
@@ -224,8 +262,8 @@ protected:
 	// Never blocks, so a silent peer holds back neither other handshakes nor the session.
 	void stepPendingHandshakes();
 
-	// A connection whose handshake replied Ok becomes a session.
-	void installRemoteClient(Rc<remote::ServerConnection> &&);
+	// A connection whose handshake replied Ok becomes a session; `label` is its key's label.
+	void installRemoteClient(Rc<remote::ServerConnection> &&, StringView label);
 
 	// Close every connection still in its handshake.
 	void dropPendingHandshakes();
@@ -296,6 +334,11 @@ protected:
 	// Remote auth + compression config.
 	Bytes _expectedKey; // bearer key a client must present (empty ⇒ reject all)
 	Bytes _dictionary; // server's LZ4 dictionary (priority over a client suggestion)
+	remote::BearerKeyTable _labelledKeys;
+	bool _requireLabelledKeys = false;
+
+	AppMessageHandler _appMessageHandler;
+	SessionObserver _sessionObserver;
 
 	// Accepted connections still in their setup handshake, stepped from pumpListener.
 	struct PendingHandshake {
@@ -304,6 +347,7 @@ protected:
 		uint64_t acceptedAt = 0;
 		remote::GlobalError refusal = remote::GlobalError::Ok; // non-Ok: turn it away with this
 		String backoffKey;
+		String label; // of the labelled key the client presented
 		bool holdsSlot = false; // replied Ok: later hellos are refused until this one settles
 	};
 	Vector<PendingHandshake> _pendingHandshakes;

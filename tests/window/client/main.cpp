@@ -24,6 +24,9 @@
 #include "XLClientContext.h"
 #include "XLRemoteProtocol.h" // remote::getDevBearerKey
 #include "SPCoreCrypto.h" // crypto::Sha512
+#include "ClientScene.h"
+
+#include <stdlib.h>
 
 using namespace sp;
 using namespace sp::xenolith;
@@ -37,9 +40,18 @@ int main(int argc, const char *argv[]) {
 		ctx->setServerAddress(argc > 1 ? StringView(argv[1]) : StringView("127.0.0.1:4480"));
 
 		// Bearer key: derived from a per-session token the live-reload server passes as the 2nd CLI arg
-		// (key = Sha512(token)); the shared dev key is the fallback when launched manually with no token.
-		if (argc > 2) {
+		// (key = Sha512(token)), or from XL_LAUNCH_TOKEN, how a server that launched us hands it
+		// over; the shared dev key is the fallback when launched manually with no token.
+		String launchToken;
+		if (auto env = ::getenv("XL_LAUNCH_TOKEN")) {
+			launchToken = env;
+			::unsetenv("XL_LAUNCH_TOKEN"); // not inherited by anything this process starts
+		}
+		if (argc > 2 && argv[2][0] != 0) {
 			auto h = crypto::Sha512::perform(StringView(argv[2]));
+			ctx->setBearerKey(BytesView(h.data(), h.size()));
+		} else if (!launchToken.empty()) {
+			auto h = crypto::Sha512::perform(StringView(launchToken));
 			ctx->setBearerKey(BytesView(h.data(), h.size()));
 		} else {
 #if DEBUG
@@ -62,6 +74,8 @@ int main(int argc, const char *argv[]) {
 		}
 
 		ctx->setWindowConnectedCallback([](NotNull<RemoteWindow>) { return true; });
+
+		client::installAppMessageLog(ctx);
 
 		/* XL_CLIENT_CREATE_WINDOW=<id>:<w>x<h> -- ask the server for a window of our own instead of
 		waiting to be offered one.

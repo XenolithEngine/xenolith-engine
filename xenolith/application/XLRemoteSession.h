@@ -66,6 +66,11 @@ public:
 	// What the transport knows about the process on the other end (uid/pid on local transports).
 	int64_t getPeerPid() const;
 
+	// The label of the bearer key the client presented (ServerAppThread::addBearerKey); empty when
+	// it was accepted without a labelled key.
+	StringView getLabel() const { return _label; }
+	void setLabel(StringView label) { _label = label.str<Interface>(); }
+
 	// True once the connection has begun terminating.
 	bool isClosed();
 
@@ -121,6 +126,7 @@ protected:
 	Rc<sprt::dispatch::Handle> _wake;
 	remote::ReplyTable _replies;
 	remote::PeerInfo _peerInfo;
+	String _label;
 
 	// Monotonic us, restarted when the session is created.
 	uint64_t _lastPingTime = 0;

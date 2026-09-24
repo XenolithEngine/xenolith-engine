@@ -595,8 +595,9 @@ bool ReadKQueueHandle::reset(PollFlags flags) {
 	return Handle::reset();
 }
 
-bool ProcessKQueueSource::init(int p) {
+bool ProcessKQueueSource::init(int p, bool g) {
 	pid = p;
+	group = g;
 	return true;
 }
 
@@ -605,19 +606,32 @@ void ProcessKQueueSource::cancel() {
 	// ran), terminate and reap it so it neither outlives its handle nor leaks a zombie.
 	// `exited` guards against signalling an already-reaped (recycled) pid.
 	if (!exited && pid > 0) {
-		killProcessChild(pid);
+		killProcessChild(pid, group);
 		exited = true;
 	}
 }
 
-bool ProcessKQueueHandle::init(HandleClass *cl, int pid, CompletionHandle<ProcessHandle> &&c) {
+Status ProcessKQueueHandle::cancelClass(HandleClass *cl, Handle *handle,
+		uint8_t data[Handle::DataSize], Status st) {
+	auto source = reinterpret_cast<ProcessKQueueSource *>(data);
+
+	source->cancel();
+	source->~ProcessKQueueSource();
+
+	cancelProcessReader(static_cast<ProcessState *>(handle->getUserdata()));
+
+	return HandleClass::cancel(cl, handle, data, st);
+}
+
+bool ProcessKQueueHandle::init(HandleClass *cl, int pid, bool group,
+		CompletionHandle<ProcessHandle> &&c) {
 	static_assert(sizeof(ProcessKQueueSource) <= DataSize
 			&& sprt::is_standard_layout<ProcessKQueueSource>::value);
 	if (!Handle::init(cl, move(c))) {
 		return false;
 	}
 	auto source = new (_data) ProcessKQueueSource();
-	return source->init(pid);
+	return source->init(pid, group);
 }
 
 Status ProcessKQueueHandle::rearm(KQueueData *queue, ProcessKQueueSource *source) {
@@ -679,7 +693,8 @@ Rc<ProcessHandle> spawnProcessKQueue(QueueData *data, HandleClass *processClass,
 		Ref *ref) {
 	int pid = -1;
 	int readFd = -1;
-	if (!posixSpawnPipe(info.command, &pid, &readFd)) {
+	auto group = hasFlag(info.flags, ProcessFlags::KillProcessTree);
+	if (!posixSpawnPipe(info.command, &pid, &readFd, group)) {
 		return nullptr;
 	}
 
@@ -688,7 +703,8 @@ Rc<ProcessHandle> spawnProcessKQueue(QueueData *data, HandleClass *processClass,
 	state->userRef = ref;
 	state->readFd = readFd;
 
-	auto proc = Rc<ProcessKQueueHandle>::create(processClass, pid, sprt::move(info.completion));
+	auto proc =
+			Rc<ProcessKQueueHandle>::create(processClass, pid, group, sprt::move(info.completion));
 	if (!proc) {
 		::close(readFd);
 		int status = 0;

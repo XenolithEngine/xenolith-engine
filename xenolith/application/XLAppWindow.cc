@@ -74,6 +74,7 @@ bool AppWindow::init(NotNull<Context> ctx, NotNull<ServerAppThread> app, NotNull
 	_context = ctx;
 	_application = app;
 	_window = w;
+	_info = const_cast<WindowInfo *>(_window->getInfo());
 	_capabilities = _window->getInfo()->capabilities;
 	_windowId = StringView(_window->getInfo()->id).str<String>();
 
@@ -320,12 +321,7 @@ void AppWindow::handleTextInput(const TextInputState &state) {
 	setReadyForNextFrame();
 }
 
-const WindowInfo *AppWindow::getInfo() const {
-	if (_window) {
-		return _window->getInfo();
-	}
-	return nullptr;
-}
+const WindowInfo *AppWindow::getInfo() const { return _info; }
 
 sprt::window::SurfaceBackend AppWindow::getSurfaceBackend() const {
 	if (_window) {

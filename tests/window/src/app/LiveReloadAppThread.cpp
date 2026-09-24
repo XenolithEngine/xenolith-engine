@@ -154,7 +154,7 @@ void LiveReloadAppThread::launchClient(StringView stagedExe) {
 		log::source(sprt::source_location()).info("client", out);
 	}, [](int code, sprt::Status) {
 		log::source().info("live-reload", "client exited (code=", code, ")");
-	});
+	}, nullptr, sprt::dispatch::ProcessFlags::KillProcessTree);
 	if (_clientProc) {
 		log::source().info("live-reload", "launched client: ", StringView(cmd));
 	} else {

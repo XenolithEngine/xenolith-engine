@@ -144,6 +144,48 @@ void ServerAppThread::setClientWindowHandler(ClientWindowHandler &&handler) {
 
 void ServerAppThread::setMaxClientWindows(uint32_t perSession) { _maxClientWindows = perSession; }
 
+void ServerAppThread::addBearerKey(BytesView key, StringView label, bool singleUse) {
+	_labelledKeys.add(key, label, singleUse);
+}
+
+bool ServerAppThread::removeBearerKey(StringView label) { return _labelledKeys.remove(label); }
+
+void ServerAppThread::setRequireLabelledKeys(bool value) { _requireLabelledKeys = value; }
+
+void ServerAppThread::setAppMessageHandler(AppMessageHandler &&handler) {
+	_appMessageHandler = sp::move(handler);
+	updateServerInfo(); // the feature bit follows the handler
+}
+
+bool ServerAppThread::sendAppNotification(NotNull<RemoteSession> session, const Value &val) {
+	if (session->isClosed()
+			|| !session->getPeerInfo().supports(remote::Domain::Global,
+					toInt(remote::GlobalCode::AppNotify))) {
+		return false;
+	}
+	return session->remoteSendCbor(remote::Domain::Global, toInt(remote::GlobalCode::AppNotify),
+			val);
+}
+
+bool ServerAppThread::sendAppRequest(NotNull<RemoteSession> session, const Value &val,
+		Function<void(Status, Value &&)> &&cb, uint64_t timeoutUs) {
+	if (session->isClosed()
+			|| !session->getPeerInfo().supports(remote::Domain::Global,
+					toInt(remote::GlobalCode::AppRequest))) {
+		return false;
+	}
+	return session->sendMessageWithReply(remote::Domain::Global,
+			toInt(remote::GlobalCode::AppRequest), val,
+			[cb = sp::move(cb)](const remote::MessageHeader &h, BytesView payload) {
+		auto st = getAppReplyStatus(h);
+		cb(st, sprt::status::isSuccessful(st) ? data::read<Interface>(payload) : Value());
+	}, timeoutUs, false);
+}
+
+void ServerAppThread::setSessionObserver(SessionObserver &&observer) {
+	_sessionObserver = sp::move(observer);
+}
+
 size_t ServerAppThread::getClientWindowCount(uint64_t session) const {
 	size_t ret = 0;
 	for (auto &it : _clientWindows) {
@@ -312,6 +354,9 @@ void ServerAppThread::updateServerInfo() {
 	}
 	if (_clientWindowHandler) {
 		info.features |= remote::PeerFeatures::ClientWindows;
+	}
+	if (_appMessageHandler) {
+		info.features |= remote::PeerFeatures::AppMessages;
 	}
 	if (hasClipboard()) {
 		info.features |= remote::PeerFeatures::Clipboard;
@@ -662,7 +707,7 @@ bool ServerAppThread::setCompressionDictionary(BytesView d) {
 }
 
 bool ServerAppThread::hasCredentials() const {
-	if (!_expectedKey.empty()) {
+	if (!_expectedKey.empty() || !_labelledKeys.empty()) {
 		return true;
 	}
 	// A transport that establishes who the peer is does not consult the key.
@@ -811,6 +856,10 @@ void ServerAppThread::resetSession(RemoteSession *session) {
 	auto keep = sp::move(*it);
 	_sessions.erase(it);
 
+	if (_sessionObserver) {
+		_sessionObserver(keep.get(), SessionEvent::Closed);
+	}
+
 	/* Windows this session asked us to open exist for it alone, so they go with it. One that has
 	not arrived yet is marked instead; handleAppWindowCreated closes it on arrival.
 
@@ -917,8 +966,29 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			//log::source().info("AppThread", "received pong (serial ", h.serial, ")");
 			session->handlePong(sp::platform::clock(ClockType::Monotonic));
 			return true;
+		case remote::GlobalCode::AppRequest:
+		case remote::GlobalCode::AppNotify: {
+			// A reply that came after its waiter expired is not a new request.
+			if (remote::isReplyOrError(h)) {
+				return true;
+			}
+			auto isRequest = remote::GlobalCode(h.code) == remote::GlobalCode::AppRequest;
+			if (!_appMessageHandler) {
+				if (isRequest && conn) {
+					conn->sendError(remote::Domain::Global,
+							toInt(remote::GlobalError::NotImplemented), h.serial);
+				}
+				return true;
+			}
+			Rc<AppReply> reply;
+			if (isRequest) {
+				reply = Rc<AppReply>::create(session, session, h.serial);
+			}
+			_appMessageHandler(session, data::read<Interface>(payload), sp::move(reply));
+			return true;
+		}
 		default:
-			if (conn) {
+			if (conn && !remote::isReplyOrError(h)) {
 				conn->sendError(remote::Domain::Global, toInt(remote::GlobalError::NotImplemented),
 						h.serial);
 			}
@@ -1344,8 +1414,15 @@ void ServerAppThread::stepPendingHandshakes() {
 				pending.refusal = remote::GlobalError::Busy;
 				handshake.reply(pending.refusal, BytesView());
 			} else {
-				auto requireKey = !transport->hasCaps(remote::TransportCaps::PeerAuthenticated);
+				// A labelled key identifies its client, so it counts on every transport; without
+				// one the transport's own authentication stands in for the key.
+				auto labelled = _labelledKeys.match(handshake.getPresentedKey(), pending.label);
+				auto requireKey =
+						!labelled && !transport->hasCaps(remote::TransportCaps::PeerAuthenticated);
 				auto status = handshake.negotiate(_expectedKey, _dictionary, requireKey);
+				if (status == remote::GlobalError::Ok && _requireLabelledKeys && !labelled) {
+					status = remote::GlobalError::AuthFailed;
+				}
 				handshake.reply(status, _dictionary);
 				if (status == remote::GlobalError::Ok) {
 					pending.holdsSlot = true;
@@ -1386,7 +1463,7 @@ void ServerAppThread::stepPendingHandshakes() {
 				recordHandshakeResult(entry.backoffKey, true, now);
 				entry.connection->adoptHandshake();
 				log::source().info("AppThread", "client authenticated");
-				installRemoteClient(sp::move(entry.connection));
+				installRemoteClient(sp::move(entry.connection), entry.label);
 				continue;
 			}
 			log::source().error("AppThread", "client handshake failed while replying; dropping");
@@ -1395,10 +1472,14 @@ void ServerAppThread::stepPendingHandshakes() {
 	}
 }
 
-void ServerAppThread::installRemoteClient(Rc<remote::ServerConnection> &&conn) {
+void ServerAppThread::installRemoteClient(Rc<remote::ServerConnection> &&conn, StringView label) {
 	auto session = Rc<RemoteSession>::create(this, _nextSessionId++, sp::move(conn));
 	if (!session) {
 		return;
+	}
+	if (!label.empty()) {
+		session->setLabel(label);
+		_labelledKeys.consume(label);
 	}
 
 	// Wake on the connection's own readiness; otherwise the session advances only on the 1s app
@@ -1547,6 +1628,9 @@ void ServerAppThread::handleClientInfo(RemoteSession *session, const remote::Mes
 	// WindowCode::AttachQueue, so AcquireFrame never reaches a client not ready to serve it.
 	if (_sharedObjects) {
 		session->getRenderClient()->announce(_sharedObjects);
+	}
+	if (_sessionObserver) {
+		_sessionObserver(session, SessionEvent::Started);
 	}
 }
 

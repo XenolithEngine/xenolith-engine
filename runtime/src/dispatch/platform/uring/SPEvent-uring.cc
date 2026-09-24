@@ -654,8 +654,11 @@ uint32_t URingData::wait(TimeInterval ival) {
 				break;
 			}
 
-			// enter() failed and nothing was reaped: retry on EINTR (signal/debugger),
-			// otherwise report and stop waiting.
+			// enter() failed and nothing was reaped: retry on EINTR (signal/debugger), stop
+			// quietly when the timeout expired (ETIME), otherwise report and stop waiting.
+			if (__sprt_errno == ETIME) {
+				break;
+			}
 			auto status = sprt::status::errnoToStatus(__sprt_errno);
 			if (status == Status::ErrorInterrupted) {
 				continue;

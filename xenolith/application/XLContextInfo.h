@@ -67,6 +67,12 @@ struct ContextConfig final : public sprt::window::ContextConfig {
 
 	CommonFlags flags = CommonFlags::None;
 
+	// Set by --connect: run as a remote client of this server instead of opening windows here.
+	String connectAddress;
+
+	// Set by --server-spki: the fingerprint that authenticates the server a client connects to.
+	Bytes serverSpki;
+
 	ContextConfig(int argc, const char *argv[]);
 	ContextConfig(NativeContextHandle *);
 

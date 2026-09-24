@@ -69,7 +69,7 @@ protected:
 	Value encodeMetrics() const;
 	Value encodeState() const;
 
-	AppWindow *getAppWindow() const;
+	core::RenderServerChannel *getParentWindow() const;
 
 	ui::MenuSourceItem *getItem(const Value &args) const;
 
