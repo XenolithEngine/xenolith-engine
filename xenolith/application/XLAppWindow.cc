@@ -91,6 +91,11 @@ bool AppWindow::init(NotNull<Context> ctx, NotNull<ServerAppThread> app, NotNull
 		}
 	}
 
+	// Before the engine: its first swapchain asks for the source as it is created.
+	if (isVirtual()) {
+		_planeSource = Rc<core::PlaneSource>::create();
+	}
+
 	_presentationEngine = static_cast<core::Loop *>(_context->getGlLoop())
 								  ->makePresentationEngine(this, w->getPreferredOptions());
 
@@ -166,6 +171,11 @@ void AppWindow::end() {
 
 	if (engine) {
 		engine->end();
+	}
+
+	// Nothing will be published any more; a reader still holding a frame keeps just that one.
+	if (_planeSource) {
+		_planeSource->clear();
 	}
 
 	// Preserve final window capabilities; on Android they decide whether the Director is preserved.

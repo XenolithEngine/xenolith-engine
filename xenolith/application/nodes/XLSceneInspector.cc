@@ -1322,7 +1322,8 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 				"accepted");
 		result.setString(name, "state");
 		sendResponse(session, serial, sp::move(result));
-	} else if (op == "virtual-state" || op == "external-display-link" || op == "display-link") {
+	} else if (op == "virtual-state" || op == "external-display-link" || op == "display-link"
+			|| op == "plane" || op == "plane-hold" || op == "offscreen") {
 		// What a compositor does to a virtual window, done by hand. Server side only: the window
 		// manager is the process that owns the window.
 		auto w = dynamic_cast<AppWindow *>(server);
@@ -1348,6 +1349,63 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 			auto value = !req.hasValue("value") || req.getBool("value");
 			w->setExternalDisplayLink(value);
 			result.setBool(value, "value");
+		} else if (op == "plane" || op == "plane-hold") {
+			// What a compositor would read: the latest published frame, and which slots readers
+			// hold. `plane-hold` holds the latest frame itself for `ms`, as a slow compositor would.
+			auto source = w->getPlaneSource();
+			auto frame = source ? source->getLatest() : nullptr;
+			if (frame) {
+				result.setInteger(int64_t(frame->getSerial()), "serial");
+				result.setInteger(int64_t(frame->getSlot()), "slot");
+			}
+			if (op == "plane") {
+				auto slots = source ? source->getSlotTable() : nullptr;
+				auto &pinned = result.emplace("pinned");
+				pinned.setArray(Value::ArrayType());
+				if (slots) {
+					for (auto it : slots->getPinned()) { pinned.addInteger(int64_t(it)); }
+					result.setInteger(int64_t(slots->getSlotCount()), "imageCount");
+				}
+				result.setInteger(int64_t(source ? source->getPublishedCount() : 0), "published");
+			} else {
+				if (!frame) {
+					sendError(session, serial, "plane-hold: nothing published yet");
+					return;
+				}
+				auto ms = sprt::max(req.getInteger("ms", 1'000), int64_t(0));
+				auto app = _owner && _owner->getDirector() ? _owner->getDirector()->getApplication()
+														   : nullptr;
+				if (!app) {
+					sendError(session, serial, "plane-hold: no application thread");
+					return;
+				}
+				// The frame lives in the timer's callback and dies with it, fired or cancelled.
+				app->getLooper()->schedule(sprt::dispatch::TimeInterval::milliseconds(ms),
+						[frame](sprt::dispatch::Handle *, bool) mutable { frame = nullptr; }, app);
+				result.setInteger(ms, "ms");
+			}
+		} else if (op == "offscreen") {
+			// A frame rendered outside the swapchain; the answer comes when it completed.
+			auto app = _owner && _owner->getDirector() ? _owner->getDirector()->getApplication()
+													   : nullptr;
+			if (!app) {
+				sendError(session, serial, "offscreen: no application thread");
+				return;
+			}
+			auto scheduled = w->scheduleOffscreenFrame(
+					[this, session = Rc<Session>(session), serial, app = Rc<AppThread>(app)](
+							bool success) mutable {
+				app->performOnAppThread([this, session = sp::move(session), serial, success] {
+					Value result;
+					result.setString("offscreen", "op");
+					result.setBool(success, "completed");
+					sendResponse(session, serial, Value(result));
+				}, this);
+			});
+			if (!scheduled) {
+				sendError(session, serial, "offscreen: the window has no presentation engine");
+			}
+			return;
 		} else {
 			auto count = sprt::max(req.getInteger("count", 1), int64_t(0));
 			for (int64_t i = 0; i < count; ++i) { w->emitDisplayLink(); }
@@ -1368,7 +1426,8 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 		sendError(session, serial,
 				toString("unknown window op: ", op, "; expected resize, constraints, geometry,",
 						" state, updatable, enable-state, disable-state, frame-interval, close,",
-						" virtual-state, external-display-link, display-link"));
+						" virtual-state, external-display-link, display-link, plane, plane-hold,",
+						" offscreen"));
 	}
 }
 

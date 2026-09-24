@@ -111,7 +111,13 @@ bool ClientScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel
 	registerTextCommand();
 
 	// Remote runtime font materials are now forwarded to the server for compilation; enable text.
-	setFpsVisible(true);
+	// XL_HIDE_FPS=1 hides the counter, as in testapp: it changes every frame, so a scene showing it
+	// never settles into two identical frames.
+	bool fpsVisible = true;
+	if (auto value = ::getenv("XL_HIDE_FPS")) {
+		fpsVisible = StringView(value) == "0";
+	}
+	setFpsVisible(fpsVisible);
 
 	// DEBUG: verify server-forwarded input (WindowCode::InputEvents) actually reaches the scene graph.
 	// The server's XL_REMOTE_INPUT_SIM emitter sweeps a cursor and clicks; these recognizers log when
@@ -183,6 +189,10 @@ void ClientScene::handleEnter(Scene *scene) {
 		_input->focus();
 	}
 
+	startAnimation();
+}
+
+void ClientScene::startAnimation() {
 	if (_square && !_animStarted) {
 		_animStarted = true;
 		_square->runAction(Rc<RepeatForever>::create(Rc<Sequence>::create(
@@ -190,6 +200,14 @@ void ClientScene::handleEnter(Scene *scene) {
 			++_animTick;
 			//log::source().info("ClientScene", "animation tick ", _animTick);
 		})));
+	}
+}
+
+void ClientScene::stopAnimation() {
+	if (_square && _animStarted) {
+		_animStarted = false;
+		_square->stopAllActions();
+		_square->setScale(1.0f);
 	}
 }
 
@@ -260,6 +278,23 @@ void ClientScene::registerCommands() {
 	/* Popups on a client: { op: open | close | tip | state }. A client opens no windows of its own,
 	so the drop-down's list and a hint are in-scene overlays; `state` says whether each is up and
 	whether the list became a native window (it must not). */
+	/* The square's animation: { op: stop | start }. It is what keeps the client drawing; stopped,
+	two frames of the idle scene are the same frame, which is what comparing a partial redraw with a
+	full one needs. */
+	inspector::addCommand(content, "client-animation", "Stop or start the square: { op }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		if (req.getString("op") == "stop") {
+			stopAnimation();
+		} else {
+			startAnimation();
+		}
+		Value result;
+		result.setBool(true, "ok");
+		result.setBool(_animStarted, "running");
+		done(sp::move(result));
+	});
+
 	inspector::addCommand(content, "client-popup",
 			"Drive the drop-down and a hint: { op: open|close|tip|state } -> { open, native, tip }",
 			[this](Value &&args, Function<void(Value &&)> &&done) {

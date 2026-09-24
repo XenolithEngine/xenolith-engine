@@ -74,7 +74,14 @@ core::SurfaceInfo HeadlessSurface::getSurfaceOptions(const core::Device &,
 	return info;
 }
 
-HeadlessSwapchain::~HeadlessSwapchain() { invalidateViews(); }
+HeadlessSwapchain::~HeadlessSwapchain() {
+	// A frame still held by a reader outlives this generation; releasing it must not reach into a
+	// ring that no longer exists.
+	if (_slots) {
+		_slots->retire();
+	}
+	invalidateViews();
+}
 
 bool HeadlessSwapchain::init(Device &dev, NotNull<core::Loop>, const core::SurfaceInfo &info,
 		const core::SwapchainConfig &cfg, core::ImageInfo &&swapchainImageInfo,
@@ -105,7 +112,14 @@ bool HeadlessSwapchain::init(Device &dev, NotNull<core::Loop>, const core::Surfa
 		_images.emplace_back(SwapchainImageData{sp::move(image), sp::move(views)});
 	}
 
+	_slots = Rc<core::PlaneSlotTable>::create(imageCount);
+
 	return finalize(dev, info, cfg, move(swapchainImageInfo), presentMode, surface);
+}
+
+void HeadlessSwapchain::attachPlaneSource(NotNull<core::PlaneSource> source) {
+	_planeSource = source.get();
+	_planeSource->setSlotTable(Rc<core::PlaneSlotTable>(_slots));
 }
 
 auto HeadlessSwapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Status &status)
@@ -120,7 +134,8 @@ auto HeadlessSwapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Sta
 	auto count = uint32_t(_images.size());
 	for (uint32_t i = 0; i < count; ++i) {
 		auto index = (_nextIndex + i) % count;
-		if (_acquired[index]) {
+		// A pinned slot holds a frame somebody is still reading.
+		if (_acquired[index] || _slots->isPinned(index)) {
 			continue;
 		}
 
@@ -150,12 +165,26 @@ Status HeadlessSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 		return Status::ErrorCancelled;
 	}
 
+	Rc<core::PlaneFrame> frame;
+
 	sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
 
 	if (image) {
 		auto index = findSlot(image);
 		if (index != maxOf<uint32_t>()) {
 			markPresented(index);
+
+			// The per-frame storage lets go of the slot here: without it, its destructor would
+			// invalidate the slot again later - by then possibly a different frame's.
+			if (image->isSwapchainImage()) {
+				static_cast<core::SwapchainImage *>(image)->setPresented();
+			}
+
+			if (_planeSource && _slots->pin(index)) {
+				frame = Rc<core::PlaneFrame>::create(_planeSource->acquireSerial(), index,
+						Rc<core::ImageObject>(_images[index].image),
+						[slots = _slots, index] { slots->unpin(index); });
+			}
 		}
 	}
 
@@ -164,6 +193,13 @@ Status HeadlessSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 	}
 	++_presentedFrames;
 	_presentTime = sp::platform::clock(ClockType::Monotonic);
+
+	lock.unlock();
+
+	// The bitmap is complete: soft rasterization, async or not, finishes before the frame's fence.
+	if (frame) {
+		_planeSource->publish(sp::move(frame));
+	}
 
 	return Status::Ok;
 }
@@ -190,8 +226,14 @@ Rc<SwapchainBase> HeadlessPresentationEngine::makeSwapchain(const core::SurfaceI
 
 	surface->setExtent(cfg.extent);
 
-	return Rc<HeadlessSwapchain>::create(*dev, _loop, info, cfg, move(swapchainImageInfo),
+	auto swapchain = Rc<HeadlessSwapchain>::create(*dev, _loop, info, cfg, move(swapchainImageInfo),
 			presentMode, surface);
+	if (swapchain) {
+		if (auto source = _window->getPlaneSource()) {
+			swapchain->attachPlaneSource(source);
+		}
+	}
+	return swapchain;
 }
 
 } // namespace stappler::xenolith::soft

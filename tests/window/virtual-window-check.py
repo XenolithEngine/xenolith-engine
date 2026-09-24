@@ -77,6 +77,28 @@ def state_of(session, window=None):
     return (session.ok("window", op="state", **kw) or {}).get("state", "")
 
 
+def vpump(s, name, seconds):
+    """pump(), stepping the virtual window as well: a client whose scene is idle does not ask for
+    frames by itself, and here nothing animates it."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        s.ok("frame", count=1)
+        s.ok("frame", window=name, count=1)
+        time.sleep(0.1)
+
+
+def plane(s, name):
+    return s.ok("window", window=name, op="plane") or {}
+
+
+def type_keys(s, name, text):
+    events = []
+    for ch in text:
+        events.append({"event": "KeyPressed", "keycode": ch.upper(), "keychar": ord(ch)})
+        events.append({"event": "KeyReleased", "keycode": ch.upper(), "keychar": ord(ch)})
+    s.ok("input", window=name, native=True, events=events)
+
+
 def wait_exit(proc, timeout):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -217,7 +239,101 @@ def run(server_bin, client_bin, gapi):
         pump(s, 1.0)
         f5 = presented(s, name)
         check("released, frames run on demand again", f5 > f4 + 3, f"{f4} -> {f5}")
+
+        # --- the plane: published frames and the slots readers hold --------------------------------
+        #
+        # What a compositor reads: every presented image is published, and its slot stays out of the
+        # ring while anybody holds the frame. `plane-hold` is a reader that is slow on purpose.
+        p0 = plane(s, name)
+        pump(s, 0.5)
+        p1 = plane(s, name)
+        check("presented frames are published to the plane",
+                p1.get("imageCount") == 4 and p1.get("serial", 0) > p0.get("serial", 0)
+                        and p1.get("published", 0) > p0.get("published", 0), f"{p0} -> {p1}")
+        check("the latest frame's slot is pinned", p1.get("slot") in p1.get("pinned", []),
+                str(p1))
+
+        held = s.ok("window", window=name, op="plane-hold", ms=2500) or {}
+        held_slot, held_serial = held.get("slot"), held.get("serial")
+        newer, pinned_all_along = [], True
+        f0 = presented(s, name)
+        deadline = time.monotonic() + 1.5
+        while time.monotonic() < deadline:
+            pump(s, 0.1)
+            p = plane(s, name)
+            pinned_all_along = pinned_all_along and held_slot in p.get("pinned", [])
+            if p.get("serial", 0) > held_serial:
+                newer.append((p.get("serial"), p.get("slot")))
+        f1 = presented(s, name)
+        check("while a frame is held, the client keeps drawing",
+                f1 > f0 + 3 and len({it[0] for it in newer}) > 2, f"{f0} -> {f1}, {newer}")
+        check("the held frame's slot stays pinned", pinned_all_along, str(plane(s, name)))
+        check("and is never drawn into", all(slot != held_slot for _, slot in newer),
+                f"held slot {held_slot}, newer frames {newer}")
+        pump(s, 1.5)
+        p = plane(s, name)
+        check("let go, the slot returns to the ring",
+                held_slot not in p.get("pinned", []) or p.get("slot") == held_slot, str(p))
+
+        # Two slow readers and the latest frame: three slots out of four held, and the client still
+        # draws through the one left.
+        a = s.ok("window", window=name, op="plane-hold", ms=2500) or {}
+        deadline = time.monotonic() + 5.0
+        while plane(s, name).get("serial", 0) <= a.get("serial", 0) \
+                and time.monotonic() < deadline:
+            pump(s, 0.1)
+        b = s.ok("window", window=name, op="plane-hold", ms=2500) or {}
+        f0 = presented(s, name)
+        most_pinned = 0
+        deadline = time.monotonic() + 1.5
+        while time.monotonic() < deadline:
+            pump(s, 0.1)
+            most_pinned = max(most_pinned, len(plane(s, name).get("pinned", [])))
+        f1 = presented(s, name)
+        check("with three of four slots held the client draws through the fourth",
+                a.get("slot") != b.get("slot") and most_pinned >= 3 and f1 > f0 + 3,
+                f"held {a.get('slot')} and {b.get('slot')}, {most_pinned} pinned, {f0} -> {f1}")
         ca.ok("render", stop=True)
+
+        # Frames drawn while others are held land in slots out of order. Typed text and a drop-down
+        # change the picture while frames are held; a resize back and forth redraws everything from
+        # scratch - the two pictures must agree. The square stops first, so that the scene is still
+        # when both are taken. (A remote client's frames are full redraws today - its commands carry
+        # no stable damage identity - so partial redraw under pins is damage-check.py's, on a local
+        # scene in a virtual window.)
+        ca.invoke("client-animation", op="stop")
+        vpump(s, name, 1.0)
+        for ch in "xyz":
+            s.ok("window", window=name, op="plane-hold", ms=700)
+            type_keys(s, name, ch)
+            vpump(s, name, 0.4)
+            s.ok("window", window=name, op="plane-hold", ms=700)
+            ca.invoke("client-popup", op="open" if ch != "z" else "close")
+            vpump(s, name, 0.4)
+        vpump(s, name, 1.5)
+        shot_a = rc.grab(s, window=name)
+        size = entry_of(s, name)
+        w, h = size.get("width"), size.get("height")
+        s.ok("window", window=name, op="resize", width=w + 40, height=h)
+        vpump(s, name, 1.0)
+        s.ok("window", window=name, op="resize", width=w, height=h)
+        vpump(s, name, 1.5)
+        shot_b = rc.grab(s, window=name)
+        ca.invoke("client-animation", op="start")
+        text = ca.invoke("client-text") or {}
+        if shot_a != shot_b:
+            for tag, shot in (("partial", shot_a), ("full", shot_b)):
+                with open(f"/tmp/xl-virtual-window-{gapi}-{tag}.png", "wb") as f:
+                    f.write(shot)
+        check("frames drawn while others are held leave the same picture as a full redraw",
+                shot_a.startswith(b"\x89PNG") and shot_a == shot_b,
+                f"{len(shot_a)} vs {len(shot_b)} bytes, text {text.get('text')!r}")
+        check("and the screenshot is the published frame", len(shot_a) > 2000,
+                f"{len(shot_a)} bytes")
+
+        r = s.ok("window", window=name, op="offscreen") or {}
+        check("an offscreen frame of a virtual window completes", r.get("completed") is True,
+                str(r))
 
         # --- closing: the client's window, then the host -------------------------------------------
         ca.ok("window", op="close")
@@ -284,9 +400,17 @@ def main():
     os.environ["XL_REMOTE_CLIENT_WINDOWS"] = "1"
     os.environ["XL_REMOTE_VIRTUAL_WINDOWS"] = "1"
     os.environ["XL_REMOTE_MAX_CLIENTS"] = "2"
+    # A window manager's clients draw through the light queue, the one with partial redraw; the
+    # client hides its frame counter so that its scene can be still.
+    os.environ["XL_FLAT_QUEUE"] = "1"
+    os.environ["XL_HIDE_FPS"] = "1"
 
     for gapi in gapis:
         run(server_bin, client_bin, gapi)
+        if gapi == "vulkan":
+            log = open(rc.SERVER_LOG, errors="replace").read()
+            check("no Vulkan validation error on the server", "Validation Error" not in log,
+                    rc.SERVER_LOG)
 
     print(f"{rc.checks} checks, {rc.failures} failures")
     print(f"logs: {rc.SERVER_LOG} {rc.CLIENT_LOG}")

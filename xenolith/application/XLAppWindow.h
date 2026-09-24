@@ -127,6 +127,10 @@ public:
 	// A vblank from the claiming compositor: starts the next frame if the application asked for one.
 	void emitDisplayLink();
 
+	// The frames a compositor reads (see core::PlaneSource); null unless virtual. Lives as long as
+	// the window, across swapchains.
+	virtual core::PlaneSource *getPlaneSource() const override { return _planeSource; }
+
 	core::PresentationEngine *getPresentationEngine() const { return _presentationEngine; }
 
 	Director *getDirector() const { return _director; }
@@ -343,6 +347,7 @@ protected:
 
 	// Built lazily by getFrameCapture(); app thread only.
 	Rc<FrameCapture> _frameCapture;
+	Rc<core::PlaneSource> _planeSource;
 
 	bool _inCloseRequest = false;
 	bool _syncClose = false;

@@ -37,6 +37,7 @@
 #include "XLCoreMaterial.cc"
 #include "XLCoreMesh.cc"
 #include "XLCoreSwapchain.cc"
+#include "XLCorePlaneSource.cc"
 #include "XLCoreTextureSet.cc"
 
 #include "XLCorePresentationFrame.cc"

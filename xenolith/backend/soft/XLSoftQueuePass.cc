@@ -379,14 +379,15 @@ bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Targe
 
 	Vector<URect> damage;
 	const auto extent = Extent2(target.width, target.height);
-	if (!swapchain->getDamage().computeRedrawArea(uint32_t(image->getImageIndex()),
+	if (!swapchain->getDamage().computeRedrawArea(swapchainImage->getSwapchainSlot(),
 				request->getDamageState().get(), extent, damage)) {
 		if (damageLog) {
 			auto state = request->getDamageState().get();
-			log::source().debug("soft::QueuePassHandle", "damage: full repaint (state=",
-					state ? "present" : "absent", ", full=", state ? state->full : false,
-					", entries=", state ? state->entries.size() : 0, ", image=",
-					image->getImageIndex(), ")");
+			log::source().debug("soft::QueuePassHandle",
+					"damage: full repaint (state=", state ? "present" : "absent",
+					", full=", state ? state->full : false,
+					", entries=", state ? state->entries.size() : 0,
+					", slot=", swapchainImage->getSwapchainSlot(), ")");
 		}
 		return true; // the whole surface
 	}
