@@ -31,10 +31,11 @@ THE SOFTWARE.
 
 namespace sprt {
 
-// The whole suite drives real child processes, which the wasm sandbox has no model
-// for; performProcessTests() reports a SKIP there instead, so none of the machinery
-// below is built.
-#if !SPRT_WASM
+// The whole suite drives real child processes, which the wasm sandbox and Embox
+// have no model for; performProcessTests() reports a SKIP there instead, so none
+// of the machinery below is built.
+#define SPRT_TEST_NO_PROCESSES (SPRT_WASM || SPRT_EMBOX_ANY)
+#if !SPRT_TEST_NO_PROCESSES
 
 namespace {
 
@@ -99,7 +100,7 @@ static bool runProcessCase(dispatch::Looper *looper, const ProcessCase &c) {
 
 } // namespace
 
-#endif // !SPRT_WASM
+#endif // !SPRT_TEST_NO_PROCESSES
 
 void performProcessTests() {
 	sprt::cout << "\n== runtime process tests ==\n";
@@ -110,6 +111,12 @@ void performProcessTests() {
 	// queue leaves its spawnProcess hook null on purpose (SPEvent-wasm.cc), so
 	// every spawn here would return nullptr.
 	sprt::cout << "SKIP  process tests (no process model in the wasm sandbox)\n";
+#elif SPRT_EMBOX_ANY
+	// On Embox an application does not start processes: the system does (xlexec
+	// today, the window server later -- xenolith-os docs/EMBOX-USER-WM.md, §6),
+	// and there is no shell for these recipes to run in. Out of scope by
+	// design, not missing: said here so the group is excluded, not failed.
+	sprt::cout << "SKIP  process tests (on Embox the system starts processes, not the application)\n";
 #else
 	auto looper = dispatch::Looper::acquire();
 	if (!looper) {

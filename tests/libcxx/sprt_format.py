@@ -134,6 +134,28 @@ _MSVC_XFAIL = (
 )
 
 
+# aarch64 config-inherent XFAILs, the same idea for a different target string.
+# wchar_t is unsigned 32-bit on aarch64, so WCHAR_MAX == WEOF (0xFFFFFFFF), and
+# basic_ios keeps its fill as int_type with eof() for "unset" under abi-v1:
+# setfill(WCHAR_MAX) reads back as widen(' '). Upstream XFAILs exactly this for
+# target=aarch64*-linux-gnu; Embox user mode (aarch64-none-elf) is the same ABI,
+# just not a target string upstream lists.
+_IS_AARCH64 = any(a.startswith("--target=aarch64") for a in COMPILE_FLAGS)
+_AARCH64_XFAIL = (
+    "std.manip/setfill_wchar_max.pass.cpp",
+)
+
+
+# Embox user mode: tests that need what its file system cannot be. Programs run
+# in /tmp, a FAT volume (xenolith-os board/embox-qemu/drivers/xltmpfs): 8 MiB,
+# and FAT caps a file at 4 GiB - 1 in any case. UNSUPPORTED, as upstream marks
+# offset_range on the targets whose off_t cannot say the size.
+_IS_EMBOX_USER = "-D__EMBOX_USER__" in COMPILE_FLAGS
+_EMBOX_USER_UNSUPPORTED = (
+    "ifstream.members/offset_range.pass.cpp",  # writes a file over 4 GiB
+)
+
+
 def _eval(expr, features):
     try:
         return BooleanExpression.evaluate(expr, features)
@@ -160,22 +182,44 @@ RUN_TIMEOUT = int(os.environ.get("SPRT_RUN_TIMEOUT", "20"))
 # ONLY the wine run: an exclusive flock on a shared file (all workers of a lit run
 # share SPRT_BUILD_DIR) admits one wine process at a time while compiles overlap.
 # On native targets SPRT_EXEC is empty → no lock, full parallelism.
+#
+# The same gate generalised: SPRT_EXEC_SLOTS=N admits N runs at once, each on a
+# slot of its own, and tells the executor which one in SPRT_EXEC_SLOT. That is
+# how an executor that is a pool of machines -- the Embox guests of
+# xenolith-os/scripts/embox-exec-pool.py, one program at a time each -- is fed
+# from every worker without two runs landing on one machine.
 _IS_WINE = any("wine" in e for e in EXEC)
-_WINE_LOCK_PATH = os.path.join(BUILD_DIR, ".wine-exec.lock")
+_EXEC_SLOTS = int(os.environ.get("SPRT_EXEC_SLOTS", "0") or 0)
+if _IS_WINE and not _EXEC_SLOTS:
+    _EXEC_SLOTS = 1
 
 
 @contextlib.contextmanager
-def _wine_exec_gate():
-    if not _IS_WINE:
-        yield
+def _exec_gate():
+    if not _EXEC_SLOTS:
+        yield None
         return
     os.makedirs(BUILD_DIR, exist_ok=True)
-    with open(_WINE_LOCK_PATH, "w") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(f, fcntl.LOCK_UN)
+    files = [open(os.path.join(BUILD_DIR, ".exec-slot-%d.lock" % i), "w")
+             for i in range(_EXEC_SLOTS)]
+    taken = None
+    try:
+        for i, f in enumerate(files):
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                taken = i
+                break
+            except OSError:
+                pass
+        if taken is None:
+            taken = os.getpid() % _EXEC_SLOTS
+            fcntl.flock(files[taken], fcntl.LOCK_EX)
+        yield taken
+    finally:
+        if taken is not None:
+            fcntl.flock(files[taken], fcntl.LOCK_UN)
+        for f in files:
+            f.close()
 
 
 _RUN_ENV = dict(os.environ)
@@ -184,10 +228,10 @@ _RUN_ENV = dict(os.environ)
 _RUN_ENV["LC_ALL"] = "C"
 
 
-def _run(cmd, timeout=None, cwd=None):
+def _run(cmd, timeout=None, cwd=None, env=None):
     # New session so a hung/looping test (or its children) can be killed as a group.
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         start_new_session=True, env=_RUN_ENV, cwd=cwd)
+                         start_new_session=True, env=env or _RUN_ENV, cwd=cwd)
     try:
         out, err = p.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -269,6 +313,10 @@ class SprtStlTest(lit.formats.TestFormat):
 
         unsupported, requires, xfail, addflags, filedeps = self._parse_directives(src)
 
+        if _IS_EMBOX_USER and any(frag in src.replace(os.sep, "/")
+                                  for frag in _EMBOX_USER_UNSUPPORTED):
+            return lit.Test.Result(lit.Test.UNSUPPORTED,
+                                   "needs a file larger than FAT can hold (Embox user mode)")
         if _match_any(unsupported, FEATURES):
             return lit.Test.Result(lit.Test.UNSUPPORTED, "matched UNSUPPORTED directive")
         if requires and not _match_all(requires, FEATURES):
@@ -277,6 +325,10 @@ class SprtStlTest(lit.formats.TestFormat):
         if _IS_MSVC and not expect_fail:
             _src_posix = src.replace(os.sep, "/")
             if any(frag in _src_posix for frag in _MSVC_XFAIL):
+                expect_fail = True
+        if _IS_AARCH64 and not expect_fail:
+            _src_posix = src.replace(os.sep, "/")
+            if any(frag in _src_posix for frag in _AARCH64_XFAIL):
                 expect_fail = True
 
         is_compile_only = COMPILE_ONLY or src.endswith(".compile.pass.cpp")
@@ -317,10 +369,14 @@ class SprtStlTest(lit.formats.TestFormat):
                 else:
                     shutil.copy(dep_src, dst)
 
-        with _wine_exec_gate():
-            rc, out, err = _run(EXEC + [exe], timeout=RUN_TIMEOUT, cwd=rundir)
+        with _exec_gate() as slot:
+            env = None
+            if slot is not None:
+                env = dict(_RUN_ENV, SPRT_EXEC_SLOT=str(slot))
+            rc, out, err = _run(EXEC + [exe], timeout=RUN_TIMEOUT, cwd=rundir, env=env)
         _rm(obj)
-        _rm(exe)
+        if not os.environ.get("SPRT_KEEP_EXE"):  # keep it to debug a failure
+            _rm(exe)
         shutil.rmtree(rundir, ignore_errors=True)
         if rc != 0:
             return _verdict(expect_fail, RUN_FAIL,

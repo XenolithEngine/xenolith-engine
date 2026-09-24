@@ -57,8 +57,11 @@ bool __mktmppath(char *__itpl, size_t suffixLen, const Callback<bool(const char 
 	for (int counter = 0; counter < kMaxAttempts; ++counter) {
 		// Generate random bytes for the replacement string. Without checking
 		// the result the buffer could stay uninitialized, yielding predictable
-		// (or stack-garbage) names.
-		if (__sprt_getrandom(randomBytes, sizeof(randomBytes), __SPRT_GRND_RANDOM)
+		// (or stack-garbage) names. The ordinary source, not GRND_RANDOM: a
+		// name needs to be unpredictable, not drawn from an entropy pool --
+		// GRND_RANDOM can block on Linux, and Embox user mode refuses it
+		// outright (it has no such pool), which made every mkstemp fail EIO.
+		if (__sprt_getrandom(randomBytes, sizeof(randomBytes), 0)
 				!= (__sprt_ssize_t)sizeof(randomBytes)) {
 			errno = EIO;
 			return false;

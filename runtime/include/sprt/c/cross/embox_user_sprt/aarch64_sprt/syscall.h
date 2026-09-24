@@ -34,6 +34,8 @@
 #define __SPRT_SYSCALL_write           64
 #define __SPRT_SYSCALL_readv           65
 #define __SPRT_SYSCALL_writev          66
+#define __SPRT_SYSCALL_pread64         67
+#define __SPRT_SYSCALL_pwrite64        68
 
 // stat. Both spellings exist because they carry DIFFERENT argument shapes, not
 // because one is legacy: fstat takes (fd, buf), newfstatat takes

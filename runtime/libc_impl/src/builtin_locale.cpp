@@ -70,6 +70,17 @@ __numeric_fmt __get_effective_numeric_fmt() {
 	return __get_numeric_fmt(__get_effective_locale_map(__SPRT_LC_NUMERIC));
 }
 
+// A locale object from the runtime's allocator: the one freelocale and
+// uselocale free it with (__sprt_free, through __delete_n), and not the
+// program's replaceable global operator new -- which libc++ reaches through
+// newlocale() before main, so a program that replaces or counts operator new
+// (libc++'s own tests do) saw an allocation it never made, and a replaced one
+// had its memory freed by the other allocator.
+static __freestanding_locale_struct *__new_locale_struct() {
+	void *p = __sprt_malloc(sizeof(__freestanding_locale_struct));
+	return p ? new (p, sprt::nothrow) __freestanding_locale_struct : nullptr;
+}
+
 extern "C" {
 
 locale_t newlocale(int mask, const char *name, locale_t loc) __SPRT_NOEXCEPT {
@@ -110,7 +121,7 @@ locale_t newlocale(int mask, const char *name, locale_t loc) __SPRT_NOEXCEPT {
 	}
 
 	if (!loc) {
-		loc = new (sprt::nothrow) __freestanding_locale_struct;
+		loc = __new_locale_struct();
 		if (!loc) {
 			__sprt_errno = ENOMEM;
 			return nullptr;
@@ -157,7 +168,7 @@ locale_t duplocale(locale_t loc) __SPRT_NOEXCEPT {
 
 		unique_lock lock(libc->defaultLocaleMutex);
 
-		auto ret = new (sprt::nothrow) __freestanding_locale_struct;
+		auto ret = __new_locale_struct();
 		if (!ret) {
 			__sprt_errno = ENOMEM;
 			return nullptr;
@@ -166,7 +177,7 @@ locale_t duplocale(locale_t loc) __SPRT_NOEXCEPT {
 		ret->refcount = 1;
 		return ret;
 	} else {
-		auto ret = new (sprt::nothrow) __freestanding_locale_struct;
+		auto ret = __new_locale_struct();
 		if (!ret) {
 			__sprt_errno = ENOMEM;
 			return nullptr;

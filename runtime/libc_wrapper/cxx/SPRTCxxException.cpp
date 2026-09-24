@@ -133,6 +133,36 @@ exception_ptr __copy_exception_ptr(void *__except, const void *__ptr) {
 }
 #endif // SPRT_WINDOWS
 
+// Only where the runtime itself is built with exceptions: that is exactly where
+// libc++'s headers take the native path and reference this, and it keeps the
+// two __cxa_* references off the -fno-exceptions targets.
+#if !SPRT_WINDOWS && defined(__cpp_exceptions)
+extern "C" void __cxa_increment_exception_refcount(void *) noexcept;
+extern "C" void __cxa_decrement_exception_refcount(void *) noexcept;
+
+// libc++'s make_exception_ptr on a target built with exceptions: __e is a native
+// exception object, made by __cxa_init_primary_exception with no reference yet.
+// It is held the way every stored exception is held here -- a refcounted block
+// -- with one libc++abi reference, dropped (destroying and freeing the object)
+// when the last exception_ptr goes. Until this existed, the Embox images carried
+// a weak stub returning null, so promise::set_exception stored "no exception".
+exception_ptr exception_ptr::__from_native_exception_pointer(void *__e) noexcept {
+	if (!__e) {
+		return exception_ptr();
+	}
+	void *__raw = __builtin_malloc(sizeof(__ex_block));
+	if (!__raw) {
+		std::terminate();
+	}
+	auto __b = static_cast<__ex_block *>(__raw);
+	__b->__ref = 1;
+	__b->__destroy = [](void *__obj) { __cxa_decrement_exception_refcount(__obj); };
+	__b->__obj = __e;
+	__cxa_increment_exception_refcount(__e);
+	return exception_ptr(__raw);
+}
+#endif
+
 exception_ptr::exception_ptr(const exception_ptr &__other) noexcept : __ptr_(__other.__ptr_) {
 	if (__ptr_) {
 		__atomic_add_fetch(&static_cast<__ex_block *>(__ptr_)->__ref, 1L, __ATOMIC_ACQ_REL);
