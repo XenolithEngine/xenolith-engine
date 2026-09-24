@@ -16,6 +16,7 @@ the frame path is the last place an unconditional clock read belongs.
 | `XL_APP_ACCOUNT=N` | what the app thread's half of that frame was spent on | an environment variable; needs the `XL_FRAME_ACCOUNT=1` build flag |
 | `XL_FRAME_TIMELINE=N` | a closed account of the whole frame, both halves and the hand-offs between them | an environment variable; needs the `XL_FRAME_ACCOUNT=1` build flag |
 | `XL_SOFT_PROFILE=N` | what the software rasterizer cost, per frame | an environment variable, software backend only |
+| `XL_SOFT_SWEEP=W:M[:R]` | the rasterizer under a list of tilings, thread counts and full/damage modes, one step after another in one run: time, fill rate, and the rasterizer's own operation counts per step | an environment variable, software backend only |
 | `XL_FONT_CACHE_LOG=1` | every batch of glyphs that actually reaches the atlas, and what that batch's own frame spent its time on | an environment variable |
 | `XL_DEP_ACCOUNT=1` | every gating `DependencyEvent`'s life, split into waiting to be SENT and the queue's own work | an environment variable |
 | `DrawStat::pixelsFilled` | the same fill number, live on screen | always on, shown by the FPS overlay when a backend fills it |
@@ -261,6 +262,59 @@ intersected with the scissor, *not* the scissor — counting the scissor instead
 roughly the glyph count per frame, which on a text-heavy scene reads as a 100x overdraw that is not
 there. A metric of the wrong thing is worse than no metric; whoever changes a kernel's clip changes
 its counter in the same edit.
+
+## The rasterizer sweep (`XL_SOFT_SWEEP=W:M[:R]`)
+
+`XL_SOFT_PROFILE` and `SP_RASTER_TILE`/`SP_RASTER_THREADS` are read once at start-up, so every point
+of a thread or tile curve is one run. On a desktop that is a loop in a script; on a board that
+updates over the network it is an image and a boot per point. The sweep walks the list inside one
+run instead: W frames of warm-up per step (run, not counted), M measured, R passes over the list.
+
+```
+XL_SOFT_SWEEP=30:240:2
+XL_SOFT_SWEEP_STEPS="full/off/1 full/256/4 damage/64/4"   # MODE/TILE/THREADS, default: a list of 19
+```
+
+`MODE` is `full` (the whole surface every frame) or `damage` (what the tracker says, skipping
+included), `f`/`d` for short; `TILE` is `off`, `W` or `WxH`, with 0 meaning "do not cut that way"
+(`0x64` is full-width strips); `THREADS` is a count or a range `1-4`, one step per count, capped
+by the pool. The short forms are for Embox, whose shell cuts `export NAME=VALUE` at 63 characters:
+`d/64/1-4,f/512/1-4` is eight steps. `full` does not bypass the tracker - it is
+still asked, so its snapshots stay current and the next `damage` step starts from a correct
+baseline - it only widens what is handed to the rasterizer. After the last pass the sweep says
+`done` and the pass goes back to the environment's tiling and the tracker.
+
+Four lines per step, key=value, tagged with the step index:
+
+```
+soft::sweep: step p= i= name= threads= ran= frames= skipped= period= record= clear= raster= surface= tick_mhz=
+soft::sweep: fill i= damage= regions= tiles= raster_px= span_px= glyph_px= rect_px= clear_px= raster_mpxs= clear_mpxs= area_mpxs=
+soft::sweep: ops i= passes= entries= commands= triangles= setups= rows= spans= glyphs= rects=
+soft::sweep: pool i= busy= longest= start=
+```
+
+- `ran=` is the threads the pool actually supplied, against `threads=` asked: a region of two
+  tiles runs on two threads whatever was requested.
+- `raster_mpxs=` is pixels written per microsecond of the draw - the fill rate; `area_mpxs=` is
+  damage per microsecond, the screen produced. They differ by the overdraw.
+- `ops` is `raster::RasterOps`: what cutting a region into tiles multiplies. Pixels are the same
+  tiled or not (tiles are disjoint), so the price of tiling is these counts against the `off`
+  step of the same mode: every tile walks the whole list (`entries`), sets up every command and
+  triangle whose box reaches it (`commands`, `triangles` - a cheap box test; `setups` - the edge
+  functions), solves every row of those (`rows`), and a row that crosses k tiles becomes k
+  `spans`. `glyphs` counts `blitGlyph` calls, including ones whose box misses the tile.
+- `pool` is `TilingStats::busyTicks` and the rest: busy summed over the workers, the slowest one,
+  and how late the last one took its first tile - the dispatch latency a frame of a few small
+  tiles cannot hide. busy / (ran x raster) is how much of the threads the frame used.
+
+**Every span is taken on the hardware counter** (`platform::clock(ClockType::Hardware)`), not on
+`Time::now()`, and converted with the ratio of the step's window timed both ways; `tick_mhz=` is
+that ratio and doubles as a check (54 on a Pi 4). The reason is Embox: its clock source on aarch64
+has no counter, only the 1 kHz tick, so `clock_gettime` of either kind advances once per
+millisecond and a 2 ms raster reads as 2.00 on every frame. `XL_SOFT_BUDGET` and `XL_SOFT_PROFILE`
+still read `Time::now()`: over a long window their periods telescope and stay right, their
+per-stage numbers on such a board do not. The EL0 build (`SPRT_EMBOX_USER`) cannot read the
+counter and falls back to the system clock; `tick_mhz=` then reads 1.
 
 ## The frame budget (`XL_SOFT_BUDGET=N`)
 

@@ -30,6 +30,7 @@
 #include "XLCoreSwapchain.h"
 
 #include <sprt/cxx/atomic>
+#include <sprt/runtime/platform.h>
 
 #include <cmath>
 #include <cstdlib>
@@ -305,6 +306,350 @@ static URect QueuePassHandle_boundingRect(SpanView<URect> areas) {
 	return URect{x0, y0, x1 - x0, y1 - y0};
 }
 
+/* XL_SOFT_SWEEP: walk the rasterizer through a list of configurations inside one run, one step at
+a time, and report each step on its own lines (soft::sweep).
+
+It exists for the board. A configuration read from the environment at start-up is one image and
+one boot per measurement point, and on the Pi 4 each of those is an update cycle; here one boot
+covers them all, back to back, on the same scene.
+
+	XL_SOFT_SWEEP=W:M[:R]   W frames of warm-up per step (run, not counted), M frames measured,
+	                        R passes over the whole list (default 1). Unset or 0 = off.
+	XL_SOFT_SWEEP_STEPS     the list, steps separated by spaces or commas, each MODE/TILE/THREADS:
+	                          MODE     full (f)   - every frame repaints the whole surface
+	                                   damage (d) - what the damage tracker says, frame skipping
+	                                                included
+	                          TILE     off, W (square) or WxH; 0 in either place is "do not cut
+	                                   that way", so 0x64 is full-width strips
+	                          THREADS  N, or A-B for one step per count; capped by what the pool
+	                                   can supply
+	                        Default: FrameSweep_defaultSteps. Short forms exist because of Embox:
+	                        its shell cuts `export NAME=VALUE` at 64 characters, which leaves the
+	                        list about 37 - "d/64/1-4,f/512/1-4" is eight steps.
+
+`full` does not bypass the damage tracker, it overrules it: the tracker is still asked, so its
+per-image snapshot stays current and the next `damage` step starts from a correct baseline rather
+than a stale one (a stale one can report "unchanged" for a region the image no longer holds). Only
+the area handed to the rasterizer is widened.
+
+The period is runPass to runPass, so a frame the tracker skipped still counts - with nothing
+rasterized in it.
+
+Every span is taken in ticks of platform::clock(ClockType::Hardware) - the cycle or system counter -
+because the system clock is not always fine enough for them: on Embox it advances once per
+millisecond, and a stage of a millisecond or two timed by it is mostly quantization. The step's
+whole measured window is timed both ways, and the ratio converts ticks to microseconds; over a
+window of seconds the system clock's millisecond is noise. tick_mhz= reports that ratio, which is
+also a check: 54 on a Pi 4. After the last pass the sweep reports `done` and steps aside: the pass returns to
+SP_RASTER_TILE / SP_RASTER_THREADS and to the tracker's own decisions. */
+namespace {
+
+struct FrameSweepStep {
+	bool full = false;
+	raster::TilingInfo tiling;
+};
+
+struct FrameSweepAcc {
+	uint64_t frames = 0;
+	uint64_t skipped = 0;
+	uint64_t periodMicros = 0; // the measured window by the system clock...
+	uint64_t periodTicks = 0; // ...and by the hardware counter; the ratio converts the rest
+	uint64_t recordTicks = 0;
+	uint64_t clearTicks = 0;
+	uint64_t rasterTicks = 0;
+	uint64_t damagePixels = 0;
+	uint64_t regions = 0;
+	uint64_t tiles = 0;
+	uint64_t workers = 0;
+	uint64_t busyTicks = 0;
+	uint64_t maxBusyTicks = 0;
+	uint64_t maxStartTicks = 0;
+	raster::FillStats raster; // the draw alone
+	raster::FillStats clear; // the load op
+};
+
+struct FrameSweep {
+	bool enabled = false;
+	bool done = false;
+	uint32_t warmup = 0;
+	uint32_t measure = 0;
+	uint32_t passes = 1;
+	Vector<FrameSweepStep> steps;
+
+	uint32_t pass = 0;
+	uint32_t step = 0;
+	uint32_t frameInStep = 0;
+	bool current = false; // the frame in flight is measured
+	bool previous = false; // the one before it was
+	Time last;
+	uint64_t lastTicks = 0;
+	FrameSweepAcc acc;
+};
+
+static uint64_t FrameSweep_ticks() {
+#if SPRT_EMBOX_USER
+	// Not readable at EL0 on Embox; see drawTiled. Coarse, and tick_mhz= will say 1.
+	return sprt::platform::clock(sprt::platform::ClockType::Monotonic);
+#else
+	return sprt::platform::clock(sprt::platform::ClockType::Hardware);
+#endif
+}
+
+// What the question needs: a solid baseline, the same with square tiles at one thread (the price
+// of cutting, nothing else), the thread counts at the default size, the sizes around it, and
+// strips (cut rows only: nothing splits a span). Then the same under the damage tracker, where the
+// regions are small and threads have little to share.
+static const char *FrameSweep_defaultSteps =
+		"full/off/1 full/256/1 full/256/2 full/256/3 full/256/4 "
+		"full/128/1 full/128/4 full/64/1 full/64/4 full/512/1 full/512/4 full/0x64/1 full/0x64/4 "
+		"damage/off/1 damage/256/1 damage/256/2 damage/256/4 damage/64/1 damage/64/4";
+
+static uint32_t FrameSweep_readUint(const char *&p) {
+	uint32_t v = 0;
+	while (*p >= '0' && *p <= '9') {
+		v = v * 10 + uint32_t(*p - '0');
+		++p;
+	}
+	return v;
+}
+
+static bool FrameSweep_prefix(const char *&c, const char *prefix) {
+	size_t i = 0;
+	for (; prefix[i]; ++i) {
+		if (c[i] != prefix[i]) {
+			return false;
+		}
+	}
+	c += i;
+	return true;
+}
+
+// One entry of the list, which may stand for several steps (a thread range). Appends them to
+// `out`; false leaves `out` as it was.
+static bool FrameSweep_parseStep(const char *p, const char *end, Vector<FrameSweepStep> &out) {
+	char buf[48];
+	auto len = size_t(end - p);
+	if (len == 0 || len >= sizeof(buf)) {
+		return false;
+	}
+	memcpy(buf, p, len);
+	buf[len] = 0;
+
+	FrameSweepStep step;
+	const char *c = buf;
+	if (FrameSweep_prefix(c, "full/") || FrameSweep_prefix(c, "f/")) {
+		step.full = true;
+	} else if (FrameSweep_prefix(c, "damage/") || FrameSweep_prefix(c, "d/")) {
+		step.full = false;
+	} else {
+		return false;
+	}
+
+	if (FrameSweep_prefix(c, "off/")) {
+		step.tiling.width = step.tiling.height = 0;
+	} else {
+		auto w = FrameSweep_readUint(c);
+		auto h = w;
+		if (*c == 'x' || *c == 'X') {
+			++c;
+			h = FrameSweep_readUint(c);
+		}
+		if (*c != '/' || (w == 0 && h == 0)) {
+			return false;
+		}
+		step.tiling.width = w;
+		step.tiling.height = h;
+		++c;
+	}
+
+	auto first = FrameSweep_readUint(c);
+	auto last = first;
+	if (*c == '-') {
+		++c;
+		last = FrameSweep_readUint(c);
+	}
+	if (*c != 0 || first == 0 || last < first) {
+		return false;
+	}
+
+	step.tiling.timed = true;
+	for (auto threads = first; threads <= last; ++threads) {
+		step.tiling.threads = threads;
+		out.emplace_back(step);
+	}
+	return true;
+}
+
+static FrameSweep FrameSweep_load() {
+	FrameSweep s;
+	auto env = ::getenv("XL_SOFT_SWEEP");
+	if (!env || !*env || StringView(env) == "0") {
+		return s;
+	}
+
+	const char *p = env;
+	s.warmup = FrameSweep_readUint(p);
+	if (*p == ':') {
+		++p;
+		s.measure = FrameSweep_readUint(p);
+	}
+	if (*p == ':') {
+		++p;
+		s.passes = FrameSweep_readUint(p);
+	}
+	if (*p != 0 || s.measure == 0 || s.passes == 0) {
+		log::source().error("soft::sweep", "XL_SOFT_SWEEP=", StringView(env),
+				" is not W:M[:R] with M and R above zero; the sweep is off");
+		return s;
+	}
+
+	const char *list = ::getenv("XL_SOFT_SWEEP_STEPS");
+	if (!list || !*list) {
+		list = FrameSweep_defaultSteps;
+	}
+
+	for (const char *it = list; *it;) {
+		while (*it == ' ' || *it == ',') {
+			++it;
+		}
+		auto end = it;
+		while (*end && *end != ' ' && *end != ',') {
+			++end;
+		}
+		if (end == it) {
+			break;
+		}
+		if (!FrameSweep_parseStep(it, end, s.steps)) {
+			// Not skipped: a list with a hole in it measures something else than was asked, and
+			// the report would not say so.
+			log::source().error("soft::sweep", "step '", StringView(it, size_t(end - it)),
+					"' is not MODE/TILE/THREADS; the sweep is off");
+			return FrameSweep();
+		}
+		it = end;
+	}
+
+	if (s.steps.empty()) {
+		return FrameSweep();
+	}
+
+	s.enabled = true;
+	log::source().debug("soft::sweep", "start: ", s.steps.size(), " steps x ", s.passes,
+			" pass(es), ", s.warmup, " warm-up + ", s.measure, " measured frames each; kernels=",
+			raster::getActiveKernelSetName());
+	return s;
+}
+
+static FrameSweep &FrameSweep_get() {
+	static FrameSweep s = FrameSweep_load();
+	return s;
+}
+
+// "off", or WxH as it was cut - so a square asked for as "256" reads back as "256x256".
+static String FrameSweep_tileName(const raster::TilingInfo &tiling) {
+	if (!tiling.tiled()) {
+		return String("off");
+	}
+	return toString(tiling.width, "x", tiling.height);
+}
+
+static void FrameSweep_report(const FrameSweep &s, Extent2 surface) {
+	auto &a = s.acc;
+	auto &st = s.steps[s.step];
+	const double n = double(sprt::max(a.frames, uint64_t(1)));
+	const double usPerTick =
+			a.periodTicks ? double(a.periodMicros) / double(a.periodTicks) : 1.0;
+	auto per = [&](uint64_t v) { return double(v) / n; };
+	auto perT = [&](uint64_t ticks) { return double(ticks) * usPerTick / n; };
+	auto rate = [&](uint64_t px, uint64_t ticks) {
+		return ticks ? double(px) / (double(ticks) * usPerTick) : 0.0;
+	};
+
+	// One key=value line per aspect, all tagged with the same step so they can be read apart:
+	//   step   - where the time went (us/frame); ran= is how many threads the pool actually
+	//            supplied, against the threads= asked for
+	//   fill   - pixels written per frame and per microsecond of the stage that wrote them
+	//            (Mpx/s): raster= is the draw, clear= the load op, area= the damage per raster-us
+	//   ops    - the rasterizer's own work per frame, which is what tiling multiplies
+	//   pool   - the workers: busy is summed over them, longest is the slowest, start is how late
+	//            the last one took its first tile
+	log::source().debug("soft::sweep", "step p=", s.pass + 1, " i=", s.step + 1, "/",
+			s.steps.size(), " name=", st.full ? "full/" : "damage/", FrameSweep_tileName(st.tiling),
+			"/", st.tiling.threads, " threads=", st.tiling.threads,
+			" ran=", per(a.workers), " frames=", a.frames, " skipped=", a.skipped, " period=",
+			perT(a.periodTicks), " record=", perT(a.recordTicks), " clear=", perT(a.clearTicks),
+			" raster=", perT(a.rasterTicks), " surface=",
+			uint64_t(surface.width) * uint64_t(surface.height), " tick_mhz=",
+			usPerTick > 0.0 ? 1.0 / usPerTick : 0.0);
+	log::source().debug("soft::sweep", "fill i=", s.step + 1, " damage=", per(a.damagePixels),
+			" regions=", per(a.regions), " tiles=", per(a.tiles), " raster_px=",
+			per(a.raster.total()), " span_px=", per(a.raster.spanPixels), " glyph_px=",
+			per(a.raster.glyphPixels), " rect_px=", per(a.raster.fillPixels), " clear_px=",
+			per(a.clear.total()), " raster_mpxs=", rate(a.raster.total(), a.rasterTicks),
+			" clear_mpxs=", rate(a.clear.total(), a.clearTicks), " area_mpxs=",
+			rate(a.damagePixels, a.rasterTicks));
+	log::source().debug("soft::sweep", "ops i=", s.step + 1, " passes=",
+			per(a.raster.ops.passes), " entries=", per(a.raster.ops.entries), " commands=",
+			per(a.raster.ops.commands), " triangles=", per(a.raster.ops.triangles), " setups=",
+			per(a.raster.ops.setups), " rows=", per(a.raster.ops.rows), " spans=",
+			per(a.raster.ops.spans), " glyphs=", per(a.raster.ops.glyphs), " rects=",
+			per(a.raster.ops.rects));
+	log::source().debug("soft::sweep", "pool i=", s.step + 1, " busy=", perT(a.busyTicks),
+			" longest=", perT(a.maxBusyTicks), " start=", perT(a.maxStartTicks));
+}
+
+// Called once per runPass, before anything else. Closes the frame before it, reports and advances
+// when a step is complete, and returns the step this frame runs under - or nullptr when the sweep
+// is off or over.
+static const FrameSweepStep *FrameSweep_begin(Extent2 surface) {
+	auto &s = FrameSweep_get();
+	if (!s.enabled || s.done) {
+		return nullptr;
+	}
+
+	auto now = Time::now();
+	auto nowTicks = FrameSweep_ticks();
+	if (s.previous && s.last != Time()) {
+		s.acc.periodMicros += (now - s.last).toMicros();
+		s.acc.periodTicks += nowTicks - s.lastTicks;
+		++s.acc.frames;
+	}
+	s.last = now;
+	s.lastTicks = nowTicks;
+
+	if (s.acc.frames >= s.measure) {
+		FrameSweep_report(s, surface);
+		s.acc = FrameSweepAcc();
+		s.frameInStep = 0;
+		if (++s.step >= s.steps.size()) {
+			s.step = 0;
+			if (++s.pass >= s.passes) {
+				s.done = true;
+				s.previous = s.current = false;
+				log::source().debug("soft::sweep", "done");
+				return nullptr;
+			}
+		}
+	}
+
+	s.current = s.frameInStep >= s.warmup;
+	s.previous = s.current;
+	++s.frameInStep;
+	return &s.steps[s.step];
+}
+
+static FrameSweepAcc *FrameSweep_acc() {
+	auto &s = FrameSweep_get();
+	return (s.enabled && !s.done && s.current) ? &s.acc : nullptr;
+}
+
+static bool FrameSweep_full() {
+	auto &s = FrameSweep_get();
+	return s.enabled && !s.done && s.steps[s.step].full;
+}
+
+} // namespace
+
 bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Target &target,
 		Vector<URect> &areas) {
 	areas.clear();
@@ -389,6 +734,12 @@ bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Targe
 					image->getImageIndex(), ")");
 		}
 		return true; // the whole surface
+	}
+
+	// A `full` sweep step: the tracker has committed its snapshot for this image, which is all it
+	// was asked for. `areas` still holds the whole surface.
+	if (FrameSweep_full()) {
+		return true;
 	}
 
 	if (damage.empty()) {
@@ -676,13 +1027,22 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		_frameFill = raster::FillStats();
 		_frameSurface = Extent2(target.width, target.height);
 
+		auto sweepStep = FrameSweep_begin(_frameSurface);
+		auto sweepAcc = FrameSweep_acc();
+
 		Vector<URect> redrawAreas;
 		if (!computeRedrawArea(q, target, redrawAreas)) {
 			// the image already holds this frame; leave every pixel untouched
+			if (sweepAcc) {
+				++sweepAcc->skipped;
+			}
 			return true;
 		}
 
 		if (redrawAreas.empty()) {
+			if (sweepAcc) {
+				++sweepAcc->skipped;
+			}
 			return true;
 		}
 
@@ -702,7 +1062,11 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		// (dynamic-image mid-rebind used to publish a black frame).
 		{
 			FrameStageTimer timer(FrameStage::Record);
+			auto recordStarted = sweepAcc ? FrameSweep_ticks() : 0;
 			recordSubpass(q, *subpass, *buf);
+			if (sweepAcc) {
+				sweepAcc->recordTicks += FrameSweep_ticks() - recordStarted;
+			}
 		}
 
 		if (buf->getDrawList().empty()) {
@@ -726,10 +1090,14 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		raster::FillStats clearFill;
 		if (out->pass->loadOp == core::AttachmentLoadOp::Clear) {
 			FrameStageTimer timer(FrameStage::Clear);
+			auto clearStarted = sweepAcc ? FrameSweep_ticks() : 0;
 			auto imgAttachment =
 					static_cast<core::ImageAttachment *>(out->pass->attachment->attachment.get());
 			for (auto &it : redrawAreas) {
 				raster::fillRect(target, it, imgAttachment->getClearColor(), &clearFill);
+			}
+			if (sweepAcc) {
+				sweepAcc->clearTicks += FrameSweep_ticks() - clearStarted;
 			}
 		}
 
@@ -738,9 +1106,26 @@ bool QueuePassHandle::runPass(core::FrameQueue &q) {
 		// default).
 		raster::TilingStats tiling;
 		auto started = Time::now();
-		raster::drawTiled(target, buf->getDrawList(), redrawAreas, raster::getDefaultTiling(),
-				&tiling);
+		auto startedTicks = sweepAcc ? FrameSweep_ticks() : 0;
+		raster::drawTiled(target, buf->getDrawList(), redrawAreas,
+				sweepStep ? sweepStep->tiling : raster::getDefaultTiling(), &tiling);
 		auto elapsed = Time::now() - started;
+
+		if (sweepAcc) {
+			sweepAcc->rasterTicks += FrameSweep_ticks() - startedTicks;
+			sweepAcc->regions += redrawAreas.size();
+			for (auto &it : redrawAreas) {
+				sweepAcc->damagePixels += uint64_t(it.width) * uint64_t(it.height);
+			}
+			sweepAcc->tiles += tiling.tiles;
+			sweepAcc->workers += tiling.workers;
+			sweepAcc->busyTicks += tiling.busyTicks;
+			sweepAcc->maxBusyTicks += tiling.maxBusyTicks;
+			sweepAcc->maxStartTicks += tiling.maxStartTicks;
+			sweepAcc->raster.add(tiling.fill);
+			sweepAcc->clear.add(clearFill);
+		}
+
 		tiling.fill.add(clearFill);
 		QueuePassHandle_profileFrame(elapsed, redrawAreas, tiling,
 				Extent2(target.width, target.height));

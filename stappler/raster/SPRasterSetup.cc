@@ -158,6 +158,7 @@ void fillRect(const Target &target, const URect &rect, const Color4F &color, Fil
 	auto clipped = URect{left, top, right - left, bottom - top};
 	if (stats) {
 		stats->fillPixels += uint64_t(clipped.width) * uint64_t(clipped.height);
+		++stats->ops.rects;
 	}
 	getKernels().fillRect(target, clipped, fmt, color);
 }
@@ -166,7 +167,11 @@ void fillRect(const Target &target, const URect &rect, const Color4F &color, Fil
 // edge values are stepped by their dx, and coverage is the sign test of all three.
 static void Setup_drawTriangle(const KernelTable &kernels, const Target &target,
 		const ChannelLayout &fmt, const Vertex &v0, const Vertex &v1, const Vertex &v2,
-		const Command &cmd, const Texture *texture, const URect &clip, uint64_t *spanPixels) {
+		const Command &cmd, const Texture *texture, const URect &clip, FillStats *stats) {
+	if (stats) {
+		++stats->ops.triangles;
+	}
+
 	// Rejection before anything else is computed. A triangle outside the clip used to pay for
 	// three fixed-point conversions, a signed area and a possible rewind before the bounding box
 	// finally told it so - fine when the clip was the damage region and the list was walked once,
@@ -234,6 +239,11 @@ static void Setup_drawTriangle(const KernelTable &kernels, const Target &target,
 
 	if (minX > maxX || minY > maxY) {
 		return;
+	}
+
+	if (stats) {
+		++stats->ops.setups;
+		stats->ops.rows += uint64_t(maxY - minY + 1);
 	}
 
 	// Bias of -1 on a non-top-left edge turns the ">= 0" test into "> 0" for that edge only.
@@ -322,8 +332,9 @@ static void Setup_drawTriangle(const KernelTable &kernels, const Target &target,
 				ctx.dlayer = float(d0 * a->layer + d1 * b->layer + d2 * c->layer);
 			}
 
-			if (spanPixels) {
-				*spanPixels += uint64_t(count);
+			if (stats) {
+				stats->spanPixels += uint64_t(count);
+				++stats->ops.spans;
 			}
 
 			kernels.writeSpan(ctx, fmt, cmd.blend);
@@ -366,6 +377,11 @@ uint32_t draw(const Target &target, const DrawList &list, const URect &clip,
 
 	uint32_t drawn = 0;
 
+	if (stats) {
+		++stats->ops.passes;
+		stats->ops.entries += list.entries.size();
+	}
+
 	// Entries, not commands: glyph blits and triangle batches interleave, and the order between
 	// them is the painter's order the queue guarantees.
 	for (auto &entry : list.entries) {
@@ -395,6 +411,7 @@ uint32_t draw(const Target &target, const DrawList &list, const URect &clip,
 				if (left < right && top < bottom) {
 					stats->glyphPixels += uint64_t(right - left) * uint64_t(bottom - top);
 				}
+				++stats->ops.glyphs;
 			}
 
 			kernels.blitGlyph(target, glyph, fmt);
@@ -434,6 +451,10 @@ uint32_t draw(const Target &target, const DrawList &list, const URect &clip,
 			texture = &list.textures[cmd.texture];
 		}
 
+		if (stats) {
+			++stats->ops.commands;
+		}
+
 		for (uint32_t i = 0; i + 2 < cmd.indexCount; i += 3) {
 			auto i0 = list.indexes[cmd.firstIndex + i];
 			auto i1 = list.indexes[cmd.firstIndex + i + 1];
@@ -446,7 +467,7 @@ uint32_t draw(const Target &target, const DrawList &list, const URect &clip,
 			}
 
 			Setup_drawTriangle(kernels, target, fmt, list.vertexes[i0], list.vertexes[i1],
-					list.vertexes[i2], cmd, texture, scissor, stats ? &stats->spanPixels : nullptr);
+					list.vertexes[i2], cmd, texture, scissor, stats);
 		}
 
 		++drawn;

@@ -22,9 +22,7 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_langinfo.h>
 
-#if !SPRT_EMBOX
 #include <langinfo.h>
-#endif
 #if SPRT_APPLE
 #include <xlocale.h>
 #endif
@@ -35,7 +33,6 @@ THE SOFTWARE.
 // freestanding build, where the umbrella defines the public ids from __SPRT_*).
 // Bases plus category endpoints are asserted, which also validates the
 // "contiguous within a category" assumption the indexed members rely on.
-#if !SPRT_EMBOX
 static_assert(CODESET == __SPRT_CODESET);
 static_assert(D_T_FMT == __SPRT_D_T_FMT);
 static_assert(D_FMT == __SPRT_D_FMT);
@@ -56,7 +53,6 @@ static_assert(THOUSEP == __SPRT_THOUSEP);
 static_assert(YESEXPR == __SPRT_YESEXPR);
 static_assert(NOEXPR == __SPRT_NOEXPR);
 static_assert(CRNCYSTR == __SPRT_CRNCYSTR);
-#endif // !SPRT_EMBOX
 
 // Weak REFERENCES to the plain libc nl_langinfo/nl_langinfo_l. On glibc/macOS and
 // libc_impl (Windows) these resolve to the real strong symbol; on Android they
@@ -85,7 +81,8 @@ char *__nl_langinfo_default(__SPRT_ID(nl_item) item);
 // real platform symbol when present, else runtime_core's C/POSIX fallback.
 __SPRT_C_FUNC char *__SPRT_ID(nl_langinfo)(__SPRT_ID(nl_item) item) {
 #if SPRT_EMBOX
-	return __nl_langinfo_default(item);
+	// The kernel's (board/common/musl in xenolith-os).
+	return ::nl_langinfo(item);
 #else
 	auto *fn = nl_langinfo;
 	if (fn) {
@@ -97,10 +94,9 @@ __SPRT_C_FUNC char *__SPRT_ID(nl_langinfo)(__SPRT_ID(nl_item) item) {
 
 __SPRT_C_FUNC char *__SPRT_ID(nl_langinfo_l)(__SPRT_ID(nl_item) item, __SPRT_ID(locale_t) loc) {
 #if SPRT_EMBOX
-	// Embox has neither nl_langinfo_l nor per-locale data; the C/POSIX answer
-	// ignores the locale.
+	// The kernel has one locale, C.UTF-8, and its nl_langinfo answers for it.
 	(void)loc;
-	return __nl_langinfo_default(item);
+	return ::nl_langinfo(item);
 #elif SPRT_NUTTX
 	// NuttX has no per-locale entry point at all: <langinfo.h> defines
 	// nl_langinfo_l(i, l) as a MACRO dropping the locale and calling nl_langinfo(i).

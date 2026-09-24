@@ -80,19 +80,13 @@ static_assert(__SPRT_REG_EXTENDED == REG_EXTENDED && __SPRT_REG_ICASE == REG_ICA
 static_assert(__SPRT_REG_NOTBOL == REG_NOTBOL && __SPRT_REG_NOTEOL == REG_NOTEOL,
 		"REG_* exec flags differ from native");
 static_assert(__SPRT_REG_NOMATCH == REG_NOMATCH, "REG_NOMATCH differs from native");
-// Embox's <regex.h> declares REG_NOMATCH as its only error code - the rest of the
-// POSIX set is absent, not renumbered.
-#if !SPRT_EMBOX || defined(REG_BADPAT)
 static_assert(__SPRT_REG_BADPAT == REG_BADPAT && __SPRT_REG_ERANGE == REG_ERANGE,
 		"REG_* error codes differ from native");
-#endif
 
 static_assert(__SPRT_FNM_PATHNAME == FNM_PATHNAME, "FNM_PATHNAME differs from native");
-// Embox's fnmatch() takes FNM_PATHNAME only; it declares neither of these.
-#if !SPRT_EMBOX || defined(FNM_NOESCAPE)
+static_assert(__SPRT_FNM_NOMATCH == FNM_NOMATCH, "FNM_NOMATCH differs from native");
 static_assert(__SPRT_FNM_NOESCAPE == FNM_NOESCAPE && __SPRT_FNM_PERIOD == FNM_PERIOD,
 		"FNM_* flags differ from native");
-#endif
 #ifdef FNM_LEADING_DIR
 static_assert(__SPRT_FNM_LEADING_DIR == FNM_LEADING_DIR, "FNM_LEADING_DIR differs from native");
 #endif

@@ -22,13 +22,6 @@ _Noreturn void abort(void);
 }
 #endif
 
-/* libunwind's RWMutex.hpp initialises a pthread_rwlock_t with it. */
-#ifdef __cplusplus
-#ifndef PTHREAD_RWLOCK_INITIALIZER
-#define PTHREAD_RWLOCK_INITIALIZER {}
-#endif
-#endif
-
 /* Embox default wchar.h omits several POSIX wide-string helpers libc++ wraps. */
 #include <stddef.h>
 #ifdef __cplusplus

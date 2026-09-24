@@ -70,12 +70,12 @@ MODULE_RUNTIME_LIBC_WRAPPER_INCLUDES_OBJS += \
 endif # ($(TARGET_SYSTEM),Android/Android-NDK)
 
 
-ifneq ($(filter NuttX Embox,$(TARGET_SYSTEM)),)
-# Both RTOS targets borrow the musl math (and the aarch64 fenv it needs) for the
-# C99 entries their libc declares but does not implement: c/SPRuntimeCMathMusl.c
-# fills NuttX's short gap list, c/math/embox_math_{flt,dbl,ldbl}.c carry the whole
-# libm for Embox, whose <math.h> is macros onto clang builtins with nothing
-# behind them. Those sources reach musl's internal headers ("libm.h",
+ifeq ($(TARGET_SYSTEM),NuttX)
+# NuttX borrows the musl math (and the aarch64 fenv it needs) for the C99
+# entries its libc declares but does not implement: c/SPRuntimeCMathMusl.c
+# fills that short gap list. (Embox did the same for its whole libm until the
+# kernel took musl's libm itself -- xenolith-os board/common/musl.) Those
+# sources reach musl's internal headers ("libm.h",
 # "fp_arch.h", "atomic.h") the same way musl's own build does — except through
 # -iquote rather than -I, so they apply to `"quoted"` includes only and can never
 # shadow a platform or sprt <angled> header. C flags only: no C++ unit in this
@@ -90,7 +90,7 @@ MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += \
 MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += \
 	-Wno-shift-op-parentheses \
 	-Wno-unused-but-set-variable
-endif # NuttX / Embox
+endif # NuttX
 
 
 ifeq ($(TARGET_SYSTEM),Windows)
@@ -115,9 +115,7 @@ ifeq ($(TARGET_SYSTEM),EmboxUser)
 # <stdio.h>/<complex.h>/... against include_libc rather than against a platform
 # libc -- and on this target there is no platform libc on the path at all.
 #
-# Note this is NOT the "NuttX Embox" block above: that one borrows musl's math to
-# fill gaps in Embox's own libm. Here the whole libm is ours already
-# (runtime_musl_libc), so there is nothing to fill.
+# Here the whole libm is ours (runtime_musl_libc); at EL1 it is the kernel's.
 MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_COMMON_FLAGS := \
 	-ffreestanding \
 	-fbuiltin \

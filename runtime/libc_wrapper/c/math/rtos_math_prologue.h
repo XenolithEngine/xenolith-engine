@@ -24,7 +24,7 @@ THE SOFTWARE.
 // it can include a musl source: the endianness spelling musl expects, the
 // `hidden`/`weak_alias` attributes its build normally supplies, the platform
 // <math.h>, and musl's internal libm.h. Included by SPRuntimeCMathMusl.c (NuttX)
-// and by c/math/embox_math_{flt,dbl,ldbl}.c (Embox).
+// (Embox used it too, until the kernel took musl's libm: xenolith-os BF-54.)
 //
 // The musl-internal headers reached from here ("libm.h", "fp_arch.h",
 // "atomic.h") come through -iquote, added by the NuttX/Embox branches of
@@ -36,8 +36,8 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_def.h>
 
-#if !SPRT_HOSTED_RTOS
-#error "rtos_math_prologue.h is for the NuttX and Embox targets only"
+#if !SPRT_NUTTX
+#error "rtos_math_prologue.h is for the NuttX target only (Embox has musl's libm in the kernel)"
 #endif
 
 // musl's libm.h wants the __BYTE_ORDER/__LITTLE_ENDIAN spelling; neither RTOS
@@ -61,17 +61,7 @@ THE SOFTWARE.
 // already provides weak_alias, and its expansion uses the bare token `weak`, so
 // adding our own would rewrite it into garbage. Embox provides neither, so it
 // gets musl's own spelling (src/internal/features.h).
-#if SPRT_EMBOX && !defined(weak_alias)
-#define weak_alias(old, new) extern __typeof(old) new __attribute__((__weak__, __alias__(#old)))
-#endif
-
 #include <math.h>
-
-#if SPRT_EMBOX
-// Embox declares almost none of the C99 math surface - see the shim for what it
-// does instead, and why the port needs the names undefined and re-declared.
-#include "embox_math_shim.h"
-#endif // SPRT_EMBOX
 
 // ilogb's out-of-range answers. musl puts them in its own <math.h>; NuttX
 // declares ilogb but never defines the two results it may return.

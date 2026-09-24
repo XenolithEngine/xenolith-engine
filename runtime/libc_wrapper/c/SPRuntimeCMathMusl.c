@@ -53,7 +53,7 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_def.h>
 
-#if SPRT_HOSTED_RTOS
+#if SPRT_NUTTX
 
 #include "math/rtos_math_prologue.h"
 
@@ -361,4 +361,4 @@ double __lgamma_r(double x, int *sg) {
 
 #endif // SPRT_NUTTX
 
-#endif // SPRT_HOSTED_RTOS
+#endif // SPRT_NUTTX (outer)

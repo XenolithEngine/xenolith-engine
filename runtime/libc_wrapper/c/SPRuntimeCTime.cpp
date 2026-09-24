@@ -270,18 +270,6 @@ __SPRT_C_FUNC char *__SPRT_ID(
 	auto native = internal::getNativeTm(ts);
 #if SPRT_ANDROID && !defined(__LP64__)
 	return ::asctime64_r(&native, buf);
-#elif SPRT_EMBOX
-	char *s = ::asctime(&native);
-	if (!s || !buf) {
-		return nullptr;
-	}
-	for (int i = 0; i < 26; ++i) {
-		buf[i] = s[i];
-		if (s[i] == '\0') {
-			break;
-		}
-	}
-	return buf;
 #else
 	return ::asctime_r(&native, buf);
 #endif
