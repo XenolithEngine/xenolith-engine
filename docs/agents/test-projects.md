@@ -37,6 +37,11 @@
   `tests/window/remote-window-check.py` and `tests/window/remote-example-check.py`. The second
   needs `examples/window/{dndtree,form,dock}` built and skips the ones that are not; an example
   links `renderer/ui` statically, so rebuild it after a change there or it runs the old code.
+- Changed virtual windows (`WindowCreationFlags::Virtual`, `sprt::window::VirtualWindow`, the
+  headless controller, `PresentationEngine::setFollowDisplayLinkBarrier`) →
+  `tests/window/virtual-window-check.py`. It runs on Vulkan and soft, so build `tests/window` with
+  `SOFT=1`; `--gapi` keeps one. That the host opens no second OS window is checked by hand on X11
+  (`SP_SESSION_TYPE=x11`, `xprop -root _NET_CLIENT_LIST`).
 - Changed `xenolith/core` or `xenolith/backend/vk` → `tests/compute` (the runner
   owes it for both). It covers the round trip on 1 … 10⁵ records and the device-lost
   refusals: a request after `VK_ERROR_DEVICE_LOST` gets exactly one failed callback

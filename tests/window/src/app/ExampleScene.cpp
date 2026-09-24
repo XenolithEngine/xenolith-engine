@@ -131,12 +131,18 @@ void ExampleScene::installClientWindowHandler(ServerAppThread *app) {
 	if (auto env = ::getenv("XL_REMOTE_MAX_CLIENT_WINDOWS")) {
 		app->setMaxClientWindows(uint32_t(StringView(env).readInteger(10).get(4)));
 	}
+	// XL_REMOTE_VIRTUAL_WINDOWS=1: the windows are virtual (WindowCreationFlags::Virtual) - no OS
+	// window, as a window manager would have them. virtual-window-check.py drives this.
+	const bool virtualWindows = ::getenv("XL_REMOTE_VIRTUAL_WINDOWS") != nullptr;
 	app->setClientWindowHandler(
-			[](NotNull<RemoteSession> session, NotNull<sprt::window::WindowInfo> info,
+			[virtualWindows](NotNull<RemoteSession> session, NotNull<sprt::window::WindowInfo> info,
 					Rc<WindowSceneInfo> &out) -> Status {
 		// Only Root windows exist headless, and the title says whose window it is.
 		info->type = sprt::window::WindowType::Root;
 		info->title = toString("testapp client ", session->getId());
+		if (virtualWindows) {
+			info->flags |= sprt::window::WindowCreationFlags::Virtual;
+		}
 		out = SecondaryWindow::makeSceneInfo(info->id, [](StringView) {
 			auto layout = Rc<basic2d::SceneLayout2d>::create();
 			auto marker =

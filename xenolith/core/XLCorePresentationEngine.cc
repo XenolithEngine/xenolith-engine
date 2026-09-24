@@ -575,6 +575,21 @@ void PresentationEngine::setRenderOnDemand(bool value) { _options.renderOnDemand
 
 bool PresentationEngine::isRenderOnDemand() const { return _options.renderOnDemand; }
 
+void PresentationEngine::setFollowDisplayLinkBarrier(bool value) {
+	if (_options.followDisplayLinkBarrier == value) {
+		return;
+	}
+	_options.followDisplayLinkBarrier = value;
+
+	// Raised on the switch, so the first frame after it is the owner's to start. Lowered on the way
+	// back, or a window released between two ticks would wait for one that never comes.
+	_waitForDisplayLink = value;
+	if (!value && canScheduleNextFrame()) {
+		XL_COREPRESENT_LOG("setFollowDisplayLinkBarrier - scheduleNextImage");
+		scheduleNextImage();
+	}
+}
+
 bool PresentationEngine::isRunning() const {
 	return _running && _swapchain && !_swapchain->isDeprecated();
 }

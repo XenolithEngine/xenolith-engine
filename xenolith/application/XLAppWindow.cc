@@ -33,6 +33,7 @@
 #include "input/XLInputDispatcher.h"
 #include "XLServerAppThread.h"
 #include "resources/XLFrameCapture.h"
+#include <sprt/runtime/window/virtual_window.h>
 
 #include <stdlib.h> // getenv
 
@@ -345,6 +346,11 @@ core::ImageInfo AppWindow::getSwapchainImageInfo(const core::SwapchainConfig &cf
 	// requests this where the surface allows it.
 	if (cfg.transferSrc) {
 		swapchainImageInfo.usage |= core::ImageUsage::TransferSrc;
+	}
+	// A virtual window's image is a compositor's texture. Both pseudo-swapchains (vk and soft) offer
+	// Sampled; nothing else would ask for it.
+	if (isVirtual()) {
+		swapchainImageInfo.usage |= core::ImageUsage::Sampled;
 	}
 	return swapchainImageInfo;
 }
@@ -779,6 +785,45 @@ void AppWindow::setReadyForNextFrame() {
 	}, this, true);
 }
 
+bool AppWindow::isVirtual() const {
+	return _info && hasFlag(_info->flags, WindowCreationFlags::Virtual);
+}
+
+void AppWindow::setVirtualState(core::WindowState mask, bool value) {
+	if (!isVirtual()) {
+		log::source().warn("AppWindow", "setVirtualState: '", _windowId, "' is not virtual");
+		return;
+	}
+	_context->performOnThread([this, mask, value] {
+		// Created for the flag by the controller itself, so the cast is the type (see
+		// ContextController::createWindow).
+		if (_window) {
+			static_cast<sprt::window::VirtualWindow *>(_window)->updateVirtualState(mask, value);
+		}
+	}, this);
+}
+
+void AppWindow::setExternalDisplayLink(bool value) {
+	_context->performOnThread([this, value] {
+		if (_presentationEngine) {
+			_presentationEngine->setFollowDisplayLinkBarrier(value);
+		}
+	}, this);
+}
+
+void AppWindow::emitDisplayLink() {
+	// The presentation engine lives on the context thread; update() is called from wherever its
+	// caller is, which for a compositor is not that thread.
+	_context->performOnThread([this] {
+		if (_inCloseRequest) {
+			return;
+		}
+		if (_presentationEngine) {
+			_presentationEngine->update(core::PresentationUpdateFlags::DisplayLink);
+		}
+	}, this, true);
+}
+
 void AppWindow::invalidateRemoteFrames() {
 	_context->performOnThread([this] {
 		if (_presentationEngine) {
@@ -1075,8 +1120,10 @@ Status AppWindow::openDialog(NotNull<sprt::window::DialogRequest> req) {
 		return Status::ErrorInvalidArguemnt;
 	}
 
-	// This window owns the dialog: it parents it, blocks for it, and takes it down with itself.
-	req->parentWindowId = _windowId;
+	// This window owns the dialog: it parents it, blocks for it, and takes it down with itself. A
+	// virtual window has no OS window to parent anything, so its dialog opens as a windowless one
+	// (Context::openDialog) and is not cancelled with the window.
+	req->parentWindowId = isVirtual() ? String() : _windowId;
 	_pendingDialogs.emplace_back(req);
 
 	// Wrap the caller's callback so the pending list is pruned on the thread that owns it. The

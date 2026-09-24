@@ -193,6 +193,13 @@ Status HeadlessContextController::writeToClipboard(Rc<ClipboardData> &&data) {
 
 void HeadlessContextController::notifyWindowInputEvents(NotNull<NativeWindow> w,
 		Vector<InputEventData> &&ev) {
+	// A virtual window is not on the virtual screen: its focus and pointer are its window manager's,
+	// and input reaching it does not move them.
+	if (w->isVirtual()) {
+		ContextController::notifyWindowInputEvents(w, sprt::move(ev));
+		return;
+	}
+
 	bool pointer = false;
 	bool pressed = false;
 	for (auto &it : ev) {
@@ -246,7 +253,7 @@ IRect HeadlessContextController::getVirtualScreenRect() const {
 	bool hasRoot = false;
 	for (auto *w : _allWindows) {
 		auto wi = w->getInfo();
-		if (!wi || wi->type != WindowType::Root) {
+		if (!wi || wi->type != WindowType::Root || w->isVirtual()) {
 			continue;
 		}
 		if (!hasRoot) {
@@ -295,7 +302,9 @@ NativeWindow *HeadlessContextController::getTopmostFocusable(NativeWindow *excep
 void HeadlessContextController::setFocusedWindow(NativeWindow *w) {
 	if (w) {
 		auto *wi = w->getInfo();
-		if (!wi || wi->type == WindowType::Popup || wi->type == WindowType::Tooltip) {
+		// A virtual window is focused by its window manager (VirtualWindow::updateVirtualState).
+		if (!wi || wi->type == WindowType::Popup || wi->type == WindowType::Tooltip
+				|| w->isVirtual()) {
 			// Neither is ever the key window: a menu is an override-redirect surface on X11 and a
 			// WS_EX_NOACTIVATE popup on Win32, and a tip takes no input at all. The window a menu
 			// hangs off keeps focus for as long as the menu is up - which is also what stops the
@@ -324,7 +333,7 @@ void HeadlessContextController::setFocusedWindow(NativeWindow *w) {
 }
 
 void HeadlessContextController::setPointerWindow(NativeWindow *w) {
-	if (_pointerWindow == w) {
+	if (_pointerWindow == w || (w && w->isVirtual())) {
 		return;
 	}
 

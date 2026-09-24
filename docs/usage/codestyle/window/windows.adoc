@@ -556,6 +556,37 @@ issued (`ServerAppThread::addBearerKey`), and the two applications talk through
 `GlobalCode::AppRequest`/`AppNotify` (`setAppMessageHandler` on both sides).
 `tests/window/remote-example-check.py` runs the examples this way.
 
+## Virtual windows: a window manager's planes
+
+A window with `WindowCreationFlags::Virtual` has no OS window behind it. Every
+controller makes the same `sprt::window::VirtualWindow` for it, outside the backend,
+so a window manager running on X11 opens no second X window for a client, and a
+headless one puts nothing into the headless stacking order. It renders into a
+pseudo-swapchain of device images, as a headless window does, that a compositor in
+the same process reads: four images, `Sampled` included
+(`AppWindow::VirtualSwapchainImageCount`), published after the frame's fence.
+
+* **Only a server sets the flag.** `ServerAppThread::createClientWindow` strips it
+  from a client's request; the server's `ClientWindowHandler` adds it. Root windows
+  only.
+* **No capabilities.** No subwindows (a popup on it is an in-scene overlay), no
+  position, no decorations: `UserSpaceDecorations` is dropped at creation.
+* **The window manager decides its state.** It maps `Enabled` with the host's input
+  devices and nothing else; focus, pointer and `Minimized` come from
+  `AppWindow::setVirtualState`. The host controller never touches it. A client's
+  `WindowControl` asking for an extent, fullscreen or a geometry state is declined;
+  close, frame rate, the back button and `CloseGuard`/`CloseRequest` pass. The
+  server resizes it with `setWindowExtent`.
+* **Frames.** Unclaimed, it renders on demand, like a headless window. A compositor
+  claims it with `AppWindow::setExternalDisplayLink(true)`: from then on a frame
+  starts only on `emitDisplayLink()`, one per call at most, and only when the
+  application asked for one. `false` hands it back.
+* **It does not keep the process alive.** The "no Root window left" exit ignores
+  virtual windows: closing the host window ends the process.
+
+`tests/window/virtual-window-check.py` drives all of it through the inspector
+(`window` operations `virtual-state`, `external-display-link`, `display-link`).
+
 ## Traps
 
 | Trap | What actually happens |
@@ -566,6 +597,7 @@ issued (`ServerAppThread::addBearerKey`), and the two applications talk through
 | a separate "creation failed" path | `CloseCallback` already covers it — it fires once, including when the window never appeared |
 | hand-building a `Popup` window | fails on every platform without `Subwindows`; `ui::SubWindow` falls back to an overlay |
 | `dynamic_cast<AppWindow *>` to open a popup | null on a remote client, and the popup silently never opens; take `ui::getSubWindowParent(node)` |
+| claiming a virtual window's frames (`setExternalDisplayLink(true)`) and not ticking it | nothing is drawn: each `emitDisplayLink` starts at most one frame |
 | calling `setFullscreen` / `enableState` without checking capabilities | the call is declined and your UI shows a control that never works |
 | `enableState(Maximized)` at the map event | the WM's `Allowed*` flags have not arrived yet, so it is declined; wait for them |
 | saving the geometry of a maximized window | it comes back the size of the screen, with nothing to un-maximize to |

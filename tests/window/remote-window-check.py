@@ -320,6 +320,11 @@ def main():
                 r = cb.invoke("client-create-window", id=f"cycle{i}", width=200, height=150) or {}
                 name = r.get("id")
                 rc.wait_for(s, lambda x: window_entry(x, name), timeout=30.0)
+                # The server lists the window before the client's scene for it is up, and the
+                # close below is addressed to that scene.
+                deadline = time.monotonic() + 30.0
+                while name not in client_windows(cb) and time.monotonic() < deadline:
+                    step(s, 0.2)
                 cb.ok("window", op="close", window=name)
                 rc.wait_for(s, lambda x: not window_entry(x, name), timeout=30.0)
             grown = (s.invoke("remote") or {}).get("sharedObjects", 0)

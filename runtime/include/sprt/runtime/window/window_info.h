@@ -422,6 +422,11 @@ enum class WindowCreationFlags : uint32_t {
 	// is a HINT everywhere else - a window manager is free to place the window elsewhere.
 	UsePosition = 1 << 9,
 
+	// A window with no OS window behind it: its image is read by a compositor in this process (a
+	// window manager's plane) - see VirtualWindow. Made by every controller, Root windows only. A
+	// server sets it for a client's window; a request from a client never carries it.
+	Virtual = 1 << 10,
+
 	// Use direct output to display, bypassing whole WM stack
 	// Check if it actually supported with WindowCapabilities::DirectOutput
 	DirectOutput = 1 << 27,

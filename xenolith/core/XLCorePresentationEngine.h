@@ -148,6 +148,12 @@ public:
 	void setRenderOnDemand(bool value);
 	bool isRenderOnDemand() const;
 
+	/* PresentationOptions::followDisplayLinkBarrier, switched while running: how a compositor takes
+	a window's frames over (and hands them back). On, the next frame waits for a DisplayLink update,
+	whatever was in flight; off, nothing waits for one, and a frame already asked for starts now. */
+	void setFollowDisplayLinkBarrier(bool value);
+	bool isFollowDisplayLinkBarrier() const { return _options.followDisplayLinkBarrier; }
+
 	bool isRunning() const;
 
 	void enableExclusiveFullscreen();

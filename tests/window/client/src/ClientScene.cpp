@@ -377,7 +377,7 @@ void ClientScene::registerCommands() {
 	inspector::addCommand(content, "client-state",
 			"What the client's window knows about itself: "
 			"{ sceneWidth, sceneHeight, constraintsWidth, constraintsHeight, density, "
-			"geomX, geomY, geomWidth, geomHeight, hasPosition }",
+			"geomX, geomY, geomWidth, geomHeight, hasPosition, serverWm }",
 			[this](Value &&, Function<void(Value &&)> &&done) {
 		Value result;
 		auto server = _director ? _director->getRenderServer() : nullptr;
@@ -406,6 +406,10 @@ void ClientScene::registerCommands() {
 		auto thread =
 				_director ? dynamic_cast<ClientAppThread *>(_director->getApplication()) : nullptr;
 		result.setBool(thread && thread->isAppMessagingSupported(), "appMessaging");
+		// The server's window system as it announced it; its virtual windows must not change it
+		if (auto info = thread ? thread->getServerInfo() : nullptr) {
+			result.setString(remote::getWindowSubsystemName(info->wm), "serverWm");
+		}
 		auto &messages = result.emplace("appMessages");
 		messages.setArray(Value::ArrayType());
 		for (auto &it : getAppMessageLog()) { messages.addValue(it); }

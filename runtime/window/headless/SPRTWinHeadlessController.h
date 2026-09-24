@@ -97,7 +97,8 @@ public:
 
 	// Hand focus (or the pointer) to `w`, taking it away from whoever held it. Null drops it
 	// entirely. A Popup or Tooltip is never a valid focus target and is ignored here - the window
-	// a menu belongs to keeps focus while the menu is up, as it does on X11 and Win32.
+	// a menu belongs to keeps focus while the menu is up, as it does on X11 and Win32. Neither is a
+	// virtual window: its window manager decides for it.
 	void setFocusedWindow(NativeWindow *w);
 	void setPointerWindow(NativeWindow *w);
 
