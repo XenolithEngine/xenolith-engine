@@ -203,9 +203,10 @@ public:
 
 	// Register a reply waiter for `serial`. `timeoutUs` is the relative reply deadline
 	// (microseconds): on expiry failTimedOutRequests() completes the waiter with a local protocol
-	// error and the connection is reset. 0 means no deadline.
+	// error, and a `fatal` one resets the connection. 0 means no deadline.
 	virtual void waitForReply(uint32_t,
-			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs);
+			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs,
+			bool fatal = true);
 
 	/* Abandon every Domain::Data block still streaming from this side: sends Cancel to the peer and
 	fails each waiting caller. Returns the number cancelled. App thread only. */

@@ -28,6 +28,8 @@
 #include "XLRemoteTransport.h"
 #include "XLRemoteProtocol.h"
 
+#include "XLRemoteBearerKeys.h"
+
 #include "../tests.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
@@ -130,6 +132,29 @@ static void runCases(StringView scheme, StringView name) {
 								   client.getServerHello().dict.size())
 								== "server-dict",
 				tag("the server dictionary reaches the client"));
+	}
+
+	{
+		// The presented key is what a server matches against its labelled keys: nothing before the
+		// hello, the client's own key once it is in.
+		auto client = pair.connect();
+		auto server = pair.accept();
+		ClientHandshake ch;
+		ServerHandshake sh;
+		Bytes launchKey(kBearerKeySize, uint8_t(0x5a));
+		BearerKeyTable keys;
+		keys.add(launchKey, "shell", true);
+		bool emptyBefore = sh.getPresentedKey().empty();
+		String label;
+		bool matched = false;
+		ch.begin(launchKey, BytesView(), 1'000);
+		sh.begin(1'000);
+		runPair(*client, ch, *server, sh, [&](ServerHandshake &hs) {
+			matched = keys.match(hs.getPresentedKey(), label);
+			hs.reply(hs.negotiate(s_key, BytesView(), !matched), BytesView());
+		});
+		check(emptyBefore && matched && label == "shell" && ch.getResult() == GlobalError::Ok,
+				tag("the presented key is visible at HelloReceived and matches its label"));
 	}
 
 	{

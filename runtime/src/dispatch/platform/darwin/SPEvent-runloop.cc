@@ -386,11 +386,13 @@ Status RunLoopThreadHandle::perform(dispatch::Function<void()> &&func, Ref *targ
 	return Status::Ok;
 }
 
-bool RunLoopProcessHandle::init(HandleClass *cl, int pid, CompletionHandle<ProcessHandle> &&c) {
+bool RunLoopProcessHandle::init(HandleClass *cl, int pid, bool group,
+		CompletionHandle<ProcessHandle> &&c) {
 	if (!Handle::init(cl, move(c))) {
 		return false;
 	}
 	_pid = pid;
+	_group = group;
 	return true;
 }
 
@@ -490,7 +492,7 @@ void RunLoopProcessHandle::terminate() {
 	// it), terminate and reap it so it neither outlives its handle nor leaks a zombie.
 	// `_reaped` guards against signalling an already-reaped (recycled) pid.
 	if (!_reaped && _pid > 0) {
-		killProcessChild(_pid);
+		killProcessChild(_pid, _group);
 		_reaped = true;
 	}
 }
@@ -524,7 +526,8 @@ Rc<ProcessHandle> spawnProcessRunLoop(QueueData *data, HandleClass *processClass
 		Ref *ref) {
 	int pid = -1;
 	int readFd = -1;
-	if (!posixSpawnPipe(info.command, &pid, &readFd)) {
+	auto group = hasFlag(info.flags, ProcessFlags::KillProcessTree);
+	if (!posixSpawnPipe(info.command, &pid, &readFd, group)) {
 		return nullptr;
 	}
 
@@ -533,7 +536,8 @@ Rc<ProcessHandle> spawnProcessRunLoop(QueueData *data, HandleClass *processClass
 	state->userRef = ref;
 	state->readFd = readFd;
 
-	auto proc = Rc<RunLoopProcessHandle>::create(processClass, pid, sprt::move(info.completion));
+	auto proc =
+			Rc<RunLoopProcessHandle>::create(processClass, pid, group, sprt::move(info.completion));
 	if (!proc) {
 		::close(readFd);
 		int status = 0;

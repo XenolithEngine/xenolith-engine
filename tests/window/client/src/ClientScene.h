@@ -28,7 +28,24 @@
 #include "XL2dLayer.h"
 #include "XL2dLabel.h"
 
+namespace STAPPLER_VERSIONIZED stappler::xenolith {
+
+class ClientContext;
+
+namespace ui {
+class TextInput;
+class Select;
+} // namespace ui
+
+} // namespace stappler::xenolith
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::client {
+
+// Application messages from the server (GlobalCode::AppRequest/AppNotify), newest last. The handler
+// that records them is installed before the connection opens, so a greeting sent as the session
+// starts is kept too; a request is answered with { clientEcho: value }.
+void installAppMessageLog(ClientContext *);
+const Vector<Value> &getAppMessageLog();
 
 // Используем базовую 2D-сцену в качестве основы
 class ClientScene : public basic2d::Scene2d {
@@ -56,6 +73,9 @@ protected:
 	// Текстовое поле — проверка удалённого текстового ввода в обе стороны: фокус уходит на сервер
 	// как acquireTextInput, а всё, что поле показывает, приходит обратно эхом от его процессора.
 	ui::TextInput *_input = nullptr;
+
+	// A drop-down: its list is a ui::SubWindow, which on a client can only be an in-scene overlay.
+	ui::Select *_select = nullptr;
 
 	// Запускаем бесконечную анимацию квадрата ровно один раз (проверка работы runAction в
 	// клиентском контексте: пока действие активно, клиент шлёт серверу setReadyForNextFrame)

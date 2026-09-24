@@ -49,8 +49,8 @@ static sprt::window::WindowPlacement makeTipPlacement(Vec2 anchorSceneYUp, float
 	return placement;
 }
 
-SubWindowSession *SubWindowSession::get(NotNull<AppWindow> window) {
-	auto director = window->getDirector();
+SubWindowSession *SubWindowSession::get(NotNull<core::RenderServerChannel> window) {
+	auto director = getWindowDirector(window);
 	auto scene = director ? director->getScene() : nullptr;
 	auto content = scene ? scene->getContent() : nullptr;
 	if (!content) {
@@ -85,12 +85,8 @@ void SubWindowSession::handleExit() {
 	System::handleExit();
 }
 
-AppWindow *SubWindowSession::getWindow() const {
-	auto owner = getOwner();
-	auto scene = owner ? owner->getScene() : nullptr;
-	auto director = scene ? scene->getDirector() : nullptr;
-	auto server = director ? director->getRenderServer() : nullptr;
-	return server ? dynamic_cast<AppWindow *>(server) : nullptr;
+core::RenderServerChannel *SubWindowSession::getWindow() const {
+	return getSubWindowParent(getOwner());
 }
 
 void SubWindowSession::showTip(StringView text, Vec2 anchorSceneYUp, float sceneHeight,
@@ -119,7 +115,7 @@ void SubWindowSession::showTip(StringView text, Vec2 anchorSceneYUp, float scene
 Rc<SubWindow> SubWindowSession::showTip(SubWindow::Config &&config, StringView key,
 		TimeInterval hideDelay) {
 	auto window = getWindow();
-	if (!window || window->isInCloseRequest()) {
+	if (!window || isWindowClosing(window)) {
 		return nullptr;
 	}
 
@@ -191,8 +187,7 @@ void SubWindowSession::armHideTimer(TimeInterval hideDelay) {
 		return;
 	}
 
-	auto window = getWindow();
-	auto director = window ? window->getDirector() : nullptr;
+	auto director = getWindowDirector(getWindow());
 	auto app = director ? director->getApplication() : nullptr;
 	auto looper = app ? app->getLooper() : nullptr;
 	if (!looper) {
@@ -206,8 +201,7 @@ void SubWindowSession::armHideTimer(TimeInterval hideDelay) {
 			return;
 		}
 		auto *session = life->session;
-		auto window = session->getWindow();
-		auto director = window ? window->getDirector() : nullptr;
+		auto director = getWindowDirector(session->getWindow());
 		auto app = director ? director->getApplication() : nullptr;
 		if (!app) {
 			return;
@@ -217,7 +211,7 @@ void SubWindowSession::armHideTimer(TimeInterval hideDelay) {
 				session->_hideTimer = nullptr;
 				session->clearTip();
 			}
-		}, window);
+		}, director);
 	}),
 		.timeout = hideDelay,
 		.interval = hideDelay,
@@ -234,7 +228,7 @@ void SubWindowSession::cancelHideTimer() {
 
 Rc<SubWindow> SubWindowSession::openPopup(SubWindow::Config &&config) {
 	auto window = getWindow();
-	if (!window || window->isInCloseRequest()) {
+	if (!window || isWindowClosing(window)) {
 		return nullptr;
 	}
 	clearTip();

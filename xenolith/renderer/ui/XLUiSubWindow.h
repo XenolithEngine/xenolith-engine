@@ -31,6 +31,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class AppWindow;
+class Director;
 
 namespace basic2d {
 class Layer;
@@ -45,10 +46,11 @@ struct PopupSurfaceConfig;
 
 // One auxiliary surface belonging to a parent window: Dialog, Utility, Popup or Tooltip.
 //
-// Materializes as a native subwindow where the platform advertises WindowCapabilities::Subwindows
-// (headless included: the pseudo-controller gives each one a pseudo-swapchain), and as an in-scene
-// overlay on the parent's SceneContent2d otherwise (Android, wasm, direct output). Both paths
-// honour the same placement, dismiss rules and close callback.
+// Materializes as a native subwindow where the parent is a local window whose platform advertises
+// WindowCapabilities::Subwindows (headless included: the pseudo-controller gives each one a
+// pseudo-swapchain), and as an in-scene overlay on the parent's SceneContent2d otherwise (Android,
+// wasm, direct output, and every window of a remote client). Both paths honour the same placement,
+// dismiss rules and close callback.
 //
 // The returned object is the handle; keep the Rc. Content travels with the window request as
 // WindowSceneInfo, with no lookup by id. App-thread only.
@@ -99,16 +101,16 @@ public:
 
 	virtual ~SubWindow();
 
-	static Rc<SubWindow> open(NotNull<AppWindow> parent, Config &&);
+	static Rc<SubWindow> open(NotNull<core::RenderServerChannel> parent, Config &&);
 
-	static Rc<SubWindow> openPopup(NotNull<AppWindow>, const WindowPlacement &, Extent2,
-			ContentBuilder &&, StringView title = StringView());
-	static Rc<SubWindow> openDialog(NotNull<AppWindow>, Extent2, ContentBuilder &&,
+	static Rc<SubWindow> openPopup(NotNull<core::RenderServerChannel>, const WindowPlacement &,
+			Extent2, ContentBuilder &&, StringView title = StringView());
+	static Rc<SubWindow> openDialog(NotNull<core::RenderServerChannel>, Extent2, ContentBuilder &&,
 			bool modal = false, StringView title = StringView());
-	static Rc<SubWindow> openUtility(NotNull<AppWindow>, Extent2, ContentBuilder &&,
+	static Rc<SubWindow> openUtility(NotNull<core::RenderServerChannel>, Extent2, ContentBuilder &&,
 			StringView title = StringView());
-	static Rc<SubWindow> showTooltip(NotNull<AppWindow>, const WindowPlacement &, Extent2,
-			ContentBuilder &&, StringView title = StringView());
+	static Rc<SubWindow> showTooltip(NotNull<core::RenderServerChannel>, const WindowPlacement &,
+			Extent2, ContentBuilder &&, StringView title = StringView());
 
 	// True when this surface became a real OS window rather than an overlay.
 	bool isNative() const { return _sceneInfo != nullptr; }
@@ -132,7 +134,7 @@ public:
 	Panel *getPanel() const { return _panel; }
 
 	// The parent this surface hangs off. Null once the parent is gone.
-	AppWindow *getParent() const { return _parent; }
+	core::RenderServerChannel *getParent() const { return _parent; }
 
 	// Final, uniqued WindowInfo::id on the native path; the generated id on the overlay path.
 	StringView getId() const;
@@ -142,17 +144,18 @@ public:
 	// Take the surface down. Idempotent; the close callback fires exactly once either way.
 	void dismiss();
 
-	// Whether `parent` can host a native subwindow at all.
-	static bool platformSupportsSubwindows(NotNull<AppWindow> parent);
+	// Whether `parent` can host a native subwindow at all: a local window on a platform with
+	// subwindows. A remote window reports its server's capabilities, but its client opens no windows.
+	static bool platformSupportsSubwindows(NotNull<core::RenderServerChannel> parent);
 
 protected:
 	friend class SubWindowSession;
 	// Sets _panel while the content is being built; read-only afterwards.
-	friend Rc<SubWindow> openPopupSurface(NotNull<AppWindow>, const sprt::window::WindowPlacement &,
-			PopupSurfaceConfig &&);
+	friend Rc<SubWindow> openPopupSurface(NotNull<core::RenderServerChannel>,
+			const sprt::window::WindowPlacement &, PopupSurfaceConfig &&);
 
 	bool openNative(NotNull<AppWindow> parent, Config &&);
-	bool openOverlay(NotNull<AppWindow> parent, Config &&);
+	bool openOverlay(NotNull<core::RenderServerChannel> parent, Config &&);
 
 	void handleClosed();
 
@@ -165,7 +168,7 @@ protected:
 	// Borrowed, not owned: _layout holds it, and it is cleared with _layout.
 	Panel *_panel = nullptr;
 
-	AppWindow *_parent = nullptr;
+	core::RenderServerChannel *_parent = nullptr;
 	CloseCallback _onClose;
 	String _id;
 	WindowType _type = WindowType::Popup;
@@ -201,6 +204,15 @@ is in world space (as input events and convertToWorldSpace give); `inScene` is a
 scene, used to find the content. Convert node-local points first, or the density scale is wrong.
 The rect is empty, which backends read as this exact point. */
 SP_PUBLIC IRect placementAnchorPoint(NotNull<Node> inScene, const Vec2 &worldLocation);
+
+// The window `node` is drawn into: an AppWindow in a local process, a RemoteWindow in a client.
+SP_PUBLIC core::RenderServerChannel *getSubWindowParent(const Node *node);
+
+// The Director that runs `window`'s scene, for either kind of window.
+SP_PUBLIC Director *getWindowDirector(core::RenderServerChannel *window);
+
+// Whether `window` is being closed; only a local window answers this.
+SP_PUBLIC bool isWindowClosing(core::RenderServerChannel *window);
 
 } // namespace ui
 } // namespace stappler::xenolith

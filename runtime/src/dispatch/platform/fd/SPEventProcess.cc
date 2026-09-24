@@ -31,6 +31,7 @@
 
 #if SPRT_APPLE
 extern "C" int waitpid(int __pid, int *__status, int __options);
+extern "C" int setpgid(int __pid, int __pgid);
 #else
 // Linux/Android: reach the kernel directly (the freestanding libc offers no kill()/wait4()),
 // mirroring how SPEventProcessFd.cc issues pidfd_open()/wait4().
@@ -40,28 +41,38 @@ __SPRT_C_FUNC long int syscall(long int __sysno, ...);
 
 namespace sprt::dispatch {
 
-void killProcessChild(int pid) {
+void killProcessChild(int pid, bool group) {
 	if (pid <= 0) {
 		return;
 	}
 	// SIGKILL is uncatchable, so the child dies at once; the blocking reap that follows
 	// returns immediately and clears the zombie. The caller guarantees the child has not
-	// already been reaped (see the header), so this never signals a recycled pid.
-	//
-	// TODO: this kills only the direct child (the `/bin/sh -c` pid). A shell that forks
-	// grandchildren leaves them orphaned (reparented to init) and still running. To kill
-	// the whole tree we would put the child in its own process group (setpgid() in
-	// posixSpawnPipe) and signal the group here via kill(-pgid, SIGKILL) / killpg(); the
-	// Windows analogue (SPEventProcessIocp.cc) would assign the child to a Job Object and
-	// terminate that instead of a single TerminateProcess.
+	// already been reaped (see the header), so this never signals a recycled pid, and the
+	// group id, equal to that pid, cannot be recycled either.
 	int status = 0;
 #if SPRT_APPLE
-	::kill(pid, SIGKILL);
+	if (!group || ::kill(-pid, SIGKILL) != 0) {
+		::kill(pid, SIGKILL);
+	}
 	::waitpid(pid, &status, 0);
 #else
-	syscall(__SPRT_SYSCALL_kill, pid, SIGKILL);
+	if (!group || syscall(__SPRT_SYSCALL_kill, -pid, SIGKILL) != 0) {
+		syscall(__SPRT_SYSCALL_kill, pid, SIGKILL);
+	}
 	syscall(__SPRT_SYSCALL_wait4, pid, &status, 0, nullptr);
 #endif
+}
+
+void cancelProcessReader(ProcessState *state) {
+	if (!state) {
+		return;
+	}
+	// The reader's completion holds a raw ProcessState pointer, so it must not outlive the state.
+	// A descendant that left the group may still hold the pipe open, and EOF would never come.
+	state->readFd = -1; // the handle's CloseFd flag closes the fd on cancel
+	if (state->readerHandle) {
+		state->readerHandle->cancel();
+	}
 }
 
 bool drainProcessPipe(int fd, ProcessState *state) {
@@ -116,7 +127,7 @@ static void processReaderNotify(ProcessState *state, PollHandle *h, uint32_t val
 	}
 }
 
-bool posixSpawnPipe(StringView command, int *outPid, int *outReadFd) {
+bool posixSpawnPipe(StringView command, int *outPid, int *outReadFd, bool newGroup) {
 	int fds[2];
 
 	// Plain pipe(), not pipe2(O_CLOEXEC): the latter was observed to fail (ENOENT) in practice.
@@ -144,7 +155,14 @@ bool posixSpawnPipe(StringView command, int *outPid, int *outReadFd) {
 		// child: merge stdout+stderr onto the pipe write end, then drop the bare pipe fds so
 		// they do not outlive exec (they are not close-on-exec). The `> 2` guards avoid closing
 		// a descriptor that became 1/2 when stdin/out/err were closed at spawn time.
-		// (async-signal-safe path only: dup2/close/execl/_exit)
+		// (async-signal-safe path only: setpgid/dup2/close/execl/_exit)
+		if (newGroup) {
+#if SPRT_APPLE
+			::setpgid(0, 0);
+#else
+			syscall(__SPRT_SYSCALL_setpgid, 0, 0);
+#endif
+		}
 		::dup2(fds[1], 1); // STDOUT_FILENO
 		::dup2(fds[1], 2); // STDERR_FILENO
 		if (fds[0] > 2) {
@@ -155,6 +173,16 @@ bool posixSpawnPipe(StringView command, int *outPid, int *outReadFd) {
 		}
 		::execl("/bin/sh", "sh", "-c", cmd.data(), (char *)nullptr);
 		::_exit(127);
+	}
+
+	// The parent sets the group too, so a cancel that comes before the child runs still finds it.
+	// Once the child has exec'd this fails with EACCES, but by then the child has set it itself.
+	if (newGroup) {
+#if SPRT_APPLE
+		::setpgid(pid, pid);
+#else
+		syscall(__SPRT_SYSCALL_setpgid, pid, pid);
+#endif
 	}
 
 	// Parent: mark the retained read end close-on-exec *after* the fork (so it cannot leak into a

@@ -85,11 +85,11 @@ SP_PUBLIC sprt::window::WindowPlacement placementForPoint(NotNull<Node> space, c
 
 Native subwindow where available (including headless), in-scene overlay otherwise. Keep the
 returned Rc for as long as the menu should stay open. */
-SP_PUBLIC Rc<SubWindow> openMenu(NotNull<AppWindow>, const sprt::window::WindowPlacement &,
-		NotNull<MenuSource>, MenuConfig &&);
+SP_PUBLIC Rc<SubWindow> openMenu(NotNull<core::RenderServerChannel>,
+		const sprt::window::WindowPlacement &, NotNull<MenuSource>, MenuConfig &&);
 
 // openMenu with the placement resolved from a node.
-SP_PUBLIC Rc<SubWindow> openMenuForNode(NotNull<AppWindow>, NotNull<Node> anchor,
+SP_PUBLIC Rc<SubWindow> openMenuForNode(NotNull<core::RenderServerChannel>, NotNull<Node> anchor,
 		NotNull<MenuSource>, MenuConfig &&, MenuSide = MenuSide::Below);
 
 /** One link of an open menu chain, attached to the panel of a menu surface.

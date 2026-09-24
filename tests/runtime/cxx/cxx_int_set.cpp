@@ -23,6 +23,7 @@ THE SOFTWARE.
 #include <sprt/runtime/stream.h>
 #include <sprt/cxx/int_set>
 #include <sprt/cxx/unordered_set>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -39,7 +40,7 @@ static void runIntSetTests(const char *label) {
 		if (s.empty() && s.size() == 0 && s.max_size() > 0) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -51,7 +52,8 @@ static void runIntSetTests(const char *label) {
 		bool ok = r1.second && !r2.second && s.size() == 1 && *r2.first == T(42);
 		for (int i = 0; i < 100; ++i) { s.insert(T(42)); }
 		ok = ok && s.size() == 1;
-		sprt::cout << "Test 2 - Insert and duplicate insert: " << (ok ? "PASS" : "FAIL") << "\n";
+		sprt::cout << "Test 2 - Insert and duplicate insert: "
+				   << (ok ? "PASS" : sprt::test::failed("FAIL")) << "\n";
 	}
 
 	// Test 3: Zero key
@@ -60,7 +62,7 @@ static void runIntSetTests(const char *label) {
 		auto r = s.insert(T(0));
 		bool ok = r.second && s.contains(T(0)) && s.find(T(0)) != s.end() && s.count(T(0)) == 1;
 		ok = ok && s.erase(T(0)) == 1 && !s.contains(T(0)) && s.empty();
-		sprt::cout << "Test 3 - Zero key: " << (ok ? "PASS" : "FAIL") << "\n";
+		sprt::cout << "Test 3 - Zero key: " << (ok ? "PASS" : sprt::test::failed("FAIL")) << "\n";
 	}
 
 	// Test 4: Find / contains / count / erase by key
@@ -72,7 +74,8 @@ static void runIntSetTests(const char *label) {
 		bool ok = s.find(T(2)) != s.end() && s.contains(T(3)) && s.count(T(1)) == 1
 				&& s.count(T(4)) == 0 && !s.contains(T(4)) && s.find(T(4)) == s.end();
 		ok = ok && s.erase(T(2)) == 1 && s.erase(T(2)) == 0 && s.size() == 2 && !s.contains(T(2));
-		sprt::cout << "Test 4 - Find/contains/count/erase: " << (ok ? "PASS" : "FAIL") << "\n";
+		sprt::cout << "Test 4 - Find/contains/count/erase: "
+				   << (ok ? "PASS" : sprt::test::failed("FAIL")) << "\n";
 	}
 
 	// Test 5: initializer_list, emplace, iteration completeness
@@ -90,8 +93,8 @@ static void runIntSetTests(const char *label) {
 			sum += it;
 		}
 		bool ok = s.size() == 10 && visited == 10 && sum == T(55);
-		sprt::cout << "Test 5 - initializer_list/emplace/iteration: " << (ok ? "PASS" : "FAIL")
-				   << "\n";
+		sprt::cout << "Test 5 - initializer_list/emplace/iteration: "
+				   << (ok ? "PASS" : sprt::test::failed("FAIL")) << "\n";
 	}
 
 	// Test 6: Copy/move constructors and assignment, operator==
@@ -112,7 +115,8 @@ static void runIntSetTests(const char *label) {
 		s5 = sprt::move(s4);
 		ok = ok && s5.size() == 3 && s4.empty() && s5 == s2;
 
-		sprt::cout << "Test 6 - Copy/move/assignment: " << (ok ? "PASS" : "FAIL") << "\n";
+		sprt::cout << "Test 6 - Copy/move/assignment: "
+				   << (ok ? "PASS" : sprt::test::failed("FAIL")) << "\n";
 	}
 
 	// Test 7: Swap and clear
@@ -123,7 +127,8 @@ static void runIntSetTests(const char *label) {
 		bool ok = s1.size() == 1 && s1.contains(T(3)) && s2.size() == 2 && s2.contains(T(1));
 		s2.clear();
 		ok = ok && s2.empty() && !s2.contains(T(1));
-		sprt::cout << "Test 7 - Swap and clear: " << (ok ? "PASS" : "FAIL") << "\n";
+		sprt::cout << "Test 7 - Swap and clear: " << (ok ? "PASS" : sprt::test::failed("FAIL"))
+				   << "\n";
 	}
 
 	// Test 8: Erase by iterator (returned iterator drains the whole set)
@@ -137,7 +142,8 @@ static void runIntSetTests(const char *label) {
 			++erased;
 		}
 		bool ok = erased == 64 && s.empty();
-		sprt::cout << "Test 8 - Erase by iterator: " << (ok ? "PASS" : "FAIL") << "\n";
+		sprt::cout << "Test 8 - Erase by iterator: " << (ok ? "PASS" : sprt::test::failed("FAIL"))
+				   << "\n";
 	}
 
 	// Test 9: Dense sequential keys (identity-hash clusters), erase from chain middles
@@ -162,7 +168,8 @@ static void runIntSetTests(const char *label) {
 			++visited;
 		}
 		ok = ok && visited == s.size();
-		sprt::cout << "Test 9 - Dense sequential clusters: " << (ok ? "PASS" : "FAIL") << "\n";
+		sprt::cout << "Test 9 - Dense sequential clusters: "
+				   << (ok ? "PASS" : sprt::test::failed("FAIL")) << "\n";
 	}
 
 	// Test 10: Same-residue keys (multiples of a power of two collide at every table size)
@@ -176,7 +183,8 @@ static void runIntSetTests(const char *label) {
 		for (T i = 1; i <= T(128); ++i) {
 			ok = ok && (s.contains(i * step) == (i % 2 == 1));
 		}
-		sprt::cout << "Test 10 - Same-residue chains: " << (ok ? "PASS" : "FAIL") << "\n";
+		sprt::cout << "Test 10 - Same-residue chains: "
+				   << (ok ? "PASS" : sprt::test::failed("FAIL")) << "\n";
 	}
 
 	// Test 11: Randomized stress against reference unordered_set (deterministic LCG)
@@ -218,8 +226,8 @@ static void runIntSetTests(const char *label) {
 			++visited;
 		}
 		ok = ok && visited == model.size();
-		sprt::cout << "Test 11 - Randomized stress vs unordered_set: " << (ok ? "PASS" : "FAIL")
-				   << "\n";
+		sprt::cout << "Test 11 - Randomized stress vs unordered_set: "
+				   << (ok ? "PASS" : sprt::test::failed("FAIL")) << "\n";
 	}
 
 	// Test 12: Growth from small capacity with high load factor
@@ -229,7 +237,8 @@ static void runIntSetTests(const char *label) {
 		for (T i = 0; i < T(2'048); ++i) { s.insert(i * T(7)); }
 		bool ok = s.size() == 2'048 && s.load_factor() > 0.0f;
 		for (T i = 0; i < T(2'048); ++i) { ok = ok && s.contains(i * T(7)); }
-		sprt::cout << "Test 12 - Growth under load: " << (ok ? "PASS" : "FAIL") << "\n";
+		sprt::cout << "Test 12 - Growth under load: " << (ok ? "PASS" : sprt::test::failed("FAIL"))
+				   << "\n";
 	}
 }
 

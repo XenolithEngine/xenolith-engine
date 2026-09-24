@@ -447,7 +447,7 @@ bool ChipRow::open() {
 		return false;
 	}
 
-	auto window = getAppWindow();
+	auto window = getParentWindow();
 	if (!window) {
 		return false;
 	}
@@ -761,11 +761,6 @@ bool ChipRow::handleChipRemove(uint32_t index) {
 	return removeItem(index);
 }
 
-AppWindow *ChipRow::getAppWindow() const {
-	auto scene = getScene();
-	auto director = scene ? scene->getDirector() : nullptr;
-	auto server = director ? director->getRenderServer() : nullptr;
-	return server ? dynamic_cast<AppWindow *>(server) : nullptr;
-}
+core::RenderServerChannel *ChipRow::getParentWindow() const { return getSubWindowParent(this); }
 
 } // namespace stappler::xenolith::ui

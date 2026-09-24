@@ -86,9 +86,26 @@ Rc<core::TextureSet> Device::makeTextureSet(const core::TextureSetLayout &layout
 	return Rc<TextureSet>::create(*this, static_cast<const TextureSetLayout &>(layout));
 }
 
+void Device::addRasterJob(Rc<raster::TiledDrawJob> &&job) {
+	sprt::unique_lock<sprt::mutex> lock(_rasterJobsMutex);
+	auto it = _rasterJobs.begin();
+	while (it != _rasterJobs.end()) {
+		if ((*it)->isDrawn()) {
+			it = _rasterJobs.erase(it);
+		} else {
+			++it;
+		}
+	}
+	_rasterJobs.emplace_back(sp::move(job));
+}
+
 void Device::waitIdle() const {
-	// Every submit completes synchronously inside the raster job, so by the time control returns
-	// here there is nothing outstanding to wait for.
+	// A synchronous submit has written its pixels before it returns; an asynchronous one is waited
+	// for here. Its completion is not: it needs the loop thread, which may be this one.
+	sprt::unique_lock<sprt::mutex> lock(_rasterJobsMutex);
+	for (auto &it : _rasterJobs) { it->waitDrawn(); }
+	lock.unlock();
+
 	core::Device::waitIdle();
 }
 

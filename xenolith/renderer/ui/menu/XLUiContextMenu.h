@@ -182,7 +182,7 @@ protected:
 	// search.
 	Node *findTarget(const Vec2 &worldLocation) const;
 
-	AppWindow *getAppWindow() const;
+	core::RenderServerChannel *getParentWindow() const;
 
 	// The window's input dispatcher, which owns the hit-test registry. Null outside a scene
 	InputDispatcher *getDispatcher() const;

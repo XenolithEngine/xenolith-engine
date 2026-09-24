@@ -40,6 +40,7 @@ THE SOFTWARE.
 #include <sys/mman.h>
 #include <sys/random.h>
 #include <sys/utsname.h>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -54,7 +55,7 @@ static constexpr size_t MaxChunks = 24; // 6 GiB: the heap starts low, so this i
 static int s_failures = 0;
 
 static void check(bool ok, const char *what) {
-	printf("%s  %s\n", ok ? "PASS" : "FAIL", what);
+	printf("%s  %s\n", ok ? "PASS" : sprt::test::failed("FAIL"), what);
 	if (!ok) {
 		++s_failures;
 	}

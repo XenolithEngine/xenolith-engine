@@ -47,9 +47,9 @@ static Rc<StyleSheet> PopupSurface_sheetForNode(Node *node) {
 	return nullptr;
 }
 
-Rc<SubWindow> openPopupSurface(NotNull<AppWindow> window,
+Rc<SubWindow> openPopupSurface(NotNull<core::RenderServerChannel> window,
 		const sprt::window::WindowPlacement &placement, PopupSurfaceConfig &&config) {
-	auto director = window->getDirector();
+	auto director = getWindowDirector(window);
 	auto scene = director ? director->getScene() : nullptr;
 	auto parentContent = scene ? scene->getContent() : nullptr;
 

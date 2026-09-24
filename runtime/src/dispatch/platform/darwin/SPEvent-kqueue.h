@@ -151,16 +151,20 @@ public:
 struct SPRT_API ProcessKQueueSource {
 	int pid = -1;
 	bool exited = false; // child reaped via the exit path; cancel() must not kill a recycled pid
+	bool group = false; // the child leads its own process group (ProcessFlags::KillProcessTree)
 
-	bool init(int);
+	bool init(int, bool group);
 	void cancel();
 };
 
 class SPRT_API ProcessKQueueHandle : public ProcessHandle {
 public:
+	// cancelFn of the process class: the source cancel, then the reader
+	static Status cancelClass(HandleClass *, Handle *, uint8_t data[Handle::DataSize], Status);
+
 	virtual ~ProcessKQueueHandle() = default;
 
-	bool init(HandleClass *, int pid, CompletionHandle<ProcessHandle> &&);
+	bool init(HandleClass *, int pid, bool group, CompletionHandle<ProcessHandle> &&);
 
 	Status rearm(KQueueData *, ProcessKQueueSource *);
 	Status disarm(KQueueData *, ProcessKQueueSource *);

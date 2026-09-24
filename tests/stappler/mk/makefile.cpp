@@ -453,8 +453,10 @@ void performMakefileTests() {
 			check(mkS != nullptr, "space: project in a directory with a space loads");
 			if (mkS) {
 				mem_std::String buildLog;
-				Callback<void(StringView)> sink(
-						[&](StringView chunk) { buildLog.append(chunk.data(), chunk.size()); });
+				auto append = [&](StringView chunk) {
+					buildLog.append(chunk.data(), chunk.size());
+				};
+				Callback<void(StringView)> sink(append);
 
 				BuildConfig cfg;
 				cfg.targets.emplace_back(StringView("all"));

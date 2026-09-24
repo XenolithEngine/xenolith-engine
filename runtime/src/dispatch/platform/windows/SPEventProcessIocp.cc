@@ -285,7 +285,25 @@ bool ProcessIocpSource::init(void *h, int p) {
 	return true;
 }
 
-void ProcessIocpSource::cancel(Handle *) {
+// With `kill` the job's KILL_ON_JOB_CLOSE limit takes the whole tree down as the handle closes;
+// otherwise the limit is lifted first, so background descendants of an exited child survive, as on
+// POSIX.
+static void releaseProcessJob(ProcessState *state, bool kill) {
+	if (!state || !state->job) {
+		return;
+	}
+	if (!kill) {
+		JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits;
+		sprt::memset(&limits, 0, sizeof(limits));
+		SetInformationJobObject(state->job, JobObjectExtendedLimitInformation, &limits,
+				sizeof(limits));
+	}
+	CloseHandle(state->job);
+	state->job = nullptr;
+}
+
+void ProcessIocpSource::cancel(Handle *h) {
+	auto state = h ? static_cast<ProcessState *>(h->getUserdata()) : nullptr;
 	if (event) {
 		__sprt_CancelEventCompletion(event, false);
 		CloseHandle(event);
@@ -303,11 +321,13 @@ void ProcessIocpSource::cancel(Handle *) {
 		// an already-exited child. Windows has no zombies, so closing the HANDLE is the
 		// only reclamation needed once it is dead.
 		if (!exited) {
+			releaseProcessJob(state, true);
 			TerminateProcess(hProcess, 1);
 		}
 		CloseHandle(hProcess);
 		hProcess = nullptr;
 	}
+	releaseProcessJob(state, false);
 }
 
 bool ProcessIocpHandle::init(HandleClass *cl, void *hProcess, int pid,
@@ -417,6 +437,7 @@ void ProcessIocpHandle::finishProcess() {
 			DeleteFileW(reinterpret_cast<LPCWSTR>(state->tempRespFile));
 			state->tempRespFile = nullptr;
 		}
+		releaseProcessJob(state, false);
 	}
 	// the wait completion is already consumed; skip the disarm and complete
 	_status = Status::Suspended;
@@ -656,8 +677,12 @@ Rc<ProcessHandle> spawnProcessIocp(QueueData *data, HandleClass *processClass,
 	PROCESS_INFORMATION pi;
 	sprt::memset(&pi, 0, sizeof(pi));
 
+	// A tree-killable child starts suspended, so it cannot spawn anything before it joins its job.
+	auto killTree = hasFlag(info.flags, ProcessFlags::KillProcessTree);
+	DWORD createFlags = CREATE_NO_WINDOW | (killTree ? CREATE_SUSPENDED : 0);
+
 	BOOL ok = CreateProcessW(nullptr, reinterpret_cast<LPWSTR>(wcmd.data()), nullptr, nullptr, TRUE,
-			CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+			createFlags, nullptr, nullptr, &si, &pi);
 	if (!ok && !viaShell) {
 		// the program could not be launched directly (a cmd built-in, a .bat, not an .exe, or not on
 		// PATH): retry once through the shell. cmd gets the full command, so a response file (if any)
@@ -668,7 +693,7 @@ Rc<ProcessHandle> spawnProcessIocp(QueueData *data, HandleClass *processClass,
 		}
 		buildShellCmd();
 		ok = CreateProcessW(nullptr, reinterpret_cast<LPWSTR>(wcmd.data()), nullptr, nullptr, TRUE,
-				CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+				createFlags, nullptr, nullptr, &si, &pi);
 	}
 	CloseHandle(hWrite); // parent never writes
 	if (!ok) {
@@ -678,12 +703,30 @@ Rc<ProcessHandle> spawnProcessIocp(QueueData *data, HandleClass *processClass,
 		CloseHandle(hRead);
 		return nullptr;
 	}
+
+	HANDLE job = nullptr;
+	if (killTree) {
+		job = CreateJobObjectW(nullptr, nullptr);
+		if (job) {
+			JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits;
+			sprt::memset(&limits, 0, sizeof(limits));
+			limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+			if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits,
+						sizeof(limits))
+					|| !AssignProcessToJobObject(job, pi.hProcess)) {
+				CloseHandle(job);
+				job = nullptr;
+			}
+		}
+		ResumeThread(pi.hThread);
+	}
 	CloseHandle(pi.hThread);
 
 	auto state = Rc<ProcessState>::alloc();
 	state->reader = sprt::move(info.reader);
 	state->userRef = ref;
 	state->tempRespFile = respPath; // deleted in finishProcess() once the child has exited
+	state->job = job;
 
 	// overlapped reader: its OVERLAPPED + buffer live in the queue pool (too large for the 40-byte
 	// Source). Allocate via palloc() + placement-new — `new (pool_t*)` would select standard
@@ -706,6 +749,7 @@ Rc<ProcessHandle> spawnProcessIocp(QueueData *data, HandleClass *processClass,
 		if (respPath) {
 			DeleteFileW(reinterpret_cast<LPCWSTR>(respPath)); // finishProcess() will never run
 		}
+		releaseProcessJob(state, false);
 		CloseHandle(pi.hProcess);
 		return nullptr;
 	}

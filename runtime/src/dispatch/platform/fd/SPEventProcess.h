@@ -45,6 +45,8 @@ struct SPRT_API ProcessState : public Ref {
 	// command was too long for the OS command-line limit; DeleteFileW'd on completion. null otherwise
 	// (and always null on POSIX backends).
 	void *tempRespFile = nullptr;
+	// (Windows IOCP) the Job Object of a ProcessFlags::KillProcessTree child, null otherwise.
+	void *job = nullptr;
 };
 
 // Non-blocking drain of the read pipe into state->reader. Returns true once EOF
@@ -56,18 +58,23 @@ int decodeWaitStatus(int status);
 
 // Launch `command` via /bin/sh -c with stdout+stderr merged onto a pipe. On
 // success returns true and writes the child pid and the (non-blocking,
-// close-on-exec) read end of the pipe.
-bool posixSpawnPipe(StringView command, int *outPid, int *outReadFd);
+// close-on-exec) read end of the pipe. With `newGroup` the child leads its own
+// process group (ProcessFlags::KillProcessTree).
+bool posixSpawnPipe(StringView command, int *outPid, int *outReadFd, bool newGroup);
 
 // Forcibly terminate a child (SIGKILL) and reap its zombie. Every backend calls this
 // from its cancel path when a process handle is cancelled while the child is still
-// running, so the child neither outlives its handle nor leaks as a zombie. The signal
-// and reap primitives are platform-correct (libSystem on macOS, raw syscalls on Linux).
+// running, so the child neither outlives its handle nor leaks as a zombie. With `group`
+// the whole process group the child leads is killed. The signal and reap primitives are
+// platform-correct (libSystem on macOS, raw syscalls on Linux).
 //
 // The caller MUST guarantee the child has not already been reaped (each backend tracks
 // this with an `exited` flag set on the normal-exit reap); otherwise the pid may have
 // been recycled and an unrelated process would be signalled.
-void killProcessChild(int pid);
+void killProcessChild(int pid, bool group);
+
+// Stop the reader sub-handle from a process handle's cancel path.
+void cancelProcessReader(ProcessState *state);
 
 // Create + run the reader sub-handle over `readFd`, reusing the backend's
 // pollable-fd path (QueueData::listenHandle). Output is forwarded to state->reader.

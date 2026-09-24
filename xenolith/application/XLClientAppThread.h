@@ -107,6 +107,21 @@ public:
 	// application handler installed for it.
 	bool isWindowCreationSupported() const;
 
+	/* Application messages from the server (GlobalCode::AppRequest/AppNotify), on the app thread.
+	`reply` is null for a notification; a request left unanswered is refused with NotImplemented
+	when the last reference to its reply goes away. */
+	using AppMessageHandler = Function<void(Value &&, Rc<AppReply> &&reply)>;
+	void setAppMessageHandler(AppMessageHandler &&);
+
+	// Whether the server takes application messages: it must implement them and have a handler.
+	bool isAppMessagingSupported() const;
+
+	// False when there is no connection or the server takes no application messages. A request's
+	// callback runs once with the answer, a timeout or a refusal (see getAppReplyStatus), but not
+	// when the connection closes first; an unanswered request never costs the connection.
+	bool sendAppNotification(const Value &);
+	bool sendAppRequest(const Value &, Function<void(Status, Value &&)> &&, uint64_t timeoutUs);
+
 	/* Answer the next `frames` AcquireFrame requests `delayUs` late, the way a scene that took too
 	long to draw would. Debug-only seam for the tests: what the server must do with a late frame
 	(drop the frame, keep the session) has no other way of being exercised, since a healthy client
@@ -179,6 +194,8 @@ protected:
 	// Set by a dispatcher that ended the session; acted on in pumpConnection, the only place
 	// allowed to drop the connection (a dispatcher runs inside its poll).
 	bool _disconnectRequested = false;
+
+	AppMessageHandler _appMessageHandler;
 
 	// See setFrameDelay.
 	uint64_t _frameDelayUs = 0;

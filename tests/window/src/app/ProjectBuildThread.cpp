@@ -88,14 +88,15 @@ void ProjectBuildThread::doBuild() {
 		// Route ALL build output (progress + compiler stdout/stderr + errors) to the log, one line at
 		// a time so the log stays readable.
 		StdString lineBuf;
-		Callback<void(StringView)> sink([&](StringView chunk) {
+		auto appendLines = [&](StringView chunk) {
 			lineBuf.append(chunk.data(), chunk.size());
 			size_t nl;
 			while ((nl = lineBuf.find('\n')) != StdString::npos) {
 				log::source().info("build", StringView(lineBuf.data(), nl));
 				lineBuf.erase(0, nl + 1);
 			}
-		});
+		};
+		Callback<void(StringView)> sink(appendLines);
 
 		makefile::ErrorReporter err(nullptr);
 		err.callback = [](void *, log::LogType, StringView msg) {

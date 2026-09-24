@@ -283,6 +283,7 @@ public:
 
 	virtual void handleBackButton() = 0;
 
+	// Valid for the channel's whole lifetime, including after its native window is gone.
 	virtual const sprt::window::WindowInfo *getInfo() const = 0;
 
 	virtual bool enableState(WindowState) = 0;

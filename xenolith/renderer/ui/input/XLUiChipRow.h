@@ -212,7 +212,7 @@ protected:
 	bool handleChipTap(uint32_t index);
 	bool handleChipRemove(uint32_t index);
 
-	AppWindow *getAppWindow() const;
+	core::RenderServerChannel *getParentWindow() const;
 
 	Vector<ChipItem> _items;
 	Vector<ChipOption> _options;

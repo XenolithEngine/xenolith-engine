@@ -255,9 +255,10 @@ size_t AppThread::cancelOutgoingTransfers() {
 }
 
 void AppThread::waitForReply(uint32_t serial,
-		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb, uint64_t timeoutUs) {
+		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb, uint64_t timeoutUs,
+		bool fatal) {
 	uint64_t deadline = timeoutUs ? sp::platform::clock(ClockType::Monotonic) + timeoutUs : 0;
-	_replies.wait(serial, sp::move(cb), deadline);
+	_replies.wait(serial, sp::move(cb), deadline, fatal);
 }
 
 Rc<sprt::dispatch::Handle> AppThread::watchTransport(sprt::dispatch::NativeHandle handle,

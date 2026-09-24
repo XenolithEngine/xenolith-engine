@@ -43,6 +43,7 @@
 #include <sprt/runtime/unicode.h>
 
 #include "data/case_test.cc"
+#include "../tests.h"
 
 namespace sprt::unicode::detail {
 
@@ -61,7 +62,7 @@ static void check(bool ok, StringView what) {
 	++s_checks;
 	if (!ok) {
 		++s_failures;
-		sprt::cerr << "  FAIL: " << what << "\n";
+		sprt::cerr << sprt::test::failed("  FAIL: ") << what << "\n";
 	}
 }
 
@@ -171,8 +172,8 @@ static void checkMapped(CaseOp op, StringView src, StringView expected, StringVi
 	++s_checks;
 	if (r.result != expected) {
 		++s_failures;
-		sprt::cerr << "  FAIL: " << what << ": got '" << r.result << "', expected '" << expected
-				   << "'\n";
+		sprt::cerr << sprt::test::failed("  FAIL: ") << what << ": got '" << r.result
+				   << "', expected '" << expected << "'\n";
 	}
 }
 
@@ -187,8 +188,8 @@ static void checkMapped(CaseOp op, StringView src, StringView locale, StringView
 	++s_checks;
 	if (r.result != expected) {
 		++s_failures;
-		sprt::cerr << "  FAIL: " << what << ": got '" << r.result << "', expected '" << expected
-				   << "'\n";
+		sprt::cerr << sprt::test::failed("  FAIL: ") << what << ": got '" << r.result
+				   << "', expected '" << expected << "'\n";
 	}
 }
 
@@ -271,9 +272,9 @@ static void testUnmappedCodepoints() {
 	++s_checks;
 	if (bad != 0) {
 		++s_failures;
-		sprt::cerr << "  FAIL: " << bad
-				   << " unmapped code points were changed, first at decimal "
-				   << uint32_t(firstBad) << "\n";
+		sprt::cerr << sprt::test::failed("  FAIL: ") << bad
+				   << " unmapped code points were changed, first at decimal " << uint32_t(firstBad)
+				   << "\n";
 	}
 }
 
@@ -498,7 +499,7 @@ static void testLocaleMappingsWide() {
 	++s_checks;
 	if (disagreed != 0) {
 		++s_failures;
-		sprt::cerr << "  FAIL: " << disagreed
+		sprt::cerr << sprt::test::failed("  FAIL: ") << disagreed
 				   << " locale vectors differ through UTF-16, first is '" << firstBad << "'\n";
 	}
 }
@@ -530,7 +531,7 @@ static void testLocaleCoverage() {
 	++s_checks;
 	if (uncovered != 0) {
 		++s_failures;
-		sprt::cerr << "  FAIL: " << uncovered
+		sprt::cerr << sprt::test::failed("  FAIL: ") << uncovered
 				   << " SpecialCasing conditions have no test vector, first is '" << firstMissing
 				   << "'\n";
 	}
@@ -579,7 +580,7 @@ static void testEncodingsAgree() {
 	++s_checks;
 	if (disagreed != 0) {
 		++s_failures;
-		sprt::cerr << "  FAIL: UTF-8 and UTF-16 disagreed on " << disagreed
+		sprt::cerr << sprt::test::failed("  FAIL: UTF-8 and UTF-16 disagreed on ") << disagreed
 				   << " mappings, first for '" << firstBad << "'\n";
 	}
 }
@@ -611,7 +612,8 @@ static void testIllFormedUtf8() {
 			++s_checks;
 			if (!r.ok || r.result != src) {
 				++s_failures;
-				sprt::cerr << "  FAIL: " << (op == CaseOp::Lower ? "tolower" : "toupper")
+				sprt::cerr << sprt::test::failed("  FAIL: ")
+						   << (op == CaseOp::Lower ? "tolower" : "toupper")
 						   << " did not pass through " << c.what << "\n";
 			}
 		}

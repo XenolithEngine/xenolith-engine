@@ -36,13 +36,60 @@ bool ClientContext::init() {
 	return _info != nullptr;
 }
 
+bool ClientContext::init(Rc<ContextInfo> &&info) {
+	_info = info ? sp::move(info) : Rc<ContextInfo>::alloc();
+	return _info != nullptr;
+}
+
 void ClientContext::run() {
 	if (!_appThread) {
 		_appThread = Rc<ClientAppThread>::create(this);
+		if (_appThread && _appMessageHandler) {
+			_appThread->setAppMessageHandler(sp::move(_appMessageHandler));
+		}
 	}
 	if (_appThread) {
 		_appThread->run();
 	}
+}
+
+void ClientContext::setAppMessageHandler(ClientAppThread::AppMessageHandler &&handler) {
+	if (_appThread) {
+		_appThread->performOnAppThread(
+				[thread = _appThread, handler = sp::move(handler)]() mutable {
+			thread->setAppMessageHandler(sp::move(handler));
+		}, this);
+	} else {
+		_appMessageHandler = sp::move(handler);
+	}
+}
+
+void ClientContext::sendAppNotification(Value &&val) {
+	if (!_appThread) {
+		return;
+	}
+	_appThread->performOnAppThread([thread = _appThread, val = sp::move(val)]() {
+		thread->sendAppNotification(val);
+	}, this);
+}
+
+void ClientContext::sendAppRequest(Value &&val, Function<void(Status, Value &&)> &&cb,
+		uint64_t timeoutUs) {
+	if (!_appThread) {
+		if (cb) {
+			cb(Status::ErrorNotSupported, Value());
+		}
+		return;
+	}
+	_appThread->performOnAppThread(
+			[thread = _appThread, val = sp::move(val), cb = sp::move(cb), timeoutUs]() mutable {
+		// A copy goes with the request; this one answers when it could not be sent.
+		auto callback = sp::move(cb);
+		if (!thread->sendAppRequest(val, Function<void(Status, Value &&)>(callback), timeoutUs)
+				&& callback) {
+			callback(Status::ErrorNotSupported, Value());
+		}
+	}, this);
 }
 
 void ClientContext::stop() {

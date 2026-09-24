@@ -433,6 +433,23 @@ WINAPI BOOL TerminateProcess(HANDLE hProcess, UINT uExitCode) {
 	return DLL_LOAD_AND_CALL(loader, kernel32, TerminateProcess, hProcess, uExitCode);
 }
 
+HANDLE CreateJobObjectW(LPSECURITY_ATTRIBUTES lpJobAttributes, LPCWSTR lpName) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, kernel32, CreateJobObjectW, lpJobAttributes, lpName);
+}
+
+BOOL AssignProcessToJobObject(HANDLE hJob, HANDLE hProcess) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, kernel32, AssignProcessToJobObject, hJob, hProcess);
+}
+
+BOOL SetInformationJobObject(HANDLE hJob, JOBOBJECTINFOCLASS JobObjectInformationClass,
+		LPVOID lpJobObjectInformation, DWORD cbJobObjectInformationLength) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, kernel32, SetInformationJobObject, hJob,
+			JobObjectInformationClass, lpJobObjectInformation, cbJobObjectInformationLength);
+}
+
 HANDLE CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes, SIZE_T dwStackSize,
 		LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter, DWORD dwCreationFlags,
 		LPDWORD lpThreadId) {

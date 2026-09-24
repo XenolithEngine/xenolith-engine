@@ -23,6 +23,7 @@
 #include <sprt/cxx/algorithm>
 #include <sprt/cxx/vector>
 #include <sprt/runtime/stream.h>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -65,7 +66,7 @@ void performSortTests() {
 			sprt::cout << "  PASS: Vector sorted in ascending order\n";
 			sprt::cout << "\n";
 		} else {
-			sprt::cout << "  FAIL: Vector not sorted correctly\n";
+			sprt::cout << sprt::test::failed("  FAIL: Vector not sorted correctly\n");
 			for (const auto &it : vec) { sprt::cout << it << " "; }
 			sprt::cout << "\n";
 			failures++;
@@ -85,7 +86,7 @@ void performSortTests() {
 			for (const auto &it : vec) { sprt::cout << it << " "; }
 			sprt::cout << "\n";
 		} else {
-			sprt::cout << "  FAIL: Vector not sorted correctly\n";
+			sprt::cout << sprt::test::failed("  FAIL: Vector not sorted correctly\n");
 			for (const auto &it : vec) { sprt::cout << it << " "; }
 			sprt::cout << "\n";
 			failures++;
@@ -105,7 +106,7 @@ void performSortTests() {
 			for (const auto &it : vec) { sprt::cout << it << " "; }
 			sprt::cout << "\n";
 		} else {
-			sprt::cout << "  FAIL: Vector not sorted correctly\n";
+			sprt::cout << sprt::test::failed("  FAIL: Vector not sorted correctly\n");
 			failures++;
 		}
 	}
@@ -120,7 +121,7 @@ void performSortTests() {
 		if (vec.empty()) {
 			sprt::cout << "  PASS: Empty vector handled correctly\n";
 		} else {
-			sprt::cout << "  FAIL: Empty vector not preserved\n";
+			sprt::cout << sprt::test::failed("  FAIL: Empty vector not preserved\n");
 			failures++;
 		}
 	}
@@ -135,7 +136,7 @@ void performSortTests() {
 		if (vec.size() == 1 && vec[0] == 42) {
 			sprt::cout << "  PASS: Single element preserved correctly\n";
 		} else {
-			sprt::cout << "  FAIL: Single element not preserved\n";
+			sprt::cout << sprt::test::failed("  FAIL: Single element not preserved\n");
 			failures++;
 		}
 	}
@@ -151,7 +152,8 @@ void performSortTests() {
 		if (vec == original && is_sorted_ascending(vec)) {
 			sprt::cout << "  PASS: Already sorted vector remains unchanged\n";
 		} else {
-			sprt::cout << "  FAIL: Already sorted vector was modified incorrectly\n";
+			sprt::cout << sprt::test::failed(
+					"  FAIL: Already sorted vector was modified incorrectly\n");
 			failures++;
 		}
 	}
@@ -169,7 +171,8 @@ void performSortTests() {
 			for (const auto &it : vec) { sprt::cout << it << " "; }
 			sprt::cout << "\n";
 		} else {
-			sprt::cout << "  FAIL: Reverse sorted vector not handled correctly\n";
+			sprt::cout << sprt::test::failed(
+					"  FAIL: Reverse sorted vector not handled correctly\n");
 			failures++;
 		}
 	}
@@ -187,7 +190,8 @@ void performSortTests() {
 			for (const auto &it : vec) { sprt::cout << it << " "; }
 			sprt::cout << "\n";
 		} else {
-			sprt::cout << "  FAIL: Vector with duplicates not sorted correctly\n";
+			sprt::cout << sprt::test::failed(
+					"  FAIL: Vector with duplicates not sorted correctly\n");
 			failures++;
 		}
 	}
@@ -202,7 +206,7 @@ void performSortTests() {
 		if (vec.size() == 2 && vec[0] == 1 && vec[1] == 2) {
 			sprt::cout << "  PASS: Two element vector sorted correctly\n";
 		} else {
-			sprt::cout << "  FAIL: Two element vector not sorted correctly\n";
+			sprt::cout << sprt::test::failed("  FAIL: Two element vector not sorted correctly\n");
 			failures++;
 		}
 	}
@@ -218,7 +222,8 @@ void performSortTests() {
 		if (vec == original) {
 			sprt::cout << "  PASS: Two element in-order vector preserved\n";
 		} else {
-			sprt::cout << "  FAIL: Two element in-order vector modified incorrectly\n";
+			sprt::cout << sprt::test::failed(
+					"  FAIL: Two element in-order vector modified incorrectly\n");
 			failures++;
 		}
 	}
@@ -241,7 +246,7 @@ void performSortTests() {
 		if (all_sevens && vec.size() == 5) {
 			sprt::cout << "  PASS: Vector with all same values handled correctly\n";
 		} else {
-			sprt::cout << "  FAIL: Vector with all same values not preserved\n";
+			sprt::cout << sprt::test::failed("  FAIL: Vector with all same values not preserved\n");
 			failures++;
 		}
 	}
@@ -259,7 +264,7 @@ void performSortTests() {
 			for (const auto &it : vec) { sprt::cout << it << " "; }
 			sprt::cout << "\n";
 		} else {
-			sprt::cout << "  FAIL: Negative numbers not sorted correctly\n";
+			sprt::cout << sprt::test::failed("  FAIL: Negative numbers not sorted correctly\n");
 			failures++;
 		}
 	}
@@ -277,7 +282,8 @@ void performSortTests() {
 			for (const auto &it : vec) { sprt::cout << it << " "; }
 			sprt::cout << "\n";
 		} else {
-			sprt::cout << "  FAIL: Mixed positive/negative not sorted correctly\n";
+			sprt::cout << sprt::test::failed(
+					"  FAIL: Mixed positive/negative not sorted correctly\n");
 			failures++;
 		}
 	}
@@ -299,7 +305,7 @@ void performSortTests() {
 			sprt::cout << "  PASS: Large vector sorted correctly\n";
 		} else {
 			for (auto &it : vec) { sprt::cout << it << "\n"; }
-			sprt::cout << "  FAIL: Large vector not sorted correctly\n";
+			sprt::cout << sprt::test::failed("  FAIL: Large vector not sorted correctly\n");
 			failures++;
 		}
 	}
@@ -326,7 +332,7 @@ void performSortTests() {
 			for (const auto &it : vec) { sprt::cout << it << " "; }
 			sprt::cout << "\n";
 		} else {
-			sprt::cout << "  FAIL: Absolute value sort failed\n";
+			sprt::cout << sprt::test::failed("  FAIL: Absolute value sort failed\n");
 			failures++;
 		}
 	}
@@ -344,7 +350,7 @@ void performSortTests() {
 			for (const auto &it : vec) { sprt::cout << it << " "; }
 			sprt::cout << "\n";
 		} else {
-			sprt::cout << "  FAIL: Vector with zeros not sorted correctly\n";
+			sprt::cout << sprt::test::failed("  FAIL: Vector with zeros not sorted correctly\n");
 			failures++;
 		}
 	}
@@ -377,7 +383,7 @@ void performSortTests() {
 		if (all_pass) {
 			sprt::cout << "  PASS: All three element permutations sorted correctly\n";
 		} else {
-			sprt::cout << "  FAIL: Some three element permutation failed\n";
+			sprt::cout << sprt::test::failed("  FAIL: Some three element permutation failed\n");
 			failures++;
 		}
 	}
@@ -395,7 +401,7 @@ void performSortTests() {
 			for (const auto &it : vec) { sprt::cout << it << " "; }
 			sprt::cout << "\n";
 		} else {
-			sprt::cout << "  FAIL: Descending sort failed\n";
+			sprt::cout << sprt::test::failed("  FAIL: Descending sort failed\n");
 			failures++;
 		}
 	}
@@ -431,7 +437,7 @@ void performSortTests() {
 		if (elements_preserved && is_sorted_ascending(vec)) {
 			sprt::cout << "  PASS: All elements preserved and sorted\n";
 		} else {
-			sprt::cout << "  FAIL: Elements not preserved or not sorted\n";
+			sprt::cout << sprt::test::failed("  FAIL: Elements not preserved or not sorted\n");
 			failures++;
 		}
 	}

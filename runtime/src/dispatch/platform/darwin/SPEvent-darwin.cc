@@ -190,6 +190,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 					true);
 			setupKQueueHandleClass<ProcessKQueueHandle, ProcessKQueueSource>(&_info,
 					&_kqueueProcessClass, true);
+			_kqueueProcessClass.cancelFn = ProcessKQueueHandle::cancelClass;
 			setupKQueueHandleClass<KQueueWatchHandle, KQueueWatchSource>(&_info, &_kqueueWatchClass,
 					true);
 			setupInlineFileHandleClass(&_info, &_kqueueFileClass);

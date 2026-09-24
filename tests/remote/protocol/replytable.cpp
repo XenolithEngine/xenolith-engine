@@ -27,6 +27,7 @@
 #include "SPCommon.h"
 
 #include "XLRemoteReplyTable.h"
+#include "XLRemotePeer.h"
 
 #include "../tests.h"
 
@@ -115,6 +116,27 @@ void performReplyTableTests() {
 		table.clear();
 		check(table.empty() && !table.failExpired(100, MessageType::ClientError) && !called,
 				"replytable: clear drops waiters without calling them");
+	}
+
+	{
+		// An application request that went unanswered is completed, but does not condemn the peer.
+		ReplyTable table;
+		MessageHeader seen{};
+		table.wait(4, [&](const MessageHeader &h, BytesView) { seen = h; }, 100, false);
+		check(!table.failExpired(100, MessageType::ClientError) && seen.serial == 4
+						&& table.empty(),
+				"replytable: a non-fatal waiter is completed at its deadline without failing");
+		check(getAppReplyStatus(seen) == Status::ErrorTimeout,
+				"replytable: an expired app request reads as a timeout");
+	}
+
+	{
+		MessageHeader refused = makeReply(1, MessageType::ServerError);
+		refused.domain = toInt(Domain::Global);
+		refused.code = toInt(GlobalError::NotImplemented);
+		check(getAppReplyStatus(makeReply(1)) == Status::Ok
+						&& getAppReplyStatus(refused) == Status::ErrorNotImplemented,
+				"replytable: an app reply is Ok, a refusal without a handler is NotImplemented");
 	}
 }
 

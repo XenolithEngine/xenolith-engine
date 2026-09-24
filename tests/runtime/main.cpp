@@ -36,10 +36,24 @@ THE SOFTWARE.
 #include <sprt/cxx/new>
 #include <sprt/cxx/unordered_map>
 #include <sprt/cxx/memory>
+#include <sprt/cxx/atomic>
 
 #include <sprt/cxx/cmath>
 
 #include "tests.h"
+
+namespace sprt::test {
+
+static sprt::atomic<unsigned> s_failedCount(0);
+
+const char *failed(const char *text) {
+	++s_failedCount;
+	return text;
+}
+
+unsigned getFailedCount() { return s_failedCount.load(); }
+
+} // namespace sprt::test
 
 static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"libc_uname", &sprt::performUnameTest},
@@ -119,16 +133,20 @@ int main(int argc, const char *argv[]) {
 
 	if (argc == 1) {
 		for (auto &it : s_testList) { it.second(); }
-		result = 0;
+		result = sprt::test::getFailedCount() ? 1 : 0;
 	} else if (argc == 2) {
 		auto it = s_testList.find(argv[1]);
 		if (it != s_testList.end()) {
 			it->second();
-			result = 0;
+			result = sprt::test::getFailedCount() ? 1 : 0;
 		} else {
 			sprt::cerr << "Test not found: " << argv[1] << "\n";
 			result = -1;
 		}
+	}
+
+	if (sprt::test::getFailedCount()) {
+		sprt::cerr << "runtimetest: " << sprt::test::getFailedCount() << " failure(s) reported\n";
 	}
 
 	sprt::terminate();

@@ -97,7 +97,7 @@ class SPRT_API RunLoopProcessHandle : public ProcessHandle {
 public:
 	virtual ~RunLoopProcessHandle() = default;
 
-	bool init(HandleClass *, int pid, CompletionHandle<ProcessHandle> &&);
+	bool init(HandleClass *, int pid, bool group, CompletionHandle<ProcessHandle> &&);
 
 	// schedule the driver timer (called from runFn)
 	void start();
@@ -117,6 +117,7 @@ protected:
 	int _pid = -1;
 	bool _finishing = false; // exit detected (or teardown begun): stop polling
 	bool _reaped = false; // child reaped via the exit path; terminate() must not kill a recycled pid
+	bool _group = false; // the child leads its own process group (ProcessFlags::KillProcessTree)
 	Rc<Handle> _driver; // repeating poll timer
 };
 

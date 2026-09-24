@@ -22,6 +22,7 @@
 
 #include <sprt/runtime/stream.h>
 #include <sprt/cxx/cstdint>
+#include "../tests.h"
 
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
@@ -167,7 +168,7 @@ public:
 
 #define ASSERT_TRUE(cond, msg) do { \
     if (!(cond)) { \
-        sprt::cerr << "ASSERTION FAILED at line " << __LINE__ << ": " << msg << "\n"; \
+        sprt::cerr << sprt::test::failed("ASSERTION FAILED at line ") << __LINE__ << ": " << msg << "\n"; \
         failures++; \
     } else { \
         passes++; \

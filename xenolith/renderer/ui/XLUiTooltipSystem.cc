@@ -369,12 +369,8 @@ void TooltipSystem::setDefaultFactory(TooltipFactory &&factory) {
 
 bool TooltipSystem::isVisible() const { return _tip && _tip->isOpen(); }
 
-AppWindow *TooltipSystem::getWindow() const {
-	auto owner = getOwner();
-	auto scene = owner ? owner->getScene() : nullptr;
-	auto director = scene ? scene->getDirector() : nullptr;
-	auto server = director ? director->getRenderServer() : nullptr;
-	return server ? dynamic_cast<AppWindow *>(server) : nullptr;
+core::RenderServerChannel *TooltipSystem::getWindow() const {
+	return getSubWindowParent(getOwner());
 }
 
 SubWindowSession *TooltipSystem::getSession() const {

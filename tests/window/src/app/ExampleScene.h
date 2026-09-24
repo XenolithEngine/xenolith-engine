@@ -77,6 +77,9 @@ protected:
 	// ClientWindowHandler); installed only under XL_REMOTE_CLIENT_WINDOWS.
 	void installClientWindowHandler(ServerAppThread *);
 
+	// XL_REMOTE_APP_ECHO: answer application requests with an echo and keep the notifications.
+	void installAppMessageHandler(ServerAppThread *);
+
 	// Replace the on-screen layout and answer `done` once it has been rendering for `settle`
 	// seconds. Layout switching and the settle delay are one action sequence, so the scene is
 	// driven exactly as it would be by a person clicking through the menu.

@@ -33,6 +33,7 @@
 #include <sprt/runtime/stream.h>
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/unicode.h>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -43,7 +44,7 @@ static void check(bool ok, StringView what) {
 	++s_checks;
 	if (!ok) {
 		++s_failures;
-		sprt::cerr << "  FAIL: " << what << "\n";
+		sprt::cerr << sprt::test::failed("  FAIL: ") << what << "\n";
 	}
 }
 

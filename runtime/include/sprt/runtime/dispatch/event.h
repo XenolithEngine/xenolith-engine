@@ -114,6 +114,18 @@ struct SPRT_API TimerInfo {
 	bool resetable = false;
 };
 
+enum class ProcessFlags : uint32_t {
+	None = 0,
+
+	// Cancelling the handle kills everything the command started, not only the shell: the child
+	// leads its own process group on POSIX and runs in a Job Object on Windows. A child in its
+	// own group no longer receives the terminal's Ctrl+C, so a command-line tool should leave
+	// this off.
+	KillProcessTree = 1 << 0,
+};
+
+SPRT_DEFINE_ENUM_AS_MASK(ProcessFlags)
+
 // Parameters for Looper/Queue::spawnProcess.
 //
 // The command is launched through the system shell (/bin/sh -c on POSIX,
@@ -129,6 +141,7 @@ struct SPRT_API ProcessInfo {
 	StringView command;
 	ReaderCallback reader;
 	Completion completion;
+	ProcessFlags flags = ProcessFlags::None;
 };
 
 // Parameters for Looper/Queue::readFile.

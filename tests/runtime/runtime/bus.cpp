@@ -23,6 +23,7 @@ THE SOFTWARE.
 #include <sprt/runtime/dispatch/bus.h>
 #include <sprt/runtime/platform.h>
 #include <sprt/runtime/stream.h>
+#include "../tests.h"
 
 /* THE BUS: an event queued before a delegate was removed is not delivered to it.
 
@@ -167,7 +168,7 @@ void performBusTests() {
 	// The witness holds the bus and the bus holds the witness: taken apart here, or both leak.
 	bus->removeListener(witness);
 
-	sprt::cout << "bus tests: " << (s_failed == 0 ? "ALL PASS" : "FAILURES")
+	sprt::cout << "bus tests: " << (s_failed == 0 ? "ALL PASS" : sprt::test::failed("FAILURES"))
 			   << " (failures=" << s_failed << ")\n";
 }
 

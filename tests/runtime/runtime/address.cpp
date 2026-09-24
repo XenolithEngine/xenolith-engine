@@ -26,6 +26,7 @@ THE SOFTWARE.
 
 #include <sprt/c/sys/__sprt_sprt.h>
 #include <sprt/cxx/thread>
+#include "../tests.h"
 
 #if SPRT_LINUX
 #include <sprt/c/cross/__sprt_syscall.h>
@@ -45,7 +46,7 @@ struct AddressWaitChecks {
 
 	template <typename... Args>
 	void operator()(bool cond, Args &&...args) {
-		sprt::cout << (cond ? "  PASS: " : "  FAIL: ");
+		sprt::cout << (cond ? "  PASS: " : sprt::test::failed("  FAIL: "));
 		((sprt::cout << args), ...);
 		sprt::cout << "\n";
 		if (!cond) {
@@ -225,13 +226,13 @@ void performAddressWaitTests() {
 #else
 	auto looper = dispatch::Looper::acquire();
 	if (!looper) {
-		sprt::cout << "  FAIL: no looper\n";
+		sprt::cout << sprt::test::failed("  FAIL: no looper\n");
 		return;
 	}
 	runCases(looper, "default", check);
 #endif
 
-	sprt::cout << "waitOnAddress: " << (check.failures ? "FAILED" : "PASSED")
+	sprt::cout << "waitOnAddress: " << (check.failures ? sprt::test::failed("FAILED") : "PASSED")
 			   << ", failures: " << check.failures << "\n";
 }
 

@@ -680,7 +680,7 @@ bool RenderContinuously::init() {
 }
 
 bool RenderContinuously::init(float duration) {
-	_innerAction = Rc<DelayTime>::create(1.0f);
+	_innerAction = Rc<DelayTime>::create(duration);
 
 	if (_innerAction) {
 		return ActionInterval::init(_innerAction->getDuration());

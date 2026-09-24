@@ -42,8 +42,8 @@ uint64_t MenuPopupChain::Id = System::GetNextSystemId();
 // Surface colour for a menu with no stylesheet in scope; an unstyled ui::Panel is opaque white.
 static constexpr Color4B s_menuSurfaceColor = Color4B(0x20, 0x20, 0x26, 0xFF);
 
-static basic2d::SceneContent2d *MenuPopup_contentForWindow(AppWindow *w) {
-	auto director = w ? w->getDirector() : nullptr;
+static basic2d::SceneContent2d *MenuPopup_contentForWindow(core::RenderServerChannel *w) {
+	auto director = getWindowDirector(w);
 	auto scene = director ? director->getScene() : nullptr;
 	return scene ? dynamic_cast<basic2d::SceneContent2d *>(scene->getContent()) : nullptr;
 }
@@ -111,7 +111,7 @@ sprt::window::WindowPlacement placementForPoint(NotNull<Node> space, const Vec2 
 
 // Builds a menu surface, for the root and every submenu. Handles measurement, chain and keyboard;
 // the popup mechanics (stylesheet, panel, placement, outside tap) are ui::openPopupSurface's.
-static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
+static Rc<SubWindow> MenuPopup_open(NotNull<core::RenderServerChannel> window,
 		const sprt::window::WindowPlacement &placement, NotNull<MenuSource> source,
 		MenuConfig &&config, MenuPopupChain *parent) {
 	auto content = MenuPopup_contentForWindow(window);
@@ -120,7 +120,7 @@ static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 		return nullptr;
 	}
 
-	auto director = window->getDirector();
+	auto director = getWindowDirector(window);
 	auto app = director ? director->getApplication() : nullptr;
 	auto controller = app ? app->getExtension<font::FontController>() : nullptr;
 	if (!controller) {
@@ -219,12 +219,13 @@ static Rc<SubWindow> MenuPopup_open(NotNull<AppWindow> window,
 	return openPopupSurface(window, placement, sp::move(surfaceConfig));
 }
 
-Rc<SubWindow> openMenu(NotNull<AppWindow> window, const sprt::window::WindowPlacement &placement,
-		NotNull<MenuSource> source, MenuConfig &&config) {
+Rc<SubWindow> openMenu(NotNull<core::RenderServerChannel> window,
+		const sprt::window::WindowPlacement &placement, NotNull<MenuSource> source,
+		MenuConfig &&config) {
 	return MenuPopup_open(window, placement, source, sp::move(config), nullptr);
 }
 
-Rc<SubWindow> openMenuForNode(NotNull<AppWindow> window, NotNull<Node> anchor,
+Rc<SubWindow> openMenuForNode(NotNull<core::RenderServerChannel> window, NotNull<Node> anchor,
 		NotNull<MenuSource> source, MenuConfig &&config, MenuSide side) {
 	return openMenu(window, placementForNode(anchor, side), source, sp::move(config));
 }
@@ -289,7 +290,8 @@ bool MenuPopupChain::openSubmenu(NotNull<MenuSourceButton> item, NotNull<Node> r
 	/* The parent window determines the placement's coordinate space. Native: the row is in this
 	popup's scene, so the child is parented to this popup's window. Overlay: the row and the child
 	are in the parent window's scene. */
-	auto parentWindow = _surface->isNative() ? _surface->getWindow() : _surface->getParent();
+	core::RenderServerChannel *parentWindow =
+			_surface->isNative() ? _surface->getWindow() : _surface->getParent();
 	if (!parentWindow) {
 		return false;
 	}

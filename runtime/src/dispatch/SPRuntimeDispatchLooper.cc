@@ -210,8 +210,8 @@ Rc<ProcessHandle> Looper::spawnProcess(ProcessInfo &&info, Ref *ref) {
 }
 
 Rc<ProcessHandle> Looper::spawnProcess(StringView command, Function<void(StringView)> &&reader,
-		Function<void(int exitCode, Status)> &&onExit, Ref *ref) {
-	return _data->queue->spawnProcess(command, sprt::move(reader), sprt::move(onExit), ref);
+		Function<void(int exitCode, Status)> &&onExit, Ref *ref, ProcessFlags flags) {
+	return _data->queue->spawnProcess(command, sprt::move(reader), sprt::move(onExit), ref, flags);
 }
 
 Rc<FileHandle> Looper::readFile(FileReadInfo &&info, Ref *ref) {

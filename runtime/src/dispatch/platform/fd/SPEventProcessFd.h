@@ -36,8 +36,9 @@ struct ProcessFdSource {
 	epoll_event event;
 	PollFlags flags;
 	bool exited = false; // child reaped via the exit path; cancel() must not kill a recycled pid
+	bool group = false; // the child leads its own process group (ProcessFlags::KillProcessTree)
 
-	bool init(int pidfd, int pid);
+	bool init(int pidfd, int pid, bool group);
 	void cancel();
 };
 
@@ -45,7 +46,10 @@ class SPRT_API ProcessFdHandle : public ProcessHandle {
 public:
 	virtual ~ProcessFdHandle() = default;
 
-	bool init(HandleClass *, int pidfd, int pid, CompletionHandle<ProcessHandle> &&);
+	// cancelFn of both process classes: the source cancel, then the reader
+	static Status cancelClass(HandleClass *, Handle *, uint8_t data[Handle::DataSize], Status);
+
+	bool init(HandleClass *, int pidfd, int pid, bool group, CompletionHandle<ProcessHandle> &&);
 
 	virtual NativeHandle getNativeHandle() const override;
 };
@@ -69,11 +73,6 @@ public:
 
 	void notify(EPollData *, ProcessFdSource *, const NotifyData &);
 };
-
-// Launch `command` via /bin/sh -c with stdout+stderr merged onto a pipe.
-// On success, returns true and writes the child pid and the (non-blocking,
-// close-on-exec) read end of the pipe.
-bool posixSpawnPipe(StringView command, int *outPid, int *outReadFd);
 
 // Create + run the reader sub-handle over `readFd`, reusing the backend's
 // pollable-fd path (data->listenHandle). Output is forwarded to state->reader.

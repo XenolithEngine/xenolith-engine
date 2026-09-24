@@ -179,6 +179,18 @@ CommandLineParser<ContextConfig> ContextConfig::getCommandLineParser() {
 		target.context->flags |= sprt::window::ContextFlags::KeepRunningWithoutWindows;
 		return true;
 	}},
+		CommandLineOption<ContextConfig>{.patterns = {"--async-raster"},
+			.description = StringView(
+					"Software backend: rasterize on the thread pool only, keeping the context "
+					"thread free for the windows and clients it serves"),
+			.callback = [](ContextConfig &target, StringView pattern,
+								SpanView<StringView> args) -> bool {
+		if (!target.context) {
+			target.context = Rc<ContextInfo>::alloc();
+		}
+		target.context->flags |= sprt::window::ContextFlags::AsyncRasterization;
+		return true;
+	}},
 		CommandLineOption<ContextConfig>{.patterns = {"--headless-no-pointer"},
 			.description = StringView(
 					"Headless only: report windows as having no pointing device, so a widget that "
@@ -222,8 +234,25 @@ CommandLineParser<ContextConfig> ContextConfig::getCommandLineParser() {
 		}
 		return false;
 	}},
+		CommandLineOption<ContextConfig>{.patterns = {"--connect <address>"},
+			.description = StringView(
+					"Run as a remote client of the server at <address> (shm:, unix:, quic://): "
+					"the window is asked from the server, and the key comes from XL_LAUNCH_TOKEN"),
+			.callback = [](ContextConfig &target, StringView pattern,
+								SpanView<StringView> args) -> bool {
+		target.connectAddress = StringView(args[0]).str<Interface>();
+		return !target.connectAddress.empty();
+	}},
+		CommandLineOption<ContextConfig>{.patterns = {"--server-spki <hex>"},
+			.description = StringView(
+					"With --connect: the server's SPKI fingerprint in hex, which authenticates it"),
+			.callback = [](ContextConfig &target, StringView pattern,
+								SpanView<StringView> args) -> bool {
+		target.serverSpki = base16::decode<Interface>(StringView(args[0]));
+		return !target.serverSpki.empty();
+	}},
 		CommandLineOption<ContextConfig>{.patterns = {"--device <#>"},
-			.description = StringView("Force-disable Vulkan validation layers"),
+			.description = StringView("Use the graphics device with this index"),
 			.callback = [](ContextConfig &target, StringView pattern,
 								SpanView<StringView> args) -> bool {
 		if (!target.loop) {
@@ -296,6 +325,9 @@ Value encodeContextInfo(const ContextInfo &info) {
 	if (hasFlag(info.flags, ContextFlags::KeepRunningWithoutWindows)) {
 		f.addString("KeepRunningWithoutWindows");
 	}
+	if (hasFlag(info.flags, ContextFlags::AsyncRasterization)) {
+		f.addString("AsyncRasterization");
+	}
 	if (!f.empty()) {
 		ret.setValue(move(f), "flags");
 	}
@@ -333,6 +365,12 @@ Value ContextConfig::encode() const {
 	}
 	if (!f.empty()) {
 		ret.setValue(move(f), "flags");
+	}
+	if (!connectAddress.empty()) {
+		ret.setString(connectAddress, "connect");
+	}
+	if (!serverSpki.empty()) {
+		ret.setString(base16::encode<Interface>(serverSpki), "serverSpki");
 	}
 	return ret;
 }

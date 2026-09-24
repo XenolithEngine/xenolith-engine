@@ -220,6 +220,19 @@ void performPeerInfoTests() {
 						&& !hasFlag(back.features, PeerFeatures::ClientWindows),
 				"peerinfo: the client-windows feature travels, and is absent unless offered");
 
+		// Application messages: both codes are handled on both sides, and the feature says the
+		// application behind them installed a handler.
+		check(local.supports(Domain::Global, toInt(GlobalCode::AppRequest))
+						&& local.supports(Domain::Global, toInt(GlobalCode::AppNotify)),
+				"peerinfo: AppRequest and AppNotify are advertised");
+		auto messaging = local;
+		messaging.features |= PeerFeatures::AppMessages;
+		auto messagingBack = deserializePeerInfo(data::read<Interface>(
+				data::write<Interface>(serializePeerInfo(messaging), data::EncodeFormat::Cbor)));
+		check(hasFlag(messagingBack.features, PeerFeatures::AppMessages)
+						&& !hasFlag(back.features, PeerFeatures::AppMessages),
+				"peerinfo: the app-messages feature travels, and is absent unless offered");
+
 		// And the report names what is missing rather than only that something is.
 		auto older = local;
 		older.fontCodes &= ~codeBit(FontCode::GlyphRequest);

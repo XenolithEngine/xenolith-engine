@@ -38,6 +38,8 @@ THE SOFTWARE.
 // test the one this machine picked.
 #include "SPRasterKernel.h"
 
+#include <sprt/runtime/dispatch/looper.h>
+
 #include "../tests.h"
 
 namespace STAPPLER_VERSIONIZED stappler {
@@ -694,6 +696,99 @@ void checkTileGrid() {
 	check(aligned, "tiles: interior cuts land on 64-byte boundaries");
 }
 
+// drawTiledAsync with a per-tile clear writes exactly what clearing the regions and then drawTiled
+// writes, and completes once, on the looper thread.
+void checkTiledAsync() {
+	constexpr uint32_t width = 160;
+	constexpr uint32_t height = 96;
+
+	DrawList list;
+	auto pushTri = [&](float ax, float ay, float bx, float by, float cx, float cy,
+						   const Color4F &color) {
+		auto base = uint32_t(list.vertexes.size());
+		list.vertexes.emplace_back(Vertex{ax, ay, 0.0f, 0.0f, 0.0f, color});
+		list.vertexes.emplace_back(Vertex{bx, by, 0.0f, 0.0f, 0.0f, color});
+		list.vertexes.emplace_back(Vertex{cx, cy, 0.0f, 0.0f, 0.0f, color});
+		list.indexes.emplace_back(base);
+		list.indexes.emplace_back(base + 1);
+		list.indexes.emplace_back(base + 2);
+	};
+	pushTri(3.5f, 2.25f, 151.0f, 9.5f, 12.0f, 90.0f, Color4F(0.9f, 0.2f, 0.4f, 0.8f));
+	pushTri(155.0f, 93.0f, 7.0f, 70.0f, 140.0f, 4.0f, Color4F(0.1f, 0.7f, 0.9f, 0.6f));
+
+	Command cmd;
+	cmd.indexCount = uint32_t(list.indexes.size());
+	cmd.blend = BlendMode::Transparent;
+	cmd.scissor = URect{0, 0, width, height};
+	list.addCommand(sp::move(cmd));
+
+	const Color4F clearColor(0.25f, 0.5f, 0.75f, 1.0f);
+	const mem_std::Vector<URect> regions{URect{0, 0, 70, 40}, URect{80, 10, 80, 86}};
+
+	auto looper = sprt::dispatch::Looper::acquire();
+
+	uint32_t configs = 0;
+	uint32_t differing = 0;
+	uint32_t wrongThread = 0;
+	uint32_t failed = 0;
+
+	for (uint32_t threads : {0u, 1u, 3u}) {
+		TilingInfo tiling;
+		tiling.width = 16;
+		tiling.height = 8;
+		tiling.threads = threads;
+
+		Bitmap expected(width, height, PixelFormat::BGRA8888);
+		expected.seed();
+		for (auto &it : regions) { fillRect(expected.target, it, clearColor); }
+		auto expectedDrawn = drawTiled(expected.target, list, regions, tiling);
+
+		Bitmap actual(width, height, PixelFormat::BGRA8888);
+		actual.seed();
+
+		TiledDrawRequest req;
+		req.target = actual.target;
+		req.list = &list;
+		req.regions = regions;
+		req.tiling = tiling;
+		req.clear = true;
+		req.clearColor = clearColor;
+
+		bool done = false;
+		bool ok = false;
+		uint32_t drawn = 0;
+		auto job =
+				drawTiledAsync(sp::move(req), [&](bool success, uint32_t n, const TilingStats &) {
+			if (!looper->isOnThisThread()) {
+				++wrongThread;
+			}
+			done = true;
+			ok = success;
+			drawn = n;
+			looper->wakeup();
+		});
+
+		auto deadline = Time::now() + TimeInterval::seconds(10);
+		while (!done && Time::now() < deadline) { looper->run(TimeInterval::seconds(1)); }
+
+		++configs;
+		if (!done || !ok || drawn != expectedDrawn || (job && !job->isDrawn())) {
+			++failed;
+		}
+		if (expected.pixels != actual.pixels) {
+			++differing;
+		}
+	}
+
+	check(failed == 0,
+			toString("tiles: drawTiledAsync completes once with the same work count (", configs,
+					" configs, ", failed, " failed)"));
+	check(wrongThread == 0, "tiles: drawTiledAsync completes on the looper thread");
+	check(differing == 0,
+			toString("tiles: per-tile clear plus drawTiledAsync equals clear then drawTiled (",
+					differing, " configs differ)"));
+}
+
 } // namespace
 
 void performRasterTests() {
@@ -733,6 +828,7 @@ void performRasterTests() {
 	checkBilinearSpan();
 	checkSpanSplit();
 	checkTileGrid();
+	checkTiledAsync();
 
 	for (auto &it : tables) {
 		if (it == reference) {

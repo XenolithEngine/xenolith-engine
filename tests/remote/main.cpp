@@ -59,6 +59,7 @@ static const TestEntry s_testList[] = {
 	{"shm-local", &stappler::xenolith::remote::performShmLocalTests},
 	{"handshake", &stappler::xenolith::remote::performHandshakeTests},
 	{"replytable", &stappler::xenolith::remote::performReplyTableTests},
+	{"bearerkeys", &stappler::xenolith::remote::performBearerKeyTests},
 	{"ownership", &stappler::xenolith::remote::performOwnershipTests},
 };
 

@@ -23,6 +23,7 @@ THE SOFTWARE.
 #include <sprt/cxx/cstring>
 #include <sprt/runtime/stream.h>
 #include <sprt/cxx/unordered_set>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -355,7 +356,7 @@ static void edgecases4() {
 
 	sprt::cout << "edgecases4 - full table, missing key: ";
 	if (set.size() != 8) {
-		sprt::cout << "FAIL (size " << set.size() << ")\n";
+		sprt::cout << sprt::test::failed("FAIL (size ") << set.size() << ")\n";
 		return;
 	}
 
@@ -363,7 +364,7 @@ static void edgecases4() {
 	// nowhere to stop
 	if (set.find(size_t(1)) != set.end() || set.find(size_t(3)) != set.end()
 			|| set.count(size_t(1)) != 0) {
-		sprt::cout << "FAIL (found a key that was never inserted)\n";
+		sprt::cout << sprt::test::failed("FAIL (found a key that was never inserted)\n");
 		return;
 	}
 
@@ -375,12 +376,15 @@ static void edgecases4() {
 			allFound = false;
 		}
 	}
-	sprt::cout << (allFound ? "PASS\n" : "FAIL (lost a key that was inserted)\n");
+	sprt::cout << (allFound ? "PASS\n"
+							: sprt::test::failed("FAIL (lost a key that was inserted)\n"));
 
 	// The insert that follows a full table grows it rather than searching a table with no room
 	set.insert(size_t(9));
 	sprt::cout << "edgecases4 - insert into a full table: "
-			   << ((set.size() == 9 && set.find(size_t(9)) != set.end()) ? "PASS\n" : "FAIL\n");
+			   << ((set.size() == 9 && set.find(size_t(9)) != set.end())
+								  ? "PASS\n"
+								  : sprt::test::failed("FAIL\n"));
 }
 
 void performMallocUnorderedSetTests() {
@@ -400,7 +404,7 @@ void performMallocUnorderedSetTests() {
 		if (l.empty()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -411,7 +415,7 @@ void performMallocUnorderedSetTests() {
 		if (l.empty() && l.size() == 0 && l.max_size() > 0) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -426,7 +430,7 @@ void performMallocUnorderedSetTests() {
 		if (l2.size() == 2 && l2.find(1) != l2.end()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -441,7 +445,7 @@ void performMallocUnorderedSetTests() {
 		if (l2.size() == 2 && l1.empty()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -456,7 +460,7 @@ void performMallocUnorderedSetTests() {
 		if (l2.size() == 1 && l2.find(1) != l2.end()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -471,7 +475,7 @@ void performMallocUnorderedSetTests() {
 		if (l2.size() == 1 && l1.empty()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -483,7 +487,7 @@ void performMallocUnorderedSetTests() {
 		if (result.second && l.size() == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -495,7 +499,7 @@ void performMallocUnorderedSetTests() {
 		if (result.second && l.size() == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -508,7 +512,7 @@ void performMallocUnorderedSetTests() {
 		if (l.size() == 2) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -520,7 +524,7 @@ void performMallocUnorderedSetTests() {
 		if (l.size() == 2) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -532,7 +536,7 @@ void performMallocUnorderedSetTests() {
 		if (result.second && l.size() == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -547,7 +551,7 @@ void performMallocUnorderedSetTests() {
 		if (it != l.end()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -560,7 +564,7 @@ void performMallocUnorderedSetTests() {
 		if (count == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -573,7 +577,7 @@ void performMallocUnorderedSetTests() {
 		if (contains) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -589,7 +593,7 @@ void performMallocUnorderedSetTests() {
 		if (range.first != range.second && ++it == range.second) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -602,7 +606,7 @@ void performMallocUnorderedSetTests() {
 		if (load_factor >= 0 && max_load_factor >= 1.0f) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -614,7 +618,7 @@ void performMallocUnorderedSetTests() {
 		if (l.size() >= 0) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -627,7 +631,7 @@ void performMallocUnorderedSetTests() {
 		if (l.empty()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -644,7 +648,7 @@ void performMallocUnorderedSetTests() {
 		if (l1.size() == 1 && l2.size() == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -658,7 +662,7 @@ void performMallocUnorderedSetTests() {
 		if (begin_it != end_it) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -673,7 +677,7 @@ void performMallocUnorderedSetTests() {
 		if (begin_it != end_it) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -688,7 +692,7 @@ void performMallocUnorderedSetTests() {
 		if (l.size() == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -702,7 +706,7 @@ void performMallocUnorderedSetTests() {
 		if (erased == 1 && l.size() == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -717,7 +721,7 @@ void performMallocUnorderedSetTests() {
 		if (it != l.end()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 

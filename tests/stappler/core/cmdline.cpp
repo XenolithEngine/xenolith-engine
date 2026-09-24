@@ -75,10 +75,9 @@ void performCommandLineTests() {
 	sprt::cout << "\n== stappler core command line tests ==\n";
 
 	auto parser = makeParser();
-	auto positionalCb =
-			Callback<void(CmdlineOutput &, StringView)>([](CmdlineOutput &out, StringView arg) {
+	auto positionalCb = [](CmdlineOutput &out, StringView arg) {
 		out.positional = arg.str<memory::StandardInterface>();
-	});
+	};
 
 	{
 		// The shell hands a quoted path over as ONE argv element; the parser used to cut it at the

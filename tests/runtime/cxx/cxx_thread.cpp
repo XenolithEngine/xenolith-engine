@@ -23,6 +23,7 @@
 #include <sprt/runtime/stream.h>
 #include <sprt/cxx/thread>
 #include <sprt/cxx/atomic>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -36,7 +37,7 @@ void performThreadTests() {
 		if (t.get_id().__native == 0) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -49,7 +50,7 @@ void performThreadTests() {
 		if (sharedValue == 42) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -62,7 +63,7 @@ void performThreadTests() {
 		if (result == 42) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -73,7 +74,7 @@ void performThreadTests() {
 		if (!t.joinable()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -84,7 +85,7 @@ void performThreadTests() {
 		if (t.joinable()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 		t.detach(); // Clean up
 	}
@@ -98,7 +99,7 @@ void performThreadTests() {
 		if (completed) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -109,7 +110,7 @@ void performThreadTests() {
 		if (t.get_id() == thread::id{0}) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -122,7 +123,7 @@ void performThreadTests() {
 		if (id != thread::id{0}) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -133,7 +134,7 @@ void performThreadTests() {
 		if (t.native_handle() == nullptr) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -146,7 +147,7 @@ void performThreadTests() {
 		if (handle != nullptr) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -159,10 +160,10 @@ void performThreadTests() {
 			if (!t.joinable()) {
 				sprt::cout << "PASS\n";
 			} else {
-				sprt::cout << "FAIL\n";
+				sprt::cout << sprt::test::failed("FAIL\n");
 			}
 		} else {
-			sprt::cout << "FAIL (thread not joinable)\n";
+			sprt::cout << sprt::test::failed("FAIL (thread not joinable)\n");
 		}
 	}
 
@@ -175,7 +176,7 @@ void performThreadTests() {
 		if (t1.get_id() == thread::id{0} && t2.get_id() != thread::id{0}) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 		t2.join(); // Clean up moved thread
 	}
@@ -188,7 +189,7 @@ void performThreadTests() {
 		if (t1.get_id() == thread::id{0} && t2.get_id() != thread::id{0}) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 		t2.join(); // Clean up moved thread
 	}
@@ -202,7 +203,7 @@ void performThreadTests() {
 		if (t1.get_id() == thread::id{0} && t2.get_id() != thread::id{0}) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 		t2.join(); // Clean up moved thread
 	}
@@ -215,7 +216,7 @@ void performThreadTests() {
 		if (t.joinable()) { // Should still be valid after self-move
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 		t.detach(); // Clean up
 	}
@@ -247,7 +248,7 @@ void performThreadTests() {
 		if (concurrency > 0) {
 			sprt::cout << "PASS (" << concurrency << " cores)\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -258,7 +259,7 @@ void performThreadTests() {
 		if (id != thread::id{0}) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -285,7 +286,7 @@ void performThreadTests() {
 		if ((id1 <=> id1) == 0) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -298,7 +299,7 @@ void performThreadTests() {
 		if (completed) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -320,7 +321,8 @@ void performThreadTests() {
 		if (counter == numThreads * 1'000) {
 			sprt::cout << "PASS (" << counter << " increments)\n";
 		} else {
-			sprt::cout << "FAIL (expected " << (numThreads * 1'000) << ", got " << counter << ")\n";
+			sprt::cout << sprt::test::failed("FAIL (expected ") << (numThreads * 1'000) << ", got "
+					   << counter << ")\n";
 		}
 	}
 
@@ -344,7 +346,7 @@ void performThreadTests() {
 		if (outerValue == 2) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -358,7 +360,7 @@ void performThreadTests() {
 		if (shared == 20) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -373,7 +375,7 @@ void performThreadTests() {
 		if (captured == 5) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -392,7 +394,7 @@ void performThreadTests() {
 		if (h1 == h2 && h1 != 0) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -424,7 +426,7 @@ void performThreadTests() {
 		if (t2.get_id() == thread::id{0}) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -440,7 +442,7 @@ void performThreadTests() {
 		if (!idsMatch) {
 			sprt::cout << "PASS\n"; // Main thread id differs from worker thread as expected
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 

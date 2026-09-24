@@ -341,7 +341,7 @@ protected:
 	// the pointer went and decides nothing.
 	void updateHoverListener();
 
-	AppWindow *getWindow() const;
+	core::RenderServerChannel *getWindow() const;
 	SubWindowSession *getSession() const;
 	void updateDismissListener();
 

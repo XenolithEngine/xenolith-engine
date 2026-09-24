@@ -40,6 +40,7 @@ THE SOFTWARE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -178,7 +179,7 @@ void *churnWorker(void *arg) {
 void performMallocThreadsTest() {
 	int failures = 0;
 	auto check = [&](bool cond, const char *msg) {
-		printf("  %s: %s\n", cond ? "PASS" : "FAIL", msg);
+		printf("  %s: %s\n", cond ? "PASS" : sprt::test::failed("FAIL"), msg);
 		if (!cond) {
 			++failures;
 		}
@@ -268,7 +269,8 @@ void performMallocThreadsTest() {
 	check(churnStarted == ChurnThreads && churnOk == ChurnThreads,
 			"more short threads than there are per-thread blocks, one after another");
 
-	printf("malloc_threads: %s (%d failure(s))\n", failures ? "FAIL" : "PASS", failures);
+	printf("malloc_threads: %s (%d failure(s))\n", failures ? sprt::test::failed("FAIL") : "PASS",
+			failures);
 }
 
 } // namespace sprt

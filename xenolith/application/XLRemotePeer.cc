@@ -1,6 +1,4 @@
 /**
- Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
- Copyright (c) 2025 Stappler Team <admin@stappler.org>
  Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -22,35 +20,51 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h" // IWYU pragma: keep
-
-#include "XLEvent.cc"
-#include "XLWindowInfo.cc"
-#include "XLWindowSceneInfo.cc"
-#include "XLContextInfo.cc"
-#include "XLContext.cc"
-#include "XLClipboard.cc" // before AppThread: the seam is written against its three calls
-#include "XLRemotePeer.cc"
-#include "XLAppThread.cc"
-#include "XLServerAppThread.cc"
-#include "XLClientAppThread.cc"
-#include "XLClientContext.cc"
-#include "XLAppWindow.cc"
-#include "XLRemoteSession.cc"
-#include "XLRemoteRenderClient.cc"
-#include "XLRemoteWindow.cc"
-#include "XLRemoteBlockTransfer.cc"
+#include "XLRemotePeer.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-static SharedSymbol s_appSymbols[] = {
-	SharedSymbol(Context::SymbolContextRunName,
-			static_cast<Context::SymbolRunCmdSignature>(Context::run)),
-	SharedSymbol(Context::SymbolContextRunName,
-			static_cast<Context::SymbolRunNativeSignature>(Context::run)),
-};
+AppReply::~AppReply() {
+	if (!_answered) {
+		refuse();
+	}
+}
 
-SP_USED static SharedModule s_appCommonModule(buildconfig::MODULE_XENOLITH_APPLICATION_NAME,
-		s_appSymbols, sizeof(s_appSymbols) / sizeof(SharedSymbol));
+bool AppReply::init(Ref *owner, RemotePeer *peer, uint32_t serial) {
+	_owner = owner;
+	_peer = peer;
+	_serial = serial;
+	return _peer != nullptr;
+}
+
+bool AppReply::send(const Value &val) {
+	if (_answered) {
+		return false;
+	}
+	_answered = true;
+	return _peer->remoteSendCborReply(_serial, remote::Domain::Global,
+			toInt(remote::GlobalCode::AppRequest), val);
+}
+
+bool AppReply::refuse(remote::GlobalError err) {
+	if (_answered) {
+		return false;
+	}
+	_answered = true;
+	return _peer->remoteSendError(remote::Domain::Global, toInt(err), _serial);
+}
+
+Status getAppReplyStatus(const remote::MessageHeader &h) {
+	if (!remote::isError(h)) {
+		return Status::Ok;
+	}
+	if (remote::Domain(h.domain) == remote::Domain::Error) {
+		return Status::ErrorTimeout; // completed locally by ReplyTable::failExpired
+	}
+	if (remote::GlobalError(h.code) == remote::GlobalError::NotImplemented) {
+		return Status::ErrorNotImplemented;
+	}
+	return Status::ErrorCancelled;
+}
 
 } // namespace stappler::xenolith

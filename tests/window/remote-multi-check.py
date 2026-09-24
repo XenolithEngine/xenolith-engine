@@ -13,7 +13,7 @@ the server with XL_REMOTE_MAX_CLIENTS=2 and asserts:
   * a client arriving when every window is served is offered none, and takes them when their owner
     leaves -- whose reservations end with it.
 
-    tests/window/remote-multi-check.py [--transport shm|unix|quic] [--gapi vulkan|soft]
+    tests/window/remote-multi-check.py [--transport shm|unix|quic] [--gapi vulkan|soft] [--async-raster]
                                       [path-to-testapp] [path-to-clientapp]
 
 The helpers (server start, inspector sessions, screenshots) are remote-check.py's. A client is known
@@ -79,6 +79,9 @@ def main():
     argv = sys.argv[1:]
     while argv and argv[0].startswith("--"):
         opt, argv = argv[0], argv[1:]
+        if opt == "--async-raster":
+            rc.SERVER_FLAGS.append(opt)
+            continue
         if "=" in opt:
             opt, value = opt.split("=", 1)
         else:

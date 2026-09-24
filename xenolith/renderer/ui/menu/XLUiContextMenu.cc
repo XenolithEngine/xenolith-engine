@@ -270,12 +270,8 @@ Node *ContextMenuSystem::findTarget(const Vec2 &worldLocation) const {
 	return found;
 }
 
-AppWindow *ContextMenuSystem::getAppWindow() const {
-	auto owner = getOwner();
-	auto scene = owner ? owner->getScene() : nullptr;
-	auto director = scene ? scene->getDirector() : nullptr;
-	auto server = director ? director->getRenderServer() : nullptr;
-	return server ? dynamic_cast<AppWindow *>(server) : nullptr;
+core::RenderServerChannel *ContextMenuSystem::getParentWindow() const {
+	return getSubWindowParent(getOwner());
 }
 
 bool ContextMenuSystem::openAt(const Vec2 &worldLocation, bool fromTouch, InputModifier mods) {
@@ -310,7 +306,7 @@ bool ContextMenuSystem::openAt(const Vec2 &worldLocation, bool fromTouch, InputM
 		return false;
 	}
 
-	auto window = getAppWindow();
+	auto window = getParentWindow();
 	if (!window) {
 		return false;
 	}

@@ -13,6 +13,7 @@
 | `tests/tess` | `tesstest` | the tesselator (`stappler/tess`) and the vector layer, against the whole 2d icon set — a pinned digest per icon **and** a pinned raster per icon, plus a deterministic wire benchmark. No device, no window, no frame | CLI, golden |
 | `tests/compute` | `computetest` | Vulkan compute with no window (`xenolith_backend_vk` + `xenolith_core`): a `core::Queue` with one compute pass, `Loop::runRenderQueue`, `Loop::captureBuffer`, and a lost device through `vk::Device::setTestFault`. Needs a Vulkan device; without one it prints SKIP. `computetest timings` is the round-trip benchmark ([Measuring compute](measuring-compute.md)) | CLI, GPU |
 | `examples/window/particles` | `particles` | the GPU particles of `basic2d` behind a control panel; `tests/window/particles-check.py` runs it headless and compares a GPU snapshot of the particles with the CPU reference the example computes from the same `XL2dGlslParticleSim.h` | GUI, driven by a check |
+| `examples/window/{dndtree,form,dock}` | `dndtree`, `form`, `dock` | the ui examples, unmodified, as remote clients: `tests/window/remote-example-check.py` starts each with `--connect` against the headless `testapp` in a window manager's shape (client windows only, labelled launch keys) and checks the window, its frame, its popups (overlays) and the process lifetime | GUI, driven by a check |
 | `tests/window` | `testapp` | full xenolith GUI stack (`xenolith_application` + `renderer_ui` + `backend_vk` + `resources_assets`); transitively compiles the stappler modules | GUI |
 
 **Which to use:**
@@ -31,6 +32,11 @@
   `tests/window/particles-check.py` (the runner selects both). The shader build does not track
   included headers: touch the `.comp` after editing one. The model and the checks are described in
   [the particles guide](../usage/basic2d/particles.adoc).
+- Changed the remote protocol, `ServerAppThread`/`ClientAppThread`, the client mode of the
+  entry point or `ui::SubWindow` → `tests/remote` (`remotetest`), then
+  `tests/window/remote-window-check.py` and `tests/window/remote-example-check.py`. The second
+  needs `examples/window/{dndtree,form,dock}` built and skips the ones that are not; an example
+  links `renderer/ui` statically, so rebuild it after a change there or it runs the old code.
 - Changed `xenolith/core` or `xenolith/backend/vk` → `tests/compute` (the runner
   owes it for both). It covers the round trip on 1 … 10⁵ records and the device-lost
   refusals: a request after `VK_ERROR_DEVICE_LOST` gets exactly one failed callback

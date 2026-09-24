@@ -155,7 +155,7 @@ protected:
 	bool handleKey(const GestureData &);
 	bool handleTap();
 
-	AppWindow *getAppWindow() const;
+	core::RenderServerChannel *getParentWindow() const;
 
 	Vector<SelectOption> _options;
 	String _value;
