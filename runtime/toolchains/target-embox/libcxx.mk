@@ -123,7 +123,8 @@ SP_RUNTIMES_FORCEINCLUDE := $(CURDIR)/embox-runtimes-forceinclude.h
 # here so libc++abi/libunwind stay linkable without a PT_TLS-aware linker
 # script: -femulated-tls keeps the same __emutls_* ABI the engine uses.
 # embox-runtimes-forceinclude.h: Embox abort() is not _Noreturn (libunwind
-# -Werror=return-type) and pthread.h has no PTHREAD_RWLOCK_INITIALIZER.
+# -Werror=return-type). PTHREAD_RWLOCK_INITIALIZER, which libunwind's RWMutex
+# needs, is Embox's own (<pthread.h>): an all-zero rwlock is not an unlocked one.
 SP_RUNTIMES_CXX_FLAGS := --target=$(SP_ARCH_TARGET_CLANG) -march=armv8-a \
 	-idirafter $(SP_EMBOX_LIBC_INCLUDES) \
 	-D__EMBOX__ -D_LDBL_EQ_DBL -fno-common -femulated-tls \

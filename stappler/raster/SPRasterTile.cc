@@ -23,6 +23,7 @@
 #include "SPRasterKernel.h"
 
 #include <sprt/runtime/dispatch/looper.h>
+#include <sprt/runtime/platform.h>
 #include <sprt/runtime/thread/qtimeline.h>
 
 // Cutting a region into tiles, and handing the tiles to a thread pool.
@@ -220,11 +221,33 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 	sprt::atomic<uint32_t> drawn{0};
 	sprt::qtimeline finished;
 
-	// One add per worker at the end of its run, not one per tile: the counters are a diagnostic
-	// and must not put a contended cache line in the middle of the pixel loops.
-	sprt::atomic<uint64_t> spanPixels{0};
-	sprt::atomic<uint64_t> glyphPixels{0};
-	sprt::atomic<uint64_t> fillPixels{0};
+	// One slot per worker, written once at the end of its run and summed by the caller after the
+	// join: the counters are a diagnostic and must not put a contended cache line in the middle
+	// of the pixel loops. A worker takes its slot when it runs out of tiles, so a task that never
+	// ran leaves a slot empty rather than one half-written.
+	struct WorkerStats {
+		FillStats fill;
+		uint64_t busyTicks = 0;
+		uint64_t startTicks = 0;
+	};
+
+	const bool timed = stats && tiling.timed;
+	auto ticks = [] {
+#if SPRT_EMBOX_USER
+		// EL0 on Embox: nothing opens the counter to EL0 (CNTKCTL_EL1 is never written), and
+		// reading it there traps. The system clock instead, coarse as it is.
+		return sprt::platform::clock(sprt::platform::ClockType::Monotonic);
+#else
+		return sprt::platform::clock(sprt::platform::ClockType::Hardware);
+#endif
+	};
+
+	Vector<WorkerStats> workerStats;
+	if (stats) {
+		workerStats.resize(workers);
+	}
+	sprt::atomic<uint32_t> nextSlot{0};
+	const uint64_t forked = timed ? ticks() : 0;
 
 	const uint32_t total = uint32_t(tiles.size());
 
@@ -233,6 +256,7 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 	auto body = [&] {
 		uint32_t local = 0;
 		FillStats localFill;
+		const uint64_t started = timed ? ticks() : 0;
 		for (;;) {
 			auto index = nextTile.fetch_add(1);
 			if (index >= total) {
@@ -242,9 +266,15 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 		}
 		drawn.fetch_add(local);
 		if (stats) {
-			spanPixels.fetch_add(localFill.spanPixels);
-			glyphPixels.fetch_add(localFill.glyphPixels);
-			fillPixels.fetch_add(localFill.fillPixels);
+			auto slot = nextSlot.fetch_add(1);
+			if (slot < workerStats.size()) {
+				auto &out = workerStats[slot];
+				out.fill = localFill;
+				if (timed) {
+					out.busyTicks = ticks() - started;
+					out.startTicks = started > forked ? started - forked : 0;
+				}
+			}
 		}
 	};
 
@@ -269,9 +299,12 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 
 	if (stats) {
 		stats->workers = posted + 1;
-		stats->fill.spanPixels = spanPixels.load();
-		stats->fill.glyphPixels = glyphPixels.load();
-		stats->fill.fillPixels = fillPixels.load();
+		for (auto &it : workerStats) {
+			stats->fill.add(it.fill);
+			stats->busyTicks += it.busyTicks;
+			stats->maxBusyTicks = sprt::max(stats->maxBusyTicks, it.busyTicks);
+			stats->maxStartTicks = sprt::max(stats->maxStartTicks, it.startTicks);
+		}
 	}
 
 	return drawn.load();

@@ -2,9 +2,9 @@
 
 Status: **M0 (draft)** — `runtime/toolchains/target-embox/`.
 
-Embox is a **hosted** Xenolith target: the runtime uses Embox's own libc
-through `libc_wrapper` (same model as Linux/glibc and NuttX). It does
-not ship a second libc. This document is **how to assemble the sysroot**.
+Embox is a **hosted** Xenolith target: the runtime uses the kernel's libc
+through `libc_wrapper` (same model as Linux/glibc and NuttX) -- Embox's, most
+of it musl's (see "The kernel's libc" below). It does not ship a second libc. This document is **how to assemble the sysroot**.
 The Embox kernel image, QEMU, and board bring-up are outside this tree.
 
 == Triple naming
@@ -154,6 +154,34 @@ that, clang's `aarch64-none-elf` driver injects `crt0.o` and `-lunwind`.
 `-Wl,-r` keeps kernel symbols undefined; `--gc-sections` is incompatible with
 `-r`. `--run` cannot launch this target on the host. Linking the relocatable
 into an Embox image is a board-image step, not part of this assemble.
+
+== The kernel's libc: musl, as Embox modules
+
+The Embox the engine targets (xenolith-os) takes most of its libc from this
+engine's musl (`runtime/musl-libc`, unchanged): the package `xenolith_musl`
+in `xenolith-os/board/common/musl`, staged into Embox's `ext_project` by the
+board scripts. It supplies libm, `<complex.h>`, `<fenv.h>`, multibyte and
+`<uchar.h>`, `<wctype.h>` and the wide-string, wide-stdio and wide-conversion
+functions, the whole printf family (`printk` included), scanf, `strto*`,
+calendar time (`gmtime`...`strftime`, `strptime`, TZ strings, no zoneinfo),
+`nl_langinfo`, `fnmatch`, `regex` and `setlocale`. Each is a module that
+`extends` an abstract Embox module, so other Embox boards keep Embox's own.
+The kernel has one locale, C.UTF-8.
+
+What that means here:
+
+* The engine requires it. `libc_wrapper` forwards these to the kernel and
+  asserts the native layouts and constants as on Linux (`struct tm` with
+  `tm_gmtoff`/`tm_zone`, `wint_t`, `wctype_t`, `REG_*` in the GNU order,
+  `FNM_NOMATCH` 1, Linux `FP_*`). The math the runtime used to compile for
+  Embox itself is gone (`c/math/embox_math_*`).
+* The headers are musl's too: `math.h`, `fenv.h`, `complex.h`, `tgmath.h`,
+  `uchar.h`, `langinfo.h`, `fnmatch.h` and `regex.h` reach the sysroot from
+  the modules' `@IncludeExport`. After changing them, re-import the sysroot
+  (`xenolith-os/scripts/embox-sysroot-refresh.sh`) and rebuild what includes
+  them; the cross headers are not dependency-tracked.
+* Differences from glibc that are musl's: `strtol`/`strtod` set `EINVAL` when
+  nothing converts, `%p` of null prints `0`, `strftime` has no `%P`.
 
 == Memory on EL1: mimalloc behind the runtime's entry points
 

@@ -287,11 +287,7 @@ __SPRT_C_FUNC int __SPRT_ID(mbtowc)(wchar_t *__wc_ptr, const char *__s, __SPRT_I
 }
 
 __SPRT_C_FUNC int __SPRT_ID(wctomb)(char *__dst, wchar_t __wc) {
-#if SPRT_EMBOX
-	return ::wctomb(__dst, &__wc);
-#else
 	return ::wctomb(__dst, __wc);
-#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t)

@@ -40,9 +40,9 @@ SPRT_UNUSED static struct tm getNativeTm(const struct __SPRT_TM_NAME *_tm) {
 		.tm_wday = _tm->tm_wday,
 		.tm_yday = _tm->tm_yday,
 		.tm_isdst = _tm->tm_isdst,
-#if SPRT_EMBOX
-		.tm_gmtoff = _tm->tm_gmtoff,
-#elif !SPRT_WINDOWS
+#if !SPRT_WINDOWS
+		// Embox's struct tm is the Linux one since its libc became musl's
+		// (xenolith-os BF-54): a long tm_gmtoff and tm_zone, not an int alone.
 		.tm_gmtoff = _tm->tm_gmtoff,
 		.tm_zone = (char *)_tm->tm_zone,
 #endif
@@ -60,10 +60,7 @@ SPRT_UNUSED static void getRuntimeTm(struct __SPRT_TM_NAME *_tm, const struct tm
 	_tm->tm_wday = native.tm_wday;
 	_tm->tm_yday = native.tm_yday;
 	_tm->tm_isdst = native.tm_isdst;
-#if SPRT_EMBOX
-	_tm->tm_gmtoff = native.tm_gmtoff;
-	_tm->tm_zone = 0;
-#elif !SPRT_WINDOWS
+#if !SPRT_WINDOWS
 	_tm->tm_gmtoff = native.tm_gmtoff;
 	_tm->tm_zone = native.tm_zone;
 #else
