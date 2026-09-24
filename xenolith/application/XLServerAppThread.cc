@@ -255,6 +255,9 @@ void ServerAppThread::createClientWindow(NotNull<RemoteSession> session,
 			info->id.empty() ? StringView("window") : StringView(info->id));
 	info->capabilities = sprt::window::WindowCapabilities::None;
 	info->state = core::WindowState::None;
+	// Whether the window is a plane of this server's compositor is the server's decision alone; the
+	// handler below may set it.
+	info->flags &= ~sprt::window::WindowCreationFlags::Virtual;
 	info->icon = nullptr;
 	info->appData = nullptr;
 
@@ -338,6 +341,11 @@ void ServerAppThread::updateServerInfo() {
 	// Per-window values travel in the announce.
 	bool first = true;
 	for (auto w : _windows) {
+		// A virtual window is a plane of this server's compositor: it says nothing about the window
+		// system, and has no subwindows.
+		if (w->isVirtual()) {
+			continue;
+		}
 		if (first) {
 			info.wm = remote::toWindowSubsystem(w->getSurfaceBackend());
 			first = false;
@@ -547,12 +555,16 @@ Rc<Director> ServerAppThread::handleAppWindowCreated(NotNull<AppWindow> w,
 		const core::FrameConstraints &c) {
 	log::source().info("AppThread", "handleAppWindowCreated");
 
-	addListener(w, [w](const UpdateTime &, bool wakeup) {
+	const bool isVirtual = w->isVirtual();
+	addListener(w, [w, isVirtual](const UpdateTime &, bool wakeup) {
 		if (wakeup) {
 			w->setReadyForNextFrame();
 
-			// force display link to update views
-			w->update(core::PresentationUpdateFlags::DisplayLink);
+			// force display link to update views. Not on a virtual window: once a compositor claims
+			// it, a DisplayLink from anywhere else is a frame the compositor did not ask for.
+			if (!isVirtual) {
+				w->update(core::PresentationUpdateFlags::DisplayLink);
+			}
 		}
 	});
 
@@ -1277,6 +1289,12 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 								: Status::Declined);
 				break;
 			case remote::WindowControlOp::SetFullscreen: {
+				// Where a virtual window is and how big is its window manager's decision (this server),
+				// never the client's.
+				if (w->isVirtual()) {
+					reply(Status::Declined);
+					break;
+				}
 				auto info = remote::deserializeFullscreenInfo(val.getValue("fs"));
 				if (!w->setFullscreen(sp::move(info), [reply](Status st) { reply(st); }, this)) {
 					reply(Status::Declined);
@@ -1294,6 +1312,10 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 				reply(Status::Ok);
 				break;
 			case remote::WindowControlOp::SetWindowExtent: {
+				if (w->isVirtual()) {
+					reply(Status::Declined);
+					break;
+				}
 				auto &ext = val.getValue("ext");
 				w->setWindowExtent(
 						Extent2(uint32_t(ext.getInteger(0)), uint32_t(ext.getInteger(1))),
@@ -1649,6 +1671,25 @@ bool ServerAppThread::takeoverSharedWindow(uint64_t windowId, RemoteSession *ses
 		return false;
 	}
 	w->setRenderClient(session->getRenderClient());
+
+	/* The window's state as it is now, as the one event a local window gets when it maps. The
+	announce carries a state too, but it is the one the window had when it was first shared - usually
+	before the map event reached this thread - and a state change that happened before the client
+	attached was forwarded to nobody. Without this the client's mirror stays empty until the next
+	change. */
+	auto state = w->getWindowState();
+	if (state != core::WindowState::None) {
+		core::InputEventData event{
+			0,
+			core::InputEventName::WindowState,
+			{.input = {core::InputMouseButton::None, core::InputModifier::None, nan(), nan()}},
+			{.window = {state, state}},
+		};
+		Vector<core::InputEventData> events;
+		events.emplace_back(event);
+		session->getRenderClient()->handleInputEvents(windowId, sp::move(events));
+	}
+
 	// Restart presentation for the new client (clears a stale display-link barrier, pumps a frame).
 	w->resetForRenderClientChange();
 	return true;

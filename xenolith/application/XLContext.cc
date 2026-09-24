@@ -487,6 +487,10 @@ core::SwapchainConfig Context::handleAppWindowSurfaceUpdate(NotNull<AppWindow> w
 	SwapchainConfig ret;
 	ret.extent = info.currentExtent;
 	ret.imageCount = sprt::max(uint32_t(3), info.minImageCount);
+	if (w->isVirtual()) {
+		// The ring a compositor reads from; see AppWindow::VirtualSwapchainImageCount.
+		ret.imageCount = sprt::max(AppWindow::VirtualSwapchainImageCount, info.minImageCount);
+	}
 
 	ret.presentMode = core::PresentMode::Unsupported;
 
@@ -749,7 +753,10 @@ void Context::handleThemeInfoChanged(const ThemeInfo &info) {
 }
 
 bool Context::configureWindow(NotNull<WindowInfo> w) {
-	auto caps = _controller->getCapabilities();
+	// A virtual window has no capabilities of its own (see sprt::window::VirtualWindow), whatever
+	// the controller's windows have: no frame to draw the decorations of, no display to own.
+	auto caps = hasFlag(w->flags, WindowCreationFlags::Virtual) ? WindowCapabilities::None
+																: _controller->getCapabilities();
 
 	for (auto flag : sp::flags(w->flags)) {
 		switch (flag) {
