@@ -44,6 +44,7 @@ void SwapchainDamage::invalidateImage(uint32_t imageIndex) {
 	if (imageIndex < _images.size()) {
 		_images[imageIndex].valid = false;
 		_images[imageIndex].snapshot.clear();
+		_images[imageIndex].alwaysDirty.clear();
 	}
 }
 
@@ -73,9 +74,11 @@ void SwapchainDamage::checkExtent(Extent2 imageExtent) {
 void SwapchainDamage::commit(ImageState &target, const FrameDamageState *state) {
 	if (state) {
 		target.snapshot = state->entries;
+		target.alwaysDirty = state->alwaysDirty;
 		target.valid = !state->full;
 	} else {
 		target.snapshot.clear();
+		target.alwaysDirty.clear();
 		target.valid = false;
 	}
 }
@@ -158,6 +161,9 @@ bool SwapchainDamage::diff(const ImageState &prev, const FrameDamageState *state
 	for (; i < oldEntries.size(); ++i) { push(oldEntries[i].bounds); }
 	for (; j < newEntries.size(); ++j) { push(newEntries[j].bounds); }
 
+	// Always-dirty elements: where they are now, and where they were in the snapshot - a moved or
+	// shrunken one must not leave its old pixels in the image.
+	for (auto &it : prev.alwaysDirty) { push(it); }
 	for (auto &it : state->alwaysDirty) { push(it); }
 
 	if (damage.empty()) {
@@ -343,8 +349,9 @@ Rc<core::ImageView> SwapchainImage::makeView(const ImageViewInfo &info) {
 }
 
 void SwapchainImage::setImage(Rc<Swapchain> &&handle, const Swapchain::SwapchainImageData &image,
-		const Rc<Semaphore> &sem) {
+		const Rc<Semaphore> &sem, uint32_t slot) {
 	_image = image.image.get();
+	_slot = slot;
 	for (auto &it : image.views) { _views.emplace(it.first, it.second); }
 	if (sem) {
 		_waitSem = sem.get();

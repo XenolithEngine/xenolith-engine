@@ -1,4 +1,3 @@
-
 // Embox EL0 path family: everything that names a file rather than holding one.
 //
 // The kernel's table has exactly two path syscalls -- openat(56) and
@@ -59,6 +58,23 @@ static bool __el0_path_ok(const char *path) {
 	return true;
 }
 
+static int __el0_at_dirfd(int dirfd, const char *path) {
+	if (dirfd == __SPRT_AT_FDCWD || (path && path[0] == '/')) {
+		return __SPRT_AT_FDCWD;
+	}
+	auto libc = __libc::get();
+	auto slot = libc->get_fd_slot(dirfd);
+	if (!slot) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+	if (slot->ops != &libc->fdFileOps) {
+		__sprt_errno = ENOTDIR;
+		return -1;
+	}
+	return __el0_kfd(slot);
+}
+
 // Open through the kernel and register the descriptor in a libc slot. The two fd
 // numbers are unrelated: the kernel's goes in the slot's handle, the libc's is
 // what the caller gets back.
@@ -66,13 +82,16 @@ static int __el0_open_slot(int dirfd, const char *path, int flags, mode_t mode) 
 	if (!__el0_path_ok(path)) {
 		return -1;
 	}
-	auto kfd = (int)__el0_ret(__el0_openat(dirfd, path, flags, mode));
+	auto kdir = __el0_at_dirfd(dirfd, path);
+	if (kdir == -1) {
+		return -1;
+	}
+	auto kfd = (int)__el0_ret(__el0_openat(kdir, path, flags, mode));
 	if (kfd < 0) {
 		return -1;
 	}
 	auto libc = sprt::__libc::get();
-	auto fd = libc->create_fd(__el0_handle(kfd), &libc->fdFileOps, (uint32_t)flags,
-			(uint32_t)mode);
+	auto fd = libc->create_fd(__el0_handle(kfd), &libc->fdFileOps, (uint32_t)flags, (uint32_t)mode);
 	if (fd < 0) {
 		// The libc ran out of slots; the kernel descriptor would leak otherwise.
 		__el0_close(kfd);
@@ -86,8 +105,12 @@ static int __el0_stat_path(int dirfd, const char *path, struct __SPRT_STAT_NAME 
 	if (!__el0_path_ok(path)) {
 		return -1;
 	}
+	auto kdir = __el0_at_dirfd(dirfd, path);
+	if (kdir == -1) {
+		return -1;
+	}
 	__el0_kstat ks;
-	if (__el0_ret(__el0_newfstatat(dirfd, path, &ks, flags)) < 0) {
+	if (__el0_ret(__el0_newfstatat(kdir, path, &ks, flags)) < 0) {
 		return -1;
 	}
 	__el0_kstat_to_stat(ks, st);
@@ -106,9 +129,8 @@ __SPRT_C_FUNC int openat(int dirfd, const char *path, int flags, ...) __SPRT_NOE
 		mode = (__SPRT_ID(mode_t))__sprt_va_arg(ap, int);
 		__sprt_va_end(ap);
 	}
-	// dirfd other than AT_FDCWD reaches the kernel and comes back ENOSYS: Embox
-	// has no dirfd-relative lookup, and resolving it here would mean
-	// reimplementing path resolution in the libc.
+	// dirfd is translated to the kernel's descriptor (__el0_at_dirfd), and the
+	// kernel resolves the relative path against the directory it names.
 	return sprt::__el0_open_slot(dirfd, path, flags, mode);
 }
 
@@ -192,7 +214,11 @@ __SPRT_C_FUNC int faccessat(int dirfd, const char *path, int amode, int flags) _
 	if (!sprt::__el0_path_ok(path)) {
 		return -1;
 	}
-	return (int)__el0_ret(__el0_faccessat(dirfd, path, amode, flags));
+	auto kdir = sprt::__el0_at_dirfd(dirfd, path);
+	if (kdir == -1) {
+		return -1;
+	}
+	return (int)__el0_ret(__el0_faccessat(kdir, path, amode, flags));
 }
 
 __SPRT_C_FUNC int access(const char *path, int amode) __SPRT_NOEXCEPT {
@@ -238,24 +264,18 @@ __SPRT_C_FUNC char *realpath(const char *path, char *resolved) __SPRT_NOEXCEPT {
 
 	const char *p = path;
 	while (*p) {
-		while (*p == '/') {
-			++p;
-		}
+		while (*p == '/') { ++p; }
 		if (!*p) {
 			break;
 		}
 		const char *seg = p;
-		while (*p && *p != '/') {
-			++p;
-		}
+		while (*p && *p != '/') { ++p; }
 		size_t n = (size_t)(p - seg);
 		if (n == 1 && seg[0] == '.') {
 			continue;
 		}
 		if (n == 2 && seg[0] == '.' && seg[1] == '.') {
-			while (len > 1 && out[len - 1] != '/') {
-				--len;
-			}
+			while (len > 1 && out[len - 1] != '/') { --len; }
 			if (len > 1) {
 				--len; // drop the separator too
 			}
@@ -318,7 +338,11 @@ __SPRT_C_FUNC int mkdirat(int dirfd, const char *path, __SPRT_ID(mode_t) mode) _
 	if (!sprt::__el0_path_ok(path)) {
 		return -1;
 	}
-	return (int)__el0_ret(__el0_mkdirat(dirfd, path, mode));
+	auto kdir = sprt::__el0_at_dirfd(dirfd, path);
+	if (kdir == -1) {
+		return -1;
+	}
+	return (int)__el0_ret(__el0_mkdirat(kdir, path, mode));
 }
 
 __SPRT_C_FUNC int mkdir(const char *path, __SPRT_ID(mode_t) mode) __SPRT_NOEXCEPT {
@@ -329,7 +353,11 @@ __SPRT_C_FUNC int unlinkat(int dirfd, const char *path, int flags) __SPRT_NOEXCE
 	if (!sprt::__el0_path_ok(path)) {
 		return -1;
 	}
-	return (int)__el0_ret(__el0_unlinkat(dirfd, path, flags));
+	auto kdir = sprt::__el0_at_dirfd(dirfd, path);
+	if (kdir == -1) {
+		return -1;
+	}
+	return (int)__el0_ret(__el0_unlinkat(kdir, path, flags));
 }
 
 __SPRT_C_FUNC int unlink(const char *path) __SPRT_NOEXCEPT {
@@ -345,8 +373,7 @@ __SPRT_C_FUNC int rmdir(const char *path) __SPRT_NOEXCEPT {
 // would otherwise get EISDIR from a function documented to handle both.
 __SPRT_C_FUNC int remove(const char *path) __SPRT_NOEXCEPT {
 	struct __SPRT_STAT_NAME st;
-	if (sprt::__el0_stat_path(__SPRT_AT_FDCWD, path, &st, 0) == 0
-			&& __SPRT_S_ISDIR(st.st_mode)) {
+	if (sprt::__el0_stat_path(__SPRT_AT_FDCWD, path, &st, 0) == 0 && __SPRT_S_ISDIR(st.st_mode)) {
 		return rmdir(path);
 	}
 	return unlink(path);
@@ -357,7 +384,15 @@ __SPRT_C_FUNC int renameat(int olddirfd, const char *old_path, int newdirfd,
 	if (!sprt::__el0_path_ok(old_path) || !sprt::__el0_path_ok(new_path)) {
 		return -1;
 	}
-	return (int)__el0_ret(__el0_renameat(olddirfd, old_path, newdirfd, new_path));
+	auto kold = sprt::__el0_at_dirfd(olddirfd, old_path);
+	if (kold == -1) {
+		return -1;
+	}
+	auto knew = sprt::__el0_at_dirfd(newdirfd, new_path);
+	if (knew == -1) {
+		return -1;
+	}
+	return (int)__el0_ret(__el0_renameat(kold, old_path, knew, new_path));
 }
 
 __SPRT_C_FUNC int rename(const char *old_path, const char *new_path) __SPRT_NOEXCEPT {
@@ -395,7 +430,11 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 	if (!sprt::__el0_path_ok(path)) {
 		return -1;
 	}
-	return (__SPRT_ID(ssize_t))__el0_ret(__el0_readlinkat(dirfd, path, buf, n));
+	auto kdir = sprt::__el0_at_dirfd(dirfd, path);
+	if (kdir == -1) {
+		return -1;
+	}
+	return (__SPRT_ID(ssize_t))__el0_ret(__el0_readlinkat(kdir, path, buf, n));
 }
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t)
@@ -460,29 +499,32 @@ __SPRT_C_FUNC int chdir(const char *path) __SPRT_NOEXCEPT {
 // better than guessing.
 __SPRT_C_FUNC int fchdir(int) __SPRT_NOEXCEPT __EL0_ENOSYS_RET(int, -1)
 
-__SPRT_C_FUNC int link(const char *, const char *) __SPRT_NOEXCEPT __EL0_ENOSYS_RET(int, -1)
-__SPRT_C_FUNC int linkat(int, const char *, int, const char *, int) __SPRT_NOEXCEPT
-		__EL0_ENOSYS_RET(int, -1)
-__SPRT_C_FUNC int symlink(const char *, const char *) __SPRT_NOEXCEPT __EL0_ENOSYS_RET(int, -1)
-__SPRT_C_FUNC int symlinkat(const char *, int, const char *) __SPRT_NOEXCEPT
-		__EL0_ENOSYS_RET(int, -1)
-__SPRT_C_FUNC int utimensat(int, const char *, const struct __SPRT_TIMESPEC_NAME *,
-		int) __SPRT_NOEXCEPT __EL0_ENOSYS_RET(int, -1)
-__SPRT_C_FUNC int chmod(const char *, __SPRT_ID(mode_t)) __SPRT_NOEXCEPT __EL0_ENOSYS_RET(int, -1)
-__SPRT_C_FUNC int fchmodat(int, const char *, __SPRT_ID(mode_t), int) __SPRT_NOEXCEPT
+				__SPRT_C_FUNC int link(const char *, const char *) __SPRT_NOEXCEPT
+		__EL0_ENOSYS_RET(int, -1) __SPRT_C_FUNC
+		int linkat(int, const char *, int, const char *, int) __SPRT_NOEXCEPT
+		__EL0_ENOSYS_RET(int, -1) __SPRT_C_FUNC
+		int symlink(const char *, const char *) __SPRT_NOEXCEPT
+		__EL0_ENOSYS_RET(int, -1) __SPRT_C_FUNC
+		int symlinkat(const char *, int, const char *) __SPRT_NOEXCEPT
+		__EL0_ENOSYS_RET(int, -1) __SPRT_C_FUNC
+		int utimensat(int, const char *, const struct __SPRT_TIMESPEC_NAME *, int) __SPRT_NOEXCEPT
+		__EL0_ENOSYS_RET(int, -1) __SPRT_C_FUNC
+		int chmod(const char *, __SPRT_ID(mode_t)) __SPRT_NOEXCEPT
+		__EL0_ENOSYS_RET(int, -1) __SPRT_C_FUNC
+		int fchmodat(int, const char *, __SPRT_ID(mode_t), int) __SPRT_NOEXCEPT
 		__EL0_ENOSYS_RET(int, -1)
 
-__SPRT_C_FUNC __SPRT_ID(FILE) * tmpfile(void) __SPRT_NOEXCEPT
-		__EL0_ENOSYS_RET(__SPRT_ID(FILE) *, nullptr)
+				__SPRT_C_FUNC __SPRT_ID(FILE)
+		* tmpfile(void) __SPRT_NOEXCEPT __EL0_ENOSYS_RET(__SPRT_ID(FILE) *, nullptr)
 
 #undef __EL0_ENOSYS_RET
 
-// tmpnam and tmpfile need a writable directory to create a file in AND a way to
-// remove it afterwards. openat(56) provides the first; unlink is M2, so a
-// temporary file created now would be permanent. Returning a name that cannot be
-// cleaned up is worse than refusing: the caller would leave litter on a
-// read-only-ish initfs with no way to notice.
-__SPRT_C_FUNC char *tmpnam(char *s) __SPRT_NOEXCEPT {
+		// tmpnam and tmpfile need a writable directory to create a file in AND a way to
+		// remove it afterwards. openat(56) provides the first; unlink is M2, so a
+		// temporary file created now would be permanent. Returning a name that cannot be
+		// cleaned up is worse than refusing: the caller would leave litter on a
+		// read-only-ish initfs with no way to notice.
+		__SPRT_C_FUNC char *tmpnam(char *s) __SPRT_NOEXCEPT {
 	(void)s;
 	__sprt_errno = ENOSYS;
 	return nullptr;

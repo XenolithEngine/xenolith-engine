@@ -23,6 +23,11 @@ THE SOFTWARE.
 #define __SPRT_BUILD 1
 
 #include <sprt/c/__sprt_time.h>
+#include <sprt/c/__sprt_stdlib.h>
+
+#if SPRT_WASM || SPRT_EMBOX_ANY
+extern "C" void __sprt_malloc_thread_attach(void) __SPRT_NOEXCEPT;
+#endif
 #include <sprt/c/__sprt_sched.h>
 
 #if SPRT_WASM
@@ -48,6 +53,7 @@ namespace sprt::_thread {
 
 thread_local __thread_slot tl_self;
 
+[[clang::no_destroy]]
 static __thread_pool s_handlePool;
 
 __thread_pool *__thread_pool::get() { return &s_handlePool; }
@@ -474,23 +480,8 @@ bool thread_t::registerThread() {
 		});
 	}, threadMemPool);
 
-#if SPRT_WASM
-	// Pre-warm this thread's mimalloc heap now, before we take s_handlePool.mutex below.
-	// A brand-new thread's FIRST global-heap touch triggers mimalloc thread-init, which
-	// associates the heap via pthread_setspecific(mi_wasm_heap_done_key, ...) — and that
-	// re-acquires s_handlePool.mutex (pthread_key.cc). If the first touch instead happened
-	// during the activeThreadsByTid insert under the lock below (e.g. on a rehash past the
-	// ctor's reserved capacity), it would re-enter the non-recursive mutex and self-deadlock.
-	// Forcing the first touch here, with no lock held, makes the association run cleanly:
-	// threadKeyStorage exists (created in perform above) so the heap-done key registers with
-	// no leak, and self() publishes tl_self as a side effect. The insert below then finds the
-	// heap already initialized and never re-enters the mutex — unconditionally, regardless of
-	// table growth. (The reserve in the ctor keeps the common-case insert allocation-free;
-	// this makes the guarantee hold even when it isn't.)
-	{
-		void *warm = malloc(1);
-		free(warm);
-	}
+#if SPRT_WASM || SPRT_EMBOX_ANY
+	__sprt_malloc_thread_attach();
 #endif
 
 	// Make this thread discoverable by kernel tid for the PI boost path. Done last so

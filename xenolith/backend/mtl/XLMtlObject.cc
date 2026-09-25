@@ -60,11 +60,13 @@ bool Buffer::init(Device &dev, const core::BufferInfo &info, BytesView initialDa
 		return setup(dev, info, nullptr);
 	}
 
-	auto cb = Callback<size_t(uint8_t *, uint64_t)>([&](uint8_t *mem, uint64_t size) -> size_t {
+	// A named functor: a Callback does not own the lambda it is built from.
+	auto fill = [&](uint8_t *mem, uint64_t size) -> size_t {
 		auto bytes = sprt::min(uint64_t(initialData.size()), size);
 		sprt::memcpy(mem, initialData.data(), bytes);
 		return size_t(bytes);
-	});
+	};
+	auto cb = Callback<size_t(uint8_t *, uint64_t)>(fill);
 	return setup(dev, info, &cb);
 }
 
@@ -82,9 +84,10 @@ bool Buffer::init(Device &dev, const core::BufferData &data) {
 		return setup(dev, data, nullptr);
 	}
 
-	auto cb = Callback<size_t(uint8_t *, uint64_t)>([&](uint8_t *mem, uint64_t size) -> size_t {
+	auto fill = [&](uint8_t *mem, uint64_t size) -> size_t {
 		return data.writeData(mem, size_t(size));
-	});
+	};
+	auto cb = Callback<size_t(uint8_t *, uint64_t)>(fill);
 	return setup(dev, data, &cb);
 }
 

@@ -79,6 +79,16 @@ public:
 	// Routed to the DragSystem of the scene content; refused without a scene
 	virtual void handleDropEvent(uint64_t windowId, core::DropEvent &&) override;
 	virtual void handleFramePresented(uint64_t frameOrder) override;
+	virtual void handleFrameDeclined(uint64_t windowId) override;
+
+	/* The scene changed (Scene::markChanged). The first change after a frame schedules one check at
+	the end of the current app-thread task, so a change from any code path gets its frame; changes
+	while a frame is being built are what that frame shows. */
+	void handleSceneChanged();
+
+	/* The app thread's tick for the window. A wakeup always asks for a frame: whatever woke the
+	thread may change what is drawn. The heartbeat asks only for a scene that changed or moves. */
+	void handleAppUpdate(bool wakeup);
 
 	void update(uint64_t t);
 
@@ -153,6 +163,9 @@ protected:
 
 	bool hasActiveInteractions();
 
+	void updateFrameRequest(bool force);
+	void requestFrame();
+
 	Rc<AppThread> _application;
 
 	Rc<Ref> _window;
@@ -166,6 +179,16 @@ protected:
 	Map<StringView, Rc<core::Queue>> _availableQueues;
 
 	core::FrameConstraints _constraints;
+
+	/* Asking for frames. A frame is in flight from the request to acquireFrame, and is being built
+	from acquireFrame to the end of its visit. `_drawnChanges` is the scene's change count at the end
+	of the last visit, `_declinedChanges` the count the last declined request was made at. */
+	uint64_t _drawnChanges = 0;
+	uint64_t _declinedChanges = maxOf<uint64_t>();
+	uint32_t _frameBuildSerial = 0;
+	bool _frameRequested = false;
+	bool _frameBuilding = false;
+	bool _checkScheduled = false;
 
 	uint64_t _startTime = 0;
 	UpdateTime _time;

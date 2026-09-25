@@ -20,6 +20,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+#ifndef TESTS_RUNTIME_TESTS_H_
+#define TESTS_RUNTIME_TESTS_H_
+
+namespace sprt::test {
+
+// Counts a reported failure and returns `text` unchanged, so it can stand in for the literal that
+// reports it; main() exits with 1 once any failure was counted.
+const char *failed(const char *text);
+
+unsigned getFailedCount();
+
+} // namespace sprt::test
+
 namespace sprt {
 
 void performUnameTest();
@@ -29,6 +42,7 @@ void performLinkTest();
 void performFcntlTest();
 void performMemalignTest();
 void performMemalignMacroTest();
+void performMallocThreadsTest();
 void performAtFunctionsTest();
 void performSetjmpTest();
 void performLocaleTest();
@@ -80,3 +94,5 @@ void performIdnTests();
 void performIdnConformanceTests();
 
 } // namespace sprt
+
+#endif // TESTS_RUNTIME_TESTS_H_

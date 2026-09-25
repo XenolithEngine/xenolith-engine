@@ -52,6 +52,7 @@ THE SOFTWARE.
 
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/platform.h>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -61,7 +62,7 @@ int s_failures = 0;
 int s_skipped = 0;
 
 void check(bool cond, const char *msg) {
-	printf("  %s: %s\n", cond ? "PASS" : "FAIL", msg);
+	printf("  %s: %s\n", cond ? "PASS" : sprt::test::failed("FAIL"), msg);
 	if (!cond) {
 		++s_failures;
 	}
@@ -266,7 +267,19 @@ void runReadOnlyChecks(const char *dir) {
 				sawFile = true;
 			}
 		}
-		check(entries > 0, "fdopendir(dirfd) enumerates the directory");
+#if SPRT_EMBOX_ANY
+		// Embox's readdir has no "." and ".." (POSIX leaves them optional), so an
+		// empty directory really does enumerate to nothing; only a known file says
+		// the enumeration works.
+		constexpr bool dotEntries = false;
+#else
+		constexpr bool dotEntries = true;
+#endif
+		if (dotEntries || haveFile) {
+			check(entries > 0, "fdopendir(dirfd) enumerates the directory");
+		} else {
+			skip("fdopendir(dirfd) enumeration: empty directory, and no \".\"/\"..\" here");
+		}
 		if (haveFile) {
 			check(sawFile, "fdopendir(dirfd) lists the probe file");
 		}
@@ -416,7 +429,7 @@ void performAtFunctionsTest() {
 	check(accepted == 32, "at_quick_exit accepts 32 handlers");
 
 	printf("performAtFunctionsTest: %s (%d failures, %d skipped)\n",
-			s_failures == 0 ? "ALL PASS" : "FAILED", s_failures, s_skipped);
+			s_failures == 0 ? "ALL PASS" : sprt::test::failed("FAILED"), s_failures, s_skipped);
 }
 
 } // namespace sprt

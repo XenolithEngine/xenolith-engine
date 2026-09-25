@@ -154,6 +154,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupUringHandleClass<PollFdURingHandle, PollFdSource>(&_info, &_uringPollFdClass, true);
 		setupUringHandleClass<ProcessFdURingHandle, ProcessFdSource>(&_info, &_uringProcessFdClass,
 				true);
+		_uringProcessFdClass.cancelFn = ProcessFdHandle::cancelClass;
 		setupUringHandleClass<FileURingHandle, FileSource>(&_info, &_uringFileClass, true);
 		setupUringHandleClass<InotifyReaderURingHandle, InotifySource>(&_info,
 				&_uringInotifyReaderClass, true);
@@ -300,6 +301,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupEpollHandleClass<PollFdEPollHandle, PollFdSource>(&_info, &_epollPollFdClass, true);
 		setupEpollHandleClass<ProcessFdEPollHandle, ProcessFdSource>(&_info, &_epollProcessFdClass,
 				true);
+		_epollProcessFdClass.cancelFn = ProcessFdHandle::cancelClass;
 		setupEpollHandleClass<InotifyReaderEPollHandle, InotifySource>(&_info,
 				&_epollInotifyReaderClass, true);
 		setupEpollHandleClass<AddressWaitEPollHandle, AddressWaitEventFdSource>(&_info,

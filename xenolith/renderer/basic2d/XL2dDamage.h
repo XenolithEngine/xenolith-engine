@@ -36,8 +36,11 @@ public:
 	bool init(const FrameContextHandle2d *, const core::FrameConstraints &);
 
 	// One entry per InstanceVertexData, with the instances already carrying their final
-	// (view * model) transforms - i.e. mapping model space straight to clip space.
-	void addInstances(const Command *, const CmdInfo *, const InstanceVertexData &);
+	// (view * model) transforms - i.e. mapping model space straight to clip space. `material` is
+	// the command's resolved material: what its images are is part of what the element looks like,
+	// and its atlas is what places the element's glyphs.
+	void addInstances(const Command *, const CmdInfo *, const core::Material *material,
+			const InstanceVertexData &);
 
 	// The element cannot be bounded (a GPU-simulated particle system): escalate the whole frame.
 	void escalate();
@@ -48,7 +51,8 @@ protected:
 	// clip space -> swapchain-image pixels, y-down
 	Rect toPixels(const Rect &clip) const;
 
-	uint32_t makeSignature(const CmdInfo *, const InstanceVertexData &) const;
+	uint32_t makeSignature(const CmdInfo *, const core::Material *, const InstanceVertexData &,
+			uint64_t unresolved) const;
 
 	const FrameContextHandle2d *_input = nullptr;
 	core::FrameConstraints _constraints;

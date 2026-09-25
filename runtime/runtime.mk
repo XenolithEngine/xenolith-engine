@@ -186,6 +186,7 @@ MODULE_RUNTIME_GENERAL_CXXFLAGS += \
 # the kernel's sqrtf. Embox's default math_simple sqrtf is incorrect.
 MODULE_RUNTIME_LIBS += -l:libc++abi.a -l:libunwind.a \
 	-l:libclang_rt.builtins-$(TARGET_ARCH).a -l:libsme_stub.a
+MODULE_RUNTIME_DEPENDS_ON += runtime_malloc
 endif
 
 

@@ -96,8 +96,8 @@ struct SP_PUBLIC PopupSurfaceConfig {
 	Function<void(NotNull<SubWindow>, NotNull<Panel>)> onOutsideTap;
 };
 
-SP_PUBLIC Rc<SubWindow> openPopupSurface(NotNull<AppWindow>, const sprt::window::WindowPlacement &,
-		PopupSurfaceConfig &&);
+SP_PUBLIC Rc<SubWindow> openPopupSurface(NotNull<core::RenderServerChannel>,
+		const sprt::window::WindowPlacement &, PopupSurfaceConfig &&);
 
 } // namespace stappler::xenolith::ui
 

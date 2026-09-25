@@ -447,7 +447,8 @@ void PresentationEngine::presentWithQueue(DeviceQueue *queue, NotNull<Presentati
 		float covered = 0.0f;
 		for (auto &it : damage) { covered += float(it.width) * float(it.height); }
 		const float surface = float(_constraints.extent.width) * float(_constraints.extent.height);
-		log::source().info("DamageDebug", "image=", image->getImageIndex(),
+		log::source().info("DamageDebug", "window=", _window->getPresentationDebugId(),
+				" slot=", static_cast<SwapchainImage *>(image)->getSwapchainSlot(),
 				partial ? " partial rects=" : " FULL rects=", damage.size(),
 				" area=", surface > 0.0f ? covered / surface : 1.0f,
 				request && request->isRedrawSkipped() ? " [redraw skipped]" : "");
@@ -575,6 +576,21 @@ void PresentationEngine::setRenderOnDemand(bool value) { _options.renderOnDemand
 
 bool PresentationEngine::isRenderOnDemand() const { return _options.renderOnDemand; }
 
+void PresentationEngine::setFollowDisplayLinkBarrier(bool value) {
+	if (_options.followDisplayLinkBarrier == value) {
+		return;
+	}
+	_options.followDisplayLinkBarrier = value;
+
+	// Raised on the switch, so the first frame after it is the owner's to start. Lowered on the way
+	// back, or a window released between two ticks would wait for one that never comes.
+	_waitForDisplayLink = value;
+	if (!value && canScheduleNextFrame()) {
+		XL_COREPRESENT_LOG("setFollowDisplayLinkBarrier - scheduleNextImage");
+		scheduleNextImage();
+	}
+}
+
 bool PresentationEngine::isRunning() const {
 	return _running && _swapchain && !_swapchain->isDeprecated();
 }
@@ -694,6 +710,12 @@ void PresentationEngine::handleFrameComplete(NotNull<PresentationFrame> frame) {
 	cancelFrameDeadline(frame);
 	_remoteFrames.erase(frame.get());
 	if (frame->hasFlag(PresentationFrame::DoNotPresent)) {
+		// An offscreen frame is "presented" by present(), which answers its callback - and with
+		// earlyPresent that already happened at handleFrameReady. Without it nothing else would, and
+		// scheduleOffscreenFrame / the screenshot fallback would never hear back.
+		if (!_options.earlyPresent) {
+			present(frame, frame->getSwapchainImage());
+		}
 		_detachedFrames.erase(frame);
 		return;
 	}

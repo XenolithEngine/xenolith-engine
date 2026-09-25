@@ -660,7 +660,7 @@ void View::Highlight::addSelection(const Pair<SelectionPosition, SelectionPositi
 }
 
 void View::Highlight::setDirty() {
-	_vertexesDirty = true;
+	markVertexesDirty();
 	_vertexes.clear();
 }
 
@@ -740,7 +740,7 @@ void View::Highlight::updateVertexes(FrameInfo &frame) {
 			++rectIdx;
 		}
 	}
-	_vertexColorDirty = true;
+	markVertexColorDirty();
 }
 
 } // namespace stappler::xenolith::richtext

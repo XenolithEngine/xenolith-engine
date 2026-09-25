@@ -22,6 +22,7 @@
 
 #include <sprt/runtime/window/controller.h>
 #include <sprt/runtime/window/native_window.h>
+#include <sprt/runtime/window/virtual_window.h>
 #include <sprt/runtime/window/display_config.h>
 #include <sprt/runtime/log.h>
 
@@ -57,7 +58,7 @@
 #include "../nuttx/SPRTWinNuttxController.h"
 #endif
 
-#if SPRT_EMBOX
+#if SPRT_EMBOX_ANY
 #include "../embox/SPRTWinEmboxController.h"
 #endif
 
@@ -108,7 +109,7 @@ Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextCon
 #if SPRT_NUTTX
 	return NuttxContextController::create(ctx, move(info), a);
 #endif
-#if SPRT_EMBOX
+#if SPRT_EMBOX_ANY
 	return EmboxContextController::create(ctx, move(info), a);
 #endif
 	oslog::vperror(__SPRT_LOCATION, "ContextController", "Unknown platform");
@@ -140,7 +141,7 @@ void ContextController::acquireDefaultConfig(ContextConfig &config, NativeContex
 #if SPRT_NUTTX
 	NuttxContextController::acquireDefaultConfig(config, handle);
 #endif
-#if SPRT_EMBOX
+#if SPRT_EMBOX_ANY
 	EmboxContextController::acquireDefaultConfig(config, handle);
 #endif
 }
@@ -221,6 +222,13 @@ Status ContextController::createWindow(Rc<WindowInfo> &&info) {
 			"createWindow type=", getWindowTypeName(info->type), " id='", info->id, "' parent='",
 			info->parent, "' rect=", info->rect.width, "x", info->rect.height));
 
+	const bool isVirtual = hasFlag(info->flags, WindowCreationFlags::Virtual);
+	if (isVirtual && info->type != WindowType::Root) {
+		// A virtual window is a window manager's plane, and a plane has no subwindows of its own.
+		oslog::vperror(__SPRT_LOCATION, "ContextController", "Only a Root window can be virtual");
+		return Status::ErrorNotSupported;
+	}
+
 	if (info->type != WindowType::Root) {
 		if (!hasFlag(getCapabilities(), WindowCapabilities::Subwindows)) {
 			return Status::ErrorNotSupported;
@@ -242,6 +250,18 @@ Status ContextController::createWindow(Rc<WindowInfo> &&info) {
 
 	if (!configureWindow(info)) {
 		return Status::ErrorInvalidArguemnt;
+	}
+
+	if (isVirtual) {
+		// Not the backend's business: there is no OS window to make, so every controller makes the
+		// same one, and the backend never sees it.
+		auto window = Rc<VirtualWindow>::create(this, move(info), WindowCapabilities::None);
+		if (!window) {
+			emitWindowDiag("virtual window failed");
+			return Status::ErrorNotSupported;
+		}
+		notifyWindowCreated(window);
+		return Status::Ok;
 	}
 
 	if (!loadWindow(move(info))) {
@@ -328,7 +348,8 @@ void ContextController::dismissChildPopups(NotNull<NativeWindow> parent, StringV
 
 void ContextController::notifyWindowFocusLost(NotNull<NativeWindow> w) {
 	auto *info = w->getInfo();
-	if (!info || _focusDismissScheduled) {
+	// A virtual window's focus is its window manager's, and it owns no menus to dismiss.
+	if (!info || _focusDismissScheduled || w->isVirtual()) {
 		return;
 	}
 	// Nothing to dismiss unless a menu is actually up.
@@ -351,7 +372,7 @@ void ContextController::notifyWindowFocusLost(NotNull<NativeWindow> w) {
 		// user switching between our own windows) is not a dismiss.
 		for (auto *win : _allWindows) {
 			auto *wi = win->getInfo();
-			if (wi && hasFlag(wi->state, WindowState::Focused)) {
+			if (wi && hasFlag(wi->state, WindowState::Focused) && !win->isVirtual()) {
 				return;
 			}
 		}
@@ -534,11 +555,12 @@ void ContextController::notifyWindowDeallocated(NotNull<NativeWindow> w) {
 		_allWindows.erase(it);
 
 		// The exit trigger is "no Root remains", not "nothing remains": an auxiliary window must
-		// neither keep the app alive on its own nor quit it when dismissed.
+		// neither keep the app alive on its own nor quit it when dismissed. Nor does a virtual one:
+		// it lives inside a host window, and the host closing is what ends the process.
 		bool anyRoot = false;
 		for (auto *win : _allWindows) {
 			auto wi = win->getInfo();
-			if (wi && wi->type == WindowType::Root) {
+			if (wi && wi->type == WindowType::Root && !win->isVirtual()) {
 				anyRoot = true;
 				break;
 			}

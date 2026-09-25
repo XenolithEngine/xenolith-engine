@@ -204,6 +204,10 @@ public:
 
 	uint32_t getObjectsCount() const { return uint32_t(_intNames.size() + _stringNames.size()); }
 
+	// Unique for the process lifetime, never 0: what a cache of lookups through this atlas is keyed
+	// by. An atlas is built once and replaced whole, so a pointer could name a newer one.
+	uint64_t getSerial() const { return _serial; }
+
 	BytesView getData() const { return _data; }
 	BytesView getBufferData() const { return _bufferData; }
 
@@ -212,6 +216,7 @@ public:
 
 protected:
 	Type _type = Type::Custom;
+	uint64_t _serial = 0;
 	uint32_t _objectSize;
 	Extent2 _imageExtent;
 	HashMap<uint32_t, uint32_t> _intNames;

@@ -28,6 +28,7 @@
 #include "SPRuntimeDrop.cc"
 #include "SPRuntimeInput.cc"
 #include "SPRuntimeNativeWindow.cc"
+#include "SPRuntimeVirtualWindow.cc"
 #include "SPRuntimeSoftwareSurface.cc"
 #include "SPRuntimeWindowGApi.cc"
 #include "SPRuntimeWindowIcon.cc"

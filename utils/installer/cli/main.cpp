@@ -641,7 +641,8 @@ static int cmdBuild(int argc, const char *argv[]) {
 
 	// The build streams its output (progress, compiler diagnostics, the child's own output) from
 	// the job thread; the calling thread stays blocked, so there is nothing to interleave with.
-	Callback<void(StringView)> sink([](StringView chunk) { sprt::cout << chunk; });
+	auto print = [](StringView chunk) { sprt::cout << chunk; };
+	Callback<void(StringView)> sink(print);
 
 	auto path = args.positional.empty() ? StringView(".") : StringView(args.positional[0]);
 	auto r = buildProject(path, layout, opts, args.engine, &sink);

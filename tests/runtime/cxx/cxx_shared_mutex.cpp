@@ -27,6 +27,7 @@
 #include <sprt/c/__sprt_time.h>
 #include <sprt/c/__sprt_pthread.h>
 #include <sprt/c/__sprt_unistd.h>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -193,7 +194,7 @@ void run_shared_mutex_test() {
 	if (success) {
 		sprt::cout << "SUCCESS: All threads completed with reader/writer lock switching!\n";
 	} else {
-		sprt::cout << "FAILURE: Test did not complete as expected.\n";
+		sprt::cout << sprt::test::failed("FAILURE: Test did not complete as expected.\n");
 	}
 
 	sprt::cout << "\n=== Shared Mutex Thread Switching Test Complete ===\n\n";

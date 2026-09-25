@@ -135,7 +135,8 @@ public:
 	// exit code and final Status. Uses the Handle userdata slot for private data.
 	Rc<ProcessHandle> spawnProcess(StringView command,
 			dispatch::Function<void(StringView)> &&reader,
-			dispatch::Function<void(int exitCode, Status)> &&onExit, Ref * = nullptr);
+			dispatch::Function<void(int exitCode, Status)> &&onExit, Ref * = nullptr,
+			ProcessFlags = ProcessFlags::None);
 
 	// Asynchronous file read: streams the file contents to FileReadInfo::reader
 	// (each chunk on the looper thread) and fires the completion once when the

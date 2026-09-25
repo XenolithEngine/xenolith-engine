@@ -44,6 +44,7 @@ THE SOFTWARE.
 #include <sprt/runtime/filesystem/filepath.h>
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/platform.h>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -173,7 +174,7 @@ studio's asset-build section, where a texture encoder asks for its tables. */
 void performMemalignTest() {
 	int failures = 0;
 	auto check = [&](bool cond, const char *msg) {
-		printf("  %s: %s\n", cond ? "PASS" : "FAIL", msg);
+		printf("  %s: %s\n", cond ? "PASS" : sprt::test::failed("FAIL"), msg);
 		if (!cond) {
 			++failures;
 		}
@@ -206,7 +207,7 @@ void performMemalignTest() {
 	err = posix_memalign(&bad, 3, 64);
 	check(err == EINVAL, "an alignment below sizeof(void *) is EINVAL");
 
-	printf("%s\n", failures ? "FAILED" : "PASSED");
+	printf("%s\n", failures ? sprt::test::failed("FAILED") : "PASSED");
 }
 
 /* The MSVC compatibility macros must expand to RESERVED names.
@@ -229,7 +230,7 @@ inline void aligned_free(void *) { ++s_ownFreeCalls; }
 void performMemalignMacroTest() {
 	int failures = 0;
 	auto check = [&](bool cond, const char *msg) {
-		printf("  %s: %s\n", cond ? "PASS" : "FAIL", msg);
+		printf("  %s: %s\n", cond ? "PASS" : sprt::test::failed("FAIL"), msg);
 		if (!cond) {
 			++failures;
 		}
@@ -255,13 +256,13 @@ void performMemalignMacroTest() {
 	check(memalign_probe::s_ownFreeCalls == 0, "nothing called the probe");
 #endif
 
-	printf("%s\n", failures ? "FAILED" : "PASSED");
+	printf("%s\n", failures ? sprt::test::failed("FAILED") : "PASSED");
 }
 
 void performFcntlTest() {
 	int failures = 0;
 	auto check = [&](bool cond, const char *msg) {
-		printf("  %s: %s\n", cond ? "PASS" : "FAIL", msg);
+		printf("  %s: %s\n", cond ? "PASS" : sprt::test::failed("FAIL"), msg);
 		if (!cond) {
 			++failures;
 		}
@@ -402,7 +403,8 @@ void performFcntlTest() {
 	close(b);
 	::remove(path);
 
-	printf("performFcntlTest: %s (%d failures)\n", failures == 0 ? "ALL PASS" : "FAILED", failures);
+	printf("performFcntlTest: %s (%d failures)\n",
+			failures == 0 ? "ALL PASS" : sprt::test::failed("FAILED"), failures);
 }
 
 static int __sign(int v) { return v < 0 ? -1 : (v > 0 ? 1 : 0); }
@@ -415,7 +417,7 @@ static int __sign(int v) { return v < 0 ? -1 : (v > 0 ? 1 : 0); }
 void performLocaleTest() {
 	int failures = 0;
 	auto check = [&](bool cond, const char *msg) {
-		printf("  %s: %s\n", cond ? "PASS" : "FAIL", msg);
+		printf("  %s: %s\n", cond ? "PASS" : sprt::test::failed("FAIL"), msg);
 		if (!cond) {
 			++failures;
 		}
@@ -689,7 +691,8 @@ void performLocaleTest() {
 	}
 	setlocale(LC_ALL, "C");
 
-	printf("performLocaleTest: %s (%d failures)\n", failures == 0 ? "ALL PASS" : "FAILED", failures);
+	printf("performLocaleTest: %s (%d failures)\n",
+			failures == 0 ? "ALL PASS" : sprt::test::failed("FAILED"), failures);
 }
 
 static void removeFileAt(const char *dirPath, const char *fileName) {

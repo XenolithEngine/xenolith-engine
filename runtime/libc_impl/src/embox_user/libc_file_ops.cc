@@ -1,4 +1,3 @@
-
 // Embox EL0 file descriptor ops: the __fd_ops table, straight over syscalls.
 //
 // Unlike the wasm backend, which carries a whole memfs behind these entry
@@ -35,11 +34,7 @@ static ssize_t __file_read(__fd_slot *fp, void *buf, size_t nbytes, off64_t *off
 		uint32_t flags) {
 	(void)flags;
 	if (offset) {
-		// pread64(67) is not in the table (M2). Emulating it with
-		// lseek/read/lseek would be a different call: it moves the file
-		// position, which is the one thing pread promises not to do.
-		__sprt_errno = ENOSYS;
-		return -1;
+		return (ssize_t)__el0_ret(__el0_pread(__el0_kfd(fp), buf, nbytes, (long)*offset));
 	}
 	return (ssize_t)__el0_ret(__el0_read(__el0_kfd(fp), buf, nbytes));
 }
@@ -48,8 +43,7 @@ static ssize_t __file_write(__fd_slot *fp, const void *buf, size_t nbytes, off64
 		uint32_t flags) {
 	(void)flags;
 	if (offset) {
-		__sprt_errno = ENOSYS; // pwrite64(68), same reason as pread above
-		return -1;
+		return (ssize_t)__el0_ret(__el0_pwrite(__el0_kfd(fp), buf, nbytes, (long)*offset));
 	}
 	return (ssize_t)__el0_ret(__el0_write(__el0_kfd(fp), buf, nbytes));
 }
@@ -162,9 +156,8 @@ static int __file_dup(__fd_slot *fp, int *target, uint32_t flags) {
 	// There is no exec at EL0, so close-on-exec is bookkeeping either way --
 	// but it is bookkeeping POSIX expects to round-trip, and the kernel now
 	// keeps its own copy, so both are set and F_GETFD reads the slot's.
-	uint32_t newFlags = (flags & __SPRT_FD_CLOEXEC)
-			? (fp->flags | (uint32_t)__SPRT_O_CLOEXEC)
-			: (fp->flags & ~(uint32_t)__SPRT_O_CLOEXEC);
+	uint32_t newFlags = (flags & __SPRT_FD_CLOEXEC) ? (fp->flags | (uint32_t)__SPRT_O_CLOEXEC)
+													: (fp->flags & ~(uint32_t)__SPRT_O_CLOEXEC);
 	__el0_fcntl(kdup, __SPRT_F_SETFD, (flags & __SPRT_FD_CLOEXEC) ? __SPRT_FD_CLOEXEC : 0);
 
 	auto libc = __libc::get();
@@ -233,9 +226,6 @@ static int __file_ioctl(__fd_slot *fp, int fd, int cmd, intptr_t arg, __fd_ctl_m
 			return ret;
 		}
 
-		// Record locks reach the kernel and come back EINVAL: Embox routes them
-		// to a file's ioctl, which answers about ioctls. Forwarded rather than
-		// answered here, so there is one place that decides.
 		default: return (int)__el0_ret(__el0_fcntl(__el0_kfd(fp), cmd, (long)arg));
 		}
 	}

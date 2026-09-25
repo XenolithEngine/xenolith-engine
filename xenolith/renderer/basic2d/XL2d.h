@@ -114,11 +114,22 @@ struct VertexSpan {
 };
 
 struct alignas(16) VertexData : public Ref {
+	struct Bounds {
+		Rect box;
+		uint64_t unresolved = 0;
+	};
+
 	Vector<Vertex> data;
 	Vector<uint32_t> indexes;
 	DataIdentity identity;
 
-	bool getBounds(Rect &out) const;
+	Bounds getBounds(const core::DataAtlas *atlas) const;
+
+	// The last getBounds, valid for the generation and the atlas (DataAtlas::getSerial, 0 - none)
+	// it was computed for.
+	mutable Bounds cachedBounds;
+	mutable uint64_t cachedBoundsAtlas = 0;
+	mutable uint32_t cachedBoundsGeneration = maxOf<uint32_t>();
 };
 
 struct InstanceVertexData {

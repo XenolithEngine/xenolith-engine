@@ -258,7 +258,15 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
 	// from the kernel rather than from tl_self is the same argument the hosted
 	// RTOS branch above makes: a thread the libc did not create still has to
 	// answer correctly.
-	return (__SPRT_ID(pid_t))__el0_gettid();
+	//
+	// Asked once per thread and kept in TLS: every rmutex lock takes the owner's
+	// tid, and the kiosk made ~90 of these system calls a frame (A3). A thread's
+	// id never changes, and a new thread's TLS block starts at zero.
+	static thread_local __SPRT_ID(pid_t) tl_kernel_tid = 0;
+	if (tl_kernel_tid == 0) {
+		tl_kernel_tid = (__SPRT_ID(pid_t))__el0_gettid();
+	}
+	return tl_kernel_tid;
 #else
 	auto t = __sprt_pthread_self_noattach_np();
 	if (t) {
@@ -350,6 +358,7 @@ __SPRT_C_FUNC void __SPRT_ID(qsort_impl)(void *array, size_t n, size_t size,
 	qsort(array, n, size, comparator);
 }
 
+#if !SPRT_EMBOX
 __SPRT_C_FUNC void *__SPRT_ID(malloc_impl)(size_t size) __SPRT_NOEXCEPT { return ::malloc(size); }
 
 __SPRT_C_FUNC void *__SPRT_ID(calloc_impl)(size_t n, size_t size) __SPRT_NOEXCEPT {
@@ -394,6 +403,16 @@ __SPRT_C_FUNC void __SPRT_ID(local_free)(void *value, size_t size) __SPRT_NOEXCE
 	return ::free(value);
 #endif
 }
+
+#else // !SPRT_EMBOX
+
+__SPRT_C_FUNC void __sprt_embox_kernel_free(void *ptr) { ::free(ptr); }
+
+__SPRT_C_FUNC void *__sprt_embox_kernel_realloc(void *ptr, size_t size) {
+	return ::realloc(ptr, size);
+}
+
+#endif // !SPRT_EMBOX
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(abort_impl)(void) { ::abort(); }
 

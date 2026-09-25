@@ -109,6 +109,32 @@ public:
 	// Native surface backend for this window (Display = direct KMS / embed).
 	sprt::window::SurfaceBackend getSurfaceBackend() const;
 
+	/* VIRTUAL WINDOWS (WindowCreationFlags::Virtual): no OS window behind it, its image is read by a
+	compositor in this process - see sprt::window::VirtualWindow. What the window system decides for
+	any other window, the compositor decides here, through the three calls below. Any thread. */
+
+	// Swapchain images of a virtual window: two compositor frames in flight may each hold a published
+	// image, one is being rendered and one is published and not yet taken.
+	static constexpr uint32_t VirtualSwapchainImageCount = 4;
+
+	// A constant field of WindowInfo, so it is safe on any thread.
+	bool isVirtual() const;
+
+	// Raise or drop the state a window manager owns (VirtualWindow::ManagedState: focus, pointer,
+	// minimized, input devices). Ignored, with a warning, on a window that is not virtual.
+	void setVirtualState(core::WindowState mask, bool value);
+
+	// Claim (true) or release the window's frames. Claimed, a frame starts only on emitDisplayLink;
+	// released, the window renders on demand, like a headless one.
+	void setExternalDisplayLink(bool value);
+
+	// A vblank from the claiming compositor: starts the next frame if the application asked for one.
+	void emitDisplayLink();
+
+	// The frames a compositor reads (see core::PlaneSource); null unless virtual. Lives as long as
+	// the window, across swapchains.
+	virtual core::PlaneSource *getPlaneSource() const override { return _planeSource; }
+
 	core::PresentationEngine *getPresentationEngine() const { return _presentationEngine; }
 
 	Director *getDirector() const { return _director; }
@@ -305,6 +331,11 @@ protected:
 	Rc<ServerAppThread> _application;
 	Rc<Director> _director;
 	NativeWindow *_window = nullptr;
+
+	// The native window's info, pinned: the app thread reads it after the context thread has
+	// released the native window.
+	Rc<WindowInfo> _info;
+
 	Rc<core::PresentationEngine> _presentationEngine;
 
 	// Taken off WindowInfo::appData in init() (context thread), handed to the app thread in end()
@@ -320,6 +351,7 @@ protected:
 
 	// Built lazily by getFrameCapture(); app thread only.
 	Rc<FrameCapture> _frameCapture;
+	Rc<core::PlaneSource> _planeSource;
 
 	bool _inCloseRequest = false;
 	bool _syncClose = false;

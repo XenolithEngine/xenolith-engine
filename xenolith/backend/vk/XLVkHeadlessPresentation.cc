@@ -28,6 +28,60 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
 
+/* The one barrier that moves a presented image between its writer and its readers (see
+HeadlessSwapchain). A task of its own, submitted after the frame's fence: the frame is finished by
+then, and nothing else touches the image while the slot is pinned. */
+class PlaneLayoutTask : public core::DeviceQueueTask {
+public:
+	virtual ~PlaneLayoutTask() = default;
+
+	// `toReaders`: PresentSrc -> ShaderReadOnly as the frame is published; otherwise back, as the
+	// last reader lets go.
+	bool init(Rc<Image> &&image, bool toReaders, Function<void(bool)> &&cb) {
+		if (!DeviceQueueTask::init(vk::getQueueFlags(image->getInfo().type))) {
+			return false;
+		}
+		_image = sp::move(image);
+		_toReaders = toReaders;
+		_callback = sp::move(cb);
+		return true;
+	}
+
+	virtual bool handleQueueAcquired(core::Device &, core::DeviceQueue &) override { return true; }
+
+	virtual void fillCommandBuffer(core::Device &, core::CommandBuffer &cbuf) override {
+		auto &buf = static_cast<CommandBuffer &>(cbuf);
+		if (_toReaders) {
+			// What the render pass wrote becomes visible to whatever samples the image.
+			auto barrier = ImageMemoryBarrier(_image, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+					VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+					VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+					VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+					makeSpanView(&barrier, 1));
+		} else {
+			// Every read is done before the image is drawn into again - a partial redraw LOADs it.
+			auto barrier = ImageMemoryBarrier(_image, VK_ACCESS_SHADER_READ_BIT,
+					VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+					VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+			buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+							| VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+					VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, makeSpanView(&barrier, 1));
+		}
+	}
+
+	virtual void handleComplete(bool success) override {
+		if (_callback) {
+			_callback(success);
+		}
+	}
+
+protected:
+	Rc<Image> _image;
+	bool _toReaders = true;
+	Function<void(bool)> _callback;
+};
+
 HeadlessSurface::~HeadlessSurface() { }
 
 bool HeadlessSurface::init(Instance *instance, Extent2 extent, Ref *win) {
@@ -82,7 +136,14 @@ core::SurfaceInfo HeadlessSurface::getSurfaceOptions(const core::Device &, //
 	return info;
 }
 
-HeadlessSwapchain::~HeadlessSwapchain() { invalidateViews(); }
+HeadlessSwapchain::~HeadlessSwapchain() {
+	// A frame still held by a reader outlives this generation; releasing it must not reach into a
+	// ring that no longer exists.
+	if (_slots) {
+		_slots->retire();
+	}
+	invalidateViews();
+}
 
 void HeadlessSwapchain::invalidateViews() {
 	// Mirrors core::Swapchain::SwapchainData::invalidate: the frame cache is told the view is gone
@@ -133,10 +194,12 @@ bool HeadlessSwapchain::init(Device &dev, NotNull<core::Loop> loop, const core::
 	}
 
 	_acquired.resize(imageCount, false);
+	_slots = Rc<core::PlaneSlotTable>::create(imageCount);
+	_loop = loop;
 
-	// The images are freshly allocated with undefined content, so the first frame into each index
-	// must report full damage. Image indexes here are object ids, not 0..N-1, so computeRedrawArea
-	// always falls back to a full redraw.
+	// The images are freshly allocated with undefined content, so the first frame into each slot
+	// must report full damage. The tracker is keyed by slot (SwapchainImage::getSwapchainSlot), not
+	// by these images' object ids.
 	_damage.resize(imageCount);
 
 	_presentMode = presentMode;
@@ -163,7 +226,8 @@ auto HeadlessSwapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Sta
 	auto count = uint32_t(_images.size());
 	for (uint32_t i = 0; i < count; ++i) {
 		auto index = (_nextIndex + i) % count;
-		if (_acquired[index]) {
+		// A pinned slot holds a frame somebody is still reading.
+		if (_acquired[index] || _slots->isPinned(index)) {
 			continue;
 		}
 
@@ -190,6 +254,9 @@ Status HeadlessSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 		return Status::ErrorCancelled;
 	}
 
+	Rc<Image> published;
+	uint32_t publishedSlot = maxOf<uint32_t>();
+
 	sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
 
 	if (image) {
@@ -202,8 +269,19 @@ Status HeadlessSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 				// This is now "what is on screen": the screenshot command reads it back directly
 				// instead of rendering another frame.
 				_lastPresentedIndex = i;
+
+				if (_planeSource && _slots->pin(i)) {
+					published = static_cast<Image *>(_images[i].image.get());
+					publishedSlot = i;
+				}
 				break;
 			}
+		}
+
+		// The per-frame storage lets go of the slot here: without it, its destructor would
+		// invalidate the slot again later - by then possibly a different frame's.
+		if (image->isSwapchainImage()) {
+			static_cast<core::SwapchainImage *>(image)->setPresented();
 		}
 	}
 
@@ -213,7 +291,54 @@ Status HeadlessSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 	++_presentedFrames;
 	_presentTime = sp::platform::clock(ClockType::Monotonic);
 
+	lock.unlock();
+
+	if (published) {
+		publishPlaneFrame(publishedSlot, sp::move(published));
+	}
+
 	return Status::Ok;
+}
+
+void HeadlessSwapchain::attachPlaneSource(NotNull<core::PlaneSource> source) {
+	_planeSource = source.get();
+	_planeSource->setSlotTable(Rc<core::PlaneSlotTable>(_slots));
+}
+
+void HeadlessSwapchain::publishPlaneFrame(uint32_t slot, Rc<Image> &&image) {
+	auto loop = Rc<core::Loop>(_loop);
+	auto device = Rc<Device>(static_cast<Device *>(_object.device));
+	auto source = _planeSource;
+	auto slots = _slots;
+	auto serial = source->acquireSerial();
+
+	/* The way back, run by whoever drops the last reference. Everything it needs is captured: the
+	frame can outlive this swapchain (a resize) and be let go from any thread. A retired generation
+	has no ring to return the image to, and a lost device runs no tasks. */
+	auto release = [loop, device, slots, image, slot] {
+		loop->performOnThread([loop, device, slots, image, slot]() mutable {
+			if (slots->isRetired() || device->isDeviceLost() || !loop->isRunning()) {
+				slots->unpin(slot);
+				return;
+			}
+			device->runTask(*loop,
+					Rc<PlaneLayoutTask>::create(sp::move(image), false,
+							[slots, slot](bool) { slots->unpin(slot); }));
+		});
+	};
+
+	// Published only once readable: the frame is announced after its image reached ShaderReadOnly.
+	device->runTask(*loop,
+			Rc<PlaneLayoutTask>::create(Rc<Image>(image), true,
+					[source, serial, slot, image, release = sp::move(release)](
+							bool success) mutable {
+		auto frame = Rc<core::PlaneFrame>::create(serial, slot, Rc<core::ImageObject>(image.get()),
+				sp::move(release));
+		if (success) {
+			source->publish(sp::move(frame));
+		}
+		// On failure the frame goes away here, and its release returns the slot.
+	}));
 }
 
 void HeadlessSwapchain::invalidateImage(const core::ImageStorage *image, bool) {
@@ -320,6 +445,10 @@ bool HeadlessPresentationEngine::createSwapchain(const core::SurfaceInfo &info,
 		return false;
 	}
 
+	if (auto source = _window->getPlaneSource()) {
+		_swapchain.get_cast<HeadlessSwapchain>()->attachPlaneSource(source);
+	}
+
 	auto newConstraints = _window->exportConstraints(_serial);
 	newConstraints.extent = Extent3(cfg.extent, 1);
 	newConstraints.transform = cfg.transform;
@@ -348,6 +477,22 @@ bool HeadlessPresentationEngine::createSwapchain(const core::SurfaceInfo &info,
 
 void HeadlessPresentationEngine::captureScreenshot(
 		Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) {
+	// A window read as a plane is captured as the compositor sees it: the latest published frame,
+	// in ShaderReadOnly, held until the copy is done (the read hands the layout back).
+	if (auto source = _window->getPlaneSource()) {
+		if (auto frame = source->getLatest()) {
+			auto image = Rc<core::ImageObject>(frame->getImage());
+			_loop->captureImage(
+					[cb = sp::move(cb), frame = sp::move(frame)](const core::ImageInfoData &info,
+							BytesView view) mutable {
+				cb(info, view);
+				frame = nullptr;
+			},
+					image, core::AttachmentLayout::ShaderReadOnlyOptimal);
+			return;
+		}
+	}
+
 	auto swapchain = _swapchain.get_cast<HeadlessSwapchain>();
 	auto image = swapchain ? swapchain->getLastPresentedImage() : nullptr;
 
@@ -357,11 +502,27 @@ void HeadlessPresentationEngine::captureScreenshot(
 		return;
 	}
 
-	// The pseudo-swapchain image still holds the last presented frame and carries TransferSrc, so
-	// it can be read back as-is. A swapchain image's render pass leaves it in PresentSrc (the
-	// PresentSrc -> TransferSrcOptimal remap in FrameQueue only applies to non-swapchain images).
-	_loop->captureImage(sp::move(cb), Rc<core::ImageObject>(image),
-			core::AttachmentLayout::PresentSrc);
+	/* The pseudo-swapchain image still holds the last presented frame and carries TransferSrc, so
+	it can be read back as-is. A swapchain image's render pass leaves it in PresentSrc (the
+	PresentSrc -> TransferSrcOptimal remap in FrameQueue only applies to non-swapchain images).
+
+	The slot is pinned for the copy: the read moves the layout, and the next frame into the slot
+	would start from PRESENT_SRC and LOAD it. A slot already pinned (another read in flight) is read
+	as it is. */
+	Rc<core::PlaneSlotTable> slots;
+	auto slot = swapchain->getLastPresentedSlot();
+	if (swapchain->getSlotTable()->pin(slot)) {
+		slots = swapchain->getSlotTable();
+	}
+	_loop->captureImage(
+			[cb = sp::move(cb), slots = sp::move(slots), slot](const core::ImageInfoData &info,
+					BytesView view) mutable {
+		cb(info, view);
+		if (slots) {
+			slots->unpin(slot);
+		}
+	},
+			Rc<core::ImageObject>(image), core::AttachmentLayout::PresentSrc);
 }
 
 } // namespace stappler::xenolith::vk

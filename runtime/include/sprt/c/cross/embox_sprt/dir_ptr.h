@@ -19,15 +19,14 @@
 #include <sprt/c/bits/__sprt_int64_t.h>
 
 // NAME_MAX is an Embox module option (embox.compat.libc.limits: name_max), so the
-// size of d_name is a config value - read it from <limits.h> rather than hardcode
-// it, the way nuttx_sprt reads CONFIG_NAME_MAX. <limits.h> resolves it through the
-// generated config header; without that it silently falls back to 32, which would
-// produce a struct that compiles but does not match the libc that was built.
-#include <limits.h>
 
-#ifndef NAME_MAX
-#error "Embox NAME_MAX is not visible - struct dirent would get the wrong size"
+#include <config/embox/compat/libc/limits.h>
+
+#ifndef OPTION_NUMBER_embox__compat__libc__limits__name_max
+#error "Embox name_max option is not visible - struct dirent would get the wrong size"
 #endif
+
+#define __SPRT_EMBOX_DIRENT_NAME_MAX OPTION_NUMBER_embox__compat__libc__limits__name_max
 
 // Opaque: Embox's DIR is a complete struct, but sprt only ever passes it around by
 // pointer, so the incomplete type is enough and keeps the handle from being copied
@@ -36,7 +35,7 @@ typedef struct __SPRT_DIR __SPRT_ID(DIR);
 
 struct __SPRT_DIRENT_NAME {
 	__SPRT_ID(uint64_t) d_ino; // Embox: unsigned long
-	char d_name[NAME_MAX];
+	char d_name[__SPRT_EMBOX_DIRENT_NAME_MAX];
 	__SPRT_ID(int64_t) d_off; // Embox: long
 	__SPRT_ID(uint16_t) d_reclen;
 	__SPRT_ID(uint8_t) d_type;

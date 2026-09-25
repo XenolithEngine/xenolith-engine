@@ -43,6 +43,7 @@
 #include <sprt/runtime/stringview.h>
 
 #include "data/wordbreak_test.cc"
+#include "../tests.h"
 
 namespace sprt::unicode::detail {
 
@@ -96,7 +97,7 @@ void performWordBreakConformanceTests() {
 		if (!ok) {
 			++failures;
 			if (reported++ < MaxReported) {
-				sprt::cerr << "  FAIL: word boundaries differ\n";
+				sprt::cerr << sprt::test::failed("  FAIL: word boundaries differ\n");
 				printCase(c, got, gotCount);
 			}
 		}

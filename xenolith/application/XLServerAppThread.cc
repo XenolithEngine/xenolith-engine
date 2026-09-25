@@ -144,6 +144,48 @@ void ServerAppThread::setClientWindowHandler(ClientWindowHandler &&handler) {
 
 void ServerAppThread::setMaxClientWindows(uint32_t perSession) { _maxClientWindows = perSession; }
 
+void ServerAppThread::addBearerKey(BytesView key, StringView label, bool singleUse) {
+	_labelledKeys.add(key, label, singleUse);
+}
+
+bool ServerAppThread::removeBearerKey(StringView label) { return _labelledKeys.remove(label); }
+
+void ServerAppThread::setRequireLabelledKeys(bool value) { _requireLabelledKeys = value; }
+
+void ServerAppThread::setAppMessageHandler(AppMessageHandler &&handler) {
+	_appMessageHandler = sp::move(handler);
+	updateServerInfo(); // the feature bit follows the handler
+}
+
+bool ServerAppThread::sendAppNotification(NotNull<RemoteSession> session, const Value &val) {
+	if (session->isClosed()
+			|| !session->getPeerInfo().supports(remote::Domain::Global,
+					toInt(remote::GlobalCode::AppNotify))) {
+		return false;
+	}
+	return session->remoteSendCbor(remote::Domain::Global, toInt(remote::GlobalCode::AppNotify),
+			val);
+}
+
+bool ServerAppThread::sendAppRequest(NotNull<RemoteSession> session, const Value &val,
+		Function<void(Status, Value &&)> &&cb, uint64_t timeoutUs) {
+	if (session->isClosed()
+			|| !session->getPeerInfo().supports(remote::Domain::Global,
+					toInt(remote::GlobalCode::AppRequest))) {
+		return false;
+	}
+	return session->sendMessageWithReply(remote::Domain::Global,
+			toInt(remote::GlobalCode::AppRequest), val,
+			[cb = sp::move(cb)](const remote::MessageHeader &h, BytesView payload) {
+		auto st = getAppReplyStatus(h);
+		cb(st, sprt::status::isSuccessful(st) ? data::read<Interface>(payload) : Value());
+	}, timeoutUs, false);
+}
+
+void ServerAppThread::setSessionObserver(SessionObserver &&observer) {
+	_sessionObserver = sp::move(observer);
+}
+
 size_t ServerAppThread::getClientWindowCount(uint64_t session) const {
 	size_t ret = 0;
 	for (auto &it : _clientWindows) {
@@ -213,6 +255,9 @@ void ServerAppThread::createClientWindow(NotNull<RemoteSession> session,
 			info->id.empty() ? StringView("window") : StringView(info->id));
 	info->capabilities = sprt::window::WindowCapabilities::None;
 	info->state = core::WindowState::None;
+	// Whether the window is a plane of this server's compositor is the server's decision alone; the
+	// handler below may set it.
+	info->flags &= ~sprt::window::WindowCreationFlags::Virtual;
 	info->icon = nullptr;
 	info->appData = nullptr;
 
@@ -296,6 +341,11 @@ void ServerAppThread::updateServerInfo() {
 	// Per-window values travel in the announce.
 	bool first = true;
 	for (auto w : _windows) {
+		// A virtual window is a plane of this server's compositor: it says nothing about the window
+		// system, and has no subwindows.
+		if (w->isVirtual()) {
+			continue;
+		}
 		if (first) {
 			info.wm = remote::toWindowSubsystem(w->getSurfaceBackend());
 			first = false;
@@ -312,6 +362,9 @@ void ServerAppThread::updateServerInfo() {
 	}
 	if (_clientWindowHandler) {
 		info.features |= remote::PeerFeatures::ClientWindows;
+	}
+	if (_appMessageHandler) {
+		info.features |= remote::PeerFeatures::AppMessages;
 	}
 	if (hasClipboard()) {
 		info.features |= remote::PeerFeatures::Clipboard;
@@ -502,11 +555,20 @@ Rc<Director> ServerAppThread::handleAppWindowCreated(NotNull<AppWindow> w,
 		const core::FrameConstraints &c) {
 	log::source().info("AppThread", "handleAppWindowCreated");
 
-	addListener(w, [w](const UpdateTime &, bool wakeup) {
-		if (wakeup) {
+	const bool isVirtual = w->isVirtual();
+	addListener(w, [w, isVirtual](const UpdateTime &, bool wakeup) {
+		/* The window's own director asks for its frames: on a wakeup, and on the heartbeat for a
+		scene that changed or moves. A window a remote client took over is asked for on a wakeup
+		only; the client asks for the rest itself. */
+		if (auto d = dynamic_cast<Director *>(w->getRenderClient())) {
+			d->handleAppUpdate(wakeup);
+		} else if (wakeup) {
 			w->setReadyForNextFrame();
+		}
 
-			// force display link to update views
+		// force display link to update views. Not on a virtual window: once a compositor claims
+		// it, a DisplayLink from anywhere else is a frame the compositor did not ask for.
+		if (wakeup && !isVirtual) {
 			w->update(core::PresentationUpdateFlags::DisplayLink);
 		}
 	});
@@ -662,7 +724,7 @@ bool ServerAppThread::setCompressionDictionary(BytesView d) {
 }
 
 bool ServerAppThread::hasCredentials() const {
-	if (!_expectedKey.empty()) {
+	if (!_expectedKey.empty() || !_labelledKeys.empty()) {
 		return true;
 	}
 	// A transport that establishes who the peer is does not consult the key.
@@ -811,6 +873,10 @@ void ServerAppThread::resetSession(RemoteSession *session) {
 	auto keep = sp::move(*it);
 	_sessions.erase(it);
 
+	if (_sessionObserver) {
+		_sessionObserver(keep.get(), SessionEvent::Closed);
+	}
+
 	/* Windows this session asked us to open exist for it alone, so they go with it. One that has
 	not arrived yet is marked instead; handleAppWindowCreated closes it on arrival.
 
@@ -855,8 +921,14 @@ void ServerAppThread::resetSession(RemoteSession *session) {
 		released = !_sharedObjects->releaseSession(session->getId()).empty();
 	}
 
+	/* A font endpoint serves one session and is not handed to the next: its FontLibrary adopted
+	this client's FaceIds, and a kept face would answer the next client's CharIds with its glyphs
+	keyed under another id - blank text. A fresh endpoint waits for the next client instead. */
 	if (auto fontServer = session->close()) {
-		_idleFontServers.emplace_back(sp::move(fontServer));
+		fontServer->invalidate();
+	}
+	if (_createFontServer && _idleFontServers.empty()) {
+		_idleFontServers.emplace_back(_createFontServer(this, _fontComponent, _fontStore));
 	}
 
 	for (auto assignment = _windowAssignments.begin(); assignment != _windowAssignments.end();) {
@@ -917,8 +989,29 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			//log::source().info("AppThread", "received pong (serial ", h.serial, ")");
 			session->handlePong(sp::platform::clock(ClockType::Monotonic));
 			return true;
+		case remote::GlobalCode::AppRequest:
+		case remote::GlobalCode::AppNotify: {
+			// A reply that came after its waiter expired is not a new request.
+			if (remote::isReplyOrError(h)) {
+				return true;
+			}
+			auto isRequest = remote::GlobalCode(h.code) == remote::GlobalCode::AppRequest;
+			if (!_appMessageHandler) {
+				if (isRequest && conn) {
+					conn->sendError(remote::Domain::Global,
+							toInt(remote::GlobalError::NotImplemented), h.serial);
+				}
+				return true;
+			}
+			Rc<AppReply> reply;
+			if (isRequest) {
+				reply = Rc<AppReply>::create(session, session, h.serial);
+			}
+			_appMessageHandler(session, data::read<Interface>(payload), sp::move(reply));
+			return true;
+		}
 		default:
-			if (conn) {
+			if (conn && !remote::isReplyOrError(h)) {
 				conn->sendError(remote::Domain::Global, toInt(remote::GlobalError::NotImplemented),
 						h.serial);
 			}
@@ -1041,11 +1134,18 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			return true;
 		};
 		case remote::WindowCode::ReadyForNextFrame: {
-			// client -> server: the client's scene wants the next frame (active actions/input);
-			// schedule it on the window's PresentationEngine. Notification only, no reply.
+			// client -> server: the client's scene wants the next frame; schedule it on the window's
+			// PresentationEngine. The answer is the frame itself, or FrameDeclined: the client
+			// sends nothing more until one of them arrives.
 			auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
-			if (auto w = resolveWindow(windowId)) {
+			auto w = resolveWindow(windowId);
+			session->countFrameRequest(w == nullptr);
+			if (w) {
 				w->setReadyForNextFrame();
+			} else if (session->getPeerInfo().supports(remote::Domain::Window,
+							   toInt(remote::WindowCode::FrameDeclined))) {
+				session->remoteSendCbor(remote::Domain::Window,
+						toInt(remote::WindowCode::FrameDeclined), Value(windowId));
 			}
 			return true;
 		};
@@ -1207,6 +1307,12 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 								: Status::Declined);
 				break;
 			case remote::WindowControlOp::SetFullscreen: {
+				// Where a virtual window is and how big is its window manager's decision (this server),
+				// never the client's.
+				if (w->isVirtual()) {
+					reply(Status::Declined);
+					break;
+				}
 				auto info = remote::deserializeFullscreenInfo(val.getValue("fs"));
 				if (!w->setFullscreen(sp::move(info), [reply](Status st) { reply(st); }, this)) {
 					reply(Status::Declined);
@@ -1224,6 +1330,10 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 				reply(Status::Ok);
 				break;
 			case remote::WindowControlOp::SetWindowExtent: {
+				if (w->isVirtual()) {
+					reply(Status::Declined);
+					break;
+				}
 				auto &ext = val.getValue("ext");
 				w->setWindowExtent(
 						Extent2(uint32_t(ext.getInteger(0)), uint32_t(ext.getInteger(1))),
@@ -1344,8 +1454,15 @@ void ServerAppThread::stepPendingHandshakes() {
 				pending.refusal = remote::GlobalError::Busy;
 				handshake.reply(pending.refusal, BytesView());
 			} else {
-				auto requireKey = !transport->hasCaps(remote::TransportCaps::PeerAuthenticated);
+				// A labelled key identifies its client, so it counts on every transport; without
+				// one the transport's own authentication stands in for the key.
+				auto labelled = _labelledKeys.match(handshake.getPresentedKey(), pending.label);
+				auto requireKey =
+						!labelled && !transport->hasCaps(remote::TransportCaps::PeerAuthenticated);
 				auto status = handshake.negotiate(_expectedKey, _dictionary, requireKey);
+				if (status == remote::GlobalError::Ok && _requireLabelledKeys && !labelled) {
+					status = remote::GlobalError::AuthFailed;
+				}
 				handshake.reply(status, _dictionary);
 				if (status == remote::GlobalError::Ok) {
 					pending.holdsSlot = true;
@@ -1386,7 +1503,7 @@ void ServerAppThread::stepPendingHandshakes() {
 				recordHandshakeResult(entry.backoffKey, true, now);
 				entry.connection->adoptHandshake();
 				log::source().info("AppThread", "client authenticated");
-				installRemoteClient(sp::move(entry.connection));
+				installRemoteClient(sp::move(entry.connection), entry.label);
 				continue;
 			}
 			log::source().error("AppThread", "client handshake failed while replying; dropping");
@@ -1395,10 +1512,14 @@ void ServerAppThread::stepPendingHandshakes() {
 	}
 }
 
-void ServerAppThread::installRemoteClient(Rc<remote::ServerConnection> &&conn) {
+void ServerAppThread::installRemoteClient(Rc<remote::ServerConnection> &&conn, StringView label) {
 	auto session = Rc<RemoteSession>::create(this, _nextSessionId++, sp::move(conn));
 	if (!session) {
 		return;
+	}
+	if (!label.empty()) {
+		session->setLabel(label);
+		_labelledKeys.consume(label);
 	}
 
 	// Wake on the connection's own readiness; otherwise the session advances only on the 1s app
@@ -1548,6 +1669,9 @@ void ServerAppThread::handleClientInfo(RemoteSession *session, const remote::Mes
 	if (_sharedObjects) {
 		session->getRenderClient()->announce(_sharedObjects);
 	}
+	if (_sessionObserver) {
+		_sessionObserver(session, SessionEvent::Started);
+	}
 }
 
 bool ServerAppThread::takeoverSharedWindow(uint64_t windowId, RemoteSession *session) {
@@ -1565,6 +1689,25 @@ bool ServerAppThread::takeoverSharedWindow(uint64_t windowId, RemoteSession *ses
 		return false;
 	}
 	w->setRenderClient(session->getRenderClient());
+
+	/* The window's state as it is now, as the one event a local window gets when it maps. The
+	announce carries a state too, but it is the one the window had when it was first shared - usually
+	before the map event reached this thread - and a state change that happened before the client
+	attached was forwarded to nobody. Without this the client's mirror stays empty until the next
+	change. */
+	auto state = w->getWindowState();
+	if (state != core::WindowState::None) {
+		core::InputEventData event{
+			0,
+			core::InputEventName::WindowState,
+			{.input = {core::InputMouseButton::None, core::InputModifier::None, nan(), nan()}},
+			{.window = {state, state}},
+		};
+		Vector<core::InputEventData> events;
+		events.emplace_back(event);
+		session->getRenderClient()->handleInputEvents(windowId, sp::move(events));
+	}
+
 	// Restart presentation for the new client (clears a stale display-link barrier, pumps a frame).
 	w->resetForRenderClientChange();
 	return true;
@@ -1596,8 +1739,9 @@ void ServerAppThread::loadExtensions() {
 
 		// Network font endpoints (remote::Domain::Font), one per session: each a separate
 		// controller with its own FontLibrary and atlas, so client FaceIds never collide with the
-		// local controller's or each other's. One is created now, so the first client finds its
-		// atlas compiled.
+		// local controller's or each other's - nor with an earlier client's, since an endpoint is
+		// dropped with its session. One is created now, so the first client finds its atlas
+		// compiled.
 		_createFontServer = SharedModule::acquireTypedSymbol<
 				decltype(&font::RemoteFontServerEndpoint::createServerFontEndpoint)>(
 				buildconfig::MODULE_XENOLITH_FONT_NAME,

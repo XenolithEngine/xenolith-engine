@@ -180,7 +180,7 @@ bool MenuLayout::openPopup(bool overlay) {
 		return _popup != nullptr;
 	}
 
-	auto window = getAppWindow();
+	auto window = getParentWindow();
 	if (!window) {
 		return false;
 	}
@@ -312,8 +312,8 @@ void MenuLayout::updateInlineMenu() {
 	_menuPanel->markLayoutChildrenDirty();
 }
 
-AppWindow *MenuLayout::getAppWindow() const {
-	return _director ? dynamic_cast<AppWindow *>(_director->getRenderServer()) : nullptr;
+core::RenderServerChannel *MenuLayout::getParentWindow() const {
+	return _director ? _director->getRenderServer() : nullptr;
 }
 
 ui::MenuSourceItem *MenuLayout::getItem(const Value &args) const {

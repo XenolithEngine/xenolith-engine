@@ -440,7 +440,8 @@ with Image.open(sys.argv[1]) as i: print("%d %d" % i.size)' "$act")"
 		# supply, would make this a run against itself. The app reports both, so ask it.
 		if [[ -n "$TILES" ]]; then
 			subject_label="tiles"
-			line="$(grep -o 'threads=[0-9]* .*tiles/frame=[0-9.]*' "$WORK/act-$name.log" | tail -1)"
+			# threads= is an average over the frames and prints as a decimal ("4.0").
+			line="$(grep -o 'threads=[0-9.]* .*tiles/frame=[0-9.]*' "$WORK/act-$name.log" | tail -1)"
 			gotTiles="$(sed -n 's/.*tiles\/frame=\([0-9.]*\).*/\1/p' <<<"$line")"
 			gotThreads="$(sed -n 's/.*threads=\([0-9]*\).*/\1/p' <<<"$line")"
 			if [[ -z "$gotTiles" ]] || (( $(python3 -c "print(1 if ${gotTiles:-0} > 1.0 else 0)") == 0 )); then

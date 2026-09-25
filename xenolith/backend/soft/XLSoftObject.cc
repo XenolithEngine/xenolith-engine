@@ -55,11 +55,13 @@ bool Buffer::init(Device &dev, const core::BufferInfo &info, BytesView initialDa
 		return setup(dev, info, nullptr);
 	}
 
-	auto cb = Callback<size_t(uint8_t *, uint64_t)>([&](uint8_t *mem, uint64_t size) -> size_t {
+	// A named functor: a Callback does not own the lambda it is built from.
+	auto fill = [&](uint8_t *mem, uint64_t size) -> size_t {
 		auto bytes = sprt::min(uint64_t(initialData.size()), size);
 		sprt::memcpy(mem, initialData.data(), size_t(bytes));
 		return size_t(bytes);
-	});
+	};
+	auto cb = Callback<size_t(uint8_t *, uint64_t)>(fill);
 	return setup(dev, info, &cb);
 }
 
@@ -68,9 +70,10 @@ bool Buffer::init(Device &dev, const core::BufferData &data) {
 		return setup(dev, data, nullptr);
 	}
 
-	auto cb = Callback<size_t(uint8_t *, uint64_t)>([&](uint8_t *mem, uint64_t size) -> size_t {
+	auto fill = [&](uint8_t *mem, uint64_t size) -> size_t {
 		return data.writeData(mem, size_t(size));
-	});
+	};
+	auto cb = Callback<size_t(uint8_t *, uint64_t)>(fill);
 	return setup(dev, data, &cb);
 }
 
@@ -166,9 +169,10 @@ bool Image::init(Device &dev, const core::ImageData &data) {
 			return false;
 		}
 	} else {
-		auto cb = Callback<size_t(uint8_t *, uint64_t)>([&](uint8_t *mem, uint64_t size) -> size_t {
+		auto fill = [&](uint8_t *mem, uint64_t size) -> size_t {
 			return data.writeData(mem, size_t(size));
-		});
+		};
+		auto cb = Callback<size_t(uint8_t *, uint64_t)>(fill);
 		if (!setup(dev, data, &cb)) {
 			return false;
 		}
@@ -230,9 +234,6 @@ bool Fence::init(Device &dev, core::FenceType type) {
 }
 
 Status Fence::doCheckFence(bool lockfree) {
-	// Work submitted to this backend has already completed by the time anyone asks: rasterization
-	// runs to completion inside submit. The only unsignalled state is between reset and the next
-	// submit, and no caller waits there.
 	return _signaled.load() ? Status::Ok : Status::Suspended;
 }
 

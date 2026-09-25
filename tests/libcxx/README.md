@@ -90,6 +90,29 @@ tests/libcxx/run-wasm.sh numerics -v
 tests/libcxx/run-all-wasm.sh                         # full sweep -> dashboard lines
 ```
 
+### Embox user mode (QEMU guests)
+
+`run-embox-user.sh` builds for `aarch64-embox-none-elf+user` and runs each test as
+a static EL0 program on a pool of Embox guests under QEMU, kept up by
+`xenolith-os/scripts/embox-exec-pool.py`: each guest runs `xlrund`, which takes a
+program, its arguments and its input files over TCP and answers with how it ended
+and what it printed. A guest whose program does not end is rebooted. The pool is
+started once, apart:
+
+```sh
+../xenolith-os/scripts/embox-exec-pool.py build            # the image, networked
+../xenolith-os/scripts/embox-exec-pool.py serve -n 4 &     # four guests; --smp 4 for four cores each
+tests/libcxx/run-embox-user.sh utilities/optional
+tests/libcxx/run-all-embox-user.sh                         # full sweep -> dashboard lines
+../xenolith-os/scripts/embox-exec-pool.py stop
+```
+
+A scope may also be a directory of one's own `*.pass.cpp` (a probe), and
+`SPRT_KEEP_EXE=1` keeps the linked programs for `llvm-symbolizer`. Runs are
+serialised per guest by `SPRT_EXEC_SLOTS` (the driver sets it to the pool size).
+Emulated, a test can take a minute: the pool allows 300 s
+(`EMBOX_EXEC_TIMEOUT`) and lit 600 s (`SPRT_RUN_TIMEOUT`).
+
 ## How it works
 
 1. The driver builds the sprt runtime via the existing `tests/libc` build

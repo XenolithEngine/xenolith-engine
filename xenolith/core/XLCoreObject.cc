@@ -25,7 +25,7 @@
 #include "XLCoreInfo.h"
 #include "XLCoreDevice.h"
 #include "XLCoreDeviceQueue.h"
-#if !SPRT_WASM && !SPRT_HOSTED_RTOS
+#if !SPRT_WASM && !SPRT_HOSTED_RTOS && !SPRT_EMBOX_USER
 #include "SPIRV-Reflect/spirv_reflect.h"
 #endif
 
@@ -94,7 +94,10 @@ inline uint32_t hash(uint32_t k, uint32_t capacity) {
 	return k & (capacity - 1);
 }
 
+static sprt::atomic<uint64_t> s_DataAtlasSerial = 1;
+
 bool DataAtlas::init(Type t, uint32_t count, uint32_t objectSize, Extent2 imageSize) {
+	_serial = s_DataAtlasSerial.fetch_add(1);
 	_type = t;
 	_objectSize = objectSize;
 	_imageExtent = imageSize;
@@ -299,9 +302,9 @@ void CommandBuffer::bindFramebuffer(Framebuffer *fb) {
 }
 
 String Shader::inspectShader(SpanView<uint32_t> data) {
-#if SPRT_WASM || SPRT_HOSTED_RTOS
+#if SPRT_WASM || SPRT_HOSTED_RTOS || SPRT_EMBOX_USER
 	(void)data;
-	return String(); // no SPIR-V reflection on wasm (WGSL) or NuttX (soft rasterizer)
+	return String(); // no SPIR-V reflection on wasm (WGSL), NuttX or Embox EL0 (soft rasterizer)
 #else
 	SpvReflectShaderModule shader;
 

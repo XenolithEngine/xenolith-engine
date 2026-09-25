@@ -50,4 +50,15 @@ THE SOFTWARE.
 
 #endif
 
+// Where the libc's own error numbers end, for a C++ library to tell a code the
+// libc knows from any other (libc++'s config_elast.h: system_category maps a
+// code above it to itself instead of to generic_category). Embox user mode
+// speaks Linux's errno numbers -- its libc is musl-based -- and so takes the
+// value libc++ gives Linux and musl. A BSD libc defines ELAST the same way.
+// Outside the branches above: the runtime's own libc++ sources are a hosted
+// build and take the first one.
+#if defined(__EMBOX_USER__) && !defined(ELAST)
+#define ELAST 4095
+#endif
+
 #endif // CORE_RUNTIME_INCLUDE_LIBC_ERRNO_H_

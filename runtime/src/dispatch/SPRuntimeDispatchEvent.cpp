@@ -97,7 +97,7 @@
 
 // Portable stat-polling file-watch (a repeating reactor timer diffing stat
 // snapshots) for backends without a native filesystem-notification primitive
-// (CFRunLoop, wasm). Linux/Android use inotify, Windows uses
+// (CFRunLoop, wasm, Embox). Linux/Android use inotify, Windows uses
 // ReadDirectoryChangesW, kqueue uses EVFILT_VNODE instead.
 #include "platform/fd/SPEventStatWatch.cc"
 

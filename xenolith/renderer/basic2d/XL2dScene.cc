@@ -223,8 +223,16 @@ bool Scene2d::buildQueue(NotNull<AppThread> app, QueueInfo &queueInfo,
 				: core::QueueDamageFlags::None;
 	}
 
+	// A remote client has no device and no loop: its queues are the server's, compiled there.
+	auto loop = static_cast<core::Loop *>(app->getGlLoop());
+	if (!loop || !loop->getInstance()) {
+		log::source().error("Scene2d", "buildQueue: no graphics loop on this thread (a remote "
+				"client builds no queues of its own)");
+		return false;
+	}
+
 	[[maybe_unused]]
-	auto api = static_cast<core::Loop *>(app->getGlLoop())->getInstance()->getApi();
+	auto api = loop->getInstance()->getApi();
 	bool queueBuilt = false;
 
 #if MODULE_XENOLITH_BACKEND_VK

@@ -23,6 +23,7 @@ THE SOFTWARE.
 #include <sprt/cxx/cstring>
 #include <sprt/runtime/stream.h>
 #include <sprt/cxx/unordered_map>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -95,7 +96,7 @@ void performMallocUnorderedMapTests() {
 		if (l.empty()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -106,7 +107,7 @@ void performMallocUnorderedMapTests() {
 		if (l.empty() && l.size() == 0 && l.max_size() > 0) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -121,7 +122,7 @@ void performMallocUnorderedMapTests() {
 		if (l2.size() == 2 && l2.find("key1") != l2.end() && l1 == l2) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -136,7 +137,7 @@ void performMallocUnorderedMapTests() {
 		if (l2.size() == 2 && l1.empty()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -151,7 +152,7 @@ void performMallocUnorderedMapTests() {
 		if (l2.size() == 1 && l2.find("key1") != l2.end()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -166,7 +167,7 @@ void performMallocUnorderedMapTests() {
 		if (l2.size() == 1 && l1.empty()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -179,7 +180,7 @@ void performMallocUnorderedMapTests() {
 		if (result.second && l.size() == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -191,7 +192,7 @@ void performMallocUnorderedMapTests() {
 		if (result.second && l.size() == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -204,7 +205,7 @@ void performMallocUnorderedMapTests() {
 		if (l.size() == 2) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -216,7 +217,7 @@ void performMallocUnorderedMapTests() {
 		if (l.size() == 2) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -228,7 +229,7 @@ void performMallocUnorderedMapTests() {
 		if (result.second && l.size() == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -240,7 +241,7 @@ void performMallocUnorderedMapTests() {
 		if (result.second && l.size() == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -252,7 +253,7 @@ void performMallocUnorderedMapTests() {
 		if (result.second && l.size() == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -267,7 +268,7 @@ void performMallocUnorderedMapTests() {
 		if (it != l.end()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -280,7 +281,7 @@ void performMallocUnorderedMapTests() {
 		if (count == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -293,7 +294,7 @@ void performMallocUnorderedMapTests() {
 		if (contains) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -309,7 +310,7 @@ void performMallocUnorderedMapTests() {
 		if (range.first != range.second && ++it == range.second) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -321,7 +322,7 @@ void performMallocUnorderedMapTests() {
 		if (l.size() == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -334,7 +335,7 @@ void performMallocUnorderedMapTests() {
 		if (strcmp(val.get(""), "value1") == 0) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -347,7 +348,7 @@ void performMallocUnorderedMapTests() {
 		if (load_factor >= 0 && max_load_factor >= 1.0f) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -359,7 +360,7 @@ void performMallocUnorderedMapTests() {
 		if (l.size() >= 0) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -372,7 +373,7 @@ void performMallocUnorderedMapTests() {
 		if (l.empty()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -389,7 +390,7 @@ void performMallocUnorderedMapTests() {
 		if (l1.size() == 1 && l2.size() == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -403,7 +404,7 @@ void performMallocUnorderedMapTests() {
 		if (begin_it != end_it) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -418,7 +419,7 @@ void performMallocUnorderedMapTests() {
 		if (begin_it != end_it) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 

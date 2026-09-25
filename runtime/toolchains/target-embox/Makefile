@@ -267,7 +267,7 @@ $(SPRT_LIB): $(SP_INSTALL_PREFIX)/sysroot/usr/lib/libclang_rt.builtins-$(SP_ARCH
 		STAPPLER_HOST_FILE=$(SP_INSTALL_PREFIX)/host/host.mk \
 		STAPPLER_TARGET_FILE=$(SP_INSTALL_PREFIX)/target.mk \
 		STAPPLER_TARGET=$(SP_TARGET) \
-		LOCAL_MODULES="runtime_libc_wrapper runtime_core runtime" \
+		LOCAL_MODULES="runtime_libc_wrapper runtime_core runtime_malloc runtime" \
 		LOCAL_OUTDIR=$(abspath build/xlsprt) \
 		RELEASE=1
 	@mkdir -p $(dir $@)

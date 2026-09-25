@@ -1,8 +1,9 @@
-// Embox's wide-character types do not match glibc's: mbstate_t is a plain `int`
-// (src/compat/libc/include/wchar.h), wctype_t is an int rather than an unsigned
-// long, and wctrans_t is an int rather than a `const int *`. The wchar wrappers
-// hand these straight to the Embox libc (and outside __SPRT_BUILD they are the
-// types the application declares), so the shapes have to agree.
+// Embox's wide-character types (src/compat/libc/include/wchar.h, wctype.h).
+// wctype_t and wctrans_t are glibc's since the kernel's libc became musl's
+// (xenolith-os BF-54): an unsigned long and a `const int *`. mbstate_t stays a
+// plain `int`. The wchar wrappers hand these straight to the Embox libc (and
+// outside __SPRT_BUILD they are the types the application declares), so the
+// shapes have to agree.
 
 #define __SPRT_MBSTATE_NAME __SPRT_ID(mbstate_t)
 #define __SPRT_MBSTATE_DIRECT 0
@@ -13,12 +14,11 @@
 #endif
 // clang-format on
 
-typedef int __SPRT_ID(wctype_t);
+typedef unsigned long __SPRT_ID(wctype_t);
 
-// Like Darwin and NuttX, Embox's wctrans_t is a plain int (glibc uses const int *);
-// the wctype.h bridge forwards SPRT handles to the platform libc, so the ABI must
+// The wctype.h bridge forwards SPRT handles to the platform libc, so the ABI must
 // match.
-typedef int __SPRT_ID(wctrans_t);
+typedef const int *__SPRT_ID(wctrans_t);
 #define __SPRT_WCTRANS_T_DEFINED 1
 
 #ifdef __cplusplus

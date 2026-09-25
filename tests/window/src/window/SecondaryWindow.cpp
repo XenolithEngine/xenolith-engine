@@ -31,6 +31,8 @@
 
 #include <sprt/runtime/window/window_info.h>
 
+#include <stdlib.h> // getenv for XL_FLAT_QUEUE
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 Rc<WindowSceneInfo> SecondaryWindow::makeSceneInfo(StringView id, ContentBuilder &&builder,
@@ -63,7 +65,7 @@ Rc<WindowSceneInfo> SecondaryWindow::makeSceneInfo(StringView id, ContentBuilder
 
 Rc<WindowSceneInfo> SecondaryWindow::open(NotNull<AppWindow> anyWindow, StringView id, Extent2 size,
 		ContentBuilder &&builder, WindowSceneInfo::CloseCallback &&onClose, Rc<core::Queue> &&queue,
-		sprt::optional<IVec2> origin, bool shareRemote) {
+		sprt::optional<IVec2> origin, bool shareRemote, bool virtualWindow) {
 	auto ctx = anyWindow->getContext();
 	if (!ctx) {
 		return nullptr;
@@ -88,6 +90,10 @@ Rc<WindowSceneInfo> SecondaryWindow::open(NotNull<AppWindow> anyWindow, StringVi
 		// Without the flag the x/y above is indistinguishable from the default (0, 0), so a backend
 		// has no way to tell "put it here" from "you choose".
 		info->flags |= sprt::window::WindowCreationFlags::UsePosition;
+	}
+	if (virtualWindow) {
+		// No OS window: what the scene draws is published for a compositor (core::PlaneSource).
+		info->flags |= sprt::window::WindowCreationFlags::Virtual;
 	}
 	// Same icon as the root window: the `multi-window` layout is where you can see that every
 	// window carries its own, not just the first one.
@@ -139,6 +145,16 @@ bool SecondaryScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChan
 	// two runs impossible to compare. A secondary window exists to be observed, not to animate.
 	setFpsVisible(false);
 	return true;
+}
+
+void SecondaryScene::describeQueue(QueueInfo &info) {
+	// XL_FLAT_QUEUE=1, as for the primary scene: the light queue, the one with partial redraw. It is
+	// also the queue a window manager gives its clients, so a window shared with a client gets it.
+	if (auto value = ::getenv("XL_FLAT_QUEUE")) {
+		if (StringView(value) != "0") {
+			info.type = QueueType::Flat;
+		}
+	}
 }
 
 void SecondaryScene::handleEnter(Scene *scene) {

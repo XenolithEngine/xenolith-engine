@@ -41,9 +41,14 @@ bool Loop::init(NotNull<sprt::dispatch::Looper> looper, NotNull<core::Instance> 
 		return false;
 	}
 
-	// The rasterizer fans tiles out to this looper's pool and takes part in the work itself, so
-	// what it can use is the pool plus the thread that submits.
-	_backendFeatures.threadCount = uint32_t(looper->getWorkersCount()) + 1;
+	if (auto data = _info->backend.get_cast<LoopBackendInfo>()) {
+		_asyncRaster = data->asyncRaster;
+	}
+
+	// The rasterizer fans tiles out to this looper's pool and, unless it runs asynchronously, takes
+	// part in the work itself. Without a pool it draws in place either way.
+	_backendFeatures.threadCount =
+			sprt::max(1U, uint32_t(looper->getWorkersCount()) + (_asyncRaster ? 0 : 1));
 
 	looper->performOnThread([&] {
 		if (auto dev = _instance.get_cast<Instance>()->makeDevice(*_info)) {

@@ -86,7 +86,7 @@ namespace sprt::_thread::native {
 // (plock, the stdio lock owner, __libc::mainThread). Taking it from the kernel
 // rather than from TLS is the same argument runtime_core_defaults.cpp makes for
 // __sprt_gettid.
-static uint64_t __getNativeThreadId() { return (uint64_t)__el0_gettid(); }
+static uint64_t __getNativeThreadId() { return (uint64_t)__sprt_gettid(); } // cached per thread
 
 static void __doDestroy(void *cb) {
 	auto dtor = reinterpret_cast<void (*)(void)>(cb);

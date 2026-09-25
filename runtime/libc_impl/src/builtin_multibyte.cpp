@@ -257,6 +257,13 @@ static size_t __mbrtowc(wchar_t *__SPRT_RESTRICT __dst, size_t __dstLen,
 
 	if (*ptr == 0) {
 		if (state->_State == STATE_NONE) {
+			// The null character is still a character: *pwc gets L'\0'. A
+			// caller that reads the result to find the end -- musl's regexec
+			// does, which is how `$` and every match at the end of a string
+			// went wrong -- would otherwise see the previous one again.
+			if (__dst && __dstLen > 0) {
+				*__dst = 0;
+			}
 			return 0;
 		} else {
 			return -2;
@@ -584,13 +591,43 @@ __SPRT_C_FUNC size_t c32rtomb(char *__s, char32_t __c32, mbstate_t *__ps) __SPRT
 	return unicode::utf8EncodeBuf(__s, _MB_CUR_MAX, __c32);
 }
 
+// c16rtomb's half of the uchar state: a high surrogate waiting for its low.
+static constexpr unsigned STATE_C16_PENDING_HIGH = 0x20000u;
+
 __SPRT_C_FUNC size_t c16rtomb(char *__s, char16_t __c16, mbstate_t *__ps) __SPRT_NOEXCEPT {
 	if (!__ps) {
 		__ps = &tl_uchar_state;
 	}
-	// wchar_t is 16-bit (UTF-16) on this target and wcrtomb already combines
-	// surrogate pairs across calls using the same mbstate convention.
-	return wcrtomb(__s, (wchar_t)__c16, __ps);
+	// The pair is combined here, not left to wcrtomb: that only works where
+	// wchar_t is itself UTF-16 (Windows). With a 32-bit wchar_t (wasm, Embox
+	// user mode) a lone surrogate is not a character and wcrtomb rightly
+	// refuses it, which made every astral character an EILSEQ.
+	if (!__s) {
+		// c16rtomb(NULL, ...) is c16rtomb(buf, 0, ...): back to the initial state.
+		__ps->_State = STATE_NONE;
+		__ps->_Char = 0;
+		return 1;
+	}
+	if (__ps->_State == STATE_C16_PENDING_HIGH) {
+		const char32_t high = (char32_t)__ps->_Char;
+		__ps->_State = STATE_NONE;
+		__ps->_Char = 0;
+		if (!unicode::isUtf16LowSurrogate(__c16)) {
+			errno = EILSEQ;
+			return (size_t)-1;
+		}
+		return c32rtomb(__s, 0x10000u + ((high - 0xD800u) << 10) + (__c16 - 0xDC00u), nullptr);
+	}
+	if (unicode::isUtf16HighSurrogate(__c16)) {
+		__ps->_State = STATE_C16_PENDING_HIGH;
+		__ps->_Char = __c16;
+		return 0;
+	}
+	if (unicode::isUtf16LowSurrogate(__c16)) {
+		errno = EILSEQ;
+		return (size_t)-1;
+	}
+	return c32rtomb(__s, __c16, nullptr);
 }
 
 } // namespace sprt

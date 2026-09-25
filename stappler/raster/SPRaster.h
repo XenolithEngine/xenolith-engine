@@ -29,6 +29,8 @@
 
 #include <sprt/runtime/geom/color.h>
 #include <sprt/runtime/geom/geom.h>
+#include <sprt/runtime/thread/qtimeline.h>
+#include <sprt/cxx/atomic>
 
 // CPU rasterizer. This layer takes plain data in and writes pixels out: it knows nothing about a
 // graphics API, a window system or a scene graph, and depends on nothing but stappler_core. That
@@ -236,6 +238,38 @@ struct SP_PUBLIC DrawList {
 	bool empty() const { return entries.empty(); }
 };
 
+// Work the rasterizer does that is not pixels.
+//
+// Pixels come out the same whether a region is drawn whole or cut into tiles - tiles are disjoint.
+// What cutting multiplies is everything around them: every tile walks the whole list, sets up
+// every command and every triangle that reaches it, and a row that crosses k tiles is solved k
+// times and written as k spans. These are those counts, so that the price of tiling can be read
+// off directly rather than guessed from a timing. Counted only when stats are asked for, at the
+// same sites as FillStats, so the two describe one pass.
+struct SP_PUBLIC RasterOps {
+	uint64_t passes = 0; // calls to draw: one per tile, or per region when untiled
+	uint64_t entries = 0; // draw list entries walked
+	uint64_t commands = 0; // triangle commands whose scissor meets the clip
+	uint64_t triangles = 0; // triangles handed to setup
+	uint64_t setups = 0; // triangles that survived rejection: edge functions and a bounding box
+	uint64_t rows = 0; // rows solved for a span
+	uint64_t spans = 0; // writeSpan calls
+	uint64_t glyphs = 0; // blitGlyph calls
+	uint64_t rects = 0; // fillRect calls
+
+	void add(const RasterOps &o) {
+		passes += o.passes;
+		entries += o.entries;
+		commands += o.commands;
+		triangles += o.triangles;
+		setups += o.setups;
+		rows += o.rows;
+		spans += o.spans;
+		glyphs += o.glyphs;
+		rects += o.rects;
+	}
+};
+
 // Pixels the kernels actually wrote, as opposed to the area they were handed.
 //
 // The damage area already reported by a caller answers "how much of the surface was in play"; this
@@ -250,12 +284,15 @@ struct SP_PUBLIC FillStats {
 	uint64_t glyphPixels = 0; // blitGlyph - one glyph coverage box, post-scissor
 	uint64_t fillPixels = 0; // fillRect - attachment clears and solid axis-aligned quads
 
+	RasterOps ops;
+
 	uint64_t total() const { return spanPixels + glyphPixels + fillPixels; }
 
 	void add(const FillStats &o) {
 		spanPixels += o.spanPixels;
 		glyphPixels += o.glyphPixels;
 		fillPixels += o.fillPixels;
+		ops.add(o.ops);
 	}
 };
 
@@ -291,6 +328,11 @@ struct SP_PUBLIC TilingInfo {
 	uint32_t threads = 1; // 1: the calling thread alone, no dispatch at all; 0: whatever the
 						  // thread pool can supply
 
+	// Time the workers (TilingStats::busyTicks and the rest). Off by default: two counter reads
+	// per worker are nothing, but on some targets the counter is not readable where the renderer
+	// runs, and a frame path that measures itself unasked is not the one that ships.
+	bool timed = false;
+
 	bool tiled() const { return width != 0 || height != 0; }
 };
 
@@ -317,6 +359,20 @@ struct SP_PUBLIC TilingStats {
 	uint32_t tiles = 0; // tiles the regions were cut into
 	uint32_t workers = 0; // threads that took part, the calling one included
 
+	// Only with more than one worker. Time each worker spent between taking its first tile and
+	// running out of them, summed over the workers and the longest of them; and how long after
+	// the fork the last worker took its first tile, which is the dispatch latency a frame of a
+	// few small tiles cannot hide. busy / (workers x the caller's wall time) is how much of the
+	// threads the frame actually used.
+	//
+	// In ticks of sprt::platform::clock(ClockType::Hardware) - the cycle or system counter - and
+	// not in microseconds, because these spans are tens of microseconds to a few milliseconds and
+	// the system clock is not always finer than that: on Embox it advances once per millisecond
+	// tick. The caller converts, against a span it has timed both ways.
+	uint64_t busyTicks = 0;
+	uint64_t maxBusyTicks = 0;
+	uint64_t maxStartTicks = 0;
+
 	// Summed across every tile and every worker. Tiles are disjoint, so this double-counts nothing
 	// that the untiled path would have counted once.
 	FillStats fill;
@@ -332,6 +388,80 @@ struct SP_PUBLIC TilingStats {
 // Returns commands rasterized, counted once per tile - a work count, not a command count.
 SP_PUBLIC uint32_t drawTiled(const Target &, const DrawList &, SpanView<URect> regions,
 		const TilingInfo &, TilingStats * = nullptr);
+
+// What drawTiledAsync is asked to do. The regions follow the rules of drawTiled.
+struct SP_PUBLIC TiledDrawRequest {
+	Target target;
+	const DrawList *list = nullptr; // must outlive the completion
+	Vector<URect> regions;
+	TilingInfo tiling;
+
+	// Load op Clear, applied per tile before the draw. The tiles cover the regions exactly, so this
+	// equals clearing the regions first.
+	bool clear = false;
+	Color4F clearColor;
+
+	// Count FillStats; without it the pixel loops skip the counters.
+	bool collectStats = false;
+};
+
+// Called once per drawTiledAsync. `success` is false when the pool dropped a worker unrun, in which
+// case some tiles may be left unpainted.
+using TiledDrawCallback = Function<void(bool success, uint32_t drawn, const TilingStats &)>;
+
+class TiledDrawJob;
+
+// Rasterize like drawTiled, but only on the thread pool of the calling thread's looper: the caller
+// returns at once and `complete` runs on its looper thread when the last worker is done. With no
+// pool the tiles are drawn in place and `complete` runs before this returns.
+//
+// The returned job is what a teardown waits on before it frees the target. Null when `complete`
+// has already run.
+SP_PUBLIC Rc<TiledDrawJob> drawTiledAsync(TiledDrawRequest &&, TiledDrawCallback &&complete,
+		Ref *owner = nullptr);
+
+class SP_PUBLIC TiledDrawJob final : public Ref {
+public:
+	virtual ~TiledDrawJob() = default;
+
+	// True once every worker has finished writing; the completion may still be on its way.
+	bool isDrawn() const;
+
+	// Block until every worker has finished writing. The completion is not waited for: it runs on
+	// the looper thread, which may be the one calling this.
+	void waitDrawn();
+
+protected:
+	friend Rc<TiledDrawJob> drawTiledAsync(TiledDrawRequest &&, TiledDrawCallback &&, Ref *);
+
+	// Worker thread: take tiles until none is left.
+	void drawShare();
+
+	// Looper thread, or the thread that shuts the pool down when the worker was dropped unrun.
+	void handleWorkerComplete(bool executed);
+
+	TilingStats getStats() const;
+
+	Target _target;
+	const DrawList *_list = nullptr;
+	Vector<URect> _tiles;
+	bool _clear = false;
+	Color4F _clearColor;
+	bool _collectStats = false;
+
+	TiledDrawCallback _complete;
+	uint32_t _workers = 0;
+
+	sprt::atomic<uint32_t> _nextTile{0};
+	sprt::atomic<uint32_t> _drawn{0};
+	sprt::atomic<uint32_t> _pending{0};
+	sprt::atomic<uint64_t> _spanPixels{0};
+	sprt::atomic<uint64_t> _glyphPixels{0};
+	sprt::atomic<uint64_t> _fillPixels{0};
+
+	// One signal per worker that has finished writing or will never start.
+	mutable sprt::qtimeline _finished;
+};
 
 // The tiling a caller with no opinion of its own should use, resolved once. Overridden entirely by
 // SP_RASTER_TILE=WxH|off and SP_RASTER_THREADS=N, which is how the benchmark measures the two

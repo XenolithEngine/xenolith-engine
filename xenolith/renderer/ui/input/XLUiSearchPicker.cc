@@ -962,11 +962,8 @@ bool SearchPicker::handleKey(const GestureData &data) {
 	return false;
 }
 
-AppWindow *SearchPicker::getAppWindow() const {
-	auto scene = getScene();
-	auto director = scene ? scene->getDirector() : nullptr;
-	auto server = director ? director->getRenderServer() : nullptr;
-	return server ? dynamic_cast<AppWindow *>(server) : nullptr;
+core::RenderServerChannel *SearchPicker::getParentWindow() const {
+	return getSubWindowParent(this);
 }
 
 bool SearchPicker::open() {
@@ -974,7 +971,7 @@ bool SearchPicker::open() {
 		return false;
 	}
 
-	auto window = getAppWindow();
+	auto window = getParentWindow();
 	if (!window) {
 		return false;
 	}
@@ -1029,7 +1026,7 @@ SearchPickerContent *SearchPicker::getContent() const {
 	return _popup ? dynamic_cast<SearchPickerContent *>(_popup->getPanel()) : nullptr;
 }
 
-Rc<SubWindow> openSearchPicker(NotNull<AppWindow> window, NotNull<Node> anchor,
+Rc<SubWindow> openSearchPicker(NotNull<core::RenderServerChannel> window, NotNull<Node> anchor,
 		SearchPickerConfig &&config, MenuSide side) {
 	/* The extent is part of the window request, so it is settled before any node exists. Full
 	height, so the surface does not resize on every keystroke. */

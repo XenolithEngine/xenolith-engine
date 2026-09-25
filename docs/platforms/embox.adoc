@@ -2,9 +2,9 @@
 
 Status: **M0 (draft)** — `runtime/toolchains/target-embox/`.
 
-Embox is a **hosted** Xenolith target: the runtime uses Embox's own libc
-through `libc_wrapper` (same model as Linux/glibc and NuttX). It does
-not ship a second libc. This document is **how to assemble the sysroot**.
+Embox is a **hosted** Xenolith target: the runtime uses the kernel's libc
+through `libc_wrapper` (same model as Linux/glibc and NuttX) -- Embox's, most
+of it musl's (see "The kernel's libc" below). It does not ship a second libc. This document is **how to assemble the sysroot**.
 The Embox kernel image, QEMU, and board bring-up are outside this tree.
 
 == Triple naming
@@ -154,6 +154,81 @@ that, clang's `aarch64-none-elf` driver injects `crt0.o` and `-lunwind`.
 `-Wl,-r` keeps kernel symbols undefined; `--gc-sections` is incompatible with
 `-r`. `--run` cannot launch this target on the host. Linking the relocatable
 into an Embox image is a board-image step, not part of this assemble.
+
+== The kernel's libc: musl, as Embox modules
+
+The Embox the engine targets (xenolith-os) takes most of its libc from this
+engine's musl (`runtime/musl-libc`, unchanged): the package `xenolith_musl`
+in `xenolith-os/board/common/musl`, staged into Embox's `ext_project` by the
+board scripts. It supplies libm, `<complex.h>`, `<fenv.h>`, multibyte and
+`<uchar.h>`, `<wctype.h>` and the wide-string, wide-stdio and wide-conversion
+functions, the whole printf family (`printk` included), scanf, `strto*`,
+calendar time (`gmtime`...`strftime`, `strptime`, TZ strings, no zoneinfo),
+`nl_langinfo`, `fnmatch`, `regex` and `setlocale`. Each is a module that
+`extends` an abstract Embox module, so other Embox boards keep Embox's own.
+The kernel has one locale, C.UTF-8.
+
+What that means here:
+
+* The engine requires it. `libc_wrapper` forwards these to the kernel and
+  asserts the native layouts and constants as on Linux (`struct tm` with
+  `tm_gmtoff`/`tm_zone`, `wint_t`, `wctype_t`, `REG_*` in the GNU order,
+  `FNM_NOMATCH` 1, Linux `FP_*`). The math the runtime used to compile for
+  Embox itself is gone (`c/math/embox_math_*`).
+* The headers are musl's too: `math.h`, `fenv.h`, `complex.h`, `tgmath.h`,
+  `uchar.h`, `langinfo.h`, `fnmatch.h` and `regex.h` reach the sysroot from
+  the modules' `@IncludeExport`. After changing them, re-import the sysroot
+  (`xenolith-os/scripts/embox-sysroot-refresh.sh`) and rebuild what includes
+  them; the cross headers are not dependency-tracked.
+* Differences from glibc that are musl's: `strtol`/`strtod` set `EINVAL` when
+  nothing converts, `%p` of null prints `0`, `strftime` has no `%P`.
+
+== Memory on EL1: mimalloc behind the runtime's entry points
+
+The application is linked into the kernel image, and the public `malloc`,
+`free` and `realloc` there are the kernel's (`mspace` under `sched_lock`, the
+BKL). The engine does not use them: every allocation it, the runtime and the
+libraries built for this target make goes through `__sprt_malloc` and its
+siblings, and on EL1 those are mimalloc (`runtime_malloc`,
+`libc_impl/mimalloc/mimalloc.scu.c`). The public names are not replaced.
+
+* *Memory* comes from the kernel's physical page allocator
+  (`src/prim/embox/prim.c`: `phymem_alloc`/`phymem_free`, already mapped).
+  There is no virtual reserve and no decommit, so mimalloc runs without arenas
+  (`MI_DEFAULT_ARENA_RESERVE=0`). Each segment is taken on its own and goes
+  back when it empties. Segments are 4 MiB (`MI_SEGMENT_SHIFT=22`), not
+  32 MiB: every thread that allocates holds at least one, and an aligned
+  segment needs a free run twice its size. With arenas, the runtime test suite
+  held 256 MiB and then found no aligned run for the next one.
+* *Per-thread state* sits in a block behind `TPIDR_EL0`
+  (`MI_TLS_EMBOX_TPIDR`, `include/mimalloc/prim.h`), not in `__thread`: here
+  that is emulated TLS, which allocates. Embox saves and restores `TPIDR_EL0`
+  for every thread and zeroes it for a new one, and EL1 threads do not use it.
+  The blocks come from a static pool of 256 and are attached on first
+  allocation, so threads the runtime did not create work too.
+* *Thread exit*: a pthread key of the runtime's own returns the heap and the
+  block (Embox does not run `pthread_key` destructors; the runtime's pool
+  does). The key is created on first use, not in process init, because
+  `pthread_key_create` allocates and would re-enter mimalloc's init lock. The
+  thread the image started on gets no key: it never ends. Threads the runtime
+  did not create never return their block.
+* *Foreign pointers*: `strdup`, `wcsdup`, `asprintf`, `open_memstream` and
+  `scandir` forward to the kernel's libc, and the caller frees the result
+  through `__sprt_free`. `free`, `realloc` and the sized frees check
+  `mi_is_in_heap_region` and hand anything else to the kernel, through
+  `__sprt_embox_kernel_free`/`_realloc` in `core/runtime_core_defaults.cpp`.
+  That file sees the kernel's headers; inside mimalloc even an
+  `__asm__("free")` label binds to the runtime's inline `free`, which calls
+  straight back in.
+* *`SPRT_UMBRELLA_REQUIRED=1`*: mimalloc is built `-ffreestanding`, so
+  `__STDC_HOSTED__` is 0, and the libc headers would then declare the public
+  names instead of inlining them onto `__sprt_*`. On EL1 the public
+  `pthread_mutex_lock` is Embox's, so mimalloc's locks became kernel mutexes
+  over the runtime's layout, and process init asserted in `waitq_wakeup`.
+
+Test: `runtimetest libc_malloc_threads` covers cross-thread free, alignment up
+to 64 KiB, realloc, kernel-owned pointers, and 300 short threads cycling
+through the 256 blocks.
 
 == Assemble gotchas
 

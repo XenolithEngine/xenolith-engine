@@ -160,6 +160,13 @@ class SPRT_API exception_ptr {
 			void (*)(void *, void *), void (*)(void *)) noexcept;
 #if SPRT_WINDOWS
 	friend exception_ptr __copy_exception_ptr(void *, const void *);
+#else
+	// What libc++'s <exception> calls when it is compiled WITH exceptions (Embox,
+	// NuttX, Embox user mode build the runtime -fexceptions): make_exception_ptr
+	// there builds a native Itanium exception (__cxa_init_primary_exception) and
+	// hands it over through this private member of the same class. Defined in
+	// SPRTCxxException.cpp.
+	static exception_ptr __from_native_exception_pointer(void *) noexcept;
 #endif
 
 public:

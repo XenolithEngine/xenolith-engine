@@ -65,6 +65,11 @@ public:
 	const Rc<Queue> &getQueue() const { return _queue; }
 	Director *getDirector() const { return _director; }
 
+	// Counts the changes to what the scene draws (Node::markSceneChanged). The director compares it
+	// with the count its last frame was built at to tell whether the scene needs another frame.
+	uint64_t getChangeCount() const { return _changeCount; }
+	void markChanged();
+
 	virtual void setContent(SceneContent *);
 	virtual SceneContent *getContent() const { return _content; }
 
@@ -99,6 +104,7 @@ protected:
 
 	Director *_director = nullptr;
 	SceneContent *_content = nullptr;
+	uint64_t _changeCount = 0;
 
 	// non-owning; valid only for the duration of visitDraw inside render()
 	FrameInfo *_frameInfo = nullptr;

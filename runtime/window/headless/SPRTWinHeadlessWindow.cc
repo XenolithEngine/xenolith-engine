@@ -74,9 +74,6 @@ bool HeadlessWindow::init(NotNull<HeadlessContextController> c, Rc<WindowInfo> &
 		}
 	}
 
-	// The pseudo-screen is whatever WindowInfo asks for: there is no WM to negotiate with.
-	_extent = Extent2(info->rect.width, info->rect.height);
-
 	// The requested actions are all granted: the emulated WM has no policy of its own, and this is
 	// what tells an application which window buttons to draw.
 	if (hasFlag(info->flags, WindowCreationFlags::AllowClose)) {
@@ -102,7 +99,9 @@ bool HeadlessWindow::init(NotNull<HeadlessContextController> c, Rc<WindowInfo> &
 	// like anywhere else, and a window with no window system around it draws its own frame by
 	// definition. Everything else - server-side decorations, cursors, fullscreen, an OS icon -
 	// needs a window system.
-	return NativeWindow::init(c, move(info), c->getCapabilities());
+	// The pseudo-screen is whatever WindowInfo asks for (VirtualWindow::init takes the extent from
+	// it): there is no WM to negotiate with.
+	return VirtualWindow::init(c, move(info), c->getCapabilities());
 }
 
 void HeadlessWindow::mapWindow() {
@@ -132,54 +131,12 @@ void HeadlessWindow::unmapWindow() {
 	getHeadlessController()->handleWindowUnmapped(this);
 }
 
-bool HeadlessWindow::close() {
-	if (_closed) {
-		return true;
-	}
+bool HeadlessWindow::enableState(WindowState state) { return NativeWindow::enableState(state); }
 
-	// There is no window manager to route the close back to us, so the notification the WM-backed
-	// windows get for free has to be raised here. Without it the controller never drops the window
-	// and the process hangs after the presentation engine is torn down.
-	_closed = true;
-	if (!_controller->notifyWindowClosed(this)) {
-		_closed = false;
-		return false;
-	}
-	return true;
-}
-
-Extent2 HeadlessWindow::getExtent() const { return _extent; }
+bool HeadlessWindow::disableState(WindowState state) { return NativeWindow::disableState(state); }
 
 IRect HeadlessWindow::getContentScreenRect() const {
 	return IRect(_info->rect.x, _info->rect.y, _extent.width, _extent.height);
-}
-
-void HeadlessWindow::updateFocusState(bool focused) {
-	updateState(0,
-			focused ? (_info->state | WindowState::Focused)
-					: (_info->state & ~WindowState::Focused));
-}
-
-void HeadlessWindow::updatePointerState(bool within) {
-	updateState(0,
-			within ? (_info->state | WindowState::Pointer)
-				   : (_info->state & ~WindowState::Pointer));
-}
-
-SurfaceInterfaceInfo HeadlessWindow::getSurfaceInterfaceInfo() const {
-	SurfaceInterfaceInfo ret;
-	ret.backend = SurfaceBackend::Headless;
-	return ret;
-}
-
-SurfaceInfo HeadlessWindow::getSurfaceOptions(SurfaceInfo &&info) const {
-	// The window - not the surface - is the authority on the pseudo-screen size here, and it is
-	// what setExtent() moves. Without this the surface would keep reporting the extent it was
-	// built with and a resize would recreate the swapchain at the old size.
-	info.currentExtent = _extent;
-	info.minImageExtent = Extent2(1, 1);
-	info.maxImageExtent = _extent;
-	return sprt::move(info);
 }
 
 PresentationOptions HeadlessWindow::getPreferredOptions() const {
@@ -204,51 +161,6 @@ PresentationOptions HeadlessWindow::getPreferredOptions() const {
 	opts.acquireImageWithoutFence = true;
 
 	return opts;
-}
-
-bool HeadlessWindow::applyExtent(Extent2 extent) {
-	auto clamped = clampWindowExtent(extent, _info->minExtent, _info->maxExtent);
-	if (clamped == _extent) {
-		return false;
-	}
-
-	_extent = clamped;
-	_info->rect.width = clamped.width;
-	_info->rect.height = clamped.height;
-
-	// A menu can not survive its owner being resized under it - the anchor it was placed against
-	// has moved. Every backend does this; here the resize is the only way geometry ever changes.
-	_controller->dismissChildPopups(this, "owner-resized");
-
-	// ...which is also why this is the only place the application's view of the geometry can go
-	// stale here: there is no move to report.
-	_controller->notifyWindowGeometryChanged(this);
-	return true;
-}
-
-bool HeadlessWindow::setContentExtent(Extent2 extent) {
-	if (extent.width == 0 || extent.height == 0) {
-		return false;
-	}
-
-	// The caller (AppWindow::setContentExtent) updates the presentation constraints itself once
-	// this returns true, so - unlike setExtent - nothing is notified from here.
-	return applyExtent(extent);
-}
-
-Status HeadlessWindow::setExtent(Extent2 extent) {
-	if (extent.width == 0 || extent.height == 0) {
-		return Status::ErrorInvalidArguemnt;
-	}
-
-	if (!applyExtent(extent)) {
-		return Status::Done; // already at that size, nothing to deprecate
-	}
-
-	// Same path a WM-driven resize takes: deprecate the swapchain so the next frame is rendered
-	// (and captured) at the new extent.
-	_controller->notifyWindowConstraintsChanged(this, UpdateConstraintsFlags::WindowResized);
-	return Status::Ok;
 }
 
 /* THE EMULATED WINDOW MANAGER'S HALF OF USER-SPACE DECORATIONS.
@@ -402,24 +314,6 @@ void HeadlessWindow::applyGripGeometry(const IRect &rect) {
 		// A move changes nothing about the swapchain, but everything about where a popup would be
 		// placed - and it is the one geometry change this backend could not make before.
 		_controller->notifyWindowGeometryChanged(this);
-	}
-}
-
-// There is no on-screen keyboard to raise, but the window still stands in for the IME so that a
-// headless run can be driven through the real text-input path: events injected into
-// handleInputEvents are intercepted by the shared TextInputProcessor, and performTextInput() can
-// reproduce composition. Declining here would leave isTextInputEnabled() false and make text input
-// untestable without a display.
-bool HeadlessWindow::updateTextInput(const TextInputRequest &, TextInputFlags) {
-	if (_textInput) {
-		_textInput->handleInputEnabled(true);
-	}
-	return true;
-}
-
-void HeadlessWindow::cancelTextInput() {
-	if (_textInput) {
-		_textInput->handleInputEnabled(false);
 	}
 }
 

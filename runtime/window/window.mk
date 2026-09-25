@@ -86,4 +86,16 @@ MODULE_RUNTIME_WINDOW_PRIVATE_CFLAGS += -ffreestanding -fbuiltin
 MODULE_RUNTIME_WINDOW_PRIVATE_CXXFLAGS += -ffreestanding -fbuiltin
 endif # ($(TARGET_SYSTEM),WASM)
 
+ifeq ($(TARGET_SYSTEM),EmboxUser)
+# Embox user mode (EL0) is an internal-libc target too: the sprt libc is the
+# only libc there, and the Embox window (/dev/fb0) reaches it through the
+# same headers an application does. Before A3 nothing built a window for it.
+MODULE_RUNTIME_WINDOW_PRIVATE_INCLUDES += \
+	$(RUNTIME_MODULE_DIR)/include_libc
+# Freestanding, as for wasm: in an __SPRT_BUILD a hosted compile sends
+# include_libc's headers on to a system libc that this target does not have.
+MODULE_RUNTIME_WINDOW_PRIVATE_CFLAGS += -ffreestanding -fbuiltin
+MODULE_RUNTIME_WINDOW_PRIVATE_CXXFLAGS += -ffreestanding -fbuiltin
+endif # ($(TARGET_SYSTEM),EmboxUser)
+
 $(call define_module, runtime_window, MODULE_RUNTIME_WINDOW)

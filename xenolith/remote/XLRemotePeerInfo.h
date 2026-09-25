@@ -95,6 +95,7 @@ enum class PeerFeatures : uint64_t {
 	Clipboard = 1 << 3, // server exposes clipboard services
 	ClientWindows = 1 << 4, // server opens windows a client asks for (WindowCode::CreateWindow);
 	// set only when the application installed a handler for them
+	AppMessages = 1 << 5, // the application handles GlobalCode::AppRequest/AppNotify
 	// Damage/partial redraw is per queue (RemoteQueueInfo::damage), not a peer feature.
 };
 

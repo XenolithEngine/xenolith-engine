@@ -23,6 +23,8 @@
 #include "SPRasterKernel.h"
 
 #include <sprt/runtime/dispatch/looper.h>
+#include <sprt/runtime/dispatch/task.h>
+#include <sprt/runtime/platform.h>
 #include <sprt/runtime/thread/qtimeline.h>
 
 // Cutting a region into tiles, and handing the tiles to a thread pool.
@@ -148,6 +150,43 @@ const TilingInfo &getDefaultTiling() {
 	return s_tiling;
 }
 
+// The tiles of every region, clipped to the target.
+static void Tile_collect(const Target &target, SpanView<URect> regions, const TilingInfo &tiling,
+		Vector<URect> &tiles) {
+	const auto bounds = URect{0, 0, target.width, target.height};
+	const auto pixelSize = getPixelSize(target.format);
+
+	for (auto &region : regions) {
+		auto clipped = intersectRects(region, bounds);
+		if (clipped.width == 0 || clipped.height == 0) {
+			continue;
+		}
+		makeTileGrid(clipped, tiling, pixelSize,
+				[&](const URect &tile) { tiles.emplace_back(tile); });
+	}
+}
+
+// The loop every worker runs: take the next tile until none is left. Workers are greedy, one task
+// each, rather than one task per tile: tiles differ in cost by more than an order of magnitude, so
+// a static split would leave threads idle.
+static uint32_t Tile_drawShare(const Target &target, const DrawList *list, SpanView<URect> tiles,
+		sprt::atomic<uint32_t> &next, const Color4F *clear, FillStats *fill) {
+	uint32_t drawn = 0;
+	for (;;) {
+		auto index = next.fetch_add(1);
+		if (index >= tiles.size()) {
+			break;
+		}
+		if (clear) {
+			fillRect(target, tiles[index], *clear, fill);
+		}
+		if (list) {
+			drawn += draw(target, *list, tiles[index], fill);
+		}
+	}
+	return drawn;
+}
+
 uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> regions,
 		const TilingInfo &tiling, TilingStats *stats) {
 	if (stats) {
@@ -158,18 +197,8 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 		return 0;
 	}
 
-	const auto bounds = URect{0, 0, target.width, target.height};
-	const auto pixelSize = getPixelSize(target.format);
-
 	Vector<URect> tiles;
-	for (auto &region : regions) {
-		auto clipped = intersectRects(region, bounds);
-		if (clipped.width == 0 || clipped.height == 0) {
-			continue;
-		}
-		makeTileGrid(clipped, tiling, pixelSize,
-				[&](const URect &tile) { tiles.emplace_back(tile); });
-	}
+	Tile_collect(target, regions, tiling, tiles);
 
 	if (stats) {
 		stats->tiles = uint32_t(tiles.size());
@@ -197,54 +226,64 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 		if (stats) {
 			stats->workers = 1;
 		}
-		uint32_t drawn = 0;
-		FillStats fill;
-		for (auto &tile : tiles) { drawn += draw(target, list, tile, stats ? &fill : nullptr); }
-		if (stats) {
-			stats->fill = fill;
-		}
-		return drawn;
+		sprt::atomic<uint32_t> nextTile{0};
+		return Tile_drawShare(target, &list, tiles, nextTile, nullptr,
+				stats ? &stats->fill : nullptr);
 	}
 
-	// Workers are greedy: one task per worker, each looping until the tile list is exhausted,
-	// rather than one task per tile. Tiles differ in cost by more than an order of magnitude - an
-	// empty corner against one holding the whole sprite - so a static split would leave threads
-	// idle, and a task per tile would post a completion back to the looper for every one of them.
-	//
 	// Holding a pool worker for the whole rasterization is safe because of when this runs, not by
 	// luck: the vertex stage and the font work are joined before the command list is recorded, so
-	// the pool has nothing else to do inside a frame. Should work ever start arriving in parallel
-	// with a frame, this is the assumption that has to be revisited - a greedy worker would keep
-	// it waiting rather than interleave with it.
+	// the pool has nothing else to do inside a frame. drawTiledAsync breaks that assumption, and
+	// pays for it with latency only: a worker never waits on anything.
 	sprt::atomic<uint32_t> nextTile{0};
 	sprt::atomic<uint32_t> drawn{0};
 	sprt::qtimeline finished;
 
-	// One add per worker at the end of its run, not one per tile: the counters are a diagnostic
-	// and must not put a contended cache line in the middle of the pixel loops.
-	sprt::atomic<uint64_t> spanPixels{0};
-	sprt::atomic<uint64_t> glyphPixels{0};
-	sprt::atomic<uint64_t> fillPixels{0};
+	// One slot per worker, written once at the end of its run and summed by the caller after the
+	// join: the counters are a diagnostic and must not put a contended cache line in the middle
+	// of the pixel loops. A worker takes its slot when it runs out of tiles, so a task that never
+	// ran leaves a slot empty rather than one half-written.
+	struct WorkerStats {
+		FillStats fill;
+		uint64_t busyTicks = 0;
+		uint64_t startTicks = 0;
+	};
 
-	const uint32_t total = uint32_t(tiles.size());
+	const bool timed = stats && tiling.timed;
+	auto ticks = [] {
+#if SPRT_EMBOX_USER
+		// EL0 on Embox: nothing opens the counter to EL0 (CNTKCTL_EL1 is never written), and
+		// reading it there traps. The system clock instead, coarse as it is.
+		return sprt::platform::clock(sprt::platform::ClockType::Monotonic);
+#else
+		return sprt::platform::clock(sprt::platform::ClockType::Hardware);
+#endif
+	};
+
+	Vector<WorkerStats> workerStats;
+	if (stats) {
+		workerStats.resize(workers);
+	}
+	sprt::atomic<uint32_t> nextSlot{0};
+	const uint64_t forked = timed ? ticks() : 0;
 
 	// Captured by reference on purpose: the calling thread does not return until every worker has
 	// signalled, so everything here outlives them.
 	auto body = [&] {
-		uint32_t local = 0;
 		FillStats localFill;
-		for (;;) {
-			auto index = nextTile.fetch_add(1);
-			if (index >= total) {
-				break;
-			}
-			local += draw(target, list, tiles[index], stats ? &localFill : nullptr);
-		}
-		drawn.fetch_add(local);
+		const uint64_t started = timed ? ticks() : 0;
+		drawn.fetch_add(Tile_drawShare(target, &list, tiles, nextTile, nullptr,
+				stats ? &localFill : nullptr));
 		if (stats) {
-			spanPixels.fetch_add(localFill.spanPixels);
-			glyphPixels.fetch_add(localFill.glyphPixels);
-			fillPixels.fetch_add(localFill.fillPixels);
+			auto slot = nextSlot.fetch_add(1);
+			if (slot < workerStats.size()) {
+				auto &out = workerStats[slot];
+				out.fill = localFill;
+				if (timed) {
+					out.busyTicks = ticks() - started;
+					out.startTicks = started > forked ? started - forked : 0;
+				}
+			}
 		}
 	};
 
@@ -269,12 +308,111 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 
 	if (stats) {
 		stats->workers = posted + 1;
-		stats->fill.spanPixels = spanPixels.load();
-		stats->fill.glyphPixels = glyphPixels.load();
-		stats->fill.fillPixels = fillPixels.load();
+		for (auto &it : workerStats) {
+			stats->fill.add(it.fill);
+			stats->busyTicks += it.busyTicks;
+			stats->maxBusyTicks = sprt::max(stats->maxBusyTicks, it.busyTicks);
+			stats->maxStartTicks = sprt::max(stats->maxStartTicks, it.startTicks);
+		}
 	}
 
 	return drawn.load();
+}
+
+Rc<TiledDrawJob> drawTiledAsync(TiledDrawRequest &&req, TiledDrawCallback &&complete, Ref *owner) {
+	auto job = Rc<TiledDrawJob>::alloc();
+	job->_target = req.target;
+	job->_list = (req.list && !req.list->empty()) ? req.list : nullptr;
+	job->_clear = req.clear;
+	job->_clearColor = req.clearColor;
+	job->_collectStats = req.collectStats;
+
+	if (!req.target.empty() && (job->_list || job->_clear)) {
+		Tile_collect(req.target, req.regions, req.tiling, job->_tiles);
+	}
+
+	if (job->_tiles.empty()) {
+		complete(true, 0, job->getStats());
+		return nullptr;
+	}
+
+	getKernels();
+
+	auto looper = sprt::dispatch::Looper::getIfExists();
+	const uint32_t pool = looper ? uint32_t(looper->getWorkersCount()) : 0;
+
+	uint32_t workers = req.tiling.threads > 0 ? sprt::min(req.tiling.threads, pool) : pool;
+	workers = sprt::min(workers, uint32_t(job->_tiles.size()));
+
+	if (workers == 0) {
+		job->_workers = 1;
+		job->drawShare();
+		complete(true, job->_drawn.load(), job->getStats());
+		return nullptr;
+	}
+
+	job->_complete = sp::move(complete);
+	job->_workers = workers;
+	job->_pending.store(workers);
+
+	for (uint32_t i = 0; i < workers; ++i) {
+		auto task = Rc<sprt::dispatch::Task>::create([job](const sprt::dispatch::Task &) {
+			job->drawShare();
+			return true;
+		}, [job](const sprt::dispatch::Task &, bool executed) {
+			job->handleWorkerComplete(executed);
+		}, owner);
+
+		auto st = looper->performAsync(sp::move(task));
+		if (!sprt::status::isSuccessful(st) && st != Status::Declined) {
+			// A pool that refuses outright sends no completion: draw its share here instead.
+			job->drawShare();
+			job->handleWorkerComplete(true);
+		}
+	}
+
+	return job;
+}
+
+bool TiledDrawJob::isDrawn() const { return _finished.try_wait(_workers); }
+
+void TiledDrawJob::waitDrawn() { _finished.wait(_workers); }
+
+void TiledDrawJob::drawShare() {
+	FillStats fill;
+	_drawn.fetch_add(Tile_drawShare(_target, _list, _tiles, _nextTile,
+			_clear ? &_clearColor : nullptr, _collectStats ? &fill : nullptr));
+	if (_collectStats) {
+		_spanPixels.fetch_add(fill.spanPixels);
+		_glyphPixels.fetch_add(fill.glyphPixels);
+		_fillPixels.fetch_add(fill.fillPixels);
+	}
+	_finished.signal(1);
+}
+
+void TiledDrawJob::handleWorkerComplete(bool executed) {
+	if (!executed) {
+		_finished.signal(1);
+	}
+
+	if (_pending.fetch_sub(1) == 1) {
+		// A worker that ran at all ran until the tiles were exhausted, so tiles are left over only
+		// when every worker was dropped unrun.
+		auto success = _nextTile.load() >= _tiles.size();
+		auto complete = sp::move(_complete);
+		_complete = nullptr;
+		complete(success, _drawn.load(), getStats());
+	}
+}
+
+TilingStats TiledDrawJob::getStats() const {
+	TilingStats stats;
+	stats.tiles = uint32_t(_tiles.size());
+	stats.workers = _workers;
+	stats.fill.spanPixels = _spanPixels.load();
+	stats.fill.glyphPixels = _glyphPixels.load();
+	stats.fill.fillPixels = _fillPixels.load();
+	return stats;
 }
 
 } // namespace stappler::raster

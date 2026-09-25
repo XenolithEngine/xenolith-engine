@@ -48,6 +48,11 @@ enum class ContextFlags : uint32_t {
 	// Windows come and go, the application stays: a server clients reconnect to. Overrides
 	// DestroyWhenAllWindowsClosed, which every controller sets by default.
 	KeepRunningWithoutWindows = 1 << 3,
+
+	// The context thread does not rasterize: it hands the pixels to its thread pool and takes the
+	// result asynchronously, staying free for every window and connection it serves. Honoured by
+	// the software backend; GPU backends are asynchronous anyway.
+	AsyncRasterization = 1 << 4,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(ContextFlags)

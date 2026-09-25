@@ -88,7 +88,8 @@ a Vulkan device; on a host without one it prints SKIP and counts no checks, and 
 The window checks go **by name**, because this repository names each script after the widget it drives:
 `XLUiSlider.cc` selects `slider-check.py`, `XLUiInlineEditor.cc` selects `inline-edit-check.py`,
 `XL2dVkParticlePass.cc` selects `particles-check.py`. `examples/` is outside the plan, except an example a window check
-drives (`EXAMPLE_CHECKS`: `examples/window/particles` selects `particles-check.py`). The file name is
+drives (`EXAMPLE_CHECKS`: `examples/window/particles` selects `particles-check.py`, and
+`examples/window/{dndtree,form,dock}` select `remote-example-check.py`). The file name is
 split on camel case rather than searched as a string - a substring search answers `text-input-check` for
 `XLContext.cc`, and a plan with four wrong scripts in it is one nobody reads.
 

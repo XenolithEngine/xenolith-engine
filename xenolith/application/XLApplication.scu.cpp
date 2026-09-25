@@ -30,6 +30,7 @@
 #include "XLContextInfo.cc"
 #include "XLContext.cc"
 #include "XLClipboard.cc" // before AppThread: the seam is written against its three calls
+#include "XLRemotePeer.cc"
 #include "XLAppThread.cc"
 #include "XLServerAppThread.cc"
 #include "XLClientAppThread.cc"

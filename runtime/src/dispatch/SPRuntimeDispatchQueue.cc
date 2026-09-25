@@ -135,7 +135,7 @@ Rc<ProcessHandle> Queue::spawnProcess(ProcessInfo &&info, Ref *ref) {
 
 Rc<ProcessHandle> Queue::spawnProcess(StringView command,
 		dispatch::Function<void(StringView)> &&reader,
-		dispatch::Function<void(int exitCode, Status)> &&onExit, Ref *ref) {
+		dispatch::Function<void(int exitCode, Status)> &&onExit, Ref *ref, ProcessFlags flags) {
 	struct ProcessCbData : public Ref {
 		dispatch::Function<void(StringView)> reader;
 		dispatch::Function<void(int, Status)> onExit;
@@ -149,6 +149,7 @@ Rc<ProcessHandle> Queue::spawnProcess(StringView command,
 
 	ProcessInfo info;
 	info.command = command;
+	info.flags = flags;
 	if (data->reader) {
 		info.reader = [data](StringView bytes) { data->reader(bytes); };
 	}

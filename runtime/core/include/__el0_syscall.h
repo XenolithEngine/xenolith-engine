@@ -102,6 +102,15 @@ SPRT_FORCEINLINE long __el0_writev(int __fd, const void *__iov, int __cnt) {
 	return __sprt_svc3(__SPRT_SYSCALL_writev, __fd, (long)__iov, __cnt);
 }
 
+SPRT_FORCEINLINE long __el0_pread(int __fd, void *__buf, __SPRT_ID(size_t) __n, long __off) {
+	return __sprt_svc4(__SPRT_SYSCALL_pread64, __fd, (long)__buf, (long)__n, __off);
+}
+
+SPRT_FORCEINLINE long __el0_pwrite(int __fd, const void *__buf, __SPRT_ID(size_t) __n,
+		long __off) {
+	return __sprt_svc4(__SPRT_SYSCALL_pwrite64, __fd, (long)__buf, (long)__n, __off);
+}
+
 // Since M2 a dirfd other than AT_FDCWD works: Embox has no dirfd-relative
 // lookup, so the kernel remembers the path behind every directory descriptor it
 // hands out and joins the relative name to it.
@@ -324,6 +333,11 @@ SPRT_FORCEINLINE long __el0_clock_nanosleep(int __clock, int __flags, const void
 
 SPRT_FORCEINLINE long __el0_sched_yield(void) {
 	return __sprt_svc0(__SPRT_SYSCALL_sched_yield);
+}
+
+// Linux's return: the bytes of mask written (8), not 0.
+SPRT_FORCEINLINE long __el0_sched_getaffinity(int __pid, __SPRT_ID(size_t) __len, void *__mask) {
+	return __sprt_svc3(__SPRT_SYSCALL_sched_getaffinity, __pid, (long)__len, (long)__mask);
 }
 
 // --- exit -------------------------------------------------------------------

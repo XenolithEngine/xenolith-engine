@@ -293,7 +293,7 @@ protected:
 	bool handleKey(const GestureData &);
 	bool handleTap();
 
-	AppWindow *getAppWindow() const;
+	core::RenderServerChannel *getParentWindow() const;
 
 	SearchPickerConfig _config;
 
@@ -318,7 +318,7 @@ protected:
 /** Opens a picker surface over `anchor`, without a SearchPicker control in front of it.
 
 For uses with no value to show when closed: a command palette, "go to file", a node palette. */
-SP_PUBLIC Rc<SubWindow> openSearchPicker(NotNull<AppWindow>, NotNull<Node> anchor,
+SP_PUBLIC Rc<SubWindow> openSearchPicker(NotNull<core::RenderServerChannel>, NotNull<Node> anchor,
 		SearchPickerConfig &&, MenuSide = MenuSide::Below);
 
 } // namespace stappler::xenolith::ui

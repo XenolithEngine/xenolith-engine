@@ -428,6 +428,20 @@ static _Atomic(size_t) warning_count; // = 0;  // when >= max_warning_count stop
 // variables on demand. This is why we use a _mi_preloading test on such
 // platforms. However, C code generator may move the initial thread local address
 // load before the `if` and we therefore split it out in a separate function.
+#if defined(MI_TLS_EMBOX_TPIDR)
+// sprt patch: the guard lives in the thread's block (mi_embox_tcb_t), not in a
+// `__thread` -- emulated TLS on Embox EL1, which allocates.
+static mi_decl_noinline bool mi_recurse_enter_prim(void) {
+  mi_embox_tcb_t* t = mi_embox_tcb();
+  if (t->recurse) return false;
+  t->recurse = true;
+  return true;
+}
+
+static mi_decl_noinline void mi_recurse_exit_prim(void) {
+  mi_embox_tcb()->recurse = false;
+}
+#else
 static mi_decl_thread bool recurse = false;
 
 static mi_decl_noinline bool mi_recurse_enter_prim(void) {
@@ -439,6 +453,7 @@ static mi_decl_noinline bool mi_recurse_enter_prim(void) {
 static mi_decl_noinline void mi_recurse_exit_prim(void) {
   recurse = false;
 }
+#endif
 
 static bool mi_recurse_enter(void) {
   #if defined(__APPLE__) || defined(__ANDROID__) || defined(MI_TLS_RECURSE_GUARD)

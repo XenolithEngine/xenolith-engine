@@ -27,13 +27,17 @@
 
 #if __SPRT_RUNTIME_CONFIG_HAVE_WINDOW
 
-#include <sprt/runtime/window/native_window.h>
+#include <sprt/runtime/window/virtual_window.h>
 
 namespace sprt::window {
 
 class HeadlessContextController;
 
 // Pseudo-window: there is no window system at all.
+//
+// Built on VirtualWindow, which has everything that does not depend on the headless controller:
+// the extent, the pseudo-swapchain surface, map/close and text input. This class adds what the
+// headless controller does as the window manager of a process with no display.
 //
 // The gAPI is told SurfaceBackend::Headless, which carries no native handle; the backend answers
 // with a synthetic surface over a pseudo-swapchain of ordinary device images (see
@@ -54,7 +58,7 @@ class HeadlessContextController;
 // WindowCapabilities::UserSpaceDecorations means. So this window is also the window manager for
 // itself - a press on a grip the application declared moves or resizes it on the virtual screen,
 // where every other backend would hand the press to the WM. See handleInputEvents.
-class HeadlessWindow final : public NativeWindow {
+class HeadlessWindow final : public VirtualWindow {
 public:
 	virtual ~HeadlessWindow();
 
@@ -62,34 +66,21 @@ public:
 
 	bool init(NotNull<HeadlessContextController>, Rc<WindowInfo> &&);
 
+	// The virtual window's, plus the controller's stacking order, focus and pointer - which is the
+	// window manager here.
 	virtual void mapWindow() override;
 	virtual void unmapWindow() override;
-	virtual bool close() override;
-
-	virtual bool isMapped() const override { return _mapped; }
-
-	virtual Extent2 getExtent() const override;
 
 	// Where this window sits on the virtual screen. What a popup is positioned against, and the
 	// only place window geometry is expressed in anything other than the window's own space.
 	virtual IRect getContentScreenRect() const override;
 
-	virtual SurfaceInterfaceInfo getSurfaceInterfaceInfo() const override;
-
-	virtual SurfaceInfo getSurfaceOptions(SurfaceInfo &&) const override;
-
 	virtual PresentationOptions getPreferredOptions() const override;
 
-	virtual bool setContentExtent(Extent2) override;
-
-	// Resize the pseudo-screen. Deprecates the swapchain, so the next frame is rendered at the new
-	// extent. Must be called on the context thread.
-	virtual Status setExtent(Extent2) override;
-
-	// Focus / pointer ownership, driven by the controller - which is the window manager here.
-	// Context thread.
-	void updateFocusState(bool);
-	void updatePointerState(bool);
+	// A headless window is not a window manager's plane: the application may ask for any state the
+	// base window handles, not only its close guard.
+	virtual bool enableState(WindowState) override;
+	virtual bool disableState(WindowState) override;
 
 	// The other half of WindowCapabilities::UserSpaceDecorations: a press on a grip the application
 	// declared moves or resizes THIS window instead of reaching the scene. See the note over the
@@ -97,13 +88,6 @@ public:
 	virtual void handleInputEvents(Vector<InputEventData> &&) override;
 
 protected:
-	virtual bool updateTextInput(const TextInputRequest &,
-			TextInputFlags flags = TextInputFlags::RunIfDisabled) override;
-	virtual void cancelTextInput() override;
-
-	// Shared by setExtent and setContentExtent; true if the extent actually moved.
-	bool applyExtent(Extent2);
-
 	// Engage `grip` at `local` (the window's own space). False when this window's declared policy
 	// refuses it, in which case the press is ordinary input after all.
 	bool startGripDrag(WindowLayerFlags grip, Vec2 local);
@@ -114,10 +98,6 @@ protected:
 
 	// The controller is always the one this window was created by - init() takes nothing else.
 	HeadlessContextController *getHeadlessController() const;
-
-	Extent2 _extent;
-	bool _mapped = false;
-	bool _closed = false;
 
 	// The grip a press engaged - None while nothing is being dragged - and the pointer position
 	// and window rect it engaged at. Both anchors are frozen at the press, which is what the

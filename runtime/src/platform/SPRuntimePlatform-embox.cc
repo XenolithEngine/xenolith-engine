@@ -14,7 +14,7 @@
 
 #include <sprt/runtime/init.h>
 
-#if SPRT_EMBOX
+#if SPRT_EMBOX_ANY
 
 #include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/runtime/unicode.h>
@@ -101,4 +101,4 @@ const LocationInfo &getCurrentLocation() { return platform::s_globalConfig.curre
 
 } // namespace sprt::filesystem
 
-#endif // SPRT_EMBOX
+#endif // SPRT_EMBOX_ANY

@@ -39,7 +39,7 @@ public:
 
 	// The session of `window`, creating it on first use. Null only when the window has no
 	// SceneContent yet (before its scene is presented).
-	static SubWindowSession *get(NotNull<AppWindow> window);
+	static SubWindowSession *get(NotNull<core::RenderServerChannel> window);
 
 	virtual ~SubWindowSession();
 
@@ -81,7 +81,7 @@ protected:
 		SubWindowSession *session = nullptr;
 	};
 
-	AppWindow *getWindow() const;
+	core::RenderServerChannel *getWindow() const;
 
 	void clearTip();
 	void armHideTimer(TimeInterval);

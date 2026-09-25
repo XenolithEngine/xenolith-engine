@@ -512,7 +512,7 @@ bool ColorField::openSystemPicker() {
 }
 
 bool ColorField::openFallbackPicker() {
-	auto window = getAppWindow();
+	auto window = getParentWindow();
 	if (!window) {
 		return false;
 	}
@@ -595,10 +595,9 @@ void ColorField::handleInputEcho(bool focused) {
 }
 
 AppWindow *ColorField::getAppWindow() const {
-	auto scene = getScene();
-	auto director = scene ? scene->getDirector() : nullptr;
-	auto server = director ? director->getRenderServer() : nullptr;
-	return server ? dynamic_cast<AppWindow *>(server) : nullptr;
+	return dynamic_cast<AppWindow *>(getSubWindowParent(this));
 }
+
+core::RenderServerChannel *ColorField::getParentWindow() const { return getSubWindowParent(this); }
 
 } // namespace stappler::xenolith::ui

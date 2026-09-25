@@ -507,11 +507,6 @@ __SPRT_C_FUNC unsigned long long __SPRT_ID(wcstoull)(const __SPRT_ID(wchar_t) * 
 __SPRT_C_FUNC int __SPRT_ID(fwide)(__SPRT_ID(FILE) * f, int c) { return ::fwide(f, c); }
 
 __SPRT_C_FUNC int __SPRT_ID(wprintf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, ...) {
-#if SPRT_EMBOX
-	(void)fmt;
-	__sprt_errno = ENOSYS;
-	return -1;
-#else
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -519,17 +514,10 @@ __SPRT_C_FUNC int __SPRT_ID(wprintf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT 
 
 	__sprt_va_end(list);
 	return ret;
-#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fwprintf)(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, ...) {
-#if SPRT_EMBOX
-	(void)f;
-	(void)fmt;
-	__sprt_errno = ENOSYS;
-	return -1;
-#else
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -537,7 +525,6 @@ __SPRT_C_FUNC int __SPRT_ID(fwprintf)(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 
 	__sprt_va_end(list);
 	return ret;
-#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(swprintf)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT buf,
@@ -553,27 +540,12 @@ __SPRT_C_FUNC int __SPRT_ID(swprintf)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT buf,
 
 __SPRT_C_FUNC int __SPRT_ID(
 		vwprintf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list list) {
-#if SPRT_EMBOX
-	(void)fmt;
-	(void)list;
-	__sprt_errno = ENOSYS;
-	return -1;
-#else
 	return ::vwprintf(fmt, list);
-#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vfwprintf)(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list list) {
-#if SPRT_EMBOX
-	(void)f;
-	(void)fmt;
-	(void)list;
-	__sprt_errno = ENOSYS;
-	return -1;
-#else
 	return ::vfwprintf(f, fmt, list);
-#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vswprintf)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT buf,
@@ -583,11 +555,6 @@ __SPRT_C_FUNC int __SPRT_ID(vswprintf)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT buf,
 }
 
 __SPRT_C_FUNC int __SPRT_ID(wscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, ...) {
-#if SPRT_EMBOX
-	(void)fmt;
-	__sprt_errno = ENOSYS;
-	return -1;
-#else
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -595,17 +562,10 @@ __SPRT_C_FUNC int __SPRT_ID(wscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT f
 
 	__sprt_va_end(list);
 	return ret;
-#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fwscanf)(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, ...) {
-#if SPRT_EMBOX
-	(void)f;
-	(void)fmt;
-	__sprt_errno = ENOSYS;
-	return -1;
-#else
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -613,17 +573,10 @@ __SPRT_C_FUNC int __SPRT_ID(fwscanf)(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 
 	__sprt_va_end(list);
 	return ret;
-#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(swscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT buf,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, ...) {
-#if SPRT_EMBOX
-	(void)buf;
-	(void)fmt;
-	__sprt_errno = ENOSYS;
-	return -1;
-#else
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -631,45 +584,21 @@ __SPRT_C_FUNC int __SPRT_ID(swscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT 
 
 	__sprt_va_end(list);
 	return ret;
-#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		vwscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list list) {
-#if SPRT_EMBOX
-	(void)fmt;
-	(void)list;
-	__sprt_errno = ENOSYS;
-	return -1;
-#else
 	return ::vwscanf(fmt, list);
-#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vfwscanf)(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list list) {
-#if SPRT_EMBOX
-	(void)f;
-	(void)fmt;
-	(void)list;
-	__sprt_errno = ENOSYS;
-	return -1;
-#else
 	return ::vfwscanf(f, fmt, list);
-#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vswscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT buf,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list list) {
-#if SPRT_EMBOX
-	(void)buf;
-	(void)fmt;
-	(void)list;
-	__sprt_errno = ENOSYS;
-	return -1;
-#else
 	return ::vswscanf(buf, fmt, list);
-#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fgetwc)(__SPRT_ID(FILE) * f) { return ::fgetwc(f); }
@@ -816,33 +745,13 @@ __SPRT_C_FUNC __SPRT_ID(FILE)
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(mbsnrtowcs)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT dest,
 		const char **__SPRT_RESTRICT src, __SPRT_ID(size_t) count, __SPRT_ID(size_t) destSize,
 		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT state) {
-#if SPRT_EMBOX
-	(void)dest;
-	(void)src;
-	(void)count;
-	(void)destSize;
-	(void)state;
-	__sprt_errno = ENOSYS;
-	return static_cast<__SPRT_ID(size_t)>(-1);
-#else
 	return ::mbsnrtowcs(dest, src, count, destSize, (mbstate_t *)state);
-#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsnrtombs)(char *__SPRT_RESTRICT dest,
 		const __SPRT_ID(wchar_t) **__SPRT_RESTRICT src, __SPRT_ID(size_t) count,
 		__SPRT_ID(size_t) destSize, __SPRT_MBSTATE_NAME *__SPRT_RESTRICT state) {
-#if SPRT_EMBOX
-	(void)dest;
-	(void)src;
-	(void)count;
-	(void)destSize;
-	(void)state;
-	__sprt_errno = ENOSYS;
-	return static_cast<__SPRT_ID(size_t)>(-1);
-#else
 	return ::wcsnrtombs(dest, src, count, destSize, (mbstate_t *)state);
-#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(wchar_t) * __SPRT_ID(wcsdup)(const __SPRT_ID(wchar_t) * ptr) {

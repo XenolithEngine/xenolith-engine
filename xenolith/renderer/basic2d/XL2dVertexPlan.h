@@ -217,12 +217,13 @@ struct SP_PUBLIC VertexPlan : public InterfaceObject<memory::PoolInterface>,
 	Vector<PainterBounds> painterBounds;
 
 	// The clip-space box a command's instances cover; false when it cannot be known.
-	static bool computeClipBounds(const Command *, const CmdInfo *, SpanView<InstanceVertexData>,
-			Rect &out);
+	static bool computeClipBounds(const Command *, const CmdInfo *, const core::Material *,
+			SpanView<InstanceVertexData>, Rect &out);
 
 	void deferSurface(const core::Material *, const Command *, const CmdInfo *,
 			SpanView<InstanceVertexData>);
-	void notePainter(const Command *, const CmdInfo *, SpanView<InstanceVertexData>);
+	void notePainter(const Command *, const CmdInfo *, const core::Material *,
+			SpanView<InstanceVertexData>);
 
 #if XL_FRAME_ACCOUNT
 	/* The frame's deferred account, gathered where deferred results are consumed (see pushDeferred;

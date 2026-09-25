@@ -413,7 +413,9 @@ void RemoteRenderClient::handleFrameInput(uint64_t frameId, SpanView<StringView>
 				": no attachment of queue '", queue->getName(), "' accepts input for", keys.str());
 		return;
 	}
-	if (!input->deserialize(bytes, &remoteWaitDependencyIds)) {
+	// The client's data identities go into this session's namespace: two clients, or a client and
+	// the server's own Director, both count from 1.
+	if (!input->deserialize(bytes, &remoteWaitDependencyIds, _session->getId())) {
 		log::source().warn("RemoteRenderClient", "FrameInput ", frameId, ": attachment '",
 				atts.front()->key, "' rejected its ", bytes.size(), "-byte payload");
 		return;

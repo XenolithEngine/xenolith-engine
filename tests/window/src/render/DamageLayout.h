@@ -25,6 +25,7 @@
 
 #include "app/TestLayout.h"
 #include "XL2dLayer.h"
+#include "XL2dLabel.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -61,8 +62,16 @@ public:
 	virtual void handleContentSizeDirty() override;
 
 protected:
+	virtual void registerCommands() override;
+
 	basic2d::Layer *_moving = nullptr;
 	basic2d::Layer *_static = nullptr;
+
+	// A label changes colour on `damage.label-color`. Its glyphs are zero-size points sized by the
+	// shader, so its damage box is the one it supplies - and a colour change must keep that box, or
+	// the repaint covers the glyph anchors and leaves the rest of the text in the old colour.
+	basic2d::Label *_label = nullptr;
+	bool _labelToggled = false;
 	bool _started = false;
 };
 

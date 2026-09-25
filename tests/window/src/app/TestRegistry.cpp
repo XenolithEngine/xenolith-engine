@@ -38,6 +38,7 @@
 #include "dock/DockPersistLayout.h"
 #include "render/DamageLayout.h"
 #include "render/FrameCaptureLayout.h"
+#include "render/GradientLayout.h"
 #include "layout/FitContentLayout.h"
 #include "layout/FlexboxLayout.h"
 #include "layout/TableLayout.h"
@@ -614,6 +615,12 @@ static const TestInfo s_renderTests[] = {
 		StringView("A red square jumps in discrete steps beside a static grey one. Exactly one red "
 				   "square must be visible at any moment - a second one is a trail."),
 		TestRegistry_make<DamageLayout>, true},
+
+	TestInfo{StringView("gradient"), StringView("XL_GRADIENT_TEST"),
+		StringView("Gradients and outlines"),
+		StringView("A box shaded left to right by a two-colour gradient above a teal box with a dark "
+				   "outline. gradient.step swaps the gradient's colours."),
+		TestRegistry_make<GradientLayout>, true},
 
 	TestInfo{StringView("frame-capture"), StringView("XL_FRAME_CAPTURE_TEST"),
 		StringView("Capturing a rectangle of the frame as a texture"),
