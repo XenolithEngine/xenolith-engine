@@ -71,6 +71,12 @@
 #define __SPRT_SYSCALL_clock_nanosleep 115
 #define __SPRT_SYSCALL_sched_yield     124
 
+// The cores the task may run on: every core the kernel has started. This is
+// how sysconf(_SC_NPROCESSORS_*) counts them, as musl does -- a constant here
+// made every EL0 thread pool single-threaded on four cores (A3). pid 0 or the
+// caller's own; the mask is 8 bytes.
+#define __SPRT_SYSCALL_sched_getaffinity 123
+
 // Directories. Embox has no directory descriptor at all: opendir/readdir over a
 // DIR*, and its open() ASSERTS on O_DIRECTORY rather than refusing it. So the
 // kernel invents the descriptor, out of a reserved high range -- which is why a

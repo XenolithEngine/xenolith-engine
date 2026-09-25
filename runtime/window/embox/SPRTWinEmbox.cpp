@@ -23,7 +23,7 @@
 #define __SPRT_BUILD 1
 #include <sprt/runtime/config.h>
 #include <sprt/c/bits/__sprt_def.h>
-#if __SPRT_RUNTIME_CONFIG_HAVE_WINDOW && SPRT_EMBOX
+#if __SPRT_RUNTIME_CONFIG_HAVE_WINDOW && SPRT_EMBOX_ANY
 #include "SPRTWinEmboxController.cc"
 #include "SPRTWinEmboxWindow.cc"
 #endif

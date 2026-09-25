@@ -22,6 +22,10 @@ SPDX-License-Identifier: MIT
 #include <string.h>
 #include <sched.h>
 
+#if SPRT_EMBOX_USER
+#include "../../../../core/include/__el0_syscall.h"
+#endif
+
 #if SPRT_EMBOX && !SPRT_EMBOX_USER
 // xenolith-os drivers/xlfutex. Weak, as in core/embox/sprt_lock.cc: an image
 // without it links both null and the looper polls as it always did.
@@ -54,6 +58,36 @@ static bool embox_futex_wait_enabled() {
 	}
 	return state == 1;
 }
+#elif SPRT_EMBOX_USER
+// EL0: the futex is a system call (98), always there. The same SPRT_EMBOX_FUTEX
+// switch as in the kernel build, so the two can be compared ("0" polls).
+//
+// Before A3 this path polled here with usleep(1000) slices. In EL0 each slice
+// is a system call that sleeps a whole millisecond rounded up to the tick, and
+// every hand-over of work to the looper waited for the slice to end: on two and
+// four cores the kiosk's frame spent ~4 ms more between present and the next
+// frame than in EL1, with everything else equal.
+static int embox_futex_state = 0; // 0 unknown, 1 futex, 2 poll
+
+static bool embox_futex_wait_enabled() {
+	int state = __atomic_load_n(&embox_futex_state, __ATOMIC_RELAXED);
+	if (state == 0) {
+		auto env = ::getenv("SPRT_EMBOX_FUTEX");
+		bool futex = !(env && (::strcmp(env, "0") == 0 || ::strcmp(env, "lock") == 0));
+		state = futex ? 1 : 2;
+		__atomic_store_n(&embox_futex_state, state, __ATOMIC_RELAXED);
+	}
+	return state == 1;
+}
+
+// Linux's FUTEX_WAIT / FUTEX_WAKE with FUTEX_PRIVATE_FLAG; the timespec is the
+// ABI's (two 64-bit words), not the libc's.
+static constexpr int EL0_FUTEX_WAIT = 0 | 128;
+static constexpr int EL0_FUTEX_WAKE = 1 | 128;
+struct el0_timespec {
+	int64_t tv_sec;
+	int64_t tv_nsec;
+};
 #endif
 
 static constexpr int64_t EMBOX_DEADLINE_NONE = INT64_MAX;
@@ -252,6 +286,11 @@ void EmboxData::notifyWakeup() {
 	if (__atomic_load_n(&_sleepers, __ATOMIC_SEQ_CST) != 0 && embox_futex_wait_enabled()) {
 		xl_futex_wake(&_wakeupReq, INT_MAX);
 	}
+#elif SPRT_EMBOX_USER
+	if (__atomic_load_n(&_sleepers, __ATOMIC_SEQ_CST) != 0 && embox_futex_wait_enabled()) {
+		__el0_futex(reinterpret_cast<uint32_t *>(&_wakeupReq), EL0_FUTEX_WAKE, INT_MAX, nullptr,
+				0);
+	}
 #endif
 }
 
@@ -273,6 +312,17 @@ void EmboxData::spinWait(int timeoutMs) {
 	if (embox_futex_wait_enabled()) {
 		__atomic_add_fetch(&_sleepers, 1, __ATOMIC_SEQ_CST);
 		xl_futex_wait(&_wakeupReq, 4, 0, int64_t(timeoutMs) * 1'000'000ll);
+		__atomic_sub_fetch(&_sleepers, 1, __ATOMIC_SEQ_CST);
+		return;
+	}
+#elif SPRT_EMBOX_USER
+	// The same one sleep, through the system call: it ends when notifyWakeup()
+	// changes the word (the kernel compares it to 0 under its lock, so a wakeup
+	// between the load and the sleep is not lost) or when the timeout passes.
+	if (embox_futex_wait_enabled()) {
+		el0_timespec ts{int64_t(timeoutMs / 1'000), int64_t(timeoutMs % 1'000) * 1'000'000ll};
+		__atomic_add_fetch(&_sleepers, 1, __ATOMIC_SEQ_CST);
+		__el0_futex(reinterpret_cast<uint32_t *>(&_wakeupReq), EL0_FUTEX_WAIT, 0, &ts, 0);
 		__atomic_sub_fetch(&_sleepers, 1, __ATOMIC_SEQ_CST);
 		return;
 	}

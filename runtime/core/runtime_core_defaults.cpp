@@ -258,7 +258,15 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
 	// from the kernel rather than from tl_self is the same argument the hosted
 	// RTOS branch above makes: a thread the libc did not create still has to
 	// answer correctly.
-	return (__SPRT_ID(pid_t))__el0_gettid();
+	//
+	// Asked once per thread and kept in TLS: every rmutex lock takes the owner's
+	// tid, and the kiosk made ~90 of these system calls a frame (A3). A thread's
+	// id never changes, and a new thread's TLS block starts at zero.
+	static thread_local __SPRT_ID(pid_t) tl_kernel_tid = 0;
+	if (tl_kernel_tid == 0) {
+		tl_kernel_tid = (__SPRT_ID(pid_t))__el0_gettid();
+	}
+	return tl_kernel_tid;
 #else
 	auto t = __sprt_pthread_self_noattach_np();
 	if (t) {

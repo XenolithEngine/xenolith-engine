@@ -57,7 +57,7 @@
 #include "../nuttx/SPRTWinNuttxController.h"
 #endif
 
-#if SPRT_EMBOX
+#if SPRT_EMBOX_ANY
 #include "../embox/SPRTWinEmboxController.h"
 #endif
 
@@ -108,7 +108,7 @@ Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextCon
 #if SPRT_NUTTX
 	return NuttxContextController::create(ctx, move(info), a);
 #endif
-#if SPRT_EMBOX
+#if SPRT_EMBOX_ANY
 	return EmboxContextController::create(ctx, move(info), a);
 #endif
 	oslog::vperror(__SPRT_LOCATION, "ContextController", "Unknown platform");
@@ -140,7 +140,7 @@ void ContextController::acquireDefaultConfig(ContextConfig &config, NativeContex
 #if SPRT_NUTTX
 	NuttxContextController::acquireDefaultConfig(config, handle);
 #endif
-#if SPRT_EMBOX
+#if SPRT_EMBOX_ANY
 	EmboxContextController::acquireDefaultConfig(config, handle);
 #endif
 }
