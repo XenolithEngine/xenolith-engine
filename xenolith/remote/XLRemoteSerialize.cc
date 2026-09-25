@@ -1027,6 +1027,7 @@ struct QueueEncoder {
 
 	DataValue emitGraphicPipeline(const GraphicPipelineData *p) {
 		// [key, dynamicState, material, subpass, layout, shaders[], id, family]
+		// `blend` stays on the server: a client compiles no pipelines, it only matches `material`.
 		DataValue v(DataValue::Type::ARRAY);
 		v.addString(p->key);
 		v.addInteger(ei(p->dynamicState));

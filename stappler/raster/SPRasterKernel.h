@@ -128,6 +128,31 @@ inline uint8_t Kernels_blend(uint32_t src, uint32_t srcAlpha, uint8_t dst) {
 	return uint8_t(Kernels_divide255(src * srcAlpha + uint32_t(dst) * (255 - srcAlpha)));
 }
 
+// One quantized source pixel onto `dst` under Transparent or Premultiplied. Premultiplied alpha is
+// srcAlpha + dstAlpha*(1-srcAlpha), which is Kernels_blend with a source byte of 255.
+inline void Kernels_blendPixel(uint8_t *dst, const ChannelLayout &fmt, BlendMode blend, uint32_t r,
+		uint32_t g, uint32_t b, uint32_t sa) {
+	if (sa == 255) {
+		dst[fmt.r] = uint8_t(r);
+		if (fmt.size > 1) {
+			dst[fmt.g] = uint8_t(g);
+			dst[fmt.b] = uint8_t(b);
+			if (blend == BlendMode::Premultiplied) {
+				dst[fmt.a] = 255;
+			}
+		}
+	} else if (sa != 0) {
+		dst[fmt.r] = Kernels_blend(r, sa, dst[fmt.r]);
+		if (fmt.size > 1) {
+			dst[fmt.g] = Kernels_blend(g, sa, dst[fmt.g]);
+			dst[fmt.b] = Kernels_blend(b, sa, dst[fmt.b]);
+			if (blend == BlendMode::Premultiplied) {
+				dst[fmt.a] = Kernels_blend(255, sa, dst[fmt.a]);
+			}
+		}
+	}
+}
+
 // Fractional bits of a bilinear filter weight.
 //
 // Vulkan requires at least 8 and leaves the rest to the implementation. Eight was tried and is not

@@ -5,8 +5,8 @@ SPDX-License-Identifier: MIT
 
 // Headless smoke test and backend-parity scene: run the engine with no window system at all
 // (`--headless`) and drive it entirely over the inspector socket. Every drawable here is built in
-// code - there is not a single bundled resource and not a single Label, so the scene renders
-// identically on any backend that can rasterize the flat queue, including one with no font support.
+// code - there is not a single bundled resource; text comes from the default font set, so the
+// backend needs a font queue.
 //
 //   ./headlesstest --headless --width 640 --height 480
 //   XENOLITH_INSPECTOR_ADDRESS=unix:/tmp/xl-headless.sock ./headlesstest --headless
@@ -134,13 +134,13 @@ public:
 		_box->setAnchorPoint(Anchor::Middle);
 		_box->setContentSize(Size2(200.0f, 120.0f));
 
-		// No Label: a label lays out glyphs through the font controller and gates every frame on
-		// the atlas upload finishing (a DependencyEvent signalled by the FontQueue). A backend
-		// without a FontQueue (GLES until M3) would then stall every frame in InputRequired and
-		// never present - which is exactly what wedged the headless screenshot path. The scene's
-		// documented contract is "renders identically on any backend, including one with no font
-		// support", so text stays out of the baseline; the label parity cases are re-enabled once
-		// the GLES FontQueue lands.
+		// Text: the only drawable here that needs a font backend. Latin + Cyrillic + digits, so a
+		// missing glyph shows up as a hole rather than as an empty frame.
+		_label = content->addChild(Rc<Label>::create(), ZOrder(4));
+		_label->setAnchorPoint(Anchor::Middle);
+		_label->setFontSize(20);
+		_label->setString("Xenolith Кириллица 0123");
+		_label->setColor(Color4F(0.05f, 0.05f, 0.1f, 1.0f));
 
 		setContent(content);
 
@@ -515,6 +515,16 @@ protected:
 			if (StringView(value) != "0") {
 				info.type = QueueType::Flat;
 				log::source().info("HeadlessScene", "Using flat (lightweight) 2d render queue");
+			}
+		}
+
+		// XL_PREMULTIPLIED_OUTPUT=1 - a plane for a compositor: premultiplied output over a
+		// transparent clear, so the screenshot's alpha channel is what is compared.
+		if (auto value = ::getenv("XL_PREMULTIPLIED_OUTPUT")) {
+			if (StringView(value) != "0") {
+				info.premultipliedOutput = true;
+				info.backgroundColor = Color4F(0.0f, 0.0f, 0.0f, 0.0f);
+				log::source().info("HeadlessScene", "Premultiplied output over a transparent clear");
 			}
 		}
 	}

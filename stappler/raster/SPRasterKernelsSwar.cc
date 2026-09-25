@@ -98,21 +98,26 @@ static void Swar_fillConstant(uint8_t *dst, uint32_t count, const SpanConstant &
 	}
 }
 
-// A constant colour over a run, source-over. Destination alpha is preserved, which is what the
-// flat contract's only blend state says - so the alpha byte of every pixel is put back from the
-// destination after blending, rather than excluded from it (excluding it would cost a branch per
-// lane; restoring it costs one mask).
-static void Swar_blendConstant(uint8_t *dst, uint32_t count, const SpanConstant &src,
-		const ChannelLayout &fmt) {
+// A constant colour over a run, source-over. Transparent preserves destination alpha, so the alpha
+// byte of every pixel is put back from the destination after blending, rather than excluded from
+// it (excluding it would cost a branch per lane; restoring it costs one mask). Premultiplied
+// blends the alpha byte too, with a source byte of 255.
+static void Swar_blendConstant(uint8_t *dst, uint32_t count, SpanConstant src,
+		const ChannelLayout &fmt, BlendMode blend) {
 	const uint64_t inverse = 255 - src.alpha;
+	const bool keepAlpha = blend != BlendMode::Premultiplied;
+	if (!keepAlpha) {
+		src.bytes[fmt.a] = 255;
+	}
 
 	const auto srcPair = Swar_pair(src.bytes);
 	const auto srcTermEven = (srcPair & Swar_laneMask) * src.alpha;
 	const auto srcTermOdd = ((srcPair >> 8) & Swar_laneMask) * src.alpha;
 
 	// 0xFF at the alpha byte of both pixels.
-	const uint64_t alphaMask =
-			(uint64_t(0xFFull) << (fmt.a * 8)) | (uint64_t(0xFFull) << ((fmt.a + 4) * 8));
+	const uint64_t alphaMask = keepAlpha
+			? (uint64_t(0xFFull) << (fmt.a * 8)) | (uint64_t(0xFFull) << ((fmt.a + 4) * 8))
+			: 0;
 
 	uint32_t i = 0;
 	for (; i + 2 <= count; i += 2) {
@@ -124,9 +129,8 @@ static void Swar_blendConstant(uint8_t *dst, uint32_t count, const SpanConstant 
 
 	// The odd trailing pixel goes through the scalar arithmetic, which is the same arithmetic.
 	if (i < count) {
-		dst[fmt.r] = Kernels_blend(src.bytes[fmt.r], src.alpha, dst[fmt.r]);
-		dst[fmt.g] = Kernels_blend(src.bytes[fmt.g], src.alpha, dst[fmt.g]);
-		dst[fmt.b] = Kernels_blend(src.bytes[fmt.b], src.alpha, dst[fmt.b]);
+		Kernels_blendPixel(dst, fmt, blend, src.bytes[fmt.r], src.bytes[fmt.g], src.bytes[fmt.b],
+				src.alpha);
 	}
 }
 
@@ -159,6 +163,12 @@ static void Swar_writeSpan(SpanContext &ctx, const ChannelLayout &fmt, BlendMode
 	}
 
 	if (src.alpha == 255) {
+		// Premultiplied output of an opaque source is the source itself.
+		if (blend == BlendMode::Premultiplied) {
+			Swar_fillConstant(ctx.dst, ctx.count, src);
+			return;
+		}
+
 		// Opaque source, but destination alpha still has to survive: the colour bytes are a plain
 		// store, the alpha byte is not.
 		auto dst = ctx.dst;
@@ -171,7 +181,7 @@ static void Swar_writeSpan(SpanContext &ctx, const ChannelLayout &fmt, BlendMode
 		return;
 	}
 
-	Swar_blendConstant(ctx.dst, ctx.count, src, fmt);
+	Swar_blendConstant(ctx.dst, ctx.count, src, fmt, blend);
 }
 
 SP_RASTER_KERNEL_FN

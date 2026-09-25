@@ -44,6 +44,10 @@ public:
 
 	Rc<FrameRequest> makeRequest(Rc<RenderQueueInput> &&);
 
+	// Called when the compilation frame is over, with every task of it done. Marks the queue
+	// compiled if the frame succeeded and every pass and pipeline got its object.
+	bool completeQueue(core::Loop &, Device &, core::Queue &, bool valid) const;
+
 	TransferQueue *getTransferQueue() const { return _transfer; }
 	MaterialCompiler *getMaterialCompiler() const { return _materialCompiler; }
 

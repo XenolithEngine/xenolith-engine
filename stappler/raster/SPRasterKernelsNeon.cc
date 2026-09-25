@@ -78,15 +78,21 @@ static void Neon_fillConstant(uint8_t *dst, uint32_t count, const SpanConstant &
 	}
 }
 
-static void Neon_blendConstant(uint8_t *dst, uint32_t count, const SpanConstant &src,
-		const ChannelLayout &fmt) {
+static void Neon_blendConstant(uint8_t *dst, uint32_t count, SpanConstant src,
+		const ChannelLayout &fmt, BlendMode blend) {
+	// Premultiplied blends the alpha byte too, with a source byte of 255; Transparent keeps it.
+	const bool keepAlpha = blend != BlendMode::Premultiplied;
+	if (!keepAlpha) {
+		src.bytes[fmt.a] = 255;
+	}
+
 	auto inverse = vdupq_n_u16(uint16_t(255 - src.alpha));
 
 	auto srcPixels = vreinterpretq_u8_u32(vdupq_n_u32(Neon_pixel(src.bytes)));
 	auto srcTerm = vmulq_u16(vmovl_u8(vget_low_u8(srcPixels)), vdupq_n_u16(uint16_t(src.alpha)));
 
 	uint8_t maskBytes[4] = {0, 0, 0, 0};
-	maskBytes[fmt.a] = 0xFF;
+	maskBytes[fmt.a] = keepAlpha ? 0xFF : 0;
 	auto alphaMask = vreinterpretq_u8_u32(vdupq_n_u32(Neon_pixel(maskBytes)));
 
 	uint32_t i = 0;
@@ -98,9 +104,8 @@ static void Neon_blendConstant(uint8_t *dst, uint32_t count, const SpanConstant 
 	}
 
 	for (; i < count; ++i) {
-		dst[fmt.r] = Kernels_blend(src.bytes[fmt.r], src.alpha, dst[fmt.r]);
-		dst[fmt.g] = Kernels_blend(src.bytes[fmt.g], src.alpha, dst[fmt.g]);
-		dst[fmt.b] = Kernels_blend(src.bytes[fmt.b], src.alpha, dst[fmt.b]);
+		Kernels_blendPixel(dst, fmt, blend, src.bytes[fmt.r], src.bytes[fmt.g], src.bytes[fmt.b],
+				src.alpha);
 		dst += 4;
 	}
 }
@@ -372,7 +377,10 @@ static void Neon_writeSpan(SpanContext &ctx, const ChannelLayout &fmt, BlendMode
 		return;
 	}
 
-	if (fmt.size == 4 && !isConstantSpan(ctx)) {
+	// A textured span with premultiplied output goes to the scalar set.
+	const bool vectorSampler = blend != BlendMode::Premultiplied;
+
+	if (vectorSampler && fmt.size == 4 && !isConstantSpan(ctx)) {
 		TextureSpan tex;
 		if (resolveTextureSpan(ctx, fmt, tex) && tex.linear && tex.inRange) {
 			Neon_textureSpanLinear(ctx, fmt, blend, tex);
@@ -383,7 +391,7 @@ static void Neon_writeSpan(SpanContext &ctx, const ChannelLayout &fmt, BlendMode
 	if (fmt.size != 4 || !isConstantSpan(ctx)) {
 		// Bilinear falls through to the scalar set and its column cache; this samples one texel.
 		TextureSpan tex;
-		if (resolveTextureSpan(ctx, fmt, tex) && !tex.linear) {
+		if (vectorSampler && resolveTextureSpan(ctx, fmt, tex) && !tex.linear) {
 			Neon_textureSpan(ctx, fmt, blend, tex);
 			return;
 		}
@@ -404,6 +412,12 @@ static void Neon_writeSpan(SpanContext &ctx, const ChannelLayout &fmt, BlendMode
 	}
 
 	if (src.alpha == 255) {
+		// Premultiplied output of an opaque source is the source itself.
+		if (blend == BlendMode::Premultiplied) {
+			Neon_fillConstant(ctx.dst, ctx.count, src);
+			return;
+		}
+
 		auto dst = ctx.dst;
 		for (uint32_t i = 0; i < ctx.count; ++i) {
 			dst[fmt.r] = src.bytes[fmt.r];
@@ -414,7 +428,7 @@ static void Neon_writeSpan(SpanContext &ctx, const ChannelLayout &fmt, BlendMode
 		return;
 	}
 
-	Neon_blendConstant(ctx.dst, ctx.count, src, fmt);
+	Neon_blendConstant(ctx.dst, ctx.count, src, fmt, blend);
 }
 
 SP_RASTER_KERNEL_FN

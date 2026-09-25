@@ -164,7 +164,8 @@ bool FlatPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilder,
 	});
 
 	passBuilder.addSubpass([&, this](SubpassBuilder &subpassBuilder) {
-		makeMaterialSubpass(queueBuilder, subpassBuilder, layout2d, colorAttachment);
+		makeMaterialSubpass(queueBuilder, subpassBuilder, layout2d, colorAttachment,
+				info.premultipliedOutput);
 	});
 
 	passBuilder.setAcquireTimestamps(2);
@@ -178,7 +179,7 @@ auto FlatPass::makeFrameHandle(const FrameQueue &handle) -> Rc<QueuePassHandle> 
 
 void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 		core::SubpassBuilder &subpassBuilder, const core::PipelineLayoutData *layout2d,
-		const core::AttachmentPassData *colorAttachment) {
+		const core::AttachmentPassData *colorAttachment, bool premultipliedOutput) {
 	using namespace core;
 
 	auto flatVert = queueBuilder.addProgramByRef("Loader_FlatVert", shaders::FlatVert);
@@ -211,6 +212,13 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 
 	auto shaderSpecInfo = makeSpecInfo(0);
 
+	// With premultiplied output the Transparent pipelines blend alpha as source-over. Only the
+	// compiled state changes: their PipelineMaterialInfo, the key materials match, stays as it is.
+	auto outputBlend = premultipliedOutput
+			? BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha, BlendOp::Add,
+					  BlendFactor::One, BlendFactor::OneMinusSrcAlpha, BlendOp::Add)
+			: BlendInfo();
+
 	// PipelineMaterialInfo (DepthInfo included) must stay byte-identical to ShadowPass: materials
 	// are matched to pipelines by that struct's value, not by pipeline name, and Sprite bakes
 	// DepthInfo into the material request. The depth state itself is dropped at pipeline creation
@@ -225,7 +233,8 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
 										  BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
 										  BlendOp::Add),
-				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}));
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}),
+			outputBlend);
 
 	auto shaderTex2dArraySpecInfo = makeSpecInfo(1);
 
@@ -239,7 +248,8 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
 										  BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
 										  BlendOp::Add),
-				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2DArray}));
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2DArray}),
+			outputBlend);
 
 	auto shaderTex3dSpecInfo = makeSpecInfo(2);
 
@@ -253,7 +263,8 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
 										  BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
 										  BlendOp::Add),
-				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView3D}));
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView3D}),
+			outputBlend);
 
 	// fallback materials for any Layer/Sprite that does not define its own
 	static_cast<MaterialAttachment *>(_materials->attachment.get())

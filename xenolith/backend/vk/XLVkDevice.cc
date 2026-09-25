@@ -183,6 +183,7 @@ bool DeviceFrameHandle::init(Loop &loop, Device &device, Rc<FrameRequest> &&req,
 	}
 
 	_allocator = device.getAllocator();
+	_persistentMapping = _request->isPersistentMapping();
 	return true;
 }
 
@@ -193,8 +194,7 @@ DeviceMemoryPool *DeviceFrameHandle::getMemPool(void *key) {
 	if (v == _memPools.end()) {
 		v = _memPools
 					.emplace((void *)nullptr,
-							Rc<DeviceMemoryPool>::create(_allocator,
-									_request->isPersistentMapping()))
+							Rc<DeviceMemoryPool>::create(_allocator, _persistentMapping))
 					.first;
 	}
 	return v->second;

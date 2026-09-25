@@ -235,18 +235,36 @@ bool Scene2d::buildQueue(NotNull<AppThread> app, QueueInfo &queueInfo,
 	auto api = loop->getInstance()->getApi();
 	bool queueBuilt = false;
 
+	auto backgroundColor = queueInfo.backgroundColor;
+	if (queueInfo.premultipliedOutput) {
+		backgroundColor = Color4F(backgroundColor.r * backgroundColor.a,
+				backgroundColor.g * backgroundColor.a, backgroundColor.b * backgroundColor.a,
+				backgroundColor.a);
+	}
+
+	[[maybe_unused]]
+	auto ignorePremultiplied = [&](StringView queue) {
+		if (queueInfo.premultipliedOutput) {
+			log::source().warn("Scene2d", "premultiplied output is not supported by ", queue,
+					", ignored");
+		}
+	};
+
 #if MODULE_XENOLITH_BACKEND_VK
 	if (!queueBuilt && api == core::InstanceApi::Vulkan) {
 		if (queueInfo.type == QueueType::Flat) {
 			basic2d::vk::FlatPass::RenderQueueInfo info{
 				app->getGlLoop(),
 				queueInfo.extent,
-				queueInfo.backgroundColor,
+				backgroundColor,
 				queueInfo.damage,
+				queueInfo.premultipliedOutput,
 			};
 
 			basic2d::vk::FlatPass::makeRenderQueue(builder, info);
 		} else {
+			ignorePremultiplied("the Vulkan default queue");
+
 			basic2d::vk::ShadowPass::RenderQueueInfo info{
 				app->getGlLoop(),
 				queueInfo.extent,
@@ -263,6 +281,8 @@ bool Scene2d::buildQueue(NotNull<AppThread> app, QueueInfo &queueInfo,
 
 #if MODULE_XENOLITH_RENDERER_BASIC2D_WEBGPU
 	if (!queueBuilt && api == core::InstanceApi::WebGPU) {
+		ignorePremultiplied("the WebGPU queue");
+
 		basic2d::webgpu::MaterialVertexPass::RenderQueueInfo info{
 			app->getGlLoop(),
 			queueInfo.extent,
@@ -276,6 +296,8 @@ bool Scene2d::buildQueue(NotNull<AppThread> app, QueueInfo &queueInfo,
 
 #if MODULE_XENOLITH_RENDERER_BASIC2D_MTL
 	if (!queueBuilt && api == core::InstanceApi::Metal) {
+		ignorePremultiplied("the Metal queue");
+
 		basic2d::mtl::MaterialVertexPass::RenderQueueInfo info{
 			app->getGlLoop(),
 			queueInfo.extent,
@@ -301,8 +323,9 @@ bool Scene2d::buildQueue(NotNull<AppThread> app, QueueInfo &queueInfo,
 		basic2d::soft::FlatPass::RenderQueueInfo info{
 			app->getGlLoop(),
 			queueInfo.extent,
-			queueInfo.backgroundColor,
+			backgroundColor,
 			queueInfo.damage,
+			queueInfo.premultipliedOutput,
 		};
 
 		basic2d::soft::FlatPass::makeRenderQueue(builder, info);
@@ -319,6 +342,8 @@ bool Scene2d::buildQueue(NotNull<AppThread> app, QueueInfo &queueInfo,
 					.info("Scene2d", "GLES backend supports the flat queue only, building it "
 							"instead of the default one");
 		}
+
+		ignorePremultiplied("the GLES queue");
 
 		basic2d::gles::FlatPass::RenderQueueInfo info{
 			app->getGlLoop(),

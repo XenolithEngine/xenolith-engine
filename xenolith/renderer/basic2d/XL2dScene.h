@@ -47,6 +47,11 @@ public:
 		// Defaulted per QueueType in Scene2d::init and overridable from buildQueueResources.
 		// maxOf<uint32_t> means "not set, use the type's default".
 		core::QueueDamageFlags damage = core::QueueDamageFlags(maxOf<uint32_t>());
+
+		// Premultiplied output for a plane composited over others: transparent content blends its
+		// alpha as source-over, and backgroundColor is premultiplied by buildQueue. Flat queue on
+		// Vulkan and soft only; elsewhere ignored with a warning.
+		bool premultipliedOutput = false;
 	};
 
 	class FpsDisplay;

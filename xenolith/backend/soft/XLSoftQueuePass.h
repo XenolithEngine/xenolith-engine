@@ -62,11 +62,17 @@ public:
 	void setScissor(const URect &);
 	const URect &getScissor() const { return _scissor; }
 
+	// Content the recorder had to leave out (a material mid-rebind, a glyph not in the store). An
+	// empty list with drops keeps the previous frame; an empty list without them is an empty scene.
+	void addDropped(uint32_t count) { _dropped += count; }
+	uint32_t getDropped() const { return _dropped; }
+
 protected:
 	Device *_device = nullptr;
 	raster::Target _target;
 	raster::DrawList _drawList;
 	URect _scissor;
+	uint32_t _dropped = 0;
 };
 
 class SP_PUBLIC QueuePassHandle : public core::QueuePassHandle {

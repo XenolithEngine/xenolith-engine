@@ -1052,8 +1052,8 @@ bool QueuePassHandle::prepareSubpass(core::FrameQueue &q, const core::SubpassDat
 	// then narrows it further at draw time.
 	buf->setScissor(QueuePassHandle_boundingRect(redrawAreas));
 
-	// Record first: an empty draw list must not clear the previous frame
-	// (dynamic-image mid-rebind used to publish a black frame).
+	// Record first: a draw list emptied by dropped content must not clear the previous frame
+	// (dynamic-image mid-rebind used to publish a black frame). An empty scene is cleared.
 	{
 		FrameStageTimer timer(FrameStage::Record);
 		auto recordStarted = sweepAcc ? FrameSweep_ticks() : 0;
@@ -1063,7 +1063,7 @@ bool QueuePassHandle::prepareSubpass(core::FrameQueue &q, const core::SubpassDat
 		}
 	}
 
-	if (buf->getDrawList().empty()) {
+	if (buf->getDrawList().empty() && buf->getDropped() > 0) {
 		return true;
 	}
 

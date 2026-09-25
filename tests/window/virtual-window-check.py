@@ -38,9 +38,7 @@ _spec.loader.exec_module(rc)
 check = rc.check
 
 # Per glyph, on the server's rasterizer: enough that a frame drawn before its glyphs is caught every
-# time (without gating, 10 ms failed 6 runs of 6, none at all 5 of 6). Not more: the delay sleeps
-# the server's workers, and at 50 ms a loaded machine sometimes lost the virtual window's pipelines
-# for good (see os-examples-m6.2-plan.md).
+# time (without gating, 10 ms failed 6 runs of 6, none at all 5 of 6).
 GLYPH_DELAY_US = os.environ.get("XL_CHECK_GLYPH_DELAY_US", "10000")
 
 
@@ -291,7 +289,9 @@ def run(server_bin, client_bin, gapi):
         check("the latest frame's slot is pinned", p1.get("slot") in p1.get("pinned", []),
                 str(p1))
 
-        held = s.ok("window", window=name, op="plane-hold", ms=2500) or {}
+        hold_ms = 2500
+        held = s.ok("window", window=name, op="plane-hold", ms=hold_ms) or {}
+        hold_end = time.monotonic() + hold_ms / 1000.0
         held_slot, held_serial = held.get("slot"), held.get("serial")
         newer, pinned_all_along = [], True
         f0 = presented(s, name)
@@ -308,10 +308,20 @@ def run(server_bin, client_bin, gapi):
         check("the held frame's slot stays pinned", pinned_all_along, str(plane(s, name)))
         check("and is never drawn into", all(slot != held_slot for _, slot in newer),
                 f"held slot {held_slot}, newer frames {newer}")
-        pump(s, 1.5)
-        p = plane(s, name)
-        check("let go, the slot returns to the ring",
-                held_slot not in p.get("pinned", []) or p.get("slot") == held_slot, str(p))
+        # On Vulkan a slot is also pinned for a moment after its frame is presented and after it is
+        # replaced (the layout transitions), so a pin alone proves nothing: the slot is back in the
+        # ring when a newer frame is published from it.
+        reused, p = None, {}
+        deadline = hold_end + 4.0
+        while reused is None and time.monotonic() < deadline:
+            pump(s, 0.1)
+            p = plane(s, name)
+            if p.get("slot") == held_slot and p.get("serial", 0) > held_serial:
+                reused = time.monotonic() - hold_end
+        check("let go, the slot returns to the ring", reused is not None,
+                f"reused {reused:.2f} s after the hold" if reused is not None else str(p))
+        if reused is not None:
+            print(f"       slot {held_slot} reused {reused:.2f} s after the hold ended")
 
         # Two slow readers and the latest frame: three slots out of four held, and the client still
         # draws through the one left.
@@ -364,12 +374,14 @@ def run(server_bin, client_bin, gapi):
 
         before = raw_shot(s, name)
         _, req0, _ = session_counters(s)
-        p0 = presented(s, name)
+        # The screenshot is the latest published frame, and on Vulkan a frame is published after it
+        # is presented: the new frame is the first one with a newer serial on the plane.
+        serial0 = plane(s, name).get("serial", 0)
         s.ok("invoke", name="remote-app-notify", args={"session": sid, "value": {"label": "Wqz"}})
         first = None
         deadline = time.monotonic() + 10.0
         while first is None and time.monotonic() < deadline:
-            if presented(s, name) != p0:
+            if plane(s, name).get("serial", 0) > serial0:
                 first = raw_shot(s, name)
             else:
                 time.sleep(0.02)
