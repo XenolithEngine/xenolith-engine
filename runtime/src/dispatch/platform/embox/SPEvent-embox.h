@@ -33,9 +33,9 @@ THE SOFTWARE.
 // stretch at 16 ms, yields, and observes `_wakeupReq` / ThreadHandle::pending.
 //
 // Limitations (acceptable for the M5 milestone, single-thread xenolith hello):
-//   * No file/socket/process handles — those need native Embox readiness hooks
-//     and arrive together with the M6 graphics window surface. The reactor
-//     itself is complete enough for Looper + timers + cross-thread perform.
+//   * No socket/process handles — those need native Embox readiness hooks.
+//     Files and file watches use the portable timer-driven pieces from
+//     platform/fd (inline FileHandle, stat-polling watch), as on wasm.
 //   * No signals — Embox flat-build signal delivery goes through the kernel,
 //     not through readable fds.
 
@@ -203,6 +203,8 @@ struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _emboxTimerClass;
 	HandleClass _emboxThreadClass;
 	HandleClass _emboxAddressWaitClass;
+	HandleClass _emboxFileInlineClass;
+	HandleClass _emboxWatchClass;
 
 	Data(QueueRef *q, const QueueInfo &info);
 };

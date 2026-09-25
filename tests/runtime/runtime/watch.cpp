@@ -138,7 +138,16 @@ void performWatchFileTests() {
 	writeFileContent(tmp, "replacement");
 	::rename(tmp, path);
 	pump();
+#if SPRT_EMBOX_ANY
+	// Embox watches by polling stat(), and /tmp is FAT: the inode number is where
+	// the directory entry lies, and the renamed file's new entry takes the slot
+	// the replaced one just freed. Same number, no mtime (FAT keeps none) -- the
+	// replace can only be seen as a change.
+	check(hasFlag(observed, WatchFlags::MovedTo) || hasFlag(observed, WatchFlags::Modified),
+			"atomic-replace (rename-over) detected (as Modified on FAT)");
+#else
 	check(hasFlag(observed, WatchFlags::MovedTo), "atomic-replace (rename-over) detected as MovedTo");
+#endif
 
 	// 4. delete: expect Deleted.
 	observed = WatchFlags::None;

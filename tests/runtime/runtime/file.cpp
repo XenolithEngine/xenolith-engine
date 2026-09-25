@@ -124,8 +124,14 @@ static int runFileSuite(dispatch::Looper *looper) {
 		auto ws = writeFileSync(looper, path, BytesView(s_src, 37), kOverride);
 		ReadBuffer rb{s_readStore, 0};
 		auto rs = readFileSync(looper, path, rb);
-		report(isSuccessful(ws) && isSuccessful(rs) && rb.len == 37 && checkPattern(rb.buf, rb.len),
-				"write+read round-trip (small)", failed);
+		if (!report(isSuccessful(ws) && isSuccessful(rs) && rb.len == 37
+							&& checkPattern(rb.buf, rb.len),
+					"write+read round-trip (small)", failed)) {
+			// Which half failed, and how: a bare FAIL says nothing on a target
+			// with no debugger.
+			sprt::cout << "      write " << ws << ", read " << rs << ", " << rb.len
+					   << " byte(s) back\n";
+		}
 	}
 
 	// 2. large multi-chunk round-trip (> FileChunkSize == 32 KiB)

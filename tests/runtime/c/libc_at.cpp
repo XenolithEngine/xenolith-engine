@@ -266,7 +266,19 @@ void runReadOnlyChecks(const char *dir) {
 				sawFile = true;
 			}
 		}
-		check(entries > 0, "fdopendir(dirfd) enumerates the directory");
+#if SPRT_EMBOX_ANY
+		// Embox's readdir has no "." and ".." (POSIX leaves them optional), so an
+		// empty directory really does enumerate to nothing; only a known file says
+		// the enumeration works.
+		constexpr bool dotEntries = false;
+#else
+		constexpr bool dotEntries = true;
+#endif
+		if (dotEntries || haveFile) {
+			check(entries > 0, "fdopendir(dirfd) enumerates the directory");
+		} else {
+			skip("fdopendir(dirfd) enumeration: empty directory, and no \".\"/\"..\" here");
+		}
 		if (haveFile) {
 			check(sawFile, "fdopendir(dirfd) lists the probe file");
 		}

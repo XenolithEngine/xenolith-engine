@@ -48,6 +48,18 @@
 # the linker already told us, and paying for it in the remember-stack. Verified
 # by ehtest on the board: eleven cases including a 25-frame unwind and a longjmp.
 #
+# THREADS are On for both libunwind and libc++abi. They were Off from the first
+# contours, when a program at EL0 had one thread; since K6 it has as many as it
+# makes, and libc++abi without threads guards a function-local static with no
+# lock at all: a second thread meeting a static the first is still initialising
+# is taken for recursion and aborted ("__cxa_guard_acquire detected recursive
+# initialization"), one run in about a hundred of a threaded test on four cores
+# (A1). With threads they use the pthread API of the engine's runtime -- a global
+# mutex and condition variable for the guards, an rwlock for libunwind's FDE
+# cache -- the same one the rest of the program uses. There is no libpthread
+# to link: the API is the runtime's, so *_HAS_PTHREAD_LIB is Off, or every
+# object would ask the linker for -lpthread (a .deplibs entry) and the link fail.
+#
 # COMPILER_RT_INSTALL_PATH is set EXPLICITLY rather than left to LLVM's
 # derivation. Without it the builtins land in lib/<os_dir>/ here while the same
 # configuration puts them in lib/clang/lib/<os_dir>/ for target-wasm, and every
@@ -98,12 +110,14 @@ CONFIGURE := \
 	-DCOMPILER_RT_OS_DIR=embox_user \
 	-DCOMPILER_RT_INSTALL_PATH=$(SP_INSTALL_PREFIX)/lib/clang \
 	-DLIBUNWIND_ENABLE_SHARED=Off \
-	-DLIBUNWIND_ENABLE_THREADS=Off \
+	-DLIBUNWIND_ENABLE_THREADS=On \
+	-DLIBUNWIND_HAS_PTHREAD_LIB=Off \
 	-DLIBUNWIND_IS_BAREMETAL=On \
 	-DLIBUNWIND_USE_COMPILER_RT=On \
 	-DLIBUNWIND_INSTALL_LIBRARY_DIR=usr/lib \
 	-DLIBCXXABI_ENABLE_SHARED=Off \
-	-DLIBCXXABI_ENABLE_THREADS=Off \
+	-DLIBCXXABI_ENABLE_THREADS=On \
+	-DLIBCXXABI_HAS_PTHREAD_LIB=Off \
 	-DLIBCXXABI_ENABLE_EXCEPTIONS=On \
 	-DLIBCXXABI_USE_LLVM_UNWINDER=On \
 	-DLIBCXXABI_USE_COMPILER_RT=On \

@@ -1,6 +1,8 @@
 #include "../../include/__impl_file.h"
 
 static FILE *ofl_head;
+
+[[clang::no_destroy]]
 static sprt::qmutex ofl_lock;
 
 FILE **__ofl_lock() {
