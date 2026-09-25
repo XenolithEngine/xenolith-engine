@@ -92,7 +92,7 @@ SP_AR := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/ar)
 LIB_SRC_DIR := $(abspath $(MAKE_ROOT)../src)
 
 # Third-party dependency libs (media / text / data + crypto + networking). Vulkan
-# and WAMR are intentionally excluded from this target, so the mbedtls/iwasm and
+# and WAMR are intentionally excluded from this target, so the iwasm and
 # vulkan/spirv/glslang recipes the other targets carry are omitted here. OpenSSL
 # (libcrypto.a/libssl.a) + curl (HTTP/3 via OpenSSL QUIC + nghttp3) ARE
 # built here too, even though the socket

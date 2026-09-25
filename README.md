@@ -254,8 +254,8 @@ PostgreSQL (12+) or SQLite (bundled).
 ### Key third-party components
 
 Pinned versions are built as part of the toolchains:
-OpenSSL 3.5.7 LTS (+ GOST), mbedTLS 3.6.6 LTS, Vulkan SDK 1.4.350.0, WAMR 2.4.4, ICU4C 78.3,
-FreeType 2.14.3, HarfBuzz 14.2.1, SQLite 3.53.2, curl 8.20.0 (nghttp3 1.16.0), as well as zlib,
+OpenSSL 3.5.8 LTS (+ GOST), Vulkan SDK 1.4.357.0, WAMR 2.4.5, ICU4C 78.3,
+FreeType 2.14.3, HarfBuzz 14.5.0, SQLite 3.53.4, curl 8.22.0 (nghttp3 1.18.0, ngtcp2 1.25.0), as well as zlib,
 zstd, brotli, libwebp, libjpeg-turbo, Wayland, and others.
 
 ## Building and running
