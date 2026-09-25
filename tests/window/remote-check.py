@@ -18,7 +18,7 @@ and then asserts the things a screenshot cannot:
   * a client started with the WRONG token is refused - the bearer key is load-bearing, not decorative.
 
     tests/window/remote-check.py [--transport quic|unix|shm] [--gapi vulkan|soft|gles] [--keep-running]
-                                [path-to-testapp] [path-to-clientapp]
+                                [--async-raster] [path-to-testapp] [path-to-clientapp]
 
 `--gapi` runs the server on another backend (the backend has to be linked in:
 `SOFT=1 xenolith-cli build tests/window` for `--gapi soft`). The client's scene does not change and is not
@@ -35,6 +35,9 @@ required at all.
 
 `--keep-running` starts the server with the flag of the same name: when the remote scene closes
 the last window the server must stay up and still accept a client, instead of exiting.
+
+`--async-raster` starts the server with the flag of the same name: with `--gapi soft` its context
+thread hands the pixels to the thread pool and takes the frame back asynchronously.
 
 `--transport shm` runs it over shared-memory rings in /dev/shm. Identity works as for unix (the
 owner of the block files), and the server has no descriptor to poll: it waits on the doorbell word.
@@ -118,8 +121,13 @@ def check(name, ok, detail=""):
         print(f"  FAIL {name} {detail}")
 
 
-def start_server(binary, addr, share, token, gapi=None, keep_running=False):
+# Flags for every server this module starts, taken from the command line (--async-raster).
+SERVER_FLAGS = []
+
+
+def start_server(binary, addr, share, token, gapi=None, keep_running=False, extra_env=None):
     env = dict(os.environ)
+    env.update(extra_env or {})
     env["XENOLITH_INSPECTOR_ADDRESS"] = "unix:" + addr
     env["XL_REMOTE_SHARE"] = share
     env["XL_REMOTE_TOKEN"] = token
@@ -138,6 +146,7 @@ def start_server(binary, addr, share, token, gapi=None, keep_running=False):
         cmd += ["--gapi", gapi]
     if keep_running:
         cmd += ["--keep-running"]
+    cmd += SERVER_FLAGS
     proc = subprocess.Popen(cmd,
             env=env, cwd=os.path.dirname(os.path.abspath(binary)) or None,
             stdout=open(SERVER_LOG, "w"), stderr=subprocess.STDOUT)
@@ -220,6 +229,9 @@ def main():
         opt, argv = argv[0], argv[1:]
         if opt == "--keep-running":
             keep_running = True
+            continue
+        if opt == "--async-raster":
+            SERVER_FLAGS.append(opt)
             continue
         if "=" in opt:
             opt, value = opt.split("=", 1)
@@ -386,7 +398,7 @@ def main():
         # XL_REMOTE_FAKE_VERSION exists for exactly the reason XL_REMOTE_FAKE_ABI does: two binaries
         # from one tree agree on the version, so without it the refusal is unexecutable.
         bad_client = spawn_client(client_bin, share, token, spki,
-                extra_env={"XL_REMOTE_FAKE_VERSION": "1"})
+                extra_env={"XL_REMOTE_FAKE_VERSION": "2"})
         for _ in range(20):
             s.ok("frame", count=1)
             time.sleep(0.1)

@@ -89,6 +89,9 @@ public:
 protected:
 	struct ImageState {
 		Vector<DamageEntry> snapshot;
+		// Where the always-dirty elements were: an element excluded from the comparison still
+		// leaves its old pixels behind when it moves or shrinks, so the next diff damages this too.
+		Vector<Rect> alwaysDirty;
 		bool valid = false;
 	};
 
@@ -222,9 +225,16 @@ public:
 
 	virtual Rc<core::ImageView> makeView(const ImageViewInfo &) override;
 
-	void setImage(Rc<Swapchain> &&, const Swapchain::SwapchainImageData &, const Rc<Semaphore> &);
+	// `slot` is the index of the image within its swapchain (SwapchainAcquiredImage::imageIndex).
+	void setImage(Rc<Swapchain> &&, const Swapchain::SwapchainImageData &, const Rc<Semaphore> &,
+			uint32_t slot);
 
 	uint64_t getOrder() const { return _order; }
+
+	/* The index of the image within its swapchain - what the per-image damage snapshot is kept by.
+	Not getImageIndex(): that is the image object's id, which only a platform swapchain makes equal
+	to the slot; a pseudo-swapchain's images are ordinary device images with ids of their own. */
+	uint32_t getSwapchainSlot() const { return _slot; }
 
 	void setPresented();
 	bool isPresented() const { return _state == State::Presented; }
@@ -243,6 +253,7 @@ protected:
 	using core::ImageStorage::init;
 
 	uint64_t _order = 0;
+	uint32_t _slot = maxOf<uint32_t>();
 	State _state = State::Initial;
 	Rc<Swapchain> _swapchain;
 };

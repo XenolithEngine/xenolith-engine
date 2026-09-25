@@ -107,7 +107,7 @@ SP_PUBLIC void addFrameStageTime(FrameStage, uint64_t micros);
 SP_PUBLIC void openFrameBudget();
 
 // Close the frame: charges the period since the previous close and reports every Nth time.
-// Called from present, the only place that sees every frame (skipped frames never reach runPass).
+// Called from present, the only place that sees every frame (skipped frames are never rasterized).
 SP_PUBLIC void closeFrameBudget();
 
 // Times its scope into one stage. Does nothing, not even a clock read, when the budget is off.

@@ -121,7 +121,9 @@ COST = {
     "window/hotkey-check.py": 9, "window/style-check.py": 8, "window/geometry-check.py": 8,
     "window/panel-check.py": 4, "window/clipboard-check.py": 4, "window/scale9-check.py": 3,
     "window/render-level-check.py": 4, "window/overflow-check.py": 3,
-    "window/particles-check.py": 42,
+    "window/particles-check.py": 42, "window/remote-example-check.py": 24,
+    "window/remote-window-check.py": 20, "window/virtual-window-check.py": 88,
+    "window/damage-check.py": 21, "window/remote-render-check.py": 33,
     "gittest": 19, "computetest": 6, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
     "uilayouttest": 1, "particlestest": 1,
 }
@@ -135,6 +137,9 @@ WINDOW_BINARIES = {
 # `examples/` is outside the plan, except the examples a window check drives
 EXAMPLE_CHECKS = [
     ("examples/window/particles", ["particles-check.py"]),
+    ("examples/window/dndtree", ["remote-example-check.py"]),
+    ("examples/window/form", ["remote-example-check.py"]),
+    ("examples/window/dock", ["remote-example-check.py"]),
 ]
 
 # Scripts that are not checks, or cannot be part of an automated run - see the docstring.
@@ -304,7 +309,10 @@ def plan(args):
 
 def stale(kill):
     out = subprocess.run(["ps", "-eo", "pid,args"], capture_output=True, text=True).stdout
-    apps = ["cc/testapp"] + ["cc/" + name for _, name in WINDOW_BINARIES.values()]
+    # This checkout's binaries only, by full path: another checkout on the same machine runs its own
+    # checks, and a bare "cc/testapp" would kill them in the middle.
+    apps = [binary("tests/window", "testapp")] + \
+        [binary(proj, name) for proj, name in WINDOW_BINARIES.values()]
     found = [l for l in out.splitlines() if "--headless" in l and any(a in l for a in apps)]
     if kill:
         for l in found:

@@ -36,6 +36,8 @@
 #include "XLVkPipeline.h"
 #include "XLCoreFrameQueue.h"
 
+#include <stdlib.h> // getenv for XL_VK_DAMAGE_LOG
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
 
 QueuePass::~QueuePass() { }
@@ -118,6 +120,13 @@ void QueuePassHandle::preparePartialRedraw(FrameQueue &q) {
 	_partialRedraw = false;
 	_skipRedraw = false;
 
+	// XL_VK_DAMAGE_LOG=1 reports what each frame decided, as XL_SOFT_DAMAGE_LOG does for the CPU
+	// backend: a working partial redraw and a silently disabled one draw the same picture.
+	static const bool damageLog = [] {
+		auto value = ::getenv("XL_VK_DAMAGE_LOG");
+		return value && StringView(value) != "0";
+	}();
+
 	if (!hasFlag(_data->queue->damage, core::QueueDamageFlags::PartialRedraw)) {
 		return;
 	}
@@ -153,16 +162,26 @@ void QueuePassHandle::preparePartialRedraw(FrameQueue &q) {
 
 	Vector<URect> damage;
 	const auto extent = Extent2(_constraints.extent.width, _constraints.extent.height);
-	const bool partial = swapchain->getDamage().computeRedrawArea(uint32_t(image->getImageIndex()),
-			request->getDamageState().get(), extent, damage);
+	const bool partial = swapchain->getDamage().computeRedrawArea(
+			swapchainImage->getSwapchainSlot(), request->getDamageState().get(), extent, damage);
 
 	if (!partial) {
 		// full surface: keep the clearing variant, which is also what leaves the image in a
 		// defined state for the next frame's LOAD
+		if (damageLog) {
+			log::source().debug("vk::QueuePassHandle",
+					"damage: full repaint, slot=", swapchainImage->getSwapchainSlot(),
+					" swapchain=", (void *)swapchain.get());
+		}
 		return;
 	}
 
 	if (damage.empty()) {
+		if (damageLog) {
+			log::source().debug("vk::QueuePassHandle",
+					"damage: nothing to redraw, slot=", swapchainImage->getSwapchainSlot(),
+					" swapchain=", (void *)swapchain.get());
+		}
 		// The image already holds this frame. With SkipEmptyFrames, record nothing: the image stays
 		// in PRESENT_SRC, and the frame still submits an empty command buffer and presents, keeping
 		// the semaphore chain and pacing unchanged.
@@ -186,6 +205,12 @@ void QueuePassHandle::preparePartialRedraw(FrameQueue &q) {
 
 	_partialRedrawArea = VkRect2D{{int32_t(x0), int32_t(y0)}, {x1 - x0, y1 - y0}};
 	_partialRedraw = true;
+
+	if (damageLog) {
+		log::source().debug("vk::QueuePassHandle",
+				"damage: partial redraw, slot=", swapchainImage->getSwapchainSlot(), " area=", x0,
+				",", y0, " ", x1 - x0, "x", y1 - y0, " swapchain=", (void *)swapchain.get());
+	}
 }
 
 bool QueuePassHandle::prepare(FrameQueue &q, Function<void(bool)> &&cb) {

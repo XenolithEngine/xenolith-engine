@@ -131,12 +131,18 @@ void ExampleScene::installClientWindowHandler(ServerAppThread *app) {
 	if (auto env = ::getenv("XL_REMOTE_MAX_CLIENT_WINDOWS")) {
 		app->setMaxClientWindows(uint32_t(StringView(env).readInteger(10).get(4)));
 	}
+	// XL_REMOTE_VIRTUAL_WINDOWS=1: the windows are virtual (WindowCreationFlags::Virtual) - no OS
+	// window, as a window manager would have them. virtual-window-check.py drives this.
+	const bool virtualWindows = ::getenv("XL_REMOTE_VIRTUAL_WINDOWS") != nullptr;
 	app->setClientWindowHandler(
-			[](NotNull<RemoteSession> session, NotNull<sprt::window::WindowInfo> info,
+			[virtualWindows](NotNull<RemoteSession> session, NotNull<sprt::window::WindowInfo> info,
 					Rc<WindowSceneInfo> &out) -> Status {
 		// Only Root windows exist headless, and the title says whose window it is.
 		info->type = sprt::window::WindowType::Root;
 		info->title = toString("testapp client ", session->getId());
+		if (virtualWindows) {
+			info->flags |= sprt::window::WindowCreationFlags::Virtual;
+		}
 		out = SecondaryWindow::makeSceneInfo(info->id, [](StringView) {
 			auto layout = Rc<basic2d::SceneLayout2d>::create();
 			auto marker =
@@ -152,9 +158,64 @@ void ExampleScene::installClientWindowHandler(ServerAppThread *app) {
 	});
 }
 
+// Application notifications the server received, newest last, for the `remote` command. Kept apart
+// from the scene: the handler belongs to the app thread and may outlive it.
+static Vector<Value> s_appNotifications;
+
+/* Application messages (GlobalCode::AppRequest/AppNotify) as a test peer: a request is answered
+with an echo of itself and the asking session, `{delay: ms}` holds the answer back that long, and
+each session is greeted with a notification as it starts. */
+void ExampleScene::installAppMessageHandler(ServerAppThread *app) {
+	app->setAppMessageHandler(
+			[app](NotNull<RemoteSession> session, Value &&val, Rc<AppReply> &&reply) {
+		if (!reply) {
+			if (s_appNotifications.size() >= 32) {
+				s_appNotifications.erase(s_appNotifications.begin());
+			}
+			Value entry;
+			entry.setInteger(int64_t(session->getId()), "session");
+			entry.setString(session->getLabel(), "label");
+			entry.setValue(sp::move(val), "value");
+			s_appNotifications.emplace_back(sp::move(entry));
+			return;
+		}
+
+		const Value &req = val;
+		auto delay = req.isDictionary() ? req.getInteger("delay") : 0;
+
+		Value answer;
+		answer.setValue(req, "echo");
+		answer.setInteger(int64_t(session->getId()), "session");
+		answer.setString(session->getLabel(), "label");
+		if (delay > 0) {
+			app->getLooper()->schedule(sprt::dispatch::TimeInterval::milliseconds(delay),
+					[reply = sp::move(reply), answer = sp::move(answer)](sprt::dispatch::Handle *,
+							bool) mutable { reply->send(answer); },
+					app);
+		} else {
+			reply->send(answer);
+		}
+	});
+
+	app->setSessionObserver(
+			[app](NotNull<RemoteSession> session, ServerAppThread::SessionEvent event) {
+		if (event == ServerAppThread::SessionEvent::Started) {
+			Value hello;
+			hello.setString(session->getLabel(), "hello");
+			app->sendAppNotification(session, hello);
+		}
+	});
+}
+
 // Сцена была собрана и запущена режиссёром
 void ExampleScene::handlePresented(Director *dir) {
 	Scene2d::handlePresented(dir);
+
+	// Всё ниже — о раздаче окна удалённым клиентам, то есть дело сервера. testapp, запущенный
+	// клиентом (--connect), своих очередей не строит: у него нет устройства.
+	if (!dir->getApplication()->isServerThread()) {
+		return;
+	}
 
 	// Очередь для удалённого клиента.
 	//
@@ -238,6 +299,17 @@ void ExampleScene::handlePresented(Director *dir) {
 			// refuse without costing the session.
 			if (app && ::getenv("XL_REMOTE_CLIENT_WINDOWS")) {
 				installClientWindowHandler(app);
+			}
+
+			// XL_REMOTE_APP_ECHO=1: answer application messages (see installAppMessageHandler).
+			if (app && ::getenv("XL_REMOTE_APP_ECHO")) {
+				installAppMessageHandler(app);
+			}
+
+			// XL_REMOTE_LABELLED_KEYS=1: accept only clients presenting a key added with
+			// remote-add-key, even on a transport that vouches for its peer.
+			if (app && ::getenv("XL_REMOTE_LABELLED_KEYS")) {
+				app->setRequireLabelledKeys(true);
 			}
 
 			// XL_REMOTE_SHARE_PRIMARY=0: listen without offering this window, the shape a window
@@ -373,11 +445,15 @@ void ExampleScene::registerCommands() {
 			auto &v = sessions.emplace();
 			v.setInteger(int64_t(it->getId()), "id");
 			v.setInteger(it->getPeerPid(), "pid");
+			v.setString(it->getLabel(), "label");
 			// Frames this client was late with. A cancelled frame leaves no other trace: the
 			// session survives it by design.
 			if (auto client = it->getRenderClient()) {
 				v.setInteger(int64_t(client->getLateFrameCount()), "lateFrames");
 			}
+			// ReadyForNextFrame messages the client sent, and those answered with FrameDeclined.
+			v.setInteger(int64_t(it->getFrameRequestCount()), "readyRequests");
+			v.setInteger(int64_t(it->getDeclinedFrameCount()), "readyDeclined");
 			auto &names = v.emplace("windows");
 			names.setArray(Value::ArrayType());
 			if (objs) {
@@ -411,9 +487,78 @@ void ExampleScene::registerCommands() {
 				v.setInteger(int64_t(w.second.creatorSession), "creator");
 			}
 		}
+		auto &notifications = result.emplace("appNotifications");
+		notifications.setArray(Value::ArrayType());
+		for (auto &it : s_appNotifications) { notifications.addValue(it); }
+
 		auto fp = app->getListenerFingerprint();
 		result.setString(fp.empty() ? String() : base16::encode<Interface>(fp), "spki");
 		done(sp::move(result));
+	});
+
+	/* Issue a labelled key: { token, label, single }. key = Sha512(token), as a client derives it
+	from the token it was launched with; `single` (true by default) retires the key once a session
+	holds it. */
+	inspector::addCommand(content, "remote-add-key",
+			"Accept clients presenting Sha512(token) under a label: { token, label, single }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		Value result;
+		auto app = dynamic_cast<ServerAppThread *>(getDirector()->getApplication());
+		if (!app || !req.isString("token") || !req.isString("label")) {
+			result.setBool(false, "ok");
+			result.setString(app ? "token and label are required" : "not a server app thread",
+					"error");
+			done(sp::move(result));
+			return;
+		}
+		auto h = crypto::Sha512::perform(req.getString("token"));
+		app->addBearerKey(BytesView(h.data(), h.size()), req.getString("label"),
+				req.isBool("single") ? req.getBool("single") : true);
+		result.setBool(true, "ok");
+		done(sp::move(result));
+	});
+
+	// Send a session an application notification: { session, value }.
+	inspector::addCommand(content, "remote-app-notify",
+			"Send a session an application notification: { session, value }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		Value result;
+		auto app = dynamic_cast<ServerAppThread *>(getDirector()->getApplication());
+		auto session = app ? app->getRemoteSession(uint64_t(req.getInteger("session"))) : nullptr;
+		result.setBool(session && app->sendAppNotification(session, req.getValue("value")), "ok");
+		done(sp::move(result));
+	});
+
+	// Ask a session's application something: { session, value, timeout } -> { ok, status, reply }.
+	inspector::addCommand(content, "remote-app-request",
+			"Send a session an application request: { session, value, timeout (ms) }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		auto app = dynamic_cast<ServerAppThread *>(getDirector()->getApplication());
+		auto session = app ? app->getRemoteSession(uint64_t(req.getInteger("session"))) : nullptr;
+		if (!session) {
+			Value result;
+			result.setBool(false, "ok");
+			result.setString("unknown session", "error");
+			done(sp::move(result));
+			return;
+		}
+		auto timeout = uint64_t(req.getInteger("timeout", 5'000)) * 1'000;
+		if (!app->sendAppRequest(session, req.getValue("value"),
+					[done](Status st, Value &&reply) mutable {
+			Value result;
+			result.setBool(st == Status::Ok, "ok");
+			result.setString(sprt::status::getStatusName(st), "status");
+			result.setValue(sp::move(reply), "reply");
+			done(sp::move(result));
+		}, timeout)) {
+			Value result;
+			result.setBool(false, "ok");
+			result.setString("the session takes no application messages", "error");
+			done(sp::move(result));
+		}
 	});
 
 	/* Open N more windows in THIS process: { count, width, height }.
@@ -608,6 +753,47 @@ void ExampleScene::registerCommands() {
 		result.setBool(_secondSharedWindow != nullptr, "ok");
 		if (!_secondSharedWindow) {
 			result.setString("could not request the window", "error");
+		}
+		done(sp::move(result));
+	});
+
+	/* A virtual window of this process showing a test layout: no OS window, its frames published for
+	a compositor (core::PlaneSource). What damage-check.py runs the damage stand in, with frames held
+	by `window op=plane-hold` while the square walks. The reply says the window was REQUESTED; it
+	shows up in `windows` with `virtual: true`. */
+	inspector::addCommand(content, "open-virtual",
+			"Open a virtual Root window showing a test layout: { layout, width, height }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		Value result;
+		auto server = getDirector() ? getDirector()->getRenderServer() : nullptr;
+		auto test = findTest(req.getString("layout"));
+		if (!server || !test || !test->make) {
+			result.setBool(false, "ok");
+			result.setString(server ? "unknown layout" : "no render server on this window",
+					"error");
+			done(sp::move(result));
+			return;
+		}
+
+		auto id = toString("virtual-", test->name);
+		auto size = Extent2(uint32_t(req.getInteger("width", 640)),
+				uint32_t(req.getInteger("height", 480)));
+		auto handle = SecondaryWindow::open(static_cast<AppWindow *>(server), id, size,
+				[make = test->make](StringView) { return make(); },
+				[this](NotNull<WindowSceneInfo> info) {
+			for (auto it = _virtualWindows.begin(); it != _virtualWindows.end(); ++it) {
+				if (*it == info.get()) {
+					_virtualWindows.erase(it);
+					break;
+				}
+			}
+		}, nullptr, sprt::nullopt, /* shareRemote */ false, /* virtualWindow */ true);
+
+		result.setBool(handle != nullptr, "ok");
+		result.setString(id, "id");
+		if (handle) {
+			_virtualWindows.emplace_back(sp::move(handle));
 		}
 		done(sp::move(result));
 	});

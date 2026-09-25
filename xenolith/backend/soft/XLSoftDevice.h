@@ -25,6 +25,7 @@
 
 #include "XLSoftInstance.h"
 #include "XLCoreDevice.h"
+#include "SPRaster.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 
@@ -49,10 +50,17 @@ public:
 			const core::ImageViewInfo &) override;
 	virtual Rc<core::TextureSet> makeTextureSet(const core::TextureSetLayout &) override;
 
+	// A rasterization running on the pool while the loop thread goes on; waitIdle waits for its
+	// pixels. Jobs that have finished are dropped on the next call.
+	void addRasterJob(Rc<raster::TiledDrawJob> &&);
+
 	virtual void waitIdle() const override;
 
 protected:
 	using core::Device::init;
+
+	mutable sprt::mutex _rasterJobsMutex;
+	Vector<Rc<raster::TiledDrawJob>> _rasterJobs;
 
 	sprt::atomic<uint64_t> _objectIndex = 1;
 

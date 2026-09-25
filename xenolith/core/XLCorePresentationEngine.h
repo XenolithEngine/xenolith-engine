@@ -28,6 +28,7 @@
 #include "XLCoreInfo.h"
 #include "XLCoreSwapchain.h"
 #include "XLCorePresentationFrame.h"
+#include "XLCorePlaneSource.h"
 #include "SPMovingAverage.h"
 #include "XlCoreMonitorInfo.h"
 
@@ -66,6 +67,10 @@ public:
 
 	// Stable id for multi-window diagnostics (WindowInfo::id). Empty if unknown.
 	virtual StringView getPresentationDebugId() const { return StringView(); }
+
+	// Where this window's presented images are published for a compositor to read, or null when
+	// nobody reads them (see PlaneSource). Asked by the swapchain as it is created.
+	virtual PlaneSource *getPlaneSource() const { return nullptr; }
 };
 
 using sprt::window::UpdateConstraintsFlags;
@@ -147,6 +152,12 @@ public:
 
 	void setRenderOnDemand(bool value);
 	bool isRenderOnDemand() const;
+
+	/* PresentationOptions::followDisplayLinkBarrier, switched while running: how a compositor takes
+	a window's frames over (and hands them back). On, the next frame waits for a DisplayLink update,
+	whatever was in flight; off, nothing waits for one, and a frame already asked for starts now. */
+	void setFollowDisplayLinkBarrier(bool value);
+	bool isFollowDisplayLinkBarrier() const { return _options.followDisplayLinkBarrier; }
 
 	bool isRunning() const;
 

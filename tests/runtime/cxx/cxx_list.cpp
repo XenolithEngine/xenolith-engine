@@ -23,6 +23,7 @@ THE SOFTWARE.
 #include <sprt/runtime/stream.h>
 #include <sprt/cxx/list>
 #include <sprt/cxx/vector>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -38,7 +39,7 @@ void performMallocListTests() {
 		if (l.empty()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -49,7 +50,7 @@ void performMallocListTests() {
 		if (l.size() == 0) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -68,10 +69,10 @@ void performMallocListTests() {
 			if (allEqual) {
 				sprt::cout << "PASS\n";
 			} else {
-				sprt::cout << "FAIL\n";
+				sprt::cout << sprt::test::failed("FAIL\n");
 			}
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -84,7 +85,7 @@ void performMallocListTests() {
 		if (result.size() == 5 && result[0] == 1 && result[4] == 5) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -97,7 +98,7 @@ void performMallocListTests() {
 		if (result.size() == 5 && result[0] == 5 && result[4] == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -108,7 +109,7 @@ void performMallocListTests() {
 		if (!l.empty() && l.front() == 1 && l.back() == 3) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -123,10 +124,10 @@ void performMallocListTests() {
 			if (l.size() == 1 && l.front() == 1) {
 				sprt::cout << "PASS\n";
 			} else {
-				sprt::cout << "FAIL\n";
+				sprt::cout << sprt::test::failed("FAIL\n");
 			}
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -141,10 +142,10 @@ void performMallocListTests() {
 			if (l.size() == 1 && l.back() == 1) {
 				sprt::cout << "PASS\n";
 			} else {
-				sprt::cout << "FAIL\n";
+				sprt::cout << sprt::test::failed("FAIL\n");
 			}
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -157,7 +158,7 @@ void performMallocListTests() {
 		if (!l.empty() && l.size() == 2 && l.front() == 1 && l.back() == 2) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -169,7 +170,7 @@ void performMallocListTests() {
 		if (!l.empty() && l.size() == 4 && *it == 1 && l.front() == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -181,7 +182,7 @@ void performMallocListTests() {
 		if (!l.empty() && l.size() == 4 && *it == 4 && l.back() == 4) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -204,10 +205,10 @@ void performMallocListTests() {
 			if (match) {
 				sprt::cout << "PASS\n";
 			} else {
-				sprt::cout << "FAIL\n";
+				sprt::cout << sprt::test::failed("FAIL\n");
 			}
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -230,10 +231,10 @@ void performMallocListTests() {
 			if (match) {
 				sprt::cout << "PASS\n";
 			} else {
-				sprt::cout << "FAIL\n";
+				sprt::cout << sprt::test::failed("FAIL\n");
 			}
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -256,10 +257,10 @@ void performMallocListTests() {
 			if (match) {
 				sprt::cout << "PASS\n";
 			} else {
-				sprt::cout << "FAIL\n";
+				sprt::cout << sprt::test::failed("FAIL\n");
 			}
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -282,10 +283,10 @@ void performMallocListTests() {
 			if (match) {
 				sprt::cout << "PASS\n";
 			} else {
-				sprt::cout << "FAIL\n";
+				sprt::cout << sprt::test::failed("FAIL\n");
 			}
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -299,7 +300,7 @@ void performMallocListTests() {
 		if (l.size() == 2 && l.front() == 4 && l.back() == 5) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -311,7 +312,7 @@ void performMallocListTests() {
 		if (l.size() == 3 && l.front() == 7 && l.back() == 7) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -323,7 +324,7 @@ void performMallocListTests() {
 		if (l.empty() && l.size() == 0) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -335,7 +336,7 @@ void performMallocListTests() {
 		if (l2.size() == 3 && l2.front() == 1 && l2.back() == 3) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -348,7 +349,7 @@ void performMallocListTests() {
 		if (l2.size() == 3 && l2.front() == 1 && l2.back() == 3) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -361,7 +362,7 @@ void performMallocListTests() {
 		if (l1 == l2 && !(l1 == l3)) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -374,7 +375,7 @@ void performMallocListTests() {
 		if (l1.size() == 2 && l2.size() == 3 && l1.front() == 4 && l2.front() == 1) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -385,7 +386,7 @@ void performMallocListTests() {
 		if (l.cbegin() != l.end()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -396,7 +397,7 @@ void performMallocListTests() {
 		if (l.cend() != l.begin()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -407,7 +408,7 @@ void performMallocListTests() {
 		if (l.crbegin() != l.rend()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -418,7 +419,7 @@ void performMallocListTests() {
 		if (l.crend() != l.rbegin()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -429,7 +430,7 @@ void performMallocListTests() {
 		if (l.max_size() > 0) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -441,7 +442,7 @@ void performMallocListTests() {
 		if (l.memory_persistent()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -453,7 +454,7 @@ void performMallocListTests() {
 		if (!l.memory_persistent()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -465,7 +466,7 @@ void performMallocListTests() {
 		if (alloc) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -478,7 +479,7 @@ void performMallocListTests() {
 		if (l.capacity() >= 10 && l.capacity() > initialCapacity) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -490,7 +491,7 @@ void performMallocListTests() {
 		if (cap > 0) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -503,7 +504,7 @@ void performMallocListTests() {
 		if (l.capacity() == l.size()) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 
@@ -515,7 +516,7 @@ void performMallocListTests() {
 		if (l.empty() && l.capacity() == 0) {
 			sprt::cout << "PASS\n";
 		} else {
-			sprt::cout << "FAIL\n";
+			sprt::cout << sprt::test::failed("FAIL\n");
 		}
 	}
 

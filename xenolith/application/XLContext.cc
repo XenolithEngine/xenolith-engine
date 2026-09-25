@@ -38,6 +38,10 @@
 #include "XLGlesInstance.h"
 #endif
 
+#if MODULE_XENOLITH_BACKEND_SOFT
+#include "XLSoftInstance.h"
+#endif
+
 #include <sprt/runtime/window/native_window.h>
 #include <sprt/runtime/window/display_config.h>
 #include <sprt/runtime/window/controller.h>
@@ -49,6 +53,9 @@
 #endif
 
 #include "SPSharedModule.h"
+#include "SPCoreCrypto.h"
+#include "XLClientContext.h"
+#include "XLRemoteWindow.h"
 
 #include <dlfcn.h>
 
@@ -163,6 +170,91 @@ static int Context_runWithConfig(ContextConfig &&config, ContentInitializer &&in
 	return ret;
 }
 
+/* --connect: the same application as a client of a remote server. The window this process would
+open is asked from the server instead, with the scene the makeScene symbol builds, and the process
+ends with that window or with the connection. makeContext and makeAppThread do not apply: there is
+no local Context. */
+static int Context_runClient(ContextConfig &&config, ContentInitializer &&init) {
+	auto initializer = sp::move(init);
+
+	auto makeConfigSymbol = SharedModule::acquireTypedSymbol<Context::SymbolMakeConfigSignature>(
+			buildconfig::MODULE_APPCOMMON_NAME, Context::SymbolMakeConfigName);
+	if (makeConfigSymbol) {
+		makeConfigSymbol(config);
+	}
+
+#if MODULE_XENOLITH_FONT
+	auto setLocale = SharedModule::acquireTypedSymbol<decltype(&locale::setLocale)>(
+			buildconfig::MODULE_XENOLITH_FONT_NAME, "locale::setLocale");
+	if (setLocale) {
+		if (!config.context || config.context->userLanguage.empty()) {
+			setLocale(sprt::platform::getOsLocale());
+		} else {
+			setLocale(config.context->userLanguage);
+		}
+	}
+#endif
+
+	auto ctx = Rc<ClientContext>::create(sp::move(config.context));
+	if (!ctx) {
+		log::source().error("Context", "Fail to create ClientContext");
+		return -1;
+	}
+	ctx->setServerAddress(config.connectAddress);
+	if (!config.serverSpki.empty()) {
+		ctx->setServerFingerprint(config.serverSpki);
+	}
+
+	// The key comes from the launch token of whoever started this process; it is not left in the
+	// environment of anything this process starts.
+	if (auto env = ::getenv("XL_LAUNCH_TOKEN")) {
+		auto h = crypto::Sha512::perform(StringView(env));
+		ctx->setBearerKey(BytesView(h.data(), h.size()));
+		::unsetenv("XL_LAUNCH_TOKEN");
+	} else {
+#if DEBUG
+		ctx->setBearerKey(remote::getDevBearerKey());
+#else
+		log::source().error("Context",
+				"--connect needs XL_LAUNCH_TOKEN: a release build carries no development key");
+		return 1;
+#endif
+	}
+
+	ctx->setWindowConnectedCallback([](NotNull<RemoteWindow>) { return true; });
+
+	auto window = config.window ? sp::move(config.window) : Rc<sprt::window::WindowInfo>::alloc();
+	ctx->setServerInfoCallback([window = sp::move(window)](NotNull<ClientAppThread> thread,
+									   const remote::PeerInfo &) mutable {
+		if (!window) {
+			return; // asked once per connection
+		}
+		if (!thread->isWindowCreationSupported()) {
+			log::source().error("Context", "the server does not open windows on request");
+			thread->stop();
+			return;
+		}
+		ClientAppThread *app = thread.get();
+		window->appData = Rc<WindowSceneInfo>::create(
+				[](NotNull<AppThread>, NotNull<core::RenderServerChannel>,
+						const core::FrameConstraints &) -> Rc<Scene> {
+			return nullptr; // the makeScene symbol, as for a local window
+		},
+				[app](NotNull<WindowSceneInfo>) { app->stop(); });
+		thread->createWindow(sp::move(window), [](Status st, StringView id) {
+			if (st != Status::Ok) {
+				log::source().error("Context",
+						"the server refused the window: ", sprt::status::getStatusName(st));
+			} else {
+				log::source().info("Context", "window '", id, "' granted by the server");
+			}
+		});
+	});
+
+	ctx->run();
+	return 0;
+}
+
 int Context::run(int argc, const char **argv) {
 	auto runWithConfig = [&](ContextConfig &&config, ContentInitializer &&init) -> int {
 		if (hasFlag(config.flags, CommonFlags::Help)) {
@@ -193,6 +285,9 @@ int Context::run(int argc, const char **argv) {
 					   << "\n";
 		}
 
+		if (!config.connectAddress.empty()) {
+			return Context_runClient(sp::move(config), sp::move(init));
+		}
 		return Context_runWithConfig(sp::move(config), sp::move(init));
 	};
 
@@ -392,6 +487,10 @@ core::SwapchainConfig Context::handleAppWindowSurfaceUpdate(NotNull<AppWindow> w
 	SwapchainConfig ret;
 	ret.extent = info.currentExtent;
 	ret.imageCount = sprt::max(uint32_t(3), info.minImageCount);
+	if (w->isVirtual()) {
+		// The ring a compositor reads from; see AppWindow::VirtualSwapchainImageCount.
+		ret.imageCount = sprt::max(AppWindow::VirtualSwapchainImageCount, info.minImageCount);
+	}
 
 	ret.presentMode = core::PresentMode::Unsupported;
 
@@ -654,7 +753,10 @@ void Context::handleThemeInfoChanged(const ThemeInfo &info) {
 }
 
 bool Context::configureWindow(NotNull<WindowInfo> w) {
-	auto caps = _controller->getCapabilities();
+	// A virtual window has no capabilities of its own (see sprt::window::VirtualWindow), whatever
+	// the controller's windows have: no frame to draw the decorations of, no display to own.
+	auto caps = hasFlag(w->flags, WindowCreationFlags::Virtual) ? WindowCapabilities::None
+																: _controller->getCapabilities();
 
 	for (auto flag : sp::flags(w->flags)) {
 		switch (flag) {
@@ -948,6 +1050,10 @@ Rc<sprt::window::gapi::Loop> Context::makeLoop(NotNull<sprt::window::gapi::Insta
 		loopInfo = Rc<sprt::window::gapi::LoopInfo>::alloc();
 		loopInfo->deviceIdx = info->deviceIdx;
 		loopInfo->defaultFormat = info->defaultFormat;
+
+		auto data = Rc<soft::LoopBackendInfo>::alloc();
+		data->asyncRaster = hasFlag(getInfo()->flags, ContextFlags::AsyncRasterization);
+		loopInfo->backend = data;
 	}
 #endif
 

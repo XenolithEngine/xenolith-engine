@@ -193,13 +193,13 @@ void VectorSprite::setQuality(float val) {
 }
 
 void VectorSprite::handleTransformDirty(const Mat4 &parent) {
-	_vertexesDirty = true;
+	markVertexesDirty();
 	Sprite::handleTransformDirty(parent);
 }
 
 bool VectorSprite::visitDraw(FrameInfo &frame, NodeVisitFlags parentFlags) {
 	if (_image && _image->isDirty()) {
-		_vertexesDirty = true;
+		markVertexesDirty();
 	}
 	return Sprite::visitDraw(frame, parentFlags);
 }
@@ -233,21 +233,21 @@ uint32_t VectorSprite::getVertexesCount() const {
 void VectorSprite::setDeferred(bool val) {
 	if (val != _deferred) {
 		_deferred = val;
-		_vertexesDirty = true;
+		markVertexesDirty();
 	}
 }
 
 void VectorSprite::setRespectEmptyDrawOrder(bool val) {
 	if (val != _respectEmptyDrawOrder) {
 		_respectEmptyDrawOrder = val;
-		_vertexesDirty = true;
+		markVertexesDirty();
 	}
 }
 
 void VectorSprite::setImageAutofit(Autofit autofit) {
 	if (_imagePlacement.autofit != autofit) {
 		_imagePlacement.autofit = autofit;
-		_vertexesDirty = true;
+		markVertexesDirty();
 	}
 }
 
@@ -255,7 +255,7 @@ void VectorSprite::setImageAutofitPosition(const Vec2 &vec) {
 	if (_imagePlacement.autofitPos != vec) {
 		_imagePlacement.autofitPos = vec;
 		if (_imagePlacement.autofit != Autofit::None) {
-			_vertexesDirty = true;
+			markVertexesDirty();
 		}
 	}
 }
@@ -528,7 +528,7 @@ void VectorSprite::updateVertexes(FrameInfo &frame) {
 
 	auto isSolid = isSolidImage();
 	if (isSolid != _imageIsSolid) {
-		_materialDirty = true;
+		markMaterialDirty();
 		_imageIsSolid = isSolid;
 	}
 }

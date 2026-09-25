@@ -302,7 +302,7 @@ Status Swapchain::present(core::DeviceQueue *, core::ImageStorage *image,
 		++_presentedFrames;
 		_presentTime = sp::platform::clock(ClockType::Monotonic);
 
-		// Close the account here, not in runPass: frames skipped by the damage tracker never
+		// Close the account here, not in the pass: frames skipped by the damage tracker never
 		// reach the pass but still count toward the frame rate.
 		closeFrameBudget();
 	} while (0);
@@ -498,6 +498,16 @@ Rc<SwapchainBase> PresentationEngine::makeSwapchain(const core::SurfaceInfo &inf
 
 void PresentationEngine::captureScreenshot(
 		Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) {
+	// A window read as a plane is captured as the compositor sees it: the latest published frame,
+	// held for the copy (captureImage reads the bitmap synchronously, on this thread).
+	if (auto source = _window->getPlaneSource()) {
+		if (auto frame = source->getLatest()) {
+			_loop->captureImage(sp::move(cb), Rc<core::ImageObject>(frame->getImage()),
+					core::AttachmentLayout::PresentSrc);
+			return;
+		}
+	}
+
 	auto swapchain = _swapchain.get_cast<SwapchainBase>();
 	auto image = swapchain ? swapchain->getLastPresentedImage() : nullptr;
 

@@ -178,7 +178,11 @@ protected:
 	there would be overwritten. */
 	void handleInputEcho(bool focused);
 
+	// The local window, for the system dialogs only a local window has.
 	AppWindow *getAppWindow() const;
+
+	// The window the fallback picker opens over, local or remote.
+	core::RenderServerChannel *getParentWindow() const;
 
 	basic2d::LayerRounded *_swatch = nullptr;
 	Input *_input = nullptr;

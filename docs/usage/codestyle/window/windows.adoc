@@ -131,6 +131,13 @@ as an **in-scene overlay** on the parent's `SceneContent2d` where it does not
 rules and the same close callback, so the caller never branches on the platform.
 `isNative()` tells you which one you got, if you care.
 
+The parent is a `core::RenderServerChannel`, so the same call works in an app
+running as a **remote client** (below): there the window is a `RemoteWindow`, it
+reports its server's capabilities, and the client still opens no windows of its
+own, so every surface is an overlay. Code that needs the window a node is drawn
+into takes `ui::getSubWindowParent(node)`, never a `dynamic_cast<AppWindow *>`,
+which is null on a client.
+
 **Headless is on the native side of that line.** The pseudo-controller stands in
 for the window manager — a virtual screen the size of the root window, placement
 through the same `computeWindowPlacement`, focus and pointer ownership, the
@@ -533,6 +540,99 @@ The queue can be built and compiled before any window that uses it exists
 does not own it. `tests/window`, layout `queue-cache`, opens three windows on one
 prewarmed graph.
 
+## Running as a remote client
+
+Any app on the standard entry point (`DEFINE_PRIMARY_SCENE_CLASS`, module
+`xenolith_application_main`) runs as a client of a remote server when started
+with `--connect <address>` (`shm:`, `unix:`, `quic://`; `--server-spki <hex>`
+pins a QUIC server). The window the app would open is asked from the server,
+with the config function applied to it and the primary scene built in it; the key
+is `Sha512` of the launch token in `XL_LAUNCH_TOKEN`, which is removed from the
+environment once read. The process ends with its window or with the connection.
+A custom `makeContext`/`makeAppThread` does not apply: there is no local context.
+
+On the server side a launched client is known by the label of the key it was
+issued (`ServerAppThread::addBearerKey`), and the two applications talk through
+`GlobalCode::AppRequest`/`AppNotify` (`setAppMessageHandler` on both sides).
+`tests/window/remote-example-check.py` runs the examples this way.
+
+## Virtual windows: a window manager's planes
+
+A window with `WindowCreationFlags::Virtual` has no OS window behind it. Every
+controller makes the same `sprt::window::VirtualWindow` for it, outside the backend,
+so a window manager running on X11 opens no second X window for a client, and a
+headless one puts nothing into the headless stacking order. It renders into a
+pseudo-swapchain of device images, as a headless window does, that a compositor in
+the same process reads: four images, `Sampled` included
+(`AppWindow::VirtualSwapchainImageCount`), published after the frame's fence.
+
+* **Only a server sets the flag.** `ServerAppThread::createClientWindow` strips it
+  from a client's request; the server's `ClientWindowHandler` adds it. Root windows
+  only.
+* **No capabilities.** No subwindows (a popup on it is an in-scene overlay), no
+  position, no decorations: `UserSpaceDecorations` is dropped at creation.
+* **The window manager decides its state.** It maps `Enabled` with the host's input
+  devices and nothing else; focus, pointer and `Minimized` come from
+  `AppWindow::setVirtualState`. The host controller never touches it. A client's
+  `WindowControl` asking for an extent, fullscreen or a geometry state is declined;
+  close, frame rate, the back button and `CloseGuard`/`CloseRequest` pass. The
+  server resizes it with `setWindowExtent`.
+* **Frames.** Unclaimed, it renders on demand, like a headless window. A compositor
+  claims it with `AppWindow::setExternalDisplayLink(true)`: from then on a frame
+  starts only on `emitDisplayLink()`, one per call at most, and only when the
+  application asked for one. `false` hands it back.
+* **It does not keep the process alive.** The "no Root window left" exit ignores
+  virtual windows: closing the host window ends the process.
+
+`tests/window/virtual-window-check.py` drives all of it through the inspector
+(`window` operations `virtual-state`, `external-display-link`, `display-link`).
+
+### Reading its frames: the plane source
+
+What a virtual window presents is published to its `core::PlaneSource`
+(`AppWindow::getPlaneSource()`, also on `core::PresentationWindow`):
+
+* `getLatest()` is the newest finished frame (`core::PlaneFrame`: serial, slot, image), from any
+  thread; `setListener` hears about each new one on the presentation thread.
+* **Holding the `Rc` is the lock.** The frame's slot stays pinned — the swapchain's `acquire`
+  skips it — until the last reference goes away, from whatever thread. A compositor keeps the
+  frame for as long as its own frame reads it, and several of its frames can hold different
+  images at once.
+* **On Vulkan the layout moves with the owner.** A device task takes the image PresentSrc →
+  ShaderReadOnly before the frame is published, and back to PresentSrc before the slot is
+  unpinned; between the two nothing writes it. The CPU backend publishes at once and only
+  unpins.
+* The source outlives swapchains: a frame of a replaced generation still holds its image, and
+  releasing it returns nothing to a ring that is gone.
+
+A screenshot of a virtual window is a copy of the latest published frame, held for the copy.
+Partial redraw works on these images — the per-slot damage snapshot is keyed by
+`SwapchainImage::getSwapchainSlot()`, not by the image id — and `tests/window/damage-check.py`
+checks it by the picture, with frames held.
+
+A remote client's frames take the same path. Each vertex set arrives with the identity it has on
+the client — `{id, generation}`, the id moved into the session's namespace
+(`(session << 40) | id`) — so a set the client did not touch is the same element on the server
+and costs nothing. What a set covers is not sent: the renderer derives it from the vertices, a
+glyph through the atlas the frame draws it with, as the shader places it
+(`VertexData::getBounds(atlas)`). A glyph that atlas does not have yet goes into the element's
+signature, so its arrival repaints the label and nothing else. `tests/window/remote-render-check.py`
+runs `testapp` as a client of a `testapp` server.
+
+A client asks for its frames itself, as a local window does. Its director asks when the scene
+changed since the last frame (see `markSceneChanged` in
+[node-geometry.adoc](../scene/node-geometry.adoc)) or moves (actions, input), and on every wakeup of
+the application thread. One request is in flight at a time: `RemoteWindow` sends no second
+`ReadyForNextFrame` until the `AcquireFrame` comes, and the server answers a request for a window
+the session may not draw into with `FrameDeclined`. A frame waits on the server for the glyphs it
+uses: the client's batch dependency stays pending until the server's `AtlasReady`, so its id rides
+the frame and the server holds the frame on its own copy — the first frame of new text is already
+complete.
+
+The inspector reads a plane with `window op=plane`
+(`serial`, `slot`, `pinned`, `imageCount`, `published`), holds one like a slow compositor with
+`op=plane-hold {ms}`, and renders an offscreen frame with `op=offscreen`.
+
 ## Traps
 
 | Trap | What actually happens |
@@ -542,6 +642,9 @@ prewarmed graph.
 | destroying a `WindowSceneInfo` off the app thread | DEBUG assert; move the payload out with `takeAppData()` if the `WindowInfo` may die on the context thread |
 | a separate "creation failed" path | `CloseCallback` already covers it — it fires once, including when the window never appeared |
 | hand-building a `Popup` window | fails on every platform without `Subwindows`; `ui::SubWindow` falls back to an overlay |
+| `dynamic_cast<AppWindow *>` to open a popup | null on a remote client, and the popup silently never opens; take `ui::getSubWindowParent(node)` |
+| claiming a virtual window's frames (`setExternalDisplayLink(true)`) and not ticking it | nothing is drawn: each `emitDisplayLink` starts at most one frame |
+| keeping a `PlaneFrame` past the compositor frame that read it | its slot stays out of the ring; hold three of four and the application draws through the last one, hold all and it stops |
 | calling `setFullscreen` / `enableState` without checking capabilities | the call is declined and your UI shows a control that never works |
 | `enableState(Maximized)` at the map event | the WM's `Allowed*` flags have not arrived yet, so it is declined; wait for them |
 | saving the geometry of a maximized window | it comes back the size of the screen, with nothing to un-maximize to |

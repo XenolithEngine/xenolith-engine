@@ -57,6 +57,32 @@ public:
 			ReplyCallback &&, uint64_t timeoutUs) = 0;
 };
 
+// The answer to one GlobalCode::AppRequest, sent at most once from the peer thread. A request left
+// unanswered is refused with GlobalError::NotImplemented when the last reference goes away, so a
+// handler that keeps the reply for later just keeps the Rc.
+class SP_PUBLIC AppReply : public Ref {
+public:
+	virtual ~AppReply();
+
+	// `owner` is the object behind `peer`, kept alive until the reply is sent.
+	bool init(Ref *owner, RemotePeer *peer, uint32_t serial);
+
+	bool send(const Value &);
+	bool refuse(remote::GlobalError = remote::GlobalError::NotImplemented);
+
+	bool isAnswered() const { return _answered; }
+
+protected:
+	Rc<Ref> _owner;
+	RemotePeer *_peer = nullptr;
+	uint32_t _serial = 0;
+	bool _answered = false;
+};
+
+// The outcome of an AppRequest from its reply header: Ok for a value; ErrorNotImplemented when the
+// receiver has no handler; ErrorTimeout when no reply came in time; ErrorCancelled otherwise.
+SP_PUBLIC Status getAppReplyStatus(const remote::MessageHeader &);
+
 } // namespace stappler::xenolith
 
 #endif /* XENOLITH_APPLICATION_XLREMOTEPEER_H_ */

@@ -31,6 +31,7 @@
 #include "XLDirector.h"
 #include "XLAppThread.h"
 #include "XLCoreRenderSession.h"
+#include "XLAppWindow.h" // the virtual-window operations of `window`
 #include "XLTextInputManager.h"
 
 #if MODULE_XENOLITH_FONT
@@ -647,6 +648,8 @@ Value SceneInspector::getWindowList() const {
 		entry.setInteger(int64_t(c.extent.width), "width");
 		entry.setInteger(int64_t(c.extent.height), "height");
 		entry.setDouble(double(c.density), "density");
+		// Images in the swapchain as last configured; 0 before the first one
+		entry.setInteger(int64_t(server->getAppSwapchainConfig().imageCount), "imageCount");
 
 		// Window position when known, in logical units, alongside the pixel surface extent
 		auto &g = server->getWindowGeometry();
@@ -655,6 +658,8 @@ Value SceneInspector::getWindowList() const {
 			entry.setInteger(int64_t(g.rect.y), "y");
 		}
 		entry.setBool(g.hasPosition, "hasPosition");
+		// A window with no OS window behind it, composed by this process (WindowCreationFlags::Virtual)
+		entry.setBool(hasFlag(info->flags, WindowCreationFlags::Virtual), "virtual");
 		entry.setBool(it == this, "default");
 		windows.addValue(sp::move(entry));
 	}
@@ -1230,6 +1235,18 @@ void SceneInspector::handleText(NotNull<Session> session, int64_t serial, Value 
 	sendResponse(session, serial, sp::move(result));
 }
 
+// A WindowState flag by the name getWindowStateDescription gives it; None for an unknown name.
+static core::WindowState parseWindowStateName(StringView name) {
+	for (auto it : sprt::flags(core::WindowState(maxOf<uint64_t>()))) {
+		StringStream n;
+		sprt::window::getWindowStateDescription([&](StringView str) { n << str.sub(1); }, it);
+		if (n.str() == name) {
+			return it;
+		}
+	}
+	return core::WindowState::None;
+}
+
 void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Value &&request) {
 	auto server = getRenderServer();
 	if (!server) {
@@ -1291,15 +1308,7 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 		sendResponse(session, serial, sp::move(result));
 	} else if (op == "enable-state" || op == "disable-state") {
 		auto name = req.getString("state");
-		auto state = core::WindowState::None;
-		for (auto it : sprt::flags(core::WindowState(maxOf<uint64_t>()))) {
-			StringStream n;
-			sprt::window::getWindowStateDescription([&](StringView str) { n << str.sub(1); }, it);
-			if (n.str() == name) {
-				state = it;
-				break;
-			}
-		}
+		auto state = parseWindowStateName(name);
 		if (state == core::WindowState::None) {
 			sendError(session, serial, toString("unknown window state: ", name));
 			return;
@@ -1312,6 +1321,112 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 											: server->disableState(state),
 				"accepted");
 		result.setString(name, "state");
+		sendResponse(session, serial, sp::move(result));
+	} else if (op == "virtual-state" || op == "external-display-link" || op == "display-link"
+			|| op == "plane" || op == "plane-hold" || op == "offscreen") {
+		// What a compositor does to a virtual window, done by hand. Server side only: the window
+		// manager is the process that owns the window.
+		auto w = dynamic_cast<AppWindow *>(server);
+		if (!w || !w->isVirtual()) {
+			sendError(session, serial, toString(op, ": not a virtual window of this process"));
+			return;
+		}
+
+		Value result;
+		result.setString(op, "op");
+		if (op == "virtual-state") {
+			auto name = req.getString("state");
+			auto state = parseWindowStateName(name);
+			if (state == core::WindowState::None) {
+				sendError(session, serial, toString("unknown window state: ", name));
+				return;
+			}
+			auto value = !req.hasValue("value") || req.getBool("value");
+			w->setVirtualState(state, value);
+			result.setString(name, "state");
+			result.setBool(value, "value");
+		} else if (op == "external-display-link") {
+			auto value = !req.hasValue("value") || req.getBool("value");
+			w->setExternalDisplayLink(value);
+			result.setBool(value, "value");
+		} else if (op == "plane" || op == "plane-hold") {
+			// What a compositor would read: the latest published frame, and which slots readers
+			// hold. `plane-hold` holds the latest frame itself for `ms`, as a slow compositor would.
+			auto source = w->getPlaneSource();
+			auto frame = source ? source->getLatest() : nullptr;
+			if (op == "plane") {
+				/* The latest frame and the pins are two reads, and a frame held here is pinned by
+				that alone: one published in between would show the previous latest pinned next to
+				the new one. So the pins are read with no frame held, and again when a newer frame
+				arrived meanwhile. */
+				auto slots = source ? source->getSlotTable() : nullptr;
+				Vector<uint32_t> pinnedSlots;
+				for (uint32_t attempt = 0; attempt < 4; ++attempt) {
+					const uint64_t latestSerial = frame ? frame->getSerial() : 0;
+					if (frame) {
+						result.setInteger(int64_t(latestSerial), "serial");
+						result.setInteger(int64_t(frame->getSlot()), "slot");
+					}
+					frame = nullptr;
+					pinnedSlots = slots ? slots->getPinned() : Vector<uint32_t>();
+					frame = source ? source->getLatest() : nullptr;
+					if ((frame ? frame->getSerial() : 0) == latestSerial) {
+						break;
+					}
+				}
+				auto &pinned = result.emplace("pinned");
+				pinned.setArray(Value::ArrayType());
+				for (auto it : pinnedSlots) { pinned.addInteger(int64_t(it)); }
+				if (slots) {
+					result.setInteger(int64_t(slots->getSlotCount()), "imageCount");
+				}
+				result.setInteger(int64_t(source ? source->getPublishedCount() : 0), "published");
+			} else {
+				if (!frame) {
+					sendError(session, serial, "plane-hold: nothing published yet");
+					return;
+				}
+				result.setInteger(int64_t(frame->getSerial()), "serial");
+				result.setInteger(int64_t(frame->getSlot()), "slot");
+				auto ms = sprt::max(req.getInteger("ms", 1'000), int64_t(0));
+				auto app = _owner && _owner->getDirector() ? _owner->getDirector()->getApplication()
+														   : nullptr;
+				if (!app) {
+					sendError(session, serial, "plane-hold: no application thread");
+					return;
+				}
+				// The frame lives in the timer's callback and dies with it, fired or cancelled.
+				app->getLooper()->schedule(sprt::dispatch::TimeInterval::milliseconds(ms),
+						[frame](sprt::dispatch::Handle *, bool) mutable { frame = nullptr; }, app);
+				result.setInteger(ms, "ms");
+			}
+		} else if (op == "offscreen") {
+			// A frame rendered outside the swapchain; the answer comes when it completed.
+			auto app = _owner && _owner->getDirector() ? _owner->getDirector()->getApplication()
+													   : nullptr;
+			if (!app) {
+				sendError(session, serial, "offscreen: no application thread");
+				return;
+			}
+			auto scheduled = w->scheduleOffscreenFrame(
+					[this, session = Rc<Session>(session), serial, app = Rc<AppThread>(app)](
+							bool success) mutable {
+				app->performOnAppThread([this, session = sp::move(session), serial, success] {
+					Value result;
+					result.setString("offscreen", "op");
+					result.setBool(success, "completed");
+					sendResponse(session, serial, Value(result));
+				}, this);
+			});
+			if (!scheduled) {
+				sendError(session, serial, "offscreen: the window has no presentation engine");
+			}
+			return;
+		} else {
+			auto count = sprt::max(req.getInteger("count", 1), int64_t(0));
+			for (int64_t i = 0; i < count; ++i) { w->emitDisplayLink(); }
+			result.setInteger(count, "count");
+		}
 		sendResponse(session, serial, sp::move(result));
 	} else if (op == "frame-interval") {
 		server->setPreferredFrameInterval(uint64_t(req.getInteger("value")));
@@ -1326,7 +1441,9 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 	} else {
 		sendError(session, serial,
 				toString("unknown window op: ", op, "; expected resize, constraints, geometry,",
-						" state, updatable, enable-state, disable-state, frame-interval, close"));
+						" state, updatable, enable-state, disable-state, frame-interval, close,",
+						" virtual-state, external-display-link, display-link, plane, plane-hold,",
+						" offscreen"));
 	}
 }
 

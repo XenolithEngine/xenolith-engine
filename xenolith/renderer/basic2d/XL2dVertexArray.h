@@ -87,11 +87,6 @@ public:
 	size_t getVertexCount() const;
 	size_t getIndexCount() const;
 
-	// Declare that the AABB cannot be derived from the vertex data (atlas-driven geometry) and
-	// supply it directly. Must be called after the last mutation, since mutating invalidates it.
-	void setBoundsDerivable(bool);
-	void setBounds(const Rect &);
-
 protected:
 	void copy();
 

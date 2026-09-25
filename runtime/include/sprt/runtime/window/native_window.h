@@ -116,6 +116,9 @@ public:
 
 	const WindowInfo *getInfo() const { return _info; }
 
+	// Made for WindowCreationFlags::Virtual: a VirtualWindow with no OS window behind it.
+	bool isVirtual() const { return _info && hasFlag(_info->flags, WindowCreationFlags::Virtual); }
+
 	// Move the application payload off the window info (see WindowInfo::appData). Meant to be
 	// called exactly once, by whichever layer owns this window's content, so the payload does not
 	// have to be destroyed on the context thread together with the WindowInfo. Returns null once

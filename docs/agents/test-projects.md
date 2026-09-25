@@ -13,6 +13,7 @@
 | `tests/tess` | `tesstest` | the tesselator (`stappler/tess`) and the vector layer, against the whole 2d icon set — a pinned digest per icon **and** a pinned raster per icon, plus a deterministic wire benchmark. No device, no window, no frame | CLI, golden |
 | `tests/compute` | `computetest` | Vulkan compute with no window (`xenolith_backend_vk` + `xenolith_core`): a `core::Queue` with one compute pass, `Loop::runRenderQueue`, `Loop::captureBuffer`, and a lost device through `vk::Device::setTestFault`. Needs a Vulkan device; without one it prints SKIP. `computetest timings` is the round-trip benchmark ([Measuring compute](measuring-compute.md)) | CLI, GPU |
 | `examples/window/particles` | `particles` | the GPU particles of `basic2d` behind a control panel; `tests/window/particles-check.py` runs it headless and compares a GPU snapshot of the particles with the CPU reference the example computes from the same `XL2dGlslParticleSim.h` | GUI, driven by a check |
+| `examples/window/{dndtree,form,dock}` | `dndtree`, `form`, `dock` | the ui examples, unmodified, as remote clients: `tests/window/remote-example-check.py` starts each with `--connect` against the headless `testapp` in a window manager's shape (client windows only, labelled launch keys) and checks the window, its frame, its popups (overlays) and the process lifetime | GUI, driven by a check |
 | `tests/window` | `testapp` | full xenolith GUI stack (`xenolith_application` + `renderer_ui` + `backend_vk` + `resources_assets`); transitively compiles the stappler modules | GUI |
 
 **Which to use:**
@@ -31,6 +32,38 @@
   `tests/window/particles-check.py` (the runner selects both). The shader build does not track
   included headers: touch the `.comp` after editing one. The model and the checks are described in
   [the particles guide](../usage/basic2d/particles.adoc).
+- Changed the remote protocol, `ServerAppThread`/`ClientAppThread`, the client mode of the
+  entry point or `ui::SubWindow` → `tests/remote` (`remotetest`), then
+  `tests/window/remote-window-check.py` and `tests/window/remote-example-check.py`. The second
+  needs `examples/window/{dndtree,form,dock}` built and skips the ones that are not; an example
+  links `renderer/ui` statically, so rebuild it after a change there or it runs the old code.
+- Changed virtual windows (`WindowCreationFlags::Virtual`, `sprt::window::VirtualWindow`, the
+  headless controller, `PresentationEngine::setFollowDisplayLinkBarrier`, the plane source and the
+  headless swapchains' pins) → `tests/window/virtual-window-check.py`. It runs on Vulkan and soft, so
+  build `tests/window` with `SOFT=1`; `--gapi` keeps one. That the host opens no second OS window is
+  checked by hand on X11 (`SP_SESSION_TYPE=x11`, `xprop -root _NET_CLIENT_LIST`).
+- Changed how a window asks for frames (`Director::handleSceneChanged` / `handleAppUpdate`,
+  `Node::markSceneChanged` and the setters that call it, `RemoteWindow::setReadyForNextFrame`,
+  `FrameDeclined`, remote glyph gating) → `tests/window/virtual-window-check.py` as well. It never
+  steps the client's window, only the host: an idle client must stay quiet (the server counts its
+  `ReadyForNextFrame`, `remote` op `sessions[].readyRequests`), an animating one draw, and a label
+  changed by an `AppNotify` get a first frame that already has its glyphs — the server rasterizes
+  slowly there (`XL_FONT_GLYPH_DELAY_US`). A check that steps a window with `frame window=` hides
+  exactly these failures.
+- Changed partial redraw or swapchain damage (`SwapchainDamage`, a queue pass's
+  `computeRedrawArea`, the headless swapchains, `DamageCollector`, `VertexData::getBounds`) →
+  `tests/window/damage-check.py`. It runs the damage stand (`XL_DAMAGE_TEST`) on the flat queue, in
+  the root window and in a virtual window with frames held, on Vulkan and soft, and fails on a
+  trail, on frames that never took the partial path, or on a label colour change that is not a
+  partial repaint of its own (`XL_VK_DAMAGE_LOG`, `XL_SOFT_DAMAGE_LOG` report the decision per
+  frame).
+- Changed how a remote client's frame reaches the server (`FrameContextHandle2d::serialize` /
+  `deserialize`, the remote font server) → `tests/window/remote-render-check.py` as well. It runs
+  `testapp --connect` against a `testapp` server that shows client windows as virtual ones: the
+  damage stand without a trail and on the partial path, then a layout compared pixel by pixel with
+  the same layout run locally, before and after a state-only change, and a local window that draws
+  that change without being stepped. The two client sessions run one after the other, so text that
+  renders in the second is also the check that a font endpoint does not outlive its session.
 - Changed `xenolith/core` or `xenolith/backend/vk` → `tests/compute` (the runner
   owes it for both). It covers the round trip on 1 … 10⁵ records and the device-lost
   refusals: a request after `VK_ERROR_DEVICE_LOST` gets exactly one failed callback

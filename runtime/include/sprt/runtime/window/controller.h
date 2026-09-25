@@ -109,6 +109,9 @@ public:
 	// Find a live window by its WindowInfo::id
 	NativeWindow *findWindow(StringView id) const;
 
+	// Every allocated window, mapped or not, virtual ones included.
+	const Set<NativeWindow *> &getAllWindows() const { return _allWindows; }
+
 	// Last pointer/button serial seen by the backend. xdg_popup.grab needs the serial of a fresh
 	// input event; other platforms ignore it.
 	void notePointerSerial(uint32_t serial) { _lastPointerSerial = serial; }

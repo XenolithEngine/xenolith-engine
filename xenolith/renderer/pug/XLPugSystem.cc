@@ -135,7 +135,7 @@ void TemplateSystem::ensureTemplate() {
 		return;
 	}
 
-	Callback<void(StringView)> errCb = [this](StringView err) {
+	auto onError = [this](StringView err) {
 		if (_config.onError) {
 			_config.onError(err);
 		} else {
@@ -149,10 +149,10 @@ void TemplateSystem::ensureTemplate() {
 					filesystem::readIntoMemory<mem_std::Interface>(FileInfo{_source, _category});
 			StringView content((const char *)bytes.data(), bytes.size());
 			_template = spug::Template::read(_pool, content, spug::Template::Options::getNodes(),
-					errCb);
+					onError);
 		} else {
 			_template = spug::Template::read(_pool, _source, spug::Template::Options::getNodes(),
-					errCb);
+					onError);
 		}
 	}, _pool);
 

@@ -31,9 +31,13 @@
 #include "XLInputListener.h" // DEBUG: verify forwarded input reaches the scene
 #include "XLUiCloseGuardWidget.h"
 #include "XLEntryPoint.h"
+#include "XLClientContext.h"
 #include "XLSceneInspector.h"
 #include "XLUiTextInput.h"
 #include "XLUiStyleResolver.h"
+#include "XLUiSelect.h"
+#include "XLUiSubWindow.h"
+#include "XLUiSubWindowSession.h"
 
 #include <stdlib.h> // getenv for the screenshot output path
 
@@ -93,6 +97,12 @@ bool ClientScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel
 	_input->setCaretBlink(false);
 	_input->setContentSize(Size2(320.0f, 48.0f));
 
+	_select = content->addChild(Rc<ui::Select>::create(), ZOrder(2));
+	_select->setName("remote-select");
+	const StringView options[] = {"first", "second", "third"};
+	_select->setOptions(ui::makeSelectOptions(SpanView<StringView>(options)));
+	_select->setContentSize(Size2(240.0f, 40.0f));
+
 	// Применяем содержимое сцены
 	setContent(content);
 
@@ -101,7 +111,13 @@ bool ClientScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel
 	registerTextCommand();
 
 	// Remote runtime font materials are now forwarded to the server for compilation; enable text.
-	setFpsVisible(true);
+	// XL_HIDE_FPS=1 hides the counter, as in testapp: it changes every frame, so a scene showing it
+	// never settles into two identical frames.
+	bool fpsVisible = true;
+	if (auto value = ::getenv("XL_HIDE_FPS")) {
+		fpsVisible = StringView(value) == "0";
+	}
+	setFpsVisible(fpsVisible);
 
 	// DEBUG: verify server-forwarded input (WindowCode::InputEvents) actually reaches the scene graph.
 	// The server's XL_REMOTE_INPUT_SIM emitter sweeps a cursor and clicks; these recognizers log when
@@ -151,10 +167,19 @@ void ClientScene::handleContentSizeDirty() {
 		_input->setAnchorPoint(Vec2(0.0f, 1.0f));
 		_input->setPosition(Vec2(48.0f, _contentSize.height - 48.0f));
 	}
+	if (_select) {
+		_select->setAnchorPoint(Vec2(0.0f, 1.0f));
+		_select->setPosition(Vec2(48.0f, _contentSize.height - 112.0f));
+	}
 }
+
+// The scene an AppNotify { label } is applied to; the handler outlives scenes.
+static ClientScene *s_messageScene = nullptr;
 
 void ClientScene::handleEnter(Scene *scene) {
 	Scene2d::handleEnter(scene);
+
+	s_messageScene = this;
 
 	// Проверяем, что система действий (runAction) работает в контексте удалённого клиента.
 	// Квадрат бесконечно пульсирует масштабом. Пока действие активно,
@@ -169,6 +194,10 @@ void ClientScene::handleEnter(Scene *scene) {
 		_input->focus();
 	}
 
+	startAnimation();
+}
+
+void ClientScene::startAnimation() {
 	if (_square && !_animStarted) {
 		_animStarted = true;
 		_square->runAction(Rc<RepeatForever>::create(Rc<Sequence>::create(
@@ -176,6 +205,27 @@ void ClientScene::handleEnter(Scene *scene) {
 			++_animTick;
 			//log::source().info("ClientScene", "animation tick ", _animTick);
 		})));
+	}
+}
+
+void ClientScene::handleExit() {
+	if (s_messageScene == this) {
+		s_messageScene = nullptr;
+	}
+	Scene2d::handleExit();
+}
+
+void ClientScene::setMessageLabel(StringView str) {
+	if (_label) {
+		_label->setString(str);
+	}
+}
+
+void ClientScene::stopAnimation() {
+	if (_square && _animStarted) {
+		_animStarted = false;
+		_square->stopAllActions();
+		_square->setScale(1.0f);
 	}
 }
 
@@ -187,8 +237,120 @@ void ClientScene::handleEnter(Scene *scene) {
 телеметрию сервер вообще не слал, поэтому FPS-панель показывала 1.0/1.0/0.0 — заглушечные значения,
 неотличимые снаружи от «сервер медленный». Поэтому команда отдаёт и размер сцены, и зеркала окна: без
 такого разделения проверка ресайза проходила бы, ничего не проверяя. */
+static Vector<Value> s_appMessageLog;
+
+void installAppMessageLog(ClientContext *ctx) {
+	ctx->setAppMessageHandler([](Value &&val, Rc<AppReply> &&reply) {
+		if (!reply && s_messageScene && val.isString("label")) {
+			s_messageScene->setMessageLabel(val.getString("label"));
+		}
+		if (s_appMessageLog.size() >= 32) {
+			s_appMessageLog.erase(s_appMessageLog.begin());
+		}
+		Value entry;
+		entry.setBool(reply != nullptr, "request");
+		entry.setValue(val, "value");
+		s_appMessageLog.emplace_back(sp::move(entry));
+		if (reply) {
+			Value answer;
+			answer.setValue(sp::move(val), "clientEcho");
+			reply->send(answer);
+		}
+	});
+}
+
+const Vector<Value> &getAppMessageLog() { return s_appMessageLog; }
+
 void ClientScene::registerCommands() {
 	auto content = getContent();
+
+	/* Ask the server's application something: { value, timeout } -> { ok, status, reply }.
+	`timeout` is in milliseconds; an unanswered request completes with a timeout and keeps the
+	session. */
+	inspector::addCommand(content, "client-app-request",
+			"Send the server an application request: { value, timeout (ms) }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		auto thread =
+				_director ? dynamic_cast<ClientAppThread *>(_director->getApplication()) : nullptr;
+		if (!thread) {
+			Value result;
+			result.setBool(false, "ok");
+			result.setString("not a remote client", "error");
+			done(sp::move(result));
+			return;
+		}
+		auto timeout = uint64_t(req.getInteger("timeout", 5'000)) * 1'000;
+		if (!thread->sendAppRequest(req.getValue("value"),
+					[done](Status st, Value &&reply) mutable {
+			Value result;
+			result.setBool(st == Status::Ok, "ok");
+			result.setString(sprt::status::getStatusName(st), "status");
+			result.setValue(sp::move(reply), "reply");
+			done(sp::move(result));
+		}, timeout)) {
+			Value result;
+			result.setBool(false, "ok");
+			result.setString("the server takes no application messages", "error");
+			done(sp::move(result));
+		}
+	});
+
+	/* Popups on a client: { op: open | close | tip | state }. A client opens no windows of its own,
+	so the drop-down's list and a hint are in-scene overlays; `state` says whether each is up and
+	whether the list became a native window (it must not). */
+	/* The square's animation: { op: stop | start }. It is what keeps the client drawing; stopped,
+	two frames of the idle scene are the same frame, which is what comparing a partial redraw with a
+	full one needs. */
+	inspector::addCommand(content, "client-animation", "Stop or start the square: { op }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		if (req.getString("op") == "stop") {
+			stopAnimation();
+		} else {
+			startAnimation();
+		}
+		Value result;
+		result.setBool(true, "ok");
+		result.setBool(_animStarted, "running");
+		done(sp::move(result));
+	});
+
+	inspector::addCommand(content, "client-popup",
+			"Drive the drop-down and a hint: { op: open|close|tip|state } -> { open, native, tip }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		auto op = req.getString("op");
+		auto window = _director ? _director->getRenderServer() : nullptr;
+		auto session = window ? ui::SubWindowSession::get(window) : nullptr;
+		Value result;
+		if (op == "open" && _select) {
+			result.setBool(_select->open(), "opened");
+		} else if (op == "close" && _select) {
+			_select->close();
+		} else if (op == "tip" && session) {
+			session->showTip("remote hint", Vec2(48.0f, _contentSize.height - 160.0f),
+					_contentSize.height);
+		}
+		auto popup = _select ? _select->getPopup() : nullptr;
+		result.setBool(true, "ok");
+		result.setBool(popup != nullptr, "open");
+		result.setBool(popup && popup->isNative(), "native");
+		result.setBool(session && session->hasTip(), "tip");
+		done(sp::move(result));
+	});
+
+	// Send the server's application a notification: { value }.
+	inspector::addCommand(content, "client-app-notify",
+			"Send the server an application notification: { value }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		auto thread =
+				_director ? dynamic_cast<ClientAppThread *>(_director->getApplication()) : nullptr;
+		Value result;
+		result.setBool(thread && thread->sendAppNotification(req.getValue("value")), "ok");
+		done(sp::move(result));
+	});
 
 	/* Ask the server for another window: { id, width, height }.
 
@@ -271,7 +433,7 @@ void ClientScene::registerCommands() {
 	inspector::addCommand(content, "client-state",
 			"What the client's window knows about itself: "
 			"{ sceneWidth, sceneHeight, constraintsWidth, constraintsHeight, density, "
-			"geomX, geomY, geomWidth, geomHeight, hasPosition }",
+			"geomX, geomY, geomWidth, geomHeight, hasPosition, serverWm }",
 			[this](Value &&, Function<void(Value &&)> &&done) {
 		Value result;
 		auto server = _director ? _director->getRenderServer() : nullptr;
@@ -296,6 +458,35 @@ void ClientScene::registerCommands() {
 		result.setInteger(g.rect.width, "geomWidth");
 		result.setInteger(g.rect.height, "geomHeight");
 		result.setBool(g.hasPosition, "hasPosition");
+
+		auto thread =
+				_director ? dynamic_cast<ClientAppThread *>(_director->getApplication()) : nullptr;
+		result.setBool(thread && thread->isAppMessagingSupported(), "appMessaging");
+		// The server's window system as it announced it; its virtual windows must not change it
+		if (auto info = thread ? thread->getServerInfo() : nullptr) {
+			result.setString(remote::getWindowSubsystemName(info->wm), "serverWm");
+		}
+		auto &messages = result.emplace("appMessages");
+		messages.setArray(Value::ArrayType());
+		for (auto &it : getAppMessageLog()) { messages.addValue(it); }
+		result.setString(_label ? _label->getString8() : StringView(), "label");
+		done(sp::move(result));
+	});
+
+	/* A ReadyForNextFrame for any window id, straight onto the wire: the server declines one for a
+	window this session may not draw into. */
+	inspector::addCommand(content, "client-ready", "Ask the server for a frame of { window }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		Value result;
+		auto thread =
+				_director ? dynamic_cast<ClientAppThread *>(_director->getApplication()) : nullptr;
+		auto conn = thread ? thread->getConnection() : nullptr;
+		result.setBool(conn != nullptr, "ok");
+		if (conn) {
+			conn->sendCborMessage(remote::Domain::Window,
+					toInt(remote::WindowCode::ReadyForNextFrame), Value(req.getInteger("window")));
+		}
 		done(sp::move(result));
 	});
 

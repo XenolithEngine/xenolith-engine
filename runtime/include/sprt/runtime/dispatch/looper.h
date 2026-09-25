@@ -79,7 +79,8 @@ public:
 	// Convenience form: `reader` receives output chunks; `onExit` receives the
 	// exit code and final Status.
 	Rc<ProcessHandle> spawnProcess(StringView command, Function<void(StringView)> &&reader,
-			Function<void(int exitCode, Status)> &&onExit, Ref * = nullptr);
+			Function<void(int exitCode, Status)> &&onExit, Ref * = nullptr,
+			ProcessFlags = ProcessFlags::None);
 
 	// Asynchronous file I/O on this loop (non-blocking, no worker threads).
 	// readFile streams the file's bytes to the reader (each chunk on this thread)

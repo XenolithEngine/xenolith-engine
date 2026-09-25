@@ -26,8 +26,15 @@ THE SOFTWARE.
 // of this suite's POSIX libc tests.
 
 #include <sprt/runtime/dispatch/looper.h>
+#include <sprt/runtime/dispatch/queue.h>
 #include <sprt/runtime/dispatch/handle.h>
 #include <sprt/runtime/platform.h>
+#include "../tests.h"
+
+#if !SPRT_WASM && !SPRT_WINDOWS
+#include <errno.h>
+#include <signal.h>
+#endif
 
 namespace sprt {
 
@@ -79,7 +86,7 @@ static bool runProcessCase(dispatch::Looper *looper, const ProcessCase &c) {
 	});
 
 	if (!proc) {
-		sprt::cout << "FAIL  spawnProcess returned null for: " << c.cmd << "\n";
+		sprt::cout << sprt::test::failed("FAIL  spawnProcess returned null for: ") << c.cmd << "\n";
 		return false;
 	}
 
@@ -93,8 +100,89 @@ static bool runProcessCase(dispatch::Looper *looper, const ProcessCase &c) {
 
 	StringView trimmed = out;
 	trimmed.trimChars<StringView::WhiteSpace>();
-	sprt::cout << (ok ? "PASS  " : "FAIL  ") << "[" << c.cmd << "] code=" << code << " (want "
-			   << c.wantCode << ") out=[" << trimmed << "]\n";
+	sprt::cout << (ok ? "PASS  " : sprt::test::failed("FAIL  ")) << "[" << c.cmd
+			   << "] code=" << code << " (want " << c.wantCode << ") out=[" << trimmed << "]\n";
+	return ok;
+}
+
+// Looper and Queue offer the same spawnProcess/wait pair, so the cancel cases run on either.
+template <typename Driver>
+static void driveFor(Driver *looper, uint64_t ms, const Callback<bool()> &until) {
+	auto deadline = platform::clock(platform::ClockType::Monotonic) + ms * 1'000;
+	while (!until() && platform::clock(platform::ClockType::Monotonic) < deadline) {
+		looper->wait(dispatch::TimeInterval::milliseconds(20));
+	}
+}
+
+#if !SPRT_WINDOWS
+static bool isProcessAlive(int pid) { return ::kill(pid, 0) == 0 || errno != ESRCH; }
+
+// The shell starts a grandchild and prints its pid; cancelling the handle then kills the whole
+// tree with ProcessFlags::KillProcessTree, and only the shell without it.
+template <typename Driver>
+static bool runTreeCancelCase(Driver *looper, StringView engine, bool killTree) {
+	ProcessCapture cap;
+	bool done = false;
+	Status finalStatus = Status::Pending;
+
+	auto proc = looper->spawnProcess("sleep 30 & echo $!; wait",
+			[&cap](StringView d) { cap.append(d); }, [&](int, Status st) {
+		finalStatus = st;
+		done = true;
+	}, nullptr, killTree ? dispatch::ProcessFlags::KillProcessTree : dispatch::ProcessFlags::None);
+	if (!proc) {
+		sprt::cout << sprt::test::failed("FAIL  spawnProcess returned null (tree cancel)\n");
+		return false;
+	}
+
+	driveFor(looper, 5'000, [&] { return cap.view().find('\n') != Max<size_t>; });
+	auto grandchild = int(StringView(cap.view()).readInteger(10).get(0));
+
+	proc->cancel();
+	driveFor(looper, 1'000, [&] { return done; });
+
+	// A killed orphan stays a zombie until init reaps it, so death gets a few seconds; survival
+	// only needs to hold for a moment.
+	bool alive = false;
+	if (grandchild > 0) {
+		driveFor(looper, killTree ? 3'000 : 300,
+				[&] { return killTree && !isProcessAlive(grandchild); });
+		alive = isProcessAlive(grandchild);
+		if (alive) {
+			::kill(grandchild, SIGKILL);
+		}
+	}
+
+	bool ok = grandchild > 0 && done && finalStatus == Status::ErrorCancelled && alive == !killTree;
+	sprt::cout << (ok ? "PASS  " : sprt::test::failed("FAIL  ")) << "[" << engine << ": cancel "
+			   << (killTree ? "with" : "without") << " KillProcessTree] grandchild=" << grandchild
+			   << " alive=" << (alive ? "yes" : "no") << " (want " << (killTree ? "no" : "yes")
+			   << ") status=" << status::getStatusName(finalStatus) << "\n";
+	return ok;
+}
+#endif
+
+// Cancelling before the child has even started must neither hang nor leak.
+template <typename Driver>
+static bool runEarlyCancelCase(Driver *looper, StringView engine, StringView cmd) {
+	bool done = false;
+	Status finalStatus = Status::Pending;
+	auto proc =
+			looper->spawnProcess(cmd, dispatch::ProcessInfo::ReaderCallback(), [&](int, Status st) {
+		finalStatus = st;
+		done = true;
+	}, nullptr, dispatch::ProcessFlags::KillProcessTree);
+	if (!proc) {
+		sprt::cout << sprt::test::failed("FAIL  spawnProcess returned null (early cancel)\n");
+		return false;
+	}
+	proc->cancel();
+	driveFor(looper, 2'000, [&] { return done; });
+
+	bool ok = done && finalStatus == Status::ErrorCancelled;
+	sprt::cout << (ok ? "PASS  " : sprt::test::failed("FAIL  ")) << "[" << engine
+			   << ": early cancel '" << cmd << "'] status=" << status::getStatusName(finalStatus)
+			   << "\n";
 	return ok;
 }
 
@@ -120,7 +208,7 @@ void performProcessTests() {
 #else
 	auto looper = dispatch::Looper::acquire();
 	if (!looper) {
-		sprt::cout << "FAIL  could not acquire looper\n";
+		sprt::cout << sprt::test::failed("FAIL  could not acquire looper\n");
 		return;
 	}
 
@@ -181,12 +269,46 @@ void performProcessTests() {
 		if (!ok) {
 			++failed;
 		}
-		sprt::cout << (ok ? "PASS  " : "FAIL  ") << "[concurrent x" << n << " '" << concurrentCmd
-				   << "'] elapsed=" << elapsedMs << "ms (want < " << boundMs << ")\n";
+		sprt::cout << (ok ? "PASS  " : sprt::test::failed("FAIL  ")) << "[concurrent x" << n << " '"
+				   << concurrentCmd << "'] elapsed=" << elapsedMs << "ms (want < " << boundMs
+				   << ")\n";
 	}
 
-	sprt::cout << "process tests: " << (failed == 0 ? "ALL PASS" : "FAILURES") << " (failures="
-			   << failed << ")\n";
+#if SPRT_WINDOWS
+	if (!runEarlyCancelCase(looper, "default", "ping -n 30 127.0.0.1")) {
+		++failed;
+	}
+#elif SPRT_LINUX
+	struct EngineCase {
+		StringView name;
+		dispatch::QueueEngine engine;
+	};
+
+	static constexpr EngineCase s_engines[] = {
+		{"uring", dispatch::QueueEngine::URing},
+		{"epoll", dispatch::QueueEngine::EPoll},
+	};
+
+	for (auto &it : s_engines) {
+		dispatch::QueueInfo qinfo;
+		qinfo.engineMask = it.engine;
+		auto queue = dispatch::Queue::create(move(qinfo));
+		if (!queue || queue->getEngine() != it.engine) {
+			sprt::cout << "SKIP  " << it.name << " engine is not available\n";
+			continue;
+		}
+		failed += runEarlyCancelCase(queue.get(), it.name, "sleep 30") ? 0 : 1;
+		failed += runTreeCancelCase(queue.get(), it.name, true) ? 0 : 1;
+		failed += runTreeCancelCase(queue.get(), it.name, false) ? 0 : 1;
+	}
+#else
+	failed += runEarlyCancelCase(looper, "default", "sleep 30") ? 0 : 1;
+	failed += runTreeCancelCase(looper, "default", true) ? 0 : 1;
+	failed += runTreeCancelCase(looper, "default", false) ? 0 : 1;
+#endif
+
+	sprt::cout << "process tests: " << (failed == 0 ? "ALL PASS" : sprt::test::failed("FAILURES"))
+			   << " (failures=" << failed << ")\n";
 #endif
 }
 

@@ -55,10 +55,11 @@ static int __SPRT_ID(pidfd_open)(int pid, unsigned int flags) {
 
 namespace sprt::dispatch {
 
-bool ProcessFdSource::init(int pfd, int p) {
+bool ProcessFdSource::init(int pfd, int p, bool g) {
 	pidfd = pfd;
 	pid = p;
 	flags = PollFlags::In;
+	group = g;
 	return true;
 }
 
@@ -71,18 +72,30 @@ void ProcessFdSource::cancel() {
 	// path never ran), terminate and reap it so it neither outlives its handle nor leaks
 	// a zombie. `exited` guards against signalling an already-reaped (recycled) pid.
 	if (!exited && pid > 0) {
-		killProcessChild(pid);
+		killProcessChild(pid, group);
 		exited = true;
 	}
 }
 
-bool ProcessFdHandle::init(HandleClass *cl, int pidfd, int pid,
+Status ProcessFdHandle::cancelClass(HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize],
+		Status st) {
+	auto source = reinterpret_cast<ProcessFdSource *>(data);
+
+	source->cancel();
+	source->~ProcessFdSource();
+
+	cancelProcessReader(static_cast<ProcessState *>(handle->getUserdata()));
+
+	return HandleClass::cancel(cl, handle, data, st);
+}
+
+bool ProcessFdHandle::init(HandleClass *cl, int pidfd, int pid, bool group,
 		CompletionHandle<ProcessHandle> &&c) {
 	if (!Handle::init(cl, move(c))) {
 		return false;
 	}
 	auto source = new (_data) ProcessFdSource;
-	return source->init(pidfd, pid);
+	return source->init(pidfd, pid, group);
 }
 
 NativeHandle ProcessFdHandle::getNativeHandle() const {
@@ -203,7 +216,8 @@ Rc<ProcessHandle> spawnProcessFd(QueueData *data, HandleClass *processClass, boo
 		ProcessInfo &&info, Ref *ref) {
 	int pid = -1;
 	int readFd = -1;
-	if (!posixSpawnPipe(info.command, &pid, &readFd)) {
+	auto group = hasFlag(info.flags, ProcessFlags::KillProcessTree);
+	if (!posixSpawnPipe(info.command, &pid, &readFd, group)) {
 		return nullptr;
 	}
 
@@ -225,10 +239,10 @@ Rc<ProcessHandle> spawnProcessFd(QueueData *data, HandleClass *processClass, boo
 
 	Rc<ProcessHandle> proc;
 	if (uring) {
-		proc = Rc<ProcessFdURingHandle>::create(processClass, pidfd, pid,
+		proc = Rc<ProcessFdURingHandle>::create(processClass, pidfd, pid, group,
 				sprt::move(info.completion));
 	} else {
-		proc = Rc<ProcessFdEPollHandle>::create(processClass, pidfd, pid,
+		proc = Rc<ProcessFdEPollHandle>::create(processClass, pidfd, pid, group,
 				sprt::move(info.completion));
 	}
 	if (!proc) {

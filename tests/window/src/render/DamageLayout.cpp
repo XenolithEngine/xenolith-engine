@@ -40,6 +40,12 @@ bool DamageLayout::init() {
 	_moving->setContentSize(Size2(200.0f, 200.0f));
 	_moving->setAnchorPoint(Anchor::BottomLeft);
 
+	_label = addChild(Rc<basic2d::Label>::create(), ZOrder(3));
+	_label->setString("Damage tracking label");
+	_label->setFontSize(40);
+	_label->setColor(Color::Blue_700);
+	_label->setAnchorPoint(Anchor::BottomLeft);
+
 	return true;
 }
 
@@ -51,6 +57,9 @@ void DamageLayout::handleContentSizeDirty() {
 	// The static square sits above the moving one, but must stay clear of the caption strip: it is
 	// the control, and it has to be visible in full to show that it never contributes damage.
 	_static->setPosition(Vec2(80.0f, sprt::min(y + 260.0f, getWorkTop() - 220.0f)));
+
+	// Beside the static square, clear of the walk below it.
+	_label->setPosition(Vec2(320.0f, sprt::min(y + 300.0f, getWorkTop() - 160.0f)));
 
 	if (!_started) {
 		// Start only once, and only after the node has been placed: MoveStep captures the start
@@ -64,6 +73,18 @@ void DamageLayout::handleContentSizeDirty() {
 				Rc<MoveStep>::create(StepDelay * MoveSteps, Vec2(MoveDistance, 0.0f), MoveSteps));
 		_started = true;
 	}
+}
+
+void DamageLayout::registerCommands() {
+	addCommand("label-color",
+			"Switch the label between two colours; nothing but the colour changes",
+			[this](Value &&) {
+		_labelToggled = !_labelToggled;
+		_label->setColor(_labelToggled ? Color::Orange_700 : Color::Blue_700);
+		Value ret;
+		ret.setBool(_labelToggled, "toggled");
+		return ret;
+	});
 }
 
 } // namespace stappler::xenolith::app

@@ -94,7 +94,10 @@ inline uint32_t hash(uint32_t k, uint32_t capacity) {
 	return k & (capacity - 1);
 }
 
+static sprt::atomic<uint64_t> s_DataAtlasSerial = 1;
+
 bool DataAtlas::init(Type t, uint32_t count, uint32_t objectSize, Extent2 imageSize) {
+	_serial = s_DataAtlasSerial.fetch_add(1);
 	_type = t;
 	_objectSize = objectSize;
 	_imageExtent = imageSize;

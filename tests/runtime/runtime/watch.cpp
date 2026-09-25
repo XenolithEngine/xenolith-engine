@@ -28,6 +28,7 @@ THE SOFTWARE.
 #include <unistd.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -79,7 +80,7 @@ void performWatchFileTests() {
 
 	int failures = 0;
 	auto check = [&](bool cond, StringView msg) {
-		sprt::cout << (cond ? "  PASS: " : "  FAIL: ") << msg << "\n";
+		sprt::cout << (cond ? "  PASS: " : sprt::test::failed("  FAIL: ")) << msg << "\n";
 		if (!cond) {
 			++failures;
 		}

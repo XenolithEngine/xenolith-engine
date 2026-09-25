@@ -797,6 +797,13 @@ ServerHandshake::State ServerHandshake::step(TransportConnection &conn, uint64_t
 	return _state;
 }
 
+BytesView ServerHandshake::getPresentedKey() const {
+	if (!_helloValid) {
+		return BytesView();
+	}
+	return BytesView(_hello.authData.data(), _hello.authData.size());
+}
+
 GlobalError ServerHandshake::negotiate(BytesView expectedKey, BytesView serverDict,
 		bool requireBearerKey) {
 	if (_state != State::HelloReceived || !_helloValid) {

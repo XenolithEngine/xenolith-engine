@@ -60,7 +60,7 @@ void Label::Selection::emplaceRect(const Rect &rect) {
 // Sprite::updateColor only marks vertexes when the colour value changed - so re-apply it always.
 void Label::Selection::updateColor() {
 	Sprite::updateColor();
-	_vertexColorDirty = true;
+	markVertexColorDirty();
 }
 
 void Label::Selection::updateVertexes(FrameInfo &frame) {
@@ -133,23 +133,6 @@ static void Label_writeTextureQuad(float height, const font::Metrics &m,
 				range.decoration, c.face, layer);
 		break;
 	}
-}
-
-// Model-space AABB of a laid-out label, in layout units (x = char pos, y = format->height -
-// line.pos). Glyph quads are degenerate points sized by the shader from the atlas, so the bounds
-// come from the layout extent padded by the tallest line; a superset is safe for damage tracking.
-template <typename Interface>
-static Rect Label_computeBounds(const font::TextLayoutData<Interface> *format) {
-	if (format->chars.empty()) {
-		return Rect::ZERO;
-	}
-
-	uint16_t maxLineHeight = 0;
-	for (auto &line : format->lines) { maxLineHeight = sprt::max(maxLineHeight, line.height); }
-
-	const float margin = float(maxLineHeight);
-	return Rect(-margin, -margin, float(format->width) + margin * 2.0f,
-			float(format->height) + margin * 2.0f);
 }
 
 template <typename Interface>
@@ -272,10 +255,6 @@ static void Label_writeQuads(VertexArray &vertexes, const font::TextLayoutData<I
 			}
 		}
 	}
-
-	// after the last mutation: every addQuad() invalidates the cached bounds
-	vertexes.setBoundsDerivable(false);
-	vertexes.setBounds(Label_computeBounds(format));
 }
 
 void Label::writeQuads(VertexArray &vertexes,
@@ -552,6 +531,7 @@ void Label::applyMeasuredSize(const Size2 &size) {
 
 void Label::setLabelDirty() {
 	LabelBase::setLabelDirty();
+	markSceneChanged();
 
 	// See the note on the declaration. Not while a measured box is being applied: that write is
 	// the answer to a measurement, not a change to one.
@@ -617,9 +597,9 @@ void Label::applyLayout(TextLayout *layout) {
 
 		_labelDirty = false;
 		_vertexColorDirty = false;
-		_vertexesDirty = true;
+		markVertexesDirty();
 	} else {
-		_vertexesDirty = true;
+		markVertexesDirty();
 	}
 }
 
@@ -790,7 +770,7 @@ void Label::updateColor() {
 			}
 		}
 	}
-	_vertexColorDirty = true;
+	markVertexColorDirty();
 }
 
 void Label::updateVertexesColor() {
@@ -993,7 +973,7 @@ void Label::updateVertexes(FrameInfo &frame) {
 	} else {
 		_deferredResult = nullptr;
 		updateQuadsForeground(_source, _format, _colorMap);
-		_vertexColorDirty = true;
+		markVertexColorDirty();
 	}
 }
 
@@ -1004,14 +984,14 @@ void Label::onFontSourceUpdated() {
 		setTexture(Rc<Texture>(_source->getTexture()));
 	}
 	setLabelDirty();
-	_vertexesDirty = true;
+	markVertexesDirty();
 	_deferredResult = nullptr;
 }
 
 void Label::onFontSourceLoaded() {
 	if (_source) {
 		setTexture(Rc<Texture>(_source->getTexture()));
-		_vertexesDirty = true;
+		markVertexesDirty();
 		setLabelDirty();
 	}
 }
@@ -1148,7 +1128,7 @@ float Label::getMaxLineX() const {
 void Label::setDeferred(bool val) {
 	if (val != _deferred) {
 		_deferred = val;
-		_vertexesDirty = true;
+		markVertexesDirty();
 	}
 }
 

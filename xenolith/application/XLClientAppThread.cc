@@ -184,6 +184,47 @@ bool ClientAppThread::isWindowCreationSupported() const {
 			&& hasFlag(info->features, remote::PeerFeatures::ClientWindows);
 }
 
+void ClientAppThread::setAppMessageHandler(AppMessageHandler &&handler) {
+	_appMessageHandler = sp::move(handler);
+}
+
+bool ClientAppThread::isAppMessagingSupported() const {
+	auto info = getServerInfo();
+	if (!info) {
+		return false;
+	}
+	return info->supports(remote::Domain::Global, toInt(remote::GlobalCode::AppRequest))
+			&& hasFlag(info->features, remote::PeerFeatures::AppMessages);
+}
+
+bool ClientAppThread::sendAppNotification(const Value &val) {
+	if (!_connection || !_connection->isOpen() || !isAppMessagingSupported()) {
+		return false;
+	}
+	return _connection->sendCborMessage(remote::Domain::Global,
+				   toInt(remote::GlobalCode::AppNotify), val)
+			== remote::GlobalError::Ok;
+}
+
+bool ClientAppThread::sendAppRequest(const Value &val, Function<void(Status, Value &&)> &&cb,
+		uint64_t timeoutUs) {
+	if (!_connection || !_connection->isOpen() || !isAppMessagingSupported()) {
+		return false;
+	}
+
+	uint32_t serial = 0;
+	if (_connection->sendCborMessage(remote::Domain::Global, toInt(remote::GlobalCode::AppRequest),
+				val, &serial)
+			!= remote::GlobalError::Ok) {
+		return false;
+	}
+	waitForReply(serial, [cb = sp::move(cb)](const remote::MessageHeader &h, BytesView payload) {
+		auto st = getAppReplyStatus(h);
+		cb(st, sprt::status::isSuccessful(st) ? data::read<Interface>(payload) : Value());
+	}, timeoutUs, false);
+	return true;
+}
+
 void ClientAppThread::createWindow(Rc<sprt::window::WindowInfo> &&info,
 		Function<void(Status, StringView id)> &&complete) {
 	Rc<WindowSceneInfo> handle;
@@ -537,6 +578,15 @@ void ClientAppThread::performAppUpdate(const UpdateTime &time, bool wakeup) {
 	AppThread::performAppUpdate(time, wakeup);
 
 	pumpConnection();
+
+	/* The windows' tick, as ServerAppThread's per-window listeners give a local window: a wakeup
+	asks for a frame, the heartbeat asks for a scene that changed or moves. A change made while
+	idle schedules its own check (Director::handleSceneChanged); this is what catches the rest. */
+	for (auto &it : _windows) {
+		if (auto dir = dynamic_cast<Director *>(it.second->getRenderClient())) {
+			dir->handleAppUpdate(wakeup);
+		}
+	}
 }
 
 bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView payload) {
@@ -561,6 +611,27 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			handleAnnounce(data::read<Interface>(payload));
 			return true;
 		case remote::GlobalCode::ServerInfo: handleServerInfo(h, payload); return true;
+		case remote::GlobalCode::AppRequest:
+		case remote::GlobalCode::AppNotify: {
+			// A reply that came after its waiter expired is not a new request.
+			if (remote::isReplyOrError(h)) {
+				return true;
+			}
+			auto isRequest = remote::GlobalCode(h.code) == remote::GlobalCode::AppRequest;
+			if (!_appMessageHandler) {
+				if (isRequest && _connection) {
+					_connection->sendError(remote::Domain::Global,
+							toInt(remote::GlobalError::NotImplemented), h.serial);
+				}
+				return true;
+			}
+			Rc<AppReply> reply;
+			if (isRequest) {
+				reply = Rc<AppReply>::create(this, this, h.serial);
+			}
+			_appMessageHandler(data::read<Interface>(payload), sp::move(reply));
+			return true;
+		}
 		default:
 			log::source().warn("ClientAppThread", "unhandled global message (code ",
 					uint32_t(h.code), ")");
@@ -657,6 +728,14 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 				return true;
 			}
 			wIt->second->handleTextInput(remote::deserializeTextInputState(val.getValue(1)));
+			return true;
+		}
+		case remote::WindowCode::FrameDeclined: {
+			auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
+			auto wIt = _windows.find(windowId);
+			if (wIt != _windows.end()) {
+				wIt->second->handleFrameDeclined();
+			}
 			return true;
 		}
 		case remote::WindowCode::WindowGeometryChanged: {
@@ -766,6 +845,9 @@ remote::PeerInfo ClientAppThread::makeClientInfo() const {
 	}
 	ret.transportScheme =
 			remote::getSchemeName(_clientContext->getServerAddress().scheme).str<Interface>();
+	if (_appMessageHandler) {
+		ret.features |= remote::PeerFeatures::AppMessages;
+	}
 
 #if DEBUG
 	// XL_REMOTE_FAKE_ABI=<hex>: report a different ABI tag, to test the mismatch path with binaries

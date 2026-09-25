@@ -47,6 +47,7 @@ THE SOFTWARE.
 #include <pthread.h>
 
 #include <sprt/runtime/log.h>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -72,7 +73,7 @@ int s_failures = 0;
 int s_skipped = 0;
 
 void check(bool cond, const char *msg) {
-	printf("  %s: %s\n", cond ? "PASS" : "FAIL", msg);
+	printf("  %s: %s\n", cond ? "PASS" : sprt::test::failed("FAIL"), msg);
 	if (!cond) {
 		++s_failures;
 	}
@@ -317,7 +318,7 @@ void performSetjmpTest() {
 	runThreadExitChecks();
 
 	printf("performSetjmpTest: %s (%d failures, %d skipped)\n",
-			s_failures == 0 ? "ALL PASS" : "FAILED", s_failures, s_skipped);
+			s_failures == 0 ? "ALL PASS" : sprt::test::failed("FAILED"), s_failures, s_skipped);
 #endif
 }
 

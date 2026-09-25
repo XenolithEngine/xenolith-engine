@@ -37,9 +37,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
  * still reaches the version field and gets a proper status. */
 constexpr uint32_t kProtocolMagic = 0x584C'5250; // 'XLRP'
 
-/* Version 2: InputEvents and UpdateLayers use the typed format (see XLRemoteSerialize.h). Version 1
- * peers are refused at the handshake; no compatibility is kept. */
-constexpr uint16_t kProtocolVersion = 2;
+/* Version 2: InputEvents and UpdateLayers use the typed format (see XLRemoteSerialize.h).
+ * Version 3: a 2d frame input carries each data set's identity, the command flags and the state
+ * extension (gradient, shaded outline) - see FrameContextHandle2d::serialize.
+ * Older peers are refused at the handshake; no compatibility is kept. */
+constexpr uint16_t kProtocolVersion = 3;
 constexpr uint32_t kBearerKeySize = 64;
 
 // Size of one record in the typed input/layer batches (WindowCode::InputEvents / ::UpdateLayers).
@@ -102,6 +104,13 @@ enum class GlobalCode {
 	// refuses with GlobalError::IncompatiblePeer. A NotImplemented answer continues the session
 	// without peer info.
 	ServerInfo = 5,
+
+	// Application messages, in either direction: the payload is any CBOR Value the two applications
+	// agree on; the engine only carries it (PeerFeatures::AppMessages says a handler is installed).
+	// A request is answered with a CBOR Value, or with GlobalError::NotImplemented when the receiver
+	// has no handler; a notification is not answered.
+	AppRequest = 6,
+	AppNotify = 7,
 };
 
 enum class GlobalError : uint8_t {
@@ -133,7 +142,8 @@ constexpr uint64_t codeBit(Code c) {
 
 constexpr uint64_t kSupportedGlobalCodes = codeBit(GlobalCode::ClientHello)
 		| codeBit(GlobalCode::ServerHello) | codeBit(GlobalCode::Ping) | codeBit(GlobalCode::Pong)
-		| codeBit(GlobalCode::SharedObjectsAnnounce) | codeBit(GlobalCode::ServerInfo);
+		| codeBit(GlobalCode::SharedObjectsAnnounce) | codeBit(GlobalCode::ServerInfo)
+		| codeBit(GlobalCode::AppRequest) | codeBit(GlobalCode::AppNotify);
 
 // A name for a handshake/global failure, for logs.
 SP_PUBLIC StringView getGlobalErrorName(GlobalError);
@@ -150,9 +160,10 @@ enum class WindowCode {
 	// window's frames to the client (so AcquireFrame can't arrive before the client
 	// is ready). Reply is an empty, atomic acknowledgement.
 	ReadyForNextFrame =
-			6, // client -> server notification [windowId]: the client's scene has active
-	// actions/input and wants another frame; the server schedules the next
-	// frame on the window's PresentationEngine. Fire-and-forget (no reply).
+			6, // client -> server notification [windowId]: the client's scene changed or moves and
+	// wants another frame; the server schedules it on the window's PresentationEngine. No reply:
+	// the answer is the AcquireFrame, or FrameDeclined for a window the session may not draw into.
+	// The client sends no second request while one is unanswered.
 	RequestScreenshot = 7, // client -> server notification [windowId]: capture the window's current
 	// contents and hand them back over Domain::Data (a Screenshot transfer whose
 	// announce `reason` points back at this message). Fire-and-forget (no reply);
@@ -209,6 +220,11 @@ enum class WindowCode {
 	scene has shared a queue and the announce carries it, with the serial of this request in the
 	last announce slot so the asking client knows which of its requests it answers. */
 	CreateWindow = 15,
+
+	/* server -> client notification [windowId]: the ReadyForNextFrame for this window will not be
+	answered with a frame - the window is not one the session may draw into. The client stops
+	waiting for that frame; it asks again after its scene changes. */
+	FrameDeclined = 16,
 };
 
 // Every WindowCode has a handler on the side that receives it; see the note on codeBit.
@@ -220,7 +236,7 @@ constexpr uint64_t kSupportedWindowCodes = codeBit(WindowCode::CompileQueue)
 		| codeBit(WindowCode::InputEvents) | codeBit(WindowCode::UpdateLayers)
 		| codeBit(WindowCode::WindowGeometryChanged) | codeBit(WindowCode::WindowControl)
 		| codeBit(WindowCode::TextInputControl) | codeBit(WindowCode::TextInputState)
-		| codeBit(WindowCode::CreateWindow);
+		| codeBit(WindowCode::CreateWindow) | codeBit(WindowCode::FrameDeclined);
 
 
 // Operations carried by WindowCode::TextInputControl.
@@ -611,6 +627,10 @@ public:
 	State getState() const { return _state; }
 	GlobalError getReplied() const { return _replied; }
 	BytesView getNegotiatedDict() const { return _negotiatedDict; }
+
+	// The key the client sent, from HelloReceived on; empty before that. A view into the hello,
+	// valid until the next begin().
+	BytesView getPresentedKey() const;
 
 protected:
 	State _state = State::Idle;

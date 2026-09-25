@@ -149,7 +149,8 @@ void QueuePassHandle::preparePartialRedraw(core::FrameQueue &q) {
 		return;
 	}
 
-	auto swapchain = static_cast<core::SwapchainImage *>(image)->getSwapchain();
+	auto swapchainImage = static_cast<core::SwapchainImage *>(image);
+	auto swapchain = swapchainImage->getSwapchain();
 	if (!swapchain) {
 		if (damageLog) {
 			log::source().debug("gles::QueuePassHandle",
@@ -163,14 +164,15 @@ void QueuePassHandle::preparePartialRedraw(core::FrameQueue &q) {
 	const auto extent = Extent2(constraints.extent.width, constraints.extent.height);
 
 	Vector<URect> damage;
-	if (!swapchain->getDamage().computeRedrawArea(uint32_t(image->getImageIndex()),
+	if (!swapchain->getDamage().computeRedrawArea(swapchainImage->getSwapchainSlot(),
 				request->getDamageState().get(), extent, damage)) {
 		if (damageLog) {
 			auto state = request->getDamageState().get();
-			log::source().debug("gles::QueuePassHandle", "damage: full repaint (state=",
-					state ? "present" : "absent", ", full=", state ? state->full : false,
-					", entries=", state ? state->entries.size() : 0, ", image=",
-					image->getImageIndex(), ")");
+			log::source().debug("gles::QueuePassHandle",
+					"damage: full repaint (state=", state ? "present" : "absent",
+					", full=", state ? state->full : false,
+					", entries=", state ? state->entries.size() : 0,
+					", slot=", swapchainImage->getSwapchainSlot(), ")");
 		}
 		return;
 	}

@@ -26,6 +26,12 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 
+Value LoopBackendInfo::encode() const {
+	Value ret;
+	ret.setBool(asyncRaster, "asyncRaster");
+	return ret;
+}
+
 Instance::Instance(core::InstanceFlags flags, sprt::Dso &&dso)
 : core::Instance(core::InstanceApi::Software, flags, sp::move(dso)) { }
 

@@ -66,6 +66,11 @@ public:
 	// What the transport knows about the process on the other end (uid/pid on local transports).
 	int64_t getPeerPid() const;
 
+	// The label of the bearer key the client presented (ServerAppThread::addBearerKey); empty when
+	// it was accepted without a labelled key.
+	StringView getLabel() const { return _label; }
+	void setLabel(StringView label) { _label = label.str<Interface>(); }
+
 	// True once the connection has begun terminating.
 	bool isClosed();
 
@@ -82,6 +87,16 @@ public:
 	// A late frame is not fatal -- see ReplyTable::wait.
 	bool failExpiredRequests(uint64_t now);
 
+	// ReadyForNextFrame requests the client made, and how many of them were declined.
+	void countFrameRequest(bool declined) {
+		++_frameRequests;
+		if (declined) {
+			++_framesDeclined;
+		}
+	}
+	uint64_t getFrameRequestCount() const { return _frameRequests; }
+	uint64_t getDeclinedFrameCount() const { return _framesDeclined; }
+
 	// A dispatcher ended the session; the host acts on it outside the connection's poll.
 	void requestReset() { _resetRequested = true; }
 	bool isResetRequested() const { return _resetRequested; }
@@ -96,7 +111,7 @@ public:
 			uint64_t timeoutUs, bool fatal = true);
 
 	// Drop waiters and transfers, close the connection. Returns the font endpoint, unbound, for
-	// the host to reuse. Idempotent.
+	// the host to release (an endpoint serves one session). Idempotent.
 	Rc<RemoteFontServer> close();
 
 	virtual AppThread *getPeerThread() const override;
@@ -114,6 +129,8 @@ public:
 protected:
 	ServerAppThread *_host = nullptr;
 	uint64_t _id = 0;
+	uint64_t _frameRequests = 0;
+	uint64_t _framesDeclined = 0;
 	Rc<remote::ServerConnection> _connection;
 	Rc<RemoteRenderClient> _renderClient;
 	Rc<BlockTransferManager> _blockTransfer;
@@ -121,6 +138,7 @@ protected:
 	Rc<sprt::dispatch::Handle> _wake;
 	remote::ReplyTable _replies;
 	remote::PeerInfo _peerInfo;
+	String _label;
 
 	// Monotonic us, restarted when the session is created.
 	uint64_t _lastPingTime = 0;

@@ -71,12 +71,12 @@ public:
 	// forwarded font material as atlas-tracked. Returns null if the id is not the pinned atlas id.
 	virtual Rc<core::DynamicImageInstance> resolveAtlasInstance(uint64_t imageId) = 0;
 
-	// Unbind from the session and drop per-connection state (the dependency registry) on disconnect;
-	// the font store and network atlas persist for the next session.
+	// Unbind from the session and drop per-connection state (the dependency registry) on disconnect.
 	virtual void reset() = 0;
 
-	// Final teardown, unlike reset(): release the network atlas. Not a registered extension, so the
-	// owner must call it while the render device is still alive.
+	// Final teardown, unlike reset(): release the network atlas. The endpoint's faces carry the
+	// FaceIds its client minted, so it never serves another session - the owner invalidates it when
+	// the session ends, and must do so while the render device is still alive.
 	virtual void invalidate() = 0;
 };
 

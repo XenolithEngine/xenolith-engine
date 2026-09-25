@@ -28,7 +28,24 @@
 #include "XL2dLayer.h"
 #include "XL2dLabel.h"
 
+namespace STAPPLER_VERSIONIZED stappler::xenolith {
+
+class ClientContext;
+
+namespace ui {
+class TextInput;
+class Select;
+} // namespace ui
+
+} // namespace stappler::xenolith
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::client {
+
+// Application messages from the server (GlobalCode::AppRequest/AppNotify), newest last. The handler
+// that records them is installed before the connection opens, so a greeting sent as the session
+// starts is kept too; a request is answered with { clientEcho: value }.
+void installAppMessageLog(ClientContext *);
+const Vector<Value> &getAppMessageLog();
 
 // Используем базовую 2D-сцену в качестве основы
 class ClientScene : public basic2d::Scene2d {
@@ -43,6 +60,11 @@ public:
 	virtual void handleContentSizeDirty() override;
 
 	virtual void handleEnter(Scene *) override;
+	virtual void handleExit() override;
+
+	// An AppNotify { label } from the server: the label's new text. A change nobody on the client
+	// asked a frame for - the client must ask for it by itself.
+	void setMessageLabel(StringView);
 
 protected:
 	using Scene2d::init;
@@ -57,6 +79,9 @@ protected:
 	// как acquireTextInput, а всё, что поле показывает, приходит обратно эхом от его процессора.
 	ui::TextInput *_input = nullptr;
 
+	// A drop-down: its list is a ui::SubWindow, which on a client can only be an in-scene overlay.
+	ui::Select *_select = nullptr;
+
 	// Запускаем бесконечную анимацию квадрата ровно один раз (проверка работы runAction в
 	// клиентском контексте: пока действие активно, клиент шлёт серверу setReadyForNextFrame)
 	bool _animStarted = false;
@@ -67,6 +92,9 @@ protected:
 	// Команды инспектора, через которые драйвер читает состояние клиента напрямую, а не угадывает
 	// его по картинке.
 	void registerCommands();
+
+	void startAnimation();
+	void stopAnimation();
 	void registerTextCommand();
 
 	// Очередь сервера НЕ выбирается здесь: раньше сцена искала её по имени "RemoteClientQueue",

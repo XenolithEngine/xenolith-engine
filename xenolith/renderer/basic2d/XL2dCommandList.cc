@@ -22,6 +22,7 @@
  **/
 
 #include "XL2dCommandList.h"
+#include "XL2dFrameContext.h" // StateData, the state extension on the wire
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
@@ -300,11 +301,21 @@ Rc<core::AttachmentInputData> makeFrameContextInput(NotNull<core::RenderClientCh
 //
 // Compact host-order binary blob (same-build ABI: POD vertex/instance structs are memcpy'd). Layout:
 //   clock, lights(POD), decorations(POD),
-//   stateCount, [enabled, viewport, scissor]*,            (DrawStateValues.data Rc extension dropped)
-//   cmdCount, [material, state, level, depth, zPath[], array[]]*
-// where array = [fill, stroke, sdf, instances(TransformData)[], vertices(Vertex)[], indexes(u32)[]].
+//   stateCount, [enabled, viewport, scissor, extension]*,
+//   cmdCount, [material, state, level, depth, flags, zPath[], array[]]*
+// where
+//   extension = u8 has; [transform, outlineOffset, outlineColor, u8 hasGradient, gradient]
+//   gradient  = start, end, stepCount, [value, factor, color]*, identity
+//   array     = [fill, stroke, sdf, instances(TransformData)[], vertices(Vertex)[], indexes(u32)[],
+//                identity]
+//   identity  = u64 id, u32 generation
 // Only immediate vertex commands are emitted: Deferred commands are resolved client-side and folded
 // into immediate vertices; particle/group commands are skipped.
+//
+// The identities are what lets the server's damage tracking compare frames: a data set keeps its
+// id while it is the same object and bumps its generation when it changes. On the server they are
+// moved into the session's namespace (see identityInNamespace). What a set covers is not sent: the
+// server derives it from the vertexes, glyphs through the atlas it draws them with.
 
 namespace {
 
@@ -352,6 +363,13 @@ struct BinReader {
 		return t;
 	}
 	uint32_t u32() { return pod<uint32_t>(); }
+
+	// Whether `count` elements of `size` bytes can still be in the stream: a count read from the wire
+	// is not trusted with a reserve() before the elements are actually there.
+	bool fits(uint32_t count, size_t size) const {
+		return ok && size_t(count) * size <= v.size() - off;
+	}
+
 	template <typename T>
 	Vector<T> podArray() {
 		auto n = u32();
@@ -366,6 +384,75 @@ struct BinReader {
 		return out;
 	}
 };
+
+// Client identities are process-local counters starting at 1 - as are the server's own and every
+// other client's. The session id in the high bits keeps them apart; 40 bits of client counter is
+// far more data sets than a process mints in its lifetime.
+static constexpr uint32_t IdentityNamespaceShift = 40;
+
+static uint64_t identityInNamespace(uint64_t ns, uint64_t id) {
+	return (ns << IdentityNamespaceShift) | (id & ((uint64_t(1) << IdentityNamespaceShift) - 1));
+}
+
+static void writeIdentity(BinWriter &w, const DataIdentity &identity) {
+	w.pod(identity.id);
+	w.u32(identity.generation);
+}
+
+// The part of a state that is not POD: the gradient and the shaded outline of a Sprite.
+static void writeStateExtension(BinWriter &w, const Rc<Ref> &data) {
+	auto state = dynamic_cast<const StateData *>(data.get());
+	w.pod(uint8_t(state ? 1 : 0));
+	if (!state) {
+		return;
+	}
+	w.pod(state->transform);
+	w.pod(state->outlineOffset);
+	w.pod(state->outlineColor);
+	w.pod(uint8_t(state->gradient ? 1 : 0));
+	if (auto g = state->gradient.get()) {
+		w.pod(g->start);
+		w.pod(g->end);
+		w.u32(uint32_t(g->steps.size()));
+		for (auto &it : g->steps) {
+			w.pod(it.value);
+			w.pod(it.factor);
+			w.pod(it.color);
+		}
+		writeIdentity(w, g->identity);
+	}
+}
+
+static Rc<Ref> readStateExtension(BinReader &r, uint64_t ns) {
+	if (!r.pod<uint8_t>() || !r.ok) {
+		return nullptr;
+	}
+	auto state = Rc<StateData>::create();
+	state->transform = r.pod<Mat4>();
+	state->outlineOffset = r.pod<float>();
+	state->outlineColor = r.pod<Color4F>();
+	if (r.pod<uint8_t>()) {
+		auto g = Rc<LinearGradientData>::alloc();
+		g->start = r.pod<Vec2>();
+		g->end = r.pod<Vec2>();
+		auto stepCount = r.u32();
+		if (r.fits(stepCount, sizeof(float) * 2 + sizeof(Color4F))) {
+			g->steps.reserve(stepCount);
+		}
+		for (uint32_t i = 0; i < stepCount && r.ok; ++i) {
+			GradientStep step;
+			step.value = r.pod<float>();
+			step.factor = r.pod<float>();
+			step.color = r.pod<Color4F>();
+			g->steps.emplace_back(step);
+		}
+		auto id = r.pod<uint64_t>();
+		auto generation = r.u32();
+		g->identity = DataIdentity(identityInNamespace(ns, id), generation);
+		state->gradient = sp::move(g);
+	}
+	return state;
+}
 
 // Apply a resolved Deferred command's view/model transform to one instance (mirrors
 // VertexMaterialDynamicData::applyNormalized in the vk vertex pass) so the wire carries final
@@ -388,12 +475,13 @@ static TransformData transformInstance(const TransformData &src, const Mat4 &vie
 
 // Emit one immediate vertex command. For a resolved Deferred command pass its view/model
 // transforms; for an immediate VertexArray pass nullptr (instances are written as-is).
-static void writeVertexCommand(BinWriter &w, const CmdInfo &info,
+static void writeVertexCommand(BinWriter &w, const CmdInfo &info, CommandFlags flags,
 		SpanView<InstanceVertexData> arrays, const Mat4 *view, const Mat4 *model, bool normalized) {
 	w.u32(info.material);
 	w.u32(uint32_t(info.state));
 	w.u32(uint32_t(info.renderingLevel));
 	w.pod(info.depthValue);
+	w.u32(toInt(flags));
 	w.podArray(info.zPath.data(), uint32_t(info.zPath.size()));
 	w.u32(uint32_t(arrays.size()));
 	for (auto &iv : arrays) {
@@ -417,11 +505,14 @@ static void writeVertexCommand(BinWriter &w, const CmdInfo &info,
 			w.podArray(iv.instances.data(), uint32_t(iv.instances.size()));
 		}
 		if (iv.data) {
+			auto &identity = iv.data->identity;
 			w.podArray(iv.data->data.data(), uint32_t(iv.data->data.size()));
 			w.podArray(iv.data->indexes.data(), uint32_t(iv.data->indexes.size()));
+			writeIdentity(w, identity);
 		} else {
 			w.u32(0);
 			w.u32(0);
+			writeIdentity(w, DataIdentity(0, 0));
 		}
 	}
 }
@@ -434,12 +525,13 @@ bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &cb) const 
 	w.pod(lights);
 	w.pod(decorations);
 
-	// states: only the POD fields cross the wire (the Rc<Ref> extension is server-local)
+	// states: the POD fields, then the Rc<Ref> extension when it is a StateData
 	w.u32(uint32_t(states.size()));
 	for (auto &s : states) {
 		w.pod(s.enabled);
 		w.pod(s.viewport);
 		w.pod(s.scissor);
+		writeStateExtension(w, s.data);
 	}
 
 	// commands: build into a side buffer first (Deferred resolves may add entries), then prefix
@@ -452,7 +544,7 @@ bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &cb) const 
 			switch (cmd->type) {
 			case CommandType::VertexArray: {
 				auto d = reinterpret_cast<const CmdVertexArray *>(cmd->data);
-				writeVertexCommand(cmds, *d, d->vertexes, nullptr, nullptr, false);
+				writeVertexCommand(cmds, *d, cmd->flags, d->vertexes, nullptr, nullptr, false);
 				++cmdCount;
 				break;
 			}
@@ -461,8 +553,8 @@ bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &cb) const 
 				if (d->deferred) {
 					d->deferred->acquireResult(
 							[&](SpanView<InstanceVertexData> v, DeferredVertexResult::Flags) {
-						writeVertexCommand(cmds, *d, v, &d->viewTransform, &d->modelTransform,
-								d->normalized);
+						writeVertexCommand(cmds, *d, cmd->flags, v, &d->viewTransform,
+								&d->modelTransform, d->normalized);
 						++cmdCount;
 					});
 				}
@@ -498,7 +590,7 @@ bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &cb) const 
 	return true;
 }
 
-bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remoteDeps) {
+bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remoteDeps, uint64_t ns) {
 	BinReader r;
 	r.v = bytes;
 
@@ -506,14 +598,21 @@ bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remote
 	lights = r.pod<ShadowLightInput>();
 	decorations = r.pod<WindowDecorationsInput>();
 
+	// The smallest state and command a well-formed stream can hold bound the counts it claims.
+	static constexpr size_t MinStateSize =
+			sizeof(core::DynamicState) + sizeof(URect) * 2 + sizeof(uint8_t);
+
 	auto stateCount = r.u32();
 	states.clear();
-	states.reserve(stateCount);
+	if (r.fits(stateCount, MinStateSize)) {
+		states.reserve(stateCount);
+	}
 	for (uint32_t i = 0; i < stateCount && r.ok; ++i) {
 		DrawStateValues s;
 		s.enabled = r.pod<core::DynamicState>();
 		s.viewport = r.pod<URect>();
 		s.scissor = r.pod<URect>();
+		s.data = readStateExtension(r, ns);
 		states.emplace_back(s);
 	}
 
@@ -525,6 +624,7 @@ bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remote
 			auto state = r.u32();
 			auto level = r.u32();
 			auto depth = r.pod<float>();
+			auto flags = CommandFlags(r.u32());
 			auto zPath = r.podArray<ZOrder>();
 			auto arrayCount = r.u32();
 
@@ -533,9 +633,14 @@ bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remote
 				Vector<TransformData> instances;
 				Vector<Vertex> vertices;
 				Vector<uint32_t> indexes;
+				DataIdentity identity = DataIdentity(0, 0);
 			};
+			static constexpr size_t MinArraySize =
+					sizeof(uint32_t) * 6 + sizeof(uint64_t) + sizeof(uint32_t);
 			Vector<ParsedArray> parsed;
-			parsed.reserve(arrayCount);
+			if (r.fits(arrayCount, MinArraySize)) {
+				parsed.reserve(arrayCount);
+			}
 			for (uint32_t a = 0; a < arrayCount && r.ok; ++a) {
 				ParsedArray pa;
 				pa.fill = r.u32();
@@ -544,6 +649,9 @@ bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remote
 				pa.instances = r.podArray<TransformData>();
 				pa.vertices = r.podArray<Vertex>();
 				pa.indexes = r.podArray<uint32_t>();
+				auto id = r.pod<uint64_t>();
+				auto generation = r.u32();
+				pa.identity = DataIdentity(identityInNamespace(ns, id), generation);
 				parsed.emplace_back(sp::move(pa));
 			}
 			if (!r.ok) {
@@ -574,10 +682,13 @@ bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remote
 					auto vd = Rc<VertexData>::alloc();
 					vd->data = sp::move(parsed[a].vertices);
 					vd->indexes = sp::move(parsed[a].indexes);
+					// The client's identity, not a fresh one: the same data set in two frames has to
+					// compare as the same element, or every frame is a full redraw.
+					vd->identity = parsed[a].identity;
 					iv->data = move(vd);
 				}
 				return makeSpanView(arr, parsed.size());
-			}, sp::move(info));
+			}, sp::move(info), flags);
 		}
 	}
 
@@ -588,7 +699,9 @@ bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remote
 	auto depCount = r.u32();
 	if (remoteDeps) {
 		remoteDeps->clear();
-		remoteDeps->reserve(depCount);
+		if (r.fits(depCount, sizeof(uint32_t))) {
+			remoteDeps->reserve(depCount);
+		}
 	}
 	for (uint32_t i = 0; i < depCount && r.ok; ++i) {
 		auto id = r.u32();

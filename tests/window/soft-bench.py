@@ -13,12 +13,14 @@ What is reported per window is frames per second, measured as the delta of the w
 window -- and the server's CPU, in cores, sampled from /proc around the same window.
 
     tests/window/soft-bench.py [--mode windows|clients] [--windows 1,2,4] [--seconds 10]
-                               [--width 800] [--height 600] [--gapi soft]
+                               [--width 800] [--height 600] [--gapi soft] [--async-raster]
 
-Two things the first runs turned up, so nobody re-derives them: N clients share the server fairly
-and the bottleneck is the frame protocol rather than the rasterizer (a 25x larger window costs
-almost nothing), while N windows of ONE process do not share at all -- they are served by a single
-context thread and the first to free-run keeps it.
+`--async-raster` starts the server with the flag of the same name: its context thread stops
+rasterizing and takes each frame back from the thread pool asynchronously.
+
+N clients share the server fairly and the bottleneck is the frame protocol rather than the
+rasterizer (a 25x larger window costs almost nothing). N windows of one process share the context
+thread fairly too.
 
 Read `docs/agents/measuring-frames.md` before believing any number this prints. In particular:
 the FPS overlay is AlwaysDirty and costs more than half a frame on a slow target (it is off here),
@@ -154,12 +156,8 @@ def run_windows(args, count):
         # Continuous rendering: a scene with an active action asks for the next frame at the end of
         # every visit, so the run is the engine's own rate rather than this driver's poll rate.
         # Continuous rendering has to be kicked once per window: the action asks for the NEXT frame
-        # at the end of a visit, so a window that is not drawing has nothing to ask from.
-        #
-        # And a target interval, because without one the windows do not share: they are all served
-        # by one context thread, and the first to free-run keeps it -- the others get a frame every
-        # few seconds. With a target, each window asks at its own rate and what is measured is
-        # whether the rasterizer can keep up with N of them.
+        # at the end of a visit, so a window that is not drawing has nothing to ask from. The
+        # target interval is sent too, though a headless window does not pace on it yet.
         for w in windows:
             if args.interval_us:
                 s.ok("window", op="frame-interval", value=args.interval_us, window=w) if w \
@@ -247,8 +245,9 @@ def main():
     p.add_argument("--gapi", default="soft")
     p.add_argument("--release", action="store_true", help="measure the release build")
     p.add_argument("--interval-us", dest="interval_us", type=int, default=16666,
-            help="target frame interval per window in us (0: as fast as the engine will go, which "
-                 "on one context thread means the first window keeps it)")
+            help="target frame interval per window in us (0: none); headless does not pace on it")
+    p.add_argument("--async-raster", dest="async_raster", action="store_true",
+            help="start the server with --async-raster")
     p.add_argument("--damage", dest="full_redraw", action="store_false",
             help="keep damage tracking on; by default every frame is redrawn in full, so what is "
                  "measured is a frame rather than how little of it changed")
@@ -267,8 +266,12 @@ def main():
         if not os.path.exists(path):
             raise SystemExit(f"missing binary: {path}")
 
+    if args.async_raster:
+        rc.SERVER_FLAGS.append("--async-raster")
+
     counts = [int(x) for x in args.windows.split(",") if x.strip()]
     print(f"mode: {args.mode}   gapi: {args.gapi}   build: {build}   "
+            f"raster: {'async' if args.async_raster else 'sync'}   "
             f"size: {args.width}x{args.height}   window: {args.seconds:.0f}s   "
             f"full redraw: {'on' if args.full_redraw else 'off'}   cores: {os.cpu_count()}")
     print(f"{'N':>2} {'fps/window':>28} {'total fps':>10} {'server cores':>13} {'client cores':>13}")

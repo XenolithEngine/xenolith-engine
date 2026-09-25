@@ -24,6 +24,7 @@
 #include <sprt/compat/idn2.h>
 #include <sprt/runtime/stream.h>
 #include <sprt/c/__sprt_string.h>
+#include "../tests.h"
 
 namespace sprt {
 
@@ -34,7 +35,7 @@ static void check(bool ok, StringView what) {
 	++s_checks;
 	if (!ok) {
 		++s_failures;
-		sprt::cerr << "  FAIL: " << what << "\n";
+		sprt::cerr << sprt::test::failed("  FAIL: ") << what << "\n";
 	}
 }
 
@@ -59,8 +60,8 @@ static void checkConvert(bool toAscii, StringView source, Status expectedStatus,
 	++s_checks;
 	if (status != expectedStatus) {
 		++s_failures;
-		sprt::cerr << "  FAIL: " << (toAscii ? "to_ascii(" : "to_unicode(") << source << ") -> "
-				   << status << ", expected " << expectedStatus << "\n";
+		sprt::cerr << sprt::test::failed("  FAIL: ") << (toAscii ? "to_ascii(" : "to_unicode(")
+				   << source << ") -> " << status << ", expected " << expectedStatus << "\n";
 		return;
 	}
 
@@ -69,8 +70,8 @@ static void checkConvert(bool toAscii, StringView source, Status expectedStatus,
 	++s_checks;
 	if (invoked != (status == Status::Ok)) {
 		++s_failures;
-		sprt::cerr << "  FAIL: " << source << ": callback " << (invoked ? "fired" : "did not fire")
-				   << " but status is " << status << "\n";
+		sprt::cerr << sprt::test::failed("  FAIL: ") << source << ": callback "
+				   << (invoked ? "fired" : "did not fire") << " but status is " << status << "\n";
 		return;
 	}
 
@@ -78,8 +79,9 @@ static void checkConvert(bool toAscii, StringView source, Status expectedStatus,
 		++s_checks;
 		if (result != expectedResult) {
 			++s_failures;
-			sprt::cerr << "  FAIL: " << (toAscii ? "to_ascii(" : "to_unicode(") << source
-					   << ") -> '" << result << "', expected '" << expectedResult << "'\n";
+			sprt::cerr << sprt::test::failed("  FAIL: ") << (toAscii ? "to_ascii(" : "to_unicode(")
+					   << source << ") -> '" << result << "', expected '" << expectedResult
+					   << "'\n";
 		}
 	}
 }
@@ -90,8 +92,9 @@ static void checkTransitionalDiffers(StringView source, bool expected) {
 	++s_checks;
 	if (status != Status::Ok || differs != expected) {
 		++s_failures;
-		sprt::cerr << "  FAIL: transitionalDifferent(" << source << ") = " << differs << " (status "
-				   << status << "), expected " << expected << "\n";
+		sprt::cerr << sprt::test::failed("  FAIL: transitionalDifferent(") << source
+				   << ") = " << differs << " (status " << status << "), expected " << expected
+				   << "\n";
 	}
 }
 

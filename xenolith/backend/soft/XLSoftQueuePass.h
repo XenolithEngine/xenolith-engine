@@ -85,16 +85,42 @@ protected:
 	// per-subpass recording hook: the default runs SubpassData::commandsCallback
 	virtual void recordSubpass(core::FrameQueue &, const core::SubpassData &, CommandBuffer &);
 
-	// Resolve the pass output into a rasterizer target, apply its load op, then record and
-	// execute every subpass. Returns false when the pass has no usable colour output.
-	bool runPass(core::FrameQueue &);
+	// One subpass recorded and not yet rasterized.
+	struct RasterItem {
+		raster::Target target;
+		Rc<CommandBuffer> buffer;
+		Vector<URect> redrawAreas;
+		bool clear = false;
+		Color4F clearColor;
+		raster::TilingInfo tiling;
+	};
+
+	// Resolve the subpass output into a rasterizer target and record it. Returns false when it has
+	// no usable colour output; leaves `item.buffer` empty when there is nothing to draw, which ends
+	// the pass.
+	bool prepareSubpass(core::FrameQueue &, const core::SubpassData &, RasterItem &item);
+
+	// Apply the load op and rasterize on this thread, the pool joining in.
+	void rasterize(core::FrameQueue &, RasterItem &);
+
+	// Rasterize the subpasses from `index` on, one at a time, on the looper's pool only; the pass
+	// is submitted from the last completion, on the loop thread.
+	void rasterizeAsync(Rc<core::FrameQueue> &&, size_t index, Function<void(bool)> &&onSubmited,
+			Function<void(bool)> &&onComplete);
+
+	// Arm the fence and report the pass submitted; the pixels are written by then.
+	void finishSubmit(core::FrameQueue &, bool success, Function<void(bool)> &&onSubmited,
+			Function<void(bool)> &&onComplete);
+
+	void handleSubpassRasterized(core::FrameQueue &, TimeInterval, SpanView<URect> areas,
+			const raster::TilingStats &);
 
 	// Regions of the target this frame has to repaint, from the swapchain's damage tracker; pairwise
 	// disjoint, so each can be rasterized separately. Returns false when the image already holds
 	// this frame and it can be skipped.
 	bool computeRedrawArea(core::FrameQueue &, const raster::Target &, Vector<URect> &areas);
 
-	// Called at the end of a runPass that actually rasterized, so a subclass can report the frame's
+	// Called after every subpass that actually rasterized, so a subclass can report the frame's
 	// cost. Not called for frames the damage tracker skipped.
 	virtual void handlePassRasterized(core::FrameQueue &) { }
 
