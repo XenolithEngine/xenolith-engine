@@ -32,6 +32,7 @@ namespace sprt::dispatch {
 
 class WasmThreadHandle;
 class WasmProcessHandle;
+class WasmAddressWaitHandle;
 
 // One armed timer, held in the reactor's deadline list. `handle` is a raw
 // pointer: an armed handle is retained by the queue (HandleClass::run) and is
@@ -71,6 +72,15 @@ struct SPRT_API WasmData : public PlatformQueueData {
 	// and the JS host posts completions into a SAB, then notifies _wakeword.
 	Queue::Vector<WasmProcessHandle *> _processHandles;
 
+	// Words watched by waitOnAddress (loop thread only). Whoever changes such a word
+	// wakes the word, not `_wakeword`, and wait32 watches one word only, so the loop
+	// compares them itself on every pass and caps its sleep while any is registered
+	// (the Embox backend does the same).
+	Queue::Vector<WasmAddressWaitHandle *> _addressHandles;
+
+	// Longest sleep while a word is watched: the worst-case delay of a change.
+	static constexpr int64_t AddressPollNs = 4'000'000;
+
 	static constexpr int32_t WakeupPresent = int32_t(1) << 30;
 	static constexpr int32_t WakeupCancel = int32_t(1) << 29;
 
@@ -96,6 +106,13 @@ struct SPRT_API WasmData : public PlatformQueueData {
 	void unregisterProcessHandle(WasmProcessHandle *);
 	// Drain host process completions (SAB) and notify matching handles.
 	uint32_t fireProcessHandles(RunContext *);
+
+	void registerAddressHandle(WasmAddressWaitHandle *);
+	void unregisterAddressHandle(WasmAddressWaitHandle *);
+	// Notify every watched word whose value differs from what it last delivered.
+	uint32_t fireAddressHandles(RunContext *);
+	// wait32 timeout `rel` (-1 = forever), capped while a word is watched.
+	int64_t capForAddresses(int64_t rel) const;
 
 	// Futex: bump the generation and wake any waiter (loop thread / another
 	// worker blocked in wait32).
@@ -204,12 +221,32 @@ protected:
 	WasmData *_wasm = nullptr;
 };
 
+struct WasmAddressWaitSource {
+	void cancel() { }
+};
+
+// waitOnAddress: the watched word and the last delivered value live in the base handle;
+// the reactor reads the word on each pass (WasmData::fireAddressHandles).
+class WasmAddressWaitHandle : public AddressWaitHandle {
+public:
+	virtual ~WasmAddressWaitHandle() = default;
+
+	bool init(HandleClass *, AddressWaitInfo &&);
+
+	Status rearm(WasmData *, WasmAddressWaitSource *);
+	Status disarm(WasmData *, WasmAddressWaitSource *);
+	void notify(WasmData *, WasmAddressWaitSource *, const NotifyData &);
+
+	uint32_t load() const { return __atomic_load_n(_address, __ATOMIC_SEQ_CST); }
+};
+
 struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _wasmTimerClass;
 	HandleClass _wasmThreadClass;
 	HandleClass _wasmFileInlineClass;
 	HandleClass _wasmWatchClass;
 	HandleClass _wasmProcessClass;
+	HandleClass _wasmAddressWaitClass;
 
 	Data(QueueRef *q, const QueueInfo &info);
 };

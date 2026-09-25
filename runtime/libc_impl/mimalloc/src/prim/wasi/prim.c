@@ -296,7 +296,13 @@ static void mi_wasm_pthread_done(void* value) {
 }
 
 void _mi_prim_thread_init_auto_done(void) {
-  pthread_key_create(&mi_wasm_heap_done_key, &mi_wasm_pthread_done);
+  // nothing: see __sprt_wasm_malloc_thread_key_init
+}
+
+void __sprt_wasm_malloc_thread_key_init(void) {
+  if (mi_wasm_heap_done_key == (pthread_key_t)(-1)) {
+    pthread_key_create(&mi_wasm_heap_done_key, &mi_wasm_pthread_done);
+  }
 }
 
 void _mi_prim_thread_done_auto_done(void) {
@@ -323,6 +329,10 @@ void _mi_prim_thread_done_auto_done(void) {
 
 void _mi_prim_thread_associate_default_heap(mi_heap_t* heap) {
   MI_UNUSED(heap);
+}
+
+void __sprt_wasm_malloc_thread_key_init(void) {
+  // nothing: single-threaded
 }
 
 #endif

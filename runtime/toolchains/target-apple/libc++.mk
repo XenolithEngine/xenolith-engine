@@ -47,6 +47,7 @@ CONFIGURE := \
 	-DDARWIN_iphonesimulator_OVERRIDE_SDK_VERSION=$(SP_IOS_VER) \
 	-DDARWIN_osx_ARCHS=$(SP_ARCH) \
 	-DDARWIN_osx_BUILTIN_ARCHS=$(SP_ARCH) \
+	-DSP_DEPLOYMENT_FLAGS= \
 
 # compiler-rt installs its Apple runtimes into lib/$(COMPILER_RT_OS_DIR), where
 # COMPILER_RT_OS_DIR is the lowercased CMAKE_SYSTEM_NAME (darwin for macOS,
