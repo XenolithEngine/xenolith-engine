@@ -223,6 +223,19 @@ header, a platform branch, or an allocation. The essentials:
   registered `ReserveFromTextInput` because an Alt chord carries a keychar), gated
   on there being a selected row so that a table nobody picked in declines rather
   than swallows.
+- `ui::TableView` and `ui::TreeView` share their selection model, `ui::RowSelection`
+  (`XLUiRowSelection.h`): one row by default, a set after
+  `setSelectionMode(ListSelectionMode::Multiple)` - Ctrl toggles, Shift takes the run
+  from the anchor, Ctrl+Shift adds it, Shift+Up/Down and Ctrl+A while the view owns the
+  selection. `getSelectedRow()` stays the CURRENT row, which is what single-mode
+  callers read; the set is `getSelectedRows()`. A list that is not a view uses the
+  index half (`applyListSelection`) so it follows the same rules. See
+  [selection.adoc](../usage/codestyle/scene/selection.adoc#multiple-selection-in-lists).
+  `setMarqueeEnabled(true)` adds a rubber band (`ui::MarqueeSystem`, `XLUiMarquee.h`):
+  it lights rows by the `selected` class only and applies them once on release
+  (`setMarqueeCallback`); a grid of its own adds the same system with its own hits and
+  keeps them in a `ui::ListSweep`. See
+  [selection.adoc](../usage/codestyle/scene/selection.adoc#a-band-over-a-list).
 - A menu is `ui::MenuSource` (the model) plus one `ui::MenuSystem` on the node it
   is built into; a popup is that same pair inside a `ui::SubWindow`
   (`ui::openMenuForNode`). **One measurement decides everything** —

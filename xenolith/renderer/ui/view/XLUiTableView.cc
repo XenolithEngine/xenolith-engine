@@ -128,8 +128,11 @@ void TableView::setSource(Model *source) {
 	if (_sourceListener->getSubscription() == source) {
 		return;
 	}
+	if (_marquee) {
+		_marquee->cancel();
+	}
 	_sourceListener->setSubscription(source);
-	_selectedRow = maxOf<size_t>();
+	_selection.remap(0, [this](size_t index) { return getRowIdentity(index); });
 	refresh();
 }
 
@@ -288,43 +291,87 @@ void TableView::setSelectionEnabled(bool value) {
 		return;
 	}
 	_selectionEnabled = value;
+	if (!value && _marquee) {
+		_marquee->cancel();
+	}
 	// whether a row gets an input listener at all is decided when its node is built
 	requestRebuildNodes(true);
 }
 
-void TableView::setSelectedRow(size_t index) {
-	// No early return on the index; see TreeView::setSelectedRow
-	setSelectedIdentity((index < _rows.size()) ? _rows[index].getId() : ItemId(0));
+void TableView::setSelectionMode(ListSelectionMode mode) {
+	if (_selection.getMode() == mode) {
+		return;
+	}
+	_selection.setMode(mode);
+	if (mode == ListSelectionMode::Single && _marquee) {
+		_marquee->cancel();
+	}
+	if (mode == ListSelectionMode::Single && _selection.getRows().size() > 1) {
+		const auto current = _selection.getCurrent();
+		setSelectedRow(current < _rows.size() ? current : _selection.getRows().front());
+	}
+	bindSelectionHotkeys();
 }
 
-void TableView::setSelectedIdentity(ItemId id) {
-	if (_selectedId == id) {
+void TableView::setMarqueeEnabled(bool value) {
+	_marqueeEnabled = value;
+	if (!_marquee && value) {
+		// `this` captured raw: the view owns the system
+		_marquee = addSystem(Rc<MarqueeSystem>::create(MarqueeSlots{
+			[this](const MarqueeEvent &ev) { return handleMarqueeBegin(ev); },
+			[this](const MarqueeEvent &ev) { handleMarqueeUpdate(ev); },
+			[this](const MarqueeEvent &ev, bool commit) { handleMarqueeEnd(ev, commit); },
+			nullptr,
+		}, _scroll));
+	}
+	if (_marquee) {
+		_marquee->setEnabled(value);
+	}
+}
+
+void TableView::setMarqueeFilter(RowFilterFunction &&cb) { _marqueeFilter = sp::move(cb); }
+
+void TableView::setMarqueeCallback(MarqueeFunction &&cb) { _marqueeCallback = sp::move(cb); }
+
+RowIdentity TableView::getRowIdentity(size_t index) const {
+	return index < _rows.size() ? RowIdentity{_rows[index].getId(), _rows[index].offset}
+								: RowIdentity();
+}
+
+void TableView::setSelectedRow(size_t index) {
+	// No early return on the index; see TreeView::setSelectedRow
+	auto identity = [this](size_t i) { return getRowIdentity(i); };
+	applySelection(index < _rows.size()
+					? _selection.set(makeSpanView(&index, 1), index, _rows.size(), identity)
+					: _selection.clear());
+}
+
+void TableView::setSelectedRows(SpanView<size_t> rows, size_t current) {
+	auto identity = [this](size_t i) { return getRowIdentity(i); };
+	applySelection(_selection.set(rows, current, _rows.size(), identity));
+}
+
+void TableView::applySelection(bool changed) {
+	if (!changed) {
 		return;
 	}
-
-	const auto prev = _selectedRow;
-
-	_selectedId = id;
-
-	// The index is derived from the identity
-	remapSelection();
-
-	const auto index = _selectedRow;
-	if (prev == index) {
-		return;
-	}
-
-	// No rebuild: update the class on the two affected nodes, if they are on screen.
-	if (auto node = getRowNode(prev)) {
-		updateRowNode(node, prev);
-	}
-	if (auto node = getRowNode(index)) {
-		updateRowNode(node, index);
-	}
+	// No rebuild: the rows on screen are restyled, the others read the selection when built.
+	updateRowNodes();
 
 	// The select callback is sent by handleRowTap (user picks only), as in TreeView.
-
 	publishSelection();
+}
+
+void TableView::updateRowNodes() {
+	if (!_controller) {
+		return;
+	}
+	const auto &controller = *_controller;
+	for (auto &it : controller.getItems()) {
+		if (auto row = dynamic_cast<RowNode *>(it.node)) {
+			updateRowNode(row, row->getRowIndex());
+		}
+	}
 }
 
 void TableView::bindReorderHotkeys() {
@@ -354,11 +401,19 @@ void TableView::bindReorderHotkeys() {
 }
 
 void TableView::showSelectedRow(size_t index) {
+	showSelectedRows(makeSpanView(&index, index < _rows.size() ? 1 : 0), index);
+}
+
+void TableView::showSelectedRows(SpanView<size_t> rows, size_t current) {
 	auto system = _selectionOwned ? SelectionSystem::findForNode(this) : nullptr;
 	const bool ours = system && system->getOwner() == this;
 	const bool applying = _applyingSelection;
 	_applyingSelection = applying || !ours;
-	setSelectedRow(index);
+	if (rows.empty()) {
+		setSelectedRow(maxOf<size_t>());
+	} else {
+		setSelectedRows(rows, current);
+	}
 	_applyingSelection = applying;
 }
 
@@ -389,8 +444,8 @@ SelectionItem TableView::makeSelectionItem(size_t index) const {
 	if (index >= _rows.size()) {
 		return SelectionItem();
 	}
-	// A table row is one model node, so unlike a tree there is no span offset to carry
-	return SelectionItem{_rows[index].node.get(), 0};
+	// The ModelNode is the identity; the offset tells apart the rows of one span
+	return SelectionItem{_rows[index].node.get(), _rows[index].offset};
 }
 
 void TableView::publishSelection() {
@@ -403,22 +458,45 @@ void TableView::publishSelection() {
 		return;
 	}
 
-	if (_selectedId == ItemId(0)) {
+	if (_selection.empty()) {
 		if (system->getOwner() == this) {
 			system->clear();
 		}
 		return;
 	}
 
-	if (_selectedRow < _rows.size()) {
-		auto item = makeSelectionItem(_selectedRow);
-		system->select(this, makeSpanView(&item, 1));
+	// The current row first, so a reader of the first item reads the one picked last
+	Vector<SelectionItem> items;
+	const auto current = _selection.getCurrent();
+	if (_selection.isSelected(current)) {
+		items.emplace_back(makeSelectionItem(current));
+	}
+	for (auto it : _selection.getRows()) {
+		if (it != current) {
+			items.emplace_back(makeSelectionItem(it));
+		}
+	}
+	if (!items.empty()) {
+		_publishing = true;
+		system->select(this, items);
+		_publishing = false;
 	}
 }
 
 Node *TableView::resolveSelectionNode(const SelectionItem &item) const {
+	auto node = dynamic_cast<ModelNode *>(item.ref.get());
+	if (!node) {
+		return nullptr;
+	}
+	const RowIdentity id{node->getId(), item.index};
+	for (auto it : _selection.getRows()) {
+		if (getRowIdentity(it) == id) {
+			return getRowNode(it);
+		}
+	}
+	// An item handed in before handleSelectionChanged reached this view
 	for (size_t i = 0; i < _rows.size(); ++i) {
-		if (_rows[i].node.get() == item.ref.get()) {
+		if (getRowIdentity(i) == id) {
 			return getRowNode(i);
 		}
 	}
@@ -426,15 +504,16 @@ Node *TableView::resolveSelectionNode(const SelectionItem &item) const {
 }
 
 bool TableView::moveSelection(SelectionDirection dir) {
-	if (!_selectionOwned || _selectedRow >= _rows.size()) {
+	const auto current = getSelectedRow();
+	if (!_selectionOwned || current >= _rows.size()) {
 		return false;
 	}
 
-	if (dir == SelectionDirection::Up && _selectedRow > 0) {
-		selectRowFromKeyboard(_selectedRow - 1);
+	if (dir == SelectionDirection::Up && current > 0) {
+		selectRowFromKeyboard(current - 1);
 		return true;
-	} else if (dir == SelectionDirection::Down && _selectedRow + 1 < _rows.size()) {
-		selectRowFromKeyboard(_selectedRow + 1);
+	} else if (dir == SelectionDirection::Down && current + 1 < _rows.size()) {
+		selectRowFromKeyboard(current + 1);
 		return true;
 	}
 	return false;
@@ -460,12 +539,71 @@ void TableView::selectRowFromKeyboard(size_t index) {
 
 	setSelectedRow(index);
 	scrollRowIntoView(_scroll, _controller, index);
+	notifySelect(index, ListSelectionOp::Replace, true);
+}
 
-	if (_selectCallback && index < _rows.size()) {
-		_keyboardSelect = true;
-		_selectCallback(index, _rows[index]);
-		_keyboardSelect = false;
+bool TableView::extendSelectionFromKeyboard(bool down) {
+	const auto current = getSelectedRow();
+	if (!_selectionOwned || _selection.getMode() != ListSelectionMode::Multiple
+			|| current >= _rows.size()) {
+		return false;
 	}
+	if ((down && current + 1 >= _rows.size()) || (!down && current == 0)) {
+		return false;
+	}
+	const auto index = down ? current + 1 : current - 1;
+	auto identity = [this](size_t i) { return getRowIdentity(i); };
+	applySelection(_selection.extend(index, _rows.size(), identity));
+	scrollRowIntoView(_scroll, _controller, index);
+	notifySelect(index, ListSelectionOp::Range, true);
+	return true;
+}
+
+bool TableView::selectAllFromKeyboard() {
+	if (!_selectionOwned || _selection.getMode() != ListSelectionMode::Multiple
+			|| _rows.empty()) {
+		return false;
+	}
+	auto identity = [this](size_t i) { return getRowIdentity(i); };
+	applySelection(_selection.selectAll(_rows.size(), identity));
+	notifySelect(getSelectedRow(), ListSelectionOp::Replace, true);
+	return true;
+}
+
+void TableView::notifySelect(size_t index, ListSelectionOp op, bool keyboard) {
+	if (!_selectCallback || index >= _rows.size()) {
+		return;
+	}
+	_lastSelectionOp = op;
+	_keyboardSelect = keyboard;
+	_selectCallback(index, _rows[index]);
+	_keyboardSelect = false;
+	_lastSelectionOp = ListSelectionOp::Replace;
+}
+
+void TableView::bindSelectionHotkeys() {
+	if (!_activateKeys) {
+		return;
+	}
+
+	auto &hk = EngineHotkeys::get();
+	_activateKeys->removeHotkey(hk.selectExtendUp);
+	_activateKeys->removeHotkey(hk.selectExtendDown);
+	_activateKeys->removeHotkey(hk.selectAll);
+	if (_selection.getMode() != ListSelectionMode::Multiple) {
+		return;
+	}
+
+	// Unhandled: a focused field takes Shift+arrows and Ctrl+A for its own text first
+	const auto flags = HotkeyFlags::SelectedOnly | HotkeyFlags::Unhandled;
+	_activateKeys->addHotkey(hk.selectExtendUp, [this](HotkeyId, const InputEvent &) {
+		return extendSelectionFromKeyboard(false);
+	}, flags | HotkeyFlags::Repeatable);
+	_activateKeys->addHotkey(hk.selectExtendDown, [this](HotkeyId, const InputEvent &) {
+		return extendSelectionFromKeyboard(true);
+	}, flags | HotkeyFlags::Repeatable);
+	_activateKeys->addHotkey(hk.selectAll,
+			[this](HotkeyId, const InputEvent &) { return selectAllFromKeyboard(); }, flags);
 }
 
 void TableView::bindActivateHotkeys() {
@@ -481,24 +619,35 @@ void TableView::bindActivateHotkeys() {
 				[this](HotkeyId, const InputEvent &) { return activateSelectedRow(); },
 				HotkeyFlags::SelectedOnly);
 	}
+	bindSelectionHotkeys();
 }
 
 bool TableView::activateSelectedRow() {
-	if (!_selectionOwned || !_activateCallback || _selectedRow >= _rows.size()) {
+	const auto current = getSelectedRow();
+	if (!_selectionOwned || !_activateCallback || current >= _rows.size()) {
 		return false;
 	}
-	_activateCallback(_selectedRow, _rows[_selectedRow]);
+	_activateCallback(current, _rows[current]);
 	return true;
 }
 
 void TableView::handleSelectionChanged(SpanView<SelectionItem> items) {
+	// What this view is publishing comes straight back; only losing the selection applies then
+	if (_publishing && !items.empty()) {
+		return;
+	}
+
 	_applyingSelection = true;
 
-	if (items.empty()) {
-		setSelectedIdentity(ItemId(0));
-	} else if (auto node = dynamic_cast<ModelNode *>(items.front().ref.get())) {
-		setSelectedIdentity(node->getId());
+	Vector<RowIdentity> ids;
+	for (auto &it : items) {
+		if (auto node = dynamic_cast<ModelNode *>(it.ref.get())) {
+			ids.emplace_back(RowIdentity{node->getId(), it.index});
+		}
 	}
+	auto identity = [this](size_t i) { return getRowIdentity(i); };
+	applySelection(ids.empty() ? _selection.clear()
+							   : _selection.setIdentities(ids, _rows.size(), identity));
 
 	_applyingSelection = false;
 }
@@ -546,6 +695,8 @@ void TableView::handleSourceDirty(SubscriptionFlags flags) {
 
 void TableView::refresh() {
 	rebuildModel();
+	// The indices follow the rows at once, so the selection can be read and set before the nodes
+	remapSelection();
 	// before any node exists, so an inline source needs no placeholder frame
 	requestRowData();
 	requestRebuildNodes();
@@ -762,20 +913,8 @@ void TableView::rebuildHeader() {
 }
 
 void TableView::remapSelection() {
-	if (_selectedId == ItemId(0)) {
-		_selectedRow = maxOf<size_t>();
-		return;
-	}
-
-	for (size_t i = 0; i < _rows.size(); ++i) {
-		if (_rows[i].getId() == _selectedId) {
-			_selectedRow = i;
-			return;
-		}
-	}
-
-	// No row shows this identity now; only the index is dropped (see TreeView::remapSelection)
-	_selectedRow = maxOf<size_t>();
+	// An identity no row shows now keeps its place; only the index is dropped (see TreeView)
+	_selection.remap(_rows.size(), [this](size_t i) { return getRowIdentity(i); });
 }
 
 void TableView::rebuildRows() {
@@ -783,7 +922,7 @@ void TableView::rebuildRows() {
 		return;
 	}
 
-	// Before the nodes are made: makeRow() reads _selectedRow
+	// Before the nodes are made: makeRow() reads the selection
 	remapSelection();
 
 	const auto force = _forceRebuild;
@@ -819,6 +958,11 @@ void TableView::rebuildRows() {
 
 	_controller->commitChanges();
 	_reusableRows.clear();
+
+	// A band in progress covers other rows now
+	if (_marquee && _marquee->isActive()) {
+		_marquee->refresh();
+	}
 
 	/* New rows are already laid out here (Node::runPendingPhases, commitChanges). Callbacks are
 	taken off the list before they run, so a new request is served by the next rebuild. */
@@ -870,9 +1014,8 @@ auto TableView::getRowNode(size_t index) const -> RowNode * {
 }
 
 void TableView::updateRowNode(RowNode *node, size_t index) {
-	const auto selected = (index == _selectedRow);
-
-	if (selected) {
+	// A band in progress shows what its release would make; :selected waits for it
+	if (isRowShownSelected(index)) {
 		node->addStyleClass("selected");
 	} else {
 		node->removeStyleClass("selected");
@@ -881,7 +1024,7 @@ void TableView::updateRowNode(RowNode *node, size_t index) {
 	// The scene-wide selection flag, applied per node since row nodes are recycled; see
 	// TreeView::updateRowNode
 	if (_selectionOwned) {
-		setNodeSelected(node, selected);
+		setNodeSelected(node, _selection.isSelected(index));
 	}
 }
 
@@ -931,7 +1074,7 @@ Rc<Node> TableView::buildRowNode(RowBuilder &builder) {
 	if (!row.dataLoaded) {
 		node->addStyleClass("loading");
 	}
-	if (index == _selectedRow) {
+	if (isRowShownSelected(index)) {
 		node->addStyleClass("selected");
 	}
 	for (auto &it : builder._classes) { node->addStyleClass(it); }
@@ -1253,7 +1396,7 @@ bool TableView::handleReorderHotkey(bool down) {
 	}
 
 	// Without a selected row, decline so the chord falls through.
-	const size_t selected = _selectedRow;
+	const size_t selected = getSelectedRow();
 	if (selected == maxOf<size_t>() || selected >= _rows.size()) {
 		return false;
 	}
@@ -1304,29 +1447,89 @@ size_t TableView::getRowBoundaryAt(const Vec2 &nodeLocation, Rect *boundaryRect)
 	return ui::getRowBoundaryAt(makeGeometrySource(), nodeLocation, boundaryRect);
 }
 
-void TableView::handleRowTap(size_t index, uint32_t count) {
+void TableView::handleRowTap(size_t index, uint32_t count, InputModifier mods) {
 	if (index >= _rows.size()) {
 		return;
 	}
-	if (count > 1) {
+	const auto op = _selection.getMode() == ListSelectionMode::Multiple
+			? getListSelectionOp(mods)
+			: ListSelectionOp::Replace;
+
+	// A second press with a modifier is another pick, not an activation
+	if (count > 1 && op == ListSelectionOp::Replace) {
 		if (_activateCallback) {
 			_activateCallback(index, _rows[index]);
 		}
 		return;
 	}
-	setSelectedRow(index);
+
+	auto identity = [this](size_t i) { return getRowIdentity(i); };
+	if (_selection.press(index, op, _rows.size(), identity)) {
+		updateRowNodes();
+	}
 	// a tap on the row already selected still takes the scene's selection back
 	publishSelection();
 
 	// Sent here, not from setSelectedRow(): it reports a user pick, as in TreeView.
-	if (_selectCallback) {
-		_selectCallback(index, _rows[index]);
+	notifySelect(index, op, false);
+}
+
+bool TableView::handleMarqueeBegin(const MarqueeEvent &ev) {
+	if (!_selectionEnabled || _selection.getMode() != ListSelectionMode::Multiple) {
+		return false;
+	}
+	_sweep = ListSweep();
+	_sweep.op = ev.op;
+	_sweep.active = true;
+	return true;
+}
+
+void TableView::handleMarqueeUpdate(const MarqueeEvent &ev) {
+	_sweep.hits.clear();
+	size_t first = 0;
+	size_t last = 0;
+	if (getRowRangeIn(makeGeometrySource(), ev.hostRect, first, last)) {
+		for (auto i = first; i <= last && i < _rows.size(); ++i) {
+			if (!_marqueeFilter || _marqueeFilter(i, _rows[i])) {
+				_sweep.hits.emplace_back(i);
+			}
+		}
+	}
+
+	// The anchor at the end the band started from, the current row at the pointer's
+	const bool down = ev.point.y < ev.origin.y;
+	_sweep.anchor = _sweep.hits.empty() ? maxOf<size_t>()
+										: (down ? _sweep.hits.front() : _sweep.hits.back());
+	_sweep.current = _sweep.hits.empty() ? maxOf<size_t>()
+										 : (down ? _sweep.hits.back() : _sweep.hits.front());
+	updateRowNodes();
+}
+
+void TableView::handleMarqueeEnd(const MarqueeEvent &, bool commit) {
+	auto sweep = sp::move(_sweep);
+	_sweep = ListSweep();
+	if (!commit) {
+		updateRowNodes();
+		return;
+	}
+
+	auto identity = [this](size_t i) { return getRowIdentity(i); };
+	const bool changed = _selection.sweep(sweep.hits, sweep.op, sweep.anchor, sweep.current,
+			_rows.size(), identity);
+	updateRowNodes();
+	// a band takes the scene's selection like a tap does
+	publishSelection();
+
+	if (changed && _marqueeCallback) {
+		_lastSelectionOp = sweep.op;
+		_marqueeCallback(sweep.op);
+		_lastSelectionOp = ListSelectionOp::Replace;
 	}
 }
 
 // --- RowBuilder ------------------------------------------------------------
 
-bool TableView::RowBuilder::isSelected() const { return _view->getSelectedRow() == _index; }
+bool TableView::RowBuilder::isSelected() const { return _view->isRowSelected(_index); }
 
 void TableView::RowBuilder::setNode(Rc<Node> &&node) { _node = sp::move(node); }
 
@@ -1402,7 +1605,7 @@ bool TableView::RowNode::init(TableView *view, size_t index, bool interactive) {
 
 		_listener->addTapRecognizer([this](const GestureTap &tap) {
 			if (tap.event == GestureEvent::Activated) {
-				_view->handleRowTap(_index, tap.count);
+				_view->handleRowTap(_index, tap.count, tap.input->data.getModifiers());
 			}
 			return true;
 			// Up to two taps, so `count` can reach the activate callback; Immediate reports the

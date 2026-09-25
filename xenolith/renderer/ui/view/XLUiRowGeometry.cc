@@ -140,6 +140,63 @@ size_t getRowIndexAt(const RowGeometrySource &source, const Vec2 &viewLocation) 
 	return maxOf<size_t>();
 }
 
+bool getRowRangeIn(const RowGeometrySource &source, const Rect &viewRect, size_t &first,
+		size_t &last) {
+	if (source.empty()) {
+		return false;
+	}
+
+	auto &items = source.controller->getItems();
+	if (items.empty()) {
+		return false;
+	}
+
+	// Offsets grow downward from the top of the content, so the rectangle's top is the smaller one
+	float top = 0.0f;
+	float bottom = 0.0f;
+	if (!RowGeometry_offsetAt(source, Vec2(viewRect.getMinX(), viewRect.getMaxY()), top)
+			|| !RowGeometry_offsetAt(source, Vec2(viewRect.getMinX(), viewRect.getMinY()),
+					bottom)) {
+		return false;
+	}
+	if (top > bottom) {
+		sprt::swap(top, bottom);
+	}
+
+	// Half-open like getRowIndexAt: the first row that ends past the top, the last that starts
+	// at or above the bottom
+	size_t low = 0;
+	size_t high = items.size();
+	while (low < high) {
+		const size_t mid = low + (high - low) / 2;
+		auto &item = items.at(mid);
+		if (item.pos.y + item.size.height > top) {
+			high = mid;
+		} else {
+			low = mid + 1;
+		}
+	}
+	const size_t from = low;
+
+	low = from;
+	high = items.size();
+	while (low < high) {
+		const size_t mid = low + (high - low) / 2;
+		if (items.at(mid).pos.y <= bottom) {
+			low = mid + 1;
+		} else {
+			high = mid;
+		}
+	}
+	if (low == from) {
+		return false;
+	}
+
+	first = from;
+	last = low - 1;
+	return true;
+}
+
 bool getRowBoundaryRect(const RowGeometrySource &source, size_t boundary, Rect &out,
 		float thickness) {
 	if (source.empty()) {

@@ -47,6 +47,71 @@ static bool DragScroll_sameBranch(const Node *target, const Node *owner) {
 
 } // namespace
 
+EdgeScroller makeEdgeScroller(Node *node) {
+	EdgeScroller ret;
+	if (!node) {
+		return ret;
+	}
+
+	if (auto scroll = dynamic_cast<basic2d::ScrollViewBase *>(node)) {
+		/* The scroll position already counts downward from getScrollMinPosition(), so no sign flip
+		here; the node-space flip is in the ramp. */
+		ret.range = [scroll]() -> Vec2 {
+			const float pos = scroll->getScrollPosition();
+			const float min = scroll->getScrollMinPosition();
+			const float max = scroll->getScrollMaxPosition();
+			if (sprt::isnan(pos) || sprt::isnan(min) || sprt::isnan(max)) {
+				return Vec2::ZERO;
+			}
+			// Room before and after the current position, as (back, forward) on the scroll axis.
+			const Vec2 room(sprt::max(pos - min, 0.0f), sprt::max(max - pos, 0.0f));
+			return scroll->isVertical() ? room : Vec2(room.x, 0.0f);
+		};
+
+		ret.scrollBy = [scroll](Vec2 delta) {
+			const float d = scroll->isVertical() ? delta.y : delta.x;
+			const float min = scroll->getScrollMinPosition();
+			const float max = scroll->getScrollMaxPosition();
+			if (sprt::isnan(min) || sprt::isnan(max)) {
+				return;
+			}
+			scroll->setScrollPosition(sprt::clamp(scroll->getScrollPosition() + d, min, max));
+		};
+		return ret;
+	}
+
+	if (auto system = node->getSystemByType<ScrollSystem>()) {
+		ret.range = [system]() -> Vec2 {
+			const auto range = system->getScrollRange();
+			const auto pos = system->getScrollPosition();
+			return Vec2(sprt::max(pos.y, 0.0f), sprt::max(range.height - pos.y, 0.0f));
+		};
+		ret.scrollBy = [system](Vec2 delta) { system->scrollBy(Vec2(0.0f, delta.y)); };
+	}
+	return ret;
+}
+
+float getEdgeScrollRamp(float y, float height, float edge, bool beyond) {
+	if (y < 0.0f || y > height) {
+		return beyond ? (y < 0.0f ? 1.0f : -1.0f) : 0.0f;
+	}
+
+	// A third of the box at most, so a short list keeps a neutral middle zone.
+	edge = sprt::min(edge, height / 3.0f);
+	if (edge <= 0.0f) {
+		return 0.0f;
+	}
+
+	/* Node space is y-up: a point near the top of the box (large y) pulls the scroll offset
+	backward, which is negative. */
+	if (y > height - edge) {
+		return -(y - (height - edge)) / edge;
+	} else if (y < edge) {
+		return (edge - y) / edge;
+	}
+	return 0.0f;
+}
+
 DragScrollSystem *DragScrollSystem::acquireForNode(NotNull<Node> node) {
 	if (auto existing = node->getSystemByType<DragScrollSystem>()) {
 		return existing;
@@ -64,15 +129,14 @@ bool DragScrollSystem::init() {
 
 void DragScrollSystem::handleAdded(Node *node) {
 	System::handleAdded(node);
-	resolveScroller();
+	_scroller = makeEdgeScroller(_owner);
 
 	// Scheduled unconditionally: the drag layer sends no drag-start notification to arm on.
 	scheduleUpdate();
 }
 
 void DragScrollSystem::handleRemoved() {
-	_range = nullptr;
-	_scrollBy = nullptr;
+	_scroller = EdgeScroller();
 	System::handleRemoved();
 }
 
@@ -84,8 +148,8 @@ void DragScrollSystem::handleEnter(Scene *scene) {
 	_drag = nullptr;
 
 	// The scroller may have been given to the owner after this system was added.
-	if (!_scrollBy) {
-		resolveScroller();
+	if (_scroller.empty()) {
+		_scroller = makeEdgeScroller(_owner);
 	}
 }
 
@@ -104,51 +168,6 @@ void DragScrollSystem::setEdge(float value) { _edge = sprt::max(value, 0.0f); }
 
 void DragScrollSystem::setScope(Scope value) { _scope = value; }
 
-void DragScrollSystem::resolveScroller() {
-	_range = nullptr;
-	_scrollBy = nullptr;
-
-	if (!_owner) {
-		return;
-	}
-
-	if (auto scroll = dynamic_cast<basic2d::ScrollViewBase *>(_owner)) {
-		/* The scroll position already counts downward from getScrollMinPosition(), so no sign flip
-		here; the node-space flip is in the ramp in update(). */
-		_range = [scroll]() -> Vec2 {
-			const float pos = scroll->getScrollPosition();
-			const float min = scroll->getScrollMinPosition();
-			const float max = scroll->getScrollMaxPosition();
-			if (sprt::isnan(pos) || sprt::isnan(min) || sprt::isnan(max)) {
-				return Vec2::ZERO;
-			}
-			// Room before and after the current position, as (back, forward) on the scroll axis.
-			const Vec2 room(sprt::max(pos - min, 0.0f), sprt::max(max - pos, 0.0f));
-			return scroll->isVertical() ? room : Vec2(room.x, 0.0f);
-		};
-
-		_scrollBy = [scroll](Vec2 delta) {
-			const float d = scroll->isVertical() ? delta.y : delta.x;
-			const float min = scroll->getScrollMinPosition();
-			const float max = scroll->getScrollMaxPosition();
-			if (sprt::isnan(min) || sprt::isnan(max)) {
-				return;
-			}
-			scroll->setScrollPosition(sprt::clamp(scroll->getScrollPosition() + d, min, max));
-		};
-		return;
-	}
-
-	if (auto system = _owner->getSystemByType<ScrollSystem>()) {
-		_range = [system]() -> Vec2 {
-			const auto range = system->getScrollRange();
-			const auto pos = system->getScrollPosition();
-			return Vec2(sprt::max(pos.y, 0.0f), sprt::max(range.height - pos.y, 0.0f));
-		};
-		_scrollBy = [system](Vec2 delta) { system->scrollBy(Vec2(0.0f, delta.y)); };
-	}
-}
-
 void DragScrollSystem::update(const UpdateTime &time) {
 	System::update(time);
 
@@ -166,7 +185,7 @@ void DragScrollSystem::update(const UpdateTime &time) {
 		_drag = DragSystem::findForNode(_owner);
 	}
 
-	if (!_owner || !_scrollBy || !_range || !_drag || !_drag->isDragging()) {
+	if (!_owner || _scroller.empty() || !_drag || !_drag->isDragging()) {
 		stop();
 		return;
 	}
@@ -187,28 +206,13 @@ void DragScrollSystem::update(const UpdateTime &time) {
 		return;
 	}
 
-	// A third of the box at most, so a short list keeps a neutral middle zone.
-	const float edge = sprt::min(_edge, box.height / 3.0f);
-	if (edge <= 0.0f) {
-		stop();
-		return;
-	}
-
-	/* Node space is y-up: a pointer near the top of the box (large y) pulls the scroll offset
-	backward, which is negative. */
-	float ramp = 0.0f;
-	if (local.y > box.height - edge) {
-		ramp = -(local.y - (box.height - edge)) / edge;
-	} else if (local.y < edge) {
-		ramp = (edge - local.y) / edge;
-	}
-
+	const float ramp = getEdgeScrollRamp(local.y, box.height, _edge, false);
 	if (ramp == 0.0f) {
 		stop();
 		return;
 	}
 
-	const auto room = _range();
+	const auto room = _scroller.range();
 	if ((ramp < 0.0f && room.x <= 0.0f) || (ramp > 0.0f && room.y <= 0.0f)) {
 		stop(); // already against that end; nothing to give
 		return;
@@ -216,7 +220,7 @@ void DragScrollSystem::update(const UpdateTime &time) {
 
 	const float delta = ramp * _speed * time.dt;
 	const float before = room.x;
-	_scrollBy(Vec2(0.0f, delta));
+	_scroller.scrollBy(Vec2(0.0f, delta));
 
 	if (!_scrolling) {
 		_scrolling = true;
@@ -228,7 +232,7 @@ void DragScrollSystem::update(const UpdateTime &time) {
 
 	// Re-resolve the drop position only when the content actually moved, so handleDragOver does
 	// not become a per-frame event for every drag.
-	if (_range().x != before) {
+	if (_scroller.range().x != before) {
 		_drag->refreshDrag();
 	}
 }

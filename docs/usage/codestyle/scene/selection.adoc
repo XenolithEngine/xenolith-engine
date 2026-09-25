@@ -270,6 +270,150 @@ table following the document) moves its row with `showSelectedRow`, not
 never takes the keyboard away from the canvas the author clicked. A tap on a row,
 including the one already selected, always takes the selection.
 
+## Multiple selection in lists
+
+[source,cpp]
+----
+table->setSelectionMode(ui::ListSelectionMode::Multiple);
+table->setSelectCallback([table](size_t index, const ui::TableView::Row &) {
+	// `index` is the row pressed; the set is read, not rebuilt from the press
+	auto rows = table->getSelectedRows();
+	if (ui::isListSelectionAdditive(table->getLastSelectionOp())) {
+		// keep what the owner has selected beyond these rows
+	}
+});
+----
+
+`ui::TableView` and `ui::TreeView` hold one row by default. In the multiple mode a
+press works on a set, by the rules every list shares (`XLUiRowSelection.h`):
+
+[cols="1,3"]
+|===
+| Press | Result
+
+| plain | the row alone; the anchor moves to it
+| Ctrl (Command on macOS) | the row in or out, the rest kept; the anchor moves to it
+| Shift | the rows from the anchor to this one, instead of the rest
+| Ctrl+Shift | the same run, added to the rest
+|===
+
+The **current** row is always the one pressed: `getSelectedRow()` answers it, the
+keyboard and an activation act on it, and after a Ctrl press that took it out it
+is current without being selected. `getSelectedRows()` is the set, ascending. A
+second press with a modifier is another pick, never an activation, so a quick
+Ctrl double press toggles twice.
+
+While the view owns the scene's selection, Shift+Up/Down (`selectExtendUp`,
+`selectExtendDown`) extend the run from the anchor and Ctrl+A (`selectAll`) takes
+every row. All three are `SelectedOnly | Unhandled`: a focused field keeps
+Shift+arrows and Ctrl+A for its own text. A plain arrow collapses the set onto the
+next row. The select callback reports every change, `getLastSelectionOp()` saying
+which kind (`Replace` for a plain step and for Ctrl+A, `Range` for Shift+arrow),
+`isSelectingFromKeyboard()` whether a key did it.
+
+The set is held by identity (`RowIdentity`: the model node and the span offset),
+so it follows its rows across rebuilds. A selected row inside a collapsed branch
+of a tree stays selected with no index: an additive press keeps it, any other
+drops it. Every selected row carries `.selected`; while the view owns the
+selection, each is also `:selected`, and a set of more than one row anchors the
+chain on the view.
+
+A list of its own - a grid of cards - takes the same rules without a view:
+`applyListSelection(state, index, getListSelectionOp(mods), count)` over a
+`ListSelectionState` of indices. An owner whose truth is elsewhere (a document
+with a history) turns the resulting set into its own selection and mirrors it
+back with `showSelectedRows`.
+
+## A band over a list
+
+[source,cpp]
+----
+table->setSelectionMode(ui::ListSelectionMode::Multiple);
+table->setMarqueeFilter([](size_t, const ui::TableView::Row &row) {
+	return !row.getData().getBool("locked"); // a row the band may not take
+});
+table->setMarqueeCallback([table](ui::ListSelectionOp op) {
+	// once per release that changed the set; the set is already the result
+	auto rows = table->getSelectedRows();
+	if (op != ui::ListSelectionOp::Replace) {
+		// keep what the owner has selected beyond these rows
+	}
+});
+table->setMarqueeEnabled(true);
+----
+
+With the band on, a mouse drag over the rows sweeps a rectangle instead of
+scrolling. The rows between its top and bottom are drawn as the release would
+leave them, by the rules of `getListSweepOp`:
+
+[cols="1,3"]
+|===
+| Drag | Result
+
+| plain | the rows it covers, instead of the rest
+| Ctrl (Command on macOS) | each row it covers flips, against the set at the press
+| Shift, Ctrl+Shift | the rows it covers, added to the rest
+|===
+
+The modifiers are read at the press. Until the release only the `selected` class
+shows the band: the set, `:selected` and both callbacks wait for it, and the
+release sends the marquee callback once, when the set changed, never the select
+callback. It takes the scene's selection as a press does. After it the anchor is
+the covered row at the end the band started from and the current row the one at
+the pointer, so Shift+Up/Down go on from there. A row of a collapsed tree branch
+keeps its selection through a band that toggles or adds and loses it to one that
+replaces.
+
+The band is `ui::MarqueeSystem` (`XLUiMarquee.h`), and a band starts only where it
+cannot be mistaken for something else. It declines:
+
+* a finger (`InputModifier::Touch`), which pans the list;
+* a press outside the viewport - for a table, the header;
+* a press on a node drawn over the list, or on a `DragSource` inside it - the
+  reorder grip, a draggable row; the space below the rows still starts one.
+
+The scroll bar takes its press before the band can. Near the top or bottom edge,
+and beyond it, the list scrolls, and the band keeps its corner on the content that
+scrolled away. Escape cancels: the rows show the set again and the release writes
+nothing. A rebuild under the band - a row inserted, a branch opened - is swept
+again at once.
+
+A grid of cards or tiles of its own adds the system itself and keeps what it
+covers in a `ui::ListSweep`:
+
+[source,cpp]
+----
+grid->addSystem(Rc<ui::MarqueeSystem>::create(ui::MarqueeSlots{
+	[&](const ui::MarqueeEvent &ev) {
+		sweep = ui::ListSweep();
+		sweep.op = ev.op;
+		sweep.active = true;
+		return true;
+	},
+	[&](const ui::MarqueeEvent &ev) { sweep.hits = tilesIn(ev.rect); redraw(); },
+	[&](const ui::MarqueeEvent &, bool commit) {
+		if (commit) {
+			ui::applyListSweep(state, sweep.hits, sweep.op, count, sweep.anchor, sweep.current);
+		}
+		sweep = ui::ListSweep();
+		redraw();
+	},
+}, scroll));
+----
+
+`ev.rect` is in **content space**, the scroll root's (or the host's without a
+scroll), where an item that has no node still has a place: the band's origin is
+kept there, so it moves with its rows. `ev.hostRect` is the same band in the
+host's space. `ListSweep::isShown(index, selected)` is how an item is drawn
+meanwhile. The band itself is a `ui::Panel` of type `marquee` (class
+`xl-ui-marquee`) under the host, cut to the viewport by hand, since a list does not
+clip:
+
+[source,css]
+----
+marquee { background-color: rgba(0, 120, 255, 0.2); outline-color: #0078ff; outline-width: 1px; }
+----
+
 ## Selecting on press
 
 [source,cpp]

@@ -31,6 +31,8 @@
 #include "XL2dScrollView.h"
 #include "XL2dScrollController.h"
 #include "XLUiRowGeometry.h"
+#include "XLUiRowSelection.h"
+#include "XLUiMarquee.h"
 #include "XL2dLayer.h"
 #include "XLDragSource.h"
 #include "XLDropTarget.h"
@@ -62,7 +64,8 @@ use setRowHeightCallback() for variable heights.
 CSS: types "table-view", "table-header", "table-row" and "table-cell" (all Panels; an unstyled
 Panel is opaque white). Cells are painted transparent by the view; a sheet can override that.
 Rows get `even`/`odd`, `selected` and `loading` classes; header cells get `header-cell` plus
-`Column::styleClass`. Rows publish `--table-row-h`, cells `--table-col-index`.
+`Column::styleClass`. Rows publish `--table-row-h`, cells `--table-col-index`. The rubber band is
+type `marquee` (see setMarqueeEnabled).
 
   table-view   { display: table; grid-template-columns: 2fr 1fr 120px;
                  border-collapse: collapse; background-color: #1e1e1e; }
@@ -144,6 +147,8 @@ public:
 	using CellFunction = Function<void(CellBuilder &)>;
 	using RowHeightFunction = Function<float(const Row &)>;
 	using RowEventFunction = Function<void(size_t index, const Row &)>;
+	using RowFilterFunction = Function<bool(size_t index, const Row &)>;
+	using MarqueeFunction = Function<void(ListSelectionOp)>;
 
 	virtual ~TableView();
 
@@ -207,17 +212,62 @@ public:
 	virtual void setSelectionEnabled(bool);
 	bool isSelectionEnabled() const { return _selectionEnabled; }
 
+	/* One row, or a set. In the multiple mode a press with Shift or the toggle modifier works on the
+	set (see ListSelectionOp), and while the view owns the scene's selection Shift+Up/Down extend
+	it and Ctrl+A takes every row. */
+	virtual void setSelectionMode(ListSelectionMode);
+	ListSelectionMode getSelectionMode() const { return _selection.getMode(); }
+
 	virtual void setSelectedRow(size_t); // maxOf<size_t>() clears
-	size_t getSelectedRow() const { return _selectedRow; }
+
+	// The current row: the one picked last, which the keyboard and an activation act on.
+	size_t getSelectedRow() const { return _selection.getCurrent(); }
+
+	// Every selected row, ascending. After a toggle the current row may be outside it.
+	SpanView<size_t> getSelectedRows() const { return _selection.getRows(); }
+	bool isRowSelected(size_t index) const { return _selection.isSelected(index); }
+
+	// Exactly these rows; `current` falls back to the first of them. Like setSelectedRow, no callback.
+	virtual void setSelectedRows(SpanView<size_t>, size_t current);
 
 	/* Follow a selection made elsewhere (a canvas, a document): moves the row, and hands it to the
 	scene's SelectionSystem only while this view already holds the selection, so a mirror never
 	takes the keyboard from the surface the author is working in. */
 	virtual void showSelectedRow(size_t);
+	virtual void showSelectedRows(SpanView<size_t>, size_t current);
+
+	// What the pick being reported did, inside the select callback; Replace for a single step.
+	ListSelectionOp getLastSelectionOp() const { return _lastSelectionOp; }
 
 	/* True inside the select callback when the pick came from an arrow key rather than a tap: a
 	callback that opens what was picked should wait for the activation (Enter or a double tap). */
 	bool isSelectingFromKeyboard() const { return _keyboardSelect; }
+
+	/* The rubber band (ui::MarqueeSystem), off by default; it works in the multiple mode with the
+	selection enabled. A mouse drag over the rows sweeps a rectangle, and the rows between its top
+	and bottom are drawn as the release would leave them (getListSweepOp: plain replaces, the toggle
+	modifier toggles, Shift adds). Only the `selected` class shows it: the selection, `:selected` and
+	the callbacks wait for the release. A finger still scrolls, and the header, the grip and anything
+	drawn over the table start no band. */
+	virtual void setMarqueeEnabled(bool);
+	bool isMarqueeEnabled() const { return _marqueeEnabled; }
+
+	// Which rows a band may take; a refused row is neither lit nor selected by it. Taps are not
+	// filtered.
+	virtual void setMarqueeFilter(RowFilterFunction &&);
+
+	// Once per release that changed the selection, with getSelectedRows() already the result; the
+	// select callback is not sent for a band.
+	virtual void setMarqueeCallback(MarqueeFunction &&);
+
+	bool isMarqueeActive() const { return _sweep.active; }
+	SpanView<size_t> getMarqueeHits() const { return _sweep.hits; }
+	MarqueeSystem *getMarquee() const { return _marquee; }
+
+	// As a row is drawn: the selection, or during a band what the release would make of it.
+	bool isRowShownSelected(size_t index) const {
+		return _sweep.isShown(index, _selection.isSelected(index));
+	}
 
 	/* Join the scene-wide selection, as TreeView::setSelectionOwned. It also scopes the reorder
 	keys to the table that owns the selection. */
@@ -303,13 +353,23 @@ protected:
 
 	virtual void rebuildRows();
 
-	// Put _selectedRow back on its row by identity after _rows is re-derived (also after a
+	// Put the selection back on its rows by identity after _rows is re-derived (also after a
 	// reorder), as TreeView::remapSelection.
 	void remapSelection();
 
-	// The single mutator both setSelectedRow() and handleSelectionChanged() go through; see
-	// TreeView::setSelectedIdentity
-	void setSelectedIdentity(ItemId);
+	RowIdentity getRowIdentity(size_t) const;
+
+	// After the selection changed: restyles the rows on screen and hands it to the scene.
+	void applySelection(bool changed);
+	void updateRowNodes();
+
+	// Shift+Up/Down and Ctrl+A, bound while the view owns the scene's selection in the multiple mode.
+	void bindSelectionHotkeys();
+	bool extendSelectionFromKeyboard(bool down);
+	bool selectAllFromKeyboard();
+
+	// The select callback, with the operation and the keyboard flag it is asked about.
+	void notifySelect(size_t index, ListSelectionOp, bool keyboard);
 
 	void publishSelection();
 
@@ -348,7 +408,12 @@ protected:
 	Rc<RowNode> takeReusableRow(size_t index);
 	RowKey makeRowKey(const Row &) const;
 
-	virtual void handleRowTap(size_t index, uint32_t count);
+	virtual void handleRowTap(size_t index, uint32_t count, InputModifier = InputModifier::None);
+
+	// The band's slots; see setMarqueeEnabled.
+	virtual bool handleMarqueeBegin(const MarqueeEvent &);
+	virtual void handleMarqueeUpdate(const MarqueeEvent &);
+	virtual void handleMarqueeEnd(const MarqueeEvent &, bool commit);
 
 	// give a node the systems and components that make it lay its children out as a table row
 	void makeTableRow(Node *);
@@ -387,10 +452,10 @@ protected:
 	float _headerHeight = 32.0f;
 	// The last height reported through _intrinsicHeightCallback; nan() until the first report.
 	float _reportedHeight = nan();
-	size_t _selectedRow = maxOf<size_t>();
 
-	// The selected identity; _selectedRow is derived from it on every rebuild (remapSelection)
-	ItemId _selectedId = ItemId(0);
+	// Held by identity; the indices are derived from it on every rebuild (remapSelection)
+	RowSelection _selection;
+	ListSelectionOp _lastSelectionOp = ListSelectionOp::Replace;
 
 	bool _selectionOwned = false;
 	bool _keyboardSelect = false;
@@ -398,6 +463,15 @@ protected:
 
 	// Set while applying a change that came from the system; see TreeView
 	bool _applyingSelection = false;
+
+	// Set while handing the selection to the system, which hands it straight back
+	bool _publishing = false;
+
+	MarqueeSystem *_marquee = nullptr;
+	ListSweep _sweep;
+	RowFilterFunction _marqueeFilter;
+	MarqueeFunction _marqueeCallback;
+	bool _marqueeEnabled = false;
 
 	bool _autoHeight = false;
 	bool _headerVisible = true;
