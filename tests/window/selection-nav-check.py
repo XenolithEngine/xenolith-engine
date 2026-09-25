@@ -60,8 +60,18 @@ class Session:
     def invoke(self, command, **args):
         return self.call("invoke", name=command, args=args)["result"]
 
+    def presented(self):
+        return self.call("frame", count=0)["result"].get("presented", 0)
+
     def frames(self, count=2):
+        """A frame is a request and `presented` its receipt: a native event reaches the scene
+        through the context thread, so only a presented frame says it has been handled."""
+        before = self.presented()
         self.call("frame", count=count)
+        for _ in range(400):
+            if self.presented() > before:
+                return
+            time.sleep(0.01)
 
     def state(self):
         return self.invoke("selection-nav.state")
