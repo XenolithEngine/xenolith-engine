@@ -436,7 +436,7 @@ $(OSS_STAMP)/copyfile: | $(APPLE_OSS_SRC)/copyfile $(OSS_STAMP)
 	cp -f $(APPLE_OSS_SRC)/copyfile/copyfile.h $(DST_INC)/
 	@touch $@
 
-# Libinfo: <netdb.h> (getaddrinfo/gethostbyname — pulled by mbedtls net_sockets.c, curl,
+# Libinfo: <netdb.h> (getaddrinfo/gethostbyname — pulled by curl,
 # and any socket resolver code), <ifaddrs.h> (getifaddrs), + <grp.h>/<pwd.h> (user/group
 # db). All byte-identical to the SDK. (The niche DB headers — aliasdb/bootparams/printerdb
 # — are left out.)

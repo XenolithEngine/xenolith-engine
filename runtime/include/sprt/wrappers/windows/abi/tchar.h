@@ -27,6 +27,7 @@ THE SOFTWARE.
 #if _UNICODE
 
 #define _T(Str) L ## Str
+#define _TEXT(Str) L ## Str
 #define TEXT(Str) L ## Str
 
 #define LPCTSTR LPCWSTR
@@ -34,6 +35,7 @@ THE SOFTWARE.
 #else
 
 #define _T(Str) Str
+#define _TEXT(Str) Str
 #define TEXT(Str) Str
 
 #define LPCTSTR LPCSTR

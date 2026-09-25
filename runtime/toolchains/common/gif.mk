@@ -45,7 +45,10 @@ TARGET_CFLAGS := $(SP_CFLAGS) -D_FILE_OFFSET_BITS=64 -Wno-deprecated-declaration
 $(LIBNAME)/%.o: $(LIB_SRC_DIR)/$(LIBNAME)/%.c | prepare
 	$(SP_CC) $(TARGET_CFLAGS) -c $< -o $@
 
-$(SP_INSTALL_PREFIX)/usr/include/%.h: $(LIB_SRC_DIR)/$(LIBNAME)/%.h | prepare
+# Installed on every run, like the library itself: tar keeps upstream's mtimes, so
+# after a version bump the new gif_lib.h is OLDER than the copy already in the
+# sysroot, and a timestamp rule would leave the old header next to the new library.
+$(SP_INSTALL_PREFIX)/usr/include/%.h: $(LIB_SRC_DIR)/$(LIBNAME)/%.h prepare
 	$(call rule_cp,$<,$@)
 
 $(LIBNAME)/$(call mklibname,gif): $(addprefix $(LIBNAME)/,$(OBJS)) prepare

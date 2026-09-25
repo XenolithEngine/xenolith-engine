@@ -20,7 +20,7 @@
 
 .DEFAULT_GOAL := all
 
-VARIANT ?= mbedtls
+VARIANT ?= openssl
 
 LIBNAME = curl
 
@@ -70,11 +70,6 @@ CONFIGURE += \
 	-DCOREFOUNDATION_FRAMEWORK="CoreFoundation" \
 	-DCORESERVICES_FRAMEWORK="CoreServices" \
 	-DUSE_APPLE_IDN=Off
-endif
-
-ifeq ($(VARIANT),mbedtls)
-CONFIGURE += \
-	-DCURL_DEFAULT_SSL_BACKEND="mbedtls" -DCURL_USE_MBEDTLS=ON
 endif
 
 ifeq ($(VARIANT),openssl)

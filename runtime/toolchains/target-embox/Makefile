@@ -212,7 +212,7 @@ SPRT_LIB := $(SP_INSTALL_PREFIX)/usr/lib/libsprt.a
 # (crt0/special linker script). The sprt runtime's unicode backend is stubbed in
 # runtime/libc_wrapper/platform/embox/unicode.cc for the M6 milestone; the full
 # ICU port is tracked as a separate task.
-# The crypto/net stack (openssl/gost/mbedtls/nghttp3/curl) is staged to
+# The crypto/net stack (openssl/gost/nghttp3/curl) is staged to
 # land alongside a Embox openssl.mk (perl Configure target) — added incrementally
 # as the engine surface that needs it comes online.
 # The set matches target-nuttx's. liblzma/libtiff are left out here for the same
