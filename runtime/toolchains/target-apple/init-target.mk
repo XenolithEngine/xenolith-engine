@@ -79,7 +79,11 @@ else
 TOOLCHAIN_SDK_ROOT := $(SP_SDK_ROOT)
 TOOLCHAIN_ISYSTEM :=
 endif
-TOOLCHAIN_CFLAGS := $(TOOLCHAIN_ISYSTEM) -isysroot $(TOOLCHAIN_SDK_ROOT) -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(SP_TARGET) -arch $(SP_ARCH) $(SP_DEPFLAGS)
+# The deployment-target flag goes through SP_DEPLOYMENT_FLAGS so a project can drop it:
+# compiler-rt sets its own per-slice -m<os>-version-min and, even for an iOS toolchain,
+# also builds osx slices, where a global -mios-version-min is a hard driver error
+# (libc++.mk passes it empty).
+TOOLCHAIN_CFLAGS := $(TOOLCHAIN_ISYSTEM) -isysroot $(TOOLCHAIN_SDK_ROOT) -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(SP_TARGET) -arch $(SP_ARCH) $${SP_DEPLOYMENT_FLAGS}
 TOOLCHAIN_LDFLAGS := -L$(TOOLCHAIN_SDK_ROOT)/usr/lib -F$(TOOLCHAIN_SDK_ROOT)/System/Library/Frameworks
 
 $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(THIS_FILE)
@@ -94,6 +98,10 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(THIS_FILE)
 	@echo 'set(CMAKE_OBJC_COMPILER_TARGET "$(SP_TARGET)")' >> $@
 	@echo 'set(CMAKE_OBJCXX_COMPILER_TARGET "$(SP_TARGET)")' >> $@
 	@echo 'set(CMAKE_ASM_COMPILER_TARGET "$(SP_TARGET)")' >> $@
+	@echo 'if(NOT DEFINED SP_DEPLOYMENT_FLAGS)' >> $@
+	@echo '	set(SP_DEPLOYMENT_FLAGS "$(SP_DEPFLAGS)")' >> $@
+	@echo 'endif()' >> $@
+	@echo 'list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES SP_DEPLOYMENT_FLAGS)' >> $@
 	@echo 'set(CMAKE_C_FLAGS_INIT "$${SP_C_FLAGS} $(TOOLCHAIN_CFLAGS)" CACHE STRING "" FORCE)' >> $@
 	@echo 'set(CMAKE_CXX_FLAGS_INIT "$${SP_CXX_FLAGS} $(TOOLCHAIN_CFLAGS)" CACHE STRING "" FORCE)' >> $@
 	@echo 'set(CMAKE_OBJC_FLAGS_INIT "-ObjC $${SP_CXX_FLAGS} $(TOOLCHAIN_CFLAGS)" CACHE STRING "" FORCE)' >> $@

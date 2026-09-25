@@ -48,6 +48,7 @@ void performSetjmpTest();
 void performLocaleTest();
 void performWasm64AbiTest();
 void performWasm64HighMemTest();
+void performWasmVfsTest();
 
 void performPthreadCreateTest();
 void performPthreadMutexTest();

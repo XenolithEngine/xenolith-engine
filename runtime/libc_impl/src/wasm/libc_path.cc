@@ -739,8 +739,9 @@ __SPRT_C_FUNC int dirfd(__SPRT_ID(DIR) * dir) __SPRT_NOEXCEPT {
 // memfs is a single flat namespace with no symlinks, but the *at forms honor the dir
 // fd for RELATIVE paths (POSIX): a relative path is resolved against the directory the
 // fd refers to (its inode's absolute path), so fd-relative tree walks (openat over an
-// fdopendir'd directory, as ftw/nftw do) address the right children. Absolute paths and
-// AT_FDCWD resolve against the "/" root as before. The link family is unsupported.
+// fdopendir'd directory, as ftw/nftw do) address the right children. Absolute paths pass
+// through, and AT_FDCWD leaves a relative path to __memfs_normpath, which roots it at the
+// virtual cwd. The link family is unsupported.
 
 namespace sprt {
 

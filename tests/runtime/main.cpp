@@ -76,6 +76,7 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"libc_pthread_spinlock", &sprt::performPthreadSpinlockTest},
 	{"libc_wasm64_abi", &sprt::performWasm64AbiTest},
 	{"libc_wasm64_highmem", &sprt::performWasm64HighMemTest},
+	{"libc_wasm_vfs", &sprt::performWasmVfsTest},
 
 	{"libcxx_malloc_string", &sprt::performMallocStringTests},
 	{"libcxx_malloc_unordered_map", &sprt::performMallocUnorderedMapTests},
