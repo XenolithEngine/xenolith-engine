@@ -39,6 +39,8 @@ struct SP_PUBLIC FontUpdateRequest {
 	Rc<FontFaceObject> object;
 	Vector<char32_t> chars;
 	bool persistent = false;
+
+	Rc<FontLibrary> library;
 };
 
 class SP_PUBLIC FontController : public ApplicationExtension {

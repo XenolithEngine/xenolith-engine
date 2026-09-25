@@ -608,7 +608,18 @@ What a virtual window presents is published to its `core::PlaneSource`
 A screenshot of a virtual window is a copy of the latest published frame, held for the copy.
 Partial redraw works on these images — the per-slot damage snapshot is keyed by
 `SwapchainImage::getSwapchainSlot()`, not by the image id — and `tests/window/damage-check.py`
-checks it by the picture, with frames held. The inspector reads a plane with `window op=plane`
+checks it by the picture, with frames held.
+
+A remote client's frames take the same path. Each vertex set arrives with the identity it has on
+the client — `{id, generation}`, the id moved into the session's namespace
+(`(session << 40) | id`) — so a set the client did not touch is the same element on the server
+and costs nothing. What a set covers is not sent: the renderer derives it from the vertices, a
+glyph through the atlas the frame draws it with, as the shader places it
+(`VertexData::getBounds(atlas)`). A glyph that atlas does not have yet goes into the element's
+signature, so its arrival repaints the label and nothing else. `tests/window/remote-render-check.py`
+runs `testapp` as a client of a `testapp` server.
+
+The inspector reads a plane with `window op=plane`
 (`serial`, `slot`, `pinned`, `imageCount`, `published`), holds one like a slow compositor with
 `op=plane-hold {ms}`, and renders an offscreen frame with `op=offscreen`.
 

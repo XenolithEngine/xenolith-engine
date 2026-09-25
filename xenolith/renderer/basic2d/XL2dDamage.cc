@@ -21,6 +21,7 @@
  **/
 
 #include "XL2dDamage.h"
+#include "XLCoreMaterial.h"
 #include "XL2dFrameContext.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
@@ -62,7 +63,8 @@ Rect DamageCollector::toPixels(const Rect &clip) const {
 	return Rect(sprt::min(x0, x1), sprt::min(y0, y1), sprt::abs(x1 - x0), sprt::abs(y1 - y0));
 }
 
-uint32_t DamageCollector::makeSignature(const CmdInfo *cmd, const InstanceVertexData &iv) const {
+uint32_t DamageCollector::makeSignature(const CmdInfo *cmd, const core::Material *material,
+		const InstanceVertexData &iv, uint64_t unresolved) const {
 	// Everything that changes pixels without changing the geometry. StateId itself must not be
 	// hashed: it is an insertion index into the frame's state list and is not stable across frames.
 	uint64_t acc = sprt::hash64(reinterpret_cast<const char *>(&cmd->material),
@@ -77,6 +79,35 @@ uint32_t DamageCollector::makeSignature(const CmdInfo *cmd, const InstanceVertex
 
 	auto instances = uint32_t(iv.instances.size());
 	mix(&instances, sizeof(instances));
+
+	/* The images the element samples. Their contents change with no vertex data changing at all -
+	a dynamic image gets a new frame. Such an update always publishes a new DynamicImage instance
+	(its `gen` grows) with a new view, even when the backend writes into the same image object - so
+	the view id and the instance generation are the version, and the image id is not. Without them
+	a slot drawn before the update keeps the old pixels for as long as the element does not change.
+
+	An image with an atlas is the exception: an element addresses its entries by object id, and
+	what an id draws does not change when the atlas is rebuilt around it. What does change - an
+	entry the element was drawn without arriving - is in `unresolved` (VertexData::getBounds).
+	Versioning a font atlas would repaint every label on the screen for each new glyph. */
+	mix(&unresolved, sizeof(unresolved));
+
+	if (material) {
+		for (auto &it : material->getImages()) {
+			const bool hasAtlas =
+					it.dynamic ? bool(it.dynamic->data.atlas) : (it.image && it.image->atlas);
+			if (hasAtlas) {
+				continue;
+			}
+			if (it.view) {
+				auto view = it.view->getIndex();
+				mix(&view, sizeof(view));
+			}
+			if (it.dynamic) {
+				mix(&it.dynamic->gen, sizeof(it.dynamic->gen));
+			}
+		}
+	}
 
 	if (auto state = _input->getState(cmd->state)) {
 		if (auto data = dynamic_cast<const StateData *>(state->data.get())) {
@@ -94,7 +125,7 @@ uint32_t DamageCollector::makeSignature(const CmdInfo *cmd, const InstanceVertex
 }
 
 void DamageCollector::addInstances(const Command *command, const CmdInfo *cmd,
-		const InstanceVertexData &iv) {
+		const core::Material *material, const InstanceVertexData &iv) {
 	if (_state->full) {
 		return;
 	}
@@ -108,15 +139,13 @@ void DamageCollector::addInstances(const Command *command, const CmdInfo *cmd,
 		return;
 	}
 
+	// what the data draws, resolved through the atlas the frame draws it with
+	const auto bounds = iv.data->getBounds(material ? material->getAtlas() : nullptr);
+
 	// an explicit box from the producer wins over deriving it from the data
 	Rect model = cmd->bounds;
 	if (model.size.width <= 0.0f || model.size.height <= 0.0f) {
-		if (!iv.data->getBounds(model)) {
-			// a producer promised explicit bounds and did not refresh them - do not trust a
-			// stale box, take the safe route
-			escalate();
-			return;
-		}
+		model = bounds.box;
 	}
 
 	if (model.size.width <= 0.0f || model.size.height <= 0.0f) {
@@ -141,8 +170,15 @@ void DamageCollector::addInstances(const Command *command, const CmdInfo *cmd,
 	if (_scissorUsable) {
 		if (auto state = _input->getState(cmd->state)) {
 			if (state->isScissorEnabled()) {
+				// DrawStateValues::scissor has its origin at the BOTTOM of the surface (y up), and
+				// the box here is in image pixels, y down - the same flip the backend makes before
+				// it sets the scissor (vk::QueuePassHandle::rotateScissor). Intersecting the two
+				// unflipped dropped every clipped element that was not symmetric about the middle
+				// row: typed text never damaged anything.
 				auto &sc = state->scissor;
-				const Rect scissor(float(sc.x), float(sc.y), float(sc.width), float(sc.height));
+				const float surfaceHeight = float(_constraints.extent.height);
+				const Rect scissor(float(sc.x), surfaceHeight - float(sc.y) - float(sc.height),
+						float(sc.width), float(sc.height));
 				if (!box.intersectsRect(scissor)) {
 					return;
 				}
@@ -171,7 +207,7 @@ void DamageCollector::addInstances(const Command *command, const CmdInfo *cmd,
 	}
 
 	_state->entries.emplace_back(core::DamageEntry{iv.data->identity.id,
-		iv.data->identity.generation, makeSignature(cmd, iv), box});
+		iv.data->identity.generation, makeSignature(cmd, material, iv, bounds.unresolved), box});
 }
 
 Rc<core::FrameDamageState> DamageCollector::finalize() {

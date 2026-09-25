@@ -25,34 +25,53 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
-bool VertexData::getBounds(Rect &out) const {
-	if (identity.hasBounds()) {
-		out = identity.bounds;
-		return true;
+VertexData::Bounds VertexData::getBounds(const core::DataAtlas *atlas) const {
+	const uint64_t atlasSerial = atlas ? atlas->getSerial() : 0;
+	if (cachedBoundsGeneration == identity.generation && cachedBoundsAtlas == atlasSerial) {
+		return cachedBounds;
 	}
 
-	if (!identity.derivable) {
-		// the producer owes us setBounds() and did not deliver; scanning would be wrong
-		return false;
-	}
+	// an atlas entry as the shader reads it (xl_2d_flat.vert): the offset of the vertex, and where
+	// it samples
+	struct AtlasData {
+		Vec2 pos;
+		Vec2 tex;
+	};
 
-	auto &id = const_cast<DataIdentity &>(identity);
-	if (data.empty()) {
-		id.bounds = Rect::ZERO;
-	} else {
-		float minX = data.front().pos.x, maxX = minX;
-		float minY = data.front().pos.y, maxY = minY;
-		for (auto &it : data) {
-			minX = sprt::min(minX, it.pos.x);
-			maxX = sprt::max(maxX, it.pos.x);
-			minY = sprt::min(minY, it.pos.y);
-			maxY = sprt::max(maxY, it.pos.y);
+	Bounds ret;
+	bool first = true;
+	float minX = 0.0f, maxX = 0.0f, minY = 0.0f, maxY = 0.0f;
+	for (auto &it : data) {
+		float x = it.pos.x;
+		float y = it.pos.y;
+		if (atlas && it.object != 0) {
+			// not in the atlas, the shader leaves the vertex where it is
+			if (auto d = reinterpret_cast<const AtlasData *>(atlas->getObjectByName(it.object))) {
+				x += d->pos.x;
+				y += d->pos.y;
+			} else {
+				ret.unresolved = (ret.unresolved ^ it.object) * 0x100'0000'01b3ULL;
+			}
 		}
-		id.bounds = Rect(minX, minY, maxX - minX, maxY - minY);
+		if (first) {
+			minX = maxX = x;
+			minY = maxY = y;
+			first = false;
+		} else {
+			minX = sprt::min(minX, x);
+			maxX = sprt::max(maxX, x);
+			minY = sprt::min(minY, y);
+			maxY = sprt::max(maxY, y);
+		}
 	}
-	id.boundsGeneration = id.generation;
-	out = id.bounds;
-	return true;
+	if (!first) {
+		ret.box = Rect(minX, minY, maxX - minX, maxY - minY);
+	}
+
+	cachedBounds = ret;
+	cachedBoundsAtlas = atlasSerial;
+	cachedBoundsGeneration = identity.generation;
+	return ret;
 }
 
 VertexArray::Quad &VertexArray::Quad::setTextureRect(const Rect &texRect, float texWidth,
@@ -426,16 +445,6 @@ void VertexArray::copy() {
 		_data = data;
 		_copyOnWrite = false;
 	}
-}
-
-void VertexArray::setBoundsDerivable(bool value) {
-	mutate();
-	_data->identity.derivable = value;
-}
-
-void VertexArray::setBounds(const Rect &r) {
-	// deliberately not mutate(): supplying bounds is not a content change
-	_data->identity.setBounds(r);
 }
 
 void VertexArray::mutate() {

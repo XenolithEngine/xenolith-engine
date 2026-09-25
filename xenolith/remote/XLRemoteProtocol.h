@@ -37,9 +37,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
  * still reaches the version field and gets a proper status. */
 constexpr uint32_t kProtocolMagic = 0x584C'5250; // 'XLRP'
 
-/* Version 2: InputEvents and UpdateLayers use the typed format (see XLRemoteSerialize.h). Version 1
- * peers are refused at the handshake; no compatibility is kept. */
-constexpr uint16_t kProtocolVersion = 2;
+/* Version 2: InputEvents and UpdateLayers use the typed format (see XLRemoteSerialize.h).
+ * Version 3: a 2d frame input carries each data set's identity, the command flags and the state
+ * extension (gradient, shaded outline) - see FrameContextHandle2d::serialize.
+ * Older peers are refused at the handshake; no compatibility is kept. */
+constexpr uint16_t kProtocolVersion = 3;
 constexpr uint32_t kBearerKeySize = 64;
 
 // Size of one record in the typed input/layer batches (WindowCode::InputEvents / ::UpdateLayers).

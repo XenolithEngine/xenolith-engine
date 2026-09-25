@@ -170,7 +170,8 @@ void QueuePassHandle::preparePartialRedraw(FrameQueue &q) {
 		// defined state for the next frame's LOAD
 		if (damageLog) {
 			log::source().debug("vk::QueuePassHandle",
-					"damage: full repaint, slot=", swapchainImage->getSwapchainSlot());
+					"damage: full repaint, slot=", swapchainImage->getSwapchainSlot(),
+					" swapchain=", (void *)swapchain.get());
 		}
 		return;
 	}
@@ -178,7 +179,8 @@ void QueuePassHandle::preparePartialRedraw(FrameQueue &q) {
 	if (damage.empty()) {
 		if (damageLog) {
 			log::source().debug("vk::QueuePassHandle",
-					"damage: nothing to redraw, slot=", swapchainImage->getSwapchainSlot());
+					"damage: nothing to redraw, slot=", swapchainImage->getSwapchainSlot(),
+					" swapchain=", (void *)swapchain.get());
 		}
 		// The image already holds this frame. With SkipEmptyFrames, record nothing: the image stays
 		// in PRESENT_SRC, and the frame still submits an empty command buffer and presents, keeping
@@ -207,7 +209,7 @@ void QueuePassHandle::preparePartialRedraw(FrameQueue &q) {
 	if (damageLog) {
 		log::source().debug("vk::QueuePassHandle",
 				"damage: partial redraw, slot=", swapchainImage->getSwapchainSlot(), " area=", x0,
-				",", y0, " ", x1 - x0, "x", y1 - y0);
+				",", y0, " ", x1 - x0, "x", y1 - y0, " swapchain=", (void *)swapchain.get());
 	}
 }
 

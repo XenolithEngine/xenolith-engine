@@ -298,11 +298,36 @@ def run(server_bin, client_bin, gapi):
         # Frames drawn while others are held land in slots out of order. Typed text and a drop-down
         # change the picture while frames are held; a resize back and forth redraws everything from
         # scratch - the two pictures must agree. The square stops first, so that the scene is still
-        # when both are taken. (A remote client's frames are full redraws today - its commands carry
-        # no stable damage identity - so partial redraw under pins is damage-check.py's, on a local
-        # scene in a virtual window.)
+        # when both are taken.
         ca.invoke("client-animation", op="stop")
         vpump(s, name, 1.0)
+
+        # The client's data identities cross the wire, so a character typed on a still scene is a
+        # partial frame on the server. The first one brings every slot up to the same picture (the
+        # held frames above left them with older ones); the second must then be partial in each.
+        type_keys(s, name, "w")
+        vpump(s, name, 1.0)
+        mark = len(open(rc.SERVER_LOG, errors="replace").read())
+        type_keys(s, name, "v")
+        vpump(s, name, 1.0)
+        typed = open(rc.SERVER_LOG, errors="replace").read()[mark:]
+        word = "damage: partial redraw" if gapi == "vulkan" else "damage: repainting"
+        check("a typed character is a partial frame of the client's window",
+                typed.count(word) > 0 and typed.count("damage: full") == 0,
+                f"{typed.count(word)} partial, {typed.count('damage: full')} full "
+                f"({rc.SERVER_LOG})")
+
+        # The rest goes into the middle of the text: each new glyph lands inside a box the label
+        # already fills, so a repaint that only followed the box would have nothing to go on.
+        s.ok("input", window=name, native=True, events=[
+            {"event": "KeyPressed", "keycode": "LEFT"}, {"event": "KeyReleased", "keycode": "LEFT"},
+            {"event": "KeyPressed", "keycode": "LEFT"}, {"event": "KeyReleased", "keycode": "LEFT"},
+        ])
+        vpump(s, name, 0.4)
+        s.ok("window", window=name, op="plane-hold", ms=700)
+        type_keys(s, name, "k")
+        vpump(s, name, 0.4)
+
         for ch in "xyz":
             s.ok("window", window=name, op="plane-hold", ms=700)
             type_keys(s, name, ch)
@@ -404,6 +429,8 @@ def main():
     # client hides its frame counter so that its scene can be still.
     os.environ["XL_FLAT_QUEUE"] = "1"
     os.environ["XL_HIDE_FPS"] = "1"
+    os.environ["XL_VK_DAMAGE_LOG"] = "1"
+    os.environ["XL_SOFT_DAMAGE_LOG"] = "1"
 
     for gapi in gapis:
         run(server_bin, client_bin, gapi)

@@ -89,6 +89,9 @@ public:
 protected:
 	struct ImageState {
 		Vector<DamageEntry> snapshot;
+		// Where the always-dirty elements were: an element excluded from the comparison still
+		// leaves its old pixels behind when it moves or shrinks, so the next diff damages this too.
+		Vector<Rect> alwaysDirty;
 		bool valid = false;
 	};
 

@@ -81,6 +81,8 @@ DeferredRequest::DeferredRequest(const Rc<FontComponent> &ext, const Vector<Font
 
 	for (uint32_t i = 0; i < req.size(); ++i) {
 		faces.emplace_back(req[i].object);
+		libraries.emplace_back(
+				req[i].library ? req[i].library : Rc<FontLibrary>(ext->getLibrary()));
 		for (auto &it : req[i].chars) { fontRequests.emplace_back(i, it); }
 	}
 }
@@ -112,7 +114,7 @@ void DeferredRequest::runThread() {
 		}
 
 		if (!threadFaces[v.first]) {
-			threadFaces[v.first] = ext->getLibrary()->makeThreadHandle(faces[v.first]);
+			threadFaces[v.first] = libraries[v.first]->makeThreadHandle(faces[v.first]);
 		}
 
 		if (onRender) {

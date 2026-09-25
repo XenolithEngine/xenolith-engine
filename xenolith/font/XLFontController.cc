@@ -802,14 +802,15 @@ void FontController::flushPendingGlyphs(AppThread *app) {
 				if (lb == objects.end()) {
 					auto req = iit->getRequiredChars();
 					if (!req.empty()) {
-						objects.emplace_back(
-								FontUpdateRequest{iit, sp::move(req), it.second->isPersistent()});
+						objects.emplace_back(FontUpdateRequest{iit, sp::move(req),
+							it.second->isPersistent(), _library});
 					}
 				} else if (lb != objects.end() && lb->object != iit) {
 					auto req = iit->getRequiredChars();
 					if (!req.empty()) {
 						objects.emplace(lb,
-								FontUpdateRequest{iit, sp::move(req), it.second->isPersistent()});
+								FontUpdateRequest{iit, sp::move(req), it.second->isPersistent(),
+									_library});
 					}
 				}
 			}
