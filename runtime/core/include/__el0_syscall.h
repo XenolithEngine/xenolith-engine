@@ -335,6 +335,11 @@ SPRT_FORCEINLINE long __el0_sched_yield(void) {
 	return __sprt_svc0(__SPRT_SYSCALL_sched_yield);
 }
 
+// Linux's return: the bytes of mask written (8), not 0.
+SPRT_FORCEINLINE long __el0_sched_getaffinity(int __pid, __SPRT_ID(size_t) __len, void *__mask) {
+	return __sprt_svc3(__SPRT_SYSCALL_sched_getaffinity, __pid, (long)__len, (long)__mask);
+}
+
 // --- exit -------------------------------------------------------------------
 //
 // Answered by the trap handler itself, before the dispatcher: they have to

@@ -29,7 +29,7 @@
 #include <sprt/cxx/atomic>
 #include <stdint.h>
 
-#if SPRT_EMBOX
+#if SPRT_EMBOX_ANY
 
 #include <termios.h> // the saved console state (see _uartSavedTermios)
 
@@ -150,6 +150,6 @@ protected:
 
 } // namespace sprt::window
 
-#endif // SPRT_EMBOX
+#endif // SPRT_EMBOX_ANY
 
 #endif // RUNTIME_WINDOW_EMBOX_SPRTWINEMBOXWINDOW_H_

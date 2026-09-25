@@ -25,7 +25,7 @@
 #include "XLCoreInfo.h"
 #include "XLCoreDevice.h"
 #include "XLCoreDeviceQueue.h"
-#if !SPRT_WASM && !SPRT_HOSTED_RTOS
+#if !SPRT_WASM && !SPRT_HOSTED_RTOS && !SPRT_EMBOX_USER
 #include "SPIRV-Reflect/spirv_reflect.h"
 #endif
 
@@ -299,9 +299,9 @@ void CommandBuffer::bindFramebuffer(Framebuffer *fb) {
 }
 
 String Shader::inspectShader(SpanView<uint32_t> data) {
-#if SPRT_WASM || SPRT_HOSTED_RTOS
+#if SPRT_WASM || SPRT_HOSTED_RTOS || SPRT_EMBOX_USER
 	(void)data;
-	return String(); // no SPIR-V reflection on wasm (WGSL) or NuttX (soft rasterizer)
+	return String(); // no SPIR-V reflection on wasm (WGSL), NuttX or Embox EL0 (soft rasterizer)
 #else
 	SpvReflectShaderModule shader;
 

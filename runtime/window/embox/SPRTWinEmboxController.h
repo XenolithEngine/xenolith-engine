@@ -25,7 +25,7 @@
 
 #include <sprt/runtime/window/controller.h>
 
-#if SPRT_EMBOX
+#if SPRT_EMBOX_ANY
 
 namespace sprt::window {
 
@@ -53,6 +53,6 @@ protected:
 
 } // namespace sprt::window
 
-#endif // SPRT_EMBOX
+#endif // SPRT_EMBOX_ANY
 
 #endif // RUNTIME_WINDOW_EMBOX_SPRTWINEMBOXCONTROLLER_H_

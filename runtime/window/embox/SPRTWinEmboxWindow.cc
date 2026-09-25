@@ -22,7 +22,7 @@
 
 #include "SPRTWinEmboxWindow.h"
 
-#if SPRT_EMBOX
+#if SPRT_EMBOX_ANY
 
 #include "SPRTWinEmboxController.h"
 #include <sprt/runtime/log.h>
@@ -584,7 +584,7 @@ void EmboxWindow::uartInputLoop() {
 			uartFlushSequence(now);
 		}
 		uartExpireHeld(now);
-		::usleep(static_cast<useconds_t>(s_uartPollUs / 4));
+		::usleep(unsigned(s_uartPollUs / 4)); // no useconds_t in the sprt libc (EL0)
 	}
 	uartPostCancel();
 }
@@ -835,4 +835,4 @@ void EmboxWindow::uartPostCancel() {
 
 } // namespace sprt::window
 
-#endif // SPRT_EMBOX
+#endif // SPRT_EMBOX_ANY

@@ -25,6 +25,6 @@
 ///@ SP_EXCLUDE
  */
 
-#if !SPRT_WASM && !SPRT_HOSTED_RTOS
+#if !SPRT_WASM && !SPRT_HOSTED_RTOS && !SPRT_EMBOX_USER
 #include "SPIRV-Reflect/spirv_reflect.cc"
 #endif

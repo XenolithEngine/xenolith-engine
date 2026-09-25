@@ -22,7 +22,7 @@
 
 #include "SPRTWinEmboxController.h"
 
-#if SPRT_EMBOX
+#if SPRT_EMBOX_ANY
 
 #include "SPRTWinEmboxWindow.h"
 #include <sprt/runtime/window/context.h>
@@ -148,4 +148,4 @@ int EmboxContextController::run(NotNull<ContextContainer> container) {
 
 } // namespace sprt::window
 
-#endif // SPRT_EMBOX
+#endif // SPRT_EMBOX_ANY

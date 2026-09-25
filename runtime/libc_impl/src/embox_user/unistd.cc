@@ -118,10 +118,15 @@ extern "C" long sysconf(int name) __SPRT_NOEXCEPT {
 	switch (name) {
 	case __SPRT_SC_PAGESIZE: return 4'096; // MMU_PAGE_SIZE, 4 KiB granule (K1)
 	case __SPRT_SC_NPROCESSORS_CONF:
-	case __SPRT_SC_NPROCESSORS_ONLN:
-		// Embox runs the aarch64/qemu and Pi 4 templates single-core. When SMP
-		// arrives this has to come from the kernel, not from here.
-		return 1;
+	case __SPRT_SC_NPROCESSORS_ONLN: {
+		// The cores the kernel has started, as musl counts them: the bits of
+		// the affinity mask. One if the kernel cannot say.
+		unsigned long mask = 0;
+		if (__el0_is_err(__el0_sched_getaffinity(0, sizeof(mask), &mask)) || mask == 0) {
+			return 1;
+		}
+		return __builtin_popcountl(mask);
+	}
 	case __SPRT_SC_OPEN_MAX: return (long)sprt::MAX_FDS;
 	default: return -1;
 	}
