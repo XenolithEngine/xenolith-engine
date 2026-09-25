@@ -26,6 +26,10 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
 VertexData::Bounds VertexData::getBounds(const core::DataAtlas *atlas) const {
+	if (hasLayoutBounds()) {
+		return Bounds{layoutBounds, 0};
+	}
+
 	const uint64_t atlasSerial = atlas ? atlas->getSerial() : 0;
 	if (cachedBoundsGeneration == identity.generation && cachedBoundsAtlas == atlasSerial) {
 		return cachedBounds;
@@ -353,13 +357,13 @@ VertexArray::Quad VertexArray::getQuad(size_t firstVertex, size_t firstIndex) {
 }
 
 void VertexArray::updateColor(const Color4F &color) {
-	mutate();
+	mutateColor();
 
 	for (auto &it : _data->data) { it.color = color; }
 }
 
 void VertexArray::updateColor(const Color4F &color, const Vector<ColorMask> &mask) {
-	mutate();
+	mutateColor();
 
 	auto count = sprt::min(_data->data.size(), mask.size());
 
@@ -392,7 +396,7 @@ void VertexArray::updateColor(const Color4F &color, const Vector<ColorMask> &mas
 }
 
 void VertexArray::updateColorQuads(const Color4F &color, const Vector<ColorMask> &mask) {
-	mutate();
+	mutateColor();
 
 	auto quadsCount = _data->data.size() / 4;
 	auto count = sprt::min(quadsCount, mask.size());
@@ -444,6 +448,22 @@ void VertexArray::copy() {
 		data->indexes = _data->indexes;
 		_data = data;
 		_copyOnWrite = false;
+	}
+}
+
+void VertexArray::setLayoutBounds(const Rect &r) {
+	// not mutate(): supplying bounds is not a content change
+	_data->layoutBounds = r;
+	_data->layoutBoundsGeneration = _data->identity.generation;
+}
+
+void VertexArray::mutateColor() {
+	// a colour change moves no vertex, so the layout box carries over to the new generation
+	const bool bounded = _data->hasLayoutBounds();
+	const auto box = _data->layoutBounds;
+	mutate();
+	if (bounded) {
+		setLayoutBounds(box);
 	}
 }
 

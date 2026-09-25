@@ -90,6 +90,10 @@ public:
 	thread may change what is drawn. The heartbeat asks only for a scene that changed or moves. */
 	void handleAppUpdate(bool wakeup);
 
+	// Frames this director asked its window for, since it was created: what a check reads to tell
+	// a scene that settles from one that keeps asking.
+	uint64_t getFrameRequestCount() const { return _frameRequests; }
+
 	void update(uint64_t t);
 
 	// Can be nullptr to disconnect director from window
@@ -186,6 +190,7 @@ protected:
 	uint64_t _drawnChanges = 0;
 	uint64_t _declinedChanges = maxOf<uint64_t>();
 	uint32_t _frameBuildSerial = 0;
+	uint64_t _frameRequests = 0;
 	bool _frameRequested = false;
 	bool _frameBuilding = false;
 	bool _checkScheduled = false;

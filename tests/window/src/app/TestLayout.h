@@ -95,8 +95,10 @@ protected:
 	virtual void registerCommands() { }
 
 	// Register one, as "<test>.<name>" so two layouts can not collide. `description` is what the
-	// `commands` protocol command reports.
-	void addCommand(StringView name, StringView description, CommandHandler &&);
+	// `commands` protocol command reports. `immediate` answers as soon as the handler returns,
+	// with no settle and no frame of its own - for a test that counts the frames a change asks for.
+	void addCommand(StringView name, StringView description, CommandHandler &&,
+			bool immediate = false);
 
 	// Attach a ui::StyleSystem carrying this stylesheet. Note that a stylesheet alone changes
 	// nothing: a ui::StyleResolver somewhere below is what applies it.

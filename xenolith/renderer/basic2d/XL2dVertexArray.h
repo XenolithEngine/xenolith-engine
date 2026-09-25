@@ -87,8 +87,15 @@ public:
 	size_t getVertexCount() const;
 	size_t getIndexCount() const;
 
+	// The model-space box of the data as its producer placed it, so damage tracking does not read
+	// the vertexes. Call after the last change of geometry: any mutator but a colour one drops it.
+	void setLayoutBounds(const Rect &);
+
 protected:
 	void copy();
+
+	// mutate() for a change that moves no vertex: keeps the layout box
+	void mutateColor();
 
 	// Prologue of every mutator: either detach a shared set (new object -> new id) or bump the
 	// generation of the set we own exclusively. Mutating in place without the bump would be

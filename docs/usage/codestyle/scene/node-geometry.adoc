@@ -89,7 +89,11 @@ callback. Call `markSceneChanged()` yourself only for what the node draws from
 but cannot see changing: a resource edited in place (a `LinearGradient` updated
 with `updateWithData`). Changes made while a frame is being built are part of
 that frame and ask for nothing, so a layout pass that moves nodes does not keep
-the window drawing.
+the window drawing. A change made after the frame — a task the visit posted —
+asks for one more, and settles only if that task writes the value the node
+already has: a setter with an equal value changes nothing.
+`tests/window/frame-request-check.py` holds every kind of change to a finite
+number of asks.
 
 The order in which these phases run, what flags flow parent→child, and how a
 descendant's change reaches an ancestor are all described once in

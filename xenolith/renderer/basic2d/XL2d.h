@@ -123,7 +123,16 @@ struct alignas(16) VertexData : public Ref {
 	Vector<uint32_t> indexes;
 	DataIdentity identity;
 
+	// The layout box when the producer supplied one for this generation
+	// (VertexArray::setLayoutBounds), otherwise the vertexes, glyphs resolved through `atlas`.
 	Bounds getBounds(const core::DataAtlas *atlas) const;
+
+	bool hasLayoutBounds() const { return layoutBoundsGeneration == identity.generation; }
+
+	// A box the producer computed where it placed the data, valid for one generation. A superset is
+	// fine; the vertexes are not read while it holds.
+	Rect layoutBounds;
+	uint32_t layoutBoundsGeneration = maxOf<uint32_t>();
 
 	// The last getBounds, valid for the generation and the atlas (DataAtlas::getSerial, 0 - none)
 	// it was computed for.

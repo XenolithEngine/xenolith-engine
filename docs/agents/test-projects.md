@@ -56,7 +56,18 @@
   `ReadyForNextFrame`, `remote` op `sessions[].readyRequests`), an animating one draw, and a label
   changed by an `AppNotify` get a first frame that already has its glyphs — the server rasterizes
   slowly there (`XL_FONT_GLYPH_DELAY_US`). A check that steps a window with `frame window=` hides
-  exactly these failures.
+  exactly these failures. A local window has its own: `tests/window/frame-request-check.py` runs the
+  frame-request stand (`XL_FRAME_REQUEST_TEST`) and, per kind of change made between frames - a move,
+  a set to the same value, new glyphs, a relayout inside the visit, a task the visit posts, a burst,
+  a finite animation - requires the change drawn and the director's asks (`frame` with count 0
+  reports `requested`) to stop within a few. It never steps the window.
+- Changed how a label's damage box is found (`VertexData::getBounds`, `VertexArray::setLayoutBounds`,
+  `Label::setBoundsFromLayout`, `Label_writeQuads`) → `tests/window/label-bounds-check.py`. It
+  prints, for grids of short and long labels, what writing a label's quads costs against reading
+  its box from them through the atlas and from the layout, and how much larger the layout box is;
+  it checks that the layout box holds every glyph, and runs `damage-check.py` whole with
+  `XL_LABEL_LAYOUT_BOUNDS=0` - the box from the quads, which is not the default locally but is how a
+  server measures a remote client's labels. The times are for scale in a debug build.
 - Changed partial redraw or swapchain damage (`SwapchainDamage`, a queue pass's
   `computeRedrawArea`, the headless swapchains, `DamageCollector`, `VertexData::getBounds`) →
   `tests/window/damage-check.py`. It runs the damage stand (`XL_DAMAGE_TEST`) on the flat queue, in

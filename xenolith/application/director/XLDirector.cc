@@ -462,6 +462,7 @@ void Director::updateFrameRequest(bool force) {
 
 void Director::requestFrame() {
 	_frameRequested = true;
+	++_frameRequests;
 	_server->setReadyForNextFrame();
 }
 

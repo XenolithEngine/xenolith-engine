@@ -128,6 +128,7 @@ COST = {
     "window/remote-example-check.py": 24,
     "window/remote-window-check.py": 20, "window/virtual-window-check.py": 88,
     "window/damage-check.py": 21, "window/remote-render-check.py": 33,
+    "window/frame-request-check.py": 34, "window/label-bounds-check.py": 27,
     "gittest": 19, "computetest": 6, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
     "uilayouttest": 1, "particlestest": 1,
 }
