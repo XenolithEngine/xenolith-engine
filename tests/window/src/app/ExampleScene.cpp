@@ -451,6 +451,9 @@ void ExampleScene::registerCommands() {
 			if (auto client = it->getRenderClient()) {
 				v.setInteger(int64_t(client->getLateFrameCount()), "lateFrames");
 			}
+			// ReadyForNextFrame messages the client sent, and those answered with FrameDeclined.
+			v.setInteger(int64_t(it->getFrameRequestCount()), "readyRequests");
+			v.setInteger(int64_t(it->getDeclinedFrameCount()), "readyDeclined");
 			auto &names = v.emplace("windows");
 			names.setArray(Value::ArrayType());
 			if (objs) {

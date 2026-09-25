@@ -619,6 +619,16 @@ glyph through the atlas the frame draws it with, as the shader places it
 signature, so its arrival repaints the label and nothing else. `tests/window/remote-render-check.py`
 runs `testapp` as a client of a `testapp` server.
 
+A client asks for its frames itself, as a local window does. Its director asks when the scene
+changed since the last frame (see `markSceneChanged` in
+[node-geometry.adoc](../scene/node-geometry.adoc)) or moves (actions, input), and on every wakeup of
+the application thread. One request is in flight at a time: `RemoteWindow` sends no second
+`ReadyForNextFrame` until the `AcquireFrame` comes, and the server answers a request for a window
+the session may not draw into with `FrameDeclined`. A frame waits on the server for the glyphs it
+uses: the client's batch dependency stays pending until the server's `AtlasReady`, so its id rides
+the frame and the server holds the frame on its own copy — the first frame of new text is already
+complete.
+
 The inspector reads a plane with `window op=plane`
 (`serial`, `slot`, `pinned`, `imageCount`, `published`), holds one like a slow compositor with
 `op=plane-hold {ms}`, and renders an offscreen frame with `op=offscreen`.

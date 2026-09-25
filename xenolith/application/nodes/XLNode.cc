@@ -196,6 +196,12 @@ Node::~Node() {
 
 bool Node::init() { return true; }
 
+void Node::markSceneChanged() {
+	if (_scene) {
+		_scene->markChanged();
+	}
+}
+
 void Node::setLocalZOrder(ZOrder z) {
 	if (_zOrder == z) {
 		return;
@@ -213,7 +219,7 @@ void Node::setScale(float scale) {
 	}
 
 	_scale.x = _scale.y = _scale.z = scale;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 void Node::setScale(const Vec2 &scale) {
@@ -223,7 +229,7 @@ void Node::setScale(const Vec2 &scale) {
 
 	_scale.x = scale.x;
 	_scale.y = scale.y;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 void Node::setScale(const Vec3 &scale) {
@@ -232,7 +238,7 @@ void Node::setScale(const Vec3 &scale) {
 	}
 
 	_scale = scale;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 void Node::setScaleX(float scaleX) {
@@ -241,7 +247,7 @@ void Node::setScaleX(float scaleX) {
 	}
 
 	_scale.x = scaleX;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 void Node::setScaleY(float scaleY) {
@@ -250,7 +256,7 @@ void Node::setScaleY(float scaleY) {
 	}
 
 	_scale.y = scaleY;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 void Node::setScaleZ(float scaleZ) {
@@ -259,7 +265,7 @@ void Node::setScaleZ(float scaleZ) {
 	}
 
 	_scale.z = scaleZ;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 void Node::setPosition(const Vec2 &position) {
@@ -269,7 +275,7 @@ void Node::setPosition(const Vec2 &position) {
 
 	_position.x = position.x;
 	_position.y = position.y;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 void Node::setPosition(const Vec3 &position) {
@@ -278,7 +284,7 @@ void Node::setPosition(const Vec3 &position) {
 	}
 
 	_position = position;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 void Node::setPositionX(float value) {
@@ -287,7 +293,7 @@ void Node::setPositionX(float value) {
 	}
 
 	_position.x = value;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 void Node::setPositionY(float value) {
@@ -296,7 +302,7 @@ void Node::setPositionY(float value) {
 	}
 
 	_position.y = value;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 void Node::setPositionZ(float value) {
@@ -305,7 +311,7 @@ void Node::setPositionZ(float value) {
 	}
 
 	_position.z = value;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 void Node::setSkewX(float skewX) {
@@ -314,7 +320,7 @@ void Node::setSkewX(float skewX) {
 	}
 
 	_skew.x = skewX;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 void Node::setSkewY(float skewY) {
@@ -323,7 +329,7 @@ void Node::setSkewY(float skewY) {
 	}
 
 	_skew.y = skewY;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 void Node::setAnchorPoint(const Vec2 &point) {
@@ -332,7 +338,7 @@ void Node::setAnchorPoint(const Vec2 &point) {
 	}
 
 	_anchorPoint = point;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 void Node::setContentSize(const Size2 &size) {
@@ -341,7 +347,8 @@ void Node::setContentSize(const Size2 &size) {
 	}
 
 	_contentSize = size;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = _contentSizeDirty = true;
+	_contentSizeDirty = true;
+	markTransformDirty();
 
 	if (_parent) {
 		_parent->notifyChildContentSizeDirty(this);
@@ -354,7 +361,10 @@ void Node::setVisible(bool visible) {
 	}
 	_visible = visible;
 	if (_visible) {
-		_contentSizeDirty = _transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+		_contentSizeDirty = true;
+		markTransformDirty();
+	} else {
+		markSceneChanged(); // hiding flips no flag, but the next frame must not draw it
 	}
 }
 
@@ -370,7 +380,7 @@ void Node::setRotation(float rotation) {
 	}
 
 	_rotation = Vec3(0.0f, 0.0f, rotation);
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 	_rotationQuat = Quaternion(_rotation);
 }
 
@@ -380,7 +390,7 @@ void Node::setRotation(const Vec3 &rotation) {
 	}
 
 	_rotation = rotation;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 	_rotationQuat = Quaternion(_rotation);
 }
 
@@ -391,7 +401,7 @@ void Node::setRotation(const Quaternion &quat) {
 
 	_rotationQuat = quat;
 	_rotation = _rotationQuat.toEulerAngles();
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 // Push the AddToFrameStack systems of one node, the way wrapVisit does, recording where they went
@@ -579,6 +589,7 @@ void Node::markChildrenStructureDirty() {
 	++_childrenVersion;
 	// the child list is an input of its children's selectors - see getChildrenStyleVersion()
 	++_childrenStyleVersion;
+	markSceneChanged();
 	if (!_running) {
 		// nothing has been resolved or laid out yet - building a scene must stay O(n)
 		return;
@@ -604,7 +615,7 @@ void Node::setParent(Node *parent) {
 		return;
 	}
 	_parent = parent;
-	_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+	markTransformDirty();
 }
 
 void Node::removeFromParent(bool cleanup) {
@@ -708,6 +719,7 @@ void Node::runActionObject(Action *action) {
 
 	if (_actionManager) {
 		_actionManager->addAction(action, this, !_running);
+		markSceneChanged();
 	} else {
 		if (!_actionStorage) {
 			_actionStorage = Rc<ActionStorage>::alloc();
@@ -790,6 +802,7 @@ void Node::markStyleIdentityDirty() {
 	if (_parent) {
 		++_parent->_childrenStyleVersion;
 	}
+	markSceneChanged();
 }
 
 void Node::setName(StringView str) {
@@ -1595,6 +1608,7 @@ void Node::setNodeToParentTransform(const Mat4 &transform) {
 	_transform = transform;
 	_transformCacheDirty = false;
 	_transformDirty = true;
+	markSceneChanged();
 }
 
 const Mat4 &Node::getParentToNodeTransform() const {
@@ -1645,6 +1659,7 @@ void Node::setCascadeOpacityEnabled(bool cascadeOpacityEnabled) {
 	}
 
 	_cascadeOpacityEnabled = cascadeOpacityEnabled;
+	markSceneChanged();
 	if (_cascadeOpacityEnabled) {
 		updateCascadeOpacity();
 	} else {
@@ -1658,6 +1673,7 @@ void Node::setCascadeColorEnabled(bool cascadeColorEnabled) {
 	}
 
 	_cascadeColorEnabled = cascadeColorEnabled;
+	markSceneChanged();
 	if (_cascadeColorEnabled) {
 		updateCascadeColor();
 	} else {
@@ -1668,6 +1684,7 @@ void Node::setCascadeColorEnabled(bool cascadeColorEnabled) {
 void Node::setOpacity(float opacity) {
 	_displayedColor.a = _realColor.a = opacity;
 	updateCascadeOpacity();
+	markSceneChanged();
 }
 
 void Node::setOpacity(OpacityValue value) { setOpacity(value.get() / 255.0f); }
@@ -1694,6 +1711,7 @@ void Node::setColor(const Color4F &color, bool withOpacity) {
 
 		updateCascadeColor();
 	}
+	markSceneChanged();
 }
 
 void Node::updateDisplayedColor(const Color4F &parentColor) {

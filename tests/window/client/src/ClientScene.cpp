@@ -173,8 +173,13 @@ void ClientScene::handleContentSizeDirty() {
 	}
 }
 
+// The scene an AppNotify { label } is applied to; the handler outlives scenes.
+static ClientScene *s_messageScene = nullptr;
+
 void ClientScene::handleEnter(Scene *scene) {
 	Scene2d::handleEnter(scene);
+
+	s_messageScene = this;
 
 	// Проверяем, что система действий (runAction) работает в контексте удалённого клиента.
 	// Квадрат бесконечно пульсирует масштабом. Пока действие активно,
@@ -203,6 +208,19 @@ void ClientScene::startAnimation() {
 	}
 }
 
+void ClientScene::handleExit() {
+	if (s_messageScene == this) {
+		s_messageScene = nullptr;
+	}
+	Scene2d::handleExit();
+}
+
+void ClientScene::setMessageLabel(StringView str) {
+	if (_label) {
+		_label->setString(str);
+	}
+}
+
 void ClientScene::stopAnimation() {
 	if (_square && _animStarted) {
 		_animStarted = false;
@@ -223,6 +241,9 @@ static Vector<Value> s_appMessageLog;
 
 void installAppMessageLog(ClientContext *ctx) {
 	ctx->setAppMessageHandler([](Value &&val, Rc<AppReply> &&reply) {
+		if (!reply && s_messageScene && val.isString("label")) {
+			s_messageScene->setMessageLabel(val.getString("label"));
+		}
 		if (s_appMessageLog.size() >= 32) {
 			s_appMessageLog.erase(s_appMessageLog.begin());
 		}
@@ -448,6 +469,24 @@ void ClientScene::registerCommands() {
 		auto &messages = result.emplace("appMessages");
 		messages.setArray(Value::ArrayType());
 		for (auto &it : getAppMessageLog()) { messages.addValue(it); }
+		result.setString(_label ? _label->getString8() : StringView(), "label");
+		done(sp::move(result));
+	});
+
+	/* A ReadyForNextFrame for any window id, straight onto the wire: the server declines one for a
+	window this session may not draw into. */
+	inspector::addCommand(content, "client-ready", "Ask the server for a frame of { window }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		Value result;
+		auto thread =
+				_director ? dynamic_cast<ClientAppThread *>(_director->getApplication()) : nullptr;
+		auto conn = thread ? thread->getConnection() : nullptr;
+		result.setBool(conn != nullptr, "ok");
+		if (conn) {
+			conn->sendCborMessage(remote::Domain::Window,
+					toInt(remote::WindowCode::ReadyForNextFrame), Value(req.getInteger("window")));
+		}
 		done(sp::move(result));
 	});
 

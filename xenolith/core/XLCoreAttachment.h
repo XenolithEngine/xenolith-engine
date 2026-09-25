@@ -56,6 +56,10 @@ class SP_PUBLIC DependencyEvent final : public Ref {
 public:
 	using QueueSet = mem_std::Set<Rc<Queue>>;
 
+	// No local queue signals such an event: a peer's reply does, through signal(nullptr, success).
+	// It starts out pending, where an event built with an empty queue set starts out signalled.
+	struct ExternalSignal { };
+
 	static uint32_t GetNextId();
 
 	// Set the high-bit mask added to every subsequently-generated id (0 = server/local, 0x80000000 =
@@ -66,6 +70,7 @@ public:
 
 	DependencyEvent(QueueSet &&, StringView);
 	DependencyEvent(InitializerList<Rc<Queue>> &&, StringView);
+	DependencyEvent(ExternalSignal, StringView);
 
 	uint32_t getId() const { return _id; }
 
@@ -96,8 +101,7 @@ protected:
 	StringView _tag;
 	bool _success = true;
 	// Mirrors "_queues is empty", published for readers off the signalling thread. An event built
-	// with no queues starts out signalled - that is how a client-side mirror event (nothing signals
-	// it locally, the server gates on its own copy) reads as already satisfied.
+	// with no queues starts out signalled, except an ExternalSignal one, which waits for its peer.
 	sprt::atomic<bool> _signaled;
 	Function<void()> _signalCallback;
 };

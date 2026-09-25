@@ -25,7 +25,9 @@ Without --gapi both backends run, one server each (testapp must be built with SO
 
 Prints "N checks, M failures"; exit status is the result.
 """
-import importlib.util, os, secrets, sys, time
+import base64, importlib.util, io, os, secrets, sys, time
+
+from PIL import Image
 
 _here = os.path.dirname(os.path.abspath(__file__))
 _spec = importlib.util.spec_from_file_location("remote_check",
@@ -34,6 +36,12 @@ rc = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(rc)
 
 check = rc.check
+
+# Per glyph, on the server's rasterizer: enough that a frame drawn before its glyphs is caught every
+# time (without gating, 10 ms failed 6 runs of 6, none at all 5 of 6). Not more: the delay sleeps
+# the server's workers, and at 50 ms a loaded machine sometimes lost the virtual window's pipelines
+# for good (see os-examples-m6.2-plan.md).
+GLYPH_DELAY_US = os.environ.get("XL_CHECK_GLYPH_DELAY_US", "10000")
 
 
 def windows(session):
@@ -77,14 +85,41 @@ def state_of(session, window=None):
     return (session.ok("window", op="state", **kw) or {}).get("state", "")
 
 
-def vpump(s, name, seconds):
-    """pump(), stepping the virtual window as well: a client whose scene is idle does not ask for
-    frames by itself, and here nothing animates it."""
-    deadline = time.monotonic() + seconds
+def settle(s, name, quiet=1.0, timeout=10.0):
+    """Wait until the window has presented nothing new for `quiet` seconds; the client's frames
+    come by themselves, the host is only stepped."""
+    last, since = presented(s, name), time.monotonic()
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        s.ok("frame", count=1)
-        s.ok("frame", window=name, count=1)
-        time.sleep(0.1)
+        pump(s, 0.1)
+        now = presented(s, name)
+        if now != last:
+            last, since = now, time.monotonic()
+        elif time.monotonic() - since >= quiet:
+            return True
+    return False
+
+
+def session_counters(s):
+    sessions = (s.invoke("remote") or {}).get("sessions", [])
+    first = sessions[0] if sessions else {}
+    return first.get("id"), first.get("readyRequests", 0), first.get("readyDeclined", 0)
+
+
+def raw_shot(s, name):
+    """The window's published frame, taken without asking the window for a frame."""
+    shot = s.ok("screenshot", window=name) or {}
+    return shot.get("data") or ""
+
+
+def dark_pixels(data):
+    """Pixels of the client's black label text: nothing else in its scene is that dark."""
+    if not (isinstance(data, str) and data.startswith("BASE64:")):
+        return 0
+    raw = data[len("BASE64:"):]
+    img = Image.open(io.BytesIO(base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))))
+    px = img.convert("RGB").tobytes()
+    return sum(1 for i in range(0, len(px), 3) if px[i] < 60 and px[i + 1] < 60 and px[i + 2] < 60)
 
 
 def plane(s, name):
@@ -110,6 +145,8 @@ def wait_exit(proc, timeout):
 
 def run(server_bin, client_bin, gapi):
     pid = os.getpid()
+    # One server log per backend: the second run would otherwise overwrite the first.
+    rc.SERVER_LOG = f"/tmp/xl-remote-check-server-{pid}-{gapi}.log"
     sock = f"/tmp/xl-virtual-window-{gapi}-{pid}.sock"
     sock_a = f"/tmp/xl-virtual-window-a-{gapi}-{pid}.sock"
     share = f"shm:/dev/shm/xl-virtual-window-{gapi}-{pid}"
@@ -121,7 +158,8 @@ def run(server_bin, client_bin, gapi):
         print(f"--- gapi: {gapi}")
         # No --keep-running: the host window is what keeps a window manager alive, and closing it
         # must end the process even with virtual windows left.
-        server = rc.start_server(server_bin, sock, share, token, gapi=gapi)
+        server = rc.start_server(server_bin, sock, share, token, gapi=gapi,
+                extra_env={"XL_FONT_GLYPH_DELAY_US": GLYPH_DELAY_US})
         s = rc.Session(sock)
         s.ok("frame", count=3)
         status = rc.wait_for(s, lambda st: st.get("listening"))
@@ -300,16 +338,77 @@ def run(server_bin, client_bin, gapi):
         # scratch - the two pictures must agree. The square stops first, so that the scene is still
         # when both are taken.
         ca.invoke("client-animation", op="stop")
-        vpump(s, name, 1.0)
+        check("the stopped client settles without a kick", settle(s, name), "frames kept coming")
+
+        # --- the client asks for its frames itself ---------------------------------------------
+        #
+        # Nothing below steps the client's window: only the host is pumped. An idle client is quiet,
+        # an animating one draws, and a change made from outside the client's own frames - an
+        # AppNotify handled between frames - gets its frame. The server rasterizes glyphs slowly
+        # here (XL_FONT_GLYPH_DELAY_US), so a frame drawn before its glyphs would show the text with
+        # holes; the first frame must already be the complete picture.
+        sid, req0, _ = session_counters(s)
+        p0 = presented(s, name)
+        pump(s, 3.0)
+        _, req1, _ = session_counters(s)
+        check("an idle client draws nothing and asks for nothing",
+                presented(s, name) == p0 and req1 == req0,
+                f"presented {p0} -> {presented(s, name)}, requests {req0} -> {req1}")
+
+        ca.ok("render", seconds=2)
+        p0 = presented(s, name)
+        pump(s, 1.0)
+        check("an animating client gets its frames without a kick", presented(s, name) > p0 + 3,
+                f"{p0} -> {presented(s, name)}")
+        settle(s, name)
+
+        before = raw_shot(s, name)
+        _, req0, _ = session_counters(s)
+        p0 = presented(s, name)
+        s.ok("invoke", name="remote-app-notify", args={"session": sid, "value": {"label": "Wqz"}})
+        first = None
+        deadline = time.monotonic() + 10.0
+        while first is None and time.monotonic() < deadline:
+            if presented(s, name) != p0:
+                first = raw_shot(s, name)
+            else:
+                time.sleep(0.02)
+        pump(s, 1.5)
+        later = raw_shot(s, name)
+        _, req1, _ = session_counters(s)
+        label = (ca.invoke("client-state") or {}).get("label")
+        check("a label changed by an AppNotify gets its frame without a kick",
+                first is not None and label == "Wqz", f"label {label!r}")
+        # The label is black text, the only thing that dark in the scene: the glyphs are there when
+        # its pixels are, and complete when the picture does not change once they have all landed.
+        check("and that first frame already has the new glyphs",
+                first is not None and dark_pixels(first) > 500 and first == later
+                        and first != before,
+                f"{dark_pixels(first)} text pixels first, {dark_pixels(later)} later"
+                if first else "no frame")
+        check("the change cost a few requests, not a stream", req1 - req0 <= 3,
+                f"{req1 - req0} requests")
+
+        _, _, dec0 = session_counters(s)
+        ca.invoke("client-ready", window=987654321)
+        pump(s, 0.5)
+        _, _, dec1 = session_counters(s)
+        check("a frame asked for a window the session may not draw is declined", dec1 == dec0 + 1,
+                f"declined {dec0} -> {dec1}")
+        p0 = presented(s, name)
+        s.ok("invoke", name="remote-app-notify", args={"session": sid, "value": {"label": "REMOTE"}})
+        pump(s, 1.5)
+        check("and the client still gets frames afterwards", presented(s, name) > p0,
+                f"{p0} -> {presented(s, name)}")
 
         # The client's data identities cross the wire, so a character typed on a still scene is a
         # partial frame on the server. The first one brings every slot up to the same picture (the
         # held frames above left them with older ones); the second must then be partial in each.
         type_keys(s, name, "w")
-        vpump(s, name, 1.0)
+        pump(s, 1.0)
         mark = len(open(rc.SERVER_LOG, errors="replace").read())
         type_keys(s, name, "v")
-        vpump(s, name, 1.0)
+        pump(s, 1.0)
         typed = open(rc.SERVER_LOG, errors="replace").read()[mark:]
         word = "damage: partial redraw" if gapi == "vulkan" else "damage: repainting"
         check("a typed character is a partial frame of the client's window",
@@ -323,26 +422,26 @@ def run(server_bin, client_bin, gapi):
             {"event": "KeyPressed", "keycode": "LEFT"}, {"event": "KeyReleased", "keycode": "LEFT"},
             {"event": "KeyPressed", "keycode": "LEFT"}, {"event": "KeyReleased", "keycode": "LEFT"},
         ])
-        vpump(s, name, 0.4)
+        pump(s, 0.4)
         s.ok("window", window=name, op="plane-hold", ms=700)
         type_keys(s, name, "k")
-        vpump(s, name, 0.4)
+        pump(s, 0.4)
 
         for ch in "xyz":
             s.ok("window", window=name, op="plane-hold", ms=700)
             type_keys(s, name, ch)
-            vpump(s, name, 0.4)
+            pump(s, 0.4)
             s.ok("window", window=name, op="plane-hold", ms=700)
             ca.invoke("client-popup", op="open" if ch != "z" else "close")
-            vpump(s, name, 0.4)
-        vpump(s, name, 1.5)
+            pump(s, 0.4)
+        pump(s, 1.5)
         shot_a = rc.grab(s, window=name)
         size = entry_of(s, name)
         w, h = size.get("width"), size.get("height")
         s.ok("window", window=name, op="resize", width=w + 40, height=h)
-        vpump(s, name, 1.0)
+        pump(s, 1.0)
         s.ok("window", window=name, op="resize", width=w, height=h)
-        vpump(s, name, 1.5)
+        pump(s, 1.5)
         shot_b = rc.grab(s, window=name)
         ca.invoke("client-animation", op="start")
         text = ca.invoke("client-text") or {}

@@ -125,8 +125,9 @@ def check(name, ok, detail=""):
 SERVER_FLAGS = []
 
 
-def start_server(binary, addr, share, token, gapi=None, keep_running=False):
+def start_server(binary, addr, share, token, gapi=None, keep_running=False, extra_env=None):
     env = dict(os.environ)
+    env.update(extra_env or {})
     env["XENOLITH_INSPECTOR_ADDRESS"] = "unix:" + addr
     env["XL_REMOTE_SHARE"] = share
     env["XL_REMOTE_TOKEN"] = token

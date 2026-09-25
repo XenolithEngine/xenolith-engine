@@ -67,6 +67,10 @@ protected:
 	void handleGlyphRequest(BytesView payload);
 	Rc<core::DependencyEvent> getOrCreateDep(uint32_t depId);
 
+	// Every batch is answered, even one that could not be drawn: the client holds its labels' frames
+	// on the batch until then. App thread only.
+	void sendAtlasReady(uint32_t depId, bool ok);
+
 	// A server thread outlives its endpoints, so work completing on other threads hops through it
 	// and checks `_peer` there.
 	AppThread *_thread = nullptr;
@@ -79,6 +83,7 @@ protected:
 	Rc<FontStore> _store;
 	Map<uint32_t, Rc<core::DependencyEvent>>
 			_deps; // depId -> server-local gating event (per-connection)
+	Set<uint64_t> _unknownFonts; // content hashes already reported as missing
 	uint64_t _atlasStableId = 0; // constant wire id pinned to the current atlas image
 };
 

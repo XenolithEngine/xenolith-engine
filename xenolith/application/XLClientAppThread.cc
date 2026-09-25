@@ -578,6 +578,15 @@ void ClientAppThread::performAppUpdate(const UpdateTime &time, bool wakeup) {
 	AppThread::performAppUpdate(time, wakeup);
 
 	pumpConnection();
+
+	/* The windows' tick, as ServerAppThread's per-window listeners give a local window: a wakeup
+	asks for a frame, the heartbeat asks for a scene that changed or moves. A change made while
+	idle schedules its own check (Director::handleSceneChanged); this is what catches the rest. */
+	for (auto &it : _windows) {
+		if (auto dir = dynamic_cast<Director *>(it.second->getRenderClient())) {
+			dir->handleAppUpdate(wakeup);
+		}
+	}
 }
 
 bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView payload) {
@@ -719,6 +728,14 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 				return true;
 			}
 			wIt->second->handleTextInput(remote::deserializeTextInputState(val.getValue(1)));
+			return true;
+		}
+		case remote::WindowCode::FrameDeclined: {
+			auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
+			auto wIt = _windows.find(windowId);
+			if (wIt != _windows.end()) {
+				wIt->second->handleFrameDeclined();
+			}
 			return true;
 		}
 		case remote::WindowCode::WindowGeometryChanged: {
