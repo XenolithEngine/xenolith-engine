@@ -58,14 +58,17 @@ enum class PixelFormat {
 	BGRA8888, // the swapchain format on Linux
 };
 
-// Blend modes of the flat contract. There are exactly two, and they are not configurable:
-// materials pick one through PipelineMaterialInfo.
+// Blend modes of the flat contract. Materials pick Solid or Transparent through
+// PipelineMaterialInfo; a queue with premultiplied output serves Transparent as Premultiplied.
 enum class BlendMode {
 	// blending disabled, plain write
 	Solid,
 	// color = SrcAlpha/OneMinusSrcAlpha (Add), alpha = Zero/One (Add):
 	// destination alpha is preserved and nothing is premultiplied
 	Transparent,
+	// color = SrcAlpha/OneMinusSrcAlpha (Add), alpha = One/OneMinusSrcAlpha (Add): the source is
+	// straight, the result is premultiplied when the destination is
+	Premultiplied,
 };
 
 // Bytes per pixel. Zero only for Undefined, which is how a caller detects an unsupported target.

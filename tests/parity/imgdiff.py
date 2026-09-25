@@ -15,8 +15,12 @@ through as long as it stayed rare.
 solid fills, nearest-filtered axis-aligned sampling, and the two self-comparisons
 (--glyph-paths, --baseline) where a single differing bit means a real defect.
 
+--transparent is for premultiplied output over a transparent clear: the reference must
+have fully transparent pixels (else the clear was not transparent and the alpha channel
+compares nothing), and the summary also reports how many are translucent.
+
 Usage:
-  imgdiff.py REFERENCE ACTUAL [--tolerance N] [--exact] [--out-diff PATH]
+  imgdiff.py REFERENCE ACTUAL [--tolerance N] [--exact] [--transparent] [--out-diff PATH]
 
 Exit status is 0 when the images match within the tolerance, 1 when they do not,
 and 2 when they cannot be compared at all (missing file, size mismatch).
@@ -46,6 +50,8 @@ def main():
             help="largest difference allowed in a single channel (default 1)")
     parser.add_argument("--exact", action="store_true",
             help="require a byte-identical match (tolerance 0)")
+    parser.add_argument("--transparent", action="store_true",
+            help="require a transparent background in the reference, report translucency")
     parser.add_argument("--out-diff", help="write an amplified difference map here")
     args = parser.parse_args()
 
@@ -80,8 +86,22 @@ def main():
         Image.fromarray(amplified, mode="RGB").save(args.out_diff)
 
     # "0 differing pixels of 76 800, max channel delta 0" is the phrasing M0 reported
-    print("%d differing pixels of %d, %d over tolerance %d, max channel delta %d"
+    summary = ("%d differing pixels of %d, %d over tolerance %d, max channel delta %d"
             % (touched, total, offending, tolerance, worst))
+
+    clear = 0
+    if args.transparent:
+        alpha = ref[:, :, 3]
+        clear = int(np.count_nonzero(alpha == 0))
+        translucent = int(np.count_nonzero((alpha > 0) & (alpha < 255)))
+        summary += ", alpha: %d clear, %d translucent" % (clear, translucent)
+
+    print(summary)
+
+    if args.transparent and clear == 0:
+        print("the reference has no transparent pixel: the clear is not transparent",
+                file=sys.stderr)
+        return 1
 
     return 0 if offending == 0 else 1
 

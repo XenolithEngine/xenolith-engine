@@ -247,12 +247,14 @@ struct Loop::Internal final : memory::AllocPool {
 
 		auto h = Rc<DeviceFrameHandle>::create(*loop, *device,
 				renderQueueCompiler->makeRequest(move(input)), 0);
-		if (cb) {
-			h->setCompleteCallback(
-					[cb = sp::move(cb), req = Rc<core::Queue>(req)](FrameHandle &handle) {
-				cb(handle.isValid()); //
-			});
-		}
+		h->setCompleteCallback([compiler = renderQueueCompiler, dev = device, cb = sp::move(cb),
+									   req = Rc<core::Queue>(req)](FrameHandle &handle) {
+			auto success =
+					compiler->completeQueue(*handle.getLoop(), *dev, *req, handle.isValid());
+			if (cb) {
+				cb(success);
+			}
+		});
 
 		h->update(true);
 	}

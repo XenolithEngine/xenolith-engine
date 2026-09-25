@@ -50,6 +50,9 @@ public:
 
 protected:
 	Rc<Allocator> _allocator;
+	// Read from the request at init: an invalidated frame drops its request while workers of the
+	// frame can still ask for a pool.
+	bool _persistentMapping = false;
 	sprt::mutex _mutex;
 	Map<void *, Rc<DeviceMemoryPool>> _memPools;
 };

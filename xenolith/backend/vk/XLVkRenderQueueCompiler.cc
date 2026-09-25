@@ -59,7 +59,9 @@ protected:
 	void runPasses(FrameHandle &frame);
 	void runPipelines(FrameHandle &frame);
 
-	void runLayoutCallback();
+	// The input is ready when both the texture set layouts and the queue's resource are; the step
+	// that comes last, on whichever thread, reports it.
+	void finishInputStep(bool success);
 
 	struct SamplersCompilationData : public Ref {
 		sprt::atomic<uint32_t> samplersInProcess = 0;
@@ -71,12 +73,11 @@ protected:
 
 	Device *_device = nullptr;
 
-	bool _resourceCompiled = false;
-	bool _layoutsCompiled = false;
 	Function<void(bool)> _layoutCallback;
+	sprt::atomic<uint32_t> _inputSteps = 2;
+	sprt::atomic<bool> _inputFailed = false;
 	sprt::atomic<size_t> _layoutsInQueue = 0;
 	sprt::atomic<size_t> _programsInQueue = 0;
-	sprt::atomic<size_t> _pipelinesInQueue = 0;
 	Rc<TransferResource> _resource;
 	Rc<RenderQueueInput> _input;
 	String _targetQueueName;
@@ -159,6 +160,73 @@ auto RenderQueueCompiler::makeRequest(Rc<RenderQueueInput> &&input) -> Rc<FrameR
 	return ret;
 }
 
+bool RenderQueueCompiler::completeQueue(core::Loop &loop, Device &dev, core::Queue &queue,
+		bool valid) const {
+	if (!valid) {
+		log::source().error("RenderQueueCompiler", "Fail to compile render queue ",
+				queue.getName());
+		return false;
+	}
+
+	auto complete = true;
+	for (auto &pit : queue.getPasses()) {
+		if (!pit->impl && pit->pass->getType() != core::PassType::Generic) {
+			log::source().error("RenderQueueCompiler", "Queue ", queue.getName(), ": pass ",
+					pit->key, " is not compiled");
+			complete = false;
+		}
+		for (auto &sit : pit->subpasses) {
+			for (auto &it : sit->graphicPipelines) {
+				if (!it->pipeline) {
+					log::source().error("RenderQueueCompiler", "Queue ", queue.getName(),
+							": graphic pipeline ", it->key, " is not compiled");
+					complete = false;
+				}
+			}
+			for (auto &it : sit->computePipelines) {
+				if (!it->pipeline) {
+					log::source().error("RenderQueueCompiler", "Queue ", queue.getName(),
+							": compute pipeline ", it->key, " is not compiled");
+					complete = false;
+				}
+			}
+		}
+	}
+	if (!complete) {
+		return false;
+	}
+
+	Vector<uint64_t> passIds;
+	auto cache = loop.getFrameCache();
+	for (auto &it : queue.getPasses()) {
+		if (it->impl && it->pass->getType() != core::PassType::Generic) {
+			passIds.emplace_back(it->impl->getIndex());
+			cache->addRenderPass(it->impl->getIndex());
+		}
+	}
+
+	Vector<uint64_t> attachmentIds;
+	for (auto &it : queue.getAttachments()) {
+		if (it->type == core::AttachmentType::Image) {
+			attachmentIds.emplace_back(it->id);
+			cache->addAttachment(it->id);
+		}
+	}
+
+	queue.setCompiled(dev,
+			[loop = Rc<core::Loop>(&loop), passIds = sp::move(passIds),
+					attachmentIds = sp::move(attachmentIds)]() mutable {
+		loop->performOnThread([loop, passIds = sp::move(passIds),
+									  attachmentIds = sp::move(attachmentIds)]() mutable {
+			auto cache = loop->getFrameCache();
+			for (auto &id : passIds) { cache->removeRenderPass(id); }
+			for (auto &id : attachmentIds) { cache->removeAttachment(id); }
+			cache->removeUnreachableFramebuffers();
+		});
+	});
+	return true;
+}
+
 RenderQueueAttachment::~RenderQueueAttachment() { }
 
 auto RenderQueueAttachment::makeFrameHandle(const FrameQueue &handle) -> Rc<AttachmentHandle> {
@@ -193,7 +261,6 @@ void RenderQueueAttachmentHandle::submitInput(FrameQueue &q, Rc<core::Attachment
 		_layoutCallback = sp::move(cb);
 
 		if (_input->queue->getInternalResource()) {
-			_resourceCompiled = false;
 			handle.performInQueue(
 					[this](FrameHandle &frame) -> bool {
 				_resource = Rc<TransferResource>::create(_device->getAllocator(),
@@ -203,14 +270,10 @@ void RenderQueueAttachmentHandle::submitInput(FrameQueue &q, Rc<core::Attachment
 				}
 				return false;
 			},
-					[this](FrameHandle &frame, bool success) {
-				// finalize input receiving
-				_resourceCompiled = true;
-				runLayoutCallback();
-			}, nullptr,
+					[this](FrameHandle &frame, bool success) { finishInputStep(success); }, nullptr,
 					"RenderQueueAttachmentHandle::submitInput _input->queue->getInternalResource");
 		} else {
-			_resourceCompiled = true;
+			finishInputStep(true);
 		}
 
 		runShaders(handle);
@@ -218,12 +281,22 @@ void RenderQueueAttachmentHandle::submitInput(FrameQueue &q, Rc<core::Attachment
 }
 
 void RenderQueueAttachmentHandle::runShaders(FrameHandle &frame) {
-	size_t tasksCount = 0;
 	Vector<core::ProgramData *> programs;
 
 	_input->queue->prepare(*_device);
 
+	for (auto &it : _input->queue->getPrograms()) {
+		if (auto p = _device->getProgram(it->key)) {
+			it->program = p;
+		} else {
+			programs.emplace_back(it);
+		}
+	}
+
+	// Every counter is set before the first task starts: a task can finish on a worker while this
+	// thread is still here, and a counter it takes past zero never fires again.
 	_layoutsInQueue = _input->queue->getTextureSetLayouts().size();
+	_programsInQueue = _input->queue->getPasses().size() + programs.size();
 
 	for (auto &it : _input->queue->getTextureSetLayouts()) {
 		auto ref = Rc<SamplersCompilationData>::alloc();
@@ -237,8 +310,7 @@ void RenderQueueAttachmentHandle::runShaders(FrameHandle &frame) {
 					[this, req = iit, ref, i](FrameHandle &frame) {
 				if (ref->setSampler(i, Rc<Sampler>::create(*_device, req))) {
 					if (_layoutsInQueue.fetch_sub(1) == 1) {
-						_layoutsCompiled = true;
-						runLayoutCallback();
+						finishInputStep(true);
 						runPasses(frame);
 					}
 				}
@@ -247,20 +319,6 @@ void RenderQueueAttachmentHandle::runShaders(FrameHandle &frame) {
 					toString("RenderQueueAttachmentHandle::runShaders - compile samplers: ",
 							_targetQueueName, "::", it->key));
 			++i;
-		}
-	}
-
-	// count phase-1 tasks
-	_programsInQueue += _input->queue->getPasses().size();
-	tasksCount += _input->queue->getPasses().size();
-
-	for (auto &it : _input->queue->getPrograms()) {
-		if (auto p = _device->getProgram(it->key)) {
-			it->program = p;
-		} else {
-			++tasksCount;
-			++_programsInQueue;
-			programs.emplace_back(it);
 		}
 	}
 
@@ -284,14 +342,12 @@ void RenderQueueAttachmentHandle::runShaders(FrameHandle &frame) {
 						_targetQueueName, "::", it->key));
 	}
 
-	if (_input->queue->getTextureSetLayouts().size() == 0
-			&& _input->queue->getPasses().size() > 0) {
-		_layoutsCompiled = true;
-		runLayoutCallback();
+	if (_input->queue->getTextureSetLayouts().empty()) {
+		finishInputStep(true);
 		runPasses(frame);
 	}
 
-	if (tasksCount == 0) {
+	if (_input->queue->getPasses().empty() && programs.empty()) {
 		runPipelines(frame);
 	}
 }
@@ -319,15 +375,6 @@ void RenderQueueAttachmentHandle::runPasses(FrameHandle &frame) {
 }
 
 void RenderQueueAttachmentHandle::runPipelines(FrameHandle &frame) {
-	[[maybe_unused]]
-	size_t tasksCount = _pipelinesInQueue.load();
-	for (auto &pit : _input->queue->getPasses()) {
-		for (auto &sit : pit->subpasses) {
-			_pipelinesInQueue += sit->graphicPipelines.size() + sit->computePipelines.size();
-			tasksCount += sit->graphicPipelines.size() + sit->computePipelines.size();
-		}
-	}
-
 	for (auto &pit : _input->queue->getPasses()) {
 		for (auto &sit : pit->subpasses) {
 			for (auto &it : sit->graphicPipelines) {
@@ -370,12 +417,13 @@ void RenderQueueAttachmentHandle::runPipelines(FrameHandle &frame) {
 	}
 }
 
-void RenderQueueAttachmentHandle::runLayoutCallback() {
-	if (_layoutsCompiled && _resourceCompiled) {
-		if (_layoutCallback) {
-			_layoutCallback(true);
-			_layoutCallback = nullptr;
-		}
+void RenderQueueAttachmentHandle::finishInputStep(bool success) {
+	if (!success) {
+		_inputFailed = true;
+	}
+	if (_inputSteps.fetch_sub(1) == 1) {
+		auto cb = sp::move(_layoutCallback);
+		cb(!_inputFailed.load());
 	}
 }
 
@@ -522,41 +570,9 @@ void RenderQueuePassHandle::submit(FrameQueue &queue, Rc<FrameSync> &&sync,
 }
 
 void RenderQueuePassHandle::finalize(FrameQueue &frame, bool successful) {
+	// The queue is marked compiled by RenderQueueCompiler::completeQueue, when the pipeline tasks
+	// that outlive this pass are done too.
 	QueuePassHandle::finalize(frame, successful);
-
-	if (!_attachment || !successful) {
-		log::source().error("RenderQueueCompiler", "Fail to compile render queue");
-		return;
-	}
-
-	Vector<uint64_t> passIds;
-	auto cache = frame.getLoop()->getFrameCache();
-	for (auto &it : _attachment->getRenderQueue()->getPasses()) {
-		if (it->impl && it->pass->getType() != core::PassType::Generic) {
-			passIds.emplace_back(it->impl->getIndex());
-			cache->addRenderPass(it->impl->getIndex());
-		}
-	}
-
-	Vector<uint64_t> attachmentIds;
-	for (auto &it : _attachment->getRenderQueue()->getAttachments()) {
-		if (it->type == core::AttachmentType::Image) {
-			attachmentIds.emplace_back(it->id);
-			cache->addAttachment(it->id);
-		}
-	}
-
-	_attachment->getRenderQueue()->setCompiled(*_device,
-			[loop = Rc<core::Loop>(frame.getLoop()), passIds = sp::move(passIds),
-					attachmentIds = sp::move(attachmentIds)]() mutable {
-		loop->performOnThread([loop, passIds = sp::move(passIds),
-									  attachmentIds = sp::move(attachmentIds)]() mutable {
-			auto cache = loop->getFrameCache();
-			for (auto &id : passIds) { cache->removeRenderPass(id); }
-			for (auto &id : attachmentIds) { cache->removeAttachment(id); }
-			cache->removeUnreachableFramebuffers();
-		});
-	});
 }
 
 bool RenderQueuePassHandle::prepareMaterials(FrameHandle &iframe, CommandBuffer &buf,

@@ -168,7 +168,9 @@ bool GraphicPipeline::init(Device &dev, const PipelineData &params, const Subpas
 	Vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments;
 	for (size_t i = 0; i < pass.outputImages.size(); ++i) {
 		core::BlendInfo blend;
-		if (pass.outputImages[i]->blendInfo.enabled) {
+		if (params.blend.enabled) {
+			blend = params.blend;
+		} else if (pass.outputImages[i]->blendInfo.enabled) {
 			blend = pass.outputImages[i]->blendInfo;
 		} else {
 			blend = params.material.getBlendInfo();

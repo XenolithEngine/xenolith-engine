@@ -50,6 +50,10 @@
 #     --threads N        with --tiles, fan the tiles out to N threads (default 1, which
 #                        measures the cut alone). The picture must not depend on how the
 #                        scheduler happened to hand tiles out, so run it more than once
+#     --premultiplied    both sides render with premultiplied output over a transparent
+#                        clear (XL_PREMULTIPLIED_OUTPUT=1), so alpha is compared too.
+#                        Combines with every mode above. Fails as vacuous when no case
+#                        produced a translucent pixel
 #     -v|--verbose       show app logs of a failing case and write a diff map
 #     -l|--list          print the case list and exit
 #
@@ -77,6 +81,7 @@ ALL_KERNELS=0
 DAMAGE=0
 TILES=""
 THREADS=1
+PREMULTIPLIED=0
 REF_ENV=""
 SUB_ENV=""
 SELECT=()
@@ -104,6 +109,9 @@ SELECT=()
 # pixels instead of 20 on `alpha`), so the 8-bit quantize-then-blend form this
 # backend uses is the better model of what a GPU actually does, not a shortcut.
 #
+# `empty` hides everything after the first frames: the damaged regions must be cleared to the
+# background even though the frame has nothing left to draw.
+#
 # --windowed is a different question and takes no tolerance at all. It renders the
 # same scene twice with the SAME backend, once presenting through the window system's
 # own buffers (wl_shm, X SHM) and once into an ordinary bitmap. The rasterizer, the
@@ -126,6 +134,7 @@ CASES=(
 	'label-scaled|tolerant|show={"layer":false,"sprite":false,"vector":false,"label":true} font-size={"value":38}'
 	'text-update|tolerant|show={"layer":false,"sprite":false,"vector":false,"label":true} text={"value":"first-pass"} @frame=4 text={"value":"Второй-проход-42"}'
 	'label-underline|tolerant|show={"layer":false,"sprite":false,"vector":false,"label":true} underline={"enabled":true}'
+	'empty|exact|@frame=4 show={"layer":false,"sprite":false,"vector":false,"label":false}'
 )
 
 case_name() { printf '%s' "${1%%|*}"; }
@@ -157,9 +166,10 @@ for arg in "$@"; do
 		--tiles) TILES="128x128" ;;
 		--tiles=*) TILES="${arg#--tiles=}" ;;
 		--threads) SHIFT_NEXT=threads ;;
+		--premultiplied) PREMULTIPLIED=1 ;;
 		-v|--verbose) VERBOSE=1 ;;
 		-l|--list) for c in "${CASES[@]}"; do case_name "$c"; echo; done; exit 0 ;;
-		-h|--help) sed -n '2,44p' "$0"; exit 0 ;;
+		-h|--help) sed -n '2,60p' "$0"; exit 0 ;;
 		-*) echo "unknown option: $arg" >&2; exit 2 ;;
 		*) SELECT+=("$arg") ;;
 	esac
@@ -221,6 +231,15 @@ if [[ -n "$TILES" ]]; then
 	SUB_ENV="SP_RASTER_TILE=$TILES SP_RASTER_THREADS=$THREADS XL_SOFT_PROFILE=1"
 fi
 
+# Premultiplied output is a property of the queue both sides build, so it rides on top of whatever
+# pair the mode above chose.
+PREMULTIPLIED_ARGS=()
+if [[ "$PREMULTIPLIED" == 1 ]]; then
+	REF_ENV="$REF_ENV XL_PREMULTIPLIED_OUTPUT=1"
+	SUB_ENV="$SUB_ENV XL_PREMULTIPLIED_OUTPUT=1"
+	PREMULTIPLIED_ARGS=(--premultiplied)
+fi
+
 # Every set the binary can run here, one after another. Re-invokes this script rather than
 # looping inside it: a run is per-set anyway, and the per-set verdict is what matters.
 if [[ "$ALL_KERNELS" == 1 ]]; then
@@ -240,7 +259,8 @@ if [[ "$ALL_KERNELS" == 1 ]]; then
 	for set in $sets; do
 		[[ "$set" == "scalar" ]] && continue
 		echo "== kernel set: $set vs scalar =="
-		"$0" --no-build --kernel-set "$set" ${SELECT[@]+"${SELECT[@]}"} || rc=1
+		"$0" --no-build --kernel-set "$set" ${PREMULTIPLIED_ARGS[@]+"${PREMULTIPLIED_ARGS[@]}"} \
+			${SELECT[@]+"${SELECT[@]}"} || rc=1
 	done
 	[[ "$rc" == 0 ]] && echo "ALL KERNEL SETS MATCH SCALAR"
 	exit $rc
@@ -321,7 +341,7 @@ if [[ -n "$SAVE" ]]; then
 	note "== saving $REFERENCE baseline to $SAVE (${WIDTH}x${HEIGHT}) =="
 fi
 
-pass=0; fail=0; failed_names=(); damage_engaged=0
+pass=0; fail=0; failed_names=(); damage_engaged=0; translucent_cases=0
 for c in "${CASES[@]}"; do
 	name="$(case_name "$c")"
 	mode="$(case_mode "$c")"
@@ -440,10 +460,11 @@ with Image.open(sys.argv[1]) as i: print("%d %d" % i.size)' "$act")"
 		# supply, would make this a run against itself. The app reports both, so ask it.
 		if [[ -n "$TILES" ]]; then
 			subject_label="tiles"
-			# threads= is an average over the frames and prints as a decimal ("4.0").
-			line="$(grep -o 'threads=[0-9.]* .*tiles/frame=[0-9.]*' "$WORK/act-$name.log" | tail -1)"
-			gotTiles="$(sed -n 's/.*tiles\/frame=\([0-9.]*\).*/\1/p' <<<"$line")"
-			gotThreads="$(sed -n 's/.*threads=\([0-9]*\).*/\1/p' <<<"$line")"
+			# threads= is a running average over the frames and prints as a decimal ("4.0"). A frame
+			# whose damage fits in fewer tiles than threads lowers it, so the highest one is taken.
+			lines="$(grep -o 'threads=[0-9.]* .*tiles/frame=[0-9.]*' "$WORK/act-$name.log")"
+			gotTiles="$(tail -1 <<<"$lines" | sed -n 's/.*tiles\/frame=\([0-9.]*\).*/\1/p')"
+			gotThreads="$(sed -n 's/.*threads=\([0-9]*\).*/\1/p' <<<"$lines" | sort -n | tail -1)"
 			if [[ -z "$gotTiles" ]] || (( $(python3 -c "print(1 if ${gotTiles:-0} > 1.0 else 0)") == 0 )); then
 				printf '%-16s FAIL (asked for %s tiles, got %s per frame)\n' \
 						"$name" "$TILES" "${gotTiles:-none}"
@@ -477,9 +498,15 @@ with Image.open(sys.argv[1]) as i: print("%d %d" % i.size)' "$act")"
 
 	diffargs=()
 	[[ "$mode" == "exact" ]] && diffargs+=(--exact)
+	[[ "$PREMULTIPLIED" == 1 ]] && diffargs+=(--transparent)
 	[[ "$VERBOSE" == 1 ]] && diffargs+=(--out-diff "$WORK/diff-$name.png")
 
-	if summary="$(python3 "$HERE/imgdiff.py" "$ref" "$act" "${diffargs[@]}" 2>&1)"; then
+	summary="$(python3 "$HERE/imgdiff.py" "$ref" "$act" "${diffargs[@]}" 2>&1)"
+	diffStatus=$?
+	if [[ "$PREMULTIPLIED" == 1 ]] && ! grep -q ' 0 translucent' <<<"$summary"; then
+		translucent_cases=$((translucent_cases+1))
+	fi
+	if [[ "$diffStatus" == 0 ]]; then
 		printf '%-16s OK   [%s] %s%s\n' "$name" "$mode" "$summary" "$damage_note$tiles_note"
 		pass=$((pass+1))
 	else
@@ -505,6 +532,13 @@ if [[ "$DAMAGE" == 1 ]]; then
 	echo "cases where damage actually engaged: $damage_engaged (of ${#CASES[@]})"
 	if [[ "$damage_engaged" == 0 ]]; then
 		echo "VACUOUS: not one case took the partial-redraw path, so nothing was compared"
+		exit 1
+	fi
+fi
+if [[ "$PREMULTIPLIED" == 1 ]]; then
+	echo "cases with translucent pixels: $translucent_cases (of ${#CASES[@]})"
+	if [[ "$translucent_cases" == 0 ]]; then
+		echo "VACUOUS: no case produced a translucent pixel, so blended alpha was never compared"
 		exit 1
 	fi
 fi

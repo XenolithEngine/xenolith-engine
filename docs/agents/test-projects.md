@@ -48,7 +48,15 @@
   headless controller, `PresentationEngine::setFollowDisplayLinkBarrier`, the plane source and the
   headless swapchains' pins) → `tests/window/virtual-window-check.py`. It runs on Vulkan and soft, so
   build `tests/window` with `SOFT=1`; `--gapi` keeps one. That the host opens no second OS window is
-  checked by hand on X11 (`SP_SESSION_TYPE=x11`, `xprop -root _NET_CLIENT_LIST`).
+  checked by hand on X11 (`SP_SESSION_TYPE=x11`, `xprop -root _NET_CLIENT_LIST`). A slot a reader
+  let go is proved back in the ring by a newer frame published from it: on Vulkan a slot is also
+  pinned for a moment after its frame is presented or replaced, so its absence from `pinned` is not
+  the test.
+- Changed the Vulkan queue compiler (`vk::RenderQueueCompiler`, `FrameExternalTask`,
+  `Queue::setCompiled`) → `tests/window/virtual-window-check.py --gapi vulkan` under CPU load: a
+  second window compiles a Flat queue whose shaders are already cached, which is where a task
+  ordering race shows. Count `has no pipeline` in the server log (`/tmp/xl-remote-check-server-*`);
+  any line is a failure, even when every check is green.
 - Changed how a window asks for frames (`Director::handleSceneChanged` / `handleAppUpdate`,
   `Node::markSceneChanged` and the setters that call it, `RemoteWindow::setReadyForNextFrame`,
   `FrameDeclined`, remote glyph gating) → `tests/window/virtual-window-check.py` as well. It never

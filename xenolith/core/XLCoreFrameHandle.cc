@@ -60,13 +60,13 @@ FrameExternalTask::~FrameExternalTask() {
 	}
 }
 
-void FrameExternalTask::invalidate() { _success = true; }
+void FrameExternalTask::invalidate() { _success = false; }
 
 bool FrameExternalTask::init(FrameHandle &frame, uint32_t idx, Ref *ref, StringView tag) {
 	_frame = &frame;
 	_index = idx;
 	_success = true;
-	_tag = tag;
+	_tag = tag.str<Interface>();
 	_userdata = ref;
 	return true;
 }
@@ -383,7 +383,7 @@ void FrameHandle::onQueueComplete(FrameQueue &queue) {
 }
 
 void FrameHandle::releaseTask(FrameExternalTask *task, bool success) {
-	_loop->performOnThread([this, success, tag = task->getTag()]() {
+	_loop->performOnThread([this, success, tag = task->getTag().str<Interface>()]() {
 		if (success) {
 			++_tasksCompleted;
 			tryComplete();

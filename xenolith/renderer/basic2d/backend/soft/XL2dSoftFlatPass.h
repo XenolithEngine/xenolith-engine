@@ -150,6 +150,10 @@ public:
 		Extent2 extent;
 		Color4F backgroundColor = Color4F::WHITE;
 		core::QueueDamageFlags damage = core::QueueDamageFlags::PresentHint;
+
+		// Transparent pipelines blend alpha as source-over (One/OneMinusSrcAlpha), so the output
+		// is premultiplied; backgroundColor must be premultiplied too.
+		bool premultipliedOutput = false;
 	};
 
 	static bool makeRenderQueue(Queue::Builder &, RenderQueueInfo &);
@@ -168,7 +172,7 @@ protected:
 
 	void makeMaterialSubpass(Queue::Builder &queueBuilder, core::SubpassBuilder &subpassBuilder,
 			const core::PipelineLayoutData *layout2d,
-			const core::AttachmentPassData *colorAttachment);
+			const core::AttachmentPassData *colorAttachment, bool premultipliedOutput);
 
 	const core::AttachmentData *_output = nullptr;
 	const core::AttachmentData *_materials = nullptr;

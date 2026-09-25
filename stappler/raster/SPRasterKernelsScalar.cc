@@ -81,10 +81,10 @@ static void Kernels_writeSpanSolid(SpanContext &ctx, const ChannelLayout &fmt) {
 	}
 }
 
-// color = SrcAlpha/OneMinusSrcAlpha (Add); alpha = Zero/One (Add), i.e. destination alpha is
-// left exactly as it was. This is the flat contract's only blend state.
+// Blending enabled: Transparent keeps destination alpha exactly as it was, Premultiplied blends
+// it as source-over (see Kernels_blendPixel).
 template <TextureKind Kind>
-static void Kernels_writeSpanTransparent(SpanContext &ctx, const ChannelLayout &fmt) {
+static void Kernels_writeSpanBlended(SpanContext &ctx, const ChannelLayout &fmt, BlendMode blend) {
 	auto dst = ctx.dst;
 
 	for (uint32_t i = ctx.originOffset, end = ctx.originOffset + ctx.count; i < end; ++i) {
@@ -93,34 +93,23 @@ static void Kernels_writeSpanTransparent(SpanContext &ctx, const ChannelLayout &
 				Kernels_at(ctx.u, ctx.du, i), Kernels_at(ctx.v, ctx.dv, i),
 				Kernels_at(ctx.layer, ctx.dlayer, i));
 
-		uint32_t sa = Kernels_toUnorm8(c.a);
-		if (sa == 255) {
-			dst[fmt.r] = Kernels_toUnorm8(c.r);
-			if (fmt.size > 1) {
-				dst[fmt.g] = Kernels_toUnorm8(c.g);
-				dst[fmt.b] = Kernels_toUnorm8(c.b);
-			}
-		} else if (sa != 0) {
-			dst[fmt.r] = Kernels_blend(Kernels_toUnorm8(c.r), sa, dst[fmt.r]);
-			if (fmt.size > 1) {
-				dst[fmt.g] = Kernels_blend(Kernels_toUnorm8(c.g), sa, dst[fmt.g]);
-				dst[fmt.b] = Kernels_blend(Kernels_toUnorm8(c.b), sa, dst[fmt.b]);
-			}
-		}
+		Kernels_blendPixel(dst, fmt, blend, Kernels_toUnorm8(c.r), Kernels_toUnorm8(c.g),
+				Kernels_toUnorm8(c.b), Kernels_toUnorm8(c.a));
 
 		dst += fmt.size;
 	}
 }
 
-// blend x texture kind: eight specializations, picked by a plain switch. The switch is inside one
-// kernel rather than eight table entries on purpose - the ISA choice is what the table is for, and
+// blend x texture kind, picked by a plain switch. The switch is inside one kernel rather than a
+// table entry per pair on purpose - the ISA choice is what the table is for, and
 // multiplying its width by eight would buy nothing but entries to get wrong.
 template <TextureKind Kind>
 static inline void Kernels_writeSpanKind(SpanContext &ctx, const ChannelLayout &fmt,
 		BlendMode blend) {
 	switch (blend) {
 	case BlendMode::Solid: Kernels_writeSpanSolid<Kind>(ctx, fmt); break;
-	case BlendMode::Transparent: Kernels_writeSpanTransparent<Kind>(ctx, fmt); break;
+	case BlendMode::Transparent:
+	case BlendMode::Premultiplied: Kernels_writeSpanBlended<Kind>(ctx, fmt, blend); break;
 	}
 }
 
@@ -242,14 +231,7 @@ static void Scalar_textureSpanLinear(SpanContext &ctx, const ChannelLayout &fmt,
 		if (blend == BlendMode::Solid) {
 			for (int k = 0; k < 4; ++k) { dst[dstIndex[k]] = shaded[k]; }
 		} else {
-			uint32_t sa = shaded[3];
-			if (sa == 255) {
-				for (int k = 0; k < 3; ++k) { dst[dstIndex[k]] = shaded[k]; }
-			} else if (sa != 0) {
-				for (int k = 0; k < 3; ++k) {
-					dst[dstIndex[k]] = Kernels_blend(shaded[k], sa, dst[dstIndex[k]]);
-				}
-			}
+			Kernels_blendPixel(dst, fmt, blend, shaded[0], shaded[1], shaded[2], shaded[3]);
 		}
 
 		dst += 4;
@@ -333,20 +315,8 @@ void blitGlyphScalar(const Target &target, const GlyphBlit &glyph, const Channel
 					dst[fmt.a] = Kernels_toUnorm8(srcAlpha);
 				}
 			} else {
-				uint32_t sa = Kernels_toUnorm8(srcAlpha);
-				if (sa == 255) {
-					dst[fmt.r] = uint8_t(red);
-					if (fmt.size > 1) {
-						dst[fmt.g] = uint8_t(green);
-						dst[fmt.b] = uint8_t(blue);
-					}
-				} else if (sa != 0) {
-					dst[fmt.r] = Kernels_blend(red, sa, dst[fmt.r]);
-					if (fmt.size > 1) {
-						dst[fmt.g] = Kernels_blend(green, sa, dst[fmt.g]);
-						dst[fmt.b] = Kernels_blend(blue, sa, dst[fmt.b]);
-					}
-				}
+				Kernels_blendPixel(dst, fmt, glyph.blend, red, green, blue,
+						Kernels_toUnorm8(srcAlpha));
 			}
 
 			++src;

@@ -110,7 +110,8 @@ void checkSpans(const KernelTable &subject, const KernelTable &reference) {
 		auto fmt = getChannelLayout(format);
 		for (auto width : widths) {
 			for (auto alpha : alphas) {
-				for (auto blend : {BlendMode::Solid, BlendMode::Transparent}) {
+				for (auto blend :
+						{BlendMode::Solid, BlendMode::Transparent, BlendMode::Premultiplied}) {
 					auto make = [&](const KernelTable &table) {
 						return run(format, width, [&](Bitmap &bmp) {
 							SpanContext ctx;
@@ -143,26 +144,28 @@ void checkInterpolated(const KernelTable &subject, const KernelTable &reference)
 
 	bool ok = true;
 	for (uint32_t width : {1u, 5u, 16u, 33u}) {
-		auto make = [&](const KernelTable &table) {
-			return run(PixelFormat::BGRA8888, width, [&](Bitmap &bmp) {
-				SpanContext ctx;
-				ctx.dst = bmp.target.pixels + bmp.target.stride;
-				ctx.count = width;
-				ctx.r = 0.1f;
-				ctx.g = 0.2f;
-				ctx.b = 0.9f;
-				ctx.a = 0.75f;
-				// A colour that changes along the span: no set specializes this, and each has to
-				// hand it to the scalar kernel rather than quietly treat it as constant.
-				ctx.dr = 0.01f;
-				ctx.dg = -0.005f;
-				ctx.db = 0.002f;
-				ctx.da = -0.001f;
-				table.writeSpan(ctx, fmt, BlendMode::Transparent);
-			});
-		};
-		if (make(subject) != make(reference)) {
-			ok = false;
+		for (auto blend : {BlendMode::Transparent, BlendMode::Premultiplied}) {
+			auto make = [&](const KernelTable &table) {
+				return run(PixelFormat::BGRA8888, width, [&](Bitmap &bmp) {
+					SpanContext ctx;
+					ctx.dst = bmp.target.pixels + bmp.target.stride;
+					ctx.count = width;
+					ctx.r = 0.1f;
+					ctx.g = 0.2f;
+					ctx.b = 0.9f;
+					ctx.a = 0.75f;
+					// A colour that changes along the span: no set specializes this, and each has
+					// to hand it to the scalar kernel rather than quietly treat it as constant.
+					ctx.dr = 0.01f;
+					ctx.dg = -0.005f;
+					ctx.db = 0.002f;
+					ctx.da = -0.001f;
+					table.writeSpan(ctx, fmt, blend);
+				});
+			};
+			if (make(subject) != make(reference)) {
+				ok = false;
+			}
 		}
 	}
 
@@ -231,7 +234,7 @@ void checkTextured(const KernelTable &subject, const KernelTable &reference) {
 	bool engaged = false;
 
 	for (uint32_t width : {1u, 2u, 3u, 4u, 5u, 7u, 8u, 9u, 16u, 17u, 33u, 64u}) {
-		for (auto blend : {BlendMode::Solid, BlendMode::Transparent}) {
+		for (auto blend : {BlendMode::Solid, BlendMode::Transparent, BlendMode::Premultiplied}) {
 			// Magnified, 1:1 and minified, so the address arithmetic is exercised at all three
 			// scales rather than only where the texel index barely moves.
 			for (float scale : {0.25f, 1.0f, 4.0f}) {
@@ -407,7 +410,7 @@ void checkGlyphs(const KernelTable &subject, const KernelTable &reference) {
 	for (size_t i = 0; i < sizeof(coverage); ++i) { coverage[i] = uint8_t(i * 29); }
 
 	bool ok = true;
-	for (auto blend : {BlendMode::Solid, BlendMode::Transparent}) {
+	for (auto blend : {BlendMode::Solid, BlendMode::Transparent, BlendMode::Premultiplied}) {
 		auto make = [&](const KernelTable &table) {
 			return run(PixelFormat::BGRA8888, 9, [&](Bitmap &bmp) {
 				GlyphBlit glyph;
@@ -531,7 +534,8 @@ void checkSpanSplit() {
 			if (kind == TextureKind::Solid && filter == Filter::Linear) {
 				continue; // the filter is not consulted at all without a texture
 			}
-			for (auto blend : {BlendMode::Solid, BlendMode::Transparent}) {
+			for (auto blend :
+					{BlendMode::Solid, BlendMode::Transparent, BlendMode::Premultiplied}) {
 				DrawList list;
 				list.textures.emplace_back(texture);
 
@@ -789,6 +793,134 @@ void checkTiledAsync() {
 					differing, " configs differ)"));
 }
 
+// Premultiplied output against the blend equation itself, not against another kernel set: straight
+// colour over a transparent target has to come out as (c*a, a), and a second layer as source-over
+// of that. Transparent over the same target has to leave alpha at zero. Every entry point a
+// Premultiplied draw can take - the constant span, a textured span and the glyph blit.
+void checkPremultiplied(const KernelTable &table) {
+	auto name = getKernelSetName(table.set);
+	auto fmt = getChannelLayout(PixelFormat::BGRA8888);
+	constexpr uint32_t width = 9;
+
+	// One white opaque texel repeated: the textured path then shades to the vertex colour.
+	uint8_t texels[2 * 2 * 4];
+	for (auto &it : texels) { it = 255; }
+
+	Texture texture;
+	texture.pixels = texels;
+	texture.width = 2;
+	texture.height = 2;
+	texture.stride = 2 * 4;
+	texture.layerSize = 2 * 2 * 4;
+	texture.format = PixelFormat::RGBA8888;
+
+	enum Path {
+		Constant,
+		Textured,
+		Glyph
+	};
+
+	auto draw = [&](Bitmap &bmp, Path path, BlendMode blend, const Color4F &color) {
+		auto dst = bmp.target.pixels;
+		if (path == Glyph) {
+			uint8_t coverage[width];
+			for (auto &it : coverage) { it = 255; }
+
+			GlyphBlit glyph;
+			glyph.coverage = coverage;
+			glyph.pitch = width;
+			glyph.width = width;
+			glyph.height = 1;
+			glyph.color = color;
+			glyph.blend = blend;
+			glyph.scissor = URect{0, 0, width, 1};
+			table.blitGlyph(bmp.target, glyph, fmt);
+			return;
+		}
+
+		SpanContext ctx;
+		ctx.dst = dst;
+		ctx.count = width;
+		ctx.r = color.r;
+		ctx.g = color.g;
+		ctx.b = color.b;
+		ctx.a = color.a;
+		if (path == Textured) {
+			ctx.texture = &texture;
+			ctx.kind = TextureKind::Texture2D;
+			ctx.sampler.filter = Filter::Nearest;
+			ctx.du = 0.1f;
+		}
+		table.writeSpan(ctx, fmt, blend);
+	};
+
+	// Each channel within `tolerance` steps of the float result, in every pixel of the row.
+	auto matches = [&](const Bitmap &bmp, const Color4F &want, uint32_t tolerance) {
+		auto p = bmp.target.pixels;
+		for (uint32_t i = 0; i < width; ++i, p += 4) {
+			const float channels[4] = {want.r, want.g, want.b, want.a};
+			const uint8_t index[4] = {fmt.r, fmt.g, fmt.b, fmt.a};
+			for (int k = 0; k < 4; ++k) {
+				auto expect = int32_t(double(channels[k]) * 255.0 + 0.5);
+				if (sprt::abs(int32_t(p[index[k]]) - expect) > int32_t(tolerance)) {
+					return false;
+				}
+			}
+		}
+		return true;
+	};
+
+	const Color4F first(0.8f, 0.4f, 0.2f, 0.5f);
+	const Color4F second(0.2f, 0.6f, 1.0f, 0.25f);
+	const Color4F opaque(0.3f, 0.9f, 0.6f, 1.0f);
+
+	auto premultiply = [](const Color4F &c) {
+		return Color4F(c.r * c.a, c.g * c.a, c.b * c.a, c.a);
+	};
+	auto over = [](const Color4F &src, const Color4F &dst) {
+		auto inv = 1.0f - src.a;
+		return Color4F(src.r * src.a + dst.r * inv, src.g * src.a + dst.g * inv,
+				src.b * src.a + dst.b * inv, src.a + dst.a * inv);
+	};
+
+	bool single = true;
+	bool layered = true;
+	bool solid = true;
+	bool kept = true;
+
+	for (auto path : {Constant, Textured, Glyph}) {
+		auto clear = [&](Bitmap &bmp) {
+			fillRect(bmp.target, URect{0, 0, width, 1}, Color4F(0.0f, 0.0f, 0.0f, 0.0f));
+		};
+
+		Bitmap a(width, 1, PixelFormat::BGRA8888);
+		clear(a);
+		draw(a, path, BlendMode::Premultiplied, first);
+		single = single && matches(a, premultiply(first), 1);
+
+		// Two roundings stacked: the first layer is already quantized when the second blends.
+		draw(a, path, BlendMode::Premultiplied, second);
+		layered = layered && matches(a, over(second, premultiply(first)), 2);
+
+		Bitmap b(width, 1, PixelFormat::BGRA8888);
+		clear(b);
+		draw(b, path, BlendMode::Premultiplied, opaque);
+		solid = solid && matches(b, opaque, 0);
+
+		Bitmap c(width, 1, PixelFormat::BGRA8888);
+		clear(c);
+		draw(c, path, BlendMode::Transparent, first);
+		auto straight = premultiply(first);
+		straight.a = 0.0f;
+		kept = kept && matches(c, straight, 1);
+	}
+
+	check(single, toString(name, ": premultiplied over transparent is (c*a, a)"));
+	check(layered, toString(name, ": premultiplied layers compose as source-over"));
+	check(solid, toString(name, ": premultiplied opaque source is written as is"));
+	check(kept, toString(name, ": transparent keeps destination alpha"));
+}
+
 } // namespace
 
 void performRasterTests() {
@@ -829,6 +961,8 @@ void performRasterTests() {
 	checkSpanSplit();
 	checkTileGrid();
 	checkTiledAsync();
+
+	for (auto &it : tables) { checkPremultiplied(*it); }
 
 	for (auto &it : tables) {
 		if (it == reference) {

@@ -287,6 +287,7 @@ protected:
 	bool setPipelineOption(GraphicPipelineData &f, DynamicState);
 	bool setPipelineOption(GraphicPipelineData &f, const Vector<SpecializationInfo> &);
 	bool setPipelineOption(GraphicPipelineData &f, const PipelineMaterialInfo &);
+	bool setPipelineOption(GraphicPipelineData &f, const BlendInfo &);
 
 	template <typename T>
 	bool setPipelineOptions(GraphicPipelineData &f, T &&t) {

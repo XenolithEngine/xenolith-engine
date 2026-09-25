@@ -1482,6 +1482,11 @@ bool SubpassBuilder::setPipelineOption(GraphicPipelineData &f, const PipelineMat
 	return true;
 }
 
+bool SubpassBuilder::setPipelineOption(GraphicPipelineData &f, const BlendInfo &info) {
+	f.blend = info;
+	return true;
+}
+
 SubpassBuilder::SubpassBuilder(SubpassData *data) : _data(data) { }
 
 const PipelineLayoutData *QueuePassBuilder::addDescriptorLayout(StringView str,

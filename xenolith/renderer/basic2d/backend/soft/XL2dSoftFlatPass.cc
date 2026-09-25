@@ -329,7 +329,8 @@ bool FlatPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilder,
 	});
 
 	passBuilder.addSubpass([&, this](SubpassBuilder &subpassBuilder) {
-		makeMaterialSubpass(queueBuilder, subpassBuilder, layout2d, colorAttachment);
+		makeMaterialSubpass(queueBuilder, subpassBuilder, layout2d, colorAttachment,
+				info.premultipliedOutput);
 	});
 
 	return core::QueuePass::init(passBuilder);
@@ -341,7 +342,7 @@ Rc<core::QueuePassHandle> FlatPass::makeFrameHandle(const FrameQueue &handle) {
 
 void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 		core::SubpassBuilder &subpassBuilder, const core::PipelineLayoutData *layout2d,
-		const core::AttachmentPassData *colorAttachment) {
+		const core::AttachmentPassData *colorAttachment, bool premultipliedOutput) {
 	using namespace core;
 
 	// The SPIR-V is registered so the queue is described exactly as the Vulkan one, but it is
@@ -353,6 +354,13 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 		core::SpecializationInfo(flatVert),
 		core::SpecializationInfo(flatFrag),
 	});
+
+	// With premultiplied output the Transparent pipelines blend alpha as source-over. Only the
+	// compiled state changes: their PipelineMaterialInfo, the key materials match, stays as it is.
+	auto outputBlend = premultipliedOutput
+			? BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha, BlendOp::Add,
+					  BlendFactor::One, BlendFactor::OneMinusSrcAlpha, BlendOp::Add)
+			: BlendInfo();
 
 	// PipelineMaterialInfo must stay byte-identical to basic2d::vk::FlatPass: materials are
 	// matched to pipelines by this struct's value, and Sprite bakes DepthInfo into the request.
@@ -367,7 +375,8 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
 										  BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
 										  BlendOp::Add),
-				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}));
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}),
+			outputBlend);
 
 	// All six variants must exist though the kernels branch on view type at record time: a
 	// material is matched by the value of PipelineMaterialInfo, and a missing one yields an empty
@@ -383,7 +392,8 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 	subpassBuilder.addGraphicPipeline("Transparent_Tex2dArrayFrag", layout2d->defaultFamily,
 			shaderSpecInfo,
 			PipelineMaterialInfo({blendInfo, DepthInfo(false, true, CompareOp::LessOrEqual),
-				ImageViewType::ImageView2DArray}));
+				ImageViewType::ImageView2DArray}),
+			outputBlend);
 
 	subpassBuilder.addGraphicPipeline("Solid_Tex3dFrag", layout2d->defaultFamily, shaderSpecInfo,
 			PipelineMaterialInfo({BlendInfo(), DepthInfo(true, true, CompareOp::Less),
@@ -392,7 +402,8 @@ void FlatPass::makeMaterialSubpass(Queue::Builder &queueBuilder,
 	subpassBuilder.addGraphicPipeline("Transparent_Tex3dFrag", layout2d->defaultFamily,
 			shaderSpecInfo,
 			PipelineMaterialInfo({blendInfo, DepthInfo(false, true, CompareOp::LessOrEqual),
-				ImageViewType::ImageView3D}));
+				ImageViewType::ImageView3D}),
+			outputBlend);
 
 	// fallback materials for any Layer/Sprite that does not define its own
 	static_cast<sf::MaterialAttachment *>(_materials->attachment.get())
@@ -731,12 +742,19 @@ void FlatPass_emitGlyphRun(sf::raster::DrawList &list, const sf::GlyphStore::Gly
 
 void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData &subpass,
 		sf::CommandBuffer &buf) {
-	if (!_vertexHandle || _vertexHandle->empty()) {
+	if (!_vertexHandle) {
+		buf.addDropped(1);
+		return;
+	}
+
+	// no spans: the scene draws nothing, and the pass clears
+	if (_vertexHandle->empty()) {
 		return;
 	}
 
 	auto materials = _vertexHandle->getMaterialSet();
 	if (!materials) {
+		buf.addDropped(uint32_t(_vertexHandle->getSpans().size()));
 		return;
 	}
 
@@ -895,6 +913,8 @@ void FlatPassHandle::recordSubpass(core::FrameQueue &q, const core::SubpassData 
 			list.addCommand(sp::move(command));
 		}
 	}
+
+	buf.addDropped(missingMaterials + brokenSpans + glyphStats.missing);
 
 	if (missingMaterials > 0 || brokenSpans > 0) {
 		log::source().warn("basic2d::soft", "Dropped ", missingMaterials,

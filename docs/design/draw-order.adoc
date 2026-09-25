@@ -141,6 +141,15 @@ order instead, tie-broken by the traversal stamp each command reserved.
 at `Solid` (it writes destination alpha, which a transparent window needs), and
 everything else — rounded corners, any translucency — at `Surface`.
 
+What blending leaves in destination alpha depends on the queue. By default the
+`Transparent` pipelines blend colour only and keep destination alpha
+(`Zero/One`), so translucent content over a transparent clear stays at alpha 0.
+A flat queue built with `Scene2d::QueueInfo::premultipliedOutput` (Vulkan and
+soft) compiles them with alpha `One/OneMinusSrcAlpha` instead, and premultiplies
+the clear colour: the image is then premultiplied and can be composited over
+others with `One/OneMinusSrcAlpha`. The material key is the same in both queues,
+so nodes do not know which one they draw into.
+
 `depthIndex` is **not** part of this. It travels to the shadow pass as the
 instance's `shadowValue`; a node that has to be below another wants a lower
 ZOrder, not a depth value.

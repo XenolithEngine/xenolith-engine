@@ -52,7 +52,7 @@ protected:
 
 	bool _success = true;
 	uint32_t _index = 0;
-	StringView _tag;
+	String _tag;
 	Rc<FrameHandle> _frame;
 	Rc<Ref> _userdata;
 };

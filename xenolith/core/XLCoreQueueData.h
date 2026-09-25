@@ -161,6 +161,12 @@ struct SP_PUBLIC GraphicPipelineInfo : NamedMem {
 	mem_pool::Vector<SpecializationInfo> shaders;
 	DynamicState dynamicState = DynamicState::Default;
 	PipelineMaterialInfo material;
+
+	// Blend state the pipeline is compiled with, when it differs from the one in `material`: the
+	// material info is the key materials are matched by, this is not. `enabled == 0` means "as in
+	// the material".
+	BlendInfo blend;
+
 	const SubpassData *subpass = nullptr;
 	const PipelineLayoutData *layout = nullptr;
 	const PipelineFamilyInfo *family = nullptr;

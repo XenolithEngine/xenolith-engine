@@ -37,9 +37,22 @@ bool Shader::init(Device &dev, const core::ProgramData &data) {
 bool GraphicPipeline::init(Device &dev, const PipelineData &data) {
 	auto &material = data.material;
 
-	// The flat contract has exactly two blend states; anything else means the queue is not the
-	// one this backend implements.
-	_blendMode = material.getBlendInfo().isEnabled() ? BlendMode::Transparent : BlendMode::Solid;
+	// The flat contract has three blend states, told apart by the alpha factors; anything else
+	// means the queue is not the one this backend implements.
+	auto blend = data.blend.isEnabled() ? data.blend : material.getBlendInfo();
+	if (!blend.isEnabled()) {
+		_blendMode = BlendMode::Solid;
+	} else if (blend.srcAlpha == toInt(core::BlendFactor::One)
+			&& blend.dstAlpha == toInt(core::BlendFactor::OneMinusSrcAlpha)) {
+		_blendMode = BlendMode::Premultiplied;
+	} else {
+		if (blend.srcAlpha != toInt(core::BlendFactor::Zero)
+				|| blend.dstAlpha != toInt(core::BlendFactor::One)) {
+			log::source().error("soft::GraphicPipeline", data.key,
+					": blend state is not one of the flat contract, drawn as Transparent");
+		}
+		_blendMode = BlendMode::Transparent;
+	}
 	_imageType = material.getImageViewType();
 
 	return core::Object::init(dev,

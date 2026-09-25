@@ -103,8 +103,13 @@ static void X86_sse2_fillConstant(uint8_t *dst, uint32_t count, const SpanConsta
 }
 
 SP_RASTER_TARGET("sse2")
-static void X86_sse2_blendConstant(uint8_t *dst, uint32_t count, const SpanConstant &src,
-		const ChannelLayout &fmt) {
+static void X86_sse2_blendConstant(uint8_t *dst, uint32_t count, SpanConstant src,
+		const ChannelLayout &fmt, BlendMode blend) {
+	const bool keepAlpha = blend != BlendMode::Premultiplied;
+	if (!keepAlpha) {
+		src.bytes[fmt.a] = 255;
+	}
+
 	auto zero = _mm_setzero_si128();
 	auto inverse = _mm_set1_epi16(int16_t(255 - src.alpha));
 
@@ -113,9 +118,10 @@ static void X86_sse2_blendConstant(uint8_t *dst, uint32_t count, const SpanConst
 			_mm_set1_epi16(int16_t(src.alpha)));
 
 	// 0xFF at the alpha byte of every pixel: what the blend computed there is discarded and the
-	// destination's own alpha put back, because the flat contract preserves it.
+	// destination's own alpha put back, because Transparent preserves it. Premultiplied keeps the
+	// blended alpha, computed with a source byte of 255.
 	uint8_t maskBytes[4] = {0, 0, 0, 0};
-	maskBytes[fmt.a] = 0xFF;
+	maskBytes[fmt.a] = keepAlpha ? 0xFF : 0;
 	auto alphaMask = _mm_set1_epi32(int32_t(X86_pixel(maskBytes)));
 
 	uint32_t i = 0;
@@ -129,9 +135,8 @@ static void X86_sse2_blendConstant(uint8_t *dst, uint32_t count, const SpanConst
 
 	// Tail through the scalar arithmetic - the same arithmetic, so the seam is invisible.
 	for (; i < count; ++i) {
-		dst[fmt.r] = Kernels_blend(src.bytes[fmt.r], src.alpha, dst[fmt.r]);
-		dst[fmt.g] = Kernels_blend(src.bytes[fmt.g], src.alpha, dst[fmt.g]);
-		dst[fmt.b] = Kernels_blend(src.bytes[fmt.b], src.alpha, dst[fmt.b]);
+		Kernels_blendPixel(dst, fmt, blend, src.bytes[fmt.r], src.bytes[fmt.g], src.bytes[fmt.b],
+				src.alpha);
 		dst += 4;
 	}
 }
@@ -348,8 +353,13 @@ static void X86_avx2_fillConstant(uint8_t *dst, uint32_t count, const SpanConsta
 }
 
 SP_RASTER_TARGET("avx2")
-static void X86_avx2_blendConstant(uint8_t *dst, uint32_t count, const SpanConstant &src,
-		const ChannelLayout &fmt) {
+static void X86_avx2_blendConstant(uint8_t *dst, uint32_t count, SpanConstant src,
+		const ChannelLayout &fmt, BlendMode blend) {
+	const bool keepAlpha = blend != BlendMode::Premultiplied;
+	if (!keepAlpha) {
+		src.bytes[fmt.a] = 255;
+	}
+
 	auto zero = _mm256_setzero_si256();
 	auto inverse = _mm256_set1_epi16(int16_t(255 - src.alpha));
 
@@ -358,7 +368,7 @@ static void X86_avx2_blendConstant(uint8_t *dst, uint32_t count, const SpanConst
 			_mm256_set1_epi16(int16_t(src.alpha)));
 
 	uint8_t maskBytes[4] = {0, 0, 0, 0};
-	maskBytes[fmt.a] = 0xFF;
+	maskBytes[fmt.a] = keepAlpha ? 0xFF : 0;
 	auto alphaMask = _mm256_set1_epi32(int32_t(X86_pixel(maskBytes)));
 
 	uint32_t i = 0;
@@ -372,9 +382,8 @@ static void X86_avx2_blendConstant(uint8_t *dst, uint32_t count, const SpanConst
 	}
 
 	for (; i < count; ++i) {
-		dst[fmt.r] = Kernels_blend(src.bytes[fmt.r], src.alpha, dst[fmt.r]);
-		dst[fmt.g] = Kernels_blend(src.bytes[fmt.g], src.alpha, dst[fmt.g]);
-		dst[fmt.b] = Kernels_blend(src.bytes[fmt.b], src.alpha, dst[fmt.b]);
+		Kernels_blendPixel(dst, fmt, blend, src.bytes[fmt.r], src.bytes[fmt.g], src.bytes[fmt.b],
+				src.alpha);
 		dst += 4;
 	}
 }
@@ -661,7 +670,8 @@ static void X86_textureSpanLinear(SpanContext &ctx, const ChannelLayout &fmt, Bl
 SP_RASTER_TARGET("sse4.1")
 SP_RASTER_KERNEL_INLINE bool X86_tryBilinear(SpanContext &ctx, const ChannelLayout &fmt,
 		BlendMode blend) {
-	if (ctx.count == 0 || fmt.size != 4 || isConstantSpan(ctx)) {
+	if (ctx.count == 0 || fmt.size != 4 || blend == BlendMode::Premultiplied
+			|| isConstantSpan(ctx)) {
 		return false;
 	}
 
@@ -680,7 +690,7 @@ SP_RASTER_KERNEL_INLINE bool X86_tryBilinear(SpanContext &ctx, const ChannelLayo
 template <typename Fill>
 static inline void X86_writeSpanImpl(SpanContext &ctx, const ChannelLayout &fmt, BlendMode blend,
 		Fill &&fill,
-		void (*blendConstant)(uint8_t *, uint32_t, const SpanConstant &, const ChannelLayout &),
+		void (*blendConstant)(uint8_t *, uint32_t, SpanConstant, const ChannelLayout &, BlendMode),
 		void (*textureSpan)(SpanContext &, const ChannelLayout &, BlendMode, const TextureSpan &)) {
 	if (ctx.count == 0 || fmt.size == 0) {
 		return;
@@ -688,11 +698,12 @@ static inline void X86_writeSpanImpl(SpanContext &ctx, const ChannelLayout &fmt,
 
 	if (fmt.size != 4 || !isConstantSpan(ctx)) {
 		// A textured run that this set can sample goes to the vector sampler; anything else -
-		// linear filtering, an array texture, a wrap it cannot do - to the scalar one.
-		// Bilinear is not this kernel's: it samples one texel. A linear span falls through to the
-		// scalar set, which has the column-caching loop for it.
+		// linear filtering, an array texture, a wrap it cannot do, premultiplied output - to the
+		// scalar one. Bilinear is not this kernel's: it samples one texel. A linear span falls
+		// through to the scalar set, which has the column-caching loop for it.
 		TextureSpan tex;
-		if (textureSpan && resolveTextureSpan(ctx, fmt, tex) && !tex.linear) {
+		if (textureSpan && blend != BlendMode::Premultiplied && resolveTextureSpan(ctx, fmt, tex)
+				&& !tex.linear) {
 			textureSpan(ctx, fmt, blend, tex);
 			return;
 		}
@@ -713,6 +724,12 @@ static inline void X86_writeSpanImpl(SpanContext &ctx, const ChannelLayout &fmt,
 	}
 
 	if (src.alpha == 255) {
+		// Premultiplied output of an opaque source is the source itself.
+		if (blend == BlendMode::Premultiplied) {
+			fill(ctx.dst, ctx.count, src);
+			return;
+		}
+
 		auto dst = ctx.dst;
 		for (uint32_t i = 0; i < ctx.count; ++i) {
 			dst[fmt.r] = src.bytes[fmt.r];
@@ -723,7 +740,7 @@ static inline void X86_writeSpanImpl(SpanContext &ctx, const ChannelLayout &fmt,
 		return;
 	}
 
-	blendConstant(ctx.dst, ctx.count, src, fmt);
+	blendConstant(ctx.dst, ctx.count, src, fmt, blend);
 }
 
 template <typename Fill>
