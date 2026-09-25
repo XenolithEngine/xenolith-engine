@@ -111,8 +111,16 @@ struct SP_PUBLIC AttachmentInputData : public Ref {
 	// Serialization for the remote render session (see XLCoreFrameRequestProxy.h). Each concrete
 	// input owns its wire format (e.g. basic2d serializes its command list). The defaults mean
 	// "no wire format": serialize writes nothing and reports false, deserialize fails.
+	//
+	// `identityNamespace` separates the data identities of one peer from every other's: the
+	// server passes the session id, and an input that carries identities moves them into it, so
+	// that damage tracking never matches one client's data against another's (or the server's own,
+	// which live in namespace 0).
 	virtual bool serialize(const Callback<void(BytesView)> &) const { return false; }
-	virtual bool deserialize(BytesView, Vector<uint32_t> *remoteDeps = nullptr) { return false; }
+	virtual bool deserialize(BytesView, Vector<uint32_t> *remoteDeps = nullptr,
+			uint64_t identityNamespace = 0) {
+		return false;
+	}
 };
 
 class SP_PUBLIC Attachment : public NamedRef {

@@ -172,7 +172,8 @@ void RemoteFontServerEndpoint::handleGlyphRequest(BytesView payload) {
 		if (!face) {
 			continue;
 		}
-		requests.emplace_back(FontUpdateRequest{sp::move(face), sp::move(f.chars), false});
+		requests.emplace_back(
+				FontUpdateRequest{sp::move(face), sp::move(f.chars), false, _library});
 	}
 
 	auto dep = getOrCreateDep(depId);
@@ -273,9 +274,8 @@ Rc<core::DynamicImageInstance> RemoteFontServerEndpoint::resolveAtlasInstance(ui
 }
 
 void RemoteFontServerEndpoint::reset() {
-	// Drop per-connection gating events; keep the persistent font store and the network atlas for
-	// the next client. The pinned atlas id is also dropped: the next session re-shares it (the
-	// registry may have been recreated since).
+	// Drop per-connection gating events and the pinned atlas id. The endpoint is not reused: its
+	// faces carry this client's FaceIds (see ServerAppThread::resetSession).
 	_peer = nullptr;
 	++_peerGeneration;
 	_deps.clear();

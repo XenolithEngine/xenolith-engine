@@ -142,7 +142,8 @@ struct SP_PUBLIC FrameContextHandle2d : public FrameContextHandle {
 	// Remote render-session wire format for the 2D command batch (see XLCoreFrameRequestProxy.h;
 	// layout described in the .cc).
 	virtual bool serialize(const Callback<void(BytesView)> &) const override;
-	virtual bool deserialize(BytesView, Vector<uint32_t> *remoteDeps = nullptr) override;
+	virtual bool deserialize(BytesView, Vector<uint32_t> *remoteDeps = nullptr,
+			uint64_t identityNamespace = 0) override;
 };
 
 // Mint an empty FrameContextHandle2d for a remote client's frame input. Shared by every backend's

@@ -916,8 +916,14 @@ void ServerAppThread::resetSession(RemoteSession *session) {
 		released = !_sharedObjects->releaseSession(session->getId()).empty();
 	}
 
+	/* A font endpoint serves one session and is not handed to the next: its FontLibrary adopted
+	this client's FaceIds, and a kept face would answer the next client's CharIds with its glyphs
+	keyed under another id - blank text. A fresh endpoint waits for the next client instead. */
 	if (auto fontServer = session->close()) {
-		_idleFontServers.emplace_back(sp::move(fontServer));
+		fontServer->invalidate();
+	}
+	if (_createFontServer && _idleFontServers.empty()) {
+		_idleFontServers.emplace_back(_createFontServer(this, _fontComponent, _fontStore));
 	}
 
 	for (auto assignment = _windowAssignments.begin(); assignment != _windowAssignments.end();) {
@@ -1721,8 +1727,9 @@ void ServerAppThread::loadExtensions() {
 
 		// Network font endpoints (remote::Domain::Font), one per session: each a separate
 		// controller with its own FontLibrary and atlas, so client FaceIds never collide with the
-		// local controller's or each other's. One is created now, so the first client finds its
-		// atlas compiled.
+		// local controller's or each other's - nor with an earlier client's, since an endpoint is
+		// dropped with its session. One is created now, so the first client finds its atlas
+		// compiled.
 		_createFontServer = SharedModule::acquireTypedSymbol<
 				decltype(&font::RemoteFontServerEndpoint::createServerFontEndpoint)>(
 				buildconfig::MODULE_XENOLITH_FONT_NAME,

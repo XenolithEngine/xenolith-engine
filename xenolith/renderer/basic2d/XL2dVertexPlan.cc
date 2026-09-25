@@ -182,7 +182,7 @@ void VertexPlan::pushVertexData(Context &ctx, const Command *c, const CmdVertexA
 #endif
 
 	if (ctx.collectDamage) {
-		for (auto &iv : cmd->vertexes) { ctx.damage->addInstances(c, cmd, iv); }
+		for (auto &iv : cmd->vertexes) { ctx.damage->addInstances(c, cmd, material, iv); }
 	}
 
 #if XL_FRAME_ACCOUNT
@@ -211,7 +211,7 @@ void VertexPlan::pushVertexData(Context &ctx, const Command *c, const CmdVertexA
 						.first;
 		}
 		emplaceWritePlan(ctx.input, material, v->second, c, cmd, cmd->vertexes);
-		notePainter(c, cmd, cmd->vertexes);
+		notePainter(c, cmd, material, cmd->vertexes);
 	}
 
 #if XL_FRAME_ACCOUNT
@@ -301,7 +301,7 @@ void VertexPlan::pushDeferred(Context &ctx, const Command *c, const CmdDeferred 
 
 	// the result is resolved by now, so a deferred command is bounded exactly like an immediate one
 	if (ctx.collectDamage) {
-		for (auto &iv : storedVertexes) { ctx.damage->addInstances(c, cmd, iv); }
+		for (auto &iv : storedVertexes) { ctx.damage->addInstances(c, cmd, material, iv); }
 	}
 
 	if (cmd->renderingLevel == RenderingLevel::Overlay) {
@@ -320,7 +320,7 @@ void VertexPlan::pushDeferred(Context &ctx, const Command *c, const CmdDeferred 
 						.first;
 		}
 		emplaceWritePlan(ctx.input, material, v->second, c, cmd, storedVertexes);
-		notePainter(c, cmd, storedVertexes);
+		notePainter(c, cmd, material, storedVertexes);
 	}
 }
 
@@ -371,9 +371,10 @@ void VertexPlan::pushParticleEmitter(Context &ctx, const Command *c,
 }
 
 bool VertexPlan::computeClipBounds(const Command *c, const CmdInfo *cmd,
-		SpanView<InstanceVertexData> vertexes, Rect &out) {
+		const core::Material *material, SpanView<InstanceVertexData> vertexes, Rect &out) {
 	// `DamageCollector::addInstances`'s reading of the same data: the producer's box when it gave
-	// one, the vertexes otherwise, and every instance transform already maps to clip space.
+	// one, the vertexes (through the material's atlas) otherwise, and every instance transform
+	// already maps to clip space.
 	if ((c->flags & CommandFlags::UnknownBounds) != CommandFlags::None) {
 		return false;
 	}
@@ -384,9 +385,7 @@ bool VertexPlan::computeClipBounds(const Command *c, const CmdInfo *cmd,
 		}
 		Rect model = cmd->bounds;
 		if (model.size.width <= 0.0f || model.size.height <= 0.0f) {
-			if (!iv.data->getBounds(model)) {
-				return false;
-			}
+			model = iv.data->getBounds(material ? material->getAtlas() : nullptr).box;
 		}
 		for (auto &inst : iv.instances) {
 			auto r = TransformRect(model, inst.transform);
@@ -412,7 +411,7 @@ void VertexPlan::deferSurface(const core::Material *material, const Command *c,
 	pending.command = c;
 	pending.info = cmd;
 	pending.vertexes = vertexes;
-	pending.bounded = computeClipBounds(c, cmd, vertexes, pending.bounds);
+	pending.bounded = computeClipBounds(c, cmd, material, vertexes, pending.bounds);
 
 	/* Reserve the traversal stamps this command would have taken (one per state group and one per
 	block): painter's order inside a plan is read off them, so a command placed later still sorts
@@ -423,11 +422,11 @@ void VertexPlan::deferSurface(const core::Material *material, const Command *c,
 	pendingSurfaces.emplace_back(sp::move(pending));
 }
 
-void VertexPlan::notePainter(const Command *c, const CmdInfo *cmd,
+void VertexPlan::notePainter(const Command *c, const CmdInfo *cmd, const core::Material *material,
 		SpanView<InstanceVertexData> vertexes) {
 	PainterBounds entry;
 	entry.zPath = cmd->zPath;
-	entry.bounded = computeClipBounds(c, cmd, vertexes, entry.bounds);
+	entry.bounded = computeClipBounds(c, cmd, material, vertexes, entry.bounds);
 	painterBounds.emplace_back(sp::move(entry));
 }
 

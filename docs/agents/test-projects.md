@@ -43,10 +43,19 @@
   build `tests/window` with `SOFT=1`; `--gapi` keeps one. That the host opens no second OS window is
   checked by hand on X11 (`SP_SESSION_TYPE=x11`, `xprop -root _NET_CLIENT_LIST`).
 - Changed partial redraw or swapchain damage (`SwapchainDamage`, a queue pass's
-  `computeRedrawArea`, the headless swapchains) → `tests/window/damage-check.py`. It runs the damage
-  stand (`XL_DAMAGE_TEST`) on the flat queue, in the root window and in a virtual window with frames
-  held, on Vulkan and soft, and fails on a trail or on frames that never took the partial path
-  (`XL_VK_DAMAGE_LOG`, `XL_SOFT_DAMAGE_LOG` report the decision per frame).
+  `computeRedrawArea`, the headless swapchains, `DamageCollector`, `VertexData::getBounds`) →
+  `tests/window/damage-check.py`. It runs the damage stand (`XL_DAMAGE_TEST`) on the flat queue, in
+  the root window and in a virtual window with frames held, on Vulkan and soft, and fails on a
+  trail, on frames that never took the partial path, or on a label colour change that is not a
+  partial repaint of its own (`XL_VK_DAMAGE_LOG`, `XL_SOFT_DAMAGE_LOG` report the decision per
+  frame).
+- Changed how a remote client's frame reaches the server (`FrameContextHandle2d::serialize` /
+  `deserialize`, the remote font server) → `tests/window/remote-render-check.py` as well. It runs
+  `testapp --connect` against a `testapp` server that shows client windows as virtual ones: the
+  damage stand without a trail and on the partial path, then a layout compared pixel by pixel with
+  the same layout run locally, before and after a state-only change. The two client sessions run one
+  after the other, so text that renders in the second is also the check that a font endpoint does
+  not outlive its session.
 - Changed `xenolith/core` or `xenolith/backend/vk` → `tests/compute` (the runner
   owes it for both). It covers the round trip on 1 … 10⁵ records and the device-lost
   refusals: a request after `VK_ERROR_DEVICE_LOST` gets exactly one failed callback

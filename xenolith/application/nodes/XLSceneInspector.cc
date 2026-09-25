@@ -1354,16 +1354,30 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 			// hold. `plane-hold` holds the latest frame itself for `ms`, as a slow compositor would.
 			auto source = w->getPlaneSource();
 			auto frame = source ? source->getLatest() : nullptr;
-			if (frame) {
-				result.setInteger(int64_t(frame->getSerial()), "serial");
-				result.setInteger(int64_t(frame->getSlot()), "slot");
-			}
 			if (op == "plane") {
+				/* The latest frame and the pins are two reads, and a frame held here is pinned by
+				that alone: one published in between would show the previous latest pinned next to
+				the new one. So the pins are read with no frame held, and again when a newer frame
+				arrived meanwhile. */
 				auto slots = source ? source->getSlotTable() : nullptr;
+				Vector<uint32_t> pinnedSlots;
+				for (uint32_t attempt = 0; attempt < 4; ++attempt) {
+					const uint64_t latestSerial = frame ? frame->getSerial() : 0;
+					if (frame) {
+						result.setInteger(int64_t(latestSerial), "serial");
+						result.setInteger(int64_t(frame->getSlot()), "slot");
+					}
+					frame = nullptr;
+					pinnedSlots = slots ? slots->getPinned() : Vector<uint32_t>();
+					frame = source ? source->getLatest() : nullptr;
+					if ((frame ? frame->getSerial() : 0) == latestSerial) {
+						break;
+					}
+				}
 				auto &pinned = result.emplace("pinned");
 				pinned.setArray(Value::ArrayType());
+				for (auto it : pinnedSlots) { pinned.addInteger(int64_t(it)); }
 				if (slots) {
-					for (auto it : slots->getPinned()) { pinned.addInteger(int64_t(it)); }
 					result.setInteger(int64_t(slots->getSlotCount()), "imageCount");
 				}
 				result.setInteger(int64_t(source ? source->getPublishedCount() : 0), "published");
@@ -1372,6 +1386,8 @@ void SceneInspector::handleWindow(NotNull<Session> session, int64_t serial, Valu
 					sendError(session, serial, "plane-hold: nothing published yet");
 					return;
 				}
+				result.setInteger(int64_t(frame->getSerial()), "serial");
+				result.setInteger(int64_t(frame->getSlot()), "slot");
 				auto ms = sprt::max(req.getInteger("ms", 1'000), int64_t(0));
 				auto app = _owner && _owner->getDirector() ? _owner->getDirector()->getApplication()
 														   : nullptr;

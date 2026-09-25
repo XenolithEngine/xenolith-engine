@@ -397,7 +397,7 @@ def main():
         # XL_REMOTE_FAKE_VERSION exists for exactly the reason XL_REMOTE_FAKE_ABI does: two binaries
         # from one tree agree on the version, so without it the refusal is unexecutable.
         bad_client = spawn_client(client_bin, share, token, spki,
-                extra_env={"XL_REMOTE_FAKE_VERSION": "1"})
+                extra_env={"XL_REMOTE_FAKE_VERSION": "2"})
         for _ in range(20):
             s.ok("frame", count=1)
             time.sleep(0.1)

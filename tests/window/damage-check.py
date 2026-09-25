@@ -120,6 +120,16 @@ def start_app(binary, sock, log, gapi):
     raise SystemExit("testapp did not come up")
 
 
+def shot_bytes(s, window=None):
+    """The current picture as raw RGB bytes."""
+    shot = (s.ok("screenshot", window=window) if window else s.ok("screenshot")) or {}
+    data = shot.get("data") or ""
+    if isinstance(data, str) and data.startswith("BASE64:"):
+        raw = data[len("BASE64:"):]
+        data = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+    return Image.open(io.BytesIO(data)).convert("RGB").tobytes()
+
+
 def red_area(s, window=None):
     """Pixels of the moving square's red in the current screenshot."""
     shot = (s.ok("screenshot", window=window) if window else s.ok("screenshot")) or {}
@@ -161,6 +171,38 @@ def run(binary, gapi):
         bad = [a for a in areas if not (0.9 * square <= a <= 1.1 * square)]
         check("every frame shows exactly one red square (no trail)", not bad and len(areas) >= 5,
                 f"expected ~{int(square)} red pixels, got {areas}")
+
+        # --- a label changing colour --------------------------------------------------------------
+        #
+        # A label's glyphs are zero-size points the shader moves by their atlas entries, so its box
+        # is found through the atlas. Scanned as points, a line of text on a baseline has no
+        # height: the label drops out of the damage and keeps its old colour. Every change must be a
+        # partial repaint of its own, and the picture after an even number of them - the first
+        # colour again - the picture a full redraw gives.
+        word = "damage: partial redraw" if gapi == "vulkan" else "damage: repainting"
+        decisions = []
+        for _ in range(4):
+            mark = len(open(log, errors="replace").read())
+            s.ok("invoke", name="damage.label-color", args={})
+            s.ok("frame", count=4)
+            time.sleep(0.2)
+            text = open(log, errors="replace").read()[mark:]
+            decisions.append((text.count(word), text.count("damage: full")))
+        s.ok("frame", count=4)
+        time.sleep(0.3)
+        partial_shot = shot_bytes(s)
+        check("every colour change of a label is a partial repaint of its own",
+                all(p > 0 and f == 0 for p, f in decisions),
+                f"(partial, full) decisions per change: {decisions}")
+        s.ok("window", op="resize", width=WIDTH + 40, height=HEIGHT)
+        s.ok("frame", count=4)
+        time.sleep(0.4)
+        s.ok("window", op="resize", width=WIDTH, height=HEIGHT)
+        s.ok("frame", count=6)
+        time.sleep(0.5)
+        full_shot = shot_bytes(s)
+        check("a label's colour changes repaint the whole label", partial_shot == full_shot,
+                "the partially redrawn picture differs from a full redraw")
 
         # --- the same walk in a virtual window, read as a plane ------------------------------------
         #

@@ -137,30 +137,18 @@ SP_DEFINE_ENUM_AS_MASK(CommandFlags)
 
 // Identity + version for a copy-on-write data set, used to compute damage rectangles between
 // frames. `id` is stable for the lifetime of the object, `generation` changes whenever the
-// contents may have changed. A model-space AABB is cached alongside, so damage collection never
-// has to rescan the data of an unchanged set.
+// contents may have changed. What the set covers is the renderer's to derive from the data.
 struct SP_PUBLIC DataIdentity {
 	uint64_t id = 0;
 	uint32_t generation = 0;
-	uint32_t boundsGeneration = maxOf<uint32_t>();
-	Rect bounds;
-
-	// Whether the AABB may be derived by scanning the data. False for atlas-driven geometry.
-	bool derivable = true;
 
 	DataIdentity() : id(allocate()) { }
 
-	void invalidate() {
-		++generation;
-		boundsGeneration = maxOf<uint32_t>();
-	}
+	// An identity minted elsewhere: a remote client's data set, re-created on the server with the
+	// id (already moved into the session's namespace) and generation it had on the client.
+	DataIdentity(uint64_t i, uint32_t g) : id(i), generation(g) { }
 
-	void setBounds(const Rect &r) {
-		bounds = r;
-		boundsGeneration = generation;
-	}
-
-	bool hasBounds() const { return boundsGeneration == generation; }
+	void invalidate() { ++generation; }
 
 	static uint64_t allocate();
 };

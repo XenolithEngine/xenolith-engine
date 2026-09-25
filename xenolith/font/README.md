@@ -12,7 +12,7 @@ new glyphs are requested.
 | `FontControllerLocal` | `XLFontControllerLocal.*` | GPU leaf: owns the atlas `DynamicImage` + `Texture`, drives `FontComponent` for raster. |
 | `FontControllerRemote` | `XLFontControllerRemote.*` | Headless client leaf: positions locally, forwards rasterization to a server over `remote::Domain::Font`. |
 | `FontComponent` | `XLFontComponent.*` | The gAPI endpoint (`FontGapi`): `compileImage` / `updateImage` into the gl Loop + `vk::FontQueue`. Owns the `FontLibrary`. |
-| `RemoteFontServerEndpoint` | `XLRemoteFontServerEndpoint.*` | Server side of the remote split: a dedicated network `FontControllerLocal` + persistent font store. |
+| `RemoteFontServerEndpoint` | `XLRemoteFontServerEndpoint.*` | Server side of the remote split: a dedicated network `FontControllerLocal` + persistent font store. One per session and dropped with it: its faces carry the FaceIds that client minted. |
 | `FontLibrary` | `../../stappler/font/SPFontLibrary.*` | FreeType context; opens `FontFaceData` / `FontFaceObject`, mints FaceIds. |
 | `vk::FontQueue` | `backend/vk/XLVkFontQueue.*` | The render queue that rasterizes glyphs (FreeType on worker threads), packs the atlas, and uploads it. |
 
@@ -85,6 +85,10 @@ For one `FontUpdateRequest{ FontFaceObject, chars }`:
 
 1. **Rasterize (worker threads).** `DeferredRequest::runFontRenderer` → FreeType →
    `CharTexture{ bitmap, x, y, w, h, fontID, charID }`. (`xenolith/font/XLFontDeferredRequest.cc`)
+   The per-thread FreeType handle comes from the library the face was opened from
+   (`FontUpdateRequest::library`, the component's when null): that library's cache of handles is
+   keyed by the face object and dropped with the face, and a face of another library would leave
+   its handle behind for the next face allocated at the same address.
 2. **Collect bitmaps.** `FontAttachmentHandle::pushCopyTexture` writes pixels into the `_frontBuffer`
    staging buffer and records a `VkBufferImageCopy`; `persistent` glyphs are also copied into
    `_persistentTargetBuffer`. (`xenolith/font/backend/vk/XLVkFontQueue.cc`)
@@ -104,6 +108,11 @@ For one `FontUpdateRequest{ FontFaceObject, chars }`:
 - **Atlas packing and upload are full.** Adding a single glyph rebuilds the entire `DataAtlas` and
   uploads a fresh `VkImage` (new size). The CharId → texcoord mapping is therefore regenerated each
   update, but the bitmap pixels for old glyphs are copied GPU-side, not re-rasterized.
+- **Where a glyph lands on screen does not depend on where it is packed.** The shader adds the
+  entry's `pos` to the vertex and samples its `tex`, so a rebuild changes no pixel of a label whose
+  glyphs were all present. Damage tracking therefore does not version the atlas: it resolves a
+  label's box through it and hashes the glyphs it could not find (`VertexData::getBounds`), and a
+  label repaints when one of those arrives.
 
 ### Dependency gating
 

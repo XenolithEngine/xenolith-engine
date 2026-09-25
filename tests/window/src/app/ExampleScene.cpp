@@ -211,6 +211,12 @@ void ExampleScene::installAppMessageHandler(ServerAppThread *app) {
 void ExampleScene::handlePresented(Director *dir) {
 	Scene2d::handlePresented(dir);
 
+	// Всё ниже — о раздаче окна удалённым клиентам, то есть дело сервера. testapp, запущенный
+	// клиентом (--connect), своих очередей не строит: у него нет устройства.
+	if (!dir->getApplication()->isServerThread()) {
+		return;
+	}
+
 	// Очередь для удалённого клиента.
 	//
 	// Имя намеренно НЕ "RemoteClientQueue": клиент раньше искал очередь именно по этой строке, то
