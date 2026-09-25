@@ -68,6 +68,15 @@ StringView getDescriptorTypeName(DescriptorType type) {
 	return StringView("Unknown");
 }
 
+StringView getImageFormatSupportName(ImageFormatSupport value) {
+	switch (value) {
+	case ImageFormatSupport::Unknown: return StringView("unknown");
+	case ImageFormatSupport::Supported: return StringView("supported");
+	case ImageFormatSupport::Unsupported: return StringView("unsupported");
+	}
+	return StringView("unknown");
+}
+
 void getProgramStageDescription(const CallbackStream &stream, ProgramStage fmt) {
 	if ((fmt & ProgramStage::Vertex) != ProgramStage::None) {
 		stream << " Vertex";

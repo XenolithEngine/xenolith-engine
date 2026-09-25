@@ -54,6 +54,10 @@ void Loop::updateImageStable(const Rc<DynamicImage> &image, BytesView data,
 	updateImage(image, data, sp::move(cb));
 }
 
+ImageFormatSupport Loop::getImageFormatSupport(ImageFormat, ImageUsage) const {
+	return ImageFormatSupport::Unknown;
+}
+
 void Loop::captureImage(const FileInfo &file, const Rc<core::ImageObject> &image,
 		core::AttachmentLayout l) {
 	auto path = file.path.str<Interface>();
