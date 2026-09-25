@@ -175,8 +175,9 @@ def run(binary, gapi):
         # --- a label changing colour --------------------------------------------------------------
         #
         # A label's glyphs are zero-size points the shader moves by their atlas entries, so its box
-        # is found through the atlas. Scanned as points, a line of text on a baseline has no
-        # height: the label drops out of the damage and keeps its old colour. Every change must be a
+        # is its layout's or is found through the atlas (label-bounds-check.py runs this with the
+        # latter). Scanned as points, a line of text on a baseline has no height: the label drops
+        # out of the damage and keeps its old colour. Every change must be a
         # partial repaint of its own, and the picture after an even number of them - the first
         # colour again - the picture a full redraw gives.
         word = "damage: partial redraw" if gapi == "vulkan" else "damage: repainting"

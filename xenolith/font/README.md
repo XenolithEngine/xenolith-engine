@@ -112,7 +112,11 @@ For one `FontUpdateRequest{ FontFaceObject, chars }`:
   entry's `pos` to the vertex and samples its `tex`, so a rebuild changes no pixel of a label whose
   glyphs were all present. Damage tracking therefore does not version the atlas: it resolves a
   label's box through it and hashes the glyphs it could not find (`VertexData::getBounds`), and a
-  label repaints when one of those arrives.
+  label repaints when one of those arrives. That read is per vertex and is paid again after every
+  rebuild, so a local label takes its box from the layout instead and skips it
+  (`basic2d::Label::setBoundsFromLayout`, on by default - a local frame is gated on its glyphs
+  anyway). The atlas read is what a server does for a remote client's labels, whose layout it
+  never sees.
 
 ### Dependency gating
 

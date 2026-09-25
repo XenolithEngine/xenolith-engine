@@ -98,6 +98,14 @@ public:
 			float layer);
 	static Rc<LabelResult> writeResult(TextLayout *format, const Color4F &, float layer);
 
+	/* Where damage tracking takes a label's box from, for every label written from now on. On (the
+	default): from the layout, padded by the tallest line, and the quads are not read. Off: from the
+	quads, each glyph placed through the atlas it is drawn with - exact, but read vertex by vertex
+	whenever the label changes or the atlas is rebuilt. A remote client's labels are measured on the
+	server through its atlas either way: the layout box does not cross the wire. */
+	static void setBoundsFromLayout(bool);
+	static bool isBoundsFromLayout();
+
 	virtual ~Label();
 
 	virtual bool init() override;

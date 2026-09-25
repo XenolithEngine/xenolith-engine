@@ -103,7 +103,8 @@ void TestLayout::setCaption(StringView title, StringView description) {
 	_contentSizeDirty = true;
 }
 
-void TestLayout::addCommand(StringView name, StringView description, CommandHandler &&handler) {
+void TestLayout::addCommand(StringView name, StringView description, CommandHandler &&handler,
+		bool immediate) {
 	// A layout built outside the registry (an overlay a test pushes) has no name to key commands
 	// on, and nothing external ever asks for it - leave it alone.
 	if (!_info || _info->name.empty() || !_scene || !handler) {
@@ -114,8 +115,13 @@ void TestLayout::addCommand(StringView name, StringView description, CommandHand
 	auto full = toString(_info->name, ".", name);
 
 	if (!inspector::addCommand(content, full, description,
-				[this, handler = sp::move(handler)](Value &&args,
+				[this, handler = sp::move(handler), immediate](Value &&args,
 						Function<void(Value &&)> &&done) mutable {
+		if (immediate) {
+			done(handler(sp::move(args)));
+			return;
+		}
+
 		auto settle = args.hasValue("settle") ? float(args.getDouble("settle")) : DefaultSettle;
 		auto result = handler(sp::move(args));
 

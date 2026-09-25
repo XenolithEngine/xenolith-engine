@@ -642,8 +642,19 @@ glyph through the atlas the frame draws it with, as the shader places it
 signature, so its arrival repaints the label and nothing else. `tests/window/remote-render-check.py`
 runs `testapp` as a client of a `testapp` server.
 
-The server keeps what it was sent (`xenolith/core/XLCoreFrameDataCache.h`), so a set the client
-did not touch is not sent again either: the frame carries its identity and a reference.
+A local label does not pay that. Reading a label's box from its quads costs an atlas lookup per
+vertex, paid again whenever the label changes or the atlas is rebuilt — and the atlas is rebuilt
+whole for every new glyph — so by default (`basic2d::Label::setBoundsFromLayout`, on) a label takes
+its box from its layout, padded by the tallest line: the producer's box
+(`VertexArray::setLayoutBounds`) wins in `VertexData::getBounds`, and the quads are not read. The box
+is larger, and it survives a colour change, which moves no vertex. It stays on the client: it does
+not cross the wire, so the server reads a remote client's labels through its atlas whatever the
+client's setting. `setBoundsFromLayout(false)` puts local labels on the atlas read too.
+`tests/window/label-bounds-check.py` prints what both modes cost and runs `damage-check.py` with the
+atlas read.
+
+The server keeps what a remote client sent it (`xenolith/core/XLCoreFrameDataCache.h`), so a set
+the client did not touch is not sent again either: the frame carries its identity and a reference.
 
 * **The client decides, the server checks.** The client keeps a mirror of what the server holds
   (`ClientAppThread::getFrameDataMirror()`), evicts the least recently used sets within the budget

@@ -135,6 +135,25 @@ static void Label_writeTextureQuad(float height, const font::Metrics &m,
 	}
 }
 
+static sprt::atomic<bool> s_boundsFromLayout = true;
+
+// Model-space box of a laid-out label, in layout units (x = char pos, y = format->height -
+// line.pos). Glyph quads are points the shader sizes from the atlas, so the box is the layout
+// extent padded by the tallest line on every side: a superset of what the glyphs cover.
+template <typename Interface>
+static Rect Label_computeBounds(const font::TextLayoutData<Interface> *format) {
+	if (format->chars.empty()) {
+		return Rect::ZERO;
+	}
+
+	uint16_t maxLineHeight = 0;
+	for (auto &line : format->lines) { maxLineHeight = sprt::max(maxLineHeight, line.height); }
+
+	const float margin = float(maxLineHeight);
+	return Rect(-margin, -margin, float(format->width) + margin * 2.0f,
+			float(format->height) + margin * 2.0f);
+}
+
 template <typename Interface>
 static void Label_writeQuads(VertexArray &vertexes, const font::TextLayoutData<Interface> *format,
 		Vector<ColorMask> &colorMap, float layer) {
@@ -255,6 +274,11 @@ static void Label_writeQuads(VertexArray &vertexes, const font::TextLayoutData<I
 			}
 		}
 	}
+
+	// after the last quad: every addQuad() drops the box
+	if (s_boundsFromLayout.load(sprt::memory_order_relaxed)) {
+		vertexes.setLayoutBounds(Label_computeBounds(format));
+	}
 }
 
 void Label::writeQuads(VertexArray &vertexes,
@@ -267,6 +291,14 @@ void Label::writeQuads(VertexArray &vertexes,
 		const font::TextLayoutData<memory::PoolInterface> *format, Vector<ColorMask> &colorMap,
 		float layer) {
 	Label_writeQuads(vertexes, format, colorMap, layer);
+}
+
+void Label::setBoundsFromLayout(bool value) {
+	s_boundsFromLayout.store(value, sprt::memory_order_relaxed);
+}
+
+bool Label::isBoundsFromLayout() {
+	return s_boundsFromLayout.load(sprt::memory_order_relaxed);
 }
 
 Rc<LabelResult> Label::writeResult(TextLayout *format, const Color4F &color, float layer) {

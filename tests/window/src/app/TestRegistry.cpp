@@ -39,6 +39,7 @@
 #include "render/DamageLayout.h"
 #include "render/FrameCaptureLayout.h"
 #include "render/GradientLayout.h"
+#include "render/LabelFillLayout.h"
 #include "layout/FitContentLayout.h"
 #include "layout/FlexboxLayout.h"
 #include "layout/TableLayout.h"
@@ -52,6 +53,7 @@
 #include "window/MultiWindowLayout.h"
 #include "window/GeometryLayout.h"
 #include "window/QueueCacheLayout.h"
+#include "window/FrameRequestLayout.h"
 #include "widgets/NumberFieldLayout.h"
 #include "widgets/VectorFieldLayout.h"
 #include "widgets/ColorFieldLayout.h"
@@ -616,6 +618,13 @@ static const TestInfo s_renderTests[] = {
 				   "square must be visible at any moment - a second one is a trail."),
 		TestRegistry_make<DamageLayout>, true},
 
+	TestInfo{StringView("label-fill"), StringView("XL_LABEL_FILL_TEST"),
+		StringView("Label bounds, from the quads or from the layout"),
+		StringView("A grid of labels in three scripts. label-fill.bench writes their quads again "
+				   "and reads the damage box in both modes of Label::setBoundsFromLayout; "
+				   "label-fill.fill sets how many labels and how long."),
+		TestRegistry_make<LabelFillLayout>, true},
+
 	TestInfo{StringView("gradient"), StringView("XL_GRADIENT_TEST"),
 		StringView("Gradients and outlines"),
 		StringView("A box shaded left to right by a two-colour gradient above a teal box with a dark "
@@ -650,6 +659,12 @@ static const TestInfo s_windowTests[] = {
 		StringView("A render queue is built and compiled before any of the windows that use it "
 				   "exist; three secondary windows then open on that same compiled graph."),
 		TestRegistry_make<QueueCacheLayout>},
+
+	TestInfo{StringView("frame-request"), StringView("XL_FRAME_REQUEST_TEST"),
+		StringView("A window asks for its frames"),
+		StringView("Each frame-request command changes the scene once from outside a frame; the "
+				   "window must draw the change and then stop asking. Nothing moves on its own."),
+		TestRegistry_make<FrameRequestLayout>, true},
 };
 
 // src/drag - the drag-and-drop protocol

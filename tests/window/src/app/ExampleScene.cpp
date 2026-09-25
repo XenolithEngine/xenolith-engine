@@ -107,6 +107,12 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	}
 	setFpsVisible(fpsVisible);
 
+	// XL_LABEL_LAYOUT_BOUNDS=0 — область повреждения метки берётся из квадов через атлас, а не из
+	// раскладки, как по умолчанию (basic2d::Label::setBoundsFromLayout).
+	if (auto value = ::getenv("XL_LABEL_LAYOUT_BOUNDS")) {
+		basic2d::Label::setBoundsFromLayout(StringView(value) != "0");
+	}
+
 	return true;
 }
 

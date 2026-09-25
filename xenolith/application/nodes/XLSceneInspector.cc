@@ -26,6 +26,7 @@
 #include "XLSelection.h"
 
 #include "XLNode.h"
+#include "XLScene.h" // the change count the `frame` command reports
 #include "XLAction.h" // RenderContinuously, for the `render` command
 #include "XLInheritedStyle.h"
 #include "XLDirector.h"
@@ -988,6 +989,15 @@ void SceneInspector::handleRequest(NotNull<Session> session, Value &&request) {
 		Value result;
 		result.setInteger(count, "count");
 		result.setInteger(int64_t(server->getFrameTiming().lastFrameOrder), "presented");
+		// What the window's own director asked for, and how often its scene changed: the steps
+		// above bypass the director and are not counted.
+		auto director = target->_owner ? target->_owner->getDirector() : nullptr;
+		if (director) {
+			result.setInteger(int64_t(director->getFrameRequestCount()), "requested");
+			if (auto scene = director->getScene()) {
+				result.setInteger(int64_t(scene->getChangeCount()), "changes");
+			}
+		}
 		sendResponse(session, serial, sp::move(result));
 	} else if (cmd == "render") {
 		/* Keep the scene redrawing on every frame (a tagged RenderContinuously), so changes nobody
