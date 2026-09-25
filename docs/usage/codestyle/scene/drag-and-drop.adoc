@@ -328,6 +328,11 @@ Two things about it are worth knowing before writing another one:
   60 Hz callback for every drag in the application, to pay for a case that arises
   only here.
 
+The pull itself - which scroller a node is, and how hard a point near the edge
+pulls - is `ui::makeEdgeScroller` and `ui::getEdgeScrollRamp`, shared with the
+rubber band of a list (`ui::MarqueeSystem`), which unlike a drag keeps pulling
+while the pointer is beyond the edge.
+
 ## The decorator
 
 The source supplies a factory; the session owns the node and parks it at

@@ -97,9 +97,12 @@ void TreeView::setSource(Model *source) {
 		return;
 	}
 
+	if (_marquee) {
+		_marquee->cancel();
+	}
 	_sourceListener->setSubscription(source);
 	_expanded.clear();
-	_selectedRow = maxOf<size_t>();
+	_selection.remap(0, [this](size_t index) { return getRowIdentity(index); });
 	refresh();
 }
 
@@ -238,55 +241,105 @@ void TreeView::setSelectionEnabled(bool value) {
 	}
 
 	_selectionEnabled = value;
+	if (!value && _marquee) {
+		_marquee->cancel();
+	}
 	// Forced: whether a row carries an input listener at all is decided when the node is built.
 	requestRebuildNodes(true);
+}
+
+void TreeView::setSelectionMode(ListSelectionMode mode) {
+	if (_selection.getMode() == mode) {
+		return;
+	}
+	_selection.setMode(mode);
+	if (mode == ListSelectionMode::Single && _marquee) {
+		_marquee->cancel();
+	}
+	if (mode == ListSelectionMode::Single && _selection.getIdentities().size() > 1) {
+		const auto current = _selection.getCurrent();
+		setSelectedRow(current < _rows.size() ? current
+											  : (_selection.getRows().empty()
+															? maxOf<size_t>()
+															: _selection.getRows().front()));
+	}
+	bindSelectionHotkeys();
+}
+
+void TreeView::setMarqueeEnabled(bool value) {
+	_marqueeEnabled = value;
+	if (!_marquee && value) {
+		// `this` captured raw: the view owns the system
+		_marquee = addSystem(Rc<MarqueeSystem>::create(MarqueeSlots{
+			[this](const MarqueeEvent &ev) { return handleMarqueeBegin(ev); },
+			[this](const MarqueeEvent &ev) { handleMarqueeUpdate(ev); },
+			[this](const MarqueeEvent &ev, bool commit) { handleMarqueeEnd(ev, commit); },
+			nullptr,
+		}, _scroll));
+	}
+	if (_marquee) {
+		_marquee->setEnabled(value);
+	}
+}
+
+void TreeView::setMarqueeFilter(RowFilterFunction &&cb) { _marqueeFilter = sp::move(cb); }
+
+void TreeView::setMarqueeCallback(MarqueeFunction &&cb) { _marqueeCallback = sp::move(cb); }
+
+RowIdentity TreeView::getRowIdentity(size_t index) const {
+	return index < _rows.size() ? RowIdentity{_rows[index].getId(), _rows[index].offset}
+								: RowIdentity();
 }
 
 void TreeView::setSelectedRow(size_t index) {
 	// No early return on the index: a hidden row has index maxOf but a set identity, which clearing
 	// must still reach
-	if (index < _rows.size()) {
-		setSelectedIdentity(_rows[index].getId(), _rows[index].offset);
-	} else {
-		setSelectedIdentity(ItemId(0), 0);
-	}
+	auto identity = [this](size_t i) { return getRowIdentity(i); };
+	applySelection(index < _rows.size()
+					? _selection.set(makeSpanView(&index, 1), index, _rows.size(), identity)
+					: _selection.clear());
 }
 
-void TreeView::setSelectedIdentity(ItemId id, uint64_t offset) {
-	if (_selectedId == id && _selectedOffset == offset) {
+void TreeView::setSelectedRows(SpanView<size_t> rows, size_t current) {
+	auto identity = [this](size_t i) { return getRowIdentity(i); };
+	applySelection(_selection.set(rows, current, _rows.size(), identity));
+}
+
+void TreeView::applySelection(bool changed) {
+	if (!changed) {
 		return;
 	}
-
-	const auto previous = _selectedRow;
-
-	_selectedId = id;
-	_selectedOffset = offset;
-
-	// The index is derived from the identity, which may currently have no row
-	remapSelection();
-
-	const auto index = _selectedRow;
-	if (previous == index) {
-		return;
-	}
-
-	// Only the two affected row nodes are restyled; other rows read _selectedRow in makeRow().
-	if (auto node = getRowNode(previous)) {
-		updateRowNode(node, previous);
-	}
-	if (auto node = getRowNode(index)) {
-		updateRowNode(node, index);
-	}
-
+	// Only the rows on screen are restyled; the others read the selection in makeRow().
+	updateRowNodes();
 	publishSelection();
 }
 
+void TreeView::updateRowNodes() {
+	if (!_controller) {
+		return;
+	}
+	const auto &controller = *_controller;
+	for (auto &it : controller.getItems()) {
+		if (auto row = dynamic_cast<RowNode *>(it.node)) {
+			updateRowNode(row, row->getRowIndex());
+		}
+	}
+}
+
 void TreeView::showSelectedRow(size_t index) {
+	showSelectedRows(makeSpanView(&index, index < _rows.size() ? 1 : 0), index);
+}
+
+void TreeView::showSelectedRows(SpanView<size_t> rows, size_t current) {
 	auto system = _selectionOwned ? SelectionSystem::findForNode(this) : nullptr;
 	const bool ours = system && system->getOwner() == this;
 	const bool applying = _applyingSelection;
 	_applyingSelection = applying || !ours;
-	setSelectedRow(index);
+	if (rows.empty()) {
+		setSelectedRow(maxOf<size_t>());
+	} else {
+		setSelectedRows(rows, current);
+	}
 	_applyingSelection = applying;
 }
 
@@ -329,7 +382,7 @@ void TreeView::publishSelection() {
 		return;
 	}
 
-	if (_selectedId == ItemId(0)) {
+	if (_selection.empty()) {
 		// Only if it is still ours; another container may have taken it
 		if (system->getOwner() == this) {
 			system->clear();
@@ -337,15 +390,38 @@ void TreeView::publishSelection() {
 		return;
 	}
 
-	if (_selectedRow < _rows.size()) {
-		auto item = makeSelectionItem(_selectedRow);
-		system->select(this, makeSpanView(&item, 1));
+	// The current row first, so a reader of the first item reads the one picked last
+	Vector<SelectionItem> items;
+	const auto current = _selection.getCurrent();
+	if (_selection.isSelected(current)) {
+		items.emplace_back(makeSelectionItem(current));
+	}
+	for (auto it : _selection.getRows()) {
+		if (it != current) {
+			items.emplace_back(makeSelectionItem(it));
+		}
+	}
+	if (!items.empty()) {
+		_publishing = true;
+		system->select(this, items);
+		_publishing = false;
 	}
 }
 
 Node *TreeView::resolveSelectionNode(const SelectionItem &item) const {
+	auto node = dynamic_cast<ModelNode *>(item.ref.get());
+	if (!node) {
+		return nullptr;
+	}
+	const RowIdentity id{node->getId(), item.index};
+	for (auto it : _selection.getRows()) {
+		if (getRowIdentity(it) == id) {
+			return getRowNode(it);
+		}
+	}
+	// An item handed in before handleSelectionChanged reached this view
 	for (size_t i = 0; i < _rows.size(); ++i) {
-		if (_rows[i].node.get() == item.ref.get() && _rows[i].offset == item.index) {
+		if (getRowIdentity(i) == id) {
 			return getRowNode(i);
 		}
 	}
@@ -353,11 +429,11 @@ Node *TreeView::resolveSelectionNode(const SelectionItem &item) const {
 }
 
 bool TreeView::moveSelection(SelectionDirection dir) {
-	if (!_selectionOwned || _selectedRow >= _rows.size()) {
+	const auto index = getSelectedRow();
+	if (!_selectionOwned || index >= _rows.size()) {
 		return false;
 	}
 
-	const auto index = _selectedRow;
 	switch (dir) {
 	case SelectionDirection::Up:
 		if (index == 0) {
@@ -421,12 +497,71 @@ void TreeView::selectRowFromKeyboard(size_t index) {
 
 	setSelectedRow(index);
 	scrollRowIntoView(_scroll, _controller, index);
+	notifySelect(index, ListSelectionOp::Replace, true);
+}
 
-	if (_selectCallback && index < _rows.size()) {
-		_keyboardSelect = true;
-		_selectCallback(index, _rows[index]);
-		_keyboardSelect = false;
+bool TreeView::extendSelectionFromKeyboard(bool down) {
+	const auto current = getSelectedRow();
+	if (!_selectionOwned || _selection.getMode() != ListSelectionMode::Multiple
+			|| current >= _rows.size()) {
+		return false;
 	}
+	if ((down && current + 1 >= _rows.size()) || (!down && current == 0)) {
+		return false;
+	}
+	const auto index = down ? current + 1 : current - 1;
+	auto identity = [this](size_t i) { return getRowIdentity(i); };
+	applySelection(_selection.extend(index, _rows.size(), identity));
+	scrollRowIntoView(_scroll, _controller, index);
+	notifySelect(index, ListSelectionOp::Range, true);
+	return true;
+}
+
+bool TreeView::selectAllFromKeyboard() {
+	if (!_selectionOwned || _selection.getMode() != ListSelectionMode::Multiple
+			|| _rows.empty()) {
+		return false;
+	}
+	auto identity = [this](size_t i) { return getRowIdentity(i); };
+	applySelection(_selection.selectAll(_rows.size(), identity));
+	notifySelect(getSelectedRow(), ListSelectionOp::Replace, true);
+	return true;
+}
+
+void TreeView::notifySelect(size_t index, ListSelectionOp op, bool keyboard) {
+	if (!_selectCallback || index >= _rows.size()) {
+		return;
+	}
+	_lastSelectionOp = op;
+	_keyboardSelect = keyboard;
+	_selectCallback(index, _rows[index]);
+	_keyboardSelect = false;
+	_lastSelectionOp = ListSelectionOp::Replace;
+}
+
+void TreeView::bindSelectionHotkeys() {
+	if (!_activateKeys) {
+		return;
+	}
+
+	auto &hk = EngineHotkeys::get();
+	_activateKeys->removeHotkey(hk.selectExtendUp);
+	_activateKeys->removeHotkey(hk.selectExtendDown);
+	_activateKeys->removeHotkey(hk.selectAll);
+	if (_selection.getMode() != ListSelectionMode::Multiple) {
+		return;
+	}
+
+	// Unhandled: a focused field takes Shift+arrows and Ctrl+A for its own text first
+	const auto flags = HotkeyFlags::SelectedOnly | HotkeyFlags::Unhandled;
+	_activateKeys->addHotkey(hk.selectExtendUp, [this](HotkeyId, const InputEvent &) {
+		return extendSelectionFromKeyboard(false);
+	}, flags | HotkeyFlags::Repeatable);
+	_activateKeys->addHotkey(hk.selectExtendDown, [this](HotkeyId, const InputEvent &) {
+		return extendSelectionFromKeyboard(true);
+	}, flags | HotkeyFlags::Repeatable);
+	_activateKeys->addHotkey(hk.selectAll,
+			[this](HotkeyId, const InputEvent &) { return selectAllFromKeyboard(); }, flags);
 }
 
 void TreeView::bindActivateHotkeys() {
@@ -442,25 +577,37 @@ void TreeView::bindActivateHotkeys() {
 				[this](HotkeyId, const InputEvent &) { return activateSelectedRow(); },
 				HotkeyFlags::SelectedOnly);
 	}
+	bindSelectionHotkeys();
 }
 
 bool TreeView::activateSelectedRow() {
-	if (!_selectionOwned || !_activateCallback || _selectedRow >= _rows.size()) {
+	const auto current = getSelectedRow();
+	if (!_selectionOwned || !_activateCallback || current >= _rows.size()) {
 		return false;
 	}
-	_activateCallback(_selectedRow, _rows[_selectedRow]);
+	_activateCallback(current, _rows[current]);
 	return true;
 }
 
 void TreeView::handleSelectionChanged(SpanView<SelectionItem> items) {
+	/* What this view is publishing comes straight back, carrying only the visible rows; only
+	losing the selection applies then. */
+	if (_publishing && !items.empty()) {
+		return;
+	}
+
 	// Applying the system's change, so publishSelection() must not echo it
 	_applyingSelection = true;
 
-	if (items.empty()) {
-		setSelectedIdentity(ItemId(0), 0);
-	} else if (auto node = dynamic_cast<ModelNode *>(items.front().ref.get())) {
-		setSelectedIdentity(node->getId(), items.front().index);
+	Vector<RowIdentity> ids;
+	for (auto &it : items) {
+		if (auto node = dynamic_cast<ModelNode *>(it.ref.get())) {
+			ids.emplace_back(RowIdentity{node->getId(), it.index});
+		}
 	}
+	auto identity = [this](size_t i) { return getRowIdentity(i); };
+	applySelection(ids.empty() ? _selection.clear()
+							   : _selection.setIdentities(ids, _rows.size(), identity));
 
 	_applyingSelection = false;
 }
@@ -499,6 +646,8 @@ void TreeView::refresh() {
 	}
 
 	rebuildModel();
+	// The indices follow the rows at once, so the selection can be read and set before the nodes
+	remapSelection();
 	requestRowData();
 	requestRebuildNodes();
 }
@@ -684,22 +833,10 @@ void TreeView::requestRebuildNodes(Function<void()> &&cb, bool force) {
 }
 
 void TreeView::remapSelection() {
-	if (_selectedId == ItemId(0)) {
-		_selectedRow = maxOf<size_t>();
-		return;
-	}
-
-	for (size_t i = 0; i < _rows.size(); ++i) {
-		if (_rows[i].getId() == _selectedId && _rows[i].offset == _selectedOffset) {
-			_selectedRow = i;
-			return;
-		}
-	}
-
-	/* No row shows this identity (hidden or removed). Only the index is dropped: the identity lets
-	re-expanding restore the selection, and a removed ItemId is never reused. The selection is
-	never moved to a neighbouring row. */
-	_selectedRow = maxOf<size_t>();
+	/* An identity no row shows (hidden or removed) keeps its place and only loses its index: that
+	lets re-expanding restore it, and a removed ItemId is never reused. The selection is never
+	moved to a neighbouring row. */
+	_selection.remap(_rows.size(), [this](size_t i) { return getRowIdentity(i); });
 }
 
 void TreeView::rebuildRows() {
@@ -707,7 +844,7 @@ void TreeView::rebuildRows() {
 		return;
 	}
 
-	// Before the nodes are made: makeRow() reads _selectedRow
+	// Before the nodes are made: makeRow() reads the selection
 	remapSelection();
 
 	// Keep live row nodes alive across the rebuild until makeRow() claims them by key.
@@ -749,6 +886,11 @@ void TreeView::rebuildRows() {
 
 	// Unclaimed nodes belonged to rows that are gone or changed.
 	_reusableRows.clear();
+
+	// A band in progress covers other rows now: a branch opened or closed under it
+	if (_marquee && _marquee->isActive()) {
+		_marquee->refresh();
+	}
 
 	/* New rows are already laid out here (Node::runPendingPhases, commitChanges). Callbacks are
 	taken off the list before they run, so a new request is served by the next rebuild. */
@@ -803,9 +945,8 @@ auto TreeView::getRowNode(size_t index) const -> RowNode * {
 }
 
 void TreeView::updateRowNode(RowNode *node, size_t index) {
-	const auto selected = (index == _selectedRow);
-
-	if (selected) {
+	// A band in progress shows what its release would make; :selected waits for it
+	if (isRowShownSelected(index)) {
 		node->addStyleClass("selected");
 	} else {
 		node->removeStyleClass("selected");
@@ -814,7 +955,7 @@ void TreeView::updateRowNode(RowNode *node, size_t index) {
 	/* The scene-wide `:selected` state, distinct from the `.selected` class (which every view
 	writes, owned or not). Applied per node, since virtualized row nodes are recycled. */
 	if (_selectionOwned) {
-		setNodeSelected(node, selected);
+		setNodeSelected(node, _selection.isSelected(index));
 	}
 }
 
@@ -859,7 +1000,7 @@ Rc<Node> TreeView::buildRowNode(RowBuilder &builder) {
 		if (!row.dataLoaded) {
 			rowNode->addStyleClass("loading");
 		}
-		if (index == _selectedRow) {
+		if (isRowShownSelected(index)) {
 			rowNode->addStyleClass("selected");
 		}
 
@@ -1266,28 +1407,85 @@ void TreeView::fireDropExpand() {
 	}
 }
 
-void TreeView::handleRowTap(size_t index, uint32_t count) {
+void TreeView::handleRowTap(size_t index, uint32_t count, InputModifier mods) {
 	if (index >= _rows.size()) {
 		return;
 	}
+	const auto op = _selection.getMode() == ListSelectionMode::Multiple
+			? getListSelectionOp(mods)
+			: ListSelectionOp::Replace;
 
-	if (count > 1) {
+	// A second press with a modifier is another pick, not an activation
+	if (count > 1 && op == ListSelectionOp::Replace) {
 		if (_activateCallback) {
 			_activateCallback(index, _rows[index]);
 		}
 		return;
 	}
 
-	setSelectedRow(index);
+	auto identity = [this](size_t i) { return getRowIdentity(i); };
+	if (_selection.press(index, op, _rows.size(), identity)) {
+		updateRowNodes();
+	}
 	// a tap on the row already selected still takes the scene's selection back
 	publishSelection();
+	notifySelect(index, op, false);
+}
 
-	if (_selectCallback) {
-		_selectCallback(index, _rows[index]);
+bool TreeView::handleMarqueeBegin(const MarqueeEvent &ev) {
+	if (!_selectionEnabled || _selection.getMode() != ListSelectionMode::Multiple) {
+		return false;
+	}
+	_sweep = ListSweep();
+	_sweep.op = ev.op;
+	_sweep.active = true;
+	return true;
+}
+
+void TreeView::handleMarqueeUpdate(const MarqueeEvent &ev) {
+	_sweep.hits.clear();
+	size_t first = 0;
+	size_t last = 0;
+	if (getRowRangeIn(makeGeometrySource(), ev.hostRect, first, last)) {
+		for (auto i = first; i <= last && i < _rows.size(); ++i) {
+			if (!_marqueeFilter || _marqueeFilter(i, _rows[i])) {
+				_sweep.hits.emplace_back(i);
+			}
+		}
+	}
+
+	// The anchor at the end the band started from, the current row at the pointer's
+	const bool down = ev.point.y < ev.origin.y;
+	_sweep.anchor = _sweep.hits.empty() ? maxOf<size_t>()
+										: (down ? _sweep.hits.front() : _sweep.hits.back());
+	_sweep.current = _sweep.hits.empty() ? maxOf<size_t>()
+										 : (down ? _sweep.hits.back() : _sweep.hits.front());
+	updateRowNodes();
+}
+
+void TreeView::handleMarqueeEnd(const MarqueeEvent &, bool commit) {
+	auto sweep = sp::move(_sweep);
+	_sweep = ListSweep();
+	if (!commit) {
+		updateRowNodes();
+		return;
+	}
+
+	auto identity = [this](size_t i) { return getRowIdentity(i); };
+	const bool changed = _selection.sweep(sweep.hits, sweep.op, sweep.anchor, sweep.current,
+			_rows.size(), identity);
+	updateRowNodes();
+	// a band takes the scene's selection like a tap does
+	publishSelection();
+
+	if (changed && _marqueeCallback) {
+		_lastSelectionOp = sweep.op;
+		_marqueeCallback(sweep.op);
+		_lastSelectionOp = ListSelectionOp::Replace;
 	}
 }
 
-bool TreeView::RowBuilder::isSelected() const { return _view->getSelectedRow() == _index; }
+bool TreeView::RowBuilder::isSelected() const { return _view->isRowSelected(_index); }
 
 void TreeView::RowBuilder::setNode(Rc<Node> &&node) { _node = sp::move(node); }
 
@@ -1360,7 +1558,7 @@ bool TreeView::RowNode::init(TreeView *view, size_t index, bool interactive) {
 			// select callback that toggles would cancel the expander.
 			if (tap.event == GestureEvent::Activated
 					&& (!_expander || !_expander->isTouched(tap.pos))) {
-				_view->handleRowTap(_index, tap.count);
+				_view->handleRowTap(_index, tap.count, tap.input->data.getModifiers());
 			}
 			return true;
 			// Up to two taps, so handleRowTap can tell select from activate by `count`; Immediate

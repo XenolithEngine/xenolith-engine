@@ -57,6 +57,12 @@ The point is read in content space, so a point outside the viewport names the ro
 there (consistent with getRowRect). Only a point before the first or past the last row misses. */
 SP_PUBLIC size_t getRowIndexAt(const RowGeometrySource &, const Vec2 &viewLocation);
 
+/* The rows a rectangle in the view's space reaches across, by their extent along the list: a row
+is in when its span meets [minY, maxY]. The rectangle may reach outside the viewport, where rows
+without a node still have a place. False when it meets no row. */
+SP_PUBLIC bool getRowRangeIn(const RowGeometrySource &, const Rect &viewRect, size_t &first,
+		size_t &last);
+
 /* The boundary an insertion would snap to: 0..rowCount, not a row index.
 `boundaryRect`, when given, receives a thin rectangle on that boundary for drawing. */
 SP_PUBLIC size_t getRowBoundaryAt(const RowGeometrySource &, const Vec2 &viewLocation,

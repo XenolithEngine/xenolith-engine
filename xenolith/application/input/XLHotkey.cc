@@ -437,6 +437,12 @@ const EngineHotkeys &EngineHotkeys::get() {
 				add("org.stappler.xenolith.selection.up", "UP", "Select the next element above");
 		s_hotkeys.selectDown =
 				add("org.stappler.xenolith.selection.down", "DOWN", "Select the next element below");
+		s_hotkeys.selectExtendUp = add("org.stappler.xenolith.selection.extend-up", "Shift+UP",
+				"Extend the selection up");
+		s_hotkeys.selectExtendDown = add("org.stappler.xenolith.selection.extend-down",
+				"Shift+DOWN", "Extend the selection down");
+		s_hotkeys.selectAll =
+				add("org.stappler.xenolith.selection.all", "Ctrl+A", "Select every element");
 
 		s_hotkeys.textAccept =
 				add("org.stappler.xenolith.text-input.accept", "ENTER", "Accept the field's text");

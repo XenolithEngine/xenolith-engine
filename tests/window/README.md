@@ -46,6 +46,11 @@ is included by its group-qualified path: `#include "app/TestLayout.h"`.
     inline-edit-check.py      headless assertions for the ui::InlineEditor demo
                               (label, table cell, and a FACTORY-built editor)
     table-reorder-check.py    headless assertions for ui::TableView geometry and reorder
+    list-selection-check.py   headless assertions for multiple selection in a table and a tree:
+                              Shift and Ctrl presses, Shift+Up/Down, Ctrl+A
+    marquee-check.py          headless assertions for the rubber band (ui::MarqueeSystem) over
+                              a table, a tree and a grid of its own: the preview, the release,
+                              what starts no band, the edge pull
     drag-check.py             runs the five drag-and-drop stands, one process each, and
                               reports the summary each of them prints
     scrollbar-check.py        headless assertions for basic2d::ScrollView's scroll bar:

@@ -81,6 +81,8 @@
 #include "widgets/ScrollThrashLayout.h"
 #include "widgets/SelectionLayout.h"
 #include "widgets/SelectionNavLayout.h"
+#include "widgets/ListSelectionLayout.h"
+#include "widgets/MarqueeLayout.h"
 #include "text/ShapingLayout.h"
 #include "text/MarkdownLayout.h"
 #include "css/SelectorLayout.h"
@@ -516,6 +518,26 @@ static const TestInfo s_widgetsTests[] = {
 				   "Inspector: selection-nav.state, selection-nav.select, selection-nav.move, "
 				   "selection-nav.eat, selection-nav.modal, selection-nav.hidden."),
 		TestRegistry_make<SelectionNavLayout>, true},
+
+	TestInfo{StringView("list-selection"), StringView("XL_LIST_SELECTION_TEST"),
+		StringView("Multiple selection in lists"),
+		StringView("A table and a tree in the multiple selection mode, a table in the single mode and "
+				   "a text field. A press picks one row, Ctrl toggles one, Shift takes the run from "
+				   "the anchor, Ctrl+Shift adds it; Shift+Up/Down extend the run and Ctrl+A takes "
+				   "every row, but not while the field has the caret. A set of rows anchors the "
+				   "scene's selection on the list. Inspector: list-selection.state, "
+				   "list-selection.select, list-selection.expand, list-selection.focus-field."),
+		TestRegistry_make<ListSelectionLayout>, true},
+
+	TestInfo{StringView("marquee"), StringView("XL_MARQUEE_TEST"),
+		StringView("A rubber band over lists"),
+		StringView("A table with a reorder grip and a header, a tree and a grid of tiles, each with a "
+				   "band, and a panel over a corner of the table. A mouse drag sweeps a rectangle: "
+				   "what it covers is lit before the release, which applies it once - plain replaces, "
+				   "Ctrl toggles, Shift adds; Escape cancels, an edge scrolls, a finger pans. "
+				   "Inspector: marquee.state, marquee.set, marquee.select, marquee.expand, "
+				   "marquee.scroll, marquee.insert, marquee.reset."),
+		TestRegistry_make<MarqueeLayout>, true},
 };
 
 // src/text - text shaping

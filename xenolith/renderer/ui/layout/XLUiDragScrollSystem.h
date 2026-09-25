@@ -28,6 +28,23 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
+/* A scroller as an edge pull sees it: the room left before and after the position, and the nudge.
+Both in CSS orientation (y grows down); the basic2d adapter converts. */
+struct SP_PUBLIC EdgeScroller {
+	Function<Vec2()> range;
+	Function<void(Vec2)> scrollBy;
+
+	bool empty() const { return !range || !scrollBy; }
+};
+
+// A basic2d::ScrollViewBase, else a ui::ScrollSystem on the node; empty when it is neither.
+SP_PUBLIC EdgeScroller makeEdgeScroller(Node *);
+
+/* The pull on a point at `y` of a box `height` tall, in node space (y up): from -1 at the top edge
+to 0 at the inner side of the band, and from 0 to 1 at the bottom, the band clamped to a third of
+the box. Outside the box the pull is full with `beyond`, and none without. */
+SP_PUBLIC float getEdgeScrollRamp(float y, float height, float edge, bool beyond);
+
 /** Scrolls the node it is on while a drag rests near its edge.
 
     DragScrollSystem::acquireForNode(scrollView);
@@ -81,13 +98,8 @@ public:
 protected:
 	static constexpr uint32_t RenderActionTag = "XLUiDragScrollRender"_tag;
 
-	// Resolves which scroller the owner is. Empty callbacks mean "not a scroller": nothing runs.
-	void resolveScroller();
-
-	// Room left in each direction, and the nudge itself. Both in CSS orientation (y grows down);
-	// the basic2d adapter converts.
-	Function<Vec2()> _range;
-	Function<void(Vec2)> _scrollBy;
+	// Which scroller the owner is; an empty one means "not a scroller", and nothing runs.
+	EdgeScroller _scroller;
 
 	DragSystem *_drag = nullptr;
 	float _speed = DefaultSpeed;

@@ -246,6 +246,12 @@ struct SP_PUBLIC EngineHotkeys {
 	HotkeyId selectUp; // Up
 	HotkeyId selectDown; // Down
 
+	/* A list in the multiple selection mode: extend the selection from its anchor one row, and take
+	   every row. Offered along the selection chain, after a focused field declined the key. */
+	HotkeyId selectExtendUp; // Shift+Up
+	HotkeyId selectExtendDown; // Shift+Down
+	HotkeyId selectAll; // Ctrl+A — shares the combination with textSelectAll
+
 	HotkeyId textSelectAll; // Ctrl+A
 	HotkeyId textCopy; // Ctrl+C
 	HotkeyId textCut; // Ctrl+X

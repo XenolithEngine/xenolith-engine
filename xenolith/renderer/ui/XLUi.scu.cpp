@@ -58,6 +58,8 @@
 #include "view/XLUiCanvasView.cc"
 #include "view/XLUiFilesystemModel.cc"
 #include "view/XLUiRowGeometry.cc" // before both views: each answers its geometry through it
+#include "view/XLUiRowSelection.cc" // and holds its selection in it
+#include "view/XLUiMarquee.cc" // and sweeps a band over it
 #include "view/XLUiTreeView.cc"
 #include "view/XLUiTableView.cc"
 
