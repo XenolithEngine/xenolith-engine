@@ -92,6 +92,7 @@ protected:
 		Vector<URect> redrawAreas;
 		bool clear = false;
 		Color4F clearColor;
+		raster::TilingInfo tiling;
 	};
 
 	// Resolve the subpass output into a rasterizer target and record it. Returns false when it has
