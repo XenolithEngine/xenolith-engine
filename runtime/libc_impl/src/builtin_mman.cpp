@@ -47,6 +47,7 @@ struct MappingInfo {
 	static bool isRegionExists(void *, size_t, int *fd);
 };
 
+[[clang::no_destroy]]
 static MappingInfo s_mappingInfo;
 
 // Whether an ANONYMOUS mapping gets an entry in the registry above.

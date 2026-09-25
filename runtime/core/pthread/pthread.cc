@@ -53,6 +53,7 @@ namespace sprt::_thread {
 
 thread_local __thread_slot tl_self;
 
+[[clang::no_destroy]]
 static __thread_pool s_handlePool;
 
 __thread_pool *__thread_pool::get() { return &s_handlePool; }

@@ -6,6 +6,8 @@ SPDX-License-Identifier: MIT
 // Embox dispatch reactor — timers + atomics + CLOCK_MONOTONIC spin. See SPEvent-embox.h.
 
 #include "SPEvent-embox.h"
+#include "../fd/SPEventFile.h"
+#include "../fd/SPEventStatWatch.h"
 
 #include <sprt/runtime/log.h>
 #include <sprt/c/__sprt_errno.h>
@@ -57,7 +59,7 @@ static bool embox_futex_wait_enabled() {
 static constexpr int64_t EMBOX_DEADLINE_NONE = INT64_MAX;
 
 static int64_t embox_timespec_ns(const struct timespec &ts) {
-	return static_cast<int64_t>(ts.tv_sec) * 1000000000ll + ts.tv_nsec;
+	return static_cast<int64_t>(ts.tv_sec) * 1'000'000'000ll + ts.tv_nsec;
 }
 
 static int64_t embox_now_ns() {
@@ -84,7 +86,7 @@ static int64_t embox_rel_timeout(TimeInterval ival, int64_t nearest, int64_t now
 	} else if (ival == TimeInterval::Infinite) {
 		relIval = -1;
 	} else {
-		relIval = static_cast<int64_t>(ival.toMicroseconds()) * 1000;
+		relIval = static_cast<int64_t>(ival.toMicroseconds()) * 1'000;
 	}
 	if (relIval == 0) {
 		return 0;
@@ -120,14 +122,16 @@ void EmboxData::pushTimer(int64_t deadline, Handle *h) {
 
 void EmboxData::removeTimer(Handle *h) {
 	_timers.erase(sprt::remove_if(_timers.begin(), _timers.end(),
-	                  [h](const EmboxTimerEntry &e) { return e.handle == h; }),
-	        _timers.end());
+						  [h](const EmboxTimerEntry &e) { return e.handle == h; }),
+			_timers.end());
 }
 
 int64_t EmboxData::nearestDeadline() const {
 	int64_t best = EMBOX_DEADLINE_NONE;
 	for (const auto &e : _timers) {
-		if (e.deadline < best) best = e.deadline;
+		if (e.deadline < best) {
+			best = e.deadline;
+		}
 	}
 	return best;
 }
@@ -135,7 +139,7 @@ int64_t EmboxData::nearestDeadline() const {
 uint32_t EmboxData::fireExpired(RunContext *ctx) {
 	int64_t now = embox_now_ns();
 	uint32_t ndue = 0;
-	for (size_t i = 0; i < _timers.size(); ) {
+	for (size_t i = 0; i < _timers.size();) {
 		if (_timers[i].deadline > now) {
 			++i;
 			continue;
@@ -290,7 +294,7 @@ void EmboxData::spinWait(int timeoutMs) {
 		if (__atomic_load_n(&_wakeupReq, __ATOMIC_SEQ_CST) != 0 || hasChangedAddress()) {
 			return;
 		}
-		::usleep(1000);
+		::usleep(1'000);
 		if (embox_now_ns() >= until) {
 			return;
 		}
@@ -327,8 +331,10 @@ uint32_t EmboxData::wait(TimeInterval ival) {
 			if (rel < 0) {
 				timeoutMs = -1;
 			} else {
-				timeoutMs = static_cast<int>(rel / 1000000ll);
-				if (rel > 0 && timeoutMs == 0) timeoutMs = 1;
+				timeoutMs = static_cast<int>(rel / 1'000'000ll);
+				if (rel > 0 && timeoutMs == 0) {
+					timeoutMs = 1;
+				}
 			}
 			if (timeoutMs < 0 || timeoutMs > 16) {
 				timeoutMs = 16;
@@ -355,7 +361,7 @@ Status EmboxData::run(TimeInterval ival, QueueWakeupInfo &&winfo) {
 	// EPollData::run); here the loop owns the deadline directly.
 	int64_t runDeadline = EMBOX_DEADLINE_NONE;
 	if (ival && ival != TimeInterval::Infinite) {
-		runDeadline = embox_now_ns() + static_cast<int64_t>(ival.toMicroseconds()) * 1000;
+		runDeadline = embox_now_ns() + static_cast<int64_t>(ival.toMicroseconds()) * 1'000;
 	}
 
 	pushContext(&ctx, RunContext::Run);
@@ -368,11 +374,17 @@ Status EmboxData::run(TimeInterval ival, QueueWakeupInfo &&winfo) {
 		}
 
 		fireThreadHandles(&ctx);
-		if (ctx.state != RunContext::Running) break;
+		if (ctx.state != RunContext::Running) {
+			break;
+		}
 		fireAddressHandles(&ctx);
-		if (ctx.state != RunContext::Running) break;
+		if (ctx.state != RunContext::Running) {
+			break;
+		}
 		fireExpired(&ctx);
-		if (ctx.state != RunContext::Running) break;
+		if (ctx.state != RunContext::Running) {
+			break;
+		}
 
 		// A wakeup() or cancel() from another thread has to end this run, not
 		// merely shorten the idle: drainWakeup() used to clear the request and
@@ -384,13 +396,16 @@ Status EmboxData::run(TimeInterval ival, QueueWakeupInfo &&winfo) {
 		if (req & WakeupStop) {
 			WakeupFlags flags = (req & WakeupCancel)
 					? WakeupFlags::None // cancel(): stop now, do not drain gracefully
-					: WakeupFlags(static_cast<uint32_t>(req) & static_cast<uint32_t>(WakeupFlags::All));
+					: WakeupFlags(
+							  static_cast<uint32_t>(req) & static_cast<uint32_t>(WakeupFlags::All));
 			if (hasFlag(flags, WakeupFlags::ContextDefault)) {
 				flags = ctx.runWakeupFlags;
 			}
 			stopContext(&ctx, flags, true);
 		}
-		if (ctx.state != RunContext::Running) break;
+		if (ctx.state != RunContext::Running) {
+			break;
+		}
 
 		int64_t now = embox_now_ns();
 		int64_t rel = embox_rel_timeout(ival, nearestDeadline(), now);
@@ -401,8 +416,10 @@ Status EmboxData::run(TimeInterval ival, QueueWakeupInfo &&winfo) {
 		if (rel < 0) {
 			timeoutMs = -1;
 		} else {
-			timeoutMs = static_cast<int>(rel / 1000000ll);
-			if (rel > 0 && timeoutMs == 0) timeoutMs = 1;
+			timeoutMs = static_cast<int>(rel / 1'000'000ll);
+			if (rel > 0 && timeoutMs == 0) {
+				timeoutMs = 1;
+			}
 		}
 		// Embox poll()/nanosleep() from a pthread ignore their timeout. Cap the
 		// idle stretch so posted performOnThread work is observed.
@@ -417,8 +434,8 @@ Status EmboxData::run(TimeInterval ival, QueueWakeupInfo &&winfo) {
 }
 
 Status EmboxData::wakeup(WakeupFlags flags) {
-	__atomic_store_n(&_wakeupReq,
-			static_cast<int32_t>(toInt(flags)) | WakeupStop | WakeupPresent, __ATOMIC_SEQ_CST);
+	__atomic_store_n(&_wakeupReq, static_cast<int32_t>(toInt(flags)) | WakeupStop | WakeupPresent,
+			__ATOMIC_SEQ_CST);
 	notifyWakeup();
 	return Status::Ok;
 }
@@ -435,8 +452,8 @@ bool EmboxTimerHandle::init(HandleClass *cl, TimerInfo &&info) {
 		return false;
 	}
 	auto *src = reinterpret_cast<EmboxTimerSource *>(_data);
-	src->firstTimeout = static_cast<int64_t>(info.timeout.toMicroseconds()) * 1000;
-	src->interval = static_cast<int64_t>(info.interval.toMicroseconds()) * 1000;
+	src->firstTimeout = static_cast<int64_t>(info.timeout.toMicroseconds()) * 1'000;
+	src->interval = static_cast<int64_t>(info.interval.toMicroseconds()) * 1'000;
 	src->count = info.count;
 	src->value = 0;
 	src->deadline = 0;
@@ -445,8 +462,8 @@ bool EmboxTimerHandle::init(HandleClass *cl, TimerInfo &&info) {
 
 bool EmboxTimerHandle::reset(TimerInfo &&info) {
 	auto *src = reinterpret_cast<EmboxTimerSource *>(_data);
-	src->firstTimeout = static_cast<int64_t>(info.timeout.toMicroseconds()) * 1000;
-	src->interval = static_cast<int64_t>(info.interval.toMicroseconds()) * 1000;
+	src->firstTimeout = static_cast<int64_t>(info.timeout.toMicroseconds()) * 1'000;
+	src->interval = static_cast<int64_t>(info.interval.toMicroseconds()) * 1'000;
 	src->count = info.count;
 	return true;
 }
@@ -454,7 +471,7 @@ bool EmboxTimerHandle::reset(TimerInfo &&info) {
 Status EmboxTimerHandle::rearm(EmboxData *reactor, EmboxTimerSource *src) {
 	int64_t now = reactor->nowMonotonic();
 	int64_t delay = src->firstTimeout > 0 ? src->firstTimeout
-			: (src->interval > 0 ? src->interval : 16'000'000ll);
+										  : (src->interval > 0 ? src->interval : 16'000'000ll);
 	src->deadline = now + delay;
 	reactor->pushTimer(src->deadline, this);
 	return Status::Ok;
@@ -489,6 +506,10 @@ void EmboxTimerHandle::notify(EmboxData *reactor, EmboxTimerSource *src, const N
 		cancel(Status::Done);
 	} else {
 		sendCompletion(current, Status::Ok);
+
+		if (_status != Status::Ok) {
+			return;
+		}
 		src->deadline += static_cast<int64_t>(fired) * src->interval;
 		reactor->pushTimer(src->deadline, this);
 	}
@@ -604,6 +625,8 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 	setupEmboxHandleClass<EmboxThreadHandle, EmboxThreadSource>(&_info, &_emboxThreadClass, true);
 	setupEmboxHandleClass<EmboxAddressWaitHandle, EmboxAddressWaitSource>(&_info,
 			&_emboxAddressWaitClass, true);
+	setupInlineFileHandleClass(&_info, &_emboxFileInlineClass);
+	setupStatWatchClass(&_info, &_emboxWatchClass);
 
 	auto *platform = new (memory::pool::acquire()) EmboxData(q, this, info);
 	_platformQueue = platform;
@@ -639,6 +662,17 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 			h->setUserdata(ref);
 		}
 		return h;
+	};
+
+	_makeFileHandle = [](QueueData *d, void *ptr, Rc<FileState> &&state) -> Rc<FileHandle> {
+		auto data = static_cast<Queue::Data *>(d);
+		return makeFileInlineHandle(d, &data->_emboxFileInlineClass, sprt::move(state));
+	};
+
+	// No change notifications either: the portable stat-polling watch.
+	_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info, Ref *ref) -> Rc<WatchHandle> {
+		auto data = static_cast<Queue::Data *>(d);
+		return makeStatWatchHandle(d, &data->_emboxWatchClass, sprt::move(info), ref);
 	};
 }
 
