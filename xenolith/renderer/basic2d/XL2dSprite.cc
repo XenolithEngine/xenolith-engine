@@ -73,7 +73,7 @@ void Sprite::setTexture(StringView textureName) {
 	if (!_running) {
 		if (_texture) {
 			_texture = nullptr;
-			_materialDirty = true;
+			markMaterialDirty();
 		}
 		_textureName = textureName.str<Interface>();
 	} else {
@@ -83,7 +83,7 @@ void Sprite::setTexture(StringView textureName) {
 					_texture->handleExit(_frameContext);
 				}
 				_texture = nullptr;
-				_materialDirty = true;
+				markMaterialDirty();
 			}
 		} else if (!_texture || _texture->getName() != textureName) {
 			if (auto cache = _director->getResourceCache()) {
@@ -103,7 +103,7 @@ void Sprite::setTexture(Rc<Texture> &&tex) {
 			}
 			_texture = nullptr;
 			_textureName.clear();
-			_materialDirty = true;
+			markMaterialDirty();
 			_isTextureLoaded = false;
 		} else if (_texture->getName() != tex->getName()) {
 			if (_running) {
@@ -119,7 +119,7 @@ void Sprite::setTexture(Rc<Texture> &&tex) {
 			}
 			_textureName = _texture->getName().str<Interface>();
 			updateBlendAndDepth();
-			_materialDirty = true;
+			markMaterialDirty();
 		}
 	} else {
 		if (tex) {
@@ -133,7 +133,7 @@ void Sprite::setTexture(Rc<Texture> &&tex) {
 			}
 			_textureName = _texture->getName().str<Interface>();
 			updateBlendAndDepth();
-			_materialDirty = true;
+			markMaterialDirty();
 		}
 	}
 }
@@ -173,7 +173,7 @@ const Rc<LinearGradient> &Sprite::getLinearGradient() const { return _linearGrad
 void Sprite::setTextureRect(const Rect &rect) {
 	if (!_texturePlacement.textureRect.equals(rect)) {
 		_texturePlacement.textureRect = rect;
-		_vertexesDirty = true;
+		markVertexesDirty();
 	}
 }
 
@@ -199,7 +199,7 @@ void Sprite::draw(FrameInfo &frame, NodeVisitFlags flags) {
 		auto size = _texture->getExtent();
 		if (_targetTextureSize != size) {
 			_targetTextureSize = size;
-			_vertexesDirty = true;
+			markVertexesDirty();
 		}
 	}
 
@@ -218,7 +218,7 @@ void Sprite::draw(FrameInfo &frame, NodeVisitFlags flags) {
 	// pushed further down this same call has to match the material it will be drawn with.
 	if (frame.isOverlay() != _inOverlay) {
 		_inOverlay = frame.isOverlay();
-		_materialDirty = true;
+		markMaterialDirty();
 	}
 
 	if (_materialDirty) {
@@ -304,7 +304,7 @@ void Sprite::handleEnter(Scene *scene) {
 				if (_texture) {
 					updateBlendAndDepth();
 				}
-				_materialDirty = true;
+				markMaterialDirty();
 			}
 		}
 	}
@@ -322,7 +322,7 @@ void Sprite::handleExit() {
 }
 
 void Sprite::handleContentSizeDirty() {
-	_vertexesDirty = true;
+	markVertexesDirty();
 	Node::handleContentSizeDirty();
 }
 
@@ -335,7 +335,7 @@ void Sprite::handleTextureLoaded() {
 void Sprite::setColorMode(const core::ColorMode &mode) {
 	if (_colorMode != mode) {
 		_colorMode = mode;
-		_materialDirty = true;
+		markMaterialDirty();
 	}
 }
 
@@ -343,21 +343,21 @@ void Sprite::setBlendInfo(const core::BlendInfo &info) {
 	if (_blendInfo != info) {
 		_blendInfo = info;
 		_materialInfo.setBlendInfo(info);
-		_materialDirty = true;
+		markMaterialDirty();
 	}
 }
 
 void Sprite::setTextureLayer(float value) {
 	if (_textureLayer != value) {
 		_textureLayer = value;
-		_vertexesDirty = true;
+		markVertexesDirty();
 	}
 }
 
 void Sprite::setLineWidth(float value) {
 	if (_materialInfo.getLineWidth() != value) {
 		_materialInfo.setLineWidth(value);
-		_materialDirty = true;
+		markMaterialDirty();
 	}
 }
 
@@ -367,7 +367,7 @@ void Sprite::setRenderingLevel(RenderingLevel level) {
 		if (_running) {
 			updateBlendAndDepth();
 		} else {
-			_materialDirty = true;
+			markMaterialDirty();
 		}
 	}
 }
@@ -381,7 +381,7 @@ void Sprite::setNormalized(bool value) {
 void Sprite::setTextureAutofit(Autofit autofit) {
 	if (_texturePlacement.autofit != autofit) {
 		_texturePlacement.autofit = autofit;
-		_vertexesDirty = true;
+		markVertexesDirty();
 	}
 }
 
@@ -389,7 +389,7 @@ void Sprite::setTextureAutofitPosition(const Vec2 &vec) {
 	if (_texturePlacement.autofitPos != vec) {
 		_texturePlacement.autofitPos = vec;
 		if (_texturePlacement.autofit != Autofit::None) {
-			_vertexesDirty = true;
+			markVertexesDirty();
 		}
 	}
 }
@@ -397,7 +397,7 @@ void Sprite::setTextureAutofitPosition(const Vec2 &vec) {
 void Sprite::setSamplerIndex(SamplerIndex idx) {
 	if (_samplerIdx != idx) {
 		_samplerIdx = idx;
-		_materialDirty = true;
+		markMaterialDirty();
 	}
 }
 
@@ -446,7 +446,7 @@ bool Sprite::isMaterialRevokable() const { return _texture && _texture->getTempo
 
 void Sprite::updateColor() {
 	if (_tmpColor != _displayedColor) {
-		_vertexColorDirty = true;
+		markVertexColorDirty();
 		if (_tmpColor.a != _displayedColor.a) {
 			if (_displayedColor.a == 1.0f || _tmpColor.a == 1.0f) {
 				updateBlendAndDepth();
@@ -460,7 +460,7 @@ void Sprite::updateVertexesColor() { _vertexes.updateColor(_displayedColor); }
 
 void Sprite::initVertexes() {
 	_vertexes.init(4, 6);
-	_vertexesDirty = true;
+	markVertexesDirty();
 }
 
 void Sprite::updateVertexes(FrameInfo &frame) {
@@ -506,12 +506,12 @@ void Sprite::updateBlendAndDepth() {
 	if (shouldBlendColors) {
 		if (!_blendInfo.enabled) {
 			_blendInfo.enabled = 1;
-			_materialDirty = true;
+			markMaterialDirty();
 		}
 	} else {
 		if (_blendInfo.enabled) {
 			_blendInfo.enabled = 0;
-			_materialDirty = true;
+			markMaterialDirty();
 		}
 	}
 
@@ -521,12 +521,12 @@ void Sprite::updateBlendAndDepth() {
 	if (shouldWriteDepth) {
 		if (!depth.writeEnabled) {
 			depth.writeEnabled = 1;
-			_materialDirty = true;
+			markMaterialDirty();
 		}
 	} else {
 		if (depth.writeEnabled) {
 			depth.writeEnabled = 0;
-			_materialDirty = true;
+			markMaterialDirty();
 		}
 	}
 	if (_realRenderingLevel == RenderingLevel::Surface
@@ -534,12 +534,12 @@ void Sprite::updateBlendAndDepth() {
 			|| _realRenderingLevel == RenderingLevel::Overlay) {
 		if (depth.compare != toInt(core::CompareOp::LessOrEqual)) {
 			depth.compare = toInt(core::CompareOp::LessOrEqual);
-			_materialDirty = true;
+			markMaterialDirty();
 		}
 	} else {
 		if (depth.compare != toInt(core::CompareOp::Less)) {
 			depth.compare = toInt(core::CompareOp::Less);
-			_materialDirty = true;
+			markMaterialDirty();
 		}
 	}
 	_materialInfo.setDepthInfo(depth);
@@ -549,7 +549,7 @@ void Sprite::updateBlendAndDepth() {
 		auto viewType = core::getImageViewType(info.imageType, info.arrayLayers);
 		if (_materialInfo.getImageViewType() != viewType) {
 			_materialInfo.setImageViewType(viewType);
-			_materialDirty = true;
+			markMaterialDirty();
 		}
 	}
 }

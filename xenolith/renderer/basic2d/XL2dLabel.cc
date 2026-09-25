@@ -60,7 +60,7 @@ void Label::Selection::emplaceRect(const Rect &rect) {
 // Sprite::updateColor only marks vertexes when the colour value changed - so re-apply it always.
 void Label::Selection::updateColor() {
 	Sprite::updateColor();
-	_vertexColorDirty = true;
+	markVertexColorDirty();
 }
 
 void Label::Selection::updateVertexes(FrameInfo &frame) {
@@ -531,6 +531,7 @@ void Label::applyMeasuredSize(const Size2 &size) {
 
 void Label::setLabelDirty() {
 	LabelBase::setLabelDirty();
+	markSceneChanged();
 
 	// See the note on the declaration. Not while a measured box is being applied: that write is
 	// the answer to a measurement, not a change to one.
@@ -596,9 +597,9 @@ void Label::applyLayout(TextLayout *layout) {
 
 		_labelDirty = false;
 		_vertexColorDirty = false;
-		_vertexesDirty = true;
+		markVertexesDirty();
 	} else {
-		_vertexesDirty = true;
+		markVertexesDirty();
 	}
 }
 
@@ -769,7 +770,7 @@ void Label::updateColor() {
 			}
 		}
 	}
-	_vertexColorDirty = true;
+	markVertexColorDirty();
 }
 
 void Label::updateVertexesColor() {
@@ -972,7 +973,7 @@ void Label::updateVertexes(FrameInfo &frame) {
 	} else {
 		_deferredResult = nullptr;
 		updateQuadsForeground(_source, _format, _colorMap);
-		_vertexColorDirty = true;
+		markVertexColorDirty();
 	}
 }
 
@@ -983,14 +984,14 @@ void Label::onFontSourceUpdated() {
 		setTexture(Rc<Texture>(_source->getTexture()));
 	}
 	setLabelDirty();
-	_vertexesDirty = true;
+	markVertexesDirty();
 	_deferredResult = nullptr;
 }
 
 void Label::onFontSourceLoaded() {
 	if (_source) {
 		setTexture(Rc<Texture>(_source->getTexture()));
-		_vertexesDirty = true;
+		markVertexesDirty();
 		setLabelDirty();
 	}
 }
@@ -1127,7 +1128,7 @@ float Label::getMaxLineX() const {
 void Label::setDeferred(bool val) {
 	if (val != _deferred) {
 		_deferred = val;
-		_vertexesDirty = true;
+		markVertexesDirty();
 	}
 }
 

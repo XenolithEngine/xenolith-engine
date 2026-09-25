@@ -74,6 +74,7 @@ void FontControllerRemote::update(AppThread *app, const UpdateTime &clock, bool 
 }
 
 void FontControllerRemote::invalidate(AppThread *) {
+	failPendingBatches();
 	if (_image) {
 		_image->finalize();
 		_image = nullptr;
@@ -207,10 +208,7 @@ void FontControllerRemote::handleSourcesReady(BytesView payload) {
 
 bool FontControllerRemote::dispatchFontMessage(uint8_t code, uint32_t serial, BytesView payload) {
 	switch (remote::FontCode(code)) {
-	case remote::FontCode::AtlasReady:
-		// Gating is enforced server-side (the frame waits on the reconciled dependency there); the
-		// client just consumes the notification.
-		return true;
+	case remote::FontCode::AtlasReady: handleAtlasReady(payload); return true;
 	default:
 		log::source().warn("FontControllerRemote", "unhandled font message (code ", uint32_t(code),
 				")");
@@ -218,9 +216,47 @@ bool FontControllerRemote::dispatchFontMessage(uint8_t code, uint32_t serial, By
 	}
 }
 
+void FontControllerRemote::handleAtlasReady(BytesView payload) {
+	auto v = data::read<Interface>(payload);
+	const auto depId = uint32_t(v.getInteger("dep"));
+	const bool ok = v.getInteger("ok") != 0;
+
+	Rc<core::DependencyEvent> dep;
+	{
+		sprt::unique_lock lock(_pendingMutex);
+		auto it = _pendingBatches.find(depId);
+		if (it != _pendingBatches.end()) {
+			dep = sp::move(it->second);
+			_pendingBatches.erase(it);
+		}
+	}
+
+	if (!dep) {
+		log::source().debug("FontControllerRemote", "AtlasReady for an unknown batch ", depId);
+		return;
+	}
+
+	/* No wakeup: the frames that needed these glyphs were held on the server until now, so what
+	they show is already complete. A failed batch is resent by the next flush. */
+	dep->signal(nullptr, ok);
+}
+
+void FontControllerRemote::failPendingBatches() {
+	Map<uint32_t, Rc<core::DependencyEvent>> pending;
+	{
+		sprt::unique_lock lock(_pendingMutex);
+		pending = sp::move(_pendingBatches);
+		_pendingBatches.clear();
+	}
+	for (auto &it : pending) { it.second->signal(nullptr, false); }
+}
+
 void FontControllerRemote::submitGlyphs(AppThread *app, Vector<FontUpdateRequest> &&objects,
 		Rc<core::DependencyEvent> &&dep) {
 	if (!_owner) {
+		if (dep) {
+			dep->signal(nullptr, false);
+		}
 		return;
 	}
 
@@ -246,16 +282,28 @@ void FontControllerRemote::submitGlyphs(AppThread *app, Vector<FontUpdateRequest
 	Bytes req;
 	encodeGlyphRequest(req, dep ? dep->getId() : 0, faces);
 
-	//log::source().info("FontControllerRemote", "submitGlyphs: ", objects.size(), " face(s), dep ",
-	//		dep ? dep->getId() : 0);
-	_owner->remoteSendRaw(remote::Domain::Font, toInt(remote::FontCode::GlyphRequest),
-			BytesView(req.data(), req.size()));
+	// Registered before sending: the answer may be dispatched before this returns.
+	if (dep) {
+		sprt::unique_lock lock(_pendingMutex);
+		_pendingBatches.emplace(dep->getId(), dep);
+	}
+
+	if (!_owner->remoteSendRaw(remote::Domain::Font, toInt(remote::FontCode::GlyphRequest),
+				BytesView(req.data(), req.size()))) {
+		if (dep) {
+			{
+				sprt::unique_lock lock(_pendingMutex);
+				_pendingBatches.erase(dep->getId());
+			}
+			dep->signal(nullptr, false);
+		}
+	}
 }
 
 Rc<core::DependencyEvent> FontControllerRemote::makeDependency() {
-	// Empty queue-set: this event never signals on the client (no font queue here). Its id (in the
-	// client half of the id space) is what the server reconciles to its real signalling event.
-	return Rc<core::DependencyEvent>::alloc(core::DependencyEvent::QueueSet{},
+	// Its id (in the client half of the id space) is what the server reconciles to its own event;
+	// handleAtlasReady signals this one.
+	return Rc<core::DependencyEvent>::alloc(core::DependencyEvent::ExternalSignal{},
 			"FontControllerRemote");
 }
 

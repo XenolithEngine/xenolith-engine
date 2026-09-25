@@ -60,6 +60,11 @@ public:
 	virtual void handleContentSizeDirty() override;
 
 	virtual void handleEnter(Scene *) override;
+	virtual void handleExit() override;
+
+	// An AppNotify { label } from the server: the label's new text. A change nobody on the client
+	// asked a frame for - the client must ask for it by itself.
+	void setMessageLabel(StringView);
 
 protected:
 	using Scene2d::init;

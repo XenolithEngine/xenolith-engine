@@ -62,6 +62,10 @@ DependencyEvent::DependencyEvent(InitializerList<Rc<Queue>> &&il, StringView str
 	_signaled.store(_queues.empty());
 }
 
+DependencyEvent::DependencyEvent(ExternalSignal, StringView str) : _tag(str) {
+	_signaled.store(false);
+}
+
 bool DependencyEvent::signal(Queue *q, bool success) {
 	if (!success) {
 		_success = success;

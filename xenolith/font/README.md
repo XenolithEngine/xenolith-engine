@@ -122,6 +122,14 @@ For one `FontUpdateRequest{ FontFaceObject, chars }`:
 glyph whose texcoord is not yet in the atlas degrades to a placeholder texel rather than corrupting the
 frame.
 
+A remote client has no font queue, so its event (`FontControllerRemote::makeDependency`) is an
+`ExternalSignal` one: pending, with nothing local to signal it. It rides the client's frames by its id
+(the client half of the id space); the server registers its own event under that id when the
+`GlyphRequest` arrives — before the frame, since Font and Window share one ordered stream and the
+client flushes glyphs right before it sends a frame input — and holds the frame on it. Every batch is
+answered with `AtlasReady {dep, ok}`, which signals the client's event; a batch the server could not
+draw completely answers `ok: 0`, and the client resends it.
+
 ---
 
 ## Texture → Material binding

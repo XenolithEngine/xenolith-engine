@@ -557,14 +557,19 @@ Rc<Director> ServerAppThread::handleAppWindowCreated(NotNull<AppWindow> w,
 
 	const bool isVirtual = w->isVirtual();
 	addListener(w, [w, isVirtual](const UpdateTime &, bool wakeup) {
-		if (wakeup) {
+		/* The window's own director asks for its frames: on a wakeup, and on the heartbeat for a
+		scene that changed or moves. A window a remote client took over is asked for on a wakeup
+		only; the client asks for the rest itself. */
+		if (auto d = dynamic_cast<Director *>(w->getRenderClient())) {
+			d->handleAppUpdate(wakeup);
+		} else if (wakeup) {
 			w->setReadyForNextFrame();
+		}
 
-			// force display link to update views. Not on a virtual window: once a compositor claims
-			// it, a DisplayLink from anywhere else is a frame the compositor did not ask for.
-			if (!isVirtual) {
-				w->update(core::PresentationUpdateFlags::DisplayLink);
-			}
+		// force display link to update views. Not on a virtual window: once a compositor claims
+		// it, a DisplayLink from anywhere else is a frame the compositor did not ask for.
+		if (wakeup && !isVirtual) {
+			w->update(core::PresentationUpdateFlags::DisplayLink);
 		}
 	});
 
@@ -1129,11 +1134,18 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			return true;
 		};
 		case remote::WindowCode::ReadyForNextFrame: {
-			// client -> server: the client's scene wants the next frame (active actions/input);
-			// schedule it on the window's PresentationEngine. Notification only, no reply.
+			// client -> server: the client's scene wants the next frame; schedule it on the window's
+			// PresentationEngine. The answer is the frame itself, or FrameDeclined: the client
+			// sends nothing more until one of them arrives.
 			auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
-			if (auto w = resolveWindow(windowId)) {
+			auto w = resolveWindow(windowId);
+			session->countFrameRequest(w == nullptr);
+			if (w) {
 				w->setReadyForNextFrame();
+			} else if (session->getPeerInfo().supports(remote::Domain::Window,
+							   toInt(remote::WindowCode::FrameDeclined))) {
+				session->remoteSendCbor(remote::Domain::Window,
+						toInt(remote::WindowCode::FrameDeclined), Value(windowId));
 			}
 			return true;
 		};

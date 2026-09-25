@@ -116,6 +116,9 @@ public:
 	// end of a RenderClientChannel call on the server.
 	void handleWindowGeometryChanged(const sprt::window::WindowGeometry &);
 
+	// WindowCode::FrameDeclined: the frame asked for will not come; the Director hears it too.
+	void handleFrameDeclined();
+
 	virtual void updateLayers(sprt::window::Vector<sprt::window::WindowLayer> &&) override;
 
 	uint64_t getServerId() const { return _id; }
@@ -157,6 +160,9 @@ protected:
 	// Last forwarded serialized layer payload, so identical layer sets are not re-sent
 	// (updateLayers runs on every input commit).
 	Bytes _lastLayersBlob;
+
+	// A ReadyForNextFrame is unanswered: no AcquireFrame and no FrameDeclined since it was sent.
+	bool _frameRequested = false;
 };
 
 } // namespace stappler::xenolith

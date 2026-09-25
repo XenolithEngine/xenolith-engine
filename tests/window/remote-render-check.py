@@ -83,13 +83,16 @@ def mismatch(a, b):
     return bad
 
 
-def vpump(s, name, seconds):
-    """Step the host and the client's window: an idle client does not ask for frames by itself."""
+def pump(s, seconds):
+    """Let time pass, stepping the host only: the client asks for its window's frames itself."""
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         s.ok("frame", count=1)
-        s.ok("frame", window=name, count=1)
         time.sleep(0.1)
+
+
+def local_presented(l):
+    return int((l.ok("frame", count=0) or {}).get("presented", 0))
 
 
 def spawn_testapp_client(binary, share, token, sock, gapi_env):
@@ -160,14 +163,14 @@ def run(binary, gapi):
         deadline = time.monotonic() + 20.0
         while not (s.ok("window", window=name, op="plane") or {}).get("serial") \
                 and time.monotonic() < deadline:
-            vpump(s, name, 0.1)
+            pump(s, 0.1)
 
         square = SQUARE ** 2
         areas = []
         deadline = time.monotonic() + STEP_DELAY * (STEPS + 3)
         while time.monotonic() < deadline:
             s.ok("window", window=name, op="plane-hold", ms=400)
-            vpump(s, name, 0.15)
+            pump(s, 0.15)
             areas.append(red_area(decode(s, window=name)))
         bad = [a for a in areas if not (0.9 * square <= a <= 1.1 * square)]
         check("the client's walking square leaves no trail", not bad and len(areas) >= 5,
@@ -198,7 +201,7 @@ def run(binary, gapi):
             check("the gradient layout runs in the client and locally", False,
                     f"window={name} client={c is not None} local={l is not None}")
             return
-        vpump(s, name, 3.0)  # glyphs of the caption arrive over the font server
+        pump(s, 3.0)
         l.ok("frame", count=10)
         time.sleep(1.0)
         l.ok("frame", count=10)
@@ -214,8 +217,15 @@ def run(binary, gapi):
 
         mark = len(open(rc.SERVER_LOG, errors="replace").read())
         c.invoke("gradient.step")
+        # A local window draws a change too without being stepped: nothing but the scene asks.
+        l.ok("frame", count=10)
+        time.sleep(1.0)
+        f0 = local_presented(l)
         l.invoke("gradient.step")
-        vpump(s, name, 1.5)
+        time.sleep(1.0)
+        f1 = local_presented(l)
+        check("a local window draws a change without being stepped", f1 > f0, f"{f0} -> {f1}")
+        pump(s, 1.5)
         l.ok("frame", count=10)
         time.sleep(0.5)
         remote_img = decode(s, window=name)

@@ -148,6 +148,13 @@ void Scene::setContent(SceneContent *content) {
 	}
 }
 
+void Scene::markChanged() {
+	++_changeCount;
+	if (_director) {
+		_director->handleSceneChanged();
+	}
+}
+
 void Scene::handlePresented(Director *dir) {
 	_director = dir;
 	if (getContentSize() == Size2::ZERO) {

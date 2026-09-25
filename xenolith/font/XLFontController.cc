@@ -842,9 +842,8 @@ void FontController::flushPendingGlyphs(AppThread *app) {
 
 			if (dep) {
 				if (dep->isSignaled()) {
-					// No queues to wait on (FontControllerRemote: the server gates on its own
-					// mirror event), so nothing signals it here; confirm the batch at submission or
-					// the generation never advances.
+					// Nothing to wait on: confirm the batch at submission, or the generation never
+					// advances.
 					_uploadedGeneration.store(submitted);
 				} else {
 					_uploadsInFlight.fetch_add(1);

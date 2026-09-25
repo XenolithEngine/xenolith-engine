@@ -67,15 +67,20 @@ protected:
 	// Serialize the glyph-raster batch (+ gating dependency id) and ship it to the server.
 	virtual void submitGlyphs(AppThread *, Vector<FontUpdateRequest> &&,
 			Rc<core::DependencyEvent> &&) override;
-	// Client-minted dependency with an empty queue-set: it never signals locally (the client has no
-	// font queue); its id travels to the server, which reconciles it to the real, frame-gating
-	// event.
+	// Client-minted dependency that the server's AtlasReady signals (the client has no font queue).
+	// Pending until then, it stays in the frames of the labels that need the batch, so its id
+	// travels with them and the server holds each such frame on its own copy of the event.
 	virtual Rc<core::DependencyEvent> makeDependency() override;
 	virtual void applyBuilder(AppThread *app, Builder &&) override;
 
 	void loadSources();
 	bool sendSourcesAnnounce(); // returns true once it was actually sent (connection up)
 	void handleSourcesReady(BytesView payload);
+	void handleAtlasReady(BytesView payload);
+
+	// Fails every batch still waiting for its AtlasReady. An event dropped unsignalled would keep
+	// the controller's upload count up for good, and its callback holds the controller.
+	void failPendingBatches();
 
 	AppThread *_owner = nullptr;
 	bool _announced = false;
@@ -87,6 +92,10 @@ protected:
 	Rc<Texture> _texture;
 	Rc<core::DynamicImage> _image;
 	uint64_t _atlasImageServerId = 0;
+
+	// Batches sent and not answered yet, by their dependency id.
+	sprt::mutex _pendingMutex;
+	Map<uint32_t, Rc<core::DependencyEvent>> _pendingBatches;
 };
 
 } // namespace stappler::xenolith::font

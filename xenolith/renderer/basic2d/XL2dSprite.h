@@ -144,6 +144,20 @@ protected:
 
 	virtual void doScheduleTextureUpdate(Rc<Texture> &&);
 
+	// What the sprite draws went stale; the scene is told as well (Node::markSceneChanged).
+	void markVertexesDirty() {
+		_vertexesDirty = true;
+		markSceneChanged();
+	}
+	void markMaterialDirty() {
+		_materialDirty = true;
+		markSceneChanged();
+	}
+	void markVertexColorDirty() {
+		_vertexColorDirty = true;
+		markSceneChanged();
+	}
+
 	String _textureName;
 	Rc<Texture> _texture;
 	VertexArray _vertexes;

@@ -202,22 +202,41 @@ public:
 	virtual Size2 getContentSize() const { return _contentSize; }
 
 	// Force handleComponentsDirty processing on the next visit
-	void markComponentsDirty() { _componentsDirty = true; }
+	void markComponentsDirty() {
+		_componentsDirty = true;
+		markSceneChanged();
+	}
 
 	// Force handleContentSizeDirty processing on the next visit
-	void markContentSizeDirty() { _contentSizeDirty = true; }
+	void markContentSizeDirty() {
+		_contentSizeDirty = true;
+		markSceneChanged();
+	}
 
 	// Opt into the measure phase: handleMeasure will run on the next visit to (re)fix the
 	// node's own size via the SystemFlags::HandleMeasure protocol
-	void markMeasureDirty() { _measureDirty = true; }
+	void markMeasureDirty() {
+		_measureDirty = true;
+		markSceneChanged();
+	}
 
 	// Request the layout-children phase on the next visit (a layout engine re-runs its pass
 	// over the children, e.g. after a child's content size changed)
-	void markLayoutChildrenDirty() { _layoutChildrenDirty = true; }
+	void markLayoutChildrenDirty() {
+		_layoutChildrenDirty = true;
+		markSceneChanged();
+	}
 
 	void markIntrinsicSizeDirty() {
 		for (auto p = _parent; p; p = p->_parent) { p->_layoutChildrenDirty = true; }
+		markSceneChanged();
 	}
+
+	/* The scene changed: what the next frame draws is not what the last one drew. The node's own
+	setters and dirty marks call it; call it for state the node draws from but cannot see changing
+	(a resource edited in place). Outside a frame it gets the scene a frame (Director::
+	handleSceneChanged); inside one it only counts, since the frame being built already shows it. */
+	void markSceneChanged();
 
 	virtual void setVisible(bool visible);
 	virtual bool isVisible() const { return _visible; }
@@ -684,6 +703,12 @@ public:
 
 protected:
 	void runPendingPhases(FrameInfo &);
+
+	// Every transform input changed: the three transform caches go stale together.
+	void markTransformDirty() {
+		_transformInverseDirty = _transformCacheDirty = _transformDirty = true;
+		markSceneChanged();
+	}
 
 	virtual void updateCascadeOpacity();
 	virtual void disableCascadeOpacity();

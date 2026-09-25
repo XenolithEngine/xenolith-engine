@@ -42,6 +42,14 @@
   headless swapchains' pins) → `tests/window/virtual-window-check.py`. It runs on Vulkan and soft, so
   build `tests/window` with `SOFT=1`; `--gapi` keeps one. That the host opens no second OS window is
   checked by hand on X11 (`SP_SESSION_TYPE=x11`, `xprop -root _NET_CLIENT_LIST`).
+- Changed how a window asks for frames (`Director::handleSceneChanged` / `handleAppUpdate`,
+  `Node::markSceneChanged` and the setters that call it, `RemoteWindow::setReadyForNextFrame`,
+  `FrameDeclined`, remote glyph gating) → `tests/window/virtual-window-check.py` as well. It never
+  steps the client's window, only the host: an idle client must stay quiet (the server counts its
+  `ReadyForNextFrame`, `remote` op `sessions[].readyRequests`), an animating one draw, and a label
+  changed by an `AppNotify` get a first frame that already has its glyphs — the server rasterizes
+  slowly there (`XL_FONT_GLYPH_DELAY_US`). A check that steps a window with `frame window=` hides
+  exactly these failures.
 - Changed partial redraw or swapchain damage (`SwapchainDamage`, a queue pass's
   `computeRedrawArea`, the headless swapchains, `DamageCollector`, `VertexData::getBounds`) →
   `tests/window/damage-check.py`. It runs the damage stand (`XL_DAMAGE_TEST`) on the flat queue, in
@@ -53,9 +61,9 @@
   `deserialize`, the remote font server) → `tests/window/remote-render-check.py` as well. It runs
   `testapp --connect` against a `testapp` server that shows client windows as virtual ones: the
   damage stand without a trail and on the partial path, then a layout compared pixel by pixel with
-  the same layout run locally, before and after a state-only change. The two client sessions run one
-  after the other, so text that renders in the second is also the check that a font endpoint does
-  not outlive its session.
+  the same layout run locally, before and after a state-only change, and a local window that draws
+  that change without being stepped. The two client sessions run one after the other, so text that
+  renders in the second is also the check that a font endpoint does not outlive its session.
 - Changed `xenolith/core` or `xenolith/backend/vk` → `tests/compute` (the runner
   owes it for both). It covers the round trip on 1 … 10⁵ records and the device-lost
   refusals: a request after `VK_ERROR_DEVICE_LOST` gets exactly one failed callback

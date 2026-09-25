@@ -160,9 +160,10 @@ enum class WindowCode {
 	// window's frames to the client (so AcquireFrame can't arrive before the client
 	// is ready). Reply is an empty, atomic acknowledgement.
 	ReadyForNextFrame =
-			6, // client -> server notification [windowId]: the client's scene has active
-	// actions/input and wants another frame; the server schedules the next
-	// frame on the window's PresentationEngine. Fire-and-forget (no reply).
+			6, // client -> server notification [windowId]: the client's scene changed or moves and
+	// wants another frame; the server schedules it on the window's PresentationEngine. No reply:
+	// the answer is the AcquireFrame, or FrameDeclined for a window the session may not draw into.
+	// The client sends no second request while one is unanswered.
 	RequestScreenshot = 7, // client -> server notification [windowId]: capture the window's current
 	// contents and hand them back over Domain::Data (a Screenshot transfer whose
 	// announce `reason` points back at this message). Fire-and-forget (no reply);
@@ -219,6 +220,11 @@ enum class WindowCode {
 	scene has shared a queue and the announce carries it, with the serial of this request in the
 	last announce slot so the asking client knows which of its requests it answers. */
 	CreateWindow = 15,
+
+	/* server -> client notification [windowId]: the ReadyForNextFrame for this window will not be
+	answered with a frame - the window is not one the session may draw into. The client stops
+	waiting for that frame; it asks again after its scene changes. */
+	FrameDeclined = 16,
 };
 
 // Every WindowCode has a handler on the side that receives it; see the note on codeBit.
@@ -230,7 +236,7 @@ constexpr uint64_t kSupportedWindowCodes = codeBit(WindowCode::CompileQueue)
 		| codeBit(WindowCode::InputEvents) | codeBit(WindowCode::UpdateLayers)
 		| codeBit(WindowCode::WindowGeometryChanged) | codeBit(WindowCode::WindowControl)
 		| codeBit(WindowCode::TextInputControl) | codeBit(WindowCode::TextInputState)
-		| codeBit(WindowCode::CreateWindow);
+		| codeBit(WindowCode::CreateWindow) | codeBit(WindowCode::FrameDeclined);
 
 
 // Operations carried by WindowCode::TextInputControl.

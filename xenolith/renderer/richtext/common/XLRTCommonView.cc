@@ -112,7 +112,7 @@ bool CommonObject::initAsLabel(document::Label *label) {
 
 	auto el = Rc<EventListener>::create();
 	el->listenForEventWithObject(font::FontController::onFontSourceUpdated, source,
-			[this](const Event &) { _vertexesDirty = true; });
+			[this](const Event &) { markVertexesDirty(); });
 
 	if (source->isLoaded()) {
 		setTexture(Rc<Texture>(source->getTexture()));
@@ -120,7 +120,7 @@ bool CommonObject::initAsLabel(document::Label *label) {
 		el->listenForEventWithObject(font::FontController::onLoaded, source,
 				[this, source](const Event &) {
 			setTexture(Rc<Texture>(source->getTexture()));
-			_vertexesDirty = true;
+			markVertexesDirty();
 		}, true);
 	}
 	return true;

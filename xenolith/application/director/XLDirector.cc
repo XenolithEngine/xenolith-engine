@@ -236,6 +236,12 @@ Rc<core::Queue> Director::shareQueue(core::Queue::Builder &&builder) {
 
 void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> req,
 		Function<void(bool)> &&cb) {
+	// The request is answered; until the visit ends, the frame shows every change made meanwhile.
+	_frameRequested = false;
+	_declinedChanges = maxOf<uint64_t>();
+	_frameBuilding = true;
+	const auto buildSerial = ++_frameBuildSerial;
+
 	if (_nextScene && !_scene) {
 		// Handle scene transition. The request carries no queue yet (the client selects it below),
 		// so the next scene can always be adopted here.
@@ -248,6 +254,7 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 
 	if (!_scene) {
 		log::source().error("xenolith::Director", "No scene defined for a FrameRequest");
+		_frameBuilding = false;
 		cb(false);
 		return;
 	}
@@ -279,8 +286,12 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 	// The window can be destroyed before that: a preserved Director keeps its scene but loses the
 	// server, and the frame belongs to the server it was acquired for.
 	_application->performOnAppThread(
-			[this, server = _server, req = Rc<core::FrameRequestProxy>(req.get())] {
+			[this, server = _server, req = Rc<core::FrameRequestProxy>(req.get()), buildSerial] {
 		if (!_scene || !req || !_server || _server != server) {
+			// Nothing was drawn: a change made meanwhile still wants its frame.
+			if (_frameBuildSerial == buildSerial) {
+				_frameBuilding = false;
+			}
 			return;
 		}
 
@@ -304,12 +315,17 @@ void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> 
 			// apply new frame
 			req->commit();
 
+			/* Taken after the visit: the update and the visit's own layout change the scene, and
+			those changes are in this frame, not a reason for the next one. */
+			_drawnChanges = _scene->getChangeCount();
+			if (_frameBuildSerial == buildSerial) {
+				_frameBuilding = false;
+			}
+
 			// if there is active interactions (user input or animations)
 			// - inform the server, that we want next frame immediately
-			if (hasActiveInteractions()) {
-				if (_server) {
-					_server->setReadyForNextFrame();
-				}
+			if (!_frameRequested && hasActiveInteractions()) {
+				requestFrame();
 			}
 		});
 
@@ -363,6 +379,8 @@ void Director::handleWindowGeometryChanged(uint64_t, const sprt::window::WindowG
 }
 
 void Director::handleInputEvents(uint64_t, Vector<core::InputEventData> &&events) {
+	// The window asks for a frame after every batch it hands over (AppWindow::handleInputEvents).
+	_frameRequested = true;
 	for (auto &event : events) {
 		if (event.isPointEvent()) {
 			event.point.density = _constraints.density;
@@ -372,12 +390,67 @@ void Director::handleInputEvents(uint64_t, Vector<core::InputEventData> &&events
 }
 
 void Director::handleTextInput(uint64_t, const core::TextInputState &state) {
+	_frameRequested = true; // as for input events
 	auto copy = state;
 	_textInput->handleInputUpdate(copy);
 }
 
 void Director::handleFramePresented(uint64_t frameOrder) {
 	// Reserved for client-side pacing/stats; no-op.
+}
+
+void Director::handleFrameDeclined(uint64_t) {
+	// Asked again after the next change, not on every heartbeat: the window stays declined until the
+	// server hands it back, and then it asks for a frame itself.
+	_frameRequested = false;
+	_declinedChanges = _scene ? _scene->getChangeCount() : 0;
+}
+
+void Director::handleSceneChanged() {
+	if (_frameBuilding || _frameRequested || _checkScheduled || !_server) {
+		return;
+	}
+	_checkScheduled = true;
+	_application->performOnAppThread([this] {
+		_checkScheduled = false;
+		updateFrameRequest(false);
+	}, this, true);
+}
+
+void Director::handleAppUpdate(bool wakeup) { updateFrameRequest(wakeup); }
+
+void Director::updateFrameRequest(bool force) {
+	// A window a remote client took over is asked for frames by the server, not by this director.
+	if (!_server || _server->getRenderClient() != this) {
+		return;
+	}
+
+	/* A scene draws with its queue: until the queue is compiled, a frame would adopt the scene and
+	draw with pipelines that do not exist yet. Attaching the queue asks for the scene's first frame
+	(AppWindow::attachRenderQueue), so there is nothing to ask for before it. */
+	if (!_scene || (_nextScene && !_nextScene->getQueue()->isCompiled())) {
+		return;
+	}
+
+	if (!force) {
+		if (_frameBuilding || _frameRequested) {
+			return;
+		}
+		const auto changes = _scene->getChangeCount();
+		if (changes == _declinedChanges) {
+			return; // declined, and nothing changed since: a moving scene does not move undrawn
+		}
+		if (changes == _drawnChanges && !hasActiveInteractions()) {
+			return;
+		}
+	}
+
+	requestFrame();
+}
+
+void Director::requestFrame() {
+	_frameRequested = true;
+	_server->setReadyForNextFrame();
 }
 
 void Director::update(uint64_t t) {
@@ -418,6 +491,9 @@ void Director::update(uint64_t t) {
 
 void Director::setServer(core::RenderServerChannel *s) {
 	if (s != _server) {
+		// What was asked of the previous window is not answered by this one.
+		_frameRequested = false;
+		_frameBuilding = false;
 		_textInput->cancel();
 		if (s) {
 			if (auto winref = dynamic_cast<Ref *>(s)) {

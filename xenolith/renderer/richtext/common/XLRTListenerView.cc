@@ -117,7 +117,7 @@ void ListenerView::Selection::selectLabel(const Object *obj, const Vec2 &loc) {
 			_selectionBounds = pair(SelectionPosition{obj->index, b.first},
 					SelectionPosition{obj->index, b.first + b.second - 1});
 		}
-		_vertexesDirty = true;
+		markVertexesDirty();
 		setEnabled(true);
 	}
 }
@@ -129,7 +129,7 @@ void ListenerView::Selection::selectWholeLabel() {
 			_selectionBounds.second =
 					SelectionPosition{_object->index, uint32_t(label->layout.chars.size() - 1)};
 
-			_vertexesDirty = true;
+			markVertexesDirty();
 		}
 	}
 }
@@ -219,7 +219,7 @@ void ListenerView::Selection::updateVertexes(FrameInfo &frame) {
 		++rectIdx;
 	}
 	updateColor();
-	_vertexColorDirty = true;
+	markVertexColorDirty();
 }
 
 bool ListenerView::Selection::onTap(int, Vec2 vec) { return true; }
@@ -276,42 +276,42 @@ bool ListenerView::Selection::onPressEnd(Vec2 vec, TimeInterval time) {
 				&& obj->index == _selectionBounds.first.object) {
 			if (charNumber < _selectionBounds.first.position) {
 				_selectionBounds.first.position = charNumber;
-				_vertexesDirty = true;
+				markVertexesDirty();
 			} else if (charNumber > _selectionBounds.second.position) {
 				_selectionBounds.second.position = charNumber;
-				_vertexesDirty = true;
+				markVertexesDirty();
 			} else if (charNumber != _selectionBounds.first.position
 					&& charNumber != _selectionBounds.second.position) {
 				if (charNumber - _selectionBounds.first.position
 						< _selectionBounds.second.position - charNumber) {
 					_selectionBounds.first.position = charNumber;
-					_vertexesDirty = true;
+					markVertexesDirty();
 				} else {
 					_selectionBounds.second.position = charNumber;
-					_vertexesDirty = true;
+					markVertexesDirty();
 				}
 			}
 		} else if (_selectionBounds.first.object >= obj->index
 				&& (_selectionBounds.first.object - obj->index) < 10) {
 			_selectionBounds.first.object = obj->index;
 			_selectionBounds.first.position = charNumber;
-			_vertexesDirty = true;
+			markVertexesDirty();
 		} else if (_selectionBounds.second.object <= obj->index
 				&& (obj->index - _selectionBounds.second.object) < 10) {
 			_selectionBounds.second.object = obj->index;
 			_selectionBounds.second.position = charNumber;
-			_vertexesDirty = true;
+			markVertexesDirty();
 		} else if (_selectionBounds.first.object < obj->index
 				&& obj->index < _selectionBounds.second.object) {
 			if (obj->index - _selectionBounds.first.object
 					< _selectionBounds.second.object - obj->index) {
 				_selectionBounds.first.object = obj->index;
 				_selectionBounds.first.position = charNumber;
-				_vertexesDirty = true;
+				markVertexesDirty();
 			} else {
 				_selectionBounds.second.object = obj->index;
 				_selectionBounds.second.position = charNumber;
-				_vertexesDirty = true;
+				markVertexesDirty();
 			}
 		} else {
 			clearSelection();
@@ -379,7 +379,7 @@ bool ListenerView::Selection::onSwipe(Vec2 vec, Vec2 d) {
 								&& charNumber <= _selectionBounds.second.position)) {
 					_selectionBounds.first.object = _object->index;
 					_selectionBounds.first.position = charNumber;
-					_vertexesDirty = true;
+					markVertexesDirty();
 				}
 			}
 		} else {
@@ -394,7 +394,7 @@ bool ListenerView::Selection::onSwipe(Vec2 vec, Vec2 d) {
 								&& charNumber >= _selectionBounds.first.position)) {
 					_selectionBounds.second.object = _object->index;
 					_selectionBounds.second.position = charNumber;
-					_vertexesDirty = true;
+					markVertexesDirty();
 				}
 			}
 		}

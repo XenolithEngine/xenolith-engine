@@ -86,6 +86,8 @@ void GradientLayout::registerCommands() {
 			[this](Value &&) {
 		++_step;
 		_linear->updateWithData(_linear->getStart(), _linear->getEnd(), makeSteps(_step));
+		// Edited in place: no node sees it, so the sprite that draws it says so.
+		_gradient->markSceneChanged();
 		return encodeState();
 	});
 }

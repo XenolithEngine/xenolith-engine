@@ -141,6 +141,9 @@ void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &q, Function<void(bo
 void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &c,
 		const core::FrameTimingInfo *timing, const core::DrawStat *stat,
 		Function<void(uint64_t queueId)> &&reply) {
+	// Whatever was asked for, this is the answer; a frame asked for from now on is the next one.
+	_frameRequested = false;
+
 	// `_client` is this window's local Director (set via RenderServerChannel::setRenderClient).
 	if (!_client) {
 		slog().error("RemoteWindow", "acquireFrame: no client");
@@ -185,7 +188,9 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 			[thread, frameId](SpanView<const core::AttachmentData *> atts, BytesView bytes) {
 		if (auto conn = thread->getConnection()) {
 			// Flush pending glyph requests before this frame's FrameInput, so the server registers
-			// the gating dependency before reconciling the frame against it.
+			// the gating dependency before reconciling the frame against it. That is what holds a
+			// frame until its glyphs are drawn: Font and Window share one ordered stream
+			// (remote::streamClassForDomain), and a dependency the server has not seen gates nothing.
 			thread->flushPendingFontGlyphs();
 
 			// [frameId, keys[], bytes] -- one serialized input addressed to multiple attachments.
@@ -282,6 +287,8 @@ void RemoteWindow::compileImage(const Rc<core::DynamicImage> &, Function<void(bo
 void RemoteWindow::attachRenderQueue(const Rc<core::Queue> &) {
 	// The shared queue is now the Director's active render graph. Send AttachQueue: only then does
 	// the server route the window's frames here. The server replies with an empty acknowledgement.
+	// It also starts a frame of its own, so an old request is not waited for.
+	_frameRequested = false;
 	auto c = _thread->getConnection();
 	if (!c) {
 		slog().error("RemoteWindow", "attachRenderQueue: not connected");
@@ -305,11 +312,22 @@ void RemoteWindow::attachRenderQueue(const Rc<core::Queue> &) {
 }
 
 void RemoteWindow::setReadyForNextFrame() {
-	// The client's Director has active actions/input and wants another frame; ask the server's
-	// PresentationEngine to schedule it. Fire-and-forget.
+	/* One request at a time: the server merges repeats into one frame anyway, so a second request
+	before the answer only costs a message. The answer is the AcquireFrame, or FrameDeclined. */
+	if (_frameRequested) {
+		return;
+	}
 	if (auto conn = _thread->getConnection()) {
 		conn->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::ReadyForNextFrame),
 				Value(_id));
+		_frameRequested = true;
+	}
+}
+
+void RemoteWindow::handleFrameDeclined() {
+	_frameRequested = false;
+	if (_client) {
+		_client->handleFrameDeclined(_id);
 	}
 }
 /* --- window control (WindowCode::WindowControl) ------------------------------------------------
@@ -395,6 +413,9 @@ void RemoteWindow::sendTextInputControl(Value &&args) {
 }
 
 void RemoteWindow::handleTextInput(const core::TextInputState &state) {
+	// The server asks for a frame after every echo it sends (AppWindow::handleTextInput).
+	_frameRequested = true;
+
 	// The echo, straight to the Director's TextInputManager, as in AppWindow::handleTextInput.
 	if (_client) {
 		_client->handleTextInput(0, state);
@@ -529,6 +550,8 @@ void RemoteWindow::handleInputEvents(Vector<core::InputEventData> &&events) {
 			_state = event.window.state;
 		}
 	}
+	// The server asks for a frame after every batch it forwards (AppWindow::handleInputEvents).
+	_frameRequested = true;
 	if (_client) {
 		_client->handleInputEvents(0, sp::move(events));
 	}

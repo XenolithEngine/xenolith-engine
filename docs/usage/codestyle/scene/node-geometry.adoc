@@ -77,7 +77,19 @@ markComponentsDirty();      // re-run the components phase
 markContentSizeDirty();     // re-run handleContentSizeDirty
 markMeasureDirty();         // re-run the measure phase (fit-content protocol)
 markLayoutChildrenDirty();  // ask a layout engine to re-lay-out the children
+markSceneChanged();         // only that the next frame differs: nothing to re-run
 ----
+
+Every one of them, and every setter, also counts a change in the scene
+(`Node::markSceneChanged` → `Scene::markChanged`). That count is how a window
+that renders on demand learns it needs a frame: the first change after a frame
+has the director ask for one (`Director::handleSceneChanged`), from wherever the
+change came — an input handler, an application message, a timer, a network
+callback. Call `markSceneChanged()` yourself only for what the node draws from
+but cannot see changing: a resource edited in place (a `LinearGradient` updated
+with `updateWithData`). Changes made while a frame is being built are part of
+that frame and ask for nothing, so a layout pass that moves nodes does not keep
+the window drawing.
 
 The order in which these phases run, what flags flow parent→child, and how a
 descendant's change reaches an ancestor are all described once in

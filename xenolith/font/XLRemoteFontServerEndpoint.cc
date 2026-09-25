@@ -148,7 +148,7 @@ void RemoteFontServerEndpoint::handleSourcesAnnounce(uint32_t serial, BytesView 
 }
 
 void RemoteFontServerEndpoint::handleGlyphRequest(BytesView payload) {
-	if (!_peer || !_component || !_controller) {
+	if (!_peer) {
 		return;
 	}
 	uint32_t depId = 0;
@@ -156,20 +156,32 @@ void RemoteFontServerEndpoint::handleGlyphRequest(BytesView payload) {
 	if (!decodeGlyphRequest(payload, depId, faces)) {
 		log::source().warn("RemoteFontServerEndpoint", "malformed glyph request (", payload.size(),
 				" bytes)");
+		sendAtlasReady(depId, false);
+		return;
+	}
+	if (!_component || !_controller) {
+		sendAtlasReady(depId, false);
 		return;
 	}
 
+	// A face that can not be drawn still lets the rest of the batch through, but the batch fails:
+	// the client resends it on its next flush.
+	bool complete = true;
 	Vector<FontUpdateRequest> requests;
 	for (auto &f : faces) {
 		auto sit = _store->fonts.find(f.contentHash);
 		if (sit == _store->fonts.end()) {
-			log::source().warn("RemoteFontServerEndpoint", "glyph request for unknown font hash ",
-					f.contentHash);
+			if (_unknownFonts.emplace(f.contentHash).second) {
+				log::source().warn("RemoteFontServerEndpoint",
+						"glyph request for unknown font hash ", f.contentHash);
+			}
+			complete = false;
 			continue;
 		}
 		// Adopt the client's FaceId so the CharIds it baked into its vertexes resolve in our atlas.
 		auto face = _library->openFontFace(sit->second, f.spec, f.faceId);
 		if (!face) {
+			complete = false;
 			continue;
 		}
 		requests.emplace_back(
@@ -185,20 +197,26 @@ void RemoteFontServerEndpoint::handleGlyphRequest(BytesView payload) {
 	_component->updateImage(_thread->getLooper(), _controller->getImage(), sp::move(requests),
 			Rc<core::DependencyEvent>(dep),
 			[self = Rc<RemoteFontServerEndpoint>(this), thread = Rc<AppThread>(_thread),
-					generation = _peerGeneration, depId](bool ok) {
+					generation = _peerGeneration, depId, complete](bool ok) {
 		// Hop to the app thread (the connection is app-thread-only) to notify the client, if it is
 		// still the one that asked.
-		thread->performOnAppThread([self, generation, depId, ok]() {
-			if (!self->_peer || self->_peerGeneration != generation) {
-				return;
+		thread->performOnAppThread([self, generation, depId, ok, complete]() {
+			if (self->_peerGeneration == generation) {
+				self->sendAtlasReady(depId, ok && complete);
 			}
-			Value r;
-			r.setInteger(int64_t(depId), "dep");
-			r.setInteger(ok ? 1 : 0, "ok");
-			self->_peer->remoteSendCbor(remote::Domain::Font, toInt(remote::FontCode::AtlasReady),
-					r);
 		}, self.get());
 	});
+}
+
+void RemoteFontServerEndpoint::sendAtlasReady(uint32_t depId, bool ok) {
+	// Batch 0 is an ungated one: nobody waits for it.
+	if (!_peer || depId == 0) {
+		return;
+	}
+	Value r;
+	r.setInteger(int64_t(depId), "dep");
+	r.setInteger(ok ? 1 : 0, "ok");
+	_peer->remoteSendCbor(remote::Domain::Font, toInt(remote::FontCode::AtlasReady), r);
 }
 
 Rc<core::DependencyEvent> RemoteFontServerEndpoint::getOrCreateDep(uint32_t depId) {

@@ -30,7 +30,7 @@ void Scale9Sprite::setSlice(const Padding &slice) {
 	if (_slice != slice) {
 		_slice = slice;
 		_sliceReported = false;
-		_vertexesDirty = true;
+		markVertexesDirty();
 	}
 }
 
@@ -41,7 +41,7 @@ void Scale9Sprite::setSlice(float top, float right, float bottom, float left) {
 void Scale9Sprite::setFillCenter(bool value) {
 	if (_fillCenter != value) {
 		_fillCenter = value;
-		_vertexesDirty = true;
+		markVertexesDirty();
 	}
 }
 
@@ -59,7 +59,7 @@ void Scale9Sprite::setTextureAutofit(Autofit value) {
 void Scale9Sprite::initVertexes() {
 	// Nine quads is the maximum; a zero side or an unfilled centre only makes it fewer.
 	_vertexes.init(9 * 4, 9 * 6);
-	_vertexesDirty = true;
+	markVertexesDirty();
 }
 
 bool Scale9Sprite::checkVertexDirty() const {
