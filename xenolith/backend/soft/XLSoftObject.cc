@@ -55,11 +55,14 @@ bool Buffer::init(Device &dev, const core::BufferInfo &info, BytesView initialDa
 		return setup(dev, info, nullptr);
 	}
 
-	auto cb = Callback<size_t(uint8_t *, uint64_t)>([&](uint8_t *mem, uint64_t size) -> size_t {
+	// A named local, not a temporary: callback keeps a pointer to its functor,
+	// and a temporary lambda dies at the `;` (runtime/callback.h).
+	auto fill = [&](uint8_t *mem, uint64_t size) -> size_t {
 		auto bytes = sprt::min(uint64_t(initialData.size()), size);
 		sprt::memcpy(mem, initialData.data(), size_t(bytes));
 		return size_t(bytes);
-	});
+	};
+	Callback<size_t(uint8_t *, uint64_t)> cb(fill);
 	return setup(dev, info, &cb);
 }
 
@@ -68,9 +71,12 @@ bool Buffer::init(Device &dev, const core::BufferData &data) {
 		return setup(dev, data, nullptr);
 	}
 
-	auto cb = Callback<size_t(uint8_t *, uint64_t)>([&](uint8_t *mem, uint64_t size) -> size_t {
+	// A named local, not a temporary: callback keeps a pointer to its functor,
+	// and a temporary lambda dies at the `;` (runtime/callback.h).
+	auto fill = [&](uint8_t *mem, uint64_t size) -> size_t {
 		return data.writeData(mem, size_t(size));
-	});
+	};
+	Callback<size_t(uint8_t *, uint64_t)> cb(fill);
 	return setup(dev, data, &cb);
 }
 
@@ -166,9 +172,12 @@ bool Image::init(Device &dev, const core::ImageData &data) {
 			return false;
 		}
 	} else {
-		auto cb = Callback<size_t(uint8_t *, uint64_t)>([&](uint8_t *mem, uint64_t size) -> size_t {
+		// A named local, not a temporary: callback keeps a pointer to its functor,
+		// and a temporary lambda dies at the `;` (runtime/callback.h).
+		auto fill = [&](uint8_t *mem, uint64_t size) -> size_t {
 			return data.writeData(mem, size_t(size));
-		});
+		};
+		Callback<size_t(uint8_t *, uint64_t)> cb(fill);
 		if (!setup(dev, data, &cb)) {
 			return false;
 		}
