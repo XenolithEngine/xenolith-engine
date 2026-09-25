@@ -33,6 +33,13 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
 
 class Device;
 
+// Optimal-tiling features of the core formats, indexed by VkFormat.
+static constexpr uint32_t FormatFeatureCount = uint32_t(VK_FORMAT_ASTC_12x12_SRGB_BLOCK) + 1;
+
+// What a table of those features says about one format and a set of usages.
+SP_PUBLIC core::ImageFormatSupport getImageFormatSupport(SpanView<VkFormatFeatureFlags>,
+		core::ImageFormat, core::ImageUsage);
+
 class SP_PUBLIC Loop : public core::Loop {
 public:
 	struct Timer;
@@ -86,6 +93,9 @@ public:
 
 	virtual SpanView<core::ImageFormat> getSupportedDepthStencilFormat() const override;
 
+	virtual core::ImageFormatSupport getImageFormatSupport(core::ImageFormat,
+			core::ImageUsage) const override;
+
 	virtual Rc<core::Fence> acquireFence(core::FenceType) override;
 
 	virtual void signalDependencies(const Vector<Rc<DependencyEvent>> &, Queue *,
@@ -113,7 +123,13 @@ protected:
 	void performInit();
 	void finalizeInit();
 
+	// Copied from the device on the loop's thread and read from any other once published.
+	void publishFormatFeatures(SpanView<VkFormatFeatureFlags>);
+
 	Internal *_internal = nullptr;
+
+	VkFormatFeatureFlags _formatFeatures[FormatFeatureCount] = {};
+	sprt::atomic<bool> _formatFeaturesReady = false;
 };
 
 } // namespace stappler::xenolith::vk

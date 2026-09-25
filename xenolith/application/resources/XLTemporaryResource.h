@@ -49,10 +49,17 @@ public:
 	Rc<MeshIndex> acquireMeshIndex(StringView);
 
 	void setLoaded(bool);
+
+	// The compile ended without the resource: callbacks waiting in load() are dropped unanswered,
+	// which releases what they hold, and the resource is unloaded. A clear() while compiling leaves
+	// them waiting, so a held callback always outlives the compile.
+	void setCompileFailed();
+
 	void setRequested(bool);
 	void setTimeout(TimeInterval);
 
 	// Загружает ресурс в память, вызывает функцию по завершению со значением true
+	// (если компиляция не удалась, функция освобождается без вызова).
 	// Если ресурс уже загружен, вызывает функцию немедленно со значением false
 	// Возвращает true если загрузка начата и false есть ресурс уже загружен
 	bool load(Ref *, Function<void(Ref *, bool)> &&);

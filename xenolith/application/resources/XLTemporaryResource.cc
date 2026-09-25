@@ -104,6 +104,13 @@ void TemporaryResource::setLoaded(bool val) {
 	_atime = sp::platform::clock(ClockType::Monotonic);
 }
 
+void TemporaryResource::setCompileFailed() {
+	_users -= sprt::min(_users, _callbacks.size());
+	auto callbacks = sp::move(_callbacks);
+	_callbacks.clear();
+	setLoaded(false);
+}
+
 void TemporaryResource::setRequested(bool val) { _requested = val; }
 
 void TemporaryResource::setTimeout(TimeInterval ival) { _timeout = ival; }

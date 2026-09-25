@@ -314,6 +314,12 @@ bool Device::init(const vk::Instance *inst, DeviceInfo &&info, const Features &f
 		addColorFormat(VK_FORMAT_R8G8_UNORM);
 		addColorFormat(VK_FORMAT_R8G8B8_UNORM);
 		addColorFormat(VK_FORMAT_R8G8B8A8_UNORM);
+
+		for (uint32_t i = 1; i < FormatFeatureCount; ++i) {
+			_vkInstance->vkGetPhysicalDeviceFormatProperties(_info.device, VkFormat(i),
+					&properties);
+			_formatFeatures[i] = properties.optimalTilingFeatures;
+		}
 	} while (0);
 
 	return true;

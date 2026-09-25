@@ -111,6 +111,10 @@ public:
 
 	virtual SpanView<ImageFormat> getSupportedDepthStencilFormat() const = 0;
 
+	// Can the device create an image of this format for all of `usage`. Safe from any thread;
+	// Unknown until the device is up, and always Unknown on a backend that cannot ask.
+	virtual ImageFormatSupport getImageFormatSupport(ImageFormat, ImageUsage) const;
+
 	virtual void signalDependencies(const Vector<Rc<DependencyEvent>> &, Queue *, bool success) = 0;
 	virtual void waitForDependencies(const Vector<Rc<DependencyEvent>> &,
 			Function<void(bool)> &&) = 0;

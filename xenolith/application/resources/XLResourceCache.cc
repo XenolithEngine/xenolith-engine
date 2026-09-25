@@ -331,7 +331,11 @@ void ResourceCache::compileResource(TemporaryResource *res) {
 				[res = Rc<TemporaryResource>(res), guard = Rc<ResourceCache>(this)](
 						bool success) mutable {
 			guard->getApplication()->performOnAppThread([guard, res = move(res), success] {
-				res->setLoaded(success);
+				if (success) {
+					res->setLoaded(true);
+				} else {
+					res->setCompileFailed();
+				}
 				guard->getApplication()->wakeup();
 			}, nullptr, false);
 		});

@@ -57,6 +57,7 @@ struct Loop::Internal final : memory::AllocPool {
 
 	void setDevice(Rc<Device> &&dev) {
 		device = move(dev);
+		loop->publishFormatFeatures(device->getFormatFeatures());
 
 		transferQueue = Rc<TransferQueue>::create();
 		materialQueue = Rc<MaterialCompiler>::create();
@@ -739,6 +740,23 @@ SpanView<core::ImageFormat> Loop::getSupportedDepthStencilFormat() const {
 	return _internal->device->getSupportedDepthStencilFormat();
 }
 
+core::ImageFormatSupport Loop::getImageFormatSupport(core::ImageFormat format,
+		core::ImageUsage usage) const {
+	if (!_formatFeaturesReady.load()) {
+		return core::ImageFormatSupport::Unknown;
+	}
+	return vk::getImageFormatSupport(
+			SpanView<VkFormatFeatureFlags>(_formatFeatures, FormatFeatureCount), format, usage);
+}
+
+void Loop::publishFormatFeatures(SpanView<VkFormatFeatureFlags> features) {
+	if (_formatFeaturesReady.load() || features.size() != FormatFeatureCount) {
+		return;
+	}
+	for (uint32_t i = 0; i < FormatFeatureCount; ++i) { _formatFeatures[i] = features[i]; }
+	_formatFeaturesReady.store(true);
+}
+
 Rc<core::Fence> Loop::acquireFence(core::FenceType type) {
 	auto initFence = [&](const Rc<Fence> &fence) {
 		fence->setFrame([guard = Rc<Loop>(this), fence]() mutable {
@@ -869,6 +887,42 @@ Rc<core::PresentationEngine> Loop::makePresentationEngine(NotNull<core::Presenta
 }
 
 Device *Loop::getDevice() const { return _internal ? _internal->device.get() : nullptr; }
+
+core::ImageFormatSupport getImageFormatSupport(SpanView<VkFormatFeatureFlags> table,
+		core::ImageFormat format, core::ImageUsage usage) {
+	auto index = uint32_t(format);
+	if (index == 0 || index >= table.size()) {
+		return core::ImageFormatSupport::Unknown;
+	}
+
+	auto features = table[index];
+	if (features == 0) {
+		return core::ImageFormatSupport::Unsupported;
+	}
+
+	VkFormatFeatureFlags required = 0;
+	if (hasFlag(usage, core::ImageUsage::TransferSrc)) {
+		required |= VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
+	}
+	if (hasFlag(usage, core::ImageUsage::TransferDst)) {
+		required |= VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
+	}
+	if (hasFlag(usage, core::ImageUsage::Sampled)) {
+		required |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+	}
+	if (hasFlag(usage, core::ImageUsage::Storage)) {
+		required |= VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT;
+	}
+	if (hasFlag(usage, core::ImageUsage::ColorAttachment)) {
+		required |= VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT;
+	}
+	if (hasFlag(usage, core::ImageUsage::DepthStencilAttachment)) {
+		required |= VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	}
+
+	return (features & required) == required ? core::ImageFormatSupport::Supported
+											 : core::ImageFormatSupport::Unsupported;
+}
 
 void Loop::performInit() { }
 

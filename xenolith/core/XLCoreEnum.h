@@ -615,7 +615,17 @@ enum class SemaphoreType {
 	Timeline,
 };
 
+// Whether a device can use an image format for a set of usages. Unknown is the answer of a backend
+// that cannot ask, and a caller should then try the format rather than skip it.
+enum class ImageFormatSupport : uint8_t {
+	Unknown,
+	Supported,
+	Unsupported,
+};
+
 SP_PUBLIC PipelineStage getStagesForQueue(QueueFlags);
+
+SP_PUBLIC StringView getImageFormatSupportName(ImageFormatSupport);
 
 SP_PUBLIC StringView getDescriptorTypeName(DescriptorType);
 SP_PUBLIC void getProgramStageDescription(const CallbackStream &, ProgramStage fmt);

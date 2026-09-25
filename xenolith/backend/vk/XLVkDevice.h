@@ -89,6 +89,11 @@ public:
 
 	bool hasExtension(OptionalDeviceExtension) const;
 
+	// Optimal-tiling features of every core format, indexed by VkFormat; read once at init.
+	SpanView<VkFormatFeatureFlags> getFormatFeatures() const {
+		return SpanView<VkFormatFeatureFlags>(_formatFeatures, FormatFeatureCount);
+	}
+
 	virtual core::DescriptorFlags getSupportedDescriptorFlags(DescriptorType) const override;
 
 	virtual Rc<core::Framebuffer> makeFramebuffer(const core::QueuePassData *,
@@ -179,6 +184,7 @@ private:
 	bool _useDescriptorIndexing = true;
 
 	HashMap<VkFormat, VkFormatProperties> _formats;
+	VkFormatFeatureFlags _formatFeatures[FormatFeatureCount] = {};
 
 	sprt::condition_variable _resourceQueueCond;
 	sprt::mutex _queueMutex;
