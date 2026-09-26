@@ -73,7 +73,8 @@ struct SPRT_API HandleClass {
 	// cancellation (with Done or error), should launch pending handles
 	Status (*cancelFn)(HandleClass *, Handle *, uint8_t[Handle::DataSize], Status) = &cancel;
 
-	// suspend execution, if supported
+	// suspend execution, if supported: Ok if the queue reports the suspension later (a graceful
+	// wakeup waits for that report), Done if the handle is suspended already
 	Status (*suspendFn)(HandleClass *, Handle *, uint8_t[Handle::DataSize]) = nullptr;
 
 	// resume execution, if supported

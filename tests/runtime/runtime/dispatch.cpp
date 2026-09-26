@@ -24,7 +24,84 @@ THE SOFTWARE.
 #include <sprt/runtime/dispatch/handle.h>
 #include <sprt/runtime/platform.h>
 
+#include <sprt/cxx/atomic>
+#include <sprt/cxx/thread>
+#include <sprt/c/__sprt_unistd.h>
+#include "../tests.h"
+
 namespace sprt {
+
+#if !SPRT_WASM
+
+/* A graceful wakeup suspends every handle and waits for the ones that promised to report. A
+handle that cannot report must say it is suspended already, or the looper waits for it forever:
+here a listening socket, a running child and a polled pipe are all armed when another thread
+stops the looper. */
+static bool testGracefulWakeup(dispatch::QueueEngine engine, StringView name) {
+	sprt::atomic<bool> ready = false;
+	sprt::atomic<bool> done = false;
+	sprt::atomic<dispatch::Looper *> target = nullptr;
+	Status result = Status::Pending;
+
+	int fds[2] = {-1, -1};
+	if (::__sprt_pipe(fds) != 0) {
+		sprt::cout << sprt::test::failed("FAIL  ") << name << ": pipe\n";
+		return false;
+	}
+
+	sprt::thread th([&] {
+		auto looper = dispatch::Looper::acquire(dispatch::LooperInfo{
+			.name = name,
+			.workersCount = 0,
+			.engineMask = engine,
+		});
+
+		auto listener = looper->listenSocket(dispatch::SocketAddress::parse(":0"),
+				[](Rc<dispatch::StreamHandle> &&) { });
+		auto process = looper->spawnProcess("sleep 30", [](StringView) { }, [](int, Status) { });
+		auto poll = looper->listenPollableHandle(fds[0], dispatch::PollFlags::In,
+				[](dispatch::NativeHandle, dispatch::PollFlags) { return Status::Ok; });
+
+		target = looper;
+		ready = true;
+
+		result = looper->run();
+		done = true;
+
+		if (process) {
+			process->cancel();
+		}
+		if (listener) {
+			listener->cancel();
+		}
+		if (poll) {
+			poll->cancel();
+		}
+		looper->poll();
+	});
+
+	while (!ready) { sprt::this_thread::sleep_for(1'000'000); }
+	sprt::this_thread::sleep_for(100'000'000);
+	target.load()->wakeup(dispatch::WakeupFlags::Graceful);
+
+	for (uint32_t i = 0; i < 300 && !done; ++i) { sprt::this_thread::sleep_for(10'000'000); }
+
+	bool ok = done;
+	sprt::cout << (ok ? "PASS  " : sprt::test::failed("FAIL  ")) << name
+			   << ": a graceful wakeup returns with a socket, a child and a pipe armed ("
+			   << (ok ? status::getStatusName(result) : StringView("still running")) << ")\n";
+	if (ok) {
+		th.join();
+		::__sprt_close(fds[0]);
+		::__sprt_close(fds[1]);
+	} else {
+		// The looper never returns: leave its thread to the process exit.
+		th.detach();
+	}
+	return ok;
+}
+
+#endif
 
 void performDispatchTests() {
 	sprt::cout << "\n== runtime dispatch tests ==\n";
@@ -136,6 +213,13 @@ void performDispatchTests() {
 
 	thread.join();
 	thread2.join();
+
+#if !SPRT_WASM
+	testGracefulWakeup(dispatch::QueueEngine::Any, "GracefulDefault");
+#if SPRT_LINUX
+	testGracefulWakeup(dispatch::QueueEngine::EPoll, "GracefulEpoll");
+#endif
+#endif
 }
 
 } // namespace sprt

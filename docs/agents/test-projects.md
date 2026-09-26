@@ -79,6 +79,13 @@
   the same layout run locally, before and after a state-only change, and a local window that draws
   that change without being stepped. The two client sessions run one after the other, so text that
   renders in the second is also the check that a font endpoint does not outlive its session.
+- Changed the plane compositor (`xenolith/renderer/compositor`, its soft and vk passes, the plane
+  frame's lock) or `examples/os/server` → `tests/window/wm-compositor-check.py`. It needs
+  `examples/os/server` and `tests/window/client` built, and runs `wmserver` headless on Vulkan and
+  then soft (`--gapi` keeps one): the host frame equals the top plane's frame exactly, pacing,
+  screenshots of an animated plane, caps, pause, kill and a clean exit, with no validation error on
+  Vulkan. `--soak SECONDS` is the long mixed load for a change to the frame lock or the vk pass; it
+  is not in the runner.
 - Changed `xenolith/core` or `xenolith/backend/vk` → `tests/compute` (the runner
   owes it for both). It covers the round trip on 1 … 10⁵ records and the device-lost
   refusals: a request after `VK_ERROR_DEVICE_LOST` gets exactly one failed callback

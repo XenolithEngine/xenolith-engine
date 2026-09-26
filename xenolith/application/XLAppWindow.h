@@ -358,6 +358,7 @@ protected:
 	// Whether the current render client is remote; mirrors `_client->isRemote()` for the
 	// presentation thread, which must not touch `_client`.
 	sprt::atomic<bool> _clientIsRemote = false;
+	sprt::atomic<bool> _clientWantsPresented = false;
 
 	bool _firstFrameCompleted = false;
 	bool _mapOnFirstFrame = false;

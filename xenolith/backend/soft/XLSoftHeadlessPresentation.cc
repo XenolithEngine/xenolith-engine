@@ -182,7 +182,7 @@ Status HeadlessSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 
 			if (_planeSource && _slots->pin(index)) {
 				frame = Rc<core::PlaneFrame>::create(_planeSource->acquireSerial(), index,
-						Rc<core::ImageObject>(_images[index].image),
+						Rc<core::ImageObject>(_images[index].image), Rc<core::PlaneSlotTable>(_slots),
 						[slots = _slots, index] { slots->unpin(index); });
 			}
 		}

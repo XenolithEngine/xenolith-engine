@@ -27,6 +27,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
+class Loop;
+
 /* A WINDOW'S IMAGES AS A PLANE: what a compositor in the same process reads.
 
 A virtual window renders into a pseudo-swapchain; every image it presents is PUBLISHED here as a
@@ -40,6 +42,8 @@ That is the whole contract:
   PresentSrc to ShaderReadOnly (a device task), on the CPU backend at once.
 * Letting go is what returns the slot: the backend moves the image back to PresentSrc (Vulkan) and
   only then unpins it, so the application never draws into an image that is still being read.
+* Readers on the device take a lock on the frame: sampling shares it, a copy that changes the
+  layout takes it alone, so a screenshot never moves the layout under a compositor frame.
 
 The source belongs to the window, not to a swapchain: a resize replaces the swapchain and its slot
 table, and a frame of the old generation is still valid - it holds its image - until released. */
@@ -66,10 +70,41 @@ public:
 	void retire();
 	bool isRetired() const;
 
+	// A reader's own view of a slot's image; the swapchain's views die with it, this one lives as
+	// long as the generation. A retired table keeps no views.
+	Rc<ImageView> getView(uint32_t slot) const;
+	void setView(uint32_t slot, Rc<ImageView> &&);
+
 protected:
 	mutable sprt::mutex _mutex;
 	Vector<bool> _pinned;
+	Vector<Rc<ImageView>> _views;
 	bool _retired = false;
+};
+
+class PlaneFrame;
+
+enum class PlaneFrameAccess : uint8_t {
+	// reads that keep the image's layout (sampling); any number at once
+	Shared,
+	// a read that changes the layout (a copy); waits for the shared readers, and new ones wait for it
+	Exclusive,
+};
+
+// A granted lock on a frame; dropping it lets the next waiter in. Holds the frame.
+class SP_PUBLIC PlaneFrameLock : public Ref {
+public:
+	virtual ~PlaneFrameLock();
+
+	bool init(NotNull<PlaneFrame>, PlaneFrameAccess, NotNull<Loop>);
+
+	PlaneFrame *getFrame() const { return _frame; }
+	PlaneFrameAccess getAccess() const { return _access; }
+
+protected:
+	Rc<PlaneFrame> _frame;
+	Rc<Loop> _loop;
+	PlaneFrameAccess _access = PlaneFrameAccess::Shared;
 };
 
 // One published image. The backend's release runs when the last reference goes away, on whatever
@@ -80,7 +115,10 @@ public:
 
 	virtual ~PlaneFrame();
 
-	bool init(uint64_t serial, uint32_t slot, Rc<ImageObject> &&, ReleaseCallback &&);
+	using LockCallback = Function<void(Rc<PlaneFrameLock> &&)>;
+
+	bool init(uint64_t serial, uint32_t slot, Rc<ImageObject> &&, Rc<PlaneSlotTable> &&,
+			ReleaseCallback &&);
 
 	// Increases with every published frame of the window, across swapchain generations.
 	uint64_t getSerial() const { return _serial; }
@@ -91,11 +129,37 @@ public:
 	ImageObject *getImage() const { return _image; }
 	Extent2 getExtent() const;
 
+	// The slots of the generation the frame was drawn in; null if the backend keeps none.
+	PlaneSlotTable *getSlotTable() const { return _slots; }
+
+	// On the loop thread: `cb` gets the lock once it is granted - at once, or later on the loop
+	// thread, when the readers ahead of it let go. Waiters are served in order.
+	void lock(PlaneFrameAccess, NotNull<Loop>, LockCallback &&cb);
+
 protected:
+	friend class PlaneFrameLock;
+
+	struct LockRequest {
+		PlaneFrameAccess access;
+		Rc<Loop> loop;
+		LockCallback callback;
+	};
+
+	void unlock(PlaneFrameAccess);
+
+	// Grants what the state allows, in order; returns the granted requests to call out of the lock.
+	Vector<LockRequest> acquireGranted();
+
 	uint64_t _serial = 0;
 	uint32_t _slot = 0;
 	Rc<ImageObject> _image;
+	Rc<PlaneSlotTable> _slots;
 	ReleaseCallback _release;
+
+	sprt::mutex _lockMutex;
+	Vector<LockRequest> _lockQueue;
+	uint32_t _sharedLocks = 0;
+	bool _exclusiveLock = false;
 };
 
 // A window's published frames: the latest one, and a notification when a newer one is ready.

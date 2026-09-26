@@ -326,7 +326,7 @@ SP_PUBLIC uint32_t draw(const Target &, const DrawList &, const URect &clip,
 // across the full width of a 1080p surface has evicted its own texture by the time the next row
 // starts - while threads divide whatever is left.
 struct SP_PUBLIC TilingInfo {
-	uint32_t width = 0; // 0: do not cut horizontally
+	uint32_t width = 0; // 0: do not cut horizontally - every tile spans the whole region width
 	uint32_t height = 0; // 0: do not cut vertically
 	uint32_t threads = 1; // 1: the calling thread alone, no dispatch at all; 0: whatever the
 						  // thread pool can supply
@@ -392,6 +392,10 @@ struct SP_PUBLIC TilingStats {
 SP_PUBLIC uint32_t drawTiled(const Target &, const DrawList &, SpanView<URect> regions,
 		const TilingInfo &, TilingStats * = nullptr);
 
+// Work for one tile instead of a draw list: called from the workers concurrently, one tile each, so
+// it must not change anything the other tiles read.
+using TileCallback = Function<void(const Target &, const URect &tile)>;
+
 // What drawTiledAsync is asked to do. The regions follow the rules of drawTiled.
 struct SP_PUBLIC TiledDrawRequest {
 	Target target;
@@ -406,6 +410,9 @@ struct SP_PUBLIC TiledDrawRequest {
 
 	// Count FillStats; without it the pixel loops skip the counters.
 	bool collectStats = false;
+
+	// Used instead of `list` when set, after the per-tile clear. Released when the job completes.
+	TileCallback tileCallback;
 };
 
 // Called once per drawTiledAsync. `success` is false when the pool dropped a worker unrun, in which
@@ -453,6 +460,7 @@ protected:
 	bool _collectStats = false;
 
 	TiledDrawCallback _complete;
+	TileCallback _tileCallback;
 	uint32_t _workers = 0;
 
 	sprt::atomic<uint32_t> _nextTile{0};

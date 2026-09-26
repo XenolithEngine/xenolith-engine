@@ -618,8 +618,17 @@ What a virtual window presents is published to its `core::PlaneSource`
   unpins.
 * The source outlives swapchains: a frame of a replaced generation still holds its image, and
   releasing it returns nothing to a ring that is gone.
+* **A device reader takes a lock on the frame.** `PlaneFrame::lock(access, loop, cb)` hands the
+  `PlaneFrameLock` to `cb` on the loop thread once it is granted. Sampling is
+  `PlaneFrameAccess::Shared`; a copy that moves the layout is `Exclusive`, waits for the shared
+  readers and makes new ones wait behind it. Dropping the lock lets the next waiter in.
+* **Views for readers live in the slot table.** The swapchain's own views die with it, so a
+  reader keeps its view in `PlaneSlotTable::getView`/`setView` (`PlaneFrame::getSlotTable()`); a
+  retired table keeps none, and a frame that bound one holds it until its fence.
 
-A screenshot of a virtual window is a copy of the latest published frame, held for the copy.
+A screenshot of a virtual window is a copy of the latest published frame. On Vulkan the copy
+moves the image to TransferSrc and back, so it takes the frame's exclusive lock: a compositor frame
+sampling it finishes first, and the next one waits for the copy.
 Partial redraw works on these images — the per-slot damage snapshot is keyed by
 `SwapchainImage::getSwapchainSlot()`, not by the image id — and `tests/window/damage-check.py`
 checks it by the picture, with frames held.
@@ -659,6 +668,7 @@ The inspector reads a plane with `window op=plane`
 | `dynamic_cast<AppWindow *>` to open a popup | null on a remote client, and the popup silently never opens; take `ui::getSubWindowParent(node)` |
 | claiming a virtual window's frames (`setExternalDisplayLink(true)`) and not ticking it | nothing is drawn: each `emitDisplayLink` starts at most one frame |
 | keeping a `PlaneFrame` past the compositor frame that read it | its slot stays out of the ring; hold three of four and the application draws through the last one, hold all and it stops |
+| reading a plane's image on the device without `PlaneFrame::lock` | a screenshot can move its layout under the read on another queue of the same family |
 | calling `setFullscreen` / `enableState` without checking capabilities | the call is declined and your UI shows a control that never works |
 | `enableState(Maximized)` at the map event | the WM's `Allowed*` flags have not arrived yet, so it is declined; wait for them |
 | saving the geometry of a maximized window | it comes back the size of the screen, with nothing to un-maximize to |

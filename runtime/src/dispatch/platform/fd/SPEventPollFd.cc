@@ -78,10 +78,10 @@ Status PollFdURingHandle::rearm(URingData *uring, PollFdSource *source) {
 Status PollFdURingHandle::disarm(URingData *uring, PollFdSource *source) {
 	auto status = prepareDisarm();
 	if (status == Status::Ok) {
-		uring->pushSqe({IORING_OP_POLL_REMOVE}, [&](io_uring_sqe *sqe, uint32_t n) {
-			sqe->fd = source->fd;
-			sqe->user_data = URING_USERDATA_IGNORED;
-		}, URingPushFlags::Submit);
+		// The poll is found by its exact user_data; the cancel reports the suspension
+		status = uring->cancelOp(reinterpret_cast<uintptr_t>(this) | URING_USERDATA_RETAIN_BIT
+						| (_timeline & URING_USERDATA_SERIAL_MASK),
+				URingCancelFlags::Suspend);
 		++_timeline;
 	}
 	return status;

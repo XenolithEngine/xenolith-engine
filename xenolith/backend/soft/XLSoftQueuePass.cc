@@ -966,8 +966,8 @@ static void QueuePassHandle_profileFrame(TimeInterval elapsed, SpanView<URect> a
 			" filled/damage=", double(fill.total()) / double(denom));
 }
 
-bool QueuePassHandle::prepareSubpass(core::FrameQueue &q, const core::SubpassData &subpass,
-		RasterItem &item) {
+bool QueuePassHandle::resolveOutputTarget(const core::SubpassData &subpass, raster::Target &target,
+		core::ImageAttachment **attachment) const {
 	if (subpass.outputImages.empty()) {
 		log::source().error("soft::QueuePassHandle", "Subpass has no colour output: ", subpass.key);
 		return false;
@@ -1005,7 +1005,6 @@ bool QueuePassHandle::prepareSubpass(core::FrameQueue &q, const core::SubpassDat
 
 	auto &info = image->getInfo();
 
-	raster::Target target;
 	target.pixels = image->getData();
 	target.width = info.extent.width;
 	target.height = info.extent.height;
@@ -1017,6 +1016,24 @@ bool QueuePassHandle::prepareSubpass(core::FrameQueue &q, const core::SubpassDat
 				" (format ", core::getImageFormatName(info.format), ")");
 		return false;
 	}
+
+	if (attachment) {
+		*attachment = imgAttachment;
+	}
+	return true;
+}
+
+void QueuePassHandle::markShadowComposed() { s_scanoutDirectSticky.store(false); }
+
+bool QueuePassHandle::prepareSubpass(core::FrameQueue &q, const core::SubpassData &subpass,
+		RasterItem &item) {
+	raster::Target target;
+	core::ImageAttachment *imgAttachment = nullptr;
+	if (!resolveOutputTarget(subpass, target, &imgAttachment)) {
+		return false;
+	}
+
+	auto out = subpass.outputImages.front();
 
 	_frameFill = raster::FillStats();
 	_frameSurface = Extent2(target.width, target.height);
@@ -1072,7 +1089,7 @@ bool QueuePassHandle::prepareSubpass(core::FrameQueue &q, const core::SubpassDat
 	}
 
 	// Composed into the shadow: present() must copy again.
-	s_scanoutDirectSticky.store(false);
+	markShadowComposed();
 
 	item.target = target;
 	item.buffer = sp::move(buf);

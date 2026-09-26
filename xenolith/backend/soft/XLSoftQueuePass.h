@@ -101,6 +101,14 @@ protected:
 		raster::TilingInfo tiling;
 	};
 
+	// The subpass's single colour output as a rasterizer target. Logs and returns false when it has
+	// none, several, or one that is not a software image in a rasterizable format.
+	bool resolveOutputTarget(const core::SubpassData &, raster::Target &,
+			core::ImageAttachment ** = nullptr) const;
+
+	// The pass wrote its output itself, not through a direct scanout: present() must copy it.
+	static void markShadowComposed();
+
 	// Resolve the subpass output into a rasterizer target and record it. Returns false when it has
 	// no usable colour output; leaves `item.buffer` empty when there is nothing to draw, which ends
 	// the pass.

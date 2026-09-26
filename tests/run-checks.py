@@ -128,6 +128,7 @@ COST = {
     "window/remote-example-check.py": 24,
     "window/remote-window-check.py": 20, "window/virtual-window-check.py": 88,
     "window/damage-check.py": 21, "window/remote-render-check.py": 33,
+    "window/wm-compositor-check.py": 60,
     "gittest": 19, "computetest": 6, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
     "uilayouttest": 1, "particlestest": 1,
 }
@@ -137,6 +138,7 @@ COST = {
 WINDOW_BINARIES = {
     "particles-check.py": ("examples/window/particles", "particles"),
     "filesystem-explorer-check.py": ("examples/window/fileexplorer", "fileexplorer"),
+    "wm-compositor-check.py": ("examples/os/server", "wmserver"),
 }
 
 # `examples/` is outside the plan, except the examples a window check drives
@@ -146,6 +148,7 @@ EXAMPLE_CHECKS = [
     ("examples/window/dndtree", ["remote-example-check.py"]),
     ("examples/window/form", ["remote-example-check.py"]),
     ("examples/window/dock", ["remote-example-check.py"]),
+    ("examples/os/server", ["wm-compositor-check.py"]),
 ]
 
 # Scripts that are not checks, or cannot be part of an automated run - see the docstring.
