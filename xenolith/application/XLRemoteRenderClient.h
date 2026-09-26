@@ -76,9 +76,14 @@ public:
 	void handleMaterialsUpdated(uint64_t queue, NotNull<core::MaterialSet>,
 			NotNull<remote::ObjectRegistry>);
 
-	// One streamed input for one or more attachments of an in-flight frame: reconstruct it once and
-	// feed it to each attachment of the armed FrameRequest on the gapi loop thread.
-	void handleFrameInput(uint64_t frameId, SpanView<StringView> attachmentKeys, BytesView bytes);
+	/* One streamed input for one or more attachments of an in-flight frame: reconstruct it once and
+	feed it to each attachment of the armed FrameRequest on the gapi loop thread.
+
+	`frameData` is the client's frame data cache operations for this input (FrameInput[3]); they
+	are applied first, even when the frame is gone, because the client's mirror has already changed.
+	`messageSize` is what the message cost on the wire, for the counters. */
+	void handleFrameInput(uint64_t frameId, SpanView<StringView> attachmentKeys, BytesView bytes,
+			const Value &frameData, size_t messageSize);
 
 	// All inputs for a frame were submitted; stop routing further input for it.
 	void handleFrameCommit(uint64_t frameId);
@@ -96,6 +101,23 @@ public:
 	// which is how a test sees a cancelled frame at all.
 	uint32_t getLateFrameCount() const { return _lateFrames; }
 	uint32_t getConsecutiveLateFrames() const { return _consecutiveLateFrames; }
+
+	// What the frame inputs of this client cost on the wire; reported by the inspector.
+	struct FrameInputStats {
+		uint64_t messages = 0;
+		uint64_t bytes = 0; // every FrameInput message, whole
+		uint64_t lastBytes = 0; // the last one
+	};
+
+	const FrameInputStats &getFrameInputStats() const { return _frameInputStats; }
+
+	// The data this session's client does not send again (XLCoreFrameDataCache.h); null once the
+	// session is gone.
+	core::FrameDataCache *getFrameDataCache() const { return _frameData; }
+
+	/* Drop the session's frame data cache and tell the client to start over in the new epoch
+	(WindowCode::FrameDataReset). A protocol error: logged as one. */
+	void resetFrameData(StringView reason);
 
 	// Feed inputs the client can not produce because they are server state (FrameCapture); an unfed
 	// input attachment wedges the frame.
@@ -146,6 +168,13 @@ protected:
 	// window and counts it.
 	void cancelFrame(uint64_t frameId, uint64_t windowId, Rc<core::LocalFrameRequestProxy> &&proxy,
 			StringView reason);
+
+	// A frame whose input can not be used: dropped at once rather than left to its deadline, and not
+	// counted as late - the client was not.
+	void dropFrame(uint64_t frameId, StringView reason);
+
+	Rc<core::FrameDataCache> _frameData;
+	FrameInputStats _frameInputStats;
 
 	Vector<uint64_t> _nudgeWindows;
 	uint32_t _lateFrames = 0;

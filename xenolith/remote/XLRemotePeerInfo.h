@@ -96,6 +96,9 @@ enum class PeerFeatures : uint64_t {
 	ClientWindows = 1 << 4, // server opens windows a client asks for (WindowCode::CreateWindow);
 	// set only when the application installed a handler for them
 	AppMessages = 1 << 5, // the application handles GlobalCode::AppRequest/AppNotify
+	// server keeps the data sets of the client's frames by identity, within PeerInfo::frameDataBudget
+	// (XLCoreFrameDataCache.h)
+	FrameDataCache = 1 << 6,
 	// Damage/partial redraw is per queue (RemoteQueueInfo::damage), not a peer feature.
 };
 
@@ -162,6 +165,10 @@ struct SP_PUBLIC PeerInfo {
 	uint32_t apiVersion = 0;
 
 	PeerFeatures features = PeerFeatures::None;
+
+	// The bytes of frame data the server keeps per session (PeerFeatures::FrameDataCache); what the
+	// client's mirror evicts against.
+	uint64_t frameDataBudget = 0;
 
 	// --- transport: what this side believes it is talking over. The two sides can legitimately
 	// disagree in wording (a `mem:` pair, a proxy); it is diagnostics, not negotiation.

@@ -80,12 +80,15 @@ void LocalFrameRequestProxy::commit() {
 // --- RemoteFrameRequestProxy ---
 
 bool RemoteFrameRequestProxy::init(const FrameConstraints &c, uint64_t frameId,
-		Function<void(SpanView<const AttachmentData *>, BytesView)> &&sendInput,
-		Function<void()> &&sendCommit) {
+		Function<void(SpanView<const AttachmentData *>, BytesView, Value &&)> &&sendInput,
+		Function<void()> &&sendCommit, Rc<FrameDataMirror> &&frameData) {
 	_constraints = c;
 	_frameId = frameId;
 	_sendInput = sp::move(sendInput);
 	_sendCommit = sp::move(sendCommit);
+	if (frameData && frameData->isEnabled()) {
+		_frameData = sp::move(frameData);
+	}
 	return true;
 }
 
@@ -111,11 +114,15 @@ bool RemoteFrameRequestProxy::addInput(SpanView<const AttachmentData *> atts,
 		return false;
 	}
 	Bytes bytes;
-	if (!data->serialize(
-				[&](BytesView v) { bytes.insert(bytes.end(), v.data(), v.data() + v.size()); })) {
+	if (_frameData) {
+		_frameData->beginSerialization();
+	}
+	if (!data->serialize([&](BytesView v) {
+		bytes.insert(bytes.end(), v.data(), v.data() + v.size());
+	}, _frameData.get())) {
 		return false;
 	}
-	_sendInput(atts, bytes);
+	_sendInput(atts, bytes, _frameData ? _frameData->takeOps() : Value());
 	return true;
 }
 

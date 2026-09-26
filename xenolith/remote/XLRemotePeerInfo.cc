@@ -232,6 +232,9 @@ Value serializePeerInfo(const PeerInfo &info) {
 	}
 
 	ret.setInteger(int64_t(toInt(info.features)), "features");
+	if (info.frameDataBudget) {
+		ret.setInteger(int64_t(info.frameDataBudget), "frameDataBudget");
+	}
 
 	Value &transport = ret.emplace("transport");
 	transport.setString(info.transportScheme, "scheme");
@@ -273,6 +276,7 @@ PeerInfo deserializePeerInfo(const Value &val) {
 	ret.apiVersion = uint32_t(gapi.getInteger("version"));
 
 	ret.features = PeerFeatures(uint64_t(val.getInteger("features")));
+	ret.frameDataBudget = uint64_t(val.getInteger("frameDataBudget"));
 
 	const Value &transport = val.getValue("transport");
 	ret.transportScheme = transport.getString("scheme");

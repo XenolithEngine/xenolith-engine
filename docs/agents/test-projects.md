@@ -79,6 +79,16 @@
   the same layout run locally, before and after a state-only change, and a local window that draws
   that change without being stepped. The two client sessions run one after the other, so text that
   renders in the second is also the check that a font endpoint does not outlive its session.
+- Changed the frame data cache (`XLCoreFrameDataCache`, the mirror in `ClientAppThread`, the
+  references in `FrameContextHandle2d::serialize` / `deserialize`) → `tests/remote` (`remotetest
+  framedata`) and `tests/window/remote-cache-check.py`. Stage `static` runs `clientapp` with its
+  square pulsing against a server with the cache and one without (`XL_REMOTE_FRAME_DATA_BUDGET=0`):
+  the sets are stored once and referenced after, a frame is lighter by exactly the stored data, a
+  typed character is a partial frame, a reset (`remote-frame-data-reset`) starts both sides over,
+  and the picture is the same. Stage `load` switches `testapp --connect` through layouts with a
+  128 KiB budget: evictions, no miss, never over the budget, the last layout equal to a run without
+  the cache. Both stages check that no entry outlives its client (`frameDataLive` in `remote`).
+  About 160 s for both backends.
 - Changed the plane compositor (`xenolith/renderer/compositor`, its soft and vk passes, the plane
   frame's lock) or `examples/os` (`server`, `shell`, `shade`, `common`) →
   `tests/window/wm-compositor-check.py`. It needs `examples/os/server` (its `all` builds `wmshell`

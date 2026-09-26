@@ -642,6 +642,30 @@ glyph through the atlas the frame draws it with, as the shader places it
 signature, so its arrival repaints the label and nothing else. `tests/window/remote-render-check.py`
 runs `testapp` as a client of a `testapp` server.
 
+The server keeps what it was sent (`xenolith/core/XLCoreFrameDataCache.h`), so a set the client
+did not touch is not sent again either: the frame carries its identity and a reference.
+
+* **The client decides, the server checks.** The client keeps a mirror of what the server holds
+  (`ClientAppThread::getFrameDataMirror()`), evicts the least recently used sets within the budget
+  the server announced (`PeerInfo::frameDataBudget`, `ServerAppThread::setFrameDataBudget`, 32 MiB
+  by default, 0 turns it off) and writes each change as an operation: Store a body, Drop an id.
+* **No acknowledgement.** An input's operations travel in the same `FrameInput` as its references
+  and the server applies them before it looks the frame up, even for a frame it already cancelled,
+  so both sides change in the same order.
+* **A miss is a protocol error.** A reference the cache can not resolve, or a store past the
+  budget, drops the session's cache and starts a new epoch (`WindowCode::FrameDataReset`); inputs
+  written in the old one are declined with their frames, without a second reset.
+* **One cache per session.** A reconnect is a new session with a new cache and a new mirror; a
+  window changes its client only through the reset of its owner's session, whose cache goes with
+  it.
+* **The server decodes a stored body once** and every frame that references it shares the one
+  `VertexData` or `LinearGradientData`. So a `VertexData` must not change after it was sent without
+  a new generation — `VertexArray` copies on write, and code that fills a `VertexData` by hand does
+  it before the set is drawn. The bounds memo of a shared set is taken under its own lock.
+
+`tests/window/remote-cache-check.py` compares the traffic of a still scene with and without the
+cache, forces a reset, and switches layouts through a small budget.
+
 A client asks for its frames itself, as a local window does. Its director asks when the scene
 changed since the last frame (see `markSceneChanged` in
 [node-geometry.adoc](../scene/node-geometry.adoc)) or moves (actions, input), and on every wakeup of

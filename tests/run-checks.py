@@ -100,7 +100,8 @@ OWES = [
     ("xenolith/renderer/basic2d/particle", ["particlestest"]),
     ("xenolith/renderer/basic2d/glsl", ["particlestest"]),
     ("xenolith/backend/vk", ["computetest"]),
-    ("xenolith/core", ["computetest"]),
+    ("xenolith/core", ["computetest", "remotetest"]),
+    ("xenolith/remote", ["remotetest"]),
     ("xenolith", []),
 ]
 
@@ -128,7 +129,8 @@ COST = {
     "window/remote-example-check.py": 24,
     "window/remote-window-check.py": 20, "window/virtual-window-check.py": 88,
     "window/damage-check.py": 21, "window/remote-render-check.py": 33,
-    "window/wm-compositor-check.py": 100,
+    "window/wm-compositor-check.py": 100, "window/remote-cache-check.py": 162,
+    "window/remote-multi-check.py": 30, "remotetest": 3,
     "gittest": 19, "computetest": 6, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
     "uilayouttest": 1, "particlestest": 1,
 }
@@ -186,6 +188,15 @@ def changed_paths(rev=None):
     return [l[3:].strip().split(" -> ")[-1] for l in out if l.strip()]
 
 
+# Files a name can not lead to: the wire of a remote client's frame is written in a 2d command list
+# and a frame request proxy, and read against a client's frame data cache. (stem, scripts)
+WINDOW_ALSO = [
+    ("XL2dCommandList", ["remote-cache-check.py", "remote-render-check.py"]),
+    ("XLCoreFrameRequestProxy", ["remote-cache-check.py"]),
+    ("XLClientAppThread", ["remote-cache-check.py", "remote-check.py"]),
+]
+
+
 def select_window(paths):
     """Window checks whose NAME matches a changed file's name - the declared heuristic.
 
@@ -207,6 +218,9 @@ def select_window(paths):
             out.append(s)
         elif any(t.startswith(p) or p.startswith(t) for p in parts for t in tokens if len(t) > 3):
             out.append(s)
+    for stem, scripts in WINDOW_ALSO:
+        if any(os.path.basename(p).startswith(stem) for p in paths):
+            out += [s for s in scripts if s not in out]
     return out
 
 

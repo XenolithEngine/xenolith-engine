@@ -85,6 +85,7 @@ void performReplyTableTests();
 void performBearerKeyTests();
 void performOwnershipTests();
 void performDependencyTests();
+void performFrameDataTests();
 
 } // namespace stappler::xenolith::remote
 

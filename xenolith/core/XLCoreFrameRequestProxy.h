@@ -24,6 +24,7 @@
 #define XENOLITH_CORE_XLCOREFRAMEREQUESTPROXY_H_
 
 #include "XLCoreFrameRequest.h"
+#include "XLCoreFrameDataCache.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
@@ -97,9 +98,15 @@ public:
 	// Remote receives the frame constraints + the server-assigned frame id, plus transport hooks the
 	// app layer injects (the proxy stays transport-agnostic): `sendInput` ships one already-serialized
 	// per-attachment input immediately; `sendCommit` signals all inputs for this frame were sent.
+	//
+	// With a frame data mirror (null or disabled - everything inline) each input is serialized
+	// against it, and `sendInput` gets the mirror's operations for that input: they must travel in
+	// the same message as the bytes, because the server applies them before it resolves the
+	// references in the bytes.
 	bool init(const FrameConstraints &, uint64_t frameId,
-			Function<void(SpanView<const AttachmentData *>, BytesView)> &&sendInput,
-			Function<void()> &&sendCommit);
+			Function<void(SpanView<const AttachmentData *>, BytesView, Value &&frameData)>
+					&&sendInput,
+			Function<void()> &&sendCommit, Rc<FrameDataMirror> && = nullptr);
 
 	virtual void selectQueue(NotNull<core::Queue>) override;
 	virtual void setSceneRef(Rc<Ref> &&) override;
@@ -122,8 +129,9 @@ protected:
 	String _selectedQueue;
 
 	uint64_t _frameId = 0;
-	Function<void(SpanView<const AttachmentData *>, BytesView)> _sendInput;
+	Function<void(SpanView<const AttachmentData *>, BytesView, Value &&)> _sendInput;
 	Function<void()> _sendCommit;
+	Rc<FrameDataMirror> _frameData;
 
 	// Frame-level signal dependencies are accumulated but not shipped to the server.
 	Vector<Rc<DependencyEvent>> _signalDependencies;

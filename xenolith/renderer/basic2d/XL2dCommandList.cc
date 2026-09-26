@@ -23,6 +23,7 @@
 
 #include "XL2dCommandList.h"
 #include "XL2dFrameContext.h" // StateData, the state extension on the wire
+#include "XLCoreFrameDataCache.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
@@ -305,9 +306,9 @@ Rc<core::AttachmentInputData> makeFrameContextInput(NotNull<core::RenderClientCh
 //   cmdCount, [material, state, level, depth, flags, zPath[], array[]]*
 // where
 //   extension = u8 has; [transform, outlineOffset, outlineColor, u8 hasGradient, gradient]
-//   gradient  = start, end, stepCount, [value, factor, color]*, identity
-//   array     = [fill, stroke, sdf, instances(TransformData)[], vertices(Vertex)[], indexes(u32)[],
-//                identity]
+//   gradient  = data(start, end, stepCount, [value, factor, color]*)
+//   array     = [fill, stroke, sdf, instances(TransformData)[], data(vertices(Vertex)[], indexes(u32)[])]
+//   data(body) = u8 source; source == Inline: body; then identity
 //   identity  = u64 id, u32 generation
 // Only immediate vertex commands are emitted: Deferred commands are resolved client-side and folded
 // into immediate vertices; particle/group commands are skipped.
@@ -316,6 +317,11 @@ Rc<core::AttachmentInputData> makeFrameContextInput(NotNull<core::RenderClientCh
 // id while it is the same object and bumps its generation when it changes. On the server they are
 // moved into the session's namespace (see identityInNamespace). What a set covers is not sent: the
 // server derives it from the vertexes, glyphs through the atlas it draws them with.
+//
+// With a frame data cache (XLCoreFrameDataCache.h) the body of a set the server already holds is
+// not sent: `source` is Reference, and the server takes the set from the session's cache by its
+// client identity. The body stored there is the same bytes an Inline source carries, and the object
+// the server decodes it into once is shared by every frame that references it.
 
 namespace {
 
@@ -399,8 +405,131 @@ static void writeIdentity(BinWriter &w, const DataIdentity &identity) {
 	w.u32(identity.generation);
 }
 
+enum class DataSource : uint8_t {
+	Inline = 0,
+	Reference = 1,
+};
+
+// One data set: a reference, if the server holds it or takes it now as a Store operation of the
+// mirror, the body inline otherwise. Id 0 is "no data" and always goes inline.
+template <typename Encode>
+static void writeData(BinWriter &w, core::FrameDataMirror *mirror, core::FrameDataKind kind,
+		const DataIdentity &identity, const Encode &encode) {
+	if (mirror && identity.id != 0) {
+		if (mirror->reference(kind, identity.id, identity.generation)) {
+			w.pod(DataSource::Reference);
+		} else {
+			BinWriter body;
+			encode(body);
+			if (mirror->store(kind, identity.id, identity.generation, body.buf)) {
+				w.pod(DataSource::Reference);
+			} else {
+				w.pod(DataSource::Inline);
+				w.raw(body.buf.data(), body.buf.size());
+			}
+		}
+	} else {
+		w.pod(DataSource::Inline);
+		encode(w);
+	}
+	writeIdentity(w, identity);
+}
+
+static void encodeVertexData(BinWriter &w, const VertexData *data) {
+	if (data) {
+		w.podArray(data->data.data(), uint32_t(data->data.size()));
+		w.podArray(data->indexes.data(), uint32_t(data->indexes.size()));
+	} else {
+		w.u32(0);
+		w.u32(0);
+	}
+}
+
+static void decodeVertexData(BinReader &r, VertexData &data) {
+	data.data = r.podArray<Vertex>();
+	data.indexes = r.podArray<uint32_t>();
+}
+
+static void encodeGradient(BinWriter &w, const LinearGradientData &g) {
+	w.pod(g.start);
+	w.pod(g.end);
+	w.u32(uint32_t(g.steps.size()));
+	for (auto &it : g.steps) {
+		w.pod(it.value);
+		w.pod(it.factor);
+		w.pod(it.color);
+	}
+}
+
+static void decodeGradient(BinReader &r, LinearGradientData &g) {
+	g.start = r.pod<Vec2>();
+	g.end = r.pod<Vec2>();
+	auto stepCount = r.u32();
+	if (r.fits(stepCount, sizeof(float) * 2 + sizeof(Color4F))) {
+		g.steps.reserve(stepCount);
+	}
+	for (uint32_t i = 0; i < stepCount && r.ok; ++i) {
+		GradientStep step;
+		step.value = r.pod<float>();
+		step.factor = r.pod<float>();
+		step.color = r.pod<Color4F>();
+		g.steps.emplace_back(step);
+	}
+}
+
+// Reads one data set written by writeData: the inline body is decoded into a fresh object, a
+// reference resolves against the cache - and the object decoded from a cached body the first time
+// is kept there, so every later frame shares it. Null with `r.ok == false` when the stream is
+// broken or the reference misses.
+template <typename T, typename Decode>
+static Rc<T> readData(BinReader &r, core::FrameDataCache *cache, core::FrameDataKind kind,
+		uint64_t ns, const Decode &decode) {
+	auto source = r.pod<DataSource>();
+	Rc<T> ret;
+	if (source == DataSource::Inline) {
+		ret = Rc<T>::alloc();
+		decode(r, *ret);
+	} else if (source != DataSource::Reference) {
+		r.ok = false;
+	}
+	auto id = r.pod<uint64_t>();
+	auto generation = r.u32();
+	if (!r.ok) {
+		return nullptr;
+	}
+	if (source == DataSource::Inline) {
+		ret->identity = DataIdentity(identityInNamespace(ns, id), generation);
+		return ret;
+	}
+
+	auto entry = cache ? cache->find(kind, id, generation) : nullptr;
+	if (!entry) {
+		log::source().warn("FrameContextHandle2d", "deserialize: data ", id, ":", generation,
+				" is not in the session's cache");
+		r.ok = false;
+		return nullptr;
+	}
+	if (auto object = dynamic_cast<T *>(entry->object.get())) {
+		return object;
+	}
+	BinReader body;
+	body.v = entry->raw;
+	ret = Rc<T>::alloc();
+	decode(body, *ret);
+	if (!body.ok || body.off != body.v.size()) {
+		log::source().warn("FrameContextHandle2d", "deserialize: the cached body of ", id, ":",
+				generation, " is malformed");
+		r.ok = false;
+		return nullptr;
+	}
+	ret->identity = DataIdentity(identityInNamespace(ns, id), generation);
+	entry->object = ret;
+	entry->raw = Bytes(); // the object is what is kept from now on
+	return ret;
+}
+
 // The part of a state that is not POD: the gradient and the shaded outline of a Sprite.
-static void writeStateExtension(BinWriter &w, const Rc<Ref> &data) {
+static void writeStateExtension(BinWriter &w, const Rc<Ref> &data, core::FrameDataMirror *mirror) {
 	auto state = dynamic_cast<const StateData *>(data.get());
 	w.pod(uint8_t(state ? 1 : 0));
 	if (!state) {
@@ -411,19 +540,12 @@ static void writeStateExtension(BinWriter &w, const Rc<Ref> &data) {
 	w.pod(state->outlineColor);
 	w.pod(uint8_t(state->gradient ? 1 : 0));
 	if (auto g = state->gradient.get()) {
-		w.pod(g->start);
-		w.pod(g->end);
-		w.u32(uint32_t(g->steps.size()));
-		for (auto &it : g->steps) {
-			w.pod(it.value);
-			w.pod(it.factor);
-			w.pod(it.color);
-		}
-		writeIdentity(w, g->identity);
+		writeData(w, mirror, core::FrameDataKind::Gradient, g->identity,
+				[&](BinWriter &b) { encodeGradient(b, *g); });
 	}
 }
 
-static Rc<Ref> readStateExtension(BinReader &r, uint64_t ns) {
+static Rc<Ref> readStateExtension(BinReader &r, uint64_t ns, core::FrameDataCache *cache) {
 	if (!r.pod<uint8_t>() || !r.ok) {
 		return nullptr;
 	}
@@ -432,24 +554,8 @@ static Rc<Ref> readStateExtension(BinReader &r, uint64_t ns) {
 	state->outlineOffset = r.pod<float>();
 	state->outlineColor = r.pod<Color4F>();
 	if (r.pod<uint8_t>()) {
-		auto g = Rc<LinearGradientData>::alloc();
-		g->start = r.pod<Vec2>();
-		g->end = r.pod<Vec2>();
-		auto stepCount = r.u32();
-		if (r.fits(stepCount, sizeof(float) * 2 + sizeof(Color4F))) {
-			g->steps.reserve(stepCount);
-		}
-		for (uint32_t i = 0; i < stepCount && r.ok; ++i) {
-			GradientStep step;
-			step.value = r.pod<float>();
-			step.factor = r.pod<float>();
-			step.color = r.pod<Color4F>();
-			g->steps.emplace_back(step);
-		}
-		auto id = r.pod<uint64_t>();
-		auto generation = r.u32();
-		g->identity = DataIdentity(identityInNamespace(ns, id), generation);
-		state->gradient = sp::move(g);
+		state->gradient = readData<LinearGradientData>(r, cache, core::FrameDataKind::Gradient, ns,
+				decodeGradient);
 	}
 	return state;
 }
@@ -476,7 +582,8 @@ static TransformData transformInstance(const TransformData &src, const Mat4 &vie
 // Emit one immediate vertex command. For a resolved Deferred command pass its view/model
 // transforms; for an immediate VertexArray pass nullptr (instances are written as-is).
 static void writeVertexCommand(BinWriter &w, const CmdInfo &info, CommandFlags flags,
-		SpanView<InstanceVertexData> arrays, const Mat4 *view, const Mat4 *model, bool normalized) {
+		SpanView<InstanceVertexData> arrays, const Mat4 *view, const Mat4 *model, bool normalized,
+		core::FrameDataMirror *mirror) {
 	w.u32(info.material);
 	w.u32(uint32_t(info.state));
 	w.u32(uint32_t(info.renderingLevel));
@@ -504,22 +611,17 @@ static void writeVertexCommand(BinWriter &w, const CmdInfo &info, CommandFlags f
 		} else {
 			w.podArray(iv.instances.data(), uint32_t(iv.instances.size()));
 		}
-		if (iv.data) {
-			auto &identity = iv.data->identity;
-			w.podArray(iv.data->data.data(), uint32_t(iv.data->data.size()));
-			w.podArray(iv.data->indexes.data(), uint32_t(iv.data->indexes.size()));
-			writeIdentity(w, identity);
-		} else {
-			w.u32(0);
-			w.u32(0);
-			writeIdentity(w, DataIdentity(0, 0));
-		}
+		auto data = iv.data.get();
+		writeData(w, mirror, core::FrameDataKind::VertexSet,
+				data ? data->identity : DataIdentity(0, 0),
+				[&](BinWriter &b) { encodeVertexData(b, data); });
 	}
 }
 
 } // namespace
 
-bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &cb) const {
+bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &cb,
+		core::FrameDataMirror *mirror) const {
 	BinWriter w;
 	w.pod(clock);
 	w.pod(lights);
@@ -531,7 +633,7 @@ bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &cb) const 
 		w.pod(s.enabled);
 		w.pod(s.viewport);
 		w.pod(s.scissor);
-		writeStateExtension(w, s.data);
+		writeStateExtension(w, s.data, mirror);
 	}
 
 	// commands: build into a side buffer first (Deferred resolves may add entries), then prefix
@@ -544,7 +646,8 @@ bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &cb) const 
 			switch (cmd->type) {
 			case CommandType::VertexArray: {
 				auto d = reinterpret_cast<const CmdVertexArray *>(cmd->data);
-				writeVertexCommand(cmds, *d, cmd->flags, d->vertexes, nullptr, nullptr, false);
+				writeVertexCommand(cmds, *d, cmd->flags, d->vertexes, nullptr, nullptr, false,
+						mirror);
 				++cmdCount;
 				break;
 			}
@@ -554,7 +657,7 @@ bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &cb) const 
 					d->deferred->acquireResult(
 							[&](SpanView<InstanceVertexData> v, DeferredVertexResult::Flags) {
 						writeVertexCommand(cmds, *d, cmd->flags, v, &d->viewTransform,
-								&d->modelTransform, d->normalized);
+								&d->modelTransform, d->normalized, mirror);
 						++cmdCount;
 					});
 				}
@@ -590,7 +693,8 @@ bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &cb) const 
 	return true;
 }
 
-bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remoteDeps, uint64_t ns) {
+bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remoteDeps, uint64_t ns,
+		core::FrameDataCache *cache) {
 	BinReader r;
 	r.v = bytes;
 
@@ -612,7 +716,7 @@ bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remote
 		s.enabled = r.pod<core::DynamicState>();
 		s.viewport = r.pod<URect>();
 		s.scissor = r.pod<URect>();
-		s.data = readStateExtension(r, ns);
+		s.data = readStateExtension(r, ns, cache);
 		states.emplace_back(s);
 	}
 
@@ -631,12 +735,10 @@ bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remote
 			struct ParsedArray {
 				uint32_t fill = 0, stroke = 0, sdf = 0;
 				Vector<TransformData> instances;
-				Vector<Vertex> vertices;
-				Vector<uint32_t> indexes;
-				DataIdentity identity = DataIdentity(0, 0);
+				Rc<VertexData> data;
 			};
 			static constexpr size_t MinArraySize =
-					sizeof(uint32_t) * 6 + sizeof(uint64_t) + sizeof(uint32_t);
+					sizeof(uint32_t) * 4 + sizeof(uint8_t) + sizeof(uint64_t) + sizeof(uint32_t);
 			Vector<ParsedArray> parsed;
 			if (r.fits(arrayCount, MinArraySize)) {
 				parsed.reserve(arrayCount);
@@ -647,11 +749,10 @@ bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remote
 				pa.stroke = r.u32();
 				pa.sdf = r.u32();
 				pa.instances = r.podArray<TransformData>();
-				pa.vertices = r.podArray<Vertex>();
-				pa.indexes = r.podArray<uint32_t>();
-				auto id = r.pod<uint64_t>();
-				auto generation = r.u32();
-				pa.identity = DataIdentity(identityInNamespace(ns, id), generation);
+				// The client's identity, not a fresh one: the same data set in two frames has to
+				// compare as the same element, or every frame is a full redraw.
+				pa.data = readData<VertexData>(r, cache, core::FrameDataKind::VertexSet, ns,
+						decodeVertexData);
 				parsed.emplace_back(sp::move(pa));
 			}
 			if (!r.ok) {
@@ -679,13 +780,7 @@ bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remote
 					iv->instances =
 							makeSpanView(parsed[a].instances.data(), parsed[a].instances.size())
 									.pdup(p);
-					auto vd = Rc<VertexData>::alloc();
-					vd->data = sp::move(parsed[a].vertices);
-					vd->indexes = sp::move(parsed[a].indexes);
-					// The client's identity, not a fresh one: the same data set in two frames has to
-					// compare as the same element, or every frame is a full redraw.
-					vd->identity = parsed[a].identity;
-					iv->data = move(vd);
+					iv->data = sp::move(parsed[a].data);
 				}
 				return makeSpanView(arr, parsed.size());
 			}, sp::move(info), flags);
