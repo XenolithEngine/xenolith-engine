@@ -134,6 +134,7 @@ struct SP_PUBLIC PipeSnapshot : public Ref {
 class SP_PUBLIC DisplayPipe : public Ref {
 public:
 	using VblankCallback = Function<void(uint64_t hostFrames)>;
+	using PublishedCallback = Function<void(DisplayPlane *, uint64_t serial)>;
 
 	virtual ~DisplayPipe();
 
@@ -152,6 +153,9 @@ public:
 	DisplayPlane *getFocusedPlane() const { return _focused; }
 
 	void setVblankCallback(VblankCallback &&);
+
+	// Every frame any plane publishes, enabled or not.
+	void setPlanePublishedCallback(PublishedCallback &&);
 
 	// The shortest time between two vblanks, microseconds; 0 follows the host.
 	void setMinFrameInterval(uint64_t);
@@ -207,6 +211,7 @@ protected:
 	DisplayPlane *_focused = nullptr;
 	Color4F _background = Color4F::BLACK;
 	VblankCallback _vblankCallback;
+	PublishedCallback _publishedCallback;
 
 	uint32_t _nextPlaneId = 1;
 	uint64_t _minInterval = 0;

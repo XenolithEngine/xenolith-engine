@@ -191,6 +191,10 @@ void DisplayPipe::setFocusedPlane(DisplayPlane *plane) {
 
 void DisplayPipe::setVblankCallback(VblankCallback &&cb) { _vblankCallback = sp::move(cb); }
 
+void DisplayPipe::setPlanePublishedCallback(PublishedCallback &&cb) {
+	_publishedCallback = sp::move(cb);
+}
+
 void DisplayPipe::setMinFrameInterval(uint64_t value) { _minInterval = value; }
 
 void DisplayPipe::setBackground(const Color4F &color) {
@@ -254,6 +258,10 @@ void DisplayPipe::handlePlanePublished(DisplayPlane *plane, uint64_t serial) {
 
 	if (plane->_state.enabled) {
 		scheduleHostFrame();
+	}
+
+	if (_publishedCallback) {
+		_publishedCallback(plane, serial);
 	}
 }
 

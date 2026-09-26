@@ -18,44 +18,30 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-# Rebuild everything if this makefile changes
 LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
-# Path to make/ (relative to this makefile). examples/os/server -> three levels up.
+# Path to make/ (relative to this makefile). examples/os/shell -> three levels up.
 STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../../../make
 
 LOCAL_ROOT   := $(dir $(LOCAL_MAKEFILE))
 LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
 
-# The window manager server: a host window whose frames are composed from the planes of its
-# clients' virtual windows. Both backends are always linked, each with its compositor pass:
-# `--gapi soft` selects the CPU one.
-LOCAL_EXECUTABLE := wmserver
+# The window manager's launcher: a grid of the applications the server offers. A client only
+# (--connect): the server draws it, so no graphics backend is linked.
+LOCAL_EXECUTABLE := wmshell
 
 LOCAL_MODULES_PATHS = \
 	stappler/stappler-modules.mk \
 	xenolith/xenolith-modules.mk
 LOCAL_MODULES := \
 	xenolith_application_main \
-	xenolith_renderer_ui \
-	xenolith_resources_assets \
-	xenolith_backend_vk \
-	xenolith_backend_soft \
-	xenolith_renderer_basic2d_soft \
-	xenolith_renderer_compositor \
-	xenolith_renderer_compositor_soft \
-	xenolith_renderer_compositor_vk
+	xenolith_renderer_ui
 
 LOCAL_MAIN          := main.cpp
 LOCAL_SRCS_DIRS     := src
 LOCAL_INCLUDES_OBJS := src ../common
 
-APPCONFIG_APP_NAME    := Xenolith OS
-APPCONFIG_BUNDLE_NAME := org.stappler.xenolith.examples.os.server
+APPCONFIG_APP_NAME    := Xenolith OS Shell
+APPCONFIG_BUNDLE_NAME := org.stappler.xenolith.examples.os.shell
 
 include $(STAPPLER_BUILD_ROOT)/universal.mk
-
-# The shell and the shade are launched from their own builds, next to this one.
-all:
-	$(MAKE) -C $(LOCAL_ROOT)/../shell STAPPLER_TARGET=$(STAPPLER_TARGET) all
-	$(MAKE) -C $(LOCAL_ROOT)/../shade STAPPLER_TARGET=$(STAPPLER_TARGET) all

@@ -169,8 +169,11 @@ bool PresentationEngine::scheduleSwapchainImage(Rc<PresentationFrame> &&frame) {
 				scheduleFrameDeadline(frame);
 			}
 		} else {
-			log::source().error("core::PresentationEngine",
-					"acquireFrameData - Swapchain was invalidated");
+			// An engine that ended (its window is closing) drops the frame it was still acquiring
+			if (isRunning()) {
+				log::source().error("core::PresentationEngine",
+						"acquireFrameData - Swapchain was invalidated");
+			}
 			frame->invalidate();
 		}
 	});

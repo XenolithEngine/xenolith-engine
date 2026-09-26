@@ -20,7 +20,8 @@
  THE SOFTWARE.
  **/
 
-#include "WmClientScene.h"
+
+#include "WmSurfaceScene.h"
 
 #include "XL2dSceneContent.h"
 #include "XLDirector.h"
@@ -28,20 +29,28 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::wm {
 
-bool WmClientScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
-		const core::FrameConstraints &constraints, StringView label) {
+bool WmSurfaceScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
+		const core::FrameConstraints &constraints, StringView label, bool transparent,
+		Function<void()> &&onPresented) {
+	_label = label.str<Interface>();
+	_transparent = transparent;
+	_onPresented = sp::move(onPresented);
+
 	if (!Scene2d::init(app, window, constraints)) {
 		return false;
 	}
 
-	_label = label.str<Interface>();
 	setContent(Rc<basic2d::SceneContent2d>::create());
 	setFpsVisible(false);
 	return true;
 }
 
-void WmClientScene::handlePresented(Director *dir) {
+void WmSurfaceScene::handlePresented(Director *dir) {
 	Scene2d::handlePresented(dir);
+
+	if (_onPresented) {
+		_onPresented();
+	}
 
 	// Once: a swapchain rebuild presents the scene again, and a second share would announce the
 	// window twice.
@@ -50,13 +59,19 @@ void WmClientScene::handlePresented(Director *dir) {
 	}
 }
 
-void WmClientScene::describeQueue(QueueInfo &info) { info.type = QueueType::Flat; }
+void WmSurfaceScene::describeQueue(QueueInfo &info) {
+	info.type = QueueType::Flat;
+	if (_transparent) {
+		info.premultipliedOutput = true;
+		info.backgroundColor = Color4F(0.0f, 0.0f, 0.0f, 0.0f);
+	}
+}
 
-bool WmClientScene::share() {
+bool WmSurfaceScene::share() {
 	auto dir = getDirector();
 	auto app = dir ? dynamic_cast<ServerAppThread *>(dir->getApplication()) : nullptr;
 	if (!app || !app->isListening()) {
-		log::source().warn("WmClientScene", _label, ": no session to share the window with");
+		log::source().warn("WmSurfaceScene", _label, ": no session to share the window with");
 		return false;
 	}
 
@@ -71,7 +86,7 @@ bool WmClientScene::share() {
 	buildQueueResources(queueInfo, builder);
 
 	if (!buildQueue(dir->getApplication(), queueInfo, builder)) {
-		log::source().error("WmClientScene", _label, ": fail to build the queue");
+		log::source().error("WmSurfaceScene", _label, ": fail to build the queue");
 		return false;
 	}
 
