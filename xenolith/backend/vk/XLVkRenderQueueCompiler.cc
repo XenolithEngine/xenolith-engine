@@ -218,11 +218,23 @@ void RenderQueueAttachmentHandle::submitInput(FrameQueue &q, Rc<core::Attachment
 }
 
 void RenderQueueAttachmentHandle::runShaders(FrameHandle &frame) {
-	size_t tasksCount = 0;
 	Vector<core::ProgramData *> programs;
 
 	_input->queue->prepare(*_device);
 
+	/* Everything the pipelines wait for is counted before the first task is sent: a sampler set
+	that finishes at once starts the passes, and a pass that finished before the programs were
+	counted would start the pipelines over programs not compiled yet. */
+	for (auto &it : _input->queue->getPrograms()) {
+		if (auto p = _device->getProgram(it->key)) {
+			it->program = p;
+		} else {
+			programs.emplace_back(it);
+		}
+	}
+
+	const size_t tasksCount = _input->queue->getPasses().size() + programs.size();
+	_programsInQueue += tasksCount;
 	_layoutsInQueue = _input->queue->getTextureSetLayouts().size();
 
 	for (auto &it : _input->queue->getTextureSetLayouts()) {
@@ -247,20 +259,6 @@ void RenderQueueAttachmentHandle::runShaders(FrameHandle &frame) {
 					toString("RenderQueueAttachmentHandle::runShaders - compile samplers: ",
 							_targetQueueName, "::", it->key));
 			++i;
-		}
-	}
-
-	// count phase-1 tasks
-	_programsInQueue += _input->queue->getPasses().size();
-	tasksCount += _input->queue->getPasses().size();
-
-	for (auto &it : _input->queue->getPrograms()) {
-		if (auto p = _device->getProgram(it->key)) {
-			it->program = p;
-		} else {
-			++tasksCount;
-			++_programsInQueue;
-			programs.emplace_back(it);
 		}
 	}
 

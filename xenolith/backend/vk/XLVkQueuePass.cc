@@ -500,6 +500,12 @@ auto QueuePassHandle::updateMaterials(FrameHandle &frame, NotNull<core::Material
 
 	// regenerate buffers for the updated materials
 	for (auto &it : updated) {
+		// A removed material is in the list only so the descriptors above are rewritten. It has no
+		// buffer to regenerate, and its images may be gone with the resource that revoked them.
+		if (data->getMaterialById(it->getId()) != it.get()) {
+			continue;
+		}
+
 		auto bufferData = owner->getMaterialData(it.get());
 
 		auto stagingBuffer = pool->spawn(AllocationUsage::HostTransitionSource,
