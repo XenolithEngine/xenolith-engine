@@ -34,12 +34,31 @@ Stage `input` (M10): two planes side by side, input sent to the HOST window thro
 6. a paused plane's press is cancelled, and the plane below takes the next tap;
 7. at density 2 the client's scene gets the tap at half the host pixels.
 
-Without `--stage` both stages run.
+Stage `wm` (M11): the full window manager - no XL_WM_APPS, so the server launches `wmshell` and
+`wmshade` (built next to it) and applications from its catalog:
+
+1. the shell (z 0, below the status bar) and the shade (z 100, the whole screen, premultiplied)
+   are up; the shell is the active surface;
+2. the host frame has the status bar on top and the shell below it;
+3. a tap on the clientapp tile launches `app:clientapp:1`; once it has drawn, it is active (z 10)
+   and the shell is paused;
+4. the application's area of the host frame is its window's frame;
+5. input: the bar goes to the shade, below it to the application, a press that starts in the
+   application stays there across the bar, keys go to the application;
+6. Home pauses the application (its frames stop, the host keeps composing); switching brings it
+   back;
+7. an application killed with SIGKILL takes its plane with it, the shell comes back, and the next
+   tap launches `app:clientapp:2`;
+8. the shade's Apps button pulls the panel out (the shade takes the screen's input and the
+   keyboard); the close button of a row ends that application; Apps again folds the panel;
+9. a shade killed with SIGKILL is launched again.
+
+Without `--stage` every stage runs.
 
 `--soak SECONDS` runs a long mixed load instead - animation, screenshots, plane alpha, pause and
 resume in turn - and checks that the host never stops composing and the server exits cleanly.
 
-    tests/window/wm-compositor-check.py [--stage basic|input] [--gapi soft|vulkan] [--soak SECONDS]
+    tests/window/wm-compositor-check.py [--stage basic|input|wm] [--gapi soft|vulkan] [--soak SECONDS]
             [path-to-wmserver] [path-to-clientapp]
 
 Without paths the debug builds of this checkout are used; clientapp is looked for next to the
@@ -168,7 +187,7 @@ def background_rgb(img):
     return img.getpixel((0, 0))[:3]
 
 
-def start_server(server_bin, client_bin, gapi, density=None):
+def start_server(server_bin, client_bin, gapi, density=None, shell=False):
     sock = f"/tmp/wm-compositor-check-{os.getpid()}.sock"
     try:
         os.unlink(sock)
@@ -176,7 +195,11 @@ def start_server(server_bin, client_bin, gapi, density=None):
         pass
     env = dict(os.environ)
     env["XENOLITH_INSPECTOR_ADDRESS"] = "unix:" + sock
-    env["XL_WM_APPS"] = f"{client_bin};{client_bin}"
+    if shell:
+        # the full window manager: the server launches its shell and shade itself
+        env.pop("XL_WM_APPS", None)
+    else:
+        env["XL_WM_APPS"] = f"{client_bin};{client_bin}"
     env["XL_WM_FPS"] = str(FPS)
     env["XL_HIDE_FPS"] = "1"
     cmd = [server_bin, "--headless", "--gapi", gapi, "--width", str(WIDTH), "--height", str(HEIGHT)]
@@ -638,6 +661,233 @@ def run_input(server_bin, client_bin, gapi):
     check_log(gapi)
 
 
+BAR_RGB = (0x0d, 0x11, 0x17)  # the shade's status bar
+SHELL_RGB = (0x26, 0x32, 0x38)  # the shell's background
+
+
+def near_rgb(a, b, tol=2):
+    return a is not None and all(abs(x - y) <= tol for x, y in zip(a[:3], b))
+
+
+def center(rect):
+    """The middle of an [x, y, w, h] rect in a window's pixels, y up."""
+    return rect[0] + rect[2] / 2, rect[1] + rect[3] / 2
+
+
+def app_by_label(st, label):
+    for a in st.get("apps", []):
+        if a.get("label") == label:
+            return a
+    return {}
+
+
+def plane_of(st, label):
+    return plane_by_app(st, label)
+
+
+def last_route(s, event, timeout=5.0):
+    """The newest route of `event` since the routes were cleared; routing is asynchronous, so
+    wait for one. The caller clears the routes before sending."""
+    deadline = time.monotonic() + timeout
+    while True:
+        routes = (s.invoke("wm-routes") or {}).get("routes", [])
+        for r in reversed(routes):
+            if r.get("event") == event:
+                return r
+        if time.monotonic() >= deadline:
+            return {}
+        time.sleep(0.1)
+
+
+def run_wm(server_bin, client_bin, gapi):
+    """The full window manager. The shell's and the shade's windows share the host's pixel grid
+    with its y (both reach the bottom of the screen), so their rects are host coordinates."""
+    print(f"== wm ({gapi})")
+    proc, s = start_server(server_bin, client_bin, gapi, shell=True)
+    clients = {}
+    try:
+        # 1. shell and shade
+        st = wait_state(s, lambda st: plane_of(st, "shell").get("shown")
+                and plane_of(st, "shade").get("shown"), timeout=30.0)
+        shell, shade = plane_of(st, "shell"), plane_of(st, "shade")
+        bar = st.get("bar", 0)
+        check("wm: the shell is up below the bar", shell.get("z") == 0 and shell.get("enabled")
+                and shell.get("dst") == [0, bar, WIDTH, HEIGHT - bar], shell)
+        check("wm: the shade covers the screen above it", shade.get("z") == 100
+                and shade.get("enabled") and shade.get("blend") == "premultiplied"
+                and shade.get("dst") == [0, 0, WIDTH, HEIGHT], shade)
+        check("wm: the shell is the active surface and has the keyboard",
+                st.get("active") == "shell" and shell.get("focused") is True, st.get("active"))
+        cs = client_session(app_by_label(st, "shell").get("inspector", ""))
+        cd = client_session(app_by_label(st, "shade").get("inspector", ""))
+        clients = {"shell": cs, "shade": cd}
+        check("wm: the shell and the shade answer on their inspectors", cs is not None
+                and cd is not None)
+        if not (cs and cd):
+            return
+
+        # 2. the host frame
+        time.sleep(0.5)
+        host_frame(s)
+        img = host_shot(s)
+        check("wm: the status bar is on top", img is not None
+                and near_rgb(img.getpixel((WIDTH - 200, bar // 2)), BAR_RGB),
+                img.getpixel((WIDTH - 200, bar // 2)) if img else None)
+        check("wm: the shell is below it", img is not None
+                and near_rgb(img.getpixel((WIDTH - 20, HEIGHT - 20)), SHELL_RGB),
+                img.getpixel((WIDTH - 20, HEIGHT - 20)) if img else None)
+
+        # 3. launch
+        tiles = {t["id"]: t for t in (cs.invoke("shell-state") or {}).get("tiles", [])}
+        tile = tiles.get("clientapp")
+        check("wm: the shell shows the clientapp tile", tile is not None
+                and tile.get("available") is True, list(tiles))
+        if not tile:
+            return
+        tap(s, *center(tile["rect"]))
+        st = wait_state(s, lambda st: st.get("active") == "app:clientapp:1", timeout=20.0)
+        app = plane_of(st, "app:clientapp:1")
+        check("wm: a tap on a tile launches the application and brings it up",
+                st.get("active") == "app:clientapp:1" and app.get("z") == 10
+                and app.get("enabled") is True and app.get("shown") is True, st.get("active"))
+        check("wm: the shell is paused", plane_of(st, "shell").get("enabled") is False)
+        ca = client_session(app_by_label(st, "app:clientapp:1").get("inspector", ""))
+        clients["app"] = ca
+        check("wm: the application answers on its inspector", ca is not None)
+        if not ca:
+            return
+
+        # 4. identity
+        ca.invoke("client-animation", op="stop")
+        settle_plane(s, "app:clientapp:1")
+        host_frame(s)
+        host = host_shot(s)
+        plane = plane_shot(s, app.get("window"))
+        area = host.crop((0, bar, WIDTH, HEIGHT)) if host else None
+        delta = max_delta(area, plane)
+        check("wm: the application's area of the host frame is its window's frame",
+                delta is not None and delta <= 2, f"max channel delta {delta}")
+
+        # 5. input
+        s.invoke("wm-routes", clear=True)
+        tap(s, WIDTH / 2, HEIGHT - bar / 2)
+        r = last_route(s, "End")
+        check("wm: a tap on the bar goes to the shade", r.get("plane") == shade.get("id"), r)
+        s.invoke("wm-routes", clear=True)
+        tap(s, WIDTH / 2, HEIGHT / 2)
+        r = last_route(s, "End")
+        check("wm: a tap below it goes to the application", r.get("plane") == app.get("id"), r)
+        s.invoke("wm-routes", clear=True)
+        s.ok("input", native=True, events=[
+            {"event": "Begin", "id": 0, "button": "MouseLeft", "x": WIDTH / 2, "y": HEIGHT / 2},
+            {"event": "Move", "id": 0, "button": "MouseLeft", "x": WIDTH / 2, "y": HEIGHT - 4},
+            {"event": "End", "id": 0, "button": "MouseLeft", "x": WIDTH / 2, "y": HEIGHT - 4}])
+        r = last_route(s, "End")
+        check("wm: a press that starts in the application stays there across the bar",
+                r.get("plane") == app.get("id") and r.get("reason") == "capture", r)
+        before = (ca.invoke("client-text") or {}).get("text", "")
+        for ch in "ab":
+            key(s, ch.upper(), "KeyPressed", ch, at=(WIDTH / 2, HEIGHT / 2))
+            key(s, ch.upper(), "KeyReleased", ch, at=(WIDTH / 2, HEIGHT / 2))
+        deadline = time.monotonic() + 5.0
+        text = before
+        while time.monotonic() < deadline and text == before:
+            time.sleep(0.1)
+            text = (ca.invoke("client-text") or {}).get("text", "")
+        check("wm: keys go to the application", text.endswith("ab"), text)
+
+        # 6. pause and switch
+        r = s.invoke("wm-home")
+        st = wait_state(s, lambda st: st.get("active") == "shell")
+        check("wm: Home brings the shell up", r.get("ok") is True and st.get("active") == "shell"
+                and plane_of(st, "app:clientapp:1").get("enabled") is False, st.get("active"))
+        ca.invoke("client-animation", op="start")
+        time.sleep(0.3)
+        a = plane_of(state(s), "app:clientapp:1").get("published", 0)
+        h = state(s).get("hostFrames", 0)
+        time.sleep(1.0)
+        host_frame(s)
+        st = state(s)
+        check("wm: the paused application draws nothing",
+                plane_of(st, "app:clientapp:1").get("published", 0) == a,
+                plane_of(st, "app:clientapp:1").get("published", 0) - a)
+        check("wm: the host keeps composing", st.get("hostFrames", 0) > h)
+        ca.invoke("client-animation", op="stop")
+        r = s.invoke("wm-switch", label="app:clientapp:1")
+        st = wait_state(s, lambda st: st.get("active") == "app:clientapp:1")
+        check("wm: switching brings the application back", r.get("ok") is True
+                and plane_of(st, "app:clientapp:1").get("enabled") is True, st.get("active"))
+
+        # 7. SIGKILL
+        pid = pid_of(app_by_label(st, "app:clientapp:1").get("inspector", ""))
+        check("wm: the application's process is found", pid is not None)
+        if pid:
+            os.kill(pid, signal.SIGKILL)
+        ca.close()
+        clients.pop("app")
+        st = wait_state(s, lambda st: not plane_of(st, "app:clientapp:1")
+                and st.get("active") == "shell", timeout=15.0)
+        check("wm: a killed application takes its plane with it and the shell comes back",
+                not plane_of(st, "app:clientapp:1") and st.get("active") == "shell",
+                st.get("active"))
+        check("wm: the server keeps answering", bool(s.ok("windows")))
+        tap(s, *center(tile["rect"]))
+        st = wait_state(s, lambda st: st.get("active") == "app:clientapp:2", timeout=20.0)
+        check("wm: the next tap launches it again", st.get("active") == "app:clientapp:2",
+                st.get("active"))
+
+        # 8. close from the shade
+        sh = cd.invoke("shade-state") or {}
+        tap(s, *center(sh["apps"]))
+        st = wait_state(s, lambda st: st.get("shadeOpen") is True)
+        check("wm: Apps pulls the panel out; the shade takes the screen and the keyboard",
+                st.get("shadeOpen") is True
+                and plane_of(st, "shade").get("input") == [[0, 0, WIDTH, HEIGHT]]
+                and plane_of(st, "shade").get("focused") is True, plane_of(st, "shade"))
+        deadline = time.monotonic() + 5.0
+        rows = []
+        while time.monotonic() < deadline:
+            sh = cd.invoke("shade-state") or {}
+            rows = [r for r in sh.get("rows", []) if r.get("label") == "app:clientapp:2"]
+            if rows and sh.get("panelVisible"):
+                break
+            time.sleep(0.1)
+        check("wm: the panel lists the application", bool(rows), sh.get("rows"))
+        if rows:
+            time.sleep(0.5)  # the panel's slide
+            sh = cd.invoke("shade-state") or {}
+            row = [r for r in sh.get("rows", []) if r.get("label") == "app:clientapp:2"][0]
+            tap(s, *center(row["closeRect"]))
+            st = wait_state(s, lambda st: not app_by_label(st, "app:clientapp:2"), timeout=15.0)
+            check("wm: its close button ends the application",
+                    not app_by_label(st, "app:clientapp:2"), app_by_label(st, "app:clientapp:2"))
+        tap(s, *center(sh["apps"]))
+        st = wait_state(s, lambda st: st.get("shadeOpen") is False, timeout=5.0)
+        check("wm: Apps again folds the panel and gives the screen back",
+                st.get("shadeOpen") is False
+                and plane_of(st, "shade").get("input") == [[0, 0, WIDTH, bar]],
+                plane_of(st, "shade").get("input"))
+
+        # 9. the shade comes back
+        old = pid_of(app_by_label(st, "shade").get("inspector", ""))
+        cd.close()
+        clients.pop("shade")
+        if old:
+            os.kill(old, signal.SIGKILL)
+        st = wait_state(s, lambda st: plane_of(st, "shade").get("shown")
+                and pid_of(app_by_label(st, "shade").get("inspector", "")) not in (None, old),
+                timeout=20.0)
+        check("wm: a killed shade is launched again", plane_of(st, "shade").get("shown") is True
+                and st.get("failed", {}).get("shade") is False, st.get("failed"))
+    finally:
+        for c in clients.values():
+            if c:
+                c.close()
+        code = quit_server(proc, s)
+        check("wm: the server exits with 0", code == 0, code)
+    check_log(gapi)
+
+
 def check_log(gapi):
     text = open(SERVER_LOG, errors="replace").read()
     errors = [l.rstrip() for l in text.splitlines() if l.startswith("[E]")]
@@ -723,7 +973,7 @@ def default_binary(project, name, near=None):
 
 def main():
     args = sys.argv[1:]
-    stages, gapis, soak, paths = ["basic", "input"], ["vulkan", "soft"], 0, []
+    stages, gapis, soak, paths = ["basic", "input", "wm"], ["vulkan", "soft"], 0, []
     while args:
         a = args.pop(0)
         if a == "--stage":
@@ -743,7 +993,7 @@ def main():
             raise SystemExit(f"not built: {b}")
 
     for stage in stages:
-        if stage not in ("basic", "input"):
+        if stage not in ("basic", "input", "wm"):
             raise SystemExit(f"unknown stage: {stage}")
     for gapi in gapis:
         if soak > 0:
@@ -752,8 +1002,10 @@ def main():
         for stage in stages:
             if stage == "basic":
                 run_basic(server_bin, client_bin, gapi)
-            else:
+            elif stage == "input":
                 run_input(server_bin, client_bin, gapi)
+            else:
+                run_wm(server_bin, client_bin, gapi)
 
     print(f"{rc.checks} checks, {rc.failures} failures")
     if rc.failures:

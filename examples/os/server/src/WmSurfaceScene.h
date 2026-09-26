@@ -20,21 +20,27 @@
  THE SOFTWARE.
  **/
 
-#ifndef EXAMPLES_OS_SERVER_SRC_WMCLIENTSCENE_H_
-#define EXAMPLES_OS_SERVER_SRC_WMCLIENTSCENE_H_
+
+#ifndef EXAMPLES_OS_SERVER_SRC_WMSURFACESCENE_H_
+#define EXAMPLES_OS_SERVER_SRC_WMSURFACESCENE_H_
 
 #include "XL2dScene.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::wm {
 
-// The server's scene for a client's window. It only lends the window a Flat queue: once presented,
-// the queue is shared with the session and the client draws through it.
-class WmClientScene : public basic2d::Scene2d {
+/* The server's scene for a client's window. It only lends the window a Flat queue: once presented,
+the queue is shared with the session and the client draws through it. A transparent surface (the
+shade) gets a premultiplied queue cleared to nothing, so the planes below show through.
+
+Every frame the scene itself presents is reported: the window manager tells the client's first
+frame from the frames before it by that count. */
+class WmSurfaceScene : public basic2d::Scene2d {
 public:
-	virtual ~WmClientScene() = default;
+	virtual ~WmSurfaceScene() = default;
 
 	virtual bool init(NotNull<AppThread>, NotNull<core::RenderServerChannel>,
-			const core::FrameConstraints &, StringView label);
+			const core::FrameConstraints &, StringView label, bool transparent,
+			Function<void()> &&onPresented);
 
 	virtual void handlePresented(Director *) override;
 
@@ -46,9 +52,11 @@ protected:
 	bool share();
 
 	String _label;
+	bool _transparent = false;
 	bool _shared = false;
+	Function<void()> _onPresented;
 };
 
 } // namespace stappler::xenolith::wm
 
-#endif /* EXAMPLES_OS_SERVER_SRC_WMCLIENTSCENE_H_ */
+#endif /* EXAMPLES_OS_SERVER_SRC_WMSURFACESCENE_H_ */

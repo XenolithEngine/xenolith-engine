@@ -80,9 +80,14 @@
   that change without being stepped. The two client sessions run one after the other, so text that
   renders in the second is also the check that a font endpoint does not outlive its session.
 - Changed the plane compositor (`xenolith/renderer/compositor`, its soft and vk passes, the plane
-  frame's lock) or `examples/os/server` → `tests/window/wm-compositor-check.py`. It needs
-  `examples/os/server` and `tests/window/client` built, and runs `wmserver` headless on Vulkan and
-  then soft (`--gapi` keeps one): the host frame equals the top plane's frame exactly, pacing,
+  frame's lock) or `examples/os` (`server`, `shell`, `shade`, `common`) →
+  `tests/window/wm-compositor-check.py`. It needs `examples/os/server` (its `all` builds `wmshell`
+  and `wmshade` too) and `tests/window/client` built, and runs `wmserver` headless on Vulkan and
+  then soft (`--gapi` keeps one). Stage `wm` is the full window manager: no `XL_WM_APPS`, the
+  server launches its shell and shade and applications from its catalog; the check taps the tiles
+  and the shade's buttons by the rects `shell-state` and `shade-state` report, and covers launch,
+  Home and switch, a killed application, closing from the shade, and a relaunched shade. With
+  `XL_WM_APPS` the server is the M8–M10 bench (stages `basic` and `input`): the host frame equals the top plane's frame exactly, pacing,
   screenshots of an animated plane, caps, pause, kill and a clean exit, with no validation error on
   Vulkan. Stage `input` (`--stage` keeps one) sends input to the host and reads it back from the
   clients (`client-input`, `client-text`, `client-state`) and the server (`wm-routes`): taps in

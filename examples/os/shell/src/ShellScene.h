@@ -20,35 +20,58 @@
  THE SOFTWARE.
  **/
 
-#ifndef EXAMPLES_OS_SERVER_SRC_WMHOSTSCENE_H_
-#define EXAMPLES_OS_SERVER_SRC_WMHOSTSCENE_H_
 
+#ifndef EXAMPLES_OS_SHELL_SRC_SHELLSCENE_H_
+#define EXAMPLES_OS_SHELL_SRC_SHELLSCENE_H_
+
+#include "WmClient.h"
 #include "XL2dScene.h"
-#include "WindowManager.h"
+
+#include <sprt/runtime/dispatch/handle.h>
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
+
+class Panel;
+class Button;
+
+} // namespace stappler::xenolith::ui
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::wm {
 
-// The host window's own scene. It draws nothing worth seeing: once presented, it starts the window
-// manager, whose compositor takes the window's frames over. It stays to carry the inspector
-// commands, and to get the window back if the compositor cannot have it.
-class WmHostScene : public basic2d::Scene2d {
+/* The launcher: a tile per application of the server's catalog. A tap launches it; an application
+that is not built is shown, but cannot be tapped. */
+class ShellScene : public basic2d::Scene2d {
 public:
-	virtual ~WmHostScene() = default;
+	virtual ~ShellScene() = default;
 
 	virtual bool init(NotNull<AppThread>, NotNull<core::RenderServerChannel>,
 			const core::FrameConstraints &) override;
 
-	virtual void handlePresented(Director *) override;
+	virtual void handleEnter(Scene *) override;
 	virtual void handleExit() override;
+	virtual void handleContentSizeDirty() override;
 
 protected:
-	using basic2d::Scene2d::init;
+	using Scene2d::init;
+
+	struct Tile {
+		protocol::CatalogEntry entry;
+		ui::Button *button = nullptr;
+	};
 
 	virtual void describeQueue(QueueInfo &) override;
 
-	Rc<WindowManager> _server;
+	void requestCatalog();
+	void setCatalog(Vector<protocol::CatalogEntry> &&);
+	void registerCommands();
+
+	Rc<WmClient> _client;
+	ui::Panel *_grid = nullptr;
+	Vector<Tile> _tiles;
+	Rc<sprt::dispatch::Handle> _retry;
+	uint32_t _attempts = 0;
 };
 
 } // namespace stappler::xenolith::wm
 
-#endif /* EXAMPLES_OS_SERVER_SRC_WMHOSTSCENE_H_ */
+#endif /* EXAMPLES_OS_SHELL_SRC_SHELLSCENE_H_ */

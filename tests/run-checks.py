@@ -128,7 +128,7 @@ COST = {
     "window/remote-example-check.py": 24,
     "window/remote-window-check.py": 20, "window/virtual-window-check.py": 88,
     "window/damage-check.py": 21, "window/remote-render-check.py": 33,
-    "window/wm-compositor-check.py": 60,
+    "window/wm-compositor-check.py": 100,
     "gittest": 19, "computetest": 6, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
     "uilayouttest": 1, "particlestest": 1,
 }
@@ -149,6 +149,16 @@ EXAMPLE_CHECKS = [
     ("examples/window/form", ["remote-example-check.py"]),
     ("examples/window/dock", ["remote-example-check.py"]),
     ("examples/os/server", ["wm-compositor-check.py"]),
+    ("examples/os/shell", ["wm-compositor-check.py"]),
+    ("examples/os/shade", ["wm-compositor-check.py"]),
+    ("examples/os/common", ["wm-compositor-check.py"]),
+]
+
+# Clients a window check's server launches itself. They run without --headless, and a server that
+# died leaves them behind holding its session.
+CLIENT_BINARIES = [
+    ("examples/os/shell", "wmshell"),
+    ("examples/os/shade", "wmshade"),
 ]
 
 # Scripts that are not checks, or cannot be part of an automated run - see the docstring.
@@ -322,7 +332,9 @@ def stale(kill):
     # checks, and a bare "cc/testapp" would kill them in the middle.
     apps = [binary("tests/window", "testapp")] + \
         [binary(proj, name) for proj, name in WINDOW_BINARIES.values()]
-    found = [l for l in out.splitlines() if "--headless" in l and any(a in l for a in apps)]
+    clients = [binary(proj, name) for proj, name in CLIENT_BINARIES]
+    found = [l for l in out.splitlines() if ("--headless" in l and any(a in l for a in apps))
+             or any(c in l for c in clients)]
     if kill:
         for l in found:
             try:

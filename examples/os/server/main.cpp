@@ -46,7 +46,8 @@ DEFINE_CONFIG_FUNCTION((ContextConfig &cfg) {
 	cfg.window->title = "Xenolith OS";
 	cfg.window->flags = sprt::window::WindowCreationFlags::AllowMove
 			| sprt::window::WindowCreationFlags::AllowMinimize
-			| sprt::window::WindowCreationFlags::AllowClose;
+			| sprt::window::WindowCreationFlags::AllowClose
+			| sprt::window::WindowCreationFlags::PreferServerSideDecoration;
 });
 
 DEFINE_PRIMARY_SCENE_CLASS(WmHostScene)

@@ -20,55 +20,21 @@
  THE SOFTWARE.
  **/
 
-#include "WmHostScene.h"
 
-#include "XL2dSceneContent.h"
-#include "XLAppWindow.h"
-#include "XLServerAppThread.h"
+#include "XLCommon.h"
+#include "XLEntryPoint.h"
+#include "ShellScene.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::wm {
 
-bool WmHostScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
-		const core::FrameConstraints &constraints) {
-	if (!Scene2d::init(app, window, constraints)) {
-		return false;
+// The window's size is the server's to choose: it is the plane below the status bar.
+DEFINE_CONFIG_FUNCTION((ContextConfig &cfg) {
+	if (!cfg.window) {
+		cfg.window = Rc<sprt::window::WindowInfo>::alloc();
 	}
+	cfg.window->title = "Shell";
+});
 
-	auto content = Rc<basic2d::SceneContent2d>::create();
-	setContent(content);
-	setFpsVisible(false);
-
-	auto server = dynamic_cast<ServerAppThread *>(app.get());
-	auto host = dynamic_cast<AppWindow *>(window.get());
-	if (server && host) {
-		_server = Rc<WindowManager>::create(server, host);
-		if (_server) {
-			_server->registerCommands(content);
-		}
-	}
-	return true;
-}
-
-void WmHostScene::handlePresented(Director *dir) {
-	Scene2d::handlePresented(dir);
-
-	// After the first frame: by then the window's Director is its render client, and the
-	// compositor takes the place it holds.
-	if (_server) {
-		_server->start();
-	}
-}
-
-void WmHostScene::handleExit() {
-	if (_server) {
-		_server->stop();
-	}
-	Scene2d::handleExit();
-}
-
-void WmHostScene::describeQueue(QueueInfo &info) {
-	info.type = QueueType::Flat;
-	info.backgroundColor = Color4F(0.12f, 0.12f, 0.14f, 1.0f);
-}
+DEFINE_PRIMARY_SCENE_CLASS(ShellScene)
 
 } // namespace stappler::xenolith::wm

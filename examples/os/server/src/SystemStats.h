@@ -20,55 +20,40 @@
  THE SOFTWARE.
  **/
 
-#include "WmHostScene.h"
 
-#include "XL2dSceneContent.h"
-#include "XLAppWindow.h"
-#include "XLServerAppThread.h"
+#ifndef EXAMPLES_OS_SERVER_SRC_SYSTEMSTATS_H_
+#define EXAMPLES_OS_SERVER_SRC_SYSTEMSTATS_H_
+
+#include "WmProtocol.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith::compositor {
+
+class DisplayPipe;
+class DisplayPlane;
+
+} // namespace stappler::xenolith::compositor
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::wm {
 
-bool WmHostScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
-		const core::FrameConstraints &constraints) {
-	if (!Scene2d::init(app, window, constraints)) {
-		return false;
-	}
+// The server's own numbers for the status bar, sampled once a second: each call measures the
+// time since the previous one.
+class SystemStats {
+public:
+	const protocol::Stats &update(const compositor::DisplayPipe *,
+			const compositor::DisplayPlane *focused, uint32_t apps);
 
-	auto content = Rc<basic2d::SceneContent2d>::create();
-	setContent(content);
-	setFpsVisible(false);
+	const protocol::Stats &get() const { return _stats; }
 
-	auto server = dynamic_cast<ServerAppThread *>(app.get());
-	auto host = dynamic_cast<AppWindow *>(window.get());
-	if (server && host) {
-		_server = Rc<WindowManager>::create(server, host);
-		if (_server) {
-			_server->registerCommands(content);
-		}
-	}
-	return true;
-}
+protected:
+	protocol::Stats _stats;
 
-void WmHostScene::handlePresented(Director *dir) {
-	Scene2d::handlePresented(dir);
-
-	// After the first frame: by then the window's Director is its render client, and the
-	// compositor takes the place it holds.
-	if (_server) {
-		_server->start();
-	}
-}
-
-void WmHostScene::handleExit() {
-	if (_server) {
-		_server->stop();
-	}
-	Scene2d::handleExit();
-}
-
-void WmHostScene::describeQueue(QueueInfo &info) {
-	info.type = QueueType::Flat;
-	info.backgroundColor = Color4F(0.12f, 0.12f, 0.14f, 1.0f);
-}
+	uint64_t _lastTime = 0;
+	uint64_t _lastCpu = 0;
+	uint64_t _lastHostFrames = 0;
+	const compositor::DisplayPlane *_lastPlane = nullptr;
+	uint64_t _lastPublished = 0;
+};
 
 } // namespace stappler::xenolith::wm
+
+#endif /* EXAMPLES_OS_SERVER_SRC_SYSTEMSTATS_H_ */

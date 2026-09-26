@@ -32,11 +32,6 @@ static bool InputRouter_contains(const IRect &rect, const Vec2 &pt) {
 			&& pt.y < float(rect.y) + rect.height;
 }
 
-static bool InputRouter_contains(const URect &rect, const Vec2 &pt) {
-	return pt.x >= float(rect.x) && pt.y >= float(rect.y) && pt.x < float(rect.x) + rect.width
-			&& pt.y < float(rect.y) + rect.height;
-}
-
 bool InputRouter::init(DisplayPipe *pipe) {
 	_pipe = pipe;
 	_routes.reserve(MaxRoutes);
