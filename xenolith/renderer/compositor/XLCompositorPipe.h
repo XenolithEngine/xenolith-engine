@@ -24,6 +24,7 @@
 #define XENOLITH_RENDERER_COMPOSITOR_XLCOMPOSITORPIPE_H_
 
 #include "XLCompositorBlend.h"
+#include "XLCompositorInputRouter.h"
 #include "XLCorePlaneSource.h"
 
 #include <sprt/runtime/dispatch/handle.h>
@@ -146,7 +147,7 @@ public:
 	// are kept for the caller to fix or revert.
 	Status commit();
 
-	// The plane keyboard input goes to; the window is told it is focused.
+	// The plane keyboard input goes to; the window is told it is focused while the host is.
 	void setFocusedPlane(DisplayPlane *);
 	DisplayPlane *getFocusedPlane() const { return _focused; }
 
@@ -160,6 +161,9 @@ public:
 	const Color4F &getBackground() const { return _background; }
 
 	ServerAppThread *getApplication() const { return _app; }
+
+	// Hands the host's input to the planes.
+	InputRouter *getInputRouter() const { return _inputRouter; }
 
 	const PlaneCaps &getCaps() const { return _caps; }
 	const Rc<PipeSnapshot> &getSnapshot() const { return _snapshot; }
@@ -197,6 +201,7 @@ protected:
 
 	ServerAppThread *_app = nullptr;
 	PlaneCaps _caps;
+	Rc<InputRouter> _inputRouter;
 	Vector<Rc<DisplayPlane>> _planes;
 	Rc<PipeSnapshot> _snapshot;
 	DisplayPlane *_focused = nullptr;

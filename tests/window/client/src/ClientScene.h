@@ -87,6 +87,13 @@ protected:
 	bool _animStarted = false;
 	uint64_t _animTick = 0;
 
+	// The last input events the scene saw, newest last: what `client-input` reports.
+	Vector<Value> _inputLog;
+	InputListener *_inputListener = nullptr;
+
+	void recordInput(StringView kind, const InputEvent &);
+	void registerInputCommand();
+
 	void requestRemoteScreenshot();
 
 	// Команды инспектора, через которые драйвер читает состояние клиента напрямую, а не угадывает

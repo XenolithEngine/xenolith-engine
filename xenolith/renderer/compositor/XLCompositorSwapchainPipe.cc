@@ -90,6 +90,12 @@ void PipeRenderClient::acquireFrame(uint64_t, NotNull<core::FrameRequestProxy> p
 	cb(true);
 }
 
+void PipeRenderClient::handleInputEvents(uint64_t, Vector<core::InputEventData> &&events) {
+	if (_pipe) {
+		_pipe->getInputRouter()->handleHostEvents(events);
+	}
+}
+
 void PipeRenderClient::handleFramePresented(uint64_t frameOrder) {
 	if (_pipe) {
 		_pipe->handleHostPresented(frameOrder);
@@ -175,6 +181,9 @@ Status SwapchainDisplayPipe::attach(Function<void(Status)> &&cb) {
 			_host->setRenderClient(_client);
 			_host->resetForRenderClientChange();
 			_attached = true;
+
+			// The host's state so far: its changes come with its input from now on.
+			_inputRouter->setHostState(_host->getWindowState());
 
 			scheduleHostFrame();
 			if (cb) {

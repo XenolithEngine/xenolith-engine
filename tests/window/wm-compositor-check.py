@@ -21,10 +21,25 @@ Stage `basic` (M8, M9), soft or Vulkan backend:
 
 Without `--gapi` both backends run, Vulkan first.
 
+Stage `input` (M10): two planes side by side, input sent to the HOST window through its inspector:
+
+1. taps: each half's client gets its tap in its own pixels (the right plane shows its window's
+   left half, so host x 600 is x 200 there), the other client nothing;
+2. z and input regions: the plane above takes only the points of its input region, the rest go
+   to the plane below; an empty region is the whole destination again;
+3. capture: a press that starts in one plane stays there across the border until it ends;
+4. Pointer: the plane under the mouse has it, the other one not;
+5. keys and focus: keys go to the plane the WM focused (`wm-focus`); moving the focus while a key
+   is held cancels it there; typed text lands in the focused plane's field only;
+6. a paused plane's press is cancelled, and the plane below takes the next tap;
+7. at density 2 the client's scene gets the tap at half the host pixels.
+
+Without `--stage` both stages run.
+
 `--soak SECONDS` runs a long mixed load instead - animation, screenshots, plane alpha, pause and
 resume in turn - and checks that the host never stops composing and the server exits cleanly.
 
-    tests/window/wm-compositor-check.py [--stage basic] [--gapi soft|vulkan] [--soak SECONDS]
+    tests/window/wm-compositor-check.py [--stage basic|input] [--gapi soft|vulkan] [--soak SECONDS]
             [path-to-wmserver] [path-to-clientapp]
 
 Without paths the debug builds of this checkout are used; clientapp is looked for next to the
@@ -153,7 +168,7 @@ def background_rgb(img):
     return img.getpixel((0, 0))[:3]
 
 
-def start_server(server_bin, client_bin, gapi):
+def start_server(server_bin, client_bin, gapi, density=None):
     sock = f"/tmp/wm-compositor-check-{os.getpid()}.sock"
     try:
         os.unlink(sock)
@@ -164,8 +179,10 @@ def start_server(server_bin, client_bin, gapi):
     env["XL_WM_APPS"] = f"{client_bin};{client_bin}"
     env["XL_WM_FPS"] = str(FPS)
     env["XL_HIDE_FPS"] = "1"
-    proc = subprocess.Popen([server_bin, "--headless", "--gapi", gapi, "--width", str(WIDTH),
-            "--height", str(HEIGHT)], env=env, cwd=os.path.dirname(server_bin),
+    cmd = [server_bin, "--headless", "--gapi", gapi, "--width", str(WIDTH), "--height", str(HEIGHT)]
+    if density:
+        cmd += ["--density", str(density)]
+    proc = subprocess.Popen(cmd, env=env, cwd=os.path.dirname(server_bin),
             stdout=open(SERVER_LOG, "w"), stderr=subprocess.STDOUT)
     deadline = time.monotonic() + 30.0
     while time.monotonic() < deadline:
@@ -360,6 +377,267 @@ def run_basic(server_bin, client_bin, gapi):
     check_log(gapi)
 
 
+def quit_server(proc, s):
+    """Ask the server to quit; its exit code, or None when it had to be killed."""
+    try:
+        s.call("quit")
+    except (SystemExit, OSError):
+        pass
+    s.close()
+    try:
+        return proc.wait(20)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        return None
+
+
+def tap(s, x, y, pid=0):
+    s.ok("input", native=True, events=[
+        {"event": "Begin", "id": pid, "button": "MouseLeft", "x": x, "y": y},
+        {"event": "End", "id": pid, "button": "MouseLeft", "x": x, "y": y}])
+
+
+def key(s, name, event, char=None, at=(600, 300)):
+    # a key carries the pointer's position, as the platforms report it
+    ev = {"event": event, "keycode": name, "x": at[0], "y": at[1]}
+    if char is not None:
+        ev["keychar"] = ord(char)
+    s.ok("input", native=True, events=[ev])
+
+
+def client_events(c, clear=False):
+    return (c.invoke("client-input", clear=clear) or {}).get("events", [])
+
+
+def wait_events(c, predicate, timeout=5.0):
+    """The client's recorded input once `predicate` holds for it (or the last seen)."""
+    deadline = time.monotonic() + timeout
+    events = client_events(c)
+    while time.monotonic() < deadline and not predicate(events):
+        time.sleep(0.1)
+        events = client_events(c)
+    return events
+
+
+def touches(events, name=None):
+    return [e for e in events if e.get("kind") == "touch" and (name is None or e["event"] == name)]
+
+
+def keys(events, name=None):
+    return [e for e in events if e.get("kind") == "key" and (name is None or e["event"] == name)]
+
+
+def near(e, x, y, tol=1.0):
+    return e is not None and abs(e.get("x", -1e9) - x) <= tol and abs(e.get("y", -1e9) - y) <= tol
+
+
+def client_flag(c, name, value, timeout=5.0):
+    """Wait for the client's window to report `name` (focused, pointer) as `value`."""
+    deadline = time.monotonic() + timeout
+    st = c.invoke("client-state") or {}
+    while time.monotonic() < deadline and st.get(name) is not value:
+        time.sleep(0.1)
+        st = c.invoke("client-state") or {}
+    return st.get(name)
+
+
+def layout(s, p, dst, z, src=None, **kw):
+    r = s.invoke("wm-plane", plane=p["id"], src=src or [0, 0, dst[2], dst[3]], dst=dst, z=z,
+            enabled=True, **kw)
+    return r.get("ok") is True
+
+
+def run_input(server_bin, client_bin, gapi):
+    print(f"== input ({gapi})")
+    proc, s = start_server(server_bin, client_bin, gapi)
+    clients = {}
+    try:
+        st = wait_state(s, lambda st: len(st.get("planes", [])) == 2
+                and all(p.get("published", 0) > 0 for p in st["planes"]), timeout=30.0)
+        if len(st.get("planes", [])) != 2:
+            check("input: two planes published", False, st)
+            return
+        p1, p2 = plane_by_app(st, "app1"), plane_by_app(st, "app2")
+        c1, c2 = client_session(p1["inspector"]), client_session(p2["inspector"])
+        clients = {"app1": c1, "app2": c2}
+        check("input: both clients answer on their inspectors", c1 is not None and c2 is not None)
+        if not (c1 and c2):
+            return
+        for c in (c1, c2):
+            c.invoke("client-animation", op="stop")
+
+        halves = layout(s, p1, [0, 0, 400, 600], 0) and layout(s, p2, [400, 0, 400, 600], 1)
+        check("input: two planes side by side", halves)
+
+        def reset():
+            for c in (c1, c2):
+                client_events(c, clear=True)
+            s.invoke("wm-routes", clear=True)
+
+        # 1. taps
+        reset()
+        tap(s, 200, 300)
+        tap(s, 600, 300)
+        e1 = wait_events(c1, lambda ev: touches(ev, "End"))
+        e2 = wait_events(c2, lambda ev: touches(ev, "End"))
+        b1, b2 = touches(e1, "Begin"), touches(e2, "Begin")
+        check("taps: the left plane gets its tap in its pixels",
+                len(b1) == 1 and near(b1[0], 200, 300), e1)
+        check("taps: the right plane gets its tap shifted by its destination",
+                len(b2) == 1 and near(b2[0], 200, 300), e2)
+        routes = (s.invoke("wm-routes") or {}).get("routes", [])
+        check("taps: the routes say hit, then capture",
+                [r["reason"] for r in routes] == ["hit", "capture", "hit", "capture"]
+                and [r["plane"] for r in routes] == [p1["id"], p1["id"], p2["id"], p2["id"]],
+                routes)
+
+        # 2. z and input regions
+        full1 = layout(s, p1, [0, 0, 800, 600], 0)
+        full2 = layout(s, p2, [0, 0, 800, 600], 1, input=[[400, 0, 400, 600]])
+        check("regions: both planes on the whole screen, the top one with a region", full1 and full2)
+        reset()
+        tap(s, 600, 300)
+        tap(s, 200, 300)
+        e1 = wait_events(c1, lambda ev: touches(ev, "End"))
+        e2 = wait_events(c2, lambda ev: touches(ev, "End"))
+        check("regions: a point in the top plane's region goes to it",
+                len(touches(e2, "Begin")) == 1 and near(touches(e2, "Begin")[0], 600, 300), e2)
+        check("regions: a point outside it goes to the plane below",
+                len(touches(e1, "Begin")) == 1 and near(touches(e1, "Begin")[0], 200, 300), e1)
+        layout(s, p2, [0, 0, 800, 600], 1, input=[])
+        reset()
+        tap(s, 200, 300)
+        e2 = wait_events(c2, lambda ev: touches(ev, "End"))
+        time.sleep(0.3)
+        check("regions: an empty region is the whole destination again",
+                len(touches(e2, "Begin")) == 1 and not touches(client_events(c1)), e2)
+
+        # 3. capture across the border
+        layout(s, p1, [0, 0, 400, 600], 0)
+        layout(s, p2, [400, 0, 400, 600], 1)
+        reset()
+        s.ok("input", native=True, events=[
+            {"event": "Begin", "id": 0, "button": "MouseLeft", "x": 200, "y": 300},
+            {"event": "Move", "id": 0, "button": "MouseLeft", "x": 600, "y": 310},
+            {"event": "End", "id": 0, "button": "MouseLeft", "x": 600, "y": 310}])
+        e1 = wait_events(c1, lambda ev: touches(ev, "End"))
+        time.sleep(0.3)
+        ends = touches(e1, "End")
+        check("capture: the press stays with the plane it began in",
+                len(touches(e1, "Begin")) == 1 and len(ends) == 1 and near(ends[0], 600, 310), e1)
+        check("capture: the plane across the border sees nothing", not touches(client_events(c2)))
+
+        # 4. Pointer
+        s.ok("input", native=True, events=[
+            {"event": "MouseMove", "button": "None", "x": 200, "y": 300}])
+        check("pointer: the plane under the mouse has it", client_flag(c1, "pointer", True) is True)
+        check("pointer: the other plane has not", client_flag(c2, "pointer", False) is False)
+        s.ok("input", native=True, events=[
+            {"event": "MouseMove", "button": "None", "x": 600, "y": 300}])
+        check("pointer: it follows the mouse across", client_flag(c2, "pointer", True) is True
+                and client_flag(c1, "pointer", False) is False)
+
+        # 5. keys and focus; the fields let go of the keyboard first, so the keys reach the scenes
+        for c in (c1, c2):
+            c.invoke("client-field", op="blur")
+        r = s.invoke("wm-focus", plane=p1["id"])
+        check("focus: the WM focuses a plane", r.get("ok") is True, r)
+        check("focus: its window is focused", client_flag(c1, "focused", True) is True
+                and client_flag(c2, "focused", False) is False)
+        reset()
+        key(s, "F5", "KeyPressed")
+        e1 = wait_events(c1, lambda ev: keys(ev, "KeyPressed"))
+        check("keys: a key goes to the focused plane",
+                [k.get("key") for k in keys(e1, "KeyPressed")] == ["F5"], e1)
+        s.invoke("wm-focus", plane=p2["id"])
+        e1 = wait_events(c1, lambda ev: keys(ev, "KeyCanceled"))
+        check("keys: moving the focus cancels the held key where it was pressed",
+                [k.get("key") for k in keys(e1, "KeyCanceled")] == ["F5"], e1)
+        key(s, "F5", "KeyReleased")
+        key(s, "F6", "KeyPressed")
+        key(s, "F6", "KeyReleased")
+        e2 = wait_events(c2, lambda ev: keys(ev, "KeyReleased"))
+        time.sleep(0.3)
+        check("keys: the next key goes to the newly focused plane",
+                [k.get("key") for k in keys(e2, "KeyPressed")] == ["F6"], e2)
+        check("keys: the release of the cancelled key reaches nobody",
+                not keys(client_events(c1), "KeyReleased")
+                and "F5" not in [k.get("key") for k in keys(client_events(c2))])
+        c2.invoke("client-field", op="focus")
+        time.sleep(0.3)
+        before1 = (c1.invoke("client-text") or {}).get("text", "")
+        for ch in "ab":
+            key(s, ch.upper(), "KeyPressed", ch)
+            key(s, ch.upper(), "KeyReleased", ch)
+        deadline = time.monotonic() + 5.0
+        text2 = ""
+        while time.monotonic() < deadline:
+            text2 = (c2.invoke("client-text") or {}).get("text", "")
+            if text2.endswith("ab"):
+                break
+            time.sleep(0.1)
+        check("keys: typed text lands in the focused plane's field", text2.endswith("ab"), text2)
+        check("keys: and not in the other one",
+                (c1.invoke("client-text") or {}).get("text", "") == before1)
+
+        # 6. a paused plane
+        layout(s, p1, [0, 0, 800, 600], 0)
+        layout(s, p2, [400, 0, 400, 600], 1)
+        reset()
+        s.ok("input", native=True, events=[
+            {"event": "Begin", "id": 0, "button": "MouseLeft", "x": 600, "y": 300}])
+        wait_events(c2, lambda ev: touches(ev, "Begin"))
+        r = s.invoke("wm-pause", plane=p2["id"])
+        e2 = wait_events(c2, lambda ev: touches(ev, "Cancel"))
+        check("pause: the paused plane's press is cancelled", len(touches(e2, "Cancel")) == 1, e2)
+        s.ok("input", native=True, events=[
+            {"event": "End", "id": 0, "button": "MouseLeft", "x": 600, "y": 300}])
+        tap(s, 600, 300, pid=1)
+        e1 = wait_events(c1, lambda ev: touches(ev, "End"))
+        check("pause: the plane below takes the next tap",
+                len(touches(e1, "Begin")) == 1 and near(touches(e1, "Begin")[0], 600, 300), e1)
+    finally:
+        for c in clients.values():
+            if c:
+                c.close()
+        code = quit_server(proc, s)
+        check("input: the server exits with 0", code == 0, code)
+    check_log(gapi)
+
+    # 7. density 2
+    print(f"== input, density 2 ({gapi})")
+    proc, s = start_server(server_bin, client_bin, gapi, density=2)
+    clients = {}
+    try:
+        st = wait_state(s, lambda st: len(st.get("planes", [])) == 2
+                and all(p.get("published", 0) > 0 for p in st["planes"]), timeout=30.0)
+        top = plane_by_app(st, "app2")
+        c = client_session(top["inspector"]) if top else None
+        clients = {"app2": c}
+        check("density: the top client answers", c is not None)
+        if not c:
+            return
+        c.invoke("client-animation", op="stop")
+        cs = c.invoke("client-state") or {}
+        check("density: the plane's window has the host density", cs.get("density") == 2.0, cs)
+        client_events(c, clear=True)
+        tap(s, 200, 300)
+        ev = wait_events(c, lambda ev: touches(ev, "End"))
+        b = touches(ev, "Begin")
+        check("density: the tap arrives in the plane's pixels", len(b) == 1 and near(b[0], 200, 300),
+                ev)
+        check("density: the scene has it at half of them", len(b) == 1
+                and abs(b[0].get("sceneX", 0) - 100) <= 1 and abs(b[0].get("sceneY", 0) - 150) <= 1,
+                b)
+    finally:
+        for c in clients.values():
+            if c:
+                c.close()
+        code = quit_server(proc, s)
+        check("density: the server exits with 0", code == 0, code)
+    check_log(gapi)
+
+
 def check_log(gapi):
     text = open(SERVER_LOG, errors="replace").read()
     errors = [l.rstrip() for l in text.splitlines() if l.startswith("[E]")]
@@ -445,11 +723,11 @@ def default_binary(project, name, near=None):
 
 def main():
     args = sys.argv[1:]
-    stage, gapis, soak, paths = "basic", ["vulkan", "soft"], 0, []
+    stages, gapis, soak, paths = ["basic", "input"], ["vulkan", "soft"], 0, []
     while args:
         a = args.pop(0)
         if a == "--stage":
-            stage = args.pop(0)
+            stages = [args.pop(0)]
         elif a == "--gapi":
             gapis = [args.pop(0)]
         elif a == "--soak":
@@ -464,13 +742,18 @@ def main():
         if not os.path.exists(b):
             raise SystemExit(f"not built: {b}")
 
-    if stage != "basic":
-        raise SystemExit(f"unknown stage: {stage}")
+    for stage in stages:
+        if stage not in ("basic", "input"):
+            raise SystemExit(f"unknown stage: {stage}")
     for gapi in gapis:
         if soak > 0:
             run_soak(server_bin, client_bin, gapi, soak)
-        else:
-            run_basic(server_bin, client_bin, gapi)
+            continue
+        for stage in stages:
+            if stage == "basic":
+                run_basic(server_bin, client_bin, gapi)
+            else:
+                run_input(server_bin, client_bin, gapi)
 
     print(f"{rc.checks} checks, {rc.failures} failures")
     if rc.failures:

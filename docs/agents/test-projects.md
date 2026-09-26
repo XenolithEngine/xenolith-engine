@@ -84,8 +84,13 @@
   `examples/os/server` and `tests/window/client` built, and runs `wmserver` headless on Vulkan and
   then soft (`--gapi` keeps one): the host frame equals the top plane's frame exactly, pacing,
   screenshots of an animated plane, caps, pause, kill and a clean exit, with no validation error on
-  Vulkan. `--soak SECONDS` is the long mixed load for a change to the frame lock or the vk pass; it
-  is not in the runner.
+  Vulkan. Stage `input` (`--stage` keeps one) sends input to the host and reads it back from the
+  clients (`client-input`, `client-text`, `client-state`) and the server (`wm-routes`): taps in
+  each plane's pixels, z and input regions, capture across a border, Pointer, keys to the plane the
+  WM focused (`wm-focus`), a paused plane's press cancelled, density 2. A key injected without a
+  pointer position is hit-tested at (0, 0) on the client and may reach nobody: give it `x`/`y`.
+  `--soak SECONDS` is the long mixed load for a change to the frame lock or the vk pass; it is not
+  in the runner.
 - Changed `xenolith/core` or `xenolith/backend/vk` → `tests/compute` (the runner
   owes it for both). It covers the round trip on 1 … 10⁵ records and the device-lost
   refusals: a request after `VK_ERROR_DEVICE_LOST` gets exactly one failed callback
