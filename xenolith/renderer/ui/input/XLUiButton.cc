@@ -130,7 +130,12 @@ bool Button::init(ButtonType type, Function<void()> &&cb) {
 	_listener->addTapRecognizer([this](const GestureTap &tap) {
 		switch (tap.event) {
 		case GestureEvent::Began: break;
-		case GestureEvent::Activated: return handleLeftTap(); break;
+		case GestureEvent::Activated:
+			// The event is the release, on the dispatcher's clock: only how long it was held is taken.
+			_pressTime = Time::now()
+					- TimeInterval::microseconds(tap.input->currentTime - tap.input->originalTime);
+			return handleLeftTap();
+			break;
 		case GestureEvent::Ended: break;
 		case GestureEvent::Cancelled: break;
 		}

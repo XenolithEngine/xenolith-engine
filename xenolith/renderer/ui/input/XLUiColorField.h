@@ -205,6 +205,7 @@ protected:
 	bool _inUpdate = false;
 
 	Rc<SubWindow> _picker;
+	PopupDismissMemo _dismissed;
 	PopupSurfaceConfig _pickerConfig;
 	ColorPickerMode _pickerMode = ColorPickerMode::RGB;
 

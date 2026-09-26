@@ -70,6 +70,10 @@ bool WindowDecorations::init() {
 		return true;
 	});
 
+	// That listener takes no pointer, so the node spanning the window is not found under one: a
+	// pointer hit test (ui::MarqueeSystem) would otherwise read all content as covered.
+	removeHitTestFlags(HitTestFlags::Pointer);
+
 	auto el = addSystem(Rc<EventListener>::create());
 	el->listenForEvent(AppThread::onThemeInfo, [this](const Event &event) {
 		updateWindowTheme(event.getObject<AppThread>()->getThemeInfo());

@@ -469,4 +469,22 @@ Rc<SubWindow> SubWindow::showTooltip(NotNull<core::RenderServerChannel> parent,
 	return open(parent, sp::move(config));
 }
 
+void PopupDismissMemo::note() { _at = Time::now(); }
+
+bool PopupDismissMemo::consume(Time began) {
+	if (!_at) {
+		return false;
+	}
+	// Either may be seen first: the close and the press arrive together, in either order.
+	const auto apart = began < _at ? _at - began : began - _at;
+	_at.clear();
+	return apart < TapIntervalAllowed;
+}
+
+bool PopupDismissMemo::consume(const InputEvent &released) {
+	// The event's times are the dispatcher's clock: only how long the press was held is taken.
+	const auto held = TimeInterval::microseconds(released.currentTime - released.originalTime);
+	return consume(Time::now() - held);
+}
+
 } // namespace stappler::xenolith::ui

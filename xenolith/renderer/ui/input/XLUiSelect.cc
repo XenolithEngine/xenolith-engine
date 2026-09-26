@@ -35,6 +35,10 @@ static constexpr IconName s_selectArrowIcon = IconName::Navigation_arrow_drop_do
 static constexpr float s_selectPadding = 10.0f;
 static constexpr float s_selectGap = 8.0f;
 
+// The chevron's glyph leaves 7 of its 24 units empty on each side; the fallback placement measures
+// the insets from the visible glyph, so the arrow sits as far from its edge as the caption does.
+static constexpr float s_selectArrowBearing = 7.0f / 24.0f;
+
 // The two overloads differ only in the element type they read.
 template <typename Source>
 static Vector<SelectOption> Select_makeOptions(Source names) {
@@ -91,6 +95,11 @@ bool Select::init() {
 
 	_listener->addTapRecognizer([this](const GestureTap &tap) {
 		if (tap.event == GestureEvent::Activated) {
+			// The press that took the list down is not a press that opens it again.
+			if (_dismissed.consume(*tap.input) && !isOpen()) {
+				focus();
+				return true;
+			}
 			return handleTap();
 		}
 		return true;
@@ -128,17 +137,20 @@ bool Select::init() {
 		return cb(event);
 	});
 
-	// A tap outside gives focus up. Priority 1 puts it above the scene graph and its filter accepts
-	// only points outside the widget, so it never competes with the tap above.
+	/* A press outside gives focus up. The press and not a tap: a control that captures its press
+	(ui::TextInput) keeps the release from this listener, and focus would stay on two controls.
+	Priority 1 puts it above the scene graph and its filter accepts only points outside the widget,
+	so it never competes with the tap above. */
 	_focusListener = addSystem(Rc<InputListener>::create());
 	_focusListener->setPriority(1);
-	_focusListener->addTapRecognizer([this](const GestureTap &) {
-		// Not while the list is up: the tap that picks a row lands in another window.
-		if (!isOpen()) {
+	_focusListener->addPressRecognizer([this](const GesturePress &press) {
+		// Not while the list is up: the press that picks a row lands in another window.
+		if (press.event == GestureEvent::Began && !isOpen()) {
 			blur();
 		}
-		return true;
-	}, InputTapInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}), 1});
+		return false;
+	}, InputPressInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}),
+		TapIntervalAllowed, InputPressFlags::None});
 	_focusListener->setTouchFilter(
 			[this](const InputEvent &event, const InputListener::DefaultEventFilter &) {
 		return !isTouched(event.currentLocation, 0.0f);
@@ -191,8 +203,10 @@ void Select::placeInlineParts() {
 
 	float endInset = s_selectPadding;
 	if (_arrow) {
-		placeInlineEnd(_arrow, endInset, height / 2.0f, width, rtl);
-		endInset += _arrow->getContentSize().width + s_selectGap;
+		const float arrowWidth = _arrow->getContentSize().width;
+		const float bearing = arrowWidth * s_selectArrowBearing;
+		placeInlineEnd(_arrow, sprt::max(endInset - bearing, 0.0f), height / 2.0f, width, rtl);
+		endInset += arrowWidth - bearing * 2.0f + s_selectGap;
 	}
 
 	if (_label) {
@@ -357,6 +371,10 @@ bool Select::open() {
 	config.highlight = _value;
 
 	config.onClose = [this] {
+		// Still held: the list went away without close()
+		if (_popup) {
+			_dismissed.note();
+		}
 		_popup = nullptr;
 		removeStyleClass("open");
 	};

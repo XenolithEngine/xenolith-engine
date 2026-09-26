@@ -72,6 +72,10 @@ bool VirtualWindow::close() {
 	// free is raised here, as the headless window does.
 	_closed = true;
 	if (!_controller->notifyWindowClosed(this)) {
+		// Held by the application's guard: it is asked, as a window system would ask it.
+		if (hasFlag(_info->state, WindowState::CloseGuard)) {
+			updateState(0, _info->state | WindowState::CloseRequest);
+		}
 		_closed = false;
 		return false;
 	}

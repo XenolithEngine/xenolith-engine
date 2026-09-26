@@ -225,6 +225,7 @@ protected:
 	MenuStyle _menuStyle;
 	MenuConfig _popupConfig;
 	Rc<SubWindow> _popup;
+	PopupDismissMemo _dismissed;
 
 	ChangeCallback _changeCallback;
 	FocusCallback _focusCallback;

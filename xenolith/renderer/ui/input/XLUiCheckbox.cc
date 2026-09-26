@@ -22,6 +22,7 @@
 
 #include "XLUiCheckbox.h"
 #include "XL2dIconSprite.h" // IWYU pragma: keep
+#include "XLUiLayoutSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -71,6 +72,30 @@ void Checkbox::setChecked(bool c, bool silent) {
 	if (!silent && _callback) {
 		_callback(c);
 	}
+}
+
+void Checkbox::handleLayoutChildren() {
+	Panel::handleLayoutChildren();
+	placeCheck();
+}
+
+void Checkbox::placeCheck() {
+	// A LayoutSystem (from `display:flex`) owns the children's geometry.
+	if (!_check || getSystemByType<LayoutSystem>()) {
+		return;
+	}
+
+	const float side = sprt::min(_contentSize.width, _contentSize.height);
+	if (side <= 0.0f) {
+		return;
+	}
+
+	// A size the stylesheet gave the icon is kept while it fits the box.
+	const auto size = _check->getContentSize();
+	const float icon = (size.width > 0.0f && size.width <= side) ? size.width : side;
+	_check->setAnchorPoint(Anchor::Middle);
+	_check->setContentSize(Size2(icon, icon));
+	_check->setPosition(Vec2(_contentSize.width * 0.5f, _contentSize.height * 0.5f));
 }
 
 void Checkbox::setEnabled(bool e) {

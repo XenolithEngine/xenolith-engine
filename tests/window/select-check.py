@@ -303,8 +303,34 @@ try:
     s.ok("input", native=True, events=tap(SELECT_CENTER[0], SELECT_CENTER[1]))
     time.sleep(0.8)
     check("a tap opens the list", len(popups(s)) == 1, popups(s))
+
+    # The press on the control takes the list down before the control sees it: that press is the
+    # close, not a second open.
+    s.ok("input", native=True, events=tap(SELECT_CENTER[0], SELECT_CENTER[1]))
+    time.sleep(0.8)
+    check("a tap on the control while its list is up closes the list",
+            popups(s) == [] and s.invoke("select.state")["select"]["open"] is False, popups(s))
+    s.ok("input", native=True, events=tap(SELECT_CENTER[0], SELECT_CENTER[1]))
+    time.sleep(0.8)
+    check("... and the next tap opens it again", len(popups(s)) == 1, popups(s))
     s.invoke("select.close")
     time.sleep(0.5)
+
+    # --- a press on the field beside takes the focus away ------------------------------------------
+    # The field captures its press, so the release never reaches the control's outside listener:
+    # the focus has to be given up on the press itself.
+    check("closed without a pick, the control keeps the focus",
+            s.invoke("select.state")["select"]["focusFlag"] is True)
+    s.ok("input", native=True, events=tap(SELECT_CENTER[0], ROW0_TOP - 60.0 - 17.0))
+    time.sleep(0.3)
+    st = s.invoke("select.state")
+    check("a press on the text field beside blurs the control",
+            st["select"]["focusFlag"] is False and st["neighbourFocused"] is True,
+            (st["select"]["focusFlag"], st["neighbourFocused"]))
+    s.ok("input", native=True, events=tap(700.0, 100.0))
+    time.sleep(0.3)
+    check("and a press on nothing takes it from the field",
+            s.invoke("select.state")["neighbourFocused"] is False)
 
     # --- disabled ----------------------------------------------------------------------------------
     s.invoke("select.set-enabled", value=False)
