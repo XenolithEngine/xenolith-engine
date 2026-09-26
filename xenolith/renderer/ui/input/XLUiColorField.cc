@@ -130,6 +130,10 @@ bool ColorField::init() {
 	_listener->setPriority(1);
 	_listener->addTapRecognizer([this](const GestureTap &tap) {
 		if (tap.event == GestureEvent::Activated) {
+			// The press that took the picker down is not a press that opens it again.
+			if (_dismissed.consume(*tap.input) && !isOpen()) {
+				return true;
+			}
 			return handleTap();
 		}
 		return true;
@@ -554,6 +558,10 @@ bool ColorField::openFallbackPicker() {
 	};
 
 	config.onClose = [this] {
+		// Still held: the picker went away without close()
+		if (_picker) {
+			_dismissed.note();
+		}
 		_picker = nullptr;
 		removeStyleClass("open");
 	};

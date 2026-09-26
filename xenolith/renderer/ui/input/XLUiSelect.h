@@ -165,6 +165,7 @@ protected:
 	MenuStyle _menuStyle;
 	MenuConfig _popupConfig;
 	Rc<SubWindow> _popup;
+	PopupDismissMemo _dismissed;
 
 	basic2d::IconSprite *_icon = nullptr;
 	basic2d::Label *_label = nullptr;

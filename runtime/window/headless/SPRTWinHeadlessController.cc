@@ -141,8 +141,10 @@ WindowCapabilities HeadlessContextController::getCapabilities() const {
 	// the frame that application draws for itself. The other half - what a press on one of those
 	// grips DOES - is HeadlessWindow's; see the note there, and see init() for the one theme value
 	// that decides whether the grips can be reached at all.
+	// CloseGuard: a pseudo-window is closed only by the application, so holding that close for an
+	// "unsaved changes" prompt is the application's alone - VirtualWindow::close raises the request.
 	return WindowCapabilities::Subwindows | WindowCapabilities::WindowPosition
-			| WindowCapabilities::UserSpaceDecorations;
+			| WindowCapabilities::UserSpaceDecorations | WindowCapabilities::CloseGuard;
 }
 
 void HeadlessContextController::openUrl(StringView url) {

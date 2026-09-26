@@ -89,6 +89,10 @@ public:
 	// The icon node, for size and colour without a stylesheet; getIcon() returns the IconName.
 	virtual basic2d::IconSprite *getIconSprite() const;
 
+	// When the press the left callback is answering began (Time::now); what a callback that opens a
+	// popup hands to ui::PopupDismissMemo.
+	Time getPressTime() const { return _pressTime; }
+
 protected:
 	virtual void updateState();
 
@@ -103,6 +107,7 @@ protected:
 	Function<void()> _rightCallback;
 
 	InputListener *_listener = nullptr;
+	Time _pressTime;
 
 	basic2d::Label *_label = nullptr;
 	basic2d::IconSprite *_icon = nullptr;

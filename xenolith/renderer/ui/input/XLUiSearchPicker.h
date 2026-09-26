@@ -308,6 +308,7 @@ protected:
 	InputListener *_focusListener = nullptr;
 
 	Rc<SubWindow> _popup;
+	PopupDismissMemo _dismissed;
 
 	Function<void(const SearchHit &)> _changeCallback;
 

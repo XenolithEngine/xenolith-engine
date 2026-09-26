@@ -54,6 +54,11 @@ public:
 	virtual void setCallback(Callback &&cb) { _callback = sp::move(cb); }
 
 protected:
+	virtual void handleLayoutChildren() override;
+
+	// Centres the check mark and keeps it inside the box; skipped when a LayoutSystem owns it.
+	void placeCheck();
+
 	Callback _callback;
 	InputListener *_listener = nullptr;
 	basic2d::IconSprite *_check = nullptr;

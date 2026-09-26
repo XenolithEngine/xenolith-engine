@@ -59,6 +59,10 @@ bool ChipRow::init() {
 	_addButton = addChild(Rc<Button>::create([this] {
 		// opening the menu also focuses the row in the form
 		focus();
+		// the press that took the menu down is not a press that opens it again
+		if (_dismissed.consume(_addButton->getPressTime()) && !isOpen()) {
+			return;
+		}
 		open();
 	}),
 			ZOrder(2));
@@ -116,17 +120,20 @@ bool ChipRow::init() {
 		return cb(event);
 	});
 
-	// A tap outside gives focus up. Priority 1 puts it above the scene graph and its filter accepts
-	// only points outside the widget, so it never competes with the tap above.
+	/* A press outside gives focus up. The press and not a tap: a control that captures its press
+	(ui::TextInput) keeps the release from this listener, and focus would stay on two controls.
+	Priority 1 puts it above the scene graph and its filter accepts only points outside the widget,
+	so it never competes with the tap above. */
 	_focusListener = addSystem(Rc<InputListener>::create());
 	_focusListener->setPriority(1);
-	_focusListener->addTapRecognizer([this](const GestureTap &) {
-		// not while the menu is open: the tap picking an option lands in another window
-		if (!isOpen()) {
+	_focusListener->addPressRecognizer([this](const GesturePress &press) {
+		// Not while the menu is up: the press that picks a row lands in another window.
+		if (press.event == GestureEvent::Began && !isOpen()) {
 			blur();
 		}
-		return true;
-	}, InputTapInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}), 1});
+		return false;
+	}, InputPressInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}),
+		TapIntervalAllowed, InputPressFlags::None});
 	_focusListener->setTouchFilter(
 			[this](const InputEvent &event, const InputListener::DefaultEventFilter &) {
 		return !isTouched(event.currentLocation, 0.0f);
@@ -466,6 +473,10 @@ bool ChipRow::open() {
 	config.keyboard = _popupConfig.keyboard;
 
 	config.onClose = [this] {
+		// Still held: the menu went away without close()
+		if (_popup) {
+			_dismissed.note();
+		}
 		_popup = nullptr;
 		removeStyleClass("open");
 	};

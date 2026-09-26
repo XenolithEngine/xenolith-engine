@@ -32,6 +32,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class AppWindow;
 class Director;
+struct InputEvent;
 
 namespace basic2d {
 class Layer;
@@ -213,6 +214,26 @@ SP_PUBLIC Director *getWindowDirector(core::RenderServerChannel *window);
 
 // Whether `window` is being closed; only a local window answers this.
 SP_PUBLIC bool isWindowClosing(core::RenderServerChannel *window);
+
+/* What a control that opens a surface remembers of the surface going away without being asked to:
+a press outside it, the window losing focus, a row chosen. On the native path the press that takes
+a popup down is still delivered to the window under it, so a press on the very control that opened
+the popup would open it again. The control notes such a close in the surface's close callback, and
+asks before opening whether the press in hand is the one that closed it. */
+class SP_PUBLIC PopupDismissMemo {
+public:
+	void note();
+	void clear() { _at.clear(); }
+
+	// Whether a press that began at `began` (Time::now) came with the close. Answers once.
+	bool consume(Time began);
+
+	// The same for a press that has just been released, its start read off the event.
+	bool consume(const InputEvent &released);
+
+protected:
+	Time _at;
+};
 
 } // namespace ui
 } // namespace stappler::xenolith

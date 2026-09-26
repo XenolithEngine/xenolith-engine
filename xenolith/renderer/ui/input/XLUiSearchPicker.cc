@@ -741,6 +741,11 @@ bool SearchPicker::init() {
 
 	_listener->addTapRecognizer([this](const GestureTap &tap) {
 		if (tap.event == GestureEvent::Activated) {
+			// The press that took the surface down is not a press that opens it again.
+			if (_dismissed.consume(*tap.input) && !isOpen()) {
+				focus();
+				return true;
+			}
 			return handleTap();
 		}
 		return true;
@@ -773,15 +778,20 @@ bool SearchPicker::init() {
 		return cb(event);
 	});
 
+	/* A press outside gives focus up. The press and not a tap: a control that captures its press
+	(ui::TextInput) keeps the release from this listener, and focus would stay on two controls.
+	Priority 1 puts it above the scene graph and its filter accepts only points outside the widget,
+	so it never competes with the tap above. */
 	_focusListener = addSystem(Rc<InputListener>::create());
 	_focusListener->setPriority(1);
-	_focusListener->addTapRecognizer([this](const GestureTap &) {
-		// Not while the surface is up: the tap that picks a row lands in another window.
-		if (!isOpen()) {
+	_focusListener->addPressRecognizer([this](const GesturePress &press) {
+		// Not while the surface is up: the press that picks a row lands in another window.
+		if (press.event == GestureEvent::Began && !isOpen()) {
 			blur();
 		}
-		return true;
-	}, InputTapInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}), 1});
+		return false;
+	}, InputPressInfo{makeButtonMask({InputMouseButton::Touch, InputMouseButton::MouseLeft}),
+		TapIntervalAllowed, InputPressFlags::None});
 	_focusListener->setTouchFilter(
 			[this](const InputEvent &event, const InputListener::DefaultEventFilter &) {
 		return !isTouched(event.currentLocation, 0.0f);
@@ -997,6 +1007,10 @@ bool SearchPicker::open() {
 	};
 
 	config.onClose = [this, inner = _config.onClose] {
+		// Still held: the surface went away without close()
+		if (_popup) {
+			_dismissed.note();
+		}
 		close();
 		if (inner) {
 			inner();
