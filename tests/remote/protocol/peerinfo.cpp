@@ -233,6 +233,19 @@ void performPeerInfoTests() {
 						&& !hasFlag(back.features, PeerFeatures::AppMessages),
 				"peerinfo: the app-messages feature travels, and is absent unless offered");
 
+		// The frame data cache: the feature, its budget, and the reset code the client handles
+		check(local.supports(Domain::Window, toInt(WindowCode::FrameDataReset)),
+				"peerinfo: FrameDataReset is advertised");
+		auto caching = local;
+		caching.features |= PeerFeatures::FrameDataCache;
+		caching.frameDataBudget = 32 * 1'024 * 1'024;
+		auto cachingBack = deserializePeerInfo(data::read<Interface>(
+				data::write<Interface>(serializePeerInfo(caching), data::EncodeFormat::Cbor)));
+		check(hasFlag(cachingBack.features, PeerFeatures::FrameDataCache)
+						&& cachingBack.frameDataBudget == caching.frameDataBudget
+						&& back.frameDataBudget == 0,
+				"peerinfo: the frame data cache and its budget travel, absent unless offered");
+
 		// And the report names what is missing rather than only that something is.
 		auto older = local;
 		older.fontCodes &= ~codeBit(FontCode::GlyphRequest);

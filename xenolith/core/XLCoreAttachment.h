@@ -32,6 +32,8 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 class RenderClientChannel;
+class FrameDataMirror;
+class FrameDataCache;
 
 /** DependencyEvent используется для синхронизации данных на стороне GPU
 
@@ -120,9 +122,17 @@ struct SP_PUBLIC AttachmentInputData : public Ref {
 	// server passes the session id, and an input that carries identities moves them into it, so
 	// that damage tracking never matches one client's data against another's (or the server's own,
 	// which live in namespace 0).
-	virtual bool serialize(const Callback<void(BytesView)> &) const { return false; }
+	//
+	// The frame data cache (XLCoreFrameDataCache.h) lets an input send the identity of data the
+	// server already holds instead of the data: the client serializes against its mirror, which
+	// records the operations the server has to apply first, and the server deserializes against
+	// the session's cache. Either may be null: everything then goes inline, and a reference fails
+	// to deserialize.
+	virtual bool serialize(const Callback<void(BytesView)> &, FrameDataMirror * = nullptr) const {
+		return false;
+	}
 	virtual bool deserialize(BytesView, Vector<uint32_t> *remoteDeps = nullptr,
-			uint64_t identityNamespace = 0) {
+			uint64_t identityNamespace = 0, FrameDataCache * = nullptr) {
 		return false;
 	}
 };

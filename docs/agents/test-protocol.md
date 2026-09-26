@@ -82,7 +82,7 @@ example is not, and treats its leftover process as a stale `testapp`.
 The console harnesses go by directory, which is [the test-projects table](test-projects.md) as code (`OWES` in the
 runner): `runtime/` owes `runtimetest` and `libctest`, `runtime/libc_impl` the same pair the other way round,
 `stappler/tess` the two `tesstest` goldens, `stappler/` `stapplertest`, `xenolith/font` `localetest`,
-`xenolith/core` and `xenolith/backend/vk` `computetest`. `computetest` is not in the `console` tier because it needs
+`xenolith/core` and `xenolith/backend/vk` `computetest`, `xenolith/core` and `xenolith/remote` `remotetest`. `computetest` is not in the `console` tier because it needs
 a Vulkan device; on a host without one it prints SKIP and counts no checks, and the runner shows it green.
 
 The window checks go **by name**, because this repository names each script after the widget it drives:
@@ -91,7 +91,9 @@ The window checks go **by name**, because this repository names each script afte
 drives (`EXAMPLE_CHECKS`: `examples/window/particles` selects `particles-check.py`, and
 `examples/window/{dndtree,form,dock}` select `remote-example-check.py`). The file name is
 split on camel case rather than searched as a string - a substring search answers `text-input-check` for
-`XLContext.cc`, and a plan with four wrong scripts in it is one nobody reads.
+`XLContext.cc`, and a plan with four wrong scripts in it is one nobody reads. Files whose name can not lead to
+their check are listed in `WINDOW_ALSO`: the wire of a remote frame (`XL2dCommandList`,
+`XLCoreFrameRequestProxy`, `XLClientAppThread`) selects `remote-cache-check.py` and its neighbours.
 
 It is a heuristic and the runner treats it as one: a `xenolith/` change that names no widget still gets the five-script
 `WINDOW_SMOKE` (style, geometry, scale9, canvas, hotkey - 39 s, ~250 assertions, and between them they touch layout,

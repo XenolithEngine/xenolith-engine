@@ -125,6 +125,12 @@ public:
 	void setRequireLabelledKeys(bool);
 	bool isRequireLabelledKeys() const { return _requireLabelledKeys; }
 
+	/* The bytes of frame data every session may keep on this server (XLCoreFrameDataCache.h): the
+	data sets its client does not have to send again. 32 MiB by default, 0 disables the cache. It is
+	announced to a client when it connects, so a change reaches the sessions that start after it. */
+	void setFrameDataBudget(size_t);
+	size_t getFrameDataBudget() const { return _frameDataBudget; }
+
 	/* Application messages from the clients (GlobalCode::AppRequest/AppNotify), on the app thread.
 	`reply` is null for a notification; a request left unanswered is refused with NotImplemented
 	when the last reference to its reply goes away. Installing a handler advertises
@@ -313,6 +319,7 @@ protected:
 	ClientWindowHandler _clientWindowHandler;
 	Vector<ClientWindow> _clientWindows;
 	uint32_t _maxClientWindows = 4;
+	size_t _frameDataBudget = 32 * 1'024 * 1'024;
 
 	// Connected clients, in the order they arrived.
 	Vector<Rc<RemoteSession>> _sessions;

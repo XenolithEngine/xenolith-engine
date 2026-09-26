@@ -185,7 +185,8 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 	}
 
 	auto proxy = Rc<core::RemoteFrameRequestProxy>::create(c, frameId,
-			[thread, frameId](SpanView<const core::AttachmentData *> atts, BytesView bytes) {
+			[thread, frameId](SpanView<const core::AttachmentData *> atts, BytesView bytes,
+					Value &&frameData) {
 		if (auto conn = thread->getConnection()) {
 			// Flush pending glyph requests before this frame's FrameInput, so the server registers
 			// the gating dependency before reconciling the frame against it. That is what holds a
@@ -193,23 +194,29 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 			// (remote::streamClassForDomain), and a dependency the server has not seen gates nothing.
 			thread->flushPendingFontGlyphs();
 
-			// [frameId, keys[], bytes] -- one serialized input addressed to multiple attachments.
+			// [frameId, keys[], bytes, frameData?] -- one serialized input addressed to multiple
+			// attachments, with the frame data cache operations it was written against: in the same
+			// message, so the server applies them before it resolves the references in the bytes.
 			Value msg;
 			msg.addInteger(int64_t(frameId));
 			auto &keys = msg.emplace();
 			for (auto a : atts) { keys.addString(a->key); }
 			msg.addBytes(bytes);
+			if (!frameData.empty()) {
+				msg.addValue(sp::move(frameData));
+			}
 			conn->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::FrameInput),
 					msg);
 		}
-	}, [thread, frameId]() {
+	},
+			[thread, frameId]() {
 		if (auto conn = thread->getConnection()) {
 			Value msg;
 			msg.addInteger(int64_t(frameId));
 			conn->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::FrameCommit),
 					msg);
 		}
-	});
+	}, thread->getFrameDataMirror());
 	if (!proxy) {
 		slog().error("RemoteWindow", "acquireFrame: fail to create frame proxy");
 		reply(0);

@@ -738,6 +738,17 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			}
 			return true;
 		}
+		case remote::WindowCode::FrameDataReset: {
+			// server -> client: [epoch]. The server dropped what it held of our frame data; the
+			// inputs already in flight are declined there, and every later one starts over.
+			auto epoch = uint32_t(data::read<Interface>(payload).getInteger(0));
+			if (_frameData) {
+				log::source().warn("ClientAppThread",
+						"the server reset the frame data cache (epoch ", epoch, ")");
+				_frameData->reset(epoch);
+			}
+			return true;
+		}
 		case remote::WindowCode::WindowGeometryChanged: {
 			// server -> client: [windowId, WindowGeometry]. Updates the window's mirror and lets the
 			// scene hear about the move.
@@ -888,6 +899,11 @@ void ClientAppThread::handleServerInfo(const remote::MessageHeader &h, BytesView
 
 	_serverInfo = sp::move(info);
 	_hasServerInfo = true;
+
+	if (hasFlag(_serverInfo.features, remote::PeerFeatures::FrameDataCache)
+			&& _serverInfo.frameDataBudget > 0) {
+		_frameData = Rc<core::FrameDataMirror>::create(size_t(_serverInfo.frameDataBudget));
+	}
 
 	StringStream desc;
 	_serverInfo.description([&](StringView str) { desc << str; });

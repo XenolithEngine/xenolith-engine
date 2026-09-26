@@ -126,7 +126,10 @@ struct alignas(16) VertexData : public Ref {
 	Bounds getBounds(const core::DataAtlas *atlas) const;
 
 	// The last getBounds, valid for the generation and the atlas (DataAtlas::getSerial, 0 - none)
-	// it was computed for.
+	// it was computed for. Frames in flight on different worker threads share one data set - a
+	// sprite that did not change, a remote client's set from the session's cache - so the memo is
+	// read and written under its own lock.
+	mutable sprt::mutex cachedBoundsMutex;
 	mutable Bounds cachedBounds;
 	mutable uint64_t cachedBoundsAtlas = 0;
 	mutable uint32_t cachedBoundsGeneration = maxOf<uint32_t>();

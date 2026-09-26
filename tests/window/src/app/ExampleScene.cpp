@@ -40,6 +40,7 @@
 #include "XLRemoteProtocol.h"
 #include "XLServerAppThread.h" // ServerAppThread: listener state for the `remote` command
 #include "XLRemoteRenderClient.h" // per-session frame statistics for the same command
+#include "XLCoreFrameDataCache.h" // the frame data cache counters of the same command
 
 #include "window/MonitorModeSelectionLayout.cc"
 
@@ -294,6 +295,14 @@ void ExampleScene::handlePresented(Director *dir) {
 				}
 			}
 
+			// XL_REMOTE_FRAME_DATA_BUDGET=<bytes>: what each session may keep of its client's frame
+			// data; 0 turns the cache off - remote-cache-check.py compares the two.
+			if (auto env = ::getenv("XL_REMOTE_FRAME_DATA_BUDGET")) {
+				if (app) {
+					app->setFrameDataBudget(size_t(StringView(env).readInteger(10).get(0)));
+				}
+			}
+
 			// XL_REMOTE_CLIENT_WINDOWS=1: answer window requests from clients. Off by default, so
 			// the feature is observable in both states -- a server that does not offer it must
 			// refuse without costing the session.
@@ -450,6 +459,27 @@ void ExampleScene::registerCommands() {
 			// session survives it by design.
 			if (auto client = it->getRenderClient()) {
 				v.setInteger(int64_t(client->getLateFrameCount()), "lateFrames");
+
+				// What the frames cost on the wire, and what the client did not have to send again
+				auto &input = client->getFrameInputStats();
+				v.setInteger(int64_t(input.messages), "inputMessages");
+				v.setInteger(int64_t(input.bytes), "inputBytes");
+				v.setInteger(int64_t(input.lastBytes), "lastInputBytes");
+				if (auto cache = client->getFrameDataCache()) {
+					auto st = cache->getStats();
+					auto &fd = v.emplace("frameData");
+					fd.setInteger(int64_t(st.entries), "entries");
+					fd.setInteger(int64_t(st.bytes), "bytes");
+					fd.setInteger(int64_t(st.budget), "budget");
+					fd.setInteger(int64_t(st.epoch), "epoch");
+					fd.setInteger(int64_t(st.stores), "stores");
+					fd.setInteger(int64_t(st.storedBytes), "storedBytes");
+					fd.setInteger(int64_t(st.drops), "drops");
+					fd.setInteger(int64_t(st.hits), "hits");
+					fd.setInteger(int64_t(st.misses), "misses");
+					fd.setInteger(int64_t(st.resets), "resets");
+					fd.setInteger(int64_t(st.declined), "declined");
+				}
 			}
 			// ReadyForNextFrame messages the client sent, and those answered with FrameDeclined.
 			v.setInteger(int64_t(it->getFrameRequestCount()), "readyRequests");
@@ -465,6 +495,8 @@ void ExampleScene::registerCommands() {
 			}
 		}
 		result.setInteger(int64_t(app->getRemoteSessions().size()), "clients");
+		// Frame data entries alive in every session's cache: back to zero when the clients are gone
+		result.setInteger(int64_t(core::FrameDataCache::getLiveEntries()), "frameDataLive");
 
 		// How many of the shared windows exist because a client asked for them.
 		size_t clientWindows = 0;
@@ -493,6 +525,33 @@ void ExampleScene::registerCommands() {
 
 		auto fp = app->getListenerFingerprint();
 		result.setString(fp.empty() ? String() : base16::encode<Interface>(fp), "spki");
+		done(sp::move(result));
+	});
+
+	/* Drop a session's frame data cache as a protocol error would: { session }. What a reference to
+	data the server does not hold leads to, without a client that writes one. */
+	inspector::addCommand(content, "remote-frame-data-reset",
+			"Reset a session's frame data cache: { session }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		Value result;
+		auto app = dynamic_cast<ServerAppThread *>(getDirector()->getApplication());
+		auto id = uint64_t(args.getInteger("session"));
+		RemoteRenderClient *client = nullptr;
+		if (app) {
+			for (auto &it : app->getRemoteSessions()) {
+				if (it->getId() == id) {
+					client = it->getRenderClient();
+				}
+			}
+		}
+		if (!client || !client->getFrameDataCache()) {
+			result.setBool(false, "ok");
+			result.setString("no such session, or it keeps no frame data", "error");
+		} else {
+			client->resetFrameData("reset by the inspector");
+			result.setBool(true, "ok");
+			result.setInteger(int64_t(client->getFrameDataCache()->getEpoch()), "epoch");
+		}
 		done(sp::move(result));
 	});
 

@@ -152,6 +152,11 @@ bool ServerAppThread::removeBearerKey(StringView label) { return _labelledKeys.r
 
 void ServerAppThread::setRequireLabelledKeys(bool value) { _requireLabelledKeys = value; }
 
+void ServerAppThread::setFrameDataBudget(size_t value) {
+	_frameDataBudget = value;
+	updateServerInfo();
+}
+
 void ServerAppThread::setAppMessageHandler(AppMessageHandler &&handler) {
 	_appMessageHandler = sp::move(handler);
 	updateServerInfo(); // the feature bit follows the handler
@@ -368,6 +373,10 @@ void ServerAppThread::updateServerInfo() {
 	}
 	if (hasClipboard()) {
 		info.features |= remote::PeerFeatures::Clipboard;
+	}
+	if (_frameDataBudget > 0) {
+		info.features |= remote::PeerFeatures::FrameDataCache;
+		info.frameDataBudget = _frameDataBudget;
 	}
 
 	if (!_listenAddress.empty()) {
@@ -1056,12 +1065,13 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 		};
 		case remote::WindowCode::FrameInput: {
 			// client -> server: one streamed input for one or more attachments [frameId, keys[],
-			// bytes]
+			// bytes, frameData?] - the last is the input's frame data cache operations
 			if (client) {
-				auto val = data::read<Interface>(payload);
+				const auto val = data::read<Interface>(payload);
 				Vector<StringView> keys;
 				for (auto &k : val.getValue(1).asArray()) { keys.emplace_back(k.getString()); }
-				client->handleFrameInput(uint64_t(val.getInteger(0)), keys, val.getBytes(2));
+				client->handleFrameInput(uint64_t(val.getInteger(0)), keys, val.getBytes(2),
+						val.getValue(3), payload.size());
 			}
 			return true;
 		};

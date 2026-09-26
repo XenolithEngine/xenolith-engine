@@ -525,6 +525,22 @@ void ClientScene::registerCommands() {
 		result.setInteger(int64_t(d.drawCalls), "drawCalls");
 		result.setInteger(int64_t(d.pixelsTotal), "pixelsTotal");
 		result.setInteger(int64_t(d.pixelsFilled), "pixelsFilled");
+
+		// What this client believes the server holds of its frame data
+		auto thread = dynamic_cast<ClientAppThread *>(_director->getApplication());
+		if (auto mirror = thread ? thread->getFrameDataMirror() : nullptr) {
+			auto st = mirror->getStats();
+			auto &fd = result.emplace("frameData");
+			fd.setInteger(int64_t(st.entries), "entries");
+			fd.setInteger(int64_t(st.bytes), "bytes");
+			fd.setInteger(int64_t(st.budget), "budget");
+			fd.setInteger(int64_t(st.epoch), "epoch");
+			fd.setInteger(int64_t(st.stores), "stores");
+			fd.setInteger(int64_t(st.references), "references");
+			fd.setInteger(int64_t(st.drops), "drops");
+			fd.setInteger(int64_t(st.inlined), "inlined");
+			fd.setInteger(int64_t(st.resets), "resets");
+		}
 		done(sp::move(result));
 	});
 }

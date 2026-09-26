@@ -62,6 +62,7 @@ static const TestEntry s_testList[] = {
 	{"bearerkeys", &stappler::xenolith::remote::performBearerKeyTests},
 	{"ownership", &stappler::xenolith::remote::performOwnershipTests},
 	{"dependency", &stappler::xenolith::remote::performDependencyTests},
+	{"framedata", &stappler::xenolith::remote::performFrameDataTests},
 };
 
 int main(int argc, const char *argv[]) {

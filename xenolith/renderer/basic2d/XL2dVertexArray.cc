@@ -27,8 +27,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
 VertexData::Bounds VertexData::getBounds(const core::DataAtlas *atlas) const {
 	const uint64_t atlasSerial = atlas ? atlas->getSerial() : 0;
-	if (cachedBoundsGeneration == identity.generation && cachedBoundsAtlas == atlasSerial) {
-		return cachedBounds;
+	{
+		sprt::unique_lock<sprt::mutex> lock(cachedBoundsMutex);
+		if (cachedBoundsGeneration == identity.generation && cachedBoundsAtlas == atlasSerial) {
+			return cachedBounds;
+		}
 	}
 
 	// an atlas entry as the shader reads it (xl_2d_flat.vert): the offset of the vertex, and where
@@ -68,6 +71,7 @@ VertexData::Bounds VertexData::getBounds(const core::DataAtlas *atlas) const {
 		ret.box = Rect(minX, minY, maxX - minX, maxY - minY);
 	}
 
+	sprt::unique_lock<sprt::mutex> lock(cachedBoundsMutex);
 	cachedBounds = ret;
 	cachedBoundsAtlas = atlasSerial;
 	cachedBoundsGeneration = identity.generation;

@@ -28,6 +28,7 @@
 #include "XLCoreRenderSession.h"
 #include "XLRemoteObject.h"
 #include "XLRemoteWindow.h"
+#include "XLCoreFrameDataCache.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -136,6 +137,11 @@ public:
 	void setSilentFrames(uint32_t frames);
 	bool takeSilentFrame();
 
+	/* What the server holds of this client's frame data (XLCoreFrameDataCache.h): the frames of every
+	window are serialized against it. Null until the ServerInfo exchange, and when the server keeps
+	no frame data. One per session: a reconnect builds a new thread. App thread only. */
+	core::FrameDataMirror *getFrameDataMirror() const { return _frameData; }
+
 protected:
 	// Block-transfer send facade: route through the server connection.
 	virtual bool remoteSendCbor(remote::Domain, uint8_t code, const Value &,
@@ -190,6 +196,8 @@ protected:
 	// builds a new thread.
 	remote::PeerInfo _serverInfo;
 	bool _hasServerInfo = false;
+
+	Rc<core::FrameDataMirror> _frameData;
 
 	// Set by a dispatcher that ended the session; acted on in pumpConnection, the only place
 	// allowed to drop the connection (a dispatcher runs inside its poll).

@@ -40,8 +40,10 @@ constexpr uint32_t kProtocolMagic = 0x584C'5250; // 'XLRP'
 /* Version 2: InputEvents and UpdateLayers use the typed format (see XLRemoteSerialize.h).
  * Version 3: a 2d frame input carries each data set's identity, the command flags and the state
  * extension (gradient, shaded outline) - see FrameContextHandle2d::serialize.
+ * Version 4: each data set of a 2d frame input says whether its body is inline or a reference into
+ * the session's frame data cache (XLCoreFrameDataCache.h); FrameInput carries the cache operations.
  * Older peers are refused at the handshake; no compatibility is kept. */
-constexpr uint16_t kProtocolVersion = 3;
+constexpr uint16_t kProtocolVersion = 4;
 constexpr uint32_t kBearerKeySize = 64;
 
 // Size of one record in the typed input/layer batches (WindowCode::InputEvents / ::UpdateLayers).
@@ -225,6 +227,12 @@ enum class WindowCode {
 	answered with a frame - the window is not one the session may draw into. The client stops
 	waiting for that frame; it asks again after its scene changes. */
 	FrameDeclined = 16,
+
+	/* server -> client notification [epoch]: the server dropped this session's frame data cache (a
+	reference to data it did not hold, or a store past the budget - a protocol error either way).
+	The client clears its mirror and writes the epoch into every operation list after this; lists
+	of an older epoch are declined together with their frames, without another reset. */
+	FrameDataReset = 17,
 };
 
 // Every WindowCode has a handler on the side that receives it; see the note on codeBit.
@@ -236,7 +244,8 @@ constexpr uint64_t kSupportedWindowCodes = codeBit(WindowCode::CompileQueue)
 		| codeBit(WindowCode::InputEvents) | codeBit(WindowCode::UpdateLayers)
 		| codeBit(WindowCode::WindowGeometryChanged) | codeBit(WindowCode::WindowControl)
 		| codeBit(WindowCode::TextInputControl) | codeBit(WindowCode::TextInputState)
-		| codeBit(WindowCode::CreateWindow) | codeBit(WindowCode::FrameDeclined);
+		| codeBit(WindowCode::CreateWindow) | codeBit(WindowCode::FrameDeclined)
+		| codeBit(WindowCode::FrameDataReset);
 
 
 // Operations carried by WindowCode::TextInputControl.

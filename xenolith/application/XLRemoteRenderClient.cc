@@ -35,6 +35,7 @@
 #include "XLCoreQueue.h" // getGraphicPipeline
 #include "XLCoreLoop.h" // gapi loop performOnThread for frame-input submission
 #include "XLCoreFrameCapture.h" // FrameCaptureAttachmentName + FrameCaptureInput
+#include "XLCoreFrameDataCache.h"
 
 #include "SPData.h"
 
@@ -66,6 +67,9 @@ __SPRT_POP_ALLOW_CXXABI_ALLOC
 bool RemoteRenderClient::init(NotNull<ServerAppThread> host, NotNull<RemoteSession> session) {
 	_host = host;
 	_session = session;
+	// One cache per session: the identities in it are the client's, and a window that changes its
+	// client does so through the reset of its owner's session, whose cache goes with detach().
+	_frameData = Rc<core::FrameDataCache>::create(host->getFrameDataBudget());
 	return true;
 }
 
@@ -75,6 +79,24 @@ void RemoteRenderClient::detach() {
 	_session = nullptr;
 	_pendingFrames.clear();
 	_drawStats.clear();
+	_frameData = nullptr;
+}
+
+void RemoteRenderClient::resetFrameData(StringView reason) {
+	if (!_frameData) {
+		return;
+	}
+	auto epoch = _frameData->reset();
+	log::source().error("RemoteRenderClient", "frame data cache of session ",
+			_session ? _session->getId() : 0, ": ", reason, "; reset to epoch ", epoch);
+	if (_session
+			&& _session->getPeerInfo().supports(remote::Domain::Window,
+					toInt(remote::WindowCode::FrameDataReset))) {
+		Value msg;
+		msg.addInteger(int64_t(epoch));
+		_session->remoteSendCbor(remote::Domain::Window, toInt(remote::WindowCode::FrameDataReset),
+				msg);
+	}
 }
 
 remote::ServerConnection *RemoteRenderClient::getConnection() const {
@@ -292,6 +314,21 @@ void RemoteRenderClient::cancelFrame(uint64_t frameId, uint64_t windowId,
 	nudgeWindow(windowId);
 }
 
+void RemoteRenderClient::dropFrame(uint64_t frameId, StringView reason) {
+	auto it = _pendingFrames.find(frameId);
+	if (it == _pendingFrames.end()) {
+		return;
+	}
+	auto windowId = it->second.windowId;
+	_pendingFrames.erase(it);
+	log::source().warn("RemoteRenderClient", "frame ", frameId, " of window ", windowId, ": ",
+			reason, "; dropping it");
+	if (auto w = resolveWindow(windowId)) {
+		w->invalidateRemoteFrames();
+	}
+	nudgeWindow(windowId);
+}
+
 bool RemoteRenderClient::checkFrameDeadlines(uint64_t nowUs) {
 	// Windows whose frame was cancelled since the last pump: by now the cancel has gone through, so
 	// asking for another frame takes effect.
@@ -372,7 +409,27 @@ void RemoteRenderClient::submitServerOwnedInputs(uint64_t frameId, uint64_t wind
 }
 
 void RemoteRenderClient::handleFrameInput(uint64_t frameId, SpanView<StringView> attachmentKeys,
-		BytesView bytes) {
+		BytesView bytes, const Value &frameData, size_t messageSize) {
+	++_frameInputStats.messages;
+	_frameInputStats.bytes += messageSize;
+	_frameInputStats.lastBytes = messageSize;
+
+	// The cache operations before anything else, even for a frame that is gone: the client's mirror
+	// changed when it wrote them, and every later input relies on the cache having changed too.
+	if (_frameData) {
+		auto st = _frameData->apply(frameData);
+		if (st == Status::Declined) {
+			// written before the client saw the last reset: its references point into the old epoch
+			dropFrame(frameId, "the input was written before the frame data reset");
+			return;
+		} else if (!sprt::status::isSuccessful(st)) {
+			resetFrameData(st == Status::ErrorBufferOverflow ? "the client stored past the budget"
+															 : "an invalid operation list");
+			dropFrame(frameId, "its frame data was refused");
+			return;
+		}
+	}
+
 	auto it = _pendingFrames.find(frameId);
 	if (it == _pendingFrames.end()) {
 		return;
@@ -415,9 +472,13 @@ void RemoteRenderClient::handleFrameInput(uint64_t frameId, SpanView<StringView>
 	}
 	// The client's data identities go into this session's namespace: two clients, or a client and
 	// the server's own Director, both count from 1.
-	if (!input->deserialize(bytes, &remoteWaitDependencyIds, _session->getId())) {
+	if (!input->deserialize(bytes, &remoteWaitDependencyIds, _session->getId(), _frameData)) {
 		log::source().warn("RemoteRenderClient", "FrameInput ", frameId, ": attachment '",
 				atts.front()->key, "' rejected its ", bytes.size(), "-byte payload");
+		// Most likely a reference to data the cache does not hold: whatever the client believes the
+		// server has is wrong now, so both start over.
+		resetFrameData("a frame input did not deserialize");
+		dropFrame(frameId, "its input did not deserialize");
 		return;
 	}
 
