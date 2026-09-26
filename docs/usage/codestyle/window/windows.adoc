@@ -652,6 +652,27 @@ uses: the client's batch dependency stays pending until the server's `AtlasReady
 the frame and the server holds the frame on its own copy — the first frame of new text is already
 complete.
 
+### Input from a compositor
+
+A compositor hands a plane its input with `AppWindow::handleNativeInputEvents`, not
+`handleInputEvents`: only the native path runs the window's text input processor (the one the
+client's `acquireTextInput` enabled), so typed keys become text in the client's field.
+
+* **Coordinates are the plane window's pixels, y up**, as every platform backend reports them:
+  the host point is flipped to the plane's `dst` (y down), mapped through `src`, and flipped back
+  with the window's height. A key event carries the pointer's position too, and the client's
+  listeners are hit-tested with it, so it is mapped the same way. `point.density` is left alone:
+  the client's `Director` sets it from its own constraints.
+* **Focused and Pointer are the window manager's word.** `setVirtualState(Focused)` goes to the
+  plane the WM chose while the host itself is focused; `Pointer` to the plane under the mouse or
+  holding a pressed pointer. The client's `InputDispatcher` cancels touches without either and
+  keys without `Focused`.
+* A plane window takes the host's density (`WindowInfo::density`), so a plane shown 1:1 has the
+  host's scale.
+
+`compositor::InputRouter` does all of this for a `DisplayPipe`: a press captures its id for the
+plane it began in, keys go to the focused plane and are cancelled there when the focus moves.
+
 The inspector reads a plane with `window op=plane`
 (`serial`, `slot`, `pinned`, `imageCount`, `published`), holds one like a slow compositor with
 `op=plane-hold {ms}`, and renders an offscreen frame with `op=offscreen`.

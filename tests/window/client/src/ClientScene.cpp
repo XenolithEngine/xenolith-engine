@@ -109,6 +109,7 @@ bool ClientScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel
 	// Команды инспектора регистрируются на SceneContent, поэтому — после setContent
 	registerCommands();
 	registerTextCommand();
+	registerInputCommand();
 
 	// Remote runtime font materials are now forwarded to the server for compilation; enable text.
 	// XL_HIDE_FPS=1 hides the counter, as in testapp: it changes every frame, so a scene showing it
@@ -119,21 +120,26 @@ bool ClientScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel
 	}
 	setFpsVisible(fpsVisible);
 
-	// DEBUG: verify server-forwarded input (WindowCode::InputEvents) actually reaches the scene graph.
-	// The server's XL_REMOTE_INPUT_SIM emitter sweeps a cursor and clicks; these recognizers log when
-	// the replayed events surface as gestures in the client scene.
+	// What reaches the scene graph, for `client-input`: presses and moves, hover, scroll and two keys
+	// nothing binds (printable keys become text in the focused field, arrows are hotkeys).
 	auto listener = content->addSystem(Rc<InputListener>::create());
-	listener->addMoveRecognizer([](const GestureData &data) -> bool {
-		//auto loc = data.input->currentLocation;
-		//log::source().info("ClientScene", "[input] move -> x=", loc.x, " y=", loc.y);
+	_inputListener = listener;
+	listener->addTouchRecognizer([this](const GestureData &data) -> bool {
+		recordInput("touch", *data.input);
 		return true;
 	});
-	listener->addTapRecognizer([](const GestureTap &tap) -> bool {
-		//auto loc = tap.location();
-		//log::source().info("ClientScene", "[input] TAP -> x=", loc.x, " y=", loc.y,
-		//		" count=", tap.count);
+	listener->addMoveRecognizer([this](const GestureData &data) -> bool {
+		recordInput("move", *data.input);
 		return true;
 	});
+	listener->addScrollRecognizer([this](const GestureScroll &data) -> bool {
+		recordInput("scroll", *data.input);
+		return true;
+	});
+	listener->addKeyRecognizer([this](const GestureData &data) -> bool {
+		recordInput("key", *data.input);
+		return true;
+	}, InputKeyInfo(makeKeyMask({InputKeyCode::F5, InputKeyCode::F6})));
 
 	// DEBUG (reverse direction): a static region that requests a custom OS cursor. The scene graph
 	// computes this as a WindowLayer; the headless client forwards it to the server (WindowCode::
@@ -461,6 +467,8 @@ void ClientScene::registerCommands() {
 		result.setInteger(g.rect.width, "geomWidth");
 		result.setInteger(g.rect.height, "geomHeight");
 		result.setBool(g.hasPosition, "hasPosition");
+		result.setBool(hasFlag(server->getWindowState(), WindowState::Focused), "focused");
+		result.setBool(hasFlag(server->getWindowState(), WindowState::Pointer), "pointer");
 
 		auto thread =
 				_director ? dynamic_cast<ClientAppThread *>(_director->getApplication()) : nullptr;
@@ -541,6 +549,65 @@ void ClientScene::registerTextCommand() {
 		result.setInteger(marked.start, "markedStart");
 		result.setInteger(marked.length, "markedLength");
 		result.setBool(_input->isFocused(), "focused");
+		done(sp::move(result));
+	});
+}
+
+void ClientScene::recordInput(StringView kind, const InputEvent &ev) {
+	Value entry;
+	entry.setString(kind, "kind");
+	entry.setString(core::getInputEventName(ev.data.event), "event");
+	if (ev.data.isPointEvent()) {
+		entry.setInteger(int64_t(ev.data.id), "id");
+		// the window's pixels, y up, as the event arrived; and the same point in the scene
+		entry.setDouble(ev.data.input.x, "x");
+		entry.setDouble(ev.data.input.y, "y");
+		auto pt = getContent()->convertToNodeSpace(ev.currentLocation);
+		entry.setDouble(pt.x, "sceneX");
+		entry.setDouble(pt.y, "sceneY");
+	} else if (ev.data.isKeyEvent()) {
+		entry.setString(core::getInputKeyCodeName(ev.data.key.keycode), "key");
+	}
+	if (_inputLog.size() >= 32) {
+		_inputLog.erase(_inputLog.begin());
+	}
+	_inputLog.emplace_back(sp::move(entry));
+}
+
+void ClientScene::registerInputCommand() {
+	inspector::addCommand(getContent(), "client-input",
+			"The last input events of the scene, oldest first: { clear? } -> { events }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		Value result;
+		result.setBool(true, "ok");
+		auto &events = result.emplace("events");
+		events.setArray(Value::ArrayType());
+		for (auto &it : _inputLog) { events.addValue(it); }
+		if (req.getBool("clear")) {
+			_inputLog.clear();
+		}
+		done(sp::move(result));
+	});
+	/* The field holds the keyboard while focused: its window's text input takes the keys, and only
+	the focused listener of a focus group gets them. Blurred, the scene's own listener takes the
+	focus, and the keys reach it. */
+	inspector::addCommand(getContent(), "client-field", "Focus or blur the text field: { op }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		const Value &req = args;
+		Value result;
+		if (_input) {
+			if (req.getString("op") == "blur") {
+				_input->blur();
+				if (_inputListener) {
+					_inputListener->setFocused();
+				}
+			} else {
+				_input->focus();
+			}
+		}
+		result.setBool(_input != nullptr, "ok");
+		result.setBool(_input && _input->isFocused(), "focused");
 		done(sp::move(result));
 	});
 }

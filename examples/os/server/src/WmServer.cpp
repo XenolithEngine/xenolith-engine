@@ -217,6 +217,8 @@ Status WmServer::handleClientWindow(NotNull<RemoteSession> session,
 	info->flags |= sprt::window::WindowCreationFlags::Virtual;
 	info->flags &= ~sprt::window::WindowCreationFlags::UserSpaceDecorations;
 	info->rect = IRect(0, 0, extent.width, extent.height);
+	// Host pixels at the host's density: the plane shows the window 1:1.
+	info->density = _host->getConstraints().density;
 
 	auto ref = Rc<App>(app);
 	out = Rc<WindowSceneInfo>::create(
@@ -365,6 +367,13 @@ Value WmServer::encodePlane(const compositor::DisplayPlane *plane) const {
 	ret.setBool(state.enabled, "enabled");
 	ret.setBool(hasFlag(window->getWindowState(), core::WindowState::Minimized), "minimized");
 	ret.setBool(hasFlag(window->getWindowState(), core::WindowState::Focused), "focused");
+	ret.setBool(hasFlag(window->getWindowState(), core::WindowState::Pointer), "pointer");
+	ret.setBool(state.focusable, "focusable");
+	auto &input = ret.emplace("input");
+	input.setArray(Value::ArrayType());
+	for (auto &it : state.inputRegion) {
+		input.addValue(WmServer_encodeRect(it.x, it.y, it.width, it.height));
+	}
 	ret.setDouble(state.alpha, "alpha");
 	ret.setString(state.blend == compositor::PlaneBlend::Opaque ? "opaque" : "premultiplied",
 			"blend");
@@ -425,7 +434,7 @@ void WmServer::registerCommands(Node *root) {
 
 	inspector::addCommand(root, "wm-plane",
 			"Change a plane and commit: { plane|window, dst?, src?: [x,y,w,h], z?, alpha?, "
-			"enabled?, blend?: opaque|premultiplied }",
+			"enabled?, blend?: opaque|premultiplied, focusable?, input?: [[x,y,w,h]...] }",
 			[this](Value &&args, Function<void(Value &&)> &&done) {
 		auto plane = resolvePlane(args);
 		if (!plane) {
@@ -462,6 +471,18 @@ void WmServer::registerCommands(Node *root) {
 					? compositor::PlaneBlend::Premultiplied
 					: compositor::PlaneBlend::Opaque;
 		}
+		if (req.isBool("focusable")) {
+			state.focusable = req.getBool("focusable");
+		}
+		if (req.isArray("input")) {
+			// in the window's pixels, y down; empty: the whole destination
+			state.inputRegion.clear();
+			for (auto &v : req.getArray("input")) {
+				state.inputRegion.emplace_back(IRect(int32_t(v.getInteger(0)),
+						int32_t(v.getInteger(1)), uint32_t(v.getInteger(2)),
+						uint32_t(v.getInteger(3))));
+			}
+		}
 
 		auto ret = commitOrRevert();
 		ret.setValue(encodePlane(plane), "plane");
@@ -491,6 +512,53 @@ void WmServer::registerCommands(Node *root) {
 	inspector::addCommand(root, "wm-resume", "Resume a plane: { plane|window }",
 			[setEnabled](Value &&args, Function<void(Value &&)> &&done) {
 		setEnabled(true, sp::move(args), sp::move(done));
+	});
+
+	inspector::addCommand(root, "wm-focus",
+			"Give a plane the keyboard: { plane|window }; without one, nobody has it",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		Value ret;
+		const Value &req = args;
+		auto plane = resolvePlane(args);
+		if (!plane && (req.isInteger("plane") || req.isString("window"))) {
+			ret.setBool(false, "ok");
+			ret.setString("no such plane", "error");
+		} else if (plane && !plane->getState().focusable) {
+			ret.setBool(false, "ok");
+			ret.setString("the plane is not focusable", "error");
+		} else {
+			_pipe->setFocusedPlane(plane);
+			ret.setBool(true, "ok");
+			if (plane) {
+				ret.setInteger(plane->getId(), "focused");
+			}
+		}
+		done(sp::move(ret));
+	});
+
+	inspector::addCommand(root, "wm-routes",
+			"The last input routes, oldest first: { clear? } -> { routes }",
+			[this](Value &&args, Function<void(Value &&)> &&done) {
+		auto router = _pipe->getInputRouter();
+		Value ret;
+		auto &routes = ret.emplace("routes");
+		routes.setArray(Value::ArrayType());
+		for (auto &it : router->getRoutes()) {
+			Value route;
+			route.setString(core::getInputEventName(it.event), "event");
+			route.setInteger(it.id, "id");
+			route.setValue(Value({Value(it.host.x), Value(it.host.y)}), "host");
+			route.setInteger(it.plane, "plane");
+			route.setValue(Value({Value(it.local.x), Value(it.local.y)}), "local");
+			route.setString(compositor::InputRouter::getReasonName(it.reason), "reason");
+			routes.addValue(sp::move(route));
+		}
+		const Value &req = args;
+		if (req.getBool("clear")) {
+			router->clearRoutes();
+		}
+		ret.setBool(true, "ok");
+		done(sp::move(ret));
 	});
 }
 

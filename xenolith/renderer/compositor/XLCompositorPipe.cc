@@ -63,6 +63,7 @@ DisplayPipe::~DisplayPipe() {
 
 bool DisplayPipe::init(NotNull<ServerAppThread> app) {
 	_app = app.get();
+	_inputRouter = Rc<InputRouter>::create(this);
 	_snapshot = Rc<PipeSnapshot>::alloc();
 	_snapshot->background = _background;
 	return true;
@@ -104,8 +105,10 @@ void DisplayPipe::destroyPlane(NotNull<DisplayPlane> plane) {
 	}
 
 	if (_focused == plane.get()) {
+		_inputRouter->handleFocusChanged(_focused, nullptr);
 		_focused = nullptr;
 	}
+	_inputRouter->handlePlaneHidden(plane);
 
 	_app->getContext()->performOnThread([source = plane->_source] { source->setListener(nullptr); },
 			plane.get());
@@ -164,6 +167,13 @@ Status DisplayPipe::commit() {
 	}
 
 	publishSnapshot();
+
+	// After the snapshot: a paused plane is no longer found under the pointer.
+	for (auto &it : _planes) {
+		if (!it->_state.enabled) {
+			_inputRouter->handlePlaneHidden(it);
+		}
+	}
 	return Status::Ok;
 }
 
@@ -174,13 +184,9 @@ void DisplayPipe::setFocusedPlane(DisplayPlane *plane) {
 	if (_focused == plane) {
 		return;
 	}
-	if (_focused) {
-		_focused->_window->setVirtualState(core::WindowState::Focused, false);
-	}
+	auto prev = _focused;
 	_focused = plane;
-	if (_focused) {
-		_focused->_window->setVirtualState(core::WindowState::Focused, true);
-	}
+	_inputRouter->handleFocusChanged(prev, _focused);
 }
 
 void DisplayPipe::setVblankCallback(VblankCallback &&cb) { _vblankCallback = sp::move(cb); }

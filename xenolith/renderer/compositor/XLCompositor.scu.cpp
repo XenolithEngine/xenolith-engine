@@ -23,5 +23,6 @@
 #include "XLCommon.h"
 
 #include "XLCompositorBlend.cc"
+#include "XLCompositorInputRouter.cc"
 #include "XLCompositorPipe.cc"
 #include "XLCompositorSwapchainPipe.cc"

@@ -48,7 +48,7 @@ public:
 
 	virtual void handleRenderQueueAttached(const Rc<core::Queue> &) override { }
 	virtual void handleConstraintsChanged(const core::FrameConstraints &) override { }
-	virtual void handleInputEvents(uint64_t, Vector<core::InputEventData> &&) override { }
+	virtual void handleInputEvents(uint64_t, Vector<core::InputEventData> &&) override;
 	virtual void handleTextInput(uint64_t, const core::TextInputState &) override { }
 	virtual void handleFramePresented(uint64_t frameOrder) override;
 	virtual bool wantsFramePresented() const override { return true; }
