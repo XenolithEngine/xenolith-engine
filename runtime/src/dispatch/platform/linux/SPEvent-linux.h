@@ -115,10 +115,11 @@ void setupUringHandleClass(QueueHandleClassInfo *info, HandleClass *cl, bool sus
 			auto platformData = static_cast<Queue::Data *>(cl->info->data);
 			auto source = reinterpret_cast<SourceType *>(data);
 
+			// disarm() says whether the ring reports the suspension (Ok) or it is done (Done)
 			auto status = static_cast<HandleType *>(handle)->disarm(
 					reinterpret_cast<URingData *>(platformData->_platformQueue), source);
 			if (status == Status::Ok || status == Status::Done) {
-				return HandleClass::suspend(cl, handle, data);
+				HandleClass::suspend(cl, handle, data);
 			}
 			return status;
 		};

@@ -330,10 +330,10 @@ void HeadlessSwapchain::publishPlaneFrame(uint32_t slot, Rc<Image> &&image) {
 	// Published only once readable: the frame is announced after its image reached ShaderReadOnly.
 	device->runTask(*loop,
 			Rc<PlaneLayoutTask>::create(Rc<Image>(image), true,
-					[source, serial, slot, image, release = sp::move(release)](
+					[source, serial, slot, image, slots, release = sp::move(release)](
 							bool success) mutable {
 		auto frame = Rc<core::PlaneFrame>::create(serial, slot, Rc<core::ImageObject>(image.get()),
-				sp::move(release));
+				sp::move(slots), sp::move(release));
 		if (success) {
 			source->publish(sp::move(frame));
 		}
@@ -477,18 +477,22 @@ bool HeadlessPresentationEngine::createSwapchain(const core::SurfaceInfo &info,
 
 void HeadlessPresentationEngine::captureScreenshot(
 		Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) {
-	// A window read as a plane is captured as the compositor sees it: the latest published frame,
-	// in ShaderReadOnly, held until the copy is done (the read hands the layout back).
+	/* A window read as a plane is captured as the compositor sees it: the latest published frame,
+	in ShaderReadOnly. The copy moves the layout and back, so it takes the frame alone: compositor
+	frames sampling it finish first, and the next ones wait for the copy. */
 	if (auto source = _window->getPlaneSource()) {
 		if (auto frame = source->getLatest()) {
-			auto image = Rc<core::ImageObject>(frame->getImage());
-			_loop->captureImage(
-					[cb = sp::move(cb), frame = sp::move(frame)](const core::ImageInfoData &info,
-							BytesView view) mutable {
-				cb(info, view);
-				frame = nullptr;
-			},
-					image, core::AttachmentLayout::ShaderReadOnlyOptimal);
+			frame->lock(core::PlaneFrameAccess::Exclusive, _loop,
+					[loop = _loop, cb = sp::move(cb)](Rc<core::PlaneFrameLock> &&lock) mutable {
+				auto image = Rc<core::ImageObject>(lock->getFrame()->getImage());
+				loop->captureImage(
+						[cb = sp::move(cb), lock = sp::move(lock)](const core::ImageInfoData &info,
+								BytesView view) mutable {
+					cb(info, view);
+					lock = nullptr;
+				},
+						image, core::AttachmentLayout::ShaderReadOnlyOptimal);
+			});
 			return;
 		}
 	}

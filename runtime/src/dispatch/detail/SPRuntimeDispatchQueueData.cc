@@ -170,7 +170,8 @@ uint32_t QueueData::suspendAll(Handle **buf) {
 	_running = false;
 	for (auto &it : _suspendableHandles) {
 		if (it->getStatus() == Status::Ok) {
-			if (isSuccessful(it->suspend())) {
+			// Only a handle whose suspension is reported later is waited for
+			if (it->suspend() == Status::Ok) {
 				if (buf) {
 					*buf = it.get();
 					++buf;

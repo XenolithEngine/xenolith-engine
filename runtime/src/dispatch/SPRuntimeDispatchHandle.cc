@@ -109,7 +109,7 @@ Status Handle::cancel(Status st, uint32_t value) {
 	if (_status == Status::Ok) {
 		if (_class->suspendFn) {
 			auto status = _class->suspendFn(_class, this, _data);
-			if (status != Status::Ok) {
+			if (status != Status::Ok && status != Status::Done) {
 				return Status::ErrorNotPermitted;
 			}
 			_status = Status::Declined;
@@ -172,8 +172,8 @@ Status Handle::suspend() {
 			oslog::vperror(__SPRT_LOCATION, "dispatch::Handle",
 					"Fail to suspend handle: ", _status);
 		} else {
+			// Ok: the queue reports the suspension later; Done: it is suspended already
 			_status = Status::Suspended;
-			return Status::Ok;
 		}
 		return status;
 	}
@@ -237,7 +237,8 @@ bool Handle::reset() {
 		return true;
 	} else if (_status == Status::Ok) {
 		// we are active, suspend and resume to update queue's data on handle
-		if (suspend() == Status::Ok) {
+		auto status = suspend();
+		if (status == Status::Ok || status == Status::Done) {
 			return resume() == Status::Ok;
 		}
 	} else if (_status == Status::Declined) {

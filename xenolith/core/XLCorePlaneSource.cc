@@ -21,11 +21,13 @@
  **/
 
 #include "XLCorePlaneSource.h"
+#include "XLCoreLoop.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 bool PlaneSlotTable::init(uint32_t slotCount) {
 	_pinned.resize(slotCount, false);
+	_views.resize(slotCount);
 	return true;
 }
 
@@ -67,13 +69,48 @@ uint32_t PlaneSlotTable::getSlotCount() const {
 }
 
 void PlaneSlotTable::retire() {
+	// A view in use is held by the frame that bound it, so the table may let go of it now.
+	Vector<Rc<ImageView>> views;
 	sprt::unique_lock lock(_mutex);
 	_retired = true;
+	views = sp::move(_views);
 }
 
 bool PlaneSlotTable::isRetired() const {
 	sprt::unique_lock lock(_mutex);
 	return _retired;
+}
+
+Rc<ImageView> PlaneSlotTable::getView(uint32_t slot) const {
+	sprt::unique_lock lock(_mutex);
+	return slot < _views.size() ? _views[slot] : nullptr;
+}
+
+void PlaneSlotTable::setView(uint32_t slot, Rc<ImageView> &&view) {
+	sprt::unique_lock lock(_mutex);
+	if (!_retired && slot < _views.size()) {
+		_views[slot] = sp::move(view);
+	}
+}
+
+PlaneFrameLock::~PlaneFrameLock() {
+	if (!_frame) {
+		return;
+	}
+
+	if (!_loop || _loop->isOnThisThread()) {
+		_frame->unlock(_access);
+	} else {
+		_loop->performOnThread(
+				[frame = sp::move(_frame), access = _access] { frame->unlock(access); });
+	}
+}
+
+bool PlaneFrameLock::init(NotNull<PlaneFrame> frame, PlaneFrameAccess access, NotNull<Loop> loop) {
+	_frame = frame.get();
+	_loop = loop.get();
+	_access = access;
+	return true;
 }
 
 PlaneFrame::~PlaneFrame() {
@@ -83,10 +120,11 @@ PlaneFrame::~PlaneFrame() {
 }
 
 bool PlaneFrame::init(uint64_t serial, uint32_t slot, Rc<ImageObject> &&image,
-		ReleaseCallback &&release) {
+		Rc<PlaneSlotTable> &&slots, ReleaseCallback &&release) {
 	_serial = serial;
 	_slot = slot;
 	_image = sp::move(image);
+	_slots = sp::move(slots);
 	_release = sp::move(release);
 	return _image != nullptr;
 }
@@ -94,6 +132,49 @@ bool PlaneFrame::init(uint64_t serial, uint32_t slot, Rc<ImageObject> &&image,
 Extent2 PlaneFrame::getExtent() const {
 	auto extent = _image->getInfo().extent;
 	return Extent2(extent.width, extent.height);
+}
+
+void PlaneFrame::lock(PlaneFrameAccess access, NotNull<Loop> loop, LockCallback &&cb) {
+	Vector<LockRequest> granted;
+	{
+		sprt::unique_lock lock(_lockMutex);
+		_lockQueue.emplace_back(LockRequest{access, loop.get(), sp::move(cb)});
+		granted = acquireGranted();
+	}
+	for (auto &it : granted) { it.callback(Rc<PlaneFrameLock>::create(this, it.access, it.loop)); }
+}
+
+void PlaneFrame::unlock(PlaneFrameAccess access) {
+	Vector<LockRequest> granted;
+	{
+		sprt::unique_lock lock(_lockMutex);
+		if (access == PlaneFrameAccess::Exclusive) {
+			_exclusiveLock = false;
+		} else if (_sharedLocks > 0) {
+			--_sharedLocks;
+		}
+		granted = acquireGranted();
+	}
+	for (auto &it : granted) { it.callback(Rc<PlaneFrameLock>::create(this, it.access, it.loop)); }
+}
+
+Vector<PlaneFrame::LockRequest> PlaneFrame::acquireGranted() {
+	Vector<LockRequest> ret;
+	auto it = _lockQueue.begin();
+	while (it != _lockQueue.end() && !_exclusiveLock) {
+		if (it->access == PlaneFrameAccess::Exclusive) {
+			if (_sharedLocks > 0) {
+				break;
+			}
+			_exclusiveLock = true;
+		} else {
+			++_sharedLocks;
+		}
+		ret.emplace_back(sp::move(*it));
+		++it;
+	}
+	_lockQueue.erase(_lockQueue.begin(), it);
+	return ret;
 }
 
 bool PlaneSource::init() { return true; }

@@ -556,7 +556,14 @@ void ContextController::notifyWindowDeallocated(NotNull<NativeWindow> w) {
 
 		// The exit trigger is "no Root remains", not "nothing remains": an auxiliary window must
 		// neither keep the app alive on its own nor quit it when dismissed. Nor does a virtual one:
-		// it lives inside a host window, and the host closing is what ends the process.
+		// it lives inside a host window, and the host closing is what ends the process. Only the
+		// last Root going away is that moment; a window that outlives it must not trigger it again,
+		// or a second destroy() runs nested inside the first one's poll.
+		auto info = w->getInfo();
+		if (!info || info->type != WindowType::Root || w->isVirtual()) {
+			return;
+		}
+
 		bool anyRoot = false;
 		for (auto *win : _allWindows) {
 			auto wi = win->getInfo();

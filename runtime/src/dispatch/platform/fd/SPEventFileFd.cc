@@ -78,6 +78,8 @@ Status FileURingHandle::disarm(URingData *, FileSource *) {
 		// the RETAIN_BIT keeps this handle (and FileState::chunkBuf) alive until
 		// that CQE is consumed, so there is no use-after-free.
 		++_timeline;
+		// nothing reports this suspension
+		return Status::Done;
 	} else if (status == Status::ErrorAlreadyPerformed) {
 		return Status::Ok;
 	}

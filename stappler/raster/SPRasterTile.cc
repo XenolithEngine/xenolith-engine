@@ -48,9 +48,12 @@ void makeTileGrid(const URect &region, const TilingInfo &tiling, uint32_t pixelS
 		return;
 	}
 
-	const uint32_t stepPx = pixelSize > 0 ? sprt::max(1U, Tile_alignBytes / pixelSize) : 1U;
+	// Without vertical cuts a tile is a whole row of the region, and there is nothing to align.
+	const bool cutX = tiling.width > 0;
+	const uint32_t stepPx = (cutX && pixelSize > 0) ? sprt::max(1U, Tile_alignBytes / pixelSize)
+													: maxOf<uint32_t>();
 
-	uint32_t tileWidth = tiling.width > 0 ? tiling.width : region.width;
+	uint32_t tileWidth = cutX ? tiling.width : region.width;
 	uint32_t tileHeight = tiling.height > 0 ? tiling.height : region.height;
 
 	// Down to a whole number of cache lines, never up: the requested width is an upper bound, and
@@ -170,7 +173,8 @@ static void Tile_collect(const Target &target, SpanView<URect> regions, const Ti
 // each, rather than one task per tile: tiles differ in cost by more than an order of magnitude, so
 // a static split would leave threads idle.
 static uint32_t Tile_drawShare(const Target &target, const DrawList *list, SpanView<URect> tiles,
-		sprt::atomic<uint32_t> &next, const Color4F *clear, FillStats *fill) {
+		sprt::atomic<uint32_t> &next, const Color4F *clear, FillStats *fill,
+		const TileCallback *callback = nullptr) {
 	uint32_t drawn = 0;
 	for (;;) {
 		auto index = next.fetch_add(1);
@@ -180,7 +184,10 @@ static uint32_t Tile_drawShare(const Target &target, const DrawList *list, SpanV
 		if (clear) {
 			fillRect(target, tiles[index], *clear, fill);
 		}
-		if (list) {
+		if (callback) {
+			(*callback)(target, tiles[index]);
+			++drawn;
+		} else if (list) {
 			drawn += draw(target, *list, tiles[index], fill);
 		}
 	}
@@ -326,8 +333,12 @@ Rc<TiledDrawJob> drawTiledAsync(TiledDrawRequest &&req, TiledDrawCallback &&comp
 	job->_clear = req.clear;
 	job->_clearColor = req.clearColor;
 	job->_collectStats = req.collectStats;
+	job->_tileCallback = sp::move(req.tileCallback);
+	if (job->_tileCallback) {
+		job->_list = nullptr;
+	}
 
-	if (!req.target.empty() && (job->_list || job->_clear)) {
+	if (!req.target.empty() && (job->_list || job->_clear || job->_tileCallback)) {
 		Tile_collect(req.target, req.regions, req.tiling, job->_tiles);
 	}
 
@@ -347,6 +358,7 @@ Rc<TiledDrawJob> drawTiledAsync(TiledDrawRequest &&req, TiledDrawCallback &&comp
 	if (workers == 0) {
 		job->_workers = 1;
 		job->drawShare();
+		job->_tileCallback = nullptr;
 		complete(true, job->_drawn.load(), job->getStats());
 		return nullptr;
 	}
@@ -380,8 +392,9 @@ void TiledDrawJob::waitDrawn() { _finished.wait(_workers); }
 
 void TiledDrawJob::drawShare() {
 	FillStats fill;
-	_drawn.fetch_add(Tile_drawShare(_target, _list, _tiles, _nextTile,
-			_clear ? &_clearColor : nullptr, _collectStats ? &fill : nullptr));
+	_drawn.fetch_add(
+			Tile_drawShare(_target, _list, _tiles, _nextTile, _clear ? &_clearColor : nullptr,
+					_collectStats ? &fill : nullptr, _tileCallback ? &_tileCallback : nullptr));
 	if (_collectStats) {
 		_spanPixels.fetch_add(fill.spanPixels);
 		_glyphPixels.fetch_add(fill.glyphPixels);
@@ -401,6 +414,8 @@ void TiledDrawJob::handleWorkerComplete(bool executed) {
 		auto success = _nextTile.load() >= _tiles.size();
 		auto complete = sp::move(_complete);
 		_complete = nullptr;
+		// the callback may hold what the tiles were drawn from; the job itself can outlive it
+		_tileCallback = nullptr;
 		complete(success, _drawn.load(), getStats());
 	}
 }

@@ -628,6 +628,7 @@ void checkTileGrid() {
 	bool covered = true;
 	bool inside = true;
 	bool aligned = true;
+	bool rows = true;
 	uint32_t grids = 0;
 
 	constexpr uint32_t extent = 200;
@@ -671,6 +672,11 @@ void checkTileGrid() {
 								aligned = false;
 							}
 
+							// No vertical cuts: every tile is a whole row band of the region.
+							if (tw == 0 && (tile.x != rx || tile.width != rw)) {
+								rows = false;
+							}
+
 							for (uint32_t y = tile.y; y < tile.y + tile.height; ++y) {
 								for (uint32_t x = tile.x; x < tile.x + tile.width; ++x) {
 									++hits[size_t(y) * extent + x];
@@ -698,6 +704,83 @@ void checkTileGrid() {
 					" grids)"));
 	check(inside, "tiles: no tile reaches outside its region, and none is empty");
 	check(aligned, "tiles: interior cuts land on 64-byte boundaries");
+	check(rows, "tiles: width 0 cuts the region into full-width bands");
+}
+
+struct CallbackToken : public Ref { };
+
+// drawTiledAsync with a tile callback instead of a draw list: every pixel of the regions is handed
+// to it exactly once, after the per-tile clear, and it is released before the completion runs.
+void checkTileCallback() {
+	constexpr uint32_t width = 150;
+	constexpr uint32_t height = 90;
+
+	const mem_std::Vector<URect> regions{URect{0, 0, width, height}};
+	const Color4F clearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+	auto looper = sprt::dispatch::Looper::acquire();
+
+	uint32_t failed = 0;
+	uint32_t miscovered = 0;
+	uint32_t retained = 0;
+
+	for (uint32_t threads : {0u, 1u, 3u}) {
+		Bitmap bmp(width, height, PixelFormat::BGRA8888);
+		bmp.seed();
+
+		// Each tile adds one to the blue byte of its pixels; the clear before it zeroes them, so a
+		// pixel visited twice or never ends up at a value other than one.
+		auto token = Rc<CallbackToken>::alloc();
+		TiledDrawRequest req;
+		req.target = bmp.target;
+		req.regions = regions;
+		req.tiling.width = 0;
+		req.tiling.height = 7;
+		req.tiling.threads = threads;
+		req.clear = true;
+		req.clearColor = clearColor;
+		req.tileCallback = [token](const Target &target, const URect &tile) {
+			for (uint32_t y = tile.y; y < tile.y + tile.height; ++y) {
+				auto row = target.pixels + size_t(y) * target.stride;
+				for (uint32_t x = tile.x; x < tile.x + tile.width; ++x) { ++row[x * 4]; }
+			}
+		};
+
+		bool done = false;
+		bool ok = false;
+		uint32_t tokenRefs = 0;
+		auto job = drawTiledAsync(sp::move(req), [&](bool success, uint32_t, const TilingStats &) {
+			done = true;
+			ok = success;
+			tokenRefs = token->getReferenceCount();
+			looper->wakeup();
+		});
+
+		auto deadline = Time::now() + TimeInterval::seconds(10);
+		while (!done && Time::now() < deadline) { looper->run(TimeInterval::seconds(1)); }
+
+		if (!done || !ok) {
+			++failed;
+		}
+		// only the test's own reference is left once the job has let go of the callback
+		if (tokenRefs != 1) {
+			++retained;
+		}
+		for (uint32_t y = 0; y < height; ++y) {
+			for (uint32_t x = 0; x < width; ++x) {
+				if (bmp.pixels[size_t(y) * bmp.target.stride + x * 4] != 1) {
+					++miscovered;
+				}
+			}
+		}
+		(void)job;
+	}
+
+	check(failed == 0, "tiles: a tile callback job completes");
+	check(miscovered == 0,
+			toString("tiles: the tile callback sees every pixel exactly once (", miscovered,
+					" wrong)"));
+	check(retained == 0, "tiles: the tile callback is released before the completion");
 }
 
 // drawTiledAsync with a per-tile clear writes exactly what clearing the regions and then drawTiled
@@ -961,6 +1044,7 @@ void performRasterTests() {
 	checkSpanSplit();
 	checkTileGrid();
 	checkTiledAsync();
+	checkTileCallback();
 
 	for (auto &it : tables) { checkPremultiplied(*it); }
 

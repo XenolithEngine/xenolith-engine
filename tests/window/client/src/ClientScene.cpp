@@ -200,8 +200,11 @@ void ClientScene::handleEnter(Scene *scene) {
 void ClientScene::startAnimation() {
 	if (_square && !_animStarted) {
 		_animStarted = true;
+		/* 1.1, not more: remote-select lies above the square (ZOrder 2) at y 112..152 from the top, and
+		its white background is invisible over the white window. At 800x600 the square reaches it past a
+		scale of 1.16, and a larger pulse looked like a corner lost by the renderer. */
 		_square->runAction(Rc<RepeatForever>::create(Rc<Sequence>::create(
-				Rc<ScaleTo>::create(0.6f, 1.5f), Rc<ScaleTo>::create(0.6f, 1.0f), [this] {
+				Rc<ScaleTo>::create(0.6f, 1.1f), Rc<ScaleTo>::create(0.6f, 1.0f), [this] {
 			++_animTick;
 			//log::source().info("ClientScene", "animation tick ", _animTick);
 		})));

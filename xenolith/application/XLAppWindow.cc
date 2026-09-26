@@ -183,16 +183,15 @@ void AppWindow::end() {
 		_capabilities = _window->getInfo()->capabilities;
 	}
 
-	_application->performOnAppThread(
-			[this, engine = move(engine), sceneInfo = move(_sceneInfo)]() mutable {
+	_application->performOnAppThread([this, engine = move(engine)]() mutable {
 		_client = nullptr; // the Director (client endpoint) is being destroyed below
+		// Still set here: the application finds the window's records by its scene info.
 		_application->handleAppWindowDestroyed(this, sp::move(_director));
-		if (sceneInfo) {
+		if (auto sceneInfo = sp::move(_sceneInfo)) {
 			// Every teardown route (own close, parent cascade, WM dismiss) reaches here, so the
 			// opener's callback fires here.
 			sceneInfo->setChannel(nullptr);
 			sceneInfo->fireClose();
-			sceneInfo = nullptr;
 		}
 		_context->performOnThread([this, engine = move(engine)]() mutable {
 			if (_syncClose) {
@@ -503,6 +502,14 @@ void AppWindow::handleFrameReady(NotNull<core::PresentationFrame> frame) {
 void AppWindow::handleFramePresented(NotNull<core::PresentationFrame> frame) {
 	if (_window) {
 		_window->handleFramePresented(frame->getInfo());
+	}
+
+	if (_clientWantsPresented.load(sprt::memory_order_acquire)) {
+		_application->performOnAppThread([this, order = frame->getFrameOrder()] {
+			if (_client && _client->wantsFramePresented()) {
+				_client->handleFramePresented(order);
+			}
+		}, this);
 	}
 }
 
@@ -875,6 +882,7 @@ void AppWindow::setRenderClient(core::RenderClientChannel *c) {
 	// Publish after the base has stored the pointer, so a presentation-thread reader that sees the
 	// flag also sees everything the app thread wrote before it.
 	_clientIsRemote.store(c && c->isRemote(), sprt::memory_order_release);
+	_clientWantsPresented.store(c && c->wantsFramePresented(), sprt::memory_order_release);
 }
 
 void AppWindow::resetForRenderClientChange() {

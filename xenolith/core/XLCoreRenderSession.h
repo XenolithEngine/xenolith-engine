@@ -219,8 +219,10 @@ public:
 	// answer of a client that cannot take one (a remote client)
 	virtual void handleDropEvent(uint64_t windowId, DropEvent &&);
 
-	// Frame-lifecycle feedback for client-side pacing/stats (a frame finished presenting).
+	// Frame-lifecycle feedback for client-side pacing/stats (a frame finished presenting). A local
+	// window delivers it on the app thread, and only to a client that asks for it.
 	virtual void handleFramePresented(uint64_t frameOrder) = 0;
+	virtual bool wantsFramePresented() const { return false; }
 
 	/* The server will not draw the frame asked for with setReadyForNextFrame: the window is not
 	one this client may draw into. Only a remote server says so; a local window never declines. */

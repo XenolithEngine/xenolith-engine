@@ -96,7 +96,8 @@ Status HandleClass::suspend(HandleClass *cl, Handle *handle, uint8_t[Handle::Dat
 		cl->info->data->notifySuspendedAll();
 	}
 
-	return Status::Ok;
+	// Nothing was left in flight: the handle is suspended now, and no report follows
+	return Status::Done;
 }
 
 Status HandleClass::resume(HandleClass *cl, Handle *handle, uint8_t[Handle::DataSize]) {
