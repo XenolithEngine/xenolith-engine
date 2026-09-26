@@ -36,6 +36,14 @@ void Scheduler::unschedule(const void *ptr) {
 	} else {
 		_list.erase(ptr);
 	}
+	// A target scheduled during this update waits in `_tmp`, and its removal must reach it there.
+	for (auto it = _tmp.begin(); it != _tmp.end();) {
+		if (it->target == ptr) {
+			it = _tmp.erase(it);
+		} else {
+			++it;
+		}
+	}
 }
 
 void Scheduler::unscheduleAll() {
@@ -75,19 +83,36 @@ void Scheduler::update(const UpdateTime &time) {
 }
 
 bool Scheduler::isPaused(void *ptr) const {
+	for (auto &it : _tmp) {
+		if (it.target == ptr) {
+			return it.paused;
+		}
+	}
 	if (auto v = _list.find(ptr)) {
 		return v->paused;
 	}
 	return false;
 }
 
+/* A node that enters the scene during an update is scheduled paused and resumed right after, while
+its entry is still in `_tmp`; the state has to land there, or the node stays paused for good. */
 void Scheduler::resume(void *ptr) {
+	for (auto &it : _tmp) {
+		if (it.target == ptr) {
+			it.paused = false;
+		}
+	}
 	if (auto v = _list.find(ptr)) {
 		v->paused = false;
 	}
 }
 
 void Scheduler::pause(void *ptr) {
+	for (auto &it : _tmp) {
+		if (it.target == ptr) {
+			it.paused = true;
+		}
+	}
 	if (auto v = _list.find(ptr)) {
 		v->paused = true;
 	}

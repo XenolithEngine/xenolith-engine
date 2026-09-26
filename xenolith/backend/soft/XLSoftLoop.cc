@@ -352,6 +352,12 @@ bool Loop::updateMaterialSet(NotNull<core::MaterialSet> data,
 
 	auto owner = data->getOwner();
 	for (auto &it : updated) {
+		// A removed material is in the list only so the descriptors above are rewritten. It has no
+		// buffer to regenerate, and its images may be gone with the resource that revoked them.
+		if (data->getMaterialById(it->getId()) != it.get()) {
+			continue;
+		}
+
 		auto bufferData = owner->getMaterialData(it.get());
 		if (bufferData.empty()) {
 			continue;
