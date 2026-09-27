@@ -260,7 +260,8 @@ Node *ContextMenuSystem::findTarget(const Vec2 &worldLocation) const {
 			if (!comp || !comp->enabled) {
 				return true;
 			}
-			if (!rec.contains(worldLocation, comp->padding)) {
+			if (!rec.contains(worldLocation, comp->padding)
+					|| dispatcher->isOccluded(rec.node, worldLocation)) {
 				return true;
 			}
 			found = rec.node;

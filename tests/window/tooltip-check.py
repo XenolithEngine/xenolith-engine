@@ -271,6 +271,30 @@ try:
     st = app.state()
     check("removing the hint takes it down", st["visible"] is False)
     check("and the node stops being resolved to", st["hovered"] == "", st["hovered"])
+
+    # THE SIZE OF THE STOCK HINT IS MEASURED, not estimated from bytes. Cyrillic is two bytes a
+    # letter, so an estimate made a Russian hint twice as wide as its text; `@Locale:` was measured
+    # by the length of the key rather than the text it stands for.
+    print("the stock hint is as large as its text")
+    def measure(**kw):
+        return app.s.invoke("tooltip.measure", **kw)
+    latin = measure(text="Take the free space of the group")
+    cyr = measure(text="Занять свободное место в группе")
+    check("the size comes from the fonts, not from an estimate", latin.get("measured") is True,
+            latin)
+    check("a Cyrillic line is not twice as wide as a Latin one of the same length",
+            cyr["width"] < latin["width"] * 1.4, (cyr, latin))
+    key = measure(text="@Locale:Test:TipBrief", key="Test:TipBrief", define="Short")
+    short = measure(text="Short")
+    check("a `@Locale:` hint is as wide as its translation, not as its key",
+            key["width"] == short["width"], (key, short))
+    one = measure(text="Grow")
+    long = measure(text="flex-grow shares the free space along the main axis only: it gives a "
+                        "node no height in a row, and nothing at all inside a box sized by its "
+                        "content, which has no free space to share.")
+    check("a long hint stops at the widest a hint may be", long["width"] == 360, long)
+    check("... and wraps, growing by the lines it added", long["height"] > one["height"] * 2,
+            (long, one))
 finally:
     app.close()
 

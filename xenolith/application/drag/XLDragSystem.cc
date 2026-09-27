@@ -145,7 +145,7 @@ void DragSession::update(const Vec2 &world, InputModifier mods) {
 				return true;
 			}
 			// The padding is the target's own, so the registry hands over records, not answers
-			if (!rec.contains(world, comp->padding)) {
+			if (!rec.contains(world, comp->padding) || dispatcher->isOccluded(rec.node, world)) {
 				return true;
 			}
 

@@ -118,6 +118,25 @@ void performTableTests() {
 			"table.metastring-numeric");
 	checkEq(StringView("Test:Both"_locale.string<mem_std::String>()), "@Locale:Test:Both",
 			"table.locale-literal");
+
+	/* A table built at run time: the strings live in a buffer that is gone before the lookup, so a
+	manager that kept views instead of copies would read freed memory here. Its own keys, since the
+	tables are shared by every section after this one. */
+	auto defineFrom = [](StringView locale, StringView key, StringView value) {
+		mem_std::Vector<mem_std::String> storage{key.str<mem_std::Interface>(),
+			value.str<mem_std::Interface>()};
+		mem_std::Vector<Pair<StringView, StringView>> pairs{
+			pair(StringView(storage[0]), StringView(storage[1]))};
+		defineStrings(locale, pairs);
+	};
+	defineFrom("ru-ru", "Test:Runtime", "первое");
+	defineFrom("ru-ru", "Test:Runtime", "из файла");
+	setLocale("ru-ru");
+	checkEq(lookup("Test:Runtime"), "из файла", "table.runtime-define-replaces");
+	setLocale("en-us");
+	checkEq(lookup("Test:Runtime"), "", "table.runtime-define-stays-in-its-locale");
+	defineFrom("en-us", "Test:Runtime", "from a file");
+	checkEq(lookup("Test:Runtime"), "from a file", "table.runtime-define");
 }
 
 void performFallbackTests() {

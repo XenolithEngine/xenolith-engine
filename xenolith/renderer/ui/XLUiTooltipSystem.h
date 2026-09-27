@@ -251,8 +251,10 @@ public:
 	static Rc<basic2d::SceneLayout2d> buildDefaultTooltip(NotNull<SubWindow>,
 			const TooltipRequest &);
 
-	// What the stock hint needs for `text`, clamped into the config's extents.
-	static Extent2 measureDefaultTooltip(StringView text, const TooltipConfig &);
+	// What the stock hint needs for `text`, clamped into the config's extents. With a controller the
+	// resolved text is measured and wraps at `maxExtent.width`; without one the width is estimated.
+	static Extent2 measureDefaultTooltip(StringView text, const TooltipConfig &,
+			font::FontController * = nullptr, float density = 1.0f);
 
 	virtual ~TooltipSystem() = default;
 

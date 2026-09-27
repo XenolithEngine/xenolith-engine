@@ -487,6 +487,8 @@ try:
           0.0 <= zc["x"] and 0.0 <= zc["y"]
           and zc["x"] + zc["width"] <= v["width"] + 1e-3
           and zc["y"] + zc["height"] <= v["height"] + 1e-3, (zc, v))
+    check("... hung in the TOP-LEFT corner, a margin in from both edges",
+          near(zc["x"], 8.0, 1e-3) and near(zc["y"] + zc["height"], v["height"] - 8.0, 1e-3), (zc, v))
     check("... the readout says the zoom, as a percentage", zc["value"] == "100%", zc["value"])
 
     # A REAL press at the button's own centre, which is the half of this that the callback cannot
@@ -527,7 +529,7 @@ try:
           (by_wheel, by_button))
 
     # ---- and the three that FRAME ---------------------------------------------------------------
-    print("\n-- fit by width, by height, and back to 1:1 --")
+    print("\n-- fit by width and by height, and the menu --")
 
     """WHAT AN AXIS MEANS, MEASURED. The markers are wider than they are tall in a surface that is
     wider than it is tall, so fitting by width and fitting by height are different numbers - which is
@@ -565,32 +567,78 @@ try:
           and near(both_centre[1], tall_centre[1], 0.5),
           (both_centre, wide_centre, tall_centre))
 
-    # AND NOW THE BUTTONS, pressed for real at the centres the stand reports. What they have to prove
-    # is that they are reachable and that they run the widget's own framing - so the view is put
-    # somewhere they must move it away from first.
+    # AND NOW THE MENU, opened and pressed for real at the centres the stand reports. What the rows
+    # have to prove is that they are reachable and that they run the widget's own framing - so the
+    # view is put somewhere they must move it away from first.
     framed = s.invoke("canvas.fit", settle=0.0)["viewport"]["zoom"]
     step()
-    for name in ("fitWidth", "fitHeight"):
+
+    def open_menu():
+        zc = state()["zoomControl"]
+        s.ok("input", native=True, events=click_events(zc["menuButton"]["x"], zc["menuButton"]["y"]))
+        step()
+        step()
+        return state()["zoomControl"]
+
+    set_view(0.0, 0.0, 1.0)
+    step()
+    zc = open_menu()
+    check("a click on the percentage opens the menu", zc["menuOpen"] is True, zc)
+    rows = zc.get("menu", {})
+    check("... which offers the presets and both fits",
+          all(n in rows for n in ("zoom-25", "zoom-50", "zoom-100", "zoom-200", "zoom-400",
+                                  "fit-width", "fit-height")), sorted(rows))
+
+    s.ok("input", native=True, events=click_events(rows["zoom-200"]["x"], rows["zoom-200"]["y"]))
+    step()
+    step()
+    zc = state()["zoomControl"]
+    check("a preset row sets its zoom", near(state()["viewport"]["zoom"], 2.0, 1e-4),
+          state()["viewport"]["zoom"])
+    check("... closes the menu, and the readout follows",
+          zc["menuOpen"] is False and zc["value"] == "200%", zc)
+
+    for name in ("fit-width", "fit-height"):
         set_view(0.0, 0.0, 2.0)
         step()
-        zc = state()["zoomControl"]
-        s.ok("input", native=True, events=click_events(zc[name]["x"], zc[name]["y"]))
+        rows = open_menu().get("menu", {})
+        s.ok("input", native=True, events=click_events(rows[name]["x"], rows[name]["y"]))
         step()
-        check(f"a click on {name} frames, and by the widget's own arithmetic",
+        step()
+        check(f"the {name} row frames, and by the widget's own arithmetic",
               near(state()["viewport"]["zoom"], framed, 1e-4),
               (name, state()["viewport"]["zoom"], framed))
 
-    zc = state()["zoomControl"]
-    s.ok("input", native=True, events=click_events(zc["reset"]["x"], zc["reset"]["y"]))
+    set_view(0.0, 0.0, 1.0)
     step()
-    check("1:1 is exactly one", near(state()["viewport"]["zoom"], 1.0, 1e-4),
-          state()["viewport"]["zoom"])
-    check("... and it did not move the centre either",
-          near(both_centre[0], world_centre()[0], 0.5)
-          and near(both_centre[1], world_centre()[1], 0.5), (both_centre, world_centre()))
-    check("... and the readout says so", state()["zoomControl"]["value"] == "100%",
-          state()["zoomControl"]["value"])
     agree(state(), "... and the markers are still where the math puts them")
+
+    # ---- the caller's items and the caller's say --------------------------------------------------
+    before = state()["zoomControl"]
+    grown = s.invoke("canvas.zoom-item", width=40.0, settle=0.0)
+    step()
+    zc = state()["zoomControl"]
+    check("an item of the caller's widens the control by itself and a gap",
+          near(zc["width"], before["width"] + 48.0, 1e-3), (before["width"], zc["width"]))
+    check("... and sits inside it, after +",
+          zc["plus"]["x"] < zc["item"]["x"] < zc["x"] + zc["width"], zc)
+    check("... while the control keeps its corner", near(zc["x"], before["x"], 1e-3)
+          and near(zc["y"] + zc["height"], before["y"] + before["height"], 1e-3), (before, zc))
+    s.invoke("canvas.zoom-item", clear=True, settle=0.0)
+    step()
+    check("... and clearing takes it away again",
+          near(state()["zoomControl"]["width"], before["width"], 1e-3), state()["zoomControl"])
+
+    s.invoke("canvas.zoom-intercept", on=True, settle=0.0)
+    zc = state()["zoomControl"]
+    s.ok("input", native=True, events=click_events(zc["plus"]["x"], zc["plus"]["y"]))
+    step()
+    got = s.invoke("canvas.zoom-intercept", on=False, settle=0.0)
+    check("a caller that takes a press over gets it, and the zoom stays",
+          got["intercepted"] == 1 and got["lastAction"] == 0
+          and near(state()["viewport"]["zoom"], 1.0, 1e-4), (got.get("intercepted"),
+                                                             got.get("lastAction"),
+                                                             state()["viewport"]["zoom"]))
 
     st = s.invoke("canvas.zoom-control", enabled=False, settle=0.0)
     step()

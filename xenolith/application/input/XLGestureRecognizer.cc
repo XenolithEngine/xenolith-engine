@@ -1028,6 +1028,12 @@ InputEventState GestureMouseOverRecognizer::updateMouseOver(const InputEvent &ev
 
 	// No owner is the same answer as an owner the pointer is nowhere near
 	auto v = tar ? tar->isTouched(event.currentLocation, _info.padding) : false;
+	if (v) {
+		// a pointer over something drawn on top of the owner is not over the owner
+		auto director = tar->getDirector();
+		auto dispatcher = director ? director->getInputDispatcher() : nullptr;
+		v = !dispatcher || !dispatcher->isOccluded(tar, event.currentLocation);
+	}
 	if (_hasMouseOver == v) {
 		return InputEventState::Processed;
 	}

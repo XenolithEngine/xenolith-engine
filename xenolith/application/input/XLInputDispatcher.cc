@@ -289,6 +289,32 @@ HitTestFlags InputDispatcher::getHitTestMask() const {
 	return _events ? _events->getHitTestMask() : HitTestFlags::None;
 }
 
+bool InputDispatcher::isOccluded(const Node *node, const Vec2 &world) const {
+	if (!_events || !node
+			|| (_events->getHitTestMask() & HitTestFlags::Occluder) == HitTestFlags::None) {
+		return false;
+	}
+
+	bool occluded = false;
+	_events->foreachHitTest(node->getHitTestFlags() | HitTestFlags::Occluder,
+			[&](const InputListenerStorage::HitTestRec &rec) {
+		if (rec.node == node) {
+			return false; // the node itself is reached first: it is drawn above
+		}
+		if ((rec.flags & HitTestFlags::Occluder) == HitTestFlags::None || !rec.contains(world)) {
+			return true;
+		}
+		for (auto p = node->getParent(); p; p = p->getParent()) {
+			if (p == rec.node) {
+				return false; // inside the occluder
+			}
+		}
+		occluded = true;
+		return false;
+	});
+	return occluded;
+}
+
 SpanView<Rc<Node>> InputDispatcher::getSelectionChain() const {
 	return _events ? _events->getSelectionChain() : SpanView<Rc<Node>>();
 }

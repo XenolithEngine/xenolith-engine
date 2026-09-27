@@ -30,6 +30,7 @@
 #include "XLAppThread.h"
 #include "XLAppWindow.h"
 #include "XLDirector.h"
+#include "XLFontController.h"
 #include "XLScene.h"
 
 #include <cmath>
@@ -94,7 +95,12 @@ void SubWindowSession::showTip(StringView text, Vec2 anchorSceneYUp, float scene
 	// The stock hint's look and metrics live in TooltipSystem; this overload only supplies the
 	// placement.
 	const TooltipConfig tipConfig;
-	const auto size = TooltipSystem::measureDefaultTooltip(text, tipConfig);
+	auto owner = getOwner();
+	auto director = owner ? owner->getDirector() : nullptr;
+	auto app = director ? director->getApplication() : nullptr;
+	const auto size = TooltipSystem::measureDefaultTooltip(text, tipConfig,
+			app ? app->getExtension<font::FontController>() : nullptr,
+			owner ? owner->getInputDensity() : 1.0f);
 
 	SubWindow::Config config;
 	config.placement = makeTipPlacement(anchorSceneYUp, sceneHeight);

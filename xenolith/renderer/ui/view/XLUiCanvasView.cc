@@ -23,6 +23,8 @@
 #include "XLUiCanvasView.h"
 
 #include "XL2dLabel.h"
+#include "XLUiMenuPopup.h"
+#include "XLUiMenuSource.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -35,12 +37,17 @@ constexpr float ZoomControlPadding = 3.0f;
 constexpr float ZoomControlGap = 2.0f;
 constexpr uint16_t ZoomFontSize = 14;
 
-// The wider gap between the zoom step buttons and the framing buttons.
+// The wider gap between "+" and the caller's items.
 constexpr float ZoomControlGroupGap = 8.0f;
 
-// The glyph inside a framing button, and the colour of the control's marks.
+// The percentage button: room for "400%" and the arrow after it.
+constexpr float ZoomValueWidth = 76.0f;
+
+// The arrow glyph, and the colour of the control's marks.
 constexpr float ZoomIconSize = 18.0f;
 constexpr Color4F ZoomControlInk = Color4F(0.94f, 0.94f, 0.96f, 1.0f);
+
+constexpr float DefaultZoomPresets[] = {0.25f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f, 4.0f};
 
 // Above the world and anything the caller puts in it.
 constexpr ZOrder ZoomControlZOrder = ZOrder(1'000);
@@ -58,6 +65,7 @@ bool CanvasView::init(const sprt::geom::ZoomLimits &limits) {
 	}
 
 	_limits = limits;
+	_zoomPresets = Vector<float>(std::begin(DefaultZoomPresets), std::end(DefaultZoomPresets));
 
 	// The world's anchor stays (0,0): conversions here assume `screen = world * zoom + offset`.
 	_world = addChild(Rc<Node>::create());
@@ -152,14 +160,7 @@ void CanvasView::fit(const sprt::geom::Bounds &bounds, const sprt::geom::FitConf
 	updateZoomControl();
 }
 
-void CanvasView::setFitBounds(Function<sprt::geom::Bounds()> &&fn) {
-	_fitBounds = sp::move(fn);
-
-	if (_fitWidth) {
-		_fitWidth->setEnabled(!!_fitBounds);
-		_fitHeight->setEnabled(!!_fitBounds);
-	}
-}
+void CanvasView::setFitBounds(Function<sprt::geom::Bounds()> &&fn) { _fitBounds = sp::move(fn); }
 
 void CanvasView::fit(sprt::geom::FitAxis axis) {
 	if (!_fitBounds) {
@@ -195,9 +196,7 @@ void CanvasView::attachGestures(InputListener *listener) {
 	listener->addSwipeRecognizer(
 			[this](const GestureSwipe &swipe) {
 		if (swipe.event == GestureEvent::Activated) {
-			// The delta is in scene units; divide by the world scale to move in this node's space.
-			_world->setPosition(_world->getPosition().xy()
-					+ Vec2(swipe.delta.x / _surfaceScale.x, swipe.delta.y / _surfaceScale.y));
+			panBy(swipe.delta);
 		}
 		return true;
 	},
@@ -214,6 +213,18 @@ void CanvasView::attachGestures(InputListener *listener) {
 	});
 }
 
+void CanvasView::panBy(const Vec2 &sceneDelta) {
+	// The delta is in scene units; divide by the world scale to move in this node's space.
+	_world->setPosition(_world->getPosition().xy()
+			+ Vec2(sceneDelta.x / _surfaceScale.x, sceneDelta.y / _surfaceScale.y));
+}
+
+void CanvasView::handleExit() {
+	// The menu's close callback points here.
+	closeZoomMenu();
+	Node::handleExit();
+}
+
 /* The control is built and laid out by hand, without a LayoutSystem. It paints itself because
 a canvas may have no stylesheet (an unstyled ui::Panel is opaque white); the `canvas-zoom` type
 is registered so a sheet can override it. */
@@ -223,10 +234,12 @@ void CanvasView::setZoomControlEnabled(bool value) {
 	}
 
 	if (!value) {
+		closeZoomMenu();
 		_zoomControl->removeFromParent(true);
 		_zoomControl = nullptr;
-		_zoomOut = _zoomIn = _fitWidth = _fitHeight = _zoomReset = nullptr;
-		_zoomLabel = nullptr;
+		_zoomOut = _zoomIn = _zoomValue = nullptr;
+		_zoomArrow = nullptr;
+		_zoomItems.clear();
 		_zoomShown = -1;
 		return;
 	}
@@ -240,35 +253,32 @@ void CanvasView::setZoomControlEnabled(bool value) {
 	_zoomControl->setPathColor(Color4B(0x26, 0x26, 0x2E, 0xD8), true);
 	_zoomControl->setBorderRadius(4.0f);
 	_zoomControl->setAnchorPoint(Vec2(0.0f, 0.0f));
-	_zoomControl->setContentSize(ZoomControlSize);
 
 	// One step each way, the same step as the wheel.
-	_zoomOut = _zoomControl->addChild(
-			Rc<Button>::create(StringView("-"), [this] { zoomBy(1.0f / ZoomStepRatio); }));
+	_zoomOut = _zoomControl->addChild(Rc<Button>::create(StringView("-"),
+			[this] { performZoomAction(CanvasZoomRequest{CanvasZoomAction::StepOut}); }));
 	_zoomOut->setName("canvas-zoom-out");
-	_zoomIn = _zoomControl->addChild(
-			Rc<Button>::create(StringView("+"), [this] { zoomBy(ZoomStepRatio); }));
+	_zoomIn = _zoomControl->addChild(Rc<Button>::create(StringView("+"),
+			[this] { performZoomAction(CanvasZoomRequest{CanvasZoomAction::StepIn}); }));
 	_zoomIn->setName("canvas-zoom-in");
 
-	// Fit buttons go through `fit(FitAxis)` and are enabled by `setFitBounds`; "1:1" needs no
-	// bounds and is always available.
-	_fitWidth =
-			_zoomControl->addChild(Rc<Button>::create([this] { fit(sprt::geom::FitAxis::Width); }));
-	_fitWidth->setName("canvas-zoom-fit-width");
-	_fitWidth->setIcon(IconName::Action_swap_horiz_solid);
-	_fitWidth->setEnabled(!!_fitBounds);
+	// The readout is the menu's button: presets and the fits drop out of it.
+	_zoomValue = _zoomControl->addChild(Rc<Button>::create([this] {
+		if (isZoomMenuOpen()) {
+			closeZoomMenu();
+		} else {
+			openZoomMenu();
+		}
+	}));
+	_zoomValue->setName("canvas-zoom-value");
+	_zoomArrow = _zoomValue->addChild(Rc<basic2d::IconSprite>::create(), ZOrder(2));
+	_zoomArrow->setName("canvas-zoom-arrow");
+	_zoomArrow->setIconName(IconName::Navigation_arrow_drop_down_solid);
+	_zoomArrow->setContentSize(Size2(ZoomIconSize, ZoomIconSize));
+	_zoomArrow->setAnchorPoint(Anchor::MiddleRight);
+	_zoomArrow->setColor(ZoomControlInk);
 
-	_fitHeight = _zoomControl->addChild(
-			Rc<Button>::create([this] { fit(sprt::geom::FitAxis::Height); }));
-	_fitHeight->setName("canvas-zoom-fit-height");
-	_fitHeight->setIcon(IconName::Action_swap_vert_solid);
-	_fitHeight->setEnabled(!!_fitBounds);
-
-	_zoomReset =
-			_zoomControl->addChild(Rc<Button>::create(StringView("1:1"), [this] { resetZoom(); }));
-	_zoomReset->setName("canvas-zoom-reset");
-
-	for (auto *b : {_zoomOut, _zoomIn, _fitWidth, _fitHeight, _zoomReset}) {
+	for (auto *b : {_zoomOut, _zoomIn, _zoomValue}) {
 		b->setType("button");
 		b->addStyleClass("canvas-zoom-button");
 		b->setPathColor(Color4B(0x3A, 0x3A, 0x46, 0xFF), true);
@@ -277,19 +287,7 @@ void CanvasView::setZoomControlEnabled(bool value) {
 		if (auto label = b->getLabel()) {
 			label->setFontSize(ZoomFontSize);
 		}
-		if (auto glyph = b->getIconSprite()) {
-			glyph->setContentSize(Size2(ZoomIconSize, ZoomIconSize));
-			glyph->setColor(ZoomControlInk);
-		}
 	}
-
-	_zoomLabel = _zoomControl->addChild(Rc<basic2d::Label>::create());
-	_zoomLabel->setName("canvas-zoom-value");
-	_zoomLabel->setType("label");
-	_zoomLabel->addStyleClass("canvas-zoom-value");
-	_zoomLabel->setAlignment(basic2d::Label::TextAlign::Center);
-	_zoomLabel->setFontSize(ZoomFontSize);
-	_zoomLabel->setColor(Color4F(0.94f, 0.94f, 0.96f, 1.0f));
 
 	layoutZoomControl();
 	updateZoomControl();
@@ -306,7 +304,12 @@ void CanvasView::layoutZoomControl() {
 		return;
 	}
 
-	const auto size = _zoomControl->getContentSize();
+	float width = ZoomControlPadding * 2.0f + ZoomButtonSize * 2.0f + ZoomValueWidth
+			+ ZoomControlGap * 2.0f;
+	for (auto &it : _zoomItems) { width += ZoomControlGroupGap + it.width; }
+
+	const Size2 size(width, ZoomControlHeight);
+	_zoomControl->setContentSize(size);
 
 	// The corner is an anchor of this node's box and the margin runs inward from it.
 	_zoomControl->setPosition(Vec2((_contentSize.width - size.width) * _zoomCorner.x
@@ -317,36 +320,25 @@ void CanvasView::layoutZoomControl() {
 	const float inner = size.height - ZoomControlPadding * 2.0f;
 	const float mid = size.height * 0.5f;
 
-	// The readout gets the remaining width as a fixed size, so digit count changes do not move
-	// the buttons.
-	const float labelWidth = size.width - ZoomControlPadding * 2.0f - ZoomButtonSize * 5.0f
-			- ZoomControlGap * 4.0f - ZoomControlGroupGap;
-
 	// Placed left to right with one cursor.
 	float x = ZoomControlPadding;
-	auto place = [&](Node *node, float width, float gapAfter) {
+	auto place = [&](Node *node, float w, float gapAfter) {
 		node->setAnchorPoint(Vec2(0.0f, 0.5f));
-		node->setContentSize(Size2(width, inner));
+		node->setContentSize(Size2(w, inner));
 		node->setPosition(Vec2(x, mid));
-		x += width + gapAfter;
+		x += w + gapAfter;
 	};
 
 	place(_zoomOut, ZoomButtonSize, ZoomControlGap);
-
-	// The label sizes its own height from the text, so it is placed rather than sized.
-	_zoomLabel->setAnchorPoint(Vec2(0.0f, 0.5f));
-	_zoomLabel->setWidth(labelWidth);
-	_zoomLabel->setPosition(Vec2(x, mid));
-	x += labelWidth + ZoomControlGap;
-
+	place(_zoomValue, ZoomValueWidth, ZoomControlGap);
 	place(_zoomIn, ZoomButtonSize, ZoomControlGroupGap);
-	place(_fitWidth, ZoomButtonSize, ZoomControlGap);
-	place(_fitHeight, ZoomButtonSize, ZoomControlGap);
-	place(_zoomReset, ZoomButtonSize, ZoomControlPadding);
+	for (auto &it : _zoomItems) { place(it.node, it.width, ZoomControlGroupGap); }
+
+	_zoomArrow->setPosition(Vec2(ZoomValueWidth - 2.0f, inner * 0.5f));
 }
 
 void CanvasView::updateZoomControl() {
-	if (!_zoomLabel) {
+	if (!_zoomValue) {
 		return;
 	}
 
@@ -356,7 +348,8 @@ void CanvasView::updateZoomControl() {
 		return;
 	}
 	_zoomShown = percent;
-	_zoomLabel->setString(toString(percent, "%"));
+	// Nudged left of centre: the arrow takes the right end of the button.
+	_zoomValue->setString(toString(percent, "%    "));
 }
 
 void CanvasView::setClipped(bool value) {
@@ -371,6 +364,101 @@ void CanvasView::setClipped(bool value) {
 	} else if (_scissor) {
 		_scissor->disableScissor();
 	}
+}
+
+void CanvasView::setZoomPresets(SpanView<float> presets) { _zoomPresets = presets.vec<Interface>(); }
+
+void CanvasView::setZoomActionCallback(Function<bool(const CanvasZoomRequest &)> &&cb) {
+	_zoomAction = sp::move(cb);
+}
+
+void CanvasView::performZoomAction(const CanvasZoomRequest &req) {
+	if (_zoomAction && _zoomAction(req)) {
+		return;
+	}
+	switch (req.action) {
+	case CanvasZoomAction::StepIn: zoomBy(ZoomStepRatio); break;
+	case CanvasZoomAction::StepOut: zoomBy(1.0f / ZoomStepRatio); break;
+	case CanvasZoomAction::Preset: setZoom(req.zoom); break;
+	case CanvasZoomAction::FitWidth: fit(sprt::geom::FitAxis::Width); break;
+	case CanvasZoomAction::FitHeight: fit(sprt::geom::FitAxis::Height); break;
+	}
+}
+
+void CanvasView::setZoomMenuTitles(StringView fitWidth, StringView fitHeight) {
+	_fitWidthTitle = fitWidth.str<Interface>();
+	_fitHeightTitle = fitHeight.str<Interface>();
+}
+
+void CanvasView::setZoomMenuPreferNative(bool value) { _zoomMenuNative = value; }
+
+bool CanvasView::openZoomMenu() {
+	if (!_zoomValue || _zoomMenu) {
+		return false;
+	}
+	auto window = getSubWindowParent(this);
+	if (!window) {
+		return false;
+	}
+
+	auto source = Rc<MenuSource>::create();
+	const auto current = int32_t(sprt::lroundf(_world->getScale().x * 100.0f));
+	for (auto zoom : _zoomPresets) {
+		const auto percent = int32_t(sprt::lroundf(zoom * 100.0f));
+		const auto name = toString("zoom-", percent);
+		auto item = source->addButton(name, toString(percent, "%"),
+				[this, zoom](NotNull<MenuSourceButton>) {
+			performZoomAction(CanvasZoomRequest{CanvasZoomAction::Preset, zoom});
+		});
+		if (item) {
+			item->setChecked(percent == current);
+		}
+	}
+	source->addSeparator();
+	if (auto item = source->addButton(StringView("fit-width"), _fitWidthTitle,
+				IconName::Action_swap_horiz_solid, [this](NotNull<MenuSourceButton>) {
+		performZoomAction(CanvasZoomRequest{CanvasZoomAction::FitWidth});
+	})) {
+		item->setEnabled(!!_fitBounds);
+	}
+	if (auto item = source->addButton(StringView("fit-height"), _fitHeightTitle,
+				IconName::Action_swap_vert_solid, [this](NotNull<MenuSourceButton>) {
+		performZoomAction(CanvasZoomRequest{CanvasZoomAction::FitHeight});
+	})) {
+		item->setEnabled(!!_fitBounds);
+	}
+
+	MenuConfig config;
+	config.idPrefix = String("canvas-zoom-menu");
+	config.preferNative = _zoomMenuNative;
+	config.style.minWidth = ZoomValueWidth;
+	config.onClose = [this] { _zoomMenu = nullptr; };
+
+	_zoomMenu = openMenuForNode(window, _zoomValue, source, sp::move(config), MenuSide::Below);
+	return _zoomMenu != nullptr;
+}
+
+void CanvasView::closeZoomMenu() {
+	if (auto menu = sp::move(_zoomMenu)) {
+		_zoomMenu = nullptr;
+		menu->dismiss();
+	}
+}
+
+Node *CanvasView::addZoomControlItem(Rc<Node> &&node, float width) {
+	if (!_zoomControl || !node) {
+		return nullptr;
+	}
+	auto ret = _zoomControl->addChild(sp::move(node));
+	_zoomItems.emplace_back(ZoomItem{ret, width});
+	layoutZoomControl();
+	return ret;
+}
+
+void CanvasView::clearZoomControlItems() {
+	for (auto &it : _zoomItems) { it.node->removeFromParent(true); }
+	_zoomItems.clear();
+	layoutZoomControl();
 }
 
 } // namespace stappler::xenolith::ui

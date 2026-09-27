@@ -180,7 +180,8 @@ struct Tesselator::Data : ObjectAllocator {
 	HalfEdge *removeEdge(HalfEdge *);
 
 	HalfEdge *removeDegenerateEdges(HalfEdge *, uint32_t *nedges, bool safeRemove);
-	bool removeDegenerateEdges(FaceEdge *, size_t &removed);
+	// `head` is the ring's entry in `_boundaries`; it is moved off an edge the pass unlinks.
+	bool removeDegenerateEdges(FaceEdge *&head, size_t &removed);
 
 	bool processEdgeOverlap(Vertex *v, HalfEdge *e1, HalfEdge *e2);
 
@@ -2980,7 +2981,8 @@ bool Tesselator::Data::isDegenerateTriangle(HalfEdge *e) {
 	return false;
 }
 
-bool Tesselator::Data::removeDegenerateEdges(FaceEdge *e, size_t &removed) {
+bool Tesselator::Data::removeDegenerateEdges(FaceEdge *&head, size_t &removed) {
+	auto e = head;
 	if (e->_next->_next == e) {
 		return true;
 	}
@@ -3019,6 +3021,9 @@ bool Tesselator::Data::removeDegenerateEdges(FaceEdge *e, size_t &removed) {
 		e = eLnext;
 	} while (e != eEnd);
 
+	// Every walk of the ring starts at `head` and stops on returning to it, so it has to be an edge
+	// that is still in the ring.
+	head = eEnd;
 	return true;
 }
 

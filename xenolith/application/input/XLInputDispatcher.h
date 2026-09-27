@@ -176,6 +176,10 @@ public:
 	// first frame)
 	HitTestFlags getHitTestMask() const;
 
+	/* Whether an Occluder drawn above `node` covers `world` in the committed frame. A node inside
+	the occluder's subtree is not covered by it. False when no occluder registered. */
+	bool isOccluded(const Node *node, const Vec2 &world) const;
+
 	/* The selection chain of the committed frame, deepest first. Asked here rather than of
 	SelectionSystem, whose live selection may have moved since. Empty before the first frame. */
 	SpanView<Rc<Node>> getSelectionChain() const;

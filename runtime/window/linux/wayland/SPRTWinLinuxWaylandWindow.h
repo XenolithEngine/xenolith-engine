@@ -273,6 +273,8 @@ protected:
 	bool _pointerInit = false;
 	bool _serverSideCursors = false;
 	bool _mapped = false;
+	// Set by unmapWindow, which only the controller's teardown calls; the window is gone from it.
+	bool _retired = false;
 	bool _toplevelDirty = false;
 
 	Set<WaylandOutput *> _activeOutputs;

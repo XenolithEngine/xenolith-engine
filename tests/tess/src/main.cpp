@@ -604,6 +604,106 @@ static int doWiresPerPath(uint32_t count, bool bypass) {
 	return 0;
 }
 
+struct RectStroke {
+	bool prepared = false;
+	uint32_t vertexes = 0;
+	uint32_t triangles = 0;
+};
+
+// A rectangle's outline tessellated as the vector canvas does it: centred on its own box, an
+// antialiased boundary on both sides, the default relocation rule.
+static RectStroke tessRectStroke(float x0, float y0, float x1, float y1, float width, float dash,
+		float gap, float quality) {
+	auto pool = memory::pool::create(memory::pool::acquire());
+	uint32_t vertexes = 0, triangles = 0;
+	bool prepared = false;
+	memory::perform([&] {
+		auto tess = Rc<geom::Tesselator>::create(pool);
+
+		const float ox = (x0 + x1) * 0.5f;
+		const float oy = (y0 + y1) * 0.5f;
+		do {
+			const float dashes[] = {dash, gap};
+			geom::StrokeConfig cfg;
+			cfg.lineWidth = width;
+			if (dash > 0.0f) {
+				cfg.dashArray = SpanView<float>(dashes, 2);
+			}
+			geom::LineDrawer line(quality, nullptr, Rc<geom::Tesselator>(tess), nullptr, cfg);
+			line.drawBegin(x0 - ox, y0 - oy);
+			line.drawLine(x1 - ox, y0 - oy);
+			line.drawLine(x1 - ox, y1 - oy);
+			line.drawLine(x0 - ox, y1 - oy);
+			line.drawClose(true);
+			line.drawClose(false);
+		} while (0);
+
+		tess->setBoundariesTransform(0.5f, 0.5f);
+		tess->setRelocateRule(geom::Tesselator::RelocateRule::Auto);
+		tess->setContentScale(1.0f);
+		tess->setWindingRule(geom::Winding::NonZero);
+
+		struct Sink {
+			uint32_t vertexes = 0;
+			uint32_t triangles = 0;
+			static void v(void *t, uint32_t, const Vec2 &, float, const Vec2 &) {
+				++reinterpret_cast<Sink *>(t)->vertexes;
+			}
+			static void t3(void *t, uint32_t[3]) { ++reinterpret_cast<Sink *>(t)->triangles; }
+		};
+
+		Sink sink;
+		geom::TessResult res;
+		res.target = &sink;
+		res.pushVertex = &Sink::v;
+		res.pushTriangle = &Sink::t3;
+
+		prepared = tess->prepare(res);
+		if (prepared) {
+			tess->write(res);
+		}
+		vertexes = sink.vertexes;
+		triangles = sink.triangles;
+	}, pool);
+	memory::pool::destroy(pool);
+
+	return RectStroke{prepared, vertexes, triangles};
+}
+
+static int doRectStroke(float x0, float y0, float x1, float y1, float width, float dash,
+		float gap, float quality) {
+	auto r = tessRectStroke(x0, y0, x1, y1, width, dash, gap, quality);
+	sprt::cout << "rect " << x0 << "," << y0 << " " << x1 << "," << y1 << " w=" << width
+			   << " dash=" << dash << "/" << gap << " q=" << quality << ": prepared "
+			   << r.prepared << ", vertexes " << r.vertexes << ", triangles " << r.triangles
+			   << "\n";
+	return r.prepared ? 0 : 1;
+}
+
+/* Dashed outlines of editor-sized boxes over a sweep of heights. The dash ends fall on the
+corners at some of them, and a boundary ring whose entry edge was a zero-length segment there used
+to be walked from an edge no longer in it - forever. A hang here is the failure. */
+static int doStrokes() {
+	uint32_t runs = 0, failed = 0;
+	for (auto quality : {0.75f, 1.0f, 2.0f}) {
+		for (float h = 8.0f; h <= 64.0f; h += 0.25f) {
+			for (auto width : {576.0f, 240.0f, 37.5f}) {
+				auto r = tessRectStroke(12.0f, 344.5f, 12.0f + width, 344.5f + h, 1.0f, 4.0f,
+						3.0f, quality);
+				++runs;
+				if (!r.prepared || r.triangles == 0) {
+					++failed;
+					sprt::cout << "  FAIL w=" << width << " h=" << h << " q=" << quality
+							   << ": prepared " << r.prepared << ", triangles " << r.triangles
+							   << "\n";
+				}
+			}
+		}
+	}
+	sprt::cout << "strokes: " << runs << " outlines, " << failed << " failed\n";
+	return failed == 0 ? 0 : 1;
+}
+
 static int doWires(uint32_t count) {
 	if (count == 0) {
 		count = 400;
@@ -763,6 +863,14 @@ static int run(int argc, const char *argv[]) {
 			return doWiresPerPath(count, !noBypass);
 		}
 		return doWires(count);
+	} else if (cmd == "strokes") {
+		return doStrokes();
+	} else if (cmd == "rect") {
+		float v[8] = {12.0f, 344.5f, 588.0f, 372.0f, 1.0f, 4.0f, 3.0f, 0.75f};
+		for (int i = 2, n = 0; i < argc && n < 8; ++i, ++n) {
+			v[n] = float(StringView(argv[i]).readFloat().get(v[n]));
+		}
+		return doRectStroke(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]);
 	} else if (cmd == "reference") {
 		return doReference(icon);
 	} else if (cmd == "raster-golden") {
@@ -781,7 +889,8 @@ static int run(int argc, const char *argv[]) {
 
 	sprt::cout << "tesstest bench | golden [--write] | raster-golden [--write] | one <icon> [--aa]"
 				  " | raster [<icon>] [--aa]\n"
-				  "         | reference <material-design-icons>/png | wires [count]\n";
+				  "         | reference <material-design-icons>/png | wires [count]\n"
+				  "         | strokes | rect [x0 y0 x1 y1 width dash gap quality]\n";
 	return 1;
 }
 

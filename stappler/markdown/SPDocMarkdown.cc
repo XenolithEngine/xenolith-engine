@@ -130,6 +130,13 @@ bool DocumentMarkdown::read(BytesView data, StringView ct) {
 		mmd::DocumentProcessor p;
 		p.init(this, _data);
 		p.process(c, s, t);
+
+		// The metadata block is left out of the rendered tree, so this is its only way out. MMD
+		// has lowercased the keys; both halves are copied out of the engine's pool.
+		for (auto &it : c.getMetaDict()) {
+			_data->meta.emplace(StringView(it.first).pdup(_data->pool),
+					StringView(it.second).pdup(_data->pool));
+		}
 	});
 
 	_data->type = ct.empty() ? StringView("text/markdown") : ct.pdup(_data->pool);

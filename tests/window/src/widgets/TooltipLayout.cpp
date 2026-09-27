@@ -22,6 +22,10 @@
 
 #include "widgets/TooltipLayout.h"
 #include "XL2dLayer.h"
+#include "XLDirector.h"
+#include "XLAppThread.h"
+#include "XLFontController.h"
+#include "XLFontLocale.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
@@ -182,6 +186,27 @@ void TooltipLayout::registerCommands() {
 			ui::removeTooltip(node);
 		}
 		return encodeState();
+	});
+
+	addCommand("measure",
+			"The stock hint's size for {text}; {define} first puts it in en-us under {key}",
+			[this](Value &&args) {
+		if (args.isString("define")) {
+			const auto key = args.getString("key");
+			const auto value = args.getString("define");
+			Pair<StringView, StringView> entry[] = {pair(StringView(key), StringView(value))};
+			locale::defineStrings("en-us", SpanView<Pair<StringView, StringView>>(entry, 1));
+		}
+		auto director = getDirector();
+		auto app = director ? director->getApplication() : nullptr;
+		auto controller = app ? app->getExtension<font::FontController>() : nullptr;
+		const auto size = ui::TooltipSystem::measureDefaultTooltip(args.getString("text"),
+				ui::TooltipConfig(), controller, getInputDensity());
+		Value ret;
+		ret.setInteger(size.width, "width");
+		ret.setInteger(size.height, "height");
+		ret.setBool(controller != nullptr, "measured");
+		return ret;
 	});
 
 	addCommand("move", "Slide a node by {node, dx, dy} - the pointer does not move",

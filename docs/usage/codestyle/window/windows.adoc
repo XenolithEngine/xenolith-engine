@@ -316,8 +316,44 @@ tips->setHoverDelay(TimeInterval::milliseconds(400));
 * **Leave `mode` at `Overlay`.** Under `Native` the tip takes the pointer off the
   parent window, so the target reports a leave it never had — `hideOnLeave` is
   ignored there and only the hide timer closes the hint.
+* **The stock hint is sized by its text.** With no `TooltipInfo::size`, the text
+  is measured through the application's `font::FontController`, resolved first,
+  so an `@Locale:` hint is as wide as its translation; past `maxExtent.width` it
+  wraps and the hint grows by the lines it added. A factory drawing anything but
+  that one label sets `size` itself.
 * A content builder that names its own root keeps that name; only an unnamed one
   is called `aux-tip`.
+
+### A window inside the scene: `ui::FloatingSystem`
+
+A panel the user moves and resizes over the rest of the scene - a help viewer, a
+palette - is a node with a
+[ui::FloatingSystem](../../../../xenolith/renderer/ui/view/XLUiFloatingSystem.h) on it,
+not a `SubWindow`: it never becomes an OS window, is not modal and is closed only by
+whoever owns it.
+
+[source,cpp]
+----
+auto panel = content->addChild(Rc<ui::Panel>::create(), ZOrder(10));
+auto floating = panel->addSystem(Rc<ui::FloatingSystem>::create());
+floating->setHeader(header);            // a descendant of `panel`
+floating->setMinSize(Size2(240.0f, 160.0f));
+floating->setFrame(Rect(40.0f, 40.0f, 420.0f, 360.0f));
+floating->setFrameChangedCallback([](const Rect &frame) { /* remember it */ });
+----
+
+* **It is drawn in the overlay pass** (`setOverlay(true)` on the owner), so it lands
+  above every Surface - a `ui::Panel` - whatever the z-orders say.
+* **It occludes the pointer where it is drawn** (`HitTestFlags::Occluder`): nothing
+  below is pressed, scrolled, hovered, hinted or offered a menu there, and the owner's
+  own subtree works as usual. A body with no listener still swallows its area.
+* **The header moves it past a small threshold**, so a button in the header keeps its
+  click; eight invisible handles along the borders (`floating-resize-<edge>`) carry the
+  resize cursors and move only their own borders, never below the minimum size.
+* **The frame is the owner's rect in its parent's space**, bottom-left anchored, and
+  is kept inside the parent - on every move, on `setFrame`, and when the parent is
+  resized. The owner's content is the owner's to lay out from its content size.
+* The owner wears the style class `moving` or `resizing` while a drag is in flight.
 
 ### Placement
 
