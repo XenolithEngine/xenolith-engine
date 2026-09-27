@@ -431,6 +431,13 @@ via `HitTestRec::contains(point, padding)`, because the padding belongs to whoev
 is asking — a hover padding and a drop padding are different numbers about the
 same node.
 
+`HitTestFlags::Occluder` is the one bit with no component behind it: a node carrying
+it hides everything drawn under its rect from the pointer. `InputDispatcher::isOccluded(node,
+point)` answers whether an occluder above `node` covers the point - a node inside the
+occluder's subtree is never covered by it - and every pointer consumer asks it: a
+listener's hit test, the hover recognizer, hints, context menus and drop targets. With no
+occluder registered the question costs one mask test.
+
 The registry is one frame old when an event reads it, which is the staleness input
 already has: every event is resolved against the previously committed storage.
 `InputListener` leans on that directly — its `_visitGeneration` is stamped at

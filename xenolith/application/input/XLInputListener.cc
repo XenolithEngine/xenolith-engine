@@ -585,6 +585,10 @@ bool InputListener::_shouldProcessEvent(const InputEvent &event) const {
 		if (!node->isTouchedAsDrawn(event.currentLocation, _touchPadding)) {
 			return false;
 		}
+
+		if (dispatcher->isOccluded(node, event.currentLocation)) {
+			return false;
+		}
 	}
 
 	return _visitOpacity >= _opacityFilter;

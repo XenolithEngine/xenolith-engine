@@ -68,6 +68,8 @@ protected:
 	sprt::geom::Bounds markerBounds() const;
 
 	ui::CanvasView *_canvas = nullptr;
+	int64_t _intercepted = 0;
+	int32_t _lastIntercepted = -1;
 	Vector<Pair<Marker, Node *>> _markers;
 };
 

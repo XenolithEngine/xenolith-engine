@@ -26,7 +26,9 @@
   against `golden/raster.txt`. Geometry can change without the digest moving and
   the other way round, so neither alone is the check. `--write` re-pins a golden,
   and re-pinning is a decision to record in the commit message, not a way to make
-  a run green.
+  a run green. `tesstest strokes` sweeps dashed outlines of editor-sized boxes, where a
+  boundary ring once lost its entry edge and the tesselator spun forever; a hang is its
+  failure. `tesstest rect [x0 y0 x1 y1 width dash gap quality]` tesselates one of them.
 - Changed `ui::FilesystemModel` (`xenolith/renderer/ui/view/XLUiFilesystemModel.*`) or
   `stappler/filesystem` → build `examples/window/fileexplorer` and run
   `tests/window/filesystem-explorer-check.py` (the runner selects it by name for either). The check

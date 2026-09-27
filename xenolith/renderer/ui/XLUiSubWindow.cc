@@ -291,6 +291,8 @@ bool SubWindow::openOverlay(NotNull<core::RenderServerChannel> parent, Config &&
 	const auto placed =
 			sprt::window::computeWindowPlacement(placement, config.size, workArea, workArea);
 	_overlayRect = placed;
+	_overlayPlacement = placement;
+	_overlaySize = config.size;
 
 	// Everything but a tip is pushed as a full-parent overlay, so the builder positions the visible
 	// box from getOverlayRect().
@@ -355,6 +357,34 @@ bool SubWindow::openOverlay(NotNull<core::RenderServerChannel> parent, Config &&
 
 	_layout = sp::move(layout);
 	return true;
+}
+
+IRect SubWindow::placeOverlay(const Size2 &layoutSize, const Size2 &parentSize) {
+	const float kx = (parentSize.width > 0.0f && layoutSize.width > 0.0f)
+			? layoutSize.width / parentSize.width
+			: 1.0f;
+	const float ky = (parentSize.height > 0.0f && layoutSize.height > 0.0f)
+			? layoutSize.height / parentSize.height
+			: 1.0f;
+	const auto toX = [kx](int32_t v) { return int32_t(std::lround(float(v) * kx)); };
+	const auto toY = [ky](int32_t v) { return int32_t(std::lround(float(v) * ky)); };
+
+	auto placement = _overlayPlacement;
+	const auto &a = placement.anchorRect;
+	placement.anchorRect = IRect(toX(a.x), toY(a.y), uint32_t(toX(int32_t(a.width))),
+			uint32_t(toY(int32_t(a.height))));
+	placement.offset = IVec2(toX(placement.offset.x), toY(placement.offset.y));
+
+	const auto workArea = IRect(0, 0, toX(int32_t(std::lround(parentSize.width))),
+			toY(int32_t(std::lround(parentSize.height))));
+	const auto placed =
+			sprt::window::computeWindowPlacement(placement, _overlaySize, workArea, workArea);
+
+	_overlayRect = IRect(int32_t(std::lround(float(placed.x) / kx)),
+			int32_t(std::lround(float(placed.y) / ky)),
+			uint32_t(std::lround(float(placed.width) / kx)),
+			uint32_t(std::lround(float(placed.height) / ky)));
+	return placed;
 }
 
 bool SubWindow::isOpen() const {

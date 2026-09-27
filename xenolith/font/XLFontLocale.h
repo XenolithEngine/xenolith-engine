@@ -143,6 +143,11 @@ SP_PUBLIC extern EventHeader onLocale;
 // land-territory pair
 SP_PUBLIC void define(const StringView &locale, LocaleInitList &&);
 
+// Defines key-value pairs known only at run time (read from files, generated). Both halves are
+// copied, and unlike the list form a key defined again takes the new value. Labels already showing
+// the key redraw on the next locale change, not on this call.
+SP_PUBLIC void defineStrings(StringView locale, SpanView<Pair<StringView, StringView>>);
+
 // Defines index-value pairs for locale-based substitutuion, locale must be an lowercased XML
 // land-territory pair
 SP_PUBLIC void define(const StringView &locale, LocaleIndexList &&);

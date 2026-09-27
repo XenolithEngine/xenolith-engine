@@ -47,6 +47,7 @@ public:
 
 	void define(const StringView &locale, LocaleInitList &&init);
 	void define(const StringView &locale, LocaleIndexList &&init);
+	void defineStrings(StringView locale, SpanView<Pair<StringView, StringView>>);
 	void define(const StringView &locale,
 			const sprt::array<StringView, toInt(TimeTokens::Max)> &arr);
 	WideStringView string(const WideStringView &str);
@@ -218,6 +219,24 @@ void LocaleManager::define(const StringView &locale, LocaleInitList &&init) {
 	for (auto &iit : init) {
 		it->second.emplace(string::toUtf16<Interface>(iit.first),
 				string::toUtf16<Interface>(iit.second));
+	}
+}
+
+void LocaleManager::defineStrings(StringView locale, SpanView<Pair<StringView, StringView>> init) {
+	memory::context ctx(_pool);
+	auto it = _strings.find(locale);
+	if (it == _strings.end()) {
+		it = _strings.emplace(locale.str<Interface>(), StringMap()).first;
+	}
+	for (auto &iit : init) {
+		auto key = string::toUtf16<Interface>(iit.first);
+		auto value = string::toUtf16<Interface>(iit.second);
+		auto sit = it->second.find(key);
+		if (sit == it->second.end()) {
+			it->second.emplace(sp::move(key), sp::move(value));
+		} else {
+			sit->second = sp::move(value);
+		}
 	}
 }
 
@@ -592,6 +611,10 @@ EventHeader onLocale("Locale::onLocale");
 
 void define(const StringView &locale, LocaleInitList &&init) {
 	LocaleManager::getInstance()->define(locale, sp::move(init));
+}
+
+void defineStrings(StringView locale, SpanView<Pair<StringView, StringView>> init) {
+	LocaleManager::getInstance()->defineStrings(locale, init);
 }
 
 void define(const StringView &locale, LocaleIndexList &&init) {

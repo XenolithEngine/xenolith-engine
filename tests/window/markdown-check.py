@@ -765,6 +765,30 @@ figure = next((n for n in walk(s.ok("invoke", name="markdown.dump", args={})["tr
 check("a picture alone in its paragraph got a caption", figure is not None,
         figure["text"] if figure else None)
 
+# --- a list built in a narrow view ---------------------------------------------------------------
+
+# An item is a row of a marker and its content, and the content takes the rest of the row with a
+# basis of zero. Measured for its height before it is laid out, that content has to wrap at its share
+# of the row: measured at no width at all it is one long line, the item keeps one line of height and
+# its wrapped text runs over the next item. Narrowing a built view re-lays every item out and hides
+# it, so the view is narrow before the document arrives.
+s.ok("invoke", name="markdown.width", args={"width": 440, "settle": 0.3})
+s.ok("invoke", name="markdown.source", args={"text": "# List\n\n"
+        "- A list item long enough to wrap in a narrow view: it has to take two or three lines "
+        "of text to show the height of the row it stands in.\n"
+        "- short\n"
+        "- Another long item, so the second and the third rows are both checked against what "
+        "their content took, and not only the first one.\n"})
+time.sleep(0.4)
+items = by_type(dump()["tree"], "li")
+rows = []
+for li in items:
+    content = next((k for k in li.get("children", []) if k.get("type") == "li-content"), None)
+    rows.append((li.get("size", [0, 0])[1], content.get("size", [0, 0])[1] if content else None))
+check("an item built narrow wraps", any(c and c > 30 for _, c in rows), rows)
+check("and every item is as tall as its content", rows and all(l >= (c or 0) for l, c in rows),
+        rows)
+
 stop.set()
 time.sleep(0.1)
 s.ok("render", stop=True)

@@ -56,6 +56,7 @@
 #include "input/XLUiConsole.cc"
 
 #include "view/XLUiCanvasView.cc"
+#include "view/XLUiFloatingSystem.cc"
 #include "view/XLUiFilesystemModel.cc"
 #include "view/XLUiRowGeometry.cc" // before both views: each answers its geometry through it
 #include "view/XLUiRowSelection.cc" // and holds its selection in it

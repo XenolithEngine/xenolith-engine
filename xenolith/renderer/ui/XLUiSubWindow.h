@@ -125,6 +125,14 @@ public:
 	the native path. */
 	IRect getOverlayRect() const { return _overlayRect; }
 
+	/* Overlay path only: the placement resolved again in the units of the layout the surface was
+	pushed as, which is where the surface is drawn at its opened size. An application that scales
+	its interface scales that layout, and then the box to fit, flip and slide is the size in the
+	layout's units, not in the parent's points. `layoutSize` is the layout's content size and
+	`parentSize` the parent content's; the result is Y-down in the layout, and getOverlayRect
+	follows it, still in the parent's points. */
+	IRect placeOverlay(const Size2 &layoutSize, const Size2 &parentSize);
+
 	// The surface's own window (native path) or the layout it was pushed as (overlay path).
 	AppWindow *getWindow() const;
 	basic2d::SceneLayout2d *getLayout() const { return _layout; }
@@ -180,6 +188,10 @@ protected:
 
 	// Overlay path only: the placement the surface resolved to, published for the content builder.
 	IRect _overlayRect;
+
+	// Overlay path only: what was asked for, in the parent's points, kept for placeOverlay.
+	WindowPlacement _overlayPlacement;
+	Extent2 _overlaySize;
 
 	// Overlay path only: a tip is parented directly (it keeps its measured size), everything else
 	// goes through pushOverlay.

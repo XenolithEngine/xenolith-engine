@@ -28,6 +28,7 @@
 #include "XLAction.h"
 #include "XLAppWindow.h"
 #include "XLDirector.h"
+#include "XLFontController.h"
 #include "XLInputDispatcher.h"
 #include "XLScene.h"
 
@@ -44,18 +45,45 @@ static constexpr float kTipFontSize = 13.0f;
 static constexpr float kTipPadding = 12.0f;
 static constexpr float kTipMinWidth = 120.0f;
 
-Extent2 TooltipSystem::measureDefaultTooltip(StringView text, const TooltipConfig &config) {
-	// Rough advance-width estimate: the hint is built before it is measured, and is clamped.
-	const float textWidth = float(text.size()) * kTipFontSize * 0.58f;
+static DescriptionStyle TooltipSystem_textStyle(float density) {
+	DescriptionStyle ret;
+	ret.font.fontSize = font::FontSize(uint16_t(kTipFontSize));
+	// must match the density the Label is shaped at; getLabelSize divides by it
+	ret.font.density = density;
+	return ret;
+}
 
-	auto extent =
-			Extent2(uint32_t(std::lround(sprt::max(kTipMinWidth, textWidth + kTipPadding * 2.0f))),
-					uint32_t(std::lround(kTipHeight)));
-
+Extent2 TooltipSystem::measureDefaultTooltip(StringView text, const TooltipConfig &config,
+		font::FontController *controller, float density) {
 	if (text.empty()) {
-		extent = config.defaultSize;
+		return sprt::window::clampWindowExtent(config.defaultSize, config.minExtent,
+				config.maxExtent);
 	}
 
+	float width = 0.0f;
+	float height = kTipHeight;
+	if (controller) {
+		// Localized, as the Label resolves `@Locale:` itself: a key is not the width of its text.
+		const auto style = TooltipSystem_textStyle(density);
+		width = basic2d::Label::getStringWidth(controller, style, text, true) + kTipPadding * 2.0f;
+
+		// Past the widest hint allowed, the text wraps and the hint grows by the lines it added.
+		const float maxWidth = float(config.maxExtent.width);
+		if (maxWidth > 0.0f && width > maxWidth) {
+			const float lineWidth = maxWidth - kTipPadding * 2.0f;
+			const auto one = basic2d::Label::getLabelSize(controller, style, text, 0.0f, true);
+			const auto wrapped =
+					basic2d::Label::getLabelSize(controller, style, text, lineWidth, true);
+			width = maxWidth;
+			height += sprt::max(wrapped.height - one.height, 0.0f);
+		}
+	} else {
+		// Rough advance-width estimate for a scene with no fonts to ask.
+		width = float(text.size()) * kTipFontSize * 0.58f + kTipPadding * 2.0f;
+	}
+
+	auto extent = Extent2(uint32_t(std::lround(sprt::max(kTipMinWidth, width))),
+			uint32_t(std::lround(height)));
 	return sprt::window::clampWindowExtent(extent, config.minExtent, config.maxExtent);
 }
 
@@ -85,6 +113,9 @@ Rc<basic2d::SceneLayout2d> TooltipSystem::buildDefaultTooltip(NotNull<SubWindow>
 	label->setColor(Color::White);
 	label->setType("label");
 	label->addStyleClass("xl-ui-tooltip-label");
+	// As wide as the hint was measured for, so a long text wraps where the measurement did.
+	label->setWidth(sprt::max(size.width - kTipPadding * 2.0f, 0.0f));
+	label->setAlignment(font::TextAlign::Center);
 	label->setAnchorPoint(Anchor::Middle);
 	label->setPosition(Vec2(size.width / 2.0f, size.height / 2.0f));
 
@@ -445,7 +476,8 @@ void TooltipSystem::resolveHover(const Vec2 &pointerWorld, bool fromMove) {
 			return true;
 		}
 		// The hover padding is per node, so the registry hands over records rather than answers.
-		if (!rec.contains(pointerWorld, comp->info.hoverPadding)) {
+		if (!rec.contains(pointerWorld, comp->info.hoverPadding)
+				|| dispatcher->isOccluded(rec.node, pointerWorld)) {
 			return true;
 		}
 		found = rec.node;
@@ -584,7 +616,10 @@ bool TooltipSystem::present(NotNull<Node> node, Vec2 pointerWorld) {
 
 	auto size = info.size;
 	if (size == Extent2::ZERO) {
-		size = measureDefaultTooltip(info.text, _config);
+		auto director = node->getDirector();
+		auto app = director ? director->getApplication() : nullptr;
+		size = measureDefaultTooltip(info.text, _config,
+				app ? app->getExtension<font::FontController>() : nullptr, node->getInputDensity());
 	} else {
 		size = sprt::window::clampWindowExtent(size, _config.minExtent, _config.maxExtent);
 	}

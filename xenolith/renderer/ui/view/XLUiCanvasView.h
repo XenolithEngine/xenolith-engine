@@ -29,10 +29,25 @@
 #include "XLInputListener.h"
 #include "XLDynamicStateSystem.h"
 #include "XL2dPixelGrid.h"
+#include "XLUiSubWindow.h"
 
 #include <sprt/runtime/geom/viewport.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
+
+// What a press on the zoom control asks for; `zoom` is set for a preset only.
+enum class CanvasZoomAction {
+	StepIn,
+	StepOut,
+	Preset,
+	FitWidth,
+	FitHeight,
+};
+
+struct CanvasZoomRequest {
+	CanvasZoomAction action = CanvasZoomAction::Preset;
+	float zoom = 1.0f;
+};
 
 /** A world on a surface: pan, anchored zoom, framing and clipping. Knows nothing about what is
 drawn; layout, hit testing, selection and overlays stay with the caller.
@@ -53,8 +68,9 @@ public:
 	// One wheel notch, and one press of the control's buttons, as a ratio.
 	static constexpr float ZoomStepRatio = 1.1f;
 
-	// The floating control's box and its distance from the corner it hangs in.
-	static constexpr Size2 ZoomControlSize = Size2(212.0f, 26.0f);
+	// The floating control's height and its distance from the corner it hangs in. Its width
+	// follows its content, the caller's items included.
+	static constexpr float ZoomControlHeight = 26.0f;
 	static constexpr float ZoomControlMargin = 8.0f;
 
 	virtual ~CanvasView() = default;
@@ -64,6 +80,7 @@ public:
 
 	virtual void handleContentSizeDirty() override;
 	virtual void handleGlobalTransformDirty(const Mat4 &) override;
+	virtual void handleExit() override;
 
 	// Everything the caller draws goes under this. Its position is the viewport's offset and its
 	// scale is the zoom.
@@ -108,21 +125,52 @@ public:
 	// Pan on middle and right, zoom on the wheel, added to the caller's listener. Called once.
 	void attachGestures(InputListener *);
 
+	// Move the world by a delta in scene units, as a pan gesture does.
+	void panBy(const Vec2 &sceneDelta);
+
 	// Scissor clipping of the world to this node's box. On by default.
 	void setClipped(bool);
 	bool isClipped() const { return _clipped; }
 
 	const sprt::geom::ZoomLimits &getZoomLimits() const { return _limits; }
 
-	/* The floating zoom control: "-", the zoom as a percentage, "+", then fit-width, fit-height
-	and 1:1. On by default, in the bottom-left corner. A step is `ZoomStepRatio`; the fit buttons
-	need `setFitBounds`. */
+	/* The floating zoom control: "-", the zoom as a percentage that opens a menu, "+", then the
+	caller's items. The menu holds the presets and the two fits; the fits need `setFitBounds`.
+	On by default, in the top-left corner. A step is `ZoomStepRatio`. */
 	void setZoomControlEnabled(bool);
 	bool isZoomControlEnabled() const { return _zoomControl != nullptr; }
 
-	// Which corner it hangs in, as an anchor of this node's box: (0,0) is the bottom-left and the
-	// default, (1,1) the top-right. `margin` is in points, on both axes.
+	// Which corner it hangs in, as an anchor of this node's box: (0,1) is the top-left and the
+	// default, (1,0) the bottom-right. `margin` is in points, on both axes.
 	void setZoomControlPlacement(const Vec2 &corner, float margin = ZoomControlMargin);
+
+	// Zoom factors the menu offers, in order. 25 % to 400 % by default.
+	void setZoomPresets(SpanView<float>);
+	SpanView<float> getZoomPresets() const { return _zoomPresets; }
+
+	/* Called before the control acts; true means the caller has handled it and the default is
+	skipped. How a caller that keeps its own notion of the zoom (a "fit" that refits on resize)
+	stays the one that decides. */
+	void setZoomActionCallback(Function<bool(const CanvasZoomRequest &)> &&);
+
+	// Carry out a request as a press on the control would, the callback included.
+	void performZoomAction(const CanvasZoomRequest &);
+
+	// Captions of the menu's fit rows; a `@Locale:` key works.
+	void setZoomMenuTitles(StringView fitWidth, StringView fitHeight);
+
+	// Native popup window for the menu, or an overlay in this scene. Native by default.
+	void setZoomMenuPreferNative(bool);
+
+	// The menu, as a press on the percentage opens it.
+	bool openZoomMenu();
+	void closeZoomMenu();
+	bool isZoomMenuOpen() const { return _zoomMenu != nullptr; }
+
+	/* A node of the caller's appended after "+", `width` points wide and as high as the control.
+	Removed with the control or by clearZoomControlItems. */
+	Node *addZoomControlItem(Rc<Node> &&, float width);
+	void clearZoomControlItems();
 
 	/* A pixel grid behind the world, following its pan and zoom: a world unit is a grid unit. Off
 	by default; the caller colours it through getGrid(). */
@@ -131,7 +179,7 @@ public:
 	basic2d::PixelGrid *getGrid() const { return _grid; }
 
 	// The control itself, null while it is off. Its type is `canvas-zoom`, with ordinary `button`
-	// and `label` children, so a stylesheet reaches it too.
+	// children, so a stylesheet reaches it too.
 	Node *getZoomControl() const { return _zoomControl; }
 
 protected:
@@ -151,19 +199,30 @@ protected:
 	// lives on the Scene.
 	Vec2 _surfaceScale = Vec2(1.0f, 1.0f);
 
-	// Bounds provider for the framing buttons; may be null.
+	// Bounds provider for the fit rows; may be null.
 	Function<sprt::geom::Bounds()> _fitBounds;
 
-	// The floating control and its six parts. Null together.
+	// The floating control and its parts. Null together.
 	Panel *_zoomControl = nullptr;
 	Button *_zoomOut = nullptr;
 	Button *_zoomIn = nullptr;
-	Button *_fitWidth = nullptr;
-	Button *_fitHeight = nullptr;
-	Button *_zoomReset = nullptr;
-	basic2d::Label *_zoomLabel = nullptr;
+	Button *_zoomValue = nullptr;
+	basic2d::IconSprite *_zoomArrow = nullptr;
 
-	Vec2 _zoomCorner = Vec2(0.0f, 0.0f);
+	struct ZoomItem {
+		Node *node = nullptr;
+		float width = 0.0f;
+	};
+	Vector<ZoomItem> _zoomItems;
+
+	Vector<float> _zoomPresets;
+	Function<bool(const CanvasZoomRequest &)> _zoomAction;
+	String _fitWidthTitle = String("Fit width");
+	String _fitHeightTitle = String("Fit height");
+	bool _zoomMenuNative = true;
+	Rc<SubWindow> _zoomMenu;
+
+	Vec2 _zoomCorner = Vec2(0.0f, 1.0f);
 	float _zoomMargin = ZoomControlMargin;
 
 	// The percentage the readout is showing, so a pan does not rewrite a label that has not changed.

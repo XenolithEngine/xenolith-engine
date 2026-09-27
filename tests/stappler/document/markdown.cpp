@@ -626,6 +626,32 @@ void performMarkdownTests() {
 			check(ok && withSpan > 0, label);
 		}
 
+		// --- the metadata block ---
+
+		// A MultiMarkdown header is not part of the body, and `getMeta` is the only place it can
+		// be read from. Keys are lowercased by the parser.
+		do {
+			static constexpr auto metaSource =
+					StringView("Brief: One line of summary\nTitle: Grow\n\n# Heading\n\nBody.\n");
+			auto metaDoc = Rc<DocumentMarkdown>::create(pool,
+					BytesView(reinterpret_cast<const uint8_t *>(metaSource.data()),
+							metaSource.size()),
+					StringView("text/markdown"));
+			check(metaDoc != nullptr, "markdown meta: the document parses");
+			if (!metaDoc) {
+				break;
+			}
+			checkEq(metaDoc->getMeta("brief"), StringView("One line of summary"),
+					"markdown meta: `Brief:` is read back by its lowercased key");
+			checkEq(metaDoc->getMeta("title"), StringView("Grow"),
+					"markdown meta: every key of the block is kept");
+			check(metaDoc->getMeta("Brief").empty(),
+					"markdown meta: keys are the parser's lowercased form");
+			check(!holdsWordsInOrder(visibleText(pool, *metaDoc->getRoot()->getRoot()),
+						  StringView("One line of summary")),
+					"markdown meta: the block is not rendered into the body");
+		} while (0);
+
 		performMarkdownMarkupTests(pool);
 	}, pool);
 

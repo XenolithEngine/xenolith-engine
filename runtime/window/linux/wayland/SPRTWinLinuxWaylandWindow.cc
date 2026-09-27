@@ -254,10 +254,13 @@ void WaylandWindow::unmapWindow() {
 		_frameCallback = nullptr;
 	}
 	_mapped = false;
+	_retired = true;
 }
 
 bool WaylandWindow::close() {
-	if (!_mapped) {
+	// Only a window the controller has already torn down is closed without it. One that was never
+	// mapped - dismissed before its first present - still has to be retired, or it stays active.
+	if (_retired) {
 		return true;
 	}
 

@@ -81,6 +81,7 @@
 #include "widgets/ContextMenuLayout.h"
 #include "widgets/HitTestLayout.h"
 #include "widgets/TooltipLayout.h"
+#include "widgets/FloatingLayout.h"
 #include "widgets/ScrollThrashLayout.h"
 #include "widgets/SelectionLayout.h"
 #include "widgets/SelectionNavLayout.h"
@@ -483,8 +484,17 @@ static const TestInfo s_widgetsTests[] = {
 				   "disabled hint is invisible to the resolution; and a node slid out from under a "
 				   "pointer that never moved loses the hint. Inspector: tooltip.state, "
 				   "tooltip.set-delay, tooltip.set-text, tooltip.set-enabled, tooltip.remove, "
-				   "tooltip.move."),
+				   "tooltip.move, tooltip.measure."),
 		TestRegistry_make<TooltipLayout>, true},
+
+	TestInfo{StringView("floating"), StringView("XL_FLOATING_TEST"),
+		StringView("ui::FloatingSystem in-scene windows"),
+		StringView("A window inside the scene over a background that counts every pointer answer. "
+				   "The header moves it and a press on a button there stays a press; eight borders "
+				   "resize it; it stays within the scene. It is drawn above an opaque Panel, and "
+				   "where it is drawn nothing below it is tapped, scrolled, hovered or hinted, while "
+				   "its content is. Inspector: floating.state, floating.set-frame, floating.reset."),
+		TestRegistry_make<FloatingLayout>, true},
 
 	TestInfo{StringView("scrollbar"), StringView("XL_SCROLLBAR_TEST"),
 		StringView("basic2d::ScrollView scroll bar"),

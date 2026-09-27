@@ -75,6 +75,8 @@ bool CanvasViewLayout::init() {
 	// WHAT THERE IS TO FRAME, asked rather than handed over - which is what the control's own
 	// framing buttons press, and therefore what this stand has to declare for them to do anything.
 	_canvas->setFitBounds([this]() { return markerBounds(); });
+	// In this scene, so its rows are nodes a check can find and press.
+	_canvas->setZoomMenuPreferNative(false);
 
 	for (auto &m : s_markers) {
 		auto node = _canvas->getWorld()->addChild(Rc<basic2d::Layer>::create(m.color));
@@ -150,13 +152,48 @@ Value CanvasViewLayout::encodeState() const {
 		};
 		encodeAt("minus", CanvasViewLayout_find(zoom, "canvas-zoom-out"));
 		encodeAt("plus", CanvasViewLayout_find(zoom, "canvas-zoom-in"));
-		encodeAt("fitWidth", CanvasViewLayout_find(zoom, "canvas-zoom-fit-width"));
-		encodeAt("fitHeight", CanvasViewLayout_find(zoom, "canvas-zoom-fit-height"));
-		encodeAt("reset", CanvasViewLayout_find(zoom, "canvas-zoom-reset"));
+		encodeAt("menuButton", CanvasViewLayout_find(zoom, "canvas-zoom-value"));
+		encodeAt("item", CanvasViewLayout_find(zoom, "canvas-zoom-item"));
 
-		if (auto label = dynamic_cast<basic2d::Label *>(
+		if (auto button = dynamic_cast<ui::Button *>(
 					CanvasViewLayout_find(zoom, "canvas-zoom-value"))) {
-			z.setString(label->getString8(), "value");
+			if (auto label = button->getLabel()) {
+				// The caption is padded on the right, where the arrow is.
+				auto str = label->getString8();
+				StringView value(str);
+				value.trimChars<StringView::WhiteSpace>();
+				z.setString(value, "value");
+			}
+		}
+
+		/* The menu's rows, where it is open. It is an overlay of this scene, so a row is a node
+		named after its item, somewhere under the scene rather than under the canvas. */
+		z.setBool(_canvas->isZoomMenuOpen(), "menuOpen");
+		if (_canvas->isZoomMenuOpen()) {
+			auto &rows = z.newDict("menu");
+			Node *root = const_cast<CanvasViewLayout *>(this);
+			while (root->getParent()) { root = root->getParent(); }
+			for (auto zoomValue : _canvas->getZoomPresets()) {
+				auto name = toString("zoom-", int32_t(sprt::lroundf(zoomValue * 100.0f)));
+				if (auto row = CanvasViewLayout_find(root, name)) {
+					const auto size = row->getContentSize();
+					const auto at = row->convertToWorldSpace(
+							Vec2(size.width * 0.5f, size.height * 0.5f));
+					auto &r = rows.newDict(name);
+					r.setDouble(at.x, "x");
+					r.setDouble(at.y, "y");
+				}
+			}
+			for (auto name : {StringView("fit-width"), StringView("fit-height")}) {
+				if (auto row = CanvasViewLayout_find(root, name)) {
+					const auto size = row->getContentSize();
+					const auto at = row->convertToWorldSpace(
+							Vec2(size.width * 0.5f, size.height * 0.5f));
+					auto &r = rows.newDict(name);
+					r.setDouble(at.x, "x");
+					r.setDouble(at.y, "y");
+				}
+			}
 		}
 	} else {
 		auto &z = ret.newDict("zoomControl");
@@ -342,6 +379,38 @@ void CanvasViewLayout::registerCommands() {
 			_canvas->setZoomControlEnabled(args.getBool("enabled"));
 		}
 		return encodeState();
+	});
+
+	/* A caller's item after "+", and a caller that takes the fits over. The item is a plain panel;
+	what is proved is that it is laid out inside the control and the control grows for it. */
+	addCommand("zoom-item", "Append a caller item to the control: {width}, or {clear: true}",
+			[this](Value &&args) {
+		if (args.getBool("clear")) {
+			_canvas->clearZoomControlItems();
+		} else {
+			auto item = Rc<ui::Panel>::create();
+			item->setName("canvas-zoom-item");
+			item->setPathColor(Color4B(90, 160, 90, 255), true);
+			_canvas->addZoomControlItem(sp::move(item), float(args.getDouble("width", 40.0)));
+		}
+		return encodeState();
+	});
+
+	addCommand("zoom-intercept", "Count the control's requests instead of acting: {on}",
+			[this](Value &&args) {
+		if (args.getBool("on")) {
+			_canvas->setZoomActionCallback([this](const ui::CanvasZoomRequest &req) {
+				++_intercepted;
+				_lastIntercepted = int32_t(toInt(req.action));
+				return true;
+			});
+		} else {
+			_canvas->setZoomActionCallback(nullptr);
+		}
+		auto ret = encodeState();
+		ret.setInteger(_intercepted, "intercepted");
+		ret.setInteger(_lastIntercepted, "lastAction");
+		return ret;
 	});
 }
 

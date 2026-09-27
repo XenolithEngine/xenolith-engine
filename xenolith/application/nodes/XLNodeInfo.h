@@ -98,6 +98,11 @@ enum class HitTestFlags : uint32_t {
 	// SelectableComponent: arrow navigation may move the scene's selection here
 	Selectable = 1 << 4,
 
+	// Nothing drawn under this node's rect is reached by the pointer there: listeners, hover,
+	// hints and context menus below it see the point as outside. Its own subtree is unaffected.
+	// Carries no component - offering nothing is what it is for (see InputDispatcher::isOccluded)
+	Occluder = 1 << 5,
+
 	// 1 << 16 and up are free for applications
 	ApplicationMask = 0xFFFF'0000,
 };

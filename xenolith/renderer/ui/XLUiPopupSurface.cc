@@ -169,19 +169,18 @@ Rc<SubWindow> openPopupSurface(NotNull<core::RenderServerChannel> window,
 			// Overlay path: pushOverlay stretches the layout over the parent with a bottom-left
 			// origin, so the panel goes at the resolved placement (Y-down from the top).
 			panel->addStyleClass("overlay");
-			const auto rect = surface->getOverlayRect();
 
-			/* The rect is in the parent content's points, and the layout may be scaled after it is
-			pushed - an application that scales its interface scales every layout it pushes, this one
-			included. So the corner is mapped through the ratio of the layout's own size to the
-			parent's, which is 1 when nothing scales it. */
-			auto place = [layout = layout.get(), panel, rect, parentWidth, parentHeight] {
+			/* Placed again whenever the layout is resized, and in the layout's units: the layout may
+			be scaled after it is pushed - an application that scales its interface scales every
+			layout it pushes, this one included - and the panel is drawn at its opened size in those
+			units. A placement made in the parent's points would fit a box smaller than the one drawn,
+			and the drawn one would run past the window's edge. */
+			auto place = [layout = layout.get(), panel, surface = surface.get(), parentWidth,
+								 parentHeight] {
 				const auto s = layout->getContentSize();
-				const float kx = (parentWidth > 0.0f && s.width > 0.0f) ? s.width / parentWidth : 1.0f;
-				const float ky =
-						(parentHeight > 0.0f && s.height > 0.0f) ? s.height / parentHeight : 1.0f;
+				const auto rect = surface->placeOverlay(s, Size2(parentWidth, parentHeight));
 				const float h = s.height > 0.0f ? s.height : parentHeight;
-				panel->setPosition(Vec2(float(rect.x) * kx, h - float(rect.y) * ky));
+				panel->setPosition(Vec2(float(rect.x), h - float(rect.y)));
 			};
 			place();
 			layout->setContentSizeDirtyCallback(sp::move(place));

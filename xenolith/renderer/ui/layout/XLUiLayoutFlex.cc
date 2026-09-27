@@ -312,8 +312,7 @@ static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float cont
 		const bool overflowing =
 				ovf.main && boundedMain && (sumOuterBase + gapTotal) > contentMain + FlexEpsilon;
 
-		if (forMeasure || overflowing) {
-			// content sizing ignores grow/shrink: keep the clamped base sizes
+		auto keepBaseSizes = [&] {
 			for (size_t k = line.begin; k < line.end; ++k) {
 				auto &item = items[k];
 				float size = sprt::max(item.baseMain, item.cfg.minMain);
@@ -322,7 +321,9 @@ static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float cont
 				}
 				item.mainSize = sprt::max(size, 0.0f);
 			}
-		} else {
+		};
+
+		auto resolveFlexible = [&] {
 			// CSS "resolve the flexible lengths": distribute the free space, clamp each item to
 			// [minMain, maxMain], freeze the clamped ones and redistribute the rest among the
 			// others, so the space a clamped item gave up is not lost.
@@ -382,6 +383,16 @@ static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float cont
 					break;
 				}
 			}
+		};
+
+		/* A measure under a bounded main axis still flexes, but only to learn the widths the cross
+		sizes are measured at: an item of basis 0 that grows into the row wraps at its share of it,
+		not at no width at all. The extent it reports is the content's own, from the base sizes. */
+		const bool flexForCross = forMeasure && boundedMain && !overflowing;
+		if (overflowing || (forMeasure && !flexForCross)) {
+			keepBaseSizes();
+		} else {
+			resolveFlexible();
 		}
 
 		// re-measure fit-content cross sizes now that the final main size is
@@ -398,6 +409,10 @@ static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float cont
 				const Size2 m = LayoutSystem::measureNode(item.node, mc);
 				item.naturalCross = isRow ? m.height : m.width;
 			}
+		}
+
+		if (flexForCross) {
+			keepBaseSizes();
 		}
 
 		float maxCross = 0.0f;
