@@ -57,5 +57,7 @@ $(LOCAL_OUTDIR)/$(STAPPLER_TARGET)/$(BUILD_TYPE)/cc/<artifact>
 - Windows: `…/x86_64-pc-windows-msvc/debug/cc/testapp.exe` (+ `.pdb`)
 - macOS: a bundle — `…/aarch64-apple-macosx/debug/cc/testapp.app/Contents/MacOS/testapp` (+ `.dSYM`)
 - Android-NDK: per-ABI `.so` — `…/unknown-ndk-linux-android/debug/ndk-build/obj/local/<abi>/lib<name>.so`
+- Android, one ABI (`aarch64-unknown-linux-android`, …): a console program is a bare executable; an
+  application (`xenolith_application_main`) is the NativeActivity library `…/debug/cc/lib<name>.so`
 
 `compile_commands.json` is written to the repo root after a build (for clangd).

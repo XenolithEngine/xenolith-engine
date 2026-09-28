@@ -41,7 +41,7 @@ ifdef LINUX
 MODULE_STAPPLER_ZIP_LIBS += -l:libz.a
 endif
 
-ifeq ($(TARGET_SYSTEM),Darwin)
+ifdef DARWIN
 MODULE_STAPPLER_ZIP_GENERAL_LDFLAGS += -lz
 endif
 

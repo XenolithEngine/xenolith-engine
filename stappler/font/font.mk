@@ -43,6 +43,12 @@ ifdef WIN32
 MODULE_STAPPLER_FONT_LIBS += -lz
 endif
 
+# The Apple libharfbuzz.a carries the hb-coretext backend; AppKit re-exports CoreText on
+# macOS, UIKit does not on iOS.
+ifdef DARWIN
+MODULE_STAPPLER_FONT_GENERAL_LDFLAGS += -framework CoreText
+endif
+
 # spec
 
 MODULE_STAPPLER_FONT_SHARED_SPEC_SUMMARY := libstappler font rendering prototypes

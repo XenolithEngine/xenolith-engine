@@ -76,6 +76,17 @@ endif
 endif
 endif # OSTYPE_IS_MACOS
 
+# An Android application is the library a NativeActivity loads, not a program: XLMain provides
+# ANativeActivity_onCreate there and no main().
+ifeq ($(TARGET_SYSTEM),Android)
+ifneq ($(filter xenolith_application_main,$(LOCAL_MODULES)),)
+BUILD_EXECUTABLE_SHARED := 1
+BUILD_EXECUTABLE := $(BUILD_С_OUTDIR)/$(OSTYPE_LIB_PREFIX)$(LOCAL_EXECUTABLE)$(OSTYPE_DSO_SUFFIX)
+GLOBAL_EXEC_CFLAGS += -fPIC
+GLOBAL_EXEC_CXXFLAGS += -fPIC
+endif
+endif
+
 BUILD_INSTALL_EXECUTABLE := $(LOCAL_INSTALL_DIR)/$(LOCAL_EXECUTABLE)$(OSTYPE_EXEC_SUFFIX)
 $(info Build executable: $(BUILD_EXECUTABLE) for $(TARGET_NAME))
 endif # LOCAL_EXECUTABLE

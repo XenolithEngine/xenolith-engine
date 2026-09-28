@@ -801,6 +801,16 @@ __SPRT_C_FUNC int mkdirat(int dirfd, const char *path, __SPRT_ID(mode_t) mode) _
 	return mkdir(resolved, mode);
 }
 
+__SPRT_C_FUNC int fchmodat(int dirfd, const char *path, __SPRT_ID(mode_t) mode, int)
+		__SPRT_NOEXCEPT {
+	char buf[512];
+	auto resolved = sprt::__resolve_at(dirfd, path, buf, sizeof(buf));
+	if (!resolved) {
+		return -1;
+	}
+	return chmod(resolved, mode);
+}
+
 // memfs has a single permission model, so the requested mode bits and AT_EACCESS
 // are irrelevant: only existence is checked, at the dir-fd-resolved path.
 __SPRT_C_FUNC int faccessat(int dirfd, const char *path, int, int) __SPRT_NOEXCEPT {
@@ -870,6 +880,30 @@ __SPRT_C_FUNC int utimensat(int, const char *path, const struct __SPRT_TIMESPEC_
 		return -1;
 	}
 	sprt::__memfs_apply_times(ino, times);
+	return 0;
+}
+
+// Only the permission bits are kept: stat() adds the file type from the node itself.
+__SPRT_C_FUNC int chmod(const char *path, __SPRT_ID(mode_t) mode) __SPRT_NOEXCEPT {
+	if (!path) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	char abs[512];
+	if (!sprt::__memfs_normpath(path, abs, sizeof(abs))) {
+		__sprt_errno = ENAMETOOLONG;
+		return -1;
+	}
+	auto ino = sprt::__memfs_find(abs);
+	if (!ino) {
+		ino = sprt::__memfs_load_bundle(abs);
+	}
+	if (!ino) {
+		__sprt_errno = ENOENT;
+		return -1;
+	}
+	ino->mode = mode & 0777;
+	sprt::__memfs_now(&ino->ctim);
 	return 0;
 }
 

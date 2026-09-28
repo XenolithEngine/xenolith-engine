@@ -996,6 +996,7 @@
         _NSPasteboardTypeString,
         _NSPasteboardTypeTabularText,
         _NSPasteboardTypeURL,
+        _NSPasteboardURLReadingFileURLsOnlyKey,
         _NSWindowWillCloseNotification,
         _OBJC_CLASS_$_NSAnimationContext,
         _OBJC_CLASS_$_NSApplication,
