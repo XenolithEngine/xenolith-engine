@@ -893,6 +893,17 @@ bool Formatter::pushLine(uint16_t first, uint16_t len, bool forceAlign) {
 		const TextAlign align = resolveTextAlign(_output.lines.back().direction);
 		uint16_t offsetLeft =
 				(advance < (width + lineOffset)) ? ((width + lineOffset) - advance) : 0;
+
+		/* The extra glyphs of this line's clusters are not in `chars` until finalize, so the shifts
+		below would leave them where the line was laid out. Each follows its source char instead:
+		its position before the shift is noted here, and the difference is applied after. */
+		Vector<Pair<size_t, int16_t>> continuations;
+		for (size_t i = 0; i < _pendingContinuations.size(); ++i) {
+			const auto src = _pendingContinuations[i].insertAfter;
+			if (src >= first && src < uint32_t(first + len)) {
+				continuations.emplace_back(i, _output.chars.at(src).pos);
+			}
+		}
 		if (offsetLeft > 0 && align == TextAlign::Right) {
 			for (uint16_t i = first; i < first + len; i++) {
 				_output.chars.at(i).pos += offsetLeft;
@@ -932,6 +943,11 @@ bool Formatter::pushLine(uint16_t first, uint16_t len, bool forceAlign) {
 					_output.chars.at(i).pos += offset;
 				}
 			}
+		}
+
+		for (auto &it : continuations) {
+			auto &cont = _pendingContinuations[it.first];
+			cont.data.pos = int16_t(cont.data.pos + (_output.chars.at(cont.insertAfter).pos - it.second));
 		}
 
 		if (advance > maxLineX) {

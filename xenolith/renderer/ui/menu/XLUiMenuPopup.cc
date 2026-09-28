@@ -208,9 +208,11 @@ static Rc<SubWindow> MenuPopup_open(NotNull<core::RenderServerChannel> window,
 			}
 		});
 
-		menu->setActivateCallback([chain](NotNull<MenuSourceItem> item) {
-			// the root's callback: a chain reports as one menu
-			if (auto &cb = chain->getRoot()->getConfig().onActivate) {
+		// the root's callback, taken now: a chain reports as one menu, and by the time it reports
+		// the dismissal has released every level of it
+		menu->setActivateCallback(
+				[cb = chain->getRoot()->getConfig().onActivate](NotNull<MenuSourceItem> item) {
+			if (cb) {
 				cb(item);
 			}
 		});

@@ -49,6 +49,7 @@ static const TestEntry s_testList[] = {
 	{"align", &stappler::xenolith::ui::performAlignKeywordTests},
 	{"gridtable", &stappler::xenolith::ui::performGridTableRtlTests},
 	{"column-wrap", &stappler::xenolith::ui::performFlexColumnWrapTests},
+	{"grow-settles", &stappler::xenolith::ui::performFlexGrowSettlesTests},
 };
 
 int main(int argc, const char *argv[]) {

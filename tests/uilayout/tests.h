@@ -89,6 +89,7 @@ void performLogicalBoxTests();
 void performAlignKeywordTests();
 void performGridTableRtlTests();
 void performFlexColumnWrapTests();
+void performFlexGrowSettlesTests();
 
 } // namespace stappler::xenolith::ui
 

@@ -69,6 +69,8 @@ bool MenuItem::init(NotNull<MenuSystem> system, NotNull<MenuSourceButton> item) 
 	// activation goes through Button, whose `_enabled` gate keeps disabled rows from the system
 	setCallback([this] {
 		if (_system && _item) {
+			// the activation may close the popup this row is in; the running callback is ours
+			auto guard = Rc<MenuItem>(this);
 			_system->handleItemActivated(_item);
 		}
 	});

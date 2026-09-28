@@ -1046,7 +1046,7 @@ Rc<Node> TreeView::buildRowNode(RowBuilder &builder) {
 		}
 
 		ZOrder z(4);
-		for (auto &it : builder._trailing) { rowNode->addChild(it, z++); }
+		for (auto &it : builder._trailing) { rowNode->addTrailingNode(rowNode->addChild(it, z++)); }
 
 		node = rowNode;
 	}
@@ -1554,12 +1554,18 @@ bool TreeView::RowNode::init(TreeView *view, size_t index, bool interactive) {
 		}, false);
 
 		_listener->addTapRecognizer([this](const GestureTap &tap) {
-			// Both listeners fire for a tap on the expander; the row must not also select, or a
-			// select callback that toggles would cancel the expander.
-			if (tap.event == GestureEvent::Activated
-					&& (!_expander || !_expander->isTouched(tap.pos))) {
-				_view->handleRowTap(_index, tap.count, tap.input->data.getModifiers());
+			// Both listeners fire for a tap on the expander or a trailing control; the row must not
+			// also select, or a select callback that toggles would cancel the expander.
+			if (tap.event != GestureEvent::Activated
+					|| (_expander && _expander->isTouched(tap.pos))) {
+				return true;
 			}
+			for (auto &it : _trailing) {
+				if (it->isVisible() && it->isTouched(tap.pos)) {
+					return true;
+				}
+			}
+			_view->handleRowTap(_index, tap.count, tap.input->data.getModifiers());
 			return true;
 			// Up to two taps, so handleRowTap can tell select from activate by `count`; Immediate
 			// reports each tap without waiting for the double-tap interval.
