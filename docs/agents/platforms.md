@@ -88,6 +88,10 @@
 
 ### 3.3 Android (NDK)
 
+- The single-ABI triples (`aarch64-unknown-linux-android`, `armv7a-unknown-linux-androideabi`,
+  `i686-…`, `x86_64-…`) build with the plain clang rules and `-jN`. A project with
+  `xenolith_application_main` links as `lib<name>.so` (NativeActivity entry, no `main`), with
+  `--no-undefined` so a missing symbol still fails the link; console projects stay executables.
 - Triple `unknown-ndk-linux-android`; builds **all four ABIs** (`armeabi-v7a`,
   `arm64-v8a`, `x86`, `x86_64`) into `lib<name>.so` via `ndk-build`.
 - **Build Android via CLI with `-j1`** (nested `ndk-build` hates a parent

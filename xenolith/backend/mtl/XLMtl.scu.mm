@@ -31,6 +31,10 @@
 // sources. Must come before any include.
 #define __SPRT_BUILD 1
 
+// __SPRT_BUILD alone would also switch sprt to its STL-free types (source_location, iterator
+// tags), which is not the ABI the rest of the engine is built with.
+#define __SPRT_USE_STL 1
+
 #include "XLCommon.h"
 #include "XLMtl.h"
 

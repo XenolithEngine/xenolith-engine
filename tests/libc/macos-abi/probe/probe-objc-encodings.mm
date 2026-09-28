@@ -116,6 +116,28 @@ ENC(NSView_wantsLayer, ((NSView *)nil).wantsLayer)
 ENC(NSView_layerContentsPlacement, ((NSView *)nil).layerContentsPlacement)
 ENC(NSView_window, ((NSView *)nil).window)
 ENC(NSView_convertRectToBacking, [(NSView *)nil convertRectToBacking:(NSRect){}])
+ENC(NSView_registeredDraggedTypes, ((NSView *)nil).registeredDraggedTypes)
+
+// === drag and drop (the destination half: NSView receives OS drops) ========
+ENC(NSDraggingInfo_draggingDestinationWindow,
+		((id<NSDraggingInfo>)nil).draggingDestinationWindow)
+ENC(NSDraggingInfo_draggingSourceOperationMask,
+		((id<NSDraggingInfo>)nil).draggingSourceOperationMask)
+ENC(NSDraggingInfo_draggingLocation, ((id<NSDraggingInfo>)nil).draggingLocation)
+ENC(NSDraggingInfo_draggedImageLocation, ((id<NSDraggingInfo>)nil).draggedImageLocation)
+ENC(NSDraggingInfo_draggingPasteboard, ((id<NSDraggingInfo>)nil).draggingPasteboard)
+ENC(NSDraggingInfo_draggingSequenceNumber, ((id<NSDraggingInfo>)nil).draggingSequenceNumber)
+ENC(NSDraggingInfo_numberOfValidItemsForDrop,
+		((id<NSDraggingInfo>)nil).numberOfValidItemsForDrop)
+ENC(NSDraggingDestination_draggingEntered,
+		[(id<NSDraggingDestination>)nil draggingEntered:(id<NSDraggingInfo>)nil])
+ENC(NSDraggingDestination_performDragOperation,
+		[(id<NSDraggingDestination>)nil performDragOperation:(id<NSDraggingInfo>)nil])
+ENC(NSDraggingDestination_wantsPeriodicDraggingUpdates,
+		[(id<NSDraggingDestination>)nil wantsPeriodicDraggingUpdates])
+ENC(NSPasteboard_canReadObjectForClasses,
+		[(NSPasteboard *)nil canReadObjectForClasses:(NSArray *)nil options:nil])
+ENC(NSPasteboardURLReadingFileURLsOnlyKey, NSPasteboardURLReadingFileURLsOnlyKey)
 
 // === NSScreen / NSEvent ====================================================
 ENC(NSScreen_frame, ((NSScreen *)nil).frame)

@@ -37,6 +37,12 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::soft {
 
+#if SPRT_APPLE
+/* Mach-O cannot leave a weak symbol undefined outside a dylib, and no Apple device has an RGA. */
+static constexpr int (*rga2_blit)(uintptr_t, uint32_t, uint32_t, int, int, int, int, uintptr_t,
+		uint32_t, uint32_t, int, int, int, int) = nullptr;
+static constexpr uintptr_t (*xenolith_soft_scanout_fb)(uint32_t *) = nullptr;
+#else
 /* RGA2 blit (weak). */
 extern "C" __attribute__((weak)) int rga2_blit(uintptr_t dst, uint32_t dst_stride, uint32_t dst_swap,
 		int dx, int dy, int dw, int dh, uintptr_t src, uint32_t src_stride, uint32_t src_swap,
@@ -44,6 +50,7 @@ extern "C" __attribute__((weak)) int rga2_blit(uintptr_t dst, uint32_t dst_strid
 
 /* Scanout mapping for RGA video, or 0 if the fb cannot take direct writes. */
 extern "C" __attribute__((weak)) uintptr_t xenolith_soft_scanout_fb(uint32_t *stride);
+#endif
 
 /* Last frame went to scanout via RGA; present() skips the shadow copy. A composed frame clears it;
  * empty draw lists leave it. Atomic: present() need not run on the thread that ran the pass. */
