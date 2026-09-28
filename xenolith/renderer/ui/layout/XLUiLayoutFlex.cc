@@ -119,8 +119,10 @@ struct FlexOverflow {
 // sort by `order`, break into lines, flex main sizes, re-measure cross sizes, size the lines.
 // `forMeasure` skips grow/shrink and commits nothing. contentMain / contentCross may be
 // maxOf<float>() (unconstrained); `ovf` marks the overflow axes (LayoutSystem::setOverflowAxes).
+template <typename Memo>
 static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float contentMain,
-		float contentCross, bool forMeasure, FlexOverflow ovf, FlexPassOutput &out) {
+		float contentCross, bool forMeasure, FlexOverflow ovf, const Memo &memo,
+		FlexPassOutput &out) {
 	const bool isRow =
 			info.direction == FlexDirection::Row || info.direction == FlexDirection::RowReverse;
 	const float mainGap = isRow ? info.columnGap : info.rowGap;
@@ -254,6 +256,19 @@ static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float cont
 		// fit-content cross is re-measured after flexing, when the final main
 		// size is known
 		item.naturalCross = (item.cfg.crossSize >= 0.0f) ? item.cfg.crossSize : nodeCross;
+
+		// A size this layout wrote is not the node's own: flex from what it was flexed from.
+		if (!item.measured) {
+			auto it = memo.find(child);
+			if (it != memo.end() && it->second.isRow == isRow && it->second.committed == cs) {
+				if (item.cfg.basis < 0.0f) {
+					item.baseMain = it->second.baseMain;
+				}
+				if (item.cfg.crossSize < 0.0f) {
+					item.naturalCross = it->second.naturalCross;
+				}
+			}
+		}
 
 		items.emplace_back(item);
 	}
@@ -458,7 +473,8 @@ Size2 LayoutSystem::measureFlex(const MeasureConstraints &c) {
 
 	FlexPassOutput pass;
 	// overflow flags do not change the natural size, so they are left off
-	computeFlexLines(_owner, info, contentMain, contentCross, true, FlexOverflow(), pass);
+	computeFlexLines(_owner, info, contentMain, contentCross, true, FlexOverflow(), _flexMemo,
+			pass);
 
 	const float main = pass.usedMain + padMain;
 	const float cross = pass.usedCross + padCross;
@@ -499,12 +515,13 @@ void LayoutSystem::layoutFlex() {
 	// flexed main sizes and the hypothetical cross sizes (shared with the
 	// measurement pass).
 	FlexPassOutput pass;
-	computeFlexLines(_owner, info, boxMain, boxCross, false, ovf, pass);
+	computeFlexLines(_owner, info, boxMain, boxCross, false, ovf, _flexMemo, pass);
 	auto &items = pass.items;
 	auto &lines = pass.lines;
 
 	if (items.empty()) {
 		_placement.clear();
+		_flexMemo.clear();
 		// an empty container's extent is its padding alone
 		_contentExtent = Size2(info.padding.horizontal(), info.padding.vertical());
 		return;
@@ -655,6 +672,7 @@ void LayoutSystem::layoutFlex() {
 	// space and commit position + size to each child.
 	_placement.clear();
 	_placement.reserve(items.size());
+	decltype(_flexMemo) memo;
 	float extentMain = 0.0f;
 	float extentCross = 0.0f;
 
@@ -693,6 +711,10 @@ void LayoutSystem::layoutFlex() {
 
 		const Size2 newSize(width, height);
 		item.node->setContentSize(newSize);
+		if (!item.measured) {
+			memo.emplace(item.node,
+					FlexBasisMemo{item.node, newSize, item.baseMain, item.naturalCross, isRow});
+		}
 
 		// cached unscrolled, so setScrollOffset can re-place the children without re-flexing
 		_placement.emplace_back(item.node, bottomLeft);
@@ -711,6 +733,8 @@ void LayoutSystem::layoutFlex() {
 			dispatchLayoutApplied(item.node, newSize);
 		}
 	}
+
+	_flexMemo = sp::move(memo);
 
 	// What the content occupies, padding included; not floored at the box, so callers can
 	// compute the leftover room (the scroll range floors at zero on its own).

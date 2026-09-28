@@ -637,6 +637,10 @@ public:
 	// Needed because ui::Button does not swallow the touch (it must not block scroll swipes).
 	void setExpanderNode(Node *node) { _expander = node; }
 
+	// A trailing node (RowBuilder::addTrailing) is a control of its own: a tap on it does not
+	// select the row either.
+	void addTrailingNode(Node *node) { _trailing.emplace_back(node); }
+
 protected:
 	using Panel::init;
 
@@ -646,6 +650,7 @@ protected:
 	InputListener *_listener = nullptr;
 	Node *_expander = nullptr; // a child of this node, so no ownership is needed
 	Node *_content = nullptr; // likewise
+	Vector<Node *> _trailing; // likewise
 };
 
 } // namespace stappler::xenolith::ui

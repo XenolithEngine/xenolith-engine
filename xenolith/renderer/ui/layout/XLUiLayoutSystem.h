@@ -262,6 +262,18 @@ protected:
 	// setScrollOffset. Rc keeps removed children alive; setScrollOffset still checks getParent().
 	Vector<Pair<Rc<Node>, Vec2>> _placement;
 
+	/* What the last flex pass wrote to each unmeasured child, and the basis it flexed from. A child
+	whose size is still what was written is based on the same basis again, not on its own flexed
+	size, so a pass with nothing changed moves nothing. Rc keeps the key's node alive. */
+	struct FlexBasisMemo {
+		Rc<Node> node;
+		Size2 committed;
+		float baseMain = 0.0f;
+		float naturalCross = 0.0f;
+		bool isRow = true;
+	};
+	Map<const Node *, FlexBasisMemo> _flexMemo;
+
 	Size2 _contentExtent;
 	Vec2 _scrollOffset;
 	bool _overflowX = false;

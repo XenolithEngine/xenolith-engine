@@ -492,8 +492,9 @@ void LayoutSystem::handleChildContentSizeDirty(Node *child) {
 
 	if (child->getParent() == _owner) {
 		// coalesced: any number of child changes per frame ends up as a single
-		// re-layout through the layout-children phase on the next visit; convergence
-		// is guaranteed by setContentSize's equal-size early-out.
+		// re-layout through the layout-children phase on the next visit; it converges
+		// because a pass with unchanged input writes the same sizes (the flex basis
+		// memo) and setContentSize ignores an equal size.
 		_owner->markLayoutChildrenDirty();
 		LayoutSystem_invalidateMeasuredAncestors(_owner);
 	}

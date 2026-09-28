@@ -672,6 +672,10 @@ MenuSourceItem *MenuSystem::getItemForNode(NotNull<Node> node) const {
 }
 
 void MenuSystem::handleItemActivated(NotNull<MenuSourceItem> item) {
+	// closing a popup releases its surface, and this system with it, before the choice is reported
+	auto guard = Rc<MenuSystem>(this);
+	auto keep = Rc<MenuSourceItem>(item.get());
+
 	// the click decides now; a pending close would take down the submenu being opened
 	cancelSubmenuDelay();
 

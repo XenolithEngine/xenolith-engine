@@ -83,6 +83,8 @@ static Node *ScrollSystem_makeIndicator(Node *owner, StringView cls) {
 	// A Panel, so the thumb is styled by ordinary CSS rules; `scrollbar { ... }` matches the type.
 	auto node = Rc<Panel>::create();
 	node->setType("scrollbar");
+	// the renamed type needs the panel appliers, or `background-color` becomes a tint of the paint
+	Panel::registerStyleAppliers("scrollbar");
 	node->addStyleClass("xl-ui-scrollbar");
 	node->addStyleClass(cls);
 	node->setAnchorPoint(Anchor::BottomLeft);

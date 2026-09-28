@@ -81,31 +81,93 @@ uint64_t Texture::getIndex() const {
 	return 0;
 }
 
+/* Block formats that may carry alpha. `getImagePixelFormat` answers Unknown for most of them, which
+is right for what it is asked elsewhere (a view, an attachment) and wrong here: a sprite whose
+texture is BC7 or ASTC was drawn opaque, its transparent texels as the colour stored under them. An
+image known to be opaque says so with ImageHints::Opaque. */
+static bool Texture_isAlphaBlockFormat(core::ImageFormat format) {
+	using core::ImageFormat;
+	switch (format) {
+	case ImageFormat::BC2_UNORM_BLOCK:
+	case ImageFormat::BC2_SRGB_BLOCK:
+	case ImageFormat::BC3_UNORM_BLOCK:
+	case ImageFormat::BC3_SRGB_BLOCK:
+	case ImageFormat::BC7_UNORM_BLOCK:
+	case ImageFormat::BC7_SRGB_BLOCK:
+	case ImageFormat::ASTC_4x4_UNORM_BLOCK:
+	case ImageFormat::ASTC_4x4_SRGB_BLOCK:
+	case ImageFormat::ASTC_5x4_UNORM_BLOCK:
+	case ImageFormat::ASTC_5x4_SRGB_BLOCK:
+	case ImageFormat::ASTC_5x5_UNORM_BLOCK:
+	case ImageFormat::ASTC_5x5_SRGB_BLOCK:
+	case ImageFormat::ASTC_6x5_UNORM_BLOCK:
+	case ImageFormat::ASTC_6x5_SRGB_BLOCK:
+	case ImageFormat::ASTC_6x6_UNORM_BLOCK:
+	case ImageFormat::ASTC_6x6_SRGB_BLOCK:
+	case ImageFormat::ASTC_8x5_UNORM_BLOCK:
+	case ImageFormat::ASTC_8x5_SRGB_BLOCK:
+	case ImageFormat::ASTC_8x6_UNORM_BLOCK:
+	case ImageFormat::ASTC_8x6_SRGB_BLOCK:
+	case ImageFormat::ASTC_8x8_UNORM_BLOCK:
+	case ImageFormat::ASTC_8x8_SRGB_BLOCK:
+	case ImageFormat::ASTC_10x5_UNORM_BLOCK:
+	case ImageFormat::ASTC_10x5_SRGB_BLOCK:
+	case ImageFormat::ASTC_10x6_UNORM_BLOCK:
+	case ImageFormat::ASTC_10x6_SRGB_BLOCK:
+	case ImageFormat::ASTC_10x8_UNORM_BLOCK:
+	case ImageFormat::ASTC_10x8_SRGB_BLOCK:
+	case ImageFormat::ASTC_10x10_UNORM_BLOCK:
+	case ImageFormat::ASTC_10x10_SRGB_BLOCK:
+	case ImageFormat::ASTC_12x10_UNORM_BLOCK:
+	case ImageFormat::ASTC_12x10_SRGB_BLOCK:
+	case ImageFormat::ASTC_12x12_UNORM_BLOCK:
+	case ImageFormat::ASTC_12x12_SRGB_BLOCK:
+	case ImageFormat::ASTC_4x4_SFLOAT_BLOCK_EXT:
+	case ImageFormat::ASTC_5x4_SFLOAT_BLOCK_EXT:
+	case ImageFormat::ASTC_5x5_SFLOAT_BLOCK_EXT:
+	case ImageFormat::ASTC_6x5_SFLOAT_BLOCK_EXT:
+	case ImageFormat::ASTC_6x6_SFLOAT_BLOCK_EXT:
+	case ImageFormat::ASTC_8x5_SFLOAT_BLOCK_EXT:
+	case ImageFormat::ASTC_8x6_SFLOAT_BLOCK_EXT:
+	case ImageFormat::ASTC_8x8_SFLOAT_BLOCK_EXT:
+	case ImageFormat::ASTC_10x5_SFLOAT_BLOCK_EXT:
+	case ImageFormat::ASTC_10x6_SFLOAT_BLOCK_EXT:
+	case ImageFormat::ASTC_10x8_SFLOAT_BLOCK_EXT:
+	case ImageFormat::ASTC_10x10_SFLOAT_BLOCK_EXT:
+	case ImageFormat::ASTC_12x10_SFLOAT_BLOCK_EXT:
+	case ImageFormat::ASTC_12x12_SFLOAT_BLOCK_EXT:
+	case ImageFormat::PVRTC1_2BPP_UNORM_BLOCK_IMG:
+	case ImageFormat::PVRTC1_4BPP_UNORM_BLOCK_IMG:
+	case ImageFormat::PVRTC2_2BPP_UNORM_BLOCK_IMG:
+	case ImageFormat::PVRTC2_4BPP_UNORM_BLOCK_IMG:
+	case ImageFormat::PVRTC1_2BPP_SRGB_BLOCK_IMG:
+	case ImageFormat::PVRTC1_4BPP_SRGB_BLOCK_IMG:
+	case ImageFormat::PVRTC2_2BPP_SRGB_BLOCK_IMG:
+	case ImageFormat::PVRTC2_4BPP_SRGB_BLOCK_IMG: return true;
+	default: break;
+	}
+	return false;
+}
+
+static bool Texture_hasAlpha(core::ImageFormat format, core::ImageHints hints) {
+	if ((hints & core::ImageHints::Opaque) != core::ImageHints::None) {
+		return false;
+	}
+	switch (core::getImagePixelFormat(format)) {
+	case core::PixelFormat::A:
+	case core::PixelFormat::IA:
+	case core::PixelFormat::RGBA: return true;
+	default: break;
+	}
+	return Texture_isAlphaBlockFormat(format);
+}
+
 bool Texture::hasAlpha() const {
 	if (_dynamic) {
 		auto info = _dynamic->getInfo();
-		auto fmt = core::getImagePixelFormat(info.format);
-		switch (fmt) {
-		case core::PixelFormat::A:
-		case core::PixelFormat::IA:
-		case core::PixelFormat::RGBA:
-			return (info.hints & core::ImageHints::Opaque) == core::ImageHints::None;
-			break;
-		default: break;
-		}
-		return false;
-	} else {
-		auto fmt = core::getImagePixelFormat(_data->format);
-		switch (fmt) {
-		case core::PixelFormat::A:
-		case core::PixelFormat::IA:
-		case core::PixelFormat::RGBA:
-			return (_data->hints & core::ImageHints::Opaque) == core::ImageHints::None;
-			break;
-		default: break;
-		}
-		return false;
+		return Texture_hasAlpha(info.format, info.hints);
 	}
+	return Texture_hasAlpha(_data->format, _data->hints);
 }
 
 Extent3 Texture::getExtent() const {
