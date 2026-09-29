@@ -397,20 +397,24 @@ uint32_t draw(const Target &target, const DrawList &list, const URect &clip,
 				continue;
 			}
 
+			// The glyph's own box clipped by the scissor - the kernel's own clip exactly
+			// (blitGlyphScalar). A glyph outside this tile is dropped here: the scissor is the
+			// label's, usually the whole screen, so it let every glyph through to every tile,
+			// and at 256x256 tiles ~5 100 kernel calls a frame drew ~130 glyphs (BF-83).
+			auto left = sprt::max(glyph.x, int32_t(glyph.scissor.x));
+			auto top = sprt::max(glyph.y, int32_t(glyph.scissor.y));
+			auto right = sprt::min(glyph.x + int32_t(glyph.width),
+					int32_t(glyph.scissor.x + glyph.scissor.width));
+			auto bottom = sprt::min(glyph.y + int32_t(glyph.height),
+					int32_t(glyph.scissor.y + glyph.scissor.height));
+			if (left >= right || top >= bottom) {
+				continue;
+			}
+
 			if (stats) {
-				// The glyph's own box clipped by the scissor - NOT the scissor, which is the whole
-				// damage region and would over-count by the glyph count. This has to mirror the
-				// kernel's own clip exactly (blitGlyphScalar), or the number measures nothing.
-				// Transparent texels inside the box do count: the loop walks them.
-				auto left = sprt::max(glyph.x, int32_t(glyph.scissor.x));
-				auto top = sprt::max(glyph.y, int32_t(glyph.scissor.y));
-				auto right = sprt::min(glyph.x + int32_t(glyph.width),
-						int32_t(glyph.scissor.x + glyph.scissor.width));
-				auto bottom = sprt::min(glyph.y + int32_t(glyph.height),
-						int32_t(glyph.scissor.y + glyph.scissor.height));
-				if (left < right && top < bottom) {
-					stats->glyphPixels += uint64_t(right - left) * uint64_t(bottom - top);
-				}
+				// NOT the scissor, which is the whole damage region and would over-count by the
+				// glyph count. Transparent texels inside the box do count: the loop walks them.
+				stats->glyphPixels += uint64_t(right - left) * uint64_t(bottom - top);
 				++stats->ops.glyphs;
 			}
 
