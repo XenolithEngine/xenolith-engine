@@ -165,6 +165,9 @@ target-aarch64:
 	@ln -sfn $(abspath $(MAKE_ROOT)embox-deps-project-include.cmake) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-embox-none-elf/libbuild/embox-deps-project-include.cmake
 	@ln -sfn $(abspath $(MAKE_ROOT)embox-curl-project-include.cmake) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-embox-none-elf/libbuild/embox-curl-project-include.cmake
 	@ln -sfn $(abspath $(MAKE_ROOT)openssl.mk) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-embox-none-elf/libbuild/openssl.mk
+	@ln -sfn $(abspath $(MAKE_ROOT)llvm.mk) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-embox-none-elf/libbuild/llvm.mk
+	@ln -sfn $(abspath $(MAKE_ROOT)mesa.mk) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-embox-none-elf/libbuild/mesa.mk
+	@ln -sfn $(abspath $(MAKE_ROOT)embox-llvm-project-include.cmake) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-embox-none-elf/libbuild/embox-llvm-project-include.cmake
 	@ln -sfn $(abspath $(MAKE_ROOT)gen-probe-stubs.sh) $(TOOLCHAIN_OUTPUT_DIR)/aarch64-embox-none-elf/libbuild/gen-probe-stubs.sh
 	# MAKE_ROOT points at the writable scratch (libbuild) so configure.mk's
 	# CMAKE_INSTALL_BINDIR = $(MAKE_ROOT)$(LIBNAME)/bin and similar per-lib
@@ -205,14 +208,15 @@ SPRT_LIB := $(SP_INSTALL_PREFIX)/usr/lib/libsprt.a
 
 # Third-party dependency libs. Embox ships its own libc/pthread/mm in the export,
 # so the set mirrors target-linux/target-wasm (media/text/data + crypto + net).
-# Vulkan / WAMR / libbacktrace are excluded: no GPU driver in the flat Embox image
-# (the soft rasterizer is the renderer), no wasm runtime, and Embox provides its
-# own backtrace path. libicuuc is deferred: ICU's autoconf cross-build needs the
+# WAMR / libbacktrace are excluded: no wasm runtime, and Embox provides its own
+# backtrace path. The Vulkan headers are in (VK_HEADERS below): lavapipe, Mesa's
+# software Vulkan, is what the engine's Vulkan backend runs on in the flat EL1
+# image (xenolith-os docs/EMBOX-LAVAPIPE.md). libicuuc is deferred: ICU's autoconf cross-build needs the
 # ability to link a probe executable, which the Embox flat build does not provide
 # (crt0/special linker script). The sprt runtime's unicode backend is stubbed in
 # runtime/libc_wrapper/platform/embox/unicode.cc for the M6 milestone; the full
 # ICU port is tracked as a separate task.
-# The crypto/net stack (openssl/gost/mbedtls/nghttp3/curl) is staged to
+# The crypto/net stack (openssl/gost/nghttp3/curl) is staged to
 # land alongside a Embox openssl.mk (perl Configure target) — added incrementally
 # as the engine surface that needs it comes online.
 # The set matches target-nuttx's. liblzma/libtiff are left out here for the same
@@ -256,7 +260,65 @@ FORWARD_VARS := \
 
 ARCH_LIBS = $(addprefix $(SP_INSTALL_PREFIX)/usr/lib/,$(LIBS))
 
-all: $(SPRT_LIB) $(ARCH_LIBS)
+VK_HEADERS := $(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h
+# SPIRV-Reflect in the engine reads them (the Vulkan backend, xenolith/core).
+SPIRV_HEADERS := $(SP_INSTALL_PREFIX)/usr/include/spirv/unified1/spirv.h
+
+# lavapipe and the LLVM it JITs with (llvm.mk; xenolith-os docs/EMBOX-LAVAPIPE.md).
+# The largest part of this target by far -- EMBOX_LAVAPIPE=0 leaves it out.
+EMBOX_LAVAPIPE ?= 1
+LAVAPIPE_LIBS := $(if $(filter 1,$(EMBOX_LAVAPIPE)),\
+	$(SP_INSTALL_PREFIX)/usr/lib/libLLVMCore.a \
+	$(SP_INSTALL_PREFIX)/usr/lib/libvulkan_lvp.a \
+	$(SP_INSTALL_PREFIX)/lavapipe.mk)
+
+# What an application links to carry lavapipe (target.mk includes it; the vk
+# backend's module adds it on Embox): libvulkan_lvp.a whole -- its dispatch
+# tables name the entry points as weak symbols, which pull no archive member --
+# and the LLVM libraries llvmpipe asks llvm-config for, the list meson used.
+LAVAPIPE_LLVM_COMPONENTS := bitwriter engine mcdisassembler mcjit core executionengine \
+	scalaropts transformutils instcombine native coroutines lto
+$(SP_INSTALL_PREFIX)/lavapipe.mk: $(SP_INSTALL_PREFIX)/usr/lib/libvulkan_lvp.a
+	@echo '# lavapipe in the image: written by target-embox/Makefile' > $@
+	@echo 'TARGET_LAVAPIPE_LDFLAGS := -Wl,--whole-archive -lvulkan_lvp -Wl,--no-whole-archive' \
+		'-Wl,--start-group' \
+		"$$($(SP_INSTALL_PREFIX)/usr/bin/llvm-config --link-static --libs $(LAVAPIPE_LLVM_COMPONENTS))" \
+		'-Wl,--end-group' >> $@
+
+# Venus: Vulkan on the host's GPU through virtio-gpu (xenolith-os
+# docs/EMBOX-VENUS.md). The same Mesa, a build tree of its own, no LLVM: the
+# transport calls the kernel's virtio-gpu driver (xl_vgpu.h, in the Embox
+# export). EMBOX_VENUS=0 leaves it out.
+EMBOX_VENUS ?= 1
+VENUS_LIBS := $(if $(filter 1,$(EMBOX_VENUS)),\
+	$(SP_INSTALL_PREFIX)/usr/lib/libvulkan_virtio.a \
+	$(SP_INSTALL_PREFIX)/venus.mk)
+
+# What an application links to carry Venus instead of lavapipe (the vk
+# backend's module picks it with XL_VULKAN_DRIVER=venus): the archive whole,
+# for the same weak entry points.
+$(SP_INSTALL_PREFIX)/venus.mk: $(SP_INSTALL_PREFIX)/usr/lib/libvulkan_virtio.a
+	@echo '# Venus in the image: written by target-embox/Makefile' > $@
+	@echo 'TARGET_VENUS_LDFLAGS := -Wl,--whole-archive -lvulkan_virtio -Wl,--no-whole-archive' >> $@
+
+all: $(SPRT_LIB) $(ARCH_LIBS) $(VK_HEADERS) $(SPIRV_HEADERS) $(LAVAPIPE_LIBS) $(VENUS_LIBS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libLLVMCore.a: llvm.mk | probe-stubs
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libvulkan_lvp.a: mesa.mk $(SP_INSTALL_PREFIX)/usr/lib/libLLVMCore.a | probe-stubs
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libvulkan_virtio.a: mesa.mk $(VK_HEADERS) | probe-stubs
+	$(MAKE) -f $< $(FORWARD_VARS) MESA_VARIANT=venus
+
+$(VK_HEADERS): ../common/vulkan-headers.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+	touch $@
+
+$(SPIRV_HEADERS): ../common/spirv-headers.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+	touch $@
 
 # Cross-build libsprt.a from the in-tree runtime against the generated
 # host.mk/target.mk (mirrors target-wasm). Static-archive builds only archive

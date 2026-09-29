@@ -29,7 +29,9 @@
 
 namespace sprt::window {
 
-// Flat Embox image: one fullscreen window over /dev/fb0, software rasterizer only.
+// Flat Embox image: one fullscreen window over /dev/fb0. The software rasterizer writes the
+// window's CPU buffers; Vulkan (lavapipe in the image) presents through VK_KHR_display, which
+// Mesa's fbdev WSI puts on the same framebuffer.
 class EmboxContextController : public ContextController {
 public:
 	static Rc<EmboxContextController> create(NotNull<Context>, ContextConfig &&,
@@ -45,10 +47,17 @@ public:
 
 	virtual bool isCursorSupported(WindowCursor, bool serverSide) const override { return false; }
 	virtual WindowCapabilities getCapabilities() const override;
+	virtual SurfaceSupportInfo getSupportInfo() const override;
 	virtual void openUrl(StringView) override;
+
+	// Vulkan presents through VK_KHR_display. XL_VK_DISPLAY=0: frames are copied into the
+	// window's CPU buffers instead (the engine's headless swapchain with an output).
+	bool isVulkanDisplay() const { return _vulkanDisplay; }
 
 protected:
 	virtual bool loadWindow(Rc<WindowInfo> &&) override;
+
+	bool _vulkanDisplay = false;
 };
 
 } // namespace sprt::window

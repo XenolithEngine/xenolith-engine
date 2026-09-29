@@ -42,13 +42,13 @@ Note: Apple hardware is required due licensing limitations to build apple hosts 
 * [FreeType](https://freetype.org/)
 * [harfbuzz](https://github.com/harfbuzz/harfbuzz/releases/)
 * [brotli](https://github.com/google/brotli/releases) compression library
-* [MbedTLS](https://github.com/Mbed-TLS/mbedtls) crypto library
 * [OpenSSL](https://openssl-library.org/source/index.html) crypto library
 * [openssl-gost-engine](https://github.com/gost-engine/engine) for GOST crypto support
 * [nghttp3](https://github.com/ngtcp2/nghttp3/releases)
-* [libcurl](https://curl.se/download.html) in MbedTLS and OpenSSL variants. Only OpenSSL variant supports HTTP/3
+* [ngtcp2](https://github.com/ngtcp2/ngtcp2/releases) QUIC transport for HTTP/3
+* [libcurl](https://curl.se/download.html) on OpenSSL, with HTTP/3
 * [sqlite3](https://www.sqlite.org/download.html)
-* [iwasm](https://github.com/bytecodealliance/wasm-micro-runtime) WebAssembly runtime library
+* [iwasm](https://github.com/wasm-micro-runtime/wasm-micro-runtime) WebAssembly runtime library
 
 IDN is implemented by the runtime itself (`runtime/src/idn`), so no IDN2 library is
 bundled. Unicode case mapping and collation are the runtime's own too.

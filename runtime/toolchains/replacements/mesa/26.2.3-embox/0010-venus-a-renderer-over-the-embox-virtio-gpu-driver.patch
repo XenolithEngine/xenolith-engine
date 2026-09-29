@@ -1,0 +1,734 @@
+diff --git a/src/virtio/vulkan/vn_renderer.h b/src/virtio/vulkan/vn_renderer.h
+index ea224ea..7886d44 100644
+--- a/src/virtio/vulkan/vn_renderer.h
++++ b/src/virtio/vulkan/vn_renderer.h
+@@ -225,12 +225,22 @@ vn_renderer_create_vtest(struct vn_instance *instance,
+                          const VkAllocationCallbacks *alloc,
+                          struct vn_renderer **renderer);
+ 
++#if DETECT_OS_EMBOX
++/* the kernel's virtio-gpu driver, called directly (vn_renderer_embox.c) */
++VkResult
++vn_renderer_create_embox(struct vn_instance *instance,
++                         const VkAllocationCallbacks *alloc,
++                         struct vn_renderer **renderer);
++#endif
++
+ static inline VkResult
+ vn_renderer_create(struct vn_instance *instance,
+                    const VkAllocationCallbacks *alloc,
+                    struct vn_renderer **renderer)
+ {
+-#ifdef HAVE_LIBDRM
++#if DETECT_OS_EMBOX
++   return vn_renderer_create_embox(instance, alloc, renderer);
++#elif defined(HAVE_LIBDRM)
+    VkResult result;
+    if (VN_DEBUG(VTEST)) {
+       result = vn_renderer_create_vtest(instance, alloc, renderer);
+diff --git a/src/virtio/vulkan/vn_renderer_embox.c b/src/virtio/vulkan/vn_renderer_embox.c
+new file mode 100644
+index 0000000..fe90a9d
+--- /dev/null
++++ b/src/virtio/vulkan/vn_renderer_embox.c
+@@ -0,0 +1,700 @@
++/*
++ * Copyright 2026 Xenolith Team
++ * SPDX-License-Identifier: MIT
++ */
++
++/** The Venus renderer on Embox: virtio-gpu through the kernel driver's C API.
++ *
++ * On Embox the application is linked into the kernel image, so the driver is a
++ * set of plain calls (xl_vgpu.h, from xenolith-os
++ * board/embox-qemu/drivers/virtio_gpu) where Linux has DRM ioctls. This file
++ * follows vn_renderer_virtgpu.c, with:
++ *
++ *  - one virtio-gpu context per renderer (per VkInstance), as one DRM fd has;
++ *  - shmems and host-visible bos: HOST3D blobs mapped into the device's
++ *    host-visible region, which the driver maps once, Normal cacheable -- the
++ *    mappings are coherent, flush and invalidate have nothing to do;
++ *  - no dma-buf and no sync_file: nothing to import or export them to;
++ *  - timeline syncs kept here, on the driver's fences. A submission gets a
++ *    fence on its ring; a sync remembers (ring, fence, value) for every
++ *    submission that is to signal it, and its value is the largest one whose
++ *    fence has retired. Venus signals each sync from one ring only (a
++ *    semaphore has one sync per queue), so that is the timeline's value.
++ */
++
++#include <errno.h>
++#include <string.h>
++
++#include <xl_vgpu.h>
++
++#include "virtio/virtio-gpu/venus_hw.h"
++
++#include "util/os_time.h"
++
++#include "vn_renderer_internal.h"
++
++#define EMBOX_VGPU_PCI_VENDOR_ID 0x1af4
++#define EMBOX_VGPU_PCI_DEVICE_ID 0x1050
++#define EMBOX_VGPU_CAPSET_VENUS 4
++
++/* a wait re-checks all its syncs at least this often */
++#define EMBOX_WAIT_SLICE_NS (1000ull * 1000)
++
++struct embox_shmem {
++   struct vn_renderer_shmem base;
++};
++
++struct embox_bo {
++   struct vn_renderer_bo base;
++   uint32_t blob_flags;
++};
++
++/* a submission that signals the sync with `value` once `fence` on `ring` has
++ * retired */
++struct embox_sync_point {
++   uint64_t fence;
++   uint64_t value;
++   uint32_t ring;
++};
++
++struct embox_sync {
++   struct vn_renderer_sync base;
++
++   uint64_t value;
++   struct embox_sync_point *points;
++   uint32_t point_count;
++   uint32_t point_capacity;
++};
++
++struct embox_renderer {
++   struct vn_renderer base;
++
++   struct vn_instance *instance;
++
++   uint32_t ctx;
++   struct virgl_renderer_capset_venus capset;
++
++   struct vn_renderer_shmem_cache shmem_cache;
++
++   /* the state of every sync; nobody blocks while holding it */
++   mtx_t sync_mutex;
++   /* broadcast when a sync gets a new point or value */
++   cnd_t sync_cond;
++};
++
++static inline struct embox_renderer *
++embox_renderer(struct vn_renderer *renderer)
++{
++   return (struct embox_renderer *)renderer;
++}
++
++/* ---- syncs --------------------------------------------------------------- */
++
++/* Fold the retired points into the value. */
++static void
++embox_sync_update_locked(struct embox_sync *sync)
++{
++   uint32_t kept = 0;
++   for (uint32_t i = 0; i < sync->point_count; i++) {
++      const struct embox_sync_point *p = &sync->points[i];
++      if (xl_vgpu_completed(p->ring) >= p->fence) {
++         if (p->value > sync->value)
++            sync->value = p->value;
++      } else {
++         sync->points[kept++] = *p;
++      }
++   }
++   sync->point_count = kept;
++}
++
++static bool
++embox_sync_add_point_locked(struct embox_sync *sync,
++                            uint32_t ring,
++                            uint64_t fence,
++                            uint64_t value)
++{
++   embox_sync_update_locked(sync);
++
++   if (sync->point_count == sync->point_capacity) {
++      const uint32_t capacity = MAX2(sync->point_capacity * 2, 4);
++      struct embox_sync_point *points =
++         realloc(sync->points, capacity * sizeof(*points));
++      if (!points)
++         return false;
++      sync->points = points;
++      sync->point_capacity = capacity;
++   }
++
++   sync->points[sync->point_count++] = (struct embox_sync_point){
++      .fence = fence,
++      .value = value,
++      .ring = ring,
++   };
++   return true;
++}
++
++/* The point that brings the sync to `value`, if one is submitted. */
++static const struct embox_sync_point *
++embox_sync_find_point_locked(const struct embox_sync *sync, uint64_t value)
++{
++   for (uint32_t i = 0; i < sync->point_count; i++) {
++      if (sync->points[i].value >= value)
++         return &sync->points[i];
++   }
++   return NULL;
++}
++
++static VkResult
++embox_sync_create(struct vn_renderer *renderer,
++                  uint64_t initial_val,
++                  struct vn_renderer_sync **out_sync)
++{
++   struct embox_sync *sync = calloc(1, sizeof(*sync));
++   if (!sync)
++      return VK_ERROR_OUT_OF_HOST_MEMORY;
++
++   sync->value = initial_val;
++   *out_sync = &sync->base;
++   return VK_SUCCESS;
++}
++
++static VkResult
++embox_sync_create_from_syncobj(struct vn_renderer *renderer,
++                               int fd,
++                               bool sync_file,
++                               struct vn_renderer_sync **out_sync)
++{
++   return VK_ERROR_INVALID_EXTERNAL_HANDLE;
++}
++
++static void
++embox_sync_destroy(struct vn_renderer *renderer,
++                   struct vn_renderer_sync *_sync)
++{
++   struct embox_sync *sync = (struct embox_sync *)_sync;
++
++   free(sync->points);
++   free(sync);
++}
++
++static int
++embox_sync_export_syncobj(struct vn_renderer *renderer,
++                          struct vn_renderer_sync *sync,
++                          bool sync_file)
++{
++   return -1;
++}
++
++static VkResult
++embox_sync_reset(struct vn_renderer *renderer, struct vn_renderer_sync *_sync)
++{
++   struct embox_renderer *emb = embox_renderer(renderer);
++   struct embox_sync *sync = (struct embox_sync *)_sync;
++
++   mtx_lock(&emb->sync_mutex);
++   sync->value = 0;
++   sync->point_count = 0;
++   mtx_unlock(&emb->sync_mutex);
++
++   return VK_SUCCESS;
++}
++
++static VkResult
++embox_sync_read(struct vn_renderer *renderer,
++                struct vn_renderer_sync *_sync,
++                uint64_t *val)
++{
++   struct embox_renderer *emb = embox_renderer(renderer);
++   struct embox_sync *sync = (struct embox_sync *)_sync;
++
++   mtx_lock(&emb->sync_mutex);
++   embox_sync_update_locked(sync);
++   *val = sync->value;
++   mtx_unlock(&emb->sync_mutex);
++
++   return VK_SUCCESS;
++}
++
++static VkResult
++embox_sync_write(struct vn_renderer *renderer,
++                 struct vn_renderer_sync *_sync,
++                 uint64_t val)
++{
++   struct embox_renderer *emb = embox_renderer(renderer);
++   struct embox_sync *sync = (struct embox_sync *)_sync;
++
++   mtx_lock(&emb->sync_mutex);
++   embox_sync_update_locked(sync);
++   if (val > sync->value)
++      sync->value = val;
++   cnd_broadcast(&emb->sync_cond);
++   mtx_unlock(&emb->sync_mutex);
++
++   return VK_SUCCESS;
++}
++
++/* ---- submit and wait ----------------------------------------------------- */
++
++static VkResult
++embox_submit(struct vn_renderer *renderer,
++             const struct vn_renderer_submit_batch *batch)
++{
++   struct embox_renderer *emb = embox_renderer(renderer);
++   uint64_t fence;
++
++   /* the driver copies the stream, the fence is on the batch's ring */
++   int ret = xl_vgpu_submit(emb->ctx, batch->ring_idx, batch->cs_data,
++                            batch->cs_size, &fence);
++   if (ret) {
++      vn_log(emb->instance, "submit to ring %u failed: %d", batch->ring_idx,
++             ret);
++      return VK_ERROR_DEVICE_LOST;
++   }
++
++   if (!batch->sync_count)
++      return VK_SUCCESS;
++
++   VkResult result = VK_SUCCESS;
++   mtx_lock(&emb->sync_mutex);
++   for (uint32_t i = 0; i < batch->sync_count; i++) {
++      struct embox_sync *sync = (struct embox_sync *)batch->syncs[i];
++      if (!embox_sync_add_point_locked(sync, batch->ring_idx, fence,
++                                       batch->sync_values[i]))
++         result = VK_ERROR_OUT_OF_HOST_MEMORY;
++   }
++   cnd_broadcast(&emb->sync_cond);
++   mtx_unlock(&emb->sync_mutex);
++
++   return result;
++}
++
++static bool
++embox_wait_satisfied_locked(const struct vn_renderer_wait *wait)
++{
++   for (uint32_t i = 0; i < wait->sync_count; i++) {
++      struct embox_sync *sync = (struct embox_sync *)wait->syncs[i];
++      embox_sync_update_locked(sync);
++      const bool done = sync->value >= wait->sync_values[i];
++      if (wait->wait_any && done)
++         return true;
++      if (!wait->wait_any && !done)
++         return false;
++   }
++   return !wait->wait_any || !wait->sync_count;
++}
++
++static VkResult
++embox_wait(struct vn_renderer *renderer, const struct vn_renderer_wait *wait)
++{
++   struct embox_renderer *emb = embox_renderer(renderer);
++   const int64_t deadline = (int64_t)MIN2(
++      os_time_get_absolute_timeout(wait->timeout), (uint64_t)INT64_MAX);
++
++   mtx_lock(&emb->sync_mutex);
++   for (;;) {
++      if (embox_wait_satisfied_locked(wait)) {
++         mtx_unlock(&emb->sync_mutex);
++         return VK_SUCCESS;
++      }
++
++      const int64_t now = os_time_get_nano();
++      if (now >= deadline) {
++         mtx_unlock(&emb->sync_mutex);
++         return VK_TIMEOUT;
++      }
++
++      /* A submitted point to wait on: the first unsatisfied sync's (waiting
++       * for all), or any (waiting for any: then only a slice of it, the
++       * others may get there first). */
++      struct embox_sync_point point;
++      bool have_point = false;
++      for (uint32_t i = 0; i < wait->sync_count && !have_point; i++) {
++         struct embox_sync *sync = (struct embox_sync *)wait->syncs[i];
++         if (sync->value >= wait->sync_values[i])
++            continue;
++         const struct embox_sync_point *p =
++            embox_sync_find_point_locked(sync, wait->sync_values[i]);
++         if (p) {
++            point = *p;
++            have_point = true;
++         } else if (!wait->wait_any) {
++            break; /* not submitted yet: wait for that first */
++         }
++      }
++
++      uint64_t slice = (uint64_t)(deadline - now);
++      if (!have_point || wait->wait_any || wait->sync_count > 1)
++         slice = MIN2(slice, EMBOX_WAIT_SLICE_NS);
++
++      if (have_point) {
++         mtx_unlock(&emb->sync_mutex);
++         int ret = xl_vgpu_wait(point.ring, point.fence, slice);
++         mtx_lock(&emb->sync_mutex);
++         if (ret && ret != -ETIMEDOUT) {
++            mtx_unlock(&emb->sync_mutex);
++            return VK_ERROR_DEVICE_LOST;
++         }
++      } else {
++         /* wait-before-submit: a submission or a host write will come */
++         struct timespec ts;
++         timespec_get(&ts, TIME_UTC);
++         ts.tv_nsec += (long)slice;
++         ts.tv_sec += ts.tv_nsec / 1000000000l;
++         ts.tv_nsec %= 1000000000l;
++         cnd_timedwait(&emb->sync_cond, &emb->sync_mutex, &ts);
++      }
++   }
++}
++
++/* ---- bos ----------------------------------------------------------------- */
++
++static void
++embox_bo_invalidate(struct vn_renderer *renderer,
++                    struct vn_renderer_bo *bo,
++                    VkDeviceSize offset,
++                    VkDeviceSize size)
++{
++   /* nop: the host-visible region is mapped coherent */
++}
++
++static void
++embox_bo_flush(struct vn_renderer *renderer,
++               struct vn_renderer_bo *bo,
++               VkDeviceSize offset,
++               VkDeviceSize size)
++{
++   /* nop: the host-visible region is mapped coherent */
++}
++
++static void *
++embox_bo_map(struct vn_renderer *renderer,
++             struct vn_renderer_bo *_bo,
++             void *placed_addr)
++{
++   struct embox_renderer *emb = embox_renderer(renderer);
++   struct embox_bo *bo = (struct embox_bo *)_bo;
++
++   /* the mapping is where the device's region is, not where one asks */
++   if (placed_addr || !(bo->blob_flags & XL_VGPU_BLOB_FLAG_MAPPABLE))
++      return NULL;
++
++   /* not thread-safe but is fine */
++   if (!bo->base.mmap_ptr) {
++      void *ptr;
++      int ret = xl_vgpu_blob_map(bo->base.res_id, &ptr, NULL);
++      if (ret) {
++         vn_log(emb->instance, "map of %zu bytes failed: %d",
++                bo->base.mmap_size, ret);
++         return NULL;
++      }
++      bo->base.mmap_ptr = ptr;
++   }
++
++   return bo->base.mmap_ptr;
++}
++
++static int
++embox_bo_export_dma_buf(struct vn_renderer *renderer,
++                        struct vn_renderer_bo *bo)
++{
++   return -1;
++}
++
++static int
++embox_bo_export_sync_file(struct vn_renderer *renderer,
++                          struct vn_renderer_bo *bo)
++{
++   return -1;
++}
++
++static bool
++embox_bo_destroy(struct vn_renderer *renderer, struct vn_renderer_bo *_bo)
++{
++   struct embox_renderer *emb = embox_renderer(renderer);
++   struct embox_bo *bo = (struct embox_bo *)_bo;
++
++   /* nothing imports bos here, the refcount cannot come back */
++   xl_vgpu_blob_destroy(emb->ctx, bo->base.res_id);
++   free(bo);
++   return true;
++}
++
++static VkResult
++embox_bo_create_from_dma_buf(struct vn_renderer *renderer,
++                             VkDeviceSize size,
++                             int fd,
++                             VkMemoryPropertyFlags flags,
++                             struct vn_renderer_bo **out_bo)
++{
++   return VK_ERROR_INVALID_EXTERNAL_HANDLE;
++}
++
++static VkResult
++embox_bo_create_from_device_memory(
++   struct vn_renderer *renderer,
++   struct vn_renderer_submit_batch *batch,
++   VkDeviceSize size,
++   vn_object_id mem_id,
++   VkMemoryPropertyFlags flags,
++   VkExternalMemoryHandleTypeFlags external_handles,
++   struct vn_renderer_bo **out_bo)
++{
++   struct embox_renderer *emb = embox_renderer(renderer);
++
++   uint32_t blob_flags = 0;
++   if (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
++      blob_flags |= XL_VGPU_BLOB_FLAG_MAPPABLE;
++   if (external_handles)
++      blob_flags |= XL_VGPU_BLOB_FLAG_SHAREABLE;
++
++   struct embox_bo *bo = calloc(1, sizeof(*bo));
++   if (!bo)
++      return VK_ERROR_OUT_OF_HOST_MEMORY;
++
++   uint32_t res_id;
++   int ret = xl_vgpu_blob_create(emb->ctx, XL_VGPU_BLOB_MEM_HOST3D, blob_flags,
++                                 mem_id, size, batch ? batch->cs_data : NULL,
++                                 batch ? batch->cs_size : 0, &res_id);
++   if (ret) {
++      vn_log(emb->instance,
++             "blob create failed: flags=%u, size=%" PRIu64 ", id=%" PRIu64
++             ", err=%d",
++             blob_flags, (uint64_t)size, (uint64_t)mem_id, ret);
++      free(bo);
++      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
++   }
++
++   *bo = (struct embox_bo){
++      .base = {
++         .refcount = VN_REFCOUNT_INIT(1),
++         .res_id = res_id,
++         .mmap_size = size,
++      },
++      .blob_flags = blob_flags,
++   };
++
++   *out_bo = &bo->base;
++   return VK_SUCCESS;
++}
++
++/* ---- shmems -------------------------------------------------------------- */
++
++static void
++embox_shmem_destroy_now(struct vn_renderer *renderer,
++                        struct vn_renderer_shmem *_shmem)
++{
++   struct embox_renderer *emb = embox_renderer(renderer);
++   struct embox_shmem *shmem = (struct embox_shmem *)_shmem;
++
++   xl_vgpu_blob_destroy(emb->ctx, shmem->base.res_id);
++   free(shmem);
++}
++
++static void
++embox_shmem_destroy(struct vn_renderer *renderer,
++                    struct vn_renderer_shmem *shmem)
++{
++   struct embox_renderer *emb = embox_renderer(renderer);
++
++   if (vn_renderer_shmem_cache_add(&emb->shmem_cache, shmem))
++      return;
++
++   embox_shmem_destroy_now(renderer, shmem);
++}
++
++/* Blob id 0, HOST3D, mappable: the renderer allocates host shared memory for
++ * it (supports_blob_id_0, see virtgpu_init_shmem_blob_mem). */
++static struct vn_renderer_shmem *
++embox_shmem_create(struct vn_renderer *renderer, size_t size)
++{
++   struct embox_renderer *emb = embox_renderer(renderer);
++
++   struct vn_renderer_shmem *cached_shmem =
++      vn_renderer_shmem_cache_get(&emb->shmem_cache, size);
++   if (cached_shmem) {
++      cached_shmem->refcount = VN_REFCOUNT_INIT(1);
++      return cached_shmem;
++   }
++
++   struct embox_shmem *shmem = calloc(1, sizeof(*shmem));
++   if (!shmem)
++      return NULL;
++
++   uint32_t res_id;
++   int ret = xl_vgpu_blob_create(emb->ctx, XL_VGPU_BLOB_MEM_HOST3D,
++                                 XL_VGPU_BLOB_FLAG_MAPPABLE, 0, size, NULL, 0,
++                                 &res_id);
++   if (ret) {
++      vn_log(emb->instance, "shmem of %zu bytes failed: %d", size, ret);
++      free(shmem);
++      return NULL;
++   }
++
++   void *ptr;
++   ret = xl_vgpu_blob_map(res_id, &ptr, NULL);
++   if (ret) {
++      vn_log(emb->instance, "shmem map of %zu bytes failed: %d", size, ret);
++      xl_vgpu_blob_destroy(emb->ctx, res_id);
++      free(shmem);
++      return NULL;
++   }
++
++   *shmem = (struct embox_shmem){
++      .base = {
++         .refcount = VN_REFCOUNT_INIT(1),
++         .res_id = res_id,
++         .mmap_size = size,
++         .mmap_ptr = ptr,
++      },
++   };
++
++   return &shmem->base;
++}
++
++/* ---- renderer ------------------------------------------------------------ */
++
++static void
++embox_init_renderer_info(struct embox_renderer *emb)
++{
++   struct vn_renderer_info *info = &emb->base.info;
++   const struct virgl_renderer_capset_venus *capset = &emb->capset;
++
++   info->pci.vendor_id = EMBOX_VGPU_PCI_VENDOR_ID;
++   info->pci.device_id = EMBOX_VGPU_PCI_DEVICE_ID;
++
++   info->has_dma_buf_import = false;
++   info->has_external_sync = false;
++   info->has_timeline_sync = true;
++   info->has_implicit_fencing = false;
++   /* HOST3D blobs from a dedicated heap when the host asks for it */
++   info->has_guest_vram = capset->use_guest_vram;
++
++   info->max_timeline_count = XL_VGPU_RINGS;
++
++   info->wire_format_version = capset->wire_format_version;
++   info->vk_xml_version = capset->vk_xml_version;
++   info->vk_ext_command_serialization_spec_version =
++      capset->vk_ext_command_serialization_spec_version;
++   info->vk_mesa_venus_protocol_spec_version =
++      capset->vk_mesa_venus_protocol_spec_version;
++
++   STATIC_ASSERT(sizeof(info->vk_extension_mask) >=
++                 sizeof(capset->vk_extension_mask1));
++   memcpy(info->vk_extension_mask, capset->vk_extension_mask1,
++          sizeof(capset->vk_extension_mask1));
++}
++
++static void
++embox_destroy(struct vn_renderer *renderer, const VkAllocationCallbacks *alloc)
++{
++   struct embox_renderer *emb = embox_renderer(renderer);
++
++   vn_renderer_shmem_cache_fini(&emb->shmem_cache);
++
++   if (emb->ctx)
++      xl_vgpu_ctx_destroy(emb->ctx);
++
++   cnd_destroy(&emb->sync_cond);
++   mtx_destroy(&emb->sync_mutex);
++
++   vk_free(alloc, emb);
++}
++
++static VkResult
++embox_init(struct embox_renderer *emb)
++{
++   if (!xl_vgpu_ready()) {
++      if (VN_DEBUG(INIT))
++         vn_log(emb->instance, "no Venus-capable virtio-gpu");
++      return VK_ERROR_INITIALIZATION_FAILED;
++   }
++
++   int ret = xl_vgpu_get_capset(EMBOX_VGPU_CAPSET_VENUS, 0, &emb->capset,
++                                sizeof(emb->capset));
++   if (ret < 0) {
++      if (VN_DEBUG(INIT))
++         vn_log(emb->instance, "failed to get venus v0 capset: %d", ret);
++      return VK_ERROR_INITIALIZATION_FAILED;
++   }
++   if (emb->capset.wire_format_version == 0) {
++      if (VN_DEBUG(INIT))
++         vn_log(emb->instance, "Unsupported wire format version %u",
++                emb->capset.wire_format_version);
++      return VK_ERROR_INITIALIZATION_FAILED;
++   }
++   /* what virtgpu asserts, and this transport relies on too */
++   if (!emb->capset.supports_blob_id_0 ||
++       !emb->capset.supports_multiple_timelines) {
++      vn_log(emb->instance, "the host lacks blob id 0 or multiple timelines");
++      return VK_ERROR_INITIALIZATION_FAILED;
++   }
++
++   ret = xl_vgpu_ctx_create(EMBOX_VGPU_CAPSET_VENUS, "venus", &emb->ctx);
++   if (ret) {
++      emb->ctx = 0;
++      if (VN_DEBUG(INIT))
++         vn_log(emb->instance, "failed to initialize context: %d", ret);
++      return VK_ERROR_INITIALIZATION_FAILED;
++   }
++
++   vn_renderer_shmem_cache_init(&emb->shmem_cache, &emb->base,
++                                embox_shmem_destroy_now);
++
++   embox_init_renderer_info(emb);
++
++   emb->base.ops.destroy = embox_destroy;
++   emb->base.ops.submit = embox_submit;
++   emb->base.ops.wait = embox_wait;
++
++   emb->base.shmem_ops.create = embox_shmem_create;
++   emb->base.shmem_ops.destroy = embox_shmem_destroy;
++
++   emb->base.bo_ops.create_from_device_memory =
++      embox_bo_create_from_device_memory;
++   emb->base.bo_ops.create_from_dma_buf = embox_bo_create_from_dma_buf;
++   emb->base.bo_ops.destroy = embox_bo_destroy;
++   emb->base.bo_ops.export_dma_buf = embox_bo_export_dma_buf;
++   emb->base.bo_ops.export_sync_file = embox_bo_export_sync_file;
++   emb->base.bo_ops.map = embox_bo_map;
++   emb->base.bo_ops.flush = embox_bo_flush;
++   emb->base.bo_ops.invalidate = embox_bo_invalidate;
++
++   emb->base.sync_ops.create = embox_sync_create;
++   emb->base.sync_ops.create_from_syncobj = embox_sync_create_from_syncobj;
++   emb->base.sync_ops.destroy = embox_sync_destroy;
++   emb->base.sync_ops.export_syncobj = embox_sync_export_syncobj;
++   emb->base.sync_ops.reset = embox_sync_reset;
++   emb->base.sync_ops.read = embox_sync_read;
++   emb->base.sync_ops.write = embox_sync_write;
++
++   return VK_SUCCESS;
++}
++
++VkResult
++vn_renderer_create_embox(struct vn_instance *instance,
++                         const VkAllocationCallbacks *alloc,
++                         struct vn_renderer **renderer)
++{
++   struct embox_renderer *emb = vk_zalloc(alloc, sizeof(*emb), VN_DEFAULT_ALIGN,
++                                          VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
++   if (!emb)
++      return VK_ERROR_OUT_OF_HOST_MEMORY;
++
++   emb->instance = instance;
++   mtx_init(&emb->sync_mutex, mtx_plain);
++   cnd_init(&emb->sync_cond);
++
++   VkResult result = embox_init(emb);
++   if (result != VK_SUCCESS) {
++      embox_destroy(&emb->base, alloc);
++      return result;
++   }
++
++   *renderer = &emb->base;
++
++   if (VN_DEBUG(INIT))
++      vn_log(instance, "embox virtio-gpu backend initialized, context %u",
++             emb->ctx);
++
++   return VK_SUCCESS;
++}

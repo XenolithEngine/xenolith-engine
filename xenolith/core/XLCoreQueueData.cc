@@ -23,8 +23,10 @@
 
 #include "XLCoreQueueData.h"
 #include "XLCoreQueuePass.h"
-#if !SPRT_WASM && !SPRT_HOSTED_RTOS && !SPRT_EMBOX_USER
-#include "SPIRV-Reflect/spirv_reflect.h" // SPIR-V reflection unused on wasm (WGSL path) and NuttX (soft rasterizer)
+// SPIR-V reflection unused on wasm (WGSL path), Embox EL0 and, without the Vulkan backend, on RTOS
+// (soft rasterizer); lavapipe on Embox needs it (XLThirdparty.scu.cpp)
+#if !SPRT_WASM && !SPRT_EMBOX_USER && (!SPRT_HOSTED_RTOS || MODULE_XENOLITH_BACKEND_VK)
+#include "SPIRV-Reflect/spirv_reflect.h"
 #endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
@@ -72,8 +74,8 @@ void ProgramData::inspect(SpanView<uint32_t> data) {
 		return;
 	}
 
-#if SPRT_WASM || SPRT_HOSTED_RTOS || SPRT_EMBOX_USER
-	return; // no SPIR-V reflection on wasm (WGSL), NuttX or Embox EL0 (soft rasterizer)
+#if SPRT_WASM || SPRT_EMBOX_USER || (SPRT_HOSTED_RTOS && !MODULE_XENOLITH_BACKEND_VK)
+	return; // no SPIR-V reflection on wasm (WGSL), Embox EL0 or an RTOS without Vulkan
 #else
 	SpvReflectShaderModule shader;
 

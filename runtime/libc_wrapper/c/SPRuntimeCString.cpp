@@ -37,6 +37,7 @@ THE SOFTWARE.
 #endif
 
 #include <sprt/c/__sprt_string.h>
+#include <sprt/c/__sprt_stdlib.h>
 #include <sprt/runtime/init.h>
 #include <sprt/cxx/cctype>
 
@@ -231,5 +232,18 @@ __SPRT_C_FUNC char *__SPRT_ID(strtok_r)(char *s, const char *sep, char **p) {
 }
 
 __SPRT_C_FUNC char *__SPRT_ID(strdup)(const char *str) { return ::strdup(str); }
+
+// POSIX 2008. Not the platform's: Windows has none, and a kernel libc's (Embox)
+// allocates from the kernel heap. The runtime's allocation is what free() takes
+// back on every target.
+__SPRT_C_FUNC char *__SPRT_ID(strndup)(const char *str, __SPRT_ID(size_t) n) {
+	auto len = __sprt_strnlen(str, n);
+	auto ret = static_cast<char *>(__sprt_malloc(len + 1));
+	if (ret) {
+		__sprt_memcpy(ret, str, len);
+		ret[len] = 0;
+	}
+	return ret;
+}
 
 } // namespace sprt

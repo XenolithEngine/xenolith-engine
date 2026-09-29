@@ -64,6 +64,7 @@ THE SOFTWARE.
 #include "platform/linux/XLVkPlatformLinux.cc"
 #include "platform/win32/XLVkPlatformWin32.cc"
 #include "platform/macos/XLVkPlatformMac.cc"
+#include "platform/embox/XLVkPlatformEmbox.cc"
 
 #include "SPSharedModule.h"
 #include "XLVkPlatform.h"

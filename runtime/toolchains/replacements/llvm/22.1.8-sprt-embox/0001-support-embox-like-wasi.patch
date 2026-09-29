@@ -1,0 +1,245 @@
+diff --git a/llvm/include/llvm/ADT/bit.h b/llvm/include/llvm/ADT/bit.h
+index 3edf49d01..2b1061b47 100644
+--- a/llvm/include/llvm/ADT/bit.h
++++ b/llvm/include/llvm/ADT/bit.h
+@@ -31,7 +31,7 @@
+ #if defined(__linux__) || defined(__GNU__) || defined(__HAIKU__) ||            \
+     defined(__Fuchsia__) || defined(__EMSCRIPTEN__) || defined(__NetBSD__) ||  \
+     defined(__OpenBSD__) || defined(__DragonFly__) || defined(__managarm__) || \
+-    defined(__wasm__)
++    defined(__wasm__) || defined(__EMBOX__)
+ #include <endian.h>
+ #elif defined(_AIX)
+ #include <sys/machine.h>
+diff --git a/llvm/include/llvm/Support/ExitCodes.h b/llvm/include/llvm/Support/ExitCodes.h
+index 0ed59a3bd..0808198e4 100644
+--- a/llvm/include/llvm/Support/ExitCodes.h
++++ b/llvm/include/llvm/Support/ExitCodes.h
+@@ -20,7 +20,7 @@
+ 
+ #if HAVE_SYSEXITS_H
+ #include <sysexits.h>
+-#elif __MVS__ || defined(_WIN32) || defined(__wasm__)
++#elif __MVS__ || defined(_WIN32) || defined(__wasm__) || defined(__EMBOX__)
+ // <sysexits.h> does not exist on z/OS and Windows. The only value used in LLVM
+ // is EX_IOERR, which is used to signal a special error condition (broken pipe).
+ // Define the macro with its usual value from BSD systems, which is chosen to
+diff --git a/llvm/lib/Support/CrashRecoveryContext.cpp b/llvm/lib/Support/CrashRecoveryContext.cpp
+index 4bdc632b8..1dd388980 100644
+--- a/llvm/lib/Support/CrashRecoveryContext.cpp
++++ b/llvm/lib/Support/CrashRecoveryContext.cpp
+@@ -14,11 +14,11 @@
+ #include "llvm/Support/thread.h"
+ #include <cassert>
+ #include <cstdlib>
+-#if !defined(__wasm__)
++#if !defined(__wasm__) && !defined(__EMBOX__)
+ #include <csignal>
+ #endif
+ #include <mutex>
+-#if !defined(__wasm__)
++#if !defined(__wasm__) && !defined(__EMBOX__)
+ // sprt's wasm setjmp is a no-op and longjmp traps, so the recovery path below is
+ // compiled out entirely rather than jumping into a trap.
+ #include <setjmp.h>
+@@ -39,7 +39,7 @@ struct CrashRecoveryContextImpl {
+   const CrashRecoveryContextImpl *Next;
+ 
+   CrashRecoveryContext *CRC;
+-#if !defined(__wasm__)
++#if !defined(__wasm__) && !defined(__EMBOX__)
+   ::jmp_buf JumpBuffer;
+ #endif
+   volatile unsigned Failed : 1;
+@@ -80,7 +80,7 @@ public:
+ 
+     CRC->RetCode = RetCode;
+ 
+-#if !defined(__wasm__)
++#if !defined(__wasm__) && !defined(__EMBOX__)
+     // Jump back to the RunSafely we were called under.
+     if (ValidJumpBuffer)
+       longjmp(JumpBuffer, 1);
+@@ -339,7 +339,7 @@ static void uninstallExceptionOrSignalHandlers() {
+   }
+ }
+ 
+-#elif defined(__wasm__)
++#elif defined(__wasm__) || defined(__EMBOX__)
+ 
+ // WASI implementation.
+ //
+@@ -436,7 +436,7 @@ bool CrashRecoveryContext::RunSafely(function_ref<void()> Fn) {
+     CrashRecoveryContextImpl *CRCI = new CrashRecoveryContextImpl(this);
+     Impl = CRCI;
+ 
+-#if !defined(__wasm__)
++#if !defined(__wasm__) && !defined(__EMBOX__)
+     CRCI->ValidJumpBuffer = true;
+     if (setjmp(CRCI->JumpBuffer) != 0) {
+       return false;
+@@ -488,7 +488,7 @@ bool CrashRecoveryContext::isCrash(int RetCode) {
+ bool CrashRecoveryContext::throwIfCrash(int RetCode) {
+   if (!isCrash(RetCode))
+     return false;
+-#if defined(__wasm__)
++#if defined(__wasm__) || defined(__EMBOX__)
+   ::abort();
+ #elif defined(_WIN32)
+   ::RaiseException(RetCode, 0, 0, NULL);
+diff --git a/llvm/lib/Support/LockFileManager.cpp b/llvm/lib/Support/LockFileManager.cpp
+index 1432addf6..8e89a5994 100644
+--- a/llvm/lib/Support/LockFileManager.cpp
++++ b/llvm/lib/Support/LockFileManager.cpp
+@@ -95,7 +95,7 @@ static std::error_code getHostID(SmallVectorImpl<char> &HostID) {
+   StringRef UUIDRef(UUIDStr);
+   HostID.append(UUIDRef.begin(), UUIDRef.end());
+ 
+-#elif LLVM_ON_UNIX && !defined(__wasm__)
++#elif LLVM_ON_UNIX && !defined(__wasm__) && !defined(__EMBOX__)
+   char HostName[256];
+   HostName[255] = 0;
+   HostName[0] = 0;
+@@ -112,7 +112,7 @@ static std::error_code getHostID(SmallVectorImpl<char> &HostID) {
+ }
+ 
+ bool LockFileManager::processStillExecuting(StringRef HostID, int PID) {
+-#if LLVM_ON_UNIX && !defined(__ANDROID__) && !defined(__wasm__)
++#if LLVM_ON_UNIX && !defined(__ANDROID__) && !defined(__wasm__) && !defined(__EMBOX__)
+   SmallString<256> StoredHostID;
+   if (getHostID(StoredHostID))
+     return true; // Conservatively assume it's executing on error.
+diff --git a/llvm/lib/Support/Signals.cpp b/llvm/lib/Support/Signals.cpp
+index 5ead63eca..7a27e9e21 100644
+--- a/llvm/lib/Support/Signals.cpp
++++ b/llvm/lib/Support/Signals.cpp
+@@ -353,8 +353,9 @@ static bool printMarkupStackTrace(StringRef Argv0, void **StackTrace, int Depth,
+ }
+ 
+ // Include the platform-specific parts of this class.
+-#if defined(__wasm__)
+-// WASI has no POSIX signals. Stub every handler LLVM tools call at startup.
++#if defined(__wasm__) || defined(__EMBOX__)
++// WASI has no POSIX signals, and Embox at EL1 delivers none to a JIT: a fault
++// there stops the machine. Stub every handler LLVM tools call at startup.
+ void llvm::sys::AddSignalHandler(sys::SignalHandlerCallback FnPtr,
+                                  void *Cookie) {}
+ void llvm::sys::RunInterruptHandlers() {}
+diff --git a/llvm/lib/Support/Unix/Path.inc b/llvm/lib/Support/Unix/Path.inc
+index 82fdf1a12..abbf65632 100644
+--- a/llvm/lib/Support/Unix/Path.inc
++++ b/llvm/lib/Support/Unix/Path.inc
+@@ -132,7 +132,7 @@ const file_t kInvalidFile = -1;
+     defined(__CYGWIN__) || defined(__DragonFly__) || defined(_AIX) ||          \
+     defined(__GNU__) ||                                                        \
+     (defined(__sun__) && defined(__svr4__) || defined(__HAIKU__)) ||           \
+-    defined(__managarm__) || defined(__wasm__)
++    defined(__managarm__) || defined(__wasm__) || defined(__EMBOX__)
+ static int test_dir(char ret[PATH_MAX], const char *dir, const char *bin) {
+   struct stat sb;
+   char fullpath[PATH_MAX];
+@@ -289,7 +289,7 @@ std::string getMainExecutable(const char *argv0, void *MainAddr) {
+   // Fall back to the classical detection.
+   if (getprogpath(exe_path, argv0))
+     return exe_path;
+-#elif defined(__OpenBSD__) || defined(__HAIKU__) || defined(__wasm__)
++#elif defined(__OpenBSD__) || defined(__HAIKU__) || defined(__wasm__) || defined(__EMBOX__)
+   char exe_path[PATH_MAX];
+   // argv[0] only
+   if (getprogpath(exe_path, argv0) != NULL)
+@@ -533,7 +533,7 @@ static bool is_local_impl(struct STATVFS &Vfs) {
+ #elif defined(__EMSCRIPTEN__)
+   // Emscripten doesn't currently support remote filesystem mounts.
+   return true;
+-#elif defined(__wasm__)
++#elif defined(__wasm__) || defined(__EMBOX__)
+   // WASI doesn't currently support remote filesystem mounts.
+   return true;
+ #elif defined(__HAIKU__)
+diff --git a/llvm/lib/Support/Unix/Program.inc b/llvm/lib/Support/Unix/Program.inc
+index 312610fda..ef7f87546 100644
+--- a/llvm/lib/Support/Unix/Program.inc
++++ b/llvm/lib/Support/Unix/Program.inc
+@@ -29,7 +29,7 @@
+ #include "llvm/Support/raw_ostream.h"
+ #include <fcntl.h>
+ #include <signal.h>
+-#if !defined(__wasm__)
++#if !defined(__wasm__) && !defined(__EMBOX__)
+ #include <sys/resource.h>
+ #endif
+ #include <sys/stat.h>
+@@ -64,7 +64,7 @@ ProcessInfo::ProcessInfo() : Pid(0), ReturnCode(0) {}
+ ErrorOr<std::string> sys::findProgramByName(StringRef Name,
+                                             ArrayRef<StringRef> Paths) {
+   assert(!Name.empty() && "Must have a name!");
+-#if !defined(__wasm__)
++#if !defined(__wasm__) && !defined(__EMBOX__)
+   // Use the given path verbatim if it contains any slashes; this matches
+   // the behavior of sh(1) and friends.
+   if (Name.contains('/'))
+@@ -94,7 +94,7 @@ ErrorOr<std::string> sys::findProgramByName(StringRef Name,
+ static bool RedirectIO(std::optional<StringRef> Path, int FD, std::string *ErrMsg) {
+   if (!Path) // Noop
+     return false;
+-#if !defined(__wasm__)
++#if !defined(__wasm__) && !defined(__EMBOX__)
+   std::string File;
+   if (Path->empty())
+     // Redirect empty paths to /dev/null
+@@ -143,7 +143,7 @@ static bool RedirectIO_PS(const std::string *Path, int FD, std::string *ErrMsg,
+ static void TimeOutHandler(int Sig) {}
+ 
+ static void SetMemoryLimits(unsigned size) {
+-#if defined(__wasm__)
++#if defined(__wasm__) || defined(__EMBOX__)
+   (void)size;
+ #else
+   struct rlimit r;
+@@ -177,7 +177,7 @@ static bool Execute(ProcessInfo &PI, StringRef Program,
+                     ArrayRef<std::optional<StringRef>> Redirects,
+                     unsigned MemoryLimit, std::string *ErrMsg,
+                     BitVector *AffinityMask, bool DetachProcess) {
+-#if defined(__wasm__)
++#if defined(__wasm__) || defined(__EMBOX__)
+   if (ErrMsg)
+     *ErrMsg = std::string("WASI does not support spawning subprocesses");
+   return false;
+@@ -352,7 +352,7 @@ namespace sys {
+ 
+ #if defined(_AIX)
+ static pid_t(wait4)(pid_t pid, int *status, int options, struct rusage *usage);
+-#elif !defined(__Fuchsia__) && !defined(__wasm__)
++#elif !defined(__Fuchsia__) && !defined(__wasm__) && !defined(__EMBOX__)
+ using ::wait4;
+ #endif
+ 
+@@ -398,7 +398,7 @@ ProcessInfo llvm::sys::Wait(const ProcessInfo &PI,
+                             std::string *ErrMsg,
+                             std::optional<ProcessStatistics> *ProcStat,
+                             bool Polling) {
+-#if defined(__wasm__)
++#if defined(__wasm__) || defined(__EMBOX__)
+   assert(false && "Unsupported");
+ #else
+   struct sigaction Act, Old;
+diff --git a/llvm/lib/Support/Unix/Watchdog.inc b/llvm/lib/Support/Unix/Watchdog.inc
+index eacb0e9b6..bb322431b 100644
+--- a/llvm/lib/Support/Unix/Watchdog.inc
++++ b/llvm/lib/Support/Unix/Watchdog.inc
+@@ -19,13 +19,13 @@
+ namespace llvm {
+ namespace sys {
+ Watchdog::Watchdog(unsigned int seconds) {
+-#if HAVE_UNISTD_H && !defined(__wasm__)
++#if HAVE_UNISTD_H && !defined(__wasm__) && !defined(__EMBOX__)
+   alarm(seconds);
+ #endif
+ }
+ 
+ Watchdog::~Watchdog() {
+-#if HAVE_UNISTD_H && !defined(__wasm__)
++#if HAVE_UNISTD_H && !defined(__wasm__) && !defined(__EMBOX__)
+   alarm(0);
+ #endif
+ }

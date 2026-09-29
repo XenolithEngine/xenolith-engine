@@ -1,0 +1,30 @@
+diff --git a/src/gallium/frontends/lavapipe/lvp_device.c b/src/gallium/frontends/lavapipe/lvp_device.c
+index 980f26d..9b3c3fd 100644
+--- a/src/gallium/frontends/lavapipe/lvp_device.c
++++ b/src/gallium/frontends/lavapipe/lvp_device.c
+@@ -1770,8 +1770,9 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceMemoryProperties(
+    };
+ 
+    VkDeviceSize low_size = 3ULL*1024*1024*1024;
+-   VkDeviceSize total_size;
+-   os_get_total_physical_memory(&total_size);
++   uint64_t total_size;
++   if (!os_get_total_physical_memory(&total_size))
++      total_size = low_size;
+    pMemoryProperties->memoryHeapCount = 1;
+    pMemoryProperties->memoryHeaps[0] = (VkMemoryHeap) {
+       .size = low_size,
+diff --git a/src/gallium/include/pipe/p_defines.h b/src/gallium/include/pipe/p_defines.h
+index c9929b5..b36e502 100644
+--- a/src/gallium/include/pipe/p_defines.h
++++ b/src/gallium/include/pipe/p_defines.h
+@@ -1416,7 +1416,8 @@ enum pipe_perf_counter_data_type
+ #define PIPE_UUID_SIZE 16
+ #define PIPE_LUID_SIZE 8
+ 
+-#if DETECT_OS_POSIX
++/* Embox: one process, nobody to hand an fd of memory to. */
++#if DETECT_OS_POSIX && !DETECT_OS_EMBOX
+ #define PIPE_MEMORY_FD
+ #endif
+ 

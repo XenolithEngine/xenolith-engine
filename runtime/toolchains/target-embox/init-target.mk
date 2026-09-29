@@ -213,6 +213,10 @@ $(OUT)/target.mk: $(THIS_FILE) $(ARCH_FLAGS_FILE) $(CONFIG_FILE)
 	@echo 'TARGET_LIB_CXXFLAGS :=' >> $@
 	@echo 'TARGET_LIB_LDFLAGS :=' >> $@
 	@echo 'TARGET_GENERAL_CFLAGS += -idirafter $$(TARGET_INCLUDE_DIR_LIBC)' >> $@
+	@echo '# TARGET_LAVAPIPE_LDFLAGS, when the target carries lavapipe (EMBOX_LAVAPIPE=1)' >> $@
+	@echo '-include $$(TARGET_SYSROOT)/lavapipe.mk' >> $@
+	@echo '# TARGET_VENUS_LDFLAGS, when the target carries Venus (EMBOX_VENUS=1)' >> $@
+	@echo '-include $$(TARGET_SYSROOT)/venus.mk' >> $@
 	@echo 'TARGET_GENERAL_CXXFLAGS += -idirafter $$(TARGET_INCLUDE_DIR_LIBC)' >> $@
 
 # simde (SIMD-everywhere) is a header-only dependency the geom SIMD headers

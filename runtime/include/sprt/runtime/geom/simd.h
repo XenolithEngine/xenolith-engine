@@ -55,6 +55,10 @@ THE SOFTWARE.
 #include <float.h>
 #endif
 
+// Without <math.h> already in, simde includes <cmath> itself, and under the rename below that
+// would put libc++ into namespace sprt.
+#include <math.h>
+
 #define SIMDE_MATH_NO_LIBM 1
 #define std sprt
 

@@ -219,12 +219,49 @@ typedef NS_ENUM(NSUInteger, NSApplicationTerminateReply) {
 typedef NS_OPTIONS(NSUInteger, NSPasteboardContentsOptions) {
 	NSPasteboardContentsCurrentHostOnly = 1 << 0,
 };
+typedef NS_OPTIONS(NSUInteger, NSDragOperation) {
+	NSDragOperationNone = 0,
+	NSDragOperationCopy = 1,
+	NSDragOperationLink = 2,
+	NSDragOperationGeneric = 4,
+	NSDragOperationPrivate = 8,
+	NSDragOperationMove = 16,
+	NSDragOperationDelete = 32,
+	NSDragOperationEvery = NSUIntegerMax,
+};
 
 /* ---- forward decls ------------------------------------------------------- */
 @class NSWindow, NSView, NSScreen, NSColor, NSEvent, NSCursor, NSTrackingArea;
 @class NSApplication, NSPasteboard, NSPasteboardItem, NSAppearance, NSTextInputContext;
 @class NSMenu, NSGraphicsContext;
 @protocol NSTextInputClient;
+
+/* ---- drag and drop (NSDragging.h) ----------------------------------------- */
+/* The destination half only: an NSView receives OS drops. The source side
+   (NSDraggingSource / NSDraggingSession / NSDraggingItem) is not used. */
+@protocol NSDraggingInfo <NSObject>
+@required
+@property(nullable, readonly) NSWindow *draggingDestinationWindow;
+@property(readonly) NSDragOperation draggingSourceOperationMask;
+@property(readonly) NSPoint draggingLocation;
+@property(readonly) NSPoint draggedImageLocation;
+@property(readonly) NSPasteboard *draggingPasteboard;
+@property(nullable, readonly) id draggingSource;
+@property(readonly) NSInteger draggingSequenceNumber;
+@property NSInteger numberOfValidItemsForDrop;
+@end
+
+@protocol NSDraggingDestination <NSObject>
+@optional
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender;
+- (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender;
+- (void)draggingExited:(nullable id<NSDraggingInfo>)sender;
+- (BOOL)prepareForDragOperation:(id<NSDraggingInfo>)sender;
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender;
+- (void)concludeDragOperation:(nullable id<NSDraggingInfo>)sender;
+- (void)draggingEnded:(id<NSDraggingInfo>)sender;
+- (BOOL)wantsPeriodicDraggingUpdates;
+@end
 
 /* ---- NSResponder + event chain ------------------------------------------- */
 @interface NSResponder : NSObject
@@ -324,6 +361,9 @@ typedef NS_OPTIONS(NSUInteger, NSPasteboardContentsOptions) {
 @property NSViewLayerContentsPlacement layerContentsPlacement;
 @property(getter=inLiveResize, readonly) BOOL inLiveResize;
 - (void)display;
+@property(readonly, copy) NSArray<NSPasteboardType> *registeredDraggedTypes;
+- (void)registerForDraggedTypes:(NSArray<NSPasteboardType> *)newTypes;
+- (void)unregisterDraggedTypes;
 @end
 
 /* ---- NSTextInputContext --------------------------------------------------- */
@@ -864,6 +904,7 @@ SPRT_FOUNDATION_EXTERN NSPasteboardType const NSPasteboardTypeTIFF;
 SPRT_FOUNDATION_EXTERN NSPasteboardType const NSPasteboardTypeTabularText;
 SPRT_FOUNDATION_EXTERN NSPasteboardType const NSPasteboardTypeRTF;
 SPRT_FOUNDATION_EXTERN NSPasteboardType const NSPasteboardTypeHTML;
+SPRT_FOUNDATION_EXTERN NSPasteboardReadingOptionKey const NSPasteboardURLReadingFileURLsOnlyKey;
 SPRT_FOUNDATION_EXTERN NSAppearanceName const NSAppearanceNameAqua;
 SPRT_FOUNDATION_EXTERN NSAppearanceName const NSAppearanceNameDarkAqua;
 SPRT_FOUNDATION_EXTERN NSColorSpaceName const NSDeviceRGBColorSpace;

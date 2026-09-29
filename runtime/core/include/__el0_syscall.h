@@ -335,6 +335,12 @@ SPRT_FORCEINLINE long __el0_sched_yield(void) {
 	return __sprt_svc0(__SPRT_SYSCALL_sched_yield);
 }
 
+// The calling thread only: pid 0, its own pid or its own tid.
+SPRT_FORCEINLINE long __el0_sched_setaffinity(int __pid, __SPRT_ID(size_t) __len,
+		const void *__mask) {
+	return __sprt_svc3(__SPRT_SYSCALL_sched_setaffinity, __pid, (long)__len, (long)__mask);
+}
+
 // Linux's return: the bytes of mask written (8), not 0.
 SPRT_FORCEINLINE long __el0_sched_getaffinity(int __pid, __SPRT_ID(size_t) __len, void *__mask) {
 	return __sprt_svc3(__SPRT_SYSCALL_sched_getaffinity, __pid, (long)__len, (long)__mask);

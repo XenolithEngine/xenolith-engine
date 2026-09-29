@@ -20,7 +20,7 @@ index 0891ef980..d49476b60 100644
    HostID.append(UUIDRef.begin(), UUIDRef.end());
  
 -#elif LLVM_ON_UNIX
-+#elif !defined(__wasm__)
++#elif LLVM_ON_UNIX && !defined(__wasm__)
    char HostName[256];
    HostName[255] = 0;
    HostName[0] = 0;

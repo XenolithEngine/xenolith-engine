@@ -22,6 +22,12 @@
 #define EXIT_FAILURE 1
 #endif
 
+#if !defined(alloca) && defined(__has_builtin)
+#if __has_builtin(__builtin_alloca)
+#define alloca(Sz) __builtin_alloca(Sz)
+#endif
+#endif
+
 #ifdef __sprt_malloca
 #define _malloca(Sz) __sprt_malloca(Sz)
 #define _freea(Ptr) __sprt_freea(Ptr)

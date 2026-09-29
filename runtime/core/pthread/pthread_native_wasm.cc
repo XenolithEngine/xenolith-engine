@@ -95,8 +95,61 @@ static void __registerForDestruction(void (*cb)(void)) {
 	__cxa_thread_atexit(__doDestroy, (void *)cb, __dso_handle);
 }
 
+struct __wasm_thread_rec {
+	void *stack;
+	void *tls; // the raw allocation, before alignment
+	int exited; // set by the thread itself, read by the reaper
+	__wasm_thread_rec *next;
+};
+
+// Every record whose memory is not reaped yet: pushed by creators, drained by reapers.
+static __wasm_thread_rec *s_wasm_thread_recs = nullptr;
+
+static void __wasm_push_rec(__wasm_thread_rec *rec) {
+	auto head = __atomic_load_n(&s_wasm_thread_recs, __ATOMIC_RELAXED);
+	do {
+		rec->next = head;
+	} while (!__atomic_compare_exchange_n(&s_wasm_thread_recs, &head, rec, true,
+			__ATOMIC_RELEASE, __ATOMIC_RELAXED));
+}
+
+static void __wasm_release_rec(__wasm_thread_rec *rec) {
+	free(rec->tls);
+	free(rec->stack);
+	free(rec);
+}
+
+// Free the memory of every thread that has left __xl_thread_entry. Takes the whole list,
+// so concurrent reapers never see the same record; the live ones go back.
+static void __wasm_reap_threads() {
+	auto rec = __atomic_exchange_n(&s_wasm_thread_recs, (__wasm_thread_rec *)nullptr,
+			__ATOMIC_ACQUIRE);
+	while (rec) {
+		auto next = rec->next;
+		if (__atomic_load_n(&rec->exited, __ATOMIC_ACQUIRE)) {
+			__wasm_release_rec(rec);
+		} else {
+			__wasm_push_rec(rec);
+		}
+		rec = next;
+	}
+}
+
 static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 		__thread_pool *pool) {
+	// Before pool->mutex is taken, like every allocation below: an allocator call under
+	// that lock can re-enter it through the allocator's pthread key.
+	__wasm_reap_threads();
+
+	auto rec = (__wasm_thread_rec *)malloc(sizeof(__wasm_thread_rec));
+	if (!rec) {
+		return EAGAIN;
+	}
+	rec->stack = nullptr;
+	rec->tls = nullptr;
+	rec->exited = 0;
+	rec->next = nullptr;
+
 	// Allocate the new thread's stack in the shared linear memory; the broker sets the
 	// spawned instance's __stack_pointer to its top before entering __xl_thread_entry.
 	__SPRT_ID(size_t)
@@ -104,8 +157,10 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 										  : (__SPRT_ID(size_t))__SPRT_WASM_THREAD_STACK;
 	void *stackBase = malloc(stackSize);
 	if (!stackBase) {
+		__wasm_release_rec(rec);
 		return EAGAIN;
 	}
+	rec->stack = stackBase;
 	void *stackTop = (char *)stackBase + stackSize;
 	// Allocate this thread's TLS block in the creator (it needs a working allocator, which
 	// the not-yet-initialized new thread lacks); the worker just runs __wasm_init_tls on it.
@@ -115,13 +170,18 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 	if (tlsSize) {
 		void *tlsRaw = malloc(tlsSize + tlsAlign);
 		if (!tlsRaw) {
-			free(stackBase);
+			__wasm_release_rec(rec);
 			return EAGAIN;
 		}
+		rec->tls = tlsRaw;
 		uintptr_t aligned =
 				(reinterpret_cast<uintptr_t>(tlsRaw) + (tlsAlign - 1)) & ~(uintptr_t)(tlsAlign - 1);
 		tlsBase = reinterpret_cast<void *>(aligned);
 	}
+	// The thread reads its record from here first thing in __xl_thread_entry, which may
+	// run before thread_spawn returns.
+	thread->handle = rec;
+
 	// Register the thread in the pool's active table BEFORE the spawned worker can
 	// run, mirroring the pthread/winapi backends. The worker's early self()/gettid
 	// (before __runthead sets tl_self) looks itself up here; without the entry it
@@ -134,16 +194,17 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 	int tid = __sprt_host_thread_spawn(thread, stackTop, stackSize, tlsBase);
 	if (tid < 0) {
 		globalLock.unlock();
-		free(stackBase);
+		thread->handle = nullptr;
+		__wasm_release_rec(rec); // never ran: nothing uses its memory
 		return EAGAIN;
 	}
-	thread->handle = reinterpret_cast<void *>(uintptr_t(tid));
-	thread->attr.stack = stackBase; // freed on join/detach teardown
+	__wasm_push_rec(rec);
+	thread->attr.stack = stackBase; // reaped once the thread has left __xl_thread_entry
 	thread->attr.stackSize = stackSize;
 	thread->lowStack = reinterpret_cast<uintptr_t>(stackBase);
 	thread->highStack = reinterpret_cast<uintptr_t>(stackTop);
 
-	__attachNativeThread(thread, thread->handle, static_cast<uint64_t>(static_cast<unsigned>(tid)),
+	__attachNativeThread(thread, rec, static_cast<uint64_t>(static_cast<unsigned>(tid)),
 			globalLock);
 	globalLock.unlock();
 	return 0;
@@ -271,10 +332,17 @@ extern "C" __SPRT_ID(pid_t) __sprt_wasm_gettid(void) {
 // runs __wasm_init_tls, then calls here in the new thread: stamp the native tid and run the
 // portable thread trampoline. When __runthead returns the thread has finalized (state
 // signalled, activeThreads erased) and the worker may terminate.
+//
+// The record is read before __runthead: by the time it returns, a joiner may have
+// recycled the thread_t. Marking it exited is the last access to this thread's stack and
+// TLS; the hosts only unwind out of the instance afterwards.
 extern "C" __attribute__((export_name("__xl_thread_entry"))) void __xl_thread_entry(int tid,
 		void *threadPtr) {
 	tl_wasm_native_tid = (__sprt_uint64_t)(unsigned)tid;
+	auto rec = static_cast<sprt::_thread::native::__wasm_thread_rec *>(
+			static_cast<sprt::_thread::thread_t *>(threadPtr)->handle);
 	sprt::_thread::__runthead(threadPtr);
+	__atomic_store_n(&rec->exited, 1, __ATOMIC_RELEASE);
 }
 
 #endif // SPRT_WASM

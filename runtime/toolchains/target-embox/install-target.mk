@@ -69,6 +69,16 @@ $(T_TARGET)/lib/clang: | $(T_TARGET)
 $(T_TARGET)/target.mk: $(T_INTERMEDIATE)/target.mk | $(T_TARGET)
 	cp -af $< $@
 
+# Only with EMBOX_LAVAPIPE=1; target.mk includes it if it is there.
+$(T_TARGET)/lavapipe.mk: | $(T_TARGET)
+	if [ -f $(T_INTERMEDIATE)/lavapipe.mk ]; then cp -af $(T_INTERMEDIATE)/lavapipe.mk $@; fi
+.PHONY: $(T_TARGET)/lavapipe.mk
+
+# Only with EMBOX_VENUS=1, the same way.
+$(T_TARGET)/venus.mk: | $(T_TARGET)
+	if [ -f $(T_INTERMEDIATE)/venus.mk ]; then cp -af $(T_INTERMEDIATE)/venus.mk $@; fi
+.PHONY: $(T_TARGET)/venus.mk
+
 $(T_TARGET)/share/licenses: | $(T_TARGET)
 	@mkdir -p $(dir $@)
 	rm -rf $@
@@ -80,6 +90,6 @@ $(T_TARGET)/release: | $(T_TARGET)
 all: $(T_TARGET)/usr/lib $(T_TARGET)/usr/include \
 	$(T_TARGET)/src \
 	$(T_TARGET)/lib/clang \
-	$(T_TARGET)/target.mk $(T_TARGET)/share/licenses $(T_TARGET)/release
+	$(T_TARGET)/target.mk $(T_TARGET)/lavapipe.mk $(T_TARGET)/venus.mk $(T_TARGET)/share/licenses $(T_TARGET)/release
 
 .PHONY: all

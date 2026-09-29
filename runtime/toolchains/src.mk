@@ -68,7 +68,6 @@ LIBS = \
 	harfbuzz \
 	sheenbidi \
 	sqlite \
-	mbedtls \
 	nghttp3 \
 	ngtcp2 \
 	zlib \
@@ -101,7 +100,7 @@ LIBS = \
 VULKAN_SDK_VER := 1.4.357.0
 
 
-# https://www.zlib.net/ # revised: 18 aug 2026
+# https://www.zlib.net/ # revised: 25 sep 2026
 zlib_URL    := https://www.zlib.net/zlib-1.3.2.tar.gz
 zlib_SHA256 := bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16
 zlib_SIG    := .asc
@@ -110,7 +109,7 @@ zlib_KEY    := zlib
 $(SRC_ROOT)/zlib: | prepare
 	$(call sp_fetch_tar,zlib)
 
-# https://sourceware.org/bzip2/downloads.html # revised: 18 aug 2026
+# https://sourceware.org/bzip2/downloads.html # revised: 25 sep 2026
 bzip2_URL    := https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz
 bzip2_SHA256 := ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269
 bzip2_SIG    := .sig
@@ -119,16 +118,19 @@ bzip2_KEY    := bzip2
 $(SRC_ROOT)/bzip2: | prepare
 	$(call sp_fetch_tar,bzip2)
 
-# https://tukaani.org/xz/#_source_packages # revised: 18 aug 2026
-xz_URL    := https://github.com/tukaani-project/xz/releases/download/v5.8.3/xz-5.8.3.tar.xz
-xz_SHA256 := fff1ffcf2b0da84d308a14de513a1aa23d4e9aa3464d17e64b9714bfdd0bbfb6
+# https://tukaani.org/xz/#_source_packages # revised: 25 sep 2026
+# Security: 5.8.4 fixes GHSA-5qpq-xqfv-j9pg (High; CVE pending at the time of the bump) -
+#  an invalid memory write in the .lzma/.lz/auto/microlzma decoders when a stream is
+#  re-initialised after LZMA_MEM_ERROR. Affects every liblzma from 5.0.0 through 5.8.3.
+xz_URL    := https://github.com/tukaani-project/xz/releases/download/v5.8.4/xz-5.8.4.tar.xz
+xz_SHA256 := 4ce24038fd4221e0d13bc1a2de7a4db56e90b92b3bf75321f6c14be73f65de4b
 xz_SIG    := .sig
 xz_KEY    := xz
 
 $(SRC_ROOT)/xz: | prepare
 	$(call sp_fetch_tar,xz)
 
-# https://github.com/facebook/zstd/releases # revised: 18 aug 2026
+# https://github.com/facebook/zstd/releases # revised: 25 sep 2026
 zstd_URL    := https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz
 zstd_SHA256 := eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3
 zstd_SIG    := .sig
@@ -137,7 +139,7 @@ zstd_KEY    := zstd
 $(SRC_ROOT)/zstd: | prepare
 	$(call sp_fetch_tar,zstd)
 
-# https://github.com/libjpeg-turbo/libjpeg-turbo/releases # revised: 18 aug 2026
+# https://github.com/libjpeg-turbo/libjpeg-turbo/releases # revised: 25 sep 2026
 libjpeg-turbo_URL    := https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz
 libjpeg-turbo_SHA256 := 6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e
 libjpeg-turbo_SIG    := .sig
@@ -147,7 +149,7 @@ $(SRC_ROOT)/libjpeg-turbo: | prepare
 	$(call sp_fetch_tar,libjpeg-turbo)
 
 # Move to github source releases; sourceforge distribution can block downloads from Russia
-# https://github.com/pnggroup/libpng # revised: 18 aug 2026
+# https://github.com/pnggroup/libpng # revised: 25 sep 2026
 libpng_REPO       := https://github.com/pnggroup/libpng.git
 libpng_TAG        := v1.6.58
 libpng_COMMIT     := 3061454d980de7d53608f594194cfac722721d2a
@@ -158,27 +160,36 @@ $(SRC_ROOT)/libpng: | prepare
 	$(call sp_fetch_clone,libpng)
 
 #  Move to Void Linux source archives; sourceforge distribution can block downloads from Russia
-# https://sources.voidlinux.org # revised: 18 aug 2026
-# Security: staying on the 5.2.x line. Upstream is at 6.1.3, but the 6.x bump is a
-#  deliberate API/ABI break (EGifSpew() changed signature, the E_GIF_ERR values were
-#  renumbered) and it buys nothing here: 6.1.2 picked up CVE-2026-23868 (patch 0002
-#  below), while CVE-2026-26740 is STILL unfixed upstream as of 6.1.3 - checked
-#  EGifGCBToSavedExtension(), it has no ByteCount guard - so patch 0001 has to be
-#  carried across a 6.x move anyway. Re-evaluate when the 6.x API settles.
+# https://sources.voidlinux.org # revised: 25 sep 2026
+# On the 6.x line since 6.1.3. The 6.x API/ABI break (EGifSpew() changed signature,
+#  the E_GIF_ERR values were renumbered) does not reach us: stappler_bitmap only uses
+#  the decoder (DGifOpen/DGifSlurp/DGifCloseFile and the GCB helpers), whose
+#  signatures are unchanged since 5.0, and the library is linked statically.
+# Security: 6.1.2 carries the CVE-2026-23868 fix (double free in GifMakeSavedImage),
+#  so the local backport of it is gone. The patches below are the three fixes on
+#  upstream master after 6.1.3 (SourceForge giflib/code), taken verbatim:
+#   0001 = 0616050, CVE-2026-26740 - heap OOB write in EGifGCBToSavedExtension;
+#          still unfixed in any release;
+#   0002 = 4a731ea, integer overflows in the pixel-count/dimension arithmetic of
+#          dgif_lib.c, egif_lib.c and gifalloc.c (heap overflows on 32-bit targets);
+#   0003 = 8abe475, NULL dereference in GifUnionColorMap (ticket #203).
+#  Drop them when a release carries them.
 # Both CVE-2024-45993 and CVE-2025-31344 are gif2rgb-only; common/gif.mk builds just
 #  the library sources, so neither is reachable here.
 # Supply chain: giflib publishes no signature anywhere, and this is a redistribution
 #  mirror rather than an upstream release host, so the pinned SHA-256 is the only
-#  thing tying this tarball to the one that was reviewed.
-giflib_URL    := https://sources.voidlinux.org/giflib-5.2.2/giflib-5.2.2.tar.gz
-giflib_SHA256 := be7ffbd057cadebe2aa144542fd90c6838c6a083b5e8a9048b8ee3b66b29d5fb
+#  thing tying this tarball to the one that was reviewed. It is byte-identical to
+#  the SourceForge giflib-6.x/giflib-6.1.3.tar.gz (compared at the bump).
+giflib_URL    := https://sources.voidlinux.org/giflib-6.1.3/giflib-6.1.3.tar.gz
+giflib_SHA256 := b65b66b99f0424b93525f987386f22fc5efb9da2bfc92ad4a532249aaffbab0e
 
 $(SRC_ROOT)/giflib: | prepare
 	$(call sp_fetch_tar,giflib)
 	$(call sp_patch,giflib,giflib/0001-CVE-2026-26740-egif_lib-GCE-bounds-check.patch)
-	$(call sp_patch,giflib,giflib/0002-CVE-2026-23868-gifalloc-avoid-double-free.patch)
+	$(call sp_patch,giflib,giflib/0002-integer-overflow-and-type-safety.patch)
+	$(call sp_patch,giflib,giflib/0003-GifUnionColorMap-NULL-deref-203.patch)
 
-# https://storage.googleapis.com/downloads.webmproject.org/releases/webp/index.html # revised: 18 aug 2026
+# https://storage.googleapis.com/downloads.webmproject.org/releases/webp/index.html # revised: 25 sep 2026
 libwebp_URL    := https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz
 libwebp_SHA256 := e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564
 libwebp_SIG    := .asc
@@ -187,7 +198,7 @@ libwebp_KEY    := libwebp
 $(SRC_ROOT)/libwebp: | prepare
 	$(call sp_fetch_tar,libwebp)
 
-# https://download.osgeo.org/libtiff/?C=M&O=D # revised: 18 aug 2026
+# https://download.osgeo.org/libtiff/?C=M&O=D # revised: 25 sep 2026
 # Security: 4.7.2 fixes CVE-2026-12912 (heap overflow in PixarLogDecode) and carries the
 #  CVE-2026-4775 (tif_getimage signed-int overflow) fix upstream - the local backport patch
 #  is no longer needed (would conflict against 4.7.2).
@@ -200,7 +211,7 @@ tiff_KEY    := tiff
 $(SRC_ROOT)/tiff: | prepare
 	$(call sp_fetch_tar,tiff)
 
-# https://github.com/google/brotli/releases # revised: 18 aug 2026
+# https://github.com/google/brotli/releases # revised: 25 sep 2026
 # TODO: Move to git release
 # Supply chain: this is a GitHub-generated tag archive, which upstream neither signs
 #  nor publishes a checksum for; the SHA-256 pin is the whole of the verification.
@@ -211,26 +222,7 @@ brotli_SHA256 := 816c96e8e8f193b40151dad7e8ff37b1221d019dbcb9c35cd3fadbfe6477dfe
 $(SRC_ROOT)/brotli: | prepare
 	$(call sp_fetch_tar,brotli)
 
-# Use Mbed TLS 3.6 until at least 2027
-# TODO: Move to git release or exclude - unable to properly verify supply chain
-# https://github.com/Mbed-TLS/mbedtls/releases # revised: 18 aug 2026
-# Security: 3.6.7 is the last 3.6 LTS patch. CVE-2025-66442 (timing side channel in
-#  RSA and CBC/ECB decryption, introduced by LLVM's select-optimize pass) is open
-#  against every version through 4.0.0 - there is no upstream fix to pick up. We build
-#  with clang at -O3/-O2, where that pass runs. Upstream SECURITY.md declines to work
-#  around individual optimizations and only scrutinizes -O2/-Os, so mitigating here
-#  would mean -mllvm -disable-select-optimize (or -O2) for this library specifically.
-#  Deliberately NOT done yet: it is a build-policy call, not a version bump.
-# Supply chain: the release tarball carries no detached signature - this is the
-#  "unable to properly verify supply chain" the TODO above refers to. Pinned by
-#  SHA-256 only.
-mbedtls_URL    := https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2
-mbedtls_SHA256 := a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6
-
-$(SRC_ROOT)/mbedtls: | prepare
-	$(call sp_fetch_tar,mbedtls)
-
-# https://github.com/ngtcp2/nghttp3/releases # revised: 18 aug 2026
+# https://github.com/ngtcp2/nghttp3/releases # revised: 25 sep 2026
 nghttp3_URL    := https://github.com/ngtcp2/nghttp3/releases/download/v1.18.0/nghttp3-1.18.0.tar.xz
 nghttp3_SHA256 := aad782c23d3f01bd4bb52c8bac7a553b631ef8115fd1612703df6183449fef19
 nghttp3_SIG    := .asc
@@ -239,7 +231,7 @@ nghttp3_KEY    := tatsuhiro-t
 $(SRC_ROOT)/nghttp3: | prepare
 	$(call sp_fetch_tar,nghttp3)
 
-# https://github.com/ngtcp2/ngtcp2/releases # revised: 18 aug 2026
+# https://github.com/ngtcp2/ngtcp2/releases # revised: 25 sep 2026
 ngtcp2_URL    := https://github.com/ngtcp2/ngtcp2/releases/download/v1.25.0/ngtcp2-1.25.0.tar.xz
 ngtcp2_SHA256 := 2a34d2484ba17847a5d11965704e9dd0fac4c6d8efc75ffe1ec7de66d8c6b6fb
 ngtcp2_SIG    := .asc
@@ -248,16 +240,21 @@ ngtcp2_KEY    := tatsuhiro-t
 $(SRC_ROOT)/ngtcp2: | prepare
 	$(call sp_fetch_tar,ngtcp2)
 
-# https://curl.se/download.html # revised: 18 aug 2026
-curl_URL    := https://curl.se/download/curl-8.21.0.tar.xz
-curl_SHA256 := aa1b66a70eace83dc624508745646c08ae561de512ab403adffb93ac87fc72e6
+# https://curl.se/download.html # revised: 25 sep 2026
+# Security: 8.22.0 fixes nine CVEs present in 8.21.0. Reachable in our configuration:
+#  CVE-2026-19931 (Negotiate connection reuse; Windows, where SSPI stays on),
+#  CVE-2026-80255 (Set-Cookie Secure flag), CVE-2026-80229 (OpenSSL provider UAF),
+#  CVE-2026-80230 and CVE-2026-80231 (conditional). The rest need HTTP/2, libpsl,
+#  wolfSSL or LDAP, none of which are built.
+curl_URL    := https://curl.se/download/curl-8.22.0.tar.xz
+curl_SHA256 := f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7
 curl_SIG    := .asc
 curl_KEY    := curl
 
 $(SRC_ROOT)/curl: | prepare
 	$(call sp_fetch_tar,curl)
 
-# https://deac-fra.dl.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz # revised: 18 aug 2026
+# https://deac-fra.dl.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz # revised: 25 sep 2026
 # Security: 2.14.3 is the latest release; backport CVE-2026-50811 (the fix is only
 #  on master, no upstream release carries it yet)
 # The URL names one SourceForge mirror rather than the redirector, which hands out
@@ -272,16 +269,16 @@ $(SRC_ROOT)/freetype: | prepare
 	$(call sp_fetch_tar,freetype)
 	$(call sp_patch,freetype,freetype/0001-CVE-2026-50811-ttgxvar-bound-TT_Get_Var_Design.patch)
 
-# https://github.com/harfbuzz/harfbuzz/releases/ # revised: 18 aug 2026
+# https://github.com/harfbuzz/harfbuzz/releases/ # revised: 25 sep 2026
 # TODO: Move to git release
 # Supply chain: harfbuzz release assets are unsigned; pinned by SHA-256 only.
-harfbuzz_URL    := https://github.com/harfbuzz/harfbuzz/releases/download/14.3.1/harfbuzz-14.3.1.tar.xz
-harfbuzz_SHA256 := 9dae9538aae2ffdf70cec31f2c27bf68e2aaeeae3112688467697d5faf6194f7
+harfbuzz_URL    := https://github.com/harfbuzz/harfbuzz/releases/download/14.5.0/harfbuzz-14.5.0.tar.xz
+harfbuzz_SHA256 := b7132e148358a45185c9feafd049dbaf243649d3c44414b3534d9c95d18592b9
 
 $(SRC_ROOT)/harfbuzz: | prepare
 	$(call sp_fetch_tar,harfbuzz)
 
-# https://github.com/Tehreer/SheenBidi # revised: 18 aug 2026
+# https://github.com/Tehreer/SheenBidi # revised: 25 sep 2026
 # Pinned to release tag v3.0.0 (Unicode 17.0); Apache-2.0, used bundled as the
 # Unicode Bidirectional Algorithm resolver.
 sheenbidi_REPO   := https://github.com/Tehreer/SheenBidi.git
@@ -292,7 +289,7 @@ sheenbidi_DEPTH  := 1
 $(SRC_ROOT)/sheenbidi: | prepare
 	$(call sp_fetch_clone,sheenbidi)
 
-# https://www.sqlite.org/download.html # revised: 18 aug 2026
+# https://www.sqlite.org/download.html # revised: 25 sep 2026
 # Weak supply chain validation: only sha3 provided upstream, so the SHA-256 pinned
 #  here is ours - computed once from a reviewed download and kept in git.
 # Security: CVE-2026-50812 / CVE-2026-50813 are both in the Session Extension; common/sqlite.mk
@@ -306,14 +303,16 @@ $(SRC_ROOT)/sqlite: | prepare
 	$(call sp_fetch_zip,sqlite)
 
 # Use 3.5 LTS until new LTS
-# https://openssl-library.org/source/index.html # revised: 18 aug 2026
-# Security: 3.5.7 is the last 3.5 LTS patch. CVE-2026-14456 (unbounded memory growth
-#  in the QUIC server listener's incoming-channel queue) is still open - the fix is
-#  slated for 3.5.8 / 3.6.4 / 4.0.2 and none of those are released yet. It needs an
-#  OpenSSL QUIC *server* (Listener SSL object); we only ever act as a client, so it is
-#  not reachable here. Bump to 3.5.8 as soon as it ships.
-openssl_URL    := https://github.com/openssl/openssl/releases/download/openssl-3.5.7/openssl-3.5.7.tar.gz
-openssl_SHA256 := a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8
+# https://openssl-library.org/source/index.html # revised: 25 sep 2026
+# Security: 3.5.8 fixes the ten CVEs of the 2026-08-25 advisory. The ones a client can
+#  reach are CVE-2026-63075 (QUIC ACK-only packet retention), CVE-2026-75803 (AEAD
+#  forgery with an empty ciphertext via EVP_Cipher()) and, for CMS users,
+#  CVE-2026-63072; the QUIC-server, CMP and DTLS ones are not reachable here.
+# 3.5.8 is the first release signed by the rotated release key - see keys/README.adoc.
+# OpenSSL 4.0 removed ENGINE support, which openssl-gost-engine below depends on; the
+#  next LTS move needs the gost provider instead.
+openssl_URL    := https://github.com/openssl/openssl/releases/download/openssl-3.5.8/openssl-3.5.8.tar.gz
+openssl_SHA256 := a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2
 openssl_SIG    := .asc
 openssl_KEY    := openssl
 
@@ -324,7 +323,7 @@ $(SRC_ROOT)/openssl: | prepare
 	$(call rule_cp,replacements/openssl/50-wasm-sprt-clang.conf,$(SRC_ROOT)/openssl/Configurations)
 	$(call rule_cp,replacements/openssl/51-embox-user-sprt-clang.conf,$(SRC_ROOT)/openssl/Configurations)
 
-# https://github.com/gost-engine/engine # revised: 18 aug 2026
+# https://github.com/gost-engine/engine # revised: 25 sep 2026
 openssl-gost-engine_REPO       := https://github.com/gost-engine/engine.git
 openssl-gost-engine_TAG        := v3.0.3
 openssl-gost-engine_COMMIT     := e0a500ab877ba72cb14026a24d462dd923b90ced
@@ -334,8 +333,12 @@ openssl-gost-engine_SUBMODULES := 1
 $(SRC_ROOT)/openssl-gost-engine: | prepare
 	$(call sp_fetch_clone,openssl-gost-engine)
 
-# # https://github.com/bytecodealliance/wasm-micro-runtime # revised: 18 aug 2026
-wasm-micro-runtime_REPO       := https://github.com/bytecodealliance/wasm-micro-runtime.git
+# https://github.com/wasm-micro-runtime/wasm-micro-runtime # revised: 25 sep 2026
+# The project moved out of bytecodealliance; the old URL only redirects.
+# 2.4.5 is 2.4.4 plus the fixes for CVE-2026-54912/54913/54914. Memory-safety fixes
+#  made on main after 2.4.4 (fast-interp tail call, AOT frame bounds, RETHROW tag
+#  index) are not in any release yet.
+wasm-micro-runtime_REPO       := https://github.com/wasm-micro-runtime/wasm-micro-runtime.git
 wasm-micro-runtime_TAG        := WAMR-2.4.5
 wasm-micro-runtime_COMMIT     := 25bd7eb63e828e4bd242cc9b38d260b4b31c6605
 wasm-micro-runtime_DEPTH      := 1
@@ -348,7 +351,7 @@ $(SRC_ROOT)/wasm-micro-runtime: | prepare
 # sign the tags, so each one carries the commit that tag pointed at when the SDK was
 # adopted; `make src-pins` re-resolves them all when VULKAN_SDK_VER moves.
 
-# https://github.com/KhronosGroup/Vulkan-Headers # revised: 18 aug 2026
+# https://github.com/KhronosGroup/Vulkan-Headers # revised: 25 sep 2026
 vulkan-headers_REPO       := https://github.com/KhronosGroup/Vulkan-Headers.git
 vulkan-headers_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
 vulkan-headers_COMMIT     := e3b1eec08173d6b825cd3ac88c885a63b621504a
@@ -358,7 +361,7 @@ vulkan-headers_SUBMODULES := 1
 $(SRC_ROOT)/vulkan-headers: | prepare
 	$(call sp_fetch_clone,vulkan-headers)
 
-# https://github.com/KhronosGroup/SPIRV-Headers # revised: 18 aug 2026
+# https://github.com/KhronosGroup/SPIRV-Headers # revised: 25 sep 2026
 spirv-headers_REPO       := https://github.com/KhronosGroup/SPIRV-Headers.git
 spirv-headers_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
 spirv-headers_COMMIT     := 29981f65241605e08b0ede4cfeb999fe3b723c6a
@@ -368,7 +371,7 @@ spirv-headers_SUBMODULES := 1
 $(SRC_ROOT)/spirv-headers: | prepare
 	$(call sp_fetch_clone,spirv-headers)
 
-# https://github.com/KhronosGroup/glslang # revised: 18 aug 2026
+# https://github.com/KhronosGroup/glslang # revised: 25 sep 2026
 glslang_REPO       := https://github.com/KhronosGroup/glslang.git
 glslang_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
 glslang_COMMIT     := 168d452a4f460d24b588fed08477a81c44ee27a1
@@ -378,7 +381,7 @@ glslang_SUBMODULES := 1
 $(SRC_ROOT)/glslang: | prepare
 	$(call sp_fetch_clone,glslang)
 
-# https://github.com/KhronosGroup/SPIRV-Tools # revised: 18 aug 2026
+# https://github.com/KhronosGroup/SPIRV-Tools # revised: 25 sep 2026
 spirv-tools_REPO       := https://github.com/KhronosGroup/SPIRV-Tools.git
 spirv-tools_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
 spirv-tools_COMMIT     := 9a49b0883b9b635689a85b5647dbfcb223268151
@@ -388,7 +391,7 @@ spirv-tools_SUBMODULES := 1
 $(SRC_ROOT)/spirv-tools: | prepare
 	$(call sp_fetch_clone,spirv-tools)
 
-# https://github.com/KhronosGroup/Vulkan-Loader # revised: 18 aug 2026
+# https://github.com/KhronosGroup/Vulkan-Loader # revised: 25 sep 2026
 vulkan-loader_REPO       := https://github.com/KhronosGroup/Vulkan-Loader.git
 vulkan-loader_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
 vulkan-loader_COMMIT     := 5f157b62e333c63260d05d81bf66faa216ab0fb8
@@ -398,7 +401,7 @@ vulkan-loader_SUBMODULES := 1
 $(SRC_ROOT)/vulkan-loader: | prepare
 	$(call sp_fetch_clone,vulkan-loader)
 
-# https://github.com/KhronosGroup/Vulkan-ValidationLayers # revised: 18 aug 2026
+# https://github.com/KhronosGroup/Vulkan-ValidationLayers # revised: 25 sep 2026
 vulkan-validationlayers_REPO       := https://github.com/KhronosGroup/Vulkan-ValidationLayers.git
 vulkan-validationlayers_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
 vulkan-validationlayers_COMMIT     := f4874eee15c78d7bdb2b7e60659d539f14741500
@@ -408,7 +411,7 @@ vulkan-validationlayers_SUBMODULES := 1
 $(SRC_ROOT)/vulkan-validationlayers: | prepare
 	$(call sp_fetch_clone,vulkan-validationlayers)
 
-# https://github.com/KhronosGroup/Vulkan-Utility-Libraries # revised: 18 aug 2026
+# https://github.com/KhronosGroup/Vulkan-Utility-Libraries # revised: 25 sep 2026
 vulkan-utility_REPO       := https://github.com/KhronosGroup/Vulkan-Utility-Libraries.git
 vulkan-utility_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
 vulkan-utility_COMMIT     := e9585c3e3d41ab608ee3b098ce4721d357308fc8
@@ -418,9 +421,7 @@ vulkan-utility_SUBMODULES := 1
 $(SRC_ROOT)/vulkan-utility: | prepare
 	$(call sp_fetch_clone,vulkan-utility)
 
-# https://github.com/KhronosGroup/Vulkan-Tools # revised: 18 aug 2026
-# Используется только target-xenolithos и только ради vulkaninfo — девайсового
-# пробника «нашёл ли лоадер ICD и перечисляет ли драйвер физическое устройство».
+# https://github.com/KhronosGroup/Vulkan-Tools # revised: 25 sep 2026
 vulkan-tools_REPO       := https://github.com/KhronosGroup/Vulkan-Tools.git
 vulkan-tools_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
 vulkan-tools_COMMIT     := 286299bb6b732e4b22771cfb9d7d421542d40501
@@ -430,7 +431,7 @@ vulkan-tools_SUBMODULES := 1
 $(SRC_ROOT)/vulkan-tools: | prepare
 	$(call sp_fetch_clone,vulkan-tools)
 
-# https://github.com/KhronosGroup/MoltenVK/releases # revised: 18 aug 2026
+# https://github.com/KhronosGroup/MoltenVK/releases # revised: 25 sep 2026
 # 1.4.2 needs IOSurfaceGetID(), which the +open sysroot did not declare; the getter was
 #  added to target-apple/open/sysroot/.../IOSurface.framework/Headers/IOSurfaceRef.h.
 # Supply chain: a GitHub-generated tag archive, unsigned; pinned by SHA-256 only.
@@ -440,7 +441,7 @@ moltenvk_SHA256 := 6864db532f1dbbdb621a8d0ec13f24edae318fd9269dd3dd0cdff791334bb
 $(SRC_ROOT)/moltenvk: | prepare
 	$(call sp_fetch_tar,moltenvk)
 
-# https://github.com/unicode-org/icu/releases # revised: 18 aug 2026
+# https://github.com/unicode-org/icu/releases # revised: 25 sep 2026
 # Kept as the Unicode reference, NOT as a runtime dependency. Nothing links ICU any
 #  more - the runtime does its own case mapping, collation and IDN - but this
 #  checkout is what the generators and conformance suites read: the UCD under
@@ -460,7 +461,7 @@ icu4c_KEY    := icu4c
 $(SRC_ROOT)/icu4c: | prepare
 	$(call sp_fetch_tar,icu4c)
 
-# https://github.com/libffi/libffi/releases # revised: 18 aug 2026
+# https://github.com/libffi/libffi/releases # revised: 25 sep 2026
 # TODO: move to git releases
 # Supply chain: libffi release assets are unsigned; pinned by SHA-256 only.
 ffi_URL    := https://github.com/libffi/libffi/releases/download/v3.8.0/libffi-3.8.0.tar.gz
@@ -469,13 +470,14 @@ ffi_SHA256 := 7da3e2d9a171eb0a038f592ecad3ff2bb2550f3496d87b3b29ad0cf4430c0db4
 $(SRC_ROOT)/ffi: | prepare
 	$(call sp_fetch_tar,ffi)
 
-# https://github.com/libexpat/libexpat/releases # revised: 18 aug 2026
-# Security: 2.8.3 fixes CVE-2026-72522 (OOB read + infinite loop in *_toUtf16). That one
-#  only bites builds with 16-bit character support; ours is the default char/UTF-8 build
-#  (no XML_UNICODE), so we were not exposed - but 2.8.3 also fixes a 2.8.2 regression on
-#  2+ GiB documents. Note upstream still flags unfixed issues, see libexpat issue #1160.
-expat_URL    := https://github.com/libexpat/libexpat/releases/download/R_2_8_3/expat-2.8.3.tar.xz
-expat_SHA256 := f6256df90c906773d344da084402b7d3e4f22ed41b1a59c989098a83d3ea0c85
+# https://github.com/libexpat/libexpat/releases # revised: 25 sep 2026
+# Security: 2.8.5 fixes CVE-2026-93990 (UTF-16 decoding let a lone high surrogate through
+#  to the application); 2.8.4 fixed CVE-2026-66046 and CVE-2026-76641 (quadratic isCdata
+#  attribute lookup), CVE-2026-76956 (inverted getentropy() result enabling hash
+#  flooding) and CVE-2026-76957 (parser re-entry from encoding callbacks). Upstream
+#  still flags unfixed issues, including CVE-2025-66382 - see libexpat issue #1160.
+expat_URL    := https://github.com/libexpat/libexpat/releases/download/R_2_8_5/expat-2.8.5.tar.xz
+expat_SHA256 := 1e727b8933ec51a77a9a9d9afcf8e688bce45d907c13e36ab7393fe36e703182
 expat_SIG    := .asc
 expat_KEY    := expat
 
@@ -483,7 +485,7 @@ $(SRC_ROOT)/expat: | prepare
 	$(call sp_fetch_tar,expat)
 
 # Use upstream - releases bound with GCC
-# https://github.com/ianlancetaylor/libbacktrace.git # revised: 18 aug 2026
+# https://github.com/ianlancetaylor/libbacktrace.git # revised: 25 sep 2026
 # Moved up from 549b81b4 (3 commits): two fixes in the built-in zstd decoder for
 #  ELFCOMPRESS_ZSTD .debug_* sections (a compressed block that does not set the
 #  single-segment flag, and the missing table field on an RLE sequence), plus DWARF
@@ -493,16 +495,18 @@ $(SRC_ROOT)/expat: | prepare
 #  0x3 is now rejected. backtrace.h still spells the parameter "threaded" and our only
 #  caller (runtime/libc_wrapper/runtime/SPRuntimeBacktrace.cpp) passes 1, i.e. bit 0,
 #  so this stays source- and ABI-compatible for us.
+# Then to 0b9b49cf (4 commits): moredata follow-ups - decl_lineno, and handling of
+#  objects without debug info.
 libbacktrace_REPO   := https://github.com/ianlancetaylor/libbacktrace.git
-libbacktrace_COMMIT := 6f8310e238fc3ce68f42f391cbe93fd156bb2c23
+libbacktrace_COMMIT := 0b9b49cf4a2c9229fc052d6716e1528b2f23e91a
 
 $(SRC_ROOT)/libbacktrace: | prepare
 	$(call sp_fetch_clone,libbacktrace)
 
 # Use upstream - releases are too old
-# https://github.com/simd-everywhere/simde.git # revised: 18 aug 2026
+# https://github.com/simd-everywhere/simde.git # revised: 25 sep 2026
 simde_REPO   := https://github.com/simd-everywhere/simde.git
-simde_COMMIT := f3e8262173b7089db9a9d57a9ecef8dd07ad9c97
+simde_COMMIT := a54d8e2663793334278af7b89f0328145daa27ac
 
 $(SRC_ROOT)/simde: | prepare
 	$(call sp_fetch_clone,simde)
@@ -536,9 +540,6 @@ $(SRC_ROOT)/llvm-project: | prepare
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-windows/0004-lit-Make-the-suites-usable-when-cross-testing-under-wine.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-windows/0005-clang-Do-not-require-clang-repl-for-the-test-suites.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-windows/0006-compiler-rt-Include-the-POSIX-locking-headers-on-a-Windows-target.patch)
-	# wasm host: LLVM itself cross-compiled to wasm32-unknown-unknown, running on the
-	# sprt runtime (the in-browser clang). Every hunk is guarded by __wasm__, so these
-	# are inert for the other hosts built from this same tree.
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0001-support-no-signals-no-crash-recovery.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0002-support-no-process-control.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0003-support-filesystem-gaps.patch)
@@ -546,33 +547,39 @@ $(SRC_ROOT)/llvm-project: | prepare
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0005-support-memory-and-exit-codes.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0006-abi-visibility-on-wasm.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0007-driver-and-lockfile-no-pid.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-embox/0001-support-embox-like-wasi.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-embox/0002-orc-no-shared-memory-on-embox.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-embox/0003-host-cpu-from-id-registers-on-embox.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-embox/0004-process-handle-without-dlopen-on-embox.patch)
 
-# https://download.gnome.org/sources/libxml2  # revised: 18 aug 2026
+# https://download.gnome.org/sources/libxml2  # revised: 25 sep 2026
 # Supply chain: GNOME publishes a .sha256sum next to the tarball but no signature;
 #  a checksum served by the same host it guards adds nothing, so the pin below - which
 #  lives in our git history - is what does the work.
-libxml2_URL    := https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.3.tar.xz
-libxml2_SHA256 := 78262a6e7ac170d6528ebfe2efccdf220191a5af6a6cd61ea4a9a9a5042c7a07
+# Security: 2.15.4 fixes CVE-2026-86140 (High, stack overflow in xmlSnprintfElements),
+#  CVE-2026-86138/86139/86142/86143/86144, CVE-2026-76781 and CVE-2026-86137/86141.
+#  Upstream support is best-effort and README advises against parsing untrusted data.
+libxml2_URL    := https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.4.tar.xz
+libxml2_SHA256 := 98087fd181d9070724f3fbc65c7377db03038eb92bd882374daff44940138821
 
 $(SRC_ROOT)/libxml2: | prepare
 	$(call sp_fetch_tar,libxml2)
 
-# https://wayland.freedesktop.org/releases.html # revised: 18 aug 2026
+# https://wayland.freedesktop.org/releases.html # revised: 25 sep 2026
 # Pinned to whatever wayland-scanner the BUILD HOST ships, not to the newest release.
 #  target-linux/wayland.mk cross-builds with -Dscanner=false and drives protocol
 #  generation through the system wayland-scanner, and src/meson.build demands an exact
-#  version match. 1.26.0 was tried and fails at meson setup on a host with 1.25.0:
-#  "Invalid version, need 'wayland-scanner' ['1.26.0'] found '1.25.0'".
-#  Moving past 1.25.0 means building wayland-scanner for the build machine first.
-#  No security reason to hurry: 1.25.0 has no known CVE.
-# Supply chain: the GitLab release downloads are unsigned; pinned by SHA-256 only.
-wayland_URL    := https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.25.0/downloads/wayland-1.25.0.tar.xz
-wayland_SHA256 := c065f040afdff3177680600f249727e41a1afc22fccf27222f15f5306faa1f03
+#  version match ("Invalid version, need 'wayland-scanner' ['X'] found 'Y'").
+#  Moved to 1.26.0 once the build host did; 1.26.0 also fixes a use-after-free in
+#  for_each_helper. Building wayland-scanner for the build machine first would lift
+#  the coupling.
+wayland_URL    := https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.26.0/downloads/wayland-1.26.0.tar.xz
+wayland_SHA256 := 64176eaa46e4969903e286f8e5ef8331affc17fdf03ac9b58381d2b23162b7a3
 
 $(SRC_ROOT)/wayland: | prepare
 	$(call sp_fetch_tar,wayland)
 
-# https://wayland.freedesktop.org/releases.html # revised: 18 aug 2026
+# https://wayland.freedesktop.org/releases.html # revised: 25 sep 2026
 # Supply chain: as wayland above - unsigned GitLab release, SHA-256 pin only.
 wayland-protocols_URL    := https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/1.49/downloads/wayland-protocols-1.49.tar.xz
 wayland-protocols_SHA256 := ec4c8f74942d6dff7ace8b4ce4764f0ef9ff618a935d974ea77edee2ad240b14
@@ -580,10 +587,10 @@ wayland-protocols_SHA256 := ec4c8f74942d6dff7ace8b4ce4764f0ef9ff618a935d974ea77e
 $(SRC_ROOT)/wayland-protocols: | prepare
 	$(call sp_fetch_tar,wayland-protocols)
 
-# https://github.com/KDE/plasma-wayland-protocols # revised: 18 aug 2026
+# https://github.com/KDE/plasma-wayland-protocols # revised: 25 sep 2026
 plasma-wayland-protocols_REPO   := https://github.com/KDE/plasma-wayland-protocols.git
-plasma-wayland-protocols_TAG    := v1.21.0
-plasma-wayland-protocols_COMMIT := 4c015e90ae6c88f2ffa766e899387ef431eade49
+plasma-wayland-protocols_TAG    := v1.23.0
+plasma-wayland-protocols_COMMIT := c5ac4db818f4a575a6ccfe0065b73ecfaba6e93e
 plasma-wayland-protocols_DEPTH  := 1
 
 $(SRC_ROOT)/plasma-wayland-protocols: | prepare
@@ -592,7 +599,7 @@ $(SRC_ROOT)/plasma-wayland-protocols: | prepare
 # Keep the version within 2.4.x: patch_ver feeds the SONAME version
 # (libdrm.so.2.<minor>.0), so moving to 2.5 would roll it backwards — see the
 # note at the top of libdrm's own meson.build.
-# https://dri.freedesktop.org/libdrm/ # revised: 18 aug 2026
+# https://dri.freedesktop.org/libdrm/ # revised: 25 sep 2026
 libdrm_URL    := https://dri.freedesktop.org/libdrm/libdrm-2.4.134.tar.xz
 libdrm_SHA256 := ac5e74d157830eb8bee44c6a6bf3ad49774ef0dd2a72bdad74a8f20308b52a95
 libdrm_SIG    := .sig
@@ -601,13 +608,40 @@ libdrm_KEY    := libdrm
 $(SRC_ROOT)/libdrm: | prepare
 	$(call sp_fetch_tar,libdrm)
 
+# Mesa, for lavapipe (llvmpipe's Vulkan driver) on the Embox target: the software
+# Vulkan the flat EL1 image links in (xenolith-os docs/EMBOX-LAVAPIPE.md), and for
+# Venus, Vulkan on the host's GPU through virtio-gpu (docs/EMBOX-VENUS.md). Not in
+# LIBS, so `make download` does not fetch 80 MB for every other target; the Embox
+# target asks for it by name.
+# https://docs.mesa3d.org/relnotes/26.2.3.html # revised: 30 sep 2026
+# Supply chain: the tarball has a detached signature (.sig) by the release
+#  manager's key, which is not in keys/ yet; pinned by the SHA-256 the release
+#  notes publish.
+mesa_URL    := https://archive.mesa3d.org/mesa-26.2.3.tar.xz
+mesa_SHA256 := 1628058a8d2c0615975de5a15ab7bbb9638c50000b5bed9456ff423ea034a81f
+
+$(SRC_ROOT)/mesa: | prepare
+	$(call sp_fetch_tar,mesa)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0001-util-embox-is-posix.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0002-c11-no-weak-mutexattr-on-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0003-meson-embox-probes-through-the-libc-layer.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0004-lavapipe-a-static-driver-for-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0005-no-bsd-ioccom-no-hud-signals-on-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0006-c11-thread-stacks-of-4-mib-on-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0007-gallivm-name-the-libcalls-for-mcjit-on-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0008-lavapipe-heap-size-fallback-no-memory-fd-on-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0009-wsi-vk-khr-display-over-fbdev-on-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0010-venus-a-renderer-over-the-embox-virtio-gpu-driver.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0011-venus-a-static-driver-for-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0012-venus-no-fds-no-drm-a-sw-device-for-wsi-on-embox.patch)
+
 
 #
 # CA bundle
 #
 # Inject Russia Ministry of Digital Development certificates
-# https://curl.se/ca # revised: 18 aug 2026
-# https://www.gosuslugi.ru/crt # revised: 18 aug 2026
+# https://curl.se/ca # revised: 25 sep 2026
+# https://www.gosuslugi.ru/crt # revised: 25 sep 2026
 #
 # curl.se serves a dated, immutable file, so its pin is stable until CERT_NAME
 # moves. The gu-st.ru certificates sit at unversioned URLs and are replaced in
@@ -615,10 +649,10 @@ $(SRC_ROOT)/libdrm: | prepare
 # SHA-256 mismatch here rather than as a silently changed trust store. When that
 # happens, look at the new certificate before updating the pin.
 
-CERT_NAME := cacert-2026-08-13.pem
+CERT_NAME := cacert-2026-09-25.pem
 
 cacert_URL    := https://curl.se/ca/$(CERT_NAME)
-cacert_SHA256 := f66dff1bdf8f96060b8177976f8b7d9254bc89bc4db933d769f7384d28480bc9
+cacert_SHA256 := a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505
 
 ru-ca-root_URL    := https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt
 ru-ca-root_SHA256 := 936a43fea6e8e525bcc0f81acd9c3d21b4fc4b9b68acea7906d698005afc6504
@@ -690,8 +724,9 @@ $(SRC_ROOT)/xwin/splat: $(SRC_ROOT)/xwin
 # parse time, on every invocation, and turn that class of mistake into a message
 # instead of a silently weakened build.
 
-# Fetched by name but not part of LIBS: the CA bundle inputs and the Windows SDK tool.
-SRC_EXTRA_NAMES := cacert ru-ca-root ru-ca-sub ru-ca-sub-2024 xwin
+# Fetched by name but not part of LIBS: the CA bundle inputs, the Windows SDK tool,
+# and Mesa for the Embox target.
+SRC_EXTRA_NAMES := cacert ru-ca-root ru-ca-sub ru-ca-sub-2024 xwin mesa
 
 SRC_ALL_NAMES := $(LIBS) $(SRC_EXTRA_NAMES)
 

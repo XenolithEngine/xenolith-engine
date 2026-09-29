@@ -399,16 +399,36 @@ int thread_t::getcpuclockid(__sprt_clockid_t *clock) const {
 	return ENOSYS;
 }
 
+// The kernel pins only the thread that asks (sched_setaffinity, 122): it has no
+// lookup by tid across a task. So the tid of this thread is passed, and the
+// kernel refuses it with ESRCH unless it is the caller's own (BF-44).
+static int __el0_affinity_tid(const thread_t *thread) {
+	if (thread->handle == reinterpret_cast<void *>(uintptr_t(1))) {
+		return native::s_el0_main_tid;
+	}
+	return thread->handle ? ((const native::el0_thread *)thread->handle)->tid : -1;
+}
+
 int thread_t::getaffinity(__SPRT_ID(size_t) n, __SPRT_ID(cpu_set_t) * set) {
-	(void)n;
-	(void)set;
-	return ENOSYS;
+	if (!set || n < sizeof(uint64_t)) {
+		return EINVAL;
+	}
+	uint64_t mask = 0;
+	auto ret = __el0_sched_getaffinity(__el0_affinity_tid(this), sizeof(mask), &mask);
+	if (ret < 0) {
+		return (int)-ret;
+	}
+	__builtin_memset(set, 0, n);
+	__builtin_memcpy(set, &mask, sizeof(mask));
+	return 0;
 }
 
 int thread_t::setaffinity(__SPRT_ID(size_t) n, const __SPRT_ID(cpu_set_t) * set) {
-	(void)n;
-	(void)set;
-	return ENOSYS;
+	if (!set || n == 0) {
+		return EINVAL;
+	}
+	auto ret = __el0_sched_setaffinity(__el0_affinity_tid(this), n < 8 ? n : 8, set);
+	return ret < 0 ? (int)-ret : 0;
 }
 
 // The name is kept in the thread object by the layer above; there is no kernel

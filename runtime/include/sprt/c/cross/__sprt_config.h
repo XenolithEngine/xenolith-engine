@@ -199,8 +199,32 @@ THE SOFTWARE.
 #define __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER_NOTICE
 #endif
 
+// sched_getaffinity/sched_setaffinity/sched_getcpu. Off unless a platform says
+// otherwise: the hosted libcs spell cpu_set_t differently from sprt's.
+#ifndef __SPRT_CONFIG_HAVE_SCHED_AFFINITY
+#define __SPRT_CONFIG_HAVE_SCHED_AFFINITY 0
+#endif
+
+#if __SPRT_CONFIG_HAVE_SCHED_AFFINITY == 0 && __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+#define __SPRT_CONFIG_HAVE_SCHED_AFFINITY_NOTICE __SPRT_CONFIG_UNAVAILABLE_NOTICE(__SPRT_CONFIG_HAVE_SCHED_AFFINITY)
+#else
+#define __SPRT_CONFIG_HAVE_SCHED_AFFINITY_NOTICE
+#endif
+
 #ifndef __SPRT_CONFIG_HAVE_POLL
 #define __SPRT_CONFIG_HAVE_POLL 1
+#endif
+
+// flock(2), advisory whole-file locks: every hosted POSIX libc has it (glibc,
+// bionic, Darwin, Embox's DVFS); the freestanding targets say otherwise.
+#ifndef __SPRT_CONFIG_HAVE_FLOCK
+#define __SPRT_CONFIG_HAVE_FLOCK 1
+#endif
+
+#if __SPRT_CONFIG_HAVE_FLOCK == 0 && __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+#define __SPRT_CONFIG_HAVE_FLOCK_NOTICE __SPRT_CONFIG_UNAVAILABLE_NOTICE(__SPRT_CONFIG_HAVE_FLOCK)
+#else
+#define __SPRT_CONFIG_HAVE_FLOCK_NOTICE
 #endif
 
 #if __SPRT_CONFIG_HAVE_POLL == 0 && __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS

@@ -43,11 +43,15 @@ void performFcntlTest();
 void performMemalignTest();
 void performMemalignMacroTest();
 void performMallocThreadsTest();
+void performEmutlsThreadsTest();
+void performSchedAffinityTest();
+void performFlockTest();
 void performAtFunctionsTest();
 void performSetjmpTest();
 void performLocaleTest();
 void performWasm64AbiTest();
 void performWasm64HighMemTest();
+void performWasmVfsTest();
 
 void performPthreadCreateTest();
 void performPthreadMutexTest();

@@ -1,0 +1,61 @@
+diff --git a/src/util/detect_os.h b/src/util/detect_os.h
+index 7403724..8b7c702 100644
+--- a/src/util/detect_os.h
++++ b/src/util/detect_os.h
+@@ -91,6 +91,15 @@
+ #define DETECT_OS_POSIX 1
+ #endif
+ 
++/*
++ * Embox, an RTOS: Mesa is linked into the kernel image and runs at EL1, over
++ * the Xenolith engine's POSIX layer (sprt). No __linux__, no /proc, no DRM.
++ */
++#if defined(__EMBOX__)
++#define DETECT_OS_EMBOX 1
++#define DETECT_OS_POSIX 1
++#endif
++
+ 
+ /*
+  * Make sure DETECT_OS_* are always defined, so that they can be used with #if
+@@ -98,6 +107,9 @@
+ #ifndef DETECT_OS_ANDROID
+ #define DETECT_OS_ANDROID 0
+ #endif
++#ifndef DETECT_OS_EMBOX
++#define DETECT_OS_EMBOX 0
++#endif
+ #ifndef DETECT_OS_APPLE
+ #define DETECT_OS_APPLE 0
+ #endif
+diff --git a/src/util/log.c b/src/util/log.c
+index b594a8f..557b6e9 100644
+--- a/src/util/log.c
++++ b/src/util/log.c
+@@ -152,7 +152,13 @@ mesa_log_init_once(void)
+ 
+          snprintf(log_file, sizeof(log_file), "/tmp/mesa_%s_%d_XXXXXX.log", util_get_process_name(),
+                   getpid());
++#if DETECT_OS_EMBOX
++         /* mkstemp and no mkstemps in Embox's libc layer: the name loses ".log". */
++         log_file[strlen(log_file) - 4] = '\0';
++         fd = mkstemp(log_file);
++#else
+          fd = mkstemps(log_file, 4);
++#endif
+          if (fd >= 0)
+             fp = fdopen(fd, "w");
+       } else {
+diff --git a/src/util/os_misc.c b/src/util/os_misc.c
+index 16dd51b..aa1a6b7 100644
+--- a/src/util/os_misc.c
++++ b/src/util/os_misc.c
+@@ -60,7 +60,7 @@
+ #  include <unistd.h>
+ #  include <android/log.h>
+ #  include <sys/system_properties.h>
+-#elif DETECT_OS_LINUX || DETECT_OS_CYGWIN || DETECT_OS_SOLARIS || DETECT_OS_HURD || DETECT_OS_MANAGARM
++#elif DETECT_OS_LINUX || DETECT_OS_CYGWIN || DETECT_OS_SOLARIS || DETECT_OS_HURD || DETECT_OS_MANAGARM || DETECT_OS_EMBOX
+ #  include <unistd.h>
+ #elif DETECT_OS_OPENBSD || DETECT_OS_FREEBSD
+ #  include <sys/resource.h>

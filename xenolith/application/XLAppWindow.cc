@@ -96,8 +96,18 @@ bool AppWindow::init(NotNull<Context> ctx, NotNull<ServerAppThread> app, NotNull
 		_planeSource = Rc<core::PlaneSource>::create();
 	}
 
-	_presentationEngine = static_cast<core::Loop *>(_context->getGlLoop())
-								  ->makePresentationEngine(this, w->getPreferredOptions());
+	auto loop = static_cast<core::Loop *>(_context->getGlLoop());
+	auto opts = w->getPreferredOptions();
+#if MODULE_XENOLITH_BACKEND_VK
+	// A window system with CPU buffers and nothing else (an Embox framebuffer): Vulkan renders into
+	// the headless pseudo-swapchain and copies every frame out (see makeSurface).
+	if (loop->getInstance()->getApi() == core::InstanceApi::Vulkan
+			&& w->getSurfaceInterfaceInfo().backend == sprt::window::SurfaceBackend::Surface) {
+		opts.headless = true;
+	}
+#endif
+
+	_presentationEngine = loop->makePresentationEngine(this, opts);
 
 	return _presentationEngine != nullptr;
 }
@@ -654,6 +664,19 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 		// No window system: the surface is synthesized from the window extent and backs a
 		// pseudo-swapchain of ordinary device images.
 		return Rc<vk::HeadlessSurface>::create(instance, _window->getExtent(), this);
+	}
+
+	if (info.backend == sprt::window::SurfaceBackend::Surface) {
+		// The window system has CPU buffers only (an Embox framebuffer): the same pseudo-swapchain,
+		// with every presented frame copied into them. init() picked the headless engine for it.
+		auto software = _window->makeSoftwareSurface();
+		if (!software) {
+			log::source().error("AppWindow",
+					"Window system has neither a Vulkan surface nor CPU buffers");
+			return nullptr;
+		}
+		return Rc<vk::HeadlessSurface>::create(instance, _window->getExtent(), this,
+				sp::move(software));
 	}
 
 	VkSurfaceKHR surface = VK_NULL_HANDLE;

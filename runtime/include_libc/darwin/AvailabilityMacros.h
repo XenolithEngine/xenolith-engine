@@ -1,6 +1,14 @@
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_DARWIN_AVAILABILITYMACROS_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_DARWIN_AVAILABILITYMACROS_H_
 
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
+
+// A TU over the real SDK libc (the runtime's .mm, the Metal backend) takes the SDK's own
+// macros: its framework headers also use the DEPRECATED_IN_* family this stub lacks.
+#include_next <AvailabilityMacros.h>
+
+#else
+
 // clang-format off
 #define __MAC_10_0                                        1000
 #define __MAC_10_1                                        1010
@@ -441,5 +449,7 @@
 #define MAC_OS_VERSION_26_1                             __MAC_26_1
 
 #define MAC_OS_X_VERSION_MIN_REQUIRED __ENVIRONMENT_OS_VERSION_MIN_REQUIRED__
+
+#endif
 
 #endif // CORE_RUNTIME_INCLUDE_LIBC_DARWIN_AVAILABILITYMACROS_H_

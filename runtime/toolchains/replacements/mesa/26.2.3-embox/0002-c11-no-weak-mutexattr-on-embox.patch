@@ -1,0 +1,18 @@
+diff --git a/src/c11/impl/threads_posix.c b/src/c11/impl/threads_posix.c
+index 6db8c42..c6d2cea 100644
+--- a/src/c11/impl/threads_posix.c
++++ b/src/c11/impl/threads_posix.c
+@@ -137,7 +137,12 @@ mtx_destroy(mtx_t *mtx)
+  * Thus the linker will be happy and things don't clash when building
+  * with -O1 or greater.
+  */
+-#if defined(HAVE_FUNC_ATTRIBUTE_WEAK) && !defined(__CYGWIN__)
++/*
++ * Not on Embox: there these are the libc layer's own functions, inline, and a
++ * weak declaration of them in a static link resolves to 0 -- mtx_init() would
++ * call address 0 for the first recursive mutex.
++ */
++#if defined(HAVE_FUNC_ATTRIBUTE_WEAK) && !defined(__CYGWIN__) && !defined(__EMBOX__)
+ __attribute__((weak))
+ int pthread_mutexattr_init(pthread_mutexattr_t *attr);
+ 

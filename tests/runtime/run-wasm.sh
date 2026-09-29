@@ -15,7 +15,8 @@
 # runtime_socket, libc_setjmp) report themselves and are not failures.
 #
 # The runner loads its working directory into the read-only bundle, so every run happens
-# in a small scratch directory holding only the probe file libc_wasm64_highmem reads back.
+# in a small scratch directory holding only the probe files libc_wasm64_highmem and
+# libc_wasm_vfs read back.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,6 +32,12 @@ make -C "$HERE" STAPPLER_TARGET="$TARGET" -j"$(nproc)" >/dev/null || { echo "bui
 RUNDIR="$(mktemp -d)"
 trap 'rm -rf "$RUNDIR"' EXIT
 printf 'sprt wasm64 bundle probe\n' > "$RUNDIR/wasm64-bundle.txt"
+# The bundled tree libc_wasm_vfs lists and reads back.
+mkdir -p "$RUNDIR/vfs-bundle/sub/deep" "$RUNDIR/vfs-bundle/other"
+printf 'bundle top\n' > "$RUNDIR/vfs-bundle/top.txt"
+printf 'mid\n' > "$RUNDIR/vfs-bundle/sub/mid.txt"
+printf 'leaf\n' > "$RUNDIR/vfs-bundle/sub/deep/leaf.txt"
+printf 'other x\n' > "$RUNDIR/vfs-bundle/other/x.txt"
 LOGDIR="$HERE/stappler-build/$TARGET/wasm-runs"
 mkdir -p "$LOGDIR"
 

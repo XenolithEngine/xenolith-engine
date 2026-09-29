@@ -35,14 +35,15 @@ MODULE_STAPPLER_BITMAP_LIBS += -l:libz.a -lpthread
 endif
 
 ifeq ($(TARGET_SYSTEM),Android)
-MODULE_STAPPLER_BITMAP_LIBS += -l:libz.a
+# libwebp detects NEON through the NDK cpu-features; ndk-build imports its own copy instead.
+MODULE_STAPPLER_BITMAP_LIBS += -l:libcpufeatures-webp.a -l:libz.a
 endif
 
 ifeq ($(TARGET_SYSTEM),Android-NDK)
 MODULE_STAPPLER_BITMAP_LIBS += -l:libz.a
 endif
 
-ifeq ($(TARGET_SYSTEM),Darwin)
+ifdef DARWIN
 MODULE_STAPPLER_BITMAP_LIBS += -l:libz.a
 endif
 

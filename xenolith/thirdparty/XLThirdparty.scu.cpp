@@ -25,6 +25,8 @@
 ///@ SP_EXCLUDE
  */
 
-#if !SPRT_WASM && !SPRT_HOSTED_RTOS && !SPRT_EMBOX_USER
+// SPIR-V reflection: not on wasm (WGSL) and Embox EL0; on RTOS only for the Vulkan backend
+// (lavapipe on Embox), the software rasterizer does not read SPIR-V.
+#if !SPRT_WASM && !SPRT_EMBOX_USER && (!SPRT_HOSTED_RTOS || MODULE_XENOLITH_BACKEND_VK)
 #include "SPIRV-Reflect/spirv_reflect.cc"
 #endif

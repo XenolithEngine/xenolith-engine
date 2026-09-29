@@ -37,6 +37,9 @@ This module only implements basic functions without platform-dependent parts.
 endef
 
 # module name resolution
+EMBOX_VULKAN ?= lavapipe
+MODULE_XENOLITH_BACKEND_VK_GENERAL_LDFLAGS = $(if $(EMBOX),$(if $(filter venus,$(EMBOX_VULKAN)),$(TARGET_VENUS_LDFLAGS),$(TARGET_LAVAPIPE_LDFLAGS)))
+
 $(call define_module, xenolith_backend_vk, MODULE_XENOLITH_BACKEND_VK)
 
 

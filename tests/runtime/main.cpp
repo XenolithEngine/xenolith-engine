@@ -64,6 +64,9 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"libc_memalign", &sprt::performMemalignTest},
 	{"libc_memalign_macro", &sprt::performMemalignMacroTest},
 	{"libc_malloc_threads", &sprt::performMallocThreadsTest},
+	{"libc_emutls_threads", &sprt::performEmutlsThreadsTest},
+	{"libc_sched_affinity", &sprt::performSchedAffinityTest},
+	{"libc_flock", &sprt::performFlockTest},
 	{"libc_at", &sprt::performAtFunctionsTest},
 	{"libc_setjmp", &sprt::performSetjmpTest},
 	{"libc_locale", &sprt::performLocaleTest},
@@ -76,6 +79,7 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"libc_pthread_spinlock", &sprt::performPthreadSpinlockTest},
 	{"libc_wasm64_abi", &sprt::performWasm64AbiTest},
 	{"libc_wasm64_highmem", &sprt::performWasm64HighMemTest},
+	{"libc_wasm_vfs", &sprt::performWasmVfsTest},
 
 	{"libcxx_malloc_string", &sprt::performMallocStringTests},
 	{"libcxx_malloc_unordered_map", &sprt::performMallocUnorderedMapTests},

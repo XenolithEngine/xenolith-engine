@@ -52,6 +52,9 @@ typedef __SPRT_ID(ino_t) ino_t;
 typedef __SPRT_ID(nlink_t) nlink_t;
 typedef __SPRT_ID(blksize_t) blksize_t;
 typedef __SPRT_ID(blkcnt_t) blkcnt_t;
+// reclen_t: musl's <dirent.h> and <sys/types.h> pull it from here via __NEED_reclen_t
+// since upstream a0617d05 (POSIX.1-2024); same type as upstream alltypes.h.in.
+typedef unsigned short reclen_t;
 
 typedef __SPRT_ID(pthread_t) pthread_t;
 typedef __SPRT_ID(pthread_once_t) pthread_once_t;

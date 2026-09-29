@@ -32,7 +32,7 @@
 ifndef SP_LLVM_VERSION_INCLUDED
 SP_LLVM_VERSION_INCLUDED := 1
 
-# https://github.com/llvm/llvm-project/releases # revised: 11 aug 2026
+# https://github.com/llvm/llvm-project/releases # revised: 25 sep 2026
 SP_LLVM_VER   := 22
 SP_LLVM_MINOR := 1
 SP_LLVM_PATCH := 8

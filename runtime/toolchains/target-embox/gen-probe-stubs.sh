@@ -88,6 +88,11 @@ collect() {
 				case "$f" in
 				*/libapps.a) continue ;;
 				*/libprobe-stubs.a) continue ;;
+				# LLVM and lavapipe (llvm.mk, mesa.mk) are on no probe's link
+				# line, and their references to each other -- cl::opt globals,
+				# emutls controls with a '.' in the name -- are no stubs' business.
+				*/libLLVM*.a) continue ;;
+				*/libvulkan_lvp.a) continue ;;
 				*'*.a') continue ;;
 				esac
 				__out="$__out $f"

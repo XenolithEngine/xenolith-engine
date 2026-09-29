@@ -1,0 +1,41 @@
+diff --git a/llvm/lib/Support/Unix/DynamicLibrary.inc b/llvm/lib/Support/Unix/DynamicLibrary.inc
+index b6f8e38a6..2df4c202d 100644
+--- a/llvm/lib/Support/Unix/DynamicLibrary.inc
++++ b/llvm/lib/Support/Unix/DynamicLibrary.inc
+@@ -50,9 +50,24 @@ void *DynamicLibrary::HandleSet::DLSym(void *Handle, const char *Symbol) {
+ 
+ #else // !HAVE_DLOPEN
+ 
++#if defined(__EMBOX__)
++// Embox links applications into the kernel image, so the process is there
++// without dlopen. ExecutionEngine asks for it before it will create a JIT; its
++// handle resolves nothing itself, symbols come from AddSymbol. A miss is
++// printed: MCJIT only records it in an error string, and the code it loaded
++// then calls address 0.
++#include <stdio.h>
++
++static char EmboxProcess;
++#endif
++
+ DynamicLibrary::HandleSet::~HandleSet() {}
+ 
+ void *DynamicLibrary::HandleSet::DLOpen(const char *File, std::string *Err) {
++#if defined(__EMBOX__)
++  if (!File)
++    return &EmboxProcess;
++#endif
+   if (Err)
+     *Err = "dlopen() not supported on this platform";
+   return &Invalid;
+@@ -61,6 +76,11 @@ void *DynamicLibrary::HandleSet::DLOpen(const char *File, std::string *Err) {
+ void DynamicLibrary::HandleSet::DLClose(void *Handle) {}
+ 
+ void *DynamicLibrary::HandleSet::DLSym(void *Handle, const char *Symbol) {
++#if defined(__EMBOX__)
++  if (Handle == &EmboxProcess)
++    fprintf(stderr, "DynamicLibrary: no symbol '%s' (add it with AddSymbol)\n",
++            Symbol);
++#endif
+   return nullptr;
+ }
+ 

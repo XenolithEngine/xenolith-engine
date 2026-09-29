@@ -186,6 +186,12 @@ memory::pool_t *getConfigPool() { return s_globalConfig._pool; }
 
 } // namespace sprt::platform
 
+namespace sprt {
+
+const AppConfig &getAppConfig() { return platform::s_globalConfig.config; }
+
+} // namespace sprt
+
 namespace sprt::filesystem {
 
 const LocationInfo &getCurrentLocation() { return platform::s_globalConfig.current; }

@@ -287,7 +287,9 @@ public:
 		return iterator(data() + pos);
 	}
 
+	// Where size_type is the element type (32-bit targets), (it, count, value) matches both.
 	template < typename InputIt >
+		requires (!is_integral_v<InputIt>)
 	constexpr iterator insert(const_iterator it, InputIt first, InputIt last) {
 		auto _ptr = data();
 		const auto _used = size();

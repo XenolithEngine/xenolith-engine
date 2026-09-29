@@ -277,6 +277,7 @@ static char **__wasm_load_vector(int packed,
 } // namespace sprt
 
 extern "C" void __sprt_wasm_reinit_main_thread(void);
+extern "C" void __sprt_wasm_malloc_thread_key_init(void);
 extern "C" void _start(void) {
 	// 1. libc singleton (fd 0/1/2, locale, exceptions).
 	auto libc = new (s_libcBuffer, sprt::nothrow) sprt::__libc;
@@ -291,6 +292,11 @@ extern "C" void _start(void) {
 	// clobbered the main thread's registration (see __sprt_wasm_reinit_main_thread). Now
 	// that all ctors have run, (re)register the main thread cleanly.
 	__sprt_wasm_reinit_main_thread();
+
+	// 3b. mimalloc's thread-exit key. Made only now for the same reason: a key made in a
+	// constructor is wiped by the pool's construction, and without it no spawned thread
+	// ever returns its heap (see the wasi prim).
+	__sprt_wasm_malloc_thread_key_init();
 
 	// 4. argv / env snapshot from the host.
 	int argc = 0;

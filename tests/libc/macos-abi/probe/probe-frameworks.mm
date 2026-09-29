@@ -54,7 +54,7 @@
 
 #define V(x) extern "C" __attribute__((used)) const long long abi_##x = (long long)(x);
 
-// === AppKit (153) ============================================
+// === AppKit (161) ============================================
 V(NSApplicationActivationPolicyAccessory)
 V(NSApplicationActivationPolicyProhibited)
 V(NSApplicationActivationPolicyRegular)
@@ -73,6 +73,14 @@ V(NSBitmapFormatFloatingPointSamples)
 V(NSBoldFontMask)
 V(NSCompressedFontMask)
 V(NSCondensedFontMask)
+V(NSDragOperationCopy)
+V(NSDragOperationDelete)
+V(NSDragOperationEvery)
+V(NSDragOperationGeneric)
+V(NSDragOperationLink)
+V(NSDragOperationMove)
+V(NSDragOperationNone)
+V(NSDragOperationPrivate)
 V(NSEventMaskAny)
 V(NSEventMaskFlagsChanged)
 V(NSEventMaskKeyDown)

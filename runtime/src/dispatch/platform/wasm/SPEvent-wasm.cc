@@ -475,6 +475,89 @@ void WasmData::unregisterProcessHandle(WasmProcessHandle *h) {
 	}
 }
 
+//
+// WasmAddressWaitHandle — waitOnAddress, polled by the reactor
+//
+
+bool WasmAddressWaitHandle::init(HandleClass *cl, AddressWaitInfo &&info) {
+	if (!AddressWaitHandle::init(cl, move(info.completion))) {
+		return false;
+	}
+	_address = info.address;
+	_last = info.expected;
+	return true;
+}
+
+Status WasmAddressWaitHandle::rearm(WasmData *w, WasmAddressWaitSource *) {
+	auto status = prepareRearm();
+	if (status == Status::Ok) {
+		w->registerAddressHandle(this);
+		// A word that differs already is reported on the next pass; wake a sleeping loop
+		// so that pass comes now, not after its current sleep.
+		w->bumpAndNotify();
+	}
+	return status;
+}
+
+Status WasmAddressWaitHandle::disarm(WasmData *w, WasmAddressWaitSource *) {
+	auto status = prepareDisarm();
+	if (status == Status::Ok) {
+		w->unregisterAddressHandle(this);
+	} else if (status == Status::ErrorAlreadyPerformed) {
+		return Status::Ok;
+	}
+	return status;
+}
+
+void WasmAddressWaitHandle::notify(WasmData *, WasmAddressWaitSource *, const NotifyData &nd) {
+	if (_status != Status::Ok) {
+		return;
+	}
+	auto value = uint32_t(nd.result);
+	if (value != _last) {
+		_last = value;
+		sendCompletion(value, Status::Ok);
+	}
+}
+
+void WasmData::registerAddressHandle(WasmAddressWaitHandle *h) { _addressHandles.emplace_back(h); }
+
+void WasmData::unregisterAddressHandle(WasmAddressWaitHandle *h) {
+	for (size_t i = 0; i < _addressHandles.size(); ++i) {
+		if (_addressHandles[i] == h) {
+			_addressHandles[i] = _addressHandles.back();
+			_addressHandles.pop_back();
+			return;
+		}
+	}
+}
+
+uint32_t WasmData::fireAddressHandles(RunContext *) {
+	uint32_t count = 0;
+	// A callback that returns non-Ok cancels its handle, which unregisters it from inside
+	// notify(): the walk re-reads size() and the swapped-in handle is checked next pass.
+	for (size_t i = 0; i < _addressHandles.size(); ++i) {
+		auto h = _addressHandles[i];
+		auto value = h->load();
+		if (value != h->getLastValue()) {
+			auto refId = sprt::retain(h);
+			NotifyData nd;
+			nd.result = intptr_t(value);
+			_data->notify(h, nd);
+			sprt::release(h, refId);
+			++count;
+		}
+	}
+	return count;
+}
+
+int64_t WasmData::capForAddresses(int64_t rel) const {
+	if (_addressHandles.empty()) {
+		return rel;
+	}
+	return (rel < 0 || rel > AddressPollNs) ? AddressPollNs : rel;
+}
+
 uint32_t WasmData::fireProcessHandles(RunContext *) {
 	uint32_t count = 0;
 	for (;;) {
@@ -597,6 +680,7 @@ uint32_t WasmData::poll() {
 	uint32_t result = fireExpired(&ctx);
 	result += fireThreadHandles(&ctx);
 	result += fireProcessHandles(&ctx);
+	result += fireAddressHandles(&ctx);
 	drainWakeup();
 
 	popContext(&ctx);
@@ -611,13 +695,16 @@ uint32_t WasmData::wait(TimeInterval ival) {
 	uint32_t result = fireExpired(&ctx);
 	result += fireThreadHandles(&ctx);
 	result += fireProcessHandles(&ctx);
+	result += fireAddressHandles(&ctx);
 	if (result == 0 && ctx.state == RunContext::Running) {
 		int64_t rel = wasm_rel_timeout(ival, nearestDeadline(), wasm_now_ns());
 		if (rel != 0) {
+			rel = capForAddresses(rel);
 			__builtin_wasm_memory_atomic_wait32(reinterpret_cast<int *>(&_wakeword), gen, rel);
 		}
 		drainWakeup();
-		result = fireExpired(&ctx) + fireThreadHandles(&ctx) + fireProcessHandles(&ctx);
+		result = fireExpired(&ctx) + fireThreadHandles(&ctx) + fireProcessHandles(&ctx)
+				+ fireAddressHandles(&ctx);
 	}
 
 	popContext(&ctx);
@@ -680,6 +767,11 @@ Status WasmData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval wa
 			break;
 		}
 
+		fireAddressHandles(&ctx);
+		if (ctx.state != RunContext::Running) {
+			break;
+		}
+
 		drainWakeup();
 		if (ctx.state != RunContext::Running) {
 			break;
@@ -692,6 +784,7 @@ Status WasmData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval wa
 			// A timer is already due; loop back to fire it without blocking.
 			continue;
 		}
+		rel = capForAddresses(rel);
 
 		__builtin_wasm_memory_atomic_wait32(reinterpret_cast<int *>(&_wakeword), gen, rel);
 	}
@@ -726,6 +819,8 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupWasmHandleClass<WasmTimerHandle, WasmTimerSource>(&_info, &_wasmTimerClass, true);
 		setupWasmHandleClass<WasmThreadHandle, WasmThreadSource>(&_info, &_wasmThreadClass, true);
 		setupWasmHandleClass<WasmProcessHandle, WasmProcessSource>(&_info, &_wasmProcessClass, true);
+		setupWasmHandleClass<WasmAddressWaitHandle, WasmAddressWaitSource>(&_info,
+				&_wasmAddressWaitClass, true);
 		setupInlineFileHandleClass(&_info, &_wasmFileInlineClass);
 		setupStatWatchClass(&_info, &_wasmWatchClass);
 
@@ -753,6 +848,16 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		_thread = [](QueueData *d, void *ptr) -> Rc<ThreadHandle> {
 			auto data = static_cast<Queue::Data *>(d);
 			return Rc<WasmThreadHandle>::create(&data->_wasmThreadClass);
+		};
+
+		_addressWait = [](QueueData *d, void *ptr, AddressWaitInfo &&info,
+							   Ref *ref) -> Rc<AddressWaitHandle> {
+			auto data = static_cast<Queue::Data *>(d);
+			auto h = Rc<WasmAddressWaitHandle>::create(&data->_wasmAddressWaitClass, move(info));
+			if (h && ref) {
+				h->setUserdata(ref);
+			}
+			return h;
 		};
 
 		// Async file I/O over the synchronous VFS: the portable inline FileHandle,

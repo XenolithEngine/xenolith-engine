@@ -331,7 +331,20 @@ int thread_t::getcpuclockid(__sprt_clockid_t *clock) const {
 }
 
 int thread_t::getaffinity(__SPRT_ID(size_t) n, __SPRT_ID(cpu_set_t) * set) {
-#if SPRT_ANDROID || SPRT_APPLE || SPRT_HOSTED_RTOS
+#if SPRT_EMBOX
+	// Embox's cpu_set_t is one word, bit i = core i; ours is Linux's array of
+	// longs, so the first long carries it (BF-44).
+	if (!set || n < sizeof(set->__bits[0])) {
+		return EINVAL;
+	}
+	cpu_set_t mask = 0;
+	auto ret = pthread_getaffinity_np((pthread_t)(uintptr_t)handle, sizeof(mask), &mask);
+	if (ret == 0) {
+		__builtin_memset(set, 0, n);
+		set->__bits[0] = mask;
+	}
+	return ret;
+#elif SPRT_ANDROID || SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ENOSYS;
 #else
 	return pthread_getaffinity_np((pthread_t)(uintptr_t)handle, n,
@@ -340,7 +353,13 @@ int thread_t::getaffinity(__SPRT_ID(size_t) n, __SPRT_ID(cpu_set_t) * set) {
 }
 
 int thread_t::setaffinity(__SPRT_ID(size_t) n, const __SPRT_ID(cpu_set_t) * set) {
-#if SPRT_ANDROID || SPRT_APPLE || SPRT_HOSTED_RTOS
+#if SPRT_EMBOX
+	if (!set || n < sizeof(set->__bits[0])) {
+		return EINVAL;
+	}
+	cpu_set_t mask = (cpu_set_t)set->__bits[0];
+	return pthread_setaffinity_np((pthread_t)(uintptr_t)handle, sizeof(mask), &mask);
+#elif SPRT_ANDROID || SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ENOSYS;
 #else
 	return pthread_setaffinity_np((pthread_t)(uintptr_t)handle, n,

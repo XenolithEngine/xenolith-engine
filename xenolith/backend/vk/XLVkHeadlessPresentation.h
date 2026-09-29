@@ -25,6 +25,8 @@
 
 #include "XLVkPresentationEngine.h"
 
+#include <sprt/runtime/window/software_surface.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
 
 // Surface for a window that has no window system behind it.
@@ -32,11 +34,16 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
 // vk::Surface refuses a VK_NULL_HANDLE, so this is a sibling rather than a subclass: there is no
 // VkSurfaceKHR at all, and the surface capabilities are synthesized from the window extent instead
 // of being queried from a WSI implementation.
+//
+// With an output - the CPU buffers of a window system that has nothing else to offer, such as an
+// Embox framebuffer (SurfaceBackend::Surface) - every presented frame is copied into it, and the
+// output decides the extent, the formats and the present modes.
 class SP_PUBLIC HeadlessSurface : public core::Surface {
 public:
 	virtual ~HeadlessSurface();
 
-	bool init(Instance *instance, Extent2 extent, Ref *window = nullptr);
+	bool init(Instance *instance, Extent2 extent, Ref *window = nullptr,
+			Rc<sprt::window::SoftwareSurface> &&output = nullptr);
 
 	virtual void invalidate() override;
 
@@ -45,8 +52,11 @@ public:
 
 	void setExtent(Extent2 extent) { _extent = extent; }
 
+	sprt::window::SoftwareSurface *getOutput() const { return _output.get(); }
+
 protected:
 	Extent2 _extent;
+	Rc<sprt::window::SoftwareSurface> _output;
 };
 
 // Pseudo-swapchain: a ring of ordinary device images that imitate swapchain images.
@@ -62,6 +72,10 @@ protected:
 // go. Ownership moves by layout: a device task takes the image PresentSrc -> ShaderReadOnly before
 // the frame is published, and back to PresentSrc before the slot is unpinned. Between the two the
 // image is read by any number of compositor frames and written by none.
+//
+// With an output (see HeadlessSurface) a presented slot is pinned the same way while a device task
+// copies the damaged part of its image into a host-visible buffer of its own; once the task is
+// complete, the rows go into the output's buffer and the output presents them.
 class SP_PUBLIC HeadlessSwapchain final : public core::Swapchain {
 public:
 	virtual ~HeadlessSwapchain();
@@ -110,6 +124,9 @@ protected:
 	// Move a presented image into the plane: layout task, then publish (loop thread).
 	void publishPlaneFrame(uint32_t slot, Rc<Image> &&);
 
+	// Copy a presented image into the output: copy task, then the rows (loop thread).
+	void presentToOutput(uint32_t slot, Rc<Image> &&, Vector<URect> &&damage);
+
 	Vector<SwapchainImageData> _images;
 	Vector<bool> _acquired;
 	uint32_t _nextIndex = 0;
@@ -118,6 +135,9 @@ protected:
 	core::Loop *_loop = nullptr;
 	Rc<core::PlaneSlotTable> _slots;
 	Rc<core::PlaneSource> _planeSource;
+
+	Rc<sprt::window::SoftwareSwapchain> _output;
+	Vector<Rc<Buffer>> _outputBuffers; // one per slot: host-visible, rows of the image's width
 };
 
 // Presentation engine for a headless window.

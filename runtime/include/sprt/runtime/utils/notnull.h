@@ -31,7 +31,7 @@
 // preferred option: C++ standard attribute
 #ifdef __has_cpp_attribute
 #if __has_cpp_attribute(assume) >= 202'207L
-#define SPRT_ASSUME(...) [[assume(__VA_ARGS__)]]
+#define SPRT_ASSUME(...) [[__assume__(__VA_ARGS__)]]
 #endif
 #endif
 // first fallback: compiler intrinsics/attributes for assumptions
