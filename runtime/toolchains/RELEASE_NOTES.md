@@ -1,13 +1,9 @@
-# Xenolith Toolchains — `sdk-v0beta3`
+# Xenolith Toolchains — `sdk-v0rc0`
 
 Universal, self-contained C/C++ toolchains for building **Xenolith Runtime** and
 projects based on it, on **Linux, Windows and macOS**, cross-compiling to every
 supported platform without installing a vendor SDK (Windows SDK, Android SDK,
 macOS/iOS SDK) on the build machine.
-
-> **Beta.** The toolchains work, compile and are mostly tested. Every package in
-> this release — *including the Windows and macOS hosts* — was assembled on
-> **x86_64 Linux**; other build hosts have not been validated for full builds.
 
 This release publishes two sets of binary packages:
 
@@ -19,7 +15,7 @@ This release publishes two sets of binary packages:
 You pick one host (matching the machine you compile on) and one or more targets
 (the platforms you ship to). All packages are `.tar.xz` with a detached GnuPG
 signature (`.tar.xz.sig`), and every package carries a `release` file holding
-the SDK tag (`sdk-v0beta3`).
+the SDK tag (`sdk-v0rc0`).
 
 Release assets are named `host_<id>.tar.xz` and `target_<id>.tar.xz`. The prefix
 is not cosmetic: a GitHub release has one flat asset namespace, and the host and
@@ -28,82 +24,83 @@ Inside the archive the top-level directory is still the bare `<id>`.
 
 ---
 
-## What changed since `sdk-v0beta2`
+## What changed since `sdk-v0beta3`
 
-### LLVM 22
+### New target: `wasm64-unknown-unknown`
 
-The whole toolchain moved from **21.1.8 to 22.1.8** — clang, lld, lldb,
-compiler-rt, libc++/libc++abi/libunwind and the resource dir (`lib/clang/22`).
-The local patch set was rebased and grew from 11 to **13 patches**: four
-wine-LLDB patches (one new), six `sprt-windows` patches, plus non-`__ulock`,
-wasm libunwind and no-delayload.
+WebAssembly with memory64, built from the same template as `wasm32` and carrying
+the same library set. Nothing in the host LLVM changes — the triple alone turns
+memory64 on. One compiler-rt patch was needed: the soft-float comparison
+builtins return `long` on LP64, while LLVM lowers those libcalls with an `i32`
+result on WebAssembly, and `wasm-ld` links by exact signature, so every `fp128`
+comparison on wasm64 resolved to a trapping stub. OpenSSL gains a
+`wasm64-sprt-clang` configuration.
 
-### Third-party sources are pinned and verified
+Both wasm targets now also ship **`libsprt.a`** — the runtime, libc and the
+libc++ port in one archive — for consumers that have only a compiler and a
+sysroot. Projects driven by the engine build system still rebuild the runtime
+from source.
 
-`src.mk` was rewritten from ad-hoc download recipes into declarative per-library
-blocks, and every dependency now has to clear three checks before it is allowed
-into `src/` — a failure stops the build instead of leaving a half-broken tree:
+### LLVM: 13 → 21 local patches
 
-* the transfer actually succeeded, so a 404 page or a truncated file no longer
-  reaches `tar` and fails several steps later with an unrelated message;
-* `_SHA256` matches — the expected value lives in our git history, not on the
-  server the file came from;
-* `_SIG` verifies against `keys/<_KEY>.asc`, for the fourteen upstreams that
-  publish a detached OpenPGP signature. That is what makes writing a `_SHA256`
-  pin trustworthy at the one moment it matters — when somebody bumps a version.
+The toolchain stays on **22.1.8**. The patch set grew by the wasm64 compiler-rt
+fix above and by seven `sprt-wasm-host` patches, which let LLVM itself be
+cross-compiled to `wasm32` and run on the sprt runtime (the in-browser clang).
+Every hunk of those seven is guarded by `__wasm__`, so the published hosts are
+built from exactly the same code as before; the wasm host itself is not
+published in this release.
 
-Sources fetched with git are pinned by `_COMMIT` as well as by `_TAG`, because a
-tag is a mutable pointer: if upstream re-tags, the clone is refused rather than
-silently building something else. `make src-pins` re-resolves every tag to the
-commit it points at today, which is how a version bump is prepared. Where an
-upstream publishes nothing to verify against, the block says so and why that is
-acceptable.
+### macOS `+open` sysroots
 
-### libzip is gone
+* The `x86_64-apple-macosx+open` build is complete (the `_mach_init_routine` /
+  crt symbols are baked into the `libSystem` stub on both architectures, plus a
+  `libgcc_s` alias and the deployment-target fix).
+* The hand-written AppKit surface grew with what the engine now uses: images
+  (`NSBitmapImageRep`, `NSDeviceRGBColorSpace`), the open/save panels, the
+  workspace, fonts and the colour panel, and **OS drag and drop into a view**
+  (`NSDragOperation`, `NSDraggingInfo`, `NSDraggingDestination`,
+  `registerForDraggedTypes:`, `NSPasteboardURLReadingFileURLsOnlyKey`).
+* All of it is now checked mechanically against a real `MacOSX.sdk` by
+  `tests/libc/macos-abi`: 981 framework enumerators, the Objective-C types of 74
+  properties and methods, and all 12 431 symbols of the `.tbd` link stubs,
+  including which library owns each one.
 
-Dropped, not bumped. `stappler_zip` now reads and writes ZIP archives with its
-own code (zlib is the only dependency left), so the library, its nine per-target
-builds and the cmake feature-probe shims that carried it onto wasm/NuttX/Embox
-are no longer part of any sysroot. Anything that linked `-lzip` from these
-toolchains must vendor its own copy. bzip2, xz/liblzma and zstd stay: FreeType,
-libtiff and curl still want them.
+### Dependencies
 
-### ICU4C and libuidna are no longer built into the sysroots
+* **MbedTLS is gone.** `libcurl` is built only against OpenSSL now, on every
+  target; nothing links `libcurl-mbedtls.a` or `-lmbedtls` any more.
+* OpenSSL 3.5.8 (the 3.5 LTS line stays: OpenSSL 4.0 removed the ENGINE API
+  that `openssl-gost-engine` needs), curl 8.22.0, xz 5.8.4, HarfBuzz 14.5.0,
+  libxml2 2.15.4, expat 2.8.5, wayland 1.26.0, CA bundle `cacert-2026-09-25`.
+* **giflib 6.1.3**, with three fixes from upstream master that no release carries
+  yet: CVE-2026-26740 (heap overflow in `EGifGCBToSavedExtension`), the integer
+  overflows in the pixel-count and dimension arithmetic (heap overflows on 32-bit
+  targets), and the `GifUnionColorMap` NULL dereference. The CVE-2026-23868 fix
+  is part of 6.1.2 and later, so its backport is gone. 6.x breaks the *encoder*
+  API/ABI (`EGifSpew()` changed signature, the `E_GIF_ERR` values were
+  renumbered); code that encodes GIFs against these sysroots needs updating, the
+  decoder API is unchanged.
+* WAMR moved from `bytecodealliance` to its own organisation; the pin is the same
+  2.4.5 release, fetched from the new location.
+* musl follows upstream to `v1.2.6-62`.
+* `share/licenses` drops the MbedTLS entry: **47** entries.
 
-The runtime's own Unicode 17.0 tables — case mapping, folding, collation and IDN
-— replace them, so no target ships `libicuuc.a` or `libidn2.a` any more. The
-icu4c *sources* are still downloaded: they are the UCD and conformance data the
-table generators read. A real `libicuuc` can still be produced on demand for a
-project that wants one:
+### Source-only targets
 
-```sh
-make -C target-linux icu SP_ARCH=x86_64 SP_TARGET=x86_64-unknown-linux-gnu
-```
+* NuttX, Embox and Embox user-space (`target-embox-user`) targets moved on in the
+  tree — Embox now runs on musl — and are still built from source only.
 
-Together with the libzip removal this takes `share/licenses` from 49 entries to
-**48** — the icu4c and libuidna licenses stay, because their sources are still
-inputs to the build.
+## How this release was checked
 
-### NuttX and Embox
-
-`target-nuttx` (`aarch64-nuttx-none-elf`, wired into the top-level Makefile as
-`target-nuttx`) and `target-embox` land in the tree as build targets, alongside
-the matching runtime platform support. Neither is **published** as a package in
-this release — build them from the tree.
-
-### Everything else
-
-* Dependency refresh across the board — see the manifest below. Notably
-  **FreeType 2.14.3 carries a CVE-2026-50811 backport** (`TT_Get_Var_Design`
-  bounds), and the giflib CVE-2026-26740 / CVE-2026-23868 backports are still
-  applied.
-* Vulkan SDK **1.4.357.0** (was 1.4.350.0), glslang 16.4.0; MoltenVK **1.4.2**.
-* A glibc target linking fix.
-* `make release-check` / `make release-export` in `runtime/toolchains/Makefile`
-  stage the prefixed release assets described above and verify up front that
-  every package of the release set was built and carries the right tag.
-
----
+* Every package was built from this tree; `make release-check` confirms that the
+  whole release set is present and tagged `sdk-v0rc0`.
+* Every test project and example of the engine (25 projects, 25 targets, about
+  500 builds) was compiled and linked against these packages.
+  The only cells that do not build are the ones that cannot by
+  design: the Vulkan-only projects on the wasm targets, and the Metal backend on
+  the `+open` sysroots, which have no Metal stub.
+* The engine's full test gate (55 harnesses, 6 369 checks, Vulkan compute on a
+  real device included) passes.
 
 ## Packages
 
@@ -141,7 +138,7 @@ Notes:
 * The macOS `lldb` is built with `LLDB_USE_SYSTEM_DEBUGSERVER` — `debugserver`
   needs `task_for_pid` entitlements and Apple code signing, so it is not shipped.
 
-### Targets (24)
+### Targets (25)
 
 | Package | Builds for |
 |---|---|
@@ -169,6 +166,7 @@ Notes:
 | `x86_64-pc-windows-msvc`              | Windows, x86-64 |
 | `aarch64-pc-windows-msvc`             | Windows, ARM64 |
 | `wasm32-unknown-unknown`              | WebAssembly, 32-bit |
+| `wasm64-unknown-unknown`              | WebAssembly, 64-bit (memory64) |
 
 Notes:
 
@@ -200,17 +198,17 @@ Notes:
 | `*-apple-macosx`, `*-apple-ios*` | the Apple SDK's (not redistributed) | provided by the platform | **`libvulkan.dylib` + MoltenVK + validation layer** bundled |
 | `*-apple-macosx+open` | apple-oss headers in `include_libc` + generated `.tbd` link stubs, `System/Library/Frameworks/` | `libc++.tbd`/`libc++abi.tbd` stubs, apple-oss headers | same as above |
 | `*-pc-windows-msvc` | **none** — sprt is built from the engine sources; the sysroot supplies the Win32 import libraries (`usr/lib/import.lib`) | none — sprt provides libc++ | headers only — system loader |
-| `wasm32-unknown-unknown` | **none** — sprt is built from the engine sources | `libc++abi.a`, `libunwind.a`, `c++` headers | n/a |
+| `wasm32/64-unknown-unknown` | **none** — `libsprt.a` ships prebuilt; the engine build system rebuilds sprt from source | `libc++abi.a`, `libunwind.a`, `c++` headers | n/a |
 
 Not every target carries every bundled library. The full dependency suite —
-libxml2, expat, libffi, WAMR, libbacktrace, wayland, libdrm, both `libcurl`
-variants — is a Linux-target thing. Apple targets ship libxml2, WAMR,
-libbacktrace and both curl variants but no expat/libffi/wayland/libdrm. Android
-targets ship WAMR, libbacktrace and both curl variants. **Windows and wasm32
-carry the smallest set**: no libxml2, expat, libffi, WAMR or libbacktrace, and
-only the OpenSSL `libcurl` variant.
+libxml2, expat, libffi, WAMR, libbacktrace, wayland, libdrm — is a Linux-target
+thing. Apple targets ship libxml2, WAMR and libbacktrace but no
+expat/libffi/wayland/libdrm. Android targets ship WAMR and libbacktrace.
+**Windows and wasm carry the smallest set**: no libxml2, expat, libffi, WAMR or
+libbacktrace. Every target's `libcurl` is the OpenSSL build
+(`libcurl-openssl.a`), with HTTP/3.
 
-Every target ships `share/licenses` (48 entries), and every target except the
+Every target ships `share/licenses` (47 entries), and every target except the
 `unknown-ndk-linux-android` bridge ships `lib/clang` — the compiler-rt resource
 dir, with sanitizers where the platform supports them.
 
@@ -228,7 +226,7 @@ download time. This is the complete manifest shipped in this release.
 ### Compiler & toolchain
 | Component | Version |
 |---|---|
-| LLVM / Clang / LLD / LLDB | 22.1.8 (`llvmorg-22.1.8`, + 13 patches: wine-LLDB ×4, non-`__ulock`, wasm libunwind, no-delayload, sprt-windows ×6) |
+| LLVM / Clang / LLD / LLDB | 22.1.8 (`llvmorg-22.1.8`, + 21 patches: wine-LLDB ×4, non-`__ulock`, wasm libunwind, wasm64 compiler-rt, no-delayload, sprt-windows ×6, sprt-wasm-host ×7) |
 | libc++ / libc++abi / libunwind / compiler-rt | 22.1.8 (from LLVM) |
 | GNU Make | 4.3 (not present on Windows hosts) |
 | xlmake (build driver) | 1.1 |
@@ -241,7 +239,7 @@ download time. This is the complete manifest shipped in this release.
 |---|---|
 | glibc (Linux targets) | 2.33 — riscv64: 2.35 |
 | glibc (Xenolith OS targets) | 2.39 |
-| musl | 1.2.6 (`runtime/musl-libc` submodule, v1.2.6 + upstream fixes) |
+| musl | 1.2.6 (`runtime/musl-libc` submodule, `v1.2.6-62`: v1.2.6 + upstream fixes) |
 | Linux UAPI headers | 5.10.258 (LTS) |
 | Android API level | 24 |
 | macOS / iOS deployment target | 14.5 / 17.4 |
@@ -264,7 +262,7 @@ download time. This is the complete manifest shipped in this release.
 |---|---|
 | zlib | 1.3.2 |
 | bzip2 | 1.0.8 |
-| xz / liblzma | 5.8.3 |
+| xz / liblzma | 5.8.4 |
 | zstd | 1.5.7 |
 | brotli | 1.2.0 |
 
@@ -273,7 +271,7 @@ download time. This is the complete manifest shipped in this release.
 |---|---|
 | libjpeg-turbo | 3.2.0 |
 | libpng | 1.6.58 |
-| giflib | 5.2.2 (+ backports: CVE-2026-26740, CVE-2026-23868) |
+| giflib | 6.1.3 (+ upstream fixes: CVE-2026-26740, integer overflows, `GifUnionColorMap` NULL dereference) |
 | libwebp | 1.6.0 |
 | libtiff | 4.7.2 (CVE-2026-12912 + CVE-2026-4775 fixed upstream) |
 
@@ -281,22 +279,21 @@ download time. This is the complete manifest shipped in this release.
 | Component | Version |
 |---|---|
 | FreeType | 2.14.3 (+ backport: CVE-2026-50811) |
-| HarfBuzz | 14.3.1 |
+| HarfBuzz | 14.5.0 |
 | SheenBidi | 3.0.0 (Unicode 17.0) |
-| libxml2 | 2.15.3 |
-| expat | 2.8.3 |
+| libxml2 | 2.15.4 |
+| expat | 2.8.5 |
 | ICU4C (build-time only — UCD & conformance data, not shipped) | 78.3 |
 
 ### Crypto & network
 | Component | Version |
 |---|---|
-| OpenSSL (LTS) | 3.5.7 |
+| OpenSSL (LTS) | 3.5.8 |
 | openssl-gost-engine | 3.0.3 |
-| MbedTLS (LTS) | 3.6.7 |
 | nghttp3 | 1.18.0 |
 | ngtcp2 | 1.25.0 |
-| libcurl | 8.21.0 (MbedTLS **and** OpenSSL variants; HTTP/3 in the OpenSSL variant) |
-| CA bundle | `cacert-2026-08-13.pem` + Russian Trusted CA (Root / Sub / Sub-2024) |
+| libcurl | 8.22.0 (OpenSSL, with HTTP/3) |
+| CA bundle | `cacert-2026-09-25.pem` + Russian Trusted CA (Root / Sub / Sub-2024) |
 
 ### Database & runtime
 | Component | Version |
@@ -308,7 +305,7 @@ download time. This is the complete manifest shipped in this release.
 ### Linux windowing / system
 | Component | Version |
 |---|---|
-| wayland (client/cursor/egl, built) | 1.25.0 |
+| wayland (client/cursor/egl, built) | 1.26.0 |
 | wayland-protocols | 1.49 |
 | plasma-wayland-protocols | 1.21.0 |
 | libdrm | 2.4.134 |
@@ -399,11 +396,12 @@ Swap `--target` / `--sysroot` / `-resource-dir` to retarget. Android
 `unknown-ndk-linux-android` sysroot is meant to be driven through an installed
 Android NDK instead.
 
-The Windows and wasm32 targets are the exception: they carry no libc, so a plain
-`clang hello.c` will not link against them. They are meant to be consumed
+The Windows and wasm targets are the exception: they carry no system libc, so a
+plain `clang hello.c` will not link against them. They are meant to be consumed
 together with the engine's `runtime` module, which builds sprt from source; the
 link line names `sprt.lib` (Windows) with `/NODEFAULTLIB`, and the MSVC default
-libraries must be suppressed.
+libraries must be suppressed. The wasm targets do ship a prebuilt `libsprt.a`
+for consumers outside the engine build system.
 
 ### 4. `xlmake` — bundled build driver
 
@@ -446,8 +444,6 @@ Sub-2024). GOST ciphers can be loaded statically through the
   (v3dv, panvk, venus, lavapipe) and is applied as an overlay by `xenolith-os`;
   lavapipe additionally needs a native LLVM for the target architecture, which
   cross-compilation does not provide.
-* **`+sprt` Apple packages are not published**; the `+open` sysroots supersede
-  them. The recipes are still in `target-apple/Makefile`.
 * **The `+open` framework headers are not complete framework headers.** They
   declare only what real code in this repository and the host projects use, with
   every constant and symbol validated against the real SDK.
@@ -458,9 +454,11 @@ Sub-2024). GOST ciphers can be loaded statically through the
   default libraries and there is no `.cfg` in `bin/` redirecting the target to
   sprt. Builds driven by the engine's `target.mk` or a CMake toolchain file are
   unaffected.
-* **`libcurl`'s MbedTLS variant is not built for Windows and wasm32**, and those
-  two targets also omit libxml2, expat, libffi, WAMR and libbacktrace. Android
-  targets omit libxml2, expat and libffi.
+* **The Windows and wasm targets omit libxml2, expat, libffi, WAMR and
+  libbacktrace**; Android targets omit libxml2, expat and libffi.
+* **The Vulkan backend does not build for wasm** (there is no Vulkan there); wasm
+  applications use the WebGPU backend. The Metal backend does not build on the
+  `+open` sysroots, which carry no Metal stub.
 * **No target ships ICU or libidn2 any more.** Code that linked `-licuuc` or
   `-lidn2` from these toolchains must either build ICU itself
   (`make -C target-linux icu`) or move to the runtime's own Unicode API.
