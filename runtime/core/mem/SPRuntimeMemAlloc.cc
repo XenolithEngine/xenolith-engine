@@ -32,19 +32,45 @@ namespace sprt::memory::impl {
 static atomic<size_t> s_nAllocators = 0;
 
 #if DEBUG
-static bool isValidNode(MemNode *node) {
-	/*std::set<MemNode *> nodes;
-
-	while (node) {
-		auto tmp = node->next;
-		if (nodes.find(node) == nodes.end()) {
-			nodes.emplace(node);
-		} else {
-			return false;
+// True freelist-integrity probe: Brent's cycle detection, O(1) space,
+// O(chain) time. A cycle (the same node bucketed twice, or a ->next
+// scribbled by a write-after-free) would otherwise loop the teardown
+// walk forever; detect it once per bucket and report where it closes.
+static bool bucketHasCycle(MemNode *head, size_t *mu, size_t *lam, MemNode **entry) {
+	if (!head) {
+		return false;
+	}
+	MemNode *slow = head;
+	MemNode *fast = head->next;
+	size_t power = 1, length = 0;
+	while (fast) {
+		if (fast == slow) {
+			size_t l = 1;
+			MemNode *p = slow;
+			while (p->next != slow) {
+				p = p->next;
+				++l;
+			}
+			size_t m = 0;
+			MemNode *q = head;
+			while (q != slow) {
+				q = q->next;
+				++m;
+			}
+			*mu = m;
+			*lam = l;
+			*entry = slow;
+			return true;
 		}
-		node = tmp;
-	}*/
-	return true;
+		if (power == length) {
+			slow = fast;
+			power *= 2;
+			length = 0;
+		}
+		fast = fast->next;
+		++length;
+	}
+	return false;
 }
 #endif
 
@@ -130,8 +156,23 @@ Allocator::~Allocator() {
 		auto node = buf[index];
 
 #if DEBUG
-		if (!isValidNode(node)) {
-			__sprt_abort();
+		// once per bucket, before the walk a cycle would hang: a real
+		// freelist cycle is allocator corruption (double-bucketed node
+		// or a write-after-free over ->next) - name it precisely.
+		// A merely LONG chain is fine: with unlimited retention the
+		// global allocator keeps every freed node, so large suites
+		// legitimately accumulate tens of thousands per bucket.
+		{
+			size_t mu = 0, lam = 0;
+			MemNode *entry = nullptr;
+			if (bucketHasCycle(node, &mu, &lam, &entry)) {
+				__sprt_fprintf(__SPRT_ID(stderr_impl)(),
+						"allocator: freelist cycle in bucket %u "
+						"(entry-offset %zu, cycle length %zu, entry %p) - "
+						"double-bucketed node or write-after-free corruption\n",
+						index, mu, lam, (void *)entry);
+				__sprt_abort();
+			}
 		}
 #endif
 
@@ -300,12 +341,6 @@ void Allocator::free(MemNode *node) {
 			} else {
 				current_free_index = 0;
 			}
-
-#if DEBUG
-			if (!isValidNode(buf[index])) {
-				__sprt_abort();
-			}
-#endif
 		} else {
 			/* This node is too large to keep in a specific size bucket,
 			 * just add it to the sink (at index 0).
@@ -320,19 +355,14 @@ void Allocator::free(MemNode *node) {
 		}
 	} while ((node = next) != nullptr);
 
-#if DEBUG
-	int i = 0;
-	auto n = buf[1];
-	while (n && i < 1'024 * 16) {
-		n = n->next;
-		++i;
-	}
-
-	if (i >= 1'024 * 16) {
-		__sprt_perror("ERRER: pool double-free detected!\n");
-		__sprt_abort();
-	}
-#endif
+	// NOTE: the old DEBUG guard here walked buf[1] for at most 16k nodes
+	// after EVERY free and treated "still walking" as a double-free
+	// cycle. Both halves were wrong: with unlimited retention
+	// (ALLOCATOR_MAX_FREE_UNLIMITED) a long suite legitimately parks
+	// >16k nodes per bucket, and a real cycle needs cycle detection,
+	// not a length cap. Real integrity checking now lives in the
+	// destructor (bucketHasCycle, once per bucket). The removed guard
+	// also cost O(16k) per free call.
 
 	last = max_index;
 	current = current_free_index;
