@@ -60,6 +60,9 @@ THE SOFTWARE.
 #if SPRT_EMBOX
 extern "C" long telldir(DIR *);
 extern "C" void seekdir(DIR *, long);
+// The directory a stream reads, by name (Embox's DVFS; not POSIX). Weak: an
+// Embox without it leaves dirfd() to streams from fdopendir().
+extern "C" int dirent_path(DIR *, char *, size_t) __attribute__((weak));
 #endif
 
 // musl provides neither scandirat() nor scandirat64(), so it needs a dedicated
@@ -171,11 +174,27 @@ __SPRT_C_FUNC long __SPRT_ID(telldir)(__SPRT_ID(DIR) * __dir) { return telldir((
 
 __SPRT_C_FUNC int __SPRT_ID(dirfd)(__SPRT_ID(DIR) * __dir) {
 #if SPRT_EMBOX
-	// Only a stream that came from fdopendir() has a descriptor to report; one
-	// from opendir() has none, and Embox cannot mint one after the fact.
+	// A stream from fdopendir() carries its descriptor. One from opendir() gets
+	// one here, the first time it is asked for: a placeholder for the
+	// directory's path, as fdopendir() uses, bound to the stream so that
+	// closedir() closes it.
 	auto fd = platform::getDirStreamFd(__dir);
-	if (fd < 0) {
+	if (fd >= 0) {
+		return fd;
+	}
+	char path[PATH_MAX];
+	if (!dirent_path || dirent_path((DIR *)__dir, path, sizeof(path)) != 0) {
 		*__sprt___errno_location() = ENOTSUP;
+		return -1;
+	}
+	fd = platform::openDirFd(path);
+	if (fd < 0) {
+		return -1;
+	}
+	if (!platform::attachDirStream(fd, __dir)) {
+		platform::releaseDirFd(fd);
+		::close(fd);
+		*__sprt___errno_location() = EMFILE;
 		return -1;
 	}
 	return fd;
