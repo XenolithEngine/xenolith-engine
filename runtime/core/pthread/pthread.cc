@@ -306,7 +306,17 @@ static bool attachExternalThread(thread_t *thread) {
 	memory::allocator::initialize(&thread->threadAlloc);
 	thread->threadMemPool = memory::pool::create(&thread->threadAlloc);
 
+	// The thread is this thread's from here on, as a thread the runtime starts is
+	// found in activeThreads while it registers: registerThread() can come back to
+	// self() -- on Embox EL1 mimalloc's thread attach keeps its heap with
+	// pthread_setspecific(), which asks self() for the key storage -- and an
+	// external thread that was not yet ours then attached itself again, and again,
+	// until its stack ran down through the kernel's pools (BF-76: the first key a
+	// kiosk read from the UART thread took the kernel down).
+	tl_self.thread = thread;
+
 	if (!thread->registerThread()) {
+		tl_self.thread = nullptr;
 		// Tear down the pool/allocator we just created; the caller's __deallocateThread
 		// only runs ~thread_t() and would otherwise leak them.
 		if (thread->threadMemPool) {
@@ -318,8 +328,6 @@ static bool attachExternalThread(thread_t *thread) {
 	}
 
 	thread->state.set_and_signal(thread_t::StateExternalInit);
-
-	tl_self.thread = thread;
 
 	if (thread != &s_handlePool.main) {
 		// WARNING: This will init thread-local storage on Windows
@@ -336,12 +344,11 @@ thread_t *thread_t::self() {
 	auto nativeId = native::__getNativeThreadId();
 
 	if (__libc_main_thread == nativeId) {
+		s_handlePool.main.nativeId = nativeId;
 		if (!attachExternalThread(&s_handlePool.main)) {
 			// Fail to attach main thread - unrecoverable
 			__sprt_abort();
 		}
-
-		tl_self.thread->nativeId = nativeId;
 		return tl_self.thread;
 	}
 
@@ -363,11 +370,11 @@ thread_t *thread_t::self() {
 
 		// it's an external thread, create pthread_t handle
 		auto nthread = __allocateThread(nullptr);
+		nthread->nativeId = nativeId;
 		if (!attachExternalThread(nthread)) {
 			__deallocateThread(nthread);
 			return nullptr;
 		}
-		nthread->nativeId = nativeId;
 	}
 	return tl_self.thread;
 }
