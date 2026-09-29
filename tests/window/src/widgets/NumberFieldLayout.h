@@ -32,10 +32,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 // ui::NumberField: a text field that holds a number.
 //
-// Four fields, because the widget's claims are about the DIFFERENCES between them: a whole-number
+// Five fields, because the widget's claims are about the DIFFERENCES between them: a whole-number
 // field that must refuse a fractional part, a real one that must not, a ranged one where typing
-// past the end is refused and dragging past it is clamped, and one inside a ui::FormSystem where
-// what is collected is a number rather than the text of one.
+// past the end is refused and dragging past it is clamped, one inside a ui::FormSystem where
+// what is collected is a number rather than the text of one, and one that accepts typed text only
+// on Enter or focus loss.
 //
 // Everything here is read back as numbers - the value, the text, the validity, the message and the
 // callback count - because none of it is visible in a screenshot: a refused edit and an accepted
@@ -57,6 +58,7 @@ protected:
 	ui::NumberField *_real = nullptr;
 	ui::NumberField *_ranged = nullptr;
 	ui::NumberField *_formField = nullptr;
+	ui::NumberField *_deferred = nullptr;
 	ui::FormSystem *_form = nullptr;
 
 	// Per field, so that "the callback did not fire" is a statement about the field it is made

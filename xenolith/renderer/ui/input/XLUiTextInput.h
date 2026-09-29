@@ -346,8 +346,15 @@ protected:
 	// TextInputHandler::onData - the only writer of _inputState
 	virtual void handleTextInput(const TextInputState &);
 
+	// per-character substitution, applied before the filter (a numeric field turns ',' into '.')
+	virtual char16_t mapInputChar(char16_t c) { return c; }
+
 	// per-character filter; return false to reject a character
 	virtual bool handleInputChar(char16_t);
+
+	// Enter on a focused field: runs the enter callback. Returns false when nothing took the key,
+	// so a form's submit binding still gets it.
+	virtual bool handleAccept();
 
 	// correct an echoed state in place (max length, character filter, Enter/Tab). Returns true when
 	// the state was modified, which makes the caller re-push it.

@@ -522,6 +522,7 @@ void LayoutSystem::layoutFlex() {
 	if (items.empty()) {
 		_placement.clear();
 		_flexMemo.clear();
+		_flexBase.clear();
 		// an empty container's extent is its padding alone
 		_contentExtent = Size2(info.padding.horizontal(), info.padding.vertical());
 		return;
@@ -673,6 +674,7 @@ void LayoutSystem::layoutFlex() {
 	_placement.clear();
 	_placement.reserve(items.size());
 	decltype(_flexMemo) memo;
+	_flexBase.clear();
 	float extentMain = 0.0f;
 	float extentCross = 0.0f;
 
@@ -715,6 +717,7 @@ void LayoutSystem::layoutFlex() {
 			memo.emplace(item.node,
 					FlexBasisMemo{item.node, newSize, item.baseMain, item.naturalCross, isRow});
 		}
+		_flexBase.emplace(item.node, item.baseMain);
 
 		// cached unscrolled, so setScrollOffset can re-place the children without re-flexing
 		_placement.emplace_back(item.node, bottomLeft);

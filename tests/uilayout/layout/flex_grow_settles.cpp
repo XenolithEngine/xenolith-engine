@@ -107,6 +107,14 @@ void performFlexGrowSettlesTests() {
 				"grow-settles: a size set from outside is the new basis (60 + 240/3)");
 		l.layout->apply();
 		checkNear(l.plain->getContentSize().width, 140.0f, "grow-settles: ... and it holds");
+
+		// What was flexed from, not what came out: a tool turning sizes into weights needs it.
+		checkNear(l.layout->getFlexBase(l.plain), 60.0f,
+				"grow-settles: getFlexBase reports the basis the item was flexed from");
+		checkNear(l.layout->getFlexBase(l.box), 0.0f,
+				"grow-settles: ... and zero for the box that measures to nothing");
+		checkNear(l.layout->getFlexBase(l.root), -1.0f,
+				"grow-settles: ... and a negative answer for a node it did not place");
 	}
 }
 

@@ -193,6 +193,12 @@ public:
 
 	static void markItemDirty(NotNull<Node>);
 
+	/* The flex base size the last flex pass resolved for a direct child, on the container's main
+	axis: its `flex-basis`, or the content size it was measured or remembered at, margins excluded.
+	What a `flex-grow` distributes is the free space above it, so a tool that turns sizes into
+	weights needs it. Negative for a node the last pass did not place. */
+	float getFlexBase(const Node *) const;
+
 	/* The node's intrinsic size changed: dirties every `fit-content` ancestor that measured it,
 	not just the one level `markItemDirty` does. */
 	static void markMeasureDirty(NotNull<Node>);
@@ -273,6 +279,9 @@ protected:
 		bool isRow = true;
 	};
 	Map<const Node *, FlexBasisMemo> _flexMemo;
+
+	// Every item's resolved base from the last flex pass; the keys are compared and never read.
+	Map<const Node *, float> _flexBase;
 
 	Size2 _contentExtent;
 	Vec2 _scrollOffset;

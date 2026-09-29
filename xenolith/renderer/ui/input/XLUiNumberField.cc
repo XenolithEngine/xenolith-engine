@@ -89,6 +89,14 @@ void NumberField::setInteger(bool value) {
 	}
 }
 
+void NumberField::setLiveCommit(bool value) {
+	if (_liveCommit == value) {
+		return;
+	}
+	_liveCommit = value;
+	commit(canAccept());
+}
+
 void NumberField::setRange(double min, double max) {
 	if (max < min) {
 		sprt::swap(min, max);
@@ -98,7 +106,7 @@ void NumberField::setRange(double min, double max) {
 	_hasRange = true;
 
 	// the held value is not clamped; the range applies to what is typed and dragged from now on
-	commit();
+	commit(canAccept());
 }
 
 void NumberField::clearRange() {
@@ -106,7 +114,7 @@ void NumberField::clearRange() {
 		return;
 	}
 	_hasRange = false;
-	commit();
+	commit(canAccept());
 }
 
 void NumberField::setStep(double value) {
@@ -155,6 +163,18 @@ void NumberField::setUnit(StringView value) {
 	_unitLabel->setString(_unit);
 	_unitLabel->setVisible(!_unit.empty());
 	_contentSizeDirty = true;
+}
+
+void NumberField::handleExit() {
+	_leaving = true;
+	TextInput::handleExit();
+	_leaving = false;
+
+	// the text shows the value again when the field comes back
+	if (!_liveCommit) {
+		updateText();
+		setInvalid(false, StringView());
+	}
 }
 
 Padding NumberField::getViewportInset() const { return Padding().setRight(_unitInset); }
@@ -250,7 +270,37 @@ void NumberField::setInvalid(bool value, StringView message) {
 	}
 }
 
-bool NumberField::commit() {
+bool NumberField::parseText(StringView text, double &out, String &message) const {
+	StringView reader(text);
+	double parsed = 0.0;
+	if (!reader.readDouble().grab(parsed)) {
+		message = String("not a number");
+		return false;
+	}
+
+	// the whole text must be the number ("12ab" is refused)
+	reader.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
+	if (!reader.empty()) {
+		message = String("not a number");
+		return false;
+	}
+
+	if (_integer && parsed != sprt::trunc(parsed)) {
+		message = String("must be a whole number");
+		return false;
+	}
+
+	// typed out of range is refused (dragging clamps instead)
+	if (_hasRange && (parsed < _min || parsed > _max)) {
+		message = toString("must be between ", _min, " and ", _max);
+		return false;
+	}
+
+	out = parsed;
+	return true;
+}
+
+bool NumberField::commit(bool accept) {
 	auto text = getText();
 
 	// empty text is not a refusal: the value is kept while retyping
@@ -259,34 +309,16 @@ bool NumberField::commit() {
 		return false;
 	}
 
-	StringView reader(text);
 	double parsed = 0.0;
-	if (!reader.readDouble().grab(parsed)) {
-		setInvalid(true, StringView("not a number"));
-		return false;
-	}
-
-	// the whole text must be the number ("12ab" is refused)
-	reader.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
-	if (!reader.empty()) {
-		setInvalid(true, StringView("not a number"));
-		return false;
-	}
-
-	if (_integer && parsed != sprt::trunc(parsed)) {
-		setInvalid(true, StringView("must be a whole number"));
-		return false;
-	}
-
-	// typed out of range is refused (dragging clamps instead)
-	if (_hasRange && (parsed < _min || parsed > _max)) {
-		setInvalid(true, toString("must be between ", _min, " and ", _max));
+	String message;
+	if (!parseText(text, parsed, message)) {
+		setInvalid(true, message);
 		return false;
 	}
 
 	setInvalid(false, StringView());
 
-	if (parsed == _value) {
+	if (!accept || parsed == _value) {
 		return false;
 	}
 
@@ -304,7 +336,8 @@ void NumberField::handleTextInput(const TextInputState &state) {
 		return;
 	}
 
-	commit();
+	// a focus-loss echo is accepted here in either mode
+	commit(canAccept());
 
 	// the platform can end input without blur() (Escape); restore unparsable text here too
 	if (!_focused && !_valid) {
@@ -318,18 +351,30 @@ void NumberField::setText(WideStringView str) {
 
 	// skip writes made by updateText()
 	if (!_inUpdate) {
-		commit();
+		commit(canAccept());
 	}
 }
 
 void NumberField::blur() {
 	TextInput::blur();
 
+	if (!_liveCommit) {
+		commit(true);
+	}
+
 	// restore the value's text when editing ends with unparsable text
 	if (!_valid) {
 		updateText();
 		setInvalid(false, StringView());
 	}
+}
+
+char16_t NumberField::mapInputChar(char16_t c) {
+	// either separator is typed as the one the parser and formatValue use
+	if (c == u',' && !_integer) {
+		return u'.';
+	}
+	return c;
 }
 
 bool NumberField::handleInputChar(char16_t c) {
@@ -348,6 +393,13 @@ bool NumberField::handleInputChar(char16_t c) {
 	return false;
 }
 
+bool NumberField::handleAccept() {
+	if (!_liveCommit) {
+		commit(true);
+	}
+	return TextInput::handleAccept();
+}
+
 bool NumberField::handleKey(const GestureData &data) {
 	if (!_focused || !data.input) {
 		return false;
@@ -359,12 +411,26 @@ bool NumberField::handleKey(const GestureData &data) {
 	}
 
 	// Up/Down step the value instead of moving the caret to the line ends
+	double steps = 0.0;
 	switch (ev.key.keycode) {
-	case InputKeyCode::UP: setValue(stepped(_value, 1.0)); return true;
-	case InputKeyCode::DOWN: setValue(stepped(_value, -1.0)); return true;
-	case InputKeyCode::PAGE_UP: setValue(stepped(_value, 10.0)); return true;
-	case InputKeyCode::PAGE_DOWN: setValue(stepped(_value, -10.0)); return true;
+	case InputKeyCode::UP: steps = 1.0; break;
+	case InputKeyCode::DOWN: steps = -1.0; break;
+	case InputKeyCode::PAGE_UP: steps = 10.0; break;
+	case InputKeyCode::PAGE_DOWN: steps = -10.0; break;
 	default: break;
+	}
+
+	if (steps != 0.0) {
+		if (canAccept()) {
+			setValue(stepped(_value, steps));
+		} else {
+			// not accepted yet: the step is an edit of the text, from what the text says
+			double base = _value;
+			String message;
+			parseText(getText(), base, message);
+			setText(formatValue(stepped(base, steps)));
+		}
+		return true;
 	}
 
 	return TextInput::handleKey(data);

@@ -200,7 +200,8 @@ private:
 
 	// expand and parse one matched rule's deferred var() declarations into `dst`, at the point
 	// in the cascade where that rule is being merged
-	void expandPendingRule(document::StyleList &dst, const document::StyleContainer::MatchedRule &);
+	void expandPendingRule(document::StyleList &dst, const document::StyleContainer::MatchedRule &,
+			bool inherit);
 
 	bool _valid = false;
 	bool _structural = false; // see hasStructuralSelectors()

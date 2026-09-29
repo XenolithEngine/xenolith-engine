@@ -60,6 +60,13 @@ setValue() does not clamp a program-assigned value.
 Blur restores the text of the held value when the text does not parse; `:invalid` applies only
 while editing.
 
+Typed text is accepted as it is typed by default. With setLiveCommit(false) a focused field only
+validates it, and the value is accepted on Enter or when the focus leaves; arrow keys then step
+the text too. That is the mode for an owner that answers a value by rewriting the field or
+rebuilding it. A field leaving the scene drops text it has not accepted.
+
+In a real-valued field both ',' and '.' are typed as the separator; the text always holds '.'.
+
 Dragging scrubs only an unfocused field; a focused field is dragged to select text. The callback
 fires throughout the drag; an owner recording history groups it into one entry.
 
@@ -80,6 +87,10 @@ public:
 	// Whole numbers only: the fractional separator is not accepted or printed.
 	virtual void setInteger(bool);
 	bool isInteger() const { return _integer; }
+
+	// Whether typed text is accepted while typing (the default) or on Enter and focus loss.
+	virtual void setLiveCommit(bool);
+	bool isLiveCommit() const { return _liveCommit; }
 
 	virtual void setRange(double min, double max);
 	virtual void clearRange();
@@ -130,15 +141,23 @@ public:
 protected:
 	using TextInput::init;
 
-	// Parses and accepts or refuses the text; returns whether the value changed. The only writer of
-	// `_valid` and `:invalid`.
-	virtual bool commit();
+	/* Parses and validates the text, and with `accept` makes it the value; returns whether the
+	value changed. The only writer of `_valid` and `:invalid`. */
+	virtual bool commit(bool accept);
+
+	// Whether an edit made now is accepted at once: always in live mode, otherwise only unfocused
+	// and not while leaving the scene.
+	bool canAccept() const { return _liveCommit || (!_focused && !_leaving); }
+
+	// The text as a value this field would accept, or false with the reason.
+	bool parseText(StringView, double &, String &message) const;
 
 	// Writes the value as text without triggering commit().
 	virtual void updateText();
 
 	virtual void setInvalid(bool, StringView message);
 
+	virtual void handleExit() override;
 	virtual void handleContentSizeDirty() override;
 
 	/* Places the unit by the resolved `direction`, which is only settled at this phase, not in
@@ -153,7 +172,9 @@ protected:
 
 	virtual void handleTextInput(const TextInputState &) override;
 
+	virtual char16_t mapInputChar(char16_t) override;
 	virtual bool handleInputChar(char16_t) override;
+	virtual bool handleAccept() override;
 	virtual bool handleKey(const GestureData &) override;
 
 	virtual bool handleSwipeBegin(const Vec2 &) override;
@@ -185,6 +206,10 @@ protected:
 	bool _valid = true;
 	bool _dragEnabled = true;
 	bool _dragging = false;
+	bool _liveCommit = true;
+
+	// Set while handleExit() cancels the input, whose focus-loss echo is not an accept.
+	bool _leaving = false;
 
 	// Guards updateText() against being read back as an edit by the echo it causes.
 	bool _inUpdate = false;

@@ -121,6 +121,12 @@ bool NumberFieldLayout::init() {
 	_formField->setValue(7.0, true);
 	ui::addFormField(_formField);
 
+	// Accepts on Enter and on focus loss only: what is typed, and what the arrows step, stays text
+	// until then.
+	_deferred = makeField("deferred", ZOrder(5));
+	_deferred->setLiveCommit(false);
+	_deferred->setValue(2.0, true);
+
 	return true;
 }
 
@@ -128,8 +134,8 @@ void NumberFieldLayout::handleContentSizeDirty() {
 	TestLayout::handleContentSizeDirty();
 
 	const float top = getWorkTop() - 40.0f;
-	Node *rows[] = {_integer, _real, _ranged, _formField};
-	for (size_t i = 0; i < 4; ++i) {
+	Node *rows[] = {_integer, _real, _ranged, _formField, _deferred};
+	for (size_t i = 0; i < 5; ++i) {
 		if (!rows[i]) {
 			continue;
 		}
@@ -146,6 +152,8 @@ ui::NumberField *NumberFieldLayout::getTarget(const Value &args) const {
 		return _ranged;
 	} else if (name == "form-number") {
 		return _formField;
+	} else if (name == "deferred") {
+		return _deferred;
 	}
 	return _integer;
 }
@@ -227,6 +235,7 @@ Value NumberFieldLayout::encodeState() const {
 	ret.setValue(encodeField(_real), "real");
 	ret.setValue(encodeField(_ranged), "ranged");
 	ret.setValue(encodeField(_formField), "formField");
+	ret.setValue(encodeField(_deferred), "deferred");
 	if (_form) {
 		ret.setValue(_form->collect(), "collected");
 	}
