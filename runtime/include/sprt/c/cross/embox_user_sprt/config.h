@@ -106,9 +106,11 @@
 #define __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER 0
 #endif
 
-// Embox's scheduler has no affinity mask to set (M3 at the earliest).
+// The calling thread's own mask, through sched_setaffinity(122) and
+// sched_getaffinity(123); another thread of the task is refused with ESRCH,
+// since the kernel pins only the thread that asks (BF-44).
 #ifndef __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY
-#define __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY 0
+#define __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY 1
 #endif
 
 // --- Descriptors and file plumbing. ---
