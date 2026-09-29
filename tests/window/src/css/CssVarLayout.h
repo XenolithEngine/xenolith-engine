@@ -54,6 +54,7 @@ protected:
 	void expectMetric(StringView what, Node *, document::ParameterName, float expected);
 	void expectVar(StringView what, Node *, StringView name, StringView expected);
 	void expectNoValue(StringView what, Node *, document::ParameterName);
+	void expectFontSize(StringView what, Node *, float expected);
 
 	basic2d::Layer *_plain = nullptr; // colour straight from :root
 	basic2d::Layer *_sized = nullptr; // length from a variable
@@ -65,6 +66,7 @@ protected:
 
 	Node *_theme = nullptr; // subtree that overrides --brand at runtime
 	basic2d::Layer *_themed = nullptr;
+	Node *_textChild = nullptr; // under an ancestor that sets font-size and width through var()
 
 	uint32_t _checks = 0;
 	uint32_t _failures = 0;

@@ -1302,6 +1302,14 @@ void TextInput::handleTextInput(const TextInputState &data) {
 
 bool TextInput::handleInputChar(char16_t) { return true; }
 
+bool TextInput::handleAccept() {
+	if (_enterCallback) {
+		_enterCallback();
+		return true;
+	}
+	return false;
+}
+
 bool TextInput::validateInput(TextInputState &state) {
 	bool changed = false;
 
@@ -1322,11 +1330,15 @@ bool TextInput::validateInput(TextInputState &state) {
 			hasTab = true;
 			continue;
 		}
-		if (!handleInputChar(c)) {
+		const auto mapped = mapInputChar(c);
+		if (mapped != c) {
+			changed = true;
+		}
+		if (!handleInputChar(mapped)) {
 			changed = true;
 			continue;
 		}
-		filtered.push_back(c);
+		filtered.push_back(mapped);
 	}
 
 	if (hasEnter || hasTab || changed) {
@@ -1351,8 +1363,8 @@ bool TextInput::validateInput(TextInputState &state) {
 	}
 
 	// deferred to the end so the callbacks see the corrected state, not the raw echo
-	if (hasEnter && _enterCallback) {
-		_enterCallback();
+	if (hasEnter) {
+		handleAccept();
 	}
 	if (hasTab) {
 		blur();
@@ -1476,11 +1488,7 @@ bool TextInput::handleTextHotkey(HotkeyId id, const InputEvent &) {
 	} else if (id == hk.textAccept || id == hk.textAcceptKeypad) {
 		// Declined when no callback is set, so the form's submit binding (visited later) gets the
 		// key. An installed callback wins
-		if (_enterCallback) {
-			_enterCallback();
-			return true;
-		}
-		return false;
+		return handleAccept();
 	} else if (id == hk.textSelectAll) {
 		selectAll();
 		return true;

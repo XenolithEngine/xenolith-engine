@@ -252,6 +252,11 @@ void VectorField::setDragSensitivity(float value) {
 	for (auto &it : _components) { it->setDragSensitivity(value); }
 }
 
+void VectorField::setLiveCommit(bool value) {
+	_liveCommit = value;
+	for (auto &it : _components) { it->setLiveCommit(value); }
+}
+
 void VectorField::setEnabled(bool value) {
 	// The edit lock overrides the request and remembers it for unlock.
 	value = resolveEditLock(this, value);
@@ -363,6 +368,7 @@ void VectorField::rebuildComponents(uint32_t arity) {
 		field->setStep(_step);
 		field->setDragEnabled(_dragEnabled);
 		field->setDragSensitivity(_dragSensitivity);
+		field->setLiveCommit(_liveCommit);
 		field->setEnabled(isEnabled());
 		field->setValue(_values[i], true);
 

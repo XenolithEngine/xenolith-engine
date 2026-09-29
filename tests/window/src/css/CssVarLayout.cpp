@@ -63,6 +63,11 @@ static constexpr auto s_css = StringView(R"css(
 /* the themed subtree overrides the inherited variable */
 .dark { --brand: #fdd835; }
 .themed { background-color: var(--brand); }
+
+/* an inheritable property set through a variable on an ancestor reaches the child, and beats the
+   literal of the ancestor's weaker rule; a non-inheritable one set that way does not reach it */
+.text-holder { font-size: 12px; }
+.text-holder.big { --big-size: 40px; font-size: var(--big-size); width: var(--pad); }
 )css");
 
 static const Color4B s_brand(0x39, 0x49, 0xab, 0xff);
@@ -165,6 +170,13 @@ bool CssVarLayout::init() {
 	_theme = addChild(Rc<Node>::create(), ZOrder(1));
 	_themed = makeBox(_theme, "themed");
 
+	{
+		auto holder = addChild(Rc<Node>::create(), ZOrder(1));
+		holder->addStyleClass("text-holder");
+		holder->addStyleClass("big");
+		_textChild = holder->addChild(Rc<Node>::create(), ZOrder(1));
+	}
+
 	runStatic();
 
 	runAction(Rc<Sequence>::create(Rc<DelayTime>::create(0.6f), [this] { runThemeSwitch(); },
@@ -207,6 +219,22 @@ void CssVarLayout::runStatic() {
 
 	// a node outside any var() use still has no background of its own
 	expectNoValue("holder, untouched by var()", _theme, ParameterName::CssBackgroundColor);
+
+	// an ancestor's `font-size: var()` is inherited over its weaker literal; its `width: var()` is
+	// not inherited at all
+	expectFontSize("inherited, font-size from an ancestor's variable", _textChild, 40.0f);
+	expectNoValue("inherited, width from an ancestor's variable stays there", _textChild,
+			ParameterName::CssWidth);
+}
+
+void CssVarLayout::expectFontSize(StringView what, Node *node, float expected) {
+	++_checks;
+	auto st = ui::StyleResolver::resolveStyleForNode(node);
+	const float got = st.valid() ? st.fontSize().val() : -1.0f;
+	if (sprt::abs(got - expected) > 0.01f) {
+		++_failures;
+		log::source().error("CssVarTest", what, ": expected ", expected, " got ", got);
+	}
 }
 
 void CssVarLayout::runThemeSwitch() {

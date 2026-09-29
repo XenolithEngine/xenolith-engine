@@ -249,6 +249,11 @@ void LayoutSystem::markItemDirty(NotNull<Node> node) {
 	}
 }
 
+float LayoutSystem::getFlexBase(const Node *node) const {
+	auto it = _flexBase.find(node);
+	return it != _flexBase.end() ? it->second : -1.0f;
+}
+
 /* Unlike markItemDirty (one level, enough for placement changes), an intrinsic size change can
 stale every fit-content ancestor, so the flag goes to the root: a node cannot tell which ancestors
 measured it. */

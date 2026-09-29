@@ -40,7 +40,7 @@ Tab and Shift+Tab step between components. At either end the key is handed out: 
 FormInputListener::requestNavigate, or, standalone, by giving up focus. Entering backwards lands on
 the last component (FormFieldSlots::setFocused's `backwards`).
 
-setInteger, setRange, setStep and the drag settings are written into every component at the time
+setInteger, setRange, setStep, setLiveCommit and the drag settings are written into every component at the time
 of the call; nothing is kept in parallel. A per-component setting made through getComponentAt(i)
 lasts until the next shared write.
 
@@ -101,6 +101,10 @@ public:
 	virtual void setStep(double);
 	virtual void setDragEnabled(bool);
 	virtual void setDragSensitivity(float);
+
+	// NumberField::setLiveCommit for every component.
+	virtual void setLiveCommit(bool);
+	bool isLiveCommit() const { return _liveCommit; }
 
 	virtual void setEnabled(bool) override;
 	bool isEnabled() const override { return isControlEnabled(this); }
@@ -198,6 +202,7 @@ protected:
 
 	bool _dragEnabled = true;
 	float _dragSensitivity = NumberField::DefaultDragSensitivity;
+	bool _liveCommit = true;
 
 
 	int32_t _focused = -1;

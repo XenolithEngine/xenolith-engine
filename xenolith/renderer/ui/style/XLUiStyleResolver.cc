@@ -161,9 +161,12 @@ uint64_t ResolvedStyle::getCustomPropertiesHash() const {
 }
 
 // Expand the deferred `var()` declarations of one matched rule into `dst` at the rule's cascade
-// position. A failed expansion (undefined variable without fallback, or a cycle) is dropped.
+// position. A failed expansion (undefined variable without fallback, or a cycle) is dropped. For an
+// ancestor's rule (`inherit`) only the inheritable parameters are kept, as `StyleList::merge` keeps
+// the literal ones; the variables are the node's, which are the ancestor's unless a nearer level
+// redefines one.
 void ResolvedStyle::expandPendingRule(document::StyleList &dst,
-		const document::StyleContainer::MatchedRule &rule) {
+		const document::StyleContainer::MatchedRule &rule, bool inherit) {
 	for (auto &p : rule.style->pending) {
 		if (p.mediaQuery != document::MediaQueryIdNone && !rule.media.at(p.mediaQuery.get())) {
 			continue;
@@ -181,6 +184,9 @@ void ResolvedStyle::expandPendingRule(document::StyleList &dst,
 
 		document::StyleContainer::readCssParameter(name, expanded,
 				[&](document::StyleParameter &&param) {
+			if (inherit && !document::StyleList::isInheritable(param.name)) {
+				return true;
+			}
 			param.rule = p.rule;
 			param.mediaQuery = document::MediaQueryIdNone;
 			dst.set(param, true);
@@ -396,9 +402,10 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 		auto resolveLevel = [&](document::StyleList &dst, size_t chainIndex, bool inherit) {
 			for (auto &m : *levelMatches[chainIndex]) {
 				dst.merge(*m.style, m.media, inherit);
-				// a `width: var(--w)` on an ancestor is not inherited - only the variable is
-				if (!inherit && !m.style->pending.empty()) {
-					ret.expandPendingRule(dst, m);
+				// an ancestor's `font-size: var(--s)` is inherited like a literal one; its
+				// `width: var(--w)` is not
+				if (!m.style->pending.empty()) {
+					ret.expandPendingRule(dst, m, inherit);
 				}
 			}
 		};

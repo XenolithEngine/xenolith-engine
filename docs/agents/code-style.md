@@ -102,7 +102,10 @@ header, a platform branch, or an allocation. The essentials:
   was asked for), and the tab ring is document order — so give siblings distinct
   `ZOrder` ([forms](../usage/codestyle/ui/forms.adoc)).
 - Input atoms: `ui::TextInput` (text), `ui::NumberField` (a number — the range is
-  **declared**, and typing past it is refused while dragging past it is clamped),
+  **declared**, and typing past it is refused while dragging past it is clamped;
+  an owner that answers a value by rewriting or rebuilding the field sets
+  `setLiveCommit(false)`, so typed text is accepted on Enter and focus loss only;
+  a real field types `,` as `.`),
   `ui::Select` (a drop-down: a closed `Panel` plus a real menu surface, so the
   list's keyboard is `MenuSystem`'s and the closed control's arrows are its own),
   `ui::VectorField` (a row of `NumberField`s that is ONE form field — Tab walks

@@ -85,6 +85,20 @@ def key(code, mods=0):
     return [ev, up]
 
 
+def keyc(code, char):
+    ev = {"event": "KeyPressed", "keycode": code, "modifiers": 0, "keychar": char}
+    up = dict(ev)
+    up["event"] = "KeyReleased"
+    return [ev, up]
+
+
+def typed(text):
+    events = []
+    for ch in text:
+        events += keyc("UNKNOWN", ch)
+    return events
+
+
 def drag(x, y, steps, dx=8.0):
     # A press, a run of moves and a release. The moves have to be several: a swipe is recognized
     # only after the pointer has travelled far enough to be one.
@@ -329,6 +343,63 @@ try:
     check("and gives the width back",
             near(st["viewportWidth"], before["viewportWidth"]),
             (before["viewportWidth"], st["viewportWidth"]))
+
+    # --- either separator, one text ------------------------------------------------------------------
+    s.invoke("number.set", target="real", value=0.0)
+    s.invoke("number.focus", target="real", value=True)
+    s.invoke("number.set-text", target="real", value="")
+    s.ok("frame", count=2)
+    s.ok("input", native=True, events=typed("2,5"))
+    time.sleep(0.3)
+    st = state("real")
+    check("a comma is typed as the separator", st["text"] == "2.5", st["text"])
+    check("and read as one", near(st["value"], 2.5), st["value"])
+    s.invoke("number.focus", target="real", value=False)
+
+    s.invoke("number.focus", target="integer", value=True)
+    s.ok("frame", count=2)
+    before = state("integer")["text"]
+    s.ok("input", native=True, events=typed(","))
+    time.sleep(0.3)
+    check("a whole-number field refuses the comma too", state("integer")["text"] == before,
+            state("integer")["text"])
+    s.invoke("number.focus", target="integer", value=False)
+
+    # --- accepting on Enter and on focus loss ------------------------------------------------------
+    s.invoke("number.reset-counters")
+    s.invoke("number.focus", target="deferred", value=True)
+    s.invoke("number.set-text", target="deferred", value="")
+    s.ok("frame", count=2)
+    s.ok("input", native=True, events=typed("3,25"))
+    time.sleep(0.3)
+    st = state("deferred")
+    check("a deferred field keeps what is typed as text", st["text"] == "3.25", st["text"])
+    check("and validates it", st["valid"] is True, st["message"])
+    check("but does not take it yet", near(st["value"], 2.0) and st["callbacks"] == 0,
+            (st["value"], st["callbacks"]))
+
+    s.ok("input", native=True, events=key("UP"))
+    time.sleep(0.3)
+    st = state("deferred")
+    check("Up steps the typed text, not the held value", st["text"] == "4.25", st["text"])
+    check("and is not taken either", near(st["value"], 2.0) and st["callbacks"] == 0,
+            (st["value"], st["callbacks"]))
+
+    s.ok("input", native=True, events=keyc("ENTER", "\r"))
+    time.sleep(0.3)
+    st = state("deferred")
+    check("Enter takes it", near(st["value"], 4.25), st["value"])
+    check("and reports it once", st["callbacks"] == 1, st["callbacks"])
+    check("focus stays", st["focused"] is True)
+
+    s.ok("input", native=True, events=typed("5"))
+    time.sleep(0.3)
+    check("typing after Enter is text again", near(state("deferred")["value"], 4.25))
+    s.invoke("number.focus", target="deferred", value=False)
+    s.ok("frame", count=2)
+    st = state("deferred")
+    check("losing focus takes it", near(st["value"], 4.255), st["value"])
+    check("and reports it once more", st["callbacks"] == 2, st["callbacks"])
 
 finally:
     try:
