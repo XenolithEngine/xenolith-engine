@@ -56,8 +56,8 @@ void makeTileGrid(const URect &region, const TilingInfo &tiling, uint32_t pixelS
 	// Down to a whole number of cache lines, never up: the requested width is an upper bound, and
 	// rounding it up would silently hand back tiles larger than were asked for. Below one line
 	// there is nothing to align to and the request is honoured as it stands - which is what makes
-	// a one-pixel tiling usable as a test.
-	if (tileWidth >= stepPx) {
+	// a one-pixel tiling usable as a test. A width of 0 is not a request: the row stays whole.
+	if (tiling.width > 0 && tileWidth >= stepPx) {
 		tileWidth -= tileWidth % stepPx;
 	}
 	if (tileWidth == 0) {
@@ -76,8 +76,10 @@ void makeTileGrid(const URect &region, const TilingInfo &tiling, uint32_t pixelS
 			uint32_t nx = x + tileWidth;
 
 			// Cut on the alignment grid whenever that boundary falls inside the tile. The first
-			// tile of a row absorbs the misalignment and every one after it starts on a line.
-			if (tileWidth >= stepPx) {
+			// tile of a row absorbs the misalignment and every one after it starts on a line. Not
+			// when the width is not cut at all: that made "do not cut" two tiles for every region
+			// that was not aligned (BF-85).
+			if (tiling.width > 0 && tileWidth >= stepPx) {
 				const uint32_t snapped = nx - (nx % stepPx);
 				if (snapped > x && snapped < nx) {
 					nx = snapped;
@@ -106,6 +108,7 @@ const TilingInfo &getDefaultTiling() {
 		TilingInfo info;
 		info.width = 256;
 		info.height = 256;
+		info.strips = true; // small regions in strips for the threads there are, BF-85
 		info.threads = 0; // as many as the pool has
 
 		if (auto value = ::getenv("SP_RASTER_TILE")) {
@@ -113,7 +116,11 @@ const TilingInfo &getDefaultTiling() {
 			if (str == "off" || str == "0") {
 				info.width = 0;
 				info.height = 0;
+				info.strips = false;
+			} else if (str == "auto") {
+				// the default, spelled out
 			} else {
+				info.strips = false;
 				const char *p = value;
 				auto w = Tile_readUint(p);
 				auto h = w;
@@ -126,7 +133,7 @@ const TilingInfo &getDefaultTiling() {
 				// would otherwise read as "tiling did not help", which is hard to un-conclude.
 				if (w == 0 && h == 0) {
 					log::source().error("raster", "SP_RASTER_TILE=", str,
-							" is not WxH, W or off; tiling stays off");
+							" is not auto, WxH, W or off; tiling stays off");
 				} else {
 					info.width = w;
 					info.height = h;
@@ -150,9 +157,28 @@ const TilingInfo &getDefaultTiling() {
 	return s_tiling;
 }
 
+// TilingInfo::strips. How tall the strips of a region are for `workers` threads, or 0 to keep the
+// grid: three strips a thread, so that greedy workers even out strips of unequal cost, and no
+// lower than 32 rows, below which a strip costs more in passes over the list than it gains in
+// threads (the kiosk's damage frame on the Pi 4: 32 rows best, EMBOX-KIOSK-PERF.md 4).
+static uint32_t Tile_stripRows(const URect &region, const TilingInfo &tiling, uint32_t workers) {
+	static constexpr uint32_t minRows = 32;
+
+	if (workers <= 1) {
+		return 0;
+	}
+	const uint32_t want = workers * 3;
+	const uint64_t columns = tiling.width ? (region.width + tiling.width - 1) / tiling.width : 1;
+	const uint64_t rows = tiling.height ? (region.height + tiling.height - 1) / tiling.height : 1;
+	if (columns * rows >= want) {
+		return 0;
+	}
+	return sprt::max((region.height + want - 1) / want, minRows);
+}
+
 // The tiles of every region, clipped to the target.
 static void Tile_collect(const Target &target, SpanView<URect> regions, const TilingInfo &tiling,
-		Vector<URect> &tiles) {
+		uint32_t workers, Vector<URect> &tiles) {
 	const auto bounds = URect{0, 0, target.width, target.height};
 	const auto pixelSize = getPixelSize(target.format);
 
@@ -161,7 +187,14 @@ static void Tile_collect(const Target &target, SpanView<URect> regions, const Ti
 		if (clipped.width == 0 || clipped.height == 0) {
 			continue;
 		}
-		makeTileGrid(clipped, tiling, pixelSize,
+		auto grid = tiling;
+		if (tiling.strips) {
+			if (auto stripRows = Tile_stripRows(clipped, tiling, workers)) {
+				grid.width = 0;
+				grid.height = stripRows;
+			}
+		}
+		makeTileGrid(clipped, grid, pixelSize,
 				[&](const URect &tile) { tiles.emplace_back(tile); });
 	}
 }
@@ -197,8 +230,17 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 		return 0;
 	}
 
+	// The calling thread is one of the workers, so the pool only has to supply the rest.
+	auto looper = sprt::dispatch::Looper::getIfExists();
+	const uint32_t available = looper ? uint32_t(looper->getWorkersCount()) + 1 : 1;
+
+	// Without a looper there is nothing to fan out to and the loop runs here: that is the unit
+	// test, and it is also wasm, where hardware_concurrency() is 1 by construction. Known before
+	// the cut, because strips are cut for it.
+	uint32_t workers = tiling.threads > 0 ? sprt::min(tiling.threads, available) : available;
+
 	Vector<URect> tiles;
-	Tile_collect(target, regions, tiling, tiles);
+	Tile_collect(target, regions, tiling, workers, tiles);
 
 	if (stats) {
 		stats->tiles = uint32_t(tiles.size());
@@ -213,13 +255,6 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 	// on the guard, and the line saying which set is in use would come from whichever one won.
 	getKernels();
 
-	// The calling thread is one of the workers, so the pool only has to supply the rest.
-	auto looper = sprt::dispatch::Looper::getIfExists();
-	const uint32_t available = looper ? uint32_t(looper->getWorkersCount()) + 1 : 1;
-
-	// Without a looper there is nothing to fan out to and the loop runs here: that is the unit
-	// test, and it is also wasm, where hardware_concurrency() is 1 by construction.
-	uint32_t workers = tiling.threads > 0 ? sprt::min(tiling.threads, available) : available;
 	workers = sprt::min(workers, uint32_t(tiles.size()));
 
 	if (workers <= 1) {
@@ -327,8 +362,13 @@ Rc<TiledDrawJob> drawTiledAsync(TiledDrawRequest &&req, TiledDrawCallback &&comp
 	job->_clearColor = req.clearColor;
 	job->_collectStats = req.collectStats;
 
+	auto looper = sprt::dispatch::Looper::getIfExists();
+	const uint32_t pool = looper ? uint32_t(looper->getWorkersCount()) : 0;
+
+	uint32_t workers = req.tiling.threads > 0 ? sprt::min(req.tiling.threads, pool) : pool;
+
 	if (!req.target.empty() && (job->_list || job->_clear)) {
-		Tile_collect(req.target, req.regions, req.tiling, job->_tiles);
+		Tile_collect(req.target, req.regions, req.tiling, workers, job->_tiles);
 	}
 
 	if (job->_tiles.empty()) {
@@ -338,10 +378,6 @@ Rc<TiledDrawJob> drawTiledAsync(TiledDrawRequest &&req, TiledDrawCallback &&comp
 
 	getKernels();
 
-	auto looper = sprt::dispatch::Looper::getIfExists();
-	const uint32_t pool = looper ? uint32_t(looper->getWorkersCount()) : 0;
-
-	uint32_t workers = req.tiling.threads > 0 ? sprt::min(req.tiling.threads, pool) : pool;
 	workers = sprt::min(workers, uint32_t(job->_tiles.size()));
 
 	if (workers == 0) {

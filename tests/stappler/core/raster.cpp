@@ -696,6 +696,76 @@ void checkTileGrid() {
 	check(aligned, "tiles: interior cuts land on 64-byte boundaries");
 }
 
+// TilingInfo::strips: a region the grid cuts into fewer pieces than three a thread goes into
+// full-width strips - a kiosk's damage region, 140x320 in 256 squares, is two tiles for four
+// threads and ten 32-row strips - while a region the grid already divides keeps the grid. Either
+// way the picture is the one drawn whole.
+void checkStrips() {
+	constexpr uint32_t width = 1100;
+	constexpr uint32_t height = 800;
+
+	DrawList list;
+	auto pushTri = [&](float ax, float ay, float bx, float by, float cx, float cy,
+						   const Color4F &color) {
+		auto base = uint32_t(list.vertexes.size());
+		list.vertexes.emplace_back(Vertex{ax, ay, 0.0f, 0.0f, 0.0f, color});
+		list.vertexes.emplace_back(Vertex{bx, by, 0.0f, 0.0f, 0.0f, color});
+		list.vertexes.emplace_back(Vertex{cx, cy, 0.0f, 0.0f, 0.0f, color});
+		list.indexes.emplace_back(base);
+		list.indexes.emplace_back(base + 1);
+		list.indexes.emplace_back(base + 2);
+	};
+	pushTri(3.5f, 2.25f, 1051.0f, 90.5f, 120.0f, 790.0f, Color4F(0.9f, 0.2f, 0.4f, 0.8f));
+	pushTri(1095.0f, 793.0f, 7.0f, 700.0f, 940.0f, 4.0f, Color4F(0.1f, 0.7f, 0.9f, 0.6f));
+
+	Command cmd;
+	cmd.indexCount = uint32_t(list.indexes.size());
+	cmd.blend = BlendMode::Transparent;
+	cmd.scissor = URect{0, 0, width, height};
+	list.addCommand(sp::move(cmd));
+
+	auto looper = sprt::dispatch::Looper::acquire();
+	const bool fourThreads = looper->getWorkersCount() + 1 >= 4;
+
+	TilingInfo strips;
+	strips.width = 256;
+	strips.height = 256;
+	strips.strips = true;
+	strips.threads = 4;
+
+	TilingInfo whole;
+	whole.threads = 1;
+
+	uint32_t differing = 0;
+	mem_std::Vector<uint32_t> counts;
+	for (auto region : {URect{37, 5, 140, 320}, URect{0, 0, width, height}}) {
+		const mem_std::Vector<URect> regions{region};
+
+		Bitmap expected(width, height, PixelFormat::BGRA8888);
+		expected.seed();
+		drawTiled(expected.target, list, regions, whole);
+
+		Bitmap actual(width, height, PixelFormat::BGRA8888);
+		actual.seed();
+		TilingStats stats;
+		drawTiled(actual.target, list, regions, strips, &stats);
+		counts.emplace_back(stats.tiles);
+
+		for (size_t i = 0; i < expected.pixels.size(); ++i) {
+			differing += expected.pixels[i] != actual.pixels[i];
+		}
+	}
+
+	check(differing == 0,
+			toString("tiles: strips draw what the region drawn whole does (", differing,
+					" bytes differ)"));
+	if (fourThreads) {
+		check(counts[0] == 10 && counts[1] == 20,
+				toString("tiles: four threads cut a 140x320 region in 10 strips and keep 20 squares "
+						 "for 1100x800 (", counts[0], ", ", counts[1], ")"));
+	}
+}
+
 // drawTiledAsync with a per-tile clear writes exactly what clearing the regions and then drawTiled
 // writes, and completes once, on the looper thread.
 void checkTiledAsync() {
@@ -828,6 +898,7 @@ void performRasterTests() {
 	checkBilinearSpan();
 	checkSpanSplit();
 	checkTileGrid();
+	checkStrips();
 	checkTiledAsync();
 
 	for (auto &it : tables) {

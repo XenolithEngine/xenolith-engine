@@ -333,7 +333,15 @@ struct SP_PUBLIC TilingInfo {
 	// runs, and a frame path that measures itself unasked is not the one that ships.
 	bool timed = false;
 
-	bool tiled() const { return width != 0 || height != 0; }
+	// A region the width x height grid cuts too coarsely for the threads that will draw it - into
+	// fewer than three pieces a thread - is cut into full-width strips instead: three a thread, and
+	// 32 rows at the least. Larger regions keep the grid, and so does a single thread. The default,
+	// because a fixed square does not divide what a frame mostly draws: a kiosk's damage regions
+	// made two 256x256 tiles for four threads, while 32-row strips cut the same frame in ten and
+	// drew it in half the time (BF-85). A strip cuts no row in two, so a span is set up once.
+	bool strips = false;
+
+	bool tiled() const { return width != 0 || height != 0 || strips; }
 };
 
 // The tiles of one region: pairwise disjoint, and covering it exactly.
@@ -464,18 +472,19 @@ protected:
 };
 
 // The tiling a caller with no opinion of its own should use, resolved once. Overridden entirely by
-// SP_RASTER_TILE=WxH|off and SP_RASTER_THREADS=N, which is how the benchmark measures the two
+// SP_RASTER_TILE=WxH|off|auto and SP_RASTER_THREADS=N, which is how the benchmark measures the two
 // effects apart and how the parity gate compares tiled against untiled.
 //
-// 256x256 by default, and every thread the pool will give. The size is where the measurements put
+// 256x256 with strips for regions too small for it (TilingInfo::strips), and every thread the pool
+// will give. The size is where the measurements put
 // it: large enough that the per-tile cost of walking the command list again stays small, small
 // enough that a tile's texture footprint survives in cache - which is worth 1.6x on a bilinear
 // sprite before a second thread is involved. Below 128 the re-walk starts to dominate and the
 // solid fill, which has nothing to gain, starts to lose.
 //
-// Defaulting it on is safe rather than bold: with damage tracking doing its job the regions are
-// small, one tile covers them, and nothing changes. It is the full-surface frame - a resize, a
-// first paint, a scrolling view - that gets cut up.
+// Defaulting it on is safe rather than bold: the full-surface frame - a resize, a first paint, a
+// scrolling view - is cut into squares, and the small regions damage tracking leaves into strips
+// the threads can share; a single thread draws a small region whole.
 SP_PUBLIC const TilingInfo &getDefaultTiling();
 
 } // namespace stappler::raster
