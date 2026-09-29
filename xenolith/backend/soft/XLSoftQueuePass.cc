@@ -326,8 +326,10 @@ covers them all, back to back, on the same scene.
 	                          MODE     full (f)   - every frame repaints the whole surface
 	                                   damage (d) - what the damage tracker says, frame skipping
 	                                                included
-	                          TILE     off, W (square) or WxH; 0 in either place is "do not cut
-	                                   that way", so 0x64 is full-width strips
+	                          TILE     off, auto (a), W (square) or WxH; 0 in either place is "do
+	                                   not cut that way", so 0x64 is full-width strips; auto is the
+	                                   default, 256 with strips where 256 is too coarse for the
+	                                   threads (raster::TilingInfo::strips)
 	                          THREADS  N, or A-B for one step per count; capped by what the pool
 	                                   can supply
 	                        Default: FrameSweep_defaultSteps. Short forms exist because of Embox:
@@ -454,6 +456,10 @@ static bool FrameSweep_parseStep(const char *p, const char *end, Vector<FrameSwe
 
 	if (FrameSweep_prefix(c, "off/")) {
 		step.tiling.width = step.tiling.height = 0;
+	} else if (FrameSweep_prefix(c, "auto/") || FrameSweep_prefix(c, "a/")) {
+		// raster's default: the 256 grid, and strips where it is too coarse for the threads
+		step.tiling.width = step.tiling.height = 256;
+		step.tiling.strips = true;
 	} else {
 		auto w = FrameSweep_readUint(c);
 		auto h = w;
@@ -552,10 +558,13 @@ static FrameSweep &FrameSweep_get() {
 	return s;
 }
 
-// "off", or WxH as it was cut - so a square asked for as "256" reads back as "256x256".
+// "off", "auto", or WxH as it was cut - so a square asked for as "256" reads back as "256x256".
 static String FrameSweep_tileName(const raster::TilingInfo &tiling) {
 	if (!tiling.tiled()) {
 		return String("off");
+	}
+	if (tiling.strips) {
+		return String("auto");
 	}
 	return toString(tiling.width, "x", tiling.height);
 }
