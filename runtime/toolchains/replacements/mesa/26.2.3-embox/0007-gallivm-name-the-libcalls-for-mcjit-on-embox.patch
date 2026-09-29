@@ -1,0 +1,65 @@
+diff --git a/src/gallium/auxiliary/gallivm/lp_bld_init.c b/src/gallium/auxiliary/gallivm/lp_bld_init.c
+index f5b6110..f5c4dac 100644
+--- a/src/gallium/auxiliary/gallivm/lp_bld_init.c
++++ b/src/gallium/auxiliary/gallivm/lp_bld_init.c
+@@ -303,6 +303,49 @@ fail:
+    return false;
+ }
+ 
++#if DETECT_OS_EMBOX
++#include <math.h>
++#include <string.h>
++#include <llvm-c/Support.h>
++
++/*
++ * Embox has no dlsym: MCJIT finds the library calls LLVM emits only among
++ * the symbols added by name, and a miss leaves a call to address 0 in the
++ * loaded code. Mesa's own calls are function pointer constants and need
++ * nothing here. AArch64 has no instruction for sin, cos, exp2 and log2 (on
++ * half vectors llvmpipe asks LLVM for them), nor for frem: they are widened
++ * to float and called; exp2 of an integer becomes ldexp; big copies and
++ * clears become memcpy, memmove, memset.
++ */
++static void
++lp_build_add_libcall_symbols(void)
++{
++   static const struct {
++      const char *name;
++      void *addr;
++   } libcalls[] = {
++      { "memcpy", (void *)memcpy },
++      { "memmove", (void *)memmove },
++      { "memset", (void *)memset },
++      { "sinf", (void *)sinf },
++      { "cosf", (void *)cosf },
++      { "exp2f", (void *)exp2f },
++      { "log2f", (void *)log2f },
++      { "fmodf", (void *)fmodf },
++      { "ldexpf", (void *)ldexpf },
++      { "sin", (void *)sin },
++      { "cos", (void *)cos },
++      { "exp2", (void *)exp2 },
++      { "log2", (void *)log2 },
++      { "fmod", (void *)fmod },
++      { "ldexp", (void *)ldexp },
++   };
++
++   for (unsigned i = 0; i < ARRAY_SIZE(libcalls); i++)
++      LLVMAddSymbol(libcalls[i].name, libcalls[i].addr);
++}
++#endif
++
+ bool
+ lp_build_init(void)
+ {
+@@ -323,6 +366,10 @@ lp_build_init(void)
+ 
+    lp_bld_ppc_disable_denorms();
+ 
++#if DETECT_OS_EMBOX
++   lp_build_add_libcall_symbols();
++#endif
++
+    gallivm_initialized = true;
+ 
+    return true;

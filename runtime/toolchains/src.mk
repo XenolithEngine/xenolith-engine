@@ -422,8 +422,6 @@ $(SRC_ROOT)/vulkan-utility: | prepare
 	$(call sp_fetch_clone,vulkan-utility)
 
 # https://github.com/KhronosGroup/Vulkan-Tools # revised: 25 sep 2026
-# Используется только target-xenolithos и только ради vulkaninfo — девайсового
-# пробника «нашёл ли лоадер ICD и перечисляет ли драйвер физическое устройство».
 vulkan-tools_REPO       := https://github.com/KhronosGroup/Vulkan-Tools.git
 vulkan-tools_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
 vulkan-tools_COMMIT     := 286299bb6b732e4b22771cfb9d7d421542d40501
@@ -549,6 +547,10 @@ $(SRC_ROOT)/llvm-project: | prepare
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0005-support-memory-and-exit-codes.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0006-abi-visibility-on-wasm.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-wasm-host/0007-driver-and-lockfile-no-pid.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-embox/0001-support-embox-like-wasi.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-embox/0002-orc-no-shared-memory-on-embox.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-embox/0003-host-cpu-from-id-registers-on-embox.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-embox/0004-process-handle-without-dlopen-on-embox.patch)
 
 # https://download.gnome.org/sources/libxml2  # revised: 25 sep 2026
 # Supply chain: GNOME publishes a .sha256sum next to the tarball but no signature;
@@ -605,6 +607,33 @@ libdrm_KEY    := libdrm
 
 $(SRC_ROOT)/libdrm: | prepare
 	$(call sp_fetch_tar,libdrm)
+
+# Mesa, for lavapipe (llvmpipe's Vulkan driver) on the Embox target: the software
+# Vulkan the flat EL1 image links in (xenolith-os docs/EMBOX-LAVAPIPE.md), and for
+# Venus, Vulkan on the host's GPU through virtio-gpu (docs/EMBOX-VENUS.md). Not in
+# LIBS, so `make download` does not fetch 80 MB for every other target; the Embox
+# target asks for it by name.
+# https://docs.mesa3d.org/relnotes/26.2.3.html # revised: 30 sep 2026
+# Supply chain: the tarball has a detached signature (.sig) by the release
+#  manager's key, which is not in keys/ yet; pinned by the SHA-256 the release
+#  notes publish.
+mesa_URL    := https://archive.mesa3d.org/mesa-26.2.3.tar.xz
+mesa_SHA256 := 1628058a8d2c0615975de5a15ab7bbb9638c50000b5bed9456ff423ea034a81f
+
+$(SRC_ROOT)/mesa: | prepare
+	$(call sp_fetch_tar,mesa)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0001-util-embox-is-posix.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0002-c11-no-weak-mutexattr-on-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0003-meson-embox-probes-through-the-libc-layer.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0004-lavapipe-a-static-driver-for-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0005-no-bsd-ioccom-no-hud-signals-on-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0006-c11-thread-stacks-of-4-mib-on-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0007-gallivm-name-the-libcalls-for-mcjit-on-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0008-lavapipe-heap-size-fallback-no-memory-fd-on-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0009-wsi-vk-khr-display-over-fbdev-on-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0010-venus-a-renderer-over-the-embox-virtio-gpu-driver.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0011-venus-a-static-driver-for-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-embox/0012-venus-no-fds-no-drm-a-sw-device-for-wsi-on-embox.patch)
 
 
 #
@@ -695,8 +724,9 @@ $(SRC_ROOT)/xwin/splat: $(SRC_ROOT)/xwin
 # parse time, on every invocation, and turn that class of mistake into a message
 # instead of a silently weakened build.
 
-# Fetched by name but not part of LIBS: the CA bundle inputs and the Windows SDK tool.
-SRC_EXTRA_NAMES := cacert ru-ca-root ru-ca-sub ru-ca-sub-2024 xwin
+# Fetched by name but not part of LIBS: the CA bundle inputs, the Windows SDK tool,
+# and Mesa for the Embox target.
+SRC_EXTRA_NAMES := cacert ru-ca-root ru-ca-sub ru-ca-sub-2024 xwin mesa
 
 SRC_ALL_NAMES := $(LIBS) $(SRC_EXTRA_NAMES)
 

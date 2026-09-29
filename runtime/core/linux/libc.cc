@@ -45,7 +45,19 @@ namespace sprt {
 
 static __plock_storage s_plockStorage;
 
-void __sprt_libc_thread_exit(bool externalThread) { pthread_exit(0); }
+#if SPRT_EMBOX
+// core/embox/emutls.cc: the calling thread's thread_local objects. Embox runs no
+// pthread key destructors, so this, the last thing a thread does before it ends,
+// is where they are given back.
+void __emutls_release_self();
+#endif
+
+void __sprt_libc_thread_exit(bool externalThread) {
+#if SPRT_EMBOX
+	__emutls_release_self();
+#endif
+	pthread_exit(0);
+}
 
 __plock_storage *__libc_get_plock_storage() { return &s_plockStorage; }
 

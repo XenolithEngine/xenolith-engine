@@ -29,6 +29,7 @@
 #include <sprt/runtime/window/display_config.h>
 #include <sprt/runtime/platform.h>
 #include <sprt/runtime/log.h>
+#include <stdlib.h>
 
 namespace sprt::window {
 
@@ -82,7 +83,14 @@ bool EmboxContextController::init(NotNull<Context> ctx, ContextConfig &&config,
 	if (!_instanceInfo) {
 		_instanceInfo = Rc<gapi::InstanceInfo>::alloc();
 	}
-	_instanceInfo->api = gapi::InstanceApi::Software;
+	// Software unless the application asked (--gapi vulkan: lavapipe in the image)
+	if (_instanceInfo->api == gapi::InstanceApi::None) {
+		_instanceInfo->api = gapi::InstanceApi::Software;
+	}
+	if (_instanceInfo->api == gapi::InstanceApi::Vulkan) {
+		const char *env = ::getenv("XL_VK_DISPLAY");
+		_vulkanDisplay = !(env && StringView(env) == "0");
+	}
 	return true;
 }
 
@@ -90,6 +98,16 @@ WindowCapabilities EmboxContextController::getCapabilities() const {
 	// rk3588 simplefb is DRAM under the scanout. This controller does not
 	// run on firmware-composited fbs (bcm2711).
 	return WindowCapabilities::DirectOutput;
+}
+
+SurfaceSupportInfo EmboxContextController::getSupportInfo() const {
+	SurfaceSupportInfo info;
+	if (_vulkanDisplay) {
+		// No DRM device: the driver opens the framebuffer itself and reports it as a display.
+		info.backendMask.set(toInt(SurfaceBackend::Display));
+		info.display.fd = -1;
+	}
+	return info;
 }
 
 void EmboxContextController::openUrl(StringView) {
@@ -115,7 +133,7 @@ int EmboxContextController::run(NotNull<ContextContainer> container) {
 		auto instance = _context->makeInstance(_instanceInfo);
 		if (!instance) {
 			oslog::vperror(__SPRT_LOCATION, "EmboxContextController",
-					"Fail to load software graphics instance");
+					"Fail to load graphics instance");
 			_resultCode = -1;
 			destroy();
 			return;

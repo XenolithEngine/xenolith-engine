@@ -57,6 +57,21 @@ SPRT_API int __SPRT_ID(
 SPRT_API int __SPRT_ID(
 		__sched_cpucount)(__SPRT_ID(size_t) nbytes, const __SPRT_ID(cpu_set_t) * set);
 
+#if __SPRT_CONFIG_HAVE_SCHED_AFFINITY || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+
+__SPRT_CONFIG_HAVE_SCHED_AFFINITY_NOTICE
+SPRT_API int __SPRT_ID(sched_getcpu)(void);
+
+__SPRT_CONFIG_HAVE_SCHED_AFFINITY_NOTICE
+SPRT_API int __SPRT_ID(
+		sched_getaffinity)(__SPRT_ID(pid_t), __SPRT_ID(size_t), __SPRT_ID(cpu_set_t) *);
+
+__SPRT_CONFIG_HAVE_SCHED_AFFINITY_NOTICE
+SPRT_API int __SPRT_ID(
+		sched_setaffinity)(__SPRT_ID(pid_t), __SPRT_ID(size_t), const __SPRT_ID(cpu_set_t) *);
+
+#endif
+
 // clang-format off
 #define __SPRT_SCHED_OTHER 0
 #define __SPRT_SCHED_FIFO 1

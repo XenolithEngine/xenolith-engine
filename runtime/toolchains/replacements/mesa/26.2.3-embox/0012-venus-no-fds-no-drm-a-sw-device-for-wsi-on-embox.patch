@@ -1,0 +1,47 @@
+diff --git a/src/virtio/vulkan/vn_instance.c b/src/virtio/vulkan/vn_instance.c
+index b05edbf..ee38f87 100644
+--- a/src/virtio/vulkan/vn_instance.c
++++ b/src/virtio/vulkan/vn_instance.c
+@@ -62,9 +62,11 @@ static const struct vk_instance_extension_table
+ #ifdef VK_USE_PLATFORM_DISPLAY_KHR
+       .KHR_display = true,
+       .KHR_get_display_properties2 = true,
++#if !DETECT_OS_EMBOX /* the framebuffer display (wsi_common_fbdev.c) has no DRM */
+       .EXT_direct_mode_display = true,
+       .EXT_display_surface_counter = true,
+       .EXT_acquire_drm_display = true,
++#endif
+ #endif
+    };
+ 
+diff --git a/src/virtio/vulkan/vn_physical_device.c b/src/virtio/vulkan/vn_physical_device.c
+index f3581aa..3eef2f9 100644
+--- a/src/virtio/vulkan/vn_physical_device.c
++++ b/src/virtio/vulkan/vn_physical_device.c
+@@ -1130,10 +1130,13 @@ vn_physical_device_get_native_extensions(
+    }
+ #else  /* VK_USE_PLATFORM_ANDROID_KHR */
+    if (physical_dev->external_memory.renderer_handle_type) {
+-#if !DETECT_OS_WINDOWS
++#if !DETECT_OS_WINDOWS && !DETECT_OS_EMBOX
++      /* Embox: no fds to carry the memory, and without dma-buf the common
++       * WSI takes Venus for a sw device (vn_wsi_init): the swapchain is
++       * blitted into a host-visible buffer the framebuffer copies from */
+       exts->KHR_external_memory_fd = true;
+       exts->EXT_external_memory_dma_buf = true;
+-#endif /* !DETECT_OS_WINDOWS */
++#endif /* !DETECT_OS_WINDOWS && !DETECT_OS_EMBOX */
+    }
+ #endif /* VK_USE_PLATFORM_ANDROID_KHR */
+ 
+@@ -1171,7 +1174,9 @@ vn_physical_device_get_native_extensions(
+    exts->KHR_deferred_host_operations =
+       physical_dev->ray_tracing && renderer_exts->KHR_acceleration_structure;
+    exts->KHR_map_memory2 = true;
+-#if !DETECT_OS_WINDOWS
++#if !DETECT_OS_WINDOWS && !DETECT_OS_EMBOX
++   /* Embox: blobs map where the device's host-visible region is, and there
++    * is no DRM device */
+    exts->EXT_map_memory_placed = true;
+    exts->EXT_physical_device_drm = true;
+ #endif

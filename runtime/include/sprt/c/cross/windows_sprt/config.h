@@ -93,3 +93,8 @@
 #ifndef __SPRT_CONFIG_HAVE_WINAPI
 #define __SPRT_CONFIG_HAVE_WINAPI 1
 #endif
+
+// flock(2): no advisory whole-file locks in this libc.
+#ifndef __SPRT_CONFIG_HAVE_FLOCK
+#define __SPRT_CONFIG_HAVE_FLOCK 0
+#endif

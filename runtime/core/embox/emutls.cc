@@ -20,20 +20,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// Per-tid emutls for Embox.
-//
-// compiler-rt's __emutls_get_address stores the slot table in a Embox pthread
-// key. NSH tasks are not pthreads; pthread_getspecific has returned non-mapped
-// pointers (0x47ffffffe, 0xe9). A process-global table is also wrong: AppThread
-// is a real pthread and would share AllocStack with the NSH task, which trips
-// "Unbalansed pool::push". Index assignment is still global (object identity);
-// the slot array is keyed by gettid().
-
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <sys/syscall.h>
+
+// syscall(2) is embox.compat.linux.syscall_stub, which every Xenolith board
+// template carries (libc++abi's static-init guards ask it too). Weak, so a
+// kernel without it still links; then the pointer is the only identity, as
+// before.
+extern "C" long syscall(long number, ...) __attribute__((weak));
 
 typedef unsigned int gcc_word __attribute__((mode(word)));
 
@@ -51,12 +49,20 @@ struct EmutlsTable {
 	// The pthread_self() POINTER, not a folded pid_t: Embox's pthread_t is
 	// `struct thread *`, and any narrowing (the (p >> 4) ^ (p >> 32) that
 	// __sprt_gettid() has to do to produce a pid_t) can alias two live threads
-	// onto one table. Here the full pointer is available, so use it.
+	// onto one table.
 	uintptr_t self;
+	// The owner's thread id: never reused, so it tells the owner of `self`
+	// from an earlier thread that had the same pointer.
+	long tid;
 	bool used;
 	void **slots;
 	uintptr_t nslots;
 };
+
+// One row per `struct thread *` that has touched a thread_local: the thread
+// pool (thread_pool_size, 64 on the Xenolith boards), tasks' main threads,
+// the boot and idle threads.
+static constexpr unsigned EmutlsRows = 128;
 
 // No mutex on this path, and that is the point. Embox's pthread_mutex is the
 // kernel mutex: it takes sched_lock(), which is the big kernel lock. Measured on
@@ -65,16 +71,7 @@ struct EmutlsTable {
 // every BKL acquisition the kiosk makes. Everything below is either owned by the
 // calling thread or claimed with a compare-exchange.
 static uintptr_t s_next = 0;
-static EmutlsTable s_tables[32];
-
-// Embox hands `struct thread *` back out of a fixed pool (thread_pool_size,
-// 16 by default), so a thread that exits leaves its address free for the next
-// one. Without a release step the new thread finds the dead thread's table and
-// inherits its thread_locals instead of zero-initialised ones. Slots are
-// therefore freed from a pthread_key destructor, which Embox runs at thread
-// exit (embox.compat.posix.pthread_key is in the board template).
-static pthread_key_t s_exitKey;
-static pthread_once_t s_exitKeyOnce = PTHREAD_ONCE_INIT;
+static EmutlsTable s_tables[EmutlsRows];
 
 static void *allocateObject(__emutls_control *control) {
 	size_t size = control->size;
@@ -102,23 +99,51 @@ static void *allocateObject(__emutls_control *control) {
 
 static uintptr_t emboxSelf() { return reinterpret_cast<uintptr_t>(pthread_self()); }
 
-// `created` reports whether this thread needs the exit hook armed - that has to
-// happen after the lookup, because arming it allocates (see below).
-//
-// A row belongs to one thread: once claimed, only that thread reads or writes
-// its slots, so the lookup is a scan of at most 32 words and the claim is a
-// compare-exchange on `used`. `self` is published after the claim and cleared
-// before the row is released, so a row seen as used with a matching `self` is
-// this thread's and nobody else's.
-static EmutlsTable *tableForSelf(bool *created) {
-	// pthread_self(), not __sprt_gettid(): that wrapper used to consult pthread
-	// TLS and recurse into this function. Embox has no gettid(2) anyway.
+static long emboxThreadId() { return syscall ? syscall(SYS_gettid) : 0; }
+
+// Free a row's objects and its slot array. Only the row's owner, or the thread
+// that has just found the row's owner dead, calls this: nobody else reads
+// `slots`.
+static void emptyTable(EmutlsTable &t) {
+	for (uintptr_t i = 0; i < t.nslots; ++i) {
+		if (t.slots[i]) {
+			// allocateObject() over-allocates and stores the malloc base
+			// in the word below the aligned object.
+			free(reinterpret_cast<void **>(t.slots[i])[-1]);
+		}
+	}
+	free(t.slots);
+	t.slots = nullptr;
+	t.nslots = 0;
+}
+
+static void tableLimitReached() {
+	static const char msg[] = "emutls: every row of the thread_local table is taken"
+			" (core/embox/emutls.cc, EmutlsRows)\n";
+	write(2, msg, sizeof(msg) - 1);
+	abort();
+}
+
+// A row belongs to one thread: once claimed, only the thread whose pointer it
+// carries reads or writes its slots, so the lookup is a scan of pointers and
+// the claim is a compare-exchange on `used`. `self` is published after the
+// claim and cleared before the row is released, so a row seen as used with a
+// matching `self` belongs to the thread now at that pointer, or to a dead one
+// that had it -- and that is what `tid` decides.
+static EmutlsTable *tableForSelf() {
 	const uintptr_t self = emboxSelf();
+	const long tid = emboxThreadId();
 
 	for (auto &t : s_tables) {
 		if (__atomic_load_n(&t.used, __ATOMIC_ACQUIRE)
 				&& __atomic_load_n(&t.self, __ATOMIC_RELAXED) == self) {
-			*created = false;
+			if (t.tid != tid) {
+				// The pointer was a thread's that ended without giving the row
+				// back. That thread runs no more, and no other live thread has
+				// this pointer, so the row is ours to empty and keep.
+				emptyTable(t);
+				t.tid = tid;
+			}
 			return &t;
 		}
 	}
@@ -130,44 +155,39 @@ static EmutlsTable *tableForSelf(bool *created) {
 						__ATOMIC_RELAXED)) {
 			t.slots = nullptr;
 			t.nslots = 0;
+			t.tid = tid;
 			__atomic_store_n(&t.self, self, __ATOMIC_RELEASE);
-			*created = true;
 			return &t;
 		}
 	}
 
-	// More live threads than slots. Embox's own thread pool is smaller than
-	// this table, so reaching here means the pool was resized without
-	// resizing this.
-	abort();
+	tableLimitReached();
+	return nullptr;
 }
 
-// Runs on the exiting thread, so the row it frees is its own and nothing else
-// may touch it: `used` is cleared last, and only then may another thread claim
-// the row.
-static void releaseTable(void *) {
+namespace sprt {
+
+// The calling thread gives its row back: every thread_local object it had is
+// freed. Called by __sprt_libc_thread_exit() as the last thing before the
+// thread ends, after sprt's own key destructors, so nothing reads a
+// thread_local of this thread afterwards.
+void __emutls_release_self() {
 	const uintptr_t self = emboxSelf();
+	const long tid = emboxThreadId();
 	for (auto &t : s_tables) {
 		if (__atomic_load_n(&t.used, __ATOMIC_ACQUIRE)
 				&& __atomic_load_n(&t.self, __ATOMIC_RELAXED) == self) {
-			for (uintptr_t i = 0; i < t.nslots; ++i) {
-				if (t.slots[i]) {
-					// allocateObject() over-allocates and stores the malloc base
-					// in the word below the aligned object.
-					free(reinterpret_cast<void **>(t.slots[i])[-1]);
-				}
+			if (t.tid == tid) {
+				emptyTable(t);
+				__atomic_store_n(&t.self, uintptr_t(0), __ATOMIC_RELAXED);
+				__atomic_store_n(&t.used, false, __ATOMIC_RELEASE);
 			}
-			free(t.slots);
-			t.slots = nullptr;
-			t.nslots = 0;
-			__atomic_store_n(&t.self, uintptr_t(0), __ATOMIC_RELAXED);
-			__atomic_store_n(&t.used, false, __ATOMIC_RELEASE);
 			break;
 		}
 	}
 }
 
-static void makeExitKey() { pthread_key_create(&s_exitKey, releaseTable); }
+} // namespace sprt
 
 extern "C" __attribute__((visibility("default"))) void *__emutls_get_address(
 		__emutls_control *control) {
@@ -185,8 +205,7 @@ extern "C" __attribute__((visibility("default"))) void *__emutls_get_address(
 			index = expected;
 		}
 	}
-	bool created = false;
-	EmutlsTable *table = tableForSelf(&created);
+	EmutlsTable *table = tableForSelf();
 	if (index > table->nslots) {
 		uintptr_t n = (index + 15u) & ~uintptr_t(15);
 		void **grown = static_cast<void **>(realloc(table->slots, n * sizeof(void *)));
@@ -200,14 +219,5 @@ extern "C" __attribute__((visibility("default"))) void *__emutls_get_address(
 	if (!table->slots[index - 1]) {
 		table->slots[index - 1] = allocateObject(control);
 	}
-	void *ret = table->slots[index - 1];
-
-	// After the table is usable, not before: pthread_once/pthread_setspecific
-	// allocate on first use, and an allocator that touches a thread_local
-	// re-enters this function. Only the thread that just claimed a row gets here.
-	if (created) {
-		pthread_once(&s_exitKeyOnce, makeExitKey);
-		pthread_setspecific(s_exitKey, table);
-	}
-	return ret;
+	return table->slots[index - 1];
 }

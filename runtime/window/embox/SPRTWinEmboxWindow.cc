@@ -377,7 +377,17 @@ bool EmboxWindow::close() {
 
 SurfaceInterfaceInfo EmboxWindow::getSurfaceInterfaceInfo() const {
 	SurfaceInterfaceInfo ret;
-	ret.backend = SurfaceBackend::Surface;
+	auto controller = static_cast<EmboxContextController *>(_controller.get());
+	if (controller && controller->isVulkanDisplay()) {
+		// The driver's display is this framebuffer; the size picks its mode. The window keeps
+		// fb0 open (extent, input, teardown) but does not write it.
+		ret.backend = SurfaceBackend::Display;
+		ret.display.fd = -1;
+		ret.display.width = _extent.width;
+		ret.display.height = _extent.height;
+	} else {
+		ret.backend = SurfaceBackend::Surface;
+	}
 	return ret;
 }
 

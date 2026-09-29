@@ -995,7 +995,11 @@ Rc<sprt::window::gapi::Loop> Context::makeLoop(NotNull<sprt::window::gapi::Insta
 		loopInfo->deviceIdx = info->deviceIdx;
 		loopInfo->defaultFormat = info->defaultFormat;
 
-		auto isHeadless = hasFlag(getInfo()->flags, ContextFlags::Headless);
+		// Headless, or a window system without a single Vulkan surface backend (an Embox
+		// framebuffer: frames are copied into its CPU buffers, see AppWindow::makeSurface). Either
+		// way nothing is presented through a queue, and VK_KHR_swapchain is not needed.
+		auto isHeadless = hasFlag(getInfo()->flags, ContextFlags::Headless)
+				|| !_controller->getSupportInfo().backendMask.any();
 		auto data = Rc<vk::LoopBackendInfo>::alloc();
 		data->deviceSupportCallback = [isHeadless](const vk::DeviceInfo &dev) {
 			if (isHeadless) {

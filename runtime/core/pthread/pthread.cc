@@ -147,7 +147,11 @@ static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg) {
 
 	thread->nativeId = tid;
 
+	tl_self.thread = thread;
+
 	if (!thread->registerThread()) {
+		tl_self.thread = nullptr;
+
 		unique_lock globalLock(s_handlePool.mutex);
 		s_handlePool.activeThreads.erase(tid);
 		globalLock.unlock();
@@ -158,8 +162,6 @@ static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg) {
 
 		return 0;
 	}
-
-	tl_self.thread = thread;
 
 	thread->state.set_and_signal(thread_t::StateInternalInit);
 	thread->state.wait(thread_t::StateExternalInit);

@@ -166,3 +166,8 @@
 #ifndef __SPRT_CONFIG_HAVE_STAT_MKNOD
 #define __SPRT_CONFIG_HAVE_STAT_MKNOD 0
 #endif
+
+// flock(2): no advisory whole-file locks in this libc.
+#ifndef __SPRT_CONFIG_HAVE_FLOCK
+#define __SPRT_CONFIG_HAVE_FLOCK 0
+#endif

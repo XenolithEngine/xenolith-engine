@@ -141,6 +141,12 @@
 #define __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY 1
 #endif
 
+// The same mask through sched_getaffinity/sched_setaffinity (pid 0 or the
+// caller's task: the calling thread), and sched_getcpu (BF-44).
+#ifndef __SPRT_CONFIG_HAVE_SCHED_AFFINITY
+#define __SPRT_CONFIG_HAVE_SCHED_AFFINITY 1
+#endif
+
 #ifndef __SPRT_CONFIG_HAVE_MMAN_MLOCKALL
 #define __SPRT_CONFIG_HAVE_MMAN_MLOCKALL 0
 #endif

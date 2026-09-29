@@ -32,9 +32,15 @@ must include:
 Gotchas vs NuttX (do not copy blindly):
 
 * `pthread_key_create` **ignores the destructor**. Keys are **task-scoped**.
-  `__emutls_get_address` is tid-keyed (`runtime/core/embox/emutls.cc`),
-  compiled **into** `libclang_rt.builtins-aarch64.a`. Do not use
-  compiler-rt's default pthread-key emutls.
+  So `__emutls_get_address` is the runtime's own
+  (`runtime/core/embox/emutls.cc`, compiled into `runtime_core`; the app's
+  copy wins over the one compiler-rt's `emutls.c` puts into
+  `libclang_rt.builtins-aarch64.a`). A thread's row is keyed by its
+  `struct thread *` and its id (`syscall(SYS_gettid)`, never reused): a thread
+  that finds its pointer with another id has found a dead thread's row, empties
+  it and takes it. Threads that end through the runtime give the row back in
+  `__sprt_libc_thread_exit`. 128 rows, one per `struct thread *` that touched a
+  `thread_local`. Test: `runtimetest libc_emutls_threads`, twice in one boot.
 * No ELF `PT_TLS` on aarch64 linker scripts — `-femulated-tls`.
 * `std::thread` in Embox means building GCC+libstdc++ inside Embox. We
   do not. Xenolith threads are our dispatch.

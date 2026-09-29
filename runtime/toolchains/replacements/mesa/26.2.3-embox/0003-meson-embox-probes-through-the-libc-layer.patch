@@ -1,0 +1,41 @@
+diff --git a/meson.build b/meson.build
+index a864ed0..663a647 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1633,6 +1633,25 @@ functions_to_detect = {
+   'sysconf': '#include <unistd.h>',
+ }
+ 
++# Embox: without a prefix, has_function declares the function itself and finds
++# whatever symbol the kernel's own libc has. Mesa is compiled against the libc
++# layer on top of it (sprt), so ask through its headers. qsort_s there is the
++# Microsoft one (context first), which util_qsort_r would call as C11's.
++if host_machine.system() == 'embox'
++  functions_to_detect = {
++    'strtof': '#include <stdlib.h>',
++    'mkostemp': '#include <stdlib.h>',
++    'memfd_create': '#include <sys/mman.h>',
++    'random_r': '#include <stdlib.h>',
++    'flock': '#include <sys/file.h>',
++    'strtok_r': '#include <string.h>',
++    'getrandom': '#include <sys/random.h>',
++    'posix_fallocate': '#include <fcntl.h>',
++    'secure_getenv': '#include <stdlib.h>',
++    'sysconf': '#include <unistd.h>',
++  }
++endif
++
+ foreach f, prefix: functions_to_detect
+   if cc.has_function(f, args: pre_args, prefix: prefix)
+     pre_args += '-DHAVE_@0@'.format(f.to_upper())
+@@ -1759,7 +1778,9 @@ ld_args_build_id = cc.get_supported_link_arguments('-Wl,--build-id=sha1')
+ 
+ # check for dl support
+ dep_dl = null_dep
+-if host_machine.system() != 'windows'
++# Embox: no dynamic loader, and no libdl to find. dlopen() and friends are the
++# libc layer's inline wrappers (answering "not found"); lavapipe loads nothing.
++if host_machine.system() not in ['windows', 'embox']
+   if not cc.has_function('dlopen')
+     dep_dl = cc.find_library('dl', required : true)
+   endif

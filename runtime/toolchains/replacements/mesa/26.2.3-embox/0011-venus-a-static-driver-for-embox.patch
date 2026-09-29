@@ -1,0 +1,104 @@
+diff --git a/src/util/libsync.h b/src/util/libsync.h
+index b22b75a..3430e76 100644
+--- a/src/util/libsync.h
++++ b/src/util/libsync.h
+@@ -43,6 +43,12 @@
+ #include "util/detect_os.h"
+ #include "util/os_file.h"
+ 
++#if DETECT_OS_EMBOX && !defined(_IOWR)
++/* The libc layer's sys/ioctl.h does not encode requests. There are no sync
++ * files on Embox: these requests only have to compile, and fail on any fd. */
++#define _IOWR(type, nr, arg) ((((type) & 0xff) << 8) | ((nr) & 0xff))
++#endif
++
+ #if defined(__cplusplus)
+ extern "C" {
+ #endif
+diff --git a/src/virtio/vulkan/meson.build b/src/virtio/vulkan/meson.build
+index fda382d..2182379 100644
+--- a/src/virtio/vulkan/meson.build
++++ b/src/virtio/vulkan/meson.build
+@@ -122,7 +122,11 @@ vn_link_args = [
+ 
+ vn_libs = []
+ 
+-if not with_platform_windows
++# Embox: the virtio-gpu driver is in the kernel image and its C API
++# (xl_vgpu.h) is the transport; no vtest socket, no DRM.
++if host_machine.system() == 'embox'
++  libvn_files += files('vn_renderer_embox.c')
++elif not with_platform_windows
+   libvn_files += files('vn_renderer_vtest.c')
+ endif
+ 
+@@ -136,7 +140,7 @@ endif
+ 
+ if with_platform_wayland or with_platform_x11 or \
+    (system_has_kms_drm and not with_platform_android) or \
+-   with_platform_windows
++   with_platform_windows or host_machine.system() == 'embox'
+   libvn_files += files('vn_wsi.c')
+   vn_c_args += '-DVN_USE_WSI_PLATFORM'
+ endif
+@@ -154,6 +158,23 @@ if with_platform_android
+   vn_deps += [dep_android, idep_u_gralloc]
+ endif
+ 
++# Embox has no dynamic loader: the driver is linked into the kernel image and
++# the application takes vk_icdGetInstanceProcAddr from it directly, as with
++# lavapipe. The internal libraries it depends on are bundled into the archive
++# (it is installed, they are not); the application links it whole, since the
++# dispatch tables name the entry points as weak symbols.
++if host_machine.system() == 'embox'
++libvulkan_virtio = static_library(
++  'vulkan_virtio',
++  [libvn_files, vn_entrypoints, vn_drirc, sha1_h],
++  include_directories : vn_incs,
++  link_with : vn_libs,
++  dependencies : vn_deps,
++  c_args : vn_c_args,
++  gnu_symbol_visibility : 'hidden',
++  install : true,
++)
++else
+ libvulkan_virtio = shared_library(
+   'vulkan_virtio',
+   [libvn_files, vn_entrypoints, vn_drirc, sha1_h],
+@@ -166,3 +187,4 @@ libvulkan_virtio = shared_library(
+   gnu_symbol_visibility : 'hidden',
+   install : true,
+ )
++endif
+diff --git a/src/virtio/vulkan/vn_common.h b/src/virtio/vulkan/vn_common.h
+index 86235f6..18a0ac0 100644
+--- a/src/virtio/vulkan/vn_common.h
++++ b/src/virtio/vulkan/vn_common.h
+@@ -642,7 +642,7 @@ vn_object_get_id(const void *obj, VkObjectType type)
+ static inline pid_t
+ vn_gettid(void)
+ {
+-#if DETECT_OS_ANDROID
++#if DETECT_OS_ANDROID || DETECT_OS_EMBOX
+    return gettid();
+ #elif DETECT_OS_FREEBSD
+    return syscall(SYS_thr_self);
+diff --git a/src/vulkan/util/vk_util.c b/src/vulkan/util/vk_util.c
+index 3095467..282b899 100644
+--- a/src/vulkan/util/vk_util.c
++++ b/src/vulkan/util/vk_util.c
+@@ -32,6 +32,14 @@
+ 
+ #include "compiler/spirv/nir_spirv.h"
+ 
++#if DETECT_OS_EMBOX
++/* Drivers are linked into the Embox image whole, and Venus has no SPIR-V
++ * compiler: it never calls vk_spec_info_to_nir_spirv, which must still link. */
++#pragma weak vtn_alloc_specialization
++#pragma weak vtn_add_specialization_entry
++#pragma weak vtn_free_specialization
++#endif
++
+ uint32_t vk_get_driver_version(void)
+ {
+    const char *minor_string = strchr(PACKAGE_VERSION, '.');

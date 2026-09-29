@@ -1,0 +1,88 @@
+diff --git a/llvm/lib/ExecutionEngine/Orc/MemoryMapper.cpp b/llvm/lib/ExecutionEngine/Orc/MemoryMapper.cpp
+index 4e7db8227..f8c9e201d 100644
+--- a/llvm/lib/ExecutionEngine/Orc/MemoryMapper.cpp
++++ b/llvm/lib/ExecutionEngine/Orc/MemoryMapper.cpp
+@@ -12,7 +12,7 @@
+ #include "llvm/ExecutionEngine/Orc/Shared/OrcRTBridge.h"
+ #include "llvm/Support/WindowsError.h"
+ 
+-#if defined(LLVM_ON_UNIX) && !defined(__ANDROID__)
++#if defined(LLVM_ON_UNIX) && !(defined(__ANDROID__) || defined(__EMBOX__))
+ #include <fcntl.h>
+ #include <sys/mman.h>
+ #if defined(__MVS__)
+@@ -197,14 +197,14 @@ InProcessMemoryMapper::~InProcessMemoryMapper() {
+ SharedMemoryMapper::SharedMemoryMapper(ExecutorProcessControl &EPC,
+                                        SymbolAddrs SAs, size_t PageSize)
+     : EPC(EPC), SAs(SAs), PageSize(PageSize) {
+-#if (!defined(LLVM_ON_UNIX) || defined(__ANDROID__)) && !defined(_WIN32)
++#if (!defined(LLVM_ON_UNIX) || (defined(__ANDROID__) || defined(__EMBOX__))) && !defined(_WIN32)
+   llvm_unreachable("SharedMemoryMapper is not supported on this platform yet");
+ #endif
+ }
+ 
+ Expected<std::unique_ptr<SharedMemoryMapper>>
+ SharedMemoryMapper::Create(ExecutorProcessControl &EPC, SymbolAddrs SAs) {
+-#if (defined(LLVM_ON_UNIX) && !defined(__ANDROID__)) || defined(_WIN32)
++#if (defined(LLVM_ON_UNIX) && !(defined(__ANDROID__) || defined(__EMBOX__))) || defined(_WIN32)
+   auto PageSize = sys::Process::getPageSize();
+   if (!PageSize)
+     return PageSize.takeError();
+@@ -219,7 +219,7 @@ SharedMemoryMapper::Create(ExecutorProcessControl &EPC, SymbolAddrs SAs) {
+ 
+ void SharedMemoryMapper::reserve(size_t NumBytes,
+                                  OnReservedFunction OnReserved) {
+-#if (defined(LLVM_ON_UNIX) && !defined(__ANDROID__)) || defined(_WIN32)
++#if (defined(LLVM_ON_UNIX) && !(defined(__ANDROID__) || defined(__EMBOX__))) || defined(_WIN32)
+ 
+   int SharedMemoryId = -1;
+   EPC.callSPSWrapperAsync<
+@@ -389,7 +389,7 @@ void SharedMemoryMapper::deinitialize(
+ 
+ void SharedMemoryMapper::release(ArrayRef<ExecutorAddr> Bases,
+                                  OnReleasedFunction OnReleased) {
+-#if (defined(LLVM_ON_UNIX) && !defined(__ANDROID__)) || defined(_WIN32)
++#if (defined(LLVM_ON_UNIX) && !(defined(__ANDROID__) || defined(__EMBOX__))) || defined(_WIN32)
+   Error Err = Error::success();
+ 
+   {
+@@ -445,7 +445,7 @@ SharedMemoryMapper::~SharedMemoryMapper() {
+   std::lock_guard<std::mutex> Lock(Mutex);
+   for (const auto &R : Reservations) {
+ 
+-#if defined(LLVM_ON_UNIX) && !defined(__ANDROID__)
++#if defined(LLVM_ON_UNIX) && !(defined(__ANDROID__) || defined(__EMBOX__))
+ 
+ #if defined(__MVS__)
+     shmdt(R.second.LocalAddr);
+diff --git a/llvm/lib/ExecutionEngine/Orc/TargetProcess/ExecutorSharedMemoryMapperService.cpp b/llvm/lib/ExecutionEngine/Orc/TargetProcess/ExecutorSharedMemoryMapperService.cpp
+index 423a1bd49..d2b34a091 100644
+--- a/llvm/lib/ExecutionEngine/Orc/TargetProcess/ExecutorSharedMemoryMapperService.cpp
++++ b/llvm/lib/ExecutionEngine/Orc/TargetProcess/ExecutorSharedMemoryMapperService.cpp
+@@ -50,7 +50,7 @@ static DWORD getWindowsProtectionFlags(MemProt MP) {
+ 
+ Expected<std::pair<ExecutorAddr, std::string>>
+ ExecutorSharedMemoryMapperService::reserve(uint64_t Size) {
+-#if (defined(LLVM_ON_UNIX) && !defined(__ANDROID__)) || defined(_WIN32)
++#if (defined(LLVM_ON_UNIX) && !(defined(__ANDROID__) || defined(__EMBOX__))) || defined(_WIN32)
+ 
+ #if defined(LLVM_ON_UNIX)
+ 
+@@ -139,7 +139,7 @@ ExecutorSharedMemoryMapperService::reserve(uint64_t Size) {
+ 
+ Expected<ExecutorAddr> ExecutorSharedMemoryMapperService::initialize(
+     ExecutorAddr Reservation, tpctypes::SharedMemoryFinalizeRequest &FR) {
+-#if (defined(LLVM_ON_UNIX) && !defined(__ANDROID__)) || defined(_WIN32)
++#if (defined(LLVM_ON_UNIX) && !(defined(__ANDROID__) || defined(__EMBOX__))) || defined(_WIN32)
+ 
+   ExecutorAddr MinAddr(~0ULL);
+ 
+@@ -233,7 +233,7 @@ Error ExecutorSharedMemoryMapperService::deinitialize(
+ 
+ Error ExecutorSharedMemoryMapperService::release(
+     const std::vector<ExecutorAddr> &Bases) {
+-#if (defined(LLVM_ON_UNIX) && !defined(__ANDROID__)) || defined(_WIN32)
++#if (defined(LLVM_ON_UNIX) && !(defined(__ANDROID__) || defined(__EMBOX__))) || defined(_WIN32)
+   Error Err = Error::success();
+ 
+   for (auto Base : Bases) {

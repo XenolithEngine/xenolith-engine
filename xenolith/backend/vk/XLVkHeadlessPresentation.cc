@@ -82,18 +82,136 @@ protected:
 	Function<void(bool)> _callback;
 };
 
+/* Copies what a frame changed in a presented image into a host-visible buffer laid out like the
+whole image (rows of the image's width), for HeadlessSwapchain's output. Submitted after the frame
+on the same queue - lavapipe, the case this is for, has exactly one. The image leaves and comes
+back in PresentSrc: the next partial redraw into the slot LOADs it. */
+class OutputCopyTask : public core::DeviceQueueTask {
+public:
+	virtual ~OutputCopyTask() = default;
+
+	bool init(Rc<Image> &&image, Rc<Buffer> &&buffer, SpanView<URect> damage,
+			Function<void(bool)> &&cb) {
+		if (!DeviceQueueTask::init(vk::getQueueFlags(image->getInfo().type))) {
+			return false;
+		}
+		_image = sp::move(image);
+		_buffer = sp::move(buffer);
+		_damage.assign(damage.begin(), damage.end());
+		_callback = sp::move(cb);
+		return true;
+	}
+
+	virtual bool handleQueueAcquired(core::Device &, core::DeviceQueue &) override { return true; }
+
+	virtual void fillCommandBuffer(core::Device &, core::CommandBuffer &cbuf) override {
+		auto &buf = static_cast<CommandBuffer &>(cbuf);
+
+		auto toTransfer = ImageMemoryBarrier(_image, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+				VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+		buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+				VK_PIPELINE_STAGE_TRANSFER_BIT, 0, makeSpanView(&toTransfer, 1));
+
+		auto &info = _image->getInfo();
+		if (_damage.empty()) {
+			buf.cmdCopyImageToBuffer(_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, _buffer, 0);
+		} else {
+			const auto pixel = core::getFormatImageSize(info.format, Extent3(1, 1, 1));
+			Vector<VkBufferImageCopy> regions;
+			regions.reserve(_damage.size());
+			for (auto &r : _damage) {
+				// bufferOffset puts the rect where it lies in the whole image, so the buffer keeps
+				// the image's layout whatever part of it was copied.
+				regions.emplace_back(VkBufferImageCopy{
+					.bufferOffset = (VkDeviceSize(r.y) * info.extent.width + r.x) * pixel,
+					.bufferRowLength = info.extent.width,
+					.bufferImageHeight = info.extent.height,
+					.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+					.imageOffset = {int32_t(r.x), int32_t(r.y), 0},
+					.imageExtent = {r.width, r.height, 1},
+				});
+			}
+			buf.cmdCopyImageToBuffer(_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, _buffer,
+					regions);
+		}
+
+		BufferMemoryBarrier toHost(_buffer, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
+		buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0,
+				makeSpanView(&toHost, 1));
+
+		auto back = ImageMemoryBarrier(_image, VK_ACCESS_TRANSFER_READ_BIT,
+				VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+		buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
+				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, makeSpanView(&back, 1));
+	}
+
+	virtual void handleComplete(bool success) override {
+		if (_callback) {
+			_callback(success);
+		}
+	}
+
+protected:
+	Rc<Image> _image;
+	Rc<Buffer> _buffer;
+	Vector<URect> _damage;
+	Function<void(bool)> _callback;
+};
+
+// The rows a frame changed, from the copy of the whole image into the output's buffer, which keeps
+// whatever the previous frames left outside them.
+static void writeOutput(sprt::window::SoftwareSwapchain *output, const uint8_t *src,
+		Extent2 extent, size_t pixel, SpanView<URect> damage) {
+	Status status = Status::Ok;
+	auto index = output->acquire(status);
+	if (status != Status::Ok) {
+		log::source().warn("vk::HeadlessSwapchain", "Output has no free buffer, frame dropped");
+		return;
+	}
+
+	auto &dst = output->getBuffers()[index];
+	auto copyRect = [&](const URect &r) {
+		for (uint32_t y = r.y; y < r.y + r.height; ++y) {
+			auto offset = size_t(y) * dst.stride + size_t(r.x) * pixel;
+			if (offset + size_t(r.width) * pixel > dst.size) {
+				break;
+			}
+			::memcpy(dst.data + offset, src + (size_t(y) * extent.width + r.x) * pixel,
+					size_t(r.width) * pixel);
+		}
+	};
+
+	if (damage.empty()) {
+		copyRect(URect(0, 0, extent.width, extent.height));
+	} else {
+		for (auto &r : damage) { copyRect(r); }
+	}
+
+	output->present(index, damage);
+}
+
 HeadlessSurface::~HeadlessSurface() { }
 
-bool HeadlessSurface::init(Instance *instance, Extent2 extent, Ref *win) {
+bool HeadlessSurface::init(Instance *instance, Extent2 extent, Ref *win,
+		Rc<sprt::window::SoftwareSurface> &&output) {
 	if (!core::Surface::init(instance, win)) {
 		return false;
 	}
 
 	_extent = extent;
+	_output = sp::move(output);
 	return true;
 }
 
-void HeadlessSurface::invalidate() { _window = nullptr; }
+void HeadlessSurface::invalidate() {
+	if (_output) {
+		_output->invalidate();
+		_output = nullptr;
+	}
+	_window = nullptr;
+}
 
 core::SurfaceInfo HeadlessSurface::getSurfaceOptions(const core::Device &, //
 		core::FullScreenExclusiveMode, void *) const {
@@ -132,6 +250,16 @@ core::SurfaceInfo HeadlessSurface::getSurfaceOptions(const core::Device &, //
 	info.presentModes.emplace_back(core::PresentMode::Immediate);
 	info.presentModes.emplace_back(core::PresentMode::Fifo);
 	info.presentModes.emplace_back(core::PresentMode::Mailbox);
+
+	if (_output) {
+		// The output's buffers are the screen: they decide the extent, the formats and the pacing.
+		// The images are still ours, so the engine picks how many.
+		info.formats.clear();
+		info.presentModes.clear();
+		info = _output->getSurfaceOptions(sp::move(info));
+		info.minImageCount = 1;
+		info.maxImageCount = 8;
+	}
 
 	return info;
 }
@@ -193,6 +321,30 @@ bool HeadlessSwapchain::init(Device &dev, NotNull<core::Loop> loop, const core::
 		_images.emplace_back(SwapchainImageData{sp::move(image), sp::move(views)});
 	}
 
+	if (auto output = surface ? surface->getOutput() : nullptr) {
+		const auto &extent = swapchainImageInfo.extent;
+		_output = output->makeSwapchain(sprt::window::SoftwareSwapchainInfo{
+			Extent2(extent.width, extent.height), swapchainImageInfo.format, 1});
+		if (!_output) {
+			log::source().error("vk::HeadlessSwapchain", "Output refused the swapchain");
+			return false;
+		}
+
+		const auto size = core::getFormatImageSize(swapchainImageInfo.format, extent);
+		_outputBuffers.reserve(imageCount);
+		for (uint32_t i = 0; i < imageCount; ++i) {
+			auto buffer = dev.getAllocator()->spawnPersistent(
+					AllocationUsage::HostTransitionDestination,
+					BufferInfo(core::ForceBufferUsage(core::BufferUsage::TransferDst), size_t(size),
+							swapchainImageInfo.type));
+			if (!buffer) {
+				log::source().error("vk::HeadlessSwapchain", "Fail to allocate output buffer ", i);
+				return false;
+			}
+			_outputBuffers.emplace_back(sp::move(buffer));
+		}
+	}
+
 	_acquired.resize(imageCount, false);
 	_slots = Rc<core::PlaneSlotTable>::create(imageCount);
 	_loop = loop;
@@ -249,13 +401,15 @@ auto HeadlessSwapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Sta
 }
 
 Status HeadlessSwapchain::present(core::DeviceQueue *, core::ImageStorage *image,
-		const core::PresentInfo &) {
+		const core::PresentInfo &info) {
 	if (_invalid) {
 		return Status::ErrorCancelled;
 	}
 
 	Rc<Image> published;
 	uint32_t publishedSlot = maxOf<uint32_t>();
+	Rc<Image> output;
+	uint32_t outputSlot = maxOf<uint32_t>();
 
 	sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
 
@@ -273,6 +427,9 @@ Status HeadlessSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 				if (_planeSource && _slots->pin(i)) {
 					published = static_cast<Image *>(_images[i].image.get());
 					publishedSlot = i;
+				} else if (_output && _slots->pin(i)) {
+					output = static_cast<Image *>(_images[i].image.get());
+					outputSlot = i;
 				}
 				break;
 			}
@@ -297,7 +454,54 @@ Status HeadlessSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 		publishPlaneFrame(publishedSlot, sp::move(published));
 	}
 
+	if (output) {
+		// Clipped to the image here, so the copy and the rows agree. Empty is the whole image.
+		auto &extent = output->getInfo().extent;
+		Vector<URect> damage;
+		for (auto &r : info.damage) {
+			if (r.x >= extent.width || r.y >= extent.height) {
+				continue;
+			}
+			damage.emplace_back(URect(r.x, r.y, sprt::min(r.width, extent.width - r.x),
+					sprt::min(r.height, extent.height - r.y)));
+		}
+		if (!info.damage.empty() && damage.empty()) {
+			_slots->unpin(outputSlot); // nothing on the screen changed
+		} else {
+			presentToOutput(outputSlot, sp::move(output), sp::move(damage));
+		}
+	}
+
 	return Status::Ok;
+}
+
+void HeadlessSwapchain::presentToOutput(uint32_t slot, Rc<Image> &&image, Vector<URect> &&damage) {
+	auto loop = Rc<core::Loop>(_loop);
+	auto device = Rc<Device>(static_cast<Device *>(_object.device));
+	auto slots = _slots;
+	auto output = _output;
+	auto buffer = _outputBuffers[slot];
+
+	if (device->isDeviceLost() || !loop->isRunning()) {
+		slots->unpin(slot);
+		return;
+	}
+
+	auto &info = image->getInfo();
+	auto extent = Extent2(info.extent.width, info.extent.height);
+	auto pixel = size_t(core::getFormatImageSize(info.format, Extent3(1, 1, 1)));
+
+	device->runTask(*loop,
+			Rc<OutputCopyTask>::create(sp::move(image), Rc<Buffer>(buffer), damage,
+					[slots, slot, output, buffer, extent, pixel, damage](bool success) {
+		// A retired generation (a resize) has nothing on the screen to update any more.
+		if (success && !slots->isRetired()) {
+			buffer->map([&](uint8_t *data, VkDeviceSize) {
+				writeOutput(output, data, extent, pixel, damage);
+			}, DeviceMemoryAccess::Invalidate);
+		}
+		slots->unpin(slot);
+	}));
 }
 
 void HeadlessSwapchain::attachPlaneSource(NotNull<core::PlaneSource> source) {

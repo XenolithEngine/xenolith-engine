@@ -115,4 +115,65 @@ __SPRT_C_FUNC int __SPRT_ID(
 #endif
 }
 
+#if __SPRT_CONFIG_HAVE_SCHED_AFFINITY
+#define __SPRT_SCHED_AFFINITY_UNAVAILABLE(ret)
+#else
+#define __SPRT_SCHED_AFFINITY_UNAVAILABLE(ret) \
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__, \
+			" not available for this platform (__SPRT_CONFIG_HAVE_SCHED_AFFINITY)"); \
+	*__sprt___errno_location() = ENOSYS; \
+	return ret;
+#endif
+
+__SPRT_C_FUNC int __SPRT_ID(sched_getcpu)(void) {
+#if __SPRT_CONFIG_HAVE_SCHED_AFFINITY
+	return sched_getcpu();
+#else
+	__SPRT_SCHED_AFFINITY_UNAVAILABLE(-1)
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(
+		sched_getaffinity)(__SPRT_ID(pid_t) pid, __SPRT_ID(size_t) n, __SPRT_ID(cpu_set_t) * set) {
+#if __SPRT_CONFIG_HAVE_SCHED_AFFINITY
+#if SPRT_EMBOX
+	// Embox's cpu_set_t is one word, bit i = core i; ours is Linux's array of
+	// longs, so the first long carries it, as in thread_t::getaffinity.
+	if (!set || n < sizeof(set->__bits[0])) {
+		*__sprt___errno_location() = EINVAL;
+		return -1;
+	}
+	cpu_set_t mask = 0;
+	auto ret = sched_getaffinity(pid, sizeof(mask), &mask);
+	if (ret == 0) {
+		__sprt_memset(set, 0, n);
+		set->__bits[0] = mask;
+	}
+	return ret;
+#else
+	return sched_getaffinity(pid, n, reinterpret_cast<cpu_set_t *>(set));
+#endif
+#else
+	__SPRT_SCHED_AFFINITY_UNAVAILABLE(-1)
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(sched_setaffinity)(__SPRT_ID(pid_t) pid, __SPRT_ID(size_t) n,
+		const __SPRT_ID(cpu_set_t) * set) {
+#if __SPRT_CONFIG_HAVE_SCHED_AFFINITY
+#if SPRT_EMBOX
+	if (!set || n < sizeof(set->__bits[0])) {
+		*__sprt___errno_location() = EINVAL;
+		return -1;
+	}
+	cpu_set_t mask = static_cast<cpu_set_t>(set->__bits[0]);
+	return sched_setaffinity(pid, sizeof(mask), &mask);
+#else
+	return sched_setaffinity(pid, n, reinterpret_cast<const cpu_set_t *>(set));
+#endif
+#else
+	__SPRT_SCHED_AFFINITY_UNAVAILABLE(-1)
+#endif
+}
+
 } // namespace sprt

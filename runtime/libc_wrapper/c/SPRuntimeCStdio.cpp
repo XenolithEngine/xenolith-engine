@@ -53,6 +53,16 @@ THE SOFTWARE.
 #include "../platform/embox/dirfd.h"
 #endif
 
+#include <sprt/c/sys/__sprt_file.h>
+
+#if __SPRT_CONFIG_HAVE_FLOCK
+#include <sys/file.h>
+
+static_assert(LOCK_SH == __SPRT_LOCK_SH && LOCK_EX == __SPRT_LOCK_EX && LOCK_NB == __SPRT_LOCK_NB
+				&& LOCK_UN == __SPRT_LOCK_UN,
+		"flock operations are passed through as they are");
+#endif
+
 // For legacy functions implementation
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
@@ -623,5 +633,16 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_native)(const char *path,
 __SPRT_C_FUNC int setmode(int, int) __SPRT_NOEXCEPT { return 0; }
 
 __SPRT_C_FUNC int _setmode(int, int) __SPRT_NOEXCEPT { return 0; }
+
+__SPRT_C_FUNC int __SPRT_ID(flock)(int fd, int op) {
+#if __SPRT_CONFIG_HAVE_FLOCK
+	return ::flock(fd, op);
+#else
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_FLOCK)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#endif
+}
 
 } // namespace sprt

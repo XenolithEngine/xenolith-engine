@@ -1,0 +1,29 @@
+diff --git a/src/c11/impl/threads_posix.c b/src/c11/impl/threads_posix.c
+index c6d2cea..46af1b1 100644
+--- a/src/c11/impl/threads_posix.c
++++ b/src/c11/impl/threads_posix.c
+@@ -257,6 +257,24 @@ thrd_create(thrd_t *thr, thrd_start_t func, void *arg)
+     if (!pack) return thrd_nomem;
+     pack->func = func;
+     pack->arg = arg;
++#if defined(__EMBOX__)
++    /* A thread on Embox gets 1 MiB unless it asks, and exception frames share
++     * it at EL1. LLVM compiles shader variants on lavapipe's queue thread,
++     * llvmpipe's threads run the JIT code. Stacks come from a heap of their
++     * own (96 MiB on the boards), so not Linux's 8 MiB for each: 4. */
++    pthread_attr_t attr;
++    int ret = pthread_attr_init(&attr);
++    if (ret == 0)
++        ret = pthread_attr_setstacksize(&attr, 4 * 1024 * 1024);
++    if (ret == 0)
++        ret = pthread_create(thr, &attr, impl_thrd_routine, pack);
++    pthread_attr_destroy(&attr);
++    if (ret != 0) {
++        free(pack);
++        return thrd_error;
++    }
++    return thrd_success;
++#endif
+     if (pthread_create(thr, NULL, impl_thrd_routine, pack) != 0) {
+         free(pack);
+         return thrd_error;

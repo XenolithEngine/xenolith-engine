@@ -1,0 +1,33 @@
+diff --git a/src/gallium/targets/lavapipe/meson.build b/src/gallium/targets/lavapipe/meson.build
+index 41de1e5..92f4013 100644
+--- a/src/gallium/targets/lavapipe/meson.build
++++ b/src/gallium/targets/lavapipe/meson.build
+@@ -1,5 +1,20 @@
+ 
+ 
++# Embox has no dynamic loader: the driver is linked into the kernel image, and
++# the application takes vk_icdGetInstanceProcAddr from it directly. Every object
++# goes in (link_whole): the dispatch tables name the entry points as weak
++# symbols, which would not pull an archive member in.
++if host_machine.system() == 'embox'
++libvulkan_lvp = static_library(
++  'vulkan_lvp',
++  [ 'lavapipe_target.c' ],
++  include_directories : [ inc_src, inc_util, inc_include, inc_gallium, inc_gallium_aux, inc_gallium_winsys, inc_gallium_drivers ],
++  link_whole : [ liblavapipe_st, libpipe_loader_static, libgallium, libwsw, libswdri, libws_null, libswkmsdri ],
++  gnu_symbol_visibility : 'hidden',
++  dependencies : [driver_llvmpipe, idep_mesautil],
++  install : true,
++)
++else
+ libvulkan_lvp = shared_library(
+   'vulkan_lvp',
+   [ 'lavapipe_target.c' ],
+@@ -17,6 +32,7 @@ libvulkan_lvp = shared_library(
+   name_prefix : host_machine.system() == 'windows' ? '' : [],
+   install : true,
+ )
++endif
+ 
+ icd_file_name = libname_prefix + 'vulkan_lvp.' + libname_suffix
+ 

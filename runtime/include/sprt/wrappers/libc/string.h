@@ -174,10 +174,10 @@ char *strncpy(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src,
 #endif
 
 SPRT_UMBRELLA_FUNC
-const char *strstr(const char *str, const char *nstr) SPRT_UMBRELLA_END
+char *strstr(const char *str, const char *nstr) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_strstr(str, nstr);
+	return (char *)__sprt_strstr(str, nstr);
 }
 #endif
 
@@ -286,10 +286,10 @@ size_t strspn(const char *str, const char *span) SPRT_UMBRELLA_END
 #endif
 
 SPRT_UMBRELLA_FUNC
-const char *strpbrk(const char *str, const char *span) SPRT_UMBRELLA_END
+char *strpbrk(const char *str, const char *span) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_strpbrk(str, span);
+	return (char *)__sprt_strpbrk(str, span);
 }
 #endif
 
@@ -360,6 +360,14 @@ char *strdup(const char *str) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_strdup(str);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+char *strndup(const char *str, size_t n) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strndup(str, n);
 }
 #endif
 

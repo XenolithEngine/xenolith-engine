@@ -63,6 +63,7 @@ THE SOFTWARE.
 #else
 
 #include <sprt/c/__sprt_sched.h>
+#include <sprt/c/__sprt_string.h> // CPU_ZERO_S and CPU_EQUAL_S expand to its functions
 
 __SPRT_BEGIN_DECL
 
@@ -74,8 +75,8 @@ typedef __SPRT_ID(cpu_set_t) cpuset_t;
 #define CPU_SETSIZE __SPRT_CPU_SETSIZE
 
 #define CPU_SET_S(i, size, set) __SPRT_CPU_SET_S(i, size, set)
-#define CPU_CLR_S(i, size, set) __SPRT_CPU_SET_S(i, size, set)
-#define CPU_ISSET_S(i, size, set) __SPRT_CPU_SET_S(i, size, set)
+#define CPU_CLR_S(i, size, set) __SPRT_CPU_CLR_S(i, size, set)
+#define CPU_ISSET_S(i, size, set) __SPRT_CPU_ISSET_S(i, size, set)
 
 #define CPU_AND_S(a, b, c, d) __SPRT_CPU_AND_S(a,b,c,d)
 #define CPU_OR_S(a, b, c, d) __SPRT_CPU_OR_S(a,b,c,d)
@@ -161,6 +162,34 @@ int sched_yield(void) SPRT_UMBRELLA_END
 {
 	return __sprt_sched_yield();
 }
+#endif
+
+#if __SPRT_CONFIG_HAVE_SCHED_AFFINITY || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+
+SPRT_UMBRELLA_FUNC
+int sched_getcpu(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sched_getcpu();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int sched_getaffinity(pid_t pid, __SPRT_ID(size_t) n, cpu_set_t *set) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sched_getaffinity(pid, n, set);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int sched_setaffinity(pid_t pid, __SPRT_ID(size_t) n, const cpu_set_t *set) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sched_setaffinity(pid, n, set);
+}
+#endif
+
 #endif
 
 __SPRT_END_DECL
