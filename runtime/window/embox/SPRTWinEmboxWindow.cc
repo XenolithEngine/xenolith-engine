@@ -192,6 +192,15 @@ Status EmboxSoftwareSwapchain::present(uint32_t index, SpanView<geom::URect> dam
 				y1 = it.y + it.height;
 			}
 		}
+		// Out to whole cache lines, 16 pixels: the copy below goes row by row into an uncached
+		// mapping, and a row that starts off an 8-byte boundary sends the kernel's memcpy to its
+		// byte loop - one uncached store a byte. A damage box at an odd x made present 3.5 ms on
+		// the Pi 4 where the same rows aligned take 0.5. The shadow holds the whole frame at the
+		// scanout's stride, so the extra pixels copied are the right ones.
+		if (x1 > x0) {
+			x0 &= ~15U;
+			x1 = (x1 + 15U) & ~15U;
+		}
 		if (x1 > _extent.width) {
 			x1 = _extent.width;
 		}
