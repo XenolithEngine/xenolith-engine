@@ -135,8 +135,10 @@
 #define __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER 0
 #endif
 
+// Embox's pthread_setaffinity_np sets the scheduler's own mask, the one it
+// obeys (module embox.compat.posix.pthread.pthreads_affinity_np, BF-44).
 #ifndef __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY
-#define __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY 0
+#define __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY 1
 #endif
 
 #ifndef __SPRT_CONFIG_HAVE_MMAN_MLOCKALL

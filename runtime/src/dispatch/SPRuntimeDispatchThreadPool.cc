@@ -23,8 +23,106 @@
 #include <sprt/runtime/dispatch/thread_pool.h>
 #include <sprt/runtime/dispatch/thread_info.h>
 #include <sprt/runtime/dispatch/thread.h>
+#include <sprt/runtime/log.h>
+
+#include <pthread.h>
+#include <sched.h>
+#include <stdlib.h>
+#include <string.h>
 
 namespace sprt::dispatch {
+
+// SP_DISPATCH_AFFINITY: the cores the pool workers are pinned to, as a list
+// with ranges ("1-3", "0,2,3"). Worker i of every pool goes to core list[i % n].
+// Unset, empty or "off": nobody is pinned, the scheduler places them (BF-44).
+static constexpr uint32_t DispatchAffinityMax = 64;
+static constexpr uint32_t DispatchAffinityCoreLimit = 1'024; // CPU_SETSIZE
+
+// Whether the bad value has been reported: every worker parses the variable,
+// one of them says what was wrong with it.
+static int s_dispatchAffinityReported = 0;
+
+static bool ThreadPool_readUint(const char *&p, uint32_t &out) {
+	if (*p < '0' || *p > '9') {
+		return false;
+	}
+	uint32_t v = 0;
+	while (*p >= '0' && *p <= '9') {
+		v = v * 10 + uint32_t(*p - '0');
+		if (v >= DispatchAffinityCoreLimit) {
+			return false;
+		}
+		++p;
+	}
+	out = v;
+	return true;
+}
+
+// The list, or 0 when nothing is to be pinned -- including when the value is
+// wrong, which is then said once, loudly: a typo must not look like "pinning
+// makes no difference".
+static uint32_t ThreadPool_readAffinity(uint32_t (&cores)[DispatchAffinityMax]) {
+	auto value = ::getenv("SP_DISPATCH_AFFINITY");
+	if (!value || !*value || ::strcmp(value, "off") == 0) {
+		return 0;
+	}
+
+	uint32_t n = 0;
+	const char *p = value;
+	while (true) {
+		uint32_t first = 0, last = 0;
+		if (!ThreadPool_readUint(p, first)) {
+			break;
+		}
+		last = first;
+		if (*p == '-') {
+			++p;
+			if (!ThreadPool_readUint(p, last) || last < first) {
+				break;
+			}
+		}
+		for (auto c = first; c <= last && n < DispatchAffinityMax; ++c) { cores[n++] = c; }
+		if (*p == 0) {
+			return n;
+		}
+		if (*p != ',') {
+			break;
+		}
+		++p;
+	}
+
+	if (__atomic_exchange_n(&s_dispatchAffinityReported, 1, __ATOMIC_RELAXED) == 0) {
+		oslog::vperror(__SPRT_LOCATION, "dispatch::ThreadPool", "SP_DISPATCH_AFFINITY=",
+				StringView(value),
+				" is not a list of cores like 1-3 or 0,2,3; no worker is pinned");
+	}
+	return 0;
+}
+
+// Runs on the worker itself, before its first task.
+static void ThreadPool_pinWorker(StringView name, uint32_t workerId) {
+	uint32_t cores[DispatchAffinityMax];
+	auto n = ThreadPool_readAffinity(cores);
+	if (n == 0) {
+		return;
+	}
+
+	auto core = cores[workerId % n];
+	cpu_set_t set;
+	CPU_ZERO(&set);
+	CPU_SET(core, &set);
+	auto ret = pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
+	if (ret == 0) {
+		// Read back, so the line says what the kernel keeps, not what was asked.
+		CPU_ZERO(&set);
+		pthread_getaffinity_np(pthread_self(), sizeof(set), &set);
+		oslog::vpinfo(__SPRT_LOCATION, "dispatch::ThreadPool", name, " worker ", workerId,
+				": pinned to core ", core, ", mask now ", uint64_t(set.__bits[0]));
+	} else {
+		oslog::vperror(__SPRT_LOCATION, "dispatch::ThreadPool", name, " worker ", workerId,
+				": pinning to core ", core, " failed: ", ret);
+	}
+}
 
 class ThreadPool::Worker : public Thread {
 public:
@@ -91,6 +189,7 @@ ThreadPool::Worker::~Worker() { sprt::release(_queue->threadPool, _queueRefId); 
 
 void ThreadPool::Worker::threadInit() {
 	sprt::dispatch::thread_info::set(_name, _workerId, true);
+	ThreadPool_pinWorker(_name, _workerId);
 	Thread::threadInit();
 }
 
