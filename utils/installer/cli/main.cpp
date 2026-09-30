@@ -24,6 +24,12 @@
 // with the GUI. Commands: detect, paths, config, state, verify, list, fetch, install, new, build,
 // engine-refs, engine-install.
 
+// Set by the Makefile from XENOLITH_CLI_VERSION (release builds stamp the cli-v* tag there);
+// absent means a local, non-release build.
+#ifndef XENOLITH_CLI_VERSION
+#define XENOLITH_CLI_VERSION "dev"
+#endif
+
 #include "SPICommon.h"
 #include "SPIDirs.h"
 #include "SPITriple.h"
@@ -684,7 +690,7 @@ static int cmdBuild(int argc, const char *argv[]) {
 }
 
 static void printUsage(StringView prog) {
-	sprt::cerr << "Xenolith SDK installer (CLI)\n";
+	sprt::cerr << "Xenolith SDK installer (CLI) " << XENOLITH_CLI_VERSION << "\n";
 	sprt::cerr << "Usage: " << prog << " <command> [args]\n\n";
 	sprt::cerr << "Commands:\n";
 	sprt::cerr << "  detect        Print the detected native host triple\n";
@@ -712,7 +718,13 @@ static int run(int argc, const char *argv[]) {
 	auto prog = argc > 0 ? StringView(argv[0]) : StringView("xenolith-cli");
 	auto cmd = argc > 1 ? StringView(argv[1]) : StringView();
 
-	if (cmd == "detect") {
+	if (cmd == "--version" || cmd == "-v") {
+		// The triple and the built-in default release are what a bug report needs: they say which
+		// binary ran and which FTP directory it falls back to when discovery fails.
+		sprt::cout << "xenolith-cli " << XENOLITH_CLI_VERSION << " (" << getNativeArch() << "-"
+				   << getNativeOs() << ", default release " << getDefaultRelease() << ")\n";
+		return 0;
+	} else if (cmd == "detect") {
 		return cmdDetect();
 	} else if (cmd == "paths") {
 		return cmdPaths();
