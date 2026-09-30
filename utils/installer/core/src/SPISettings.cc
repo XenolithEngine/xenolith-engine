@@ -44,8 +44,23 @@ String SourceConfig::getReleasesRoot() const {
 }
 
 String SourceConfig::getReleaseBase(StringView release) const {
-	const auto rel = release.empty() ? getDefaultRelease() : release;
-	return getReleasesRoot() + rel.str<mem_std::Interface>();
+	// A resolved release is required: with no pin and a failed discovery there is nothing adequate
+	// to concatenate, and quietly producing "<root>" (the listing itself) would turn an error into
+	// a catalogue of garbage.
+	return getReleasesRoot() + release.str<mem_std::Interface>() + "/";
+}
+
+ReleaseSelection SourceConfig::selectRelease() const {
+	ReleaseSelection sel;
+	if (!sdkRelease.empty()) {
+		// The pin is trusted verbatim — a typo in it surfaces as the catalogue fetch failing
+		// against a named, visible directory, which is easier to act on than a guess here.
+		sel.pinned = true;
+		sel.release = sdkRelease;
+		sel.base = getReleaseBase(sdkRelease);
+		return sel;
+	}
+	return discoverRelease(getReleasesRoot());
 }
 
 Settings Settings::load(StringView path) {
@@ -60,6 +75,7 @@ Settings Settings::load(StringView path) {
 
 	st.sources.engineRepoUrl = v.getString("engineRepoUrl");
 	st.sources.releasesRoot = v.getString("releaseSourceUrl");
+	st.sources.sdkRelease = v.getString("sdkRelease");
 	st.enginePath = v.getString("enginePath");
 	st.toolchainsPath = v.getString("toolchainsPath");
 	st.lang = v.getString("lang");
@@ -97,6 +113,9 @@ bool Settings::save(StringView path) const {
 	}
 	if (!sources.releasesRoot.empty()) {
 		v.setString(sources.releasesRoot, "releaseSourceUrl");
+	}
+	if (!sources.sdkRelease.empty()) {
+		v.setString(sources.sdkRelease, "sdkRelease");
 	}
 	if (!enginePath.empty()) {
 		v.setString(enginePath, "enginePath");
@@ -149,6 +168,8 @@ static constexpr SettingsField s_settingsFields[] = {
 	{StringView("engineRepoUrl"), false, StringView("git URL the engine is cloned from")},
 	{StringView("releaseSourceUrl"), false,
 		StringView("FTP/HTTP root the binary releases are fetched from")},
+	{StringView("sdkRelease"), false,
+		StringView("SDK release directory under the release source; empty = newest on the server")},
 	{StringView("enginePath"), false,
 		StringView("engine checkout to build against; below --engine and $XENOLITH_ENGINE")},
 	{StringView("toolchainsPath"), false,
@@ -179,6 +200,8 @@ Value Settings::getFieldValue(StringView key) const {
 		return Value(sources.engineRepoUrl);
 	} else if (key == "releaseSourceUrl") {
 		return Value(sources.releasesRoot);
+	} else if (key == "sdkRelease") {
+		return Value(sources.sdkRelease);
 	} else if (key == "enginePath") {
 		return Value(enginePath);
 	} else if (key == "toolchainsPath") {
@@ -200,6 +223,8 @@ bool Settings::setFieldValue(StringView key, const Value &value) {
 		sources.engineRepoUrl = value.getString();
 	} else if (key == "releaseSourceUrl") {
 		sources.releasesRoot = value.getString();
+	} else if (key == "sdkRelease") {
+		sources.sdkRelease = value.getString();
 	} else if (key == "enginePath") {
 		enginePath = value.getString();
 	} else if (key == "toolchainsPath") {

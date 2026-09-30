@@ -172,7 +172,7 @@ Vector<CatalogueComponent> buildCatalogue(StringView hostsText, StringView targe
 }
 
 String resolveActiveRelease(StringView releasesListing) {
-	String best = toString(getDefaultRelease());
+	String best; // empty = none seen yet; there is no compiled-in default to seed it with
 	for (const auto &e : parseListing(releasesListing)) {
 		if (!e.isDir) {
 			continue;
@@ -181,7 +181,7 @@ String resolveActiveRelease(StringView releasesListing) {
 		if (!name.starts_with("sdk-v")) {
 			continue;
 		}
-		if (compareSdkTags(name, best) > 0) {
+		if (best.empty() || compareSdkTags(name, best) > 0) {
 			best = name.str<mem_std::Interface>();
 		}
 	}
@@ -200,18 +200,21 @@ ReleaseSelection discoverRelease(StringView releasesRoot) {
 
 	String listing;
 	auto r = fetchTextRetry(root, listing);
-	if (r && !listing.empty()) {
-		// resolveActiveRelease never returns empty — it falls back to the built-in default itself
-		// when the listing carries no sdk-v* directories.
-		sel.release = resolveActiveRelease(listing);
-		sel.discovered = true;
-	} else if (!r) {
-		sel.setError(r.status, r.error);
+	if (!r) {
+		sel.setError(r.status, "could not list ", root, ": ", r.error);
+		return sel;
+	}
+	if (listing.empty()) {
+		sel.setError(r.status, "empty listing from ", root);
+		return sel;
 	}
 
+	sel.release = resolveActiveRelease(listing);
 	if (sel.release.empty()) {
-		sel.release = toString(getDefaultRelease());
+		sel.setError(Status::ErrorNotFound, "no sdk-v* releases under ", root);
+		return sel;
 	}
+	sel.discovered = true;
 	sel.base = root + sel.release;
 	return sel;
 }
