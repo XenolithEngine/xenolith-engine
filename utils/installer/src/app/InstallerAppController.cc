@@ -664,9 +664,14 @@ void AppController::loadCatalogue(Function<void(bool ok, String err)> &&onDone) 
 			StringView("Loading catalogue"));
 
 	_app->perform([sources, errStr, built](const AppThread::Task &) -> bool {
-		// A failed listing falls back to the built-in default release inside discoverRelease;
-		// the hosts/targets fetch below then produces the error the user actually needs.
-		auto sel = discoverRelease(sources.getReleasesRoot());
+		// The pin (if any) or the newest sdk-v* on the server — and a hard stop when neither is
+		// available: there is no adequate fallback release, and reading the hosts/targets of an
+		// unnamed one would only misreport the cause as a catalogue error.
+		auto sel = sources.selectRelease();
+		if (!sel) {
+			*errStr = toString("release: ") + sel.error;
+			return false;
+		}
 
 		auto base = sel.base;
 		String hostsText, targetsText;

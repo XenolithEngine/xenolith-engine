@@ -236,6 +236,15 @@ static String getEffectiveSetting(const CliEnv &env, StringView key) {
 		return env.settings.sources.getEngineRepoUrl();
 	} else if (key == "releaseSourceUrl") {
 		return env.settings.sources.getReleasesRoot();
+	} else if (key == "sdkRelease") {
+		// What a run would read: the pin when set, else whatever the server last answered — the
+		// live answer needs a network round trip this display does not make, and "newest on the
+		// server" is the honest description of that.
+		auto sel = env.settings.sources.selectRelease();
+		if (sel.pinned) {
+			return sel.release;
+		}
+		return sel ? toString(sel.release, "  (newest on the server)") : toString("(cannot list the server: ", sel.error, ")");
 	} else if (key == "enginePath") {
 		bool ok = false;
 		auto root = resolveEngineRoot(env.layout, StringView(), &ok);
@@ -405,18 +414,14 @@ static int cmdList() {
 	auto env = getEnv();
 	const auto &layout = env.layout;
 
-	auto sel = discoverRelease(env.settings.sources.getReleasesRoot());
-	if (sel.discovered) {
-		sprt::cerr << "Release " << sel.release << " (newest on the server)\n";
-	} else {
-		// Pinned to the built-in default, not tracking the server — say so, or "why is list
-		// offering the old release" reads as a mystery.
-		sprt::cerr << "Release " << sel.release << " (built-in default";
-		if (!sel.error.empty()) {
-			sprt::cerr << "; listing failed: " << sel.error;
-		}
-		sprt::cerr << ")\n";
+	auto sel = env.settings.sources.selectRelease();
+	if (!sel) {
+		sprt::cerr << "error: " << sel.error << "\n";
+		return 1;
 	}
+	sprt::cerr << "Release " << sel.release
+			   << (sel.pinned ? StringView("  (pinned via sdkRelease)") : StringView("  (newest on the server)"))
+			   << "\n";
 	sprt::cerr << "Fetching catalogue from " << sel.base << " ...\n";
 
 	// URLs, not paths: the trailing slash is what makes the FTP server list a directory.
@@ -551,17 +556,18 @@ static int installEngine(const CliEnv &env, const CliArgs &args) {
 	return 0;
 }
 
-// Resolve which release this run installs from, with the one-line note a pinned run deserves.
-// `install` is where a silently stale release hurts: it downloads old toolchains that look fresh.
+// Resolve which release this run reads/installs from: the sdkRelease pin when set, else the newest
+// sdk-v* on the server. `install` is where a wrong release hurts: it downloads toolchains that
+// look fresh but are not, so a selection that could not be made is fatal, never defaulted.
 static ReleaseSelection resolveReleaseOrNote(const CliEnv &env) {
-	auto sel = discoverRelease(env.settings.sources.getReleasesRoot());
-	if (!sel.discovered) {
-		sprt::cerr << "• Release " << sel.release << " (built-in default";
-		if (!sel.error.empty()) {
-			sprt::cerr << "; listing failed: " << sel.error;
-		}
-		sprt::cerr << ")\n";
+	auto sel = env.settings.sources.selectRelease();
+	if (!sel) {
+		sprt::cerr << "• Release: error: " << sel.error << "\n";
+		return sel;
 	}
+	sprt::cerr << "• Release " << sel.release
+			   << (sel.pinned ? StringView("  (pinned via sdkRelease)") : StringView("  (newest on the server)"))
+			   << "\n";
 	return sel;
 }
 
@@ -607,6 +613,9 @@ static int cmdInstall(int argc, const char *argv[]) {
 			return e;
 		}
 		auto sel = resolveReleaseOrNote(env);
+		if (!sel) {
+			return 1;
+		}
 		if (int e = installOne(env, sel.release, h.native, true, false, "host toolchain"); e != 0) {
 			return e;
 		}
@@ -630,6 +639,9 @@ static int cmdInstall(int argc, const char *argv[]) {
 
 	const auto &id = args.positional[0];
 	auto sel = resolveReleaseOrNote(env);
+	if (!sel) {
+		return 1;
+	}
 	if (int e = installOne(env, sel.release, id, args.wantHost, args.wantTarget, "component");
 			e != 0) {
 		return e;
@@ -719,10 +731,9 @@ static int run(int argc, const char *argv[]) {
 	auto cmd = argc > 1 ? StringView(argv[1]) : StringView();
 
 	if (cmd == "--version" || cmd == "-v") {
-		// The triple and the built-in default release are what a bug report needs: they say which
-		// binary ran and which FTP directory it falls back to when discovery fails.
+		// The triple is what a bug report needs beyond the version: it says which binary ran.
 		sprt::cout << "xenolith-cli " << XENOLITH_CLI_VERSION << " (" << getNativeArch() << "-"
-				   << getNativeOs() << ", default release " << getDefaultRelease() << ")\n";
+				   << getNativeOs() << ")\n";
 		return 0;
 	} else if (cmd == "detect") {
 		return cmdDetect();
