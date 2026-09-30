@@ -664,20 +664,18 @@ void AppController::loadCatalogue(Function<void(bool ok, String err)> &&onDone) 
 			StringView("Loading catalogue"));
 
 	_app->perform([sources, errStr, built](const AppThread::Task &) -> bool {
-		String release = toString(getDefaultRelease());
-		String releasesText;
-		if (fetchText(sources.getReleasesRoot(), releasesText)) {
-			release = resolveActiveRelease(releasesText);
-		}
+		// A failed listing falls back to the built-in default release inside discoverRelease;
+		// the hosts/targets fetch below then produces the error the user actually needs.
+		auto sel = discoverRelease(sources.getReleasesRoot());
 
-		auto base = sources.getReleaseBase(release);
+		auto base = sel.base;
 		String hostsText, targetsText;
-		auto hostsResult = fetchText(toString(base) + "/hosts/", hostsText);
+		auto hostsResult = fetchTextRetry(toString(base) + "/hosts/", hostsText);
 		if (!hostsResult) {
 			*errStr = toString("hosts: ") + hostsResult.error;
 			return false;
 		}
-		auto targetsResult = fetchText(toString(base) + "/targets/", targetsText);
+		auto targetsResult = fetchTextRetry(toString(base) + "/targets/", targetsText);
 		if (!targetsResult) {
 			*errStr = toString("targets: ") + targetsResult.error;
 			return false;
@@ -687,7 +685,7 @@ void AppController::loadCatalogue(Function<void(bool ok, String err)> &&onDone) 
 
 		auto host = resolveHost(getNativeArch(), getNativeOs());
 		built->nativeId = host.native;
-		built->release = release;
+		built->release = sel.release;
 		for (const auto &c : comps) {
 			CatalogRow row;
 			row.kind = c.kind;

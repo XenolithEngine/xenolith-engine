@@ -67,6 +67,24 @@ inline String getDefaultReleasesRoot() {
 // Pick the newest `sdk-v*` directory from an FTP LIST of /releases/. Falls back to getDefaultRelease().
 SP_PUBLIC String resolveActiveRelease(StringView releasesListing);
 
+/* The outcome of release discovery: which release directory the catalogue should be read from.
+
+`discovered` separates the two ways `release` can be filled: read off the server (true) or the
+compiled-in fallback (false). A failed discovery still yields a usable selection — the built-in
+default — so a caller that wants the old never-fail behaviour simply ignores the error, while one
+that must tell the user why they are pinned to a stale release reads it. */
+struct SP_PUBLIC ReleaseSelection : OperationResult {
+	String release; // directory name under the releases root, e.g. "sdk-v0rc0"
+	String base; // full URL of that directory, with the trailing slash
+	bool discovered = false;
+};
+
+// One network round trip: list `releasesRoot` and pick the newest `sdk-v*` in it. This is the ONLY
+// sanctioned way to turn a mirror into a release directory — both front ends (GUI catalogue load,
+// CLI list/install) must go through it, or one of them silently pins the compiled-in default while
+// the other tracks the server (which is exactly the bug this was extracted from).
+SP_PUBLIC ReleaseSelection discoverRelease(StringView releasesRoot);
+
 // As above: the default-source form. Prefer SourceConfig::getReleaseBase().
 inline String getDefaultReleaseBase(StringView release = StringView()) {
 	const auto rel = release.empty() ? getDefaultRelease() : release;

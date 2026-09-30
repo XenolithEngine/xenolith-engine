@@ -111,33 +111,8 @@ String getWrapperDir(StringView dir, StringView id, StringView triple) {
 	return String();
 }
 
-// The FTP listing and the archive download are both flaky enough to be worth a few attempts.
-constexpr int kTransportAttempts = 4;
-
-TransportResult fetchTextRetry(StringView url, String &out) {
-	TransportResult r;
-	for (int i = 0; i < kTransportAttempts; ++i) {
-		out.clear();
-		r = fetchText(url, out);
-		if (r && !out.empty()) {
-			return r;
-		}
-	}
-	return r;
-}
-
-TransportResult fetchBytesRetry(StringView url, Bytes &out,
-		const Function<void(int64_t, int64_t)> &progress) {
-	TransportResult r;
-	for (int i = 0; i < kTransportAttempts; ++i) {
-		out.clear();
-		r = fetchBytes(url, out, progress);
-		if (r && !out.empty()) {
-			return r;
-		}
-	}
-	return r;
-}
+// The FTP listing and the archive download are both flaky enough to be worth a few attempts:
+// fetchTextRetry/fetchBytesRetry in SPITransport.
 
 } // namespace
 
