@@ -398,17 +398,29 @@ static int cmdFetch(int argc, const char *argv[]) {
 static int cmdList() {
 	auto env = getEnv();
 	const auto &layout = env.layout;
-	auto base = env.settings.sources.getReleaseBase(StringView());
-	sprt::cerr << "Fetching catalogue from " << base << " ...\n";
+
+	auto sel = discoverRelease(env.settings.sources.getReleasesRoot());
+	if (sel.discovered) {
+		sprt::cerr << "Release " << sel.release << " (newest on the server)\n";
+	} else {
+		// Pinned to the built-in default, not tracking the server — say so, or "why is list
+		// offering the old release" reads as a mystery.
+		sprt::cerr << "Release " << sel.release << " (built-in default";
+		if (!sel.error.empty()) {
+			sprt::cerr << "; listing failed: " << sel.error;
+		}
+		sprt::cerr << ")\n";
+	}
+	sprt::cerr << "Fetching catalogue from " << sel.base << " ...\n";
 
 	// URLs, not paths: the trailing slash is what makes the FTP server list a directory.
 	String hostsText, targetsText;
-	auto r1 = fetchText(toString(base, "/hosts/"), hostsText);
+	auto r1 = fetchTextRetry(toString(sel.base, "/hosts/"), hostsText);
 	if (!r1) {
 		sprt::cerr << "hosts: " << r1.error << "\n";
 		return 1;
 	}
-	auto r2 = fetchText(toString(base, "/targets/"), targetsText);
+	auto r2 = fetchTextRetry(toString(sel.base, "/targets/"), targetsText);
 	if (!r2) {
 		sprt::cerr << "targets: " << r2.error << "\n";
 		return 1;
@@ -533,13 +545,27 @@ static int installEngine(const CliEnv &env, const CliArgs &args) {
 	return 0;
 }
 
+// Resolve which release this run installs from, with the one-line note a pinned run deserves.
+// `install` is where a silently stale release hurts: it downloads old toolchains that look fresh.
+static ReleaseSelection resolveReleaseOrNote(const CliEnv &env) {
+	auto sel = discoverRelease(env.settings.sources.getReleasesRoot());
+	if (!sel.discovered) {
+		sprt::cerr << "• Release " << sel.release << " (built-in default";
+		if (!sel.error.empty()) {
+			sprt::cerr << "; listing failed: " << sel.error;
+		}
+		sprt::cerr << ")\n";
+	}
+	return sel;
+}
+
 // Run one installComponent and report progress/completion.
-static int installOne(const CliEnv &env, StringView id, bool wantHost, bool wantTarget,
-		StringView label) {
+static int installOne(const CliEnv &env, StringView release, StringView id, bool wantHost,
+		bool wantTarget, StringView label) {
 	sprt::cerr << "• " << label << ": " << id << "\n";
 
 	uint64_t lastStep = maxOf<uint64_t>();
-	auto r = installComponent(env.settings.sources, StringView(), id, env.layout, wantHost,
+	auto r = installComponent(env.settings.sources, release, id, env.layout, wantHost,
 			wantTarget, makeProgressReporter(lastStep));
 	if (!r || r.installed.empty()) {
 		sprt::cerr << "\nerror: " << r.error << "\n";
@@ -574,17 +600,18 @@ static int cmdInstall(int argc, const char *argv[]) {
 		if (int e = installEngine(env, args); e != 0) {
 			return e;
 		}
-		if (int e = installOne(env, h.native, true, false, "host toolchain"); e != 0) {
+		auto sel = resolveReleaseOrNote(env);
+		if (int e = installOne(env, sel.release, h.native, true, false, "host toolchain"); e != 0) {
 			return e;
 		}
-		if (int e = installOne(env, h.native, false, true, "target"); e != 0) {
+		if (int e = installOne(env, sel.release, h.native, false, true, "target"); e != 0) {
 			return e;
 		}
 
 		// The +sprt target is optional — install it only when the catalogue has one.
 		auto sprtTarget = toString(h.native, "+sprt");
 		uint64_t lastStep = maxOf<uint64_t>();
-		auto r = installComponent(env.settings.sources, StringView(), sprtTarget, env.layout, false,
+		auto r = installComponent(env.settings.sources, sel.release, sprtTarget, env.layout, false,
 				true, makeProgressReporter(lastStep));
 		if (r) {
 			sprt::cerr << "\r    ✓ " << sprtTarget << "                         \n";
@@ -596,7 +623,9 @@ static int cmdInstall(int argc, const char *argv[]) {
 	}
 
 	const auto &id = args.positional[0];
-	if (int e = installOne(env, id, args.wantHost, args.wantTarget, "component"); e != 0) {
+	auto sel = resolveReleaseOrNote(env);
+	if (int e = installOne(env, sel.release, id, args.wantHost, args.wantTarget, "component");
+			e != 0) {
 		return e;
 	}
 	sprt::cout << "Installed " << id << "\n";

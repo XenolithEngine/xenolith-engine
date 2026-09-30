@@ -21,6 +21,7 @@
  **/
 
 #include "SPICatalogue.h"
+#include "SPITransport.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
@@ -185,6 +186,34 @@ String resolveActiveRelease(StringView releasesListing) {
 		}
 	}
 	return best;
+}
+
+ReleaseSelection discoverRelease(StringView releasesRoot) {
+	ReleaseSelection sel;
+
+	// A URL, not a path: the trailing slash is what makes the FTP server list the directory, so it
+	// is guaranteed here once instead of being every caller's remembering to.
+	String root = toString(releasesRoot);
+	if (root.empty() || root.back() != '/') {
+		root += '/';
+	}
+
+	String listing;
+	auto r = fetchTextRetry(root, listing);
+	if (r && !listing.empty()) {
+		// resolveActiveRelease never returns empty — it falls back to the built-in default itself
+		// when the listing carries no sdk-v* directories.
+		sel.release = resolveActiveRelease(listing);
+		sel.discovered = true;
+	} else if (!r) {
+		sel.setError(r.status, r.error);
+	}
+
+	if (sel.release.empty()) {
+		sel.release = toString(getDefaultRelease());
+	}
+	sel.base = root + sel.release;
+	return sel;
 }
 
 } // namespace stappler::xenolith::installer

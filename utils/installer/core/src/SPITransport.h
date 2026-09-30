@@ -43,6 +43,14 @@ SP_PUBLIC TransportResult fetchText(StringView url, String &out);
 SP_PUBLIC TransportResult fetchBytes(StringView url, Bytes &out,
 		const Function<void(int64_t, int64_t)> &progress = {});
 
+// The transport-level retry policy: the FTP server drops LIST responses and stalls archive
+// transfers often enough that a single attempt regularly fails a whole catalogue read or install,
+// so every network consumer here goes through these instead of the single-shot forms above.
+SP_PUBLIC TransportResult fetchTextRetry(StringView url, String &out);
+
+SP_PUBLIC TransportResult fetchBytesRetry(StringView url, Bytes &out,
+		const Function<void(int64_t, int64_t)> &progress = {});
+
 } // namespace stappler::xenolith::installer
 
 #endif // UTILS_INSTALLER_CORE_SRC_SPITRANSPORT_H_

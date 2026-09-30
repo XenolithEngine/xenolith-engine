@@ -35,6 +35,11 @@ void finishTransport(TransportResult &result, long code) {
 	}
 }
 
+// The FTP server drops LIST responses and stalls archive transfers often enough to be worth a few
+// attempts; an empty body counts as a failure too (a "successful" empty listing would silently
+// present an empty catalogue).
+constexpr int kTransportAttempts = 4;
+
 } // namespace
 
 TransportResult fetchText(StringView url, String &out) {
@@ -90,6 +95,31 @@ TransportResult fetchBytes(StringView url, Bytes &out,
 
 	finishTransport(result, h.getResponseCode());
 	return result;
+}
+
+TransportResult fetchTextRetry(StringView url, String &out) {
+	TransportResult r;
+	for (int i = 0; i < kTransportAttempts; ++i) {
+		out.clear();
+		r = fetchText(url, out);
+		if (r && !out.empty()) {
+			return r;
+		}
+	}
+	return r;
+}
+
+TransportResult fetchBytesRetry(StringView url, Bytes &out,
+		const Function<void(int64_t, int64_t)> &progress) {
+	TransportResult r;
+	for (int i = 0; i < kTransportAttempts; ++i) {
+		out.clear();
+		r = fetchBytes(url, out, progress);
+		if (r && !out.empty()) {
+			return r;
+		}
+	}
+	return r;
 }
 
 } // namespace stappler::xenolith::installer
