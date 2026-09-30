@@ -20,12 +20,26 @@ What the script does:
 3. Installs the binary into `~/.local/bin` (override with `XENOLITH_BIN_DIR`) and creates an
    `xenolith-installer-cli` symlink for the pre-categories tool name.
 
+== Install (Windows)
+
+```powershell
+irm https://raw.githubusercontent.com/XenolithEngine/xenolith-engine/master/install.ps1 | iex
+```
+
+The same flow (`PROCESSOR_ARCHITECTURE` → `x86_64-pc-windows-msvc` / `aarch64-pc-windows-msvc`),
+with two Windows specifics: the binary lands in `~\.local\bin` as a copy rather than a symlink
+(symlinks need developer mode or admin), which is added to the *user* PATH once; and the
+pre-categories name is a second copy, `xenolith-installer-cli.exe`.
+
+The aarch64 asset comes from the best-effort release job — if it is missing from a release, set
+`XENOLITH_CLI_TRIPLE=x86_64-pc-windows-msvc` to install the x64 build (runs on ARM64 Windows via
+emulation).
+
+== Pinning and mirrors (both scripts)
+
 A specific version is installed with `XENOLITH_CLI_VERSION=cli-v0.2.0` (rollback, testing), and a
 mirror can be supplied with `XENOLITH_RELEASE_BASE=<url>` in the spirit of the CLI's own
 `releaseSourceUrl` setting.
-
-Windows: grab `xenolith-cli-<triple>.tar.gz` from the release page (`x86_64-pc-windows-msvc`,
-and `aarch64-pc-windows-msvc` where available) and unpack `xenolith-cli.exe`.
 
 After installing, provision the SDK and build a project:
 
