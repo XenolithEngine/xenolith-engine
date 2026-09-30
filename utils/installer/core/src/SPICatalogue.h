@@ -55,8 +55,6 @@ SP_PUBLIC Vector<CatalogueComponent> buildCatalogue(StringView hostsText, String
 // Default FTP server + release fallback when discovery fails.
 inline StringView getDefaultServer() { return "stappler.dev"; }
 
-inline StringView getDefaultRelease() { return "sdk-v0beta1"; }
-
 // The built-in releases root, used when the user has configured no mirror. Prefer
 // SourceConfig::getReleasesRoot() (SPISettings.h), which falls back to this — reaching for the
 // default directly bypasses whatever the user chose.
@@ -64,14 +62,30 @@ inline String getDefaultReleasesRoot() {
 	return toString("ftp://", getDefaultServer(), "/releases/");
 }
 
-// Pick the newest `sdk-v*` directory from an FTP LIST of /releases/. Falls back to getDefaultRelease().
+// The newest `sdk-v*` directory in an FTP LIST of /releases/, or EMPTY when the listing carries
+// none. There is deliberately NO compiled-in fallback release: a baked-in name goes stale with
+// every SDK release, and a caller that cannot name a release must fail rather than silently offer
+// the toolchains of a long-gone era. A mirror that cannot be listed at all is the user's to fix —
+// by pinning `sdkRelease` in the config (SPISettings) or repairing the mirror.
 SP_PUBLIC String resolveActiveRelease(StringView releasesListing);
 
-// As above: the default-source form. Prefer SourceConfig::getReleaseBase().
-inline String getDefaultReleaseBase(StringView release = StringView()) {
-	const auto rel = release.empty() ? getDefaultRelease() : release;
-	return toString(getDefaultReleasesRoot(), rel);
-}
+/* The outcome of release resolution: which release directory the catalogue should be read from.
+
+`pinned` and `discovered` separate the two ways a selection can come about — the user's config or
+the server. An empty selection with an error set means "no adequate release could be determined"
+and is NOT a usable fallback: there is none. */
+struct SP_PUBLIC ReleaseSelection : OperationResult {
+	String release; // directory name under the releases root, e.g. "sdk-v0rc0"
+	String base; // full URL of that directory, with the trailing slash; empty on error
+	bool pinned = false; // came from the stored sdkRelease setting, not the server
+	bool discovered = false; // read off the server
+};
+
+// One network round trip: list `releasesRoot` and pick the newest `sdk-v*` in it. Errors (with an
+// empty release/base) when the listing cannot be fetched or carries no sdk-v* directory. The
+// adequate-selection entry point is SourceConfig::selectRelease() (SPISettings.h), which honours
+// the user's pin first — both front ends go through that one.
+SP_PUBLIC ReleaseSelection discoverRelease(StringView releasesRoot);
 
 } // namespace stappler::xenolith::installer
 

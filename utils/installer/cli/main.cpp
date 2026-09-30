@@ -24,6 +24,12 @@
 // with the GUI. Commands: detect, paths, config, state, verify, list, fetch, install, new, build,
 // engine-refs, engine-install.
 
+// Set by the Makefile from XENOLITH_CLI_VERSION (release builds stamp the cli-v* tag there);
+// absent means a local, non-release build.
+#ifndef XENOLITH_CLI_VERSION
+#define XENOLITH_CLI_VERSION "dev"
+#endif
+
 #include "SPICommon.h"
 #include "SPIDirs.h"
 #include "SPITriple.h"
@@ -230,6 +236,15 @@ static String getEffectiveSetting(const CliEnv &env, StringView key) {
 		return env.settings.sources.getEngineRepoUrl();
 	} else if (key == "releaseSourceUrl") {
 		return env.settings.sources.getReleasesRoot();
+	} else if (key == "sdkRelease") {
+		// What a run would read: the pin when set, else whatever the server last answered — the
+		// live answer needs a network round trip this display does not make, and "newest on the
+		// server" is the honest description of that.
+		auto sel = env.settings.sources.selectRelease();
+		if (sel.pinned) {
+			return sel.release;
+		}
+		return sel ? toString(sel.release, "  (newest on the server)") : toString("(cannot list the server: ", sel.error, ")");
 	} else if (key == "enginePath") {
 		bool ok = false;
 		auto root = resolveEngineRoot(env.layout, StringView(), &ok);
@@ -398,17 +413,25 @@ static int cmdFetch(int argc, const char *argv[]) {
 static int cmdList() {
 	auto env = getEnv();
 	const auto &layout = env.layout;
-	auto base = env.settings.sources.getReleaseBase(StringView());
-	sprt::cerr << "Fetching catalogue from " << base << " ...\n";
+
+	auto sel = env.settings.sources.selectRelease();
+	if (!sel) {
+		sprt::cerr << "error: " << sel.error << "\n";
+		return 1;
+	}
+	sprt::cerr << "Release " << sel.release
+			   << (sel.pinned ? StringView("  (pinned via sdkRelease)") : StringView("  (newest on the server)"))
+			   << "\n";
+	sprt::cerr << "Fetching catalogue from " << sel.base << " ...\n";
 
 	// URLs, not paths: the trailing slash is what makes the FTP server list a directory.
 	String hostsText, targetsText;
-	auto r1 = fetchText(toString(base, "/hosts/"), hostsText);
+	auto r1 = fetchTextRetry(toString(sel.base, "/hosts/"), hostsText);
 	if (!r1) {
 		sprt::cerr << "hosts: " << r1.error << "\n";
 		return 1;
 	}
-	auto r2 = fetchText(toString(base, "/targets/"), targetsText);
+	auto r2 = fetchTextRetry(toString(sel.base, "/targets/"), targetsText);
 	if (!r2) {
 		sprt::cerr << "targets: " << r2.error << "\n";
 		return 1;
@@ -533,13 +556,28 @@ static int installEngine(const CliEnv &env, const CliArgs &args) {
 	return 0;
 }
 
+// Resolve which release this run reads/installs from: the sdkRelease pin when set, else the newest
+// sdk-v* on the server. `install` is where a wrong release hurts: it downloads toolchains that
+// look fresh but are not, so a selection that could not be made is fatal, never defaulted.
+static ReleaseSelection resolveReleaseOrNote(const CliEnv &env) {
+	auto sel = env.settings.sources.selectRelease();
+	if (!sel) {
+		sprt::cerr << "• Release: error: " << sel.error << "\n";
+		return sel;
+	}
+	sprt::cerr << "• Release " << sel.release
+			   << (sel.pinned ? StringView("  (pinned via sdkRelease)") : StringView("  (newest on the server)"))
+			   << "\n";
+	return sel;
+}
+
 // Run one installComponent and report progress/completion.
-static int installOne(const CliEnv &env, StringView id, bool wantHost, bool wantTarget,
-		StringView label) {
+static int installOne(const CliEnv &env, StringView release, StringView id, bool wantHost,
+		bool wantTarget, StringView label) {
 	sprt::cerr << "• " << label << ": " << id << "\n";
 
 	uint64_t lastStep = maxOf<uint64_t>();
-	auto r = installComponent(env.settings.sources, StringView(), id, env.layout, wantHost,
+	auto r = installComponent(env.settings.sources, release, id, env.layout, wantHost,
 			wantTarget, makeProgressReporter(lastStep));
 	if (!r || r.installed.empty()) {
 		sprt::cerr << "\nerror: " << r.error << "\n";
@@ -574,17 +612,21 @@ static int cmdInstall(int argc, const char *argv[]) {
 		if (int e = installEngine(env, args); e != 0) {
 			return e;
 		}
-		if (int e = installOne(env, h.native, true, false, "host toolchain"); e != 0) {
+		auto sel = resolveReleaseOrNote(env);
+		if (!sel) {
+			return 1;
+		}
+		if (int e = installOne(env, sel.release, h.native, true, false, "host toolchain"); e != 0) {
 			return e;
 		}
-		if (int e = installOne(env, h.native, false, true, "target"); e != 0) {
+		if (int e = installOne(env, sel.release, h.native, false, true, "target"); e != 0) {
 			return e;
 		}
 
 		// The +sprt target is optional — install it only when the catalogue has one.
 		auto sprtTarget = toString(h.native, "+sprt");
 		uint64_t lastStep = maxOf<uint64_t>();
-		auto r = installComponent(env.settings.sources, StringView(), sprtTarget, env.layout, false,
+		auto r = installComponent(env.settings.sources, sel.release, sprtTarget, env.layout, false,
 				true, makeProgressReporter(lastStep));
 		if (r) {
 			sprt::cerr << "\r    ✓ " << sprtTarget << "                         \n";
@@ -596,7 +638,12 @@ static int cmdInstall(int argc, const char *argv[]) {
 	}
 
 	const auto &id = args.positional[0];
-	if (int e = installOne(env, id, args.wantHost, args.wantTarget, "component"); e != 0) {
+	auto sel = resolveReleaseOrNote(env);
+	if (!sel) {
+		return 1;
+	}
+	if (int e = installOne(env, sel.release, id, args.wantHost, args.wantTarget, "component");
+			e != 0) {
 		return e;
 	}
 	sprt::cout << "Installed " << id << "\n";
@@ -655,7 +702,7 @@ static int cmdBuild(int argc, const char *argv[]) {
 }
 
 static void printUsage(StringView prog) {
-	sprt::cerr << "Xenolith SDK installer (CLI)\n";
+	sprt::cerr << "Xenolith SDK installer (CLI) " << XENOLITH_CLI_VERSION << "\n";
 	sprt::cerr << "Usage: " << prog << " <command> [args]\n\n";
 	sprt::cerr << "Commands:\n";
 	sprt::cerr << "  detect        Print the detected native host triple\n";
@@ -683,7 +730,12 @@ static int run(int argc, const char *argv[]) {
 	auto prog = argc > 0 ? StringView(argv[0]) : StringView("xenolith-cli");
 	auto cmd = argc > 1 ? StringView(argv[1]) : StringView();
 
-	if (cmd == "detect") {
+	if (cmd == "--version" || cmd == "-v") {
+		// The triple is what a bug report needs beyond the version: it says which binary ran.
+		sprt::cout << "xenolith-cli " << XENOLITH_CLI_VERSION << " (" << getNativeArch() << "-"
+				   << getNativeOs() << ")\n";
+		return 0;
+	} else if (cmd == "detect") {
 		return cmdDetect();
 	} else if (cmd == "paths") {
 		return cmdPaths();

@@ -23,6 +23,12 @@ LOCAL_SRCS_DIRS :=
 LOCAL_INCLUDES_OBJS :=
 
 APPCONFIG_APP_NAME := xenolith-cli
+
+# The version `xenolith-cli --version` reports. Release builds pass XENOLITH_CLI_VERSION=<cli-v…>
+# from the release workflow (an exported environment variable, which `?=` defers to); a local
+# build keeps the marker saying it is not a release build.
+XENOLITH_CLI_VERSION ?= dev
+LOCAL_CXXFLAGS += -DXENOLITH_CLI_VERSION=\"$(XENOLITH_CLI_VERSION)\"
 # The CLI and the GUI are two front ends of ONE product and share the SDK store, so they must share
 # the bundle name and the path scheme: both feed the runtime's App* location categories, and a
 # mismatch in either would give the two tools different directories.

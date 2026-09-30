@@ -111,33 +111,8 @@ String getWrapperDir(StringView dir, StringView id, StringView triple) {
 	return String();
 }
 
-// The FTP listing and the archive download are both flaky enough to be worth a few attempts.
-constexpr int kTransportAttempts = 4;
-
-TransportResult fetchTextRetry(StringView url, String &out) {
-	TransportResult r;
-	for (int i = 0; i < kTransportAttempts; ++i) {
-		out.clear();
-		r = fetchText(url, out);
-		if (r && !out.empty()) {
-			return r;
-		}
-	}
-	return r;
-}
-
-TransportResult fetchBytesRetry(StringView url, Bytes &out,
-		const Function<void(int64_t, int64_t)> &progress) {
-	TransportResult r;
-	for (int i = 0; i < kTransportAttempts; ++i) {
-		out.clear();
-		r = fetchBytes(url, out, progress);
-		if (r && !out.empty()) {
-			return r;
-		}
-	}
-	return r;
-}
+// The FTP listing and the archive download are both flaky enough to be worth a few attempts:
+// fetchTextRetry/fetchBytesRetry in SPITransport.
 
 } // namespace
 
@@ -149,6 +124,13 @@ InstallResult installComponent(const SourceConfig &sources, StringView release, 
 		const Layout &layout, bool wantHost, bool wantTarget,
 		const Function<void(int64_t, int64_t)> &progress) {
 	InstallResult result;
+	if (release.empty()) {
+		// There is no adequate default to fall back to: both front ends resolve through
+		// SourceConfig::selectRelease() (pin or discovery) and hand the result down here.
+		result.setError(Status::ErrorInvalidArguemnt,
+				"no release resolved (pin sdkRelease or check the release source)");
+		return result;
+	}
 	const auto base = sources.getReleaseBase(release);
 
 	// 1. Fetch the catalogue. These are URLs, not paths: the trailing slash is what makes the FTP
@@ -211,11 +193,11 @@ InstallResult installComponent(const SourceConfig &sources, StringView release, 
 	auto state = InstalledState::load(layout.getInstalledManifest());
 
 	// The release the files ACTUALLY came from - `base` was built from it a few lines up - and not
-	// the compiled-in default. Recording the default is what made every freshly installed component
+	// some compiled-in stand-in. Recording a stand-in is what made every freshly installed component
 	// compare unequal to the active release for the rest of its life: an install from the newest
-	// release was written down as an install from getDefaultRelease(), so the actuality check read
-	// it back as stale and every installed tool reported "update available" forever.
-	const auto installedRelease = release.empty() ? toString(getDefaultRelease()) : toString(release);
+	// release was written down as an install from the stand-in, so the actuality check read
+	// it back as stale and every installed tool showed "update available" forever.
+	const auto installedRelease = toString(release);
 
 	for (auto kind : kinds) {
 		const CatalogueComponent *comp = nullptr;

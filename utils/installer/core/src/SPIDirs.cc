@@ -50,6 +50,23 @@ static String categoryRoot(FileCategory category) {
 	return ret;
 }
 
+// The store must never live under a path with a space: `xenolith-cli build` passes the engine root
+// into the build system as STAPPLER_ROOT, and a space there breaks the make machinery's
+// MAKEFILE_LIST → BUILD_ROOT derivation (the PathSpacePlaceholder does not survive `$(abspath)`).
+// macOS is the one platform whose native AppData ("~/Library/Application Support/…") has one.
+static bool hasSpace(StringView path) {
+	return path.find(' ') != maxOf<size_t>();
+}
+
+// Where builds made before the switch to location categories put the store — the XDG-style root,
+// used by those builds on every platform INCLUDING macOS. Kept as a constant because BOTH the
+// legacy-adoption rule and the space guard below resolve to it.
+static String preCategoriesRoot() {
+	const char *home = ::getenv("HOME");
+	return home && *home ? mergePath(StringView(home), ".local/share/xenolith")
+						 : String("/tmp/xenolith");
+}
+
 Layout Layout::system() {
 	// Nothing here is spelled out per platform: the App* categories are the runtime's app-specific,
 	// read-write locations, placed from APPCONFIG_BUNDLE_NAME (XDG on Linux, the system AppData
@@ -66,15 +83,35 @@ Layout Layout::system() {
 	// Compatibility: an installation made before this switch keeps config, data and cache under one
 	// root in the SHARED data dir (<CommonData>/xenolith/{config,data,cache}). Keep using it when it
 	// is there, so an already-installed SDK is not stranded.
+	//
+	// The pre-categories builds did not actually place that root under CommonData on every platform:
+	// on macOS they used the XDG path directly (~/.local/share/xenolith), where CommonData does not
+	// point — so that root is checked too, or every macOS upgrade would silently strand the store
+	// the previous CLI/GUI installed into (and re-download every toolchain into a second one).
+	Vector<String> legacyRoots;
 	if (auto commonRoot = categoryRoot(FileCategory::CommonData); !commonRoot.empty()) {
-		auto legacyRoot = mergePath(commonRoot, kLegacyDir);
+		legacyRoots.emplace_back(mergePath(commonRoot, kLegacyDir));
+	}
+	legacyRoots.emplace_back(preCategoriesRoot());
+	for (const auto &legacyRoot : legacyRoots) {
 		if (isDirectory(mergePath(legacyRoot, "data"))) {
 			return fromHome(legacyRoot);
 		}
 	}
 
+	// A space in any of the category roots (macOS "Application Support") breaks `build` through
+	// STAPPLER_ROOT — see hasSpace — so the store moves to the space-free pre-categories root
+	// instead of the native one on such platforms.
+	if (hasSpace(dataRoot)) {
+		return fromHome(preCategoriesRoot());
+	}
+
 	auto configRoot = categoryRoot(FileCategory::AppConfig);
 	auto cacheRoot = categoryRoot(FileCategory::AppCache);
+
+	if (hasSpace(configRoot) || hasSpace(cacheRoot)) {
+		return fromHome(preCategoriesRoot());
+	}
 
 	Layout l;
 	l.config = configRoot.empty() ? mergePath(dataRoot, "config") : toString(configRoot);

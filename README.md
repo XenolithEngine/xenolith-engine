@@ -34,6 +34,25 @@ The SDK also includes its own GNU Make build system (`make/`) and self-contained
 
 See `docs/articles/ru/general/project.adoc` for details.
 
+## Getting started
+
+Install the SDK command line tool (see [CLI releases](docs/usage/cli-releases.adoc) for version
+pinning and mirrors):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/XenolithEngine/xenolith-engine/master/install.sh | sh
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/XenolithEngine/xenolith-engine/master/install.ps1 | iex
+```
+
+```sh
+xenolith-cli install          # engine + native toolchains
+xenolith-cli new XenoApp && xenolith-cli build XenoApp --run
+```
+
 ## Platform support
 
 | Platform | Architectures | Notes |

@@ -1,0 +1,116 @@
+= xenolith-cli: installation and releases
+
+The SDK command line tool (`xenolith-cli`, source at `utils/installer/cli`) is distributed as
+prebuilt binaries attached to GitHub releases of this repository. This note covers installation,
+the two release lines that live in the repository, and how a CLI release is cut.
+
+== Install (macOS, Linux)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/XenolithEngine/xenolith-engine/master/install.sh | sh
+```
+
+What the script does:
+
+1. Maps the platform to an asset triple — `aarch64-apple-macosx`, `x86_64-apple-macosx`,
+   `x86_64-unknown-linux-musl` (Linux builds are musl-linked and run on any distribution) or
+   `aarch64-unknown-linux-musl`.
+2. Finds the newest `cli-v*` release via the GitHub API (see below), downloads
+   `xenolith-cli-<triple>.tar.gz` and its `.sha256` sidecar, and verifies the checksum.
+3. Installs the binary into `~/.local/bin` (override with `XENOLITH_BIN_DIR`) and creates an
+   `xenolith-installer-cli` symlink for the pre-categories tool name.
+
+== Install (Windows)
+
+```powershell
+irm https://raw.githubusercontent.com/XenolithEngine/xenolith-engine/master/install.ps1 | iex
+```
+
+The same flow (`PROCESSOR_ARCHITECTURE` → `x86_64-pc-windows-msvc` / `aarch64-pc-windows-msvc`),
+with two Windows specifics: the binary lands in `~\.local\bin` as a copy rather than a symlink
+(symlinks need developer mode or admin), which is added to the *user* PATH once; and the
+pre-categories name is a second copy, `xenolith-installer-cli.exe`.
+
+The aarch64 asset comes from the best-effort release job — if it is missing from a release, set
+`XENOLITH_CLI_TRIPLE=x86_64-pc-windows-msvc` to install the x64 build (runs on ARM64 Windows via
+emulation).
+
+== Pinning and mirrors (both scripts)
+
+A specific version is installed with `XENOLITH_CLI_VERSION=cli-v0.2.0` (rollback, testing), and a
+mirror can be supplied with `XENOLITH_RELEASE_BASE=<url>` in the spirit of the CLI's own
+`releaseSourceUrl` setting.
+
+After installing, provision the SDK and build a project:
+
+```sh
+xenolith-cli install          # engine clone + native host + native target
+xenolith-cli new XenoApp
+xenolith-cli build XenoApp --run
+```
+
+== The two release lines
+
+This repository carries two independent release lines that must never disturb each other:
+
+[cols="1,1,3"]
+|===
+|Line |Tags |Notes
+
+|Engine/SDK releases
+|`sdk-v*`
+|The SDK itself; these own the repository's *latest release* pointer and back the FTP
+ `releases/<sdk-v*>/` toolchain directories the installer downloads from.
+
+|CLI releases
+|`cli-v*`
+|The `xenolith-cli` binaries. Published with `--latest=false`, so the *latest release* pointer
+ stays on the engine line; `install.sh` finds the CLI line by filtering release tags for the
+ `cli-v` prefix, never via "latest".
+|===
+
+There is deliberately no compiled-in fallback SDK release in the tool: every run resolves the
+release adequately — from the `sdkRelease` setting when pinned, else the newest `sdk-v*`
+directory on the server (`SourceConfig::selectRelease()` in `utils/installer/core`). A mirror
+that cannot be listed is an error, not a guess.
+
+== Cutting a CLI release
+
+Releases are built by `.github/workflows/cli-release.yml`:
+
+```sh
+git tag cli-v0.1.0
+git push origin cli-v0.1.0        # or a workflow_dispatch run with the tag as input
+```
+
+The workflow, per platform column (macOS arm64, Linux x86_64, Windows x86_64):
+
+1. Resolves the active `sdk-v*` release from the FTP server (same ordering as the CLI's
+   `compareSdkTags`).
+2. Bootstraps the native host toolchain and target sysroot from the FTP archives into a
+   store under `$XENOLITH_HOME` (inside the workspace) — the same store→engine-links model a
+   user machine has. Cross targets are then installed *by the freshly built CLI itself*, so
+   every release exercises the installer it ships.
+3. Builds the native `xenolith-cli`, cross-builds the column's targets, and packages
+   `xenolith-cli-<triple>.tar.gz` (+ `.sha256`) per target.
+4. Publishes the release with `gh release create --latest=false`.
+
+Cross targets per column: macOS also builds `x86_64-apple-macosx`; Linux also builds
+`aarch64-unknown-linux-musl`; Windows arm64 (`aarch64-pc-windows-msvc`) is a separate
+best-effort job (`continue-on-error`) until it has proven itself.
+
+The `XENOLITH_CLI_VERSION` environment variable stamps the tag into `xenolith-cli --version`;
+local builds report `dev`.
+
+== Building the CLI from source
+
+On a machine with the SDK already installed, the CLI rebuilds itself:
+
+```sh
+xenolith-cli build utils/installer/cli --engine <engine-checkout> --release
+```
+
+From scratch (no SDK): the release workflow's bootstrap is the reference — fetch the host and
+target archives for your triple from `ftp://stappler.dev/releases/<sdk-v*>/`, unpack them under
+`<data>/toolchains/{hosts,targets}/<triple>/`, and run the toolchain's `make` from
+`toolchains/hosts/<triple>/bin` against `utils/installer/cli`.

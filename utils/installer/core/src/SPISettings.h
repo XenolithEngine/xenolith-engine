@@ -25,13 +25,15 @@
 
 #include "SPICommon.h"
 #include "SPIManifest.h"
+#include "SPICatalogue.h" // ReleaseSelection — selectRelease() is the adequate-resolution entry point
 #include "SPIDirs.h" // Layout — applyTo() is what makes the stored paths take effect
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
-// 2: added enginePath / toolchainsPath. Readers of an older file get the defaults for both, and a
-// version-1 reader ignores keys it does not know — so the bump is informational, not a gate.
-static constexpr uint32_t kSettingsSchemaVersion = 2;
+// 2: added enginePath / toolchainsPath. 3: added sdkRelease. Readers of an older file get the
+// defaults for the new keys, and an older reader ignores keys it does not know — so the bump is
+// informational, not a gate.
+static constexpr uint32_t kSettingsSchemaVersion = 3;
 
 /* Where the engine and the binary releases come from.
 
@@ -46,11 +48,24 @@ the built-in defaults, so a caller that has no opinion writes nothing. */
 struct SP_PUBLIC SourceConfig {
 	String engineRepoUrl; // empty -> getDefaultEngineRepoUrl()
 	String releasesRoot; // empty -> getDefaultReleasesRoot()
+	String sdkRelease; // empty -> newest sdk-v* on the server; else that directory, never the network
 
 	// Both resolved: never empty, whatever the fields hold.
 	String getEngineRepoUrl() const;
 	String getReleasesRoot() const;
-	String getReleaseBase(StringView release) const;
+	String getReleaseBase(StringView release) const; // requires a RESOLVED, non-empty release
+
+	/* The adequate release resolution, in priority order:
+
+	    1. the stored `sdkRelease` pin — used verbatim, no network round trip;
+	    2. discovery — the newest `sdk-v*` on the server under getReleasesRoot();
+	    3. neither — an errored selection with no release and no base. There is NO compiled-in
+	       fallback: a baked-in release name goes stale with every SDK release, and a caller that
+	       cannot name a release must fail.
+
+	   Both front ends (GUI catalogue, CLI list/install) resolve through THIS function, so the pin
+	   and the discovery answer are the same everywhere. */
+	ReleaseSelection selectRelease() const;
 };
 
 /* One settings.json key, described well enough to be driven generically.

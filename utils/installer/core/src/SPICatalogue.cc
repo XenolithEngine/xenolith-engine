@@ -21,6 +21,7 @@
  **/
 
 #include "SPICatalogue.h"
+#include "SPITransport.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
@@ -171,7 +172,7 @@ Vector<CatalogueComponent> buildCatalogue(StringView hostsText, StringView targe
 }
 
 String resolveActiveRelease(StringView releasesListing) {
-	String best = toString(getDefaultRelease());
+	String best; // empty = none seen yet; there is no compiled-in default to seed it with
 	for (const auto &e : parseListing(releasesListing)) {
 		if (!e.isDir) {
 			continue;
@@ -180,11 +181,42 @@ String resolveActiveRelease(StringView releasesListing) {
 		if (!name.starts_with("sdk-v")) {
 			continue;
 		}
-		if (compareSdkTags(name, best) > 0) {
+		if (best.empty() || compareSdkTags(name, best) > 0) {
 			best = name.str<mem_std::Interface>();
 		}
 	}
 	return best;
+}
+
+ReleaseSelection discoverRelease(StringView releasesRoot) {
+	ReleaseSelection sel;
+
+	// A URL, not a path: the trailing slash is what makes the FTP server list the directory, so it
+	// is guaranteed here once instead of being every caller's remembering to.
+	String root = toString(releasesRoot);
+	if (root.empty() || root.back() != '/') {
+		root += '/';
+	}
+
+	String listing;
+	auto r = fetchTextRetry(root, listing);
+	if (!r) {
+		sel.setError(r.status, "could not list ", root, ": ", r.error);
+		return sel;
+	}
+	if (listing.empty()) {
+		sel.setError(r.status, "empty listing from ", root);
+		return sel;
+	}
+
+	sel.release = resolveActiveRelease(listing);
+	if (sel.release.empty()) {
+		sel.setError(Status::ErrorNotFound, "no sdk-v* releases under ", root);
+		return sel;
+	}
+	sel.discovered = true;
+	sel.base = root + sel.release;
+	return sel;
 }
 
 } // namespace stappler::xenolith::installer
