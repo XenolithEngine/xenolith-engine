@@ -1,0 +1,245 @@
+# Builds and publishes xenolith-cli releases.
+#
+# Two release lines live in this repository and must never disturb each other:
+#   sdk-v*  — the engine/SDK releases (own the repo's "latest release" pointer);
+#   cli-v*  — the CLI releases this workflow cuts, ALWAYS with --latest=false, so the "latest"
+#             pointer stays on the engine line. install.sh finds the CLI line by filtering
+#             releases for the cli-v prefix, not via "latest".
+#
+# Cut a release by pushing a tag (`git tag cli-v0.1.0 && git push origin cli-v0.1.0`) or via a
+# workflow_dispatch run (the tag is then created at the dispatched commit).
+#
+# Every runner bootstraps the same way a user machine would: fetch the native host toolchain and
+# native target sysroot from the FTP release, build the native xenolith-cli, then let THAT CLI
+# install the cross target sysroots and drive the cross builds — the release dogfoods its own
+# installer.
+
+name: cli-release
+
+on:
+  push:
+    tags: ['cli-v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag to cut (must start with cli-v)'
+        required: true
+        type: string
+
+permissions:
+  contents: write # the release job creates the cli-v* release
+
+concurrency:
+  group: cli-release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FTP_ROOT: ftp://stappler.dev/releases
+  # One space-free store location on every runner OS. The bootstrap extracts the native toolchains
+  # into it; the CLI then links them into the engine tree — the same store→engine model a user
+  # machine has. Extracting into the engine tree instead would make them look like a developer's
+  # OWN toolchains (real dirs, not links), and linkToolchainsIntoEnginePath deliberately refuses to
+  # touch such a tree, which breaks every cross build after it.
+  XENOLITH_HOME: ${{ github.workspace }}/.sdk-store
+
+jobs:
+  build:
+    name: build (${{ matrix.name }})
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            runs-on: macos-14 # arm64
+            host: aarch64-apple-macosx
+            targets: aarch64-apple-macosx x86_64-apple-macosx
+          - name: linux
+            runs-on: ubuntu-24.04
+            host: x86_64-unknown-linux-gnu
+            targets: x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+          - name: windows
+            runs-on: windows-latest
+            host: x86_64-pc-windows-msvc
+            targets: x86_64-pc-windows-msvc
+    defaults:
+      run:
+        shell: bash
+    env:
+      XENOLITH_CLI_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # The newest sdk-v* directory, by the same digit/non-digit-run ordering the CLI's
+      # compareSdkTags uses; plain `sort -V` is not portable to the macOS runner's BSD sort.
+      - name: Resolve the active SDK release
+        run: |
+          sdk=$(
+            curl -fsSL --retry 5 "$FTP_ROOT/" | python3 -c '
+              import sys, re
+              def key(s):
+                return tuple((0, int(p)) if p.isdigit() else (1, p)
+                             for p in re.findall(r"\d+|\D+", s))
+              names = [l.split()[-1] for l in sys.stdin if l.startswith("d")]
+              print(max((n for n in names if n.startswith("sdk-v")), key=key))
+            '
+          )
+          [ -n "$sdk" ] || { echo "no sdk-v* release found under $FTP_ROOT" >&2; exit 1; }
+          echo "SDK release: $sdk"
+          echo "SDK=$sdk" >> "$GITHUB_ENV"
+
+      # Bootstrap, exactly what installComponent does on a user machine: the archives wrap their
+      # files in one <triple>/ dir, which is precisely where the store wants it. The store, not
+      # the engine tree — see the XENOLITH_HOME note above.
+      - name: Bootstrap the native toolchains
+        run: |
+          set -euo pipefail
+          store="$XENOLITH_HOME/data/toolchains"
+          mkdir -p "$store/hosts" "$store/targets"
+          curl -fsSL --retry 5 "$FTP_ROOT/$SDK/hosts/${{ matrix.host }}.tar.xz" -o /tmp/host.tar.xz
+          curl -fsSL --retry 5 "$FTP_ROOT/$SDK/targets/${{ matrix.host }}.tar.xz" -o /tmp/target.tar.xz
+          tar -xf /tmp/host.tar.xz -C "$store/hosts"
+          tar -xf /tmp/target.tar.xz -C "$store/targets"
+          test -d "$store/hosts/${{ matrix.host }}/bin" || { echo "host archive layout unexpected" >&2; exit 1; }
+
+      - name: Build the native xenolith-cli
+        run: |
+          set -euo pipefail
+          export PATH="$XENOLITH_HOME/data/toolchains/hosts/${{ matrix.host }}/bin:$PATH"
+          make -C utils/installer/cli -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)" RELEASE=1
+
+      - name: Smoke-test the native binary
+        run: |
+          set -euo pipefail
+          bin=utils/installer/cli/stappler-build/${{ matrix.host }}/release/cc/xenolith-cli
+          [ -f "$bin" ] || bin="$bin.exe"
+          "$bin" --version
+          "$bin" detect
+
+      # Cross sysroots come through the CLI we just built — discovery, download and catalogue
+      # rules are exercised by the release itself.
+      - name: Build the cross targets
+        run: |
+          set -euo pipefail
+          export PATH="$XENOLITH_HOME/data/toolchains/hosts/${{ matrix.host }}/bin:$PATH"
+          cli=utils/installer/cli/stappler-build/${{ matrix.host }}/release/cc/xenolith-cli
+          [ -f "$cli" ] || cli="$cli.exe"
+          for t in ${{ matrix.targets }}; do
+            case "$t" in
+              ${{ matrix.host }}) continue ;; # native one is already built
+            esac
+            echo "== target $t"
+            "$cli" install "$t" --target
+            "$cli" build utils/installer/cli --engine "$PWD" --target "$t" --release
+          done
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for t in ${{ matrix.targets }}; do
+            bin=utils/installer/cli/stappler-build/$t/release/cc/xenolith-cli
+            [ -f "$bin" ] || bin="$bin.exe"
+            [ -f "$bin" ] || { echo "missing artifact for $t: $bin" >&2; exit 1; }
+            cp LICENSE "$(dirname "$bin")/"
+            tar -czf "dist/xenolith-cli-$t.tar.gz" -C "$(dirname "$bin")" \
+              xenolith-cli$(case "$t" in *windows*) echo .exe;; esac) LICENSE
+            ( cd dist && { sha256sum "xenolith-cli-$t.tar.gz" 2>/dev/null || shasum -a 256 "xenolith-cli-$t.tar.gz"; } \
+              | awk '{print $1"  "$2}' > "xenolith-cli-$t.tar.gz.sha256" )
+          done
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-assets-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  # aarch64 Windows: a full target exists, but no runner here runs it — build-verify only, and the
+  # first releases treat it as best-effort until it has proven itself once.
+  build-windows-arm64:
+    name: build (windows-arm64, best-effort)
+    runs-on: windows-latest
+    continue-on-error: true
+    defaults:
+      run:
+        shell: bash
+    env:
+      XENOLITH_CLI_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+      XENOLITH_HOME: ${{ github.workspace }}/.sdk-store
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Resolve the active SDK release
+        run: |
+          sdk=$(
+            curl -fsSL --retry 5 "$FTP_ROOT/" | python3 -c '
+              import sys, re
+              def key(s):
+                return tuple((0, int(p)) if p.isdigit() else (1, p)
+                             for p in re.findall(r"\d+|\D+", s))
+              names = [l.split()[-1] for l in sys.stdin if l.startswith("d")]
+              print(max((n for n in names if n.startswith("sdk-v")), key=key))
+            '
+          )
+          [ -n "$sdk" ] || { echo "no sdk-v* release found under $FTP_ROOT" >&2; exit 1; }
+          echo "SDK=$sdk" >> "$GITHUB_ENV"
+      - name: Bootstrap + build native, cross to aarch64-pc-windows-msvc
+        run: |
+          set -euo pipefail
+          store="$XENOLITH_HOME/data/toolchains"
+          mkdir -p "$store/hosts" "$store/targets"
+          curl -fsSL --retry 5 "$FTP_ROOT/$SDK/hosts/x86_64-pc-windows-msvc.tar.xz" -o /tmp/host.tar.xz
+          curl -fsSL --retry 5 "$FTP_ROOT/$SDK/targets/x86_64-pc-windows-msvc.tar.xz" -o /tmp/target.tar.xz
+          tar -xf /tmp/host.tar.xz -C "$store/hosts"
+          tar -xf /tmp/target.tar.xz -C "$store/targets"
+          export PATH="$store/hosts/x86_64-pc-windows-msvc/bin:$PATH"
+          make -C utils/installer/cli -j"$(nproc 2>/dev/null || echo 8)" RELEASE=1
+          cli=utils/installer/cli/stappler-build/x86_64-pc-windows-msvc/release/cc/xenolith-cli.exe
+          "$cli" --version
+          "$cli" install aarch64-pc-windows-msvc --target
+          "$cli" build utils/installer/cli --engine "$PWD" --target aarch64-pc-windows-msvc --release
+          mkdir -p dist
+          bin=utils/installer/cli/stappler-build/aarch64-pc-windows-msvc/release/cc/xenolith-cli.exe
+          cp LICENSE "$(dirname "$bin")/"
+          tar -czf dist/xenolith-cli-aarch64-pc-windows-msvc.tar.gz -C "$(dirname "$bin")" xenolith-cli.exe LICENSE
+          ( cd dist && sha256sum xenolith-cli-aarch64-pc-windows-msvc.tar.gz \
+              | awk '{print $1"  "$2}' > xenolith-cli-aarch64-pc-windows-msvc.tar.gz.sha256 )
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-assets-windows-arm64
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: publish the cli-v* release
+    needs: [build, build-windows-arm64]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create the release (never the "latest" one)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        run: |
+          set -euo pipefail
+          ls -la dist/
+          notes=$(printf 'Automated xenolith-cli build.\n\n- engine commit: %s\n- install: curl -fsSL https://raw.githubusercontent.com/XenolithEngine/xenolith-engine/master/install.sh | sh\n- this release never takes the repository latest-release pointer (that stays on sdk-v*)' "$GITHUB_SHA")
+          # --latest=false is the load-bearing flag: the repository's "latest release" pointer
+          # belongs to the engine's sdk-v* line and must never move to a CLI release.
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "xenolith-cli $TAG" \
+            --latest=false \
+            --notes "$notes"
