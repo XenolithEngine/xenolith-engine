@@ -475,6 +475,114 @@ void Loop::compileImage(const Rc<core::DynamicImage> &image, Function<void(bool)
 	}, const_cast<Loop *>(this), true);
 }
 
+void Loop::updateImage(const Rc<core::DynamicImage> &image, BytesView data,
+		Function<void(bool)> &&cb) const {
+	// Copy at call time: a queued task would capture the view, and the
+	// caller's staging buffer is rewritten next frame (same contract as
+	// soft::Loop::updateImage).
+	Bytes copy(data.size());
+	if (!data.empty()) {
+		sprt::memcpy(copy.data(), data.data(), data.size());
+	}
+
+	performOnThread([this, image, copy = sp::move(copy), cb = sp::move(cb)]() mutable {
+		auto info = image->getInfo();
+
+		// Fast path: write into the compiled texture in place. Replacing the
+		// instance (updateInstance) re-hashes MaterialInfo, the material set
+		// rebinds a turn later, and the screen paints black between clone-sets
+		// every frame; the queue FIFO serializes this write with the render
+		// passes submitted after it.
+		if (auto inst = image->getInstance()) {
+			auto img = dynamic_cast<Image *>(inst->data.image.get());
+			if (img && img->getInfo().extent == info.extent
+					&& img->getInfo().format == info.format
+					&& sprt::hasFlag(img->getInfo().usage, core::ImageUsage::TransferDst)) {
+				// Blocks, not pixels - see core::getFormatImageSize.
+				const uint64_t expected = core::getFormatImageSize(info.format, info.extent);
+				if (uint64_t(copy.size()) < expected) {
+					log::source().error("webgpu::Loop", "updateImage: short data: ",
+							copy.size(), " < ", expected);
+					if (cb) {
+						cb(false);
+					}
+					return;
+				}
+
+				WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+				dst.texture = img->getTexture();
+
+				// Both counted in BLOCKS, like compileImage above.
+				WGPUTexelCopyBufferLayout layout;
+				layout.offset = 0;
+				layout.bytesPerRow =
+						uint32_t(core::getFormatRowSize(info.format, info.extent.width));
+				layout.rowsPerImage = core::getFormatRowCount(info.format, info.extent.height);
+
+				WGPUExtent3D writeExtent{info.extent.width, info.extent.height, info.extent.depth};
+
+				wgpuQueueWriteTexture(_device->getQueue(), &dst, copy.data(), size_t(expected),
+						&layout, &writeExtent);
+
+				if (cb) {
+					cb(true);
+				}
+				return;
+			}
+		}
+
+		// Slow path - not compiled yet, extent/format changed, or the texture
+		// was created without COPY_DST: (re)create with the usage forced and
+		// rebind the instance once; subsequent updates take the fast path.
+		auto imgInfo = core::ImageInfoData(info);
+		imgInfo.usage |= core::ImageUsage::TransferDst;
+
+		auto img = Rc<Image>::create(*_device, info.key, imgInfo);
+		if (!img) {
+			log::source().error("webgpu::Loop", "updateImage: fail to create image");
+			if (cb) {
+				cb(false);
+			}
+			return;
+		}
+
+		const uint64_t expected = core::getFormatImageSize(imgInfo.format, imgInfo.extent);
+		if (!copy.empty() && uint64_t(copy.size()) >= expected) {
+			WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+			dst.texture = img->getTexture();
+
+			WGPUTexelCopyBufferLayout layout;
+			layout.offset = 0;
+			layout.bytesPerRow =
+					uint32_t(core::getFormatRowSize(imgInfo.format, imgInfo.extent.width));
+			layout.rowsPerImage = core::getFormatRowCount(imgInfo.format, imgInfo.extent.height);
+
+			WGPUExtent3D writeExtent{imgInfo.extent.width, imgInfo.extent.height,
+				imgInfo.extent.depth};
+
+			wgpuQueueWriteTexture(_device->getQueue(), &dst, copy.data(), size_t(expected),
+					&layout, &writeExtent);
+		}
+
+		if (image->getInstance()) {
+			core::ImageViewInfo viewInfo;
+			viewInfo.setup(img->getInfo());
+			viewInfo.setup(core::ColorMode::SolidColor, true);
+
+			auto view =
+					Rc<ImageView>::create(*_device, Rc<core::ImageObject>(img.get()), viewInfo);
+			image->updateInstance(*const_cast<Loop *>(this), img, nullptr, nullptr,
+					Vector<Rc<DependencyEvent>>(), sp::move(view));
+		} else {
+			image->setImage(img.get());
+		}
+
+		if (cb) {
+			cb(true);
+		}
+	}, const_cast<Loop *>(this), true);
+}
+
 void Loop::runRenderQueue(Rc<FrameRequest> &&req, uint64_t gen, Function<void(bool)> &&cb) {
 	performOnThread([this, req = sp::move(req), gen, cb = sp::move(cb)]() mutable {
 		if (!_running.load()) {
