@@ -23,15 +23,7 @@ GIT_TAG ?= $(shell git describe --tags --abbrev=0)
 T_INTERMEDIATE ?= $(abspath $(LIBS_MAKE_ROOT))/intermediate/x86_64-unknown-linux-gnu
 T_TARGET ?= $(abspath $(LIBS_MAKE_ROOT))/targets/x86_64-unknown-linux-gnu
 
-# The +sprt variant ships a prebuilt libsprt (dylib + tbd + runtime.mk). The +open
-# export deliberately does NOT: it is a pure SDK-free sysroot — the engine builds
-# the runtime from source against it, exactly like the intermediate flow.
-ifeq ($(filter %+sprt, $(T_TARGET)),)
-else
-T_SPRT = 1
-endif
-
-# +open instead exports the SDK-free sysroot pieces: include_libc (the SDK-like
+# The +open variant exports the SDK-free sysroot pieces: include_libc (the SDK-like
 # headers), the baked .tbd link stubs in usr/lib, and the framework bundles
 # (Headers + tbds).
 T_OPEN := $(filter %+open,$(T_TARGET))
@@ -155,58 +147,6 @@ ALL_TARGETS := \
 	$(T_TARGET)/lib $(T_TARGET)/usr/include $(T_TARGET)/share/licenses $(T_TARGET)/share/vulkan \
 	$(T_TARGET)/usr/lib/libSystem.tbd $(T_TARGET)/include_libc \
 	$(T_TARGET)/System/Library/Frameworks $(T_TARGET)/target.mk
-endif
-
-ifdef T_SPRT
-$(T_TARGET)/usr/lib/libsprt.dylib: $(ALL_TARGETS)
-	$(call rule_rm,$@)
-	$(MAKE) -j8 -C $(SP_RUNTIME_ROOT) \
-		STAPPLER_HOST_FILE=$(T_INTERMEDIATE)/host/host.mk \
-		STAPPLER_TARGET_FILE=$(T_TARGET)/target.mk \
-		STAPPLER_TARGET=$(SP_TARGET) RELEASE=1
-	cp $(SP_RUNTIME_ROOT)/stappler-build/$(SP_TARGET)/release/cc/libsprt.dylib $@
-
-$(T_TARGET)/usr/lib/libsprt.tbd: $(T_TARGET)/usr/lib/libsprt.dylib
-	@echo 'Build $@'
-	@$(call rule_rm,$@)
-	@echo '--- !tapi-tbd' > $@
-	@echo 'tbd-version:     4' >> $@
-	@echo 'targets:         [ $(SP_APPLE_ARCH) ]' >> $@
-	@echo 'flags:           [ not_app_extension_safe ]' >> $@
-	@echo "install-name:    '@rpath/libsprt.dylib'" >> $@
-	@echo 'current-version: 0' >> $@
-	@echo 'compatibility-version: 0' >> $@
-	@echo 'exports:' >> $@
-	@echo '  - targets:         [ $(SP_APPLE_ARCH) ]' >> $@
-	@echo '    symbols:         [' >> $@
-	@$(T_INTERMEDIATE)/host/bin/llvm-nm  --extern-only -m $(T_TARGET)/usr/lib/libsprt.dylib | grep --invert-match weak | sed -E 's/.*\).*external ([\$$_0-9a-zA-Z]+).*/        \1,/' >> $@
-	@cat functions_$(SP_ARCH).txt >> $@
-	@echo '    ]' >> $@
-	@echo '    weak-symbols:    [' >> $@
-	@$(T_INTERMEDIATE)/host/bin/llvm-nm  --extern-only -m $(T_TARGET)/usr/lib/libsprt.dylib | grep weak | sed -E 's/.*weak.* (_[\$$_0-9a-zA-Z]+).*/        \1,/' >> $@
-	@echo '    ]' >> $@
-	@echo '...' >> $@
-
-RUNTIME_HEADERS_COPY = cp -r $(SP_RUNTIME_ROOT)/include/* $(T_TARGET)/usr/include; \
-	cp -r $(SP_RUNTIME_ROOT)/include_libc/* $(T_TARGET)/usr/include
-
-all: $(T_TARGET)/usr/lib/libsprt.tbd
-
-$(T_TARGET)/runtime.mk: $(T_TARGET)/usr/include $(lastword $(MAKEFILE_LIST))
-	$(RUNTIME_HEADERS_COPY)
-	@echo 'Build $@'
-	@echo 'MODULE_RUNTIME_DEFINED_IN := $$(lastword $$(MAKEFILE_LIST))' > $@
-	@echo 'MODULE_RUNTIME_INCLUDES_OBJS := $$(TARGET_SYSROOT)/usr/include/darwin $$(TARGET_SYSROOT)/usr/include/sprt/runtime/geom/glsl' >> $@
-	@echo 'MODULE_RUNTIME_SHADERS_INCLUDE := $$(TARGET_SYSROOT)/usr/include/sprt/runtime/geom/glsl' >> $@
-	@echo 'MODULE_RUNTIME_GENERAL_LDFLAGS := -lsprt' >> $@
-	@echo 'MODULE_RUNTIME_GENERAL_CFLAGS := -DSPRT_SHARED_RUNTIME' >> $@
-	@echo 'MODULE_RUNTIME_GENERAL_CXXFLAGS := -DSPRT_SHARED_RUNTIME' >> $@
-	@echo 'RUNTIME_INSTALL_LIBRARY := $$(TARGET_SYSROOT)/usr/lib/libsprt.dylib' >> $@
-	@echo '$$(call define_module, runtime, MODULE_RUNTIME)' >> $@
-	@echo '$$(call define_module, runtime_window, MODULE_RUNTIME_WINDOW)' >> $@
-
-all: $(T_TARGET)/runtime.mk
-
 endif
 
 $(T_TARGET)/release: $(T_TARGET)

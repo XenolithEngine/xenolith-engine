@@ -176,22 +176,6 @@ aarch64-apple-macosx:
 		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx \
 		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-apple-macosx
 
-x86_64-apple-macosx+sprt:
-	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx/usr/include $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx/usr/lib
-	$(MAKE) -f $(TARGET_FILE) $(SP_x86_64_MACOSX_INFO)
-	$(MAKE) -f $(THIS_FILE) $(SP_x86_64_MACOSX_INFO)
-	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_x86_64_MACOSX_INFO) \
-		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-apple-macosx+sprt
-
-aarch64-apple-macosx+sprt:
-	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx/usr/lib
-	$(MAKE) -f $(TARGET_FILE) $(SP_aarch64_MACOSX_INFO)
-	$(MAKE) -f $(THIS_FILE) $(SP_aarch64_MACOSX_INFO)
-	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_aarch64_MACOSX_INFO) \
-		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-apple-macosx+sprt
-
 # The "+open" variant is a STANDALONE Xcode-SDK-free sysroot, built from scratch
 # in its OWN intermediate (intermediate/<arch>-apple-macosx+open):
 #   1. init-target bootstrap — toolchain.cmake + target.mk (fresh, both SDK-free:
@@ -210,8 +194,8 @@ aarch64-apple-macosx+sprt:
 #                     that build is SDK-free too;
 #   6. install      — export the final sysroot into targets/<arch>-apple-macosx+open
 #                     via install-target.mk: include_libc + verbatim usr/lib (tbds,
-#                     dylib chains, crt1.o) + frameworks + usr/local/include link +
-#                     the +sprt packaging (prebuilt libsprt.dylib/.tbd + runtime.mk).
+#                     dylib chains, crt1.o) + frameworks + target.mk. No prebuilt
+#                     runtime: the engine builds it from source against the sysroot.
 # The working sysroot IS the intermediate dir; the install step only exports it.
 x86_64-apple-macosx+open:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx+open/usr/include $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx+open/usr/lib

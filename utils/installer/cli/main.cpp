@@ -620,13 +620,13 @@ static int cmdInstall(int argc, const char *argv[]) {
 			return e;
 		}
 
-		// The +sprt target is optional — install it only when the catalogue has one.
-		auto sprtTarget = toString(h.native, "+sprt");
+		// The SDK-free +open target is optional — install it only when the catalogue has one.
+		auto openTarget = toString(h.native, "+open");
 		uint64_t lastStep = maxOf<uint64_t>();
-		auto r = installComponent(env.settings.sources, sel.release, sprtTarget, env.layout, false,
+		auto r = installComponent(env.settings.sources, sel.release, openTarget, env.layout, false,
 				true, makeProgressReporter(lastStep));
 		if (r) {
-			sprt::cerr << "\r    ✓ " << sprtTarget << "                         \n";
+			sprt::cerr << "\r    ✓ " << openTarget << "                         \n";
 		}
 
 		sprt::cout << "SDK ready for " << h.native

@@ -83,7 +83,7 @@ stays `none` (baremetal ELF) for real boards and `linux` for the sim target
 |===
 
 Per-board profiles arrive as a `+<board>` suffix mirroring the existing
-`+dll`/`+sprt` scheme — the suffix selects a specific export package and the
+`+dll`/`+open` scheme — the suffix selects a specific export package and the
 arch flags it carries. The base triple (no suffix) is what CI uses for
 compile-only checks.
 

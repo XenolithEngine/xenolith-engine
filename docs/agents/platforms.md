@@ -131,9 +131,9 @@
 
 ### 3.4 macOS (cross-compiled; runs only on macOS)
 
-- Triples `x86_64-apple-macosx`, `aarch64-apple-macosx`, optionally `+sprt`
-  (`aarch64-apple-macosx+sprt`) to use the toolchain with the integrated Xenolith
-  Runtime (then the macOS SDK is not needed).
+- Triples `x86_64-apple-macosx`, `aarch64-apple-macosx` (built against the Xcode
+  SDK), optionally `+open` (`aarch64-apple-macosx+open`) for the SDK-free sysroot
+  assembled from Apple's open-source releases (then the macOS SDK is not needed).
 - Build (CLI preferred; `make` only if CLI missing):
   ```sh
   xenolith-cli build <proj> --engine <abs-engine-root> --target aarch64-apple-macosx
@@ -147,5 +147,5 @@
 - Use this target to verify macOS-only sources (window/macos `.mm`, darwin
   dispatch/clock/lock) actually compile ([verifying on the right target](cross-target.md)). On macOS, `errno`/exceptions
   behavior differs from Linux — do not assume Linux values.
-- License note: before using Apple targets **without** `+sprt`, review the macOS
+- License note: before using Apple targets **without** `+open`, review the macOS
   SDK license (Apple-hardware restrictions).

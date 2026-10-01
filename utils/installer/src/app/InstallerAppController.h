@@ -236,7 +236,7 @@ public:
 			Function<void(const InstallProgress &)> &&onProgress = nullptr,
 			Function<void(bool ok, String err)> &&onDone = nullptr);
 
-	// One-click provisioning: engine + native host + native target (+sprt target when published).
+	// One-click provisioning: engine + native host + native target (+open target when published).
 	void installForSystem(
 			Function<void(StringView step, const InstallProgress &)> &&onProgress = nullptr,
 			Function<void(bool ok, String err)> &&onDone = nullptr);

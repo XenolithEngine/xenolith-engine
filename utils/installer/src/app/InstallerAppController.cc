@@ -1095,7 +1095,7 @@ void AppController::installForSystem(
 		}
 		linkToolchainsIntoEnginePath(layout, StringView(root));
 
-		// 2 + 3. Native host + native target (+sprt target if present).
+		// 2 + 3. Native host + native target (+open target if present).
 		auto host = resolveHost(getNativeArch(), getNativeOs());
 		if (host.native.empty()) {
 			*errStr = toString("no SDK host for ") + toString(getNativeArch()) + toString("-")
@@ -1134,8 +1134,8 @@ void AppController::installForSystem(
 			return false;
 		}
 
-		// best-effort: not every host publishes an +sprt target, and its absence is not an error
-		installer::installComponent(sources, release, host.native + "+sprt", layout, false, true);
+		// best-effort: not every host publishes an +open target, and its absence is not an error
+		installer::installComponent(sources, release, host.native + "+open", layout, false, true);
 		return true;
 	}, [this, job, doneCb, errStr](const AppThread::Task &, bool ok) {
 		if (!_app) {

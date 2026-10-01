@@ -19,7 +19,7 @@
   A release install therefore takes precedence over a local source build of the
   same triple; remove/rename the `toolchains/...` copy to force the source build.
   No platform SDK is needed (Windows without UCRT/Windows SDK; macOS without the
-  macOS SDK when using a `+sprt` target). Override the whole search with
+  macOS SDK when using a `+open` target). Override the whole search with
   `STAPPLER_HOST_FILE=` / `STAPPLER_TARGET_FILE=` (an explicit file wins over both
   locations).
 - **`headergen`** (`utils/headergen/`) regenerates the icon tables the 2d renderer

@@ -53,7 +53,7 @@ make -j8              # parallel build
 ```
 
 To build for another platform, pass a target triple
-(`<arch>-<vendor>-<os>[-<env>][+sprt]`):
+(`<arch>-<vendor>-<os>[-<env>][+<variant>]`):
 
 ```sh
 make STAPPLER_TARGET=x86_64-pc-windows-msvc
@@ -259,10 +259,11 @@ independently in [make/utils/defaults.mk](../../make/utils/defaults.mk):
   `runtime/toolchains/targets/<target>/target.mk`.
 
 Override either with `STAPPLER_HOST_FILE=` / `STAPPLER_TARGET_FILE=`. Select the
-target with `STAPPLER_TARGET=<triple>`. A `+sprt` suffix
-(e.g. `aarch64-apple-macosx+sprt`) selects the variant whose toolchain has the
-Xenolith Runtime integrated; otherwise the runtime in
-[runtime/runtime.mk](../../runtime/runtime.mk) is built and linked.
+target with `STAPPLER_TARGET=<triple>`. A `+<variant>` suffix selects a sysroot
+flavor: `+open` (e.g. `aarch64-apple-macosx+open`) is the SDK-free macOS sysroot,
+`+dll` (e.g. `x86_64-pc-windows-msvc+dll`) the Windows sysroot built around
+`sprt.dll`. In every case the runtime in
+[runtime/runtime.mk](../../runtime/runtime.mk) is built from source and linked.
 
 ## Android
 

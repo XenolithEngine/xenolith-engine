@@ -20,9 +20,8 @@
 
 # open-sysroot.mk — mix Apple open-source (apple-oss-distributions) headers into
 # a "+open" target sysroot so the Xenolith runtime can be built WITHOUT the
-# proprietary Xcode macOS SDK.  Structurally analogous to the "+sprt" variant:
-# it is a post-install augmentation step invoked by target-apple/Makefile for the
-# "*-apple-macosx+open" pseudo-targets.
+# proprietary Xcode macOS SDK. Invoked by target-apple/Makefile for the
+# "*-apple-macosx+open" targets.
 #
 # Tags below are pinned to Apple's macOS 14.5 open-source manifest
 # (distribution-macOS @ macos-145); SP_MACOS_VER in the parent Makefile is 14.5.
@@ -609,18 +608,19 @@ stubs: $(OSS_STAMP)/stubs
 all: headers stubs
 
 # --- regeneration ("bake") of the .tbd link stubs --------------------------
-# NOT part of a normal build. Re-derives the baked stubs from the reference
+# NOT part of a normal build. Re-derives the baked stubs from a reference
 # libsprt.dylib's imported symbols UNION the curated per-arch dependency lists
 # (functions_x86_64.txt + functions_arm64.txt) + the arch-neutral libm list, and
 # writes DUAL-TARGET (x86_64 + arm64) tbds straight into the git overlay
 # open/sysroot. The framework Headers/ are left untouched (only *.tbd are
 # rewritten). Run after the runtime's set of system-symbol references changes:
-#   make -f open-sysroot.mk bake-stubs [LIBSPRT=/path/to/libsprt.dylib]
-# The imported-symbol set is stable across builds, so this is rarely needed.
+#   make -f open-sysroot.mk bake-stubs LIBSPRT='<x86_64 libsprt.dylib> <arm64 libsprt.dylib>'
+# LIBSPRT is the libsprt.dylib that `make -C runtime STAPPLER_TARGET=<arch>-apple-macosx`
+# produces (the runtime is always shared on Apple targets); pass both arches so the tbds carry x86_64's $INODE64/$UNIX2003 names and arm64's plain
+# ones. Without it only the curated lists are used. The imported-symbol set is
+# stable across builds, so this is rarely needed.
 NM       ?= $(TOOLCHAIN_OUTPUT_DIR)/host/bin/llvm-nm
-LIBSPRT_X86 := $(abspath $(T_TARGET)/../x86_64-apple-macosx+sprt/usr/lib/libsprt.dylib)
-LIBSPRT_ARM := $(abspath $(T_TARGET)/../aarch64-apple-macosx+sprt/usr/lib/libsprt.dylib)
-LIBSPRT  := $(wildcard $(LIBSPRT_X86)) $(wildcard $(LIBSPRT_ARM)) $(wildcard $(T_TARGET)/usr/lib/libsprt.dylib)
+LIBSPRT  ?=
 FUNCTIONS_X86  := $(MK_DIR)/functions_x86_64.txt
 FUNCTIONS_ARM  := $(MK_DIR)/functions_arm64.txt
 FUNCTIONS_LIBM := $(MK_DIR)/functions_libm.txt

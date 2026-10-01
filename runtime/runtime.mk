@@ -22,9 +22,6 @@
 #
 # Runtime module definitions
 #
-# Note that it is not used when you build application using toolchain
-# with integrated runtime (+sprt targets)
-#
 
 RUNTIME_MODULE_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 

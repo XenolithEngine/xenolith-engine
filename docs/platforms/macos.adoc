@@ -6,10 +6,10 @@ MoltenVK, the Cocoa run loop, and the `.app` bundle format — and why. For the
 build-system view see [../articles/ru/general/build.adoc](../articles/ru/general/build.adoc).
 
 macOS targets use Apple triples such as `aarch64-apple-macosx` /
-`x86_64-apple-macosx`, optionally with the `+sprt` variant
-(`aarch64-apple-macosx+sprt`) to select the toolchain with the Xenolith Runtime
-integrated. The SDK path is discovered with `xcrun --sdk` at configure time
-([../../make/os/darwin.mk](../../make/os/darwin.mk)).
+`x86_64-apple-macosx`, optionally with the `+open` variant
+(`aarch64-apple-macosx+open`) to select the SDK-free sysroot. The SDK path is
+discovered with `xcrun --sdk` at configure time; a `+open` sysroot is its own SDK
+path ([../../make/os/darwin.mk](../../make/os/darwin.mk)).
 
 ## Objective-C++ bridge to AppKit
 
@@ -93,19 +93,22 @@ Darwin-specific choices:
   UniformTypeIdentifiers, Network, IOKit — plus `libSystem`, `icucore`, `objc`,
   `iconv`, `c++abi`.
 
-When building with the integrated runtime (`+sprt`), the macOS SDK does not need
-to be installed. This avoids the legal restrictions tied to Apple's hardware
-requirements. To make this possible, the runtime library (`libsprt.dylib`) is
-built as an umbrella over the system libraries and frameworks, and its text-based
-stub (`.tbd`) has the references to the standard libraries removed and their
-symbols added directly instead.
+When building against the `+open` sysroot, the macOS SDK does not need to be
+installed. This avoids the legal restrictions tied to Apple's hardware
+requirements. The sysroot is assembled from Apple's open-source releases (xnu,
+Libc, libdispatch, objc4, CoreFoundation, …) plus a small hand-written overlay for
+the framework surface that has no open source (AppKit, Metal, QuartzCore, …),
+containing only the declarations this code base uses. It ships no system dylibs,
+only generated `.tbd` link stubs.
 
-The symbol list for the `.tbd` is extracted not from the SDK libraries but from
-`libsprt.dylib` itself and the statically built Xenolith Runtime dependencies.
-This way the macOS SDK is used only for its intended purpose — building the
-library — and Apple's license agreement is not violated.
+The symbol list for the stubs is taken not from the SDK libraries but from the
+symbols `libsprt.dylib` imports and curated lists for the bundled dependencies.
+The real SDK is consulted only to validate constants, layouts and symbol
+ownership ([../../tests/libc/macos-abi](../../tests/libc/macos-abi)); nothing is
+copied from it. See
+[../../runtime/toolchains/target-apple/README.md](../../runtime/toolchains/target-apple/README.md).
 
-Note for users: before using the Apple targets *without* `+sprt`, review the
+Note for users: before using the Apple targets *without* `+open`, review the
 macOS SDK license agreement, especially the clauses that restrict use to Apple
 hardware.
 

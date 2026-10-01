@@ -35,7 +35,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 static constexpr uint32_t kStateSchemaVersion = 1;
 
 struct SP_PUBLIC InstalledComponent {
-	String id; // full id incl. any variant, e.g. "aarch64-apple-macosx+sprt"
+	String id; // full id incl. any variant, e.g. "aarch64-apple-macosx+open"
 	String triple; // triple without the +variant suffix
 	String variant; // variant after "+", empty if none
 	Kind kind = Kind::Target;

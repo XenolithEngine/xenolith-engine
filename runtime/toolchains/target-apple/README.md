@@ -3,7 +3,7 @@
 This directory builds Apple target sysroots for the Stappler/Xenolith toolchain.
 Two flavors exist per architecture:
 
-- **`<arch>-apple-macosx+sprt`** — the stock flavor: cross-compiles against a
+- **`<arch>-apple-macosx`** — the stock flavor: cross-compiles against a
   real `MacOSX.sdk` checkout. Requires the Xcode SDK,
   whose license restricts use to Apple-branded hardware.
 - **`<arch>-apple-macosx+open`** — the SDK-free flavor documented here: the
@@ -98,10 +98,11 @@ Priority ladder, applied per missing piece:
 All `.tbd` stubs are **generated, never hand-edited** — `gen-oss-stubs.sh`,
 driven by `make -f open-sysroot.mk bake-stubs`. Inputs:
 
-- **libsprt imports**: `llvm-nm --undefined-only` over the reference
-  `libsprt.dylib` from BOTH `+sprt` targets (x86_64 contributes the
-  `$INODE64`/`$UNIX2003` legacy variants, arm64 the plain names) — this is the
-  set of system symbols the runtime itself needs.
+- **libsprt imports**: `llvm-nm --undefined-only` over a reference
+  `libsprt.dylib` for BOTH arches, passed as `LIBSPRT='<x86_64> <arm64>'` —
+  the dylib `make -C runtime STAPPLER_TARGET=<arch>-apple-macosx` produces
+  (x86_64 contributes the `$INODE64`/`$UNIX2003` legacy variants, arm64 the
+  plain names). This is the set of system symbols the runtime itself needs.
 - **Curated lists** `functions_x86_64.txt` / `functions_arm64.txt` /
   `functions_libm.txt`: symbols pulled in by the
   bundled dependencies and the host projects, accumulated iteratively (see

@@ -37,7 +37,7 @@ struct SP_PUBLIC RemoteEntry {
 
 // An installable component: a signed .tar.xz for one triple.
 struct SP_PUBLIC CatalogueComponent {
-	String id; // full id incl. variant, e.g. "aarch64-apple-macosx+sprt"
+	String id; // full id incl. variant, e.g. "aarch64-apple-macosx+open"
 	String triple; // triple without +variant
 	String variant; // variant after "+", empty if none
 	Kind kind = Kind::Target;

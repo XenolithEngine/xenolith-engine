@@ -75,7 +75,7 @@ Outside the monorepo (scaffolded app + installed SDK) omit `--engine`.
 | Linux glibc x86_64 *(reference)* | `x86_64-unknown-linux-gnu` | omit `--target` for native host |
 | Windows x86_64 | `x86_64-pc-windows-msvc` | only way to exercise `runtime/libc_impl`; run under Wine |
 | Android (all ABIs) | `unknown-ndk-linux-android` | CLI with `-j1` (or make fallback below) |
-| macOS x86_64 / arm64 | `aarch64-apple-macosx` (`…+sprt` to skip the macOS SDK) | compile-verify when no Mac |
+| macOS x86_64 / arm64 | `aarch64-apple-macosx` (`…+open` to skip the macOS SDK) | compile-verify when no Mac |
 | Windows arm64 | `aarch64-pc-windows-msvc` | full target + sysroot; no emulator on Linux → build-verify only |
 
 Other triples: `aarch64-unknown-linux-gnu`, `riscv64-unknown-linux-gnu`,

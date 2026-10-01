@@ -201,13 +201,7 @@ $(call print_verbose,(apply-toolchain.mk) GLOBAL_EXEC_LDFLAGS: $(GLOBAL_EXEC_LDF
 $(call print_verbose,(apply-toolchain.mk) GLSLC: $(GLSLC))
 $(call print_verbose,(apply-toolchain.mk) SPIRV_LINK: $(SPIRV_LINK))
 
-# Find runtime for toolchain
-ifeq ($(patsubst %$+sprt,,$(STAPPLER_TARGET)),)
-$(call print_verbose,(apply-toolchain.mk) $(STAPPLER_TARGET) uses integrated stappler runtime)
-include $(STAPPLER_TARGET_DIR)/runtime.mk
-else
-$(call print_verbose,(apply-toolchain.mk) $(STAPPLER_TARGET) requires internal runtime)
+# The runtime is always built from the source tree
 include $(GLOBAL_ROOT)/runtime/runtime.mk
-endif
 
 $(call print_verbose,(apply-toolchain.mk) Toolchain configured!)

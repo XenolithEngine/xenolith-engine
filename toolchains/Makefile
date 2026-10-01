@@ -118,8 +118,8 @@ target-xenolithos: \
 
 target-x86_64-apple-macosx: targets/x86_64-apple-macosx
 target-aarch64-apple-macosx: targets/aarch64-apple-macosx
-target-x86_64-apple-macosx+sprt: targets/x86_64-apple-macosx+sprt
-target-aarch64-apple-macosx+sprt: targets/aarch64-apple-macosx+sprt
+target-x86_64-apple-macosx+open: targets/x86_64-apple-macosx+open
+target-aarch64-apple-macosx+open: targets/aarch64-apple-macosx+open
 target-aarch64-apple-ios: targets/aarch64-apple-ios
 target-x86_64-apple-ios-simulator: targets/x86_64-apple-ios-simulator
 target-aarch64-apple-ios-simulator: targets/aarch64-apple-ios-simulator
@@ -127,8 +127,8 @@ target-aarch64-apple-ios-simulator: targets/aarch64-apple-ios-simulator
 target-macosx: \
 	target-x86_64-apple-macosx \
 	target-aarch64-apple-macosx \
-	target-x86_64-apple-macosx+sprt \
-	target-aarch64-apple-macosx+sprt
+	target-x86_64-apple-macosx+open \
+	target-aarch64-apple-macosx+open
 
 target-ios: \
 	target-aarch64-apple-ios \
@@ -177,8 +177,8 @@ target-windows-dll: \
 	target-macosx \
 	target-x86_64-apple-macosx \
 	target-aarch64-apple-macosx \
-	target-x86_64-apple-macosx+sprt \
-	target-aarch64-apple-macosx+sprt \
+	target-x86_64-apple-macosx+open \
+	target-aarch64-apple-macosx+open \
 	target-ios \
 	target-aarch64-apple-ios \
 	target-x86_64-apple-ios-simulator \

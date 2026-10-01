@@ -27,7 +27,7 @@
   contain **no build rules**. The CLI (or raw `make` as fallback) is what
   drives them so flags, includes, modules and the toolchain match.
 - **Every build is a cross-compile.** The target is the triple
-  `STAPPLER_TARGET=<arch>-<vendor>-<os>[-<env>][+sprt]` (CLI: `--target <triple>`).
+  `STAPPLER_TARGET=<arch>-<vendor>-<os>[-<env>][+<variant>]` (CLI: `--target <triple>`).
   With no target the host is auto-detected from `uname` (e.g.
   `x86_64-unknown-linux-gnu`); passing the matching triple explicitly is
   equivalent and recommended for reproducibility.

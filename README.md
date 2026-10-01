@@ -12,17 +12,18 @@ The SDK is organized as a monorepository and consists of three main layers:
   custom implementation.
 * **Stappler utilities** (`stappler/`) — application libraries: data and serialization, database
   access, cryptography, networking, raster and vector graphics, typography, documents.
-* **Xenolith Engine** (`xenolith/`) — a Vulkan-based graphics and compute engine: the core part of
-  the project.
+* **Xenolith Engine** (`xenolith/`) — a graphics and compute engine, Vulkan first, with WebGPU,
+  Metal, OpenGL ES and software backends: the core part of the project.
 
 The SDK also includes its own GNU Make build system (`make/`) and self-contained toolchains
-(`runtime/toolchains/`) that allow building the project without third-party SDKs.
+(built from `runtime/toolchains/`, or installed from the binary releases into `toolchains/`) that
+allow building the project without third-party SDKs.
 
 ## Project principles
 
 * **No barriers.** The SDK requires no platform SDKs: Windows builds work without UCRT and the
-  Windows SDK, Android without the NDK, macOS without the macOS SDK. This removes the related
-  technical and licensing restrictions.
+  Windows SDK, Android without the NDK, macOS without the macOS SDK (the `+open` sysroot). This
+  removes the related technical and licensing restrictions.
 * **For C and C++.** A convenient and full-featured working environment specifically for these
   languages; support for other languages is limited to the dynamic-library level.
 * **Unified API.** As far as technically possible, every supported platform gets the same interface
@@ -59,9 +60,11 @@ xenolith-cli new XenoApp && xenolith-cli build XenoApp --run
 |----------|---------------|-------|
 | Linux | x86_64, arm64, riscv64 | glibc and musl |
 | Android | all ABIs (arm64, armv7, x86, x86_64) | no Google Services; builds with and without the NDK |
-| Windows | x86_64, arm64 | custom libc, no UCRT or Windows SDK |
-| macOS | x86_64, arm64 | including builds with Xenolith Runtime (`+sprt`) |
-| iOS | arm64 (+ simulator) | in development — toolchain sysroot only, no Xenolith Runtime or `+sprt` |
+| Windows | x86_64, arm64 | custom libc, no UCRT or Windows SDK; |
+| macOS | x86_64, arm64 | against the Xcode SDK, or SDK-free with the `+open` sysroot |
+| WebAssembly | wasm32 | browser and Node.js; custom libc, WebGPU |
+| iOS | arm64 (+ simulator) | in development — target sysroots and initial runtime support |
+| NuttX, Embox | arm64 | draft — hosted on the RTOS's own libc |
 
 ## Xenolith Runtime
 
@@ -69,22 +72,25 @@ A system runtime that provides a single POSIX-compatible interface between user 
 platform libc. It operates in two modes:
 
 * **Umbrella** — forwards calls to the system libc (Linux glibc/musl, Android Bionic, macOS
-  libSystem).
-* **Custom** — fully replaces the system libc where needed (Windows: the `libc_impl` module with the
-  mimalloc allocator, without UCRT).
+  libSystem, the NuttX and Embox libc).
+* **Custom** — fully replaces the system libc where needed: the `libc_impl` module on Windows (with
+  the mimalloc allocator, without UCRT) and on WebAssembly.
 
 Components:
 
 * `core/` — base primitives: a custom **pthread**, **SPRT** synchronization primitives (built on
-  `futex` on Linux, `WaitOnAddress` on Windows, `os_sync_wait_on_address` on macOS, with priority
-  inheritance support), safe `setjmp/longjmp` with stack unwinding, dynamic library loading,
+  `futex` on Linux, `WaitOnAddress` on Windows, `os_sync_wait_on_address` on macOS,
+  `memory.atomic.wait` on WebAssembly, with priority inheritance support), safe `setjmp/longjmp` with stack unwinding, dynamic library loading,
   Unicode, memory pools, time, and path handling.
-* `libc_impl/` — a standalone libc implementation (Windows) and the mimalloc allocator.
+* `libc_impl/` — a standalone libc implementation (Windows, WebAssembly) and the mimalloc
+  allocator.
 * `libc_wrapper/` — the umbrella layer that forwards to the platform libc.
-* `musl-adapters/` — adapted `math`/`string` functions from musl (the external `musl-libc`
-  submodule).
-* `src/` — high-level utilities: UUID, hashing, compression, URL parsing, IDN (IDNA2008), task
-  dispatch, filesystem, geometry with SIMD, and the windowing subsystem.
+* `musl-adapters/` — adapted `math`, `string`, `stdlib`, `complex` and `regex` (TRE) code from musl
+  (the external `musl-libc` submodule).
+* `src/` — high-level utilities: UUID, hashing, compression, URL parsing, IDN (IDNA2008), Unicode
+  case mapping and collation, task dispatch, filesystem, geometry with SIMD.
+* `window/` — the windowing subsystem: X11/Wayland, Windows, macOS, iOS, Android, WebAssembly,
+  Embox, NuttX and a headless mode.
 * `libcxx/` — the **C++ standard library** (`runtime_libcxx` module): a full port of LLVM's libc++,
   retargeted onto the runtime's own libc (see below).
 * `include/sprt/` — SPRT headers, including `sprt/cxx/` — a minimal **freestanding** standard-library
@@ -109,46 +115,64 @@ The runtime provides C++ support in two tiers:
 
 ## Graphics engine (Xenolith Engine)
 
-Full-featured windowed applications built on Vulkan.
+Full-featured windowed applications built on Vulkan, WebGPU, Metal, OpenGL ES or a software
+renderer.
 
 * On-demand rendering (saves power while idle).
-* Vector graphics and icons — crisp at any pixel density.
+* Vector graphics and icons (including the Material Design icon set) — crisp at any pixel density.
 * Pixel-perfect typography (FreeType + HarfBuzz), variable fonts, GPU glyph atlas.
-* Material Design widgets, Rich Text, HTML rendering.
+* A UI toolkit (`xenolith_renderer_ui`): flexbox/grid layout, CSS styling, forms, menus, docking,
+  popups and sub-windows, Markdown views; Rich Text and HTML rendering.
 * Fast and responsive animation system.
 
 The engine architecture is built around a **render graph** and per-frame execution with a pull-based
 frame model (the `Presentation Engine` requests a frame from the scene). The boundary between scene
 logic (the "client") and GPU execution (the "server") is factored out into a dedicated
-`RenderSession` entity — which also became the foundation for remote rendering (see below). The
-backend is Vulkan (`xenolith/backend/vk/`), with custom queue, material and mesh compilers and VMA
-integration.
+`RenderSession` entity — which also became the foundation for remote rendering (see below).
+
+The primary backend is Vulkan (`xenolith/backend/vk/`), with custom queue, material and mesh
+compilers and its own device memory allocator. The other backends live next to it in
+`xenolith/backend/`:
+
+* `webgpu` — WebGPU: `wgpu-native` on native targets, the browser's `navigator.gpu` on WebAssembly.
+* `mtl` — Metal, Darwin only.
+* `gles` — OpenGL ES; EGL and GLES are loaded at runtime, nothing is linked.
+* `soft` — a CPU renderer on top of the `stappler_raster` rasterizer.
 
 Main modules:
 
 * `xenolith_core` — the core: render graph, frames, presentation engine, materials.
-* `xenolith_backend_vk` — the Vulkan backend.
+* `xenolith_backend_vk`, `xenolith_backend_webgpu`, `xenolith_backend_mtl`, `xenolith_backend_gles`,
+  `xenolith_backend_soft` — the backends; a non-Vulkan backend is paired with its
+  `xenolith_renderer_basic2d_<backend>` module.
 * `xenolith_application` — the application framework: threading model, context, windows, scene
   director.
 * `xenolith_renderer_basic2d` / `ui` / `pug` / `richtext` — 2D rendering, the UI toolkit
   (flexbox/grid layout, CSS styling, widgets), pug templates, Rich Text.
+* `xenolith_renderer_compositor` — a window compositor (Vulkan and software variants).
+* `xenolith_remote` — remote rendering (see below).
 * `xenolith_font` — typography.
 * `xenolith_resources_assets` / `storage` / `network` — resources, local storage, networking.
 
 ### Remote rendering (experimental)
 
 `xenolith_remote` (`xenolith/remote/`) — client-server rendering: a "thin" client updates the scene
-graph and sends commands, while a server process does the GPU work. The subsystem is at an early
-stage (protocol and object scaffolding).
+graph and sends commands, while a server process does the GPU work. The protocol works end to
+end — the client brings up a scene, receives frames, sends input, fonts and screenshots, with one
+connection serving several windows — but is still experimental.
 
-* **Transport** — QUIC (via OpenSSL), ALPN `xlremote`; the server uses an ephemeral self-signed
-  P-256 certificate.
-* **Protocol** — custom (magic `XLRP`, version 2), bearer-key authentication (64 bytes,
-  constant-time comparison), an X11-like handshake.
+* **Transport** — selected by the address scheme: QUIC (the default, via OpenSSL, ALPN `xlremote`;
+  the server uses an ephemeral self-signed P-256 certificate), Unix domain sockets (`unix:`),
+  shared-memory rings between processes of one machine (`shm:`) and an in-process pair for tests
+  (`mem:`).
+* **Protocol** — custom (magic `XLRP`, version 4), bearer-key authentication (64 bytes,
+  constant-time comparison), an X11-like handshake in which the server describes its gAPI, OS and
+  window subsystem.
 * **Serialization** — CBOR: the compiled render graph and resources are encoded into a blob; GPU
   objects are addressed by id on the server, with corresponding GPU-less "thin" handles on the
   client.
-* **Compression** — LZ4 with a dictionary negotiated during the handshake.
+* **Compression** — LZ4 with a dictionary negotiated during the handshake; frame data sets can be
+  sent by reference into a per-session frame data cache.
 
 ## Stappler utilities
 
@@ -161,12 +185,14 @@ Application libraries on top of Xenolith Runtime:
 * **Cryptography** (`stappler_crypto`) — OpenSSL (with GOST engine), GnuTLS and mbedTLS backends;
   RSA/ECDSA/GOST, symmetric ciphers, JWT.
 * **Networking** (`stappler_network`) — HTTP/2 and HTTP/3 over cURL.
-* **Graphics** — raster (`stappler_bitmap`: PNG/JPEG/WebP/GIF), vector (`stappler_vg`) with
-  tessellation (`stappler_tess`), fonts (`stappler_font`).
-* **Documents** — `stappler_document` (HTML/EPUB), `stappler_layout` (layout engine), `stappler_pug`
-  (templates).
+* **Graphics** — images (`stappler_bitmap`: PNG/JPEG/WebP/GIF), a CPU rasterizer with SIMD kernels
+  (`stappler_raster`), vector (`stappler_vg`) with tessellation (`stappler_tess`), fonts
+  (`stappler_font`).
+* **Documents** — `stappler_document` (HTML/EPUB), `stappler_markdown`, `stappler_layout` (layout
+  engine), `stappler_pug` (templates).
 * **Other** — `stappler_zip` (self-contained ZIP reader/writer, zlib the only dependency),
-  `stappler_filesystem`, `stappler_wasm` (WebAssembly guest code via WAMR).
+  `stappler_filesystem`, `stappler_git` (a Git Smart HTTP v2 client), `stappler_makefile` (the
+  GNU-make-compatible engine behind `xlmake`), `stappler_wasm` (WebAssembly guest code via WAMR).
 
 The memory management model is based on two interfaces: memory pools (`mem_pool`) and standard
 allocation (`mem_std`).
@@ -180,9 +206,10 @@ by default; the entry point is `make/universal.mk`.
   transitively.
 * The target platform is set by the `STAPPLER_TARGET` triple (for example,
   `x86_64-pc-windows-msvc`, `unknown-ndk-linux-android`, `x86_64-apple-macosx`,
-  `x86_64-unknown-linux-gnu`).
+  `x86_64-unknown-linux-gnu`, `wasm32-unknown-unknown`); a `+variant` suffix selects a sysroot
+  flavor (`x86_64-pc-windows-msvc+dll`, `aarch64-apple-macosx+open`).
 * Support for compiling GLSL → SPIR-V shaders (glslang/spirv-link) and building WebAssembly
-  (WASI SDK + wit-bindgen, the WAMR runtime).
+  (`wasm32-unknown-unknown` through the same toolchain and the runtime's own libc).
 * Builds run under GNU Make 4.1+ or the bundled, drop-in **`xlmake`** driver (see below).
 
 ### Self-contained toolchains
@@ -197,15 +224,20 @@ toolchain is delivered as two kinds of package that together cover the whole bui
   `llvm-nm`, …), the shader tools (`glslang`, `spirv-link`), GNU Make, and the **`xlmake`** build
   driver.
 * **Target** — the sysroot you *build for*: libc (glibc / musl / a custom UCRT-free Windows libc /
-  the Android bridge), libc++, compiler-rt, the system headers, and prebuilt versions of every
-  third-party dependency (OpenSSL + GOST, curl, FreeType, HarfBuzz, ICU, SQLite, the Vulkan stack,
-  image and compression libraries, …).
+  the Android bridge / Apple open-source headers and link stubs), libc++, compiler-rt, the system
+  headers, and prebuilt versions of every third-party dependency (OpenSSL + GOST, curl, FreeType,
+  HarfBuzz, SQLite, the Vulkan stack, image and compression libraries, …).
 
 Because both halves are self-contained, Windows builds work without UCRT or the Windows SDK, Android
 without the NDK, and macOS without the macOS SDK — removing the related technical and licensing
-restrictions. The only exceptions are the Apple targets, which require the Apple SDK for licensing
-reasons, and the `unknown-ndk-linux-android` bridge sysroot, which deliberately compiles through an
-externally installed Android NDK.
+restrictions. The exceptions are the iOS targets and the stock `*-apple-macosx` sysroots, which
+compile against the Apple SDK for licensing reasons (on macOS the SDK-free `*-apple-macosx+open`
+sysroot, assembled from Apple's open-source releases, is the alternative), and the
+`unknown-ndk-linux-android` bridge sysroot, which deliberately compiles through an externally
+installed Android NDK.
+
+The build looks for a toolchain in `toolchains/` (binary releases) first and in
+`runtime/toolchains/` (built from source on this machine) second.
 
 ### Toolchain architectures
 
@@ -229,13 +261,14 @@ The toolchains build both LLVM/Clang **host** toolchains (the compiler that runs
 | Linux, glibc | x86_64, aarch64, riscv64 (`*-unknown-linux-gnu`) |
 | Linux, musl | x86_64, aarch64, riscv64 (`*-unknown-linux-musl`) |
 | Android | arm64-v8a, armeabi-v7a, x86, x86_64; with and without the NDK (`unknown-ndk-linux-android`) |
-| Windows, MSVC ABI | x86_64, aarch64 (`*-pc-windows-msvc`) |
-| macOS | x86_64, aarch64, with and without Xenolith Runtime (`*-apple-macosx`, `*-apple-macosx+sprt`) |
+| Windows, MSVC ABI | x86_64, aarch64; static runtime |
+| macOS | x86_64, aarch64; Xcode SDK or SDK-free (`*-apple-macosx`, `*-apple-macosx+open`) |
 | iOS / iOS Simulator | aarch64 (device), x86_64 + aarch64 (simulator) |
+| WebAssembly | wasm32 (`wasm32-unknown-unknown`) |
+| NuttX, Embox | aarch64 (`aarch64-nuttx-none-elf`, `aarch64-embox-none-elf`), draft |
 
-> **iOS** currently builds the target sysroot only: Xenolith Runtime does not support iOS yet, and
-> there is no `+sprt` build variant for it (unlike macOS, which builds both the hosted and the
-> `+sprt` variants).
+> **iOS** is in development: the sysroots build, and the runtime has initial iOS support (including
+> the window layer).
 
 ### `xlmake` — bundled build driver
 
@@ -262,9 +295,8 @@ xlmake -j8         # same makefiles as `make`, built by the bundled driver
 ### Build
 
 * GNU Make 4.1+ (or the bundled `xlmake` build driver)
-* LLVM/Clang 22.1.8 (shipped by the SDK toolchains)
-* For Vulkan: Vulkan SDK headers and tools (glslang, spirv-tools)
-* For WebAssembly: WASI SDK and wit-bindgen
+* LLVM/Clang 22.1.8, the Vulkan headers and shader tools (glslang, SPIRV-Tools) — all shipped by
+  the SDK toolchains
 
 ### Databases
 
@@ -273,9 +305,14 @@ PostgreSQL (12+) or SQLite (bundled).
 ### Key third-party components
 
 Pinned versions are built as part of the toolchains:
-OpenSSL 3.5.8 LTS (+ GOST), Vulkan SDK 1.4.357.0, WAMR 2.4.5, ICU4C 78.3,
-FreeType 2.14.3, HarfBuzz 14.5.0, SQLite 3.53.4, curl 8.22.0 (nghttp3 1.18.0, ngtcp2 1.25.0), as well as zlib,
-zstd, brotli, libwebp, libjpeg-turbo, Wayland, and others.
+OpenSSL 3.5.8 LTS (+ GOST engine 3.0.3), Vulkan SDK 1.4.357.0, MoltenVK 1.4.2 (Apple), WAMR 2.4.5,
+FreeType 2.14.3, HarfBuzz 14.5.0, SheenBidi 3.0.0, SQLite 3.53.4, curl 8.22.0 (nghttp3 1.18.0,
+ngtcp2 1.25.0), as well as zlib, zstd, brotli, xz, bzip2, libpng, libwebp, libjpeg-turbo, giflib,
+libtiff, and others. Linux sysroots carry the Wayland, XCB, xkbcommon and D-Bus headers only — those
+libraries are loaded at runtime.
+
+ICU4C 78.3 is downloaded but not built: IDN, case mapping and collation are the runtime's own, and
+ICU serves as the Unicode reference data for the table generators and conformance tests.
 
 ## Building and running
 
@@ -285,24 +322,32 @@ cd xenolith-engine
 git submodule update --init   # fetches musl-libc
 ```
 
-Build an example (a graphical application):
+Build an example (a graphical application). With the SDK installed, the `xenolith-cli` front-end
+(`utils/installer/cli`) configures the toolchain and drives make; plain make works too:
 
 ```sh
-cd tests/window
-make            # build for the current host
+xenolith-cli build $PWD/tests/window --engine $PWD [--target <triple>] [--release] [--run]
+
+make -C tests/window                                  # build for the current host
+make -C tests/window STAPPLER_TARGET=x86_64-pc-windows-msvc
 ```
 
-Test applications live in the `tests/` directory (`window`, `stappler`, `runtime`, …), along with
-the conformance suites for the runtime's libc (`tests/libc`) and its libc++ port (`tests/libcxx`).
+Test applications live in the `tests/` directory (`window`, `stappler`, `runtime`, `remote`, …),
+along with the conformance suites for the runtime's libc (`tests/libc`) and its libc++ port
+(`tests/libcxx`). `tests/run-checks.py` picks and runs the checks a change can break
+(`tests/run-checks.py full` runs all of them). Larger examples are in `examples/`.
 
 ## Project structure
 
 ```
 runtime/   — Xenolith Runtime (libc, libc++ port, pthread, SPRT) and toolchains (runtime/toolchains)
 stappler/  — application libraries (data, DB, crypto, networking, graphics, documents)
-xenolith/  — Vulkan graphics engine (core, backend, renderers, remote rendering)
+xenolith/  — graphics engine (core, backends, renderers, remote rendering)
 make/      — GNU Make build system
-tests/     — test and example applications
+toolchains/ — installed binary-release toolchains (looked up before runtime/toolchains)
+tests/     — test applications and conformance suites
+examples/  — example applications (window, os)
+utils/     — tools: the installer and xenolith-cli, xlmake, headergen
 docs/      — documentation (articles, platform and API references)
 ```
 
@@ -352,9 +397,11 @@ A complete working example of a graphical application is in `tests/window/`.
 Documentation is located in the `docs/` directory:
 
 * `docs/articles/ru/general/` — about the project, building, platform support
-* `docs/platforms/` — Linux, Windows, macOS, Android specifics
-* `docs/usage/` — the build system and working in an IDE
+* `docs/platforms/` — Linux, Windows, macOS, Android, WebAssembly, NuttX and Embox specifics
+* `docs/usage/` — the build system, working in an IDE, data, 2D and UI usage
+* `docs/design/` — design notes (draw order, the node event pipeline, Unicode and IDN)
 * `docs/api/runtime/` — runtime API reference
+* `docs/agents/` — the build and test guide (see also `AGENTS.md`)
 
 ## Contact and signing key
 

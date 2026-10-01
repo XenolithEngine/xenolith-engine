@@ -57,7 +57,7 @@ binary on Linux, a `.exe` on Windows, a `<name>.app` bundle on macOS.
 ## First time on a machine (provision the SDK)
 
 ```
-xenolith-cli install                 # engine (git clone) + native host + native target (+sprt)
+xenolith-cli install                 # engine (git clone) + native host + native target (+open)
 # or step by step:
 xenolith-cli engine-install <ref>    # clone engine branch/tag (default: master; use 'stage'/'installer-cli')
 xenolith-cli install <host-triple> --host

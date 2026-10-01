@@ -176,8 +176,8 @@ $LinuxTargets = @(
 $AppleTargets = @(
     "x86_64-apple-macosx",
     "aarch64-apple-macosx",
-    "x86_64-apple-macosx+sprt",
-    "aarch64-apple-macosx+sprt",
+    "x86_64-apple-macosx+open",
+    "aarch64-apple-macosx+open",
     "aarch64-apple-ios",
     "x86_64-apple-ios-simulator",
     "aarch64-apple-ios-simulator"

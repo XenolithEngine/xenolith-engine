@@ -31,7 +31,7 @@
 # Embox rides in the vendor field; the clang --target uses the baremetal triple.
 #
 # Per-board profiles arrive as a +<board> suffix (e.g. aarch64-embox-none-elf+rpi4)
-# mirroring the +dll/+sprt suffix scheme; the suffix selects a specific export
+# mirroring the +dll/+open suffix scheme; the suffix selects a specific export
 # package via EMBOX_BOARD / EMBOX_CONFIG.
 
 .DEFAULT_GOAL := all

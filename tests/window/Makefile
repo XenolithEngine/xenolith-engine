@@ -167,7 +167,7 @@ LOCAL_TARGET_FILES := \
 # so an app cannot be linked as an executable there. The Android app is built through
 # unknown-ndk-linux-android instead (ndk-build -> libapplication.so for every ABI), and that
 # one is deliberately NOT matched by the patterns below.
-TARGETS_EXCLUDE ?= %+dll %+sprt %-ios %-ios-simulator \
+TARGETS_EXCLUDE ?= %+dll %-ios %-ios-simulator \
 	%-unknown-linux-android %-unknown-linux-androideabi
 
 TARGETS ?= $(sort $(foreach f,$(LOCAL_TARGET_FILES),$(notdir $(patsubst %/,%,$(dir $(f))))))

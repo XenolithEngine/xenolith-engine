@@ -86,7 +86,7 @@ LOCAL_TARGET_FILES := \
 	$(wildcard $(LOCAL_STAPPLER_ROOT)/toolchains/targets/*/target.mk) \
 	$(wildcard $(LOCAL_STAPPLER_ROOT)/runtime/toolchains/targets/*/target.mk)
 
-TARGETS_EXCLUDE ?= unknown-ndk-linux-android %+dll %+sprt %-ios %-ios-simulator
+TARGETS_EXCLUDE ?= unknown-ndk-linux-android %+dll %-ios %-ios-simulator
 
 TARGETS ?= $(sort $(foreach f,$(LOCAL_TARGET_FILES),$(notdir $(patsubst %/,%,$(dir $(f))))))
 TARGETS := $(filter-out $(TARGETS_EXCLUDE),$(TARGETS))
