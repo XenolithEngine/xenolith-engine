@@ -52,7 +52,7 @@ SP_PUBLIC Vector<RemoteEntry> parseListing(StringView text);
 // are DROPPED (security rule: never present an unsigned artifact).
 SP_PUBLIC Vector<CatalogueComponent> buildCatalogue(StringView hostsText, StringView targetsText);
 
-// Default FTP server + release fallback when discovery fails.
+// Default FTP server.
 inline StringView getDefaultServer() { return "stappler.dev"; }
 
 // The built-in releases root, used when the user has configured no mirror. Prefer

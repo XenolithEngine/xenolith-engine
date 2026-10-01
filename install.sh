@@ -52,11 +52,12 @@ if [ -n "${XENOLITH_CLI_VERSION:-}" ]; then
 	esac
 	say "Using requested release $tag"
 else
-	tag=$(curl -fsSL "$API/releases?per_page=100" \
+	releases=$(curl -fsSL "$API/releases?per_page=100") \
+		|| die "could not list releases from $API (network error or GitHub API rate limit)"
+	tag=$(printf '%s\n' "$releases" \
 		| grep -oE "\"tag_name\": *\"$TAG_PREFIX[^\"]+\"" \
 		| head -n 1 \
-		| sed 's/.*"\(.*\)"/\1/') \
-		|| die "could not list releases from $API"
+		| sed 's/.*"\(.*\)"/\1/')
 	[ -n "$tag" ] || die "no '$TAG_PREFIX*' release found in $REPO — has a CLI release been cut?"
 	say "Latest CLI release: $tag"
 fi
@@ -72,8 +73,8 @@ trap 'rm -rf "$tmp"' EXIT
 # --- download + verify ----------------------------------------------------------
 
 say "Downloading $asset ..."
-curl -fSL "$base_url/$asset" -o "$tmp/$asset" || die "download failed: $base_url/$asset"
-curl -fSL "$base_url/$asset.sha256" -o "$tmp/$asset.sha256" || die "download failed: $base_url/$asset.sha256"
+curl -fsSL "$base_url/$asset" -o "$tmp/$asset" || die "download failed: $base_url/$asset"
+curl -fsSL "$base_url/$asset.sha256" -o "$tmp/$asset.sha256" || die "download failed: $base_url/$asset.sha256"
 
 # The sidecar is "<hex>  <name>" (sha256sum format); only the hash is compared.
 expected=$(awk '{print $1}' "$tmp/$asset.sha256")
@@ -93,8 +94,13 @@ mkdir -p "$bin_dir"
 tar -xzf "$tmp/$asset" -C "$tmp"
 [ -f "$tmp/xenolith-cli" ] || die "archive did not contain a ./xenolith-cli binary"
 
-# Atomic-ish replace: mv within one filesystem; a concurrent xenolith-cli keeps running (unix).
 chmod +x "$tmp/xenolith-cli"
+
+# Run the new binary before it replaces a working one.
+"$tmp/xenolith-cli" --version >/dev/null 2>&1 \
+	|| die "the downloaded xenolith-cli does not run on this machine ($os $arch); nothing was replaced"
+
+# Atomic-ish replace: mv within one filesystem; a concurrent xenolith-cli keeps running (unix).
 mv -f "$tmp/xenolith-cli" "$bin_dir/xenolith-cli"
 
 # The pre-categories tool was named xenolith-installer-cli; keep the old name working.

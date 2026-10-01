@@ -675,12 +675,12 @@ void AppController::loadCatalogue(Function<void(bool ok, String err)> &&onDone) 
 
 		auto base = sel.base;
 		String hostsText, targetsText;
-		auto hostsResult = fetchTextRetry(toString(base) + "/hosts/", hostsText);
+		auto hostsResult = fetchTextRetry(toString(base) + "hosts/", hostsText);
 		if (!hostsResult) {
 			*errStr = toString("hosts: ") + hostsResult.error;
 			return false;
 		}
-		auto targetsResult = fetchTextRetry(toString(base) + "/targets/", targetsText);
+		auto targetsResult = fetchTextRetry(toString(base) + "targets/", targetsText);
 		if (!targetsResult) {
 			*errStr = toString("targets: ") + targetsResult.error;
 			return false;

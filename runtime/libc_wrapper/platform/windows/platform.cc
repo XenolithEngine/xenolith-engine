@@ -952,7 +952,8 @@ static KnownFolderInfo s_defaultKnownFolders[] = {
 	KnownFolderInfo{&FOLDERID_Profile, LocationCategory::UserHome, LookupFlags::Public},
 	KnownFolderInfo{&FOLDERID_Public, LocationCategory::UserHome, LookupFlags::Shared},
 	KnownFolderInfo{&FOLDERID_Fonts, LocationCategory::Fonts, LookupFlags::Shared},
-	KnownFolderInfo{&FOLDERID_InternetCache, LocationCategory::CommonData, LookupFlags::Private},
+	// The App* categories are placed under the first CommonData entry, so it is LocalAppData:
+	// the browser cache (FOLDERID_InternetCache) is wiped by Disk Cleanup.
 	KnownFolderInfo{&FOLDERID_LocalAppData, LocationCategory::CommonData, LookupFlags::Private},
 	KnownFolderInfo{&FOLDERID_RoamingAppData, LocationCategory::CommonData, LookupFlags::Public},
 	KnownFolderInfo{&FOLDERID_ProgramData, LocationCategory::CommonData, LookupFlags::Shared},

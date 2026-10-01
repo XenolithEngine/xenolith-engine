@@ -53,7 +53,7 @@ static String categoryRoot(FileCategory category) {
 // The store must never live under a path with a space: `xenolith-cli build` passes the engine root
 // into the build system as STAPPLER_ROOT, and a space there breaks the make machinery's
 // MAKEFILE_LIST → BUILD_ROOT derivation (the PathSpacePlaceholder does not survive `$(abspath)`).
-// macOS is the one platform whose native AppData ("~/Library/Application Support/…") has one.
+// macOS AppData ("~/Library/Application Support/…") always has one, Windows when the profile does.
 static bool hasSpace(StringView path) {
 	return path.find(' ') != maxOf<size_t>();
 }
@@ -65,6 +65,23 @@ static String preCategoriesRoot() {
 	const char *home = ::getenv("HOME");
 	return home && *home ? mergePath(StringView(home), ".local/share/xenolith")
 						 : String("/tmp/xenolith");
+}
+
+// Where the store goes when the native location has a space. Windows has no HOME, and the
+// profile path is the one with the space, so the store moves to the system drive root.
+static String spaceFreeRoot() {
+	auto root = preCategoriesRoot();
+#if SPRT_WINDOWS
+	if (::getenv("HOME") == nullptr || hasSpace(root)) {
+		const char *drive = ::getenv("SystemDrive"); // "C:"
+		char letter = (drive && *drive) ? drive[0] : 'c';
+		if (letter >= 'A' && letter <= 'Z') {
+			letter += 'a' - 'A';
+		}
+		return toString("/", StringView(&letter, 1), "/xenolith");
+	}
+#endif
+	return root;
 }
 
 Layout Layout::system() {
@@ -99,18 +116,16 @@ Layout Layout::system() {
 		}
 	}
 
-	// A space in any of the category roots (macOS "Application Support") breaks `build` through
-	// STAPPLER_ROOT — see hasSpace — so the store moves to the space-free pre-categories root
-	// instead of the native one on such platforms.
+	// A space in any of the category roots breaks `build` through STAPPLER_ROOT, see hasSpace.
 	if (hasSpace(dataRoot)) {
-		return fromHome(preCategoriesRoot());
+		return fromHome(spaceFreeRoot());
 	}
 
 	auto configRoot = categoryRoot(FileCategory::AppConfig);
 	auto cacheRoot = categoryRoot(FileCategory::AppCache);
 
 	if (hasSpace(configRoot) || hasSpace(cacheRoot)) {
-		return fromHome(preCategoriesRoot());
+		return fromHome(spaceFreeRoot());
 	}
 
 	Layout l;
