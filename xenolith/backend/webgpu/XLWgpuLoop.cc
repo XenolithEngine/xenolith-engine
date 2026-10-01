@@ -537,6 +537,18 @@ void Loop::updateImage(const Rc<core::DynamicImage> &image, BytesView data,
 		auto imgInfo = core::ImageInfoData(info);
 		imgInfo.usage |= core::ImageUsage::TransferDst;
 
+		// Refused before anything is created, as on the fast path: an instance rebound to a texture
+		// that was never written would show garbage and report success.
+		const uint64_t expected = core::getFormatImageSize(imgInfo.format, imgInfo.extent);
+		if (uint64_t(copy.size()) < expected) {
+			log::source().error("webgpu::Loop", "updateImage: short data: ", copy.size(), " < ",
+					expected);
+			if (cb) {
+				cb(false);
+			}
+			return;
+		}
+
 		auto img = Rc<Image>::create(*_device, info.key, imgInfo);
 		if (!img) {
 			log::source().error("webgpu::Loop", "updateImage: fail to create image");
@@ -546,23 +558,18 @@ void Loop::updateImage(const Rc<core::DynamicImage> &image, BytesView data,
 			return;
 		}
 
-		const uint64_t expected = core::getFormatImageSize(imgInfo.format, imgInfo.extent);
-		if (!copy.empty() && uint64_t(copy.size()) >= expected) {
-			WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-			dst.texture = img->getTexture();
+		WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+		dst.texture = img->getTexture();
 
-			WGPUTexelCopyBufferLayout layout;
-			layout.offset = 0;
-			layout.bytesPerRow =
-					uint32_t(core::getFormatRowSize(imgInfo.format, imgInfo.extent.width));
-			layout.rowsPerImage = core::getFormatRowCount(imgInfo.format, imgInfo.extent.height);
+		WGPUTexelCopyBufferLayout layout;
+		layout.offset = 0;
+		layout.bytesPerRow = uint32_t(core::getFormatRowSize(imgInfo.format, imgInfo.extent.width));
+		layout.rowsPerImage = core::getFormatRowCount(imgInfo.format, imgInfo.extent.height);
 
-			WGPUExtent3D writeExtent{imgInfo.extent.width, imgInfo.extent.height,
-				imgInfo.extent.depth};
+		WGPUExtent3D writeExtent{imgInfo.extent.width, imgInfo.extent.height, imgInfo.extent.depth};
 
-			wgpuQueueWriteTexture(_device->getQueue(), &dst, copy.data(), size_t(expected),
-					&layout, &writeExtent);
-		}
+		wgpuQueueWriteTexture(_device->getQueue(), &dst, copy.data(), size_t(expected), &layout,
+				&writeExtent);
 
 		if (image->getInstance()) {
 			core::ImageViewInfo viewInfo;
