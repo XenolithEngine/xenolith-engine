@@ -80,9 +80,11 @@ static bool deadlineExpired(const struct __SPRT_TIMESPEC_NAME &ts) {
 
 // The futex answer in this backend's contract: 0, or -1 with errno. The kernel
 // returns a negated errno; EAGAIN (the word changed) and EINTR are both "look
-// again", which every caller here does.
+// again", which every caller does once it has re-read the word -- so they are
+// answered as a wake, and only a real failure goes through errno (BF-106; not
+// every caller took EINTR for "look again").
 static int emboxFutexResult(long res) {
-	if (res == 0) {
+	if (res == 0 || res == -EAGAIN || res == -EINTR) {
 		return 0;
 	}
 	__sprt_errno = (int)-res;

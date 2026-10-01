@@ -361,8 +361,18 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 	// whatever the pool did not get to, so a task that never ran cannot leave a tile unpainted.
 	body();
 
-	if (posted > 0) {
-		finished.wait(posted);
+	// Not one step past here before every posted task has signalled: they hold this frame by
+	// reference, and a return that beat one of them is a worker writing into somebody else's
+	// stack (BF-106). A failed wait has not waited, so it is asked again; there is no answer
+	// to give the caller that would make returning safe.
+	bool joinFailed = false;
+	while (posted > 0 && !finished.try_wait(posted)) {
+		auto st = finished.wait(posted);
+		if (!sprt::status::isSuccessful(st) && !joinFailed) {
+			joinFailed = true;
+			log::source().error("raster", "drawTiled: the join failed (",
+					sprt::status::getStatusName(st), "), waiting again");
+		}
 	}
 
 	if (stats) {

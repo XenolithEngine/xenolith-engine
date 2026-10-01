@@ -91,9 +91,15 @@ static int64_t emboxFutexTimeout(__SPRT_ID(sprt_timeout_t) timeout) {
 																		  : static_cast<int64_t>(timeout);
 }
 
-// The futex answer in this backend's contract: 0, or -1 with errno.
+// The futex answer in this backend's contract: 0, or -1 with errno. EAGAIN (the
+// word had already changed) and EINTR are answered as a wake, which they are as
+// far as any caller can tell: every one of them re-reads the word and waits
+// again if it has to. Only a real failure goes through errno. That keeps the
+// common case off errno altogether (BF-106: errno was the task's, not the
+// thread's, and a pool thread's EAGAIN came back as whatever another thread
+// had just left there -- qtimeline::wait took it for an error and returned).
 static int emboxFutexResult(int res) {
-	if (res == 0) {
+	if (res == 0 || res == -EAGAIN || res == -EINTR) {
 		return 0;
 	}
 	__sprt_errno = -res;

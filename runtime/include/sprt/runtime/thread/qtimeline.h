@@ -61,6 +61,10 @@ public:
 	qtimeline(value_type initial = 0) : _data(initial) { }
 	~qtimeline() { }
 
+	// EAGAIN (the value changed before the wait) and EINTR (a signal) are not
+	// failures: the loop re-reads the value and waits again. Anything else is
+	// returned, and the value has NOT been reached -- a caller that goes on as
+	// if it had races whoever was to signal it.
 	Status wait(value_type val, flags_type f = 0) {
 		// optimistic load, if success - returns without setting WaitersBit
 		auto v = (_atomic::loadSeq(&_data));
@@ -70,7 +74,7 @@ public:
 				if ((v & WAITERS_BIT) != 0) {
 					// WaitersBit was not dropped, just wait
 					if (__sprt_sprt_qlock_wait(&_data, v, __SPRT_SPRT_TIMEOUT_INFINITE, f) != 0) {
-						if (__sprt_errno != EAGAIN) {
+						if (__sprt_errno != EAGAIN && __sprt_errno != EINTR) {
 							return status::errnoToStatus(__sprt_errno);
 						}
 					}
@@ -81,7 +85,7 @@ public:
 						// if &_data.value is still == v -- wait until signal
 						if (__sprt_sprt_qlock_wait(&_data, v, __SPRT_SPRT_TIMEOUT_INFINITE, f)
 								!= 0) {
-							if (__sprt_errno != EAGAIN) {
+							if (__sprt_errno != EAGAIN && __sprt_errno != EINTR) {
 								return status::errnoToStatus(__sprt_errno);
 							}
 						}
@@ -108,7 +112,7 @@ public:
 				if ((v & WAITERS_BIT) != 0) {
 					// WaitersBit was not dropped, just wait
 					if (__sprt_sprt_qlock_wait(&_data, v, __t, f) != 0) {
-						if (__sprt_errno != EAGAIN) {
+						if (__sprt_errno != EAGAIN && __sprt_errno != EINTR) {
 							return status::errnoToStatus(__sprt_errno);
 						}
 					}
@@ -118,7 +122,7 @@ public:
 					if ((v & VALUE_MASK) < val) {
 						// if &_data.value is still == v -- wait until signal
 						if (__sprt_sprt_qlock_wait(&_data, v, __t, f) != 0) {
-							if (__sprt_errno != EAGAIN) {
+							if (__sprt_errno != EAGAIN && __sprt_errno != EINTR) {
 								return status::errnoToStatus(__sprt_errno);
 							}
 						}
