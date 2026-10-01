@@ -51,15 +51,20 @@ static bool bucketHasCycle(MemNode *head, size_t *mu, size_t *lam, MemNode **ent
 				p = p->next;
 				++l;
 			}
+			// `slow` is where the pointers met, somewhere on the cycle. The entry is where two
+			// pointers `l` nodes apart, walked from the head, first coincide.
+			MemNode *a = head;
+			MemNode *b = head;
+			for (size_t i = 0; i < l; ++i) { b = b->next; }
 			size_t m = 0;
-			MemNode *q = head;
-			while (q != slow) {
-				q = q->next;
+			while (a != b) {
+				a = a->next;
+				b = b->next;
 				++m;
 			}
 			*mu = m;
 			*lam = l;
-			*entry = slow;
+			*entry = a;
 			return true;
 		}
 		if (power == length) {
