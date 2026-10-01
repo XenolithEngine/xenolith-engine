@@ -113,4 +113,14 @@ xenolith-cli build utils/installer/cli --engine <engine-checkout> --release
 From scratch (no SDK): the release workflow's bootstrap is the reference — fetch the host and
 target archives for your triple from `ftp://stappler.dev/releases/<sdk-v*>/`, unpack them under
 `<data>/toolchains/{hosts,targets}/<triple>/`, and run the toolchain's `make` from
-`toolchains/hosts/<triple>/bin` against `utils/installer/cli`.
+`toolchains/hosts/<triple>/bin` against `utils/installer/cli`. The engine tree has no
+`toolchains/` links until the CLI makes them, so point `make` at the unpacked definitions:
+
+```sh
+make -C utils/installer/cli RELEASE=1 \
+  STAPPLER_HOST_FILE=<data>/toolchains/hosts/<triple>/host.mk \
+  STAPPLER_TARGET_FILE=<data>/toolchains/targets/<triple>/target.mk
+```
+
+A `*-musl` target links the CLI statically (`-static-pie`), which is what lets the released
+Linux binary run on glibc distributions too.

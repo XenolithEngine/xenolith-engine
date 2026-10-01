@@ -136,12 +136,12 @@ InstallResult installComponent(const SourceConfig &sources, StringView release, 
 	// 1. Fetch the catalogue. These are URLs, not paths: the trailing slash is what makes the FTP
 	// server list a directory, so they are built by concatenation and never through filepath.
 	String hostsText, targetsText;
-	auto r1 = fetchTextRetry(toString(base, "/hosts/"), hostsText);
+	auto r1 = fetchTextRetry(toString(base, "hosts/"), hostsText);
 	if (!r1) {
 		result.setError(r1.status, "hosts: ", r1.error);
 		return result;
 	}
-	auto r2 = fetchTextRetry(toString(base, "/targets/"), targetsText);
+	auto r2 = fetchTextRetry(toString(base, "targets/"), targetsText);
 	if (!r2) {
 		result.setError(r2.status, "targets: ", r2.error);
 		return result;
@@ -215,7 +215,7 @@ InstallResult installComponent(const SourceConfig &sources, StringView release, 
 		out.id = comp->id;
 		out.kind = kind;
 
-		auto url = toString(base, "/", getKindDirName(kind), "/", comp->id, ".tar.xz");
+		auto url = toString(base, getKindDirName(kind), "/", comp->id, ".tar.xz");
 
 		Bytes archive;
 		auto rf = fetchBytesRetry(url, archive, progress);

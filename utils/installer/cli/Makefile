@@ -29,6 +29,13 @@ APPCONFIG_APP_NAME := xenolith-cli
 # build keeps the marker saying it is not a release build.
 XENOLITH_CLI_VERSION ?= dev
 LOCAL_CXXFLAGS += -DXENOLITH_CLI_VERSION=\"$(XENOLITH_CLI_VERSION)\"
+
+# The released Linux binary is a musl build, and a dynamic one needs /lib/ld-musl-*.so.1, which a
+# glibc distribution does not have: link it statically so it runs everywhere.
+ifneq ($(findstring -musl,$(STAPPLER_TARGET)),)
+LOCAL_LDFLAGS += -static-pie
+endif
+
 # The CLI and the GUI are two front ends of ONE product and share the SDK store, so they must share
 # the bundle name and the path scheme: both feed the runtime's App* location categories, and a
 # mismatch in either would give the two tools different directories.

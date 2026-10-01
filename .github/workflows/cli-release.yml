@@ -104,11 +104,18 @@ jobs:
           tar -xf /tmp/target.tar.xz -C "$store/targets"
           test -d "$store/hosts/${{ matrix.host }}/bin" || { echo "host archive layout unexpected" >&2; exit 1; }
 
+      # The engine tree has no toolchains/ links yet (the CLI makes them), so make is pointed at
+      # the store's host and target definitions directly.
       - name: Build the native xenolith-cli
         run: |
           set -euo pipefail
-          export PATH="$XENOLITH_HOME/data/toolchains/hosts/${{ matrix.host }}/bin:$PATH"
-          make -C utils/installer/cli -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)" RELEASE=1
+          # PATH takes the POSIX form of the store, make the drive-letter one (Windows runner).
+          store="$XENOLITH_HOME/data/toolchains"; mk="$store"
+          if command -v cygpath >/dev/null; then store=$(cygpath -u "$store"); mk=$(cygpath -m "$store"); fi
+          export PATH="$store/hosts/${{ matrix.host }}/bin:$PATH"
+          make -C utils/installer/cli -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)" RELEASE=1 \
+            STAPPLER_HOST_FILE="$mk/hosts/${{ matrix.host }}/host.mk" \
+            STAPPLER_TARGET_FILE="$mk/targets/${{ matrix.host }}/target.mk"
 
       - name: Smoke-test the native binary
         run: |
@@ -123,7 +130,9 @@ jobs:
       - name: Build the cross targets
         run: |
           set -euo pipefail
-          export PATH="$XENOLITH_HOME/data/toolchains/hosts/${{ matrix.host }}/bin:$PATH"
+          store="$XENOLITH_HOME/data/toolchains"
+          if command -v cygpath >/dev/null; then store=$(cygpath -u "$store"); fi
+          export PATH="$store/hosts/${{ matrix.host }}/bin:$PATH"
           cli=utils/installer/cli/stappler-build/${{ matrix.host }}/release/cc/xenolith-cli
           [ -f "$cli" ] || cli="$cli.exe"
           for t in ${{ matrix.targets }}; do
@@ -196,8 +205,11 @@ jobs:
           curl -fsSL --retry 5 "$FTP_ROOT/$SDK/targets/x86_64-pc-windows-msvc.tar.xz" -o /tmp/target.tar.xz
           tar -xf /tmp/host.tar.xz -C "$store/hosts"
           tar -xf /tmp/target.tar.xz -C "$store/targets"
+          mk=$(cygpath -m "$store"); store=$(cygpath -u "$store")
           export PATH="$store/hosts/x86_64-pc-windows-msvc/bin:$PATH"
-          make -C utils/installer/cli -j"$(nproc 2>/dev/null || echo 8)" RELEASE=1
+          make -C utils/installer/cli -j"$(nproc 2>/dev/null || echo 8)" RELEASE=1 \
+            STAPPLER_HOST_FILE="$mk/hosts/x86_64-pc-windows-msvc/host.mk" \
+            STAPPLER_TARGET_FILE="$mk/targets/x86_64-pc-windows-msvc/target.mk"
           cli=utils/installer/cli/stappler-build/x86_64-pc-windows-msvc/release/cc/xenolith-cli.exe
           "$cli" --version
           "$cli" install aarch64-pc-windows-msvc --target

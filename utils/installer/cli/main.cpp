@@ -237,14 +237,11 @@ static String getEffectiveSetting(const CliEnv &env, StringView key) {
 	} else if (key == "releaseSourceUrl") {
 		return env.settings.sources.getReleasesRoot();
 	} else if (key == "sdkRelease") {
-		// What a run would read: the pin when set, else whatever the server last answered — the
-		// live answer needs a network round trip this display does not make, and "newest on the
-		// server" is the honest description of that.
-		auto sel = env.settings.sources.selectRelease();
-		if (sel.pinned) {
-			return sel.release;
+		// No discovery here: `config` must answer offline, `list` shows the resolved release.
+		if (!env.settings.sources.sdkRelease.empty()) {
+			return env.settings.sources.sdkRelease;
 		}
-		return sel ? toString(sel.release, "  (newest on the server)") : toString("(cannot list the server: ", sel.error, ")");
+		return toString("newest sdk-v* on the server, see `list`");
 	} else if (key == "enginePath") {
 		bool ok = false;
 		auto root = resolveEngineRoot(env.layout, StringView(), &ok);
@@ -426,12 +423,12 @@ static int cmdList() {
 
 	// URLs, not paths: the trailing slash is what makes the FTP server list a directory.
 	String hostsText, targetsText;
-	auto r1 = fetchTextRetry(toString(sel.base, "/hosts/"), hostsText);
+	auto r1 = fetchTextRetry(toString(sel.base, "hosts/"), hostsText);
 	if (!r1) {
 		sprt::cerr << "hosts: " << r1.error << "\n";
 		return 1;
 	}
-	auto r2 = fetchTextRetry(toString(sel.base, "/targets/"), targetsText);
+	auto r2 = fetchTextRetry(toString(sel.base, "targets/"), targetsText);
 	if (!r2) {
 		sprt::cerr << "targets: " << r2.error << "\n";
 		return 1;

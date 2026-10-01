@@ -19,9 +19,9 @@ $ProgressPreference = 'SilentlyContinue' # Invoke-WebRequest progress is many-ti
 $repo = 'XenolithEngine/xenolith-engine'
 $api = "https://api.github.com/repos/$repo"
 
+# throw, not exit: under `irm | iex` the script runs in the user's session, and exit would close it.
 function Fail([string]$message) {
-	Write-Host "install.ps1: $message" -ForegroundColor Red
-	exit 1
+	throw "install.ps1: $message"
 }
 
 # Windows PowerShell 5.1 may have TLS 1.2 off by default; PowerShell 7 already speaks it.
@@ -75,9 +75,9 @@ try {
 		Invoke-WebRequest -Uri "$baseUrl/$asset" -OutFile (Join-Path $tmp $asset)
 		Invoke-WebRequest -Uri "$baseUrl/$asset.sha256" -OutFile (Join-Path $tmp "$asset.sha256")
 	} catch {
-		Fail "download failed from $baseUrl ($($_.Exception.Message)). " +
+		Fail ("download failed from $baseUrl ($($_.Exception.Message)). " +
 			"If this is an ARM64 machine, the aarch64 asset may not exist in $tag yet — " +
-			"set XENOLITH_CLI_TRIPLE=x86_64-pc-windows-msvc to run the x64 build."
+			'set XENOLITH_CLI_TRIPLE=x86_64-pc-windows-msvc to run the x64 build.')
 	}
 
 	$expected = (Get-Content (Join-Path $tmp "$asset.sha256") -First 1) -split '\s+' | Select-Object -First 1
@@ -93,6 +93,10 @@ try {
 		Select-Object -First 1
 	if (-not $bin) { Fail 'archive did not contain a ./xenolith-cli(.exe) binary' }
 
+	# Run the new binary before it replaces a working one.
+	& $bin.FullName --version *> $null
+	if ($LASTEXITCODE -ne 0) { Fail "the downloaded $($bin.Name) does not run on this machine; nothing was replaced" }
+
 	$binDir = if ($env:XENOLITH_BIN_DIR) { $env:XENOLITH_BIN_DIR } else { Join-Path $HOME '.local\bin' }
 	New-Item -ItemType Directory -Path $binDir -Force | Out-Null
 
@@ -101,13 +105,14 @@ try {
 	$compatName = $bin.Name -replace '^xenolith-cli', 'xenolith-installer-cli'
 	Copy-Item $bin.FullName (Join-Path $binDir $compatName) -Force
 
-	# Add to the USER Path once; a new terminal picks it up (the current one gets it inline).
+	# Add to the USER Path once for new terminals, and to this session's Path right away.
 	$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-	if ($userPath -notlike "*$binDir*") {
-		[Environment]::SetEnvironmentVariable('Path', "$userPath;$binDir", 'User')
-		Write-Host "note: added $binDir to your user PATH — open a new terminal, or:"
-		Write-Host "  `$env:Path += `";$binDir`""
-	} else {
+	if (($userPath -split ';') -notcontains $binDir) {
+		$newPath = if ($userPath) { "$userPath;$binDir" } else { $binDir }
+		[Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+		Write-Host "note: added $binDir to your user PATH"
+	}
+	if (($env:Path -split ';') -notcontains $binDir) {
 		$env:Path += ";$binDir"
 	}
 

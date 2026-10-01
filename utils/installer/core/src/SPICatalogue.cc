@@ -215,7 +215,7 @@ ReleaseSelection discoverRelease(StringView releasesRoot) {
 		return sel;
 	}
 	sel.discovered = true;
-	sel.base = root + sel.release;
+	sel.base = toString(root, sel.release, "/");
 	return sel;
 }
 
