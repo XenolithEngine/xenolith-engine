@@ -162,33 +162,7 @@ extern "C" uintptr_t xenolith_soft_scanout_fb(uint32_t *stride) {
 	return 0;
 }
 
-/* XENOLITH_B3 frame probe (zero3e perf campaign): CNTVCT register read. */
-static inline uint64_t xbxVct() {
-	uint64_t v;
-	__asm__ volatile("mrs %0, cntvct_el0" : "=r"(v));
-	return v;
-}
-static inline uint64_t xbxVctFrq() {
-	uint64_t v;
-	__asm__ volatile("mrs %0, cntfrq_el0" : "=r"(v));
-	return v ? v : 1;
-}
-
 Status EmboxSoftwareSwapchain::present(uint32_t index, SpanView<geom::URect> damage) {
-	struct XbxPresentTimer {
-		uint64_t t0 = xbxVct();
-		~XbxPresentTimer() {
-			static uint64_t s_ns = 0;
-			static uint32_t s_n = 0;
-			s_ns += xbxVct() - t0;
-			if (++s_n >= 60) {
-				oslog::vpinfo(__SPRT_LOCATION, "xbx:present", " ms=",
-						double(s_ns) * 1000.0 / double(xbxVctFrq()) / 60.0);
-				s_ns = 0;
-				s_n = 0;
-			}
-		}
-	} xbxPresentTimer;
 	if (_invalid || !_owner || _buffers.empty() || index >= _buffers.size()) {
 		return Status::ErrorCancelled;
 	}
