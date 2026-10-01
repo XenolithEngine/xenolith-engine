@@ -417,13 +417,21 @@ SPRT_UMBRELLA_FUNC int strncasecmp(const char *s1, const char *s2,
 // macros so a caller can take their address, and routed to the same __sprt_* backends -
 // on this libc the "current locale" the MSVC forms are documented against is the UTF-8
 // one, where case folding of the ASCII range is what both pairs do.
+// Guarded like the POSIX spellings above: <string.h> and <strings.h> both reach this
+// header on the freestanding targets, and a plain C TU that co-includes the two
+// (doomgeneric does) redeclares them otherwise.
+#ifndef __SPRT_DEFINED__stricmp
+#define __SPRT_DEFINED__stricmp
 SPRT_UMBRELLA_FUNC int _stricmp(const char *s1, const char *s2) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_strcasecmp(s1, s2);
 }
 #endif
+#endif // __SPRT_DEFINED__stricmp
 
+#ifndef __SPRT_DEFINED__strnicmp
+#define __SPRT_DEFINED__strnicmp
 SPRT_UMBRELLA_FUNC int _strnicmp(const char *s1, const char *s2,
 		__SPRT_ID(rsize_t) size) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -431,6 +439,7 @@ SPRT_UMBRELLA_FUNC int _strnicmp(const char *s1, const char *s2,
 	return __sprt_strncasecmp(s1, s2, size);
 }
 #endif
+#endif // __SPRT_DEFINED__strnicmp
 
 // Pre-standard alias MSVC still ships for _stricmp; same function.
 SPRT_UMBRELLA_FUNC int _strcmpi(const char *s1, const char *s2) SPRT_UMBRELLA_END
