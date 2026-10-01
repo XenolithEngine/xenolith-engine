@@ -49,4 +49,5 @@ TOOLKIT_MODULE_LIST += \
 	$(STAPPLER_MODULE_DIR)/document/document.mk \
 	$(STAPPLER_MODULE_DIR)/markdown/markdown.mk \
 	$(STAPPLER_MODULE_DIR)/layout/layout.mk \
+	$(STAPPLER_MODULE_DIR)/vstore/vstore.mk \
 	$(STAPPLER_MODULE_DIR)/experimental/abi/abi.mk

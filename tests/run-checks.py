@@ -80,6 +80,7 @@ CLI = [
     ("tests/uilayout", "uilayouttest", [], True),
     ("tests/stappler", "stapplertest", [], True),
     ("tests/particles", "particlestest", [], True),
+    ("tests/vstore", "vstoretest", [], True),
     ("tests/tess", "tesstest", ["golden"], False),
     ("tests/tess", "tesstest", ["raster-golden"], False),
     ("tests/tess", "tesstest", ["strokes"], False),
@@ -89,10 +90,17 @@ CLI = [
     ("tests/compute", "computetest", [], False),
 ]
 
+# Arguments a harness takes only in the `full` tier: without them it runs a reduced arm sized for
+# iteration, with them the complete sweeps (minutes rather than seconds).
+GATE_ARGS = {
+    "vstoretest": ["--full"],
+}
+
 # Which console harnesses a directory owes. First match wins, so the specific paths lead.
 OWES = [
     ("stappler/tess", ["tesstest"]),
     ("stappler/vg", ["tesstest", "stapplertest"]),
+    ("stappler/vstore", ["vstoretest"]),
     ("runtime/libc_impl", ["libctest", "runtimetest"]),
     ("runtime", ["runtimetest", "libctest"]),
     ("stappler", ["stapplertest"]),
@@ -135,7 +143,7 @@ COST = {
     "window/remote-multi-check.py": 30, "remotetest": 3,
     "window/frame-request-check.py": 34, "window/label-bounds-check.py": 27,
     "gittest": 19, "computetest": 6, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
-    "uilayouttest": 1, "particlestest": 1,
+    "uilayouttest": 1, "particlestest": 1, "vstoretest": 5, "vstoretest --full": 200,
 }
 
 # Window checks that start a binary other than tests/window's testapp: (project, binary). The runner
@@ -262,13 +270,15 @@ class Job:
         return self
 
 
-def cli_jobs(names=None, console_only=False):
+def cli_jobs(names=None, console_only=False, gate=False):
     jobs = []
     for proj, name, args, in_console in CLI:
         if console_only and not in_console:
             continue
         if names is not None and name not in names:
             continue
+        if gate:
+            args = args + GATE_ARGS.get(name, [])
         label = name + (" " + " ".join(args) if args else "")
         jobs.append(Job(label, [binary(proj, name)] + args, cwd=os.path.join(ROOT, proj)))
     return jobs
@@ -299,7 +309,7 @@ def plan(args):
     if args.tier == "console":
         return cli_jobs(console_only=True), "the console harnesses, no window"
     if args.tier == "full":
-        return cli_jobs() + window_jobs(window_scripts()), "the gate"
+        return cli_jobs(gate=True) + window_jobs(window_scripts()), "the gate"
     if args.tier == "suite":
         jobs = []
         for n in args.names:

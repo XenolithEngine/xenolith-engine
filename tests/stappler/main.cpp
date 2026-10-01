@@ -70,6 +70,7 @@ static const TestEntry s_testList[] = {
 	{"diag-registry", &stappler::performDiagnosticRegistryTests},
 	{"json-git", &stappler::performJsonGitTests},
 	{"bitmap-resample", &stappler::performBitmapResampleTests},
+	{"compression-libs", &stappler::performCompressionLibTests},
 };
 
 int main(int argc, const char *argv[]) {

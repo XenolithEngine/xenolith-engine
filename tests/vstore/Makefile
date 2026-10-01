@@ -24,57 +24,37 @@ LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../../make
 
 LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
-LOCAL_EXECUTABLE := stapplertest
+LOCAL_EXECUTABLE := vstoretest
 
 LOCAL_PRIVATE_INCLUDE_PCH := SPCommon.h
+
+# SP_VSTORE_DIRTY_RANGE=1 builds the suite under the range encoding of the dirty map
+LOCAL_CXXFLAGS += $(if $(filter 1,$(SP_VSTORE_DIRTY_RANGE)),-DSP_VSTORE_DIRTY_RANGE=1)
 
 LOCAL_MODULES_PATHS = stappler/stappler-modules.mk
 
 LOCAL_MODULES ?= \
 	runtime \
-	runtime_window \
 	stappler_core \
 	stappler_filesystem \
 	stappler_data \
-	stappler_bitmap \
-	stappler_crypto \
-	stappler_db \
-	stappler_document \
-	stappler_markdown \
-	stappler_font \
-	stappler_vg \
-	stappler_pug \
-	stappler_makefile \
-	stappler_layout \
-	stappler_network \
-	stappler_raster \
+	stappler_brotli_lib \
+	stappler_vstore \
 	stappler_zstd_lib \
 	stappler_lzma_lib
 
-
 LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 
-# The embed tests assert that a BundleFS walk reports empty directories, and git cannot store an
-# empty directory — so the bundles get one created here. It has to happen at PARSE time, before
-# make/embed scans the trees ($(wildcard) in sp_embed_deps) and long before the bundle is baked into
-# the binary; creating it from the test at runtime would be far too late.
-SP_EMBED_EMPTY_DIRS := $(shell mkdir -p $(LOCAL_ROOT)resources/empty $(LOCAL_ROOT)resources-packed/empty)
-
-LOCAL_SRCS_DIRS := mk filesystem font pug document core vg search zip
+LOCAL_SRCS_DIRS := arena journal check
 LOCAL_SRCS_OBJS :=
-
-# BundleFS: `resources` is embedded into the binary twice — raw, and compressed — so that the
-# filesystem tests can exercise both storage forms of the same content
-LOCAL_EMBED_DIRS := resources
-LOCAL_EMBED_COMPRESSED_DIRS := resources-packed
 
 LOCAL_INCLUDES_DIRS :=
 LOCAL_INCLUDES_OBJS :=
 
 LOCAL_MAIN := main.cpp
 
-APPCONFIG_APP_NAME := RuntimeTest
-APPCONFIG_BUNDLE_NAME := org.stappler.RuntimeTest
+APPCONFIG_APP_NAME := VStoreTest
+APPCONFIG_BUNDLE_NAME := org.stappler.VStoreTest
 APPCONFIG_APP_PATH_COMMON := 3
 
 include $(STAPPLER_BUILD_ROOT)/universal.mk

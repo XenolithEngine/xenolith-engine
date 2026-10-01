@@ -133,6 +133,14 @@ What the looper can do for you without spawning a thread: `scheduleTimer` /
 `connectSocket`, `spawnProcess`, `listenPollableHandle` for a raw fd. Reach for
 these before reaching for a thread.
 
+Unix sockets can pass descriptors (`SCM_RIGHTS`): set `ListenInfo::handles` /
+`ConnectInfo::handles`, then use `StreamHandle::write(data, handles)` and the
+`read` overload that receives `SpanView<NativeHandle>`. The written descriptors
+are duplicated and travel with the first byte of `data`; the received ones belong
+to the reader, which must close them. Such streams always use the readiness
+(poll) strategy. Windows and other targets without `SCM_RIGHTS` return `nullptr`
+from `listenSocket` / `connectSocket` when `handles` is set.
+
 ## `Task`: three phases, two threads
 
 [task.h](../../../../runtime/include/sprt/runtime/dispatch/task.h). A `Task` splits

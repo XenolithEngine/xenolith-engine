@@ -73,6 +73,9 @@ struct SPRT_API SocketState : public Ref {
 	// callback: the actual reset is deferred through QueueData::perform then.
 	void setInterest(PollFlags);
 
+	// Stop polling until the next setInterest with a different set.
+	void parkPoller();
+
 	// Request the handle to finalize with `st`: cancels it outside the current
 	// notify cycle (the FileState::finalizeChannel pattern).
 	void finalizeSocket(Status st);
@@ -88,6 +91,7 @@ struct SPRT_API ListenState : public SocketState {
 	// strategy factory that builds the handle (Handle::init consumes it)
 	ListenInfo::Completion pendingCompletion;
 	bool ownsUnixPath = false; // unlink address.path on teardown
+	bool passHandles = false; // accepted streams pass descriptors
 
 	virtual ~ListenState();
 
@@ -96,7 +100,16 @@ struct SPRT_API ListenState : public SocketState {
 };
 
 struct SPRT_API StreamState : public SocketState {
+	// Descriptors queued with the byte at outBuf[offset]; owned until sent.
+	struct PendingHandles {
+		size_t offset = 0;
+		Vector<NativeHandle> handles;
+	};
+
 	Function<Status(BytesView)> reader;
+	Function<Status(BytesView, SpanView<NativeHandle>)> handleReader;
+	Vector<PendingHandles> outHandles;
+	bool passHandles = false; // recvmsg/sendmsg with SCM_RIGHTS, readiness strategy only
 	Function<void(Status)> onClose;
 	ConnectInfo::Completion connectCompletion; // fired exactly once
 	// native-strategy hook: called after reader/outBuf/shutdown state changes
@@ -115,6 +128,16 @@ struct SPRT_API StreamState : public SocketState {
 	Status closeStatus = Status::Done;
 
 	uint8_t chunkBuf[SocketChunkSize];
+
+	virtual ~StreamState();
+
+	bool hasReader() const { return reader || handleReader; }
+
+	// Close descriptors still waiting in outHandles.
+	void dropPendingHandles();
+
+	// Pass a chunk to the active reader; descriptors go to handleReader or are closed.
+	Status deliverRead(BytesView, SpanView<NativeHandle>);
 
 	// route a state change into the active strategy
 	void engage();

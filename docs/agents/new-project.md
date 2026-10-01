@@ -101,8 +101,8 @@ time as `Enabled modules: …`.
   `stappler_filesystem`, `stappler_bitmap`, `stappler_crypto`, `stappler_db`,
   `stappler_sql`, `stappler_search`, `stappler_network`, `stappler_font`,
   `stappler_vg`, `stappler_tess`, `stappler_zip`, `stappler_wasm`,
-  `stappler_makefile`, `stappler_pug`, `stappler_document`, `stappler_layout`,
-  `stappler_brotli_lib`.
+  `stappler_makefile`, `stappler_pug`, `stappler_document`, `stappler_layout`, `stappler_vstore`,
+  `stappler_brotli_lib`, `stappler_zstd_lib`, `stappler_lzma_lib`.
 - **xenolith** (`xenolith/xenolith-modules.mk`): `xenolith_core`,
   `xenolith_application`, `xenolith_backend_vk`, `xenolith_font`,
   `xenolith_renderer_basic2d` (+ `_shaders`), `xenolith_renderer_ui`,

@@ -152,7 +152,8 @@ struct SPRT_API QueueData : public PerformEngine {
 
 	// Wrap an (accepted) socket into the active stream strategy: native when
 	// _makeSocketStream is set, the shared readiness-based handle otherwise.
-	Rc<StreamHandle> makeStreamFromSocket(SocketHandle, bool connecting);
+	// Streams passing descriptors always use the readiness-based handle.
+	Rc<StreamHandle> makeStreamFromSocket(SocketHandle, bool connecting, bool passHandles = false);
 
 	Thread::Id _threadId;
 

@@ -11,6 +11,7 @@
 | `tests/stappler` | `stapplertest` | the `stappler_*` app modules (core/data/bitmap/crypto/db/document/font/vg/pug/makefile/layout/network) — **fast smoke build** | CLI |
 | `tests/particles` | `particlestest` | `runtime` only + the header-only `XL2dGlslParticleSim.h` — the CPU reference of the GPU particle emission cycle, the same text the particle update shader compiles | CLI, self-checking |
 | `tests/tess` | `tesstest` | the tesselator (`stappler/tess`) and the vector layer, against the whole 2d icon set — a pinned digest per icon **and** a pinned raster per icon, plus a deterministic wire benchmark. No device, no window, no frame | CLI, golden |
+| `tests/vstore` | `vstoretest` | `stappler_vstore`: the arena (growth, relocation, the write barrier and its shadow validator, out-of-memory, arena kinds, write views) and the journal (pages, rollback, keyframes, codecs). Without arguments a REDUCED run sized for iteration; `vstoretest --full` is the complete sweep the `full` gate runs | CLI, self-checking |
 | `tests/compute` | `computetest` | Vulkan compute with no window (`xenolith_backend_vk` + `xenolith_core`): a `core::Queue` with one compute pass, `Loop::runRenderQueue`, `Loop::captureBuffer`, and a lost device through `vk::Device::setTestFault`. Needs a Vulkan device; without one it prints SKIP. `computetest timings` is the round-trip benchmark ([Measuring compute](measuring-compute.md)) | CLI, GPU |
 | `examples/window/particles` | `particles` | the GPU particles of `basic2d` behind a control panel; `tests/window/particles-check.py` runs it headless and compares a GPU snapshot of the particles with the CPU reference the example computes from the same `XL2dGlslParticleSim.h` | GUI, driven by a check |
 | `examples/window/fileexplorer` | `fileexplorer` | `ui::FilesystemModel` behind a two-pane navigator - a places tree, and a right pane that is either `ui::TableView` or the example's own virtualized icon grid, with image thumbnails decoded off the app thread; `tests/window/filesystem-explorer-check.py` builds a directory tree of its own and drives the app headless over it. It is the only coverage `ui::FilesystemModel` has | GUI, driven by a check |
@@ -20,6 +21,10 @@
 **Which to use:**
 - Changed a `stappler/` module → build `tests/window` (preferred — full stack) or
   `tests/stappler` (faster smoke). Drive either through the CLI ([Golden rules](golden-rules.md) / [the quick reference](quick-reference.md)).
+- Changed `stappler/vstore` → `tests/vstore`: `vstoretest` while iterating, `vstoretest --full` before
+  a commit (the `full` tier passes it). `SP_VSTORE_DIRTY_RANGE=1` on the make line builds the suite
+  under the range encoding of the dirty map. The design is in
+  [the arena](../usage/data/vstore-arena.adoc) and [the journal](../usage/data/vstore-journal.adoc).
 - Changed `stappler/tess` or the vector canvas → `tests/tess`, and run BOTH
   goldens: `tesstest golden` compares the tesselated mesh of every icon against
   `golden/icons.txt`, `tesstest raster-golden` compares its rasterization

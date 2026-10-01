@@ -23,8 +23,8 @@ THE SOFTWARE.
 // Tests for dispatch::Looper::listenSocket / connectSocket: SocketAddress
 // parsing, a loopback-TCP echo round-trip (listen on an ephemeral port,
 // connect on the same looper, exchange + EOF), a large transfer that forces
-// write backpressure, AF_UNIX path sockets with stale-file rebinding, and the
-// error paths (connect refused, double bind). Both endpoints run on ONE looper
+// write backpressure, AF_UNIX path sockets with stale-file rebinding, descriptor
+// passing over AF_UNIX, and the error paths (connect refused, double bind). Both endpoints run on ONE looper
 // thread - the API's target usage shape (the scene inspector).
 
 #include <sprt/runtime/dispatch/looper.h>
@@ -32,6 +32,8 @@ THE SOFTWARE.
 
 #include <sprt/cxx/thread>
 #include <sprt/c/__sprt_unistd.h>
+#include <sprt/c/__sprt_fcntl.h>
+#include <sprt/c/sys/__sprt_mman.h>
 #include "../tests.h"
 
 namespace sprt {
@@ -352,6 +354,229 @@ static int runSocketSuite(dispatch::Looper *looper) {
 		} else {
 			report(ok, "IPv6 loopback echo", failed);
 		}
+		if (listener) {
+			listener->cancel();
+		}
+	}
+
+	// 4c. descriptor passing over AF_UNIX (ListenInfo/ConnectInfo::handles)
+	{
+		const char *path = "sprt_socket_fd_test.sock";
+		auto addr = SocketAddress::parse(dispatch::toString("unix:", path));
+
+		struct Arrival {
+			int fd;
+			size_t chunkStart;
+			size_t chunkEnd;
+		};
+
+		Rc<StreamHandle> serverStream;
+		dispatch::String data;
+		dispatch::Vector<Arrival> received;
+		bool serverEof = false;
+		bool extraAccepted = false;
+#if SPRT_LINUX
+		static constexpr const char MemfdText[] = "devbench guest ram";
+		static constexpr size_t MemfdSize = sizeof(MemfdText) - 1;
+		bool memfdMode = false;
+		bool memfdOk = false;
+#endif
+
+		auto listener = looper->listenSocket(dispatch::ListenInfo{
+			.address = addr,
+			.onAccept = [&](Rc<StreamHandle> &&stream) {
+			if (serverStream) {
+				extraAccepted = true;
+				stream->cancel();
+				return;
+			}
+			serverStream = sprt::move(stream);
+			serverStream->read([&](BytesView d, SpanView<dispatch::NativeHandle> fds) {
+				if (d.empty()) {
+					serverEof = true;
+					return Status::Ok;
+				}
+				for (auto fd : fds) {
+#if SPRT_LINUX
+					if (memfdMode) {
+						auto p = ::__sprt_mmap(nullptr, MemfdSize, __SPRT_PROT_READ,
+								__SPRT_MAP_SHARED, fd.fd, 0);
+						if (p != __SPRT_MAP_FAILED) {
+							memfdOk = sprt::memcmp(p, MemfdText, MemfdSize) == 0;
+							::__sprt_munmap(p, MemfdSize);
+						}
+						::__sprt_close(fd.fd);
+						continue;
+					}
+#endif
+					char tag = char('0' + received.size());
+					::__sprt_write(fd.fd, &tag, 1);
+					::__sprt_close(fd.fd);
+					received.emplace_back(Arrival{fd.fd, data.size(), data.size() + d.size()});
+				}
+				data.append(reinterpret_cast<const char *>(d.data()), d.size());
+				return Status::Ok;
+			});
+		},
+			.handles = true,
+		});
+
+#if SPRT_WINDOWS
+		report(listener == nullptr, "descriptor passing unsupported -> nullptr", failed);
+#else
+		int pipes[3][2] = {{-1, -1}, {-1, -1}, {-1, -1}};
+		bool ok = listener != nullptr;
+		for (auto &p : pipes) {
+			ok = ok && ::__sprt_pipe(p) == 0
+					&& ::__sprt_fcntl(p[0], __SPRT_F_SETFL, __SPRT_O_NONBLOCK) == 0;
+		}
+
+		dispatch::NativeHandle one[] = {dispatch::NativeHandle(pipes[0][1])};
+		dispatch::NativeHandle two[] = {dispatch::NativeHandle(pipes[1][1]),
+			dispatch::NativeHandle(pipes[2][1])};
+		auto bytes = [](const char *str) {
+			return BytesView(reinterpret_cast<const uint8_t *>(str), __builtin_strlen(str));
+		};
+
+		Rc<StreamHandle> client;
+		dispatch::String reply;
+		bool clientEof = false;
+		Status tooMany = Status::Ok;
+		Status emptyData = Status::Ok;
+		if (ok) {
+			client = looper->connectSocket(dispatch::ConnectInfo{
+				.address = addr,
+				.handles = true,
+			});
+			ok = client != nullptr;
+		}
+		if (ok) {
+			client->read([&](BytesView d) {
+				if (d.empty()) {
+					clientEof = true;
+				} else {
+					reply.append(reinterpret_cast<const char *>(d.data()), d.size());
+				}
+				return Status::Ok;
+			});
+			dispatch::Vector<dispatch::NativeHandle> many;
+			for (size_t i = 0; i <= StreamHandle::MaxPassedHandles; ++i) { many.emplace_back(one[0]); }
+			tooMany = client->write(bytes("x"), many);
+			emptyData = client->write(BytesView(), SpanView<dispatch::NativeHandle>(one, 1));
+
+			ok = client->write(bytes("hdr:")) == Status::Ok
+					&& client->write(bytes("A"), SpanView<dispatch::NativeHandle>(one, 1))
+							== Status::Ok
+					&& client->write(bytes("BC"), SpanView<dispatch::NativeHandle>(two, 2))
+							== Status::Ok;
+			// the stream owns duplicates: the caller's copies may go right away
+			for (auto &p : pipes) {
+				::__sprt_close(p[1]);
+				p[1] = -1;
+			}
+			client->write(bytes("tail"));
+			client->shutdownWrite();
+			drive(looper, serverEof);
+		}
+
+		// each pipe got its tag through the passed descriptor, and every copy of
+		// its write end is closed (EOF, not EAGAIN)
+		bool tagsOk = ok && received.size() == 3;
+		for (int i = 0; tagsOk && i < 3; ++i) {
+			char buf[2] = {0, 0};
+			tagsOk = ::__sprt_read(pipes[i][0], buf, 2) == 1 && buf[0] == char('0' + i)
+					&& ::__sprt_read(pipes[i][0], buf, 1) == 0;
+		}
+		// descriptors arrive with the chunk holding the first byte they were sent with
+		auto carries = [&](size_t i, size_t offset) {
+			return i < received.size() && received[i].chunkStart <= offset
+					&& offset < received[i].chunkEnd;
+		};
+		report(ok && serverEof && data == "hdr:ABCtail" && tagsOk && carries(0, 4)
+						&& carries(1, 5) && carries(2, 5),
+				"AF_UNIX descriptor passing (pipes, several messages)", failed);
+
+		// the half-closed server end still writes after it went idle at EOF
+		if (ok) {
+			looper->wait(dispatch::TimeInterval::milliseconds(50));
+			serverStream->write(bytes("ok"));
+			serverStream->shutdownWrite();
+			drive(looper, clientEof);
+		}
+		report(ok && clientEof && reply == "ok", "reply on a half-closed descriptor stream",
+				failed);
+
+		// a stream without `handles` rejects descriptor I/O
+		Status plainWrite = Status::Ok;
+		Status plainRead = Status::Ok;
+		if (ok) {
+			bool plainConnected = false;
+			auto plain = looper->connectSocket(addr,
+					[&](StreamHandle *, Status) { plainConnected = true; });
+			if (plain) {
+				drive(looper, plainConnected);
+				plainWrite = plain->write(bytes("x"), SpanView<dispatch::NativeHandle>(one, 1));
+				plainRead = plain->read(
+						[](BytesView, SpanView<dispatch::NativeHandle>) { return Status::Ok; });
+				drive(looper, extraAccepted); // keep its server end off the memfd stage
+				plain->cancel();
+			}
+		}
+		report(tooMany == Status::ErrorInvalidArguemnt
+						&& emptyData == Status::ErrorInvalidArguemnt
+						&& plainWrite == Status::ErrorInvalidArguemnt
+						&& plainRead == Status::ErrorInvalidArguemnt,
+				"descriptor passing argument errors", failed);
+		report(looper->listenSocket(dispatch::ListenInfo{
+					   .address = SocketAddress::parse(":0"),
+					   .onAccept = [](Rc<StreamHandle> &&stream) { stream->cancel(); },
+					   .handles = true,
+				   }) == nullptr,
+				"descriptor passing on TCP -> nullptr", failed);
+
+		for (auto &p : pipes) {
+			for (auto fd : p) {
+				if (fd >= 0) {
+					::__sprt_close(fd);
+				}
+			}
+		}
+
+#if SPRT_LINUX
+		// guest RAM shape: a memfd mapped by the receiver
+		if (ok) {
+			serverStream->cancel();
+			serverStream = nullptr;
+			serverEof = false;
+			memfdMode = true;
+			data.clear();
+
+			auto memfd = ::__sprt_memfd_create("sprt_socket_test", __SPRT_MFD_CLOEXEC);
+			auto written = memfd >= 0 ? ::__sprt_write(memfd, MemfdText, MemfdSize) : -1;
+			Rc<StreamHandle> mclient;
+			if (written > 0 && size_t(written) == MemfdSize) {
+				mclient = looper->connectSocket(dispatch::ConnectInfo{
+					.address = addr,
+					.handles = true,
+				});
+			}
+			if (mclient) {
+				dispatch::NativeHandle h[] = {dispatch::NativeHandle(memfd)};
+				mclient->write(bytes("mem:"));
+				mclient->write(bytes("M"), SpanView<dispatch::NativeHandle>(h, 1));
+				mclient->shutdownWrite();
+			}
+			if (memfd >= 0) {
+				::__sprt_close(memfd);
+			}
+			if (mclient) {
+				drive(looper, serverEof);
+			}
+			report(mclient && serverEof && memfdOk && data == "mem:M",
+					"AF_UNIX memfd passing + mmap", failed);
+		}
+#endif
+#endif
 		if (listener) {
 			listener->cancel();
 		}

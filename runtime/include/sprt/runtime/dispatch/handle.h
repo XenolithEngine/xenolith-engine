@@ -254,9 +254,21 @@ public:
 	// read() again replaces it.
 	Status read(Function<Status(BytesView)> &&reader);
 
+	// Reader for a stream created with `handles`: descriptors received with a
+	// chunk are passed along with it and owned by the reader from then on.
+	// Descriptors arriving while a plain reader is active are closed.
+	Status read(Function<Status(BytesView, SpanView<NativeHandle>)> &&reader);
+
 	// Copy `data` into the outgoing queue; it is flushed to the socket as
 	// writability allows. Returns Ok when queued (or fully sent inline).
 	Status write(BytesView data);
+
+	// Queue `data` with descriptors attached to its first byte (non-empty data,
+	// at most MaxPassedHandles). The descriptors are duplicated, the caller keeps
+	// its own. Requires a stream created with `handles`.
+	Status write(BytesView data, SpanView<NativeHandle> handles);
+
+	static constexpr size_t MaxPassedHandles = 16;
 
 	// Flush everything already queued, then shut down the write direction
 	// (the peer observes EOF). Further write() calls fail.

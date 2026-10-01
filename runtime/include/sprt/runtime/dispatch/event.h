@@ -243,7 +243,8 @@ struct SPRT_API SocketAddress {
 // queue). Dropping the passed Rc without calling StreamHandle::cancel leaves
 // the connection open until the peer disconnects. `completion` fires once when
 // the listener terminates. With port 0 the actually bound port is available via
-// ListenHandle::getAddress().
+// ListenHandle::getAddress(). `handles` enables descriptor passing on accepted
+// streams (see StreamHandle::write/read with handles); unix sockets only.
 struct SPRT_API ListenInfo {
 	using AcceptCallback = Function<void(Rc<StreamHandle> &&)>;
 	using Completion = CompletionHandle<ListenHandle>;
@@ -252,6 +253,7 @@ struct SPRT_API ListenInfo {
 	uint32_t backlog = 8;
 	AcceptCallback onAccept;
 	Completion completion;
+	bool handles = false;
 };
 
 // Parameters for Looper/Queue::connectSocket.
@@ -260,11 +262,13 @@ struct SPRT_API ListenInfo {
 // on the looper thread - with Status::Ok when the connection is established, or
 // with the error otherwise. Reads/writes may be issued on the returned
 // StreamHandle right away; they are queued until the connect finishes.
+// `handles` enables descriptor passing (unix sockets only).
 struct SPRT_API ConnectInfo {
 	using Completion = CompletionHandle<StreamHandle>;
 
 	SocketAddress address;
 	Completion completion;
+	bool handles = false;
 };
 
 // Parameters for Looper/Queue::watchFile.

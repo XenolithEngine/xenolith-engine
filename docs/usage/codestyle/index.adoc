@@ -105,6 +105,7 @@ Long-form tutorials for one subsystem, referenced from the articles above.
 | [basic2d/particles.adoc](../basic2d/particles.adoc) | using or changing the GPU particles — what each parameter means against Godot, the emission cycle, feedback and snapshots, the limits and how the GPU is checked against the CPU reference |
 | [basic2d/pixel-grid.adoc](../basic2d/pixel-grid.adoc) | drawing a pixel grid over a zoomable plane or an image, or standing something on its lines — the level ladder, colour, device-pixel snapping, `CanvasView`'s background grid |
 | [data/value.adoc](../data/value.adoc) | working with `data::Value` in depth — accessors, serialization, custom encoders, the `Value::Null` trap |
+| [data/vstore-arena.adoc](../data/vstore-arena.adoc), [data/vstore-journal.adoc](../data/vstore-journal.adoc) | using or changing `stappler_vstore` — the arena's layout, limits and write barrier; the undo journal, rollback, keyframes and codecs |
 | [unicode-and-idn.adoc](../unicode-and-idn.adoc) | `sprt::unicode` and `sprt::idn` in depth — the three comparisons, collation strength and sort keys, locale coverage, UTS-46 options and errors |
 | [ui/content-measurement.adoc](../ui/content-measurement.adoc) | making a node or system answer `fit-content` measurement |
 | [ui/css-subset.adoc](../ui/css-subset.adoc) | writing CSS for the engine's CSS subset |

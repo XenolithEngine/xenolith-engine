@@ -18,10 +18,10 @@ tests/run-checks.py --list           # the plan, without running it
 
 | Tier | What it runs | Cost here | When |
 |---|---|---|---|
-| `console` | `runtimetest`, `libctest`, `localetest`, `uilayouttest`, `stapplertest`, `particlestest` | **12 s**, 3253 assertions | after any edit under `runtime/` or `stappler/` |
+| `console` | `runtimetest`, `libctest`, `localetest`, `uilayouttest`, `stapplertest`, `particlestest`, `vstoretest` (reduced) | **12 s**, 3253 assertions | after any edit under `runtime/` or `stappler/` |
 | `fast` (default) | `console`, plus the harnesses the changed directories owe, plus the window checks named after the changed files | 20 s – 2 min | after an edit, before the next one |
 | `suite window` | every headless window check | 226 s at `-j4` (29 checks, before `particles-check`) | when the work is in `xenolith/renderer/ui` |
-| `full` | everything above plus `gittest`, `thirdpartytest`, `remotetest` and `tesstest`'s two goldens | 223 s at `-j4`, 124 s at `-j8` | **before a commit** |
+| `full` | everything above plus `gittest`, `thirdpartytest`, `remotetest`, `tesstest`'s two goldens and `vstoretest --full` | 223 s at `-j4`, 124 s at `-j8` | **before a commit** |
 
 **The gate is `full`.** A `fast` run selects by name and by directory, so a change that breaks a widget it is not
 named after is invisible to it by construction.
@@ -81,7 +81,7 @@ example is not, and treats its leftover process as a stale `testapp`.
 
 The console harnesses go by directory, which is [the test-projects table](test-projects.md) as code (`OWES` in the
 runner): `runtime/` owes `runtimetest` and `libctest`, `runtime/libc_impl` the same pair the other way round,
-`stappler/tess` the two `tesstest` goldens, `stappler/` `stapplertest`, `xenolith/font` `localetest`,
+`stappler/tess` the two `tesstest` goldens, `stappler/vstore` `vstoretest`, `stappler/` `stapplertest`, `xenolith/font` `localetest`,
 `xenolith/core` and `xenolith/backend/vk` `computetest`, `xenolith/core` and `xenolith/remote` `remotetest`. `computetest` is not in the `console` tier because it needs
 a Vulkan device; on a host without one it prints SKIP and counts no checks, and the runner shows it green.
 

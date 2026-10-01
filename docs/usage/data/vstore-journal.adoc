@@ -1,0 +1,480 @@
+# The vstore journal
+
+The undo journal of `stappler_vstore` (namespace `stappler::vstore`), built on
+[the arena](vstore-arena.adoc). Sources:
+[SPVStoreJournal.h](../../../stappler/vstore/SPVStoreJournal.h),
+[SPVStoreJournal.cc](../../../stappler/vstore/SPVStoreJournal.cc),
+[SPVStoreCodec.h](../../../stappler/vstore/SPVStoreCodec.h),
+[SPVStoreCodec.cc](../../../stappler/vstore/SPVStoreCodec.cc). Tests: `vstoretest journal-pages
+journal-rollback journal-keyframe journal-compress`.
+
+This note is about **why** the layer is shaped this way.
+
+## It is a property of the store, not of the build
+
+There is no flag. A store either announces its writes or it does not, and which one it is is the
+**type** of the arena it lives in:
+
+| kind | announces writes | shadow copy | a journal can watch it |
+|---|---|---|---|
+| `PlainArena` | no | no | no — and the call does not compile |
+| `TrackedArena` | yes | no | yes |
+| `ShadowArena` | yes | yes (debug builds) | yes |
+
+All three exist in every build, one process may hold all three at once, and a store passes between
+them — as an image through `save()`/`adopt()`, or as a live store through `adoptFrom()`, which moves
+the chunks and copies nothing. `arena-kinds` checks every direction of both.
+
+**The barrier is a call.** Every mutation goes through `Arena::write` — the CALL is the discipline.
+It is **the same source instantiated three times**, so a barrier hole the shadow validator finds in
+one instantiation is a barrier hole in all of them.
+
+### What the barrier costs
+
+Measured with both kinds in one process, on the same block, interleaved in one run: a tracked
+8-byte write costs about a quarter more than a plain one, and a write that crosses pages — a loop
+over pages for the tracked kind, still nothing at all for the plain one — about twice as much. A
+plain write is indistinguishable from a plain read, which is "`write()` compiles to exactly what
+`read()` compiles to" stated as a measurement. The range encoding of the dirty map
+(`SP_VSTORE_DIRTY_RANGE=1`) costs about half as much again per write as the default bitmap.
+
+### Counting the barrier
+
+With `SP_VSTORE_COUNTERS=1`, `getCounters()` holds three tallies: `arenaRead`, `arenaWrite` and
+`arenaMark`. `arenaWrite` alone under-counts the barrier, because `rootForWrite`, `descForWrite`,
+`headerForWrite` and `linksForWrite` mark the allocator's own metadata without passing through
+`write()`. `Arena::markDirty` is the one barrier — `write()` routes through it — and `arenaMark`
+counts it. A workload that allocates marks far more often than it writes.
+
+### What it costs to have all of them
+
+The journal is always compiled and every kind is instantiated, so nothing is dead-stripped. That is
+the price of being able to hand a running store from one kind to the other in one process, and it is
+paid in text size rather than at run time.
+
+**The kinds are checked against each other.** The suite runs `PlainArena` and `TrackedArena` side by
+side in one binary, so "the journal is a layer over the arena rather than a part of it" is not an
+argument from two sets of test output that have to be compared by hand.
+
+## What it guarantees
+
+**Rolling back to any committed version restores every attached store byte for byte** — "byte for
+byte" meaning its `save()` image, the only definition of a store's content the layer recognises.
+
+The whole mechanism rests on one property of the arena: every mutation goes through the write
+barrier, the allocator's own metadata included, and the barrier marks the page it lands on.
+
+## `MaxStores` is four, and it is an array rather than a budget
+
+`attach()` has no counterpart. A store joins a journal for the journal's whole life, the count is
+asserted rather than returned, and `MaxStores` sizes a fixed array — so **who spends the four is a
+decision taken once, at the top, and never revisited.**
+
+**One counter over all of them.** A version is one consistent slice of *every* attached store, so a
+commit advances them together and a rollback moves them together. That is why the counter lives here
+and not in an arena: a keyframe image taken at version 42 has to stay byte-comparable with the state
+reached again at 42 by rolling back, and it could not if the number were part of the image.
+
+A consumer attaches every store it will ever need before the first commit, including one that may
+stay empty: a slot claimed after the first commit would have no baseline. An empty arena costs a
+baseline of one arena's minimum and a few microseconds per commit. A consumer whose workload has a
+varying number of logical stores maps them onto the fixed ones rather than asking for more slots.
+
+## The recording is pulled, not pushed
+
+**A write costs one bit.** `Arena::write` marks a page in a bitmap and returns; the journal is not
+told, does not run, and does not exist as far as the arena is concerned. The undo log is written at
+`commit()`, which reads the map, and only then.
+
+So the moment a version's undo record comes into being is chosen by the caller, not by the
+allocator. There is no observer, no virtual call on the write path, and no path from the middle of
+the allocator into a compressor; the arena's entire contact with versioning is two methods:
+`getDirtyMap()` and `clearDirtyMap()`.
+
+What it costs is that the "before" has to be kept somewhere, because by the time the journal looks,
+the pages hold the new bytes. That somewhere is a **baseline**: a per-store image of the arena as it
+stood at the last commit, one arena's worth of memory, rebased one page at a time as those pages are
+recorded. The cost is real and it is stated under [Cost](#cost).
+
+**When to call `commit()` is the caller's policy.** The price of versioning is a function of how
+often a boundary is taken rather than of how much was written between two of them, and that question
+belongs to whoever is doing the work.
+
+## The two rules that do the work
+
+**1. A page's previous content is what `save()` would have emitted for it** at the last commit. For a
+slot that was not live then, that is *zeros* — whatever the memory behind it holds now.
+
+The baseline makes this true by construction rather than by timing. A slot the store has grown into
+since the last commit extends the baseline **with zeros**, which is exactly what that version's image
+said about it; a slot that was released has its baseline zeroed when the release is recorded. The
+before-image never comes out of live memory, where a recycled buffer could still hold another slot's
+bytes and resurrect foreign data on the next rollback, so there is no instant to get right.
+
+The `Zero` flag means **"the before-image was all zeros"**. "The slot was not live" is a strict
+subset of that, and the difference matters: a page written for the first time after its chunk was
+created needs no payload at all.
+
+**2. Records are applied oldest first, and the first record for a page wins.** The oldest record in
+`(V, now]` is the one holding V's content. Newest-first would need the *last* record per page — the
+same answer, but the obvious "skip pages already restored" optimization silently turns it into the
+state at V+1. `journal-rollback`'s `oldest-wins` fixture pins this with a negative twin: applying the
+undo set the other way must produce a *different* image. With sub-page deltas the rule is applied per
+sub-block — see [below](#sub-page-deltas).
+
+## Rollback, in five phases
+
+`rollback(V)` is atomic: the only phase that can fail touches nothing.
+
+| Phase | What | Why it is separate |
+|---|---|---|
+| **0 — plan** | Rebuild the target's `Root` + descriptor table into a scratch copy of slot 0, validate the structure, and **reserve every buffer** the new layout needs | The only fallible step. A store that cannot get memory is left exactly as it was |
+| **1 — metadata** | Apply the slot-0 records | Restores `chunkCount` and the descriptors. Slot 0 always has a buffer, so this is always writable |
+| **2 — hosting** | `rehost()`: attach, detach and move buffers to match the restored descriptors | Owns **run contiguity** and is **content-preserving** |
+| **3 — data** | Apply the remaining records, skipping `!isHosted(slot)` | Reads phase 2's decision instead of re-deriving it |
+| **4 — finalize** | Truncate records, blobs and marks to V; drop keyframes above V | The versions above V never happened |
+
+Two things about phase 2 are load-bearing:
+
+* **Contiguity.** A slot that is live at V *and* already hosted may still be wrong: if V makes it
+  part of a run, its buffer must be contiguous with the rest of the run. Keeping the current hosting
+  because "it has memory" hands out a multi-chunk block spread across unrelated allocations, and the
+  first read of it runs off the end of one. `journal-rollback`'s `run-reshape` fixture is exactly
+  this case.
+* **Content preservation.** A re-hosted slot takes its bytes with it (`memcpy`), and a slot that
+  gains memory it never had is zeroed. Relying on phase 3 to cover every page of a re-hosted slot
+  would be relying on an unstated invariant; `rehost-preserves` checks that it does not.
+
+Phase 4 also rebases the baseline, over the pages the records restored plus every page of a slot the
+rehost touched. Not the whole baseline: a rollback is O(what was undone) everywhere else, and
+rebuilding a few hundred chunks in full per rollback would make it O(the store) in a loop.
+
+`rollback()` **captures first.** Whatever has been written since the last boundary belongs to the open
+version, and the open version is one of the ones being undone — so it has to become records before
+the undo can find it. Without that line a rollback would quietly leave the newest work in place.
+
+Between phases 1 and 2 the descriptors and the host chunk table are deliberately out of step. Nothing
+may read the store in that window — which is why `getPageForRestore()` skips `checkRange()` and marks
+nothing. That is a property of that one door rather than a flag on the store.
+
+## Versions and keyframes
+
+* The version counter lives in the journal, **never in the arena**. A keyframe image taken at version
+  42 has to stay byte-comparable with a state reached again at 42 by rolling back, and it could not
+  if the version number were part of the image. `Root::reserved[6]` is not used for it.
+* `commit()` closes the open version and opens the next. Only closed versions are rollback targets.
+* A **keyframe** is a full image of every store at the version just committed. It is *not* how a
+  rollback works — the undo log is. Keyframes anchor the retention horizon, act as an independent
+  oracle in the tests, and are what a forward replay starts from.
+* `setKeyframe()` is legal only immediately after `commit()`: a keyframe with pages still dirty
+  describes a moment no version ever had.
+* The **horizon** is the oldest retained keyframe's version. Eviction (by keyframe count,
+  `Config::maxKeyframes`, or by byte budget, `Config::recordBudget`) moves it up and drops the records
+  below it. `rollback()` below the horizon is `ErrorNotFound`; at or above the open version it is
+  `ErrorInvalidArguemnt`.
+
+## Cost
+
+Measured by `journal-keyframe`'s profile on a version that appends ten 64-byte blocks:
+
+[source]
+----
+200 versions, 409 records (9 zero, 400 delta), 262 KiB journal
+1341 bytes/version, 2 pages/version, write amplification 2.2x
+2 of 64 sub-blocks per delta
+----
+
+Page granularity has a floor: **every version that ALLOCATES touches `Root`**, which lives in page 0
+of chunk 0, so such a version costs at least one record. What it does not cost is a *page* — the
+same profile with `DeltaPolicy::None` reads 32817 bytes/version at 51.2x, and the difference between
+the two lines is [sub-page deltas](#sub-page-deltas).
+
+The qualifier is worth having. A version that only writes into blocks it already owns never reaches
+`rootForWrite()` and pays no floor at all. And when the floor does apply it is often free anyway: a
+store whose workload gives back exactly what it took marks page 0 and ends the version with it
+identical, so the capture skips it.
+
+These numbers are **uncompressed on purpose**: `journal-cost` (part of `journal-keyframe`) pins
+`JournalCodec::None` even though the default is Zstd. It measures *page granularity* — how many pages
+a small version drags in — while compression answers the unrelated question of what those pages then
+cost in bytes. Letting the default in would make the figure a compound of the two and destroy its
+value as a tripwire.
+
+### And what that costs in time
+
+The section above is bytes. In time the shape is different: a version costs by the **sub-block**, not
+by the page. A commit has a small floor — `capture()` walking the dirty map, once per attached store —
+plus a small cost for each page the barrier marked, and the dominant term is each changed sub-block
+that has to be compared, copied into the baseline and stored.
+
+A program that measures the journal has to say which codec it ran. `stappler_zstd_lib` is
+`SHARED_CONSUME` on `stappler_vstore` rather than a dependency, so a program that does not list it
+silently gets `DefaultCodec == None`; `Journal::Config` warns about precisely this.
+
+### Which delta shapes are asked
+
+**A wider shape is asked only if it could win without compressing.** Candidates are ordered
+narrowest first — `changed` ⊆ `rangeMask` ⊆ `SubAll`, so plain sizes only grow — and a candidate
+whose plain size already exceeds the best stored size so far is not encoded at all. It could only
+win by compressing below that best, and even then it would save at most `bestSize` bytes while the
+asking costs `plain` bytes of compression. At one sub-block against a page that is 64:1. Without the
+rule the less a version had changed, the more `Smallest` would charge it: one changed sub-block would
+bid with three candidates and pay four page-class encodes for 256 bytes of log, while a fully changed
+page pays one.
+
+Two smaller things fall out of the same ordering. **The winner is not re-encoded**: the codec keeps
+one scratch, so an encode after the winner invalidates it, but under the rule above the winner is
+very nearly always the last shape encoded — `appendRecord` tracks that condition rather than
+assuming it, and re-derives only when a wider shape was genuinely asked and lost. And **`<=` is the
+right comparison**: on a tie the later, wider, more contiguous shape wins, which is the "cheapest to
+apply" preference.
+
+What is given up is the case
+[journal-pages](../../../tests/vstore/journal/journal_pages.cpp) names: a page of repeating pattern
+folds below the 256 bytes its delta costs, so the whole page really is smaller. It is true and it is
+not taken. A wholly-zero baseline — by far the commonest form of it, every page of a chunk the store
+has just grown into — still costs nothing to spot, because `capture()` routes it to a Zero record
+before `appendRecord` is reached.
+
+**It is checked rather than only measured.** `JournalStore::getSizingEncodeCount()` counts the
+encodes spent asking, over and above the one that stores each record, and `journal-cost` asserts it
+is **zero** for a workload of contiguous deltas — where the span and the exact set are the same mask
+and there is nothing to ask.
+
+### What deferring the capture costs
+
+Recording at `commit()` trades locality: the before-image is read out of the baseline — a buffer
+nothing else touches — and the live page is written back into it, two cold streams per record where
+recording on the write would have had one warm one. That cost is what
+[sub-page deltas](#sub-page-deltas) answer: both streams are over the sub-blocks the barrier named
+rather than over the page containing them, so the traffic scales with what was written instead of
+with what it was written into.
+
+### A marked page is not a changed page
+
+The map says which pages to look at. What `capture()` then does is compare the baseline with the live
+page and **skip the ones that match**, and that is not a rare case. Slot 0 is the usual one: every
+`alloc` and every `free` writes `Root`'s counters and its free-list heads, and a workload that gives
+back everything it took leaves all of them exactly where it found them. A store that only writes
+fields in place and allocates nothing does not even mark it.
+
+Skipping is not an approximation. A page whose content is the same at both ends of a version has no
+undo, and a rollback leaving it alone is exactly right.
+
+It costs one `memcmp` of two pages the code was going to read and write anyway, and when it fires a
+recorded page costs tens of nanoseconds instead of a record. It helps coarse versions and barely
+touches the finest: a page needs room inside one version to change and change back, and a boundary
+in front of every small unit of work does not leave it any.
+
+### And the page it compares most often is not a whole page
+
+The page skipped most often of all is slot 0, page 0 — the store's header — and by
+[ARENA-P0](vstore-arena.adoc#arena-p0-the-first-page-is-the-headers) it holds nothing but the superblock and the live part of the
+descriptor table. Everything past that is table capacity nothing has ever written into.
+
+So `capture()` asks the arena how much of a page can differ — `getPageFootprint(slot, page)`, which is
+`PageSize` for every page but that one — and compares, and rebases, only that much. For a store with a
+handful of chunks it is about three hundred bytes instead of a whole page.
+
+Two things keep it honest. The bound is `Root::firstPageUsed`, which is *in the image* and checked by
+`verify()`, so it is not the journal deriving the arena's layout from the outside. And the truncated
+copy is used only by `capture()`: `rebaseAll()` and `rebaseAfterRollback()` copy whole pages, because
+a rollback can move the footprint **down** — it is derived from `chunkCount` — and a truncated copy
+there would leave the tail of the baseline holding bytes the store no longer has.
+
+## Sub-page deltas
+
+A whole-page encode would rest on the argument that a record's tail is zeros on both sides and
+compressing zeros is what the codec is for. What that argument leaves out is that a record's tail is
+usually not zeros — it is *unchanged bytes*, which compress well only because they are also present
+in the payload the codec is being asked to shrink.
+
+The map says where inside a page a write landed, so a record can say it too.
+
+**`Arena::getDirtyMap()` is one `uint64_t` per page**, indexed by the flat page number `addr >>
+PageShift`, holding one bit per sub-block of `PageSize / 64`. The write barrier's fast path is a
+shift for the index, two shifts for the mask and an OR, so the finer answer costs a single word.
+
+**`JournalRecord` carries that mask.** With `JournalRecord::Delta` set, the payload is the sub-blocks
+the mask names, concatenated in ascending order, each a full `SubSize` bytes; the uncompressed length
+is `popcount(mask) * SubSize` and is a function of the record alone. A whole-page record carries
+`SubAll`, so the applier has one rule and not two. The record is 24 bytes — records live in host
+memory, and eight bytes of mask against a payload of hundreds is not a trade that needed thinking
+about.
+
+### The policy, and why it is one
+
+`Journal::Config::delta` picks the shape (default `Smallest`):
+
+| | |
+|---|---|
+| `None` | always the whole page — the comparison baseline, not a legacy mode |
+| `Range` | one contiguous span, the mask widened to `[countr_zero, 63 - countl_zero]` |
+| `Scatter` | exactly the changed sub-blocks, however far apart |
+| `Smallest` | the smallest shape worth asking about, by the rule [above](#which-delta-shapes-are-asked) |
+
+`Range` needs no format of its own: widening a mask to its own extent gives a mask whose bits are
+contiguous, and the payload layout is already "the named sub-blocks in ascending order". The two
+shapes share every line but the one that picks the mask. What `Range` buys is that a contiguous mask
+needs no gather at all — the sub-blocks it names are already adjacent in the page, so the payload
+*is* a stretch of the page and the copy is a pointer.
+
+Neither shape wins in general, which is the whole reason this is a knob. Contiguous writes make them
+identical. Writes at two ends of one page make `Range` store the span between them — the page — while
+`Scatter` stores two sub-blocks: **16487 bytes a version against 536** at a 16 KiB page. And on a
+small-allocation profile the answer changes per record even within one workload.
+
+### What it costs and what it saves
+
+On the cost profile (`journal-keyframe`, no codec, 200 versions of ten 64-byte allocations):
+
+| policy | journal | bytes/version | write amplification | sub-blocks per delta |
+|---|---|---|---|---|
+| `None` | 6409 KiB | 32817 | 51.2x | — |
+| `Range` / `Scatter` / `Smallest` | 262 KiB | 1341 | **2.2x** | 2 of 64 |
+
+With no codec, comparing candidates is a length comparison and free. With one, `Smallest` asks a
+wider shape only when it could win uncompressed, so on ordinary workloads it spends no more encodes
+than `Scatter`.
+
+### The one thing deltas change on the restore path
+
+A whole-page record answers for its page entirely, so oldest-wins per page would be enough. A delta
+answers only for the sub-blocks it names, so the rule is **oldest-wins per sub-block** —
+`apply = r.mask & ~restored[page]`, and a later record still has something to say about the parts no
+earlier one covered. `JournalStore::_restored` is therefore a `uint64_t` per page, shaped exactly like
+the dirty map.
+
+Getting this wrong does not corrupt a page visibly; it restores part of it to the wrong version. That
+is why `journal-rollback` runs its byte-exact oracle over **codec × policy** rather than over codecs
+alone, and why `Scatter` is the arm that carries the sweep: under `Range` — and still more under
+`None` — a record covers ground it was not asked about, which puts the right bytes back for the wrong
+reason and hides exactly this bug.
+
+## Compression
+
+Payloads may be compressed with a codec chosen in `Journal::Config`: `Lz4`, `Lz4Hc`, `Zstd` or
+`Lzma`. Zstd and LZMA need their optional modules (`stappler_zstd_lib`, `stappler_lzma_lib`); LZ4
+comes with the runtime. Keyframe images use the same codec and stay whole-page: a keyframe is a full
+image with no previous state to delta against.
+
+### Three rules
+
+**1. Whether to compress is decided per payload, never once for the store.** Metadata pages are runs
+of zeros and near-identical block headers; payload pages may be random. The rule is: compress into a
+destination of `srcSize - 1`, keep the result iff the codec returned `n != 0 && n < srcSize`. Sizing
+the destination one byte short of the input is what collapses *did not fit* and *not worth it* into
+one branch — no `compressBound`-sized buffer exists anywhere, and no arm needs a second comparison.
+
+`srcSize` is a page or a delta's gathered length, which is why `encodeBlock`/`decodeBlock` take it
+rather than assuming `PageSize`. For LZMA this has a consequence: `lzma_set_ext_size` is the
+decoder's only record of how long the payload was, so it is set on each call rather than once.
+
+**2. A record stores the codec that was applied, not the one that was asked for.** A payload that
+fell back carries `JournalCodec::None` and `size == getRecordPlainSize(r)`. That is what makes the
+decoder a table and what makes the fallback work at all.
+
+**3. Blob references are granule indices, and are never rebased.** The payload log is a bump arena
+over 1 MiB segments with 16-byte granules — a global monotone counter, so eviction rebases record
+offsets only. A payload never straddles a segment (`getBlob()` hands out a raw pointer), so an append
+that would cross skips to the next segment; the skipped tail is at most `PageSize - Granule` per
+1 MiB and stays counted in `getBytes()`, because the log really is holding it down.
+
+`JournalRecord` carries an explicit `size`. Putting the length in the blob instead would make the
+bounds check depend on the data it validates — the one place a corrupt log turns into an
+out-of-bounds read rather than a `nullptr`.
+
+### What it costs, measured
+
+`journal-compress`, release build, both workloads deterministic and bit-identical across codecs.
+**W2 is an incompressibility floor, not a typical case** — its payloads are a multiply-xor-shift
+hash. Real data lies between the two.
+
+| W1 metadata | jrnl KiB | of none | kf KiB | write µs/ver | back µs/rb | pages compressed |
+|---|---|---|---|---|---|---|
+| none | 1763 | 100 % | 192 | 4 | 3 | 0 % |
+| lz4 | 1607 | 91 % | 164 | **1** | 2 | 10 % |
+| lz4hc | 373 | 21 % | 133 | 139 | 3 | 100 % |
+| **zstd** | **365** | **20 %** | **130** | **10** | **4** | 100 % |
+| lzma | 342 | 19 % | 121 | 221 | 52 | 100 % |
+
+| W2 payload | jrnl KiB | of none | kf KiB | write µs/ver | back µs/rb | pages compressed |
+|---|---|---|---|---|---|---|
+| none | 77321 | 100 % | 5131 | 82 | 64 | 0 % |
+| lz4 | 74029 | 95 % | 4308 | 80 | 95 | 5 % |
+| lz4hc | 68660 | 88 % | 3815 | 1235 | 81 | 98 % |
+| **zstd** | **68521** | **88 %** | **3716** | **484** | **109** | 59 % |
+| lzma | 63618 | 82 % | 3451 | 9547 | **8556** | 100 % |
+
+Three things the table says that argument would not have:
+
+* **Zstd is the one to use.** On compressible data it is within 8 % of LZMA's ratio at **22× the
+  write speed and 13× the restore speed**, and its restore cost barely moves off the uncompressed
+  baseline (4 µs against 3).
+* **LZ4 is almost free and almost useless.** The runtime's wrapper calls
+  `LZ4_compress_fast_extState` with acceleration clamped to 65537 — the fastest, weakest setting —
+  so it finds matches on only 10 % of even the highly compressible pages. It is the right choice
+  only if the write path cannot afford anything at all.
+* **LZMA is disqualified for interactive use**, not by its write cost but by **8.5 ms per rollback**
+  on W2. Undo is a UI action; that is a visible pause. Its 82 % is not worth it.
+
+Keyframes shrink under every codec, `none` included: an all-zero page is elided outright, and a
+`save()` image describes every released slot as zeros.
+
+### The default is Zstd
+
+`Config::codec` defaults to `DefaultCodec`, which is **Zstd where `stappler_zstd_lib` is linked in and
+`None` otherwise**. The table above is the whole argument: Zstd is the only codec that buys a large
+ratio without a restore cost an interactive undo would feel.
+
+That conditional is a **compile-time default, not a fallback**. An explicit `cfg.codec = Zstd` in a
+build without the module still makes `Journal::init()` return `false` and log — not a compile error
+(the module set is a build fact, the codec a config value that may come from settings) and not a
+silent substitution (a journal asked for Zstd that delivered LZ4 would report sizes that are a lie).
+Only the *unstated* default follows what the build can actually do, so a default-constructed
+`Config` works everywhere. `getCodec()` says which one was taken.
+
+## Forward replay and keyframe access
+
+* **Determinism** of the code driving the store is what makes forward replay possible; the journal
+  only provides backward motion. A consumer re-runs from a keyframe rather than keeping a redo log.
+* `readKeyframeImage(i, store, out)` materialises the stored image; `getKeyframeVersion(i)` gives
+  its version, `getKeyframeImageSize(i, store)` its length. It returns the bytes rather than a view
+  because the image is stored as compressed blocks — and because a view into a shared scratch would
+  be a pointer the next call silently invalidates.
+* The debug shadow validator runs inside `commit()`: every version is checked to have announced all
+  of its writes. That makes "the journal saw everything" a per-version assertion rather than a hope.
+
+## Verification
+
+[source,sh]
+----
+xenolith-cli build tests/vstore --engine <engine>
+vstoretest --full journal-rollback
+----
+
+`journal-rollback` is by far the most expensive section in the suite, so it is also the one a
+reduced run (no `--full`) cuts hardest: the default codec alone, the `scatter` and `smallest` policies
+alone, and a workload of 80 versions with 20 rollbacks. The fixtures, the random order and the
+byte-exact image comparison are untouched. What only `--full` proves is the cross-terms — a framing
+mistake that appears under one codec, a policy that misbehaves only once the codec below it changed
+the stored size — and that is exactly what the paragraph below is about, so **quote it only about a
+`--full` run**.
+
+`journal-rollback` runs six scripted fixtures — `run-reshape`, `rehost-preserves`, `oldest-wins`,
+`shrink`, `empty-both-ways`, `churn-in-one-version` — and then 500 committed versions with a
+reference image for each, rolling back to 100 of them **in random order**. Random order matters:
+rolling back only backwards in sequence would never target a version below one already restored.
+
+An image per version is what makes the oracle exact, and the store grows as the workload runs, so
+the references cost O(n²): 500 versions measures **1.7 GB of peak RSS**. That is fine on a 64-bit
+host and larger than a wasm32 module can address at all — there it aborts rather than failing a
+check. So on a 32-bit target (`__SIZEOF_POINTER__ == 4`) the workload is **150 versions and 30
+rollbacks** instead. Only the size changes: the same fixtures, the same random order, the same
+byte-exact comparison, the same per-codec loop. Keeping hashes rather than images everywhere would
+have weakened the oracle on the host too, to solve a problem the host does not have.
+
+All of it runs **once per available codec**, and so does `journal-keyframe`. That is not redundancy:
+byte-exactness under a codec rests on framing — the stored size, the destination capacity, the
+absence of a phantom size prefix — and an image comparison is the only check that catches a framing
+mistake.

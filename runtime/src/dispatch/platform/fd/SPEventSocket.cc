@@ -31,6 +31,12 @@
 #include <sprt/c/sys/__sprt_socket.h>
 #include <sprt/c/sys/__sprt_poll.h>
 
+#if !SPRT_WINDOWS && defined(__SPRT_SCM_RIGHTS) && defined(__SPRT_CMSG_FIRSTHDR)
+#define SPRT_DISPATCH_PASS_HANDLES 1
+#else
+#define SPRT_DISPATCH_PASS_HANDLES 0
+#endif
+
 #if SPRT_WINDOWS
 // Winsock reports socket errors through WSAGetLastError(), not errno; the
 // wrapper header also provides FIONBIO and the WSAE* constants.
@@ -121,6 +127,111 @@ static bool setNonBlocking(SocketHandle sock) {
 // suppress SIGPIPE on writes to a peer-closed socket (present on Linux,
 // Android and modern Darwin; the wrapper static_asserts the value)
 static constexpr int kSendFlags = __SPRT_MSG_NOSIGNAL;
+
+#endif
+
+// --- descriptor passing ------------------------------------------------------
+
+static Status checkPassHandles(const SocketAddress &addr) {
+#if SPRT_DISPATCH_PASS_HANDLES
+	return addr.family == SocketAddress::Family::Unix ? Status::Ok : Status::ErrorInvalidArguemnt;
+#else
+	return Status::ErrorNotSupported;
+#endif
+}
+
+#if SPRT_DISPATCH_PASS_HANDLES
+
+static constexpr size_t PassHandlesControlSize =
+		__SPRT_CMSG_SPACE(StreamHandle::MaxPassedHandles * sizeof(int));
+
+static void closeHandles(SpanView<NativeHandle> handles) {
+	for (auto h : handles) { ::__sprt_close(h.fd); }
+}
+
+// recv() that also collects SCM_RIGHTS descriptors (at most MaxPassedHandles)
+static socksize_t recvWithHandles(SocketHandle sock, uint8_t *buf, size_t size,
+		Vector<NativeHandle> &fds, bool *truncated) {
+	struct __SPRT_IOVEC_NAME iov;
+	iov.iov_base = buf;
+	iov.iov_len = size;
+
+	alignas(struct __SPRT_CMSGHDR_NAME) uint8_t control[PassHandlesControlSize];
+	struct __SPRT_MSGHDR_NAME msg{};
+	msg.msg_iov = &iov;
+	msg.msg_iovlen = 1;
+	msg.msg_control = control;
+	msg.msg_controllen = decltype(msg.msg_controllen)(sizeof(control));
+
+	int flags = 0;
+#ifdef __SPRT_MSG_CMSG_CLOEXEC
+	flags |= __SPRT_MSG_CMSG_CLOEXEC;
+#endif
+
+	*truncated = false;
+	auto n = ::__sprt_recvmsg(SOCKET(sock), &msg, flags);
+	if (n < 0) {
+		return n;
+	}
+
+	auto end = control + size_t(msg.msg_controllen);
+	for (auto cmsg = __SPRT_CMSG_FIRSTHDR(&msg); cmsg;) {
+		auto data = __SPRT_CMSG_DATA(cmsg);
+		if (size_t(cmsg->cmsg_len) < __SPRT_CMSG_LEN(0)
+				|| reinterpret_cast<uint8_t *>(cmsg) + size_t(cmsg->cmsg_len) > end) {
+			break;
+		}
+		if (cmsg->cmsg_level == __SPRT_SOL_SOCKET && cmsg->cmsg_type == __SPRT_SCM_RIGHTS) {
+			auto count = (size_t(cmsg->cmsg_len) - __SPRT_CMSG_LEN(0)) / sizeof(int);
+			for (size_t i = 0; i < count; ++i) {
+				int fd = -1;
+				__builtin_memcpy(&fd, data + i * sizeof(int), sizeof(int));
+				if (fds.size() < StreamHandle::MaxPassedHandles) {
+					fds.emplace_back(NativeHandle(fd));
+				} else {
+					::__sprt_close(fd);
+					*truncated = true;
+				}
+			}
+		}
+		auto next = reinterpret_cast<uint8_t *>(cmsg) + __SPRT_CMSG_ALIGN(size_t(cmsg->cmsg_len));
+		if (next + sizeof(struct __SPRT_CMSGHDR_NAME) > end) {
+			break;
+		}
+		cmsg = reinterpret_cast<struct __SPRT_CMSGHDR_NAME *>(next);
+	}
+	if (msg.msg_flags & __SPRT_MSG_CTRUNC) {
+		*truncated = true;
+	}
+	return n;
+}
+
+// send() with `handles` attached to the first byte
+static socksize_t sendWithHandles(SocketHandle sock, const uint8_t *data, size_t size,
+		SpanView<NativeHandle> handles) {
+	struct __SPRT_IOVEC_NAME iov;
+	iov.iov_base = const_cast<uint8_t *>(data);
+	iov.iov_len = size;
+
+	alignas(struct __SPRT_CMSGHDR_NAME) uint8_t control[PassHandlesControlSize] = {0};
+	struct __SPRT_MSGHDR_NAME msg{};
+	msg.msg_iov = &iov;
+	msg.msg_iovlen = 1;
+	msg.msg_control = control;
+	msg.msg_controllen =
+			decltype(msg.msg_controllen)(__SPRT_CMSG_SPACE(handles.size() * sizeof(int)));
+
+	auto cmsg = __SPRT_CMSG_FIRSTHDR(&msg);
+	cmsg->cmsg_level = __SPRT_SOL_SOCKET;
+	cmsg->cmsg_type = __SPRT_SCM_RIGHTS;
+	cmsg->cmsg_len = decltype(cmsg->cmsg_len)(__SPRT_CMSG_LEN(handles.size() * sizeof(int)));
+	auto out = __SPRT_CMSG_DATA(cmsg);
+	for (auto h : handles) {
+		__builtin_memcpy(out, &h.fd, sizeof(int));
+		out += sizeof(int);
+	}
+	return ::__sprt_sendmsg(SOCKET(sock), &msg, kSendFlags);
+}
 
 #endif
 
@@ -443,9 +554,11 @@ Rc<ListenHandle> makeSocketListenPollHandle(QueueData *q, Rc<ListenState> &&stat
 	return h;
 }
 
-Rc<StreamHandle> QueueData::makeStreamFromSocket(SocketHandle sock, bool connecting) {
+Rc<StreamHandle> QueueData::makeStreamFromSocket(SocketHandle sock, bool connecting,
+		bool passHandles) {
 	auto state = makeStreamState(this, sock, connecting);
-	if (_makeSocketStream) {
+	state->passHandles = passHandles;
+	if (_makeSocketStream && !passHandles) {
 		return _makeSocketStream(this, _platformQueue, sprt::move(state));
 	}
 	return makeSocketStreamPollHandle(this, sprt::move(state));
@@ -573,7 +686,15 @@ void SocketState::setInterest(PollFlags flags) {
 		return;
 	}
 	interest = flags;
-	if (!poller || poller->getStatus() != Status::Ok) {
+	if (!poller) {
+		return;
+	}
+	if (poller->getStatus() == Status::Declined) {
+		poller->reset(flags);
+		poller->resume();
+		return;
+	}
+	if (poller->getStatus() != Status::Ok) {
 		return;
 	}
 	// Apply SYNCHRONOUSLY, even from inside a notify callback (the event batch
@@ -584,6 +705,13 @@ void SocketState::setInterest(PollFlags flags) {
 	// readable at EOF) would generate a CQE storm that keeps the queue's pop
 	// loop busy and starves any deferred task forever.
 	poller->reset(flags);
+}
+
+void SocketState::parkPoller() {
+	if (poller && poller->getStatus() == Status::Ok) {
+		poller->pause();
+	}
+	interest = PollFlags::None;
 }
 
 void SocketState::finalizeSocket(Status st) {
@@ -640,7 +768,7 @@ void ListenState::handleEvents(PollFlags flags, Status st) {
 			break;
 		}
 
-		auto stream = qdata->makeStreamFromSocket(c, false);
+		auto stream = qdata->makeStreamFromSocket(c, false, passHandles);
 		if (!stream) {
 			::__sprt_closesocket(SOCKET(c));
 			continue;
@@ -657,6 +785,15 @@ void ListenState::handleEvents(PollFlags flags, Status st) {
 }
 
 // --- StreamState -------------------------------------------------------------
+
+StreamState::~StreamState() { dropPendingHandles(); }
+
+void StreamState::dropPendingHandles() {
+#if SPRT_DISPATCH_PASS_HANDLES
+	for (auto &it : outHandles) { closeHandles(it.handles); }
+#endif
+	outHandles.clear();
+}
 
 static int getSoError(SocketHandle sock) {
 	int err = 0;
@@ -750,6 +887,12 @@ void StreamState::handleEvents(PollFlags flags, Status st) {
 		finalizeSocket(closeStatus);
 	} else if (!finalized && !terminating) {
 		checkFinished();
+		// io_uring polls always report RDHUP: after EOF with only errors watched
+		// that event repeats forever, so the poller waits for the next interest change
+		if (!finalized && !terminating && readEof && (flags & interest) == PollFlags::None
+				&& (interest & (PollFlags::In | PollFlags::Out)) == PollFlags::None) {
+			parkPoller();
+		}
 	}
 }
 
@@ -757,9 +900,27 @@ void StreamState::drainRead() {
 	if (readEof) {
 		return;
 	}
+	Vector<NativeHandle> fds;
 	for (;;) {
-		auto n = ::__sprt_recv(SOCKET(sock), reinterpret_cast<sockdata_t *>(chunkBuf),
-				SocketChunkSize, 0);
+		fds.clear();
+		socksize_t n = 0;
+#if SPRT_DISPATCH_PASS_HANDLES
+		if (passHandles) {
+			bool truncated = false;
+			n = recvWithHandles(sock, chunkBuf, SocketChunkSize, fds, &truncated);
+			if (truncated) {
+				closeHandles(fds);
+				closeStatus = Status::ErrorBufferOverflow;
+				readEof = true;
+				finalizeSocket(closeStatus);
+				return;
+			}
+		} else
+#endif
+		{
+			n = ::__sprt_recv(SOCKET(sock), reinterpret_cast<sockdata_t *>(chunkBuf),
+					SocketChunkSize, 0);
+		}
 		if (n < 0) {
 			auto e = lastSockError();
 			if (isInterrupted(e)) {
@@ -776,21 +937,25 @@ void StreamState::drainRead() {
 		}
 		if (n == 0) {
 			readEof = true;
-			if (reader && !readStopped) {
+			if (hasReader() && !readStopped) {
 				readStopped = true;
-				reader(BytesView()); // EOF marker
+				deliverRead(BytesView(), SpanView<NativeHandle>()); // EOF marker
 			}
 			if (!terminating && !finalized) {
 				updateInterest(); // drop In: an EOF-ready socket stays readable forever
 			}
 			break;
 		}
-		if (!reader || readStopped) {
+		if (!hasReader() || readStopped) {
 			// no active reader: leave data in the kernel buffer (backpressure);
 			// In interest is not armed in this state, this is a stray event
+#if SPRT_DISPATCH_PASS_HANDLES
+			closeHandles(fds);
+#endif
 			break;
 		}
-		if (reader(BytesView(chunkBuf, size_t(n))) != Status::Ok) {
+		if (deliverRead(BytesView(chunkBuf, size_t(n)), fds)
+				!= Status::Ok) {
 			readStopped = true;
 			if (!terminating && !finalized) {
 				updateInterest();
@@ -803,14 +968,46 @@ void StreamState::drainRead() {
 	}
 }
 
+Status StreamState::deliverRead(BytesView data, SpanView<NativeHandle> handles) {
+	if (handleReader) {
+		return handleReader(data, handles);
+	}
+#if SPRT_DISPATCH_PASS_HANDLES
+	closeHandles(handles);
+#endif
+	return reader(data);
+}
+
 void StreamState::flushWrite() {
 	if (shutdownDone || connecting || finalized) {
 		return;
 	}
 	while (outPos < outBuf.size()) {
-		auto n = ::__sprt_send(SOCKET(sock),
-				reinterpret_cast<const sockdata_t *>(outBuf.data() + outPos),
-				outBuf.size() - outPos, kSendFlags);
+		// a segment ends before the next byte that carries descriptors
+		size_t end = outBuf.size();
+		bool attach = false;
+		if (!outHandles.empty()) {
+			if (outHandles.front().offset == outPos) {
+				attach = true;
+				if (outHandles.size() > 1) {
+					end = outHandles[1].offset;
+				}
+			} else {
+				end = outHandles.front().offset;
+			}
+		}
+		socksize_t n = 0;
+#if SPRT_DISPATCH_PASS_HANDLES
+		if (attach) {
+			n = sendWithHandles(sock, outBuf.data() + outPos, end - outPos,
+					outHandles.front().handles);
+		} else
+#endif
+		{
+			n = ::__sprt_send(SOCKET(sock),
+					reinterpret_cast<const sockdata_t *>(outBuf.data() + outPos), end - outPos,
+					kSendFlags);
+		}
 		if (n < 0) {
 			auto e = lastSockError();
 			if (isInterrupted(e)) {
@@ -820,6 +1017,7 @@ void StreamState::flushWrite() {
 				// compact the already-sent prefix and wait for writability
 				if (outPos > 0) {
 					outBuf.erase(outBuf.begin(), outBuf.begin() + outPos);
+					for (auto &it : outHandles) { it.offset -= outPos; }
 					outPos = 0;
 				}
 				updateInterest();
@@ -829,6 +1027,12 @@ void StreamState::flushWrite() {
 			closeStatus = s;
 			finalizeSocket(s);
 			return;
+		}
+		if (attach && n > 0) {
+#if SPRT_DISPATCH_PASS_HANDLES
+			closeHandles(outHandles.front().handles);
+#endif
+			outHandles.erase(outHandles.begin());
 		}
 		outPos += size_t(n);
 	}
@@ -855,7 +1059,7 @@ void StreamState::updateInterest() {
 	if (connecting) {
 		desired |= PollFlags::Out;
 	} else {
-		if (reader && !readStopped && !readEof) {
+		if (hasReader() && !readStopped && !readEof) {
 			desired |= PollFlags::In;
 		}
 		if (outPos < outBuf.size() && !shutdownDone) {
@@ -943,6 +1147,7 @@ Status StreamHandle::read(Function<Status(BytesView)> &&reader) {
 		return Status::ErrorCancelled;
 	}
 	state->reader = sprt::move(reader);
+	state->handleReader = nullptr;
 	state->readStopped = false;
 	if (state->readEof) {
 		state->readStopped = true;
@@ -997,6 +1202,62 @@ Status StreamHandle::write(BytesView data) {
 		state->engage();
 	}
 	return Status::Ok;
+}
+
+Status StreamHandle::read(Function<Status(BytesView, SpanView<NativeHandle>)> &&reader) {
+	auto state = static_cast<StreamState *>(getUserdata());
+	if (!state || state->terminating || state->finalized) {
+		return Status::ErrorCancelled;
+	}
+	if (!state->passHandles) {
+		return Status::ErrorInvalidArguemnt;
+	}
+	state->handleReader = sprt::move(reader);
+	state->reader = nullptr;
+	state->readStopped = false;
+	if (state->readEof) {
+		state->readStopped = true;
+		state->handleReader(BytesView(), SpanView<NativeHandle>()); // already at EOF
+		return Status::Ok;
+	}
+	if (!state->connecting) {
+		state->engage();
+	}
+	return Status::Ok;
+}
+
+Status StreamHandle::write(BytesView data, SpanView<NativeHandle> handles) {
+#if SPRT_DISPATCH_PASS_HANDLES
+	auto state = static_cast<StreamState *>(getUserdata());
+	if (!state || state->terminating || state->finalized || state->shutdownRequested) {
+		return Status::ErrorCancelled;
+	}
+	if (!state->passHandles || data.empty() || handles.size() > MaxPassedHandles) {
+		return Status::ErrorInvalidArguemnt;
+	}
+	if (handles.empty()) {
+		return write(data);
+	}
+	StreamState::PendingHandles pending;
+	pending.offset = state->outBuf.size();
+	for (auto h : handles) {
+		auto fd = ::__sprt_fcntl(h.fd, __SPRT_F_DUPFD_CLOEXEC, 0);
+		if (fd < 0) {
+			auto st = sockErrorToStatus(lastSockError());
+			closeHandles(pending.handles);
+			return st;
+		}
+		pending.handles.emplace_back(NativeHandle(fd));
+	}
+	state->outHandles.emplace_back(sprt::move(pending));
+	state->outBuf.insert(state->outBuf.end(), data.data(), data.data() + data.size());
+	if (!state->connecting) {
+		state->engage();
+	}
+	return Status::Ok;
+#else
+	return Status::ErrorNotSupported;
+#endif
 }
 
 Status StreamHandle::shutdownWrite() {
@@ -1099,9 +1360,11 @@ void setupSocketHandleClasses(QueueHandleClassInfo *info, QueueData *q) {
 			}
 			// break handle <-> closure reference cycles
 			state->reader = nullptr;
+			state->handleReader = nullptr;
 			state->userRef = nullptr;
 			state->strategy = nullptr;
 			state->engageFn = nullptr;
+			state->dropPendingHandles();
 		}
 		return HandleClass::cancel(cl, handle, data, st);
 	};
@@ -1265,7 +1528,12 @@ Rc<ListenState> prepareListenState(QueueData *q, ListenInfo &&info, Ref *ref) {
 		return nullptr;
 	}
 
-	Status st = Status::Ok;
+	Status st = info.handles ? checkPassHandles(info.address) : Status::Ok;
+	if (st != Status::Ok) {
+		fireCompletionError(info.completion, st);
+		return nullptr;
+	}
+
 	AnySockAddr sa;
 	auto len = makeSockAddr(info.address, sa, &st);
 	if (len == 0) {
@@ -1327,6 +1595,7 @@ Rc<ListenState> prepareListenState(QueueData *q, ListenInfo &&info, Ref *ref) {
 	state->onAccept = sprt::move(info.onAccept);
 	state->pendingCompletion = info.completion;
 	state->ownsUnixPath = isUnix;
+	state->passHandles = info.handles;
 	state->userRef = ref;
 	return state;
 }
@@ -1337,7 +1606,12 @@ Rc<StreamState> prepareConnectState(QueueData *q, ConnectInfo &&info, Ref *ref) 
 		return nullptr;
 	}
 
-	Status st = Status::Ok;
+	Status st = info.handles ? checkPassHandles(info.address) : Status::Ok;
+	if (st != Status::Ok) {
+		fireCompletionError(info.completion, st);
+		return nullptr;
+	}
+
 	AnySockAddr sa;
 	auto len = makeSockAddr(info.address, sa, &st);
 	if (len == 0) {
@@ -1365,13 +1639,14 @@ Rc<StreamState> prepareConnectState(QueueData *q, ConnectInfo &&info, Ref *ref) 
 	}
 
 	auto state = makeStreamState(q, sock, connecting);
+	state->passHandles = info.handles;
 	state->connectCompletion = info.completion;
 	state->userRef = ref;
 	return state;
 }
 
 Rc<ListenHandle> QueueData::listenSocket(ListenInfo &&info, Ref *ref) {
-	if (!_makeSocketListen && !_socketPoll) {
+	if (!_socketPoll && (!_makeSocketListen || info.handles)) {
 		fireCompletionError(info.completion, Status::ErrorNotImplemented);
 		return nullptr;
 	}
@@ -1379,14 +1654,14 @@ Rc<ListenHandle> QueueData::listenSocket(ListenInfo &&info, Ref *ref) {
 	if (!state) {
 		return nullptr;
 	}
-	if (_makeSocketListen) {
+	if (_makeSocketListen && !state->passHandles) {
 		return _makeSocketListen(this, _platformQueue, sprt::move(state));
 	}
 	return makeSocketListenPollHandle(this, sprt::move(state));
 }
 
 Rc<StreamHandle> QueueData::connectSocket(ConnectInfo &&info, Ref *ref) {
-	if (!_makeSocketStream && !_socketPoll) {
+	if (!_socketPoll && (!_makeSocketStream || info.handles)) {
 		fireCompletionError(info.completion, Status::ErrorNotImplemented);
 		return nullptr;
 	}
@@ -1394,7 +1669,7 @@ Rc<StreamHandle> QueueData::connectSocket(ConnectInfo &&info, Ref *ref) {
 	if (!state) {
 		return nullptr;
 	}
-	if (_makeSocketStream) {
+	if (_makeSocketStream && !state->passHandles) {
 		return _makeSocketStream(this, _platformQueue, sprt::move(state));
 	}
 	return makeSocketStreamPollHandle(this, sprt::move(state));

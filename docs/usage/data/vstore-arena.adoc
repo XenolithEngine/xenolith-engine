@@ -1,0 +1,326 @@
+# The vstore arena
+
+The relocatable arena of `stappler_vstore` (namespace `stappler::vstore`), the half of the store
+below [the journal](vstore-journal.adoc). Sources:
+[SPVStore.h](../../../stappler/vstore/SPVStore.h),
+[SPVStoreArena.h](../../../stappler/vstore/SPVStoreArena.h),
+[SPVStoreArena.cc](../../../stappler/vstore/SPVStoreArena.cc),
+[SPVStoreTracking.h](../../../stappler/vstore/SPVStoreTracking.h). Tests: `vstoretest arena-basic
+arena-relocate arena-torture arena-barrier arena-oom arena-header arena-kinds arena-write-view`.
+
+This note is about **why** the layer is shaped this way.
+
+## The one invariant
+
+**A byte-wise copy of the chunks is the complete state.** An arena rebuilt from that copy is
+indistinguishable from the original — it verifies, it holds the same data at the same addresses, and
+it saves back to a byte-identical image. Snapshots, rollback and keyframes are all consequences of
+this; the journal adds no new notion of "state", only a record of changes to it.
+
+Everything below exists to keep that true.
+
+## Layout
+
+[source]
+----
+address = slot << 16 | offset          resolve(a) = chunks[a >> 16] + (a & 0xffff)
+
+chunk 0                                chunk N (normal)        run head + 2 tails (oversize)
++---------------------------+          +----------------+      +---------------------------+
+| Root            (offset 0)|          | block          |      | one block, 3 * 64 KiB     |
+| ChunkDesc[maxChunks]      |          | block          |      | (one host allocation)     |
+|- - - - - - - - -  16 KiB -|          | ...            |      |                           |
+| block                     |          | free block     |      |                           |
+| block ...                 |          |                |      |                           |
++---------------------------+          +----------------+      +---------------------------+
+ firstDataOffset >= 16 KiB              64 KiB                  3 consecutive slots
+----
+
+* `Addr` is a 32-bit offset. There are no pointers inside the store, so it relocates.
+* Chunks are 64 KiB and never move, so growth cannot invalidate an address already handed out.
+* **`Root` physically occupies offset 0 of chunk 0**, which is why `Addr 0` can be null: there is
+  nothing to allocate there. It also makes an image self-describing — `adopt()` reads the first
+  bytes and needs nothing passed alongside.
+* The chunk table is split in two: `ChunkDesc[]` inside the store (pure data, copied and rolled back
+  with everything else) and the host `_chunks` pointer array, which is *derived* and rebuilt by
+  `rebuildHostState()`. That split is the relocation mechanism.
+* A block larger than a chunk gets a **run**: consecutive slots backed by one host allocation. This
+  is not an optimization — `read()`/`write()` hand out a raw pointer, so a block must be contiguous
+  in host memory. It also means an ordinary block never straddles a chunk boundary.
+
+### ARENA-P0: the first page is the header's
+
+`firstDataOffset` has a floor of one page, so **no block is ever handed out inside the first page of
+the store**, at any budget.
+
+Nothing else makes this true. The largest descriptor table a store can have is `MaxChunks * 4` =
+32 KiB, but the one for the default 64 MiB budget is 4 KiB and stops a quarter of the way into a
+16 KiB page. The floor is what enforces the property, at every budget.
+
+What it enforces: `Root::firstPageUsed` says how many bytes of that page can hold anything —
+`DescsOffset + chunkCount * 4`, capped at a page — and the journal reads it through
+`getPageFootprint(slot, page)` to bound a comparison it makes on nearly every version. The header
+page is the page marked most often of all, because the allocator's counters and free-list heads live
+in it, so every `alloc` and every `free` touches it and almost none of them changes it by the time
+the version closes.
+
+The ceiling is derived, so `verify()` and `adopt()` check it rather than trusting it: an image
+claiming a small one would make the journal skip bytes that really do change.
+
+**What the page size costs here is a quarter of chunk 0** — 16 KiB of 64 KiB reserved for a header
+that uses a few hundred bytes of it, at every budget. That is the price of the geometry and it is
+paid once per store rather than per chunk.
+
+The floor is also the only way to state the property. The alternative would be a **minimum budget**,
+but the budget is also the descriptor table's capacity, so buying a whole page of table would mean a
+smallest store of `PageSize / 4` slots — at 16 KiB that is 4028 slots and 251 MiB, which is *larger
+than the default budget*.
+
+### Blocks
+
+| Field | Meaning |
+|---|---|
+| `size` | what the caller asked for (a free block owns its whole payload) |
+| `total` | the extent occupied: header + payload + granule padding |
+| `prevTotal` | the physically previous block's extent; 0 for the first in a chunk |
+| `flags` | `Used`, `Oversize`, `LastInChunk` |
+| `sizeClass` | free-list index while free, `FreeClassNone` otherwise |
+
+**A chunk is always fully covered by a chain of blocks.** There is no virgin tail and no undescribed
+region, so the structural walk in `verify()` is total: it visits every byte and can therefore check
+that the physical layout, the free lists and the accounting all agree. Allocation is carving from a
+free block, never bumping a pointer into undescribed space.
+
+Alignment is free: chunks are 16-aligned, the header is 16 bytes and every extent is a multiple of
+16, so **every payload is 16-aligned unconditionally**. `align > 16` is refused rather than rounded.
+
+Size classes 0..31 are exact (16…512 bytes in 16-byte steps); above that they are power-of-two
+buckets. A request scans from its own class upward and takes the first head that fits — only the
+first class can fail the fit test, because every higher class's minimum exceeds the request.
+
+### Coalescing
+
+`free()` merges with **both** physical neighbours, which is what `prevTotal` is for. `verify()`
+enforces the consequence: no two adjacent free blocks. This is not a refinement — it is the
+difference between a store that recycles and one that bloats:
+
+| | peak chunks | overhead |
+|---|---|---|
+| without coalescing | 250 | **17.56** |
+| with coalescing | 18 | **0.319** |
+
+(same deterministic 1M-operation workload, `arena-torture`; the bound in the test is 0.40)
+
+The check that proves it works in both directions is in `arena-torture`: after freeing everything,
+**every chunk has collapsed to exactly one free block**. A missed merge in either direction leaves a
+chunk holding two.
+
+### Memory
+
+Chunks come from the arena's own `memory::pool_t` (`pool::create()` — independent, with its own
+allocator), or from `Config::parentPool` when one is given. That makes the store a unit that can be
+moved between threads by moving its pool, makes destruction O(1), and gives the journal its keyframe
+eviction for free (a pool per keyframe, `pool::destroy` to drop one). A pool never returns an
+individual block, so released chunks are recycled through `_spareChunks`; repeated *oversize* churn
+still grows the pool monotonically.
+
+## Limits
+
+| Limit | Value | Why |
+|---|---|---|
+| Store size | 8192 chunks = **512 MiB** | the descriptor table lives in chunk 0 after `Root`; raising it to ~1 GiB needs no format change |
+| Address space | 4 GiB (`uint32_t`) | not reachable given the above |
+| Max payload in a chunk | 65520 bytes | above that a run is allocated |
+| Alignment | 16 | larger requests are refused |
+| Threads | one writer | single-threaded by design; move the pool, don't share the store. Readers on other threads go through a view (below) |
+
+**Views:** `initView(src)` makes a read-only arena over another store's chunks: the chunk table
+copied, no pool, nothing owned. A worker reads through it without touching the source's `_chunks`,
+which reallocates as the store grows — as long as the owner neither moves nor frees a chunk
+meanwhile. `initWriteView(src)` is the same snapshot for a worker that changes bytes of blocks that
+existed when it was taken. Neither kind of view can allocate: `alloc()`, `realloc()` and `free()`
+refuse through a view in every build (counted by `getViewAllocCount`), so the free lists, block
+headers and tables stay the owner's. A write view keeps its own dirty map, and the owner takes the
+marks back with `mergeDirtyFrom()` on its own thread. Under `ShadowArena` the rest is checked:
+`setFrozen(true)` makes an allocator call a violation, `setOwnerThread()` makes a write from another
+thread (or through a read-only view) one, both counted by `getForeignWriteCount`/`getFrozenAllocCount`
+and fatal unless `setArenaViolationsFatal(false)`.
+
+**Pointer lifetime:** a pointer from `read()`/`write()` is valid only until the next allocator call.
+Addresses are stable; pointers are not — `realloc` can move a block and `free` can release a run.
+An accessor in a layer above must never hold one across an `alloc`.
+
+**Large blocks:** a variable-length object a layer above keeps in the store (a string, an array, a
+map) is best kept as **one flat block**, and above 65 520 bytes that block is simply an oversize
+run. Released runs come back as contiguous extents through `_spareChunks`, so a run is recycled by
+the next run that fits rather than being lost.
+
+What remains true is the cost, and it is the one number to watch: an oversize `realloc` **always**
+relocates, and a pool never returns an individual block, so repeated oversize churn grows the host
+pool monotonically even while arena occupancy returns to its baseline. Arena occupancy cannot see
+that; the chunk and oversize-run counts can, and they are what a test of such a workload should
+bound.
+
+## The one address a layer above may leave here
+
+`Root` carries `Addr userRoot`, set and read through:
+
+[source,cpp]
+----
+Status Arena::setUserRoot(Addr);   // NullAddr, or an address inside the store
+Addr   Arena::getUserRoot() const;
+----
+
+Without it the invariant above is true only of bytes nobody cares about: `adopt()` would hand back a
+store whose contents can only be found by remembering an `Addr` alongside the image, which is exactly
+the out-of-band state the format claims not to need. A layer above plants its own root here — a
+consumer such as xenolith-studio's ECS index keeps its store root in it.
+
+The field sits in the superblock next to `firstPageUsed` and `Root::reserved[6]`. The version counter
+deliberately does not: it lives in the journal, so that a keyframe taken at version 42 stays
+byte-comparable with a state reached again at 42 by rolling back.
+
+Three properties follow from where it lives rather than from anything it does:
+
+* It goes through `rootForWrite()`, so the journal records it like any other superblock byte and a
+  rollback restores it. Rolling back below the version that created an index clears the entry point
+  with it, which is not a special case anywhere.
+* `setUserRoot` refuses an address outside the store **at the call**, where it is still
+  distinguishable from corruption.
+* `verify()` requires it to be `NullAddr` or the payload of a **live** block. That is the one
+  index-shaped corruption this layer can see for free, and it is precisely what a rollback whose
+  rehost phase went wrong would leave behind.
+
+One address rather than a directory: whoever owns it can build any directory it likes behind it, and
+a fixed table here would be a second format to version.
+
+### `isLivePayload`, for an address you did not allocate
+
+`verify()` proves `userRoot` is a live block during its structural walk, and a walk is the only thing
+that *can* prove it: it alone knows which addresses are block starts. But a walk is far too expensive
+for a caller merely holding an `Addr` out of an image and asking whether following it is sane.
+
+[source,cpp]
+----
+bool Arena::isLivePayload(Addr) const;   // inside the store, granule-aligned, header says Used
+----
+
+It is not a proof and does not claim to be. What it is, exactly, is **the assumption `sizeOf()` and
+`free()` already make on every call, made checkable** — those two read the header in front of an
+address and trust it, and this returns whether that trust is warranted as far as anything short of a
+walk can tell. It deliberately checks the range of the HEADER and not only of the payload: a payload
+one byte past the end of a slot passes a check on itself and is then read through the header in front
+of it.
+
+It exists for addresses a layer above stores in an image as entry points: nothing else in the store
+will ever follow them, so they are checked where they are set or nowhere.
+
+## The seam for the journal
+
+The journal attaches here. What it can rely on:
+
+1. **`getDirtyMap()` names everywhere any mutation has landed** since it was last cleared — the
+   caller's payload and the allocator's own metadata alike. One `uint64_t` per page, indexed by the
+   flat page number `addr >> PageShift`, holding one bit per sub-block of `PageSize / 64`; and
+   `clearDirtyMap()` empties it. That is the whole interface, and the arena knows nothing else about
+   versioning: it announces a write to itself in the cheapest form there is, and whoever cares reads
+   the map when it suits them.
++
+The map hands over the answer rather than the question. There is no observer taking byte ranges,
+so there is no code path running from the middle of the allocator into a compressor, and the
+decision about granularity that an observer would have to make on every call is made once, here.
++
+The granularity is a sub-block rather than a page because the journal cannot *recover* a
+granularity the arena did not keep. Told only "this page changed", it would have to read and compare
+the whole page to find out where, out of a cold baseline, on every recorded page of every version.
+Sixty-four bits say where, and cost the arena the same single OR that one bit would. The sub-block
+width is not a tuning parameter either: 64 is the width of a word, which is what keeps this an
+array of scalars rather than a bitset with addressing of its own. A build with
+`SP_VSTORE_DIRTY_RANGE=1` stores the packed byte extent of the write in the same word instead of a
+bitmap; everything downstream reads it through `dirtyMaskOf()`, so the journal and the record format
+are identical under both encodings.
+
+2. **Chunk lifecycle needs no events and no ordering.** `addChunkRun` and `releaseRun` mark every
+   page of the run, which is all a reader needs; when it looks, it reads the before-image out of its
+   own baseline rather than out of the arena, so it never has to be told about a slot while the
+   descriptors still say `Empty`.
++
+The one door that writes **without** marking is `getPageForRestore()`, and only a rollback may use
+it: it is putting back bytes the journal already holds, and marking them would make the version
+being restored into look as though it had written them.
+
+3. **`Root::reserved[6]`** is free space in the superblock, so adding a field there needs no
+   format-version bump. The version counter and the journal head do not need it: they live in the
+   journal.
+
+4. **`rebuildHostState()`** derives the host chunk table from the descriptors. After a rollback
+   restores `Root` and `ChunkDesc[]`, the host table has to follow them — that is the same
+   derivation without the copy, and it is the reason the function exists separately from `adopt()`.
+
+5. **The `save()` image format is the keyframe format**: `chunkCount` chunks in slot order, so chunk
+   N is at offset `N * ChunkSize` with no walking. The atom of the *format* is the chunk; the page
+   belongs to the journal only.
++
+`save()` emits pieces `(data, size, zero)` to be concatenated. A piece with `zero` set carries a
+**null pointer** and stands for `size` bytes of zeros — a released slot is a hole in the address
+space, and materialising it would mean handing the caller megabytes of nothing to copy. Piece
+boundaries are not part of the format: adjacent slots merge whenever their memory is contiguous,
+so an oversize run goes out as one piece. On the `arena-relocate` workload that is 96 pieces for
+136 slots, with 192 KiB described rather than carried.
+
+6. **Two independent debug checks, of different kinds.** The shadow validator asks whether the
+   write barrier's *coverage* has holes, and it is a property of the arena's TYPE: `ShadowArena`
+   carries a copy of the store, `TrackedArena` does not, and a caller that does not want to pay for
+   one asks for the cheaper store rather than switching a facility off. `Config::debugVerify` is a
+   flag, because it governs `verify()` — the arena's *structure* — which every kind has and which
+   costs nothing to carry. They fail for unrelated reasons, so folding them together would mean
+   silencing one to silence the other, which is exactly what a benchmark of the rollback path needs
+   to avoid.
+
+The thing that keeps all of this honest is the debug shadow validator (`resync()` / `validate()`),
+and it reads the **same map** the journal does — one array, two consumers, so a hole the journal
+would fall into is a hole the validator sees. The case that matters is in `arena-barrier`: five
+thousand allocator operations with **no user writes at all**, after which every changed page must
+have been marked. A single metadata write that slipped around the barrier would leave a future
+rollback restoring user bytes but not the allocator's own state — the store would look fine until the
+next allocation walked a free list that no longer described reality.
+
+Which is why the map is a property of the arena's KIND and not of the build. `TrackedArena` and
+`ShadowArena` carry one; `PlainArena` does not — and does not have one that is empty, it does not
+have the interface at all, so a caller that asks fails to compile instead of reading "nothing was
+written" off a store that wrote plenty. On a `PlainArena`, `write()` compiles to exactly what
+`read()` compiles to; measured against each other in one process, the two are indistinguishable,
+and the tracked kind adds about a quarter to a small write.
+
+All three kinds exist in every build and a store moves between them freely, as an image or as a live
+store (`adoptFrom`, which copies nothing). That is the one invariant at the top of this file taken
+literally: a byte-wise copy of the chunks is the complete state, so a store does not know what kind
+of arena is holding it. `arena-kinds` is where that stops being an argument.
+
+## Verification
+
+[source,sh]
+----
+xenolith-cli build tests/vstore --engine <engine>
+vstoretest --full                  # all sections, the gate
+vstoretest --full arena-torture    # one section
+----
+
+Without `--full` every section runs its reduced arm: the same checks over shorter workloads and
+narrower sweeps.
+
+Every section is deterministic: fixed seed, fixed operation mix, no wall clock. The numbers it
+prints (chunk counts, fragmentation) are bit-identical on every platform, which is what makes a
+bound on them a regression tripwire rather than a statistical guess.
+
+That is also why `arena-torture` carries **two** recorded baselines. A reduced run walks 100 000
+operations instead of a million, and a shorter walk is a different workload: the live set never
+reaches its peak, and the same allocator measures 0.099 overhead where the full walk measures 0.319.
+The bound follows the size — the figure plus a quarter in both cases — because reusing the full
+run's 0.40 for the short walk would leave the tripwire passing by a factor of four, which is green
+and no longer evidence of anything. Both bounds stay far below the 17.56 a lost coalesce produces,
+which is what either of them is for.
+
+In a release build the shadow validator is compiled out and `arena-barrier` skips the half that
+needs it — the half about what the map *contains* still runs, because the map is an ordinary product
+of the store.
