@@ -6,18 +6,24 @@
 #             pointer stays on the engine line. install.sh finds the CLI line by filtering
 #             releases for the cli-v prefix, not via "latest".
 #
-# Cut a release by pushing a tag (`git tag cli-v0.1.0 && git push origin cli-v0.1.0`) or via a
-# workflow_dispatch run (the tag is then created at the dispatched commit).
+# Cut a release in one of three ways:
+#   - push to the installer-release branch: the version is utils/installer/cli/VERSION (`0.2.0`
+#     cuts `cli-v0.2.0`); bump the file in the commit that should become the release;
+#   - push a tag (`git tag cli-v0.1.0 && git push origin cli-v0.1.0`);
+#   - a workflow_dispatch run with the tag as input.
+# A push to the branch is refused before anything is built when a release with that tag already
+# exists, so a forgotten VERSION bump costs a minute, not a full build.
 #
 # Every runner bootstraps the same way a user machine would: fetch the native host toolchain and
 # native target sysroot from the FTP release, build the native xenolith-cli, then let THAT CLI
 # install the cross target sysroots and drive the cross builds — the release dogfoods its own
-# installer.
+# installer. Windows is cross-built from Linux, as it is locally: no Windows runner is involved.
 
 name: cli-release
 
 on:
   push:
+    branches: ['installer-release']
     tags: ['cli-v*']
   workflow_dispatch:
     inputs:
@@ -43,9 +49,48 @@ env:
   XENOLITH_HOME: ${{ github.workspace }}/.sdk-store
 
 jobs:
+  # The release tag, once for the whole run: the input of a dispatch, the pushed tag, or VERSION on
+  # the release branch. Stamped into the binaries (--version) and used to name the release.
+  version:
+    name: resolve the version
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the release tag
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            tag="$INPUT_VERSION"
+          elif [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            tag="cli-v$(tr -d '[:space:]' < utils/installer/cli/VERSION)"
+          fi
+          case "$tag" in
+            cli-v[0-9]*) ;;
+            *) echo "release tag must look like cli-v<version>, got '$tag'" >&2; exit 1 ;;
+          esac
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $tag already exists: bump utils/installer/cli/VERSION" >&2
+            exit 1
+          fi
+          echo "Release tag: $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
   build:
     name: build (${{ matrix.name }})
+    needs: version
     runs-on: ${{ matrix.runs-on }}
+    # aarch64 Windows has no runner to test it on: best-effort until it has proven itself, so the
+    # release goes out without it rather than not at all.
+    continue-on-error: ${{ matrix.best-effort || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -58,15 +103,22 @@ jobs:
             runs-on: ubuntu-24.04
             host: x86_64-unknown-linux-gnu
             targets: x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+          # Windows binaries come from the Linux toolchain (clang + the msvc sysroots); a column of
+          # its own keeps them in parallel with the Linux ones and the asset names unchanged.
           - name: windows
-            runs-on: windows-latest
-            host: x86_64-pc-windows-msvc
+            runs-on: ubuntu-24.04
+            host: x86_64-unknown-linux-gnu
             targets: x86_64-pc-windows-msvc
+          - name: windows-arm64
+            runs-on: ubuntu-24.04
+            host: x86_64-unknown-linux-gnu
+            targets: aarch64-pc-windows-msvc
+            best-effort: true
     defaults:
       run:
         shell: bash
     env:
-      XENOLITH_CLI_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+      XENOLITH_CLI_VERSION: ${{ needs.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -74,17 +126,19 @@ jobs:
 
       # The newest sdk-v* directory, by the same digit/non-digit-run ordering the CLI's
       # compareSdkTags uses; plain `sort -V` is not portable to the macOS runner's BSD sort.
+      # The Python is flush with the script on purpose: `python3 -c` rejects an indented
+      # program before Python 3.14, which is what the Linux runners have.
       - name: Resolve the active SDK release
         run: |
           sdk=$(
             curl -fsSL --retry 5 "$FTP_ROOT/" | python3 -c '
-              import sys, re
-              def key(s):
-                return tuple((0, int(p)) if p.isdigit() else (1, p)
-                             for p in re.findall(r"\d+|\D+", s))
-              names = [l.split()[-1] for l in sys.stdin if l.startswith("d")]
-              print(max((n for n in names if n.startswith("sdk-v")), key=key))
-            '
+          import sys, re
+          def key(s):
+              return tuple((0, int(p)) if p.isdigit() else (1, p)
+                           for p in re.findall(r"\d+|\D+", s))
+          names = [l.split()[-1] for l in sys.stdin if l.startswith("d")]
+          print(max((n for n in names if n.startswith("sdk-v")), key=key))
+          '
           )
           [ -n "$sdk" ] || { echo "no sdk-v* release found under $FTP_ROOT" >&2; exit 1; }
           echo "SDK release: $sdk"
@@ -109,19 +163,16 @@ jobs:
       - name: Build the native xenolith-cli
         run: |
           set -euo pipefail
-          # PATH takes the POSIX form of the store, make the drive-letter one (Windows runner).
-          store="$XENOLITH_HOME/data/toolchains"; mk="$store"
-          if command -v cygpath >/dev/null; then store=$(cygpath -u "$store"); mk=$(cygpath -m "$store"); fi
+          store="$XENOLITH_HOME/data/toolchains"
           export PATH="$store/hosts/${{ matrix.host }}/bin:$PATH"
           make -C utils/installer/cli -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)" RELEASE=1 \
-            STAPPLER_HOST_FILE="$mk/hosts/${{ matrix.host }}/host.mk" \
-            STAPPLER_TARGET_FILE="$mk/targets/${{ matrix.host }}/target.mk"
+            STAPPLER_HOST_FILE="$store/hosts/${{ matrix.host }}/host.mk" \
+            STAPPLER_TARGET_FILE="$store/targets/${{ matrix.host }}/target.mk"
 
       - name: Smoke-test the native binary
         run: |
           set -euo pipefail
           bin=utils/installer/cli/stappler-build/${{ matrix.host }}/release/cc/xenolith-cli
-          [ -f "$bin" ] || bin="$bin.exe"
           "$bin" --version
           "$bin" detect
 
@@ -131,10 +182,8 @@ jobs:
         run: |
           set -euo pipefail
           store="$XENOLITH_HOME/data/toolchains"
-          if command -v cygpath >/dev/null; then store=$(cygpath -u "$store"); fi
           export PATH="$store/hosts/${{ matrix.host }}/bin:$PATH"
           cli=utils/installer/cli/stappler-build/${{ matrix.host }}/release/cc/xenolith-cli
-          [ -f "$cli" ] || cli="$cli.exe"
           for t in ${{ matrix.targets }}; do
             case "$t" in
               ${{ matrix.host }}) continue ;; # native one is already built
@@ -144,6 +193,46 @@ jobs:
             "$cli" build utils/installer/cli --engine "$PWD" --target "$t" --release
           done
 
+      # The Windows binaries are cross-built, so nothing above has run one. Wine runs the x86_64
+      # one; the arm64 one has nothing to run on here. A console tool needs no display, and a
+      # fresh prefix is created on the first call.
+      #
+      # Not Ubuntu's own wine: 24.04 ships 9.0, whose ntdll lacks _setjmpex and longjmp (wine >= 10),
+      # and the runtime binds those at startup - the binary exits with 248
+      # (LOADER_ERROR_FAIL_TO_PRELOAD) before main. WineHQ's stable build, installed the way
+      # their instructions do it (it needs the i386 architecture).
+      - name: Smoke-test the Windows binary under wine
+        if: contains(matrix.targets, 'x86_64-pc-windows-msvc')
+        env:
+          WINEDEBUG: -all
+          WINEPREFIX: ${{ runner.temp }}/wineprefix
+        run: |
+          set -euo pipefail
+          . /etc/os-release
+          sudo dpkg --add-architecture i386
+          sudo mkdir -pm755 /etc/apt/keyrings
+          curl -fsSL --retry 5 https://dl.winehq.org/wine-builds/winehq.key \
+            | sudo tee /etc/apt/keyrings/winehq-archive.key >/dev/null
+          curl -fsSL --retry 5 \
+            "https://dl.winehq.org/wine-builds/ubuntu/dists/$VERSION_CODENAME/winehq-$VERSION_CODENAME.sources" \
+            | sudo tee /etc/apt/sources.list.d/winehq.sources >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends winehq-stable >/dev/null
+          wine=$(command -v wine)
+          wineVersion=$("$wine" --version)
+          echo "$wineVersion"
+          major=${wineVersion#wine-}; major=${major%%.*}
+          [ "$major" -ge 10 ] || { echo "wine >= 10 is required, got $wineVersion" >&2; exit 1; }
+          bin=utils/installer/cli/stappler-build/x86_64-pc-windows-msvc/release/cc/xenolith-cli.exe
+          version=$("$wine" "$bin" --version | tr -d '\r')
+          echo "$version"
+          [ "$version" = "xenolith-cli $XENOLITH_CLI_VERSION (x86_64-windows)" ] \
+            || { echo "unexpected --version output" >&2; exit 1; }
+          triple=$("$wine" "$bin" detect | tr -d '\r')
+          echo "$triple"
+          [ "$triple" = x86_64-pc-windows-msvc ] \
+            || { echo "unexpected detect output" >&2; exit 1; }
+
       - name: Package
         run: |
           set -euo pipefail
@@ -152,9 +241,11 @@ jobs:
             bin=utils/installer/cli/stappler-build/$t/release/cc/xenolith-cli
             [ -f "$bin" ] || bin="$bin.exe"
             [ -f "$bin" ] || { echo "missing artifact for $t: $bin" >&2; exit 1; }
+            # Not `$(case ... esac)`: the macOS runner's /bin/bash 3.2 cannot parse a case pattern's
+            # `)` inside a command substitution.
+            exe=$(basename "$bin")
             cp LICENSE "$(dirname "$bin")/"
-            tar -czf "dist/xenolith-cli-$t.tar.gz" -C "$(dirname "$bin")" \
-              xenolith-cli$(case "$t" in *windows*) echo .exe;; esac) LICENSE
+            tar -czf "dist/xenolith-cli-$t.tar.gz" -C "$(dirname "$bin")" "$exe" LICENSE
             ( cd dist && { sha256sum "xenolith-cli-$t.tar.gz" 2>/dev/null || shasum -a 256 "xenolith-cli-$t.tar.gz"; } \
               | awk '{print $1"  "$2}' > "xenolith-cli-$t.tar.gz.sha256" )
           done
@@ -166,69 +257,9 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  # aarch64 Windows: a full target exists, but no runner here runs it — build-verify only, and the
-  # first releases treat it as best-effort until it has proven itself once.
-  build-windows-arm64:
-    name: build (windows-arm64, best-effort)
-    runs-on: windows-latest
-    continue-on-error: true
-    defaults:
-      run:
-        shell: bash
-    env:
-      XENOLITH_CLI_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
-      XENOLITH_HOME: ${{ github.workspace }}/.sdk-store
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Resolve the active SDK release
-        run: |
-          sdk=$(
-            curl -fsSL --retry 5 "$FTP_ROOT/" | python3 -c '
-              import sys, re
-              def key(s):
-                return tuple((0, int(p)) if p.isdigit() else (1, p)
-                             for p in re.findall(r"\d+|\D+", s))
-              names = [l.split()[-1] for l in sys.stdin if l.startswith("d")]
-              print(max((n for n in names if n.startswith("sdk-v")), key=key))
-            '
-          )
-          [ -n "$sdk" ] || { echo "no sdk-v* release found under $FTP_ROOT" >&2; exit 1; }
-          echo "SDK=$sdk" >> "$GITHUB_ENV"
-      - name: Bootstrap + build native, cross to aarch64-pc-windows-msvc
-        run: |
-          set -euo pipefail
-          store="$XENOLITH_HOME/data/toolchains"
-          mkdir -p "$store/hosts" "$store/targets"
-          curl -fsSL --retry 5 "$FTP_ROOT/$SDK/hosts/x86_64-pc-windows-msvc.tar.xz" -o /tmp/host.tar.xz
-          curl -fsSL --retry 5 "$FTP_ROOT/$SDK/targets/x86_64-pc-windows-msvc.tar.xz" -o /tmp/target.tar.xz
-          tar -xf /tmp/host.tar.xz -C "$store/hosts"
-          tar -xf /tmp/target.tar.xz -C "$store/targets"
-          mk=$(cygpath -m "$store"); store=$(cygpath -u "$store")
-          export PATH="$store/hosts/x86_64-pc-windows-msvc/bin:$PATH"
-          make -C utils/installer/cli -j"$(nproc 2>/dev/null || echo 8)" RELEASE=1 \
-            STAPPLER_HOST_FILE="$mk/hosts/x86_64-pc-windows-msvc/host.mk" \
-            STAPPLER_TARGET_FILE="$mk/targets/x86_64-pc-windows-msvc/target.mk"
-          cli=utils/installer/cli/stappler-build/x86_64-pc-windows-msvc/release/cc/xenolith-cli.exe
-          "$cli" --version
-          "$cli" install aarch64-pc-windows-msvc --target
-          "$cli" build utils/installer/cli --engine "$PWD" --target aarch64-pc-windows-msvc --release
-          mkdir -p dist
-          bin=utils/installer/cli/stappler-build/aarch64-pc-windows-msvc/release/cc/xenolith-cli.exe
-          cp LICENSE "$(dirname "$bin")/"
-          tar -czf dist/xenolith-cli-aarch64-pc-windows-msvc.tar.gz -C "$(dirname "$bin")" xenolith-cli.exe LICENSE
-          ( cd dist && sha256sum xenolith-cli-aarch64-pc-windows-msvc.tar.gz \
-              | awk '{print $1"  "$2}' > xenolith-cli-aarch64-pc-windows-msvc.tar.gz.sha256 )
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cli-assets-windows-arm64
-          path: dist/*
-          if-no-files-found: error
-
   release:
     name: publish the cli-v* release
-    needs: [build, build-windows-arm64]
+    needs: [version, build]
     if: always() && needs.build.result == 'success'
     runs-on: ubuntu-24.04
     steps:
@@ -242,7 +273,7 @@ jobs:
       - name: Create the release (never the "latest" one)
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+          TAG: ${{ needs.version.outputs.tag }}
         run: |
           set -euo pipefail
           ls -la dist/

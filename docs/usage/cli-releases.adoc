@@ -76,14 +76,29 @@ that cannot be listed is an error, not a guess.
 
 == Cutting a CLI release
 
-Releases are built by `.github/workflows/cli-release.yml`:
+Releases are built by `.github/workflows/cli-release.yml`. The usual way is a push to the
+`installer-release` branch: the release tag is `cli-v` followed by the contents of
+`utils/installer/cli/VERSION`, so the commit that should become a release bumps that file.
+
+```sh
+echo 0.3.0 > utils/installer/cli/VERSION   # cuts cli-v0.3.0
+git commit -am "installer: cli-v0.3.0"
+git push origin HEAD:installer-release
+```
+
+A tag push or a `workflow_dispatch` run with the tag as input cuts a release too, without
+reading `VERSION`:
 
 ```sh
 git tag cli-v0.1.0
-git push origin cli-v0.1.0        # or a workflow_dispatch run with the tag as input
+git push origin cli-v0.1.0
 ```
 
-The workflow, per platform column (macOS arm64, Linux x86_64, Windows x86_64):
+The first job resolves the tag and refuses the run when a release with it already exists, before
+anything is built: a push to the branch without a `VERSION` bump fails in a minute.
+
+The workflow, per platform column (macOS arm64; Linux x86_64 for the Linux and the Windows
+binaries — Windows is cross-built with the Linux toolchain, no Windows runner is used):
 
 1. Resolves the active `sdk-v*` release from the FTP server (same ordering as the CLI's
    `compareSdkTags`).
@@ -95,9 +110,10 @@ The workflow, per platform column (macOS arm64, Linux x86_64, Windows x86_64):
    `xenolith-cli-<triple>.tar.gz` (+ `.sha256`) per target.
 4. Publishes the release with `gh release create --latest=false`.
 
-Cross targets per column: macOS also builds `x86_64-apple-macosx`; Linux also builds
-`aarch64-unknown-linux-musl`; Windows arm64 (`aarch64-pc-windows-msvc`) is a separate
-best-effort job (`continue-on-error`) until it has proven itself.
+Cross targets per column: macOS also builds `x86_64-apple-macosx`; the Linux column builds
+`x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; two more Linux columns build
+`x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`, the latter best-effort
+(`continue-on-error`) until it has proven itself.
 
 The `XENOLITH_CLI_VERSION` environment variable stamps the tag into `xenolith-cli --version`;
 local builds report `dev`.
