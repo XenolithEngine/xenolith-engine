@@ -56,18 +56,28 @@ extern "C" __attribute__((weak)) uintptr_t xenolith_soft_scanout_fb(uint32_t *st
  * empty draw lists leave it. Atomic: present() need not run on the thread that ran the pass. */
 static sprt::atomic<bool> s_scanoutDirectSticky{false};
 
-/* A direct-scanout frame never touched the pass's own image, so the damage tracker's snapshot of
- * that image is a frame behind what is on screen. Left set, the next composed frame would present
- * a shadow whose video area still holds whatever was there before the blits. One full repaint on
- * the way back closes that; on every backend without a scanout mapping the flag is never set. */
+/* This frame went to the scanout and never touched the pass's own image, so the damage tracker's
+ * snapshot of that image now describes a frame it does not hold. prepareSubpass() takes the flag and
+ * invalidates that image's snapshot, so the image repaints whole on its next composed frame. Per
+ * image, not one repaint on the way back: with a double-buffered swapchain every image the direct
+ * frames bypassed is behind. On every backend without a scanout mapping the flag is never set. */
 static sprt::atomic<bool> s_scanoutDirectPending{false};
 
 /* CPU-written fb subrects of the last direct-RGA frame: the letterbox
  * strips raster::fillRect painted around the blit. present() flushes
  * exactly these; a steady game frame has damage == the blit, paints no
- * strips, and the 8.3 MB whole-fb cache clean goes away entirely. */
+ * strips, and the 8.3 MB whole-fb cache clean goes away entirely.
+ * The count is published after the rects: present() may run on another thread. */
 static uint32_t s_scanoutCpuRects[2][4] = {}; // x, y, w, h
-static uint32_t s_scanoutCpuRectCount = 0;
+static sprt::atomic<uint32_t> s_scanoutCpuRectCount{0};
+
+/* Geometry of the letterbox strips last painted into the scanout, so a steady direct frame does
+ * not paint them again. Only the scanout keeps them: a frame composed into a shadow and copied over
+ * them invalidates it (markShadowComposed). Touched only by the thread that runs the pass. */
+static struct {
+	bool valid = false;
+	int32_t blitX = 0, blitW = 0, y0 = 0, y1 = 0;
+} s_scanoutStrips;
 
 namespace {
 
@@ -203,43 +213,41 @@ bool tryRgaVideoBlit(CommandBuffer &buf, const raster::Target &target,
 	}
 
 	// Fill the letterbox strips, blit the intersection.
-	s_scanoutCpuRectCount = 0;
 	/* The letterbox strips are the constant clear colour forever (the
 	 * composed path paints them the same), so repaint them only when
 	 * their geometry changes -- a steady game frame re-fills ~1.5 Mpx
 	 * and flushes ~2 MB of fb for nothing (measured 2.2 ms of every
-	 * direct present on zero3e). Keyed on the strip geometry. */
-	static bool s_stripsValid = false;
-	static int32_t s_stripsBlitX = 0, s_stripsBlitW = 0, s_stripsY0 = 0, s_stripsY1 = 0;
-	const bool stripsCurrent = s_stripsValid && s_stripsBlitX == b.dx
-			&& s_stripsBlitW == b.dw && s_stripsY0 == int32_t(y0) && s_stripsY1 == int32_t(y1);
+	 * direct present on zero3e). Keyed on the strip geometry, and only
+	 * in the scanout: a shadow target is one of several images, and the
+	 * others never got the strips. */
+	const int32_t stripsBlitX = b.dx, stripsBlitW = b.dw;
+	const bool stripsCurrent = fbPixels && s_scanoutStrips.valid
+			&& s_scanoutStrips.blitX == stripsBlitX && s_scanoutStrips.blitW == stripsBlitW
+			&& s_scanoutStrips.y0 == int32_t(y0) && s_scanoutStrips.y1 == int32_t(y1);
+	uint32_t cpuRects = 0;
 	if (!stripsCurrent && b.dx > int32_t(x0)) {
 		uint32_t w = uint32_t(b.dx) - x0;
 		raster::fillRect(dst, URect(x0, y0, w, y1 - y0), clearColor);
-		if (fbPixels && s_scanoutCpuRectCount < 2) {
-			s_scanoutCpuRects[s_scanoutCpuRectCount][0] = x0;
-			s_scanoutCpuRects[s_scanoutCpuRectCount][1] = y0;
-			s_scanoutCpuRects[s_scanoutCpuRectCount][2] = w;
-			s_scanoutCpuRects[s_scanoutCpuRectCount][3] = y1 - y0;
-			++s_scanoutCpuRectCount;
+		if (fbPixels) {
+			s_scanoutCpuRects[cpuRects][0] = x0;
+			s_scanoutCpuRects[cpuRects][1] = y0;
+			s_scanoutCpuRects[cpuRects][2] = w;
+			s_scanoutCpuRects[cpuRects][3] = y1 - y0;
+			++cpuRects;
 		}
 	}
 	if (!stripsCurrent && right < int32_t(x1)) {
 		uint32_t rx = uint32_t(right > int32_t(x0) ? right : int32_t(x0));
 		raster::fillRect(dst, URect(rx, y0, x1 - rx, y1 - y0), clearColor);
-		if (fbPixels && s_scanoutCpuRectCount < 2) {
-			s_scanoutCpuRects[s_scanoutCpuRectCount][0] = rx;
-			s_scanoutCpuRects[s_scanoutCpuRectCount][1] = y0;
-			s_scanoutCpuRects[s_scanoutCpuRectCount][2] = x1 - rx;
-			s_scanoutCpuRects[s_scanoutCpuRectCount][3] = y1 - y0;
-			++s_scanoutCpuRectCount;
+		if (fbPixels) {
+			s_scanoutCpuRects[cpuRects][0] = rx;
+			s_scanoutCpuRects[cpuRects][1] = y0;
+			s_scanoutCpuRects[cpuRects][2] = x1 - rx;
+			s_scanoutCpuRects[cpuRects][3] = y1 - y0;
+			++cpuRects;
 		}
 	}
-	s_stripsValid = true;
-	s_stripsBlitX = b.dx;
-	s_stripsBlitW = b.dw;
-	s_stripsY0 = int32_t(y0);
-	s_stripsY1 = int32_t(y1);
+	s_scanoutCpuRectCount.store(cpuRects);
 
 	int32_t bw = bx1 - bx0;
 	float scaleX = float(b.sw) / float(b.dw);
@@ -256,6 +264,9 @@ bool tryRgaVideoBlit(CommandBuffer &buf, const raster::Target &target,
 	if (ok && fbPixels) {
 		s_scanoutDirectSticky.store(true);
 		s_scanoutDirectPending.store(true);
+		s_scanoutStrips = {true, stripsBlitX, stripsBlitW, int32_t(y0), int32_t(y1)};
+	} else {
+		s_scanoutStrips.valid = false;
 	}
 	return ok;
 }
@@ -701,6 +712,26 @@ static bool FrameSweep_full() {
 
 } // namespace
 
+// Only the presented image carries a per-index snapshot of what it holds in the swapchain's damage
+// tracker. Null when the pass presents nothing.
+static core::SwapchainImage *QueuePassHandle_presentedImage(core::FrameQueue &q,
+		const core::QueuePassData *data) {
+	for (auto &it : data->attachments) {
+		if (it->finalLayout != core::AttachmentLayout::PresentSrc) {
+			continue;
+		}
+		if (auto aData = q.getAttachment(it->attachment)) {
+			if (auto img = aData->image.get()) {
+				if (img->isSwapchainImage()) {
+					return static_cast<core::SwapchainImage *>(img);
+				}
+			}
+		}
+		break;
+	}
+	return nullptr;
+}
+
 bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Target &target,
 		Vector<URect> &areas) {
 	areas.clear();
@@ -724,11 +755,6 @@ bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Targe
 		return true;
 	}
 
-	// See s_scanoutDirectPending: the previous frame bypassed this image entirely.
-	if (s_scanoutDirectPending.exchange(false)) {
-		return true;
-	}
-
 	if (!hasFlag(_data->queue->damage, core::QueueDamageFlags::PartialRedraw)) {
 		if (damageLog) {
 			log::source().debug("soft::QueuePassHandle",
@@ -737,23 +763,8 @@ bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Targe
 		return true;
 	}
 
-	// Only the presented image carries a per-index snapshot of what it holds.
-	core::ImageStorage *image = nullptr;
-	for (auto &it : _data->attachments) {
-		if (it->finalLayout != core::AttachmentLayout::PresentSrc) {
-			continue;
-		}
-		if (auto aData = q.getAttachment(it->attachment)) {
-			if (auto img = aData->image.get()) {
-				if (img->isSwapchainImage()) {
-					image = img;
-				}
-			}
-		}
-		break;
-	}
-
-	if (!image) {
+	auto swapchainImage = QueuePassHandle_presentedImage(q, _data);
+	if (!swapchainImage) {
 		if (damageLog) {
 			log::source().debug("soft::QueuePassHandle",
 					"damage: full repaint, no presented swapchain attachment");
@@ -761,7 +772,6 @@ bool QueuePassHandle::computeRedrawArea(core::FrameQueue &q, const raster::Targe
 		return true;
 	}
 
-	auto swapchainImage = static_cast<core::SwapchainImage *>(image);
 	auto swapchain = swapchainImage->getSwapchain();
 	if (!swapchain) {
 		if (damageLog) {
@@ -1072,7 +1082,11 @@ bool QueuePassHandle::resolveOutputTarget(const core::SubpassData &subpass, rast
 	return true;
 }
 
-void QueuePassHandle::markShadowComposed() { s_scanoutDirectSticky.store(false); }
+void QueuePassHandle::markShadowComposed() {
+	s_scanoutDirectSticky.store(false);
+	// present() copies this frame's shadow over the scanout, letterbox strips included.
+	s_scanoutStrips.valid = false;
+}
 
 bool QueuePassHandle::prepareSubpass(core::FrameQueue &q, const core::SubpassData &subpass,
 		RasterItem &item) {
@@ -1134,6 +1148,15 @@ bool QueuePassHandle::prepareSubpass(core::FrameQueue &q, const core::SubpassDat
 	}
 
 	if (tryRgaVideoBlit(*buf, target, redrawAreas, imgAttachment->getClearColor())) {
+		// See s_scanoutDirectPending: the snapshot computeRedrawArea committed for this image
+		// describes a frame that went to the scanout instead.
+		if (s_scanoutDirectPending.exchange(false)) {
+			if (auto image = QueuePassHandle_presentedImage(q, _data)) {
+				if (auto swapchain = image->getSwapchain()) {
+					swapchain->getDamage().invalidateImage(image->getSwapchainSlot());
+				}
+			}
+		}
 		return true;
 	}
 
@@ -1332,10 +1355,10 @@ extern "C" int xenolith_soft_rga_take_cpu_rects(uint32_t *out) {
 	using stappler::xenolith::soft::s_scanoutCpuRects;
 	using stappler::xenolith::soft::s_scanoutCpuRectCount;
 
-	int n = s_scanoutCpuRectCount > 2 ? 2 : int(s_scanoutCpuRectCount);
-	for (int i = 0; i < n * 4; ++i) {
-		out[i] = reinterpret_cast<const uint32_t *>(s_scanoutCpuRects)[i];
+	auto count = s_scanoutCpuRectCount.exchange(0);
+	int n = count > 2 ? 2 : int(count);
+	for (int i = 0; i < n; ++i) {
+		for (int j = 0; j < 4; ++j) { out[i * 4 + j] = s_scanoutCpuRects[i][j]; }
 	}
-	s_scanoutCpuRectCount = 0;
 	return n;
 }
