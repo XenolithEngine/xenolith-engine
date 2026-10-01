@@ -24,7 +24,10 @@
 
 /* XENOLITH_B3 frame probes (zero3e perf campaign): CNTVCT is a register
  * read (~ns), not a syscall like clock_gettime on Embox (~0.3 ms), so
- * the probes do not inflate what they measure. 60-frame averages. */
+ * the probes do not inflate what they measure. 60-frame averages.
+ * Non-A64 targets (and wasm, where the instruction does not exist) fall
+ * back to the monotonic clock. */
+#if defined(__aarch64__) && !defined(__wasm__)
 static inline uint64_t xbxVct() {
 	uint64_t v;
 	__asm__ volatile("mrs %0, cntvct_el0" : "=r"(v));
@@ -35,6 +38,16 @@ static inline double xbxVctMs(uint64_t delta) {
 	__asm__ volatile("mrs %0, cntfrq_el0" : "=r"(frq));
 	return frq ? double(delta) * 1000.0 / double(frq) : 0.0;
 }
+#else
+static inline uint64_t xbxVct() {
+	struct timespec ts;
+	::clock_gettime(CLOCK_MONOTONIC, &ts);
+	return uint64_t(ts.tv_sec) * 1000000000ull + uint64_t(ts.tv_nsec);
+}
+static inline double xbxVctMs(uint64_t delta) {
+	return double(delta) / 1.0e6;
+}
+#endif
 
 #include "XLResourceCache.h"
 #include "XLScheduler.h"
