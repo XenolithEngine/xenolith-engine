@@ -1144,25 +1144,11 @@ __SPRT_C_FUNC int __SPRT_ID(nice)(int __inc) __SPRT_NOEXCEPT {
 }
 
 __SPRT_C_FUNC long int __SPRT_ID(pathconf)(const char *__path, int __name) __SPRT_NOEXCEPT {
-#if SPRT_EMBOX
-	(void)__path;
-	(void)__name;
-	__sprt_errno = ENOSYS;
-	return -1;
-#else
 	return (long int)pathconf(__path, __name);
-#endif
 }
 
 __SPRT_C_FUNC long int __SPRT_ID(fpathconf)(int __fd, int __name) __SPRT_NOEXCEPT {
-#if SPRT_EMBOX
-	(void)__fd;
-	(void)__name;
-	__sprt_errno = ENOSYS;
-	return -1;
-#else
 	return fpathconf(__fd, __name);
-#endif
 }
 
 __SPRT_C_FUNC long int __SPRT_ID(sysconf)(int __name) __SPRT_NOEXCEPT { return sysconf(__name); }

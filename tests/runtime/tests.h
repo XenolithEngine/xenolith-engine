@@ -94,6 +94,7 @@ void performCollationConformanceTests();
 
 void performCollationBench();
 void performDtoaTests();
+void performGeomTests();
 void performIdnTests();
 void performIdnConformanceTests();
 

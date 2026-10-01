@@ -79,8 +79,8 @@ into stages, all on the loop thread:
 	vertex   VertexAttachmentHandle::loadVertexes - the vertex plan and vertex/index/transform
 	         arrays; proportional to the scene, not to the damage.
 	record   recordSubpass - vertex stage, material and texture resolution, glyph runs.
-	clear    the attachment load op, inside the damaged regions only.
-	raster   drawTiled - the pixel loops, fork and join included (the XL_SOFT_PROFILE span).
+	raster   drawTiled - the pixel loops, fork and join included (the XL_SOFT_PROFILE span), and
+	         the attachment load op, which drawTiled applies per tile (BF-84).
 	present  Swapchain::present - on a framebuffer window, the copy into the scanout mapping.
 	other    the residual, not a stage; large when frames reach present without the pass
 	         (e.g. skipped by the damage tracker).
@@ -90,7 +90,6 @@ enum class FrameStage : uint32_t {
 	Wait,
 	Vertex,
 	Record,
-	Clear,
 	Raster,
 	Present,
 	Count

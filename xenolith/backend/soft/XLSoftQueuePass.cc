@@ -364,8 +364,7 @@ struct FrameSweepAcc {
 	uint64_t periodMicros = 0; // the measured window by the system clock...
 	uint64_t periodTicks = 0; // ...and by the hardware counter; the ratio converts the rest
 	uint64_t recordTicks = 0;
-	uint64_t clearTicks = 0;
-	uint64_t rasterTicks = 0;
+	uint64_t rasterTicks = 0; // the clear included: it runs per tile inside the draw
 	uint64_t damagePixels = 0;
 	uint64_t regions = 0;
 	uint64_t tiles = 0;
@@ -374,7 +373,7 @@ struct FrameSweepAcc {
 	uint64_t maxBusyTicks = 0;
 	uint64_t maxStartTicks = 0;
 	raster::FillStats raster; // the draw alone
-	raster::FillStats clear; // the load op
+	raster::FillStats clear; // the load op, counted apart from the draw it shares a pass with
 };
 
 struct FrameSweep {
@@ -584,32 +583,32 @@ static void FrameSweep_report(const FrameSweep &s, Extent2 surface) {
 	// One key=value line per aspect, all tagged with the same step so they can be read apart:
 	//   step   - where the time went (us/frame); ran= is how many threads the pool actually
 	//            supplied, against the threads= asked for
-	//   fill   - pixels written per frame and per microsecond of the stage that wrote them
-	//            (Mpx/s): raster= is the draw, clear= the load op, area= the damage per raster-us
+	//   fill   - pixels written per frame and per microsecond of the raster stage (Mpx/s):
+	//            raster= is the draw, clear= the load op, area= the damage; the clear runs inside
+	//            the stage, so raster_mpxs is the draw's pixels over the time of both
 	//   ops    - the rasterizer's own work per frame, which is what tiling multiplies
 	//   pool   - the workers: busy is summed over them, longest is the slowest, start is how late
 	//            the last one took its first tile
 	log::source().debug("soft::sweep", "step p=", s.pass + 1, " i=", s.step + 1, "/",
 			s.steps.size(), " name=", st.full ? "full/" : "damage/", FrameSweep_tileName(st.tiling),
-			"/", st.tiling.threads, " threads=", st.tiling.threads,
-			" ran=", per(a.workers), " frames=", a.frames, " skipped=", a.skipped, " period=",
-			perT(a.periodTicks), " record=", perT(a.recordTicks), " clear=", perT(a.clearTicks),
-			" raster=", perT(a.rasterTicks), " surface=",
-			uint64_t(surface.width) * uint64_t(surface.height), " tick_mhz=",
-			usPerTick > 0.0 ? 1.0 / usPerTick : 0.0);
+			"/", st.tiling.threads, " threads=", st.tiling.threads, " ran=", per(a.workers),
+			" frames=", a.frames, " skipped=", a.skipped, " period=", perT(a.periodTicks),
+			" record=", perT(a.recordTicks), " raster=", perT(a.rasterTicks),
+			" surface=", uint64_t(surface.width) * uint64_t(surface.height),
+			" tick_mhz=", usPerTick > 0.0 ? 1.0 / usPerTick : 0.0);
 	log::source().debug("soft::sweep", "fill i=", s.step + 1, " damage=", per(a.damagePixels),
-			" regions=", per(a.regions), " tiles=", per(a.tiles), " raster_px=",
-			per(a.raster.total()), " span_px=", per(a.raster.spanPixels), " glyph_px=",
-			per(a.raster.glyphPixels), " rect_px=", per(a.raster.fillPixels), " clear_px=",
-			per(a.clear.total()), " raster_mpxs=", rate(a.raster.total(), a.rasterTicks),
-			" clear_mpxs=", rate(a.clear.total(), a.clearTicks), " area_mpxs=",
-			rate(a.damagePixels, a.rasterTicks));
-	log::source().debug("soft::sweep", "ops i=", s.step + 1, " passes=",
-			per(a.raster.ops.passes), " entries=", per(a.raster.ops.entries), " commands=",
-			per(a.raster.ops.commands), " triangles=", per(a.raster.ops.triangles), " setups=",
-			per(a.raster.ops.setups), " rows=", per(a.raster.ops.rows), " spans=",
-			per(a.raster.ops.spans), " glyphs=", per(a.raster.ops.glyphs), " rects=",
-			per(a.raster.ops.rects));
+			" regions=", per(a.regions), " tiles=", per(a.tiles),
+			" raster_px=", per(a.raster.total()), " span_px=", per(a.raster.spanPixels),
+			" glyph_px=", per(a.raster.glyphPixels), " rect_px=", per(a.raster.fillPixels),
+			" clear_px=", per(a.clear.total()),
+			" raster_mpxs=", rate(a.raster.total(), a.rasterTicks),
+			" area_mpxs=", rate(a.damagePixels, a.rasterTicks));
+	log::source().debug("soft::sweep", "ops i=", s.step + 1, " passes=", per(a.raster.ops.passes),
+			" entries=", per(a.raster.ops.entries), " commands=", per(a.raster.ops.commands),
+			" triangles=", per(a.raster.ops.triangles), " setups=", per(a.raster.ops.setups),
+			" rows=", per(a.raster.ops.rows), " spans=", per(a.raster.ops.spans),
+			" glyphs=", per(a.raster.ops.glyphs), " rects=", per(a.raster.ops.rects),
+			" occluded=", per(a.raster.ops.occluded));
 	log::source().debug("soft::sweep", "pool i=", s.step + 1, " busy=", perT(a.busyTicks),
 			" longest=", perT(a.maxBusyTicks), " start=", perT(a.maxStartTicks));
 }
@@ -903,9 +902,7 @@ void closeFrameBudget() {
 			" vertex=", per(stage[toInt(FrameStage::Vertex)]), "us ",
 			pct(stage[toInt(FrameStage::Vertex)]), "%",
 			" record=", per(stage[toInt(FrameStage::Record)]), "us ",
-			pct(stage[toInt(FrameStage::Record)]), "%",
-			" clear=", per(stage[toInt(FrameStage::Clear)]), "us ",
-			pct(stage[toInt(FrameStage::Clear)]), "%");
+			pct(stage[toInt(FrameStage::Record)]), "%");
 	log::source().debug("soft::budget", "  raster=", per(stage[toInt(FrameStage::Raster)]), "us ",
 			pct(stage[toInt(FrameStage::Raster)]), "%",
 			" present=", per(stage[toInt(FrameStage::Present)]), "us ",
@@ -1119,31 +1116,21 @@ bool QueuePassHandle::prepareSubpass(core::FrameQueue &q, const core::SubpassDat
 void QueuePassHandle::rasterize(core::FrameQueue &q, RasterItem &item) {
 	auto sweepAcc = FrameSweep_acc();
 
-	// Load op. Clear is the only one that touches memory, and only inside the damaged regions:
-	// outside them the image keeps the previous frame, which is exactly what makes the partial
-	// redraw correct rather than merely cheaper.
-	// The clear writes real pixels and belongs in the same budget as the draw - on a frame
-	// whose damage is the whole surface it is the single largest writer.
-	raster::FillStats clearFill;
-	if (item.clear) {
-		FrameStageTimer timer(FrameStage::Clear);
-		auto clearStarted = sweepAcc ? FrameSweep_ticks() : 0;
-		for (auto &it : item.redrawAreas) {
-			raster::fillRect(item.target, it, item.clearColor, &clearFill);
-		}
-		if (sweepAcc) {
-			sweepAcc->clearTicks += FrameSweep_ticks() - clearStarted;
-		}
-	}
-
 	// The command list is built once; rasterization repeats per tile of each region. Tiling and
 	// thread count come from SP_RASTER_TILE / SP_RASTER_THREADS (untiled, single-threaded by
 	// default).
+	//
+	// Load op. Clear is the only one that touches memory, and only inside the damaged regions:
+	// outside them the image keeps the previous frame, which is exactly what makes the partial
+	// redraw correct rather than merely cheaper. drawTiled applies it to each tile just before
+	// drawing it: as a pass of its own it ran on one thread, and on a frame whose damage is the
+	// whole surface - where it is the single largest writer - it took 8.5 ms of 36, then left the
+	// draw to fetch every tile back from memory (BF-84).
 	raster::TilingStats tiling;
 	auto started = Time::now();
 	auto startedTicks = sweepAcc ? FrameSweep_ticks() : 0;
 	raster::drawTiled(item.target, item.buffer->getDrawList(), item.redrawAreas, item.tiling,
-			&tiling);
+			&tiling, item.clear ? &item.clearColor : nullptr);
 	auto elapsed = Time::now() - started;
 
 	if (sweepAcc) {
@@ -1158,10 +1145,10 @@ void QueuePassHandle::rasterize(core::FrameQueue &q, RasterItem &item) {
 		sweepAcc->maxBusyTicks += tiling.maxBusyTicks;
 		sweepAcc->maxStartTicks += tiling.maxStartTicks;
 		sweepAcc->raster.add(tiling.fill);
-		sweepAcc->clear.add(clearFill);
+		sweepAcc->clear.add(tiling.clear);
 	}
 
-	tiling.fill.add(clearFill);
+	tiling.fill.add(tiling.clear);
 
 	handleSubpassRasterized(q, elapsed, item.redrawAreas, tiling);
 }

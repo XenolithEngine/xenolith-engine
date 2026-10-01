@@ -199,8 +199,8 @@ void Scene2d::FpsDisplay::hide() {
 void Scene2d::FpsDisplay::show() {
 	if (_mode == DisplayMode::Disabled) {
 		_mode = DisplayMode::Fps;
-		setVisible(_mode != Disabled);
 	}
+	setVisible(true);
 }
 
 bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,

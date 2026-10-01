@@ -205,36 +205,50 @@ static void Tile_collect(const Target &target, SpanView<URect> regions, const Ti
 // The loop every worker runs: take the next tile until none is left. Workers are greedy, one task
 // each, rather than one task per tile: tiles differ in cost by more than an order of magnitude, so
 // a static split would leave threads idle.
+//
+// A tile under an occluder starts drawing there, and skips the clear: the occluder replaces every
+// pixel of the tile, so nothing before it - the clear included - reaches the picture.
 static uint32_t Tile_drawShare(const Target &target, const DrawList *list, SpanView<URect> tiles,
-		sprt::atomic<uint32_t> &next, const Color4F *clear, FillStats *fill,
-		const TileCallback *callback = nullptr) {
+		SpanView<Occluder> occluders, sprt::atomic<uint32_t> &next, const Color4F *clear,
+		FillStats *fill, FillStats *clearFill, const TileCallback *callback = nullptr) {
 	uint32_t drawn = 0;
 	for (;;) {
 		auto index = next.fetch_add(1);
 		if (index >= tiles.size()) {
 			break;
 		}
-		if (clear) {
-			fillRect(target, tiles[index], *clear, fill);
+		auto occluder = (list && !callback) ? findOccluder(occluders, tiles[index]) : nullptr;
+		if (clear && !occluder) {
+			fillRect(target, tiles[index], *clear, clearFill);
 		}
 		if (callback) {
 			(*callback)(target, tiles[index]);
 			++drawn;
 		} else if (list) {
-			drawn += draw(target, *list, tiles[index], fill);
+			if (occluder && fill) {
+				++fill->ops.occluded;
+			}
+			drawn += drawFrom(target, *list, tiles[index], occluder ? occluder->entry : 0, fill);
 		}
 	}
 	return drawn;
 }
 
 uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> regions,
-		const TilingInfo &tiling, TilingStats *stats) {
+		const TilingInfo &tiling, TilingStats *stats, const Color4F *clear) {
 	if (stats) {
 		*stats = TilingStats{};
 	}
 
-	if (target.empty() || list.empty() || regions.empty()) {
+	if (target.empty() || (list.empty() && !clear) || regions.empty()) {
 		return 0;
+	}
+
+	const DrawList *drawList = list.empty() ? nullptr : &list;
+
+	Vector<Occluder> occluders;
+	if (drawList) {
+		collectOccluders(list, occluders);
 	}
 
 	// The calling thread is one of the workers, so the pool only has to supply the rest.
@@ -269,8 +283,8 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 			stats->workers = 1;
 		}
 		sprt::atomic<uint32_t> nextTile{0};
-		return Tile_drawShare(target, &list, tiles, nextTile, nullptr,
-				stats ? &stats->fill : nullptr);
+		return Tile_drawShare(target, drawList, tiles, occluders, nextTile, clear,
+				stats ? &stats->fill : nullptr, stats ? &stats->clear : nullptr);
 	}
 
 	// Holding a pool worker for the whole rasterization is safe because of when this runs, not by
@@ -287,6 +301,7 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 	// ran leaves a slot empty rather than one half-written.
 	struct WorkerStats {
 		FillStats fill;
+		FillStats clear;
 		uint64_t busyTicks = 0;
 		uint64_t startTicks = 0;
 	};
@@ -313,14 +328,16 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 	// signalled, so everything here outlives them.
 	auto body = [&] {
 		FillStats localFill;
+		FillStats localClear;
 		const uint64_t started = timed ? ticks() : 0;
-		drawn.fetch_add(Tile_drawShare(target, &list, tiles, nextTile, nullptr,
-				stats ? &localFill : nullptr));
+		drawn.fetch_add(Tile_drawShare(target, drawList, tiles, occluders, nextTile, clear,
+				stats ? &localFill : nullptr, stats ? &localClear : nullptr));
 		if (stats) {
 			auto slot = nextSlot.fetch_add(1);
 			if (slot < workerStats.size()) {
 				auto &out = workerStats[slot];
 				out.fill = localFill;
+				out.clear = localClear;
 				if (timed) {
 					out.busyTicks = ticks() - started;
 					out.startTicks = started > forked ? started - forked : 0;
@@ -352,6 +369,7 @@ uint32_t drawTiled(const Target &target, const DrawList &list, SpanView<URect> r
 		stats->workers = posted + 1;
 		for (auto &it : workerStats) {
 			stats->fill.add(it.fill);
+			stats->clear.add(it.clear);
 			stats->busyTicks += it.busyTicks;
 			stats->maxBusyTicks = sprt::max(stats->maxBusyTicks, it.busyTicks);
 			stats->maxStartTicks = sprt::max(stats->maxStartTicks, it.startTicks);
@@ -380,6 +398,9 @@ Rc<TiledDrawJob> drawTiledAsync(TiledDrawRequest &&req, TiledDrawCallback &&comp
 
 	if (!req.target.empty() && (job->_list || job->_clear || job->_tileCallback)) {
 		Tile_collect(req.target, req.regions, req.tiling, workers, job->_tiles);
+	}
+	if (job->_list && !job->_tiles.empty()) {
+		collectOccluders(*job->_list, job->_occluders);
 	}
 
 	if (job->_tiles.empty()) {
@@ -428,9 +449,9 @@ void TiledDrawJob::waitDrawn() { _finished.wait(_workers); }
 
 void TiledDrawJob::drawShare() {
 	FillStats fill;
-	_drawn.fetch_add(
-			Tile_drawShare(_target, _list, _tiles, _nextTile, _clear ? &_clearColor : nullptr,
-					_collectStats ? &fill : nullptr, _tileCallback ? &_tileCallback : nullptr));
+	_drawn.fetch_add(Tile_drawShare(_target, _list, _tiles, _occluders, _nextTile,
+			_clear ? &_clearColor : nullptr, _collectStats ? &fill : nullptr,
+			_collectStats ? &fill : nullptr, _tileCallback ? &_tileCallback : nullptr));
 	if (_collectStats) {
 		_spanPixels.fetch_add(fill.spanPixels);
 		_glyphPixels.fetch_add(fill.glyphPixels);

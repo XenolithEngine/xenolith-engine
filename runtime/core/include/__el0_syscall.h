@@ -185,6 +185,12 @@ SPRT_FORCEINLINE long __el0_faccessat(int __dirfd, const char *__path, int __mod
 	return __sprt_svc4(__SPRT_SYSCALL_faccessat, __dirfd, (long)__path, __mode, __flags);
 }
 
+// The path form only: the kernel refuses a NULL path (futimens) with ENOSYS.
+SPRT_FORCEINLINE long __el0_utimensat(int __dirfd, const char *__path, const void *__times,
+		int __flags) {
+	return __sprt_svc4(__SPRT_SYSCALL_utimensat, __dirfd, (long)__path, (long)__times, __flags);
+}
+
 SPRT_FORCEINLINE long __el0_readlinkat(int __dirfd, const char *__path, char *__buf,
 		__SPRT_ID(size_t) __n) {
 	return __sprt_svc4(__SPRT_SYSCALL_readlinkat, __dirfd, (long)__path, (long)__buf, (long)__n);

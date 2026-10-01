@@ -25,6 +25,22 @@ CONFIG_FILE := $(OUT)/embox-config.mk
 -include $(ARCH_FLAGS_FILE)
 -include $(CONFIG_FILE)
 
+# Those flags are the kernel's build.conf, and part of them is about the kernel only (BF-90):
+#   -O<n>, -g<n>      the kernel's own build level. The app's comes from make/os/embox.mk
+#                     (-O2 for RELEASE=1, -g -O0 otherwise), and the kernel's, placed after it,
+#                     won: a QEMU export (-O0 -g3) made every release app an -O0 one.
+#   -mstrict-align    before the kernel's MMU is on all memory is Device memory, where an
+#                     unaligned access faults. An app runs long after that, on cacheable Normal
+#                     memory; with the flag, every vector store the compiler cannot prove aligned
+#                     is split into byte stores (~1 GB/s a thread for a fill, BF-89). The one device
+#                     mapping an app writes, the framebuffer, it writes with the kernel's memcpy.
+#   -mtune=<cpu>      the board the export came from; the same objects link into every board's
+#                     image. target-embox-user drops the last two for the same reasons.
+EMBOX_KERNEL_ONLY_FLAGS := -O% -g -g% -mstrict-align -mtune=%
+EMBOX_ARCHCPUFLAGS := $(filter-out $(EMBOX_KERNEL_ONLY_FLAGS),$(EMBOX_ARCHCPUFLAGS))
+EMBOX_ARCHCFLAGS := $(filter-out $(EMBOX_KERNEL_ONLY_FLAGS),$(EMBOX_ARCHCFLAGS))
+EMBOX_ARCHCXXFLAGS := $(filter-out $(EMBOX_KERNEL_ONLY_FLAGS),$(EMBOX_ARCHCXXFLAGS))
+
 # Clang --target triple (no "embox" OS — LLVM does not know it). The arch flags
 # (-mcpu/-march/-mfpu/-mabi for the specific board) ride on top of this triple.
 EMBOX_TARGET := $(SP_ARCH_TARGET_CLANG)

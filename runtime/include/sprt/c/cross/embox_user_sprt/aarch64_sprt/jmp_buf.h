@@ -8,6 +8,4 @@
 // else.
 //
 // musl's aarch64 __jmp_buf: 22 unsigned longs (x19-x28, fp, lr, sp, d8-d15).
-// Embox's own is 12 words, which is why embox_sprt cannot share this - but
-// our setjmp is musl's, so ours is musl's.
 #include <sprt/c/cross/linux_sprt/aarch64_sprt/jmp_buf.h>

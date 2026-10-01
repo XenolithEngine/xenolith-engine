@@ -6,6 +6,10 @@
 // unchecked - it would silently ask Embox a different question (glibc
 // _SC_PAGESIZE is 30, Embox's is 1).
 //
+// The _PC_* names Embox declares (the first nine, numbered as in Linux since
+// BF-60) carry its values; its pathconf() answers _PC_NAME_MAX and
+// _PC_PATH_MAX and says EINVAL to the rest.
+//
 // The names Embox does implement carry its values; everything else is marked
 // "unsupported" and numbered from 0x1000 up - far above every name Embox knows -
 // so sysconf()/pathconf() answer -1 for them instead of returning an unrelated
@@ -157,15 +161,15 @@
 #define __SPRT_SC_MINSIGSTKSZ 0x1083 // unsupported
 #define __SPRT_SC_SIGSTKSZ 0x1084 // unsupported
 
-#define __SPRT_PC_LINK_MAX 0x1085 // unsupported
-#define __SPRT_PC_MAX_CANON 0x1086 // unsupported
-#define __SPRT_PC_MAX_INPUT 0x1087 // unsupported
-#define __SPRT_PC_NAME_MAX 0x1088 // unsupported
-#define __SPRT_PC_PATH_MAX 0x1089 // unsupported
-#define __SPRT_PC_PIPE_BUF 0x108a // unsupported
-#define __SPRT_PC_CHOWN_RESTRICTED 0x108b // unsupported
-#define __SPRT_PC_NO_TRUNC 0x108c // unsupported
-#define __SPRT_PC_VDISABLE 0x108d // unsupported
+#define __SPRT_PC_LINK_MAX 0
+#define __SPRT_PC_MAX_CANON 1
+#define __SPRT_PC_MAX_INPUT 2
+#define __SPRT_PC_NAME_MAX 3
+#define __SPRT_PC_PATH_MAX 4
+#define __SPRT_PC_PIPE_BUF 5
+#define __SPRT_PC_CHOWN_RESTRICTED 6
+#define __SPRT_PC_NO_TRUNC 7
+#define __SPRT_PC_VDISABLE 8
 #define __SPRT_PC_SYNC_IO 0x108e // unsupported
 #define __SPRT_PC_ASYNC_IO 0x108f // unsupported
 #define __SPRT_PC_PRIO_IO 0x1090 // unsupported

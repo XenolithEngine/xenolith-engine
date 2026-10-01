@@ -115,64 +115,19 @@ static int __wasm_sigsetjmp_noop(__SPRT_ID(native_sigjmp_buf), int) { return 0; 
 #endif
 
 #if SPRT_EMBOX
-// Embox's longjmp does not restore x29 (the frame pointer).
+// Embox's setjmp/longjmp keep what AAPCS64 has a callee keep - x19-x30, sp and
+// d8-d15 - in musl's 22-word layout (xenolith-os BF-92), and longjmp(buf, 0)
+// makes setjmp return 1. Until then its jmp_buf was twelve words with no x29
+// and no d8-d15, and x29 was recovered here from the unwind context.
 //
-// src/arch/aarch64/lib/setjmp.S saves lr, sp and x19-x28 — twelve slots, which
-// is the whole of its jmp_buf — and stops there. x29 is callee-saved under
-// AAPCS64 too, and clang addresses the locals of the frame that called setjmp
-// through it (`stur w8, [x29, #-0xc]`), so returning into that frame with a
-// stale x29 makes every local read garbage AND makes every store land in dead
-// stack below sp. The symptom is quiet rather than loud: a value written and
-// read back through the same stale pointer still matches, and only something
-// stored BEFORE the setjmp shows the corruption.
-//
-// The buffer cannot simply be widened to hold x29 (and d8-d15, which Embox
-// drops as well). sizeof(__sprt_jmp_buf) is ABI: every third-party library on
-// this target that embeds a jmp_buf — FreeType's FT_ValidatorRec, libpng's
-// png_jmpbuf — has the old size compiled into its own structs, and a wider
-// buffer overruns them. Verified the hard way: it lands squarely on
-// tt_face_build_cmaps' locals.
-//
-// So the value is not saved, it is RECOVERED. Every longjmp here goes through
-// _Unwind_ForcedUnwind, and by the time the stop function recognises the target
-// frame the unwinder has already restored that frame's register set inside the
-// _Unwind_Context — including x29, which _Unwind_GetGR(context, 29) hands over.
-// The restorer below takes it as a third argument; everything else comes out of
-// Embox's own buffer layout, unchanged:
-//     [0] x30  [8] sp  [16] x19 x20  [32] x21 x22 ... [80] x27 x28
-//
-// d8-d15 stay unrestored, exactly as under Embox's own longjmp — the public
-// _Unwind_ API exposes no FP registers, and matching the platform's existing
-// behaviour is not a regression.
-#if !defined(__aarch64__)
-#error sprt longjmp for Embox is implemented for aarch64 only
-#endif
-
-extern "C" __SPRT_NORETURN void __sprt_embox_longjmp_fp(__SPRT_ID(native_jmp_buf), int,
-		__SPRT_ID(uintptr_t));
-
-// clang-format off
-__asm__(
-	".text\n"
-	".globl __sprt_embox_longjmp_fp\n"
-	".hidden __sprt_embox_longjmp_fp\n"
-	".type __sprt_embox_longjmp_fp, %function\n"
-"__sprt_embox_longjmp_fp:\n"
-	"ldp x30, x3, [x0]\n"
-	"mov sp, x3\n"
-	"ldp x19, x20, [x0, #16]\n"
-	"ldp x21, x22, [x0, #32]\n"
-	"ldp x23, x24, [x0, #48]\n"
-	"ldp x25, x26, [x0, #64]\n"
-	"ldp x27, x28, [x0, #80]\n"
-	"mov x29, x2\n"
-	// The 0 -> 1 conversion ISO C requires already happened in __sprt_longjmp,
-	// the only caller; pass the value through unchanged.
-	"mov w0, w1\n"
-	"ret\n"
-	".size __sprt_embox_longjmp_fp, .-__sprt_embox_longjmp_fp\n"
-);
-// clang-format on
+// The buffer's size is ABI: every library on this target that embeds a jmp_buf
+// - FreeType's FT_ValidatorRec, libpng's png_jmpbuf - has it compiled into its
+// own structs, and the kernel's setjmp writes all of it. A runtime or a library
+// built against an export older than the kernel's is an overrun, not a missing
+// register. This is the check for the runtime; the libraries come from the same
+// sysroot, rebuilt with it.
+static_assert(sizeof(__SPRT_ID(native_jmp_buf)) == 22 * sizeof(unsigned long),
+		"Embox jmp_buf is not the 22-word one: rebuild the toolchain from a current export");
 #endif
 
 __SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
@@ -307,15 +262,7 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 
 	// Preserve result on jmp_buf.
 	// It's safe to know that we will not use anything from stack before jmp_buf
-#if SPRT_EMBOX
-	// ISO C 7.13.2.1: longjmp(buf, 0) must make setjmp return 1. Every other
-	// platform's libc does that conversion inside longjmp; Embox's aarch64 asm
-	// (src/arch/aarch64/lib/setjmp.S) returns its second argument verbatim, so
-	// it has to happen here — this is the only place that value passes through.
-	buf->__result = ret ? ret : 1;
-#else
 	buf->__result = ret;
-#endif
 
 	// The jump must happen even without an unwinder: longjmp is what C requires,
 	// running destructors on the way is our addition on top of it. We lose the
@@ -343,9 +290,6 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 		} else if (buf->__cfa == _Unwind_GetCFA(context)) {
 #if SPRT_LINUX
 			longjmp(reinterpret_cast<struct __jmp_buf_tag *>(buf->__native), buf->__result);
-#elif SPRT_EMBOX
-			// x29 comes out of the unwind context; see __sprt_embox_longjmp_fp.
-			__sprt_embox_longjmp_fp(buf->__native, buf->__result, _Unwind_GetGR(context, 29));
 #else
 			longjmp(buf->__native, buf->__result);
 #endif
@@ -379,15 +323,7 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(siglongjmp)(__SPRT_ID(sigjmp_buf) b
 
 	// Preserve result on jmp_buf.
 	// It's safe to know that we will not use anything from stack before jmp_buf
-#if SPRT_EMBOX
-	// ISO C 7.13.2.1: longjmp(buf, 0) must make setjmp return 1. Every other
-	// platform's libc does that conversion inside longjmp; Embox's aarch64 asm
-	// (src/arch/aarch64/lib/setjmp.S) returns its second argument verbatim, so
-	// it has to happen here — this is the only place that value passes through.
-	buf->__result = ret ? ret : 1;
-#else
 	buf->__result = ret;
-#endif
 
 	// See __sprt_longjmp: with no unwinder we jump without running destructors.
 	if (!__unwinder_available()) {
@@ -417,9 +353,8 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(siglongjmp)(__SPRT_ID(sigjmp_buf) b
 #if SPRT_LINUX
 			siglongjmp(reinterpret_cast<struct __jmp_buf_tag *>(buf->__native), buf->__result);
 #elif SPRT_EMBOX
-			// See the no-unwinder branch above; x29 comes out of the unwind
-			// context, as in __sprt_longjmp.
-			__sprt_embox_longjmp_fp(buf->__native, buf->__result, _Unwind_GetGR(context, 29));
+			// See the no-unwinder branch above: no siglongjmp, no mask to restore.
+			longjmp(buf->__native, buf->__result);
 #else
 			siglongjmp(buf->__native, buf->__result);
 #endif

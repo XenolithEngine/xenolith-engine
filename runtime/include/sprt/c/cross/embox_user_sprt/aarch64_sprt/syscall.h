@@ -96,6 +96,7 @@
 #define __SPRT_SYSCALL_renameat         38
 #define __SPRT_SYSCALL_faccessat        48
 #define __SPRT_SYSCALL_readlinkat       78
+#define __SPRT_SYSCALL_utimensat        88
 
 // The working directory, which under Embox's oldfs is the PWD environment
 // variable and nothing else. The environment holds 64-byte rows, so a path

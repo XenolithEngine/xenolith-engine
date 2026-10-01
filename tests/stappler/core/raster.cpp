@@ -853,6 +853,303 @@ void checkStrips() {
 	}
 }
 
+// drawTiled with a clear colour writes exactly what clearing the regions and then drawing them
+// writes, on one thread and on several, and counts the clear apart from the draw. An empty list
+// only clears (BF-84).
+void checkTiledClear() {
+	constexpr uint32_t width = 160;
+	constexpr uint32_t height = 96;
+
+	DrawList list;
+	auto pushTri = [&](float ax, float ay, float bx, float by, float cx, float cy,
+						   const Color4F &color) {
+		auto base = uint32_t(list.vertexes.size());
+		list.vertexes.emplace_back(Vertex{ax, ay, 0.0f, 0.0f, 0.0f, color});
+		list.vertexes.emplace_back(Vertex{bx, by, 0.0f, 0.0f, 0.0f, color});
+		list.vertexes.emplace_back(Vertex{cx, cy, 0.0f, 0.0f, 0.0f, color});
+		list.indexes.emplace_back(base);
+		list.indexes.emplace_back(base + 1);
+		list.indexes.emplace_back(base + 2);
+	};
+	pushTri(3.5f, 2.25f, 151.0f, 9.5f, 12.0f, 90.0f, Color4F(0.9f, 0.2f, 0.4f, 0.8f));
+	pushTri(155.0f, 93.0f, 7.0f, 70.0f, 140.0f, 4.0f, Color4F(0.1f, 0.7f, 0.9f, 0.6f));
+
+	Command cmd;
+	cmd.indexCount = uint32_t(list.indexes.size());
+	cmd.blend = BlendMode::Transparent;
+	cmd.scissor = URect{0, 0, width, height};
+	list.addCommand(sp::move(cmd));
+
+	const DrawList empty;
+	const Color4F clearColor(0.25f, 0.5f, 0.75f, 1.0f);
+	const mem_std::Vector<URect> regions{URect{0, 0, 70, 40}, URect{80, 10, 80, 86}};
+	const uint64_t area = 70 * 40 + 80 * 86;
+
+	auto looper = sprt::dispatch::Looper::acquire();
+
+	uint32_t differing = 0;
+	uint32_t miscounted = 0;
+	const DrawList *sources[] = {&list, &empty};
+	for (auto source : sources) {
+		for (uint32_t threads : {1u, 3u}) {
+			TilingInfo tiling;
+			tiling.width = 16;
+			tiling.height = 8;
+			tiling.threads = threads;
+
+			Bitmap expected(width, height, PixelFormat::BGRA8888);
+			expected.seed();
+			for (auto &it : regions) { fillRect(expected.target, it, clearColor); }
+			TilingStats expectedStats;
+			auto expectedDrawn =
+					drawTiled(expected.target, *source, regions, tiling, &expectedStats);
+
+			Bitmap actual(width, height, PixelFormat::BGRA8888);
+			actual.seed();
+			TilingStats stats;
+			auto drawn = drawTiled(actual.target, *source, regions, tiling, &stats, &clearColor);
+
+			for (size_t i = 0; i < expected.pixels.size(); ++i) {
+				differing += expected.pixels[i] != actual.pixels[i];
+			}
+			miscounted += drawn != expectedDrawn || stats.clear.fillPixels != area
+					|| stats.fill.total() != expectedStats.fill.total();
+		}
+	}
+
+	check(differing == 0,
+			toString("tiles: a per-tile clear draws what clearing the regions first does (",
+					differing, " bytes differ)"));
+	check(miscounted == 0,
+			toString("tiles: the per-tile clear is counted apart from the draw (", miscounted,
+					" wrong)"));
+}
+
+// Occluders (BF-89): which pairs of triangles count as an opaque rectangle, and which pixels of it.
+// Then the picture: a tile under a Solid quad skips the clear and every entry below the quad, and
+// comes out byte for byte as drawn from the top. The bitmaps start as noise, so a clear skipped
+// where the quad does not reach leaves noise that the comparison sees.
+void checkOccluders() {
+	constexpr uint32_t width = 160;
+	constexpr uint32_t height = 96;
+
+	struct Quad {
+		float x0, y0, x1, y1;
+		uint32_t order[6];
+		BlendMode blend;
+	};
+
+	auto build = [&](DrawList &list, const Quad &q, const Color4F &color) {
+		auto base = uint32_t(list.vertexes.size());
+		// corners 0..3 go round the rectangle: 0 and 2 are opposite, so are 1 and 3
+		list.vertexes.emplace_back(Vertex{q.x0, q.y0, 0.0f, 0.0f, 0.0f, color});
+		list.vertexes.emplace_back(Vertex{q.x1, q.y0, 0.0f, 0.0f, 0.0f, color});
+		list.vertexes.emplace_back(Vertex{q.x1, q.y1, 0.0f, 0.0f, 0.0f, color});
+		list.vertexes.emplace_back(Vertex{q.x0, q.y1, 0.0f, 0.0f, 0.0f, color});
+		auto first = uint32_t(list.indexes.size());
+		for (auto i : q.order) { list.indexes.emplace_back(base + i); }
+
+		Command cmd;
+		cmd.firstIndex = first;
+		cmd.indexCount = 6;
+		cmd.blend = q.blend;
+		cmd.scissor = URect{0, 0, width, height};
+		list.addCommand(sp::move(cmd));
+	};
+
+	// What collectOccluders makes of one quad.
+	uint32_t wrongRects = 0;
+	auto expectRect = [&](const Quad &q, URect expected) {
+		DrawList list;
+		build(list, q, Color4F(0.3f, 0.6f, 0.9f, 1.0f));
+		mem_std::Vector<Occluder> out;
+		collectOccluders(list, out);
+		auto got = out.empty() ? URect{} : out.front().rect;
+		if (out.size() > 1 || got.x != expected.x || got.y != expected.y
+				|| got.width != expected.width || got.height != expected.height) {
+			++wrongRects;
+		}
+	};
+
+	// Integer edges: every centre inside. Split along 0-2 or along 1-3, either winding.
+	expectRect(Quad{16.0f, 8.0f, 48.0f, 24.0f, {0, 1, 2, 2, 3, 0}, BlendMode::Solid},
+			URect{16, 8, 32, 16});
+	expectRect(Quad{16.0f, 8.0f, 48.0f, 24.0f, {1, 2, 3, 3, 0, 1}, BlendMode::Solid},
+			URect{16, 8, 32, 16});
+	expectRect(Quad{16.0f, 8.0f, 48.0f, 24.0f, {0, 2, 1, 0, 3, 2}, BlendMode::Solid},
+			URect{16, 8, 32, 16});
+	// Edges through pixel centres: those pixels are the fill rule's to decide, and left out.
+	expectRect(Quad{16.5f, 8.5f, 48.5f, 24.5f, {0, 1, 2, 2, 3, 0}, BlendMode::Solid},
+			URect{17, 9, 31, 15});
+	expectRect(Quad{16.25f, 8.75f, 47.75f, 24.25f, {0, 1, 2, 2, 3, 0}, BlendMode::Solid},
+			URect{16, 9, 32, 15});
+	// Not a cover: blending on, triangles sharing a side instead of the diagonal, the same half
+	// twice, a degenerate triangle.
+	expectRect(Quad{16.0f, 8.0f, 48.0f, 24.0f, {0, 1, 2, 2, 3, 0}, BlendMode::Transparent},
+			URect{});
+	expectRect(Quad{16.0f, 8.0f, 48.0f, 24.0f, {0, 1, 2, 1, 2, 3}, BlendMode::Solid}, URect{});
+	expectRect(Quad{16.0f, 8.0f, 48.0f, 24.0f, {0, 1, 2, 2, 1, 0}, BlendMode::Solid}, URect{});
+	expectRect(Quad{16.0f, 8.0f, 48.0f, 24.0f, {0, 1, 1, 2, 3, 0}, BlendMode::Solid}, URect{});
+
+	check(wrongRects == 0,
+			toString(
+					"occluders: a Solid quad split along its diagonal covers the pixel centres " "s"
+																								 "t"
+																								 "r"
+																								 "i"
+																								 "c"
+																								 "t"
+																								 "l"
+																								 "y"
+																								 " "
+																								 "i"
+																								 "n"
+																								 "s"
+																								 "i"
+																								 "d"
+																								 "e"
+																								 " "
+																								 "i"
+																								 "t"
+																								 ","
+																								 " "
+																								 "a"
+																								 "n"
+																								 "d"
+																								 " "
+																								 "n"
+																								 "o"
+																								 "t"
+																								 "h"
+																								 "i"
+																								 "n"
+																								 "g"
+																								 " "
+																								 "e"
+																								 "l"
+																								 "s"
+																								 "e"
+																								 " "
+																								 "i"
+																								 "s"
+																								 " "
+																								 "a"
+																								 " "
+																								 "c"
+																								 "o"
+																								 "v"
+																								 "e"
+																								 "r"
+																								 " "
+																								 "(",
+					wrongRects, " wrong)"));
+
+	// The picture: something under the background, a background not quite the whole target at
+	// fractional edges, a second Solid quad over part of it, and blended work on top.
+	DrawList list;
+	auto pushTri = [&](float ax, float ay, float bx, float by, float cx, float cy,
+						   const Color4F &color, BlendMode blend) {
+		auto base = uint32_t(list.vertexes.size());
+		list.vertexes.emplace_back(Vertex{ax, ay, 0.0f, 0.0f, 0.0f, color});
+		list.vertexes.emplace_back(Vertex{bx, by, 0.0f, 0.0f, 0.0f, color});
+		list.vertexes.emplace_back(Vertex{cx, cy, 0.0f, 0.0f, 0.0f, color});
+		auto first = uint32_t(list.indexes.size());
+		list.indexes.emplace_back(base);
+		list.indexes.emplace_back(base + 1);
+		list.indexes.emplace_back(base + 2);
+
+		Command cmd;
+		cmd.firstIndex = first;
+		cmd.indexCount = 3;
+		cmd.blend = blend;
+		cmd.scissor = URect{0, 0, width, height};
+		list.addCommand(sp::move(cmd));
+	};
+	pushTri(3.5f, 2.25f, 151.0f, 9.5f, 12.0f, 90.0f, Color4F(0.9f, 0.2f, 0.4f, 0.8f),
+			BlendMode::Premultiplied);
+	build(list, Quad{2.3f, 1.6f, 157.4f, 93.7f, {0, 1, 2, 2, 3, 0}, BlendMode::Solid},
+			Color4F(0.2f, 0.3f, 0.4f, 0.5f));
+	build(list, Quad{40.0f, 16.0f, 104.0f, 72.0f, {1, 2, 3, 3, 0, 1}, BlendMode::Solid},
+			Color4F(0.7f, 0.1f, 0.2f, 1.0f));
+	pushTri(155.0f, 93.0f, 7.0f, 70.0f, 140.0f, 4.0f, Color4F(0.1f, 0.7f, 0.9f, 0.6f),
+			BlendMode::Transparent);
+
+	// Each region starts one pixel before a cover - the background's interior begins at (2, 2),
+	// the inner quad's at x = 40 - so a tile that begins there is one column short of being covered.
+	const Color4F clearColor(0.25f, 0.5f, 0.75f, 1.0f);
+	const mem_std::Vector<URect> regions{URect{1, 1, 37, 39}, URect{39, 10, 121, 86}};
+	uint64_t area = 0;
+	for (auto &it : regions) { area += uint64_t(it.width) * it.height; }
+
+	auto looper = sprt::dispatch::Looper::acquire();
+
+	uint32_t differing = 0;
+	uint32_t asyncDiffering = 0;
+	uint64_t occluded = 0;
+	uint64_t cleared = 0;
+	uint32_t configs = 0;
+	for (uint32_t threads : {1u, 3u}) {
+		for (uint32_t tile : {8u, 16u, 0u}) {
+			TilingInfo tiling;
+			tiling.width = tile;
+			tiling.height = tile;
+			tiling.threads = threads;
+
+			// The reference: clear, then `draw` from the top of the list, region by region.
+			Bitmap expected(width, height, PixelFormat::BGRA8888);
+			expected.seed();
+			for (auto &it : regions) {
+				fillRect(expected.target, it, clearColor);
+				draw(expected.target, list, it);
+			}
+
+			Bitmap actual(width, height, PixelFormat::BGRA8888);
+			actual.seed();
+			TilingStats stats;
+			drawTiled(actual.target, list, regions, tiling, &stats, &clearColor);
+			for (size_t i = 0; i < expected.pixels.size(); ++i) {
+				differing += expected.pixels[i] != actual.pixels[i];
+			}
+			occluded += stats.fill.ops.occluded;
+			cleared += stats.clear.fillPixels;
+			++configs;
+
+			Bitmap async(width, height, PixelFormat::BGRA8888);
+			async.seed();
+			TiledDrawRequest req;
+			req.target = async.target;
+			req.list = &list;
+			req.regions = regions;
+			req.tiling = tiling;
+			req.clear = true;
+			req.clearColor = clearColor;
+			bool done = false;
+			auto job = drawTiledAsync(sp::move(req), [&](bool, uint32_t, const TilingStats &) {
+				done = true;
+				looper->wakeup();
+			});
+			auto deadline = Time::now() + TimeInterval::seconds(10);
+			while (!done && Time::now() < deadline) { looper->run(TimeInterval::seconds(1)); }
+			asyncDiffering += !done;
+			for (size_t i = 0; i < expected.pixels.size(); ++i) {
+				asyncDiffering += expected.pixels[i] != async.pixels[i];
+			}
+		}
+	}
+
+	check(differing == 0 && asyncDiffering == 0,
+			toString(
+					"occluders: tiles under a Solid quad start there and draw what the whole " "lis"
+																							   "t "
+																							   "dra"
+																							   "ws "
+																							   "(",
+					differing, " + ", asyncDiffering, " bytes differ)"));
+	check(occluded > 0 && cleared < area * configs,
+			toString("occluders: some tiles skipped the clear (", occluded, " passes, ", cleared,
+					" of ", area * configs, " pixels cleared)"));
+}
+
 // drawTiledAsync with a per-tile clear writes exactly what clearing the regions and then drawTiled
 // writes, and completes once, on the looper thread.
 void checkTiledAsync() {
@@ -1114,6 +1411,8 @@ void performRasterTests() {
 	checkSpanSplit();
 	checkTileGrid();
 	checkStrips();
+	checkTiledClear();
+	checkOccluders();
 	checkTiledAsync();
 	checkTileCallback();
 

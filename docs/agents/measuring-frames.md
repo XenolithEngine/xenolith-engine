@@ -287,22 +287,26 @@ baseline - it only widens what is handed to the rasterizer. After the last pass 
 Four lines per step, key=value, tagged with the step index:
 
 ```
-soft::sweep: step p= i= name= threads= ran= frames= skipped= period= record= clear= raster= surface= tick_mhz=
-soft::sweep: fill i= damage= regions= tiles= raster_px= span_px= glyph_px= rect_px= clear_px= raster_mpxs= clear_mpxs= area_mpxs=
-soft::sweep: ops i= passes= entries= commands= triangles= setups= rows= spans= glyphs= rects=
+soft::sweep: step p= i= name= threads= ran= frames= skipped= period= record= raster= surface= tick_mhz=
+soft::sweep: fill i= damage= regions= tiles= raster_px= span_px= glyph_px= rect_px= clear_px= raster_mpxs= area_mpxs=
+soft::sweep: ops i= passes= entries= commands= triangles= setups= rows= spans= glyphs= rects= occluded=
 soft::sweep: pool i= busy= longest= start=
 ```
 
 - `ran=` is the threads the pool actually supplied, against `threads=` asked: a region of two
   tiles runs on two threads whatever was requested.
 - `raster_mpxs=` is pixels written per microsecond of the draw - the fill rate; `area_mpxs=` is
-  damage per microsecond, the screen produced. They differ by the overdraw.
+  damage per microsecond, the screen produced. They differ by the overdraw. The attachment clear
+  runs per tile inside `drawTiled`, so `raster=` includes it and has no span of its own;
+  `clear_px=` still counts its pixels apart from `raster_px=`.
 - `ops` is `raster::RasterOps`: what cutting a region into tiles multiplies. Pixels are the same
   tiled or not (tiles are disjoint), so the price of tiling is these counts against the `off`
   step of the same mode: every tile walks the whole list (`entries`), sets up every command and
   triangle whose box reaches it (`commands`, `triangles` - a cheap box test; `setups` - the edge
   functions), solves every row of those (`rows`), and a row that crosses k tiles becomes k
   `spans`. `glyphs` counts `blitGlyph` calls, including ones whose box misses the tile.
+  `occluded` counts passes that started at a Solid quad covering the whole tile - a background -
+  and skipped the clear and every entry under it; their `entries` are only the rest of the list.
 - `pool` is `TilingStats::busyTicks` and the rest: busy summed over the workers, the slowest one,
   and how late the last one took its first tile - the dispatch latency a frame of a few small
   tiles cannot hide. busy / (ran x raster) is how much of the threads the frame used.
@@ -325,7 +329,7 @@ unparseable is 60).
 
 ```
 soft::budget frames= period=…us/frame (… fps)
-  wait=…us …%  vertex=…us …%  record=…us …%  clear=…us …%
+  wait=…us …%  vertex=…us …%  record=…us …%
   raster=…us …%  present=…us …%  other=…us …%
 ```
 
@@ -337,21 +341,20 @@ frame really is a sum of stages:
 | `wait` | previous present → first thing the render half does | the app thread's update and scene visit. `preStartFrame = false` on this backend, so nothing overlaps it |
 | `vertex` | `VertexAttachmentHandle::loadVertexes` | the **scene** — every command is walked even on a frame that repaints a cursor |
 | `record` | `recordSubpass` | the scene: vertex stage per vertex, material/texture resolution, glyph runs |
-| `clear` | the attachment load op | the **damage** |
-| `raster` | `drawTiled` — the same span `XL_SOFT_PROFILE` times | the damage, and the overdraw inside it |
+| `raster` | `drawTiled` — the same span `XL_SOFT_PROFILE` times, the attachment load op included: it clears each tile before drawing it | the damage, and the overdraw inside it |
 | `present` | `Swapchain::present` | the damage, plus whatever the window system charges |
 | `other` | `period` minus all of the above | nothing — it is the residual |
 
 Two things the split is for:
 
-- **Damage tracking only shrinks the bottom half of the table.** `clear`, `raster` and `present`
+- **Damage tracking only shrinks the bottom half of the table.** `raster` and `present`
   follow the damage; `wait`, `vertex` and `record` follow the scene and do not care that the frame
   repainted twelve percent of the screen. A scene that grows makes frames more expensive even when
   the picture barely moves, and this is the instrument that shows it.
 - **`raster` is where an ISA kernel, a tile size or a worker count can help, and nothing else is.**
   Measured on qemu-armv8a, 640×480, debug, SMP=4, steady kiosk frame: `wait` 50%, `raster` 24%,
-  `vertex` 8.6%, `record` 8.2%, `other` 6.2%, `present` 2.8%, `clear` 0.3%. Halving the rasterizer
-  there buys 12% of the frame. That is the number to have before optimizing anything.
+  `vertex` 8.6%, `record` 8.2%, `other` 6.2%, `present` 2.8%, `clear` 0.3% (a stage of its own
+  then). Halving the rasterizer there buys 12% of the frame. That is the number to have before optimizing anything.
 
 `other` should stay small. It is large when frames reach present without passing through the stages
 — the damage tracker skipping the pass entirely is the ordinary cause — and the report is then

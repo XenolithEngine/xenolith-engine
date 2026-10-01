@@ -331,6 +331,16 @@ RowSpan rowSpanStepping(int64_t w0, int64_t w1, int64_t w2, int64_t step0, int64
 RowSpan rowSpanAnalytic(int64_t w0, int64_t w1, int64_t w2, int64_t step0, int64_t step1,
 		int64_t step2, int32_t minX, int32_t maxX);
 
+// Occluders of a list (see Occluder), in list order.
+void collectOccluders(const DrawList &, Vector<Occluder> &);
+
+// The entry a pass over `clip` can start from: the last occluder containing the whole clip, or
+// null when none does and the pass has to start at the beginning and keep the clear.
+const Occluder *findOccluder(SpanView<Occluder>, const URect &clip);
+
+// `draw`, starting at entry `first` rather than at the beginning of the list.
+uint32_t drawFrom(const Target &, const DrawList &, const URect &clip, uint32_t first, FillStats *);
+
 // Per-set table accessors. Each is defined by its own subunit and returns null when the set is
 // not implemented for this architecture.
 const KernelTable *getScalarKernels();

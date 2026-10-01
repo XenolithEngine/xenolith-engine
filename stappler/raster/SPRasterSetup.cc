@@ -358,9 +358,147 @@ URect intersectRects(const URect &a, const URect &b) {
 	return URect{x0, y0, x1 - x0, y1 - y0};
 }
 
+// The pixels whose centres lie strictly inside the rectangle two triangles make, or nothing when
+// they make anything else. `p` is the pair as it will be rasterized, in fixed point: the corners
+// must come out exactly equal there, not merely close, for the shared diagonal to be one edge.
+static URect Setup_quadInterior(const FixedVertex (&p)[6]) {
+	auto same = [](const FixedVertex &a, const FixedVertex &b) { return a.x == b.x && a.y == b.y; };
+
+	// Each triangle has three distinct vertices, and they share exactly two: the diagonal, when
+	// the four points are the corners of a rectangle and the two shared ones are opposite.
+	for (auto t : {0, 3}) {
+		if (same(p[t], p[t + 1]) || same(p[t + 1], p[t + 2]) || same(p[t], p[t + 2])) {
+			return URect{};
+		}
+	}
+
+	FixedVertex shared[3];
+	uint32_t nshared = 0;
+	for (uint32_t i = 0; i < 3; ++i) {
+		for (uint32_t j = 3; j < 6; ++j) {
+			if (same(p[i], p[j])) {
+				shared[nshared++] = p[i];
+			}
+		}
+	}
+	if (nshared != 2 || shared[0].x == shared[1].x || shared[0].y == shared[1].y) {
+		return URect{};
+	}
+
+	const int32_t x0 = sprt::min(shared[0].x, shared[1].x);
+	const int32_t x1 = sprt::max(shared[0].x, shared[1].x);
+	const int32_t y0 = sprt::min(shared[0].y, shared[1].y);
+	const int32_t y1 = sprt::max(shared[0].y, shared[1].y);
+
+	// The other vertex of each triangle is one of the two remaining corners, and not the same one.
+	auto isCorner = [&](const FixedVertex &v) {
+		return (v.x == x0 || v.x == x1) && (v.y == y0 || v.y == y1) && !same(v, shared[0])
+				&& !same(v, shared[1]);
+	};
+	const FixedVertex *other[2] = {nullptr, nullptr};
+	for (auto t : {0, 3}) {
+		for (auto i = t; i < t + 3; ++i) {
+			if (!same(p[i], shared[0]) && !same(p[i], shared[1])) {
+				other[t / 3] = &p[i];
+			}
+		}
+	}
+	if (!other[0] || !other[1] || !isCorner(*other[0]) || !isCorner(*other[1])
+			|| same(*other[0], *other[1])) {
+		return URect{};
+	}
+
+	// Centre of pixel n is n * Scale + Scale / 2; strictly between the edges.
+	const int64_t half = SubpixelScale / 2;
+	auto left = sprt::max(Setup_floorDiv(int64_t(x0) - half, SubpixelScale) + 1, int64_t(0));
+	auto top = sprt::max(Setup_floorDiv(int64_t(y0) - half, SubpixelScale) + 1, int64_t(0));
+	auto right = Setup_ceilDiv(int64_t(x1) - half, SubpixelScale) - 1;
+	auto bottom = Setup_ceilDiv(int64_t(y1) - half, SubpixelScale) - 1;
+	if (right < left || bottom < top) {
+		return URect{};
+	}
+	return URect{uint32_t(left), uint32_t(top), uint32_t(right - left + 1),
+		uint32_t(bottom - top + 1)};
+}
+
+void collectOccluders(const DrawList &list, Vector<Occluder> &out) {
+	// Setup_toFixed has to be exact for the corners to compare equal, and representable at all:
+	// a coordinate this far outside any target is not a background.
+	constexpr float limit = float(1 << 22);
+
+	for (uint32_t e = 0; e < list.entries.size(); ++e) {
+		auto &entry = list.entries[e];
+		if (entry.type != DrawEntry::Triangles || entry.index >= list.commands.size()) {
+			continue;
+		}
+
+		// The same checks `draw` makes before it rasterizes a command, and one stricter: it stops
+		// a command at the first bad vertex index, so a quad after one would never be drawn.
+		auto &cmd = list.commands[entry.index];
+		if (cmd.blend != BlendMode::Solid || cmd.indexCount < 6 || cmd.scissor.width == 0
+				|| cmd.scissor.height == 0) {
+			continue;
+		}
+		auto last = size_t(cmd.firstIndex) + size_t(cmd.indexCount);
+		if (last > list.indexes.size()
+				|| (cmd.kind != TextureKind::Solid && cmd.texture >= list.textures.size())) {
+			continue;
+		}
+		bool valid = true;
+		for (auto i = size_t(cmd.firstIndex); i < last; ++i) {
+			if (list.indexes[i] >= list.vertexes.size()) {
+				valid = false;
+				break;
+			}
+		}
+		if (!valid) {
+			continue;
+		}
+
+		for (uint32_t i = 0; i + 6 <= cmd.indexCount; i += 6) {
+			FixedVertex p[6];
+			bool representable = true;
+			for (uint32_t j = 0; j < 6; ++j) {
+				auto &v = list.vertexes[list.indexes[cmd.firstIndex + i + j]];
+				if (!sprt::isfinite(v.x) || !sprt::isfinite(v.y) || sprt::abs(v.x) > limit
+						|| sprt::abs(v.y) > limit) {
+					representable = false;
+					break;
+				}
+				p[j] = FixedVertex{Setup_toFixed(v.x), Setup_toFixed(v.y)};
+			}
+			if (!representable) {
+				continue;
+			}
+
+			auto rect = intersectRects(Setup_quadInterior(p), cmd.scissor);
+			if (rect.width != 0 && rect.height != 0) {
+				out.emplace_back(Occluder{e, rect});
+			}
+		}
+	}
+}
+
+const Occluder *findOccluder(SpanView<Occluder> occluders, const URect &clip) {
+	for (auto i = occluders.size(); i > 0; --i) {
+		auto &it = occluders[i - 1];
+		if (clip.x >= it.rect.x && clip.y >= it.rect.y
+				&& uint64_t(clip.x) + clip.width <= uint64_t(it.rect.x) + it.rect.width
+				&& uint64_t(clip.y) + clip.height <= uint64_t(it.rect.y) + it.rect.height) {
+			return &it;
+		}
+	}
+	return nullptr;
+}
+
 uint32_t draw(const Target &target, const DrawList &list, const URect &clip,
 		FillStats *stats) {
-	if (target.empty() || list.empty() || clip.width == 0 || clip.height == 0) {
+	return drawFrom(target, list, clip, 0, stats);
+}
+
+uint32_t drawFrom(const Target &target, const DrawList &list, const URect &clip, uint32_t first,
+		FillStats *stats) {
+	if (target.empty() || first >= list.entries.size() || clip.width == 0 || clip.height == 0) {
 		return 0;
 	}
 
@@ -379,12 +517,13 @@ uint32_t draw(const Target &target, const DrawList &list, const URect &clip,
 
 	if (stats) {
 		++stats->ops.passes;
-		stats->ops.entries += list.entries.size();
+		stats->ops.entries += list.entries.size() - first;
 	}
 
 	// Entries, not commands: glyph blits and triangle batches interleave, and the order between
 	// them is the painter's order the queue guarantees.
-	for (auto &entry : list.entries) {
+	for (auto e = size_t(first); e < list.entries.size(); ++e) {
+		auto &entry = list.entries[e];
 		if (entry.type == DrawEntry::Glyph) {
 			if (entry.index >= list.glyphs.size()) {
 				log::source().error("raster", "Glyph entry index is out of bounds");

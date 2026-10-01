@@ -236,8 +236,8 @@ SP_ATTR_OPTIMIZE_INLINE_FN inline void transformVec4Components_impl(const float 
 
 			//"st1 {v13.4s}, [%0]               \n\t"    // DST->V[x, y] // DST->V[z]
 			"st1 {v13.2s}, [%0], 8               \n\t" "st1 {v13.s}[2], [%0]                \n\t"
-			:
-			: "r"(dst), "r"(&x), "r"(&y), "r"(&z), "r"(&w), "r"(m)
+			: "+r"(dst) // the first store advances it
+			: "r"(&x), "r"(&y), "r"(&z), "r"(&w), "r"(m)
 			: "v0", "v9", "v10", "v11", "v12", "v13", "memory");
 }
 
@@ -293,8 +293,8 @@ SP_ATTR_OPTIMIZE_INLINE_FN inline void crossVec3_impl(const float *v1, const flo
 
 			"st1 {v2.2s},       [%0], 8      \n\t"// V[x, y]
 			"st1 {v2.s}[2],     [%0]         \n\t"// V[z]
-			:
-			: "r"(dst), "r"(v1), "r"((v1+1)), "r"(v2), "r"((v2+2))
+			: "+r"(dst) // the first store advances it
+			: "r"(v1), "r"((v1+1)), "r"(v2), "r"((v2+2))
 			: "v0", "v1", "v2", "memory"
 	);
 }

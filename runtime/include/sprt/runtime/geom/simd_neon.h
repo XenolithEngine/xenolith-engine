@@ -104,8 +104,8 @@ inline void addMat4Scalar_impl(const float *m, float scalar, float *dst) {
 
 			"vst1.32 {q8, q9}, [%0]!    \n\t" // DST->M[m0-m7]
 			"vst1.32 {q10, q11}, [%0]   \n\t" // DST->M[m8-m15]
-			:
-			: "r"(dst), "r"(m), "r"(&scalar)
+			: "+r"(dst), "+r"(m)
+			: "r"(&scalar)
 			: "q0", "q1", "q2", "q3", "q4", "q8", "q9", "q10", "q11", "memory");
 }
 
@@ -123,8 +123,8 @@ inline void addMat4_impl(const float *m1, const float *m2, float *dst) {
 
 			"vst1.32    {q12, q13}, [%0]!    \n\t" // DST->M[m0-m7]
 			"vst1.32    {q14, q15}, [%0]     \n\t" // DST->M[m8-m15]
+			: "+r"(dst), "+r"(m1), "+r"(m2)
 			:
-			: "r"(dst), "r"(m1), "r"(m2)
 			: "q0", "q1", "q2", "q3", "q8", "q9", "q10", "q11", "q12", "q13", "q14", "q15",
 			"memory");
 }
@@ -143,8 +143,8 @@ inline void subtractMat4_impl(const float *m1, const float *m2, float *dst) {
 
 			"vst1.32    {q12, q13}, [%0]!   \n\t" // DST->M[m0-m7]
 			"vst1.32    {q14, q15}, [%0]    \n\t" // DST->M[m8-m15]
+			: "+r"(dst), "+r"(m1), "+r"(m2)
 			:
-			: "r"(dst), "r"(m1), "r"(m2)
 			: "q0", "q1", "q2", "q3", "q8", "q9", "q10", "q11", "q12", "q13", "q14", "q15",
 			"memory");
 }
@@ -162,8 +162,8 @@ inline void multiplyMat4Scalar_impl(const float *m, float scalar, float *dst) {
 
 			"vst1.32     {q8-q9},           [%0]!     \n\t" // DST->M[m0-m7]
 			"vst1.32     {q10-q11},         [%0]      \n\t" // DST->M[m8-m15]
-			:
-			: "r"(dst), "r"(m), "r"(&scalar)
+			: "+r"(dst), "+r"(m)
+			: "r"(&scalar)
 			: "q0", "q4", "q5", "q6", "q7", "q8", "q9", "q10", "q11", "memory");
 }
 
@@ -197,8 +197,8 @@ inline void multiplyMat4_impl(const float *m1, const float *m2, float *dst) {
 			"vst1.32    {d24 - d27}, [%0]!  \n\t" // DST->M[m0-m7]
 			"vst1.32    {d28 - d31}, [%0]   \n\t" // DST->M[m8-m15]
 
-			: // output
-			: "r"(dst), "r"(m1), "r"(m2) // input - note *value* of pointer doesn't change.
+			: "+r"(dst), "+r"(m1), "+r"(m2) // the loads and stores advance all three
+			:
 			: "memory", "q0", "q1", "q2", "q3", "q8", "q9", "q10", "q11", "q12", "q13", "q14",
 			"q15");
 }
@@ -215,8 +215,8 @@ inline void negateMat4_impl(const float *m, float *dst) {
 
 			"vst1.32     {q4-q5},  [%0]!     \n\t" // store m0-m7
 			"vst1.32     {q6-q7},  [%0]      \n\t" // store m8-m15
+			: "+r"(dst), "+r"(m)
 			:
-			: "r"(dst), "r"(m)
 			: "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "memory");
 }
 
@@ -229,8 +229,8 @@ inline void transposeMat4_impl(const float *m, float *dst) {
 
 			"vst1.32 {q0-q1}, [%0]!                         \n\t" // DST->M[m0-m7]
 			"vst1.32 {q2-q3}, [%0]                          \n\t" // DST->M[m8-m15]
+			: "+r"(dst), "+r"(m)
 			:
-			: "r"(dst), "r"(m)
 			: "q0", "q1", "q2", "q3", "memory");
 }
 
@@ -241,8 +241,8 @@ inline void transformVec4Components_impl(const float *m, float x, float y, float
 			"vld1.32    {d0[1]},        [%2]    \n\t" // V[y]
 			"vld1.32    {d1[0]},        [%3]    \n\t" // V[z]
 			"vld1.32    {d1[1]},        [%4]    \n\t" // V[w]
-			"vld1.32    {d18 - d21},    [%5]!   \n\t" // M[m0-m7]
-			"vld1.32    {d22 - d25},    [%5]    \n\t" // M[m8-m15]
+			"vld1.32    {d18 - d21},    [%5]    \n\t" // M[m0-m7]
+			"vld1.32    {d22 - d25},    [%6]    \n\t" // M[m8-m15]
 
 			"vmul.f32 q13,  q9, d0[0]           \n\t" // DST->V = M[m0-m3] * V[x]
 			"vmla.f32 q13, q10, d0[1]           \n\t" // DST->V += M[m4-m7] * V[y]
@@ -251,16 +251,16 @@ inline void transformVec4Components_impl(const float *m, float x, float y, float
 
 			"vst1.32 {d26}, [%0]!               \n\t" // DST->V[x, y]
 			"vst1.32 {d27[0]}, [%0]             \n\t" // DST->V[z]
-			:
-			: "r"(dst), "r"(&x), "r"(&y), "r"(&z), "r"(&w), "r"(m)
+			: "+r"(dst)
+			: "r"(&x), "r"(&y), "r"(&z), "r"(&w), "r"(m), "r"(m + 8)
 			: "q0", "q9", "q10", "q11", "q12", "q13", "memory");
 }
 
 inline void transformVec4_impl(const float *m, const float *v, float *dst) {
 	asm volatile(
 			"vld1.32    {d0, d1}, [%1]     \n\t" // V[x, y, z, w]
-			"vld1.32    {d18 - d21}, [%2]! \n\t" // M[m0-m7]
-			"vld1.32    {d22 - d25}, [%2]  \n\t" // M[m8-m15]
+			"vld1.32    {d18 - d21}, [%2]  \n\t" // M[m0-m7]
+			"vld1.32    {d22 - d25}, [%3]  \n\t" // M[m8-m15]
 
 			"vmul.f32   q13, q9, d0[0]     \n\t" // DST->V = M[m0-m3] * V[x]
 			"vmla.f32   q13, q10, d0[1]    \n\t" // DST->V = M[m4-m7] * V[y]
@@ -269,7 +269,7 @@ inline void transformVec4_impl(const float *m, const float *v, float *dst) {
 
 			"vst1.32    {d26, d27}, [%0]   \n\t" // DST->V
 			:
-			: "r"(dst), "r"(v), "r"(m)
+			: "r"(dst), "r"(v), "r"(m), "r"(m + 8)
 			: "q0", "q9", "q10", "q11", "q12", "q13", "memory");
 }
 
@@ -291,8 +291,8 @@ inline void crossVec3_impl(const float *v1, const float *v2, float *dst) {
 
 			"vst1.32 {d4},       [%0]!      \n\t" // V[x, y]
 			"vst1.32 {d5[0]}, [%0]          \n\t" // V[z]
-			:
-			: "r"(dst), "r"(v1), "r"((v1 + 1)), "r"(v2), "r"((v2 + 1))
+			: "+r"(dst)
+			: "r"(v1), "r"((v1 + 1)), "r"(v2), "r"((v2 + 1))
 			: "q0", "q1", "q2", "memory");
 }
 

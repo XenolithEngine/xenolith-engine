@@ -65,8 +65,8 @@ extern "C" void __el0_tls_free(void *tp);
 
 // libc_impl/asm/EmboxUser/aarch64/clone.s: the one place where parent and child
 // are the same instruction stream.
-extern "C" long __el0_clone_thread(void *stack_top, void *tls, int *ctid,
-		void *(*entry)(void *), void *arg);
+extern "C" long __el0_clone_thread(void *stack_top, void *tls, int *ctid, void *(*entry)(void *),
+		void *arg);
 
 // Itanium thread-local destructor registration. clang lowers thread_local
 // destructors to __cxa_thread_atexit on ELF, same as the POSIX path.
@@ -107,7 +107,7 @@ static void __registerForDestruction(void (*cb)(void)) {
 // the thread itself, while it is still running.
 // The ABI fixes a 4 KiB granule for every board (docs/EMBOX-SYSCALL-ABI.md
 // section 2.2), and mmap rounds to it.
-#define EL0_PAGE 4096u
+#define EL0_PAGE 4'096u
 
 struct el0_thread {
 	int ctid;
@@ -151,8 +151,7 @@ static void __el0_reap(void) {
 		if (__atomic_load_n(&rec->ctid, __ATOMIC_SEQ_CST) == 0) {
 			*link = rec->next;
 			__el0_release(rec);
-		}
-		else {
+		} else {
 			link = &rec->next;
 		}
 	}
@@ -161,12 +160,12 @@ static void __el0_reap(void) {
 // Default stack for a thread the caller did not size. Small next to the main
 // thread's 8 MiB: these are the engine's pool workers, and the address space
 // they come out of is an arena shared with every other mapping.
-#define EL0_THREAD_STACK_DEFAULT (256u * 1024u)
+#define EL0_THREAD_STACK_DEFAULT (256u * 1'024u)
 
 static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 		__thread_pool *pool) {
-	__SPRT_ID(size_t) stackSize = (attr && attr->stackSize) ? attr->stackSize
-															: EL0_THREAD_STACK_DEFAULT;
+	__SPRT_ID(size_t)
+	stackSize = (attr && attr->stackSize) ? attr->stackSize : EL0_THREAD_STACK_DEFAULT;
 	__SPRT_ID(size_t) guardSize = (attr && attr->guardSize) ? attr->guardSize : EL0_PAGE;
 
 	stackSize = (stackSize + EL0_PAGE - 1) & ~(__SPRT_ID(size_t))(EL0_PAGE - 1);
@@ -187,8 +186,7 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 
 	// The guard is the lowest page of the mapping: a stack that runs past its
 	// end faults instead of quietly writing over whatever is mapped below.
-	if (guardSize
-			&& __el0_is_err(__el0_mprotect((void *)raw, guardSize, __SPRT_PROT_NONE))) {
+	if (guardSize && __el0_is_err(__el0_mprotect((void *)raw, guardSize, __SPRT_PROT_NONE))) {
 		__el0_munmap((void *)raw, total);
 		__sprt_free(rec);
 		return EAGAIN;
@@ -229,18 +227,17 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 	return 0;
 }
 
-// The main thread's tid, learned when its handle is initialised. It is what
-// tells "this thread is ending" from "the program is ending".
-static int s_el0_main_tid = 0;
+// The main thread's tid, which the libc took at startup (builtin_libc.cpp). It
+// is what tells "this thread is ending" from "the program is ending".
+__SPRT_C_FUNC __sprt_uint64_t __libc_main_thread;
+
+static int __el0_main_tid() { return (int)__libc_main_thread; }
 
 static bool __initNativeHandle(thread_t *thread) {
-	// Called for the thread that is already running -- the main one, since it is
-	// the only one there can be. Its stack is the one the kernel placed at
-	// eret (ABI doc section 2.2), so unlike the wasm sibling (whose stack lives
-	// in toolchain-managed linear memory with no queryable bounds) the real
-	// numbers are known and worth reporting: pthread_getattr_np and the stack
-	// checks in the pool read them.
-	s_el0_main_tid = (int)__el0_gettid();
+	if ((int)__el0_gettid() != __el0_main_tid()) {
+		return true;
+	}
+
 	thread->handle = reinterpret_cast<void *>(uintptr_t(1));
 	thread->attr.stack = reinterpret_cast<void *>(__SPRT_EL0_STACK_BASE);
 	thread->attr.stackSize = __SPRT_EL0_STACK_TOP - __SPRT_EL0_STACK_BASE;
@@ -278,7 +275,7 @@ static bool __isNativeHandleValid(thread_t *thread) { return thread->handle != n
 // nobody else's takes the program down with it.
 static void __exitNativeThread(void *ret) {
 	(void)ret;
-	if ((int)__el0_gettid() == s_el0_main_tid) {
+	if ((int)__el0_gettid() == __el0_main_tid()) {
 		__el0_exit_group(0);
 	}
 	__el0_exit(0);
@@ -404,7 +401,7 @@ int thread_t::getcpuclockid(__sprt_clockid_t *clock) const {
 // kernel refuses it with ESRCH unless it is the caller's own (BF-44).
 static int __el0_affinity_tid(const thread_t *thread) {
 	if (thread->handle == reinterpret_cast<void *>(uintptr_t(1))) {
-		return native::s_el0_main_tid;
+		return native::__el0_main_tid();
 	}
 	return thread->handle ? ((const native::el0_thread *)thread->handle)->tid : -1;
 }

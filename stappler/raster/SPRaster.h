@@ -259,6 +259,7 @@ struct SP_PUBLIC RasterOps {
 	uint64_t spans = 0; // writeSpan calls
 	uint64_t glyphs = 0; // blitGlyph calls
 	uint64_t rects = 0; // fillRect calls
+	uint64_t occluded = 0;
 
 	void add(const RasterOps &o) {
 		passes += o.passes;
@@ -270,6 +271,7 @@ struct SP_PUBLIC RasterOps {
 		spans += o.spans;
 		glyphs += o.glyphs;
 		rects += o.rects;
+		occluded += o.occluded;
 	}
 };
 
@@ -316,8 +318,7 @@ SP_PUBLIC URect intersectRects(const URect &, const URect &);
 // Partial redraw calls this once per damage rectangle, so that several small changes do not force
 // the rasterizer over their bounding box. Those rectangles MUST be pairwise disjoint: a pixel
 // visited twice would have every transparent command blended into it twice.
-SP_PUBLIC uint32_t draw(const Target &, const DrawList &, const URect &clip,
-		FillStats * = nullptr);
+SP_PUBLIC uint32_t draw(const Target &, const DrawList &, const URect &clip, FillStats * = nullptr);
 
 // How a region is cut up before it is rasterized, and by how many threads.
 //
@@ -329,7 +330,7 @@ struct SP_PUBLIC TilingInfo {
 	uint32_t width = 0; // 0: do not cut horizontally - every tile spans the whole region width
 	uint32_t height = 0; // 0: do not cut vertically
 	uint32_t threads = 1; // 1: the calling thread alone, no dispatch at all; 0: whatever the
-						  // thread pool can supply
+	// thread pool can supply
 
 	// Time the workers (TilingStats::busyTicks and the rest). Off by default: two counter reads
 	// per worker are nothing, but on some targets the counter is not readable where the renderer
@@ -387,6 +388,10 @@ struct SP_PUBLIC TilingStats {
 	// Summed across every tile and every worker. Tiles are disjoint, so this double-counts nothing
 	// that the untiled path would have counted once.
 	FillStats fill;
+
+	// drawTiled's per-tile clear, kept out of `fill` so the load op and the draw can still be told
+	// apart once they share a pass. drawTiledAsync counts its clear in `fill`.
+	FillStats clear;
 };
 
 // Rasterize a whole set of damage regions, cut into tiles, optionally across a thread pool.
@@ -396,9 +401,18 @@ struct SP_PUBLIC TilingStats {
 // rather than joined per region: a frame whose regions differ in size would otherwise spend most
 // of its time waiting for the largest one alone.
 //
+// With `clear`, each tile is filled with it before it is drawn: the load op Clear, which the tiles
+// apply exactly because they cover the regions exactly. Done this way rather than as a pass over
+// the regions first, the clear is split across the same threads, and the draw finds the tile it
+// has just written still in cache (BF-84). An empty list then only clears.
+//
+// A tile that a Solid axis-aligned quad covers entirely - a background - starts at the last such
+// quad: what lies under it cannot show, so neither the clear nor the entries before it are drawn
+// there (BF-89). The picture is the same either way. drawTiledAsync does the same.
+//
 // Returns commands rasterized, counted once per tile - a work count, not a command count.
 SP_PUBLIC uint32_t drawTiled(const Target &, const DrawList &, SpanView<URect> regions,
-		const TilingInfo &, TilingStats * = nullptr);
+		const TilingInfo &, TilingStats * = nullptr, const Color4F *clear = nullptr);
 
 // Work for one tile instead of a draw list: called from the workers concurrently, one tile each, so
 // it must not change anything the other tiles read.
@@ -426,6 +440,21 @@ struct SP_PUBLIC TiledDrawRequest {
 // Called once per drawTiledAsync. `success` is false when the pool dropped a worker unrun, in which
 // case some tiles may be left unpainted.
 using TiledDrawCallback = Function<void(bool success, uint32_t drawn, const TilingStats &)>;
+
+// A rectangle of target pixels that one entry of a list is known to overwrite completely: a Solid
+// command - blending off, so every channel is replaced whatever was under it - whose two
+// consecutive triangles make an axis-aligned rectangle split along a diagonal, narrowed to the
+// pixel centres strictly inside it and to the command's scissor. Inside it, nothing drawn before
+// that entry can show, the load op's clear included (BF-89).
+//
+// Strictly inside, because the fill rule decides the pixels on the rectangle's own edges and this
+// does not repeat it; the shared diagonal needs no such care, since the rule gives each pixel on
+// it to exactly one of the two triangles. Only what `draw` would itself draw qualifies: a command
+// it would skip or cut short on bad indices is never an occluder.
+struct SP_PUBLIC Occluder {
+	uint32_t entry = 0; // index into DrawList::entries
+	URect rect;
+};
 
 class TiledDrawJob;
 
@@ -463,6 +492,7 @@ protected:
 	Target _target;
 	const DrawList *_list = nullptr;
 	Vector<URect> _tiles;
+	Vector<Occluder> _occluders;
 	bool _clear = false;
 	Color4F _clearColor;
 	bool _collectStats = false;

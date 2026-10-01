@@ -109,6 +109,7 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"runtime_collation_conformance", &sprt::performCollationConformanceTests},
 	{"runtime_collation_bench", &sprt::performCollationBench},
 	{"runtime_dtoa", &sprt::performDtoaTests},
+	{"runtime_geom", &sprt::performGeomTests},
 	{"runtime_idn", &sprt::performIdnTests},
 	{"runtime_idn_conformance", &sprt::performIdnConformanceTests},
 };

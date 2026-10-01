@@ -221,6 +221,20 @@ __SPRT_C_FUNC int faccessat(int dirfd, const char *path, int amode, int flags) _
 	return (int)__el0_ret(__el0_faccessat(kdir, path, amode, flags));
 }
 
+// utimensat(88): the path form. The times go through as they are -- UTIME_NOW
+// and UTIME_OMIT are the same numbers on both sides of the boundary.
+__SPRT_C_FUNC int utimensat(int dirfd, const char *path, const struct __SPRT_TIMESPEC_NAME *times,
+		int flags) __SPRT_NOEXCEPT {
+	if (!sprt::__el0_path_ok(path)) {
+		return -1;
+	}
+	auto kdir = sprt::__el0_at_dirfd(dirfd, path);
+	if (kdir == -1) {
+		return -1;
+	}
+	return (int)__el0_ret(__el0_utimensat(kdir, path, times, flags));
+}
+
 __SPRT_C_FUNC int access(const char *path, int amode) __SPRT_NOEXCEPT {
 	return faccessat(__SPRT_AT_FDCWD, path, amode, 0);
 }
@@ -324,9 +338,6 @@ __SPRT_C_FUNC char *realpath(const char *path, char *resolved) __SPRT_NOEXCEPT {
 //              the path existing (what a caller running as root would get) and
 //              only X_OK can fail
 //
-// What is still missing is still refused rather than faked: link, symlink,
-// chmod and utimensat have no numbers, and a stub that reported success would
-// have callers believe a file was linked, made executable or touched.
 
 #define __EL0_ENOSYS_RET(Type, Value) \
 	{ \
@@ -506,8 +517,6 @@ __SPRT_C_FUNC int fchdir(int) __SPRT_NOEXCEPT __EL0_ENOSYS_RET(int, -1)
 		int symlink(const char *, const char *) __SPRT_NOEXCEPT
 		__EL0_ENOSYS_RET(int, -1) __SPRT_C_FUNC
 		int symlinkat(const char *, int, const char *) __SPRT_NOEXCEPT
-		__EL0_ENOSYS_RET(int, -1) __SPRT_C_FUNC
-		int utimensat(int, const char *, const struct __SPRT_TIMESPEC_NAME *, int) __SPRT_NOEXCEPT
 		__EL0_ENOSYS_RET(int, -1) __SPRT_C_FUNC
 		int chmod(const char *, __SPRT_ID(mode_t)) __SPRT_NOEXCEPT
 		__EL0_ENOSYS_RET(int, -1) __SPRT_C_FUNC
