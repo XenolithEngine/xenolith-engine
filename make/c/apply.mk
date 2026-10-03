@@ -128,6 +128,21 @@ BUILD_GENERAL_CXXFLAGS := \
 	$(addprefix -I,$(BUILD_INCLUDES)) \
 	$(BUILD_SHADERS_TARGET_INCLUDE_ALL)
 
+# Project-local assembly gets the target identity and include paths as C does.
+BUILD_GENERAL_SFLAGS := \
+	$(GLOBAL_GENERAL_SFLAGS) \
+	$(LOCAL_SFLAGS) \
+	$(addprefix -I,$(TOOLKIT_INCLUDES)) \
+	$(addprefix -I,$(BUILD_INCLUDES))
+
+BUILD_EXEC_SFLAGS := \
+	$(BUILD_GENERAL_SFLAGS) \
+	$(GLOBAL_EXEC_SFLAGS)
+
+BUILD_LIB_SFLAGS := \
+	$(BUILD_GENERAL_SFLAGS) \
+	$(GLOBAL_LIB_SFLAGS)
+
 BUILD_EXEC_CFLAGS := \
 	$(addprefix -I,$(TOOLKIT_EXEC_GCH_DIRS)) \
 	$(BUILD_GENERAL_CFLAGS) \

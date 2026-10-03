@@ -216,6 +216,11 @@ $(info Modules was updated)
 $(call shell_mkdir,$(BUILD_С_OUTDIR))
 $(call shell_override_file,$(TOOLKIT_MODULES),$(LOCAL_MODULES))
 
+else ifeq ($(wildcard $(TOOLKIT_MODULES)),)
+# A project without modules still needs the file: compile_commands.json depends on it.
+$(call shell_mkdir,$(BUILD_С_OUTDIR))
+$(call shell_override_file,$(TOOLKIT_MODULES),$(LOCAL_MODULES))
+
 endif
 endif # MAKE_4_1
 	
