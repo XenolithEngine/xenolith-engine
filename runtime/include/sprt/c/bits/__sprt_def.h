@@ -69,6 +69,11 @@ THE SOFTWARE.
 #define __SPRT_PLATFORM_NAME_EMBOX_USER embox_user_sprt
 #define __SPRT_PLATFORM_ID_EMBOX_USER 10
 
+// Tau capability microkernel. One platform for both sides: the kernel uses the
+// freestanding header subset only, EL0 modules link the runtime as their libc.
+#define __SPRT_PLATFORM_NAME_TAU tau_sprt
+#define __SPRT_PLATFORM_ID_TAU 11
+
 
 /*
 	Defines one of:
@@ -83,6 +88,7 @@ THE SOFTWARE.
 	SPRT_NUTTX
 	SPRT_EMBOX
 	SPRT_EMBOX_USER
+	SPRT_TAU
 
 	for platform detection. SPRT_HOSTED_RTOS is 1 on NuttX and hosted Embox
 	(flat hosted POSIX, no epoll/futex/fork) - it means "links against the
@@ -127,6 +133,11 @@ THE SOFTWARE.
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_ANDROID
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_ANDROID
 #define SPRT_ANDROID __SPRT_PLATFORM_ID_ANDROID
+#elif defined(__TAU__)
+// Tau. LLVM knows no such OS; the target-tau toolchain defines __TAU__.
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_TAU
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_TAU
+#define SPRT_TAU __SPRT_PLATFORM_ID_TAU
 #elif defined(__EMBOX_USER__)
 // Embox RTOS, user mode (EL0). Driven by the target-embox toolchain's `+user`
 // variant, which defines __EMBOX_USER__ and NOT __EMBOX__: none of the Embox

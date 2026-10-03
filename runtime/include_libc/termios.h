@@ -60,7 +60,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/cross/__sprt_sysid.h> // pid_t
 
-#if SPRT_WASM || SPRT_WINDOWS || SPRT_EMBOX_USER
+#if SPRT_WASM || SPRT_WINDOWS || SPRT_EMBOX_USER || SPRT_TAU
 
 typedef unsigned char cc_t;
 typedef unsigned int speed_t;
@@ -207,7 +207,7 @@ SPRT_API __SPRT_ID(pid_t) tcgetsid(int __fd);
 
 __SPRT_END_DECL
 
-#endif // SPRT_WASM || SPRT_WINDOWS || SPRT_EMBOX_USER
+#endif // SPRT_WASM || SPRT_WINDOWS || SPRT_EMBOX_USER || SPRT_TAU
 
 #endif
 

@@ -53,7 +53,7 @@ THE SOFTWARE.
 // even where nothing logs -- OpenSSL's bss_log.c names LOG_DAEMON/LOG_EMERG
 // unconditionally, and on Embox EL0 the syslog calls themselves are silent
 // no-ops (libc_impl embox_user/syslog.cc).
-#if defined(SPRT_WASM) || defined(SPRT_HOSTED_RTOS) || defined(SPRT_EMBOX_USER)
+#if defined(SPRT_WASM) || defined(SPRT_HOSTED_RTOS) || defined(SPRT_EMBOX_USER) || defined(SPRT_TAU)
 
 // clang-format off
 // priorities (highest to lowest)
@@ -118,7 +118,7 @@ void vsyslog(int __priority, const char *__format, va_list __ap);
 
 __SPRT_END_DECL
 
-#endif // SPRT_WASM || SPRT_HOSTED_RTOS || SPRT_EMBOX_USER
+#endif // SPRT_WASM || SPRT_HOSTED_RTOS || SPRT_EMBOX_USER || SPRT_TAU
 
 #endif
 
