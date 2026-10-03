@@ -78,6 +78,10 @@ struct SP_PUBLIC Layout {
 	String getDownloadDir() const; // <cache>/downloads
 };
 
+// Absolute path with symlinks resolved, or the path unchanged when it does not exist. User-given
+// paths go through it before the build changes into the project directory.
+SP_PUBLIC String getCanonicalPath(StringView path);
+
 } // namespace stappler::xenolith::installer
 
 #endif // UTILS_INSTALLER_CORE_SRC_SPIDIRS_H_

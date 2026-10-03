@@ -32,7 +32,7 @@
 #include "SPMakefileProject.h" // makefile::loadProject
 #include "SPMakefileBuilder.h" // makefile::runBuild, makefile::BuildConfig
 
-#include <stdlib.h> // getenv / setenv / unsetenv / realpath: no runtime wrapper exists
+#include <stdlib.h> // getenv / setenv / unsetenv: no runtime wrapper exists
 #include <unistd.h> // chdir
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
@@ -92,15 +92,6 @@ StringView getTargetBase(StringView target) {
 	return reader.readUntil<StringView::Chars<'+'>>();
 }
 
-// There is no runtime equivalent of realpath (the make engine falls back to libc for it too), and
-// the build needs an absolute project dir for `cd` and for the reported artifact path.
-String getCanonicalPath(StringView path) {
-	char buf[4_KiB];
-	if (::realpath(toString(path).data(), buf)) {
-		return toString(StringView(buf));
-	}
-	return toString(path);
-}
 
 String readMakeVariable(makefile::Makefile *mk, StringView name, makefile::ErrorReporter &err) {
 	mem_std::String raw;
