@@ -193,7 +193,10 @@ Application libraries on top of Xenolith Runtime:
 * **Other** — `stappler_zip` (self-contained ZIP reader/writer, zlib the only dependency),
   `stappler_filesystem`, `stappler_git` (a Git Smart HTTP v2 client), `stappler_makefile` (the
   GNU-make-compatible engine behind `xlmake`), `stappler_wasm` (WebAssembly guest code via WAMR),
-`stappler_vstore` (a relocatable 32-bit addressed arena with a write barrier and an undo journal).
+`stappler_vstore` (a relocatable 32-bit addressed arena with a write barrier and an undo journal),
+`stappler_flow_value`, `stappler_flow`, `stappler_flow_ops` and `stappler_flow_codegen` (typed records over that
+arena, an execution graph with an interpreter and a resumable machine, its standard operations, and a generator that
+writes a graph out as a C++ unit).
 
 The memory management model is based on two interfaces: memory pools (`mem_pool`) and standard
 allocation (`mem_std`).

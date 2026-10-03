@@ -81,6 +81,7 @@ CLI = [
     ("tests/stappler", "stapplertest", [], True),
     ("tests/particles", "particlestest", [], True),
     ("tests/vstore", "vstoretest", [], True),
+    ("tests/flow", "flowtest", [], True),
     ("tests/tess", "tesstest", ["golden"], False),
     ("tests/tess", "tesstest", ["raster-golden"], False),
     ("tests/tess", "tesstest", ["strokes"], False),
@@ -94,13 +95,15 @@ CLI = [
 # iteration, with them the complete sweeps (minutes rather than seconds).
 GATE_ARGS = {
     "vstoretest": ["--full"],
+    "flowtest": ["--full"],
 }
 
 # Which console harnesses a directory owes. First match wins, so the specific paths lead.
 OWES = [
     ("stappler/tess", ["tesstest"]),
     ("stappler/vg", ["tesstest", "stapplertest"]),
-    ("stappler/vstore", ["vstoretest"]),
+    ("stappler/vstore", ["vstoretest", "flowtest"]),
+    ("stappler/flow", ["flowtest"]),
     ("runtime/libc_impl", ["libctest", "runtimetest"]),
     ("runtime", ["runtimetest", "libctest"]),
     ("stappler", ["stapplertest"]),
@@ -144,6 +147,7 @@ COST = {
     "window/frame-request-check.py": 34, "window/label-bounds-check.py": 27,
     "gittest": 19, "computetest": 6, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
     "uilayouttest": 1, "particlestest": 1, "vstoretest": 5, "vstoretest --full": 200,
+    "flowtest": 1, "flowtest --full": 1,
 }
 
 # Window checks that start a binary other than tests/window's testapp: (project, binary). The runner
