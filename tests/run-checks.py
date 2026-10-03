@@ -147,7 +147,7 @@ COST = {
     "window/frame-request-check.py": 34, "window/label-bounds-check.py": 27,
     "gittest": 19, "computetest": 6, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
     "uilayouttest": 1, "particlestest": 1, "vstoretest": 5, "vstoretest --full": 200,
-    "flowtest": 1, "flowtest --full": 1,
+    "flowtest": 13, "flowtest --full": 36,
 }
 
 # Window checks that start a binary other than tests/window's testapp: (project, binary). The runner

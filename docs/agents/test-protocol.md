@@ -18,7 +18,7 @@ tests/run-checks.py --list           # the plan, without running it
 
 | Tier | What it runs | Cost here | When |
 |---|---|---|---|
-| `console` | `runtimetest`, `libctest`, `localetest`, `uilayouttest`, `stapplertest`, `particlestest`, `vstoretest`, `flowtest` (reduced) | **12 s**, 3253 assertions | after any edit under `runtime/` or `stappler/` |
+| `console` | `runtimetest`, `libctest`, `localetest`, `uilayouttest`, `stapplertest`, `particlestest`, `vstoretest`, `flowtest` (reduced) | **14 s**, 6743 assertions | after any edit under `runtime/` or `stappler/` |
 | `fast` (default) | `console`, plus the harnesses the changed directories owe, plus the window checks named after the changed files | 20 s – 2 min | after an edit, before the next one |
 | `suite window` | every headless window check | 226 s at `-j4` (29 checks, before `particles-check`) | when the work is in `xenolith/renderer/ui` |
 | `full` | everything above plus `gittest`, `thirdpartytest`, `remotetest`, `tesstest`'s two goldens, `vstoretest --full` and `flowtest --full` | 223 s at `-j4`, 124 s at `-j8` | **before a commit** |

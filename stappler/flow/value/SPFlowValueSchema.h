@@ -524,10 +524,10 @@ protected:
 // data-driven one are written the same way round.
 #define SP_FLOW_VALUE_ENUM(reg, nameLit, ...) \
 	([&]() { \
-		const ::stappler::flow::value::EnumMemberDef _xsMembers[] = {__VA_ARGS__}; \
+		const ::stappler::flow::value::EnumMemberDef _spMembers[] = {__VA_ARGS__}; \
 		return (reg).createEnum(::stappler::StringView(nameLit), \
-				::stappler::SpanView<::stappler::flow::value::EnumMemberDef>(_xsMembers, \
-						sizeof(_xsMembers) / sizeof(_xsMembers[0]))); \
+				::stappler::SpanView<::stappler::flow::value::EnumMemberDef>(_spMembers, \
+						sizeof(_spMembers) / sizeof(_spMembers[0]))); \
 	}())
 
 // A lambda rather than a compound literal: `(const FieldDef[]){...}` is C99 and only a clang
@@ -535,10 +535,10 @@ protected:
 // initializer for no reason.
 #define SP_FLOW_VALUE_COMPONENT(reg, nameLit, ...) \
 	([&]() { \
-		const ::stappler::flow::value::FieldDef _xsFields[] = {__VA_ARGS__}; \
+		const ::stappler::flow::value::FieldDef _spFields[] = {__VA_ARGS__}; \
 		return (reg).createNative(::stappler::StringView(nameLit), \
-				::stappler::SpanView<::stappler::flow::value::FieldDef>(_xsFields, \
-						sizeof(_xsFields) / sizeof(_xsFields[0]))); \
+				::stappler::SpanView<::stappler::flow::value::FieldDef>(_spFields, \
+						sizeof(_spFields) / sizeof(_spFields[0]))); \
 	}())
 
 } // namespace stappler::flow::value

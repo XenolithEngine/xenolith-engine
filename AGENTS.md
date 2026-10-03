@@ -64,7 +64,7 @@ directory rather than overwriting each other.
 green.** → [The ready-made test projects](docs/agents/test-projects.md)
 
 **An edit owes `tests/run-checks.py`, a commit owes `tests/run-checks.py full`.** The first picks the
-harnesses the diff can break (12 s for the console ones); the second is the gate, four minutes at
+harnesses the diff can break (14 s for the console ones); the second is the gate, four minutes at
 `-j4`. Every headless check may run in parallel — measured, not assumed. →
 [The test protocol](docs/agents/test-protocol.md)
 

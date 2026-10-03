@@ -1,0 +1,104 @@
+# The flow generator: a graph as C++
+
+`stappler_flow_codegen` (namespace `stappler::flow::codegen`) writes a built
+[flow graph](flow-graph.adoc) out as a C++ unit, and `stappler_flow` loads and runs it. Sources:
+[SPFlowCodegen.h](../../../stappler/flow/codegen/SPFlowCodegen.h),
+[SPFlowCodegenTool.h](../../../stappler/flow/codegen/SPFlowCodegenTool.h),
+[SPFlowCompiled.h](../../../stappler/flow/SPFlowCompiled.h) (a graph as constants, its loader, the
+run over it, the door a unit's own step builds),
+[SPFlowFast.h](../../../stappler/flow/SPFlowFast.h) (the fast store),
+[SPFlowEngine.h](../../../stappler/flow/SPFlowEngine.h) (the executor interface),
+[utils/xlgen](../../../utils/xlgen/main.cpp) (the tool). Tests: `flowtest interp-oracle codegen-emit
+codegen-synth codegen-identity codegen-exact-arena codegen-exact-fast codegen-ops flow-codegen`.
+
+## The contract
+
+A unit is worth having only if its run cannot be told apart from the interpreter's, so "cannot be
+told apart" is stated as levels, and each level is what the oracle (`tests/flow/check/run_oracle.h`)
+compares:
+
+* **Level A - the observable run.** The same `RunReport` (outcome, step and sweep counts, the
+  execution log entry by entry, the diagnostics), the same records of every node in every activation,
+  the same activation tree, and with a scene, the same scene image byte for byte.
+* **Level B - the store.** Level A, and the run arena's image byte for byte after the run and after
+  every unit of work (two engines stepped side by side), the same ladder of versions under every
+  rollback quantum, and an image saved at a pause by one engine carried to the same end by the other.
+
+A unit over the arena store promises level B. Over the fast store it promises level A: there is no
+run image to compare. Time and host addresses are in no level.
+
+## What a unit is
+
+A unit is what the build settled, as data, plus one function per node that decides nothing:
+
+* `<name>.gen.h` - `constexpr` tables of the built graph's own row types (nodes, data and exec edges,
+  slices, scopes, parallel blocks), with every pointer replaced by the name it was resolved from; the
+  constants and the settings as CBOR; the scene and extension contracts unbound; optionally the asset
+  itself (`embedAsset`); and the identity block;
+* `<name>.gen.cpp` (or several parts under `split`) - `step<N>` for every node, which builds the door
+  over the unit's tables with the node index a compile-time constant and calls the operation's body by
+  its inline name, and the table of entry points per store (arena and fast, over every arena kind).
+
+The identity says what the unit was written against: the asset's content hash, the hash of the unit's
+own text, `interp.NodeState`'s schema hash, every operation with its signature hash and its record
+schema's hash, the frame layout, the blocks' policies, and the enum families a node names. Loading
+(`CompiledGraph::load`, `StaticGraph<Tables>`) resolves operations by name and checks all of it; each
+kind of drift is its own code (`CodegenOpDrift`, `CodegenSchemaDrift`, `CodegenLayoutDrift`), and a
+unit that fails any is not loaded at all. A field offset folded into a step is safe for one reason,
+and it is checked: the schema hash covers every offset.
+
+A unit is compiled for one run environment (`EmitOptions::env`, `envInclude`), and its steps serve
+runs in that environment only; in any other the machine performs the nodes through the registry. The
+unit's namespace is `EmitOptions::unitNamespace` (by default `stappler::flow::gen`), and the text names
+the kernel from inside `stappler` (`flow::`, `flow::value::`, `flow::ops::inl::`), so a unit compiles
+in whatever namespace there it is written into.
+
+## The generator
+
+`codegen::emit(graph, asset, ops, options, out)` writes the files as text. Every byte is a function
+of the input - the same graph, registry and options give the same text on every machine - and
+`Emitted::textHash`, which the unit also carries, is the hash of the whole unit with its own literal
+blanked. A committed unit is proved fresh by regenerating it and comparing one number. The generator
+takes the built graph and not the asset, so a unit cannot disagree with the interpreter about the
+shape of the graph: it was copied from the same object.
+
+`EmitOptions::bodyIncludes` names the headers with the operation bodies a unit calls by name
+(`SPFlowOpsInline.h` for the standard library); a missing one is a compile error naming the call,
+never a silent fallback. `split` writes the code across several sources, for a graph a tool produced:
+each part performs a range of nodes and the first dispatches by range. `gpu` writes the compute
+shader of every parallel block the graph gives the GPU.
+
+Running a unit is the same machine as the interpreter over the unit's rows: `CompiledRunT`/
+`CompiledEngineT` over the arena store, `CompiledFastRunT`/`CompiledFastEngineT` over the fast store,
+and `CompiledQuietEngineT` with no execution log at all - what a shipped program holds.
+
+## The tool
+
+`utils/xlgen` is `flow::codegen::runTool` with the standard operations:
+
+----
+xlgen --out <dir> [--name <id>] [--ops core] [--split <n>] [--embed-asset] [--gpu]
+      [--env <name>] [--env-include <header>] [--namespace <ns>] [--check] <graph.json>...
+----
+
+One unit per file, named `--name` or after the file's stem. A graph is built unbound - a unit binds to
+a scene where it is loaded. Refusals are printed as numbers. `--check` writes nothing and exits with
+the number of files that are not what it would write, which is the shape a CI step wants.
+
+A program with operation families, a run environment or words of its own builds its own tool:
+`ToolOptions` lists the families (`--ops` words, their registration, their body headers), the default
+environment and namespace, and the function that writes a refusal before it is printed; the rest is
+`runTool(argc, argv, options)`.
+
+## The committed corpus
+
+`tests/flow/codegen/gen` holds a unit for every case of the harness's corpus (38 hand-written graphs)
+and for 12 generated shapes, with a manifest naming them; `flowtest --emit=tests/flow/codegen/gen
+codegen-emit` writes them, and every other run regenerates each in memory and compares the number.
+`tests/flow/gen/flow_arith` is the unit `flow-codegen` owns (`--emit=tests/flow/gen flow-codegen`).
+
+## Verification
+
+`flowtest --full`, which holds every unit to the interpreter at level B (`codegen-exact-arena`),
+the fast store at level A (`codegen-exact-fast`), each node's call path (`codegen-ops`) and the
+loader's refusals (`codegen-identity`).

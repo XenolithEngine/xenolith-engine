@@ -28,7 +28,8 @@ using namespace stappler;
 
 // Sections of the stappler_flow suite, run in this order. With no section names every section
 // runs; `--full` runs the complete sweeps, and `--emit=<dir>` rewrites the committed units:
-// `flowtest --emit=tests/flow/gen flow-codegen`, then rebuild.
+// `flowtest --emit=tests/flow/gen flow-codegen` (or `--emit=tests/flow/codegen/gen codegen-emit`
+// for the corpus), then rebuild.
 struct TestEntry {
 	sprt::StringView name;
 	void (*fn)();
@@ -39,6 +40,44 @@ static const TestEntry s_testList[] = {
 	{"flow-run", &stappler::performFlowRunTests},
 	{"flow-scene", &stappler::performFlowSceneTests},
 	{"flow-codegen", &stappler::performFlowCodegenTests},
+	{"var-cast", &stappler::performVarCastTests},
+	{"schema-layout", &stappler::performSchemaLayoutTests},
+	{"schema-scalar", &stappler::performSchemaScalarTests},
+	{"schema-blob", &stappler::performSchemaBlobTests},
+	{"schema-spans", &stappler::performSchemaSpansTests},
+	{"schema-migrate", &stappler::performSchemaMigrateTests},
+	{"value-types32", &stappler::performValueTypes32Tests},
+	{"schema-enums", &stappler::performSchemaEnumsTests},
+	{"op-registry", &stappler::performOpRegistryTests},
+	{"graph-locals", &stappler::performGraphLocalsTests},
+	{"graph-asset", &stappler::performGraphAssetTests},
+	{"graph-validate", &stappler::performGraphValidateTests},
+	{"graph-build", &stappler::performGraphBuildTests},
+	{"graph-scope", &stappler::performGraphScopeTests},
+	{"graph-scene", &stappler::performGraphSceneTests},
+	{"parallel-build", &stappler::performParallelBuildTests},
+	{"graph-enum-family", &stappler::performGraphEnumFamilyTests},
+	{"graph-settings", &stappler::performGraphSettingsTests},
+	{"graph-extensions", &stappler::performGraphExtensionsTests},
+	{"ops-core", &stappler::performOpsCoreTests},
+	{"ops-numeric", &stappler::performOpsNumericTests},
+	{"parallel-classify", &stappler::performParallelClassifyTests},
+	{"interp-local", &stappler::performInterpLocalTests},
+	{"interp-dataflow", &stappler::performInterpDataflowTests},
+	{"interp-exec", &stappler::performInterpExecTests},
+	{"interp-stall", &stappler::performInterpStallTests},
+	{"interp-deadlock", &stappler::performInterpDeadlockTests},
+	{"interp-stepping", &stappler::performInterpSteppingTests},
+	{"interp-loop", &stappler::performInterpLoopTests},
+	{"interp-breakpoint", &stappler::performInterpBreakpointTests},
+	{"interp-step-rollback", &stappler::performInterpStepRollbackTests},
+	{"interp-oracle", &stappler::performInterpOracleTests},
+	{"codegen-emit", &stappler::performCodegenEmitTests},
+	{"codegen-synth", &stappler::performCodegenSynthTests},
+	{"codegen-identity", &stappler::performCodegenIdentityTests},
+	{"codegen-exact-arena", &stappler::performCodegenExactArenaTests},
+	{"codegen-exact-fast", &stappler::performCodegenExactFastTests},
+	{"codegen-ops", &stappler::performCodegenOpsTests},
 };
 
 int main(int argc, const char *argv[]) {

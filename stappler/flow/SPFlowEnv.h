@@ -23,8 +23,7 @@ THE SOFTWARE.
 #ifndef STAPPLER_FLOW_SPFLOWENV_H_
 #define STAPPLER_FLOW_SPFLOWENV_H_
 
-#include "SPFlowDiag.h"
-#include "SPFlowValueSchema.h"
+#include "SPFlow.h"
 
 // What a run is executed in, besides its graph and its own store: the scene its operations read and
 // write, and where its diagnostics go. A run's environment is a policy, carried by the local store

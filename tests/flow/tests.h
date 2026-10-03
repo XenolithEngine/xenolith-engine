@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define TESTS_FLOW_TESTS_H_
 
 #include "SPCommon.h"
-#include "SPFlowValue.h"
+#include "SPFlowInterp.h"
 
 #include <sprt/runtime/stream.h>
 
@@ -71,11 +71,57 @@ inline StringView s_emitDir;
 
 namespace STAPPLER_VERSIONIZED stappler {
 
+// The kind most sections run on: it announces its writes and keeps a shadow copy to prove the
+// barrier had no holes. In a release build it is TrackedArena. A section about the kinds names them
+// directly. Runs are in the kernel's own environment, with no scene.
+using Arena = flow::value::ShadowArena;
+using LocalStore = flow::LocalStoreT<Arena, flow::RuntimeGraph, flow::NoEnv>;
+using Interpreter = flow::InterpreterT<Arena, flow::NoEnv>;
+using RunConfig = flow::RunConfigT<Arena, flow::NoEnv>;
+
 void performFlowBuildTests();
 void performFlowRunTests();
 void performFlowSceneTests();
 void performFlowCodegenTests();
 
+void performVarCastTests();
+void performSchemaLayoutTests();
+void performSchemaScalarTests();
+void performSchemaBlobTests();
+void performSchemaSpansTests();
+void performSchemaMigrateTests();
+void performValueTypes32Tests();
+void performSchemaEnumsTests();
+void performOpRegistryTests();
+void performGraphLocalsTests();
+void performGraphAssetTests();
+void performGraphValidateTests();
+void performGraphBuildTests();
+void performGraphScopeTests();
+void performGraphSceneTests();
+void performParallelBuildTests();
+void performGraphEnumFamilyTests();
+void performGraphSettingsTests();
+void performGraphExtensionsTests();
+void performOpsCoreTests();
+void performOpsNumericTests();
+void performParallelClassifyTests();
+void performInterpLocalTests();
+void performInterpDataflowTests();
+void performInterpExecTests();
+void performInterpStallTests();
+void performInterpDeadlockTests();
+void performInterpSteppingTests();
+void performInterpLoopTests();
+void performInterpBreakpointTests();
+void performInterpStepRollbackTests();
+void performInterpOracleTests();
+void performCodegenEmitTests();
+void performCodegenSynthTests();
+void performCodegenIdentityTests();
+void performCodegenExactArenaTests();
+void performCodegenExactFastTests();
+void performCodegenOpsTests();
 } // namespace stappler
 
 #endif /* TESTS_FLOW_TESTS_H_ */

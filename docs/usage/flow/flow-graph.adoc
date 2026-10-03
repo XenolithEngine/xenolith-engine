@@ -1,0 +1,178 @@
+# The flow graph kernel
+
+`stappler_flow` (namespace `stappler::flow`): operations and their registry, the graph document, the
+build, the machine that runs a graph over two kinds of store, and the interpreter. Its standard
+operations are `stappler_flow_ops` (`stappler::flow::ops`), and a built graph written out as C++ is
+[the generator](flow-codegen.adoc). Values and records are [the value layer](flow-values.adoc).
+Sources: [SPFlowOp.h](../../../stappler/flow/SPFlowOp.h),
+[SPFlowAsset.h](../../../stappler/flow/SPFlowAsset.h),
+[SPFlowRuntime.h](../../../stappler/flow/SPFlowRuntime.h),
+[SPFlowContext.h](../../../stappler/flow/SPFlowContext.h),
+[SPFlowMachine.h](../../../stappler/flow/SPFlowMachine.h),
+[SPFlowLocal.h](../../../stappler/flow/SPFlowLocal.h),
+[SPFlowFast.h](../../../stappler/flow/SPFlowFast.h),
+[SPFlowInterp.h](../../../stappler/flow/SPFlowInterp.h),
+[SPFlowEngine.h](../../../stappler/flow/SPFlowEngine.h),
+[SPFlowEnv.h](../../../stappler/flow/SPFlowEnv.h),
+[SPFlowDiag.h](../../../stappler/flow/SPFlowDiag.h),
+[SPFlowInstantiate.h](../../../stappler/flow/SPFlowInstantiate.h),
+[SPFlowOps.h](../../../stappler/flow/ops/SPFlowOps.h),
+[SPFlowOpsInline.h](../../../stappler/flow/ops/SPFlowOpsInline.h). Tests: `flowtest op-registry
+graph-locals graph-asset graph-validate graph-build graph-scope graph-scene graph-enum-family
+graph-settings graph-extensions parallel-build ops-core ops-numeric parallel-classify interp-local
+interp-dataflow interp-exec interp-stall interp-deadlock interp-stepping interp-loop
+interp-breakpoint interp-step-rollback interp-oracle flow-build flow-run flow-scene`.
+
+## Operations
+
+An operation is declared once, as an `OpDef`, and registered into an `OpRegistry`: its name, its
+data inputs and outputs (`PinDesc`: name, type, element chain, subtype, default, `PinRole`), whether
+it takes an exec input, its exec outputs and which of them open a scope (`scopeExecOut`), its node
+settings (`SettingDesc`), the record of locals it keeps between turns, its `OpFlags`
+(`ReadsScene`, `WritesScene`, `HostCall`, `Infallible`), its `OpParallel` class, and its body.
+
+The body is a template over the door (`template <typename Ctx> Status fn(Ctx &)`), registered twice
+from one identifier by `SP_FLOW_OPS_BODY`: as the function pointer the interpreter calls, and as the
+template's name (`OpDef::inlineName`, spelled from inside `stappler`, e.g. `flow::ops::inl::addInt`)
+that a generated unit calls directly. One body, two instantiations, so an operation cannot mean one
+thing interpreted and another compiled.
+
+Registration validates the declaration and refuses it with a numeric diagnostic: an empty name, a
+duplicate pin, a default that does not fit its pin, a role the type cannot carry, a parallel class
+the flags contradict (a `Pure` operation with exec pins, a `SceneWrite` one without a target). The
+signature hash covers the name, the pins and the class, and not the flags or the body names.
+
+`stappler_flow_ops` registers the standard library with `registerCoreOps`: flow control (`flow.*`),
+arithmetic and comparison over every scalar width (`math.*`, `compare.*`), vectors, strings, value
+literals, the scene family (`scene.*`, reached through the run environment), waiting (`wait.*`,
+`await.*`), parallel blocks and their collectors (`par.*`), and the shader forms the GPU lowering
+reads. `registerCoreComponents` adds the records those operations keep in the scene.
+
+The scene family and the waiting operations are sequenced (exec in, `then` out) rather than pure: a read
+of mutable state that ran as soon as its data was ready would run before the write it was written
+after. Integer arithmetic wraps modulo 2^64 (`math.addInt`, `math.mulInt` compute through `uint64_t`):
+signed overflow is undefined, and a graph is data an author types. Every operation declares its
+parallel class beside its flags; `parallel-classify` holds the table.
+
+## The graph document
+
+`GraphAsset` is a graph as it is written down: nodes with their constant parameters and settings,
+edges, the scene and extension declarations, and an opaque `meta` section an editor keeps. Loading
+canonicalizes - nodes in ascending id order, edges in an order derived from their endpoints - so two
+files that differ only in record order load into the same asset, build into the same graph and run
+identically, and `save -> load -> save` is byte-identical.
+
+A file opens with an envelope, `{"__meta": {"kind": "graph", "version": 1, "generator": "..."}}`;
+`formatVersion` is still read from files written before it. The generator names the program that
+wrote the file, is kept as read and written back, and is set by a host with `setGenerator`.
+`getContentHash()` is a hash over the canonical CBOR of `save()`, envelope included; a generated unit
+records it.
+
+Loading is structure only: unknown keys, malformed records, duplicate ids. Whether an edge names a
+node that exists and whether the types meet is the build's question.
+
+## The build
+
+`RuntimeGraph::build(asset, ops, ...)` turns an asset into the form the machine runs, and every
+decision a run would otherwise make is made here, once:
+
+* every operation resolved, every pin resolved, every edge's `CastRule` chosen by the value layer's
+  matrix - nothing consults the matrix at run time;
+* the constants decoded, the settings validated and canonicalized;
+* the scopes: which nodes make up a loop body or a parallel branch is derived from the exec edges
+  once (`ScopeKind::Loop`, `ScopeKind::Parallel`), so the run makes no structural decisions;
+* the parallel blocks: what each branch writes, which collectors read it, what the block queries,
+  and whether every operation in the body is allowed there by its class;
+* the contracts: the records, fields, scene extensions and named entities each node names, checked
+  against the asset's declarations without a scene, and bound to a scene's registry when a host
+  passes one (`build(asset, ops, registry)`, `bindScene`, `bindNamed`).
+
+A refusal is a numeric diagnostic with the asset's node, pin, edge or setting as its locus. When
+`build` returns `Ok`, nothing may refuse the graph for a reason of substance any more. A graph is
+code, not state: no byte of it lives in an arena, so a rollback restores what the operations did
+without touching what the author did, and a hot swap replaces the whole runtime form at once.
+
+## The machine
+
+`MachineT<Graph, Local, Trace>` is the walk, written once, over how the graph is represented (the
+built `RuntimeGraph`, or a generated unit's `CompiledGraph`) and where the run's records live (the
+arena store or the fast store). `InterpreterT<A, Env>` is that machine over the built graph and the
+arena store with the execution log written; a generated unit's run is the same machine over the
+unit's rows. What a policy has to answer is stated once as `requires`-expressions
+(`SPFlowStatic.h`).
+
+The rules the walk keeps:
+
+* **Execution is data.** With the arena store, after any unit of work the complete state of the run
+  is the bytes of its arena: the activation tree, the ready front, the stalled list and the counters
+  are in a run root the arena holds (`Arena::userRoot`), and every node's record and
+  `interp.NodeState` sit in a frame at a build-time offset. A run can be paused, saved, adopted into
+  another arena (`attach`) and carried on to the same end. The execution log is the one exception: no
+  operation reads it, so it lives on the host.
+* **A value lives where it was produced.** An input is read from the producer's record through the
+  edge; nothing is copied to read a string or an array, and a node inside a loop finds a producer
+  outside it by walking up the activation tree.
+* **No type decisions at run time.** The edge carries its cast rule; a scene binding carries its
+  descriptor.
+* **An exec output that did not fire is a normal end of a branch**, not a deadlock. A deadlock is a
+  node that holds an exec token and never gets the values it needs.
+* **A scope is static, an activation is dynamic.** Each loop turn or parallel branch is an
+  activation with its own frame.
+
+`run()` is `begin()` followed by `finish()`, and `finish()` is `while (stepOnce())` around the
+breakpoint tests - there is one loop. `stepBack()` undoes to the last version boundary; `peekNext()`
+names the unit the next `stepOnce()` performs; breakpoints and watchpoints are host-side and survive
+a rollback. `RunConfig` carries the ceilings (`maxSteps`, `maxActivations`), the journal and the
+rollback quantum.
+
+### Rollback
+
+With a [journal](../data/vstore-journal.adoc) a version boundary closes over every store attached to
+it. How often one is taken is `RollbackQuantum`: `Step` (before every unit - what a debugger needs),
+`Failable` (before a unit whose operation may refuse; `OpFlags::Infallible` is the hint) and `Run`
+(before the run). A failing operation takes back everything done since the last boundary, and the
+log is truncated to match. Rolling back further than the failing unit is sound - the store lands on a
+state it really had - which is why `Infallible` can be a hint. Without a journal a failing operation
+ends the run (`RunOutcome::OpError`) and leaves the store as it was for inspection.
+
+### The fast store
+
+`FastLocalT` keeps the frames in a scratch arena it owns (a field is read through
+`ComponentType::getField`, so there is one implementation of the field rules) and the run's
+bookkeeping in host memory. It cannot be paused into an image, attached or stepped back, and a
+journal may watch the scene but never it; everything a run computes is unchanged.
+
+## Run environments
+
+What a run is executed in besides its graph and its store - the scene its operations read and write,
+and where its diagnostics go - is a policy carried by the local store (`Local::EnvType`). `NoEnv` is a
+run with no scene: every scene door answers "no scene", and every path behind that answer is dead
+code. A host with a scene supplies its own environment of the same shape: a `Tag`, a `Scene<A>` type,
+a `SceneRef`, and `writeRunDiag`. Because the environment is a type, a scene door in a generated unit
+is a direct call, not a virtual one.
+
+The machine's templates are defined in the `.hpp` files and instantiated per environment. A module
+that brings an environment includes them and `SPFlowInstantiate.h`, and expands, inside
+`namespace stappler::flow`:
+
+[source,cpp]
+----
+#define MY_INSTANTIATE(A) SP_FLOW_INSTANTIATE_IN(A, my::SceneEnv)
+SP_FLOW_FOR_EACH_ARENA(MY_INSTANTIATE)
+----
+
+`RunEngineT<A, Env>` is the abstract executor a host holds when which machine it runs - the
+interpreter or a unit - is decided at run time.
+
+## Diagnostics
+
+Every refusal of the build, the loader and the run is a `Diag` in the `Graph` domain: a `DiagCode`,
+a `DiagDetail` (one value per sentence), a `DiagLocus` (`Node`, `Pin`, `Edge`, `Setting`, `NodeOp`,
+`Limit`, ...) and typed arguments. `DiagReport` counts what it is given and passes it on; a caller that
+wants only the verdict passes no sink. A call that takes a sink also takes, through a template, any
+container a host has specialized `DiagWriterFor<Out>` for - a host that wants its diagnostics as a
+`data::Value` of its own words specializes it for `mem_std::Value` and keeps passing its arrays.
+
+## Verification
+
+`flowtest --full` (the sections above, plus [the generator's](flow-codegen.adoc)).

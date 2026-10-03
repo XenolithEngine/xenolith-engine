@@ -1,0 +1,126 @@
+# Flow values and record schemas
+
+The value layer of the flow modules, `stappler_flow_value` (namespace `stappler::flow::value`): what
+a value is, how a record of values is laid out in a [vstore arena](../data/vstore-arena.adoc), and the
+registry of record types. Sources:
+[SPFlowValue.h](../../../stappler/flow/value/SPFlowValue.h),
+[SPFlowValueVar.h](../../../stappler/flow/value/SPFlowValueVar.h),
+[SPFlowValueBlob.h](../../../stappler/flow/value/SPFlowValueBlob.h),
+[SPFlowValueSchema.h](../../../stappler/flow/value/SPFlowValueSchema.h),
+[SPFlowValueDecl.h](../../../stappler/flow/value/SPFlowValueDecl.h),
+[SPFlowValueDiag.h](../../../stappler/flow/value/SPFlowValueDiag.h),
+[SPFlowValueHost.h](../../../stappler/flow/value/SPFlowValueHost.h). Tests: `flowtest var-cast
+value-types32 schema-layout schema-scalar schema-blob schema-spans schema-migrate schema-enums`.
+
+The layer knows no entity store, no scene, no file format and no sentence of text. That is what lets
+[the graph kernel](flow-graph.adoc) run on it alone, and what lets a host put its own entity store,
+its own files and its own words on top.
+
+## `Var`: one fixed-size value
+
+`Var` is a tagged value of a fixed size, and every variant fills the same bytes: a scalar of any
+width (`Bool`, `Int`, `UInt32`, `Int32`, `Float`, `Float32`), a vector or a colour, an `Enum` with
+the family it belongs to, an `EntityId`, a `TypeId`, and a container handle (`String`, `Bytes`,
+`Array`, `Map`) that is an address in an arena, not a host object.
+
+`VarType` is the tag. A container field also has an **element chain** (`ElementChain`): the element
+types of nested containers packed into one integer, so `Array<Array<Int>>` is one field type with a
+two-step chain rather than a recursive structure. What is not carried in a `Var` - the name of a
+field, a default, presentation hints - belongs to the field, not to the value.
+
+## The conversion matrix
+
+Whether a value of one type may reach a field or a pin of another is one function
+(`valueTypesMeet` over two `ValueShape`s) and one table of `CastRule`s: `Same`, `Widen` (nothing is
+lost - `Bool` to `Int`, `Vec2` to `Vec3`) and refusals. A caller asks the question once and stores
+the rule; nothing decides a conversion again at run time. `castVar` performs a rule under a
+`CastPolicy`: `Lossless` demands proof that the value survives (a range check, not an assumption),
+`Lossy` is the explicit narrowing an author asked for.
+
+The verdict says which half refused - the tag, the element chain or the subtype - and the caller
+names it in its own diagnostic vocabulary. The graph's build and a host's control binding both ask
+the same function; a second implementation would agree on the day it was written and on no day
+after.
+
+## Records: layout computed here, witnessed by the compiler
+
+A `ComponentType` is a record schema: `FieldDef`s in, `FieldDesc`s out, with offsets, sizes and
+alignment computed by one rule (`computeRecordSpans`). A record lives in an arena at an `Addr`, and
+every field access goes through the type: `getField`/`setField` read and write through
+`Arena::read()`/`write()` over the field's exact extent, so the write barrier sees every mutation and
+a journal can roll it back.
+
+Two rules hold for every function that touches a record:
+
+* **No pointer outlives an allocator call.** A pointer from `read()`/`write()` dies at the next
+  allocation, and a container resize is one; a handle is read by value, the allocation performed,
+  and the handle written back through a fresh `write()`.
+* **Every mutated byte comes from `Arena::write()`** over a range that covers the whole mutation.
+  Marking less is a silent corruption of a later rollback; marking more only costs journal bytes.
+
+A native C++ struct registers as a schema with the `SP_FLOW_VALUE_FIELD`/`SP_FLOW_VALUE_COMPONENT`
+macros, which pass the struct's `offsetof`/`sizeof` as a witness: if the computed layout disagrees
+with the compiler's, the registration is refused (`HostOffsetMismatch`, `HostSizeMismatch`).
+
+`decodeField`/`checkFieldWrite`/`encodeField` are the same rules split out of `getField`/`setField`,
+for a caller that already knows a field's shape - a generated unit, where the offset and the type of
+a node's record field are constants. One implementation, two entry points.
+
+### The schema hash
+
+A schema's hash covers every field's name, type, element chain, subtype **and offset**, so a schema
+whose fields moved has a different hash. That is what lets a generated unit fold a field's offset
+into its code: the unit carries the hash, and a process whose schema drifted refuses the unit at
+load. Presentation (`meta`) is outside the hash.
+
+### Migration
+
+`ComponentType::migrateInstance` copies a record from one schema to another field by field, by
+name, with the cast rules above, and reports what it did with each field (`carried`, `converted`,
+`added`, `dropped`, `rejected`, `failed`). It is what a host uses when a saved record meets a changed
+schema.
+
+## Containers: one flat block
+
+`blob::` holds strings, byte strings, arrays and maps in the arena. A blob is one flat block - above
+the arena's in-chunk payload limit the arena gives out an oversize run and this layer never notices -
+so there is no rope and no second representation. `[size, capacity)` is zero at all times, which is
+what makes a grown region a valid initial value for every element type. A map's spine is kept sorted
+by key, so a lookup is a bisection. `arrayRead` hands an array's storage to a callback as a typed
+span; nothing inside the callback may allocate in that store.
+
+## The registry
+
+`TypeRegistry` holds record types, enum families (`EnumType`: named members, values may repeat,
+names may not) and type aliases (`TypeAlias`, a name for a type with its own defaults and hints).
+They share one `TypeId` namespace, so a name taken by one kind is refused to the other two. A family
+is outside every layout - adding a member changes no record's hash - and carries a hash of its own
+for detecting drift.
+
+The registry builds types from C++ (`createNative`, `createDerived`, `createEnum`, `createAlias`).
+Reading declarations out of a file is the host's business: the layer provides the writers
+(`writeFieldSpelling`, `writeEnumSpelling`, `describe()`), and a host's reader produces the same
+declarations.
+
+## Diagnostics are numbers
+
+Every refusal is a `value::Diag` handed to a `DiagSink`: a domain (`Value`, `Graph`, `Codegen`, or a
+consumer's own from `UserDomain`), a code, a `detail` that says which sentence of that code applies, a
+severity (`Advice`, `Warning`, `Error`), a locus with up to two names and four numbers, and typed
+arguments (a name, a type, a number, a phrase, another sentence, an inner entry). Names are borrowed
+from the caller's input for the duration of `add()`. Nothing in the layer is text: a consumer turns an
+entry into its own words - a message from a string table, a dictionary for an editor - or switches on
+the numbers. `flow::writeDiagNumbers` writes an entry as a `data::Value` of those numbers, which is
+what the tests read.
+
+## What a host implements
+
+`SPFlowValueHost.h` is the whole of what a consumer may ask of a scene: `SceneDecl`/`SceneFieldDecl`
+(which records and fields a graph names), `ExtensionDecl`, `ExtensionInstance` and `ExtensionHost`
+(scene extensions and their live instances), `NamedHost` (entities known by name). An entity store
+implements them over its components; a host without one implements them over whatever it keeps.
+
+## Verification
+
+`flowtest --full var-cast value-types32 schema-layout schema-scalar schema-blob schema-spans
+schema-migrate schema-enums`, and the [vstore tests](../data/vstore-arena.adoc) under it.

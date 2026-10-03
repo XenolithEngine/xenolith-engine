@@ -25,6 +25,7 @@
 #     flowtest --full              the gate
 #     flowtest flow-run            one or several
 #     flowtest --emit=tests/flow/gen flow-codegen    rewrite the committed unit, then rebuild
+#     flowtest --emit=tests/flow/codegen/gen codegen-emit    the same for the corpus and the seeds
 #
 # Exit code is the number of failed checks (clamped to 254).
 
@@ -54,8 +55,9 @@ LOCAL_MODULES ?= \
 LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 
 # gen/ is the unit the generator wrote for the kernel's own environment, committed and proved
-# current by `flow-codegen`.
-LOCAL_SRCS_DIRS := kernel gen
+# current by `flow-codegen`; codegen/gen/ holds the units of the corpus and the seeds, proved
+# current by `codegen-emit`.
+LOCAL_SRCS_DIRS := kernel check value graph ops interp codegen gen
 LOCAL_SRCS_OBJS :=
 
 LOCAL_INCLUDES_DIRS :=
