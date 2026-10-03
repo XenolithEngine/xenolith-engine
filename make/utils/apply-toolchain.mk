@@ -46,6 +46,10 @@ else ifeq ($(TARGET_SYSTEM),Embox)
 	include $(BUILD_ROOT)/os/embox.mk
 else ifeq ($(TARGET_SYSTEM),EmboxUser)
 	include $(BUILD_ROOT)/os/embox-user.mk
+else ifeq ($(TARGET_SYSTEM),Tau)
+	include $(BUILD_ROOT)/os/tau.mk
+else ifeq ($(TARGET_SYSTEM),TauUser)
+	include $(BUILD_ROOT)/os/tau-user.mk
 else
 $(error Unknown TARGET_SYSTEM: $(TARGET_SYSTEM))
 endif
