@@ -28,6 +28,14 @@ THE SOFTWARE.
 
 #if SPRT_WINDOWS
 #include "windows/signal.cc"
+#elif SPRT_EMBOX_USER
+#include "../../core/include/__el0_syscall.h"
+
+// Another program on the same Embox: the kernel carries out the default action
+// of the signal (kill(129), A5 of the OS's EMBOX-USER-WM.md).
+static int __sprt_kill_process(__SPRT_ID(pid_t) pid, int sig) {
+	return (int)__el0_ret(__el0_kill(pid, sig));
+}
 #else
 // Nothing to talk to: a freestanding target with no process model can only report
 // that the pid does not name anything reachable.

@@ -50,10 +50,12 @@
 #define __SPRT_SYSCALL_exit            93
 #define __SPRT_SYSCALL_exit_group      94
 
-// futex: WAIT, WAKE and their BITSET forms with BITSET_MATCH_ANY, private or
-// not (there are no mappings shared between tasks). No PI, no requeue, no
-// CLOCK_REALTIME -- those answer ENOSYS (ABI doc section 6.2). The first
-// syscall that blocks by design.
+// futex: WAIT, WAKE and their BITSET forms with BITSET_MATCH_ANY. As on
+// Linux, FUTEX_PRIVATE_FLAG keys the word by this task's address; without it a
+// word in shared memory (a device's, a buffer the kernel maps in) is keyed by
+// its physical address, so the kernel and other tasks waiting on the same word
+// meet it there (A6). No PI, no requeue, no CLOCK_REALTIME -- those answer
+// ENOSYS (ABI doc section 6.2). The first syscall that blocks by design.
 #define __SPRT_SYSCALL_futex           98
 
 // Threads (K6/L3b). clone is the thread flavour only: CLONE_VM and CLONE_THREAD
@@ -70,6 +72,14 @@
 #define __SPRT_SYSCALL_nanosleep       101
 #define __SPRT_SYSCALL_clock_nanosleep 115
 #define __SPRT_SYSCALL_sched_yield     124
+
+// Ending another program (A5): the default action of the signal, there being
+// no handlers. Terminating signals end the whole program, whichever thread
+// they name; ignored ones do nothing; stop signals are EINVAL. No process
+// groups: pid <= 0 is EINVAL.
+#define __SPRT_SYSCALL_kill            129
+#define __SPRT_SYSCALL_tkill           130
+#define __SPRT_SYSCALL_tgkill          131
 
 // The cores the calling thread may run on, and pinning it (BF-44). Unpinned,
 // the mask is every core the kernel has started, and this is how
@@ -152,6 +162,6 @@
 //   case, so it answers ENOSYS; it stays out of this file until it does not.
 //
 // M3 - full POSIX profile (K8 and later):
-//    130 tkill          131 tgkill         134 rt_sigaction   135 rt_sigprocmask
-//    139 rt_sigreturn   216 mremap         233 madvise         99 set_robust_list
+//    134 rt_sigaction   135 rt_sigprocmask 139 rt_sigreturn   216 mremap
+//    233 madvise         99 set_robust_list
 //    260 wait4          261 prlimit64      sockets at 198+

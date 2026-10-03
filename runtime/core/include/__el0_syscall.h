@@ -296,6 +296,23 @@ SPRT_FORCEINLINE long __el0_uname(void *__utsname) {
 
 SPRT_FORCEINLINE long __el0_getpid(void) { return __sprt_svc0(__SPRT_SYSCALL_getpid); }
 
+// --- kill, tkill, tgkill (A5) --------------------------------------------------
+//
+// The default action of the signal and nothing more: there are no handlers on
+// the kernel side. A signal that terminates ends the whole program, whichever
+// of its threads it is aimed at; one whose default is to ignore does nothing;
+// the stop signals are EINVAL, there being no stopped state. A task that is not
+// a program (the shell, a command, the kernel) is EPERM; pid <= 0 is EINVAL,
+// there are no process groups.
+
+SPRT_FORCEINLINE long __el0_kill(long __pid, int __sig) {
+	return __sprt_svc2(__SPRT_SYSCALL_kill, __pid, __sig);
+}
+
+SPRT_FORCEINLINE long __el0_tgkill(long __pid, long __tid, int __sig) {
+	return __sprt_svc3(__SPRT_SYSCALL_tgkill, __pid, __tid, __sig);
+}
+
 // --- futex ------------------------------------------------------------------
 //
 // Linux argument order: (uaddr, op, val, timeout, uaddr2, val3). The timeout is
