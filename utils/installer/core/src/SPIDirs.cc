@@ -22,7 +22,7 @@
 
 #include "SPIDirs.h"
 
-#include <stdlib.h> // getenv: there is no runtime wrapper for the environment
+#include <stdlib.h> // getenv, realpath: there is no runtime wrapper for either
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
@@ -175,5 +175,13 @@ String Layout::getEnginesDir() const { return mergePath(data, "engines"); }
 String Layout::getEngineDir(StringView ref) const { return mergePath(getEnginesDir(), ref); }
 
 String Layout::getDownloadDir() const { return mergePath(cache, "downloads"); }
+
+String getCanonicalPath(StringView path) {
+	char buf[4_KiB];
+	if (::realpath(toString(path).data(), buf)) {
+		return toString(StringView(buf));
+	}
+	return toString(path);
+}
 
 } // namespace stappler::xenolith::installer
