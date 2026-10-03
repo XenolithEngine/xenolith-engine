@@ -27,7 +27,7 @@ MODULE_STAPPLER_FLOW_CODEGEN_SRCS_DIRS := $(STAPPLER_MODULE_DIR)/flow/codegen
 MODULE_STAPPLER_FLOW_CODEGEN_SRCS_OBJS :=
 MODULE_STAPPLER_FLOW_CODEGEN_INCLUDES_DIRS :=
 MODULE_STAPPLER_FLOW_CODEGEN_INCLUDES_OBJS := $(STAPPLER_MODULE_DIR)/flow/codegen
-MODULE_STAPPLER_FLOW_CODEGEN_DEPENDS_ON := stappler_flow
+MODULE_STAPPLER_FLOW_CODEGEN_DEPENDS_ON := stappler_flow stappler_filesystem
 
 MODULE_STAPPLER_FLOW_CODEGEN_SHARED_SPEC_SUMMARY := libstappler generator of C++ units from stappler_flow graphs
 
@@ -36,6 +36,7 @@ Module libstappler-flow-codegen writes a built graph out as a C++ unit
 - the graph as constant tables with an identity checked on load
 - one step function per node, calling operations by name
 - GPU shaders of parallel blocks
+- the generator tool's driver (runTool), around which a program is a dozen lines
 endef
 
 $(call define_module, stappler_flow_codegen, MODULE_STAPPLER_FLOW_CODEGEN)

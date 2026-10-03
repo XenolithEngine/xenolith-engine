@@ -28,6 +28,12 @@
   built from the path, and from the root every name gains a `Src_` prefix. Run it
   when the upstream icon set moves; for the current set its output is
   byte-identical to `xenolith/renderer/basic2d/icons`.
+- **`xlgen`** (`utils/xlgen/`) writes a flow graph out as a C++ unit:
+  `xlgen --out <dir> [--name <id>] [--split <n>] [--embed-asset] [--gpu] [--check] <graph.json>...`
+  for the standard operations and the kernel's own run environment; `--check` writes nothing and
+  answers whether `<dir>` already holds what it would write. A program with its own operation
+  families or environment builds its own tool around `flow::codegen::runTool`
+  ([the generator](../usage/flow/flow-codegen.adoc)).
 - **`xlmake`** (`utils/xlmake/`) is the project's GNU-make-compatible build driver
   (also a drop-in for the VSCode Makefile Tools extension); the `make` invocations
   in this document work with either.

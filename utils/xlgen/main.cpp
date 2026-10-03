@@ -20,10 +20,22 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// Compile unit for stappler_flow_codegen: the .cc files below are include-only subunits and are never
-// compiled on their own.
+// xlgen: the generator tool over the standard operations, for units compiled for the kernel's own
+// run environment (flow::NoEnv) in stappler::flow::gen. Everything but the family list is
+// flow::codegen::runTool.
 
 #include "SPCommon.h"
+#include "SPFlowCodegenTool.h"
+#include "SPFlowOps.h"
 
-#include "SPFlowCodegenEmit.cc"
-#include "SPFlowCodegenTool.cc"
+int main(int argc, const char *argv[]) {
+	using namespace stappler;
+	return perform_main(argc, argv, [&]() -> int {
+		const flow::codegen::ToolFamily families[] = {
+			{StringView("core"), &flow::ops::registerCoreOps, StringView("SPFlowOpsInline.h")},
+		};
+		flow::codegen::ToolOptions options;
+		options.families = SpanView<flow::codegen::ToolFamily>(families, 1);
+		return flow::codegen::runTool(argc, argv, options);
+	});
+}
