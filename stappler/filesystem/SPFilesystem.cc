@@ -339,7 +339,11 @@ static bool doCopyFile(const LocationInfo &fromLoc, StringView from, const Locat
 		auto fTo =
 				File::open(toLoc, to, OpenFlags::Write | OpenFlags::Create | OpenFlags::Truncate);
 		if (fFrom && fTo) {
-			BufferTemplate<mem_std::Interface> buffer(sprt::min(size_t(4_MiB), fFrom.size()));
+			auto size = fFrom.size();
+			if (size == 0) {
+				return true; // the destination is already created empty
+			}
+			BufferTemplate<mem_std::Interface> buffer(sprt::min(size_t(4_MiB), size));
 			if (io::read(io::Producer(fFrom), io::Consumer(fTo), io::Buffer(buffer)) > 0) {
 				return true;
 			}

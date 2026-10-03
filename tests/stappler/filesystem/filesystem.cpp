@@ -87,6 +87,21 @@ void performFilesystemTests() {
 	check(filesystem::remove(file), "fs: remove (regular file)");
 	check(!filesystem::exists(file), "fs: removed file is gone");
 
+	// --- copy: a file with content and an empty one (an empty source must not stall the copy) ---
+	FileInfo copySrc("xlfs_copy_src.txt", LocationCategory::Custom);
+	FileInfo copyDst("xlfs_copy_dst.txt", LocationCategory::Custom);
+	filesystem::write(copySrc, (const uint8_t *)"copy", 4);
+	filesystem::remove(copyDst);
+	check(filesystem::copy(copySrc, copyDst), "fs: copy (file with content)");
+	check(filesystem::stat(copyDst, fst) && fst.size == 4, "fs: copied file has the source size");
+	filesystem::remove(copyDst);
+	filesystem::write(copySrc, (const uint8_t *)"", 0);
+	check(filesystem::copy(copySrc, copyDst), "fs: copy (empty file)");
+	check(filesystem::stat(copyDst, fst) && fst.size == 0 && fst.type == FileType::File,
+			"fs: copied empty file exists and is empty");
+	filesystem::remove(copySrc);
+	filesystem::remove(copyDst);
+
 	// --- removal: a directory TREE (a file plus a nested subdirectory), recursively ---
 	FileInfo dir("xlfs_rmdir", LocationCategory::Custom);
 	filesystem::remove(dir, true); // drop any leftover from a previous run
