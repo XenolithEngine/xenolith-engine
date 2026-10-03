@@ -1,0 +1,204 @@
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Tau targets: aarch64-tau-none-elf (kernel, EL1) and aarch64-tau-none-elf+user
+# (modules, EL0). One LLVM runtimes build serves both: the compiler-rt builtins
+# go to both sysroots; libunwind and libc++abi, built against the sprt headers
+# with -D__TAU__, go to the user sysroot only.
+
+.DEFAULT_GOAL := all
+THIS_FILE := $(lastword $(MAKEFILE_LIST))
+MAKE_ROOT := $(dir $(realpath $(THIS_FILE)))
+
+include $(MAKE_ROOT)../common/utils/detect-platform.mk
+include $(MAKE_ROOT)../common/utils/init-shell.mk
+include $(MAKE_ROOT)../common/utils/llvm-version.mk
+
+SP_ARCH := aarch64
+SP_TARGET_CLANG := aarch64-none-elf
+TAU_ARCH_FLAGS := -march=armv8-a
+
+LIB_SRC_DIR ?= $(abspath $(MAKE_ROOT)../src)
+SP_RUNTIME_ROOT := $(abspath $(MAKE_ROOT)../..)
+HOST_DIR := $(abspath $(MAKE_ROOT)../hosts/$(HOST_ID))
+
+OUT ?= $(abspath $(MAKE_ROOT)intermediate)/aarch64-tau
+TARGETS ?= $(abspath $(MAKE_ROOT)targets)
+T_KERNEL := $(TARGETS)/aarch64-tau-none-elf
+T_USER := $(TARGETS)/aarch64-tau-none-elf+user
+
+BUILTINS := lib/clang/lib/tau/libclang_rt.builtins-$(SP_ARCH).a
+
+# Flags of the EL0 runtimes build: the libc is the sprt one, reached through
+# -isystem on the runtime include trees.
+TAU_C_FLAGS := -nostdinc -ffreestanding $(TAU_ARCH_FLAGS) \
+	-isystem $(SP_RUNTIME_ROOT)/include_libc \
+	-isystem $(SP_RUNTIME_ROOT)/include \
+	-D__TAU__
+TAU_CXX_FLAGS := -nostdinc -nostdinc++ $(TAU_ARCH_FLAGS) \
+	-isystem $(SP_RUNTIME_ROOT)/libcxx/include \
+	-isystem $(SP_RUNTIME_ROOT)/include_libc/cxx \
+	-isystem $(SP_RUNTIME_ROOT)/include_libc \
+	-isystem $(SP_RUNTIME_ROOT)/include \
+	-D__TAU__ -D__SPRT_USE_STL=0 -Wno-deprecated-declarations
+
+define TOOLCHAIN_CMAKE
+# Tau EL0 runtimes, freestanding. "Generic" pairs with the *_BAREMETAL options.
+set(CMAKE_SYSTEM_NAME Generic)
+set(CMAKE_SYSTEM_PROCESSOR $(SP_ARCH))
+set(CMAKE_SHARED_LIBRARY_SUFFIX ".so")
+set(CMAKE_SHARED_LIBRARY_PREFIX "lib")
+set(CMAKE_C_COMPILER "$(HOST_DIR)/bin/clang")
+set(CMAKE_CXX_COMPILER "$(HOST_DIR)/bin/clang++")
+set(CMAKE_ASM_COMPILER "$(HOST_DIR)/bin/clang")
+set(CMAKE_AR "$(HOST_DIR)/bin/llvm-ar")
+set(CMAKE_RANLIB "$(HOST_DIR)/bin/llvm-ranlib")
+set(CMAKE_C_COMPILER_TARGET "$(SP_TARGET_CLANG)")
+set(CMAKE_CXX_COMPILER_TARGET "$(SP_TARGET_CLANG)")
+set(CMAKE_ASM_COMPILER_TARGET "$(SP_TARGET_CLANG)")
+set(CMAKE_C_COMPILER_WORKS ON)
+set(CMAKE_CXX_COMPILER_WORKS ON)
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+set(CMAKE_C_FLAGS_INIT "$(TAU_C_FLAGS)")
+set(CMAKE_CXX_FLAGS_INIT "$(TAU_CXX_FLAGS)")
+set(CMAKE_ASM_FLAGS_INIT "$(TAU_C_FLAGS)")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "-nostdlib")
+set(CMAKE_SHARED_LINKER_FLAGS_INIT "-nostdlib")
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
+endef
+
+# $(1): TARGET_SYSTEM, $(2): include mode. The kernel keeps the compiler's own
+# headers (-nostdlibinc: stdint.h, arm_acle.h); EL0 resolves every header
+# through the sprt trees (-nostdinc).
+define TARGET_MK
+TARGET_SYSROOT := $$(patsubst %/,%,$$(dir $$(lastword $$(MAKEFILE_LIST))))
+TARGET_SYSTEM := $(1)
+TARGET_ARCH := $(SP_ARCH)
+TARGET_NAME := $(SP_TARGET_CLANG)
+# -D__TAU__ selects SPRT_TAU in include/sprt/c/bits/__sprt_def.h.
+TARGET_GENERAL_CFLAGS := --target=$(SP_TARGET_CLANG) $(2) -resource-dir $$(TARGET_SYSROOT)/lib/clang $(TAU_ARCH_FLAGS) -D__TAU__
+TARGET_GENERAL_CXXFLAGS := --target=$(SP_TARGET_CLANG) $(2) -resource-dir $$(TARGET_SYSROOT)/lib/clang $(TAU_ARCH_FLAGS) -D__TAU__
+TARGET_GENERAL_SFLAGS := --target=$(SP_TARGET_CLANG) -resource-dir $$(TARGET_SYSROOT)/lib/clang $(TAU_ARCH_FLAGS) -D__TAU__
+TARGET_GENERAL_LDFLAGS := --target=$(SP_TARGET_CLANG) -resource-dir $$(TARGET_SYSROOT)/lib/clang
+TARGET_LIB_DIR := $$(TARGET_SYSROOT)/usr/lib
+TARGET_EXEC_CFLAGS :=
+TARGET_EXEC_CXXFLAGS :=
+TARGET_EXEC_LDFLAGS :=
+TARGET_LIB_CFLAGS :=
+TARGET_LIB_CXXFLAGS :=
+TARGET_LIB_LDFLAGS :=
+endef
+
+RUNTIMES_CONFIGURE := \
+	-G "Ninja" \
+	-S $(LIB_SRC_DIR)/llvm-project/runtimes \
+	-DCMAKE_BUILD_TYPE=Release \
+	-DCMAKE_TOOLCHAIN_FILE=$(OUT)/toolchain.cmake \
+	-DCMAKE_PROJECT_INCLUDE=$(MAKE_ROOT)tau-project-include.cmake \
+	-DCMAKE_INSTALL_PREFIX=$(OUT) \
+	-DCMAKE_INSTALL_LIBDIR=$(OUT)/usr/lib \
+	-DCMAKE_INSTALL_INCLUDEDIR=$(OUT)/usr/include \
+	-DLLVM_ENABLE_RUNTIMES="compiler-rt;libunwind;libcxxabi" \
+	-DLLVM_INSTALL_TOOLCHAIN_ONLY=On \
+	-DLLVM_ENABLE_PIC=Off \
+	-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
+	-DLLVM_DEFAULT_TARGET_TRIPLE=$(SP_TARGET_CLANG) \
+	-DLLVM_HOST_TRIPLE=$(SP_TARGET_CLANG) \
+	-DCOMPILER_RT_DEFAULT_TARGET_ONLY=On \
+	-DCOMPILER_RT_BAREMETAL_BUILD=On \
+	-DCOMPILER_RT_BUILD_BUILTINS=On \
+	-DCOMPILER_RT_BUILD_SANITIZERS=Off \
+	-DCOMPILER_RT_BUILD_XRAY=Off \
+	-DCOMPILER_RT_BUILD_MEMPROF=Off \
+	-DCOMPILER_RT_BUILD_CTX_PROFILE=Off \
+	-DCOMPILER_RT_BUILD_PROFILE=Off \
+	-DCOMPILER_RT_BUILD_LIBFUZZER=Off \
+	-DCOMPILER_RT_BUILD_ORC=Off \
+	-DCOMPILER_RT_BUILD_GWP_ASAN=Off \
+	-DCOMPILER_RT_OS_DIR=tau \
+	-DCOMPILER_RT_INSTALL_PATH=$(OUT)/lib/clang \
+	-DLIBUNWIND_ENABLE_SHARED=Off \
+	-DLIBUNWIND_ENABLE_THREADS=On \
+	-DLIBUNWIND_HAS_PTHREAD_LIB=Off \
+	-DLIBUNWIND_IS_BAREMETAL=On \
+	-DLIBUNWIND_USE_COMPILER_RT=On \
+	-DLIBUNWIND_INSTALL_LIBRARY_DIR=usr/lib \
+	-DLIBCXXABI_ENABLE_SHARED=Off \
+	-DLIBCXXABI_ENABLE_THREADS=On \
+	-DLIBCXXABI_HAS_PTHREAD_LIB=Off \
+	-DLIBCXXABI_ENABLE_EXCEPTIONS=On \
+	-DLIBCXXABI_USE_LLVM_UNWINDER=On \
+	-DLIBCXXABI_USE_COMPILER_RT=On \
+	-DLIBCXXABI_BAREMETAL=On \
+	-DLIBCXXABI_ENABLE_STATIC=On \
+	-DLIBCXXABI_ENABLE_NEW_DELETE_DEFINITIONS=Off \
+	-DLIBCXXABI_INSTALL_LIBRARY_DIR=usr/lib \
+	-DLIBCXXABI_LIBCXX_INCLUDES="$(SP_RUNTIME_ROOT)/include_libc/cxx;$(SP_RUNTIME_ROOT)/libcxx/include"
+
+$(OUT) $(T_KERNEL) $(T_USER):
+	mkdir -p $@
+
+$(OUT)/toolchain.cmake: $(THIS_FILE) | $(OUT)
+	$(file >$@,$(TOOLCHAIN_CMAKE))
+
+$(OUT)/target-kernel.mk: $(THIS_FILE) | $(OUT)
+	$(file >$@,$(call TARGET_MK,Tau,-nostdlibinc))
+
+$(OUT)/target-user.mk: $(THIS_FILE) | $(OUT)
+	$(file >$@,$(call TARGET_MK,TauUser,-nostdinc))
+
+$(OUT)/.runtimes: $(OUT)/toolchain.cmake
+	rm -rf $(OUT)/runtimes-build && mkdir -p $(OUT)/runtimes-build
+	cd $(OUT)/runtimes-build && cmake $(RUNTIMES_CONFIGURE)
+	cd $(OUT)/runtimes-build && cmake --build .
+	cd $(OUT)/runtimes-build && cmake --install .
+	rm -rf $(OUT)/runtimes-build
+	touch $@
+
+# $(1): sysroot. The resource dir points at the host clang headers.
+define install_common
+	mkdir -p $(1)/lib/clang/lib/tau
+	cp -f $(OUT)/$(BUILTINS) $(1)/$(BUILTINS)
+	ln -sfn $(HOST_DIR)/lib/clang/$(SP_LLVM_VER)/include $(1)/lib/clang/include
+endef
+
+kernel: $(OUT)/.runtimes $(OUT)/target-kernel.mk | $(T_KERNEL)
+	$(call install_common,$(T_KERNEL))
+	cp -f $(OUT)/target-kernel.mk $(T_KERNEL)/target.mk
+
+user: $(OUT)/.runtimes $(OUT)/target-user.mk | $(T_USER)
+	$(call install_common,$(T_USER))
+	mkdir -p $(T_USER)/usr/lib $(T_USER)/usr/include $(T_USER)/share
+	cp -f $(OUT)/usr/lib/libunwind.a $(OUT)/usr/lib/libc++abi.a $(T_USER)/usr/lib/
+	cp -rf $(OUT)/usr/include/. $(T_USER)/usr/include/
+	if [ -d $(LIB_SRC_DIR)/simde/simde ]; then rm -rf $(T_USER)/usr/include/simde; cp -r $(LIB_SRC_DIR)/simde/simde $(T_USER)/usr/include/simde; fi
+	cp -f $(MAKE_ROOT)app-$(SP_ARCH).lds $(T_USER)/share/
+	cp -f $(OUT)/target-user.mk $(T_USER)/target.mk
+
+all: kernel user
+
+clean:
+	rm -rf $(OUT) $(T_KERNEL) $(T_USER)
+
+.PHONY: all kernel user clean

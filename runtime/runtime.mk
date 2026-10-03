@@ -333,6 +333,23 @@ MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
 endif
 
 
+ifeq ($(TARGET_SYSTEM),TauUser)
+# Tau EL0 modules: the same freestanding shape as EmboxUser -- our libc, our STL
+# headers, toolchain runtimes pulled by name. The Tau kernel target links none of
+# this; it uses the sprt header subset only.
+MODULE_RUNTIME_DEPENDS_ON += runtime_libc_impl
+MODULE_RUNTIME_PRIVATE_INCLUDES += $(TARGET_SYSROOT)/usr/include
+MODULE_RUNTIME_INCLUDES_OBJS += \
+	$(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	$(RUNTIME_MODULE_DIR)/libcxx/include \
+	$(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/lib/clang/lib/tau/libclang_rt.builtins-$(TARGET_ARCH).a
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libc++abi.a
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libunwind.a
+MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
+endif
+
+
 ifeq ($(TARGET_SYSTEM),WASM)
 MODULE_RUNTIME_DEPENDS_ON += runtime_libc_impl
 # The sysroot's usr/include carries simde (SIMD-everywhere), needed by the geom

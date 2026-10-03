@@ -130,6 +130,22 @@ MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CXXFLAGS += $(MODULE_RUNTIME_LIBC_WRAPPER_PR
 endif # ($(TARGET_SYSTEM),EmboxUser)
 
 
+ifeq ($(TARGET_SYSTEM),TauUser)
+# Freestanding Tau EL0 libc, as for EmboxUser: include_libc is the only libc.
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_COMMON_FLAGS := \
+	-ffreestanding \
+	-fbuiltin \
+	-funwind-tables \
+	-fasynchronous-unwind-tables
+
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_INCLUDES += \
+	$(RUNTIME_MODULE_DIR)/include_libc
+
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += $(MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_COMMON_FLAGS)
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CXXFLAGS += $(MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_COMMON_FLAGS)
+endif # ($(TARGET_SYSTEM),TauUser)
+
+
 ifeq ($(TARGET_SYSTEM),WASM)
 # Freestanding wasm libc, like Windows: -ffreestanding makes __STDC_HOSTED__ == 0
 # so the wrapper C units include the runtime's own public libc headers (found in
