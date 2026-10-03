@@ -39,7 +39,11 @@
 
 #if SPRT_LINUX
 #include <sprt/c/sys/__sprt_stat.h>
+// The POSIX strerror_r (int result); an explicit level keeps it declared under strict -std=c++NN.
 #undef _GNU_SOURCE
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include <string.h>
 #endif
 
