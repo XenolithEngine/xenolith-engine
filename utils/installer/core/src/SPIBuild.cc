@@ -123,7 +123,7 @@ BuildResult buildProject(StringView path, const Layout &layout, const BuildOptio
 		return result;
 	}
 
-	auto host = resolveHost(getNativeArch(), getNativeOs());
+	auto host = resolveNativeHost();
 	if (host.native.empty()) {
 		result.setError(Status::ErrorNotSupported, "no SDK host for ", getNativeArch(), "-",
 				getNativeOs());
@@ -192,6 +192,10 @@ BuildResult buildProject(StringView path, const Layout &layout, const BuildOptio
 
 		Vector<makefile::ProjectVariable> variables;
 		variables.emplace_back(makefile::ProjectVariable{StringView("STAPPLER_ROOT"), encodedRoot});
+		// The host is decided here: make's own probe asks this process for glibc, and a static
+		// CLI never has it.
+		variables.emplace_back(
+				makefile::ProjectVariable{StringView("STAPPLER_HOST"), StringView(host.native)});
 		if (target != host.native) {
 			variables.emplace_back(
 					makefile::ProjectVariable{StringView("STAPPLER_TARGET"), StringView(target)});

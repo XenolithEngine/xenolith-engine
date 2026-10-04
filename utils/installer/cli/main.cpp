@@ -192,7 +192,7 @@ static CliEnv getEnv() {
 // --- commands ---------------------------------------------------------------
 
 static int cmdDetect() {
-	auto h = resolveHost(getNativeArch(), getNativeOs());
+	auto h = resolveNativeHost();
 	if (!h.native.empty()) {
 		sprt::cout << h.native;
 		if (h.viaEmulation) {
@@ -601,7 +601,7 @@ static int cmdInstall(int argc, const char *argv[]) {
 
 	if (args.positional.empty()) {
 		// `install` with no id → provision the whole SDK: engine + native host + native target
-		auto h = resolveHost(getNativeArch(), getNativeOs());
+		auto h = resolveNativeHost();
 		if (h.native.empty()) {
 			sprt::cerr << "no SDK host for " << getNativeArch() << "-" << getNativeOs() << "\n";
 			return 1;
