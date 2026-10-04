@@ -138,6 +138,10 @@ THE SOFTWARE.
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_TAU
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_TAU
 #define SPRT_TAU __SPRT_PLATFORM_ID_TAU
+// The EL0 side, a module linking the runtime as its libc (make/os/tau-user.mk).
+#if defined(__TAU_USER__)
+#define SPRT_TAU_USER 1
+#endif
 #elif defined(__EMBOX_USER__)
 // Embox RTOS, user mode (EL0). Driven by the target-embox toolchain's `+user`
 // variant, which defines __EMBOX_USER__ and NOT __EMBOX__: none of the Embox
@@ -192,6 +196,12 @@ THE SOFTWARE.
 // side of the EL0 boundary it runs (see the note above the platform detection).
 #if SPRT_EMBOX || SPRT_EMBOX_USER
 #define SPRT_EMBOX_ANY 1
+#endif
+
+// The runtime is the libc of an EL0 process with no platform libc under it: EmboxUser
+// and Tau share the parts of their platform layers that make no system call.
+#if SPRT_EMBOX_USER || SPRT_TAU
+#define SPRT_EL0_LIBC 1
 #endif
 
 

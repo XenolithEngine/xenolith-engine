@@ -27,13 +27,14 @@
 #define __SPRT_CONFIG_HAVE_URING 0
 #endif
 
-// Module-private futex over Notification objects is not implemented yet.
+// The module-private futex over notifications and poll over the module's streams
+// (sprt_tau.h).
 #ifndef __SPRT_CONFIG_HAVE_FUTEX
-#define __SPRT_CONFIG_HAVE_FUTEX 0
+#define __SPRT_CONFIG_HAVE_FUTEX 1
 #endif
 
 #ifndef __SPRT_CONFIG_HAVE_POLL
-#define __SPRT_CONFIG_HAVE_POLL 0
+#define __SPRT_CONFIG_HAVE_POLL 1
 #endif
 
 // Process model: modules are created by the root supervisor, never by fork/exec.
