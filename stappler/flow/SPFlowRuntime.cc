@@ -1564,6 +1564,15 @@ void RuntimeGraph::adviseEagerCost(DiagReport &report) const {
 			stack.emplace_back(entry);
 		}
 	}
+	// A function's body starts at its own entries whenever it is called.
+	for (uint32_t n = 0; n < count && n < _bodyOf.size(); ++n) {
+		auto &node = _nodes[n];
+		if (_bodyOf[n] != 0 && node.op && node.dataInCount == 0 && node.execInCount == 0
+				&& !node.op->hasExecIn() && !unconditional[n]) {
+			unconditional[n] = 1;
+			stack.emplace_back(n);
+		}
+	}
 	while (!stack.empty()) {
 		auto n = stack.back();
 		stack.pop_back();
@@ -1597,8 +1606,10 @@ void RuntimeGraph::adviseEagerCost(DiagReport &report) const {
 				if (!target.op) {
 					continue;
 				}
+				// A function's return is read by its call, which is outside the body.
+				const bool returns = target.op->getFunctionRole() == FunctionRole::Return;
 				bool certain = target.op->hasExecIn() ? unconditional[consumer] != 0
-													  : useful[consumer] != 0;
+													  : (useful[consumer] != 0 || returns);
 				if (certain) {
 					useful[n] = 1;
 					changed = true;
@@ -1614,7 +1625,8 @@ void RuntimeGraph::adviseEagerCost(DiagReport &report) const {
 			continue; // it waits for a token; it costs nothing until it is asked
 		}
 
-		if (node.dataOutCount == 0 && node.execOutCount == 0) {
+		if (node.dataOutCount == 0 && node.execOutCount == 0
+				&& node.op->getFunctionRole() != FunctionRole::Return) {
 			report.reportNode(DiagSeverity::Advice, DiagCode::EagerUnused, node.id,
 					DiagText(DiagDetail::EagerUnused));
 			continue;

@@ -249,6 +249,25 @@ void performGraphFunctionLinkTests() {
 				"graph-function-link: a call node opens its function's scope");
 	}
 
+	// ---- the cost advice reads a body from its entry -------------------------------------------
+
+	{
+		Library lib;
+		lib.add(IncLibrary);
+		Linked l(StringView(DOC(R"json("nodes": [{"id": 1, "op": "flow.event"},
+				{"id": 2, "op": "fn.inc", "params": {"x": 1}}],
+			"edges": [{"kind": "exec", "from": 1, "fromPin": "then", "to": 2}],
+			"functions": [{"name": "pure", "interface": {"inputs": [{"name": "v", "type": "int"}],
+				"outputs": [{"name": "w", "type": "int"}]},
+				"nodes": [{"id": 10, "op": "fn.entry"}, {"id": 11, "op": "fn.return"}],
+				"edges": [{"kind": "data", "from": 10, "fromPin": "v", "to": 11, "toPin": "w"}]}])json")),
+				&lib);
+		check(l.ok() && !l.has(StringView("eager-unused"))
+						&& !l.has(StringView("eager-speculative")),
+				"graph-function-link: a body's entry, the values it feeds and a pure return are no "
+				"wasted work");
+	}
+
 	// ---- refusals ------------------------------------------------------------------------------
 
 	struct BadCase {
