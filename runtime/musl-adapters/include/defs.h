@@ -16,7 +16,7 @@
 // adapter SCUs below use them directly. Any target that compiles those sources
 // against musl's headers therefore has to ask for the feature set -- that is
 // every freestanding target linking runtime_musl_libc, not wasm alone.
-#if SPRT_WASM || SPRT_EMBOX_USER
+#if SPRT_WASM || SPRT_EL0_LIBC
 #define _GNU_SOURCE
 #endif
 

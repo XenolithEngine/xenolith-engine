@@ -307,7 +307,7 @@ typedef int (*backtrace_full_callback)(void *data, __SPRT_ID(uintptr_t) pc, cons
 extern "C" int backtrace_full(struct backtrace_state *state, int skip,
 		backtrace_full_callback callback, backtrace_error_callback error_callback, void *data);
 
-#if SPRT_EMBOX_USER
+#if SPRT_EL0_LIBC
 
 // EL0 on Embox has no libbacktrace, but it links libunwind, and the unwinder
 // finds the program's own PT_GNU_EH_FRAME (it is what C++ exceptions use

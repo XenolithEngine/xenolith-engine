@@ -37,7 +37,7 @@ struct SPRT_API __rmutex_data {
 // four. The wide layout below keeps it in the upper half of a 64-bit word,
 // where a four-byte compare cannot see it -- and a waiter that cannot see it
 // sleeps through an unlock and relock by the same owner.
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_EMBOX_USER
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_EL0_LIBC
 	// Futex PI Values
 	using tid_type = uint32_t;
 

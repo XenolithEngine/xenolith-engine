@@ -28,6 +28,6 @@ THE SOFTWARE.
 
 #if SPRT_WASM
 #include "wasm/syslog.cc"
-#elif SPRT_EMBOX_USER
+#elif SPRT_EL0_LIBC
 #include "embox_user/syslog.cc"
 #endif

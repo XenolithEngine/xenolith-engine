@@ -32,6 +32,6 @@ THE SOFTWARE.
 #include "wasm/termios.cc"
 #elif SPRT_WINDOWS
 #include "windows/termios.cc"
-#elif SPRT_EMBOX_USER
+#elif SPRT_EL0_LIBC
 #include "embox_user/termios.cc"
 #endif

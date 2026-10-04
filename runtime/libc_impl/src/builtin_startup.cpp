@@ -73,4 +73,8 @@ THE SOFTWARE.
 #include "embox_user/startup.cc"
 #include "embox_user/terminate.cc"
 #include "embox_user/except.cc"
+#elif SPRT_TAU
+#include "tau/startup.cc"
+#include "embox_user/terminate.cc"
+#include "embox_user/except.cc"
 #endif

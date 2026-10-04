@@ -37,7 +37,7 @@ THE SOFTWARE.
 // later milestone (wasm-port-draft.adoc §7); the skeleton only needs to compile,
 // so the entry points below are stubs.
 
-#elif SPRT_EMBOX_USER
+#elif SPRT_EL0_LIBC
 
 // setjmp/longjmp ARE real here -- musl's aarch64 pair, built into
 // runtime_musl_libc -- so this target belongs with the platform-libc branches
@@ -78,7 +78,7 @@ __SPRT_NORETURN void abort(void) __SPRT_NOEXCEPT;
 // <setjmp.h>'s jmp_buf is the sprt WRAPPER (__sprt___ext_jmp_buf: the native
 // buffer plus the CFA and the pending result), which is deliberately larger than
 // the native one -- so the comparison would be between two different things.
-#if !defined(SPRT_WINDOWS) && !defined(SPRT_WASM) && !defined(SPRT_EMBOX_USER)
+#if !defined(SPRT_WINDOWS) && !defined(SPRT_WASM) && !defined(SPRT_EL0_LIBC)
 static_assert(sizeof(jmp_buf) == sizeof(__sprt_native_jmp_buf));
 static_assert(sizeof(sigjmp_buf) == sizeof(__sprt_native_sigjmp_buf));
 #endif
@@ -131,7 +131,7 @@ static_assert(sizeof(__SPRT_ID(native_jmp_buf)) == 22 * sizeof(unsigned long),
 #endif
 
 __SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX || SPRT_EMBOX_USER
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX || SPRT_EL0_LIBC
 	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(&setjmp);
 #elif SPRT_WINDOWS
 	return get_setjmp_fn();
@@ -167,7 +167,7 @@ __SPRT_C_FUNC __SPRT_ID(sigsetjmp_fn) __SPRT_ID(get_sigsetjmp_fn)() {
 	// simply ignored (aarch64 drops the extra register). Same shape as the NuttX
 	// branch below.
 	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&setjmp);
-#elif SPRT_NUTTX || SPRT_EMBOX_USER
+#elif SPRT_NUTTX || SPRT_EL0_LIBC
 	// Same as the Embox branch above: sigjmp_buf and jmp_buf are one type, and
 	// there is no signal mask to save until K8, so the plain saver fills the same
 	// buffer and savemask is ignored (aarch64 drops the extra argument).
@@ -192,7 +192,7 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_setjmp)(int arg, __SPRT_ID(jmp_buf) buf) {
 		uintptr_t result = 0;
 	} lookup;
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX || SPRT_EMBOX_USER
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX || SPRT_EL0_LIBC
 	_Unwind_Backtrace([](struct _Unwind_Context *ctx, void *l) {
 		CFALookup *lookup = (CFALookup *)l;
 		if (--lookup->offset > 0) {
@@ -222,7 +222,7 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_sigsetjmp)(int arg, __SPRT_ID(sigjmp_buf) buf, i
 		uintptr_t result = 0;
 	} lookup;
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX || SPRT_EMBOX_USER
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX || SPRT_EL0_LIBC
 	_Unwind_Backtrace([](struct _Unwind_Context *ctx, void *l) {
 		CFALookup *lookup = (CFALookup *)l;
 		if (--lookup->offset > 0) {
@@ -256,7 +256,7 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_sigsetjmp)(int arg, __SPRT_ID(sigjmp_buf) buf, i
 }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, int ret) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX || SPRT_EMBOX_USER
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX || SPRT_EL0_LIBC
 	using jmp_buf_t = decltype(buf);
 	// TODO: Maybe, add some additional info for unwinder?
 
@@ -317,7 +317,7 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(siglongjmp)(__SPRT_ID(sigjmp_buf) buf, int ret) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX || SPRT_EMBOX_USER
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_NUTTX || SPRT_EMBOX || SPRT_EL0_LIBC
 	using jmp_buf_t = decltype(buf);
 	// TODO: Maybe, add some additional info for unwinder?
 

@@ -20,7 +20,7 @@
  * would fail. The relative includes below resolve against this file.
  */
 
-#if defined(__aarch64__) && defined(__EMBOX_USER__)
+#if defined(__aarch64__) && (defined(__EMBOX_USER__) || defined(__TAU__))
 
 #include "../musl-libc/src/string/aarch64/memcpy.S"
 #include "../musl-libc/src/string/aarch64/memset.S"

@@ -69,6 +69,11 @@ THE SOFTWARE.
 #include "embox_user/clock_gettime.cc"
 #include "embox_user/sched.cc"
 #include "embox_user/libc.h"
+#elif SPRT_TAU
+// The libc is ours, as on EmboxUser; the system reaches through libtau (sprt_tau.h).
+#include "tau/clock_gettime.cc"
+#include "tau/sched.cc"
+#include "embox_user/libc.h"
 #elif SPRT_HOSTED_RTOS
 // Both RTOS targets are hosted POSIX on their own libc, so the Linux
 // libc/sched/clock_gettime adapters apply verbatim — their <sched.h>, <time.h>,
@@ -267,6 +272,8 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
 		tl_kernel_tid = (__SPRT_ID(pid_t))__el0_gettid();
 	}
 	return tl_kernel_tid;
+#elif SPRT_TAU
+	return (__SPRT_ID(pid_t))__sprt_tau_thread_self();
 #else
 	auto t = __sprt_pthread_self_noattach_np();
 	if (t) {
@@ -589,7 +596,7 @@ int __catclose_empty(__SPRT_ID(nl_catd) catd) {
 // (Windows, wasm, Embox EL0) each answer in their own file below -- there is no
 // platform header on their include path at all, so this is a compile-time split,
 // not a runtime one.
-#if !defined(SPRT_WINDOWS) && !defined(SPRT_WASM) && !defined(SPRT_EMBOX_USER)
+#if !defined(SPRT_WINDOWS) && !defined(SPRT_WASM) && !defined(SPRT_EL0_LIBC)
 #include <sys/utsname.h>
 #include <sprt/c/sys/__sprt_utsname.h>
 
@@ -644,6 +651,10 @@ __SPRT_C_FUNC int __SPRT_ID(uname)(struct __SPRT_UTSNAME_NAME *buf) {
 #elif SPRT_EMBOX_USER
 
 #include "embox_user/uname.cc"
+
+#elif SPRT_TAU
+
+#include "tau/uname.cc"
 
 #else
 
