@@ -11,6 +11,10 @@
     XENOLITH_CLI_VERSION   install a specific release tag (cli-v0.2.0)
     XENOLITH_CLI_TRIPLE    override the asset triple (e.g. x64 CLI on ARM64 Windows)
     XENOLITH_RELEASE_BASE  download base override (mirror/testing)
+    XENOLITH_CLI_FORCE     reinstall even when the installed release is the same or newer
+
+  Running it again updates: an installed release that is already the newest is left alone, and
+  an older one is replaced. An installed CLI can also do this itself: xenolith-cli self-update.
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -47,18 +51,63 @@ if (-not $triple) {
 
 # --- pick the release -------------------------------------------------------------
 
+# A cli-v* tag or a bare version as [version], or $null when it is not a dotted run of numbers.
+function ConvertTo-CliVersion([string]$text) {
+	$v = $text -replace '^cli-v', ''
+	if ($v -notmatch '^\d+(\.\d+){0,3}$') { return $null }
+	if ($v -notmatch '\.') { $v = "$v.0" } # [version] wants at least two components
+	return [version]$v
+}
+
 # The repository carries two release lines: sdk-v* (the engine, owns the "latest" pointer) and
-# cli-v* (this tool). The CLI release is found by filtering tags, never via "latest".
+# cli-v* (this tool). The CLI release is the highest cli-v* version that is not a prerelease,
+# never "latest", and not the first in the list: that is ordered by date.
 $tag = $env:XENOLITH_CLI_VERSION
 if ($tag) {
 	if ($tag -notlike 'cli-v*') { Fail "XENOLITH_CLI_VERSION must start with 'cli-v', got '$tag'" }
 	Write-Host "Using requested release $tag"
 } else {
 	$releases = Invoke-RestMethod -Uri "$api/releases?per_page=100"
-	$rel = $releases | Where-Object { $_.tag_name -like 'cli-v*' } | Select-Object -First 1
+	$rel = $releases |
+		Where-Object { $_.tag_name -like 'cli-v*' -and -not $_.prerelease -and -not $_.draft -and (ConvertTo-CliVersion $_.tag_name) } |
+		Sort-Object { ConvertTo-CliVersion $_.tag_name } -Descending |
+		Select-Object -First 1
 	if (-not $rel) { Fail "no 'cli-v*' release found in $repo — has a CLI release been cut?" }
 	$tag = $rel.tag_name
 	Write-Host "Latest CLI release: $tag"
+}
+
+# --- compare with what is installed -----------------------------------------------
+
+$binDir = if ($env:XENOLITH_BIN_DIR) { $env:XENOLITH_BIN_DIR } else { Join-Path $HOME '.local\bin' }
+
+$installed = $null
+$installedExe = Join-Path $binDir 'xenolith-cli.exe'
+if (Test-Path $installedExe) {
+	$line = & $installedExe --version 2>$null | Select-Object -First 1
+	if ($line -match '^xenolith-cli (\S+)') { $installed = $Matches[1] }
+}
+
+if ($installed) {
+	$have = ConvertTo-CliVersion $installed
+	$want = ConvertTo-CliVersion $tag
+	if (-not $have -or -not $want) {
+		Write-Host "Replacing a local build ($installed) with $tag"
+	} elseif ($env:XENOLITH_CLI_FORCE) {
+		Write-Host "Reinstalling over $installed"
+	} elseif ($have -eq $want) {
+		Write-Host "xenolith-cli $installed is already installed in $binDir"
+		return
+	} elseif ($have -gt $want) {
+		if (-not $env:XENOLITH_CLI_VERSION) {
+			Write-Host "The installed $installed is newer than the latest release $tag; nothing to do."
+			Write-Host '(XENOLITH_CLI_FORCE=1 replaces it anyway.)'
+			return
+		}
+		Write-Host "Downgrading $installed -> $tag"
+	} else {
+		Write-Host "Updating $installed -> $tag"
+	}
 }
 
 $asset = "xenolith-cli-$triple.tar.gz"
@@ -97,7 +146,6 @@ try {
 	& $bin.FullName --version *> $null
 	if ($LASTEXITCODE -ne 0) { Fail "the downloaded $($bin.Name) does not run on this machine; nothing was replaced" }
 
-	$binDir = if ($env:XENOLITH_BIN_DIR) { $env:XENOLITH_BIN_DIR } else { Join-Path $HOME '.local\bin' }
 	New-Item -ItemType Directory -Path $binDir -Force | Out-Null
 
 	# A copy, not a symlink: creating symlinks on Windows needs developer mode or admin.

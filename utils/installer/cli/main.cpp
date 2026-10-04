@@ -22,7 +22,7 @@
 
 // Headless CLI front-end over the installer core (utils/installer/core), sharing every operation
 // with the GUI. Commands: detect, paths, config, state, verify, list, fetch, install, new, build,
-// engine-refs, engine-install.
+// engine-refs, engine-install, self-update.
 
 // Set by the Makefile from XENOLITH_CLI_VERSION (release builds stamp the cli-v* tag there);
 // absent means a local, non-release build.
@@ -42,6 +42,7 @@
 #include "SPIScaffold.h"
 #include "SPIBuild.h"
 #include "SPISettings.h"
+#include "SPISelfUpdate.h"
 
 #include "SPCommandLineParser.h"
 
@@ -61,6 +62,9 @@ struct CliArgs {
 	bool run = false;
 	bool release = false;
 	uint32_t jobs = 0;
+	String tag; // self-update: --tag <version>
+	bool check = false; // self-update: --check
+	bool force = false; // self-update: --force
 };
 
 // `--target` means two different things, so each command gets its own parser: for `install` it
@@ -127,6 +131,29 @@ static CommandLineParser<CliArgs> getBuildParser() {
 	}},
 	});
 	return parser;
+}
+
+static CommandLineParser<CliArgs> getSelfUpdateParser() {
+	return CommandLineParser<CliArgs>({
+		CliOption{.patterns = {"--check"},
+			.description = StringView("Only report whether a newer release exists"),
+			.callback = [](CliArgs &target, StringView pattern, SpanView<StringView> args) -> bool {
+		target.check = true;
+		return true;
+	}},
+		CliOption{.patterns = {"--tag <version>"},
+			.description = StringView("Install this release (cli-v0.2.0 or 0.2.0), older ones too"),
+			.callback = [](CliArgs &target, StringView pattern, SpanView<StringView> args) -> bool {
+		target.tag = toString(args[0]);
+		return true;
+	}},
+		CliOption{.patterns = {"--force"},
+			.description = StringView("Reinstall the same version, or replace a local build"),
+			.callback = [](CliArgs &target, StringView pattern, SpanView<StringView> args) -> bool {
+		target.force = true;
+		return true;
+	}},
+	});
 }
 
 // Parse the arguments that follow `<prog> <command>`.
@@ -698,6 +725,85 @@ static int cmdBuild(int argc, const char *argv[]) {
 	return r.runExitCode > 0 ? r.runExitCode : 0;
 }
 
+static int cmdSelfUpdate(int argc, const char *argv[]) {
+	CliArgs args;
+	if (!parseArgs(getSelfUpdateParser(), args, argc, argv) || !args.positional.empty()) {
+		sprt::cerr << "usage: xenolith-cli self-update [--check] [--tag <version>] [--force]\n";
+		return 2;
+	}
+
+	const StringView current(XENOLITH_CLI_VERSION);
+	const bool isRelease = !normalizeCliTag(current).empty();
+	const bool pinned = !args.tag.empty();
+
+	String tag;
+	if (pinned) {
+		tag = normalizeCliTag(args.tag);
+		if (tag.empty()) {
+			sprt::cerr << "error: '" << args.tag << "' is not a release version\n";
+			return 2;
+		}
+	} else {
+		auto latest = findLatestCliRelease();
+		if (!latest) {
+			sprt::cerr << "error: " << latest.error << "\n";
+			return 1;
+		}
+		tag = latest.tag;
+	}
+
+	sprt::cout << "installed: " << current << "\n";
+	sprt::cout << (pinned ? "requested: " : "latest:    ") << tag << "\n";
+
+	// A local build has no version to compare, so it never counts as up to date.
+	const int cmp = isRelease ? compareCliVersions(current, tag) : -1;
+
+	if (args.check) {
+		if (!isRelease) {
+			sprt::cout << "a local build: `xenolith-cli self-update --force` replaces it\n";
+		} else if (cmp < 0) {
+			sprt::cout << "update available: xenolith-cli self-update\n";
+		} else {
+			sprt::cout << "up to date\n";
+		}
+		return 0;
+	}
+
+	if (!args.force) {
+		if (!isRelease) {
+			sprt::cerr << "error: this is a local build, not a release; pass --force to replace it "
+						  "with "
+					   << tag << "\n";
+			return 1;
+		}
+		if (cmp == 0) {
+			sprt::cout << "already up to date\n";
+			return 0;
+		}
+		if (cmp > 0 && !pinned) {
+			sprt::cout << "the installed version is newer than the latest release; nothing to do\n";
+			return 0;
+		}
+	}
+	if (isRelease && cmp > 0) {
+		sprt::cerr << "downgrading " << current << " -> " << tag << "\n";
+	}
+
+	sprt::cerr << "Downloading xenolith-cli " << tag << " for " << getCliAssetTriple() << " ...\n";
+	uint64_t lastStep = maxOf<uint64_t>();
+	auto r = installCliRelease(tag, makeProgressReporter(lastStep));
+	sprt::cerr << "\n";
+	if (!r) {
+		sprt::cerr << "error: " << r.error << "\n";
+		return 1;
+	}
+	sprt::cout << "updated " << r.path << ": " << r.version << "\n";
+	if (!r.warning.empty()) {
+		sprt::cerr << "warning: " << r.warning << "\n";
+	}
+	return 0;
+}
+
 static void printUsage(StringView prog) {
 	sprt::cerr << "Xenolith SDK installer (CLI) " << XENOLITH_CLI_VERSION << "\n";
 	sprt::cerr << "Usage: " << prog << " <command> [args]\n\n";
@@ -715,17 +821,22 @@ static void printUsage(StringView prog) {
 	sprt::cerr << "  fetch <url>   Fetch a text resource (FTP or HTTPS) — raw transport test\n";
 	sprt::cerr << "  engine-refs   List the engine git branches and tags\n";
 	sprt::cerr << "  engine-install [ref]  Clone the engine (default: master, with submodules)\n";
+	sprt::cerr << "  self-update   Replace this binary with the newest (or a given) release\n";
 	sprt::cerr << "\nOptions for `install`:\n";
 	getInstallParser().describe([](StringView str) { sprt::cerr << str; });
 	sprt::cerr << "\nOptions for `new`:\n";
 	getEngineParser().describe([](StringView str) { sprt::cerr << str; });
 	sprt::cerr << "\nOptions for `build`:\n";
 	getBuildParser().describe([](StringView str) { sprt::cerr << str; });
+	sprt::cerr << "\nOptions for `self-update`:\n";
+	getSelfUpdateParser().describe([](StringView str) { sprt::cerr << str; });
 }
 
 static int run(int argc, const char *argv[]) {
 	auto prog = argc > 0 ? StringView(argv[0]) : StringView("xenolith-cli");
 	auto cmd = argc > 1 ? StringView(argv[1]) : StringView();
+
+	cleanupSelfUpdate();
 
 	if (cmd == "--version" || cmd == "-v") {
 		// The triple is what a bug report needs beyond the version: it says which binary ran.
@@ -756,6 +867,8 @@ static int run(int argc, const char *argv[]) {
 		return cmdEngineRefs();
 	} else if (cmd == "engine-install") {
 		return cmdEngineInstall(argc, argv);
+	} else if (cmd == "self-update") {
+		return cmdSelfUpdate(argc, argv);
 	}
 
 	printUsage(prog);

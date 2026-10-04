@@ -15,7 +15,8 @@ What the script does:
 1. Maps the platform to an asset triple — `aarch64-apple-macosx`, `x86_64-apple-macosx`,
    `x86_64-unknown-linux-musl` (Linux builds are musl-linked and run on any distribution) or
    `aarch64-unknown-linux-musl`.
-2. Finds the newest `cli-v*` release via the GitHub API (see below), downloads
+2. Finds the highest `cli-v*` release that is not a prerelease via the GitHub API (see below),
+   compares it with the `xenolith-cli` already in the target directory (see <<updating>>), downloads
    `xenolith-cli-<triple>.tar.gz` and its `.sha256` sidecar, and verifies the checksum.
 3. Installs the binary into `~/.local/bin` (override with `XENOLITH_BIN_DIR`) and creates an
    `xenolith-installer-cli` symlink for the pre-categories tool name.
@@ -41,6 +42,36 @@ A specific version is installed with `XENOLITH_CLI_VERSION=cli-v0.2.0` (rollback
 mirror can be supplied with `XENOLITH_RELEASE_BASE=<url>` in the spirit of the CLI's own
 `releaseSourceUrl` setting.
 
+[[updating]]
+== Updating
+
+Either installer script updates when run again. It reads `xenolith-cli --version` from the binary
+in its target directory and:
+
+* leaves it alone when it already is the chosen release, or a newer one (with no
+  `XENOLITH_CLI_VERSION` given);
+* replaces an older release, and a pinned `XENOLITH_CLI_VERSION` replaces a newer one too
+  (a downgrade, said so in the output);
+* replaces a local build (`dev`), which has no version to compare.
+
+`XENOLITH_CLI_FORCE=1` reinstalls in every case.
+
+An installed CLI updates itself the same way:
+
+```sh
+xenolith-cli self-update --check          # installed vs. latest, changes nothing
+xenolith-cli self-update                  # to the latest release
+xenolith-cli self-update --tag 0.2.0      # to a given release, older ones included
+xenolith-cli self-update --force          # reinstall, or replace a local build
+```
+
+It downloads `xenolith-cli-<triple>.tar.gz` for its own platform (the musl build on Linux),
+checks the `.sha256` sidecar, runs the new binary once, and only then puts it in place of the
+running one — atomically by `rename` on Linux and macOS; on Windows the running `.exe` is renamed
+to `xenolith-cli.exe.old`, deleted by the next run, and the `xenolith-installer-cli.exe` copy is
+refreshed. The download is staged in `.xenolith-cli-update/` beside the binary, so its directory
+must be writable. `XENOLITH_RELEASE_BASE` replaces the download base here too.
+
 After installing, provision the SDK and build a project:
 
 ```sh
@@ -65,8 +96,9 @@ This repository carries two independent release lines that must never disturb ea
 |CLI releases
 |`cli-v*`
 |The `xenolith-cli` binaries. Published with `--latest=false`, so the *latest release* pointer
- stays on the engine line; `install.sh` finds the CLI line by filtering release tags for the
- `cli-v` prefix, never via "latest".
+ stays on the engine line; the installer scripts and `self-update` find the CLI line by filtering
+ release tags for the `cli-v` prefix and taking the highest version, never via "latest" and never
+ by date.
 |===
 
 There is deliberately no compiled-in fallback SDK release in the tool: every run resolves the
