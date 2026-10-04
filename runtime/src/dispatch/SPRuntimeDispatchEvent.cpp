@@ -85,7 +85,8 @@
 // primitive -- because hosted Embox has neither epoll nor futex, and EL0 has no
 // ppoll syscall either (that is milestone M2). The two arrive at the same
 // reactor from opposite directions.
-#if SPRT_EMBOX_ANY
+// Tau takes it too, with its private futex for the idle wait.
+#if SPRT_EMBOX_ANY || SPRT_TAU
 #include "platform/embox/SPEvent-embox.cc"
 #endif
 

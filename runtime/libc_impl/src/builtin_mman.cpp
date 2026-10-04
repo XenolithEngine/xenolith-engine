@@ -28,6 +28,8 @@ THE SOFTWARE.
 #include "wasm/mman.cc"
 #elif SPRT_EMBOX_USER
 #include "embox_user/mman.cc"
+#elif SPRT_TAU
+#include "tau/mman.cc"
 #endif
 
 namespace sprt {
@@ -74,7 +76,7 @@ static MappingInfo s_mappingInfo;
 // between a bad munmap and a corrupted heap. On Windows VirtualFree does its own
 // validation, but it also cannot release part of a reservation, so there is
 // nothing to gain by dropping the bookkeeping there.
-#if SPRT_EMBOX_USER
+#if SPRT_EL0_LIBC
 static constexpr bool s_trackAnonMappings = false;
 #else
 static constexpr bool s_trackAnonMappings = true;

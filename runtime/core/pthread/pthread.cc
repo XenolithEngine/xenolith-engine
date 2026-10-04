@@ -25,7 +25,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_time.h>
 #include <sprt/c/__sprt_stdlib.h>
 
-#if SPRT_WASM || SPRT_EMBOX_ANY
+#if SPRT_WASM || SPRT_EMBOX_ANY || SPRT_TAU
 extern "C" void __sprt_malloc_thread_attach(void) __SPRT_NOEXCEPT;
 #endif
 #include <sprt/c/__sprt_sched.h>
@@ -37,6 +37,8 @@ extern "C" void __sprt_malloc_thread_attach(void) __SPRT_NOEXCEPT;
 // the umbrella header would forward to a system one that -nostdinc removed. The
 // backend is single-threaded by construction -- see its header comment (L3a).
 #include "pthread_native_embox_user.cc"
+#elif SPRT_TAU
+#include "pthread_native_tau.cc"
 #elif !defined(SPRT_WINDOWS)
 #include <pthread.h>
 
@@ -489,7 +491,7 @@ bool thread_t::registerThread() {
 		});
 	}, threadMemPool);
 
-#if SPRT_WASM || SPRT_EMBOX_ANY
+#if SPRT_WASM || SPRT_EMBOX_ANY || SPRT_TAU
 	__sprt_malloc_thread_attach();
 #endif
 

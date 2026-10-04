@@ -85,7 +85,7 @@ namespace sprt {
 __SPRT_C_FUNC int __SPRT_ID(__fpclassify)(double v) {
 #if SPRT_APPLE
 	return ::__fpclassifyd(v);
-#elif SPRT_WINDOWS || SPRT_WASM || SPRT_EMBOX_USER
+#elif SPRT_WINDOWS || SPRT_WASM || SPRT_EL0_LIBC
 	return ::__fpclassify(v);
 #elif defined(fpclassify)
 	return fpclassify(v);
@@ -94,7 +94,7 @@ __SPRT_C_FUNC int __SPRT_ID(__fpclassify)(double v) {
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(__fpclassifyf)(float v) {
-#if SPRT_APPLE || SPRT_WINDOWS || SPRT_WASM || SPRT_EMBOX_USER
+#if SPRT_APPLE || SPRT_WINDOWS || SPRT_WASM || SPRT_EL0_LIBC
 	return ::__fpclassifyf(v);
 #elif defined(fpclassify)
 	return fpclassify(v);
@@ -103,7 +103,7 @@ __SPRT_C_FUNC int __SPRT_ID(__fpclassifyf)(float v) {
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(__fpclassifyl)(long double v) {
-#if SPRT_APPLE || SPRT_WINDOWS || SPRT_WASM || SPRT_EMBOX_USER
+#if SPRT_APPLE || SPRT_WINDOWS || SPRT_WASM || SPRT_EL0_LIBC
 	return ::__fpclassifyl(v);
 #elif defined(fpclassify)
 	return fpclassify(v);
@@ -115,7 +115,7 @@ __SPRT_C_FUNC int __SPRT_ID(__fpclassifyl)(long double v) {
 __SPRT_C_FUNC int __SPRT_ID(__signbit)(double v) {
 #if SPRT_APPLE
 	return ::__inline_signbitd(v);
-#elif SPRT_WINDOWS || SPRT_EMBOX_USER
+#elif SPRT_WINDOWS || SPRT_EL0_LIBC
 	return ::__signbit(v);
 #elif SPRT_WASM
 	return __builtin_signbit(v);
@@ -128,7 +128,7 @@ __SPRT_C_FUNC int __SPRT_ID(__signbit)(double v) {
 __SPRT_C_FUNC int __SPRT_ID(__signbitf)(float v) {
 #if SPRT_APPLE
 	return ::__inline_signbitf(v);
-#elif SPRT_WINDOWS || SPRT_EMBOX_USER
+#elif SPRT_WINDOWS || SPRT_EL0_LIBC
 	return ::__signbitf(v);
 #elif SPRT_WASM
 	return __builtin_signbit(v);
@@ -141,7 +141,7 @@ __SPRT_C_FUNC int __SPRT_ID(__signbitf)(float v) {
 __SPRT_C_FUNC int __SPRT_ID(__signbitl)(long double v) {
 #if SPRT_APPLE
 	return ::__inline_signbitl(v);
-#elif SPRT_WINDOWS || SPRT_EMBOX_USER
+#elif SPRT_WINDOWS || SPRT_EL0_LIBC
 	return ::__signbitl(v);
 #elif SPRT_WASM
 	return __builtin_signbit(v);

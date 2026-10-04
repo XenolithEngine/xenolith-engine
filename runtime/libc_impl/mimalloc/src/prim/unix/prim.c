@@ -20,6 +20,9 @@ terms of the MIT license. A copy of the license can be found in the file
 #undef _POSIX_C_SOURCE
 #endif
 
+#if defined(__TAU__)
+#include <sprt/c/cross/tau_sprt/sprt_tau.h>
+#endif
 #include "mimalloc.h"
 #include "mimalloc/internal.h"
 #include "mimalloc/prim.h"
@@ -192,10 +195,17 @@ void _mi_prim_mem_init(mi_os_mem_config_t *config) {
 		unix_detect_physical_memory(config->page_size, &config->physical_memory_in_kib);
 	}
 	config->large_page_size = MI_UNIX_LARGE_PAGE_SIZE;
+#if defined(__TAU__)
+	// libtau maps committed memory at the alignment asked for, and frees whole mappings.
+	config->has_overcommit = false;
+	config->has_partial_free = false;
+	config->has_virtual_reserve = false;
+#else
 	config->has_overcommit = unix_detect_overcommit();
 	config->has_partial_free = true; // mmap can free in parts
 	config->has_virtual_reserve =
 			true; // todo: check if this true for NetBSD?  (for anonymous mmap with PROT_NONE)
+#endif
 
 // disable transparent huge pages for this process?
 #if (defined(__linux__) || defined(__ANDROID__)) && defined(PR_GET_THP_DISABLE)
@@ -450,9 +460,22 @@ int _mi_prim_alloc(void *hint_addr, size_t size, size_t try_alignment, bool comm
 	mi_assert_internal(commit || !allow_large);
 	mi_assert_internal(try_alignment > 0);
 	*is_zero = true;
+#if defined(__TAU__)
+	MI_UNUSED(hint_addr);
+	MI_UNUSED(commit);
+	MI_UNUSED(allow_large);
+	*is_large = false;
+	int err = __sprt_tau_mem_map(size, try_alignment, 0, addr);
+	if (err != 0) {
+		*addr = NULL;
+		return -err;
+	}
+	return 0;
+#else
 	int protect_flags = (commit ? (PROT_WRITE | PROT_READ) : PROT_NONE);
 	*addr = unix_mmap(hint_addr, size, try_alignment, protect_flags, false, allow_large, is_large);
 	return (*addr != NULL ? 0 : errno);
+#endif
 }
 
 
@@ -993,7 +1016,7 @@ static void mi_pthread_done(void *value) {
 	}
 }
 
-#if defined(__EMBOX_USER__)
+#if defined(__EMBOX_USER__) || defined(__TAU__)
 static pthread_once_t mi_heap_default_key_once = PTHREAD_ONCE_INIT;
 
 static void mi_heap_default_key_create(void) {
@@ -1017,7 +1040,7 @@ void _mi_prim_thread_done_auto_done(void) {
 }
 
 void _mi_prim_thread_associate_default_heap(mi_heap_t *heap) {
-#if defined(__EMBOX_USER__)
+#if defined(__EMBOX_USER__) || defined(__TAU__)
 	if (heap == NULL || heap == &_mi_heap_main) {
 		return; // the main thread: see above
 	}

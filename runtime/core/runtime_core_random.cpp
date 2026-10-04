@@ -30,6 +30,8 @@ THE SOFTWARE.
 #include "wasm/getrandom.cc"
 #elif SPRT_EMBOX_USER
 #include "embox_user/getrandom.cc"
+#elif SPRT_TAU
+#include "tau/getrandom.cc"
 #else
 #include <stdlib.h>
 #include <unistd.h>

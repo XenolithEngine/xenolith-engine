@@ -17,7 +17,7 @@
 
 #include <sprt/runtime/platform.h>
 
-#if SPRT_EMBOX_ANY
+#if SPRT_EMBOX_ANY || SPRT_TAU
 
 #include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/runtime/filesystem/filepath.h>
@@ -110,4 +110,4 @@ void _termSystemPaths(LookupData &) { }
 
 } // namespace sprt::filesystem::detail
 
-#endif // SPRT_EMBOX_ANY
+#endif // SPRT_EMBOX_ANY || SPRT_TAU

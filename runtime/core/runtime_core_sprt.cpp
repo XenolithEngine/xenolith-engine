@@ -63,6 +63,9 @@ THE SOFTWARE.
 // No emutls sibling: the EL0 startup sets up a real PT_TLS block and
 // TPIDR_EL0 (libc_impl embox_user/startup.cc), so thread_local is native.
 #include "embox_user/sprt_lock.cc"
+#elif SPRT_TAU
+// Native thread_local as on EmboxUser; locks wait on the module's private futex.
+#include "tau/sprt_lock.cc"
 #elif SPRT_EMBOX
 #include "embox/sprt_lock.cc"
 #include "embox/emutls.cc"

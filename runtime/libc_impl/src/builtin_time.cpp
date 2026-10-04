@@ -43,6 +43,9 @@ static const char __utc[] = "UTC";
 #elif SPRT_EMBOX_USER
 #include "embox_user/time.cc"
 #include "embox_user/tz.cc"
+#elif SPRT_TAU
+#include "tau/time.cc"
+#include "embox_user/tz.cc"
 #endif
 
 __SPRT_C_FUNC time_t time(time_t *t) __SPRT_NOEXCEPT {

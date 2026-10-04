@@ -43,6 +43,13 @@ THE SOFTWARE.
 #include "embox_user/libc_dir_ops.cc"
 #include "embox_user/libc_path.cc"
 #include "embox_user/pipe_poll.cc"
+#elif SPRT_TAU
+// No file system service yet: the descriptors are the module's streams.
+#include "tau/libc.cc"
+#include "tau/libc_file_ops.cc"
+#include "tau/libc_dir_ops.cc"
+#include "tau/libc_path.cc"
+#include "tau/poll.cc"
 #endif
 
 namespace sprt {

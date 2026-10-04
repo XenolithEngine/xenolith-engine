@@ -49,7 +49,7 @@
 
 // The freestanding targets have no platform <string.h> to declare it; the sprt
 // libc provides strerror_r itself, so declare what we link against.
-#if SPRT_WINDOWS || SPRT_WASM || SPRT_EMBOX_USER
+#if SPRT_WINDOWS || SPRT_WASM || SPRT_EL0_LIBC
 __SPRT_C_FUNC int strerror_r(__SPRT_ID(errno_t) errnum, char *buf,
 		__SPRT_ID(rsize_t) bufsz) __SPRT_NOEXCEPT;
 #endif
@@ -446,7 +446,7 @@ static void checkLogFeaturesSupport(LogFeaturesInit &ret) { }
 // targets to a serial line, and Embox EL0 to the kernel console through write(64).
 // None has TERM/TERMINFO or an escape-sequence capability database, so the
 // truthful answer is that no feature is supported -- not that detection failed.
-#if SPRT_WASM || SPRT_HOSTED_RTOS || SPRT_EMBOX_USER
+#if SPRT_WASM || SPRT_HOSTED_RTOS || SPRT_EL0_LIBC
 
 static void checkLogFeaturesSupport(LogFeaturesInit &ret) { }
 

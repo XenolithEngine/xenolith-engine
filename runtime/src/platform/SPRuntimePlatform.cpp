@@ -25,7 +25,7 @@
 
 #include "private/SPRTPrivate.h"
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_WINDOWS || SPRT_NUTTX || SPRT_EMBOX_ANY
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_WINDOWS || SPRT_NUTTX || SPRT_EMBOX_ANY || SPRT_TAU
 #include "SPRuntimePlatform-posix.cc"
 #endif
 
@@ -45,7 +45,8 @@
 #include "SPRuntimePlatform-nuttx.cc"
 #endif
 
-#if SPRT_EMBOX_ANY
+// Embox and Tau: a flat POSIX libc of our own, no platform services to ask.
+#if SPRT_EMBOX_ANY || SPRT_TAU
 #include "SPRuntimePlatform-embox.cc"
 #endif
 
