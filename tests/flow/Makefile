@@ -67,6 +67,8 @@ LOCAL_MAIN := main.cpp
 
 APPCONFIG_APP_NAME := FlowTest
 APPCONFIG_BUNDLE_NAME := org.stappler.FlowTest
-APPCONFIG_APP_PATH_COMMON := 3
+# ExecutableRelative: ForceContainer (3) re-launches the process in an AppContainer on Windows, and
+# perform_main() then skips every section and exits 0. A console harness has no per-app storage.
+APPCONFIG_APP_PATH_COMMON := 0
 
 include $(STAPPLER_BUILD_ROOT)/universal.mk
