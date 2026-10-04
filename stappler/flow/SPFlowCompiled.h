@@ -146,6 +146,13 @@ struct CompiledFamilyIdentity {
 // The hash a block's query is identified by: its component ids, in order.
 SP_PUBLIC uint64_t hashBlockQuery(SpanView<TypeId>);
 
+// A document the unit's graph took a function's body from (LinkCallee), and the content hash of
+// what it said then.
+struct CompiledCalleeIdentity {
+	StringView name;
+	uint64_t contentHash = 0;
+};
+
 // The identity block: what makes this unit this graph against these shapes. `assetHash` is
 // GraphAsset::getContentHash() of the file the unit was written from, for a host that holds both
 // and wants to know whether they are the same graph. `textHash` is the hash of the generated
@@ -162,7 +169,22 @@ struct CompiledIdentity {
 	SpanView<FrameSlot> slots; // per node
 	SpanView<CompiledBlockIdentity> blocks; // per block
 	SpanView<CompiledFamilyIdentity> families;
+
+	// The library documents the graph was linked with, by name.
+	SpanView<CompiledCalleeIdentity> callees;
 };
+
+// Whether the documents a host links the unit's graph against are the ones the unit was written
+// from: CodegenCalleeDrift for every callee that moved, vanished or appeared. A unit of a graph
+// with no library functions has none, and checks against a null link.
+SP_PUBLIC Status checkUnitCallees(const CompiledIdentity &, const GraphLink *,
+		DiagSink *report = nullptr);
+
+template <DiagContainer Out>
+Status checkUnitCallees(const CompiledIdentity &identity, const GraphLink *link, Out *report) {
+	DiagSinkFor<Out> sink(report);
+	return checkUnitCallees(identity, link, sink.get());
+}
 
 // One declaration of the asset's `extensions` section, as the unit carries it: the parameters are
 // the declaration's `params` value, encoded as CBOR, because a data::Value is not a constant.

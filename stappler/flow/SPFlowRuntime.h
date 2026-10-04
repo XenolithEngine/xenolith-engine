@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 #include "SPFlowAsset.h"
 #include "SPFlowOp.h"
+#include "SPFlowFunction.h"
 
 namespace STAPPLER_VERSIONIZED stappler::flow {
 
@@ -320,8 +321,19 @@ struct GraphShape {
 		mem_std::Vector<NodeId> nodes; // every node inside, nested regions included, in node order
 	};
 
+	// Where a node of a linked graph came from, for every node whose id is not the document's own -
+	// a library body's, a substituted copy's. A document without functions has none.
+	struct Origin {
+		NodeId linked = 0;
+		NodeId source = 0;
+		NodeId callSite = 0;
+		mem_std::String document;
+		mem_std::String function;
+	};
+
 	bool produced = false;
 	mem_std::Vector<Region> regions;
+	mem_std::Vector<Origin> origins;
 };
 
 // The executable form of a graph: names resolved, order canonical, types settled. Immutable after
@@ -399,6 +411,10 @@ public:
 	static Status validate(const GraphAsset &, const OpRegistry &, DiagSink *report,
 			GraphShape *shape);
 
+	// The same, with the functions a document calls from a library.
+	static Status validate(const GraphAsset &, const OpRegistry &, DiagSink *report,
+			GraphShape *shape, const FunctionHost *);
+
 	template <DiagContainer Out>
 	static Status validate(const GraphAsset &asset, const OpRegistry &ops, Out *report) {
 		DiagSinkFor<Out> sink(report);
@@ -443,6 +459,19 @@ public:
 		DiagSinkFor<Out> sink(report);
 		return bindScene(scene, extensions, sink.get());
 	}
+
+	// Where the functions a document calls and does not define come from. Asked during build() only;
+	// a document that needs no linking never asks.
+	void setFunctionHost(const FunctionHost *host) { _functionHost = host; }
+	const FunctionHost *getFunctionHost() const { return _functionHost; }
+
+	// What the last build linked: the asset and the operations it built from, and where each node
+	// came from. Null when the document needed no linking. Kept after a refused build, so that the
+	// ids its report names can be traced.
+	const GraphLink *getLink() const { return _link; }
+
+	// The asset the graph was built from: the linked one, or the one build() was handed.
+	const GraphAsset *getBuiltAsset() const { return _builtAsset; }
 
 	bool isValid() const { return _built; }
 
@@ -638,8 +667,14 @@ private:
 	Status buildImpl(const GraphAsset &, const OpRegistry &, const value::TypeRegistry *scene,
 			const value::ExtensionHost *, DiagSink *report);
 
+	// The build proper, over a document that needs no further linking.
+	Status buildLinked(const GraphAsset &, const OpRegistry &, const value::TypeRegistry *scene,
+			const value::ExtensionHost *, DiagSink *report);
+
 	// Fills `_shapeSink` from the scopes just assigned.
 	void takeShape();
+
+	void clearBuilt();
 
 	memory::pool_t *_pool = nullptr;
 	bool _ownsPool = false;
@@ -647,6 +682,15 @@ private:
 
 	// Where the next build writes its shape, or null (validate with a shape sets it for one build).
 	GraphShape *_shapeSink = nullptr;
+
+	const FunctionHost *_functionHost = nullptr;
+	GraphLink *_link = nullptr;
+	const GraphAsset *_builtAsset = nullptr;
+
+	// The body each node was written in, during a build: 0 for the root, 1 + k for the linked
+	// asset's function k.
+	mem_std::Vector<uint32_t> _bodyOf;
+	uint32_t _functionCount = 0;
 
 	mem_std::Vector<RuntimeNode> _nodes;
 	mem_std::Vector<RuntimeDataEdge> _dataEdges;

@@ -555,6 +555,162 @@ struct Case {
 	RunOutcome outcome = RunOutcome::Completed;
 };
 
+// Functions (SPFlowFunction.h): a body defined in the document and called by name, as a call with an
+// activation of its own or as a substituted copy. Every shape a unit has to carry - the call's two
+// turns, the entry and the return reaching across activations, a function scope beside the graph's.
+#define SP_CORPUS_ADD_TEN(MODE) R"json({"__meta": {"kind": "graph", "version": 2}, "name": "addTen",
+	"nodes": [
+		{"id": 1, "op": "flow.event"},
+		{"id": 2, "op": "fn.addTen", "params": {"x": 5}, "settings": {"mode": ")json" MODE R"json("}},
+		{"id": 3, "op": "debug.trace"},
+		{"id": 4, "op": "math.addInt", "params": {"rhs": 1}}
+	],
+	"edges": [
+		{"kind": "exec", "from": 1, "fromPin": "then", "to": 2},
+		{"kind": "exec", "from": 2, "fromPin": "done", "to": 3},
+		{"kind": "data", "from": 2, "fromPin": "y", "to": 4, "toPin": "lhs"}
+	],
+	"functions": [{"name": "addTen",
+		"interface": {"inputs": [{"name": "x", "type": "int"}],
+			"outputs": [{"name": "y", "type": "int"}], "execIn": true, "execOut": ["done"]},
+		"nodes": [
+			{"id": 10, "op": "fn.entry"},
+			{"id": 11, "op": "math.addInt", "params": {"rhs": 10}},
+			{"id": 12, "op": "fn.return"}
+		],
+		"edges": [
+			{"kind": "exec", "from": 10, "fromPin": "start", "to": 12},
+			{"kind": "data", "from": 10, "fromPin": "x", "to": 11, "toPin": "lhs"},
+			{"kind": "data", "from": 11, "fromPin": "result", "to": 12, "toPin": "y"}
+		]}]
+})json"
+
+constexpr StringView CallLocal(SP_CORPUS_ADD_TEN("call"));
+constexpr StringView CallInline(SP_CORPUS_ADD_TEN("inline"));
+
+#undef SP_CORPUS_ADD_TEN
+
+constexpr StringView CallPure(R"json({"__meta": {"kind": "graph", "version": 2}, "name": "pure",
+	"nodes": [
+		{"id": 1, "op": "fn.twice", "params": {"v": 21}},
+		{"id": 2, "op": "math.addInt", "params": {"rhs": 0}}
+	],
+	"edges": [
+		{"kind": "data", "from": 1, "fromPin": "w", "to": 2, "toPin": "lhs"}
+	],
+	"functions": [{"name": "twice",
+		"interface": {"inputs": [{"name": "v", "type": "int"}], "outputs": [{"name": "w", "type": "int"}]},
+		"nodes": [
+			{"id": 10, "op": "fn.entry"},
+			{"id": 11, "op": "math.addInt"},
+			{"id": 12, "op": "fn.return"}
+		],
+		"edges": [
+			{"kind": "data", "from": 10, "fromPin": "v", "to": 11, "toPin": "lhs"},
+			{"kind": "data", "from": 10, "fromPin": "v", "to": 11, "toPin": "rhs"},
+			{"kind": "data", "from": 11, "fromPin": "result", "to": 12, "toPin": "w"}
+		]}]
+})json");
+
+constexpr StringView CallExits(R"json({"__meta": {"kind": "graph", "version": 2}, "name": "exits",
+	"nodes": [
+		{"id": 1, "op": "flow.event"},
+		{"id": 2, "op": "fn.sign", "params": {"v": -3}},
+		{"id": 3, "op": "debug.trace"},
+		{"id": 4, "op": "debug.trace"}
+	],
+	"edges": [
+		{"kind": "exec", "from": 1, "fromPin": "then", "to": 2},
+		{"kind": "exec", "from": 2, "fromPin": "pos", "to": 3},
+		{"kind": "exec", "from": 2, "fromPin": "neg", "to": 4}
+	],
+	"functions": [{"name": "sign",
+		"interface": {"inputs": [{"name": "v", "type": "int"}], "execIn": true,
+			"execOut": ["pos", "neg"], "mode": "inline"},
+		"nodes": [
+			{"id": 10, "op": "fn.entry"},
+			{"id": 11, "op": "compare.lessInt", "params": {"rhs": 0}},
+			{"id": 12, "op": "flow.branch"},
+			{"id": 13, "op": "fn.return", "settings": {"exit": "neg"}},
+			{"id": 14, "op": "fn.return", "settings": {"exit": "pos"}}
+		],
+		"edges": [
+			{"kind": "exec", "from": 10, "fromPin": "start", "to": 12},
+			{"kind": "data", "from": 10, "fromPin": "v", "to": 11, "toPin": "lhs"},
+			{"kind": "data", "from": 11, "fromPin": "result", "to": 12, "toPin": "condition"},
+			{"kind": "exec", "from": 12, "fromPin": "true", "to": 13},
+			{"kind": "exec", "from": 12, "fromPin": "false", "to": 14}
+		]}]
+})json");
+
+constexpr StringView CallLoop(R"json({"__meta": {"kind": "graph", "version": 2}, "name": "loop",
+	"nodes": [
+		{"id": 1, "op": "flow.event"},
+		{"id": 2, "op": "flow.forEach", "params": {"items": [1, 2, 3]}},
+		{"id": 3, "op": "fn.square"},
+		{"id": 4, "op": "debug.trace"}
+	],
+	"edges": [
+		{"kind": "exec", "from": 1, "fromPin": "then", "to": 2},
+		{"kind": "exec", "from": 2, "fromPin": "body", "to": 3},
+		{"kind": "exec", "from": 2, "fromPin": "completed", "to": 4},
+		{"kind": "data", "from": 2, "fromPin": "item", "to": 3, "toPin": "x"}
+	],
+	"functions": [{"name": "square",
+		"interface": {"inputs": [{"name": "x", "type": "int"}],
+			"outputs": [{"name": "y", "type": "int"}], "execIn": true, "execOut": ["done"]},
+		"nodes": [
+			{"id": 10, "op": "fn.entry"},
+			{"id": 11, "op": "math.mulInt"},
+			{"id": 12, "op": "fn.return"}
+		],
+		"edges": [
+			{"kind": "exec", "from": 10, "fromPin": "start", "to": 12},
+			{"kind": "data", "from": 10, "fromPin": "x", "to": 11, "toPin": "lhs"},
+			{"kind": "data", "from": 10, "fromPin": "x", "to": 11, "toPin": "rhs"},
+			{"kind": "data", "from": 11, "fromPin": "result", "to": 12, "toPin": "y"}
+		]}]
+})json");
+
+// fact(4), by a function of the document that calls itself.
+constexpr StringView CallRecursive(R"json({"__meta": {"kind": "graph", "version": 2}, "name": "recursive",
+	"nodes": [
+		{"id": 1, "op": "flow.event"},
+		{"id": 2, "op": "fn.fact", "params": {"n": 4}},
+		{"id": 3, "op": "debug.trace"}
+	],
+	"edges": [
+		{"kind": "exec", "from": 1, "fromPin": "then", "to": 2},
+		{"kind": "exec", "from": 2, "fromPin": "done", "to": 3}
+	],
+	"functions": [{"name": "fact",
+		"interface": {"inputs": [{"name": "n", "type": "int"}], "outputs": [{"name": "r", "type": "int"}],
+			"execIn": true, "execOut": ["done"]},
+		"nodes": [
+			{"id": 10, "op": "fn.entry"},
+			{"id": 11, "op": "compare.lessInt", "params": {"rhs": 2}},
+			{"id": 12, "op": "flow.branch"},
+			{"id": 13, "op": "fn.return", "params": {"r": 1}},
+			{"id": 14, "op": "math.subInt", "params": {"rhs": 1}},
+			{"id": 15, "op": "fn.fact"},
+			{"id": 16, "op": "math.mulInt"},
+			{"id": 17, "op": "fn.return"}
+		],
+		"edges": [
+			{"kind": "exec", "from": 10, "fromPin": "start", "to": 12},
+			{"kind": "data", "from": 10, "fromPin": "n", "to": 11, "toPin": "lhs"},
+			{"kind": "data", "from": 11, "fromPin": "result", "to": 12, "toPin": "condition"},
+			{"kind": "exec", "from": 12, "fromPin": "true", "to": 13},
+			{"kind": "exec", "from": 12, "fromPin": "false", "to": 15},
+			{"kind": "data", "from": 10, "fromPin": "n", "to": 14, "toPin": "lhs"},
+			{"kind": "data", "from": 14, "fromPin": "result", "to": 15, "toPin": "n"},
+			{"kind": "exec", "from": 15, "fromPin": "done", "to": 17},
+			{"kind": "data", "from": 10, "fromPin": "n", "to": 16, "toPin": "lhs"},
+			{"kind": "data", "from": 15, "fromPin": "r", "to": 16, "toPin": "rhs"},
+			{"kind": "data", "from": 16, "fromPin": "result", "to": 17, "toPin": "r"}
+		]}]
+})json");
+
 inline const Case Cases[] = {
 	{.name = StringView("arithmetic"), .json = Arithmetic},
 	{.name = StringView("widen"), .json = Widen},
@@ -600,6 +756,12 @@ inline const Case Cases[] = {
 	{.name = StringView("numeric32-refused"), .json = Numeric32Refused,
 		.outcome = RunOutcome::OpError},
 	{.name = StringView("enum-family"), .json = EnumFamily},
+	{.name = StringView("call-local"), .json = CallLocal},
+	{.name = StringView("call-inline"), .json = CallInline},
+	{.name = StringView("call-pure"), .json = CallPure},
+	{.name = StringView("call-exits"), .json = CallExits},
+	{.name = StringView("call-loop"), .json = CallLoop},
+	{.name = StringView("call-recursive"), .json = CallRecursive},
 };
 
 inline constexpr uint32_t CaseCount = sizeof(Cases) / sizeof(Cases[0]);

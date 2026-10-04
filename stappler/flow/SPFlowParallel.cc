@@ -552,7 +552,8 @@ bool ParallelAnalysis::computeRegion(Block &b) {
 					auto v = stack.back();
 					stack.pop_back();
 					auto &vn = _g.getNodeAt(v);
-					if (vn.opensScope != InvalidIndex) {
+					if (vn.opensScope != InvalidIndex
+							&& _g.getScopeAt(vn.opensScope).kind != ScopeKind::Function) {
 						add(v, ReasonNone);
 						seedScope(vn.opensScope);
 						auto &opened = _g.getScopeAt(vn.opensScope);

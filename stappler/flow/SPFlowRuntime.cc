@@ -40,6 +40,8 @@ namespace STAPPLER_VERSIONIZED stappler::flow {
 RuntimeGraph::~RuntimeGraph() {
 	delete _gpuShaders;
 	_gpuShaders = nullptr;
+	delete _link;
+	_link = nullptr;
 	_nodes.clear();
 	_constants.clear();
 	_settings.clear();
@@ -168,14 +170,44 @@ Status RuntimeGraph::build(const GraphAsset &asset, const OpRegistry &ops,
 	return buildImpl(asset, ops, &scene, &extensions, reportSink);
 }
 
+// Everything a build derives, emptied: what a refused build leaves behind.
+void RuntimeGraph::clearBuilt() {
+	_nodes.clear();
+	_dataEdges.clear();
+	_execEdges.clear();
+	_dataInIndex.clear();
+	_dataOutIndex.clear();
+	_execInIndex.clear();
+	_execOutIndex.clear();
+	_crossScopeInIndex.clear();
+	_entryNodes.clear();
+	_terminalNodes.clear();
+	_constants.clear();
+	_settings.clear();
+	_sceneBindings.clear();
+	_sceneRegistry = nullptr;
+	_sceneRegistryCount = 0;
+	_extBindings.clear();
+	_extDecls.clear();
+	_extensions = nullptr;
+	_extensionsEpoch = 0;
+	_namedBindings.clear();
+	_namedBound = false;
+	_scopes.clear();
+	_scopeNodes.clear();
+	_blocks.clear();
+	_blockWrites.clear();
+	_blockCollectors.clear();
+	_blockQuery.clear();
+	_bodyOf.clear();
+}
+
 Status RuntimeGraph::buildImpl(const GraphAsset &asset, const OpRegistry &ops,
 		const value::TypeRegistry *scene, const value::ExtensionHost *extensions,
 		DiagSink *reportSink) {
 	if (!_pool) {
 		return Status::ErrorInvalidArguemnt;
 	}
-
-	DiagReport report(reportSink);
 
 	_built = false;
 	_nodes.clear();
@@ -198,16 +230,69 @@ Status RuntimeGraph::buildImpl(const GraphAsset &asset, const OpRegistry &ops,
 	_extensionsEpoch = 0;
 	_namedBindings.clear();
 	_namedBound = false;
+	_builtAsset = nullptr;
+	_bodyOf.clear();
+	_functionCount = 0;
 
-	// Nodes and their operations.
+	// A document that is a function, defines one or calls one is linked first, and what is built is
+	// the linked document over the operations its functions contribute. Every other document is
+	// built as it stands.
+	if (GraphLink::needsLink(asset)) {
+		if (!_link) {
+			_link = new GraphLink();
+			_link->init(_pool);
+		}
+		if (_link->link(asset, ops, _functionHost, reportSink) != Status::Ok) {
+			clearBuilt();
+			return Status::ErrorInvalidArguemnt;
+		}
+		return buildLinked(_link->getAsset(), _link->getOps(), scene, extensions, reportSink);
+	}
+	if (_link) {
+		delete _link;
+		_link = nullptr;
+	}
+	return buildLinked(asset, ops, scene, extensions, reportSink);
+}
 
-	auto assetNodes = asset.getNodes();
+Status RuntimeGraph::buildLinked(const GraphAsset &asset, const OpRegistry &ops,
+		const value::TypeRegistry *scene, const value::ExtensionHost *extensions,
+		DiagSink *reportSink) {
+	DiagReport report(reportSink);
+	_builtAsset = &asset;
+
+	// Nodes and their operations: every body's, in one id order. A document without functions has
+	// one body, and this is its node list as written.
+
+	mem_std::Vector<sprt::pair<const GraphNode *, uint32_t>> assetNodes;
+	{
+		size_t total = asset.getNodes().size();
+		for (auto &f : asset.getFunctions()) { total += f.nodes.size(); }
+		assetNodes.reserve(total);
+		for (auto &n : asset.getNodes()) { assetNodes.emplace_back(&n, 0); }
+		uint32_t body = 1;
+		for (auto &f : asset.getFunctions()) {
+			for (auto &n : f.nodes) { assetNodes.emplace_back(&n, body); }
+			++body;
+		}
+		_functionCount = body - 1;
+		if (_functionCount > 0) {
+			sprt::sort(assetNodes.begin(), assetNodes.end(),
+					[](const sprt::pair<const GraphNode *, uint32_t> &a,
+							const sprt::pair<const GraphNode *, uint32_t> &b) {
+				return a.first->id < b.first->id;
+			});
+		}
+	}
 	_nodes.reserve(assetNodes.size());
+	_bodyOf.reserve(assetNodes.size());
 
 	uint32_t constantCount = 0;
 	uint32_t settingCount = 0;
 	uint32_t execOutSlots = 0;
-	for (auto &n : assetNodes) {
+	for (auto &it : assetNodes) {
+		auto &n = *it.first;
+		_bodyOf.emplace_back(it.second);
 		RuntimeNode node;
 		node.id = n.id;
 		node.source = &n;
@@ -265,9 +350,16 @@ Status RuntimeGraph::buildImpl(const GraphAsset &asset, const OpRegistry &ops,
 		}
 	}
 
-	// Edges.
+	// Edges: the root body's, then each function's, every one in its canonical order.
 
-	for (auto &e : asset.getEdges()) {
+	mem_std::Vector<const GraphEdge *> assetEdges;
+	for (auto &e : asset.getEdges()) { assetEdges.emplace_back(&e); }
+	for (auto &f : asset.getFunctions()) {
+		for (auto &e : f.edges) { assetEdges.emplace_back(&e); }
+	}
+
+	for (auto edgePtr : assetEdges) {
+		auto &e = *edgePtr;
 		auto srcIndex = findNode(e.from);
 		auto dstIndex = findNode(e.to);
 		if (srcIndex == InvalidIndex || dstIndex == InvalidIndex) {
@@ -561,7 +653,9 @@ Status RuntimeGraph::buildImpl(const GraphAsset &asset, const OpRegistry &ops,
 			continue;
 		}
 
-		node.isEntry = node.dataInCount == 0 && node.execInCount == 0 && !node.op->hasExecIn();
+		// A function's body starts when a call opens it, never with the run.
+		node.isEntry = node.dataInCount == 0 && node.execInCount == 0 && !node.op->hasExecIn()
+				&& _bodyOf[n] == 0;
 		node.isTerminal = node.dataOutCount == 0 && node.execOutCount == 0;
 
 		if (node.isEntry) {
@@ -725,33 +819,7 @@ Status RuntimeGraph::buildImpl(const GraphAsset &asset, const OpRegistry &ops,
 	}
 
 	if (report.hasErrors()) {
-		_nodes.clear();
-		_dataEdges.clear();
-		_execEdges.clear();
-		_dataInIndex.clear();
-		_dataOutIndex.clear();
-		_execInIndex.clear();
-		_execOutIndex.clear();
-		_crossScopeInIndex.clear();
-		_entryNodes.clear();
-		_terminalNodes.clear();
-		_constants.clear();
-		_settings.clear();
-		_sceneBindings.clear();
-		_sceneRegistry = nullptr;
-		_sceneRegistryCount = 0;
-		_extBindings.clear();
-		_extDecls.clear();
-		_extensions = nullptr;
-		_extensionsEpoch = 0;
-		_namedBindings.clear();
-		_namedBound = false;
-		_scopes.clear();
-		_scopeNodes.clear();
-		_blocks.clear();
-		_blockWrites.clear();
-		_blockCollectors.clear();
-		_blockQuery.clear();
+		clearBuilt();
 		return report.getStatus();
 	}
 
@@ -1594,18 +1662,47 @@ Status RuntimeGraph::validate(const GraphAsset &asset, const OpRegistry &ops,
 
 Status RuntimeGraph::validate(const GraphAsset &asset, const OpRegistry &ops, DiagSink *report,
 		GraphShape *shape) {
+	return validate(asset, ops, report, shape, nullptr);
+}
+
+Status RuntimeGraph::validate(const GraphAsset &asset, const OpRegistry &ops, DiagSink *report,
+		GraphShape *shape, const FunctionHost *host) {
 	RuntimeGraph scratch;
 	if (!scratch.init()) {
 		return Status::ErrorOutOfHostMemory;
 	}
 	scratch._shapeSink = shape;
-	return scratch.build(asset, ops, report);
+	scratch._functionHost = host;
+	auto st = scratch.build(asset, ops, report);
+
+	// Where the linked ids came from, whether or not the build got as far as the regions: a refused
+	// link names its nodes by linked id too.
+	if (shape && scratch._link) {
+		shape->origins.clear();
+		auto ids = scratch._link->getOriginIds();
+		auto origins = scratch._link->getOrigins();
+		for (uint32_t i = 0; i < uint32_t(ids.size()); ++i) {
+			auto &origin = origins[i];
+			if (origin.source == ids[i] && origin.callSite == NullNodeId) {
+				continue;
+			}
+			GraphShape::Origin o;
+			o.linked = ids[i];
+			o.source = origin.source;
+			o.callSite = origin.callSite;
+			o.document = origin.document.str<mem_std::Interface>();
+			o.function = origin.function.str<mem_std::Interface>();
+			shape->origins.emplace_back(sprt::move(o));
+		}
+	}
+	return st;
 }
 
 void RuntimeGraph::takeShape() {
 	auto &shape = *_shapeSink;
 	shape.produced = true;
 	shape.regions.clear();
+
 	for (uint32_t s = 1; s < _scopes.size(); ++s) {
 		auto &scope = _scopes[s];
 		if (scope.opener >= _nodes.size()) {

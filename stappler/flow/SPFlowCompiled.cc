@@ -74,6 +74,36 @@ static void reportOp(DiagReport &report, DiagCode code, const DiagText &text, St
 			SpanView<StringView>(names, 1));
 }
 
+Status checkUnitCallees(const CompiledIdentity &identity, const GraphLink *link, DiagSink *sink) {
+	DiagReport report(sink);
+	auto linked = link ? link->getCallees() : SpanView<LinkCallee>();
+	for (auto &it : identity.callees) {
+		const LinkCallee *found = nullptr;
+		for (auto &c : linked) {
+			if (c.name == it.name) {
+				found = &c;
+			}
+		}
+		if (!found || found->contentHash != it.contentHash) {
+			reportOp(report, DiagCode::CodegenCalleeDrift,
+					DiagText(DiagDetail::UnitCalleeDrift).name(it.name), it.name);
+		}
+	}
+	for (auto &c : linked) {
+		bool found = false;
+		for (auto &it : identity.callees) {
+			if (c.name == it.name) {
+				found = true;
+			}
+		}
+		if (!found) {
+			reportOp(report, DiagCode::CodegenCalleeDrift,
+					DiagText(DiagDetail::UnitCalleeDrift).name(c.name), c.name);
+		}
+	}
+	return report.getStatus();
+}
+
 uint64_t hashBlockQuery(SpanView<TypeId> ids) {
 	return sprt::hash64(reinterpret_cast<const char *>(ids.data()), ids.size() * sizeof(TypeId));
 }
@@ -219,7 +249,7 @@ void CompiledGraph::verify(const OpRegistry &ops, DiagReport &report) {
 	}
 
 	// The store's own bookkeeping type, which every frame begins with.
-	auto stateType = ops.getLocalTypes().get(NodeStateTypeName);
+	auto stateType = ops.getCoreTypes().get(NodeStateTypeName);
 	if (!stateType) {
 		reportOp(report, DiagCode::CodegenSchemaDrift, DiagText(DiagDetail::NoNodeStateType),
 				NodeStateTypeName);

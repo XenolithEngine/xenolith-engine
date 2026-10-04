@@ -175,9 +175,10 @@ enum class DiagCode : uint16_t {
 	FunctionInlineMultiReturn, // a body with several returns and data outputs at an inline site
 	FunctionDeclConflict, // two documents declare one scene component or extension id differently
 	CallDepth, // a run: calls nested deeper than the run allows
+	CodegenCalleeDrift, // a document the unit took a function's body from is not the one a host holds
 };
 
-static constexpr uint32_t DiagCodeCount = uint32_t(DiagCode::CallDepth) + 1;
+static constexpr uint32_t DiagCodeCount = uint32_t(DiagCode::CodegenCalleeDrift) + 1;
 
 // Which sentence an entry is. One per thing the graph can say; several may share a code.
 enum class DiagDetail : uint16_t {
@@ -382,6 +383,23 @@ enum class DiagDetail : uint16_t {
 	FunctionDict,
 	FunctionName,
 	FunctionTwice,
+	FunctionInterfaceInvalid,
+	FunctionNameInvalid,
+	FunctionUnknown,
+	FunctionShadowed,
+	FunctionEntryMissing,
+	FunctionEntryTwice,
+	FunctionEntryWired,
+	FunctionReturnMissing,
+	FunctionReturnPure,
+	FunctionBoundaryOutside,
+	FunctionExitUnknown,
+	FunctionInlineCycle,
+	FunctionInlineMultiReturn,
+	FunctionSceneConflict,
+	FunctionExtensionConflict,
+	CallDepth,
+	UnitCalleeDrift,
 };
 
 // A word or a clause an entry uses as an argument rather than as its sentence: what was wrong with a

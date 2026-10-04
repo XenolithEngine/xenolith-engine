@@ -30,6 +30,7 @@ THE SOFTWARE.
 #include "SPFlowAsset.cc"
 #include "SPFlowRuntime.cc"
 #include "SPFlowScope.cc"
+#include "SPFlowFunction.cc"
 #include "SPFlowGpu.h"
 #include "SPFlowParallel.cc"
 #include "SPFlowFast.hpp"

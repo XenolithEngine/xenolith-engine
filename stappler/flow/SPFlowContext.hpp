@@ -99,6 +99,7 @@ void ContextT<Graph, Local, Site>::bind(const StepSite<Graph, Local> &site) {
 	_extBind = site.extBind;
 	_namedBind = site.namedBind;
 	_fired = 0;
+	_called = false;
 	_block = site.block;
 	_branchActivation = site.branchActivation;
 	_branchFrame = site.branchFrame;
@@ -109,6 +110,7 @@ template <typename Graph, typename Local, typename Site>
 void ContextT<Graph, Local, Site>::finish(StepSite<Graph, Local> &site) {
 	releaseScratch();
 	site.fired = _fired;
+	site.called = _called;
 }
 
 // The activation the producer's record is in. The same one for a producer in the same scope; for a
@@ -468,6 +470,182 @@ Status ContextT<Graph, Local, Site>::fire(StringView name) {
 		return Status::ErrorNotFound;
 	}
 	return fire(index);
+}
+
+template <typename Graph, typename Local, typename Site>
+Status ContextT<Graph, Local, Site>::call() {
+	if (_op->getFunctionRole() != FunctionRole::Call) {
+		return Status::ErrorNotPermitted;
+	}
+	_called = true;
+	return Status::Ok;
+}
+
+template <typename Graph, typename Local, typename Site>
+bool ContextT<Graph, Local, Site>::callerOf(uint32_t &node, uint32_t &activation) const {
+	auto count = _local->getActivationCount();
+	auto act = _activation;
+	uint32_t guard = 0;
+	while (act != NullActivation && act < count && guard++ <= count) {
+		auto data = _local->readActivation(act);
+		if (data.scope < _graph->getScopeCount()
+				&& _graph->getScopeAt(data.scope).kind == ScopeKind::Function) {
+			node = recordKeyNode(data.openerKey);
+			activation = recordKeyActivation(data.openerKey);
+			return node < _graph->getNodeCount();
+		}
+		act = data.parent;
+	}
+	return false;
+}
+
+// The call's input as the call itself would read it - the edge with its conversion, the call's
+// parameter, the pin's default - written into this node's output.
+template <typename Graph, typename Local, typename Site>
+Status ContextT<Graph, Local, Site>::copyArgument(uint32_t pin, uint32_t out) {
+	if (_op->getFunctionRole() != FunctionRole::Entry) {
+		return Status::ErrorNotPermitted;
+	}
+	uint32_t caller = InvalidIndex;
+	uint32_t callerAct = NullActivation;
+	if (!callerOf(caller, callerAct)) {
+		return Status::ErrorNotFound;
+	}
+	auto &callOp = *_graph->getNodeAt(caller).op;
+	if (pin >= callOp.getDataIn().size()) {
+		return Status::ErrorInvalidArguemnt;
+	}
+	auto &desc = callOp.getDataIn()[pin];
+
+	auto shape = Site::template fieldAt<Graph>(*_graph, _node, out);
+	if (!shape.valid || _record == NullAddr) {
+		return Status::ErrorInvalidArguemnt;
+	}
+	auto arena = _local->getArena();
+
+	const typename Graph::DataEdge *edge = DynamicSite::incoming<Graph>(*_graph, caller, pin);
+	if (edge) {
+		auto srcShape = DynamicSite::fieldAt<Graph>(*_graph, edge->srcNode, edge->srcPin);
+		auto srcAct = _local->resolveScope(callerAct, _graph->getNodeAt(edge->srcNode).scope);
+		auto srcRecord = _local->getRecord(edge->srcNode, srcAct);
+		if (!srcShape.valid || srcRecord == NullAddr) {
+			return Status::ErrorNotFound;
+		}
+		if (value::isContainerType(shape.type)) {
+			auto st = value::blob::copy(*arena, _record + shape.offset, *arena,
+					srcRecord + srcShape.offset, shape.type, shape.element);
+			return st == Status::Ok ? _local->markProduced(_state, out) : st;
+		}
+		Var raw;
+		auto st = readRecordField(*arena, srcRecord, srcShape, raw);
+		if (st == Status::Ok && edge->cast != value::CastRule::Same) {
+			Var cast;
+			st = value::castVar(raw, desc.type, value::CastPolicy::Lossless, cast);
+			raw = cast;
+		}
+		if (st == Status::Ok) {
+			st = writeRecordField(*arena, _record, shape, raw);
+		}
+		return st == Status::Ok ? _local->markProduced(_state, out) : st;
+	}
+
+	auto constant = _graph->getConstant(caller, pin);
+	if (value::isContainerType(shape.type)) {
+		if (!constant) {
+			return claimOutput(out) != NullAddr ? Status::Ok : Status::ErrorInvalidArguemnt;
+		}
+		auto handle = arena->alloc(value::MinPayload, 8);
+		if (handle == NullAddr) {
+			return Status::ErrorOutOfHostMemory;
+		}
+		if (auto raw = arena->write(handle, uint32_t(sizeof(value::BlobHandle)))) {
+			value::BlobHandle empty;
+			__sprt_memcpy(raw, &empty, sizeof(empty));
+		}
+		if (value::blob::decode(*arena, handle, desc.type, desc.element, *constant) != Status::Ok) {
+			arena->free(handle, value::MinPayload);
+			return Status::ErrorInvalidArguemnt;
+		}
+		_scratch.emplace_back(Scratch{handle, desc.type, desc.element});
+		auto st = value::blob::copy(*arena, _record + shape.offset, *arena, handle, shape.type,
+				shape.element);
+		return st == Status::Ok ? _local->markProduced(_state, out) : st;
+	}
+
+	Var value;
+	auto st = value::decodeVar(constant ? *constant : mem_std::Value(), desc.type, value);
+	if (st == Status::Ok) {
+		st = writeRecordField(*arena, _record, shape, value);
+	}
+	return st == Status::Ok ? _local->markProduced(_state, out) : st;
+}
+
+// This node's input, written into the call's output of the same index and marked produced there;
+// the call hands it on when the machine gives it its second turn.
+template <typename Graph, typename Local, typename Site>
+Status ContextT<Graph, Local, Site>::copyResult(uint32_t pin) {
+	if (_op->getFunctionRole() != FunctionRole::Return) {
+		return Status::ErrorNotPermitted;
+	}
+	uint32_t caller = InvalidIndex;
+	uint32_t callerAct = NullActivation;
+	if (!callerOf(caller, callerAct)) {
+		return Status::ErrorNotFound;
+	}
+	auto shape = DynamicSite::fieldAt<Graph>(*_graph, caller, pin);
+	auto record = _local->getRecord(caller, callerAct);
+	if (!shape.valid || record == NullAddr) {
+		return Status::ErrorInvalidArguemnt;
+	}
+	auto arena = _local->getArena();
+
+	Status st = Status::Ok;
+	if (value::isContainerType(shape.type)) {
+		auto src = getInputAddr(pin);
+		if (src == NullAddr) {
+			value::BlobHandle empty;
+			auto old = value::blob::getHandle(*arena, record + shape.offset);
+			value::blob::destroy(*arena, old, shape.type, shape.element);
+			if (auto raw = arena->write(record + shape.offset, uint32_t(sizeof(empty)))) {
+				__sprt_memcpy(raw, &empty, sizeof(empty));
+			}
+		} else {
+			st = value::blob::copy(*arena, record + shape.offset, *arena, src, shape.type,
+					shape.element);
+		}
+	} else {
+		Var value;
+		st = getInput(pin, value);
+		if (st == Status::Ok) {
+			// Through the call's own shape: the address is re-read, the input may have grown a
+			// block.
+			st = writeRecordField(*arena, _local->getRecord(caller, callerAct), shape, value);
+		}
+	}
+	if (st != Status::Ok) {
+		return st;
+	}
+	return _local->markProduced(_local->getState(caller, callerAct), pin);
+}
+
+template <typename Graph, typename Local, typename Site>
+Status ContextT<Graph, Local, Site>::setResultExit(uint32_t exit) {
+	if (_op->getFunctionRole() != FunctionRole::Return) {
+		return Status::ErrorNotPermitted;
+	}
+	uint32_t caller = InvalidIndex;
+	uint32_t callerAct = NullActivation;
+	if (!callerOf(caller, callerAct)) {
+		return Status::ErrorNotFound;
+	}
+	auto &callOp = *_graph->getNodeAt(caller).op;
+	// The call's second local, after its outputs and its phase.
+	auto shape = DynamicSite::fieldAt<Graph>(*_graph, caller, localFieldIndex(callOp, 1));
+	auto record = _local->getRecord(caller, callerAct);
+	if (!shape.valid || record == NullAddr) {
+		return Status::ErrorInvalidArguemnt;
+	}
+	return writeRecordField(*_local->getArena(), record, shape, value::makeInt(int64_t(exit) + 1));
 }
 
 // One place to ask three questions - is there a scene, does it know this type, did the operation

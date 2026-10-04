@@ -119,6 +119,7 @@ StringView getDiagCodeName(flow::DiagCode c) {
 	case DiagCode::FunctionInlineMultiReturn: return StringView("fn-inline-multi-return");
 	case DiagCode::FunctionDeclConflict: return StringView("fn-decl-conflict");
 	case DiagCode::CallDepth: return StringView("call-depth");
+	case DiagCode::CodegenCalleeDrift: return StringView("codegen-callee-drift");
 	}
 	return StringView("?");
 }
