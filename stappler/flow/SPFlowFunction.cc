@@ -137,7 +137,11 @@ void FunctionSignature::init(const FunctionInterface &iface, StringView name, St
 	}
 	case FunctionOpKind::SourceEntry:
 	case FunctionOpKind::Entry:
-		inputsIn(false);
+		// The machine copies the arguments into the linked entry's inputs; a source entry only
+		// hands them out.
+		if (kind == FunctionOpKind::Entry) {
+			inputsIn(false);
+		}
 		inputsOut();
 		if (iface.execIn) {
 			_execOut.emplace_back(FunctionStartPin);

@@ -163,9 +163,14 @@ void performGraphFunctionLinkTests() {
 
 		FunctionSignature entry;
 		entry.init(a, StringView("fn.entry"), StringView("inc"), FunctionOpKind::SourceEntry);
-		check(entry.getDef().dataIn.size() == 1 && entry.getDef().dataOut.size() == 1
+		check(entry.getDef().dataIn.empty() && entry.getDef().dataOut.size() == 1
 						&& !entry.getDef().hasExecIn && entry.getDef().execOut.size() == 1,
 				"graph-function-link: an entry hands out the inputs and starts the body");
+
+		FunctionSignature linkedEntry;
+		linkedEntry.init(a, StringView("fn.entry"), StringView("inc"), FunctionOpKind::Entry);
+		check(linkedEntry.getDef().dataIn.size() == 1 && linkedEntry.getDef().dataOut.size() == 1,
+				"graph-function-link: ... and a linked entry takes them in, for the call to copy into");
 	}
 
 	// ---- what needs a link at all ------------------------------------------------------------------
