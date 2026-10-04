@@ -206,7 +206,7 @@ void performGraphAssetTests() {
 				StringView("asset-malformed"),
 				StringView("graph-asset: a file that says it is a scene is refused as a graph")},
 			{StringView(
-					 R"json({"__meta": {"kind": "graph", "version": 2},)json" R"json( "nodes": [], "edges": []})json"),
+					 R"json({"__meta": {"kind": "graph", "version": 3},)json" R"json( "nodes": [], "edges": []})json"),
 				StringView("asset-malformed"),
 				StringView("graph-asset: a graph from a newer studio is refused")},
 			{StringView(

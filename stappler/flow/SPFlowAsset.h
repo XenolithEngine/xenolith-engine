@@ -81,6 +81,50 @@ struct GraphEdge {
 	StringView toPin; // empty for an exec edge
 };
 
+// How a call site runs its function when the node does not say: as a call with an activation of
+// its own, or substituted into the caller when the graph is linked.
+enum class FunctionMode : uint8_t {
+	Call,
+	Inline,
+};
+
+SP_PUBLIC StringView getFunctionModeName(FunctionMode);
+SP_PUBLIC bool readFunctionMode(StringView, FunctionMode &);
+
+// One data pin of a function's interface. The order of the pins is the order of the call node's
+// pins, so it is kept as written.
+struct FunctionPin {
+	StringView name;
+	VarType type = VarType::Nil;
+	ElementChain element = 0;
+	StringView subtype; // enum family or referenced component type, by name
+	bool required = false;
+	mem_std::Value def; // empty: the type's zero
+};
+
+// What a graph offers to its callers. The call node, `fn.entry` and `fn.return` are spelled from
+// this when the graph is linked; nothing here is resolved against a registry.
+struct FunctionInterface {
+	mem_std::Vector<FunctionPin> inputs;
+	mem_std::Vector<FunctionPin> outputs;
+	bool execIn = false;
+	mem_std::Vector<StringView> execOut;
+	FunctionMode mode = FunctionMode::Call;
+};
+
+// A function defined inside a graph document: an interface and a body of its own. Its node ids
+// share one numbering with the root body and every other function of the document, so an id names
+// one node of the file wherever it stands.
+struct GraphFunction {
+	StringView name;
+	FunctionInterface iface;
+	mem_std::Value meta;
+	mem_std::Vector<GraphNode> nodes;
+	mem_std::Vector<GraphEdge> edges;
+
+	const GraphNode *getNode(NodeId) const;
+};
+
 // A graph as it is written down: nodes, edges, literals, and the editor's own notes. Loading
 // canonicalizes - nodes come back in ascending id order and edges in a fixed order derived from
 // their endpoints, whatever order the file used, so a file that differs from another only in the
@@ -89,6 +133,13 @@ struct GraphEdge {
 class SP_PUBLIC GraphAsset final {
 public:
 	static constexpr uint32_t FormatVersion = 1;
+
+	// The version a file with an `interface` or `functions` section is written under: a reader that
+	// knows only FormatVersion refuses it by number instead of by an unknown key.
+	static constexpr uint32_t FunctionFormatVersion = 2;
+
+	// The prefix of every operation a function contributes: a call node names `fn.<function>`.
+	static constexpr StringView FunctionOpPrefix = StringView("fn.");
 
 	// The envelope a graph file opens with: `{"__meta": {"kind": "graph", "version": 1,
 	// "generator": "..."}}`. It is part of what a graph file is, and the content hash is taken over
@@ -152,8 +203,24 @@ public:
 	whether anyone asked or not. False for an asset that was never loaded. */
 	bool isLegacyFormat() const { return _legacyFormat; }
 
-	// Ascending ids, so this is a bisection rather than a scan.
+	// Ascending ids, so this is a bisection rather than a scan. The root body only.
 	const GraphNode *getNode(NodeId) const;
+
+	// The graph is a function: it carries an `interface`, and its root body is the function's body.
+	bool hasInterface() const { return _hasInterface; }
+	const FunctionInterface &getInterface() const { return _interface; }
+
+	// The functions defined inside this document, in name order.
+	SpanView<GraphFunction> getFunctions() const { return _functions; }
+	const GraphFunction *getFunction(StringView name) const;
+
+	// A node of any body of the document; `body` receives the function it stands in, or null for
+	// the root body.
+	const GraphNode *findNode(NodeId, const GraphFunction **body = nullptr) const;
+
+	// The version save() writes: FunctionFormatVersion when the document has an interface or a
+	// function, FormatVersion otherwise.
+	uint32_t getWriteVersion() const;
 
 	/* The identity of what this asset says: a hash over its canonical form, which is what save()
 	writes, encoded as CBOR. Two files that differ only in the order of their records, in whitespace
@@ -170,6 +237,7 @@ private:
 	memory::pool_t *_pool = nullptr;
 	bool _ownsPool = false;
 	bool _legacyFormat = false;
+	bool _hasInterface = false;
 	StringView _name;
 	StringView _generator;
 	mem_std::Value _meta;
@@ -177,7 +245,12 @@ private:
 	mem_std::Vector<ExtensionDecl> _extensions;
 	mem_std::Vector<GraphNode> _nodes;
 	mem_std::Vector<GraphEdge> _edges;
+	FunctionInterface _interface;
+	mem_std::Vector<GraphFunction> _functions;
 };
+
+// Writes an interface the way save() does; shared with the linker, which spells linked graphs.
+SP_PUBLIC void saveFunctionInterface(const FunctionInterface &, mem_std::Value &out);
 
 } // namespace stappler::flow
 

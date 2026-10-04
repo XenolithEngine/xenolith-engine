@@ -95,6 +95,7 @@ void performSchemaEnumsTests();
 void performOpRegistryTests();
 void performGraphLocalsTests();
 void performGraphAssetTests();
+void performGraphFunctionAssetTests();
 void performGraphValidateTests();
 void performGraphBuildTests();
 void performGraphScopeTests();

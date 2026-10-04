@@ -51,6 +51,7 @@ static const TestEntry s_testList[] = {
 	{"op-registry", &stappler::performOpRegistryTests},
 	{"graph-locals", &stappler::performGraphLocalsTests},
 	{"graph-asset", &stappler::performGraphAssetTests},
+	{"graph-function-asset", &stappler::performGraphFunctionAssetTests},
 	{"graph-validate", &stappler::performGraphValidateTests},
 	{"graph-build", &stappler::performGraphBuildTests},
 	{"graph-scope", &stappler::performGraphScopeTests},
