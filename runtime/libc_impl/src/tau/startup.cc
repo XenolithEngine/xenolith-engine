@@ -1,11 +1,12 @@
 // Tau module startup.
 //
-// Root enters the ELF entry with x0 pointing at the module's StartInfo and sp at the top
-// of its stack; there is no argv, environment or auxv. libtau reads the StartInfo first
-// (it needs no TLS for that), then the program's PT_TLS image, found through the ELF
-// header the image maps at its base, gets a block for the main thread, and only then is
-// __libc constructed: errno is thread_local. A service thread for the module's rings,
-// when the manifest asks for one, starts before any constructor can wait on a ring.
+// Root enters the ELF entry with the module's StartInfo in the first argument register
+// (x0, rdi) and the stack pointer at the top of its stack; there is no argv, environment
+// or auxv. libtau reads the StartInfo first (it needs no TLS for that), then the
+// program's PT_TLS image, found through the ELF header the image maps at its base, gets
+// a block for the main thread, and only then is __libc constructed: errno is
+// thread_local. A service thread for the module's rings, when the manifest asks for one,
+// starts before any constructor can wait on a ring.
 
 #include "../../include/__impl_libc.h"
 
@@ -70,9 +71,21 @@ struct {
 	__SPRT_ID(size_t) align;
 } s_tls;
 
+#if __x86_64__
+// TLS variant II: the image ends at the thread pointer, rounded to its alignment; the TCB
+// above the thread pointer starts with its own address, read as %fs:0.
+constexpr __SPRT_ID(size_t) TAU_TCB_SIZE = 64;
+
+__SPRT_ID(size_t) __tau_tls_image_span() {
+	return (s_tls.memsz + s_tls.align - 1) & ~(s_tls.align - 1);
+}
+
+__SPRT_ID(size_t) __tau_tls_bytes() { return __tau_tls_image_span() + TAU_TCB_SIZE; }
+#else
 __SPRT_ID(size_t) __tau_tls_bytes() {
 	return (__SPRT_ID(size_t))__el0_tls_gap(s_tls.align) + s_tls.memsz;
 }
+#endif
 
 void __tau_find_tls() {
 	auto eh = reinterpret_cast<const __tau_ehdr *>(__ehdr_start);
@@ -99,6 +112,28 @@ extern "C" __attribute__((weak)) __SPRT_NORETURN void __stack_chk_fail(void) {
 	__sprt_tau_exit(127);
 }
 
+#if __x86_64__
+// A TLS block for a thread: the image, then the TCB at the thread pointer.
+extern "C" void *__tau_tls_alloc(void) {
+	if (s_tls.memsz == 0) {
+		return nullptr;
+	}
+	void *base = nullptr;
+	if (__sprt_tau_mem_map(__tau_tls_bytes(), s_tls.align, 0, &base) != 0) {
+		return nullptr;
+	}
+	auto tp = (unsigned char *)base + __tau_tls_image_span();
+	__builtin_memcpy(tp - __tau_tls_image_span(), s_tls.image, s_tls.filesz);
+	*(void **)tp = tp;
+	return tp;
+}
+
+extern "C" void __tau_tls_free(void *tp) {
+	if (tp) {
+		__sprt_tau_mem_unmap((unsigned char *)tp - __tau_tls_image_span(), __tau_tls_bytes());
+	}
+}
+#else
 // A TLS block for a thread: the thread pointer at its start, the TCB, then the image.
 extern "C" void *__tau_tls_alloc(void) {
 	if (s_tls.memsz == 0) {
@@ -118,6 +153,7 @@ extern "C" void __tau_tls_free(void *tp) {
 		__sprt_tau_mem_unmap(tp, __tau_tls_bytes());
 	}
 }
+#endif
 
 extern "C" void __tau_main_stack(__sprt_uintptr_t *low, __sprt_uintptr_t *high) {
 	*low = s_process.stack_top - s_process.stack_size;
@@ -191,6 +227,18 @@ extern "C" __SPRT_NORETURN void __tau_start_main(const void *startInfo) {
 	exit(ret);
 }
 
+#if __x86_64__
+// Entered with the StartInfo in rdi and rsp at the top of the stack.
+__asm__(".text\n"
+		".globl _start\n"
+		".type _start, @function\n"
+		"_start:\n"
+		"	xor	%ebp, %ebp\n"
+		"	and	$-16, %rsp\n"
+		"	call	__tau_start_main\n"
+		"	ud2\n"
+		".size _start, . - _start\n");
+#else
 __asm__(".text\n"
 		".globl _start\n"
 		".type _start, %function\n"
@@ -199,3 +247,4 @@ __asm__(".text\n"
 		"	mov	x30, #0\n"
 		"	b	__tau_start_main\n"
 		".size _start, . - _start\n");
+#endif

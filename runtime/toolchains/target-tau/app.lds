@@ -1,4 +1,4 @@
-/* Linker script for a Tau EL0 module.
+/* Linker script for a Tau user module, installed as share/app-<arch>.lds.
  *
  * Symbol definitions only, no SECTIONS: lld keeps its own layout (R / RX / RW
  * PT_LOADs, PT_TLS, PT_GNU_EH_FRAME, RELRO, .init_array brackets). Base address,

@@ -18,10 +18,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Tau targets: aarch64-tau-none-elf (kernel, EL1) and aarch64-tau-none-elf+user
-# (modules, EL0). One LLVM runtimes build serves both: the compiler-rt builtins
-# go to both sysroots; libunwind and libc++abi, built against the sprt headers
-# with -D__TAU__, go to the user sysroot only.
+# Tau targets: <arch>-tau-none-elf (kernel and bare modules) and
+# <arch>-tau-none-elf+user (user modules), for SP_ARCH aarch64 (the default) or
+# x86_64 (modules run on a Linux host, the kernel's hosted build). One LLVM
+# runtimes build serves both: the compiler-rt builtins go to both sysroots;
+# libunwind and libc++abi, built against the sprt headers with -D__TAU__, go to
+# the user sysroot only.
 
 .DEFAULT_GOAL := all
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
@@ -31,18 +33,29 @@ include $(MAKE_ROOT)../common/utils/detect-platform.mk
 include $(MAKE_ROOT)../common/utils/init-shell.mk
 include $(MAKE_ROOT)../common/utils/llvm-version.mk
 
-SP_ARCH := aarch64
+SP_ARCH ?= aarch64
+
+ifeq ($(SP_ARCH),aarch64)
 SP_TARGET_CLANG := aarch64-none-elf
 TAU_ARCH_FLAGS := -march=armv8-a
+else ifeq ($(SP_ARCH),x86_64)
+SP_TARGET_CLANG := x86_64-unknown-none-elf
+# The thread pointer (fs) belongs to the module's TLS block: no canary there.
+TAU_ARCH_FLAGS := -march=x86-64 -mstack-protector-guard=global
+# The builtins' cpu_model/x86.c needs the compiler's cpuid.h.
+TAU_RT_ARCH_INCLUDES = -isystem $(HOST_DIR)/lib/clang/$(SP_LLVM_VER)/include
+else
+$(error Unknown SP_ARCH: $(SP_ARCH))
+endif
 
 LIB_SRC_DIR ?= $(abspath $(MAKE_ROOT)../src)
 SP_RUNTIME_ROOT := $(abspath $(MAKE_ROOT)../..)
 HOST_DIR := $(abspath $(MAKE_ROOT)../hosts/$(HOST_ID))
 
-OUT ?= $(abspath $(MAKE_ROOT)intermediate)/aarch64-tau
+OUT ?= $(abspath $(MAKE_ROOT)intermediate)/$(SP_ARCH)-tau
 TARGETS ?= $(abspath $(MAKE_ROOT)targets)
-T_KERNEL := $(TARGETS)/aarch64-tau-none-elf
-T_USER := $(TARGETS)/aarch64-tau-none-elf+user
+T_KERNEL := $(TARGETS)/$(SP_ARCH)-tau-none-elf
+T_USER := $(TARGETS)/$(SP_ARCH)-tau-none-elf+user
 
 BUILTINS := lib/clang/lib/tau/libclang_rt.builtins-$(SP_ARCH).a
 
@@ -51,6 +64,7 @@ BUILTINS := lib/clang/lib/tau/libclang_rt.builtins-$(SP_ARCH).a
 TAU_C_FLAGS := -nostdinc -ffreestanding $(TAU_ARCH_FLAGS) \
 	-isystem $(SP_RUNTIME_ROOT)/include_libc \
 	-isystem $(SP_RUNTIME_ROOT)/include \
+	$(TAU_RT_ARCH_INCLUDES) \
 	-D__TAU__
 TAU_CXX_FLAGS := -nostdinc -nostdinc++ $(TAU_ARCH_FLAGS) \
 	-isystem $(SP_RUNTIME_ROOT)/libcxx/include \
@@ -193,7 +207,7 @@ user: $(OUT)/.runtimes $(OUT)/target-user.mk | $(T_USER)
 	cp -f $(OUT)/usr/lib/libunwind.a $(OUT)/usr/lib/libc++abi.a $(T_USER)/usr/lib/
 	cp -rf $(OUT)/usr/include/. $(T_USER)/usr/include/
 	if [ -d $(LIB_SRC_DIR)/simde/simde ]; then rm -rf $(T_USER)/usr/include/simde; cp -r $(LIB_SRC_DIR)/simde/simde $(T_USER)/usr/include/simde; fi
-	cp -f $(MAKE_ROOT)app-$(SP_ARCH).lds $(T_USER)/share/
+	cp -f $(MAKE_ROOT)app.lds $(T_USER)/share/app-$(SP_ARCH).lds
 	cp -f $(OUT)/target-user.mk $(T_USER)/target.mk
 
 all: kernel user
