@@ -4,7 +4,9 @@
 #include "../../include/__impl_libc.h"
 
 #include <sprt/c/__sprt_errno.h>
+#include <sprt/c/sys/__sprt_ioctl.h>
 #include <sprt/c/sys/__sprt_mman.h>
+#include <sys/ioctl.h>
 #include <sprt/c/cross/tau_sprt/sprt_tau.h>
 
 namespace sprt {
@@ -46,7 +48,22 @@ static ssize_t __file_readv(__fd_slot *fp, const __SPRT_IOVEC_NAME *iov, int iov
 	return total;
 }
 
+// One write for what fits a line buffer: stdout flushes its buffer and the new line in two
+// pieces, which the console must see together.
 static ssize_t __file_writev(__fd_slot *fp, const __SPRT_IOVEC_NAME *iov, int iovcnt) {
+	char joined[1'024];
+	size_t length = 0;
+	for (int i = 0; i < iovcnt && length <= sizeof(joined); ++i) {
+		length += iov[i].iov_len;
+	}
+	if (length <= sizeof(joined)) {
+		size_t at = 0;
+		for (int i = 0; i < iovcnt; ++i) {
+			__builtin_memcpy(joined + at, iov[i].iov_base, iov[i].iov_len);
+			at += iov[i].iov_len;
+		}
+		return __file_write(fp, joined, length, nullptr, 0);
+	}
 	ssize_t total = 0;
 	for (int i = 0; i < iovcnt; ++i) {
 		auto n = __file_write(fp, iov[i].iov_base, iov[i].iov_len, nullptr, 0);
@@ -76,7 +93,16 @@ static int __file_dup(__fd_slot *, int *, uint32_t) {
 	return -1;
 }
 
-static int __file_ioctl(__fd_slot *, int, int, intptr_t, __fd_ctl_mode) {
+// The streams are the module's console, a terminal: stdout then buffers by line, and lines
+// of different modules do not break up mid-way.
+static int __file_ioctl(__fd_slot *, int, int cmd, intptr_t arg, __fd_ctl_mode) {
+	if (cmd == __SPRT_TIOCGWINSZ && arg) {
+		auto ws = reinterpret_cast<struct winsize *>(arg);
+		*ws = winsize{};
+		ws->ws_row = 24;
+		ws->ws_col = 80;
+		return 0;
+	}
 	__sprt_errno = ENOTTY;
 	return -1;
 }
