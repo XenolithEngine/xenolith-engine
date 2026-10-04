@@ -37,9 +37,13 @@ SP_ARCH ?= aarch64
 
 ifeq ($(SP_ARCH),aarch64)
 SP_TARGET_CLANG := aarch64-none-elf
+SP_LINK_CLANG := $(SP_TARGET_CLANG)
 TAU_ARCH_FLAGS := -march=armv8-a
 else ifeq ($(SP_ARCH),x86_64)
 SP_TARGET_CLANG := x86_64-unknown-none-elf
+# clang hands the link of x86_64-unknown-none-elf to the system gcc; its Linux driver runs
+# ld.lld itself and, with -nostdlib -static, adds no libraries or start files.
+SP_LINK_CLANG := x86_64-unknown-linux-gnu
 # The thread pointer (fs) belongs to the module's TLS block: no canary there.
 TAU_ARCH_FLAGS := -march=x86-64 -mstack-protector-guard=global
 # The builtins' cpu_model/x86.c needs the compiler's cpuid.h.
@@ -114,7 +118,7 @@ TARGET_NAME := $(SP_TARGET_CLANG)
 TARGET_GENERAL_CFLAGS := --target=$(SP_TARGET_CLANG) $(2) -resource-dir $$(TARGET_SYSROOT)/lib/clang $(TAU_ARCH_FLAGS) -D__TAU__
 TARGET_GENERAL_CXXFLAGS := --target=$(SP_TARGET_CLANG) $(2) -resource-dir $$(TARGET_SYSROOT)/lib/clang $(TAU_ARCH_FLAGS) -D__TAU__
 TARGET_GENERAL_SFLAGS := --target=$(SP_TARGET_CLANG) -resource-dir $$(TARGET_SYSROOT)/lib/clang $(TAU_ARCH_FLAGS) -D__TAU__
-TARGET_GENERAL_LDFLAGS := --target=$(SP_TARGET_CLANG) -resource-dir $$(TARGET_SYSROOT)/lib/clang
+TARGET_GENERAL_LDFLAGS := --target=$(SP_LINK_CLANG) -resource-dir $$(TARGET_SYSROOT)/lib/clang
 TARGET_LIB_DIR := $$(TARGET_SYSROOT)/usr/lib
 TARGET_EXEC_CFLAGS :=
 TARGET_EXEC_CXXFLAGS :=
