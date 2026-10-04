@@ -438,6 +438,12 @@ public:
 		DiagSinkFor<Out> sink(report);
 		return validate(asset, ops, sink.get(), shape);
 	}
+	template <DiagContainer Out>
+	static Status validate(const GraphAsset &asset, const OpRegistry &ops, Out *report,
+			GraphShape *shape, const FunctionHost *host) {
+		DiagSinkFor<Out> sink(report);
+		return validate(asset, ops, sink.get(), shape, host);
+	}
 
 	// Re-checks an already built graph against a scene - what a host does after loading a scene
 	// that brought types of its own. Repeatable, and it never un-builds the graph: a graph is code
