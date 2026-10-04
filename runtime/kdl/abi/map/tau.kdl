@@ -1,7 +1,7 @@
 // The tau platform: the cross fragments under sprt/gen/c/cross/tau_sprt. Tau userspace uses the
 // Linux generic ABI values for libc types and constants, so most fragments forward to linux_sprt.
 
-platforms { platform tau_sprt { arch aarch64_sprt; }; }
+platforms { platform tau_sprt { arch aarch64_sprt x86_64_sprt; }; }
 
 // Every HAVE_* gate for Tau lives in tau_sprt/config.h; this file must exist.
 header "sprt/gen/c/cross/tau_sprt/aarch64_sprt/config.h"
@@ -25,6 +25,29 @@ header "sprt/gen/c/cross/tau_sprt/aarch64_sprt/signal.h" {
 // Tau has no Linux syscall table: modules reach the kernel through capability invocations in
 // libtau, so no SYSCALL_* numbers are defined here.
 header "sprt/gen/c/cross/tau_sprt/aarch64_sprt/syscall.h"
+
+// Every HAVE_* gate for Tau lives in tau_sprt/config.h; this file must exist.
+header "sprt/gen/c/cross/tau_sprt/x86_64_sprt/config.h"
+
+header "sprt/gen/c/cross/tau_sprt/x86_64_sprt/fcntl.h" {
+    include "sprt/gen/c/cross/linux_sprt/x86_64_sprt/fcntl.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/x86_64_sprt/fenv.h" {
+    include "sprt/gen/c/cross/linux_sprt/x86_64_sprt/fenv.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/x86_64_sprt/jmp_buf.h" {
+    include "sprt/gen/c/cross/linux_sprt/x86_64_sprt/jmp_buf.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/x86_64_sprt/signal.h" {
+    include "sprt/gen/c/cross/linux_sprt/x86_64_sprt/signal.h"
+}
+
+// Tau has no Linux syscall table: modules reach the kernel through capability invocations in
+// libtau, so no SYSCALL_* numbers are defined here.
+header "sprt/gen/c/cross/tau_sprt/x86_64_sprt/syscall.h"
 
 header "sprt/gen/c/cross/tau_sprt/clockid.h" {
     include "sprt/gen/c/cross/linux_sprt/clockid.h"
