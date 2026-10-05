@@ -39,6 +39,7 @@ struct __sprt_tau_process {
 	unsigned module;
 	unsigned priority;
 	int service_thread; // the manifest asks for a service thread for the module's rings
+	unsigned cpus; // the CPUs its threads run on
 };
 
 typedef struct __sprt_tau_thread __sprt_tau_thread;
