@@ -221,6 +221,7 @@ brotli_SHA256 := 816c96e8e8f193b40151dad7e8ff37b1221d019dbcb9c35cd3fadbfe6477dfe
 
 $(SRC_ROOT)/brotli: | prepare
 	$(call sp_fetch_tar,brotli)
+	$(call sp_patch,brotli,brotli/0001-no-model-small-on-loongarch.patch)
 
 # https://github.com/ngtcp2/nghttp3/releases # revised: 25 sep 2026
 nghttp3_URL    := https://github.com/ngtcp2/nghttp3/releases/download/v1.18.0/nghttp3-1.18.0.tar.xz

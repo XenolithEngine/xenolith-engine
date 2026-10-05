@@ -44,6 +44,11 @@ SP_ARCH_LLVM := AArch64
 else ifeq ($(SP_ARCH_TARGET),riscv64)
 SP_ARCH_KERNEL := riscv
 SP_ARCH_LLVM := RISCV
+else ifeq ($(SP_ARCH_TARGET),loongarch64)
+SP_ARCH_KERNEL := loongarch
+SP_ARCH_LLVM := LoongArch
+# LoongArch appeared in Linux 5.19: the 5.10 headers have no arch/loongarch
+LINUX_KERNEL_VER := 6.1.189
 else
 $(error Unknown target arch: $(SP_ARCH_TARGET))
 endif
@@ -84,7 +89,7 @@ HOST_RANLIB := $(abspath $(OUT_HOST)/bin/llvm-ranlib)
 #
 LINUX_KERNEL_VER ?= 5.10.258
 LINUX_KERNEL_TARBALL := linux-$(LINUX_KERNEL_VER).tar.xz
-LINUX_KERNEL_URL := https://cdn.kernel.org/pub/linux/kernel/v5.x/$(LINUX_KERNEL_TARBALL)
+LINUX_KERNEL_URL := https://cdn.kernel.org/pub/linux/kernel/v$(firstword $(subst ., ,$(LINUX_KERNEL_VER))).x/$(LINUX_KERNEL_TARBALL)
 LINUX_KERNEL_SRC := src/linux-$(LINUX_KERNEL_VER)
 LINUX_HEADERS_DIR := $(abspath src/linux-headers-$(SP_ARCH_TARGET))
 LINUX_HEADERS := $(LINUX_HEADERS_DIR)/include/linux/futex.h

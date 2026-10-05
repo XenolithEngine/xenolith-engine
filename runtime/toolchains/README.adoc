@@ -131,9 +131,11 @@ Supported targets:
 * target-x86_64-unknown-linux-gnu
 * target-aarch64-unknown-linux-gnu
 * target-riscv64-unknown-linux-gnu
+* target-loongarch64-unknown-linux-gnu
 * target-x86_64-unknown-linux-musl
 * target-aarch64-unknown-linux-musl
 * target-riscv64-unknown-linux-musl
+* target-loongarch64-unknown-linux-musl
 * target-unknown-ndk-linux-android - special target to use with Android NDK
 * target-aarch64-unknown-linux-android
 * target-armv7a-unknown-linux-androideabi
@@ -190,7 +192,7 @@ make host-cross-x86_64-pc-windows-msvc        # reuses the Windows SDK (xwin)
 make host-cross-x86_64-apple-macosx           # reuses the macOS SDK
 ----
 
-Supported cross hosts: `host-cross-{x86_64,aarch64,riscv64}-unknown-linux-{gnu,musl}`,
+Supported cross hosts: `host-cross-{x86_64,aarch64,riscv64,loongarch64}-unknown-linux-{gnu,musl}`,
 `host-cross-{x86_64,aarch64}-pc-windows-msvc`, `host-cross-{x86_64,aarch64}-apple-macosx`.
 See the `cross/` subdirectory and `README.adoc` of each `host-*` directory.
 

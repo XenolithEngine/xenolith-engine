@@ -252,11 +252,11 @@ THE SOFTWARE.
 #define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_RISCV32
 #define __SPRT_ARCH_ID __SPRT_ARCH_ID_RISCV32
 #elif defined(__loongarch__) && defined(__loongarch_grlen) && __loongarch_grlen == 64
-#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_RISCV64
-#define __SPRT_ARCH_ID __SPRT_ARCH_ID_RISCV64
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_LOONGARCH64
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_LOONGARCH64
 #elif defined(__loongarch__) && defined(__loongarch_grlen) && __loongarch_grlen == 32
-#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_RISCV32
-#define __SPRT_ARCH_ID __SPRT_ARCH_ID_RISCV32
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_LOONGARCH32
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_LOONGARCH32
 #else
 #error "Unknown arch"
 #endif

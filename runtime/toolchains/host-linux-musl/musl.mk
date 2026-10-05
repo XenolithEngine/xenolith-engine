@@ -43,6 +43,8 @@ else ifeq ($(SP_ARCH),aarch64)
 SP_ARCH_LLVM ?= AArch64
 else ifeq ($(SP_ARCH),riscv64)
 SP_ARCH_LLVM ?= RISCV
+else ifeq ($(SP_ARCH),loongarch64)
+SP_ARCH_LLVM ?= LoongArch
 else
 SP_ARCH_LLVM ?= X86
 endif
@@ -105,6 +107,11 @@ $(MAKE_SRC_DIR)/configure: src/$(MAKE_SRC_TARBALL)
 # Linux kernel headers (запиненные). Нужны как minimum libc++ (linux/futex.h
 # в atomic-wait) и ряду libc-зависимых частей. Версия — как у glibc-хоста
 # (наименьшая поддерживаемая LTS), чтобы musl+headers были версионно согласованы.
+# LoongArch появился только в 5.19: для него — 6.1 LTS, как у target-linux.
+ifeq ($(SP_ARCH),loongarch64)
+LINUX_KERNEL_FAMILY ?= v6.x
+LINUX_KERNEL_VER ?= 6.1.189
+endif
 LINUX_KERNEL_FAMILY ?= v5.x
 LINUX_KERNEL_VER ?= 5.10.258
 LINUX_KERNEL_TARBALL := linux-$(LINUX_KERNEL_VER).tar.xz
@@ -120,6 +127,8 @@ else ifeq ($(SP_ARCH),aarch64)
 SP_ARCH_KERNEL ?= arm64
 else ifeq ($(SP_ARCH),riscv64)
 SP_ARCH_KERNEL ?= riscv
+else ifeq ($(SP_ARCH),loongarch64)
+SP_ARCH_KERNEL ?= loongarch
 else
 SP_ARCH_KERNEL ?= $(SP_ARCH)
 endif

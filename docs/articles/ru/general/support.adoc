@@ -12,7 +12,11 @@
 - amd64
 - arm64
 - riscv64
-- loongarch  (в разработке)
+- loongarch64 (**)
+
+(**) - ядро не ниже 6.1 и glibc не ниже 2.36: LoongArch появился в Linux 5.19 и
+glibc 2.36. Модуль stappler_wasm на loongarch64 недоступен: WAMR не поддерживает
+эту архитектуру.
 
 ## Android
 

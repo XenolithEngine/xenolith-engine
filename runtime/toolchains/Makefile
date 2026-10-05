@@ -93,6 +93,9 @@ host-cross-aarch64-unknown-linux-gnu: target-aarch64-unknown-linux-gnu
 host-cross-riscv64-unknown-linux-gnu: target-riscv64-unknown-linux-gnu
 	$(MAKE) -C host-linux-glibc/cross out OUT_SYSROOT=$(abspath hosts/riscv64-unknown-linux-gnu) SP_ARCH_HOST=riscv64
 
+host-cross-loongarch64-unknown-linux-gnu: target-loongarch64-unknown-linux-gnu
+	$(MAKE) -C host-linux-glibc/cross out OUT_SYSROOT=$(abspath hosts/loongarch64-unknown-linux-gnu) SP_ARCH_HOST=loongarch64
+
 host-cross-x86_64-unknown-linux-musl: target-x86_64-unknown-linux-musl
 	$(MAKE) -C host-linux-musl/cross out OUT_SYSROOT=$(abspath hosts/x86_64-unknown-linux-musl) SP_ARCH_HOST=x86_64
 
@@ -101,6 +104,9 @@ host-cross-aarch64-unknown-linux-musl: target-aarch64-unknown-linux-musl
 
 host-cross-riscv64-unknown-linux-musl: target-riscv64-unknown-linux-musl
 	$(MAKE) -C host-linux-musl/cross out OUT_SYSROOT=$(abspath hosts/riscv64-unknown-linux-musl) SP_ARCH_HOST=riscv64
+
+host-cross-loongarch64-unknown-linux-musl: target-loongarch64-unknown-linux-musl
+	$(MAKE) -C host-linux-musl/cross out OUT_SYSROOT=$(abspath hosts/loongarch64-unknown-linux-musl) SP_ARCH_HOST=loongarch64
 
 host-cross-x86_64-pc-windows-msvc: target-x86_64-pc-windows-msvc+dll
 	$(MAKE) -C host-windows-msvc/cross out OUT_SYSROOT=$(abspath hosts/x86_64-pc-windows-msvc) SP_ARCH_HOST=x86_64
@@ -118,9 +124,11 @@ host-cross-all: $(filter-out host-cross-$(HOST_ID), \
 	host-cross-x86_64-unknown-linux-gnu \
 	host-cross-aarch64-unknown-linux-gnu \
 	host-cross-riscv64-unknown-linux-gnu \
+	host-cross-loongarch64-unknown-linux-gnu \
 	host-cross-x86_64-unknown-linux-musl \
 	host-cross-aarch64-unknown-linux-musl \
 	host-cross-riscv64-unknown-linux-musl \
+	host-cross-loongarch64-unknown-linux-musl \
 	host-cross-x86_64-pc-windows-msvc \
 	host-cross-aarch64-pc-windows-msvc \
 	host-cross-x86_64-apple-macosx \
@@ -176,15 +184,23 @@ target-aarch64-unknown-linux-musl: host
 target-riscv64-unknown-linux-musl: host
 	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) riscv64-unknown-linux-musl
 
+target-loongarch64-unknown-linux-gnu: host
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) loongarch64-unknown-linux-gnu
+
+target-loongarch64-unknown-linux-musl: host
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) loongarch64-unknown-linux-musl
+
 target-linux: \
 	target-x86_64-unknown-linux-gnu \
 	target-aarch64-unknown-linux-gnu \
 	target-riscv64-unknown-linux-gnu \
+	target-loongarch64-unknown-linux-gnu \
 
 target-linux-musl: \
 	target-x86_64-unknown-linux-musl \
 	target-aarch64-unknown-linux-musl \
 	target-riscv64-unknown-linux-musl \
+	target-loongarch64-unknown-linux-musl \
 
 
 #
@@ -367,9 +383,11 @@ RELEASE_HOSTS := \
 	x86_64-unknown-linux-gnu \
 	aarch64-unknown-linux-gnu \
 	riscv64-unknown-linux-gnu \
+	loongarch64-unknown-linux-gnu \
 	x86_64-unknown-linux-musl \
 	aarch64-unknown-linux-musl \
 	riscv64-unknown-linux-musl \
+	loongarch64-unknown-linux-musl \
 	x86_64-pc-windows-msvc \
 	aarch64-pc-windows-msvc \
 	x86_64-apple-macosx \
@@ -379,9 +397,11 @@ RELEASE_TARGETS := \
 	x86_64-unknown-linux-gnu \
 	aarch64-unknown-linux-gnu \
 	riscv64-unknown-linux-gnu \
+	loongarch64-unknown-linux-gnu \
 	x86_64-unknown-linux-musl \
 	aarch64-unknown-linux-musl \
 	riscv64-unknown-linux-musl \
+	loongarch64-unknown-linux-musl \
 	x86_64-xenolithos-linux-gnu \
 	aarch64-xenolithos-linux-gnu \
 	riscv64-xenolithos-linux-gnu \
@@ -470,10 +490,12 @@ clean-release:
 	target-x86_64-unknown-linux-gnu \
 	target-aarch64-unknown-linux-gnu \
 	target-riscv64-unknown-linux-gnu \
+	target-loongarch64-unknown-linux-gnu \
 	target-linux-musl \
 	target-x86_64-unknown-linux-musl \
 	target-aarch64-unknown-linux-musl \
 	target-riscv64-unknown-linux-musl \
+	target-loongarch64-unknown-linux-musl \
 	target-xenolithos \
 	target-x86_64-xenolithos-linux-gnu \
 	target-aarch64-xenolithos-linux-gnu \
@@ -506,9 +528,11 @@ clean-release:
 	host-cross-x86_64-unknown-linux-gnu \
 	host-cross-aarch64-unknown-linux-gnu \
 	host-cross-riscv64-unknown-linux-gnu \
+	host-cross-loongarch64-unknown-linux-gnu \
 	host-cross-x86_64-unknown-linux-musl \
 	host-cross-aarch64-unknown-linux-musl \
 	host-cross-riscv64-unknown-linux-musl \
+	host-cross-loongarch64-unknown-linux-musl \
 	host-cross-x86_64-pc-windows-msvc \
 	host-cross-aarch64-pc-windows-msvc \
 	host-cross-x86_64-apple-macosx \

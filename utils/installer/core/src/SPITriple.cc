@@ -37,9 +37,11 @@ constexpr const char *kKnownHosts[] = {
 	"x86_64-unknown-linux-gnu",
 	"aarch64-unknown-linux-gnu",
 	"riscv64-unknown-linux-gnu",
+	"loongarch64-unknown-linux-gnu",
 	"x86_64-unknown-linux-musl",
 	"aarch64-unknown-linux-musl",
 	"riscv64-unknown-linux-musl",
+	"loongarch64-unknown-linux-musl",
 };
 
 } // namespace
@@ -53,6 +55,9 @@ StringView getServerArch(StringView arch) {
 	}
 	if (arch == "riscv64") {
 		return "riscv64";
+	}
+	if (arch == "loongarch64") {
+		return "loongarch64";
 	}
 	return StringView();
 }
@@ -105,6 +110,8 @@ StringView getNativeArch() {
 	return "x86_64";
 #elif __SPRT_ARCH_ID == __SPRT_ARCH_ID_RISCV64
 	return "riscv64";
+#elif __SPRT_ARCH_ID == __SPRT_ARCH_ID_LOONGARCH64
+	return "loongarch64";
 #else
 	return StringView();
 #endif
@@ -130,7 +137,8 @@ StringView getCurrentLibc(StringView os) {
 	// musl installs /lib/ld-musl-<arch>.so.1 and Alpine adds /etc/alpine-release; glibc has neither
 	auto probe = [](StringView p) { return filesystem::exists(FileInfo(p)); };
 	bool musl = probe("/lib/ld-musl-aarch64.so.1") || probe("/lib/ld-musl-x86_64.so.1")
-			|| probe("/lib/ld-musl-riscv64.so.1") || probe("/etc/alpine-release");
+			|| probe("/lib/ld-musl-riscv64.so.1") || probe("/lib/ld-musl-loongarch64.so.1")
+			|| probe("/etc/alpine-release");
 	return musl ? "musl" : "gnu";
 #else
 	return "gnu";

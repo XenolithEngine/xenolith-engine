@@ -114,6 +114,11 @@ jobs:
             host: x86_64-unknown-linux-gnu
             targets: aarch64-pc-windows-msvc
             best-effort: true
+          - name: linux-loongarch64
+            runs-on: ubuntu-24.04
+            host: x86_64-unknown-linux-gnu
+            targets: loongarch64-unknown-linux-musl
+            best-effort: true
     defaults:
       run:
         shell: bash

@@ -118,9 +118,11 @@ Wine-hosted binaries.
 | `x86_64-unknown-linux-gnu`   | Linux / glibc, x86-64 |
 | `aarch64-unknown-linux-gnu`  | Linux / glibc, ARM64 |
 | `riscv64-unknown-linux-gnu`  | Linux / glibc, RISC-V 64 |
+| `loongarch64-unknown-linux-gnu` | Linux / glibc 2.36+, LoongArch 64 (new-world ABI) |
 | `x86_64-unknown-linux-musl`  | Linux / musl, x86-64 |
 | `aarch64-unknown-linux-musl` | Linux / musl, ARM64 |
 | `riscv64-unknown-linux-musl` | Linux / musl, RISC-V 64 |
+| `loongarch64-unknown-linux-musl` | Linux / musl, LoongArch 64 |
 | `x86_64-pc-windows-msvc`     | Windows, x86-64 |
 | `aarch64-pc-windows-msvc`    | Windows, ARM64 |
 | `x86_64-apple-macosx`        | macOS, Intel |
@@ -191,7 +193,7 @@ Notes:
 
 | Target family | libc in the sysroot | C++ runtime bits | Vulkan runtime |
 |---|---|---|---|
-| `*-unknown-linux-gnu` | glibc **2.33** (riscv64: **2.35**) + Linux 5.10 LTS UAPI headers | `include_libc/c++/v1`, `libc++abi.a`, `libunwind.a` | headers only — system loader |
+| `*-unknown-linux-gnu` | glibc **2.33** (riscv64: **2.35**, loongarch64: **2.36**) + Linux 5.10 LTS UAPI headers (loongarch64: 6.1 LTS) | `include_libc/c++/v1`, `libc++abi.a`, `libunwind.a` | headers only — system loader |
 | `*-unknown-linux-musl` | musl **1.2.6** (pinned upstream) | same | headers only — system loader |
 | `*-xenolithos-linux-gnu` | glibc **2.39** + device `runtime/rootfs` | same | **`libvulkan.so` 1.4.357** bundled (no OS to provide it), GPU driver applied as an overlay by `xenolith-os` |
 | `*-linux-android(eabi)` | bionic stubs + headers, API 24 | same | headers only — system loader |
@@ -237,10 +239,10 @@ download time. This is the complete manifest shipped in this release.
 ### System libc sources
 | Component | Version |
 |---|---|
-| glibc (Linux targets) | 2.33 — riscv64: 2.35 |
+| glibc (Linux targets) | 2.33 — riscv64: 2.35, loongarch64: 2.36 |
 | glibc (Xenolith OS targets) | 2.39 |
 | musl | 1.2.6 (`runtime/musl-libc` submodule, `v1.2.6-62`: v1.2.6 + upstream fixes) |
-| Linux UAPI headers | 5.10.258 (LTS) |
+| Linux UAPI headers | 5.10.258 (LTS) — loongarch64: 6.1.189 (LTS) |
 | Android API level | 24 |
 | macOS / iOS deployment target | 14.5 / 17.4 |
 

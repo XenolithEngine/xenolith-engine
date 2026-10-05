@@ -118,8 +118,10 @@ $(eval $(call download_tarbell_target,$(MAKE_SRC_DIR),$(MAKE_SRC_TARBALL),\
 $(eval $(call download_tarbell_target,$(LINUX_KERNEL_DIR),$(LINUX_KERNEL_TARBALL),\
 	ftp://stappler.dev/infrastructure/linux-5.10/$(LINUX_KERNEL_TARBALL)))
 
-$(eval $(call download_tarbell_target,$(GLIBC_SRC_DIR),$(GLIBC_SRC_TARBALL),\
-	ftp://stappler.dev/infrastructure/linux-5.10/$(GLIBC_SRC_TARBALL)))
+# An arch whose glibc the mirror does not carry points this at upstream.
+GLIBC_SRC_DISTRIB_URL ?= ftp://stappler.dev/infrastructure/linux-5.10/$(GLIBC_SRC_TARBALL)
+
+$(eval $(call download_tarbell_target,$(GLIBC_SRC_DIR),$(GLIBC_SRC_TARBALL),$(GLIBC_SRC_DISTRIB_URL)))
 
 else
 

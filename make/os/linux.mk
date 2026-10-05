@@ -50,6 +50,13 @@ ifeq ($(OSTYPE_UNWIND_DLOPEN),1)
 OSTYPE_GENERAL_CFLAGS += -D__SPRT_UNWIND_DLOPEN=1
 OSTYPE_GENERAL_CXXFLAGS += -D__SPRT_UNWIND_DLOPEN=1
 endif
+
+# The cross headers cannot see the native <features.h>, yet a few ABI shapes differ
+# between the two libcs on one arch (loongarch64 jmp_buf, PF_MAX): tell them.
+ifneq (,$(findstring linux-musl,$(TARGET_NAME)))
+OSTYPE_GENERAL_CFLAGS += -D__SPRT_LINUX_MUSL=1
+OSTYPE_GENERAL_CXXFLAGS += -D__SPRT_LINUX_MUSL=1
+endif
 OSTYPE_LIB_CXXFLAGS := -fPIC -DPIC
 OSTYPE_EXEC_CXXFLAGS :=
 

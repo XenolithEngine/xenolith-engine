@@ -1,0 +1,23 @@
+brotli: no model("small") attribute on LoongArch.
+
+brotli 1.2.0 marks its static tables with __attribute__((model("small")))
+whenever the compiler knows the `model` attribute. Clang knows it only on
+LoongArch, where the valid code models are normal, medium and extreme, so
+every file including common/constants.h fails with
+  error: code model 'small' is not supported on this target
+Skip the attribute there, as on every target that does not have it.
+
+--- a/c/common/platform.h
++++ b/c/common/platform.h
+@@ -665,7 +665,10 @@
+ #undef BROTLI_TEST
+ #endif
+ 
+-#if BROTLI_GNUC_HAS_ATTRIBUTE(model, 3, 0, 3)
++/* The only `model` value used here is "small", which is an ia64 code model. On
++   LoongArch - the other target that knows the attribute - it is rejected: the
++   code models there are normal, medium and extreme. */
++#if BROTLI_GNUC_HAS_ATTRIBUTE(model, 3, 0, 3) && !defined(__loongarch__)
+ #define BROTLI_MODEL(M) __attribute__((model(M)))
+ #else
+ #define BROTLI_MODEL(M) /* M */

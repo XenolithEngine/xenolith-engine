@@ -109,6 +109,7 @@ self-host бутстрапа* — по аналогии с `host-macos/cross` и
 make host-cross-x86_64-unknown-linux-musl
 make host-cross-aarch64-unknown-linux-musl
 make host-cross-riscv64-unknown-linux-musl
+make host-cross-loongarch64-unknown-linux-musl
 ----
 
 Те же опции (`SP_LLVM_LTO`, по умолчанию здесь *выключен* для скорости),

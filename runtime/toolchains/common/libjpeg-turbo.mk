@@ -36,6 +36,10 @@ ifeq ($(SP_ARCH),riscv64)
 CONFIGURE += -DWITH_SIMD=Off
 endif
 
+ifeq ($(SP_ARCH),loongarch64)
+CONFIGURE += -DWITH_SIMD=Off
+endif
+
 ifeq ($(SP_ARCH),armv7a)
 CONFIGURE += -DWITH_SIMD=Off
 endif
