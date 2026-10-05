@@ -236,7 +236,7 @@ Status emit(const RuntimeGraph &g, const GraphAsset &asset, const OpRegistry &op
 				DiagText(DiagDetail::CodegenNameNotIdentifier).name(options.unitNamespace));
 		return report.getStatus();
 	}
-	auto stateType = ops.getLocalTypes().get(NodeStateTypeName);
+	auto stateType = ops.getCoreTypes().get(NodeStateTypeName);
 	if (!stateType) {
 		report.report(DiagSeverity::Error, DiagCode::CodegenSchemaDrift,
 				DiagText(DiagDetail::CodegenNodeStateMissing));
@@ -245,6 +245,15 @@ Status emit(const RuntimeGraph &g, const GraphAsset &asset, const OpRegistry &op
 
 	auto nodeCount = g.getNodeCount();
 	auto scopeCount = g.getScopeCount();
+
+	// A graph with functions calls their bodies, which live beside the door rather than in a
+	// library a host names.
+	bool usesFunctions = false;
+	for (uint32_t n = 0; n < nodeCount; ++n) {
+		if (g.getNodeAt(n).op->getFunctionRole() != FunctionRole::None) {
+			usesFunctions = true;
+		}
+	}
 
 	// The index arrays, concatenated in node order, and the begins the emitted rows point with.
 	// The build lays them out this way already; recomputing them here is what makes the emitted
@@ -753,6 +762,14 @@ Status emit(const RuntimeGraph &g, const GraphAsset &asset, const OpRegistry &op
 			uint32_t(fieldRows.size()), [&](uint32_t i) { return fieldRows[i]; });
 	indexTable(t, StringView("recordFieldBegin"), fieldBegin);
 	indexTable(t, StringView("recordFieldCount"), fieldCount);
+	auto callees = g.getLink() ? g.getLink()->getCallees() : SpanView<LinkCallee>();
+	if (!callees.empty()) {
+		rowTable(t, StringView("flow::CompiledCalleeIdentity"), StringView("callees"),
+				uint32_t(callees.size()), [&](uint32_t i) {
+			return mem_std::toString("{.name = ", view(callees[i].name), ", .contentHash = ",
+					hex64(callees[i].contentHash), "}");
+		});
+	}
 	t.nl();
 	t.line(StringView("\tstatic constexpr flow::CompiledIdentity identity = {"));
 	t.line(mem_std::toString("\t\t.name = ", view(asset.getName()), ","));
@@ -767,6 +784,9 @@ Status emit(const RuntimeGraph &g, const GraphAsset &asset, const OpRegistry &op
 	}
 	if (!families.empty()) {
 		t.line(StringView("\t\t.families = SpanView<flow::CompiledFamilyIdentity>(families, families + familiesCount),"));
+	}
+	if (!callees.empty()) {
+		t.line(StringView("\t\t.callees = SpanView<flow::CompiledCalleeIdentity>(callees, callees + calleesCount),"));
 	}
 	t.line(StringView("\t};"));
 	t.nl();
@@ -892,11 +912,14 @@ Status emit(const RuntimeGraph &g, const GraphAsset &asset, const OpRegistry &op
 						  "own, which is what makes"));
 		s.line(StringView("// a node index a constant inside the step below (StaticContext)."));
 		s.line(StringView("#include \"SPFlowContext.hpp\""));
-		if (!options.bodyIncludes.empty()) {
+		if (!options.bodyIncludes.empty() || usesFunctions) {
 			s.nl();
 			s.line(StringView("// The operations, as templates over the door (OpDef::inlineName)."));
 			for (auto &inc : options.bodyIncludes) {
 				s.line(mem_std::toString("#include \"", inc, "\""));
+			}
+			if (usesFunctions) {
+				s.line(StringView("#include \"SPFlowFunctionInline.h\""));
 			}
 		}
 		s.nl();

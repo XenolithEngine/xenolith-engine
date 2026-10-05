@@ -187,6 +187,16 @@ public:
 	virtual Status getBarrierCount(uint32_t &out) const = 0;
 	virtual Status getBarrierBranch(uint32_t branch, bool &present, bool &failed) const = 0;
 
+	// Functions (SPFlowFunction.h). A call node asks for its function to be opened, the way an
+	// operation fires an exec output: the machine opens it when the step returns. A body's entry
+	// copies the call's input `pin` to its own output `out`; a return copies its own input `pin` to
+	// the call's output of that index, and names the exit the call leaves by. The last three answer
+	// ErrorNotFound outside a called body - a function's document run as a graph of its own.
+	virtual Status call() = 0;
+	virtual Status copyArgument(uint32_t pin, uint32_t out) = 0;
+	virtual Status copyResult(uint32_t pin) = 0;
+	virtual Status setResultExit(uint32_t exit) = 0;
+
 	// By value and kind-erased. An operation that reaches the arena does so to call blob::, which
 	// is instantiated for ArenaRef exactly as for a real kind - so `ops/` is written once and reads
 	// a debugger's store and a release one with the same code.
@@ -244,6 +254,9 @@ struct StepSite {
 	value::EntityId branchEntity;
 
 	uint32_t fired = 0;
+
+	// The operation asked for its function to be opened (OpContext::call).
+	bool called = false;
 };
 
 // Where a node's own rows are, and the only thing the two doors spell differently. The interpreter
@@ -354,6 +367,10 @@ public:
 	Status takeBranchFold(uint32_t pin, Var &out) override;
 	Status getBarrierCount(uint32_t &out) const override;
 	Status getBarrierBranch(uint32_t branch, bool &present, bool &failed) const override;
+	Status call() override;
+	Status copyArgument(uint32_t pin, uint32_t out) override;
+	Status copyResult(uint32_t pin) override;
+	Status setResultExit(uint32_t exit) override;
 
 	value::ArenaRef getArena() const override { return value::ArenaRef::of(*_local->getArena()); }
 
@@ -380,6 +397,10 @@ private:
 	};
 
 	uint32_t sourceActivation(uint32_t srcNode) const;
+
+	// The call this step's body was opened by: the nearest function activation up the tree, and the
+	// call node and activation that opened it. False outside a called body.
+	bool callerOf(uint32_t &node, uint32_t &activation) const;
 	Status readEdgeValue(uint32_t pin, const typename Graph::DataEdge &, Var &out) const;
 	Addr materializeConstant(uint32_t pin) const;
 	void releaseScratch();
@@ -418,6 +439,7 @@ private:
 	Addr _record = NullAddr;
 	Addr _state = NullAddr;
 	uint32_t _fired = 0;
+	bool _called = false;
 
 	uint32_t _block = InvalidIndex;
 	uint32_t _branchActivation = InvalidIndex;

@@ -504,6 +504,9 @@ Status OpDesc::build(const OpDef &def, memory::pool_t *pool, DiagReport &report)
 	_inlineName = intern(def.inlineName);
 	_shaderName = intern(def.shaderName);
 	_shaderSource = intern(def.shaderSource);
+	_function = intern(def.function);
+	_functionRole = def.functionRole;
+	_functionExit = def.functionExit;
 	_hasExecIn = def.hasExecIn;
 
 	// Every problem is reported before returning, so an author fixing a signature sees the whole
@@ -1123,6 +1126,7 @@ StringView getScopeKindName(ScopeKind k) {
 	switch (k) {
 	case ScopeKind::Loop: return StringView("loop");
 	case ScopeKind::Parallel: return StringView("parallel");
+	case ScopeKind::Function: return StringView("function");
 	}
 	return StringView("?");
 }
@@ -1335,6 +1339,14 @@ bool OpRegistry::init(memory::pool_t *parent) {
 	return _localTypes.init(_pool);
 }
 
+bool OpRegistry::init(const OpRegistry *base, memory::pool_t *parent) {
+	if (!init(parent)) {
+		return false;
+	}
+	_base = base;
+	return true;
+}
+
 const OpDesc *OpRegistry::createNative(const OpDef &def, DiagSink *diagnostic) {
 	if (!_pool) {
 		return nullptr;
@@ -1371,7 +1383,7 @@ const OpDesc *OpRegistry::get(OpId id) const {
 			return it;
 		}
 	}
-	return nullptr;
+	return _base ? _base->get(id) : nullptr;
 }
 
 const OpDesc *OpRegistry::get(StringView name) const { return get(makeTypeId(name)); }

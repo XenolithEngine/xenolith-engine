@@ -38,5 +38,6 @@
 #include "SPIScaffold.cc"
 #include "SPIBuild.cc"
 #include "SPIProjects.cc"
+#include "SPISelfUpdate.cc"
 
 #endif // UTILS_INSTALLER_CORE_SRC_INSTALLERCORE_SCU_CPP_

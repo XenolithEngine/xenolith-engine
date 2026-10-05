@@ -340,6 +340,11 @@ Status MachineT<Graph, Local, Trace>::step(uint32_t node, uint32_t activation, R
 		}
 	}
 
+	// Only a call asks for a function, and only one the build gave a function to open.
+	if (st == Status::Ok && site.called && rt.opensScope == InvalidIndex) {
+		st = Status::ErrorInvalidArguemnt;
+	}
+
 	// A step of a branch fails the branch, not the run: stepOnce says what that means.
 	if (st != Status::Ok && site.block != InvalidIndex) {
 		return st;
@@ -376,13 +381,13 @@ Status MachineT<Graph, Local, Trace>::step(uint32_t node, uint32_t activation, R
 		_lastActivation = activation;
 	}
 
-	propagate(node, activation, site.fired, site.frame);
+	propagate(node, activation, site.fired, site.frame, site.called);
 	return Status::Ok;
 }
 
 template <typename Graph, typename Local, typename Trace>
 void MachineT<Graph, Local, Trace>::propagate(uint32_t node, uint32_t activation, uint32_t fired,
-		Addr frame) {
+		Addr frame, bool called) {
 	auto &rt = _graph->getNodeAt(node);
 
 	// Every same-scope consumer of this node lives in this activation, so they all share one frame
@@ -456,6 +461,10 @@ void MachineT<Graph, Local, Trace>::propagate(uint32_t node, uint32_t activation
 				dataReady.emplace_back(makeRecordKey(edge.dstNode, open));
 			}
 		}
+	}
+
+	if (called) {
+		openCall(node, activation, rt.opensScope, execReady);
 	}
 
 	for (auto e : _graph->getExecOutEdges(node)) {
@@ -579,6 +588,53 @@ void MachineT<Graph, Local, Trace>::openIteration(uint32_t opener, uint32_t acti
 	// is an addition per node instead of two array reads per node.
 	auto frame = _local.activationFrame(opened);
 	_local.addFlags(_local.getStateIn(frame, firstNode), NodeFlags::Token);
+	for (auto n : _graph->getScopeNodes(scope)) {
+		if (isReadyIn(frame, n, opened)) {
+			ready.emplace_back(makeRecordKey(n, opened));
+		}
+	}
+}
+
+template <typename Graph, typename Local, typename Trace>
+void MachineT<Graph, Local, Trace>::openCall(uint32_t opener, uint32_t activation, uint32_t scope,
+		mem_std::Vector<uint64_t> &ready) {
+	if (scope == InvalidIndex || _local.getActivationCount() >= _maxActivations) {
+		_activationsExhausted = _activationsExhausted || scope != InvalidIndex;
+		return;
+	}
+
+	// The depth of a call is kept where a turn keeps its number: the nearest call up the tree says
+	// how deep it is, and this one is one deeper.
+	uint32_t depth = 1;
+	{
+		auto count = _local.getActivationCount();
+		auto act = activation;
+		uint32_t guard = 0;
+		while (act != NullActivation && act < count && guard++ <= count) {
+			auto data = _local.readActivation(act);
+			if (_graph->getScopeAt(data.scope).kind == ScopeKind::Function) {
+				depth = data.iteration + 1;
+				break;
+			}
+			act = data.parent;
+		}
+	}
+	if (depth > _maxCallDepth) {
+		_callDepthExceeded = true;
+		return;
+	}
+
+	uint32_t opened = 0;
+	if (_local.openActivation(scope, activation, depth, makeRecordKey(opener, activation), opened)
+			!= Status::Ok) {
+		return;
+	}
+	if (_local.materializeScope(scope, opened) != Status::Ok) {
+		return;
+	}
+	_local.pushOpen(opened);
+
+	auto frame = _local.activationFrame(opened);
 	for (auto n : _graph->getScopeNodes(scope)) {
 		if (isReadyIn(frame, n, opened)) {
 			ready.emplace_back(makeRecordKey(n, opened));
@@ -780,7 +836,7 @@ Status MachineT<Graph, Local, Trace>::begin(const Graph &graph, const OpRegistry
 		}
 	}
 
-	auto st = _local.init(arena, graph, ops.getLocalTypes());
+	auto st = _local.init(arena, graph, ops.getCoreTypes());
 	if (st != Status::Ok) {
 		report.outcome = RunOutcome::Invalid;
 		return st;
@@ -795,9 +851,11 @@ Status MachineT<Graph, Local, Trace>::begin(const Graph &graph, const OpRegistry
 	_journal = config.journal && config.journal->getStoreCount() > 0 ? config.journal : nullptr;
 	_maxSteps = config.maxSteps ? config.maxSteps : graph.getNodeCount() * 4 + 16;
 	_maxActivations = config.maxActivations ? config.maxActivations : graph.getNodeCount() * 8 + 64;
+	_maxCallDepth = config.maxCallDepth ? config.maxCallDepth : DefaultMaxCallDepth;
 	_quantum = config.quantum;
 	_quantumBase = 0;
 	_activationsExhausted = false;
+	_callDepthExceeded = false;
 	_status = Status::Ok;
 	_state = RunState::Paused;
 	_executor = config.executor;
@@ -840,7 +898,7 @@ Status MachineT<Graph, Local, Trace>::attach(const Graph &graph, const OpRegistr
 		return Status::ErrorInvalidArguemnt;
 	}
 
-	auto st = _local.open(arena, graph, ops.getLocalTypes());
+	auto st = _local.open(arena, graph, ops.getCoreTypes());
 	if (st != Status::Ok) {
 		report.outcome = RunOutcome::Invalid;
 		return st;
@@ -855,9 +913,11 @@ Status MachineT<Graph, Local, Trace>::attach(const Graph &graph, const OpRegistr
 	_journal = config.journal && config.journal->getStoreCount() > 0 ? config.journal : nullptr;
 	_maxSteps = config.maxSteps ? config.maxSteps : graph.getNodeCount() * 4 + 16;
 	_maxActivations = config.maxActivations ? config.maxActivations : graph.getNodeCount() * 8 + 64;
+	_maxCallDepth = config.maxCallDepth ? config.maxCallDepth : DefaultMaxCallDepth;
 	_quantum = config.quantum;
 	_quantumBase = 0;
 	_activationsExhausted = false;
+	_callDepthExceeded = false;
 	_status = Status::Ok;
 	_state = RunState::Paused;
 	_executor = config.executor;
@@ -1060,6 +1120,15 @@ bool MachineT<Graph, Local, Trace>::stepOnce(RunReport &report) {
 		report.sweepCount = 1;
 		_local.setPass(report.sweepCount);
 		collectBlocked(report);
+
+		if (_callDepthExceeded) {
+			int64_t values[] = {int64_t(_maxCallDepth)};
+			reportRun<EnvType>(report, DiagSeverity::Error, DiagCode::CallDepth,
+					DiagText(DiagDetail::CallDepth).number(int64_t(_maxCallDepth)),
+					DiagLocus::Limit, values);
+			conclude(report, RunOutcome::ActivationLimit, Status::ErrorInvalidArguemnt);
+			return false;
+		}
 
 		if (_activationsExhausted) {
 			int64_t values[] = {int64_t(_maxActivations)};
@@ -2628,7 +2697,7 @@ Status MachineT<Graph, Local, Trace>::beginBranches(const Graph &graph, const Op
 		ArenaType &arena, const Config &config, RunReport &report) {
 	report = RunReport();
 	reset();
-	auto st = _local.init(arena, graph, ops.getLocalTypes());
+	auto st = _local.init(arena, graph, ops.getCoreTypes());
 	if (st != Status::Ok) {
 		return st;
 	}

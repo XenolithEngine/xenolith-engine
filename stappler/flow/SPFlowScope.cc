@@ -76,6 +76,19 @@ void RuntimeGraph::assignScopes(DiagReport &report) {
 
 	mem_std::Vector<uint32_t> scopeOf(nodeCount, InvalidIndex);
 
+	// A function's body is a scope of its own, next to the graph rather than inside it: no edge
+	// opens it, every call of the function does. Scopes 1..F, one per linked function, in order.
+	for (uint32_t k = 0; k < _functionCount; ++k) {
+		RuntimeScope scope;
+		scope.kind = ScopeKind::Function;
+		_scopes.emplace_back(scope);
+	}
+
+	// The scope a node stands in when nothing else places it: its body's.
+	auto bodyRoot = [&](uint32_t n) -> uint32_t {
+		return (n < _bodyOf.size() && _bodyOf[n] != 0) ? _bodyOf[n] : 0;
+	};
+
 	// The scope a given (opener, pin) opens - created on first use so that a body reached twice
 	// through the same pin is one body and not two.
 	auto childScope = [&](uint32_t opener, uint32_t pin) -> uint32_t {
@@ -131,6 +144,16 @@ void RuntimeGraph::assignScopes(DiagReport &report) {
 		if (scopeOf[entry] == InvalidIndex) {
 			scopeOf[entry] = 0;
 			stack.emplace_back(entry);
+		}
+	}
+
+	// A function body's walk starts where its entries are: the nodes nothing has to reach.
+	for (uint32_t n = 0; n < nodeCount; ++n) {
+		auto &node = _nodes[n];
+		if (bodyRoot(n) != 0 && node.op && scopeOf[n] == InvalidIndex && node.dataInCount == 0
+				&& node.execInCount == 0 && !node.op->hasExecIn()) {
+			scopeOf[n] = bodyRoot(n);
+			stack.emplace_back(n);
 		}
 	}
 
@@ -225,20 +248,39 @@ void RuntimeGraph::assignScopes(DiagReport &report) {
 			if (waiting) {
 				continue; // its producers are not placed yet; another pass will get to it
 			}
-			scopeOf[n] = deepest == InvalidIndex ? 0 : deepest;
+			scopeOf[n] = deepest == InvalidIndex ? bodyRoot(n) : deepest;
 			changed = true;
 		}
 	}
 
 	for (uint32_t n = 0; n < nodeCount; ++n) {
 		if (scopeOf[n] == InvalidIndex) {
-			scopeOf[n] = 0; // unreachable, or waiting on a producer that is itself unreachable
+			// Unreachable, or waiting on a producer that is itself unreachable.
+			scopeOf[n] = bodyRoot(n);
 		}
 		_nodes[n].scope = scopeOf[n];
 		_nodes[n].opensScope = InvalidIndex;
 	}
 	for (uint32_t i = 1; i < uint32_t(_scopes.size()); ++i) {
-		_nodes[_scopes[i].opener].opensScope = i;
+		if (_scopes[i].opener != InvalidIndex) {
+			_nodes[_scopes[i].opener].opensScope = i;
+		}
+	}
+
+	// A call opens the scope of the function it calls, which is how the machine finds it.
+	if (_functionCount > 0 && _builtAsset) {
+		auto functions = _builtAsset->getFunctions();
+		for (uint32_t n = 0; n < nodeCount; ++n) {
+			auto op = _nodes[n].op;
+			if (!op || op->getFunctionRole() != FunctionRole::Call) {
+				continue;
+			}
+			for (uint32_t k = 0; k < uint32_t(functions.size()); ++k) {
+				if (functions[k].name == op->getFunction()) {
+					_nodes[n].opensScope = 1 + k;
+				}
+			}
+		}
 	}
 
 	// Edges that leave a body.

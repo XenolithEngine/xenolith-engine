@@ -192,7 +192,7 @@ AppWindow *InstallerProjectsView::appWindow() const {
 void InstallerProjectsView::setController(AppController *controller) {
 	_controller = controller;
 	if (controller) {
-		auto host = resolveHost(getNativeArch(), getNativeOs());
+		auto host = resolveNativeHost();
 		_defaultTarget = host.native;
 		auto tgts = controller->targets();
 		if (!_defaultTarget.empty()

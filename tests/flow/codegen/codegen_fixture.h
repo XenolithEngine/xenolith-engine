@@ -200,7 +200,9 @@ struct Side {
 private:
 	bool load(const corpus::Case &c, const CompiledTables &tables) {
 		mem_std::Value diag;
-		auto st = unit.load(tables, fx.ops, &diag);
+		// A graph with functions resolves what its functions contribute in the link's layer.
+		auto &ops = fx.graph.getLink() ? fx.graph.getLink()->getOps() : fx.ops;
+		auto st = unit.load(tables, ops, &diag);
 		if (st != Status::Ok || !unit.isValid()) {
 			sprt::cout << "       " << c.name << ": the unit does not load: "
 					   << data::toString<mem_std::Interface>(diag, false) << "\n";

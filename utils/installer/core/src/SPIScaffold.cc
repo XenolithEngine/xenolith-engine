@@ -171,7 +171,7 @@ ScaffoldResult scaffoldProject(StringView name, StringView location, const Layou
 	// A space in the location is fine — the project directory reaches make through
 	// Makefile::setRootPath / CURDIR, both of which encode it (PathSpacePlaceholder). Only the
 	// project NAME stays space-free: it is used verbatim as the executable identifier.
-	auto host = resolveHost(getNativeArch(), getNativeOs());
+	auto host = resolveNativeHost();
 	if (host.native.empty()) {
 		result.setError(Status::ErrorNotSupported, "no SDK host for ", getNativeArch(), "-",
 				getNativeOs());

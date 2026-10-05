@@ -24,6 +24,9 @@
 
 #include "SPFilesystem.h"
 
+#include <stdlib.h> // getenv: there is no runtime wrapper for the environment
+#include <string.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
 namespace {
@@ -43,6 +46,54 @@ constexpr const char *kKnownHosts[] = {
 	"riscv64-unknown-linux-musl",
 	"loongarch64-unknown-linux-musl",
 };
+
+#if SPRT_LINUX
+// Little-endian unsigned integer of `width` bytes at `off`; false when it does not fit.
+bool readLe(const mem_std::Bytes &data, size_t off, size_t width, uint64_t &out) {
+	if (off > data.size() || width > data.size() - off) {
+		return false;
+	}
+	out = 0;
+	for (size_t i = 0; i < width; ++i) { out |= uint64_t(data[off + i]) << (8 * i); }
+	return true;
+}
+
+// The PT_INTERP path of a little-endian ELF executable; empty for a static or a non-ELF file.
+String readElfInterpreter(StringView path) {
+	auto data = filesystem::readIntoMemory<mem_std::Interface>(FileInfo(path), 0, 4_KiB);
+	if (data.size() < 64 || data[0] != 0x7f || data[1] != 'E' || data[2] != 'L' || data[3] != 'F'
+			|| data[5] != 1) {
+		return String();
+	}
+
+	const bool is64 = data[4] == 2;
+	uint64_t phoff = 0, phentsize = 0, phnum = 0;
+	if (!readLe(data, is64 ? 0x20 : 0x1C, is64 ? 8 : 4, phoff)
+			|| !readLe(data, is64 ? 0x36 : 0x2A, 2, phentsize)
+			|| !readLe(data, is64 ? 0x38 : 0x2C, 2, phnum)) {
+		return String();
+	}
+
+	for (uint64_t i = 0; i < phnum; ++i) {
+		const size_t ph = phoff + i * phentsize;
+		uint64_t type = 0, offset = 0, size = 0;
+		if (!readLe(data, ph, 4, type)) {
+			return String();
+		}
+		if (type != 3) { // PT_INTERP
+			continue;
+		}
+		if (!readLe(data, ph + (is64 ? 0x08 : 0x04), is64 ? 8 : 4, offset)
+				|| !readLe(data, ph + (is64 ? 0x20 : 0x10), is64 ? 8 : 4, size)
+				|| offset > data.size() || size > data.size() - offset) {
+			return String();
+		}
+		auto interp = reinterpret_cast<const char *>(data.data() + offset);
+		return String(interp, ::strnlen(interp, size_t(size)));
+	}
+	return String();
+}
+#endif
 
 } // namespace
 
@@ -134,20 +185,28 @@ StringView getCurrentLibc(StringView os) {
 		return StringView();
 	}
 #if SPRT_LINUX
-	// musl installs /lib/ld-musl-<arch>.so.1 and Alpine adds /etc/alpine-release; glibc has neither
-	auto probe = [](StringView p) { return filesystem::exists(FileInfo(p)); };
-	bool musl = probe("/lib/ld-musl-aarch64.so.1") || probe("/lib/ld-musl-x86_64.so.1")
-			|| probe("/lib/ld-musl-riscv64.so.1") || probe("/lib/ld-musl-loongarch64.so.1")
-			|| probe("/etc/alpine-release");
-	return musl ? "musl" : "gnu";
+	// The distribution's libc is the one its shell is linked to: a second libc installed beside it
+	// (musl-libc on Fedora, musl on Debian) brings its loader but no system binary uses it.
+	for (auto exe : {StringView("/bin/sh"), StringView("/usr/bin/env")}) {
+		auto interp = readElfInterpreter(exe);
+		auto loader = filepath::lastComponent(StringView(interp));
+		if (loader.starts_with("ld-musl-")) {
+			return "musl";
+		}
+		if (loader.starts_with("ld-linux")) {
+			return "gnu";
+		}
+	}
+	// Neither names a loader (a static busybox): only Alpine is known to ship that way.
+	return filesystem::exists(FileInfo("/etc/alpine-release")) ? "musl" : "gnu";
 #else
 	return "gnu";
 #endif
 }
 
-ResolvedHost resolveHost(StringView arch, StringView os) {
+ResolvedHost resolveHost(StringView native) {
 	ResolvedHost r;
-	r.native = makeHostTriple(arch, os, getCurrentLibc(os));
+	r.native = native.str<mem_std::Interface>();
 	if (isKnownHost(r.native)) {
 		r.hostArchive = r.native;
 		r.viaEmulation = false;
@@ -161,6 +220,17 @@ ResolvedHost resolveHost(StringView arch, StringView os) {
 		r.hostArchive.clear();
 	}
 	return r;
+}
+
+ResolvedHost resolveHost(StringView arch, StringView os) {
+	return resolveHost(StringView(makeHostTriple(arch, os, getCurrentLibc(os))));
+}
+
+ResolvedHost resolveNativeHost() {
+	if (const char *e = ::getenv("STAPPLER_HOST"); e && *e) {
+		return resolveHost(StringView(e));
+	}
+	return resolveHost(getNativeArch(), getNativeOs());
 }
 
 } // namespace stappler::xenolith::installer

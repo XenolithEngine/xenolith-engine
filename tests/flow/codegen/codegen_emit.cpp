@@ -289,7 +289,8 @@ void performCodegenEmitTests() {
 
 			CompiledGraph compiled;
 			mem_std::Value diag;
-			if (compiled.load(unit.tables(), fx.ops, &diag) != Status::Ok || !compiled.isValid()) {
+			auto &ops = fx.graph.getLink() ? fx.graph.getLink()->getOps() : fx.ops;
+			if (compiled.load(unit.tables(), ops, &diag) != Status::Ok || !compiled.isValid()) {
 				sprt::cout << "       " << unit.name << ": does not load: "
 						   << data::toString<mem_std::Interface>(diag, false) << "\n";
 				loads = false;

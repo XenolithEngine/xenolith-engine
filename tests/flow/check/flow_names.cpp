@@ -111,6 +111,15 @@ StringView getDiagCodeName(flow::DiagCode c) {
 	case DiagCode::CodegenAssetDrift: return StringView("codegen-asset-drift");
 	case DiagCode::CodegenMalformed: return StringView("codegen-malformed");
 	case DiagCode::CodegenQuantumUnsupported: return StringView("codegen-quantum-unsupported");
+	case DiagCode::FunctionUnknown: return StringView("fn-unknown");
+	case DiagCode::FunctionShadowed: return StringView("fn-shadowed");
+	case DiagCode::FunctionInterfaceInvalid: return StringView("fn-interface-invalid");
+	case DiagCode::FunctionBoundary: return StringView("fn-boundary");
+	case DiagCode::FunctionInlineCycle: return StringView("fn-inline-cycle");
+	case DiagCode::FunctionInlineMultiReturn: return StringView("fn-inline-multi-return");
+	case DiagCode::FunctionDeclConflict: return StringView("fn-decl-conflict");
+	case DiagCode::CallDepth: return StringView("call-depth");
+	case DiagCode::CodegenCalleeDrift: return StringView("codegen-callee-drift");
 	}
 	return StringView("?");
 }

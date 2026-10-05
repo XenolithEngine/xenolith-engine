@@ -120,6 +120,9 @@ struct FixtureT {
 	// that they are in place before the asset is resolved against the registry.
 	bool (*extraOps)(OpRegistry &) = nullptr;
 
+	// The library a graph's calls are resolved against, for a section about functions.
+	const FunctionHost *functions = nullptr;
+
 	bool registerOps() {
 		if (!ops.init() || flow::ops::registerCoreOps(ops) != Status::Ok) {
 			return false;
@@ -192,6 +195,7 @@ struct FixtureT {
 		}
 
 		graph.init();
+		graph.setFunctionHost(functions);
 		mem_std::Value buildReport;
 		auto st = graph.build(asset, ops, &buildReport);
 		if (st != Status::Ok) {

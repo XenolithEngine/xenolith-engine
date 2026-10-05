@@ -357,6 +357,8 @@ SP_PUBLIC bool readRollbackQuantum(StringView, RollbackQuantum &);
 // `A` is the arena kind the run lives in. The scene is a store of that kind; the journal is not
 // templated at all, because a journal watches an erased tracked store and can therefore hold this
 // run's local arena beside a scene of a different kind.
+static constexpr uint32_t DefaultMaxCallDepth = 256;
+
 template <typename A, typename Env = NoEnv>
 struct RunConfigT {
 	// The scene, a store of the environment's kind. Carried so that the operations that reach it
@@ -377,6 +379,11 @@ struct RunConfigT {
 	// iteration three - so they are spent, not recycled, and the ceiling is what turns "this loop
 	// runs forever" into a diagnostic rather than into the entity budget running out.
 	uint32_t maxActivations = 0;
+
+	// How deeply calls may nest - a function calling itself, directly or through others. Zero
+	// derives one (DefaultMaxCallDepth). Every call is an activation too, so the ceiling above
+	// still applies; this one names the cause.
+	uint32_t maxCallDepth = 0;
 
 	// Optional. With one, every unit of work is a closed version over every store attached to it,
 	// which is how the local store and the scene roll back together under a single version counter.
@@ -747,7 +754,8 @@ private:
 	// `frame` is the one the unit already resolved. A node, its state, its record and every
 	// same-scope consumer of it live in one frame, and step() has it before propagate is called;
 	// resolving it again is a walk of the activation row for an answer that cannot differ.
-	void propagate(uint32_t node, uint32_t activation, uint32_t fired, Addr frame);
+	void propagate(uint32_t node, uint32_t activation, uint32_t fired, Addr frame,
+			bool called = false);
 	bool isReady(uint32_t node, uint32_t activation) const;
 	uint32_t requiredInputs(uint32_t node) const;
 	Status enqueue(uint32_t node, uint32_t activation);
@@ -843,6 +851,13 @@ private:
 	void openIteration(uint32_t opener, uint32_t activation, uint32_t scope, uint32_t firstNode,
 			mem_std::Vector<uint64_t> &ready);
 
+	// One call of a function: an activation of the function's scope under the caller's, with the
+	// call node as its opener, and every node of the body that is already computable on the front -
+	// the entry first among them. Closing it hands the call node back, as closing a turn hands a
+	// loop back.
+	void openCall(uint32_t opener, uint32_t activation, uint32_t scope,
+			mem_std::Vector<uint64_t> &ready);
+
 	// Where the value on this edge lives, and where the consumer of it lives. Null activations mean
 	// "not yet": a body node's producer outside the loop is found by walking up, and a body node's
 	// activation does not exist until the iteration opens.
@@ -914,6 +929,7 @@ private:
 	Status _status = Status::Ok;
 	uint32_t _maxSteps = 0;
 	uint32_t _maxActivations = 0;
+	uint32_t _maxCallDepth = DefaultMaxCallDepth;
 	RollbackQuantum _quantum = RollbackQuantum::Step;
 
 	// The version the current quantum started from - what an undo of anything inside it returns to.
@@ -933,6 +949,9 @@ private:
 	// A loop asked for a turn the run could not afford. Reported when the run ends rather than at
 	// once, so that the store is left in a state somebody can look at.
 	bool _activationsExhausted = false;
+
+	// The same for a call nested deeper than the run allows.
+	bool _callDepthExceeded = false;
 
 	// Parallel blocks. The pending list is derived from the arena (fan-outs in phase Ready) and
 	// renewed with the generation after anything that moves the arena back.

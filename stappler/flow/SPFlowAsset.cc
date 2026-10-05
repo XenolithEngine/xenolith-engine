@@ -57,6 +57,44 @@ bool readEdgeKind(StringView name, EdgeKind &out) {
 	return false;
 }
 
+StringView getFunctionModeName(FunctionMode m) {
+	switch (m) {
+	case FunctionMode::Call: return StringView("call");
+	case FunctionMode::Inline: return StringView("inline");
+	}
+	return StringView("?");
+}
+
+bool readFunctionMode(StringView name, FunctionMode &out) {
+	if (name == "call") {
+		out = FunctionMode::Call;
+		return true;
+	}
+	if (name == "inline") {
+		out = FunctionMode::Inline;
+		return true;
+	}
+	return false;
+}
+
+static const GraphNode *findSortedNode(SpanView<GraphNode> nodes, NodeId id) {
+	uint32_t lo = 0;
+	uint32_t hi = uint32_t(nodes.size());
+	while (lo < hi) {
+		auto mid = lo + (hi - lo) / 2;
+		if (nodes[mid].id < id) {
+			lo = mid + 1;
+		} else if (nodes[mid].id > id) {
+			hi = mid;
+		} else {
+			return &nodes[mid];
+		}
+	}
+	return nullptr;
+}
+
+const GraphNode *GraphFunction::getNode(NodeId id) const { return findSortedNode(nodes, id); }
+
 // An unknown key is refused rather than dropped. Silently dropping it would make "save -> load ->
 // save is byte-identical" a property of what happened to be in the file rather than of the format,
 // and would swallow a typo in a hand-written asset without a word.
@@ -131,11 +169,11 @@ static void readEnvelope(const mem_std::Value &value, DiagReport &report, bool &
 		return;
 	}
 
-	if (uint32_t(version.getInteger()) > GraphAsset::FormatVersion) {
+	if (uint32_t(version.getInteger()) > GraphAsset::FunctionFormatVersion) {
 		refuse(DiagText(DiagDetail::FormatVersionUnsupported)
 						.name(GraphAsset::Kind)
 						.number(version.getInteger())
-						.number(int64_t(GraphAsset::FormatVersion)));
+						.number(int64_t(GraphAsset::FunctionFormatVersion)));
 		return;
 	}
 
@@ -181,20 +219,37 @@ uint64_t GraphAsset::getContentHash() const {
 	return sprt::hash64(reinterpret_cast<const char *>(bytes.data()), bytes.size());
 }
 
-const GraphNode *GraphAsset::getNode(NodeId id) const {
-	uint32_t lo = 0;
-	uint32_t hi = uint32_t(_nodes.size());
-	while (lo < hi) {
-		auto mid = lo + (hi - lo) / 2;
-		if (_nodes[mid].id < id) {
-			lo = mid + 1;
-		} else if (_nodes[mid].id > id) {
-			hi = mid;
-		} else {
-			return &_nodes[mid];
+const GraphNode *GraphAsset::getNode(NodeId id) const { return findSortedNode(_nodes, id); }
+
+const GraphFunction *GraphAsset::getFunction(StringView name) const {
+	for (auto &f : _functions) {
+		if (f.name == name) {
+			return &f;
 		}
 	}
 	return nullptr;
+}
+
+const GraphNode *GraphAsset::findNode(NodeId id, const GraphFunction **body) const {
+	if (body) {
+		*body = nullptr;
+	}
+	if (auto n = getNode(id)) {
+		return n;
+	}
+	for (auto &f : _functions) {
+		if (auto n = f.getNode(id)) {
+			if (body) {
+				*body = &f;
+			}
+			return n;
+		}
+	}
+	return nullptr;
+}
+
+uint32_t GraphAsset::getWriteVersion() const {
+	return (_hasInterface || !_functions.empty()) ? FunctionFormatVersion : FormatVersion;
 }
 
 // The canonical order of edges follows their identity: a data edge is identified by the
@@ -225,6 +280,334 @@ static bool edgeLess(const GraphEdge &a, const GraphEdge &b) {
 	return a.to < b.to;
 }
 
+// Pool copies of the strings a loaded asset keeps.
+struct AssetInterner {
+	memory::pool_t *pool = nullptr;
+
+	StringView operator()(StringView s) const {
+		if (s.empty()) {
+			return StringView();
+		}
+		auto mem = reinterpret_cast<char *>(memory::pool::palloc(pool, s.size() + 1, 1));
+		if (!mem) {
+			return StringView();
+		}
+		__sprt_memcpy(mem, s.data(), s.size());
+		mem[s.size()] = 0;
+		return StringView(mem, s.size());
+	}
+};
+
+// One body - the root's or a function's: its nodes and edges, structure only. False when the body
+// is too large to read at all; every other refusal is reported and leaves the body short of the
+// record.
+static bool readBody(const mem_std::Value::ArrayType &nodeArray,
+		const mem_std::Value::ArrayType &edgeArray, const AssetInterner &intern, DiagReport &report,
+		mem_std::Set<NodeId> &seenIds, mem_std::Vector<GraphNode> &nodes,
+		mem_std::Vector<GraphEdge> &edges) {
+	if (nodeArray.size() > MaxNodesPerGraph) {
+		report.report(DiagSeverity::Error, DiagCode::GraphTooLarge,
+				DiagText(DiagDetail::TooManyNodes).number(int64_t(MaxNodesPerGraph)));
+		return false;
+	}
+	if (edgeArray.size() > MaxEdgesPerGraph) {
+		report.report(DiagSeverity::Error, DiagCode::GraphTooLarge,
+				DiagText(DiagDetail::TooManyEdges).number(int64_t(MaxEdgesPerGraph)));
+		return false;
+	}
+
+	static const StringView nodeKeys[] = {StringView("id"), StringView("op"), StringView("opHash"),
+		StringView("params"), StringView("settings"), StringView("meta")};
+
+	nodes.reserve(nodeArray.size());
+
+	// `seenIds` holds the ids accepted so far, so that "two nodes share this id" costs a lookup
+	// rather than a walk. It says nothing about the order of anything: `nodes` is sorted by id
+	// later, and the report is emitted at the node that repeats rather than at the one it repeats.
+	for (auto &entry : nodeArray) {
+		if (!entry.isDictionary()) {
+			report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+					DiagText(DiagDetail::NodeDict));
+			continue;
+		}
+		checkKeys(entry, SpanView<StringView>(nodeKeys, 6), DiagPhrase::SectionNode, report);
+
+		auto rawId = entry.getInteger("id");
+		if (!entry.isInteger("id") || rawId <= 0 || rawId > int64_t(0xffff'ffffll)) {
+			report.report(DiagSeverity::Error, DiagCode::NodeIdInvalid,
+					DiagText(DiagDetail::NodeIdInvalid).number(int64_t(rawId)));
+			continue;
+		}
+
+		GraphNode node;
+		node.id = NodeId(rawId);
+
+		if (seenIds.find(node.id) != seenIds.end()) {
+			report.reportNode(DiagSeverity::Error, DiagCode::NodeIdDuplicate, node.id,
+					DiagText(DiagDetail::NodeIdDuplicate));
+			continue;
+		}
+
+		StringView op(entry.getString("op"));
+		if (op.empty()) {
+			report.reportNode(DiagSeverity::Error, DiagCode::AssetMalformed, node.id,
+					DiagText(DiagDetail::NodeNoOp));
+			continue;
+		}
+		node.op = intern(op);
+		node.opHash = uint64_t(entry.getInteger("opHash"));
+
+		auto &params = entry.getValue("params");
+		if (params.isDictionary()) {
+			node.params = params;
+		} else if (!params.isNull()) {
+			report.reportNode(DiagSeverity::Error, DiagCode::AssetMalformed, node.id,
+					DiagText(DiagDetail::NodeParamsDict));
+			continue;
+		}
+
+		auto &settings = entry.getValue("settings");
+		if (settings.isDictionary()) {
+			node.settings = settings;
+		} else if (!settings.isNull()) {
+			report.reportNode(DiagSeverity::Error, DiagCode::AssetMalformed, node.id,
+					DiagText(DiagDetail::NodeSettingsDict));
+			continue;
+		}
+
+		auto &nodeMeta = entry.getValue("meta");
+		if (nodeMeta.isDictionary()) {
+			node.meta = nodeMeta;
+		} else if (!nodeMeta.isNull()) {
+			report.reportNode(DiagSeverity::Error, DiagCode::AssetMalformed, node.id,
+					DiagText(DiagDetail::NodeMetaDict));
+			continue;
+		}
+
+		// Recorded where the node is accepted. Recording it at the id check instead would make a
+		// second node with the same id a duplicate even when the first one was thrown out for
+		// something else - a different set of findings for the same malformed file.
+		seenIds.emplace(node.id);
+		nodes.emplace_back(sprt::move(node));
+	}
+
+	static const StringView edgeKeys[] = {StringView("kind"), StringView("from"),
+		StringView("fromPin"), StringView("to"), StringView("toPin")};
+
+	edges.reserve(edgeArray.size());
+	for (auto &entry : edgeArray) {
+		if (!entry.isDictionary()) {
+			report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+					DiagText(DiagDetail::EdgeDict));
+			continue;
+		}
+		checkKeys(entry, SpanView<StringView>(edgeKeys, 5), DiagPhrase::SectionEdge, report);
+
+		GraphEdge edge;
+		if (!readEdgeKind(StringView(entry.getString("kind")), edge.kind)) {
+			report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+					DiagText(DiagDetail::EdgeKind));
+			continue;
+		}
+
+		auto from = entry.getInteger("from");
+		auto to = entry.getInteger("to");
+		if (from <= 0 || from > int64_t(0xffff'ffffll) || to <= 0 || to > int64_t(0xffff'ffffll)) {
+			report.report(DiagSeverity::Error, DiagCode::NodeIdInvalid,
+					DiagText(DiagDetail::EdgeIds));
+			continue;
+		}
+		edge.from = NodeId(from);
+		edge.to = NodeId(to);
+
+		StringView fromPin(entry.getString("fromPin"));
+		if (fromPin.empty()) {
+			report.reportEdge(DiagSeverity::Error, DiagCode::AssetMalformed, edge.from,
+					StringView(), edge.to, StringView(), DiagText(DiagDetail::EdgeFromPin));
+			continue;
+		}
+		edge.fromPin = intern(fromPin);
+
+		StringView toPin(entry.getString("toPin"));
+		if (edge.kind == EdgeKind::Data) {
+			if (toPin.empty()) {
+				report.reportEdge(DiagSeverity::Error, DiagCode::AssetMalformed, edge.from,
+						edge.fromPin, edge.to, StringView(), DiagText(DiagDetail::EdgeToPin));
+				continue;
+			}
+			edge.toPin = intern(toPin);
+		} else if (!toPin.empty()) {
+			// An operation has at most one exec input, so naming it would be a field with exactly
+			// one legal value - and a second spelling of the same edge.
+			report.reportEdge(DiagSeverity::Error, DiagCode::AssetMalformed, edge.from,
+					edge.fromPin, edge.to, toPin, DiagText(DiagDetail::EdgeExecNoPin));
+			continue;
+		}
+
+		edges.emplace_back(sprt::move(edge));
+	}
+
+	return true;
+}
+
+// The pins of one direction of an interface. Kept in file order: it is the call node's pin order.
+static void readInterfacePins(const mem_std::Value &array, const AssetInterner &intern,
+		DiagReport &report, mem_std::Vector<FunctionPin> &out) {
+	if (array.isNull()) {
+		return;
+	}
+	if (!array.isArray()) {
+		report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+				DiagText(DiagDetail::InterfacePins));
+		return;
+	}
+
+	static const StringView pinKeys[] = {StringView("name"), StringView("type"),
+		StringView("element"), StringView("subtype"), StringView("required"),
+		StringView("default")};
+
+	for (auto &entry : array.asArray()) {
+		if (!entry.isDictionary()) {
+			report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+					DiagText(DiagDetail::InterfacePins));
+			continue;
+		}
+		checkKeys(entry, SpanView<StringView>(pinKeys, 6), DiagPhrase::SectionInterfacePin,
+				report);
+
+		FunctionPin pin;
+		pin.name = intern(StringView(entry.getString("name")));
+		if (pin.name.empty()) {
+			report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+					DiagText(DiagDetail::InterfacePinName));
+			continue;
+		}
+
+		bool duplicate = false;
+		for (auto &existing : out) {
+			if (existing.name == pin.name) {
+				duplicate = true;
+				break;
+			}
+		}
+		if (duplicate) {
+			report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+					DiagText(DiagDetail::InterfacePinTwice).name(pin.name));
+			continue;
+		}
+
+		StringView typeName(entry.getString("type"));
+		if (!value::readVarType(typeName, pin.type) || pin.type == VarType::Nil) {
+			report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+					DiagText(DiagDetail::InterfacePinType).name(pin.name).name(typeName));
+			continue;
+		}
+
+		// Innermost last in the file, so the chain is built from the end.
+		auto &element = entry.getValue("element");
+		bool elementOk = element.isNull() || element.isArray();
+		if (element.isArray()) {
+			auto &list = element.asArray();
+			for (size_t i = list.size(); i > 0 && elementOk; --i) {
+				VarType t = VarType::Nil;
+				if (!list[i - 1].isString()
+						|| !value::readVarType(StringView(list[i - 1].getString()), t)
+						|| t == VarType::Nil || !value::chainPush(t, pin.element, pin.element)) {
+					elementOk = false;
+				}
+			}
+		}
+		if (!elementOk) {
+			report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+					DiagText(DiagDetail::InterfacePinType).name(pin.name).name(typeName));
+			continue;
+		}
+
+		auto &subtype = entry.getValue("subtype");
+		if (subtype.isString()) {
+			pin.subtype = intern(StringView(subtype.getString()));
+		} else if (!subtype.isNull()) {
+			report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+					DiagText(DiagDetail::InterfacePinType).name(pin.name).name(typeName));
+			continue;
+		}
+
+		auto &required = entry.getValue("required");
+		if (required.isBool()) {
+			pin.required = required.getBool();
+		} else if (!required.isNull()) {
+			report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+					DiagText(DiagDetail::InterfacePinType).name(pin.name).name(typeName));
+			continue;
+		}
+
+		pin.def = entry.getValue("default");
+		out.emplace_back(sprt::move(pin));
+	}
+}
+
+// Structure only, like the rest of the file: whether the registry can spell these pins is the
+// linker's question.
+static void readInterface(const mem_std::Value &value, const AssetInterner &intern,
+		DiagReport &report, FunctionInterface &out) {
+	if (value.isNull()) {
+		return;
+	}
+	if (!value.isDictionary()) {
+		report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+				DiagText(DiagDetail::InterfaceDict));
+		return;
+	}
+
+	static const StringView ifaceKeys[] = {StringView("inputs"), StringView("outputs"),
+		StringView("execIn"), StringView("execOut"), StringView("mode")};
+	checkKeys(value, SpanView<StringView>(ifaceKeys, 5), DiagPhrase::SectionInterface, report);
+
+	readInterfacePins(value.getValue("inputs"), intern, report, out.inputs);
+	readInterfacePins(value.getValue("outputs"), intern, report, out.outputs);
+
+	auto &execIn = value.getValue("execIn");
+	if (execIn.isBool()) {
+		out.execIn = execIn.getBool();
+	} else if (!execIn.isNull()) {
+		report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+				DiagText(DiagDetail::InterfaceExecOut));
+	}
+
+	auto &execOut = value.getValue("execOut");
+	if (execOut.isArray()) {
+		for (auto &it : execOut.asArray()) {
+			StringView name = it.isString() ? StringView(it.getString()) : StringView();
+			bool ok = !name.empty();
+			for (auto &existing : out.execOut) {
+				if (existing == name) {
+					ok = false;
+				}
+			}
+			if (!ok) {
+				report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+						DiagText(DiagDetail::InterfaceExecOut));
+				continue;
+			}
+			out.execOut.emplace_back(intern(name));
+		}
+	} else if (!execOut.isNull()) {
+		report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+				DiagText(DiagDetail::InterfaceExecOut));
+	}
+
+	auto &mode = value.getValue("mode");
+	if (mode.isString()) {
+		if (!readFunctionMode(StringView(mode.getString()), out.mode)) {
+			report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+					DiagText(DiagDetail::InterfaceMode).name(mode.getString()));
+		}
+	} else if (!mode.isNull()) {
+		report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+				DiagText(DiagDetail::InterfaceMode));
+	}
+}
+
 Status GraphAsset::load(const mem_std::Value &value, DiagSink *diagnostic) {
 	if (!_pool) {
 		return Status::ErrorInvalidArguemnt;
@@ -232,18 +615,7 @@ Status GraphAsset::load(const mem_std::Value &value, DiagSink *diagnostic) {
 
 	DiagReport report(diagnostic);
 
-	auto intern = [&](StringView s) -> StringView {
-		if (s.empty()) {
-			return StringView();
-		}
-		auto mem = reinterpret_cast<char *>(memory::pool::palloc(_pool, s.size() + 1, 1));
-		if (!mem) {
-			return StringView();
-		}
-		__sprt_memcpy(mem, s.data(), s.size());
-		mem[s.size()] = 0;
-		return StringView(mem, s.size());
-	};
+	AssetInterner intern{_pool};
 
 	if (!value.isDictionary()) {
 		report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
@@ -253,8 +625,9 @@ Status GraphAsset::load(const mem_std::Value &value, DiagSink *diagnostic) {
 
 	static const StringView rootKeys[] = {GraphAsset::MetaKey, StringView("formatVersion"),
 		StringView("name"), StringView("meta"), StringView("scene"), StringView("extensions"),
-		StringView("nodes"), StringView("edges")};
-	checkKeys(value, SpanView<StringView>(rootKeys, 8), DiagPhrase::SectionGraph, report);
+		StringView("nodes"), StringView("edges"), StringView("interface"),
+		StringView("functions")};
+	checkKeys(value, SpanView<StringView>(rootKeys, 10), DiagPhrase::SectionGraph, report);
 
 	bool legacyFormat = false;
 	readEnvelope(value, report, legacyFormat);
@@ -451,160 +824,103 @@ Status GraphAsset::load(const mem_std::Value &value, DiagSink *diagnostic) {
 		return report.getStatus();
 	}
 
-	auto &nodeArray = value.getArray("nodes");
-	auto &edgeArray = value.getArray("edges");
-
-	if (nodeArray.size() > MaxNodesPerGraph) {
-		report.report(DiagSeverity::Error, DiagCode::GraphTooLarge,
-				DiagText(DiagDetail::TooManyNodes).number(int64_t(MaxNodesPerGraph)));
-		return report.getStatus();
-	}
-	if (edgeArray.size() > MaxEdgesPerGraph) {
-		report.report(DiagSeverity::Error, DiagCode::GraphTooLarge,
-				DiagText(DiagDetail::TooManyEdges).number(int64_t(MaxEdgesPerGraph)));
-		return report.getStatus();
-	}
-
-	static const StringView nodeKeys[] = {StringView("id"), StringView("op"), StringView("opHash"),
-		StringView("params"), StringView("settings"), StringView("meta")};
-
-	nodes.reserve(nodeArray.size());
-
-	// The ids accepted so far, so that "two nodes share this id" costs a lookup rather than a walk.
-	// Local to this loop and says nothing about the order of anything: `nodes` is sorted by id
-	// below, and the report is emitted at the node that repeats rather than at the one it repeats.
+	// One set for every body of the document: an id names one node of the file.
 	mem_std::Set<NodeId> seenIds;
-
-	for (auto &entry : nodeArray) {
-		if (!entry.isDictionary()) {
-			report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
-					DiagText(DiagDetail::NodeDict));
-			continue;
-		}
-		checkKeys(entry, SpanView<StringView>(nodeKeys, 6), DiagPhrase::SectionNode, report);
-
-		auto rawId = entry.getInteger("id");
-		if (!entry.isInteger("id") || rawId <= 0 || rawId > int64_t(0xffff'ffffll)) {
-			report.report(DiagSeverity::Error, DiagCode::NodeIdInvalid,
-					DiagText(DiagDetail::NodeIdInvalid).number(int64_t(rawId)));
-			continue;
-		}
-
-		GraphNode node;
-		node.id = NodeId(rawId);
-
-		if (seenIds.find(node.id) != seenIds.end()) {
-			report.reportNode(DiagSeverity::Error, DiagCode::NodeIdDuplicate, node.id,
-					DiagText(DiagDetail::NodeIdDuplicate));
-			continue;
-		}
-
-		StringView op(entry.getString("op"));
-		if (op.empty()) {
-			report.reportNode(DiagSeverity::Error, DiagCode::AssetMalformed, node.id,
-					DiagText(DiagDetail::NodeNoOp));
-			continue;
-		}
-		node.op = intern(op);
-		node.opHash = uint64_t(entry.getInteger("opHash"));
-
-		auto &params = entry.getValue("params");
-		if (params.isDictionary()) {
-			node.params = params;
-		} else if (!params.isNull()) {
-			report.reportNode(DiagSeverity::Error, DiagCode::AssetMalformed, node.id,
-					DiagText(DiagDetail::NodeParamsDict));
-			continue;
-		}
-
-		auto &settings = entry.getValue("settings");
-		if (settings.isDictionary()) {
-			node.settings = settings;
-		} else if (!settings.isNull()) {
-			report.reportNode(DiagSeverity::Error, DiagCode::AssetMalformed, node.id,
-					DiagText(DiagDetail::NodeSettingsDict));
-			continue;
-		}
-
-		auto &nodeMeta = entry.getValue("meta");
-		if (nodeMeta.isDictionary()) {
-			node.meta = nodeMeta;
-		} else if (!nodeMeta.isNull()) {
-			report.reportNode(DiagSeverity::Error, DiagCode::AssetMalformed, node.id,
-					DiagText(DiagDetail::NodeMetaDict));
-			continue;
-		}
-
-		// Recorded where the node is accepted. Recording it at the id check instead would make a
-		// second node with the same id a duplicate even when the first one was thrown out for
-		// something else - a different set of findings for the same malformed file.
-		seenIds.emplace(node.id);
-		nodes.emplace_back(sprt::move(node));
+	if (!readBody(value.getArray("nodes"), value.getArray("edges"), intern, report, seenIds, nodes,
+				edges)) {
+		return report.getStatus();
 	}
 
-	static const StringView edgeKeys[] = {StringView("kind"), StringView("from"),
-		StringView("fromPin"), StringView("to"), StringView("toPin")};
+	bool hasInterface = false;
+	FunctionInterface iface;
+	auto &ifaceValue = value.getValue("interface");
+	if (!ifaceValue.isNull()) {
+		hasInterface = true;
+		readInterface(ifaceValue, intern, report, iface);
+	}
 
-	edges.reserve(edgeArray.size());
-	for (auto &entry : edgeArray) {
-		if (!entry.isDictionary()) {
-			report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
-					DiagText(DiagDetail::EdgeDict));
-			continue;
-		}
-		checkKeys(entry, SpanView<StringView>(edgeKeys, 5), DiagPhrase::SectionEdge, report);
+	mem_std::Vector<GraphFunction> functions;
+	auto &fnValue = value.getValue("functions");
+	if (fnValue.isArray()) {
+		static const StringView fnKeys[] = {StringView("name"), StringView("interface"),
+			StringView("meta"), StringView("nodes"), StringView("edges")};
 
-		GraphEdge edge;
-		if (!readEdgeKind(StringView(entry.getString("kind")), edge.kind)) {
-			report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
-					DiagText(DiagDetail::EdgeKind));
-			continue;
-		}
-
-		auto from = entry.getInteger("from");
-		auto to = entry.getInteger("to");
-		if (from <= 0 || from > int64_t(0xffff'ffffll) || to <= 0 || to > int64_t(0xffff'ffffll)) {
-			report.report(DiagSeverity::Error, DiagCode::NodeIdInvalid,
-					DiagText(DiagDetail::EdgeIds));
-			continue;
-		}
-		edge.from = NodeId(from);
-		edge.to = NodeId(to);
-
-		StringView fromPin(entry.getString("fromPin"));
-		if (fromPin.empty()) {
-			report.reportEdge(DiagSeverity::Error, DiagCode::AssetMalformed, edge.from,
-					StringView(), edge.to, StringView(), DiagText(DiagDetail::EdgeFromPin));
-			continue;
-		}
-		edge.fromPin = intern(fromPin);
-
-		StringView toPin(entry.getString("toPin"));
-		if (edge.kind == EdgeKind::Data) {
-			if (toPin.empty()) {
-				report.reportEdge(DiagSeverity::Error, DiagCode::AssetMalformed, edge.from,
-						edge.fromPin, edge.to, StringView(), DiagText(DiagDetail::EdgeToPin));
+		functions.reserve(fnValue.size());
+		for (auto &entry : fnValue.asArray()) {
+			if (!entry.isDictionary()) {
+				report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+						DiagText(DiagDetail::FunctionDict));
 				continue;
 			}
-			edge.toPin = intern(toPin);
-		} else if (!toPin.empty()) {
-			// An operation has at most one exec input, so naming it would be a field with exactly
-			// one legal value - and a second spelling of the same edge.
-			report.reportEdge(DiagSeverity::Error, DiagCode::AssetMalformed, edge.from,
-					edge.fromPin, edge.to, toPin, DiagText(DiagDetail::EdgeExecNoPin));
-			continue;
-		}
+			checkKeys(entry, SpanView<StringView>(fnKeys, 5), DiagPhrase::SectionFunction, report);
 
-		edges.emplace_back(sprt::move(edge));
+			GraphFunction fn;
+			fn.name = intern(StringView(entry.getString("name")));
+			if (fn.name.empty()) {
+				report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+						DiagText(DiagDetail::FunctionName));
+				continue;
+			}
+
+			bool duplicate = false;
+			for (auto &existing : functions) {
+				if (existing.name == fn.name) {
+					duplicate = true;
+					break;
+				}
+			}
+			if (duplicate) {
+				report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+						DiagText(DiagDetail::FunctionTwice).name(fn.name));
+				continue;
+			}
+
+			readInterface(entry.getValue("interface"), intern, report, fn.iface);
+
+			auto &fnMeta = entry.getValue("meta");
+			if (fnMeta.isDictionary()) {
+				fn.meta = fnMeta;
+			} else if (!fnMeta.isNull()) {
+				report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+						DiagText(DiagDetail::MetaDict));
+			}
+
+			if (!entry.isArray("nodes")) {
+				report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+						DiagText(DiagDetail::NodesArray));
+				continue;
+			}
+			if (!entry.isArray("edges")) {
+				report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+						DiagText(DiagDetail::EdgesArray));
+				continue;
+			}
+			if (!readBody(entry.getArray("nodes"), entry.getArray("edges"), intern, report,
+						seenIds, fn.nodes, fn.edges)) {
+				continue;
+			}
+			functions.emplace_back(sprt::move(fn));
+		}
+	} else if (!fnValue.isNull()) {
+		report.report(DiagSeverity::Error, DiagCode::AssetMalformed,
+				DiagText(DiagDetail::FunctionsArray));
 	}
 
 	if (report.hasErrors()) {
 		return report.getStatus();
 	}
 
-	sprt::sort(nodes.begin(), nodes.end(),
-			[](const GraphNode &a, const GraphNode &b) { return a.id < b.id; });
+	auto nodeLess = [](const GraphNode &a, const GraphNode &b) { return a.id < b.id; };
+	sprt::sort(nodes.begin(), nodes.end(), nodeLess);
 	sprt::sort(edges.begin(), edges.end(), edgeLess);
+
+	// Functions by name, each body like the root's.
+	for (auto &fn : functions) {
+		sprt::sort(fn.nodes.begin(), fn.nodes.end(), nodeLess);
+		sprt::sort(fn.edges.begin(), fn.edges.end(), edgeLess);
+	}
+	sprt::sort(functions.begin(), functions.end(),
+			[](const GraphFunction &a, const GraphFunction &b) { return a.name < b.name; });
 
 	// By name, both levels: a declaration has no order of its own the way a node has an id, so the
 	// only order that two files agreeing on the contract can agree on is the alphabet.
@@ -631,6 +947,9 @@ Status GraphAsset::load(const mem_std::Value &value, DiagSink *diagnostic) {
 	_extensions = sprt::move(extensions);
 	_nodes = sprt::move(nodes);
 	_edges = sprt::move(edges);
+	_hasInterface = hasInterface;
+	_interface = sprt::move(iface);
+	_functions = sprt::move(functions);
 	return Status::Ok;
 }
 
@@ -648,6 +967,87 @@ void GraphAsset::setGenerator(StringView generator) {
 	_generator = StringView(mem, generator.size());
 }
 
+static void saveBody(SpanView<GraphNode> bodyNodes, SpanView<GraphEdge> bodyEdges,
+		mem_std::Value &out) {
+	auto &nodes = out.newArray("nodes");
+	for (auto &n : bodyNodes) {
+		mem_std::Value entry(mem_std::Value::Type::DICTIONARY);
+		entry.setInteger(int64_t(n.id), "id");
+		entry.setString(n.op, "op");
+		if (n.opHash != 0) {
+			entry.setInteger(int64_t(n.opHash), "opHash");
+		}
+		if (n.params.isDictionary() && n.params.size() > 0) {
+			entry.setValue(n.params, "params");
+		}
+		if (n.settings.isDictionary() && n.settings.size() > 0) {
+			entry.setValue(n.settings, "settings");
+		}
+		if (n.meta.isDictionary() && n.meta.size() > 0) {
+			entry.setValue(n.meta, "meta");
+		}
+		nodes.addValue(sprt::move(entry));
+	}
+
+	auto &edges = out.newArray("edges");
+	for (auto &e : bodyEdges) {
+		mem_std::Value entry(mem_std::Value::Type::DICTIONARY);
+		entry.setString(getEdgeKindName(e.kind), "kind");
+		entry.setInteger(int64_t(e.from), "from");
+		entry.setString(e.fromPin, "fromPin");
+		entry.setInteger(int64_t(e.to), "to");
+		if (!e.toPin.empty()) {
+			entry.setString(e.toPin, "toPin");
+		}
+		edges.addValue(sprt::move(entry));
+	}
+}
+
+static void saveFunctionPins(SpanView<FunctionPin> pins, StringView key, mem_std::Value &out) {
+	if (pins.empty()) {
+		return;
+	}
+	auto &array = out.newArray(key);
+	for (auto &pin : pins) {
+		mem_std::Value entry(mem_std::Value::Type::DICTIONARY);
+		entry.setString(pin.name, "name");
+		entry.setString(value::getVarTypeName(pin.type), "type");
+		if (pin.element != 0) {
+			auto &element = entry.newArray("element");
+			for (auto chain = pin.element; value::chainHead(chain) != VarType::Nil;
+					chain = value::chainTail(chain)) {
+				element.addString(value::getVarTypeName(value::chainHead(chain)));
+			}
+		}
+		if (!pin.subtype.empty()) {
+			entry.setString(pin.subtype, "subtype");
+		}
+		if (pin.required) {
+			entry.setBool(true, "required");
+		}
+		if (!pin.def.isNull()) {
+			entry.setValue(pin.def, "default");
+		}
+		array.addValue(sprt::move(entry));
+	}
+}
+
+void saveFunctionInterface(const FunctionInterface &iface, mem_std::Value &out) {
+	out = mem_std::Value(mem_std::Value::Type::DICTIONARY);
+	saveFunctionPins(iface.inputs, StringView("inputs"), out);
+	saveFunctionPins(iface.outputs, StringView("outputs"), out);
+	if (iface.execIn) {
+		out.setBool(true, "execIn");
+	}
+	if (!iface.execOut.empty()) {
+		auto &execOut = out.newArray("execOut");
+		for (auto &name : iface.execOut) { execOut.addString(name); }
+	}
+	if (iface.mode != FunctionMode::Call) {
+		out.setString(getFunctionModeName(iface.mode), "mode");
+	}
+}
+
 void GraphAsset::save(mem_std::Value &out) const {
 	out = mem_std::Value(mem_std::Value::Type::DICTIONARY);
 
@@ -656,7 +1056,7 @@ void GraphAsset::save(mem_std::Value &out) const {
 	// written here therefore always announces itself.
 	mem_std::Value envelope(mem_std::Value::Type::DICTIONARY);
 	envelope.setString(Kind, "kind");
-	envelope.setInteger(int64_t(FormatVersion), "version");
+	envelope.setInteger(int64_t(getWriteVersion()), "version");
 	if (!_generator.empty()) {
 		envelope.setString(_generator, "generator");
 	}
@@ -701,37 +1101,24 @@ void GraphAsset::save(mem_std::Value &out) const {
 		}
 	}
 
-	auto &nodes = out.newArray("nodes");
-	for (auto &n : _nodes) {
-		mem_std::Value entry(mem_std::Value::Type::DICTIONARY);
-		entry.setInteger(int64_t(n.id), "id");
-		entry.setString(n.op, "op");
-		if (n.opHash != 0) {
-			entry.setInteger(int64_t(n.opHash), "opHash");
-		}
-		if (n.params.isDictionary() && n.params.size() > 0) {
-			entry.setValue(n.params, "params");
-		}
-		if (n.settings.isDictionary() && n.settings.size() > 0) {
-			entry.setValue(n.settings, "settings");
-		}
-		if (n.meta.isDictionary() && n.meta.size() > 0) {
-			entry.setValue(n.meta, "meta");
-		}
-		nodes.addValue(sprt::move(entry));
+	if (_hasInterface) {
+		saveFunctionInterface(_interface, out.emplace("interface"));
 	}
 
-	auto &edges = out.newArray("edges");
-	for (auto &e : _edges) {
-		mem_std::Value entry(mem_std::Value::Type::DICTIONARY);
-		entry.setString(getEdgeKindName(e.kind), "kind");
-		entry.setInteger(int64_t(e.from), "from");
-		entry.setString(e.fromPin, "fromPin");
-		entry.setInteger(int64_t(e.to), "to");
-		if (!e.toPin.empty()) {
-			entry.setString(e.toPin, "toPin");
+	saveBody(_nodes, _edges, out);
+
+	if (!_functions.empty()) {
+		auto &functions = out.newArray("functions");
+		for (auto &fn : _functions) {
+			mem_std::Value entry(mem_std::Value::Type::DICTIONARY);
+			entry.setString(fn.name, "name");
+			saveFunctionInterface(fn.iface, entry.emplace("interface"));
+			if (fn.meta.isDictionary() && fn.meta.size() > 0) {
+				entry.setValue(fn.meta, "meta");
+			}
+			saveBody(fn.nodes, fn.edges, entry);
+			functions.addValue(sprt::move(entry));
 		}
-		edges.addValue(sprt::move(entry));
 	}
 }
 

@@ -49,13 +49,19 @@ SP_PUBLIC bool isKnownHost(StringView triple);
 // (win-arm64 → x64 host under WOW64). "" if nothing can run it.
 SP_PUBLIC StringView getHostFallback(StringView triple);
 
-// The running machine's arch/os/libc (compile-time detection).
+// The running machine's arch and os (compile-time detection) and libc: on Linux, the one the
+// interpreter of /bin/sh belongs to, since a static CLI cannot ask its own process.
 SP_PUBLIC StringView getNativeArch();
 SP_PUBLIC StringView getNativeOs();
 SP_PUBLIC StringView getCurrentLibc(StringView os);
 
-// Resolve the running machine into a downloadable host, applying the fallback policy.
+// Resolve a host triple, or the triple of an arch/os pair on this machine's libc, into a
+// downloadable host, applying the fallback policy.
+SP_PUBLIC ResolvedHost resolveHost(StringView native);
 SP_PUBLIC ResolvedHost resolveHost(StringView arch, StringView os);
+
+// The host this machine builds with: $STAPPLER_HOST when set, otherwise the native arch and os.
+SP_PUBLIC ResolvedHost resolveNativeHost();
 
 } // namespace stappler::xenolith::installer
 

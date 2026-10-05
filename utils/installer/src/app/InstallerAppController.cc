@@ -87,7 +87,7 @@ bool AppController::attach(NotNull<AppThread> app) {
 	// through - so they are applied HERE, once, before anything reads a directory out of it.
 	_settings.applyTo(_layout);
 
-	auto host = resolveHost(getNativeArch(), getNativeOs());
+	auto host = resolveNativeHost();
 	_nativeId = host.native;
 	_nativeViaEmulation = host.viaEmulation;
 
@@ -688,7 +688,7 @@ void AppController::loadCatalogue(Function<void(bool ok, String err)> &&onDone) 
 
 		auto comps = buildCatalogue(hostsText, targetsText);
 
-		auto host = resolveHost(getNativeArch(), getNativeOs());
+		auto host = resolveNativeHost();
 		built->nativeId = host.native;
 		built->release = sel.release;
 		for (const auto &c : comps) {
@@ -1096,7 +1096,7 @@ void AppController::installForSystem(
 		linkToolchainsIntoEnginePath(layout, StringView(root));
 
 		// 2 + 3. Native host + native target (+open target if present).
-		auto host = resolveHost(getNativeArch(), getNativeOs());
+		auto host = resolveNativeHost();
 		if (host.native.empty()) {
 			*errStr = toString("no SDK host for ") + toString(getNativeArch()) + toString("-")
 					+ toString(getNativeOs());

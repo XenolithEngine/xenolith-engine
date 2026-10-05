@@ -104,7 +104,7 @@ void printUsage(const ToolOptions &opts, bool full) {
 	}
 	sprt::cerr << "usage: " << opts.tool << " --out <dir> [--name <id>] [--ops " << families
 			   << "] [--split <n>] [--embed-asset] [--gpu] [--env <name>] [--env-include <header>] "
-				  "[--namespace <ns>] [--check] <graph.json>...\n";
+				  "[--namespace <ns>] [--lib <dir>]... [--check] <graph.json>...\n";
 	if (!full) {
 		return;
 	}
@@ -119,9 +119,55 @@ void printUsage(const ToolOptions &opts, bool full) {
 			   << opts.env << ", " << opts.envInclude << ")\n"
 			   << "  --namespace is the namespace the unit is written into (default "
 			   << opts.unitNamespace << ")\n"
+			   << "  --lib names a directory whose function documents a graph may call\n"
 			   << "  --check writes nothing and answers whether <dir> already holds what would be "
 				  "written\n";
 }
+
+// The function documents under the `--lib` directories, by name; the first of a name wins, in
+// path order.
+struct ToolLibrary : FunctionHost {
+	mem_std::Vector<sprt::pair<mem_std::String, GraphAsset *>> docs;
+
+	~ToolLibrary() {
+		for (auto &it : docs) { delete it.second; }
+	}
+
+	bool load(StringView dir) {
+		mem_std::Vector<mem_std::String> paths;
+		auto walked = filesystem::ftw(FileInfo{dir}, [&](const FileInfo &info, FileType type) {
+			if (type == FileType::File && info.path.ends_with(".json")) {
+				paths.emplace_back(info.path.str<memory::StandardInterface>());
+			}
+			return true;
+		});
+		if (!walked) {
+			return false;
+		}
+		sprt::sort(paths.begin(), paths.end());
+		for (auto &path : paths) {
+			auto value = data::readFile<mem_std::Interface>(FileInfo{path});
+			auto asset = new GraphAsset();
+			asset->init();
+			if (value.isNull() || asset->load(value) != Status::Ok || !asset->hasInterface()
+					|| findFunction(asset->getName())) {
+				delete asset;
+				continue;
+			}
+			docs.emplace_back(asset->getName().str<memory::StandardInterface>(), asset);
+		}
+		return true;
+	}
+
+	const GraphAsset *findFunction(StringView name) const override {
+		for (auto &it : docs) {
+			if (StringView(it.first) == name) {
+				return it.second;
+			}
+		}
+		return nullptr;
+	}
+};
 
 } // namespace
 
@@ -137,6 +183,7 @@ int runTool(int argc, const char *argv[], const ToolOptions &opts) {
 	bool gpu = false;
 	uint32_t split = 1;
 	mem_std::Vector<mem_std::String> files;
+	mem_std::Vector<mem_std::String> libs;
 
 	for (int i = 1; i < argc; ++i) {
 		StringView arg(argv[i]);
@@ -159,6 +206,8 @@ int runTool(int argc, const char *argv[], const ToolOptions &opts) {
 			gpu = true;
 		} else if (arg == "--check") {
 			check = true;
+		} else if (arg == "--lib" && i + 1 < argc) {
+			libs.emplace_back(value());
 		} else if (arg == "--split" && i + 1 < argc) {
 			auto n = StringView(argv[++i]).readInteger(10).get(0);
 			if (n < 1 || n > 1'024) {
@@ -234,6 +283,15 @@ int runTool(int argc, const char *argv[], const ToolOptions &opts) {
 		}
 	}
 
+	// The library: every graph under the `--lib` directories that is a function, by its name.
+	ToolLibrary library;
+	for (auto &dir : libs) {
+		if (!library.load(dir)) {
+			sprt::cerr << opts.tool << ": " << dir << " cannot be read as a library\n";
+			return 1;
+		}
+	}
+
 	int failed = 0;
 	for (auto &path : files) {
 		auto value = data::readFile<mem_std::Interface>(FileInfo{path});
@@ -255,6 +313,7 @@ int runTool(int argc, const char *argv[], const ToolOptions &opts) {
 
 		RuntimeGraph graph;
 		graph.init();
+		graph.setFunctionHost(&library);
 		mem_std::Value report;
 		ToolSink buildSink(&report, opts.writeDiag);
 		if (graph.build(asset, ops, &buildSink) != Status::Ok) {

@@ -43,6 +43,12 @@
 #include "corpus_numeric32.gen.h"
 #include "corpus_numeric32_refused.gen.h"
 #include "corpus_enum_family.gen.h"
+#include "corpus_call_local.gen.h"
+#include "corpus_call_inline.gen.h"
+#include "corpus_call_pure.gen.h"
+#include "corpus_call_exits.gen.h"
+#include "corpus_call_loop.gen.h"
+#include "corpus_call_recursive.gen.h"
 
 namespace STAPPLER_VERSIONIZED stappler::test::codegenfx {
 
@@ -51,8 +57,8 @@ struct Unit {
 	::stappler::flow::CompiledTables (*tables)();
 };
 
-inline constexpr uint32_t UnitCount = 38;
-inline const Unit Units[38] = {
+inline constexpr uint32_t UnitCount = 44;
+inline const Unit Units[44] = {
 	{StringView("arithmetic"), &::stappler::flow::gen::corpus_arithmetic::Tables::tables},
 	{StringView("widen"), &::stappler::flow::gen::corpus_widen::Tables::tables},
 	{StringView("strings"), &::stappler::flow::gen::corpus_strings::Tables::tables},
@@ -91,6 +97,12 @@ inline const Unit Units[38] = {
 	{StringView("numeric32"), &::stappler::flow::gen::corpus_numeric32::Tables::tables},
 	{StringView("numeric32-refused"), &::stappler::flow::gen::corpus_numeric32_refused::Tables::tables},
 	{StringView("enum-family"), &::stappler::flow::gen::corpus_enum_family::Tables::tables},
+	{StringView("call-local"), &::stappler::flow::gen::corpus_call_local::Tables::tables},
+	{StringView("call-inline"), &::stappler::flow::gen::corpus_call_inline::Tables::tables},
+	{StringView("call-pure"), &::stappler::flow::gen::corpus_call_pure::Tables::tables},
+	{StringView("call-exits"), &::stappler::flow::gen::corpus_call_exits::Tables::tables},
+	{StringView("call-loop"), &::stappler::flow::gen::corpus_call_loop::Tables::tables},
+	{StringView("call-recursive"), &::stappler::flow::gen::corpus_call_recursive::Tables::tables},
 };
 
 } // namespace stappler::test::codegenfx

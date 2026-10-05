@@ -139,10 +139,12 @@ struct SceneRef {
 
 SP_PUBLIC StringView getPinRoleName(PinRole);
 
-// What a scope an operation opens is: the turns of a loop, or the branches of a parallel block.
+// What a scope is: the turns of a loop, the branches of a parallel block, or the body of a function.
+// A function's scope is opened by no edge: every call node of that function opens it.
 enum class ScopeKind : uint8_t {
 	Loop,
 	Parallel,
+	Function,
 };
 
 SP_PUBLIC StringView getScopeKindName(ScopeKind);
@@ -213,6 +215,18 @@ enum class OpFlags : uint32_t {
 };
 
 SP_DEFINE_ENUM_AS_MASK(OpFlags)
+
+// The part an operation plays in a function (SPFlowFunction.h): a call of it, its body's entry or
+// return, or the entry or return of a body substituted at a call site. Set only on the operations a
+// function contributes when a graph is linked; outside the hash, because the name already says it.
+enum class FunctionRole : uint8_t {
+	None,
+	Call,
+	Entry,
+	Return,
+	Arg,
+	Result,
+};
 
 // The interpreter's side of an operation call: inputs, outputs, the node's local record, the scene.
 // Declared here and defined by the interpreter, because what an operation may reach is the
@@ -314,6 +328,12 @@ struct OpDef {
 	// `@passthrough`. Empty for an operation that has none.
 	StringView shaderName;
 	StringView shaderSource;
+
+	// See FunctionRole: the linked name of the function, and for a return the index of the exec
+	// output of the call it leaves through.
+	FunctionRole functionRole = FunctionRole::None;
+	StringView function;
+	uint32_t functionExit = 0;
 };
 
 // The resolved form. Addresses are stable for the registry's lifetime: a RuntimeGraph holds raw
@@ -348,6 +368,11 @@ public:
 	// The shader form (OpDef::shaderName, OpDef::shaderSource), or empty.
 	StringView getShaderName() const { return _shaderName; }
 	StringView getShaderSource() const { return _shaderSource; }
+
+	// OpDef::functionRole and the two beside it.
+	FunctionRole getFunctionRole() const { return _functionRole; }
+	StringView getFunction() const { return _function; }
+	uint32_t getFunctionExit() const { return _functionExit; }
 
 	SpanView<PinDesc> getDataIn() const { return _dataIn; }
 	SpanView<PinDesc> getDataOut() const { return _dataOut; }
@@ -417,6 +442,9 @@ private:
 	StringView _inlineName;
 	StringView _shaderName;
 	StringView _shaderSource;
+	StringView _function;
+	FunctionRole _functionRole = FunctionRole::None;
+	uint32_t _functionExit = 0;
 	OpId _id = value::NullTypeId;
 	uint64_t _hash = 0;
 	OpFlags _flags = OpFlags::None;
@@ -456,6 +484,14 @@ public:
 
 	bool init(memory::pool_t *parent = nullptr);
 
+	// A layer over `base`: a lookup this registry cannot answer is asked of the base, and nothing is
+	// registered here under an id the base already has. What a linked graph's functions contribute
+	// lives in such a layer, owned by the graph, while the base stays the application's. The base
+	// outlives the layer.
+	bool init(const OpRegistry *base, memory::pool_t *parent = nullptr);
+
+	const OpRegistry *getBase() const { return _base; }
+
 	const OpDesc *createNative(const OpDef &, DiagSink *diagnostic = nullptr);
 
 	template <DiagContainer Out>
@@ -467,6 +503,7 @@ public:
 	const OpDesc *get(OpId) const;
 	const OpDesc *get(StringView) const;
 
+	// This registry's own operations, not its base's.
 	uint32_t getCount() const { return uint32_t(_order.size()); }
 	const OpDesc *getAt(uint32_t i) const { return _order[i]; }
 
@@ -483,11 +520,18 @@ public:
 	// the same registry.
 	value::TypeRegistry &getLocalTypes() { return _localTypes; }
 
+	// The local types of the registry at the bottom of the layers: where the interpreter's own
+	// bookkeeping types are registered. A layer's own local types are its operations' records only.
+	const value::TypeRegistry &getCoreTypes() const {
+		return _base ? _base->getCoreTypes() : _localTypes;
+	}
+
 	void describe(mem_std::Value &) const;
 
 private:
 	memory::pool_t *_pool = nullptr;
 	bool _ownsPool = false;
+	const OpRegistry *_base = nullptr;
 	mem_std::Vector<OpDesc *> _order;
 	value::TypeRegistry _localTypes;
 };

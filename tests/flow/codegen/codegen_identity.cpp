@@ -348,6 +348,62 @@ void performCodegenIdentityTests() {
 		check(hasDiag(diag, StringView("codegen-malformed")),
 				"codegen-identity: as codegen-malformed");
 	}
+
+	// ---- the documents a graph took function bodies from ------------------------------------------
+
+	{
+		struct Library : FunctionHost {
+			GraphAsset inc;
+			const GraphAsset *findFunction(StringView name) const override {
+				return name == StringView("inc") ? &inc : nullptr;
+			}
+		} lib;
+		lib.inc.init();
+		check(lib.inc.load(data::read<mem_std::Interface>(StringView(R"json({"__meta": {"kind": "graph",
+			"version": 2}, "name": "inc", "interface": {"inputs": [{"name": "x", "type": "int"}],
+			"outputs": [{"name": "y", "type": "int"}]},
+			"nodes": [{"id": 1, "op": "fn.entry"}, {"id": 2, "op": "math.addInt", "params": {"rhs": 1}},
+				{"id": 3, "op": "fn.return"}],
+			"edges": [{"kind": "data", "from": 1, "fromPin": "x", "to": 2, "toPin": "lhs"},
+				{"kind": "data", "from": 2, "fromPin": "result", "to": 3, "toPin": "y"}]})json")))
+						== Status::Ok,
+				"codegen-identity: the library function loads");
+
+		Fixture fx;
+		fx.functions = &lib;
+		check(fx.prepare(StringView(R"json({"formatVersion": 1, "name": "caller",
+			"nodes": [{"id": 1, "op": "fn.inc", "params": {"x": 41}}], "edges": []})json")),
+				"codegen-identity: a graph calling a library function builds");
+
+		codegen::EmitOptions options;
+		options.name = StringView("callee_probe");
+		codegen::Emitted out;
+		check(codegen::emit(fx.graph, fx.asset, fx.ops, options, out) == Status::Ok,
+				"codegen-identity: and is written as a unit");
+		check(out.header.find("CompiledCalleeIdentity") != mem_std::String::npos
+						&& sourcesHave(out, StringView("SPFlowFunctionInline.h")),
+				"codegen-identity: the unit names its callee and includes the function bodies");
+
+		CompiledCalleeIdentity callees[] = {
+			{.name = StringView("inc"), .contentHash = lib.inc.getContentHash()}};
+		CompiledIdentity identity;
+		identity.callees = SpanView<CompiledCalleeIdentity>(callees, 1);
+		check(checkUnitCallees(identity, fx.graph.getLink()) == Status::Ok,
+				"codegen-identity: the callee a host links is the one the unit was written from");
+
+		mem_std::Value diag;
+		callees[0].contentHash ^= 1;
+		check(checkUnitCallees(identity, fx.graph.getLink(), &diag) != Status::Ok
+						&& locusOf(diag, StringView("codegen-callee-drift"), StringView("op"))
+								== "inc",
+				"codegen-identity: a callee that changed since is codegen-callee-drift, by name");
+
+		diag = mem_std::Value();
+		CompiledIdentity none;
+		check(checkUnitCallees(none, fx.graph.getLink(), &diag) != Status::Ok
+						&& hasDiag(diag, StringView("codegen-callee-drift")),
+				"codegen-identity: and so is a callee the unit never had");
+	}
 }
 
 } // namespace STAPPLER_VERSIONIZED stappler
