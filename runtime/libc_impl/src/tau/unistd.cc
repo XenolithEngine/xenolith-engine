@@ -9,6 +9,7 @@
 #include "../../include/__impl_libc.h"
 
 extern "C" unsigned __tau_module_index();
+extern "C" unsigned __tau_module_cpus();
 
 extern "C" __SPRT_ID(pid_t) getpid(void) __SPRT_NOEXCEPT { return (__SPRT_ID(pid_t))(__tau_module_index() + 1); }
 
@@ -38,7 +39,7 @@ extern "C" long sysconf(int name) __SPRT_NOEXCEPT {
 	switch (name) {
 	case __SPRT_SC_PAGESIZE: return 4'096;
 	case __SPRT_SC_NPROCESSORS_CONF:
-	case __SPRT_SC_NPROCESSORS_ONLN: return 1; // a module's threads run on one CPU (KRN-A-SMP-1)
+	case __SPRT_SC_NPROCESSORS_ONLN: return (long)__tau_module_cpus(); // the module's CPU mask
 	case __SPRT_SC_OPEN_MAX: return (long)sprt::MAX_FDS;
 	default: return -1;
 	}

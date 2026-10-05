@@ -164,6 +164,8 @@ extern "C" const char *__tau_module_name() { return s_process.name ? s_process.n
 
 extern "C" unsigned __tau_module_index() { return s_process.module; }
 
+extern "C" unsigned __tau_module_cpus() { return s_process.cpus ? s_process.cpus : 1; }
+
 extern "C" {
 extern void (*__init_array_start[])(int, char **, char **) __attribute__((weak));
 extern void (*__init_array_end[])(int, char **, char **) __attribute__((weak));
