@@ -108,7 +108,13 @@ OUT_LIBS := $(addprefix $(OUT_SYSROOT)/lib/,\
 	liblldb.so.$(SP_LLVM_V) \
 	liblldbIntelFeatures.so.$(SP_LLVM_SOVER) \
 	libLLVM.so.$(SP_LLVM_SOVER) \
-	libRemarks.so.$(SP_LLVM_SOVER))
+	libRemarks.so.$(SP_LLVM_SOVER) \
+	libSPIRV-Tools.so \
+	libSPIRV-Tools-diff.so \
+	libSPIRV-Tools-link.so \
+	libSPIRV-Tools-lint.so \
+	libSPIRV-Tools-opt.so \
+	libSPIRV-Tools-reduce.so)
 
 OUT_INCLUDES := $(addprefix $(OUT_SYSROOT)/include/,\
 	clang \

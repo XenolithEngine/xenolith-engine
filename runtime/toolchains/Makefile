@@ -53,6 +53,14 @@ endif
 # Define 0 to disable automatic host building
 HOST_REQUIRED ?= 1
 
+# A host build is `make -C host-* out OUT_SYSROOT=hosts/<id>`, and when it needs its
+# own target it comes back here (target-<id> HOST_REQUIRED=0). A command-line
+# variable reaches every sub-make, so target-linux would take the host's OUT_SYSROOT
+# for its intermediate root and build a whole sysroot inside the host package. Every
+# rule here that wants OUT_SYSROOT passes it explicitly.
+MAKEOVERRIDES := $(filter-out OUT_SYSROOT=%,$(MAKEOVERRIDES))
+unexport OUT_SYSROOT
+
 include src.mk
 
 ALL_SRC := $(addprefix $(SRC_ROOT)/,$(LIBS)) replacements/curl/cacert.pem
@@ -373,7 +381,12 @@ targets-export:\
 # build the Windows host toolchain from.
 #
 # Run `make release-check` first: it reports missing packages and packages whose
-# release tag does not match the current one, without building anything.
+# release tag does not match the current one, without building anything. Then
+# `make release-verify` (check-release.py) goes through what each package holds:
+# required tools and libraries, the architecture of every binary, what the host
+# binaries load at run time, sibling targets carrying the same libraries, and
+# symlinks that would not survive the tarball. After release-export,
+# `./check-release.py --archives` also checks the staged archives and signatures.
 
 GIT_TAG ?= $(shell git describe --tags --abbrev=0)
 
@@ -473,6 +486,9 @@ release-check:
 	if [ -n "$$stale" ]; then echo "WRONG TAG:$$stale"; fi; \
 	if [ -z "$$missing$$stale" ]; then echo "all packages present"; else exit 1; fi
 
+release-verify:
+	python3 check-release.py --tag '$(GIT_TAG)'
+
 clean-release:
 	$(call rule_rm,$(RELEASE_DIR))
 
@@ -483,6 +499,7 @@ clean-release:
 	release-targets \
 	release-export \
 	release-check \
+	release-verify \
 	clean-release \
 	clean-targets \
 	target-all \

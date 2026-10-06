@@ -145,7 +145,9 @@ static_assert(sizeof(BlobHandle) == 12, "BlobHandle is part of the image format"
 // carries it inline and fills the union exactly - a container gets a 32-bit element chain next to
 // its 12-byte handle, an Enum gets the 64-bit TypeId of its family next to its value, an EntityRef
 // gets the TypeId of the schema it points at. Nothing is wasted and nothing is truncated.
-struct Var {
+// alignas(8): the i386 SysV ABI aligns int64_t and double to 4 inside a struct, and the
+// image format is the same on every target.
+struct alignas(8) Var {
 	VarType type = VarType::Nil;
 	uint8_t reserved0 = 0; // named rather than implicit: these bytes are part of the image
 	uint16_t reserved1 = 0;

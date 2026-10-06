@@ -35,6 +35,7 @@ CONFIGURE := \
 	-Dtiff-contrib=OFF \
 	-Dtiff-docs=OFF \
 	-Dtiff-cxx=OFF \
+	-Dtiff-framework=OFF \
 	-DHAVE_LD_VERSION_SCRIPT=FALSE
 
 all:

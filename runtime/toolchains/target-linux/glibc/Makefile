@@ -308,7 +308,7 @@ $(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_USR_LIBS) $(OUT_SYSROOT)/lib/clang/lib
 ifdef OUT_HOST
 	rm -f $(OUT_SYSROOT)/host
 	cd $(OUT_SYSROOT); ln -fs $(OUT_HOST) host
-	cd $(OUT_SYSROOT)/lib/clang; ln -fs ../../host/lib/clang/$(SP_LLVM_VER)/include include
+	cd $(OUT_SYSROOT)/lib/clang; ln -sfn ../../host/lib/clang/$(SP_LLVM_VER)/include include
 endif
 	touch $@
 

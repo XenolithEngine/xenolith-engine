@@ -57,8 +57,10 @@ $(T_TARGET)/usr/include: $(T_INTERMEDIATE)/usr/include | $(T_TARGET)
 $(T_TARGET)/lib/clang/lib/wasi: $(T_INTERMEDIATE)/lib/clang/lib/wasi | $(T_TARGET)
 	@mkdir -p $@
 	cp -af $(T_INTERMEDIATE)/lib/clang/lib/wasi/*.a $@/ 2>/dev/null || true
+	# No lib/clang/include: the builtin headers come from host.mk (-idirafter into the
+	# host's resource dir), and a link baked to the build machine's host id dangles
+	# under every other host.
 	rm -f $(T_TARGET)/lib/clang/include
-	cd $(T_TARGET)/lib/clang; ln -fs ../../../../hosts/$(HOST_ID)/lib/clang/$(SP_LLVM_VER)/include include 2>/dev/null || true
 
 $(T_TARGET)/target.mk: $(T_INTERMEDIATE)/target.mk | $(T_TARGET)
 	cp -af $< $@

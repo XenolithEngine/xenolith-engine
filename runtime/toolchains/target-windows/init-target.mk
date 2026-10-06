@@ -63,7 +63,7 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(lastword $(MAKEFILE_LIST))
 	rm -f $(TOOLCHAIN_OUTPUT_DIR)/host
 	cd $(TOOLCHAIN_OUTPUT_DIR); ln -fs ../../../hosts/$(HOST_ID) host
 	mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/lib/clang
-	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/$(SP_LLVM_VER)/include include
+	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -sfn ../../host/lib/clang/$(SP_LLVM_VER)/include include
 
 # -fexceptions is required on Windows even though the SDK never throws: the freestanding libc
 # implements longjmp on top of SEH unwinding (see libc_impl/src/windows/except.cc), and the

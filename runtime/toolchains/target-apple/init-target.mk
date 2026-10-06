@@ -130,7 +130,7 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(THIS_FILE)
 	rm -f $(TOOLCHAIN_OUTPUT_DIR)/host
 	cd $(TOOLCHAIN_OUTPUT_DIR); ln -fs ../../../hosts/$(HOST_ID) host
 	mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/lib/clang
-	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/$(SP_LLVM_VER)/include include
+	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -sfn ../../host/lib/clang/$(SP_LLVM_VER)/include include
 
 $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'Build $@'

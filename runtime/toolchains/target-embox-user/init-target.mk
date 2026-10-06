@@ -106,7 +106,7 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(lastword $(MAKEFILE_LIST))
 	rm -f $(TOOLCHAIN_OUTPUT_DIR)/host
 	cd $(TOOLCHAIN_OUTPUT_DIR); ln -fs ../../../hosts/$(HOST_ID) host
 	mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/lib/clang
-	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/$(SP_LLVM_VER)/include include
+	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -sfn ../../host/lib/clang/$(SP_LLVM_VER)/include include
 
 # Second toolchain file for the third-party deps (zlib/png/freetype/...). They go
 # through common/configure.mk, which fills SP_C_FLAGS per dep; baking the

@@ -50,16 +50,18 @@ using namespace flow::value;
 
 // Vectors are float[N] here, deliberately: sprt::geom::Vec4 is alignas(16), so a golden struct
 // using it would have alignment 16 and disagree with the layer's rule of 4.
+// Eight-byte fields are alignas(8) for the same reason in reverse: the layer aligns them to 8 on
+// every target, and the i386 SysV ABI would put an int64_t or a double at a multiple of 4.
 struct GoldenScalars {
-	int64_t count;
-	double weight;
+	alignas(8) int64_t count;
+	alignas(8) double weight;
 	uint8_t visible;
 };
 
 struct GoldenMixed {
 	uint8_t flag;
 	// 7 bytes of padding
-	int64_t id;
+	alignas(8) int64_t id;
 	float pos[3];
 	float tint[4];
 	uint8_t enabled;
@@ -68,13 +70,13 @@ struct GoldenMixed {
 struct GoldenBlobs {
 	BlobHandle name;
 	BlobHandle tags;
-	int64_t revision;
+	alignas(8) int64_t revision;
 };
 
 struct GoldenBoolRun {
 	uint8_t a, b, c, d, e;
 	// 3 bytes of padding
-	int64_t big;
+	alignas(8) int64_t big;
 };
 
 struct GoldenSingle {

@@ -110,7 +110,7 @@ $(OUT)/toolchain.cmake: $(THIS_FILE) $(ARCH_FLAGS_FILE) $(CONFIG_FILE)
 	mkdir -p $(OUT)/lib
 	# Relative to $(OUT)/lib/, so ../host - one level, not two (target-wasm
 	# creates its link one directory deeper, inside lib/clang/, hence ../../).
-	ln -fs ../host/lib/clang/$(SP_LLVM_VER) $(OUT)/lib/clang
+	ln -sfn ../host/lib/clang/$(SP_LLVM_VER) $(OUT)/lib/clang
 
 # --- toolchain-libs.cmake -------------------------------------------------
 # Separate toolchain file for cross-building the third-party dependency libs
