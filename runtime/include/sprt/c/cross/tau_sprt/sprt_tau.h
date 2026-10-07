@@ -13,15 +13,32 @@
 extern "C" {
 #endif
 
+#define __SPRT_TAU_EPERM 1
+#define __SPRT_TAU_ENOENT 2
 #define __SPRT_TAU_EINTR 4
 #define __SPRT_TAU_EIO 5
 #define __SPRT_TAU_EBADF 9
 #define __SPRT_TAU_EAGAIN 11
 #define __SPRT_TAU_ENOMEM 12
+#define __SPRT_TAU_EACCES 13
 #define __SPRT_TAU_EBUSY 16
+#define __SPRT_TAU_EEXIST 17
+#define __SPRT_TAU_EXDEV 18
+#define __SPRT_TAU_ENOTDIR 20
+#define __SPRT_TAU_EISDIR 21
 #define __SPRT_TAU_EINVAL 22
+#define __SPRT_TAU_EMFILE 24
+#define __SPRT_TAU_EFBIG 27
+#define __SPRT_TAU_ENOSPC 28
+#define __SPRT_TAU_EROFS 30
+#define __SPRT_TAU_EMLINK 31
 #define __SPRT_TAU_EPIPE 32
+#define __SPRT_TAU_ENAMETOOLONG 36
 #define __SPRT_TAU_ENOSYS 38
+#define __SPRT_TAU_ENOTEMPTY 39
+#define __SPRT_TAU_ELOOP 40
+#define __SPRT_TAU_ENOTSUP 95
+#define __SPRT_TAU_ECONNRESET 104
 #define __SPRT_TAU_ETIMEDOUT 110
 
 #define __SPRT_TAU_TIMEOUT_INFINITE (~0ull)
@@ -85,7 +102,7 @@ void __sprt_tau_thread_release(__sprt_tau_thread *thread);
 unsigned __sprt_tau_thread_self(void);
 unsigned __sprt_tau_thread_id(const __sprt_tau_thread *thread);
 
-// Streams of the module's services, the console for fds 0-2 so far. NONBLOCK returns
+// Streams of the module's services: the console for fds 0-2. NONBLOCK returns
 // -EAGAIN instead of waiting. ready() never blocks and returns the POLL* bits that hold;
 // io_epoch() changes whenever any stream may have become ready, and io_wait() sleeps
 // until it differs from `epoch` or the timeout passes (0 or -ETIMEDOUT).
@@ -98,6 +115,87 @@ int __sprt_tau_stream_close(__sprt_tau_stream *s);
 unsigned __sprt_tau_stream_ready(__sprt_tau_stream *s, unsigned events);
 unsigned __sprt_tau_io_epoch(void);
 int __sprt_tau_io_wait(unsigned epoch, unsigned long long timeout_ns);
+
+// Files of the module's namespace (tau.fs@1 through libtau). `dir` is an open directory, or
+// nullptr for the namespace root; a path that starts with '/' ignores it. Open flags and
+// node types are those of tau.fs; times are nanoseconds since 1970.
+#define __SPRT_TAU_FS_READ 0x01
+#define __SPRT_TAU_FS_WRITE 0x02
+#define __SPRT_TAU_FS_CREATE 0x04
+#define __SPRT_TAU_FS_EXCL 0x08
+#define __SPRT_TAU_FS_TRUNC 0x10
+#define __SPRT_TAU_FS_APPEND 0x20
+#define __SPRT_TAU_FS_DIRECTORY 0x40
+#define __SPRT_TAU_FS_NOFOLLOW 0x80
+
+#define __SPRT_TAU_FS_REG 1
+#define __SPRT_TAU_FS_DIR 2
+#define __SPRT_TAU_FS_LNK 3
+#define __SPRT_TAU_FS_CHR 4
+#define __SPRT_TAU_FS_BLK 5
+#define __SPRT_TAU_FS_FIFO 6
+#define __SPRT_TAU_FS_SOCK 7
+
+typedef struct __sprt_tau_file __sprt_tau_file;
+
+struct __sprt_tau_fs_stat {
+	unsigned long long ino;
+	unsigned long long size;
+	unsigned long long blocks; // of 512 bytes
+	long long atime_ns;
+	long long mtime_ns;
+	long long ctime_ns;
+	unsigned mount;
+	unsigned type;
+	unsigned mode; // permission bits
+	unsigned nlink;
+	unsigned uid;
+	unsigned gid;
+};
+
+struct __sprt_tau_fs_statfs {
+	unsigned long long blocks;
+	unsigned long long bfree;
+	unsigned long long files;
+	unsigned long long ffree;
+	unsigned bsize;
+	unsigned name_max;
+	unsigned mount;
+	unsigned ro;
+};
+
+// A directory entry; namelen bytes of the name follow, the entry takes reclen bytes.
+struct __sprt_tau_fs_entry {
+	unsigned long long ino;
+	unsigned long long cookie; // reading from it goes on after this entry
+	unsigned short reclen;
+	unsigned char namelen;
+	unsigned char type;
+};
+
+int __sprt_tau_fs_open(__sprt_tau_file *dir, const char *path, unsigned flags, unsigned mode, __sprt_tau_file **out);
+int __sprt_tau_fs_close(__sprt_tau_file *f);
+long __sprt_tau_fs_pread(__sprt_tau_file *f, void *buf, unsigned long len, unsigned long long off);
+// With __SPRT_TAU_FS_APPEND the data goes to the end, whatever off says.
+long __sprt_tau_fs_pwrite(__sprt_tau_file *f, const void *buf, unsigned long len, unsigned long long off);
+int __sprt_tau_fs_fstat(__sprt_tau_file *f, struct __sprt_tau_fs_stat *out);
+int __sprt_tau_fs_statat(__sprt_tau_file *dir, const char *path, int nofollow, struct __sprt_tau_fs_stat *out);
+int __sprt_tau_fs_fsync(__sprt_tau_file *f);
+int __sprt_tau_fs_ftruncate(__sprt_tau_file *f, unsigned long long size);
+int __sprt_tau_fs_fchmod(__sprt_tau_file *f, unsigned mode);
+// A negative time stays as it is.
+int __sprt_tau_fs_futimens(__sprt_tau_file *f, long long atime_ns, long long mtime_ns);
+int __sprt_tau_fs_mkdir(__sprt_tau_file *dir, const char *path, unsigned mode);
+int __sprt_tau_fs_unlink(__sprt_tau_file *dir, const char *path);
+int __sprt_tau_fs_rmdir(__sprt_tau_file *dir, const char *path);
+int __sprt_tau_fs_rename(__sprt_tau_file *dir, const char *from, __sprt_tau_file *dir2, const char *to);
+int __sprt_tau_fs_link(__sprt_tau_file *dir, const char *from, __sprt_tau_file *dir2, const char *to);
+int __sprt_tau_fs_symlink(const char *target, __sprt_tau_file *dir, const char *path);
+long __sprt_tau_fs_readlink(__sprt_tau_file *dir, const char *path, char *buf, unsigned long len);
+// Entries of the directory from *cookie into buf; *cookie moves past them and is 0 after the
+// last one. Returns the bytes written.
+long __sprt_tau_fs_readdir(__sprt_tau_file *f, unsigned long long *cookie, void *buf, unsigned long len);
+int __sprt_tau_fs_statvfs(__sprt_tau_file *dir, const char *path, struct __sprt_tau_fs_statfs *out);
 
 #ifdef __cplusplus
 }
