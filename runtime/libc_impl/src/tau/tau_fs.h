@@ -20,6 +20,8 @@ struct __tau_fd {
 };
 
 const __fd_ops *__tau_fs_ops();
+// The fds of sockets (socket.cc); the handle's first field is its __sprt_tau_sock.
+const __fd_ops *__tau_sock_ops();
 
 // -1 with errno for a negative result of libtau, the result otherwise.
 long __tau_ret(long r);

@@ -20,16 +20,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// Socket / resolver / poll compile unit. The POSIX socket layer is backed only on
-// the two freestanding targets, as no-op ENOSYS stubs (wasm/socket.cc, and
-// embox_user/socket.cc where sockets are milestone M3); the hosted and Windows
-// targets get their implementations from the platform libc / winsock, so this
-// unit is empty for them.
+// Socket / resolver / poll compile unit for the freestanding targets: Tau sockets over
+// the module's network stack client (tau/socket.cc), ENOSYS stubs on wasm (wasm/socket.cc)
+// and EmboxUser (embox_user/socket.cc, sockets are milestone M3). The hosted and Windows
+// targets get their implementations from the platform libc / winsock, so this unit is
+// empty for them.
 
 #include <sprt/c/bits/__sprt_def.h>
 
 #if SPRT_WASM
 #include "wasm/socket.cc"
+#elif SPRT_TAU
+#include "tau/socket.cc"
 #elif SPRT_EL0_LIBC
 #include "embox_user/socket.cc"
 #endif
