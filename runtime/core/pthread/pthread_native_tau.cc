@@ -37,6 +37,7 @@ THE SOFTWARE.
 // libc_impl/src/tau/startup.cc: a copy of the program's PT_TLS image for a new thread,
 // and the main thread's stack.
 extern "C" void *__tau_tls_alloc(void);
+extern "C" bool __tau_tls_used(void);
 extern "C" void __tau_tls_free(void *tp);
 extern "C" void __tau_main_stack(__sprt_uintptr_t *low, __sprt_uintptr_t *high);
 
@@ -116,6 +117,10 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr, 
 	rec->stack = stack;
 	rec->stackSize = stackSize;
 	rec->tls = __tau_tls_alloc();
+	if (!rec->tls && __tau_tls_used()) {
+		__tau_release(rec);
+		return EAGAIN;
+	}
 	auto stackTop = (char *)stack + stackSize;
 
 	// Registered before the thread runs: it looks itself up by id when it starts.

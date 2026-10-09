@@ -112,6 +112,9 @@ extern "C" __attribute__((weak)) __SPRT_NORETURN void __stack_chk_fail(void) {
 	__sprt_tau_exit(127);
 }
 
+// The program has thread-local data: a thread needs a block of it.
+extern "C" bool __tau_tls_used(void) { return s_tls.memsz != 0; }
+
 #if __x86_64__
 // A TLS block for a thread: the image, then the TCB at the thread pointer.
 extern "C" void *__tau_tls_alloc(void) {
