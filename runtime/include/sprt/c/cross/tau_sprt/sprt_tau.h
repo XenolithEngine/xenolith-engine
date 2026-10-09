@@ -37,9 +37,17 @@ extern "C" {
 #define __SPRT_TAU_ENOSYS 38
 #define __SPRT_TAU_ENOTEMPTY 39
 #define __SPRT_TAU_ELOOP 40
+#define __SPRT_TAU_EMSGSIZE 90
 #define __SPRT_TAU_ENOTSUP 95
+#define __SPRT_TAU_EADDRINUSE 98
+#define __SPRT_TAU_ENETDOWN 100
 #define __SPRT_TAU_ECONNRESET 104
+#define __SPRT_TAU_EISCONN 106
+#define __SPRT_TAU_ENOTCONN 107
 #define __SPRT_TAU_ETIMEDOUT 110
+#define __SPRT_TAU_ECONNREFUSED 111
+#define __SPRT_TAU_EHOSTUNREACH 113
+#define __SPRT_TAU_EINPROGRESS 115
 
 #define __SPRT_TAU_TIMEOUT_INFINITE (~0ull)
 
@@ -196,6 +204,47 @@ long __sprt_tau_fs_readlink(__sprt_tau_file *dir, const char *path, char *buf, u
 // last one. Returns the bytes written.
 long __sprt_tau_fs_readdir(__sprt_tau_file *f, unsigned long long *cookie, void *buf, unsigned long len);
 int __sprt_tau_fs_statvfs(__sprt_tau_file *dir, const char *path, struct __sprt_tau_fs_statfs *out);
+
+// IPv4 sockets of the module (tau.net@1 through libtau). Addresses and ports are in host
+// order. With IO_NONBLOCK a call answers -EAGAIN (a connect -EINPROGRESS) instead of waiting;
+// a wait ends after timeout_ns with the same answers. ready() never blocks and returns the
+// POLL* bits that hold; a change of them moves io_epoch().
+#define __SPRT_TAU_SOCK_STREAM 1
+#define __SPRT_TAU_SOCK_DGRAM 2
+#define __SPRT_TAU_MSG_PEEK 2u
+#define __SPRT_TAU_MSG_TRUNC 4u
+#define __SPRT_TAU_SHUT_RD 1
+#define __SPRT_TAU_SHUT_WR 2
+
+typedef struct __sprt_tau_sock __sprt_tau_sock;
+
+struct __sprt_tau_inet {
+	unsigned addr;
+	unsigned short port;
+};
+
+int __sprt_tau_sock_open(int type, __sprt_tau_sock **out);
+int __sprt_tau_sock_bind(__sprt_tau_sock *s, const struct __sprt_tau_inet *addr);
+int __sprt_tau_sock_listen(__sprt_tau_sock *s, int backlog);
+int __sprt_tau_sock_connect(__sprt_tau_sock *s, const struct __sprt_tau_inet *peer, unsigned flags,
+		unsigned long long timeout_ns);
+int __sprt_tau_sock_accept(__sprt_tau_sock *s, unsigned flags, unsigned long long timeout_ns, __sprt_tau_sock **out,
+		struct __sprt_tau_inet *peer);
+// The bytes the stack took: all of them unless the wait ended. `to` is for a datagram socket.
+long __sprt_tau_sock_send(__sprt_tau_sock *s, const void *buf, unsigned long len, const struct __sprt_tau_inet *to,
+		unsigned flags, unsigned long long timeout_ns);
+// *flags: IO_NONBLOCK and MSG_PEEK in, MSG_TRUNC out (a datagram longer than len).
+long __sprt_tau_sock_recv(__sprt_tau_sock *s, void *buf, unsigned long len, struct __sprt_tau_inet *from,
+		unsigned *flags, unsigned long long timeout_ns);
+int __sprt_tau_sock_shutdown(__sprt_tau_sock *s, int how);
+// Sends in flight reach the stack first.
+int __sprt_tau_sock_close(__sprt_tau_sock *s);
+int __sprt_tau_sock_name(__sprt_tau_sock *s, int peer, struct __sprt_tau_inet *out);
+// The socket's pending error, taken: 0 or -errno.
+int __sprt_tau_sock_error(__sprt_tau_sock *s);
+unsigned __sprt_tau_sock_ready(__sprt_tau_sock *s, unsigned events);
+// The address of a host name; -ENOENT when it has none.
+int __sprt_tau_resolve(const char *name, unsigned *addr, unsigned long long timeout_ns);
 
 #ifdef __cplusplus
 }

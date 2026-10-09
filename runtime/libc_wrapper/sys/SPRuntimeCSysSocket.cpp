@@ -2521,6 +2521,8 @@ namespace sprt {
 	*__sprt___errno_location() = ENOSYS; \
 	return -1
 #endif
+// Tau has the socket calls in libc_impl (src/tau/socket.cc), these entries among them.
+#if !SPRT_TAU
 __SPRT_C_FUNC SOCKET __SPRT_ID(socket)(int __domain, int __type, int __protocol) {
 #if SPRT_WASM || SPRT_EL0_LIBC
 	__SPRT_SOCK_ENOSYS();
@@ -2929,6 +2931,8 @@ __SPRT_C_FUNC int __SPRT_ID(recvmmsg)(SOCKET __fd, struct __SPRT_ID(mmsghdr) * _
 	return ::recvmmsg(__fd, (::mmsghdr *)__msgvec, __vlen, __flags, __timeout ? &__ts : nullptr);
 #endif
 }
+
+#endif // !SPRT_TAU
 
 __SPRT_C_FUNC int __SPRT_ID(closesocket)(SOCKET s) {
 #if SPRT_WINDOWS
