@@ -87,8 +87,8 @@ ifndef SP_ARCH
 # Цели задаются полным триплетом (роутинг как у target-apple). libc выбирается
 # по суффиксу: -unknown-linux-gnu -> glibc/, -unknown-linux-musl -> musl/.
 # Сборка сторонних библиотек (ветка SP_ARCH ниже) libc-агностична и общая.
-GNU_ARCHS := x86_64 aarch64 riscv64
-MUSL_ARCHS := x86_64 aarch64 riscv64
+GNU_ARCHS := x86_64 aarch64 riscv64 loongarch64
+MUSL_ARCHS := x86_64 aarch64 riscv64 loongarch64
 
 # По умолчанию — e2k + x86_64 (glibc), как раньше.
 all: e2k x86_64-unknown-linux-gnu
@@ -154,6 +154,12 @@ endif
 
 ifdef SP_IS_NATIVE
 FORWARD_VARS += SP_NATIVE=1
+endif
+
+# WAMR не знает LoongArch (нет WAMR_BUILD_TARGET и 64-битного invokeNative),
+# поэтому на loongarch64 iwasm не собирается, а stappler_wasm недоступен.
+ifeq ($(SP_ARCH),loongarch64)
+LIBS := $(filter-out $(WASM_LIBS),$(LIBS))
 endif
 
 # compiler-rt asan: для glibc собирается через compiler_rt.mk. Для musl libc++ и

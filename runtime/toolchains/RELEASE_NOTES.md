@@ -1,4 +1,4 @@
-# Xenolith Toolchains — `sdk-v0rc0`
+# Xenolith Toolchains — `sdk-v0rc1`
 
 Universal, self-contained C/C++ toolchains for building **Xenolith Runtime** and
 projects based on it, on **Linux, Windows and macOS**, cross-compiling to every
@@ -15,7 +15,7 @@ This release publishes two sets of binary packages:
 You pick one host (matching the machine you compile on) and one or more targets
 (the platforms you ship to). All packages are `.tar.xz` with a detached GnuPG
 signature (`.tar.xz.sig`), and every package carries a `release` file holding
-the SDK tag (`sdk-v0rc0`).
+the SDK tag (`sdk-v0rc1`).
 
 Release assets are named `host_<id>.tar.xz` and `target_<id>.tar.xz`. The prefix
 is not cosmetic: a GitHub release has one flat asset namespace, and the host and
@@ -24,87 +24,102 @@ Inside the archive the top-level directory is still the bare `<id>`.
 
 ---
 
-## What changed since `sdk-v0beta3`
+## What changed since `sdk-v0rc0`
 
-### New target: `wasm64-unknown-unknown`
+### New host and targets: LoongArch 64
 
-WebAssembly with memory64, built from the same template as `wasm32` and carrying
-the same library set. Nothing in the host LLVM changes — the triple alone turns
-memory64 on. One compiler-rt patch was needed: the soft-float comparison
-builtins return `long` on LP64, while LLVM lowers those libcalls with an `i32`
-result on WebAssembly, and `wasm-ld` links by exact signature, so every `fp128`
-comparison on wasm64 resolved to a trapping stub. OpenSSL gains a
-`wasm64-sprt-clang` configuration.
+`loongarch64-unknown-linux-gnu` and `loongarch64-unknown-linux-musl` join the
+release as **both a host and a target** (new-world ABI), cross-built from the same
+templates as the riscv64 ones. The glibc target is built against glibc **2.36**
+and Linux **6.1 LTS** UAPI headers — LoongArch entered the kernel only in 5.19;
+the musl one against the same musl as every other Linux target.
 
-Both wasm targets now also ship **`libsprt.a`** — the runtime, libc and the
-libc++ port in one archive — for consumers that have only a compiler and a
-sysroot. Projects driven by the engine build system still rebuild the runtime
-from source.
+The architecture shows in a few places:
 
-### LLVM: 13 → 21 local patches
+* **No WAMR.** WAMR has no LoongArch backend (no `WAMR_BUILD_TARGET`, no 64-bit
+  `invokeNative`), so these targets ship no `libiwasm-*.a` and `stappler_wasm`
+  is not available on them.
+* **No `libanl` / `libutil` on the glibc target.** glibc had already merged them
+  into `libc` when LoongArch arrived, so the port has no compatibility stubs.
+* **libjpeg-turbo is built without SIMD** — it has no LoongArch SIMD code.
+* **brotli** carries a patch dropping its `model("small")` table attribute,
+  which clang rejects on LoongArch (the valid code models there are normal,
+  medium and extreme). OpenSSL builds as `linux64-loongarch64`.
 
-The toolchain stays on **22.1.8**. The patch set grew by the wasm64 compiler-rt
-fix above and by seven `sprt-wasm-host` patches, which let LLVM itself be
-cross-compiled to `wasm32` and run on the sprt runtime (the in-browser clang).
-Every hunk of those seven is guarded by `__wasm__`, so the published hosts are
-built from exactly the same code as before; the wasm host itself is not
-published in this release.
+### Package fixes
 
-### macOS `+open` sysroots
+All of these were found by the new package check (see below), and all of them
+were present in earlier releases too:
 
-* The `x86_64-apple-macosx+open` build is complete (the `_mach_init_routine` /
-  crt symbols are baked into the `libSystem` stub on both architectures, plus a
-  `libgcc_s` alias and the deployment-target fix).
-* The hand-written AppKit surface grew with what the engine now uses: images
-  (`NSBitmapImageRep`, `NSDeviceRGBColorSpace`), the open/save panels, the
-  workspace, fonts and the colour panel, and **OS drag and drop into a view**
-  (`NSDragOperation`, `NSDraggingInfo`, `NSDraggingDestination`,
-  `registerForDraggedTypes:`, `NSPasteboardURLReadingFileURLsOnlyKey`).
-* All of it is now checked mechanically against a real `MacOSX.sdk` by
-  `tests/libc/macos-abi`: 981 framework enumerators, the Objective-C types of 74
-  properties and methods, and all 12 431 symbols of the `.tbd` link stubs,
-  including which library owns each one.
+* **The `x86_64-unknown-linux-gnu` host now ships the SPIRV-Tools shared
+  libraries** (`libSPIRV-Tools*.so`). That host's `glslang` and `spirv-*` tools
+  are linked against them, but the libraries were never packaged: the tools ran
+  only where the system happened to have SPIRV-Tools of its own in `/usr/lib`,
+  and failed on a clean machine. The other hosts link SPIRV-Tools statically
+  (Linux) or already shipped the `.dylib`s (macOS).
+* **The iOS targets now ship `libtiff.a`.** libtiff 4.7 builds a `tiff.framework`
+  instead of a static archive on iOS by default, so all three iOS sysroots were
+  missing it while the build still reported success.
+* **The Windows hosts now ship `share/licenses`**, like every other package: LLVM,
+  glslang, SPIRV-Tools, libxml2 and zlib, which is what they link.
+* **musl targets:** the dynamic loader `lib/ld-musl-<arch>.so.1` was an absolute
+  link into the build machine's tree and dangled in the package. It now points
+  at `libc.so` next to it.
+* **wasm targets:** `lib/clang/include` was a link to
+  `hosts/x86_64-unknown-linux-gnu`, hard-wired to the machine the target was
+  built on, and dangled under every other host. It is gone; the compiler's
+  builtin headers come from the host, through the `-idirafter` in `host.mk`, as
+  on every other target.
+* A host build that has to build its own target first no longer leaves a copy of
+  that target's whole sysroot (≈230 MB) inside the host package: a command-line
+  `OUT_SYSROOT` was leaking into the nested target build.
 
-### Dependencies
+### Package check: `make release-verify`
 
-* **MbedTLS is gone.** `libcurl` is built only against OpenSSL now, on every
-  target; nothing links `libcurl-mbedtls.a` or `-lmbedtls` any more.
-* OpenSSL 3.5.8 (the 3.5 LTS line stays: OpenSSL 4.0 removed the ENGINE API
-  that `openssl-gost-engine` needs), curl 8.22.0, xz 5.8.4, HarfBuzz 14.5.0,
-  libxml2 2.15.4, expat 2.8.5, wayland 1.26.0, CA bundle `cacert-2026-09-25`.
-* **giflib 6.1.3**, with three fixes from upstream master that no release carries
-  yet: CVE-2026-26740 (heap overflow in `EGifGCBToSavedExtension`), the integer
-  overflows in the pixel-count and dimension arithmetic (heap overflows on 32-bit
-  targets), and the `GifUnionColorMap` NULL dereference. The CVE-2026-23868 fix
-  is part of 6.1.2 and later, so its backport is gone. 6.x breaks the *encoder*
-  API/ABI (`EGifSpew()` changed signature, the `E_GIF_ERR` values were
-  renumbered); code that encodes GIFs against these sysroots needs updating, the
-  decoder API is unchanged.
-* WAMR moved from `bytecodealliance` to its own organisation; the pin is the same
-  2.4.5 release, fetched from the new location.
-* musl follows upstream to `v1.2.6-62`.
-* `share/licenses` drops the MbedTLS entry: **47** entries.
+`make release-check` only asks whether every package exists and carries the
+release tag. The new `make release-verify` (`check-release.py`) looks inside:
+
+* the tools every host and the libraries every target must carry, with the
+  known per-architecture gaps written out (WAMR on LoongArch, sanitizers and the
+  ORC runtime where compiler-rt does not support them, …);
+* the architecture of every binary — executables and shared libraries by their
+  header, static and import libraries by their first object;
+* what every host binary loads at run time — a library that is neither in the
+  package nor part of the OS means the host is not self-contained;
+* that sibling targets of one family carry the same set of libraries;
+* absolute, dangling and package-escaping symlinks and stray directories, which
+  would ship in the tarball as they are;
+* with `--archives`, the staged `release/` archives and their signatures.
 
 ### Source-only targets
 
-* NuttX, Embox and Embox user-space (`target-embox-user`) targets moved on in the
-  tree — Embox now runs on musl — and are still built from source only.
+* **Embox** gains experimental Vulkan through Mesa 26.2.3 — lavapipe (software)
+  and Venus (the host's GPU over virtio-gpu) — and the `jmp_buf`/NEON updates.
+  Mesa is fetched only when the Embox target asks for it.
+* LLVM carries four more patches for running LLVM itself on Embox (**25** in
+  total). Every hunk is guarded by `__EMBOX__`, so the published hosts are built
+  from the same code as before.
+* NuttX and Embox targets are still built from source only.
 
 ## How this release was checked
 
 * Every package was built from this tree; `make release-check` confirms that the
-  whole release set is present and tagged `sdk-v0rc0`.
-* Every test project and example of the engine (25 projects, 25 targets, about
-  500 builds) was compiled and linked against these packages.
-  The only cells that do not build are the ones that cannot by
-  design: the Vulkan-only projects on the wasm targets, and the Metal backend on
-  the `+open` sysroots, which have no Metal stub.
-* The engine's full test gate (55 harnesses, 6 369 checks, Vulkan compute on a
-  real device included) passes.
+  whole release set — 12 hosts and 27 targets — is present and tagged
+  `sdk-v0rc1`.
+* `make release-verify` passes on every package with no errors.
+* Every test project and example of the engine (31 projects) was built from scratch
+  against these packages for every published target: 837 cells, 676 of them
+  applicable, and all 676 compile and link. The 161 that do not apply are the
+  platform harnesses on foreign platforms (the Windows, wasm and Apple ones), the
+  Vulkan-only projects on wasm, the Metal backend on the `+open` sysroots, which
+  have no Metal stub, and `unknown-ndk-linux-android` for the projects that have
+  no `proj.android`.
+* The engine's full test gate (63 jobs, 877 816 checks, Vulkan compute on a real
+  device included), built with the `x86_64-unknown-linux-gnu` packages, passes.
 
 ## Packages
 
-### Hosts (10)
+### Hosts (12)
 
 Each host package ships clang 22 with the LLVM tool suite (`clang`, `clang++`,
 `clang-cl`, `lld`/`ld.lld`/`ld64.lld`/`lld-link`/`wasm-ld`, `lldb`, `llvm-ar`,
@@ -118,9 +133,11 @@ Wine-hosted binaries.
 | `x86_64-unknown-linux-gnu`   | Linux / glibc, x86-64 |
 | `aarch64-unknown-linux-gnu`  | Linux / glibc, ARM64 |
 | `riscv64-unknown-linux-gnu`  | Linux / glibc, RISC-V 64 |
+| `loongarch64-unknown-linux-gnu` | Linux / glibc 2.36+, LoongArch 64 |
 | `x86_64-unknown-linux-musl`  | Linux / musl, x86-64 |
 | `aarch64-unknown-linux-musl` | Linux / musl, ARM64 |
 | `riscv64-unknown-linux-musl` | Linux / musl, RISC-V 64 |
+| `loongarch64-unknown-linux-musl` | Linux / musl, LoongArch 64 |
 | `x86_64-pc-windows-msvc`     | Windows, x86-64 |
 | `aarch64-pc-windows-msvc`    | Windows, ARM64 |
 | `x86_64-apple-macosx`        | macOS, Intel |
@@ -131,23 +148,25 @@ Notes:
 * Linux and macOS hosts also ship **GNU Make 4.3** as `bin/make`. The Windows
   hosts do not (use `xlmake.exe`), and carry a reduced tool set overall — the
   compiler, the linkers, `lldb`, `glslang`, `spirv-link`, `xlmake` and the
-  `llvm-*` tools the build needs, with no `share/licenses` tree.
+  `llvm-*` tools the build needs.
 * The Windows hosts require **`sprt.dll` to sit next to the executables** —
   Windows resolves imports from the directory of the running image and has no
   rpath equivalent. It is inside `bin/`; keep it there.
 * The macOS `lldb` is built with `LLDB_USE_SYSTEM_DEBUGSERVER` — `debugserver`
   needs `task_for_pid` entitlements and Apple code signing, so it is not shipped.
 
-### Targets (25)
+### Targets (27)
 
 | Package | Builds for |
 |---|---|
 | `x86_64-unknown-linux-gnu`            | Linux / glibc, x86-64 |
 | `aarch64-unknown-linux-gnu`           | Linux / glibc, ARM64 |
 | `riscv64-unknown-linux-gnu`           | Linux / glibc, RISC-V 64 |
+| `loongarch64-unknown-linux-gnu`       | Linux / glibc 2.36+, LoongArch 64 |
 | `x86_64-unknown-linux-musl`           | Linux / musl, x86-64 |
 | `aarch64-unknown-linux-musl`          | Linux / musl, ARM64 |
 | `riscv64-unknown-linux-musl`          | Linux / musl, RISC-V 64 |
+| `loongarch64-unknown-linux-musl`      | Linux / musl, LoongArch 64 |
 | `x86_64-xenolithos-linux-gnu`         | Xenolith OS device, x86-64 |
 | `aarch64-xenolithos-linux-gnu`        | Xenolith OS device, ARM64 |
 | `riscv64-xenolithos-linux-gnu`        | Xenolith OS device, RISC-V 64 |
@@ -191,7 +210,7 @@ Notes:
 
 | Target family | libc in the sysroot | C++ runtime bits | Vulkan runtime |
 |---|---|---|---|
-| `*-unknown-linux-gnu` | glibc **2.33** (riscv64: **2.35**) + Linux 5.10 LTS UAPI headers | `include_libc/c++/v1`, `libc++abi.a`, `libunwind.a` | headers only — system loader |
+| `*-unknown-linux-gnu` | glibc **2.33** (riscv64: **2.35**, loongarch64: **2.36**) + Linux 5.10 LTS UAPI headers (loongarch64: 6.1 LTS) | `include_libc/c++/v1`, `libc++abi.a`, `libunwind.a` | headers only — system loader |
 | `*-unknown-linux-musl` | musl **1.2.6** (pinned upstream) | same | headers only — system loader |
 | `*-xenolithos-linux-gnu` | glibc **2.39** + device `runtime/rootfs` | same | **`libvulkan.so` 1.4.357** bundled (no OS to provide it), GPU driver applied as an overlay by `xenolith-os` |
 | `*-linux-android(eabi)` | bionic stubs + headers, API 24 | same | headers only — system loader |
@@ -202,7 +221,7 @@ Notes:
 
 Not every target carries every bundled library. The full dependency suite —
 libxml2, expat, libffi, WAMR, libbacktrace, wayland, libdrm — is a Linux-target
-thing. Apple targets ship libxml2, WAMR and libbacktrace but no
+thing (the LoongArch targets lack WAMR). Apple targets ship libxml2, WAMR and libbacktrace but no
 expat/libffi/wayland/libdrm. Android targets ship WAMR and libbacktrace.
 **Windows and wasm carry the smallest set**: no libxml2, expat, libffi, WAMR or
 libbacktrace. Every target's `libcurl` is the OpenSSL build
@@ -226,7 +245,7 @@ download time. This is the complete manifest shipped in this release.
 ### Compiler & toolchain
 | Component | Version |
 |---|---|
-| LLVM / Clang / LLD / LLDB | 22.1.8 (`llvmorg-22.1.8`, + 21 patches: wine-LLDB ×4, non-`__ulock`, wasm libunwind, wasm64 compiler-rt, no-delayload, sprt-windows ×6, sprt-wasm-host ×7) |
+| LLVM / Clang / LLD / LLDB | 22.1.8 (`llvmorg-22.1.8`, + 25 patches: wine-LLDB ×4, non-`__ulock`, wasm libunwind, wasm64 compiler-rt, no-delayload, sprt-windows ×6, sprt-wasm-host ×7, sprt-embox ×4) |
 | libc++ / libc++abi / libunwind / compiler-rt | 22.1.8 (from LLVM) |
 | GNU Make | 4.3 (not present on Windows hosts) |
 | xlmake (build driver) | 1.1 |
@@ -237,10 +256,10 @@ download time. This is the complete manifest shipped in this release.
 ### System libc sources
 | Component | Version |
 |---|---|
-| glibc (Linux targets) | 2.33 — riscv64: 2.35 |
+| glibc (Linux targets) | 2.33 — riscv64: 2.35, loongarch64: 2.36 |
 | glibc (Xenolith OS targets) | 2.39 |
 | musl | 1.2.6 (`runtime/musl-libc` submodule, `v1.2.6-62`: v1.2.6 + upstream fixes) |
-| Linux UAPI headers | 5.10.258 (LTS) |
+| Linux UAPI headers | 5.10.258 (LTS) — loongarch64: 6.1.189 (LTS) |
 | Android API level | 24 |
 | macOS / iOS deployment target | 14.5 / 17.4 |
 
@@ -264,12 +283,12 @@ download time. This is the complete manifest shipped in this release.
 | bzip2 | 1.0.8 |
 | xz / liblzma | 5.8.4 |
 | zstd | 1.5.7 |
-| brotli | 1.2.0 |
+| brotli | 1.2.0 (+ LoongArch build fix) |
 
 ### Image
 | Component | Version |
 |---|---|
-| libjpeg-turbo | 3.2.0 |
+| libjpeg-turbo | 3.2.0 (no SIMD on LoongArch) |
 | libpng | 1.6.58 |
 | giflib | 6.1.3 (+ upstream fixes: CVE-2026-26740, integer overflows, `GifUnionColorMap` NULL dereference) |
 | libwebp | 1.6.0 |
@@ -455,7 +474,8 @@ Sub-2024). GOST ciphers can be loaded statically through the
   sprt. Builds driven by the engine's `target.mk` or a CMake toolchain file are
   unaffected.
 * **The Windows and wasm targets omit libxml2, expat, libffi, WAMR and
-  libbacktrace**; Android targets omit libxml2, expat and libffi.
+  libbacktrace**; Android targets omit libxml2, expat and libffi; the LoongArch
+  targets omit WAMR, so `stappler_wasm` is not available there.
 * **The Vulkan backend does not build for wasm** (there is no Vulkan there); wasm
   applications use the WebGPU backend. The Metal backend does not build on the
   `+open` sysroots, which carry no Metal stub.

@@ -138,11 +138,18 @@ $(OUT_SYSROOT)/bin/xlmake.exe: $(TARGET_SYSROOT)/target.mk $(OUT_SYSROOT)/host.m
 		LOCAL_OUTDIR=$(abspath build/xlmake) \
 		RELEASE=1
 
+# After release: that recipe starts by wiping OUT_SYSROOT.
+$(OUT_SYSROOT)/share/licenses: ../licenses $(OUT_SYSROOT)/release
+	$(call rule_rm,$@)
+	$(call rule_mkdir,$(OUT_SYSROOT)/share)
+	$(call rule_cpr,$<,$(OUT_SYSROOT)/share)
+	$(call rule_touch,$@)
+
 download: $(MAKE_SRC_DIR) $(LLVM_DIR)
 
 make: $(MAKE_SRC_EXE)
 
-out: stage0 $(OUT_SYSROOT)/release $(OUT_SYSROOT)/host.mk $(OUT_SYSROOT)/bin/xlmake.exe
+out: stage0 $(OUT_SYSROOT)/release $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk $(OUT_SYSROOT)/bin/xlmake.exe
 
 all: stage0
 

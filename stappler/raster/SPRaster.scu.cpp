@@ -33,6 +33,7 @@
 #include "SPRasterCpu.cc"
 #include "SPRasterKernelsX86.cc"
 #include "SPRasterKernelsNeon.cc"
+#include "SPRasterKernelsLoongArch.cc"
 #include "SPRasterDispatch.cc"
 #include "SPRasterSetup.cc"
 #include "SPRasterTile.cc"

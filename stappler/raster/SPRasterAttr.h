@@ -59,4 +59,11 @@
 #define SP_RASTER_NEON 0
 #endif
 
+// LoongArch: LSX is the baseline of the target (la64v1.0), LASX is asked for at run time.
+#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_LOONGARCH64 && __loongarch_sx
+#define SP_RASTER_LOONGARCH 1
+#else
+#define SP_RASTER_LOONGARCH 0
+#endif
+
 #endif /* STAPPLER_RASTER_SPRASTERATTR_H_ */

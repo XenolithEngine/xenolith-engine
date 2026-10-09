@@ -53,6 +53,14 @@ endif
 # Define 0 to disable automatic host building
 HOST_REQUIRED ?= 1
 
+# A host build is `make -C host-* out OUT_SYSROOT=hosts/<id>`, and when it needs its
+# own target it comes back here (target-<id> HOST_REQUIRED=0). A command-line
+# variable reaches every sub-make, so target-linux would take the host's OUT_SYSROOT
+# for its intermediate root and build a whole sysroot inside the host package. Every
+# rule here that wants OUT_SYSROOT passes it explicitly.
+MAKEOVERRIDES := $(filter-out OUT_SYSROOT=%,$(MAKEOVERRIDES))
+unexport OUT_SYSROOT
+
 include src.mk
 
 ALL_SRC := $(addprefix $(SRC_ROOT)/,$(LIBS)) replacements/curl/cacert.pem
@@ -96,6 +104,9 @@ host-cross-aarch64-unknown-linux-gnu: target-aarch64-unknown-linux-gnu
 host-cross-riscv64-unknown-linux-gnu: target-riscv64-unknown-linux-gnu
 	$(MAKE) -C host-linux-glibc/cross out OUT_SYSROOT=$(abspath hosts/riscv64-unknown-linux-gnu) SP_ARCH_HOST=riscv64
 
+host-cross-loongarch64-unknown-linux-gnu: target-loongarch64-unknown-linux-gnu
+	$(MAKE) -C host-linux-glibc/cross out OUT_SYSROOT=$(abspath hosts/loongarch64-unknown-linux-gnu) SP_ARCH_HOST=loongarch64
+
 host-cross-x86_64-unknown-linux-musl: target-x86_64-unknown-linux-musl
 	$(MAKE) -C host-linux-musl/cross out OUT_SYSROOT=$(abspath hosts/x86_64-unknown-linux-musl) SP_ARCH_HOST=x86_64
 
@@ -104,6 +115,9 @@ host-cross-aarch64-unknown-linux-musl: target-aarch64-unknown-linux-musl
 
 host-cross-riscv64-unknown-linux-musl: target-riscv64-unknown-linux-musl
 	$(MAKE) -C host-linux-musl/cross out OUT_SYSROOT=$(abspath hosts/riscv64-unknown-linux-musl) SP_ARCH_HOST=riscv64
+
+host-cross-loongarch64-unknown-linux-musl: target-loongarch64-unknown-linux-musl
+	$(MAKE) -C host-linux-musl/cross out OUT_SYSROOT=$(abspath hosts/loongarch64-unknown-linux-musl) SP_ARCH_HOST=loongarch64
 
 host-cross-x86_64-pc-windows-msvc: target-x86_64-pc-windows-msvc+dll
 	$(MAKE) -C host-windows-msvc/cross out OUT_SYSROOT=$(abspath hosts/x86_64-pc-windows-msvc) SP_ARCH_HOST=x86_64
@@ -121,9 +135,11 @@ host-cross-all: $(filter-out host-cross-$(HOST_ID), \
 	host-cross-x86_64-unknown-linux-gnu \
 	host-cross-aarch64-unknown-linux-gnu \
 	host-cross-riscv64-unknown-linux-gnu \
+	host-cross-loongarch64-unknown-linux-gnu \
 	host-cross-x86_64-unknown-linux-musl \
 	host-cross-aarch64-unknown-linux-musl \
 	host-cross-riscv64-unknown-linux-musl \
+	host-cross-loongarch64-unknown-linux-musl \
 	host-cross-x86_64-pc-windows-msvc \
 	host-cross-aarch64-pc-windows-msvc \
 	host-cross-x86_64-apple-macosx \
@@ -179,15 +195,23 @@ target-aarch64-unknown-linux-musl: host
 target-riscv64-unknown-linux-musl: host
 	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) riscv64-unknown-linux-musl
 
+target-loongarch64-unknown-linux-gnu: host
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) loongarch64-unknown-linux-gnu
+
+target-loongarch64-unknown-linux-musl: host
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) loongarch64-unknown-linux-musl
+
 target-linux: \
 	target-x86_64-unknown-linux-gnu \
 	target-aarch64-unknown-linux-gnu \
 	target-riscv64-unknown-linux-gnu \
+	target-loongarch64-unknown-linux-gnu \
 
 target-linux-musl: \
 	target-x86_64-unknown-linux-musl \
 	target-aarch64-unknown-linux-musl \
 	target-riscv64-unknown-linux-musl \
+	target-loongarch64-unknown-linux-musl \
 
 
 #
@@ -360,7 +384,12 @@ targets-export:\
 # build the Windows host toolchain from.
 #
 # Run `make release-check` first: it reports missing packages and packages whose
-# release tag does not match the current one, without building anything.
+# release tag does not match the current one, without building anything. Then
+# `make release-verify` (check-release.py) goes through what each package holds:
+# required tools and libraries, the architecture of every binary, what the host
+# binaries load at run time, sibling targets carrying the same libraries, and
+# symlinks that would not survive the tarball. After release-export,
+# `./check-release.py --archives` also checks the staged archives and signatures.
 
 GIT_TAG ?= $(shell git describe --tags --abbrev=0)
 
@@ -370,9 +399,11 @@ RELEASE_HOSTS := \
 	x86_64-unknown-linux-gnu \
 	aarch64-unknown-linux-gnu \
 	riscv64-unknown-linux-gnu \
+	loongarch64-unknown-linux-gnu \
 	x86_64-unknown-linux-musl \
 	aarch64-unknown-linux-musl \
 	riscv64-unknown-linux-musl \
+	loongarch64-unknown-linux-musl \
 	x86_64-pc-windows-msvc \
 	aarch64-pc-windows-msvc \
 	x86_64-apple-macosx \
@@ -382,9 +413,11 @@ RELEASE_TARGETS := \
 	x86_64-unknown-linux-gnu \
 	aarch64-unknown-linux-gnu \
 	riscv64-unknown-linux-gnu \
+	loongarch64-unknown-linux-gnu \
 	x86_64-unknown-linux-musl \
 	aarch64-unknown-linux-musl \
 	riscv64-unknown-linux-musl \
+	loongarch64-unknown-linux-musl \
 	x86_64-xenolithos-linux-gnu \
 	aarch64-xenolithos-linux-gnu \
 	riscv64-xenolithos-linux-gnu \
@@ -456,6 +489,9 @@ release-check:
 	if [ -n "$$stale" ]; then echo "WRONG TAG:$$stale"; fi; \
 	if [ -z "$$missing$$stale" ]; then echo "all packages present"; else exit 1; fi
 
+release-verify:
+	python3 check-release.py --tag '$(GIT_TAG)'
+
 clean-release:
 	$(call rule_rm,$(RELEASE_DIR))
 
@@ -466,6 +502,7 @@ clean-release:
 	release-targets \
 	release-export \
 	release-check \
+	release-verify \
 	clean-release \
 	clean-targets \
 	target-all \
@@ -473,10 +510,12 @@ clean-release:
 	target-x86_64-unknown-linux-gnu \
 	target-aarch64-unknown-linux-gnu \
 	target-riscv64-unknown-linux-gnu \
+	target-loongarch64-unknown-linux-gnu \
 	target-linux-musl \
 	target-x86_64-unknown-linux-musl \
 	target-aarch64-unknown-linux-musl \
 	target-riscv64-unknown-linux-musl \
+	target-loongarch64-unknown-linux-musl \
 	target-xenolithos \
 	target-x86_64-xenolithos-linux-gnu \
 	target-aarch64-xenolithos-linux-gnu \
@@ -509,9 +548,11 @@ clean-release:
 	host-cross-x86_64-unknown-linux-gnu \
 	host-cross-aarch64-unknown-linux-gnu \
 	host-cross-riscv64-unknown-linux-gnu \
+	host-cross-loongarch64-unknown-linux-gnu \
 	host-cross-x86_64-unknown-linux-musl \
 	host-cross-aarch64-unknown-linux-musl \
 	host-cross-riscv64-unknown-linux-musl \
+	host-cross-loongarch64-unknown-linux-musl \
 	host-cross-x86_64-pc-windows-msvc \
 	host-cross-aarch64-pc-windows-msvc \
 	host-cross-x86_64-apple-macosx \

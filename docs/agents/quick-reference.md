@@ -20,6 +20,6 @@ launch a native artifact after a successful build.
 
 Additional target triples build the same way (full cross-compile); running them
 requires the matching OS/emulator: `aarch64-unknown-linux-gnu`,
-`riscv64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`,
+`riscv64-unknown-linux-gnu`, `loongarch64-unknown-linux-{gnu,musl}`, `x86_64-unknown-linux-musl`,
 `aarch64-pc-windows-msvc` (now a full target with its own sysroot — see [per-platform detail, 3.2](platforms.md);
 no emulator on an x86_64 Linux host, so build-verify only there).

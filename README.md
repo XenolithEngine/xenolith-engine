@@ -58,7 +58,7 @@ xenolith-cli new XenoApp && xenolith-cli build XenoApp --run
 
 | Platform | Architectures | Notes |
 |----------|---------------|-------|
-| Linux | x86_64, arm64, riscv64 | glibc and musl |
+| Linux | x86_64, arm64, riscv64, loongarch64 | glibc and musl; loongarch64 needs Linux 6.1 and glibc 2.36, and has no `stappler_wasm` |
 | Android | all ABIs (arm64, armv7, x86, x86_64) | no Google Services; builds with and without the NDK |
 | Windows | x86_64, arm64 | custom libc, no UCRT or Windows SDK; |
 | macOS | x86_64, arm64 | against the Xcode SDK, or SDK-free with the `+open` sysroot |
@@ -253,8 +253,8 @@ The toolchains build both LLVM/Clang **host** toolchains (the compiler that runs
 
 | OS / libc | Architectures |
 |-----------|---------------|
-| Linux, glibc | x86_64, aarch64, riscv64 (`*-unknown-linux-gnu`) |
-| Linux, musl | x86_64, aarch64, riscv64 (`*-unknown-linux-musl`) |
+| Linux, glibc | x86_64, aarch64, riscv64, loongarch64 (`*-unknown-linux-gnu`) |
+| Linux, musl | x86_64, aarch64, riscv64, loongarch64 (`*-unknown-linux-musl`) |
 | Windows, MSVC ABI | x86_64, aarch64 (`*-pc-windows-msvc`) |
 | macOS | x86_64, aarch64 (`*-apple-macosx`) |
 
@@ -262,8 +262,8 @@ The toolchains build both LLVM/Clang **host** toolchains (the compiler that runs
 
 | Platform | Architectures |
 |----------|---------------|
-| Linux, glibc | x86_64, aarch64, riscv64 (`*-unknown-linux-gnu`) |
-| Linux, musl | x86_64, aarch64, riscv64 (`*-unknown-linux-musl`) |
+| Linux, glibc | x86_64, aarch64, riscv64, loongarch64 (`*-unknown-linux-gnu`) |
+| Linux, musl | x86_64, aarch64, riscv64, loongarch64 (`*-unknown-linux-musl`) |
 | Android | arm64-v8a, armeabi-v7a, x86, x86_64; with and without the NDK (`unknown-ndk-linux-android`) |
 | Windows, MSVC ABI | x86_64, aarch64; static runtime |
 | macOS | x86_64, aarch64; Xcode SDK or SDK-free (`*-apple-macosx`, `*-apple-macosx+open`) |

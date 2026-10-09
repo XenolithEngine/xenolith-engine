@@ -44,6 +44,11 @@ SP_ARCH_LLVM := AArch64
 else ifeq ($(SP_ARCH_TARGET),riscv64)
 SP_ARCH_KERNEL := riscv
 SP_ARCH_LLVM := RISCV
+else ifeq ($(SP_ARCH_TARGET),loongarch64)
+SP_ARCH_KERNEL := loongarch
+SP_ARCH_LLVM := LoongArch
+# LoongArch appeared in Linux 5.19: the 5.10 headers have no arch/loongarch
+LINUX_KERNEL_VER := 6.1.189
 else
 $(error Unknown target arch: $(SP_ARCH_TARGET))
 endif
@@ -84,7 +89,7 @@ HOST_RANLIB := $(abspath $(OUT_HOST)/bin/llvm-ranlib)
 #
 LINUX_KERNEL_VER ?= 5.10.258
 LINUX_KERNEL_TARBALL := linux-$(LINUX_KERNEL_VER).tar.xz
-LINUX_KERNEL_URL := https://cdn.kernel.org/pub/linux/kernel/v5.x/$(LINUX_KERNEL_TARBALL)
+LINUX_KERNEL_URL := https://cdn.kernel.org/pub/linux/kernel/v$(firstword $(subst ., ,$(LINUX_KERNEL_VER))).x/$(LINUX_KERNEL_TARBALL)
 LINUX_KERNEL_SRC := src/linux-$(LINUX_KERNEL_VER)
 LINUX_HEADERS_DIR := $(abspath src/linux-headers-$(SP_ARCH_TARGET))
 LINUX_HEADERS := $(LINUX_HEADERS_DIR)/include/linux/futex.h
@@ -199,8 +204,9 @@ $(TARGET_MUSL): $(TARGET_BUILTINS)
 		LIBCC="$(RESOURCE_DIR)/lib/linux/libclang_rt.builtins-$(SP_ARCH_TARGET).a"
 	$(MAKE) -C build/musl $(SP_NJOBS)
 	$(MAKE) -C build/musl install
-	# musl installs the loader as an absolute link into this build tree; the sysroot is relocated
-	cd $(ABS_SYSROOT)/lib; ln -sfn libc.so $(SP_LDSO_NAME)
+	# musl links the loader to $(libdir)/libc.so by absolute path - the build tree,
+	# which would ship in the package as a dangling link.
+	ln -sfn libc.so $(ABS_SYSROOT)/lib/$(SP_LDSO_NAME)
 
 #
 # 4. Рантаймы LLVM (libunwind + libc++abi + libc++) для target -> usr/lib.

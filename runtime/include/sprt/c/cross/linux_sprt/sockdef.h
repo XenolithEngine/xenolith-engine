@@ -95,7 +95,11 @@
 #define __SPRT_PF_SMC          43
 #define __SPRT_PF_XDP          44
 
-#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_RISCV64
+// PF_MAX follows the libc, not the arch: glibc >= 2.35 knows PF_MCTP (46), while
+// glibc 2.33 (x86_64/aarch64 targets) and musl stop at 45. riscv64 is pinned to
+// glibc 2.35, loongarch64 to 2.36.
+#if (__SPRT_ARCH_ID == __SPRT_ARCH_ID_RISCV64 || __SPRT_ARCH_ID == __SPRT_ARCH_ID_LOONGARCH64) \
+		&& !__SPRT_LINUX_MUSL
 #define __SPRT_PF_MAX          46
 #else
 #define __SPRT_PF_MAX          45

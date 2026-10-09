@@ -42,9 +42,11 @@ constexpr const char *kKnownHosts[] = {
 	"x86_64-unknown-linux-gnu",
 	"aarch64-unknown-linux-gnu",
 	"riscv64-unknown-linux-gnu",
+	"loongarch64-unknown-linux-gnu",
 	"x86_64-unknown-linux-musl",
 	"aarch64-unknown-linux-musl",
 	"riscv64-unknown-linux-musl",
+	"loongarch64-unknown-linux-musl",
 };
 
 #if SPRT_LINUX
@@ -107,6 +109,9 @@ StringView getServerArch(StringView arch) {
 	if (arch == "riscv64") {
 		return "riscv64";
 	}
+	if (arch == "loongarch64") {
+		return "loongarch64";
+	}
 	return StringView();
 }
 
@@ -158,6 +163,8 @@ StringView getNativeArch() {
 	return "x86_64";
 #elif __SPRT_ARCH_ID == __SPRT_ARCH_ID_RISCV64
 	return "riscv64";
+#elif __SPRT_ARCH_ID == __SPRT_ARCH_ID_LOONGARCH64
+	return "loongarch64";
 #else
 	return StringView();
 #endif

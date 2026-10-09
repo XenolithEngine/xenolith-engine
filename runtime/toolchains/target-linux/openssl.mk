@@ -35,6 +35,10 @@ ifeq ($(SP_ARCH),riscv64)
 OPENSSL_TARGET := linux64-riscv64
 endif
 
+ifeq ($(SP_ARCH),loongarch64)
+OPENSSL_TARGET := linux64-loongarch64
+endif
+
 ifdef SP_TOOLCHAIN_PREFIX
 export CFLAGS=$(SP_CFLAGS)
 endif

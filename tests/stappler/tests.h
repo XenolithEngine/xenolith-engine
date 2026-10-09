@@ -106,6 +106,7 @@ void performMarkdownTests();
 void performCommandLineTests();
 void performUriListTests();
 void performRasterTests();
+void performGost3411Tests();
 void performDataValueTests();
 void performZipTests();
 void performZipFormatTests();

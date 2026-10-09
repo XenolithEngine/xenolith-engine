@@ -57,9 +57,7 @@
 // TODO: add detection
 //#define HAVE_ADDCARRY_U64
 
-#define __GOST3411_LOAD_SSE2__ 1
-
-#ifndef __GOST3411_LOAD_SSE2__
+// Both compression functions are built: g() picks one per context (Gost3411Backend)
 
 #define X(x, y, z) { \
     z->QWORD[0] = x->QWORD[0] ^ y->QWORD[0]; \
@@ -111,8 +109,6 @@
     XLPS(Ki, (&_C(i)), Ki); \
     XLPS(Ki, data, data); \
 }
-
-#else
 
 #define LO(v) ((unsigned char) (v))
 #define HI(v) ((unsigned char) (((unsigned int) (v)) >> 8))
@@ -301,8 +297,6 @@
     XLPS128M((&_C(i)), xmm0, xmm2, xmm4, xmm6); \
     XLPS128R(xmm0, xmm2, xmm4, xmm6, xmm1, xmm3, xmm5, xmm7); \
 }
-
-#endif
 
 namespace STAPPLER_VERSIONIZED stappler::crypto {
 
@@ -1846,9 +1840,8 @@ static void add512(uint512_u *RESTRICT x, const uint512_u *RESTRICT y) {
 	}
 }
 
-static void g(union uint512_u *h, const union uint512_u *RESTRICT N,
+static void g_simd(union uint512_u *h, const union uint512_u *RESTRICT N,
 		const union uint512_u *RESTRICT m) {
-#ifdef __GOST3411_LOAD_SSE2__
 	simde__m128i xmm0, xmm2, xmm4, xmm6; /* XMMR0-quadruple */
 	simde__m128i xmm1, xmm3, xmm5, xmm7; /* XMMR1-quadruple */
 	unsigned int i;
@@ -1871,7 +1864,10 @@ static void g(union uint512_u *h, const union uint512_u *RESTRICT N,
 
 	/* Restore the Floating-point status on the CPU */
 	simde_mm_empty();
-#else
+}
+
+static void g_scalar(union uint512_u *h, const union uint512_u *RESTRICT N,
+		const union uint512_u *RESTRICT m) {
 	union uint512_u Ki, data;
 	unsigned int i;
 
@@ -1883,17 +1879,25 @@ static void g(union uint512_u *h, const union uint512_u *RESTRICT N,
 
 	for (i = 0; i < 11; i++) { ROUND(i, (&Ki), (&data)); }
 
-	XLPS((&Ki), (&C[11]), (&Ki));
+	XLPS((&Ki), (&_C(11)), (&Ki));
 	X((&Ki), (&data), (&data));
 	/* E() done */
 
 	X((&data), h, (&data));
 	X((&data), ((const union uint512_u *)&m[0]), h);
-#endif
+}
+
+static void g(Gost3411Backend backend, union uint512_u *h, const union uint512_u *RESTRICT N,
+		const union uint512_u *RESTRICT m) {
+	if (backend == Gost3411Backend::Scalar) {
+		g_scalar(h, N, m);
+	} else {
+		g_simd(h, N, m);
+	}
 }
 
 static inline void stage2(Gost3411_Ctx *CTX, const union uint512_u *data) {
-	g(&(CTX->h), &(CTX->N), data);
+	g(CTX->backend, &(CTX->h), &(CTX->N), data);
 
 	add512(&(CTX->N), &_buffer512());
 	add512(&(CTX->Sigma), data);
@@ -1901,24 +1905,26 @@ static inline void stage2(Gost3411_Ctx *CTX, const union uint512_u *data) {
 
 static inline void stage3(Gost3411_Ctx *CTX) {
 	pad(CTX);
-	g(&(CTX->h), &(CTX->N), &(CTX->buffer));
+	g(CTX->backend, &(CTX->h), &(CTX->N), &(CTX->buffer));
 	add512(&(CTX->Sigma), &CTX->buffer);
 
 	sprt::memset(&(CTX->buffer.B[0]), 0, sizeof(uint512_u));
 	CTX->buffer.QWORD[0] = sprt::byteorder::HostToLittle(CTX->bufsize << 3);
 	add512(&(CTX->N), &(CTX->buffer));
 
-	g(&(CTX->h), &_buffer0, &(CTX->N));
-	g(&(CTX->h), &_buffer0, &(CTX->Sigma));
+	g(CTX->backend, &(CTX->h), &_buffer0, &(CTX->N));
+	g(CTX->backend, &(CTX->h), &_buffer0, &(CTX->Sigma));
 }
 
 /*
  * Initialize gost2012 hash context structure
  */
-void gost3411_hash_init(Gost3411_Ctx *CTX, const unsigned int digest_size) {
+void gost3411_hash_init(Gost3411_Ctx *CTX, const unsigned int digest_size,
+		Gost3411Backend backend) {
 	sprt::memset(CTX, 0, sizeof(Gost3411_Ctx));
 
 	CTX->digest_size = digest_size;
+	CTX->backend = backend;
 	/*
 	 * IV for 512-bit hash should be 0^512
 	 * IV for 256-bit hash should be (00000001)^64
@@ -2014,9 +2020,9 @@ Gost3411_512::Buf Gost3411_512::hmac(const CoderSource &data, const CoderSource 
 	return ret;
 }
 
-Gost3411_512::Gost3411_512() { gost3411_hash_init(&ctx, 512); }
-Gost3411_512 &Gost3411_512::init() {
-	gost3411_hash_init(&ctx, 512);
+Gost3411_512::Gost3411_512(Gost3411Backend backend) { gost3411_hash_init(&ctx, 512, backend); }
+Gost3411_512 &Gost3411_512::init(Gost3411Backend backend) {
+	gost3411_hash_init(&ctx, 512, backend);
 	return *this;
 }
 
@@ -2067,9 +2073,9 @@ Gost3411_256::Buf Gost3411_256::hmac(const CoderSource &data, const CoderSource 
 	return ret;
 }
 
-Gost3411_256::Gost3411_256() { gost3411_hash_init(&ctx, 256); }
-Gost3411_256 &Gost3411_256::init() {
-	gost3411_hash_init(&ctx, 256);
+Gost3411_256::Gost3411_256(Gost3411Backend backend) { gost3411_hash_init(&ctx, 256, backend); }
+Gost3411_256 &Gost3411_256::init(Gost3411Backend backend) {
+	gost3411_hash_init(&ctx, 256, backend);
 	return *this;
 }
 

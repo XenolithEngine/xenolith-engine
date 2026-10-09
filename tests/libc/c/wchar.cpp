@@ -177,17 +177,21 @@ void performMultibyteTest() {
 	const char *mb = "AΩЯ€";
 	printf("strlen(mb)=%zu\n", strlen(mb));
 
+	// A target with no UTF-8 locale installed (a bare sysroot under qemu-user) fails
+	// every conversion with (size_t)-1: the loops below stop on it instead of walking
+	// the buffers that far.
+
 	// --- non-restartable <stdlib.h> family ---
 	wchar_t sbuf[16];
 	size_t sn = mbstowcs(sbuf, mb, 16);
 	printf("mbstowcs n=%zu units:", sn);
-	for (size_t i = 0; i < sn; ++i) { printf(" %x", (unsigned)(unsigned long)sbuf[i]); }
+	for (size_t i = 0; i < sn && sn != (size_t)-1; ++i) { printf(" %x", (unsigned)(unsigned long)sbuf[i]); }
 	printf("\n");
 	printf("mbstowcs(NULL)=%zu\n", mbstowcs(nullptr, mb, 0));
 	char sc[32];
 	size_t sm = wcstombs(sc, sbuf, sizeof(sc));
 	printf("wcstombs m=%zu bytes:", sm);
-	for (size_t i = 0; i < sm; ++i) { printf(" %02x", (unsigned char)sc[i]); }
+	for (size_t i = 0; i < sm && sm != (size_t)-1; ++i) { printf(" %02x", (unsigned char)sc[i]); }
 	printf("\n");
 	printf("wcstombs(NULL)=%zu\n", wcstombs(nullptr, sbuf, 0));
 	{
@@ -256,7 +260,7 @@ void performMultibyteTest() {
 	const char *src = mb;
 	size_t n = mbsrtowcs(wbuf, &src, 16, &st);
 	printf("mbsrtowcs n=%zu units:", n);
-	for (size_t i = 0; i < n; ++i) { printf(" %x", (unsigned)(unsigned long)wbuf[i]); }
+	for (size_t i = 0; i < n && n != (size_t)-1; ++i) { printf(" %x", (unsigned)(unsigned long)wbuf[i]); }
 	printf("\n");
 	// length query (dst == NULL): no characters stored, src untouched.
 	st = {};
@@ -265,7 +269,7 @@ void performMultibyteTest() {
 
 	// wcrtomb: encode each wide unit back to UTF-8.
 	st = {};
-	for (size_t i = 0; i < n; ++i) {
+	for (size_t i = 0; i < n && n != (size_t)-1; ++i) {
 		char tmp[8];
 		size_t r = wcrtomb(tmp, wbuf[i], &st);
 		printf("wcrtomb[%zu] len=%lld bytes:", i, (long long)r);
@@ -281,7 +285,7 @@ void performMultibyteTest() {
 	const wchar_t *wsrc = wbuf;
 	size_t m = wcsrtombs(cbuf, &wsrc, sizeof(cbuf), &st);
 	printf("wcsrtombs m=%zu bytes:", m);
-	for (size_t i = 0; i < m; ++i) { printf(" %02x", (unsigned char)cbuf[i]); }
+	for (size_t i = 0; i < m && m != (size_t)-1; ++i) { printf(" %02x", (unsigned char)cbuf[i]); }
 	printf("\n");
 
 	// btowc / wctob on ASCII, and mbsinit on the initial state.

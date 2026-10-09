@@ -64,6 +64,12 @@ THE SOFTWARE.
 
 #include <sprt/runtime/geom/simd_attr.h>
 
+// A forced scalar build also keeps SIMDe on its portable path, so code that calls simde_mm_*
+// next to the facade (the tesselator) does not vectorize either
+#if SP_GEOM_DEFAULT_SIMD == SP_GEOM_DEFAULT_SIMD_SCALAR && !defined(SIMDE_NO_NATIVE)
+#define SIMDE_NO_NATIVE 1
+#endif
+
 #if SP_GEOM_DEFAULT_SIMD == SP_GEOM_DEFAULT_SIMD_NEON
 #include <simde/arm/neon.h>
 #include <simde/x86/sse.h>
@@ -80,18 +86,24 @@ THE SOFTWARE.
 // Defined by build system
 // If SP_DEDICATED_SIMD is defined, replacements for SIMD on other platforms is not available
 // If SP_DEDICATED_SIMD is not defined, you can use simd::neon on sse or simd::sse on NEON
+// The scalar backend is always there: it is the reference the SIMD backends are tested against
 #ifdef SP_DEDICATED_SIMD
 #if SP_GEOM_DEFAULT_SIMD == SP_GEOM_DEFAULT_SIMD_NEON
 #include <sprt/runtime/geom/simd_neon.h>
 #elif SP_GEOM_DEFAULT_SIMD == SP_GEOM_DEFAULT_SIMD_NEON64
 #include <sprt/runtime/geom/simd_neon64.h>
-#else
+#elif SP_GEOM_DEFAULT_SIMD == SP_GEOM_DEFAULT_SIMD_LSX
+#include <sprt/runtime/geom/simd_lsx.h>
+#elif SP_GEOM_DEFAULT_SIMD == SP_GEOM_DEFAULT_SIMD_SSE
 #include <sprt/runtime/geom/simd_sse.h>
 #endif
+#include <sprt/runtime/geom/simd_scalar.h>
 #else
 #include <sprt/runtime/geom/simd_sse.h>
 #include <sprt/runtime/geom/simd_neon.h>
 #include <sprt/runtime/geom/simd_neon64.h>
+#include <sprt/runtime/geom/simd_lsx.h>
+#include <sprt/runtime/geom/simd_scalar.h>
 #endif
 
 #undef std

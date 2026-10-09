@@ -24,14 +24,18 @@
 
 // What this CPU can execute.
 //
-// Only x86 asks the question at runtime, and that is not a shortcut - it is the shape of the
-// problem. On AArch64 the NEON base is architectural, so a probe could only ever answer "yes";
-// beyond it (dotprod, i8mm, SVE) the answer lives in the ELF auxiliary vector, and sprt exposes no
-// getauxval at all. On riscv, loongarch and wasm there is likewise nothing here to ask with, so
-// those targets take the SWAR path, which needs no permission from anyone.
+// x86 asks CPUID, LoongArch asks the kernel through AT_HWCAP. On AArch64 the NEON base is
+// architectural, so a probe could only ever answer "yes"; beyond it (dotprod, i8mm, SVE) the answer
+// lives in the ELF auxiliary vector, which nothing here reads for ARM yet. On riscv and wasm there
+// is nothing to ask with, so those targets take the SWAR path, which needs no permission at all.
 
 #if SP_RASTER_X86
 #include <cpuid.h>
+#endif
+
+#if SP_RASTER_LOONGARCH
+#include <fcntl.h>
+#include <unistd.h>
 #endif
 
 namespace STAPPLER_VERSIONIZED stappler::raster {
@@ -105,6 +109,59 @@ bool cpuHasAvx2() { return Cpu_x86().avx2; }
 bool cpuHasSse2() { return false; }
 bool cpuHasSse41() { return false; }
 bool cpuHasAvx2() { return false; }
+
+#endif
+
+#if SP_RASTER_LOONGARCH
+
+struct LoongArchFeatures {
+	bool lsx = false;
+	bool lasx = false;
+};
+
+// AT_HWCAP rather than CPUCFG alone: only the kernel's bit also says it saves the vector state
+// across a context switch. sprt has no getauxval, so the vector is read from /proc/self/auxv;
+// CPUCFG word 2 answers when /proc is not mounted.
+static LoongArchFeatures Cpu_detectLoongArch() {
+	static constexpr unsigned long AuxHwcap = 16;
+	static constexpr unsigned long HwcapLsx = 1ul << 4;
+	static constexpr unsigned long HwcapLasx = 1ul << 5;
+
+	LoongArchFeatures out;
+
+	auto fd = ::open("/proc/self/auxv", O_RDONLY | O_CLOEXEC);
+	if (fd >= 0) {
+		unsigned long entry[2];
+		while (::read(fd, entry, sizeof(entry)) == ssize_t(sizeof(entry)) && entry[0] != 0) {
+			if (entry[0] == AuxHwcap) {
+				out.lsx = (entry[1] & HwcapLsx) != 0;
+				out.lasx = (entry[1] & HwcapLasx) != 0;
+				::close(fd);
+				return out;
+			}
+		}
+		::close(fd);
+	}
+
+	uint32_t cfg2 = 0;
+	asm volatile("cpucfg %0, %1" : "=r"(cfg2) : "r"(2));
+	out.lsx = (cfg2 & (1u << 6)) != 0;
+	out.lasx = (cfg2 & (1u << 7)) != 0;
+	return out;
+}
+
+static const LoongArchFeatures &Cpu_loongArch() {
+	static const LoongArchFeatures s_features = Cpu_detectLoongArch();
+	return s_features;
+}
+
+bool cpuHasLsx() { return Cpu_loongArch().lsx; }
+bool cpuHasLasx() { return Cpu_loongArch().lasx; }
+
+#else
+
+bool cpuHasLsx() { return false; }
+bool cpuHasLasx() { return false; }
 
 #endif
 

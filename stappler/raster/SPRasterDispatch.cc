@@ -35,6 +35,8 @@ StringView getKernelSetName(KernelSet set) {
 	case KernelSet::Sse41: return StringView("sse41");
 	case KernelSet::Avx2: return StringView("avx2");
 	case KernelSet::Neon: return StringView("neon");
+	case KernelSet::Lsx: return StringView("lsx");
+	case KernelSet::Lasx: return StringView("lasx");
 	}
 	return StringView("unknown");
 }
@@ -55,6 +57,14 @@ static Vector<const KernelTable *> Dispatch_collect() {
 	}
 
 	if (auto table = getSse2Kernels()) {
+		tables.emplace_back(table);
+	}
+
+	if (auto table = getLasxKernels()) {
+		tables.emplace_back(table);
+	}
+
+	if (auto table = getLsxKernels()) {
 		tables.emplace_back(table);
 	}
 

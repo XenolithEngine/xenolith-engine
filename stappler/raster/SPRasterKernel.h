@@ -274,6 +274,8 @@ enum class KernelSet {
 	Sse41,
 	Avx2,
 	Neon,
+	Lsx,
+	Lasx,
 };
 
 SP_PUBLIC StringView getKernelSetName(KernelSet);
@@ -349,6 +351,8 @@ const KernelTable *getSse2Kernels();
 const KernelTable *getSse41Kernels();
 const KernelTable *getAvx2Kernels();
 const KernelTable *getNeonKernels();
+const KernelTable *getLsxKernels();
+const KernelTable *getLasxKernels();
 
 // The scalar implementations, callable directly. A specialized set uses them for the spans it does
 // not accelerate - a textured or interpolated run - instead of carrying a second copy of code that

@@ -347,24 +347,32 @@ Subsystem-local debug switches, all defaulting to disabled (`0`).
 
 Source: [simd_attr.h](../../../runtime/include/sprt/runtime/geom/simd_attr.h),
 [simd.h](../../../runtime/include/sprt/runtime/geom/simd.h),
-[simd_sse.h](../../../runtime/include/sprt/runtime/geom/simd_sse.h)
+[simd_sse.h](../../../runtime/include/sprt/runtime/geom/simd_sse.h),
+[simd_lsx.h](../../../runtime/include/sprt/runtime/geom/simd_lsx.h),
+[simd_scalar.h](../../../runtime/include/sprt/runtime/geom/simd_scalar.h)
 
-Selects and tunes the SIMD implementation backing the geometry/math types.
+Selects and tunes the SIMD implementation backing the geometry/math types. The scalar backend is
+always compiled: it is the reference `runtime_geom_simd` (tests/runtime) holds every SIMD backend
+against.
 
 [cols="2,3"]
 |===
 | Macro | Meaning
 
-| `SP_GEOM_DEFAULT_SIMD_SSE` (1), `SP_GEOM_DEFAULT_SIMD_NEON` (2), `SP_GEOM_DEFAULT_SIMD_NEON64` (3)
+| `SP_GEOM_DEFAULT_SIMD_SSE` (1), `SP_GEOM_DEFAULT_SIMD_NEON` (2), `SP_GEOM_DEFAULT_SIMD_NEON64` (3), `SP_GEOM_DEFAULT_SIMD_LSX` (4), `SP_GEOM_DEFAULT_SIMD_SCALAR` (5)
 | Numeric ids for the available SIMD backends.
 
 | `SP_GEOM_DEFAULT_SIMD`
 | The backend selected for the target arch (`__SSE__` → SSE, `__aarch64__` →
-  NEON64, `__arm__` → NEON).
+  NEON64, `__arm__` → NEON, `__loongarch_sx` → LSX; anything else → SSE through
+  SIMDe's portable path). Defining it on the command line overrides the choice:
+  `-DSP_GEOM_DEFAULT_SIMD=SP_GEOM_DEFAULT_SIMD_SCALAR` builds the geometry without
+  SIMD and also sets `SIMDE_NO_NATIVE`, so code that calls `simde_mm_*` next to the
+  facade (the tesselator) does not vectorize either.
 
 | `SP_GEOM_DEFAULT_SIMD_NAMESPACE`
-| The C++ namespace (`sse` / `neon64` / `neon`) holding the chosen backend's
-  implementation.
+| The C++ namespace (`sse` / `neon64` / `neon` / `lsx` / `scalar`) holding the
+  chosen backend's implementation.
 
 | `SP_ATTR_OPTIMIZE_FN` / `SP_ATTR_OPTIMIZE_INLINE_FN`
 | Function-level optimization/inlining attributes applied to SIMD routines

@@ -120,11 +120,20 @@ $(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))
 	Add-Content  -Encoding UTF8 -Path "$@" -Value 'HOST_LIB_CXXFLAGS :=' | Out-Null
 	Add-Content  -Encoding UTF8 -Path "$@" -Value 'HOST_LIB_LDFLAGS :=' | Out-Null
 
+# After release: that recipe starts by wiping OUT_SYSROOT.
+$(OUT_SYSROOT)/share/licenses: licenses $(OUT_SYSROOT)/release
+	$(call rule_rm,$@)
+	$(call rule_mkdir,$(OUT_SYSROOT)/share)
+	$(call rule_cpr,$<,$(OUT_SYSROOT)/share)
+	$(call rule_mkdir,$@/make)
+	$(call rule_cp,$(MAKE_SRC_DIR)/COPYING,$@/make)
+	$(call rule_touch,$@)
+
 download: $(MAKE_SRC_DIR) $(LLVM_DIR)
 
 make: $(MAKE_SRC_EXE)
 
-out: stage0 $(OUT_SYSROOT)/release $(OUT_SYSROOT)/host.mk
+out: stage0 $(OUT_SYSROOT)/release $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
 
 all: stage0
 

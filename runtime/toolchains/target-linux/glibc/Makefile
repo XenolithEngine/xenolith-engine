@@ -37,6 +37,16 @@ SP_ARCH_TARGET_LINUX := riscv
 SP_LDSO_NAME := ld-linux-riscv64-lp64d.so.1
 GLIBC_SRC_VER ?= 2.35
 
+else ifeq ($(SP_ARCH_TARGET_LINUX),loongarch64)
+# LoongArch appeared in Linux 5.19 and glibc 2.36: both pins are raised for this
+# arch only - the 6.1 LTS headers and the first glibc that knows the port. The
+# stappler.dev mirror has no 2.36, so glibc comes from upstream.
+SP_ARCH_TARGET_LINUX := loongarch
+SP_LDSO_NAME := ld-linux-loongarch-lp64d.so.1
+GLIBC_SRC_VER ?= 2.36
+GLIBC_SRC_DISTRIB_URL = $(GLIBC_SRC_URL)
+LINUX_TARGET_KERNEL_VER := 6.1.189
+
 else
 $(error Unknown target arch: $(SP_ARCH_TARGET))
 endif
@@ -81,13 +91,26 @@ $(LINUX_HOST_HEADERS_DIR): $(LINUX_KERNEL_DIR)
 	cd $(LINUX_KERNEL_DIR); make clean
 	touch -m -r src/$(LINUX_KERNEL_TARBALL) $(LINUX_KERNEL_DIR)
 
+# Target headers come from the shared 5.10 tree unless the arch pins its own
+# kernel (LINUX_TARGET_KERNEL_VER); the host headers always stay on 5.10.
+ifdef LINUX_TARGET_KERNEL_VER
+LINUX_TARGET_KERNEL_TARBALL := linux-$(LINUX_TARGET_KERNEL_VER).tar.xz
+LINUX_TARGET_KERNEL_DIR := src/linux-$(LINUX_TARGET_KERNEL_VER)
+LINUX_TARGET_KERNEL_URL := https://cdn.kernel.org/pub/linux/kernel/v$(firstword $(subst ., ,$(LINUX_TARGET_KERNEL_VER))).x/$(LINUX_TARGET_KERNEL_TARBALL)
+
+$(eval $(call download_tarbell_target,$(LINUX_TARGET_KERNEL_DIR),$(LINUX_TARGET_KERNEL_TARBALL),$(LINUX_TARGET_KERNEL_URL)))
+else
+LINUX_TARGET_KERNEL_TARBALL := $(LINUX_KERNEL_TARBALL)
+LINUX_TARGET_KERNEL_DIR := $(LINUX_KERNEL_DIR)
+endif
+
 LINUX_TARGET_HEADERS_DIR := src/linux-headers-target-$(SP_ARCH_TARGET)
 
-$(LINUX_TARGET_HEADERS_DIR): $(LINUX_KERNEL_DIR)
+$(LINUX_TARGET_HEADERS_DIR): $(LINUX_TARGET_KERNEL_DIR)
 	mkdir -p $@
-	cd $(LINUX_KERNEL_DIR); make headers_install ARCH=$(SP_ARCH_TARGET_LINUX) INSTALL_HDR_PATH=../$(notdir $(LINUX_TARGET_HEADERS_DIR))
-	cd $(LINUX_KERNEL_DIR); make clean
-	touch -m -r src/$(LINUX_KERNEL_TARBALL) $(LINUX_KERNEL_DIR)
+	cd $(LINUX_TARGET_KERNEL_DIR); make headers_install ARCH=$(SP_ARCH_TARGET_LINUX) INSTALL_HDR_PATH=../$(notdir $(LINUX_TARGET_HEADERS_DIR))
+	cd $(LINUX_TARGET_KERNEL_DIR); make clean
+	touch -m -r src/$(LINUX_TARGET_KERNEL_TARBALL) $(LINUX_TARGET_KERNEL_DIR)
 
 include host.mk
 include target.mk
@@ -116,6 +139,13 @@ OUT_LIBS := $(addprefix $(OUT_SYSROOT)/lib/,\
 	Mcrt1.o \
 	Scrt1.o \
 	)
+
+# Since glibc 2.34 libanl and libutil live in libc. Ports older than that keep
+# the .so.1 compatibility stubs; a port that starts at 2.34+ (LoongArch, 2.36)
+# never had those versions, so glibc does not build the stubs at all.
+ifeq ($(SP_ARCH_TARGET),loongarch64)
+OUT_LIBS := $(filter-out %/libanl.so.1 %/libutil.so.1,$(OUT_LIBS))
+endif
 
 OUT_USR_LIBS := $(addprefix $(OUT_SYSROOT)/usr/lib/,\
 	libunwind.a \
@@ -265,7 +295,7 @@ $(OUT_SYSROOT)/toolchain.cmake: $(lastword $(MAKEFILE_LIST))
 
 $(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_USR_LIBS) $(OUT_SYSROOT)/lib/clang/lib/linux $(OUT_SYSROOT)/include \
 		$(OUT_SYSROOT)/toolchain.cmake $(OUT_SYSROOT)/target.mk $(OUT_SYSROOT)/target.ini
-	cd $(OUT_SYSROOT)/lib; ln -fs libanl.so.1 libanl.so
+	$(if $(filter %/libanl.so.1,$(OUT_LIBS)),cd $(OUT_SYSROOT)/lib; ln -fs libanl.so.1 libanl.so)
 	cd $(OUT_SYSROOT)/lib; ln -fs libBrokenLocale.so.1 libBrokenLocale.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libdl.so.2 libdl.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libm.so.6 libm.so
@@ -273,12 +303,12 @@ $(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_USR_LIBS) $(OUT_SYSROOT)/lib/clang/lib
 	cd $(OUT_SYSROOT)/lib; ln -fs libresolv.so.2 libresolv.so
 	cd $(OUT_SYSROOT)/lib; ln -fs librt.so.1 librt.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libthread_db.so.1 libthread_db.so
-	cd $(OUT_SYSROOT)/lib; ln -fs libutil.so.1 libutil.so
+	$(if $(filter %/libutil.so.1,$(OUT_LIBS)),cd $(OUT_SYSROOT)/lib; ln -fs libutil.so.1 libutil.so)
 
 ifdef OUT_HOST
 	rm -f $(OUT_SYSROOT)/host
 	cd $(OUT_SYSROOT); ln -fs $(OUT_HOST) host
-	cd $(OUT_SYSROOT)/lib/clang; ln -fs ../../host/lib/clang/$(SP_LLVM_VER)/include include
+	cd $(OUT_SYSROOT)/lib/clang; ln -sfn ../../host/lib/clang/$(SP_LLVM_VER)/include include
 endif
 	touch $@
 

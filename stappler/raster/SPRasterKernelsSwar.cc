@@ -24,8 +24,8 @@
 
 // SIMD within a register: two 32-bit pixels per uint64_t, in portable C++ with no intrinsics and
 // no ISA requirement whatsoever. This is not a consolation prize for machines without vectors - it
-// is the working path for riscv64 without RVV, for loongarch, and for any target the vector sets
-// do not cover, and it is the shape every wider set then reuses.
+// is the working path for riscv64 without RVV and for any target the vector sets do not cover,
+// and it is the shape every wider set then reuses.
 //
 // The whole method rests on one fact: the blend arithmetic fits in 16-bit lanes at every step.
 //

@@ -124,7 +124,7 @@ $(OUT)/toolchain.cmake: $(THIS_FILE) $(ARCH_FLAGS_FILE) $(CONFIG_FILE)
 	# symlink with a real directory carrying builtins + the host include/).
 	rm -rf $(OUT)/lib
 	mkdir -p $(OUT)/lib
-	ln -fs ../../host/lib/clang/$(SP_LLVM_VER) $(OUT)/lib/clang
+	ln -sfn ../../host/lib/clang/$(SP_LLVM_VER) $(OUT)/lib/clang
 
 # --- toolchain-libs.cmake -------------------------------------------------
 # Separate toolchain file for cross-building the third-party dependency libs

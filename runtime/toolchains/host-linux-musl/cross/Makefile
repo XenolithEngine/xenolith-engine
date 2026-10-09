@@ -42,7 +42,7 @@ SP_NJOBS ?= -j$(shell nproc 2>/dev/null || echo 8)
 
 include $(LOCAL_ROOT)../../common/utils/llvm-version.mk
 
-# Целевая арка musl-хоста (которую собираем). x86_64 | aarch64 | riscv64.
+# Целевая арка musl-хоста (которую собираем). x86_64 | aarch64 | riscv64 | loongarch64.
 SP_ARCH_HOST ?= x86_64
 SP_ARCH := $(SP_ARCH_HOST)
 SP_ARCH_CLANG := $(SP_ARCH_HOST)-unknown-linux-musl
@@ -56,8 +56,11 @@ SP_ARCH_KERNEL := arm64
 else ifeq ($(SP_ARCH_HOST),riscv64)
 SP_ARCH_LLVM := RISCV
 SP_ARCH_KERNEL := riscv
+else ifeq ($(SP_ARCH_HOST),loongarch64)
+SP_ARCH_LLVM := LoongArch
+SP_ARCH_KERNEL := loongarch
 else
-$(error Unknown arch: $(SP_ARCH_HOST) (expected x86_64|aarch64|riscv64))
+$(error Unknown arch: $(SP_ARCH_HOST) (expected x86_64|aarch64|riscv64|loongarch64))
 endif
 
 # Готовый тулчейн билд-машины (его clang кросс-компилирует всё остальное).
@@ -301,7 +304,7 @@ $(CLANG): $(LIBXML2)
 		-DCMAKE_TOOLCHAIN_FILE=$(BUILD_CMAKE) \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DLLVM_ENABLE_PROJECTS="clang;lld;lldb" \
-		-DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV;WebAssembly" \
+		-DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV;LoongArch;WebAssembly" \
 		-DLLVM_DEFAULT_TARGET_TRIPLE=$(SP_ARCH_CLANG) \
 		-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 		-DLLVM_ENABLE_ZLIB=FORCE_ON \

@@ -193,6 +193,20 @@ union alignas(16) uint512_u {
 	unsigned char B[64];
 };
 
+// Which compression function a GOST R 34.11-2012 context runs: SSE2 through SIMDe (native SSE2,
+// NEON or LSX) or 64-bit scalar. Both produce the same digest; -DSP_GOST3411_SCALAR=1 makes scalar
+// the default.
+enum class Gost3411Backend : uint8_t {
+	Simd,
+	Scalar,
+};
+
+#if SP_GOST3411_SCALAR
+constexpr Gost3411Backend Gost3411DefaultBackend = Gost3411Backend::Scalar;
+#else
+constexpr Gost3411Backend Gost3411DefaultBackend = Gost3411Backend::Simd;
+#endif
+
 /* GOST R 34.11-2012 hash context */
 struct Gost3411_Ctx {
 	uint512_u buffer;
@@ -201,6 +215,7 @@ struct Gost3411_Ctx {
 	uint512_u Sigma;
 	size_t bufsize;
 	unsigned int digest_size;
+	Gost3411Backend backend;
 };
 
 struct SP_PUBLIC Gost3411_512 {
@@ -217,8 +232,8 @@ struct SP_PUBLIC Gost3411_512 {
 	static Buf make(const CoderSource &, const StringView &salt = StringView());
 	static Buf hmac(const CoderSource &data, const CoderSource &key);
 
-	Gost3411_512();
-	Gost3411_512 &init();
+	Gost3411_512(Gost3411Backend = Gost3411DefaultBackend);
+	Gost3411_512 &init(Gost3411Backend = Gost3411DefaultBackend);
 
 	Gost3411_512 &update(const uint8_t *, size_t);
 	Gost3411_512 &update(const CoderSource &);
@@ -249,8 +264,8 @@ struct SP_PUBLIC Gost3411_256 {
 	static Buf make(const CoderSource &, const StringView &salt = StringView());
 	static Buf hmac(const CoderSource &data, const CoderSource &key);
 
-	Gost3411_256();
-	Gost3411_256 &init();
+	Gost3411_256(Gost3411Backend = Gost3411DefaultBackend);
+	Gost3411_256 &init(Gost3411Backend = Gost3411DefaultBackend);
 
 	Gost3411_256 &update(const uint8_t *, size_t);
 	Gost3411_256 &update(const CoderSource &);

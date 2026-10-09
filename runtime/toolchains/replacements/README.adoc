@@ -2,6 +2,10 @@
 
 Patches and replaceable files for dependencies are stored here. They are applied automatically when loading dependencies.
 
+## Brotli
+
+* Patch dropping the `model("small")` table attribute on LoongArch, where clang rejects that code model
+
 ## CURL
 
 * Russian root certificates are added to the certificate set. We stay out of politics and want our software to work legally throughout the entire world.
