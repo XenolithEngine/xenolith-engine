@@ -278,6 +278,7 @@ harfbuzz_SHA256 := b7132e148358a45185c9feafd049dbaf243649d3c44414b3534d9c95d1859
 
 $(SRC_ROOT)/harfbuzz: | prepare
 	$(call sp_fetch_tar,harfbuzz)
+	$(call sp_patch,harfbuzz,harfbuzz/0001-e2k128-allow-overriding-HB_NULL_POOL_SIZE.patch)
 
 # https://github.com/Tehreer/SheenBidi # revised: 25 sep 2026
 # Pinned to release tag v3.0.0 (Unicode 17.0); Apache-2.0, used bundled as the

@@ -162,6 +162,13 @@ class tuple;
 
 } // namespace sprt
 
+// Forward declaration: the tuple_element protocol specialization below (namespace
+// std) names the fallback before its definition later in this header.
+namespace sprt {
+template <sprt::size_t, typename...>
+struct __fb_pack_element;
+} // namespace sprt
+
 // Protocol specializations for sprt::tuple must live in namespace std (the namespace of
 // the tuple_size / tuple_element primaries).
 namespace std {
@@ -171,7 +178,12 @@ struct tuple_size<sprt::tuple<_Tp...>> : sprt::integral_constant<sprt::size_t, s
 
 template <sprt::size_t _Ip, typename... _Tp>
 struct tuple_element<_Ip, sprt::tuple<_Tp...>> {
+#if __has_builtin(__type_pack_element)
 	using type = __type_pack_element<_Ip, _Tp...>;
+#else
+	// lcc has no __type_pack_element — the classic pack-walk recursion.
+	using type = typename sprt::__fb_pack_element<_Ip, _Tp...>::type;
+#endif
 };
 
 } // namespace std
@@ -187,13 +199,29 @@ constexpr tuple_element_t<_Ip, tuple<_Tp...>> &&get(tuple<_Tp...> &&__t) noexcep
 template <sprt::size_t _Ip, typename... _Tp>
 constexpr const tuple_element_t<_Ip, tuple<_Tp...>> &&get(const tuple<_Tp...> &&__t) noexcept;
 
+// lcc has no __type_pack_element; the recursion lives next to the pack it
+// walks (sprt::tuple<_Tp...>).
+#if !__has_builtin(__type_pack_element)
+template <sprt::size_t, typename...>
+struct __fb_pack_element;
+template <typename T, typename... Rest>
+struct __fb_pack_element<0, T, Rest...> { using type = T; };
+template <sprt::size_t I, typename T, typename... Rest>
+struct __fb_pack_element<I, T, Rest...> : __fb_pack_element<I - 1, Rest...> { };
+template <sprt::size_t I, typename... Tp>
+using __tuple_pack_element_t = typename __fb_pack_element<I, Tp...>::type;
+#else
+template <sprt::size_t I, typename... Tp>
+using __tuple_pack_element_t = __type_pack_element<I, Tp...>;
+#endif
+
 // enable tuple(pair) only for 2-element tuples, without touching element 1 otherwise.
 template <typename _Tuple, typename _U1, typename _U2, bool = (tuple_size_v<_Tuple> == 2)>
 inline constexpr bool __tuple_from_pair_v = false;
 template <typename... _Tp, typename _U1, typename _U2>
 inline constexpr bool __tuple_from_pair_v<tuple<_Tp...>, _U1, _U2, true> =
-		sprt::is_constructible_v<__type_pack_element<0, _Tp...>, _U1>
-		&& sprt::is_constructible_v<__type_pack_element<1, _Tp...>, _U2>;
+		sprt::is_constructible_v<__tuple_pack_element_t<0, _Tp...>, _U1>
+		&& sprt::is_constructible_v<__tuple_pack_element_t<1, _Tp...>, _U2>;
 
 // enable operator=(pair) only for 2-element tuples ([tuple.assign]); mirrors
 // __tuple_from_pair_v but checks assignability of the element references.
@@ -201,8 +229,8 @@ template <typename _Tuple, typename _U1, typename _U2, bool = (tuple_size_v<_Tup
 inline constexpr bool __tuple_assign_from_pair_v = false;
 template <typename... _Tp, typename _U1, typename _U2>
 inline constexpr bool __tuple_assign_from_pair_v<tuple<_Tp...>, _U1, _U2, true> =
-		sprt::is_assignable_v<__type_pack_element<0, _Tp...> &, _U1>
-		&& sprt::is_assignable_v<__type_pack_element<1, _Tp...> &, _U2>;
+		sprt::is_assignable_v<__tuple_pack_element_t<0, _Tp...> &, _U1>
+		&& sprt::is_assignable_v<__tuple_pack_element_t<1, _Tp...> &, _U2>;
 
 struct __tuple_cvt_tag { };
 

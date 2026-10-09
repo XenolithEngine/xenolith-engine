@@ -67,7 +67,7 @@ typedef __INT8_TYPE__ __SPRT_ID(int8_t);
 // Use Data models specifications
 #if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__LP64__) || defined(__SPRT_WINDOWS)
 
-typedef int __SPRT_ID(int8_t);
+typedef signed char __SPRT_ID(int8_t);
 #define __SPRT_INT8_MAX __SPRT_SSHRT_MAX
 #define __SPRT_INT8_WIDTH __SPRT_SSHRT_WIDTH
 #define __SPRT_INT8_FMTd __SPRT_SSHRT_FMTd

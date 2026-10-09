@@ -38,7 +38,8 @@ endif
 # _Float32 в bits/floatn-common.h — без неё не собирается <stdlib.h>. Вместо
 # этого форсируем shim через -include: его guard CURLINC_SYSTEM_H делает
 # настоящий system.h no-op'ом, а определения повторяют GNUC/ILP32-ветку curl.
-# e2k64 не трогаем: MCST-ветка там верна.
+# e2k64/e2k128 не трогаем: там long=8, MCST-ветка верна (у e2k128 лишь
+# указатель 16-байтный, curl_off_t он не затрагивает).
 ifeq ($(SP_ARCH),e2k32)
 SP_CURL_SHIM := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))../replacements/curl/curl_system_e2k32.h
 SP_USER_CFLAGS += -include $(SP_CURL_SHIM)

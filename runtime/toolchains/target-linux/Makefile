@@ -168,12 +168,16 @@ $(1)-unknown-linux:
 	$$(MAKE) -f $$(THIS_FILE) SP_ARCH=$(1) SP_TARGET=$(1)-unknown-linux \
 		SP_TOOLCHAIN_PREFIX=$$(LCC_TOOLCHAIN_PATH) \
 		OUT_SYSROOT=$$(OUT_SYSROOT)/$(1)-unknown-linux
-	# Минимальный target.mk с компиляторами lcc (без кланговских
-	# TARGET_NAME/флагов — lcc не понимает --target/--sysroot; полная
-	# приложенческая интеграция через apply-toolchain — отдельный этап).
-	@echo 'TARGET_SYSTEM := Linux' > $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux/target.mk)
+	@echo 'TARGET_SYSROOT := $$$$(patsubst %/,%,$$$$(dir $$$$(lastword $$$$(MAKEFILE_LIST))))' > $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux/target.mk)
+	@echo 'TARGET_SYSTEM := Linux' >> $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux/target.mk)
 	@echo 'TARGET_ARCH := $(1)' >> $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux/target.mk)
-	@echo 'TARGET_SYSROOT := $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux)' >> $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux/target.mk)
+	@echo 'TARGET_INCLUDE_DIR := $$$$(TARGET_SYSROOT)/usr/include' >> $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux/target.mk)
+	@echo 'TARGET_INCLUDE_DIR_LIBC := $$$$(TARGET_SYSROOT)/include_libc' >> $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux/target.mk)
+	@echo 'TARGET_LIB_DIR := $$$$(TARGET_SYSROOT)/usr/lib' >> $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux/target.mk)
+	@echo 'TARGET_LIB_DIR_LIBC := $$$$(TARGET_SYSROOT)/lib' >> $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux/target.mk)
+	@echo 'TARGET_GENERAL_CFLAGS := $(if $(filter e2k32,$(1)),-D__ILP32__ )-D__SPRT_CONFIG_COMPILER_ASSISTED_INTS=0 -idirafter $$$$(TARGET_INCLUDE_DIR)' >> $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux/target.mk)
+	@echo 'TARGET_GENERAL_CXXFLAGS := $(if $(filter e2k32,$(1)),-D__ILP32__ )-D__SPRT_CONFIG_COMPILER_ASSISTED_INTS=0 -idirafter $$$$(TARGET_INCLUDE_DIR)' >> $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux/target.mk)
+	@echo 'TARGET_GENERAL_LDFLAGS :=' >> $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux/target.mk)
 	@echo 'TARGET_CC := $$(abspath $$(LCC_TOOLCHAIN_PATH))/bin/lcc' >> $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux/target.mk)
 	@echo 'TARGET_CXX := $$(abspath $$(LCC_TOOLCHAIN_PATH))/bin/l++' >> $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux/target.mk)
 	@echo 'TARGET_AR := $$(abspath $$(LCC_TOOLCHAIN_PATH))/binutils/bin/e2k-linux-ar' >> $$(abspath $$(OUT_SYSROOT)/$(1)-unknown-linux/target.mk)
@@ -184,17 +188,19 @@ endef
 
 $(eval $(call e2k_target,e2k64,,lib64))
 $(eval $(call e2k_target,e2k32,-m32,lib32))
+# -m128: LP64 с 16-байтным указателем (long/size_t = 8), контейнер ELF64.
+$(eval $(call e2k_target,e2k128,-m128,lib128))
 
-.PHONY: all clean e2k64-unknown-linux e2k32-unknown-linux \
+.PHONY: all clean e2k64-unknown-linux e2k32-unknown-linux e2k128-unknown-linux \
 	$(addsuffix -unknown-linux-gnu,$(GNU_ARCHS)) \
 	$(addsuffix -unknown-linux-musl,$(MUSL_ARCHS))
 
 else # SP_ARCH
 
-# e2k (e2k64/e2k32) живёт не в ../$(SP_TARGET), а в intermediate (libc у lcc
-# своя, шаг glibc или musl отсутствует). Условия ниже стоят ДО общих ?=, чтобы
-# переопределения с CLI/env имели приоритет.
-ifneq (,$(filter $(SP_ARCH),e2k32 e2k64))
+# e2k (e2k64/e2k32/e2k128) живёт не в ../$(SP_TARGET), а в intermediate (libc
+# у lcc своя, шаг glibc или musl отсутствует). Условия ниже стоят ДО общих ?=,
+# чтобы переопределения с CLI/env имели приоритет.
+ifneq (,$(filter $(SP_ARCH),e2k32 e2k64 e2k128))
 OUT_SYSROOT ?= $(abspath $(MAKE_ROOT)intermediate/$(SP_TARGET))
 SP_TOOLCHAIN_PREFIX ?= $(LCC_TOOLCHAIN_PATH)
 endif
@@ -205,7 +211,7 @@ SP_TOOLCHAIN_PREFIX ?= $(OUT_SYSROOT)
 SP_INSTALL_PREFIX ?= $(OUT_SYSROOT)
 SP_TOOLCHAIN_FILE ?= $(realpath $(OUT_SYSROOT)/toolchain.cmake)
 
-ifneq (,$(filter $(SP_ARCH),e2k32 e2k64))
+ifneq (,$(filter $(SP_ARCH),e2k32 e2k64 e2k128))
 # lcc: bin/ держит драйверы lcc/l++, binutils — префискованные GNU-утилиты.
 SP_CC := $(abspath $(SP_TOOLCHAIN_PREFIX)/bin/lcc)
 SP_CXX := $(abspath $(SP_TOOLCHAIN_PREFIX)/bin/l++)
@@ -246,19 +252,19 @@ ifeq ($(SP_ARCH),loongarch64)
 LIBS := $(filter-out $(WASM_LIBS),$(LIBS))
 endif
 
-# e2k (оба режима): libc++abi/libunwind не собираются — C++ ABI и unwinder
+# e2k (все режимы): libc++abi/libunwind не собираются — C++ ABI и unwinder
 # приходят из libgcc_s.so.1 тулчейна lcc (динамически, на стороне
 # приложения/рантайма). WAMR тоже выпадает: e2k он не поддерживает. libffi
 # собирается из форка МЦСТ (src.mk/ffi-e2k — апстрим 3.8.0 e2k не портирован),
 # поэтому libwayland-client от него остаётся.
-ifneq (,$(filter $(SP_ARCH),e2k32 e2k64))
+ifneq (,$(filter $(SP_ARCH),e2k32 e2k64 e2k128))
 LIBS := $(filter-out libc++abi.a libunwind.a $(WASM_LIBS),$(LIBS))
 endif
 
 # compiler-rt asan: для glibc собирается через compiler_rt.mk. Для musl libc++ и
 # compiler-rt уже даёт подкаталог musl/ (asan под musl в первой версии не строим).
 # e2k: compiler-rt собирается только clang'ом, под lcc не строится вовсе.
-ifeq (,$(filter $(SP_ARCH),e2k32 e2k64))
+ifeq (,$(filter $(SP_ARCH),e2k32 e2k64 e2k128))
 ifeq (,$(findstring musl,$(SP_TARGET)))
 INTERNAL_LIBS += clang/lib/linux/libclang_rt.asan-$(SP_ARCH).a
 endif

@@ -28,6 +28,7 @@ CONFIGURE_PROC_loongarch64 := loongarch64
 CONFIGURE_PROC_e2k := e2kv4
 CONFIGURE_PROC_e2k64 := e2kv4
 CONFIGURE_PROC_e2k32 := e2kv4
+CONFIGURE_PROC_e2k128 := e2kv4
 CONFIGURE_PROC_wasm32 := wasm32
 CONFIGURE_PROC_wasm64 := wasm64
 
@@ -42,6 +43,7 @@ CONFIGURE_HOST_Linux_e2k := e2k-linux
 # от режима разрядности не зависит).
 CONFIGURE_HOST_Linux_e2k64 := e2k-linux
 CONFIGURE_HOST_Linux_e2k32 := e2k-linux
+CONFIGURE_HOST_Linux_e2k128 := e2k-linux
 
 CONFIGURE_HOST_Android_x86 := i686-linux-android
 CONFIGURE_HOST_Android_armv7a := armv7a-linux-androideabi

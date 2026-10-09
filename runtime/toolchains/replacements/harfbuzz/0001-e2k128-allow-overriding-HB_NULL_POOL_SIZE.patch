@@ -1,0 +1,28 @@
+Make HB_NULL_POOL_SIZE overridable from the compiler command line.
+
+Upstream harfbuzz dropped the #ifndef guard around HB_NULL_POOL_SIZE, so a
+-DHB_NULL_POOL_SIZE=N on the command line only produces a redefinition
+warning and the header's value (640) wins. The 128-bit e2k mode of the MCST
+lcc compiler (built from this repo's toolchains/target-linux) has 16-byte
+pointers, which pushes hb_null_size() of pointer-bearing null objects
+(AAT::kern_subtable_accelerator_data_t and friends) past 640 and trips the
+"Increase HB_NULL_POOL_SIZE" static_assert in every TU instantiating
+Null<>/Crap<> for them. The e2k128 build passes -DHB_NULL_POOL_SIZE=2048
+(common/harfbuzz.mk); restore the historical #ifndef guard so the define
+actually reaches the header. Every other target keeps the stock 640.
+
+Drop this patch when upstream restores the guard.
+
+--- a/src/hb-null.hh
++++ b/src/hb-null.hh
+@@ -36,8 +36,9 @@
+  */
+ 
+ /* Global nul-content Null pool.  Enlarge as necessary. */
+-
++#ifndef HB_NULL_POOL_SIZE
+ #define HB_NULL_POOL_SIZE 640
++#endif
+ 
+ template <typename T, typename>
+ struct _hb_has_min_size : hb_false_type {};

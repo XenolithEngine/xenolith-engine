@@ -71,6 +71,13 @@ ifdef HOST_AR
 GLOBAL_AR = $(HOST_AR) rcs
 endif
 
+# Явный компилятор цели (target.mk задаёт TARGET_CC/TARGET_CXX/TARGET_AR для
+# тулчейнов, чей драйвер — не SDK-clang: lcc для e2k и т.п.). Заданный
+# TARGET_CC подавляет и HOST_CC, и его флаги (см. ifndef ниже).
+ifdef TARGET_AR
+GLOBAL_AR = $(TARGET_AR) rcs
+endif
+
 # If TARGET_CC is set - HOST_CC is ignored with it's flags
 
 ifndef TARGET_CC
@@ -90,6 +97,8 @@ ifdef HOST_LIB_CFLAGS
 GLOBAL_LIB_CFLAGS += $(HOST_LIB_CFLAGS)
 endif
 
+else
+GLOBAL_CC = $(TARGET_CC)
 endif # TARGET_CC
 
 
@@ -112,6 +121,8 @@ ifdef HOST_LIB_CXXFLAGS
 GLOBAL_LIB_CXXFLAGS += $(HOST_LIB_CXXFLAGS)
 endif
 
+else
+GLOBAL_CXX = $(TARGET_CXX)
 endif # TARGET_CXX
 
 
@@ -151,9 +162,14 @@ endif
 
 ifdef TARGET_SYSROOT
 ifneq ($(TARGET_SYSROOT),)
+# lcc (e2k): gcc-стиль драйвер со своими путями — --sysroot принимает молча и
+# теряет собственные заголовки/crt, поэтому для e2k-целей не передаётся;
+# заголовки sysroot доходят через TARGET_GENERAL_* target.mk.
+ifeq (,$(filter e2k32 e2k64 e2k128,$(TARGET_ARCH)))
 GLOBAL_GENERAL_CFLAGS += --sysroot=$(TARGET_SYSROOT)
 GLOBAL_GENERAL_CXXFLAGS += --sysroot=$(TARGET_SYSROOT)
 GLOBAL_GENERAL_LDFLAGS += --sysroot=$(TARGET_SYSROOT)
+endif
 endif
 endif
 

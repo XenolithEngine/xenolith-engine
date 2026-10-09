@@ -36,18 +36,27 @@ endif
 # vendored заголовки работают в glibc-режиме, shim навязал бы sprt __mbstate_t,
 # конфликтующий с glibc, а сам нужен только ради <__config_site>.
 #
-# e2k (оба режима) исключён: компилятор там l++, а заголовки libc++ 22 (и
+# e2k (все режимы) исключён: компилятор там l++, а заголовки libc++ 22 (и
 # sprt-слой — то же дерево) lcc не берёт — нет clang builtins
 # (__remove_reference_t и пр.). harfbuzz собирается с родными заголовками
 # libstdc++ l++ (GCC 11), бинарно STL-free, так что libc++/libstdc++ рантайм
 # ему не нужен.
-ifeq (,$(filter $(SP_ARCH),e2k32 e2k64))
+ifeq (,$(filter $(SP_ARCH),e2k32 e2k64 e2k128))
 ifdef LINUX
 SP_USER_CXXFLAGS += -nostdinc++ \
 	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../libcxx/include) \
 	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include_libc/cxx) \
 	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include)
 endif
+endif
+
+# e2k128: hb_null_size у типов с указателями (hb_bit_set_t в
+# AAT::kern_subtable_accelerator_data_t и пр.) растёт вместе с 16-байтным
+# указателем и не влезает в дефолтный HB_NULL_POOL_SIZE (640) — static_assert
+# «Increase HB_NULL_POOL_SIZE». Макрос #ifndef-guarded, задаём здесь; пул —
+# массив uint64_t в .rodata, запас ничего не стоит.
+ifeq ($(SP_ARCH),e2k128)
+SP_USER_CXXFLAGS += -DHB_NULL_POOL_SIZE=2048
 endif
 
 include ../common/configure.mk

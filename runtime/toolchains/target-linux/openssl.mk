@@ -66,22 +66,22 @@ CONFIGURE := $(OPENSSL_TARGET) \
 	no-shared \
 	no-autoload-config
 
-# lcc (оба режима e2k) не собирает ассемблерные части openssl (perlasm и
+# lcc (все режимы e2k) не собирает ассемблерные части openssl (perlasm и
 # .S рассчитаны на GNU as с x86-синтаксисом) — только portable C. Экспортируемый
 # CFLAGS openssl 3.x игнорирует, позиционные аргументы Configure — нет, поэтому
-# флаг режима e2k32 едет только здесь.
-ifneq (,$(filter $(SP_ARCH),e2k32 e2k64))
-CONFIGURE += no-asm -mno-sse4.2 $(if $(filter e2k32,$(SP_ARCH)),-m32,)
+# флаг режима (-m32/-m128; для e2k SP_TARGET_FLAGS — ровно он) едет только здесь.
+ifneq (,$(filter $(SP_ARCH),e2k32 e2k64 e2k128))
+CONFIGURE += no-asm -mno-sse4.2 $(SP_TARGET_FLAGS)
 endif
 
 ifeq ($(DEBUG),1)
 CONFIGURE += -d
 endif
 
-# e2k64 собирается дефолтным linux-x86_64-clang (no-asm выше) — install тоже
-# идёт в usr/lib64, поэтому пост-перенос общий с x86_64. e2k32 (generic32)
+# e2k64/e2k128 собираются дефолтным linux-x86_64-clang (no-asm выше) — install
+# тоже идёт в usr/lib64, поэтому пост-перенос общий с x86_64. e2k32 (generic32)
 # ставит сразу в usr/lib и попадает в ветку else.
-ifneq (,$(filter $(SP_ARCH),x86_64 e2k64))
+ifneq (,$(filter $(SP_ARCH),x86_64 e2k64 e2k128))
 all:
 	@mkdir -p $(LIBNAME)
 	cd $(LIBNAME); \

@@ -56,14 +56,15 @@ export PKG_CONFIG_PATH=$(SP_INSTALL_PREFIX)/usr/lib/pkgconfig
 SP_TARGET_TRIPLE := $(if $(SP_ARCH_TARGET_CLANG),$(SP_ARCH_TARGET_CLANG),$(SP_TARGET))
 
 
-ifneq (,$(filter $(SP_ARCH),e2k32 e2k64))
+ifneq (,$(filter $(SP_ARCH),e2k32 e2k64 e2k128))
 SP_CMAKE_PREFIX_PATH := ${SP_INSTALL_PREFIX};${SP_INSTALL_PREFIX}/usr;${SP_INSTALL_PREFIX}/lcc-lib
 SP_CMAKE_FIND_ROOT_PATH := $(SP_INSTALL_PREFIX);$(SP_INSTALL_PREFIX)/usr;$(SP_INSTALL_PREFIX)/lcc-lib
 override SP_TOOLCHAIN_FILE :=
 override SP_TOOLCHAIN_PREFIX :=
 # Режим разрядности едет флагом: -dumpmachine у lcc всегда e2k-linux-gnu.
-# e2k32 — ILP32 (long/ptr/size_t = 4), e2k64 совпадает с умолчанием -m64.
-SP_TARGET_FLAGS := $(if $(filter e2k32,$(SP_ARCH)),-m32,)
+# e2k32 — ILP32 (long/ptr/size_t = 4); e2k64/e2k128 — LP64 (long/size_t = 8,
+# у 128-битного указатель 16 байт); e2k64 совпадает с умолчанием -m64.
+SP_TARGET_FLAGS := $(if $(filter e2k32,$(SP_ARCH)),-m32,$(if $(filter e2k128,$(SP_ARCH)),-m128,))
 else
 SP_TARGET_FLAGS := --target=$(SP_TARGET_TRIPLE)
 endif
@@ -484,12 +485,12 @@ endif # iOS
 endif # DARWIN
 
 
-# e2k (MCST lcc, оба режима): без toolchain.cmake cmake обязан получить
+# e2k (MCST lcc, все режимы): без toolchain.cmake cmake обязан получить
 # компиляторы явно (иначе возьмёт host-овые cc/c++ — прошлый запуск молча
 # собирал libc++abi host-овым gcc). CMAKE_SYSTEM_NAME=Linux переводит cmake
 # в режим кросс-сборки: без него он будет запускать e2k-бинарники для
 # проверки конфигурации.
-ifneq (,$(filter $(SP_ARCH),e2k32 e2k64))
+ifneq (,$(filter $(SP_ARCH),e2k32 e2k64 e2k128))
 CONFIGURE_CMAKE += \
 	-DCMAKE_SYSTEM_NAME=Linux \
 	-DCMAKE_SYSTEM_PROCESSOR=$(CONFIGURE_PROC_$(SP_ARCH)) \

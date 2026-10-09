@@ -44,6 +44,10 @@ ifneq (,$(findstring linux-gnu,$(TARGET_NAME)))
 OSTYPE_UNWIND_DLOPEN := 1
 else ifneq (,$(findstring linux-musl,$(TARGET_NAME)))
 OSTYPE_UNWIND_DLOPEN := 1
+else ifneq (,$(filter e2k32 e2k64 e2k128,$(TARGET_ARCH)))
+# lcc (e2k): TARGET_NAME нет, но unwinder тот же libgcc_s.so.1 — тот же
+# dlopen-путь, что и на glibc-целях.
+OSTYPE_UNWIND_DLOPEN := 1
 endif
 
 ifeq ($(OSTYPE_UNWIND_DLOPEN),1)
@@ -166,13 +170,21 @@ OSTYPE_LIB_LDFLAGS := -rdynamic -Wl,--exclude-libs,ALL
 
 SPRT_EXPORT_CXX_ABI ?= 1
 
+# e2k: C++ ABI — системная shared libstdc++ (все образы биндятся в одну копию,
+# проблемы второго ABI-рантайма нет), а -u по __cxa_guard_* при отсутствии
+# libc++abi.a — ошибка линковки. Экспортный блок целиком не нужен.
+ifneq (,$(filter e2k32 e2k64 e2k128,$(TARGET_ARCH)))
+SPRT_EXPORT_CXX_ABI := 0
+endif
+
 ifeq ($(TARGET_SYSTEM),Linux)
 ifeq ($(SPRT_EXPORT_CXX_ABI),1)
 
 OSTYPE_COMMA := ,
 
 # size_t mangling: 'm' (unsigned long) on LP64, 'j' (unsigned int) on ILP32
-ifneq ($(filter $(TARGET_ARCH),i386 i686 x86 arm armv7a armv7 mips),)
+# (e2k32 — ILP32: long/size_t = 4 при любом режиме контейнера)
+ifneq ($(filter $(TARGET_ARCH),i386 i686 x86 arm armv7a armv7 mips e2k32),)
 OSTYPE_CXX_ABI_Z := j
 else
 OSTYPE_CXX_ABI_Z := m

@@ -26,6 +26,10 @@
 #include <sprt/cxx/__type_traits/modifications.h>
 #include <sprt/cxx/__type_traits/queries.h>
 
+#if !__has_builtin(__has_virtual_destructor)
+#include <sprt/cxx/__type_traits/__builtin_fallbacks.h>
+#endif
+
 namespace sprt {
 inline namespace __cxx_type_traits {
 
@@ -240,11 +244,26 @@ template <typename Type>
 inline constexpr bool is_nothrow_destructible_v = __is_nothrow_destructible(Type);
 
 
+// No portable fallback and no consumer today; false is the conservative
+// direction for decisions that gate on it.
+#if __has_builtin(__has_virtual_destructor)
+
 template <typename Type>
 struct has_virtual_destructor : public integral_constant<bool, __has_virtual_destructor(Type)> { };
 
 template <typename Type>
 inline constexpr bool has_virtual_destructor_v = __has_virtual_destructor(Type);
+
+#else // __has_builtin(__has_virtual_destructor)
+
+template <typename Type>
+struct has_virtual_destructor
+: public integral_constant<bool, __fb_has_virtual_destructor<Type>::value> { };
+
+template <typename Type>
+inline constexpr bool has_virtual_destructor_v = has_virtual_destructor<Type>::value;
+
+#endif // __has_builtin(__has_virtual_destructor)
 
 
 template <typename Type>

@@ -254,7 +254,7 @@ struct __invokable_r {
 	// or incomplete array types as required by the standard.
 	using _Result = decltype(__try_call<_Fp, _Args...>(0));
 
-	using type = conditional_t<!__is_same(_Result, __nat),
+	using type = conditional_t<!is_same_v<_Result, __nat>,
 			conditional_t<is_void<_Ret>::value, true_type, __is_core_convertible<_Result, _Ret> >,
 			false_type>;
 	static const bool value = type::value;

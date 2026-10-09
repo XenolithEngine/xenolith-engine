@@ -93,9 +93,9 @@ OBJS := $(SRCS:.c=.o)
 TARGET_CFLAGS := $(SP_CFLAGS) -DBUILDING_ENGINE_AS_LIBRARY -DL_ENDIAN \
 	-Werror -Wall -Wno-unused-parameter -Wno-unused-function -Wno-missing-braces -Wno-deprecated-declarations
 
-# -Qunused-arguments понимает только clang; под lcc (e2k, оба режима) опция
+# -Qunused-arguments понимает только clang; под lcc (e2k, все режимы) опция
 # неизвестна.
-ifeq (,$(filter $(SP_ARCH),e2k32 e2k64))
+ifeq (,$(filter $(SP_ARCH),e2k32 e2k64 e2k128))
 TARGET_CFLAGS += -Qunused-arguments
 endif
 

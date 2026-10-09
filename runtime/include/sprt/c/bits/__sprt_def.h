@@ -226,6 +226,12 @@ THE SOFTWARE.
 #define __SPRT_ARCH_NAME_LOONGARCH32 loongarch32_sprt
 #define __SPRT_ARCH_ID_LOONGARCH32 11
 
+#define __SPRT_ARCH_NAME_E2K32 e2k32_sprt
+#define __SPRT_ARCH_ID_E2K32 12
+
+#define __SPRT_ARCH_NAME_E2K128 e2k128_sprt
+#define __SPRT_ARCH_ID_E2K128 13
+
 
 #if defined(__aarch64__) || defined(_M_ARM64)
 #define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_AARCH64
@@ -257,6 +263,17 @@ THE SOFTWARE.
 #elif defined(__loongarch__) && defined(__loongarch_grlen) && __loongarch_grlen == 32
 #define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_LOONGARCH32
 #define __SPRT_ARCH_ID __SPRT_ARCH_ID_LOONGARCH32
+/* MCST lcc: __e2k__ задан во всех режимах, разрядность указателя различает
+ * e2k32 (ILP32), e2k64 (-m64) и e2k128 (-m128, контейнер ELF64). */
+#elif defined(__e2k__) && defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ == 16
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_E2K128
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_E2K128
+#elif defined(__e2k__) && defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ == 8
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_E2K
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_E2K
+#elif defined(__e2k__) && defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ == 4
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_E2K32
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_E2K32
 #else
 #error "Unknown arch"
 #endif
@@ -296,8 +313,15 @@ THE SOFTWARE.
 #define __SPRT_C_FUNC extern "C"
 #define __SPRT_BEGIN_DECL	extern "C" {
 #define __SPRT_END_DECL	}
+// lcc does not accept the [[gnu::...]] standard-attribute spelling (and the
+// plain [[...]] form is unevenly supported) — route it through __attribute__.
+#if defined(__LCC__) && !defined(__clang__)
+#define __SPRT_ATTR(Attr) __attribute__((Attr))
+#define __SPRT_ATTR_GNU(Attr) __attribute__((Attr))
+#else
 #define __SPRT_ATTR(Attr) [[Attr]]
 #define __SPRT_ATTR_GNU(Attr) [[gnu::Attr]]
+#endif
 #define __SPRT_NOEXCEPT noexcept(true)
 // #define __SPRT_NORETURN // Will be defined by fallback
 #define __SPRT_RESTRICT __restrict

@@ -120,21 +120,41 @@ MODULE_RUNTIME_PRIVATE_INCLUDES := \
 
 MODULE_RUNTIME_DEPENDS_ON := \
 	runtime_libc_wrapper \
-	runtime_core \
-	runtime_libcxx
+	runtime_core
 
-MODULE_RUNTIME_PRIVATE_CFLAGS := $(MODULE_RUNTIME_COMMON_CFLAGS) -nostdinc++ -Wno-unused-command-line-argument
-MODULE_RUNTIME_PRIVATE_CXXFLAGS := $(MODULE_RUNTIME_COMMON_CFLAGS) -nostdinc++ -Wno-unused-command-line-argument
+# lcc (e2k): заголовки libc++ 22 не разбирает (нет clang builtins), C++ идёт
+# с родными заголовками libstdc++ l++ — вендоренные TU libc++ (regex, pmr, …)
+# под lcc не собираются, модуль выпадает вместе с libc++abi-зависимостью.
+ifeq (,$(filter e2k32 e2k64 e2k128,$(TARGET_ARCH)))
+MODULE_RUNTIME_DEPENDS_ON += runtime_libcxx
+endif
+
+# -nostdinc++ уводит родные заголовки libstdc++ l++ — только для clang-целей
+# с sprt-слоем libc++.
+MODULE_RUNTIME_PRIVATE_CFLAGS := $(MODULE_RUNTIME_COMMON_CFLAGS) -Wno-unused-command-line-argument
+MODULE_RUNTIME_PRIVATE_CXXFLAGS := $(MODULE_RUNTIME_COMMON_CFLAGS) -Wno-unused-command-line-argument
+ifeq (,$(filter e2k32 e2k64 e2k128,$(TARGET_ARCH)))
+MODULE_RUNTIME_PRIVATE_CFLAGS += -nostdinc++
+MODULE_RUNTIME_PRIVATE_CXXFLAGS += -nostdinc++
+endif
 MODULE_RUNTIME_GENERAL_LDFLAGS :=
 
 ifeq ($(TARGET_SYSTEM),Linux)
 MODULE_RUNTIME_GENERAL_CFLAGS += \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+# lcc (e2k): C++ — родные libstdc++ l++; sprt-обёртки include_libc остаются,
+# слой libc++ (cxx + libcxx/include) не подключается вовсе.
+ifneq (,$(filter e2k32 e2k64 e2k128,$(TARGET_ARCH)))
+MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_LIBS += -l:libbacktrace.a -lm -ldl
+else
 MODULE_RUNTIME_GENERAL_CXXFLAGS += \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
 	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_LIBS += -l:libbacktrace.a -l:libc++abi.a -lm -ldl
+endif
 endif
 
 
