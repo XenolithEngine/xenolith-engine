@@ -1,0 +1,862 @@
+= План А. Новая архитектура процессора
+:toc:
+:toclevels: 2
+
+Этот план описывает, как добавить новую архитектуру процессора к уже поддержанным операционным
+системам. Основной случай — Linux (glibc и musl): с него начинают всегда. Android, Windows и macOS для
+новой архитектуры — отдельные шаги в конце плана.
+
+Термины (target, sysroot, cross-заголовки, `__SPRT_ARCH_ID`, …) определены во
+xref:index.adoc#glossary[вводном файле]. Если нужна новая ОС, а не архитектура, — это
+xref:new-target-os.adoc[план Б]; если нужно, чтобы инструменты работали на машине новой
+архитектуры, — шаг <<a9,А9>> этого плана и xref:new-host-os.adoc[план В].
+
+*Образец.* Весь план выведен из двух реальных портов: riscv64 (разнесён по нескольким коммитам
+тулчейна, главный — `fe8176c0`) и loongarch64 (один аккуратный коммит `5be3d759` «runtime: loongarch64
+support»). Держите `git show 5be3d759` открытым рядом: почти каждый шаг ниже — это группа файлов из
+этого коммита. Если в вашей ветке его нет, он есть в `master`.
+
+*Скрипты.* `utils/porting/check-arch.py <arch> --like riscv64` проходит по всем шагам плана и
+показывает, что сделано, а что нет; запускайте его после каждого шага. Остальные скрипты и порядок
+чтения их отчётов — в link:../../../../utils/porting/README.adoc[utils/porting/README.adoc].
+
+== Что значит «добавить архитектуру»
+
+Архитектура в движке живёт не в одном месте, а в десятке списков и в шести маленьких заголовках.
+Большая часть кода движка от архитектуры не зависит: размеры типов берутся из `__LP64__`, системные
+вызовы делает настоящая libc, SIMD-код по умолчанию идёт через переносимую библиотеку SIMDe. Поэтому
+работа в основном состоит из того, чтобы *найти все места, где перечислены архитектуры*, и аккуратно
+дописать в них новую.
+
+Порт делается по уровням. Каждый уровень можно сдать отдельно:
+
+[cols="1,3,2", options="header"]
+|===
+| Уровень | Что получаем | Шаги
+
+| 1. Сборка
+| Под новую архитектуру собираются целевые наборы Linux и любой проект движка
+| <<a1,А1>>–<<a6,А6>>
+
+| 2. Запуск
+| Тесты движка проходят на новой архитектуре (под qemu-user или на железе)
+| <<a7,А7>>
+
+| 3. Скорость
+| Есть быстрые SIMD-ветки вместо переносимых
+| <<a8,А8>> (необязательно)
+
+| 4. Инструменты
+| Набор инструментов работает *на* машине новой архитектуры
+| <<a9,А9>> (необязательно)
+
+| 5. Другие ОС
+| Android, Windows, macOS на новой архитектуре
+| <<a10,А10>>, <<a11,А11>> (необязательно)
+
+| 6. Выпуск
+| Архитектура в релизе SDK, в установщике и в документации
+| <<a12,А12>>
+|===
+
+== Карта: где в движке живёт архитектура
+
+Сводная таблица. Подробности — в шагах.
+
+[cols="2,3,1", options="header"]
+|===
+| Место | Что там | Шаг
+
+| `runtime/include/sprt/c/bits/__sprt_def.h`
+| Распознавание архитектуры по макросам компилятора, `__SPRT_ARCH_ID`/`_NAME`
+| <<a2,А2>>
+
+| `xenolith/remote/XLRemotePeerInfo.{h,cc}`
+| `enum class OsArch` — копия ID архитектур для сетевого протокола
+| <<a2,А2>>
+
+| `runtime/include/sprt/c/cross/linux_sprt/<arch>_sprt/`
+| Шесть заголовков ABI: `config.h`, `fcntl.h`, `fenv.h`, `jmp_buf.h`, `signal.h`, `syscall.h`
+| <<a3,А3>>
+
+| `runtime/include/sprt/c/cross/linux_sprt/*.h`
+| Общие заголовки Linux, в которых встречаются условия на архитектуру (`sockdef.h`)
+| <<a3,А3>>
+
+| `runtime/toolchains/common/utils/names.mk`
+| Имена архитектуры для autoconf и cmake
+| <<a4,А4>>
+
+| Все `LLVM_TARGETS_TO_BUILD` в `runtime/toolchains/host-*`
+| Какие бэкенды LLVM вкомпилированы в clang
+| <<a4,А4>>
+
+| `runtime/toolchains/common/*.mk`, `replacements/`, `src.mk`
+| Особые флаги и патчи сторонних библиотек
+| <<a4,А4>>
+
+| `runtime/toolchains/target-linux/Makefile`, `glibc/Makefile`, `musl/Makefile`, `openssl.mk`
+| Сборка целевых наборов Linux
+| <<a5,А5>>
+
+| `runtime/toolchains/Makefile`
+| Правила `target-…`, `host-cross-…`, списки релиза
+| <<a5,А5>>, <<a9,А9>>, <<a12,А12>>
+
+| `make/os/linux.mk`, `make/c/compiler.mk`
+| Особые случаи для 32-битных архитектур и для отладочной информации
+| <<a6,А6>>
+
+| `make/utils/init-{sh,xlmake,powershell}.mk`
+| Перевод `uname -m` в имя архитектуры
+| <<a12,А12>>
+
+| `runtime/include/sprt/runtime/geom/simd*.h`, `stappler/raster/`, `stappler/core/string/SPGost3411-2012.cc`
+| SIMD-ветки, определение возможностей процессора, порядок байтов
+| <<a8,А8>>
+
+| `runtime/src/platform/SPRuntimePlatform-posix.cc`
+| Счётчик тактов процессора (`rdtsc`)
+| <<a8,А8>>
+
+| `tests/libc/compare.sh`
+| Запуск тестов под qemu-user
+| <<a7,А7>>
+
+| `utils/installer/core/src/SPITriple.cc`, `install.sh`, `.github/workflows/cli-release.yml`
+| Установщик и выпуск
+| <<a12,А12>>
+|===
+
+На Linux и Android нет ни одного ассемблерного файла sprt: setjmp, атомарные операции и системные
+вызовы берутся из настоящей libc. Ассемблер для архитектуры нужен только там, где sprt сам является
+libc (Windows, wasm, Embox EL0) — см. <<a11,А11>>.
+
+== Решения перед началом
+
+Эти вопросы решаются один раз, до первой строчки кода. Запишите ответы в описании коммита.
+
+*Р1. Базовый набор инструкций.* Движок не передаёт `-march` для Linux, Android и Windows: код
+собирается под набор инструкций, который clang считает базовым для тройки. Если базового набора мало
+(например, нет плавающей точки или векторов), решите, принимаете ли вы это или вводите флаг в
+`target.mk`. Расширения (AVX2, LASX, RVV) движок включает *по функциям* через
+`__attribute__((target(...)))` с проверкой процессора во время работы — см. <<a8,А8>>.
+
+*Р2. Версии glibc и ядра.* По умолчанию целевые наборы Linux собираются против glibc 2.33 и заголовков
+ядра 5.10. Молодые архитектуры там отсутствуют: riscv64 закреплён на glibc 2.35, loongarch64 — на
+glibc 2.36 и ядре 6.1 (в 5.10 нет `arch/loongarch`). Выберите *минимальные* версии, где архитектура
+уже есть: чем старше glibc в наборе, тем на большем числе систем запустится приложение.
+
+*Р3. glibc, musl или оба.* Обычно оба: musl в тулчейне берётся из подмодуля `runtime/musl-libc`, и
+в нём уже есть каталоги `arch/` почти для всех архитектур. Но glibc и musl могут расходиться в ABI
+(у loongarch64 разный размер `jmp_buf`), это придётся учесть в <<a3,А3>>.
+
+*Р4. Порядок байтов и разрядность.* Весь план рассчитан на 64-битную little-endian архитектуру. Для
+32-битной добавляется пункт в <<a6,А6>>. Для big-endian см. раздел <<risks,«Риски»>>: часть
+генераторов (`target.ini` для meson) пишет `little` жёстко.
+
+*Р5. Насколько глубоко идти.* Уровни 1, 2 и 6 обязательны. Уровни 3–5 — по потребности. Например,
+loongarch64 получил свои SIMD-ветки (уровень 3) и host-набор (уровень 4), но не получил Android.
+
+[[a1]]
+== А1. Проверить, что всё, на чём стоит движок, знает архитектуру
+
+*Зачем.* Целевой набор Linux собирается из чужих проектов: LLVM, GCC и binutils (только для сборки
+glibc), glibc, musl, заголовки ядра Linux, OpenSSL и ещё два десятка библиотек. Если хоть один из них
+не знает архитектуру, порт упрётся в него на середине. Лучше выяснить это за час в начале.
+
+*Что сделать.* Пройдите по списку и для каждого пункта найдите подтверждение (каталог в исходниках,
+строку в документации, имя в списке поддерживаемых):
+
+. *LLVM* той версии, что закреплена в `runtime/toolchains/common/utils/llvm-version.mk`
+  (`SP_LLVM_V`): есть ли бэкенд (`llvm/lib/Target/<Имя>`) и как он называется в
+  `LLVM_TARGETS_TO_BUILD` (`X86`, `AArch64`, `RISCV`, `LoongArch`).
+. *GCC и binutils* (версии в `runtime/toolchains/host-linux-glibc/glibc.mk`): glibc нельзя собрать
+  clang-ом, поэтому для glibc-цели строится кросс-GCC.
+. *glibc*: с какой версии есть порт (`sysdeps/unix/sysv/linux/<arch>`). Это и есть минимальная
+  версия для Р2.
+. *musl*: есть ли `runtime/musl-libc/arch/<arch>`.
+. *Ядро Linux*: с какой версии есть `arch/<имя-для-ядра>`. Запишите имя для ядра — оно может
+  отличаться от имени в тройке (`riscv` для `riscv64`, `arm64` для `aarch64`, `loongarch` для
+  `loongarch64`).
+. *OpenSSL*: имя конфигурации в `Configurations/10-main.conf` (`linux64-riscv64`,
+  `linux64-loongarch64`).
+. *meson*: допустимое значение `cpu_family` (нужно для зависимостей, собираемых meson-ом).
+. *Необязательные зависимости*: WAMR (`stappler_wasm`), SIMD-код libjpeg-turbo, ASan и ORC-runtime
+  в compiler-rt. Их можно отключить для архитектуры — см. <<a4,А4>> и <<a5,А5>>.
+
+Проверьте, что clang из вашего host-набора знает тройку и какие макросы он определяет:
+
+[source,sh]
+----
+H=runtime/toolchains/hosts/x86_64-unknown-linux-gnu/bin   # или toolchains/hosts/...
+$H/clang --target=<arch>-unknown-linux-gnu -dM -E - </dev/null \
+    | grep -E '__<arch>|__LP64__|__BYTE_ORDER__|__SIZEOF_POINTER__'
+----
+
+Если clang отвечает «unknown target» — в вашем host-наборе нет нужного бэкенда LLVM. Тогда сначала
+нужен шаг <<a4,А4>> (добавить бэкенд) и пересборка host-набора: `make -C runtime/toolchains host`.
+
+*Готово, когда:* для каждого пункта списка известна версия, с которой архитектура поддерживается, и
+имя, под которым она там значится. Есть список зависимостей, которые придётся отключить. clang печатает
+макросы архитектуры.
+
+[[a2]]
+== А2. Научить sprt узнавать архитектуру
+
+*Зачем.* Всё, что в sprt зависит от архитектуры, выбирается по двум макросам: `__SPRT_ARCH_ID` (число
+для сравнений в коде) и `__SPRT_ARCH_NAME` (имя каталога с заголовками ABI). Пока они не определены,
+любая сборка останавливается на `#error "Unknown arch"`.
+
+*Что сделать.*
+
+. В `runtime/include/sprt/c/bits/__sprt_def.h` найдите блок `__SPRT_ARCH_NAME_*` / `__SPRT_ARCH_ID_*`
+  и добавьте пару для новой архитектуры. ID — следующее свободное число (сейчас заняты 1–11), имя —
+  `<arch>_sprt`:
++
+[source,c]
+----
+#define __SPRT_ARCH_NAME_NEWARCH64 newarch64_sprt
+#define __SPRT_ARCH_ID_NEWARCH64 12
+----
+. Ниже, в цепочке `#if defined(__x86_64__) … #elif … #else #error "Unknown arch"`, добавьте ветку по
+  макросам, которые вы нашли в А1. Проверяйте не только имя архитектуры, но и разрядность, если у
+  архитектуры есть 32- и 64-битный варианты:
++
+[source,c]
+----
+#elif defined(__riscv) && defined(__riscv_xlen) && __riscv_xlen == 64
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_RISCV64
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_RISCV64
+----
++
+WARNING: Внимательно проверьте, что в новой ветке стоят *ваши* макросы, а не скопированные из соседней.
+Именно такая ошибка уже была: в одной из веток `__loongarch__` отображался на
+`__SPRT_ARCH_NAME_RISCV64`, и сборка под LoongArch молча брала заголовки RISC-V.
+. ID архитектуры — часть сетевого протокола `xenolith/remote`. Добавьте значение в
+  `enum class OsArch` в `xenolith/remote/XLRemotePeerInfo.h`, а в `XLRemotePeerInfo.cc` — строку в
+  блок `static_assert`, сверяющий `OsArch` с `__SPRT_ARCH_ID_*`, и имя в `switch`, который переводит
+  значение в строку.
+
+Правило для остального кода: архитектуру сравнивают по ID —
+`#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64`, — а не по сырым макросам компилятора и не по имени.
+Размер указателя — `__SIZEOF_POINTER__`. Подробнее — в
+link:../../../usage/codestyle/platform/platform-guards.adoc[platform-guards.adoc].
+
+*Готово, когда:* компиляция любого `.cpp` из `runtime/` с `--target=<arch>-unknown-linux-gnu`
+проходит дальше `__sprt_def.h` и падает уже на отсутствующих заголовках
+`cross/linux_sprt/<arch>_sprt/…` (это ожидаемо, их создаёт А3). Сборка под существующие архитектуры не
+изменилась.
+
+[[a3]]
+== А3. Заголовки ABI: `linux_sprt/<arch>_sprt/`
+
+*Зачем.* sprt даёт всем платформам единый интерфейс libc, но сами числа (флаги `open`, номера
+сигналов, системных вызовов, размер `jmp_buf`) берёт из настоящей libc цели. Для Linux большая часть
+чисел общая и лежит в `runtime/include/sprt/c/cross/linux_sprt/`, а то, что меняется от архитектуры к
+архитектуре, — в подкаталоге `<arch>_sprt/`. Этот подкаталог и нужно создать.
+
+*Что сделать.* Создайте `runtime/include/sprt/c/cross/linux_sprt/<arch>_sprt/` с шестью файлами.
+Начните с копии каталога самой похожей архитектуры. Почти все новые архитектуры Linux используют
+«asm-generic» раскладку ядра, как aarch64 и riscv64, поэтому обычно копируют `riscv64_sprt`.
+
+[cols="1,3,3", options="header"]
+|===
+| Файл | Что в нём | Откуда брать числа
+
+| `config.h`
+| Переопределения config gate для архитектуры. Обычно пустой.
+| —
+
+| `fcntl.h`
+| `__SPRT_O_*`, `F_*`, `AT_*`
+| `arch/<ядро>/include/uapi/asm/fcntl.h`, если есть, иначе `include/uapi/asm-generic/fcntl.h`.
+  Различаются чаще всего `O_DIRECTORY`, `O_NOFOLLOW`, `O_DIRECT`, `O_LARGEFILE`, `O_TMPFILE`.
+
+| `fenv.h`
+| Тип `__sprt_fenv_t`, `__sprt_fexcept_t`, биты `__SPRT_FE_*`, режимы округления
+| `bits/fenv.h` из glibc и `arch/<arch>/bits/fenv.h` из musl. Раскладка может быть совсем своей: у
+  loongarch64 `fenv_t` — структура, а флаги исключений лежат в битах 16–20 регистра FCSR.
+
+| `jmp_buf.h`
+| `typedef unsigned long __SPRT_ID(__jmp_buf)[N];`
+| `bits/setjmp.h` из glibc и из musl. Посчитайте, какие регистры сохраняются, и запишите расчёт в
+  комментарий (как в `riscv64_sprt/jmp_buf.h`).
+
+| `signal.h`
+| `__SPRT_SIG*`, `__SPRT__NSIG`
+| `arch/<ядро>/include/uapi/asm/signal.h` или asm-generic
+
+| `syscall.h`
+| `__SPRT_SYSCALL_<имя> <номер>`
+| таблица системных вызовов ядра для архитектуры (`unistd.h` архитектуры или
+  `include/uapi/asm-generic/unistd.h`). Уберите вызовы, которых у архитектуры нет: у loongarch64 по
+  сравнению с riscv64 их шесть (`renameat`, `newfstatat`, `fstat`, `getrlimit`, `setrlimit`,
+  `memfd_secret`).
+|===
+
+Если glibc и musl для архитектуры расходятся (у loongarch64 `jmp_buf` — 21 слово в glibc и 23 в musl),
+различайте их по макросу `__SPRT_LINUX_MUSL`, который `make/os/linux.mk` определяет для целей
+`*-linux-musl`. Этот макрос появился вместе с loongarch64; если в вашей ветке его нет, перенесите его
+из `5be3d759`.
+
+Затем просмотрите *общие* заголовки `linux_sprt/*.h`: в них уже есть условия по архитектуре, и новую,
+возможно, придётся туда добавить. Известные места:
+
+* `linux_sprt/sockdef.h` — `__SPRT_PF_MAX`: 46 на riscv64 и loongarch64 с glibc, 45 в остальных
+  случаях. Значение зависит не столько от архитектуры, сколько от версии libc.
+* `runtime/include/sprt/c/sys/__sprt_epoll.h` — `struct epoll_event` упакована (`packed`) только на
+  x86_64, так требует ABI ядра.
+* Общие заголовки рассчитаны на раскладку asm-generic и x86. На mips, powerpc, sparc и alpha номера
+  сигналов, `errno`, константы сокетов и терминалов другие — для таких архитектур общих заголовков не
+  хватит, их значения придётся выносить в `<arch>_sprt/`.
+
+*Как это проверяется.* Генератора для этих заголовков нет — их пишут руками. Проверяет их сборка:
+модуль `runtime_libc_wrapper` компилируется *вместе* с заголовками настоящей libc цели и содержит
+больше тысячи проверок вида
+
+[source,c++]
+----
+static_assert(O_CREAT == __SPRT_O_CREAT);
+static_assert(SIGHUP == __SPRT_SIGHUP);
+static_assert(sizeof(jmp_buf) == sizeof(__sprt_native_jmp_buf));
+----
+
+(`libc_wrapper/c/SPRuntimeCFcntl.cpp`, `libc_wrapper/c/common/signal.cc`,
+`libc_wrapper/c/common/fenv.cc`, `runtime/core/runtime_core_setjmp.cpp` и другие). Поэтому
+настоящая проверка заголовков — шаг <<a6,А6>>: если число неверно, сборка не пройдёт и укажет, какое.
+
+*Номера системных вызовов не проверяются ничем.* Их используют futex, `epoll_pwait2`, io_uring,
+inotify и `pidfd_open`, все через `syscall()` настоящей libc. Ошибка в номере проявится только во время
+работы, и неочевидно. Сверьте таблицу вручную с тем, что видит компилятор цели:
+
+[source,sh]
+----
+T=runtime/toolchains/targets/<arch>-unknown-linux-gnu      # появится после А5
+echo '#include <asm/unistd.h>' \
+    | $H/clang --target=<arch>-unknown-linux-gnu --sysroot=$T -dM -E - \
+    | sed -n 's/^#define __NR_\([a-z0-9_]*\) \([0-9]*\)$/\1 \2/p' | sort > /tmp/kernel.txt
+sed -n 's/^#define __SPRT_SYSCALL_\([a-z0-9_]*\) \([0-9]*\)$/\1 \2/p' \
+    runtime/include/sprt/c/cross/linux_sprt/<arch>_sprt/syscall.h | sort > /tmp/sprt.txt
+diff /tmp/kernel.txt /tmp/sprt.txt
+----
+
+Это рекомендация, а не часть принятой процедуры. Если хотите закрыть пробел насовсем, добавьте в
+`libc_wrapper` `static_assert(SYS_futex == __SPRT_SYSCALL_futex)` для тех вызовов, которые движок
+действительно делает.
+
+Сверку всех чисел сразу, включая номера системных вызовов, делает
+`utils/porting/check-abi.py --target <arch>-unknown-linux-gnu`. Его отчёт заменяет ручную команду выше.
+
+*Готово, когда:* шесть файлов созданы, у каждого числа есть источник (комментарий или описание
+коммита), и `diff` номеров системных вызовов пуст. Окончательно шаг закрывается сборкой в <<a6,А6>>.
+
+[[a4]]
+== А4. Общие списки тулчейна
+
+*Зачем.* Скрипты сборки зависимостей одни для всех архитектур. Им нужно знать, как архитектура
+называется в autoconf и cmake. Каждому clang, который мы выпускаем, нужен бэкенд для новой
+архитектуры. Некоторым сторонним библиотекам нужны особые флаги.
+
+*Что сделать.*
+
+. *Имена для autoconf и cmake.* В `runtime/toolchains/common/utils/names.mk` добавьте
++
+[source,make]
+----
+CONFIGURE_PROC_<arch> := <arch>                  # -DCMAKE_SYSTEM_PROCESSOR
+CONFIGURE_HOST_Linux_<arch> := <arch>-linux-gnu  # --host для ./configure
+----
++
+и, если планируется Android, `CONFIGURE_HOST_Android_<arch> := <arch>-linux-android`. Musl-цели тоже
+используют `-linux-gnu`: это лишь псевдоним для autoconf.
+. *Бэкенд LLVM во всех host-наборах.* Каждый clang, который мы выпускаем, — кросс-компилятор сразу
+  для всех целей. Найдите все списки и допишите в них имя бэкенда из А1:
++
+[source,sh]
+----
+grep -rn 'LLVM_TARGETS_TO_BUILD' runtime/toolchains --include='*.mk' --include=Makefile
+----
++
+Сейчас это `host-linux-glibc/stage2.mk`, `host-linux-musl/stage1.mk`, `host-linux-glibc/cross/Makefile`,
+`host-linux-musl/cross/Makefile`, `host-macos/cross/Makefile`, `host-windows-msvc/cross/stage0.mk`,
+`host-windows-msvc/stage0.mk` и `toolchain-macos-cross/target.mk`. Строки вида
+`-DLLVM_TARGETS_TO_BUILD=$(SP_ARCH_LLVM)` (только родной бэкенд для промежуточного tablegen) трогать
+не нужно. Обычная строка выглядит так:
++
+[source,make]
+----
+-DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV;WebAssembly;LoongArch"
+----
+. *Особые случаи сторонних библиотек.* Пересоберите зависимости (это сделает А5) и для каждой
+  библиотеки, которая не собирается, примите одно из решений:
+** отключить архитектурный ассемблер или SIMD. Пример — `common/libjpeg-turbo.mk`, `-DWITH_SIMD=Off`
+   для riscv64, armv7a и loongarch64;
+** задать правильное имя цели. Пример — `common/wamr.mk`, `WAMR_BUILD_TARGET`;
+** наложить патч: файл в `runtime/toolchains/replacements/<библиотека>/`, строка `sp_patch` в
+   `runtime/toolchains/src.mk` и запись в `replacements/README.adoc`. Пример —
+   `replacements/brotli/0001-no-model-small-on-loongarch.patch`;
+** не собирать библиотеку для архитектуры (см. А5) и записать это в документацию: например,
+   `stappler_wasm` недоступен на loongarch64, потому что WAMR не знает LoongArch.
++
+Не забудьте флаги, включённые только для одной архитектуры: `common/gost.mk` включает
+`HAVE_ADDCARRY_U64` только на x86_64, `common/libpng.mk` передаёт `PNG_TARGET_ARCHITECTURE`.
+
+*Готово, когда:* `grep LLVM_TARGETS_TO_BUILD` показывает новый бэкенд во всех выпускаемых clang;
+`names.mk` содержит обе строки; есть список решений по сторонним библиотекам. Окончательно шаг
+закрывается сборкой целевых наборов в А5.
+
+[[a5]]
+== А5. Целевые наборы Linux
+
+*Зачем.* Чтобы собрать приложение под `<arch>-unknown-linux-gnu`, нужен каталог
+`runtime/toolchains/targets/<arch>-unknown-linux-gnu/` с glibc, LLVM-runtimes, зависимостями и файлом
+`target.mk`. Его собирает `runtime/toolchains/target-linux/`. Ваша задача — добавить туда архитектуру.
+
+*Что сделать.*
+
+. `runtime/toolchains/target-linux/Makefile` — списки архитектур:
++
+[source,make]
+----
+GNU_ARCHS := x86_64 aarch64 riscv64 <arch>
+MUSL_ARCHS := x86_64 aarch64 riscv64 <arch>
+----
++
+Там же — фильтры для того, что архитектура не поддерживает (решения из А1 и А4):
++
+[source,make]
+----
+ifeq ($(SP_ARCH),<arch>)
+LIBS := $(filter-out $(WASM_LIBS),$(LIBS))   # нет WAMR
+endif
+----
++
+Для glibc-целей этот же файл добавляет `libclang_rt.asan-$(SP_ARCH).a`. Если compiler-rt не умеет
+ASan для архитектуры, исключите и его.
+. `runtime/toolchains/target-linux/glibc/Makefile` — блок архитектуры в начале файла. Он задаёт имя
+  для ядра, имя динамического загрузчика и, при необходимости, версии:
++
+[source,make]
+----
+else ifeq ($(SP_ARCH_TARGET_LINUX),loongarch64)
+SP_ARCH_TARGET_LINUX := loongarch                     # ARCH= для headers_install ядра
+SP_LDSO_NAME := ld-linux-loongarch-lp64d.so.1         # имя ld.so из glibc
+GLIBC_SRC_VER ?= 2.36                                 # первая glibc с портом
+GLIBC_SRC_DISTRIB_URL = $(GLIBC_SRC_URL)              # зеркало не держит эту версию
+LINUX_TARGET_KERNEL_VER := 6.1.189                    # в 5.10 нет arch/loongarch
+----
++
+Ниже в том же файле:
+** `liborc_rt.a` исключается для riscv64. Исключите и для своей архитектуры, если ORC-runtime в
+   compiler-rt её не поддерживает;
+** заглушки `libanl.so.1` и `libutil.so.1` исключены для loongarch64. У порта glibc, начавшегося с
+   2.34 и позже, этих библиотек совместимости нет;
+** генерируемый `target.ini` (для meson) пишет `cpu_family = '$(SP_ARCH_TARGET)'` и
+   `endian = 'little'`. Убедитесь, что имя архитектуры — допустимый `cpu_family`.
+. `runtime/toolchains/target-linux/musl/Makefile` — блок архитектуры: имя для ядра `SP_ARCH_KERNEL`, имя
+  бэкенда LLVM `SP_ARCH_LLVM` и, если нужно, `LINUX_KERNEL_VER`. Имя загрузчика musl выводится само:
+  `ld-musl-<arch>.so.1`.
+. `runtime/toolchains/target-linux/openssl.mk` — имя конфигурации OpenSSL:
++
+[source,make]
+----
+ifeq ($(SP_ARCH),<arch>)
+OPENSSL_TARGET := linux64-<arch>
+endif
+----
++
+Проверьте после сборки, куда OpenSSL положил библиотеки: на x86_64 они уходят в `lib64`, и
+`openssl.mk` переносит их в `lib`. Новой 64-битной архитектуре может понадобиться то же.
+. `runtime/toolchains/Makefile` — правила верхнего уровня. По образцу riscv64 добавьте:
++
+[source,make]
+----
+target-<arch>-unknown-linux-gnu: host
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) <arch>-unknown-linux-gnu
+target-<arch>-unknown-linux-musl: host
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) <arch>-unknown-linux-musl
+----
++
+и впишите обе цели в агрегирующее правило `target-linux`, в `.PHONY` и в список очистки. В
+`RELEASE_TARGETS` их добавляет <<a12,А12>>.
+
+Запустите сборку:
+
+[source,sh]
+----
+make -C runtime/toolchains download              # один раз: исходники в runtime/toolchains/src
+make -C runtime/toolchains target-<arch>-unknown-linux-gnu
+make -C runtime/toolchains target-<arch>-unknown-linux-musl
+----
+
+Сборка долгая (кросс-GCC, glibc, LLVM-runtimes, два десятка библиотек). Ошибки сторонних библиотек
+возвращают вас в А4.
+
+Готовый набор проверяет `utils/porting/check-sysroot.py <arch>-unknown-linux-gnu`: переменные
+`target.mk`, библиотеки LLVM-runtimes, висячие ссылки и архитектуру каждой библиотеки.
+
+*Готово, когда:* существуют `runtime/toolchains/targets/<arch>-unknown-linux-{gnu,musl}/target.mk`, в
+них `TARGET_ARCH := <arch>`, а в `usr/lib` лежат все библиотеки из списка `LIBS`, кроме сознательно
+исключённых. Команда `file` на любой из них показывает новую архитектуру.
+
+[[a6]]
+== А6. Первая сборка движка — проверка ABI при компиляции
+
+*Зачем.* Это главная проверка заголовков из А3: `runtime_libc_wrapper` сверит их с настоящей glibc и
+musl. Заодно станет видно, что ещё в движке не знает архитектуру.
+
+*Что сделать.* Соберите тестовые проекты по возрастанию размера — сначала под glibc, потом под musl:
+
+[source,sh]
+----
+for T in <arch>-unknown-linux-gnu <arch>-unknown-linux-musl; do
+    make -C tests/runtime  STAPPLER_TARGET=$T -j8 || break
+    make -C tests/libc     STAPPLER_TARGET=$T -j8 || break
+    make -C tests/stappler STAPPLER_TARGET=$T -j8 || break
+    make -C tests/window   STAPPLER_TARGET=$T -j8 || break
+done
+----
+
+(Или через `xenolith-cli build tests/runtime --engine $PWD --target $T`.)
+
+Что обычно ломается и где чинить:
+
+* *`static_assert` в `libc_wrapper`* — неверное число в заголовке из А3. Исправьте заголовок, а не
+  условие проверки. Если число законно отличается между glibc и musl, различайте по
+  `__SPRT_LINUX_MUSL`.
+* *32-битная архитектура.* В `make/os/linux.mk` есть список ILP32-архитектур
+  (`i386 i686 x86 arm armv7a armv7 mips`). По нему выбирается буква, которой в декорированных
+  именах экспортируемых `operator new/delete` обозначается `size_t`. Новую 32-битную архитектуру
+  нужно добавить в этот список.
+* *Отладочная информация.* `make/c/compiler.mk` в отладочной сборке использует `-gsplit-dwarf`, кроме
+  riscv64: у RISC-V линковщик ослабляет (relaxation) инструкции, и это мешает split-dwarf. У
+  LoongArch тоже есть relaxation, но исключения для неё нет. Если на вашей архитектуре отладочная
+  сборка падает при компоновке или lld предупреждает о relaxation, добавьте её в исключение.
+* *Код под `#if` по архитектуре, у которого нет ветки `#else`.* Например, разбор кадров стека для
+  обратной трассировки (backtrace) на Windows заканчивается `#pragma error("unsupported
+  architecture")`. На Linux таких мест почти нет. Если нашлось — допишите ветку или переносимую
+  ветку `#else`.
+
+*Готово, когда:* все четыре проекта собираются под обе тройки без предупреждений, которых нет на
+x86_64. Сборка под x86_64 и aarch64 по-прежнему проходит.
+
+[[a7]]
+== А7. Запуск под qemu-user
+
+*Зачем.* Сборка доказывает, что числа совпадают с заголовками libc. Запуск доказывает, что код
+работает: номера системных вызовов верны, `setjmp/longjmp` с размоткой стека работает, потоки, часы и
+файлы ведут себя так же, как на x86_64. Железо для этого не нужно: qemu-user выполняет бинарник
+чужой архитектуры прямо на вашем Linux.
+
+*Подготовка.*
+
+. Установите `qemu-user` вашего дистрибутива (нужен `qemu-<arch>`).
+. Для glibc-цели соберите `libgcc_s.so.1`: glibc при `pthread_exit` подгружает её динамически, а в
+  целевом наборе её нет. Её собирает GCC из `target-linux/glibc` (`--enable-shared`,
+  `make all-target-libgcc`).
+. Для тестов локали приготовьте `C.UTF-8`: `localedef --no-archive -i C -f UTF-8 <dir>/C.UTF-8`,
+  запущенный под qemu из целевого набора.
+
+*Запуск.* `tests/libc/compare.sh` умеет запускать тесты под qemu-user и сравнивать их вывод с
+эталоном (режим `--target` появился вместе с loongarch64; если в вашей ветке его нет, возьмите
+скрипт из `5be3d759`):
+
+[source,sh]
+----
+tests/libc/compare.sh --target <arch>-unknown-linux-gnu \
+    --qemu-lib <каталог с libgcc_s.so.1> --qemu-locale <каталог с C.UTF-8>
+tests/libc/compare.sh --target <arch>-unknown-linux-musl
+----
+
+musl-цель сравнивайте с эталоном `x86_64-unknown-linux-musl`, а не с glibc. Ожидаемый шум:
+`printf_float` печатает `nan` там, где x86 печатает `-nan`. Это поведение железа, а не ошибка.
+
+Затем полный `runtimetest`:
+
+[source,sh]
+----
+ROOT=<каталог для qemu: lib/, lib64 -> lib, usr/lib из целевого набора>
+qemu-<arch> -L $ROOT -E LD_LIBRARY_PATH=/lib \
+    tests/runtime/stappler-build/<arch>-unknown-linux-gnu/debug/cc/runtimetest
+----
+
+Если что-то падает, запускайте разделы по одному, от простого к сложному: `libc_uname`,
+`libc_fcntl`, `libc_setjmp`, `libc_time`, `libc_pthread`, `libc_malloc_threads`, затем
+`runtime_dispatch`, `runtime_process`, `runtime_file`. В qemu-user нет io_uring, поэтому цикл событий
+откатится на epoll — это нормально.
+
+*Готово, когда:* `compare.sh` для обеих троек не показывает расхождений, кроме перечисленного шума;
+`runtimetest` целиком завершается с кодом 0 и строкой `0 failures`. Если есть доступ к настоящему
+железу, повторите прогон на нём: qemu не эмулирует всё (например, точную модель памяти).
+
+[[a8]]
+== А8. SIMD и код, который знает о процессоре (необязательно)
+
+*Зачем.* Без этого шага всё уже работает: геометрия идёт через SIMDe (переносимую библиотеку,
+изображающую SSE на любой архитектуре), растеризатор — через переносимые SWAR-ядра (так работает
+riscv64). Шаг нужен ради скорости. Но *проверить* его нужно в любом случае: нужно убедиться, что
+переносимые пути на новой архитектуре дают тот же результат.
+
+*Где архитектура встречается в коде движка.*
+
+[cols="2,3", options="header"]
+|===
+| Файл | Что сделать для новой архитектуры
+
+| `runtime/include/sprt/runtime/geom/simd_attr.h`, `simd.h`
+| Выбор SIMD-бэкенда геометрии. Без изменений новая архитектура получит SSE через SIMDe или скалярный
+  бэкенд. Свой бэкенд — новый `simd_<isa>.h` (образец `simd_lsx.h`), новый
+  `SP_GEOM_DEFAULT_SIMD_<ISA>` и ветка выбора.
+
+| `stappler/raster/SPRasterAttr.h`, `SPRasterCpu.cc`, `SPRasterKernel.h`, `SPRasterDispatch.cc`, `SPRaster.scu.cpp`
+| Наборы ядер растеризатора. Свой набор — флаг в `SPRasterAttr.h`, определение возможностей процессора
+  в `SPRasterCpu.cc`, значение `KernelSet`, место в порядке выбора в `SPRasterDispatch.cc`, файл
+  `SPRasterKernels<Isa>.cc` и *обязательно* его `#include` в `SPRaster.scu.cpp`. В sprt нет
+  `getauxval`: LoongArch читает `/proc/self/auxv` и использует `cpucfg` как запасной путь.
+
+| `stappler/core/string/SPGost3411-2012.cc`
+| Порядок байтов. Должен определяться по `__BYTE_ORDER__`. Старая версия угадывала его по списку
+  архитектур и считала big-endian всё, чего нет в списке, включая riscv64. Это исправлено в
+  `5be3d759`; убедитесь, что исправление есть в вашей ветке.
+
+| `runtime/src/platform/SPRuntimePlatform-posix.cc`
+| `rdtsc()`: счётчик тактов есть для x86 (`__rdtsc`) и aarch64 (`cntvct_el0`), остальные получают
+  `SP_HAS_RDTSC 0`. Можно добавить свой (`rdtime` на RISC-V, `rdtime.d` на LoongArch).
+
+| `xenolith/core/XLCore.h`
+| `XL_USE_64_BIT_PTR_DEFINES` для дескрипторов Vulkan. Определяется по `__LP64__` и покрывает любую
+  64-битную архитектуру Linux. Проверьте, только если у вас не-LP64 модель.
+|===
+
+*Проверка (под qemu, как в А7).*
+
+[source,sh]
+----
+qemu-<arch> -L $ROOT -E LD_LIBRARY_PATH=/lib .../runtimetest runtime_geom_simd
+qemu-<arch> -L $ROOT -E LD_LIBRARY_PATH=/lib .../stapplertest raster gost3411
+----
+
+Разделы `runtime_geom_simd` и `gost3411` появились вместе с loongarch64 (`5be3d759`).
+`stapplertest raster` сравнивает каждый доступный набор ядер со скалярным побайтно. Чтобы проверить и
+переносимый путь, соберите вариант без SIMD:
+`-DSP_GEOM_DEFAULT_SIMD=SP_GEOM_DEFAULT_SIMD_SCALAR -DSP_GOST3411_SCALAR=1` и запустите с
+`SP_RASTER_KERNELS=scalar`. Если у архитектуры есть необязательные расширения, прогоните тесты и с
+ними, и без них (например, `qemu-loongarch64 -cpu la464,lasx=off`).
+
+*Готово, когда:* все три раздела проходят на сборке по умолчанию и на скалярной сборке. Если добавлены
+свои ядра, `stapplertest raster` перечисляет их и сравнивает со скалярными.
+
+[[a9]]
+== А9. Набор инструментов, работающий на новой архитектуре (необязательно)
+
+*Зачем.* До этого шага приложения под `<arch>` собирались на x86_64. Этот шаг делает так, чтобы clang,
+lld, make и xlmake работали *на самой* машине `<arch>` под Linux. Это host-набор в смысле
+xref:new-host-os.adoc[плана В], но для уже поддержанной ОС: каталоги `host-linux-glibc/cross/` и
+`host-linux-musl/cross/` уже существуют, в них нужно только добавить архитектуру.
+
+*Что сделать.*
+
+. В `runtime/toolchains/host-linux-glibc/cross/Makefile` и `host-linux-musl/cross/Makefile` — блок
+  архитектуры (`SP_ARCH_LLVM`; для musl ещё `SP_ARCH_KERNEL`) и текст ошибки, перечисляющий
+  допустимые значения:
++
+[source,make]
+----
+else ifeq ($(SP_ARCH_HOST),riscv64)
+SP_ARCH_LLVM := RISCV
+----
+. Если при LTO-сборке lld теряет атрибуты архитектуры (на riscv64 так и было), добавьте
+  обходной путь `LTO_LDFLAGS` по образцу riscv64 (`-Xlinker -mllvm -Xlinker -mattr=…`).
+. В `host-linux-musl/musl.mk` — соответствие архитектура → бэкенд LLVM, архитектура → имя для ядра и,
+  если нужно, версия ядра.
+. В `runtime/toolchains/Makefile`:
++
+[source,make]
+----
+host-cross-<arch>-unknown-linux-gnu: target-<arch>-unknown-linux-gnu
+	$(MAKE) -C host-linux-glibc/cross out OUT_SYSROOT=$(abspath hosts/<arch>-unknown-linux-gnu) SP_ARCH_HOST=<arch>
+host-cross-<arch>-unknown-linux-musl: target-<arch>-unknown-linux-musl
+	$(MAKE) -C host-linux-musl/cross out OUT_SYSROOT=$(abspath hosts/<arch>-unknown-linux-musl) SP_ARCH_HOST=<arch>
+----
++
+и впишите обе цели в `host-cross-all` и `.PHONY`. В `RELEASE_HOSTS` их добавляет <<a12,А12>>.
+
+[source,sh]
+----
+make -C runtime/toolchains host-cross-<arch>-unknown-linux-gnu
+----
+
+`utils/porting/check-toolchain.py <arch>-unknown-linux-gnu` проверяет состав набора, а с `--run` на
+машине `<arch>` — ещё и запуск инструментов и библиотеки, которые они загружают.
+
+*Готово, когда:* `runtime/toolchains/hosts/<arch>-unknown-linux-gnu/` содержит `bin/`, `lib/`,
+`host.mk` и `release`. На машине `<arch>` (или под qemu-user) `bin/clang --version` работает, а
+`bin/xlmake -C tests/runtime` собирает и запускает `runtimetest`. Полный список проверок host-набора —
+xref:new-host-os.adoc#v6[В6].
+
+[[a10]]
+== А10. Android на новой архитектуре (необязательно)
+
+*Зачем.* Android — это ядро Linux с libc bionic, и для движка это отдельная цель со своими
+заголовками ABI и своим набором. Сейчас в движке четыре ABI Android: `arm64-v8a`, `x86_64`,
+`armeabi-v7a`, `x86`. Готового образца пятого нет. Реалистичный кандидат — riscv64; он упоминается
+только в `names.mk`.
+
+*Что сделать.*
+
+. `runtime/include/sprt/c/cross/android_sprt/<arch>_sprt/` — те же шесть файлов, что в А3, но числа
+  сверяются с bionic из NDK.
+. `runtime/toolchains/target-android/Makefile` — блоки `SP_ARCH_<x>_INFO_BASE`, `_NDK`, `_INFO`,
+  рецепты и список `ARCHS_NDK`. Сейчас `ANDROID_PLATFORM_LEVEL` один на все ABI (24). Новым ABI NDK
+  обычно требует более высокий уровень API, поэтому уровень, скорее всего, придётся сделать
+  отдельным для каждой архитектуры. Проверьте требование по документации NDK вашей версии.
+. `target-android/install-target-ndk.mk` — в нём четыре ABI перечислены явно (`DIFF_FILES_*`,
+  `ARCH_*_SOURCE`, `ARCH_TARGET_DIRS`, шаблонные правила).
+. `target-android/init-target.mk` — имена `SP_RES_ARCH` для путей к libunwind и builtins из NDK;
+  `target-android/openssl.mk` — конфигурация `android-<arch>` должна существовать в OpenSSL;
+  `common/wamr.mk` — блок Android.
+. `make/os/android-ndk.mk` — соответствие `TARGET_ARCH_ABI` → тройка и список `APP_ABI`.
+. `runtime/toolchains/Makefile` — правило `target-<arch>-unknown-linux-android`.
+
+*Готово, когда:* `make -C tests/runtime STAPPLER_TARGET=<arch>-unknown-linux-android` собирается
+(проверки ABI сравнивают числа с bionic); `xenolith-cli build tests/window --target
+unknown-ndk-linux-android -j1` собирает все ABI, включая новый; `runtimetest` проходит на эмуляторе
+или устройстве. Как запускать на Android — link:../../../agents/platforms.md[platforms.md], раздел 3.3.
+
+[[a11]]
+== А11. Windows и macOS на новой архитектуре (если появится у производителя)
+
+На этих системах sprt устроен иначе: на Windows он *сам является* libc (`runtime/libc_impl`), поэтому
+архитектура затрагивает ассемблер, структуры контекста процессора и разбор исполняемых файлов.
+Образец — серия коммитов aarch64 Windows (`20d2a73b`, `91bc1694`, `0b3df235`).
+
+*Windows.*
+
+* `runtime/toolchains/target-windows/Makefile` — наборы `SP_ARCH_<x>_*` и рецепты, включая вариант
+  `+dll`; `target-windows/openssl.mk` и `replacements/openssl/49-xwin-clang.conf`.
+* `runtime/include/sprt/c/cross/windows_sprt/<arch>_sprt/` — заголовки ABI.
+* `runtime/libc_impl/asm/Windows/<arch>/` — `chkstk.s` (с псевдонимом `_alloca_probe`) и `fenv.s`;
+  ветки по архитектуре в `runtime/musl-adapters` (`musl_fenv.c`, `string/musl_string.c`, `math/*`).
+* Все места с `_M_ARM64` или `__SPRT_ARCH_ID` в Windows-коде: структуры `CONTEXT`
+  (`wrappers/windows/abi/context_api.h`), TEB и PEB (`__sprt_intrin.h`, `libc_impl/.../dllloader.cc`),
+  разбор переходников импорта (`dlfcn.cc`), `RtlUnwindEx` (`except.cc`), cookie защиты стека
+  (`startup.cc`), backtrace (`libc_wrapper/runtime/SPRuntimeBacktrace.cpp`), `MemoryBarrier` и
+  `YieldProcessor`.
+* `runtime/sprt-shared-windows.mk` — `SPRT_LIB_MACHINE`; `stappler/makefile/SPMakefileBuiltins.cc` и
+  `make/utils/init-powershell.mk` — имя архитектуры на Windows-host;
+  `runtime/toolchains/common/utils/detect-platform.mk`.
+* Проверка: `tests/libc/windows-abi/check.sh --arch <arch>` сравнивает структуры с настоящими
+  заголовками SDK (только компиляция), затем полная кросс-сборка. Wine запускает только x86_64.
+
+*macOS.* Блоки `SP_*_INFO` в `runtime/toolchains/target-apple/Makefile`, списки функций для
+открытого sysroot (`target-apple/functions_<arch>.txt`), `macos_sprt/<arch>_sprt/`, проверка —
+`tests/libc/macos-abi/check.sh`. Новая архитектура Apple маловероятна, поэтому подробнее план её не
+расписывает.
+
+[[a12]]
+== А12. Выпуск, установщик и документация
+
+*Зачем.* Архитектура, которой нет в списках релиза и в установщике, существует только на машине того,
+кто её портировал.
+
+*Что сделать.*
+
+. *Списки релиза* в `runtime/toolchains/Makefile`: добавьте тройки в `RELEASE_TARGETS` (А5) и, если
+  сделан А9, в `RELEASE_HOSTS`. Если в вашей ветке есть `runtime/toolchains/check-release.py`,
+  впишите архитектуру в его `triple_arch()` и в таблицу машин ELF (`ELF_MACHINES`, номер `EM_*` из
+  `elf.h`).
+. *Определение архитектуры host-системы.* Если `uname -m` на машине `<arch>` печатает не то, что стоит
+  в тройке (`ppc64le`, `arm64`, `amd64`), добавьте перевод во все три места, где он делается:
+  `make/utils/init-sh.mk`, `make/utils/init-xlmake.mk` (и `stappler/makefile/SPMakefileBuiltins.cc`,
+  откуда xlmake берёт `XL_UNAME_MACHINE`), `make/utils/init-powershell.mk`.
+. *xenolith-cli*, `utils/installer/core/src/SPITriple.cc`: `kKnownHosts` (если есть host-набор),
+  `getServerArch` (имена архитектуры, которые может прислать сервер или ОС), `getNativeArch`
+  (`#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_<ARCH>`).
+. *Скрипты установки*: таблица `uname -s:uname -m` в `install.sh` (сейчас в ней нет ни riscv64, ни
+  loongarch64 — проверьте) и `install.ps1` для Windows.
+. *CI выпуска CLI*: `.github/workflows/cli-release.yml`, новая строка матрицы. Если запустить
+  результат на CI нечем, пометьте строку `best-effort: true`, как сделано для loongarch64.
+. *Документация*, где перечислены архитектуры:
+** link:../general/support.adoc[support.adoc] — таблица поддержки и примечания (минимальные версии
+   ядра и glibc, недоступные модули);
+** `README.md`, `runtime/toolchains/README.adoc` (список целей и cross host),
+   `runtime/toolchains/RELEASE_NOTES.md` (таблица с версиями glibc и UAPI);
+** `docs/agents/cross-target.md` (как проверять под qemu), `docs/agents/quick-reference.md` (тройки),
+   `docs/platforms/linux.adoc` (перечень `linux_sprt/<arch>_sprt`);
+** `docs/api/runtime/defines.adoc`, если появились новые `SP_GEOM_DEFAULT_SIMD_*`.
+
+*Готово, когда:* `make -C runtime/toolchains release-check` видит новые наборы с правильной меткой
+версии; `xenolith-cli detect` на машине `<arch>` (или с `STAPPLER_HOST=<triple>`) печатает правильную
+тройку; документация перечисляет архитектуру со всеми ограничениями.
+
+== Итоговая проверка
+
+Перед тем как объявить порт готовым:
+
+. Уровень 1: `tests/runtime`, `tests/libc`, `tests/stappler`, `tests/window` собираются под обе тройки
+  (<<a6,А6>>).
+. Уровень 2: `compare.sh` и полный `runtimetest` под qemu-user без расхождений (<<a7,А7>>).
+. Уровень 3, если делался: `runtime_geom_simd`, `raster`, `gost3411` на SIMD- и скалярной сборке
+  (<<a8,А8>>).
+. *Регрессия:* `tests/run-checks.py full` на x86_64 Linux и сборка `tests/runtime` под
+  `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`, `aarch64-unknown-linux-android`, `wasm32`.
+  Порт меняет общие заголовки и списки — проверьте, что соседи не сломались.
+
+[[risks]]
+== Риски и подводные камни
+
+*Тихо неправильные заголовки.* Самая опасная ошибка порта не мешает сборке. Это неверный номер
+системного вызова (они не проверяются, см. <<a3,А3>>) или ветка в `__sprt_def.h`, скопированная
+вместе с чужим именем архитектуры (см. <<a2,А2>>). Сборка их не ловит. Первое находит
+`check-abi.py`, второе — `check-arch.py` (он сверяет, что две ветки цепочки не выбирают одну
+архитектуру); остальное ловится только запуском.
+
+*Архитектура в списках, которые никто не читает.* В `target-linux/compiler_rt.mk` и
+`target-linux/libc{pp}.mk` есть `ifeq ($(SP_ARCH),riscv64) RISCV := 1`, но переменная `RISCV` нигде не
+используется. Не копируйте такие блоки «на всякий случай»: перед тем как добавлять архитектуру в
+очередной список, найдите, кто его читает.
+
+*Зависимость, которую нельзя собрать.* Если библиотека не поддерживает архитектуру, модуль движка,
+который её использует, станет недоступен (`stappler_wasm` на loongarch64). Make сам этого не
+запрещает: проект, который подключит такой модуль, упадёт на компоновке. Запишите ограничение в
+`support.adoc`.
+
+*Big-endian.* Движок нигде не тестировался на big-endian. `target.ini` пишет `endian = 'little'`
+жёстко, часть форматов и хешей может неявно предполагать little-endian. Такой порт — отдельная
+исследовательская задача, а не просто прохождение этого плана.
+
+*Отличия qemu от железа.* qemu-user не эмулирует io_uring (поэтому эта ветка цикла событий под ним
+не проверяется), не воспроизводит слабую модель памяти многих архитектур и по умолчанию включает
+все необязательные расширения процессора. Окончательная проверка — на настоящем железе или в
+qemu-system с реальной моделью процессора.
+
+*Старая версия glibc.* Если первая glibc с портом архитектуры новее 2.33, приложения под эту
+архитектуру не запустятся на системах со старой glibc. Это свойство архитектуры, а не порта, но его
+нужно записать в `support.adoc`.
+
+== Сводный список файлов
+
+Для самопроверки — что обычно меняет порт архитектуры на Linux (по образцу `5be3d759`):
+
+----
+runtime/include/sprt/c/bits/__sprt_def.h                       А2
+xenolith/remote/XLRemotePeerInfo.{h,cc}                        А2
+runtime/include/sprt/c/cross/linux_sprt/<arch>_sprt/*          А3  (6 новых файлов)
+runtime/include/sprt/c/cross/linux_sprt/sockdef.h              А3  (если нужно)
+make/os/linux.mk                                               А3, А6
+runtime/toolchains/common/utils/names.mk                       А4
+runtime/toolchains/host-*/…  (LLVM_TARGETS_TO_BUILD)           А4
+runtime/toolchains/common/<lib>.mk, replacements/, src.mk      А4
+runtime/toolchains/target-linux/{Makefile,openssl.mk}          А5
+runtime/toolchains/target-linux/{glibc,musl}/Makefile          А5
+runtime/toolchains/Makefile                                    А5, А9, А12
+runtime/include/sprt/runtime/geom/simd*.h                      А8  (необязательно)
+stappler/raster/*, stappler/core/string/SPGost3411-2012.cc     А8  (необязательно)
+runtime/toolchains/host-linux-{glibc,musl}/cross/Makefile      А9  (необязательно)
+runtime/toolchains/host-linux-musl/musl.mk                     А9  (необязательно)
+tests/libc/compare.sh, tests/runtime, tests/stappler           А7, А8
+utils/installer/core/src/SPITriple.cc, install.sh              А12
+.github/workflows/cli-release.yml                              А12
+README.md, docs/…, runtime/toolchains/{README.adoc,RELEASE_NOTES.md}  А12
+----

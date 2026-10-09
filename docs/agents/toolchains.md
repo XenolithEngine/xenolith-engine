@@ -34,6 +34,11 @@
   answers whether `<dir>` already holds what it would write. A program with its own operation
   families or environment builds its own tool around `flow::codegen::runTool`
   ([the generator](../usage/flow/flow-codegen.adoc)).
+- **Porting scripts** (`utils/porting/`) read the tree, the toolchains and the sysroots and report
+  what a port to a new architecture, target OS or host OS still lacks: `check-arch.py`,
+  `check-target-os.py`, `check-host-os.py`, `detect-host.py`, `check-sysroot.py`, `check-toolchain.py`,
+  `check-abi.py`, `find-refs.py`. They never edit or build anything; see
+  [their README](../../utils/porting/README.adoc) and the porting plans in `docs/articles/*/porting/`.
 - **`xlmake`** (`utils/xlmake/`) is the project's GNU-make-compatible build driver
   (also a drop-in for the VSCode Makefile Tools extension); the `make` invocations
   in this document work with either.

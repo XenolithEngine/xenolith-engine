@@ -1,0 +1,804 @@
+= План Б. Новая операционная система как target
+:toc:
+:toclevels: 2
+
+Этот план описывает, как сделать так, чтобы приложения на Xenolith собирались *под* новую ОС и
+запускались *на* ней. Сам набор инструментов при этом продолжает работать на привычной машине —
+обычно x86_64 Linux. Чтобы инструменты работали и на новой ОС, после этого плана выполняется
+xref:new-host-os.adoc[план В].
+
+Термины (hosted и freestanding, sysroot, `target.mk`, `TARGET_SYSTEM`, config gate, cross-заголовки)
+определены во xref:index.adoc#glossary[вводном файле]. Если у ОС уже есть поддержка, но не на вашем
+процессоре, — это xref:new-arch.adoc[план А].
+
+*Образцы.* План выведен из пяти реальных портов:
+
+* *NuttX* (`fc2674e5`, link:../../../platforms/nuttx.adoc[nuttx.adoc]) и *Embox* (`5f794ad7`,
+  link:../../../platforms/embox.adoc[embox.adoc]) — RTOS со своей libc;
+* *WebAssembly* (серия с `3738a4da`, link:../../../platforms/wasm.adoc[wasm.adoc]) и *Embox в режиме
+  EL0* (`739cf14f` и далее) — sprt сам является libc;
+* *XenolithOS* (`3ec71fbb`, `runtime/toolchains/target-xenolithos/`) — дистрибутив Linux под своим
+  вендором.
+
+Коммиты NuttX и Embox — сжатые «импорты» по сто с лишним файлов, по ним трудно понять порядок работы.
+Порядок в этом плане восстановлен по комментариям в коде, по истории wasm и по поэтапному плану Embox
+EL0, где он записан явно.
+
+*Скрипты.* `utils/porting/check-target-os.py <os> --like nuttx` проверяет шаги Б2–Б12, в том числе
+каждую точку выбора платформенного слоя runtime. `utils/porting/find-refs.py --like SPRT_NUTTX --new
+SPRT_<OS>` находит ветки, которые есть у NuttX и которых ещё нет у вашей ОС. Описание всех скриптов —
+link:../../../../utils/porting/README.adoc[utils/porting/README.adoc].
+
+== Что значит «добавить ОС как target»
+
+Почти вся работа происходит в `runtime/`. В `stappler/` и `xenolith/` при переносе NuttX, Embox и
+wasm изменилось по нескольку строк. Причина — всё, что зависит от ОС, движок прячет за sprt: потоки,
+часы, файлы, цикл событий, окна. Значит, порт сводится к тому, чтобы научить sprt *одной* новой ОС,
+а остальной движок заработает сам.
+
+Порт проходит пять рубежей:
+
+[cols="1,3,2", options="header"]
+|===
+| Рубеж | Что получаем | Шаги
+
+| 1. Окружение
+| ОС запускается в эмуляторе или на плате; понятно, как туда доставить и запустить программу
+| <<b1,Б1>>
+
+| 2. Сборка
+| `tests/runtime` собирается под новую тройку, проверки ABI проходят
+| <<b2,Б2>>–<<b7,Б7>>
+
+| 3. Работа
+| `runtimetest` проходит на новой ОС
+| <<b8,Б8>>
+
+| 4. Графика
+| Приложение Xenolith открывает окно (или работает без окна) и рисует
+| <<b9,Б9>>, <<b10,Б10>>
+
+| 5. Выпуск
+| Документация, публикация набора, регрессия на старых платформах
+| <<b11,Б11>>–<<b13,Б13>>
+|===
+
+[[forms]]
+== Три формы целевой платформы
+
+Это первое и главное решение. От него зависит, какую половину плана вы будете выполнять.
+
+[cols="1,2,2,2", options="header"]
+|===
+| | Hosted (поверх libc ОС) | Freestanding (sprt — это libc) | Другой вендор известной ОС
+
+| Когда
+| У ОС есть libc, достаточно близкая к POSIX: можно вызывать её `open`, `pthread_create`, `mmap`
+| libc у ОС нет, или она непригодна, или приложение работает вне её (пользовательский режим
+  микроядра, браузер)
+| ОС уже поддержана (Linux), но нужен свой sysroot: другая версия glibc, свой корень файловой
+  системы, свои драйверы
+
+| Как работает sprt
+| `runtime/libc_wrapper` оборачивает функции libc ОС и сверяет числа через `static_assert`
+| `runtime/libc_impl` + платформенно-независимые части musl + mimalloc реализуют libc; ОС даёт только
+  системные вызовы или их аналог
+| без изменений
+
+| Откуда sysroot
+| *импортируется* из сборки ОС (заголовки и библиотеки ОС)
+| собирается целиком нашими средствами: заголовки sprt, LLVM-runtimes, зависимости
+| собирается тулчейном той ОС, на которой основан
+
+| Примеры
+| Linux, Android, macOS, NuttX, Embox (EL1)
+| Windows, WebAssembly, Embox EL0 (`+user`), Tau
+| XenolithOS (`<arch>-xenolithos-linux-gnu`, `TARGET_SYSTEM := Linux`)
+
+| Объём работы
+| средний: платформенный слой + исправление чисел
+| большой: ещё и сама libc (запуск процесса, TLS, файлы, время, сокеты, ассемблер)
+| маленький: только тулчейн, шаги <<b4,Б4>> и <<b12,Б12>>
+|===
+
+Как выбрать:
+
+* Если libc ОС есть, выбирайте *hosted*: так меньше кода и меньше конфликтов с библиотеками самой
+  ОС.
+* Выбирайте *freestanding*, если libc ОС нет или если она расходится с POSIX настолько, что обёртка
+  будет больше реализации (так решено для Windows, см.
+  link:../windows/windows-support.adoc[Поддержка Windows]).
+* Одна ОС может иметь обе формы. Embox — пример: ядро (EL1) — hosted на libc Embox, пользовательский
+  режим (EL0, вариант `+user`) — freestanding, со своим `TARGET_SYSTEM := EmboxUser`.
+
+Дальше в плане шаги и пункты, относящиеся только к одной форме, помечены *[hosted]* и
+*[freestanding]*. Для формы «другой вендор» выполните <<b4,Б4>> по образцу
+`runtime/toolchains/target-xenolithos/` и переходите к <<b11,Б11>>.
+
+== Решения перед началом
+
+Запишите ответы в описании первого коммита или в `docs/platforms/<os>.adoc`.
+
+*Р1. Форма* — см. выше.
+
+*Р2. Имена.* Нужно придумать четыре имени, и они разные:
+
+[cols="1,2,2", options="header"]
+|===
+| Имя | Где используется | Пример NuttX
+
+| `STAPPLER_TARGET`, тройка
+| имя каталога набора и параметр сборки
+| `aarch64-nuttx-none-elf`
+
+| `--target` для clang
+| что реально передаётся компилятору
+| `aarch64-none-elf`
+
+| макрос ОС
+| определяется флагом в `target.mk`, по нему sprt узнаёт платформу
+| `-D__NuttX__`
+
+| `TARGET_SYSTEM`
+| имя OS-пресета make
+| `NuttX`
+|===
+
+Если LLVM не знает вашу ОС (так было с NuttX и Embox), имя ОС уходит в поле *вендора* тройки, а
+clang получает «голую» (baremetal) тройку `<arch>-none-elf`. Если LLVM ОС знает (FreeBSD, например),
+используйте его тройку и его предопределённый макрос (`__FreeBSD__`) — тогда флаг `-D` не нужен.
+
+*Р3. Первая архитектура.* Берите ту, что уже поддержана движком на других ОС (aarch64 или x86_64):
+тогда заголовки ABI для архитектуры уже есть, и все ошибки будут «про ОС». Вторую архитектуру
+добавьте позже по xref:new-arch.adoc[плану А].
+
+*Р4. Как запускать.* Эмулятор (qemu-system для встраиваемых ОС, node для wasm), плата или виртуальная
+машина. Если приложение нельзя запустить как отдельный процесс (NuttX и Embox EL1 линкуют
+приложение прямо в образ ядра), заранее решите, где будут жить скрипты сборки образа. Для NuttX и
+Embox они живут вне репозитория движка, в отдельном репозитории `xenolith-os`.
+
+*Р5. Графика.* Три варианта по возрастанию сложности: только `--headless`; программный растеризатор
+в кадровый буфер (`/dev/fb0` или аналог); Vulkan (драйвер ОС или Mesa lavapipe/Venus, вкомпилированный
+в образ, как на Embox).
+
+*Р6. Можно ли распространять sysroot.* Hosted sysroot содержит заголовки и библиотеки ОС. Если их
+лицензия не позволяет класть их в наш релиз (так с NuttX и Embox), набор собирается у пользователя, а
+в релиз SDK не попадает. Это влияет на <<b12,Б12>>.
+
+[[b1]]
+== Б1. Окружение: запустить ОС и программу на ней
+
+*Зачем.* Все проверки после <<b7,Б7>> — это запуск на целевой ОС. Если запуск не налажен заранее,
+вы окажетесь с готовым кодом, который нечем проверить.
+
+*Что сделать.*
+
+. Поднимите ОС в эмуляторе или на плате и запишите точную команду запуска. Для NuttX это
++
+[source,sh]
+----
+qemu-system-aarch64 -cpu cortex-a53 -machine virt,virtualization=on,gic-version=2 -smp 4 \
+    -display none -serial stdio -kernel $NUTTX/nuttx \
+    -device virtio-gpu-device,xres=640,yres=480 -netdev user,...
+----
+. Соберите и запустите на ней «hello world» *собственным* тулчейном ОС. Так вы узнаете, как программа
+  попадает в систему (файл в образе, загрузчик ELF, сетевая папка) и куда идёт её вывод (последовательный
+  порт, консоль).
+. *[hosted]* Включите в конфигурации ОС всё, что потребуется sprt. Список, который понадобился NuttX:
+  ключи TLS для `pthread_key_*` (`CONFIG_TLS_NELEM`), каналы (pipe) для пробуждения цикла событий,
+  переменные окружения, инициализация C{pp} (`CONFIG_HAVE_CXX`, `CONFIG_HAVE_CXXINITIALIZE`),
+  `setjmp/longjmp`. Если ОС не умеет сохранять регистр TLS при переключении потоков, отключите
+  нативный TLS и используйте эмулированный (`-femulated-tls`) — так пришлось сделать на NuttX/aarch64.
+. Узнайте, какая у ОС точка входа и как она называет `main`. На NuttX приложение вызывается не
+  через `main`, а через переименованную функцию, поэтому движок экспортирует `xenolith_main`
+  (см. <<b10,Б10>>).
+
+*Готово, когда:* есть записанная команда, которая за минуту доставляет программу на ОС, запускает её
+и показывает вывод. Для графики — способ получить снимок экрана (у qemu это `screendump` через QMP).
+
+[[b2]]
+== Б2. Научить sprt узнавать платформу
+
+*Зачем.* Весь код движка различает платформы по одному макросу `SPRT_<OS>`. Его определяет только
+`runtime/include/sprt/c/bits/__sprt_def.h` по предопределённым макросам компилятора. Пока ветки нет,
+сборка останавливается на `#error "Unknown platform"`.
+
+*Что сделать.*
+
+. В `__sprt_def.h` добавьте имя и номер платформы рядом с остальными:
++
+[source,c]
+----
+#define __SPRT_PLATFORM_NAME_MYOS myos_sprt     // каталог cross-заголовков
+#define __SPRT_PLATFORM_ID_MYOS 11              // следующее свободное число
+----
+. Добавьте ветку в цепочку распознавания. *Порядок важен*: проверка идёт сверху вниз, и RTOS могут
+  определять «линуксовые» макросы. Поэтому ветки NuttX и Embox стоят *до* `__linux__`. Ставьте свою
+  ветку перед первой платформой, макросы которой ваша ОС может случайно определить.
++
+[source,c]
+----
+#elif defined(__MYOS__)
+// MyOS. LLVM has no OSType for it, so target-myos passes -D__MYOS__.
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_MYOS
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_MYOS
+#define SPRT_MYOS __SPRT_PLATFORM_ID_MYOS
+----
+. Посмотрите на групповые макросы ниже в том же файле: `SPRT_HOSTED_RTOS` («есть libc RTOS, и это не
+  glibc и не Darwin», сейчас NuttX и Embox), `SPRT_EMBOX_ANY`. Если ваша ОС ведёт себя как одна из
+  групп, добавьте её туда. Так она сразу получит готовые ветки, например упрощённый цикл событий в
+  xenolith.
+. В `runtime/include/sprt/c/cross/__sprt_errno.h` добавьте `#elif SPRT_<OS>` с подключением
+  `errno.h` вашей платформы. Здесь имя каталога нельзя подставить автоматически, как в остальных
+  местах: макроподстановка ломается, когда `errno` — сам макрос.
+. Проверьте заголовки `runtime/include_libc/` с условиями по платформам: `errno.h`, `netdb.h`,
+  `syslog.h`, `termios.h` перечисляют платформы, у которых нет соответствующей функции в libc.
+
+*Готово, когда:* `--target=<clang-тройка> -D__<OS>__` проводит препроцессор через `__sprt_def.h` и
+останавливается уже на отсутствующих `cross/<os>_sprt/…` (их создаёт Б3). Небольшой файл, который
+включает `<sprt/c/__sprt_*.h>` и печатает `__SPRT_PLATFORM_NAME`, показывает вашу платформу, а на
+Linux, Windows и wasm — прежние.
+
+[[b3]]
+== Б3. Заголовки ABI: `cross/<os>_sprt/`
+
+*Зачем.* sprt даёт приложениям единый интерфейс libc, но числа (коды ошибок, флаги, размеры структур)
+у каждой ОС свои. Их берёт из `runtime/include/sprt/c/cross/<os>_sprt/`.
+
+*Что сделать.*
+
+. Создайте каталог `runtime/include/sprt/c/cross/<os>_sprt/` с тем же набором файлов, что у NuttX:
++
+----
+clockid.h  config.h  dir_ptr.h  errno.h  fcntl.h  fdset.h  file_ptr.h  langinfo.h  locale.h
+math.h  mbstate.h  mman.h  netinetdef.h  polltypes.h  setjmp.h  signal.h  sockdef.h  socket.h
+stdio.h  stdlib.h  sysconf.h
+<arch>_sprt/{config.h, fcntl.h, fenv.h, jmp_buf.h, signal.h, syscall.h}
+----
++
+Что в каждом файле архитектурного подкаталога, описано в xref:new-arch.adoc#a3[А3].
+. *Начните с переадресации на Linux*: каждый файл — одна строка `#include` соответствующего файла из
+  `linux_sprt`. Так поступили Tau и Embox EL0. Это даёт рабочую сборку за час, а исправлять числа вы
+  будете в <<b7,Б7>> по сообщениям `static_assert`.
+. *`config.h`: честно выключите то, чего у ОС нет.* В `cross/__sprt_config.h` определено около
+  пятидесяти флагов `__SPRT_CONFIG_HAVE_*`, по умолчанию все равны 1. Переопределите в своём
+  `config.h` всё, чего ОС не даёт. Для начала безопаснее выключить всё, что связано с ядром Linux, и
+  включать по одному по мере того, как проверите. Пример из NuttX:
++
+[source,c]
+----
+#ifndef __SPRT_CONFIG_HAVE_EPOLL
+#define __SPRT_CONFIG_HAVE_EPOLL 0
+#endif
+// так же: EVENTFD, SIGNALFD, TIMERFD, URING, FUTEX, UNISTD_FORK, UNISTD_EXEC,
+// CHOWN, PTHREAD_AFFINITY, MMAN_MREMAP, MMAN_MEMFD, STAT_MKFIFO, FLOCK, ...
+----
++
+Выключенная функция не исчезает: она по-прежнему линкуется, при компиляции выдаёт предупреждение, а
+при вызове возвращает `ENOSYS`. Код движка, вызывающий её, менять не нужно.
+. *[hosted]* Правила, выученные на NuttX («NuttX is not Linux-ABI» в
+  link:../../../platforms/nuttx.adoc[nuttx.adoc]): переадресация на Linux оказалась неверной для
+  `dir_ptr`, `fcntl`, `sysconf`, `polltypes`, `fdset`, `sockdef`, `netinetdef`, `signal`, `clockid`,
+  `math`, `mbstate` и `mman`. Ожидайте того же и не доверяйте переадресации дольше первой сборки.
+** Если имени нет в ОС, его всё равно определяют, но значением из диапазона `0x1000` и выше, чтобы
+   оно не совпало ни с одним настоящим (образец — `embox_sprt/sysconf.h`).
+** Если значение зависит от конфигурации ядра ОС (размер таблицы, число ключей), его читают из
+   конфигурационного заголовка ОС (`<nuttx/config.h>`), а не записывают числом.
+. *[freestanding]* Числа выбираете вы сами — проверять их не с чем. Самое простое — взять числа Linux
+  (так сделаны wasm, Embox EL0 и Tau) и перевести их в числа ОС на границе системного вызова. Для
+  Embox EL0 таблицы перевода на стороне ядра генерирует скрипт `gen-abi-tables.py` в `xenolith-os`.
+
+*Готово, когда:* каталог создан, `config.h` выключает всё, что ОС заведомо не даёт, и препроцессор
+проходит все заголовки sprt. Правильность чисел в hosted-случае проверяется в <<b7,Б7>>.
+
+[[b4]]
+== Б4. Каталог тулчейна `runtime/toolchains/target-<os>/`
+
+*Зачем.* Здесь собирается целевой набор: всё, что нужно компилятору для сборки под ОС, и файл
+`target.mk`, через который система сборки движка о нём узнаёт.
+
+*Что сделать.* Скопируйте ближайший образец и переделайте его:
+
+* *[hosted]* — `target-nuttx/` (или `target-embox/`);
+* *[freestanding]* — `target-wasm/` или `target-embox-user/`;
+* *другой вендор* — `target-xenolithos/`.
+
+Состав каталога и роль каждого файла (на примере NuttX):
+
+[cols="1,3", options="header"]
+|===
+| Файл | Что делает
+
+| `Makefile`
+| Двухпроходный: внешний проход (`ifndef SP_ARCH`) проверяет входные данные и для каждой архитектуры
+  запускает шаги ниже; внутренний (`SP_ARCH=…`) собирает зависимости. Для каждой архитектуры
+  задаётся набор переменных `SP_ARCH_<arch>_INFO`: `SP_TARGET` (наша тройка), `SP_ARCH_TARGET_CLANG`
+  (тройка для clang), каталоги.
+
+| `import-export.mk` *[hosted]*
+| Распаковывает заголовки и библиотеки ОС в `sysroot/usr/{include,lib}` и вытаскивает из сборки ОС
+  её флаги (`Make.defs`) и конфигурацию (`.config`). Ничего не компилирует.
+
+| `init-target.mk`
+| Генерирует `toolchain.cmake` (для LLVM-runtimes), `toolchain-libs.cmake` (для зависимостей) и
+  *`target.mk`*. Создаёт ссылки `host` → host-набор и `lib/clang` → его заголовки компилятора. Кладёт
+  заголовки-заглушки для того, чего в libc ОС нет (`setjmp.h`, `fenv.h`, `complex.h`, `uchar.h`, …).
+
+| `compiler_rt.mk`
+| `libclang_rt.builtins-<arch>.a`. Если на ОС нет нативного TLS — с вкомпилированным `emutls.c`.
+
+| `libcxx.mk`
+| `libc{pp}abi.a` и `libunwind.a`. LLVM libcxx *не* собирается: libc{pp}abi собирается против
+  собственного C{pp} движка (`runtime/libcxx/include`). Если у ОС нет `dl_iterate_phdr`, unwinder
+  собирается в режиме baremetal (`LIBUNWIND_IS_BAREMETAL=ON`).
+
+| `openssl.mk`
+| OpenSSL собирается своим `Configure`, а не через cmake; нужна своя конфигурация.
+
+| `*-project-include.cmake`
+| Поправки, которые cmake-проекты зависимостей подключают перед конфигурацией.
+
+| `gen-probe-stubs.sh` *[hosted]*
+| Проверки возможностей в cmake должны *линковать* тестовую программу, а программа для RTOS без
+  платы сама не линкуется. Скрипт делает `libprobe-stubs.a` со слабыми заглушками всех недостающих
+  символов, только на время сборки зависимостей.
+
+| `install-target.mk`
+| Копирует результат из `intermediate/<triple>` в `targets/<triple>`, кладёт `target.mk`, лицензии и
+  метку версии `release`.
+
+| `README.adoc`
+| Почему выбрана эта форма, откуда sysroot, тройки, лицензия, закреплённая версия ОС.
+|===
+
+[[target-mk]]
+*Что должно быть в `target.mk`.* Контракт описан в комментарии в начале `make/utils/defaults.mk`.
+Обязательны три переменные:
+
+[source,make]
+----
+TARGET_SYSROOT := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))   # каталог самого набора
+TARGET_SYSTEM := NuttX                    # имя OS-пресета (см. Б5)
+TARGET_NAME := aarch64-none-elf           # что уйдёт в clang --target
+----
+
+Необязательны `TARGET_ARCH`, `TARGET_(GENERAL|LIB|EXEC)_(C|CXX|LD|S)FLAGS`,
+`TARGET_INCLUDE_DIR[_LIBC]` и `TARGET_LIB_DIR[_LIBC]`. Макрос ОС (`-D__NuttX__`) передаётся во
+флагах C, C{pp} *и* ассемблера (`TARGET_GENERAL_SFLAGS`), иначе ассемблерные файлы не узнают
+платформу. Правило разделения: *где лежит sysroot* — в `target.mk`; *что это за платформа* — в
+OS-пресете (Б5).
+
+*Сборка зависимостей.* Рецепты библиотек общие: `runtime/toolchains/common/<lib>.mk`. Платформенные
+настройки живут в одном месте — `runtime/toolchains/common/configure.mk`. Добавьте туда блок
+`ifdef <OS>` по образцу соседних:
+
+* *[hosted]* `-isystem runtime/include_libc -isystem runtime/include`, затем
+  `-idirafter <sysroot>/usr/include` (libc ОС — последней), макрос ОС, `-femulated-tls` при
+  необходимости, и строку компоновки для проверок (`SP_NUTTX_PROBE_LDFLAGS` — образец);
+* *[freestanding]* `-nostdinc -ffreestanding -nostdlib`, заголовки sprt,
+  `-idirafter <prefix>/lib/clang/include`, макрос ОС. Зависимости на C{pp} (harfbuzz) при этом
+  собираются в hosted-режиме.
+
+В `runtime/toolchains/common/utils/names.mk` добавьте `CONFIGURE_HOST_<System>_<arch>` (значение
+`--host` для autoconf; для NuttX это `aarch64-elf`). Флаг, включающий ваш блок в `configure.mk`
+(`NUTTX=1`), внутренний проход `Makefile` передаёт в `FORWARD_VARS`. Отдельные библиотеки иногда
+требуют поправки в своём `.mk` (например, `common/libpng.mk` переименовывает архив для wasm, NuttX и
+Embox). Такие поправки делайте только когда без них нельзя.
+
+*Сборка `libsprt.a`.* Внутренний проход собирает и сам runtime движка — тем `target.mk`, который
+только что сгенерирован:
+
+[source,make]
+----
+$(MAKE) -C $(SP_RUNTIME_ROOT) STAPPLER_HOST_FILE=$(SP_INSTALL_PREFIX)/host/host.mk \
+    STAPPLER_TARGET_FILE=$(SP_INSTALL_PREFIX)/target.mk STAPPLER_TARGET=$(SP_TARGET) \
+    LOCAL_MODULES="runtime_libc_wrapper runtime_core runtime" ...
+----
+
+Поэтому Б4 нельзя закончить раньше, чем соберётся runtime (<<b5,Б5>>, <<b6,Б6>>). Это нормально: шаги
+Б4–Б7 проходятся по кругу. Сначала доведите до конца генерацию `target.mk`, LLVM-runtimes и
+зависимости на C, потом возвращайтесь к `libsprt.a`.
+
+*Запуск.* Пока порт не готов, вызывайте Makefile каталога напрямую, а не корневой:
+
+[source,sh]
+----
+make -C runtime/toolchains/target-<os> target-<arch> [параметры импорта, например NUTTX_EXPORT=...]
+----
+
+Корневой `runtime/toolchains/Makefile` перед сборкой цели собирает host-набор (цель `host`), то есть
+пересобирает clang. Правило `target-<triple>` в корневом Makefile добавьте в конце, если цель будет
+собираться регулярно.
+
+Собранный набор проверяет `utils/porting/check-sysroot.py <triple>`.
+
+*Готово, когда:* в `runtime/toolchains/target-<os>/targets/<triple>/` есть `target.mk`,
+`usr/lib/libsprt.a`, `libclang_rt.builtins-<arch>.a`, `libc{pp}abi.a`, `libunwind.a` и архивы
+зависимостей. `nm` показывает ожидаемые символы (например, `__emutls_get_address` в builtins, если
+используется эмулированный TLS). Набор связан с тем местом, где его ищет сборка:
+
+[source,sh]
+----
+ln -sfn $PWD/runtime/toolchains/target-<os>/targets/<triple> runtime/toolchains/targets/<triple>
+----
+
+[[b5]]
+== Б5. OS-пресет make: `make/os/<os>.mk`
+
+*Зачем.* `target.mk` говорит, *где* набор. Пресет говорит, *как* собирать под эту ОС: какие суффиксы
+у файлов, какие флаги, как компоновать исполняемый файл.
+
+*Что сделать.*
+
+. Создайте `make/os/<os>.mk` по образцу `make/os/nuttx.mk` (hosted, приложение линкуется в образ ядра),
+  `make/os/embox-user.mk` (freestanding, настоящий статический ELF) или `make/os/wasm.mk`. В начале
+  `embox-user.mk` построчно перечислено, чем freestanding-пресет отличается от hosted, — прочтите это.
+  Пресет задаёт:
++
+[source,make]
+----
+OSTYPE_IS_NUTTX := 1
+OSTYPE_EXEC_SUFFIX :=                    # .elf, .wasm, .exe ...
+OSTYPE_LIB_SUFFIX := .a
+OSTYPE_LIB_PREFIX := lib
+OSTYPE_CONFIG_FLAGS := NUTTX             # уходит в сгенерированный заголовок конфигурации
+OSTYPE_GENERAL_CFLAGS := -fvisibility=hidden -ffunction-sections -fdata-sections -femulated-tls
+OSTYPE_GENERAL_CXXFLAGS := ... -frtti -fexceptions
+OSTYPE_GENERAL_LDFLAGS := ... -fuse-ld=lld
+OSTYPE_EXEC_LDFLAGS := -nostdlib -Wl,-r -Wl,--no-dependent-libraries
+NUTTX := 1                               # для ifdef NUTTX в .mk модулей
+----
++
+Главное решение — *способ компоновки*:
+** приложение встраивается в образ ОС (NuttX, Embox EL1): перемещаемый объект `-Wl,-r`, символы
+   ядра остаются неразрешёнными. С `--gc-sections` это несовместимо;
+** приложение — отдельная программа (Embox EL0): статический ELF, свой скрипт компоновки
+   (`-T $(TARGET_SYSROOT)/share/app-$(TARGET_ARCH).lds`), точка входа `-e _start`, адрес загрузки;
+** wasm: модуль с импортируемой разделяемой памятью и списком экспортов.
+. В `make/utils/apply-toolchain.mk` добавьте ветку в лестницу `ifeq ($(TARGET_SYSTEM),…)`:
++
+[source,make]
+----
+else ifeq ($(TARGET_SYSTEM),MyOS)
+	include $(BUILD_ROOT)/os/myos.mk
+----
+. Найдите `.mk` модулей, которые выбирают библиотеки по платформе, и добавьте свою ветку там, где
+  нужно. Сейчас это `stappler/bitmap/bitmap.mk` и `stappler/zip/zip.mk` (`-l:libz.a` для статических
+  платформ), `stappler/network/network.mk`, `runtime/window/window.mk`, `runtime/libcxx/libcxx.mk`,
+  `runtime/libc_impl/malloc.mk`, `xenolith/backend/vk/vk.mk`.
+
+*Готово, когда:* `make -C tests/runtime STAPPLER_TARGET=<triple> verbose=1` находит `target.mk`,
+подключает ваш пресет (без него будет `Unknown TARGET_SYSTEM`) и доходит до компиляции первых файлов
+runtime.
+
+[[b6]]
+== Б6. Платформенный слой runtime
+
+*Зачем.* Это и есть порт. sprt реализует потоки, блокировки, часы, файловую систему и цикл событий
+поверх того, что даёт ОС. Каждая из этих частей выбирается в одном месте — в `#if SPRT_<OS>`-лестнице
+соответствующего `.cpp`-файла, который подключает файл платформы (`.cc`).
+
+*Порядок важен.* Модуль `runtime_core` не соберётся в архив, пока у него нет потоков: реализация
+pthread — это около двенадцати функций-«крючков», без которых `runtime_core` не компонуется. Поэтому
+сначала блокировки и потоки, а цикл событий и окна — потом. Делайте подшаги в указанном порядке.
+
+[cols="1,2,2", options="header"]
+|===
+| Подшаг | Где выбирается | Что написать
+
+| а. Подключение и компоновка
+| `runtime/runtime.mk`, `runtime/libc_wrapper/libc-wrapper.mk`
+| Порядок каталогов заголовков, библиотеки для компоновки (`libc{pp}abi`, `libunwind`, builtins). Для
+  freestanding — зависимость `runtime_libc_impl` и `-nostdlib`. Если нужно — `libc_impl/malloc.mk`,
+  `libcxx/libcxx.mk`.
+
+| б. Блокировки
+| `runtime/core/runtime_core_sprt.cpp`
+| `runtime/core/<os>/sprt_lock.cc` (на Linux — futex, на NuttX — примитивы ОС). Если нативного TLS
+  нет — ещё `emutls.cc` (на Embox свой: там `pthread_key_create` не вызывает деструкторы).
+
+| в. Базовые функции
+| `runtime/core/runtime_core_defaults.cpp`; также `runtime_core_log.cpp`, `runtime_core_random.cpp`,
+  `runtime_core_setjmp.cpp`
+| Часы, `sched_yield`, `gettid`, куда идёт журнал, источник случайности, обёртка `setjmp`. Hosted RTOS
+  часто переиспользуют ветки Linux; freestanding пишет `core/<os>/{clock_gettime,sched,getrandom,uname}.cc`.
+  `runtime_core_setjmp.cpp` менялся во всех портах — проверьте его отдельно.
+
+| г. Потоки
+| `runtime/core/pthread/pthread.cc`
+| Hosted: `pthread_native_pthread.cc` уже подходит. Freestanding: свой `pthread_native_<os>.cc` с
+  набором крючков (`__createThread`, `__initNativeHandle`, `__exitNativeThread`,
+  `__getNativeThreadId`, …). *Сначала однопоточный* — этого хватит, чтобы собрать всё остальное.
+
+| д. *[freestanding]* libc
+| `runtime/libc_impl/src/builtin_*.cpp`
+| `runtime/libc_impl/src/<os>/`: запуск процесса (`_start`, настройка TLS), `unistd`, файлы и каталоги,
+  пути, `mman`, время и часовые пояса, локаль, завершение, `dlfcn`, сокеты. Каждый `builtin_<x>.cpp`
+  подключает файл платформы под `#if SPRT_<OS>`. Ассемблер — в `libc_impl/asm/<System>/<arch>/`,
+  аллокатор — платформенная часть mimalloc. Образец — `libc_impl/src/wasm/` и `src/embox_user/`.
+
+| е. *[hosted]* заглушки
+| `runtime/libc_wrapper/runtime/SPRuntimeCPlatform.cpp`
+| `runtime/libc_wrapper/platform/<os>/stubs.cc`: слабые (`weak`) реализации, возвращающие `ENOSYS`,
+  для того, чего в libc ОС нет вовсе (`dlopen`, сокеты без сетевого стека).
+
+| ж. Платформа, файлы, цикл событий
+| `runtime/src/platform/SPRuntimePlatform.cpp`, `runtime/src/filesystem/SPRuntimeFilesystem.cpp`,
+  `runtime/src/dispatch/SPRuntimeDispatchEvent.cpp`
+| `SPRuntimePlatform-<os>.cc` (локаль, идентификатор устройства, путь к исполняемому файлу, домашний
+  каталог); `SPRuntimeFilesystem-<os>.cc` (корни каталогов приложения: данные, настройки, кеш);
+  `src/dispatch/platform/<os>/SPEvent-<os>.{h,cc}` — бэкенд цикла событий.
+|===
+
+*Про цикл событий.* Это самая «платформенная» часть sprt. Возьмите за основу ближайший бэкенд из
+`runtime/src/dispatch/platform/`: `epoll` и `fd` — для POSIX-систем с `poll`, `darwin` — kqueue, `nuttx` —
+список таймеров и ожидание с ограничением 16 мс. Последний вариант появился потому, что каналы NuttX
+маленькие (1 КиБ) и блокируются. Чего бэкенд не умеет, то закрывается флагами config gate из Б3. Код
+движка вместо отсутствующих вызовов libc пользуется API Looper (`spawnProcess`, `watchFile`,
+`listenSocket`, `scheduleTimer`) — см.
+link:../../../usage/codestyle/platform/runtime-libc.adoc[runtime-libc.adoc].
+
+*Готово, когда:* `runtime_core` собирается в архив, `libsprt.a` из <<b4,Б4>> собирается, и
+`make -C tests/runtime STAPPLER_TARGET=<triple>` доходит до компоновки.
+
+[[b7]]
+== Б7. Первая сборка: проверки ABI при компиляции
+
+*Зачем.* *[hosted]* Модуль `runtime_libc_wrapper` компилируется вместе с заголовками libc вашей ОС и
+содержит больше тысячи проверок вида `static_assert(O_CREAT == __SPRT_O_CREAT)`. Сборка
+`tests/runtime` под новую цель — это и есть проверка заголовков из Б3. *[freestanding]* Здесь сверять
+не с чем, но сборка показывает, всё ли реализовано в libc.
+
+*Что сделать.* Соберите проекты по возрастанию размера:
+
+[source,sh]
+----
+make -C tests/runtime  STAPPLER_TARGET=<triple> -j8    # только runtime: самое маленькое целое
+make -C tests/libc     STAPPLER_TARGET=<triple> -j8
+make -C tests/stappler STAPPLER_TARGET=<triple> -j8
+----
+
+Как исправлять:
+
+* *Упал `static_assert`* — неверное число в заголовке `<os>_sprt`. Исправляйте *заголовок*, а не
+  проверку. Если в ОС этого имени нет, проверка пишется так, чтобы выполняться, когда имя есть:
++
+[source,c++]
+----
+#if !SPRT_NUTTX || defined(SO_REUSEPORT)
+static_assert(SO_REUSEPORT == __SPRT_SO_REUSEPORT);
+#endif
+----
++
+Никогда не `#ifdef` и никогда не удаление проверки целиком.
+* *Неопределённый символ при компоновке* — функции нет в libc ОС. Либо выключите её в `config.h`
+  (Б3), либо добавьте слабую заглушку (Б6е), либо реализуйте.
+* *Зависимости собраны «не в том режиме».* На hosted-цели зависимости обязаны собираться hosted: иначе
+  тип придёт из sprt, а функция — из libc ОС. Так на NuttX не совпал `pthread_once_t`, и OpenSSL
+  зависал в `OSSL_PROVIDER_load`. Если видите странные зависания внутри сторонней библиотеки, первым
+  делом проверьте флаги её сборки в `configure.mk`.
+
+*[hosted]* Сборка останавливается на первом неверном числе.
+`utils/porting/check-abi.py --target <triple>` показывает все расхождения сразу, и для каждого — где
+стоит его `static_assert`, чтобы прочитать условие исключения.
+
+*Готово, когда:* три проекта собираются под новую тройку. Предупреждения о недоступных функциях
+(`__SPRT_CONFIG_HAVE_* = 0`) — ожидаемые. Сборка под Linux, Windows и wasm не изменилась.
+
+[[b8]]
+== Б8. Запуск на целевой ОС
+
+*Зачем.* Сборка доказывает согласованность чисел, запуск — то, что платформенный слой работает.
+
+*Что сделать.* Доставьте `runtimetest` на ОС способом из <<b1,Б1>> и запускайте разделы по одному,
+от простого к сложному. Каждая группа проверяет следующий уровень платформенного слоя:
+
+. `libc_uname`, `libcxx_constexpr` — программа вообще запускается, конструкторы статических объектов
+  работают, вывод виден;
+. `libc_unistd`, `libc_fcntl`, `libc_dir`, `libc_time`, `libc_locale` — базовые функции libc;
+. `libc_setjmp` — `setjmp/longjmp` с вызовом деструкторов при размотке стека. На NuttX для этого
+  понадобились символы `__eh_frame_*` из скрипта компоновки платы; со слабыми нулями сборка
+  проходит, а `throw` падает;
+. `libc_pthread`, `libc_pthread_mutex`, `libc_pthread_cond`, `libc_malloc_threads`,
+  `libc_emutls_threads` — потоки и TLS. Если используется эмулированный TLS, запустите
+  `libc_emutls_threads` дважды за одну загрузку ОС;
+. `runtime_dispatch`, `runtime_file`, `runtime_process`, `runtime_socket` — цикл событий и то, что на
+  нём построено;
+. весь `runtimetest` без аргументов; затем `stapplertest`.
+
+Пример для NuttX (скрипт из репозитория `xenolith-os` линкует приложение в образ и запускает qemu):
+
+[source,sh]
+----
+XL_APP=$ENGINE/tests/runtime/stappler-build/aarch64-nuttx-none-elf/debug/cc/runtimetest \
+XL_NSH_CMD='runtimetest libc_uname' NUTTX_DIR=$NUTTX $OS/board/nuttx-qemu/run-nuttx.sh
+----
+
+Если программа зависла, отлаживайте через эмулятор: у qemu команда QMP `info registers` даёт адрес,
+`llvm-addr2line -e <бинарник> <адрес>` — строку исходника.
+
+*Готово, когда:* `runtimetest` целиком завершается с `0 failures`. Разделы, которые не могут
+пройти на этой ОС (например, `libc_wasm*` — специально для wasm), перечислены с причиной в
+`docs/platforms/<os>.adoc`. `stapplertest` проходит.
+
+[[b9]]
+== Б9. Окна и графика
+
+*Зачем.* Приложению Xenolith нужно где-то рисовать. Режим без окна уже работает на любой цели: его
+включает флаг `--headless` или переменная `XENOLITH_HEADLESS=1`. Этот шаг нужен, если приложение
+должно показывать картинку.
+
+*Что сделать.*
+
+. Создайте `runtime/window/<os>/` по образцу `runtime/window/nuttx/` (кадровый буфер) или ближайшей
+  оконной системы:
+** `SPRTWin<Os>.cpp` — единица компиляции под `#if __SPRT_RUNTIME_CONFIG_HAVE_WINDOW && SPRT_<OS>`,
+   подключающая остальные файлы;
+** `SPRTWin<Os>Controller.{h,cc}` — `ContextController` с `create()` и `acquireDefaultConfig()`;
+** `SPRTWin<Os>Window.{h,cc}` — окно. Для кадрового буфера это `NativeWindow` с программной
+   поверхностью (`SoftwareSurface`, `SoftwareSwapchain`), которая копирует кадр в отображённый
+   `/dev/fb0` и сообщает ОС об обновлении.
+. Зарегистрируйте контроллер в `runtime/window/common/SPRuntimeController.cc` — в лестницах
+  `#include`, `create()` и `acquireDefaultConfig()`.
+. *[freestanding]* В `runtime/window/window.mk` добавьте `include_libc` в приватные каталоги заголовков
+  и `-ffreestanding -fbuiltin`, как для wasm и EmboxUser.
+. Выберите графический бэкенд:
+** `xenolith/backend/soft` — программный растеризатор. Работает везде; тестовое приложение добавляет
+   его флагом `SOFT=1`;
+** Vulkan — нужен файл `xenolith/backend/vk/platform/<os>/` с загрузкой драйвера и созданием
+   поверхности. Если загрузчика Vulkan на ОС нет, драйвер вызывается напрямую (как
+   `vk_icdGetInstanceProcAddr` для Mesa на Embox);
+** WebGPU — только для браузера.
+
+*Готово, когда:* `make -C tests/window STAPPLER_TARGET=<triple> SOFT=1` собирается; `testapp`
+показывает сцену на ОС (снимок экрана из эмулятора); `testapp --headless` работает.
+
+[[b10]]
+== Б10. Адаптация xenolith
+
+*Зачем.* Несколько мест верхнего уровня движка зависят от свойств ОС, а не от sprt. Их немного, но без
+них приложение не стартует.
+
+*Что проверить и при необходимости поменять:*
+
+* *Точка входа* — `xenolith/application/XLMain.cpp`. Если ОС переименовывает `main` (RTOS), движок
+  экспортирует `extern "C" int xenolith_main(int argc, const char **argv)`. Сейчас это делается под
+  `SPRT_HOSTED_RTOS`.
+* *Механизм цикла событий приложения* — `xenolith/application/XLContext.cc` и `XLAppThread.cc`. На
+  hosted RTOS используется `QueueEngine::None`, потому что там нет файловых дескрипторов для
+  пробуждения.
+* *Отражение SPIR-V* — `xenolith/core/XLCoreObject.cc`, `XLCoreQueueData.cc`,
+  `xenolith/thirdparty/XLThirdparty.scu.cpp`. Если на ОС нет Vulkan, отражение шейдеров выключается.
+  Посмотрите условие там и добавьте свою ОС, если она относится к этому случаю.
+* *Разделяемая память для удалённого режима* — `xenolith/remote/XLRemoteTransportShm.cc` и
+  `XLRemoteShmProviderLocal.cc` (сейчас `SPRT_LINUX || SPRT_EMBOX_ANY`).
+* Найдите остальные места, где перечислены соседние платформы:
+  `grep -rn 'SPRT_NUTTX\|SPRT_HOSTED_RTOS\|SPRT_EMBOX' stappler xenolith`. Их единицы.
+
+*Готово, когда:* `tests/window` собирается и запускается на ОС, а приложение завершается штатно (без
+падения на выходе).
+
+[[b11]]
+== Б11. Документация
+
+*Что написать.*
+
+. `docs/platforms/<os>.adoc` — по структуре `nuttx.adoc`: имена троек; что нужно от сборки ОС
+  (обязательные параметры конфигурации); как собрать набор; как связать его с хранилищем установщика;
+  чем ОС отличается от Linux ABI (таблица); найденные подводные камни.
+. `runtime/toolchains/target-<os>/README.adoc` — почему hosted или freestanding, откуда sysroot,
+  тройки, лицензия, закреплённая версия ОС.
+
+*Что обновить* (на момент написания часть из них уже отстаёт от NuttX и Embox — поправьте заодно):
+
+* link:../../../usage/codestyle/platform/platform-guards.adoc[platform-guards.adoc] — список
+  платформенных макросов и групп;
+* link:../../../usage/codestyle/platform/runtime-libc.adoc[runtime-libc.adoc] — таблица недоступных
+  функций;
+* `runtime/libc_impl/README.adoc` *[freestanding]*;
+* link:../../../agents/cross-target.md[cross-target.md], link:../../../agents/platforms.md[platforms.md] — как
+  собрать и проверить;
+* link:../general/support.adoc[support.adoc] и link:../general/how-to-support.adoc[how-to-support.adoc].
+
+*Готово, когда:* человек, не участвовавший в порте, по `docs/platforms/<os>.adoc` собирает набор и
+запускает `runtimetest`.
+
+[[b12]]
+== Б12. Распространение набора
+
+*Если sysroot можно распространять:*
+
+. Добавьте тройку в `RELEASE_TARGETS` в `runtime/toolchains/Makefile` и, если ещё нет, правило
+  `target-<triple>` и его место в агрегирующих правилах.
+. `make -C runtime/toolchains release-check` — проверяет, что у каждого набора метка `release`
+  совпадает с тегом git.
+. Опубликуйте `target_<triple>.tar.xz` и подпись `.sig` в релизе. Кода установщика для этого менять
+  не нужно: `xenolith-cli` строит каталог из списка файлов на сервере и показывает каждый архив, у
+  которого есть подпись.
+
+*Если нельзя* (лицензия ОС, как у NuttX и Embox): опишите в `docs/platforms/<os>.adoc`, как
+пользователь собирает набор сам и связывает его с хранилищем установщика:
+
+[source,sh]
+----
+ln -sfn $ENGINE/runtime/toolchains/target-<os>/targets/<triple> \
+        $ENGINE/runtime/toolchains/targets/<triple>
+ln -sfn $ENGINE/runtime/toolchains/targets/<triple> \
+        ~/.local/share/xenolith/data/toolchains/targets/<triple>
+----
+
+Подвох: `xenolith-cli` сначала смотрит в `$ENGINE/toolchains/targets/<triple>`. Оставшийся там
+настоящий каталог (не ссылка) ссылкой из хранилища не заменяется.
+
+*Готово, когда:* `xenolith-cli build tests/runtime --target <triple>` работает на чистой машине —
+после `xenolith-cli install <triple> --target` или после описанных ручных шагов.
+
+[[b13]]
+== Б13. Регрессия на существующих платформах
+
+Порт меняет общие файлы: `__sprt_def.h`, `cross/__sprt_config.h`, `include_libc/`, `configure.mk`,
+`apply-toolchain.mk`, `SPRuntimeController.cc`. Они участвуют в сборке под *каждую* цель.
+
+*Что сделать:*
+
+* `tests/run-checks.py full` на host-машине (протокол — link:../../../agents/test-protocol.md[test-protocol.md]);
+* сборка `tests/runtime` и `tests/window` под `x86_64-pc-windows-msvc` (и запуск под Wine),
+  `aarch64-unknown-linux-android`, `wasm32-unknown-unknown`, а при наличии Mac — macOS;
+* сборка соседних RTOS, если вы трогали их ветки или групповые макросы.
+
+*Готово, когда:* все перечисленные сборки и прогоны проходят так же, как до порта.
+
+[[risks]]
+== Риски и подводные камни
+
+Почти всё здесь уже случалось на NuttX, Embox или wasm.
+
+* *`libsprt.a` не пересобирается сам.* Набор собирает `libsprt.a` один раз. После правки в
+  `runtime/` удалите его из `intermediate/<triple>/usr/lib/`, иначе зависимости продолжат линковаться
+  со старым.
+* *Пустые каталоги исходников.* Если скачивание зависимости оборвалось, пустой `src/<lib>` всё равно
+  удовлетворяет make, и ошибка появится позже и непонятно где. Проверьте, что в каталоге есть
+  `CMakeLists.txt` или `Configure`; если нет — `rmdir` и скачайте заново.
+* *`--target` должен быть в `CMAKE_C_FLAGS_INIT`.* Некоторые проекты (libpng `genout.cmake`) вызывают
+  `clang -E` только с флагами, без toolchain-файла.
+* *Флаги ОС с `-Werror`.* Флаги из сборки ОС часто содержат `-Werror` и `-Wundef`. Они нужны ОС, но
+  ломают зависимости. Поэтому у зависимостей свой `toolchain-libs.cmake`, а из `target.mk` эти флаги
+  отфильтрованы. Так же фильтруется `-Map=`.
+* *Проверки возможностей, которые врут.* Если cmake-проверка не смогла слинковать тестовую программу,
+  она решит, что функции нет. Отсюда `gen-probe-stubs.sh` (Б4).
+* *Порядок в `__sprt_def.h`.* Ветка ОС, поставленная после `__linux__`, при утёкшем `__linux__` молча
+  соберёт Linux-код против чужой libc.
+* *TLS.* Если ОС не сохраняет регистр TLS при переключении потоков, нативный `thread_local` даёт
+  повреждения, которые проявляются только в многопоточных тестах. Используйте `-femulated-tls` и
+  компилируйте `emutls.c` внутрь builtins.
+* *Неудачная математика ОС.* На Embox `sqrtf` оказалась неправильной, поэтому `-lm` там не передаётся,
+  а математика берётся из musl. Если тесты `fenv` и математики дают странные результаты, подумайте о
+  том же.
+* *Устаревшие копии.* `target-embox/` был скопирован из `target-nuttx/`, и в README осталась чужая
+  закреплённая версия. Копируя образец, вычитайте каждый комментарий.
+
+== Сводный список файлов
+
+----
+runtime/include/sprt/c/bits/__sprt_def.h                     Б2
+runtime/include/sprt/c/cross/__sprt_errno.h                  Б2
+runtime/include_libc/{errno,netdb,syslog,termios}.h          Б2
+runtime/include/sprt/c/cross/<os>_sprt/**                    Б3  (≈27 новых файлов)
+runtime/toolchains/target-<os>/*                             Б4
+runtime/toolchains/common/configure.mk, utils/names.mk       Б4
+runtime/toolchains/common/<lib>.mk                           Б4  (только если нельзя иначе)
+make/os/<os>.mk, make/utils/apply-toolchain.mk               Б5
+stappler/{bitmap,zip,network}/*.mk и др.                     Б5  (если нужно)
+runtime/runtime.mk, libc_wrapper/libc-wrapper.mk             Б6а
+runtime/core/<os>/*, runtime/core/runtime_core_*.cpp         Б6б–в
+runtime/core/pthread/{pthread.cc,pthread_native_<os>.cc}     Б6г
+runtime/libc_impl/src/<os>/*, builtin_*.cpp, asm/<System>/   Б6д [freestanding]
+runtime/libc_wrapper/platform/<os>/stubs.cc                  Б6е [hosted]
+runtime/src/{platform,filesystem}/*-<os>.cc                  Б6ж
+runtime/src/dispatch/platform/<os>/*                         Б6ж
+runtime/window/<os>/*, window/common/SPRuntimeController.cc  Б9
+xenolith/backend/vk/platform/<os>/*                          Б9  (если Vulkan)
+xenolith/application/{XLMain.cpp,XLContext.cc,XLAppThread.cc} Б10
+docs/platforms/<os>.adoc, docs/usage/codestyle/platform/*    Б11
+runtime/toolchains/Makefile (RELEASE_TARGETS)                Б12
+----

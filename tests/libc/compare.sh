@@ -22,13 +22,16 @@
 #     --host-only    build/run only the host target (no Windows / wine)
 #     -v|--verbose   print the full diff for every diverging test
 #
+# HOST_TARGET=<triple> in the environment selects the reference build (default
+# x86_64-unknown-linux-gnu).
+#
 # Requirements: a working `make` toolchain for both targets and `wine` to run the
 # Windows binary on a non-Windows host.
 
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HOST_TARGET="x86_64-unknown-linux-gnu"
+HOST_TARGET="${HOST_TARGET:-x86_64-unknown-linux-gnu}"
 WIN_TARGET="x86_64-pc-windows-msvc"
 OUT="$HERE/stappler-build"
 HOST_BIN="$OUT/$HOST_TARGET/debug/cc/libctest"

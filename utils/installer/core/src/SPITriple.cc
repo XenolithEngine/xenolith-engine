@@ -31,12 +31,14 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::installer {
 
 namespace {
 
-// Host triples for which a toolchain archive exists on the server (sdk-v0beta1 host set).
+// Host triples for which a toolchain archive exists on the server (RELEASE_HOSTS in
+// runtime/toolchains/Makefile).
 // OFFLINE fast-path used by `detect`; the fetched manifest is authoritative — keep in sync.
 constexpr const char *kKnownHosts[] = {
 	"aarch64-apple-macosx",
 	"x86_64-apple-macosx",
 	"x86_64-pc-windows-msvc",
+	"aarch64-pc-windows-msvc",
 	"x86_64-unknown-linux-gnu",
 	"aarch64-unknown-linux-gnu",
 	"riscv64-unknown-linux-gnu",

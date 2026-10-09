@@ -1,0 +1,568 @@
+= Plan C. A new operating system as a host
+:toc:
+:toclevels: 2
+
+This plan describes how to make the Xenolith *tools* (clang, lld, lldb, glslang, make/xlmake and
+xenolith-cli) run on a new OS and build applications there: for the OS itself and for every other
+target. A convenient example to keep in mind throughout is FreeBSD as a host next to Linux, Windows and
+macOS.
+
+Terms (build machine, host, native and cross host, `host.mk`, xlmake) are defined in the
+xref:index.adoc#glossary[introduction].
+
+[IMPORTANT]
+====
+*This plan starts where xref:new-target-os.adoc[plan B] ends.* A host toolchain is a set of ordinary
+programs built by the engine *for* the new OS. So the OS must first become a target: its sysroot must be
+in `runtime/toolchains/targets/`, and `tests/runtime` must pass on it. If a new architecture is needed
+too, xref:new-arch.adoc[plan A] comes first. That is how macOS (the target a day before the host) and
+Windows (the host is built against the `+dll` target) appeared in the repository's history.
+====
+
+*Scripts.* `utils/porting/check-host-os.py --uname <uname -s> --triple <triple> --os <os>` checks steps
+C1–C11 from any machine. On the new machine itself, `utils/porting/detect-host.py` shows what each host
+detector concludes. `check-toolchain.py <triple> --run` checks the built toolchain (C6). All scripts are
+described in link:../../../../utils/porting/README.adoc[utils/porting/README.adoc].
+
+== What a host toolchain is
+
+[[host-contract]]
+=== The contract: what you have to end up with
+
+A host toolchain is the directory `hosts/<host-triple>/`. The build system looks for it first in
+`toolchains/hosts/` (toolchains downloaded by the installer), then in `runtime/toolchains/hosts/`
+(built on this machine):
+
+----
+hosts/<host-triple>/
+├── bin/          clang (and links clang++, cc, c++), lld (ld.lld, ld64.lld, lld-link, wasm-ld),
+│                 lldb, lldb-server, lldb-dap, glslang, spirv-link, spirv-opt, llvm-ar, llvm-strip,
+│                 llvm-objcopy, llvm-rc, llvm-lib, ..., make and/or xlmake
+├── lib/          libLLVM, liblldb, libLTO, libc++ (if built shared) ...
+│   └── clang/<N>/include     compiler headers (stddef.h, intrinsics)
+├── share/licenses/           licenses of the included projects
+├── host.mk       where the tools are and which flags to call them with
+└── release       SDK version stamp (git tag)
+----
+
+`host.mk` is the same on every POSIX system (on Windows only the `.exe` suffixes differ):
+
+[source,make]
+----
+HOST_ROOT := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))  # the directory is relocatable
+HOST_BINDIR := $(HOST_ROOT)/bin                                     # required
+HOST_CC := $(HOST_BINDIR)/cc
+HOST_CXX := $(HOST_BINDIR)/c++
+HOST_AR := $(HOST_BINDIR)/ar
+HOST_GLSLANG := $(HOST_BINDIR)/glslang
+HOST_SPIRV_LINK := $(HOST_BINDIR)/spirv-link
+HOST_GENERAL_CFLAGS := -idirafter $(HOST_ROOT)/lib/clang/<N>/include
+HOST_GENERAL_CXXFLAGS := -idirafter $(HOST_ROOT)/lib/clang/<N>/include
+HOST_GENERAL_LDFLAGS :=
+HOST_EXEC_CFLAGS :=       # and the other HOST_{EXEC,LIB}_{C,CXX,LD}FLAGS, usually empty
+----
+
+Why `-idirafter …/lib/clang/<N>/include`: every `target.mk` points the compiler's `-resource-dir` into
+the *target* sysroot (so that builtins and crt come from there). That moves the compiler's built-in
+headers away, and the host toolchain adds them back last in the search path. How these variables turn
+into build commands: `make/utils/defaults.mk` (the contract description) and
+`make/utils/apply-toolchain.mk`.
+
+Requirements on clang itself: it must be a cross compiler *for every target at once*
+(`LLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV;WebAssembly;…"`), use libc{pp}, compiler-rt, lld and
+libunwind by default, and look for the sysroot relative to itself (`DEFAULT_SYSROOT=..`). Then the
+toolchain can be put in any directory.
+
+=== How the existing host toolchains are built
+
+[cols="1,2,2", options="header"]
+|===
+| Host | How it is built | Where
+
+| x86_64 Linux glibc
+| *Native bootstrap* on the build machine in three stages: gcc → clang → clang
+| `runtime/toolchains/host-linux-glibc/` (`stage0.mk`, `stage1.mk`, `stage2.mk`)
+
+| Linux musl
+| Native bootstrap in two stages (on Alpine), or a cross host from any Linux machine
+| `host-linux-musl/`, `host-linux-musl/cross/`
+
+| Linux on another architecture
+| A cross host against the glibc target sysroot of the same triple
+| `host-linux-glibc/cross/`
+
+| macOS
+| *Cross host only*, built on Linux against the open `+open` sysroot
+| `host-macos/cross/`
+
+| Windows
+| A cross host on Linux against the `+dll` target (sprt instead of the CRT and the SDK). There is also an
+  older native PowerShell build, but released toolchains are made on Linux
+| `host-windows-msvc/cross/` (`host-windows-msvc/Makefile` is the native one)
+|===
+
+The conclusion for a new OS: *write a cross host that is built on x86_64 Linux*. A native bootstrap on
+the new OS itself is not needed; macOS has none at all. When it might still be needed is covered in the
+<<native,appendix>>.
+
+=== The order in which the existing hosts appeared
+
+The history of macOS and Windows shows the same order, and this plan follows it:
+
+. the runtime and libc port (plan B);
+. the target sysroot;
+. shell support in the build system (PowerShell, then xlmake);
+. a cross host built on Linux against that target sysroot;
+. xlmake as part of the host toolchain;
+. the installer, CI and the release.
+
+== Decisions to make before you start
+
+*D1. Cross host from Linux, or native bootstrap.* A cross host is recommended: one build path for every
+toolchain, building on a powerful machine, a reproducible result. A native bootstrap is justified only
+if the OS requires binaries to be built on it (signing, closed SDKs).
+
+*D2. Which make to ship.* The options are GNU make built as part of the toolchain (Linux, macOS) or
+xlmake only (Windows, which has no GNU make at all). The engine builds xlmake itself and it is the same
+everywhere, so it should be in the toolchain in any case. GNU make 4.1+ is optional. The system `make`
+on BSD systems is BSD make, which *does not work*; on macOS the system GNU make is too old (3.81).
+
+*D3. The shell for build commands.* The build system has three modes (see <<c3,C3>>): POSIX `sh` with
+coreutils, PowerShell, and xlmake, which needs no shell at all. `sh` suits a POSIX-like OS. For an exotic
+OS it is easier to rely on xlmake.
+
+*D4. Whose libc{pp} the tools use.* On Linux, clang and lld link against a shared libc{pp} built as part
+of the host toolchain. On systems where libc{pp} is a *system* library (BSD, macOS), a second copy next to
+the system one may confuse the dynamic loader (see
+link:../../ru/libc/sprt-purpose.adoc[the purpose of Xenolith Runtime], the C{pp} section, in Russian).
+Decide whether clang links against the system libc{pp} or its own, and why.
+
+*D5. The debugger.* lldb is built without Python. On macOS it uses the system `debugserver` (it needs
+entitlements that only an Apple signature gives). Find out how a debugger gets access to processes on
+the new OS: `ptrace`, a separate server, special privileges.
+
+*D6. What counts as support.* The minimum is that clang and xlmake from the toolchain build and run
+`tests/runtime` on the new OS. Full support adds `xenolith-cli`, one-command installation and a release
+in every SDK.
+
+[[c1]]
+== C1. Confirm the OS is ready to be a host
+
+*Why.* The tools are demanding programs. xlmake and xenolith-cli use more of the engine than
+`tests/runtime`: spawning child processes, application directories, networking, unpacking archives.
+clang and lld are large C{pp} programs that need threads, `mmap` and many open files.
+
+*What to check on the target OS* (results of plan B):
+
+* the whole `runtimetest` passes, including `runtime_process` (spawning processes through
+  `dispatch::Looper::spawnProcess`; xlmake runs every build command through it, via `/bin/sh -c` on
+  POSIX) and `runtime_file`;
+* the application directories (`FileCategory::AppData`, `AppConfig`, `AppCache`) are defined in
+  `SPRuntimeFilesystem-<os>.cc`: the installer keeps its toolchains there;
+* symbolic links work: the toolchain archives contain links (`clang` → `clang-<N>`), and the installer
+  links its store into the engine directory with `symlink`;
+* the target sysroot has shared (PIC) versions of the libraries LLVM will need, or it is clear how to
+  build them (on Linux the cross host rebuilds libc{pp} as shared itself, because the target sysroot has
+  it static and not PIC).
+
+*Done when:* every item is confirmed by running on the new OS, not by reading code.
+
+[[c2]]
+== C2. Teach the build system to recognize the new host
+
+*Why.* When make runs without `STAPPLER_HOST`, it works out which system it runs on and picks
+`hosts/<host-triple>/host.mk` accordingly. This detection is duplicated in several places, and each
+must learn the new OS. A missed place shows up as a strange error in only one of the launch modes.
+
+*What to do.* Add an `else ifeq ($(UNAME),<name from uname -s>)` branch with the host triple and the
+architecture translation in each of these places:
+
+[cols="2,3", options="header"]
+|===
+| File | What is there
+
+| `make/utils/init-sh.mk`
+| The `sh` mode (GNU make). `STAPPLER_HOST_ARCH ?= $(shell uname -m)`, then branches on `UNAME`.
+  `arm64` → `aarch64` and `amd64` → `x86_64` are translated; if your OS spells the architecture some
+  other way, add the translation. `ANDROID_HOST` is set here too.
+
+| `make/utils/init-xlmake.mk`
+| The xlmake mode. The same, but the values come from the `XL_UNAME_*` variables xlmake sets itself.
+
+| `stappler/makefile/SPMakefileBuiltins.cc`
+| Where xlmake gets `XL_UNAME_SYSNAME`, `XL_UNAME_MACHINE` (through `uname(2)`) and `XL_GLIBC_VERSION`
+  (a `gnu_get_libc_version` lookup through `dlsym`; on non-glibc systems it simply is not there).
+
+| `runtime/toolchains/common/utils/detect-platform.mk`
+| The same for the make files that *build toolchains*: `HOST_ID` (the build machine triple) and
+  `HOST_TOOLCHAIN` (the native build directory). An unknown system gives `$(error Unknown host)`.
+
+| `make/utils/init-powershell.mk`
+| Only if the new OS is a kind of Windows.
+|===
+
+Then find the other branches on `UNAME` and decide whether the new OS belongs in them:
+
+[source,sh]
+----
+grep -rn 'UNAME' make/ runtime/toolchains/common/utils/
+----
+
+Currently these include `make/distrib/macos.mk` (`codesign` runs only on Darwin) and
+`make/utils/detect-build-number.mk`. `make/os/android-ndk.mk` takes the name of the NDK prebuilt binaries
+directory from `ANDROID_HOST`. There will be none for the new OS, so Android NDK builds are unavailable
+there; write that down.
+
+`utils/porting/detect-host.py` on the new machine prints every detector's answer and checks that they
+agree.
+
+*Done when:* on the new OS, `gmake -C tests/runtime verbose=1` prints `STAPPLER_HOST: <your triple>` and
+looks for `host.mk` at the right path (even if it does not find it yet). `xlmake -C tests/runtime
+verbose=1` prints the same.
+
+[[c3]]
+== C3. The shell mode
+
+*Why.* The engine's build recipes create directories, copy files, write generated headers and embed
+resources (`LOCAL_EMBED_DIRS`). How exactly depends on the shell mode, chosen in
+`make/utils/defaults.mk`: xlmake → `init-xlmake.mk`; the `OS` variable contains `Windows` →
+`init-powershell.mk`; otherwise → `init-sh.mk`. Each mode's commands are in
+`make/c/rules-{sh,powershell,xlmake}.mk`.
+
+*What to do.*
+
+* *A POSIX OS* uses the `sh` mode. Check that the recipes do not rely on GNU coreutils extensions: build a
+  project with resource embedding (the `make/embed/embedfs.sh` script) and a project with config
+  generation. If something breaks, rewrite the recipe in portable POSIX instead of adding a branch for
+  one OS.
+* *A non-POSIX OS*: rely on xlmake. Its commands `$(MKDIR)`, `$(CP)`, `$(REMOVE)`, `$(WRITE)`, `$(APPEND)`,
+  `$(EMBED)` run inside the process; a shell is needed only to launch the compiler. That is how Windows
+  works.
+* Keep in mind what the build system assumes: forward slashes in paths, an engine path without spaces, a
+  case-sensitive file system (except on Windows), a working `git` (the build number is derived from it).
+
+*The toolchain build scripts are a separate story.* The make files in `runtime/toolchains/` use many GNU
+extensions: `sed -i`, `nproc`, `wget`, `tar --strip-components`, `cp -rL`, plus cmake and ninja. That
+matters only for the build machine. If the toolchains are built on Linux (D1), these scripts never run on
+the new OS.
+
+*Done when:* on the new OS without GNU coreutils, a project with `LOCAL_EMBED_DIRS` builds both through
+gmake in `sh` mode and through xlmake.
+
+[[c4]]
+== C4. Building the host toolchain: `runtime/toolchains/host-<os>/cross/`
+
+*Why.* This is the toolchain itself. The build machine's clang (x86_64 Linux) builds it against the new
+OS's target sysroot from plan B.
+
+*What to do.* Create `runtime/toolchains/host-<os>/cross/Makefile`. Base it on
+`host-linux-glibc/cross/Makefile` (if the OS has its own libc that clang cannot build, as with glibc) or
+`host-macos/cross/Makefile` (if libc{pp} is the system one, D4). The make file takes as input:
+
+[cols="1,3", options="header"]
+|===
+| Variable | Meaning
+
+| `SP_ARCH_HOST`
+| the architecture of the future host (`x86_64`, `aarch64`, …)
+
+| `OUT_SYSROOT`
+| where to put the result (`runtime/toolchains/hosts/<triple>`)
+
+| `HOST_ID`, `HOST_ROOT`
+| the build machine triple and its host toolchain (`hosts/$(HOST_ID)`): whose clang does the building.
+  Set through `common/utils/detect-platform.mk`
+
+| the target sysroot
+| `targets/<triple>[+variant]`: what to build against
+|===
+
+It goes through these steps (all existing cross hosts are built this way):
+
+. *A cmake toolchain file* (`toolchain.cmake`): `CMAKE_SYSTEM_NAME <the OS name for cmake>`,
+  `CMAKE_SYSROOT` as the target sysroot, `CMAKE_<LANG>_COMPILER_TARGET` as the triple, find modes
+  restricted to the sysroot.
+. *The LLVM runtimes*, if the target sysroot does not provide ones usable in shared libraries: libc{pp},
+  libc{pp}abi and libunwind, built with `-fPIC` and shared.
+. *zlib and libxml2*, which LLVM uses (lld needs libxml2 for Windows manifests, and lldb uses it too).
+. *LLVM* with the `clang;lld;lldb` projects:
++
+[source,make]
+----
+-DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV;WebAssembly;LoongArch"   # every engine target
+-DLLVM_DEFAULT_TARGET_TRIPLE=<host-triple>
+-DCLANG_DEFAULT_CXX_STDLIB=libc++ -DCLANG_DEFAULT_RTLIB=compiler-rt
+-DCLANG_DEFAULT_LINKER=lld -DCLANG_DEFAULT_UNWINDLIB=libunwind
+-DDEFAULT_SYSROOT=..                                  # the sysroot is looked up next to the binary
+-DLLDB_ENABLE_PYTHON=Off
+-DLLVM_ENABLE_LTO=$(SP_LLVM_LTO)
+-DCROSS_TOOLCHAIN_FLAGS_NATIVE=-DLLVM_ENABLE_LTO=OFF  # tablegen for the build machine
+----
++
+plus a relative library search path (`rpath` `$ORIGIN/../lib` on ELF systems, `@loader_path/../lib` on
+macOS), so that the toolchain works from any directory. Check the list of LLVM backends against every
+other toolchain (xref:new-arch.adoc#a4[A4]).
+. *Shader tools*: spirv-headers, vulkan-headers, spirv-tools (with `spirv-opt`), glslang.
+. *GNU make*, if you decided to ship it (D2). Pay attention to `--build`/`--host` in its `configure`.
+. *Layout*: binaries through `llvm-strip` into `bin/`, links (`clang-<N>` → `clang` → `clang{pp}`,
+  `clang-cpp`; `lld` → `ld.lld`, `ld64.lld`, `lld-link`, `wasm-ld`; `cc`, `c{pp}`, `ar` → `llvm-ar`),
+  `lib/clang/<N>`, licenses in `share/licenses` (a `licenses/` directory next to the Makefile).
+. *`host.mk`*, an exact copy of the Linux variant (see <<host-contract,above>>) with the right suffixes;
+  *`release`* containing `$(GIT_TAG)`.
+. *xlmake*, built by the engine itself against the target sysroot of the same triple:
++
+[source,make]
+----
+$(OUT_SYSROOT)/bin/xlmake: $(OUT_TARGET_SYSROOT)/target.mk $(OUT_SYSROOT)/host.mk
+	$(MAKE) -C $(ROOT_DIR)/../../utils/xlmake install \
+		STAPPLER_HOST_FILE=$(HOST_ROOT)/host.mk \
+		STAPPLER_TARGET_FILE=$(OUT_TARGET_SYSROOT)/target.mk \
+		STAPPLER_TARGET=<triple> \
+		LOCAL_INSTALL_DIR=$(abspath $(OUT_SYSROOT)/bin) \
+		LOCAL_OUTDIR=$(abspath build/xlmake) RELEASE=1
+----
++
+xlmake is built by the *build machine's* clang (`HOST_ROOT`), not by the one just built: that one does
+not run on the build machine.
+
+The make file must have an `out` goal (the top-level Makefile calls it), plus `download`, `all` and
+`clean`.
+
+*LLVM patches.* If LLVM does not build for the new OS or does not work on it (as for Windows on top of
+sprt, six `sprt-windows` patches, and for the wasm host), the patch goes into
+`runtime/toolchains/replacements/llvm/<version>-<name>/`, and an `sp_patch` line goes into
+`runtime/toolchains/src.mk`. The patch must be conditional on its platform: every other toolchain must
+build byte-for-byte as before. For OSes that upstream LLVM already supports (FreeBSD), patches are
+probably not needed.
+
+*Done when:* `make -C runtime/toolchains host-cross-<triple>` (after C5) creates
+`runtime/toolchains/hosts/<triple>/` with everything listed in the <<host-contract,contract>>, and
+`file bin/clang` shows an executable for the new OS.
+
+[[c5]]
+== C5. Wiring into the top-level toolchains Makefile
+
+*What to do.* In `runtime/toolchains/Makefile`:
+
+[source,make]
+----
+host-cross-<arch>-<vendor>-<os>: target-<arch>-<vendor>-<os>
+	$(MAKE) -C host-<os>/cross out OUT_SYSROOT=$(abspath hosts/<arch>-<vendor>-<os>) SP_ARCH_HOST=<arch>
+----
+
+The dependency on `target-…` is mandatory: a cross host is always built against a target sysroot. Then
+add the goal to `host-cross-all` (the build machine's own host is excluded from that list
+automatically), to `.PHONY` and to `RELEASE_HOSTS`, the release list.
+
+A native build (`make host` on the new OS itself) is not required. If you do want one, `HOST_TOOLCHAIN`
+in `detect-platform.mk` must point to an existing directory.
+
+*Done when:* `make -C runtime/toolchains host-cross-<triple>` builds the toolchain from scratch, and
+`make -C runtime/toolchains release-check` sees it.
+
+[[c6]]
+== C6. Checking the toolchain on the new OS
+
+*Why.* The toolchain is built on Linux but will run on another system. Check every tool *there*.
+
+*What to do.* Copy `hosts/<triple>/` to the new OS, into an arbitrary directory (this also checks that
+the toolchain is relocatable), and run:
+
+[source,sh]
+----
+H=<directory>/bin
+$H/clang --version
+printf '#include <vector>\n#include <cstdio>\nint main(){std::vector<int> v{1,2};printf("%%zu\\n",v.size());}\n' > t.cpp
+$H/clang++ t.cpp -o t && ./t                                   # compiler and linker for the OS itself
+$H/clang++ --target=x86_64-unknown-linux-gnu -c t.cpp -o t.o   # cross compilation works
+$H/clang --target=x86_64-pc-windows-msvc -c -x c /dev/null -o w.o
+printf '#version 450\nlayout(location=0) out vec4 c; void main(){c=vec4(1);}\n' > x.frag
+$H/glslang -V x.frag -o a.spv && $H/spirv-link a.spv -o b.spv && $H/spirv-val b.spv
+$H/xlmake --help
+$H/lldb ./t -o run -o quit                                     # the debugger starts a process
+----
+
+`utils/porting/check-toolchain.py <triple> --run` does the same, and also lists the libraries the tools
+load from outside the toolchain.
+
+*Done when:* every command runs without errors on the new OS, and the toolchain works from any
+directory, including after being moved.
+
+[[c7]]
+== C7. Building the engine on the new OS
+
+*Why.* The final check that the new OS is a complete workstation: applications build on it both for
+itself and for other targets.
+
+*What to do.*
+
+. Put the toolchain where the build system will find it, in `runtime/toolchains/hosts/<triple>/` or
+  `toolchains/hosts/<triple>/`, or point to it explicitly: `STAPPLER_HOST_FILE=<path>/host.mk`. The
+  target sysroot for the OS itself goes in the same place, `targets/<triple>/`.
+. Build and run the tests with both build drivers:
++
+[source,sh]
+----
+gmake  -C tests/runtime -j8 && tests/runtime/stappler-build/<triple>/debug/cc/runtimetest
+xlmake -C tests/stappler -j8 && tests/stappler/stappler-build/<triple>/debug/cc/stapplertest
+gmake  -C tests/libc -j8
+----
+. Build something *for other targets from the new OS*, after downloading their sysroots:
++
+[source,sh]
+----
+gmake -C tests/runtime STAPPLER_TARGET=x86_64-unknown-linux-gnu -j8
+gmake -C tests/runtime STAPPLER_TARGET=x86_64-pc-windows-msvc -j8
+----
++
+Run the resulting binaries on their systems: this checks that cross builds from the new OS give the same
+result as from Linux.
+
+*Done when:* `runtimetest` and `stapplertest` built on the new OS pass on it, and the Linux and Windows
+binaries built on the new OS pass on their systems.
+
+[[c8]]
+== C8. Test scripts
+
+*Why.* The check scripts are written with a Linux host in mind, and silently look for binaries at the
+wrong path.
+
+*What to do.*
+
+* `tests/run-checks.py` takes the triple from `STAPPLER_TARGET`, and without it detects the host
+  itself with `host_triple()`, the same logic as `init-sh.mk`. It knows Linux and macOS today; add a
+  branch for the new OS. Note that the script uses `ps -eo`; check that the output format matches.
+* `tests/libc/compare.sh` takes the reference triple from the `HOST_TARGET` variable (default
+  `x86_64-unknown-linux-gnu`): set it on the new OS.
+
+*Done when:* `tests/run-checks.py` on the new OS finds the binaries without the triple being set by hand,
+and passes the console tier of checks.
+
+[[c9]]
+== C9. Debugging
+
+*What to do.*
+
+* Make sure lldb from the toolchain starts a process, stops at a breakpoint and shows a stack with
+  sources (C6 checks only the start).
+* If the debugger needs a separate server or special privileges on the OS (like `debugserver` on macOS,
+  D5), describe where to get it and how to enable it.
+* Editor setup (clangd with `--query-driver=…/hosts/<triple>/bin/clang-<N>`, `lldb-dap`) is in
+  link:../../../usage/ide.adoc[ide.adoc]. Add the new OS there if anything differs.
+
+*Done when:* in an editor with `lldb-dap` you can stop in `runtimetest` at a breakpoint and see the local
+variables.
+
+[[c10]]
+== C10. xenolith-cli
+
+*Why.* `xenolith-cli` is the main way to install the engine and build projects. It must recognize the
+new OS, download the right toolchain for it and be able to update itself.
+
+*What to do.*
+
+. `utils/installer/core/src/SPITriple.cc`:
+** `getNativeOs()`: an `#if SPRT_<OS>` branch (currently only Apple, Windows and Linux; anything else
+   gets an empty string);
+** `getServerOs()`: translating the OS name into a part of the triple (`freebsd` → `unknown-freebsd`);
+** `getServerArch()`: translating the architecture name (`amd64` and `arm64` are already there);
+** `kKnownHosts[]`: the list of host triples that have a toolchain on the server. It is an offline fast
+   path; keep it consistent with `RELEASE_HOSTS`;
+** `getCurrentLibc()`: if the OS has several libc variants, as Linux does.
+. `utils/installer/core/src/SPISelfUpdate.cc`, `getCliAssetTriple()`: which CLI archive to download when
+  updating itself.
+. The store directory (`utils/installer/core/src/SPIDirs.cc`) comes from the runtime file system
+  categories (C1). Check that the path has no spaces; the `XENOLITH_HOME` variable overrides it.
+. Toolchains are unpacked by an external `tar -xf` command. It must handle `.tar.xz` and symbolic links
+  (bsdtar and GNU tar both do).
+. `install.sh` at the repository root: a row in the `uname -s:uname -m` → triple table (currently only
+  `Darwin` and `Linux`). For a kind of Windows, `install.ps1`.
+. `.github/workflows/cli-release.yml`: a matrix row; the CLI is cross-built on Linux. If nothing on CI
+  can run it (no virtual machine with the new OS), mark the row `best-effort: true`.
+
+*Done when:* on the new OS, `xenolith-cli detect` prints the right triple; `sh install.sh` (with
+`XENOLITH_RELEASE_BASE` pointing at a test release) installs the CLI; `xenolith-cli install` installs the
+engine, the host toolchain and the target sysroot; `xenolith-cli build tests/runtime --run` passes.
+
+[[c11]]
+== C11. Release and documentation
+
+*Release.*
+
+. `make -C runtime/toolchains release-hosts` (or `hosts-export` for the server layout) produces the
+  `host_<triple>.tar.xz` archive and its signature. Publish them in the `sdk-v*` directory on the release
+  server. The installer shows only archives that have a `.sig` signature.
+. Add a row to the "Hosts" table in `runtime/toolchains/RELEASE_NOTES.md`.
+
+*Documentation.*
+
+* `docs/platforms/<os>.adoc`: a section on working as a host: what to install on the OS (GNU make or not,
+  `tar`, `git`), what is unavailable there (for example the Android NDK), how to debug;
+* `runtime/toolchains/README.adoc`: the cross host list;
+* `docs/agents/toolchains.md`, `docs/usage/makefiles.adoc`: host detection and requirements;
+* `docs/usage/cli-releases.adoc`: the CLI release matrix;
+* link:../../ru/general/support.adoc[support.adoc] and link:../../ru/general/build.adoc[build.adoc] (in
+  Russian).
+
+*Done when:* on a clean machine with the new OS, `install.sh`, then `xenolith-cli install`, then
+`xenolith-cli build tests/runtime --run` pass without a single manual step.
+
+[[native]]
+== Appendix: native bootstrap
+
+A native bootstrap (`make -C runtime/toolchains host` on the new OS itself) is needed only if a cross
+host is impossible for some reason. The model is `host-linux-glibc/`, in three stages:
+
+. *stage 0*: the build machine's system compiler builds GNU make, an old glibc and GCC, then the LLVM
+  runtimes and the first clang;
+. *stage 1*: the first clang builds a new glibc and a second clang that no longer depends on GCC;
+. *stage 2*: the second clang builds the final toolchain: glibc, the runtimes, clang/lld/lldb with LTO,
+  the shader tools, make.
+
+For a new OS this means: a `host-<os>/` directory with make files for the stages, an `out` goal, and a
+branch in `common/utils/detect-platform.mk` where `HOST_TOOLCHAIN` points to that directory. On top of
+that, every script in `runtime/toolchains/` must work on the OS, and they need GNU sed, coreutils, wget,
+cmake and ninja (see <<c3,C3>>). This costs noticeably more than a cross host, so first make sure you
+really cannot do without a native bootstrap.
+
+[[risks]]
+== Risks and known rough edges
+
+* *Host detectors disagree silently.* Four independent places detect the host (C2). If one of them
+  is wrong, another launch mode picks another toolchain, and the error shows up far from its cause.
+  `utils/porting/detect-host.py` on the new machine shows each one's answer and checks that they agree.
+* *Tools that pull in system libraries.* A toolchain built with shared libraries but without their
+  copies in `lib/` works only where the system happens to have the same versions. That was the case
+  for SPIRV-Tools in the native Linux host build. `check-toolchain.py <triple> --run` lists every
+  library the tools load from outside the toolchain and libc.
+* *No native build means no `HOST_TOOLCHAIN`.* For macOS, `detect-platform.mk` leaves `HOST_TOOLCHAIN`
+  empty, and `make host` explains that the toolchain has to be installed or built on Linux. A new OS
+  without a native bootstrap does the same.
+* *The Windows cross host depends on the native bootstrap tree.* `host-windows-msvc/cross/stage0.mk`
+  takes tablegen from `host-linux-glibc/sysroot-clang-out/bin`; a ready `hosts/<HOST_ID>` is not enough
+  for it. If your cross host needs the same, write that down.
+* *`kKnownHosts` must match the release.* It is an offline fast path; keep it consistent with
+  `RELEASE_HOSTS`, or the installer picks emulation where a native toolchain exists.
+* *Signatures are only checked for presence.* The installer requires a `.sig` file next to the archive,
+  but does not verify the signature itself.
+* *`uname -m` across OSes.* `amd64` instead of `x86_64` and `arm64` instead of `aarch64` are common. The
+  translation is done in several places (C2, C10, `install.sh`), and none of them may be skipped;
+  `check-host-os.py --uname-arch <spelling>` checks them all.
+
+== Summary list of files
+
+----
+make/utils/init-sh.mk, init-xlmake.mk                         C2
+stappler/makefile/SPMakefileBuiltins.cc                       C2
+runtime/toolchains/common/utils/detect-platform.mk            C2, C5
+make/c/rules-*.mk, make/embed/*                               C3  (if recipes are not portable)
+runtime/toolchains/host-<os>/cross/{Makefile,*.cmake}         C4
+runtime/toolchains/host-<os>/licenses/                        C4
+runtime/toolchains/replacements/llvm/<ver>-<name>/, src.mk    C4  (if patches are needed)
+runtime/toolchains/Makefile (host-cross-*, RELEASE_HOSTS)     C5
+tests/run-checks.py, tests/libc/compare.sh                    C8
+docs/usage/ide.adoc                                           C9
+utils/installer/core/src/SPITriple.cc, SPISelfUpdate.cc       C10
+install.sh / install.ps1, .github/workflows/cli-release.yml   C10
+runtime/toolchains/{README.adoc,RELEASE_NOTES.md}, docs/…     C11
+----

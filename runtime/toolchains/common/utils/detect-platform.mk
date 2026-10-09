@@ -35,6 +35,7 @@ HOST_ARCH := x86
 HOST_ANDROID := windows-x86
 else ifeq ($(WINARCH),Arm64)
 HOST_ARCH := aarch64
+HOST_ID := aarch64-pc-windows-msvc
 HOST_ANDROID := windows-aarch64
 else ifeq ($(WINARCH),Arm)
 HOST_ARCH := armv7
@@ -49,6 +50,10 @@ else # ($(findstring Windows,$(OS)),Windows)
 UNAME := $(shell uname)
 HOST_ARCH := $(shell uname -m)
 
+ifeq ($(HOST_ARCH),amd64)
+HOST_ARCH := x86_64
+endif
+
 ifeq ($(UNAME),Darwin)
 
 ifeq ($(HOST_ARCH),arm64)
@@ -56,7 +61,8 @@ HOST_ID := aarch64-apple-macosx
 else
 HOST_ID := $(HOST_ARCH)-apple-macosx
 endif
-HOST_TOOLCHAIN := host-macosx
+# No native host build: hosts/*-apple-macosx is cross-built on Linux (host-macos/cross).
+HOST_TOOLCHAIN :=
 HOST_ANDROID := darwin-$(HOST_ARCH)
 
 else ifeq ($(UNAME),Linux)
@@ -72,7 +78,7 @@ HOST_ID := $(HOST_ARCH)-unknown-linux-musl
 HOST_TOOLCHAIN := host-linux-musl
 endif
 else # XLMAKE_VERSION
-ifeq ($(shell ldd /bin/ls 2>&1 | grep -q 'musl'),)
+ifeq ($(findstring musl,$(shell ldd /bin/ls 2>&1)),)
 HOST_ID := $(HOST_ARCH)-unknown-linux-gnu
 HOST_TOOLCHAIN := host-linux-glibc
 else

@@ -67,7 +67,28 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TARGET = os.environ.get("STAPPLER_TARGET", "x86_64-unknown-linux-gnu")
+
+
+def host_triple():
+    """The triple of this machine, spelled the way make/utils/init-sh.mk spells it."""
+    arch = os.uname().machine
+    arch = {"arm64": "aarch64", "amd64": "x86_64"}.get(arch, arch)
+    system = os.uname().sysname
+    if system == "Darwin":
+        return arch + "-apple-macosx"
+    if system == "Linux":
+        # The distribution's libc is the one its shell is linked to (as xenolith-cli decides).
+        try:
+            with open("/bin/sh", "rb") as f:
+                head = f.read(4096)
+            libc = "musl" if b"ld-musl-" in head else "gnu"
+        except OSError:
+            libc = "gnu"
+        return arch + "-unknown-linux-" + libc
+    return "x86_64-unknown-linux-gnu"
+
+
+TARGET = os.environ.get("STAPPLER_TARGET") or host_triple()
 BUILD = os.environ.get("XL_CHECK_BUILD", "debug")
 
 # The console harnesses: (project, binary, arguments, is it in the `console` tier?).

@@ -69,6 +69,8 @@ void Makefile::setupBuiltinVariables() {
 		StringView machine(u.machine);
 		if (machine == "arm64") {
 			machine = StringView("aarch64"); // rewrite as the Xenolith standard name
+		} else if (machine == "amd64") {
+			machine = StringView("x86_64");
 		}
 		simple("XL_UNAME_MACHINE", machine.pdup(_pool));
 	}

@@ -1,0 +1,570 @@
+= План В. Новая операционная система как host
+:toc:
+:toclevels: 2
+
+Этот план описывает, как сделать так, чтобы *инструменты* Xenolith — clang, lld, lldb, glslang,
+make/xlmake и xenolith-cli — работали на новой ОС и собирали на ней приложения: под неё саму и под все
+остальные цели. Пример, на котором удобно держать план в голове, — FreeBSD как host рядом с Linux,
+Windows и macOS.
+
+Термины (build-машина, host, нативный и cross host, `host.mk`, xlmake) определены во
+xref:index.adoc#glossary[вводном файле].
+
+[IMPORTANT]
+====
+*Этот план начинается там, где закончился xref:new-target-os.adoc[план Б].* Host-набор — это обычные
+программы, собранные движком *под* новую ОС. Поэтому ОС должна сначала стать целью: в
+`runtime/toolchains/targets/` должен быть её набор, а `tests/runtime` должен проходить на ней. Если
+нужна ещё и новая архитектура, сначала выполняется xref:new-arch.adoc[план А]. Так в истории
+репозитория появились и macOS (цель — за день до host), и Windows (host собирается против цели
+`+dll`).
+====
+
+*Скрипты.* `utils/porting/check-host-os.py --uname <uname -s> --triple <triple> --os <os>` проверяет
+шаги В1–В11 с любой машины. На самой новой машине `utils/porting/detect-host.py` показывает, к какому
+выводу приходит каждый детектор host. `check-toolchain.py <triple> --run` проверяет собранный набор
+(В6). Описание всех скриптов — link:../../../../utils/porting/README.adoc[utils/porting/README.adoc].
+
+== Что такое host-набор
+
+[[host-contract]]
+=== Контракт: что должно получиться
+
+Host-набор — это каталог `hosts/<host-triple>/`. Система сборки ищет его сначала в `toolchains/hosts/`
+(наборы, скачанные установщиком), потом в `runtime/toolchains/hosts/` (собранные на этой машине):
+
+----
+hosts/<host-triple>/
+├── bin/          clang (и ссылки clang++, cc, c++), lld (ld.lld, ld64.lld, lld-link, wasm-ld),
+│                 lldb, lldb-server, lldb-dap, glslang, spirv-link, spirv-opt, llvm-ar, llvm-strip,
+│                 llvm-objcopy, llvm-rc, llvm-lib, ..., make и/или xlmake
+├── lib/          libLLVM, liblldb, libLTO, libc++ (если собран разделяемым) ...
+│   └── clang/<N>/include     заголовки компилятора (stddef.h, интринсики)
+├── share/licenses/           лицензии вошедших проектов
+├── host.mk       где инструменты и с какими флагами их звать
+└── release       метка версии SDK (тег git)
+----
+
+`host.mk` одинаков у всех POSIX-систем (на Windows отличаются только суффиксы `.exe`):
+
+[source,make]
+----
+HOST_ROOT := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))  # каталог можно перемещать
+HOST_BINDIR := $(HOST_ROOT)/bin                                     # обязателен
+HOST_CC := $(HOST_BINDIR)/cc
+HOST_CXX := $(HOST_BINDIR)/c++
+HOST_AR := $(HOST_BINDIR)/ar
+HOST_GLSLANG := $(HOST_BINDIR)/glslang
+HOST_SPIRV_LINK := $(HOST_BINDIR)/spirv-link
+HOST_GENERAL_CFLAGS := -idirafter $(HOST_ROOT)/lib/clang/<N>/include
+HOST_GENERAL_CXXFLAGS := -idirafter $(HOST_ROOT)/lib/clang/<N>/include
+HOST_GENERAL_LDFLAGS :=
+HOST_EXEC_CFLAGS :=       # и остальные HOST_{EXEC,LIB}_{C,CXX,LD}FLAGS, обычно пустые
+----
+
+Зачем `-idirafter …/lib/clang/<N>/include`: каждый `target.mk` указывает компилятору
+`-resource-dir` внутри *целевого* набора (чтобы builtins и crt брались оттуда). Из-за этого
+встроенные заголовки компилятора «уходят», и host-набор возвращает их последними в списке поиска.
+Как эти переменные превращаются в команды сборки — `make/utils/defaults.mk` (описание контракта) и
+`make/utils/apply-toolchain.mk`.
+
+Требования к самому clang: он должен быть кросс-компилятором *для всех целей сразу*
+(`LLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV;WebAssembly;…"`), по умолчанию использовать libc{pp},
+compiler-rt, lld и libunwind и искать sysroot относительно себя (`DEFAULT_SYSROOT=..`). Тогда набор
+можно положить в любой каталог.
+
+=== Как устроены существующие host-наборы
+
+[cols="1,2,2", options="header"]
+|===
+| Host | Как собирается | Где
+
+| x86_64 Linux glibc
+| *Нативная раскрутка* на build-машине в три ступени: gcc → clang → clang
+| `runtime/toolchains/host-linux-glibc/` (`stage0.mk`, `stage1.mk`, `stage2.mk`)
+
+| Linux musl
+| Нативная раскрутка в две ступени (на Alpine) или cross host с любой Linux-машины
+| `host-linux-musl/`, `host-linux-musl/cross/`
+
+| Linux другой архитектуры
+| Cross host против целевого набора glibc той же тройки
+| `host-linux-glibc/cross/`
+
+| macOS
+| *Только cross host*, собирается на Linux против открытого sysroot `+open`
+| `host-macos/cross/`
+
+| Windows
+| Cross host на Linux против цели `+dll` (sprt вместо CRT и SDK). Есть и старая нативная сборка в
+  PowerShell, но выпускаемые наборы делаются с Linux
+| `host-windows-msvc/cross/` (`host-windows-msvc/Makefile` — нативная)
+|===
+
+Вывод для новой ОС: *пишется cross host, который собирается на x86_64 Linux*. Нативная раскрутка на
+самой новой ОС не нужна — у macOS её нет вовсе. О том, когда она всё же может понадобиться, — в
+<<native,приложении>>.
+
+=== Порядок, в котором появлялись существующие host-наборы
+
+История macOS и Windows показывает один и тот же порядок, и этот план ему следует:
+
+. порт runtime и libc (план Б);
+. целевой набор;
+. поддержка оболочки в системе сборки (PowerShell, потом xlmake);
+. cross host, собранный с Linux против этого целевого набора;
+. xlmake в составе host-набора;
+. установщик, CI и релиз.
+
+== Решения перед началом
+
+*Р1. Cross host с Linux или нативная раскрутка.* Рекомендуется cross host: один путь сборки для всех
+наборов, сборка на мощной машине, воспроизводимый результат. Нативная раскрутка оправдана, только если
+ОС требует, чтобы бинарники собирались на ней самой (подпись, закрытые SDK).
+
+*Р2. Какой make поставлять.* Варианты: GNU make, собранный в составе набора (Linux, macOS), или только
+xlmake (Windows — там GNU make нет вовсе). xlmake движок собирает сам и он одинаков везде, поэтому он
+должен быть в наборе в любом случае. GNU make 4.1+ — по желанию. Системный `make` на BSD-системах — это
+BSD make, он *не подходит*; на macOS системный GNU make слишком стар (3.81).
+
+*Р3. Оболочка для команд сборки.* Система сборки умеет три режима (см. <<v3,В3>>): POSIX `sh` с
+coreutils, PowerShell и xlmake, которому оболочка не нужна вовсе. Для POSIX-подобной ОС подходит `sh`.
+Для экзотической ОС проще опереться на xlmake.
+
+*Р4. Чья libc{pp} у инструментов.* На Linux clang и lld линкуются с разделяемой libc{pp}, собранной в
+составе host-набора. На системах, где libc{pp} — *системная* библиотека (BSD, macOS), вторая копия
+libc{pp} рядом с системной может запутать динамический загрузчик (см.
+link:../libc/sprt-purpose.adoc[Цель существования Xenolith Runtime], раздел про C{pp}). Решите, линкуется
+ли clang с системной libc{pp} или со своей, и почему.
+
+*Р5. Отладчик.* lldb собирается без Python. На macOS используется системный `debugserver` (ему нужны
+права, которые даёт только подпись Apple). Узнайте, как отладчик получает доступ к процессам на новой
+ОС: `ptrace`, отдельный сервер, особые права.
+
+*Р6. Что считается поддержкой.* Минимум — clang и xlmake из набора собирают и запускают `tests/runtime`
+на новой ОС. Полная поддержка — ещё `xenolith-cli`, установка одной командой и выпуск в каждом релизе.
+
+[[v1]]
+== В1. Убедиться, что ОС готова быть host
+
+*Зачем.* Инструменты — требовательные программы. xlmake и xenolith-cli используют больше движка, чем
+`tests/runtime`: запуск дочерних процессов, каталоги приложения, сеть, распаковку архивов. clang и
+lld — большие программы на C{pp}, им нужны потоки, `mmap` и много файлов сразу.
+
+*Что проверить на целевой ОС* (результаты плана Б):
+
+* `runtimetest` проходит целиком, в том числе `runtime_process` (порождение процессов через
+  `dispatch::Looper::spawnProcess`; xlmake запускает через него все команды сборки, а на POSIX —
+  через `/bin/sh -c`) и `runtime_file`;
+* каталоги приложения (`FileCategory::AppData`, `AppConfig`, `AppCache`) определены в
+  `SPRuntimeFilesystem-<os>.cc`: в них установщик хранит наборы;
+* символьные ссылки работают: архивы наборов содержат ссылки (`clang` → `clang-<N>`), а установщик
+  связывает своё хранилище с каталогом движка через `symlink`;
+* в целевом наборе есть разделяемые (PIC) версии библиотек, которые понадобятся для сборки LLVM, или
+  понятно, как их собрать (на Linux cross host сам пересобирает libc{pp} разделяемой, потому что в
+  целевом наборе она статическая и не PIC).
+
+*Готово, когда:* все пункты подтверждены запуском на новой ОС, а не чтением кода.
+
+[[v2]]
+== В2. Научить систему сборки узнавать новый host
+
+*Зачем.* Когда make запускается без `STAPPLER_HOST`, он сам определяет, на какой системе работает, и
+по этому выбирает `hosts/<host-triple>/host.mk`. Определение продублировано в нескольких местах, и
+каждое нужно научить новой ОС. Пропущенное место проявится странной ошибкой только в одном из
+режимов запуска.
+
+*Что сделать.* Добавьте ветку `else ifeq ($(UNAME),<имя из uname -s>)` с тройкой host и переводом
+архитектуры в каждом из мест:
+
+[cols="2,3", options="header"]
+|===
+| Файл | Что там
+
+| `make/utils/init-sh.mk`
+| Режим `sh` (GNU make). `STAPPLER_HOST_ARCH ?= $(shell uname -m)`, затем ветки по `UNAME`.
+  Переводятся `arm64` → `aarch64` и `amd64` → `x86_64`; если ваша ОС пишет архитектуру иначе,
+  добавьте перевод. Здесь же задаётся `ANDROID_HOST`.
+
+| `make/utils/init-xlmake.mk`
+| Режим xlmake. То же, но значения берутся из переменных `XL_UNAME_*`, которые xlmake задаёт сам.
+
+| `stappler/makefile/SPMakefileBuiltins.cc`
+| Откуда xlmake берёт `XL_UNAME_SYSNAME`, `XL_UNAME_MACHINE` (через `uname(2)`) и `XL_GLIBC_VERSION`
+  (проверка `gnu_get_libc_version` через `dlsym`; на не-glibc системах её просто нет).
+
+| `runtime/toolchains/common/utils/detect-platform.mk`
+| То же для make-файлов *сборки наборов*: `HOST_ID` (тройка build-машины) и `HOST_TOOLCHAIN` (каталог
+  нативной сборки). Неизвестная система — `$(error Unknown host)`.
+
+| `make/utils/init-powershell.mk`
+| Только если новая ОС — разновидность Windows.
+|===
+
+Затем найдите остальные ветки по `UNAME` и решите, нужна ли в них новая ОС:
+
+[source,sh]
+----
+grep -rn 'UNAME' make/ runtime/toolchains/common/utils/
+----
+
+Сейчас это, например, `make/distrib/macos.mk` (`codesign` вызывается только на Darwin) и
+`make/utils/detect-build-number.mk`. `make/os/android-ndk.mk` берёт из `ANDROID_HOST` имя каталога с
+готовыми бинарниками NDK. Для новой ОС их не будет, значит, Android-NDK-сборка на этой ОС недоступна —
+запишите это.
+
+`utils/porting/detect-host.py` на новой машине выводит ответ каждого детектора и проверяет, что они
+совпадают.
+
+*Готово, когда:* на новой ОС `gmake -C tests/runtime verbose=1` печатает
+`STAPPLER_HOST: <ваша тройка>` и ищет `host.mk` по правильному пути (пусть пока и не находит).
+`xlmake -C tests/runtime verbose=1` печатает то же самое.
+
+[[v3]]
+== В3. Режим оболочки
+
+*Зачем.* Рецепты сборки движка создают каталоги, копируют файлы, пишут сгенерированные заголовки и
+встраивают ресурсы (`LOCAL_EMBED_DIRS`). Как именно — зависит от режима оболочки. Он выбирается в
+`make/utils/defaults.mk`: xlmake → `init-xlmake.mk`; переменная `OS` содержит `Windows` →
+`init-powershell.mk`; иначе → `init-sh.mk`. Команды каждого режима — в
+`make/c/rules-{sh,powershell,xlmake}.mk`.
+
+*Что сделать.*
+
+* *POSIX-ОС* использует режим `sh`. Проверьте, что рецепты не опираются на GNU-расширения coreutils:
+  соберите проект со встраиванием ресурсов (скрипт `make/embed/embedfs.sh`) и проект с генерацией
+  конфигурации. Если что-то сломалось, переписывайте рецепт на переносимый POSIX, а не добавляйте
+  ветку для одной ОС.
+* *Не-POSIX ОС* — опирайтесь на xlmake. Его команды `$(MKDIR)`, `$(CP)`, `$(REMOVE)`, `$(WRITE)`,
+  `$(APPEND)`, `$(EMBED)` выполняются внутри процесса, оболочка нужна только для запуска компилятора.
+  Так работает Windows.
+* Учтите, на что рассчитана система сборки: прямые слеши в путях, путь к движку без пробелов,
+  регистрозависимая файловая система (кроме Windows), работающий `git` (по нему считается номер
+  сборки).
+
+*Скрипты сборки наборов — отдельная история.* Make-файлы в `runtime/toolchains/` используют много
+GNU-расширений: `sed -i`, `nproc`, `wget`, `tar --strip-components`, `cp -rL`, а также cmake и ninja. Это
+важно только для build-машины. Если наборы собираются на Linux (Р1), на новой ОС эти скрипты не
+выполняются.
+
+*Готово, когда:* на новой ОС без GNU coreutils собирается проект с `LOCAL_EMBED_DIRS` — и через gmake в
+режиме `sh`, и через xlmake.
+
+[[v4]]
+== В4. Сборка host-набора: `runtime/toolchains/host-<os>/cross/`
+
+*Зачем.* Это сам набор инструментов. Его собирает clang build-машины (x86_64 Linux) против целевого
+набора новой ОС из плана Б.
+
+*Что сделать.* Создайте `runtime/toolchains/host-<os>/cross/Makefile`. Возьмите за основу
+`host-linux-glibc/cross/Makefile` (если у ОС своя libc, которую нельзя собрать clang-ом, — как glibc)
+или `host-macos/cross/Makefile` (если libc{pp} системная, Р4). Make-файл получает на вход:
+
+[cols="1,3", options="header"]
+|===
+| Переменная | Значение
+
+| `SP_ARCH_HOST`
+| архитектура будущего host (`x86_64`, `aarch64`, …)
+
+| `OUT_SYSROOT`
+| куда положить результат (`runtime/toolchains/hosts/<triple>`)
+
+| `HOST_ID`, `HOST_ROOT`
+| тройка build-машины и её host-набор (`hosts/$(HOST_ID)`): чей clang собирает. Определяются через
+  `common/utils/detect-platform.mk`
+
+| целевой набор
+| `targets/<triple>[+вариант]` — против чего собирать
+|===
+
+И проходит такие шаги (так устроены все существующие cross host):
+
+. *Файл для cmake* (`toolchain.cmake`): `CMAKE_SYSTEM_NAME <имя ОС для cmake>`, `CMAKE_SYSROOT` —
+  целевой набор, `CMAKE_<LANG>_COMPILER_TARGET` — тройка, режимы поиска только внутри sysroot.
+. *LLVM-runtimes*, если целевой набор не даёт пригодных для разделяемых библиотек: libc{pp}, libc{pp}abi,
+  libunwind, собранные с `-fPIC` и разделяемыми.
+. *zlib и libxml2* — их использует LLVM (libxml2 нужна lld для манифестов Windows и lldb).
+. *LLVM* с проектами `clang;lld;lldb`:
++
+[source,make]
+----
+-DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV;WebAssembly;LoongArch"   # все цели движка
+-DLLVM_DEFAULT_TARGET_TRIPLE=<host-triple>
+-DCLANG_DEFAULT_CXX_STDLIB=libc++ -DCLANG_DEFAULT_RTLIB=compiler-rt
+-DCLANG_DEFAULT_LINKER=lld -DCLANG_DEFAULT_UNWINDLIB=libunwind
+-DDEFAULT_SYSROOT=..                                  # sysroot ищется рядом с бинарником
+-DLLDB_ENABLE_PYTHON=Off
+-DLLVM_ENABLE_LTO=$(SP_LLVM_LTO)
+-DCROSS_TOOLCHAIN_FLAGS_NATIVE=-DLLVM_ENABLE_LTO=OFF  # tablegen для build-машины
+----
++
+плюс относительный путь поиска библиотек (`rpath` `$ORIGIN/../lib` на ELF-системах,
+`@loader_path/../lib` на macOS), чтобы набор работал из любого каталога. Список бэкендов LLVM
+сверьте со всеми остальными наборами (xref:new-arch.adoc#a4[А4]).
+. *Инструменты шейдеров*: spirv-headers, vulkan-headers, spirv-tools (с `spirv-opt`), glslang.
+. *GNU make*, если решено его поставлять (Р2). Обратите внимание на `--build`/`--host` у его
+  `configure`.
+. *Укладка*: бинарники через `llvm-strip` в `bin/`, ссылки (`clang-<N>` → `clang` → `clang{pp}`,
+  `clang-cpp`; `lld` → `ld.lld`, `ld64.lld`, `lld-link`, `wasm-ld`; `cc`, `c{pp}`, `ar` → `llvm-ar`),
+  `lib/clang/<N>`, лицензии в `share/licenses` (каталог `licenses/` рядом с Makefile).
+. *`host.mk`* — точная копия Linux-варианта (см. <<host-contract,выше>>) с нужными суффиксами;
+  *`release`* — `$(GIT_TAG)`.
+. *xlmake* — собирается самим движком против целевого набора той же тройки:
++
+[source,make]
+----
+$(OUT_SYSROOT)/bin/xlmake: $(OUT_TARGET_SYSROOT)/target.mk $(OUT_SYSROOT)/host.mk
+	$(MAKE) -C $(ROOT_DIR)/../../utils/xlmake install \
+		STAPPLER_HOST_FILE=$(HOST_ROOT)/host.mk \
+		STAPPLER_TARGET_FILE=$(OUT_TARGET_SYSROOT)/target.mk \
+		STAPPLER_TARGET=<triple> \
+		LOCAL_INSTALL_DIR=$(abspath $(OUT_SYSROOT)/bin) \
+		LOCAL_OUTDIR=$(abspath build/xlmake) RELEASE=1
+----
++
+xlmake собирает clang *build-машины* (`HOST_ROOT`), а не только что собранный: тот на build-машине не
+запустится.
+
+Make-файл должен иметь цель `out` (её вызывает корневой Makefile), а также `download`, `all` и `clean`.
+
+*Патчи LLVM.* Если LLVM не собирается под новую ОС или не работает на ней (так было для Windows
+поверх sprt — шесть патчей `sprt-windows` — и для wasm-host), патч кладётся в
+`runtime/toolchains/replacements/llvm/<версия>-<имя>/`, а в `runtime/toolchains/src.mk` добавляется
+строка `sp_patch`. Патч обязан быть под условием своей платформы: все остальные наборы должны
+собираться байт-в-байт как раньше. Для ОС, которые upstream LLVM уже поддерживает (FreeBSD), патчи,
+скорее всего, не понадобятся.
+
+*Готово, когда:* `make -C runtime/toolchains host-cross-<triple>` (после В5) создаёт
+`runtime/toolchains/hosts/<triple>/` со всем перечисленным в <<host-contract,контракте>>, и `file
+bin/clang` показывает исполняемый файл новой ОС.
+
+[[v5]]
+== В5. Подключение к корневому Makefile тулчейнов
+
+*Что сделать.* В `runtime/toolchains/Makefile`:
+
+[source,make]
+----
+host-cross-<arch>-<vendor>-<os>: target-<arch>-<vendor>-<os>
+	$(MAKE) -C host-<os>/cross out OUT_SYSROOT=$(abspath hosts/<arch>-<vendor>-<os>) SP_ARCH_HOST=<arch>
+----
+
+Зависимость от `target-…` обязательна: cross host всегда собирается против целевого набора. Затем
+впишите цель в `host-cross-all` (из этого списка автоматически исключается host самой build-машины),
+в `.PHONY` и в `RELEASE_HOSTS` — список для релиза.
+
+Нативную сборку (`make host` на самой новой ОС) добавлять не обязательно. Если всё же нужна —
+`HOST_TOOLCHAIN` в `detect-platform.mk` должен указывать на существующий каталог.
+
+*Готово, когда:* `make -C runtime/toolchains host-cross-<triple>` собирает набор с нуля, а
+`make -C runtime/toolchains release-check` его видит.
+
+[[v6]]
+== В6. Проверка набора на новой ОС
+
+*Зачем.* Набор собран на Linux, а работать будет на другой системе. Проверьте каждый инструмент *там*.
+
+*Что сделать.* Скопируйте `hosts/<triple>/` на новую ОС в произвольный каталог (проверка того, что
+набор переносим) и выполните:
+
+[source,sh]
+----
+H=<каталог>/bin
+$H/clang --version
+printf '#include <vector>\n#include <cstdio>\nint main(){std::vector<int> v{1,2};printf("%%zu\\n",v.size());}\n' > t.cpp
+$H/clang++ t.cpp -o t && ./t                                   # компилятор и линковщик для самой ОС
+$H/clang++ --target=x86_64-unknown-linux-gnu -c t.cpp -o t.o   # кросс-компиляция работает
+$H/clang --target=x86_64-pc-windows-msvc -c -x c /dev/null -o w.o
+printf '#version 450\nlayout(location=0) out vec4 c; void main(){c=vec4(1);}\n' > x.frag
+$H/glslang -V x.frag -o a.spv && $H/spirv-link a.spv -o b.spv && $H/spirv-val b.spv
+$H/xlmake --help
+$H/lldb ./t -o run -o quit                                     # отладчик запускает процесс
+----
+
+То же самое, плюс проверку библиотек, которые загружают инструменты, делает
+`utils/porting/check-toolchain.py <triple> --run`.
+
+*Готово, когда:* все команды выполняются без ошибок на новой ОС, а набор работает из любого каталога,
+в том числе после переноса.
+
+[[v7]]
+== В7. Сборка движка на новой ОС
+
+*Зачем.* Финальная проверка того, что новая ОС — полноценное рабочее место: на ней собираются
+приложения и под неё саму, и под другие цели.
+
+*Что сделать.*
+
+. Поместите набор туда, где его найдёт система сборки — в `runtime/toolchains/hosts/<triple>/` или
+  `toolchains/hosts/<triple>/` — либо укажите явно: `STAPPLER_HOST_FILE=<путь>/host.mk`. Целевой набор
+  для самой ОС — туда же, в `targets/<triple>/`.
+. Соберите и запустите тесты обоими сборщиками:
++
+[source,sh]
+----
+gmake  -C tests/runtime -j8 && tests/runtime/stappler-build/<triple>/debug/cc/runtimetest
+xlmake -C tests/stappler -j8 && tests/stappler/stappler-build/<triple>/debug/cc/stapplertest
+gmake  -C tests/libc -j8
+----
+. Соберите что-нибудь *под другие цели с новой ОС*, предварительно скачав их наборы:
++
+[source,sh]
+----
+gmake -C tests/runtime STAPPLER_TARGET=x86_64-unknown-linux-gnu -j8
+gmake -C tests/runtime STAPPLER_TARGET=x86_64-pc-windows-msvc -j8
+----
++
+Полученные бинарники запустите на их системах: так проверяется, что кросс-сборка с новой ОС даёт тот
+же результат, что с Linux.
+
+*Готово, когда:* `runtimetest` и `stapplertest`, собранные на новой ОС, проходят на ней; бинарники для
+Linux и Windows, собранные на новой ОС, проходят на своих системах.
+
+[[v8]]
+== В8. Тестовые скрипты
+
+*Зачем.* Скрипты проверки написаны в расчёте на Linux-host и молча ищут бинарники по чужому пути.
+
+*Что сделать.*
+
+* `tests/run-checks.py` берёт тройку из `STAPPLER_TARGET`, а без неё определяет host сам — функцией
+  `host_triple()`, тем же разбором, что в `init-sh.mk`. Сейчас она знает Linux и macOS; добавьте в
+  неё ветку новой ОС. Учтите, что скрипт использует `ps -eo` — проверьте, что формат вывода
+  совпадает.
+* `tests/libc/compare.sh` берёт эталонную тройку из переменной `HOST_TARGET` (по умолчанию
+  `x86_64-unknown-linux-gnu`): на новой ОС задайте её.
+
+*Готово, когда:* `tests/run-checks.py` на новой ОС без ручного задания тройки находит бинарники и
+проходит консольный уровень проверок.
+
+[[v9]]
+== В9. Отладка
+
+*Что сделать.*
+
+* Убедитесь, что lldb из набора запускает процесс, ставит точку останова и показывает стек с
+  исходниками (В6 проверяет только запуск).
+* Если на ОС отладчику нужен отдельный сервер или особые права (как `debugserver` на macOS, Р5),
+  опишите, откуда его взять и как включить.
+* Настройка редактора (clangd с `--query-driver=…/hosts/<triple>/bin/clang-<N>`, `lldb-dap`) — в
+  link:../../../usage/ide.adoc[ide.adoc]. Добавьте туда новую ОС, если что-то отличается.
+
+*Готово, когда:* в редакторе с `lldb-dap` можно остановиться в `runtimetest` на точке останова и
+увидеть локальные переменные.
+
+[[v10]]
+== В10. xenolith-cli
+
+*Зачем.* `xenolith-cli` — основной способ установить движок и собирать проекты. Он должен узнать
+новую ОС, скачать для неё правильный набор и уметь обновлять сам себя.
+
+*Что сделать.*
+
+. `utils/installer/core/src/SPITriple.cc`:
+** `getNativeOs()` — ветка `#if SPRT_<OS>` (сейчас только Apple, Windows и Linux; для остального —
+   пустая строка);
+** `getServerOs()` — перевод имени ОС в часть тройки (`freebsd` → `unknown-freebsd`);
+** `getServerArch()` — перевод имени архитектуры (там уже есть `amd64`, `arm64`);
+** `kKnownHosts[]` — список host-троек, для которых на сервере есть набор. Это быстрый путь без
+   сети, держите его в согласии с `RELEASE_HOSTS`;
+** `getCurrentLibc()` — если у ОС несколько вариантов libc, как у Linux.
+. `utils/installer/core/src/SPISelfUpdate.cc`, `getCliAssetTriple()` — какой архив CLI скачивать при
+  самообновлении.
+. Каталог хранилища (`utils/installer/core/src/SPIDirs.cc`) берётся из категорий файловой системы runtime (В1). Проверьте, что
+  он получается без пробелов в пути; переменная `XENOLITH_HOME` переопределяет его.
+. Наборы распаковываются внешней командой `tar -xf`. Она должна понимать `.tar.xz` и символьные
+  ссылки (bsdtar и GNU tar понимают).
+. `install.sh` в корне — строка в таблице `uname -s:uname -m` → тройка (сейчас там только
+  `Darwin` и `Linux`). Для разновидности Windows — `install.ps1`.
+. `.github/workflows/cli-release.yml` — строка матрицы: CLI собирается кросс-сборкой на Linux. Если
+  проверить запуск на CI нечем (нет виртуальной машины с новой ОС), пометьте строку
+  `best-effort: true`.
+
+*Готово, когда:* на новой ОС `xenolith-cli detect` печатает правильную тройку;
+`sh install.sh` (с `XENOLITH_RELEASE_BASE`, указывающим на тестовый релиз) ставит CLI;
+`xenolith-cli install` ставит движок, host- и целевой наборы; `xenolith-cli build tests/runtime --run`
+проходит.
+
+[[v11]]
+== В11. Выпуск и документация
+
+*Выпуск.*
+
+. `make -C runtime/toolchains release-hosts` (или `hosts-export` для раскладки сервера) создаёт архив
+  `host_<triple>.tar.xz` и подпись. Опубликуйте их в каталоге `sdk-v*` на сервере релизов. Установщик
+  показывает только архивы с подписью `.sig`.
+. Добавьте строку в таблицу «Hosts» в `runtime/toolchains/RELEASE_NOTES.md`.
+
+*Документация.*
+
+* `docs/platforms/<os>.adoc` — раздел о работе в качестве host: что установить на ОС (GNU make или
+  нет, `tar`, `git`), чего на ней нет (например, Android NDK), как отлаживать;
+* `runtime/toolchains/README.adoc` — список cross host;
+* `docs/agents/toolchains.md`, `docs/usage/makefiles.adoc` — определение host и требования;
+* `docs/usage/cli-releases.adoc` — матрица выпуска CLI;
+* link:../general/support.adoc[support.adoc] и link:../general/build.adoc[build.adoc].
+
+*Готово, когда:* на чистой машине с новой ОС `install.sh`, затем `xenolith-cli install`, затем
+`xenolith-cli build tests/runtime --run` проходят без единого ручного шага.
+
+[[native]]
+== Приложение: нативная раскрутка
+
+Нативная раскрутка (`make -C runtime/toolchains host` на самой новой ОС) нужна, если cross host по
+какой-то причине невозможен. Образец — `host-linux-glibc/` в три ступени:
+
+. *ступень 0* — системным компилятором build-машины собираются GNU make, старая glibc, GCC, затем
+  LLVM-runtimes и первый clang;
+. *ступень 1* — первый clang собирает новую glibc и второй clang, уже не зависящий от GCC;
+. *ступень 2* — второй clang собирает окончательный набор: glibc, runtimes, clang/lld/lldb с LTO,
+  инструменты шейдеров, make.
+
+Для новой ОС это значит: каталог `host-<os>/` с make-файлами ступеней, цель `out`, ветка в
+`common/utils/detect-platform.mk`, где `HOST_TOOLCHAIN` указывает на этот каталог. Кроме того, все
+скрипты `runtime/toolchains/` должны работать на ней — им нужны GNU sed, coreutils, wget, cmake и
+ninja (см. <<v3,В3>>). Это заметно дороже cross host, поэтому сначала убедитесь, что без нативной
+раскрутки действительно нельзя.
+
+[[risks]]
+== Риски и известные шероховатости
+
+* *Детекторы host расходятся молча.* Host определяют четыре независимых места (В2). Если одно из
+  них ошиблось, другой режим запуска возьмёт чужой набор, и ошибка проявится далеко от причины.
+  `utils/porting/detect-host.py` на новой машине показывает ответ каждого и проверяет, что они
+  совпадают.
+* *Инструменты, которые тянут системные библиотеки.* Набор, собранный с разделяемыми
+  библиотеками и без их копий в `lib/`, работает только там, где в системе случайно есть те же версии.
+  Так было с SPIRV-Tools в нативной сборке Linux-host. `check-toolchain.py <triple> --run` перечисляет
+  каждую библиотеку, которую инструменты загружают не из набора и не из libc.
+* *Нет нативной сборки — нет и `HOST_TOOLCHAIN`.* Для macOS `detect-platform.mk` оставляет
+  `HOST_TOOLCHAIN` пустым, и `make host` объясняет, что набор нужно установить или собрать на Linux.
+  Новая ОС без нативной раскрутки делает так же.
+* *Windows cross host зависит от дерева нативной раскрутки.* `host-windows-msvc/cross/stage0.mk` берёт
+  tablegen из `host-linux-glibc/sysroot-clang-out/bin`. Готового `hosts/<HOST_ID>` ему недостаточно.
+  Если ваш cross host потребует того же, запишите это.
+* *`kKnownHosts` должен совпадать с релизом.* Это быстрый путь без сети; держите его в согласии с
+  `RELEASE_HOSTS`, иначе установщик выберет эмуляцию там, где есть свой набор.
+* *Подпись проверяется только на наличие.* Установщик требует файл `.sig` рядом с архивом, но саму
+  подпись не проверяет.
+* *`uname -m` на разных ОС.* `amd64` вместо `x86_64` и `arm64` вместо `aarch64` встречаются часто.
+  Перевод делается в нескольких местах (В2, В10, `install.sh`) — нельзя пропустить ни одно;
+  `check-host-os.py --uname-arch <написание>` проверяет их все.
+
+== Сводный список файлов
+
+----
+make/utils/init-sh.mk, init-xlmake.mk                         В2
+stappler/makefile/SPMakefileBuiltins.cc                       В2
+runtime/toolchains/common/utils/detect-platform.mk            В2, В5
+make/c/rules-*.mk, make/embed/*                               В3  (если рецепты непереносимы)
+runtime/toolchains/host-<os>/cross/{Makefile,*.cmake}         В4
+runtime/toolchains/host-<os>/licenses/                        В4
+runtime/toolchains/replacements/llvm/<ver>-<name>/, src.mk    В4  (если нужны патчи)
+runtime/toolchains/Makefile (host-cross-*, RELEASE_HOSTS)     В5
+tests/run-checks.py, tests/libc/compare.sh                    В8
+docs/usage/ide.adoc                                           В9
+utils/installer/core/src/SPITriple.cc, SPISelfUpdate.cc       В10
+install.sh / install.ps1, .github/workflows/cli-release.yml   В10
+runtime/toolchains/{README.adoc,RELEASE_NOTES.md}, docs/…     В11
+----

@@ -70,6 +70,9 @@ The current development queue for platform support is:
 
 You can influence the process by implementing support before the engine team gets to it.
 
+Detailed step-by-step plans are in the link:../articles/en/porting/index.adoc[Porting Xenolith]
+section: a new CPU architecture, a new OS as a target, and a new OS as a host.
+
 Adding a new platform is split into two parts:
 
 #### Building a toolchain

@@ -64,6 +64,8 @@ STAPPLER_HOST_ARCH ?= $(shell uname -m)
 
 ifeq ($(STAPPLER_HOST_ARCH),arm64)
 STAPPLER_HOST_ARCH := aarch64
+else ifeq ($(STAPPLER_HOST_ARCH),amd64)
+STAPPLER_HOST_ARCH := x86_64
 endif
 
 ifeq ($(UNAME),Darwin)
@@ -76,7 +78,7 @@ else ifeq ($(UNAME),Linux)
 
 ANDROID_HOST := linux-$(STAPPLER_HOST_ARCH)
 
-ifeq ($(shell ldd /bin/ls 2>&1 | grep -q 'musl'),)
+ifeq ($(findstring musl,$(shell ldd /bin/ls 2>&1)),)
 STAPPLER_HOST := $(STAPPLER_HOST_ARCH)-unknown-linux-gnu
 else
 STAPPLER_HOST := $(STAPPLER_HOST_ARCH)-unknown-linux-musl

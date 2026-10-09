@@ -47,12 +47,11 @@
 #define RESTRICT
 #endif
 
-// TODO: replace with better detection
-#if (__i386__) || (_M_IX86) || (__x86_64__) || (_M_X64) || (__arm__) || (_M_ARM) || (__arm64__) \
-		|| (__arm64) || defined(__aarch64__) || defined(__e2k__)
-#define __GOST3411_LITTLE_ENDIAN__ 1
-#else
+// MSVC targets (no __BYTE_ORDER__) are little-endian only
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 #define __GOST3411_BIG_ENDIAN__ 1
+#else
+#define __GOST3411_LITTLE_ENDIAN__ 1
 #endif
 
 // TODO: add detection

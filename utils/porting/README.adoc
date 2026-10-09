@@ -1,0 +1,109 @@
+= Porting scripts
+
+Diagnostics for bringing the engine to a new CPU architecture, a new target OS or a new host OS. Each
+script checks the steps of one of the porting plans and says what is there, what is missing and what
+looks wrong:
+
+* link:../../docs/articles/en/porting/index.adoc[Porting Xenolith] (English),
+  link:../../docs/articles/ru/porting/index.adoc[Портирование Xenolith] (Russian).
+
+The scripts read the engine tree, the toolchains and the sysroots. They never edit the engine and never
+build it. Some of them run tools: the C preprocessor of the host clang, GNU make or xlmake to evaluate a
+makefile, `ldd`, and, with `--run`, the tools of a host toolchain. Anything they write goes to a private
+temporary directory that is removed on exit. Python 3.8 or newer, standard library only.
+
+== The scripts
+
+[cols="1,2,1", options="header"]
+|===
+| Script | What it answers | Plan steps
+
+| `check-arch.py <arch>`
+| Where an architecture stands: sprt detection, the six ABI headers, every toolchain list, the Linux
+  sysroots, built tests, qemu, SIMD, host toolchains, release lists, installer, docs.
+| A1–A12
+
+| `check-target-os.py <os>`
+| Where a target OS stands: platform identity, cross headers and config gates, the toolchain directory,
+  the make preset, every selection point of the runtime platform layer, windows, docs.
+| B2–B12
+
+| `check-host-os.py --uname U --triple T --os O`
+| Where a host OS stands: the target prerequisites, every host detector, `uname -m` spellings, the host
+  build makefile, the toolchains Makefile, test scripts, xenolith-cli, docs.
+| C1–C11
+
+| `detect-host.py`
+| On the machine itself: what init-sh.mk, init-xlmake.mk, detect-platform.mk and xenolith-cli each
+  conclude, whether they agree, and which host tools are present.
+| C1–C3
+
+| `check-sysroot.py <triple or dir>`
+| A target sysroot against the `target.mk` contract: required variables, the OS preset, directories,
+  runtime libraries, dangling links, and the machine of every library.
+| A5, B4
+
+| `check-toolchain.py <triple or dir> [--run]`
+| A host toolchain against the `hosts/<triple>` contract: `host.mk`, the tool set, links, the binary
+  format. With `--run` on the host itself: compile and run a C program, a shader through glslang and
+  spirv-link, xlmake, and the libraries every tool loads.
+| A9, C4, C6
+
+| `check-abi.py --target <triple>`
+| Every number in sprt's cross headers next to the target libc's own, grouped (errno, fcntl, signal,
+  socket, syscall, ...). Covers the system call numbers, which no `static_assert` checks.
+| A3, B3, B7
+
+| `find-refs.py --like X --new Y`
+| Every line that names a reference (an architecture, a platform macro, a make variable) with no
+  mention of the new one nearby: the lists a port has to join.
+| A, B, C
+|===
+
+All scripts accept `--json` (machine-readable report), `-q` (only FAIL and WARN), `--no-color` and
+`--engine <root>` (another checkout). The exit status is 1 when anything FAILed.
+
+== Reading a report
+
+Each line has a status:
+
+FAIL:: a required piece is missing or wrong; the plan step is not done.
+WARN:: a likely problem, or an optional piece that is missing. Read the hint.
+INFO:: a fact worth knowing: what was found, what is not built yet.
+SKIP:: the check could not run here (no clang, no GNU make, a foreign host).
+
+The engine's older platforms (Linux, Android, Windows, Apple) predate the layout the plans describe, so
+`check-target-os.py linux` reports differences that are not errors. Run the scripts for a platform
+ported the current way (`nuttx`, `embox`, `embox_user`, `wasm`) to see a clean reference.
+
+== Examples
+
+[source,sh]
+----
+# a new architecture, next to the one it was copied from
+utils/porting/check-arch.py loongarch64 --like riscv64
+utils/porting/check-abi.py --target loongarch64-unknown-linux-gnu
+
+# a new hosted OS, compared with NuttX
+utils/porting/check-target-os.py myos --system MyOS --define __MYOS__ --form hosted --like nuttx \
+    --triple aarch64-myos-none-elf
+utils/porting/find-refs.py --like SPRT_NUTTX --new SPRT_MYOS
+
+# a new host
+utils/porting/check-host-os.py --uname FreeBSD --triple x86_64-unknown-freebsd --os freebsd --uname-arch amd64
+utils/porting/detect-host.py                       # on the FreeBSD machine
+utils/porting/check-toolchain.py x86_64-unknown-freebsd --run --cross x86_64-pc-windows-msvc
+
+# everything installed here
+utils/porting/check-sysroot.py --all -q
+utils/porting/check-toolchain.py --all -q
+----
+
+== What they cannot see
+
+* The scripts read conditionals as text. A `static_assert` under an `#if` guard, a make branch that is
+  never taken, a list that is dead code: they report what is written, and the hint says when to read
+  the guard.
+* `check-abi.py` compares macros, not sizes or layouts of structures. The `static_assert`s in
+  `runtime/libc_wrapper` remain the check for those: build `tests/runtime` for the target.
+* Nothing replaces running `runtimetest` on the target (plans A7, B8).

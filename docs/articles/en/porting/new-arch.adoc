@@ -1,0 +1,864 @@
+= Plan A. A new CPU architecture
+:toc:
+:toclevels: 2
+
+This plan describes how to add a new CPU architecture to operating systems the engine already supports.
+The main case is Linux (glibc and musl), and it always comes first. Android, Windows and macOS for the
+new architecture are separate steps at the end of the plan.
+
+Terms (target, sysroot, cross headers, `__SPRT_ARCH_ID`, …) are defined in the
+xref:index.adoc#glossary[introduction]. If you need a new OS rather than an architecture, that is
+xref:new-target-os.adoc[plan B]. If you need the tools to run on a machine of the new architecture, see
+step <<a9,A9>> of this plan and xref:new-host-os.adoc[plan C].
+
+*Models.* The whole plan is derived from two real ports: riscv64, spread over several toolchain
+commits (the main one is `fe8176c0`), and loongarch64, one tidy commit `5be3d759` "runtime: loongarch64
+support". Keep `git show 5be3d759` open alongside: almost every step below is a group of files from that
+commit. If your branch does not have it, `master` does.
+
+*Scripts.* `utils/porting/check-arch.py <arch> --like riscv64` walks every step of the plan and shows
+what is done and what is not; run it after each step. The other scripts and how to read their reports
+are in link:../../../../utils/porting/README.adoc[utils/porting/README.adoc].
+
+== What "adding an architecture" means
+
+The architecture does not live in one place in the engine. It lives in a dozen lists and in six small
+headers. Most engine code does not depend on the architecture at all: type sizes come from `__LP64__`,
+system calls are made by the real libc, and SIMD code goes through the portable SIMDe library by
+default. So the work is mostly *finding every place where architectures are listed* and carefully
+adding the new one.
+
+A port is done in levels. Each level can be delivered separately:
+
+[cols="1,3,2", options="header"]
+|===
+| Level | What you get | Steps
+
+| 1. Build
+| Linux target sysroots and any engine project build for the new architecture
+| <<a1,A1>>–<<a6,A6>>
+
+| 2. Run
+| Engine tests pass on the new architecture (under qemu-user or on hardware)
+| <<a7,A7>>
+
+| 3. Speed
+| Fast SIMD paths instead of the portable ones
+| <<a8,A8>> (optional)
+
+| 4. Tools
+| The toolchain runs *on* a machine of the new architecture
+| <<a9,A9>> (optional)
+
+| 5. Other OSes
+| Android, Windows, macOS on the new architecture
+| <<a10,A10>>, <<a11,A11>> (optional)
+
+| 6. Release
+| The architecture is in the SDK release, the installer and the documentation
+| <<a12,A12>>
+|===
+
+== Map: where the architecture lives in the engine
+
+A summary table. The details are in the steps.
+
+[cols="2,3,1", options="header"]
+|===
+| Place | What is there | Step
+
+| `runtime/include/sprt/c/bits/__sprt_def.h`
+| Recognizing the architecture from compiler macros, `__SPRT_ARCH_ID`/`_NAME`
+| <<a2,A2>>
+
+| `xenolith/remote/XLRemotePeerInfo.{h,cc}`
+| `enum class OsArch`: a copy of the architecture IDs for the network protocol
+| <<a2,A2>>
+
+| `runtime/include/sprt/c/cross/linux_sprt/<arch>_sprt/`
+| Six ABI headers: `config.h`, `fcntl.h`, `fenv.h`, `jmp_buf.h`, `signal.h`, `syscall.h`
+| <<a3,A3>>
+
+| `runtime/include/sprt/c/cross/linux_sprt/*.h`
+| Shared Linux headers that contain architecture conditions (`sockdef.h`)
+| <<a3,A3>>
+
+| `runtime/toolchains/common/utils/names.mk`
+| Architecture names for autoconf and cmake
+| <<a4,A4>>
+
+| Every `LLVM_TARGETS_TO_BUILD` in `runtime/toolchains/host-*`
+| Which LLVM backends are compiled into clang
+| <<a4,A4>>
+
+| `runtime/toolchains/common/*.mk`, `replacements/`, `src.mk`
+| Special flags and patches for third-party libraries
+| <<a4,A4>>
+
+| `runtime/toolchains/target-linux/Makefile`, `glibc/Makefile`, `musl/Makefile`, `openssl.mk`
+| Building the Linux target sysroots
+| <<a5,A5>>
+
+| `runtime/toolchains/Makefile`
+| The `target-…` and `host-cross-…` rules, the release lists
+| <<a5,A5>>, <<a9,A9>>, <<a12,A12>>
+
+| `make/os/linux.mk`, `make/c/compiler.mk`
+| Special cases for 32-bit architectures and for debug information
+| <<a6,A6>>
+
+| `make/utils/init-{sh,xlmake,powershell}.mk`
+| Translating `uname -m` into an architecture name
+| <<a12,A12>>
+
+| `runtime/include/sprt/runtime/geom/simd*.h`, `stappler/raster/`, `stappler/core/string/SPGost3411-2012.cc`
+| SIMD paths, CPU feature detection, byte order
+| <<a8,A8>>
+
+| `runtime/src/platform/SPRuntimePlatform-posix.cc`
+| The CPU cycle counter (`rdtsc`)
+| <<a8,A8>>
+
+| `tests/libc/compare.sh`
+| Running the tests under qemu-user
+| <<a7,A7>>
+
+| `utils/installer/core/src/SPITriple.cc`, `install.sh`, `.github/workflows/cli-release.yml`
+| The installer and the release
+| <<a12,A12>>
+|===
+
+On Linux and Android sprt has no assembly files at all: setjmp, atomics and system calls come from the
+real libc. Architecture-specific assembly is needed only where sprt is the libc itself (Windows, wasm,
+Embox EL0); see <<a11,A11>>.
+
+== Decisions to make before you start
+
+Answer these once, before the first line of code. Record the answers in the commit description.
+
+*D1. Baseline instruction set.* The engine passes no `-march` for Linux, Android and Windows: code is
+built for whatever clang considers the baseline for the triple. If the baseline is too small (no
+floating point or no vectors, for example), decide whether you accept that or add a flag to
+`target.mk`. The engine enables extensions (AVX2, LASX, RVV) *per function*, through
+`__attribute__((target(...)))` with a runtime CPU check; see <<a8,A8>>.
+
+*D2. glibc and kernel versions.* By default the Linux target sysroots are built against glibc 2.33
+and kernel 5.10 headers. Young architectures are missing there: riscv64 is pinned to glibc 2.35,
+loongarch64 to glibc 2.36 and kernel 6.1 (5.10 has no `arch/loongarch`). Pick the *lowest* versions
+that already have the architecture: the older the glibc in the sysroot, the more systems the
+application will run on.
+
+*D3. glibc, musl or both.* Usually both: musl in the toolchain comes from the `runtime/musl-libc`
+submodule, which already has `arch/` directories for almost every architecture. But glibc and musl may
+disagree on the ABI (loongarch64 has a different `jmp_buf` size in each), and <<a3,A3>> has to account
+for that.
+
+*D4. Byte order and word size.* The plan assumes a 64-bit little-endian architecture. For a 32-bit one,
+<<a6,A6>> has an extra item. For big-endian, see <<risks,"Risks">>: some generators (`target.ini` for
+meson) write `little` unconditionally.
+
+*D5. How far to go.* Levels 1, 2 and 6 are mandatory. Levels 3–5 depend on your needs. For example,
+loongarch64 got its own SIMD paths (level 3) and a host toolchain (level 4), but no Android.
+
+[[a1]]
+== A1. Check that everything the engine stands on knows the architecture
+
+*Why.* The Linux target sysroot is built from other people's projects: LLVM, GCC and binutils (only
+to build glibc), glibc, musl, the Linux kernel headers, OpenSSL and about twenty more libraries. If any
+one of them does not know the architecture, the port stalls halfway. It is better to find out in an
+hour at the start.
+
+*What to do.* Go through the list and, for each item, find a confirmation (a directory in the sources,
+a line in the documentation, a name in a list of supported targets):
+
+. *LLVM* at the version pinned in `runtime/toolchains/common/utils/llvm-version.mk` (`SP_LLVM_V`):
+  does it have the backend (`llvm/lib/Target/<Name>`), and what is it called in `LLVM_TARGETS_TO_BUILD`
+  (`X86`, `AArch64`, `RISCV`, `LoongArch`)?
+. *GCC and binutils* (versions in `runtime/toolchains/host-linux-glibc/glibc.mk`): glibc cannot be
+  built with clang, so a cross GCC is built for glibc targets.
+. *glibc*: which version first has the port (`sysdeps/unix/sysv/linux/<arch>`). That is the minimum
+  version for D2.
+. *musl*: does `runtime/musl-libc/arch/<arch>` exist?
+. *Linux kernel*: which version first has `arch/<kernel-name>`. Write down the kernel name: it may
+  differ from the name in the triple (`riscv` for `riscv64`, `arm64` for `aarch64`, `loongarch` for
+  `loongarch64`).
+. *OpenSSL*: the configuration name in `Configurations/10-main.conf` (`linux64-riscv64`,
+  `linux64-loongarch64`).
+. *meson*: a valid `cpu_family` value (needed for dependencies built with meson).
+. *Optional dependencies*: WAMR (`stappler_wasm`), libjpeg-turbo SIMD code, ASan and the ORC runtime in
+  compiler-rt. They can be switched off for the architecture; see <<a4,A4>> and <<a5,A5>>.
+
+Check that the clang from your host toolchain knows the triple, and which macros it defines:
+
+[source,sh]
+----
+H=runtime/toolchains/hosts/x86_64-unknown-linux-gnu/bin   # or toolchains/hosts/...
+$H/clang --target=<arch>-unknown-linux-gnu -dM -E - </dev/null \
+    | grep -E '__<arch>|__LP64__|__BYTE_ORDER__|__SIZEOF_POINTER__'
+----
+
+If clang says "unknown target", your host toolchain lacks the LLVM backend. Then you need step
+<<a4,A4>> first (add the backend) and a host toolchain rebuild: `make -C runtime/toolchains host`.
+
+*Done when:* for every item in the list you know the version that supports the architecture and the
+name it uses there. You have a list of dependencies to switch off. clang prints the architecture's
+macros.
+
+[[a2]]
+== A2. Teach sprt to recognize the architecture
+
+*Why.* Everything architecture-dependent in sprt is selected by two macros: `__SPRT_ARCH_ID` (a number
+to compare against in code) and `__SPRT_ARCH_NAME` (the name of the directory with the ABI headers).
+Until they are defined, any build stops at `#error "Unknown arch"`.
+
+*What to do.*
+
+. In `runtime/include/sprt/c/bits/__sprt_def.h`, find the `__SPRT_ARCH_NAME_*` / `__SPRT_ARCH_ID_*` block
+  and add a pair for the new architecture. The ID is the next free number (1–11 are taken now); the
+  name is `<arch>_sprt`:
++
+[source,c]
+----
+#define __SPRT_ARCH_NAME_NEWARCH64 newarch64_sprt
+#define __SPRT_ARCH_ID_NEWARCH64 12
+----
+. Below it, in the chain `#if defined(__x86_64__) … #elif … #else #error "Unknown arch"`, add a branch on
+  the macros you found in A1. Check the word size as well as the architecture name, if the architecture
+  has both 32- and 64-bit variants:
++
+[source,c]
+----
+#elif defined(__riscv) && defined(__riscv_xlen) && __riscv_xlen == 64
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_RISCV64
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_RISCV64
+----
++
+WARNING: Check carefully that the new branch uses *your* macros and not ones copied from a neighbour.
+This exact mistake has happened already: one branch mapped `__loongarch__` to
+`__SPRT_ARCH_NAME_RISCV64`, and a LoongArch build silently picked up the RISC-V headers.
+. The architecture ID is part of the `xenolith/remote` network protocol. Add a value to
+  `enum class OsArch` in `xenolith/remote/XLRemotePeerInfo.h`. In `XLRemotePeerInfo.cc`, add a line to
+  the `static_assert` block that checks `OsArch` against `__SPRT_ARCH_ID_*`, and a name to the `switch`
+  that turns the value into a string.
+
+The rule for the rest of the code: compare architectures by ID,
+`#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64`, not by raw compiler macros and not by name. For
+pointer size use `__SIZEOF_POINTER__`. More in
+link:../../../usage/codestyle/platform/platform-guards.adoc[platform-guards.adoc].
+
+*Done when:* compiling any `.cpp` from `runtime/` with `--target=<arch>-unknown-linux-gnu` gets past
+`__sprt_def.h` and fails on the missing `cross/linux_sprt/<arch>_sprt/…` headers instead. That is
+expected: A3 creates them. Builds for the existing architectures are unchanged.
+
+[[a3]]
+== A3. ABI headers: `linux_sprt/<arch>_sprt/`
+
+*Why.* sprt gives every platform the same libc interface, but takes the actual numbers (`open` flags,
+signal numbers, system call numbers, the size of `jmp_buf`) from the target's real libc. For Linux most
+of the numbers are shared and live in `runtime/include/sprt/c/cross/linux_sprt/`. What changes from
+architecture to architecture lives in the `<arch>_sprt/` subdirectory, and that subdirectory is what you
+create here.
+
+*What to do.* Create `runtime/include/sprt/c/cross/linux_sprt/<arch>_sprt/` with six files. Start from a
+copy of the most similar architecture's directory. Almost all new Linux architectures use the kernel's
+"asm-generic" layout, like aarch64 and riscv64, so `riscv64_sprt` is the usual starting point.
+
+[cols="1,3,3", options="header"]
+|===
+| File | What it holds | Where the numbers come from
+
+| `config.h`
+| Config gate overrides for the architecture. Usually empty.
+| —
+
+| `fcntl.h`
+| `__SPRT_O_*`, `F_*`, `AT_*`
+| `arch/<kernel>/include/uapi/asm/fcntl.h` if it exists, otherwise `include/uapi/asm-generic/fcntl.h`.
+  The values that differ most often are `O_DIRECTORY`, `O_NOFOLLOW`, `O_DIRECT`, `O_LARGEFILE`,
+  `O_TMPFILE`.
+
+| `fenv.h`
+| The `__sprt_fenv_t` and `__sprt_fexcept_t` types, the `__SPRT_FE_*` bits, rounding modes
+| `bits/fenv.h` from glibc and `arch/<arch>/bits/fenv.h` from musl. The layout can be entirely its own:
+  on loongarch64 `fenv_t` is a struct, and the exception flags sit in bits 16–20 of the FCSR register.
+
+| `jmp_buf.h`
+| `typedef unsigned long __SPRT_ID(__jmp_buf)[N];`
+| `bits/setjmp.h` from glibc and from musl. Count which registers are saved and write the count down in
+  a comment (as in `riscv64_sprt/jmp_buf.h`).
+
+| `signal.h`
+| `__SPRT_SIG*`, `__SPRT__NSIG`
+| `arch/<kernel>/include/uapi/asm/signal.h` or asm-generic
+
+| `syscall.h`
+| `__SPRT_SYSCALL_<name> <number>`
+| the kernel's system call table for the architecture (the architecture's `unistd.h` or
+  `include/uapi/asm-generic/unistd.h`). Remove the calls the architecture does not have: loongarch64
+  lacks six compared with riscv64 (`renameat`, `newfstatat`, `fstat`, `getrlimit`, `setrlimit`,
+  `memfd_secret`).
+|===
+
+If glibc and musl disagree for the architecture (loongarch64 `jmp_buf` is 21 words in glibc and 23 in
+musl), distinguish them by the `__SPRT_LINUX_MUSL` macro, which `make/os/linux.mk` defines for
+`*-linux-musl` targets. That macro arrived with loongarch64; if your branch does not have it, bring it
+over from `5be3d759`.
+
+Then review the *shared* `linux_sprt/*.h` headers: they already contain architecture conditions, and
+the new architecture may need to be added to them. Known places:
+
+* `linux_sprt/sockdef.h`: `__SPRT_PF_MAX` is 46 on riscv64 and on loongarch64 with glibc, 45 otherwise.
+  The value depends on the libc version more than on the architecture.
+* `runtime/include/sprt/c/sys/__sprt_epoll.h`: `struct epoll_event` is `packed` only on x86_64, as the
+  kernel ABI requires.
+* The shared headers assume the asm-generic and x86 layouts. On mips, powerpc, sparc and alpha the
+  signal numbers, `errno` values, socket and terminal constants are different. For such architectures
+  the shared headers are not enough, and those values have to move into `<arch>_sprt/`.
+
+*How this is checked.* There is no generator for these headers; they are written by hand. The build
+checks them: the `runtime_libc_wrapper` module is compiled *together with* the target's real libc
+headers and contains more than a thousand checks like
+
+[source,c++]
+----
+static_assert(O_CREAT == __SPRT_O_CREAT);
+static_assert(SIGHUP == __SPRT_SIGHUP);
+static_assert(sizeof(jmp_buf) == sizeof(__sprt_native_jmp_buf));
+----
+
+(`libc_wrapper/c/SPRuntimeCFcntl.cpp`, `libc_wrapper/c/common/signal.cc`, `libc_wrapper/c/common/fenv.cc`,
+`runtime/core/runtime_core_setjmp.cpp` and others). So the real check of the headers is step
+<<a6,A6>>: if a number is wrong, the build fails and says which one.
+
+*System call numbers are not checked by anything.* They are used by futex, `epoll_pwait2`, io_uring,
+inotify and `pidfd_open`, all through the real libc's `syscall()`. A wrong number shows up only at run
+time, and not obviously. Compare the table by hand with what the target compiler sees:
+
+[source,sh]
+----
+T=runtime/toolchains/targets/<arch>-unknown-linux-gnu      # exists after A5
+echo '#include <asm/unistd.h>' \
+    | $H/clang --target=<arch>-unknown-linux-gnu --sysroot=$T -dM -E - \
+    | sed -n 's/^#define __NR_\([a-z0-9_]*\) \([0-9]*\)$/\1 \2/p' | sort > /tmp/kernel.txt
+sed -n 's/^#define __SPRT_SYSCALL_\([a-z0-9_]*\) \([0-9]*\)$/\1 \2/p' \
+    runtime/include/sprt/c/cross/linux_sprt/<arch>_sprt/syscall.h | sort > /tmp/sprt.txt
+diff /tmp/kernel.txt /tmp/sprt.txt
+----
+
+This is a recommendation, not part of the established procedure. To close the gap for good, add
+`static_assert(SYS_futex == __SPRT_SYSCALL_futex)` to `libc_wrapper` for the calls the engine actually
+makes.
+
+`utils/porting/check-abi.py --target <arch>-unknown-linux-gnu` compares every number at once,
+system call numbers included. Its report replaces the manual command above.
+
+*Done when:* the six files exist, every number has a source (a comment or the commit description), and
+the system call `diff` is empty. The step is finally closed by the build in <<a6,A6>>.
+
+[[a4]]
+== A4. Shared toolchain lists
+
+*Why.* The dependency build scripts are the same for every architecture. They need to know what the
+architecture is called in autoconf and cmake. Every clang we release needs a backend for the new
+architecture. Some third-party libraries need special flags.
+
+*What to do.*
+
+. *Names for autoconf and cmake.* In `runtime/toolchains/common/utils/names.mk` add
++
+[source,make]
+----
+CONFIGURE_PROC_<arch> := <arch>                  # -DCMAKE_SYSTEM_PROCESSOR
+CONFIGURE_HOST_Linux_<arch> := <arch>-linux-gnu  # --host for ./configure
+----
++
+and, if Android is planned, `CONFIGURE_HOST_Android_<arch> := <arch>-linux-android`. musl targets also
+use `-linux-gnu`: it is only an autoconf alias.
+. *The LLVM backend in every host toolchain.* Every clang we release is a cross compiler for all
+  targets at once. Find every list and add the backend name from A1:
++
+[source,sh]
+----
+grep -rn 'LLVM_TARGETS_TO_BUILD' runtime/toolchains --include='*.mk' --include=Makefile
+----
++
+Currently these are `host-linux-glibc/stage2.mk`, `host-linux-musl/stage1.mk`,
+`host-linux-glibc/cross/Makefile`, `host-linux-musl/cross/Makefile`, `host-macos/cross/Makefile`,
+`host-windows-msvc/cross/stage0.mk`, `host-windows-msvc/stage0.mk` and `toolchain-macos-cross/target.mk`.
+Lines like `-DLLVM_TARGETS_TO_BUILD=$(SP_ARCH_LLVM)` (only the native backend, for the intermediate
+tablegen) need no change. A normal line looks like this:
++
+[source,make]
+----
+-DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV;WebAssembly;LoongArch"
+----
+. *Special cases in third-party libraries.* Rebuild the dependencies (A5 does that) and, for each
+  library that fails, take one of these decisions:
+** switch off architecture-specific assembly or SIMD. Example: `common/libjpeg-turbo.mk`,
+   `-DWITH_SIMD=Off` for riscv64, armv7a and loongarch64;
+** set the right target name. Example: `common/wamr.mk`, `WAMR_BUILD_TARGET`;
+** apply a patch: a file in `runtime/toolchains/replacements/<library>/`, an `sp_patch` line in
+   `runtime/toolchains/src.mk` and an entry in `replacements/README.adoc`. Example:
+   `replacements/brotli/0001-no-model-small-on-loongarch.patch`;
+** do not build the library for the architecture (see A5) and record that in the documentation. For
+   example, `stappler_wasm` is unavailable on loongarch64 because WAMR does not know LoongArch.
++
+Do not forget flags enabled for one architecture only: `common/gost.mk` enables `HAVE_ADDCARRY_U64` on
+x86_64 only, `common/libpng.mk` passes `PNG_TARGET_ARCHITECTURE`.
+
+*Done when:* `grep LLVM_TARGETS_TO_BUILD` shows the new backend in every released clang; `names.mk` has
+both lines; there is a list of decisions about third-party libraries. The step is finally closed by
+building the target sysroots in A5.
+
+[[a5]]
+== A5. Linux target sysroots
+
+*Why.* To build an application for `<arch>-unknown-linux-gnu` you need the directory
+`runtime/toolchains/targets/<arch>-unknown-linux-gnu/` with glibc, the LLVM runtimes, the dependencies
+and a `target.mk` file. `runtime/toolchains/target-linux/` builds it. Your job is to add the
+architecture there.
+
+*What to do.*
+
+. `runtime/toolchains/target-linux/Makefile`, the architecture lists:
++
+[source,make]
+----
+GNU_ARCHS := x86_64 aarch64 riscv64 <arch>
+MUSL_ARCHS := x86_64 aarch64 riscv64 <arch>
+----
++
+The same file holds the filters for what the architecture does not support (decisions from A1 and A4):
++
+[source,make]
+----
+ifeq ($(SP_ARCH),<arch>)
+LIBS := $(filter-out $(WASM_LIBS),$(LIBS))   # no WAMR
+endif
+----
++
+For glibc targets this file also adds `libclang_rt.asan-$(SP_ARCH).a`. If compiler-rt cannot do ASan for
+the architecture, exclude that as well.
+. `runtime/toolchains/target-linux/glibc/Makefile`, the architecture block at the top of the file. It
+  sets the kernel name, the dynamic loader name and, if needed, versions:
++
+[source,make]
+----
+else ifeq ($(SP_ARCH_TARGET_LINUX),loongarch64)
+SP_ARCH_TARGET_LINUX := loongarch                     # ARCH= for the kernel's headers_install
+SP_LDSO_NAME := ld-linux-loongarch-lp64d.so.1         # ld.so name from glibc
+GLIBC_SRC_VER ?= 2.36                                 # first glibc with the port
+GLIBC_SRC_DISTRIB_URL = $(GLIBC_SRC_URL)              # the mirror lacks this version
+LINUX_TARGET_KERNEL_VER := 6.1.189                    # 5.10 has no arch/loongarch
+----
++
+Further down in the same file:
+** `liborc_rt.a` is excluded for riscv64. Exclude it for your architecture too if compiler-rt's ORC
+   runtime does not support it;
+** the `libanl.so.1` and `libutil.so.1` stubs are excluded for loongarch64. A glibc port that starts at
+   2.34 or later does not have these compatibility libraries;
+** the generated `target.ini` (for meson) writes `cpu_family = '$(SP_ARCH_TARGET)'` and
+   `endian = 'little'`. Make sure the architecture name is a valid `cpu_family`.
+. `runtime/toolchains/target-linux/musl/Makefile`, the architecture block: the kernel name
+  `SP_ARCH_KERNEL`, the LLVM backend name `SP_ARCH_LLVM` and, if needed, `LINUX_KERNEL_VER`. The musl
+  loader name is derived automatically: `ld-musl-<arch>.so.1`.
+. `runtime/toolchains/target-linux/openssl.mk`, the OpenSSL configuration name:
++
+[source,make]
+----
+ifeq ($(SP_ARCH),<arch>)
+OPENSSL_TARGET := linux64-<arch>
+endif
+----
++
+After the build, check where OpenSSL put its libraries. On x86_64 they go to `lib64`, and `openssl.mk`
+moves them back to `lib`. A new 64-bit architecture may need the same.
+. `runtime/toolchains/Makefile`, the top-level rules. Following riscv64, add:
++
+[source,make]
+----
+target-<arch>-unknown-linux-gnu: host
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) <arch>-unknown-linux-gnu
+target-<arch>-unknown-linux-musl: host
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) <arch>-unknown-linux-musl
+----
++
+and add both targets to the aggregate `target-linux` rule, to `.PHONY` and to the clean list.
+<<a12,A12>> adds them to `RELEASE_TARGETS`.
+
+Run the build:
+
+[source,sh]
+----
+make -C runtime/toolchains download              # once: sources into runtime/toolchains/src
+make -C runtime/toolchains target-<arch>-unknown-linux-gnu
+make -C runtime/toolchains target-<arch>-unknown-linux-musl
+----
+
+The build is long (cross GCC, glibc, the LLVM runtimes, two dozen libraries). Failures in third-party
+libraries send you back to A4.
+
+`utils/porting/check-sysroot.py <arch>-unknown-linux-gnu` checks the result: the `target.mk`
+variables, the LLVM runtime libraries, dangling links and the machine of every library.
+
+*Done when:* `runtime/toolchains/targets/<arch>-unknown-linux-{gnu,musl}/target.mk` exist, they contain
+`TARGET_ARCH := <arch>`, and `usr/lib` holds every library from the `LIBS` list except those excluded
+on purpose. `file` on any of them shows the new architecture.
+
+[[a6]]
+== A6. First engine build: the compile-time ABI check
+
+*Why.* This is the main check of the headers from A3: `runtime_libc_wrapper` compares them with the
+real glibc and musl. It also shows what else in the engine does not know the architecture.
+
+*What to do.* Build the test projects in order of size, for glibc first and then for musl:
+
+[source,sh]
+----
+for T in <arch>-unknown-linux-gnu <arch>-unknown-linux-musl; do
+    make -C tests/runtime  STAPPLER_TARGET=$T -j8 || break
+    make -C tests/libc     STAPPLER_TARGET=$T -j8 || break
+    make -C tests/stappler STAPPLER_TARGET=$T -j8 || break
+    make -C tests/window   STAPPLER_TARGET=$T -j8 || break
+done
+----
+
+(Or `xenolith-cli build tests/runtime --engine $PWD --target $T`.)
+
+What usually breaks, and where to fix it:
+
+* *A `static_assert` in `libc_wrapper`*: a wrong number in a header from A3. Fix the header, not the
+  check. If a number legitimately differs between glibc and musl, distinguish them by
+  `__SPRT_LINUX_MUSL`.
+* *A 32-bit architecture.* `make/os/linux.mk` has a list of ILP32 architectures
+  (`i386 i686 x86 arm armv7a armv7 mips`). It selects the letter that encodes `size_t` in the mangled
+  names of the exported `operator new/delete`. A new 32-bit architecture must be added to it.
+* *Debug information.* In debug builds `make/c/compiler.mk` uses `-gsplit-dwarf`, except on riscv64:
+  the RISC-V linker relaxes instructions, and that interferes with split-dwarf. LoongArch also has
+  relaxation but has no such exception. If a debug build of your architecture fails to link, or lld
+  warns about relaxation, add the architecture to the exception.
+* *Code under an architecture `#if` with no `#else` branch.* For example, stack unwinding for backtraces
+  on Windows ends with `#pragma error("unsupported architecture")`. There are almost no such places on
+  Linux. If you find one, add a branch or a portable `#else`.
+
+*Done when:* all four projects build for both triples with no warnings that x86_64 does not have. The
+x86_64 and aarch64 builds still pass.
+
+[[a7]]
+== A7. Running under qemu-user
+
+*Why.* The build proves that the numbers match the libc headers. Running proves that the code works:
+the system call numbers are right, `setjmp/longjmp` with stack unwinding works, and threads, clocks and
+files behave as on x86_64. No hardware is needed: qemu-user runs a foreign-architecture binary right on
+your Linux.
+
+*Preparation.*
+
+. Install your distribution's `qemu-user` (you need `qemu-<arch>`).
+. For the glibc target, build `libgcc_s.so.1`: glibc loads it dynamically in `pthread_exit`, and the
+  target sysroot does not have it. The GCC from `target-linux/glibc` builds it (`--enable-shared`,
+  `make all-target-libgcc`).
+. For the locale tests, prepare `C.UTF-8`: `localedef --no-archive -i C -f UTF-8 <dir>/C.UTF-8`, run
+  under qemu from the target sysroot.
+
+*Running.* `tests/libc/compare.sh` can run the tests under qemu-user and compare their output with a
+reference (the `--target` mode arrived with loongarch64; if your branch does not have it, take the
+script from `5be3d759`):
+
+[source,sh]
+----
+tests/libc/compare.sh --target <arch>-unknown-linux-gnu \
+    --qemu-lib <directory with libgcc_s.so.1> --qemu-locale <directory with C.UTF-8>
+tests/libc/compare.sh --target <arch>-unknown-linux-musl
+----
+
+Compare a musl target with the `x86_64-unknown-linux-musl` reference, not with glibc. Expected noise:
+`printf_float` prints `nan` where x86 prints `-nan`. That is hardware behaviour, not a bug.
+
+Then the full `runtimetest`:
+
+[source,sh]
+----
+ROOT=<root directory for qemu: lib/, lib64 -> lib, usr/lib from the target sysroot>
+qemu-<arch> -L $ROOT -E LD_LIBRARY_PATH=/lib \
+    tests/runtime/stappler-build/<arch>-unknown-linux-gnu/debug/cc/runtimetest
+----
+
+If something fails, run the sections one at a time, from simple to complex: `libc_uname`,
+`libc_fcntl`, `libc_setjmp`, `libc_time`, `libc_pthread`, `libc_malloc_threads`, then
+`runtime_dispatch`, `runtime_process`, `runtime_file`. qemu-user has no io_uring, so the event loop
+falls back to epoll; that is normal.
+
+*Done when:* `compare.sh` shows no differences for either triple beyond the noise listed above, and the
+full `runtimetest` exits with code 0 and `0 failures`. If you have access to real hardware, repeat the
+run there: qemu does not emulate everything (the exact memory model, for example).
+
+[[a8]]
+== A8. SIMD and code that knows about the CPU (optional)
+
+*Why.* Everything already works without this step: geometry goes through SIMDe (a portable library that
+imitates SSE on any architecture) and the rasterizer through portable SWAR kernels (that is how riscv64
+works). The step is about speed. But the *check* in it is needed in any case, to confirm that the
+portable paths give the same results on the new architecture.
+
+*Where the architecture appears in engine code.*
+
+[cols="2,3", options="header"]
+|===
+| File | What to do for a new architecture
+
+| `runtime/include/sprt/runtime/geom/simd_attr.h`, `simd.h`
+| Selects the geometry SIMD backend. Unchanged, a new architecture gets SSE through SIMDe or the scalar
+  backend. A backend of its own means a new `simd_<isa>.h` (model: `simd_lsx.h`), a new
+  `SP_GEOM_DEFAULT_SIMD_<ISA>` and a selection branch.
+
+| `stappler/raster/SPRasterAttr.h`, `SPRasterCpu.cc`, `SPRasterKernel.h`, `SPRasterDispatch.cc`, `SPRaster.scu.cpp`
+| Rasterizer kernel sets. A set of its own means a flag in `SPRasterAttr.h`, CPU feature detection in
+  `SPRasterCpu.cc`, a `KernelSet` value, a place in the selection order in `SPRasterDispatch.cc`, an
+  `SPRasterKernels<Isa>.cc` file and, *without fail*, its `#include` in `SPRaster.scu.cpp`. sprt has no
+  `getauxval`: LoongArch reads `/proc/self/auxv` and falls back to `cpucfg`.
+
+| `stappler/core/string/SPGost3411-2012.cc`
+| Byte order. It must be decided by `__BYTE_ORDER__`. The old version guessed it from a list of
+  architectures and treated everything not on the list as big-endian, riscv64 included. `5be3d759`
+  fixed this; make sure the fix is in your branch.
+
+| `runtime/src/platform/SPRuntimePlatform-posix.cc`
+| `rdtsc()`: a cycle counter exists for x86 (`__rdtsc`) and aarch64 (`cntvct_el0`); the rest get
+  `SP_HAS_RDTSC 0`. You can add one (`rdtime` on RISC-V, `rdtime.d` on LoongArch).
+
+| `xenolith/core/XLCore.h`
+| `XL_USE_64_BIT_PTR_DEFINES` for Vulkan handles. It is derived from `__LP64__` and covers any 64-bit
+  Linux architecture. Check it only if your data model is not LP64.
+|===
+
+*Check (under qemu, as in A7).*
+
+[source,sh]
+----
+qemu-<arch> -L $ROOT -E LD_LIBRARY_PATH=/lib .../runtimetest runtime_geom_simd
+qemu-<arch> -L $ROOT -E LD_LIBRARY_PATH=/lib .../stapplertest raster gost3411
+----
+
+The `runtime_geom_simd` and `gost3411` sections arrived with loongarch64 (`5be3d759`).
+`stapplertest raster` compares every available kernel set with the scalar one byte for byte. To check
+the portable path too, build a variant without SIMD,
+`-DSP_GEOM_DEFAULT_SIMD=SP_GEOM_DEFAULT_SIMD_SCALAR -DSP_GOST3411_SCALAR=1`, and run it with
+`SP_RASTER_KERNELS=scalar`. If the architecture has optional extensions, run the tests with and without
+them (for example `qemu-loongarch64 -cpu la464,lasx=off`).
+
+*Done when:* all three sections pass on the default build and on the scalar build. If you added kernels
+of your own, `stapplertest raster` lists them and compares them with the scalar ones.
+
+[[a9]]
+== A9. A toolchain that runs on the new architecture (optional)
+
+*Why.* Until this step, applications for `<arch>` were built on x86_64. This step makes clang, lld, make
+and xlmake run *on* an `<arch>` machine under Linux. It is a host toolchain in the sense of
+xref:new-host-os.adoc[plan C], but for an OS the engine already supports: the
+`host-linux-glibc/cross/` and `host-linux-musl/cross/` directories already exist, and you only add the
+architecture to them.
+
+*What to do.*
+
+. In `runtime/toolchains/host-linux-glibc/cross/Makefile` and `host-linux-musl/cross/Makefile`: an
+  architecture block (`SP_ARCH_LLVM`; for musl also `SP_ARCH_KERNEL`) and the error text that lists the
+  valid values:
++
+[source,make]
+----
+else ifeq ($(SP_ARCH_HOST),riscv64)
+SP_ARCH_LLVM := RISCV
+----
+. If lld loses the architecture attributes during the LTO build (it did on riscv64), add an
+  `LTO_LDFLAGS` workaround following riscv64 (`-Xlinker -mllvm -Xlinker -mattr=…`).
+. In `host-linux-musl/musl.mk`: the architecture → LLVM backend mapping, the architecture → kernel name
+  mapping and, if needed, the kernel version.
+. In `runtime/toolchains/Makefile`:
++
+[source,make]
+----
+host-cross-<arch>-unknown-linux-gnu: target-<arch>-unknown-linux-gnu
+	$(MAKE) -C host-linux-glibc/cross out OUT_SYSROOT=$(abspath hosts/<arch>-unknown-linux-gnu) SP_ARCH_HOST=<arch>
+host-cross-<arch>-unknown-linux-musl: target-<arch>-unknown-linux-musl
+	$(MAKE) -C host-linux-musl/cross out OUT_SYSROOT=$(abspath hosts/<arch>-unknown-linux-musl) SP_ARCH_HOST=<arch>
+----
++
+and add both targets to `host-cross-all` and `.PHONY`. <<a12,A12>> adds them to `RELEASE_HOSTS`.
+
+[source,sh]
+----
+make -C runtime/toolchains host-cross-<arch>-unknown-linux-gnu
+----
+
+`utils/porting/check-toolchain.py <arch>-unknown-linux-gnu` checks what the toolchain contains, and with
+`--run` on an `<arch>` machine also runs the tools and lists the libraries they load.
+
+*Done when:* `runtime/toolchains/hosts/<arch>-unknown-linux-gnu/` contains `bin/`, `lib/`, `host.mk`
+and `release`. On an `<arch>` machine (or under qemu-user) `bin/clang --version` works and
+`bin/xlmake -C tests/runtime` builds and runs `runtimetest`. The full list of host toolchain checks is
+in xref:new-host-os.adoc#c6[C6].
+
+[[a10]]
+== A10. Android on the new architecture (optional)
+
+*Why.* Android is a Linux kernel with the bionic libc, and for the engine it is a separate target with
+its own ABI headers and its own sysroot. The engine currently has four Android ABIs: `arm64-v8a`,
+`x86_64`, `armeabi-v7a`, `x86`. There is no ready model for a fifth. The realistic candidate is riscv64;
+it appears only in `names.mk`.
+
+*What to do.*
+
+. `runtime/include/sprt/c/cross/android_sprt/<arch>_sprt/`: the same six files as in A3, but the numbers
+  are checked against bionic from the NDK.
+. `runtime/toolchains/target-android/Makefile`: the `SP_ARCH_<x>_INFO_BASE`, `_NDK` and `_INFO`
+  blocks, the recipes and the `ARCHS_NDK` list. Currently `ANDROID_PLATFORM_LEVEL` is one value for all
+  ABIs (24). The NDK usually requires a higher API level for new ABIs, so the level will most likely
+  have to become per-architecture. Check the requirement in the documentation of your NDK version.
+. `target-android/install-target-ndk.mk`: the four ABIs are listed explicitly there (`DIFF_FILES_*`,
+  `ARCH_*_SOURCE`, `ARCH_TARGET_DIRS`, the pattern rules).
+. `target-android/init-target.mk`: the `SP_RES_ARCH` names for the NDK libunwind and builtins paths.
+  `target-android/openssl.mk`: an `android-<arch>` configuration must exist in OpenSSL.
+  `common/wamr.mk`: the Android block.
+. `make/os/android-ndk.mk`: the `TARGET_ARCH_ABI` → triple mapping and the `APP_ABI` list.
+. `runtime/toolchains/Makefile`: a `target-<arch>-unknown-linux-android` rule.
+
+*Done when:* `make -C tests/runtime STAPPLER_TARGET=<arch>-unknown-linux-android` builds (the ABI checks
+compare the numbers with bionic); `xenolith-cli build tests/window --target unknown-ndk-linux-android -j1`
+builds every ABI including the new one; `runtimetest` passes on an emulator or a device. How to run on
+Android: link:../../../agents/platforms.md[platforms.md], section 3.3.
+
+[[a11]]
+== A11. Windows and macOS on the new architecture (if the vendor adds one)
+
+On these systems sprt is built differently: on Windows it *is* the libc (`runtime/libc_impl`), so the
+architecture touches assembly, CPU context structures and executable parsing. The model is the aarch64
+Windows commit series (`20d2a73b`, `91bc1694`, `0b3df235`).
+
+*Windows.*
+
+* `runtime/toolchains/target-windows/Makefile`: the `SP_ARCH_<x>_*` sets and recipes, including the
+  `+dll` variant; `target-windows/openssl.mk` and `replacements/openssl/49-xwin-clang.conf`.
+* `runtime/include/sprt/c/cross/windows_sprt/<arch>_sprt/`: the ABI headers.
+* `runtime/libc_impl/asm/Windows/<arch>/`: `chkstk.s` (with the `_alloca_probe` alias) and `fenv.s`;
+  the architecture branches in `runtime/musl-adapters` (`musl_fenv.c`, `string/musl_string.c`,
+  `math/*`).
+* Every place with `_M_ARM64` or `__SPRT_ARCH_ID` in the Windows code: the `CONTEXT` structures
+  (`wrappers/windows/abi/context_api.h`), TEB and PEB (`__sprt_intrin.h`, `libc_impl/.../dllloader.cc`),
+  import thunk decoding (`dlfcn.cc`), `RtlUnwindEx` (`except.cc`), the stack protector cookie
+  (`startup.cc`), backtraces (`libc_wrapper/runtime/SPRuntimeBacktrace.cpp`), `MemoryBarrier` and
+  `YieldProcessor`.
+* `runtime/sprt-shared-windows.mk`: `SPRT_LIB_MACHINE`; `stappler/makefile/SPMakefileBuiltins.cc` and
+  `make/utils/init-powershell.mk`: the architecture name on a Windows host;
+  `runtime/toolchains/common/utils/detect-platform.mk`.
+* Check: `tests/libc/windows-abi/check.sh --arch <arch>` compares the structures with the real SDK
+  headers (compile only), then a full cross build. Wine runs x86_64 only.
+
+*macOS.* The `SP_*_INFO` blocks in `runtime/toolchains/target-apple/Makefile`, the function lists for
+the open sysroot (`target-apple/functions_<arch>.txt`), `macos_sprt/<arch>_sprt/`, and the check
+`tests/libc/macos-abi/check.sh`. A new Apple architecture is unlikely, so the plan does not go further.
+
+[[a12]]
+== A12. Release, installer and documentation
+
+*Why.* An architecture that is not in the release lists and the installer exists only on the machine
+of whoever ported it.
+
+*What to do.*
+
+. *Release lists* in `runtime/toolchains/Makefile`: add the triples to `RELEASE_TARGETS` (A5) and, if A9
+  was done, to `RELEASE_HOSTS`. If your branch has `runtime/toolchains/check-release.py`, add the
+  architecture to its `triple_arch()` and to the ELF machine table (`ELF_MACHINES`, the `EM_*` number
+  from `elf.h`).
+. *Host architecture detection.* If `uname -m` on an `<arch>` machine prints something other than the
+  triple's architecture (`ppc64le`, `arm64`, `amd64`), add the translation to every place that does it:
+  `make/utils/init-sh.mk`, `make/utils/init-xlmake.mk` (and `stappler/makefile/SPMakefileBuiltins.cc`,
+  where xlmake gets `XL_UNAME_MACHINE`), `make/utils/init-powershell.mk`.
+. *xenolith-cli*, `utils/installer/core/src/SPITriple.cc`: `kKnownHosts` (if there is a host toolchain),
+  `getServerArch` (the architecture names the server or the OS may report), `getNativeArch`
+  (`#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_<ARCH>`).
+. *Install scripts*: the `uname -s:uname -m` table in `install.sh` (currently it has neither riscv64 nor
+  loongarch64; check) and `install.ps1` for Windows.
+. *CLI release CI*: a new matrix row in `.github/workflows/cli-release.yml`. If nothing on CI can run the
+  result, mark the row `best-effort: true`, as was done for loongarch64.
+. *Documentation* that lists architectures:
+** link:../../ru/general/support.adoc[support.adoc] (in Russian): the support table and notes (minimum
+   kernel and glibc versions, unavailable modules);
+** `README.md`, `runtime/toolchains/README.adoc` (the target and cross host lists),
+   `runtime/toolchains/RELEASE_NOTES.md` (the table with glibc and UAPI versions);
+** `docs/agents/cross-target.md` (how to check under qemu), `docs/agents/quick-reference.md` (triples),
+   `docs/platforms/linux.adoc` (the list of `linux_sprt/<arch>_sprt`);
+** `docs/api/runtime/defines.adoc`, if new `SP_GEOM_DEFAULT_SIMD_*` values appeared.
+
+*Done when:* `make -C runtime/toolchains release-check` sees the new sysroots with the right version
+stamp; `xenolith-cli detect` on an `<arch>` machine (or with `STAPPLER_HOST=<triple>`) prints the right
+triple; the documentation lists the architecture with all its limitations.
+
+== Final check
+
+Before declaring the port done:
+
+. Level 1: `tests/runtime`, `tests/libc`, `tests/stappler`, `tests/window` build for both triples
+  (<<a6,A6>>).
+. Level 2: `compare.sh` and the full `runtimetest` under qemu-user show no differences (<<a7,A7>>).
+. Level 3, if done: `runtime_geom_simd`, `raster`, `gost3411` on the SIMD and scalar builds
+  (<<a8,A8>>).
+. *Regression:* `tests/run-checks.py full` on x86_64 Linux, plus building `tests/runtime` for
+  `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`, `aarch64-unknown-linux-android` and `wasm32`.
+  The port changes shared headers and lists; check that the neighbours did not break.
+
+[[risks]]
+== Risks and pitfalls
+
+*Silently wrong headers.* The most dangerous mistake in a port does not break the build. It is a wrong
+system call number (they are not checked, see <<a3,A3>>) or a branch in `__sprt_def.h` copied together
+with someone else's architecture name (see <<a2,A2>>). The build catches neither. `check-abi.py` finds
+the first, `check-arch.py` the second (it checks that no two branches of the chain select the same
+architecture); anything else is caught only by running.
+
+*Architectures in lists nobody reads.* `target-linux/compiler_rt.mk` and `target-linux/libc{pp}.mk` have
+`ifeq ($(SP_ARCH),riscv64) RISCV := 1`, but the `RISCV` variable is never used. Do not copy such blocks
+"just in case": before adding the architecture to yet another list, find out who reads it.
+
+*A dependency that cannot be built.* If a library does not support the architecture, the engine module
+that uses it becomes unavailable (`stappler_wasm` on loongarch64). Make does not forbid it: a project
+that pulls in such a module fails at link time. Record the limitation in `support.adoc`.
+
+*Big-endian.* The engine has never been tested on big-endian. `target.ini` writes `endian = 'little'`
+unconditionally, and some formats and hashes may assume little-endian implicitly. Such a port is a
+separate research task, not just a pass through this plan.
+
+*qemu differs from hardware.* qemu-user does not emulate io_uring (so that event loop path is not tested
+under it), does not reproduce the weak memory model of many architectures, and enables every optional
+CPU extension by default. The final check is on real hardware or in qemu-system with a realistic CPU
+model.
+
+*An old glibc version.* If the first glibc with the architecture's port is newer than 2.33,
+applications for that architecture will not run on systems with an older glibc. That is a property of
+the architecture, not of the port, but it has to be written down in `support.adoc`.
+
+== Summary list of files
+
+For self-checking: what a Linux architecture port usually changes (following `5be3d759`):
+
+----
+runtime/include/sprt/c/bits/__sprt_def.h                       A2
+xenolith/remote/XLRemotePeerInfo.{h,cc}                        A2
+runtime/include/sprt/c/cross/linux_sprt/<arch>_sprt/*          A3  (6 new files)
+runtime/include/sprt/c/cross/linux_sprt/sockdef.h              A3  (if needed)
+make/os/linux.mk                                               A3, A6
+runtime/toolchains/common/utils/names.mk                       A4
+runtime/toolchains/host-*/…  (LLVM_TARGETS_TO_BUILD)           A4
+runtime/toolchains/common/<lib>.mk, replacements/, src.mk      A4
+runtime/toolchains/target-linux/{Makefile,openssl.mk}          A5
+runtime/toolchains/target-linux/{glibc,musl}/Makefile          A5
+runtime/toolchains/Makefile                                    A5, A9, A12
+runtime/include/sprt/runtime/geom/simd*.h                      A8  (optional)
+stappler/raster/*, stappler/core/string/SPGost3411-2012.cc     A8  (optional)
+runtime/toolchains/host-linux-{glibc,musl}/cross/Makefile      A9  (optional)
+runtime/toolchains/host-linux-musl/musl.mk                     A9  (optional)
+tests/libc/compare.sh, tests/runtime, tests/stappler           A7, A8
+utils/installer/core/src/SPITriple.cc, install.sh              A12
+.github/workflows/cli-release.yml                              A12
+README.md, docs/…, runtime/toolchains/{README.adoc,RELEASE_NOTES.md}  A12
+----

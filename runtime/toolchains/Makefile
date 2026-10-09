@@ -75,6 +75,9 @@ clean:
 xwin: $(SRC_ROOT)/xwin/splat
 
 $(abspath hosts/$(HOST_ID))/release:
+ifeq ($(HOST_TOOLCHAIN),)
+	$(error No native host build for $(HOST_ID): install hosts/$(HOST_ID) from a release, or cross-build it on Linux with `make host-cross-$(HOST_ID)`)
+endif
 	echo $(abspath hosts/$(HOST_ID))/release
 	$(MAKE) -C $(HOST_TOOLCHAIN) out OUT_SYSROOT=$(abspath hosts/$(HOST_ID))
 

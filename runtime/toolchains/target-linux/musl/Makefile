@@ -199,6 +199,8 @@ $(TARGET_MUSL): $(TARGET_BUILTINS)
 		LIBCC="$(RESOURCE_DIR)/lib/linux/libclang_rt.builtins-$(SP_ARCH_TARGET).a"
 	$(MAKE) -C build/musl $(SP_NJOBS)
 	$(MAKE) -C build/musl install
+	# musl installs the loader as an absolute link into this build tree; the sysroot is relocated
+	cd $(ABS_SYSROOT)/lib; ln -sfn libc.so $(SP_LDSO_NAME)
 
 #
 # 4. Рантаймы LLVM (libunwind + libc++abi + libc++) для target -> usr/lib.

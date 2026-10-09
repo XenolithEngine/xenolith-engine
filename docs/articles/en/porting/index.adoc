@@ -1,0 +1,299 @@
+= Porting Xenolith: introduction and shared terms
+:toc:
+:toclevels: 2
+
+This section describes how to bring the engine to new hardware or a new operating system. It consists
+of three plans and this introduction:
+
+[cols="1,3", options="header"]
+|===
+| Document | When you need it
+
+| xref:new-arch.adoc[Plan A. A new CPU architecture]
+| The engine already runs on the OS you need (for example Linux), but not on the processor you need
+  (for example LoongArch, or a future RISC-V with a different ABI).
+
+| xref:new-target-os.adoc[Plan B. A new OS as a target]
+| You need Xenolith *applications* to run on a new OS (NuttX, Embox, FreeBSD, your own microkernel).
+  The applications can still be built on your usual Linux machine.
+
+| xref:new-host-os.adoc[Plan C. A new OS as a host]
+| You need the *toolchain itself* (clang, lld, make, xenolith-cli) to run on the new OS and build
+  applications there.
+|===
+
+The plans build on each other. Terms used in all three are defined here, once. If you meet an
+unfamiliar word in a plan, look it up in the <<glossary,glossary>> below first.
+
+The documents are written for someone who knows C/C{pp} and make but does not know how the engine is
+built. Every step explains *why* it is needed, *what* exactly to change and *how to confirm* that the
+step is done.
+
+A Russian version of this section is in link:../../ru/porting/index.adoc[`docs/articles/ru/porting/`].
+
+== How the plans relate
+
+----
+                 ┌──────────────────────────┐
+                 │ Plan A: architecture     │  a new entry in the architecture lists
+                 │ (for an OS we know)      │  and six ABI headers
+                 └────────────┬─────────────┘
+                              │ the architecture exists
+                              ▼
+                 ┌──────────────────────────┐
+                 │ Plan B: OS as a target   │  runtime platform layer,
+                 │                          │  sysroot, make preset
+                 └────────────┬─────────────┘
+                              │ the OS is already a target
+                              ▼
+                 ┌──────────────────────────┐
+                 │ Plan C: OS as a host     │  a toolchain built *for* this OS
+                 │                          │  and running *on* it
+                 └──────────────────────────┘
+----
+
+Three rules about the order of work follow from this:
+
+. *A new OS becomes a target first, and only then a host.* A host toolchain is a set of ordinary
+  programs (clang, lld, xlmake) built by the engine *for* the new OS. Until the engine can build
+  programs for that OS, it cannot build a host for it. This is not a theoretical rule: in the
+  repository's history the macOS target appeared one day before the macOS host toolchain, and the
+  Windows host is built against the `<arch>-pc-windows-msvc+dll` target.
+. *A new OS is first ported on an architecture the engine already supports.* If the OS runs on both
+  aarch64 and something exotic, start with aarch64 or x86_64: half of the ABI headers then already
+  exist, and every error you meet is "about the OS". A second architecture is added later by plan A.
+  The port to the Tau microkernel was done this way: aarch64 first, x86_64 as a separate stage.
+. *A new architecture is added for Linux first.* Linux is the engine's reference platform: every
+  toolchain is built on it, and it has qemu-user to run foreign binaries. Android, Windows and macOS
+  for a new architecture are separate, optional steps of plan A.
+
+[[glossary]]
+== Glossary
+
+=== Machines and toolchains
+
+The engine treats every build as a cross-compilation. The full description is in
+link:../../ru/general/build.adoc[the build architecture article] (in Russian); here is the short
+version.
+
+build machine::
+  The computer on which you *build the toolchain* from source. It is used only while producing a host
+  toolchain: its system gcc or clang builds the first, "bootstrap" clang. It is not used to build
+  applications. All released toolchains are currently built on x86_64 Linux.
+
+host::
+  The system on which the Xenolith *tools run* and where a developer builds an application. Currently
+  Linux (glibc and musl), Windows and macOS.
+
+target::
+  The system on which the *built application runs*. There are more targets than hosts: in addition to
+  the hosts there are Android, iOS, WebAssembly, NuttX and Embox.
+
+triple::
+  A system identifier: `<arch>-<vendor>-<os>[-<env>][+<variant>]`. Examples:
+  `x86_64-unknown-linux-gnu`, `aarch64-pc-windows-msvc`, `riscv64-unknown-linux-musl`,
+  `aarch64-nuttx-none-elf`. The `+<variant>` part selects a delivery variant: `+open` (a macOS sysroot
+  without Xcode), `+dll` (Windows around `sprt.dll`), `+user` (Embox in user mode). The target triple is
+  passed to the build as `STAPPLER_TARGET=<triple>`.
+
+host toolchain::
+  The directory `hosts/<host-triple>/` with the clang compiler, the lld linker, the lldb debugger, the
+  glslang shader compiler, `spirv-link`, llvm utilities and `make`/`xlmake`. It is described by a
+  `host.mk` file. Details in xref:new-host-os.adoc#host-contract[plan C].
+
+target sysroot::
+  The directory `targets/<target-triple>/`: the target's headers and libraries, the LLVM runtime
+  libraries (compiler-rt, libc{pp}abi, libunwind) and the dependencies built for the target (zlib,
+  freetype, curl, …). It is described by a `target.mk` file. Details in
+  xref:new-target-os.adoc#target-mk[plan B].
+
+`host.mk`, `target.mk`::
+  Small make files at the root of a toolchain or sysroot. They tell the build system where the tools
+  are (`HOST_CC`, `HOST_CXX`, …) and which flags to use for the target (`TARGET_NAME`,
+  `TARGET_SYSTEM`, `TARGET_ARCH`, `TARGET_GENERAL_CFLAGS`, …). They are looked up first in
+  `toolchains/` (downloaded) and then in `runtime/toolchains/` (built on this machine); see
+  `make/utils/defaults.mk`.
+
+native host and cross host::
+  A native host is built on the build machine *for that machine itself*, through a multi-stage
+  bootstrap: `make -C runtime/toolchains host`. A cross host (`make host-cross-<triple>`) is built by
+  the already-built native clang *for another system*, against that system's target sysroot. Every
+  host toolchain except x86_64 Linux is currently a cross host.
+
+=== Engine layers
+
+Xenolith Runtime, sprt::
+  The bottom layer of the engine (the `runtime/` directory, the `sprt` namespace). It provides an
+  "umbrella" libc that is the same on every platform, its own C{pp} (`sprt` instead of `std`), threads,
+  clocks, the file system, the event loop and windows. Why it exists:
+  link:../../ru/libc/sprt-purpose.adoc[the purpose of Xenolith Runtime] (in Russian). Nearly all porting
+  work happens here.
+
+platform macro::
+  `SPRT_LINUX`, `SPRT_WINDOWS`, `SPRT_NUTTX`, `SPRT_WASM`, … Defined *only* in
+  `runtime/include/sprt/c/bits/__sprt_def.h`, from the compiler's predefined macros. All engine code
+  tests the platform with `#if SPRT_X` (not `#ifdef`!). The rules are in
+  link:../../../usage/codestyle/platform/platform-guards.adoc[platform-guards.adoc].
+
+architecture identifier::
+  `__SPRT_ARCH_ID` and `__SPRT_ARCH_NAME`, defined in the same file. The ID is a number (AARCH64=1,
+  X86_64=4, RISCV64=8, LOONGARCH64=10, …); the name is the directory with the ABI headers
+  (`aarch64_sprt`).
+
+cross headers::
+  The directory `runtime/include/sprt/c/cross/<os>_sprt/` and its `<arch>_sprt/` subdirectories. They
+  hold the numbers that differ between OSes and architectures: `errno` codes, `O_*` flags, signal and
+  system call numbers, the size of `jmp_buf`, the layout of `fenv_t`. The other sprt headers take their
+  numbers from here.
+
+config gate, `__SPRT_CONFIG_HAVE_*`::
+  A flag saying whether the platform provides a function (`epoll`, `fork`, `timerfd`, …). If the
+  platform does not provide it, the flag is set to 0 in the platform's `config.h`. The function still
+  exists, but it warns at compile time and returns `ENOSYS`. This keeps code portable without `#if`.
+
+hosted and freestanding target::
+  *Hosted*: the OS has its own libc, and sprt *wraps* it (`runtime/libc_wrapper`). Linux, Android,
+  macOS, NuttX and Embox are hosted. *Freestanding*: the OS has no libc, or an unusable one, and sprt
+  *is* the libc (`runtime/libc_impl` + parts of musl + mimalloc). Windows, WebAssembly and Embox EL0 are
+  freestanding. Choosing between the two is the main decision of xref:new-target-os.adoc#forms[plan B].
+
+`TARGET_SYSTEM` and the OS preset::
+  `TARGET_SYSTEM` is the system name from `target.mk` (`Linux`, `Windows`, `NuttX`, `EmboxUser`, …).
+  From it, `make/utils/apply-toolchain.mk` includes the preset `make/os/<os>.mk`: file suffixes,
+  compiler flags and how to link.
+
+event loop, Looper, dispatch::
+  The reactor through which the engine waits for I/O, timers and processes (`runtime/src/dispatch/`).
+  Each OS has its own backend: io_uring and epoll on Linux, kqueue on macOS, IOCP on Windows, custom
+  ones on NuttX and wasm.
+
+window controller::
+  `ContextController` in `runtime/window/<os>/`: it creates windows and drawing surfaces on a given
+  window system. Running without a window (`--headless`) is available on every target.
+
+graphics backend::
+  `xenolith/backend/vk` (Vulkan), `xenolith/backend/webgpu` (browser), `xenolith/backend/soft` (the
+  software rasterizer, which works anywhere there is a CPU).
+
+=== Sources and the build
+
+SCU and subunit::
+  A module is compiled from one `*.cpp` file (an SCU, single compilation unit) that pulls in `*.cc`
+  files with `#include`. Make *does not notice* a change to a `.cc` file alone. After such an edit,
+  `touch` the header or `.cpp` that includes it, and check that a link line actually appears in the
+  output.
+
+`xlmake`::
+  A GNU-make-compatible build driver written on the engine itself (`utils/xlmake`). It needs no `sh`
+  shell: it runs commands like `$(MKDIR)` and `$(CP)` itself. On Windows it is the only make.
+
+`xenolith-cli`::
+  The installer and build front end (`utils/installer`). It downloads toolchains from the server into
+  its store, links them into the engine directory and runs builds. It is the preferred way to build
+  projects; plain `make` is the fallback.
+
+SDK release::
+  An `sdk-v*` directory on the release server with archives `hosts/<triple>.tar.xz` and
+  `targets/<triple>.tar.xz` and `.sig` signatures. What goes into a release is listed in
+  `RELEASE_HOSTS` and `RELEASE_TARGETS` in `runtime/toolchains/Makefile`.
+
+qemu-user and qemu-system::
+  qemu-user runs a single binary for a foreign architecture on your Linux (`qemu-riscv64 ./prog`); it
+  is how plan A is verified. qemu-system emulates a whole machine with its OS; it is how plan B is
+  verified for embedded OSes.
+
+== Helper scripts
+
+`utils/porting/` holds Python scripts that check the stages of a port. They only read the engine tree,
+the toolchains and the sysroots; they edit and build nothing. Each prints a report by plan step: `OK`
+is done, `FAIL` is a required piece that is missing or wrong, `WARN` is a likely problem or a missing
+optional piece.
+
+[cols="1,2,1", options="header"]
+|===
+| Script | What it checks | Steps
+
+| `check-arch.py <arch>` | everything plan A asks of an architecture | A1–A12
+| `check-target-os.py <os>` | everything plan B asks of a target OS | B2–B12
+| `check-host-os.py` | everything plan C asks of a host OS | C1–C11
+| `detect-host.py` | what each host detector concludes about this machine, and whether they agree | C1–C3
+| `check-sysroot.py` | a target sysroot against the `target.mk` contract | A5, B4
+| `check-toolchain.py` | a host toolchain against the `hosts/<triple>` contract; with `--run`, runs the tools | A9, C4, C6
+| `check-abi.py` | the numbers in sprt's cross headers against the target libc, system call numbers included | A3, B3, B7
+| `find-refs.py` | lines that name a reference (`riscv64`, `SPRT_NUTTX`) but not the new name: the lists the port has not joined yet | all
+|===
+
+Details and examples are in link:../../../../utils/porting/README.adoc[utils/porting/README.adoc].
+
+== Conventions
+
+* Paths without a prefix are relative to the root of the engine repository (`xenolith-engine/`).
+* `<arch>` is the architecture name in a triple (`loongarch64`), `<os>` is the OS name in lower case
+  (`nuttx`), `<OS>` is the same for macros (`NUTTX`), `<System>` is the value of `TARGET_SYSTEM`
+  (`NuttX`), `<triple>` is a full triple.
+* The steps of the plans are numbered *A1…A12*, *B1…B13*, *C1…C11*. A reference such as "see B6"
+  points into the corresponding plan.
+* Every step ends with a *"Done when"* block. That is the definition of done: if the check fails, the
+  step is not done, even if the code is written.
+* The documents do not quote line numbers, because they go stale. Search by file and symbol name.
+
+== Rules shared by all three plans
+
+*Build through the build system, not by hand.* Never call `clang` or `cmake` directly "to check".
+Make sets the flags, the sysroot and the module order. Use
+`xenolith-cli build <project> --target <triple>` or `make -C <project> STAPPLER_TARGET=<triple>`.
+
+*Code under a foreign `#if` is not compiled on your machine.* A Linux build skips everything under
+`#if SPRT_WINDOWS` or `#if SPRT_NUTTX`. So a change to platform code can only be checked by building
+for that platform. The table "what you changed → how to verify it" is in
+link:../../../agents/cross-target.md[cross-target.md].
+
+*The smallest check is `tests/runtime`.* The `tests/runtime` project (binary `runtimetest`) uses only
+the runtime modules. While it compiles, about a thousand `static_assert`s compare sprt's numbers with
+the real libc's. Building it for the new target is the first and most useful check of plans A and B.
+Individual sections are run by name: `runtimetest libc_uname libc_setjmp`.
+
+*Shared headers affect every platform.* `__sprt_def.h`, `cross/__sprt_config.h` and `include_libc/` are
+read by every build for every target. A change to them is checked not only on the new platform, but
+also by running `tests/run-checks.py full` on the host machine and building `tests/runtime` for
+Windows, Android and wasm. The protocol is in link:../../../agents/test-protocol.md[test-protocol.md].
+
+*One layer, one commit.* The ports that are easy to read in history (loongarch64, Tau) are split like
+this: platform macros → ABI headers → build → platform layer → windows → tools → documentation. A
+single huge commit ("added support for X", 127 files) is impossible to take apart later.
+
+*Documentation is updated in the same pass.* Each plan ends with a list of documents that list the
+supported platforms. Update them together with the port; otherwise the next person runs into stale
+tables.
+
+== Where to find working examples
+
+[cols="1,2", options="header"]
+|===
+| Example | Where
+
+| A new architecture on Linux (the best model for plan A)
+| commit `5be3d759` "runtime: loongarch64 support", 61 files; see `git show 5be3d759 --stat`
+
+| A new architecture on Windows
+| the aarch64 Windows commits: `20d2a73b`, `91bc1694`, `0b3df235`
+
+| A hosted RTOS (a model for plan B)
+| commit `fc2674e5` "runtime/nuttx: add NuttX platform support",
+  link:../../../platforms/nuttx.adoc[docs/platforms/nuttx.adoc]
+
+| A freestanding target (a model for plan B)
+| wasm: commits from `3738a4da` to `81adedbd`, link:../../../platforms/wasm.adoc[docs/platforms/wasm.adoc];
+  Embox EL0: commit `739cf14f` and later
+
+| Another vendor of a known OS (the simplest case of plan B)
+| `runtime/toolchains/target-xenolithos/`, commit `3ec71fbb`
+
+| A cross host (a model for plan C)
+| `runtime/toolchains/host-macos/cross/`, `host-windows-msvc/cross/`, `host-linux-glibc/cross/`;
+  commit `d150ddd7` "MacOS: implemented host toolchain cross-compilation"
+|===
+
+The `runtime/toolchains/` directories are described in
+link:../../../../runtime/toolchains/README.adoc[the toolchains README]; the current list of supported
+systems is in link:../../ru/general/support.adoc[support.adoc] (in Russian).
