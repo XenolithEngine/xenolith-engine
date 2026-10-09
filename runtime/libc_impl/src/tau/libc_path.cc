@@ -9,6 +9,7 @@
 #include "string.h"
 #include "unistd.h"
 #include "sys/stat.h"
+#include "sys/statvfs.h"
 #include "tau_fs.h"
 
 #include <sprt/c/__sprt_errno.h>
@@ -376,6 +377,53 @@ __SPRT_C_FUNC int fsync(int fd) __SPRT_NOEXCEPT {
 }
 
 __SPRT_C_FUNC int fdatasync(int fd) __SPRT_NOEXCEPT { return fsync(fd); }
+
+static int __tau_statvfs(__sprt_tau_file *dir, const char *path, struct __SPRT_STATVFS_NAME *buf) {
+	__sprt_tau_fs_statfs s{};
+	long r = __sprt_tau_fs_statvfs(dir, path, &s);
+	if (r < 0) {
+		return (int)sprt::__tau_ret(r);
+	}
+	__builtin_memset(buf, 0, sizeof(*buf));
+	buf->f_bsize = s.bsize;
+	buf->f_frsize = s.bsize;
+	buf->f_blocks = s.blocks;
+	buf->f_bfree = s.bfree;
+	buf->f_bavail = s.bfree;
+	buf->f_files = s.files;
+	buf->f_ffree = s.ffree;
+	buf->f_favail = s.ffree;
+	buf->f_fsid = s.mount;
+	buf->f_flag = s.ro ? 1 : 0; // ST_RDONLY
+	buf->f_namemax = s.name_max;
+	return 0;
+}
+
+__SPRT_C_FUNC int statvfs(const char *__SPRT_RESTRICT path, struct __SPRT_STATVFS_NAME *__SPRT_RESTRICT buf)
+		__SPRT_NOEXCEPT {
+	char abs[sprt::TAU_PATH_MAX];
+	__sprt_tau_file *dir = nullptr;
+	const char *p = nullptr;
+	if (!sprt::__tau_path_ok(path) || !sprt::__tau_at(__SPRT_AT_FDCWD, path, abs, &dir, &p)) {
+		return -1;
+	}
+	return __tau_statvfs(dir, p, buf);
+}
+
+// The volume of an open file or directory.
+__SPRT_C_FUNC int fstatvfs(int fd, struct __SPRT_STATVFS_NAME *buf) __SPRT_NOEXCEPT {
+	auto libc = sprt::__libc::get();
+	auto slot = libc->get_fd_slot(fd);
+	if (!slot || !slot->handle) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+	if (slot->ops != sprt::__tau_fs_ops() && slot->ops->mask != sprt::__fd_ops_mask::opendir) {
+		__sprt_errno = ENOSYS;
+		return -1;
+	}
+	return __tau_statvfs(static_cast<sprt::__tau_fd *>(slot->handle)->file, "", buf);
+}
 
 __SPRT_C_FUNC int chmod(const char *path, __SPRT_ID(mode_t) mode) __SPRT_NOEXCEPT {
 	return fchmodat(__SPRT_AT_FDCWD, path, mode, 0);
