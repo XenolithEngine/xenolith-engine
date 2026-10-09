@@ -22,23 +22,27 @@
 
 LIBNAME = llvm-project
 
+# Санитайзеры и runtimes компилируются с заголовками STL из тела рантайма:
+# libc++ в deps-сборке больше не строится (тот же приём, что в harfbuzz.mk).
+# libcxx/include раньше include_libc/cxx — см. libcxxabi.mk: vendored заголовки
+# работают в glibc-режиме, shim отдаёт только <__config_site>.
+SP_USER_CXXFLAGS += -nostdinc++ \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../libcxx/include) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include_libc/cxx) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include)
+
 include ../common/configure.mk
 
 include libcxx-unwinder.mk
 
 CONFIGURE := \
 	$(CONFIGURE_CMAKE) \
-	-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind;compiler-rt" \
+	-DLLVM_ENABLE_RUNTIMES="libcxxabi;libunwind;compiler-rt" \
 	-DLLVM_INSTALL_TOOLCHAIN_ONLY=On \
 	-DLLVM_ENABLE_PIC=On \
 	-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 	-DLLVM_HOST_TRIPLE="$(SP_TARGET)" \
 	-DLLVM_DEFAULT_TARGET_TRIPLE="$(SP_TARGET)" \
-    -DLIBCXX_ENABLE_EXCEPTIONS=OFF \
-	-DLIBCXX_HAS_ATOMIC_LIB=Off \
-	-DLIBCXX_ENABLE_SHARED=Off \
-	-DLIBCXX_USE_COMPILER_RT=On \
-	-DLIBCXX_INSTALL_LIBRARY_DIR=usr/lib \
     -DLIBCXXABI_ENABLE_EXCEPTIONS=OFF \
 	-DLIBCXXABI_USE_LLVM_UNWINDER=On \
 	-DLIBCXXABI_USE_COMPILER_RT=On \
@@ -54,8 +58,13 @@ CONFIGURE := \
 	-DCOMPILER_RT_DEFAULT_TARGET_TRIPLE=$(SP_TARGET) \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DSP_CXX_COMPILER=$(SP_CXX) \
-	-DSANITIZER_USE_STATIC_CXX_ABI=On \
+	-DSANITIZER_CXX_ABI=none \
 	-DCOMPILER_RT_USE_BUILTINS_LIBRARY=On
+
+# libc++ в sysroot больше нет, а SP_CXX_COMPILER (=clang++) на линк-проверке
+# компилятора неявно тянет -lc++. Проверяем компилятор статической библиотекой:
+# санитайзеры всё равно собираются только в .a.
+CONFIGURE += -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
 
 ifeq ($(SP_ARCH),riscv64)
 RISCV := 1

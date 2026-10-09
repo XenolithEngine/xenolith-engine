@@ -29,6 +29,27 @@ SP_USER_CXXFLAGS += \
 	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include)
 endif
 
+# libc++ в target-сборке больше не собирается: заголовки STL берутся из тела
+# рантайма, как на WINDOWS выше. -nostdinc++ обязателен: SDK-кланг
+# (CLANG_DEFAULT_CXX_STDLIB=libc++) иначе нашёл бы c++/v1 sysroot'а раньше.
+# libcxx/include раньше include_libc/cxx — см. libcxxabi.mk: на hosted-linux
+# vendored заголовки работают в glibc-режиме, shim навязал бы sprt __mbstate_t,
+# конфликтующий с glibc, а сам нужен только ради <__config_site>.
+#
+# e2k (оба режима) исключён: компилятор там l++, а заголовки libc++ 22 (и
+# sprt-слой — то же дерево) lcc не берёт — нет clang builtins
+# (__remove_reference_t и пр.). harfbuzz собирается с родными заголовками
+# libstdc++ l++ (GCC 11), бинарно STL-free, так что libc++/libstdc++ рантайм
+# ему не нужен.
+ifeq (,$(filter $(SP_ARCH),e2k32 e2k64))
+ifdef LINUX
+SP_USER_CXXFLAGS += -nostdinc++ \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../libcxx/include) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include_libc/cxx) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include)
+endif
+endif
+
 include ../common/configure.mk
 
 CONFIGURE := \

@@ -26,6 +26,8 @@ CONFIGURE_PROC_arm64 := aarch64
 CONFIGURE_PROC_riscv64 := riscv64
 CONFIGURE_PROC_loongarch64 := loongarch64
 CONFIGURE_PROC_e2k := e2kv4
+CONFIGURE_PROC_e2k64 := e2kv4
+CONFIGURE_PROC_e2k32 := e2kv4
 CONFIGURE_PROC_wasm32 := wasm32
 CONFIGURE_PROC_wasm64 := wasm64
 
@@ -36,6 +38,10 @@ CONFIGURE_HOST_Linux_aarch64 := aarch64-linux-gnu
 CONFIGURE_HOST_Linux_riscv64 := riscv64-linux-gnu
 CONFIGURE_HOST_Linux_loongarch64 := loongarch64-linux-gnu
 CONFIGURE_HOST_Linux_e2k := e2k-linux
+# Префикс binutils у lcc — e2k-linux-* (см. -dumpmachine e2k-linux-gnu,
+# от режима разрядности не зависит).
+CONFIGURE_HOST_Linux_e2k64 := e2k-linux
+CONFIGURE_HOST_Linux_e2k32 := e2k-linux
 
 CONFIGURE_HOST_Android_x86 := i686-linux-android
 CONFIGURE_HOST_Android_armv7a := armv7a-linux-androideabi

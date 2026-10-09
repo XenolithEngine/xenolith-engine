@@ -32,6 +32,19 @@ SP_USER_CFLAGS += -DSIZEOF_CURL_OFF_T=8 -Wno-incompatible-pointer-types-discards
 SP_USER_CXXFLAGS += -DSIZEOF_CURL_OFF_T=8 -Wno-incompatible-pointer-types-discards-qualifiers -Wno-cast-function-type-strict
 endif
 
+# e2k32 (ILP32): system.h в ветке __LCC__/__MCST__ жёстко берёт
+# CURL_TYPEOF_CURL_OFF_T = long (верно только для -m64), и curl_setup.h падает
+# «too small curl_off_t». Гасить __LCC__ (-U) нельзя: на нём держится glibc-шима
+# _Float32 в bits/floatn-common.h — без неё не собирается <stdlib.h>. Вместо
+# этого форсируем shim через -include: его guard CURLINC_SYSTEM_H делает
+# настоящий system.h no-op'ом, а определения повторяют GNUC/ILP32-ветку curl.
+# e2k64 не трогаем: MCST-ветка там верна.
+ifeq ($(SP_ARCH),e2k32)
+SP_CURL_SHIM := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))../replacements/curl/curl_system_e2k32.h
+SP_USER_CFLAGS += -include $(SP_CURL_SHIM)
+SP_USER_CXXFLAGS += -include $(SP_CURL_SHIM)
+endif
+
 include ../common/configure.mk
 
 CONFIGURE := \

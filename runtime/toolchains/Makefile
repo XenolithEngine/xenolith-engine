@@ -198,6 +198,15 @@ target-loongarch64-unknown-linux-gnu: host
 target-loongarch64-unknown-linux-musl: host
 	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) loongarch64-unknown-linux-musl
 
+# e2k64/e2k32 собираются внешним lcc (LCC_TOOLCHAIN_PATH в
+# target-linux/Makefile); host-тулчейн для них не нужен, но стоит в prereq
+# по общему шаблону.
+target-e2k64-unknown-linux: host
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) e2k64-unknown-linux
+
+target-e2k32-unknown-linux: host
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) e2k32-unknown-linux
+
 target-linux: \
 	target-x86_64-unknown-linux-gnu \
 	target-aarch64-unknown-linux-gnu \
@@ -513,6 +522,8 @@ clean-release:
 	target-aarch64-unknown-linux-musl \
 	target-riscv64-unknown-linux-musl \
 	target-loongarch64-unknown-linux-musl \
+	target-e2k64-unknown-linux \
+	target-e2k32-unknown-linux \
 	target-xenolithos \
 	target-x86_64-xenolithos-linux-gnu \
 	target-aarch64-xenolithos-linux-gnu \

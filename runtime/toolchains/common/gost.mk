@@ -91,7 +91,13 @@ HEADERS = gost-engine.h e_gost_err.h
 OBJS := $(SRCS:.c=.o)
 
 TARGET_CFLAGS := $(SP_CFLAGS) -DBUILDING_ENGINE_AS_LIBRARY -DL_ENDIAN \
-	-Werror -Wall -Wno-unused-parameter -Wno-unused-function -Wno-missing-braces -Qunused-arguments -Wno-deprecated-declarations
+	-Werror -Wall -Wno-unused-parameter -Wno-unused-function -Wno-missing-braces -Wno-deprecated-declarations
+
+# -Qunused-arguments понимает только clang; под lcc (e2k, оба режима) опция
+# неизвестна.
+ifeq (,$(filter $(SP_ARCH),e2k32 e2k64))
+TARGET_CFLAGS += -Qunused-arguments
+endif
 
 ifeq ($(SP_ARCH),x86_64)
 TARGET_CFLAGS += -DHAVE_ADDCARRY_U64

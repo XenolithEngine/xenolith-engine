@@ -55,10 +55,23 @@ export PKG_CONFIG_PATH=$(SP_INSTALL_PREFIX)/usr/lib/pkgconfig
 # the two differ; fall back to SP_TARGET so nothing else has to change.
 SP_TARGET_TRIPLE := $(if $(SP_ARCH_TARGET_CLANG),$(SP_ARCH_TARGET_CLANG),$(SP_TARGET))
 
-SP_CFLAGS := $(SP_OPT) $(SP_USER_CFLAGS) --target=$(SP_TARGET_TRIPLE) -isystem $(SP_INSTALL_PREFIX)/usr/include
-SP_CXXFLAGS := $(SP_OPT) $(SP_USER_CXXFLAGS) --target=$(SP_TARGET_TRIPLE) -isystem $(SP_INSTALL_PREFIX)/usr/include
-SP_CPPFLAGS := --target=$(SP_TARGET_TRIPLE) -isystem $(SP_INSTALL_PREFIX)/usr/include $(SP_USER_CPPFLAGS)
-SP_LDFLAGS := --target=$(SP_TARGET_TRIPLE) -L$(SP_INSTALL_PREFIX)/usr/lib $(SP_USER_LDFLAGS)
+
+ifneq (,$(filter $(SP_ARCH),e2k32 e2k64))
+SP_CMAKE_PREFIX_PATH := ${SP_INSTALL_PREFIX};${SP_INSTALL_PREFIX}/usr;${SP_INSTALL_PREFIX}/lcc-lib
+SP_CMAKE_FIND_ROOT_PATH := $(SP_INSTALL_PREFIX);$(SP_INSTALL_PREFIX)/usr;$(SP_INSTALL_PREFIX)/lcc-lib
+override SP_TOOLCHAIN_FILE :=
+override SP_TOOLCHAIN_PREFIX :=
+# Режим разрядности едет флагом: -dumpmachine у lcc всегда e2k-linux-gnu.
+# e2k32 — ILP32 (long/ptr/size_t = 4), e2k64 совпадает с умолчанием -m64.
+SP_TARGET_FLAGS := $(if $(filter e2k32,$(SP_ARCH)),-m32,)
+else
+SP_TARGET_FLAGS := --target=$(SP_TARGET_TRIPLE)
+endif
+
+SP_CFLAGS := $(SP_OPT) $(SP_USER_CFLAGS) $(SP_TARGET_FLAGS) -isystem $(SP_INSTALL_PREFIX)/usr/include
+SP_CXXFLAGS := $(SP_OPT) $(SP_USER_CXXFLAGS) $(SP_TARGET_FLAGS) -isystem $(SP_INSTALL_PREFIX)/usr/include
+SP_CPPFLAGS := $(SP_TARGET_FLAGS) -isystem $(SP_INSTALL_PREFIX)/usr/include $(SP_USER_CPPFLAGS)
+SP_LDFLAGS := $(SP_TARGET_FLAGS) -L$(SP_INSTALL_PREFIX)/usr/lib $(SP_USER_LDFLAGS)
 
 # Если используется SP_TOOLCHAIN_FILE, значит, мы используем разделёные HOST и TARGET файлы, и
 # -resource-dir нужно явно определить внутри TARGET
@@ -255,10 +268,10 @@ endif
 # CMake helper
 #
 
-CONFIGURE_CMAKE_C_FLAGS_INIT := $(SP_OPT) $(SP_USER_CFLAGS)
-CONFIGURE_CMAKE_CXX_FLAGS_INIT := $(SP_OPT) $(SP_USER_CXXFLAGS)
-CONFIGURE_EXE_LINKER_FLAGS_INIT := $(SP_LIBS_PLATFORM) $(SP_USER_LDFLAGS)
-CONFIGURE_SHARED_LINKER_FLAGS_INIT := $(SP_LIBS_PLATFORM) $(SP_USER_LDFLAGS)
+CONFIGURE_CMAKE_C_FLAGS_INIT := $(SP_OPT) $(SP_TARGET_FLAGS) $(SP_USER_CFLAGS)
+CONFIGURE_CMAKE_CXX_FLAGS_INIT := $(SP_OPT) $(SP_TARGET_FLAGS) $(SP_USER_CXXFLAGS)
+CONFIGURE_EXE_LINKER_FLAGS_INIT := $(SP_TARGET_FLAGS) $(SP_LIBS_PLATFORM) $(SP_USER_LDFLAGS)
+CONFIGURE_SHARED_LINKER_FLAGS_INIT := $(SP_TARGET_FLAGS) $(SP_LIBS_PLATFORM) $(SP_USER_LDFLAGS)
 
 ifdef WASM
 CONFIGURE_CMAKE_C_FLAGS_INIT += -nostdinc -ffreestanding $(SP_WASM_FEATURES) $(SP_WASM_C_INCLUDES) $(SP_WASM_RESOURCE_INC) -D__SPRT_WASM
@@ -394,6 +407,13 @@ CONFIGURE_CMAKE += \
 	-DANDROID_NDK=$(NDK)
 endif # ANDROID
 
+# e2k задаёт SP_CMAKE_FIND_ROOT_PATH / SP_CMAKE_PREFIX_PATH раньше
+# (см. ветку выше) — ?= их не перебьёт. PREFIX_PATH важен: с
+# FIND_USE_CMAKE_SYSTEM_PATH=Off ищутся только префиксы из него (через
+# перезапись FIND_ROOT_PATH), сами корни FIND_ROOT_PATH не ищутся.
+SP_CMAKE_FIND_ROOT_PATH ?= $(SP_INSTALL_PREFIX);$(SP_INSTALL_PREFIX)/usr
+SP_CMAKE_PREFIX_PATH ?= ${SP_INSTALL_PREFIX};${SP_INSTALL_PREFIX}/usr
+
 CONFIGURE_CMAKE += \
 	-DCMAKE_ASM_FLAGS_INIT="$(CONFIGURE_CMAKE_C_FLAGS_INIT)" \
 	-DCMAKE_C_FLAGS_INIT="$(CONFIGURE_CMAKE_C_FLAGS_INIT)" \
@@ -401,12 +421,12 @@ CONFIGURE_CMAKE += \
 	-DCMAKE_EXE_LINKER_FLAGS_INIT="$(CONFIGURE_EXE_LINKER_FLAGS_INIT)" \
 	-DCMAKE_SHARED_LINKER_FLAGS_INIT="$(CONFIGURE_SHARED_LINKER_FLAGS_INIT)" \
 	-DCMAKE_FIND_USE_CMAKE_SYSTEM_PATH=Off \
-	-DCMAKE_FIND_ROOT_PATH="$(SP_INSTALL_PREFIX);$(SP_INSTALL_PREFIX)/usr" \
+	-DCMAKE_FIND_ROOT_PATH="$(SP_CMAKE_FIND_ROOT_PATH)" \
 	-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
 	-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
 	-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
 	-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY \
-	-DCMAKE_PREFIX_PATH="${SP_INSTALL_PREFIX};${SP_INSTALL_PREFIX}/usr" \
+	-DCMAKE_PREFIX_PATH="$(SP_CMAKE_PREFIX_PATH)" \
 	-DCMAKE_INSTALL_PREFIX="${SP_INSTALL_PREFIX}" \
 	-DCMAKE_INSTALL_LIBDIR="${SP_INSTALL_PREFIX}/usr/lib" \
 	-DCMAKE_INSTALL_INCLUDEDIR="${SP_INSTALL_PREFIX}/usr/include" \
@@ -462,6 +482,22 @@ endif # SP_IOSSIM
 endif # iOS
 
 endif # DARWIN
+
+
+# e2k (MCST lcc, оба режима): без toolchain.cmake cmake обязан получить
+# компиляторы явно (иначе возьмёт host-овые cc/c++ — прошлый запуск молча
+# собирал libc++abi host-овым gcc). CMAKE_SYSTEM_NAME=Linux переводит cmake
+# в режим кросс-сборки: без него он будет запускать e2k-бинарники для
+# проверки конфигурации.
+ifneq (,$(filter $(SP_ARCH),e2k32 e2k64))
+CONFIGURE_CMAKE += \
+	-DCMAKE_SYSTEM_NAME=Linux \
+	-DCMAKE_SYSTEM_PROCESSOR=$(CONFIGURE_PROC_$(SP_ARCH)) \
+	-DCMAKE_C_COMPILER=$(SP_CC) \
+	-DCMAKE_CXX_COMPILER=$(SP_CXX) \
+	-DCMAKE_AR=$(SP_AR) \
+	-DCMAKE_RANLIB=$(patsubst %ar,%ranlib,$(SP_AR))
+endif
 
 
 # +open header layout (Linux-target parity): the SDK-like headers — apple-oss libc,

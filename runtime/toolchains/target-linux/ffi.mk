@@ -24,6 +24,14 @@ LIBNAME = ffi
 
 include ../common/configure.mk
 
+# e2k (оба режима): апстрим 3.8.0 не портирован на e2k (configure отвергает
+# триплет), берётся форк МЦСТ (libffi 3.3, src/e2k) — src.mk/ffi-e2k.
+ifneq (,$(filter $(SP_ARCH),e2k32 e2k64))
+LIB_SRC := $(LIB_SRC_DIR)/ffi-e2k
+else
+LIB_SRC := $(LIB_SRC_DIR)/$(LIBNAME)
+endif
+
 CONFIGURE := \
 	$(CONFIGURE_AUTOCONF) \
 	--disable-docs
@@ -31,7 +39,7 @@ CONFIGURE := \
 all:
 	@mkdir -p $(LIBNAME)
 	cd $(LIBNAME); \
-		$(LIB_SRC_DIR)/$(LIBNAME)/configure $(CONFIGURE); \
+		$(LIB_SRC)/configure $(CONFIGURE); \
 		make -j8; \
 		make install
 	rm -rf $(LIBNAME)

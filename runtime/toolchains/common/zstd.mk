@@ -22,7 +22,7 @@
 
 LIBNAME = zstd
 
-ifeq ($(SP_ARCH),e2k)
+ifneq (,$(filter $(SP_ARCH),e2k32 e2k64))
 SP_USER_CFLAGS := -DZSTD_NO_INTRINSICS
 SP_USER_CXXFLAGS := -DZSTD_NO_INTRINSICS
 endif

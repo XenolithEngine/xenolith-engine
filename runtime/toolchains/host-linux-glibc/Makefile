@@ -151,7 +151,6 @@ $(OUT_SYSROOT)/share/licenses: licenses
 	cp -fr $</* $@
 	touch $@
 
-
 $(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'Build $(OUT_SYSROOT)/host.mk'
 	@echo 'HOST_ROOT := $$(patsubst %/,%,$$(dir $$(lastword $$(MAKEFILE_LIST))))' > $@
@@ -177,7 +176,7 @@ $(TARGET_SYSROOT)/target.mk:
 $(OUT_SYSROOT)/bin/xlmake: $(TARGET_SYSROOT)/target.mk $(OUT_SYSROOT)/host.mk
 	rm -rf build/xlmake
 	$(MAKE) $(SP_NJOBS) -C $(ROOT_DIR)/../../utils/xlmake install \
-		STAPPLER_HOST_FILE=$(OUT_SYSROOT)/host.mk \
+		STAPPLER_HOST_FILE=$(abspath $(OUT_SYSROOT))/host.mk \
 		STAPPLER_TARGET_FILE=$(TARGET_SYSROOT)/target.mk \
 		STAPPLER_TARGET=$(SP_ARCH_CLANG) \
 		LOCAL_INSTALL_DIR=$(abspath $(OUT_SYSROOT)/bin) \
