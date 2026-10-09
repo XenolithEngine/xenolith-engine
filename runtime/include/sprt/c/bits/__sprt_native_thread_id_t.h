@@ -20,32 +20,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_CXX_DEBUGGING_H_
-#define RUNTIME_INCLUDE_SPRT_CXX_DEBUGGING_H_
+#ifndef CORE_RUNTIME_INCLUDE_C_BITS___SPRT_NATIVE_THREAD_ID_T_H_
+#define CORE_RUNTIME_INCLUDE_C_BITS___SPRT_NATIVE_THREAD_ID_T_H_
 
 #include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/bits/__sprt_uint64_t.h>
 
-namespace sprt {
+// Native thread identity: pthread_t folded into an integer. The e2k 128-bit
+// pointer mode (__ptr128__) makes pthread_t a 16-byte pointer, so the full
+// value does not fit into 64 bits there (same first-branch rule as
+// __sprt_uintptr_t.h).
+#if defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ > 8
 
-bool is_debugger_present() noexcept;
+typedef unsigned __int128 __SPRT_ID(native_thread_id_t);
 
-// lcc has no __builtin_debugtrap; __builtin_trap is the closest stop-the-program
-// builtin its GCC-compatible interface provides.
-#if defined(__LCC__) && !defined(__clang__)
-#define __SPRT_DEBUG_TRAP() __builtin_trap()
 #else
-#define __SPRT_DEBUG_TRAP() __builtin_debugtrap()
+
+typedef __sprt_uint64_t __SPRT_ID(native_thread_id_t);
+
 #endif
 
-// debugging utility
-SPRT_FORCEINLINE void breakpoint() noexcept { __SPRT_DEBUG_TRAP(); }
-
-SPRT_FORCEINLINE void breakpoint_if_debugging() noexcept {
-	if (sprt::is_debugger_present()) {
-		__SPRT_DEBUG_TRAP();
-	}
-}
-
-} // namespace sprt
-
-#endif //
+#endif /* CORE_RUNTIME_INCLUDE_C_BITS___SPRT_NATIVE_THREAD_ID_T_H_ */

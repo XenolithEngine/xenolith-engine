@@ -51,6 +51,26 @@ namespace sprt {
 template <typename _Type>
 class SpanView;
 
+namespace detail {
+
+// Constraint traits for the view classes below, declared here and defined after the
+// class each one constrains. The MCST lcc frontend evaluates requires-expression
+// bodies at the point of declaration — where the class is still incomplete — and
+// cannot parse `typename C::T(args)` as a functional cast inside a requires-body, so
+// the constraints on the view classes are written as references to these traits. The
+// trait expressions are the original requires-expressions with the
+// injected-class-name spelled out explicitly.
+
+template <typename CharType, typename T> struct __stringview_from_container;
+template <typename StringType, typename CharType> struct __stringview_str_type;
+template <typename T> struct __stringview_utf8_from_container;
+template <endian Endianess, typename T> struct __bytesview_from_container;
+template <typename BytesType> struct __bytesview_bytes_type;
+template <typename Type, typename T> struct __spanview_from_container;
+template <typename VectorType, typename Type> struct __spanview_vec_type;
+
+} // namespace detail
+
 // Compares data blocks byte by byte
 struct BytesComparator {
 	template <typename CharT>
@@ -288,13 +308,13 @@ public:
 	constexpr StringViewBase(const Self &, size_t len);
 
 	template <typename T>
-	requires requires(T x) { StringViewBase(x.data(), x.size()); }
+	requires detail::__stringview_from_container<CharType, T>::value
 	constexpr StringViewBase(const T &str) : StringViewBase(str.data(), str.size()) { }
 
 	constexpr Self &operator=(const Self &str) = default;
 
 	template <typename T>
-	requires requires(T x) { StringViewBase(x.data(), x.size()); }
+	requires detail::__stringview_from_container<CharType, T>::value
 	constexpr Self &operator=(const T &str) {
 		set(str.data(), str.size());
 		return *this;
@@ -342,9 +362,8 @@ public:
 	Self ptoupper_c(memory::pool_t * = nullptr) const;
 
 	template <typename Interface>
-	requires requires(StringViewBase<CharType> v) {
-		typename Interface::template BasicStringType<CharType>(v.data(), v.size());
-	}
+	requires detail::__stringview_str_type<typename Interface::template BasicStringType<CharType>,
+			CharType>::value
 	auto str() const -> typename Interface::template BasicStringType<CharType> {
 		if (this->ptr && this->len > 0) {
 			return typename Interface::template BasicStringType<CharType>(this->ptr, this->len);
@@ -354,7 +373,7 @@ public:
 	}
 
 	template <typename StringType>
-	requires requires(StringViewBase<CharType> v) { StringType(v.data(), v.size()); }
+	requires detail::__stringview_str_type<StringType, CharType>::value
 	auto str() const -> StringType {
 		if (this->ptr && this->len > 0) {
 			return StringType(this->ptr, this->len);
@@ -458,6 +477,26 @@ protected:
 	bool match(CharType c);
 };
 
+namespace detail {
+
+template <typename CharType, typename T>
+struct __stringview_from_container {
+	// data()/size() gated first: see __spanview_from_container
+	static constexpr bool value = requires(T x) {
+		x.data();
+		x.size();
+		StringViewBase<CharType>(x.data(), x.size());
+	};
+};
+
+template <typename StringType, typename CharType>
+struct __stringview_str_type {
+	static constexpr bool value =
+			requires(StringViewBase<CharType> v) { StringType(v.data(), v.size()); };
+};
+
+} // namespace detail
+
 class StringViewUtf8 : public BytesReader<char> {
 public:
 	using Self = StringViewUtf8;
@@ -511,13 +550,13 @@ public:
 	StringViewUtf8(const StringViewUtf8 &, size_t pos, size_t len);
 
 	template <typename T>
-	requires requires(T x) { StringViewUtf8(x.data(), x.size()); }
+	requires detail::__stringview_utf8_from_container<T>::value
 	constexpr StringViewUtf8(const T &str) : StringViewUtf8(str.data(), str.size()) { }
 
 	constexpr Self &operator=(const Self &str) = default;
 
 	template <typename T>
-	requires requires(T x) { StringViewUtf8(x.data(), x.size()); }
+	requires detail::__stringview_utf8_from_container<T>::value
 	constexpr Self &operator=(const T &str) {
 		set(str.data(), str.size());
 		return *this;
@@ -621,6 +660,20 @@ protected: // char-matching inline functions
 	bool match(MatchCharType c);
 };
 
+namespace detail {
+
+template <typename T>
+struct __stringview_utf8_from_container {
+	// data()/size() gated first: see __spanview_from_container
+	static constexpr bool value = requires(T x) {
+		x.data();
+		x.size();
+		StringViewUtf8(x.data(), x.size());
+	};
+};
+
+} // namespace detail
+
 template <endian Endianess = endian::network>
 class BytesViewTemplate : public BytesReader<uint8_t> {
 public:
@@ -634,7 +687,7 @@ public:
 	constexpr BytesViewTemplate(StringViewBase<char>);
 
 	template <typename T>
-	requires requires(T x) { BytesViewTemplate(x.data(), x.size()); }
+	requires detail::__bytesview_from_container<Endianess, T>::value
 	constexpr BytesViewTemplate(const T &str) : BytesViewTemplate(str.data(), str.size()) { }
 
 	template <size_t Size>
@@ -657,7 +710,7 @@ public:
 	Self &operator=(const Self &b) = default;
 
 	template <typename T>
-	requires requires(T x) { BytesViewTemplate(x.data(), x.size()); }
+	requires detail::__bytesview_from_container<Endianess, T>::value
 	constexpr Self &operator=(const T &str) {
 		set(str.data(), str.size());
 		return *this;
@@ -676,15 +729,13 @@ public:
 
 
 	template <typename Interface>
-	requires requires(StringViewBase<CharType> v) {
-		typename Interface::BytesType(v.data(), v.data() + v.size());
-	}
+	requires detail::__bytesview_bytes_type<typename Interface::BytesType>::value
 	auto bytes() const -> typename Interface::BytesType {
 		return typename Interface::BytesType(data(), data() + size());
 	}
 
 	template <typename BytesType>
-	requires requires(BytesViewTemplate<Endianess> v) { BytesType(v.data(), v.data() + v.size()); }
+	requires detail::__bytesview_bytes_type<BytesType>::value
 	auto bytes() const -> BytesType {
 		return BytesType(data(), data() + size());
 	}
@@ -754,6 +805,29 @@ public:
 	auto readSpan(size_t) -> SpanView<T>;
 };
 
+namespace detail {
+
+template <endian Endianess, typename T>
+struct __bytesview_from_container {
+	// data()/size() gated first: see __spanview_from_container
+	static constexpr bool value = requires(T x) {
+		x.data();
+		x.size();
+		BytesViewTemplate<Endianess>(x.data(), x.size());
+	};
+};
+
+// Serves both bytes() overloads: their requires-parameters (BytesViewTemplate<Endianess>
+// and StringViewBase<CharType>) expose identical data()/size() signatures.
+template <typename BytesType>
+struct __bytesview_bytes_type {
+	static constexpr bool value = requires(StringViewBase<uint8_t> v) {
+		BytesType(v.data(), v.data() + v.size());
+	};
+};
+
+} // namespace detail
+
 using StringView = StringViewBase<char>;
 using WideStringView = StringViewBase<char16_t>;
 
@@ -785,16 +859,16 @@ public:
 	SpanView(InputIt first, InputIt last) : ptr(&(*first)), len(sprt::distance(first, last)) { }
 
 	template <typename T>
-	requires requires(T x) { SpanView(x.data(), x.size()); }
+	requires detail::__spanview_from_container<Type, T>::value
 	constexpr SpanView(const T &vec) : SpanView(vec.data(), vec.size()) { }
 
 	template <typename T>
-	requires requires(T x) { SpanView(x.data(), x.size()); }
+	requires detail::__spanview_from_container<Type, T>::value
 	constexpr SpanView(const T &vec, size_t count)
 	: SpanView(vec.data(), min(vec.size(), count)) { }
 
 	template <typename T>
-	requires requires(T x) { SpanView(x.data(), x.size()); }
+	requires detail::__spanview_from_container<Type, T>::value
 	constexpr SpanView(const T &vec, size_t off, size_t count)
 	: SpanView(vec.data() + min(off, vec.size()),
 			  min(vec.size() > off ? vec.size() - off : 0, count)) { }
@@ -808,7 +882,7 @@ public:
 	: ptr(v.data() + min(off, v.size())), len(min(v.size() > off ? v.size() - off : 0, count)) { }
 
 	template <typename T>
-	requires requires(T x) { SpanView(x.data(), x.size()); }
+	requires detail::__spanview_from_container<Type, T>::value
 	Self &operator=(const T &vec) {
 		set(vec.data(), vec.size());
 		return *this;
@@ -940,15 +1014,13 @@ public:
 
 
 	template <typename Interface>
-	requires requires(SpanView<Type> v) {
-		typename Interface::template VectorType<Type>(v.data(), v.data() + v.size());
-	}
+	requires detail::__spanview_vec_type<typename Interface::template VectorType<Type>, Type>::value
 	auto vec() const -> typename Interface::template VectorType<Type> {
 		return typename Interface::template VectorType<Type>(ptr, ptr + len);
 	}
 
 	template <typename VectorType>
-	requires requires(SpanView<Type> v) { VectorType(v.data(), v.data() + v.size()); }
+	requires detail::__spanview_vec_type<VectorType, Type>::value
 	auto vec() const -> VectorType {
 		return VectorType(data(), data() + size());
 	}
@@ -974,6 +1046,29 @@ protected:
 	const Type *ptr = nullptr;
 	size_t len = 0;
 };
+
+namespace detail {
+
+template <typename Type, typename T>
+struct __spanview_from_container {
+	// The data()/size() requirements gate the SpanView construction: without them
+	// lcc substitutes an error type into the SpanView constructor's own constraint
+	// (via the converting-ctor recursion) and reports a hard error instead of a
+	// quiet false when T exposes no data()/size().
+	static constexpr bool value = requires(T x) {
+		x.data();
+		x.size();
+		SpanView<Type>(x.data(), x.size());
+	};
+};
+
+template <typename VectorType, typename Type>
+struct __spanview_vec_type {
+	static constexpr bool value =
+			requires(SpanView<Type> v) { VectorType(v.data(), v.data() + v.size()); };
+};
+
+} // namespace detail
 
 using StringView = StringViewBase<char>;
 using WideStringView = StringViewBase<char16_t>;
@@ -1257,7 +1352,7 @@ template <typename L, typename R,
 		typename CharType = typename enable_if<
 				is_same< typename L::value_type, typename R::value_type >::value,
 				typename L::value_type>::type>
-inline int compare_c(const L &l, const R &r);
+inline constexpr int compare_c(const L &l, const R &r);
 
 template <typename L, typename R,
 		typename CharType = typename enable_if<
@@ -1364,7 +1459,7 @@ inline int compare_c(const CharType *lPtr, size_t lSize, const CharType *rPtr, s
 }
 
 template <typename L, typename R, typename CharType>
-inline int compare_c(const L &l, const R &r) {
+inline constexpr int compare_c(const L &l, const R &r) {
 	return compare_c(l.data(), l.size(), r.data(), r.size());
 }
 
@@ -2856,7 +2951,7 @@ auto makeSpanView(const T &t) {
 	return SpanView<sprt::remove_cv_t<sprt::remove_reference_t<decltype(*t.data())>>>(t);
 }
 
-inline auto __convertIntToTwc(int v) {
+inline constexpr auto __convertIntToTwc(int v) {
 	if (v < 0) {
 		return std::partial_ordering::less;
 	} else if (v > 0) {
@@ -2885,29 +2980,30 @@ inline auto __compareDataRanges(const uint8_t *l, size_t __lsize, const uint8_t 
 }
 
 template <typename CharType>
-inline auto operator<=>(const StringViewBase<CharType> &l, const StringViewBase<CharType> &r) {
+inline constexpr auto operator<=>(const StringViewBase<CharType> &l,
+		const StringViewBase<CharType> &r) {
 	return __convertIntToTwc(sprt::detail::compare_c(l, r));
 }
 
 template <typename CharType, typename Allocator>
-inline auto operator<=>(const StringViewBase<CharType> &l,
+inline constexpr auto operator<=>(const StringViewBase<CharType> &l,
 		const __basic_string<CharType, Allocator> &r) {
 	return __convertIntToTwc(sprt::detail::compare_c(l, r));
 }
 
 template <typename CharType, typename Allocator>
-inline auto operator<=>(const __basic_string<CharType, Allocator> &l,
+inline constexpr auto operator<=>(const __basic_string<CharType, Allocator> &l,
 		const StringViewBase<CharType> &r) {
 	return __convertIntToTwc(sprt::detail::compare_c(l, r));
 }
 
 template <typename CharType>
-inline auto operator<=>(const StringViewBase<CharType> &l, const CharType *r) {
+inline constexpr auto operator<=>(const StringViewBase<CharType> &l, const CharType *r) {
 	return __convertIntToTwc(sprt::detail::compare_c(l, StringViewBase<CharType>(r)));
 }
 
 template <typename CharType>
-inline auto operator<=>(const CharType *l, const StringViewBase<CharType> &r) {
+inline constexpr auto operator<=>(const CharType *l, const StringViewBase<CharType> &r) {
 	return __convertIntToTwc(sprt::detail::compare_c(StringViewBase<CharType>(l), r));
 }
 

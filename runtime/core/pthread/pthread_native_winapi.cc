@@ -48,7 +48,7 @@ __SPRT_C_FUNC int __tlregdtor(__funcptr fn) __SPRT_NOEXCEPT;
 
 namespace sprt::_thread::native {
 
-static uint64_t __getNativeThreadId() { return GetCurrentThreadId(); }
+static __sprt_native_thread_id_t __getNativeThreadId() { return GetCurrentThreadId(); }
 
 static void __registerForDestruction(void (*fn)(void)) { __tlregdtor(fn); }
 

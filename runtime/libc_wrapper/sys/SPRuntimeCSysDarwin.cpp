@@ -256,12 +256,16 @@ __SPRT_C_FUNC void __SPRT_ID(_CFRunLoopStop)(__SPRT_ID(_CFRunLoopRef) rl) {
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
 
-#if defined(__has_feature) && __has_feature(blocks)
+#if defined(__clang__)
+#if defined(__has_feature)
+#if __has_feature(blocks)
 __SPRT_C_FUNC void __SPRT_ID(_CFRunLoopPerformBlock)(__SPRT_ID(_CFRunLoopRef) rl, const void *mode,
 		void (^block)(void)) {
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
+#endif
+#endif
 #endif
 
 __SPRT_C_FUNC void __SPRT_ID(

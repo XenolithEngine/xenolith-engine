@@ -176,6 +176,17 @@ protected:
 	value_type _data;
 };
 
+// lcc emits the same comdat-weak specialization more than once per translation
+// unit when it is ODR-used from several inline bodies, and the e2k assembler
+// rejects the duplicate comdat groups. These extern-template declarations keep
+// the emission to the single explicit instantiation in the runtime library.
+extern template Status qmutex_base::_lock<__sprt_sprt_qlock_wait, nullptr>(
+		value_type *, timeout_type *, flags_type);
+extern template Status qmutex_base::_lock<__sprt_sprt_qlock_wait, __sprt_sprt_qlock_now>(
+		value_type *, timeout_type *, flags_type);
+extern template Status qmutex_base::_unlock<__sprt_sprt_qlock_wake_one>(
+		value_type *, flags_type);
+
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_THREAD_QMUTEX_H_

@@ -24,7 +24,14 @@
 #include <sprt/c/__sprt_unistd.h>
 #include <sprt/c/__sprt_time.h>
 
-#if __SSE__
+#if defined(__e2k__)
+#define SP_HAS_RDTSC 1
+static inline sprt::uint64_t rdtsc() {
+	sprt::uint64_t clkr;
+	asm volatile("rrd %%clkr, %0" : "=r"(clkr));
+	return clkr;
+}
+#elif __SSE__
 //#include <x86intrin.h>
 #define SP_HAS_RDTSC 1
 static inline sprt::uint64_t rdtsc() { return __rdtsc(); }

@@ -35,7 +35,11 @@ struct PerformEngine;
 
 class SPRT_API alignas(32) Handle : public Ref {
 public:
+#if defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ > 8
+	static constexpr size_t DataSize = 128;
+#else
 	static constexpr size_t DataSize = 40;
+#endif
 
 	static inline bool isValidCancelStatus(Status st) {
 		return st == Status::Done || (st != Status::Declined && !isSuccessful(st));

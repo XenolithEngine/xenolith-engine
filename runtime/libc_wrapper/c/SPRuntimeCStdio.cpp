@@ -68,6 +68,11 @@ static_assert(LOCK_SH == __SPRT_LOCK_SH && LOCK_EX == __SPRT_LOCK_EX && LOCK_NB 
 
 namespace sprt {
 
+// lcc/e2k: umbrella-обёртки инлайнятся полностью (сборка с -O1), слабых копий
+// в образе нет — прямые вызовы libc резолвятся в glibc без версионных алиасов
+#define __SPRT_LIBC(name) name
+
+
 __SPRT_C_FUNC __SPRT_ID(FILE)
 		* __SPRT_ID(
 				fopen_impl)(const char *__SPRT_RESTRICT path, const char *__SPRT_RESTRICT mode) {
@@ -288,7 +293,7 @@ __SPRT_C_FUNC int __SPRT_ID(asprintf)(char **out, const char *fmt, ...) {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vasprintf)(char **out, const char *fmt, __SPRT_ID(va_list) list) {
-	return ::vasprintf(out, fmt, list);
+	return __SPRT_LIBC(vasprintf)(out, fmt, list);
 }
 
 __SPRT_C_FUNC __SPRT_ID(FILE)
@@ -301,7 +306,7 @@ __SPRT_C_FUNC __SPRT_ID(FILE)
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
 #else
-	return ::fmemopen(ptr, size, mode);
+	return __SPRT_LIBC(fmemopen)(ptr, size, mode);
 #endif
 }
 
@@ -317,22 +322,22 @@ __SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(open_memstream)(char **ptr, __SPRT_ID(
 }
 
 __SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(fdopen)(int fd, const char *mode) {
-	return ::fdopen(fd, mode);
+	return __SPRT_LIBC(fdopen)(fd, mode);
 }
 
 __SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(popen)(const char *str, const char *mode) {
-	return ::popen(str, mode);
+	return __SPRT_LIBC(popen)(str, mode);
 }
 
-__SPRT_C_FUNC int __SPRT_ID(pclose)(__SPRT_ID(FILE) * f) { return ::pclose(f); }
+__SPRT_C_FUNC int __SPRT_ID(pclose)(__SPRT_ID(FILE) * f) { return __SPRT_LIBC(pclose)(f); }
 
-__SPRT_C_FUNC int __SPRT_ID(fileno)(__SPRT_ID(FILE) * f) { return ::fileno(f); }
+__SPRT_C_FUNC int __SPRT_ID(fileno)(__SPRT_ID(FILE) * f) { return __SPRT_LIBC(fileno)(f); }
 
 __SPRT_C_FUNC int __SPRT_ID(fseeko)(__SPRT_ID(FILE) * f, __SPRT_ID(off_t) off, int n) {
-	return ::fseeko(f, off, n);
+	return __SPRT_LIBC(fseeko)(f, off, n);
 }
 
-__SPRT_C_FUNC __SPRT_ID(off_t) __SPRT_ID(ftello)(__SPRT_ID(FILE) * f) { return ::ftello(f); }
+__SPRT_C_FUNC __SPRT_ID(off_t) __SPRT_ID(ftello)(__SPRT_ID(FILE) * f) { return __SPRT_LIBC(ftello)(f); }
 
 __SPRT_C_FUNC int __SPRT_ID(dprintf)(int n, const char *__SPRT_RESTRICT fmt, ...) {
 	__builtin_va_list list;
@@ -346,14 +351,14 @@ __SPRT_C_FUNC int __SPRT_ID(dprintf)(int n, const char *__SPRT_RESTRICT fmt, ...
 
 __SPRT_C_FUNC int __SPRT_ID(
 		vdprintf)(int n, const char *__SPRT_RESTRICT fmt, __SPRT_ID(va_list) list) {
-	return ::vdprintf(n, fmt, list);
+	return __SPRT_LIBC(vdprintf)(n, fmt, list);
 }
 
 __SPRT_C_FUNC void __SPRT_ID(flockfile)(__SPRT_ID(FILE) * f) {
 #if SPRT_EMBOX
 	(void)f;
 #else
-	::flockfile(f);
+	__SPRT_LIBC(flockfile)(f);
 #endif
 }
 
@@ -407,16 +412,16 @@ __SPRT_C_FUNC int __SPRT_ID(putchar_unlocked)(int c) {
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(getdelim)(char **__SPRT_RESTRICT ret,
 		__SPRT_ID(size_t) * __SPRT_RESTRICT sz, int c, __SPRT_ID(FILE) * __SPRT_RESTRICT f) {
-	return getdelim(ret, sz, c, f);
+	return __SPRT_LIBC(getdelim)(ret, sz, c, f);
 }
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(getline)(char **__SPRT_RESTRICT ret,
 		__SPRT_ID(size_t) * __SPRT_RESTRICT sz, __SPRT_ID(FILE) * __SPRT_RESTRICT f) {
-	return getline(ret, sz, f);
+	return __SPRT_LIBC(getline)(ret, sz, f);
 }
 __SPRT_C_FUNC int __SPRT_ID(
 		renameat)(int oldfd, const char *oldPath, int newfd, const char *newPath) {
 #if SPRT_EMBOX
-	// Embox's renameat() is an ENOSYS stub; resolve both ends and use rename().
+	// Embox's __SPRT_LIBC(renameat)() is an ENOSYS stub; resolve both ends and use rename().
 	char oldBuffer[PATH_MAX];
 	char newBuffer[PATH_MAX];
 	auto oldTarget = platform::resolveAtPath(oldfd, oldPath, oldBuffer, sizeof(oldBuffer));
@@ -429,7 +434,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	}
 	return ::rename(oldTarget, newTarget);
 #else
-	return ::renameat(oldfd, oldPath, newfd, newPath);
+	return __SPRT_LIBC(renameat)(oldfd, oldPath, newfd, newPath);
 #endif
 }
 
@@ -451,7 +456,7 @@ __SPRT_C_FUNC char *__SPRT_ID(ctermid)(char *s) {
 	*s = '\0';
 	return s;
 #else
-	return ::ctermid(s);
+	return __SPRT_LIBC(ctermid)(s);
 #endif
 }
 
@@ -636,7 +641,7 @@ __SPRT_C_FUNC int _setmode(int, int) __SPRT_NOEXCEPT { return 0; }
 
 __SPRT_C_FUNC int __SPRT_ID(flock)(int fd, int op) {
 #if __SPRT_CONFIG_HAVE_FLOCK
-	return ::flock(fd, op);
+	return __SPRT_LIBC(flock)(fd, op);
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_FLOCK)");

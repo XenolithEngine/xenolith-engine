@@ -129,25 +129,30 @@ ifeq (,$(filter e2k32 e2k64 e2k128,$(TARGET_ARCH)))
 MODULE_RUNTIME_DEPENDS_ON += runtime_libcxx
 endif
 
-# -nostdinc++ уводит родные заголовки libstdc++ l++ — только для clang-целей
-# с sprt-слоем libc++.
 MODULE_RUNTIME_PRIVATE_CFLAGS := $(MODULE_RUNTIME_COMMON_CFLAGS) -Wno-unused-command-line-argument
 MODULE_RUNTIME_PRIVATE_CXXFLAGS := $(MODULE_RUNTIME_COMMON_CFLAGS) -Wno-unused-command-line-argument
-ifeq (,$(filter e2k32 e2k64 e2k128,$(TARGET_ARCH)))
 MODULE_RUNTIME_PRIVATE_CFLAGS += -nostdinc++
 MODULE_RUNTIME_PRIVATE_CXXFLAGS += -nostdinc++
+# lcc (e2k): модуль потребляет umbrella-обёртки (malloc/open → sprt-слой);
+# always_inline срабатывает у lcc уже на -O0, но мёртвое слабое тело обёртки
+# при этом всё равно эмитится — и перехватывает PLT-вызовы остальных TU к
+# libc (рекурсия обёрток). С -O1 мёртвое тело выбрасывается.
+ifneq (,$(filter e2k32 e2k64 e2k128,$(TARGET_ARCH)))
+MODULE_RUNTIME_PRIVATE_CFLAGS += -O1
+MODULE_RUNTIME_PRIVATE_CXXFLAGS += -O1
 endif
 MODULE_RUNTIME_GENERAL_LDFLAGS :=
 
 ifeq ($(TARGET_SYSTEM),Linux)
 MODULE_RUNTIME_GENERAL_CFLAGS += \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc
-# lcc (e2k): C++ — родные libstdc++ l++; sprt-обёртки include_libc остаются,
-# слой libc++ (cxx + libcxx/include) не подключается вовсе.
+# lcc (e2k): слой libc++ (cxx + libcxx/include) не подключается вовсе (порт не
+# готов для lcc); sprt-обёртки include_libc остаются, C++ идёт на мини-stdlib
+# sprt/cxx.
 ifneq (,$(filter e2k32 e2k64 e2k128,$(TARGET_ARCH)))
 MODULE_RUNTIME_GENERAL_CXXFLAGS += \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc
-MODULE_RUNTIME_LIBS += -l:libbacktrace.a -lm -ldl
+MODULE_RUNTIME_LIBS += -l:libbacktrace.a -lstdc++ -lm -ldl
 else
 MODULE_RUNTIME_GENERAL_CXXFLAGS += \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \

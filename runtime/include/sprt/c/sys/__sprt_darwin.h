@@ -151,10 +151,14 @@ SPRT_API void __SPRT_ID(_CFRunLoopWakeUp)(__SPRT_ID(_CFRunLoopRef) rl);
 __SPRT_CONFIG_HAVE_DARWIN_NOTICE
 SPRT_API void __SPRT_ID(_CFRunLoopStop)(__SPRT_ID(_CFRunLoopRef) rl);
 
-#if defined(__has_feature) && __has_feature(blocks)
+#if defined(__clang__)
+#if defined(__has_feature)
+#if __has_feature(blocks)
 __SPRT_CONFIG_HAVE_DARWIN_NOTICE
 SPRT_API void __SPRT_ID(
 		_CFRunLoopPerformBlock)(__SPRT_ID(_CFRunLoopRef) rl, const void *mode, void (^block)(void));
+#endif
+#endif
 #endif
 
 __SPRT_CONFIG_HAVE_DARWIN_NOTICE

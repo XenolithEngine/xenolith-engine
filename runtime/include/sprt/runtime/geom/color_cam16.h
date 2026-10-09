@@ -109,7 +109,7 @@ struct SPRT_API ViewingConditions {
 	Float rgb_d[3] = {0.0, 0.0, 0.0};
 };
 
-constexpr ViewingConditions ViewingConditions::DEFAULT = {
+inline constexpr ViewingConditions ViewingConditions::DEFAULT = {
 	11.725676537,
 	50.000000000,
 	2.000000000,

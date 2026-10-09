@@ -8,9 +8,18 @@
 
 typedef void *__SPRT_ID(pthread_t);
 
+// attr_t (pthread_thread_t.h) is 24 bytes on LP64/ILP32 and 32 under the
+// 128-bit pointer mode (its void* stack member doubles); measured sizes,
+// asserted in runtime_core_pthread.cpp.
+#if defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ > 8
+typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
+	__SPRT_ID(uint32_t) __data[8];
+} __SPRT_ID(pthread_attr_t);
+#else
 typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
 	__SPRT_ID(uint32_t) __data[6];
 } __SPRT_ID(pthread_attr_t);
+#endif
 
 typedef __SPRT_ID(uint32_t) __SPRT_ID(pthread_once_t);
 

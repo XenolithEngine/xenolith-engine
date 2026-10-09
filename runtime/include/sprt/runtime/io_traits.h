@@ -501,7 +501,9 @@ struct io_traits<char16_t> {
 		} else if constexpr (sizeof(CharType) == 1) {
 			return unicode::utf8EncodeLength(value);
 		} else {
-			static_assert(false, "unknown output char type");
+			// dependent-false: lcc evaluates static_assert(false) in untaken
+			// if-constexpr branches eagerly
+			static_assert(!is_same_v<CharType, CharType>, "unknown output char type");
 		}
 		return 1;
 	}
@@ -522,7 +524,9 @@ struct io_traits<char16_t> {
 			cb(StringViewBase<CharType>(buf, ret));
 			__sprt_freea(buf);
 		} else {
-			static_assert(false, "unknown output char type");
+			// dependent-false: lcc evaluates static_assert(false) in untaken
+			// if-constexpr branches eagerly
+			static_assert(!is_same_v<CharType, CharType>, "unknown output char type");
 		}
 	}
 
@@ -546,7 +550,9 @@ struct io_traits<char32_t> {
 		} else if constexpr (sizeof(CharType) == 1) {
 			return unicode::utf8EncodeLength(value);
 		} else {
-			static_assert(false, "unknown output char type");
+			// dependent-false: lcc evaluates static_assert(false) in untaken
+			// if-constexpr branches eagerly
+			static_assert(!is_same_v<CharType, CharType>, "unknown output char type");
 		}
 		return 1;
 	}
@@ -570,7 +576,9 @@ struct io_traits<char32_t> {
 			cb(StringViewBase<CharType>(buf, ret));
 			__sprt_freea(buf);
 		} else {
-			static_assert(false, "unknown output char type");
+			// dependent-false: lcc evaluates static_assert(false) in untaken
+			// if-constexpr branches eagerly
+			static_assert(!is_same_v<CharType, CharType>, "unknown output char type");
 		}
 	}
 	static void encode(const callback<void(StringViewUtf8)> &cb, const char32_t &value) {
@@ -604,7 +612,9 @@ struct io_traits<StringView> {
 		} else if constexpr (sizeof(CharType) == 1) {
 			cb(value);
 		} else {
-			static_assert(false, "unknown output char type");
+			// dependent-false: lcc evaluates static_assert(false) in untaken
+			// if-constexpr branches eagerly
+			static_assert(!is_same_v<CharType, CharType>, "unknown output char type");
 		}
 	}
 
@@ -641,7 +651,9 @@ struct io_traits<WideStringView> {
 		} else if constexpr (sizeof(CharType) == 1) {
 			unicode::toUtf8(cb, value);
 		} else {
-			static_assert(false, "unknown output char type");
+			// dependent-false: lcc evaluates static_assert(false) in untaken
+			// if-constexpr branches eagerly
+			static_assert(!is_same_v<CharType, CharType>, "unknown output char type");
 		}
 	}
 
@@ -673,7 +685,9 @@ struct io_traits<StringViewBase<char32_t>> {
 		} else if constexpr (sizeof(CharType) == 1) {
 			unicode::toUtf8(cb, value);
 		} else {
-			static_assert(false, "unknown output char type");
+			// dependent-false: lcc evaluates static_assert(false) in untaken
+			// if-constexpr branches eagerly
+			static_assert(!is_same_v<CharType, CharType>, "unknown output char type");
 		}
 	}
 
@@ -694,7 +708,9 @@ struct io_traits<StringViewUtf8> {
 		} else if constexpr (sizeof(CharType) == 1) {
 			return value.size();
 		} else {
-			static_assert(false, "unknown output char type");
+			// dependent-false: lcc evaluates static_assert(false) in untaken
+			// if-constexpr branches eagerly
+			static_assert(!is_same_v<CharType, CharType>, "unknown output char type");
 		}
 	}
 
@@ -708,7 +724,9 @@ struct io_traits<StringViewUtf8> {
 		} else if constexpr (sizeof(CharType) == 1) {
 			cb(value);
 		} else {
-			static_assert(false, "unknown output char type");
+			// dependent-false: lcc evaluates static_assert(false) in untaken
+			// if-constexpr branches eagerly
+			static_assert(!is_same_v<CharType, CharType>, "unknown output char type");
 		}
 	}
 

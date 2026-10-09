@@ -11,7 +11,13 @@
 #endif
 // clang-format on
 
+// glibc's wctype_t is void* in the 128-bit pointer mode (bits/wctype-wchar.h);
+// the hosted wrappers pass it through untranslated, so the sprt ABI mirrors it
+#if defined(__e2k__) && defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ > 8
+typedef void *__SPRT_ID(wctype_t);
+#else
 typedef unsigned long __SPRT_ID(wctype_t);
+#endif
 
 #ifdef __cplusplus
 typedef wchar_t __SPRT_ID(wchar_t);

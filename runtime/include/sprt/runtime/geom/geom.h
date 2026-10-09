@@ -443,11 +443,11 @@ struct SPRT_API IRect {
 	constexpr auto operator<=>(const IRect &) const = default;
 };
 
-constexpr Size2 Size2::ZERO(0.0f, 0.0f);
-constexpr Size3 Size3::ZERO = Size3(0.0f, 0.0f, 0.0f);
-constexpr Extent2 Extent2::ZERO = Extent2(0, 0);
-constexpr Extent3 Extent3::ZERO = Extent3(0, 0, 0);
-constexpr Rect Rect::ZERO = Rect(0.0f, 0.0f, 0.0f, 0.0f);
+inline constexpr Size2 Size2::ZERO(0.0f, 0.0f);
+inline constexpr Size3 Size3::ZERO = Size3(0.0f, 0.0f, 0.0f);
+inline constexpr Extent2 Extent2::ZERO = Extent2(0, 0);
+inline constexpr Extent3 Extent3::ZERO = Extent3(0, 0, 0);
+inline constexpr Rect Rect::ZERO = Rect(0.0f, 0.0f, 0.0f, 0.0f);
 
 SPRT_API Rect TransformRect(const Rect &rect, const Mat4 &transform);
 

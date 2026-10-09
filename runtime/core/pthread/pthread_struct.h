@@ -27,6 +27,7 @@
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/c/__sprt_pthread.h>
 #include <sprt/c/__sprt_stdio.h>
+#include <sprt/c/bits/__sprt_native_thread_id_t.h>
 
 namespace sprt {
 
@@ -41,7 +42,7 @@ namespace sprt::_thread {
 struct thread_base_t {
 	thread_base_t *next = nullptr;
 	void *handle = nullptr;
-	uint64_t nativeId = 0;
+	__sprt_native_thread_id_t nativeId = 0;
 	__sprt_pid_t threadId = 0;
 
 	void *(*cb)(thread_base_t *) = nullptr;

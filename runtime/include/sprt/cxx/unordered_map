@@ -44,8 +44,8 @@ concept __unordered_map_compatible_key =
 		requires(const typename Map::key_type &k, const ExternalKey &ek) {
 			typename Map::hasher::is_transparent;
 			typename Map::key_equal::is_transparent;
-			typename Map::key_equal()(k, ek);
-			typename Map::hasher()(ek);
+			declval<typename Map::key_equal>()(k, ek);
+			declval<typename Map::hasher>()(ek);
 		};
 
 // `Stl` selects the std::unordered_map-conforming backing: when true the flat hash array stores

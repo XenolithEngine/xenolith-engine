@@ -37,7 +37,9 @@ namespace sprt {
 
 template <typename ExternalKey, typename Set>
 concept __set_compatible_key = requires(const typename Set::key_type &k, const ExternalKey &ek) {
-	typename Set::key_compare()(k, ek);
+	// declval-rvalue call: same requirement as `typename Set::key_compare()(k, ek)`,
+	// which lcc cannot parse inside a requires-body
+	declval<typename Set::key_compare>()(k, ek);
 };
 
 template <typename Value, typename Comp, typename Allocator>

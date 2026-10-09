@@ -189,10 +189,10 @@ constexpr inline Vec1 Vec1::getNormalized() const {
 	return v;
 }
 
-constexpr const Vec1 Vec1::ZERO = Vec1(0.0f);
-constexpr const Vec1 Vec1::ONE = Vec1(1.0f);
-constexpr const Vec1 Vec1::INVALID = Vec1(NaN<float>);
-constexpr const Vec1 Vec1::UNIT_X = Vec1(1.0f);
+inline constexpr const Vec1 Vec1::ZERO = Vec1(0.0f);
+inline constexpr const Vec1 Vec1::ONE = Vec1(1.0f);
+inline constexpr const Vec1 Vec1::INVALID = Vec1(NaN<float>);
+inline constexpr const Vec1 Vec1::UNIT_X = Vec1(1.0f);
 
 inline const Vec1 operator+(const Vec1 &l, const Vec1 &r) {
 	Vec1 result;

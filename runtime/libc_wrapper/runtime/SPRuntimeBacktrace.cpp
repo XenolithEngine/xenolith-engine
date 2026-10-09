@@ -392,9 +392,13 @@ static void debug_backtrace_error(void *data, const char *msg, int errnum) {
 	::__sprt_perror(msg);
 }
 
-static int debug_backtrace_full_callback(void *data, uintptr_t pc, const char *filename, int lineno,
-		const char *function) {
-	if (pc != uintptr_t(0xffff'ffff'ffff'ffffLLU)) {
+// pc goes through the platform's libbacktrace, whose headers spell the type
+// with the compiler's __UINTPTR_TYPE__ (under e2k -m128 that is a 16-byte
+// type that is NOT the sprt fallback's unsigned __int128 spelling, and a
+// callback must match the declaration exactly)
+static int debug_backtrace_full_callback(void *data, __UINTPTR_TYPE__ pc, const char *filename,
+		int lineno, const char *function) {
+	if (pc != static_cast<__UINTPTR_TYPE__>(0xffff'ffff'ffff'ffffLLU)) {
 		auto ret = (const callback<void(uintptr_t, StringView)> *)data;
 		char buf[1'024] = {0};
 		auto size = backtrace::detail::print(buf, 1'024, pc, filename, lineno, function);

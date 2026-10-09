@@ -82,6 +82,7 @@ typedef unsigned long long int __SPRT_ID(size_t);
 
 #elif defined(_WIN32) || defined(__ILP32__) || defined(__SPRT_WINDOWS)
 
+#if defined(__SPRT_WINDOWS)
 typedef unsigned long int __SPRT_ID(size_t);
 #define __SPRT_SIZE_MAX __SPRT_ULINT_MAX
 #define __SPRT_SIZE_WIDTH __SPRT_ULINT_WIDTH
@@ -90,6 +91,16 @@ typedef unsigned long int __SPRT_ID(size_t);
 #define __SPRT_SIZE_FMTo __SPRT_ULINT_FMTo
 #define __SPRT_SIZE_FMTu __SPRT_ULINT_FMTu
 #define __SPRT_SIZE_FMTx __SPRT_ULINT_FMTx
+#else
+typedef unsigned int __SPRT_ID(size_t);
+#define __SPRT_SIZE_MAX __SPRT_UINT_MAX
+#define __SPRT_SIZE_WIDTH __SPRT_UINT_WIDTH
+
+#define __SPRT_SIZE_FMTX __SPRT_UINT_FMTX
+#define __SPRT_SIZE_FMTo __SPRT_UINT_FMTo
+#define __SPRT_SIZE_FMTu __SPRT_UINT_FMTu
+#define __SPRT_SIZE_FMTx __SPRT_UINT_FMTx
+#endif
 
 #elif defined(__LP64__)
 

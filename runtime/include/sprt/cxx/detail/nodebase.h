@@ -69,6 +69,27 @@ struct SPRT_API RbTreeNodeFlag<size_t(8)> {
 	uintptr_t size	   : (sizeof(uintptr_t) / 2) * 8;
 };
 
+template <>
+struct SPRT_API RbTreeNodeFlag<size_t(16)> {
+	// e2k -m128: uintptr_t is a 16-byte __int128; the halves keep the size-8
+	// proportions (see ListNodeFlag<size_t(16)> below)
+	static constexpr uintptr_t MaxSize = ((uintptr_t(1) << 63) << 1) - 1;
+	static constexpr uintptr_t MaxIndex = (uintptr_t(1) << 62) - 1;
+
+	uintptr_t color	   : 1;
+	uintptr_t prealloc : 1;
+
+	// Index of preallocated block
+	// on 32-bit systems overflow is close, so, use tree preallocation optimization with care
+	uintptr_t index	   : 62;
+
+	// for root node - here we store capacity
+	// for preallocated head node - block size in bytes
+	// for other preallocaed nodes - should be 0
+	// for single node - block size in bytes
+	uintptr_t size	   : 64;
+};
+
 template <size_t ArchSize>
 struct SPRT_API ListNodeFlag;
 
@@ -87,6 +108,25 @@ struct SPRT_API ListNodeFlag<size_t(4)> {
 	// for other preallocaed nodes - should be 0
 	// for single node - block size in bytes
 	uintptr_t size;
+};
+
+template <>
+struct SPRT_API ListNodeFlag<size_t(16)> {
+	// e2k -m128: uintptr_t is a 16-byte __int128 (lcc supports bitfields over
+	// it); the halves keep the size-8 proportions
+	static constexpr uintptr_t MaxSize = ((uintptr_t(1) << 63) << 1) - 1;
+	static constexpr uintptr_t MaxIndex = (uintptr_t(1) << 63) - 1;
+
+	uintptr_t prealloc : 1;
+
+	// Index of preallocated block
+	uintptr_t index	   : 63;
+
+	// for root node - here we store capacity
+	// for preallocated head node - block size in bytes
+	// for other preallocaed nodes - should be 0
+	// for single node - block size in bytes
+	uintptr_t size	   : 64;
 };
 
 template <>

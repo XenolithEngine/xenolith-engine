@@ -84,7 +84,7 @@ namespace sprt::_thread::native {
 
 // The main entry thread has native id 1; a spawned thread stamps its broker id into the
 // thread-local from __xl_thread_entry, so this reports the calling thread's own id.
-static uint64_t __getNativeThreadId() { return tl_wasm_native_tid; }
+static __sprt_native_thread_id_t __getNativeThreadId() { return tl_wasm_native_tid; }
 
 static void __doDestroy(void *cb) {
 	auto dtor = reinterpret_cast<void (*)(void)>(cb);

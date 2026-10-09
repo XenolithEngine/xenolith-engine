@@ -196,6 +196,13 @@ class OpaquePool;
 struct OpaqueAllocator {
 	uint64_t __opaque[28];
 };
+#elif __SIZEOF_POINTER__ > 8
+// e2k -m128: measured sizeof(sprt::memory::impl::Allocator) is 400 there
+// (the 16-byte Pool*/MemNode* members double the array and owner slots);
+// SPRTMemStruct.h asserts the exact match.
+struct OpaqueAllocator {
+	uint64_t __opaque[50];
+};
 #else
 struct OpaqueAllocator {
 	uint64_t __opaque[17];

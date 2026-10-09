@@ -821,13 +821,18 @@ static_assert(_PC_2_SYMLINKS == __SPRT_PC_2_SYMLINKS);
 
 namespace sprt {
 
+// lcc/e2k: umbrella-обёртки инлайнятся полностью (сборка с -O1), слабых копий
+// в образе нет — прямые вызовы libc резолвятся в glibc без версионных алиасов
+#define __SPRT_LIBC(name) name
+
+
 __SPRT_C_FUNC int __SPRT_ID(access)(const char *path, int __type) __SPRT_NOEXCEPT {
 #if SPRT_EMBOX
-	// Embox's access() is a static inline that ignores its arguments and returns
+	// Embox's __SPRT_LIBC(access)() is a static inline that ignores its arguments and returns
 	// 0, so a nonexistent path reports as accessible. Answer from stat().
 	return platform::accessPath(path, __type);
 #else
-	return access(path, __type);
+	return __SPRT_LIBC(access)(path, __type);
 #endif
 }
 
@@ -838,14 +843,14 @@ __SPRT_C_FUNC int __SPRT_ID(eaccess)(const char *path, int __type) __SPRT_NOEXCE
 #elif SPRT_ANDROID || SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::faccessat(-1, path, __type, __SPRT_AT_EACCESS);
 #else
-	return eaccess(path, __type);
+	return __SPRT_LIBC(eaccess)(path, __type);
 #endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(off_t)
 		__SPRT_ID(lseek)(int __fd, __SPRT_ID(off_t) __offset, int __whence) __SPRT_NOEXCEPT {
 #if SPRT_APPLE || SPRT_HOSTED_RTOS
-	return ::lseek(__fd, __offset, __whence);
+	return __SPRT_LIBC(lseek)(__fd, __offset, __whence);
 #else
 	return ::lseek64(__fd, __offset, __whence);
 #endif
@@ -857,23 +862,23 @@ __SPRT_C_FUNC int __SPRT_ID(close)(int __fd) {
 	// before the descriptor number can be reissued to something else.
 	platform::releaseDirFd(__fd);
 #endif
-	return ::close(__fd);
+	return __SPRT_LIBC(close)(__fd);
 }
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t)
 		__SPRT_ID(read)(int __fd, void *__buf, __SPRT_ID(size_t) __nbytes) {
-	return read(__fd, __buf, __nbytes);
+	return __SPRT_LIBC(read)(__fd, __buf, __nbytes);
 }
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t)
 		__SPRT_ID(write)(int __fd, const void *__buf, __SPRT_ID(size_t) __n) {
-	return write(__fd, __buf, __n);
+	return __SPRT_LIBC(write)(__fd, __buf, __n);
 }
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 		pread)(int __fd, void *__buf, __SPRT_ID(size_t) __count, __SPRT_ID(off_t) __offset) {
 #if SPRT_APPLE || SPRT_HOSTED_RTOS
-	return pread(__fd, __buf, __count, __offset);
+	return __SPRT_LIBC(pread)(__fd, __buf, __count, __offset);
 #else
 	return pread64(__fd, __buf, __count, __offset);
 #endif
@@ -882,13 +887,13 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 		pwrite)(int __fd, const void *__buf, __SPRT_ID(size_t) __count, __SPRT_ID(off_t) __offset) {
 #if SPRT_APPLE || SPRT_HOSTED_RTOS
-	return pwrite(__fd, __buf, __count, __offset);
+	return __SPRT_LIBC(pwrite)(__fd, __buf, __count, __offset);
 #else
 	return pwrite64(__fd, __buf, __count, __offset);
 #endif
 }
 
-__SPRT_C_FUNC unsigned int __SPRT_ID(sleep)(unsigned int __seconds) { return ::sleep(__seconds); }
+__SPRT_C_FUNC unsigned int __SPRT_ID(sleep)(unsigned int __seconds) { return __SPRT_LIBC(sleep)(__seconds); }
 
 __SPRT_C_FUNC int __SPRT_ID(chown)(const char *__file, __SPRT_ID(uid_t) __owner,
 		__SPRT_ID(gid_t) __group) __SPRT_NOEXCEPT {
@@ -898,7 +903,7 @@ __SPRT_C_FUNC int __SPRT_ID(chown)(const char *__file, __SPRT_ID(uid_t) __owner,
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #else
-	return ::chown(__file, __owner, __group);
+	return __SPRT_LIBC(chown)(__file, __owner, __group);
 #endif
 }
 
@@ -910,15 +915,15 @@ __SPRT_C_FUNC int __SPRT_ID(
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #else
-	return ::fchown(__fd, __owner, __group);
+	return __SPRT_LIBC(fchown)(__fd, __owner, __group);
 #endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(chdir)(const char *path) __SPRT_NOEXCEPT { return ::chdir(path); }
+__SPRT_C_FUNC int __SPRT_ID(chdir)(const char *path) __SPRT_NOEXCEPT { return __SPRT_LIBC(chdir)(path); }
 
 __SPRT_C_FUNC int __SPRT_ID(fchdir)(int __fd) __SPRT_NOEXCEPT {
 #if SPRT_EMBOX
-	// Embox's fchdir() is an ENOSYS stub; now that a directory descriptor knows
+	// Embox's __SPRT_LIBC(fchdir)() is an ENOSYS stub; now that a directory descriptor knows
 	// its own path, it is just chdir().
 	char dir[PATH_MAX];
 	if (!platform::getDirFdPath(__fd, dir, sizeof(dir))) {
@@ -927,15 +932,15 @@ __SPRT_C_FUNC int __SPRT_ID(fchdir)(int __fd) __SPRT_NOEXCEPT {
 	}
 	return ::chdir(dir);
 #else
-	return fchdir(__fd);
+	return __SPRT_LIBC(fchdir)(__fd);
 #endif
 }
 
 __SPRT_C_FUNC char *__SPRT_ID(getcwd)(char *__buf, __SPRT_ID(size_t) __size) __SPRT_NOEXCEPT {
 #if SPRT_EMBOX
-	// The runtime's getcwd() carries the GNU extension - a null buffer means
+	// The runtime's __SPRT_LIBC(getcwd)() carries the GNU extension - a null buffer means
 	// "allocate one" (libc_impl/src/windows/unistd.cc does the same). Embox's
-	// getcwd() rejects it with EINVAL, so callers that use it (including
+	// __SPRT_LIBC(getcwd)() rejects it with EINVAL, so callers that use it (including
 	// tests/runtime's own libc_dir) got a null back and dereferenced it.
 	if (!__buf) {
 		auto cap = __size ? __size : __SPRT_ID(size_t)(PATH_MAX);
@@ -944,7 +949,7 @@ __SPRT_C_FUNC char *__SPRT_ID(getcwd)(char *__buf, __SPRT_ID(size_t) __size) __S
 			*__sprt___errno_location() = ENOMEM;
 			return nullptr;
 		}
-		if (!getcwd(allocated, cap)) {
+		if (!__SPRT_LIBC(getcwd)(allocated, cap)) {
 			__sprt_free(allocated);
 			return nullptr;
 		}
@@ -955,32 +960,32 @@ __SPRT_C_FUNC char *__SPRT_ID(getcwd)(char *__buf, __SPRT_ID(size_t) __size) __S
 		return nullptr;
 	}
 #endif
-	return getcwd(__buf, __size);
+	return __SPRT_LIBC(getcwd)(__buf, __size);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(dup)(int __fd) __SPRT_NOEXCEPT {
 #if SPRT_EMBOX
-	auto ret = ::dup(__fd);
+	auto ret = __SPRT_LIBC(dup)(__fd);
 	if (ret >= 0) {
-		// A directory descriptor is a table entry, not something dup() can copy.
+		// A directory descriptor is a table entry, not something __SPRT_LIBC(dup)() can copy.
 		platform::cloneDirFd(__fd, ret);
 	}
 	return ret;
 #else
-	return ::dup(__fd);
+	return __SPRT_LIBC(dup)(__fd);
 #endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(dup2)(int __fd, int __fd2) __SPRT_NOEXCEPT {
 #if SPRT_EMBOX
 	platform::releaseDirFd(__fd2); // dup2 closes the destination first
-	auto ret = ::dup2(__fd, __fd2);
+	auto ret = __SPRT_LIBC(dup2)(__fd, __fd2);
 	if (ret >= 0) {
 		platform::cloneDirFd(__fd, ret);
 	}
 	return ret;
 #else
-	return ::dup2(__fd, __fd2);
+	return __SPRT_LIBC(dup2)(__fd, __fd2);
 #endif
 }
 
@@ -991,7 +996,7 @@ __SPRT_C_FUNC int __SPRT_ID(dup3)(int __fd, int __fd2, int __flags) __SPRT_NOEXC
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #else
-	return ::dup3(__fd, __fd2, __flags);
+	return __SPRT_LIBC(dup3)(__fd, __fd2, __flags);
 #endif
 }
 
@@ -1003,7 +1008,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #else
-	return ::execve(__path, _argv, __envp);
+	return __SPRT_LIBC(execve)(__path, _argv, __envp);
 #endif
 }
 
@@ -1015,7 +1020,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #else
-	return fexecve(__fd, _argv, __envp);
+	return __SPRT_LIBC(fexecve)(__fd, _argv, __envp);
 #endif
 }
 
@@ -1026,7 +1031,7 @@ __SPRT_C_FUNC int __SPRT_ID(execv)(const char *__path, char *const _argv[]) __SP
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #else
-	return ::execv(__path, _argv);
+	return __SPRT_LIBC(execv)(__path, _argv);
 #endif
 }
 
@@ -1037,7 +1042,7 @@ __SPRT_C_FUNC int __SPRT_ID(execvp)(const char *__file, char *const _argv[]) __S
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #else
-	return ::execvp(__file, _argv);
+	return __SPRT_LIBC(execvp)(__file, _argv);
 #endif
 }
 
@@ -1051,7 +1056,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 #elif SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::execve(__file, _argv, __envp);
 #else
-	return ::execvpe(__file, _argv, __envp);
+	return __SPRT_LIBC(execvpe)(__file, _argv, __envp);
 #endif
 }
 
@@ -1139,21 +1144,21 @@ __SPRT_C_FUNC int __SPRT_ID(nice)(int __inc) __SPRT_NOEXCEPT {
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #else
-	return ::nice(__inc);
+	return __SPRT_LIBC(nice)(__inc);
 #endif
 }
 
 __SPRT_C_FUNC long int __SPRT_ID(pathconf)(const char *__path, int __name) __SPRT_NOEXCEPT {
-	return (long int)pathconf(__path, __name);
+	return (long int)__SPRT_LIBC(pathconf)(__path, __name);
 }
 
 __SPRT_C_FUNC long int __SPRT_ID(fpathconf)(int __fd, int __name) __SPRT_NOEXCEPT {
-	return fpathconf(__fd, __name);
+	return __SPRT_LIBC(fpathconf)(__fd, __name);
 }
 
-__SPRT_C_FUNC long int __SPRT_ID(sysconf)(int __name) __SPRT_NOEXCEPT { return sysconf(__name); }
+__SPRT_C_FUNC long int __SPRT_ID(sysconf)(int __name) __SPRT_NOEXCEPT { return __SPRT_LIBC(sysconf)(__name); }
 
-__SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(getpid)(void) __SPRT_NOEXCEPT { return ::getpid(); }
+__SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(getpid)(void) __SPRT_NOEXCEPT { return __SPRT_LIBC(getpid)(); }
 
 __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(getppid)(void) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_GETPPID
@@ -1162,17 +1167,17 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(getppid)(void) __SPRT_NOEXCEPT {
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #else
-	return getppid();
+	return __SPRT_LIBC(getppid)();
 #endif
 }
 
-__SPRT_C_FUNC __SPRT_ID(uid_t) __SPRT_ID(getuid)(void) __SPRT_NOEXCEPT { return getuid(); }
+__SPRT_C_FUNC __SPRT_ID(uid_t) __SPRT_ID(getuid)(void) __SPRT_NOEXCEPT { return __SPRT_LIBC(getuid)(); }
 
-__SPRT_C_FUNC __SPRT_ID(uid_t) __SPRT_ID(geteuid)(void) __SPRT_NOEXCEPT { return geteuid(); }
+__SPRT_C_FUNC __SPRT_ID(uid_t) __SPRT_ID(geteuid)(void) __SPRT_NOEXCEPT { return __SPRT_LIBC(geteuid)(); }
 
-__SPRT_C_FUNC __SPRT_ID(gid_t) __SPRT_ID(getgid)(void) __SPRT_NOEXCEPT { return getgid(); }
+__SPRT_C_FUNC __SPRT_ID(gid_t) __SPRT_ID(getgid)(void) __SPRT_NOEXCEPT { return __SPRT_LIBC(getgid)(); }
 
-__SPRT_C_FUNC __SPRT_ID(gid_t) __SPRT_ID(getegid)(void) __SPRT_NOEXCEPT { return getegid(); }
+__SPRT_C_FUNC __SPRT_ID(gid_t) __SPRT_ID(getegid)(void) __SPRT_NOEXCEPT { return __SPRT_LIBC(getegid)(); }
 
 __SPRT_C_FUNC int __SPRT_ID(getgroups)(int __size, __SPRT_ID(gid_t) __list[]) __SPRT_NOEXCEPT {
 #if SPRT_EMBOX
@@ -1183,13 +1188,13 @@ __SPRT_C_FUNC int __SPRT_ID(getgroups)(int __size, __SPRT_ID(gid_t) __list[]) __
 	__sprt_errno = ENOSYS;
 	return -1;
 #else
-	return getgroups(__size, __list);
+	return __SPRT_LIBC(getgroups)(__size, __list);
 #endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(setuid)(__SPRT_ID(uid_t) __uid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
-	return ::setuid(__uid);
+	return __SPRT_LIBC(setuid)(__uid);
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETUIDGID)");
@@ -1200,7 +1205,7 @@ __SPRT_C_FUNC int __SPRT_ID(setuid)(__SPRT_ID(uid_t) __uid) __SPRT_NOEXCEPT {
 __SPRT_C_FUNC int __SPRT_ID(
 		setreuid)(__SPRT_ID(uid_t) __ruid, __SPRT_ID(uid_t) __euid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
-	return ::setreuid(__ruid, __euid);
+	return __SPRT_LIBC(setreuid)(__ruid, __euid);
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETUIDGID)");
@@ -1210,7 +1215,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 }
 __SPRT_C_FUNC int __SPRT_ID(seteuid)(__SPRT_ID(uid_t) __uid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
-	return ::seteuid(__uid);
+	return __SPRT_LIBC(seteuid)(__uid);
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETUIDGID)");
@@ -1220,7 +1225,7 @@ __SPRT_C_FUNC int __SPRT_ID(seteuid)(__SPRT_ID(uid_t) __uid) __SPRT_NOEXCEPT {
 }
 __SPRT_C_FUNC int __SPRT_ID(setgid)(__SPRT_ID(gid_t) __gid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
-	return ::setgid(__gid);
+	return __SPRT_LIBC(setgid)(__gid);
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETUIDGID)");
@@ -1231,7 +1236,7 @@ __SPRT_C_FUNC int __SPRT_ID(setgid)(__SPRT_ID(gid_t) __gid) __SPRT_NOEXCEPT {
 __SPRT_C_FUNC int __SPRT_ID(
 		setregid)(__SPRT_ID(gid_t) __rgid, __SPRT_ID(gid_t) __egid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
-	return ::setregid(__rgid, __egid);
+	return __SPRT_LIBC(setregid)(__rgid, __egid);
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETUIDGID)");
@@ -1241,7 +1246,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 }
 __SPRT_C_FUNC int __SPRT_ID(setegid)(__SPRT_ID(gid_t) __gid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
-	return ::setegid(__gid);
+	return __SPRT_LIBC(setegid)(__gid);
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETUIDGID)");
@@ -1265,7 +1270,7 @@ __SPRT_C_FUNC int __SPRT_ID(getresuid)(__SPRT_ID(uid_t) * __ruid, __SPRT_ID(uid_
 	}
 	return 0;
 #else
-	return ::getresuid(__ruid, __euid, __suid);
+	return __SPRT_LIBC(getresuid)(__ruid, __euid, __suid);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(getresgid)(__SPRT_ID(gid_t) * __rgid, __SPRT_ID(gid_t) * __egid,
@@ -1283,7 +1288,7 @@ __SPRT_C_FUNC int __SPRT_ID(getresgid)(__SPRT_ID(gid_t) * __rgid, __SPRT_ID(gid_
 	}
 	return 0;
 #else
-	return ::getresgid(__rgid, __egid, __sgid);
+	return __SPRT_LIBC(getresgid)(__rgid, __egid, __sgid);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(setresuid)(__SPRT_ID(uid_t) __ruid, __SPRT_ID(uid_t) __euid,
@@ -1292,7 +1297,7 @@ __SPRT_C_FUNC int __SPRT_ID(setresuid)(__SPRT_ID(uid_t) __ruid, __SPRT_ID(uid_t)
 #if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::setreuid(__ruid, __euid);
 #else
-	return ::setresuid(__ruid, __euid, __suid);
+	return __SPRT_LIBC(setresuid)(__ruid, __euid, __suid);
 #endif
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
@@ -1307,7 +1312,7 @@ __SPRT_C_FUNC int __SPRT_ID(setresgid)(__SPRT_ID(gid_t) __rgid, __SPRT_ID(gid_t)
 #if SPRT_APPLE || SPRT_HOSTED_RTOS
 	return ::setregid(__rgid, __egid);
 #else
-	return ::setresgid(__rgid, __egid, __sgid);
+	return __SPRT_LIBC(setresgid)(__rgid, __egid, __sgid);
 #endif
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
@@ -1318,7 +1323,7 @@ __SPRT_C_FUNC int __SPRT_ID(setresgid)(__SPRT_ID(gid_t) __rgid, __SPRT_ID(gid_t)
 }
 __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(fork)(void) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_FORK
-	return ::fork();
+	return __SPRT_LIBC(fork)();
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_FORK)");
@@ -1330,7 +1335,7 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(vfork)(void) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_FORK
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-	return ::vfork();
+	return __SPRT_LIBC(vfork)();
 #pragma clang diagnostic pop
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
@@ -1344,7 +1349,7 @@ __SPRT_C_FUNC char *__SPRT_ID(ttyname)(int __fd) __SPRT_NOEXCEPT {
 #if SPRT_WINDOWS
 	return nullptr;
 #else
-	return ::ttyname(__fd);
+	return __SPRT_LIBC(ttyname)(__fd);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(
@@ -1370,26 +1375,26 @@ __SPRT_C_FUNC int __SPRT_ID(
 	}
 	return 0;
 #else
-	return ::ttyname_r(__fd, __buf, __buflen);
+	return __SPRT_LIBC(ttyname_r)(__fd, __buf, __buflen);
 #endif
 }
-__SPRT_C_FUNC int __SPRT_ID(isatty)(int __fd) __SPRT_NOEXCEPT { return ::isatty(__fd); }
+__SPRT_C_FUNC int __SPRT_ID(isatty)(int __fd) __SPRT_NOEXCEPT { return __SPRT_LIBC(isatty)(__fd); }
 
 __SPRT_C_FUNC int __SPRT_ID(link)(const char *__from, const char *__to) __SPRT_NOEXCEPT {
-	return link(__from, __to);
+	return __SPRT_LIBC(link)(__from, __to);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(symlink)(const char *__from, const char *__to) __SPRT_NOEXCEPT {
-	return symlink(__from, __to);
+	return __SPRT_LIBC(symlink)(__from, __to);
 }
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(readlink)(const char *__SPRT_RESTRICT __path,
 		char *__SPRT_RESTRICT __buf, __SPRT_ID(size_t) __len) __SPRT_NOEXCEPT {
-	return readlink(__path, __buf, __len);
+	return __SPRT_LIBC(readlink)(__path, __buf, __len);
 }
-__SPRT_C_FUNC int __SPRT_ID(unlink)(const char *__name) __SPRT_NOEXCEPT { return unlink(__name); }
+__SPRT_C_FUNC int __SPRT_ID(unlink)(const char *__name) __SPRT_NOEXCEPT { return __SPRT_LIBC(unlink)(__name); }
 
-__SPRT_C_FUNC int __SPRT_ID(rmdir)(const char *__path) __SPRT_NOEXCEPT { return rmdir(__path); }
+__SPRT_C_FUNC int __SPRT_ID(rmdir)(const char *__path) __SPRT_NOEXCEPT { return __SPRT_LIBC(rmdir)(__path); }
 
 __SPRT_C_FUNC char *__SPRT_ID(getlogin)(void) {
 #if SPRT_HOSTED_RTOS
@@ -1397,7 +1402,7 @@ __SPRT_C_FUNC char *__SPRT_ID(getlogin)(void) {
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
 #else
-	return getlogin();
+	return __SPRT_LIBC(getlogin)();
 #endif
 }
 
@@ -1409,7 +1414,7 @@ __SPRT_C_FUNC int __SPRT_ID(getlogin_r)(char *__name, __SPRT_ID(size_t) __name_l
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #else
-	return getlogin_r(__name, __name_len);
+	return __SPRT_LIBC(getlogin_r)(__name, __name_len);
 #endif
 }
 
@@ -1420,7 +1425,7 @@ __SPRT_C_FUNC int __SPRT_ID(setlogin)(const char *__name) __SPRT_NOEXCEPT {
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #else
-	return ::setlogin(__name);
+	return __SPRT_LIBC(setlogin)(__name);
 #endif
 }
 
@@ -1464,9 +1469,9 @@ __SPRT_C_FUNC int __SPRT_ID(
 #endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(fsync)(int __fd) { return fsync(__fd); }
+__SPRT_C_FUNC int __SPRT_ID(fsync)(int __fd) { return __SPRT_LIBC(fsync)(__fd); }
 
-__SPRT_C_FUNC void __SPRT_ID(sync)(void) __SPRT_NOEXCEPT { return ::sync(); }
+__SPRT_C_FUNC void __SPRT_ID(sync)(void) __SPRT_NOEXCEPT { return __SPRT_LIBC(sync)(); }
 
 __SPRT_C_FUNC int __SPRT_ID(getpagesize)(void) __SPRT_NOEXCEPT { return getpagesize(); }
 __SPRT_C_FUNC int __SPRT_ID(getdtablesize)(void) __SPRT_NOEXCEPT {
@@ -1485,7 +1490,7 @@ __SPRT_C_FUNC int __SPRT_ID(getdtablesize)(void) __SPRT_NOEXCEPT {
 
 __SPRT_C_FUNC int __SPRT_ID(truncate)(const char *__file, __SPRT_ID(off_t) length) __SPRT_NOEXCEPT {
 #if SPRT_APPLE || SPRT_HOSTED_RTOS
-	return truncate(__file, length);
+	return __SPRT_LIBC(truncate)(__file, length);
 #else
 	return truncate64(__file, length);
 #endif
@@ -1493,7 +1498,7 @@ __SPRT_C_FUNC int __SPRT_ID(truncate)(const char *__file, __SPRT_ID(off_t) lengt
 
 __SPRT_C_FUNC int __SPRT_ID(ftruncate)(int __fd, __SPRT_ID(off_t) length) __SPRT_NOEXCEPT {
 #if SPRT_APPLE || SPRT_HOSTED_RTOS
-	return ftruncate(__fd, length);
+	return __SPRT_LIBC(ftruncate)(__fd, length);
 #else
 	return ftruncate64(__fd, length);
 #endif
@@ -1504,10 +1509,10 @@ __SPRT_C_FUNC int __SPRT_ID(brk)(void *__addr) __SPRT_NOEXCEPT {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #if SPRT_APPLE || SPRT_HOSTED_RTOS
-	::brk(__addr);
+	__SPRT_LIBC(brk)(__addr);
 	return 0;
 #else
-	return ::brk(__addr);
+	return __SPRT_LIBC(brk)(__addr);
 #endif
 #pragma clang diagnostic pop
 #else
@@ -1522,7 +1527,7 @@ __SPRT_C_FUNC void *__SPRT_ID(sbrk)(__SPRT_ID(intptr_t) __delta) __SPRT_NOEXCEPT
 #if __SPRT_CONFIG_HAVE_UNISTD_BRK
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-	return ::sbrk(__delta);
+	return __SPRT_LIBC(sbrk)(__delta);
 #pragma clang diagnostic pop
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
@@ -1540,7 +1545,7 @@ __SPRT_C_FUNC int __SPRT_ID(lockf)(int __fd, int __cmd, __SPRT_ID(off_t) len) {
 	__sprt_errno = ENOSYS;
 	return -1;
 #elif SPRT_APPLE || SPRT_HOSTED_RTOS
-	return lockf(__fd, __cmd, len);
+	return __SPRT_LIBC(lockf)(__fd, __cmd, len);
 #else
 	return lockf64(__fd, __cmd, len);
 #endif
@@ -1573,29 +1578,29 @@ __SPRT_C_FUNC int __SPRT_ID(fdatasync)(int __fildes) {
 #if SPRT_WINDOWS || SPRT_APPLE || SPRT_EMBOX
 	return fsync(__fildes);
 #else
-	return ::fdatasync(__fildes);
+	return __SPRT_LIBC(fdatasync)(__fildes);
 #endif
 }
 
 __SPRT_C_FUNC void __SPRT_ID(swab)(const void *__SPRT_RESTRICT __from, void *__SPRT_RESTRICT __to,
 		__SPRT_ID(ssize_t) __n) __SPRT_NOEXCEPT {
-	return ::swab(__from, __to, __n);
+	return __SPRT_LIBC(swab)(__from, __to, __n);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		symlinkat)(const char *__old_path, int __new_dir_fd, const char *__new_path) {
-	return symlinkat(__old_path, __new_dir_fd, __new_path);
+	return __SPRT_LIBC(symlinkat)(__old_path, __new_dir_fd, __new_path);
 }
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 		readlinkat)(int __dir_fd, const char *__path, char *__buf, __SPRT_ID(size_t) __buf_size) {
-	return readlinkat(__dir_fd, __path, __buf, __buf_size);
+	return __SPRT_LIBC(readlinkat)(__dir_fd, __path, __buf, __buf_size);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fchownat)(int __dir_fd, const char *__path, __SPRT_ID(uid_t) __owner,
 		__SPRT_ID(gid_t) __group, int __flags) {
 #if __SPRT_CONFIG_HAVE_UNISTD_CHOWN
-	return ::fchownat(__dir_fd, __path, __owner, __group, __flags);
+	return __SPRT_LIBC(fchownat)(__dir_fd, __path, __owner, __group, __flags);
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_CHOWN)");
@@ -1617,13 +1622,13 @@ __SPRT_C_FUNC int __SPRT_ID(faccessat)(int __dirfd, const char *__path, int __mo
 	}
 	return platform::accessPath(target, __mode);
 #else
-	return faccessat(__dirfd, __path, __mode, __flags);
+	return __SPRT_LIBC(faccessat)(__dirfd, __path, __mode, __flags);
 #endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(linkat)(int __old_dir_fd, const char *__old_path, int __new_dir_fd,
 		const char *__new_path, int __flags) {
-	return linkat(__old_dir_fd, __old_path, __new_dir_fd, __new_path, __flags);
+	return __SPRT_LIBC(linkat)(__old_dir_fd, __old_path, __new_dir_fd, __new_path, __flags);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(unlinkat)(int __dirfd, const char *__path, int __flags) {
@@ -1635,13 +1640,13 @@ __SPRT_C_FUNC int __SPRT_ID(unlinkat)(int __dirfd, const char *__path, int __fla
 	}
 	return (__flags & __SPRT_AT_REMOVEDIR) ? ::rmdir(target) : ::unlink(target);
 #else
-	return unlinkat(__dirfd, __path, __flags);
+	return __SPRT_LIBC(unlinkat)(__dirfd, __path, __flags);
 #endif
 }
 
 __SPRT_C_FUNC long __SPRT_ID(gethostid)(void) {
 #if SPRT_APPLE
-	return gethostid();
+	return __SPRT_LIBC(gethostid)();
 #elif SPRT_HOSTED_RTOS
 	// NuttX has no gethostid; synthesize one from a kernel timer so callers
 	// that only need "some per-host value" do not break.
@@ -1657,7 +1662,7 @@ __SPRT_C_FUNC long __SPRT_ID(gethostid)(void) {
 #endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(pipe)(int fds[2]) { return pipe(fds); }
+__SPRT_C_FUNC int __SPRT_ID(pipe)(int fds[2]) { return __SPRT_LIBC(pipe)(fds); }
 
 __SPRT_C_FUNC int __SPRT_ID(pipe2)(int fds[2], int flags) {
 #if SPRT_APPLE || SPRT_HOSTED_RTOS
@@ -1687,13 +1692,13 @@ __SPRT_C_FUNC int __SPRT_ID(pipe2)(int fds[2], int flags) {
 	}
 	return ret;
 #else
-	return pipe2(fds, flags);
+	return __SPRT_LIBC(pipe2)(fds, flags);
 #endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(utime)(const char *path, const struct __SPRT_UTIMBUF_NAME *buf) {
 #if __STDC_HOSTED__ == 0
-	return ::utime(path, buf);
+	return __SPRT_LIBC(utime)(path, buf);
 #else
 	struct utimbuf nativeBuf;
 	if (buf) {
@@ -1701,7 +1706,7 @@ __SPRT_C_FUNC int __SPRT_ID(utime)(const char *path, const struct __SPRT_UTIMBUF
 		nativeBuf.modtime = buf->modtime;
 	}
 	// call with native path
-	return ::utime(path, buf ? &nativeBuf : nullptr);
+	return __SPRT_LIBC(utime)(path, buf ? &nativeBuf : nullptr);
 #endif
 }
 

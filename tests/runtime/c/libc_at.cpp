@@ -42,6 +42,7 @@ THE SOFTWARE.
 // failed, when none is found.
 
 #include <dirent.h>
+#include <limits.h> // PATH_MAX / NAME_MAX (transitive via dirent on musl only)
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdlib.h>

@@ -25,19 +25,17 @@ THE SOFTWARE.
 #include <pthread.h>
 #include <stdint.h>
 
-#include <sprt/c/bits/__sprt_uint64_t.h>
+#include <sprt/c/bits/__sprt_native_thread_id_t.h>
+#include <sprt/c/bits/__sprt_uintptr_t.h>
 
 #include "../include/__plock.h"
 
-// pthread_t is an integer on Linux/NuttX and a pointer on Embox; reinterpret_cast
-// is required for the latter and ill-formed for the former, so the two spellings
-// cannot be folded into one.
-#if SPRT_EMBOX
-__SPRT_C_FUNC __SPRT_ID(uint64_t) __libc_main_thread = static_cast<__SPRT_ID(uint64_t)>(
-		reinterpret_cast<uintptr_t>(pthread_self()));
+#if SPRT_EMBOX || (defined(__e2k__) && defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ > 8)
+__SPRT_C_FUNC __sprt_native_thread_id_t __libc_main_thread =
+		static_cast<__sprt_native_thread_id_t>(reinterpret_cast<__sprt_uintptr_t>(pthread_self()));
 #else
-__SPRT_C_FUNC __SPRT_ID(uint64_t) __libc_main_thread = static_cast<__SPRT_ID(uint64_t)>(
-		pthread_self());
+__SPRT_C_FUNC __sprt_native_thread_id_t __libc_main_thread =
+		static_cast<__sprt_native_thread_id_t>(pthread_self());
 #endif
 
 

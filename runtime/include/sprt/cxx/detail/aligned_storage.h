@@ -171,13 +171,13 @@ struct aligned_storage_kv_traits<Key, Key> {
 		return extract_key(storage.ref());
 	}
 
-	template <typename A, typename... Args>
+	template <typename A, typename... Args, typename = enable_if_t<(sizeof...(Args) > 0)>>
 	static inline void construct(const A &alloc, __kv_storage auto &storage, const Key &key,
 			Args &&...args) noexcept {
 		storage.construct(alloc, key);
 	}
 
-	template <typename A, typename... Args>
+	template <typename A, typename... Args, typename = enable_if_t<(sizeof...(Args) > 0)>>
 	static inline void construct(const A &alloc, __kv_storage auto &storage, Key &&key,
 			Args &&...args) noexcept {
 		storage.construct(alloc, sprt::move_unsafe(key));

@@ -317,23 +317,23 @@ public:
 	static const Mat4 ROTATION_Z_270;
 };
 
-constexpr const Mat4 Mat4::IDENTITY = Mat4(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+inline constexpr const Mat4 Mat4::IDENTITY = Mat4(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
 		0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
 
-constexpr const Mat4 Mat4::ZERO = Mat4(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+inline constexpr const Mat4 Mat4::ZERO = Mat4(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
 		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
 
-constexpr const Mat4 Mat4::INVALID = Mat4(NaN<float>, NaN<float>, NaN<float>, NaN<float>,
+inline constexpr const Mat4 Mat4::INVALID = Mat4(NaN<float>, NaN<float>, NaN<float>, NaN<float>,
 		NaN<float>, NaN<float>, NaN<float>, NaN<float>, NaN<float>, NaN<float>, NaN<float>,
 		NaN<float>, NaN<float>, NaN<float>, NaN<float>, NaN<float>);
 
-constexpr const Mat4 Mat4::ROTATION_Z_90 = Mat4(0.0f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+inline constexpr const Mat4 Mat4::ROTATION_Z_90 = Mat4(0.0f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
 		0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
 
-constexpr const Mat4 Mat4::ROTATION_Z_180 = Mat4(-1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f,
+inline constexpr const Mat4 Mat4::ROTATION_Z_180 = Mat4(-1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f,
 		0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
 
-constexpr const Mat4 Mat4::ROTATION_Z_270 = Mat4(0.0f, 1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+inline constexpr const Mat4 Mat4::ROTATION_Z_270 = Mat4(0.0f, 1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f,
 		0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
 
 inline Vec4 &operator*=(Vec4 &v, const Mat4 &m) {

@@ -73,11 +73,11 @@ struct pthread_to_int<T> {
 	static uintptr_t to_int(T pthread) { return static_cast<make_unsigned_t<T>>(pthread); }
 };
 
-static uint64_t pthread_to_id(pthread_t pthread) {
+static __sprt_native_thread_id_t pthread_to_id(pthread_t pthread) {
 	return pthread_to_int<pthread_t>::to_int(pthread);
 }
 
-static uint64_t __getNativeThreadId() { return pthread_to_id(pthread_self()); }
+static __sprt_native_thread_id_t __getNativeThreadId() { return pthread_to_id(pthread_self()); }
 
 static void __doDestroy(void *cb) {
 	auto dtor = reinterpret_cast<void (*)(void)>(cb);

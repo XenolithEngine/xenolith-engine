@@ -126,19 +126,24 @@ static_assert(__SPRT_GLOB_TILDE_CHECK == GLOB_TILDE_CHECK, "GLOB_TILDE_CHECK dif
 
 namespace sprt {
 
+// lcc/e2k: umbrella-обёртки инлайнятся полностью (сборка с -O1), слабых копий
+// в образе нет — прямые вызовы libc резолвятся в glibc без версионных алиасов
+#define __SPRT_LIBC(name) name
+
+
 __SPRT_C_FUNC int __SPRT_ID(
 		regcomp)(__SPRT_ID(regex_t) * __preg, const char *__pattern, int __cflags) {
-	return ::regcomp((::regex_t *)__preg, __pattern, __cflags);
+	return __SPRT_LIBC(regcomp)((::regex_t *)__preg, __pattern, __cflags);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(regexec)(const __SPRT_ID(regex_t) * __preg, const char *__string,
 		__SPRT_ID(size_t) __nmatch, __SPRT_ID(regmatch_t) * __pmatch, int __eflags) {
 	if (__nmatch == 0 || __pmatch == nullptr) {
-		return ::regexec((const ::regex_t *)__preg, __string, 0, nullptr, __eflags);
+		return __SPRT_LIBC(regexec)((const ::regex_t *)__preg, __string, 0, nullptr, __eflags);
 	}
 	if constexpr (sizeof(::regmatch_t) == sizeof(__SPRT_ID(regmatch_t))) {
 		// Native regoff_t is pointer-sized: regmatch_t layout matches, cast directly.
-		return ::regexec((const ::regex_t *)__preg, __string, __nmatch, (::regmatch_t *)__pmatch,
+		return __SPRT_LIBC(regexec)((const ::regex_t *)__preg, __string, __nmatch, (::regmatch_t *)__pmatch,
 				__eflags);
 	} else {
 		// Native regoff_t is narrower (glibc 32-bit, no 64-bit regexec): translate.
@@ -149,7 +154,7 @@ __SPRT_C_FUNC int __SPRT_ID(regexec)(const __SPRT_ID(regex_t) * __preg, const ch
 		if (__nat == nullptr) {
 			return __SPRT_REG_ESPACE;
 		}
-		int __r = ::regexec((const ::regex_t *)__preg, __string, __nmatch, __nat, __eflags);
+		int __r = __SPRT_LIBC(regexec)((const ::regex_t *)__preg, __string, __nmatch, __nat, __eflags);
 		for (__SPRT_ID(size_t) __i = 0; __i < __nmatch; ++__i) {
 			__pmatch[__i].rm_so = __nat[__i].rm_so;
 			__pmatch[__i].rm_eo = __nat[__i].rm_eo;
@@ -163,15 +168,15 @@ __SPRT_C_FUNC int __SPRT_ID(regexec)(const __SPRT_ID(regex_t) * __preg, const ch
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(regerror)(int __errcode,
 		const __SPRT_ID(regex_t) * __preg, char *__errbuf, __SPRT_ID(size_t) __errbuf_size) {
-	return ::regerror(__errcode, (const ::regex_t *)__preg, __errbuf, __errbuf_size);
+	return __SPRT_LIBC(regerror)(__errcode, (const ::regex_t *)__preg, __errbuf, __errbuf_size);
 }
 
 __SPRT_C_FUNC void __SPRT_ID(regfree)(__SPRT_ID(regex_t) * __preg) {
-	::regfree((::regex_t *)__preg);
+	__SPRT_LIBC(regfree)((::regex_t *)__preg);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fnmatch)(const char *__pattern, const char *__string, int __flags) {
-	return ::fnmatch(__pattern, __string, __flags);
+	return __SPRT_LIBC(fnmatch)(__pattern, __string, __flags);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(glob)(const char *__pattern, int __flags,

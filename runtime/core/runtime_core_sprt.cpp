@@ -570,4 +570,11 @@ void recursive_timed_mutex::unlock() {
 	rmutex_base::_unlock<__sprt_sprt_rlock_wake>(_mutex.value, tid, &_mutex.counter, 0);
 }
 
+template Status qmutex_base::_lock<__sprt_sprt_qlock_wait, nullptr>(qmutex_base::value_type *,
+		qmutex_base::timeout_type *, qmutex_base::flags_type);
+template Status qmutex_base::_lock<__sprt_sprt_qlock_wait, __sprt_sprt_qlock_now>(
+		qmutex_base::value_type *, qmutex_base::timeout_type *, qmutex_base::flags_type);
+template Status qmutex_base::_unlock<__sprt_sprt_qlock_wake_one>(qmutex_base::value_type *,
+		qmutex_base::flags_type);
+
 } // namespace sprt

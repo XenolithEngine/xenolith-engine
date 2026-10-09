@@ -58,6 +58,11 @@ THE SOFTWARE.
 
 namespace sprt {
 
+// lcc/e2k: umbrella-обёртки инлайнятся полностью (сборка с -O1), слабых копий
+// в образе нет — прямые вызовы libc резолвятся в glibc без версионных алиасов
+#define __SPRT_LIBC(name) name
+
+
 __SPRT_C_FUNC int __SPRT_ID(atoi_impl)(const char *str) { return ::atoi(str); }
 
 __SPRT_C_FUNC long __SPRT_ID(atol_impl)(const char *str) { return ::atol(str); }
@@ -188,7 +193,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	return posix_memalign(ptr, align, size);
 }
 #endif // !SPRT_EMBOX
-__SPRT_C_FUNC int __SPRT_ID(mkstemp)(char *tpl) { return mkstemp(tpl); }
+__SPRT_C_FUNC int __SPRT_ID(mkstemp)(char *tpl) { return __SPRT_LIBC(mkstemp)(tpl); }
 __SPRT_C_FUNC int __SPRT_ID(mkostemp)(char *tpl, int n) {
 #if SPRT_HOSTED_RTOS
 	// NuttX libc has no mkostemp; fall back to mkstemp (the flags argument is
@@ -197,7 +202,7 @@ __SPRT_C_FUNC int __SPRT_ID(mkostemp)(char *tpl, int n) {
 	(void)n;
 	return mkstemp(tpl);
 #else
-	return mkostemp(tpl, n);
+	return __SPRT_LIBC(mkostemp)(tpl, n);
 #endif
 }
 __SPRT_C_FUNC char *__SPRT_ID(mkdtemp)(char *tpl) {
@@ -206,13 +211,13 @@ __SPRT_C_FUNC char *__SPRT_ID(mkdtemp)(char *tpl) {
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
 #else
-	return mkdtemp(tpl);
+	return __SPRT_LIBC(mkdtemp)(tpl);
 #endif
 }
 
 __SPRT_C_FUNC char *__SPRT_ID(
 		realpath)(const char *__SPRT_RESTRICT path, char *__SPRT_RESTRICT out) {
-	return realpath(path, out);
+	return __SPRT_LIBC(realpath)(path, out);
 }
 
 __SPRT_C_FUNC long __SPRT_ID(strtol_l)(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
@@ -221,7 +226,7 @@ __SPRT_C_FUNC long __SPRT_ID(strtol_l)(const char *__SPRT_RESTRICT str, char **_
 	(void)loc;
 	return ::strtol(str, endp, base);
 #else
-	return ::strtol_l(str, endp, base, loc);
+	return __SPRT_LIBC(strtol_l)(str, endp, base, loc);
 #endif
 }
 __SPRT_C_FUNC long long __SPRT_ID(strtoll_l)(const char *__SPRT_RESTRICT str,
@@ -239,7 +244,7 @@ __SPRT_C_FUNC unsigned long __SPRT_ID(strtoul_l)(const char *__SPRT_RESTRICT str
 	(void)loc;
 	return ::strtoul(str, endp, base);
 #else
-	return ::strtoul_l(str, endp, base, loc);
+	return __SPRT_LIBC(strtoul_l)(str, endp, base, loc);
 #endif
 }
 __SPRT_C_FUNC unsigned long long __SPRT_ID(strtoull_l)(const char *__SPRT_RESTRICT str,
@@ -253,21 +258,21 @@ __SPRT_C_FUNC unsigned long long __SPRT_ID(strtoull_l)(const char *__SPRT_RESTRI
 }
 __SPRT_C_FUNC float __SPRT_ID(strtof_l)(const char *__SPRT_RESTRICT str,
 		char **__SPRT_RESTRICT endp, __SPRT_ID(locale_t) loc) {
-	return ::strtof_l(str, endp, loc);
+	return __SPRT_LIBC(strtof_l)(str, endp, loc);
 }
 __SPRT_C_FUNC double __SPRT_ID(strtod_l)(const char *__SPRT_RESTRICT str,
 		char **__SPRT_RESTRICT endp, __SPRT_ID(locale_t) loc) {
-	return ::strtod_l(str, endp, loc);
+	return __SPRT_LIBC(strtod_l)(str, endp, loc);
 }
 __SPRT_C_FUNC long double __SPRT_ID(strtold_l)(const char *__SPRT_RESTRICT str,
 		char **__SPRT_RESTRICT endp, __SPRT_ID(locale_t) loc) {
-	return ::strtold_l(str, endp, loc);
+	return __SPRT_LIBC(strtold_l)(str, endp, loc);
 }
 
 
 __SPRT_C_FUNC __SPRT_ID(size_t)
 		__SPRT_ID(mbstowcs)(wchar_t *__dst, const char *__src, __SPRT_ID(size_t) __n) {
-	return ::mbstowcs(__dst, __src, __n);
+	return __SPRT_LIBC(mbstowcs)(__dst, __src, __n);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mblen)(const char *__s, __SPRT_ID(size_t) __n) {
@@ -278,21 +283,21 @@ __SPRT_C_FUNC int __SPRT_ID(mblen)(const char *__s, __SPRT_ID(size_t) __n) {
 	// through Bionic's mbtowc, which is available.
 	return ::mbtowc(nullptr, __s, __n);
 #else
-	return ::mblen(__s, __n);
+	return __SPRT_LIBC(mblen)(__s, __n);
 #endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mbtowc)(wchar_t *__wc_ptr, const char *__s, __SPRT_ID(size_t) __n) {
-	return ::mbtowc(__wc_ptr, __s, __n);
+	return __SPRT_LIBC(mbtowc)(__wc_ptr, __s, __n);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(wctomb)(char *__dst, wchar_t __wc) {
-	return ::wctomb(__dst, __wc);
+	return __SPRT_LIBC(wctomb)(__dst, __wc);
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t)
 		__SPRT_ID(wcstombs)(char *__dst, const wchar_t *__src, __SPRT_ID(size_t) __n) {
-	return ::wcstombs(__dst, __src, __n);
+	return __SPRT_LIBC(wcstombs)(__dst, __src, __n);
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(__ctype_get_mb_cur_max)(void) {

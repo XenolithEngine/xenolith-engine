@@ -186,8 +186,7 @@ struct __thread_pool {
 	atomic<uint32_t> nkeys = 1;
 	sprt::__malloc_unordered_map<key_t, __key_data> keys;
 
-	// Thread locators are system-specific type with 64-bit width max
-	sprt::__malloc_unordered_map<uint64_t, thread_t *> activeThreads;
+	sprt::__malloc_unordered_map<__sprt_native_thread_id_t, thread_t *> activeThreads;
 
 	// Threads keyed by kernel thread id (__sprt_gettid). The priority-inheritance
 	// boost path resolves owners by the tid stored in the rmutex owner field, which
@@ -213,8 +212,8 @@ struct __thread_pool {
 // Initial function
 SPRT_UNUSED static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg);
 
-SPRT_UNUSED static void __attachNativeThread(thread_t *thread, void *handle, uint64_t id,
-		unique_lock<qmutex> &lock);
+SPRT_UNUSED static void __attachNativeThread(thread_t *thread, void *handle,
+		__sprt_native_thread_id_t id, unique_lock<qmutex> &lock);
 
 // Remove thread from active list and deallocate it's resources atomically,
 // Some memory can be preserved to use for future threads;
@@ -229,7 +228,7 @@ SPRT_UNUSED static int __pthread_join(thread_t *thread, void **ret, timeout_t ti
 
 namespace native {
 
-SPRT_UNUSED static uint64_t __getNativeThreadId();
+SPRT_UNUSED static __sprt_native_thread_id_t __getNativeThreadId();
 
 SPRT_UNUSED static void __registerForDestruction(void (*)(void));
 

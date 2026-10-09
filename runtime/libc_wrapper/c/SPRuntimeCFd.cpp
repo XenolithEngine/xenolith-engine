@@ -36,8 +36,13 @@
 
 namespace sprt {
 
+// lcc/e2k: umbrella-обёртки инлайнятся полностью (сборка с -O1), слабых копий
+// в образе нет — прямые вызовы libc резолвятся в glibc без версионных алиасов
+#define __SPRT_LIBC(name) name
+
+
 __SPRT_C_FUNC int __SPRT_ID(eventfd)(unsigned int count, int flags) {
-	return ::eventfd(count, flags);
+	return __SPRT_LIBC(eventfd)(count, flags);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(eventfd_read)(int fd, __SPRT_ID(eventfd_t) * efd) {
@@ -86,7 +91,7 @@ __SPRT_C_FUNC int __SPRT_ID(eventfd_write)(int fd, __SPRT_ID(eventfd_t) efd) {
 namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(signalfd)(int fd, const __SPRT_ID(sigset_t) * sig, int flags) {
-	return ::signalfd(fd, (const sigset_t *)sig, flags);
+	return __SPRT_LIBC(signalfd)(fd, (const sigset_t *)sig, flags);
 }
 
 } // namespace sprt

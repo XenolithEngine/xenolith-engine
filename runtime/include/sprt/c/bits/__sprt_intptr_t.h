@@ -57,7 +57,18 @@ typedef __INTPTR_TYPE__ __SPRT_ID(intptr_t);
 #else // __INTPTR_TYPE__
 // clang-format off
 // Use Data models specifications
-#if defined(__LLP64__) || defined(_WIN64)
+// e2k -m128 first: it also defines __LP64__ (long stays 8 bytes), but the
+// 16-byte pointer needs a 16-byte integer (see __sprt_uintptr_t.h).
+#if defined(__e2k__) && defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ > 8
+
+typedef __int128 __SPRT_ID(intptr_t);
+#define __SPRT_INTPTR_MAX ((__int128)((~(unsigned __int128)0) >> 1))
+#define __SPRT_INTPTR_WIDTH 128
+
+#define __SPRT_INTPTR_FMTd "lld"
+#define __SPRT_INTPTR_FMTi "lli"
+
+#elif defined(__LLP64__) || defined(_WIN64)
 
 typedef long long int __SPRT_ID(intptr_t);
 #define __SPRT_INTPTR_MAX __SPRT_LLINT_MAX

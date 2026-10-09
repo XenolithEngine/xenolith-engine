@@ -933,16 +933,25 @@ inline auto Rc<_Base>::doReferenceCast(Rc<Type> &&source) -> Rc<Target> {
 	return ret;
 }
 
+namespace detail {
+
+template <typename Type, typename... Args>
+inline constexpr bool __rc_has_init_v =
+		requires(Type *pRet, Args &&...args) { pRet->init(sprt::forward<Args>(args)...); };
+
+template <typename Type, typename... Args>
+inline constexpr bool __rc_has_new_v =
+		requires(Args &&...args) { RefAlloc::__new<Type>(sprt::forward<Args>(args)...); };
+
+} // namespace detail
+
 template <typename _Base>
 template <typename... Args>
 inline auto Rc<_Base>::create(Args &&...args) -> Self {
 	static_assert(is_base_of<Ref, _Base>::value, "Rc base class should be derived from Ref");
 
-	constexpr auto hasInit =
-			requires(Type *pRet, Args &&...args) { pRet->init(sprt::forward<Args>(args)...); };
-
-	constexpr auto hasNew =
-			requires(Args &&...args) { RefAlloc::__new<Type>(sprt::forward<Args>(args)...); };
+	constexpr bool hasInit = detail::__rc_has_init_v<Type, Args...>;
+	constexpr bool hasNew = detail::__rc_has_new_v<Type, Args...>;
 
 	static_assert(hasInit || hasNew,
 			"Fail to detect Type::init(...) or Type(...) with arguments provided");
@@ -959,7 +968,8 @@ inline auto Rc<_Base>::create(Args &&...args) -> Self {
 		auto pRet = RefAlloc::__new<Type>(sprt::forward<Args>(args)...);
 		return Self(pRet, true); // unsafe assignment
 	} else {
-		static_assert(false);
+		// dependent-false: lcc checks static_assert(false) in untaken branches eagerly
+		static_assert(!is_same_v<Type, Type>);
 		return nullptr;
 	}
 }

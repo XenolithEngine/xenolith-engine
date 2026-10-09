@@ -254,8 +254,12 @@ public:
 	// _Dep makes the enable_if depend on this ctor's own template parameter, so a
 	// non-copy-constructible _Tp (e.g. a reference element from forward_as_tuple)
 	// SFINAEs this overload out instead of hard-erroring during overload resolution.
+	// The !is_reference_v term is redundant for conforming frontends (a reference
+	// element never satisfies the constructibility fold) but lcc mis-evaluates that
+	// fold here and reports this ctor ambiguous with the forwarding one.
 	template <bool _Dep = true,
 			__tuple_enable_t<_Dep && (sizeof...(_Tp) >= 1)
+					&& (!sprt::is_reference_v<_Tp> || ...)
 					&& (sprt::is_constructible_v<_Tp, const _Tp &> && ...)> = 0>
 	constexpr tuple(const _Tp &...__t) : __impl_(__t...) { }
 
