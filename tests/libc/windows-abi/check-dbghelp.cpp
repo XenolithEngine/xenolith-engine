@@ -8,7 +8,7 @@
 // ADDRESS_MODE / ADDRESS64 / KDHELP64 / STACKFRAME64 / IMAGEHLP_* / SYMOPT_*;
 // minidumpapiset.h supplies MINIDUMP_TYPE / MINIDUMP_EXCEPTION_INFORMATION.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/dbghelp.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/dbghelp.h>
 #include "abi_check.h"
 
 #include <windows.h>

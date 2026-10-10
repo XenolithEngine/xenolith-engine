@@ -1,0 +1,10 @@
+// QuartzCore: the ABI of its hand-written headers, and what they include.
+
+header "QuartzCore/QuartzCore.h" external=#true {
+    type __SPRT_OPEN_QUARTZCORE_H_
+}
+
+header "__sprt_abi/QuartzCore/CALayer.h" {
+    include "Foundation/Foundation.h"
+    include "CoreGraphics/CoreGraphics.h"
+}

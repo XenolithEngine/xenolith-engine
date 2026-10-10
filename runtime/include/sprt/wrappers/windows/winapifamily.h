@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef SPRT_WRAPPERS_WINDOWS_WINAPIFAMILY_H_
 #define SPRT_WRAPPERS_WINDOWS_WINAPIFAMILY_H_
 
-#include <sprt/wrappers/windows/abi/winapifamily.h>
+#include <sprt/gen/wrappers/windows/abi/winapifamily.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/winapifamily.h) */
 #define WINAPI_FAMILY_PC_APP __SPRT_WINAPI_FAMILY_PC_APP

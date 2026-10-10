@@ -1,0 +1,18 @@
+// glibc nl_item values: (category << 16) | index. Validated against the platform
+// <langinfo.h> by the libc_wrapper bridge (common/langinfo.cc).
+macro CODESET 0x0000000e
+macro D_T_FMT 0x00020028
+macro D_FMT 0x00020029
+macro T_FMT 0x0002002a
+macro T_FMT_AMPM 0x0002002b
+macro AM_STR 0x00020026
+macro PM_STR 0x00020027
+macro DAY_1 0x00020007
+macro ABDAY_1 0x00020000
+macro MON_1 0x0002001a
+macro ABMON_1 0x0002000e
+macro RADIXCHAR 0x00010000
+macro THOUSEP 0x00010001
+macro YESEXPR 0x00050000
+macro NOEXPR 0x00050001
+macro CRNCYSTR 0x0004000f

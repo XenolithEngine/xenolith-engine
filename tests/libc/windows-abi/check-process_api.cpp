@@ -2,7 +2,7 @@
 //
 // abi/process_api.h <-> Windows SDK parity. Compile-time only; see check.sh.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/process_api.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/process_api.h>
 #include "abi_check.h"
 
 #include <windows.h>    // PROCESS_INFORMATION, STARTUPINFOW, PROCESS_*, CREATE_*, STARTF_*

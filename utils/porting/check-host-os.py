@@ -66,9 +66,9 @@ def main():
     rep = pl.make_report(args, "plan C: host OS %s (%s)" % (args.uname, args.triple))
 
     rep.section("C1", "the OS is a target first (plan B)")
-    rep.check(eng.contains("runtime/include/sprt/c/bits/__sprt_def.h", r"#define %s\b" % sprt),
-              "__sprt_def.h defines %s" % sprt, hint="plan B, step B2")
-    rep.check(eng.isdir("runtime/include/sprt/c/cross/%s_sprt" % ident), "cross/%s_sprt exists" % ident, hint="plan B, step B3")
+    rep.check(eng.contains(pl.TARGETS_H, r"#define %s\b" % sprt),
+              "__sprt_targets.h defines %s" % sprt, hint="plan B, step B2")
+    rep.check(eng.isdir("runtime/include/sprt/gen/c/cross/%s_sprt" % ident), "cross/%s_sprt exists" % ident, hint="plan B, step B3")
     d = pl.find_toolchain_dir(eng, "targets", args.triple)
     rep.check(d, "target sysroot for %s%s" % (args.triple, " (%s)" % os.path.relpath(d, eng.root) if d else ""),
               hint="the host toolchain is built against it (plan B, step B4)")

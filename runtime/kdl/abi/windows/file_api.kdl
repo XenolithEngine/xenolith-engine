@@ -1,0 +1,416 @@
+macro CREATE_NEW 1
+macro CREATE_ALWAYS 2
+macro OPEN_EXISTING 3
+macro OPEN_ALWAYS 4
+macro TRUNCATE_EXISTING 5
+macro INVALID_FILE_SIZE "((DWORD)0xFFFFFFFF)"
+macro INVALID_SET_FILE_POINTER "((DWORD)-1)"
+macro INVALID_FILE_ATTRIBUTES "((DWORD)-1)"
+macro FILE_READ_DATA "( 0x0001 )"
+macro FILE_LIST_DIRECTORY "( 0x0001 )"
+macro FILE_WRITE_DATA "( 0x0002 )"
+macro FILE_ADD_FILE "( 0x0002 )"
+macro FILE_APPEND_DATA "( 0x0004 )"
+macro FILE_ADD_SUBDIRECTORY "( 0x0004 )"
+macro FILE_CREATE_PIPE_INSTANCE "( 0x0004 )"
+macro FILE_READ_EA "( 0x0008 )"
+macro FILE_WRITE_EA "( 0x0010 )"
+macro FILE_EXECUTE "( 0x0020 )"
+macro FILE_TRAVERSE "( 0x0020 )"
+macro FILE_DELETE_CHILD "( 0x0040 )"
+macro FILE_READ_ATTRIBUTES "( 0x0080 )"
+macro FILE_WRITE_ATTRIBUTES "( 0x0100 )"
+macro FILE_ALL_ACCESS "(STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0x1FF)"
+macro FILE_GENERIC_READ "(STANDARD_RIGHTS_READ | FILE_READ_DATA |\n\tFILE_READ_ATTRIBUTES | FILE_READ_EA | SYNCHRONIZE)"
+macro FILE_GENERIC_WRITE "(STANDARD_RIGHTS_WRITE | FILE_WRITE_DATA |\n\tFILE_WRITE_ATTRIBUTES | FILE_WRITE_EA | FILE_APPEND_DATA | SYNCHRONIZE)"
+macro FILE_GENERIC_EXECUTE "(STANDARD_RIGHTS_EXECUTE | FILE_READ_ATTRIBUTES |\n\tFILE_EXECUTE | SYNCHRONIZE)"
+macro FILE_SHARE_READ 0x00000001
+macro FILE_SHARE_WRITE 0x00000002
+macro FILE_SHARE_DELETE 0x00000004
+// File attributes
+macro FILE_ATTRIBUTE_READONLY 0x00000001
+macro FILE_ATTRIBUTE_HIDDEN 0x00000002
+macro FILE_ATTRIBUTE_SYSTEM 0x00000004
+macro FILE_ATTRIBUTE_DIRECTORY 0x00000010
+macro FILE_ATTRIBUTE_ARCHIVE 0x00000020
+macro FILE_ATTRIBUTE_DEVICE 0x00000040
+macro FILE_ATTRIBUTE_NORMAL 0x00000080
+macro FILE_ATTRIBUTE_TEMPORARY 0x00000100
+macro FILE_ATTRIBUTE_SPARSE_FILE 0x00000200
+macro FILE_ATTRIBUTE_REPARSE_POINT 0x00000400
+macro FILE_ATTRIBUTE_COMPRESSED 0x00000800
+macro FILE_ATTRIBUTE_OFFLINE 0x00001000
+macro FILE_ATTRIBUTE_NOT_CONTENT_INDEXED 0x00002000
+macro FILE_ATTRIBUTE_ENCRYPTED 0x00004000
+macro FILE_ATTRIBUTE_INTEGRITY_STREAM 0x00008000
+macro FILE_ATTRIBUTE_VIRTUAL 0x00010000
+macro FILE_ATTRIBUTE_NO_SCRUB_DATA 0x00020000
+macro FILE_ATTRIBUTE_EA 0x00040000
+macro FILE_ATTRIBUTE_PINNED 0x00080000
+macro FILE_ATTRIBUTE_UNPINNED 0x00100000
+macro FILE_ATTRIBUTE_RECALL_ON_OPEN 0x00040000
+macro FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS 0x00400000
+macro FILE_VOLUME_IS_COMPRESSED 0x00008000
+macro FILE_SUPPORTS_OBJECT_IDS 0x00010000
+macro FILE_SUPPORTS_ENCRYPTION 0x00020000
+macro FILE_NAMED_STREAMS 0x00040000
+macro FILE_READ_ONLY_VOLUME 0x00080000
+macro FILE_SEQUENTIAL_WRITE_ONCE 0x00100000
+macro FILE_SUPPORTS_TRANSACTIONS 0x00200000
+macro FILE_SUPPORTS_HARD_LINKS 0x00400000
+macro FILE_SUPPORTS_EXTENDED_ATTRIBUTES 0x00800000
+macro FILE_SUPPORTS_OPEN_BY_FILE_ID 0x01000000
+macro FILE_SUPPORTS_USN_JOURNAL 0x02000000
+macro FILE_SUPPORTS_INTEGRITY_STREAMS 0x04000000
+macro FILE_SUPPORTS_BLOCK_REFCOUNTING 0x08000000
+macro FILE_SUPPORTS_SPARSE_VDL 0x10000000
+macro FILE_DAX_VOLUME 0x20000000
+macro FILE_SUPPORTS_GHOSTING 0x40000000
+// File flags for CreateFileW (winbase.h)
+macro FILE_FLAG_WRITE_THROUGH 0x80000000
+macro FILE_FLAG_OVERLAPPED 0x40000000
+macro FILE_FLAG_NO_BUFFERING 0x20000000
+macro FILE_FLAG_RANDOM_ACCESS 0x10000000
+macro FILE_FLAG_SEQUENTIAL_SCAN 0x08000000
+macro FILE_FLAG_DELETE_ON_CLOSE 0x04000000
+macro FILE_FLAG_BACKUP_SEMANTICS 0x02000000
+macro FILE_FLAG_POSIX_SEMANTICS 0x01000000
+macro FILE_FLAG_SESSION_AWARE 0x00800000
+macro FILE_FLAG_OPEN_REPARSE_POINT 0x00200000
+macro FILE_FLAG_OPEN_NO_RECALL 0x00100000
+macro FILE_FLAG_FIRST_PIPE_INSTANCE 0x00080000
+macro IO_REPARSE_TAG_RESERVED_INVALID "(0xC0008000L)"
+macro IO_REPARSE_TAG_MOUNT_POINT "(0xA0000003L)"
+macro IO_REPARSE_TAG_HSM "(0xC0000004L)"
+macro IO_REPARSE_TAG_HSM2 "(0x80000006L)"
+macro IO_REPARSE_TAG_SIS "(0x80000007L)"
+macro IO_REPARSE_TAG_WIM "(0x80000008L)"
+macro IO_REPARSE_TAG_CSV "(0x80000009L)"
+macro IO_REPARSE_TAG_DFS "(0x8000000AL)"
+macro IO_REPARSE_TAG_SYMLINK "(0xA000000CL)"
+macro IO_REPARSE_TAG_DFSR "(0x80000012L)"
+macro IO_REPARSE_TAG_DEDUP "(0x80000013L)"
+macro IO_REPARSE_TAG_NFS "(0x80000014L)"
+macro IO_REPARSE_TAG_FILE_PLACEHOLDER "(0x80000015L)"
+macro IO_REPARSE_TAG_WOF "(0x80000017L)"
+macro IO_REPARSE_TAG_WCI "(0x80000018L)"
+macro IO_REPARSE_TAG_WCI_1 "(0x90001018L)"
+macro IO_REPARSE_TAG_GLOBAL_REPARSE "(0xA0000019L)"
+macro IO_REPARSE_TAG_CLOUD "(0x9000001AL)"
+macro IO_REPARSE_TAG_CLOUD_1 "(0x9000101AL)"
+macro IO_REPARSE_TAG_CLOUD_2 "(0x9000201AL)"
+macro IO_REPARSE_TAG_CLOUD_3 "(0x9000301AL)"
+macro IO_REPARSE_TAG_CLOUD_4 "(0x9000401AL)"
+macro IO_REPARSE_TAG_CLOUD_5 "(0x9000501AL)"
+macro IO_REPARSE_TAG_CLOUD_6 "(0x9000601AL)"
+macro IO_REPARSE_TAG_CLOUD_7 "(0x9000701AL)"
+macro IO_REPARSE_TAG_CLOUD_8 "(0x9000801AL)"
+macro IO_REPARSE_TAG_CLOUD_9 "(0x9000901AL)"
+macro IO_REPARSE_TAG_CLOUD_A "(0x9000A01AL)"
+macro IO_REPARSE_TAG_CLOUD_B "(0x9000B01AL)"
+macro IO_REPARSE_TAG_CLOUD_C "(0x9000C01AL)"
+macro IO_REPARSE_TAG_CLOUD_D "(0x9000D01AL)"
+macro IO_REPARSE_TAG_CLOUD_E "(0x9000E01AL)"
+macro IO_REPARSE_TAG_CLOUD_F "(0x9000F01AL)"
+macro IO_REPARSE_TAG_CLOUD_MASK "(0x0000F000L)"
+macro IO_REPARSE_TAG_APPEXECLINK "(0x8000001BL)"
+macro IO_REPARSE_TAG_PROJFS "(0x9000001CL)"
+macro IO_REPARSE_TAG_STORAGE_SYNC "(0x8000001EL)"
+macro IO_REPARSE_TAG_WCI_TOMBSTONE "(0xA000001FL)"
+macro IO_REPARSE_TAG_UNHANDLED "(0x80000020L)"
+macro IO_REPARSE_TAG_ONEDRIVE "(0x80000021L)"
+macro IO_REPARSE_TAG_PROJFS_TOMBSTONE "(0xA0000022L)"
+macro IO_REPARSE_TAG_AF_UNIX "(0x80000023L)"
+macro IO_REPARSE_TAG_STORAGE_SYNC_FOLDER "(0x90000027L)"
+macro IO_REPARSE_TAG_WCI_LINK "(0xA0000027L)"
+macro IO_REPARSE_TAG_WCI_LINK_1 "(0xA0001027L)"
+macro IO_REPARSE_TAG_DATALESS_CIM "(0xA0000028L)"
+macro MOVEFILE_REPLACE_EXISTING 0x00000001
+macro MOVEFILE_COPY_ALLOWED 0x00000002
+macro MOVEFILE_DELAY_UNTIL_REBOOT 0x00000004
+macro MOVEFILE_WRITE_THROUGH 0x00000008
+macro MOVEFILE_CREATE_HARDLINK 0x00000010
+macro MOVEFILE_FAIL_IF_NOT_TRACKABLE 0x00000020
+// File move flags
+macro FILE_BEGIN 0
+macro FILE_CURRENT 1
+macro FILE_END 2
+// Final path name flags
+macro FILE_NAME_NORMALIZED 0x00000000
+macro FILE_NAME_OPENED 0x00000008
+macro FILE_MAP_WRITE SECTION_MAP_WRITE
+macro FILE_MAP_READ SECTION_MAP_READ
+macro FILE_MAP_ALL_ACCESS SECTION_ALL_ACCESS
+macro FILE_MAP_EXECUTE SECTION_MAP_EXECUTE_EXPLICIT
+macro FILE_MAP_COPY 0x00000001
+macro FILE_MAP_RESERVE 0x80000000
+macro FILE_MAP_TARGETS_INVALID 0x40000000
+macro FILE_MAP_LARGE_PAGES 0x20000000
+macro SYMBOLIC_LINK_FLAG_DIRECTORY "(0x1)"
+macro SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE "(0x2)"
+macro SEC_HUGE_PAGES 0x00020000
+macro SEC_LARGE_PAGES 0x80000000
+macro LOCKFILE_FAIL_IMMEDIATELY 0x00000001
+macro LOCKFILE_EXCLUSIVE_LOCK 0x00000002
+// Named-pipe open/mode flags (anonymous CreatePipe handles cannot do overlapped I/O, so an
+// overlapped reader must build its pipe from CreateNamedPipe + CreateFile).
+macro PIPE_ACCESS_INBOUND 0x00000001
+macro PIPE_ACCESS_OUTBOUND 0x00000002
+macro PIPE_ACCESS_DUPLEX 0x00000003
+macro PIPE_TYPE_BYTE 0x00000000
+macro PIPE_READMODE_BYTE 0x00000000
+macro PIPE_WAIT 0x00000000
+macro PIPE_NOWAIT 0x00000001
+// ---- ReadDirectoryChangesW ([winbase] directory change notifications) --------
+macro FILE_ACTION_ADDED 0x00000001
+macro FILE_ACTION_REMOVED 0x00000002
+macro FILE_ACTION_MODIFIED 0x00000003
+macro FILE_ACTION_RENAMED_OLD_NAME 0x00000004
+macro FILE_ACTION_RENAMED_NEW_NAME 0x00000005
+macro FILE_NOTIFY_CHANGE_FILE_NAME 0x00000001
+macro FILE_NOTIFY_CHANGE_DIR_NAME 0x00000002
+macro FILE_NOTIFY_CHANGE_ATTRIBUTES 0x00000004
+macro FILE_NOTIFY_CHANGE_SIZE 0x00000008
+macro FILE_NOTIFY_CHANGE_LAST_WRITE 0x00000010
+macro FILE_NOTIFY_CHANGE_LAST_ACCESS 0x00000020
+macro FILE_NOTIFY_CHANGE_CREATION 0x00000040
+macro FILE_NOTIFY_CHANGE_SECURITY 0x00000100
+// File information classes
+enum _FILE_INFORMATION_CLASS typedef=FILE_INFORMATION_CLASS also="*PFILE_INFORMATION_CLASS" {
+    value FileDirectoryInformation 1
+    value FileFullDirectoryInformation 2
+    value FileBothDirectoryInformation 3
+    value FileBasicInformation 4
+    value FileStandardInformation 5
+    value FileInternalInformation 6
+    value FileEaInformation 7
+    value FileAccessInformation 8
+    value FileNameInformation 9
+    value FileRenameInformation 10
+    value FileLinkInformation 11
+    value FileNamesInformation 12
+    value FileDispositionInformation 13
+    value FilePositionInformation 14
+    value FileFullEaInformation 15
+    value FileModeInformation 16
+    value FileAlignmentInformation 17
+    value FileAllInformation 18
+    value FileAllocationInformation 19
+    value FileEndOfFileInformation 20
+    value FileAlternateNameInformation 21
+    value FileStreamInformation 22
+    value FilePipeInformation 23
+    value FilePipeLocalInformation 24
+    value FilePipeRemoteInformation 25
+    value FileMailslotQueryInformation 26
+    value FileMailslotSetInformation 27
+    value FileCompressionInformation 28
+    value FileObjectIdInformation 29
+    value FileCompletionInformation 30
+    value FileMoveClusterInformation 31
+    value FileQuotaInformation 32
+    value FileReparsePointInformation 33
+    value FileNetworkOpenInformation 34
+    value FileAttributeTagInformation 35
+    value FileTrackingInformation 36
+    value FileIdBothDirectoryInformation 37
+    value FileIdFullDirectoryInformation 38
+    value FileValidDataLengthInformation 39
+    value FileShortNameInformation 40
+    value FileIoCompletionNotificationInformation 41
+    value FileIoStatusBlockRangeInformation 42
+    value FileIoPriorityHintInformation 43
+    value FileSfioReserveInformation 44
+    value FileSfioVolumeInformation 45
+    value FileHardLinkInformation 46
+    value FileProcessIdsUsingFileInformation 47
+    value FileNormalizedNameInformation 48
+    value FileNetworkPhysicalNameInformation 49
+    value FileIdGlobalTxDirectoryInformation 50
+    value FileIsRemoteDeviceInformation 51
+    value FileUnusedInformation 52
+    value FileNumaNodeInformation 53
+    value FileStandardLinkInformation 54
+    value FileRemoteProtocolInformation 55
+    value FileRenameInformationBypassAccessCheck 56
+    value FileLinkInformationBypassAccessCheck 57
+    value FileVolumeNameInformation 58
+    value FileIdInformation 59
+    value FileIdExtdDirectoryInformation 60
+    value FileReplaceCompletionInformation 61
+    value FileHardLinkFullIdInformation 62
+    value FileIdExtdBothDirectoryInformation 63
+    value FileDispositionInformationEx 64
+    value FileRenameInformationEx 65
+    value FileRenameInformationExBypassAccessCheck 66
+    value FileDesiredStorageClassInformation 67
+    value FileStatInformation 68
+    value FileMemoryPartitionInformation 69
+    value FileStatLxInformation 70
+    value FileCaseSensitiveInformation 71
+    value FileLinkInformationEx 72
+    value FileLinkInformationExBypassAccessCheck 73
+    value FileStorageReserveIdInformation 74
+    value FileCaseSensitiveInformationForceAccessCheck 75
+    value FileKnownFolderInformation 76
+    value FileStatBasicInformation 77
+    value FileId64ExtdDirectoryInformation 78
+    value FileId64ExtdBothDirectoryInformation 79
+    value FileIdAllExtdDirectoryInformation 80
+    value FileIdAllExtdBothDirectoryInformation 81
+    value FileStreamReservationInformation
+    value FileMupProviderInfo
+    value FileMaximumInformation
+}
+enum _FILE_INFO_BY_HANDLE_CLASS typedef=FILE_INFO_BY_HANDLE_CLASS also="*PFILE_INFO_BY_HANDLE_CLASS" {
+    value FileBasicInfo
+    value FileStandardInfo
+    value FileNameInfo
+    value FileRenameInfo
+    value FileDispositionInfo
+    value FileAllocationInfo
+    value FileEndOfFileInfo
+    value FileStreamInfo
+    value FileCompressionInfo
+    value FileAttributeTagInfo
+    value FileIdBothDirectoryInfo
+    value FileIdBothDirectoryRestartInfo
+    value FileIoPriorityHintInfo
+    value FileRemoteProtocolInfo
+    value FileFullDirectoryInfo
+    value FileFullDirectoryRestartInfo
+    value FileStorageInfo
+    value FileAlignmentInfo
+    value FileIdInfo
+    value FileIdExtdDirectoryInfo
+    value FileIdExtdDirectoryRestartInfo
+    value FileDispositionInfoEx
+    value FileRenameInfoEx
+    value FileCaseSensitiveInfo
+    value FileNormalizedNameInfo
+    value MaximumFileInfoByHandleClass
+}
+enum _GET_FILEEX_INFO_LEVELS typedef=GET_FILEEX_INFO_LEVELS {
+    value GetFileExInfoStandard
+    value GetFileExMaxInfoLevel
+}
+struct _BY_HANDLE_FILE_INFORMATION typedef=BY_HANDLE_FILE_INFORMATION also="*PBY_HANDLE_FILE_INFORMATION, *LPBY_HANDLE_FILE_INFORMATION" {
+    field dwFileAttributes DWORD
+    field ftCreationTime FILETIME
+    field ftLastAccessTime FILETIME
+    field ftLastWriteTime FILETIME
+    field dwVolumeSerialNumber DWORD
+    field nFileSizeHigh DWORD
+    field nFileSizeLow DWORD
+    field nNumberOfLinks DWORD
+    field nFileIndexHigh DWORD
+    field nFileIndexLow DWORD
+}
+// File information structures
+struct _FILE_BASIC_INFO typedef=FILE_BASIC_INFO also="*PFILE_BASIC_INFO" {
+    field CreationTime LARGE_INTEGER
+    field LastAccessTime LARGE_INTEGER
+    field LastWriteTime LARGE_INTEGER
+    field ChangeTime LARGE_INTEGER
+    field FileAttributes DWORD
+}
+struct _FILE_STANDARD_INFO typedef=FILE_STANDARD_INFO also="*PFILE_STANDARD_INFO" {
+    field AllocationSize LARGE_INTEGER
+    field EndOfFile LARGE_INTEGER
+    field NumberOfLinks DWORD
+    field DeletePending BOOLEAN
+    field Directory BOOLEAN
+}
+// GetFileInformationByHandleEx(FileAttributeTagInfo): attributes + reparse tag
+struct _FILE_ATTRIBUTE_TAG_INFO typedef=FILE_ATTRIBUTE_TAG_INFO also="*PFILE_ATTRIBUTE_TAG_INFO" {
+    field FileAttributes DWORD
+    field ReparseTag DWORD
+}
+// FILE_STORAGE_INFO structure for extended file info
+struct _FILE_STORAGE_INFO typedef=FILE_STORAGE_INFO also="*PFILE_STORAGE_INFO" {
+    field LogicalBytesPerSector ULONG
+    field PhysicalBytesPerSectorForAtomicity ULONG
+    field PhysicalBytesPerSectorForPerformance ULONG
+    field FileSystemEffectivePhysicalBytesPerSectorForAtomicity ULONG
+    field Flags ULONG
+    field ByteOffsetForSectorAlignment ULONG
+    field ByteOffsetForPartitionAlignment ULONG
+}
+//
+// File ID Both Directory Info structure used with FileIdBothDirectoryInfo and FileIdBothDirectoryRestartInfo.
+// Used by FindFirstFileEx/FindNextFile to enumerate directory contents.
+//
+struct _FILE_ID_BOTH_DIR_INFO typedef=FILE_ID_BOTH_DIR_INFO also="*PFILE_ID_BOTH_DIR_INFO" {
+    field NextEntryOffset DWORD
+    field FileIndex DWORD
+    field CreationTime LARGE_INTEGER
+    field LastAccessTime LARGE_INTEGER
+    field LastWriteTime LARGE_INTEGER
+    field ChangeTime LARGE_INTEGER
+    field EndOfFile LARGE_INTEGER
+    field AllocationSize LARGE_INTEGER
+    field FileAttributes DWORD
+    field FileNameLength DWORD
+    field EaSize DWORD
+    field ShortNameLength CCHAR
+    field ShortName "WCHAR [12]"
+    field FileId LARGE_INTEGER
+    field FileName "WCHAR [1]"
+}
+union _FILE_SEGMENT_ELEMENT typedef=FILE_SEGMENT_ELEMENT also="*PFILE_SEGMENT_ELEMENT" {
+    field Buffer PVOID
+    field Alignment ULONGLONG
+}
+struct _WIN32_FILE_ATTRIBUTE_DATA typedef=WIN32_FILE_ATTRIBUTE_DATA also="*LPWIN32_FILE_ATTRIBUTE_DATA" {
+    field dwFileAttributes DWORD
+    field ftCreationTime FILETIME
+    field ftLastAccessTime FILETIME
+    field ftLastWriteTime FILETIME
+    field nFileSizeHigh DWORD
+    field nFileSizeLow DWORD
+}
+struct _WIN32_FIND_DATAA typedef=WIN32_FIND_DATAA also="*PWIN32_FIND_DATAA, *LPWIN32_FIND_DATAA" {
+    field dwFileAttributes DWORD
+    field ftCreationTime FILETIME
+    field ftLastAccessTime FILETIME
+    field ftLastWriteTime FILETIME
+    field nFileSizeHigh DWORD
+    field nFileSizeLow DWORD
+    field dwReserved0 DWORD
+    field dwReserved1 DWORD
+    field cFileName "CHAR [MAX_PATH]"
+    field cAlternateFileName "CHAR [14]"
+}
+struct _WIN32_FIND_DATAW typedef=WIN32_FIND_DATAW also="*PWIN32_FIND_DATAW, *LPWIN32_FIND_DATAW" {
+    field dwFileAttributes DWORD
+    field ftCreationTime FILETIME
+    field ftLastAccessTime FILETIME
+    field ftLastWriteTime FILETIME
+    field nFileSizeHigh DWORD
+    field nFileSizeLow DWORD
+    field dwReserved0 DWORD
+    field dwReserved1 DWORD
+    field cFileName "WCHAR [MAX_PATH]"
+    field cAlternateFileName "WCHAR [14]"
+}
+struct _FILE_NOTIFY_INFORMATION typedef=FILE_NOTIFY_INFORMATION also="*PFILE_NOTIFY_INFORMATION" {
+    field NextEntryOffset DWORD
+    field Action DWORD
+    field FileNameLength DWORD
+    field FileName "WCHAR [1]"
+}
+typedef LPOVERLAPPED_COMPLETION_ROUTINE "void (`WINAPI` *)(DWORD dwErrorCode, DWORD dwNumberOfBytesTransfered, LPOVERLAPPED lpOverlapped)"
+// ReadDirectoryChangesW notification filter and record actions
+macro FILE_NOTIFY_CHANGE_FILE_NAME 0x00000001
+macro FILE_NOTIFY_CHANGE_DIR_NAME 0x00000002
+macro FILE_NOTIFY_CHANGE_ATTRIBUTES 0x00000004
+macro FILE_NOTIFY_CHANGE_SIZE 0x00000008
+macro FILE_NOTIFY_CHANGE_LAST_WRITE 0x00000010
+macro FILE_NOTIFY_CHANGE_LAST_ACCESS 0x00000020
+macro FILE_NOTIFY_CHANGE_CREATION 0x00000040
+macro FILE_NOTIFY_CHANGE_SECURITY 0x00000100
+macro FILE_ACTION_ADDED 0x00000001
+macro FILE_ACTION_REMOVED 0x00000002
+macro FILE_ACTION_MODIFIED 0x00000003
+macro FILE_ACTION_RENAMED_OLD_NAME 0x00000004
+macro FILE_ACTION_RENAMED_NEW_NAME 0x00000005

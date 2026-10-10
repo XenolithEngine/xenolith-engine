@@ -1,0 +1,46 @@
+cond lp64_lp64 "defined(__LP64__) && __LP64__"
+macro CGFLOAT_TYPE double if="@lp64_lp64"
+macro CGFLOAT_IS_DOUBLE 1 if="@lp64_lp64"
+macro CGFLOAT_MIN "2.2250738585072014e-308" if="@lp64_lp64"
+macro CGFLOAT_MAX "1.7976931348623157e+308" if="@lp64_lp64"
+macro CGFLOAT_TYPE float if="!@lp64_lp64"
+macro CGFLOAT_IS_DOUBLE 0 if="!@lp64_lp64"
+macro CGFLOAT_MIN "1.17549435e-38f" if="!@lp64_lp64"
+macro CGFLOAT_MAX "3.40282347e+38f" if="!@lp64_lp64"
+typedef CGFloat CGFLOAT_TYPE
+macro CGFLOAT_DEFINED 1
+struct CGPoint {
+    field x CGFloat
+    field y CGFloat
+}
+typedef CGPoint "struct CGPoint"
+struct CGSize {
+    field width CGFloat
+    field height CGFloat
+}
+typedef CGSize "struct CGSize"
+struct CGVector {
+    field dx CGFloat
+    field dy CGFloat
+}
+typedef CGVector "struct CGVector"
+struct CGRect {
+    field origin CGPoint
+    field size CGSize
+}
+typedef CGRect "struct CGRect"
+enum typedef=CGRectEdge base="uint32_t" {
+    value CGRectMinXEdge 0
+    value CGRectMinYEdge 1
+    value CGRectMaxXEdge 2
+    value CGRectMaxYEdge 3
+}
+struct CGAffineTransform {
+    field a CGFloat
+    field b CGFloat
+    field c CGFloat
+    field d CGFloat
+    field tx CGFloat
+    field ty CGFloat
+}
+typedef CGAffineTransform "struct CGAffineTransform"

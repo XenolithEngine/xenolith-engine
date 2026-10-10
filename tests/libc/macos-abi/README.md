@@ -44,7 +44,7 @@ to be installed; without it that half is skipped and the rest still runs.
 
 ### 1. sprt's tables against a sysroot — `check-*.cpp`
 
-`static_assert`s pinning `runtime/include/sprt/c/cross/macos_sprt/**` and
+`static_assert`s pinning `runtime/include/sprt/gen/c/cross/macos_sprt/**` and
 `sprt/c/sys/__sprt_darwin.h` against the real Darwin headers. Each TU is
 compiled **four times**: `{x86_64, arm64}` × `{the real SDK, the +open sysroot}`
 — against the SDK this validates sprt, against `+open` it validates sprt against

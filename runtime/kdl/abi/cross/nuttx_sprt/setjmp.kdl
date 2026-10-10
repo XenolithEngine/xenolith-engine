@@ -1,0 +1,5 @@
+// NuttX setjmp buffer layout: the NuttX structs come from setjmp_os.h, which pulls the NuttX
+// headers that define them; here they get the sprt-mangled names the runtime round-trips
+// buffers through.
+typedef native_jmp_buf "struct setjmp_buf_s [1]"
+typedef native_sigjmp_buf "struct sigsetjmp_buf_s [1]"

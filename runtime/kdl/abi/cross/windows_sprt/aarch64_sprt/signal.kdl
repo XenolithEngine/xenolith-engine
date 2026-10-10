@@ -1,0 +1,9 @@
+// Windows signal numbers are arch-independent; identical to windows_sprt/x86_64_sprt/signal.h
+macro _NSIG 23
+macro SIGINT 2
+macro SIGILL 4
+macro SIGFPE 8
+macro SIGSEGV 11
+macro SIGTERM 15
+macro SIGBREAK 21
+macro SIGABRT 22

@@ -6,10 +6,7 @@
 #import <Foundation/Foundation.h>
 #import <Metal/MTLDefines.h>
 #include <stdint.h>
-
-typedef struct {
-    NSUInteger x, y, z;
-} MTLOrigin;
+#include <__sprt_abi/Metal/MTLTypes.h>
 
 MTL_INLINE MTLOrigin MTLOriginMake(NSUInteger x, NSUInteger y, NSUInteger z)
 {
@@ -17,20 +14,11 @@ MTL_INLINE MTLOrigin MTLOriginMake(NSUInteger x, NSUInteger y, NSUInteger z)
     return origin;
 }
 
-typedef struct {
-    NSUInteger width, height, depth;
-} MTLSize;
-
 MTL_INLINE MTLSize MTLSizeMake(NSUInteger width, NSUInteger height, NSUInteger depth)
 {
     MTLSize size = {width, height, depth};
     return size;
 }
-
-typedef struct {
-    MTLOrigin origin;
-    MTLSize   size;
-} MTLRegion;
 
 MTL_INLINE MTLRegion MTLRegionMake2D(NSUInteger x, NSUInteger y, NSUInteger width, NSUInteger height)
 {
@@ -48,18 +36,10 @@ MTL_INLINE MTLRegion MTLRegionMake3D(NSUInteger x, NSUInteger y, NSUInteger z, N
     return region;
 }
 
-typedef struct {
-    float x, y;
-} MTLSamplePosition;
-
 MTL_INLINE MTLSamplePosition MTLSamplePositionMake(float x, float y)
 {
     MTLSamplePosition position = {x, y};
     return position;
 }
-
-typedef struct MTLResourceID {
-    uint64_t _impl;
-} MTLResourceID;
 
 #endif /* __SPRT_OPEN_METAL_MTLTYPES_H_ */

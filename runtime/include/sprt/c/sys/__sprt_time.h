@@ -23,8 +23,8 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_TIME_H_
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_TIME_H_
 
-#include <sprt/c/bits/__sprt_time_t.h>
-#include <sprt/c/cross/__sprt_fcntl.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/cross/__sprt_fcntl.h>
 #include <sprt/c/cross/__sprt_config.h>
 
 #define __SPRT_ITIMER_REAL    0

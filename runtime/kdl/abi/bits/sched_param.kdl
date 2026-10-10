@@ -1,0 +1,5 @@
+macro (n)sched_param "__SPRT_ID(sched_param)" if="defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1"
+macro (n)sched_param `sched_param` if="!(defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1)"
+struct (n)sched_param {
+    field sched_priority int
+}

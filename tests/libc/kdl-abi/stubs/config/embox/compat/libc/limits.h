@@ -1,0 +1,1 @@
+#define OPTION_NUMBER_embox__compat__libc__limits__name_max 255

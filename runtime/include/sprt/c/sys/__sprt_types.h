@@ -23,9 +23,9 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_TYPES_H_
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_TYPES_H_
 
-#include <sprt/c/bits/__sprt_time_t.h>
-#include <sprt/c/bits/__sprt_ssize_t.h>
-#include <sprt/c/cross/__sprt_fstypes.h>
-#include <sprt/c/cross/__sprt_sysid.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/bits/__sprt_ssize_t.h>
+#include <sprt/gen/c/cross/__sprt_fstypes.h>
+#include <sprt/gen/c/cross/__sprt_sysid.h>
 
 #endif // CORE_RUNTIME_INCLUDE_C_SYS___SPRT_TYPES_H_

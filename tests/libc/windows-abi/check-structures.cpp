@@ -2,7 +2,7 @@
 //
 // abi/structures.h <-> Windows SDK parity. Compile-time only; see check.sh.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/structures.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/structures.h>
 #include "abi_check.h"
 
 #include <windows.h>   // LARGE_INTEGER, FILETIME, GUID, POINT, RECT, COORD, SMALL_RECT, OVERLAPPED, ...

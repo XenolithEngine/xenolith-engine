@@ -1,0 +1,141 @@
+cond llp64 "defined(__LLP64__) || defined(_WIN64)"
+cond llong_max "!defined(LLONG_MAX)"
+cond ullong_max "!defined(ULLONG_MAX)"
+cond llong_bit "!defined(LLONG_BIT)"
+cond long_bit "!defined(LONG_BIT)"
+cond ulong_max "!defined(ULONG_MAX)"
+cond int_max "!defined(INT_MAX)"
+cond uint_max "!defined(UINT_MAX)"
+cond int_bit "!defined(INT_BIT)"
+cond shrt_max "!defined(SHRT_MAX)"
+cond ushrt_max "!defined(USHRT_MAX)"
+cond shrt_bit "!defined(SHRT_BIT)"
+cond sshrt_max "!defined(SSHRT_MAX)"
+cond usshrt_max "!defined(USSHRT_MAX)"
+cond sshrt_bit "!defined(SSHRT_BIT)"
+cond ilp32 "defined(_WIN32) || defined(__ILP32__) || defined(__SPRT_WINDOWS)"
+macro SSHRT_FMTd "\"hhd\""
+macro SSHRT_FMTi "\"hhi\""
+macro SSHRT_C c params="c"
+macro SSHRT_C_SUFFIX
+macro SHRT_FMTd "\"hd\""
+macro SHRT_FMTi "\"hi\""
+macro SHRT_C c params="c"
+macro SHRT_C_SUFFIX
+macro INT_FMTd "\"d\""
+macro INT_FMTi "\"i\""
+macro INT_C c params="c"
+macro INT_C_SUFFIX
+macro LINT_FMTd "\"ld\""
+macro LINT_FMTi "\"li\""
+macro LINT_C "c##L" params="c"
+macro LINT_C_SUFFIX L
+macro LLINT_FMTd "\"lld\""
+macro LLINT_FMTi "\"lli\""
+macro LLINT_C "c##LL" params="c"
+macro LLINT_C_SUFFIX LL
+macro USSHRT_FMTX "\"hhX\""
+macro USSHRT_FMTo "\"hho\""
+macro USSHRT_FMTu "\"hhu\""
+macro USSHRT_FMTx "\"hhx\""
+macro USSHRT_C c params="c"
+macro USSHRT_C_SUFFIX
+macro USHRT_FMTX "\"hX\""
+macro USHRT_FMTo "\"ho\""
+macro USHRT_FMTu "\"hu\""
+macro USHRT_FMTx "\"hx\""
+macro USHRT_C c params="c"
+macro USHRT_C_SUFFIX
+macro UINT_FMTX "\"X\""
+macro UINT_FMTo "\"o\""
+macro UINT_FMTu "\"u\""
+macro UINT_FMTx "\"x\""
+macro UINT_C "c##U" params="c"
+macro UINT_C_SUFFIX U
+macro ULINT_FMTX "\"lX\""
+macro ULINT_FMTo "\"lo\""
+macro ULINT_FMTu "\"lu\""
+macro ULINT_FMTx "\"lx\""
+macro ULINT_C "c##UL" params="c"
+macro ULINT_C_SUFFIX UL
+macro ULLINT_FMTX "\"llX\""
+macro ULLINT_FMTo "\"llo\""
+macro ULLINT_FMTu "\"llu\""
+macro ULLINT_FMTx "\"llx\""
+macro ULLINT_C "c##ULL" params="c"
+macro ULLINT_C_SUFFIX ULL
+macro SSHRT_MAX __SCHAR_MAX__ if="defined(__SCHAR_MAX__)"
+macro SSHRT_BIT __CHAR_BIT__ if="defined(__CHAR_BIT__)"
+macro SHRT_MAX __SHRT_MAX__ if="defined(__SHRT_MAX__)"
+macro SHRT_BIT __SHRT_WIDTH__ if="defined(__SHRT_WIDTH__)"
+macro INT_MAX __INT_MAX__ if="defined(__INT_MAX__)"
+macro INT_BIT __INT_WIDTH__ if="defined(__INT_WIDTH__)"
+macro LONG_MAX __LONG_MAX__ if="defined(__LONG_MAX__)"
+macro LONG_BIT __LONG_WIDTH__ if="defined(__LONG_WIDTH__)"
+macro LLONG_MAX __LONG_LONG_MAX__ if="defined(__LONG_LONG_MAX__)"
+macro LLONG_BIT __LLONG_WIDTH__ if="defined(__LLONG_WIDTH__)"
+// Use Data models specifications
+macro LLONG_MAX "0x7fffffffffffffffLL" if="@llp64 && @llong_max"
+macro ULLONG_MAX "0xFfffffffffffffffULL" if="@llp64 && @ullong_max"
+macro LLONG_BIT 64 if="@llp64 && @llong_bit"
+macro LONG_MAX "0x7fffffffL" if="@llp64 && @long_bit"
+macro ULONG_MAX "0xFfffffffUL" if="@llp64 && @ulong_max"
+macro LONG_BIT 32 if="@llp64 && @long_bit"
+macro INT_MAX 0x7fffffff if="@llp64 && @int_max"
+macro UINT_MAX "0xffffffffU" if="@llp64 && @uint_max"
+macro INT_BIT 32 if="@llp64 && @int_bit"
+macro SHRT_MAX 0x7fff if="@llp64 && @shrt_max"
+macro USHRT_MAX 0xffff if="@llp64 && @ushrt_max"
+macro SHRT_BIT 16 if="@llp64 && @shrt_bit"
+macro SSHRT_MAX 0x7f if="@llp64 && @sshrt_max"
+macro USSHRT_MAX 0xff if="@llp64 && @usshrt_max"
+macro SSHRT_BIT 8 if="@llp64 && @sshrt_bit"
+macro LLONG_MAX "0x7fffffffffffffffLL" if="!@llp64 && @ilp32 && @llong_max"
+macro ULLONG_MAX "0xFfffffffffffffffULL" if="!@llp64 && @ilp32 && @ullong_max"
+macro LLONG_BIT 64 if="!@llp64 && @ilp32 && @llong_bit"
+macro LONG_MAX "0x7fffffffL" if="!@llp64 && @ilp32 && @long_bit"
+macro ULONG_MAX "0xFfffffffUL" if="!@llp64 && @ilp32 && @ulong_max"
+macro LONG_BIT 32 if="!@llp64 && @ilp32 && @long_bit"
+macro INT_MAX 0x7fffffff if="!@llp64 && @ilp32 && @int_max"
+macro UINT_MAX "0xffffffffU" if="!@llp64 && @ilp32 && @uint_max"
+macro INT_BIT 32 if="!@llp64 && @ilp32 && @int_bit"
+macro SHRT_MAX 0x7fff if="!@llp64 && @ilp32 && @shrt_max"
+macro USHRT_MAX 0xffff if="!@llp64 && @ilp32 && @ushrt_max"
+macro SHRT_BIT 16 if="!@llp64 && @ilp32 && @shrt_bit"
+macro SSHRT_MAX 0x7f if="!@llp64 && @ilp32 && @sshrt_max"
+macro USSHRT_MAX 0xff if="!@llp64 && @ilp32 && @usshrt_max"
+macro SSHRT_BIT 8 if="!@llp64 && @ilp32 && @sshrt_bit"
+macro LLONG_MAX "0x7fffffffffffffffLL" if="!@llp64 && !@ilp32 && defined(__LP64__) && @llong_max"
+macro ULLONG_MAX "0xFfffffffffffffffULL" if="!@llp64 && !@ilp32 && defined(__LP64__) && @ullong_max"
+macro LLONG_BIT 64 if="!@llp64 && !@ilp32 && defined(__LP64__) && @llong_bit"
+macro LONG_MAX "0x7fffffffffffffffL" if="!@llp64 && !@ilp32 && defined(__LP64__) && @long_bit"
+macro ULONG_MAX "0xFfffffffffffffffUL" if="!@llp64 && !@ilp32 && defined(__LP64__) && @ulong_max"
+macro LONG_BIT 64 if="!@llp64 && !@ilp32 && defined(__LP64__) && @long_bit"
+macro INT_MAX 0x7fffffff if="!@llp64 && !@ilp32 && defined(__LP64__) && @int_max"
+macro UINT_MAX "0xffffffffU" if="!@llp64 && !@ilp32 && defined(__LP64__) && @uint_max"
+macro INT_BIT 32 if="!@llp64 && !@ilp32 && defined(__LP64__) && @int_bit"
+macro SHRT_MAX 0x7fff if="!@llp64 && !@ilp32 && defined(__LP64__) && @shrt_max"
+macro USHRT_MAX 0xffff if="!@llp64 && !@ilp32 && defined(__LP64__) && @ushrt_max"
+macro SHRT_BIT 16 if="!@llp64 && !@ilp32 && defined(__LP64__) && @shrt_bit"
+macro SSHRT_MAX 0x7f if="!@llp64 && !@ilp32 && defined(__LP64__) && @sshrt_max"
+macro USSHRT_MAX 0xff if="!@llp64 && !@ilp32 && defined(__LP64__) && @usshrt_max"
+macro SSHRT_BIT 8 if="!@llp64 && !@ilp32 && defined(__LP64__) && @sshrt_bit"
+error "Unknown data model (see https://en.cppreference.com/w/cpp/language/types.html#Data_models)" if="!@llp64 && !@ilp32 && !defined(__LP64__)"
+macro LLONG_WIDTH LLONG_BIT
+macro LONG_WIDTH LONG_BIT
+macro INT_WIDTH INT_BIT
+macro SHRT_WIDTH SHRT_BIT
+macro SSHRT_WIDTH SSHRT_BIT
+macro LINT_MAX LONG_MAX
+macro ULINT_MAX ULONG_MAX
+macro LINT_WIDTH LONG_BIT
+macro LLINT_MAX LLONG_MAX
+macro ULLINT_MAX ULLONG_MAX
+macro LLINT_WIDTH LLONG_BIT
+macro ULLINT_WIDTH LLONG_BIT
+macro ULLONG_WIDTH LLONG_BIT
+macro ULINT_WIDTH LONG_BIT
+macro ULONG_WIDTH LONG_BIT
+macro UINT_WIDTH INT_BIT
+macro USHRT_WIDTH SHRT_BIT
+macro USSHRT_WIDTH SSHRT_BIT

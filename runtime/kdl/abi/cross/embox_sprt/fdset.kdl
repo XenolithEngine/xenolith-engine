@@ -1,0 +1,17 @@
+// Embox's fd_set is `struct { long fds_bits[4]; }` (src/compat/posix/include/
+// sys/select.h), i.e. a fixed four-word array - 256 descriptors on LP64 - not
+// glibc's 1024-descriptor one. select() writes the result set back through the
+// same pointer the wrapper casts, so the total size has to match.
+//
+// The word type and the indexing arithmetic ARE glibc's (long words, fd/LONG_BIT
+// and 1L << (fd % LONG_BIT)), so only the size differs.
+macro FD_SETWORDS 4
+macro FD_SETSIZE "(FD_SETWORDS * 8 * (int)sizeof(long))"
+typedef fd_mask "unsigned long"
+struct typedef=fd_set {
+    field fds_bits "unsigned long [FD_SETWORDS]"
+}
+macro FD_ZERO "do {\n\t\tint __i;\n\t\tunsigned long *__b = (s)->fds_bits;\n\t\tfor (__i = FD_SETWORDS; __i; __i--) *__b++ = 0;\n\t} while (0)" params="s"
+macro FD_SET "((s)->fds_bits[(d)/(8*sizeof(long))] |= (1UL<<((d)%(8*sizeof(long)))))" params="d s"
+macro FD_CLR "((s)->fds_bits[(d)/(8*sizeof(long))] &= ~(1UL<<((d)%(8*sizeof(long)))))" params="d s"
+macro FD_ISSET "!!((s)->fds_bits[(d)/(8*sizeof(long))] & (1UL<<((d)%(8*sizeof(long)))))" params="d s"

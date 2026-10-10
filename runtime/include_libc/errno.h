@@ -37,7 +37,7 @@ THE SOFTWARE.
 	  the E* error-code constants (~134 of them: the ISO C trio EDOM, ERANGE, EILSEQ
 	          plus the full POSIX/Linux set such as EACCES, EAGAIN, EBADF, EINVAL,
 	          ENOENT, ENOMEM, EINTR, EEXIST, ...). These come in transitively via
-	          <sprt/c/__sprt_errno.h> and <sprt/c/bits/__sprt_errno.h>.
+	          <sprt/c/__sprt_errno.h> and <sprt/gen/c/bits/__sprt_errno.h>.
 */
 
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1

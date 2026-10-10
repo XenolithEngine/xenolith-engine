@@ -2,7 +2,7 @@
 //
 // abi/basic_api.h <-> Windows SDK parity. Compile-time only; see check.sh.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/basic_api.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/basic_api.h>
 #include "abi_check.h"
 
 #include <windows.h> // CP_*, STD_*_HANDLE, ENABLE_*, HEAP_*, MEM_*, PAGE_*,

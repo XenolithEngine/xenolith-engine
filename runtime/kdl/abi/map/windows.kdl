@@ -1,0 +1,65 @@
+// The windows platform: the cross fragments under sprt/gen/c/cross/windows_sprt.
+
+platforms { platform windows_sprt { arch aarch64_sprt x86_64_sprt; }; }
+
+header "sprt/gen/c/cross/windows_sprt/aarch64_sprt/config.h"
+
+header "sprt/gen/c/cross/windows_sprt/aarch64_sprt/fcntl.h"
+
+header "sprt/gen/c/cross/windows_sprt/aarch64_sprt/fenv.h"
+
+header "sprt/gen/c/cross/windows_sprt/aarch64_sprt/jmp_buf.h"
+
+header "sprt/gen/c/cross/windows_sprt/aarch64_sprt/signal.h"
+
+header "sprt/gen/c/cross/windows_sprt/aarch64_sprt/syscall.h"
+
+header "sprt/gen/c/cross/windows_sprt/clockid.h" abi="cross/shared/android+linux+wasm+windows/clockid.kdl"
+
+header "sprt/gen/c/cross/windows_sprt/config.h"
+
+header "sprt/gen/c/cross/windows_sprt/dir_ptr.h" abi="cross/shared/linux+wasm+windows/dir_ptr.kdl"
+
+header "sprt/gen/c/cross/windows_sprt/errno.h" guard=CORE_RUNTIME_INCLUDE_C_CROSS_WINDOWS_SPRT_ERRNO_H_
+
+header "sprt/gen/c/cross/windows_sprt/fdset.h"
+
+header "sprt/gen/c/cross/windows_sprt/file_ptr.h"
+
+header "sprt/gen/c/cross/windows_sprt/langinfo.h"
+
+header "sprt/gen/c/cross/windows_sprt/locale.h"
+
+header "sprt/gen/c/cross/windows_sprt/math.h" abi="cross/shared/linux+wasm+windows/math.kdl"
+
+header "sprt/gen/c/cross/windows_sprt/mbstate.h"
+
+header "sprt/gen/c/cross/windows_sprt/mman.h" abi="cross/shared/android+wasm+windows/mman.kdl"
+
+header "sprt/gen/c/cross/windows_sprt/netinetdef.h" guard=CORE_RUNTIME_INCLUDE_C_CROSS_WINDOWS_SPRT_NETINETDEF_H_
+
+header "sprt/gen/c/cross/windows_sprt/polltypes.h"
+
+header "sprt/gen/c/cross/windows_sprt/setjmp.h"
+
+header "sprt/gen/c/cross/windows_sprt/signal.h"
+
+header "sprt/gen/c/cross/windows_sprt/sockdef.h"
+
+header "sprt/gen/c/cross/windows_sprt/socket.h"
+
+header "sprt/gen/c/cross/windows_sprt/stdio.h"
+
+header "sprt/gen/c/cross/windows_sprt/sysconf.h" abi="cross/shared/linux+wasm+windows/sysconf.kdl"
+
+header "sprt/gen/c/cross/windows_sprt/x86_64_sprt/config.h"
+
+header "sprt/gen/c/cross/windows_sprt/x86_64_sprt/fcntl.h"
+
+header "sprt/gen/c/cross/windows_sprt/x86_64_sprt/fenv.h"
+
+header "sprt/gen/c/cross/windows_sprt/x86_64_sprt/jmp_buf.h"
+
+header "sprt/gen/c/cross/windows_sprt/x86_64_sprt/signal.h"
+
+header "sprt/gen/c/cross/windows_sprt/x86_64_sprt/syscall.h"

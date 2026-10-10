@@ -24,9 +24,9 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_STRING_H_
 
 #include <sprt/c/bits/__sprt_def.h>
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_null.h>
-#include <sprt/c/cross/__sprt_locale.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_null.h>
+#include <sprt/gen/c/cross/__sprt_locale.h>
 
 __SPRT_BEGIN_DECL
 

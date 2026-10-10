@@ -25,8 +25,8 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/__sprt_nl_types.h>          // __SPRT_ID(nl_item)
-#include <sprt/c/cross/__sprt_locale.h>      // __SPRT_ID(locale_t)
-#include <sprt/c/cross/__sprt_langinfo.h>    // per-platform __SPRT_* item bases
+#include <sprt/gen/c/cross/__sprt_locale.h>      // __SPRT_ID(locale_t)
+#include <sprt/gen/c/cross/__sprt_langinfo.h>    // per-platform __SPRT_* item bases
 
 // Items within a category are contiguous on every supported libc, so the indexed
 // members are derived from the per-platform base. Only the bases (and a few

@@ -32,7 +32,7 @@
 
 #define SPRT_ABI_HEADER <sprt/c/sys/__sprt_time.h>
 // the clockid table is reached through the sysid umbrella
-#define SPRT_ABI_HEADER_2 <sprt/c/cross/__sprt_sysid.h>
+#define SPRT_ABI_HEADER_2 <sprt/gen/c/cross/__sprt_sysid.h>
 #include "abi_check.h"
 
 // === clockid_t values ======================================================

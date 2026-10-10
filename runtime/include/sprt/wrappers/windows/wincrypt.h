@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-#include <sprt/wrappers/windows/abi/wincrypt.h>
+#include <sprt/gen/wrappers/windows/abi/wincrypt.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/wincrypt.h) */
 #define PROV_RSA_FULL __SPRT_PROV_RSA_FULL

@@ -1,0 +1,141 @@
+macro CONTEXT_ARM64 "0x00400000L"
+macro CONTEXT_CONTROL "(CONTEXT_ARM64 | 0x00000001L)"
+macro CONTEXT_INTEGER "(CONTEXT_ARM64 | 0x00000002L)"
+macro CONTEXT_FLOATING_POINT "(CONTEXT_ARM64 | 0x00000004L)"
+macro CONTEXT_DEBUG_REGISTERS "(CONTEXT_ARM64 | 0x00000008L)"
+macro CONTEXT_FULL "(CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT)"
+macro CONTEXT_ALL "(CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT | CONTEXT_DEBUG_REGISTERS\n                             | (CONTEXT_ARM64 | 0x10L)         | (CONTEXT_ARM64 | 0x40L)            | (CONTEXT_ARM64 | 0x80L)            )"
+// X18
+// FP_LOW
+// FP_HIGH
+macro _JBLEN 24
+macro `_JBTYPE` __uint64
+macro ARM64_MAX_BREAKPOINTS 8
+macro ARM64_MAX_WATCHPOINTS 2
+union _NEON128 typedef=NEON128 also="*PNEON128" {
+    struct {
+        field Low ULONGLONG
+        field High LONGLONG
+    }
+    field D "double [2]"
+    field S "float [4]"
+    field H "WORD [8]"
+    field B "BYTE [16]"
+}
+// AArch64 CONTEXT (ARM64_NT_CONTEXT) -- see splat sdk/include/um/winnt.h
+struct _CONTEXT typedef=CONTEXT also="*PCONTEXT" attr="SPRT_ALIGNAS(16)" {
+    //
+    // Control flags.
+    //
+    field ContextFlags DWORD
+    //
+    // Integer registers
+    //
+    field Cpsr DWORD
+    union {
+        struct {
+            field X0 DWORD64
+            field X1 DWORD64
+            field X2 DWORD64
+            field X3 DWORD64
+            field X4 DWORD64
+            field X5 DWORD64
+            field X6 DWORD64
+            field X7 DWORD64
+            field X8 DWORD64
+            field X9 DWORD64
+            field X10 DWORD64
+            field X11 DWORD64
+            field X12 DWORD64
+            field X13 DWORD64
+            field X14 DWORD64
+            field X15 DWORD64
+            field X16 DWORD64
+            field X17 DWORD64
+            field X18 DWORD64
+            field X19 DWORD64
+            field X20 DWORD64
+            field X21 DWORD64
+            field X22 DWORD64
+            field X23 DWORD64
+            field X24 DWORD64
+            field X25 DWORD64
+            field X26 DWORD64
+            field X27 DWORD64
+            field X28 DWORD64
+            field Fp DWORD64
+            field Lr DWORD64
+        }
+        // x29 frame pointer
+        // x30 link register
+        field X "DWORD64 [31]"
+    }
+    // x29 frame pointer
+    // x30 link register
+    // anonymous (ARM64_NT_CONTEXT's DUMMYUNIONNAME) -- exposes Lr/Fp/X[] as Context.<reg>
+    field Sp DWORD64
+    field Pc DWORD64
+    //
+    // Floating Point/NEON Registers
+    //
+    field V "NEON128 [32]"
+    field Fpcr DWORD
+    field Fpsr DWORD
+    //
+    // Debug registers
+    //
+    field Bcr "DWORD [ARM64_MAX_BREAKPOINTS]"
+    field Bvr "DWORD64 [ARM64_MAX_BREAKPOINTS]"
+    field Wcr "DWORD [ARM64_MAX_WATCHPOINTS]"
+    field Wvr "DWORD64 [ARM64_MAX_WATCHPOINTS]"
+}
+struct _IMAGE_RUNTIME_FUNCTION_ENTRY typedef=IMAGE_RUNTIME_FUNCTION_ENTRY also="*PIMAGE_RUNTIME_FUNCTION_ENTRY" {
+    field BeginAddress DWORD
+    union {
+        field UnwindData DWORD
+        struct {
+            field Flag DWORD bits="2"
+            field FunctionLength DWORD bits="11"
+            field RegF DWORD bits="3"
+            field RegI DWORD bits="4"
+            field H DWORD bits="1"
+            field CR DWORD bits="2"
+            field FrameSize DWORD bits="9"
+        }
+    }
+}
+struct _DISPATCHER_CONTEXT typedef=DISPATCHER_CONTEXT also="*PDISPATCHER_CONTEXT" {
+    field ControlPc ULONG_PTR
+    field ImageBase ULONG_PTR
+    field FunctionEntry PRUNTIME_FUNCTION
+    field EstablisherFrame ULONG_PTR
+    field TargetPc ULONG_PTR
+    field ContextRecord PCONTEXT
+    field LanguageHandler PEXCEPTION_ROUTINE
+    field HandlerData PVOID
+    field HistoryTable "struct _UNWIND_HISTORY_TABLE *"
+    field ScopeIndex DWORD
+    field ControlPcIsUnwound BYTE
+    field NonVolatileRegisters "BYTE *"
+}
+// AArch64 _JUMP_BUFFER -- see splat crt/include/setjmp.h (192 bytes, 8-aligned)
+struct _JUMP_BUFFER {
+    field Frame __uint64
+    field Reserved __uint64
+    field X19 __uint64
+    field X20 __uint64
+    field X21 __uint64
+    field X22 __uint64
+    field X23 __uint64
+    field X24 __uint64
+    field X25 __uint64
+    field X26 __uint64
+    field X27 __uint64
+    field X28 __uint64
+    field Fp __uint64
+    field Lr __uint64
+    field Sp __uint64
+    field Fpcr "unsigned int"
+    field Fpsr "unsigned int"
+    field D "double [8]"
+}

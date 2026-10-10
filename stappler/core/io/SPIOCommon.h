@@ -25,7 +25,7 @@ THE SOFTWARE.
 #define STAPPLER_CORE_IO_SPIOCOMMON_H_
 
 #include "SPCore.h"
-#include <sprt/c/bits/seek.h>
+#include <sprt/gen/c/bits/seek.h>
 
 namespace STAPPLER_VERSIONIZED stappler::io {
 

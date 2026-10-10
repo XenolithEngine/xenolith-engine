@@ -1,0 +1,19 @@
+// Freestanding (Windows/WASM) nl_item values. No platform <langinfo.h> to match,
+// so these are SPRT's own choice -- a clean sequential layout the libc_impl
+// nl_langinfo() dispatches on.
+macro CODESET 1
+macro D_T_FMT 2
+macro D_FMT 3
+macro T_FMT 4
+macro T_FMT_AMPM 5
+macro AM_STR 6
+macro PM_STR 7
+macro DAY_1 8
+macro ABDAY_1 15
+macro MON_1 22
+macro ABMON_1 34
+macro RADIXCHAR 51
+macro THOUSEP 52
+macro YESEXPR 53
+macro NOEXPR 54
+macro CRNCYSTR 55

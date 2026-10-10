@@ -35,7 +35,7 @@ extern "C" int setpgid(int __pid, int __pgid);
 #else
 // Linux/Android: reach the kernel directly (the freestanding libc offers no kill()/wait4()),
 // mirroring how SPEventProcessFd.cc issues pidfd_open()/wait4().
-#include <sprt/c/cross/__sprt_syscall.h>
+#include <sprt/gen/c/cross/__sprt_syscall.h>
 __SPRT_C_FUNC long int syscall(long int __sysno, ...);
 #endif
 

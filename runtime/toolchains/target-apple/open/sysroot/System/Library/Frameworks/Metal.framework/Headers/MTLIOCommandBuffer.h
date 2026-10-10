@@ -5,6 +5,7 @@
 
 #import <Foundation/Foundation.h>
 #import <Metal/MTLTypes.h>
+#include <__sprt_abi/Metal/MTLIOCommandBuffer.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -13,18 +14,6 @@ NS_ASSUME_NONNULL_BEGIN
 @protocol MTLSharedEvent;
 @protocol MTLIOCommandBuffer;
 @protocol MTLIOFileHandle;
-
-typedef NS_ENUM(NSInteger, MTLIOStatus) {
-    MTLIOStatusPending = 0,
-    MTLIOStatusCancelled = 1,
-    MTLIOStatusError = 2,
-    MTLIOStatusComplete = 3,
-};
-
-typedef NS_ENUM(NSInteger, MTLIOError) {
-    MTLIOErrorURLInvalid = 1,
-    MTLIOErrorInternal   = 2,
-};
 
 typedef void (^MTLIOCommandBufferHandler)(id<MTLIOCommandBuffer>);
 

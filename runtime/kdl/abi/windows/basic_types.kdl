@@ -1,0 +1,181 @@
+cond cplusplus "defined(__cplusplus)"
+cond m_arm64ec "!defined(_M_ARM64EC)"
+// Windows calling convention macros
+//
+macro WINAPI __stdcall if="defined(_WIN32)"
+macro WINAPI if="!defined(_WIN32)"
+macro CALLBACK WINAPI
+macro NTAPI
+macro BASETYPES
+macro APIENTRY
+alias WINAPI
+alias CALLBACK
+alias NTAPI
+alias BASETYPES
+alias APIENTRY
+// Windows API basic type definitions (windef.h subset)
+//
+// ============================================================
+// Basic Types
+// ============================================================
+typedef __int64 int64_t if="!defined(_WIN32)"
+typedef __uint64 uint64_t if="!defined(_WIN32)"
+typedef __sint64 int64_t if="!defined(_WIN32)"
+typedef __uint64 "unsigned __int64" if="defined(_WIN32)"
+typedef __sint64 "signed __int64" if="defined(_WIN32)"
+typedef HANDLE "void *"
+typedef PHANDLE "HANDLE *"
+typedef LPHANDLE "HANDLE *"
+typedef HMODULE HANDLE
+typedef HINSTANCE HANDLE
+typedef HKEY HANDLE
+typedef PHMODULE "HANDLE *"
+typedef VOID void
+typedef PVOID "void *"
+typedef LPVOID "void *"
+typedef CHAR char
+typedef PCHAR "char *"
+typedef BYTE "unsigned char"
+typedef PBYTE "unsigned char *"
+typedef LPBYTE "unsigned char *"
+typedef UCHAR "unsigned char"
+typedef PUCHAR "unsigned char *"
+typedef WORD "unsigned short"
+typedef PWORD "unsigned short *"
+typedef DWORD "unsigned long"
+typedef PDWORD "unsigned long *"
+typedef LPDWORD "unsigned long *"
+typedef DWORDLONG __uint64
+typedef PDWORDLONG "__uint64 *"
+typedef DWORD_PTR __uint64
+typedef PDWORD_PTR "__uint64 *"
+typedef DWORD64 __uint64
+typedef PDWORD64 "__uint64 *"
+typedef USHORT "unsigned short"
+typedef PUSHORT "unsigned short *"
+typedef UINT "unsigned int"
+typedef PUINT "unsigned int *"
+typedef ULONG "unsigned long"
+typedef PULONG "unsigned long *"
+typedef ULONGLONG __uint64
+typedef PULONGLONG "__uint64 *"
+typedef ULONG64 __uint64
+typedef PULONG64 "__uint64 *"
+typedef UINT64 __uint64
+typedef PUINT64 "__uint64 *"
+typedef ULONG_PTR __uint64
+typedef PULONG_PTR "__uint64 *"
+typedef UINT_PTR __uint64
+typedef PUINT_PTR "__uint64 *"
+typedef SHORT "signed short"
+typedef PSHORT "signed short *"
+typedef INT "signed int"
+typedef PINT "signed int *"
+typedef LONG "signed long"
+typedef PLONG "signed long *"
+typedef LPLONG "signed long *"
+typedef LONGLONG __sint64
+typedef PLONGLONG "__sint64 *"
+typedef LONG64 __sint64
+typedef PLONG64 "__sint64 *"
+typedef QWORD __sint64
+typedef PQWORD "__sint64 *"
+typedef INT64 __sint64
+typedef PINT64 "__sint64 *"
+typedef LONG_PTR __sint64
+typedef PLONG_PTR "__sint64 *"
+typedef INT_PTR __sint64
+typedef PINT_PTR "__sint64 *"
+typedef FLOAT float
+typedef PFLOAT "float *"
+typedef DOUBLE double
+typedef PDOUBLE "double *"
+// BOOL type
+typedef BOOL int
+typedef LPBOOL "int *"
+// BOOLEAN type
+typedef BOOLEAN BYTE
+typedef PBOOLEAN "BOOLEAN *"
+// FARPROC - pointer to function returning int and taking variable args
+typedef FARPROC "int (*)(void)"
+typedef WCHAR `wchar_t` if="@cplusplus"
+typedef PWCHAR "`wchar_t` *" if="@cplusplus"
+// Pre-C++11: need to define it ourselves
+typedef WCHAR "unsigned short" if="!@cplusplus"
+typedef PWCHAR "unsigned short *" if="!@cplusplus"
+typedef PWSTR "WCHAR *"
+typedef LPWSTR "WCHAR *"
+typedef LPWCH "WCHAR *"
+typedef PWCH "WCHAR *"
+typedef PCWSTR "const WCHAR *"
+typedef LPCWSTR "const WCHAR *"
+typedef LPCWCH "const WCHAR *"
+typedef PCWCH "const WCHAR *"
+typedef PSTR "char *"
+typedef LPSTR "char *"
+typedef PCSTR "const char *"
+typedef LPCSTR "const char *"
+//  Double-null-terminated ("multi") strings: a run of NUL-terminated strings
+//    ended by one more NUL. Used by the MUI language APIs, which return the whole
+//    preferred-language list in a single buffer.
+typedef PZZWSTR "WCHAR *"
+typedef PCZZWSTR "const WCHAR *"
+typedef PZZSTR "char *"
+typedef PCZZSTR "const char *"
+typedef PCVOID "const void *"
+typedef LPCVOID "const void *"
+typedef SIZE_T size_t
+typedef PSIZE_T "size_t *"
+typedef CCHAR char
+typedef PCCHAR "char *"
+typedef LPCCH "const char *"
+typedef PCCH "const char *"
+typedef CSHORT short
+typedef PCSHORT "short *"
+typedef CLONG ULONG
+typedef PCLONG "ULONG *"
+typedef WPARAM UINT_PTR
+typedef LPARAM LONG_PTR
+typedef LRESULT LONG_PTR
+typedef HRESULT DWORD
+typedef NTSTATUS DWORD
+typedef LSTATUS DWORD
+typedef ACCESS_MASK DWORD
+typedef REGSAM ACCESS_MASK
+typedef ATOM WORD
+typedef SECURITY_INFORMATION DWORD
+typedef PSECURITY_INFORMATION "DWORD *"
+typedef VARIANT_BOOL SHORT
+typedef VARTYPE "unsigned short"
+typedef BSTR "WCHAR *"
+typedef KAFFINITY ULONG_PTR
+typedef PKAFFINITY "KAFFINITY *"
+typedef PPROC_THREAD_ATTRIBUTE_LIST "struct _PROC_THREAD_ATTRIBUTE_LIST *"
+typedef LPPROC_THREAD_ATTRIBUTE_LIST "struct _PROC_THREAD_ATTRIBUTE_LIST *"
+macro DECLARE_HANDLE "typedef HANDLE name" params="name"
+alias DECLARE_HANDLE params="name"
+macro OFFSETOF "__builtin_offsetof(type, field)" params="type field" if="HAS_BUILTIN(__builtin_offsetof)"
+macro OFFSETOF "((LONG_PTR)&(((type *)0)->field))" params="type field" if="!(HAS_BUILTIN(__builtin_offsetof))"
+macro FIELD_OFFSET "((LONG)OFFSETOF(type, field))" params="type field"
+macro UFIELD_OFFSET "((ULONG)OFFSETOF(type, field))" params="type field"
+macro RTL_NUMBER_OF_V1 "(sizeof(A) / sizeof((A)[0]))" params="A"
+macro RTL_NUMBER_OF_V2 "RTL_NUMBER_OF_V1(A)" params="A"
+typedef TCHAR WCHAR if="defined(UNICODE)"
+typedef PTCHAR "WCHAR *" if="defined(UNICODE)"
+typedef LPTCHAR "WCHAR *" if="defined(UNICODE)"
+typedef TCHAR CHAR if="!defined(UNICODE)"
+typedef PTCHAR "CHAR *" if="!defined(UNICODE)"
+typedef LPTCHAR "CHAR *" if="!defined(UNICODE)"
+// ARM64 has no __faststorefence (an x86-64 intrinsic); the full-system data memory
+// barrier is __dmb(_ARM64_BARRIER_SY), matching MSVC's <winnt.h> MemoryBarrier().
+macro MEMORY_BARRIER "__dmb(0xF)" params="" if="@m_arm64ec && ARCH_ID == ARCH_ID_AARCH64"
+macro MEMORY_BARRIER __faststorefence if="@m_arm64ec && !(ARCH_ID == ARCH_ID_AARCH64)"
+alias MemoryBarrier to=MEMORY_BARRIER if="@m_arm64ec"
+macro MAKEWORD "((WORD)(((BYTE)(((DWORD_PTR)(a)) & 0xff)) | ((WORD)((BYTE)(((DWORD_PTR)(b)) & 0xff))) << 8))" params="a b"
+macro MAKELONG "((LONG)(((WORD)(((DWORD_PTR)(a)) & 0xffff)) | ((DWORD)((WORD)(((DWORD_PTR)(b)) & 0xffff))) << 16))" params="a b"
+macro LOWORD "((WORD)(((DWORD_PTR)(l)) & 0xffff))" params="l"
+macro HIWORD "((WORD)((((DWORD_PTR)(l)) >> 16) & 0xffff))" params="l"
+macro LOBYTE "((BYTE)(((DWORD_PTR)(w)) & 0xff))" params="w"
+macro HIBYTE "((BYTE)((((DWORD_PTR)(w)) >> 8) & 0xff))" params="w"
+macro DECLSPEC_ALIGN "__declspec(align(x))" params="x"
+alias DECLSPEC_ALIGN params="x"

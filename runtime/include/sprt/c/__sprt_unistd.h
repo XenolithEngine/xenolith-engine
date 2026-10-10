@@ -24,16 +24,16 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_UNISTD_H_
 
 #include <sprt/c/cross/__sprt_config.h>
-#include <sprt/c/cross/__sprt_sysconf.h>
-#include <sprt/c/cross/__sprt_fcntl.h>
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_ssize_t.h>
-#include <sprt/c/bits/__sprt_time_t.h>
-#include <sprt/c/bits/__sprt_intptr_t.h>
-#include <sprt/c/cross/__sprt_sysid.h>
-#include <sprt/c/bits/seek.h>
-#include <sprt/c/bits/access.h>
-#include <sprt/c/bits/iovec.h>
+#include <sprt/gen/c/cross/__sprt_sysconf.h>
+#include <sprt/gen/c/cross/__sprt_fcntl.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_ssize_t.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/bits/__sprt_intptr_t.h>
+#include <sprt/gen/c/cross/__sprt_sysid.h>
+#include <sprt/gen/c/bits/seek.h>
+#include <sprt/gen/c/bits/access.h>
+#include <sprt/gen/c/bits/iovec.h>
 
 #define __SPRT_F_ULOCK 0	/* Unlock a previously locked region.  */
 #define __SPRT_F_LOCK  1	/* Lock a region for exclusive use.  */

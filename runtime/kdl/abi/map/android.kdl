@@ -1,0 +1,91 @@
+// The android platform: the cross fragments under sprt/gen/c/cross/android_sprt.
+
+platforms { platform android_sprt { arch aarch64_sprt arm_sprt x86_64_sprt x86_sprt; }; }
+
+header "sprt/gen/c/cross/android_sprt/aarch64_sprt/config.h"
+
+header "sprt/gen/c/cross/android_sprt/aarch64_sprt/fcntl.h"
+
+header "sprt/gen/c/cross/android_sprt/aarch64_sprt/fenv.h"
+
+header "sprt/gen/c/cross/android_sprt/aarch64_sprt/jmp_buf.h"
+
+header "sprt/gen/c/cross/android_sprt/aarch64_sprt/signal.h" abi="cross/shared/android/aarch64+arm+x86+x86_64/signal.kdl"
+
+header "sprt/gen/c/cross/android_sprt/aarch64_sprt/syscall.h" abi="cross/shared/android+linux/aarch64+riscv64/syscall.kdl"
+
+header "sprt/gen/c/cross/android_sprt/arm_sprt/config.h"
+
+header "sprt/gen/c/cross/android_sprt/arm_sprt/fcntl.h"
+
+header "sprt/gen/c/cross/android_sprt/arm_sprt/fenv.h"
+
+header "sprt/gen/c/cross/android_sprt/arm_sprt/jmp_buf.h"
+
+header "sprt/gen/c/cross/android_sprt/arm_sprt/signal.h" abi="cross/shared/android/aarch64+arm+x86+x86_64/signal.kdl"
+
+header "sprt/gen/c/cross/android_sprt/arm_sprt/syscall.h"
+
+header "sprt/gen/c/cross/android_sprt/clockid.h" abi="cross/shared/android+linux+wasm+windows/clockid.kdl"
+
+header "sprt/gen/c/cross/android_sprt/config.h"
+
+header "sprt/gen/c/cross/android_sprt/dir_ptr.h"
+
+header "sprt/gen/c/cross/android_sprt/errno.h" guard=CORE_RUNTIME_INCLUDE_C_CROSS_ANDROID_SPRT_ERRNO_H_ {
+    include "sprt/gen/c/cross/linux_sprt/errno.h"
+}
+
+header "sprt/gen/c/cross/android_sprt/fdset.h" abi="cross/shared/android+linux+macos+wasm/fdset.kdl"
+
+header "sprt/gen/c/cross/android_sprt/file_ptr.h" abi="cross/shared/android+macos/file_ptr.kdl"
+
+header "sprt/gen/c/cross/android_sprt/langinfo.h"
+
+header "sprt/gen/c/cross/android_sprt/locale.h"
+
+header "sprt/gen/c/cross/android_sprt/math.h"
+
+header "sprt/gen/c/cross/android_sprt/mbstate.h"
+
+header "sprt/gen/c/cross/android_sprt/mman.h" abi="cross/shared/android+wasm+windows/mman.kdl"
+
+header "sprt/gen/c/cross/android_sprt/netinetdef.h" guard=CORE_RUNTIME_INCLUDE_C_CROSS_ANDROID_SPRT_NETINETDEF_H_
+
+header "sprt/gen/c/cross/android_sprt/polltypes.h"
+
+header "sprt/gen/c/cross/android_sprt/setjmp.h"
+
+header "sprt/gen/c/cross/android_sprt/signal.h" abi="cross/shared/android+linux/signal.kdl"
+
+header "sprt/gen/c/cross/android_sprt/sockdef.h"
+
+header "sprt/gen/c/cross/android_sprt/socket.h"
+
+header "sprt/gen/c/cross/android_sprt/stdio.h"
+
+header "sprt/gen/c/cross/android_sprt/sysconf.h"
+
+header "sprt/gen/c/cross/android_sprt/x86_64_sprt/config.h"
+
+header "sprt/gen/c/cross/android_sprt/x86_64_sprt/fcntl.h"
+
+header "sprt/gen/c/cross/android_sprt/x86_64_sprt/fenv.h"
+
+header "sprt/gen/c/cross/android_sprt/x86_64_sprt/jmp_buf.h"
+
+header "sprt/gen/c/cross/android_sprt/x86_64_sprt/signal.h" abi="cross/shared/android/aarch64+arm+x86+x86_64/signal.kdl"
+
+header "sprt/gen/c/cross/android_sprt/x86_64_sprt/syscall.h" abi="cross/shared/android+linux+wasm/wasm32+wasm64+x86_64/syscall.kdl"
+
+header "sprt/gen/c/cross/android_sprt/x86_sprt/config.h"
+
+header "sprt/gen/c/cross/android_sprt/x86_sprt/fcntl.h"
+
+header "sprt/gen/c/cross/android_sprt/x86_sprt/fenv.h"
+
+header "sprt/gen/c/cross/android_sprt/x86_sprt/jmp_buf.h"
+
+header "sprt/gen/c/cross/android_sprt/x86_sprt/signal.h" abi="cross/shared/android/aarch64+arm+x86+x86_64/signal.kdl"
+
+header "sprt/gen/c/cross/android_sprt/x86_sprt/syscall.h"

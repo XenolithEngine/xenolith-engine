@@ -1,0 +1,5 @@
+// UniformTypeIdentifiers: the ABI of its hand-written headers, and what they include.
+
+header "__sprt_abi/UniformTypeIdentifiers/UniformTypeIdentifiers.h" {
+    include "Foundation/Foundation.h"
+}

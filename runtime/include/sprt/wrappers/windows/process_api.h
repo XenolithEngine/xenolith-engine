@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-#include <sprt/wrappers/windows/abi/process_api.h>
+#include <sprt/gen/wrappers/windows/abi/process_api.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/process_api.h) */
 #define PROCESS_TERMINATE __SPRT_PROCESS_TERMINATE

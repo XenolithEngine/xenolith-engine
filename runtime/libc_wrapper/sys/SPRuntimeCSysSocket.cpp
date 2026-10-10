@@ -32,7 +32,7 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/sys/__sprt_socket.h>
-#include <sprt/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
 #include <sprt/runtime/log.h>
 
 #if SPRT_WASM || SPRT_EMBOX_USER
@@ -94,7 +94,7 @@ __SPRT_WIN_IMPORT WINAPI int ioctlsocket(SOCKET s, long cmd, unsigned long *argp
 #include <linux/in6.h>
 #endif
 #include <netinet/tcp.h> // native TCP_* option numbers for the asserts
-#include <sprt/c/cross/__sprt_netinet.h> // __SPRT_IPPROTO_/IP_/IPV6_/MCAST_ for the asserts
+#include <sprt/gen/c/cross/__sprt_netinet.h> // __SPRT_IPPROTO_/IP_/IPV6_/MCAST_ for the asserts
 #include <sys/time.h> // native ::timeval for the ILP32 Android SO_*TIMEO payload translation
 #include <fcntl.h>
 #include <time.h>
@@ -1066,7 +1066,7 @@ static_assert(__SPRT_SCM_SECURITY == SCM_SECURITY, "PF_SMC/XDP differ from nativ
 #define __SPRT_SCM_SECURITY 0x03
 
 
-// netinet constants (<sprt/c/cross/__sprt_netinet.h>) vs native <netinet/in.h>.
+// netinet constants (<sprt/gen/c/cross/__sprt_netinet.h>) vs native <netinet/in.h>.
 // Each hosted platform pulls its own per-platform netinetdef.h (linux/android/
 // macos), so the values are validated against the native header on every hosted
 // target. The `defined(__SPRT_X) || defined(X)` guard enforces a 1-1 mapping: if

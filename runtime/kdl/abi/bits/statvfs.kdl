@@ -1,0 +1,24 @@
+// Like struct stat (bits/stat.h): under __SPRT_BUILD the struct is the mangled
+// __sprt_statvfs so a wrapper TU can hold both it and the native struct statvfs
+// side by side; otherwise it is the plain POSIX name the public umbrella exposes.
+macro (n)statvfs "__SPRT_ID(statvfs)" if="defined(__SPRT_BUILD)"
+macro (n)statvfs `statvfs` if="!defined(__SPRT_BUILD)"
+// POSIX fsblkcnt_t/fsfilcnt_t. sprt has no dedicated cross typedef for these; on
+// every LP64 target sprt supports they are unsigned long (matches glibc/musl). The
+// wrapper converts field-by-field, so exact width parity with the native struct is
+// not required for correctness.
+typedef fsblkcnt_t "unsigned long"
+typedef fsfilcnt_t "unsigned long"
+struct (n)statvfs {
+    field f_bsize "unsigned long"
+    field f_frsize "unsigned long"
+    field f_blocks fsblkcnt_t
+    field f_bfree fsblkcnt_t
+    field f_bavail fsblkcnt_t
+    field f_files fsfilcnt_t
+    field f_ffree fsfilcnt_t
+    field f_favail fsfilcnt_t
+    field f_fsid "unsigned long"
+    field f_flag "unsigned long"
+    field f_namemax "unsigned long"
+}

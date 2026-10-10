@@ -193,9 +193,14 @@ def word(token):
     return r"(?<![A-Za-z0-9])" + re.escape(token) + r"(?![A-Za-z0-9])"
 
 
+# The lists of platforms and architectures: their description, and the header xlkdl writes from it.
+TARGETS_KDL = "runtime/kdl/abi/bits/__sprt_targets.kdl"
+TARGETS_H = "runtime/include/sprt/gen/c/bits/__sprt_targets.h"
+
+
 def platform_aliases(engine, sprt):
-    """The platform macro and every group macro __sprt_def.h derives from it (SPRT_HOSTED_RTOS, ...)."""
-    text = engine.read("runtime/include/sprt/c/bits/__sprt_def.h") or ""
+    """The platform macro and every group macro derived from it (SPRT_HOSTED_RTOS, ...)."""
+    text = engine.read(TARGETS_H) or ""
     aliases = [sprt]
     for cond, group in re.findall(r"#if ([^\n]*)\n#define (SPRT_[A-Z_]+) 1\n", text):
         if re.search(word(sprt), cond):

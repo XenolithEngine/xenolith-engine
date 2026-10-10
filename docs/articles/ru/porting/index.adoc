@@ -137,9 +137,14 @@ Xenolith Runtime, sprt::
   RISCV64=8, LOONGARCH64=10, …), имя — каталог с заголовками ABI (`aarch64_sprt`).
 
 cross-заголовки::
-  Каталог `runtime/include/sprt/c/cross/<os>_sprt/` и его подкаталоги `<arch>_sprt/`. В них — числа,
+  Каталог `runtime/include/sprt/gen/c/cross/<os>_sprt/` и его подкаталоги `<arch>_sprt/`. В них — числа,
   которые у каждой ОС и архитектуры свои: коды `errno`, флаги `O_*`, номера сигналов и системных
-  вызовов, размер `jmp_buf`, раскладка `fenv_t`. Остальные заголовки sprt берут числа отсюда.
+  вызовов, размер `jmp_buf`, раскладка `fenv_t`. Остальные заголовки sprt берут числа отсюда. Всё под
+  `sprt/gen` генерируется: каждый заголовок — описание в `runtime/kdl/abi`
+  (`cross/<os>_sprt/…/<имя>.kdl`), перечисленное в карте заголовков (`runtime/kdl/abi/map/<os>.kdl`).
+  Шаг «создать или изменить cross-заголовок» означает написать описание и запись в карте и выполнить
+  `xlkdl abi --map runtime/kdl/abi/sprt.kdl --out runtime/include`
+  (xref:../../../usage/tools/xlkdl-abi.adoc[язык описаний]).
 
 config gate, `__SPRT_CONFIG_HAVE_*`::
   Флаг «есть ли на платформе такая функция» (`epoll`, `fork`, `timerfd`, …). Если платформа функцию

@@ -22,8 +22,8 @@ THE SOFTWARE.
 
 #include <sprt/c/sys/__sprt_sprt.h>
 #include <sprt/c/sys/__sprt_futex.h>
-#include <sprt/c/cross/__sprt_sysid.h>
-#include <sprt/c/cross/__sprt_syscall.h>
+#include <sprt/gen/c/cross/__sprt_sysid.h>
+#include <sprt/gen/c/cross/__sprt_syscall.h>
 #include <sprt/runtime/thread/qonce.h>
 
 #include <unistd.h>

@@ -5,12 +5,9 @@
 #define __SPRT_OPEN_METAL_MTLFUNCTIONLOG_H_
 
 #import <Foundation/Foundation.h>
+#include <__sprt_abi/Metal/MTLFunctionLog.h>
 
 @protocol MTLFunction;
-
-typedef NS_ENUM(NSUInteger, MTLFunctionLogType) {
-    MTLFunctionLogTypeValidation = 0,
-};
 
 @protocol MTLLogContainer <NSFastEnumeration>
 @end

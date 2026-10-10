@@ -6,20 +6,11 @@
 
 #import <Foundation/Foundation.h>
 #import <Metal/MTLResource.h>   /* MTLStorageMode */
+#include <__sprt_abi/Metal/MTLCounters.h>
 
 @protocol MTLDevice;
 
 NS_ASSUME_NONNULL_BEGIN
-
-#ifndef SPRT_METAL_EXTERN
-#if defined(__cplusplus)
-#define SPRT_METAL_EXTERN extern "C"
-#else
-#define SPRT_METAL_EXTERN extern
-#endif
-#endif
-
-#define MTLCounterDontSample ((NSUInteger)-1)
 
 /* Common counter names (the runtime constants are supplied by the Metal impl). */
 typedef NSString * const MTLCommonCounter;
@@ -51,13 +42,6 @@ SPRT_METAL_EXTERN MTLCommonCounterSet MTLCommonCounterSetTimestamp;
 @property (readonly) NSUInteger sampleCount;
 - (nullable NSData *)resolveCounterRange:(NSRange)range;
 @end
-
-typedef NS_ENUM(NSInteger, MTLCounterSampleBufferError)
-{
-    MTLCounterSampleBufferErrorOutOfMemory,
-    MTLCounterSampleBufferErrorInvalid,
-    MTLCounterSampleBufferErrorInternal,
-};
 
 /* MTLCounterSamplingPoint is defined in <Metal/MTLDevice.h> (its owner in the SDK too);
    the umbrella imports MTLDevice.h before this header, so it is already in scope here. */

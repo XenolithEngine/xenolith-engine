@@ -1,0 +1,32 @@
+// The header map of the runtime's ABI headers, written by utils/xlkdl/c2kdl.py: the profile they
+// are written with, and the parts with the headers - generated from a description, or
+// external, written by hand and listing the names the descriptions take from them.
+
+profile sprt {
+    rule p prefix=__SPRT_
+    rule id wrap=__SPRT_ID spelled=__sprt_
+    rule n prefix=__SPRT_ suffix=_NAME case=upper trim=_t
+    license LICENSE.txt
+    platform-root "sprt/gen/c/cross"
+    platform-include "SPRT_CROSS_CONFIG_NAME(sprt/gen/c/cross/__SPRT_PLATFORM_NAME/{})"
+    arch-include "SPRT_CROSS_CONFIG_NAME(sprt/gen/c/cross/__SPRT_PLATFORM_NAME/__SPRT_ARCH_NAME/{})"
+    extern-c begin=__SPRT_BEGIN_DECL end=__SPRT_END_DECL
+    guard-scheme root="sprt/gen/c/" prefix=CORE_RUNTIME_INCLUDE_C_
+    guard-scheme root="sprt/gen/" prefix=SPRT_
+    defaults root="sprt/gen/c/" macro=p typedef=id
+    defaults root="sprt/gen/wrappers/" macro=p
+    abi-root header="sprt/gen/wrappers/windows/abi/" dir="windows/"
+    abi-root header="sprt/gen/c/" dir=""
+}
+
+import "map/libc.kdl"
+import "map/wrappers-windows.kdl"
+import "map/android.kdl"
+import "map/embox.kdl"
+import "map/embox_user.kdl"
+import "map/ios.kdl"
+import "map/linux.kdl"
+import "map/macos.kdl"
+import "map/nuttx.kdl"
+import "map/wasm.kdl"
+import "map/windows.kdl"

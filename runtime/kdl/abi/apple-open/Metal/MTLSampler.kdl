@@ -1,0 +1,24 @@
+// MTLCompareFunction
+// MTLResourceID
+enum MTLSamplerMinMagFilter macro=NS_ENUM base=NSUInteger {
+    value MTLSamplerMinMagFilterNearest 0
+    value MTLSamplerMinMagFilterLinear 1
+}
+enum MTLSamplerMipFilter macro=NS_ENUM base=NSUInteger {
+    value MTLSamplerMipFilterNotMipmapped 0
+    value MTLSamplerMipFilterNearest 1
+    value MTLSamplerMipFilterLinear 2
+}
+enum MTLSamplerAddressMode macro=NS_ENUM base=NSUInteger {
+    value MTLSamplerAddressModeClampToEdge 0
+    value MTLSamplerAddressModeMirrorClampToEdge 1
+    value MTLSamplerAddressModeRepeat 2
+    value MTLSamplerAddressModeMirrorRepeat 3
+    value MTLSamplerAddressModeClampToZero 4
+    value MTLSamplerAddressModeClampToBorderColor 5
+}
+enum MTLSamplerBorderColor macro=NS_ENUM base=NSUInteger {
+    value MTLSamplerBorderColorTransparentBlack 0
+    value MTLSamplerBorderColorOpaqueBlack 1
+    value MTLSamplerBorderColorOpaqueWhite 2
+}

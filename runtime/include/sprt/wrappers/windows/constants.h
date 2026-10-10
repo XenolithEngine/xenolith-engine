@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/basic_types.h>
 #include <sprt/wrappers/windows/winerror.h>
-#include <sprt/wrappers/windows/abi/constants.h>
+#include <sprt/gen/wrappers/windows/abi/constants.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/constants.h) */
 #define ANYSIZE_ARRAY __SPRT_ANYSIZE_ARRAY

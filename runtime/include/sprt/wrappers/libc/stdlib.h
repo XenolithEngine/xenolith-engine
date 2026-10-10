@@ -3,7 +3,7 @@
 
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/__sprt_wchar.h>
-#include <sprt/c/bits/__sprt_uint64_t.h>
+#include <sprt/gen/c/bits/__sprt_uint64_t.h>
 #include <sprt/wrappers/libc/stddef.h>
 
 

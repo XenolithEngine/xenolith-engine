@@ -1,0 +1,218 @@
+// NX_DEVICE*KEYMASK (as the real NSEvent.h pulls)
+typedef NSAppearanceName "NSString *"
+typedef NSPasteboardName "NSString *"
+typedef NSPasteboardReadingOptionKey "NSString *"
+typedef NSAnimatablePropertyKey "NSString *"
+// ---- enums ---------------------------------------------------------------
+enum NSWindowStyleMask macro=NS_OPTIONS base=NSUInteger {
+    value NSWindowStyleMaskBorderless 0
+    value NSWindowStyleMaskTitled "1 << 0"
+    value NSWindowStyleMaskClosable "1 << 1"
+    value NSWindowStyleMaskMiniaturizable "1 << 2"
+    value NSWindowStyleMaskResizable "1 << 3"
+    value NSWindowStyleMaskTexturedBackground "1 << 8"
+    value NSWindowStyleMaskUnifiedTitleAndToolbar "1 << 12"
+    value NSWindowStyleMaskFullScreen "1 << 14"
+    value NSWindowStyleMaskFullSizeContentView "1 << 15"
+    //  The three below are honoured only on NSPanel (or a subclass); on a plain NSWindow they
+    // 	   are silently ignored.
+    value NSWindowStyleMaskUtilityWindow "1 << 4"
+    value NSWindowStyleMaskNonactivatingPanel "1 << 7"
+    value NSWindowStyleMaskHUDWindow "1 << 13"
+}
+enum NSBackingStoreType macro=NS_ENUM base=NSUInteger {
+    value NSBackingStoreRetained 0
+    value NSBackingStoreNonretained 1
+    value NSBackingStoreBuffered 2
+}
+enum NSEventModifierFlags macro=NS_OPTIONS base=NSUInteger {
+    value NSEventModifierFlagCapsLock "1 << 16"
+    value NSEventModifierFlagShift "1 << 17"
+    value NSEventModifierFlagControl "1 << 18"
+    value NSEventModifierFlagOption "1 << 19"
+    value NSEventModifierFlagCommand "1 << 20"
+    value NSEventModifierFlagNumericPad "1 << 21"
+    value NSEventModifierFlagHelp "1 << 22"
+    value NSEventModifierFlagFunction "1 << 23"
+    value NSEventModifierFlagDeviceIndependentFlagsMask "0xffff'0000UL"
+}
+enum NSEventType macro=NS_ENUM base=NSUInteger {
+    value NSEventTypeLeftMouseDown 1
+    value NSEventTypeLeftMouseUp 2
+    value NSEventTypeRightMouseDown 3
+    value NSEventTypeRightMouseUp 4
+    value NSEventTypeMouseMoved 5
+    value NSEventTypeLeftMouseDragged 6
+    value NSEventTypeRightMouseDragged 7
+    value NSEventTypeMouseEntered 8
+    value NSEventTypeMouseExited 9
+    value NSEventTypeKeyDown 10
+    value NSEventTypeKeyUp 11
+    value NSEventTypeFlagsChanged 12
+    value NSEventTypeScrollWheel 22
+    value NSEventTypeOtherMouseDown 25
+    value NSEventTypeOtherMouseUp 26
+    value NSEventTypeOtherMouseDragged 27
+    value NSEventTypeMagnify 30
+}
+// Event-monitor masks: 1 << NSEventType, as in the SDK.
+enum NSEventMask macro=NS_OPTIONS base="unsigned long long" {
+    value NSEventMaskLeftMouseDown "1ULL << NSEventTypeLeftMouseDown"
+    value NSEventMaskLeftMouseUp "1ULL << NSEventTypeLeftMouseUp"
+    value NSEventMaskRightMouseDown "1ULL << NSEventTypeRightMouseDown"
+    value NSEventMaskRightMouseUp "1ULL << NSEventTypeRightMouseUp"
+    value NSEventMaskMouseMoved "1ULL << NSEventTypeMouseMoved"
+    value NSEventMaskLeftMouseDragged "1ULL << NSEventTypeLeftMouseDragged"
+    value NSEventMaskRightMouseDragged "1ULL << NSEventTypeRightMouseDragged"
+    value NSEventMaskMouseEntered "1ULL << NSEventTypeMouseEntered"
+    value NSEventMaskMouseExited "1ULL << NSEventTypeMouseExited"
+    value NSEventMaskKeyDown "1ULL << NSEventTypeKeyDown"
+    value NSEventMaskKeyUp "1ULL << NSEventTypeKeyUp"
+    value NSEventMaskFlagsChanged "1ULL << NSEventTypeFlagsChanged"
+    value NSEventMaskScrollWheel "1ULL << NSEventTypeScrollWheel"
+    value NSEventMaskOtherMouseDown "1ULL << NSEventTypeOtherMouseDown"
+    value NSEventMaskOtherMouseUp "1ULL << NSEventTypeOtherMouseUp"
+    value NSEventMaskOtherMouseDragged "1ULL << NSEventTypeOtherMouseDragged"
+    value NSEventMaskMagnify "1ULL << NSEventTypeMagnify"
+    value NSEventMaskAny NSUIntegerMax
+}
+enum NSEventPhase macro=NS_OPTIONS base=NSUInteger {
+    value NSEventPhaseNone 0
+    value NSEventPhaseBegan "1 << 0"
+    value NSEventPhaseStationary "1 << 1"
+    value NSEventPhaseChanged "1 << 2"
+    value NSEventPhaseEnded "1 << 3"
+    value NSEventPhaseCancelled "1 << 4"
+    value NSEventPhaseMayBegin "1 << 5"
+}
+enum NSApplicationActivationPolicy macro=NS_ENUM base=NSInteger {
+    value NSApplicationActivationPolicyRegular 0
+    value NSApplicationActivationPolicyAccessory 1
+    value NSApplicationActivationPolicyProhibited 2
+}
+enum NSWindowCollectionBehavior macro=NS_OPTIONS base=NSUInteger {
+    value NSWindowCollectionBehaviorDefault 0
+    value NSWindowCollectionBehaviorCanJoinAllSpaces "1 << 0"
+    value NSWindowCollectionBehaviorMoveToActiveSpace "1 << 1"
+    value NSWindowCollectionBehaviorManaged "1 << 2"
+    value NSWindowCollectionBehaviorTransient "1 << 3"
+    value NSWindowCollectionBehaviorStationary "1 << 4"
+    value NSWindowCollectionBehaviorParticipatesInCycle "1 << 5"
+    value NSWindowCollectionBehaviorIgnoresCycle "1 << 6"
+    value NSWindowCollectionBehaviorFullScreenPrimary "1 << 7"
+    value NSWindowCollectionBehaviorFullScreenAuxiliary "1 << 8"
+    value NSWindowCollectionBehaviorFullScreenNone "1 << 9"
+    value NSWindowCollectionBehaviorFullScreenAllowsTiling "1 << 11"
+    value NSWindowCollectionBehaviorFullScreenDisallowsTiling "1 << 12"
+}
+enum NSAutoresizingMaskOptions macro=NS_OPTIONS base=NSUInteger {
+    value NSViewNotSizable 0
+    value NSViewMinXMargin 1
+    value NSViewWidthSizable 2
+    value NSViewMaxXMargin 4
+    value NSViewMinYMargin 8
+    value NSViewHeightSizable 16
+    value NSViewMaxYMargin 32
+}
+enum NSTrackingAreaOptions macro=NS_OPTIONS base=NSUInteger {
+    value NSTrackingMouseEnteredAndExited "1 << 0"
+    value NSTrackingMouseMoved "1 << 1"
+    value NSTrackingCursorUpdate "1 << 2"
+    value NSTrackingActiveInActiveApp "1 << 6"
+    value NSTrackingActiveInKeyWindow "1 << 5"
+    value NSTrackingActiveAlways "1 << 7"
+    value NSTrackingInVisibleRect "1 << 9"
+    value NSTrackingEnabledDuringMouseDrag "1 << 10"
+}
+enum NSWindowButton macro=NS_ENUM base=NSUInteger {
+    value NSWindowCloseButton 0
+    value NSWindowMiniaturizeButton
+    value NSWindowZoomButton
+    value NSWindowToolbarButton
+    value NSWindowDocumentIconButton
+    value NSWindowDocumentVersionsButton 6
+}
+typedef NSWindowLevel NSInteger
+enum NSWindowOrderingMode macro=NS_ENUM base=NSInteger {
+    value NSWindowAbove 1
+    value NSWindowBelow -1
+    value NSWindowOut 0
+}
+enum NSViewLayerContentsRedrawPolicy macro=NS_ENUM base=NSInteger {
+    value NSViewLayerContentsRedrawNever 0
+    value NSViewLayerContentsRedrawOnSetNeedsDisplay 1
+    value NSViewLayerContentsRedrawDuringViewResize 2
+    value NSViewLayerContentsRedrawBeforeViewResize 3
+    value NSViewLayerContentsRedrawCrossfade 4
+}
+enum NSViewLayerContentsPlacement macro=NS_ENUM base=NSInteger {
+    value NSViewLayerContentsPlacementScaleAxesIndependently 0
+    value NSViewLayerContentsPlacementScaleProportionallyToFit 1
+    value NSViewLayerContentsPlacementScaleProportionallyToFill 2
+    value NSViewLayerContentsPlacementCenter 3
+    value NSViewLayerContentsPlacementTop 4
+    value NSViewLayerContentsPlacementTopRight 5
+    value NSViewLayerContentsPlacementRight 6
+    value NSViewLayerContentsPlacementBottomRight 7
+    value NSViewLayerContentsPlacementBottom 8
+    value NSViewLayerContentsPlacementBottomLeft 9
+    value NSViewLayerContentsPlacementLeft 10
+    value NSViewLayerContentsPlacementTopLeft 11
+}
+enum NSApplicationPresentationOptions macro=NS_OPTIONS base=NSUInteger {
+    value NSApplicationPresentationDefault 0
+    value NSApplicationPresentationAutoHideDock "1 << 0"
+    value NSApplicationPresentationHideDock "1 << 1"
+    value NSApplicationPresentationAutoHideMenuBar "1 << 2"
+    value NSApplicationPresentationHideMenuBar "1 << 3"
+    value NSApplicationPresentationFullScreen "1 << 10"
+}
+enum NSApplicationTerminateReply macro=NS_ENUM base=NSUInteger {
+    value NSTerminateCancel 0
+    value NSTerminateNow 1
+    value NSTerminateLater 2
+}
+enum NSPasteboardContentsOptions macro=NS_OPTIONS base=NSUInteger {
+    value NSPasteboardContentsCurrentHostOnly "1 << 0"
+}
+enum NSDragOperation macro=NS_OPTIONS base=NSUInteger {
+    value NSDragOperationNone 0
+    value NSDragOperationCopy 1
+    value NSDragOperationLink 2
+    value NSDragOperationGeneric 4
+    value NSDragOperationPrivate 8
+    value NSDragOperationMove 16
+    value NSDragOperationDelete 32
+    value NSDragOperationEvery NSUIntegerMax
+}
+// ---- modal responses and font traits -------------------------------------
+typedef NSModalResponse NSInteger
+enum base="NSModalResponse" {
+    value NSModalResponseStop "(-1000)"
+    value NSModalResponseAbort "(-1001)"
+    value NSModalResponseContinue "(-1002)"
+    value NSModalResponseOK 1
+    value NSModalResponseCancel 0
+}
+typedef NSFontTraitMask NSUInteger
+enum base="NSFontTraitMask" {
+    value NSItalicFontMask 0x00000001
+    value NSBoldFontMask 0x00000002
+    value NSUnboldFontMask 0x00000004
+    value NSNonStandardCharacterSetFontMask 0x00000008
+    value NSNarrowFontMask 0x00000010
+    value NSExpandedFontMask 0x00000020
+    value NSCondensedFontMask 0x00000040
+    value NSSmallCapsFontMask 0x00000080
+    value NSPosterFontMask 0x00000100
+    value NSCompressedFontMask 0x00000200
+    value NSFixedPitchFontMask 0x00000400
+    value NSUnitalicFontMask 0x01000000
+}
+// ---- NSImage / NSBitmapImageRep -----------------------------------------
+typedef NSColorSpaceName "NSString *"
+enum NSBitmapFormat macro=NS_OPTIONS base=NSUInteger {
+    value NSBitmapFormatAlphaFirst "1 << 0"
+    value NSBitmapFormatAlphaNonpremultiplied "1 << 1"
+    value NSBitmapFormatFloatingPointSamples "1 << 2"
+}

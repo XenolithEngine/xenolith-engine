@@ -37,7 +37,7 @@ __SPRT_C_FUNC long int syscall(long int __sysno, ...);
 namespace sprt {
 
 // Thin passthroughs over the raw syscalls (numbers from
-// sprt/c/cross/{linux,android}_sprt/*/syscall.h). inotify has no argument or
+// sprt/gen/c/cross/{linux,android}_sprt/*/syscall.h). inotify has no argument or
 // struct translation in glibc either, so no libc/wrapper layer is involved.
 static int __SPRT_ID(inotify_init1)(int flags) {
 	return (int)syscall(__SPRT_SYSCALL_inotify_init1, flags);

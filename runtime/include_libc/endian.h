@@ -45,9 +45,9 @@ THE SOFTWARE.
 	 and __bswap128 when unsigned __int128 is available; these are not public API.)
 */
 
-#include <sprt/c/bits/__sprt_uint16_t.h>
-#include <sprt/c/bits/__sprt_uint32_t.h>
-#include <sprt/c/bits/__sprt_uint64_t.h>
+#include <sprt/gen/c/bits/__sprt_uint16_t.h>
+#include <sprt/gen/c/bits/__sprt_uint32_t.h>
+#include <sprt/gen/c/bits/__sprt_uint64_t.h>
 
 #ifndef __BYTE_ORDER__
 #error "__BYTE_ORDER__ is not defined"

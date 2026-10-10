@@ -1,0 +1,55 @@
+// WebAssembly platform configuration (freestanding, browser / wasi host).
+//
+// wasm has no Linux kernel facilities, so the epoll/eventfd/signalfd/timerfd/
+// io_uring readiness mechanisms are all absent. HAVE_FUTEX gates the Linux
+// futex(2) *syscall* wrapper specifically, which wasm does not have either — the
+// blocking primitive is instead the wasm `memory.atomic.wait32`/`notify`
+// instruction set, driven directly by the qlock/rlock layer (see
+// runtime/core/wasm/sprt_lock.cc), not through the futex syscall wrapper.
+macro CONFIG_HAVE_EPOLL 0 if="!defined(CONFIG_HAVE_EPOLL)"
+macro CONFIG_HAVE_EVENTFD 0 if="!defined(CONFIG_HAVE_EVENTFD)"
+macro CONFIG_HAVE_SIGNALFD 0 if="!defined(CONFIG_HAVE_SIGNALFD)"
+macro CONFIG_HAVE_TIMERFD 0 if="!defined(CONFIG_HAVE_TIMERFD)"
+macro CONFIG_HAVE_URING 0 if="!defined(CONFIG_HAVE_URING)"
+macro CONFIG_HAVE_FUTEX 0 if="!defined(CONFIG_HAVE_FUTEX)"
+// The remainder mirrors the Windows freestanding config: none of these Linux
+// kernel APIs exist in wasm, so the libc umbrella routes them to ENOSYS instead
+// of calling host symbols that do not exist.
+macro CONFIG_HAVE_FCNTL_SPLICE 0 if="!defined(CONFIG_HAVE_FCNTL_SPLICE)"
+macro CONFIG_HAVE_FCNTL_TEE 0 if="!defined(CONFIG_HAVE_FCNTL_TEE)"
+macro CONFIG_HAVE_FCNTL_FALLOCATE 0 if="!defined(CONFIG_HAVE_FCNTL_FALLOCATE)"
+macro CONFIG_HAVE_FCNTL_FADVICE 0 if="!defined(CONFIG_HAVE_FCNTL_FADVICE)"
+macro CONFIG_HAVE_FCNTL_READAHEAD 0 if="!defined(CONFIG_HAVE_FCNTL_READAHEAD)"
+macro CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE 0 if="!defined(CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE)"
+macro CONFIG_HAVE_UNISTD_COPY_FILE_RANGE 0 if="!defined(CONFIG_HAVE_UNISTD_COPY_FILE_RANGE)"
+macro CONFIG_HAVE_STDIO_OPEN_MEMSTREAM 0 if="!defined(CONFIG_HAVE_STDIO_OPEN_MEMSTREAM)"
+macro CONFIG_HAVE_TIME_CLOCK_SETTIME 0 if="!defined(CONFIG_HAVE_TIME_CLOCK_SETTIME)"
+macro CONFIG_HAVE_TIME_TIMER 0 if="!defined(CONFIG_HAVE_TIME_TIMER)"
+macro CONFIG_HAVE_TIME_ADJTIME 0 if="!defined(CONFIG_HAVE_TIME_ADJTIME)"
+macro CONFIG_HAVE_UNISTD_CHOWN 0 if="!defined(CONFIG_HAVE_UNISTD_CHOWN)"
+macro CONFIG_HAVE_UNISTD_DUP3 0 if="!defined(CONFIG_HAVE_UNISTD_DUP3)"
+macro CONFIG_HAVE_UNISTD_NICE 0 if="!defined(CONFIG_HAVE_UNISTD_NICE)"
+macro CONFIG_HAVE_UNISTD_SETUIDGID 0 if="!defined(CONFIG_HAVE_UNISTD_SETUIDGID)"
+macro CONFIG_HAVE_UNISTD_FORK 0 if="!defined(CONFIG_HAVE_UNISTD_FORK)"
+macro CONFIG_HAVE_UNISTD_FEXEC 0 if="!defined(CONFIG_HAVE_UNISTD_FEXEC)"
+macro CONFIG_HAVE_UNISTD_EXEC 0 if="!defined(CONFIG_HAVE_UNISTD_EXEC)"
+macro CONFIG_HAVE_UNISTD_SETLOGIN 0 if="!defined(CONFIG_HAVE_UNISTD_SETLOGIN)"
+macro CONFIG_HAVE_UNISTD_DOMAINNAME 0 if="!defined(CONFIG_HAVE_UNISTD_DOMAINNAME)"
+macro CONFIG_HAVE_UNISTD_GETPPID 0 if="!defined(CONFIG_HAVE_UNISTD_GETPPID)"
+macro CONFIG_HAVE_UNISTD_SETHOSTNAME 0 if="!defined(CONFIG_HAVE_UNISTD_SETHOSTNAME)"
+// brk/sbrk are implemented over WebAssembly memory.grow (libc_impl/src/wasm/
+// unistd.cc); the freestanding wasm allocator (mimalloc's wasi prim) grows the
+// OS heap through them.
+macro CONFIG_HAVE_UNISTD_BRK 1 if="!defined(CONFIG_HAVE_UNISTD_BRK)"
+macro CONFIG_HAVE_SCHED_SETSCHEDULER 0 if="!defined(CONFIG_HAVE_SCHED_SETSCHEDULER)"
+macro CONFIG_HAVE_PTHREAD_AFFINITY 0 if="!defined(CONFIG_HAVE_PTHREAD_AFFINITY)"
+macro CONFIG_HAVE_SIGNAL_SIGPROCMASK 1 if="!defined(CONFIG_HAVE_SIGNAL_SIGPROCMASK)"
+macro CONFIG_HAVE_MMAN_MLOCKALL 0 if="!defined(CONFIG_HAVE_MMAN_MLOCKALL)"
+macro CONFIG_HAVE_MMAN_MREMAP 0 if="!defined(CONFIG_HAVE_MMAN_MREMAP)"
+macro CONFIG_HAVE_MMAN_MEMFD 0 if="!defined(CONFIG_HAVE_MMAN_MEMFD)"
+// The browser sandbox has no pollable descriptors; poll() is an ENOSYS stub.
+macro CONFIG_HAVE_POLL 0 if="!defined(CONFIG_HAVE_POLL)"
+macro CONFIG_HAVE_STAT_MKFIFO 0 if="!defined(CONFIG_HAVE_STAT_MKFIFO)"
+macro CONFIG_HAVE_STAT_MKNOD 0 if="!defined(CONFIG_HAVE_STAT_MKNOD)"
+// flock(2): no advisory whole-file locks in this libc.
+macro CONFIG_HAVE_FLOCK 0 if="!defined(CONFIG_HAVE_FLOCK)"

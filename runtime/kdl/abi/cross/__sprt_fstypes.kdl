@@ -1,0 +1,60 @@
+cond sprt_windows "defined(SPRT_WINDOWS)"
+//  WARNING!
+//
+//  We use POSIX constants, not platform libc's constants
+//
+//  Implementation should convert them into native ones for non-POSIX platforms!
+typedef mode_t "unsigned short" if="@sprt_windows"
+typedef mode_t uint32_t if="!@sprt_windows"
+// A mode_t passed through a variadic '...' undergoes the default argument
+// promotions: where mode_t is narrower than int (windows: unsigned short) it
+// arrives as int, so `va_arg` must retrieve an int and narrow it — reading it as
+// mode_t directly would be undefined behavior. Where mode_t is already int-width
+// (uint32_t), read it directly. Use this at every open()/openat()/creat() vararg
+// site instead of `va_arg(ap, mode_t)`.
+macro VA_ARG_MODE_T "((mode_t) __sprt_va_arg((ap), int))" params="ap" if="@sprt_windows"
+macro VA_ARG_MODE_T "(__sprt_va_arg((ap), mode_t))" params="ap" if="!@sprt_windows"
+typedef nlink_t uint64_t
+typedef ino_t uint64_t
+typedef dev_t uint64_t
+typedef blksize_t int64_t
+typedef blkcnt_t int64_t
+macro S_IFMT "0170000"
+macro S_IFDIR "0040000"
+macro S_IFCHR "0020000"
+macro S_IFBLK "0060000"
+macro S_IFREG "0100000"
+macro S_IFIFO "0010000"
+macro S_IFLNK "0120000"
+macro S_IFSOCK "0140000"
+macro S_TYPEISMQ 0 params="buf"
+macro S_TYPEISSEM 0 params="buf"
+macro S_TYPEISSHM 0 params="buf"
+macro S_TYPEISTMO 0 params="buf"
+macro S_ISDIR "(((mode) & S_IFMT) == S_IFDIR)" params="mode"
+macro S_ISCHR "(((mode) & S_IFMT) == S_IFCHR)" params="mode"
+macro S_ISBLK "(((mode) & S_IFMT) == S_IFBLK)" params="mode"
+macro S_ISREG "(((mode) & S_IFMT) == S_IFREG)" params="mode"
+macro S_ISFIFO "(((mode) & S_IFMT) == S_IFIFO)" params="mode"
+macro S_ISLNK "(((mode) & S_IFMT) == S_IFLNK)" params="mode"
+macro S_ISSOCK "(((mode) & S_IFMT) == S_IFSOCK)" params="mode"
+macro S_ISUID "04000"
+macro S_ISGID "02000"
+macro S_ISVTX "01000"
+macro S_IRUSR "0400"
+macro S_IWUSR "0200"
+macro S_IXUSR "0100"
+macro S_IRWXU "0700"
+macro S_IRGRP "0040"
+macro S_IWGRP "0020"
+macro S_IXGRP "0010"
+macro S_IRWXG "0070"
+macro S_IROTH "0004"
+macro S_IWOTH "0002"
+macro S_IXOTH "0001"
+macro S_IRWXO "0007"
+macro S_IREAD S_IRUSR
+macro S_IWRITE S_IWUSR
+macro S_IEXEC S_IXUSR
+macro UTIME_NOW 0x3fffffff
+macro UTIME_OMIT 0x3ffffffe

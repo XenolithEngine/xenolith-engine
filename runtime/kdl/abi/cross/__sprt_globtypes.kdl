@@ -1,0 +1,57 @@
+// Per-platform, ABI-compatible glob_t (SPRuntimeCRegex.cpp static_asserts sizeof
+// and the gl_pathc/gl_pathv/gl_offs offsets against the native header, so the
+// wrapper reinterpret_casts to the native glob_t directly — no field copy). The
+// unnamed trailing members are the native private/alt-dir-func area.
+// Android borrows musl's glob() (Bionic ships glob() only from API 28); its
+// working set is just these three fields — see SPRuntimeCGlobMusl.c.
+struct __sprt_glob_t typedef=glob_t if="SPRT_ANDROID" {
+    field gl_pathc size_t
+    field gl_pathv "char **"
+    field gl_offs size_t
+}
+// BSD layout: gl_matchc between gl_pathc and gl_offs, gl_pathv after gl_flags.
+struct __sprt_glob_t typedef=glob_t if="!(SPRT_ANDROID) && SPRT_APPLE" {
+    field gl_pathc size_t
+    field gl_matchc int
+    field gl_offs size_t
+    field gl_flags int
+    field gl_pathv "char **"
+    field __altfuncs "void *[6]"
+}
+// glibc / musl layout (gl_pathv at offset sizeof(size_t), gl_offs next).
+struct __sprt_glob_t typedef=glob_t if="!(SPRT_ANDROID) && !(SPRT_APPLE)" {
+    field gl_pathc size_t
+    field gl_pathv "char **"
+    field gl_offs size_t
+    field __gl_flags int
+    field __gl_priv "void *[5]"
+}
+// glob flags + return codes. macOS/iOS use the BSD numbering (and negative return
+// codes); everywhere else — including Android, whose glob() is musl's — uses the
+// glibc/musl values. Flags a platform does not define are 0 (no-op).
+macro GLOB_APPEND 0x0001 if="SPRT_APPLE"
+macro GLOB_DOOFFS 0x0002 if="SPRT_APPLE"
+macro GLOB_ERR 0x0004 if="SPRT_APPLE"
+macro GLOB_MARK 0x0008 if="SPRT_APPLE"
+macro GLOB_NOCHECK 0x0010 if="SPRT_APPLE"
+macro GLOB_NOSORT 0x0020 if="SPRT_APPLE"
+macro GLOB_NOESCAPE 0x2000 if="SPRT_APPLE"
+macro GLOB_TILDE 0x0800 if="SPRT_APPLE"
+macro GLOB_PERIOD 0 if="SPRT_APPLE"
+macro GLOB_TILDE_CHECK 0 if="SPRT_APPLE"
+macro GLOB_NOSPACE "(-1)" if="SPRT_APPLE"
+macro GLOB_ABORTED "(-2)" if="SPRT_APPLE"
+macro GLOB_NOMATCH "(-3)" if="SPRT_APPLE"
+macro GLOB_ERR 0x0001 if="!(SPRT_APPLE)"
+macro GLOB_MARK 0x0002 if="!(SPRT_APPLE)"
+macro GLOB_NOSORT 0x0004 if="!(SPRT_APPLE)"
+macro GLOB_DOOFFS 0x0008 if="!(SPRT_APPLE)"
+macro GLOB_NOCHECK 0x0010 if="!(SPRT_APPLE)"
+macro GLOB_APPEND 0x0020 if="!(SPRT_APPLE)"
+macro GLOB_NOESCAPE 0x0040 if="!(SPRT_APPLE)"
+macro GLOB_PERIOD 0x0080 if="!(SPRT_APPLE)"
+macro GLOB_TILDE 0x1000 if="!(SPRT_APPLE)"
+macro GLOB_TILDE_CHECK 0x4000 if="!(SPRT_APPLE)"
+macro GLOB_NOSPACE 1 if="!(SPRT_APPLE)"
+macro GLOB_ABORTED 2 if="!(SPRT_APPLE)"
+macro GLOB_NOMATCH 3 if="!(SPRT_APPLE)"

@@ -6,14 +6,7 @@
 
 #import <Foundation/Foundation.h>
 #import <Metal/MTLTypes.h>   /* MTLSamplePosition */
-
-typedef struct
-{
-    double red;
-    double green;
-    double blue;
-    double alpha;
-} MTLClearColor;
+#include <__sprt_abi/Metal/MTLRenderPass.h>
 
 static inline MTLClearColor MTLClearColorMake(double red, double green, double blue, double alpha)
 {
@@ -31,37 +24,6 @@ static inline MTLClearColor MTLClearColorMake(double red, double green, double b
 @protocol MTLCounterSampleBuffer;
 
 NS_ASSUME_NONNULL_BEGIN
-
-typedef NS_ENUM(NSUInteger, MTLLoadAction) {
-    MTLLoadActionDontCare = 0,
-    MTLLoadActionLoad = 1,
-    MTLLoadActionClear = 2,
-};
-
-typedef NS_ENUM(NSUInteger, MTLStoreAction) {
-    MTLStoreActionDontCare = 0,
-    MTLStoreActionStore = 1,
-    MTLStoreActionMultisampleResolve = 2,
-    MTLStoreActionStoreAndMultisampleResolve = 3,
-    MTLStoreActionUnknown = 4,
-    MTLStoreActionCustomSampleDepthStore = 5,
-};
-
-typedef NS_OPTIONS(NSUInteger, MTLStoreActionOptions) {
-    MTLStoreActionOptionNone                  = 0,
-    MTLStoreActionOptionCustomSamplePositions = 1 << 0,
-};
-
-typedef NS_ENUM(NSUInteger, MTLMultisampleDepthResolveFilter) {
-    MTLMultisampleDepthResolveFilterSample0 = 0,
-    MTLMultisampleDepthResolveFilterMin = 1,
-    MTLMultisampleDepthResolveFilterMax = 2,
-};
-
-typedef NS_ENUM(NSUInteger, MTLMultisampleStencilResolveFilter) {
-    MTLMultisampleStencilResolveFilterSample0             = 0,
-    MTLMultisampleStencilResolveFilterDepthResolvedSample = 1,
-};
 
 @interface MTLRenderPassAttachmentDescriptor : NSObject <NSCopying>
 @property (nullable, nonatomic, strong) id <MTLTexture> texture;

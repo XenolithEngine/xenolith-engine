@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/basic_api.h>
 
-#include <sprt/c/cross/__sprt_polltypes.h>
+#include <sprt/gen/c/cross/__sprt_polltypes.h>
 #include <sprt/c/sys/__sprt_socket.h>
 
 // clang-format off

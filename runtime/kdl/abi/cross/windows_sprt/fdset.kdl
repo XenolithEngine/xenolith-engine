@@ -1,0 +1,12 @@
+macro FD_SETSIZE 64 if="!defined(FD_SETSIZE)"
+// FD_SETSIZE
+typedef `SOCKET` uintptr_t
+struct fd_set typedef=fd_set {
+    field fd_count "unsigned int"
+    field fd_array "SOCKET [FD_SETSIZE]"
+}
+decl "WIN_IMPORT int __WSAFDIsSet(SOCKET, fd_set *)" extern-c="raw"
+macro FD_CLR "do {\n    unsigned int __i;\n    for (__i = 0; __i < ((fd_set  *)(set))->fd_count ; __i++) {\n        if (((fd_set  *)(set))->fd_array[__i] == fd) {\n            while (__i < ((fd_set  *)(set))->fd_count-1) {\n                ((fd_set  *)(set))->fd_array[__i] =\n                    ((fd_set  *)(set))->fd_array[__i+1];\n                __i++;\n            }\n            ((fd_set  *)(set))->fd_count--;\n            break;\n        }\n    }\n} while(0)" params="fd set"
+macro FD_SET "do {\n    if (((fd_set  *)(set))->fd_count < FD_SETSIZE)\n        ((fd_set  *)(set))->fd_array[((fd_set  *)(set))->fd_count++]=(fd);\n} while(0)" params="fd set"
+macro FD_ZERO "(((fd_set  *)(set))->fd_count=0)" params="set"
+macro FD_ISSET "__WSAFDIsSet((SOCKET)(fd), (fd_set  *)(set))" params="fd set"

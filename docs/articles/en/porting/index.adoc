@@ -141,10 +141,15 @@ architecture identifier::
   (`aarch64_sprt`).
 
 cross headers::
-  The directory `runtime/include/sprt/c/cross/<os>_sprt/` and its `<arch>_sprt/` subdirectories. They
+  The directory `runtime/include/sprt/gen/c/cross/<os>_sprt/` and its `<arch>_sprt/` subdirectories. They
   hold the numbers that differ between OSes and architectures: `errno` codes, `O_*` flags, signal and
   system call numbers, the size of `jmp_buf`, the layout of `fenv_t`. The other sprt headers take their
-  numbers from here.
+  numbers from here. Everything under `sprt/gen` is generated: each header is a description in
+  `runtime/kdl/abi` (`cross/<os>_sprt/…/<name>.kdl`) listed in the header map
+  (`runtime/kdl/abi/map/<os>.kdl`). A step that creates or changes a cross header means writing its
+  description and map entry and running
+  `xlkdl abi --map runtime/kdl/abi/sprt.kdl --out runtime/include`
+  (xref:../../../usage/tools/xlkdl-abi.adoc[the description language]).
 
 config gate, `__SPRT_CONFIG_HAVE_*`::
   A flag saying whether the platform provides a function (`epoll`, `fork`, `timerfd`, …). If the

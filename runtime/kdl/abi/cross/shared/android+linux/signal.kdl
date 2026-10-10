@@ -1,0 +1,10 @@
+macro SIG_ERR "((void (*)(int))-1)"
+macro SIG_DFL "((void (*)(int)) 0)"
+macro SIG_IGN "((void (*)(int)) 1)"
+typedef sig_atomic_t int
+macro SIG_ATOMIC_MIN "(-1-INT_MAX)"
+macro SIG_ATOMIC_MAX INT_MAX
+macro SIGSET_WORDS "(128 / sizeof(long))"
+struct (id)__sigset_t typedef=sigset_t {
+    field __bits "unsigned long [SIGSET_WORDS]"
+}

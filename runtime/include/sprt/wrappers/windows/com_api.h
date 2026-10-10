@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-#include <sprt/wrappers/windows/abi/com_api.h>
+#include <sprt/gen/wrappers/windows/abi/com_api.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/com_api.h) */
 #define RPC_C_AUTHZ_NONE __SPRT_RPC_C_AUTHZ_NONE

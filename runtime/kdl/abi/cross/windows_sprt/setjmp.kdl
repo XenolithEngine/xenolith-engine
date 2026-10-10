@@ -1,0 +1,2 @@
+typedef native_jmp_buf "_JBTYPE [_JBLEN]"
+typedef native_sigjmp_buf native_jmp_buf

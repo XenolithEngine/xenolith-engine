@@ -58,7 +58,7 @@ THE SOFTWARE.
 #else
 
 #include <sprt/c/bits/__sprt_def.h>
-#include <sprt/c/cross/__sprt_sysid.h> // pid_t
+#include <sprt/gen/c/cross/__sprt_sysid.h> // pid_t
 
 #if SPRT_WASM || SPRT_WINDOWS || SPRT_EMBOX_USER
 

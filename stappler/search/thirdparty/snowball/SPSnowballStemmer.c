@@ -1,6 +1,6 @@
 #include "SPSnowballStemmer.h"
 #include <string.h>
-#include <sprt/c/bits/__sprt_null.h>
+#include <sprt/gen/c/bits/__sprt_null.h>
 
 typedef unsigned char sb_symbol;
 

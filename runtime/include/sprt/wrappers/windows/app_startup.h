@@ -46,7 +46,7 @@ THE SOFTWARE.
 */
 
 #include <sprt/c/bits/__sprt_def.h>
-#include <sprt/c/bits/__sprt_uintptr_t.h>
+#include <sprt/gen/c/bits/__sprt_uintptr_t.h>
 
 __SPRT_BEGIN_DECL
 

@@ -1,0 +1,483 @@
+// The libc ABI shared by every platform: sprt/gen/c/bits, the cross dispatchers, and the
+// hand-written headers they include.
+
+header "sprt/c/__sprt_string.h" external=#true {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_size_t.h"
+    include "sprt/gen/c/bits/__sprt_null.h"
+    include "sprt/gen/c/cross/__sprt_locale.h"
+    type CORE_RUNTIME_INCLUDE_C___SPRT_STRING_H_ __sprt_memchr __sprt_memcmp __sprt_memcpy __sprt_memmove __sprt_memset
+    type __sprt_strcat __sprt_strchr __sprt_strcmp __sprt_strcoll __sprt_strcpy __sprt_strcspn
+    type __sprt_strerror __sprt_strlen __sprt_strncat __sprt_strncmp __sprt_strncpy __sprt_strnlen
+    type __sprt_strpbrk __sprt_strrchr __sprt_strspn __sprt_strstr __sprt_strtok __sprt_strxfrm
+    type (id)errno_t
+}
+
+header "sprt/c/bits/__sprt_config.h" external=#true {
+    type SPRT_STD_THREADING_SPRT
+    type (p)CONFIG_COMPILER_ASSISTED_INTS (p)CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS (p)STD_EXTERNAL (p)STD_OWNED_BEGIN (p)STD_OWNED_END (p)USE_LIBCXX_SOURCE_LOCATION
+    type (p)USE_STL (p)USE_STL_COMPARATORS (p)USE_STL_ITERATOR_TAGS
+}
+
+header "sprt/c/bits/__sprt_cpuset_t.h" external=#true {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_size_t.h"
+    type CORE_RUNTIME_INCLUDE_C_BITS___SPRT_CPUSET_T_H_
+    type (p)CPU_ALLOC (p)CPU_ALLOC_SIZE (p)CPU_AND (p)CPU_AND_S (p)CPU_CLR (p)CPU_CLR_S
+    type (p)CPU_COUNT (p)CPU_COUNT_S (p)CPU_EQUAL (p)CPU_EQUAL_S (p)CPU_FREE (p)CPU_ISSET
+    type (p)CPU_ISSET_S (p)CPU_OR (p)CPU_OR_S (p)CPU_SET (p)CPU_SETSIZE (p)CPU_SET_S
+    type (p)CPU_XOR (p)CPU_XOR_S (p)CPU_ZERO (p)CPU_ZERO_S (p)CPU_op_S (p)CPU_op_func_S
+    type (id)cpu_set_t
+}
+
+header "sprt/c/bits/__sprt_def.h" external=#true {
+    include "sprt/c/bits/__sprt_config.h"
+    include "sprt/gen/c/bits/__sprt_targets.h"
+    type CORE_RUNTIME_INCLUDE_C_BITS___SPRT_DEF_H_ DEBUG SPRT_ALIGNAS SPRT_ALWAYSINLINE SPRT_API SPRT_FORCEINLINE
+    type SPRT_GLOBAL SPRT_INTERNAL SPRT_LAMBDAINLINE SPRT_LOCAL SPRT_NOEXCEPT SPRT_NO_UNIQUE_ADDRESS
+    type SPRT_TEMPLATE_API SPRT_UMBRELLA_END SPRT_UMBRELLA_END_EXCEPT SPRT_UMBRELLA_FUNC SPRT_UMBRELLA_REQUIRED __SPRT_ID
+    type (p)ATTR (p)ATTR_GNU (p)BEGIN_DECL (p)C_FUNC (p)DLLEXPORT (p)DLLIMPORT
+    type (p)EMPTY_BASES (p)END_DECL (p)FALLBACK_ATTR (p)FUNCTION__ (p)HAS_ATTR (p)HAS_BUILTIN
+    type (p)HIDDEN (p)NOEXCEPT (p)NORETURN (p)RESTRICT (p)STDC_11__ (p)STDC_17__
+    type (p)STDC_23__ (p)STDC_NONE__ (p)VISIBLE
+}
+
+header "sprt/c/cross/__sprt_config.h" external=#true {
+    include "sprt/c/bits/__sprt_def.h"
+    type CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_CONFIG_H_ SPRT_CROSS_CONFIG_NAME SPRT_CROSS_CONFIG_NAME_
+    type (p)CONFIG_HAVE_ALOG (p)CONFIG_HAVE_ALOG_NOTICE (p)CONFIG_HAVE_ALOOPER (p)CONFIG_HAVE_ALOOPER_NOTICE (p)CONFIG_HAVE_DARWIN (p)CONFIG_HAVE_DARWIN_NOTICE
+    type (p)CONFIG_HAVE_EPOLL (p)CONFIG_HAVE_EPOLL_NOTICE (p)CONFIG_HAVE_EVENTFD (p)CONFIG_HAVE_EVENTFD_NOTICE (p)CONFIG_HAVE_FCNTL_FADVICE (p)CONFIG_HAVE_FCNTL_FADVICE_NOTICE
+    type (p)CONFIG_HAVE_FCNTL_FALLOCATE (p)CONFIG_HAVE_FCNTL_FALLOCATE_NOTICE (p)CONFIG_HAVE_FCNTL_READAHEAD (p)CONFIG_HAVE_FCNTL_READAHEAD_NOTICE (p)CONFIG_HAVE_FCNTL_SPLICE (p)CONFIG_HAVE_FCNTL_SPLICE_NOTICE
+    type (p)CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE (p)CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE_NOTICE (p)CONFIG_HAVE_FCNTL_TEE (p)CONFIG_HAVE_FCNTL_TEE_NOTICE (p)CONFIG_HAVE_FLOCK (p)CONFIG_HAVE_FLOCK_NOTICE
+    type (p)CONFIG_HAVE_FUTEX (p)CONFIG_HAVE_FUTEX_NOTICE (p)CONFIG_HAVE_KQUEUE (p)CONFIG_HAVE_KQUEUE_NOTICE (p)CONFIG_HAVE_MMAN_MEMFD (p)CONFIG_HAVE_MMAN_MEMFD_NOTICE
+    type (p)CONFIG_HAVE_MMAN_MLOCKALL (p)CONFIG_HAVE_MMAN_MLOCKALL_NOTICE (p)CONFIG_HAVE_MMAN_MREMAP (p)CONFIG_HAVE_MMAN_MREMAP_NOTICE (p)CONFIG_HAVE_POLL (p)CONFIG_HAVE_POLL_NOTICE
+    type (p)CONFIG_HAVE_PTHREAD_AFFINITY (p)CONFIG_HAVE_PTHREAD_AFFINITY_NOTICE (p)CONFIG_HAVE_SCHED_AFFINITY (p)CONFIG_HAVE_SCHED_AFFINITY_NOTICE (p)CONFIG_HAVE_SCHED_SETSCHEDULER (p)CONFIG_HAVE_SCHED_SETSCHEDULER_NOTICE
+    type (p)CONFIG_HAVE_SIGNALFD (p)CONFIG_HAVE_SIGNALFD_NOTICE (p)CONFIG_HAVE_SIGNAL_SIGPROCMASK (p)CONFIG_HAVE_SIGNAL_SIGPROCMASK_NOTICE (p)CONFIG_HAVE_STAT_MKFIFO (p)CONFIG_HAVE_STAT_MKFIFO_NOTICE
+    type (p)CONFIG_HAVE_STAT_MKNOD (p)CONFIG_HAVE_STAT_MKNOD_NOTICE (p)CONFIG_HAVE_STDIO_OPEN_MEMSTREAM (p)CONFIG_HAVE_STDIO_OPEN_MEMSTREAM_NOTICE (p)CONFIG_HAVE_TIMERFD (p)CONFIG_HAVE_TIMERFD_NOTICE
+    type (p)CONFIG_HAVE_TIME_ADJTIME (p)CONFIG_HAVE_TIME_ADJTIME_NOTICE (p)CONFIG_HAVE_TIME_CLOCK_SETTIME (p)CONFIG_HAVE_TIME_CLOCK_SETTIME_NOTICE (p)CONFIG_HAVE_TIME_TIMER (p)CONFIG_HAVE_TIME_TIMER_NOTICE
+    type (p)CONFIG_HAVE_UNISTD_BRK (p)CONFIG_HAVE_UNISTD_BRK_NOTICE (p)CONFIG_HAVE_UNISTD_CHOWN (p)CONFIG_HAVE_UNISTD_CHOWN_NOTICE (p)CONFIG_HAVE_UNISTD_COPY_FILE_RANGE (p)CONFIG_HAVE_UNISTD_COPY_FILE_RANGE_NOTICE
+    type (p)CONFIG_HAVE_UNISTD_DOMAINNAME (p)CONFIG_HAVE_UNISTD_DOMAINNAME_NOTICE (p)CONFIG_HAVE_UNISTD_DUP3 (p)CONFIG_HAVE_UNISTD_DUP3_NOTICE (p)CONFIG_HAVE_UNISTD_EXEC (p)CONFIG_HAVE_UNISTD_EXEC_NOTICE
+    type (p)CONFIG_HAVE_UNISTD_FEXEC (p)CONFIG_HAVE_UNISTD_FEXEC_NOTICE (p)CONFIG_HAVE_UNISTD_FORK (p)CONFIG_HAVE_UNISTD_FORK_NOTICE (p)CONFIG_HAVE_UNISTD_GETPPID (p)CONFIG_HAVE_UNISTD_GETPPID_NOTICE
+    type (p)CONFIG_HAVE_UNISTD_NICE (p)CONFIG_HAVE_UNISTD_NICE_NOTICE (p)CONFIG_HAVE_UNISTD_SETHOSTNAME (p)CONFIG_HAVE_UNISTD_SETHOSTNAME_NOTICE (p)CONFIG_HAVE_UNISTD_SETLOGIN (p)CONFIG_HAVE_UNISTD_SETLOGIN_NOTICE
+    type (p)CONFIG_HAVE_UNISTD_SETUIDGID (p)CONFIG_HAVE_UNISTD_SETUIDGID_NOTICE (p)CONFIG_HAVE_URING (p)CONFIG_HAVE_URING_NOTICE (p)CONFIG_HAVE_WINAPI (p)CONFIG_HAVE_WINAPI_NOTICE
+    type (p)CONFIG_UNAVAILABLE_NOTICE
+}
+
+header "sprt/c/sys/__sprt_socket.h" external=#true {
+    include "sprt/gen/c/cross/__sprt_socket.h"
+    include "sprt/gen/c/cross/__sprt_sysid.h"
+    include "sprt/gen/c/bits/__sprt_size_t.h"
+    include "sprt/gen/c/bits/__sprt_ssize_t.h"
+    include "sprt/gen/c/bits/__sprt_time_t.h"
+    include "sprt/gen/c/cross/__sprt_fdset.h"
+    type CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SOCKET_H_
+}
+
+header "sprt/gen/c/bits/__sprt_double.h"
+
+header "sprt/gen/c/bits/__sprt_errno.h" {
+    include "sprt/gen/c/cross/__sprt_errno.h"
+}
+
+header "sprt/gen/c/bits/__sprt_float.h" {
+    include "sprt/c/bits/__sprt_def.h"
+}
+
+header "sprt/gen/c/bits/__sprt_float16.h"
+
+header "sprt/gen/c/bits/__sprt_int.h"
+
+header "sprt/gen/c/bits/__sprt_int16_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_int32_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_int64_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_int8_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_int_fast16_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_int_fast32_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_int_fast64_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_int_fast8_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_int_least16_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_int_least32_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_int_least64_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_int_least8_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_intmax_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_intptr_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_long_double.h"
+
+header "sprt/gen/c/bits/__sprt_native_thread_id_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_uint64_t.h"
+}
+
+header "sprt/gen/c/bits/__sprt_null.h" {
+    include "sprt/c/bits/__sprt_def.h"
+}
+
+header "sprt/gen/c/bits/__sprt_ptrdiff_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_size_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_ssize_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_targets.h"
+
+header "sprt/gen/c/bits/__sprt_time_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+    include "sprt/gen/c/bits/__sprt_int64_t.h"
+}
+
+header "sprt/gen/c/bits/__sprt_uint16_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_uint32_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_uint64_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_uint8_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_uint_fast16_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_uint_fast32_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_uint_fast64_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_uint_fast8_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_uint_least16_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_uint_least32_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_uint_least64_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_uint_least8_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_uintmax_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_uintptr_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+}
+
+header "sprt/gen/c/bits/__sprt_va_list.h" {
+    include "sprt/c/bits/__sprt_def.h"
+}
+
+header "sprt/gen/c/bits/__sprt_wchar_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+}
+
+header "sprt/gen/c/bits/__sprt_wint_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int32_t.h"
+}
+
+header "sprt/gen/c/bits/access.h"
+
+header "sprt/gen/c/bits/iovec.h" guard=CORE_RUNTIME_INCLUDE_SPRT_C_BITS_IOVEC_H_ {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_size_t.h"
+}
+
+header "sprt/gen/c/bits/pthread.h" guard=CORE_RUNTIME_INCLUDE_SPRT_C_BITS_PTHREAD_H_ {
+    include "sprt/gen/c/bits/__sprt_uint32_t.h"
+    include "sprt/gen/c/bits/__sprt_uint64_t.h"
+}
+
+header "sprt/gen/c/bits/sched_param.h" guard=CORE_RUNTIME_INCLUDE_SPRT_C_BITS_SCHED_PARAM_H_ {
+    include "sprt/c/bits/__sprt_def.h"
+}
+
+header "sprt/gen/c/bits/seek.h"
+
+header "sprt/gen/c/bits/stat.h" {
+    include "sprt/gen/c/bits/__sprt_time_t.h"
+    include "sprt/gen/c/bits/__sprt_ssize_t.h"
+    include "sprt/gen/c/cross/__sprt_fstypes.h"
+    include "sprt/gen/c/cross/__sprt_sysid.h"
+}
+
+header "sprt/gen/c/bits/stat_data.h" fragment=#true
+
+header "sprt/gen/c/bits/statvfs.h" {
+    include "sprt/c/cross/__sprt_config.h"
+}
+
+header "sprt/gen/c/bits/uring.h" {
+    include "sprt/gen/c/bits/__sprt_int8_t.h"
+    include "sprt/gen/c/bits/__sprt_uint8_t.h"
+    include "sprt/gen/c/bits/__sprt_int16_t.h"
+    include "sprt/gen/c/bits/__sprt_uint16_t.h"
+    include "sprt/gen/c/bits/__sprt_int32_t.h"
+    include "sprt/gen/c/bits/__sprt_uint32_t.h"
+    include "sprt/gen/c/bits/__sprt_int64_t.h"
+    include "sprt/gen/c/bits/__sprt_uint64_t.h"
+    include "sprt/gen/c/bits/__sprt_time_t.h"
+}
+
+header "sprt/gen/c/cross/__sprt_dir_ptr.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_uint16_t.h"
+    include "sprt/gen/c/bits/__sprt_uint8_t.h"
+    include "sprt/c/cross/__sprt_config.h"
+}
+
+header "sprt/gen/c/cross/__sprt_errno.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/cross/ios_sprt/errno.h" if="SPRT_IOS"
+    include "sprt/gen/c/cross/macos_sprt/errno.h" if="!(SPRT_IOS) && SPRT_MACOS"
+    include "sprt/gen/c/cross/android_sprt/errno.h" if="!(SPRT_IOS) && !(SPRT_MACOS) && SPRT_ANDROID"
+    include "sprt/gen/c/cross/linux_sprt/errno.h" if="!(SPRT_IOS) && !(SPRT_MACOS) && !(SPRT_ANDROID) && SPRT_LINUX"
+    include "sprt/gen/c/cross/nuttx_sprt/errno.h" if="!(SPRT_IOS) && !(SPRT_MACOS) && !(SPRT_ANDROID) && !(SPRT_LINUX) && SPRT_NUTTX"
+    include "sprt/gen/c/cross/embox_sprt/errno.h" if="!(SPRT_IOS) && !(SPRT_MACOS) && !(SPRT_ANDROID) && !(SPRT_LINUX) && !(SPRT_NUTTX) && SPRT_EMBOX"
+    include "sprt/gen/c/cross/embox_user_sprt/errno.h" if="!(SPRT_IOS) && !(SPRT_MACOS) && !(SPRT_ANDROID) && !(SPRT_LINUX) && !(SPRT_NUTTX) && !(SPRT_EMBOX) && SPRT_EMBOX_USER"
+    include "sprt/gen/c/cross/windows_sprt/errno.h" if="!(SPRT_IOS) && !(SPRT_MACOS) && !(SPRT_ANDROID) && !(SPRT_LINUX) && !(SPRT_NUTTX) && !(SPRT_EMBOX) && !(SPRT_EMBOX_USER) && SPRT_WINDOWS"
+    include "sprt/gen/c/cross/linux_sprt/errno.h" if="!(SPRT_IOS) && !(SPRT_MACOS) && !(SPRT_ANDROID) && !(SPRT_LINUX) && !(SPRT_NUTTX) && !(SPRT_EMBOX) && !(SPRT_EMBOX_USER) && !(SPRT_WINDOWS)"
+}
+
+header "sprt/gen/c/cross/__sprt_fcntl.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/c/cross/__sprt_config.h"
+    include arch=fcntl.h
+}
+
+header "sprt/gen/c/cross/__sprt_fdset.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_uintptr_t.h"
+    include "sprt/wrappers/windows/__sprt_config.h"
+    include platform=fdset.h
+}
+
+header "sprt/gen/c/cross/__sprt_fenv_t.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/c/cross/__sprt_config.h"
+    include arch=fenv.h
+}
+
+header "sprt/gen/c/cross/__sprt_file_ptr.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/c/cross/__sprt_config.h"
+    include platform=file_ptr.h
+}
+
+header "sprt/gen/c/cross/__sprt_fnmtypes.h" {
+    include "sprt/c/bits/__sprt_def.h"
+}
+
+header "sprt/gen/c/cross/__sprt_fstypes.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_uint32_t.h"
+    include "sprt/gen/c/bits/__sprt_uint64_t.h"
+    include "sprt/gen/c/bits/__sprt_int64_t.h"
+}
+
+header "sprt/gen/c/cross/__sprt_globtypes.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_size_t.h"
+}
+
+header "sprt/gen/c/cross/__sprt_langinfo.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/c/cross/__sprt_config.h"
+    include platform=langinfo.h
+}
+
+header "sprt/gen/c/cross/__sprt_locale.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/c/cross/__sprt_config.h"
+    include platform=locale.h
+}
+
+header "sprt/gen/c/cross/__sprt_math.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+    include "sprt/c/cross/__sprt_config.h"
+    include platform=math.h
+}
+
+header "sprt/gen/c/cross/__sprt_mbstate.h" {
+    include "sprt/c/cross/__sprt_config.h"
+    include "sprt/gen/c/bits/__sprt_uint32_t.h"
+    include platform=mbstate.h
+}
+
+header "sprt/gen/c/cross/__sprt_mman.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/c/cross/__sprt_config.h"
+    include platform=mman.h
+}
+
+header "sprt/gen/c/cross/__sprt_netinet.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/c/cross/__sprt_config.h"
+    include "sprt/gen/c/cross/__sprt_sysid.h"
+    include platform=netinetdef.h
+}
+
+header "sprt/gen/c/cross/__sprt_polltypes.h" {
+    include "sprt/c/cross/__sprt_config.h"
+}
+
+header "sprt/gen/c/cross/__sprt_regextypes.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_size_t.h"
+    include "sprt/gen/c/bits/__sprt_ssize_t.h"
+}
+
+header "sprt/gen/c/cross/__sprt_setjmp.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/c/cross/__sprt_config.h"
+    include arch=jmp_buf.h
+    include platform=setjmp.h
+}
+
+header "sprt/gen/c/cross/__sprt_signal.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int.h"
+    include "sprt/gen/c/bits/__sprt_uint32_t.h"
+    include "sprt/c/cross/__sprt_config.h"
+    include arch=signal.h
+    include platform=signal.h
+}
+
+header "sprt/gen/c/cross/__sprt_socket.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_int32_t.h"
+    include "sprt/gen/c/bits/__sprt_uint32_t.h"
+    include "sprt/gen/c/bits/__sprt_uint16_t.h"
+    include "sprt/gen/c/bits/__sprt_uint64_t.h"
+    include "sprt/gen/c/bits/__sprt_int64_t.h"
+    include "sprt/gen/c/bits/__sprt_uint8_t.h"
+    include "sprt/gen/c/bits/__sprt_size_t.h"
+    include "sprt/gen/c/bits/__sprt_ssize_t.h"
+    include "sprt/gen/c/bits/iovec.h"
+    include "sprt/gen/c/cross/__sprt_sysid.h"
+    include "sprt/c/cross/__sprt_config.h"
+}
+
+header "sprt/gen/c/cross/__sprt_stdio.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/c/cross/__sprt_config.h"
+    include platform=stdio.h
+}
+
+header "sprt/gen/c/cross/__sprt_syscall.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/c/cross/__sprt_config.h"
+    include arch=syscall.h
+}
+
+header "sprt/gen/c/cross/__sprt_sysconf.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/c/cross/__sprt_config.h"
+    include platform=sysconf.h
+}
+
+header "sprt/gen/c/cross/__sprt_sysid.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/c/cross/__sprt_config.h"
+    include "sprt/gen/c/bits/__sprt_uint32_t.h"
+    include platform=clockid.h
+}

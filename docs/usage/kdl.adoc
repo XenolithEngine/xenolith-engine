@@ -1,0 +1,76 @@
+# KDL documents: `stappler_kdl`
+
+Reading and writing [KDL v2](https://kdl.dev) documents with the engine's own code: an event parser
+over UTF-8 text, a DOM over a memory interface, and the canonical emitter of the KDL test suite.
+
+    #include "SPKdl.h"
+
+**TL;DR**
+
+* `kdl::read(text, doc, &err)` parses into a `kdl::DocumentTemplate<Interface>`; on failure
+  `err.location` is the one-based line and column, `err.message` says why.
+* `kdl::parse(text, handler, &err)` is the same parse as events, for a reader that does not want a
+  DOM. Slashdashed parts produce none.
+* Numbers keep their **canonical decimal text**, not a machine value: KDL numbers have no size
+  limit. `getInteger()`, `getUnsigned()` and `getDouble()` answer with a `Result` that is invalid
+  when the number does not fit. `literal` keeps the number as written (`0xFFFF`).
+* Properties stay in the order written, duplicates included; `getProperty(key)` answers with the
+  rightmost one, as the specification asks.
+* `kdl::write(out, doc)` writes the canonical form: no comments, 4-space indents, properties
+  deduplicated and sorted, strings bare where they can be, numbers in canonical text.
+* Every node, argument and property carries the `Location` it was read at, so a tool built on the
+  DOM reports errors with `file:line:column`.
+
+---
+
+## Reading
+
+```cpp
+kdl::DocumentTemplate<mem_std::Interface> doc;
+kdl::ParseError err;
+if (kdl::read(text, doc, &err) != Status::Ok) {
+    slog().error("Config", path, ":", err.location.line, ":", err.location.column, ": ",
+            err.message);
+    return;
+}
+
+for (auto &node : doc.nodes) {
+    if (node.name == "window") {
+        auto width = node.getPropertyValue("width"); // the rightmost width=, or nullptr
+        if (width && width->getInteger()) { ... }
+    }
+}
+```
+
+A value is `ValueType::String`, `Integer`, `Float`, `Bool`, `Null`, `Inf`, `NegInf` or `NaN`, with
+an optional type annotation (`(u8)12` has `getAnnotation() == "u8"`). Node names carry their
+annotation the same way.
+
+A string value can hold U+0000 from a `\u{0}` escape. The pointer constructors of `StringView` stop
+at the first NUL, so read string fields through `getString()`, `getAnnotation()` or `kdl::viewOf()`,
+which take the whole string.
+
+## Writing
+
+```cpp
+mem_std::StringStream out;
+kdl::write(out, doc);
+```
+
+`writeString(out, str)` writes one string bare when it is an identifier and quoted otherwise;
+`isIdentifier(str)` answers which.
+
+## Conformance
+
+`stapplertest kdl` runs the module's own cases. The official test suite (`tests/test_cases` of
+[kdl-org/kdl](https://github.com/kdl-org/kdl)) is CC-BY-SA and is not carried in the repository:
+
+    XL_KDL_TEST_SUITE=<kdl>/tests/test_cases stapplertest kdl
+
+parses every `input/*.kdl`, expects the `_fail` ones to be refused, and compares the canonical
+output of the others with `expected_kdl/` byte for byte.
+
+A `/- kdl-version 1` marker is refused: this parser reads KDL v2 only.
+
+Related: [tools/xlkdl-abi.adoc](tools/xlkdl-abi.adoc) - C headers generated
+from ABI descriptions written in KDL.

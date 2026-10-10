@@ -9,6 +9,7 @@
 #import <Metal/MTLArgument.h>
 #import <Metal/MTLCommandEncoder.h>
 #import <Metal/MTLAccelerationStructure.h>
+#include <__sprt_abi/Metal/MTLAccelerationStructureCommandEncoder.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -16,15 +17,6 @@ NS_ASSUME_NONNULL_BEGIN
 @protocol MTLFence;
 @protocol MTLHeap;
 @protocol MTLCounterSampleBuffer;
-
-/*!
- @enum MTLAccelerationStructureRefitOptions
- @abstract Controls the acceleration structure refit operation
- */
-typedef NS_OPTIONS(NSUInteger, MTLAccelerationStructureRefitOptions) {
-    MTLAccelerationStructureRefitOptionVertexData = (1 << 0),
-    MTLAccelerationStructureRefitOptionPerPrimitiveData = (1 << 1),
-};
 
 @protocol MTLAccelerationStructureCommandEncoder <MTLCommandEncoder>
 

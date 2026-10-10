@@ -6,7 +6,7 @@
 // mode constants should still match the UCRT so callers (llvm's Signals.inc)
 // that pass e.g. _CRT_ERROR / _CRTDBG_MODE_DEBUG see the same numbers.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/crtdbg.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/crtdbg.h>
 #include "abi_check.h"
 
 #include <windows.h>

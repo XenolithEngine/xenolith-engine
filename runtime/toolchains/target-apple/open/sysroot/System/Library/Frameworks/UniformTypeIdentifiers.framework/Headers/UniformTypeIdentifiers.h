@@ -32,14 +32,9 @@ THE SOFTWARE.
 
 #ifndef _SPRT_OPEN_UNIFORMTYPEIDENTIFIERS_H_
 #define _SPRT_OPEN_UNIFORMTYPEIDENTIFIERS_H_
+#include <__sprt_abi/UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #import <Foundation/Foundation.h>
-
-#if defined(__cplusplus)
-#define SPRT_UT_EXTERN extern "C"
-#else
-#define SPRT_UT_EXTERN extern
-#endif
 
 @interface UTType : NSObject
 + (nullable UTType *)typeWithIdentifier:(NSString *)identifier;

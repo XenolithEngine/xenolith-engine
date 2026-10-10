@@ -1,0 +1,15 @@
+macro SIG_ERR "((void (*)(int))-1)"
+macro SIG_DFL "((void (*)(int)) 0)"
+macro SIG_IGN "((void (*)(int)) 1)"
+// Extra sentinel handlers used by the freestanding signal() implementation
+// (libc_impl/src/builtin_signal.cpp): SIG_GET queries the current handler and
+// SIG_ACK acknowledges one. Distinct from DFL/IGN/ERR above.
+macro SIG_GET "((void (*)(int)) 2)"
+macro SIG_ACK "((void (*)(int)) 4)"
+typedef sig_atomic_t int
+macro SIG_ATOMIC_MIN "(-1-INT_MAX)"
+macro SIG_ATOMIC_MAX INT_MAX
+macro SIGSET_WORDS "(128 / sizeof(long))"
+struct (id)__sigset_t typedef=sigset_t {
+    field __bits "unsigned long [SIGSET_WORDS]"
+}

@@ -1,0 +1,8 @@
+// AppKit: the ABI of its hand-written headers, and what they include.
+
+header "__sprt_abi/AppKit/AppKit.h" {
+    include "Foundation/Foundation.h"
+    include "CoreGraphics/CoreGraphics.h"
+    include "QuartzCore/QuartzCore.h"
+    include "IOKit/hidsystem/IOLLEvent.h"
+}

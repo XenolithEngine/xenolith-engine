@@ -1,0 +1,14 @@
+typedef CFTimeInterval double
+enum CAAutoresizingMask macro=NS_OPTIONS base="unsigned int" {
+    value kCALayerNotSizable 0
+    value kCALayerMinXMargin "(1U << 0)"
+    value kCALayerWidthSizable "(1U << 1)"
+    value kCALayerMaxXMargin "(1U << 2)"
+    value kCALayerMinYMargin "(1U << 3)"
+    value kCALayerHeightSizable "(1U << 4)"
+    value kCALayerMaxYMargin "(1U << 5)"
+}
+// contentsGravity: an NSString-typed alias + the standard gravity constants MoltenVK maps.
+typedef CALayerContentsGravity "NSString *"
+// min/magnificationFilter: NSString-typed alias + the filter constants MoltenVK maps.
+typedef CALayerContentsFilter "NSString *"

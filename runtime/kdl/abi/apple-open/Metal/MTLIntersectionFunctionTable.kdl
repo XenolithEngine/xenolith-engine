@@ -1,0 +1,16 @@
+//
+// @brief Signature defining what data is provided to an intersection function. The signature
+// must match across the shading language declaration of the intersection function table,
+// intersection functions in the table, and the intersector using the table.
+//
+enum MTLIntersectionFunctionSignature macro=NS_OPTIONS base=NSUInteger {
+    value MTLIntersectionFunctionSignatureNone 0
+    value MTLIntersectionFunctionSignatureInstancing "(1 << 0)"
+    value MTLIntersectionFunctionSignatureTriangleData "(1 << 1)"
+    value MTLIntersectionFunctionSignatureWorldSpaceData "(1 << 2)"
+    value MTLIntersectionFunctionSignatureInstanceMotion "(1 << 3)"
+    value MTLIntersectionFunctionSignaturePrimitiveMotion "(1 << 4)"
+    value MTLIntersectionFunctionSignatureExtendedLimits "(1 << 5)"
+    value MTLIntersectionFunctionSignatureMaxLevels "(1 << 6)"
+    value MTLIntersectionFunctionSignatureCurveData "(1 << 7)"
+}

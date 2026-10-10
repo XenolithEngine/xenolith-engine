@@ -2,7 +2,7 @@
 //
 // abi/complex_types.h <-> Windows SDK parity. Compile-time only; see check.sh.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/complex_types.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/complex_types.h>
 #include "abi_check.h"
 
 #include <windows.h>

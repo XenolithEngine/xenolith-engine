@@ -5,7 +5,7 @@
 // The Toolhelp module-walk half: MODULEENTRY32W is filled by the kernel via
 // Module32FirstW/NextW, so its size and every field offset must match the SDK.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/tlhelp32.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/tlhelp32.h>
 #include "abi_check.h"
 
 #include <windows.h>

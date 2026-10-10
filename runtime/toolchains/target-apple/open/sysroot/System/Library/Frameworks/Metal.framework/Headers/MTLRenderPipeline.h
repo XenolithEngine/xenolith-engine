@@ -8,6 +8,7 @@
 #import <Metal/MTLTypes.h>
 #import <Metal/MTLPixelFormat.h>
 #import <Metal/MTLRenderCommandEncoder.h>   /* MTLWinding, MTLRenderStages */
+#include <__sprt_abi/Metal/MTLRenderPipeline.h>
 
 @protocol MTLDevice;
 @protocol MTLFunction;
@@ -15,70 +16,6 @@
 @class MTLRenderPipelineColorAttachmentDescriptorArray;
 
 NS_ASSUME_NONNULL_BEGIN
-
-typedef NS_ENUM(NSUInteger, MTLBlendFactor) {
-    MTLBlendFactorZero = 0,
-    MTLBlendFactorOne = 1,
-    MTLBlendFactorSourceColor = 2,
-    MTLBlendFactorOneMinusSourceColor = 3,
-    MTLBlendFactorSourceAlpha = 4,
-    MTLBlendFactorOneMinusSourceAlpha = 5,
-    MTLBlendFactorDestinationColor = 6,
-    MTLBlendFactorOneMinusDestinationColor = 7,
-    MTLBlendFactorDestinationAlpha = 8,
-    MTLBlendFactorOneMinusDestinationAlpha = 9,
-    MTLBlendFactorSourceAlphaSaturated = 10,
-    MTLBlendFactorBlendColor = 11,
-    MTLBlendFactorOneMinusBlendColor = 12,
-    MTLBlendFactorBlendAlpha = 13,
-    MTLBlendFactorOneMinusBlendAlpha = 14,
-    MTLBlendFactorSource1Color = 15,
-    MTLBlendFactorOneMinusSource1Color = 16,
-    MTLBlendFactorSource1Alpha = 17,
-    MTLBlendFactorOneMinusSource1Alpha = 18,
-};
-
-typedef NS_ENUM(NSUInteger, MTLBlendOperation) {
-    MTLBlendOperationAdd = 0,
-    MTLBlendOperationSubtract = 1,
-    MTLBlendOperationReverseSubtract = 2,
-    MTLBlendOperationMin = 3,
-    MTLBlendOperationMax = 4,
-};
-
-typedef NS_OPTIONS(NSUInteger, MTLColorWriteMask) {
-    MTLColorWriteMaskNone  = 0,
-    MTLColorWriteMaskRed   = 0x1 << 3,
-    MTLColorWriteMaskGreen = 0x1 << 2,
-    MTLColorWriteMaskBlue  = 0x1 << 1,
-    MTLColorWriteMaskAlpha = 0x1 << 0,
-    MTLColorWriteMaskAll   = 0xf,
-};
-
-typedef NS_ENUM(NSUInteger, MTLPrimitiveTopologyClass) {
-    MTLPrimitiveTopologyClassUnspecified = 0,
-    MTLPrimitiveTopologyClassPoint = 1,
-    MTLPrimitiveTopologyClassLine = 2,
-    MTLPrimitiveTopologyClassTriangle = 3,
-};
-
-typedef NS_ENUM(NSUInteger, MTLTessellationPartitionMode) {
-    MTLTessellationPartitionModePow2 = 0,
-    MTLTessellationPartitionModeInteger = 1,
-    MTLTessellationPartitionModeFractionalOdd = 2,
-    MTLTessellationPartitionModeFractionalEven = 3,
-};
-
-typedef NS_ENUM(NSUInteger, MTLTessellationFactorStepFunction) {
-    MTLTessellationFactorStepFunctionConstant = 0,
-    MTLTessellationFactorStepFunctionPerPatch = 1,
-    MTLTessellationFactorStepFunctionPerInstance = 2,
-    MTLTessellationFactorStepFunctionPerPatchAndPerInstance = 3,
-};
-
-typedef NS_ENUM(NSUInteger, MTLTessellationFactorFormat) {
-    MTLTessellationFactorFormatHalf = 0,
-};
 
 @interface MTLRenderPipelineColorAttachmentDescriptor : NSObject <NSCopying>
 @property (nonatomic) MTLPixelFormat pixelFormat;

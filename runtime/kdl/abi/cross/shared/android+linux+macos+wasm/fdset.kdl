@@ -1,0 +1,9 @@
+macro FD_SETSIZE 1024
+typedef fd_mask "unsigned long"
+struct typedef=fd_set {
+    field fds_bits "unsigned long [FD_SETSIZE / 8 / sizeof(long)]"
+}
+macro FD_ZERO "do { int __i; unsigned long *__b=(s)->fds_bits;\n\tfor(__i=sizeof (fd_set)/sizeof (long); __i; __i--) *__b++=0; } while(0)" params="s"
+macro FD_SET "((s)->fds_bits[(d)/(8*sizeof(long))] |= (1UL<<((d)%(8*sizeof(long)))))" params="d s"
+macro FD_CLR "((s)->fds_bits[(d)/(8*sizeof(long))] &= ~(1UL<<((d)%(8*sizeof(long)))))" params="d s"
+macro FD_ISSET "!!((s)->fds_bits[(d)/(8*sizeof(long))] & (1UL<<((d)%(8*sizeof(long)))))" params="d s"

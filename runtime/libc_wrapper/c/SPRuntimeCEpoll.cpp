@@ -25,8 +25,8 @@
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_limits.h>
 #include <sprt/c/sys/__sprt_epoll.h>
-#include <sprt/c/cross/__sprt_signal.h>
-#include <sprt/c/cross/__sprt_syscall.h>
+#include <sprt/gen/c/cross/__sprt_signal.h>
+#include <sprt/gen/c/cross/__sprt_syscall.h>
 #include <sprt/runtime/log.h>
 
 #if __SPRT_CONFIG_HAVE_EPOLL

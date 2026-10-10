@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef SPRT_WRAPPERS_WINDOWS_TCHAR_H_
 #define SPRT_WRAPPERS_WINDOWS_TCHAR_H_
 
-#include <sprt/wrappers/windows/abi/tchar.h>
+#include <sprt/gen/wrappers/windows/abi/tchar.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/tchar.h) */
 

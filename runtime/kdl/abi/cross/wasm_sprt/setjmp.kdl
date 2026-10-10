@@ -1,0 +1,7 @@
+struct (id)__jmp_buf_tag {
+    field __jb __jmp_buf
+    field __fl "unsigned long"
+    field __ss "unsigned long [128 / sizeof(long)]"
+}
+typedef native_jmp_buf "struct __jmp_buf_tag [1]"
+typedef native_sigjmp_buf native_jmp_buf

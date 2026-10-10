@@ -74,7 +74,7 @@ typedef __SPRT_ID(wctrans_t) wctrans_t;
 typedef __SPRT_ID(locale_t) locale_t;
 
 // ISO C requires <wctype.h> to define WEOF (the __SPRT_WEOF backing arrives via
-// <sprt/c/cross/__sprt_mbstate.h>, included by <sprt/c/__sprt_wctype.h>).
+// <sprt/gen/c/cross/__sprt_mbstate.h>, included by <sprt/c/__sprt_wctype.h>).
 #ifndef WEOF
 #define WEOF __SPRT_WEOF
 #endif

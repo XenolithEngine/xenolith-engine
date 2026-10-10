@@ -25,7 +25,7 @@
 #include "../uring/SPEvent-uring.h"
 #include "../../detail/SPRuntimeDispatchQueueData.h"
 
-#include <sprt/c/cross/__sprt_syscall.h>
+#include <sprt/gen/c/cross/__sprt_syscall.h>
 
 #include <unistd.h>
 

@@ -33,7 +33,7 @@
 
 #else
 
-#include <sprt/c/cross/__sprt_mbstate.h>
+#include <sprt/gen/c/cross/__sprt_mbstate.h>
 
 #if !__SPRT_MBSTATE_DIRECT
 // see include_libc/wchar.h: _MBSTATE_T coordinates the typedef with Darwin headers

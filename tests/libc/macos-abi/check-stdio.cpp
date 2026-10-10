@@ -36,9 +36,9 @@
 #include <setjmp.h>
 #include <fenv.h>
 
-#define SPRT_ABI_HEADER <sprt/c/cross/__sprt_stdio.h>
-#define SPRT_ABI_HEADER_2 <sprt/c/cross/__sprt_setjmp.h>
-#define SPRT_ABI_HEADER_3 <sprt/c/cross/__sprt_fenv_t.h>
+#define SPRT_ABI_HEADER <sprt/gen/c/cross/__sprt_stdio.h>
+#define SPRT_ABI_HEADER_2 <sprt/gen/c/cross/__sprt_setjmp.h>
+#define SPRT_ABI_HEADER_3 <sprt/gen/c/cross/__sprt_fenv_t.h>
 #include "abi_check.h"
 
 // === stdio limits and setvbuf() modes ======================================

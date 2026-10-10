@@ -1,0 +1,9 @@
+enum MTLIOPriority macro=NS_ENUM base=NSInteger {
+    value MTLIOPriorityHigh 0
+    value MTLIOPriorityNormal 1
+    value MTLIOPriorityLow 2
+}
+enum MTLIOCommandQueueType macro=NS_ENUM base=NSInteger {
+    value MTLIOCommandQueueTypeConcurrent 0
+    value MTLIOCommandQueueTypeSerial 1
+}

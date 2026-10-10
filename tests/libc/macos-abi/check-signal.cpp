@@ -31,7 +31,7 @@
 #include <signal.h>
 #include <sys/signal.h>
 
-#define SPRT_ABI_HEADER <sprt/c/cross/__sprt_signal.h>
+#define SPRT_ABI_HEADER <sprt/gen/c/cross/__sprt_signal.h>
 #include "abi_check.h"
 
 // === signal numbers ========================================================

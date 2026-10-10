@@ -44,6 +44,7 @@ LOCAL_MODULES ?= \
 	stappler_font \
 	stappler_vg \
 	stappler_pug \
+	stappler_kdl \
 	stappler_makefile \
 	stappler_layout \
 	stappler_network \
@@ -60,7 +61,7 @@ LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 # the binary; creating it from the test at runtime would be far too late.
 SP_EMBED_EMPTY_DIRS := $(shell mkdir -p $(LOCAL_ROOT)resources/empty $(LOCAL_ROOT)resources-packed/empty)
 
-LOCAL_SRCS_DIRS := mk filesystem font pug document core vg search zip
+LOCAL_SRCS_DIRS := mk filesystem font pug kdl document core vg search zip
 LOCAL_SRCS_OBJS :=
 
 # BundleFS: `resources` is embedded into the binary twice — raw, and compressed — so that the

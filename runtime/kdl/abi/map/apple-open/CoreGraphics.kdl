@@ -1,0 +1,86 @@
+// CoreGraphics: the ABI of its hand-written headers, and what they include.
+
+header "CoreGraphics/CGBase.h" external=#true {
+    include "__sprt_abi/CoreGraphics/CGBase.h"
+    include "sys/cdefs.h"
+    include "stdint.h"
+    include "stddef.h"
+    include "CoreFoundation/CFBase.h"
+    include "CoreFoundation/CFCGTypes.h"
+    type CGBASE_H_
+}
+
+header "CoreGraphics/CGColor.h" external=#true {
+    include "CoreFoundation/CoreFoundation.h"
+    include "CoreGraphics/CGBase.h"
+    include "__sprt_abi/CoreGraphics/CGColor.h"
+    type __SPRT_OPEN_CGCOLOR_H_
+}
+
+header "CoreGraphics/CGColorSpace.h" external=#true {
+    include "CoreFoundation/CoreFoundation.h"
+    include "CoreGraphics/CGBase.h"
+    include "__sprt_abi/CoreGraphics/CGColorSpace.h"
+    type __SPRT_OPEN_CGCOLORSPACE_H_
+}
+
+header "CoreGraphics/CGDirectDisplay.h" external=#true {
+    include "__sprt_abi/CoreGraphics/CGDirectDisplay.h"
+    include "CoreGraphics/CGBase.h"
+    include "CoreFoundation/CFArray.h"
+    include "CoreFoundation/CFDictionary.h"
+    include "CoreFoundation/CFString.h"
+    type CGDIRECTDISPLAY_H_
+}
+
+header "CoreGraphics/CGDisplayConfiguration.h" external=#true {
+    include "__sprt_abi/CoreGraphics/CGDisplayConfiguration.h"
+    include "CoreGraphics/CGDirectDisplay.h"
+    include "IOKit/IOKitLib.h"
+    type CGDISPLAYCONFIGURATION_H_
+}
+
+header "CoreGraphics/CGGeometry.h" external=#true {
+    include "CoreGraphics/CGBase.h"
+    type CGGEOMETRY_H_
+}
+
+header "CoreGraphics/CoreGraphics.h" external=#true {
+    include "CoreGraphics/CGBase.h"
+    include "CoreGraphics/CGGeometry.h"
+    include "CoreGraphics/CGDirectDisplay.h"
+    include "CoreGraphics/CGDisplayConfiguration.h"
+    include "CoreGraphics/CGColorSpace.h"
+    include "CoreGraphics/CGColor.h"
+    type COREGRAPHICS_H_
+}
+
+header "__sprt_abi/CoreGraphics/CGBase.h" {
+    include "sys/cdefs.h"
+    include "stdint.h"
+    include "stddef.h"
+    include "CoreFoundation/CFBase.h"
+    include "CoreFoundation/CFCGTypes.h"
+}
+
+header "__sprt_abi/CoreGraphics/CGColor.h" {
+    include "CoreFoundation/CoreFoundation.h"
+    include "CoreGraphics/CGBase.h"
+}
+
+header "__sprt_abi/CoreGraphics/CGColorSpace.h" {
+    include "CoreFoundation/CoreFoundation.h"
+    include "CoreGraphics/CGBase.h"
+}
+
+header "__sprt_abi/CoreGraphics/CGDirectDisplay.h" {
+    include "CoreGraphics/CGBase.h"
+    include "CoreFoundation/CFArray.h"
+    include "CoreFoundation/CFDictionary.h"
+    include "CoreFoundation/CFString.h"
+}
+
+header "__sprt_abi/CoreGraphics/CGDisplayConfiguration.h" {
+    include "CoreGraphics/CGDirectDisplay.h"
+    include "IOKit/IOKitLib.h"
+}

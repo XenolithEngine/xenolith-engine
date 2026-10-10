@@ -1,0 +1,183 @@
+macro PROCESS_TERMINATE "(0x0001)"
+macro PROCESS_CREATE_THREAD "(0x0002)"
+macro PROCESS_SET_SESSIONID "(0x0004)"
+macro PROCESS_VM_OPERATION "(0x0008)"
+macro PROCESS_VM_READ "(0x0010)"
+macro PROCESS_VM_WRITE "(0x0020)"
+macro PROCESS_DUP_HANDLE "(0x0040)"
+macro PROCESS_CREATE_PROCESS "(0x0080)"
+macro PROCESS_SET_QUOTA "(0x0100)"
+macro PROCESS_SET_INFORMATION "(0x0200)"
+macro PROCESS_QUERY_INFORMATION "(0x0400)"
+macro PROCESS_SUSPEND_RESUME "(0x0800)"
+macro PROCESS_QUERY_LIMITED_INFORMATION "(0x1000)"
+macro PROCESS_SET_LIMITED_INFORMATION "(0x2000)"
+macro NORMAL_PRIORITY_CLASS 0x00000020
+macro IDLE_PRIORITY_CLASS 0x00000040
+macro HIGH_PRIORITY_CLASS 0x00000080
+macro REALTIME_PRIORITY_CLASS 0x00000100
+macro BELOW_NORMAL_PRIORITY_CLASS 0x00004000
+macro ABOVE_NORMAL_PRIORITY_CLASS 0x00008000
+macro EXTENDED_STARTUPINFO_PRESENT 0x00080000
+macro PROC_THREAD_ATTRIBUTE_NUMBER 0x0000FFFF
+macro PROC_THREAD_ATTRIBUTE_THREAD 0x00010000
+macro PROC_THREAD_ATTRIBUTE_INPUT 0x00020000
+macro PROC_THREAD_ATTRIBUTE_ADDITIVE 0x00040000
+macro STARTF_USESHOWWINDOW 0x00000001
+macro STARTF_USESIZE 0x00000002
+macro STARTF_USEPOSITION 0x00000004
+macro STARTF_USECOUNTCHARS 0x00000008
+macro STARTF_USEFILLATTRIBUTE 0x00000010
+macro STARTF_RUNFULLSCREEN 0x00000020
+macro STARTF_FORCEONFEEDBACK 0x00000040
+macro STARTF_FORCEOFFFEEDBACK 0x00000080
+macro STARTF_USESTDHANDLES 0x00000100
+macro DEBUG_PROCESS 0x00000001
+macro DEBUG_ONLY_THIS_PROCESS 0x00000002
+macro CREATE_SUSPENDED 0x00000004
+macro DETACHED_PROCESS 0x00000008
+macro CREATE_NEW_CONSOLE 0x00000010
+macro NORMAL_PRIORITY_CLASS 0x00000020
+macro IDLE_PRIORITY_CLASS 0x00000040
+macro HIGH_PRIORITY_CLASS 0x00000080
+macro REALTIME_PRIORITY_CLASS 0x00000100
+macro CREATE_NEW_PROCESS_GROUP 0x00000200
+macro CREATE_UNICODE_ENVIRONMENT 0x00000400
+macro CREATE_SEPARATE_WOW_VDM 0x00000800
+macro CREATE_SHARED_WOW_VDM 0x00001000
+macro CREATE_FORCEDOS 0x00002000
+macro BELOW_NORMAL_PRIORITY_CLASS 0x00004000
+macro ABOVE_NORMAL_PRIORITY_CLASS 0x00008000
+macro INHERIT_PARENT_AFFINITY 0x00010000
+macro INHERIT_CALLER_PRIORITY 0x00020000
+macro CREATE_PROTECTED_PROCESS 0x00040000
+macro EXTENDED_STARTUPINFO_PRESENT 0x00080000
+macro PROCESS_MODE_BACKGROUND_BEGIN 0x00100000
+macro PROCESS_MODE_BACKGROUND_END 0x00200000
+macro CREATE_SECURE_PROCESS 0x00400000
+macro CREATE_BREAKAWAY_FROM_JOB 0x01000000
+macro CREATE_PRESERVE_CODE_AUTHZ_LEVEL 0x02000000
+macro CREATE_DEFAULT_ERROR_MODE 0x04000000
+macro CREATE_NO_WINDOW 0x08000000
+macro PROFILE_USER 0x10000000
+macro PROFILE_KERNEL 0x20000000
+macro PROFILE_SERVER 0x40000000
+macro CREATE_IGNORE_SYSTEM_DEFAULT 0x80000000
+macro SEE_MASK_NOCLOSEPROCESS 0x00000040
+macro ProcThreadAttributeValue "(((Number) & PROC_THREAD_ATTRIBUTE_NUMBER) |\n     ((Thread != FALSE) ? PROC_THREAD_ATTRIBUTE_THREAD : 0) |\n     ((Input != FALSE) ? PROC_THREAD_ATTRIBUTE_INPUT : 0) |\n     ((Additive != FALSE) ? PROC_THREAD_ATTRIBUTE_ADDITIVE : 0))" params="Number Thread Input Additive"
+macro PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES "ProcThreadAttributeValue (ProcThreadAttributeSecurityCapabilities, FALSE, TRUE, FALSE)"
+// ProcThreadAttributeHandleList == 2; the attribute value is Value(2, FALSE, TRUE, FALSE).
+macro PROC_THREAD_ATTRIBUTE_HANDLE_LIST "ProcThreadAttributeValue (2, FALSE, TRUE, FALSE)"
+enum _PROC_THREAD_ATTRIBUTE_NUM typedef=PROC_THREAD_ATTRIBUTE_NUM {
+    value ProcThreadAttributeParentProcess 0
+    value ProcThreadAttributeHandleList 2
+    value ProcThreadAttributeGroupAffinity 3
+    value ProcThreadAttributePreferredNode 4
+    value ProcThreadAttributeIdealProcessor 5
+    value ProcThreadAttributeUmsThread 6
+    value ProcThreadAttributeMitigationPolicy 7
+    value ProcThreadAttributeSecurityCapabilities 9
+    value ProcThreadAttributeProtectionLevel 11
+    value ProcThreadAttributeJobList 13
+    value ProcThreadAttributeChildProcessPolicy 14
+    value ProcThreadAttributeAllApplicationPackagesPolicy 15
+    value ProcThreadAttributeWin32kFilter 16
+    value ProcThreadAttributeSafeOpenPromptOriginClaim 17
+    value ProcThreadAttributeDesktopAppPolicy 18
+    value ProcThreadAttributePseudoConsole 22
+    value ProcThreadAttributeMitigationAuditPolicy 24
+    value ProcThreadAttributeMachineType 25
+    value ProcThreadAttributeComponentFilter 26
+    value ProcThreadAttributeEnableOptionalXStateFeatures 27
+    value ProcThreadAttributeTrustedApp 29
+    value ProcThreadAttributeSveVectorLength 30
+}
+struct _PROCESS_INFORMATION typedef=PROCESS_INFORMATION also="*PPROCESS_INFORMATION, *LPPROCESS_INFORMATION" {
+    field hProcess HANDLE
+    field hThread HANDLE
+    field dwProcessId DWORD
+    field dwThreadId DWORD
+}
+struct _STARTUPINFOW typedef=STARTUPINFOW also="*LPSTARTUPINFOW" {
+    field cb DWORD
+    field lpReserved LPWSTR
+    field lpDesktop LPWSTR
+    field lpTitle LPWSTR
+    field dwX DWORD
+    field dwY DWORD
+    field dwXSize DWORD
+    field dwYSize DWORD
+    field dwXCountChars DWORD
+    field dwYCountChars DWORD
+    field dwFillAttribute DWORD
+    field dwFlags DWORD
+    field wShowWindow WORD
+    field cbReserved2 WORD
+    field lpReserved2 LPBYTE
+    field hStdInput HANDLE
+    field hStdOutput HANDLE
+    field hStdError HANDLE
+}
+struct _STARTUPINFOEXW typedef=STARTUPINFOEXW also="*LPSTARTUPINFOEXW" {
+    field StartupInfo STARTUPINFOW
+    field lpAttributeList LPPROC_THREAD_ATTRIBUTE_LIST
+}
+struct _STARTUPINFOA typedef=STARTUPINFOA also="*LPSTARTUPINFOA" {
+    field cb DWORD
+    field lpReserved LPSTR
+    field lpDesktop LPSTR
+    field lpTitle LPSTR
+    field dwX DWORD
+    field dwY DWORD
+    field dwXSize DWORD
+    field dwYSize DWORD
+    field dwXCountChars DWORD
+    field dwYCountChars DWORD
+    field dwFillAttribute DWORD
+    field dwFlags DWORD
+    field wShowWindow WORD
+    field cbReserved2 WORD
+    field lpReserved2 LPBYTE
+    field hStdInput HANDLE
+    field hStdOutput HANDLE
+    field hStdError HANDLE
+}
+struct _STARTUPINFOEXA typedef=STARTUPINFOEXA also="*LPSTARTUPINFOEXA" {
+    field StartupInfo STARTUPINFOA
+    field lpAttributeList LPPROC_THREAD_ATTRIBUTE_LIST
+}
+struct _SHELLEXECUTEINFOW typedef=SHELLEXECUTEINFOW also="*LPSHELLEXECUTEINFOW" {
+    field cbSize DWORD
+    field fMask ULONG
+    field hwnd HANDLE
+    field lpVerb LPCWSTR
+    field lpFile LPCWSTR
+    field lpParameters LPCWSTR
+    field lpDirectory LPCWSTR
+    field nShow int
+    field hInstApp HINSTANCE
+    field lpIDList "void *"
+    field lpClass LPCWSTR
+    field hkeyClass HKEY
+    field dwHotKey DWORD
+    union {
+        field hIcon HANDLE
+        field hMonitor HANDLE
+    }
+    // not used
+    // in, valid when SEE_MASK_HMONITOR specified
+    field hProcess HANDLE
+}
+struct _PROCESS_MEMORY_COUNTERS typedef=PROCESS_MEMORY_COUNTERS {
+    field cb DWORD
+    field PageFaultCount DWORD
+    field PeakWorkingSetSize SIZE_T
+    field WorkingSetSize SIZE_T
+    field QuotaPeakPagedPoolUsage SIZE_T
+    field QuotaPagedPoolUsage SIZE_T
+    field QuotaPeakNonPagedPoolUsage SIZE_T
+    field QuotaNonPagedPoolUsage SIZE_T
+    field PagefileUsage SIZE_T
+    field PeakPagefileUsage SIZE_T
+}
+typedef PPROCESS_MEMORY_COUNTERS "PROCESS_MEMORY_COUNTERS *"

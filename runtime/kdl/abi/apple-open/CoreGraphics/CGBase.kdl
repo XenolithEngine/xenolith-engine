@@ -1,0 +1,5 @@
+macro CG_EXTERN "extern \"C\" __attribute__((visibility(\"default\")))" if="defined(__cplusplus)"
+macro CG_EXTERN "extern __attribute__((visibility(\"default\")))" if="!defined(__cplusplus)"
+macro CG_EXTERN_C_BEGIN __BEGIN_DECLS
+macro CG_EXTERN_C_END __END_DECLS
+macro CG_INLINE "static __inline__"

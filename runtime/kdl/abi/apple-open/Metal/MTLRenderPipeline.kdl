@@ -1,0 +1,58 @@
+// MTLWinding, MTLRenderStages
+enum MTLBlendFactor macro=NS_ENUM base=NSUInteger {
+    value MTLBlendFactorZero 0
+    value MTLBlendFactorOne 1
+    value MTLBlendFactorSourceColor 2
+    value MTLBlendFactorOneMinusSourceColor 3
+    value MTLBlendFactorSourceAlpha 4
+    value MTLBlendFactorOneMinusSourceAlpha 5
+    value MTLBlendFactorDestinationColor 6
+    value MTLBlendFactorOneMinusDestinationColor 7
+    value MTLBlendFactorDestinationAlpha 8
+    value MTLBlendFactorOneMinusDestinationAlpha 9
+    value MTLBlendFactorSourceAlphaSaturated 10
+    value MTLBlendFactorBlendColor 11
+    value MTLBlendFactorOneMinusBlendColor 12
+    value MTLBlendFactorBlendAlpha 13
+    value MTLBlendFactorOneMinusBlendAlpha 14
+    value MTLBlendFactorSource1Color 15
+    value MTLBlendFactorOneMinusSource1Color 16
+    value MTLBlendFactorSource1Alpha 17
+    value MTLBlendFactorOneMinusSource1Alpha 18
+}
+enum MTLBlendOperation macro=NS_ENUM base=NSUInteger {
+    value MTLBlendOperationAdd 0
+    value MTLBlendOperationSubtract 1
+    value MTLBlendOperationReverseSubtract 2
+    value MTLBlendOperationMin 3
+    value MTLBlendOperationMax 4
+}
+enum MTLColorWriteMask macro=NS_OPTIONS base=NSUInteger {
+    value MTLColorWriteMaskNone 0
+    value MTLColorWriteMaskRed "0x1 << 3"
+    value MTLColorWriteMaskGreen "0x1 << 2"
+    value MTLColorWriteMaskBlue "0x1 << 1"
+    value MTLColorWriteMaskAlpha "0x1 << 0"
+    value MTLColorWriteMaskAll 0xf
+}
+enum MTLPrimitiveTopologyClass macro=NS_ENUM base=NSUInteger {
+    value MTLPrimitiveTopologyClassUnspecified 0
+    value MTLPrimitiveTopologyClassPoint 1
+    value MTLPrimitiveTopologyClassLine 2
+    value MTLPrimitiveTopologyClassTriangle 3
+}
+enum MTLTessellationPartitionMode macro=NS_ENUM base=NSUInteger {
+    value MTLTessellationPartitionModePow2 0
+    value MTLTessellationPartitionModeInteger 1
+    value MTLTessellationPartitionModeFractionalOdd 2
+    value MTLTessellationPartitionModeFractionalEven 3
+}
+enum MTLTessellationFactorStepFunction macro=NS_ENUM base=NSUInteger {
+    value MTLTessellationFactorStepFunctionConstant 0
+    value MTLTessellationFactorStepFunctionPerPatch 1
+    value MTLTessellationFactorStepFunctionPerInstance 2
+    value MTLTessellationFactorStepFunctionPerPatchAndPerInstance 3
+}
+enum MTLTessellationFactorFormat macro=NS_ENUM base=NSUInteger {
+    value MTLTessellationFactorFormatHalf 0
+}

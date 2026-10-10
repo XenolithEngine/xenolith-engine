@@ -1,0 +1,26 @@
+// Embox's struct pollfd is the POSIX three-field one, so only the flag values
+// diverge - but they diverge badly: POLLOUT and POLLPRI swap places relative to
+// Linux, and the priority bands are collapsed onto the plain events (POLLRDNORM
+// is POLLIN, POLLWRNORM/POLLWRBAND are POLLOUT, POLLRDBAND is POLLPRI). Those
+// aliases are the platform's, not an approximation made here.
+//
+// poll() gets events/revents forwarded untouched, and outside __SPRT_BUILD these
+// macros ARE the application's POLL*, so a Linux table here would silently ask
+// for the wrong events (Linux POLLOUT is 4, which is Embox's POLLPRI).
+struct (n)pollfd {
+    field fd int
+    field events short
+    field revents short
+}
+typedef nfds_t "unsigned long"
+macro POLLIN 0x01
+macro POLLRDNORM 0x01
+macro POLLOUT 0x02
+macro POLLWRNORM 0x02
+macro POLLWRBAND 0x02
+macro POLLPRI 0x04
+macro POLLRDBAND 0x04
+macro POLLERR 0x08
+macro POLLHUP 0x10
+macro POLLNVAL 0x20
+macro POLLRDHUP 0x2000

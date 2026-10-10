@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_IOCTL_H_
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_IOCTL_H_
 
-#include <sprt/c/bits/__sprt_intptr_t.h>
+#include <sprt/gen/c/bits/__sprt_intptr_t.h>
 
 #define __SPRT_TIOCGWINSZ	0x5413
 #define __SPRT_TIOCSWINSZ	0x5414

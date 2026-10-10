@@ -24,12 +24,12 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_STDDEF_H_
 
 #include <sprt/c/bits/__sprt_def.h>
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_ptrdiff_t.h>
-#include <sprt/c/bits/__sprt_null.h>
-#include <sprt/c/cross/__sprt_mbstate.h>
-#include <sprt/c/bits/__sprt_uintptr_t.h>
-#include <sprt/c/bits/__sprt_intptr_t.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_ptrdiff_t.h>
+#include <sprt/gen/c/bits/__sprt_null.h>
+#include <sprt/gen/c/cross/__sprt_mbstate.h>
+#include <sprt/gen/c/bits/__sprt_uintptr_t.h>
+#include <sprt/gen/c/bits/__sprt_intptr_t.h>
 
 #if defined(__cplusplus)
 typedef decltype(nullptr) __SPRT_ID(nullptr_t);

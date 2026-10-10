@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-#include <sprt/wrappers/windows/abi/time_api.h>
+#include <sprt/gen/wrappers/windows/abi/time_api.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/time_api.h) */
 #define TIME_ZONE_ID_UNKNOWN __SPRT_TIME_ZONE_ID_UNKNOWN

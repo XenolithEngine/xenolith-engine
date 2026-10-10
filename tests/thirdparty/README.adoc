@@ -198,7 +198,7 @@ WSASocketW failed to initialize socket, status 0xc001273c
 <1> curl's IPv6 probe -- a bare `SOCK_*` value, accepted
 <2> the connect socket -- `SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC`, rejected
 
-`runtime/include/sprt/c/cross/windows_sprt/sockdef.h` gives `SOCK_CLOEXEC` and
+`runtime/include/sprt/gen/c/cross/windows_sprt/sockdef.h` gives `SOCK_CLOEXEC` and
 `SOCK_NONBLOCK` their Linux values (`02000000` / `04000`) on the Windows target,
 and `runtime/include_libc/sys/__sockdef.h` publishes them under their public
 names. curl therefore sees the macros defined and tucks the flags into the

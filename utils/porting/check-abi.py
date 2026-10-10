@@ -167,8 +167,8 @@ def main():
     os_dirs = [x for k in ("TARGET_INCLUDE_DIR_LIBC", "TARGET_INCLUDE_DIR") if values.get(k) for x in ("-idirafter", values[k])]
     sprt_args = ["--target=" + name, "-nostdinc", "-I", eng.path("runtime/include")] + \
         (["-isystem", res] if res else []) + defines + os_dirs
-    cross = sorted(os.path.basename(p) for p in glob.glob(eng.path("runtime/include/sprt/c/cross/__sprt_*.h")))
-    sprt, ok_h, bad_h = preprocess_union(clang, sprt_args, ["sprt/c/cross/" + h for h in cross])
+    cross = sorted(os.path.basename(p) for p in glob.glob(eng.path("runtime/include/sprt/gen/c/cross/__sprt_*.h")))
+    sprt, ok_h, bad_h = preprocess_union(clang, sprt_args, ["sprt/gen/c/cross/" + h for h in cross])
     rep.check(not bad_h, "sprt cross headers preprocess for this target (%d of %d)" % (len(ok_h), len(cross)),
               details=["failed: " + h for h in bad_h])
 

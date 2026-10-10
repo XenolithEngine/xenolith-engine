@@ -1,0 +1,47 @@
+// MTLFunctionOptions, MTLFunctionDescriptor, MTLIntersectionFunctionDescriptor, MTLFunctionConstantValues
+enum MTLPatchType macro=NS_ENUM base=NSUInteger {
+    value MTLPatchTypeNone 0
+    value MTLPatchTypeTriangle 1
+    value MTLPatchTypeQuad 2
+}
+enum MTLFunctionType macro=NS_ENUM base=NSUInteger {
+    value MTLFunctionTypeVertex 1
+    value MTLFunctionTypeFragment 2
+    value MTLFunctionTypeKernel 3
+    value MTLFunctionTypeVisible 5
+    value MTLFunctionTypeIntersection 6
+    value MTLFunctionTypeMesh 7
+    value MTLFunctionTypeObject 8
+}
+enum MTLLanguageVersion macro=NS_ENUM base=NSUInteger {
+    value MTLLanguageVersion1_0 "(1 << 16)"
+    value MTLLanguageVersion1_1 "(1 << 16) + 1"
+    value MTLLanguageVersion1_2 "(1 << 16) + 2"
+    value MTLLanguageVersion2_0 "(2 << 16)"
+    value MTLLanguageVersion2_1 "(2 << 16) + 1"
+    value MTLLanguageVersion2_2 "(2 << 16) + 2"
+    value MTLLanguageVersion2_3 "(2 << 16) + 3"
+    value MTLLanguageVersion2_4 "(2 << 16) + 4"
+    value MTLLanguageVersion3_0 "(3 << 16) + 0"
+    value MTLLanguageVersion3_1 "(3 << 16) + 1"
+    value MTLLanguageVersion3_2 "(3 << 16) + 2"
+}
+enum MTLLibraryType macro=NS_ENUM base=NSInteger {
+    value MTLLibraryTypeExecutable 0
+    value MTLLibraryTypeDynamic 1
+}
+enum MTLLibraryOptimizationLevel macro=NS_ENUM base=NSInteger {
+    value MTLLibraryOptimizationLevelDefault 0
+    value MTLLibraryOptimizationLevelSize 1
+}
+//  macOS-15 math controls (absent from the 14.5 SDK snapshot; MoltenVK sets them behind an OS
+//    check). Values match the Metal 3.2 ABI.
+enum MTLMathMode macro=NS_ENUM base=NSInteger {
+    value MTLMathModeSafe 0
+    value MTLMathModeRelaxed 1
+    value MTLMathModeFast 2
+}
+enum MTLMathFloatingPointFunctions macro=NS_ENUM base=NSInteger {
+    value MTLMathFloatingPointFunctionsFast 0
+    value MTLMathFloatingPointFunctionsPrecise 1
+}

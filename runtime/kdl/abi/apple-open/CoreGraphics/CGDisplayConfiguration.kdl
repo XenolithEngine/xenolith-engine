@@ -1,0 +1,25 @@
+//  The real CGDisplayConfiguration.h pulls in IOKit (display IDs are IOKit registry entries);
+//    MoltenVK relies on this transitive include for io_iterator_t/IOServiceMatching/&c. in its
+//    GPU-registry probing (MVKDevice.mm includes no IOKit header of its own).
+typedef CGDisplayConfigRef "struct _CGDisplayConfigRef *"
+typedef CGDisplayChangeSummaryFlags uint32_t
+enum {
+    value kCGDisplayBeginConfigurationFlag "(1 << 0)"
+    value kCGDisplayMovedFlag "(1 << 1)"
+    value kCGDisplaySetMainFlag "(1 << 2)"
+    value kCGDisplaySetModeFlag "(1 << 3)"
+    value kCGDisplayAddFlag "(1 << 4)"
+    value kCGDisplayRemoveFlag "(1 << 5)"
+    value kCGDisplayEnabledFlag "(1 << 8)"
+    value kCGDisplayDisabledFlag "(1 << 9)"
+    value kCGDisplayMirrorFlag "(1 << 10)"
+    value kCGDisplayUnMirrorFlag "(1 << 11)"
+    value kCGDisplayDesktopShapeChangedFlag "(1 << 12)"
+}
+typedef CGConfigureOption uint32_t
+enum {
+    value kCGConfigureForAppOnly 0
+    value kCGConfigureForSession 1
+    value kCGConfigurePermanently 2
+}
+typedef CGDisplayReconfigurationCallBack "void (*)(CGDirectDisplayID display, CGDisplayChangeSummaryFlags flags, void * __nullable userInfo)"

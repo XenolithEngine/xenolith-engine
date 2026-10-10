@@ -24,7 +24,7 @@
 #define SPRT_WRAPPERS_WINDOWS_STRUCTURES_H_
 
 #include <sprt/wrappers/windows/basic_types.h>
-#include <sprt/wrappers/windows/abi/structures.h>
+#include <sprt/gen/wrappers/windows/abi/structures.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/structures.h) */
 

@@ -2,7 +2,7 @@
 //
 // abi/winver.h <-> Windows SDK parity. Compile-time only; see check.sh.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/winver.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/winver.h>
 #include "abi_check.h"
 
 #include <windows.h>   // OSVERSIONINFOW / OSVERSIONINFOEXW / OSVERSIONINFOA + VER_* (winnt.h) and,

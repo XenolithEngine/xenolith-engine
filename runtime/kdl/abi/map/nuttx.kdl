@@ -1,0 +1,104 @@
+// The nuttx platform: the cross fragments under sprt/gen/c/cross/nuttx_sprt.
+
+platforms { platform nuttx_sprt { arch aarch64_sprt; }; }
+
+header "arch/setjmp.h" external=#true
+
+header "nuttx/config.h" external=#true
+
+header "nuttx/lib/setjmp.h" external=#true
+
+header "sprt/c/cross/nuttx_sprt/setjmp_os.h" external=#true {
+    include "sprt/gen/c/bits/__sprt_null.h"
+    include "arch/setjmp.h"
+    include "nuttx/lib/setjmp.h"
+    type CONFIG_ARCH_SETJMP_H NULL
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/aarch64_sprt/config.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/config.h"
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/aarch64_sprt/fcntl.h" {
+    include "sprt/gen/c/cross/nuttx_sprt/fcntl.h"
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/aarch64_sprt/fenv.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/fenv.h"
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/aarch64_sprt/jmp_buf.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/jmp_buf.h"
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/aarch64_sprt/signal.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/signal.h"
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/aarch64_sprt/syscall.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/syscall.h"
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/clockid.h"
+
+header "sprt/gen/c/cross/nuttx_sprt/config.h"
+
+header "sprt/gen/c/cross/nuttx_sprt/dir_ptr.h" {
+    include "sprt/gen/c/bits/__sprt_uint32_t.h"
+    include "sprt/gen/c/bits/__sprt_uint8_t.h"
+    include "nuttx/config.h"
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/errno.h"
+
+header "sprt/gen/c/cross/nuttx_sprt/fcntl.h"
+
+header "sprt/gen/c/cross/nuttx_sprt/fdset.h" {
+    include "sprt/gen/c/bits/__sprt_uint32_t.h"
+    include "nuttx/config.h"
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/file_ptr.h"
+
+header "sprt/gen/c/cross/nuttx_sprt/langinfo.h" {
+    include "sprt/gen/c/cross/linux_sprt/langinfo.h"
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/locale.h"
+
+header "sprt/gen/c/cross/nuttx_sprt/math.h"
+
+header "sprt/gen/c/cross/nuttx_sprt/mbstate.h"
+
+header "sprt/gen/c/cross/nuttx_sprt/mman.h"
+
+header "sprt/gen/c/cross/nuttx_sprt/netinetdef.h" guard=CORE_RUNTIME_INCLUDE_C_CROSS_NUTTX_SPRT_NETINETDEF_H_
+
+header "sprt/gen/c/cross/nuttx_sprt/polltypes.h" {
+    include "sprt/gen/c/bits/__sprt_uint32_t.h"
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/setjmp.h" {
+    include "sprt/c/cross/nuttx_sprt/setjmp_os.h"
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/signal.h" {
+    include "sprt/gen/c/bits/__sprt_uint32_t.h"
+    include "nuttx/config.h"
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/sockdef.h" {
+    include "nuttx/config.h"
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/socket.h" {
+    include "sprt/gen/c/cross/linux_sprt/socket.h"
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/stdio.h" {
+    include "sprt/gen/c/cross/linux_sprt/stdio.h"
+}
+
+header "sprt/gen/c/cross/nuttx_sprt/stdlib.h"
+
+header "sprt/gen/c/cross/nuttx_sprt/sysconf.h"

@@ -1,0 +1,30 @@
+// NuttX packs the MAP_* flags into consecutive bits from 0 instead of following
+// the asm-generic layout, and it orders MADV_RANDOM/MADV_SEQUENTIAL the POSIX way
+// (POSIX_MADV_SEQUENTIAL == 1) rather than Linux's. mmap()/msync()/madvise() are
+// forwarded with their flag arguments untouched, and outside __SPRT_BUILD these
+// macros ARE the application's MAP_*/MS_*/MADV_*, so the numbers must be NuttX's.
+//
+// This header is included before the shared table in sys/__sprt_mman.h, whose
+// divergent entries are #ifndef-guarded; the values below win.
+// Renumbered by NuttX (Linux value in the comment).
+macro MAP_TYPE "(3 << 0)"
+macro MAP_FIXED "(1 << 2)"
+macro MAP_FILE "(1 << 3)"
+macro MAP_ANONYMOUS "(1 << 4)"
+macro MAP_ANON MAP_ANONYMOUS
+macro MAP_GROWSDOWN "(1 << 5)"
+macro MAP_DENYWRITE "(1 << 6)"
+macro MAP_EXECUTABLE "(1 << 7)"
+macro MAP_LOCKED "(1 << 8)"
+macro MAP_NORESERVE "(1 << 9)"
+macro MAP_POPULATE "(1 << 10)"
+macro MAP_NONBLOCK "(1 << 11)"
+macro MS_ASYNC 0x01
+macro MS_SYNC 0x02
+macro MS_INVALIDATE 0x04
+// NuttX defines MADV_* as aliases of the POSIX_MADV_* codes, which put SEQUENTIAL
+// before RANDOM - the reverse of Linux.
+macro POSIX_MADV_SEQUENTIAL 1
+macro POSIX_MADV_RANDOM 2
+macro MADV_SEQUENTIAL 1
+macro MADV_RANDOM 2

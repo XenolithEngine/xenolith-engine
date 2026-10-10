@@ -1,0 +1,9 @@
+// Materialized ABI values for <ntstatus.h> (clean names re-exported by
+// sprt/wrappers/windows/ntstatus.h).
+// NTSTATUS/LONG
+macro STATUS_SUCCESS "((NTSTATUS) 0x00000000L)"
+macro STATUS_WX86_SINGLE_STEP "((NTSTATUS) 0x4000001EL)"
+macro STATUS_WX86_BREAKPOINT "((NTSTATUS) 0x4000001FL)"
+macro STATUS_DELETE_PENDING "((NTSTATUS) 0xC0000056L)"
+macro STATUS_OBJECT_NAME_NOT_FOUND "((NTSTATUS) 0xC0000034L)"
+macro STATUS_ACCESS_DENIED "((NTSTATUS) 0xC0000022L)"

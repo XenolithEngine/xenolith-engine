@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS_WINVER_H_
 
 #include <sprt/wrappers/windows/message_api.h>
-#include <sprt/wrappers/windows/abi/winver.h>
+#include <sprt/gen/wrappers/windows/abi/winver.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/winver.h) */
 #define VER_EQUAL __SPRT_VER_EQUAL

@@ -1,0 +1,3 @@
+macro (n)pollfd "__SPRT_ID(pollfd)" if="defined(__SPRT_BUILD)"
+macro (n)pollfd `pollfd` if="!defined(__SPRT_BUILD)"
+use platform=polltypes.h

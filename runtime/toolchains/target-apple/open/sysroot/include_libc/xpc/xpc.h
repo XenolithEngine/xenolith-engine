@@ -14,33 +14,20 @@
 #include <stdbool.h>
 #include <sys/cdefs.h>
 #include <dispatch/dispatch.h>
+#include <__sprt_abi/xpc/xpc.h>
 
 __BEGIN_DECLS
 
-typedef struct _xpc_object_s *xpc_object_t;
-typedef xpc_object_t xpc_connection_t;
-
-struct _xpc_type_s;
-typedef const struct _xpc_type_s *xpc_type_t;
-
 extern const struct _xpc_type_s _xpc_type_error;
 extern const struct _xpc_type_s _xpc_type_dictionary;
-#define XPC_TYPE_ERROR      (&_xpc_type_error)
-#define XPC_TYPE_DICTIONARY (&_xpc_type_dictionary)
 
 /* Error singletons (dictionaries) + the description key. */
 extern const struct _xpc_object_s _xpc_error_connection_interrupted;
 extern const struct _xpc_object_s _xpc_error_connection_invalid;
-#define XPC_ERROR_CONNECTION_INTERRUPTED \
-		((xpc_object_t)&_xpc_error_connection_interrupted)
-#define XPC_ERROR_CONNECTION_INVALID \
-		((xpc_object_t)&_xpc_error_connection_invalid)
 
 extern const char *const _xpc_error_key_description;
-#define XPC_ERROR_KEY_DESCRIPTION _xpc_error_key_description
 
 typedef void (^xpc_handler_t)(xpc_object_t object);
-typedef void (*xpc_finalizer_t)(void *value);
 
 xpc_type_t xpc_get_type(xpc_object_t object);
 void xpc_release(xpc_object_t object);

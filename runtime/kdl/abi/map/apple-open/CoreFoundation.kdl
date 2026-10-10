@@ -1,0 +1,23 @@
+// CoreFoundation: the ABI of its hand-written headers, and what they include.
+
+header "CoreFoundation/CFArray.h" external=#true
+
+header "CoreFoundation/CFBase.h" external=#true
+
+header "CoreFoundation/CFCGTypes.h" external=#true {
+    include "__sprt_abi/CoreFoundation/CFCGTypes.h"
+    include "CoreFoundation/CFBase.h"
+    include "stdint.h"
+    type __CF_CG_TYPES__
+}
+
+header "CoreFoundation/CFDictionary.h" external=#true
+
+header "CoreFoundation/CFString.h" external=#true
+
+header "CoreFoundation/CoreFoundation.h" external=#true
+
+header "__sprt_abi/CoreFoundation/CFCGTypes.h" {
+    include "CoreFoundation/CFBase.h"
+    include "stdint.h"
+}

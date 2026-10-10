@@ -1,0 +1,6 @@
+macro MAP_ANON 0x20 if="!defined(MAP_ANON)"
+macro MAP_ANONYMOUS MAP_ANON if="!defined(MAP_ANONYMOUS)"
+macro MAP_NORESERVE 0x4000 if="!defined(MAP_NORESERVE)"
+macro MS_ASYNC 1
+macro MS_SYNC 4
+macro MADV_FREE 8

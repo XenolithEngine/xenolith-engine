@@ -7,10 +7,9 @@
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CGBase.h>
+#include <__sprt_abi/CoreGraphics/CGColorSpace.h>
 
 CF_EXTERN_C_BEGIN
-
-typedef struct CGColorSpace *CGColorSpaceRef;
 
 CG_EXTERN const CFStringRef kCGColorSpaceSRGB;
 CG_EXTERN const CFStringRef kCGColorSpaceExtendedSRGB;

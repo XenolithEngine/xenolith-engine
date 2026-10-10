@@ -1,0 +1,42 @@
+// Current stage in the lifetime of a MTLCommandBuffer.
+enum MTLCommandBufferStatus macro=NS_ENUM base=NSUInteger {
+    value MTLCommandBufferStatusNotEnqueued 0
+    value MTLCommandBufferStatusEnqueued 1
+    value MTLCommandBufferStatusCommitted 2
+    value MTLCommandBufferStatusScheduled 3
+    value MTLCommandBufferStatusCompleted 4
+    value MTLCommandBufferStatusError 5
+}
+// Error codes that can be found in MTLCommandBuffer.error.
+enum MTLCommandBufferError macro=NS_ENUM base=NSUInteger {
+    value MTLCommandBufferErrorNone 0
+    value MTLCommandBufferErrorInternal 1
+    value MTLCommandBufferErrorTimeout 2
+    value MTLCommandBufferErrorPageFault 3
+    value MTLCommandBufferErrorBlacklisted 4
+    value MTLCommandBufferErrorAccessRevoked 4
+    value MTLCommandBufferErrorNotPermitted 7
+    value MTLCommandBufferErrorOutOfMemory 8
+    value MTLCommandBufferErrorInvalidResource 9
+    value MTLCommandBufferErrorMemoryless 10
+    value MTLCommandBufferErrorDeviceRemoved 11
+    value MTLCommandBufferErrorStackOverflow 12
+}
+// Options for controlling the error reporting of a MTLCommandBuffer.
+enum MTLCommandBufferErrorOption macro=NS_OPTIONS base=NSUInteger {
+    value MTLCommandBufferErrorOptionNone 0
+    value MTLCommandBufferErrorOptionEncoderExecutionStatus "1 << 0"
+}
+// Error state for a Metal command encoder after command buffer execution.
+enum MTLCommandEncoderErrorState macro=NS_ENUM base=NSInteger {
+    value MTLCommandEncoderErrorStateUnknown 0
+    value MTLCommandEncoderErrorStateCompleted 1
+    value MTLCommandEncoderErrorStateAffected 2
+    value MTLCommandEncoderErrorStatePending 3
+    value MTLCommandEncoderErrorStateFaulted 4
+}
+// Describes how a command encoder will execute dispatched work.
+enum MTLDispatchType macro=NS_ENUM base=NSUInteger {
+    value MTLDispatchTypeSerial 0
+    value MTLDispatchTypeConcurrent 1
+}

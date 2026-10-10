@@ -1,16 +1,16 @@
 #ifndef RUNTIME_MUSL_ADAPTERS_INCLUDE_BITS_ALLTYPES_H_
 #define RUNTIME_MUSL_ADAPTERS_INCLUDE_BITS_ALLTYPES_H_
 
-#include <sprt/c/cross/__sprt_fstypes.h>
-#include <sprt/c/bits/__sprt_time_t.h>
-#include <sprt/c/cross/__sprt_sysid.h>
-#include <sprt/c/cross/__sprt_locale.h>
+#include <sprt/gen/c/cross/__sprt_fstypes.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/cross/__sprt_sysid.h>
+#include <sprt/gen/c/cross/__sprt_locale.h>
 #include <sprt/c/__sprt_stdint.h>
 #include <sprt/c/__sprt_float.h>
-#include <sprt/c/bits/__sprt_ssize_t.h>
-#include <sprt/c/bits/__sprt_ptrdiff_t.h>
-#include <sprt/c/bits/pthread.h>
-#include <sprt/c/cross/__sprt_signal.h>
+#include <sprt/gen/c/bits/__sprt_ssize_t.h>
+#include <sprt/gen/c/bits/__sprt_ptrdiff_t.h>
+#include <sprt/gen/c/bits/pthread.h>
+#include <sprt/gen/c/cross/__sprt_signal.h>
 
 typedef __SPRT_ID(intmax_t) intmax_t;
 typedef __SPRT_ID(intptr_t) intptr_t;

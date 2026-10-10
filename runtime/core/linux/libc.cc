@@ -25,8 +25,8 @@ THE SOFTWARE.
 #include <pthread.h>
 #include <stdint.h>
 
-#include <sprt/c/bits/__sprt_native_thread_id_t.h>
-#include <sprt/c/bits/__sprt_uintptr_t.h>
+#include <sprt/gen/c/bits/__sprt_native_thread_id_t.h>
+#include <sprt/gen/c/bits/__sprt_uintptr_t.h>
 
 #include "../include/__plock.h"
 

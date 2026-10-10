@@ -36,7 +36,7 @@
 #include <errno.h>
 #include <sys/errno.h>
 
-#define SPRT_ABI_HEADER <sprt/c/cross/__sprt_errno.h>
+#define SPRT_ABI_HEADER <sprt/gen/c/cross/__sprt_errno.h>
 #include "abi_check.h"
 
 // === the full Darwin errno table (1..ELAST) =====================================

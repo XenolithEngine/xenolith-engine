@@ -1,0 +1,45 @@
+cond sprt_apple_sprt_android "SPRT_APPLE || SPRT_ANDROID"
+// Per-platform, ABI-compatible <regex.h> surface (SPRuntimeCRegex.cpp static_asserts
+// every value/layout below against the native header via #include_next).
+//
+// regoff_t is uniformly pointer-sized (64-bit on LP64/ILP32P64): it matches the
+// native regoff_t directly on musl / macOS (__darwin_off_t) / Bionic (ssize_t),
+// while on glibc — whose default regoff_t is 32-bit `int` and which ships no
+// 64-bit regexec — the wrapper translates the pmatch array (the open64 pattern).
+typedef regoff_t ssize_t
+struct __sprt_regmatch_t typedef=regmatch_t {
+    field rm_so regoff_t
+    field rm_eo regoff_t
+}
+// regex_t is opaque: an oversized storage cell the native regex_t is stored in
+// (the wrapper static_asserts sizeof(native) <= this). Its fields are not exposed.
+struct __sprt_regex_t typedef=regex_t {
+    field __opaque "void *[8]"
+}
+// regcomp cflags / regexec eflags: BSD (macOS, Bionic) number REG_NOSUB=4 /
+// REG_NEWLINE=8, the GNU order (glibc, musl -- and so Embox, whose kernel libc
+// is musl's) is the reverse.
+macro REG_EXTENDED "0001" if="@sprt_apple_sprt_android"
+macro REG_ICASE "0002" if="@sprt_apple_sprt_android"
+macro REG_NOSUB "0004" if="@sprt_apple_sprt_android"
+macro REG_NEWLINE "0010" if="@sprt_apple_sprt_android"
+macro REG_EXTENDED 1 if="!@sprt_apple_sprt_android"
+macro REG_ICASE 2 if="!@sprt_apple_sprt_android"
+macro REG_NEWLINE 4 if="!@sprt_apple_sprt_android"
+macro REG_NOSUB 8 if="!@sprt_apple_sprt_android"
+macro REG_NOTBOL 1
+macro REG_NOTEOL 2
+// Error codes are POSIX-ordered and identical across glibc / musl / BSD.
+macro REG_NOMATCH 1
+macro REG_BADPAT 2
+macro REG_ECOLLATE 3
+macro REG_ECTYPE 4
+macro REG_EESCAPE 5
+macro REG_ESUBREG 6
+macro REG_EBRACK 7
+macro REG_EPAREN 8
+macro REG_EBRACE 9
+macro REG_BADBR 10
+macro REG_ERANGE 11
+macro REG_ESPACE 12
+macro REG_BADRPT 13

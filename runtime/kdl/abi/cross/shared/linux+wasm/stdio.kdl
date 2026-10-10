@@ -1,0 +1,7 @@
+macro BUFSIZ 8192
+macro FILENAME_MAX 4096
+macro L_tmpnam 20
+macro UNGET 8
+macro IOFBF 0
+macro IOLBF 1
+macro IONBF 2

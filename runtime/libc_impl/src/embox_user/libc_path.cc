@@ -29,7 +29,7 @@
 
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_stdlib.h>
-#include <sprt/c/cross/__sprt_setjmp.h>
+#include <sprt/gen/c/cross/__sprt_setjmp.h>
 
 #include "../../../core/include/__el0_syscall.h"
 

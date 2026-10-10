@@ -9,14 +9,7 @@
 
 #ifndef __SPRT_OPEN_SIMD_SIMD_H_
 #define __SPRT_OPEN_SIMD_SIMD_H_
-
-typedef __attribute__((__ext_vector_type__(2))) float simd_float2;
-typedef __attribute__((__ext_vector_type__(3))) float simd_float3;
-typedef __attribute__((__ext_vector_type__(4))) float simd_float4;
-
-typedef simd_float2 vector_float2;
-typedef simd_float3 vector_float3;
-typedef simd_float4 vector_float4;
+#include <__sprt_abi/simd/simd.h>
 
 #ifdef __cplusplus
 namespace simd {

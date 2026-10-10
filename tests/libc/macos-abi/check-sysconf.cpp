@@ -30,7 +30,7 @@
 
 #include <unistd.h>
 
-#define SPRT_ABI_HEADER <sprt/c/cross/__sprt_sysconf.h>
+#define SPRT_ABI_HEADER <sprt/gen/c/cross/__sprt_sysconf.h>
 #include "abi_check.h"
 
 // === sysconf() selectors ===================================================

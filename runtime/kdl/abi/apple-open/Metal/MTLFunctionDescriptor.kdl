@@ -1,0 +1,6 @@
+// MTLFunctionConstantValues (+ MTLDataType)
+enum MTLFunctionOptions macro=NS_OPTIONS base=NSUInteger {
+    value MTLFunctionOptionNone 0
+    value MTLFunctionOptionCompileToBinary "1 << 0"
+    value MTLFunctionOptionStoreFunctionInMetalScript "1 << 1"
+}

@@ -1,0 +1,11 @@
+// Describes how a resource will be used by a shader through an argument buffer.
+enum MTLResourceUsage macro=NS_OPTIONS base=NSUInteger {
+    value MTLResourceUsageRead "1 << 0"
+    value MTLResourceUsageWrite "1 << 1"
+}
+// Describes the types of resources that a barrier operates on.
+enum MTLBarrierScope macro=NS_OPTIONS base=NSUInteger {
+    value MTLBarrierScopeBuffers "1 << 0"
+    value MTLBarrierScopeTextures "1 << 1"
+    value MTLBarrierScopeRenderTargets "1 << 2"
+}

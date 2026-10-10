@@ -1,0 +1,16 @@
+struct (n)pollfd {
+    field fd int
+    field events short
+    field revents short
+}
+typedef nfds_t "unsigned int"
+macro POLLIN 0x0001
+macro POLLPRI 0x0002
+macro POLLOUT 0x0004
+macro POLLRDNORM 0x0040
+macro POLLWRNORM 0x0004
+macro POLLRDBAND 0x0080
+macro POLLWRBAND 0x0100
+macro POLLERR 0x0008
+macro POLLHUP 0x0010
+macro POLLNVAL 0x0020

@@ -47,7 +47,7 @@ THE SOFTWARE.
 #endif
 
 // ---------------------------------------------------------------------------
-// ABI validation. The SPRT fd_set (<sprt/c/cross/.../fdset.h>) matches the native one
+// ABI validation. The SPRT fd_set (<sprt/gen/c/cross/.../fdset.h>) matches the native one
 // per-platform, so the wrapper forwards by a plain cast. struct timeval / timespec are
 // translated field-wise into the native (or winsock 32-bit-long) layout, since SPRT's
 // tv_sec/tv_usec are uniformly 64-bit.

@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-#include <sprt/wrappers/windows/abi/message_api.h>
+#include <sprt/gen/wrappers/windows/abi/message_api.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/message_api.h) */
 #define LOWORD(l) __SPRT_LOWORD(l)

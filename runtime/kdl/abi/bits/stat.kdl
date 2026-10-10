@@ -1,0 +1,5 @@
+macro (n)stat "__SPRT_ID(stat)" if="defined(__SPRT_BUILD)"
+macro (n)stat `stat` if="!defined(__SPRT_BUILD)"
+struct (n)stat {
+    use "sprt/gen/c/bits/stat_data.h"
+}

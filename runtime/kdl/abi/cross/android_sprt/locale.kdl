@@ -1,0 +1,1 @@
+typedef locale_t "struct __locale_t *"

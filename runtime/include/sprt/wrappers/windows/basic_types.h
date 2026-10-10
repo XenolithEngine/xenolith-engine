@@ -23,7 +23,7 @@
 #ifndef SPRT_WRAPPERS_WINDOWS_BASIC_TYPES_H_
 #define SPRT_WRAPPERS_WINDOWS_BASIC_TYPES_H_
 
-#include <sprt/wrappers/windows/abi/basic_types.h>
+#include <sprt/gen/wrappers/windows/abi/basic_types.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/basic_types.h) */
 #define FIELD_OFFSET(type, field) __SPRT_FIELD_OFFSET(type, field)

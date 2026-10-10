@@ -1,0 +1,160 @@
+// GUID + basic scalar/handle types
+// MAX_PATH
+// CONTEXT / PEXCEPTION_POINTERS
+// ---- symbol type ([dbghelp] SYM_TYPE) -------------------------------------
+enum typedef=SYM_TYPE {
+    value SymNone 0
+    value SymCoff
+    value SymCv
+    value SymPdb
+    value SymExport
+    value SymDeferred
+    value SymSym
+    value SymDia
+    value SymVirtual
+    value NumSymTypes
+}
+// ---- addressing mode + address ([dbghelp] ADDRESS64) ----------------------
+enum typedef=ADDRESS_MODE {
+    value AddrMode1616
+    value AddrMode1632
+    value AddrModeReal
+    value AddrModeFlat
+}
+// ---- SymSetOptions flags --------------------------------------------------
+macro SYMOPT_DEFERRED_LOADS 0x00000004
+macro SYMOPT_LOAD_LINES 0x00000010
+// ---- minidump ([minidumpapiset] MINIDUMP_TYPE + info structs) -------------
+enum _MINIDUMP_TYPE typedef=MINIDUMP_TYPE {
+    value MiniDumpNormal 0x00000000
+    value MiniDumpWithDataSegs 0x00000001
+    value MiniDumpWithFullMemory 0x00000002
+    value MiniDumpWithHandleData 0x00000004
+    value MiniDumpFilterMemory 0x00000008
+    value MiniDumpScanMemory 0x00000010
+    value MiniDumpWithUnloadedModules 0x00000020
+    value MiniDumpWithIndirectlyReferencedMemory 0x00000040
+    value MiniDumpFilterModulePaths 0x00000080
+    value MiniDumpWithProcessThreadData 0x00000100
+    value MiniDumpWithPrivateReadWriteMemory 0x00000200
+    value MiniDumpWithoutOptionalData 0x00000400
+    value MiniDumpWithFullMemoryInfo 0x00000800
+    value MiniDumpWithThreadInfo 0x00001000
+    value MiniDumpWithCodeSegs 0x00002000
+}
+// Pointer helper typedefs (C++ permits identical duplicate typedefs, so these are
+// safe even if another wrapper also spells them).
+typedef PDWORD64 "DWORD64 *"
+typedef PCHAR "CHAR *"
+struct _tagADDRESS64 typedef=ADDRESS64 also="*LPADDRESS64" {
+    field Offset DWORD64
+    field Segment WORD
+    field Mode ADDRESS_MODE
+}
+// ---- KDHELP64 (embedded in STACKFRAME64; layout is load-bearing) ----------
+struct _KDHELP64 typedef=KDHELP64 also="*PKDHELP64" {
+    field Thread DWORD64
+    field ThCallbackStack DWORD
+    field ThCallbackBStore DWORD
+    field NextCallback DWORD
+    field FramePointer DWORD
+    field KiCallUserMode DWORD64
+    field KeUserCallbackDispatcher DWORD64
+    field SystemRangeStart DWORD64
+    field KiUserExceptionDispatcher DWORD64
+    field StackBase DWORD64
+    field StackLimit DWORD64
+    field BuildVersion DWORD
+    field RetpolineStubFunctionTableSize DWORD
+    field RetpolineStubFunctionTable DWORD64
+    field RetpolineStubOffset DWORD
+    field RetpolineStubSize DWORD
+    field Reserved0 "DWORD64 [2]"
+}
+struct _tagSTACKFRAME64 typedef=STACKFRAME64 also="*LPSTACKFRAME64" {
+    field AddrPC ADDRESS64
+    field AddrReturn ADDRESS64
+    field AddrFrame ADDRESS64
+    field AddrStack ADDRESS64
+    field AddrBStore ADDRESS64
+    field FuncTableEntry PVOID
+    field Params "DWORD64 [4]"
+    field Far BOOL
+    field Virtual BOOL
+    field Reserved "DWORD64 [3]"
+    field KdHelp KDHELP64
+}
+// ---- module / symbol / line info ------------------------------------------
+struct _IMAGEHLP_MODULE64 typedef=IMAGEHLP_MODULE64 also="*PIMAGEHLP_MODULE64" {
+    field SizeOfStruct DWORD
+    field BaseOfImage DWORD64
+    field ImageSize DWORD
+    field TimeDateStamp DWORD
+    field CheckSum DWORD
+    field NumSyms DWORD
+    field SymType SYM_TYPE
+    field ModuleName "CHAR [32]"
+    field ImageName "CHAR [256]"
+    field LoadedImageName "CHAR [256]"
+    field LoadedPdbName "CHAR [256]"
+    field CVSig DWORD
+    field CVData "CHAR [MAX_PATH * 3]"
+    field PdbSig DWORD
+    field PdbSig70 GUID
+    field PdbAge DWORD
+    field PdbUnmatched BOOL
+    field DbgUnmatched BOOL
+    field LineNumbers BOOL
+    field GlobalSymbols BOOL
+    field TypeInfo BOOL
+    field SourceIndexed BOOL
+    field Publics BOOL
+    field MachineType DWORD
+    field Reserved DWORD
+}
+struct _IMAGEHLP_SYMBOL64 typedef=IMAGEHLP_SYMBOL64 also="*PIMAGEHLP_SYMBOL64" {
+    field SizeOfStruct DWORD
+    field Address DWORD64
+    field Size DWORD
+    field Flags DWORD
+    field MaxNameLength DWORD
+    field Name "CHAR [1]"
+}
+struct _IMAGEHLP_LINE64 typedef=IMAGEHLP_LINE64 also="*PIMAGEHLP_LINE64" {
+    field SizeOfStruct DWORD
+    field Key PVOID
+    field LineNumber DWORD
+    field FileName PCHAR
+    field Address DWORD64
+}
+// ---- StackWalk64 callback routine typedefs --------------------------------
+typedef PREAD_PROCESS_MEMORY_ROUTINE64 "BOOL (WINAPI *)(HANDLE hProcess, DWORD64 qwBaseAddress, PVOID lpBuffer, DWORD nSize, LPDWORD lpNumberOfBytesRead)"
+typedef PFUNCTION_TABLE_ACCESS_ROUTINE64 "PVOID (WINAPI *)(HANDLE ahProcess, DWORD64 AddrBase)"
+typedef PGET_MODULE_BASE_ROUTINE64 "DWORD64 (WINAPI *)(HANDLE hProcess, DWORD64 Address)"
+typedef PTRANSLATE_ADDRESS_ROUTINE64 "DWORD64 (WINAPI *)(HANDLE hProcess, HANDLE hThread, LPADDRESS64 lpaddr)"
+// EnumerateLoadedModules64 callback (also GetProcAddress-loaded by Signals.inc).
+typedef PENUMLOADED_MODULES_CALLBACK64 "BOOL (WINAPI *)(PCSTR ModuleName, DWORD64 ModuleBase, ULONG ModuleSize, PVOID UserContext)"
+// The minidump structures are 4-byte packed in the SDK (minidumpapiset.h wraps them
+// in <pshpack4.h>), so ExceptionPointers sits at offset 4, not 8. Match that layout
+// exactly — this struct is passed by pointer to MiniDumpWriteDump.
+struct _MINIDUMP_EXCEPTION_INFORMATION typedef=MINIDUMP_EXCEPTION_INFORMATION also="*PMINIDUMP_EXCEPTION_INFORMATION" pack="4" {
+    field ThreadId DWORD
+    field ExceptionPointers PEXCEPTION_POINTERS
+    field ClientPointers BOOL
+}
+// Only ever passed as a null pointer to MiniDumpWriteDump; kept opaque.
+typedef MINIDUMP_USER_STREAM_INFORMATION "struct _MINIDUMP_USER_STREAM_INFORMATION"
+typedef PMINIDUMP_USER_STREAM_INFORMATION "struct _MINIDUMP_USER_STREAM_INFORMATION *"
+typedef MINIDUMP_CALLBACK_INFORMATION "struct _MINIDUMP_CALLBACK_INFORMATION"
+typedef PMINIDUMP_CALLBACK_INFORMATION "struct _MINIDUMP_CALLBACK_INFORMATION *"
+// The exception record embedded in a minidump exception stream (fixed 32/64-bit
+// field widths per the minidump file format).
+struct _MINIDUMP_EXCEPTION typedef=MINIDUMP_EXCEPTION also="*PMINIDUMP_EXCEPTION" {
+    field ExceptionCode "unsigned int"
+    field ExceptionFlags "unsigned int"
+    field ExceptionRecord "unsigned long long"
+    field ExceptionAddress "unsigned long long"
+    field NumberParameters "unsigned int"
+    field __unusedAlignment "unsigned int"
+    field ExceptionInformation "unsigned long long [15]"
+}

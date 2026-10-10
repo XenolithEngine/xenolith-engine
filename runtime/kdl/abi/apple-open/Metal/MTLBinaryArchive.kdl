@@ -1,0 +1,7 @@
+enum MTLBinaryArchiveError macro=NS_ENUM base=NSUInteger {
+    value MTLBinaryArchiveErrorNone 0
+    value MTLBinaryArchiveErrorInvalidFile 1
+    value MTLBinaryArchiveErrorUnexpectedElement 2
+    value MTLBinaryArchiveErrorCompilationFailure 3
+    value MTLBinaryArchiveErrorInternalError 4
+}

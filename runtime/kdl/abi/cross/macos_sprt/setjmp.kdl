@@ -1,0 +1,2 @@
+typedef native_jmp_buf "int [_JBLEN]"
+typedef native_sigjmp_buf "int [_JBLEN + 1]"

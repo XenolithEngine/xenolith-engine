@@ -23,7 +23,7 @@
 #ifndef RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_QUERIES_H_
 #define RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_QUERIES_H_
 
-#include <sprt/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
 #include <sprt/cxx/__type_traits/constants.h>
 
 #if !__has_builtin(__is_same) || !__has_builtin(__is_convertible) \

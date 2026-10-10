@@ -30,50 +30,12 @@ THE SOFTWARE.
 
 #ifndef __CF_CG_TYPES__
 #define __CF_CG_TYPES__
+#include <__sprt_abi/CoreFoundation/CFCGTypes.h>
 
 #include <CoreFoundation/CFBase.h>
 #include <stdint.h>
 
 CF_EXTERN_C_BEGIN
-
-#if defined(__LP64__) && __LP64__
-# define CGFLOAT_TYPE double
-# define CGFLOAT_IS_DOUBLE 1
-# define CGFLOAT_MIN 2.2250738585072014e-308
-# define CGFLOAT_MAX 1.7976931348623157e+308
-#else
-# define CGFLOAT_TYPE float
-# define CGFLOAT_IS_DOUBLE 0
-# define CGFLOAT_MIN 1.17549435e-38f
-# define CGFLOAT_MAX 3.40282347e+38f
-#endif
-
-typedef CGFLOAT_TYPE CGFloat;
-#define CGFLOAT_DEFINED 1
-
-struct CGPoint { CGFloat x; CGFloat y; };
-typedef struct CGPoint CGPoint;
-
-struct CGSize { CGFloat width; CGFloat height; };
-typedef struct CGSize CGSize;
-
-struct CGVector { CGFloat dx; CGFloat dy; };
-typedef struct CGVector CGVector;
-
-struct CGRect { CGPoint origin; CGSize size; };
-typedef struct CGRect CGRect;
-
-typedef enum : uint32_t {
-	CGRectMinXEdge = 0,
-	CGRectMinYEdge = 1,
-	CGRectMaxXEdge = 2,
-	CGRectMaxYEdge = 3,
-} CGRectEdge;
-
-struct CGAffineTransform {
-	CGFloat a, b, c, d, tx, ty;
-};
-typedef struct CGAffineTransform CGAffineTransform;
 
 CF_EXTERN_C_END
 

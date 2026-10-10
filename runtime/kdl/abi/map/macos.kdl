@@ -1,0 +1,67 @@
+// The macos platform: the cross fragments under sprt/gen/c/cross/macos_sprt.
+
+platforms { platform macos_sprt { arch aarch64_sprt x86_64_sprt; }; }
+
+header "sprt/gen/c/cross/macos_sprt/aarch64_sprt/config.h"
+
+header "sprt/gen/c/cross/macos_sprt/aarch64_sprt/fcntl.h" abi="cross/shared/macos/aarch64+x86_64/fcntl.kdl"
+
+header "sprt/gen/c/cross/macos_sprt/aarch64_sprt/fenv.h"
+
+header "sprt/gen/c/cross/macos_sprt/aarch64_sprt/jmp_buf.h"
+
+header "sprt/gen/c/cross/macos_sprt/aarch64_sprt/signal.h"
+
+header "sprt/gen/c/cross/macos_sprt/aarch64_sprt/syscall.h"
+
+header "sprt/gen/c/cross/macos_sprt/clockid.h"
+
+header "sprt/gen/c/cross/macos_sprt/config.h"
+
+header "sprt/gen/c/cross/macos_sprt/ctype.h"
+
+header "sprt/gen/c/cross/macos_sprt/dir_ptr.h"
+
+header "sprt/gen/c/cross/macos_sprt/errno.h" guard=CORE_RUNTIME_INCLUDE_C_CROSS_MACOS_SPRT_ERRNO_H_
+
+header "sprt/gen/c/cross/macos_sprt/fdset.h" abi="cross/shared/android+linux+macos+wasm/fdset.kdl"
+
+header "sprt/gen/c/cross/macos_sprt/file_ptr.h" abi="cross/shared/android+macos/file_ptr.kdl"
+
+header "sprt/gen/c/cross/macos_sprt/langinfo.h"
+
+header "sprt/gen/c/cross/macos_sprt/locale.h"
+
+header "sprt/gen/c/cross/macos_sprt/math.h"
+
+header "sprt/gen/c/cross/macos_sprt/mbstate.h"
+
+header "sprt/gen/c/cross/macos_sprt/mman.h"
+
+header "sprt/gen/c/cross/macos_sprt/netinetdef.h" guard=CORE_RUNTIME_INCLUDE_C_CROSS_MACOS_SPRT_NETINETDEF_H_
+
+header "sprt/gen/c/cross/macos_sprt/polltypes.h" abi="cross/shared/ios+macos/polltypes.kdl"
+
+header "sprt/gen/c/cross/macos_sprt/setjmp.h"
+
+header "sprt/gen/c/cross/macos_sprt/signal.h"
+
+header "sprt/gen/c/cross/macos_sprt/sockdef.h"
+
+header "sprt/gen/c/cross/macos_sprt/socket.h"
+
+header "sprt/gen/c/cross/macos_sprt/stdio.h"
+
+header "sprt/gen/c/cross/macos_sprt/sysconf.h"
+
+header "sprt/gen/c/cross/macos_sprt/x86_64_sprt/config.h"
+
+header "sprt/gen/c/cross/macos_sprt/x86_64_sprt/fcntl.h" abi="cross/shared/macos/aarch64+x86_64/fcntl.kdl"
+
+header "sprt/gen/c/cross/macos_sprt/x86_64_sprt/fenv.h"
+
+header "sprt/gen/c/cross/macos_sprt/x86_64_sprt/jmp_buf.h"
+
+header "sprt/gen/c/cross/macos_sprt/x86_64_sprt/signal.h"
+
+header "sprt/gen/c/cross/macos_sprt/x86_64_sprt/syscall.h"

@@ -24,14 +24,14 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_STDIO_H_
 
 #include <sprt/c/bits/__sprt_def.h>
-#include <sprt/c/bits/__sprt_va_list.h>
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_ssize_t.h>
-#include <sprt/c/bits/__sprt_wchar_t.h>
-#include <sprt/c/cross/__sprt_file_ptr.h>
-#include <sprt/c/cross/__sprt_locale.h>
-#include <sprt/c/cross/__sprt_stdio.h>
-#include <sprt/c/bits/seek.h>
+#include <sprt/gen/c/bits/__sprt_va_list.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_ssize_t.h>
+#include <sprt/gen/c/bits/__sprt_wchar_t.h>
+#include <sprt/gen/c/cross/__sprt_file_ptr.h>
+#include <sprt/gen/c/cross/__sprt_locale.h>
+#include <sprt/gen/c/cross/__sprt_stdio.h>
+#include <sprt/gen/c/bits/seek.h>
 
 #ifndef __SPRT_EOF
 #define __SPRT_EOF (-1)

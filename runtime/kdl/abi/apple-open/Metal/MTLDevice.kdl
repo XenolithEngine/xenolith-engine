@@ -1,0 +1,58 @@
+// MTLSize, MTLRegion, MTLSamplePosition
+// MTLPixelFormat
+// MTLResourceOptions, @protocol MTLResource
+// MTLTextureType (+ @protocol MTLTexture, MTLTextureDescriptor, MTLBuffer)
+// MTLDataType, MTLBindingAccess, @protocol MTLBufferBinding
+enum MTLDeviceLocation macro=NS_ENUM base=NSUInteger {
+    value MTLDeviceLocationBuiltIn 0
+    value MTLDeviceLocationSlot 1
+    value MTLDeviceLocationExternal 2
+    value MTLDeviceLocationUnspecified NSUIntegerMax
+}
+enum MTLGPUFamily macro=NS_ENUM base=NSInteger {
+    value MTLGPUFamilyApple1 1001
+    value MTLGPUFamilyApple2 1002
+    value MTLGPUFamilyApple3 1003
+    value MTLGPUFamilyApple4 1004
+    value MTLGPUFamilyApple5 1005
+    value MTLGPUFamilyApple6 1006
+    value MTLGPUFamilyApple7 1007
+    value MTLGPUFamilyApple8 1008
+    value MTLGPUFamilyApple9 1009
+    value MTLGPUFamilyMac1 2001
+    value MTLGPUFamilyMac2 2002
+    value MTLGPUFamilyCommon1 3001
+    value MTLGPUFamilyCommon2 3002
+    value MTLGPUFamilyCommon3 3003
+    value MTLGPUFamilyMacCatalyst1 4001
+    value MTLGPUFamilyMacCatalyst2 4002
+    value MTLGPUFamilyMetal3 5001
+}
+enum MTLPipelineOption macro=NS_OPTIONS base=NSUInteger {
+    value MTLPipelineOptionNone 0
+    value MTLPipelineOptionArgumentInfo "1 << 0"
+    value MTLPipelineOptionBufferTypeInfo "1 << 1"
+    value MTLPipelineOptionFailOnBinaryArchiveMiss "1 << 2"
+}
+enum MTLReadWriteTextureTier macro=NS_ENUM base=NSUInteger {
+    value MTLReadWriteTextureTierNone 0
+    value MTLReadWriteTextureTier1 1
+    value MTLReadWriteTextureTier2 2
+}
+enum MTLArgumentBuffersTier macro=NS_ENUM base=NSUInteger {
+    value MTLArgumentBuffersTier1 0
+    value MTLArgumentBuffersTier2 1
+}
+enum MTLCounterSamplingPoint macro=NS_ENUM base=NSUInteger {
+    value MTLCounterSamplingPointAtStageBoundary
+    value MTLCounterSamplingPointAtDrawBoundary
+    value MTLCounterSamplingPointAtDispatchBoundary
+    value MTLCounterSamplingPointAtTileDispatchBoundary
+    value MTLCounterSamplingPointAtBlitBoundary
+}
+// Represents a memory size and alignment in bytes.
+struct typedef=MTLSizeAndAlign {
+    field size NSUInteger
+    field align NSUInteger
+}
+typedef MTLTimestamp uint64_t

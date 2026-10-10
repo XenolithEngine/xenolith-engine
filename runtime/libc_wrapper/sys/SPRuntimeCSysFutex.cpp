@@ -24,7 +24,7 @@
 
 #include <sprt/c/sys/__sprt_futex.h>
 #include <sprt/c/__sprt_errno.h>
-#include <sprt/c/cross/__sprt_syscall.h>
+#include <sprt/gen/c/cross/__sprt_syscall.h>
 
 #include <sprt/runtime/log.h>
 

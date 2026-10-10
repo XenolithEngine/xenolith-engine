@@ -23,12 +23,12 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SELECT_H_
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SELECT_H_
 
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_time_t.h>
-#include <sprt/c/cross/__sprt_signal.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/cross/__sprt_signal.h>
 #include <sprt/c/cross/__sprt_config.h>
 
-#include <sprt/c/cross/__sprt_fdset.h>
+#include <sprt/gen/c/cross/__sprt_fdset.h>
 
 __SPRT_BEGIN_DECL
 

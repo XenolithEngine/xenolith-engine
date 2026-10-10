@@ -27,7 +27,7 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS_RPC_H_
 
 #include <sprt/wrappers/windows/windows.h>
-#include <sprt/wrappers/windows/abi/rpc.h>
+#include <sprt/gen/wrappers/windows/abi/rpc.h>
 
 /* Clean public names (materialized __SPRT_ values / types live in abi/rpc.h) */
 #define RPC_S_OK __SPRT_RPC_S_OK

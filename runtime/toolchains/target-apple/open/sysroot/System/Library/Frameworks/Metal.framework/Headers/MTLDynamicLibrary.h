@@ -5,17 +5,9 @@
 #define __SPRT_OPEN_METAL_MTLDYNAMICLIBRARY_H_
 
 #import <Foundation/Foundation.h>
+#include <__sprt_abi/Metal/MTLDynamicLibrary.h>
 
 @protocol MTLDevice;
-
-typedef NS_ENUM(NSUInteger, MTLDynamicLibraryError) {
-    MTLDynamicLibraryErrorNone = 0,
-    MTLDynamicLibraryErrorInvalidFile = 1,
-    MTLDynamicLibraryErrorCompilationFailure = 2,
-    MTLDynamicLibraryErrorUnresolvedInstallName = 3,
-    MTLDynamicLibraryErrorDependencyLoadFailure = 4,
-    MTLDynamicLibraryErrorUnsupported = 5,
-};
 
 @protocol MTLDynamicLibrary <NSObject>
 

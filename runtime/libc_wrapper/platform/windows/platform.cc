@@ -32,7 +32,7 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/com_cxx.hpp>
 #include <sprt/wrappers/windows/file_api.h>
 #include <sprt/wrappers/windows/dl_api.h>
-#include <sprt/c/bits/__sprt_errno.h>
+#include <sprt/gen/c/bits/__sprt_errno.h>
 
 #include "../src/private/SPRTFilesystem.h"
 

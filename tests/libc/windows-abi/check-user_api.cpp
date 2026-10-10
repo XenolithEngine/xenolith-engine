@@ -2,7 +2,7 @@
 //
 // abi/user_api.h <-> Windows SDK parity. Compile-time only; see check.sh.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/user_api.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/user_api.h>
 #include "abi_check.h"
 
 #include <windows.h> // winuser.h: WNDCLASSW, WINDOWPOS, MINMAXINFO, MENUITEMINFOW, ...

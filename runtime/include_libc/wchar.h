@@ -122,7 +122,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_wchar.h>
 #include <sprt/c/__sprt_wctype.h>
 #include <sprt/c/__sprt_stdarg.h>
-#include <sprt/c/bits/__sprt_null.h>
+#include <sprt/gen/c/bits/__sprt_null.h>
 
 #include <sprt/wrappers/windows/__sprt_config.h>
 

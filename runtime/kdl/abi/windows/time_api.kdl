@@ -1,0 +1,34 @@
+macro TIME_ZONE_ID_UNKNOWN 0
+macro TIME_ZONE_ID_STANDARD 1
+macro TIME_ZONE_ID_DAYLIGHT 2
+macro TIME_ZONE_ID_INVALID "((DWORD)0xFFFFFFFF)"
+struct _SYSTEMTIME typedef=SYSTEMTIME also="*PSYSTEMTIME, *LPSYSTEMTIME" {
+    field wYear WORD
+    field wMonth WORD
+    field wDayOfWeek WORD
+    field wDay WORD
+    field wHour WORD
+    field wMinute WORD
+    field wSecond WORD
+    field wMilliseconds WORD
+}
+struct _TIME_ZONE_INFORMATION typedef=TIME_ZONE_INFORMATION also="*PTIME_ZONE_INFORMATION, *LPTIME_ZONE_INFORMATION" {
+    field Bias LONG
+    field StandardName "WCHAR [32]"
+    field StandardDate SYSTEMTIME
+    field StandardBias LONG
+    field DaylightName "WCHAR [32]"
+    field DaylightDate SYSTEMTIME
+    field DaylightBias LONG
+}
+struct _TIME_DYNAMIC_ZONE_INFORMATION typedef=DYNAMIC_TIME_ZONE_INFORMATION also="*PDYNAMIC_TIME_ZONE_INFORMATION" {
+    field Bias LONG
+    field StandardName "WCHAR [32]"
+    field StandardDate SYSTEMTIME
+    field StandardBias LONG
+    field DaylightName "WCHAR [32]"
+    field DaylightDate SYSTEMTIME
+    field DaylightBias LONG
+    field TimeZoneKeyName "WCHAR [128]"
+    field DynamicDaylightTimeDisabled BOOLEAN
+}

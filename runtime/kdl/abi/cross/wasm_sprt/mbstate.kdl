@@ -1,0 +1,16 @@
+macro (n)mbstate_t "__SPRT_ID(mbstate_t)" if="defined(__SPRT_BUILD)"
+macro (n)mbstate_t __mbstate_t if="!defined(__SPRT_BUILD)"
+macro MBSTATE_DIRECT 0
+macro WEOF "0xffffffffU" if="!defined(WEOF)"
+typedef wctype_t "unsigned long"
+typedef wchar_t `wchar_t` if="defined(__cplusplus)"
+typedef wchar_t __WCHAR_TYPE__ if="!defined(__cplusplus)"
+// wasm uses the freestanding libc's own multibyte implementation
+// (libc_impl/src/builtin_multibyte.cpp), which stores a partial code point in
+// `_Char` and the decoder phase in `_State` — the same layout the Windows
+// freestanding build uses. (The Linux target maps these to the system mbstate,
+// hence its different opaque fields.)
+struct typedef=(n)mbstate_t {
+    field _Char "unsigned int"
+    field _State "unsigned int"
+}

@@ -1,0 +1,10 @@
+enum MTLIOStatus macro=NS_ENUM base=NSInteger {
+    value MTLIOStatusPending 0
+    value MTLIOStatusCancelled 1
+    value MTLIOStatusError 2
+    value MTLIOStatusComplete 3
+}
+enum MTLIOError macro=NS_ENUM base=NSInteger {
+    value MTLIOErrorURLInvalid 1
+    value MTLIOErrorInternal 2
+}

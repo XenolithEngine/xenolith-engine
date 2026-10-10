@@ -69,6 +69,7 @@ struct SPRT_API RbTreeNodeFlag<size_t(8)> {
 	uintptr_t size	   : (sizeof(uintptr_t) / 2) * 8;
 };
 
+#if __SIZEOF_POINTER__ > 8
 template <>
 struct SPRT_API RbTreeNodeFlag<size_t(16)> {
 	// e2k -m128: uintptr_t is a 16-byte __int128; the halves keep the size-8
@@ -89,6 +90,7 @@ struct SPRT_API RbTreeNodeFlag<size_t(16)> {
 	// for single node - block size in bytes
 	uintptr_t size	   : 64;
 };
+#endif
 
 template <size_t ArchSize>
 struct SPRT_API ListNodeFlag;
@@ -110,6 +112,7 @@ struct SPRT_API ListNodeFlag<size_t(4)> {
 	uintptr_t size;
 };
 
+#if __SIZEOF_POINTER__ > 8
 template <>
 struct SPRT_API ListNodeFlag<size_t(16)> {
 	// e2k -m128: uintptr_t is a 16-byte __int128 (lcc supports bitfields over
@@ -128,6 +131,7 @@ struct SPRT_API ListNodeFlag<size_t(16)> {
 	// for single node - block size in bytes
 	uintptr_t size	   : 64;
 };
+#endif
 
 template <>
 struct SPRT_API ListNodeFlag<size_t(8)> {

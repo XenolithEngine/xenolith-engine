@@ -1,0 +1,6 @@
+macro (n)iovec "__SPRT_ID(iovec)" if="defined(__SPRT_BUILD)"
+macro (n)iovec `iovec` if="!defined(__SPRT_BUILD)"
+struct (n)iovec {
+    field iov_base "void *"
+    field iov_len size_t
+}

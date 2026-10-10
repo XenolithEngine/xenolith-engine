@@ -1,0 +1,18 @@
+// Foundation: the ABI of its hand-written headers, and what they include.
+
+header "Foundation/Foundation.h" external=#true {
+    include "__sprt_abi/Foundation/Foundation.h"
+    include "CoreFoundation/CFCGTypes.h"
+    type NSAttributedStringKey NSErrorUserInfoKey NSKeyValueChangeKey NSNotificationName NSPasteboardType NSRunLoopMode
+    type _SPRT_OPEN_FOUNDATION_FOUNDATION_H_
+}
+
+header "__sprt_abi/Foundation/Foundation.h" {
+    include "objc/objc.h"
+    include "objc/NSObject.h"
+    include "objc/NSObjCRuntime.h"
+    include "CoreFoundation/CoreFoundation.h"
+    include "dispatch/dispatch.h"
+    include "CoreFoundation/CFCGTypes.h"
+    include "CoreServices/CoreServices.h"
+}

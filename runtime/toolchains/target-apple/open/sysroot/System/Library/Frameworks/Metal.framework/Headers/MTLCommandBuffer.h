@@ -5,6 +5,7 @@
 #define __SPRT_OPEN_METAL_MTLCOMMANDBUFFER_H_
 
 #import <Foundation/Foundation.h>
+#include <__sprt_abi/Metal/MTLCommandBuffer.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -17,47 +18,6 @@ NS_ASSUME_NONNULL_BEGIN
 @protocol MTLEvent;
 @protocol MTLCommandBuffer;
 @class MTLRenderPassDescriptor;
-
-/* Current stage in the lifetime of a MTLCommandBuffer. */
-typedef NS_ENUM(NSUInteger, MTLCommandBufferStatus) {
-    MTLCommandBufferStatusNotEnqueued = 0,
-    MTLCommandBufferStatusEnqueued    = 1,
-    MTLCommandBufferStatusCommitted   = 2,
-    MTLCommandBufferStatusScheduled   = 3,
-    MTLCommandBufferStatusCompleted   = 4,
-    MTLCommandBufferStatusError       = 5,
-};
-
-/* Error codes that can be found in MTLCommandBuffer.error. */
-typedef NS_ENUM(NSUInteger, MTLCommandBufferError) {
-    MTLCommandBufferErrorNone            = 0,
-    MTLCommandBufferErrorInternal        = 1,
-    MTLCommandBufferErrorTimeout         = 2,
-    MTLCommandBufferErrorPageFault       = 3,
-    MTLCommandBufferErrorBlacklisted     = 4,
-    MTLCommandBufferErrorAccessRevoked   = 4,
-    MTLCommandBufferErrorNotPermitted    = 7,
-    MTLCommandBufferErrorOutOfMemory     = 8,
-    MTLCommandBufferErrorInvalidResource = 9,
-    MTLCommandBufferErrorMemoryless      = 10,
-    MTLCommandBufferErrorDeviceRemoved   = 11,
-    MTLCommandBufferErrorStackOverflow   = 12,
-};
-
-/* Options for controlling the error reporting of a MTLCommandBuffer. */
-typedef NS_OPTIONS(NSUInteger, MTLCommandBufferErrorOption) {
-    MTLCommandBufferErrorOptionNone                    = 0,
-    MTLCommandBufferErrorOptionEncoderExecutionStatus  = 1 << 0,
-};
-
-/* Error state for a Metal command encoder after command buffer execution. */
-typedef NS_ENUM(NSInteger, MTLCommandEncoderErrorState) {
-    MTLCommandEncoderErrorStateUnknown   = 0,
-    MTLCommandEncoderErrorStateCompleted = 1,
-    MTLCommandEncoderErrorStateAffected  = 2,
-    MTLCommandEncoderErrorStatePending   = 3,
-    MTLCommandEncoderErrorStateFaulted   = 4,
-};
 
 /* Key in the userInfo of a MTLCommandBufferError NSError. */
 extern NSErrorUserInfoKey const MTLCommandBufferEncoderInfoErrorKey;
@@ -76,12 +36,6 @@ extern NSErrorUserInfoKey const MTLCommandBufferEncoderInfoErrorKey;
 @end
 
 typedef void (^MTLCommandBufferHandler)(id <MTLCommandBuffer>);
-
-/* Describes how a command encoder will execute dispatched work. */
-typedef NS_ENUM(NSUInteger, MTLDispatchType) {
-    MTLDispatchTypeSerial     = 0,
-    MTLDispatchTypeConcurrent = 1,
-};
 
 /* A serial list of commands for the device to execute. */
 @protocol MTLLogContainer;

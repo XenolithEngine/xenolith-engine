@@ -6,7 +6,7 @@
 // live in <shellapi.h>, FOF_NO_UI is the SDK's convenience aggregate, and the
 // extended FOFX_NOCOPYHOOKS bit lives in <ShObjIdl_core.h>.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/shellapi.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/shellapi.h>
 #include "abi_check.h"
 
 #include <windows.h>

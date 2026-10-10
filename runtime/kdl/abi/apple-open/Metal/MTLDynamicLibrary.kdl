@@ -1,0 +1,8 @@
+enum MTLDynamicLibraryError macro=NS_ENUM base=NSUInteger {
+    value MTLDynamicLibraryErrorNone 0
+    value MTLDynamicLibraryErrorInvalidFile 1
+    value MTLDynamicLibraryErrorCompilationFailure 2
+    value MTLDynamicLibraryErrorUnresolvedInstallName 3
+    value MTLDynamicLibraryErrorDependencyLoadFailure 4
+    value MTLDynamicLibraryErrorUnsupported 5
+}

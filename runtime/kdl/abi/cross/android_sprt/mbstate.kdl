@@ -1,0 +1,9 @@
+macro (n)mbstate_t "__SPRT_ID(mbstate_t)" if="defined(__SPRT_BUILD)"
+macro (n)mbstate_t `mbstate_t` if="!defined(__SPRT_BUILD)"
+macro MBSTATE_DIRECT 1
+macro WEOF "(__sprt_wint_t)(-1)" if="!defined(WEOF)"
+typedef wctype_t long
+struct typedef=(n)mbstate_t {
+    field __seq "unsigned char [4]"
+    field __reserved "unsigned char [4]" if="defined(__LP64__)"
+}

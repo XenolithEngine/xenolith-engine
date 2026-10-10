@@ -7,7 +7,7 @@
 // folder picker or a multi-select, and COMDLG_FILTERSPEC is passed to SetFileTypes by address.
 // All three go straight to the shell with no translation, so every value and offset has to match.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/shlobj.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/shlobj.h>
 #include "abi_check.h"
 
 #include <windows.h>

@@ -1,0 +1,14 @@
+enum MTLIndirectCommandType macro=NS_OPTIONS base=NSUInteger {
+    value MTLIndirectCommandTypeDraw "(1 << 0)"
+    value MTLIndirectCommandTypeDrawIndexed "(1 << 1)"
+    value MTLIndirectCommandTypeDrawPatches "(1 << 2)"
+    value MTLIndirectCommandTypeDrawIndexedPatches "(1 << 3)"
+    value MTLIndirectCommandTypeConcurrentDispatch "(1 << 5)"
+    value MTLIndirectCommandTypeConcurrentDispatchThreads "(1 << 6)"
+    value MTLIndirectCommandTypeDrawMeshThreadgroups "(1 << 7)"
+    value MTLIndirectCommandTypeDrawMeshThreads "(1 << 8)"
+}
+struct typedef=MTLIndirectCommandBufferExecutionRange {
+    field location uint32_t
+    field length uint32_t
+}

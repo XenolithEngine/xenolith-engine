@@ -1,0 +1,10 @@
+typedef xpc_object_t "struct _xpc_object_s *"
+typedef xpc_connection_t xpc_object_t
+struct _xpc_type_s
+typedef xpc_type_t "const struct _xpc_type_s *"
+macro XPC_TYPE_ERROR "(&_xpc_type_error)"
+macro XPC_TYPE_DICTIONARY "(&_xpc_type_dictionary)"
+macro XPC_ERROR_CONNECTION_INTERRUPTED "((xpc_object_t)&_xpc_error_connection_interrupted)"
+macro XPC_ERROR_CONNECTION_INVALID "((xpc_object_t)&_xpc_error_connection_invalid)"
+macro XPC_ERROR_KEY_DESCRIPTION _xpc_error_key_description
+typedef xpc_finalizer_t "void (*)(void *value)"

@@ -5,6 +5,7 @@
 
 #import <Foundation/Foundation.h>
 #import <Metal/MTLTypes.h>
+#include <__sprt_abi/Metal/MTLResourceStateCommandEncoder.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -12,11 +13,6 @@ NS_ASSUME_NONNULL_BEGIN
 @protocol MTLTexture;
 @protocol MTLBuffer;
 @protocol MTLFence;
-
-typedef NS_ENUM(NSUInteger, MTLSparseTextureMappingMode) {
-    MTLSparseTextureMappingModeMap   = 0,
-    MTLSparseTextureMappingModeUnmap = 1,
-};
 
 @protocol MTLResourceStateCommandEncoder <MTLCommandEncoder>
 

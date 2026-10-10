@@ -26,7 +26,7 @@
 #include <sprt/wrappers/windows/basic_types.h>
 #include <sprt/wrappers/windows/constants.h>
 #include <sprt/wrappers/windows/structures.h>
-#include <sprt/wrappers/windows/abi/security_api.h>
+#include <sprt/gen/wrappers/windows/abi/security_api.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/security_api.h) */
 #define SECURITY_CAPABILITY_INTERNET_CLIENT __SPRT_SECURITY_CAPABILITY_INTERNET_CLIENT

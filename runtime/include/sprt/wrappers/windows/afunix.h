@@ -25,7 +25,7 @@ THE SOFTWARE.
 #ifndef SPRT_WRAPPERS_WINDOWS_AFUNIX_H_
 #define SPRT_WRAPPERS_WINDOWS_AFUNIX_H_
 
-#include <sprt/c/cross/__sprt_socket.h>
+#include <sprt/gen/c/cross/__sprt_socket.h>
 
 #ifndef AF_UNIX
 #define AF_UNIX __SPRT_AF_UNIX

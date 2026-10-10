@@ -1,0 +1,8 @@
+//  Apple's MTLDefines.h holds visibility/export attribute macros. The +open
+// reconstruction omits the actual attributes (nothing is exported: there is no
+// Metal.tbd), but still provides the macro NAMES as portable no-ops so any
+// sub-header that references them keeps compiling.
+macro MTL_EXPORT if="!defined(MTL_EXPORT)"
+macro MTL_EXTERN "extern \"C\"" if="!defined(MTL_EXTERN) && defined(__cplusplus)"
+macro MTL_EXTERN extern if="!defined(MTL_EXTERN) && !defined(__cplusplus)"
+macro MTL_INLINE "static inline" if="!defined(MTL_INLINE)"

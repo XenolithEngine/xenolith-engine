@@ -1,0 +1,113 @@
+// Windows threading and timer types
+//
+macro THREAD_TERMINATE "(0x0001)"
+macro THREAD_SUSPEND_RESUME "(0x0002)"
+macro THREAD_GET_CONTEXT "(0x0008)"
+macro THREAD_SET_CONTEXT "(0x0010)"
+macro THREAD_QUERY_INFORMATION "(0x0040)"
+macro THREAD_SET_INFORMATION "(0x0020)"
+macro THREAD_SET_THREAD_TOKEN "(0x0080)"
+macro THREAD_IMPERSONATE "(0x0100)"
+macro THREAD_DIRECT_IMPERSONATION "(0x0200)"
+macro THREAD_SET_LIMITED_INFORMATION "(0x0400)"
+macro THREAD_QUERY_LIMITED_INFORMATION "(0x0800)"
+macro THREAD_RESUME "(0x1000)"
+macro THREAD_BASE_PRIORITY_LOWRT 15
+macro THREAD_BASE_PRIORITY_MAX 2
+macro THREAD_BASE_PRIORITY_MIN "(-2)"
+macro THREAD_BASE_PRIORITY_IDLE "(-15)"
+macro THREAD_PRIORITY_LOWEST THREAD_BASE_PRIORITY_MIN
+macro THREAD_PRIORITY_BELOW_NORMAL "(THREAD_PRIORITY_LOWEST+1)"
+macro THREAD_PRIORITY_NORMAL 0
+macro THREAD_PRIORITY_HIGHEST THREAD_BASE_PRIORITY_MAX
+macro THREAD_PRIORITY_ABOVE_NORMAL "(THREAD_PRIORITY_HIGHEST-1)"
+macro THREAD_PRIORITY_TIME_CRITICAL THREAD_BASE_PRIORITY_LOWRT
+macro THREAD_PRIORITY_IDLE THREAD_BASE_PRIORITY_IDLE
+macro TH32CS_SNAPHEAPLIST 0x00000001
+macro TH32CS_SNAPPROCESS 0x00000002
+macro TH32CS_SNAPTHREAD 0x00000004
+macro TH32CS_SNAPMODULE 0x00000008
+macro TH32CS_SNAPMODULE32 0x00000010
+macro TH32CS_SNAPALL "(TH32CS_SNAPHEAPLIST | TH32CS_SNAPPROCESS | TH32CS_SNAPTHREAD | TH32CS_SNAPMODULE)"
+macro TH32CS_INHERIT 0x80000000
+macro WT_EXECUTEDEFAULT 0x00000000
+macro WT_EXECUTEINIOTHREAD 0x00000001
+macro WT_EXECUTEINUITHREAD 0x00000002
+macro WT_EXECUTEINWAITTHREAD 0x00000004
+macro WT_EXECUTEONLYONCE 0x00000008
+macro WT_EXECUTEINTIMERTHREAD 0x00000020
+macro WT_EXECUTELONGFUNCTION 0x00000010
+macro WT_EXECUTEINPERSISTENTIOTHREAD 0x00000040
+macro WT_EXECUTEINPERSISTENTTHREAD 0x00000080
+macro WT_TRANSFER_IMPERSONATION 0x00000100
+macro RTL_SRWLOCK_INIT "{0}"
+macro SRWLOCK_INIT RTL_SRWLOCK_INIT
+macro FIBER_FLAG_FLOAT_SWITCH 0x1
+macro TLS_OUT_OF_INDEXES "((DWORD)0xFFFFFFFF)"
+// Timer APC routine callback type
+typedef PTIMERAPCROUTINE "void (*)(LPVOID lpArgToCompletionRoutine, DWORD dwTimerLowValue, DWORD dwTimerHighValue)"
+// Thread start routine - function pointer for thread entry points
+typedef LPTHREAD_START_ROUTINE "DWORD (WINAPI *)(LPVOID lpThreadParameter)"
+typedef PAPCFUNC "void (WINAPI *)(DWORD_PTR dwParam)"
+enum _QUEUE_USER_APC_FLAGS typedef=QUEUE_USER_APC_FLAGS {
+    value QUEUE_USER_APC_FLAGS_NONE 0x00000000
+    value QUEUE_USER_APC_FLAGS_SPECIAL_USER_APC 0x00000001
+    value QUEUE_USER_APC_CALLBACK_DATA_CONTEXT 0x00010000
+}
+enum _CPU_SET_INFORMATION_TYPE typedef=CPU_SET_INFORMATION_TYPE also="*PCPU_SET_INFORMATION_TYPE" {
+    value CpuSetInformation
+}
+struct _SYSTEM_CPU_SET_INFORMATION {
+    field Size DWORD
+    field Type CPU_SET_INFORMATION_TYPE
+    union {
+        struct CpuSet {
+            field Id DWORD
+            field Group WORD
+            field LogicalProcessorIndex BYTE
+            field CoreIndex BYTE
+            field LastLevelCacheIndex BYTE
+            field NumaNodeIndex BYTE
+            field EfficiencyClass BYTE
+            union {
+                field AllFlags BYTE
+                struct {
+                    field Parked BYTE bits="1"
+                    field Allocated BYTE bits="1"
+                    field AllocatedToTargetProcess BYTE bits="1"
+                    field RealTime BYTE bits="1"
+                    field ReservedFlags BYTE bits="4"
+                }
+            }
+            union {
+                field Reserved DWORD
+                field SchedulingClass BYTE
+            }
+            field AllocationTag DWORD64
+        }
+    }
+}
+struct tagTHREADENTRY32 typedef=THREADENTRY32 {
+    field dwSize DWORD
+    field cntUsage DWORD
+    field th32ThreadID DWORD
+    field th32OwnerProcessID DWORD
+    field tpBasePri LONG
+    field tpDeltaPri LONG
+    field dwFlags DWORD
+}
+typedef PTHREADENTRY32 "THREADENTRY32 *"
+typedef LPTHREADENTRY32 "THREADENTRY32 *"
+typedef SYSTEM_CPU_SET_INFORMATION "struct _SYSTEM_CPU_SET_INFORMATION"
+typedef PSYSTEM_CPU_SET_INFORMATION "struct _SYSTEM_CPU_SET_INFORMATION *"
+struct _RTL_SRWLOCK typedef=RTL_SRWLOCK also="*PRTL_SRWLOCK" {
+    field Ptr PVOID
+}
+typedef SRWLOCK RTL_SRWLOCK
+typedef PSRWLOCK "RTL_SRWLOCK *"
+typedef PFIBER_START_ROUTINE "VOID (WINAPI *)(LPVOID lpFiberParameter)"
+typedef LPFIBER_START_ROUTINE PFIBER_START_ROUTINE
+typedef WAITORTIMERCALLBACKFUNC "VOID (NTAPI *)(PVOID, BOOLEAN)"
+typedef WORKERCALLBACKFUNC "VOID (NTAPI *)(PVOID)"
+typedef APC_CALLBACK_FUNCTION "VOID (NTAPI *)(DWORD, PVOID, PVOID)"
+typedef WAITORTIMERCALLBACK WAITORTIMERCALLBACKFUNC

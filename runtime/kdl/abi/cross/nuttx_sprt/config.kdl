@@ -1,0 +1,60 @@
+// NuttX platform configuration (hosted POSIX on the NuttX RTOS kernel).
+//
+// NuttX gives us a real libc with pthread/sem/mqueue/poll/select, but it does
+// NOT provide the Linux-specific readiness APIs the runtime knows about:
+// * no epoll   — NuttX has poll() but not epoll_create/ctl/wait
+// * no eventfd, signalfd, timerfd, io_uring
+// * no futex(2) syscall wrapper — sprt_lock uses sem_t instead
+// (see runtime/core/nuttx/sprt_lock.cc)
+// HAVE_* gates here mirror make/os/nuttx.mk and the libc_wrapper routing.
+// NuttX <time.h> gates tzset() behind CONFIG_LIBC_LOCALTIME, <nuttx/lib/setjmp.h>
+// gates sigsetjmp_buf_s behind CONFIG_ARCH_SETJMP_H, and the exported .config
+// carries these as "y" strings rather than defined macros. Force-define both so
+// the declarations the sprt runtime relies on are visible.
+macro `CONFIG_LIBC_LOCALTIME` 1 if="!defined(CONFIG_LIBC_LOCALTIME)"
+macro `CONFIG_ARCH_SETJMP_H` 1 if="!defined(CONFIG_ARCH_SETJMP_H)"
+macro CONFIG_HAVE_EPOLL 0 if="!defined(CONFIG_HAVE_EPOLL)"
+macro CONFIG_HAVE_EVENTFD 0 if="!defined(CONFIG_HAVE_EVENTFD)"
+macro CONFIG_HAVE_SIGNALFD 0 if="!defined(CONFIG_HAVE_SIGNALFD)"
+macro CONFIG_HAVE_TIMERFD 0 if="!defined(CONFIG_HAVE_TIMERFD)"
+macro CONFIG_HAVE_URING 0 if="!defined(CONFIG_HAVE_URING)"
+macro CONFIG_HAVE_FUTEX 0 if="!defined(CONFIG_HAVE_FUTEX)"
+// NuttX POSIX layer: real poll, pthread, signal, sem, mqueue.
+macro CONFIG_HAVE_POLL 1 if="!defined(CONFIG_HAVE_POLL)"
+macro CONFIG_HAVE_SIGNAL_SIGPROCMASK 1 if="!defined(CONFIG_HAVE_SIGNAL_SIGPROCMASK)"
+// The Linux-specific fcntl / unistd extensions are absent; the libc umbrella
+// routes them to ENOSYS rather than calling missing host symbols.
+macro CONFIG_HAVE_FCNTL_SPLICE 0 if="!defined(CONFIG_HAVE_FCNTL_SPLICE)"
+macro CONFIG_HAVE_FCNTL_TEE 0 if="!defined(CONFIG_HAVE_FCNTL_TEE)"
+macro CONFIG_HAVE_FCNTL_FALLOCATE 0 if="!defined(CONFIG_HAVE_FCNTL_FALLOCATE)"
+macro CONFIG_HAVE_FCNTL_FADVICE 0 if="!defined(CONFIG_HAVE_FCNTL_FADVICE)"
+macro CONFIG_HAVE_FCNTL_READAHEAD 0 if="!defined(CONFIG_HAVE_FCNTL_READAHEAD)"
+macro CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE 0 if="!defined(CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE)"
+macro CONFIG_HAVE_UNISTD_COPY_FILE_RANGE 0 if="!defined(CONFIG_HAVE_UNISTD_COPY_FILE_RANGE)"
+macro CONFIG_HAVE_STDIO_OPEN_MEMSTREAM 0 if="!defined(CONFIG_HAVE_STDIO_OPEN_MEMSTREAM)"
+macro CONFIG_HAVE_TIME_CLOCK_SETTIME 0 if="!defined(CONFIG_HAVE_TIME_CLOCK_SETTIME)"
+macro CONFIG_HAVE_TIME_TIMER 0 if="!defined(CONFIG_HAVE_TIME_TIMER)"
+macro CONFIG_HAVE_TIME_ADJTIME 0 if="!defined(CONFIG_HAVE_TIME_ADJTIME)"
+// NuttX has no multi-user security model in flat builds.
+macro CONFIG_HAVE_UNISTD_CHOWN 0 if="!defined(CONFIG_HAVE_UNISTD_CHOWN)"
+macro CONFIG_HAVE_UNISTD_DUP3 0 if="!defined(CONFIG_HAVE_UNISTD_DUP3)"
+macro CONFIG_HAVE_UNISTD_NICE 0 if="!defined(CONFIG_HAVE_UNISTD_NICE)"
+macro CONFIG_HAVE_UNISTD_SETUIDGID 0 if="!defined(CONFIG_HAVE_UNISTD_SETUIDGID)"
+// No fork/exec in a flat build — posix_spawn / task_spawn exist instead.
+macro CONFIG_HAVE_UNISTD_FORK 0 if="!defined(CONFIG_HAVE_UNISTD_FORK)"
+macro CONFIG_HAVE_UNISTD_FEXEC 0 if="!defined(CONFIG_HAVE_UNISTD_FEXEC)"
+macro CONFIG_HAVE_UNISTD_EXEC 0 if="!defined(CONFIG_HAVE_UNISTD_EXEC)"
+macro CONFIG_HAVE_UNISTD_SETLOGIN 0 if="!defined(CONFIG_HAVE_UNISTD_SETLOGIN)"
+macro CONFIG_HAVE_UNISTD_DOMAINNAME 0 if="!defined(CONFIG_HAVE_UNISTD_DOMAINNAME)"
+macro CONFIG_HAVE_UNISTD_GETPPID 0 if="!defined(CONFIG_HAVE_UNISTD_GETPPID)"
+macro CONFIG_HAVE_UNISTD_SETHOSTNAME 0 if="!defined(CONFIG_HAVE_UNISTD_SETHOSTNAME)"
+macro CONFIG_HAVE_UNISTD_BRK 0 if="!defined(CONFIG_HAVE_UNISTD_BRK)"
+macro CONFIG_HAVE_SCHED_SETSCHEDULER 0 if="!defined(CONFIG_HAVE_SCHED_SETSCHEDULER)"
+macro CONFIG_HAVE_PTHREAD_AFFINITY 0 if="!defined(CONFIG_HAVE_PTHREAD_AFFINITY)"
+macro CONFIG_HAVE_MMAN_MLOCKALL 0 if="!defined(CONFIG_HAVE_MMAN_MLOCKALL)"
+macro CONFIG_HAVE_MMAN_MREMAP 0 if="!defined(CONFIG_HAVE_MMAN_MREMAP)"
+macro CONFIG_HAVE_MMAN_MEMFD 0 if="!defined(CONFIG_HAVE_MMAN_MEMFD)"
+macro CONFIG_HAVE_STAT_MKFIFO 0 if="!defined(CONFIG_HAVE_STAT_MKFIFO)"
+macro CONFIG_HAVE_STAT_MKNOD 0 if="!defined(CONFIG_HAVE_STAT_MKNOD)"
+// flock(2): no advisory whole-file locks in this libc.
+macro CONFIG_HAVE_FLOCK 0 if="!defined(CONFIG_HAVE_FLOCK)"

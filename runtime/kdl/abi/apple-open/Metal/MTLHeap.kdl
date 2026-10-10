@@ -1,0 +1,7 @@
+// MTLStorageMode/MTLCPUCacheMode/MTLHazardTrackingMode/MTLResourceOptions/MTLPurgeableState
+// Describes the mode of operation for an MTLHeap.
+enum MTLHeapType macro=NS_ENUM base=NSInteger {
+    value MTLHeapTypeAutomatic 0
+    value MTLHeapTypePlacement 1
+    value MTLHeapTypeSparse 2
+}

@@ -1,0 +1,18 @@
+typedef `SOCKET` "unsigned long long"
+typedef `SHORT` short
+struct (n)pollfd {
+    field fd SOCKET
+    field events SHORT
+    field revents SHORT
+}
+typedef nfds_t "unsigned long"
+macro POLLRDNORM 0x0100
+macro POLLRDBAND 0x0200
+macro POLLIN "(POLLRDNORM | POLLRDBAND)"
+macro POLLPRI 0x0400
+macro POLLWRNORM 0x0010
+macro POLLOUT "(POLLWRNORM)"
+macro POLLWRBAND 0x0020
+macro POLLERR 0x0001
+macro POLLHUP 0x0002
+macro POLLNVAL 0x0004

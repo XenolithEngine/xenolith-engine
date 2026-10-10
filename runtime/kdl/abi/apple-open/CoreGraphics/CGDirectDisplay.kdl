@@ -1,0 +1,10 @@
+typedef CGDirectDisplayID uint32_t
+typedef CGOpenGLDisplayMask uint32_t
+typedef CGDisplayModeRef "struct CGDisplayMode *"
+// CGError (subset; only kCGErrorSuccess is referenced).
+typedef CGError int32_t
+enum {
+    value kCGErrorSuccess 0
+}
+macro kCGNullDirectDisplay "((CGDirectDisplayID)0)"
+macro kCGDirectMainDisplay "CGMainDisplayID()"

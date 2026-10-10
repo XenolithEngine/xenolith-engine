@@ -34,7 +34,7 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_threads.h>
 #include <sprt/c/__sprt_sched.h> // __sprt_sched_yield
-#include <sprt/c/bits/__sprt_intptr_t.h>
+#include <sprt/gen/c/bits/__sprt_intptr_t.h>
 
 namespace sprt::_thread {
 

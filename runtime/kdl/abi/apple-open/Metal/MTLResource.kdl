@@ -1,0 +1,28 @@
+enum MTLPurgeableState macro=NS_ENUM base=NSUInteger {
+    value MTLPurgeableStateNonVolatile 2
+    value MTLPurgeableStateVolatile 3
+}
+enum MTLCPUCacheMode macro=NS_ENUM base=NSUInteger {
+    value MTLCPUCacheModeDefaultCache 0
+}
+enum MTLStorageMode macro=NS_ENUM base=NSUInteger {
+    value MTLStorageModeShared 0
+    value MTLStorageModeManaged 1
+    value MTLStorageModePrivate 2
+    value MTLStorageModeMemoryless 3
+}
+enum MTLHazardTrackingMode macro=NS_ENUM base=NSUInteger {
+    value MTLHazardTrackingModeUntracked 1
+    value MTLHazardTrackingModeTracked 2
+}
+macro MTLResourceCPUCacheModeShift 0
+macro MTLResourceStorageModeShift 4
+macro MTLResourceHazardTrackingModeShift 8
+enum MTLResourceOptions macro=NS_OPTIONS base=NSUInteger {
+    value MTLResourceCPUCacheModeDefaultCache "MTLCPUCacheModeDefaultCache << MTLResourceCPUCacheModeShift"
+    value MTLResourceStorageModeShared "MTLStorageModeShared << MTLResourceStorageModeShift"
+    value MTLResourceStorageModePrivate "MTLStorageModePrivate << MTLResourceStorageModeShift"
+    value MTLResourceHazardTrackingModeUntracked "MTLHazardTrackingModeUntracked << MTLResourceHazardTrackingModeShift"
+    // Deprecated spelling, kept because MoltenVK still references it.
+    value MTLResourceOptionCPUCacheModeDefault MTLResourceCPUCacheModeDefaultCache
+}

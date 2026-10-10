@@ -205,31 +205,30 @@ qemu-system-aarch64 -cpu cortex-a53 -machine virt,virtualization=on,gic-version=
 
 *Что сделать.*
 
-. В `__sprt_def.h` добавьте имя и номер платформы рядом с остальными:
+. Платформы — список `targets PLATFORM` в `runtime/kdl/abi/bits/__sprt_targets.kdl`, в порядке
+  проверки. Добавьте запись: имя (каталог cross-заголовков — `<os>_sprt`), следующее свободное число
+  (сейчас заняты 1–10; номер никогда не используется повторно) и условие. *Порядок важен*: RTOS могут
+  определять «линуксовые» макросы, поэтому NuttX и Embox стоят *до* `linux`. Ставьте свою запись перед
+  первой платформой, макросы которой ваша ОС может случайно определить:
 +
-[source,c]
+[source,kdl]
 ----
-#define __SPRT_PLATFORM_NAME_MYOS myos_sprt     // каталог cross-заголовков
-#define __SPRT_PLATFORM_ID_MYOS 11              // следующее свободное число
-----
-. Добавьте ветку в цепочку распознавания. *Порядок важен*: проверка идёт сверху вниз, и RTOS могут
-  определять «линуксовые» макросы. Поэтому ветки NuttX и Embox стоят *до* `__linux__`. Ставьте свою
-  ветку перед первой платформой, макросы которой ваша ОС может случайно определить.
-+
-[source,c]
-----
-#elif defined(__MYOS__)
 // MyOS. LLVM has no OSType for it, so target-myos passes -D__MYOS__.
-#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_MYOS
-#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_MYOS
-#define SPRT_MYOS __SPRT_PLATFORM_ID_MYOS
+target myos 11 if="defined(__MYOS__)"
 ----
-. Посмотрите на групповые макросы ниже в том же файле: `SPRT_HOSTED_RTOS` («есть libc RTOS, и это не
++
+После перегенерации (`xlkdl abi --map runtime/kdl/abi/sprt.kdl --out runtime/include`) список даёт
+`__SPRT_PLATFORM_NAME_MYOS`, `__SPRT_PLATFORM_ID_MYOS` и ветку, определяющую `__SPRT_PLATFORM_NAME`,
+`__SPRT_PLATFORM_ID` и `SPRT_MYOS`. Платформа карты (`platforms { platform myos_sprt … }`) должна быть
+записью списка.
+. Посмотрите на групповые макросы после списка в том же описании: `SPRT_HOSTED_RTOS` («есть libc RTOS, и это не
   glibc и не Darwin», сейчас NuttX и Embox), `SPRT_EMBOX_ANY`. Если ваша ОС ведёт себя как одна из
   групп, добавьте её туда. Так она сразу получит готовые ветки, например упрощённый цикл событий в
   xenolith.
-. В `runtime/include/sprt/c/cross/__sprt_errno.h` добавьте `#elif SPRT_<OS>` с подключением
-  `errno.h` вашей платформы. Здесь имя каталога нельзя подставить автоматически, как в остальных
+. В запись `sprt/gen/c/cross/__sprt_errno.h` в карте (`runtime/kdl/abi/map/libc.kdl`) добавьте
+  `include "sprt/gen/c/cross/<os>_sprt/errno.h"` перед последней строкой (запасной веткой), с `if=` из
+  отрицаний условий выше и `&& SPRT_<OS>`, как у остальных строк: запись — это цепочка `#if`/`#elif`
+  заголовка, по одному include на ветку. Здесь имя каталога нельзя подставить автоматически, как в остальных
   местах: макроподстановка ломается, когда `errno` — сам макрос.
 . Проверьте заголовки `runtime/include_libc/` с условиями по платформам: `errno.h`, `netdb.h`,
   `syslog.h`, `termios.h` перечисляют платформы, у которых нет соответствующей функции в libc.
@@ -243,11 +242,11 @@ Linux, Windows и wasm — прежние.
 == Б3. Заголовки ABI: `cross/<os>_sprt/`
 
 *Зачем.* sprt даёт приложениям единый интерфейс libc, но числа (коды ошибок, флаги, размеры структур)
-у каждой ОС свои. Их берёт из `runtime/include/sprt/c/cross/<os>_sprt/`.
+у каждой ОС свои. Их берёт из `runtime/include/sprt/gen/c/cross/<os>_sprt/`.
 
 *Что сделать.*
 
-. Создайте каталог `runtime/include/sprt/c/cross/<os>_sprt/` с тем же набором файлов, что у NuttX:
+. Создайте каталог `runtime/include/sprt/gen/c/cross/<os>_sprt/` с тем же набором файлов, что у NuttX:
 +
 ----
 clockid.h  config.h  dir_ptr.h  errno.h  fcntl.h  fdset.h  file_ptr.h  langinfo.h  locale.h
@@ -780,10 +779,10 @@ ln -sfn $ENGINE/runtime/toolchains/targets/<triple> \
 == Сводный список файлов
 
 ----
-runtime/include/sprt/c/bits/__sprt_def.h                     Б2
-runtime/include/sprt/c/cross/__sprt_errno.h                  Б2
+runtime/kdl/abi/bits/__sprt_targets.kdl                      Б2
+runtime/include/sprt/gen/c/cross/__sprt_errno.h                  Б2
 runtime/include_libc/{errno,netdb,syslog,termios}.h          Б2
-runtime/include/sprt/c/cross/<os>_sprt/**                    Б3  (≈27 новых файлов)
+runtime/include/sprt/gen/c/cross/<os>_sprt/**                    Б3  (≈27 новых файлов)
 runtime/toolchains/target-<os>/*                             Б4
 runtime/toolchains/common/configure.mk, utils/names.mk       Б4
 runtime/toolchains/common/<lib>.mk                           Б4  (только если нельзя иначе)

@@ -1,0 +1,129 @@
+// The ios platform: the cross fragments under sprt/gen/c/cross/ios_sprt.
+
+platforms { platform ios_sprt { arch aarch64_sprt x86_64_sprt; }; }
+
+header "sprt/gen/c/cross/ios_sprt/aarch64_sprt/config.h" {
+    include "sprt/gen/c/cross/macos_sprt/aarch64_sprt/config.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/aarch64_sprt/fcntl.h" {
+    include "sprt/gen/c/cross/macos_sprt/aarch64_sprt/fcntl.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/aarch64_sprt/fenv.h" {
+    include "sprt/gen/c/cross/macos_sprt/aarch64_sprt/fenv.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/aarch64_sprt/jmp_buf.h" {
+    include "sprt/gen/c/cross/macos_sprt/aarch64_sprt/jmp_buf.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/aarch64_sprt/signal.h" {
+    include "sprt/gen/c/cross/macos_sprt/aarch64_sprt/signal.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/aarch64_sprt/syscall.h" {
+    include "sprt/gen/c/cross/macos_sprt/aarch64_sprt/syscall.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/clockid.h" {
+    include "sprt/gen/c/cross/macos_sprt/clockid.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/config.h" {
+    include "sprt/gen/c/cross/macos_sprt/config.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/ctype.h" {
+    include "sprt/gen/c/cross/macos_sprt/ctype.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/dir_ptr.h" {
+    include "sprt/gen/c/cross/macos_sprt/dir_ptr.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/errno.h" {
+    include "sprt/gen/c/cross/macos_sprt/errno.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/fdset.h" {
+    include "sprt/gen/c/cross/macos_sprt/fdset.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/file_ptr.h" {
+    include "sprt/gen/c/cross/macos_sprt/file_ptr.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/langinfo.h" {
+    include "sprt/gen/c/cross/macos_sprt/langinfo.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/locale.h" {
+    include "sprt/gen/c/cross/macos_sprt/locale.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/math.h" {
+    include "sprt/gen/c/cross/macos_sprt/math.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/mbstate.h" {
+    include "sprt/gen/c/cross/macos_sprt/mbstate.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/mman.h" {
+    include "sprt/gen/c/cross/macos_sprt/mman.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/netinetdef.h" guard=CORE_RUNTIME_INCLUDE_C_CROSS_IOS_SPRT_NETINETDEF_H_ {
+    include "sprt/gen/c/cross/macos_sprt/netinetdef.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/polltypes.h" abi="cross/shared/ios+macos/polltypes.kdl"
+
+header "sprt/gen/c/cross/ios_sprt/setjmp.h" {
+    include "sprt/gen/c/cross/macos_sprt/setjmp.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/signal.h" {
+    include "sprt/gen/c/cross/macos_sprt/signal.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/sockdef.h" {
+    include "sprt/gen/c/cross/macos_sprt/sockdef.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/socket.h" {
+    include "sprt/gen/c/cross/macos_sprt/socket.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/stdio.h" {
+    include "sprt/gen/c/cross/macos_sprt/stdio.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/sysconf.h" {
+    include "sprt/gen/c/cross/macos_sprt/sysconf.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/x86_64_sprt/config.h" {
+    include "sprt/gen/c/cross/macos_sprt/x86_64_sprt/config.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/x86_64_sprt/fcntl.h" {
+    include "sprt/gen/c/cross/macos_sprt/x86_64_sprt/fcntl.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/x86_64_sprt/fenv.h" {
+    include "sprt/gen/c/cross/macos_sprt/x86_64_sprt/fenv.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/x86_64_sprt/jmp_buf.h" {
+    include "sprt/gen/c/cross/macos_sprt/x86_64_sprt/jmp_buf.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/x86_64_sprt/signal.h" {
+    include "sprt/gen/c/cross/macos_sprt/x86_64_sprt/signal.h"
+}
+
+header "sprt/gen/c/cross/ios_sprt/x86_64_sprt/syscall.h" {
+    include "sprt/gen/c/cross/macos_sprt/x86_64_sprt/syscall.h"
+}

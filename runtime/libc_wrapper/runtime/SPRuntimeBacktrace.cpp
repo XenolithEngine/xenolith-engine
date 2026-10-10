@@ -392,13 +392,22 @@ static void debug_backtrace_error(void *data, const char *msg, int errnum) {
 	::__sprt_perror(msg);
 }
 
-// pc goes through the platform's libbacktrace, whose headers spell the type
-// with the compiler's __UINTPTR_TYPE__ (under e2k -m128 that is a 16-byte
-// type that is NOT the sprt fallback's unsigned __int128 spelling, and a
-// callback must match the declaration exactly)
-static int debug_backtrace_full_callback(void *data, __UINTPTR_TYPE__ pc, const char *filename,
+// A callback must match the declaration of backtrace.h exactly, and its pc is spelled differently
+// by each libc (`unsigned int` on armv7a bionic, a 16-byte type under e2k -m128): the type is taken
+// from the declaration itself.
+template <typename>
+struct backtrace_callback_pc;
+
+template <typename R, typename Data, typename Pc, typename... Rest>
+struct backtrace_callback_pc<R (*)(Data, Pc, Rest...)> {
+	using type = Pc;
+};
+
+using backtrace_pc_t = typename backtrace_callback_pc<backtrace_full_callback>::type;
+
+static int debug_backtrace_full_callback(void *data, backtrace_pc_t pc, const char *filename,
 		int lineno, const char *function) {
-	if (pc != static_cast<__UINTPTR_TYPE__>(0xffff'ffff'ffff'ffffLLU)) {
+	if (pc != static_cast<backtrace_pc_t>(0xffff'ffff'ffff'ffffLLU)) {
 		auto ret = (const callback<void(uintptr_t, StringView)> *)data;
 		char buf[1'024] = {0};
 		auto size = backtrace::detail::print(buf, 1'024, pc, filename, lineno, function);

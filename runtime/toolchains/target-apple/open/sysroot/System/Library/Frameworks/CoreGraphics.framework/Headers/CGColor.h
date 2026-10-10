@@ -7,10 +7,9 @@
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CGBase.h>
+#include <__sprt_abi/CoreGraphics/CGColor.h>
 
 CF_EXTERN_C_BEGIN
-
-typedef struct CGColor *CGColorRef;
 
 CG_EXTERN CGColorRef CGColorRetain(CGColorRef color);
 CG_EXTERN void CGColorRelease(CGColorRef color);

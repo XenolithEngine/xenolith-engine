@@ -28,7 +28,7 @@ THE SOFTWARE.
 #ifndef SPRT_WRAPPERS_WINDOWS_CRTDBG_H_
 #define SPRT_WRAPPERS_WINDOWS_CRTDBG_H_
 
-#include <sprt/wrappers/windows/abi/crtdbg.h>
+#include <sprt/gen/wrappers/windows/abi/crtdbg.h>
 
 /* Clean public names (materialized __SPRT_ values / _CRT_REPORT_HOOK live in abi/crtdbg.h) */
 #define _CRT_WARN __SPRT__CRT_WARN

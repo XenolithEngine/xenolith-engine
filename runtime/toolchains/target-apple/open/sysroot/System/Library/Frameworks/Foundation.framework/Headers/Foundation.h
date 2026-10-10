@@ -41,6 +41,7 @@ THE SOFTWARE.
 
 #ifndef _SPRT_OPEN_FOUNDATION_FOUNDATION_H_
 #define _SPRT_OPEN_FOUNDATION_FOUNDATION_H_
+#include <__sprt_abi/Foundation/Foundation.h>
 
 #import <objc/objc.h>
 #import <objc/NSObject.h>
@@ -51,31 +52,9 @@ THE SOFTWARE.
  * CoreSimulator protocol mirrors). */
 #import <dispatch/dispatch.h>
 
-#if defined(__cplusplus)
-#define SPRT_FOUNDATION_EXTERN extern "C"
-#else
-#define SPRT_FOUNDATION_EXTERN extern
-#endif
-
 /* NS_ENUM / NS_OPTIONS: Foundation's <NSObjCRuntime.h> provides these on macOS,
    but the apple-oss objc4 <objc/NSObjCRuntime.h> does not. Canonical definition
    (used as `typedef NS_ENUM(NSUInteger, Name) { ... };`). */
-#ifndef NS_ENUM
-#define NS_ENUM(_type, _name)    enum _name : _type _name; enum _name : _type
-/* NS_OPTIONS: in C++ the name is a plain typedef of the underlying integer type
-   (the enumerators live in an anonymous fixed-type enum) — this is what lets
-   `A | B` of two flags stay assignable to the option-typed lvalue. In C it is a
-   named fixed-type enum like NS_ENUM. Matches Apple's CF_OPTIONS. */
-#if defined(__cplusplus)
-#define NS_OPTIONS(_type, _name) _type _name; enum : _type
-#else
-#define NS_OPTIONS(_type, _name) enum _name : _type _name; enum _name : _type
-#endif
-#endif
-#ifndef NS_ASSUME_NONNULL_BEGIN
-#define NS_ASSUME_NONNULL_BEGIN _Pragma("clang assume_nonnull begin")
-#define NS_ASSUME_NONNULL_END   _Pragma("clang assume_nonnull end")
-#endif
 
 /* No-op shims for the Apple availability / Swift-bridging / Metal decoration macros the
    SDK supplies via <os/availability.h>, <Foundation/NSObjCRuntime.h> and <Metal/MTLDefines.h>.
@@ -84,47 +63,6 @@ THE SOFTWARE.
    inline` (not empty) or the header's inline helpers would emit external definitions in every
    TU and collide at link. Foundation.h is the universal first include of every framework
    header, so defining them here makes every hand-written framework header self-sufficient. */
-#ifndef API_AVAILABLE
-#define API_AVAILABLE(...)
-#define API_DEPRECATED(...)
-#define API_DEPRECATED_WITH_REPLACEMENT(...)
-#define API_UNAVAILABLE(...)
-#endif
-#ifndef NS_SWIFT_NAME
-#define NS_SWIFT_NAME(...)
-#define NS_SWIFT_UNAVAILABLE(...)
-#endif
-#ifndef NS_DESIGNATED_INITIALIZER
-#define NS_DESIGNATED_INITIALIZER
-#endif
-#ifndef NS_REFINED_FOR_SWIFT
-#define NS_REFINED_FOR_SWIFT
-#endif
-#ifndef NS_RETURNS_INNER_POINTER
-#define NS_RETURNS_INNER_POINTER
-#endif
-#ifndef NS_UNAVAILABLE
-#define NS_UNAVAILABLE
-#endif
-#ifndef MTL_EXPORT
-#define MTL_EXPORT extern
-#endif
-#ifndef MTL_INLINE
-#define MTL_INLINE static inline
-#endif
-#ifndef ABS
-#define ABS(A)    ((A) < 0 ? (-(A)) : (A))
-#define MIN(A, B) ((A) < (B) ? (A) : (B))
-#define MAX(A, B) ((A) > (B) ? (A) : (B))
-#endif
-
-/* --- fast enumeration: required for `for (id x in collection)` lowering --- */
-typedef struct {
-	unsigned long state;
-	id __unsafe_unretained *itemsPtr;
-	unsigned long *mutationsPtr;
-	unsigned long extra[5];
-} NSFastEnumerationState;
 
 @protocol NSFastEnumeration
 - (NSUInteger)countByEnumeratingWithState:(NSFastEnumerationState *)state
@@ -166,13 +104,6 @@ typedef struct {
 + (instancetype)dictionaryWithObjects:(const ObjectType _Nonnull [_Nullable])objects forKeys:(const KeyType _Nonnull [_Nullable])keys count:(NSUInteger)cnt;
 @end
 
-/* --- process / filesystem / bundle services --- */
-typedef struct {
-	NSInteger majorVersion;
-	NSInteger minorVersion;
-	NSInteger patchVersion;
-} NSOperatingSystemVersion;
-
 @interface NSProcessInfo : NSObject
 @property (class, readonly) NSProcessInfo *processInfo;
 @property (readonly) NSDictionary *environment;
@@ -204,45 +135,6 @@ typedef struct {
 - (nullable NSString *)pathForResource:(nullable NSString *)name ofType:(nullable NSString *)ext;
 @end
 
-/* --- standard directory search API (NSPathUtilities.h) --- */
-typedef enum : NSUInteger {
-	NSApplicationDirectory = 1,
-	NSDemoApplicationDirectory = 2,
-	NSDeveloperApplicationDirectory = 3,
-	NSAdminApplicationDirectory = 4,
-	NSLibraryDirectory = 5,
-	NSDeveloperDirectory = 6,
-	NSUserDirectory = 7,
-	NSDocumentationDirectory = 8,
-	NSDocumentDirectory = 9,
-	NSCoreServiceDirectory = 10,
-	NSAutosavedInformationDirectory = 11,
-	NSDesktopDirectory = 12,
-	NSCachesDirectory = 13,
-	NSApplicationSupportDirectory = 14,
-	NSDownloadsDirectory = 15,
-	NSInputMethodsDirectory = 16,
-	NSMoviesDirectory = 17,
-	NSMusicDirectory = 18,
-	NSPicturesDirectory = 19,
-	NSPrinterDescriptionDirectory = 20,
-	NSSharedPublicDirectory = 21,
-	NSPreferencePanesDirectory = 22,
-	NSApplicationScriptsDirectory = 23,
-	NSItemReplacementDirectory = 99,
-	NSAllApplicationsDirectory = 100,
-	NSAllLibrariesDirectory = 101,
-	NSTrashDirectory = 102,
-} NSSearchPathDirectory;
-
-typedef enum : NSUInteger {
-	NSUserDomainMask = 1,
-	NSLocalDomainMask = 2,
-	NSNetworkDomainMask = 4,
-	NSSystemDomainMask = 8,
-	NSAllDomainsMask = 0x0ffff,
-} NSSearchPathDomainMask;
-
 /* domainMask is typed NSUInteger (not NSSearchPathDomainMask): callers OR several
    mask enumerators together, and in C++ that promotes to the underlying integer
    type, which would not implicitly convert back to the enum. Binary-identical. */
@@ -257,32 +149,6 @@ SPRT_FOUNDATION_EXTERN void NSLog(NSString *format, ...) __attribute__((format(_
  * ======================================================================== */
 
 #include <CoreFoundation/CFCGTypes.h>   /* CGPoint/CGSize/CGRect/CGFloat */
-
-#define NS_INLINE static __inline__ __attribute__((always_inline))
-#ifndef NSIntegerMax
-#define NSIntegerMax  __LONG_MAX__
-#define NSIntegerMin  (-__LONG_MAX__ - 1L)
-#define NSUIntegerMax (~0UL)
-#endif
-#define NSNotFound NSIntegerMax
-
-typedef double NSTimeInterval;
-
-typedef enum : NSInteger {
-	NSOrderedAscending = -1L, NSOrderedSame, NSOrderedDescending
-} NSComparisonResult;
-
-/* --- geometry: on 64-bit macOS the NS* geometry types ARE the CG* types --- */
-typedef CGPoint NSPoint;
-typedef CGSize  NSSize;
-typedef CGRect  NSRect;
-typedef CGPoint *NSPointPointer;
-typedef CGSize  *NSSizePointer;
-typedef CGRect  *NSRectPointer;
-typedef NSUInteger NSRectEdge;
-
-typedef struct _NSRange { NSUInteger location; NSUInteger length; } NSRange;
-typedef NSRange *NSRangePointer;
 
 NS_INLINE NSRange NSMakeRange(NSUInteger loc, NSUInteger len) { NSRange r; r.location = loc; r.length = len; return r; }
 NS_INLINE NSPoint NSMakePoint(CGFloat x, CGFloat y) { NSPoint p; p.x = x; p.y = y; return p; }
@@ -302,21 +168,12 @@ typedef NSString *NSAttributedStringKey;
 typedef NSString *NSPasteboardType;
 typedef NSString *NSRunLoopMode;
 
-typedef NS_ENUM(NSUInteger, NSStringEncoding) {
-	NSASCIIStringEncoding = 1, NSUTF8StringEncoding = 4,
-	NSUnicodeStringEncoding = 10, NSUTF16StringEncoding = 10,
-	NSUTF16LittleEndianStringEncoding = 0x94000100,
-	NSUTF32StringEncoding = 0x8c000100,
-};
-
 /* NSObject additions (Foundation's NSObject.h category over the objc4 root). */
 @interface NSObject (SPRTFoundationPerform)
 - (void)performSelector:(SEL)aSelector withObject:(nullable id)anArgument afterDelay:(NSTimeInterval)delay;
 + (void)cancelPreviousPerformRequestsWithTarget:(id)aTarget;
 + (void)cancelPreviousPerformRequestsWithTarget:(id)aTarget selector:(SEL)aSelector object:(nullable id)anArgument;
 @end
-
-typedef unsigned short unichar;
 
 /* --- string (extends the base NSString above via a category-style re-open) --- */
 @interface NSString ()
@@ -379,13 +236,6 @@ NS_INLINE BOOL NSEqualSizes(NSSize a, NSSize b) { return a.width == b.width && a
 @end
 
 @class NSError;   /* full @interface appears further down; forward-declared for NSData below */
-
-typedef NS_ENUM(NSInteger, NSDataCompressionAlgorithm) {
-	NSDataCompressionAlgorithmLZFSE = 0,
-	NSDataCompressionAlgorithmLZ4,
-	NSDataCompressionAlgorithmLZMA,
-	NSDataCompressionAlgorithmZlib,
-};
 
 @interface NSData : NSObject
 - (instancetype)initWithBytes:(nullable const void *)bytes length:(NSUInteger)length;
@@ -505,12 +355,6 @@ extern NSErrorUserInfoKey const NSLocalizedDescriptionKey;
 + (void)sleepForTimeInterval:(NSTimeInterval)ti;
 + (void)detachNewThreadSelector:(SEL)selector toTarget:(id)target withObject:(nullable id)argument;
 @end
-
-/* --- key-value observing (NSObject additions + options) --- */
-typedef NS_OPTIONS(NSUInteger, NSKeyValueObservingOptions) {
-	NSKeyValueObservingOptionNew = 0x01, NSKeyValueObservingOptionOld = 0x02,
-	NSKeyValueObservingOptionInitial = 0x04, NSKeyValueObservingOptionPrior = 0x08,
-};
 typedef NSString *NSKeyValueChangeKey;
 
 @interface NSObject (SPRTFoundationKVO)

@@ -45,7 +45,7 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/winsock_constants.h>
 #endif
 
-#include <sprt/wrappers/windows/abi/windows.h>
+#include <sprt/gen/wrappers/windows/abi/windows.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/windows.h) */
 #define WINBASEAPI __SPRT_WINBASEAPI

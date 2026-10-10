@@ -8,21 +8,12 @@ the base macros + CGFloat that the window backend needs. See open-sysroot.mk.
 
 #ifndef CGBASE_H_
 #define CGBASE_H_
+#include <__sprt_abi/CoreGraphics/CGBase.h>
 
 #include <sys/cdefs.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <CoreFoundation/CFBase.h>
 #include <CoreFoundation/CFCGTypes.h>
-
-#ifdef __cplusplus
-# define CG_EXTERN extern "C" __attribute__((visibility("default")))
-#else
-# define CG_EXTERN extern __attribute__((visibility("default")))
-#endif
-
-#define CG_EXTERN_C_BEGIN __BEGIN_DECLS
-#define CG_EXTERN_C_END   __END_DECLS
-#define CG_INLINE static __inline__
 
 #endif /* CGBASE_H_ */

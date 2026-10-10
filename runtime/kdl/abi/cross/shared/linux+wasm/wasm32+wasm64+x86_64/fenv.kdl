@@ -1,0 +1,29 @@
+struct typedef=`__sprt_fenv_t` {
+    field __control_word "unsigned short"
+    field __unused1 "unsigned short"
+    field __status_word "unsigned short"
+    field __unused2 "unsigned short"
+    field __tags "unsigned short"
+    field __unused3 "unsigned short"
+    field __eip "unsigned int"
+    field __cs_selector "unsigned short"
+    field __opcode "unsigned int" bits="11"
+    field __unused4 "unsigned int" bits="5"
+    field __data_offset "unsigned int"
+    field __data_selector "unsigned short"
+    field __unused5 "unsigned short"
+    field __mxcsr "unsigned int"
+}
+typedef `__sprt_fexcept_t` "unsigned short"
+macro FE_INVALID 1
+macro FE_DENORM 2
+macro FE_DIVBYZERO 4
+macro FE_OVERFLOW 8
+macro FE_UNDERFLOW 16
+macro FE_INEXACT 32
+macro FE_ALL_EXCEPT "( FE_INEXACT |  FE_DIVBYZERO |  FE_UNDERFLOW |  FE_OVERFLOW |  FE_INVALID)"
+macro FE_TONEAREST 0
+macro FE_DOWNWARD 0x400
+macro FE_UPWARD 0x800
+macro FE_TOWARDZERO 0xc00
+macro FE_DFL_ENV "((const __sprt_fenv_t *) -1)"

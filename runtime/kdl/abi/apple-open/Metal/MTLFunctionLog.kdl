@@ -1,0 +1,3 @@
+enum MTLFunctionLogType macro=NS_ENUM base=NSUInteger {
+    value MTLFunctionLogTypeValidation 0
+}

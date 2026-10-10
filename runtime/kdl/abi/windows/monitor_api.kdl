@@ -1,0 +1,234 @@
+macro DPI_AWARENESS_CONTEXT_UNAWARE "((DPI_AWARENESS_CONTEXT)-1)"
+macro DPI_AWARENESS_CONTEXT_SYSTEM_AWARE "((DPI_AWARENESS_CONTEXT)-2)"
+macro DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE "((DPI_AWARENESS_CONTEXT)-3)"
+macro DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 "((DPI_AWARENESS_CONTEXT)-4)"
+macro DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED "((DPI_AWARENESS_CONTEXT)-5)"
+macro MONITOR_DEFAULTTONULL 0x00000000
+macro MONITOR_DEFAULTTOPRIMARY 0x00000001
+macro MONITOR_DEFAULTTONEAREST 0x00000002
+macro MONITORINFOF_PRIMARY 0x00000001
+macro PHYSICAL_MONITOR_DESCRIPTION_SIZE 128
+macro CCHFORMNAME 32
+macro CCHDEVICENAME 32
+macro USER_DEFAULT_SCREEN_DPI 96
+macro EDD_GET_DEVICE_INTERFACE_NAME 0x00000001
+macro DISPLAY_DEVICE_ACTIVE 0x00000001
+macro DISPLAY_DEVICE_ATTACHED 0x00000002
+macro DRIVERVERSION 0
+macro TECHNOLOGY 2
+macro HORZSIZE 4
+macro VERTSIZE 6
+macro HORZRES 8
+macro VERTRES 10
+macro BITSPIXEL 12
+macro PLANES 14
+macro NUMBRUSHES 16
+macro NUMPENS 18
+macro NUMMARKERS 20
+macro NUMFONTS 22
+macro NUMCOLORS 24
+macro PDEVICESIZE 26
+macro CURVECAPS 28
+macro LINECAPS 30
+macro POLYGONALCAPS 32
+macro TEXTCAPS 34
+macro CLIPCAPS 36
+macro RASTERCAPS 38
+macro ASPECTX 40
+macro ASPECTY 42
+macro ASPECTXY 44
+macro LOGPIXELSX 88
+macro LOGPIXELSY 90
+macro SIZEPALETTE 104
+macro NUMRESERVED 106
+macro COLORRES 108
+macro PHYSICALWIDTH 110
+macro PHYSICALHEIGHT 111
+macro PHYSICALOFFSETX 112
+macro PHYSICALOFFSETY 113
+macro SCALINGFACTORX 114
+macro SCALINGFACTORY 115
+macro VREFRESH 116
+macro DESKTOPVERTRES 117
+macro DESKTOPHORZRES 118
+macro BLTALIGNMENT 119
+macro SHADEBLENDCAPS 120
+macro COLORMGMTCAPS 121
+macro ENUM_CURRENT_SETTINGS "((DWORD)-1)"
+macro ENUM_REGISTRY_SETTINGS "((DWORD)-2)"
+macro SM_XVIRTUALSCREEN 76
+macro SM_YVIRTUALSCREEN 77
+macro SM_CXVIRTUALSCREEN 78
+macro SM_CYVIRTUALSCREEN 79
+macro SM_CMONITORS 80
+macro SM_SAMEDISPLAYFORMAT 81
+macro DM_ORIENTATION "0x00000001L"
+macro DM_PAPERSIZE "0x00000002L"
+macro DM_PAPERLENGTH "0x00000004L"
+macro DM_PAPERWIDTH "0x00000008L"
+macro DM_SCALE "0x00000010L"
+macro DM_POSITION "0x00000020L"
+macro DM_NUP "0x00000040L"
+macro DM_DISPLAYORIENTATION "0x00000080L"
+macro DM_COPIES "0x00000100L"
+macro DM_DEFAULTSOURCE "0x00000200L"
+macro DM_PRINTQUALITY "0x00000400L"
+macro DM_COLOR "0x00000800L"
+macro DM_DUPLEX "0x00001000L"
+macro DM_YRESOLUTION "0x00002000L"
+macro DM_TTOPTION "0x00004000L"
+macro DM_COLLATE "0x00008000L"
+macro DM_FORMNAME "0x00010000L"
+macro DM_LOGPIXELS "0x00020000L"
+macro DM_BITSPERPEL "0x00040000L"
+macro DM_PELSWIDTH "0x00080000L"
+macro DM_PELSHEIGHT "0x00100000L"
+macro DM_DISPLAYFLAGS "0x00200000L"
+macro DM_DISPLAYFREQUENCY "0x00400000L"
+macro DM_ICMMETHOD "0x00800000L"
+macro DM_ICMINTENT "0x01000000L"
+macro DM_MEDIATYPE "0x02000000L"
+macro DM_DITHERTYPE "0x04000000L"
+macro DM_PANNINGWIDTH "0x08000000L"
+macro DM_PANNINGHEIGHT "0x10000000L"
+macro DM_DISPLAYFIXEDOUTPUT "0x20000000L"
+macro DIREG_DEV 0x00000001
+macro DIREG_DRV 0x00000002
+macro DIREG_BOTH 0x00000004
+macro DICS_FLAG_GLOBAL 0x00000001
+macro DICS_FLAG_CONFIGSPECIFIC 0x00000002
+macro DICS_FLAG_CONFIGGENERAL 0x00000004
+macro DIGCF_DEFAULT 0x00000001
+macro DIGCF_PRESENT 0x00000002
+macro DIGCF_ALLCLASSES 0x00000004
+macro DIGCF_PROFILE 0x00000008
+macro DIGCF_DEVICEINTERFACE 0x00000010
+macro CDS_UPDATEREGISTRY 0x00000001
+macro CDS_TEST 0x00000002
+macro CDS_FULLSCREEN 0x00000004
+macro CDS_GLOBAL 0x00000008
+macro CDS_SET_PRIMARY 0x00000010
+macro CDS_VIDEOPARAMETERS 0x00000020
+macro CDS_RESET 0x40000000
+macro CDS_RESET_EX 0x20000000
+macro CDS_NORESET 0x10000000
+macro DISP_CHANGE_SUCCESSFUL 0
+macro DISP_CHANGE_RESTART 1
+macro DISP_CHANGE_FAILED -1
+macro DISP_CHANGE_BADMODE -2
+macro DISP_CHANGE_NOTUPDATED -3
+macro DISP_CHANGE_BADFLAGS -4
+macro DISP_CHANGE_BADPARAM -5
+macro DISP_CHANGE_BADDUALVIEW -6
+enum PROCESS_DPI_AWARENESS typedef=PROCESS_DPI_AWARENESS {
+    value PROCESS_DPI_UNAWARE 0
+    value PROCESS_SYSTEM_DPI_AWARE 1
+    value PROCESS_PER_MONITOR_DPI_AWARE 2
+}
+enum MONITOR_DPI_TYPE typedef=MONITOR_DPI_TYPE {
+    value MDT_EFFECTIVE_DPI 0
+    value MDT_ANGULAR_DPI 1
+    value MDT_RAW_DPI 2
+    value MDT_DEFAULT MDT_EFFECTIVE_DPI
+}
+enum DPI_AWARENESS typedef=DPI_AWARENESS {
+    value DPI_AWARENESS_INVALID -1
+    value DPI_AWARENESS_UNAWARE 0
+    value DPI_AWARENESS_SYSTEM_AWARE 1
+    value DPI_AWARENESS_PER_MONITOR_AWARE 2
+}
+typedef DPI_AWARENESS_CONTEXT HANDLE
+typedef HMONITOR HANDLE
+typedef HDC HANDLE
+typedef HDEVINFO HANDLE
+typedef HWND HANDLE
+struct _PHYSICAL_MONITOR typedef=PHYSICAL_MONITOR also="*LPPHYSICAL_MONITOR" {
+    field hPhysicalMonitor HANDLE
+    field szPhysicalMonitorDescription "WCHAR [PHYSICAL_MONITOR_DESCRIPTION_SIZE]"
+}
+struct tagMONITORINFO typedef=MONITORINFO also="*LPMONITORINFO" {
+    field cbSize DWORD
+    field rcMonitor RECT
+    field rcWork RECT
+    field dwFlags DWORD
+}
+struct tagMONITORINFOEXW typedef=MONITORINFOEXW also="*LPMONITORINFOEXW" base="public MONITORINFO" {
+    field szDevice "WCHAR [CCHDEVICENAME]"
+}
+struct _DISPLAY_DEVICEW typedef=DISPLAY_DEVICEW also="*PDISPLAY_DEVICEW, *LPDISPLAY_DEVICEW" {
+    field cb DWORD
+    field DeviceName "WCHAR [32]"
+    field DeviceString "WCHAR [128]"
+    field StateFlags DWORD
+    field DeviceID "WCHAR [128]"
+    field DeviceKey "WCHAR [128]"
+}
+struct _devicemodeW typedef=DEVMODEW also="*PDEVMODEW, *NPDEVMODEW, *LPDEVMODEW" {
+    field dmDeviceName "WCHAR [CCHDEVICENAME]"
+    field dmSpecVersion WORD
+    field dmDriverVersion WORD
+    field dmSize WORD
+    field dmDriverExtra WORD
+    field dmFields DWORD
+    union {
+        // printer only fields
+        struct {
+            field dmOrientation short
+            field dmPaperSize short
+            field dmPaperLength short
+            field dmPaperWidth short
+            field dmScale short
+            field dmCopies short
+            field dmDefaultSource short
+            field dmPrintQuality short
+        }
+        // display only fields
+        struct {
+            field dmPosition POINTL
+            field dmDisplayOrientation DWORD
+            field dmDisplayFixedOutput DWORD
+        }
+    }
+    // printer only fields
+    // display only fields
+    field dmColor short
+    field dmDuplex short
+    field dmYResolution short
+    field dmTTOption short
+    field dmCollate short
+    field dmFormName "WCHAR [CCHFORMNAME]"
+    field dmLogPixels WORD
+    field dmBitsPerPel DWORD
+    field dmPelsWidth DWORD
+    field dmPelsHeight DWORD
+    union {
+        field dmDisplayFlags DWORD
+        field dmNup DWORD
+    }
+    field dmDisplayFrequency DWORD
+    field dmICMMethod DWORD
+    field dmICMIntent DWORD
+    field dmMediaType DWORD
+    field dmDitherType DWORD
+    field dmReserved1 DWORD
+    field dmReserved2 DWORD
+    field dmPanningWidth DWORD
+    field dmPanningHeight DWORD
+}
+struct _SP_DEVINFO_DATA typedef=SP_DEVINFO_DATA also="*PSP_DEVINFO_DATA" {
+    field cbSize DWORD
+    field ClassGuid GUID
+    field DevInst DWORD
+    field Reserved ULONG_PTR
+}
+struct _SP_DEVICE_INTERFACE_DATA typedef=SP_DEVICE_INTERFACE_DATA also="*PSP_DEVICE_INTERFACE_DATA" {
+    field cbSize DWORD
+    field InterfaceClassGuid GUID
+    field Flags DWORD
+    field Reserved ULONG_PTR
+}
+struct _SP_DEVICE_INTERFACE_DETAIL_DATA_W typedef=SP_DEVICE_INTERFACE_DETAIL_DATA_W also="*PSP_DEVICE_INTERFACE_DETAIL_DATA_W" {
+    field cbSize DWORD
+    field DevicePath "WCHAR [ANYSIZE_ARRAY]"
+}
+typedef MONITORENUMPROC "BOOL (*)(HMONITOR, HDC, LPRECT, LPARAM)"

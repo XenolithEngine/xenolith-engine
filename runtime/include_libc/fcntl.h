@@ -78,7 +78,7 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_fcntl.h>
 #include <sprt/c/__sprt_stdarg.h>
-#include <sprt/c/bits/__sprt_intptr_t.h>
+#include <sprt/gen/c/bits/__sprt_intptr_t.h>
 
 #ifndef SEEK_SET
 #define SEEK_SET __SPRT_SEEK_SET

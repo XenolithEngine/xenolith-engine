@@ -5,25 +5,13 @@
 #define __SPRT_OPEN_METAL_CAPTUREMANAGER_H_
 
 #import <Foundation/Foundation.h>
+#include <__sprt_abi/Metal/MTLCaptureManager.h>
 
 @protocol MTLDevice;
 @protocol MTLCommandQueue;
 @protocol MTLCaptureScope;
 
 NS_ASSUME_NONNULL_BEGIN
-
-typedef NS_ENUM(NSInteger, MTLCaptureError)
-{
-    MTLCaptureErrorNotSupported = 1,
-    MTLCaptureErrorAlreadyCapturing,
-    MTLCaptureErrorInvalidDescriptor,
-};
-
-typedef NS_ENUM(NSInteger, MTLCaptureDestination)
-{
-    MTLCaptureDestinationDeveloperTools = 1,
-    MTLCaptureDestinationGPUTraceDocument,
-};
 
 @interface MTLCaptureDescriptor : NSObject
 @property (nonatomic, strong, nullable) id captureObject;

@@ -1,0 +1,4 @@
+macro R_OK 4
+macro W_OK 2
+macro X_OK 1
+macro F_OK 0

@@ -5,23 +5,11 @@
 #define __SPRT_OPEN_METAL_MTLCOMMANDENCODER_H_
 
 #import <Foundation/Foundation.h>
+#include <__sprt_abi/Metal/MTLCommandEncoder.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
 @protocol MTLDevice;
-
-/* Describes how a resource will be used by a shader through an argument buffer. */
-typedef NS_OPTIONS(NSUInteger, MTLResourceUsage) {
-    MTLResourceUsageRead  = 1 << 0,
-    MTLResourceUsageWrite = 1 << 1,
-};
-
-/* Describes the types of resources that a barrier operates on. */
-typedef NS_OPTIONS(NSUInteger, MTLBarrierScope) {
-    MTLBarrierScopeBuffers       = 1 << 0,
-    MTLBarrierScopeTextures      = 1 << 1,
-    MTLBarrierScopeRenderTargets = 1 << 2,
-};
 
 /* Common interface for objects that write commands into MTLCommandBuffers. */
 @protocol MTLCommandEncoder <NSObject>

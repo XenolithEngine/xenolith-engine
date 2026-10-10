@@ -1,0 +1,8 @@
+macro `_T` "L ## Str" params="Str" if="_UNICODE"
+macro `_TEXT` "L ## Str" params="Str" if="_UNICODE"
+macro `TEXT` "L ## Str" params="Str" if="_UNICODE"
+macro `LPCTSTR` `LPCWSTR` if="_UNICODE"
+macro `_T` Str params="Str" if="!(_UNICODE)"
+macro `_TEXT` Str params="Str" if="!(_UNICODE)"
+macro `TEXT` Str params="Str" if="!(_UNICODE)"
+macro `LPCTSTR` `LPCSTR` if="!(_UNICODE)"

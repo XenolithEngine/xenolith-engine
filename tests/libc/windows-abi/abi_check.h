@@ -3,7 +3,7 @@
 // Shared prologue for the per-file abi <-> Windows SDK parity checks.
 //
 // Usage (see check-time_api.cpp):
-//     #define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/<name>.h>
+//     #define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/<name>.h>
 //     #include "abi_check.h"
 //     #include <windows.h>          // + any domain-specific SDK headers
 //     SPRT_CONST(SOME_CONSTANT);
@@ -19,7 +19,7 @@
 // defines its own.
 
 #ifndef SPRT_ABI_HEADER
-#error "define SPRT_ABI_HEADER (e.g. <sprt/wrappers/windows/abi/foo.h>) before including abi_check.h"
+#error "define SPRT_ABI_HEADER (e.g. <sprt/gen/wrappers/windows/abi/foo.h>) before including abi_check.h"
 #endif
 
 namespace sprt_abi {

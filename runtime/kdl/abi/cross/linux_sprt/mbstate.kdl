@@ -1,0 +1,14 @@
+macro (n)mbstate_t "__SPRT_ID(mbstate_t)" if="defined(__SPRT_BUILD)"
+macro (n)mbstate_t __mbstate_t if="!defined(__SPRT_BUILD)"
+macro MBSTATE_DIRECT 0
+macro WEOF "0xffffffffU" if="!defined(WEOF)"
+// glibc's wctype_t is void* in the 128-bit pointer mode (bits/wctype-wchar.h);
+// the hosted wrappers pass it through untranslated, so the sprt ABI mirrors it
+typedef wctype_t "void *" if="defined(__e2k__) && defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ > 8"
+typedef wctype_t "unsigned long" if="!(defined(__e2k__) && defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ > 8)"
+typedef wchar_t `wchar_t` if="defined(__cplusplus)"
+typedef wchar_t __WCHAR_TYPE__ if="!defined(__cplusplus)"
+struct typedef=(n)mbstate_t {
+    field __opaque1 unsigned
+    field __opaque2 unsigned
+}

@@ -26,6 +26,6 @@
 #include <sprt/wrappers/windows/basic_types.h>
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-#include <sprt/wrappers/windows/abi/complex_types.h>
+#include <sprt/gen/wrappers/windows/abi/complex_types.h>
 
 #endif // SPRT_WRAPPERS_WINDOWS_COMPLEX_TYPES_H_

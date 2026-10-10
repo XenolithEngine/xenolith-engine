@@ -1,0 +1,8 @@
+macro BUFSIZ 1024
+macro FOPEN_MAX 20
+macro FILENAME_MAX 4096
+macro L_tmpnam 4096
+macro TMP_MAX 308915776
+macro IOFBF 0
+macro IOLBF 1
+macro IONBF 2

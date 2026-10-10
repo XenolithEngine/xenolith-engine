@@ -26,7 +26,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/sys/__sprt_sprt.h>
 #include <sprt/c/sys/__sprt_stat.h>
-#include <sprt/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
 
 #include <sprt/cxx/atomic>
 #include <sprt/cxx/mutex>

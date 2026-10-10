@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-#include <sprt/wrappers/windows/abi/bcrypt.h>
+#include <sprt/gen/wrappers/windows/abi/bcrypt.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/bcrypt.h) */
 #define BCRYPT_RNG_USE_ENTROPY_IN_BUFFER __SPRT_BCRYPT_RNG_USE_ENTROPY_IN_BUFFER

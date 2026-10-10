@@ -23,9 +23,9 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C___SPRT_DIRENT_H_
 #define CORE_RUNTIME_INCLUDE_C___SPRT_DIRENT_H_
 
-#include <sprt/c/bits/__sprt_ssize_t.h>
-#include <sprt/c/cross/__sprt_fstypes.h>
-#include <sprt/c/cross/__sprt_dir_ptr.h>
+#include <sprt/gen/c/bits/__sprt_ssize_t.h>
+#include <sprt/gen/c/cross/__sprt_fstypes.h>
+#include <sprt/gen/c/cross/__sprt_dir_ptr.h>
 
 // The Linux/BSD d_type codes, shared by every platform whose libc uses them.
 // A libc that numbers them differently (Embox) defines its own set in its

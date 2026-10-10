@@ -1,0 +1,133 @@
+// The EL0 syscall table of the Embox user-mode target.
+//
+// Numbers are Linux/aarch64 generic ABI values (decision D1) and are a strict
+// SUBSET of linux_sprt/aarch64_sprt/syscall.h - never a renumbering. The kernel
+// side is xenolith-os board/embox-qemu/drivers/xlsyscall/; the two are pinned
+// against each other and against the Linux table by
+// xenolith-os scripts/check-abi.py, which fails if this file names a syscall the
+// dispatcher does not implement, or gives one a number Linux does not use.
+//
+// WHAT IS ABSENT IS ABSENT. A syscall the kernel does not implement gets no
+// #define here at all - not a -1, not a sentinel. Two reasons:
+//
+// * A reference to an undeclared __SPRT_SYSCALL_x is a compile error naming
+// the exact symbol, which is the whole point: the alternative is a build
+// that succeeds and then answers ENOSYS at run time on a device.
+// * Feature detection in the runtime is written as `#ifdef
+// __SPRT_SYSCALL_inotify_init1` (see src/dispatch/platform/fd/). Defining an
+// absent call as -1 would make every one of those tests pass.
+//
+// Adding a syscall is therefore a two-line change - the dispatcher case, then
+// its line moved out of the roadmap below - and the checker refuses either half
+// alone.
+//
+// --- M1: implemented and exercised in QEMU. ---
+// I/O.
+macro SYSCALL_ioctl 29
+macro SYSCALL_openat 56
+macro SYSCALL_close 57
+macro SYSCALL_lseek 62
+macro SYSCALL_read 63
+macro SYSCALL_write 64
+macro SYSCALL_readv 65
+macro SYSCALL_writev 66
+macro SYSCALL_pread64 67
+macro SYSCALL_pwrite64 68
+// stat. Both spellings exist because they carry DIFFERENT argument shapes, not
+// because one is legacy: fstat takes (fd, buf), newfstatat takes
+// (dirfd, path, buf, flags). Both fill the same 128-byte struct kstat, whose
+// layout is fixed in ABI doc section 4.1 and asserted on the kernel side.
+macro SYSCALL_newfstatat 79
+macro SYSCALL_fstat 80
+// Process lifetime. exit/exit_group are answered in the trap handler itself
+// (patches/fpsimd/sync_handler.c), before the dispatcher runs - they must unwind
+// the EL0 thread rather than return a value to it.
+macro SYSCALL_exit 93
+macro SYSCALL_exit_group 94
+// futex: WAIT, WAKE and their BITSET forms with BITSET_MATCH_ANY. As on
+// Linux, FUTEX_PRIVATE_FLAG keys the word by this task's address; without it a
+// word in shared memory (a device's, a buffer the kernel maps in) is keyed by
+// its physical address, so the kernel and other tasks waiting on the same word
+// meet it there (A6). No PI, no requeue, no CLOCK_REALTIME -- those answer
+// ENOSYS (ABI doc section 6.2). The first syscall that blocks by design.
+macro SYSCALL_futex 98
+// Threads (K6/L3b). clone is the thread flavour only: CLONE_VM and CLONE_THREAD
+// are required and anything outside the pthread set is -EINVAL, because a clone
+// without CLONE_VM is fork and fork is never implemented (ABI doc section 6.4).
+// set_tid_address registers the word the kernel zeroes and wakes when the
+// thread ends -- which is how a joiner learns the thread's stack may be
+// unmapped, not how pthread_join waits.
+macro SYSCALL_set_tid_address 96
+macro SYSCALL_clone 220
+// Time. Both were spins here until K6; a sleeping thread that spins holds a
+// core, which with real threads is no longer merely wasteful.
+macro SYSCALL_nanosleep 101
+macro SYSCALL_clock_nanosleep 115
+macro SYSCALL_sched_yield 124
+// Ending another program (A5): the default action of the signal, there being
+// no handlers. Terminating signals end the whole program, whichever thread
+// they name; ignored ones do nothing; stop signals are EINVAL. No process
+// groups: pid <= 0 is EINVAL.
+macro SYSCALL_kill 129
+macro SYSCALL_tkill 130
+macro SYSCALL_tgkill 131
+// The cores the calling thread may run on, and pinning it (BF-44). Unpinned,
+// the mask is every core the kernel has started, and this is how
+// sysconf(_SC_NPROCESSORS_*) counts them, as musl does -- a constant here made
+// every EL0 thread pool single-threaded on four cores (A3). pid 0 or the
+// caller's own; the mask is 8 bytes.
+macro SYSCALL_sched_setaffinity 122
+macro SYSCALL_sched_getaffinity 123
+// Directories. Embox has no directory descriptor at all: opendir/readdir over a
+// DIR*, and its open() ASSERTS on O_DIRECTORY rather than refusing it. So the
+// kernel invents the descriptor, out of a reserved high range -- which is why a
+// directory fd here is not the ordinary small integer Linux hands back.
+macro SYSCALL_getdents64 61
+// Paths. All five are built on top of the plain calls, because Embox has almost
+// no *at family: the kernel resolves a dirfd by remembering the path behind it.
+// Two of them answer differently than a Linux caller may expect, and neither
+// difference is detectable from here, so they are written down instead:
+// renameat is copy-then-delete and therefore NOT atomic, and readlinkat is
+// always EINVAL because no filesystem in the image has symbolic links.
+macro SYSCALL_mkdirat 34
+macro SYSCALL_unlinkat 35
+macro SYSCALL_renameat 38
+macro SYSCALL_faccessat 48
+macro SYSCALL_readlinkat 78
+macro SYSCALL_utimensat 88
+// The working directory, which under Embox's oldfs is the PWD environment
+// variable and nothing else. The environment holds 64-byte rows, so a path
+// longer than 59 characters cannot be entered at all: chdir answers
+// ENAMETOOLONG well below PATH_MAX.
+macro SYSCALL_getcwd 17
+macro SYSCALL_chdir 49
+// Descriptors. Every fcntl command number differs from Embox's, and the
+// collision is the dangerous one -- Linux F_DUPFD is 0, Embox F_GETFD is 0 --
+// so the kernel translates rather than forwards. F_GETFL cannot report
+// O_CLOEXEC (Embox does not keep it in the flags word); F_GETFD does.
+// fsync is a no-op that succeeds: nothing in this image has a write-back
+// cache, so there is nothing to force and saying so is not a promise.
+macro SYSCALL_dup 23
+macro SYSCALL_dup3 24
+macro SYSCALL_fcntl 25
+macro SYSCALL_ftruncate 46
+macro SYSCALL_fsync 82
+// Pipes and poll. POLLOUT and POLLPRI are swapped between the two systems and
+// the kernel translates both ways; ppoll refuses a non-NULL sigmask, because
+// there are no signals here and pretending to block them would be a lie.
+macro SYSCALL_pipe2 59
+macro SYSCALL_ppoll 73
+// getrandom over /dev/urandom, which on this board is an LCG stirred with the
+// clock. It is not a CSPRNG, there is no entropy pool, and GRND_RANDOM is
+// refused rather than served by the source that is not it.
+macro SYSCALL_getrandom 278
+macro SYSCALL_clock_gettime 113
+macro SYSCALL_uname 160
+macro SYSCALL_getpid 172
+macro SYSCALL_gettid 178
+// Memory. brk bootstraps the allocator; mmap/munmap/mprotect are what mimalloc
+// actually runs on.
+macro SYSCALL_brk 214
+macro SYSCALL_munmap 215
+macro SYSCALL_mmap 222
+macro SYSCALL_mprotect 226

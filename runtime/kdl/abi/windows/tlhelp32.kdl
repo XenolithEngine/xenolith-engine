@@ -1,0 +1,17 @@
+// Materialized ABI values for <tlhelp32.h> (clean names re-exported by
+// sprt/wrappers/windows/tlhelp32.h).
+// DWORD/BYTE/WCHAR/HMODULE
+// MAX_PATH
+macro MAX_MODULE_NAME32 255
+struct tagMODULEENTRY32W typedef=MODULEENTRY32W also="*PMODULEENTRY32W, *LPMODULEENTRY32W" {
+    field dwSize DWORD
+    field th32ModuleID DWORD
+    field th32ProcessID DWORD
+    field GlblcntUsage DWORD
+    field ProccntUsage DWORD
+    field modBaseAddr "BYTE *"
+    field modBaseSize DWORD
+    field hModule HMODULE
+    field szModule "WCHAR [MAX_MODULE_NAME32 + 1]"
+    field szExePath "WCHAR [MAX_PATH]"
+}

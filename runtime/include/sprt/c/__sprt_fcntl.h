@@ -23,13 +23,13 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C___SPRT_FCNTL_H_
 #define CORE_RUNTIME_INCLUDE_C___SPRT_FCNTL_H_
 
-#include <sprt/c/cross/__sprt_fcntl.h>
-#include <sprt/c/bits/seek.h>
-#include <sprt/c/bits/access.h>
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_ssize_t.h>
-#include <sprt/c/cross/__sprt_fstypes.h>
-#include <sprt/c/cross/__sprt_sysid.h> // __SPRT_ID(pid_t)
+#include <sprt/gen/c/cross/__sprt_fcntl.h>
+#include <sprt/gen/c/bits/seek.h>
+#include <sprt/gen/c/bits/access.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_ssize_t.h>
+#include <sprt/gen/c/cross/__sprt_fstypes.h>
+#include <sprt/gen/c/cross/__sprt_sysid.h> // __SPRT_ID(pid_t)
 
 // POSIX advisory record lock, argument to fcntl(F_GETLK/F_SETLK/F_SETLKW). Layout
 // matches the standard (musl/glibc) one. Like struct timespec (see __sprt_time_t.h),

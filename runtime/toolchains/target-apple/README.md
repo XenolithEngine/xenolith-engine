@@ -83,6 +83,20 @@ Priority ladder, applied per missing piece:
    `bsm/audit_session.h`, Foundation extensions). These contain **only the
    declarations actually used by real code** in this repository and by the
    host projects — they are not attempts at complete framework headers.
+   Their **ABI** - macros, typedefs, enums (`NS_ENUM`/`NS_OPTIONS`), records -
+   is generated, as the runtime's is: the descriptions are
+   `runtime/kdl/abi/apple-open/<Framework>/<name>.kdl` with the map
+   `runtime/kdl/abi/apple-open.kdl`, and `xlkdl` writes them to
+   `open/sysroot/include_libc/__sprt_abi/<Framework>/<name>.h`, which the
+   hand-written header includes after its own imports. What stays hand-written
+   is the API: Objective-C classes and protocols, functions, external
+   constants, block typedefs and what refers to them. After a change to a
+   description: `xlkdl abi --map runtime/kdl/abi/apple-open.kdl --out
+   runtime/toolchains/target-apple/open/sysroot/include_libc`. The split was
+   done by `utils/xlkdl/apple2kdl.py`, and
+   `tests/libc/kdl-abi/compare_apple.py` proves the split overlay is the one
+   before it (the MIG `mach/*.h` and `sys/syscall.h` have generators of their
+   own and are not part of it).
 3. **The real SDK for validation only**: every hand-written constant, enum
    value, struct layout and every tbd symbol is checked against the SDK before
    it is added (e.g. all 87 `MTLPixelFormat` values are spelled explicitly);

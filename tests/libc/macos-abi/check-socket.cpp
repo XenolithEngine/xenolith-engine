@@ -39,7 +39,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#define SPRT_ABI_HEADER <sprt/c/cross/__sprt_socket.h>
+#define SPRT_ABI_HEADER <sprt/gen/c/cross/__sprt_socket.h>
 #include "abi_check.h"
 
 // === shutdown() ===

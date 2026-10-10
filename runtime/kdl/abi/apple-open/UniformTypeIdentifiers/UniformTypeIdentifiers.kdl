@@ -1,0 +1,2 @@
+macro SPRT_UT_EXTERN "extern \"C\"" if="defined(__cplusplus)"
+macro SPRT_UT_EXTERN extern if="!defined(__cplusplus)"

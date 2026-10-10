@@ -24,13 +24,13 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_TIME_H_
 
 #include <sprt/c/bits/__sprt_def.h>
-#include <sprt/c/bits/__sprt_null.h>
-#include <sprt/c/bits/__sprt_time_t.h>
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_int32_t.h>
-#include <sprt/c/bits/__sprt_uint64_t.h>
-#include <sprt/c/cross/__sprt_locale.h>
-#include <sprt/c/cross/__sprt_sysid.h>
+#include <sprt/gen/c/bits/__sprt_null.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_int32_t.h>
+#include <sprt/gen/c/bits/__sprt_uint64_t.h>
+#include <sprt/gen/c/cross/__sprt_locale.h>
+#include <sprt/gen/c/cross/__sprt_sysid.h>
 
 // clang-format off
 #define __SPRT_CLOCKS_PER_SEC 1000000L

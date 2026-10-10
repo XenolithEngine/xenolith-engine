@@ -30,7 +30,7 @@
 #include <sprt/c/__sprt_unistd.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/sys/__sprt_stat.h>
-#include <sprt/c/cross/__sprt_fstypes.h>
+#include <sprt/gen/c/cross/__sprt_fstypes.h>
 
 // macOS provides waitpid() in libSystem, but the runtime's freestanding include path does not expose
 // <sys/wait.h>; declare the prototype directly (the exit code is decoded via decodeWaitStatus()).

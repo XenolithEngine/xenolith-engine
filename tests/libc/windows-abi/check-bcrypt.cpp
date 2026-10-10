@@ -2,7 +2,7 @@
 //
 // abi/bcrypt.h <-> Windows SDK parity. Compile-time only; see check.sh.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/bcrypt.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/bcrypt.h>
 #include "abi_check.h"
 
 #include <windows.h>

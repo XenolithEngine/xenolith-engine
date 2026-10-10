@@ -1,0 +1,121 @@
+// LPSOCKADDR (used by WSAMSG) comes from the SPRT socket layer pulled in by
+// __sprt_winsock.h (-> __sprt_socket.h -> cross/__sprt_socket.h -> windows_sprt/socket.h);
+// no <sys/socket.h> (include_libc) dependency at the abi level.
+macro SIO_UDP_CONNRESET "_WSAIOW(IOC_VENDOR,12)"
+macro SIO_UDP_NETRESET "_WSAIOW(IOC_VENDOR,15)"
+macro WSA_IO_PENDING "(ERROR_IO_PENDING)"
+macro WSA_IO_INCOMPLETE "(ERROR_IO_INCOMPLETE)"
+macro WSA_INVALID_HANDLE "(ERROR_INVALID_HANDLE)"
+macro WSA_INVALID_PARAMETER "(ERROR_INVALID_PARAMETER)"
+macro WSA_NOT_ENOUGH_MEMORY "(ERROR_NOT_ENOUGH_MEMORY)"
+macro WSA_OPERATION_ABORTED "(ERROR_OPERATION_ABORTED)"
+macro WSA_MAXIMUM_WAIT_EVENTS "(MAXIMUM_WAIT_OBJECTS)"
+macro WSA_WAIT_FAILED "(WAIT_FAILED)"
+macro WSA_WAIT_EVENT_0 "(WAIT_OBJECT_0)"
+macro WSA_WAIT_IO_COMPLETION "(WAIT_IO_COMPLETION)"
+macro WSA_WAIT_TIMEOUT "(WAIT_TIMEOUT)"
+macro WSA_INFINITE "(INFINITE)"
+macro WINSOCK_VERSION "MAKEWORD(2, 2)"
+macro FROM_PROTOCOL_INFO "(-1)"
+macro EAI_AGAIN WSATRY_AGAIN
+macro EAI_BADFLAGS WSAEINVAL
+macro EAI_FAIL WSANO_RECOVERY
+macro EAI_FAMILY WSAEAFNOSUPPORT
+macro EAI_MEMORY WSA_NOT_ENOUGH_MEMORY
+macro EAI_NOSECURENAME WSA_SECURE_HOST_NOT_FOUND
+macro EAI_NONAME WSAHOST_NOT_FOUND
+macro EAI_SERVICE WSATYPE_NOT_FOUND
+macro EAI_SOCKTYPE WSAESOCKTNOSUPPORT
+macro EAI_IPSECPOLICY WSA_IPSEC_NAME_POLICY_ERROR
+// IPV6_* option numbers live in <sprt/c/cross/__sprt_netinet.h> (the Windows
+// values are selected there via SPRT_WINDOWS) and reach here as public names
+// through the <arpa/inet.h> materialization included above.
+macro FD_READ_BIT 0
+macro FD_READ "(1 << FD_READ_BIT)"
+macro FD_WRITE_BIT 1
+macro FD_WRITE "(1 << FD_WRITE_BIT)"
+macro FD_OOB_BIT 2
+macro FD_OOB "(1 << FD_OOB_BIT)"
+macro FD_ACCEPT_BIT 3
+macro FD_ACCEPT "(1 << FD_ACCEPT_BIT)"
+macro FD_CONNECT_BIT 4
+macro FD_CONNECT "(1 << FD_CONNECT_BIT)"
+macro FD_CLOSE_BIT 5
+macro FD_CLOSE "(1 << FD_CLOSE_BIT)"
+macro FD_QOS_BIT 6
+macro FD_QOS "(1 << FD_QOS_BIT)"
+macro FD_GROUP_QOS_BIT 7
+macro FD_GROUP_QOS "(1 << FD_GROUP_QOS_BIT)"
+macro FD_ROUTING_INTERFACE_CHANGE_BIT 8
+macro FD_ROUTING_INTERFACE_CHANGE "(1 << FD_ROUTING_INTERFACE_CHANGE_BIT)"
+macro FD_ADDRESS_LIST_CHANGE_BIT 9
+macro FD_ADDRESS_LIST_CHANGE "(1 << FD_ADDRESS_LIST_CHANGE_BIT)"
+macro FD_MAX_EVENTS 10
+macro FD_ALL_EVENTS "((1 << FD_MAX_EVENTS) - 1)"
+macro MAX_PROTOCOL_CHAIN 7
+macro WSAPROTOCOL_LEN 255
+// WSAMSG -- for WSASendMsg
+//
+struct _WSAMSG typedef=WSAMSG also="*PWSAMSG, *LPWSAMSG" {
+    field name LPSOCKADDR
+    field namelen INT
+    field lpBuffers LPWSABUF
+    field dwBufferCount ULONG
+    field Control WSABUF
+    field dwFlags ULONG
+}
+struct _WSAPROTOCOLCHAIN typedef=WSAPROTOCOLCHAIN also="*LPWSAPROTOCOLCHAIN" {
+    field ChainLen int
+    // length = 0 means layered protocol,
+    // length = 1 means base protocol,
+    // length > 1 means protocol chain
+    field ChainEntries "DWORD [MAX_PROTOCOL_CHAIN]"
+}
+struct _WSAPROTOCOL_INFOA typedef=WSAPROTOCOL_INFOA also="*LPWSAPROTOCOL_INFOA" {
+    field dwServiceFlags1 DWORD
+    field dwServiceFlags2 DWORD
+    field dwServiceFlags3 DWORD
+    field dwServiceFlags4 DWORD
+    field dwProviderFlags DWORD
+    field ProviderId GUID
+    field dwCatalogEntryId DWORD
+    field ProtocolChain WSAPROTOCOLCHAIN
+    field iVersion int
+    field iAddressFamily int
+    field iMaxSockAddr int
+    field iMinSockAddr int
+    field iSocketType int
+    field iProtocol int
+    field iProtocolMaxOffset int
+    field iNetworkByteOrder int
+    field iSecurityScheme int
+    field dwMessageSize DWORD
+    field dwProviderReserved DWORD
+    field szProtocol "CHAR [WSAPROTOCOL_LEN + 1]"
+}
+struct _WSAPROTOCOL_INFOW typedef=WSAPROTOCOL_INFOW also="*LPWSAPROTOCOL_INFOW" {
+    field dwServiceFlags1 DWORD
+    field dwServiceFlags2 DWORD
+    field dwServiceFlags3 DWORD
+    field dwServiceFlags4 DWORD
+    field dwProviderFlags DWORD
+    field ProviderId GUID
+    field dwCatalogEntryId DWORD
+    field ProtocolChain WSAPROTOCOLCHAIN
+    field iVersion int
+    field iAddressFamily int
+    field iMaxSockAddr int
+    field iMinSockAddr int
+    field iSocketType int
+    field iProtocol int
+    field iProtocolMaxOffset int
+    field iNetworkByteOrder int
+    field iSecurityScheme int
+    field dwMessageSize DWORD
+    field dwProviderReserved DWORD
+    field szProtocol "WCHAR [WSAPROTOCOL_LEN + 1]"
+}
+struct _WSANETWORKEVENTS typedef=WSANETWORKEVENTS also="*LPWSANETWORKEVENTS" {
+    field lNetworkEvents long
+    field iErrorCode "int [FD_MAX_EVENTS]"
+}

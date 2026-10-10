@@ -1,0 +1,28 @@
+// PROCESSENTRY32 for process enumeration
+struct tagPROCESSENTRY32W typedef=PROCESSENTRY32W also="*PPROCESSENTRY32W, *LPPROCESSENTRY32W" {
+    field dwSize DWORD
+    field cntUsage DWORD
+    field th32ProcessID DWORD
+    field th32DefaultHeapID ULONG_PTR
+    field th32ModuleID DWORD
+    field cntThreads DWORD
+    field th32ParentProcessID DWORD
+    field pcPriClassBase LONG
+    field dwFlags DWORD
+    field szExeFile "WCHAR [MAX_PATH]"
+}
+// Working set information for QueryWorkingSetEx
+struct _PSAPI_WORKING_SET_EX_BLOCK typedef=PSAPI_WORKING_SET_EX_BLOCK also="*PPSAPI_WORKING_SET_EX_BLOCK" {
+    field Valid ULONG_PTR bits="1"
+    field ShareCount ULONG_PTR bits="3"
+    field Protection ULONG_PTR bits="5"
+    field Shared ULONG_PTR bits="1"
+    field Node ULONG_PTR bits="6"
+    field Locked ULONG_PTR bits="1"
+    field Reserve ULONG_PTR bits="14"
+    field PageFrameNumber ULONG_PTR bits="32"
+}
+struct _PSAPI_WORKING_SET_EX_INFORMATION typedef=PSAPI_WORKING_SET_EX_INFORMATION also="*PPSAPI_WORKING_SET_EX_INFORMATION" {
+    field VirtualAddress PVOID
+    field VirtualAttributes PSAPI_WORKING_SET_EX_BLOCK
+}

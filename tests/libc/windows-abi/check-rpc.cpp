@@ -6,7 +6,7 @@
 // names (e.g. LLDB's anonymous pipe names). RPC_S_* live in winerror.h; UUID and
 // RPC_STATUS come from the RPC headers pulled by <rpc.h>.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/rpc.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/rpc.h>
 #include "abi_check.h"
 
 #include <windows.h>

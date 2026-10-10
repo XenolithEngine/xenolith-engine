@@ -17,7 +17,7 @@
 #include <sprt/c/__sprt_stdarg.h>
 
 struct _stat {
-#include <sprt/c/bits/stat_data.h>
+#include <sprt/gen/c/bits/stat_data.h>
 };
 
 #define _stati64 _stat

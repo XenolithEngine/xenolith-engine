@@ -1,0 +1,76 @@
+// MTLSize
+// MTLCommandEncoder, MTLResourceUsage, MTLBarrierScope
+// MTLStoreAction
+// MTLIndexType
+enum MTLPrimitiveType macro=NS_ENUM base=NSUInteger {
+    value MTLPrimitiveTypePoint 0
+    value MTLPrimitiveTypeLine 1
+    value MTLPrimitiveTypeLineStrip 2
+    value MTLPrimitiveTypeTriangle 3
+    value MTLPrimitiveTypeTriangleStrip 4
+}
+enum MTLVisibilityResultMode macro=NS_ENUM base=NSUInteger {
+    value MTLVisibilityResultModeDisabled 0
+    value MTLVisibilityResultModeBoolean 1
+    value MTLVisibilityResultModeCounting 2
+}
+struct typedef=MTLScissorRect {
+    field x NSUInteger
+    field y NSUInteger
+    field width NSUInteger
+    field height NSUInteger
+}
+struct typedef=MTLViewport {
+    field originX double
+    field originY double
+    field width double
+    field height double
+    field znear double
+    field zfar double
+}
+enum MTLCullMode macro=NS_ENUM base=NSUInteger {
+    value MTLCullModeNone 0
+    value MTLCullModeFront 1
+    value MTLCullModeBack 2
+}
+enum MTLWinding macro=NS_ENUM base=NSUInteger {
+    value MTLWindingClockwise 0
+    value MTLWindingCounterClockwise 1
+}
+enum MTLDepthClipMode macro=NS_ENUM base=NSUInteger {
+    value MTLDepthClipModeClip 0
+    value MTLDepthClipModeClamp 1
+}
+enum MTLTriangleFillMode macro=NS_ENUM base=NSUInteger {
+    value MTLTriangleFillModeFill 0
+    value MTLTriangleFillModeLines 1
+}
+struct typedef=MTLDrawPrimitivesIndirectArguments {
+    field vertexCount uint32_t
+    field instanceCount uint32_t
+    field vertexStart uint32_t
+    field baseInstance uint32_t
+}
+struct typedef=MTLDrawIndexedPrimitivesIndirectArguments {
+    field indexCount uint32_t
+    field instanceCount uint32_t
+    field indexStart uint32_t
+    field baseVertex int32_t
+    field baseInstance uint32_t
+}
+struct typedef=MTLDrawPatchIndirectArguments {
+    field patchCount uint32_t
+    field instanceCount uint32_t
+    field patchStart uint32_t
+    field baseInstance uint32_t
+}
+struct typedef=MTLQuadTessellationFactorsHalf {
+    // edgeTessellationFactor and insideTessellationFactor are interpreted as half (16-bit floats)
+    field edgeTessellationFactor "uint16_t [4]"
+    field insideTessellationFactor "uint16_t [2]"
+}
+// Generic render stage; also used for points at which a fence may be waited on or signaled.
+enum MTLRenderStages macro=NS_OPTIONS base=NSUInteger {
+    value MTLRenderStageVertex "(1UL << 0)"
+    value MTLRenderStageFragment "(1UL << 1)"
+}

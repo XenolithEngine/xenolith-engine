@@ -2,7 +2,7 @@
 //
 // abi/dl_api.h <-> Windows SDK parity. Compile-time only; see check.sh.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/dl_api.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/dl_api.h>
 #include "abi_check.h"
 
 #include <windows.h>   // IMAGE_* live in winnt.h via windows.h; MEM_*/PAGE_* too

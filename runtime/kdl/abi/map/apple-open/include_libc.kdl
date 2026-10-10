@@ -1,0 +1,58 @@
+// include_libc: the ABI of its hand-written headers, and what they include.
+
+header "MacTypes.h" external=#true
+
+header "complex.h" external=#true {
+    include "__sprt_abi/complex.h"
+    include "complex_impl.h"
+    type SPRT_FUNC_BEGIN SPRT_FUNC_BODY SPRT_FUNC_END _COMPLEX_H_
+}
+
+header "complex_impl.h" external=#true
+
+header "dispatch/dispatch.h" external=#true
+
+header "math.h" external=#true {
+    include "__sprt_abi/math.h"
+    include "math_impl.h"
+    type SPRT_FUNC_BEGIN SPRT_FUNC_BODY SPRT_FUNC_END _MATH_H_
+}
+
+header "math_impl.h" external=#true
+
+header "objc/NSObjCRuntime.h" external=#true
+
+header "objc/NSObject.h" external=#true
+
+header "objc/objc.h" external=#true
+
+header "stdbool.h" external=#true
+
+header "stddef.h" external=#true
+
+header "stdint.h" external=#true
+
+header "sys/cdefs.h" external=#true
+
+header "__sprt_abi/TargetConditionals.h"
+
+header "__sprt_abi/complex.h"
+
+header "__sprt_abi/fenv.h"
+
+header "__sprt_abi/math.h"
+
+header "__sprt_abi/simd/simd.h"
+
+header "__sprt_abi/tgmath.h" {
+    include "math.h"
+    include "complex.h"
+}
+
+header "__sprt_abi/xpc/xpc.h" {
+    include "stddef.h"
+    include "stdint.h"
+    include "stdbool.h"
+    include "sys/cdefs.h"
+    include "dispatch/dispatch.h"
+}

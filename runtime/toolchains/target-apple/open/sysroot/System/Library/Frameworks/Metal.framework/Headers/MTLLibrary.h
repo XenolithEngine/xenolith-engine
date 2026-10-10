@@ -8,6 +8,7 @@
 #import <Metal/MTLResource.h>
 #import <Metal/MTLArgument.h>
 #import <Metal/MTLFunctionDescriptor.h>   /* MTLFunctionOptions, MTLFunctionDescriptor, MTLIntersectionFunctionDescriptor, MTLFunctionConstantValues */
+#include <__sprt_abi/Metal/MTLLibrary.h>
 
 @protocol MTLDevice;
 @protocol MTLDynamicLibrary;
@@ -16,46 +17,6 @@
 @protocol MTLRenderPipelineState;
 @protocol MTLFunction;
 @protocol MTLLibrary;
-
-typedef NS_ENUM(NSUInteger, MTLPatchType) {
-    MTLPatchTypeNone = 0,
-    MTLPatchTypeTriangle = 1,
-    MTLPatchTypeQuad = 2,
-};
-
-typedef NS_ENUM(NSUInteger, MTLFunctionType) {
-    MTLFunctionTypeVertex = 1,
-    MTLFunctionTypeFragment = 2,
-    MTLFunctionTypeKernel = 3,
-    MTLFunctionTypeVisible = 5,
-    MTLFunctionTypeIntersection = 6,
-    MTLFunctionTypeMesh = 7,
-    MTLFunctionTypeObject = 8,
-};
-
-typedef NS_ENUM(NSUInteger, MTLLanguageVersion) {
-    MTLLanguageVersion1_0 = (1 << 16),
-    MTLLanguageVersion1_1 = (1 << 16) + 1,
-    MTLLanguageVersion1_2 = (1 << 16) + 2,
-    MTLLanguageVersion2_0 = (2 << 16),
-    MTLLanguageVersion2_1 = (2 << 16) + 1,
-    MTLLanguageVersion2_2 = (2 << 16) + 2,
-    MTLLanguageVersion2_3 = (2 << 16) + 3,
-    MTLLanguageVersion2_4 = (2 << 16) + 4,
-    MTLLanguageVersion3_0 = (3 << 16) + 0,
-    MTLLanguageVersion3_1 = (3 << 16) + 1,
-    MTLLanguageVersion3_2 = (3 << 16) + 2,
-};
-
-typedef NS_ENUM(NSInteger, MTLLibraryType) {
-    MTLLibraryTypeExecutable = 0,
-    MTLLibraryTypeDynamic = 1,
-};
-
-typedef NS_ENUM(NSInteger, MTLLibraryOptimizationLevel) {
-    MTLLibraryOptimizationLevelDefault = 0,
-    MTLLibraryOptimizationLevelSize = 1,
-};
 
 @interface MTLFunctionConstant : NSObject
 @property (readonly) NSString *name;
@@ -75,18 +36,6 @@ typedef NS_ENUM(NSInteger, MTLLibraryOptimizationLevel) {
 - (id<MTLArgumentEncoder>)newArgumentEncoderWithBufferIndex:(NSUInteger)bufferIndex;
 @property (readonly) MTLFunctionOptions options;
 @end
-
-/* macOS-15 math controls (absent from the 14.5 SDK snapshot; MoltenVK sets them behind an OS
-   check). Values match the Metal 3.2 ABI. */
-typedef NS_ENUM(NSInteger, MTLMathMode) {
-    MTLMathModeSafe = 0,
-    MTLMathModeRelaxed = 1,
-    MTLMathModeFast = 2,
-};
-typedef NS_ENUM(NSInteger, MTLMathFloatingPointFunctions) {
-    MTLMathFloatingPointFunctionsFast = 0,
-    MTLMathFloatingPointFunctionsPrecise = 1,
-};
 
 @interface MTLCompileOptions : NSObject <NSCopying>
 @property (readwrite, copy, nonatomic) NSDictionary<NSString *, NSObject *> *preprocessorMacros;

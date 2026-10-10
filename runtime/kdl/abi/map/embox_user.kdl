@@ -1,0 +1,103 @@
+// The embox_user platform: the cross fragments under sprt/gen/c/cross/embox_user_sprt.
+
+platforms { platform embox_user_sprt { arch aarch64_sprt; }; }
+
+header "sprt/c/cross/embox_user_sprt/aarch64_sprt/memmap.h" external=#true {
+    include "sprt/c/bits/__sprt_def.h"
+    type CORE_RUNTIME_INCLUDE_C_CROSS_EMBOX_USER_SPRT_AARCH64_MEMMAP_H_
+    type (p)EL0_BRK_BASE (p)EL0_BRK_MAX (p)EL0_IMAGE_BASE (p)EL0_MMAP_BASE (p)EL0_STACK_BASE (p)EL0_STACK_TOP
+}
+
+header "sprt/c/cross/embox_user_sprt/aarch64_sprt/svc.h" external=#true {
+    include "sprt/c/bits/__sprt_def.h"
+    type CORE_RUNTIME_INCLUDE_C_CROSS_EMBOX_USER_SPRT_AARCH64_SVC_H_
+    type (p)SVC_BODY
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/aarch64_sprt/config.h"
+
+header "sprt/gen/c/cross/embox_user_sprt/aarch64_sprt/fcntl.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/fcntl.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/aarch64_sprt/fenv.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/fenv.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/aarch64_sprt/jmp_buf.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/jmp_buf.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/aarch64_sprt/signal.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/signal.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/aarch64_sprt/syscall.h"
+
+header "sprt/gen/c/cross/embox_user_sprt/clockid.h" {
+    include "sprt/gen/c/cross/linux_sprt/clockid.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/config.h"
+
+header "sprt/gen/c/cross/embox_user_sprt/dir_ptr.h" {
+    include "sprt/gen/c/cross/linux_sprt/dir_ptr.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/errno.h" guard=CORE_RUNTIME_INCLUDE_C_CROSS_EMBOX_USER_SPRT_ERRNO_H_ {
+    include "sprt/gen/c/cross/linux_sprt/errno.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/fdset.h" {
+    include "sprt/gen/c/cross/linux_sprt/fdset.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/file_ptr.h"
+
+header "sprt/gen/c/cross/embox_user_sprt/langinfo.h" {
+    include "sprt/gen/c/cross/linux_sprt/langinfo.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/locale.h"
+
+header "sprt/gen/c/cross/embox_user_sprt/math.h" {
+    include "sprt/gen/c/cross/linux_sprt/math.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/mbstate.h"
+
+header "sprt/gen/c/cross/embox_user_sprt/mman.h" {
+    include "sprt/gen/c/cross/linux_sprt/mman.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/netinetdef.h" guard=CORE_RUNTIME_INCLUDE_C_CROSS_EMBOX_USER_SPRT_NETINETDEF_H_ {
+    include "sprt/gen/c/cross/linux_sprt/netinetdef.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/polltypes.h" {
+    include "sprt/gen/c/cross/linux_sprt/polltypes.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/setjmp.h" {
+    include "sprt/gen/c/cross/linux_sprt/setjmp.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/signal.h" {
+    include "sprt/gen/c/cross/linux_sprt/signal.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/sockdef.h" {
+    include "sprt/gen/c/cross/linux_sprt/sockdef.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/socket.h" {
+    include "sprt/gen/c/cross/linux_sprt/socket.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/stdio.h" {
+    include "sprt/gen/c/cross/linux_sprt/stdio.h"
+}
+
+header "sprt/gen/c/cross/embox_user_sprt/sysconf.h" {
+    include "sprt/gen/c/cross/linux_sprt/sysconf.h"
+}

@@ -7,7 +7,7 @@
 // therefore not a subtle bug — comdlg32 either rejects the call outright or reads the wrong
 // fields — so both structs are pinned field by field.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/commdlg.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/commdlg.h>
 #include "abi_check.h"
 
 #include <windows.h>

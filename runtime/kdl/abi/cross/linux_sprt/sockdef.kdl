@@ -1,0 +1,255 @@
+cond so_debug "!defined(SO_DEBUG)"
+cond so_rcvtimeo "!defined(SO_RCVTIMEO)"
+cond long_max_x7fffffff "__LONG_MAX == 0x7fffffff"
+cond so_timestamp "!defined(SO_TIMESTAMP)"
+// Portable core socket constants, namespaced (__SPRT_*) so they are safe to include on
+// every build; <sys/socket.h> expands the public names from these, and each is
+// static_asserted against the native header in SPRuntimeCSysSocket.cpp.
+macro SHUT_RD 0
+macro SHUT_WR 1
+macro SHUT_RDWR 2
+macro SOCK_STREAM 1
+macro SOCK_DGRAM 2
+macro SOCK_RAW 3
+macro SOCK_SEQPACKET 5
+macro SOCK_CLOEXEC "02000000"
+macro SOCK_NONBLOCK "04000"
+macro AF_UNSPEC 0
+macro AF_UNIX 1
+macro AF_INET 2
+macro AF_INET6 10
+macro SOL_SOCKET 1
+macro SO_REUSEADDR 2
+macro SO_TYPE 3
+macro SO_ERROR 4
+macro SO_DONTROUTE 5
+macro SO_BROADCAST 6
+macro SO_SNDBUF 7
+macro SO_RCVBUF 8
+macro SO_KEEPALIVE 9
+macro SO_OOBINLINE 10
+macro SO_LINGER 13
+macro SO_REUSEPORT 15
+macro MSG_OOB 0x0001
+macro MSG_PEEK 0x0002
+macro MSG_DONTROUTE 0x0004
+macro MSG_CTRUNC 0x0008
+macro MSG_TRUNC 0x0020
+macro MSG_DONTWAIT 0x0040
+macro MSG_EOR 0x0080
+macro MSG_WAITALL 0x0100
+macro MSG_NOSIGNAL 0x4000
+macro SOMAXCONN 128
+// Platform-specific extras (namespaced with __SPRT_*) so they never collide with the
+// native <sys/socket.h>. These are always visible; the wrapper static_asserts them
+// against the native values in SPRuntimeCSysSocket.cpp.
+macro SOCK_RDM 4
+macro SOCK_DCCP 6
+macro SOCK_PACKET 10
+macro PF_UNSPEC 0
+macro PF_LOCAL 1
+macro PF_UNIX PF_LOCAL
+macro PF_FILE PF_LOCAL
+macro PF_INET 2
+macro PF_AX25 3
+macro PF_IPX 4
+macro PF_APPLETALK 5
+macro PF_NETROM 6
+macro PF_BRIDGE 7
+macro PF_ATMPVC 8
+macro PF_X25 9
+macro PF_INET6 10
+macro PF_ROSE 11
+macro PF_DECnet 12
+macro PF_NETBEUI 13
+macro PF_SECURITY 14
+macro PF_KEY 15
+macro PF_NETLINK 16
+macro PF_ROUTE PF_NETLINK
+macro PF_PACKET 17
+macro PF_ASH 18
+macro PF_ECONET 19
+macro PF_ATMSVC 20
+macro PF_RDS 21
+macro PF_SNA 22
+macro PF_IRDA 23
+macro PF_PPPOX 24
+macro PF_WANPIPE 25
+macro PF_LLC 26
+macro PF_IB 27
+macro PF_MPLS 28
+macro PF_CAN 29
+macro PF_TIPC 30
+macro PF_BLUETOOTH 31
+macro PF_IUCV 32
+macro PF_RXRPC 33
+macro PF_ISDN 34
+macro PF_PHONET 35
+macro PF_IEEE802154 36
+macro PF_CAIF 37
+macro PF_ALG 38
+macro PF_NFC 39
+macro PF_VSOCK 40
+macro PF_KCM 41
+macro PF_QIPCRTR 42
+macro PF_SMC 43
+macro PF_XDP 44
+// PF_MAX follows the libc, not the arch: glibc >= 2.35 knows PF_MCTP (46), while
+// glibc 2.33 (x86_64/aarch64 targets) and musl stop at 45. riscv64 is pinned to
+// glibc 2.35, loongarch64 to 2.36.
+macro PF_MAX 46 if="(ARCH_ID == ARCH_ID_RISCV64 || ARCH_ID == ARCH_ID_LOONGARCH64) && !__SPRT_LINUX_MUSL"
+macro PF_MAX 45 if="!((ARCH_ID == ARCH_ID_RISCV64 || ARCH_ID == ARCH_ID_LOONGARCH64) && !__SPRT_LINUX_MUSL)"
+macro AF_LOCAL PF_LOCAL
+macro AF_FILE AF_LOCAL
+macro AF_AX25 PF_AX25
+macro AF_IPX PF_IPX
+macro AF_APPLETALK PF_APPLETALK
+macro AF_NETROM PF_NETROM
+macro AF_BRIDGE PF_BRIDGE
+macro AF_ATMPVC PF_ATMPVC
+macro AF_X25 PF_X25
+macro AF_ROSE PF_ROSE
+macro AF_DECnet PF_DECnet
+macro AF_NETBEUI PF_NETBEUI
+macro AF_SECURITY PF_SECURITY
+macro AF_KEY PF_KEY
+macro AF_NETLINK PF_NETLINK
+macro AF_ROUTE PF_ROUTE
+macro AF_PACKET PF_PACKET
+macro AF_ASH PF_ASH
+macro AF_ECONET PF_ECONET
+macro AF_ATMSVC PF_ATMSVC
+macro AF_RDS PF_RDS
+macro AF_SNA PF_SNA
+macro AF_IRDA PF_IRDA
+macro AF_PPPOX PF_PPPOX
+macro AF_WANPIPE PF_WANPIPE
+macro AF_LLC PF_LLC
+macro AF_IB PF_IB
+macro AF_MPLS PF_MPLS
+macro AF_CAN PF_CAN
+macro AF_TIPC PF_TIPC
+macro AF_BLUETOOTH PF_BLUETOOTH
+macro AF_IUCV PF_IUCV
+macro AF_RXRPC PF_RXRPC
+macro AF_ISDN PF_ISDN
+macro AF_PHONET PF_PHONET
+macro AF_IEEE802154 PF_IEEE802154
+macro AF_CAIF PF_CAIF
+macro AF_ALG PF_ALG
+macro AF_NFC PF_NFC
+macro AF_VSOCK PF_VSOCK
+macro AF_KCM PF_KCM
+macro AF_QIPCRTR PF_QIPCRTR
+macro AF_SMC PF_SMC
+macro AF_XDP PF_XDP
+macro AF_MAX PF_MAX
+macro SO_DEBUG 1 if="@so_debug"
+macro SO_NO_CHECK 11 if="@so_debug"
+macro SO_PRIORITY 12 if="@so_debug"
+macro SO_BSDCOMPAT 14 if="@so_debug"
+macro SO_PASSCRED 16 if="@so_debug"
+macro SO_PEERCRED 17 if="@so_debug"
+macro SO_RCVLOWAT 18 if="@so_debug"
+macro SO_SNDLOWAT 19 if="@so_debug"
+macro SO_ACCEPTCONN 30 if="@so_debug"
+macro SO_PEERSEC 31 if="@so_debug"
+macro SO_SNDBUFFORCE 32 if="@so_debug"
+macro SO_RCVBUFFORCE 33 if="@so_debug"
+macro SO_PROTOCOL 38 if="@so_debug"
+macro SO_DOMAIN 39 if="@so_debug"
+macro SO_RCVTIMEO 66 if="@so_rcvtimeo && @long_max_x7fffffff"
+macro SO_SNDTIMEO 67 if="@so_rcvtimeo && @long_max_x7fffffff"
+macro SO_RCVTIMEO 20 if="@so_rcvtimeo && !@long_max_x7fffffff"
+macro SO_SNDTIMEO 21 if="@so_rcvtimeo && !@long_max_x7fffffff"
+macro SO_TIMESTAMP 63 if="@so_timestamp && @long_max_x7fffffff"
+macro SO_TIMESTAMPNS 64 if="@so_timestamp && @long_max_x7fffffff"
+macro SO_TIMESTAMPING 65 if="@so_timestamp && @long_max_x7fffffff"
+macro SO_TIMESTAMP 29 if="@so_timestamp && !@long_max_x7fffffff"
+macro SO_TIMESTAMPNS 35 if="@so_timestamp && !@long_max_x7fffffff"
+macro SO_TIMESTAMPING 37 if="@so_timestamp && !@long_max_x7fffffff"
+macro SO_SECURITY_AUTHENTICATION 22
+macro SO_SECURITY_ENCRYPTION_TRANSPORT 23
+macro SO_SECURITY_ENCRYPTION_NETWORK 24
+macro SO_BINDTODEVICE 25
+macro SO_ATTACH_FILTER 26
+macro SO_DETACH_FILTER 27
+macro SO_GET_FILTER SO_ATTACH_FILTER
+macro SO_PEERNAME 28
+macro SCM_TIMESTAMP SO_TIMESTAMP
+macro SO_PASSSEC 34
+macro SCM_TIMESTAMPNS SO_TIMESTAMPNS
+macro SO_MARK 36
+macro SCM_TIMESTAMPING SO_TIMESTAMPING
+macro SO_RXQ_OVFL 40
+macro SO_WIFI_STATUS 41
+macro SCM_WIFI_STATUS SO_WIFI_STATUS
+macro SO_PEEK_OFF 42
+macro SO_NOFCS 43
+macro SO_LOCK_FILTER 44
+macro SO_SELECT_ERR_QUEUE 45
+macro SO_BUSY_POLL 46
+macro SO_MAX_PACING_RATE 47
+macro SO_BPF_EXTENSIONS 48
+macro SO_INCOMING_CPU 49
+macro SO_ATTACH_BPF 50
+macro SO_DETACH_BPF SO_DETACH_FILTER
+macro SO_ATTACH_REUSEPORT_CBPF 51
+macro SO_ATTACH_REUSEPORT_EBPF 52
+macro SO_CNX_ADVICE 53
+macro SCM_TIMESTAMPING_OPT_STATS 54
+macro SO_MEMINFO 55
+macro SO_INCOMING_NAPI_ID 56
+macro SO_COOKIE 57
+macro SCM_TIMESTAMPING_PKTINFO 58
+macro SO_PEERGROUPS 59
+macro SO_ZEROCOPY 60
+macro SO_TXTIME 61
+macro SCM_TXTIME SO_TXTIME
+macro SO_BINDTOIFINDEX 62
+macro SO_DETACH_REUSEPORT_BPF 68
+macro SOL_IP 0
+macro SOL_IPV6 41
+macro SOL_ICMPV6 58
+macro SOL_RAW 255
+macro SOL_DECNET 261
+macro SOL_X25 262
+macro SOL_PACKET 263
+macro SOL_ATM 264
+macro SOL_AAL 265
+macro SOL_IRDA 266
+macro SOL_NETBEUI 267
+macro SOL_LLC 268
+macro SOL_DCCP 269
+macro SOL_NETLINK 270
+macro SOL_TIPC 271
+macro SOL_RXRPC 272
+macro SOL_PPPOL2TP 273
+macro SOL_BLUETOOTH 274
+macro SOL_PNPIPE 275
+macro SOL_RDS 276
+macro SOL_IUCV 277
+macro SOL_CAIF 278
+macro SOL_ALG 279
+macro SOL_NFC 280
+macro SOL_KCM 281
+macro SOL_TLS 282
+macro SOL_XDP 283
+macro MSG_PROXY 0x0010
+macro MSG_FIN 0x0200
+macro MSG_SYN 0x0400
+macro MSG_CONFIRM 0x0800
+macro MSG_RST 0x1000
+macro MSG_ERRQUEUE 0x2000
+macro MSG_MORE 0x8000
+macro MSG_WAITFORONE 0x10000
+macro MSG_BATCH 0x40000
+macro MSG_ZEROCOPY 0x4000000
+macro MSG_FASTOPEN 0x20000000
+macro MSG_CMSG_CLOEXEC 0x40000000
+macro SCM_RIGHTS 0x01
+macro SCM_CREDENTIALS 0x02
+// SCM_SECURITY: в bits/socket.h у glibc 2.33 ещё нет, у 2.39 уже есть. Гвард в
+// SPRuntimeCSysSocket.cpp двусторонний, так что отсутствие имени здесь — ошибка
+// сборки на новой libc, а не молчаливый пропуск.
+macro SCM_SECURITY 0x03

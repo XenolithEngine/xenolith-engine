@@ -4,6 +4,7 @@
 #define __SPRT_OPEN_METAL_MTLIOCOMMANDQUEUE_H_
 
 #import <Foundation/Foundation.h>
+#include <__sprt_abi/Metal/MTLIOCommandQueue.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -11,17 +12,6 @@ NS_ASSUME_NONNULL_BEGIN
 @protocol MTLIOCommandBuffer;
 @protocol MTLIOScratchBuffer;
 @protocol MTLIOScratchBufferAllocator;
-
-typedef NS_ENUM(NSInteger, MTLIOPriority) {
-    MTLIOPriorityHigh   = 0,
-    MTLIOPriorityNormal = 1,
-    MTLIOPriorityLow    = 2,
-};
-
-typedef NS_ENUM(NSInteger, MTLIOCommandQueueType) {
-    MTLIOCommandQueueTypeConcurrent = 0,
-    MTLIOCommandQueueTypeSerial     = 1,
-};
 
 @protocol MTLIOCommandQueue <NSObject>
 

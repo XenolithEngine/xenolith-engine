@@ -1,0 +1,2 @@
+typedef NET_IFINDEX ULONG
+typedef PNET_IFINDEX "ULONG *"

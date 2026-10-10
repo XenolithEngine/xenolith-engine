@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-#include <sprt/wrappers/windows/abi/thread_api.h>
+#include <sprt/gen/wrappers/windows/abi/thread_api.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/thread_api.h) */
 #define THREAD_TERMINATE __SPRT_THREAD_TERMINATE

@@ -1,0 +1,40 @@
+cond llp64_or_ilp32 "defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__SPRT_WINDOWS)"
+cond hosted_build "defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1"
+// time_t is always 64-bit for sprt
+// Use Data models specifications
+typedef time_t "long long int" if="@llp64_or_ilp32"
+macro TIME_MAX LLINT_MAX if="@llp64_or_ilp32"
+macro TIME_WIDTH LLINT_WIDTH if="@llp64_or_ilp32"
+typedef time_t "long int" if="!@llp64_or_ilp32 && defined(__LP64__)"
+macro TIME_MAX LINT_MAX if="!@llp64_or_ilp32 && defined(__LP64__)"
+macro TIME_WIDTH LINT_WIDTH if="!@llp64_or_ilp32 && defined(__LP64__)"
+error "Unknown data model (see https://en.cppreference.com/w/cpp/language/types.html#Data_models)" if="!@llp64_or_ilp32 && !defined(__LP64__)"
+typedef clock_t time_t
+typedef suseconds_t int64_t
+macro (n)tm "__SPRT_ID(tm)" if="@hosted_build"
+macro (n)timespec "__SPRT_ID(timespec)" if="@hosted_build"
+macro (n)timeval "__SPRT_ID(timeval)" if="@hosted_build"
+macro (n)itimerspec "__SPRT_ID(itimerspec)" if="@hosted_build"
+macro (n)tm `tm` if="!@hosted_build"
+macro (n)timespec `timespec` if="!@hosted_build"
+macro (n)timeval `timeval` if="!@hosted_build"
+macro (n)itimerspec `itimerspec` if="!@hosted_build"
+struct (n)timespec {
+    field tv_sec time_t
+    field tv_nsec int64_t
+}
+struct (n)timeval if="SPRT_WINDOWS" {
+    field tv_sec long
+    field tv_usec long
+}
+struct (n)timeval if="!(SPRT_WINDOWS)" {
+    field tv_sec time_t
+    field tv_usec suseconds_t
+}
+struct (n)itimerspec if="!defined(_TIME_H)" {
+    field it_interval "struct timespec"
+    field it_value "struct timespec"
+}
+typedef clockid_t unsigned
+typedef timer_t int
+struct (n)tm

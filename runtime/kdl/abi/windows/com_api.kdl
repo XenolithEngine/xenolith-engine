@@ -1,0 +1,157 @@
+macro RPC_C_AUTHZ_NONE 0
+macro RPC_C_AUTHZ_NAME 1
+macro RPC_C_AUTHZ_DCE 2
+macro RPC_C_AUTHZ_DEFAULT 0xffffffff
+macro RPC_C_AUTHN_NONE 0
+macro RPC_C_AUTHN_DCE_PRIVATE 1
+macro RPC_C_AUTHN_DCE_PUBLIC 2
+macro RPC_C_AUTHN_DEC_PUBLIC 4
+macro RPC_C_AUTHN_GSS_NEGOTIATE 9
+macro RPC_C_AUTHN_WINNT 10
+macro RPC_C_AUTHN_GSS_SCHANNEL 14
+macro RPC_C_AUTHN_GSS_KERBEROS 16
+macro RPC_C_AUTHN_DPA 17
+macro RPC_C_AUTHN_MSN 18
+macro RPC_C_AUTHN_LEVEL_DEFAULT 0
+macro RPC_C_AUTHN_LEVEL_NONE 1
+macro RPC_C_AUTHN_LEVEL_CONNECT 2
+macro RPC_C_AUTHN_LEVEL_CALL 3
+macro RPC_C_AUTHN_LEVEL_PKT 4
+macro RPC_C_AUTHN_LEVEL_PKT_INTEGRITY 5
+macro RPC_C_AUTHN_LEVEL_PKT_PRIVACY 6
+macro RPC_C_IMP_LEVEL_DEFAULT 0
+macro RPC_C_IMP_LEVEL_ANONYMOUS 1
+macro RPC_C_IMP_LEVEL_IDENTIFY 2
+macro RPC_C_IMP_LEVEL_IMPERSONATE 3
+macro RPC_C_IMP_LEVEL_DELEGATE 4
+enum typedef=KNOWN_FOLDER_FLAG {
+    value KF_FLAG_DEFAULT 0x00000000
+    // When called from packaged app, LocalAppData/RoamingAppData folders are redirected to
+    // app private locations that match the paths returned from WinRT API:
+    // Windows.Storage.ApplicationData.Current.{LocalFolder|RoamingFolder}
+    // A few other folders are redirected to subdirectories of LocalAppData.
+    value KF_FLAG_FORCE_APP_DATA_REDIRECTION 0x00080000
+    // When running in a Centennial process, some file system locations are redirected to
+    // package-specific locations by the file system. Specifying this flag will cause the
+    // target of the redirection to be returned for these locations. This is useful in
+    // cases where the real location in the file system needs to be known.
+    value KF_FLAG_RETURN_FILTER_REDIRECTION_TARGET 0x00040000
+    // New form for KF_FLAG_FORCE_APPCONTAINER_REDIRECTION and KF_FLAG_NO_APPCONTAINER_REDIRECTION
+    // The new forms should be used and will exhibit the same behavior as the old flags.
+    // When running inside an AppContainer process, or when providing an AppContainer token,
+    // some folders are redirected to AppContainer-specific locations within the packages location.
+    // Specifying this flag will force this redirection for folders that are not normally
+    // redirected for centennial processes. Useful for sharing files between between UWA and
+    // Centennial apps that are within the same package.
+    value KF_FLAG_FORCE_PACKAGE_REDIRECTION 0x00020000
+    // When running inside a packaged process (Centennial,  AppContainer, etc.), or when providing
+    // a packaged process token, some folders are redirected to package-specific locations.
+    // Specifying this flag will disable redirection on locations where it applied,
+    // and instead return the non-redirected location.
+    value KF_FLAG_NO_PACKAGE_REDIRECTION 0x00010000
+    // see comment for KF_FLAG_FORCE_PACKAGE_REDIRECTION
+    value KF_FLAG_FORCE_APPCONTAINER_REDIRECTION 0x00020000
+    // When running inside an AppContainer, or when poviding an AppContainer token, specifying this flag will prevent redirection to AppContainer
+    // folders and instead return the path that would be returned when not running inside an AppContainer
+    value KF_FLAG_NO_APPCONTAINER_REDIRECTION 0x00010000
+    // Make sure that the folder already exists or create it and apply security specified in folder definition
+    // If folder can not be created then function will return failure and no folder path (IDList) will be returned
+    // If folder is located on the network the function may take long time to execute
+    value KF_FLAG_CREATE 0x00008000
+    // If this flag is specified then the folder path is returned and no verification is performed
+    // Use this flag is you want to get folders path (IDList) and do not need to verify folders existence
+    //
+    // If this flag is NOT specified then Known Folder API will try to verify that the folder exists
+    // If folder does not exist or can not be accessed then function will return failure and no folder path (IDList) will be returned
+    // If folder is located on the network the function may take long time to execute
+    value KF_FLAG_DONT_VERIFY 0x00004000
+    // Set folder path as is and do not try to substitute parts of the path with environments variables.
+    // If flag is not specified then Known Folder will try to replace parts of the path with some
+    // known environment variables (%USERPROFILE%, %APPDATA% etc.)
+    value KF_FLAG_DONT_UNEXPAND 0x00002000
+    // Get file system based IDList if available. If the flag is not specified the Known Folder API
+    // will try to return aliased IDList by default. Example for FOLDERID_Documents -
+    // Aliased - [desktop]\[user]\[Documents] - exact location is determined by shell namespace layout and might change
+    // Non aliased - [desktop]\[computer]\[disk_c]\[users]\[user]\[Documents] - location is determined by folder location in the file system
+    value KF_FLAG_NO_ALIAS 0x00001000
+    // Initialize the folder with desktop.ini settings
+    // If folder can not be initialized then function will return failure and no folder path will be returned
+    // If folder is located on the network the function may take long time to execute
+    value KF_FLAG_INIT 0x00000800
+    // Get the default path, will also verify folder existence unless KF_FLAG_DONT_VERIFY is also specified
+    value KF_FLAG_DEFAULT_PATH 0x00000400
+    // Get the not-parent-relative default path. Only valid with KF_FLAG_DEFAULT_PATH
+    value KF_FLAG_NOT_PARENT_RELATIVE 0x00000200
+    // Build simple IDList
+    value KF_FLAG_SIMPLE_IDLIST 0x00000100
+    // only return the aliased IDLists, dont fallback to file system path
+    value KF_FLAG_ALIAS_ONLY 0x80000000
+}
+enum tagCOINITBASE typedef=COINITBASE {
+    value COINITBASE_MULTITHREADED 0x0
+}
+enum tagCOINIT typedef=COINIT {
+    value COINIT_APARTMENTTHREADED 0x2
+    value COINIT_MULTITHREADED COINITBASE_MULTITHREADED
+    value COINIT_DISABLE_OLE1DDE 0x4
+    value COINIT_SPEED_OVER_MEMORY 0x8
+}
+enum KF_CATEGORY typedef=KF_CATEGORY {
+    value KF_CATEGORY_VIRTUAL 1
+    value KF_CATEGORY_FIXED 2
+    value KF_CATEGORY_COMMON 3
+    value KF_CATEGORY_PERUSER 4
+}
+enum _KF_DEFINITION_FLAGS {
+    value KFDF_LOCAL_REDIRECT_ONLY 0x2
+    value KFDF_ROAMABLE 0x4
+    value KFDF_PRECREATE 0x8
+    value KFDF_STREAM 0x10
+    value KFDF_PUBLISHEXPANDEDPATH 0x20
+    value KFDF_NO_REDIRECT_UI 0x40
+}
+enum tagEOLE_AUTHENTICATION_CAPABILITIES typedef=EOLE_AUTHENTICATION_CAPABILITIES {
+    value EOAC_NONE 0
+    value EOAC_MUTUAL_AUTH 0x1
+    value EOAC_STATIC_CLOAKING 0x20
+    value EOAC_DYNAMIC_CLOAKING 0x40
+    value EOAC_ANY_AUTHORITY 0x80
+    value EOAC_MAKE_FULLSIC 0x100
+    value EOAC_DEFAULT 0x800
+    value EOAC_SECURE_REFS 0x2
+    value EOAC_ACCESS_CONTROL 0x4
+    value EOAC_APPID 0x8
+    value EOAC_DYNAMIC 0x10
+    value EOAC_REQUIRE_FULLSIC 0x200
+    value EOAC_AUTO_IMPERSONATE 0x400
+    value EOAC_DISABLE_AAA 0x1000
+    value EOAC_NO_CUSTOM_MARSHAL 0x2000
+    value EOAC_RESERVED1 0x4000
+}
+typedef FOLDERTYPEID GUID
+typedef KNOWNFOLDERID GUID
+typedef IID GUID
+typedef LPIID "IID *"
+typedef OLECHAR WCHAR
+typedef LPOLESTR "OLECHAR *"
+typedef LPCOLESTR "const OLECHAR *"
+typedef LPCLSID "CLSID *"
+typedef KF_DEFINITION_FLAGS DWORD
+struct KNOWNFOLDER_DEFINITION typedef=KNOWNFOLDER_DEFINITION {
+    field category KF_CATEGORY
+    field pszName LPWSTR
+    field pszDescription LPWSTR
+    field fidParent KNOWNFOLDERID
+    field pszRelativePath LPWSTR
+    field pszParsingName LPWSTR
+    field pszTooltip LPWSTR
+    field pszLocalizedName LPWSTR
+    field pszIcon LPWSTR
+    field pszSecurity LPWSTR
+    field dwAttributes DWORD
+    field kfdFlags KF_DEFINITION_FLAGS
+    field ftidType FOLDERTYPEID
+}
+macro `REFKNOWNFOLDERID` "const KNOWNFOLDERID &" if="defined(__cplusplus)"
+// !__cplusplus
+macro `REFKNOWNFOLDERID` "const KNOWNFOLDERID *" if="!defined(__cplusplus)"

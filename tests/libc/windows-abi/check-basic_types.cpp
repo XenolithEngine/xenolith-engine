@@ -9,7 +9,7 @@
 // scalar typedefs still have the same width/representation as the SDK's, which is
 // what every other abi/*.h layout check silently depends on.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/basic_types.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/basic_types.h>
 #include "abi_check.h"
 
 #include <windows.h>   // DWORD, HANDLE, ULONG_PTR, ... (windef.h / winnt.h)

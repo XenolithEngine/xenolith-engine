@@ -3,7 +3,7 @@
 
 #include <sprt/c/__sprt_stdarg.h>
 #include <sprt/c/__sprt_stdio.h>
-#include <sprt/c/bits/__sprt_null.h>
+#include <sprt/gen/c/bits/__sprt_null.h>
 #include <sprt/wrappers/libc/stddef.h>
 
 #if __STDC_HOSTED__ == 0 || !defined(__SPRT_BUILD)

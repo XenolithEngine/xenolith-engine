@@ -23,10 +23,10 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SPRT_H_
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SPRT_H_
 
-#include <sprt/c/cross/__sprt_sysid.h>
-#include <sprt/c/bits/__sprt_time_t.h>
-#include <sprt/c/bits/__sprt_uint32_t.h>
-#include <sprt/c/bits/__sprt_uint64_t.h>
+#include <sprt/gen/c/cross/__sprt_sysid.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/bits/__sprt_uint32_t.h>
+#include <sprt/gen/c/bits/__sprt_uint64_t.h>
 
 // Default nanoseconds timeout
 typedef __SPRT_ID(uint64_t) __SPRT_ID(sprt_timeout_t);

@@ -1,0 +1,39 @@
+cond sizeof_pointer_sizeof_pointer "defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ > 8"
+macro PTHREAD_COMMON_ALIGNMENT 8
+typedef pthread_t "void *"
+// attr_t (pthread_thread_t.h) is 24 bytes on LP64/ILP32 and 32 under the
+// 128-bit pointer mode (its void* stack member doubles); measured sizes,
+// asserted in runtime_core_pthread.cpp.
+struct typedef=pthread_attr_t attr="SPRT_ALIGNAS(PTHREAD_COMMON_ALIGNMENT)" if="@sizeof_pointer_sizeof_pointer" {
+    field __data "uint32_t [8]"
+}
+struct typedef=pthread_attr_t attr="SPRT_ALIGNAS(PTHREAD_COMMON_ALIGNMENT)" if="!@sizeof_pointer_sizeof_pointer" {
+    field __data "uint32_t [6]"
+}
+typedef pthread_once_t uint32_t
+struct typedef=pthread_mutexattr_t attr="SPRT_ALIGNAS(PTHREAD_COMMON_ALIGNMENT)" {
+    field __data "uint32_t [1]"
+}
+struct typedef=pthread_mutex_t attr="SPRT_ALIGNAS(PTHREAD_COMMON_ALIGNMENT)" {
+    field __data "uint64_t [3]"
+}
+typedef pthread_key_t uint32_t
+typedef pthread_spinlock_t "volatile uint32_t"
+struct typedef=pthread_cond_t attr="SPRT_ALIGNAS(PTHREAD_COMMON_ALIGNMENT)" {
+    field __size "uint64_t [3]"
+}
+struct typedef=pthread_condattr_t attr="SPRT_ALIGNAS(PTHREAD_COMMON_ALIGNMENT)" {
+    field __size "uint32_t [2]"
+}
+struct typedef=pthread_rwlockattr_t attr="SPRT_ALIGNAS(PTHREAD_COMMON_ALIGNMENT)" {
+    field __size "uint32_t [1]"
+}
+struct typedef=pthread_barrierattr_t attr="SPRT_ALIGNAS(PTHREAD_COMMON_ALIGNMENT)" {
+    field __size "uint32_t [1]"
+}
+struct typedef=pthread_rwlock_t attr="SPRT_ALIGNAS(PTHREAD_COMMON_ALIGNMENT)" {
+    field __size "uint32_t [5]"
+}
+struct typedef=pthread_barrier_t attr="SPRT_ALIGNAS(PTHREAD_COMMON_ALIGNMENT)" {
+    field __size "uint32_t [5]"
+}

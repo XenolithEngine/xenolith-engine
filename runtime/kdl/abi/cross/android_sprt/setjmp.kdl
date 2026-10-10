@@ -1,0 +1,3 @@
+// * The type of the buffer used by setjmp()/longjmp().
+typedef native_jmp_buf "long [_JBLEN]"
+typedef native_sigjmp_buf "long [_JBLEN + 1]"

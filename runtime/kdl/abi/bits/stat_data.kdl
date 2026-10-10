@@ -1,0 +1,13 @@
+field st_dev dev_t
+field st_ino ino_t
+field st_nlink nlink_t
+field st_mode mode_t
+field st_uid uid_t
+field st_gid gid_t
+field st_rdev dev_t
+field st_size off_t
+field st_blksize blksize_t
+field st_blocks blkcnt_t
+field st_atim "struct timespec"
+field st_mtim "struct timespec"
+field st_ctim "struct timespec"

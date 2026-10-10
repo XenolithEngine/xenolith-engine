@@ -1,0 +1,12 @@
+macro (n)mbstate_t "__SPRT_ID(mbstate_t)"
+macro MBSTATE_DIRECT 0
+typedef wctype_t uint32_t if="defined(__LP64__)"
+typedef wctype_t "unsigned long" if="!defined(__LP64__)"
+// Darwin's wctrans_t is a plain int (glibc uses const int *); the wctype.h
+// bridge forwards SPRT handles to the platform libc, so the ABI must match.
+typedef wctrans_t int
+macro WCTRANS_T_DEFINED 1
+union typedef=(n)mbstate_t {
+    field __mbstate8 "char [128]"
+    field _mbstateL "long long"
+}

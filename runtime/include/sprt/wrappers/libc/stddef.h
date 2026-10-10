@@ -1,9 +1,9 @@
 #ifndef CORE_RUNTIME_INCLUDE_SPRT_WRAPPERS_LIBC_STDDEF_H_
 #define CORE_RUNTIME_INCLUDE_SPRT_WRAPPERS_LIBC_STDDEF_H_
 
-#include <sprt/c/bits/__sprt_ssize_t.h>
-#include <sprt/c/bits/__sprt_wint_t.h>
-#include <sprt/c/bits/__sprt_wchar_t.h>
+#include <sprt/gen/c/bits/__sprt_ssize_t.h>
+#include <sprt/gen/c/bits/__sprt_wint_t.h>
+#include <sprt/gen/c/bits/__sprt_wchar_t.h>
 #include <sprt/c/__sprt_stddef.h>
 
 #if __STDC_HOSTED__ == 0 || !defined(__SPRT_BUILD)

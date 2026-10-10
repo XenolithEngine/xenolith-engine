@@ -2,7 +2,7 @@
 //
 // abi/constants.h <-> Windows SDK parity. Compile-time only; see check.sh.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/constants.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/constants.h>
 #include "abi_check.h"
 
 #include <windows.h>   // GENERIC_*/KEY_*/WAIT_*/TOKEN_*/SECTION_*/STANDARD_RIGHTS_*/...

@@ -1,0 +1,27 @@
+cond config_sig_default "defined(CONFIG_SIG_DEFAULT)"
+// NuttX's sigset_t is a 2-word bitmap over 64 signals, not glibc's 128-byte one,
+// and - more sharply - its SIG_DFL/SIG_IGN are not the Linux 0/1 pair. The wrappers
+// forward handlers and sigset_t pointers to the NuttX libc without translating
+// them, and outside __SPRT_BUILD these macros are what the application passes to
+// signal()/sigaction(), so both have to be NuttX's own.
+// SIG_DFL is 1 only when CONFIG_SIG_DEFAULT is on; without it NuttX has no default
+// actions and SIG_DFL collapses onto SIG_IGN == 0. Read the kconfig rather than
+// assuming, the same way dir_ptr.h reads CONFIG_NAME_MAX; nuttx/config.h is
+// macro-only.
+macro SIG_ERR "((void (*)(int))-1)"
+macro SIG_IGN "((void (*)(int)) 0)"
+macro SIG_DFL "((void (*)(int)) 1)" if="@config_sig_default"
+macro SIG_HOLD "((void (*)(int)) 2)" if="@config_sig_default"
+macro SIG_DFL "((void (*)(int)) 0)" if="!@config_sig_default"
+macro SIG_HOLD "((void (*)(int)) 1)" if="!@config_sig_default"
+// NuttX: `typedef volatile int sig_atomic_t`. POSIX allows the qualifier, and the
+// wrapper's type-identity assert compares against exactly this.
+typedef sig_atomic_t "volatile int"
+macro SIG_ATOMIC_MIN "(-1 - INT_MAX)"
+macro SIG_ATOMIC_MAX INT_MAX
+// struct sigset_s { uint32_t _elem[(_NSIG + 31) >> 5]; } with _NSIG == MAX_SIGNO + 1
+// == 64. MAX_SIGNO is fixed in NuttX's <signal.h>, not a kconfig.
+macro SIGSET_WORDS 2
+struct (id)__sigset_t typedef=sigset_t {
+    field __bits "uint32_t [SIGSET_WORDS]"
+}

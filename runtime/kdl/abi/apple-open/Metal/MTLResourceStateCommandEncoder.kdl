@@ -1,0 +1,4 @@
+enum MTLSparseTextureMappingMode macro=NS_ENUM base=NSUInteger {
+    value MTLSparseTextureMappingModeMap 0
+    value MTLSparseTextureMappingModeUnmap 1
+}

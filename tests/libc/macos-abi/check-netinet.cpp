@@ -38,7 +38,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
-#define SPRT_ABI_HEADER <sprt/c/cross/__sprt_netinet.h>
+#define SPRT_ABI_HEADER <sprt/gen/c/cross/__sprt_netinet.h>
 #include "abi_check.h"
 
 // === address string lengths and reserved ports ===

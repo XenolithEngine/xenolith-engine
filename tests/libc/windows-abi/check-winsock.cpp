@@ -53,7 +53,7 @@
 // [4] rename SPRT's extern-"C" __WSAFDIsSet to a private symbol for the abi block.
 #define __WSAFDIsSet __sprt_abi_WSAFDIsSet
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/winsock.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/winsock.h>
 #include "abi_check.h"
 
 // [3]+[4] undo the leaked global macros / the __WSAFDIsSet rename so the SDK headers

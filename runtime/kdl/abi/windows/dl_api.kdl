@@ -1,0 +1,299 @@
+macro IMAGE_NUMBEROF_DIRECTORY_ENTRIES 16
+macro IMAGE_DOS_SIGNATURE 0x5A4D
+macro IMAGE_OS2_SIGNATURE 0x454E
+macro IMAGE_OS2_SIGNATURE_LE 0x454C
+macro IMAGE_VXD_SIGNATURE 0x454C
+macro IMAGE_NT_SIGNATURE 0x00004550
+macro IMAGE_NT_OPTIONAL_HDR64_MAGIC 0x20b
+macro MEM_COMMIT 0x00001000
+macro MEM_RESERVE 0x00002000
+macro MEM_REPLACE_PLACEHOLDER 0x00004000
+macro MEM_RESERVE_PLACEHOLDER 0x00040000
+macro MEM_RESET 0x00080000
+macro MEM_TOP_DOWN 0x00100000
+macro MEM_WRITE_WATCH 0x00200000
+macro MEM_PHYSICAL 0x00400000
+macro MEM_ROTATE 0x00800000
+macro MEM_DIFFERENT_IMAGE_BASE_OK 0x00800000
+macro MEM_RESET_UNDO 0x01000000
+macro MEM_LARGE_PAGES 0x20000000
+macro MEM_4MB_PAGES 0x80000000
+macro MEM_64K_PAGES "(MEM_LARGE_PAGES | MEM_PHYSICAL)"
+macro MEM_UNMAP_WITH_TRANSIENT_BOOST 0x00000001
+macro MEM_COALESCE_PLACEHOLDERS 0x00000001
+macro MEM_PRESERVE_PLACEHOLDER 0x00000002
+macro MEM_DECOMMIT 0x00004000
+macro MEM_RELEASE 0x00008000
+macro MEM_FREE 0x00010000
+macro PAGE_NOACCESS 0x01
+macro PAGE_READONLY 0x02
+macro PAGE_READWRITE 0x04
+macro PAGE_WRITECOPY 0x08
+macro PAGE_EXECUTE 0x10
+macro PAGE_EXECUTE_READ 0x20
+macro PAGE_EXECUTE_READWRITE 0x40
+macro PAGE_EXECUTE_WRITECOPY 0x80
+macro PAGE_GUARD 0x100
+macro PAGE_NOCACHE 0x200
+macro PAGE_WRITECOMBINE 0x400
+macro IMAGE_DIRECTORY_ENTRY_EXPORT 0
+macro IMAGE_DIRECTORY_ENTRY_IMPORT 1
+macro IMAGE_DIRECTORY_ENTRY_RESOURCE 2
+macro IMAGE_DIRECTORY_ENTRY_EXCEPTION 3
+macro IMAGE_DIRECTORY_ENTRY_SECURITY 4
+macro IMAGE_DIRECTORY_ENTRY_BASERELOC 5
+macro IMAGE_DIRECTORY_ENTRY_DEBUG 6
+macro IMAGE_DIRECTORY_ENTRY_ARCHITECTURE 7
+macro IMAGE_DIRECTORY_ENTRY_GLOBALPTR 8
+macro IMAGE_DIRECTORY_ENTRY_TLS 9
+macro IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG 10
+macro IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT 11
+macro IMAGE_DIRECTORY_ENTRY_IAT 12
+macro IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT 13
+macro IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR 14
+macro GET_MODULE_HANDLE_EX_FLAG_PIN "(0x00000001)"
+macro GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT "(0x00000002)"
+macro GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS "(0x00000004)"
+macro DLL_PROCESS_ATTACH 1
+macro DLL_THREAD_ATTACH 2
+macro DLL_THREAD_DETACH 3
+macro DLL_PROCESS_DETACH 0
+macro UOI_FLAGS 1
+macro UOI_NAME 2
+macro UOI_TYPE 3
+macro UOI_USER_SID 4
+macro UOI_HEAPSIZE 5
+macro UOI_IO 6
+macro UOI_TIMERPROC_EXCEPTION_SUPPRESSION 7
+// LoadLibraryEx dwFlags search-path values (see MS "LoadLibraryExW" docs).
+macro LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR 0x00000100
+macro LOAD_LIBRARY_SEARCH_APPLICATION_DIR 0x00000200
+macro LOAD_LIBRARY_SEARCH_USER_DIRS 0x00000400
+macro LOAD_LIBRARY_SEARCH_SYSTEM32 0x00000800
+macro LOAD_LIBRARY_SEARCH_DEFAULT_DIRS 0x00001000
+typedef PIMAGE_TLS_CALLBACK "VOID (*)(PVOID DllHandle, DWORD Reason, PVOID Reserved)"
+struct _IMAGE_IMPORT_DESCRIPTOR typedef=IMAGE_IMPORT_DESCRIPTOR {
+    union {
+        field Characteristics DWORD
+        field OriginalFirstThunk DWORD
+    }
+    // 0 for terminating null import descriptor
+    // RVA to original unbound IAT (PIMAGE_THUNK_DATA)
+    field TimeDateStamp DWORD
+    // -1 if bound, and real date\time stamp
+    // in IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT (new BIND)
+    // O.W. date/time stamp of DLL bound to (Old BIND)
+    field ForwarderChain DWORD
+    field Name DWORD
+    field FirstThunk DWORD
+}
+struct _MEMORY_BASIC_INFORMATION typedef=MEMORY_BASIC_INFORMATION also="*PMEMORY_BASIC_INFORMATION" {
+    field BaseAddress PVOID
+    field AllocationBase PVOID
+    field AllocationProtect DWORD
+    field PartitionId WORD
+    field RegionSize SIZE_T
+    field State DWORD
+    field Protect DWORD
+    field Type DWORD
+}
+struct _IMAGE_EXPORT_DIRECTORY typedef=IMAGE_EXPORT_DIRECTORY also="*PIMAGE_EXPORT_DIRECTORY" {
+    field Characteristics DWORD
+    field TimeDateStamp DWORD
+    field MajorVersion WORD
+    field MinorVersion WORD
+    field Name DWORD
+    field Base DWORD
+    field NumberOfFunctions DWORD
+    field NumberOfNames DWORD
+    field AddressOfFunctions DWORD
+    field AddressOfNames DWORD
+    field AddressOfNameOrdinals DWORD
+}
+struct _IMAGE_DOS_HEADER typedef=IMAGE_DOS_HEADER also="*PIMAGE_DOS_HEADER" {
+    // DOS .EXE header
+    field e_magic WORD
+    field e_cblp WORD
+    field e_cp WORD
+    field e_crlc WORD
+    field e_cparhdr WORD
+    field e_minalloc WORD
+    field e_maxalloc WORD
+    field e_ss WORD
+    field e_sp WORD
+    field e_csum WORD
+    field e_ip WORD
+    field e_cs WORD
+    field e_lfarlc WORD
+    field e_ovno WORD
+    field e_res "WORD [4]"
+    field e_oemid WORD
+    field e_oeminfo WORD
+    field e_res2 "WORD [10]"
+    field e_lfanew LONG
+}
+struct _IMAGE_DATA_DIRECTORY typedef=IMAGE_DATA_DIRECTORY also="*PIMAGE_DATA_DIRECTORY" {
+    field VirtualAddress DWORD
+    field Size DWORD
+}
+struct _IMAGE_TLS_DIRECTORY64 typedef=IMAGE_TLS_DIRECTORY64 also="*PIMAGE_TLS_DIRECTORY64" {
+    field StartAddressOfRawData ULONGLONG
+    field EndAddressOfRawData ULONGLONG
+    field AddressOfIndex ULONGLONG
+    field AddressOfCallBacks ULONGLONG
+    field SizeOfZeroFill DWORD
+    union {
+        field Characteristics DWORD
+        struct {
+            field Reserved0 DWORD bits="20"
+            field Alignment DWORD bits="4"
+            field Reserved1 DWORD bits="8"
+        }
+    }
+}
+macro IMAGE_NUMBEROF_DIRECTORY_ENTRIES 16
+struct _IMAGE_OPTIONAL_HEADER typedef=IMAGE_OPTIONAL_HEADER32 also="*PIMAGE_OPTIONAL_HEADER32" {
+    field Magic WORD
+    field MajorLinkerVersion BYTE
+    field MinorLinkerVersion BYTE
+    field SizeOfCode DWORD
+    field SizeOfInitializedData DWORD
+    field SizeOfUninitializedData DWORD
+    field AddressOfEntryPoint DWORD
+    field BaseOfCode DWORD
+    field BaseOfData DWORD
+    field ImageBase DWORD
+    field SectionAlignment DWORD
+    field FileAlignment DWORD
+    field MajorOperatingSystemVersion WORD
+    field MinorOperatingSystemVersion WORD
+    field MajorImageVersion WORD
+    field MinorImageVersion WORD
+    field MajorSubsystemVersion WORD
+    field MinorSubsystemVersion WORD
+    field Win32VersionValue DWORD
+    field SizeOfImage DWORD
+    field SizeOfHeaders DWORD
+    field CheckSum DWORD
+    field Subsystem WORD
+    field DllCharacteristics WORD
+    field SizeOfStackReserve DWORD
+    field SizeOfStackCommit DWORD
+    field SizeOfHeapReserve DWORD
+    field SizeOfHeapCommit DWORD
+    field LoaderFlags DWORD
+    field NumberOfRvaAndSizes DWORD
+    field DataDirectory "IMAGE_DATA_DIRECTORY [IMAGE_NUMBEROF_DIRECTORY_ENTRIES]"
+}
+struct _IMAGE_ROM_OPTIONAL_HEADER typedef=IMAGE_ROM_OPTIONAL_HEADER also="*PIMAGE_ROM_OPTIONAL_HEADER" {
+    field Magic WORD
+    field MajorLinkerVersion BYTE
+    field MinorLinkerVersion BYTE
+    field SizeOfCode DWORD
+    field SizeOfInitializedData DWORD
+    field SizeOfUninitializedData DWORD
+    field AddressOfEntryPoint DWORD
+    field BaseOfCode DWORD
+    field BaseOfData DWORD
+    field BaseOfBss DWORD
+    field GprMask DWORD
+    field CprMask "DWORD [4]"
+    field GpValue DWORD
+}
+struct _IMAGE_OPTIONAL_HEADER64 typedef=IMAGE_OPTIONAL_HEADER64 also="*PIMAGE_OPTIONAL_HEADER64" {
+    field Magic WORD
+    field MajorLinkerVersion BYTE
+    field MinorLinkerVersion BYTE
+    field SizeOfCode DWORD
+    field SizeOfInitializedData DWORD
+    field SizeOfUninitializedData DWORD
+    field AddressOfEntryPoint DWORD
+    field BaseOfCode DWORD
+    field ImageBase ULONGLONG
+    field SectionAlignment DWORD
+    field FileAlignment DWORD
+    field MajorOperatingSystemVersion WORD
+    field MinorOperatingSystemVersion WORD
+    field MajorImageVersion WORD
+    field MinorImageVersion WORD
+    field MajorSubsystemVersion WORD
+    field MinorSubsystemVersion WORD
+    field Win32VersionValue DWORD
+    field SizeOfImage DWORD
+    field SizeOfHeaders DWORD
+    field CheckSum DWORD
+    field Subsystem WORD
+    field DllCharacteristics WORD
+    field SizeOfStackReserve ULONGLONG
+    field SizeOfStackCommit ULONGLONG
+    field SizeOfHeapReserve ULONGLONG
+    field SizeOfHeapCommit ULONGLONG
+    field LoaderFlags DWORD
+    field NumberOfRvaAndSizes DWORD
+    field DataDirectory "IMAGE_DATA_DIRECTORY [IMAGE_NUMBEROF_DIRECTORY_ENTRIES]"
+}
+macro IMAGE_NT_OPTIONAL_HDR32_MAGIC 0x10b
+macro IMAGE_NT_OPTIONAL_HDR64_MAGIC 0x20b
+macro IMAGE_ROM_OPTIONAL_HDR_MAGIC 0x107
+typedef IMAGE_OPTIONAL_HEADER IMAGE_OPTIONAL_HEADER64 if="defined(_WIN64)"
+typedef PIMAGE_OPTIONAL_HEADER PIMAGE_OPTIONAL_HEADER64 if="defined(_WIN64)"
+macro IMAGE_NT_OPTIONAL_HDR_MAGIC IMAGE_NT_OPTIONAL_HDR64_MAGIC if="defined(_WIN64)"
+typedef IMAGE_OPTIONAL_HEADER IMAGE_OPTIONAL_HEADER32 if="!defined(_WIN64)"
+typedef PIMAGE_OPTIONAL_HEADER PIMAGE_OPTIONAL_HEADER32 if="!defined(_WIN64)"
+macro IMAGE_NT_OPTIONAL_HDR_MAGIC IMAGE_NT_OPTIONAL_HDR32_MAGIC if="!defined(_WIN64)"
+struct _IMAGE_FILE_HEADER typedef=IMAGE_FILE_HEADER also="*PIMAGE_FILE_HEADER" {
+    field Machine WORD
+    field NumberOfSections WORD
+    field TimeDateStamp DWORD
+    field PointerToSymbolTable DWORD
+    field NumberOfSymbols DWORD
+    field SizeOfOptionalHeader WORD
+    field Characteristics WORD
+}
+struct _IMAGE_NT_HEADERS64 typedef=IMAGE_NT_HEADERS64 also="*PIMAGE_NT_HEADERS64" {
+    field Signature DWORD
+    field FileHeader IMAGE_FILE_HEADER
+    field OptionalHeader IMAGE_OPTIONAL_HEADER64
+}
+struct _IMAGE_NT_HEADERS typedef=IMAGE_NT_HEADERS32 also="*PIMAGE_NT_HEADERS32" {
+    field Signature DWORD
+    field FileHeader IMAGE_FILE_HEADER
+    field OptionalHeader IMAGE_OPTIONAL_HEADER32
+}
+typedef IMAGE_NT_HEADERS IMAGE_NT_HEADERS64 if="defined(_WIN64)"
+typedef PIMAGE_NT_HEADERS PIMAGE_NT_HEADERS64 if="defined(_WIN64)"
+typedef IMAGE_NT_HEADERS IMAGE_NT_HEADERS32 if="!defined(_WIN64)"
+typedef PIMAGE_NT_HEADERS PIMAGE_NT_HEADERS32 if="!defined(_WIN64)"
+struct _LDR_DATA_TABLE_ENTRY typedef=LDR_DATA_TABLE_ENTRY also="*PLDR_DATA_TABLE_ENTRY" {
+    field InLoadOrderLinks "struct _LIST_ENTRY"
+    field InMemoryOrderLinks "struct _LIST_ENTRY"
+    union {
+        field InInitializationOrderLinks "struct _LIST_ENTRY"
+        field InProgressLinks "struct _LIST_ENTRY"
+    }
+    // 0x20
+    // 0x20
+    field DllBase "void *"
+    field EntryPoint "void *"
+    field SizeOfImage "unsigned long"
+    field FullDllName "struct _UNICODE_STRING"
+    field BaseDllName "struct _UNICODE_STRING"
+}
+struct _PEB_LDR_DATA typedef=PEB_LDR_DATA also="*PPEB_LDR_DATA" {
+    field length DWORD
+    field init DWORD
+    field SsHandle "void *"
+    // Linked list of loaded modules
+    field InLoadOrderModuleList LIST_ENTRY
+    field InMemoryOrderModuleList LIST_ENTRY
+    field InInitializationOrderModuleList LIST_ENTRY
+}
+struct _PEB typedef=PEB also="*PPEB" {
+    field Reserved1 "BYTE [2]"
+    field BeingDebugged BYTE
+    field Reserved2 "BYTE [1]"
+    field Padding0 "BYTE [4]"
+    field Mutant "void *"
+    field ImageBaseAddress "void *"
+    field Ldr PPEB_LDR_DATA
+}

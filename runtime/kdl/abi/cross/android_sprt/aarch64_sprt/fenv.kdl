@@ -1,0 +1,20 @@
+struct typedef=`__sprt_fenv_t` {
+    // FPCR, Floating-point Control Register.
+    field __control "unsigned int"
+    // FPSR, Floating-point Status Register.
+    field __status "unsigned int"
+}
+typedef `__sprt_fexcept_t` "unsigned int"
+// Exception flags.
+macro FE_INVALID 0x01
+macro FE_DIVBYZERO 0x02
+macro FE_OVERFLOW 0x04
+macro FE_UNDERFLOW 0x08
+macro FE_INEXACT 0x10
+macro FE_DENORMAL 0x80
+macro FE_ALL_EXCEPT "(FE_DIVBYZERO | FE_INEXACT | FE_INVALID\n\t | FE_OVERFLOW | FE_UNDERFLOW | FE_DENORMAL)"
+// Rounding modes.
+macro FE_TONEAREST 0x0
+macro FE_UPWARD 0x1
+macro FE_DOWNWARD 0x2
+macro FE_TOWARDZERO 0x3

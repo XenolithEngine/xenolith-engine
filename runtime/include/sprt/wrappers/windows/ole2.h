@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS_OLE2_H_
 
 #include <sprt/wrappers/windows/basic_api.h>
-#include <sprt/wrappers/windows/abi/oleidl.h>
+#include <sprt/gen/wrappers/windows/abi/oleidl.h>
 
 #define DROPEFFECT_NONE __SPRT_DROPEFFECT_NONE
 #define DROPEFFECT_COPY __SPRT_DROPEFFECT_COPY

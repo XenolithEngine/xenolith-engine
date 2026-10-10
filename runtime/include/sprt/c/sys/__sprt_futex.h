@@ -24,8 +24,8 @@
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_FUTEX_H_
 
 #include <sprt/c/cross/__sprt_config.h>
-#include <sprt/c/bits/__sprt_uint32_t.h>
-#include <sprt/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/bits/__sprt_uint32_t.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
 
 /*
 	Here we define the Linux library implementation of Futex and Futex2

@@ -36,7 +36,7 @@
 #include <fcntl.h>
 #include <sys/fcntl.h>
 
-#define SPRT_ABI_HEADER <sprt/c/cross/__sprt_fcntl.h>
+#define SPRT_ABI_HEADER <sprt/gen/c/cross/__sprt_fcntl.h>
 #include "abi_check.h"
 
 // === open() access modes and flags ===

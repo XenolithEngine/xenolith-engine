@@ -1,0 +1,10 @@
+// Materialized ABI values for <rpc.h> (clean names re-exported by
+// sprt/wrappers/windows/rpc.h).
+// GUID
+macro RPC_S_OK 0
+macro RPC_S_UUID_LOCAL_ONLY "1824L"
+macro RPC_S_UUID_NO_ADDRESS "1739L"
+typedef UUID GUID
+typedef RPC_STATUS long
+typedef RPC_CSTR "unsigned char *"
+typedef RPC_CCSTR "const unsigned char *"

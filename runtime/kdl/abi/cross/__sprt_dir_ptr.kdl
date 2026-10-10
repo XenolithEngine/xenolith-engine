@@ -1,0 +1,3 @@
+macro (n)dirent "__SPRT_ID(dirent)" if="defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1"
+macro (n)dirent `dirent` if="!(defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1)"
+use platform=dir_ptr.h

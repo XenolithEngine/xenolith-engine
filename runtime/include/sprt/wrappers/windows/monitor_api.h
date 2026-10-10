@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-#include <sprt/wrappers/windows/abi/monitor_api.h>
+#include <sprt/gen/wrappers/windows/abi/monitor_api.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/monitor_api.h) */
 #define DPI_AWARENESS_CONTEXT_UNAWARE __SPRT_DPI_AWARENESS_CONTEXT_UNAWARE

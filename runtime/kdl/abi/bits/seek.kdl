@@ -1,0 +1,3 @@
+macro SEEK_SET 0
+macro SEEK_CUR 1
+macro SEEK_END 2

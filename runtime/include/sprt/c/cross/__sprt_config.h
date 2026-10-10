@@ -30,8 +30,8 @@ THE SOFTWARE.
 #define SPRT_CROSS_CONFIG_NAME(x) SPRT_CROSS_CONFIG_NAME_(x)
 
 // clang-format off
-#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/config.h)
-#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/__SPRT_ARCH_NAME/config.h)
+#include SPRT_CROSS_CONFIG_NAME(sprt/gen/c/cross/__SPRT_PLATFORM_NAME/config.h)
+#include SPRT_CROSS_CONFIG_NAME(sprt/gen/c/cross/__SPRT_PLATFORM_NAME/__SPRT_ARCH_NAME/config.h)
 // clang-format on
 
 #if __SPRT_HAS_ATTR(warning)

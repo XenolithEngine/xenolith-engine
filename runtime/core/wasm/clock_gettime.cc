@@ -35,7 +35,7 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_time.h>
-#include <sprt/c/cross/__sprt_syscall.h>
+#include <sprt/gen/c/cross/__sprt_syscall.h>
 
 extern "C" {
 

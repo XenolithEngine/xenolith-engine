@@ -51,8 +51,8 @@
 #include <afunix.h>     // AF_UNIX
 
 // The namespaced portable table under test (macros only, no dependencies).
-#include <sprt/c/cross/windows_sprt/sockdef.h>
-#include <sprt/c/cross/__sprt_netinet.h>
+#include <sprt/gen/c/cross/windows_sprt/sockdef.h>
+#include <sprt/gen/c/cross/__sprt_netinet.h>
 
 // Assert that __SPRT_<name> equals the identically-named Winsock constant.
 #define SPRT_SAME(name) \
@@ -220,7 +220,7 @@ SPRT_SAME(SOMAXCONN);
 SPRT_SAME(UNIX_PATH_MAX);   // afunix.h; sizes sockaddr_un.sun_path in both tables
 
 // ===========================================================================
-// netinet constants from <sprt/c/cross/__sprt_netinet.h>. On this target it
+// netinet constants from <sprt/gen/c/cross/__sprt_netinet.h>. On this target it
 // resolves to its SPRT_WINDOWS values; each is pinned against the live SDK.
 // IPPROTO_* are a Winsock enum (not macros) so they are asserted directly.
 //

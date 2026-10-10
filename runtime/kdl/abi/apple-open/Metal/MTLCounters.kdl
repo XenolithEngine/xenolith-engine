@@ -1,0 +1,9 @@
+// MTLStorageMode
+macro SPRT_METAL_EXTERN "extern \"C\"" if="!defined(SPRT_METAL_EXTERN) && defined(__cplusplus)"
+macro SPRT_METAL_EXTERN extern if="!defined(SPRT_METAL_EXTERN) && !defined(__cplusplus)"
+macro MTLCounterDontSample "((NSUInteger)-1)"
+enum MTLCounterSampleBufferError macro=NS_ENUM base=NSInteger {
+    value MTLCounterSampleBufferErrorOutOfMemory
+    value MTLCounterSampleBufferErrorInvalid
+    value MTLCounterSampleBufferErrorInternal
+}

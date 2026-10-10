@@ -9,6 +9,7 @@ CoreGraphics.tbd. Signatures mirror the documented CoreGraphics ABI.
 
 #ifndef CGDIRECTDISPLAY_H_
 #define CGDIRECTDISPLAY_H_
+#include <__sprt_abi/CoreGraphics/CGDirectDisplay.h>
 
 #include <CoreGraphics/CGBase.h>
 #include <CoreFoundation/CFArray.h>
@@ -16,18 +17,6 @@ CoreGraphics.tbd. Signatures mirror the documented CoreGraphics ABI.
 #include <CoreFoundation/CFString.h>
 
 CG_EXTERN_C_BEGIN
-
-typedef uint32_t CGDirectDisplayID;
-typedef uint32_t CGOpenGLDisplayMask;
-
-typedef struct CGDisplayMode *CGDisplayModeRef;
-
-/* CGError (subset; only kCGErrorSuccess is referenced). */
-typedef int32_t CGError;
-enum { kCGErrorSuccess = 0 };
-
-#define kCGNullDirectDisplay ((CGDirectDisplayID)0)
-#define kCGDirectMainDisplay CGMainDisplayID()
 
 CG_EXTERN CGDirectDisplayID CGMainDisplayID(void);
 

@@ -1,0 +1,158 @@
+typedef socklen_t int
+typedef `ADDRESS_FAMILY` "unsigned short"
+typedef sa_family_t ADDRESS_FAMILY
+struct (n)sockaddr typedef=`SOCKADDR` also="*PSOCKADDR, *LPSOCKADDR" {
+    field sa_family ADDRESS_FAMILY
+    field sa_data "char [14]"
+}
+macro `INVALID_SOCKET` "(SOCKET)(~0)"
+macro `SOCKET_ERROR` "(-1)"
+typedef `SOCKET` "unsigned long long"
+typedef `sockdata_t` char
+typedef `socksize_t` int
+typedef in_port_t uint16_t
+typedef in_addr_t uint32_t
+struct (n)in_addr typedef=`IN_ADDR` also="*PIN_ADDR, *LPIN_ADDR" {
+    union S_un {
+        struct S_un_b {
+            field s_b1 "unsigned char"
+            field s_b2 "unsigned char"
+            field s_b3 "unsigned char"
+            field s_b4 "unsigned char"
+        }
+        struct S_un_w {
+            field s_w1 "unsigned short"
+            field s_w2 "unsigned short"
+        }
+        field S_addr "unsigned long"
+    }
+}
+struct (n)in6_addr typedef=`IN6_ADDR` also="*PIN6_ADDR, *LPIN6_ADDR" {
+    union u {
+        field Byte "unsigned char [16]"
+        field Word "unsigned short [8]"
+    }
+}
+macro `s_addr` S_un.S_addr
+macro `s_host` S_un.S_un_b.s_b2
+macro `s_net` S_un.S_un_b.s_b1
+macro `s_imp` S_un.S_un_w.s_w2
+macro `s_impno` S_un.S_un_b.s_b4
+macro `s_lh` S_un.S_un_b.s_b3
+struct (n)sockaddr_in typedef=`SOCKADDR_IN` also="*PSOCKADDR_IN" {
+    field sin_family ADDRESS_FAMILY
+    field sin_port "unsigned short"
+    field sin_addr IN_ADDR
+    field sin_zero "char [8]"
+}
+struct typedef=`SCOPE_ID` also="*PSCOPE_ID" {
+    union DUMMYUNIONNAME {
+        struct DUMMYSTRUCTNAME {
+            field Zone "unsigned long" bits="28"
+            field Level "unsigned long" bits="4"
+        }
+        field Value "unsigned long"
+    }
+}
+struct (n)sockaddr_in6 typedef=`SOCKADDR_IN6` also="*PSOCKADDR_IN6, *LPSOCKADDR_IN6" {
+    field sin6_family ADDRESS_FAMILY
+    field sin6_port "unsigned short"
+    field sin6_flowinfo "unsigned long"
+    field sin6_addr IN6_ADDR
+    union {
+        field sin6_scope_id "unsigned long"
+        field sin6_scope_struct SCOPE_ID
+    }
+}
+macro `_S6_un` u
+macro `_S6_u8` Byte
+macro `s6_addr` _S6_un._S6_u8
+struct hostent {
+    field h_name "char *"
+    field h_aliases "char **"
+    field h_addrtype short
+    field h_length short
+    field h_addr_list "char **"
+    macro `h_addr` "h_addr_list[0]"
+}
+struct netent {
+    field n_name "char *"
+    field n_aliases "char **"
+    field n_addrtype short
+    field n_net "unsigned long"
+}
+struct servent {
+    field s_name "char *"
+    field s_aliases "char **"
+    field s_proto "char *"
+    field s_port short
+}
+struct protoent {
+    field p_name "char *"
+    field p_aliases "char **"
+    field p_proto short
+}
+struct addrinfo typedef=`ADDRINFOA` also="*PADDRINFOA" {
+    field ai_flags int
+    field ai_family int
+    field ai_socktype int
+    field ai_protocol int
+    field ai_addrlen `size_t`
+    field ai_canonname "char *"
+    field ai_addr "struct `sockaddr` *"
+    field ai_next "struct addrinfo *"
+}
+macro `WSADESCRIPTION_LEN` 256
+macro `WSASYS_STATUS_LEN` 128
+struct WSAData typedef=`WSADATA` also="*LPWSADATA" {
+    field wVersion "unsigned short"
+    field wHighVersion "unsigned short"
+    field iMaxSockets "unsigned short"
+    field iMaxUdpDg "unsigned short"
+    field lpVendorInfo "char *"
+    field szDescription "char [WSADESCRIPTION_LEN + 1]"
+    field szSystemStatus "char [WSASYS_STATUS_LEN + 1]"
+}
+macro `_SS_MAXSIZE` 128
+macro `_SS_ALIGNSIZE` "(sizeof( int64_t))"
+macro `_SS_PAD1SIZE` "(_SS_ALIGNSIZE - sizeof(unsigned short))"
+macro `_SS_PAD2SIZE` "(_SS_MAXSIZE - (sizeof(unsigned short) + _SS_PAD1SIZE + _SS_ALIGNSIZE))"
+struct (n)sockaddr_storage typedef=`SOCKADDR_STORAGE_LH` also="*PSOCKADDR_STORAGE_LH, *LPSOCKADDR_STORAGE_LH" {
+    field ss_family ADDRESS_FAMILY
+    field __ss_pad1 "char [_SS_PAD1SIZE]"
+    field __ss_align int64_t
+    field __ss_pad2 "char [_SS_PAD2SIZE]"
+}
+// --- message / control structs -----------------------------------------------------
+// Windows has no POSIX msghdr; this is the SPRT libc's own portable shape, translated
+// to winsock's WSABUF/WSASendTo in SPRuntimeCSysSocket.cpp. Ancillary data (msg_control)
+// is not carried through winsock.
+struct (n)linger {
+    // winsock's `struct linger` uses u_short fields (4 bytes total), not the POSIX
+    // int/int; setsockopt(SO_LINGER) forwards this straight through, so it must match.
+    field l_onoff "unsigned short"
+    field l_linger "unsigned short"
+}
+struct (n)msghdr {
+    field msg_name "void *"
+    field msg_namelen socklen_t
+    field msg_iov "struct iovec *"
+    field msg_iovlen size_t
+    field msg_control "void *"
+    field msg_controllen size_t
+    field msg_flags int
+}
+struct (n)cmsghdr {
+    field cmsg_len size_t
+    field cmsg_level int
+    field cmsg_type int
+}
+struct (n)mmsghdr {
+    field msg_hdr "struct msghdr"
+    field msg_len "unsigned int"
+}
+macro CMSG_ALIGN "(((len) + sizeof(size_t) - 1) & (size_t) ~(sizeof(size_t) - 1))" params="len"
+macro CMSG_DATA "((unsigned char *)((struct cmsghdr *)(cmsg) + 1))" params="cmsg"
+macro CMSG_SPACE "(CMSG_ALIGN(len) + CMSG_ALIGN(sizeof(struct cmsghdr)))" params="len"
+macro CMSG_LEN "(CMSG_ALIGN(sizeof(struct cmsghdr)) + (len))" params="len"
+macro CMSG_FIRSTHDR "((size_t)(mhdr)->msg_controllen >= sizeof(struct cmsghdr)\n\t\t\t\t\t? (struct cmsghdr *)(mhdr)->msg_control\n\t\t\t\t\t: (struct cmsghdr *)0)" params="mhdr"

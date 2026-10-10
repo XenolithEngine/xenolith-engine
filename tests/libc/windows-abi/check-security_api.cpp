@@ -2,7 +2,7 @@
 //
 // abi/security_api.h <-> Windows SDK parity. Compile-time only; see check.sh.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/security_api.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/security_api.h>
 #include "abi_check.h"
 
 #include <windows.h>   // ACL, SID, LUID, TOKEN_*, SECURITY_INFORMATION, SE_*, E_*, EVENTLOG_*

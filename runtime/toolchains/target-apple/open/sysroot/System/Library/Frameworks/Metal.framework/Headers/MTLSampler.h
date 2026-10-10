@@ -7,36 +7,11 @@
 #import <Foundation/Foundation.h>
 #import <Metal/MTLDepthStencil.h> /* MTLCompareFunction */
 #import <Metal/MTLTypes.h>        /* MTLResourceID */
+#include <__sprt_abi/Metal/MTLSampler.h>
 
 @protocol MTLDevice;
 
 NS_ASSUME_NONNULL_BEGIN
-
-typedef NS_ENUM(NSUInteger, MTLSamplerMinMagFilter) {
-	MTLSamplerMinMagFilterNearest = 0,
-	MTLSamplerMinMagFilterLinear  = 1,
-};
-
-typedef NS_ENUM(NSUInteger, MTLSamplerMipFilter) {
-	MTLSamplerMipFilterNotMipmapped = 0,
-	MTLSamplerMipFilterNearest      = 1,
-	MTLSamplerMipFilterLinear       = 2,
-};
-
-typedef NS_ENUM(NSUInteger, MTLSamplerAddressMode) {
-	MTLSamplerAddressModeClampToEdge        = 0,
-	MTLSamplerAddressModeMirrorClampToEdge  = 1,
-	MTLSamplerAddressModeRepeat             = 2,
-	MTLSamplerAddressModeMirrorRepeat       = 3,
-	MTLSamplerAddressModeClampToZero        = 4,
-	MTLSamplerAddressModeClampToBorderColor = 5,
-};
-
-typedef NS_ENUM(NSUInteger, MTLSamplerBorderColor) {
-	MTLSamplerBorderColorTransparentBlack = 0, /* {0,0,0,0} */
-	MTLSamplerBorderColorOpaqueBlack      = 1, /* {0,0,0,1} */
-	MTLSamplerBorderColorOpaqueWhite      = 2, /* {1,1,1,1} */
-};
 
 @interface MTLSamplerDescriptor : NSObject <NSCopying>
 @property (nonatomic) MTLSamplerMinMagFilter minFilter;

@@ -1,0 +1,37 @@
+cond build "defined(__SPRT_BUILD)"
+// The message / control structs keep the same portable spelling; their layout is
+// defined per-platform in cross/<platform>/socket.h (SPRuntimeCSysSocket.cpp
+// static_asserts each against the native <sys/socket.h>).
+macro (n)sockaddr "__SPRT_ID(sockaddr)" if="@build"
+macro (n)sockaddr_storage "__SPRT_ID(sockaddr_storage)" if="@build"
+macro (n)in_addr "__SPRT_ID(in_addr)" if="@build"
+macro (n)in6_addr "__SPRT_ID(in6_addr)" if="@build"
+macro (n)sockaddr_in "__SPRT_ID(sockaddr_in)" if="@build"
+macro (n)sockaddr_in6 "__SPRT_ID(sockaddr_in6)" if="@build"
+macro (n)msghdr "__SPRT_ID(msghdr)" if="@build"
+macro (n)cmsghdr "__SPRT_ID(cmsghdr)" if="@build"
+macro (n)mmsghdr "__SPRT_ID(mmsghdr)" if="@build"
+macro (n)linger "__SPRT_ID(linger)" if="@build"
+macro (n)sockaddr `sockaddr` if="!@build"
+macro (n)sockaddr_storage `sockaddr_storage` if="!@build"
+macro (n)in_addr `in_addr` if="!@build"
+macro (n)in6_addr `in6_addr` if="!@build"
+macro (n)sockaddr_in `sockaddr_in` if="!@build"
+macro (n)sockaddr_in6 `sockaddr_in6` if="!@build"
+macro (n)msghdr `msghdr` if="!@build"
+macro (n)cmsghdr `cmsghdr` if="!@build"
+macro (n)mmsghdr `mmsghdr` if="!@build"
+macro (n)linger `linger` if="!@build"
+struct (n)sockaddr
+struct (n)sockaddr_storage
+struct (n)in_addr
+struct (n)in6_addr
+struct (n)sockaddr_in
+struct (n)sockaddr_in6
+// sockdef.h now carries the portable core socket constants NAMESPACED as __SPRT_* (safe to
+// include on every build; the public names are expanded from them in <sys/socket.h>, and the
+// wrapper static_asserts each against native). Its remaining platform-specific extras keep
+// plain public names and are self-guarded to freestanding inside sockdef.h. So it is always
+// included now.
+use platform=sockdef.h
+use platform=socket.h

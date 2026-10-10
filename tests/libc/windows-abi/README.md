@@ -20,9 +20,9 @@ This subproject closes that gap with two translation units:
 against the identically named constant in the live Windows SDK headers vendored
 under `runtime/toolchains/src/xwin/splat`. It covers both tables:
 
-- the core socket constants — `runtime/include/sprt/c/cross/windows_sprt/sockdef.h`
+- the core socket constants — `runtime/include/sprt/gen/c/cross/windows_sprt/sockdef.h`
   (SHUT/SOCK/AF/PF/SO/MSG/SOL/SOMAXCONN);
-- the cross netinet constants — `runtime/include/sprt/c/cross/__sprt_netinet.h`
+- the cross netinet constants — `runtime/include/sprt/gen/c/cross/__sprt_netinet.h`
   (IPPROTO_/IP_/IPV6_/MCAST_/INET*_ADDRSTRLEN), whose Windows values are selected
   there via `SPRT_WINDOWS`.
 

@@ -23,14 +23,14 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_POLL_H_
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_POLL_H_
 
-#include <sprt/c/bits/__sprt_time_t.h>
-#include <sprt/c/cross/__sprt_signal.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/cross/__sprt_signal.h>
 #include <sprt/c/cross/__sprt_config.h>
 
 // struct pollfd, nfds_t and the POLL* constants are defined per-platform to be
 // ABI-compatible with the native <poll.h> / winsock (SPRuntimeCSysPoll.cpp
 // static_asserts them against the system header).
-#include <sprt/c/cross/__sprt_polltypes.h>
+#include <sprt/gen/c/cross/__sprt_polltypes.h>
 
 __SPRT_BEGIN_DECL
 

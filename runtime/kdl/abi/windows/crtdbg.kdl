@@ -1,0 +1,21 @@
+// Materialized ABI values for <crtdbg.h> (clean names re-exported by
+// sprt/wrappers/windows/crtdbg.h).
+macro _CRT_WARN 0
+macro _CRT_ERROR 1
+macro _CRT_ASSERT 2
+macro _CRT_ERRCNT 3
+macro _CRTDBG_MODE_FILE 0x1
+macro _CRTDBG_MODE_DEBUG 0x2
+macro _CRTDBG_MODE_WNDW 0x4
+macro _CRTDBG_REPORT_MODE "(-1)"
+macro _CRTDBG_HFILE_ERROR "((void *) -2)"
+macro _CRTDBG_FILE_STDOUT "((void *) -4)"
+macro _CRTDBG_FILE_STDERR "((void *) -5)"
+macro _CRTDBG_ALLOC_MEM_DF 0x01
+macro _CRTDBG_DELAY_FREE_MEM_DF 0x02
+macro _CRTDBG_CHECK_ALWAYS_DF 0x04
+macro _CRTDBG_RESERVED_DF 0x08
+macro _CRTDBG_CHECK_CRT_DF 0x10
+macro _CRTDBG_LEAK_CHECK_DF 0x20
+macro _CRTDBG_REPORT_FLAG "(-1)"
+typedef _CRT_REPORT_HOOK "int (__cdecl *)(int, char *, int *)"

@@ -1,0 +1,8 @@
+macro FP_ILOGB0 "(-INT_MAX)"
+macro FP_ILOGBNAN INT_MAX
+macro math_errhandling MATH_ERREXCEPT
+macro FP_INFINITE 0x01
+macro FP_NAN 0x02
+macro FP_NORMAL 0x04
+macro FP_SUBNORMAL 0x08
+macro FP_ZERO 0x10

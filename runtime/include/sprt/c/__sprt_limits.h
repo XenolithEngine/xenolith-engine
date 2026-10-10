@@ -24,8 +24,8 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_LIMITS_H_
 
 #include <sprt/c/bits/__sprt_def.h>
-#include <sprt/c/bits/__sprt_int.h>
-#include <sprt/c/bits/__sprt_ssize_t.h>
+#include <sprt/gen/c/bits/__sprt_int.h>
+#include <sprt/gen/c/bits/__sprt_ssize_t.h>
 
 // clang-format off
 #if '\xff' > 0

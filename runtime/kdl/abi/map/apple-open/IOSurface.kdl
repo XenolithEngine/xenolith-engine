@@ -1,0 +1,17 @@
+// IOSurface: the ABI of its hand-written headers, and what they include.
+
+header "IOSurface/IOSurfaceRef.h" external=#true {
+    include "CoreFoundation/CoreFoundation.h"
+    include "sys/cdefs.h"
+    include "stddef.h"
+    include "stdint.h"
+    include "__sprt_abi/IOSurface/IOSurfaceRef.h"
+    type __SPRT_OPEN_IOSURFACEREF_H_
+}
+
+header "__sprt_abi/IOSurface/IOSurfaceRef.h" {
+    include "CoreFoundation/CoreFoundation.h"
+    include "sys/cdefs.h"
+    include "stddef.h"
+    include "stdint.h"
+}

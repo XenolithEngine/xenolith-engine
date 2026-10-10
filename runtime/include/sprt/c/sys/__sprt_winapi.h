@@ -24,13 +24,13 @@
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_WINAPI_H_
 
 #include <sprt/c/cross/__sprt_config.h>
-#include <sprt/c/cross/__sprt_sysid.h>
-#include <sprt/c/bits/__sprt_uint32_t.h>
-#include <sprt/c/bits/__sprt_int64_t.h>
-#include <sprt/c/bits/__sprt_uint64_t.h>
-#include <sprt/c/bits/__sprt_uintptr_t.h>
-#include <sprt/c/bits/__sprt_intptr_t.h>
-#include <sprt/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/cross/__sprt_sysid.h>
+#include <sprt/gen/c/bits/__sprt_uint32_t.h>
+#include <sprt/gen/c/bits/__sprt_int64_t.h>
+#include <sprt/gen/c/bits/__sprt_uint64_t.h>
+#include <sprt/gen/c/bits/__sprt_uintptr_t.h>
+#include <sprt/gen/c/bits/__sprt_intptr_t.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
 
 /*
 	This defines some WinAPI umbrella methods available for use in the Stappler Runtime

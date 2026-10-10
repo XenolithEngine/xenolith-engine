@@ -1,0 +1,102 @@
+enum MTLAccelerationStructureUsage macro=NS_OPTIONS base=NSUInteger {
+    value MTLAccelerationStructureUsageNone 0
+    value MTLAccelerationStructureUsageRefit "(1 << 0)"
+    value MTLAccelerationStructureUsagePreferFastBuild "(1 << 1)"
+    value MTLAccelerationStructureUsageExtendedLimits "(1 << 2)"
+}
+enum MTLAccelerationStructureInstanceOptions macro=NS_OPTIONS base=uint32_t {
+    value MTLAccelerationStructureInstanceOptionNone 0
+    value MTLAccelerationStructureInstanceOptionDisableTriangleCulling "(1 << 0)"
+    value MTLAccelerationStructureInstanceOptionTriangleFrontFacingWindingCounterClockwise "(1 << 1)"
+    value MTLAccelerationStructureInstanceOptionOpaque "(1 << 2)"
+    value MTLAccelerationStructureInstanceOptionNonOpaque "(1 << 3)"
+}
+//
+// @brief Describes what happens to the object before the first motion key and after the last
+// motion key.
+//
+enum MTLMotionBorderMode macro=NS_ENUM base=uint32_t {
+    value MTLMotionBorderModeClamp 0
+    value MTLMotionBorderModeVanish 1
+}
+//
+// @brief Curve types
+//
+enum MTLCurveType macro=NS_ENUM base=NSInteger {
+    value MTLCurveTypeRound 0
+    value MTLCurveTypeFlat 1
+}
+//
+// @brief Basis function to use to interpolate curve control points
+//
+enum MTLCurveBasis macro=NS_ENUM base=NSInteger {
+    value MTLCurveBasisBSpline 0
+    value MTLCurveBasisCatmullRom 1
+    value MTLCurveBasisLinear 2
+    value MTLCurveBasisBezier 3
+}
+//
+// @brief Type of end cap to insert at the beginning and end of each connected
+// sequence of curve segments.
+//
+enum MTLCurveEndCaps macro=NS_ENUM base=NSInteger {
+    value MTLCurveEndCapsNone 0
+    value MTLCurveEndCapsDisk 1
+    value MTLCurveEndCapsSphere 2
+}
+struct typedef=MTLAccelerationStructureInstanceDescriptor {
+    field transformationMatrix MTLPackedFloat4x3
+    field options MTLAccelerationStructureInstanceOptions
+    field mask uint32_t
+    field intersectionFunctionTableOffset uint32_t
+    field accelerationStructureIndex uint32_t
+}
+struct typedef=MTLAccelerationStructureUserIDInstanceDescriptor {
+    field transformationMatrix MTLPackedFloat4x3
+    field options MTLAccelerationStructureInstanceOptions
+    field mask uint32_t
+    field intersectionFunctionTableOffset uint32_t
+    field accelerationStructureIndex uint32_t
+    field userID uint32_t
+}
+enum MTLAccelerationStructureInstanceDescriptorType macro=NS_ENUM base=NSUInteger {
+    value MTLAccelerationStructureInstanceDescriptorTypeDefault 0
+    value MTLAccelerationStructureInstanceDescriptorTypeUserID 1
+    value MTLAccelerationStructureInstanceDescriptorTypeMotion 2
+    value MTLAccelerationStructureInstanceDescriptorTypeIndirect 3
+    value MTLAccelerationStructureInstanceDescriptorTypeIndirectMotion 4
+}
+struct typedef=MTLAccelerationStructureMotionInstanceDescriptor {
+    field options MTLAccelerationStructureInstanceOptions
+    field mask uint32_t
+    field intersectionFunctionTableOffset uint32_t
+    field accelerationStructureIndex uint32_t
+    field userID uint32_t
+    field motionTransformsStartIndex uint32_t
+    field motionTransformsCount uint32_t
+    field motionStartBorderMode MTLMotionBorderMode
+    field motionEndBorderMode MTLMotionBorderMode
+    field motionStartTime float
+    field motionEndTime float
+}
+struct typedef=MTLIndirectAccelerationStructureInstanceDescriptor {
+    field transformationMatrix MTLPackedFloat4x3
+    field options MTLAccelerationStructureInstanceOptions
+    field mask uint32_t
+    field intersectionFunctionTableOffset uint32_t
+    field userID uint32_t
+    field accelerationStructureID MTLResourceID
+}
+struct typedef=MTLIndirectAccelerationStructureMotionInstanceDescriptor {
+    field options MTLAccelerationStructureInstanceOptions
+    field mask uint32_t
+    field intersectionFunctionTableOffset uint32_t
+    field userID uint32_t
+    field accelerationStructureID MTLResourceID
+    field motionTransformsStartIndex uint32_t
+    field motionTransformsCount uint32_t
+    field motionStartBorderMode MTLMotionBorderMode
+    field motionEndBorderMode MTLMotionBorderMode
+    field motionStartTime float
+    field motionEndTime float
+}

@@ -48,8 +48,8 @@
 #include <netinet/in.h>
 #include <sys/select.h>
 
-#define SPRT_ABI_HEADER <sprt/c/cross/__sprt_socket.h>
-#define SPRT_ABI_HEADER_2 <sprt/c/cross/__sprt_fdset.h>
+#define SPRT_ABI_HEADER <sprt/gen/c/cross/__sprt_socket.h>
+#define SPRT_ABI_HEADER_2 <sprt/gen/c/cross/__sprt_fdset.h>
 #include "abi_check.h"
 
 // === the address structs ===================================================

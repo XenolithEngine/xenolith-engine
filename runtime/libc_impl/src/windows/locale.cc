@@ -927,7 +927,7 @@ static const char *__time_name_token(const wchar_t *wname, LCTYPE lctype, char *
 
 // nl_langinfo string for a non-C locale `map`, via WinAPI; nullptr when the item
 // has no WinAPI source (the caller then uses the C/POSIX default). Keyed on the
-// SPRT nl_item ids (see <sprt/c/cross/windows_sprt/langinfo.h>).
+// SPRT nl_item ids (see <sprt/gen/c/cross/windows_sprt/langinfo.h>).
 static const char *__win_langinfo(const __locale_map *map, int item) {
 	const wchar_t *wname = map->wname;
 

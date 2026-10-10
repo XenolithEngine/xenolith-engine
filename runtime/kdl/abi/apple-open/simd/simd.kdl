@@ -1,0 +1,6 @@
+typedef simd_float2 "__attribute__((__ext_vector_type__(2))) float"
+typedef simd_float3 "__attribute__((__ext_vector_type__(3))) float"
+typedef simd_float4 "__attribute__((__ext_vector_type__(4))) float"
+typedef vector_float2 simd_float2
+typedef vector_float3 simd_float3
+typedef vector_float4 simd_float4

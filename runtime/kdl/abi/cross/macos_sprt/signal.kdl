@@ -1,0 +1,44 @@
+macro SIGHUP 1
+macro SIGINT 2
+macro SIGQUIT 3
+macro SIGILL 4
+macro SIGTRAP 5
+macro SIGABRT 6
+macro SIGIOT SIGABRT
+macro SIGEMT 7
+macro SIGFPE 8
+macro SIGKILL 9
+macro SIGBUS 10
+macro SIGSEGV 11
+macro SIGSYS 12
+macro SIGPIPE 13
+macro SIGALRM 14
+macro SIGTERM 15
+macro SIGURG 16
+macro SIGSTOP 17
+macro SIGTSTP 18
+macro SIGCONT 19
+macro SIGCHLD 20
+macro SIGTTIN 21
+macro SIGTTOU 22
+macro SIGIO 23
+macro SIGXCPU 24
+macro SIGXFSZ 25
+macro SIGVTALRM 26
+macro SIGPROF 27
+macro SIGWINCH 28
+macro SIGINFO 29
+macro SIGUSR1 30
+macro SIGUSR2 31
+macro _NSIG 32
+macro SIG_DFL "(void (*)(int))0"
+macro SIG_IGN "(void (*)(int))1"
+macro SIG_HOLD "(void (*)(int))5"
+macro SIG_ERR "((void (*)(int))-1)"
+typedef sig_atomic_t int
+macro SIG_ATOMIC_MIN "(-1-INT_MAX)"
+macro SIG_ATOMIC_MAX INT_MAX
+macro SIGSET_WORDS 1
+struct (id)__sigset_t typedef=sigset_t {
+    field __bits "uint32_t [SIGSET_WORDS]"
+}

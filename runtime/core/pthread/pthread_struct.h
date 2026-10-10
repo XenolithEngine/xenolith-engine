@@ -27,7 +27,7 @@
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/c/__sprt_pthread.h>
 #include <sprt/c/__sprt_stdio.h>
-#include <sprt/c/bits/__sprt_native_thread_id_t.h>
+#include <sprt/gen/c/bits/__sprt_native_thread_id_t.h>
 
 namespace sprt {
 

@@ -1,0 +1,20 @@
+cond sprt_apple_sprt_android "SPRT_APPLE || SPRT_ANDROID"
+// Per-platform, ABI-compatible <fnmatch.h> flags (SPRuntimeCRegex.cpp static_asserts
+// them against the native header). BSD (macOS, Bionic) swaps FNM_PATHNAME=2 /
+// FNM_NOESCAPE=1; the GNU spelling (glibc, musl) has PATHNAME=1 / NOESCAPE=2;
+// NuttX keeps PATHNAME=1 but puts PERIOD before NOESCAPE.
+macro FNM_NOESCAPE 0x01 if="@sprt_apple_sprt_android"
+macro FNM_PATHNAME 0x02 if="@sprt_apple_sprt_android"
+macro FNM_PERIOD 0x04 if="@sprt_apple_sprt_android"
+macro FNM_PATHNAME 0x01 if="!@sprt_apple_sprt_android && SPRT_NUTTX"
+macro FNM_PERIOD 0x02 if="!@sprt_apple_sprt_android && SPRT_NUTTX"
+macro FNM_NOESCAPE 0x04 if="!@sprt_apple_sprt_android && SPRT_NUTTX"
+macro FNM_PATHNAME 0x01 if="!@sprt_apple_sprt_android && !(SPRT_NUTTX)"
+macro FNM_NOESCAPE 0x02 if="!@sprt_apple_sprt_android && !(SPRT_NUTTX)"
+macro FNM_PERIOD 0x04 if="!@sprt_apple_sprt_android && !(SPRT_NUTTX)"
+// NuttX implements neither of these; the values are unused there but must stay
+// defined because the <fnmatch.h> umbrella re-exports them unconditionally.
+macro FNM_LEADING_DIR 0x08
+macro FNM_CASEFOLD 0x10
+macro FNM_NOMATCH 1
+macro FNM_NOSYS "(-1)"

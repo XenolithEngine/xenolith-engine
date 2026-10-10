@@ -5,32 +5,11 @@
 #define __SPRT_OPEN_METAL_DEPTHSTENCIL_H_
 
 #import <Foundation/Foundation.h>
+#include <__sprt_abi/Metal/MTLDepthStencil.h>
 
 @protocol MTLDevice;
 
 NS_ASSUME_NONNULL_BEGIN
-
-typedef NS_ENUM(NSUInteger, MTLCompareFunction) {
-	MTLCompareFunctionNever        = 0,
-	MTLCompareFunctionLess         = 1,
-	MTLCompareFunctionEqual        = 2,
-	MTLCompareFunctionLessEqual    = 3,
-	MTLCompareFunctionGreater      = 4,
-	MTLCompareFunctionNotEqual     = 5,
-	MTLCompareFunctionGreaterEqual = 6,
-	MTLCompareFunctionAlways       = 7,
-};
-
-typedef NS_ENUM(NSUInteger, MTLStencilOperation) {
-	MTLStencilOperationKeep           = 0,
-	MTLStencilOperationZero           = 1,
-	MTLStencilOperationReplace        = 2,
-	MTLStencilOperationIncrementClamp = 3,
-	MTLStencilOperationDecrementClamp = 4,
-	MTLStencilOperationInvert         = 5,
-	MTLStencilOperationIncrementWrap  = 6,
-	MTLStencilOperationDecrementWrap  = 7,
-};
 
 @interface MTLStencilDescriptor : NSObject <NSCopying>
 @property (nonatomic) MTLCompareFunction stencilCompareFunction;

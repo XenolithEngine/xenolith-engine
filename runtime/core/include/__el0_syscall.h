@@ -52,12 +52,12 @@ THE SOFTWARE.
 #if SPRT_EMBOX_USER
 
 #include <sprt/c/__sprt_errno.h>
-#include <sprt/c/cross/__sprt_syscall.h>
+#include <sprt/gen/c/cross/__sprt_syscall.h>
 #include <sprt/c/cross/embox_user_sprt/aarch64_sprt/svc.h>
 
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_ssize_t.h>
-#include <sprt/c/bits/__sprt_uint32_t.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_ssize_t.h>
+#include <sprt/gen/c/bits/__sprt_uint32_t.h>
 
 __SPRT_BEGIN_DECL
 

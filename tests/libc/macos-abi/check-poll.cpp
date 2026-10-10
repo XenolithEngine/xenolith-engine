@@ -28,7 +28,7 @@
 #include <poll.h>
 #include <sys/poll.h>
 
-#define SPRT_ABI_HEADER <sprt/c/cross/__sprt_polltypes.h>
+#define SPRT_ABI_HEADER <sprt/gen/c/cross/__sprt_polltypes.h>
 #include "abi_check.h"
 
 // === poll() event bits =====================================================

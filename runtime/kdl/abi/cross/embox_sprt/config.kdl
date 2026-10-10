@@ -1,0 +1,51 @@
+// Embox platform configuration (hosted POSIX on the Embox kernel).
+//
+// Embox gives us a real libc with pthread/sem/poll/select, but it does
+// NOT provide the Linux-specific readiness APIs the runtime knows about:
+// * no epoll
+// * no eventfd, signalfd, timerfd, io_uring
+// * no futex(2) — sprt_lock uses a usleep poll (runtime/core/embox/sprt_lock.cc)
+// HAVE_* gates here start from the NuttX hosted-RTOS matrix.
+macro CONFIG_HAVE_EPOLL 0 if="!defined(CONFIG_HAVE_EPOLL)"
+macro CONFIG_HAVE_EVENTFD 0 if="!defined(CONFIG_HAVE_EVENTFD)"
+macro CONFIG_HAVE_SIGNALFD 0 if="!defined(CONFIG_HAVE_SIGNALFD)"
+macro CONFIG_HAVE_TIMERFD 0 if="!defined(CONFIG_HAVE_TIMERFD)"
+macro CONFIG_HAVE_URING 0 if="!defined(CONFIG_HAVE_URING)"
+macro CONFIG_HAVE_FUTEX 0 if="!defined(CONFIG_HAVE_FUTEX)"
+macro CONFIG_HAVE_POLL 1 if="!defined(CONFIG_HAVE_POLL)"
+macro CONFIG_HAVE_SIGNAL_SIGPROCMASK 1 if="!defined(CONFIG_HAVE_SIGNAL_SIGPROCMASK)"
+macro CONFIG_HAVE_FCNTL_SPLICE 0 if="!defined(CONFIG_HAVE_FCNTL_SPLICE)"
+macro CONFIG_HAVE_FCNTL_TEE 0 if="!defined(CONFIG_HAVE_FCNTL_TEE)"
+macro CONFIG_HAVE_FCNTL_FALLOCATE 0 if="!defined(CONFIG_HAVE_FCNTL_FALLOCATE)"
+macro CONFIG_HAVE_FCNTL_FADVICE 0 if="!defined(CONFIG_HAVE_FCNTL_FADVICE)"
+macro CONFIG_HAVE_FCNTL_READAHEAD 0 if="!defined(CONFIG_HAVE_FCNTL_READAHEAD)"
+macro CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE 0 if="!defined(CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE)"
+macro CONFIG_HAVE_UNISTD_COPY_FILE_RANGE 0 if="!defined(CONFIG_HAVE_UNISTD_COPY_FILE_RANGE)"
+macro CONFIG_HAVE_STDIO_OPEN_MEMSTREAM 0 if="!defined(CONFIG_HAVE_STDIO_OPEN_MEMSTREAM)"
+macro CONFIG_HAVE_TIME_CLOCK_SETTIME 0 if="!defined(CONFIG_HAVE_TIME_CLOCK_SETTIME)"
+macro CONFIG_HAVE_TIME_TIMER 0 if="!defined(CONFIG_HAVE_TIME_TIMER)"
+macro CONFIG_HAVE_TIME_ADJTIME 0 if="!defined(CONFIG_HAVE_TIME_ADJTIME)"
+macro CONFIG_HAVE_UNISTD_CHOWN 0 if="!defined(CONFIG_HAVE_UNISTD_CHOWN)"
+macro CONFIG_HAVE_UNISTD_DUP3 0 if="!defined(CONFIG_HAVE_UNISTD_DUP3)"
+macro CONFIG_HAVE_UNISTD_NICE 0 if="!defined(CONFIG_HAVE_UNISTD_NICE)"
+macro CONFIG_HAVE_UNISTD_SETUIDGID 0 if="!defined(CONFIG_HAVE_UNISTD_SETUIDGID)"
+macro CONFIG_HAVE_UNISTD_FORK 0 if="!defined(CONFIG_HAVE_UNISTD_FORK)"
+macro CONFIG_HAVE_UNISTD_FEXEC 0 if="!defined(CONFIG_HAVE_UNISTD_FEXEC)"
+macro CONFIG_HAVE_UNISTD_EXEC 0 if="!defined(CONFIG_HAVE_UNISTD_EXEC)"
+macro CONFIG_HAVE_UNISTD_SETLOGIN 0 if="!defined(CONFIG_HAVE_UNISTD_SETLOGIN)"
+macro CONFIG_HAVE_UNISTD_DOMAINNAME 0 if="!defined(CONFIG_HAVE_UNISTD_DOMAINNAME)"
+macro CONFIG_HAVE_UNISTD_GETPPID 0 if="!defined(CONFIG_HAVE_UNISTD_GETPPID)"
+macro CONFIG_HAVE_UNISTD_SETHOSTNAME 0 if="!defined(CONFIG_HAVE_UNISTD_SETHOSTNAME)"
+macro CONFIG_HAVE_UNISTD_BRK 0 if="!defined(CONFIG_HAVE_UNISTD_BRK)"
+macro CONFIG_HAVE_SCHED_SETSCHEDULER 0 if="!defined(CONFIG_HAVE_SCHED_SETSCHEDULER)"
+// Embox's pthread_setaffinity_np sets the scheduler's own mask, the one it
+// obeys (module embox.compat.posix.pthread.pthreads_affinity_np, BF-44).
+macro CONFIG_HAVE_PTHREAD_AFFINITY 1 if="!defined(CONFIG_HAVE_PTHREAD_AFFINITY)"
+// The same mask through sched_getaffinity/sched_setaffinity (pid 0 or the
+// caller's task: the calling thread), and sched_getcpu (BF-44).
+macro CONFIG_HAVE_SCHED_AFFINITY 1 if="!defined(CONFIG_HAVE_SCHED_AFFINITY)"
+macro CONFIG_HAVE_MMAN_MLOCKALL 0 if="!defined(CONFIG_HAVE_MMAN_MLOCKALL)"
+macro CONFIG_HAVE_MMAN_MREMAP 0 if="!defined(CONFIG_HAVE_MMAN_MREMAP)"
+macro CONFIG_HAVE_MMAN_MEMFD 0 if="!defined(CONFIG_HAVE_MMAN_MEMFD)"
+macro CONFIG_HAVE_STAT_MKFIFO 0 if="!defined(CONFIG_HAVE_STAT_MKFIFO)"
+macro CONFIG_HAVE_STAT_MKNOD 0 if="!defined(CONFIG_HAVE_STAT_MKNOD)"

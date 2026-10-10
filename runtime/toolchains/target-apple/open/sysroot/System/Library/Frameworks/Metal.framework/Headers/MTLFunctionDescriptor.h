@@ -6,14 +6,9 @@
 
 #import <Foundation/Foundation.h>
 #import <Metal/MTLFunctionConstantValues.h>   /* MTLFunctionConstantValues (+ MTLDataType) */
+#include <__sprt_abi/Metal/MTLFunctionDescriptor.h>
 
 @protocol MTLBinaryArchive;
-
-typedef NS_OPTIONS(NSUInteger, MTLFunctionOptions) {
-    MTLFunctionOptionNone = 0,
-    MTLFunctionOptionCompileToBinary = 1 << 0,
-    MTLFunctionOptionStoreFunctionInMetalScript = 1 << 1,
-};
 
 @interface MTLFunctionDescriptor : NSObject <NSCopying>
 

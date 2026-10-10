@@ -1,0 +1,8 @@
+// <MTLCommandEncoder>
+// MTLOrigin, MTLSize, MTLRegion
+enum MTLBlitOption macro=NS_OPTIONS base=NSUInteger {
+    value MTLBlitOptionNone 0
+    value MTLBlitOptionDepthFromDepthStencil "1 << 0"
+    value MTLBlitOptionStencilFromDepthStencil "1 << 1"
+    value MTLBlitOptionRowLinearPVRTC "1 << 2"
+}

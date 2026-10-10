@@ -76,7 +76,7 @@ extern void *(*_aligned_alloc)(size_t __alignment, size_t __size);
 
 #endif
 
-#include <sprt/c/cross/__sprt_fstypes.h>
+#include <sprt/gen/c/cross/__sprt_fstypes.h>
 #include <sprt/runtime/callback.h>
 #include <sprt/runtime/math.h>
 #include <sprt/runtime/stringview.h>

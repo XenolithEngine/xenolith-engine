@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_UTIME_H_
 
 #include <sprt/c/cross/__sprt_config.h>
-#include <sprt/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
 
 #ifdef __SPRT_BUILD
 #define __SPRT_UTIMBUF_NAME __SPRT_ID(utimbuf)

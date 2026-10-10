@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_STATVFS_H_
 
 #include <sprt/c/cross/__sprt_config.h>
-#include <sprt/c/bits/statvfs.h>
+#include <sprt/gen/c/bits/statvfs.h>
 
 __SPRT_BEGIN_DECL
 

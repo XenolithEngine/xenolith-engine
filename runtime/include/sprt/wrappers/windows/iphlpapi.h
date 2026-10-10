@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-#include <sprt/wrappers/windows/abi/iphlpapi.h>
+#include <sprt/gen/wrappers/windows/abi/iphlpapi.h>
 
 __SPRT_BEGIN_DECL
 

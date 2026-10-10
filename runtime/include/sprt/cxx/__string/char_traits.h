@@ -37,8 +37,8 @@ THE SOFTWARE.
 #include <sprt/cxx/cstdint>
 #include <sprt/cxx/compare>
 #include <sprt/cxx/detail/constexpr.h>
-#include <sprt/c/bits/__sprt_wint_t.h>
-#include <sprt/c/cross/__sprt_mbstate.h>
+#include <sprt/gen/c/bits/__sprt_wint_t.h>
+#include <sprt/gen/c/cross/__sprt_mbstate.h>
 
 namespace sprt {
 

@@ -59,7 +59,7 @@ extern "C" void __sprt_musl_globfree(__SPRT_ID(glob_t) * __pglob);
 #endif
 
 // ---------------------------------------------------------------------------
-// ABI validation. The SPRT cross types/constants (<sprt/c/cross/__sprt_*types.h>)
+// ABI validation. The SPRT cross types/constants (<sprt/gen/c/cross/__sprt_*types.h>)
 // are defined to be byte-for-byte / value-for-value compatible with the native
 // <regex.h>/<fnmatch.h>/<glob.h> reached above via #include_next, so the wrapper
 // below forwards by a plain reinterpret_cast with no field/flag translation. The

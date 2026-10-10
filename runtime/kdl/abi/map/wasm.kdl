@@ -1,0 +1,73 @@
+// The wasm platform: the cross fragments under sprt/gen/c/cross/wasm_sprt.
+
+platforms { platform wasm_sprt { arch wasm32_sprt wasm64_sprt; }; }
+
+header "sprt/gen/c/cross/wasm_sprt/clockid.h" abi="cross/shared/android+linux+wasm+windows/clockid.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/config.h"
+
+header "sprt/gen/c/cross/wasm_sprt/dir_ptr.h" abi="cross/shared/linux+wasm+windows/dir_ptr.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/errno.h" abi="cross/shared/linux+wasm/errno.kdl" guard=CORE_RUNTIME_INCLUDE_C_CROSS_LINUX_SPRT_ERRNO_H_
+
+header "sprt/gen/c/cross/wasm_sprt/fdset.h" abi="cross/shared/android+linux+macos+wasm/fdset.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/file_ptr.h"
+
+header "sprt/gen/c/cross/wasm_sprt/langinfo.h" abi="cross/shared/linux+wasm/langinfo.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/locale.h"
+
+header "sprt/gen/c/cross/wasm_sprt/math.h" abi="cross/shared/linux+wasm+windows/math.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/mbstate.h"
+
+header "sprt/gen/c/cross/wasm_sprt/mman.h" abi="cross/shared/android+wasm+windows/mman.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/netinetdef.h" guard=CORE_RUNTIME_INCLUDE_C_CROSS_WASM_SPRT_NETINETDEF_H_ {
+    include "sprt/gen/c/cross/linux_sprt/netinetdef.h"
+}
+
+header "sprt/gen/c/cross/wasm_sprt/polltypes.h" {
+    include "sprt/gen/c/cross/linux_sprt/polltypes.h"
+}
+
+header "sprt/gen/c/cross/wasm_sprt/setjmp.h"
+
+header "sprt/gen/c/cross/wasm_sprt/signal.h"
+
+header "sprt/gen/c/cross/wasm_sprt/sockdef.h" {
+    include "sprt/gen/c/cross/linux_sprt/sockdef.h"
+}
+
+header "sprt/gen/c/cross/wasm_sprt/socket.h" {
+    include "sprt/gen/c/cross/linux_sprt/socket.h"
+}
+
+header "sprt/gen/c/cross/wasm_sprt/stdio.h" abi="cross/shared/linux+wasm/stdio.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/sysconf.h" abi="cross/shared/linux+wasm+windows/sysconf.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/wasm32_sprt/config.h"
+
+header "sprt/gen/c/cross/wasm_sprt/wasm32_sprt/fcntl.h" abi="cross/shared/wasm/wasm32+wasm64/fcntl.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/wasm32_sprt/fenv.h" abi="cross/shared/linux+wasm/wasm32+wasm64+x86_64/fenv.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/wasm32_sprt/jmp_buf.h" abi="cross/shared/linux+wasm/wasm32+wasm64+x86_64/jmp_buf.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/wasm32_sprt/signal.h" abi="cross/shared/linux+wasm/aarch64+e2k+loongarch64+riscv64+wasm32+wasm64+x86_64/signal.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/wasm32_sprt/syscall.h" abi="cross/shared/android+linux+wasm/wasm32+wasm64+x86_64/syscall.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/wasm64_sprt/config.h"
+
+header "sprt/gen/c/cross/wasm_sprt/wasm64_sprt/fcntl.h" abi="cross/shared/wasm/wasm32+wasm64/fcntl.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/wasm64_sprt/fenv.h" abi="cross/shared/linux+wasm/wasm32+wasm64+x86_64/fenv.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/wasm64_sprt/jmp_buf.h" abi="cross/shared/linux+wasm/wasm32+wasm64+x86_64/jmp_buf.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/wasm64_sprt/signal.h" abi="cross/shared/linux+wasm/aarch64+e2k+loongarch64+riscv64+wasm32+wasm64+x86_64/signal.kdl"
+
+header "sprt/gen/c/cross/wasm_sprt/wasm64_sprt/syscall.h" abi="cross/shared/android+linux+wasm/wasm32+wasm64+x86_64/syscall.kdl"

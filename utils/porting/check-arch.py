@@ -49,11 +49,11 @@ def defined_names(text):
 
 def check_sprt_def(eng, rep, arch, upper):
     rep.section("A2", "sprt recognizes the architecture")
-    rel = "runtime/include/sprt/c/bits/__sprt_def.h"
+    rel = pl.TARGETS_H
     text = eng.read(rel) or ""
     rep.check(re.search(r"#define\s+__SPRT_ARCH_NAME_%s\s+%s_sprt\b" % (upper, re.escape(arch)), text),
               "%s: __SPRT_ARCH_NAME_%s is %s_sprt" % (rel, upper, arch),
-              hint="add `#define __SPRT_ARCH_NAME_%s %s_sprt` next to the other architectures" % (upper, arch))
+              hint="add `target %s N if=\"...\"` to `targets ARCH` in %s and regenerate it" % (arch, pl.TARGETS_KDL))
     ids = dict(re.findall(r"#define\s+__SPRT_ARCH_ID_([A-Z0-9_]+)\s+(\d+)", text))
     rep.check(upper in ids, "%s: __SPRT_ARCH_ID_%s has a number" % (rel, upper),
               hint="the next free number is %d" % (max([int(v) for v in ids.values()] or [0]) + 1))
@@ -94,7 +94,7 @@ def check_sprt_def(eng, rep, arch, upper):
                          "variants need a size test, as `__riscv_xlen == 64`")
     else:
         rep.fail("no `#elif defined(...)` branch defines __SPRT_ARCH_NAME_%s" % upper,
-                 hint="add a branch to the chain that ends in #error \"Unknown arch\"")
+                 hint="give its target in %s an if= that recognizes it" % pl.TARGETS_KDL)
 
     rel = "xenolith/remote/XLRemotePeerInfo.h"
     h = eng.read(rel) or ""
@@ -113,13 +113,13 @@ def check_sprt_def(eng, rep, arch, upper):
 def check_abi_headers(eng, rep, arch, like, oses):
     rep.section("A3", "ABI headers <os>_sprt/%s_sprt" % arch)
     for os_dir in oses:
-        rel = "runtime/include/sprt/c/cross/%s/%s_sprt" % (os_dir, arch)
+        rel = "runtime/include/sprt/gen/c/cross/%s/%s_sprt" % (os_dir, arch)
         if not eng.isdir(rel):
             rep.fail("%s/ does not exist" % rel, hint="copy %s/%s_sprt and correct the numbers" % (os_dir, like))
             continue
         missing = [f for f in ABI_FILES if not eng.exists(os.path.join(rel, f))]
         rep.check(not missing, "%s/ has the six ABI headers" % rel, details=["missing: " + f for f in missing])
-        ref = "runtime/include/sprt/c/cross/%s/%s_sprt" % (os_dir, like)
+        ref = "runtime/include/sprt/gen/c/cross/%s/%s_sprt" % (os_dir, like)
         if like == arch or not eng.isdir(ref):
             continue
         for f in ABI_FILES[1:]:
@@ -132,7 +132,7 @@ def check_abi_headers(eng, rep, arch, like, oses):
                 details += ["only in %s: %s" % (arch, ", ".join(extra))] if extra else []
                 rep.info("%s/%s differs from %s by %d names" % (rel, f, like, len(gone) + len(extra)),
                          details=details)
-    linux = eng.read("runtime/include/sprt/c/cross/linux_sprt/sockdef.h") or ""
+    linux = eng.read("runtime/include/sprt/gen/c/cross/linux_sprt/sockdef.h") or ""
     if re.search(r"__SPRT_PF_MAX", linux):
         mentions = bool(re.search(r"__SPRT_ARCH_ID_%s\b" % arch.upper(), linux))
         rep.info("linux_sprt/sockdef.h: __SPRT_PF_MAX %s" % ("names this architecture" if mentions else
@@ -281,7 +281,7 @@ def check_host(eng, rep, arch, release_hosts):
 def check_other_os(eng, rep, arch, android, windows):
     if android:
         rep.section("A10", "Android on %s" % arch)
-        rep.check(eng.isdir("runtime/include/sprt/c/cross/android_sprt/%s_sprt" % arch),
+        rep.check(eng.isdir("runtime/include/sprt/gen/c/cross/android_sprt/%s_sprt" % arch),
                   "android_sprt/%s_sprt exists" % arch)
         for rel in ("runtime/toolchains/target-android/Makefile", "runtime/toolchains/target-android/install-target-ndk.mk",
                     "runtime/toolchains/target-android/openssl.mk", "make/os/android-ndk.mk"):
@@ -290,7 +290,7 @@ def check_other_os(eng, rep, arch, android, windows):
                   "names.mk: CONFIGURE_HOST_Android_%s" % arch)
     if windows:
         rep.section("A11", "Windows on %s" % arch)
-        rep.check(eng.isdir("runtime/include/sprt/c/cross/windows_sprt/%s_sprt" % arch),
+        rep.check(eng.isdir("runtime/include/sprt/gen/c/cross/windows_sprt/%s_sprt" % arch),
                   "windows_sprt/%s_sprt exists" % arch)
         rep.check(eng.isdir("runtime/libc_impl/asm/Windows/%s" % arch), "libc_impl/asm/Windows/%s exists" % arch,
                   hint="chkstk.s (with _alloca_probe) and fenv.s")

@@ -24,8 +24,8 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_CTYPE_H_
 
 #include <sprt/c/bits/__sprt_def.h>
-#include <sprt/c/bits/__sprt_uint16_t.h>
-#include <sprt/c/cross/__sprt_locale.h>
+#include <sprt/gen/c/bits/__sprt_uint16_t.h>
+#include <sprt/gen/c/cross/__sprt_locale.h>
 
 #define __SPRT_CTYPE_CNTRL (1 << 0)
 #define __SPRT_CTYPE_ALNUM (1 << 1)

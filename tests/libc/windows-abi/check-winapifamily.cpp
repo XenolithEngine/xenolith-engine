@@ -2,7 +2,7 @@
 //
 // abi/winapifamily.h <-> Windows SDK parity. Compile-time only; see check.sh.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/winapifamily.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/winapifamily.h>
 #include "abi_check.h"
 
 #include <windows.h>   // winapifamily.h -> WINAPI_FAMILY_*

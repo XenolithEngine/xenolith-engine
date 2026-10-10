@@ -1,0 +1,2 @@
+#define CONFIG_LIBC_OPEN_MAX 64
+#define CONFIG_NAME_MAX 32

@@ -26,9 +26,9 @@ THE SOFTWARE.
 #ifndef SPRT_WRAPPERS_WINDOWS_SHLOBJ_H_
 #define SPRT_WRAPPERS_WINDOWS_SHLOBJ_H_
 
-#include <sprt/wrappers/windows/abi/structures.h> // GUID
-#include <sprt/wrappers/windows/abi/com_api.h>
-#include <sprt/wrappers/windows/abi/shlobj.h> // SIGDN / FILEOPENDIALOGOPTIONS / COMDLG_FILTERSPEC
+#include <sprt/gen/wrappers/windows/abi/structures.h> // GUID
+#include <sprt/gen/wrappers/windows/abi/com_api.h>
+#include <sprt/gen/wrappers/windows/abi/shlobj.h> // SIGDN / FILEOPENDIALOGOPTIONS / COMDLG_FILTERSPEC
 #include <sprt/wrappers/windows/basic_api.h> // HANDLE / DWORD / HRESULT
 #include <sprt/wrappers/windows/com_api.h> // CoInitializeEx / CoUninitialize / CoCreateInstance
 

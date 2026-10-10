@@ -1,0 +1,2 @@
+macro _JBLEN 24
+macro _JBTYPE "unsigned `__int64`"

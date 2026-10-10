@@ -1,0 +1,40 @@
+// Dimensionality of each image, and whether images are arranged into an array or cube.
+enum MTLTextureType macro=NS_ENUM base=NSUInteger {
+    value MTLTextureType1D 0
+    value MTLTextureType1DArray 1
+    value MTLTextureType2D 2
+    value MTLTextureType2DArray 3
+    value MTLTextureType2DMultisample 4
+    value MTLTextureTypeCube 5
+    value MTLTextureTypeCubeArray 6
+    value MTLTextureType3D 7
+    value MTLTextureType2DMultisampleArray 8
+}
+enum MTLTextureSwizzle macro=NS_ENUM base=uint8_t {
+    value MTLTextureSwizzleZero 0
+    value MTLTextureSwizzleOne 1
+    value MTLTextureSwizzleRed 2
+    value MTLTextureSwizzleGreen 3
+    value MTLTextureSwizzleBlue 4
+    value MTLTextureSwizzleAlpha 5
+}
+struct typedef=MTLTextureSwizzleChannels {
+    field red MTLTextureSwizzle
+    field green MTLTextureSwizzle
+    field blue MTLTextureSwizzle
+    field alpha MTLTextureSwizzle
+}
+macro MTLTextureSwizzleChannelsDefault "(MTLTextureSwizzleChannelsMake(MTLTextureSwizzleRed, MTLTextureSwizzleGreen, MTLTextureSwizzleBlue, MTLTextureSwizzleAlpha))"
+// How the texture will be used over its lifetime (bitwise OR for multiple uses).
+enum MTLTextureUsage macro=NS_OPTIONS base=NSUInteger {
+    value MTLTextureUsageUnknown 0x0000
+    value MTLTextureUsageShaderRead 0x0001
+    value MTLTextureUsageShaderWrite 0x0002
+    value MTLTextureUsageRenderTarget 0x0004
+    value MTLTextureUsagePixelFormatView 0x0010
+    value MTLTextureUsageShaderAtomic 0x0020
+}
+enum MTLTextureCompressionType macro=NS_ENUM base=NSInteger {
+    value MTLTextureCompressionTypeLossless 0
+    value MTLTextureCompressionTypeLossy 1
+}

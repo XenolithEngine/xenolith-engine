@@ -1,0 +1,45 @@
+// HGLOBAL
+macro DROPEFFECT_NONE 0
+macro DROPEFFECT_COPY 1
+macro DROPEFFECT_MOVE 2
+macro DROPEFFECT_LINK 4
+macro CF_TEXT 1
+macro CF_UNICODETEXT 13
+macro CF_HDROP 15
+macro TYMED_HGLOBAL 1
+macro DVASPECT_CONTENT 1
+// grfKeyState of IDropTarget: the mouse buttons and modifiers held during the drag
+macro MK_SHIFT 0x0004
+macro MK_CONTROL 0x0008
+macro MK_ALT 0x0020
+typedef CLIPFORMAT WORD
+struct IUnknown
+struct tagDVTARGETDEVICE
+struct tagFORMATETC typedef=FORMATETC also="*LPFORMATETC" {
+    field cfFormat CLIPFORMAT
+    field ptd "struct tagDVTARGETDEVICE *"
+    field dwAspect DWORD
+    field lindex LONG
+    field tymed DWORD
+}
+// The union holds one handle or pointer whichever TYMED says; every member is pointer-sized
+struct tagSTGMEDIUM typedef=STGMEDIUM also="*LPSTGMEDIUM" {
+    field tymed DWORD
+    union {
+        field hBitmap "void *"
+        field hMetaFilePict "void *"
+        field hEnhMetaFile "void *"
+        field hGlobal HGLOBAL
+        field lpszFileName LPWSTR
+        field pstm "void *"
+        field pstg "void *"
+    }
+    field pUnkForRelease "struct IUnknown *"
+}
+// The header of a CF_HDROP block: the file list starts `pFiles` bytes in, double-NUL-terminated
+struct _DROPFILES typedef=DROPFILES also="*LPDROPFILES" {
+    field pFiles DWORD
+    field pt POINT
+    field fNC BOOL
+    field fWide BOOL
+}

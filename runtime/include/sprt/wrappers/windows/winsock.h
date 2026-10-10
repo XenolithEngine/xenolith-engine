@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS_WINSOCK_H_
 
 #include <sprt/wrappers/windows/complex_types.h>
-#include <sprt/wrappers/windows/abi/winsock.h>
+#include <sprt/gen/wrappers/windows/abi/winsock.h>
 
 #include <arpa/inet.h>
 #include <netinet/tcp.h>

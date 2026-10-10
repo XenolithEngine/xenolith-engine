@@ -1,0 +1,54 @@
+cond arm64_aarch64 "defined(__arm64__) || defined(__aarch64__)"
+// ---- platform: macOS (desktop) -------------------------------------------
+macro TARGET_OS_MAC 1
+macro TARGET_OS_OSX 1
+macro TARGET_OS_IPHONE 0
+macro TARGET_OS_IOS 0
+macro TARGET_OS_WATCH 0
+macro TARGET_OS_TV 0
+macro TARGET_OS_VISION 0
+macro TARGET_OS_MACCATALYST 0
+macro TARGET_OS_UIKITFORMAC 0
+macro TARGET_OS_SIMULATOR 0
+macro TARGET_OS_EMBEDDED 0
+macro TARGET_OS_DRIVERKIT 0
+macro TARGET_OS_WINDOWS 0
+macro TARGET_OS_LINUX 0
+macro TARGET_OS_BRIDGE 0
+macro TARGET_IPHONE_SIMULATOR 0
+macro TARGET_OS_NANO 0
+// ---- cpu -----------------------------------------------------------------
+macro TARGET_CPU_X86 0 if="defined(__x86_64__)"
+macro TARGET_CPU_X86_64 1 if="defined(__x86_64__)"
+macro TARGET_CPU_ARM 0 if="defined(__x86_64__)"
+macro TARGET_CPU_ARM64 0 if="defined(__x86_64__)"
+macro TARGET_RT_64_BIT 1 if="defined(__x86_64__)"
+macro TARGET_CPU_X86 1 if="!defined(__x86_64__) && defined(__i386__)"
+macro TARGET_CPU_X86_64 0 if="!defined(__x86_64__) && defined(__i386__)"
+macro TARGET_CPU_ARM 0 if="!defined(__x86_64__) && defined(__i386__)"
+macro TARGET_CPU_ARM64 0 if="!defined(__x86_64__) && defined(__i386__)"
+macro TARGET_RT_64_BIT 0 if="!defined(__x86_64__) && defined(__i386__)"
+macro TARGET_CPU_X86 0 if="!defined(__x86_64__) && !defined(__i386__) && @arm64_aarch64"
+macro TARGET_CPU_X86_64 0 if="!defined(__x86_64__) && !defined(__i386__) && @arm64_aarch64"
+macro TARGET_CPU_ARM 0 if="!defined(__x86_64__) && !defined(__i386__) && @arm64_aarch64"
+macro TARGET_CPU_ARM64 1 if="!defined(__x86_64__) && !defined(__i386__) && @arm64_aarch64"
+macro TARGET_RT_64_BIT 1 if="!defined(__x86_64__) && !defined(__i386__) && @arm64_aarch64"
+macro TARGET_CPU_X86 0 if="!defined(__x86_64__) && !defined(__i386__) && !@arm64_aarch64 && defined(__arm__)"
+macro TARGET_CPU_X86_64 0 if="!defined(__x86_64__) && !defined(__i386__) && !@arm64_aarch64 && defined(__arm__)"
+macro TARGET_CPU_ARM 1 if="!defined(__x86_64__) && !defined(__i386__) && !@arm64_aarch64 && defined(__arm__)"
+macro TARGET_CPU_ARM64 0 if="!defined(__x86_64__) && !defined(__i386__) && !@arm64_aarch64 && defined(__arm__)"
+macro TARGET_RT_64_BIT 0 if="!defined(__x86_64__) && !defined(__i386__) && !@arm64_aarch64 && defined(__arm__)"
+error "unsupported architecture for the +open macOS target" raw=#true if="!defined(__x86_64__) && !defined(__i386__) && !@arm64_aarch64 && !defined(__arm__)"
+macro TARGET_CPU_PPC 0
+macro TARGET_CPU_PPC64 0
+macro TARGET_CPU_68K 0
+macro TARGET_CPU_MIPS 0
+macro TARGET_CPU_SPARC 0
+macro TARGET_CPU_ALPHA 0
+// ---- runtime -------------------------------------------------------------
+macro TARGET_RT_MAC_CFM 0
+macro TARGET_RT_MAC_MACHO 1
+macro TARGET_RT_LITTLE_ENDIAN 1
+macro TARGET_RT_BIG_ENDIAN 0
+macro TARGET_RT_MAC_64 1 if="defined(__x86_64__) || defined(__arm64__) || defined(__aarch64__)"
+macro TARGET_RT_MAC_64 0 if="!(defined(__x86_64__) || defined(__arm64__) || defined(__aarch64__))"

@@ -23,8 +23,8 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C___SPRT_MATH_H_
 #define CORE_RUNTIME_INCLUDE_C___SPRT_MATH_H_
 
-#include <sprt/c/bits/__sprt_float.h>
-#include <sprt/c/cross/__sprt_math.h>
+#include <sprt/gen/c/bits/__sprt_float.h>
+#include <sprt/gen/c/cross/__sprt_math.h>
 
 // clang-format off
 #define __SPRT_M_E             2.7182818284590452354   /* e */

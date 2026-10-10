@@ -34,7 +34,7 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS_COMMDLG_H_
 
 #include <sprt/wrappers/windows/basic_api.h>
-#include <sprt/wrappers/windows/abi/commdlg.h>
+#include <sprt/gen/wrappers/windows/abi/commdlg.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/commdlg.h) */
 #define CC_RGBINIT __SPRT_CC_RGBINIT

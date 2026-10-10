@@ -1,0 +1,2 @@
+macro NULL nullptr if="defined(__cplusplus) || __STDC_VERSION__ >= 202311L"
+macro NULL "((void *)0)" if="!(defined(__cplusplus) || __STDC_VERSION__ >= 202311L)"

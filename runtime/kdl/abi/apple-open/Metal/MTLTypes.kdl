@@ -1,0 +1,21 @@
+struct typedef=MTLOrigin {
+    field x NSUInteger
+    field y NSUInteger
+    field z NSUInteger
+}
+struct typedef=MTLSize {
+    field width NSUInteger
+    field height NSUInteger
+    field depth NSUInteger
+}
+struct typedef=MTLRegion {
+    field origin MTLOrigin
+    field size MTLSize
+}
+struct typedef=MTLSamplePosition {
+    field x float
+    field y float
+}
+struct MTLResourceID typedef=MTLResourceID {
+    field _impl uint64_t
+}

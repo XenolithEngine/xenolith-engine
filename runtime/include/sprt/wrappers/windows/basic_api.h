@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-#include <sprt/wrappers/windows/abi/basic_api.h>
+#include <sprt/gen/wrappers/windows/abi/basic_api.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/basic_api.h) */
 #define CP_ACP __SPRT_CP_ACP

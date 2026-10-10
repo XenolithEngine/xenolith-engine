@@ -25,7 +25,7 @@
 #include "SPMemory.h" // IWYU pragma: keep — mem_std::Vector / mem_std::Bytes
 #include "SPSharedModule.h"
 
-#include <sprt/c/bits/seek.h>
+#include <sprt/gen/c/bits/seek.h>
 #include <sprt/runtime/hash.h>
 #include <sprt/runtime/thread/qonce.h>
 

@@ -1,0 +1,10 @@
+typedef DIR "struct __SPRT_DIR"
+// should match dirent64 for target systems
+struct (n)dirent {
+    field d_ino uint64_t
+    field d_seekoff uint64_t
+    field d_reclen uint16_t
+    field d_namlen uint16_t
+    field d_type uint8_t
+    field d_name "char [1'024]"
+}

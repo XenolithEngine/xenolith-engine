@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-#include <sprt/wrappers/windows/abi/dl_api.h>
+#include <sprt/gen/wrappers/windows/abi/dl_api.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/dl_api.h) */
 #define IMAGE_NUMBEROF_DIRECTORY_ENTRIES __SPRT_IMAGE_NUMBEROF_DIRECTORY_ENTRIES

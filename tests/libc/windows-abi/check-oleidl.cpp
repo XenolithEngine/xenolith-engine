@@ -5,7 +5,7 @@
 // What an IDropTarget receives: the effect bits it answers with, the FORMATETC/STGMEDIUM pair it
 // reads an IDataObject through, and the DROPFILES header of a CF_HDROP block.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/oleidl.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/oleidl.h>
 #include "abi_check.h"
 
 #include <windows.h>

@@ -1,0 +1,196 @@
+macro CONTEXT_AMD64 "0x00100000L"
+macro CONTEXT_CONTROL "(CONTEXT_AMD64 | 0x00000001L)"
+macro CONTEXT_INTEGER "(CONTEXT_AMD64 | 0x00000002L)"
+macro CONTEXT_SEGMENTS "(CONTEXT_AMD64 | 0x00000004L)"
+macro CONTEXT_FLOATING_POINT "(CONTEXT_AMD64 | 0x00000008L)"
+macro CONTEXT_DEBUG_REGISTERS "(CONTEXT_AMD64 | 0x00000010L)"
+macro CONTEXT_FULL "(CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT)"
+macro CONTEXT_ALL "(CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_SEGMENTS | CONTEXT_FLOATING_POINT | CONTEXT_DEBUG_REGISTERS)"
+union _UNWIND_CODE typedef=UNWIND_CODE also="*PUNWIND_CODE" {
+    struct {
+        field CodeOffset "unsigned char"
+        field UnwindOp "unsigned char" bits="4"
+        field OpInfo "unsigned char" bits="4"
+    }
+    field FrameOffset "unsigned short"
+}
+struct _UNWIND_INFO typedef=UNWIND_INFO also="*PUNWIND_INFO" {
+    field Version "unsigned char" bits="3"
+    field Flags "unsigned char" bits="5"
+    field SizeOfProlog "unsigned char"
+    field CountOfCodes "unsigned char"
+    field FrameRegister "unsigned char" bits="4"
+    field FrameOffset "unsigned char" bits="4"
+    field UnwindCode "UNWIND_CODE [1]"
+}
+struct _SETJMP_FLOAT128 typedef=SETJMP_FLOAT128 attr="SPRT_ALIGNAS(16)" {
+    field Part "__uint64 [2]"
+}
+macro _JBLEN 16
+typedef _JBTYPE SETJMP_FLOAT128
+struct _M128A typedef=M128A also="*PM128A" attr="SPRT_ALIGNAS(16)" {
+    field Low ULONGLONG
+    field High LONGLONG
+}
+struct _XSAVE_FORMAT typedef=XSAVE_FORMAT also="*PXSAVE_FORMAT" attr="SPRT_ALIGNAS(16)" {
+    field ControlWord WORD
+    field StatusWord WORD
+    field TagWord BYTE
+    field Reserved1 BYTE
+    field ErrorOpcode WORD
+    field ErrorOffset DWORD
+    field ErrorSelector WORD
+    field Reserved2 WORD
+    field DataOffset DWORD
+    field DataSelector WORD
+    field Reserved3 WORD
+    field MxCsr DWORD
+    field MxCsr_Mask DWORD
+    field FloatRegisters "M128A [8]"
+    field XmmRegisters "M128A [16]"
+    field Reserved4 "BYTE [96]"
+}
+typedef XMM_SAVE_AREA32 XSAVE_FORMAT
+typedef PXMM_SAVE_AREA32 "XSAVE_FORMAT *"
+struct _CONTEXT typedef=CONTEXT also="*PCONTEXT" attr="SPRT_ALIGNAS(16)" {
+    field P1Home DWORD64
+    field P2Home DWORD64
+    field P3Home DWORD64
+    field P4Home DWORD64
+    field P5Home DWORD64
+    field P6Home DWORD64
+    // Control flags
+    field ContextFlags DWORD
+    field MxCsr DWORD
+    // Segment
+    field SegCs WORD
+    field SegDs WORD
+    field SegEs WORD
+    field SegFs WORD
+    field SegGs WORD
+    field SegSs WORD
+    field EFlags DWORD
+    // Debug
+    field Dr0 DWORD64
+    field Dr1 DWORD64
+    field Dr2 DWORD64
+    field Dr3 DWORD64
+    field Dr6 DWORD64
+    field Dr7 DWORD64
+    // Integer
+    field Rax DWORD64
+    field Rcx DWORD64
+    field Rdx DWORD64
+    field Rbx DWORD64
+    field Rsp DWORD64
+    field Rbp DWORD64
+    field Rsi DWORD64
+    field Rdi DWORD64
+    field R8 DWORD64
+    field R9 DWORD64
+    field R10 DWORD64
+    field R11 DWORD64
+    field R12 DWORD64
+    field R13 DWORD64
+    field R14 DWORD64
+    field R15 DWORD64
+    // Counter
+    field Rip DWORD64
+    // Floating point
+    union {
+        field FltSave XMM_SAVE_AREA32
+        struct {
+            field Header "M128A [2]"
+            field Legacy "M128A [8]"
+            field Xmm0 M128A
+            field Xmm1 M128A
+            field Xmm2 M128A
+            field Xmm3 M128A
+            field Xmm4 M128A
+            field Xmm5 M128A
+            field Xmm6 M128A
+            field Xmm7 M128A
+            field Xmm8 M128A
+            field Xmm9 M128A
+            field Xmm10 M128A
+            field Xmm11 M128A
+            field Xmm12 M128A
+            field Xmm13 M128A
+            field Xmm14 M128A
+            field Xmm15 M128A
+        }
+    }
+    // 100
+    // 100
+    // 120
+    // 1a0
+    // 1b0
+    // 1c0
+    // 1d0
+    // 1e0
+    // 1f0
+    // 200
+    // 210
+    // 220
+    // 230
+    // 240
+    // 250
+    // 260
+    // 270
+    // 280
+    // 290
+    field VectorRegister "M128A [26]"
+    field VectorControl DWORD64
+    field DebugControl DWORD64
+    field LastBranchToRip DWORD64
+    field LastBranchFromRip DWORD64
+    field LastExceptionToRip DWORD64
+    field LastExceptionFromRip DWORD64
+}
+struct _DISPATCHER_CONTEXT typedef=DISPATCHER_CONTEXT also="*PDISPATCHER_CONTEXT" {
+    field ControlPc DWORD64
+    field ImageBase DWORD64
+    field FunctionEntry PRUNTIME_FUNCTION
+    field EstablisherFrame DWORD64
+    field TargetIp DWORD64
+    field ContextRecord PCONTEXT
+    field LanguageHandler PEXCEPTION_ROUTINE
+    field HandlerData PVOID
+    field HistoryTable "struct _UNWIND_HISTORY_TABLE *"
+    field ScopeIndex DWORD
+    field Fill0 DWORD
+}
+struct _JUMP_BUFFER attr="SPRT_ALIGNAS(16)" {
+    field Frame __uint64
+    field Rbx __uint64
+    field Rsp __uint64
+    field Rbp __uint64
+    field Rsi __uint64
+    field Rdi __uint64
+    field R12 __uint64
+    field R13 __uint64
+    field R14 __uint64
+    field R15 __uint64
+    field Rip __uint64
+    field MxCsr "unsigned long"
+    field FpCsr "unsigned short"
+    field Spare "unsigned short"
+    field Xmm6 SETJMP_FLOAT128
+    field Xmm7 SETJMP_FLOAT128
+    field Xmm8 SETJMP_FLOAT128
+    field Xmm9 SETJMP_FLOAT128
+    field Xmm10 SETJMP_FLOAT128
+    field Xmm11 SETJMP_FLOAT128
+    field Xmm12 SETJMP_FLOAT128
+    field Xmm13 SETJMP_FLOAT128
+    field Xmm14 SETJMP_FLOAT128
+    field Xmm15 SETJMP_FLOAT128
+}
+struct _IMAGE_RUNTIME_FUNCTION_ENTRY typedef=IMAGE_RUNTIME_FUNCTION_ENTRY also="*PIMAGE_RUNTIME_FUNCTION_ENTRY" {
+    field BeginAddress DWORD
+    field EndAddress DWORD
+    union {
+        field UnwindInfoAddress DWORD
+        field UnwindData DWORD
+    }
+}

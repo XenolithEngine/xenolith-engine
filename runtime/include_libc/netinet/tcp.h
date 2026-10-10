@@ -35,7 +35,7 @@ THE SOFTWARE.
 
 #else
 
-#include <sprt/c/cross/__sprt_netinet.h>
+#include <sprt/gen/c/cross/__sprt_netinet.h>
 
 // Materialize the public TCP_* option names from the per-platform __SPRT_TCP_*
 // table (netinetdef.h); each is guarded so only the options the target actually

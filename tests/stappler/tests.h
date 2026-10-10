@@ -99,6 +99,7 @@ void performBidiTests();
 void performShapeTests();
 void performGlyphTests();
 void performPugTests();
+void performKdlTests();
 void performCssTests();
 void performFlexboxGridCssTests();
 void performTableCssTests();

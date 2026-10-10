@@ -1,0 +1,6 @@
+// Native thread identity: pthread_t folded into an integer. The e2k 128-bit
+// pointer mode (__ptr128__) makes pthread_t a 16-byte pointer, so the full
+// value does not fit into 64 bits there (same first-branch rule as
+// __sprt_uintptr_t.h).
+typedef native_thread_id_t "unsigned __int128" if="defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ > 8"
+typedef native_thread_id_t __sprt_uint64_t if="!(defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ > 8)"

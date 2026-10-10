@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-#include <sprt/wrappers/windows/abi/user_api.h>
+#include <sprt/gen/wrappers/windows/abi/user_api.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/user_api.h) */
 #define KF_EXTENDED __SPRT_KF_EXTENDED

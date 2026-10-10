@@ -29,7 +29,7 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS_TLHELP32_H_
 
 #include <sprt/wrappers/windows/windows.h>
-#include <sprt/wrappers/windows/abi/tlhelp32.h>
+#include <sprt/gen/wrappers/windows/abi/tlhelp32.h>
 
 /* Clean public names (materialized __SPRT_ value / MODULEENTRY32W live in abi/tlhelp32.h) */
 #ifndef MAX_MODULE_NAME32

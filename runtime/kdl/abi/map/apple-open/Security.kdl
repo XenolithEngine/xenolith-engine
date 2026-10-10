@@ -1,0 +1,7 @@
+// Security: the ABI of its hand-written headers, and what they include.
+
+header "Security/AuthSession.h" external=#true
+
+header "Security/Authorization.h" external=#true
+
+header "Security/AuthorizationDB.h" external=#true

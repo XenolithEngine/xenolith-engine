@@ -7,6 +7,7 @@
 #import <Foundation/Foundation.h>
 #import <Metal/MTLCommandEncoder.h>   /* <MTLCommandEncoder> */
 #import <Metal/MTLTypes.h>            /* MTLOrigin, MTLSize, MTLRegion */
+#include <__sprt_abi/Metal/MTLBlitCommandEncoder.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -15,14 +16,6 @@ NS_ASSUME_NONNULL_BEGIN
 @protocol MTLResource;
 @protocol MTLFence;
 @protocol MTLCounterSampleBuffer;
-
-typedef NS_OPTIONS(NSUInteger, MTLBlitOption)
-{
-    MTLBlitOptionNone                    = 0,
-    MTLBlitOptionDepthFromDepthStencil   = 1 << 0,
-    MTLBlitOptionStencilFromDepthStencil = 1 << 1,
-    MTLBlitOptionRowLinearPVRTC          = 1 << 2,
-};
 
 @protocol MTLBlitCommandEncoder <MTLCommandEncoder>
 

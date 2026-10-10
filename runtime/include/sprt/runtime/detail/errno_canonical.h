@@ -64,7 +64,7 @@ constexpr int32_t STATUS_ERRNO_PLATFORM_BAND = 0x8000;
 
 #if SPRT_APPLE
 
-// Darwin (macOS/iOS) numbering. Values from sprt/c/cross/macos_sprt/errno.h; the trailing
+// Darwin (macOS/iOS) numbering. Values from sprt/gen/c/cross/macos_sprt/errno.h; the trailing
 // comment on a line is the native value when it differs from the canonical one.
 constexpr inline int32_t errnoToCanonical(int32_t __e) {
 	switch (__e) {
@@ -260,7 +260,7 @@ constexpr inline int32_t canonicalToErrno(int32_t __c) {
 
 #elif SPRT_WINDOWS
 
-// Windows CRT numbering. Values from sprt/c/cross/windows_sprt/errno.h; the trailing comment
+// Windows CRT numbering. Values from sprt/gen/c/cross/windows_sprt/errno.h; the trailing comment
 // on a line is the native value when it differs from the canonical one.
 constexpr inline int32_t errnoToCanonical(int32_t __e) {
 	switch (__e) {

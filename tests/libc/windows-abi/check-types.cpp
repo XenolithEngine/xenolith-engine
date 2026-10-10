@@ -47,7 +47,7 @@
 // (IN_ADDR, SOCKET, hostent, ...) do not collide with the real winsock ones.
 namespace sprt_abi {
 #define __SPRT_BUILD 1
-#include <sprt/c/cross/__sprt_socket.h>
+#include <sprt/gen/c/cross/__sprt_socket.h>
 #undef __SPRT_BUILD
 }
 

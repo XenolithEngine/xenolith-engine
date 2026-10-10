@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef SPRT_WRAPPERS_WINDOWS_DBGHELP_H_
 #define SPRT_WRAPPERS_WINDOWS_DBGHELP_H_
 
-#include <sprt/wrappers/windows/abi/dbghelp.h>
+#include <sprt/gen/wrappers/windows/abi/dbghelp.h>
 
 // ---- SymSetOptions flags --------------------------------------------------
 #define SYMOPT_DEFERRED_LOADS __SPRT_SYMOPT_DEFERRED_LOADS

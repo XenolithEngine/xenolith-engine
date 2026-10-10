@@ -1,0 +1,16 @@
+struct typedef=fenv_t {
+    field __fpsr "unsigned long long"
+    field __fpcr "unsigned long long"
+}
+typedef fexcept_t "unsigned short"
+macro FE_INEXACT 0x0010
+macro FE_UNDERFLOW 0x0008
+macro FE_OVERFLOW 0x0004
+macro FE_DIVBYZERO 0x0002
+macro FE_INVALID 0x0001
+macro FE_FLUSHTOZERO 0x0080
+macro FE_ALL_EXCEPT 0x009f
+macro FE_TONEAREST 0x00000000
+macro FE_UPWARD 0x00400000
+macro FE_DOWNWARD 0x00800000
+macro FE_TOWARDZERO 0x00C00000

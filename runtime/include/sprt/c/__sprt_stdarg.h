@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C___SPRT_STDARG_H_
 #define CORE_RUNTIME_INCLUDE_C___SPRT_STDARG_H_
 
-#include <sprt/c/bits/__sprt_va_list.h>
+#include <sprt/gen/c/bits/__sprt_va_list.h>
 
 #define __sprt_va_start(v, l)   __builtin_va_start(v,l)
 #define __sprt_va_end(v)       __builtin_va_end(v)

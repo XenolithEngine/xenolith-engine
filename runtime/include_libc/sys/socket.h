@@ -31,7 +31,7 @@ THE SOFTWARE.
 #else
 
 #include <sprt/c/sys/__sprt_socket.h>
-#include <sprt/c/bits/iovec.h>
+#include <sprt/gen/c/bits/iovec.h>
 
 #include <sys/__sockdef.h>
 

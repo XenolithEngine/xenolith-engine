@@ -1,0 +1,237 @@
+cond cplusplus "defined(__cplusplus)"
+// Windows common structures (windef.h, winnt.h subset)
+//
+// LARGE_INTEGER union for file positioning
+union _LARGE_INTEGER typedef=LARGE_INTEGER also="*PLARGE_INTEGER" {
+    struct {
+        field LowPart DWORD
+        field HighPart LONG
+    }
+    struct u {
+        field LowPart DWORD
+        field HighPart LONG
+    }
+    field QuadPart LONGLONG
+}
+union _ULARGE_INTEGER typedef=ULARGE_INTEGER also="*PULARGE_INTEGER" {
+    struct {
+        field LowPart DWORD
+        field HighPart DWORD
+    }
+    struct u {
+        field LowPart DWORD
+        field HighPart DWORD
+    }
+    field QuadPart ULONGLONG
+}
+// FILETIME structure
+struct _FILETIME typedef=FILETIME also="*PFILETIME, *LPFILETIME" {
+    field dwLowDateTime DWORD
+    field dwHighDateTime DWORD
+}
+// Security attributes structure
+struct _SECURITY_ATTRIBUTES typedef=SECURITY_ATTRIBUTES also="*PSECURITY_ATTRIBUTES, *LPSECURITY_ATTRIBUTES" {
+    field nLength DWORD
+    field lpSecurityDescriptor LPVOID
+    field bInheritHandle BOOL
+}
+struct _OVERLAPPED typedef=OVERLAPPED also="*LPOVERLAPPED" {
+    field Internal ULONG_PTR
+    field InternalHigh ULONG_PTR
+    union {
+        struct {
+            field Offset DWORD
+            field OffsetHigh DWORD
+        }
+        field Pointer PVOID
+    }
+    field hEvent HANDLE
+}
+struct _OVERLAPPED_ENTRY typedef=OVERLAPPED_ENTRY also="*LPOVERLAPPED_ENTRY" {
+    field lpCompletionKey ULONG_PTR
+    field lpOverlapped LPOVERLAPPED
+    field Internal ULONG_PTR
+    field dwNumberOfBytesTransferred DWORD
+}
+struct tagPOINT typedef=POINT also="*PPOINT, *NPPOINT, *LPPOINT" {
+    field x LONG
+    field y LONG
+}
+struct _POINTL typedef=POINTL also="*PPOINTL" {
+    field x LONG
+    field y LONG
+}
+struct tagRECT typedef=RECT also="*PRECT, *NPRECT, *LPRECT" {
+    field left LONG
+    field top LONG
+    field right LONG
+    field bottom LONG
+}
+typedef LPCRECT "const RECT *"
+struct tagRECTL typedef=RECTL also="*PRECTL, *LPRECTL" {
+    field left LONG
+    field top LONG
+    field right LONG
+    field bottom LONG
+}
+typedef LPCRECTL "const RECTL *"
+struct _MARGINS typedef=MARGINS also="*PMARGINS" {
+    field cxLeftWidth int
+    field cxRightWidth int
+    field cyTopHeight int
+    field cyBottomHeight int
+}
+struct tagDEC typedef=DECIMAL {
+    field wReserved USHORT
+    union {
+        struct {
+            field scale BYTE
+            field sign BYTE
+        }
+        field signscale USHORT
+    }
+    field Hi32 ULONG
+    union {
+        struct {
+            field Lo32 ULONG
+            field Mid32 ULONG
+        }
+        field Lo64 ULONGLONG
+    }
+}
+struct tagSAFEARRAYBOUND typedef=SAFEARRAYBOUND {
+    field cElements ULONG
+    field lLbound LONG
+}
+typedef LPSAFEARRAYBOUND "struct tagSAFEARRAYBOUND *"
+struct tagSAFEARRAY typedef=SAFEARRAY also="*LPSAFEARRAY" {
+    field cDims USHORT
+    field fFeatures USHORT
+    field cbElements ULONG
+    field cLocks ULONG
+    field pvData PVOID
+    field rgsabound "SAFEARRAYBOUND [1]"
+}
+// COM interface forward declarations
+typedef IWbemLocator "struct IWbemLocator"
+typedef IWbemServices "struct IWbemServices"
+typedef IEnumWbemClassObject "struct IEnumWbemClassObject"
+typedef IWbemClassObject "struct IWbemClassObject"
+typedef IUnknown "struct IUnknown"
+typedef IDispatch "struct IDispatch"
+typedef IRecordInfo "struct IRecordInfo"
+// Security descriptor type for COM initialization
+typedef PSECURITY_DESCRIPTOR "void *"
+// GUID type for CLSID/IID definitions - must be defined before REFCLSID/REFIID
+struct _GUID typedef=GUID also="*PGUID, *LPGUID, IID, CLSID" {
+    field Data1 DWORD
+    field Data2 WORD
+    field Data3 WORD
+    field Data4 "BYTE [8]"
+}
+// SOLE_AUTHENTICATION_SERVICE - Authentication service info for CoInitializeSecurity
+struct _SOLE_AUTHENTICATION_SERVICE typedef=SOLE_AUTHENTICATION_SERVICE also="*PSOLE_AUTHENTICATION_SERVICE" {
+    field dwAuthnSvc DWORD
+    field dwAuthzSvc DWORD
+    field pPrincipalName LPWSTR
+    field hr HRESULT
+}
+// COM reference types (CLSID/IID as references) - C++ only
+typedef REFCLSID "const GUID &" if="@cplusplus"
+typedef REFIID "const GUID &" if="@cplusplus"
+macro `REFCLSID` "const GUID *" if="!@cplusplus"
+macro `REFIID` "const GUID *" if="!@cplusplus"
+typedef VARIANT "struct tagVARIANT"
+struct tagVARIANT ignore-warning="-Wmicrosoft-anon-tag" {
+    union {
+        struct {
+            field vt VARTYPE
+            field wReserved1 WORD
+            field wReserved2 WORD
+            field wReserved3 WORD
+            union {
+                field llVal LONGLONG
+                field lVal LONG
+                field bVal BYTE
+                field iVal SHORT
+                field fltVal FLOAT
+                field dblVal DOUBLE
+                field boolVal VARIANT_BOOL
+                field __OBSOLETE__VARIANT_BOOL VARIANT_BOOL
+                field bstrVal BSTR
+                field punkVal "IUnknown *"
+                field pdispVal "IDispatch *"
+                field parray "SAFEARRAY *"
+                field pbVal "BYTE *"
+                field piVal "SHORT *"
+                field plVal "LONG *"
+                field pllVal "LONGLONG *"
+                field pfltVal "FLOAT *"
+                field pdblVal "DOUBLE *"
+                field pboolVal "VARIANT_BOOL *"
+                field __OBSOLETE__VARIANT_PBOOL "VARIANT_BOOL *"
+                field pbstrVal "BSTR *"
+                field ppunkVal "IUnknown **"
+                field ppdispVal "IDispatch **"
+                field pparray "SAFEARRAY **"
+                field pvarVal "VARIANT *"
+                field byref PVOID
+                field cVal CHAR
+                field uiVal USHORT
+                field ulVal ULONG
+                field ullVal ULONGLONG
+                field intVal INT
+                field uintVal UINT
+                field pdecVal "DECIMAL *"
+                field pcVal "CHAR *"
+                field puiVal "USHORT *"
+                field pulVal "ULONG *"
+                field pullVal "ULONGLONG *"
+                field pintVal "INT *"
+                field puintVal "UINT *"
+                struct {
+                    field pvRecord PVOID
+                    field pRecInfo "IRecordInfo *"
+                }
+            }
+        }
+        field decVal DECIMAL
+    }
+}
+typedef LPVARIANT "VARIANT *"
+typedef VARIANTARG VARIANT
+typedef LPVARIANTARG "VARIANT *"
+struct _UNICODE_STRING {
+    field Length WORD
+    field MaximumLength WORD
+    field Buffer PWCHAR
+}
+struct _LIST_ENTRY typedef=LIST_ENTRY also="*PLIST_ENTRY, PRLIST_ENTRY" {
+    field Flink "struct _LIST_ENTRY *"
+    field Blink "struct _LIST_ENTRY *"
+}
+struct _COORD typedef=COORD also="*PCOORD" {
+    field X SHORT
+    field Y SHORT
+}
+struct _SMALL_RECT typedef=SMALL_RECT also="*PSMALL_RECT" {
+    field Left SHORT
+    field Top SHORT
+    field Right SHORT
+    field Bottom SHORT
+}
+struct _GROUP_AFFINITY typedef=GROUP_AFFINITY also="*PGROUP_AFFINITY" {
+    field Mask KAFFINITY
+    field Group USHORT
+    field Reserved "USHORT [3]"
+}
+struct _GROUP_AFFINITY32 typedef=GROUP_AFFINITY32 also="*PGROUP_AFFINITY32" {
+    field Mask ULONG
+    field Group USHORT
+    field Reserved "USHORT [3]"
+}
+struct _GROUP_AFFINITY64 typedef=GROUP_AFFINITY64 also="*PGROUP_AFFINITY64" {
+    field Mask __uint64
+    field Group USHORT
+    field Reserved "USHORT [3]"
+}

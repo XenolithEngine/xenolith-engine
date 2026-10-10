@@ -26,7 +26,7 @@
 #include <sprt/c/cross/__sprt_config.h>
 
 #include <sprt/c/__sprt_stdint.h>
-#include <sprt/c/cross/__sprt_signal.h>
+#include <sprt/gen/c/cross/__sprt_signal.h>
 #include <sprt/c/sys/__sprt_types.h>
 #include <sprt/c/__sprt_fcntl.h>
 

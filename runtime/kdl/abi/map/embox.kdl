@@ -1,0 +1,83 @@
+// The embox platform: the cross fragments under sprt/gen/c/cross/embox_sprt.
+
+platforms { platform embox_sprt { arch aarch64_sprt; }; }
+
+header "asm/setjmp.h" external=#true
+
+header "config/embox/compat/libc/limits.h" external=#true
+
+header "sprt/gen/c/cross/embox_sprt/aarch64_sprt/config.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/config.h"
+}
+
+header "sprt/gen/c/cross/embox_sprt/aarch64_sprt/fcntl.h"
+
+header "sprt/gen/c/cross/embox_sprt/aarch64_sprt/fenv.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/fenv.h"
+}
+
+header "sprt/gen/c/cross/embox_sprt/aarch64_sprt/jmp_buf.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/jmp_buf.h"
+}
+
+header "sprt/gen/c/cross/embox_sprt/aarch64_sprt/signal.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/signal.h"
+}
+
+header "sprt/gen/c/cross/embox_sprt/aarch64_sprt/syscall.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/syscall.h"
+}
+
+header "sprt/gen/c/cross/embox_sprt/clockid.h"
+
+header "sprt/gen/c/cross/embox_sprt/config.h"
+
+header "sprt/gen/c/cross/embox_sprt/dir_ptr.h" {
+    include "sprt/gen/c/bits/__sprt_uint16_t.h"
+    include "sprt/gen/c/bits/__sprt_uint8_t.h"
+    include "sprt/gen/c/bits/__sprt_uint64_t.h"
+    include "sprt/gen/c/bits/__sprt_int64_t.h"
+    include "config/embox/compat/libc/limits.h"
+}
+
+header "sprt/gen/c/cross/embox_sprt/errno.h" guard=CORE_RUNTIME_INCLUDE_C_CROSS_EMBOX_SPRT_ERRNO_H_
+
+header "sprt/gen/c/cross/embox_sprt/fdset.h"
+
+header "sprt/gen/c/cross/embox_sprt/file_ptr.h"
+
+header "sprt/gen/c/cross/embox_sprt/langinfo.h" {
+    include "sprt/gen/c/cross/linux_sprt/langinfo.h"
+}
+
+header "sprt/gen/c/cross/embox_sprt/locale.h"
+
+header "sprt/gen/c/cross/embox_sprt/math.h"
+
+header "sprt/gen/c/cross/embox_sprt/mbstate.h"
+
+header "sprt/gen/c/cross/embox_sprt/mman.h"
+
+header "sprt/gen/c/cross/embox_sprt/netinetdef.h" guard=CORE_RUNTIME_INCLUDE_C_CROSS_EMBOX_SPRT_NETINETDEF_H_
+
+header "sprt/gen/c/cross/embox_sprt/polltypes.h"
+
+header "sprt/gen/c/cross/embox_sprt/setjmp.h" {
+    include "asm/setjmp.h"
+}
+
+header "sprt/gen/c/cross/embox_sprt/signal.h"
+
+header "sprt/gen/c/cross/embox_sprt/sockdef.h"
+
+header "sprt/gen/c/cross/embox_sprt/socket.h" {
+    include "sprt/gen/c/cross/linux_sprt/socket.h"
+}
+
+header "sprt/gen/c/cross/embox_sprt/stdio.h" {
+    include "sprt/gen/c/cross/linux_sprt/stdio.h"
+}
+
+header "sprt/gen/c/cross/embox_sprt/stdlib.h"
+
+header "sprt/gen/c/cross/embox_sprt/sysconf.h"

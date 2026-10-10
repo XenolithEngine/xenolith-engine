@@ -23,8 +23,8 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_ARPA___INET_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_ARPA___INET_H_
 
-#include <sprt/c/cross/__sprt_socket.h>
-#include <sprt/c/cross/__sprt_netinet.h>
+#include <sprt/gen/c/cross/__sprt_socket.h>
+#include <sprt/gen/c/cross/__sprt_netinet.h>
 #include <sprt/c/__sprt_stdint.h>
 
 #define INADDR_ANY __SPRT_INADDR_ANY

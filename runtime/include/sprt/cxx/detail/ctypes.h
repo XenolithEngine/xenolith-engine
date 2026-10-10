@@ -27,8 +27,8 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdint.h>
 #include <sprt/c/__sprt_float.h>
 
-#include <sprt/c/bits/__sprt_ssize_t.h>
-#include <sprt/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/bits/__sprt_ssize_t.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
 
 #include <sprt/cxx/__type_traits/types.h>
 

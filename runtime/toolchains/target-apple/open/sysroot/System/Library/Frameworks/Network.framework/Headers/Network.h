@@ -10,33 +10,13 @@ via the framework's own ref-counting); symbols resolve from the baked Network.tb
 
 #ifndef __SPRT_OPEN_NETWORK_H_
 #define __SPRT_OPEN_NETWORK_H_
+#include <__sprt_abi/Network/Network.h>
 
 #include <sys/cdefs.h>
 #include <stdbool.h>
 #include <dispatch/dispatch.h>
 
 __BEGIN_DECLS
-
-/* nw objects — opaque handles. (The real framework makes them OS objects; treated
-   here as plain pointers, which is ABI-compatible and compiles under ARC.) */
-typedef struct nw_path *nw_path_t;
-typedef struct nw_path_monitor *nw_path_monitor_t;
-typedef struct nw_interface *nw_interface_t;
-
-typedef enum {
-	nw_path_status_invalid     = 0,
-	nw_path_status_satisfied   = 1,
-	nw_path_status_unsatisfied = 2,
-	nw_path_status_satisfiable = 3,
-} nw_path_status_t;
-
-typedef enum {
-	nw_interface_type_other    = 0,
-	nw_interface_type_wifi     = 1,
-	nw_interface_type_cellular = 2,
-	nw_interface_type_wired    = 3,
-	nw_interface_type_loopback = 4,
-} nw_interface_type_t;
 
 typedef void (^nw_path_monitor_update_handler_t)(nw_path_t path);
 typedef void (^nw_path_monitor_cancel_handler_t)(void);

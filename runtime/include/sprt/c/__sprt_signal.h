@@ -23,9 +23,9 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C___SPRT_SIGNAL_H_
 #define CORE_RUNTIME_INCLUDE_C___SPRT_SIGNAL_H_
 
-#include <sprt/c/cross/__sprt_signal.h>
-#include <sprt/c/cross/__sprt_sysid.h>
-#include <sprt/c/bits/__sprt_int.h>
+#include <sprt/gen/c/cross/__sprt_signal.h>
+#include <sprt/gen/c/cross/__sprt_sysid.h>
+#include <sprt/gen/c/bits/__sprt_int.h>
 
 // sigprocmask()/pthread_sigmask() forward `how` untranslated, so a libc that
 // numbers these differently overrides them in its cross/<platform>/signal.h,

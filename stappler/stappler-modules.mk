@@ -46,6 +46,7 @@ TOOLKIT_MODULE_LIST += \
 	$(STAPPLER_MODULE_DIR)/wasm/wasm.mk \
 	$(STAPPLER_MODULE_DIR)/makefile/makefile.mk \
 	$(STAPPLER_MODULE_DIR)/pug/pug.mk \
+	$(STAPPLER_MODULE_DIR)/kdl/kdl.mk \
 	$(STAPPLER_MODULE_DIR)/document/document.mk \
 	$(STAPPLER_MODULE_DIR)/markdown/markdown.mk \
 	$(STAPPLER_MODULE_DIR)/layout/layout.mk \

@@ -24,9 +24,9 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_MMAN_H_
 
 #include <sprt/c/cross/__sprt_config.h>
-#include <sprt/c/cross/__sprt_mman.h>
-#include <sprt/c/bits/__sprt_ssize_t.h>
-#include <sprt/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/cross/__sprt_mman.h>
+#include <sprt/gen/c/bits/__sprt_ssize_t.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
 
 // Values shared by every platform whose mman(2) follows the asm-generic layout.
 // A few are #ifndef-guarded: the per-platform <cross/.../mman.h> above is included

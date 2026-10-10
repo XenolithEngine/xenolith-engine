@@ -1,0 +1,18 @@
+// Darwin nl_item values (sequential, BSD-derived). Validated against the platform
+// <langinfo.h> by the libc_wrapper bridge (common/langinfo.cc).
+macro CODESET 0
+macro D_T_FMT 1
+macro D_FMT 2
+macro T_FMT 3
+macro T_FMT_AMPM 4
+macro AM_STR 5
+macro PM_STR 6
+macro DAY_1 7
+macro ABDAY_1 14
+macro MON_1 21
+macro ABMON_1 33
+macro RADIXCHAR 50
+macro THOUSEP 51
+macro YESEXPR 52
+macro NOEXPR 53
+macro CRNCYSTR 56

@@ -1,0 +1,3 @@
+typedef IOSurfaceRef "struct __IOSurface *"
+// Global surface identifier, as returned by IOSurfaceGetID(). uint32_t per Apple's ABI.
+typedef IOSurfaceID uint32_t

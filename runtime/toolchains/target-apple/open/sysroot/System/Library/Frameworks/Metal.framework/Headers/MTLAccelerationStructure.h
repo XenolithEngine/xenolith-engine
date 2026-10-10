@@ -9,26 +9,12 @@
 #import <Metal/MTLResource.h>
 #import <Metal/MTLStageInputOutputDescriptor.h>
 #import <Metal/MTLAccelerationStructureTypes.h>
+#include <__sprt_abi/Metal/MTLAccelerationStructure.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
 @protocol MTLBuffer;
 @protocol MTLAccelerationStructure;
-
-typedef NS_OPTIONS(NSUInteger, MTLAccelerationStructureUsage) {
-    MTLAccelerationStructureUsageNone = 0,
-    MTLAccelerationStructureUsageRefit = (1 << 0),
-    MTLAccelerationStructureUsagePreferFastBuild = (1 << 1),
-    MTLAccelerationStructureUsageExtendedLimits = (1 << 2),
-};
-
-typedef NS_OPTIONS(uint32_t, MTLAccelerationStructureInstanceOptions) {
-    MTLAccelerationStructureInstanceOptionNone = 0,
-    MTLAccelerationStructureInstanceOptionDisableTriangleCulling = (1 << 0),
-    MTLAccelerationStructureInstanceOptionTriangleFrontFacingWindingCounterClockwise = (1 << 1),
-    MTLAccelerationStructureInstanceOptionOpaque = (1 << 2),
-    MTLAccelerationStructureInstanceOptionNonOpaque = (1 << 3),
-};
 
 /**
  * @brief Base class for acceleration structure descriptors. Do not use this class directly. Use
@@ -56,15 +42,6 @@ typedef NS_OPTIONS(uint32_t, MTLAccelerationStructureInstanceOptions) {
 @property (nonatomic) NSUInteger primitiveDataElementSize;
 
 @end
-
-/**
- * @brief Describes what happens to the object before the first motion key and after the last
- * motion key.
- */
-typedef NS_ENUM(uint32_t, MTLMotionBorderMode) {
-    MTLMotionBorderModeClamp = 0,
-    MTLMotionBorderModeVanish = 1,
-};
 
 /**
  * @brief Descriptor for a primitive acceleration structure
@@ -161,34 +138,6 @@ typedef NS_ENUM(uint32_t, MTLMotionBorderMode) {
 @end
 
 /**
- * @brief Curve types
- */
-typedef NS_ENUM(NSInteger, MTLCurveType) {
-    MTLCurveTypeRound = 0,
-    MTLCurveTypeFlat = 1,
-};
-
-/**
- * @brief Basis function to use to interpolate curve control points
- */
-typedef NS_ENUM(NSInteger, MTLCurveBasis) {
-    MTLCurveBasisBSpline = 0,
-    MTLCurveBasisCatmullRom = 1,
-    MTLCurveBasisLinear = 2,
-    MTLCurveBasisBezier = 3,
-};
-
-/**
- * @brief Type of end cap to insert at the beginning and end of each connected
- * sequence of curve segments.
- */
-typedef NS_ENUM(NSInteger, MTLCurveEndCaps) {
-    MTLCurveEndCapsNone = 0,
-    MTLCurveEndCapsDisk = 1,
-    MTLCurveEndCapsSphere = 2,
-};
-
-/**
  * @brief Acceleration structure geometry descriptor describing geometry
  * made of curve primitives
  */
@@ -241,68 +190,6 @@ typedef NS_ENUM(NSInteger, MTLCurveEndCaps) {
 + (instancetype)descriptor;
 
 @end
-
-typedef struct {
-    MTLPackedFloat4x3 transformationMatrix;
-    MTLAccelerationStructureInstanceOptions options;
-    uint32_t mask;
-    uint32_t intersectionFunctionTableOffset;
-    uint32_t accelerationStructureIndex;
-} MTLAccelerationStructureInstanceDescriptor;
-
-typedef struct {
-    MTLPackedFloat4x3 transformationMatrix;
-    MTLAccelerationStructureInstanceOptions options;
-    uint32_t mask;
-    uint32_t intersectionFunctionTableOffset;
-    uint32_t accelerationStructureIndex;
-    uint32_t userID;
-} MTLAccelerationStructureUserIDInstanceDescriptor;
-
-typedef NS_ENUM(NSUInteger, MTLAccelerationStructureInstanceDescriptorType) {
-    MTLAccelerationStructureInstanceDescriptorTypeDefault = 0,
-    MTLAccelerationStructureInstanceDescriptorTypeUserID = 1,
-    MTLAccelerationStructureInstanceDescriptorTypeMotion = 2,
-    MTLAccelerationStructureInstanceDescriptorTypeIndirect = 3,
-    MTLAccelerationStructureInstanceDescriptorTypeIndirectMotion = 4,
-};
-
-typedef struct {
-    MTLAccelerationStructureInstanceOptions options;
-    uint32_t mask;
-    uint32_t intersectionFunctionTableOffset;
-    uint32_t accelerationStructureIndex;
-    uint32_t userID;
-    uint32_t motionTransformsStartIndex;
-    uint32_t motionTransformsCount;
-    MTLMotionBorderMode motionStartBorderMode;
-    MTLMotionBorderMode motionEndBorderMode;
-    float motionStartTime;
-    float motionEndTime;
-} MTLAccelerationStructureMotionInstanceDescriptor;
-
-typedef struct {
-    MTLPackedFloat4x3 transformationMatrix;
-    MTLAccelerationStructureInstanceOptions options;
-    uint32_t mask;
-    uint32_t intersectionFunctionTableOffset;
-    uint32_t userID;
-    MTLResourceID accelerationStructureID;
-} MTLIndirectAccelerationStructureInstanceDescriptor;
-
-typedef struct {
-    MTLAccelerationStructureInstanceOptions options;
-    uint32_t mask;
-    uint32_t intersectionFunctionTableOffset;
-    uint32_t userID;
-    MTLResourceID accelerationStructureID;
-    uint32_t motionTransformsStartIndex;
-    uint32_t motionTransformsCount;
-    MTLMotionBorderMode motionStartBorderMode;
-    MTLMotionBorderMode motionEndBorderMode;
-    float motionStartTime;
-    float motionEndTime;
-} MTLIndirectAccelerationStructureMotionInstanceDescriptor;
 
 /**
  * @brief Descriptor for an instance acceleration structure

@@ -1,0 +1,284 @@
+// Metal: the ABI of its hand-written headers, and what they include.
+
+header "Metal/MTLAccelerationStructure.h" external=#true {
+    include "__sprt_abi/Metal/MTLAccelerationStructure.h"
+    type __SPRT_OPEN_METAL_MTLACCELERATIONSTRUCTURE_H_
+}
+
+header "Metal/MTLAccelerationStructureTypes.h" external=#true {
+    include "math.h"
+    type MTLAxisAlignedBoundingBox MTLPackedFloat3 MTLPackedFloat4x3 _MTLAxisAlignedBoundingBox _MTLPackedFloat3 _MTLPackedFloat4x3
+    type __SPRT_OPEN_METAL_MTLACCELERATIONSTRUCTURETYPES_H_
+}
+
+header "Metal/MTLArgument.h" external=#true {
+    include "__sprt_abi/Metal/MTLArgument.h"
+    type __SPRT_OPEN_METAL_MTLARGUMENT_H_
+}
+
+header "Metal/MTLCommandBuffer.h" external=#true {
+    include "__sprt_abi/Metal/MTLCommandBuffer.h"
+    type __SPRT_OPEN_METAL_MTLCOMMANDBUFFER_H_
+}
+
+header "Metal/MTLCommandEncoder.h" external=#true {
+    include "__sprt_abi/Metal/MTLCommandEncoder.h"
+    type __SPRT_OPEN_METAL_MTLCOMMANDENCODER_H_
+}
+
+header "Metal/MTLDefines.h" external=#true {
+    include "__sprt_abi/Metal/MTLDefines.h"
+    type __SPRT_OPEN_METAL_MTLDEFINES_H_
+}
+
+header "Metal/MTLDepthStencil.h" external=#true {
+    include "__sprt_abi/Metal/MTLDepthStencil.h"
+    type __SPRT_OPEN_METAL_DEPTHSTENCIL_H_
+}
+
+header "Metal/MTLFunctionConstantValues.h" external=#true {
+    type __SPRT_OPEN_METAL_MTLFUNCTIONCONSTANTVALUES_H_
+}
+
+header "Metal/MTLFunctionDescriptor.h" external=#true {
+    include "__sprt_abi/Metal/MTLFunctionDescriptor.h"
+    type __SPRT_OPEN_METAL_MTLFUNCTIONDESCRIPTOR_H_
+}
+
+header "Metal/MTLIndirectCommandEncoder.h" external=#true {
+    type __SPRT_OPEN_METAL_MTLINDIRECTCOMMANDENCODER_H_
+}
+
+header "Metal/MTLPixelFormat.h" external=#true {
+    include "__sprt_abi/Metal/MTLPixelFormat.h"
+    type __SPRT_OPEN_METAL_MTLPIXELFORMAT_H_
+}
+
+header "Metal/MTLRenderCommandEncoder.h" external=#true {
+    include "Metal/MTLTypes.h"
+    include "Metal/MTLCommandEncoder.h"
+    include "Metal/MTLRenderPass.h"
+    include "Metal/MTLStageInputOutputDescriptor.h"
+    include "__sprt_abi/Metal/MTLRenderCommandEncoder.h"
+    type __SPRT_OPEN_METAL_MTLRENDERCOMMANDENCODER_H_
+}
+
+header "Metal/MTLRenderPass.h" external=#true {
+    include "__sprt_abi/Metal/MTLRenderPass.h"
+    type __SPRT_OPEN_METAL_MTLRENDERPASS_H_
+}
+
+header "Metal/MTLResource.h" external=#true {
+    include "__sprt_abi/Metal/MTLResource.h"
+    type __SPRT_OPEN_METAL_MTLRESOURCE_H_
+}
+
+header "Metal/MTLStageInputOutputDescriptor.h" external=#true {
+    include "__sprt_abi/Metal/MTLStageInputOutputDescriptor.h"
+    type __SPRT_OPEN_METAL_MTLSTAGEINPUTOUTPUTDESCRIPTOR_H_
+}
+
+header "Metal/MTLTexture.h" external=#true {
+    include "__sprt_abi/Metal/MTLTexture.h"
+    type __SPRT_OPEN_METAL_TEXTURE_H_
+}
+
+header "Metal/MTLTypes.h" external=#true {
+    include "stdint.h"
+    include "__sprt_abi/Metal/MTLTypes.h"
+    type __SPRT_OPEN_METAL_MTLTYPES_H_
+}
+
+header "Metal/MTLVertexDescriptor.h" external=#true {
+    include "__sprt_abi/Metal/MTLVertexDescriptor.h"
+    type __SPRT_OPEN_METAL_MTLVERTEXDESCRIPTOR_H_
+}
+
+header "__sprt_abi/Metal/MTLAccelerationStructure.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLTypes.h"
+    include "Metal/MTLResource.h"
+    include "Metal/MTLStageInputOutputDescriptor.h"
+    include "Metal/MTLAccelerationStructureTypes.h"
+}
+
+header "__sprt_abi/Metal/MTLAccelerationStructureCommandEncoder.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLResource.h"
+    include "Metal/MTLArgument.h"
+    include "Metal/MTLCommandEncoder.h"
+    include "Metal/MTLAccelerationStructure.h"
+}
+
+header "__sprt_abi/Metal/MTLArgument.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLTexture.h"
+}
+
+header "__sprt_abi/Metal/MTLBinaryArchive.h" {
+    include "Foundation/Foundation.h"
+}
+
+header "__sprt_abi/Metal/MTLBlitCommandEncoder.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLCommandEncoder.h"
+    include "Metal/MTLTypes.h"
+}
+
+header "__sprt_abi/Metal/MTLCaptureManager.h" {
+    include "Foundation/Foundation.h"
+}
+
+header "__sprt_abi/Metal/MTLCommandBuffer.h" {
+    include "Foundation/Foundation.h"
+}
+
+header "__sprt_abi/Metal/MTLCommandEncoder.h" {
+    include "Foundation/Foundation.h"
+}
+
+header "__sprt_abi/Metal/MTLComputeCommandEncoder.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLCommandEncoder.h"
+    include "Metal/MTLCommandBuffer.h"
+    include "Metal/MTLTypes.h"
+}
+
+header "__sprt_abi/Metal/MTLCounters.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLResource.h"
+}
+
+header "__sprt_abi/Metal/MTLDefines.h" {
+    include "Foundation/Foundation.h"
+}
+
+header "__sprt_abi/Metal/MTLDepthStencil.h" {
+    include "Foundation/Foundation.h"
+}
+
+header "__sprt_abi/Metal/MTLDevice.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLTypes.h"
+    include "Metal/MTLPixelFormat.h"
+    include "Metal/MTLResource.h"
+    include "Metal/MTLTexture.h"
+    include "Metal/MTLArgument.h"
+}
+
+header "__sprt_abi/Metal/MTLDrawable.h" {
+    include "Foundation/Foundation.h"
+}
+
+header "__sprt_abi/Metal/MTLDynamicLibrary.h" {
+    include "Foundation/Foundation.h"
+}
+
+header "__sprt_abi/Metal/MTLFunctionDescriptor.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLFunctionConstantValues.h"
+}
+
+header "__sprt_abi/Metal/MTLFunctionLog.h" {
+    include "Foundation/Foundation.h"
+}
+
+header "__sprt_abi/Metal/MTLHeap.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLResource.h"
+}
+
+header "__sprt_abi/Metal/MTLIOCommandBuffer.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLTypes.h"
+}
+
+header "__sprt_abi/Metal/MTLIOCommandQueue.h" {
+    include "Foundation/Foundation.h"
+}
+
+header "__sprt_abi/Metal/MTLIOCompressor.h" {
+    include "Foundation/Foundation.h"
+}
+
+header "__sprt_abi/Metal/MTLIndirectCommandBuffer.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLTypes.h"
+    include "Metal/MTLResource.h"
+    include "Metal/MTLIndirectCommandEncoder.h"
+}
+
+header "__sprt_abi/Metal/MTLIntersectionFunctionTable.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLTypes.h"
+    include "Metal/MTLResource.h"
+}
+
+header "__sprt_abi/Metal/MTLLibrary.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLResource.h"
+    include "Metal/MTLArgument.h"
+    include "Metal/MTLFunctionDescriptor.h"
+}
+
+header "__sprt_abi/Metal/MTLPixelFormat.h" {
+    include "Foundation/Foundation.h"
+}
+
+header "__sprt_abi/Metal/MTLRenderCommandEncoder.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLTypes.h"
+    include "Metal/MTLCommandEncoder.h"
+    include "Metal/MTLRenderPass.h"
+    include "Metal/MTLStageInputOutputDescriptor.h"
+}
+
+header "__sprt_abi/Metal/MTLRenderPass.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLTypes.h"
+}
+
+header "__sprt_abi/Metal/MTLRenderPipeline.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLTypes.h"
+    include "Metal/MTLPixelFormat.h"
+    include "Metal/MTLRenderCommandEncoder.h"
+}
+
+header "__sprt_abi/Metal/MTLResource.h" {
+    include "Foundation/Foundation.h"
+}
+
+header "__sprt_abi/Metal/MTLResourceStateCommandEncoder.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLTypes.h"
+}
+
+header "__sprt_abi/Metal/MTLSampler.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLDepthStencil.h"
+    include "Metal/MTLTypes.h"
+}
+
+header "__sprt_abi/Metal/MTLStageInputOutputDescriptor.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLVertexDescriptor.h"
+}
+
+header "__sprt_abi/Metal/MTLTexture.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLPixelFormat.h"
+    include "Metal/MTLResource.h"
+    include "Metal/MTLTypes.h"
+    include "IOSurface/IOSurfaceRef.h"
+}
+
+header "__sprt_abi/Metal/MTLTypes.h" {
+    include "Foundation/Foundation.h"
+    include "Metal/MTLDefines.h"
+    include "stdint.h"
+}
+
+header "__sprt_abi/Metal/MTLVertexDescriptor.h" {
+    include "Foundation/Foundation.h"
+}

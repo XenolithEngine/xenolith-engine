@@ -29,7 +29,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_fcntl.h>
 #include <sprt/c/sys/__sprt_ioctl.h>
 #include <sprt/c/sys/__sprt_stat.h>
-#include <sprt/c/bits/__sprt_ssize_t.h>
+#include <sprt/gen/c/bits/__sprt_ssize_t.h>
 #include <sprt/wrappers/windows/basic_api.h>
 #include <sprt/wrappers/windows/file_api.h>
 #include <sprt/wrappers/windows/process_api.h>

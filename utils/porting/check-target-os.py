@@ -72,7 +72,7 @@ class Os:
         # Platforms that share a group macro with this one may share its files too (embox_user uses
         # the embox platform and filesystem layers through SPRT_EMBOX_ANY).
         self.siblings = set()
-        text = eng.read("runtime/include/sprt/c/bits/__sprt_def.h") or ""
+        text = eng.read(pl.TARGETS_H) or ""
         for cond, group in re.findall(r"#if ([^\n]*)\n#define (SPRT_[A-Z_]+) 1\n", text):
             if re.search(pl.word(self.sprt), cond):
                 for member in re.findall(r"SPRT_([A-Z_]+)", cond):
@@ -110,7 +110,7 @@ def guess_system(eng, o):
 
 def check_identity(eng, rep, o):
     rep.section("B2", "sprt recognizes the platform")
-    rel = "runtime/include/sprt/c/bits/__sprt_def.h"
+    rel = pl.TARGETS_H
     text = eng.read(rel) or ""
     rep.check(re.search(r"#define\s+__SPRT_PLATFORM_NAME_%s\s+%s_sprt\b" % (o.macro, o.ident), text),
               "%s: __SPRT_PLATFORM_NAME_%s is %s_sprt" % (rel, o.macro, o.ident))
@@ -124,8 +124,8 @@ def check_identity(eng, rep, o):
     rep.check(not clashes, "platform IDs are unique", details=clashes)
     pos = text.find("#define %s " % o.sprt)
     rep.check(pos >= 0, "%s is defined by the detection chain" % o.sprt,
-              hint="add `#elif defined(%s)` with __SPRT_PLATFORM_NAME/__SPRT_PLATFORM_ID/%s"
-              % (o.define or "__<OS>__", o.sprt))
+              hint="add `target %s N if=\"defined(%s)\"` to `targets PLATFORM` in %s and regenerate it"
+              % (o.ident, o.define or "__<OS>__", pl.TARGETS_KDL))
     linux = text.find("defined(__linux__)")
     if pos >= 0 and o.ident not in ("linux", "android") and linux >= 0:
         if pos > linux:
@@ -135,7 +135,7 @@ def check_identity(eng, rep, o):
             rep.ok("the %s branch is tested before defined(__linux__)" % o.sprt)
     rep.info("compiler macro: %s; group macros: %s" % (o.define or "unknown (--define)",
              ", ".join(o.aliases[1:]) or "none"))
-    rep.check(eng.contains("runtime/include/sprt/c/cross/__sprt_errno.h", pl.word(o.sprt)),
+    rep.check(eng.contains("runtime/include/sprt/gen/c/cross/__sprt_errno.h", pl.word(o.sprt)),
               "cross/__sprt_errno.h includes the platform errno.h under %s" % o.sprt, missing=pl.WARN,
               hint="without a branch the platform gets linux_sprt/errno.h; right only for Linux errno numbers")
     gated = [f for f in ("errno.h", "netdb.h", "syslog.h", "termios.h")
@@ -145,13 +145,13 @@ def check_identity(eng, rep, o):
 
 def check_cross(eng, rep, o, like, arches):
     rep.section("B3", "ABI headers cross/%s_sprt" % o.ident)
-    base = "runtime/include/sprt/c/cross/%s_sprt" % o.ident
+    base = "runtime/include/sprt/gen/c/cross/%s_sprt" % o.ident
     if not eng.isdir(base):
         rep.fail("%s/ does not exist" % base, hint="start with one-line forwards to linux_sprt")
         return
     files = {f for f in eng.listdir(base) if f.endswith(".h")}
     subdirs = [d for d in eng.listdir(base) if d.endswith("_sprt") and eng.isdir(os.path.join(base, d))]
-    ref = "runtime/include/sprt/c/cross/%s_sprt" % like
+    ref = "runtime/include/sprt/gen/c/cross/%s_sprt" % like
     if like and eng.isdir(ref) and like != o.ident:
         ref_files = {f for f in eng.listdir(ref) if f.endswith(".h")}
         missing = sorted(ref_files - files)
@@ -364,7 +364,7 @@ def main():
     ap.add_argument("os", help="the OS as its directories are named (nuttx, embox_user, wasm, myos)")
     ap.add_argument("--macro", help="the part after SPRT_ (default: the OS name in upper case)")
     ap.add_argument("--system", help="TARGET_SYSTEM (default: found through make/utils/apply-toolchain.mk)")
-    ap.add_argument("--define", help="the compiler macro that identifies the OS (default: from __sprt_def.h)")
+    ap.add_argument("--define", help="the compiler macro that identifies the OS (default: from __sprt_targets.h)")
     ap.add_argument("--triple", help="a target triple, to check the sysroot and built tests")
     ap.add_argument("--arch", action="append", default=[], help="architecture that must have a cross subdir")
     ap.add_argument("--form", choices=("hosted", "freestanding"), help="default: guessed from the tree")

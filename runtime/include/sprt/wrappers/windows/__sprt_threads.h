@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS___SPRT_THREADS_H_
 
 #include <sprt/wrappers/windows/basic_api.h>
-#include <sprt/c/bits/__sprt_uintptr_t.h>
+#include <sprt/gen/c/bits/__sprt_uintptr_t.h>
 #include <sprt/c/sys/__sprt_sprt.h>
 #include <sprt/c/__sprt_pthread.h>
 #include <sprt/c/__sprt_errno.h>

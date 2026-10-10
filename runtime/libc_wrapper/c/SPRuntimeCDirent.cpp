@@ -85,8 +85,8 @@ extern "C" int dirent_path(DIR *, char *, size_t) __attribute__((weak));
 // include_libc umbrella on the search path, so <stddef.h> is not guaranteed here.
 // На ILP32 glibc обычный struct dirent несёт 32-битные ino/off; обёртки
 // читают буферы readdir64/scandir64, чей dirent64-лейаут и должен совпадать.
-#if __SPRT_DIRENT_MUSL || SPRT_APPLE || SPRT_HOSTED_RTOS \
-		|| (SPRT_LINUX && defined(__GLIBC__) && !defined(__LP64__))
+// Darwin и NuttX читают обычным readdir/scandir: dirent64 у них нет.
+#if __SPRT_DIRENT_MUSL || (SPRT_LINUX && defined(__GLIBC__) && !defined(__LP64__))
 #define __SPRT_DIRENT_CMP dirent64
 #else
 #define __SPRT_DIRENT_CMP dirent

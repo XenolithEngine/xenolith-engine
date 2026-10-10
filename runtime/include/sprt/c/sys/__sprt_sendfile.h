@@ -23,8 +23,8 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SENDFILE_H_
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SENDFILE_H_
 
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_ssize_t.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_ssize_t.h>
 
 __SPRT_BEGIN_DECL
 

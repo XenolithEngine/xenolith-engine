@@ -1,0 +1,20 @@
+// e2k glibc bits/fenv.h: flags live in the FPCR (bits 0-4 layout below), the
+// rounding mode is the PFPFR field; glibc wraps them in a three-word struct
+// and exposes fexcept_t as unsigned int.
+struct typedef=`__sprt_fenv_t` {
+    field __fpcr "unsigned int"
+    field __fpsr "unsigned int"
+    field __pfpfr "unsigned int"
+}
+typedef `__sprt_fexcept_t` "unsigned int"
+macro FE_INVALID 0x01
+macro FE_DIVBYZERO 0x04
+macro FE_OVERFLOW 0x08
+macro FE_UNDERFLOW 0x10
+macro FE_INEXACT 0x20
+macro FE_ALL_EXCEPT 0x3D
+macro FE_TONEAREST 0x0000
+macro FE_DOWNWARD 0x2000
+macro FE_UPWARD 0x4000
+macro FE_TOWARDZERO 0x6000
+macro FE_DFL_ENV "((const __sprt_fenv_t *) -1)"

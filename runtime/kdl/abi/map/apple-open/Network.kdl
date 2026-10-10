@@ -1,0 +1,7 @@
+// Network: the ABI of its hand-written headers, and what they include.
+
+header "__sprt_abi/Network/Network.h" {
+    include "sys/cdefs.h"
+    include "stdbool.h"
+    include "dispatch/dispatch.h"
+}

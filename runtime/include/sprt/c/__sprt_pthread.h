@@ -59,15 +59,15 @@ THE SOFTWARE.
 	For most systems, this requires administrative privileges.
 */
 
-#include <sprt/c/cross/__sprt_sysid.h>
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/cross/__sprt_sysid.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
 #include <sprt/c/bits/__sprt_cpuset_t.h>
-#include <sprt/c/bits/__sprt_uint64_t.h>
-#include <sprt/c/bits/__sprt_uint32_t.h>
-#include <sprt/c/bits/pthread.h>
-#include <sprt/c/bits/sched_param.h>
-#include <sprt/c/cross/__sprt_signal.h>
+#include <sprt/gen/c/bits/__sprt_uint64_t.h>
+#include <sprt/gen/c/bits/__sprt_uint32_t.h>
+#include <sprt/gen/c/bits/pthread.h>
+#include <sprt/gen/c/bits/sched_param.h>
+#include <sprt/gen/c/cross/__sprt_signal.h>
 
 // clang-format off
 #define __SPRT_PTHREAD_STACK_MIN 4096

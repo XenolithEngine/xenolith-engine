@@ -1,0 +1,49 @@
+// Platform-varying netinet option numbers (INET*_ADDRSTRLEN, IPPROTO_*, IP_*,
+// IPV6_*, MCAST_*) live in the per-platform netinetdef.h, exactly as the socket
+// constants live in the per-platform sockdef.h. <netinet/in.h> / <arpa/inet.h>
+// expand the public names from these __SPRT_* macros; SPRuntimeCSysSocket.cpp
+// static_asserts them against the native header.
+// Platform-invariant constants and address-classification macros (same on every
+// target): INADDR_*, IPPORT_RESERVED, the IN6_IS_ADDR_* / IN_CLASS* test macros
+// and their masks, and IN_LOOPBACKNET.
+macro INADDR_ANY "((__sprt_in_addr_t)0x00000000)"
+macro INADDR_LOOPBACK "((__sprt_in_addr_t)0x7f000001)"
+macro INADDR_BROADCAST "((__sprt_in_addr_t)0xffffffff)"
+macro INADDR_NONE "((__sprt_in_addr_t)0xffffffff)"
+macro INADDR_UNSPEC_GROUP "((__sprt_in_addr_t)0xe0000000)"
+macro INADDR_ALLHOSTS_GROUP "((__sprt_in_addr_t)0xe0000001)"
+macro INADDR_ALLRTRS_GROUP "((__sprt_in_addr_t)0xe0000002)"
+macro INADDR_MAX_LOCAL_GROUP "((__sprt_in_addr_t)0xe00000ff)"
+macro IN6_IS_ADDR_UNSPECIFIED "(((__sprt_uint32_t *) (a))[0] == 0 && ((__sprt_uint32_t *) (a))[1] == 0 &&\n         ((__sprt_uint32_t *) (a))[2] == 0 && ((__sprt_uint32_t *) (a))[3] == 0)" params="a"
+macro IN6_IS_ADDR_LOOPBACK "(((__sprt_uint32_t *) (a))[0] == 0 && ((__sprt_uint32_t *) (a))[1] == 0 &&\n         ((__sprt_uint32_t *) (a))[2] == 0 &&\n         ((__sprt_uint8_t *) (a))[12] == 0 && ((__sprt_uint8_t *) (a))[13] == 0 &&\n         ((__sprt_uint8_t *) (a))[14] == 0 && ((__sprt_uint8_t *) (a))[15] == 1 )" params="a"
+macro IN6_IS_ADDR_MULTICAST "(((__sprt_uint8_t *) (a))[0] == 0xff)" params="a"
+macro IN6_IS_ADDR_LINKLOCAL "((((__sprt_uint8_t *) (a))[0]) == 0xfe && (((__sprt_uint8_t *) (a))[1] & 0xc0) == 0x80)" params="a"
+macro IN6_IS_ADDR_SITELOCAL "((((__sprt_uint8_t *) (a))[0]) == 0xfe && (((__sprt_uint8_t *) (a))[1] & 0xc0) == 0xc0)" params="a"
+macro IN6_IS_ADDR_V4MAPPED "(((__sprt_uint32_t *) (a))[0] == 0 && ((__sprt_uint32_t *) (a))[1] == 0 &&\n         ((__sprt_uint8_t *) (a))[8] == 0 && ((__sprt_uint8_t *) (a))[9] == 0 &&\n         ((__sprt_uint8_t *) (a))[10] == 0xff && ((__sprt_uint8_t *) (a))[11] == 0xff)" params="a"
+macro IN6_IS_ADDR_V4COMPAT "(((__sprt_uint32_t *) (a))[0] == 0 && ((__sprt_uint32_t *) (a))[1] == 0 &&\n         ((__sprt_uint32_t *) (a))[2] == 0 &&\n         !`IN6_IS_ADDR_UNSPECIFIED`(a) && !`IN6_IS_ADDR_LOOPBACK`(a))" params="a"
+macro IN6_IS_ADDR_MC_NODELOCAL "(`IN6_IS_ADDR_MULTICAST`(a) && ((((__sprt_uint8_t *) (a))[1] & 0xf) == 0x1))" params="a"
+macro IN6_IS_ADDR_MC_LINKLOCAL "(`IN6_IS_ADDR_MULTICAST`(a) && ((((__sprt_uint8_t *) (a))[1] & 0xf) == 0x2))" params="a"
+macro IN6_IS_ADDR_MC_SITELOCAL "(`IN6_IS_ADDR_MULTICAST`(a) && ((((__sprt_uint8_t *) (a))[1] & 0xf) == 0x5))" params="a"
+macro IN6_IS_ADDR_MC_ORGLOCAL "(`IN6_IS_ADDR_MULTICAST`(a) && ((((__sprt_uint8_t *) (a))[1] & 0xf) == 0x8))" params="a"
+macro IN6_IS_ADDR_MC_GLOBAL "(`IN6_IS_ADDR_MULTICAST`(a) && ((((__sprt_uint8_t *) (a))[1] & 0xf) == 0xe))" params="a"
+macro ARE_4_EQUAL "(!( (0[a]-0[b]) | (1[a]-1[b]) | (2[a]-2[b]) | (3[a]-3[b]) ))" params="a b"
+macro IN6_ARE_ADDR_EQUAL "ARE_4_EQUAL((const __sprt_uint32_t *)(a), (const __sprt_uint32_t *)(b))" params="a b"
+macro IN_CLASSA "((((__sprt_in_addr_t)(a)) & 0x80000000) == 0)" params="a"
+macro IN_CLASSA_NET 0xff000000
+macro IN_CLASSA_NSHIFT 24
+macro IN_CLASSA_HOST "(0xffffffff & ~IN_CLASSA_NET)"
+macro IN_CLASSA_MAX 128
+macro IN_CLASSB "((((__sprt_in_addr_t)(a)) & 0xc0000000) == 0x80000000)" params="a"
+macro IN_CLASSB_NET 0xffff0000
+macro IN_CLASSB_NSHIFT 16
+macro IN_CLASSB_HOST "(0xffffffff & ~IN_CLASSB_NET)"
+macro IN_CLASSB_MAX 65536
+macro IN_CLASSC "((((__sprt_in_addr_t)(a)) & 0xe0000000) == 0xc0000000)" params="a"
+macro IN_CLASSC_NET 0xffffff00
+macro IN_CLASSC_NSHIFT 8
+macro IN_CLASSC_HOST "(0xffffffff & ~IN_CLASSC_NET)"
+macro IN_CLASSD "((((__sprt_in_addr_t)(a)) & 0xf0000000) == 0xe0000000)" params="a"
+macro IN_MULTICAST "`IN_CLASSD`(a)" params="a"
+macro IN_EXPERIMENTAL "((((__sprt_in_addr_t)(a)) & 0xe0000000) == 0xe0000000)" params="a"
+macro IN_BADCLASS "((((__sprt_in_addr_t)(a)) & 0xf0000000) == 0xf0000000)" params="a"
+macro IN_LOOPBACKNET 127

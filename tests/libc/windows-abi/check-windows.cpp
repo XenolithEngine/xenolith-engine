@@ -11,7 +11,7 @@
 #define WINVER 0x0A00
 #endif
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/windows.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/windows.h>
 #include "abi_check.h"
 
 #include <windows.h>   // SYSTEM_INFO, MEMORYSTATUSEX, SYSTEM_LOGICAL_PROCESSOR_INFORMATION,

@@ -26,8 +26,8 @@ THE SOFTWARE.
 #ifndef SPRT_WRAPPERS_WINDOWS_NTSTATUS_H_
 #define SPRT_WRAPPERS_WINDOWS_NTSTATUS_H_
 
-#include <sprt/wrappers/windows/abi/basic_types.h> // NTSTATUS/LONG
-#include <sprt/wrappers/windows/abi/ntstatus.h>
+#include <sprt/gen/wrappers/windows/abi/basic_types.h> // NTSTATUS/LONG
+#include <sprt/gen/wrappers/windows/abi/ntstatus.h>
 
 // ntdll calling-convention markers (winternl.h). x64 has a single calling
 // convention, so NTAPI is empty; NTSYSAPI is an import marker (left empty here).

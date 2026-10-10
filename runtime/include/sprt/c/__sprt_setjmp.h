@@ -23,9 +23,9 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C___SPRT_SETJMP_H_
 #define CORE_RUNTIME_INCLUDE_C___SPRT_SETJMP_H_
 
-#include <sprt/c/bits/__sprt_uintptr_t.h>
-#include <sprt/c/bits/__sprt_null.h>
-#include <sprt/c/cross/__sprt_setjmp.h>
+#include <sprt/gen/c/bits/__sprt_uintptr_t.h>
+#include <sprt/gen/c/bits/__sprt_null.h>
+#include <sprt/gen/c/cross/__sprt_setjmp.h>
 
 /*
 	SPRT guarantees that C++ destructors (and any others,

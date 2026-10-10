@@ -1,0 +1,24 @@
+// The header map of the ABI of the hand-written headers of the Apple +open overlay, written by
+// utils/xlkdl/apple2kdl.py. The generated headers go to include_libc/__sprt_abi of
+// runtime/toolchains/target-apple/open/sysroot; the external ones are the hand-written API
+// headers of the overlay and the headers of the sysroot.
+
+profile apple-open {
+    license LICENSE.txt
+    guard-scheme root="__sprt_abi/" prefix=__SPRT_OPEN_ABI_
+    abi-root header="__sprt_abi/" dir="apple-open/"
+}
+
+import "map/apple-open/AppKit.kdl"
+import "map/apple-open/CoreFoundation.kdl"
+import "map/apple-open/CoreGraphics.kdl"
+import "map/apple-open/CoreServices.kdl"
+import "map/apple-open/Foundation.kdl"
+import "map/apple-open/IOKit.kdl"
+import "map/apple-open/IOSurface.kdl"
+import "map/apple-open/Metal.kdl"
+import "map/apple-open/Network.kdl"
+import "map/apple-open/QuartzCore.kdl"
+import "map/apple-open/Security.kdl"
+import "map/apple-open/UniformTypeIdentifiers.kdl"
+import "map/apple-open/include_libc.kdl"

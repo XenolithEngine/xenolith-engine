@@ -1,0 +1,2 @@
+decl "SPRT_API __sprt_fenv_t *__sprt_arch_FE_DFL_ENV_fn()" extern-c=#true if="!defined(FE_DFL_ENV)"
+macro FE_DFL_ENV "(__sprt_arch_FE_DFL_ENV_fn())" if="!defined(FE_DFL_ENV)"

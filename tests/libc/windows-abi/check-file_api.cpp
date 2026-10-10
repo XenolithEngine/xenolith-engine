@@ -2,7 +2,7 @@
 //
 // abi/file_api.h <-> Windows SDK parity. Compile-time only; see check.sh.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/file_api.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/file_api.h>
 #include "abi_check.h"
 
 #include <windows.h> // WIN32_FIND_DATA*, BY_HANDLE_FILE_INFORMATION, FILE_* / CREATE_* / OPEN_* / PIPE_* constants

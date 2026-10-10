@@ -1,0 +1,11 @@
+enum MTLIOCompressionStatus macro=NS_ENUM base=NSInteger {
+    value MTLIOCompressionStatusComplete 0
+    value MTLIOCompressionStatusError 1
+}
+enum MTLIOCompressionMethod macro=NS_ENUM base=NSInteger {
+    value MTLIOCompressionMethodZlib 0
+    value MTLIOCompressionMethodLZFSE 1
+    value MTLIOCompressionMethodLZ4 2
+    value MTLIOCompressionMethodLZMA 3
+    value MTLIOCompressionMethodLZBitmap 4
+}

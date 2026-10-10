@@ -1,0 +1,45 @@
+// --- special values (compiler builtins; ABI-identical to libm) ---
+macro HUGE_VAL "__builtin_huge_val()"
+macro HUGE_VALF "__builtin_huge_valf()"
+macro HUGE_VALL "__builtin_huge_vall()"
+macro INFINITY "__builtin_inff()"
+macro NAN "__builtin_nanf(\"\")"
+// --- fpclassify() result codes (macOS values) ---
+macro FP_NAN 1
+macro FP_INFINITE 2
+macro FP_ZERO 3
+macro FP_NORMAL 4
+macro FP_SUBNORMAL 5
+macro FP_ILOGB0 "(-2'147'483'647 - 1)"
+macro FP_ILOGBNAN "(-2'147'483'647 - 1)"
+macro MATH_ERRNO 1
+macro MATH_ERREXCEPT 2
+macro math_errhandling "(MATH_ERRNO | MATH_ERREXCEPT)"
+macro M_E "2.71828182845904523536028747135266250"
+macro M_LOG2E "1.44269504088896340735992468100189214"
+macro M_LOG10E "0.434294481903251827651128918916605082"
+macro M_LN2 "0.693147180559945309417232121458176568"
+macro M_LN10 "2.30258509299404568401799145468436421"
+macro M_PI "3.14159265358979323846264338327950288"
+macro M_PI_2 "1.57079632679489661923132169163975144"
+macro M_PI_4 "0.785398163397448309615660845819875721"
+macro M_1_PI "0.318309886183790671537767526745028724"
+macro M_2_PI "0.636619772367581343075535053490057448"
+macro M_2_SQRTPI "1.12837916709551257389615890312154517"
+macro M_SQRT2 "1.41421356237309504880168872420969808"
+macro M_SQRT1_2 "0.707106781186547524400844362104849039"
+typedef float_t float
+typedef double_t double
+// --- classification & comparison (compiler builtins) ---
+macro fpclassify "__builtin_fpclassify(FP_NAN, FP_INFINITE, FP_NORMAL, FP_SUBNORMAL, FP_ZERO, (x))" params="x"
+macro isfinite "__builtin_isfinite(x)" params="x"
+macro isinf "__builtin_isinf(x)" params="x"
+macro isnan "__builtin_isnan(x)" params="x"
+macro isnormal "__builtin_isnormal(x)" params="x"
+macro signbit "__builtin_signbit(x)" params="x"
+macro isgreater "__builtin_isgreater(x, y)" params="x y"
+macro isgreaterequal "__builtin_isgreaterequal(x, y)" params="x y"
+macro isless "__builtin_isless(x, y)" params="x y"
+macro islessequal "__builtin_islessequal(x, y)" params="x y"
+macro islessgreater "__builtin_islessgreater(x, y)" params="x y"
+macro isunordered "__builtin_isunordered(x, y)" params="x y"

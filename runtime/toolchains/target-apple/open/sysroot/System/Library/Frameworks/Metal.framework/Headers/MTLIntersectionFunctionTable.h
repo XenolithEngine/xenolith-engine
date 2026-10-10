@@ -7,27 +7,11 @@
 #import <Foundation/Foundation.h>
 #import <Metal/MTLTypes.h>
 #import <Metal/MTLResource.h>
+#include <__sprt_abi/Metal/MTLIntersectionFunctionTable.h>
 
 @protocol MTLBuffer;
 @protocol MTLFunctionHandle;
 @protocol MTLVisibleFunctionTable;
-
-/**
- * @brief Signature defining what data is provided to an intersection function. The signature
- * must match across the shading language declaration of the intersection function table,
- * intersection functions in the table, and the intersector using the table.
- */
-typedef NS_OPTIONS(NSUInteger, MTLIntersectionFunctionSignature) {
-    MTLIntersectionFunctionSignatureNone = 0,
-    MTLIntersectionFunctionSignatureInstancing = (1 << 0),
-    MTLIntersectionFunctionSignatureTriangleData = (1 << 1),
-    MTLIntersectionFunctionSignatureWorldSpaceData = (1 << 2),
-    MTLIntersectionFunctionSignatureInstanceMotion = (1 << 3),
-    MTLIntersectionFunctionSignaturePrimitiveMotion = (1 << 4),
-    MTLIntersectionFunctionSignatureExtendedLimits = (1 << 5),
-    MTLIntersectionFunctionSignatureMaxLevels = (1 << 6),
-    MTLIntersectionFunctionSignatureCurveData = (1 << 7),
-};
 
 @interface MTLIntersectionFunctionTableDescriptor : NSObject <NSCopying>
 

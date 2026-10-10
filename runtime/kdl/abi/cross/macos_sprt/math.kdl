@@ -1,0 +1,10 @@
+macro FP_ILOGB0 "(-2147483647 - 1)"
+macro FP_ILOGBNAN "(-2147483647 - 1)"
+macro math_errhandling "(__math_errhandling())"
+decl "extern int __math_errhandling(void)" extern-c=#true
+macro FP_NAN 1
+macro FP_INFINITE 2
+macro FP_ZERO 3
+macro FP_NORMAL 4
+macro FP_SUBNORMAL 5
+macro FP_SUPERNORMAL 6

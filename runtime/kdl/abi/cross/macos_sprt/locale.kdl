@@ -1,0 +1,22 @@
+typedef locale_t "struct _xlocale *"
+// macOS/BSD numbers the locale categories differently from glibc and uses an
+// independent mask-bit assignment. Since the hosted libc_wrapper forwards the
+// SPRT category/mask straight to the platform setlocale()/newlocale(), the SPRT
+// values must match Darwin's (validated by static_assert in the locale bridge).
+macro LC_ALL 0
+macro LC_COLLATE 1
+macro LC_CTYPE 2
+macro LC_MONETARY 3
+macro LC_NUMERIC 4
+macro LC_TIME 5
+macro LC_MESSAGES 6
+macro LC_COLLATE_MASK "(1<<0)"
+macro LC_CTYPE_MASK "(1<<1)"
+macro LC_MESSAGES_MASK "(1<<2)"
+macro LC_MONETARY_MASK "(1<<3)"
+macro LC_NUMERIC_MASK "(1<<4)"
+macro LC_TIME_MASK "(1<<5)"
+macro LC_ALL_MASK "(LC_COLLATE_MASK | LC_CTYPE_MASK\n\t\t| LC_MESSAGES_MASK | LC_MONETARY_MASK | LC_NUMERIC_MASK\n\t\t| LC_TIME_MASK)"
+// Darwin's struct lconv orders int_n_cs_precedes before int_p_sep_by_space
+// (the reverse of glibc); select that layout for the SPRT lconv.
+macro LCONV_BSD_INTL_ORDER 1

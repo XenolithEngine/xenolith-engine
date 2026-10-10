@@ -47,7 +47,7 @@ THE SOFTWARE.
 #else
 
 #include <sprt/c/__sprt_wchar.h>
-#include <sprt/c/bits/__sprt_null.h>
+#include <sprt/gen/c/bits/__sprt_null.h>
 
 #ifndef __cplusplus
 typedef __SPRT_ID(char16_t) char16_t;

@@ -6,7 +6,7 @@
 // __SPRT_X below has an identically-named SDK X (from <windows.h>, which pulls in
 // winerror.h + winnt.h). All compare as integers through the static_assert.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/winerror.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/winerror.h>
 #include "abi_check.h"
 
 #include <windows.h>   // ERROR_*, WAIT_TIMEOUT, STATUS_*, DBG_*, S_OK, FACILITY_WIN32, CRYPT_E_*

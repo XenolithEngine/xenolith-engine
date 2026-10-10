@@ -8,6 +8,7 @@
 #import <Metal/MTLCommandEncoder.h>   /* <MTLCommandEncoder>, MTLResourceUsage, MTLBarrierScope */
 #import <Metal/MTLCommandBuffer.h>    /* MTLDispatchType */
 #import <Metal/MTLTypes.h>            /* MTLSize, MTLRegion */
+#include <__sprt_abi/Metal/MTLComputeCommandEncoder.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -19,15 +20,6 @@ NS_ASSUME_NONNULL_BEGIN
 @protocol MTLHeap;
 @protocol MTLFence;
 @protocol MTLCounterSampleBuffer;
-
-typedef struct {
-    uint32_t threadgroupsPerGrid[3];
-} MTLDispatchThreadgroupsIndirectArguments;
-
-typedef struct {
-    uint32_t stageInOrigin[3];
-    uint32_t stageInSize[3];
-} MTLStageInRegionIndirectArguments;
 
 @protocol MTLComputeCommandEncoder <MTLCommandEncoder>
 

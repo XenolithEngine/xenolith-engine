@@ -1,0 +1,16 @@
+struct typedef=`__sprt_fenv_t` {
+    field __fpcr "unsigned int"
+    field __fpsr "unsigned int"
+}
+typedef `__sprt_fexcept_t` "unsigned int"
+macro FE_INVALID 1
+macro FE_DIVBYZERO 2
+macro FE_OVERFLOW 4
+macro FE_UNDERFLOW 8
+macro FE_INEXACT 16
+macro FE_ALL_EXCEPT 31
+macro FE_TONEAREST 0
+macro FE_DOWNWARD 0x800000
+macro FE_UPWARD 0x400000
+macro FE_TOWARDZERO 0xc00000
+macro FE_DFL_ENV "((const __sprt_fenv_t *) -1)"

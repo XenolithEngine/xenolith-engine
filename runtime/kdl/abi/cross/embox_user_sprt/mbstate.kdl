@@ -1,0 +1,16 @@
+// Freestanding libc: the multibyte decoder is libc_impl's
+// (builtin_multibyte.cpp), which keeps a partial code point in `_Char` and the
+// decoder phase in `_State`. mbstate_t is an object the CALLER allocates and
+// we write through, so the shape has to be the one our decoder assumes -
+// neither Embox's bare int nor glibc's opaque pair.
+macro (n)mbstate_t "__SPRT_ID(mbstate_t)" if="defined(__SPRT_BUILD)"
+macro (n)mbstate_t __mbstate_t if="!defined(__SPRT_BUILD)"
+macro MBSTATE_DIRECT 0
+macro WEOF "0xffffffffU" if="!defined(WEOF)"
+typedef wctype_t "unsigned long"
+typedef wchar_t `wchar_t` if="defined(__cplusplus)"
+typedef wchar_t __WCHAR_TYPE__ if="!defined(__cplusplus)"
+struct typedef=(n)mbstate_t {
+    field _Char "unsigned int"
+    field _State "unsigned int"
+}

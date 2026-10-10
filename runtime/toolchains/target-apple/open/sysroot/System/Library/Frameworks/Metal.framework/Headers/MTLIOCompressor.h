@@ -4,21 +4,9 @@
 #define __SPRT_OPEN_METAL_MTLIOCOMPRESSOR_H_
 
 #import <Foundation/Foundation.h>
+#include <__sprt_abi/Metal/MTLIOCompressor.h>
 
 NS_ASSUME_NONNULL_BEGIN
-
-typedef NS_ENUM(NSInteger, MTLIOCompressionStatus) {
-    MTLIOCompressionStatusComplete = 0,
-    MTLIOCompressionStatusError    = 1,
-};
-
-typedef NS_ENUM(NSInteger, MTLIOCompressionMethod) {
-    MTLIOCompressionMethodZlib     = 0,
-    MTLIOCompressionMethodLZFSE    = 1,
-    MTLIOCompressionMethodLZ4      = 2,
-    MTLIOCompressionMethodLZMA     = 3,
-    MTLIOCompressionMethodLZBitmap = 4,
-};
 
 typedef void *MTLIOCompressionContext;
 

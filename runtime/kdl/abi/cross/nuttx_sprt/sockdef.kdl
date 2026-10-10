@@ -1,0 +1,270 @@
+// NuttX socket constants. This is the one place where "NuttX shares the Linux ABI"
+// is most wrong: SHUT_* start at 1, the whole SO_* table is renumbered (SO_REUSEADDR
+// is 11, not 2), SOL_PACKET is 19, MSG_CMSG_CLOEXEC is 0x100000, and SOMAXCONN comes
+// from the kconfig. The AF_*/PF_*/MSG_* families NuttX does implement DO match Linux.
+//
+// __sprt_socket()/__sprt_setsockopt()/__sprt_shutdown() forward their arguments
+// untranslated, and outside __SPRT_BUILD these macros ARE the application's SO_*/
+// AF_*/MSG_*, so the numbers have to be NuttX's own. Every one below is pinned in
+// SPRuntimeCSysSocket.cpp against the native <sys/socket.h>.
+//
+// Names NuttX does not implement are still defined (the <sys/socket.h> umbrella
+// re-exports them unconditionally) but are moved to 0x1000+, clear of every range
+// NuttX assigns meaning to, so setsockopt() answers ENOPROTOOPT rather than acting
+// on a different option. Their asserts are #ifdef'd on the native spelling.
+// SOMAXCONN is CONFIG_NET_TCPBACKLOG_CONNS when that is on. nuttx/config.h is
+// macro-only; see dir_ptr.h for the same pattern.
+macro SHUT_RD 1
+macro SHUT_WR 2
+macro SHUT_RDWR 3
+macro SOCK_STREAM 1
+macro SOCK_DGRAM 2
+macro SOCK_RAW 3
+macro SOCK_RDM 4
+macro SOCK_SEQPACKET 5
+macro SOCK_PACKET 10
+// Linux SOCK_DCCP is 6, which NuttX uses for its non-POSIX SOCK_CTRL.
+macro SOCK_DCCP 0x1000
+macro SOCK_CLOEXEC "02000000"
+macro SOCK_NONBLOCK "04000"
+macro SOL_SOCKET 1
+// Socket-level options - NuttX orders these alphabetically from 0.
+macro SO_ACCEPTCONN 0
+macro SO_BROADCAST 1
+macro SO_DEBUG 2
+macro SO_DONTROUTE 3
+macro SO_ERROR 4
+macro SO_KEEPALIVE 5
+macro SO_LINGER 6
+macro SO_OOBINLINE 7
+macro SO_RCVBUF 8
+macro SO_RCVLOWAT 9
+macro SO_RCVTIMEO 10
+macro SO_REUSEADDR 11
+macro SO_SNDBUF 12
+macro SO_SNDLOWAT 13
+macro SO_SNDTIMEO 14
+macro SO_TYPE 15
+macro SO_TIMESTAMP 16
+macro SO_BINDTODEVICE 17
+macro SO_PEERCRED 18
+macro SO_TIMESTAMPNS 20
+macro SO_SNDBUFFORCE 32
+macro SO_RCVBUFFORCE 33
+macro SO_RXQ_OVFL 40
+// Unimplemented by NuttX.
+macro SO_REUSEPORT 0x1000
+macro SO_NO_CHECK 0x1001
+macro SO_PRIORITY 0x1002
+macro SO_BSDCOMPAT 0x1003
+macro SO_PASSCRED 0x1004
+macro SO_PEERSEC 0x1005
+macro SO_PROTOCOL 0x1006
+macro SO_DOMAIN 0x1007
+macro SO_TIMESTAMPING 0x1008
+macro SO_SECURITY_AUTHENTICATION 0x1009
+macro SO_SECURITY_ENCRYPTION_TRANSPORT 0x100a
+macro SO_SECURITY_ENCRYPTION_NETWORK 0x100b
+macro SO_ATTACH_FILTER 0x100c
+macro SO_DETACH_FILTER 0x100d
+macro SO_GET_FILTER SO_ATTACH_FILTER
+macro SO_PEERNAME 0x100e
+macro SO_PASSSEC 0x100f
+macro SO_MARK 0x1010
+macro SO_WIFI_STATUS 0x1011
+macro SO_PEEK_OFF 0x1012
+macro SO_NOFCS 0x1013
+macro SO_LOCK_FILTER 0x1014
+macro SO_SELECT_ERR_QUEUE 0x1015
+macro SO_BUSY_POLL 0x1016
+macro SO_MAX_PACING_RATE 0x1017
+macro SO_BPF_EXTENSIONS 0x1018
+macro SO_INCOMING_CPU 0x1019
+macro SO_ATTACH_BPF 0x101a
+macro SO_DETACH_BPF SO_DETACH_FILTER
+macro SO_ATTACH_REUSEPORT_CBPF 0x101b
+macro SO_ATTACH_REUSEPORT_EBPF 0x101c
+macro SO_CNX_ADVICE 0x101d
+macro SO_MEMINFO 0x101e
+macro SO_INCOMING_NAPI_ID 0x101f
+macro SO_COOKIE 0x1020
+macro SO_PEERGROUPS 0x1021
+macro SO_ZEROCOPY 0x1022
+macro SO_TXTIME 0x1023
+macro SO_BINDTOIFINDEX 0x1024
+macro SO_DETACH_REUSEPORT_BPF 0x1025
+// Address / protocol families. NuttX assigns the same numbers Linux does for every
+// family it supports, and adds two of its own at the top.
+macro PF_UNSPEC 0
+macro PF_LOCAL 1
+macro PF_UNIX PF_LOCAL
+macro PF_FILE PF_LOCAL
+macro PF_INET 2
+macro PF_INET6 10
+macro PF_NETLINK 16
+macro PF_ROUTE PF_NETLINK
+macro PF_PACKET 17
+macro PF_CAN 29
+macro PF_BLUETOOTH 31
+macro PF_IEEE802154 36
+macro PF_VSOCK 40
+macro PF_PKTRADIO 64
+macro PF_RPMSG 65
+macro PF_MAX 66
+// Families NuttX does not implement. Their Linux numbers are kept: unlike the
+// SO_* options these are not "do something else" hazards - socket() rejects an
+// unsupported domain outright - and keeping them makes the table readable next
+// to linux_sprt/sockdef.h.
+macro PF_AX25 3
+macro PF_IPX 4
+macro PF_APPLETALK 5
+macro PF_NETROM 6
+macro PF_BRIDGE 7
+macro PF_ATMPVC 8
+macro PF_X25 9
+macro PF_ROSE 11
+macro PF_DECnet 12
+macro PF_NETBEUI 13
+macro PF_SECURITY 14
+macro PF_KEY 15
+macro PF_ASH 18
+macro PF_ECONET 19
+macro PF_ATMSVC 20
+macro PF_RDS 21
+macro PF_SNA 22
+macro PF_IRDA 23
+macro PF_PPPOX 24
+macro PF_WANPIPE 25
+macro PF_LLC 26
+macro PF_IB 27
+macro PF_MPLS 28
+macro PF_TIPC 30
+macro PF_IUCV 32
+macro PF_RXRPC 33
+macro PF_ISDN 34
+macro PF_PHONET 35
+macro PF_CAIF 37
+macro PF_ALG 38
+macro PF_NFC 39
+macro PF_KCM 41
+macro PF_QIPCRTR 42
+macro PF_SMC 43
+macro PF_XDP 44
+macro AF_UNSPEC PF_UNSPEC
+macro AF_UNIX PF_UNIX
+macro AF_LOCAL PF_LOCAL
+macro AF_FILE PF_FILE
+macro AF_INET PF_INET
+macro AF_INET6 PF_INET6
+macro AF_NETLINK PF_NETLINK
+macro AF_ROUTE PF_ROUTE
+macro AF_PACKET PF_PACKET
+macro AF_CAN PF_CAN
+macro AF_BLUETOOTH PF_BLUETOOTH
+macro AF_IEEE802154 PF_IEEE802154
+macro AF_VSOCK PF_VSOCK
+macro AF_PKTRADIO PF_PKTRADIO
+macro AF_RPMSG PF_RPMSG
+macro AF_MAX PF_MAX
+macro AF_AX25 PF_AX25
+macro AF_IPX PF_IPX
+macro AF_APPLETALK PF_APPLETALK
+macro AF_NETROM PF_NETROM
+macro AF_BRIDGE PF_BRIDGE
+macro AF_ATMPVC PF_ATMPVC
+macro AF_X25 PF_X25
+macro AF_ROSE PF_ROSE
+macro AF_DECnet PF_DECnet
+macro AF_NETBEUI PF_NETBEUI
+macro AF_SECURITY PF_SECURITY
+macro AF_KEY PF_KEY
+macro AF_ASH PF_ASH
+macro AF_ECONET PF_ECONET
+macro AF_ATMSVC PF_ATMSVC
+macro AF_RDS PF_RDS
+macro AF_SNA PF_SNA
+macro AF_IRDA PF_IRDA
+macro AF_PPPOX PF_PPPOX
+macro AF_WANPIPE PF_WANPIPE
+macro AF_LLC PF_LLC
+macro AF_IB PF_IB
+macro AF_MPLS PF_MPLS
+macro AF_TIPC PF_TIPC
+macro AF_IUCV PF_IUCV
+macro AF_RXRPC PF_RXRPC
+macro AF_ISDN PF_ISDN
+macro AF_PHONET PF_PHONET
+macro AF_CAIF PF_CAIF
+macro AF_ALG PF_ALG
+macro AF_NFC PF_NFC
+macro AF_KCM PF_KCM
+macro AF_QIPCRTR PF_QIPCRTR
+macro AF_SMC PF_SMC
+macro AF_XDP PF_XDP
+// send()/recv() flags - NuttX mirrors Linux except for MSG_CMSG_CLOEXEC.
+macro MSG_OOB 0x000001
+macro MSG_PEEK 0x000002
+macro MSG_DONTROUTE 0x000004
+macro MSG_CTRUNC 0x000008
+macro MSG_PROXY 0x000010
+macro MSG_TRUNC 0x000020
+macro MSG_DONTWAIT 0x000040
+macro MSG_EOR 0x000080
+macro MSG_WAITALL 0x000100
+macro MSG_FIN 0x000200
+macro MSG_SYN 0x000400
+macro MSG_CONFIRM 0x000800
+macro MSG_RST 0x001000
+macro MSG_ERRQUEUE 0x002000
+macro MSG_NOSIGNAL 0x004000
+macro MSG_MORE 0x008000
+macro MSG_CMSG_CLOEXEC 0x100000
+// Unimplemented by NuttX; kept at their Linux bits (unused there, and a stray flag
+// bit is ignored rather than misread).
+macro MSG_WAITFORONE 0x10000
+macro MSG_BATCH 0x40000
+macro MSG_ZEROCOPY 0x4000000
+macro MSG_FASTOPEN 0x20000000
+// listen() backlog hint.
+macro SOMAXCONN CONFIG_NET_TCPBACKLOG_CONNS if="defined(CONFIG_NET_TCPBACKLOG_CONNS)"
+macro SOMAXCONN 8 if="!defined(CONFIG_NET_TCPBACKLOG_CONNS)"
+// Protocol levels. The IP-protocol-numbered ones agree with Linux; NuttX's own
+// SOL_PACKET does not, and it has none of the Linux link-layer levels.
+macro SOL_IP 0
+macro SOL_IPV6 41
+macro SOL_ICMPV6 58
+macro SOL_RAW 255
+macro SOL_PACKET 19
+macro SOL_DECNET 0x1100
+macro SOL_X25 0x1101
+macro SOL_ATM 0x1102
+macro SOL_AAL 0x1103
+macro SOL_IRDA 0x1104
+macro SOL_NETBEUI 0x1105
+macro SOL_LLC 0x1106
+macro SOL_DCCP 0x1107
+macro SOL_NETLINK 0x1108
+macro SOL_TIPC 0x1109
+macro SOL_RXRPC 0x110a
+macro SOL_PPPOL2TP 0x110b
+macro SOL_BLUETOOTH 0x110c
+macro SOL_PNPIPE 0x110d
+macro SOL_RDS 0x110e
+macro SOL_IUCV 0x110f
+macro SOL_CAIF 0x1110
+macro SOL_ALG 0x1111
+macro SOL_NFC 0x1112
+macro SOL_KCM 0x1113
+macro SOL_TLS 0x1114
+macro SOL_XDP 0x1115
+// Control-message types.
+macro SCM_RIGHTS 0x01
+macro SCM_CREDENTIALS 0x02
+macro SCM_SECURITY 0x03
+macro SCM_TIMESTAMP SO_TIMESTAMP
+macro SCM_TIMESTAMPNS SO_TIMESTAMPNS
+macro SCM_TIMESTAMPING SO_TIMESTAMPING
+macro SCM_WIFI_STATUS SO_WIFI_STATUS
+macro SCM_TXTIME SO_TXTIME
+macro SCM_TIMESTAMPING_OPT_STATS 0x1200
+macro SCM_TIMESTAMPING_PKTINFO 0x1201

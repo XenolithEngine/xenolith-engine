@@ -37,7 +37,7 @@
 #include <sprt/runtime/dispatch/handle.h>
 
 #if SPRT_LINUX
-#include <sprt/c/cross/__sprt_syscall.h>
+#include <sprt/gen/c/cross/__sprt_syscall.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <signal.h>

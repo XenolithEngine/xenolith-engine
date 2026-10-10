@@ -34,15 +34,15 @@
 #include <ctype.h>
 #include <runetype.h>
 
-#define SPRT_ABI_HEADER <sprt/c/cross/__sprt_locale.h>
-#define SPRT_ABI_HEADER_2 <sprt/c/cross/__sprt_langinfo.h>
+#define SPRT_ABI_HEADER <sprt/gen/c/cross/__sprt_locale.h>
+#define SPRT_ABI_HEADER_2 <sprt/gen/c/cross/__sprt_langinfo.h>
 // The ctype table has no cross/__sprt_ctype.h umbrella of its own: sprt's
 // <sprt/c/__sprt_ctype.h> defines sprt's *internal* classification bits
 // (__SPRT_CTYPE_ALNUM, ...), while macos_sprt/ctype.h mirrors Darwin's
 // _CTYPE_* runetype bits and is reached only through ios_sprt/ctype.h. It is
 // still a Darwin ABI mirror -- sprt's is*() feed these bits to
 // _DefaultRuneLocale -- so it is pinned here, included by its platform path.
-#define SPRT_ABI_HEADER_3 <sprt/c/cross/macos_sprt/ctype.h>
+#define SPRT_ABI_HEADER_3 <sprt/gen/c/cross/macos_sprt/ctype.h>
 #include "abi_check.h"
 
 // === setlocale() categories ================================================

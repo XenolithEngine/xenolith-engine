@@ -1,0 +1,9 @@
+typedef DIR "struct __dirstream"
+// should match dirent64 for target systems
+struct (n)dirent {
+    field d_ino "__SPRT_ID(ino_t)"
+    field d_off "__SPRT_ID(off_t)"
+    field d_reclen "unsigned short"
+    field d_type "unsigned char"
+    field d_name "char [256]"
+}

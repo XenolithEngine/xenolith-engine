@@ -1,9 +1,9 @@
 #ifndef RUNTIME_MUSL_ADAPTERS_INCLUDE_BITS_FLOAT_H_
 #define RUNTIME_MUSL_ADAPTERS_INCLUDE_BITS_FLOAT_H_
 
-#include <sprt/c/bits/__sprt_float.h>
-#include <sprt/c/bits/__sprt_double.h>
-#include <sprt/c/bits/__sprt_long_double.h>
+#include <sprt/gen/c/bits/__sprt_float.h>
+#include <sprt/gen/c/bits/__sprt_double.h>
+#include <sprt/gen/c/bits/__sprt_long_double.h>
 
 //#define LDBL_DECIMAL_DIG __SPRT_LDBL_DECIMAL_DIG
 #define LDBL_DENORM_MIN __SPRT_LDBL_DENORM_MIN

@@ -1,0 +1,180 @@
+typedef HGLOBAL HANDLE
+typedef HLOCAL HANDLE
+macro CP_ACP 0
+macro CP_OEMCP 1
+macro CP_MACCP 2
+macro CP_THREAD_ACP 3
+macro CP_SYMBOL 42
+macro CP_UTF8 65001
+macro STD_INPUT_HANDLE "((DWORD)-10)"
+macro STD_OUTPUT_HANDLE "((DWORD)-11)"
+macro STD_ERROR_HANDLE "((DWORD)-12)"
+macro ENABLE_PROCESSED_INPUT 0x0001
+macro ENABLE_LINE_INPUT 0x0002
+macro ENABLE_ECHO_INPUT 0x0004
+macro ENABLE_WINDOW_INPUT 0x0008
+macro ENABLE_MOUSE_INPUT 0x0010
+macro ENABLE_INSERT_MODE 0x0020
+macro ENABLE_QUICK_EDIT_MODE 0x0040
+macro ENABLE_EXTENDED_FLAGS 0x0080
+macro ENABLE_AUTO_POSITION 0x0100
+macro ENABLE_VIRTUAL_TERMINAL_INPUT 0x0200
+macro ENABLE_PROCESSED_OUTPUT 0x0001
+macro ENABLE_WRAP_AT_EOL_OUTPUT 0x0002
+macro ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+macro DISABLE_NEWLINE_AUTO_RETURN 0x0008
+macro ENABLE_LVB_GRID_WORLDWIDE 0x0010
+macro FOREGROUND_BLUE 0x0001
+macro FOREGROUND_GREEN 0x0002
+macro FOREGROUND_RED 0x0004
+macro FOREGROUND_INTENSITY 0x0008
+macro BACKGROUND_BLUE 0x0010
+macro BACKGROUND_GREEN 0x0020
+macro BACKGROUND_RED 0x0040
+macro BACKGROUND_INTENSITY 0x0080
+macro COMMON_LVB_LEADING_BYTE 0x0100
+macro COMMON_LVB_TRAILING_BYTE 0x0200
+macro COMMON_LVB_GRID_HORIZONTAL 0x0400
+macro COMMON_LVB_GRID_LVERTICAL 0x0800
+macro COMMON_LVB_GRID_RVERTICAL 0x1000
+macro COMMON_LVB_REVERSE_VIDEO 0x4000
+macro COMMON_LVB_UNDERSCORE 0x8000
+macro THREAD_MODE_BACKGROUND_BEGIN 0x00010000
+macro THREAD_MODE_BACKGROUND_END 0x00020000
+macro VER_NT_SERVER 0x0000003
+macro JOB_OBJECT_LIMIT_PROCESS_MEMORY 0x00000100
+macro JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE 0x00002000
+macro LIST_MODULES_64BIT 0x02
+macro HEAP_NO_SERIALIZE 0x00000001
+macro HEAP_GROWABLE 0x00000002
+macro HEAP_GENERATE_EXCEPTIONS 0x00000004
+macro HEAP_ZERO_MEMORY 0x00000008
+macro HEAP_REALLOC_IN_PLACE_ONLY 0x00000010
+macro HEAP_TAIL_CHECKING_ENABLED 0x00000020
+macro HEAP_FREE_CHECKING_ENABLED 0x00000040
+macro HEAP_DISABLE_COALESCE_ON_FREE 0x00000080
+macro HEAP_CREATE_ALIGN_16 0x00010000
+macro HEAP_CREATE_ENABLE_TRACING 0x00020000
+macro HEAP_CREATE_ENABLE_EXECUTE 0x00040000
+macro HEAP_MAXIMUM_TAG 0x0FFF
+macro HEAP_PSEUDO_TAG_FLAG 0x8000
+macro HEAP_TAG_SHIFT 18
+macro HEAP_CREATE_SEGMENT_HEAP 0x00000100
+macro HEAP_CREATE_HARDENED 0x00000200
+macro MEM_COMMIT 0x00001000
+macro MEM_RESERVE 0x00002000
+macro MEM_REPLACE_PLACEHOLDER 0x00004000
+macro MEM_RESERVE_PLACEHOLDER 0x00040000
+macro MEM_RESET 0x00080000
+macro MEM_TOP_DOWN 0x00100000
+macro MEM_WRITE_WATCH 0x00200000
+macro MEM_PHYSICAL 0x00400000
+macro MEM_ROTATE 0x00800000
+macro MEM_DIFFERENT_IMAGE_BASE_OK 0x00800000
+macro MEM_RESET_UNDO 0x01000000
+macro MEM_LARGE_PAGES 0x20000000
+macro MEM_4MB_PAGES 0x80000000
+macro MEM_64K_PAGES "(MEM_LARGE_PAGES | MEM_PHYSICAL)"
+macro MEM_UNMAP_WITH_TRANSIENT_BOOST 0x00000001
+macro MEM_COALESCE_PLACEHOLDERS 0x00000001
+macro MEM_PRESERVE_PLACEHOLDER 0x00000002
+macro MEM_DECOMMIT 0x00004000
+macro MEM_RELEASE 0x00008000
+macro MEM_FREE 0x00010000
+macro PAGE_NOACCESS 0x01
+macro PAGE_READONLY 0x02
+macro PAGE_READWRITE 0x04
+macro PAGE_WRITECOPY 0x08
+macro PAGE_EXECUTE 0x10
+macro PAGE_EXECUTE_READ 0x20
+macro PAGE_EXECUTE_READWRITE 0x40
+macro PAGE_EXECUTE_WRITECOPY 0x80
+macro PAGE_GUARD 0x100
+macro PAGE_NOCACHE 0x200
+macro PAGE_WRITECOMBINE 0x400
+macro MINCHAR 0x80
+macro MAXCHAR 0x7f
+macro MINSHORT 0x8000
+macro MAXSHORT 0x7fff
+macro MINLONG 0x80000000
+macro MAXLONG 0x7fffffff
+macro MAXBYTE 0xff
+macro MAXWORD 0xffff
+macro MAXDWORD 0xffffffff
+// Token information classes
+enum _TOKEN_INFORMATION_CLASS typedef=TOKEN_INFORMATION_CLASS also="*PTOKEN_INFORMATION_CLASS" {
+    value TokenUser 1
+    value TokenGroups
+    value TokenPrivileges
+    value TokenOwner
+    value TokenPrimaryGroup
+    value TokenDefaultDacl
+    value TokenSource
+    value TokenType
+    value TokenImpersonationLevel
+    value TokenStatistics
+    value TokenRestrictedSids
+    value TokenSessionId
+    value TokenGroupsAndPrivileges
+    value TokenSessionReference
+    value TokenSandBoxInert
+    value TokenAuditPolicy
+    value TokenOrigin
+    value TokenElevationType
+    value TokenLinkedToken
+    value TokenElevation
+    value TokenHasRestrictions
+    value TokenAccessInformation
+    value TokenVirtualizationAllowed
+    value TokenVirtualizationEnabled
+    value TokenIntegrityLevel
+    value TokenUIAccess
+    value TokenMandatoryPolicy
+    value TokenLogonSid
+    value TokenIsAppContainer
+    value TokenCapabilities
+    value TokenAppContainerSid
+    value TokenAppContainerNumber
+    value TokenUserClaimAttributes
+    value TokenDeviceClaimAttributes
+    value TokenRestrictedUserClaimAttributes
+    value TokenRestrictedDeviceClaimAttributes
+    value TokenDeviceGroups
+    value TokenRestrictedDeviceGroups
+    value TokenSecurityAttributes
+    value TokenIsRestricted
+    value TokenProcessTrustLevel
+    value TokenPrivateNameSpace
+    value TokenSingletonAttributes
+    value TokenBnoIsolation
+    value TokenChildProcessFlags
+    value TokenIsLessPrivilegedAppContainer
+    value TokenIsSandboxed
+    value TokenIsAppSilo
+    value TokenLoggingInformation
+    value TokenLearningMode
+    value MaxTokenInfoClass
+}
+enum _WINAPI_PROVIDER typedef=WINAPI_PROVIDER {
+    value WinApiProviderMicrosoft
+    value WinApiProviderWine
+    value WinApiProviderReactOS
+}
+// The global heap, which the clipboard still speaks: SetClipboardData takes ownership of a
+// GMEM_MOVEABLE block and the caller must not free it afterwards.
+macro GMEM_FIXED 0x0000
+macro GMEM_MOVEABLE 0x0002
+macro GMEM_ZEROINIT 0x0040
+// Predefined clipboard formats. Only the two text ones are named here - everything else this tree
+// puts on a clipboard is a MIME type registered by name through RegisterClipboardFormatW.
+macro CF_TEXT 1
+macro CF_UNICODETEXT 13
+macro LHND "(LMEM_MOVEABLE | LMEM_ZEROINIT)"
+macro LPTR "(LMEM_FIXED | LMEM_ZEROINIT)"
+struct _CONSOLE_SCREEN_BUFFER_INFO typedef=CONSOLE_SCREEN_BUFFER_INFO also="*PCONSOLE_SCREEN_BUFFER_INFO" {
+    field dwSize COORD
+    field dwCursorPosition COORD
+    field wAttributes WORD
+    field srWindow SMALL_RECT
+    field dwMaximumWindowSize COORD
+}

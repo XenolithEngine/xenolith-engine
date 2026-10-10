@@ -6,6 +6,7 @@
 
 #import <Foundation/Foundation.h>
 #import <Metal/MTLResource.h> /* MTLStorageMode/MTLCPUCacheMode/MTLHazardTrackingMode/MTLResourceOptions/MTLPurgeableState */
+#include <__sprt_abi/Metal/MTLHeap.h>
 
 @class MTLTextureDescriptor;
 @protocol MTLBuffer;
@@ -13,13 +14,6 @@
 @protocol MTLDevice;
 
 NS_ASSUME_NONNULL_BEGIN
-
-/* Describes the mode of operation for an MTLHeap. */
-typedef NS_ENUM(NSInteger, MTLHeapType) {
-	MTLHeapTypeAutomatic = 0,
-	MTLHeapTypePlacement = 1,
-	MTLHeapTypeSparse    = 2,
-};
 
 @interface MTLHeapDescriptor : NSObject <NSCopying>
 @property (readwrite, nonatomic) NSUInteger size;

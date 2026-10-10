@@ -24,12 +24,12 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_GLOB_H_
 
 #include <sprt/c/bits/__sprt_def.h>
-#include <sprt/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
 
 // glob_t + the GLOB_* constants are defined per-platform to be ABI-compatible with
 // the native <glob.h>; SPRuntimeCRegex.cpp static_asserts sizeof + the public field
 // offsets against the system header (Android uses the musl-fallback layout).
-#include <sprt/c/cross/__sprt_globtypes.h>
+#include <sprt/gen/c/cross/__sprt_globtypes.h>
 
 __SPRT_BEGIN_DECL
 

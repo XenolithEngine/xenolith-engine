@@ -24,10 +24,10 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_FLOAT_H_
 
 #include <sprt/c/bits/__sprt_def.h>
-#include <sprt/c/bits/__sprt_float16.h>
-#include <sprt/c/bits/__sprt_float.h>
-#include <sprt/c/bits/__sprt_double.h>
-#include <sprt/c/bits/__sprt_long_double.h>
+#include <sprt/gen/c/bits/__sprt_float16.h>
+#include <sprt/gen/c/bits/__sprt_float.h>
+#include <sprt/gen/c/bits/__sprt_double.h>
+#include <sprt/gen/c/bits/__sprt_long_double.h>
 
 // Stappler runtime is designed to work in conjunction with a compiler in the toolchain,
 // therefore, if the compiler has preferences regarding limits, we use them first

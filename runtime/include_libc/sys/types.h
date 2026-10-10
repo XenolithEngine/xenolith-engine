@@ -31,15 +31,15 @@ THE SOFTWARE.
 #else
 
 #include <sprt/c/__sprt_pthread.h>
-#include <sprt/c/cross/__sprt_socket.h>
-#include <sprt/c/cross/__sprt_signal.h>
-#include <sprt/c/cross/__sprt_fstypes.h> // mode_t / nlink_t / ino_t / dev_t / blk*_t
-#include <sprt/c/cross/__sprt_sysid.h> // uid_t / gid_t / pid_t
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_time_t.h>
-#include <sprt/c/bits/__sprt_ssize_t.h>
-#include <sprt/c/bits/__sprt_time_t.h>
-#include <sprt/c/cross/__sprt_fdset.h>
+#include <sprt/gen/c/cross/__sprt_socket.h>
+#include <sprt/gen/c/cross/__sprt_signal.h>
+#include <sprt/gen/c/cross/__sprt_fstypes.h> // mode_t / nlink_t / ino_t / dev_t / blk*_t
+#include <sprt/gen/c/cross/__sprt_sysid.h> // uid_t / gid_t / pid_t
+#include <sprt/gen/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/bits/__sprt_ssize_t.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/cross/__sprt_fdset.h>
 
 #include <inttypes.h>
 

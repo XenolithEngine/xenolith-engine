@@ -29,7 +29,7 @@ THE SOFTWARE.
 #include "../tests.h"
 
 #if SPRT_LINUX
-#include <sprt/c/cross/__sprt_syscall.h>
+#include <sprt/gen/c/cross/__sprt_syscall.h>
 #include <stdio.h>
 #include <sys/mman.h>
 #include <unistd.h>

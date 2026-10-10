@@ -29,7 +29,7 @@ THE SOFTWARE.
 #include <sprt/cxx/detail/ctypes.h>
 #include <sprt/cxx/__type_traits/modifications.h>
 #include <sprt/cxx/__functional/invoke.h>
-#include <sprt/c/cross/__sprt_sysid.h>
+#include <sprt/gen/c/cross/__sprt_sysid.h>
 #include <sprt/c/__sprt_pthread.h>
 #include <sprt/c/sys/__sprt_sprt.h>
 #include <sprt/runtime/callback.h>

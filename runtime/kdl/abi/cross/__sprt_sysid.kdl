@@ -1,0 +1,3 @@
+typedef uid_t uint32_t
+typedef gid_t uint32_t
+typedef pid_t int

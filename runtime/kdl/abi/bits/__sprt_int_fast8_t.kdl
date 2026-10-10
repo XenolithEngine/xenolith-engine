@@ -1,0 +1,18 @@
+cond assisted "CONFIG_COMPILER_ASSISTED_INTS && defined(__INT_FAST8_TYPE__)"
+cond data_model "defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__LP64__) || defined(__SPRT_WINDOWS)"
+typedef int_fast8_t __INT_FAST8_TYPE__ if="@assisted"
+macro INT_FAST8_MAX __INT_FAST8_MAX__ if="@assisted && defined(__INT_FAST8_MAX__)"
+error "Compiler-assisted __INT_FAST8_MAX__ is not defined" if="@assisted && !defined(__INT_FAST8_MAX__)"
+macro INT_FAST8_WIDTH 8 if="@assisted"
+macro INT_FAST8_FMTd __INT_FAST8_FMTd__ if="@assisted && defined(__INT_FAST8_FMTd__)"
+error "Compiler-assisted __INT_FAST8_FMTd__ is not defined" if="@assisted && !defined(__INT_FAST8_FMTd__)"
+macro INT_FAST8_FMTi __INT_FAST8_FMTi__ if="@assisted && defined(__INT_FAST8_FMTi__)"
+error "Compiler-assisted __INT_FAST8_FMTi__ is not defined" if="@assisted && !defined(__INT_FAST8_FMTi__)"
+// __INT_FAST8_TYPE__
+// Use Data models specifications
+typedef int_fast8_t int if="!@assisted && @data_model"
+macro INT_FAST8_MAX SSHRT_MAX if="!@assisted && @data_model"
+macro INT_FAST8_WIDTH SSHRT_WIDTH if="!@assisted && @data_model"
+macro INT_FAST8_FMTd SSHRT_FMTd if="!@assisted && @data_model"
+macro INT_FAST8_FMTi SSHRT_FMTi if="!@assisted && @data_model"
+error "Unknown data model (see https://en.cppreference.com/w/cpp/language/types.html#Data_models)" if="!@assisted && !@data_model"

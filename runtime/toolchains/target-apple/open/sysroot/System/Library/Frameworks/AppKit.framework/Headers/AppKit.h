@@ -11,159 +11,12 @@ documented AppKit ABI.
 
 #ifndef __SPRT_OPEN_APPKIT_H_
 #define __SPRT_OPEN_APPKIT_H_
+#include <__sprt_abi/AppKit/AppKit.h>
 
 #import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <QuartzCore/QuartzCore.h>
 #import <IOKit/hidsystem/IOLLEvent.h> /* NX_DEVICE*KEYMASK (as the real NSEvent.h pulls) */
-
-typedef NSString *NSAppearanceName;
-typedef NSString *NSPasteboardName;
-typedef NSString *NSPasteboardReadingOptionKey;
-typedef NSString *NSAnimatablePropertyKey;
-
-/* ---- enums --------------------------------------------------------------- */
-typedef NS_OPTIONS(NSUInteger, NSWindowStyleMask) {
-	NSWindowStyleMaskBorderless = 0,
-	NSWindowStyleMaskTitled = 1 << 0,
-	NSWindowStyleMaskClosable = 1 << 1,
-	NSWindowStyleMaskMiniaturizable = 1 << 2,
-	NSWindowStyleMaskResizable = 1 << 3,
-	NSWindowStyleMaskTexturedBackground = 1 << 8,
-	NSWindowStyleMaskUnifiedTitleAndToolbar = 1 << 12,
-	NSWindowStyleMaskFullScreen = 1 << 14,
-	NSWindowStyleMaskFullSizeContentView = 1 << 15,
-	/* The three below are honoured only on NSPanel (or a subclass); on a plain NSWindow they
-	   are silently ignored. */
-	NSWindowStyleMaskUtilityWindow = 1 << 4,
-	NSWindowStyleMaskNonactivatingPanel = 1 << 7,
-	NSWindowStyleMaskHUDWindow = 1 << 13,
-};
-
-typedef NS_ENUM(NSUInteger, NSBackingStoreType) {
-	NSBackingStoreRetained = 0,
-	NSBackingStoreNonretained = 1,
-	NSBackingStoreBuffered = 2,
-};
-
-typedef NS_OPTIONS(NSUInteger, NSEventModifierFlags) {
-	NSEventModifierFlagCapsLock = 1 << 16,
-	NSEventModifierFlagShift = 1 << 17,
-	NSEventModifierFlagControl = 1 << 18,
-	NSEventModifierFlagOption = 1 << 19,
-	NSEventModifierFlagCommand = 1 << 20,
-	NSEventModifierFlagNumericPad = 1 << 21,
-	NSEventModifierFlagHelp = 1 << 22,
-	NSEventModifierFlagFunction = 1 << 23,
-	NSEventModifierFlagDeviceIndependentFlagsMask = 0xffff'0000UL,
-};
-
-typedef NS_ENUM(NSUInteger, NSEventType) {
-	NSEventTypeLeftMouseDown = 1,
-	NSEventTypeLeftMouseUp = 2,
-	NSEventTypeRightMouseDown = 3,
-	NSEventTypeRightMouseUp = 4,
-	NSEventTypeMouseMoved = 5,
-	NSEventTypeLeftMouseDragged = 6,
-	NSEventTypeRightMouseDragged = 7,
-	NSEventTypeMouseEntered = 8,
-	NSEventTypeMouseExited = 9,
-	NSEventTypeKeyDown = 10,
-	NSEventTypeKeyUp = 11,
-	NSEventTypeFlagsChanged = 12,
-	NSEventTypeScrollWheel = 22,
-	NSEventTypeOtherMouseDown = 25,
-	NSEventTypeOtherMouseUp = 26,
-	NSEventTypeOtherMouseDragged = 27,
-	NSEventTypeMagnify = 30,
-};
-
-// Event-monitor masks: 1 << NSEventType, as in the SDK.
-typedef NS_OPTIONS(unsigned long long, NSEventMask) {
-	NSEventMaskLeftMouseDown = 1ULL << NSEventTypeLeftMouseDown,
-	NSEventMaskLeftMouseUp = 1ULL << NSEventTypeLeftMouseUp,
-	NSEventMaskRightMouseDown = 1ULL << NSEventTypeRightMouseDown,
-	NSEventMaskRightMouseUp = 1ULL << NSEventTypeRightMouseUp,
-	NSEventMaskMouseMoved = 1ULL << NSEventTypeMouseMoved,
-	NSEventMaskLeftMouseDragged = 1ULL << NSEventTypeLeftMouseDragged,
-	NSEventMaskRightMouseDragged = 1ULL << NSEventTypeRightMouseDragged,
-	NSEventMaskMouseEntered = 1ULL << NSEventTypeMouseEntered,
-	NSEventMaskMouseExited = 1ULL << NSEventTypeMouseExited,
-	NSEventMaskKeyDown = 1ULL << NSEventTypeKeyDown,
-	NSEventMaskKeyUp = 1ULL << NSEventTypeKeyUp,
-	NSEventMaskFlagsChanged = 1ULL << NSEventTypeFlagsChanged,
-	NSEventMaskScrollWheel = 1ULL << NSEventTypeScrollWheel,
-	NSEventMaskOtherMouseDown = 1ULL << NSEventTypeOtherMouseDown,
-	NSEventMaskOtherMouseUp = 1ULL << NSEventTypeOtherMouseUp,
-	NSEventMaskOtherMouseDragged = 1ULL << NSEventTypeOtherMouseDragged,
-	NSEventMaskMagnify = 1ULL << NSEventTypeMagnify,
-	NSEventMaskAny = NSUIntegerMax,
-};
-
-typedef NS_OPTIONS(NSUInteger, NSEventPhase) {
-	NSEventPhaseNone = 0,
-	NSEventPhaseBegan = 1 << 0,
-	NSEventPhaseStationary = 1 << 1,
-	NSEventPhaseChanged = 1 << 2,
-	NSEventPhaseEnded = 1 << 3,
-	NSEventPhaseCancelled = 1 << 4,
-	NSEventPhaseMayBegin = 1 << 5,
-};
-
-typedef NS_ENUM(NSInteger, NSApplicationActivationPolicy) {
-	NSApplicationActivationPolicyRegular = 0,
-	NSApplicationActivationPolicyAccessory = 1,
-	NSApplicationActivationPolicyProhibited = 2,
-};
-
-typedef NS_OPTIONS(NSUInteger, NSWindowCollectionBehavior) {
-	NSWindowCollectionBehaviorDefault = 0,
-	NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0,
-	NSWindowCollectionBehaviorMoveToActiveSpace = 1 << 1,
-	NSWindowCollectionBehaviorManaged = 1 << 2,
-	NSWindowCollectionBehaviorTransient = 1 << 3,
-	NSWindowCollectionBehaviorStationary = 1 << 4,
-	NSWindowCollectionBehaviorParticipatesInCycle = 1 << 5,
-	NSWindowCollectionBehaviorIgnoresCycle = 1 << 6,
-	NSWindowCollectionBehaviorFullScreenPrimary = 1 << 7,
-	NSWindowCollectionBehaviorFullScreenAuxiliary = 1 << 8,
-	NSWindowCollectionBehaviorFullScreenNone = 1 << 9,
-	NSWindowCollectionBehaviorFullScreenAllowsTiling = 1 << 11,
-	NSWindowCollectionBehaviorFullScreenDisallowsTiling = 1 << 12,
-};
-
-typedef NS_OPTIONS(NSUInteger, NSAutoresizingMaskOptions) {
-	NSViewNotSizable = 0,
-	NSViewMinXMargin = 1,
-	NSViewWidthSizable = 2,
-	NSViewMaxXMargin = 4,
-	NSViewMinYMargin = 8,
-	NSViewHeightSizable = 16,
-	NSViewMaxYMargin = 32,
-};
-
-typedef NS_OPTIONS(NSUInteger, NSTrackingAreaOptions) {
-	NSTrackingMouseEnteredAndExited = 1 << 0,
-	NSTrackingMouseMoved = 1 << 1,
-	NSTrackingCursorUpdate = 1 << 2,
-	NSTrackingActiveInActiveApp = 1 << 6,
-	NSTrackingActiveInKeyWindow = 1 << 5,
-	NSTrackingActiveAlways = 1 << 7,
-	NSTrackingInVisibleRect = 1 << 9,
-	NSTrackingEnabledDuringMouseDrag = 1 << 10,
-};
-
-typedef NS_ENUM(NSUInteger, NSWindowButton) {
-	NSWindowCloseButton = 0,
-	NSWindowMiniaturizeButton,
-	NSWindowZoomButton,
-	NSWindowToolbarButton,
-	NSWindowDocumentIconButton,
-	// AppKit skips 5: the value is assigned explicitly in <AppKit/NSWindow.h>.
-	NSWindowDocumentVersionsButton = 6,
-};
-
-typedef NSInteger NSWindowLevel;
 
 // Window levels, in CGWindowLevel units (CGWindowLevel.h), as the SDK derives them.
 static const NSWindowLevel NSNormalWindowLevel = 0;
@@ -175,60 +28,6 @@ static const NSWindowLevel NSMainMenuWindowLevel = 24;
 static const NSWindowLevel NSStatusWindowLevel = 25;
 static const NSWindowLevel NSPopUpMenuWindowLevel = 101;
 static const NSWindowLevel NSScreenSaverWindowLevel = 1000;
-
-typedef NS_ENUM(NSInteger, NSWindowOrderingMode) {
-	NSWindowAbove = 1,
-	NSWindowBelow = -1,
-	NSWindowOut = 0,
-};
-
-typedef NS_ENUM(NSInteger, NSViewLayerContentsRedrawPolicy) {
-	NSViewLayerContentsRedrawNever = 0,
-	NSViewLayerContentsRedrawOnSetNeedsDisplay = 1,
-	NSViewLayerContentsRedrawDuringViewResize = 2,
-	NSViewLayerContentsRedrawBeforeViewResize = 3,
-	NSViewLayerContentsRedrawCrossfade = 4,
-};
-typedef NS_ENUM(NSInteger, NSViewLayerContentsPlacement) {
-	NSViewLayerContentsPlacementScaleAxesIndependently = 0,
-	NSViewLayerContentsPlacementScaleProportionallyToFit = 1,
-	NSViewLayerContentsPlacementScaleProportionallyToFill = 2,
-	NSViewLayerContentsPlacementCenter = 3,
-	NSViewLayerContentsPlacementTop = 4,
-	NSViewLayerContentsPlacementTopRight = 5,
-	NSViewLayerContentsPlacementRight = 6,
-	NSViewLayerContentsPlacementBottomRight = 7,
-	NSViewLayerContentsPlacementBottom = 8,
-	NSViewLayerContentsPlacementBottomLeft = 9,
-	NSViewLayerContentsPlacementLeft = 10,
-	NSViewLayerContentsPlacementTopLeft = 11,
-};
-typedef NS_OPTIONS(NSUInteger, NSApplicationPresentationOptions) {
-	NSApplicationPresentationDefault = 0,
-	NSApplicationPresentationAutoHideDock = 1 << 0,
-	NSApplicationPresentationHideDock = 1 << 1,
-	NSApplicationPresentationAutoHideMenuBar = 1 << 2,
-	NSApplicationPresentationHideMenuBar = 1 << 3,
-	NSApplicationPresentationFullScreen = 1 << 10,
-};
-typedef NS_ENUM(NSUInteger, NSApplicationTerminateReply) {
-	NSTerminateCancel = 0,
-	NSTerminateNow = 1,
-	NSTerminateLater = 2,
-};
-typedef NS_OPTIONS(NSUInteger, NSPasteboardContentsOptions) {
-	NSPasteboardContentsCurrentHostOnly = 1 << 0,
-};
-typedef NS_OPTIONS(NSUInteger, NSDragOperation) {
-	NSDragOperationNone = 0,
-	NSDragOperationCopy = 1,
-	NSDragOperationLink = 2,
-	NSDragOperationGeneric = 4,
-	NSDragOperationPrivate = 8,
-	NSDragOperationMove = 16,
-	NSDragOperationDelete = 32,
-	NSDragOperationEvery = NSUIntegerMax,
-};
 
 /* ---- forward decls ------------------------------------------------------- */
 @class NSWindow, NSView, NSScreen, NSColor, NSEvent, NSCursor, NSTrackingArea;
@@ -575,32 +374,6 @@ typedef NS_OPTIONS(NSUInteger, NSDragOperation) {
 @property(class, readonly) NSColorSpace *genericRGBColorSpace;
 @end
 
-/* ---- modal responses and font traits ------------------------------------- */
-typedef NSInteger NSModalResponse;
-enum : NSModalResponse {
-	NSModalResponseStop = (-1000),
-	NSModalResponseAbort = (-1001),
-	NSModalResponseContinue = (-1002),
-	NSModalResponseOK = 1,
-	NSModalResponseCancel = 0,
-};
-
-typedef NSUInteger NSFontTraitMask;
-enum : NSFontTraitMask {
-	NSItalicFontMask = 0x00000001,
-	NSBoldFontMask = 0x00000002,
-	NSUnboldFontMask = 0x00000004,
-	NSNonStandardCharacterSetFontMask = 0x00000008,
-	NSNarrowFontMask = 0x00000010,
-	NSExpandedFontMask = 0x00000020,
-	NSCondensedFontMask = 0x00000040,
-	NSSmallCapsFontMask = 0x00000080,
-	NSPosterFontMask = 0x00000100,
-	NSCompressedFontMask = 0x00000200,
-	NSFixedPitchFontMask = 0x00000400,
-	NSUnitalicFontMask = 0x01000000,
-};
-
 @class UTType;
 
 /* ---- NSTrackingArea ------------------------------------------------------ */
@@ -786,15 +559,6 @@ SPRT_FOUNDATION_EXTERN NSApplication *NSApp;
 - (BOOL)drawsVerticallyForCharacterAtIndex:(NSUInteger)charIndex;
 - (NSInteger)windowLevel;
 @end
-
-/* ---- NSImage / NSBitmapImageRep ----------------------------------------- */
-typedef NSString *NSColorSpaceName;
-
-typedef NS_OPTIONS(NSUInteger, NSBitmapFormat) {
-	NSBitmapFormatAlphaFirst = 1 << 0,
-	NSBitmapFormatAlphaNonpremultiplied = 1 << 1,
-	NSBitmapFormatFloatingPointSamples = 1 << 2,
-};
 
 @interface NSImageRep : NSObject
 @end

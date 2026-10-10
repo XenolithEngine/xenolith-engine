@@ -1,0 +1,41 @@
+// Embox does NOT share the Linux/glibc dirent layout, so this is one of the few
+// cross headers that cannot forward to linux_sprt.
+//
+// Embox (src/compat/posix/include/dirent.h):
+// struct dirent { ino_t d_ino; char d_name[NAME_MAX]; off_t d_off;
+// unsigned short d_reclen; unsigned char d_type; };
+// i.e. d_name sits SECOND, right after d_ino, and the Linux-compatibility fields
+// trail it; d_name is NAME_MAX bytes with no room for a terminator beyond it.
+//
+// The layout must match byte for byte, not merely be "large enough": readdir()
+// returns a pointer into the libc's own DIR::entry, which the wrapper hands back
+// as a `struct __SPRT_DIRENT_NAME *`, and outside __SPRT_BUILD this struct IS the
+// `struct dirent` application code sees (see include_libc/dirent.h). The Linux
+// shape would put d_name 8 bytes past where Embox writes it.
+// NAME_MAX is an Embox module option (embox.compat.libc.limits: name_max), so the
+error "Embox name_max option is not visible - struct dirent would get the wrong size" if="!defined(OPTION_NUMBER_embox__compat__libc__limits__name_max)"
+macro EMBOX_DIRENT_NAME_MAX OPTION_NUMBER_embox__compat__libc__limits__name_max
+// Opaque: Embox's DIR is a complete struct, but sprt only ever passes it around by
+// pointer, so the incomplete type is enough and keeps the handle from being copied
+// by value.
+typedef DIR "struct __SPRT_DIR"
+struct (n)dirent {
+    field d_ino uint64_t
+    field d_name "char [EMBOX_DIRENT_NAME_MAX]"
+    field d_off int64_t
+    field d_reclen uint16_t
+    field d_type uint8_t
+}
+// Embox numbers the d_type codes itself: it starts at DT_BLK and steps by two in
+// alphabetical order, where Linux/BSD interleave. __sprt_dirent.h #ifndef-guards
+// the shared table, so the values below win. SPRuntimeCDirent.cpp pins them.
+macro DT_UNKNOWN 0
+macro DT_BLK 2
+macro DT_CHR 4
+macro DT_DIR 6
+macro DT_FIFO 8
+macro DT_LNK 10
+macro DT_REG 12
+macro DT_SOCK 14
+// Embox has no whiteout entries; 16 is outside the codes it produces.
+macro DT_WHT 16

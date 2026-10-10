@@ -1,0 +1,9 @@
+macro (n)mbstate_t `mbstate_t`
+macro WEOF 0xffff if="!defined(WEOF)"
+typedef wchar_t `wchar_t` if="defined(__cplusplus)"
+typedef wchar_t "unsigned short" if="!defined(__cplusplus)"
+typedef wctype_t "unsigned short"
+struct typedef=(n)mbstate_t {
+    field _Char "unsigned int"
+    field _State "unsigned int"
+}

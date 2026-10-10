@@ -9,6 +9,7 @@
 #import <Metal/MTLResource.h>    /* MTLResourceOptions, @protocol MTLResource */
 #import <Metal/MTLTexture.h>     /* MTLTextureType (+ @protocol MTLTexture, MTLTextureDescriptor, MTLBuffer) */
 #import <Metal/MTLArgument.h>    /* MTLDataType, MTLBindingAccess, @protocol MTLBufferBinding */
+#include <__sprt_abi/Metal/MTLDevice.h>
 
 /* --- Metal protocols referenced only as id<> return/param types --- */
 @protocol MTLCommandQueue;
@@ -45,78 +46,8 @@
 @protocol MTLResidencySet;
 @class MTLResidencySetDescriptor;
 
-typedef NS_ENUM(NSUInteger, MTLDeviceLocation) {
-	MTLDeviceLocationBuiltIn = 0,
-	MTLDeviceLocationSlot = 1,
-	MTLDeviceLocationExternal = 2,
-	MTLDeviceLocationUnspecified = NSUIntegerMax,
-};
-
 extern id <MTLDevice> MTLCreateSystemDefaultDevice(void);
 extern NSArray <id<MTLDevice>> *MTLCopyAllDevices(void);
-
-typedef NS_ENUM(NSInteger, MTLGPUFamily)
-{
-    MTLGPUFamilyApple1  = 1001,
-    MTLGPUFamilyApple2  = 1002,
-    MTLGPUFamilyApple3  = 1003,
-    MTLGPUFamilyApple4  = 1004,
-    MTLGPUFamilyApple5  = 1005,
-    MTLGPUFamilyApple6  = 1006,
-    MTLGPUFamilyApple7  = 1007,
-    MTLGPUFamilyApple8  = 1008,
-    MTLGPUFamilyApple9  = 1009,
-
-    MTLGPUFamilyMac1 = 2001,
-    MTLGPUFamilyMac2 = 2002,
-
-    MTLGPUFamilyCommon1 = 3001,
-    MTLGPUFamilyCommon2 = 3002,
-    MTLGPUFamilyCommon3 = 3003,
-
-    MTLGPUFamilyMacCatalyst1 = 4001,
-    MTLGPUFamilyMacCatalyst2 = 4002,
-
-    MTLGPUFamilyMetal3 = 5001,
-};
-
-typedef NS_OPTIONS(NSUInteger, MTLPipelineOption)
-{
-    MTLPipelineOptionNone                    = 0,
-    MTLPipelineOptionArgumentInfo            = 1 << 0,
-    MTLPipelineOptionBufferTypeInfo          = 1 << 1,
-    MTLPipelineOptionFailOnBinaryArchiveMiss = 1 << 2,
-};
-
-typedef NS_ENUM(NSUInteger, MTLReadWriteTextureTier)
-{
-    MTLReadWriteTextureTierNone = 0,
-    MTLReadWriteTextureTier1    = 1,
-    MTLReadWriteTextureTier2    = 2,
-};
-
-typedef NS_ENUM(NSUInteger, MTLArgumentBuffersTier)
-{
-    MTLArgumentBuffersTier1 = 0,
-    MTLArgumentBuffersTier2 = 1,
-};
-
-typedef NS_ENUM(NSUInteger, MTLCounterSamplingPoint)
-{
-    MTLCounterSamplingPointAtStageBoundary,
-    MTLCounterSamplingPointAtDrawBoundary,
-    MTLCounterSamplingPointAtDispatchBoundary,
-    MTLCounterSamplingPointAtTileDispatchBoundary,
-    MTLCounterSamplingPointAtBlitBoundary,
-};
-
-/* Represents a memory size and alignment in bytes. */
-typedef struct {
-    NSUInteger size;
-    NSUInteger align;
-} MTLSizeAndAlign;
-
-typedef uint64_t MTLTimestamp;
 
 /* Convenience typedefs for reflection out-parameters. */
 typedef MTLRenderPipelineReflection  *MTLAutoreleasedRenderPipelineReflection;

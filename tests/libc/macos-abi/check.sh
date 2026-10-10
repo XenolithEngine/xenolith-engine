@@ -7,7 +7,7 @@
 # Three independent parts, all driven from Linux with a stock clang; nothing is
 # linked, nothing is run, and no Apple hardware is involved.
 #
-#   sprt     the __SPRT_* tables in runtime/include/sprt/c/cross/macos_sprt/**
+#   sprt     the __SPRT_* tables in runtime/include/sprt/gen/c/cross/macos_sprt/**
 #            and sprt/c/sys/__sprt_darwin.h, static_asserted against the real
 #            Darwin headers (check-*.cpp). Run against BOTH sysroots.
 #   sysroot  the +open sysroot itself, against the real SDK: the same probe TU

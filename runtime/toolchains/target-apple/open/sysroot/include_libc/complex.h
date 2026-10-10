@@ -31,28 +31,11 @@ THE SOFTWARE.
 
 #ifndef _COMPLEX_H_
 #define _COMPLEX_H_
+#include <__sprt_abi/complex.h>
 
 /* `complex`/`imaginary` are keywords-via-macro in C only (in C++ they would
    clash with std::complex). _Complex_I/I and the C11 CMPLX family use clang's
    __builtin_complex so they are valid constant expressions. */
-#ifndef __cplusplus
-#ifndef complex
-#define complex _Complex
-#endif
-#endif
-
-#ifndef _Complex_I
-#define _Complex_I (__builtin_complex(0.0f, 1.0f))
-#endif
-#ifndef I
-#define I _Complex_I
-#endif
-
-#ifndef CMPLX
-#define CMPLX(x, y) __builtin_complex((double)(x), (double)(y))
-#define CMPLXF(x, y) __builtin_complex((float)(x), (float)(y))
-#define CMPLXL(x, y) __builtin_complex((long double)(x), (long double)(y))
-#endif
 
 #ifdef __cplusplus
 extern "C" {

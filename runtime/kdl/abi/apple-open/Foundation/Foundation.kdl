@@ -1,0 +1,146 @@
+cond cplusplus "defined(__cplusplus)"
+cond api_available "!defined(API_AVAILABLE)"
+cond nsintegermax "!defined(NSIntegerMax)"
+//  SDK parity: the Foundation umbrella exposes libdispatch types (dispatch_queue_t
+// appears in Foundation API and in consumers' own declarations — e.g. lldb's
+// CoreSimulator protocol mirrors).
+macro SPRT_FOUNDATION_EXTERN "extern \"C\"" if="@cplusplus"
+macro SPRT_FOUNDATION_EXTERN extern if="!@cplusplus"
+//  NS_ENUM / NS_OPTIONS: Foundation's <NSObjCRuntime.h> provides these on macOS,
+//    but the apple-oss objc4 <objc/NSObjCRuntime.h> does not. Canonical definition
+//    (used as `typedef NS_ENUM(NSUInteger, Name) { ... };`).
+//  NS_OPTIONS: in C++ the name is a plain typedef of the underlying integer type
+//    (the enumerators live in an anonymous fixed-type enum) — this is what lets
+//    `A | B` of two flags stay assignable to the option-typed lvalue. In C it is a
+//    named fixed-type enum like NS_ENUM. Matches Apple's CF_OPTIONS.
+macro NS_OPTIONS "_type _name; enum : _type" params="_type _name" if="!defined(NS_ENUM) && @cplusplus"
+macro NS_OPTIONS "enum _name : _type _name; enum _name : _type" params="_type _name" if="!defined(NS_ENUM) && !@cplusplus"
+macro NS_ENUM "enum _name : _type _name; enum _name : _type" params="_type _name" if="!defined(NS_ENUM)"
+//  NS_OPTIONS: in C++ the name is a plain typedef of the underlying integer type
+//    (the enumerators live in an anonymous fixed-type enum) — this is what lets
+//    `A | B` of two flags stay assignable to the option-typed lvalue. In C it is a
+//    named fixed-type enum like NS_ENUM. Matches Apple's CF_OPTIONS.
+macro NS_ASSUME_NONNULL_END "_Pragma(\"clang assume_nonnull end\")" if="!defined(NS_ASSUME_NONNULL_BEGIN)"
+macro NS_ASSUME_NONNULL_BEGIN "_Pragma(\"clang assume_nonnull begin\")" if="!defined(NS_ASSUME_NONNULL_BEGIN)"
+//  No-op shims for the Apple availability / Swift-bridging / Metal decoration macros the
+//    SDK supplies via <os/availability.h>, <Foundation/NSObjCRuntime.h> and <Metal/MTLDefines.h>.
+//    In the +open sysroot the framework headers are hand-written and carry no availability data,
+//    so these expand to nothing (or the plain C keyword). MTL_INLINE MUST expand to `static
+//    inline` (not empty) or the header's inline helpers would emit external definitions in every
+//    TU and collide at link. Foundation.h is the universal first include of every framework
+//    header, so defining them here makes every hand-written framework header self-sufficient.
+macro API_DEPRECATED params="..." if="@api_available"
+macro API_DEPRECATED_WITH_REPLACEMENT params="..." if="@api_available"
+macro API_UNAVAILABLE params="..." if="@api_available"
+macro API_AVAILABLE params="..." if="@api_available"
+macro NS_SWIFT_UNAVAILABLE params="..." if="!defined(NS_SWIFT_NAME)"
+macro NS_SWIFT_NAME params="..." if="!defined(NS_SWIFT_NAME)"
+macro NS_DESIGNATED_INITIALIZER if="!defined(NS_DESIGNATED_INITIALIZER)"
+macro NS_REFINED_FOR_SWIFT if="!defined(NS_REFINED_FOR_SWIFT)"
+macro NS_RETURNS_INNER_POINTER if="!defined(NS_RETURNS_INNER_POINTER)"
+macro NS_UNAVAILABLE if="!defined(NS_UNAVAILABLE)"
+macro MTL_EXPORT extern if="!defined(MTL_EXPORT)"
+macro MTL_INLINE "static inline" if="!defined(MTL_INLINE)"
+macro MIN "((A) < (B) ? (A) : (B))" params="A B" if="!defined(ABS)"
+macro MAX "((A) > (B) ? (A) : (B))" params="A B" if="!defined(ABS)"
+macro ABS "((A) < 0 ? (-(A)) : (A))" params="A" if="!defined(ABS)"
+// --- fast enumeration: required for `for (id x in collection)` lowering ---
+struct typedef=NSFastEnumerationState {
+    field state "unsigned long"
+    field itemsPtr "id __unsafe_unretained *"
+    field mutationsPtr "unsigned long *"
+    field extra "unsigned long [5]"
+}
+// --- process / filesystem / bundle services ---
+struct typedef=NSOperatingSystemVersion {
+    field majorVersion NSInteger
+    field minorVersion NSInteger
+    field patchVersion NSInteger
+}
+// --- standard directory search API (NSPathUtilities.h) ---
+enum typedef=NSSearchPathDirectory base="NSUInteger" {
+    value NSApplicationDirectory 1
+    value NSDemoApplicationDirectory 2
+    value NSDeveloperApplicationDirectory 3
+    value NSAdminApplicationDirectory 4
+    value NSLibraryDirectory 5
+    value NSDeveloperDirectory 6
+    value NSUserDirectory 7
+    value NSDocumentationDirectory 8
+    value NSDocumentDirectory 9
+    value NSCoreServiceDirectory 10
+    value NSAutosavedInformationDirectory 11
+    value NSDesktopDirectory 12
+    value NSCachesDirectory 13
+    value NSApplicationSupportDirectory 14
+    value NSDownloadsDirectory 15
+    value NSInputMethodsDirectory 16
+    value NSMoviesDirectory 17
+    value NSMusicDirectory 18
+    value NSPicturesDirectory 19
+    value NSPrinterDescriptionDirectory 20
+    value NSSharedPublicDirectory 21
+    value NSPreferencePanesDirectory 22
+    value NSApplicationScriptsDirectory 23
+    value NSItemReplacementDirectory 99
+    value NSAllApplicationsDirectory 100
+    value NSAllLibrariesDirectory 101
+    value NSTrashDirectory 102
+}
+enum typedef=NSSearchPathDomainMask base="NSUInteger" {
+    value NSUserDomainMask 1
+    value NSLocalDomainMask 2
+    value NSNetworkDomainMask 4
+    value NSSystemDomainMask 8
+    value NSAllDomainsMask 0x0ffff
+}
+//  ======================================================================== *
+//  Window-backend surface (runtime/window/macos) — extends the base above.
+// ========================================================================
+// CGPoint/CGSize/CGRect/CGFloat
+macro NS_INLINE "static __inline__ __attribute__((always_inline))"
+macro NSIntegerMin "(-__LONG_MAX__ - 1L)" if="@nsintegermax"
+macro NSUIntegerMax "(~0UL)" if="@nsintegermax"
+macro NSIntegerMax __LONG_MAX__ if="@nsintegermax"
+macro NSNotFound NSIntegerMax
+typedef NSTimeInterval double
+enum typedef=NSComparisonResult base="NSInteger" {
+    value NSOrderedAscending "-1L"
+    value NSOrderedSame
+    value NSOrderedDescending
+}
+// --- geometry: on 64-bit macOS the NS* geometry types ARE the CG* types ---
+typedef NSPoint CGPoint
+typedef NSSize CGSize
+typedef NSRect CGRect
+typedef NSPointPointer "CGPoint *"
+typedef NSSizePointer "CGSize *"
+typedef NSRectPointer "CGRect *"
+typedef NSRectEdge NSUInteger
+struct _NSRange typedef=NSRange {
+    field location NSUInteger
+    field length NSUInteger
+}
+typedef NSRangePointer "NSRange *"
+enum NSStringEncoding macro=NS_ENUM base=NSUInteger {
+    value NSASCIIStringEncoding 1
+    value NSUTF8StringEncoding 4
+    value NSUnicodeStringEncoding 10
+    value NSUTF16StringEncoding 10
+    value NSUTF16LittleEndianStringEncoding 0x94000100
+    value NSUTF32StringEncoding 0x8c000100
+}
+typedef unichar "unsigned short"
+enum NSDataCompressionAlgorithm macro=NS_ENUM base=NSInteger {
+    value NSDataCompressionAlgorithmLZFSE 0
+    value NSDataCompressionAlgorithmLZ4
+    value NSDataCompressionAlgorithmLZMA
+    value NSDataCompressionAlgorithmZlib
+}
+// --- key-value observing (NSObject additions + options) ---
+enum NSKeyValueObservingOptions macro=NS_OPTIONS base=NSUInteger {
+    value NSKeyValueObservingOptionNew 0x01
+    value NSKeyValueObservingOptionOld 0x02
+    value NSKeyValueObservingOptionInitial 0x04
+    value NSKeyValueObservingOptionPrior 0x08
+}

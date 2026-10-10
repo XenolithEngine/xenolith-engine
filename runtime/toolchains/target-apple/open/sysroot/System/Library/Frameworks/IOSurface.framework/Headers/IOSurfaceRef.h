@@ -16,13 +16,9 @@
 #include <sys/cdefs.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <__sprt_abi/IOSurface/IOSurfaceRef.h>
 
 __BEGIN_DECLS
-
-typedef struct __IOSurface *IOSurfaceRef;
-
-/* Global surface identifier, as returned by IOSurfaceGetID(). uint32_t per Apple's ABI. */
-typedef uint32_t IOSurfaceID;
 
 /* CFDictionary property keys accepted by IOSurfaceCreate() (MoltenVK-used subset). */
 extern const CFStringRef kIOSurfaceWidth;

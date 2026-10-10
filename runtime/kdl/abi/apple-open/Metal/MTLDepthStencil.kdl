@@ -1,0 +1,20 @@
+enum MTLCompareFunction macro=NS_ENUM base=NSUInteger {
+    value MTLCompareFunctionNever 0
+    value MTLCompareFunctionLess 1
+    value MTLCompareFunctionEqual 2
+    value MTLCompareFunctionLessEqual 3
+    value MTLCompareFunctionGreater 4
+    value MTLCompareFunctionNotEqual 5
+    value MTLCompareFunctionGreaterEqual 6
+    value MTLCompareFunctionAlways 7
+}
+enum MTLStencilOperation macro=NS_ENUM base=NSUInteger {
+    value MTLStencilOperationKeep 0
+    value MTLStencilOperationZero 1
+    value MTLStencilOperationReplace 2
+    value MTLStencilOperationIncrementClamp 3
+    value MTLStencilOperationDecrementClamp 4
+    value MTLStencilOperationInvert 5
+    value MTLStencilOperationIncrementWrap 6
+    value MTLStencilOperationDecrementWrap 7
+}

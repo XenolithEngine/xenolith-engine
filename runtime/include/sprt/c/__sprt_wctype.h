@@ -23,10 +23,10 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C___SPRT_WCTYPE_H_
 #define CORE_RUNTIME_INCLUDE_C___SPRT_WCTYPE_H_
 
-#include <sprt/c/bits/__sprt_wchar_t.h>
-#include <sprt/c/bits/__sprt_wint_t.h>
-#include <sprt/c/cross/__sprt_mbstate.h>
-#include <sprt/c/cross/__sprt_locale.h>
+#include <sprt/gen/c/bits/__sprt_wchar_t.h>
+#include <sprt/gen/c/bits/__sprt_wint_t.h>
+#include <sprt/gen/c/cross/__sprt_mbstate.h>
+#include <sprt/gen/c/cross/__sprt_locale.h>
 
 // Default (glibc / libc_impl) representation: const __int32_t *. wctrans()
 // returns an opaque pointer-based handle that towctrans() interprets. Sharing the

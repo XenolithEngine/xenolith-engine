@@ -1,0 +1,94 @@
+macro SYMOPT_CASE_INSENSITIVE 0x00000001
+macro SYMOPT_UNDNAME 0x00000002
+macro SYMOPT_DEFERRED_LOADS 0x00000004
+macro SYMOPT_NO_CPP 0x00000008
+macro SYMOPT_LOAD_LINES 0x00000010
+macro SYMOPT_OMAP_FIND_NEAREST 0x00000020
+macro SYMOPT_LOAD_ANYTHING 0x00000040
+macro SYMOPT_IGNORE_CVREC 0x00000080
+macro SYMOPT_NO_UNQUALIFIED_LOADS 0x00000100
+macro SYMOPT_FAIL_CRITICAL_ERRORS 0x00000200
+macro SYMOPT_EXACT_SYMBOLS 0x00000400
+macro SYMOPT_ALLOW_ABSOLUTE_SYMBOLS 0x00000800
+macro SYMOPT_IGNORE_NT_SYMPATH 0x00001000
+macro SYMOPT_INCLUDE_32BIT_MODULES 0x00002000
+macro SYMOPT_PUBLICS_ONLY 0x00004000
+macro SYMOPT_NO_PUBLICS 0x00008000
+macro SYMOPT_AUTO_PUBLICS 0x00010000
+macro SYMOPT_NO_IMAGE_SEARCH 0x00020000
+macro SYMOPT_SECURE 0x00040000
+macro SYMOPT_NO_PROMPTS 0x00080000
+macro SYMOPT_OVERWRITE 0x00100000
+macro SYMOPT_IGNORE_IMAGEDIR 0x00200000
+macro SYMOPT_FLAT_DIRECTORY 0x00400000
+macro SYMOPT_FAVOR_COMPRESSED 0x00800000
+macro SYMOPT_ALLOW_ZERO_ADDRESS 0x01000000
+macro SYMOPT_DISABLE_SYMSRV_AUTODETECT 0x02000000
+macro SYMOPT_READONLY_CACHE 0x04000000
+macro SYMOPT_SYMPATH_LAST 0x08000000
+macro SYMOPT_DISABLE_FAST_SYMBOLS 0x10000000
+macro SYMOPT_DISABLE_SYMSRV_TIMEOUT 0x20000000
+macro SYMOPT_DISABLE_SRVSTAR_ON_STARTUP 0x40000000
+macro SYMOPT_DEBUG 0x80000000
+enum typedef=ADDRESS_MODE {
+    value AddrMode1616
+    value AddrMode1632
+    value AddrModeReal
+    value AddrModeFlat
+}
+struct _tagADDRESS64 typedef=ADDRESS64 also="*LPADDRESS64" {
+    field Offset DWORD64
+    field Segment WORD
+    field Mode ADDRESS_MODE
+}
+struct _KDHELP64 typedef=KDHELP64 also="*PKDHELP64" {
+    field Thread DWORD64
+    field ThCallbackStack DWORD
+    field ThCallbackBStore DWORD
+    field NextCallback DWORD
+    field FramePointer DWORD
+    field KiCallUserMode DWORD64
+    field KeUserCallbackDispatcher DWORD64
+    field SystemRangeStart DWORD64
+    field KiUserExceptionDispatcher DWORD64
+    field StackBase DWORD64
+    field StackLimit DWORD64
+    field BuildVersion DWORD
+    field RetpolineStubFunctionTableSize DWORD
+    field RetpolineStubFunctionTable DWORD64
+    field RetpolineStubOffset DWORD
+    field RetpolineStubSize DWORD
+    field Reserved0 "DWORD64 [2]"
+}
+struct _tagSTACKFRAME64 typedef=STACKFRAME64 also="*LPSTACKFRAME64" {
+    field AddrPC ADDRESS64
+    field AddrReturn ADDRESS64
+    field AddrFrame ADDRESS64
+    field AddrStack ADDRESS64
+    field AddrBStore ADDRESS64
+    field FuncTableEntry PVOID
+    field Params "DWORD64 [4]"
+    field Far BOOL
+    field Virtual BOOL
+    field Reserved "DWORD64 [3]"
+    field KdHelp KDHELP64
+}
+struct _IMAGEHLP_SYMBOL64 typedef=IMAGEHLP_SYMBOL64 also="*PIMAGEHLP_SYMBOL64" {
+    field SizeOfStruct DWORD
+    field Address DWORD64
+    field Size DWORD
+    field Flags DWORD
+    field MaxNameLength DWORD
+    field Name "CHAR [1]"
+}
+struct _IMAGEHLP_LINE64 typedef=IMAGEHLP_LINE64 also="*PIMAGEHLP_LINE64" {
+    field SizeOfStruct DWORD
+    field Key PVOID
+    field LineNumber DWORD
+    field FileName PCHAR
+    field Address DWORD64
+}
+typedef PREAD_PROCESS_MEMORY_ROUTINE64 "BOOL (WINAPI *)(HANDLE hProcess, DWORD64 qwBaseAddress, PVOID lpBuffer, DWORD nSize, LPDWORD lpNumberOfBytesRead)"
+typedef PFUNCTION_TABLE_ACCESS_ROUTINE64 "PVOID (WINAPI *)(HANDLE ahProcess, DWORD64 AddrBase)"
+typedef PGET_MODULE_BASE_ROUTINE64 "DWORD64 (WINAPI *)(HANDLE hProcess, DWORD64 Address)"
+typedef PTRANSLATE_ADDRESS_ROUTINE64 "DWORD64 (WINAPI *)(HANDLE hProcess, HANDLE hThread, LPADDRESS64 lpaddr)"

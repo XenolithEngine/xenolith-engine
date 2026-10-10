@@ -1,0 +1,2 @@
+macro MATH_ERRNO 1
+macro MATH_ERREXCEPT 2

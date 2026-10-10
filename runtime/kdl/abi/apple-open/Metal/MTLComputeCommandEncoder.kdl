@@ -1,0 +1,10 @@
+// <MTLCommandEncoder>, MTLResourceUsage, MTLBarrierScope
+// MTLDispatchType
+// MTLSize, MTLRegion
+struct typedef=MTLDispatchThreadgroupsIndirectArguments {
+    field threadgroupsPerGrid "uint32_t [3]"
+}
+struct typedef=MTLStageInRegionIndirectArguments {
+    field stageInOrigin "uint32_t [3]"
+    field stageInSize "uint32_t [3]"
+}

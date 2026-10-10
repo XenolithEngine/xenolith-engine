@@ -24,12 +24,12 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_REGEX_H_
 
 #include <sprt/c/bits/__sprt_def.h>
-#include <sprt/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
 
 // regex_t / regmatch_t / regoff_t + the REG_* constants are defined per-platform
 // to be ABI-compatible with the native <regex.h>; SPRuntimeCRegex.cpp static_asserts
 // them against the system header.
-#include <sprt/c/cross/__sprt_regextypes.h>
+#include <sprt/gen/c/cross/__sprt_regextypes.h>
 
 __SPRT_BEGIN_DECL
 

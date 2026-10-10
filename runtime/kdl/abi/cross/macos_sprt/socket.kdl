@@ -1,0 +1,70 @@
+cond sprt_build_stdc_hosted "!(defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1)"
+typedef socklen_t uint32_t
+typedef sa_family_t uint8_t
+struct (n)sockaddr {
+    field sa_len uint8_t
+    field sa_family sa_family_t
+    field sa_data "char [14]"
+}
+typedef in_addr_t uint32_t
+typedef in_port_t uint16_t
+struct (n)in_addr {
+    field s_addr in_addr_t
+}
+struct (n)in6_addr {
+    union __u6_addr {
+        field __s6_addr "unsigned char [16]"
+        field __s6_addr16 "uint16_t [8]"
+        field __s6_addr32 "uint32_t [4]"
+    }
+}
+macro `s6_addr` __u6_addr.__s6_addr if="@sprt_build_stdc_hosted"
+macro `s6_addr16` __u6_addr.__s6_addr16 if="@sprt_build_stdc_hosted"
+macro `s6_addr32` __u6_addr.__s6_addr32 if="@sprt_build_stdc_hosted"
+struct (n)sockaddr_in {
+    field sin_len uint8_t
+    field sin_family sa_family_t
+    field sin_port in_port_t
+    field sin_addr "struct in_addr"
+    field sin_zero "unsigned char [8]"
+}
+struct (n)sockaddr_in6 {
+    field sin6_len uint8_t
+    field sin6_family sa_family_t
+    field sin6_port in_port_t
+    field sin6_flowinfo uint32_t
+    field sin6_addr "struct in6_addr"
+    field sin6_scope_id uint32_t
+}
+typedef `SOCKET` int
+typedef `sockdata_t` void
+typedef `socksize_t` ssize_t
+// --- message / control structs (Darwin BSD layout: int msg_iovlen, socklen_t
+// control/cmsg lengths, 32-bit CMSG alignment; no ucred - macOS uses xucred) --------
+struct (n)linger {
+    field l_onoff int
+    field l_linger int
+}
+struct (n)msghdr {
+    field msg_name "void *"
+    field msg_namelen socklen_t
+    field msg_iov "struct iovec *"
+    field msg_iovlen int
+    field msg_control "void *"
+    field msg_controllen socklen_t
+    field msg_flags int
+}
+struct (n)cmsghdr {
+    field cmsg_len socklen_t
+    field cmsg_level int
+    field cmsg_type int
+}
+struct (n)mmsghdr {
+    field msg_hdr "struct msghdr"
+    field msg_len "unsigned int"
+}
+macro CMSG_ALIGN "(((len) + 3) & ~((size_t)3))" params="len"
+macro CMSG_DATA "((unsigned char *)((struct cmsghdr *)(cmsg) + 1))" params="cmsg"
+macro CMSG_SPACE "(CMSG_ALIGN(len) + CMSG_ALIGN(sizeof(struct cmsghdr)))" params="len"
+macro CMSG_LEN "(CMSG_ALIGN(sizeof(struct cmsghdr)) + (len))" params="len"
+macro CMSG_FIRSTHDR "((socklen_t)(mhdr)->msg_controllen >= sizeof(struct cmsghdr)\n\t\t\t\t\t? (struct cmsghdr *)(mhdr)->msg_control\n\t\t\t\t\t: (struct cmsghdr *)0)" params="mhdr"

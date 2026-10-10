@@ -34,7 +34,7 @@ THE SOFTWARE.
 	includes this instead.
 */
 
-#include <sprt/wrappers/windows/abi/winsock.h>
+#include <sprt/gen/wrappers/windows/abi/winsock.h>
 
 #define WSABASEERR __SPRT_WSABASEERR
 #define WSAEINTR __SPRT_WSAEINTR

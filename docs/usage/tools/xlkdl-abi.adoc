@@ -1,0 +1,328 @@
+# ABI descriptions: `xlkdl abi`
+
+`xlkdl` generates C headers from ABI descriptions written in KDL. A description holds the
+definitions of one header - macros, typedefs, records, enums - and nothing about how its names are
+spelled or what it includes: that is the business of the **header map**, `runtime/kdl/abi/sprt.kdl`
+and the parts it imports.
+
+    make -C utils/xlkdl
+    xlkdl abi --map runtime/kdl/abi/sprt.kdl --out <include root> [--check] [--inline] [<header>...]
+
+`--check` writes nothing; the exit code is the number of headers that are not what would be
+written. `--inline` writes every block of an unguarded fragment in place of its include. A document
+that does not load exits with 1 and `file:line:column: message` lines.
+
+The descriptions under `runtime/kdl/abi` are the source of the runtime's ABI headers. The
+generated headers are committed under `runtime/include/sprt/gen`, at the path of the hand-written
+header they replace with `sprt/gen/` for `sprt/` (`sprt/c/bits/__sprt_int.h` is
+`sprt/gen/c/bits/__sprt_int.h`) and with its guard. After a change to a description or the map:
+
+    xlkdl abi --map runtime/kdl/abi/sprt.kdl --out runtime/include
+
+Hand-written headers the descriptions only reference (`sprt/c/bits/__sprt_def.h`,
+`sprt/c/cross/__sprt_config.h`, the API headers) stay where they are. The hand-written ABI headers
+were converted by `utils/xlkdl/c2kdl.py` and removed after revision `ffe9fede`, which still has
+them: `git restore --source=ffe9fede -- runtime/include/sprt/c/bits/__sprt_int.h` brings one back
+(every header under `sprt/gen` had one, at its old path), and `tests/libc/kdl-abi/compare.py`
+proves the generated ones are the same.
+
+**TL;DR**
+
+* Names carry **no prefixes**. How a name is spelled is a **rule** of the profile, and each kind of
+  node has a default one: under `sprt/gen/c/` a plain `macro EPERM` is `__SPRT_EPERM` and a plain
+  `typedef size_t` is `__SPRT_ID(size_t)`. Another rule is a KDL type annotation (`(n)sockaddr` is
+  `__SPRT_SOCKADDR_NAME`), and a name with no rule where there is a default is in backticks
+  (`` macro `NULL` ``).
+* C fragments - macro bodies, conditions, types, attributes - are written as C and **rendered**:
+  every identifier the map knows is spelled by its rule. A plain name means the symbol with a rule
+  when there is one; `` `NAME` `` in backticks is the name as written. A macro's parameters shadow
+  names, and a call already written with a wrap rule (`__SPRT_ID(x)`) stays as it is. A number is a
+  KDL number and is written as it was typed: `macro EPERM 1`, `value A 0x10`.
+* A **condition is a property of one node**: `if="defined(_WIN32)"`. A multi-line `#if` block
+  becomes one guarded node per definition; nested branches join with `&&`, an `#else` is the
+  negation. Consecutive nodes with the same condition share one `#if`. A long condition a file
+  repeats is named once - `cond assisted "…"` - and written `@assisted`.
+* A description sees its own names, the names of the headers its map entry reaches through
+  `include` and of the blocks it uses, and - for a fragment - whatever the headers that include or
+  use it see. A name the map knows but this header does not reach is an error.
+* **A block** is a fragment of another header placed where a description says: `use PATH`, also
+  inside a record. A platform fragment (`use platform=F`) is selected by the preprocessor and is
+  always written as the computed include.
+* What the generator writes is semantically the original, not textually: `typedef A, *B;` may
+  become two typedefs, `#ifdef X` becomes `#if defined(X)`, an include that does not depend on what
+  precedes it goes to the top, and comments stay in the description.
+* **Where is X defined:** `xlkdl abi --map runtime/kdl/abi/sprt.kdl --find X`, by the name in a
+  description or as C spells it (`__SPRT_EPERM`, `__sprt_pthread_mutex_t`); `--index` writes every
+  definition as JSON.
+
+---
+
+## The header map
+
+The root holds the profile and imports the parts; a part holds platforms, headers and further
+imports. Imports are found from the file that imports them; `abi=`, `abi-root` and `license` from
+the root.
+
+```kdl
+// sprt.kdl
+profile sprt {
+    rule p prefix=__SPRT_
+    rule id wrap=__SPRT_ID spelled=__sprt_
+    rule n prefix=__SPRT_ suffix=_NAME case=upper trim=_t
+    license LICENSE.txt
+    platform-root "sprt/gen/c/cross"
+    platform-include "SPRT_CROSS_CONFIG_NAME(sprt/gen/c/cross/__SPRT_PLATFORM_NAME/{})"
+    arch-include "SPRT_CROSS_CONFIG_NAME(sprt/gen/c/cross/__SPRT_PLATFORM_NAME/__SPRT_ARCH_NAME/{})"
+    extern-c begin=__SPRT_BEGIN_DECL end=__SPRT_END_DECL
+    guard-scheme root="sprt/gen/c/" prefix=CORE_RUNTIME_INCLUDE_C_
+    defaults root="sprt/gen/c/" macro=p typedef=id
+    abi-root header="sprt/gen/c/" dir=""
+}
+import "map/libc.kdl"
+import "map/linux.kdl"
+
+// map/linux.kdl
+platforms { platform linux_sprt { arch aarch64_sprt e2k_sprt x86_64_sprt; arch e2k128_sprt like=e2k_sprt; }; }
+header "sprt/gen/c/cross/linux_sprt/socket.h"        // cross/linux_sprt/socket.kdl, a fragment
+header "sprt/gen/c/cross/linux_sprt/riscv64_sprt/syscall.h" abi="cross/shared/android+linux/aarch64+riscv64/syscall.kdl"
+
+// map/libc.kdl
+header "sprt/c/bits/__sprt_def.h" external=#true {
+    type (p)HAS_BUILTIN (p)ARCH_ID (id)int64_t
+}
+header "sprt/gen/c/cross/__sprt_errno.h" {                // includes only
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/cross/linux_sprt/errno.h" if=SPRT_LINUX
+}
+header "sprt/gen/c/cross/__sprt_fenv_t.h" {
+    include arch=fenv.h                                 // the computed include, at the top
+}
+```
+
+| Node | Meaning |
+|---|---|
+| `profile` (root) | `rule NAME prefix=TEXT [suffix=] [case=upper] [trim=]` / `rule NAME wrap=MACRO [spelled=]`; `defaults root= KIND=RULE…`; `abi-root header= dir=`; `cond NAME "expr"`; `license FILE`; `platform-root`, `platform-include`, `arch-include` (`{}` is the file); `extern-c begin= end=`; `guard-scheme root= prefix=` |
+| `import FILE` | a further part of the map |
+| `platforms` | `platform NAME { arch NAMES...; arch A like=B; }` - the directories `platform=` and `arch=` expand to |
+| `header PATH` | `abi=FILE`, `external=#true` (hand-written), or neither; `fragment=` (no include guard, sees what its includers see); `guard=NAME` overrides the guard |
+| `include` | in a `header`: `include PATH`, `include platform=F`, `include arch=F`, with `if=` |
+| `type NAMES...` | in an external `header`: the names it provides, annotated with their rules |
+
+What the map does not say follows from the path:
+
+- **The description** of a header without `abi=` is its mirror under the first `abi-root` the path
+  is under, when that file exists: `sprt/gen/c/cross/linux_sprt/socket.h` is
+  `cross/linux_sprt/socket.kdl`, `sprt/gen/wrappers/windows/abi/structures.h` is
+  `windows/structures.kdl`. Without one the header holds only its includes.
+- **A fragment** is every header in a platform's directory under `platform-root`; `fragment=` says
+  otherwise.
+- **`arch A like=B`** makes every fragment of B that A has none of an include of B's for A.
+- **A guard** is the path in capitals with `_`, after the prefix of the first guard scheme whose
+  root the path is under.
+
+**Rules.** A prefix rule puts its text before the name; with `trim` it first cuts that ending, with
+`case=upper` writes the name in capitals, and with `suffix` appends it. A wrap rule puts the name in
+a macro call; `spelled` is what that call expands to, for `--find`. `defaults root=` gives the rule
+a name of a kind of node takes when written plainly, for the headers under `root` - kinds are
+`macro`, `undef`, `typedef` (also `typedef=` of a record), `tag` and `value`. A description several
+headers share has to get the same defaults in all of them.
+
+Several headers may share one description (`abi=` the same file): duplicates across platforms are
+written once, under `cross/shared/` named after who shares them. Include cycles are allowed - they
+are the C kind, broken by guards; a cycle of blocks is refused.
+
+## A description
+
+```kdl
+cond assisted "CONFIG_COMPILER_ASSISTED_INTS && defined(__INT32_TYPE__)"
+typedef int32_t __INT32_TYPE__ if=@assisted          // typedef __INT32_TYPE__ __SPRT_ID(int32_t);
+macro INT32_WIDTH 32 if=@assisted                    // #define __SPRT_INT32_WIDTH 32
+typedef int32_t int if="!@assisted && @data_model"
+error "Compiler-assisted __INT32_MAX__ is not defined" if="@assisted && !defined(__INT32_MAX__)"
+error "Not implemented" raw=#true                    // #error Not implemented
+
+macro EPERM 1 public=#true
+macro ENOENT 2 public=#true
+public if="!defined(`EPERM`)"                        // #define EPERM __SPRT_EPERM, ...
+
+macro `NULL` __SPRT_NULL if="!defined(`NULL`)"
+macro (n)sockaddr "__SPRT_ID(sockaddr)" if="defined(__SPRT_BUILD)"
+struct (n)sockaddr { … }                             // struct __SPRT_SOCKADDR_NAME { … };
+
+macro WINAPI __stdcall if="defined(_WIN32)"          // (windows: macro=p)
+alias DECLARE_HANDLE params=name            // #define DECLARE_HANDLE(name) __SPRT_DECLARE_HANDLE(name)
+typedef FARPROC "int (*)(void)"             // typedef int (*FARPROC)(void);
+
+struct _OVERLAPPED typedef=OVERLAPPED also="*LPOVERLAPPED" {
+    field Internal ULONG_PTR
+    union {
+        struct { field Offset DWORD; field OffsetHigh DWORD; }
+        field Pointer PVOID
+    }
+}
+struct _CONTEXT typedef=CONTEXT attr="SPRT_ALIGNAS(16)" { … }
+struct _SHFILEOPSTRUCTW pack=1 pack-if="__SIZEOF_POINTER__ == 4" { … }
+struct tagMONITORINFOEXW typedef=MONITORINFOEXW base="public MONITORINFO" { … }
+struct IUnknown                             // a forward declaration
+
+enum _COINIT typedef=COINIT {
+    value COINIT_APARTMENTTHREADED 0x2
+    value COINIT_MULTITHREADED COINITBASE_MULTITHREADED
+}
+
+struct (n)stat { use "sprt/gen/c/bits/stat_data.h" }     // a block of fields
+use platform=polltypes.h                    // the platform fragment, after the names it uses
+use "sprt/gen/c/cross/linux_sprt/signal.h" {
+    macro SIG_DFL "((void (*)(int))0x1)"    // an override: #undef, then this #define
+}
+decl "SPRT_API __sprt_fenv_t *__sprt_arch_FE_DFL_ENV_fn()" extern-c=#true
+```
+
+| Node | Arguments | Properties |
+|---|---|---|
+| `cond` | name, expression | - (at the top, before what uses it; the profile may hold more) |
+| `macro` | name, body (optional) | `params` (`"a b"`; `""` is `()`), `public`, `if` |
+| `public` | - | `if`: where the public names of `public=#true` macros are written |
+| `alias` | the public name | `to` (the macro, default: the same name), `params`, `if` |
+| `undef` | name | `if` |
+| `typedef` | name, type | `if` |
+| `struct`, `union` | tag (optional) | `typedef`, `also` (more declarators), `if`, `ignore-warning`, `attr`, `attr-after`, `pack`, `pack-if`, `base` |
+| `enum` | tag (optional) | `typedef`, `also`, `if`, `attr`; `macro` and `base` (`typedef NS_ENUM(base, tag)`) |
+| `value` (in an enum) | name, value (optional) | `if` |
+| `field` | name, type | `bits`, `attr`, `if` |
+| nested `struct`, `union` | member name (optional) | `tag`, `attr`, `attr-after`, `if` |
+| `use` | a path, or `platform=`/`arch=` | `inline`, `if`; children are `macro` overrides |
+| `decl` | a declaration | `extern-c` (`#true` for the profile's macros, `"raw"` for `extern "C" {`), `if` |
+| `error` | the message | `raw` (written as it is, not in quotes), `if` |
+| `targets` | the list's name (`PLATFORM`) | `flag`, `suffix`, `error`; children `group`, `target` |
+| `group` (in `targets`) | name | `if`; children `target` |
+| `target` | name, number | `if`, `also` (more names), `dir`; children `macro` |
+
+**Named conditions.** `@name` in `if=` or `pack-if=` is the expression of `cond name` - of the
+description, else of the profile; a condition may use the ones before it. The generator puts it in
+parentheses only where C would read it otherwise: never as the whole condition or already in
+parentheses, between `&&` and `||` when it has `||` or `?` of its own, next to `!` or any other
+operator unless it is a name, a number or a call. So `!@assisted && @data_model` is
+`!(CONFIG_… && defined(…)) && (defined(__LLP64__) || …)`.
+
+**Public names.** A macro with `public=#true` (it needs a name rule) also gets its name without the
+rule: `#define EPERM __SPRT_EPERM`. They are written at the `public` node, in the order of the
+macros, under its condition, or last without one. `alias` is the same for one name at its own
+place.
+
+**Lists of targets.** `targets K` is a table - of platforms, of architectures - in the order the
+preprocessor tests it, and the generator writes it out:
+
+```kdl
+targets PLATFORM flag=SPRT_ suffix=_sprt error="Unknown platform" {
+    group APPLE if="defined(__APPLE__)" {
+        target ios 2 if=TARGET_OS_IPHONE { macro `SPRT_HAVE_DEDICATED_SIZE_T` 1 }
+        target macos 1 if="TARGET_OS_OSX || TARGET_OS_MAC"
+        target darwin_unknown 3 dir=darwin_sprt          // the #else of the group
+    }
+    target linux 6 if="defined(__linux__)"
+}
+targets ARCH suffix=_sprt error="Unknown arch" {
+    target aarch64 1 also=arm64 if="defined(__aarch64__) || defined(_M_ARM64)"
+}
+```
+
+For every target it defines `K_NAME_X` (the directory: `dir=`, or the name with `suffix`) and
+`K_ID_X` (the number), and the same for each name of `also=` pointing at them. Then comes the chain
+`#if … #elif … #else #error "error"` that, for the target selected, defines `K_NAME`, `K_ID`, with
+`flag` also `<flag>X`, and the target's macros; a group is a chain of its own inside one branch,
+ending with `<flag>G`. The `K_…` names take the default rule of `macro` (`__SPRT_PLATFORM_ID_LINUX`).
+A number is repeated nowhere; only the last target of a chain may have no `if=`. The list whose
+`K_NAME` the profile's `platform-include` names lists the platforms, the one only `arch-include`
+names the arches: every platform and arch of the map's `platforms {}` has to be a target of its list.
+The runtime's lists are `bits/__sprt_targets.kdl`, written to `sprt/gen/c/bits/__sprt_targets.h`,
+which `__sprt_def.h` includes.
+
+**Numbers.** A body or a value that is a KDL number is written as it was typed (`0x10`, `-1`). A
+number C reads otherwise - with `_`, or octal `0o` - is refused; `1U` and `0x10L` are not KDL
+numbers and stay strings.
+
+A type is a C type-id - the declaration with the name left out - and the generator puts the name
+where the declarator leaves room for it: `BYTE[8]` with `Data4` is `BYTE Data4[8]`, `const GUID &`
+with `REFIID` is `const GUID &REFIID`. A record without children is a forward declaration. A
+`macro` may stand inside a record, and a fragment's description may be a list of `field`s: the
+members a block puts into a record.
+
+`attr` goes after the `struct` keyword (or between a field's type and name), `attr-after` after
+the closing brace. `pack` wraps the record in `#pragma pack(push, N)` and `pop`, under `pack-if`
+when given. `ignore-warning` wraps it in `#pragma clang diagnostic push`, `ignored` and `pop`.
+
+A block written inline (`inline=#true`, or `--inline` for all) replaces its include with the
+fragment's includes and items; an override then replaces the macro of the same name. Only an
+unguarded fragment can be written inline: a guarded one would lose its guard's meaning.
+
+## The Apple `+open` overlay
+
+The hand-written headers of `runtime/toolchains/target-apple/open/sysroot` have a map of their own,
+`runtime/kdl/abi/apple-open.kdl`: no name rules, the guards `__SPRT_OPEN_ABI_…`, a header's path
+being the way it is included. Each `__sprt_abi/<Framework>/<name>.h` holds the ABI of the
+hand-written `<Framework>/<name>.h` and is written to the overlay's `include_libc`:
+
+    xlkdl abi --map runtime/kdl/abi/apple-open.kdl --out runtime/toolchains/target-apple/open/sysroot/include_libc
+
+An enum declared through a macro is `enum MTLPixelFormat macro=NS_ENUM base=NSUInteger { … }`,
+written `typedef NS_ENUM(NSUInteger, MTLPixelFormat) { … };`. The split was made by
+`utils/xlkdl/apple2kdl.py [--check]` from the overlay of `ffe9fede`: macros, typedefs, enums and
+records go to the ABI; Objective-C, functions, external variables, bracketing macros, block
+typedefs, what names the API's own types, records with C++ methods and pointers inside an
+`NS_ASSUME_NONNULL` region stay hand-written, as do the macros a header takes back with `#undef`
+(the parameters of an included list of prototypes). In a run of macros under `!defined(X)` the
+definition of X goes last, so that the others still see their condition.
+`tests/libc/kdl-abi/compare_apple.py [--self-test]` compiles every hand-written header for x86_64
+and arm64, as Objective-C, Objective-C++, C and C++, against the installed `+open` sysroot with the
+overlay before and after the split copied over it, and compares macros, declarations and layouts.
+
+## Finding a name
+
+    xlkdl abi --map runtime/kdl/abi/sprt.kdl --find NAME [--find NAME...]
+    xlkdl abi --map runtime/kdl/abi/sprt.kdl --index > index.json
+
+`--find` prints every definition of a name: its kind, how C spells it, `file:line:column`, the
+conditions of the node and of the records it stands in, and every header generated from it with
+its platform and arch and, for a fragment, the headers that put it in place. A name is matched as a
+description writes it and as C spells it - `EPERM`, `__SPRT_EPERM`, `pthread_mutex_t`,
+`__SPRT_ID(pthread_mutex_t)`, `__sprt_pthread_mutex_t`, `sockaddr`, `__SPRT_SOCKADDR_NAME`. The
+names external headers provide are found too. The exit code is the number of names not defined
+anywhere. `--index` writes the same for every definition as one JSON array.
+
+## Converting headers
+
+    utils/xlkdl/c2kdl.py [--src DIR | --rev REV] [--out runtime/kdl/abi] [--check] [--report FILE]
+
+reads the header sets of `GENERATED` from an include root - `--src`, or `runtime/include` of the
+git revision `--rev`, by default `ffe9fede`, the last one with the hand-written headers - writes a
+description per header and the map parts, in the syntax above (defaults, numbers, `public`, named
+conditions for the `#if` expressions a file repeats, `like=`, `cross/shared`), and reports the external headers, the names left as written because the map does not show them
+visible (a header using what it does not include), and what an override dropped. What it cannot
+represent it does not guess: it stops with `file:line`. The decisions a header needed beyond the
+rules of the language are its tables: `EXTERNAL`, `IN_PLACE`, `OVERRIDES`, `MEMBER_FRAGMENTS`, and
+`ARCH_SPLITS` - a block of a header under an architecture's condition that becomes a fragment of
+that architecture (`windows/x86_64_sprt/context.kdl`), put in place by `use … if=`. A member of a
+record is written without the condition of its record.
+
+## Proving a description
+
+    tests/libc/kdl-abi/compare.py [--originals DIR | --rev REV] [--set windows|libc] [--inline] [--self-test]
+
+generates every header into a temporary include root and, for each configuration of a set, compiles
+one unit including all its headers twice: by their old paths against `runtime/include` of the
+revision with the hand-written headers (`--rev`, by default `ffe9fede`, or `--originals`), and by
+their `sprt/gen` paths against the overlay before the working tree's `runtime/include`. It also
+checks that `runtime/include/sprt/gen` holds exactly what the descriptions generate.
+
+- **windows:** x86_64 and aarch64 MSVC, x86_64 Linux; C and C++; with and without `UNICODE`;
+  `_M_ARM64EC` on aarch64.
+- **libc:** linux (x86_64, aarch64, riscv64, loongarch64, e2k and e2k32 by their predefines),
+  android, macOS, iOS, wasm32/64, windows, embox, embox_user and nuttx - against the stubs of
+  `tests/libc/kdl-abi/stubs`; C and C++; with and without `__SPRT_BUILD`.
+
+It compares the macros (`-E -dM`, token by token), the declarations (`-ast-dump=json` without ids,
+positions, tag ownership and doc comments; `extern "C"` blocks spread into their declarations) and
+the record layouts. When a unit differs it compiles each header on its own to name it; headers no
+configuration reaches are compiled on their own. `--self-test` breaks the overlay and the
+descriptions on purpose and passes only when every break is caught.

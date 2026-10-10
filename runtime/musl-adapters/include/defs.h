@@ -1,7 +1,7 @@
 #ifndef RUNTIME_MUSL_ADAPTERS_INCLUDE_DEFS_H_
 #define RUNTIME_MUSL_ADAPTERS_INCLUDE_DEFS_H_
 
-#include <sprt/c/bits/__sprt_uint32_t.h>
+#include <sprt/gen/c/bits/__sprt_uint32_t.h>
 #include <sprt/c/__sprt_math.h>
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_locale.h>

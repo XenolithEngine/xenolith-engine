@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS_WINERROR_H_
 
 #include <sprt/wrappers/windows/basic_types.h>
-#include <sprt/wrappers/windows/abi/winerror.h>
+#include <sprt/gen/wrappers/windows/abi/winerror.h>
 #include <sprt/wrappers/windows/__sprt_winsock.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/winerror.h) */

@@ -5,7 +5,7 @@
 // ARCH-SPECIFIC: CONTEXT / RUNTIME_FUNCTION / DISPATCHER_CONTEXT layouts differ
 // between x86_64 and aarch64, so their asserts are guarded with _M_X64 / _M_ARM64.
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/context_api.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/context_api.h>
 #include "abi_check.h"
 
 #include <windows.h>   // CONTEXT, NT_TIB, EXCEPTION_RECORD/POINTERS, UNWIND_HISTORY_TABLE, IMAGE_FILE_*, UNW_FLAG_*

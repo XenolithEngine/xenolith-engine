@@ -26,7 +26,7 @@
 #include "SPEventFd.h"
 #include "../../detail/SPRuntimeDispatchHandleClass.h"
 
-#include <sprt/c/cross/__sprt_syscall.h>
+#include <sprt/gen/c/cross/__sprt_syscall.h>
 
 #ifdef __SPRT_SYSCALL_inotify_init1
 

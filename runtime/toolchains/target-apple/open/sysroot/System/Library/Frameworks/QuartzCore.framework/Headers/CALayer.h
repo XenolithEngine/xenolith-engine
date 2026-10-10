@@ -8,21 +8,10 @@ layer uses. Symbols resolve from the baked QuartzCore.tbd.
 
 #ifndef __SPRT_OPEN_CALAYER_H_
 #define __SPRT_OPEN_CALAYER_H_
+#include <__sprt_abi/QuartzCore/CALayer.h>
 
 #import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>
-
-typedef double CFTimeInterval;
-
-typedef NS_OPTIONS(unsigned int, CAAutoresizingMask) {
-	kCALayerNotSizable   = 0,
-	kCALayerMinXMargin   = (1U << 0),
-	kCALayerWidthSizable = (1U << 1),
-	kCALayerMaxXMargin   = (1U << 2),
-	kCALayerMinYMargin   = (1U << 3),
-	kCALayerHeightSizable = (1U << 4),
-	kCALayerMaxYMargin   = (1U << 5),
-};
 
 @class CALayer;
 
@@ -31,9 +20,6 @@ typedef NS_OPTIONS(unsigned int, CAAutoresizingMask) {
 - (void)displayLayer:(CALayer *)layer;
 - (void)layoutSublayersOfLayer:(CALayer *)layer;
 @end
-
-/* contentsGravity: an NSString-typed alias + the standard gravity constants MoltenVK maps. */
-typedef NSString *CALayerContentsGravity;
 extern CALayerContentsGravity const kCAGravityCenter;
 extern CALayerContentsGravity const kCAGravityTop;
 extern CALayerContentsGravity const kCAGravityBottom;
@@ -45,9 +31,6 @@ extern CALayerContentsGravity const kCAGravityBottomLeft;
 extern CALayerContentsGravity const kCAGravityBottomRight;
 extern CALayerContentsGravity const kCAGravityResize;
 extern CALayerContentsGravity const kCAGravityResizeAspect;
-
-/* min/magnificationFilter: NSString-typed alias + the filter constants MoltenVK maps. */
-typedef NSString *CALayerContentsFilter;
 extern CALayerContentsFilter const kCAFilterNearest;
 extern CALayerContentsFilter const kCAFilterLinear;
 extern CALayerContentsFilter const kCAFilterTrilinear;

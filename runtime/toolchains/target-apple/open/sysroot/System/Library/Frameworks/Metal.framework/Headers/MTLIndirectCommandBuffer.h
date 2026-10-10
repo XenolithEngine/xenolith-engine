@@ -7,24 +7,9 @@
 #import <Metal/MTLTypes.h>
 #import <Metal/MTLResource.h>
 #import <Metal/MTLIndirectCommandEncoder.h>
+#include <__sprt_abi/Metal/MTLIndirectCommandBuffer.h>
 
 NS_ASSUME_NONNULL_BEGIN
-
-typedef NS_OPTIONS(NSUInteger, MTLIndirectCommandType) {
-    MTLIndirectCommandTypeDraw                      = (1 << 0),
-    MTLIndirectCommandTypeDrawIndexed               = (1 << 1),
-    MTLIndirectCommandTypeDrawPatches               = (1 << 2),
-    MTLIndirectCommandTypeDrawIndexedPatches        = (1 << 3),
-    MTLIndirectCommandTypeConcurrentDispatch        = (1 << 5),
-    MTLIndirectCommandTypeConcurrentDispatchThreads = (1 << 6),
-    MTLIndirectCommandTypeDrawMeshThreadgroups      = (1 << 7),
-    MTLIndirectCommandTypeDrawMeshThreads           = (1 << 8),
-};
-
-typedef struct {
-    uint32_t location;
-    uint32_t length;
-} MTLIndirectCommandBufferExecutionRange;
 
 static inline MTLIndirectCommandBufferExecutionRange MTLIndirectCommandBufferExecutionRangeMake(uint32_t location, uint32_t length) {
     MTLIndirectCommandBufferExecutionRange icbRange = {location, length};

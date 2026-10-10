@@ -23,14 +23,14 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C___SPRT_WCHAR_H_
 #define CORE_RUNTIME_INCLUDE_C___SPRT_WCHAR_H_
 
-#include <sprt/c/bits/__sprt_wchar_t.h>
-#include <sprt/c/bits/__sprt_time_t.h>
-#include <sprt/c/bits/__sprt_wint_t.h>
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_va_list.h>
-#include <sprt/c/cross/__sprt_mbstate.h>
-#include <sprt/c/cross/__sprt_file_ptr.h>
-#include <sprt/c/cross/__sprt_locale.h>
+#include <sprt/gen/c/bits/__sprt_wchar_t.h>
+#include <sprt/gen/c/bits/__sprt_time_t.h>
+#include <sprt/gen/c/bits/__sprt_wint_t.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_va_list.h>
+#include <sprt/gen/c/cross/__sprt_mbstate.h>
+#include <sprt/gen/c/cross/__sprt_file_ptr.h>
+#include <sprt/gen/c/cross/__sprt_locale.h>
 
 __SPRT_BEGIN_DECL
 

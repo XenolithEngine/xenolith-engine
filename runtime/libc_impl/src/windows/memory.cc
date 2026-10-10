@@ -1,7 +1,7 @@
 // Unlicense
 // Original source from: https://github.com/skeeto/w64devkit
 
-#include <sprt/c/bits/__sprt_uintptr_t.h>
+#include <sprt/gen/c/bits/__sprt_uintptr_t.h>
 #include <sprt/c/bits/__sprt_def.h>
 
 // This source code is preserved for potential future use.

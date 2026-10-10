@@ -1,0 +1,33 @@
+// MTLSamplePosition
+struct typedef=MTLClearColor {
+    field red double
+    field green double
+    field blue double
+    field alpha double
+}
+enum MTLLoadAction macro=NS_ENUM base=NSUInteger {
+    value MTLLoadActionDontCare 0
+    value MTLLoadActionLoad 1
+    value MTLLoadActionClear 2
+}
+enum MTLStoreAction macro=NS_ENUM base=NSUInteger {
+    value MTLStoreActionDontCare 0
+    value MTLStoreActionStore 1
+    value MTLStoreActionMultisampleResolve 2
+    value MTLStoreActionStoreAndMultisampleResolve 3
+    value MTLStoreActionUnknown 4
+    value MTLStoreActionCustomSampleDepthStore 5
+}
+enum MTLStoreActionOptions macro=NS_OPTIONS base=NSUInteger {
+    value MTLStoreActionOptionNone 0
+    value MTLStoreActionOptionCustomSamplePositions "1 << 0"
+}
+enum MTLMultisampleDepthResolveFilter macro=NS_ENUM base=NSUInteger {
+    value MTLMultisampleDepthResolveFilterSample0 0
+    value MTLMultisampleDepthResolveFilterMin 1
+    value MTLMultisampleDepthResolveFilterMax 2
+}
+enum MTLMultisampleStencilResolveFilter macro=NS_ENUM base=NSUInteger {
+    value MTLMultisampleStencilResolveFilterSample0 0
+    value MTLMultisampleStencilResolveFilterDepthResolvedSample 1
+}

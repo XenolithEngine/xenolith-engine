@@ -27,7 +27,7 @@ THE SOFTWARE.
 
 // FNM_* are defined per-platform to be ABI-compatible with the native <fnmatch.h>
 // (SPRuntimeCRegex.cpp static_asserts them against the system header).
-#include <sprt/c/cross/__sprt_fnmtypes.h>
+#include <sprt/gen/c/cross/__sprt_fnmtypes.h>
 
 __SPRT_BEGIN_DECL
 

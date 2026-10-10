@@ -1,0 +1,6 @@
+macro MAP_ANON 0x20
+macro MAP_ANONYMOUS MAP_ANON
+macro MAP_NORESERVE 0x4000
+macro MS_ASYNC 1
+macro MS_SYNC 4
+macro MADV_FREE 8

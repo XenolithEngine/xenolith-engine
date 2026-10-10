@@ -23,7 +23,7 @@
 //
 // Usage (see check-errno.cpp):
 //     #include <errno.h>                                  // SYSTEM headers first
-//     #define SPRT_ABI_HEADER <sprt/c/cross/__sprt_errno.h>
+//     #define SPRT_ABI_HEADER <sprt/gen/c/cross/__sprt_errno.h>
 //     #include "abi_check.h"
 //     SPRT_CONST(EAGAIN);
 //     SPRT_SIZE(__sprt_sockaddr, sockaddr);
@@ -65,7 +65,7 @@
 #define SPRT_ABI_CHECK_H_
 
 #ifndef SPRT_ABI_HEADER
-#error "define SPRT_ABI_HEADER (e.g. <sprt/c/cross/__sprt_errno.h>) before including abi_check.h"
+#error "define SPRT_ABI_HEADER (e.g. <sprt/gen/c/cross/__sprt_errno.h>) before including abi_check.h"
 #endif
 
 namespace sprt_abi {

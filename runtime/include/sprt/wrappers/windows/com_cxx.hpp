@@ -26,7 +26,7 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/com_api.h>
 // SIGDN / FILEOPENDIALOGOPTIONS / COMDLG_FILTERSPEC: the value tables IFileDialog's methods are
 // spelled in terms of. They are ABI, so they live under abi/ and are pinned against the SDK there.
-#include <sprt/wrappers/windows/abi/shlobj.h>
+#include <sprt/gen/wrappers/windows/abi/shlobj.h>
 
 #ifdef __cplusplus
 

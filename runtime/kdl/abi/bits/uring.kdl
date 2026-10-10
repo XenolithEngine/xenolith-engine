@@ -1,0 +1,752 @@
+// SPDX-License-Identifier: MIT
+// Header file for the io_uring interface.
+//
+// Copyright (C) 2019 Jens Axboe
+// Copyright (C) 2019 Christoph Hellwig
+//
+// Extracted from linux headers and adopted for SPRT
+typedef `_ring_s8` int8_t
+typedef `_ring_u8` uint8_t
+typedef `_ring_s16` int16_t
+typedef `_ring_u16` uint16_t
+typedef `_ring_s32` int32_t
+typedef `_ring_u32` uint32_t
+typedef `_ring_s64` int64_t
+typedef `_ring_u64` uint64_t
+typedef `__kernel_rwf_t` int
+// IO submission data structure (Submission Queue Entry)
+//
+struct io_uring_sqe {
+    field opcode _ring_u8
+    field flags _ring_u8
+    field ioprio _ring_u16
+    field fd _ring_s32
+    union {
+        field off _ring_u64
+        field addr2 _ring_u64
+        struct {
+            field cmd_op _ring_u32
+            field __pad1 _ring_u32
+        }
+    }
+    // offset into file
+    union {
+        field addr _ring_u64
+        field splice_off_in _ring_u64
+        struct {
+            field level _ring_u32
+            field optname _ring_u32
+        }
+    }
+    // pointer to buffer or iovecs
+    field len _ring_u32
+    union {
+        field rw_flags __kernel_rwf_t
+        field fsync_flags _ring_u32
+        field poll_events _ring_u16
+        field poll32_events _ring_u32
+        field sync_range_flags _ring_u32
+        field msg_flags _ring_u32
+        field timeout_flags _ring_u32
+        field accept_flags _ring_u32
+        field cancel_flags _ring_u32
+        field open_flags _ring_u32
+        field statx_flags _ring_u32
+        field fadvise_advice _ring_u32
+        field splice_flags _ring_u32
+        field rename_flags _ring_u32
+        field unlink_flags _ring_u32
+        field hardlink_flags _ring_u32
+        field xattr_flags _ring_u32
+        field msg_ring_flags _ring_u32
+        field uring_cmd_flags _ring_u32
+        field waitid_flags _ring_u32
+        field futex_flags _ring_u32
+        field install_fd_flags _ring_u32
+        field nop_flags _ring_u32
+    }
+    // compatibility
+    // word-reversed for BE
+    field user_data _ring_u64
+    // pack this to avoid bogus arm OABI complaints
+    union attr-after="__attribute__((packed))" {
+        // index into fixed buffers, if used
+        field buf_index _ring_u16
+        // for grouped buffer selection
+        field buf_group _ring_u16
+    }
+    // index into fixed buffers, if used
+    // for grouped buffer selection
+    // personality to use, if used
+    field personality _ring_u16
+    union {
+        field splice_fd_in _ring_s32
+        field file_index _ring_u32
+        field optlen _ring_u32
+        struct {
+            field addr_len _ring_u16
+            field __pad3 "_ring_u16 [1]"
+        }
+    }
+    union {
+        struct {
+            field addr3 _ring_u64
+            field __pad2 "_ring_u64 [1]"
+        }
+        struct {
+            field attr_ptr _ring_u64
+            field attr_type_mask _ring_u64
+        }
+        // pointer to attribute information
+        // bit mask of attributes
+        field optval _ring_u64
+        // If the ring is initialized with IORING_SETUP_SQE128, then
+        // this field is used for 80 bytes of arbitrary command data
+        //
+        field cmd "_ring_u8 [0]"
+    }
+}
+// sqe->attr_type_mask flags
+macro `IORING_RW_ATTR_FLAG_PI` "(1U << 0)"
+// PI attribute information
+struct io_uring_attr_pi {
+    field flags _ring_u16
+    field app_tag _ring_u16
+    field len _ring_u32
+    field addr _ring_u64
+    field seed _ring_u64
+    field rsvd _ring_u64
+}
+// If sqe->file_index is set to this for opcodes that instantiate a new
+// direct descriptor (like openat/openat2/accept), then io_uring will allocate
+// an available direct descriptor instead of having the application pass one
+// in. The picked direct descriptor will be returned in cqe->res, or -ENFILE
+// if the space is full.
+//
+macro `IORING_FILE_INDEX_ALLOC` "(~0U)"
+enum io_uring_sqe_flags_bit {
+    value IOSQE_FIXED_FILE_BIT
+    value IOSQE_IO_DRAIN_BIT
+    value IOSQE_IO_LINK_BIT
+    value IOSQE_IO_HARDLINK_BIT
+    value IOSQE_ASYNC_BIT
+    value IOSQE_BUFFER_SELECT_BIT
+    value IOSQE_CQE_SKIP_SUCCESS_BIT
+}
+// sqe->flags
+//
+// use fixed fileset
+macro `IOSQE_FIXED_FILE` "(1U << IOSQE_FIXED_FILE_BIT)"
+// issue after inflight IO
+macro `IOSQE_IO_DRAIN` "(1U << IOSQE_IO_DRAIN_BIT)"
+// links next sqe
+macro `IOSQE_IO_LINK` "(1U << IOSQE_IO_LINK_BIT)"
+// like LINK, but stronger
+macro `IOSQE_IO_HARDLINK` "(1U << IOSQE_IO_HARDLINK_BIT)"
+// always go async
+macro `IOSQE_ASYNC` "(1U << IOSQE_ASYNC_BIT)"
+// select buffer from sqe->buf_group
+macro `IOSQE_BUFFER_SELECT` "(1U << IOSQE_BUFFER_SELECT_BIT)"
+// don't post CQE if request succeeded
+macro `IOSQE_CQE_SKIP_SUCCESS` "(1U << IOSQE_CQE_SKIP_SUCCESS_BIT)"
+// io_uring_setup() flags
+//
+macro `IORING_SETUP_IOPOLL` "(1U << 0)"
+macro `IORING_SETUP_SQPOLL` "(1U << 1)"
+macro `IORING_SETUP_SQ_AFF` "(1U << 2)"
+macro `IORING_SETUP_CQSIZE` "(1U << 3)"
+macro `IORING_SETUP_CLAMP` "(1U << 4)"
+macro `IORING_SETUP_ATTACH_WQ` "(1U << 5)"
+macro `IORING_SETUP_R_DISABLED` "(1U << 6)"
+macro `IORING_SETUP_SUBMIT_ALL` "(1U << 7)"
+// Cooperative task running. When requests complete, they often require
+// forcing the submitter to transition to the kernel to complete. If this
+// flag is set, work will be done when the task transitions anyway, rather
+// than force an inter-processor interrupt reschedule. This avoids interrupting
+// a task running in userspace, and saves an IPI.
+//
+macro `IORING_SETUP_COOP_TASKRUN` "(1U << 8)"
+// If COOP_TASKRUN is set, get notified if task work is available for
+// running and a kernel transition would be needed to run it. This sets
+// IORING_SQ_TASKRUN in the sq ring flags. Not valid with COOP_TASKRUN.
+//
+macro `IORING_SETUP_TASKRUN_FLAG` "(1U << 9)"
+macro `IORING_SETUP_SQE128` "(1U << 10)"
+macro `IORING_SETUP_CQE32` "(1U << 11)"
+// Only one task is allowed to submit requests
+//
+macro `IORING_SETUP_SINGLE_ISSUER` "(1U << 12)"
+// Defer running task work to get events.
+// Rather than running bits of task work whenever the task transitions
+// try to do it just before it is needed.
+//
+macro `IORING_SETUP_DEFER_TASKRUN` "(1U << 13)"
+// Application provides the memory for the rings
+//
+macro `IORING_SETUP_NO_MMAP` "(1U << 14)"
+// Register the ring fd in itself for use with
+// IORING_REGISTER_USE_REGISTERED_RING; return a registered fd index rather
+// than an fd.
+//
+macro `IORING_SETUP_REGISTERED_FD_ONLY` "(1U << 15)"
+// Removes indirection through the SQ index array.
+//
+macro `IORING_SETUP_NO_SQARRAY` "(1U << 16)"
+// Use hybrid poll in iopoll process
+macro `IORING_SETUP_HYBRID_IOPOLL` "(1U << 17)"
+enum io_uring_op {
+    value IORING_OP_NOP
+    value IORING_OP_READV
+    value IORING_OP_WRITEV
+    value IORING_OP_FSYNC
+    value IORING_OP_READ_FIXED
+    value IORING_OP_WRITE_FIXED
+    value IORING_OP_POLL_ADD
+    value IORING_OP_POLL_REMOVE
+    value IORING_OP_SYNC_FILE_RANGE
+    value IORING_OP_SENDMSG
+    value IORING_OP_RECVMSG
+    value IORING_OP_TIMEOUT
+    value IORING_OP_TIMEOUT_REMOVE
+    value IORING_OP_ACCEPT
+    value IORING_OP_ASYNC_CANCEL
+    value IORING_OP_LINK_TIMEOUT
+    value IORING_OP_CONNECT
+    value IORING_OP_FALLOCATE
+    value IORING_OP_OPENAT
+    value IORING_OP_CLOSE
+    value IORING_OP_FILES_UPDATE
+    value IORING_OP_STATX
+    value IORING_OP_READ
+    value IORING_OP_WRITE
+    value IORING_OP_FADVISE
+    value IORING_OP_MADVISE
+    value IORING_OP_SEND
+    value IORING_OP_RECV
+    value IORING_OP_OPENAT2
+    value IORING_OP_EPOLL_CTL
+    value IORING_OP_SPLICE
+    value IORING_OP_PROVIDE_BUFFERS
+    value IORING_OP_REMOVE_BUFFERS
+    value IORING_OP_TEE
+    value IORING_OP_SHUTDOWN
+    value IORING_OP_RENAMEAT
+    value IORING_OP_UNLINKAT
+    value IORING_OP_MKDIRAT
+    value IORING_OP_SYMLINKAT
+    value IORING_OP_LINKAT
+    value IORING_OP_MSG_RING
+    value IORING_OP_FSETXATTR
+    value IORING_OP_SETXATTR
+    value IORING_OP_FGETXATTR
+    value IORING_OP_GETXATTR
+    value IORING_OP_SOCKET
+    value IORING_OP_URING_CMD
+    value IORING_OP_SEND_ZC
+    value IORING_OP_SENDMSG_ZC
+    value IORING_OP_READ_MULTISHOT
+    value IORING_OP_WAITID
+    value IORING_OP_FUTEX_WAIT
+    value IORING_OP_FUTEX_WAKE
+    value IORING_OP_FUTEX_WAITV
+    value IORING_OP_FIXED_FD_INSTALL
+    value IORING_OP_FTRUNCATE
+    value IORING_OP_BIND
+    value IORING_OP_LISTEN
+    // this goes last, obviously
+    value IORING_OP_LAST
+}
+// sqe->uring_cmd_flags		top 8bits aren't available for userspace
+// IORING_URING_CMD_FIXED	use registered buffer; pass this flag
+// 			along with setting sqe->buf_index.
+//
+macro `IORING_URING_CMD_FIXED` "(1U << 0)"
+macro `IORING_URING_CMD_MASK` IORING_URING_CMD_FIXED
+// sqe->fsync_flags
+//
+macro `IORING_FSYNC_DATASYNC` "(1U << 0)"
+// sqe->timeout_flags
+//
+macro `IORING_TIMEOUT_ABS` "(1U << 0)"
+macro `IORING_TIMEOUT_UPDATE` "(1U << 1)"
+macro `IORING_TIMEOUT_BOOTTIME` "(1U << 2)"
+macro `IORING_TIMEOUT_REALTIME` "(1U << 3)"
+macro `IORING_LINK_TIMEOUT_UPDATE` "(1U << 4)"
+macro `IORING_TIMEOUT_ETIME_SUCCESS` "(1U << 5)"
+macro `IORING_TIMEOUT_MULTISHOT` "(1U << 6)"
+macro `IORING_TIMEOUT_CLOCK_MASK` "(IORING_TIMEOUT_BOOTTIME | IORING_TIMEOUT_REALTIME)"
+macro `IORING_TIMEOUT_UPDATE_MASK` "(IORING_TIMEOUT_UPDATE | IORING_LINK_TIMEOUT_UPDATE)"
+// sqe->splice_flags
+// extends splice(2) flags
+//
+macro `SPLICE_F_FD_IN_FIXED` "(1U << 31)"
+// POLL_ADD flags. Note that since sqe->poll_events is the flag space, the
+// command flags for POLL_ADD are stored in sqe->len.
+//
+// IORING_POLL_ADD_MULTI	Multishot poll. Sets IORING_CQE_F_MORE if
+// 			the poll handler will continue to report
+// 			CQEs on behalf of the same SQE.
+//
+// IORING_POLL_UPDATE		Update existing poll request, matching
+// 			sqe->addr as the old user_data field.
+//
+// IORING_POLL_LEVEL		Level triggered poll.
+//
+macro `IORING_POLL_ADD_MULTI` "(1U << 0)"
+macro `IORING_POLL_UPDATE_EVENTS` "(1U << 1)"
+macro `IORING_POLL_UPDATE_USER_DATA` "(1U << 2)"
+macro `IORING_POLL_ADD_LEVEL` "(1U << 3)"
+// ASYNC_CANCEL flags.
+//
+// IORING_ASYNC_CANCEL_ALL	Cancel all requests that match the given key
+// IORING_ASYNC_CANCEL_FD	Key off 'fd' for cancelation rather than the
+// 			request 'user_data'
+// IORING_ASYNC_CANCEL_ANY	Match any request
+// IORING_ASYNC_CANCEL_FD_FIXED	'fd' passed in is a fixed descriptor
+// IORING_ASYNC_CANCEL_USERDATA	Match on user_data, default for no other key
+// IORING_ASYNC_CANCEL_OP	Match request based on opcode
+//
+macro `IORING_ASYNC_CANCEL_ALL` "(1U << 0)"
+macro `IORING_ASYNC_CANCEL_FD` "(1U << 1)"
+macro `IORING_ASYNC_CANCEL_ANY` "(1U << 2)"
+macro `IORING_ASYNC_CANCEL_FD_FIXED` "(1U << 3)"
+macro `IORING_ASYNC_CANCEL_USERDATA` "(1U << 4)"
+macro `IORING_ASYNC_CANCEL_OP` "(1U << 5)"
+// send/sendmsg and recv/recvmsg flags (sqe->ioprio)
+//
+// IORING_RECVSEND_POLL_FIRST	If set, instead of first attempting to send
+// 			or receive and arm poll if that yields an
+// 			-EAGAIN result, arm poll upfront and skip
+// 			the initial transfer attempt.
+//
+// IORING_RECV_MULTISHOT	Multishot recv. Sets IORING_CQE_F_MORE if
+// 			the handler will continue to report
+// 			CQEs on behalf of the same SQE.
+//
+// IORING_RECVSEND_FIXED_BUF	Use registered buffers, the index is stored in
+// 			the buf_index field.
+//
+// IORING_SEND_ZC_REPORT_USAGE
+// 			If set, SEND[MSG]_ZC should report
+// 			the zerocopy usage in cqe.res
+// 			for the IORING_CQE_F_NOTIF cqe.
+// 			0 is reported if zerocopy was actually possible.
+// 			IORING_NOTIF_USAGE_ZC_COPIED if data was copied
+// 			(at least partially).
+//
+// IORING_RECVSEND_BUNDLE	Used with IOSQE_BUFFER_SELECT. If set, send or
+// 			recv will grab as many buffers from the buffer
+// 			group ID given and send them all. The completion
+// 			result 	will be the number of buffers send, with
+// 			the starting buffer ID in cqe->flags as per
+// 			usual for provided buffer usage. The buffers
+// 			will be	contiguous from the starting buffer ID.
+//
+macro `IORING_RECVSEND_POLL_FIRST` "(1U << 0)"
+macro `IORING_RECV_MULTISHOT` "(1U << 1)"
+macro `IORING_RECVSEND_FIXED_BUF` "(1U << 2)"
+macro `IORING_SEND_ZC_REPORT_USAGE` "(1U << 3)"
+macro `IORING_RECVSEND_BUNDLE` "(1U << 4)"
+// cqe.res for IORING_CQE_F_NOTIF if
+// IORING_SEND_ZC_REPORT_USAGE was requested
+//
+// It should be treated as a flag, all other
+// bits of cqe.res should be treated as reserved!
+//
+macro `IORING_NOTIF_USAGE_ZC_COPIED` "(1U << 31)"
+// accept flags stored in sqe->ioprio
+//
+macro `IORING_ACCEPT_MULTISHOT` "(1U << 0)"
+macro `IORING_ACCEPT_DONTWAIT` "(1U << 1)"
+macro `IORING_ACCEPT_POLL_FIRST` "(1U << 2)"
+// IORING_OP_MSG_RING command types, stored in sqe->addr
+//
+enum io_uring_msg_ring_flags {
+    value IORING_MSG_DATA
+    value IORING_MSG_SEND_FD
+}
+// IORING_OP_MSG_RING flags (sqe->msg_ring_flags)
+//
+// IORING_MSG_RING_CQE_SKIP	Don't post a CQE to the target ring. Not
+// 			applicable for IORING_MSG_DATA, obviously.
+//
+macro `IORING_MSG_RING_CQE_SKIP` "(1U << 0)"
+// Pass through the flags from sqe->file_index to cqe->flags
+macro `IORING_MSG_RING_FLAGS_PASS` "(1U << 1)"
+// IORING_OP_FIXED_FD_INSTALL flags (sqe->install_fd_flags)
+//
+// IORING_FIXED_FD_NO_CLOEXEC	Don't mark the fd as O_CLOEXEC
+//
+macro `IORING_FIXED_FD_NO_CLOEXEC` "(1U << 0)"
+// IORING_OP_NOP flags (sqe->nop_flags)
+//
+// IORING_NOP_INJECT_RESULT	Inject result from sqe->result
+//
+macro `IORING_NOP_INJECT_RESULT` "(1U << 0)"
+macro `IORING_NOP_FILE` "(1U << 1)"
+macro `IORING_NOP_FIXED_FILE` "(1U << 2)"
+macro `IORING_NOP_FIXED_BUFFER` "(1U << 3)"
+// IO completion data structure (Completion Queue Entry)
+//
+struct io_uring_cqe {
+    field user_data _ring_u64
+    field res _ring_s32
+    field flags _ring_u32
+    // If the ring is initialized with IORING_SETUP_CQE32, then this field
+    // contains 16-bytes of padding, doubling the size of the CQE.
+    //
+    field big_cqe "_ring_u64 []"
+}
+// cqe->flags
+//
+// IORING_CQE_F_BUFFER	If set, the upper 16 bits are the buffer ID
+// IORING_CQE_F_MORE	If set, parent SQE will generate more CQE entries
+// IORING_CQE_F_SOCK_NONEMPTY	If set, more data to read after socket recv
+// IORING_CQE_F_NOTIF	Set for notification CQEs. Can be used to distinct
+// 			them from sends.
+// IORING_CQE_F_BUF_MORE If set, the buffer ID set in the completion will get
+// 		more completions. In other words, the buffer is being
+// 		partially consumed, and will be used by the kernel for
+// 		more completions. This is only set for buffers used via
+// 		the incremental buffer consumption, as provided by
+// 		a ring buffer setup with IOU_PBUF_RING_INC. For any
+// 		other provided buffer type, all completions with a
+// 		buffer passed back is automatically returned to the
+// 		application.
+//
+macro `IORING_CQE_F_BUFFER` "(1U << 0)"
+macro `IORING_CQE_F_MORE` "(1U << 1)"
+macro `IORING_CQE_F_SOCK_NONEMPTY` "(1U << 2)"
+macro `IORING_CQE_F_NOTIF` "(1U << 3)"
+macro `IORING_CQE_F_BUF_MORE` "(1U << 4)"
+macro `IORING_CQE_BUFFER_SHIFT` 16
+// Magic offsets for the application to mmap the data it needs
+//
+macro `IORING_OFF_SQ_RING` "0ULL"
+macro `IORING_OFF_CQ_RING` "0x800'0000ULL"
+macro `IORING_OFF_SQES` "0x1000'0000ULL"
+macro `IORING_OFF_PBUF_RING` "0x8000'0000ULL"
+macro `IORING_OFF_PBUF_SHIFT` 16
+macro `IORING_OFF_MMAP_MASK` "0xf800'0000ULL"
+struct io_sqring_offsets {
+    field head _ring_u32
+    field tail _ring_u32
+    field ring_mask _ring_u32
+    field ring_entries _ring_u32
+    field flags _ring_u32
+    field dropped _ring_u32
+    field array _ring_u32
+    field resv1 _ring_u32
+    field user_addr _ring_u64
+}
+// needs io_uring_enter wakeup
+// CQ ring is overflown
+// task should enter the kernel
+macro `IORING_SQ_NEED_WAKEUP` "(1U << 0)"
+macro `IORING_SQ_CQ_OVERFLOW` "(1U << 1)"
+macro `IORING_SQ_TASKRUN` "(1U << 2)"
+struct io_cqring_offsets {
+    field head _ring_u32
+    field tail _ring_u32
+    field ring_mask _ring_u32
+    field ring_entries _ring_u32
+    field overflow _ring_u32
+    field cqes _ring_u32
+    field flags _ring_u32
+    field resv1 _ring_u32
+    field user_addr _ring_u64
+}
+// disable eventfd notifications
+// io_uring_enter(2) flags
+//
+macro `IORING_CQ_EVENTFD_DISABLED` "(1U << 0)"
+macro `IORING_ENTER_GETEVENTS` "(1U << 0)"
+macro `IORING_ENTER_SQ_WAKEUP` "(1U << 1)"
+macro `IORING_ENTER_SQ_WAIT` "(1U << 2)"
+macro `IORING_ENTER_EXT_ARG` "(1U << 3)"
+macro `IORING_ENTER_REGISTERED_RING` "(1U << 4)"
+macro `IORING_ENTER_ABS_TIMER` "(1U << 5)"
+macro `IORING_ENTER_EXT_ARG_REG` "(1U << 6)"
+struct io_uring_params {
+    field sq_entries _ring_u32
+    field cq_entries _ring_u32
+    field flags _ring_u32
+    field sq_thread_cpu _ring_u32
+    field sq_thread_idle _ring_u32
+    field features _ring_u32
+    field wq_fd _ring_u32
+    field resv "_ring_u32 [3]"
+    field sq_off "struct io_sqring_offsets"
+    field cq_off "struct io_cqring_offsets"
+}
+macro `IORING_FEAT_SINGLE_MMAP` "(1U << 0)"
+macro `IORING_FEAT_NODROP` "(1U << 1)"
+macro `IORING_FEAT_SUBMIT_STABLE` "(1U << 2)"
+macro `IORING_FEAT_RW_CUR_POS` "(1U << 3)"
+macro `IORING_FEAT_CUR_PERSONALITY` "(1U << 4)"
+macro `IORING_FEAT_FAST_POLL` "(1U << 5)"
+macro `IORING_FEAT_POLL_32BITS` "(1U << 6)"
+macro `IORING_FEAT_SQPOLL_NONFIXED` "(1U << 7)"
+macro `IORING_FEAT_EXT_ARG` "(1U << 8)"
+macro `IORING_FEAT_NATIVE_WORKERS` "(1U << 9)"
+macro `IORING_FEAT_RSRC_TAGS` "(1U << 10)"
+macro `IORING_FEAT_CQE_SKIP` "(1U << 11)"
+macro `IORING_FEAT_LINKED_FILE` "(1U << 12)"
+macro `IORING_FEAT_REG_REG_RING` "(1U << 13)"
+macro `IORING_FEAT_RECVSEND_BUNDLE` "(1U << 14)"
+macro `IORING_FEAT_MIN_TIMEOUT` "(1U << 15)"
+macro `IORING_FEAT_RW_ATTR` "(1U << 16)"
+enum io_uring_register_op {
+    value IORING_REGISTER_BUFFERS 0
+    value IORING_UNREGISTER_BUFFERS 1
+    value IORING_REGISTER_FILES 2
+    value IORING_UNREGISTER_FILES 3
+    value IORING_REGISTER_EVENTFD 4
+    value IORING_UNREGISTER_EVENTFD 5
+    value IORING_REGISTER_FILES_UPDATE 6
+    value IORING_REGISTER_EVENTFD_ASYNC 7
+    value IORING_REGISTER_PROBE 8
+    value IORING_REGISTER_PERSONALITY 9
+    value IORING_UNREGISTER_PERSONALITY 10
+    value IORING_REGISTER_RESTRICTIONS 11
+    value IORING_REGISTER_ENABLE_RINGS 12
+    value IORING_REGISTER_FILES2 13
+    value IORING_REGISTER_FILES_UPDATE2 14
+    value IORING_REGISTER_BUFFERS2 15
+    value IORING_REGISTER_BUFFERS_UPDATE 16
+    // set/get max number of io-wq workers
+    value IORING_REGISTER_IOWQ_AFF 17
+    value IORING_UNREGISTER_IOWQ_AFF 18
+    // register/unregister io_uring fd with the ring
+    value IORING_REGISTER_IOWQ_MAX_WORKERS 19
+    // register ring based provide buffer group
+    value IORING_REGISTER_RING_FDS 20
+    value IORING_UNREGISTER_RING_FDS 21
+    // sync cancelation API
+    value IORING_REGISTER_PBUF_RING 22
+    value IORING_UNREGISTER_PBUF_RING 23
+    // register a range of fixed file slots for automatic slot allocation
+    value IORING_REGISTER_SYNC_CANCEL 24
+    // return status information for a buffer group
+    value IORING_REGISTER_FILE_ALLOC_RANGE 25
+    // set/clear busy poll settings
+    value IORING_REGISTER_PBUF_STATUS 26
+    value IORING_REGISTER_NAPI 27
+    value IORING_UNREGISTER_NAPI 28
+    value IORING_REGISTER_CLOCK 29
+    // send MSG_RING without having a ring
+    value IORING_REGISTER_CLONE_BUFFERS 30
+    // 32 reserved for zc rx
+    value IORING_REGISTER_SEND_MSG_RING 31
+    value IORING_REGISTER_RESIZE_RINGS 33
+    value IORING_REGISTER_MEM_REGION 34
+    // flag added to the opcode to use a registered ring fd
+    value IORING_REGISTER_LAST
+    // io-wq worker categories
+    value IORING_REGISTER_USE_REGISTERED_RING "1U << 31"
+}
+enum io_wq_type {
+    value IO_WQ_BOUND
+    value IO_WQ_UNBOUND
+}
+// _ring_s32 *
+struct io_uring_files_update {
+    field offset _ring_u32
+    field resv _ring_u32
+    field fds _ring_u64 attr="__attribute__((aligned(8)))"
+}
+enum {
+    value IORING_MEM_REGION_TYPE_USER 1
+}
+struct io_uring_region_desc {
+    field user_addr _ring_u64
+    field size _ring_u64
+    field flags _ring_u32
+    field id _ring_u32
+    field mmap_offset _ring_u64
+    field __resv "_ring_u64 [4]"
+}
+enum {
+    value IORING_MEM_REGION_REG_WAIT_ARG 1
+}
+struct io_uring_mem_region_reg {
+    field region_uptr _ring_u64
+    field flags _ring_u64
+    field __resv "_ring_u64 [2]"
+}
+macro `IORING_RSRC_REGISTER_SPARSE` "(1U << 0)"
+struct io_uring_rsrc_register {
+    field nr _ring_u32
+    field flags _ring_u32
+    field resv2 _ring_u64
+    field data _ring_u64 attr="__attribute__((aligned(8)))"
+    field tags _ring_u64 attr="__attribute__((aligned(8)))"
+}
+struct io_uring_rsrc_update {
+    field offset _ring_u32
+    field resv _ring_u32
+    field data _ring_u64 attr="__attribute__((aligned(8)))"
+}
+struct io_uring_rsrc_update2 {
+    field offset _ring_u32
+    field resv _ring_u32
+    field data _ring_u64 attr="__attribute__((aligned(8)))"
+    field tags _ring_u64 attr="__attribute__((aligned(8)))"
+    field nr _ring_u32
+    field resv2 _ring_u32
+}
+macro `IORING_REGISTER_FILES_SKIP` "(-2)"
+macro `IO_URING_OP_SUPPORTED` "(1U << 0)"
+// IO_URING_OP_* flags
+struct io_uring_probe_op {
+    field op _ring_u8
+    field resv _ring_u8
+    field flags _ring_u16
+    field resv2 _ring_u32
+}
+// length of ops[] array below
+struct io_uring_probe {
+    field last_op _ring_u8
+    field ops_len _ring_u8
+    field resv _ring_u16
+    field resv2 "_ring_u32 [3]"
+    field ops "struct io_uring_probe_op []"
+}
+// IORING_RESTRICTION_REGISTER_OP
+struct io_uring_restriction {
+    // IORING_RESTRICTION_SQE_OP
+    field opcode _ring_u16
+    union {
+        field register_op _ring_u8
+        field sqe_op _ring_u8
+        field sqe_flags _ring_u8
+    }
+    field resv _ring_u8
+    field resv2 "_ring_u32 [3]"
+}
+struct io_uring_clock_register {
+    field clockid _ring_u32
+    field __resv "_ring_u32 [3]"
+}
+enum {
+    value IORING_REGISTER_SRC_REGISTERED "(1U << 0)"
+    value IORING_REGISTER_DST_REPLACE "(1U << 1)"
+}
+struct io_uring_clone_buffers {
+    field src_fd _ring_u32
+    field flags _ring_u32
+    field src_off _ring_u32
+    field dst_off _ring_u32
+    field nr _ring_u32
+    field pad "_ring_u32 [3]"
+}
+struct io_uring_buf {
+    field addr _ring_u64
+    field len _ring_u32
+    field bid _ring_u16
+    field resv _ring_u16
+}
+enum io_uring_register_pbuf_ring_flags {
+    value IOU_PBUF_RING_MMAP 1
+    value IOU_PBUF_RING_INC 2
+}
+struct io_uring_buf_reg {
+    field ring_addr _ring_u64
+    field ring_entries _ring_u32
+    field bgid _ring_u16
+    field flags _ring_u16
+    field resv "_ring_u64 [3]"
+}
+// input
+// output
+struct io_uring_buf_status {
+    field buf_group _ring_u32
+    field head _ring_u32
+    field resv "_ring_u32 [8]"
+}
+enum io_uring_napi_op {
+    // opcodes to update napi_list when static tracking is used
+    value IO_URING_NAPI_REGISTER_OP 0
+    value IO_URING_NAPI_STATIC_ADD_ID 1
+    value IO_URING_NAPI_STATIC_DEL_ID 2
+}
+enum io_uring_napi_tracking_strategy {
+    value IO_URING_NAPI_TRACKING_DYNAMIC 0
+    value IO_URING_NAPI_TRACKING_STATIC 1
+    value IO_URING_NAPI_TRACKING_INACTIVE 255
+}
+struct io_uring_napi {
+    // a io_uring_napi_op value
+    field busy_poll_to _ring_u32
+    field prefer_busy_poll _ring_u8
+    // for IO_URING_NAPI_REGISTER_OP, it is a
+    // io_uring_napi_tracking_strategy value.
+    //
+    // for IO_URING_NAPI_STATIC_ADD_ID/IO_URING_NAPI_STATIC_DEL_ID
+    // it is the napi id to add/del from napi_list.
+    //
+    field opcode _ring_u8
+    field pad "_ring_u8 [2]"
+    field op_param _ring_u32
+    field resv _ring_u32
+}
+// Allow an io_uring_register(2) opcode
+enum io_uring_register_restriction_op {
+    // Allow an sqe opcode
+    value IORING_RESTRICTION_REGISTER_OP 0
+    // Allow sqe flags
+    value IORING_RESTRICTION_SQE_OP 1
+    // Require sqe flags (these flags must be set on each submission)
+    value IORING_RESTRICTION_SQE_FLAGS_ALLOWED 2
+    value IORING_RESTRICTION_SQE_FLAGS_REQUIRED 3
+    value IORING_RESTRICTION_LAST
+}
+enum {
+    // Argument for io_uring_enter(2) with
+    // IORING_GETEVENTS | IORING_ENTER_EXT_ARG_REG set, where the actual argument
+    // is an index into a previously registered fixed wait region described by
+    // the below structure.
+    //
+    value IORING_REG_WAIT_TS "(1U << 0)"
+}
+struct io_uring_reg_wait {
+    field ts "struct timespec"
+    field min_wait_usec _ring_u32
+    field flags _ring_u32
+    field sigmask _ring_u64
+    field sigmask_sz _ring_u32
+    field pad "_ring_u32 [3]"
+    field pad2 "_ring_u64 [2]"
+}
+struct io_uring_getevents_arg {
+    field sigmask _ring_u64
+    field sigmask_sz _ring_u32
+    field min_wait_usec _ring_u32
+    field ts _ring_u64
+}
+struct io_uring_sync_cancel_reg {
+    field addr _ring_u64
+    field fd _ring_s32
+    field flags _ring_u32
+    field timeout "struct timespec"
+    field opcode _ring_u8
+    field pad "_ring_u8 [7]"
+    field pad2 "_ring_u64 [3]"
+}
+struct io_uring_file_index_range {
+    field off _ring_u32
+    field len _ring_u32
+    field resv _ring_u64
+}
+struct io_uring_recvmsg_out {
+    field namelen _ring_u32
+    field controllen _ring_u32
+    field payloadlen _ring_u32
+    field flags _ring_u32
+}
+enum io_uring_socket_op {
+    value SOCKET_URING_OP_SIOCINQ 0
+    value SOCKET_URING_OP_SIOCOUTQ
+    value SOCKET_URING_OP_GETSOCKOPT
+    value SOCKET_URING_OP_SETSOCKOPT
+}

@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 #include <sprt/c/sys/__sprt_sprt.h>
 #include <sprt/c/sys/__sprt_futex.h>
-#include <sprt/c/cross/__sprt_sysid.h>
+#include <sprt/gen/c/cross/__sprt_sysid.h>
 
 #include <os/os_sync_wait_on_address.h>
 

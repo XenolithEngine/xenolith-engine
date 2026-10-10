@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_ASSERT_H_
 
 #include <sprt/c/bits/__sprt_def.h>
-#include <sprt/c/bits/__sprt_null.h>
+#include <sprt/gen/c/bits/__sprt_null.h>
 
 #if defined __cplusplus
 #define __SPRT_ASSERT_UNUSED(Value) static_cast<void>(Value)

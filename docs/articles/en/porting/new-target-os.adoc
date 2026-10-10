@@ -202,32 +202,31 @@ branch exists, the build stops at `#error "Unknown platform"`.
 
 *What to do.*
 
-. In `__sprt_def.h`, add the platform name and number next to the others:
+. The platforms are a list in `runtime/kdl/abi/bits/__sprt_targets.kdl`, `targets PLATFORM`, in the
+  order they are tested. Add a target: its name (the cross directory is `<os>_sprt`), the next free
+  number (1–10 are taken now; a number is never reused) and the condition. *Order matters*: an RTOS
+  may define "Linux" macros, which is why NuttX and Embox stand *before* `linux`. Put yours before the
+  first platform whose macros your OS might define by accident:
 +
-[source,c]
+[source,kdl]
 ----
-#define __SPRT_PLATFORM_NAME_MYOS myos_sprt     // cross header directory
-#define __SPRT_PLATFORM_ID_MYOS 11              // next free number
-----
-. Add a branch to the detection chain. *Order matters*: the chain is tested top to bottom, and an RTOS
-  may define "Linux" macros. That is why the NuttX and Embox branches stand *before* `__linux__`. Put
-  your branch before the first platform whose macros your OS might define by accident.
-+
-[source,c]
-----
-#elif defined(__MYOS__)
 // MyOS. LLVM has no OSType for it, so target-myos passes -D__MYOS__.
-#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_MYOS
-#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_MYOS
-#define SPRT_MYOS __SPRT_PLATFORM_ID_MYOS
+target myos 11 if="defined(__MYOS__)"
 ----
-. Look at the group macros further down the same file: `SPRT_HOSTED_RTOS` ("there is an RTOS libc, and
++
+Regenerated (`xlkdl abi --map runtime/kdl/abi/sprt.kdl --out runtime/include`), the list gives
+`__SPRT_PLATFORM_NAME_MYOS`, `__SPRT_PLATFORM_ID_MYOS` and the branch that defines
+`__SPRT_PLATFORM_NAME`, `__SPRT_PLATFORM_ID` and `SPRT_MYOS`. The platform of the map
+(`platforms { platform myos_sprt … }`) has to be a target of the list.
+. Look at the group macros after the list in the same description: `SPRT_HOSTED_RTOS` ("there is an RTOS libc, and
   it is neither glibc nor Darwin's"; currently NuttX and Embox) and `SPRT_EMBOX_ANY`. If your OS behaves
   like one of the groups, add it there. It then immediately gets the existing branches, for example the
   simplified event loop in xenolith.
-. In `runtime/include/sprt/c/cross/__sprt_errno.h`, add an `#elif SPRT_<OS>` that includes your
-  platform's `errno.h`. Here the directory name cannot be substituted automatically as it is elsewhere:
-  the macro expansion breaks when `errno` is itself a macro.
+. In the map entry of `sprt/gen/c/cross/__sprt_errno.h` (`runtime/kdl/abi/map/libc.kdl`), add
+  `include "sprt/gen/c/cross/<os>_sprt/errno.h"` before the last line (the fallback), with `if=` the
+  negations of the conditions before it and `&& SPRT_<OS>`, as the other lines have: the entry is the
+  `#if`/`#elif` chain of the header, one include per branch. Here the directory name cannot be substituted
+  automatically as it is elsewhere: the macro expansion breaks when `errno` is itself a macro.
 . Check the headers in `runtime/include_libc/` that have platform conditions: `errno.h`, `netdb.h`,
   `syslog.h`, `termios.h` list the platforms whose libc lacks the corresponding function.
 
@@ -240,11 +239,11 @@ Linux, Windows and wasm.
 == B3. ABI headers: `cross/<os>_sprt/`
 
 *Why.* sprt gives applications one libc interface, but the numbers (error codes, flags, structure sizes)
-differ between OSes. sprt takes them from `runtime/include/sprt/c/cross/<os>_sprt/`.
+differ between OSes. sprt takes them from `runtime/include/sprt/gen/c/cross/<os>_sprt/`.
 
 *What to do.*
 
-. Create the directory `runtime/include/sprt/c/cross/<os>_sprt/` with the same set of files as NuttX:
+. Create the directory `runtime/include/sprt/gen/c/cross/<os>_sprt/` with the same set of files as NuttX:
 +
 ----
 clockid.h  config.h  dir_ptr.h  errno.h  fcntl.h  fdset.h  file_ptr.h  langinfo.h  locale.h
@@ -782,10 +781,10 @@ Nearly all of these have already happened on NuttX, Embox or wasm.
 == Summary list of files
 
 ----
-runtime/include/sprt/c/bits/__sprt_def.h                     B2
-runtime/include/sprt/c/cross/__sprt_errno.h                  B2
+runtime/kdl/abi/bits/__sprt_targets.kdl                      B2
+runtime/include/sprt/gen/c/cross/__sprt_errno.h                  B2
 runtime/include_libc/{errno,netdb,syslog,termios}.h          B2
-runtime/include/sprt/c/cross/<os>_sprt/**                    B3  (≈27 new files)
+runtime/include/sprt/gen/c/cross/<os>_sprt/**                    B3  (≈27 new files)
 runtime/toolchains/target-<os>/*                             B4
 runtime/toolchains/common/configure.mk, utils/names.mk       B4
 runtime/toolchains/common/<lib>.mk                           B4  (only if unavoidable)

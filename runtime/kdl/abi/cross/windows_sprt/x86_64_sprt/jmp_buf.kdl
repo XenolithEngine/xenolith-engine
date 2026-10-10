@@ -1,0 +1,4 @@
+struct typedef=(p)_JBTYPE attr="SPRT_ALIGNAS(16)" {
+    field Part "unsigned long long [2]"
+}
+macro _JBLEN 16

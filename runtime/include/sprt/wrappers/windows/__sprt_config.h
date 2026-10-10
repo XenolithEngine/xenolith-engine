@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS___SPRT_CONFIG_H_
 
 #include <sprt/c/bits/__sprt_def.h>
-#include <sprt/c/bits/__sprt_wchar_t.h>
+#include <sprt/gen/c/bits/__sprt_wchar_t.h>
 
 #if _WIN32
 

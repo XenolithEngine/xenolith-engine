@@ -1,0 +1,18 @@
+cond assisted "CONFIG_COMPILER_ASSISTED_INTS && defined(__INT_LEAST16_TYPE__)"
+cond data_model "defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__LP64__) || defined(__SPRT_WINDOWS)"
+typedef int_least16_t __INT_LEAST16_TYPE__ if="@assisted"
+macro INT_LEAST16_MAX __INT_LEAST16_MAX__ if="@assisted && defined(__INT_LEAST16_MAX__)"
+error "Compiler-assisted __INT_LEAST16_MAX__ is not defined" if="@assisted && !defined(__INT_LEAST16_MAX__)"
+macro INT_LEAST16_WIDTH 16 if="@assisted"
+macro INT_LEAST16_FMTd __INT_LEAST16_FMTd__ if="@assisted && defined(__INT_LEAST16_FMTd__)"
+error "Compiler-assisted __INT_LEAST16_FMTd__ is not defined" if="@assisted && !defined(__INT_LEAST16_FMTd__)"
+macro INT_LEAST16_FMTi __INT_LEAST16_FMTi__ if="@assisted && defined(__INT_LEAST16_FMTi__)"
+error "Compiler-assisted __INT_LEAST16_FMTi__ is not defined" if="@assisted && !defined(__INT_LEAST16_FMTi__)"
+// __INT_LEAST16_TYPE__
+// Use Data models specifications
+typedef int_least16_t int if="!@assisted && @data_model"
+macro INT_LEAST16_MAX SHRT_MAX if="!@assisted && @data_model"
+macro INT_LEAST16_WIDTH SHRT_WIDTH if="!@assisted && @data_model"
+macro INT_LEAST16_FMTd SHRT_FMTd if="!@assisted && @data_model"
+macro INT_LEAST16_FMTi SHRT_FMTi if="!@assisted && @data_model"
+error "Unknown data model (see https://en.cppreference.com/w/cpp/language/types.html#Data_models)" if="!@assisted && !@data_model"

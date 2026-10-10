@@ -1,0 +1,9 @@
+enum MTLCaptureError macro=NS_ENUM base=NSInteger {
+    value MTLCaptureErrorNotSupported 1
+    value MTLCaptureErrorAlreadyCapturing
+    value MTLCaptureErrorInvalidDescriptor
+}
+enum MTLCaptureDestination macro=NS_ENUM base=NSInteger {
+    value MTLCaptureDestinationDeveloperTools 1
+    value MTLCaptureDestinationGPUTraceDocument
+}

@@ -1,0 +1,94 @@
+//  SDK parity: the real CoreServices umbrella (via its OSServices sub-framework)
+// pulls the Security Authorization/AuthSession API — lldb's Host.mm relies on
+// that transitive include. Both headers come from apple-oss Security.
+// --- AppleEvents descriptors (AEDataModel.h; 64-bit opaque-storage branch) ---
+typedef ResType FourCharCode
+typedef DescType ResType
+typedef AEKeyword FourCharCode
+typedef AEDataStorageType "struct OpaqueAEDataStorageType *"
+typedef AEDataStorage "AEDataStorageType *"
+struct AEDesc {
+    field descriptorType DescType
+    field dataHandle AEDataStorage
+}
+typedef AEDesc "struct AEDesc"
+typedef AppleEvent AEDesc
+struct AEKeyDesc {
+    field descKey AEKeyword
+    field descContent AEDesc
+}
+typedef AEKeyDesc "struct AEKeyDesc"
+enum {
+    value typeUTF8Text 'utf8'
+}
+// AERegistry.h
+enum {
+    value keyAEPosition 'kpos'
+}
+// --- classic file handle (MacTypes provides ProcessSerialNumber) ------------
+struct FSRef {
+    field hidden "UInt8 [80]"
+}
+typedef FSRef "struct FSRef"
+// --- LaunchServices (LSInfo.h / LSOpenDeprecated.h) --------------------------
+typedef LSLaunchFlags OptionBits
+enum {
+    value kLSLaunchDefaults 0x00000001
+    value kLSLaunchDontAddToRecents 0x00000100
+    value kLSLaunchDontSwitch 0x00000200
+}
+typedef LSRolesMask OptionBits
+enum {
+    value kLSRolesNone 0x00000001
+    value kLSRolesViewer 0x00000002
+    value kLSRolesEditor 0x00000004
+    value kLSRolesShell 0x00000008
+    value kLSRolesAll "(UInt32)0xFFFFFFFF"
+}
+enum {
+    value kLSUnknownCreator 0
+}
+struct LSApplicationParameters typedef=LSApplicationParameters {
+    field version CFIndex
+    field flags LSLaunchFlags
+    field application "const FSRef *"
+    field asyncLaunchRefCon "void *"
+    field environment CFDictionaryRef
+    field argv CFArrayRef
+    field initialEvent "AppleEvent *"
+}
+//  --- FSEvents (FSEvents.framework sub-umbrella) ------------------------------
+// The surface clang's DirectoryWatcher-mac.cpp uses; types, layouts and constant
+// values match the 14.5 SDK <FSEvents.h>. Needs <dispatch/dispatch.h> for
+// FSEventStreamSetDispatchQueue (the real umbrella exposes it the same way).
+typedef FSEventStreamRef "struct __FSEventStream *"
+typedef ConstFSEventStreamRef "const struct __FSEventStream *"
+typedef FSEventStreamCreateFlags UInt32
+typedef FSEventStreamEventFlags UInt32
+typedef FSEventStreamEventId UInt64
+enum {
+    value kFSEventStreamCreateFlagNoDefer 0x00000002
+    value kFSEventStreamCreateFlagFileEvents 0x00000010
+}
+enum {
+    value kFSEventStreamEventFlagMustScanSubDirs 0x00000001
+    value kFSEventStreamEventFlagUserDropped 0x00000002
+    value kFSEventStreamEventFlagKernelDropped 0x00000004
+    value kFSEventStreamEventFlagItemCreated 0x00000100
+    value kFSEventStreamEventFlagItemRemoved 0x00000200
+    value kFSEventStreamEventFlagItemRenamed 0x00000800
+    value kFSEventStreamEventFlagItemModified 0x00001000
+    value kFSEventStreamEventFlagItemIsFile 0x00010000
+}
+enum {
+    value kFSEventStreamEventIdSinceNow "0xFFFFFFFFFFFFFFFFULL"
+}
+struct FSEventStreamContext {
+    field version CFIndex
+    field info "void *"
+    field retain CFAllocatorRetainCallBack
+    field release CFAllocatorReleaseCallBack
+    field copyDescription CFAllocatorCopyDescriptionCallBack
+}
+typedef FSEventStreamContext "struct FSEventStreamContext"
+typedef FSEventStreamCallback "void (*)(ConstFSEventStreamRef streamRef, void *clientCallBackInfo, size_t numEvents, void *eventPaths, const FSEventStreamEventFlags *eventFlags, const FSEventStreamEventId *eventIds)"

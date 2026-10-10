@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS_SHELLAPI_H_
 
 #include <sprt/wrappers/windows/basic_api.h>
-#include <sprt/wrappers/windows/abi/shellapi.h>
+#include <sprt/gen/wrappers/windows/abi/shellapi.h>
 
 // FILEOP_FLAGS bits shared by SHFileOperationW and IFileOperation::SetOperationFlags.
 // FOF_NO_UI is the SDK's convenience aggregate; the FOFX_ ones are shobjidl extensions,

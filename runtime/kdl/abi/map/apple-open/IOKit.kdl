@@ -1,0 +1,10 @@
+// IOKit: the ABI of its hand-written headers, and what they include.
+
+header "IOKit/IOKitLib.h" external=#true
+
+header "IOKit/hidsystem/IOLLEvent.h" external=#true {
+    include "__sprt_abi/IOKit/hidsystem/IOLLEvent.h"
+    type _IOKIT_HIDSYSTEM_IOLLEVENT_H_
+}
+
+header "__sprt_abi/IOKit/hidsystem/IOLLEvent.h"

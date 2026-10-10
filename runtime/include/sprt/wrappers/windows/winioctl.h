@@ -32,7 +32,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-#include <sprt/wrappers/windows/abi/winioctl.h>
+#include <sprt/gen/wrappers/windows/abi/winioctl.h>
 
 /* Clean public names (materialized __SPRT_ values live in abi/winioctl.h) */
 #define FSCTL_GET_REPARSE_POINT          __SPRT_FSCTL_GET_REPARSE_POINT

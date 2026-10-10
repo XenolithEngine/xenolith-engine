@@ -191,7 +191,7 @@ the sysroot:
 
 == NuttX is not Linux-ABI
 
-`sprt/c/cross/nuttx_sprt/` was originally written as a set of one-line forwards to
+`sprt/gen/c/cross/nuttx_sprt/` was originally written as a set of one-line forwards to
 `linux_sprt/`, on the assumption that NuttX follows the asm-generic layout. It does
 for the errno table, the `AF_*`/`PF_*` families, most `MSG_*` bits and the `*at()`
 flags — and for very little else. These forwards were replaced with real tables:
@@ -260,7 +260,7 @@ is a correctness requirement, not a style choice.
 name is sprt's own `libc_impl`, so both shapes end up in the same place. NuttX
 has a real libc, so the freestanding shape splits the two halves apart:
 
-* the *type* still comes from `<sprt/c/bits/pthread.h>` — `pthread_once_t` is a
+* the *type* still comes from `<sprt/gen/c/bits/pthread.h>` — `pthread_once_t` is a
   4-byte word there;
 * the *function* comes from NuttX's libc, whose `pthread_once_t` is
   `struct { volatile bool done; pthread_mutex_t mutex; }`.

@@ -9,6 +9,7 @@
 #include "MTLCommandEncoder.h"              /* MTLCommandEncoder, MTLResourceUsage, MTLBarrierScope */
 #include "MTLRenderPass.h"                  /* MTLStoreAction */
 #include "MTLStageInputOutputDescriptor.h"  /* MTLIndexType */
+#include <__sprt_abi/Metal/MTLRenderCommandEncoder.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -21,83 +22,6 @@ NS_ASSUME_NONNULL_BEGIN
 @protocol MTLResource;
 @protocol MTLFence;
 @protocol MTLCounterSampleBuffer;
-
-typedef NS_ENUM(NSUInteger, MTLPrimitiveType) {
-    MTLPrimitiveTypePoint         = 0,
-    MTLPrimitiveTypeLine          = 1,
-    MTLPrimitiveTypeLineStrip     = 2,
-    MTLPrimitiveTypeTriangle      = 3,
-    MTLPrimitiveTypeTriangleStrip = 4,
-};
-
-typedef NS_ENUM(NSUInteger, MTLVisibilityResultMode) {
-    MTLVisibilityResultModeDisabled = 0,
-    MTLVisibilityResultModeBoolean  = 1,
-    MTLVisibilityResultModeCounting = 2,
-};
-
-typedef struct {
-    NSUInteger x, y, width, height;
-} MTLScissorRect;
-
-typedef struct {
-    double originX, originY, width, height, znear, zfar;
-} MTLViewport;
-
-typedef NS_ENUM(NSUInteger, MTLCullMode) {
-    MTLCullModeNone  = 0,
-    MTLCullModeFront = 1,
-    MTLCullModeBack  = 2,
-};
-
-typedef NS_ENUM(NSUInteger, MTLWinding) {
-    MTLWindingClockwise        = 0,
-    MTLWindingCounterClockwise = 1,
-};
-
-typedef NS_ENUM(NSUInteger, MTLDepthClipMode) {
-    MTLDepthClipModeClip  = 0,
-    MTLDepthClipModeClamp = 1,
-};
-
-typedef NS_ENUM(NSUInteger, MTLTriangleFillMode) {
-    MTLTriangleFillModeFill  = 0,
-    MTLTriangleFillModeLines = 1,
-};
-
-typedef struct {
-    uint32_t vertexCount;
-    uint32_t instanceCount;
-    uint32_t vertexStart;
-    uint32_t baseInstance;
-} MTLDrawPrimitivesIndirectArguments;
-
-typedef struct {
-    uint32_t indexCount;
-    uint32_t instanceCount;
-    uint32_t indexStart;
-    int32_t  baseVertex;
-    uint32_t baseInstance;
-} MTLDrawIndexedPrimitivesIndirectArguments;
-
-typedef struct {
-    uint32_t patchCount;
-    uint32_t instanceCount;
-    uint32_t patchStart;
-    uint32_t baseInstance;
-} MTLDrawPatchIndirectArguments;
-
-typedef struct {
-    /* edgeTessellationFactor and insideTessellationFactor are interpreted as half (16-bit floats) */
-    uint16_t edgeTessellationFactor[4];
-    uint16_t insideTessellationFactor[2];
-} MTLQuadTessellationFactorsHalf;
-
-/* Generic render stage; also used for points at which a fence may be waited on or signaled. */
-typedef NS_OPTIONS(NSUInteger, MTLRenderStages) {
-    MTLRenderStageVertex   = (1UL << 0),
-    MTLRenderStageFragment = (1UL << 1),
-};
 
 /* Container for graphics rendering state and the encoded draw commands. */
 @protocol MTLRenderCommandEncoder <MTLCommandEncoder>

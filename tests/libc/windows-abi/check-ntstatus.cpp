@@ -6,7 +6,7 @@
 // against RtlGetLastNtStatus(), and the WoW64 debug loop reports STATUS_WX86_*.
 // The full set lives in <ntstatus.h> (STATUS_SUCCESS also leaks via winnt.h).
 
-#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/ntstatus.h>
+#define SPRT_ABI_HEADER <sprt/gen/wrappers/windows/abi/ntstatus.h>
 #include "abi_check.h"
 
 #include <windows.h>

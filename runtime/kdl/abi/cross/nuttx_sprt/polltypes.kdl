@@ -1,0 +1,33 @@
+// NuttX's struct pollfd is not the POSIX three-field one: events/revents are
+// uint32_t rather than short, and poll() uses three trailing driver-private fields
+// that it writes through. The wrapper forwards the caller's array by a plain cast
+// (and outside __SPRT_BUILD this struct IS the application's struct pollfd), so the
+// whole record - trailing fields included - has to match NuttX's.
+//
+// NuttX also collapses the priority bands: POLLRDNORM/POLLRDBAND are POLLIN and
+// POLLWRNORM/POLLWRBAND are POLLOUT, and POLLRDHUP is POLLHUP ("NuttX does not
+// support shutdown(fd, SHUT_RD)"). Those aliases are the platform's, not an
+// approximation made here.
+struct (n)pollfd {
+    field fd int
+    field events uint32_t
+    field revents uint32_t
+    // Written by NuttX's poll() implementation; present here only to keep the
+    // record the right size. Declared as raw pointers because sprt headers cannot
+    // name the FAR / CODE qualifiers or the pollcb_t signature.
+    field __arg "void *"
+    field __cb "void *"
+    field __priv "void *"
+}
+typedef nfds_t "unsigned int"
+macro POLLIN 0x01
+macro POLLRDNORM 0x01
+macro POLLRDBAND 0x01
+macro POLLPRI 0x02
+macro POLLOUT 0x04
+macro POLLWRNORM 0x04
+macro POLLWRBAND 0x04
+macro POLLERR 0x08
+macro POLLHUP 0x10
+macro POLLRDHUP 0x10
+macro POLLNVAL 0x20

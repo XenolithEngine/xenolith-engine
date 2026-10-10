@@ -51,8 +51,8 @@ THE SOFTWARE.
 // -resource-dir at this sysroot's lib/clang.
 #include <unwind.h>
 
-#include <sprt/c/cross/__sprt_file_ptr.h>
-#include <sprt/c/cross/__sprt_setjmp.h>
+#include <sprt/gen/c/cross/__sprt_file_ptr.h>
+#include <sprt/gen/c/cross/__sprt_setjmp.h>
 
 extern "C" {
 int setjmp(__SPRT_ID(native_jmp_buf)) __SPRT_NOEXCEPT;

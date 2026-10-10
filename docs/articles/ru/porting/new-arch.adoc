@@ -75,11 +75,11 @@ support»). Держите `git show 5be3d759` открытым рядом: по
 | `enum class OsArch` — копия ID архитектур для сетевого протокола
 | <<a2,А2>>
 
-| `runtime/include/sprt/c/cross/linux_sprt/<arch>_sprt/`
+| `runtime/include/sprt/gen/c/cross/linux_sprt/<arch>_sprt/`
 | Шесть заголовков ABI: `config.h`, `fcntl.h`, `fenv.h`, `jmp_buf.h`, `signal.h`, `syscall.h`
 | <<a3,А3>>
 
-| `runtime/include/sprt/c/cross/linux_sprt/*.h`
+| `runtime/include/sprt/gen/c/cross/linux_sprt/*.h`
 | Общие заголовки Linux, в которых встречаются условия на архитектуру (`sockdef.h`)
 | <<a3,А3>>
 
@@ -210,29 +210,23 @@ $H/clang --target=<arch>-unknown-linux-gnu -dM -E - </dev/null \
 
 *Что сделать.*
 
-. В `runtime/include/sprt/c/bits/__sprt_def.h` найдите блок `__SPRT_ARCH_NAME_*` / `__SPRT_ARCH_ID_*`
-  и добавьте пару для новой архитектуры. ID — следующее свободное число (сейчас заняты 1–11), имя —
-  `<arch>_sprt`:
+. Архитектуры — список `targets ARCH` в `runtime/kdl/abi/bits/__sprt_targets.kdl`, в порядке
+  проверки. Добавьте запись: имя (каталог ABI — `<arch>_sprt`), следующее свободное число (сейчас
+  заняты 1–13; номер никогда не используется повторно) и условие по макросам, найденным в А1.
+  Проверяйте не только имя архитектуры, но и разрядность, если у архитектуры есть 32- и 64-битный
+  варианты, и ставьте запись раньше той, чьё условие тоже совпало бы:
 +
-[source,c]
+[source,kdl]
 ----
-#define __SPRT_ARCH_NAME_NEWARCH64 newarch64_sprt
-#define __SPRT_ARCH_ID_NEWARCH64 12
-----
-. Ниже, в цепочке `#if defined(__x86_64__) … #elif … #else #error "Unknown arch"`, добавьте ветку по
-  макросам, которые вы нашли в А1. Проверяйте не только имя архитектуры, но и разрядность, если у
-  архитектуры есть 32- и 64-битный варианты:
-+
-[source,c]
-----
-#elif defined(__riscv) && defined(__riscv_xlen) && __riscv_xlen == 64
-#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_RISCV64
-#define __SPRT_ARCH_ID __SPRT_ARCH_ID_RISCV64
+target newarch64 14 if="defined(__newarch__) && __newarch_xlen == 64"
 ----
 +
-WARNING: Внимательно проверьте, что в новой ветке стоят *ваши* макросы, а не скопированные из соседней.
-Именно такая ошибка уже была: в одной из веток `__loongarch__` отображался на
-`__SPRT_ARCH_NAME_RISCV64`, и сборка под LoongArch молча брала заголовки RISC-V.
+`xlkdl abi --map runtime/kdl/abi/sprt.kdl --out runtime/include` пишет `__SPRT_ARCH_NAME_NEWARCH64`,
+`__SPRT_ARCH_ID_NEWARCH64` и ветку цепочки `#if … #elif … #else #error "Unknown arch"` в
+`sprt/gen/c/bits/__sprt_targets.h`, который включает `__sprt_def.h`. Имя и номер ветки берутся из
+одной записи, поэтому ветка больше не может взять заголовки соседа (как однажды `__loongarch__`
+взял заголовки RISC-V). Каждая архитектура из `platforms {}` карты должна быть записью списка —
+иначе `xlkdl` карту не примет.
 . ID архитектуры — часть сетевого протокола `xenolith/remote`. Добавьте значение в
   `enum class OsArch` в `xenolith/remote/XLRemotePeerInfo.h`, а в `XLRemotePeerInfo.cc` — строку в
   блок `static_assert`, сверяющий `OsArch` с `__SPRT_ARCH_ID_*`, и имя в `switch`, который переводит
@@ -253,10 +247,10 @@ link:../../../usage/codestyle/platform/platform-guards.adoc[platform-guards.adoc
 
 *Зачем.* sprt даёт всем платформам единый интерфейс libc, но сами числа (флаги `open`, номера
 сигналов, системных вызовов, размер `jmp_buf`) берёт из настоящей libc цели. Для Linux большая часть
-чисел общая и лежит в `runtime/include/sprt/c/cross/linux_sprt/`, а то, что меняется от архитектуры к
+чисел общая и лежит в `runtime/include/sprt/gen/c/cross/linux_sprt/`, а то, что меняется от архитектуры к
 архитектуре, — в подкаталоге `<arch>_sprt/`. Этот подкаталог и нужно создать.
 
-*Что сделать.* Создайте `runtime/include/sprt/c/cross/linux_sprt/<arch>_sprt/` с шестью файлами.
+*Что сделать.* Создайте `runtime/include/sprt/gen/c/cross/linux_sprt/<arch>_sprt/` с шестью файлами.
 Начните с копии каталога самой похожей архитектуры. Почти все новые архитектуры Linux используют
 «asm-generic» раскладку ядра, как aarch64 и riscv64, поэтому обычно копируют `riscv64_sprt`.
 
@@ -337,7 +331,7 @@ echo '#include <asm/unistd.h>' \
     | $H/clang --target=<arch>-unknown-linux-gnu --sysroot=$T -dM -E - \
     | sed -n 's/^#define __NR_\([a-z0-9_]*\) \([0-9]*\)$/\1 \2/p' | sort > /tmp/kernel.txt
 sed -n 's/^#define __SPRT_SYSCALL_\([a-z0-9_]*\) \([0-9]*\)$/\1 \2/p' \
-    runtime/include/sprt/c/cross/linux_sprt/<arch>_sprt/syscall.h | sort > /tmp/sprt.txt
+    runtime/include/sprt/gen/c/cross/linux_sprt/<arch>_sprt/syscall.h | sort > /tmp/sprt.txt
 diff /tmp/kernel.txt /tmp/sprt.txt
 ----
 
@@ -705,7 +699,7 @@ xref:new-host-os.adoc#v6[В6].
 
 *Что сделать.*
 
-. `runtime/include/sprt/c/cross/android_sprt/<arch>_sprt/` — те же шесть файлов, что в А3, но числа
+. `runtime/include/sprt/gen/c/cross/android_sprt/<arch>_sprt/` — те же шесть файлов, что в А3, но числа
   сверяются с bionic из NDK.
 . `runtime/toolchains/target-android/Makefile` — блоки `SP_ARCH_<x>_INFO_BASE`, `_NDK`, `_INFO`,
   рецепты и список `ARCHS_NDK`. Сейчас `ANDROID_PLATFORM_LEVEL` один на все ABI (24). Новым ABI NDK
@@ -735,7 +729,7 @@ unknown-ndk-linux-android -j1` собирает все ABI, включая но�
 
 * `runtime/toolchains/target-windows/Makefile` — наборы `SP_ARCH_<x>_*` и рецепты, включая вариант
   `+dll`; `target-windows/openssl.mk` и `replacements/openssl/49-xwin-clang.conf`.
-* `runtime/include/sprt/c/cross/windows_sprt/<arch>_sprt/` — заголовки ABI.
+* `runtime/include/sprt/gen/c/cross/windows_sprt/<arch>_sprt/` — заголовки ABI.
 * `runtime/libc_impl/asm/Windows/<arch>/` — `chkstk.s` (с псевдонимом `_alloca_probe`) и `fenv.s`;
   ветки по архитектуре в `runtime/musl-adapters` (`musl_fenv.c`, `string/musl_string.c`, `math/*`).
 * Все места с `_M_ARM64` или `__SPRT_ARCH_ID` в Windows-коде: структуры `CONTEXT`
@@ -840,10 +834,10 @@ qemu-system с реальной моделью процессора.
 Для самопроверки — что обычно меняет порт архитектуры на Linux (по образцу `5be3d759`):
 
 ----
-runtime/include/sprt/c/bits/__sprt_def.h                       А2
+runtime/kdl/abi/bits/__sprt_targets.kdl                        А2
 xenolith/remote/XLRemotePeerInfo.{h,cc}                        А2
-runtime/include/sprt/c/cross/linux_sprt/<arch>_sprt/*          А3  (6 новых файлов)
-runtime/include/sprt/c/cross/linux_sprt/sockdef.h              А3  (если нужно)
+runtime/include/sprt/gen/c/cross/linux_sprt/<arch>_sprt/*          А3  (6 новых файлов)
+runtime/include/sprt/gen/c/cross/linux_sprt/sockdef.h              А3  (если нужно)
 make/os/linux.mk                                               А3, А6
 runtime/toolchains/common/utils/names.mk                       А4
 runtime/toolchains/host-*/…  (LLVM_TARGETS_TO_BUILD)           А4

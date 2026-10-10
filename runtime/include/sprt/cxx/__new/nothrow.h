@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/bits/__sprt_config.h>
-#include <sprt/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
 
 #if __SPRT_STD_EXTERNAL // std-owned types: project when an external STL owns std
 

@@ -1,0 +1,11 @@
+cond fast_math "defined(__FAST_MATH__)"
+macro FP_ILOGBNAN "(-1-0x7fffffff)"
+macro FP_ILOGB0 FP_ILOGBNAN
+macro math_errhandling 0 if="@fast_math"
+macro math_errhandling "(MATH_ERREXCEPT)" if="!@fast_math && defined(__NO_MATH_ERRNO__)"
+macro math_errhandling "(MATH_ERRNO | MATH_ERREXCEPT)" if="!@fast_math && !defined(__NO_MATH_ERRNO__)"
+macro FP_NAN 0
+macro FP_INFINITE 1
+macro FP_ZERO 2
+macro FP_SUBNORMAL 3
+macro FP_NORMAL 4

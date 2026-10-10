@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C_BITS___SPRT_CPUSET_T_H_
 
 #include <sprt/c/bits/__sprt_def.h>
-#include <sprt/c/bits/__sprt_size_t.h>
+#include <sprt/gen/c/bits/__sprt_size_t.h>
 
 // clang-format off
 #define __SPRT_CPU_SETSIZE 1024

@@ -1,0 +1,21 @@
+// CoreServices: the ABI of its hand-written headers, and what they include.
+
+header "CoreServices/CoreServices.h" external=#true {
+    include "MacTypes.h"
+    include "CoreFoundation/CoreFoundation.h"
+    include "Security/Authorization.h"
+    include "Security/AuthorizationDB.h"
+    include "Security/AuthSession.h"
+    include "__sprt_abi/CoreServices/CoreServices.h"
+    include "dispatch/dispatch.h"
+    type __SPRT_OPEN_CORESERVICES_H_
+}
+
+header "__sprt_abi/CoreServices/CoreServices.h" {
+    include "MacTypes.h"
+    include "CoreFoundation/CoreFoundation.h"
+    include "Security/Authorization.h"
+    include "Security/AuthorizationDB.h"
+    include "Security/AuthSession.h"
+    include "dispatch/dispatch.h"
+}

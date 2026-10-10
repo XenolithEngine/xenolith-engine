@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-#include <sprt/wrappers/windows/abi/context_api.h>
+#include <sprt/gen/wrappers/windows/abi/context_api.h>
 
 /* Clean public names for the arch-conditional CONTEXT_/_JB/ARM64 macros
    (materialized __SPRT_ values live per-arch in abi/context_api.h). */

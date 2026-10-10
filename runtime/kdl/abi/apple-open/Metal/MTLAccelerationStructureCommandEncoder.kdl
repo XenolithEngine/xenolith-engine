@@ -1,0 +1,8 @@
+// !
+//  @enum MTLAccelerationStructureRefitOptions
+//  @abstract Controls the acceleration structure refit operation
+//
+enum MTLAccelerationStructureRefitOptions macro=NS_OPTIONS base=NSUInteger {
+    value MTLAccelerationStructureRefitOptionVertexData "(1 << 0)"
+    value MTLAccelerationStructureRefitOptionPerPrimitiveData "(1 << 1)"
+}
