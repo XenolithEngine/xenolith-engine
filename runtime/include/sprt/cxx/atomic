@@ -27,6 +27,32 @@
 #include <sprt/runtime/init.h>
 #include <sprt/runtime/enum.h>
 
+// The MCST lcc frontend has neither the C++ _Atomic qualifier nor clang's
+// __c11_atomic_* builtins. GCC's generic __atomic_* interface performs the same
+// atomic accesses on ordinary (unqualified) objects, which is equivalent here:
+// every access in this header goes through an explicit builtin.
+#if defined(__LCC__) && !defined(__clang__)
+
+#define __SPRT_ATOMIC_QUAL(T) T
+#define __c11_atomic_load(__p, __m) __atomic_load_n(__p, __m)
+#define __c11_atomic_store(__p, __v, __m) __atomic_store_n(__p, __v, __m)
+#define __c11_atomic_exchange(__p, __v, __m) __atomic_exchange_n(__p, __v, __m)
+#define __c11_atomic_compare_exchange_weak(__p, __e, __d, __s, __f) \
+	__atomic_compare_exchange_n(__p, __e, __d, true, __s, __f)
+#define __c11_atomic_compare_exchange_strong(__p, __e, __d, __s, __f) \
+	__atomic_compare_exchange_n(__p, __e, __d, false, __s, __f)
+#define __c11_atomic_fetch_add(__p, __v, __m) __atomic_fetch_add(__p, __v, __m)
+#define __c11_atomic_fetch_sub(__p, __v, __m) __atomic_fetch_sub(__p, __v, __m)
+#define __c11_atomic_fetch_and(__p, __v, __m) __atomic_fetch_and(__p, __v, __m)
+#define __c11_atomic_fetch_or(__p, __v, __m) __atomic_fetch_or(__p, __v, __m)
+#define __c11_atomic_fetch_xor(__p, __v, __m) __atomic_fetch_xor(__p, __v, __m)
+
+#else
+
+#define __SPRT_ATOMIC_QUAL(T) _Atomic(T)
+
+#endif
+
 namespace sprt {
 inline namespace __cxx_atomic {
 
@@ -53,7 +79,7 @@ struct ___atomic_base_impl {
 	constexpr ___atomic_base_impl() noexcept = default;
 	constexpr explicit ___atomic_base_impl(const Type &value) noexcept : _value(value) { }
 
-	_Atomic(Type) _value;
+	__SPRT_ATOMIC_QUAL(Type) _value;
 };
 
 template <typename Type, bool = is_integral<Type>::value && !is_same<Type, bool>::value>
@@ -283,7 +309,7 @@ struct atomic<Type *> : public __atomic_base<Type *> {
 };
 
 struct atomic_flag {
-	_Atomic(bool) __a_;
+	__SPRT_ATOMIC_QUAL(bool) __a_;
 
 	bool test(memory_order __m = memory_order::seq_cst) const volatile noexcept {
 		return true == __c11_atomic_load(&__a_, toInt(__m));

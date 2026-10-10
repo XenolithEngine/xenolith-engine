@@ -20,9 +20,9 @@
 
 # The single place that decides whether libc++abi.a carries the unwinder inside.
 #
-# Included BOTH from libc++.mk AND from compiler_rt.mk. That is not belt and
-# braces: compiler_rt.mk builds THE SAME runtimes (libcxx;libcxxabi;libunwind)
-# together with compiler-rt and its `--target install` overwrites what libc++.mk
+# Included BOTH from libcxxabi.mk AND from compiler_rt.mk. That is not belt and
+# braces: compiler_rt.mk builds THE SAME runtimes (libcxxabi;libunwind)
+# together with compiler-rt and its `--target install` overwrites what libcxxabi.mk
 # produced. So any divergence between the two option lists would silently be won
 # by compiler_rt.mk — on glibc targets it is its settings that end up in the
 # target.

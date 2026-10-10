@@ -79,6 +79,11 @@ static_assert(WEOF == __SPRT_WEOF);
 
 namespace sprt {
 
+// lcc/e2k: umbrella-обёртки инлайнятся полностью (сборка с -O1), слабых копий
+// в образе нет — прямые вызовы libc резолвятся в glibc без версионных алиасов
+#define __SPRT_LIBC(name) name
+
+
 // Look up a standard mapping by name; "toupper"/"tolower" yield a sentinel
 // handle, anything else null (with EINVAL).
 __SPRT_ID(wctrans_t) __wctrans_fallback(const char *name) __SPRT_NOEXCEPT;
@@ -94,84 +99,84 @@ namespace sprt {
 __SPRT_C_FUNC __SPRT_ID(wchar_t)
 		* __SPRT_ID(wcscpy)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 				const __SPRT_ID(wchar_t) * __SPRT_RESTRICT b) {
-	return ::wcscpy(a, b);
+	return __SPRT_LIBC(wcscpy)(a, b);
 }
 
 __SPRT_C_FUNC __SPRT_ID(wchar_t)
 		* __SPRT_ID(wcsncpy)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 				const __SPRT_ID(wchar_t) * __SPRT_RESTRICT b, __SPRT_ID(size_t) s) {
-	return ::wcsncpy(a, b, s);
+	return __SPRT_LIBC(wcsncpy)(a, b, s);
 }
 
 __SPRT_C_FUNC __SPRT_ID(wchar_t)
 		* __SPRT_ID(wcscat)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 				const __SPRT_ID(wchar_t) * __SPRT_RESTRICT b) {
-	return wcscat(a, b);
+	return __SPRT_LIBC(wcscat)(a, b);
 }
 
 __SPRT_C_FUNC __SPRT_ID(wchar_t)
 		* __SPRT_ID(wcsncat)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 				const __SPRT_ID(wchar_t) * __SPRT_RESTRICT b, __SPRT_ID(size_t) s) {
-	return ::wcsncat(a, b, s);
+	return __SPRT_LIBC(wcsncat)(a, b, s);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(wcscmp)(const __SPRT_ID(wchar_t) * a, const __SPRT_ID(wchar_t) * b) {
-	return wcscmp(a, b);
+	return __SPRT_LIBC(wcscmp)(a, b);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		wcsncmp)(const __SPRT_ID(wchar_t) * a, const __SPRT_ID(wchar_t) * b, __SPRT_ID(size_t) s) {
-	return ::wcsncmp(a, b, s);
+	return __SPRT_LIBC(wcsncmp)(a, b, s);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(wcscoll)(const __SPRT_ID(wchar_t) * a, const __SPRT_ID(wchar_t) * b) {
-	return ::wcscoll(a, b);
+	return __SPRT_LIBC(wcscoll)(a, b);
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsxfrm)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT b, __SPRT_ID(size_t) s) {
-	return ::wcsxfrm(a, b, s);
+	return __SPRT_LIBC(wcsxfrm)(a, b, s);
 }
 
 __SPRT_C_FUNC const __SPRT_ID(wchar_t)
 		* __SPRT_ID(wcschr)(const __SPRT_ID(wchar_t) * a, __SPRT_ID(wchar_t) b) {
-	return ::wcschr(a, b);
+	return __SPRT_LIBC(wcschr)(a, b);
 }
 
 __SPRT_C_FUNC const __SPRT_ID(wchar_t)
 		* __SPRT_ID(wcsrchr)(const __SPRT_ID(wchar_t) * a, __SPRT_ID(wchar_t) b) {
-	return ::wcsrchr(a, b);
+	return __SPRT_LIBC(wcsrchr)(a, b);
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t)
 		__SPRT_ID(wcscspn)(const __SPRT_ID(wchar_t) * a, const __SPRT_ID(wchar_t) * b) {
-	return ::wcscspn(a, b);
+	return __SPRT_LIBC(wcscspn)(a, b);
 }
 __SPRT_C_FUNC __SPRT_ID(size_t)
 		__SPRT_ID(wcsspn)(const __SPRT_ID(wchar_t) * a, const __SPRT_ID(wchar_t) * b) {
-	return ::wcsspn(a, b);
+	return __SPRT_LIBC(wcsspn)(a, b);
 }
 
 __SPRT_C_FUNC const __SPRT_ID(wchar_t)
 		* __SPRT_ID(wcspbrk)(const __SPRT_ID(wchar_t) * a, const __SPRT_ID(wchar_t) * b) {
-	return ::wcspbrk(a, b);
+	return __SPRT_LIBC(wcspbrk)(a, b);
 }
 
 __SPRT_C_FUNC __SPRT_ID(wchar_t)
 		* __SPRT_ID(wcstok)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 				const __SPRT_ID(wchar_t) * __SPRT_RESTRICT b,
 				__SPRT_ID(wchar_t) * *__SPRT_RESTRICT c) {
-	return ::wcstok(a, b, c);
+	return __SPRT_LIBC(wcstok)(a, b, c);
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcslen)(const __SPRT_ID(wchar_t) * v) {
-	return wcslen(v);
+	return __SPRT_LIBC(wcslen)(v);
 }
 
 __SPRT_C_FUNC const __SPRT_ID(wchar_t)
 		* __SPRT_ID(wcsstr)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 				const __SPRT_ID(wchar_t) * __SPRT_RESTRICT b) {
-	return ::wcsstr(a, b);
+	return __SPRT_LIBC(wcsstr)(a, b);
 }
 
 __SPRT_C_FUNC const __SPRT_ID(wchar_t)
@@ -182,49 +187,49 @@ __SPRT_C_FUNC const __SPRT_ID(wchar_t)
 __SPRT_C_FUNC const __SPRT_ID(wchar_t)
 		* __SPRT_ID(
 				wmemchr)(const __SPRT_ID(wchar_t) * a, __SPRT_ID(wchar_t) b, __SPRT_ID(size_t) s) {
-	return ::wmemchr(a, b, s);
+	return __SPRT_LIBC(wmemchr)(a, b, s);
 }
 
 __SPRT_C_FUNC
 int __SPRT_ID(
 		wmemcmp)(const __SPRT_ID(wchar_t) * a, const __SPRT_ID(wchar_t) * b, __SPRT_ID(size_t) s) {
-	return ::wmemcmp(a, b, s);
+	return __SPRT_LIBC(wmemcmp)(a, b, s);
 }
 
 __SPRT_C_FUNC __SPRT_ID(wchar_t)
 		* __SPRT_ID(wmemcpy)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 				const __SPRT_ID(wchar_t) * __SPRT_RESTRICT b, __SPRT_ID(size_t) s) {
-	return ::wmemcpy(a, b, s);
+	return __SPRT_LIBC(wmemcpy)(a, b, s);
 }
 
 __SPRT_C_FUNC __SPRT_ID(wchar_t)
 		* __SPRT_ID(wmemmove)(__SPRT_ID(wchar_t) * a, const __SPRT_ID(wchar_t) * b,
 				__SPRT_ID(size_t) s) {
-	return ::wmemmove(a, b, s);
+	return __SPRT_LIBC(wmemmove)(a, b, s);
 }
 
 __SPRT_C_FUNC __SPRT_ID(wchar_t)
 		* __SPRT_ID(wmemset)(__SPRT_ID(wchar_t) * a, __SPRT_ID(wchar_t) c, __SPRT_ID(size_t) s) {
-	return ::wmemset(a, c, s);
+	return __SPRT_LIBC(wmemset)(a, c, s);
 }
 
-__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(btowc)(int val) { return ::btowc(val); }
+__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(btowc)(int val) { return __SPRT_LIBC(btowc)(val); }
 
-__SPRT_C_FUNC int __SPRT_ID(wctob)(__SPRT_ID(wint_t) val) { return ::wctob(val); }
+__SPRT_C_FUNC int __SPRT_ID(wctob)(__SPRT_ID(wint_t) val) { return __SPRT_LIBC(wctob)(val); }
 
 __SPRT_C_FUNC int __SPRT_ID(mbsinit)(const __SPRT_MBSTATE_NAME *val) {
-	return ::mbsinit((const ::mbstate_t *)val);
+	return __SPRT_LIBC(mbsinit)((const ::mbstate_t *)val);
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t)
 		__SPRT_ID(mbrtowc)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT a, const char *__SPRT_RESTRICT b,
 				__SPRT_ID(size_t) s, __SPRT_MBSTATE_NAME *__SPRT_RESTRICT state) {
-	return ::mbrtowc(a, b, s, (::mbstate_t *)state);
+	return __SPRT_LIBC(mbrtowc)(a, b, s, (::mbstate_t *)state);
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcrtomb)(char *__SPRT_RESTRICT a, __SPRT_ID(wchar_t) c,
 		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT state) {
-	return ::wcrtomb(a, c, (::mbstate_t *)state);
+	return __SPRT_LIBC(wcrtomb)(a, c, (::mbstate_t *)state);
 }
 
 #if SPRT_APPLE
@@ -363,7 +368,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t)
 	state->state = kUcharStatePendingLow;
 	return r;
 #else
-	return ::mbrtoc16(a, b, s, (::mbstate_t *)st);
+	return __SPRT_LIBC(mbrtoc16)(a, b, s, (::mbstate_t *)st);
 #endif
 }
 
@@ -371,7 +376,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(c16rtomb)(char *__SPRT_RESTRICT a, __S
 		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT st) {
 #if SPRT_APPLE
 	auto state = ucharState(st);
-	// A null destination behaves as c16rtomb(buf, u'\0', st) with an internal buf.
+	// A null destination behaves as __SPRT_LIBC(c16rtomb)(buf, u'\0', st) with an internal buf.
 	char scratch[kUcharMaxUtf8];
 	char *dst = a ? a : scratch;
 	__SPRT_ID(char16_t) unit = a ? c : u'\0';
@@ -406,7 +411,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(c16rtomb)(char *__SPRT_RESTRICT a, __S
 	}
 	return unicode::utf8EncodeBuf(dst, kUcharMaxUtf8, (char32_t)unit);
 #else
-	return ::c16rtomb(a, c, (::mbstate_t *)st);
+	return __SPRT_LIBC(c16rtomb)(a, c, (::mbstate_t *)st);
 #endif
 }
 
@@ -429,7 +434,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t)
 	}
 	return r;
 #else
-	return ::mbrtoc32(a, b, s, (::mbstate_t *)st);
+	return __SPRT_LIBC(mbrtoc32)(a, b, s, (::mbstate_t *)st);
 #endif
 }
 
@@ -448,63 +453,63 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(c32rtomb)(char *__SPRT_RESTRICT a, __S
 	}
 	return unicode::utf8EncodeBuf(a, kUcharMaxUtf8, c);
 #else
-	return ::c32rtomb(a, c, (::mbstate_t *)st);
+	return __SPRT_LIBC(c32rtomb)(a, c, (::mbstate_t *)st);
 #endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(mbrlen)(const char *__SPRT_RESTRICT a,
 		__SPRT_ID(size_t) c, __SPRT_MBSTATE_NAME *__SPRT_RESTRICT state) {
-	return ::mbrlen(a, c, (::mbstate_t *)state);
+	return __SPRT_LIBC(mbrlen)(a, c, (::mbstate_t *)state);
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(mbsrtowcs)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 		const char **__SPRT_RESTRICT ret, __SPRT_ID(size_t) s,
 		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT state) {
-	return ::mbsrtowcs(a, ret, s, (::mbstate_t *)state);
+	return __SPRT_LIBC(mbsrtowcs)(a, ret, s, (::mbstate_t *)state);
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsrtombs)(char *__SPRT_RESTRICT a,
 		const __SPRT_ID(wchar_t) * *__SPRT_RESTRICT ret, __SPRT_ID(size_t) s,
 		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT state) {
-	return ::wcsrtombs(a, ret, s, (::mbstate_t *)state);
+	return __SPRT_LIBC(wcsrtombs)(a, ret, s, (::mbstate_t *)state);
 }
 
 __SPRT_C_FUNC float __SPRT_ID(wcstof)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 		__SPRT_ID(wchar_t) * *__SPRT_RESTRICT ret) {
-	return ::wcstof(a, ret);
+	return __SPRT_LIBC(wcstof)(a, ret);
 }
 
 __SPRT_C_FUNC double __SPRT_ID(wcstod)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 		__SPRT_ID(wchar_t) * *__SPRT_RESTRICT ret) {
-	return ::wcstod(a, ret);
+	return __SPRT_LIBC(wcstod)(a, ret);
 }
 
 __SPRT_C_FUNC long double __SPRT_ID(wcstold)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 		__SPRT_ID(wchar_t) * *__SPRT_RESTRICT ret) {
-	return ::wcstold(a, ret);
+	return __SPRT_LIBC(wcstold)(a, ret);
 }
 
 __SPRT_C_FUNC long __SPRT_ID(wcstol)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 		__SPRT_ID(wchar_t) * *__SPRT_RESTRICT ret, int base) {
-	return ::wcstol(a, ret, base);
+	return __SPRT_LIBC(wcstol)(a, ret, base);
 }
 
 __SPRT_C_FUNC unsigned long __SPRT_ID(wcstoul)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 		__SPRT_ID(wchar_t) * *__SPRT_RESTRICT ret, int base) {
-	return ::wcstoul(a, ret, base);
+	return __SPRT_LIBC(wcstoul)(a, ret, base);
 }
 
 __SPRT_C_FUNC long long __SPRT_ID(wcstoll)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 		__SPRT_ID(wchar_t) * *__SPRT_RESTRICT ret, int base) {
-	return ::wcstoll(a, ret, base);
+	return __SPRT_LIBC(wcstoll)(a, ret, base);
 }
 
 __SPRT_C_FUNC unsigned long long __SPRT_ID(wcstoull)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 		__SPRT_ID(wchar_t) * *__SPRT_RESTRICT ret, int base) {
-	return ::wcstoull(a, ret, base);
+	return __SPRT_LIBC(wcstoull)(a, ret, base);
 }
 
-__SPRT_C_FUNC int __SPRT_ID(fwide)(__SPRT_ID(FILE) * f, int c) { return ::fwide(f, c); }
+__SPRT_C_FUNC int __SPRT_ID(fwide)(__SPRT_ID(FILE) * f, int c) { return __SPRT_LIBC(fwide)(f, c); }
 
 __SPRT_C_FUNC int __SPRT_ID(wprintf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, ...) {
 	__sprt_va_list list;
@@ -540,18 +545,18 @@ __SPRT_C_FUNC int __SPRT_ID(swprintf)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT buf,
 
 __SPRT_C_FUNC int __SPRT_ID(
 		vwprintf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list list) {
-	return ::vwprintf(fmt, list);
+	return __SPRT_LIBC(vwprintf)(fmt, list);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vfwprintf)(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list list) {
-	return ::vfwprintf(f, fmt, list);
+	return __SPRT_LIBC(vfwprintf)(f, fmt, list);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vswprintf)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT buf,
 		__SPRT_ID(size_t) size, const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt,
 		__sprt_va_list list) {
-	return ::vswprintf(buf, size, fmt, list);
+	return __SPRT_LIBC(vswprintf)(buf, size, fmt, list);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(wscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, ...) {
@@ -588,54 +593,54 @@ __SPRT_C_FUNC int __SPRT_ID(swscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT 
 
 __SPRT_C_FUNC int __SPRT_ID(
 		vwscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list list) {
-	return ::vwscanf(fmt, list);
+	return __SPRT_LIBC(vwscanf)(fmt, list);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vfwscanf)(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list list) {
-	return ::vfwscanf(f, fmt, list);
+	return __SPRT_LIBC(vfwscanf)(f, fmt, list);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vswscanf)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT buf,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list list) {
-	return ::vswscanf(buf, fmt, list);
+	return __SPRT_LIBC(vswscanf)(buf, fmt, list);
 }
 
-__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fgetwc)(__SPRT_ID(FILE) * f) { return ::fgetwc(f); }
-__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwc)(__SPRT_ID(FILE) * f) { return ::getwc(f); }
-__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwchar)(void) { return ::getwchar(); }
+__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fgetwc)(__SPRT_ID(FILE) * f) { return __SPRT_LIBC(fgetwc)(f); }
+__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwc)(__SPRT_ID(FILE) * f) { return __SPRT_LIBC(getwc)(f); }
+__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwchar)(void) { return __SPRT_LIBC(getwchar)(); }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fputwc)(__SPRT_ID(wchar_t) c, __SPRT_ID(FILE) * f) {
-	return ::fputwc(c, f);
+	return __SPRT_LIBC(fputwc)(c, f);
 }
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(putwc)(__SPRT_ID(wchar_t) c, __SPRT_ID(FILE) * f) {
-	return ::putwc(c, f);
+	return __SPRT_LIBC(putwc)(c, f);
 }
-__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(putwchar)(__SPRT_ID(wchar_t) c) { return ::putwchar(c); }
+__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(putwchar)(__SPRT_ID(wchar_t) c) { return __SPRT_LIBC(putwchar)(c); }
 
 __SPRT_C_FUNC __SPRT_ID(wchar_t)
 		* __SPRT_ID(fgetws)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT a, int c,
 				__SPRT_ID(FILE) * __SPRT_RESTRICT f) {
-	return ::fgetws(a, c, f);
+	return __SPRT_LIBC(fgetws)(a, c, f);
 }
 __SPRT_C_FUNC int __SPRT_ID(
 		fputws)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT a, __SPRT_ID(FILE) * __SPRT_RESTRICT f) {
-	return ::fputws(a, f);
+	return __SPRT_LIBC(fputws)(a, f);
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(ungetwc)(__SPRT_ID(wint_t) c, __SPRT_ID(FILE) * f) {
-	return ::ungetwc(c, f);
+	return __SPRT_LIBC(ungetwc)(c, f);
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsftime)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 		__SPRT_ID(size_t) s, const __SPRT_ID(wchar_t) * __SPRT_RESTRICT b,
 		const struct __SPRT_TM_NAME *__SPRT_RESTRICT _tm) {
 #if __STDC_HOSTED__ == 0
-	return ::wcsftime(a, s, b, _tm);
+	return __SPRT_LIBC(wcsftime)(a, s, b, _tm);
 #else
 	auto native = internal::getNativeTm(_tm);
 
-	return ::wcsftime(a, s, b, &native);
+	return __SPRT_LIBC(wcsftime)(a, s, b, &native);
 #endif
 }
 
@@ -712,7 +717,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsftime_l)(__SPRT_ID(wchar_t) * __SPR
 		__SPRT_ID(size_t) size, const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt,
 		const struct __SPRT_TM_NAME *__SPRT_RESTRICT _tm, __SPRT_ID(locale_t) loc) {
 #if __STDC_HOSTED__ == 0
-	return ::wcsftime_l(ptr, size, fmt, _tm, loc);
+	return __SPRT_LIBC(wcsftime_l)(ptr, size, fmt, _tm, loc);
 #else
 	auto native = internal::getNativeTm(_tm);
 #if SPRT_ANDROID
@@ -727,7 +732,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsftime_l)(__SPRT_ID(wchar_t) * __SPR
 	(void)loc;
 	return ::wcsftime(ptr, size, fmt, &native);
 #else
-	return ::wcsftime_l(ptr, size, fmt, &native, loc);
+	return __SPRT_LIBC(wcsftime_l)(ptr, size, fmt, &native, loc);
 #endif
 #endif
 }
@@ -745,34 +750,34 @@ __SPRT_C_FUNC __SPRT_ID(FILE)
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(mbsnrtowcs)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT dest,
 		const char **__SPRT_RESTRICT src, __SPRT_ID(size_t) count, __SPRT_ID(size_t) destSize,
 		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT state) {
-	return ::mbsnrtowcs(dest, src, count, destSize, (mbstate_t *)state);
+	return __SPRT_LIBC(mbsnrtowcs)(dest, src, count, destSize, (mbstate_t *)state);
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsnrtombs)(char *__SPRT_RESTRICT dest,
 		const __SPRT_ID(wchar_t) **__SPRT_RESTRICT src, __SPRT_ID(size_t) count,
 		__SPRT_ID(size_t) destSize, __SPRT_MBSTATE_NAME *__SPRT_RESTRICT state) {
-	return ::wcsnrtombs(dest, src, count, destSize, (mbstate_t *)state);
+	return __SPRT_LIBC(wcsnrtombs)(dest, src, count, destSize, (mbstate_t *)state);
 }
 
 __SPRT_C_FUNC __SPRT_ID(wchar_t) * __SPRT_ID(wcsdup)(const __SPRT_ID(wchar_t) * ptr) {
-	return ::wcsdup(ptr);
+	return __SPRT_LIBC(wcsdup)(ptr);
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t)
 		__SPRT_ID(wcsnlen)(const __SPRT_ID(wchar_t) * ptr, __SPRT_ID(size_t) len) {
-	return ::wcsnlen(ptr, len);
+	return __SPRT_LIBC(wcsnlen)(ptr, len);
 }
 
 __SPRT_C_FUNC __SPRT_ID(wchar_t)
 		* __SPRT_ID(wcpcpy)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT ptr,
 				const __SPRT_ID(wchar_t) * __SPRT_RESTRICT buf) {
-	return ::wcpcpy(ptr, buf);
+	return __SPRT_LIBC(wcpcpy)(ptr, buf);
 }
 
 __SPRT_C_FUNC __SPRT_ID(wchar_t)
 		* __SPRT_ID(wcpncpy)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT a,
 				const __SPRT_ID(wchar_t) * __SPRT_RESTRICT b, __SPRT_ID(size_t) size) {
-	return ::wcpncpy(a, b, size);
+	return __SPRT_LIBC(wcpncpy)(a, b, size);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
@@ -780,7 +785,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 #if SPRT_EMBOX
 	return ::wcsncasecmp(a, b, static_cast<size_t>(-1));
 #else
-	return ::wcscasecmp(a, b);
+	return __SPRT_LIBC(wcscasecmp)(a, b);
 #endif
 }
 
@@ -815,7 +820,7 @@ __SPRT_C_FUNC int __SPRT_ID(wcscoll_l)(const __SPRT_ID(wchar_t) * a, const __SPR
 	(void)loc;
 	return ::wcscoll(a, b);
 #else
-	return ::wcscoll_l(a, b, loc);
+	return __SPRT_LIBC(wcscoll_l)(a, b, loc);
 #endif
 }
 
@@ -826,7 +831,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsxfrm_l)(__SPRT_ID(wchar_t) * __SPRT
 	(void)loc;
 	return ::wcsxfrm(a, b, s);
 #else
-	return ::wcsxfrm_l(a, b, s, loc);
+	return __SPRT_LIBC(wcsxfrm_l)(a, b, s, loc);
 #endif
 }
 
@@ -837,7 +842,7 @@ __SPRT_C_FUNC int __SPRT_ID(wcwidth)(__SPRT_ID(wchar_t) c) {
 	}
 	return ::iswprint(static_cast<wint_t>(c)) ? 1 : -1;
 #else
-	return wcwidth(c);
+	return __SPRT_LIBC(wcwidth)(c);
 #endif
 }
 
@@ -853,37 +858,37 @@ __SPRT_C_FUNC int __SPRT_ID(wcswidth)(const __SPRT_ID(wchar_t) * ptr, __SPRT_ID(
 	}
 	return total;
 #else
-	return wcswidth(ptr, s);
+	return __SPRT_LIBC(wcswidth)(ptr, s);
 #endif
 }
 
-__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(towlower)(__SPRT_ID(wint_t) wc) { return ::towlower(wc); }
-__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(towupper)(__SPRT_ID(wint_t) wc) { return ::towupper(wc); }
+__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(towlower)(__SPRT_ID(wint_t) wc) { return __SPRT_LIBC(towlower)(wc); }
+__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(towupper)(__SPRT_ID(wint_t) wc) { return __SPRT_LIBC(towupper)(wc); }
 
-__SPRT_C_FUNC int __SPRT_ID(iswalnum)(__SPRT_ID(wint_t) wc) { return ::iswalnum(wc); }
-__SPRT_C_FUNC int __SPRT_ID(iswalpha)(__SPRT_ID(wint_t) wc) { return ::iswalpha(wc); }
-__SPRT_C_FUNC int __SPRT_ID(iswblank)(__SPRT_ID(wint_t) wc) { return ::iswblank(wc); }
-__SPRT_C_FUNC int __SPRT_ID(iswcntrl)(__SPRT_ID(wint_t) wc) { return ::iswcntrl(wc); }
-__SPRT_C_FUNC int __SPRT_ID(iswdigit)(__SPRT_ID(wint_t) wc) { return ::iswdigit(wc); }
-__SPRT_C_FUNC int __SPRT_ID(iswgraph)(__SPRT_ID(wint_t) wc) { return ::iswgraph(wc); }
-__SPRT_C_FUNC int __SPRT_ID(iswlower)(__SPRT_ID(wint_t) wc) { return ::iswlower(wc); }
-__SPRT_C_FUNC int __SPRT_ID(iswprint)(__SPRT_ID(wint_t) wc) { return ::iswprint(wc); }
-__SPRT_C_FUNC int __SPRT_ID(iswpunct)(__SPRT_ID(wint_t) wc) { return ::iswpunct(wc); }
-__SPRT_C_FUNC int __SPRT_ID(iswspace)(__SPRT_ID(wint_t) wc) { return ::iswspace(wc); }
-__SPRT_C_FUNC int __SPRT_ID(iswupper)(__SPRT_ID(wint_t) wc) { return ::iswupper(wc); }
-__SPRT_C_FUNC int __SPRT_ID(iswxdigit)(__SPRT_ID(wint_t) wc) { return ::iswxdigit(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswalnum)(__SPRT_ID(wint_t) wc) { return __SPRT_LIBC(iswalnum)(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswalpha)(__SPRT_ID(wint_t) wc) { return __SPRT_LIBC(iswalpha)(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswblank)(__SPRT_ID(wint_t) wc) { return __SPRT_LIBC(iswblank)(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswcntrl)(__SPRT_ID(wint_t) wc) { return __SPRT_LIBC(iswcntrl)(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswdigit)(__SPRT_ID(wint_t) wc) { return __SPRT_LIBC(iswdigit)(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswgraph)(__SPRT_ID(wint_t) wc) { return __SPRT_LIBC(iswgraph)(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswlower)(__SPRT_ID(wint_t) wc) { return __SPRT_LIBC(iswlower)(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswprint)(__SPRT_ID(wint_t) wc) { return __SPRT_LIBC(iswprint)(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswpunct)(__SPRT_ID(wint_t) wc) { return __SPRT_LIBC(iswpunct)(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswspace)(__SPRT_ID(wint_t) wc) { return __SPRT_LIBC(iswspace)(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswupper)(__SPRT_ID(wint_t) wc) { return __SPRT_LIBC(iswupper)(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswxdigit)(__SPRT_ID(wint_t) wc) { return __SPRT_LIBC(iswxdigit)(wc); }
 
 __SPRT_C_FUNC int __SPRT_ID(iswctype)(__SPRT_ID(wint_t) wc, __SPRT_ID(wctype_t) t) {
-	return ::iswctype(wc, t);
+	return __SPRT_LIBC(iswctype)(wc, t);
 }
-__SPRT_C_FUNC __SPRT_ID(wctype_t) __SPRT_ID(wctype)(const char *name) { return ::wctype(name); }
+__SPRT_C_FUNC __SPRT_ID(wctype_t) __SPRT_ID(wctype)(const char *name) { return __SPRT_LIBC(wctype)(name); }
 
 __SPRT_C_FUNC int __SPRT_ID(iswalnum_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
 #if SPRT_EMBOX
 	(void)loc;
 	return ::iswalnum(wc);
 #else
-	return ::iswalnum_l(wc, loc);
+	return __SPRT_LIBC(iswalnum_l)(wc, loc);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswalpha_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
@@ -891,7 +896,7 @@ __SPRT_C_FUNC int __SPRT_ID(iswalpha_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t
 	(void)loc;
 	return ::iswalpha(wc);
 #else
-	return ::iswalpha_l(wc, loc);
+	return __SPRT_LIBC(iswalpha_l)(wc, loc);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswblank_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
@@ -899,7 +904,7 @@ __SPRT_C_FUNC int __SPRT_ID(iswblank_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t
 	(void)loc;
 	return ::iswblank(wc);
 #else
-	return ::iswblank_l(wc, loc);
+	return __SPRT_LIBC(iswblank_l)(wc, loc);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswcntrl_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
@@ -907,7 +912,7 @@ __SPRT_C_FUNC int __SPRT_ID(iswcntrl_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t
 	(void)loc;
 	return ::iswcntrl(wc);
 #else
-	return ::iswcntrl_l(wc, loc);
+	return __SPRT_LIBC(iswcntrl_l)(wc, loc);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswdigit_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
@@ -915,7 +920,7 @@ __SPRT_C_FUNC int __SPRT_ID(iswdigit_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t
 	(void)loc;
 	return ::iswdigit(wc);
 #else
-	return ::iswdigit_l(wc, loc);
+	return __SPRT_LIBC(iswdigit_l)(wc, loc);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswgraph_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
@@ -923,7 +928,7 @@ __SPRT_C_FUNC int __SPRT_ID(iswgraph_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t
 	(void)loc;
 	return ::iswgraph(wc);
 #else
-	return ::iswgraph_l(wc, loc);
+	return __SPRT_LIBC(iswgraph_l)(wc, loc);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswlower_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
@@ -931,7 +936,7 @@ __SPRT_C_FUNC int __SPRT_ID(iswlower_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t
 	(void)loc;
 	return ::iswlower(wc);
 #else
-	return ::iswlower_l(wc, loc);
+	return __SPRT_LIBC(iswlower_l)(wc, loc);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswprint_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
@@ -939,7 +944,7 @@ __SPRT_C_FUNC int __SPRT_ID(iswprint_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t
 	(void)loc;
 	return ::iswprint(wc);
 #else
-	return ::iswprint_l(wc, loc);
+	return __SPRT_LIBC(iswprint_l)(wc, loc);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswpunct_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
@@ -947,7 +952,7 @@ __SPRT_C_FUNC int __SPRT_ID(iswpunct_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t
 	(void)loc;
 	return ::iswpunct(wc);
 #else
-	return ::iswpunct_l(wc, loc);
+	return __SPRT_LIBC(iswpunct_l)(wc, loc);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswspace_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
@@ -955,7 +960,7 @@ __SPRT_C_FUNC int __SPRT_ID(iswspace_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t
 	(void)loc;
 	return ::iswspace(wc);
 #else
-	return ::iswspace_l(wc, loc);
+	return __SPRT_LIBC(iswspace_l)(wc, loc);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswupper_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
@@ -963,7 +968,7 @@ __SPRT_C_FUNC int __SPRT_ID(iswupper_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t
 	(void)loc;
 	return ::iswupper(wc);
 #else
-	return ::iswupper_l(wc, loc);
+	return __SPRT_LIBC(iswupper_l)(wc, loc);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(iswxdigit_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
@@ -980,7 +985,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	(void)loc;
 	return ::iswctype(wc, t);
 #else
-	return ::iswctype_l(wc, t, loc);
+	return __SPRT_LIBC(iswctype_l)(wc, t, loc);
 #endif
 }
 __SPRT_C_FUNC __SPRT_ID(wint_t)
@@ -989,7 +994,7 @@ __SPRT_C_FUNC __SPRT_ID(wint_t)
 	(void)loc;
 	return ::towlower(wc);
 #else
-	return ::towlower_l(wc, loc);
+	return __SPRT_LIBC(towlower_l)(wc, loc);
 #endif
 }
 __SPRT_C_FUNC __SPRT_ID(wint_t)
@@ -998,7 +1003,7 @@ __SPRT_C_FUNC __SPRT_ID(wint_t)
 	(void)loc;
 	return ::towupper(wc);
 #else
-	return ::towupper_l(wc, loc);
+	return __SPRT_LIBC(towupper_l)(wc, loc);
 #endif
 }
 __SPRT_C_FUNC __SPRT_ID(wctype_t) __SPRT_ID(wctype_l)(const char *name, __SPRT_ID(locale_t) loc) {
@@ -1006,7 +1011,7 @@ __SPRT_C_FUNC __SPRT_ID(wctype_t) __SPRT_ID(wctype_l)(const char *name, __SPRT_I
 	(void)loc;
 	return ::wctype(name);
 #else
-	return ::wctype_l(name, loc);
+	return __SPRT_LIBC(wctype_l)(name, loc);
 #endif
 }
 
@@ -1026,9 +1031,9 @@ __SPRT_C_FUNC __SPRT_ID(wctrans_t) __SPRT_ID(wctrans)(const char *name) {
 #elif SPRT_HOSTED_RTOS
 	// NuttX wctrans_t is `int`, sprt's ABI is `const int *`. Round-trip through
 	// the integer value so the call type-checks.
-	return (__SPRT_ID(wctrans_t))(intptr_t)::wctrans(name);
+	return (__SPRT_ID(wctrans_t))(intptr_t)__SPRT_LIBC(wctrans)(name);
 #else
-	return ::wctrans(name);
+	return __SPRT_LIBC(wctrans)(name);
 #endif
 }
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(towctrans)(__SPRT_ID(wint_t) wc, __SPRT_ID(wctrans_t) t) {
@@ -1038,9 +1043,9 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(towctrans)(__SPRT_ID(wint_t) wc, __SPR
 	}
 	return __towctrans_fallback(wc, t);
 #elif SPRT_HOSTED_RTOS
-	return ::towctrans(wc, (wctrans_t)(intptr_t)t);
+	return __SPRT_LIBC(towctrans)(wc, (wctrans_t)(intptr_t)t);
 #else
-	return ::towctrans(wc, t);
+	return __SPRT_LIBC(towctrans)(wc, t);
 #endif
 }
 __SPRT_C_FUNC __SPRT_ID(wctrans_t) __SPRT_ID(wctrans_l)(const char *name, __SPRT_ID(locale_t) loc) {
@@ -1053,7 +1058,7 @@ __SPRT_C_FUNC __SPRT_ID(wctrans_t) __SPRT_ID(wctrans_l)(const char *name, __SPRT
 	(void)loc;
 	return (__SPRT_ID(wctrans_t))(intptr_t)::wctrans(name);
 #else
-	return ::wctrans_l(name, loc);
+	return __SPRT_LIBC(wctrans_l)(name, loc);
 #endif
 }
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(

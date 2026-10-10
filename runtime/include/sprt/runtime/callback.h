@@ -260,7 +260,8 @@ public:
 			return (*static_cast<FunctionT *>(const_cast<void *>(arg)))(
 					sprt::forward<ArgumentTypes>(args)...);
 		} else {
-			static_assert(false, "Invalid FunctionT type - not invokable with arguments provided");
+			static_assert(!sprt::is_same_v<FunctionT, FunctionT>,
+					"Invalid FunctionT type - not invokable with arguments provided");
 		}
 	}) { }
 

@@ -63,16 +63,20 @@ BUILD_TYPE_CXXFLAGS_DEBUG := -g -funwind-tables
 BUILD_TYPE_LDFLAGS_DEBUG :=
 
 ifeq ($(TARGET_SYSTEM),Linux)
+# -ftime-trace — clang-only profiler; lcc (e2k) неизвестную опцию отвергает.
+ifeq (,$(filter e2k32 e2k64 e2k128,$(TARGET_ARCH)))
 BUILD_TYPE_CFLAGS_DEBUG += -ftime-trace
 BUILD_TYPE_CXXFLAGS_DEBUG += -ftime-trace
+endif
 # use --ld-path=mold for fast linking
 BUILD_TYPE_LDFLAGS_DEBUG := -Wl,-O0 -Wl,--build-id=none -ldl
 
-ifneq ($(TARGET_ARCH),riscv64)
+# -gsplit-dwarf не поддерживается ни riscv64, ни lcc (e2k)
+ifeq (,$(filter riscv64 e2k32 e2k64 e2k128,$(TARGET_ARCH)))
 BUILD_TYPE_CFLAGS_DEBUG += -gsplit-dwarf
 BUILD_TYPE_CXXFLAGS_DEBUG += -gsplit-dwarf
 BUILD_TYPE_LDFLAGS_DEBUG += -gsplit-dwarf
-endif # ($(TARGET_ARCH),riscv64)
+endif # riscv64/e2k
 endif # ($(TARGET_SYSTEM),Linux)
 
 BUILD_TYPE_CFLAGS_COVERAGE := -g -fprofile-arcs -ftest-coverage

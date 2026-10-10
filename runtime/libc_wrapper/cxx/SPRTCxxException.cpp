@@ -240,8 +240,10 @@ void nested_exception::rethrow_nested() const {
 	std::rethrow_exception(__ptr_);
 }
 
-#if SPRT_WINDOWS
+#if SPRT_WINDOWS || (defined(__e2k__) && !defined(__clang__))
 // On the MSVC ABI there is no libc++abi, so the counters have no backing runtime.
+// lcc's e2k delivery exports no __cxa_uncaught_exception(s) either (its EH is
+// internal to the compiler runtime), so the same conservative fallback applies.
 bool uncaught_exception() noexcept { return false; }
 int uncaught_exceptions() noexcept { return 0; }
 #else

@@ -33,6 +33,7 @@ THE SOFTWARE.
 #if SPRT_LINUX || SPRT_ANDROID
 #include <sched.h>
 #include <math.h>
+#include <sys/syscall.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -283,7 +284,7 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
 #elif SPRT_WASM
 	return __sprt_wasm_gettid();
 #else
-	return ::gettid();
+	return static_cast<__SPRT_ID(pid_t)>(syscall(SYS_gettid));
 #endif
 #endif
 }
@@ -295,7 +296,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	int nn_max = setsize / sizeof(set->__bits[0]);
 	int count = 0;
 	for (; nn < nn_max; nn++) {
-		count += __builtin_popcountg(set->__bits[nn]); //
+		count += __builtin_popcountl(set->__bits[nn]); // __bits is unsigned long
 	}
 	return count;
 }

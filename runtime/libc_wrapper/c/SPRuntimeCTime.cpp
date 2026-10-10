@@ -95,11 +95,17 @@ static_assert(CLOCK_TAI == __SPRT_CLOCK_TAI);
 
 namespace sprt {
 
+// lcc/e2k: umbrella-обёртки инлайнятся полностью (сборка с -O1), слабых копий
+// в образе нет — прямые вызовы libc резолвятся в glibc без версионных алиасов
+#define __SPRT_LIBC(name) name
+
+
 thread_local struct __SPRT_TM_NAME s_gmtime_val;
 thread_local struct __SPRT_TM_NAME s_localtime_val;
 
 __SPRT_C_FUNC __SPRT_ID(time_t) __SPRT_ID(time)(__SPRT_ID(time_t) * t) {
-#if SPRT_ANDROID && !defined(__LP64__)
+#if SPRT_ANDROID && !defined(__LP64__) || (defined(__GLIBC__) && !defined(__LP64__))
+	// bionic-32 и glibc-ILP32 держат 32-битный time_t; ABI sprt — 64-битный
 	::time_t native;
 	auto ret = ::time(&native);
 	if (t) {
@@ -107,23 +113,23 @@ __SPRT_C_FUNC __SPRT_ID(time_t) __SPRT_ID(time)(__SPRT_ID(time_t) * t) {
 	}
 	return ret;
 #else
-	return ::time(t);
+	return __SPRT_LIBC(time)(t);
 #endif
 }
 
 __SPRT_C_FUNC double __SPRT_ID(difftime)(__SPRT_ID(time_t) a, __SPRT_ID(time_t) b) {
-	return ::difftime(a, b);
+	return __SPRT_LIBC(difftime)(a, b);
 }
 
 __SPRT_C_FUNC __SPRT_ID(time_t) __SPRT_ID(mktime)(struct __SPRT_TM_NAME *_tm) {
 #if __STDC_HOSTED__ == 0
-	return ::mktime(_tm);
+	return __SPRT_LIBC(mktime)(_tm);
 #else
 	auto native = internal::getNativeTm(_tm);
 #if SPRT_ANDROID && !defined(__LP64__)
 	auto ret = ::mktime64(&native);
 #else
-	auto ret = ::mktime(&native);
+	auto ret = __SPRT_LIBC(mktime)(&native);
 #endif
 	if (_tm) {
 		internal::getRuntimeTm(_tm, native);
@@ -136,10 +142,10 @@ __SPRT_C_FUNC __SPRT_ID(size_t)
 		__SPRT_ID(strftime)(char *__SPRT_RESTRICT buf, __SPRT_ID(size_t) size,
 				const char *__SPRT_RESTRICT fmt, const struct __SPRT_TM_NAME *__SPRT_RESTRICT _tm) {
 #if __STDC_HOSTED__ == 0
-	return strftime(buf, size, fmt, _tm);
+	return __SPRT_LIBC(strftime)(buf, size, fmt, _tm);
 #else
 	auto native = internal::getNativeTm(_tm);
-	return strftime(buf, size, fmt, &native);
+	return __SPRT_LIBC(strftime)(buf, size, fmt, &native);
 #endif
 }
 
@@ -155,27 +161,27 @@ __SPRT_C_FUNC struct __SPRT_TM_NAME *__SPRT_ID(localtime)(const __SPRT_ID(time_t
 
 __SPRT_C_FUNC char *__SPRT_ID(asctime)(const struct __SPRT_TM_NAME *_tm) {
 #if __STDC_HOSTED__ == 0
-	return ::asctime(_tm);
+	return __SPRT_LIBC(asctime)(_tm);
 #else
 	auto native = internal::getNativeTm(_tm);
 #if SPRT_ANDROID && !defined(__LP64__)
 	return ::asctime64(&native);
 #else
-	return ::asctime(&native);
+	return __SPRT_LIBC(asctime)(&native);
 #endif
 #endif
 }
 
 __SPRT_C_FUNC char *__SPRT_ID(ctime)(const __SPRT_ID(time_t) * t) {
 #if __STDC_HOSTED__ == 0
-	return ::ctime(t);
+	return __SPRT_LIBC(ctime)(t);
 #else
 #if SPRT_ANDROID && !defined(__LP64__)
 	::time64_t native = *t;
 	return ::ctime64(&native);
 #else
 	::time_t native = *t;
-	return ::ctime(&native);
+	return __SPRT_LIBC(ctime)(&native);
 #endif
 #endif
 }
@@ -187,7 +193,7 @@ __SPRT_C_FUNC struct __SPRT_TM_NAME *__SPRT_ID(
 	}
 
 #if __STDC_HOSTED__ == 0
-	return ::gmtime_r(t, _tm);
+	return __SPRT_LIBC(gmtime_r)(t, _tm);
 #else
 	struct tm native{};
 #if SPRT_ANDROID && !defined(__LP64__)
@@ -202,7 +208,7 @@ __SPRT_C_FUNC struct __SPRT_TM_NAME *__SPRT_ID(
 	return nullptr;
 #else
 	::time_t nativeT = *t;
-	auto ret = ::gmtime_r(&nativeT, &native);
+	auto ret = __SPRT_LIBC(gmtime_r)(&nativeT, &native);
 	if (ret) {
 		internal::getRuntimeTm(_tm, *ret);
 		_tm->tm_gmtoff = 0;
@@ -235,7 +241,7 @@ __SPRT_C_FUNC struct __SPRT_TM_NAME *__SPRT_ID(
 	return nullptr;
 #else
 	::time_t nativeT = *t;
-	auto ret = ::localtime_r(&nativeT, &native);
+	auto ret = __SPRT_LIBC(localtime_r)(&nativeT, &native);
 	if (ret) {
 		internal::getRuntimeTm(_tm, native);
 		_tm->tm_gmt_type = __SPRT_ID(gmt_local);
@@ -250,14 +256,14 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(strftime_l)(char *__SPRT_RESTRICT buf,
 		__SPRT_ID(size_t) size, const char *__SPRT_RESTRICT fmt,
 		const struct __SPRT_TM_NAME *__SPRT_RESTRICT ts, __SPRT_ID(locale_t) loc) {
 #if __STDC_HOSTED__ == 0
-	return ::strftime_l(buf, size, fmt, ts, loc);
+	return __SPRT_LIBC(strftime_l)(buf, size, fmt, ts, loc);
 #else
 	(void)loc;
 	auto native = internal::getNativeTm(ts);
 #if SPRT_EMBOX
 	return ::strftime(buf, size, fmt, &native);
 #else
-	return ::strftime_l(buf, size, fmt, &native, loc);
+	return __SPRT_LIBC(strftime_l)(buf, size, fmt, &native, loc);
 #endif
 #endif
 }
@@ -265,34 +271,37 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(strftime_l)(char *__SPRT_RESTRICT buf,
 __SPRT_C_FUNC char *__SPRT_ID(
 		asctime_r)(const struct __SPRT_TM_NAME *__SPRT_RESTRICT ts, char *__SPRT_RESTRICT buf) {
 #if __STDC_HOSTED__ == 0
-	return ::asctime_r(ts, buf);
+	return __SPRT_LIBC(asctime_r)(ts, buf);
 #else
 	auto native = internal::getNativeTm(ts);
 #if SPRT_ANDROID && !defined(__LP64__)
 	return ::asctime64_r(&native, buf);
 #else
-	return ::asctime_r(&native, buf);
+	return __SPRT_LIBC(asctime_r)(&native, buf);
 #endif
 #endif
 }
 
 __SPRT_C_FUNC char *__SPRT_ID(ctime_r)(const __SPRT_ID(time_t) * t, char *buf) {
 #if __STDC_HOSTED__ == 0
-	return ::ctime_r(t, buf);
+	return __SPRT_LIBC(ctime_r)(t, buf);
 #else
 #if SPRT_ANDROID && !defined(__LP64__)
 	return ::ctime64_r(t, buf);
+#elif defined(__GLIBC__) && !defined(__LP64__)
+	::time_t native = *t;
+	return ::ctime_r(&native, buf);
 #else
-	return ::ctime_r(t, buf);
+	return __SPRT_LIBC(ctime_r)(t, buf);
 #endif
 #endif
 }
 
-__SPRT_C_FUNC void __SPRT_ID(tzset)(void) { ::tzset(); }
+__SPRT_C_FUNC void __SPRT_ID(tzset)(void) { __SPRT_LIBC(tzset)(); }
 
 __SPRT_C_FUNC int __SPRT_ID(nanosleep)(const __SPRT_TIMESPEC_NAME *ts, __SPRT_TIMESPEC_NAME *out) {
 #if SPRT_WINDOWS
-	return nanosleep(ts, out);
+	return __SPRT_LIBC(nanosleep)(ts, out);
 #else
 	struct timespec native;
 	if (ts) {
@@ -301,7 +310,7 @@ __SPRT_C_FUNC int __SPRT_ID(nanosleep)(const __SPRT_TIMESPEC_NAME *ts, __SPRT_TI
 	}
 
 	struct timespec rem;
-	auto ret = ::nanosleep(ts ? &native : nullptr, &rem);
+	auto ret = __SPRT_LIBC(nanosleep)(ts ? &native : nullptr, &rem);
 	if (out) {
 		out->tv_nsec = rem.tv_nsec;
 		out->tv_sec = rem.tv_sec;

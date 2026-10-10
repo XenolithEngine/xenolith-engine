@@ -67,7 +67,7 @@ typedef __INT16_TYPE__ __SPRT_ID(int16_t);
 // Use Data models specifications
 #if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__LP64__) || defined(__SPRT_WINDOWS)
 
-typedef int __SPRT_ID(int16_t);
+typedef short __SPRT_ID(int16_t);
 #define __SPRT_INT16_MAX __SPRT_SHRT_MAX
 #define __SPRT_INT16_WIDTH __SPRT_SHRT_WIDTH
 #define __SPRT_INT16_FMTd __SPRT_SHRT_FMTd

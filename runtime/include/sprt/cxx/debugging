@@ -29,12 +29,20 @@ namespace sprt {
 
 bool is_debugger_present() noexcept;
 
+// lcc has no __builtin_debugtrap; __builtin_trap is the closest stop-the-program
+// builtin its GCC-compatible interface provides.
+#if defined(__LCC__) && !defined(__clang__)
+#define __SPRT_DEBUG_TRAP() __builtin_trap()
+#else
+#define __SPRT_DEBUG_TRAP() __builtin_debugtrap()
+#endif
+
 // debugging utility
-SPRT_FORCEINLINE void breakpoint() noexcept { __builtin_debugtrap(); }
+SPRT_FORCEINLINE void breakpoint() noexcept { __SPRT_DEBUG_TRAP(); }
 
 SPRT_FORCEINLINE void breakpoint_if_debugging() noexcept {
 	if (sprt::is_debugger_present()) {
-		__builtin_debugtrap();
+		__SPRT_DEBUG_TRAP();
 	}
 }
 

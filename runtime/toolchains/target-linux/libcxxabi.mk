@@ -6,10 +6,10 @@
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,24 +22,34 @@
 
 LIBNAME = llvm-project
 
+# libcxxabi/libunwind компилируются с заголовками STL из тела рантайма: libc++
+# в deps-сборке больше не строится, а SDK-кланг (CLANG_DEFAULT_CXX_STDLIB=libc++)
+# без -nostdinc++ нашёл бы c++/v1 sysroot'а раньше (тот же приём, что в
+# common/harfbuzz.mk для WINDOWS/LINUX).
+#
+# Порядок инклудов обратный shim-дизайну (там include_libc/cxx первым): на
+# hosted-linux vendored libcxx/include работает в glibc-режиме и обязан
+# выигрывать — иначе shim навязывает sprt-определение __mbstate_t, которое
+# конфликтует с glibc (typedef redefinition в cxa_demangle.cpp). Шиму остаётся
+# только недостающее — <__config_site> (в дереве исходников его нет).
+SP_USER_CXXFLAGS += -nostdinc++ \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../libcxx/include) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include_libc/cxx) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include)
+
 include ../common/configure.mk
 
 include libcxx-unwinder.mk
 
 CONFIGURE := \
 	$(CONFIGURE_CMAKE) \
-	-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
+	-DLLVM_ENABLE_RUNTIMES="libcxxabi;libunwind" \
 	-DLLVM_INSTALL_TOOLCHAIN_ONLY=On \
 	-DLLVM_ENABLE_PIC=On \
 	-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 	-DLLVM_HOST_TRIPLE="$(SP_TARGET)" \
 	-DLLVM_DEFAULT_TARGET_TRIPLE="$(SP_TARGET)" \
-    -DLIBCXX_ENABLE_EXCEPTIONS=OFF \
-	-DLIBCXX_HAS_ATOMIC_LIB=Off \
-	-DLIBCXX_ENABLE_SHARED=Off \
-	-DLIBCXX_USE_COMPILER_RT=On \
-	-DLIBCXX_INSTALL_LIBRARY_DIR=usr/lib \
-    -DLIBCXXABI_ENABLE_EXCEPTIONS=OFF \
+	-DLIBCXXABI_ENABLE_EXCEPTIONS=OFF \
 	-DLIBCXXABI_USE_LLVM_UNWINDER=On \
 	-DLIBCXXABI_USE_COMPILER_RT=On \
 	-DLIBCXXABI_ENABLE_STATIC_UNWINDER=$(LIBCXX_STATIC_UNWINDER) \
@@ -50,20 +60,6 @@ CONFIGURE := \
 	-DLIBUNWIND_INSTALL_LIBRARY_DIR=usr/lib \
 	-DCMAKE_BUILD_TYPE=Release
 
-# musl-specific libc++ configuration.
-ifneq (,$(findstring musl,$(SP_TARGET)))
-# Build libc++ in musl mode: its locale backend otherwise pulls glibc-only
-# entry points (strtoll_l/strtoull_l) and the glibc rune table, which musl
-# lacks. Defines _LIBCPP_HAS_MUSL_LIBC and switches those code paths.
-CONFIGURE += -DLIBCXX_HAS_MUSL_LIBC=ON
-# musl provides no __cxa_thread_atexit_impl(): the libcxxabi check_library_exists()
-# probe mis-detects it (it links the build host's libc), so force it off. libc++abi
-# then declares the symbol weak and falls back to a pthread-key implementation
-# instead of emitting a hard reference to a symbol musl's libc.a does not contain.
-# glibc keeps auto-detection (it has the function and uses it directly).
-CONFIGURE += -DLIBCXXABI_HAS_CXA_THREAD_ATEXIT_IMPL=OFF
-endif
-
 ifeq ($(SP_ARCH),riscv64)
 RISCV := 1
 endif
@@ -72,7 +68,6 @@ all:
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_mkdir,$(LIBNAME))
 	cd $(LIBNAME); cmake -G "Ninja" -S $(LIB_SRC_DIR)/$(LIBNAME)/runtimes $(CONFIGURE)
-	cd $(LIBNAME); cmake  --build . --config Release --target install-cxx
 	cd $(LIBNAME); cmake  --build . --config Release --target install-cxxabi
 	cd $(LIBNAME); cmake  --build . --config Release --target install
 	$(call rule_rm,$(LIBNAME))

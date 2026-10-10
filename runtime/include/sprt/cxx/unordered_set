@@ -43,8 +43,8 @@ concept __unordered_set_compatible_key =
 		requires(const typename Set::key_type &k, const ExternalKey &ek) {
 			typename Set::hasher::is_transparent;
 			typename Set::key_equal::is_transparent;
-			typename Set::key_equal()(k, ek);
-			typename Set::hasher()(ek);
+			declval<typename Set::key_equal>()(k, ek);
+			declval<typename Set::hasher>()(ek);
 		};
 
 // `Stl` selects the std::unordered_set-conforming backing: when true the flat hash array stores

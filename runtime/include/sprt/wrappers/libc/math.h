@@ -231,7 +231,7 @@ SPRT_FORCEINLINE auto log10(long double x) { return __builtin_log10l(x); }
 SPRT_FORCEINLINE auto log10l(long double x) { return __builtin_log10l(x); }
 
 template <typename _Ip>
-requires (__is_integral(_Ip))
+requires (is_integral_v<_Ip>)
 SPRT_FORCEINLINE auto log10(_Ip x) {
 	return __builtin_log10(static_cast<double>(x));
 }
@@ -248,7 +248,7 @@ SPRT_FORCEINLINE auto log2(double x) { return __builtin_log2(x); }
 SPRT_FORCEINLINE auto log2(long double x) { return __builtin_log2l(x); }
 SPRT_FORCEINLINE auto log2l(long double x) { return __builtin_log2l(x); }
 template <typename _Ip>
-requires (__is_integral(_Ip))
+requires (is_integral_v<_Ip>)
 SPRT_FORCEINLINE auto log2(_Ip x) {
 	return __builtin_log2(static_cast<double>(x));
 }
@@ -543,7 +543,7 @@ SPRT_FORCEINLINE bool isfinite(long double x) { return __builtin_isfinite(x); }
 // converted to double (over.built); without this an integral call is ambiguous
 // between the three floating-point overloads.
 template <typename _Ip>
-requires (__is_integral(_Ip))
+requires (is_integral_v<_Ip>)
 SPRT_FORCEINLINE bool isfinite(_Ip x) { return __builtin_isfinite((double)x); }
 #endif
 
@@ -552,7 +552,7 @@ SPRT_FORCEINLINE bool isinf(float x) { return __builtin_isinf(x); }
 SPRT_FORCEINLINE bool isinf(double x) { return __builtin_isinf(x); }
 SPRT_FORCEINLINE bool isinf(long double x) { return __builtin_isinf(x); }
 template <typename _Ip>
-requires (__is_integral(_Ip))
+requires (is_integral_v<_Ip>)
 SPRT_FORCEINLINE bool isinf(_Ip x) { return __builtin_isinf((double)x); }
 #endif
 
@@ -561,7 +561,7 @@ SPRT_FORCEINLINE bool isnan(float x) { return __builtin_isnan(x); }
 SPRT_FORCEINLINE bool isnan(double x) { return __builtin_isnan(x); }
 SPRT_FORCEINLINE bool isnan(long double x) { return __builtin_isnan(x); }
 template <typename _Ip>
-requires (__is_integral(_Ip))
+requires (is_integral_v<_Ip>)
 SPRT_FORCEINLINE bool isnan(_Ip x) { return __builtin_isnan((double)x); }
 #endif
 
@@ -570,7 +570,7 @@ SPRT_FORCEINLINE bool isnormal(float x) { return __builtin_isnormal(x); }
 SPRT_FORCEINLINE bool isnormal(double x) { return __builtin_isnormal(x); }
 SPRT_FORCEINLINE bool isnormal(long double x) { return __builtin_isnormal(x); }
 template <typename _Ip>
-requires (__is_integral(_Ip))
+requires (is_integral_v<_Ip>)
 SPRT_FORCEINLINE bool isnormal(_Ip x) { return __builtin_isnormal((double)x); }
 #endif
 
@@ -579,7 +579,7 @@ SPRT_FORCEINLINE bool signbit(float x) { return __builtin_signbit(x); }
 SPRT_FORCEINLINE bool signbit(double x) { return __builtin_signbit(x); }
 SPRT_FORCEINLINE bool signbit(long double x) { return __builtin_signbit(x); }
 template <typename _Ip>
-requires (__is_integral(_Ip))
+requires (is_integral_v<_Ip>)
 SPRT_FORCEINLINE bool signbit(_Ip x) { return __builtin_signbit((double)x); }
 #endif
 
@@ -593,7 +593,7 @@ SPRT_FORCEINLINE bool signbit(_Ip x) { return __builtin_signbit((double)x); }
 // the mixed/integral cases. __SPRT_FCMP_MIXED emits it.
 #define __SPRT_FCMP_MIXED(_Name) \
 	template <typename _A1, typename _A2> \
-	requires (__is_arithmetic(_A1) && __is_arithmetic(_A2)) \
+	requires (is_arithmetic_v<_A1> && is_arithmetic_v<_A2>) \
 	SPRT_FORCEINLINE bool _Name(_A1 x, _A2 y) { \
 		using _Tp = sprt::conditional_t<sprt::is_same_v<_A1, long double> \
 				|| sprt::is_same_v<_A2, long double>, long double, double>; \

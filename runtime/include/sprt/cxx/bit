@@ -66,9 +66,36 @@ constexpr bool has_single_bit(_Tp __t) noexcept {
 
 template <unsigned_integer Type>
 [[nodiscard]]
+constexpr int __countl_zero_dispatch(Type __t) noexcept {
+	if constexpr (sizeof(Type) == sizeof(unsigned)) {
+		return __builtin_clz(static_cast<unsigned>(__t));
+	} else if constexpr (sizeof(Type) <= sizeof(unsigned long)) {
+		return __builtin_clzl(static_cast<unsigned long>(__t));
+	} else {
+		return __builtin_clzll(static_cast<unsigned long long>(__t));
+	}
+}
+
+template <unsigned_integer Type>
+[[nodiscard]]
+constexpr int __countr_zero_dispatch(Type __t) noexcept {
+	if constexpr (sizeof(Type) == sizeof(unsigned)) {
+		return __builtin_ctz(static_cast<unsigned>(__t));
+	} else if constexpr (sizeof(Type) <= sizeof(unsigned long)) {
+		return __builtin_ctzl(static_cast<unsigned long>(__t));
+	} else {
+		return __builtin_ctzll(static_cast<unsigned long long>(__t));
+	}
+}
+
+template <unsigned_integer Type>
+[[nodiscard]]
 constexpr int countl_zero(Type __t) noexcept {
 	static_assert(is_unsigned_v<Type>, "__countl_zero requires an unsigned integer type");
-	return __builtin_clzg(__t, Digits<Type>);
+	if (__t == 0) {
+		return Digits<Type>;
+	}
+	return __countl_zero_dispatch(__t);
 }
 
 template <unsigned_integer Type>
@@ -81,7 +108,10 @@ template <unsigned_integer Type>
 [[nodiscard]]
 constexpr int countr_zero(Type __t) noexcept {
 	static_assert(is_unsigned_v<Type>, "__countr_zero only works with unsigned types");
-	return __builtin_ctzg(__t, Digits<Type>);
+	if (__t == 0) {
+		return Digits<Type>;
+	}
+	return __countr_zero_dispatch(__t);
 }
 
 template <unsigned_integer Type>
@@ -157,7 +187,13 @@ template <unsigned_integer _Tp>
 [[nodiscard]]
 constexpr int popcount(_Tp __t) noexcept {
 	static_assert(is_unsigned_v<_Tp>, "__popcount only works with unsigned types");
-	return __builtin_popcountg(__t);
+	if constexpr (sizeof(_Tp) == sizeof(unsigned)) {
+		return __builtin_popcount(static_cast<unsigned>(__t));
+	} else if constexpr (sizeof(_Tp) <= sizeof(unsigned long)) {
+		return __builtin_popcountl(static_cast<unsigned long>(__t));
+	} else {
+		return __builtin_popcountll(static_cast<unsigned long long>(__t));
+	}
 }
 
 template <typename _ToType, typename _FromType>
@@ -185,7 +221,7 @@ enum class endian {
 	network = big,
 };
 
-} // inline namespace __cxx_bit
+} // namespace __cxx_bit
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_BIT_

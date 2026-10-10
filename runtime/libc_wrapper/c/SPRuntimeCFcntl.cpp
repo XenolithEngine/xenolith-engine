@@ -227,13 +227,18 @@ extern int (*_sync_file_range)(int __fd, off64_t __offset, off64_t __length, uns
 
 namespace sprt {
 
+// lcc/e2k: umbrella-обёртки инлайнятся полностью (сборка с -O1), слабых копий
+// в образе нет — прямые вызовы libc резолвятся в glibc без версионных алиасов
+#define __SPRT_LIBC(name) name
+
+
 __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 	__SPRT_ID(mode_t) __mode = 0;
 
 	if ((__flags & __SPRT_O_CREAT)
 // Keyed off the constant rather than a platform name: __SPRT_O_TMPFILE is left
 // undefined on every platform whose libc has no O_TMPFILE (Apple, Embox), and
-// include_libc/fcntl.h keys its own inline open() the same way.
+// include_libc/fcntl.h keys its own inline __SPRT_LIBC(open)() the same way.
 #ifdef __SPRT_O_TMPFILE
 			|| (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE
 #endif
@@ -247,16 +252,16 @@ __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 #if SPRT_ANDROID
 	return platform::_open64(path, __flags, __mode);
 #elif SPRT_EMBOX
-	// O_DIRECTORY must never reach Embox's open(): it opens with
+	// O_DIRECTORY must never reach Embox's __SPRT_LIBC(open)(): it opens with
 	// `assert(~__oflag & O_DIRECTORY)` (compat/posix/fs/oldfs/open_oldfs.c) and
 	// panics the kernel. Directories are handled by the shim instead.
 	if (__flags & O_DIRECTORY) {
 		return platform::openDirFd(path);
 	}
-	return open(path, __flags, __mode);
+	return __SPRT_LIBC(open)(path, __flags, __mode);
 #elif SPRT_APPLE || SPRT_HOSTED_RTOS
 	// NuttX has no LFS open64 — plain open is the only spelling.
-	return open(path, __flags, __mode);
+	return __SPRT_LIBC(open)(path, __flags, __mode);
 #else
 	return open64(path, __flags, __mode);
 #endif
@@ -286,14 +291,14 @@ __SPRT_C_FUNC int __SPRT_ID(ioctl)(int __fd, int __cmd, ...) __SPRT_NOEXCEPT {
 	arg = __sprt_va_arg(ap, __SPRT_ID(intptr_t));
 	__sprt_va_end(ap);
 
-	return ::ioctl(__fd, __cmd, arg);
+	return __SPRT_LIBC(ioctl)(__fd, __cmd, arg);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(creat)(const char *path, __SPRT_ID(mode_t) __mode) {
 #if SPRT_ANDROID
 	return platform::_creat64(path, __mode);
 #elif SPRT_APPLE || SPRT_HOSTED_RTOS
-	return creat(path, __mode);
+	return __SPRT_LIBC(creat)(path, __mode);
 #else
 	return creat64(path, __mode);
 #endif
@@ -320,7 +325,7 @@ __SPRT_C_FUNC int __SPRT_ID(openat)(int __dir_fd, const char *path, int __flags,
 #if SPRT_ANDROID
 	return platform::_openat64(__dir_fd, path, __flags, __mode);
 #elif SPRT_EMBOX
-	// Embox's own openat() drops the descriptor and calls open(path), so a
+	// Embox's own __SPRT_LIBC(openat)() drops the descriptor and calls open(path), so a
 	// relative path silently resolved against the cwd. Resolve it here instead.
 	char buffer[PATH_MAX];
 	auto target = platform::resolveAtPath(__dir_fd, path, buffer, sizeof(buffer));
@@ -332,7 +337,7 @@ __SPRT_C_FUNC int __SPRT_ID(openat)(int __dir_fd, const char *path, int __flags,
 	}
 	return open(target, __flags, __mode);
 #elif SPRT_APPLE || SPRT_HOSTED_RTOS
-	return openat(__dir_fd, path, __flags, __mode);
+	return __SPRT_LIBC(openat)(__dir_fd, path, __flags, __mode);
 #else
 	return openat64(__dir_fd, path, __flags, __mode);
 #endif
@@ -342,7 +347,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 		__SPRT_ID(splice)(int __in_fd, __SPRT_ID(off_t) * __in_offset, int __out_fd,
 				__SPRT_ID(off_t) * __out_offset, __SPRT_ID(size_t) __length, unsigned int __flags) {
 #if __SPRT_CONFIG_HAVE_FCNTL_SPLICE
-	return ::splice(__in_fd, __in_offset, __out_fd, __out_offset, __length, __flags);
+	return __SPRT_LIBC(splice)(__in_fd, __in_offset, __out_fd, __out_offset, __length, __flags);
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_SPLICE)");
@@ -354,7 +359,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 		tee)(int __in_fd, int __out_fd, __SPRT_ID(size_t) __length, unsigned int __flags) {
 #if __SPRT_CONFIG_HAVE_FCNTL_TEE
-	return ::tee(__in_fd, __out_fd, __length, __flags);
+	return __SPRT_LIBC(tee)(__in_fd, __out_fd, __length, __flags);
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_TEE)");
@@ -414,7 +419,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 __SPRT_C_FUNC __SPRT_ID(ssize_t)
 		__SPRT_ID(readahead)(int __fd, __SPRT_ID(off_t) __offset, __SPRT_ID(size_t) __length) {
 #if __SPRT_CONFIG_HAVE_FCNTL_READAHEAD
-	return ::readahead(__fd, __offset, __length);
+	return __SPRT_LIBC(readahead)(__fd, __offset, __length);
 #else
 	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_READAHEAD)");

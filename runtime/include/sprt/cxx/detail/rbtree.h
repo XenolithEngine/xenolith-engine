@@ -405,7 +405,7 @@ public:
 		// BEFORE hint. The hint is usable when prev(hint) <= value <= hint; the
 		// element then goes immediately before hint (this is what distinguishes a
 		// hinted insert from emplace_multi, which appends AFTER existing equals).
-		InsertData d = constructNode(sprt::forward<Args>(args)...);
+		InsertData<Key> d = constructNode(sprt::forward<Args>(args)...);
 		RbTreeNodeBase *h = const_cast<RbTreeNodeBase *>(hint._node);
 		bool usable = false;
 		if (h == &_header || !compareLtKey(extract(h), *(d.key))) { // value <= *hint
@@ -885,7 +885,7 @@ protected:
 
 	template <typename... Args>
 	pair<RbTreeNode<Value> *, bool> insertNodeUnique(Args &&...args) noexcept {
-		InsertData d = constructNode(sprt::forward<Args>(args)...);
+		InsertData<Key> d = constructNode(sprt::forward<Args>(args)...);
 		if (!getInsertPositionUnique(d)) {
 			destroyNode(d.val);
 			return pair(static_cast<RbTreeNode<Value> *>(d.current), false);
@@ -896,7 +896,7 @@ protected:
 
 	template <typename... Args>
 	RbTreeNode<Value> *insertNodeUniqueHint(const_iterator hint, Args &&...args) noexcept {
-		InsertData d = constructNode(sprt::forward<Args>(args)...);
+		InsertData<Key> d = constructNode(sprt::forward<Args>(args)...);
 		d.current = hint.constcast()._node;
 		if (!getInsertPositionUnique(d)) {
 			destroyNode(d.val);
@@ -928,14 +928,14 @@ protected:
 
 	template <typename... Args>
 	RbTreeNode<Value> *insertNodeEqual(Args &&...args) noexcept {
-		InsertData d = constructNode(sprt::forward<Args>(args)...);
+		InsertData<Key> d = constructNode(sprt::forward<Args>(args)...);
 		getInsertPositionEqual(d);
 		return makeInsert(d.val, d.parent, d.isLeft);
 	}
 
 	template <typename K, typename... Args>
 	pair<RbTreeNode<Value> *, bool> tryInsertNodeUnique(K &&k, Args &&...args) noexcept {
-		InsertData d{&k, nullptr, nullptr, nullptr, false};
+		InsertData<remove_reference_t<K>> d{&k, nullptr, nullptr, nullptr, false};
 		if (!getInsertPositionUnique(d)) {
 			return pair(static_cast<RbTreeNode<Value> *>(d.current), false);
 		}
@@ -948,7 +948,7 @@ protected:
 	template <typename K, typename... Args>
 	RbTreeNode<Value> *tryInsertNodeUniqueHint(const_iterator hint, K &&k,
 			Args &&...args) noexcept {
-		InsertData d{&k, nullptr, nullptr, nullptr, false};
+		InsertData<remove_reference_t<K>> d{&k, nullptr, nullptr, nullptr, false};
 		d.current = hint.constcast()._node;
 		if (!getInsertPositionUnique(d)) {
 			return static_cast<RbTreeNode<Value> *>(d.current);
@@ -960,7 +960,7 @@ protected:
 
 	template <typename K, typename M>
 	pair<RbTreeNode<Value> *, bool> tryAssignNodeUnique(K &&k, M &&m) noexcept {
-		InsertData d{&k, nullptr, nullptr, nullptr, false};
+		InsertData<remove_reference_t<K>> d{&k, nullptr, nullptr, nullptr, false};
 		if (!getInsertPositionUnique(d)) {
 			constructAssign(static_cast<RbTreeNode<Value> *>(d.current), sprt::forward<M>(m));
 			return pair(static_cast<RbTreeNode<Value> *>(d.current), false);
@@ -973,7 +973,7 @@ protected:
 
 	template <typename K, typename M>
 	RbTreeNode<Value> *tryAssignNodeUniqueHint(const_iterator hint, K &&k, M &&m) noexcept {
-		InsertData d{&k, nullptr, nullptr, nullptr, false};
+		InsertData<remove_reference_t<K>> d{&k, nullptr, nullptr, nullptr, false};
 		d.current = hint.constcast()._node;
 		if (!getInsertPositionUnique(d)) {
 			constructAssign(d.current, sprt::forward<M>(m));

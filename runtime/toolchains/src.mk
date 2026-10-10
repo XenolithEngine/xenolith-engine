@@ -278,6 +278,7 @@ harfbuzz_SHA256 := b7132e148358a45185c9feafd049dbaf243649d3c44414b3534d9c95d1859
 
 $(SRC_ROOT)/harfbuzz: | prepare
 	$(call sp_fetch_tar,harfbuzz)
+	$(call sp_patch,harfbuzz,harfbuzz/0001-e2k128-allow-overriding-HB_NULL_POOL_SIZE.patch)
 
 # https://github.com/Tehreer/SheenBidi # revised: 25 sep 2026
 # Pinned to release tag v3.0.0 (Unicode 17.0); Apache-2.0, used bundled as the
@@ -470,6 +471,18 @@ ffi_SHA256 := 7da3e2d9a171eb0a038f592ecad3ff2bb2550f3496d87b3b29ad0cf4430c0db4
 
 $(SRC_ROOT)/ffi: | prepare
 	$(call sp_fetch_tar,ffi)
+
+# Fork of libffi 3.3 from MCST with the e2k port (src/e2k) — upstream 3.8.0 has
+# no e2k backend and its configure refuses the triplet outright. Consumed by
+# ffi.mk when SP_ARCH is e2k64.
+# Supply chain: unsigned release; pinned by SHA-256 only. dev.mcst.ru serves a
+# Russian TCI-issued certificate, so machines without that root in the trust
+# store will need to bootstrap src/ffi-e2k from the tarball manually.
+ffi-e2k_URL    := https://dev.mcst.ru/downloads/2026-05-27/libffi-3.3-29.023.tar.gz
+ffi-e2k_SHA256 := ee222c17d022520d40a17986b511acfe6cb67ef890e12a897a5d6f7bb4f12936
+
+$(SRC_ROOT)/ffi-e2k: | prepare
+	$(call sp_fetch_tar,ffi-e2k)
 
 # https://github.com/libexpat/libexpat/releases # revised: 25 sep 2026
 # Security: 2.8.5 fixes CVE-2026-93990 (UTF-16 decoding let a lone high surrogate through

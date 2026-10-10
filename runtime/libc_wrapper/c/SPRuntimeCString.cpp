@@ -62,6 +62,11 @@ __SPRT_C_FUNC __SPRT_ID(size_t) strnlen(const char *__SPRT_RESTRICT str, __SPRT_
 
 namespace sprt {
 
+// lcc/e2k: umbrella-обёртки инлайнятся полностью (сборка с -O1), слабых копий
+// в образе нет — прямые вызовы libc резолвятся в glibc без версионных алиасов
+#define __SPRT_LIBC(name) name
+
+
 #if __STDC_HOSTED__ == 1
 __SPRT_C_FUNC void *__SPRT_ID(
 		memcpy_impl)(void *__SPRT_RESTRICT dest, const void *__SPRT_RESTRICT source, size_t size) {
@@ -178,7 +183,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t)
 	return ::strnlen(str, n);
 }
 
-__SPRT_C_FUNC int __SPRT_ID(strcasecmp)(const char *l, const char *r) { return ::strcasecmp(l, r); }
+__SPRT_C_FUNC int __SPRT_ID(strcasecmp)(const char *l, const char *r) { return __SPRT_LIBC(strcasecmp)(l, r); }
 __SPRT_C_FUNC int __SPRT_ID(strncasecmp)(const char *l, const char *r, __SPRT_ID(rsize_t) n) {
 	return ::strncasecmp(l, r, n);
 }
@@ -207,7 +212,7 @@ __SPRT_C_FUNC int __SPRT_ID(strcoll_l)(const char *l, const char *r, __SPRT_ID(l
 	(void)loc;
 	return ::strcoll(l, r);
 #else
-	return ::strcoll_l(l, r, loc);
+	return __SPRT_LIBC(strcoll_l)(l, r, loc);
 #endif
 }
 
@@ -217,7 +222,7 @@ __SPRT_C_FUNC size_t __SPRT_ID(strxfrm_l)(char *__SPRT_RESTRICT dest,
 	(void)loc;
 	return ::strxfrm(dest, src, size);
 #else
-	return ::strxfrm_l(dest, src, size, loc);
+	return __SPRT_LIBC(strxfrm_l)(dest, src, size, loc);
 #endif
 }
 
@@ -228,10 +233,10 @@ __SPRT_C_FUNC char *__SPRT_ID(
 
 
 __SPRT_C_FUNC char *__SPRT_ID(strtok_r)(char *s, const char *sep, char **p) {
-	return ::strtok_r(s, sep, p);
+	return __SPRT_LIBC(strtok_r)(s, sep, p);
 }
 
-__SPRT_C_FUNC char *__SPRT_ID(strdup)(const char *str) { return ::strdup(str); }
+__SPRT_C_FUNC char *__SPRT_ID(strdup)(const char *str) { return __SPRT_LIBC(strdup)(str); }
 
 // POSIX 2008. Not the platform's: Windows has none, and a kernel libc's (Embox)
 // allocates from the kernel heap. The runtime's allocation is what free() takes

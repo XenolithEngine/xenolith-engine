@@ -431,6 +431,13 @@ namespace {
 // In order of preference, see the note above.
 constexpr const char *s_unwinderNames[] = {"libgcc_s.so.1", "libunwind.so.1"};
 
+#if defined(__LCC__) && !defined(__clang__)
+extern "C" {
+void __register_frame(const void *) __SPRT_NOEXCEPT;
+void __deregister_frame(const void *) __SPRT_NOEXCEPT;
+}
+#endif
+
 struct UnwindLink {
 	__typeof(_Unwind_RaiseException) *RaiseException;
 	__typeof(_Unwind_Resume) *Resume;
@@ -600,6 +607,15 @@ bool __unwinder_available() { return link()->ForcedUnwind != nullptr; }
 //                  unreachable — but let it be defined;
 //   setters,       no-op. With no unwinder there is nowhere for
 //   __*register_frame  __register_frame to register anything.
+// Under e2k -m128 lcc's <unwind.h> types the word-sized unwinder entries
+// with _Unwind_Word/_Unwind_Ptr (128-bit there), and a definition may not
+// differ from the prior declaration; every uintptr_t below goes through this.
+#if defined(__e2k__) && defined(__ptr128__)
+#define __SPRT_UNWIND_UINT _Unwind_Word
+#else
+#define __SPRT_UNWIND_UINT uintptr_t
+#endif
+
 #define SPRT_UNWIND_FWD(ret, name, params, args, field, absent) \
 	extern "C" __attribute__((visibility("default"))) ret name params { \
 		auto l = ::sprt::link(); \
@@ -622,28 +638,44 @@ SPRT_UNWIND_FWD(_Unwind_Reason_Code, _Unwind_ForcedUnwind,
 		_URC_END_OF_STACK)
 SPRT_UNWIND_FWD(_Unwind_Reason_Code, _Unwind_Backtrace, (_Unwind_Trace_Fn f, void *a), (f, a),
 		Backtrace, _URC_END_OF_STACK)
-SPRT_UNWIND_FWD(uintptr_t, _Unwind_GetGR, (struct _Unwind_Context * c, int i), (c, i), GetGR, 0)
-SPRT_UNWIND_FWD(void, _Unwind_SetGR, (struct _Unwind_Context * c, int i, uintptr_t v), (c, i, v),
-		SetGR, void())
-SPRT_UNWIND_FWD(uintptr_t, _Unwind_GetIP, (struct _Unwind_Context * c), (c), GetIP, 0)
-SPRT_UNWIND_FWD(void, _Unwind_SetIP, (struct _Unwind_Context * c, uintptr_t v), (c, v), SetIP,
-		void())
-SPRT_UNWIND_FWD(uintptr_t, _Unwind_GetIPInfo, (struct _Unwind_Context * c, int *b), (c, b),
+SPRT_UNWIND_FWD(__SPRT_UNWIND_UINT, _Unwind_GetGR, (struct _Unwind_Context * c, int i), (c, i),
+		GetGR, 0)
+SPRT_UNWIND_FWD(void, _Unwind_SetGR, (struct _Unwind_Context * c, int i, __SPRT_UNWIND_UINT v),
+		(c, i, v), SetGR, void())
+SPRT_UNWIND_FWD(__SPRT_UNWIND_UINT, _Unwind_GetIP, (struct _Unwind_Context * c), (c), GetIP, 0)
+SPRT_UNWIND_FWD(void, _Unwind_SetIP, (struct _Unwind_Context * c, __SPRT_UNWIND_UINT v), (c, v),
+		SetIP, void())
+SPRT_UNWIND_FWD(__SPRT_UNWIND_UINT, _Unwind_GetIPInfo, (struct _Unwind_Context * c, int *b), (c, b),
 		GetIPInfo, 0)
-SPRT_UNWIND_FWD(uintptr_t, _Unwind_GetCFA, (struct _Unwind_Context * c), (c), GetCFA, 0)
-SPRT_UNWIND_FWD(uintptr_t, _Unwind_GetLanguageSpecificData, (struct _Unwind_Context * c), (c),
-		GetLanguageSpecificData, 0)
-SPRT_UNWIND_FWD(uintptr_t, _Unwind_GetRegionStart, (struct _Unwind_Context * c), (c),
+SPRT_UNWIND_FWD(__SPRT_UNWIND_UINT, _Unwind_GetCFA, (struct _Unwind_Context * c), (c), GetCFA, 0)
+#if defined(__LCC__) && !defined(__clang__)
+// lcc's <unwind.h> declares this entry as returning void *, and a definition
+// may not differ from a prior declaration only in the return type
+SPRT_UNWIND_FWD(void *, _Unwind_GetLanguageSpecificData, (struct _Unwind_Context * c), (c),
+		GetLanguageSpecificData, nullptr)
+#else
+SPRT_UNWIND_FWD(__SPRT_UNWIND_UINT, _Unwind_GetLanguageSpecificData, (struct _Unwind_Context * c),
+		(c), GetLanguageSpecificData, 0)
+#endif
+SPRT_UNWIND_FWD(__SPRT_UNWIND_UINT, _Unwind_GetRegionStart, (struct _Unwind_Context * c), (c),
 		GetRegionStart, 0)
-SPRT_UNWIND_FWD(uintptr_t, _Unwind_GetDataRelBase, (struct _Unwind_Context * c), (c),
+SPRT_UNWIND_FWD(__SPRT_UNWIND_UINT, _Unwind_GetDataRelBase, (struct _Unwind_Context * c), (c),
 		GetDataRelBase, 0)
-SPRT_UNWIND_FWD(uintptr_t, _Unwind_GetTextRelBase, (struct _Unwind_Context * c), (c),
+SPRT_UNWIND_FWD(__SPRT_UNWIND_UINT, _Unwind_GetTextRelBase, (struct _Unwind_Context * c), (c),
 		GetTextRelBase, 0)
+#if defined(__e2k__) && defined(__ptr128__)
+// lcc's <unwind.h> declares this entry with an _Unwind_Ptr parameter in the
+// 128-bit pointer mode; a definition may not differ in the signature
+SPRT_UNWIND_FWD(void *, _Unwind_FindEnclosingFunction, (_Unwind_Ptr pc), (pc),
+		FindEnclosingFunction, nullptr)
+#else
 SPRT_UNWIND_FWD(void *, _Unwind_FindEnclosingFunction, (void *pc), (pc), FindEnclosingFunction,
 		nullptr)
+#endif
 SPRT_UNWIND_FWD(void, __register_frame, (const void *fde), (fde), register_frame, void())
 SPRT_UNWIND_FWD(void, __deregister_frame, (const void *fde), (fde), deregister_frame, void())
 
 #undef SPRT_UNWIND_FWD
+#undef __SPRT_UNWIND_UINT
 
 #endif // __SPRT_UNWIND_DLOPEN

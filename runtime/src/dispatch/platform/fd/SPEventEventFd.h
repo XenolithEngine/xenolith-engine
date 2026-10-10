@@ -30,7 +30,15 @@
 namespace sprt::dispatch {
 
 struct SPRT_API EventFdSource {
+	// Under -m128 the epoll_event (its union carries a 16-byte pointer member)
+	// aligns the anonymous union to 16 bytes and the two-int32 header pads to
+	// 16 in front of it; the count must exclude that padding or the struct
+	// outgrows Handle::DataSize (see the calibration note there).
+#if defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ > 8
+	static constexpr int TARGET_BUFFER_COUNT = (Handle::DataSize - 16) / sizeof(uint64_t);
+#else
 	static constexpr int TARGET_BUFFER_COUNT = Handle::DataSize / sizeof(uint64_t) - 1;
+#endif
 
 	uint32_t eventValue; // use atomic accessors
 	int32_t fd = -1;

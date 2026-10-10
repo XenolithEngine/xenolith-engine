@@ -37,6 +37,16 @@ MODULE_RUNTIME_CORE_PRIVATE_CFLAGS += $(addprefix -idirafter ,$(TARGET_INCLUDE_D
 MODULE_RUNTIME_CORE_PRIVATE_CXXFLAGS += $(addprefix -idirafter ,$(TARGET_INCLUDE_DIR_LIBC))
 endif
 
+ifneq (,$(filter e2k32 e2k64 e2k128,$(TARGET_ARCH)))
+MODULE_RUNTIME_CORE_PRIVATE_CFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc \
+	-isystem $(TARGET_INCLUDE_DIR_LIBC)
+MODULE_RUNTIME_CORE_PRIVATE_CXXFLAGS += \
+	-nostdinc++ \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc \
+	-isystem $(TARGET_INCLUDE_DIR_LIBC)
+endif
+
 ifneq ($(filter Darwin iOS,$(TARGET_SYSTEM)),)
 # Change include ordering by duplicating HOST flags before SDK's flags
 MODULE_RUNTIME_CORE_PRIVATE_CFLAGS += $(HOST_GENERAL_CFLAGS) \

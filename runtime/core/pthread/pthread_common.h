@@ -26,9 +26,18 @@
 #include <sprt/c/sys/__sprt_sprt.h>
 #include <sprt/cxx/detail/ctypes.h>
 
+#if defined(__e2k__) && defined(__ptr128__)
+// Under -m128 the delivery's __intptr_t is __intdescr_t (lcc predefines
+// __MCST_INTPTR_DYNAMIC__), a distinct type from the sprt -m128 fallback
+// spelling (__int128): pthread TUs also include the delivery unistd.h, whose
+// bare `typedef __intptr_t intptr_t` would collide (lcc error #256). Let the
+// platform headers own the bare global names there.
+#include <sys/types.h>
+#else
 typedef __SPRT_ID(intptr_t) intptr_t;
 typedef __SPRT_ID(uintptr_t) uintptr_t;
 typedef __SPRT_ID(uint64_t) uint64_t;
+#endif
 
 #include <unwind.h>
 

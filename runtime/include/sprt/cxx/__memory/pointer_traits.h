@@ -61,7 +61,9 @@ struct __pointer_traits_element_type<_Ptr, void_t<typename _Ptr::element_type> >
 
 template <typename _Tp, typename _Up>
 struct __pointer_traits_rebind_impl {
-	static_assert(false,
+	// Dependent false: a plain `false` is evaluated eagerly by lcc (an
+	// ill-formed NDR the standard wants deferred to instantiation).
+	static_assert(sizeof(_Tp) == 0,
 			"Cannot rebind pointer; did you forget to add a rebind member to your pointer?");
 };
 

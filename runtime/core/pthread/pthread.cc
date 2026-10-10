@@ -47,7 +47,7 @@ extern "C" void __sprt_malloc_thread_attach(void) __SPRT_NOEXCEPT;
 
 #include <sprt/cxx/cstring>
 
-__SPRT_C_FUNC __sprt_uint64_t __libc_main_thread;
+__SPRT_C_FUNC __sprt_native_thread_id_t __libc_main_thread;
 
 namespace sprt::_thread {
 
@@ -217,7 +217,7 @@ static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg) {
 	return result;
 }
 
-static void __attachNativeThread(thread_t *thread, void *handle, uint64_t id,
+static void __attachNativeThread(thread_t *thread, void *handle, __sprt_native_thread_id_t id,
 		unique_lock<qmutex> &lock) {
 	thread->handle = handle;
 

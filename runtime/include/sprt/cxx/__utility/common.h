@@ -39,7 +39,7 @@ Type __declval(long);
 
 template <typename Type>
 decltype(sprt::__declval<Type>(0)) declval() noexcept {
-	static_assert(!__is_same(Type, Type),
+	static_assert(!is_same_v<Type, Type>,
                 "std::declval can only be used in an unevaluated context. "
                 "It's likely that your current usage is trying to extract a value from the function.");
 }
