@@ -37,11 +37,14 @@ THE SOFTWARE.
 //                   (the canonical edge order is the order they go on the front), and what
 //                   the earlier ones left unfinished - loops and blocks; none for an
 //                   exclusive operation or one that opens a scope;
-//               (b) what a producer that pushed a spine node pushed beside it;
+//               (b) what a producer that pushed a spine node pushed beside it - a token to a
+//                   node not in MustRan, a value to a node of its own scope;
 //               (c) the entry points and the eager nodes of F's chain, unless in MustRan;
-//               (d) the region of every block whose barrier is on the spine.
+//               (d) the region of every block whose barrier is on the spine, but MustRan.
 //   Conc(F)     the seeds closed over token edges, over whole foreign scopes (an opener runs
-//               again when a turn closes), and over data edges into nodes not in MustRan.
+//               again when a turn closes), and over data edges into nodes not in MustRan of the
+//               producer's own scope. A value is pushed only within a scope: a body reads what
+//               comes from outside it when its activation opens, and that is its opener's token.
 // F in its own region is a second token arriving while the block is in flight (parallel-reentry).
 // The region depends on the front's order, so front weights have to derive it again.
 
@@ -90,6 +93,16 @@ public:
 	void run(DiagReport *);
 	void describe(mem_std::Value &) const;
 
+	// Whether the block opened by this fan-out is a candidate the GPU checks refused.
+	bool isGpuRefused(uint32_t fanOut) const {
+		for (auto &b : _blocks) {
+			if (b.fanOut == fanOut) {
+				return b.gpuRefused;
+			}
+		}
+		return false;
+	}
+
 	// Which blocks' paths are lifted to weight 1, decided one block at a time, each lift kept only
 	// when the analysis under it still refuses nothing. The weight of every node.
 	void decideWeights(DiagReport &, mem_std::Vector<uint8_t> &weights);
@@ -101,6 +114,8 @@ private:
 		uint32_t barrier = InvalidIndex;
 		uint32_t entityPin = InvalidIndex;
 		bool gpu = false;
+		bool candidate = false; // named no executor: the heuristic may give it the GPU
+		bool gpuRefused = false; // a candidate whose body the GPU checks refuse
 		NodeSet body, mustRan, conc, after;
 		NodeSet reach; // may hold a token in the window: see mayWait
 
@@ -116,6 +131,7 @@ private:
 	bool dominates(uint32_t a, uint32_t b) const;
 	bool isOwn(const Block &, const Access &) const;
 	bool mayWait(const Block &, uint32_t node) const;
+	bool pushes(uint32_t src, uint32_t dst) const;
 
 	// The block a node's values belong to: the one it opens, or the one whose body it is in.
 	uint32_t blockOf(uint32_t node) const;
@@ -188,6 +204,14 @@ bool ParallelAnalysis::dominates(uint32_t a, uint32_t b) const {
 // Whether data arriving can run `node` inside the window: an eager node runs on data, a node with
 // an exec input only when it holds a token - which it cannot when every token path to it passes the
 // barrier, or an output an exclusive node on the spine did not fire.
+// Whether a value produced by `src` is pushed to `dst`: only within one scope. A body - a loop's turn,
+// a block's branch, a call - reads a value from outside when its activation opens, and nothing is
+// pushed into it; whether it opens while the block is in flight is its opener's question, and T2
+// takes the whole body with the opener.
+bool ParallelAnalysis::pushes(uint32_t src, uint32_t dst) const {
+	return _g.getNodeAt(src).scope == _g.getNodeAt(dst).scope;
+}
+
 bool ParallelAnalysis::mayWait(const Block &b, uint32_t node) const {
 	auto &n = _g.getNodeAt(node);
 	return !n.op || !n.op->hasExecIn() || b.reach.test(node);
@@ -340,12 +364,14 @@ void ParallelAnalysis::prepare(Block &b) {
 	fanOut.op->findDataOut(StringView("entity"), b.entityPin);
 
 	uint32_t executors = 0;
+	b.candidate = true;
 	if (fanOut.op->findSetting(StringView("executors"), executors)) {
 		if (auto value = _g.getSetting(b.fanOut, executors)) {
 			for (auto &it : value->asArray()) {
 				if (StringView(it.getString()) == StringView("gpu")) {
 					b.gpu = true;
 				}
+				b.candidate = false;
 			}
 		}
 	}
@@ -583,20 +609,23 @@ bool ParallelAnalysis::computeRegion(Block &b) {
 			}
 		}
 
-		// (b) what a producer that pushed this node pushed beside it
+		// (b) what a producer that pushed this node pushed beside it. Not a token it pushed to a node
+		// in MustRan: that node has run, on the very token in question, and running again needs
+		// another one - which T1 adds from wherever it could come from.
 		for (auto e : _g.getDataInEdges(p)) {
 			auto d = _g.getDataEdges()[e].srcNode;
 			if (dominates(d, p) || _g.getDataEdges()[e].dstPin == node.op->getBranchPin()) {
 				continue;
 			}
 			for (auto x : _g.getExecOutEdges(d)) {
-				if (isTokenEdge(x)) {
-					add(_g.getExecEdges()[x].dstNode, x);
+				auto dst = _g.getExecEdges()[x].dstNode;
+				if (isTokenEdge(x) && !b.mustRan.test(dst)) {
+					add(dst, x);
 				}
 			}
 			for (auto x : _g.getDataOutEdges(d)) {
 				auto dst = _g.getDataEdges()[x].dstNode;
-				if (dst != p && !b.mustRan.test(dst) && mayWait(b, dst)) {
+				if (dst != p && !b.mustRan.test(dst) && pushes(d, dst) && mayWait(b, dst)) {
 					add(dst, x | ReasonData);
 				}
 			}
@@ -626,14 +655,16 @@ bool ParallelAnalysis::computeRegion(Block &b) {
 		}
 	}
 
-	// (d) what was pending while an earlier block on the spine was in flight
+	// (d) what was pending while an earlier block on the spine was in flight - except what has
+	// certainly run before this fan-out: pending then, done now, and run again only by a token or a
+	// value the closure below follows (T1, T4) like any other.
 	for (auto k : delivered) {
 		auto &other = _blocks[k];
 		if (&other == &b) {
 			continue;
 		}
 		for (uint32_t n = 0; n < _count; ++n) {
-			if (other.conc.test(n)) {
+			if (other.conc.test(n) && !b.mustRan.test(n)) {
 				add(n, other.reason[n]);
 			}
 		}
@@ -669,7 +700,7 @@ bool ParallelAnalysis::computeRegion(Block &b) {
 		// T4: data, into nodes that have not certainly run already and may be waiting for it
 		for (auto e : _g.getDataOutEdges(x)) {
 			auto dst = _g.getDataEdges()[e].dstNode;
-			if (!b.mustRan.test(dst) && mayWait(b, dst)) {
+			if (!b.mustRan.test(dst) && pushes(x, dst) && mayWait(b, dst)) {
 				add(dst, e | ReasonData);
 			}
 		}
@@ -871,6 +902,13 @@ void ParallelAnalysis::check(Block &b, DiagReport &report) {
 
 	if (b.gpu) {
 		checkGpu(b, report);
+	} else if (b.candidate) {
+		// The same checks, heard by nobody: a candidate that fails them is not an error, it is a
+		// block with no GPU arm. Lowering alone would not say so - it carries what it cannot hold
+		// as tagged cells and writes a shader for a body the checks refuse.
+		DiagReport quiet;
+		checkGpu(b, quiet);
+		b.gpuRefused = quiet.hasErrors();
 	}
 	checkEnums(b, report);
 }
@@ -1478,6 +1516,9 @@ void RuntimeGraph::deriveBlocks(DiagReport &report) {
 void RuntimeGraph::analyzeParallel(DiagReport &report, const value::TypeRegistry *scene) {
 	ParallelAnalysis analysis(*this, scene);
 	analysis.run(&report);
+	for (auto &block : _blocks) {
+		block.gpuRefused = analysis.isGpuRefused(block.fanOut);
+	}
 	if (report.hasErrors() || _blocks.empty()) {
 		return;
 	}

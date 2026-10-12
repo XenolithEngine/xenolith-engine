@@ -39,6 +39,7 @@ StringView getRunOutcomeName(RunOutcome o) {
 	case RunOutcome::StepLimit: return StringView("step-limit");
 	case RunOutcome::ActivationLimit: return StringView("activation-limit");
 	case RunOutcome::Cancelled: return StringView("cancelled");
+	case RunOutcome::OutOfMemory: return StringView("out-of-memory");
 	}
 	return StringView("?");
 }

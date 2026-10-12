@@ -176,9 +176,10 @@ enum class DiagCode : uint16_t {
 	FunctionDeclConflict, // two documents declare one scene component or extension id differently
 	CallDepth, // a run: calls nested deeper than the run allows
 	CodegenCalleeDrift, // a document the unit took a function's body from is not the one a host holds
+	OutOfMemory, // a run: the run's arena reached its budget
 };
 
-static constexpr uint32_t DiagCodeCount = uint32_t(DiagCode::CodegenCalleeDrift) + 1;
+static constexpr uint32_t DiagCodeCount = uint32_t(DiagCode::OutOfMemory) + 1;
 
 // Which sentence an entry is. One per thing the graph can say; several may share a code.
 enum class DiagDetail : uint16_t {
@@ -400,6 +401,7 @@ enum class DiagDetail : uint16_t {
 	FunctionExtensionConflict,
 	CallDepth,
 	UnitCalleeDrift,
+	OutOfMemory,
 };
 
 // A word or a clause an entry uses as an argument rather than as its sentence: what was wrong with a

@@ -81,6 +81,8 @@ static const TestEntry s_testList[] = {
 	{"codegen-exact-arena", &stappler::performCodegenExactArenaTests},
 	{"codegen-exact-fast", &stappler::performCodegenExactFastTests},
 	{"codegen-ops", &stappler::performCodegenOpsTests},
+	{"interp-memory", &stappler::performInterpMemoryTests},
+	{"gpu-candidate", &stappler::performGpuCandidateTests},
 };
 
 int main(int argc, const char *argv[]) {

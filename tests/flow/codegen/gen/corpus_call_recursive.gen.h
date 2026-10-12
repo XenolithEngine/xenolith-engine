@@ -271,7 +271,7 @@ struct Tables {
 	static constexpr flow::CompiledIdentity identity = {
 		.name = StringView("recursive"),
 		.assetHash = 0xe7781125ba7e5946ull,
-		.textHash = 0x60b1b38bbd2b627dull,
+		.textHash = 0x13cddf5472b637baull,
 		.stateSchemaHash = 0x9b08f22c113ee2f8ull,
 		.ops = SpanView<flow::CompiledOpIdentity>(ops, ops + opsCount),
 		.frameBytes = SpanView<uint32_t>(frameBytes, frameBytes + frameBytesCount),

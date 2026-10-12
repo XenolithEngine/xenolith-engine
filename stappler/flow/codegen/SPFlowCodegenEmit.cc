@@ -603,7 +603,8 @@ Status emit(const RuntimeGraph &g, const GraphAsset &asset, const OpRegistry &op
 					", .writeCount = ", num(b.writeCount), ", .collectorBegin = ", num(b.collectorBegin),
 					", .collectorCount = ", num(b.collectorCount), ", .withBegin = ", num(b.withBegin),
 					", .withCount = ", num(b.withCount), ", .withoutBegin = ", num(b.withoutBegin),
-					", .withoutCount = ", num(b.withoutCount), "}");
+					", .withoutCount = ", num(b.withoutCount),
+					b.gpuRefused ? StringView(", .gpuRefused = true") : StringView(), "}");
 		});
 		rowTable(t, StringView("flow::RuntimeBlockWrite"), StringView("blockWrites"),
 				uint32_t(blocks.writes.size()), [&](uint32_t i) {
@@ -993,25 +994,38 @@ Status emit(const RuntimeGraph &g, const GraphAsset &asset, const OpRegistry &op
 		s.line(StringView("}"));
 
 		// The six instantiations, so that the dispatcher in the first part links against them.
-		auto locals = [&](const Callback<void(StringView)> &each) {
-			static constexpr StringView stores[] = {
-				StringView("flow::CompiledLocalT<flow::value::PlainArena, "),
-				StringView("flow::CompiledLocalT<flow::value::TrackedArena, "),
-				StringView("flow::CompiledLocalT<flow::value::ShadowArena, "),
-				StringView("flow::CompiledFastLocalT<flow::value::PlainArena, "),
-				StringView("flow::CompiledFastLocalT<flow::value::TrackedArena, "),
-				StringView("flow::CompiledFastLocalT<flow::value::ShadowArena, "),
+		auto locals = [&](const Callback<void(StringView, bool)> &each) {
+			struct Store {
+				StringView name;
+				bool shadow;
+			};
+			static constexpr Store stores[] = {
+				{StringView("flow::CompiledLocalT<flow::value::PlainArena, "), false},
+				{StringView("flow::CompiledLocalT<flow::value::TrackedArena, "), false},
+				{StringView("flow::CompiledLocalT<flow::value::ShadowArena, "), true},
+				{StringView("flow::CompiledFastLocalT<flow::value::PlainArena, "), false},
+				{StringView("flow::CompiledFastLocalT<flow::value::TrackedArena, "), false},
+				{StringView("flow::CompiledFastLocalT<flow::value::ShadowArena, "), true},
 			};
 			for (auto &store : stores) {
-				auto local = mem_std::toString(store, options.env, ">");
-				each(local);
+				auto local = mem_std::toString(store.name, options.env, ">");
+				each(local, store.shadow);
 			}
 		};
 		if (parts > 1) {
 			s.nl();
-			locals([&](StringView local) {
+			locals([&](StringView local, bool shadow) {
+				// In a release build ShadowArena is TrackedArena (SPVStoreArena.h), and a second
+				// explicit instantiation of one specialization does not compile: the shadow ones are
+				// written under the same condition the alias is.
+				if (shadow) {
+					s.line(StringView("#if DEBUG"));
+				}
 				s.line(mem_std::toString("template Status ", entry, "<", local,
 						">(flow::CompiledStepSiteT<", local, "> &);"));
+				if (shadow) {
+					s.line(StringView("#endif"));
+				}
 			});
 		}
 
