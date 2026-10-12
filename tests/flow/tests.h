@@ -125,6 +125,8 @@ void performCodegenIdentityTests();
 void performCodegenExactArenaTests();
 void performCodegenExactFastTests();
 void performCodegenOpsTests();
+void performInterpMemoryTests();
+void performGpuCandidateTests();
 } // namespace stappler
 
 #endif /* TESTS_FLOW_TESTS_H_ */

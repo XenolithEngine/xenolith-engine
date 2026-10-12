@@ -1559,8 +1559,11 @@ bool isGpuCandidate(const Graph &g, uint32_t blockIndex) {
 		return true;
 	}
 	// An author who named nothing left the choice to the heuristic, and the heuristic may only
-	// choose what exists: the body is lowered, and if it does not lower, the block quietly has no
-	// GPU arm.
+	// choose what exists: a body the build's GPU checks refused (RuntimeBlock::gpuRefused) or one
+	// that does not lower quietly has no GPU arm.
+	if (g.getBlockAt(blockIndex).gpuRefused) {
+		return false;
+	}
 	auto fanOut = g.getBlockAt(blockIndex).fanOut;
 	auto &node = g.getNodeAt(fanOut);
 	uint32_t index = 0;

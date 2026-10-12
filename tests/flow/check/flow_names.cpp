@@ -120,6 +120,7 @@ StringView getDiagCodeName(flow::DiagCode c) {
 	case DiagCode::FunctionDeclConflict: return StringView("fn-decl-conflict");
 	case DiagCode::CallDepth: return StringView("call-depth");
 	case DiagCode::CodegenCalleeDrift: return StringView("codegen-callee-drift");
+	case DiagCode::OutOfMemory: return StringView("out-of-memory");
 	}
 	return StringView("?");
 }

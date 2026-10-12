@@ -283,6 +283,11 @@ struct RuntimeBlock {
 	uint32_t collectorBegin = 0, collectorCount = 0;
 	uint32_t withBegin = 0, withCount = 0;
 	uint32_t withoutBegin = 0, withoutCount = 0;
+
+	// A block that named no executor is a GPU candidate, and the build ran the GPU checks over it
+	// quietly: when they refuse its body it is offered no device (isGpuCandidate), where a block that
+	// demanded one is refused outright.
+	bool gpuRefused = false;
 };
 
 struct RuntimeDataEdge {

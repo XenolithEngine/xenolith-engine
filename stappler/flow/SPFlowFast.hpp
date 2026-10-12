@@ -46,7 +46,7 @@ FastLocalT<A, Graph, Env>::~FastLocalT() {
 }
 
 template <typename A, typename Graph, typename Env>
-Status FastLocalT<A, Graph, Env>::init(A &, const Graph &graph, const value::TypeRegistry &reg) {
+Status FastLocalT<A, Graph, Env>::init(A &run, const Graph &graph, const value::TypeRegistry &reg) {
 	destroy();
 
 	_stateType = reg.get(NodeStateTypeName);
@@ -61,8 +61,17 @@ Status FastLocalT<A, Graph, Env>::init(A &, const Graph &graph, const value::Typ
 	// The scratch arena outlives a run deliberately: this mode exists to be entered once a frame,
 	// and re-cutting an allocator every time would be part of the fixed cost it removes. What a run
 	// owns is its frames, and destroy() gives those back.
-	if (!_scratch.isInitialized() && !_scratch.init()) {
-		return Status::ErrorOutOfHostMemory;
+	//
+	// Its budget is the run arena's: a host that sized the arena store for its blocks has sized this
+	// store too, since the frames that would have lived there live here.
+	if (!_scratch.isInitialized()) {
+		vstore::Config config;
+		if (run.isInitialized() && (uint64_t(run.getMaxChunks()) << vstore::ChunkShift) > config.budgetBytes) {
+			config.budgetBytes = uint32_t(uint64_t(run.getMaxChunks()) << vstore::ChunkShift);
+		}
+		if (!_scratch.init(config)) {
+			return Status::ErrorOutOfHostMemory;
+		}
 	}
 	_graph = &graph;
 

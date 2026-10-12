@@ -630,6 +630,83 @@ void performParallelBuildTests() {
 		checkEq(fx.build(cycle(false)).errors, "parallel-conflict@7",
 				"parallel-build: a cycle whose write waits under the next lap");
 	}
+	{
+		// A sequenced read, a pure node over it, and a sequenced write of the result, ahead of the
+		// fan-out. The read pushes the pure node and its own `then` beside it, and the write that
+		// `then` reaches dominates the fan-out: it has run, and only a token can run it again. It used
+		// to be seeded into the region anyway, and every token after it - the fan-out included - with it.
+		G g;
+		g.n(1, "flow.event").n(9, "scene.global").n(31, "math.addInt32", R"("params": {"rhs": 1})")
+				.n(3, "par.forEachWith", Query).n(5, "par.barrier");
+		g.foreign(30, "scene.getInt32", "mp", 9);
+		g.foreign(32, "scene.setInt32", "mp", 9);
+		g.own(4, "scene.setInt32", "hp", 3);
+		g.x(1, "then", 30).x(30, "then", 32).x(32, "then", 3).x(3, "body", 4).x(4, "then", 5);
+		g.d(30, "value", 31, "lhs").d(31, "result", 32, "value");
+		auto r = fx.build(g);
+		check(r.built && r.errors.empty(),
+				mem_std::toString("parallel-build: read, add, write ahead of a block is no re-entry (", r.errors, ")"));
+	}
+	{
+		// An eager node with no inputs, read only by the body of the second of two blocks. It may run
+		// while the first is in flight, so it is in that block's region - and the second block's fan-out
+		// waits for it, so for the second it has certainly run. Carrying the first block's region into
+		// the second's used to bring it along regardless, and with it the second body and its fan-out.
+		G g;
+		g.n(1, "flow.event").n(10, "par.forEachWith", Query).n(12, "par.barrier")
+				.n(20, "par.forEachWith", Query).n(22, "par.barrier")
+				.n(40, "math.addInt32", R"("params": {"lhs": 1, "rhs": 2})");
+		g.own(11, "scene.setInt32", "hp", 10);
+		g.own(21, "scene.setInt32", "mp", 20);
+		g.x(1, "then", 10).x(10, "body", 11).x(11, "then", 12).x(12, "completed", 20);
+		g.x(20, "body", 21).x(21, "then", 22);
+		g.d(40, "result", 21, "value");
+		auto r = fx.build(g);
+		check(r.built && r.errors.empty(),
+				mem_std::toString("parallel-build: a constant read by a later block's body is no conflict (", r.errors, ")"));
+	}
+	{
+		// An eager node read by a node on the spine and by a node inside a loop that ran to its end
+		// before the fan-out. A value from outside a loop is read when a turn opens, never pushed into
+		// it, so the producer's other consumers that matter are the ones of its own scope; the loop's
+		// body runs again only if its opener does, and the closure follows the opener's tokens. It used
+		// to drag the whole loop - and the fan-out after it - into the region.
+		G g;
+		g.n(1, "flow.event").n(9, "scene.global").n(7, "flow.forEach", R"("params": {"items": [1, 2]})")
+				.n(3, "par.forEachWith", Query).n(5, "par.barrier");
+		g.foreign(8, "scene.setInt32", "mp", 9);
+		g.foreign(10, "scene.getInt32", "mp", 9);
+		g.own(4, "scene.setInt32", "hp", 3);
+		g.x(1, "then", 7).x(7, "body", 8).x(7, "completed", 10).x(10, "then", 3);
+		g.x(3, "body", 4).x(4, "then", 5);
+		auto r = fx.build(g);
+		check(r.built && r.errors.empty(),
+				mem_std::toString("parallel-build: a loop that ended before the block, reading what the spine reads (", r.errors, ")"));
+	}
+	{
+		// The pure node between the read and the write ahead of the first block is also read by the
+		// body of the second. Nothing pushes a value into a body - a branch reads it when it opens -
+		// so that reader is not something the first block's window can start; seeding it took the
+		// second block's whole body, its barrier and everything after into the first one's region.
+		G g;
+		g.n(1, "flow.event").n(9, "scene.global").n(31, "math.addInt32", R"("params": {"rhs": 1})")
+				.n(10, "par.forEachWith", Query).n(12, "par.barrier")
+				.n(20, "par.forEachWith", Query).n(22, "par.barrier");
+		g.foreign(30, "scene.getInt32", "mp", 9);
+		g.foreign(32, "scene.setInt32", "mp", 9);
+		g.own(11, "scene.setInt32", "hp", 10);
+		g.own(21, "scene.setInt32", "hp", 20);
+		g.x(1, "then", 30).x(30, "then", 32).x(32, "then", 10).x(10, "body", 11).x(11, "then", 12);
+		g.x(12, "completed", 20).x(20, "body", 21).x(21, "then", 22);
+		// The reader in the body is eager - a pure node over the value and the branch's index - which
+		// is the kind the window never rules out by tokens.
+		g.n(33, "math.addInt32");
+		g.d(30, "value", 31, "lhs").d(31, "result", 32, "value");
+		g.d(31, "result", 33, "lhs").d(20, "index", 33, "rhs").d(33, "result", 21, "value");
+		auto r = fx.build(g);
+		check(r.built && r.errors.empty(),
+				mem_std::toString("parallel-build: a value read ahead of one block and inside the next (", r.errors, ")"));
+	}
 	for (uint32_t id : {uint32_t(6), uint32_t(99)}) {
 		G g = minimal();
 		g.n(id, "probe.peek");

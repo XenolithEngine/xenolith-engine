@@ -57,9 +57,10 @@ enum class RunOutcome : uint8_t {
 	StepLimit, // the run hit its own ceiling instead of hanging
 	ActivationLimit, // a loop opened more iterations than the run was allowed
 	Cancelled, // a parallel block under `cancelFrame` failed; the host restores the frame
+	OutOfMemory, // the run's arena reached its budget: frames, the front or an activation
 };
 
-static constexpr uint32_t RunOutcomeCount = uint32_t(RunOutcome::Cancelled) + 1;
+static constexpr uint32_t RunOutcomeCount = uint32_t(RunOutcome::OutOfMemory) + 1;
 
 SP_PUBLIC StringView getRunOutcomeName(RunOutcome);
 
@@ -949,6 +950,7 @@ private:
 	// A loop asked for a turn the run could not afford. Reported when the run ends rather than at
 	// once, so that the store is left in a state somebody can look at.
 	bool _activationsExhausted = false;
+	bool _storeExhausted = false; // the run's arena refused an allocation the run could not do without
 
 	// The same for a call nested deeper than the run allows.
 	bool _callDepthExceeded = false;

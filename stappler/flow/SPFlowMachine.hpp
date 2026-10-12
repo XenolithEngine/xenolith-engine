@@ -269,6 +269,9 @@ template <typename Graph, typename Local, typename Trace>
 Status MachineT<Graph, Local, Trace>::enqueueIn(Addr frame, uint32_t node, uint32_t activation) {
 	auto st = _local.pushReady(node, activation);
 	if (st != Status::Ok) {
+		// The front lives in the run's arena, and a push fails only when the arena does. Most
+		// callers have nowhere to send the status, so it is kept here and the run ends on it.
+		_storeExhausted = true;
 		return st;
 	}
 	return _local.addFlags(_local.getStateIn(frame, node), NodeFlags::Queued);
@@ -572,13 +575,12 @@ void MachineT<Graph, Local, Trace>::openIteration(uint32_t opener, uint32_t acti
 	uint32_t opened = 0;
 	if (_local.openActivation(scope, activation, iteration, makeRecordKey(opener, activation),
 				opened)
-			!= Status::Ok) {
+					!= Status::Ok
+			|| _local.materializeScope(scope, opened) != Status::Ok
+			|| _local.pushOpen(opened) != Status::Ok) {
+		_storeExhausted = true;
 		return;
 	}
-	if (_local.materializeScope(scope, opened) != Status::Ok) {
-		return;
-	}
-	_local.pushOpen(opened);
 
 	// After everything that could allocate: opening an activation and materializing its records
 	// both grow the arena, and a record address does not survive that.
@@ -626,13 +628,12 @@ void MachineT<Graph, Local, Trace>::openCall(uint32_t opener, uint32_t activatio
 
 	uint32_t opened = 0;
 	if (_local.openActivation(scope, activation, depth, makeRecordKey(opener, activation), opened)
-			!= Status::Ok) {
+					!= Status::Ok
+			|| _local.materializeScope(scope, opened) != Status::Ok
+			|| _local.pushOpen(opened) != Status::Ok) {
+		_storeExhausted = true;
 		return;
 	}
-	if (_local.materializeScope(scope, opened) != Status::Ok) {
-		return;
-	}
-	_local.pushOpen(opened);
 
 	auto frame = _local.activationFrame(opened);
 	for (auto n : _graph->getScopeNodes(scope)) {
@@ -772,8 +773,25 @@ void MachineT<Graph, Local, Trace>::collectBlocked(RunReport &report) {
 			return true;
 		}
 
+		// What is missing, counted the way isReadyIn counts it: an input of this scope by its mark,
+		// an input from an enclosing scope by whether its producer produced it. The mark is never
+		// set for the second kind, so comparing every input against it blamed a fan-out's `entity`
+		// for any node that held a token and had not run.
 		auto required = requiredInputs(n);
-		auto missing = required & ~state.inputs;
+		auto missing = rt.sameScopeInputs & ~state.inputs;
+		for (auto e : _graph->getCrossScopeInEdges(n)) {
+			auto &edge = _graph->getDataEdges()[e];
+			auto srcAct = producerActivation(edge.srcNode, activation);
+			bool produced = false;
+			if (srcAct != NullActivation) {
+				auto srcState = _local.readState(_local.getState(edge.srcNode, srcAct));
+				produced = (srcState.produced & (uint32_t(1) << edge.srcPin)) != 0;
+			}
+			if (!produced) {
+				missing |= uint32_t(1) << edge.dstPin;
+			}
+		}
+		missing &= required;
 		if (missing == 0 && isReadyIn(frame, n, activation)) {
 			return true; // ready and unrun can only mean the run stopped early
 		}
@@ -856,6 +874,7 @@ Status MachineT<Graph, Local, Trace>::begin(const Graph &graph, const OpRegistry
 	_quantumBase = 0;
 	_activationsExhausted = false;
 	_callDepthExceeded = false;
+	_storeExhausted = false;
 	_status = Status::Ok;
 	_state = RunState::Paused;
 	_executor = config.executor;
@@ -918,6 +937,7 @@ Status MachineT<Graph, Local, Trace>::attach(const Graph &graph, const OpRegistr
 	_quantumBase = 0;
 	_activationsExhausted = false;
 	_callDepthExceeded = false;
+	_storeExhausted = false;
 	_status = Status::Ok;
 	_state = RunState::Paused;
 	_executor = config.executor;
@@ -1108,6 +1128,18 @@ bool MachineT<Graph, Local, Trace>::stepOnce(RunReport &report) {
 			return true;
 		}
 
+		// First, because everything after it is a consequence of it: a node whose push failed holds
+		// its token and never ran, which a sweep would call a deadlock -
+		// and a batch of branches, which ends here without one, would call complete.
+		if (_storeExhausted) {
+			auto arena = _local.getArena();
+			int64_t values[] = {int64_t(arena ? (uint64_t(arena->getMaxChunks()) << vstore::ChunkShift) : 0)};
+			reportRun<EnvType>(report, DiagSeverity::Error, DiagCode::OutOfMemory,
+					DiagText(DiagDetail::OutOfMemory).number(values[0] >> 20), DiagLocus::Limit, values);
+			conclude(report, RunOutcome::OutOfMemory, Status::ErrorOutOfHostMemory);
+			return false;
+		}
+
 		// A batch of branches is over when its branches are: the sweep is the machine's that fired
 		// them, over the records it takes back.
 		if (_branchMode) {
@@ -1119,6 +1151,7 @@ bool MachineT<Graph, Local, Trace>::stepOnce(RunReport &report) {
 		// why the run stopped.
 		report.sweepCount = 1;
 		_local.setPass(report.sweepCount);
+
 		collectBlocked(report);
 
 		if (_callDepthExceeded) {
@@ -1322,14 +1355,13 @@ void MachineT<Graph, Local, Trace>::openBlock(uint32_t fanOut, uint32_t activati
 	uint32_t first = _local.getActivationCount();
 	for (uint32_t i = 0; i < uint32_t(entities.size()); ++i) {
 		uint32_t opened = 0;
+		// The count was checked against the limit above, so a refusal here is the arena's.
 		if (_local.openActivation(scope, activation, i, makeRecordKey(fanOut, activation), opened)
 						!= Status::Ok
-				|| _local.materializeScope(scope, opened) != Status::Ok) {
-			_activationsExhausted = true;
+				|| _local.materializeScope(scope, opened) != Status::Ok
+				|| (!threaded && _local.pushOpen(opened) != Status::Ok)) {
+			_storeExhausted = true;
 			return;
-		}
-		if (!threaded) {
-			_local.pushOpen(opened);
 		}
 		writeBranchEntity(*_local.getArena(), _local.activationFrame(opened), entities[i]);
 	}
@@ -2712,10 +2744,11 @@ Status MachineT<Graph, Local, Trace>::beginBranches(const Graph &graph, const Op
 	_local.setWeighted(config.frontWeights);
 	_branchMode = true;
 
-	// The four `begin()` clears, every one of which matters the moment a machine is used twice:
+	// The `begin()` clears, every one of which matters the moment a machine is used twice:
 	// `report.stepCount - _branchUnits` is unsigned, and a fresh report against a stale count
 	// underflows into a budget of four billion.
 	_activationsExhausted = false;
+	_storeExhausted = false;
 	_branchUnits = 0;
 	_quantumBranchUnits = 0;
 	_budgetFailure = BudgetFailure();
