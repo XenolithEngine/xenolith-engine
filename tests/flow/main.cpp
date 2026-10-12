@@ -83,6 +83,10 @@ static const TestEntry s_testList[] = {
 	{"codegen-ops", &stappler::performCodegenOpsTests},
 	{"interp-memory", &stappler::performInterpMemoryTests},
 	{"gpu-candidate", &stappler::performGpuCandidateTests},
+	{"parallel-threads", &stappler::performParallelThreadsTests},
+	{"parallel-gpu-job", &stappler::performParallelGpuJobTests},
+	{"parallel-heuristic", &stappler::performParallelHeuristicTests},
+	{"parallel-reuse", &stappler::performParallelReuseTests},
 };
 
 int main(int argc, const char *argv[]) {

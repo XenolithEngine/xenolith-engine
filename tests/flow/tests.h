@@ -127,6 +127,10 @@ void performCodegenExactFastTests();
 void performCodegenOpsTests();
 void performInterpMemoryTests();
 void performGpuCandidateTests();
+void performParallelThreadsTests();
+void performParallelGpuJobTests();
+void performParallelHeuristicTests();
+void performParallelReuseTests();
 } // namespace stappler
 
 #endif /* TESTS_FLOW_TESTS_H_ */

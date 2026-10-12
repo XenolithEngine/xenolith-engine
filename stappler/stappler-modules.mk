@@ -55,4 +55,5 @@ TOOLKIT_MODULE_LIST += \
 	$(STAPPLER_MODULE_DIR)/flow/flow.mk \
 	$(STAPPLER_MODULE_DIR)/flow/ops/ops.mk \
 	$(STAPPLER_MODULE_DIR)/flow/codegen/codegen.mk \
+	$(STAPPLER_MODULE_DIR)/flow/executors/executors.mk \
 	$(STAPPLER_MODULE_DIR)/experimental/abi/abi.mk

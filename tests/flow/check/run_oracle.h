@@ -93,6 +93,11 @@ struct RunSnapshot {
 	// And physically: the run arena's save() image.
 	mem_std::Vector<uint8_t> localImage;
 
+	// The scene, when the run had one (a host's section): its projection, and its image. A run
+	// with no scene records that it had none, and two such runs agree on it.
+	bool hasScene = false;
+	mem_std::Value sceneDump;
+	mem_std::Vector<uint8_t> sceneImage;
 };
 
 // What is compared. `versions` folds the journal's ladder (RunStep::baseVersion / version) into the
@@ -347,6 +352,21 @@ inline void takeSnapshot(const Graph &g, const Run &run, const A &arena,
 	out.localImage = imageOf(arena);
 }
 
+// The same snapshot with a scene beside the run, for a host's section: the scene's projection and
+// its image. `S` is the host's scene - whatever holds the entities, with a saveScene() projection
+// the comparison can name a path into.
+template <typename Graph, typename Run, typename A, typename S>
+inline void takeSnapshot(const Graph &g, const Run &run, const A &arena,
+		const graph::RunReport &report, RunSnapshot &out, const S *scene, const A *sceneArena,
+		bool paths = false) {
+	takeSnapshot(g, run, arena, report, out, paths);
+	if (scene && scene->isValid() && sceneArena) {
+		out.hasScene = true;
+		scene->saveScene(out.sceneDump);
+		out.sceneImage = imageOf(*sceneArena);
+	}
+}
+
 // Whether two snapshots are the same run, under `label`. Every channel that differs is printed,
 // not only the first: which of them moved together is what says where a divergence came from.
 inline bool compareRuns(const RunSnapshot &a, const RunSnapshot &b, const CompareOptions &opts,
@@ -519,6 +539,22 @@ inline bool compareRuns(const RunSnapshot &a, const RunSnapshot &b, const Compar
 		if (!compareBytes(BytesView(a.localImage.data(), a.localImage.size()),
 					BytesView(b.localImage.data(), b.localImage.size()),
 					mem_std::toString(label, " local image"), 4)) {
+			same = false;
+		}
+	}
+
+	// The scene, when either run had one. Under level C the image is not compared: two real numbers
+	// within the tolerance are not the same bytes, and that is the whole of what the level allows.
+	if (a.hasScene != b.hasScene) {
+		differ(StringView("having a scene"));
+	} else if (a.hasScene) {
+		if (!values(a.sceneDump, b.sceneDump, mem_std::toString(label, " scene"))) {
+			same = false;
+		}
+		if (!tolerant
+				&& !compareBytes(BytesView(a.sceneImage.data(), a.sceneImage.size()),
+						BytesView(b.sceneImage.data(), b.sceneImage.size()),
+						mem_std::toString(label, " scene image"), 4)) {
 			same = false;
 		}
 	}

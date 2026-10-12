@@ -50,6 +50,7 @@ LOCAL_MODULES ?= \
 	stappler_flow_value \
 	stappler_flow \
 	stappler_flow_ops \
+	stappler_flow_executors \
 	stappler_flow_codegen
 
 LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
