@@ -1,0 +1,152 @@
+// The functions of include/sprt/wrappers/windows/bcrypt.h, written to
+// sprt/gen/wrappers/windows/api/bcrypt.h.
+
+dll bcrypt file="bcrypt.dll" table=BCryptTable {
+    preload BCryptGenRandom
+    export BCryptAddContextFunction
+    export BCryptAddContextFunctionProvider
+    export BCryptConfigureContext
+    export BCryptConfigureContextFunction
+    export BCryptCreateContext
+    export BCryptDeleteContext
+    export BCryptDeriveKey
+    export BCryptDeriveKeyCapi
+    export BCryptDestroySecret
+    export BCryptDuplicateHash
+    export BCryptDuplicateKey
+    export BCryptEnumAlgorithms
+    export BCryptEnumContextFunctionProviders
+    export BCryptEnumContextFunctions
+    export BCryptEnumContexts
+    export BCryptEnumProviders
+    export BCryptEnumRegisteredProviders
+    export BCryptExportKey
+    export BCryptFinalizeKeyPair
+    export BCryptFreeBuffer
+    export BCryptGenerateKeyPair
+    export BCryptGetFipsAlgorithmMode
+    export BCryptHash
+    export BCryptImportKey
+    export BCryptImportKeyPair
+    export BCryptKeyDerivation
+    export BCryptQueryContextConfiguration
+    export BCryptQueryContextFunctionConfiguration
+    export BCryptQueryContextFunctionProperty
+    export BCryptQueryProviderRegistration
+    export BCryptRegisterConfigChangeNotify
+    export BCryptRegisterProvider
+    export BCryptRemoveContextFunction
+    export BCryptRemoveContextFunctionProvider
+    export BCryptResolveProviders
+    export BCryptSecretAgreement
+    export BCryptSetAuditingInterface
+    export BCryptSetContextFunctionProperty
+    export BCryptSignHash
+    export BCryptUnregisterConfigChangeNotify
+    export BCryptUnregisterProvider
+    export BCryptVerifySignature
+    export GetAsymmetricEncryptionInterface
+    export GetCipherInterface
+    export GetHashInterface
+    export GetRngInterface
+    export GetSecretAgreementInterface
+    export GetSignatureInterface
+}
+
+defaults dll=bcrypt link=import cc=WINAPI
+
+func BCryptGenRandom NTSTATUS {
+    hAlgorithm BCRYPT_ALG_HANDLE
+    pbBuffer PUCHAR
+    cbBuffer ULONG
+    dwFlags ULONG
+}
+func BCryptGenerateSymmetricKey NTSTATUS {
+    hAlgorithm BCRYPT_ALG_HANDLE
+    phKey "BCRYPT_KEY_HANDLE *"
+    pbKeyObject PUCHAR
+    cbKeyObject ULONG
+    pbSecret PUCHAR
+    cbSecret ULONG
+    dwFlags ULONG
+}
+func BCryptDestroyKey NTSTATUS { hKey BCRYPT_KEY_HANDLE }
+func BCryptCreateHash NTSTATUS {
+    hAlgorithm BCRYPT_ALG_HANDLE
+    phHash "BCRYPT_HASH_HANDLE *"
+    pbHashObject PUCHAR
+    cbHashObject ULONG
+    pbSecret PUCHAR
+    cbSecret ULONG
+    dwFlags ULONG
+}
+func BCryptHashData NTSTATUS {
+    hHash BCRYPT_HASH_HANDLE
+    pbInput PUCHAR
+    cbInput ULONG
+    dwFlags ULONG
+}
+func BCryptFinishHash NTSTATUS {
+    hHash BCRYPT_HASH_HANDLE
+    pbOutput PUCHAR
+    cbOutput ULONG
+    dwFlags ULONG
+}
+func BCryptDestroyHash NTSTATUS { hHash BCRYPT_HASH_HANDLE }
+func BCryptGetProperty NTSTATUS {
+    hObject BCRYPT_HANDLE
+    pszProperty LPCWSTR
+    pbOutput PUCHAR
+    cbOutput ULONG
+    pcbResult "ULONG *"
+    dwFlags ULONG
+}
+func BCryptSetProperty NTSTATUS {
+    hObject BCRYPT_HANDLE
+    pszProperty LPCWSTR
+    pbInput PUCHAR
+    cbInput ULONG
+    dwFlags ULONG
+}
+func BCryptOpenAlgorithmProvider NTSTATUS {
+    phAlgorithm "BCRYPT_ALG_HANDLE *"
+    pszAlgId LPCWSTR
+    pszImplementation LPCWSTR
+    dwFlags ULONG
+}
+func BCryptCloseAlgorithmProvider NTSTATUS { hAlgorithm BCRYPT_ALG_HANDLE; dwFlags ULONG }
+func BCryptDeriveKeyPBKDF2 NTSTATUS {
+    hPrf BCRYPT_ALG_HANDLE
+    pbPassword PUCHAR
+    cbPassword ULONG
+    pbSalt PUCHAR
+    cbSalt ULONG
+    cIterations ULONGLONG
+    pbDerivedKey PUCHAR
+    cbDerivedKey ULONG
+    dwFlags ULONG
+}
+func BCryptEncrypt NTSTATUS {
+    hKey BCRYPT_KEY_HANDLE
+    pbInput PUCHAR
+    cbInput ULONG
+    pPaddingInfo "VOID *"
+    pbIV PUCHAR
+    cbIV ULONG
+    pbOutput PUCHAR
+    cbOutput ULONG
+    pcbResult "ULONG *"
+    dwFlags ULONG
+}
+func BCryptDecrypt NTSTATUS {
+    hKey BCRYPT_KEY_HANDLE
+    pbInput PUCHAR
+    cbInput ULONG
+    pPaddingInfo "VOID *"
+    pbIV PUCHAR
+    cbIV ULONG
+    pbOutput PUCHAR
+    cbOutput ULONG
+    pcbResult "ULONG *"
+    dwFlags ULONG
+}

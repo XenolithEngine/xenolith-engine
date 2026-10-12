@@ -1,3 +1,0 @@
-LIBRARY uxtheme.dll
-EXPORTS
-	GetCurrentThemeName

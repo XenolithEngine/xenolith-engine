@@ -51,17 +51,46 @@ const NameRule *Defaults::find(const Map &map, StringView kind) const {
 	return nullptr;
 }
 
+// The defaults of the longest root the path is under: an API map adds roots inside the ABI's.
 const Defaults *Map::findDefaults(StringView path) const {
+	const Defaults *found = nullptr;
 	for (auto &it : defaults) {
-		if (path.starts_with(StringView(it.root))) {
+		if (path.starts_with(StringView(it.root)) && (!found || it.root.size() > found->root.size())) {
+			found = &it;
+		}
+	}
+	return found;
+}
+
+const NameRule *Map::findRule(StringView name) const {
+	for (auto &it : rules) {
+		if (StringView(it.name) == name) {
 			return &it;
 		}
 	}
 	return nullptr;
 }
 
-const NameRule *Map::findRule(StringView name) const {
-	for (auto &it : rules) {
+const Linkage *Map::findLinkage(StringView name) const {
+	for (auto &it : linkages) {
+		if (StringView(it.name) == name) {
+			return &it;
+		}
+	}
+	return nullptr;
+}
+
+const Charset *Map::findCharset(StringView name) const {
+	for (auto &it : charsets) {
+		if (StringView(it.name) == name) {
+			return &it;
+		}
+	}
+	return nullptr;
+}
+
+const Dll *Map::findDll(StringView name) const {
+	for (auto &it : dlls) {
 		if (StringView(it.name) == name) {
 			return &it;
 		}
@@ -162,6 +191,16 @@ private:
 	bool resolveBlocks(Header &header, const Vector<Item> &items);
 	bool checkCycles();
 
+	// An API map: the ABI map it loads, the nodes of its profile, its functions and DLLs.
+	bool loadAbiMap(const KdlNode &node);
+	bool loadApiProfile(const KdlNode &child, bool &handled);
+	bool readFuncProps(const KdlNode &node, Item &item, bool defaults, bool &stubGiven);
+	bool loadFuncDefaults(const KdlNode &node);
+	bool loadFunc(const KdlNode &node, Item &item, Context ctx);
+	bool loadDll(const KdlNode &node, const Header &header);
+	bool resolveUmbrellas();
+	bool checkDlls();
+
 	Map *_map = nullptr;
 	Diagnostics *_diag = nullptr;
 	String _file;
@@ -175,15 +214,20 @@ private:
 
 	// The defaults a description was loaded with: a shared one has to get the same everywhere.
 	mem_std::Map<String, const Defaults *> _descriptionDefaults;
+
+	// What the functions of the description loaded take when they do not say, and whether it says
+	// stub=: without it a function with dll= has a generated wrapper.
+	Item _funcDefaults;
+	bool _funcStubGiven = false;
 };
 
 const StringView s_ruleProps[] = {"prefix", "wrap", "spelled", "suffix", "case", "trim"};
-const StringView s_defaultKinds[] = {"macro", "undef", "typedef", "tag", "value"};
+const StringView s_defaultKinds[] = {"macro", "undef", "typedef", "tag", "value", "func"};
 const StringView s_abiRootProps[] = {"header", "dir"};
 const StringView s_archProps[] = {"like"};
 const StringView s_externProps[] = {"begin", "end"};
 const StringView s_schemeProps[] = {"root", "prefix"};
-const StringView s_headerProps[] = {"abi", "external", "fragment", "guard"};
+const StringView s_headerProps[] = {"abi", "api", "external", "fragment", "guard", "umbrella"};
 const StringView s_includeProps[] = {"platform", "arch", "if"};
 const StringView s_macroProps[] = {"params", "if", "public"};
 const StringView s_aliasProps[] = {"to", "params", "if"};
@@ -531,14 +575,14 @@ bool Loader::load(StringView file) {
 		return false;
 	}
 
-	bool ok = true;
+	bool ok = resolveUmbrellas();
 	for (auto &header : _map->headers) {
 		if (!header.abi.empty()) {
 			ok = loadDescription(header) && ok;
 		}
 	}
 	_file = _map->file;
-	return ok && checkCycles() && checkTargets();
+	return ok && checkCycles() && checkTargets() && checkDlls();
 }
 
 // The list whose K_NAME the platform include names lists the platforms, the one only the arch
@@ -655,8 +699,22 @@ bool Loader::loadProfile(const KdlNode &node) {
 		return false;
 	}
 	bool ok = true;
+	// The ABI map comes first: its rules are what the rest of the profile names.
+	for (auto &child : node.children) {
+		if (child.name == "abi") {
+			ok = loadAbiMap(child) && ok;
+		}
+	}
 	for (auto &child : node.children) {
 		auto name = StringView(child.name);
+		bool handled = false;
+		if (!loadApiProfile(child, handled)) {
+			ok = false;
+			continue;
+		}
+		if (handled) {
+			continue;
+		}
 		if (name == "rule") {
 			if (!checkShape(child, NodeShape{1, 1, makeSpanView(s_ruleProps), false})) {
 				ok = false;
@@ -885,10 +943,27 @@ bool Loader::loadHeader(const KdlNode &node) {
 				&& path.size() > root.size() && path[root.size()] == '/'
 				&& path.sub(root.size() + 1).find('/') != sprt::Max<size_t>;
 	}
+	// An API map names a description api=; an umbrella header has none of its own.
 	auto abi = node.getPropertyValue("abi");
+	if (auto api = node.getPropertyValue("api")) {
+		if (abi) {
+			error(node.location, "a header has abi= or api=, not both");
+			return false;
+		}
+		abi = api;
+	}
 	if (header.external && abi) {
 		error(node.location, "an external header has no description");
 		return false;
+	}
+	if (auto umbrella = node.getPropertyValue("umbrella")) {
+		if (abi || header.external) {
+			error(node.location, "an umbrella header writes the functions of another, and has no description");
+			return false;
+		}
+		if (!readString(*umbrella, header.umbrellaOf, "umbrella")) {
+			return false;
+		}
 	}
 	if (abi) {
 		if (!readString(*abi, header.abi, "abi")) {
@@ -896,12 +971,17 @@ bool Loader::loadHeader(const KdlNode &node) {
 		}
 		header.abiFile = filepath::merge<memory::StandardInterface>(_map->dir, header.abi);
 	} else if (!header.external) {
-		// The description at the mirror of the path, when there is one.
+		// The description at the mirror of the path, when there is one, by the longest root.
 		StringView path(header.path);
+		const AbiRoot *found = nullptr;
 		for (auto &root : _map->abiRoots) {
-			if (!path.starts_with(StringView(root.header)) || !path.ends_with(".h")) {
-				continue;
+			if (path.starts_with(StringView(root.header)) && path.ends_with(".h")
+					&& (!found || root.header.size() > found->header.size())) {
+				found = &root;
 			}
+		}
+		if (found && header.umbrellaOf.empty()) {
+			auto &root = *found;
 			auto rest = path.sub(root.header.size(), path.size() - root.header.size() - 2);
 			auto rel = mem_std::toString(root.dir, rest, ".kdl");
 			auto full = filepath::merge<memory::StandardInterface>(_map->dir, rel);
@@ -909,7 +989,6 @@ bool Loader::loadHeader(const KdlNode &node) {
 				header.abi = sprt::move(rel);
 				header.abiFile = sprt::move(full);
 			}
-			break;
 		}
 	}
 	if (auto guard = node.getPropertyValue("guard")) {
@@ -988,6 +1067,7 @@ void Loader::addLikeHeaders() {
 				h.mapFile = header.mapFile;
 				h.location = header.location;
 				h.fragment = true;
+				h.imported = header.imported;
 				Include inc;
 				inc.path = header.path;
 				inc.location = header.location;
@@ -1082,15 +1162,21 @@ bool Loader::loadDescription(Header &header) {
 						" with a header of other defaults"));
 		ok = false;
 	}
+	_funcDefaults = Item();
+	_funcStubGiven = false;
 	for (auto &node : doc.nodes) {
 		if (node.name == "cond") {
 			ok = loadCondition(node, _conditions) && ok;
+		} else if (node.name == "defaults") {
+			ok = loadFuncDefaults(node) && ok;
+		} else if (node.name == "dll") {
+			ok = loadDll(node, header) && ok;
 		}
 	}
 	size_t publics = 0;
 	size_t marked = 0;
 	for (auto &node : doc.nodes) {
-		if (node.name == "cond") {
+		if (node.name == "cond" || node.name == "defaults" || node.name == "dll") {
 			continue;
 		}
 		Item item;
@@ -1311,6 +1397,8 @@ bool Loader::loadItem(const KdlNode &node, Item &item, Context ctx) {
 		return loadUse(node, item, ctx);
 	} else if (name == "targets") {
 		return loadTargets(node, item, ctx);
+	} else if (name == "func") {
+		return loadFunc(node, item, ctx);
 	}
 	error(node.location, mem_std::toString("unknown node '", node.name, "'"));
 	return false;
@@ -1672,6 +1760,15 @@ bool Loader::collectSymbols(Header &header, const Item &item) {
 	case ItemKind::Macro:
 	case ItemKind::Typedef:
 	case ItemKind::Value: add(item.name, item.location); break;
+	case ItemKind::Func: {
+		add(item.name, item.location);
+		for (auto &v : funcVariants(*_map, item)) {
+			if (v.name != item.name.name) {
+				add(Name{v.name, nullptr}, item.location);
+			}
+		}
+		break;
+	}
 	case ItemKind::Targets: {
 		Vector<const Item *> targets;
 		listTargets(item, targets);

@@ -28,6 +28,9 @@ THE SOFTWARE.
 // The ABI description model: a header map (the profile, every header and what it includes) and,
 // for each generated header, the definitions of its description. C fragments - macro bodies,
 // conditions, types - are kept as written and rendered with the profile's name rules on output.
+//
+// An API map is the same model over an ABI map it loads first: its descriptions add functions,
+// written to API headers, umbrella headers, and to the .def, the table and the wrappers of a DLL.
 namespace STAPPLER_VERSIONIZED stappler::xlkdl {
 
 using String = mem_std::String;
@@ -97,6 +100,18 @@ enum class ItemKind {
 	Targets,
 	TargetGroup,
 	Target,
+
+	// A function and one of its parameters.
+	Func,
+	Param,
+};
+
+// What wraps a function imported from a DLL when the import library is not used: a generated
+// wrapper, one written by hand, or none at all.
+enum class StubMode : uint8_t {
+	Gen,
+	Manual,
+	None,
 };
 
 // Where a block or an include comes from: a header of the map, or the variant of a platform
@@ -173,7 +188,27 @@ struct Item {
 
 	ExternC externC = ExternC::None;
 
-	// Record members, enumerators, the overrides of a block.
+	// A function returns `text` and takes the children; a parameter has the type `text`, no name
+	// when it is unnamed, and is the `...` when variadic.
+	String cc;
+	String link;
+	String dll;
+	String empty;
+	String charset;
+	String unicode;
+	StubMode stub = StubMode::None;
+	bool def = true;
+	bool umbrella = true;
+	bool nothrow = true;
+	bool variadic = false;
+
+	// A function declared again (only declared: its DLL has it from the first declaration), one
+	// that is no record of its DLL's table, and whether stub= was given (or its table decides).
+	bool redeclare = false;
+	bool inTable = true;
+	bool stubGiven = false;
+
+	// Record members, enumerators, the overrides of a block, the parameters of a function.
 	Vector<Item> children;
 };
 
@@ -209,6 +244,15 @@ struct Header {
 
 	Vector<Symbol> symbols;
 	Vector<Item> items;
+
+	// A header of the ABI map an API map loads: its names are visible, it is not written.
+	bool imported = false;
+
+	// An umbrella header writes the functions of another header with their public names; that
+	// header lists the umbrellas of its functions.
+	String umbrellaOf;
+	const Header *umbrellaTarget = nullptr;
+	Vector<const Header *> umbrellas;
 };
 
 struct Platform {
@@ -247,6 +291,68 @@ struct Condition {
 	String text;
 };
 
+// What a function of a linkage is declared with: `linkage import attr=WIN_IMPORT`.
+struct Linkage {
+	String name;
+	String attr;
+};
+
+// How an umbrella function is written: `begin T f(...) end`, and its body under `#if bodyIf`.
+struct UmbrellaForm {
+	String begin;
+	String end;
+	String endExcept;
+	String bodyIf;
+};
+
+// A character set of the A/W variants: its suffix is its name, the pairs replace generic types.
+struct Charset {
+	String name;
+	Vector<sprt::pair<String, String>> types;
+};
+
+// Where what is written from a DLL goes, relative to the output root, and what it includes.
+struct DllRoot {
+	String def;
+	String code;
+	String tableInclude;
+	String loaderInclude;
+};
+
+// An export of a DLL without a function in the descriptions: in its table, and in its .def when
+// `def` says so.
+struct DllExport {
+	String name;
+	bool def = false;
+	bool table = true;
+	kdl::Location location;
+};
+
+struct DllFunc {
+	const Header *header = nullptr;
+	const Item *item = nullptr;
+};
+
+// A DLL as the `dll` node of a description holds it: its file, the class of its loader table, the
+// exports resolved when the table loads, and the exports without a function.
+struct Dll {
+	String name;
+	kdl::Location location;
+	String abi;
+	String abiFile;
+	String file;
+	String table;
+
+	// The macro the table defines with the preloads, `LIST(X)` calling X on each.
+	String preloadList;
+	Vector<String> preloads;
+	Vector<kdl::Location> preloadLocations;
+	Vector<DllExport> exports;
+
+	// The functions of the descriptions with dll= naming it, in the order of the map.
+	Vector<DllFunc> funcs;
+};
+
 struct Map {
 	// The root of the map, and its directory: descriptions and the license are found from there.
 	String file;
@@ -270,7 +376,20 @@ struct Map {
 	Vector<AbiRoot> abiRoots;
 	Vector<Condition> conditions;
 
+	// An API map: the ABI map it loads, the headers' root under the output root, what functions are
+	// declared with, and its DLLs.
+	String abiMap;
+	String includeRoot;
+	Vector<Linkage> linkages;
+	UmbrellaForm umbrella;
+	Vector<Charset> charsets;
+	DllRoot dllRoot;
+	Vector<Dll> dlls;
+
 	const NameRule *findRule(StringView) const;
+	const Linkage *findLinkage(StringView) const;
+	const Charset *findCharset(StringView) const;
+	const Dll *findDll(StringView) const;
 	const Defaults *findDefaults(StringView headerPath) const;
 	const Header *findHeader(StringView) const;
 
@@ -291,6 +410,26 @@ bool loadMap(StringView file, Map &map, Diagnostics &diag);
 bool emitHeader(const Map &map, const Header &header, const EmitOptions &opts, String &out,
 		Diagnostics &diag);
 
+// What a DLL description writes: the module definition, the table of the loader, the wrappers.
+enum class DllPart : uint8_t {
+	Def,
+	Table,
+	Stubs,
+};
+
+// The path of a part of a DLL under the output root.
+String dllPath(const Map &map, const Dll &dll, DllPart part);
+
+// The text of a part of a DLL; false with diagnostics.
+bool emitDll(const Map &map, const Dll &dll, DllPart part, String &out, Diagnostics &diag);
+
+// The names a function is exported and declared as: one, or one per A/W variant, with its set.
+struct FuncVariant {
+	String name;
+	const Charset *charset = nullptr;
+};
+Vector<FuncVariant> funcVariants(const Map &map, const Item &func);
+
 // Every definition of each name, as written in a description or as spelled in C; returns how many
 // names are not defined anywhere.
 int findNames(const Map &map, SpanView<String> names, const Callback<void(StringView)> &out);
@@ -301,6 +440,7 @@ void writeIndex(const Map &map, const Callback<void(StringView)> &out);
 int runDump(int argc, const char *argv[]);
 int runFormat(int argc, const char *argv[]);
 int runAbi(int argc, const char *argv[]);
+int runApi(int argc, const char *argv[]);
 
 } // namespace stappler::xlkdl
 

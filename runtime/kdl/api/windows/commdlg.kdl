@@ -1,0 +1,12 @@
+// The functions of include/sprt/wrappers/windows/commdlg.h, written to
+// sprt/gen/wrappers/windows/api/commdlg.h.
+
+dll comdlg32 file="comdlg32.dll"
+
+defaults dll=comdlg32 link=import cc=WINAPI
+
+// FALSE means either "the user cancelled" or "it failed"; CommDlgExtendedError tells the two
+// apart — it returns 0 after a plain cancel.
+func ChooseColorW BOOL { - LPCHOOSECOLORW }
+func ChooseFontW BOOL { - LPCHOOSEFONTW }
+func CommDlgExtendedError DWORD empty=void

@@ -1,0 +1,10 @@
+macro WINAPI __stdcall
+typedef `HANDLE` "void *"
+typedef `DWORD` "unsigned long"
+typedef `CHAR` char
+typedef `WCHAR` "unsigned short"
+typedef `LPSTR` "CHAR *"
+typedef `LPWSTR` "WCHAR *"
+typedef `LPCSTR` "const CHAR *"
+typedef `LPCWSTR` "const WCHAR *"
+typedef DIR "struct fx_dir"

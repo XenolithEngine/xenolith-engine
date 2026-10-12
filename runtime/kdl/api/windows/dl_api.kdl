@@ -1,0 +1,26 @@
+// The functions of include/sprt/wrappers/windows/dl_api.h, written to
+// sprt/gen/wrappers/windows/api/dl_api.h.
+
+defaults dll=kernel32 link=import cc=WINAPI
+
+func VirtualQuery SIZE_T { lpAddress LPCVOID; lpBuffer PMEMORY_BASIC_INFORMATION; dwLength SIZE_T }
+func VirtualQueryEx SIZE_T stub=#false {
+    hProcess HANDLE
+    lpAddress LPCVOID
+    lpBuffer PMEMORY_BASIC_INFORMATION
+    dwLength SIZE_T
+}
+func ExitProcess VOID attr="__declspec(noreturn)" stub=#false { uExitCode UINT }
+func LoadLibraryW HMODULE stub="manual" { lpLibFileName LPCWSTR }
+func LoadLibraryA HMODULE { lpLibFileName LPCSTR }
+func LoadLibraryExW HMODULE { lpLibFileName LPCWSTR; hFile HANDLE; dwFlags DWORD }
+func LoadLibraryExA HMODULE stub=#false { lpLibFileName LPCSTR; hFile HANDLE; dwFlags DWORD }
+func FreeLibrary BOOL stub="manual" { hModule HMODULE }
+func GetProcAddress FARPROC stub="manual" { hModule HMODULE; lpProcName LPCSTR }
+func GetModuleHandleW HMODULE { lpModuleName LPCWSTR }
+func GetModuleHandleA HMODULE dll="" { lpModuleName LPCSTR }
+func GetModuleHandleExA BOOL { dwFlags DWORD; lpModuleName LPCSTR; phModule "HMODULE *" }
+func GetModuleHandleExW BOOL { dwFlags DWORD; lpModuleName LPCWSTR; phModule PHMODULE }
+func GetModuleFileNameW DWORD { hModule HMODULE; lpFilename LPWSTR; nSize DWORD }
+func GetModuleFileNameA DWORD stub=#false { hModule HMODULE; lpFilename LPSTR; nSize DWORD }
+func RtlPcToFileHeader PVOID { PcValue PVOID; BaseOfImage "PVOID *" }

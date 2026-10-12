@@ -1,0 +1,279 @@
+# API descriptions: `xlkdl api`
+
+An API description holds functions. One `func` node is written to everything the function
+appears in:
+
+- the API header that declares it;
+- for a runtime function, the umbrella header of `include_libc` that gives it its public name;
+- for a function imported from a DLL, the `.def` its import library is built from, the loader
+  table and the wrapper that loads it when there is no import library.
+
+The **API map** names the headers. It is `runtime/kdl/api/sprt-api.kdl` with its parts
+under `runtime/kdl/api/map/`. It loads the ABI map first (`docs/usage/tools/xlkdl-abi.adoc`), so
+the types a function names are the ABI's symbols and are spelled by their rules.
+
+    make -C utils/xlkdl
+    xlkdl api --map runtime/kdl/api/sprt-api.kdl --root runtime [--check]
+    xlkdl api --map runtime/kdl/api/sprt-api.kdl --find <name> | --index
+
+`--root` is the root the profile's paths are under. Headers go under `<root>/include/`; the DLL
+files go to the paths of `dll-root`. `--check` writes nothing; the exit code is the number of
+files that are not what would be written. A document that does not load exits with 1 and
+`file:line:column: message` lines.
+
+**TL;DR**
+
+* **One declaration.** A function is described once: `func NAME RETURN { PARAM TYPE … }`. The
+  types are C, rendered like any C fragment of an ABI description.
+* **Two spellings in the pair.** The API header writes every name by its rule
+  (`__SPRT_ID(DIR) *__SPRT_ID(opendir)(const char *__path)`). The umbrella writes the same
+  function with the names bare (`DIR *opendir(const char *__path)`) and calls the first one.
+  A bare name the umbrella sees no declaration of is an error.
+* **The DLL** is a `dll` node of the description of its functions: its file, the class of its
+  loader table, the preloads and the exports that have no function. Every function with `dll=`,
+  in any description, is in that DLL's table, `.def` and wrappers:
+  - the table is those functions and the DLL's other exports;
+  - the `.def` is those functions plus the exports marked `def=#true`;
+  - the wrappers are the functions with `stub=gen`, the default for one with `dll=`.
+* **The A/W variants** are one function written with the generic types (`LPCTSTR`): `charset="A
+  W"` writes `CreateFileA` and `CreateFileW`, and `unicode="W A"` the `#ifdef UNICODE` choice
+  between them.
+* **Where does X go:** `--find X` prints the description, the headers, the umbrella and the DLL
+  files of a function, the DLL of an export, or the files of a DLL.
+
+---
+
+## The API map
+
+The profile of an API map loads the ABI map and adds what functions are written with:
+
+```kdl
+profile sprt-api {
+    abi "../abi/sprt.kdl"
+    include-root "include/"
+    defaults root="sprt/gen/c/api/" macro=p typedef=id func=id
+    abi-root header="sprt/gen/wrappers/windows/api/" dir="windows/"
+    abi-root header="sprt/gen/c/api/__sprt_" dir="libc/"
+    guard-scheme root="libc_impl/" prefix=CORE_RUNTIME_LIBC_IMPL_
+    linkage import attr=WIN_IMPORT
+    linkage sprt attr=SPRT_API
+    umbrella begin=SPRT_UMBRELLA_FUNC end=SPRT_UMBRELLA_END end-except=SPRT_UMBRELLA_END_EXCEPT body-if=SPRT_UMBRELLA_REQUIRED
+    charset A { LPTSTR LPSTR; LPCTSTR LPCSTR; TCHAR CHAR }
+    charset W { LPTSTR LPWSTR; LPCTSTR LPCWSTR; TCHAR WCHAR }
+    dll-root def="include/sprt/gen/wrappers/windows/def/" code="libc_impl/src/windows/dll/gen/" table-include="../dlltable.h" loader-include="../dllloader.h"
+}
+```
+
+| Node | What |
+|---|---|
+| `abi PATH` | the ABI map, loaded as a part of this one from its own directory. Its rules, defaults and headers are this map's. Its headers are not written; their names are visible |
+| `include-root` | where the headers go under `--root` |
+| `defaults … func=RULE` | the rule of a function name under a root. The longest root a header is under wins, so an API root inside an ABI root has its own defaults |
+| `abi-root` | where a header's description is when the map does not name it, by the longest root |
+| `linkage NAME attr=TEXT` | what a function of `link=NAME` is declared with. `link=none` (or no `link=`) is declared with nothing |
+| `umbrella` | the text before and after an umbrella's declaration (`end-except` for `noexcept=#false`), and the condition its body stands under |
+| `charset NAME { GENERIC TYPE … }` | a variant of the A/W functions: its suffix is its name, its pairs replace the generic types |
+| `dll-root` | where a DLL's `.def` goes (`def`), its table and wrappers (`code`), and what the last two include |
+
+A header of an API map takes its description as `api=` (or by `abi-root`), or it is an umbrella:
+
+```kdl
+header "sprt/gen/c/api/__sprt_dirent.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/cross/__sprt_dir_ptr.h"
+}
+
+header "dirent.h" external=#true {
+    include "sprt/c/__sprt_dirent.h"
+    include "sprt/gen/c/umbrella/dirent.h"
+    type DIR dirent
+}
+
+header "sprt/gen/c/umbrella/dirent.h" umbrella="sprt/gen/c/api/__sprt_dirent.h" fragment=#true {
+    include "sprt/gen/c/api/__sprt_dirent.h"
+}
+
+```
+
+An **umbrella header** has no description of its own. It writes the functions of the header it
+is the umbrella of. It is a fragment: the hand-written `include_libc` header that includes it
+declares the public names (`typedef __SPRT_ID(DIR) DIR;`). In the map, that header is
+`external` and lists those names (`type DIR dirent`). The umbrella has to include the header
+whose functions it calls.
+
+
+Every generated file carries the line `Generated by xlkdl from <description> (header map
+sprt-api.kdl)`, and every header and table its guard (by `guard-scheme`). Functions are declared
+between the profile's `extern-c` begin and end.
+
+## A function
+
+```kdl
+defaults dll=bcrypt link=import cc=WINAPI
+
+func BCryptGenRandom NTSTATUS {
+    hAlgorithm BCRYPT_ALG_HANDLE
+    pbBuffer PUCHAR
+    cbBuffer ULONG
+    dwFlags ULONG
+}
+func GetProcessHeap HANDLE dll=kernelbase empty=VOID
+func SetHandler DWORD { - "DWORD (*)(HANDLE, DWORD)" }
+func Print int stub=manual { lpFormat LPCSTR; "..." }
+```
+
+The first argument is the name, with the `func` rule of its root. The second is the return
+type. Each child is a parameter:
+
+- the node name is the parameter's name, and the argument its type;
+- `-` is an unnamed parameter; a wrapper and an umbrella name it `aN` to pass it on;
+- `"..."` is the variadic tail.
+
+A pointer to a function is written as a type-id, and the name goes into its declarator
+(`int (*__filter)(const struct dirent *)`).
+
+`defaults` at the top of a description gives its functions what they do not say themselves. It
+takes `dll`, `link`, `cc`, `stub`, `def`, `charset`, `unicode`, `umbrella` and `noexcept`.
+
+| Property | What |
+|---|---|
+| `if=` | the condition the function is declared under (as in ABI descriptions); its wrapper stands under it too |
+| `cc=` | the calling convention, written after the linkage: `__SPRT_WIN_IMPORT __SPRT_WINAPI NTSTATUS BCryptGenRandom(…)` |
+| `link=` | a `linkage` of the profile, or `none` |
+| `empty=` | the text between the parentheses when there are no parameters: `()` and `(VOID)` are different declarations in C11 |
+| `attr=` | attributes written after the linkage, before the calling convention: `attr="__declspec(noreturn)"`, `attr=__SPRT_NORETURN` |
+| `redeclare=#true` | a second declaration of a function described elsewhere: written to this header, nothing else; it takes no `def=`, `table=` or `stub=` |
+| `table=#false` | no record in its DLL's table: the loader does not look it up (and a generated wrapper could not load it) |
+| `dll=` | the DLL it is exported by: a `dll` node of some description. One function exports a name, and not also as an `export` of the DLL |
+| `def=#false` | not in the `.def`: the runtime defines it, and the import library must not bind it to the DLL |
+| `stub=` | `"gen"`, the default for a function of a DLL with a table: a wrapper in `dllstub2_<dll>.cc`. `"manual"`: the wrapper is written by hand elsewhere. `#false`: none. A variadic function, and one of a DLL without a table, has no generated wrapper |
+| `charset=` `unicode=` | the A/W variants and the choice between them, below |
+| `umbrella=#false` | no umbrella for it. A variadic function has none |
+| `noexcept=#false` | the umbrella ends with `end-except` |
+
+**A/W variants.** `func CreateFile HANDLE charset="A W" unicode="W A" { lpFileName LPCTSTR … }`
+writes `CreateFileA` with `LPCSTR` and `CreateFileW` with `LPCWSTR`. Then it writes `#ifdef
+UNICODE`, `#define CreateFile CreateFileW`, `#else`, `#define CreateFile CreateFileA`. Each
+variant is an export of its own. `unicode="W"` writes the UNICODE branch only.
+
+**The umbrella** of a function is written as:
+
+```c
+SPRT_UMBRELLA_FUNC
+DIR *opendir(const char *__path) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(opendir)(__path);
+}
+#endif
+```
+
+The body has no `return` when the function returns `void`.
+
+## A DLL
+
+```kdl
+dll bcrypt file="bcrypt.dll" table=BCryptTable {
+    preload BCryptGenRandom
+    export BCryptAddContextFunction
+    …
+    export GetSignatureInterface
+    export Ordinal def=#true
+}
+
+defaults dll=bcrypt link=import cc=WINAPI
+func BCryptGenRandom NTSTATUS { … }
+```
+
+The `dll` node stands at the top of a description, usually the one with the DLL's functions.
+A DLL whose functions are spread over several descriptions (kernel32) is described once, in one
+of them; the others name it with `dll=`. A second `dll` node of the same name is an error.
+
+`table=` is the class of the DLL's loader table; a DLL without it has a `.def` only (the import
+library binds it, the loader never opens it: comdlg32, ole32, psapi, rpcrt4, version, uuid).
+`preload-list=NAME` has the table define its preloads as a list macro, `NAME(X)` calling `X` on
+each: ntdll's `SPWIN_NTDLL_PRELOAD_LIST`, which `dll_ntdll_preload.h` checks a raw `.fn` call
+against at compile time.
+
+| Child | What |
+|---|---|
+| `preload NAMES…` | the functions or exports the table resolves when it loads |
+| `export NAME` | an export without a function in the descriptions. It is in the table, because the loader finds it by name, unless `table=#false`. It is in the `.def` with `def=#true` |
+
+| File | What is written |
+|---|---|
+| `def/<dll>.def` | `LIBRARY`; then `EXPORTS`: the functions with this `dll=` and without `def=#false` in the order of the map, then the exports marked `def=#true` |
+| `gen/dll_<dll>.h` | `struct <table> : DllTable` with a `SPWIN_DEFINE_PROTO` per function of the DLL (in the order of the map) and per `export`, and the `__preloads` list |
+| `gen/dllstub2_<dll>.cc` | per function with `stub=gen`: `<cc> RET NAME(PARAMS)` that calls `DLL_LOAD_AND_CALL(loader, <dll>, NAME, args)`, including the API headers that declare them |
+
+`runtime/toolchains/target-windows/init-target.mk` builds an import library from every `.def` of
+`sprt/gen/wrappers/windows/def`. `libc_impl/src/windows/dll/dllloader.h` includes the generated
+tables, and `builtin_startup.cpp` includes the generated wrappers and, after them, the wrappers
+written by hand for a DLL (`dllstub_<dll>.cc`: those with casts or of functions no description
+declares). The loader (`DllLoader`) is still written by hand.
+
+## Finding a name
+
+`--find NAME` prints:
+
+- for a function, its description; the API header and the umbrella that write it; and, for one
+  with `dll=`, the `.def`, the table and the wrapper it is in;
+- for an A/W function, the variants: each with its own place in the DLL;
+- for an `export`, its place and the table (and the `.def`, with `def=#true`);
+- for a DLL name, its three files.
+
+The ABI's names are found too, and `--index` writes all of it as JSON (`files` for the DLL
+files).
+
+## Converting headers
+
+`utils/xlkdl/api2kdl.py` writes the descriptions from the hand-written runtime of a revision
+(`--rev`, `814d1c4f` by default). Every hand-written header of `sprt/wrappers/windows` with
+prototypes is a description, except `__sprt_intrin.h` (compiler intrinsics), `__sprt_threads.h`
+(inline implementations) and `__sprt_config.h` (the ntdll string imports, included by every
+header). It reads:
+
+- the prototypes of the API header, with the condition each stands under, and the
+  function-pointer typedefs among them (they move into the description with them);
+- for a libc pair, the umbrella functions of `include_libc`, matched by name;
+- the `.def`, the table and the wrappers of each DLL.
+
+A function belongs to the DLL whose `.def` lists it; a name two `.def` files list belongs to the
+DLL with its wrapper, else with it in its table, and is an `export … def=#true` of the other. The
+`dll` node goes to the description with the most of the DLL's functions. A second declaration of
+a function is `redeclare=#true`. A wrapper of the generated form is
+`stub=gen`, another is `stub="manual"`, none is `stub=#false`. The DLL's `dll` node goes to the
+description of its functions, with the exports of the table no converted header declares. An umbrella that does not call
+its function with its parameters in order, or has other types, stops the converter with
+`file:line`. The prototypes in the hand-written header become an include of the generated
+header, at the place of the first of them (before the `#if` it stands in); a declaration block
+left empty goes. The `.def`, table and wrapper files it read are removed: `git restore
+--source=814d1c4f` brings them back. A statement that looks like a prototype and is not one it
+can write (a C++ default argument, `noexcept` after the parameters) stays as written, and the
+report lists it. Which sets it converts is the `SETS` list at its top; `--check` writes nothing
+and fails when a file differs.
+
+## Proving a description
+
+`tests/libc/kdl-abi/compare_api.py` compiles the hand-written revision and the worktree:
+
+- every header of `sprt/wrappers/windows` on its own, for x86_64 and aarch64, C and C++, with
+  and without `UNICODE`;
+- `sprt/c/__sprt_dirent.h` for every libc target;
+- `<dirent.h>` for every libc target, with `SPRT_UMBRELLA_REQUIRED` 0 and 1.
+
+It compares:
+
+- the functions: type, attributes, storage, linkage, the call an umbrella makes;
+- what precedes each function's name after preprocessing, which is the only place `__stdcall`
+  shows on x64;
+- every other declaration;
+- the macros.
+
+For each of the 26 DLLs it also compares the `.def`, the import libraries `llvm-lib` builds from
+both, the table (its exports as a set: the generated one lists the functions first), and the
+wrappers' disassembly - generated and hand-written rest against the old file. Both sets of
+wrappers are compiled against the new tables, since a record's place in a table belongs to the
+loader. `--self-test` adds six broken descriptions, and the fixture under
+`fixtures/api` covers every form above, plus nine refusals. See
+`tests/libc/kdl-abi/README.md`.

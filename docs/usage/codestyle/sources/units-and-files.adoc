@@ -44,7 +44,7 @@ process-startup layer from subunits:
 #endif
 
 #if !__SPRT_WIN_USE_IMPORT_LIB
-#include "windows/dll/dllstub2_kernel32.cc"
+#include "windows/dll/gen/dllstub2_kernel32.cc"   // generated from runtime/kdl/api
 // ... one subunit per imported system DLL ...
 #endif
 

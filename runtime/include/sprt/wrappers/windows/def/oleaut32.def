@@ -1,8 +1,0 @@
-LIBRARY oleaut32.dll
-EXPORTS
-	VariantInit
-	VariantClear
-	VariantCopy
-	SysAllocString
-	SysStringLen
-	SysFreeString

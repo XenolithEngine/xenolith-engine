@@ -1,0 +1,80 @@
+// The functions of include/sprt/wrappers/windows/process_api.h, written to
+// sprt/gen/wrappers/windows/api/process_api.h.
+
+defaults dll=kernel32 link=import cc=WINAPI
+
+func GetCurrentProcess HANDLE empty=void
+func GetCurrentProcessId DWORD empty=void
+func OpenProcess HANDLE { dwDesiredAccess DWORD; bInheritHandle BOOL; dwProcessId DWORD }
+func GetExitCodeProcess BOOL { hProcess HANDLE; lpExitCode LPDWORD }
+func GetPriorityClass DWORD { hProcess HANDLE }
+func InitializeProcThreadAttributeList BOOL {
+    lpAttributeList LPPROC_THREAD_ATTRIBUTE_LIST
+    dwAttributeCount DWORD
+    dwFlags DWORD
+    lpSize PSIZE_T
+}
+func UpdateProcThreadAttribute BOOL {
+    lpAttributeList LPPROC_THREAD_ATTRIBUTE_LIST
+    dwFlags DWORD
+    Attribute DWORD_PTR
+    lpValue PVOID
+    cbSize SIZE_T
+    lpPreviousValue PVOID
+    lpReturnSize PSIZE_T
+}
+func DeleteProcThreadAttributeList VOID { lpAttributeList LPPROC_THREAD_ATTRIBUTE_LIST }
+func GetCommandLineW LPWSTR empty=VOID
+func CommandLineToArgvW "LPWSTR *" dll=shell32 { lpCmdLine LPCWSTR; pNumArgs "int *" }
+func CreateProcessW BOOL {
+    lpApplicationName LPCWSTR
+    lpCommandLine LPWSTR
+    lpProcessAttributes LPSECURITY_ATTRIBUTES
+    lpThreadAttributes LPSECURITY_ATTRIBUTES
+    bInheritHandles BOOL
+    dwCreationFlags DWORD
+    lpEnvironment LPVOID
+    lpCurrentDirectory LPCWSTR
+    lpStartupInfo LPSTARTUPINFOW
+    lpProcessInformation LPPROCESS_INFORMATION
+}
+func GetCommandLineA LPSTR stub=#false empty=VOID
+func CreateProcessA BOOL stub=#false {
+    lpApplicationName LPCSTR
+    lpCommandLine LPSTR
+    lpProcessAttributes LPSECURITY_ATTRIBUTES
+    lpThreadAttributes LPSECURITY_ATTRIBUTES
+    bInheritHandles BOOL
+    dwCreationFlags DWORD
+    lpEnvironment LPVOID
+    lpCurrentDirectory LPCSTR
+    lpStartupInfo LPSTARTUPINFOA
+    lpProcessInformation LPPROCESS_INFORMATION
+}
+func TerminateProcess BOOL { hProcess HANDLE; uExitCode UINT }
+func GetProcessMemoryInfo BOOL dll=kernelbase stub=#false {
+    Process HANDLE
+    ppsmemCounters PPROCESS_MEMORY_COUNTERS
+    cb DWORD
+}
+func EnumProcessModulesEx BOOL dll=kernelbase stub=#false {
+    hProcess HANDLE
+    lphModule "HMODULE *"
+    cb DWORD
+    lpcbNeeded LPDWORD
+    dwFilterFlag DWORD
+}
+func IsProcessorFeaturePresent BOOL stub=#false { ProcessorFeature DWORD }
+func ShellExecuteExW BOOL dll=shell32 { pExecInfo "SHELLEXECUTEINFOW *" }
+func QueryFullProcessImageNameW BOOL stub=#false {
+    hProcess HANDLE
+    dwFlags DWORD
+    lpExeName LPWSTR
+    lpdwSize PDWORD
+}
+func QueryFullProcessImageNameA BOOL dll="" {
+    hProcess HANDLE
+    dwFlags DWORD
+    lpExeName LPSTR
+    lpdwSize PDWORD
+}

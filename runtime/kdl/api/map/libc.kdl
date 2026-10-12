@@ -1,0 +1,23 @@
+// The libc functions of the API map: the generated headers, what they include, and the
+// hand-written headers that include them.
+
+header "sprt/gen/c/api/__sprt_dirent.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_ssize_t.h"
+    include "sprt/gen/c/cross/__sprt_fstypes.h"
+    include "sprt/gen/c/cross/__sprt_dir_ptr.h"
+}
+
+header "sprt/c/__sprt_dirent.h" external=#true {
+    include "sprt/gen/c/api/__sprt_dirent.h"
+}
+
+header "dirent.h" external=#true {
+    include "sprt/c/__sprt_dirent.h"
+    include "sprt/gen/c/umbrella/dirent.h"
+    type DIR dirent
+}
+
+header "sprt/gen/c/umbrella/dirent.h" umbrella="sprt/gen/c/api/__sprt_dirent.h" fragment=#true {
+    include "sprt/gen/c/api/__sprt_dirent.h"
+}

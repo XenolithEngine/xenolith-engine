@@ -47,17 +47,6 @@ THE SOFTWARE.
 #define FO_DELETE __SPRT_FO_DELETE
 #define FO_RENAME __SPRT_FO_RENAME
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// The pre-Vista file operation. IFileOperation superseded it, but this one is still supported and
-// is the only shell delete some hosts implement, so it stays as a fallback. Returns 0 on success;
-// the non-zero codes are its own, not GetLastError's.
-__SPRT_WIN_IMPORT WINAPI int SHFileOperationW(LPSHFILEOPSTRUCTW lpFileOp);
-
-#ifdef __cplusplus
-}
-#endif
+#include <sprt/gen/wrappers/windows/api/shellapi.h>
 
 #endif // SPRT_WRAPPERS_WINDOWS_SHELLAPI_H_

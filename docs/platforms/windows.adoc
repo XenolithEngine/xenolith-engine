@@ -82,12 +82,11 @@ calls are declared in thin re-export headers under
 and the runtime links a single `-limport`
 ([../../runtime/runtime.mk](../../runtime/runtime.mk)). `import.lib` is a genuine
 MSVC-style import library, assembled when the **Windows target toolchain** is
-built: one `.def` file per system DLL lives in
-[../../runtime/include/sprt/wrappers/windows/def/](../../runtime/include/sprt/wrappers/windows/def/)
-(`kernel32.def`, `ntdll.def`, `kernelbase.def`, `user32.def`, `advapi32.def`,
-`ws2_32.def`, `bcrypt.def`, `dbghelp.def`, … — 20 in total), each listing
-`LIBRARY <dll>` and its `EXPORTS`. The toolchain build turns each `.def` into a
-stub with `llvm-lib /def:…` and merges them into `usr/lib/import.lib`
+built: one `.def` file per system DLL, 26 in total, each listing `LIBRARY <dll>` and its
+`EXPORTS`. They are generated into `runtime/include/sprt/gen/wrappers/windows/def/` by
+`xlkdl api` from the function descriptions of `runtime/kdl/api`, together with the declarations,
+the loader tables and the wrappers (`docs/usage/tools/xlkdl-api.adoc`). The toolchain build turns
+each `.def` into a stub with `llvm-lib /def:…` and merges them into `usr/lib/import.lib`
 (`runtime/toolchains/target-windows/init-target.mk`). The PE loader then binds
 those imports to the real DLLs at load time — no Microsoft import libraries are
 involved.

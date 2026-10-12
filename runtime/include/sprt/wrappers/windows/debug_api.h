@@ -62,33 +62,6 @@ THE SOFTWARE.
 #define SYMOPT_DEBUG __SPRT_SYMOPT_DEBUG
 
 
-__SPRT_BEGIN_DECL
-
-__SPRT_WIN_IMPORT WINAPI DWORD SymSetOptions(DWORD SymOptions);
-
-__SPRT_WIN_IMPORT WINAPI BOOL SymInitialize(HANDLE hProcess, PCSTR UserSearchPath,
-		BOOL fInvadeProcess);
-
-__SPRT_WIN_IMPORT WINAPI DWORD SymGetOptions(VOID);
-
-__SPRT_WIN_IMPORT WINAPI BOOL SymCleanup(HANDLE hProcess);
-
-__SPRT_WIN_IMPORT WINAPI BOOL StackWalk64(DWORD MachineType, HANDLE hProcess, HANDLE hThread,
-		LPSTACKFRAME64 StackFrame, PVOID ContextRecord,
-		PREAD_PROCESS_MEMORY_ROUTINE64 ReadMemoryRoutine,
-		PFUNCTION_TABLE_ACCESS_ROUTINE64 FunctionTableAccessRoutine,
-		PGET_MODULE_BASE_ROUTINE64 GetModuleBaseRoutine,
-		PTRANSLATE_ADDRESS_ROUTINE64 TranslateAddress);
-
-__SPRT_WIN_IMPORT WINAPI BOOL SymGetSymFromAddr64(HANDLE hProcess, DWORD64 qwAddr,
-		PDWORD64 pdwDisplacement, PIMAGEHLP_SYMBOL64 Symbol);
-
-__SPRT_WIN_IMPORT WINAPI BOOL SymGetLineFromAddr64(HANDLE hProcess, DWORD64 qwAddr,
-		PDWORD pdwDisplacement, PIMAGEHLP_LINE64 Line64);
-
-__SPRT_WIN_IMPORT WINAPI DWORD UnDecorateSymbolName(PCSTR name, PSTR outputString,
-		DWORD maxStringLength, DWORD flags);
-
-__SPRT_END_DECL
+#include <sprt/gen/wrappers/windows/api/debug_api.h>
 
 #endif // SPRT_WRAPPERS_WINDOWS_DEBUG_API_H_

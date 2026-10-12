@@ -1,0 +1,27 @@
+// The functions of include/sprt/wrappers/windows/__sprt_winsock.h, written to
+// sprt/gen/wrappers/windows/api/__sprt_winsock.h.
+
+defaults dll=ws2_32 link=import cc=WINAPI
+
+func WSASendTo int stub=#false {
+    s SOCKET
+    lpBuffers LPWSABUF
+    dwBufferCount DWORD
+    lpNumberOfBytesSent LPDWORD
+    dwFlags DWORD
+    lpTo "const struct sockaddr *"
+    iTolen int
+    lpOverlapped LPWSAOVERLAPPED
+    lpCompletionRoutine LPWSAOVERLAPPED_COMPLETION_ROUTINE
+}
+func WSARecvFrom int stub=#false {
+    s SOCKET
+    lpBuffers LPWSABUF
+    dwBufferCount DWORD
+    lpNumberOfBytesRecvd LPDWORD
+    lpFlags LPDWORD
+    lpFrom "struct sockaddr *"
+    lpFromlen "int *"
+    lpOverlapped LPWSAOVERLAPPED
+    lpCompletionRoutine LPWSAOVERLAPPED_COMPLETION_ROUTINE
+}

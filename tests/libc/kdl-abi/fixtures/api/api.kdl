@@ -1,0 +1,39 @@
+// The API map of the fixture: every form of a function, an umbrella, and a DLL.
+
+profile fx-api {
+    abi "abi.kdl"
+    include-root "include/"
+    defaults root="fx/api/lib/" macro=p typedef=id func=id
+    abi-root header="fx/api/win/" dir="api/"
+    guard-scheme root="code/" prefix=FX_CODE_
+    linkage import attr=IMPORT
+    linkage sprt attr=FX_API
+    umbrella begin=FX_UMBRELLA end=FX_UMBRELLA_END end-except=FX_UMBRELLA_END_EXCEPT body-if=FX_UMBRELLA_BODY
+    charset A {
+        LPTSTR LPSTR
+        LPCTSTR LPCSTR
+    }
+    charset W {
+        LPTSTR LPWSTR
+        LPCTSTR LPCWSTR
+    }
+    dll-root def="def/" code="code/" table-include="dlltable.h" loader-include="dllloader.h"
+}
+
+header "fx/api/win/win.h" {
+    include "fx/abi/types.h"
+}
+
+header "fx/api/lib/lib.h" api="api/lib.kdl" {
+    include "fx/abi/types.h"
+}
+
+header "fx/public.h" external=#true {
+    include "fx/api/lib/lib.h"
+    include "fx/umbrella/lib.h"
+    type DIR
+}
+
+header "fx/umbrella/lib.h" umbrella="fx/api/lib/lib.h" fragment=#true {
+    include "fx/api/lib/lib.h"
+}

@@ -55,46 +55,6 @@ THE SOFTWARE.
 #define RPC_C_IMP_LEVEL_IMPERSONATE __SPRT_RPC_C_IMP_LEVEL_IMPERSONATE
 #define RPC_C_IMP_LEVEL_DELEGATE __SPRT_RPC_C_IMP_LEVEL_DELEGATE
 
-__SPRT_BEGIN_DECL
-
-__SPRT_WIN_IMPORT WINAPI HRESULT CoInitializeSecurity(PSECURITY_DESCRIPTOR pSecDesc, LONG cAuthSvc,
-		SOLE_AUTHENTICATION_SERVICE *asAuthSvc, void *pReserved1, DWORD dwAuthnLevel,
-		DWORD dwImpLevel, void *pAuthList, DWORD dwCapabilities, void *pReserved3);
-
-__SPRT_WIN_IMPORT WINAPI HRESULT CoCreateInstance(REFCLSID rclsid, IUnknown *pUnkOuter,
-		DWORD dwClsContext, REFIID riid, LPVOID *ppv);
-
-__SPRT_WIN_IMPORT WINAPI HRESULT CoSetProxyBlanket(IUnknown *pProxy, DWORD dwAuthnSvc,
-		DWORD dwAuthzSvc, LPCWSTR pServerPrincName, DWORD dwAuthnLevel, DWORD dwImpLevel,
-		void *pAuthIdentity, DWORD dwCapabilities);
-
-__SPRT_WIN_IMPORT WINAPI HRESULT CoInitializeEx(LPVOID pvReserved, DWORD dwCoInit);
-
-__SPRT_WIN_IMPORT WINAPI void CoUninitialize();
-
-__SPRT_WIN_IMPORT WINAPI void CoTaskMemFree(LPVOID pv);
-
-__SPRT_WIN_IMPORT WINAPI HRESULT SHGetKnownFolderPath(REFKNOWNFOLDERID rfid, DWORD dwFlags,
-		HANDLE hToken, PWSTR *ppszPath);
-
-__SPRT_WIN_IMPORT WINAPI void VariantInit(VARIANTARG *pvarg);
-
-__SPRT_WIN_IMPORT WINAPI HRESULT VariantClear(VARIANTARG *pvarg);
-
-__SPRT_WIN_IMPORT WINAPI HRESULT VariantCopy(VARIANTARG *pvargDest, const VARIANTARG *pvargSrc);
-
-__SPRT_WIN_IMPORT WINAPI BSTR SysAllocString(const OLECHAR *psz);
-
-__SPRT_WIN_IMPORT WINAPI UINT SysStringLen(BSTR bstrString);
-
-__SPRT_WIN_IMPORT WINAPI void SysFreeString(BSTR bstrString);
-
-__SPRT_WIN_IMPORT WINAPI HRESULT StringFromCLSID(REFCLSID rclsid, LPOLESTR *lplpsz);
-
-__SPRT_WIN_IMPORT WINAPI HRESULT CLSIDFromString(LPCOLESTR lpsz, LPCLSID pclsid);
-
-__SPRT_WIN_IMPORT WINAPI HRESULT IIDFromString(LPCOLESTR lpsz, LPIID lpiid);
-
-__SPRT_END_DECL
+#include <sprt/gen/wrappers/windows/api/com_api.h>
 
 #endif

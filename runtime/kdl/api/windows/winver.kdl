@@ -1,0 +1,41 @@
+// The functions of include/sprt/wrappers/windows/winver.h, written to
+// sprt/gen/wrappers/windows/api/winver.h.
+
+dll version file="version.dll"
+
+defaults dll=version link=import cc=WINAPI
+
+func GetVersionExA BOOL dll=kernel32 { lpVersionInformation LPOSVERSIONINFOA }
+func GetVersionExW BOOL dll=kernel32 { lpVersionInformation LPOSVERSIONINFOW }
+func VerSetConditionMask ULONGLONG dll=kernel32 {
+    ConditionMask ULONGLONG
+    TypeMask DWORD
+    Condition BYTE
+}
+func VerifyVersionInfoW BOOL dll=kernel32 {
+    lpVersionInformation LPOSVERSIONINFOEXW
+    dwTypeMask DWORD
+    dwlConditionMask DWORDLONG
+}
+func GetFileVersionInfoSizeA DWORD { lptstrFilename LPCSTR; lpdwHandle LPDWORD }
+func GetFileVersionInfoSizeW DWORD { lptstrFilename LPCWSTR; lpdwHandle LPDWORD }
+func GetFileVersionInfoA BOOL { lptstrFilename LPCSTR; dwHandle DWORD; dwLen DWORD; lpData LPVOID }
+func GetFileVersionInfoW BOOL { lptstrFilename LPCWSTR; dwHandle DWORD; dwLen DWORD; lpData LPVOID }
+func GetFileVersionInfoSizeExA DWORD { dwFlags DWORD; lpwstrFilename LPCSTR; lpdwHandle LPDWORD }
+func GetFileVersionInfoSizeExW DWORD { dwFlags DWORD; lpwstrFilename LPCWSTR; lpdwHandle LPDWORD }
+func GetFileVersionInfoExA BOOL {
+    dwFlags DWORD
+    lpwstrFilename LPCSTR
+    dwHandle DWORD
+    dwLen DWORD
+    lpData LPVOID
+}
+func GetFileVersionInfoExW BOOL {
+    dwFlags DWORD
+    lpwstrFilename LPCWSTR
+    dwHandle DWORD
+    dwLen DWORD
+    lpData LPVOID
+}
+func VerQueryValueA BOOL { pBlock LPCVOID; lpSubBlock LPCSTR; lplpBuffer "LPVOID *"; puLen PUINT }
+func VerQueryValueW BOOL { pBlock LPCVOID; lpSubBlock LPCWSTR; lplpBuffer "LPVOID *"; puLen PUINT }

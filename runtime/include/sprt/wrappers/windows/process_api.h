@@ -108,69 +108,12 @@ typedef LPSTARTUPINFOEXW LPSTARTUPINFOEX;
 
 __SPRT_BEGIN_DECL
 
-__SPRT_WIN_IMPORT WINAPI HANDLE GetCurrentProcess(void);
-
-__SPRT_WIN_IMPORT WINAPI DWORD GetCurrentProcessId(void);
-
-__SPRT_WIN_IMPORT WINAPI HANDLE OpenProcess(DWORD dwDesiredAccess, BOOL bInheritHandle,
-		DWORD dwProcessId);
-
-__SPRT_WIN_IMPORT WINAPI BOOL GetExitCodeProcess(HANDLE hProcess, LPDWORD lpExitCode);
-
-__SPRT_WIN_IMPORT WINAPI DWORD GetPriorityClass(HANDLE hProcess);
-
-__SPRT_WIN_IMPORT WINAPI BOOL InitializeProcThreadAttributeList(
-		LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList, DWORD dwAttributeCount, DWORD dwFlags,
-		PSIZE_T lpSize);
-
-__SPRT_WIN_IMPORT WINAPI BOOL UpdateProcThreadAttribute(
-		LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList, DWORD dwFlags, DWORD_PTR Attribute,
-		PVOID lpValue, SIZE_T cbSize, PVOID lpPreviousValue, PSIZE_T lpReturnSize);
-
-__SPRT_WIN_IMPORT WINAPI VOID DeleteProcThreadAttributeList(
-		LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList);
-
-__SPRT_WIN_IMPORT WINAPI LPWSTR GetCommandLineW(VOID);
-
-__SPRT_WIN_IMPORT WINAPI LPWSTR *CommandLineToArgvW(LPCWSTR lpCmdLine, int *pNumArgs);
-
-__SPRT_WIN_IMPORT WINAPI BOOL CreateProcessW(LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
-		LPSECURITY_ATTRIBUTES lpProcessAttributes, LPSECURITY_ATTRIBUTES lpThreadAttributes,
-		BOOL bInheritHandles, DWORD dwCreationFlags, LPVOID lpEnvironment,
-		LPCWSTR lpCurrentDirectory, LPSTARTUPINFOW lpStartupInfo,
-		LPPROCESS_INFORMATION lpProcessInformation);
-
-__SPRT_WIN_IMPORT WINAPI LPSTR GetCommandLineA(VOID);
-
-__SPRT_WIN_IMPORT WINAPI BOOL CreateProcessA(LPCSTR lpApplicationName, LPSTR lpCommandLine,
-		LPSECURITY_ATTRIBUTES lpProcessAttributes, LPSECURITY_ATTRIBUTES lpThreadAttributes,
-		BOOL bInheritHandles, DWORD dwCreationFlags, LPVOID lpEnvironment,
-		LPCSTR lpCurrentDirectory, LPSTARTUPINFOA lpStartupInfo,
-		LPPROCESS_INFORMATION lpProcessInformation);
-
-__SPRT_WIN_IMPORT WINAPI BOOL TerminateProcess(HANDLE hProcess, UINT uExitCode);
-
-__SPRT_WIN_IMPORT WINAPI BOOL GetProcessMemoryInfo(HANDLE Process,
-		PPROCESS_MEMORY_COUNTERS ppsmemCounters, DWORD cb);
-
-__SPRT_WIN_IMPORT WINAPI BOOL EnumProcessModulesEx(HANDLE hProcess, HMODULE *lphModule, DWORD cb,
-		LPDWORD lpcbNeeded, DWORD dwFilterFlag);
-
-__SPRT_WIN_IMPORT WINAPI BOOL IsProcessorFeaturePresent(DWORD ProcessorFeature);
-
-__SPRT_WIN_IMPORT WINAPI BOOL ShellExecuteExW(SHELLEXECUTEINFOW *pExecInfo);
-
+#include <sprt/gen/wrappers/windows/api/process_api.h>
 #if __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
 SPRT_FORCEINLINE VOID YieldProcessor() { __yield(); }
 #else
 SPRT_FORCEINLINE VOID YieldProcessor() { _mm_pause(); }
 #endif
-
-__SPRT_WIN_IMPORT WINAPI BOOL QueryFullProcessImageNameW(HANDLE hProcess, DWORD dwFlags,
-		LPWSTR lpExeName, PDWORD lpdwSize);
-
-__SPRT_WIN_IMPORT WINAPI BOOL QueryFullProcessImageNameA(HANDLE hProcess, DWORD dwFlags,
-		LPSTR lpExeName, PDWORD lpdwSize);
 
 __SPRT_END_DECL
 

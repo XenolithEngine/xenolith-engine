@@ -1,9 +1,0 @@
-LIBRARY gdi32.dll
-EXPORTS
-	GetStockObject
-	GetObjectW
-	CreateDCW
-	GetDeviceCaps
-	DeleteDC
-	CreateBitmap
-	DeleteObject

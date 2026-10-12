@@ -1,0 +1,188 @@
+// The functions of include/sprt/wrappers/windows/winsock.h, written to
+// sprt/gen/wrappers/windows/api/winsock.h.
+
+dll ws2_32 file="ws2_32.dll" table=Ws2_32Table {
+    export accept def=#true
+    export bind def=#true
+    export closesocket def=#true
+    export connect def=#true
+    export getpeername def=#true
+    export getsockname def=#true
+    export getsockopt def=#true
+    export htonl def=#true
+    export htons def=#true
+    export ioctlsocket def=#true
+    export inet_addr def=#true
+    export inet_ntoa def=#true
+    export listen def=#true
+    export ntohl def=#true
+    export ntohs def=#true
+    export recv def=#true
+    export recvfrom def=#true
+    export select def=#true
+    export send def=#true
+    export sendto def=#true
+    export setsockopt def=#true
+    export shutdown def=#true
+    export socket def=#true
+    export FreeAddrInfoEx
+    export FreeAddrInfoExW
+    export FreeAddrInfoW
+    export GetAddrInfoExCancel
+    export GetAddrInfoExOverlappedResult
+    export GetAddrInfoExW
+    export GetAddrInfoW
+    export GetHostNameW
+    export GetNameInfoW
+    export InetNtopW
+    export InetPtonW
+    export WSApSetPostRoutine
+    export WPUCompleteOverlappedRequest
+    export WSAAccept
+    export WSAAddressToStringA
+    export WSAAddressToStringW
+    export WSAConnect
+    export WSAConnectByNameA
+    export WSAConnectByNameW
+    export WSADuplicateSocketA
+    export WSAEnumNameSpaceProvidersA
+    export WSAEnumNameSpaceProvidersW
+    export WSAEnumProtocolsA
+    export gethostbyaddr
+    export getprotobyname
+    export getprotobynumber
+    export getservbyport
+    export gethostname def=#true
+    export WSAEnumProtocolsW
+    export WSAGetOverlappedResult
+    export WSAGetQOSByName
+    export WSAGetServiceClassInfoA
+    export WSAGetServiceClassInfoW
+    export WSAGetServiceClassNameByClassIdA
+    export WSAGetServiceClassNameByClassIdW
+    export WSAHtonl
+    export WSAHtons
+    export WSAInstallServiceClassA
+    export WSAInstallServiceClassW
+    export WSAJoinLeaf
+    export WSALookupServiceBeginA
+    export WSALookupServiceBeginW
+    export WSALookupServiceEnd
+    export WSALookupServiceNextA
+    export WSALookupServiceNextW
+    export WSANSPIoctl
+    export WSANtohl
+    export WSANtohs
+    export WSAProviderConfigChange
+    export WSARecv
+    export WSARecvDisconnect
+    export WSARemoveServiceClass
+    export WSASend
+    export WSASendDisconnect
+    export WSASendMsg
+    export WSASetServiceA
+    export WSASetServiceW
+    export WSAStringToAddressA
+    export WSAStringToAddressW
+    export WSCDeinstallProvider
+    export WSCEnableNSProvider
+    export WSAAsyncSelect
+    export WSAAsyncGetHostByAddr
+    export WSAAsyncGetHostByName
+    export WSAAsyncGetProtoByNumber
+    export WSAAsyncGetProtoByName
+    export WSAAsyncGetServByPort
+    export WSAAsyncGetServByName
+    export WSACancelAsyncRequest
+    export WSASetBlockingHook
+    export WSAUnhookBlockingHook
+    export WSACancelBlockingCall
+    export WSAIsBlocking
+    export WSCEnumProtocols
+    export WSCGetApplicationCategory
+    export WSCGetProviderInfo
+    export WSCGetProviderPath
+    export WSCInstallNameSpace
+    export WSCInstallProvider
+    export WSCInstallProvider64_32
+    export WSCSetApplicationCategory
+    export WSCUnInstallNameSpace
+    export WSCUpdateProvider
+    export WSCWriteNameSpaceOrder
+    export WSCWriteProviderOrder
+    export getnameinfo
+    export inet_ntop def=#true
+    export inet_pton def=#true
+    export __WSAFDIsSet def=#true
+}
+
+defaults dll=ws2_32 link=import cc=WINAPI
+
+func getaddrinfo INT {
+    pNodeName PCSTR
+    pServiceName PCSTR
+    pHints "const ADDRINFOA *"
+    ppResult "PADDRINFOA *"
+}
+func freeaddrinfo VOID { pAddrInfo PADDRINFOA }
+func gethostbyname "struct hostent *" { name "const char *" }
+func getservbyname "struct servent *" { name "const char *"; proto "const char *" }
+func WSAPoll int { fdArray LPWSAPOLLFD; fds ULONG; timeout INT }
+func WSASocketA SOCKET {
+    af int
+    type int
+    protocol int
+    lpProtocolInfo LPWSAPROTOCOL_INFOA
+    g GROUP
+    dwFlags DWORD
+}
+func WSASocketW SOCKET {
+    af int
+    type int
+    protocol int
+    lpProtocolInfo LPWSAPROTOCOL_INFOW
+    g GROUP
+    dwFlags DWORD
+}
+func WSADuplicateSocketW int stub=#false {
+    s SOCKET
+    dwProcessId DWORD
+    lpProtocolInfo LPWSAPROTOCOL_INFOW
+}
+func WSADuplicateSocketA int dll="" {
+    s SOCKET
+    dwProcessId DWORD
+    lpProtocolInfo LPWSAPROTOCOL_INFOA
+}
+func WSAIoctl int {
+    s SOCKET
+    dwIoControlCode DWORD
+    lpvInBuffer LPVOID
+    cbInBuffer DWORD
+    lpvOutBuffer LPVOID
+    cbOutBuffer DWORD
+    lpcbBytesReturned LPDWORD
+    lpOverlapped LPWSAOVERLAPPED
+    lpCompletionRoutine LPWSAOVERLAPPED_COMPLETION_ROUTINE
+}
+func WSAStartup int { wVersionRequested WORD; lpWSAData LPWSADATA }
+func WSACleanup int empty=void
+func WSASetLastError void { iError int }
+func WSAGetLastError int empty=void
+func WSACreateEvent WSAEVENT empty=void
+func WSAEventSelect int { s SOCKET; hEventObject WSAEVENT; lNetworkEvents long }
+func WSAWaitForMultipleEvents DWORD {
+    cEvents DWORD
+    lphEvents "const WSAEVENT *"
+    fWaitAll BOOL
+    dwTimeout DWORD
+    fAlertable BOOL
+}
+func WSAEnumNetworkEvents int {
+    s SOCKET
+    hEventObject WSAEVENT
+    lpNetworkEvents LPWSANETWORKEVENTS
+}
+func WSASetEvent BOOL { hEvent WSAEVENT }
+func WSAResetEvent BOOL { hEvent WSAEVENT }
+func WSACloseEvent BOOL { hEvent WSAEVENT }

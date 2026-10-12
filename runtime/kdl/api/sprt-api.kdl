@@ -1,0 +1,36 @@
+// The map of the runtime's API: functions, written to the API headers, to the umbrella headers of
+// include_libc, and to the .def, the loader table and the wrappers of each DLL. The types the
+// functions name are those of the ABI map, loaded first; utils/xlkdl/api2kdl.py writes the parts.
+
+profile sprt-api {
+    abi "../abi/sprt.kdl"
+    include-root "include/"
+    defaults root="sprt/gen/c/api/" macro=p typedef=id func=id
+    abi-root header="sprt/gen/wrappers/windows/api/" dir="windows/"
+    abi-root header="sprt/gen/c/api/__sprt_" dir="libc/"
+    guard-scheme root="libc_impl/" prefix=CORE_RUNTIME_LIBC_IMPL_
+
+    // What a function is declared with: imported from a DLL, or exported by the runtime.
+    linkage import attr=WIN_IMPORT
+    linkage sprt attr=SPRT_API
+    umbrella begin=SPRT_UMBRELLA_FUNC end=SPRT_UMBRELLA_END end-except=SPRT_UMBRELLA_END_EXCEPT body-if=SPRT_UMBRELLA_REQUIRED
+
+    // The A and W variants of a function written with the generic types.
+    charset A {
+        LPTSTR LPSTR
+        LPCTSTR LPCSTR
+        TCHAR CHAR
+        PTCHAR PCHAR
+    }
+    charset W {
+        LPTSTR LPWSTR
+        LPCTSTR LPCWSTR
+        TCHAR WCHAR
+        PTCHAR PWCHAR
+    }
+
+    dll-root def="include/sprt/gen/wrappers/windows/def/" code="libc_impl/src/windows/dll/gen/" table-include="../dlltable.h" loader-include="../dllloader.h"
+}
+
+import "map/windows.kdl"
+import "map/libc.kdl"

@@ -1,0 +1,17 @@
+// The ABI map the API fixture takes its types from: two rules, a header of types, the external
+// header that defines the import attribute.
+
+profile fx {
+    rule p prefix=__FX_
+    rule id wrap=__FX_ID spelled=__fx_
+    extern-c begin=FX_BEGIN_DECL end=FX_END_DECL
+    defaults root="fx/" macro=p typedef=id
+}
+
+header "fx/config.h" external=#true {
+    type (p)IMPORT
+}
+
+header "fx/abi/types.h" abi="abi/types.kdl" {
+    include "fx/config.h"
+}

@@ -39,7 +39,8 @@ at any point.
   own builtin header directory and no flag reorders it, so a libc++ header placed there would
   lose to the builtin one.
 * **The Win32 API surface** is described by the `.def` files in
-  `runtime/include/sprt/wrappers/windows/def/` (kernel32, kernelbase, ntdll, …).
+  `runtime/include/sprt/gen/wrappers/windows/def/` (kernel32, kernelbase, ntdll, …), which
+  `xlkdl api` generates from `runtime/kdl/api`.
   `target-windows/init-target.mk` turns each into an import library with `llvm-lib /def:`,
   merges them into `usr/lib/import.lib`, and merges them again together with the runtime
   archive into `usr/lib/sprt.lib`. Adding an export to a `.def` therefore does not reach

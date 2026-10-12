@@ -1,0 +1,15 @@
+// The functions of include/sprt/wrappers/windows/winioctl.h, written to
+// sprt/gen/wrappers/windows/api/winioctl.h.
+
+defaults dll=kernelbase link=import cc=WINAPI
+
+func DeviceIoControl BOOL stub=#false {
+    hDevice HANDLE
+    dwIoControlCode DWORD
+    lpInBuffer LPVOID
+    nInBufferSize DWORD
+    lpOutBuffer LPVOID
+    nOutBufferSize DWORD
+    lpBytesReturned LPDWORD
+    lpOverlapped LPOVERLAPPED
+}

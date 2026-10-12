@@ -1,6 +1,0 @@
-LIBRARY dxva2.dll
-EXPORTS
-	GetNumberOfPhysicalMonitorsFromHMONITOR
-	GetPhysicalMonitorsFromHMONITOR
-	DestroyPhysicalMonitor
-	DestroyPhysicalMonitors

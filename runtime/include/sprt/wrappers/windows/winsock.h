@@ -41,62 +41,12 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-__SPRT_WIN_IMPORT WINAPI INT getaddrinfo(PCSTR pNodeName, PCSTR pServiceName,
-		const ADDRINFOA *pHints, PADDRINFOA *ppResult);
-
-__SPRT_WIN_IMPORT WINAPI VOID freeaddrinfo(PADDRINFOA pAddrInfo);
-
-__SPRT_WIN_IMPORT WINAPI struct hostent *gethostbyname(const char *name);
-
-__SPRT_WIN_IMPORT WINAPI struct servent *getservbyname(const char *name, const char *proto);
-
+#include <sprt/gen/wrappers/windows/api/winsock.h>
 // The POSIX socket calls winsock provides - socket/bind/connect/listen/accept/getsockname/
 // getpeername/shutdown/getsockopt/setsockopt/send/recv/sendto/recvfrom - are declared by
 // <sys/socket.h> (its SPRT_WINDOWS branch emits them as these same ws2_32 imports); it is the
 // primary declarer, the same way <sys/select.h> owns select(). Only the winsock-specific entry
 // points remain here.
-
-__SPRT_WIN_IMPORT WINAPI int WSAPoll(LPWSAPOLLFD fdArray, ULONG fds, INT timeout);
-
-__SPRT_WIN_IMPORT WINAPI SOCKET WSASocketA(int af, int type, int protocol,
-		LPWSAPROTOCOL_INFOA lpProtocolInfo, GROUP g, DWORD dwFlags);
-
-__SPRT_WIN_IMPORT WINAPI SOCKET WSASocketW(int af, int type, int protocol,
-		LPWSAPROTOCOL_INFOW lpProtocolInfo, GROUP g, DWORD dwFlags);
-
-__SPRT_WIN_IMPORT WINAPI int WSADuplicateSocketW(SOCKET s, DWORD dwProcessId,
-		LPWSAPROTOCOL_INFOW lpProtocolInfo);
-
-__SPRT_WIN_IMPORT WINAPI int WSADuplicateSocketA(SOCKET s, DWORD dwProcessId,
-		LPWSAPROTOCOL_INFOA lpProtocolInfo);
-
-__SPRT_WIN_IMPORT WINAPI int WSAIoctl(SOCKET s, DWORD dwIoControlCode, LPVOID lpvInBuffer,
-		DWORD cbInBuffer, LPVOID lpvOutBuffer, DWORD cbOutBuffer, LPDWORD lpcbBytesReturned,
-		LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
-
-__SPRT_WIN_IMPORT WINAPI int WSAStartup(WORD wVersionRequested, LPWSADATA lpWSAData);
-
-__SPRT_WIN_IMPORT WINAPI int WSACleanup(void);
-
-__SPRT_WIN_IMPORT WINAPI void WSASetLastError(int iError);
-
-__SPRT_WIN_IMPORT WINAPI int WSAGetLastError(void);
-
-__SPRT_WIN_IMPORT WINAPI WSAEVENT WSACreateEvent(void);
-
-__SPRT_WIN_IMPORT WINAPI int WSAEventSelect(SOCKET s, WSAEVENT hEventObject, long lNetworkEvents);
-
-__SPRT_WIN_IMPORT WINAPI DWORD WSAWaitForMultipleEvents(DWORD cEvents, const WSAEVENT *lphEvents,
-		BOOL fWaitAll, DWORD dwTimeout, BOOL fAlertable);
-
-__SPRT_WIN_IMPORT WINAPI int WSAEnumNetworkEvents(SOCKET s, WSAEVENT hEventObject,
-		LPWSANETWORKEVENTS lpNetworkEvents);
-
-__SPRT_WIN_IMPORT WINAPI BOOL WSASetEvent(WSAEVENT hEvent);
-
-__SPRT_WIN_IMPORT WINAPI BOOL WSAResetEvent(WSAEVENT hEvent);
-
-__SPRT_WIN_IMPORT WINAPI BOOL WSACloseEvent(WSAEVENT hEvent);
 
 __SPRT_END_DECL
 

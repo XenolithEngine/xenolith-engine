@@ -62,6 +62,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")
 INCLUDE = os.path.join(REPO, "runtime", "include")
 STUBS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stubs")
 MAP = os.path.join(REPO, "runtime", "kdl", "abi", "sprt.kdl")
+API_MAP = os.path.join(REPO, "runtime", "kdl", "api", "sprt-api.kdl")
 CLANG = os.environ.get("CLANG", "clang")
 
 # The last revision with the hand-written headers in runtime/include; set by main().
@@ -537,6 +538,17 @@ def committed(xlkdl, generated):
     have = []
     for root, _, files in os.walk(os.path.join(INCLUDE, GEN)):
         have.extend(os.path.relpath(os.path.join(root, f), INCLUDE) for f in files)
+    # The API map writes into sprt/gen too; compare_api.py proves those files.
+    with tempfile.TemporaryDirectory(prefix="compare-api-files-") as api:
+        subprocess.run([xlkdl, "api", "--map", API_MAP, "--root", api], capture_output=True, check=True)
+        top = os.path.join(api, "include")
+        for root, _, files in os.walk(top):
+            generated = list(generated) + [os.path.relpath(os.path.join(root, f), top) for f in files]
+            # The hand-written headers include the API ones now: their guards are new macros.
+            for f in files:
+                m = re.search(r"^#ifndef (\w+)\n#define \1$", open(os.path.join(root, f)).read(), re.M)
+                if m:
+                    NEW_GUARDS.add(m.group(1))
     extra = sorted(set(have) - set(generated))
     ok = check.returncode == 0 and not extra
     print("[%s] runtime/include/sprt/gen: %d headers as generated" % (" OK " if ok else "FAIL", len(generated)))

@@ -186,18 +186,6 @@ typedef struct __sprt_wsabuf {
 typedef void (*LPWSAOVERLAPPED_COMPLETION_ROUTINE)(DWORD dwError, DWORD cbTransferred,
 		LPWSAOVERLAPPED lpOverlapped, DWORD dwFlags);
 
-__SPRT_BEGIN_DECL
-
-__SPRT_WIN_IMPORT WINAPI int WSASendTo(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount,
-		LPDWORD lpNumberOfBytesSent, DWORD dwFlags, const struct __SPRT_SOCKADDR_NAME *lpTo,
-		int iTolen, LPWSAOVERLAPPED lpOverlapped,
-		LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
-
-__SPRT_WIN_IMPORT WINAPI int WSARecvFrom(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount,
-		LPDWORD lpNumberOfBytesRecvd, LPDWORD lpFlags, struct __SPRT_SOCKADDR_NAME *lpFrom,
-		int *lpFromlen, LPWSAOVERLAPPED lpOverlapped,
-		LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
-
-__SPRT_END_DECL
+#include <sprt/gen/wrappers/windows/api/__sprt_winsock.h>
 
 #endif // SPRT_WRAPPERS_WINDOWS___SPRT_WINSOCK_H_

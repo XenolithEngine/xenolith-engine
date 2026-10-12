@@ -1,6 +1,0 @@
-LIBRARY userenv.dll
-EXPORTS
-	CreateAppContainerProfile
-	DeriveAppContainerSidFromAppContainerName
-	GetAppContainerFolderPath
-	DeleteAppContainerProfile

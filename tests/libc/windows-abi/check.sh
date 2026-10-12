@@ -57,7 +57,7 @@ CMD=(
 	-isystem "$SPLAT/sdk/include/shared"
 	-isystem "$SPLAT/sdk/include/um"
 	-I "$SPRT_INCLUDE"
-	# NB: the abi/ headers are include_libc-free, so no -idirafter overlay is needed.
+	-idirafter "$REPO/runtime/include_libc"   # check-api-winsock.cpp: api/winsock.h includes <arpa/inet.h> & co
 )
 
 # check.cpp / check-types.cpp cover the socket table; check-<abi>.cpp pin each
@@ -70,7 +70,7 @@ for tu in "$HERE"/check.cpp "$HERE"/check-types.cpp "$HERE"/check-*.cpp; do
 done
 
 if [[ "$rc" == 0 ]]; then
-	echo "winsock-abi [$TARGET]: PASS - __SPRT_* socket constants and types match the Windows SDK"
+	echo "winsock-abi [$TARGET]: PASS - __SPRT_* constants, types and function signatures match the Windows SDK"
 	exit 0
 else
 	echo "winsock-abi [$TARGET]: FAIL - see the static_assert message(s) above" >&2

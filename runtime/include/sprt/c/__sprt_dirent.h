@@ -46,38 +46,6 @@ THE SOFTWARE.
 #define d_fileno d_ino
 #endif
 
-__SPRT_BEGIN_DECL
-
-SPRT_API __SPRT_ID(DIR) * __SPRT_ID(opendir)(const char *__path);
-SPRT_API __SPRT_ID(DIR) * __SPRT_ID(fdopendir)(int __dir_fd);
-
-SPRT_API struct __SPRT_DIRENT_NAME *__SPRT_ID(readdir)(__SPRT_ID(DIR) * __dir);
-
-SPRT_API int __SPRT_ID(closedir)(__SPRT_ID(DIR) * __dir);
-SPRT_API int __SPRT_ID(rewinddir)(__SPRT_ID(DIR) * __dir);
-
-SPRT_API int __SPRT_ID(seekdir)(__SPRT_ID(DIR) * __dir, long __location);
-SPRT_API long __SPRT_ID(telldir)(__SPRT_ID(DIR) * __dir);
-
-SPRT_API int __SPRT_ID(dirfd)(__SPRT_ID(DIR) * __dir);
-
-SPRT_API int __SPRT_ID(alphasort)(const struct __SPRT_DIRENT_NAME **__lhs,
-		const struct __SPRT_DIRENT_NAME **__rhs);
-
-SPRT_API int __SPRT_ID(versionsort)(const struct __SPRT_DIRENT_NAME **__lhs,
-		const struct __SPRT_DIRENT_NAME **__rhs);
-
-SPRT_API int __SPRT_ID(scandir)(const char *__path, struct __SPRT_DIRENT_NAME ***__name_list,
-		int (*__filter)(const struct __SPRT_DIRENT_NAME *),
-		int (*__comparator)(const struct __SPRT_DIRENT_NAME **,
-				const struct __SPRT_DIRENT_NAME **));
-
-SPRT_API int __SPRT_ID(scandirat)(int __dir_fd, const char *__path,
-		struct __SPRT_DIRENT_NAME ***__name_list,
-		int (*__filter)(const struct __SPRT_DIRENT_NAME *),
-		int (*__comparator)(const struct __SPRT_DIRENT_NAME **,
-				const struct __SPRT_DIRENT_NAME **));
-
-__SPRT_END_DECL
+#include <sprt/gen/c/api/__sprt_dirent.h>
 
 #endif // CORE_RUNTIME_INCLUDE_C___SPRT_DIRENT_H_

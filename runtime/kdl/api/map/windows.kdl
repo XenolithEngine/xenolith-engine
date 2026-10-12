@@ -1,0 +1,405 @@
+// The Windows functions of the API map: the generated headers, what they include, and the
+// hand-written headers they reach that the ABI map does not have.
+
+header "sprt/gen/wrappers/windows/api/__sprt_winsock.h" {
+    include "sprt/wrappers/windows/basic_api.h"
+    include "sprt/gen/c/cross/__sprt_polltypes.h"
+    include "sprt/c/sys/__sprt_socket.h"
+}
+
+header "sprt/gen/wrappers/windows/api/app_startup.h" {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_uintptr_t.h"
+}
+
+header "sprt/gen/wrappers/windows/api/basic_api.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/basic_api.h"
+    include "sprt/c/__sprt_string.h"
+}
+
+header "sprt/gen/wrappers/windows/api/bcrypt.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/bcrypt.h"
+}
+
+header "sprt/gen/wrappers/windows/api/com_api.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/com_api.h"
+}
+
+header "sprt/gen/wrappers/windows/api/commdlg.h" {
+    include "sprt/wrappers/windows/basic_api.h"
+    include "sprt/gen/wrappers/windows/abi/commdlg.h"
+}
+
+header "sprt/gen/wrappers/windows/api/context_api.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/context_api.h"
+}
+
+header "sprt/gen/wrappers/windows/api/dbghelp.h" {
+    include "sprt/gen/wrappers/windows/abi/dbghelp.h"
+}
+
+header "sprt/gen/wrappers/windows/api/debug_api.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/debug_api.h"
+}
+
+header "sprt/gen/wrappers/windows/api/dl_api.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/dl_api.h"
+}
+
+header "sprt/gen/wrappers/windows/api/file_api.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/file_api.h"
+}
+
+header "sprt/gen/wrappers/windows/api/iphlpapi.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/iphlpapi.h"
+}
+
+header "sprt/gen/wrappers/windows/api/message_api.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/message_api.h"
+}
+
+header "sprt/gen/wrappers/windows/api/monitor_api.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/monitor_api.h"
+}
+
+header "sprt/gen/wrappers/windows/api/process_api.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/process_api.h"
+}
+
+header "sprt/gen/wrappers/windows/api/psapi.h" {
+    include "sprt/wrappers/windows/process.h"
+}
+
+header "sprt/gen/wrappers/windows/api/rpc.h" {
+    include "sprt/wrappers/windows/windows.h"
+    include "sprt/gen/wrappers/windows/abi/rpc.h"
+}
+
+header "sprt/gen/wrappers/windows/api/security_api.h" {
+    include "sprt/wrappers/windows/basic_types.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/gen/wrappers/windows/abi/security_api.h"
+}
+
+header "sprt/gen/wrappers/windows/api/shellapi.h" {
+    include "sprt/wrappers/windows/basic_api.h"
+    include "sprt/gen/wrappers/windows/abi/shellapi.h"
+}
+
+header "sprt/gen/wrappers/windows/api/shlobj.h" {
+    include "sprt/gen/wrappers/windows/abi/structures.h"
+    include "sprt/gen/wrappers/windows/abi/com_api.h"
+    include "sprt/gen/wrappers/windows/abi/shlobj.h"
+    include "sprt/wrappers/windows/basic_api.h"
+    include "sprt/wrappers/windows/com_api.h"
+}
+
+header "sprt/gen/wrappers/windows/api/thread_api.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/thread_api.h"
+}
+
+header "sprt/gen/wrappers/windows/api/time_api.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/time_api.h"
+}
+
+header "sprt/gen/wrappers/windows/api/tlhelp32.h" {
+    include "sprt/wrappers/windows/windows.h"
+    include "sprt/gen/wrappers/windows/abi/tlhelp32.h"
+}
+
+header "sprt/gen/wrappers/windows/api/user_api.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/user_api.h"
+}
+
+header "sprt/gen/wrappers/windows/api/wincrypt.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/wincrypt.h"
+}
+
+header "sprt/gen/wrappers/windows/api/windows.h" {
+    include "sprt/wrappers/windows/complex_types.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/wrappers/windows/basic_api.h"
+    include "sprt/wrappers/windows/file_api.h"
+    include "sprt/wrappers/windows/thread_api.h"
+    include "sprt/wrappers/windows/dl_api.h"
+    include "sprt/wrappers/windows/message_api.h"
+    include "sprt/wrappers/windows/process_api.h"
+    include "sprt/wrappers/windows/time_api.h"
+    include "sprt/wrappers/windows/context_api.h"
+    include "sprt/wrappers/windows/user_api.h"
+    include "sprt/wrappers/windows/security_api.h"
+    include "sprt/wrappers/windows/winver.h"
+    include "sprt/wrappers/windows/tchar.h"
+    include "sprt/wrappers/windows/__sprt_threads.h"
+    include "sprt/gen/wrappers/windows/abi/windows.h"
+}
+
+header "sprt/gen/wrappers/windows/api/winioctl.h" {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/winioctl.h"
+}
+
+header "sprt/gen/wrappers/windows/api/winsock.h" {
+    include "sprt/wrappers/windows/complex_types.h"
+    include "sprt/gen/wrappers/windows/abi/winsock.h"
+    include "arpa/inet.h"
+    include "netinet/tcp.h"
+    include "sys/socket.h"
+    include "poll.h"
+    include "sprt/wrappers/unistd/unistd.h"
+    include "sys/select.h"
+    include "sprt/wrappers/windows/winsock_constants.h"
+}
+
+header "sprt/gen/wrappers/windows/api/winver.h" {
+    include "sprt/wrappers/windows/message_api.h"
+    include "sprt/gen/wrappers/windows/abi/winver.h"
+    include "sprt/wrappers/windows/winapifamily.h"
+}
+
+header "arpa/inet.h" external=#true
+
+header "netinet/tcp.h" external=#true
+
+header "poll.h" external=#true
+
+header "sprt/c/__sprt_errno.h" external=#true {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_errno.h"
+}
+
+header "sprt/c/__sprt_pthread.h" external=#true {
+    include "sprt/gen/c/cross/__sprt_sysid.h"
+    include "sprt/gen/c/bits/__sprt_size_t.h"
+    include "sprt/gen/c/bits/__sprt_time_t.h"
+    include "sprt/c/bits/__sprt_cpuset_t.h"
+    include "sprt/gen/c/bits/__sprt_uint64_t.h"
+    include "sprt/gen/c/bits/__sprt_uint32_t.h"
+    include "sprt/gen/c/bits/pthread.h"
+    include "sprt/gen/c/bits/sched_param.h"
+    include "sprt/gen/c/cross/__sprt_signal.h"
+}
+
+header "sprt/c/__sprt_stdarg.h" external=#true {
+    include "sprt/gen/c/bits/__sprt_va_list.h"
+}
+
+header "sprt/c/__sprt_stdio.h" external=#true {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_va_list.h"
+    include "sprt/gen/c/bits/__sprt_size_t.h"
+    include "sprt/gen/c/bits/__sprt_ssize_t.h"
+    include "sprt/gen/c/bits/__sprt_wchar_t.h"
+    include "sprt/gen/c/cross/__sprt_file_ptr.h"
+    include "sprt/gen/c/cross/__sprt_locale.h"
+    include "sprt/gen/c/cross/__sprt_stdio.h"
+    include "sprt/gen/c/bits/seek.h"
+}
+
+header "sprt/c/__sprt_stdlib.h" external=#true {
+    include "sprt/c/bits/__sprt_def.h"
+    include "sprt/gen/c/bits/__sprt_uint32_t.h"
+    include "sprt/gen/c/bits/__sprt_size_t.h"
+    include "sprt/gen/c/bits/__sprt_null.h"
+    include "sprt/gen/c/bits/__sprt_wchar_t.h"
+    include "sprt/gen/c/cross/__sprt_locale.h"
+    include "sprt/gen/c/cross/__sprt_mbstate.h"
+}
+
+header "sprt/c/__sprt_unistd.h" external=#true {
+    include "sprt/c/cross/__sprt_config.h"
+    include "sprt/gen/c/cross/__sprt_sysconf.h"
+    include "sprt/gen/c/cross/__sprt_fcntl.h"
+    include "sprt/gen/c/bits/__sprt_size_t.h"
+    include "sprt/gen/c/bits/__sprt_ssize_t.h"
+    include "sprt/gen/c/bits/__sprt_time_t.h"
+    include "sprt/gen/c/bits/__sprt_intptr_t.h"
+    include "sprt/gen/c/cross/__sprt_sysid.h"
+    include "sprt/gen/c/bits/seek.h"
+    include "sprt/gen/c/bits/access.h"
+    include "sprt/gen/c/bits/iovec.h"
+}
+
+header "sprt/c/__sprt_wchar.h" external=#true {
+    include "sprt/gen/c/bits/__sprt_wchar_t.h"
+    include "sprt/gen/c/bits/__sprt_time_t.h"
+    include "sprt/gen/c/bits/__sprt_wint_t.h"
+    include "sprt/gen/c/bits/__sprt_size_t.h"
+    include "sprt/gen/c/bits/__sprt_va_list.h"
+    include "sprt/gen/c/cross/__sprt_mbstate.h"
+    include "sprt/gen/c/cross/__sprt_file_ptr.h"
+    include "sprt/gen/c/cross/__sprt_locale.h"
+}
+
+header "sprt/c/sys/__sprt_sprt.h" external=#true {
+    include "sprt/gen/c/cross/__sprt_sysid.h"
+    include "sprt/gen/c/bits/__sprt_time_t.h"
+    include "sprt/gen/c/bits/__sprt_uint32_t.h"
+    include "sprt/gen/c/bits/__sprt_uint64_t.h"
+}
+
+header "sprt/wrappers/unistd/unistd.h" external=#true {
+    include "sprt/c/__sprt_unistd.h"
+    include "sprt/c/__sprt_stdarg.h"
+    include "sprt/c/__sprt_stdlib.h"
+}
+
+header "sprt/wrappers/windows/__sprt_threads.h" external=#true {
+    include "sprt/wrappers/windows/basic_api.h"
+    include "sprt/gen/c/bits/__sprt_uintptr_t.h"
+    include "sprt/c/sys/__sprt_sprt.h"
+    include "sprt/c/__sprt_pthread.h"
+    include "sprt/c/__sprt_errno.h"
+}
+
+header "sprt/wrappers/windows/com_api.h" external=#true {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/com_api.h"
+}
+
+header "sprt/wrappers/windows/complex_types.h" external=#true {
+    include "sprt/wrappers/windows/basic_types.h"
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/complex_types.h"
+}
+
+header "sprt/wrappers/windows/context_api.h" external=#true {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/context_api.h"
+}
+
+header "sprt/wrappers/windows/dl_api.h" external=#true {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/dl_api.h"
+}
+
+header "sprt/wrappers/windows/file_api.h" external=#true {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/file_api.h"
+}
+
+header "sprt/wrappers/windows/message_api.h" external=#true {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/message_api.h"
+}
+
+header "sprt/wrappers/windows/process.h" external=#true {
+    include "sprt/wrappers/windows/complex_types.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/wrappers/windows/process_api.h"
+    include "sprt/wrappers/windows/__sprt_threads.h"
+    include "sprt/c/__sprt_unistd.h"
+}
+
+header "sprt/wrappers/windows/process_api.h" external=#true {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/process_api.h"
+}
+
+header "sprt/wrappers/windows/security_api.h" external=#true {
+    include "sprt/wrappers/windows/basic_types.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/gen/wrappers/windows/abi/security_api.h"
+}
+
+header "sprt/wrappers/windows/tchar.h" external=#true {
+    include "sprt/gen/wrappers/windows/abi/tchar.h"
+    include "sprt/c/__sprt_string.h"
+    include "sprt/c/__sprt_wchar.h"
+    include "sprt/c/__sprt_stdio.h"
+}
+
+header "sprt/wrappers/windows/thread_api.h" external=#true {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/thread_api.h"
+}
+
+header "sprt/wrappers/windows/time_api.h" external=#true {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/time_api.h"
+}
+
+header "sprt/wrappers/windows/user_api.h" external=#true {
+    include "sprt/wrappers/windows/structures.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/gen/wrappers/windows/abi/user_api.h"
+}
+
+header "sprt/wrappers/windows/winapifamily.h" external=#true {
+    include "sprt/gen/wrappers/windows/abi/winapifamily.h"
+}
+
+header "sprt/wrappers/windows/windows.h" external=#true {
+    include "sprt/wrappers/windows/complex_types.h"
+    include "sprt/wrappers/windows/constants.h"
+    include "sprt/wrappers/windows/basic_api.h"
+    include "sprt/wrappers/windows/file_api.h"
+    include "sprt/wrappers/windows/thread_api.h"
+    include "sprt/wrappers/windows/dl_api.h"
+    include "sprt/wrappers/windows/message_api.h"
+    include "sprt/wrappers/windows/process_api.h"
+    include "sprt/wrappers/windows/time_api.h"
+    include "sprt/wrappers/windows/context_api.h"
+    include "sprt/wrappers/windows/user_api.h"
+    include "sprt/wrappers/windows/security_api.h"
+    include "sprt/wrappers/windows/winver.h"
+    include "sprt/wrappers/windows/tchar.h"
+    include "sprt/wrappers/windows/__sprt_threads.h"
+    include "sprt/gen/wrappers/windows/abi/windows.h"
+}
+
+header "sprt/wrappers/windows/winsock_constants.h" external=#true {
+    include "sprt/gen/wrappers/windows/abi/winsock.h"
+}
+
+header "sprt/wrappers/windows/winver.h" external=#true {
+    include "sprt/wrappers/windows/message_api.h"
+    include "sprt/gen/wrappers/windows/abi/winver.h"
+    include "sprt/wrappers/windows/winapifamily.h"
+}
+
+header "sys/select.h" external=#true
+
+header "sys/socket.h" external=#true

@@ -133,14 +133,27 @@ class Renderer {
 public:
 	Renderer(const Map &map, const Header &header, Diagnostics &diag)
 	: _map(&map), _header(&header), _diag(&diag) {
-		Vector<const Header *> seen;
-		collect(&header, seen);
+		collect(&header, _seen);
 		for (auto &h : map.headers) {
 			for (auto &sym : h.symbols) { add(_global, sym); }
 		}
 	}
 
 	const Header &header() const { return *_header; }
+
+	// A name with a rule is written without it, as the umbrella of a function spells it; it has to
+	// be visible without its rule too.
+	void setPublic(bool value) { _public = value; }
+
+	// Whether a header is among those this one sees.
+	bool sees(const Header *h) const {
+		for (auto it : _seen) {
+			if (it == h) {
+				return true;
+			}
+		}
+		return false;
+	}
 
 	bool text(StringView in, kdl::Location loc, SpanView<String> params, String &out) {
 		Vector<Token> tokens;
@@ -198,8 +211,11 @@ public:
 		return (it != _visible.end() && it->second->rule) ? it->second : nullptr;
 	}
 
+	// An umbrella writes the items of its target's description, and their places are there.
 	void error(kdl::Location loc, StringView message) {
-		_diag->error(_header->abiFile, loc, message);
+		auto file = _header->umbrellaTarget ? StringView(_header->umbrellaTarget->abiFile)
+											: StringView(_header->abiFile);
+		_diag->error(file, loc, message);
 	}
 
 private:
@@ -229,7 +245,12 @@ private:
 		if (seenBefore(seen, h)) {
 			return;
 		}
-		for (auto &sym : h->symbols) { add(_visible, sym); }
+		for (auto &sym : h->symbols) {
+			add(_visible, sym);
+			if (!sym.rule) {
+				_plain.emplace(StringView(sym.name), &sym);
+			}
+		}
 		for (auto inc : h->includeHeaders) { collect(inc, seen); }
 		for (auto inc : h->blocks) { collect(inc, seen); }
 		if (h->fragment) {
@@ -337,6 +358,10 @@ private:
 				out.append(tok.text.data(), tok.text.size());
 				continue;
 			}
+			if (_public && (isWrapCall(tokens, i, to) || ruledVisible(tok.text))) {
+				ok = publicName(tokens, i, to, loc, out) && ok;
+				continue;
+			}
 			// A name already written with a wrap rule (`__SPRT_ID(x)`) is the call it is.
 			if (isWrapCall(tokens, i, to)) {
 				for (size_t k = i; k < i + 4; ++k) {
@@ -367,6 +392,30 @@ private:
 		return ok;
 	}
 
+	bool ruledVisible(StringView name) const {
+		auto it = _visible.find(name);
+		return it != _visible.end() && it->second->rule;
+	}
+
+	// The public spelling of a name with a rule: a wrap call is its argument, a symbol its bare name,
+	// and that bare name has to be visible.
+	bool publicName(const Vector<Token> &tokens, size_t &i, size_t to, kdl::Location loc,
+			String &out) {
+		StringView name = tokens[i].text;
+		if (isWrapCall(tokens, i, to)) {
+			name = tokens[i + 2].text;
+			i += 3;
+		}
+		out.append(name.data(), name.size());
+		if (_plain.find(name) == _plain.end()) {
+			error(loc,
+					mem_std::toString("'", name, "' has no public name ", _header->path,
+							" sees: an includer has to declare it"));
+			return false;
+		}
+		return true;
+	}
+
 	bool isWrapCall(const Vector<Token> &tokens, size_t i, size_t to) const {
 		if (i + 3 >= to || tokens[i + 1].text != "(" || tokens[i + 2].kind != TokenKind::Identifier
 				|| tokens[i + 3].text != ")") {
@@ -392,7 +441,10 @@ private:
 	const Map *_map = nullptr;
 	const Header *_header = nullptr;
 	Diagnostics *_diag = nullptr;
+	bool _public = false;
+	Vector<const Header *> _seen;
 	mem_std::Map<StringView, const Symbol *> _visible;
+	mem_std::Map<StringView, const Symbol *> _plain;
 	mem_std::Map<StringView, const Symbol *> _global;
 };
 
@@ -428,6 +480,9 @@ public:
 	Emitter(const Map &map, const EmitOptions &opts, Renderer &renderer, String &out,
 			Diagnostics &diag, SpanView<const Item *> overrides = SpanView<const Item *>())
 	: _map(&map), _opts(&opts), _r(&renderer), _out(&out), _diag(&diag), _overrides(overrides) { }
+
+	// Functions are written as their umbrellas.
+	void setUmbrella(bool value) { _umbrella = value; }
 
 	bool items(const Vector<Item> &list, uint32_t depth) {
 		bool ok = true;
@@ -661,9 +716,15 @@ private:
 		case ItemKind::Record:
 		case ItemKind::Enum: return record(item, depth);
 		case ItemKind::Use: return use(item, depth);
+		case ItemKind::Func: return _umbrella ? umbrellaFunc(item, depth) : func(item, depth);
+		case ItemKind::Param: return false;
 		}
 		return false;
 	}
+
+	// XlkdlApiEmit.cc: a declaration, and an umbrella.
+	bool func(const Item &item, uint32_t depth);
+	bool umbrellaFunc(const Item &item, uint32_t depth);
 
 	void define(const Name &name, StringView value) {
 		_out->append(mem_std::toString("#define ", name.render(), " ", value, "\n"));
@@ -906,6 +967,7 @@ private:
 	Diagnostics *_diag = nullptr;
 	SpanView<const Item *> _overrides;
 	Spacing _last = Spacing::None;
+	bool _umbrella = false;
 
 	// The list being written: a public node writes the public macros of it.
 	const Vector<Item> *_list = nullptr;
@@ -917,6 +979,26 @@ bool emitHeader(const Map &map, const Header &header, const EmitOptions &opts, S
 		Diagnostics &diag) {
 	Renderer renderer(map, header, diag);
 
+	// An umbrella writes the functions of its target, those that have one, with its own includes.
+	auto items = &header.items;
+	Vector<Item> umbrellaItems;
+	if (auto target = header.umbrellaTarget) {
+		if (!renderer.sees(target)) {
+			diag.error(header.mapFile, header.location,
+					mem_std::toString("the umbrella ", header.path, " does not include ", target->path));
+			return false;
+		}
+		for (auto &it : target->items) {
+			if (it.kind == ItemKind::Func && it.umbrella) {
+				umbrellaItems.emplace_back(it);
+			}
+		}
+		items = &umbrellaItems;
+	}
+	bool funcs = false;
+	for (auto &it : *items) { funcs = funcs || it.kind == ItemKind::Func; }
+	StringView abi = header.umbrellaTarget ? StringView(header.umbrellaTarget->abi) : StringView(header.abi);
+
 	out.clear();
 	if (!map.license.empty()) {
 		out.append(map.license);
@@ -925,11 +1007,11 @@ bool emitHeader(const Map &map, const Header &header, const EmitOptions &opts, S
 		}
 		out.push_back('\n');
 	}
-	if (header.abi.empty()) {
+	if (abi.empty()) {
 		out.append(mem_std::toString("// Generated by xlkdl (header map ",
 				filepath::lastComponent(map.file), "). Do not edit: regenerate it.\n\n"));
 	} else {
-		out.append(mem_std::toString("// Generated by xlkdl from ", header.abi, " (header map ",
+		out.append(mem_std::toString("// Generated by xlkdl from ", abi, " (header map ",
 				filepath::lastComponent(map.file), "). Do not edit: regenerate it.\n\n"));
 	}
 	auto guarded = !header.guard.empty();
@@ -939,12 +1021,20 @@ bool emitHeader(const Map &map, const Header &header, const EmitOptions &opts, S
 
 	String body;
 	Emitter emitter(map, opts, renderer, body, diag);
+	emitter.setUmbrella(header.umbrellaTarget != nullptr);
 	auto ok = emitter.includes(header);
-	if (!body.empty() && !header.items.empty()) {
+	if (!body.empty() && !items->empty()) {
 		body.push_back('\n');
 	}
-	ok = emitter.items(header.items, 0) && ok;
+	// Functions are declared with C linkage.
+	if (funcs) {
+		body.append(mem_std::toString(map.externCBegin, "\n\n"));
+	}
+	ok = emitter.items(*items, 0) && ok;
 	while (!body.empty() && body.back() == '\n') { body.pop_back(); }
+	if (funcs) {
+		body.append(mem_std::toString("\n\n", map.externCEnd));
+	}
 	out.append(body);
 	if (guarded) {
 		out.append(mem_std::toString("\n\n#endif // ", header.guard, "\n"));

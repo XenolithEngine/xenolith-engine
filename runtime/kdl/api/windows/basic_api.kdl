@@ -1,0 +1,123 @@
+// The functions of include/sprt/wrappers/windows/basic_api.h, written to
+// sprt/gen/wrappers/windows/api/basic_api.h.
+
+defaults dll=kernelbase link=import cc=WINAPI
+
+func LocalAlloc HLOCAL dll=kernel32 { uFlags UINT; uBytes SIZE_T }
+// The global heap. Still here only because the clipboard's data model is built on it:
+// SetClipboardData takes ownership of a GMEM_MOVEABLE block, which is why one is allocated and
+// never freed on the success path.
+func GlobalAlloc HGLOBAL dll=kernel32 stub=#false { uFlags UINT; dwBytes SIZE_T }
+func GlobalFree HGLOBAL dll=kernel32 stub=#false { hMem HGLOBAL }
+func GlobalLock LPVOID dll=kernel32 stub=#false { hMem HGLOBAL }
+func GlobalUnlock BOOL dll=kernel32 stub=#false { hMem HGLOBAL }
+func GlobalSize SIZE_T dll=kernel32 stub=#false { hMem HGLOBAL }
+func LocalFree HLOCAL dll=kernel32 { hMem HLOCAL }
+func HeapAlloc LPVOID { hHeap HANDLE; dwFlags DWORD; dwBytes SIZE_T }
+func HeapReAlloc LPVOID { hHeap HANDLE; dwFlags DWORD; lpMem LPVOID; dwBytes SIZE_T }
+func HeapFree BOOL { hHeap HANDLE; dwFlags DWORD; lpMem LPVOID }
+func HeapSize SIZE_T { hHeap HANDLE; dwFlags DWORD; lpMem LPCVOID }
+func HeapCreate HANDLE { flOptions DWORD; dwInitialSize SIZE_T; dwMaximumSize SIZE_T }
+func HeapDestroy BOOL { hHeap HANDLE }
+func HeapValidate BOOL { hHeap HANDLE; dwFlags DWORD; lpMem LPCVOID }
+func HeapCompact SIZE_T { hHeap HANDLE; dwFlags DWORD }
+func GetProcessHeap HANDLE empty=VOID
+func VirtualAlloc LPVOID {
+    lpAddress LPVOID
+    dwSize SIZE_T
+    flAllocationType DWORD
+    flProtect DWORD
+}
+func VirtualProtect BOOL {
+    lpAddress LPVOID
+    dwSize SIZE_T
+    flNewProtect DWORD
+    lpflOldProtect PDWORD
+}
+func VirtualFree BOOL { lpAddress LPVOID; dwSize SIZE_T; dwFreeType DWORD }
+func VirtualAllocEx LPVOID dll=kernel32 stub=#false {
+    hProcess HANDLE
+    lpAddress LPVOID
+    dwSize SIZE_T
+    flAllocationType DWORD
+    flProtect DWORD
+}
+func VirtualFreeEx BOOL dll=kernel32 stub=#false {
+    hProcess HANDLE
+    lpAddress LPVOID
+    dwSize SIZE_T
+    dwFreeType DWORD
+}
+func VirtualProtectEx BOOL dll="" {
+    hProcess HANDLE
+    lpAddress LPVOID
+    dwSize SIZE_T
+    flNewProtect DWORD
+    lpflOldProtect PDWORD
+}
+func DiscardVirtualMemory DWORD { VirtualAddress PVOID; Size SIZE_T }
+func GetLastError DWORD empty=void
+func SetLastError VOID { dwErrCode DWORD }
+func CloseHandle BOOL { hObject HANDLE }
+func GetHandleInformation BOOL { hObject HANDLE; lpdwFlags LPDWORD }
+func SetHandleInformation BOOL { hObject HANDLE; dwMask DWORD; dwFlags DWORD }
+func DuplicateHandle BOOL {
+    hSourceProcess HANDLE
+    hSourceHandle HANDLE
+    hTargetProcess HANDLE
+    lpDuplicateHandle PHANDLE
+    dwDesiredAccess DWORD
+    bInheritHandle BOOL
+    dwOptions DWORD
+}
+func VirtualLock BOOL { lpAddress LPVOID; dwSize SIZE_T }
+func VirtualUnlock BOOL { lpAddress LPVOID; dwSize SIZE_T }
+func GetEnvironmentVariableA DWORD dll=kernel32 { lpName LPCSTR; lpBuffer LPSTR; nSize DWORD }
+func SetEnvironmentVariableA BOOL dll=kernel32 { lpName LPCSTR; lpValue LPCSTR }
+func GetEnvironmentVariableW DWORD dll=kernel32 { lpName LPCWSTR; lpBuffer LPWSTR; nSize DWORD }
+func SetEnvironmentVariableW BOOL dll=kernel32 { lpName LPCWSTR; lpValue LPCWSTR }
+func GetEnvironmentStringsW LPWCH dll=kernel32
+func FreeEnvironmentStringsW BOOL dll=kernel32 stub=#false { penv LPWCH }
+func Sleep VOID dll=kernel32 { dwMilliseconds DWORD }
+func SleepEx DWORD dll=kernel32 { dwMilliseconds DWORD; bAlertable BOOL }
+func WaitOnAddress BOOL {
+    Address "volatile VOID *"
+    CompareAddress PVOID
+    AddressSize SIZE_T
+    dwMilliseconds DWORD
+}
+func WakeByAddressSingle VOID { Address PVOID }
+func WakeByAddressAll VOID { Address PVOID }
+func IsDebuggerPresent BOOL
+func DebugBreak VOID dll=kernel32 stub=#false
+func GetStdHandle HANDLE { nStdHandle DWORD }
+func SetStdHandle BOOL dll=kernel32 stub=#false { nStdHandle DWORD; hHandle HANDLE }
+func GetConsoleScreenBufferInfo BOOL {
+    hConsoleOutput HANDLE
+    lpConsoleScreenBufferInfo PCONSOLE_SCREEN_BUFFER_INFO
+}
+func SetConsoleCP BOOL { wCodePageID UINT }
+func SetConsoleOutputCP BOOL { wCodePageID UINT }
+func GetConsoleMode BOOL { hConsoleHandle HANDLE; lpMode LPDWORD }
+func SetConsoleMode BOOL { hConsoleHandle HANDLE; dwMode DWORD }
+func FlushConsoleInputBuffer BOOL dll=kernel32 stub=#false { hConsoleInput HANDLE }
+func AllocConsole BOOL dll=kernel32 stub=#false empty=VOID
+func FreeConsole BOOL dll=kernel32 stub=#false empty=VOID
+func SetConsoleTextAttribute BOOL stub=#false { hConsoleOutput HANDLE; wAttributes WORD }
+func SetConsoleCursorPosition BOOL stub=#false { hConsoleOutput HANDLE; dwCursorPosition COORD }
+func WriteConsoleW BOOL stub=#false {
+    hConsoleOutput HANDLE
+    lpBuffer "const void *"
+    nNumberOfCharsToWrite DWORD
+    lpNumberOfCharsWritten LPDWORD
+    lpReserved LPVOID
+}
+typedef PHANDLER_ROUTINE "BOOL(WINAPI *)(DWORD dwCtrlType)"
+func SetConsoleCtrlHandler BOOL dll=kernel32 stub=#false {
+    HandlerRoutine PHANDLER_ROUTINE
+    Add BOOL
+}
+func GetCurrentProcessorNumber DWORD dll=kernel32 empty=VOID
+func OutputDebugStringA VOID dll=kernel32 { lpOutputString LPCSTR }
+func OutputDebugStringW VOID dll=kernel32 { lpOutputString LPCWSTR }
+func GetWinApiProvider WINAPI_PROVIDER link=none dll=""

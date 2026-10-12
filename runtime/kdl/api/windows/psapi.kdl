@@ -1,0 +1,25 @@
+// The functions of include/sprt/wrappers/windows/psapi.h, written to
+// sprt/gen/wrappers/windows/api/psapi.h.
+
+dll psapi file="psapi.dll" {
+    export EnumProcessModules def=#true
+    export EnumProcessModulesEx def=#true
+    export GetProcessMemoryInfo def=#true
+    export EnumProcesses def=#true
+    export GetModuleBaseNameA def=#true
+    export GetModuleBaseNameW def=#true
+    export GetModuleInformation def=#true
+}
+
+defaults dll=psapi link=import cc=WINAPI
+
+func GetModuleFileNameExW DWORD { hProcess HANDLE; hModule HMODULE; lpFilename LPWSTR; nSize DWORD }
+func GetModuleFileNameExA DWORD { hProcess HANDLE; hModule HMODULE; lpFilename LPSTR; nSize DWORD }
+func GetMappedFileNameW DWORD { hProcess HANDLE; lpv LPVOID; lpFilename LPWSTR; nSize DWORD }
+func GetMappedFileNameA DWORD { hProcess HANDLE; lpv LPVOID; lpFilename LPSTR; nSize DWORD }
+func GetMappedFileNameA DWORD redeclare=#true {
+    hProcess HANDLE
+    lpv LPVOID
+    lpFilename LPSTR
+    nSize DWORD
+}

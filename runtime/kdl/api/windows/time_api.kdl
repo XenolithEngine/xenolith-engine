@@ -1,0 +1,56 @@
+// The functions of include/sprt/wrappers/windows/time_api.h, written to
+// sprt/gen/wrappers/windows/api/time_api.h.
+
+defaults dll=kernel32 link=import cc=WINAPI
+
+func GetDynamicTimeZoneInformation DWORD { pTimeZoneInformation PDYNAMIC_TIME_ZONE_INFORMATION }
+func GetTimeZoneInformation DWORD { lpTimeZoneInformation LPTIME_ZONE_INFORMATION }
+func QueryPerformanceFrequency BOOL { lpFrequency "LARGE_INTEGER *" }
+func QueryPerformanceCounter BOOL { lpPerformanceCount "LARGE_INTEGER *" }
+func GetSystemTimePreciseAsFileTime VOID { lpSystemTimeAsFileTime LPFILETIME }
+func GetSystemTimeAsFileTime VOID { lpSystemTimeAsFileTime LPFILETIME }
+func GetSystemTime VOID { lpSystemTime LPSYSTEMTIME }
+func GetTickCount DWORD
+func GetTickCount64 ULONGLONG
+func GetProcessTimes BOOL {
+    hProcess HANDLE
+    lpCreationTime LPFILETIME
+    lpExitTime LPFILETIME
+    lpKernelTime LPFILETIME
+    lpUserTime LPFILETIME
+}
+func GetThreadTimes BOOL {
+    hThread HANDLE
+    lpCreationTime LPFILETIME
+    lpExitTime LPFILETIME
+    lpKernelTime LPFILETIME
+    lpUserTime LPFILETIME
+}
+func SystemTimeToFileTime BOOL { lpSystemTime "const SYSTEMTIME *"; lpFileTime LPFILETIME }
+func FileTimeToSystemTime BOOL { lpFileTime "const FILETIME *"; lpSystemTime LPSYSTEMTIME }
+func SystemTimeToTzSpecificLocalTime BOOL {
+    lpTimeZoneInformation "const TIME_ZONE_INFORMATION *"
+    lpUniversalTime "const SYSTEMTIME *"
+    lpLocalTime LPSYSTEMTIME
+}
+func GetTimeZoneInformationForYear BOOL {
+    wYear USHORT
+    pdtzi PDYNAMIC_TIME_ZONE_INFORMATION
+    ptzi LPTIME_ZONE_INFORMATION
+}
+// ---- Multimedia Timer Services (mmsystem.h) ----
+//
+// Sets the resolution of the timer interrupt.
+// @param uPeriod Timer period in milliseconds (1-255).
+// @return Error code if an error occurs, otherwise zero.
+// @see https://docs.microsoft.com/en-us/windows/win32/api/mmsystem/nf-mmsystem-timebeginperiod
+//
+func timeBeginPeriod UINT { uPeriod UINT }
+//
+// Restores the resolution of the timer interrupt to its default setting.
+// @param uPeriod Timer period previously set by timeBeginPeriod.
+// @return Error code if an error occurs, otherwise zero (MMRESULT; TIMERR_NOCANDO if
+//         uPeriod does not match the period specified in the timeBeginPeriod call).
+// @see https://docs.microsoft.com/en-us/windows/win32/api/mmsystem/nf-mmsystem-timeendperiod
+//
+func timeEndPeriod UINT { uPeriod UINT }

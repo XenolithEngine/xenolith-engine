@@ -113,44 +113,7 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-__SPRT_WIN_IMPORT WINAPI BOOL GetVersionExA(LPOSVERSIONINFOA lpVersionInformation);
-
-__SPRT_WIN_IMPORT WINAPI BOOL GetVersionExW(LPOSVERSIONINFOW lpVersionInformation);
-
-__SPRT_WIN_IMPORT WINAPI ULONGLONG VerSetConditionMask(ULONGLONG ConditionMask, DWORD TypeMask,
-		BYTE Condition);
-
-__SPRT_WIN_IMPORT WINAPI BOOL VerifyVersionInfoW(LPOSVERSIONINFOEXW lpVersionInformation,
-		DWORD dwTypeMask, DWORDLONG dwlConditionMask);
-
-
-__SPRT_WIN_IMPORT WINAPI DWORD GetFileVersionInfoSizeA(LPCSTR lptstrFilename, LPDWORD lpdwHandle);
-
-__SPRT_WIN_IMPORT WINAPI DWORD GetFileVersionInfoSizeW(LPCWSTR lptstrFilename, LPDWORD lpdwHandle);
-
-__SPRT_WIN_IMPORT WINAPI BOOL GetFileVersionInfoA(LPCSTR lptstrFilename, DWORD dwHandle,
-		DWORD dwLen, LPVOID lpData);
-
-__SPRT_WIN_IMPORT WINAPI BOOL GetFileVersionInfoW(LPCWSTR lptstrFilename, DWORD dwHandle,
-		DWORD dwLen, LPVOID lpData);
-
-__SPRT_WIN_IMPORT WINAPI DWORD GetFileVersionInfoSizeExA(DWORD dwFlags, LPCSTR lpwstrFilename,
-		LPDWORD lpdwHandle);
-
-__SPRT_WIN_IMPORT WINAPI DWORD GetFileVersionInfoSizeExW(DWORD dwFlags, LPCWSTR lpwstrFilename,
-		LPDWORD lpdwHandle);
-
-__SPRT_WIN_IMPORT WINAPI BOOL GetFileVersionInfoExA(DWORD dwFlags, LPCSTR lpwstrFilename,
-		DWORD dwHandle, DWORD dwLen, LPVOID lpData);
-
-__SPRT_WIN_IMPORT WINAPI BOOL GetFileVersionInfoExW(DWORD dwFlags, LPCWSTR lpwstrFilename,
-		DWORD dwHandle, DWORD dwLen, LPVOID lpData);
-
-__SPRT_WIN_IMPORT WINAPI BOOL VerQueryValueA(LPCVOID pBlock, LPCSTR lpSubBlock, LPVOID *lplpBuffer,
-		PUINT puLen);
-
-__SPRT_WIN_IMPORT WINAPI BOOL VerQueryValueW(LPCVOID pBlock, LPCWSTR lpSubBlock, LPVOID *lplpBuffer,
-		PUINT puLen);
+#include <sprt/gen/wrappers/windows/api/winver.h>
 
 #ifdef UNICODE
 #define VerifyVersionInfo VerifyVersionInfoW

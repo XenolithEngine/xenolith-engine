@@ -1,0 +1,20 @@
+// The functions of include/sprt/wrappers/windows/app_startup.h, written to
+// sprt/gen/wrappers/windows/api/app_startup.h.
+
+defaults link=sprt
+
+// Produce a fresh /GS security cookie.
+//
+// The cookie variable itself is per-image (below) - the image's own function prologues
+// reference it directly, so it cannot be shared through an import. Only the entropy
+// source is shared, and it has to be: reaching it needs the DLL loader, which is
+// runtime-internal.
+//
+// Never returns __SPRT_DEFAULT_SECURITY_COOKIE, so a caller can use that value as an
+// "uninitialized" marker.
+func __sprt_gencookie uintptr_t empty=void
+// Convert the command line to argv, call mainFn and exit. Never returns.
+//
+// Implemented in the image that owns the runtime, so the executable stub does not
+// duplicate command-line conversion or the exit sequence.
+func __sprt_app_startup int { mainFn __sprt_main_fn }

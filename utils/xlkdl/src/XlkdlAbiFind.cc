@@ -38,6 +38,9 @@ struct Definition {
 	// The conditions of the node and of the records it stands in, outermost first.
 	Vector<String> conditions;
 	Vector<const Header *> headers;
+
+	// What else is written from it: a function's .def, table and wrapper (role, path).
+	Vector<sprt::pair<String, String>> files;
 };
 
 StringView kindName(const Item &item) {
@@ -57,6 +60,8 @@ StringView kindName(const Item &item) {
 	case ItemKind::Targets: return "targets";
 	case ItemKind::TargetGroup: return "group";
 	case ItemKind::Target: return "target";
+	case ItemKind::Func: return "func";
+	case ItemKind::Param: return "param";
 	}
 	return "";
 }
@@ -104,6 +109,24 @@ public:
 			}
 			Vector<String> conditions;
 			walk(header, header.items, conditions);
+		}
+		for (auto &dll : map.dlls) {
+			Definition def;
+			def.kind = "dll";
+			def.name = dll.name;
+			def.file = dll.abiFile;
+			def.location = dll.location;
+			def.files = dllFiles(dll, true, !dll.table.empty(), !dll.table.empty());
+			add(sprt::move(def), nullptr);
+			for (auto &e : dll.exports) {
+				Definition exp;
+				exp.kind = "export";
+				exp.name = e.name;
+				exp.file = dll.abiFile;
+				exp.location = e.location;
+				exp.files = dllFiles(dll, e.def, e.table && !dll.table.empty(), false);
+				add(sprt::move(exp), nullptr);
+			}
 		}
 	}
 
@@ -158,6 +181,15 @@ public:
 		out.setString(relative(def.file), "file");
 		out.setInteger(def.location.line, "line");
 		out.setInteger(def.location.column, "column");
+		if (!def.files.empty()) {
+			auto &files = out.emplace("files");
+			for (auto &it : def.files) {
+				mem_std::Value v;
+				v.setString(it.first, "role");
+				v.setString(it.second, "path");
+				files.addValue(sprt::move(v));
+			}
+		}
 		if (!def.conditions.empty()) {
 			auto &c = out.emplace("if");
 			for (auto &it : def.conditions) { c.addString(it); }
@@ -206,9 +238,25 @@ public:
 			}
 			out << "\n";
 		}
+		for (auto &it : def.files) { out << "  " << it.first << " " << it.second << "\n"; }
 	}
 
 private:
+	// The files a DLL writes, as far as an entry is in them.
+	Vector<sprt::pair<String, String>> dllFiles(const Dll &dll, bool def, bool table, bool stubs) const {
+		Vector<sprt::pair<String, String>> out;
+		if (def) {
+			out.emplace_back(String("def"), dllPath(*_map, dll, DllPart::Def));
+		}
+		if (table) {
+			out.emplace_back(String("table"), dllPath(*_map, dll, DllPart::Table));
+		}
+		if (stubs) {
+			out.emplace_back(String("wrapper"), dllPath(*_map, dll, DllPart::Stubs));
+		}
+		return out;
+	}
+
 	String relative(StringView file) const {
 		StringView dir(_map->dir);
 		if (file.starts_with(dir) && file.size() > dir.size() && file[dir.size()] == '/') {
@@ -222,9 +270,9 @@ private:
 			if (!item.condition.empty()) {
 				conditions.emplace_back(item.condition);
 			}
-			auto define = [&](const Name &name, StringView kind) {
+			auto define = [&](const Name &name, StringView kind) -> Definition * {
 				if (name.name.empty()) {
-					return;
+					return nullptr;
 				}
 				Definition def;
 				def.kind = kind;
@@ -233,7 +281,7 @@ private:
 				def.file = header.abiFile;
 				def.location = item.location;
 				def.conditions = conditions;
-				add(sprt::move(def), &header);
+				return add(sprt::move(def), &header);
 			};
 			switch (item.kind) {
 			case ItemKind::Macro:
@@ -258,6 +306,40 @@ private:
 				break;
 			}
 			case ItemKind::Use: walk(header, item.children, conditions); break;
+			case ItemKind::Func: {
+				// A function with its A/W variants, the umbrellas that write it, and its DLL's files.
+				auto dll = item.dll.empty() ? nullptr : _map->findDll(item.dll);
+				auto files = dll && !item.redeclare
+						? dllFiles(*dll, item.def, item.inTable && !dll->table.empty(),
+								  item.stub == StubMode::Gen)
+								 : Vector<sprt::pair<String, String>>();
+				auto variants = funcVariants(*_map, item);
+				Vector<Name> names;
+				names.emplace_back(item.name);
+				for (auto &v : variants) {
+					if (v.name != item.name.name) {
+						names.emplace_back(Name{v.name, nullptr});
+					}
+				}
+				for (auto &n : names) {
+					auto def = define(n, "func");
+					if (!def) {
+						continue;
+					}
+					for (auto u : header.umbrellas) {
+						bool seen = false;
+						for (auto h : def->headers) { seen = seen || h == u; }
+						if (!seen) {
+							def->headers.emplace_back(u);
+						}
+					}
+					// The exports are the variants; a function without variants is its own.
+					if (n.name != item.name.name || variants.size() == 1) {
+						def->files = files;
+					}
+				}
+				break;
+			}
 			case ItemKind::Targets: {
 				define(Name{item.name.name, nullptr}, "targets");
 				// The macros the list writes: per target, and the selected one.
@@ -298,20 +380,23 @@ private:
 	}
 
 	// Headers that share a description share its definitions.
-	void add(Definition &&def, const Header *header) {
+	Definition *add(Definition &&def, const Header *header) {
 		auto key = mem_std::toString(def.file, ":", def.location.line, ":", def.location.column, ":",
 				def.kind, ":", def.name);
 		auto it = _keys.find(key);
 		if (it != _keys.end()) {
 			auto &headers = _defs[it->second].headers;
-			if (headers.empty() || headers.back() != header) {
+			if (header && (headers.empty() || headers.back() != header)) {
 				headers.emplace_back(header);
 			}
-			return;
+			return &_defs[it->second];
 		}
-		def.headers.emplace_back(header);
+		if (header) {
+			def.headers.emplace_back(header);
+		}
 		_keys.emplace(sprt::move(key), _defs.size());
 		_defs.emplace_back(sprt::move(def));
+		return &_defs.back();
 	}
 
 	const Map *_map = nullptr;

@@ -34,20 +34,6 @@ THE SOFTWARE.
 #define RPC_S_UUID_LOCAL_ONLY __SPRT_RPC_S_UUID_LOCAL_ONLY
 #define RPC_S_UUID_NO_ADDRESS __SPRT_RPC_S_UUID_NO_ADDRESS
 
-__SPRT_BEGIN_DECL
-
-__SPRT_WIN_IMPORT WINAPI RPC_STATUS UuidCreate(UUID *Uuid);
-
-__SPRT_WIN_IMPORT WINAPI RPC_STATUS UuidCreateSequential(UUID *Uuid);
-
-__SPRT_WIN_IMPORT WINAPI RPC_STATUS UuidToStringA(const UUID *Uuid, RPC_CSTR *StringUuid);
-
-__SPRT_WIN_IMPORT WINAPI RPC_STATUS UuidToStringW(const UUID *Uuid, unsigned short **StringUuid);
-
-__SPRT_WIN_IMPORT WINAPI RPC_STATUS RpcStringFreeA(RPC_CSTR *String);
-
-__SPRT_WIN_IMPORT WINAPI RPC_STATUS RpcStringFreeW(unsigned short **String);
-
-__SPRT_END_DECL
+#include <sprt/gen/wrappers/windows/api/rpc.h>
 
 #endif // SPRT_WRAPPERS_WINDOWS_RPC_H_

@@ -40,6 +40,9 @@ THE SOFTWARE.
 
 typedef long CIMTYPE;
 
+// pidls are byte-packed variable-length streams in the SDK (shtypes.h includes
+// pshpack1.h around _SHITEMID/_ITEMIDLIST): sizeof(ITEMIDLIST) is 3, not 4
+#pragma pack(push, 1)
 typedef struct _SHITEMID {
 	USHORT cb;
 	BYTE abID[1];
@@ -48,6 +51,7 @@ typedef struct _SHITEMID {
 typedef struct _ITEMIDLIST {
 	SHITEMID mkid;
 } ITEMIDLIST;
+#pragma pack(pop)
 
 typedef ITEMIDLIST ITEMIDLIST_ABSOLUTE;
 typedef ITEMIDLIST_ABSOLUTE *PIDLIST_ABSOLUTE;

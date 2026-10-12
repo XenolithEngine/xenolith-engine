@@ -1,0 +1,23 @@
+// The functions of a DLL, in every form a declaration, a .def entry and a wrapper take, and the DLL:
+// its table is these functions and its exports without one.
+
+dll fx file="fx.dll" table=FxTable {
+    preload Open GetTick
+    export Ordinal def=#true
+    export Hidden
+}
+
+defaults dll=fx link=import cc=WINAPI
+
+func Open HANDLE { lpName LPCSTR; dwFlags DWORD }
+func GetTick DWORD empty=void
+func Find HANDLE charset="A W" unicode="W A" { lpPattern LPCTSTR; lpOut LPTSTR }
+func Notify DWORD charset=W unicode=W { lpText LPCTSTR }
+func SetHandler DWORD { - "DWORD (*)(HANDLE, DWORD)" }
+func Close void { hObject HANDLE }
+func Print int stub=manual { lpFormat LPCSTR; "..." }
+func Unwrapped DWORD stub=#false
+func Private DWORD def=#false
+func Debug DWORD if="defined(FX_DEBUG)" { dwLevel DWORD }
+func Affinity DWORD link=sprt def=#false stub=manual { hProcess HANDLE }
+func Provider DWORD link=none dll=""

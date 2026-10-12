@@ -164,62 +164,7 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-__SPRT_WIN_IMPORT WINAPI VOID RtlCaptureContext(PCONTEXT ContextRecord);
-
-__SPRT_WIN_IMPORT WINAPI BOOL GetThreadContext(HANDLE hThread, LPCONTEXT lpContext);
-
-__SPRT_WIN_IMPORT WINAPI BOOL SetThreadContext(HANDLE hThread, const CONTEXT *lpContext);
-
-__SPRT_WIN_IMPORT WINAPI BOOL Wow64GetThreadContext(HANDLE hThread, PWOW64_CONTEXT lpContext);
-
-__SPRT_WIN_IMPORT WINAPI BOOL Wow64SetThreadContext(HANDLE hThread, const WOW64_CONTEXT *lpContext);
-
-__SPRT_WIN_IMPORT WINAPI VOID RtlRestoreContext(PCONTEXT ContextRecord,
-		EXCEPTION_RECORD *ExceptionRecord);
-
-__SPRT_WIN_IMPORT WINAPI PRUNTIME_FUNCTION RtlLookupFunctionEntry(DWORD64 ControlPc,
-		PDWORD64 ImageBase, PUNWIND_HISTORY_TABLE HistoryTable);
-
-__SPRT_WIN_IMPORT WINAPI BOOLEAN RtlAddFunctionTable(PRUNTIME_FUNCTION FunctionTable,
-		DWORD EntryCount, DWORD64 BaseAddress);
-
-__SPRT_WIN_IMPORT WINAPI BOOLEAN RtlDeleteFunctionTable(PRUNTIME_FUNCTION FunctionTable);
-
-__SPRT_WIN_IMPORT WINAPI VOID RtlUnwindEx(PVOID TargetFrame, PVOID TargetIp,
-		PEXCEPTION_RECORD ExceptionRecord, PVOID ReturnValue, PCONTEXT ContextRecord,
-		PUNWIND_HISTORY_TABLE HistoryTable);
-
-__SPRT_WIN_IMPORT WINAPI PEXCEPTION_ROUTINE RtlVirtualUnwind(DWORD HandlerType, DWORD64 ImageBase,
-		DWORD64 ControlPc, PRUNTIME_FUNCTION FunctionEntry, PCONTEXT ContextRecord,
-		PVOID *HandlerData, PDWORD64 EstablisherFrame, PVOID ContextPointers);
-
-__SPRT_WIN_IMPORT WINAPI WORD RtlCaptureStackBackTrace(DWORD FramesToSkip, DWORD FramesToCapture,
-		PVOID *BackTrace, PDWORD BackTraceHash);
-
-__SPRT_WIN_IMPORT WINAPI PVOID AddVectoredExceptionHandler(ULONG First,
-		PVECTORED_EXCEPTION_HANDLER Handler);
-
-__SPRT_WIN_IMPORT WINAPI ULONG RemoveVectoredExceptionHandler(PVOID Handle);
-
-__SPRT_WIN_IMPORT WINAPI PVOID AddVectoredContinueHandler(ULONG First,
-		PVECTORED_EXCEPTION_HANDLER Handler);
-
-__SPRT_WIN_IMPORT WINAPI ULONG RemoveVectoredContinueHandler(PVOID Handle);
-
-__SPRT_WIN_IMPORT WINAPI BOOL WaitForDebugEvent(LPDEBUG_EVENT lpDebugEvent, DWORD dwMilliseconds);
-__SPRT_WIN_IMPORT WINAPI BOOL ContinueDebugEvent(DWORD dwProcessId, DWORD dwThreadId,
-		DWORD dwContinueStatus);
-__SPRT_WIN_IMPORT WINAPI BOOL DebugActiveProcess(DWORD dwProcessId);
-__SPRT_WIN_IMPORT WINAPI BOOL DebugActiveProcessStop(DWORD dwProcessId);
-__SPRT_WIN_IMPORT WINAPI BOOL DebugBreakProcess(HANDLE Process);
-
-__SPRT_WIN_IMPORT WINAPI LPTOP_LEVEL_EXCEPTION_FILTER SetUnhandledExceptionFilter(
-		LPTOP_LEVEL_EXCEPTION_FILTER lpTopLevelExceptionFilter);
-
-__SPRT_WIN_IMPORT WINAPI NTSTATUS NtContinueEx(CONTEXT *context, void *args);
-
-__SPRT_WIN_IMPORT WINAPI VOID RaiseException(DWORD dwExceptionCode, DWORD dwExceptionFlags,
-		DWORD nNumberOfArguments, const ULONG_PTR *lpArguments);
+#include <sprt/gen/wrappers/windows/api/context_api.h>
 
 #if defined(_M_AMD64) && !defined(_M_ARM64EC)
 
@@ -248,11 +193,6 @@ SPRT_FORCEINLINE PVOID GetFiberData(VOID) { return *(PVOID *)GetCurrentFiber(); 
 
 // Function prototypes
 // When <setjmp is included - this should not be visible
-#ifndef CORE_RUNTIME_INCLUDE_LIBC_SETJMP_H_
-__attribute__((returns_twice)) int setjmp(struct _JUMP_BUFFER *_Buf, void *);
-
-__SPRT_NORETURN void __cdecl longjmp(struct _JUMP_BUFFER *, int _Value);
-#endif
 
 __SPRT_END_DECL
 

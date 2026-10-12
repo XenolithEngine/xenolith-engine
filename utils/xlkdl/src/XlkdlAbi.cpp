@@ -29,7 +29,9 @@ THE SOFTWARE.
 
 #include "XlkdlAbi.h"
 #include "XlkdlAbiLoad.cc"
+#include "XlkdlApiLoad.cc"
 #include "XlkdlAbiEmit.cc"
+#include "XlkdlApiEmit.cc"
 #include "XlkdlAbiFind.cc"
 
 namespace STAPPLER_VERSIONIZED stappler::xlkdl {
@@ -120,6 +122,28 @@ void printAbiUsage(const CommandLineParser<AbiArgs> &parser) {
 			<< "  writes every header of the map that has a description, or the named ones;\n"
 			<< "  --find prints where a name is defined, --index every definition as JSON\n";
 	parser.describe([](StringView str) { sprt::cerr << str; });
+}
+
+// Writes a generated file, or under check compares it with the file there; false when it differs or
+// cannot be written.
+bool writeOrCheck(StringView path, StringView text, StringView from, bool check) {
+	if (check) {
+		auto have = filesystem::exists(FileInfo{path})
+				? filesystem::readTextFile<memory::StandardInterface>(FileInfo{path})
+				: String();
+		if (StringView(have) != text) {
+			sprt::cerr << path << ": not what " << from << " generates\n";
+			return false;
+		}
+		return true;
+	}
+	filesystem::mkdir_recursive(FileInfo{filepath::root(path)});
+	if (!filesystem::write(FileInfo{path}, reinterpret_cast<const uint8_t *>(text.data()),
+				text.size())) {
+		sprt::cerr << path << ": cannot write\n";
+		return false;
+	}
+	return true;
 }
 
 } // namespace
@@ -234,14 +258,14 @@ int runAbi(int argc, const char *argv[]) {
 	Vector<const Header *> selected;
 	if (args.headers.empty()) {
 		for (auto &header : map.headers) {
-			if (!header.external) {
+			if (!header.external && !header.imported) {
 				selected.emplace_back(&header);
 			}
 		}
 	} else {
 		for (auto &name : args.headers) {
 			auto header = map.findHeader(name);
-			if (!header || header->external) {
+			if (!header || header->external || header->imported) {
 				sprt::cerr << name << ": not a generated header of " << args.map << "\n";
 				return 1;
 			}
@@ -259,21 +283,123 @@ int runAbi(int argc, const char *argv[]) {
 			return 1;
 		}
 		auto path = filepath::merge<memory::StandardInterface>(args.out, header->path);
-		if (args.check) {
-			auto have = filesystem::exists(FileInfo{path})
-					? filesystem::readTextFile<memory::StandardInterface>(FileInfo{path})
-					: String();
-			if (StringView(have) != StringView(text)) {
-				sprt::cerr << path << ": not what " << header->abi << " generates\n";
-				++failed;
-			}
+		if (!writeOrCheck(path, text, header->abi, args.check)) {
+			++failed;
+		}
+	}
+	return failed;
+}
+
+// The API map: its headers under <root>/<include-root>, and the .def, the table and the wrappers of
+// each DLL under <root>. The exit code is as for abi.
+int runApi(int argc, const char *argv[]) {
+	CommandLineParser<AbiArgs> parser({
+		AbiOption{.patterns = {"--map <file>"},
+			.description = StringView("The API map: the ABI map it loads, its headers and DLLs"),
+			.callback = [](AbiArgs &target, StringView, SpanView<StringView> args) -> bool {
+		target.map = args[0].str<memory::StandardInterface>();
+		return true;
+	}},
+		AbiOption{.patterns = {"--root <dir>"},
+			.description = StringView("The root the profile's paths are under (runtime/)"),
+			.callback = [](AbiArgs &target, StringView, SpanView<StringView> args) -> bool {
+		target.out = args[0].str<memory::StandardInterface>();
+		return true;
+	}},
+		AbiOption{.patterns = {"--check"},
+			.description = StringView("Write nothing; answer whether <root> already holds the files"),
+			.callback = [](AbiArgs &target, StringView, SpanView<StringView>) -> bool {
+		target.check = true;
+		return true;
+	}},
+		AbiOption{.patterns = {"--find <name>"},
+			.description = StringView("Print every definition of a name, and where a function goes"),
+			.callback = [](AbiArgs &target, StringView, SpanView<StringView> args) -> bool {
+		target.find.emplace_back(args[0].str<memory::StandardInterface>());
+		return true;
+	}},
+		AbiOption{.patterns = {"--index"},
+			.description = StringView("Print every definition of the map as JSON"),
+			.callback = [](AbiArgs &target, StringView, SpanView<StringView>) -> bool {
+		target.index = true;
+		return true;
+	}},
+		AbiOption{.patterns = {"-h", "--help"},
+			.description = StringView("This text"),
+			.callback = [](AbiArgs &target, StringView, SpanView<StringView>) -> bool {
+		target.help = true;
+		return true;
+	}},
+	});
+
+	auto usage = [&]() {
+		sprt::cerr << "usage: xlkdl api --map <map.kdl> --root <dir> [--check]\n"
+				   << "       xlkdl api --map <map.kdl> --find <name> [--find <name>...]\n"
+				   << "       xlkdl api --map <map.kdl> --index\n"
+				   << "  writes the API headers and the .def, table and wrappers of every DLL\n";
+		parser.describe([](StringView str) { sprt::cerr << str; });
+	};
+	AbiArgs args;
+	if (argc > 0
+			&& !parser.parse(args, argc, argv,
+					Callback<void(AbiArgs &, StringView)>([](AbiArgs &target, StringView arg) {
+		target.headers.emplace_back(arg.str<memory::StandardInterface>());
+	}))) {
+		usage();
+		return 1;
+	}
+	auto query = args.index || !args.find.empty();
+	if (args.help || args.map.empty() || (args.out.empty() && !query) || !args.headers.empty()) {
+		usage();
+		return args.help ? 0 : 1;
+	}
+
+	Map map;
+	Diagnostics diag;
+	if (!loadMap(args.map, map, diag)) {
+		for (auto &it : diag.messages) { sprt::cerr << it << "\n"; }
+		return 1;
+	}
+	if (query) {
+		auto print = [](StringView str) { sprt::cout << str; };
+		if (args.index) {
+			writeIndex(map, print);
+		}
+		return args.find.empty() ? 0 : findNames(map, args.find, print);
+	}
+
+	int failed = 0;
+	auto includeRoot = filepath::merge<memory::StandardInterface>(args.out, map.includeRoot);
+	for (auto &header : map.headers) {
+		if (header.external || header.imported) {
 			continue;
 		}
-		filesystem::mkdir_recursive(FileInfo{filepath::root(path)});
-		if (!filesystem::write(FileInfo{path}, reinterpret_cast<const uint8_t *>(text.data()),
-					text.size())) {
-			sprt::cerr << path << ": cannot write\n";
+		String text;
+		if (!emitHeader(map, header, EmitOptions(), text, diag)) {
+			for (auto &it : diag.messages) { sprt::cerr << it << "\n"; }
+			return 1;
+		}
+		auto path = filepath::merge<memory::StandardInterface>(includeRoot, header.path);
+		auto from = header.umbrellaTarget ? StringView(header.umbrellaTarget->abi) : StringView(header.abi);
+		if (!writeOrCheck(path, text, from, args.check)) {
 			++failed;
+		}
+	}
+	for (auto &dll : map.dlls) {
+		for (auto part : {DllPart::Def, DllPart::Table, DllPart::Stubs}) {
+			// A DLL without a table has a .def only.
+			if (part != DllPart::Def && dll.table.empty()) {
+				continue;
+			}
+			String text;
+			if (!emitDll(map, dll, part, text, diag)) {
+				for (auto &it : diag.messages) { sprt::cerr << it << "\n"; }
+				return 1;
+			}
+			auto path = filepath::merge<memory::StandardInterface>(args.out, dllPath(map, dll, part));
+			if (!writeOrCheck(path, text, dll.abi, args.check)) {
+				++failed;
+			}
 		}
 	}
 	return failed;

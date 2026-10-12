@@ -52,19 +52,7 @@ __SPRT_BEGIN_DECL
 
 typedef int(__cdecl *__sprt_main_fn)(int, const char **);
 
-/*
-	Produce a fresh /GS security cookie.
-
-	The cookie variable itself is per-image (below) - the image's own function prologues
-	reference it directly, so it cannot be shared through an import. Only the entropy
-	source is shared, and it has to be: reaching it needs the DLL loader, which is
-	runtime-internal.
-
-	Never returns __SPRT_DEFAULT_SECURITY_COOKIE, so a caller can use that value as an
-	"uninitialized" marker.
-*/
-SPRT_API __SPRT_ID(uintptr_t) __sprt_gencookie(void);
-
+#include <sprt/gen/wrappers/windows/api/app_startup.h>
 /*
 	The value the cookie variables hold before the entry point seeds them.
 */
@@ -81,14 +69,6 @@ SPRT_API __SPRT_ID(uintptr_t) __sprt_gencookie(void);
 */
 extern __SPRT_ID(uintptr_t) __security_cookie;
 extern __SPRT_ID(uintptr_t) __security_cookie_complement;
-
-/*
-	Convert the command line to argv, call mainFn and exit. Never returns.
-
-	Implemented in the image that owns the runtime, so the executable stub does not
-	duplicate command-line conversion or the exit sequence.
-*/
-SPRT_API int __sprt_app_startup(__sprt_main_fn mainFn);
 
 __SPRT_END_DECL
 

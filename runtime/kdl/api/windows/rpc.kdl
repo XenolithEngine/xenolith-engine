@@ -1,0 +1,13 @@
+// The functions of include/sprt/wrappers/windows/rpc.h, written to
+// sprt/gen/wrappers/windows/api/rpc.h.
+
+dll rpcrt4 file="rpcrt4.dll"
+
+defaults dll=rpcrt4 link=import cc=WINAPI
+
+func UuidCreate RPC_STATUS { Uuid "UUID *" }
+func UuidCreateSequential RPC_STATUS { Uuid "UUID *" }
+func UuidToStringA RPC_STATUS { Uuid "const UUID *"; StringUuid "RPC_CSTR *" }
+func UuidToStringW RPC_STATUS { Uuid "const UUID *"; StringUuid "unsigned short **" }
+func RpcStringFreeA RPC_STATUS { String "RPC_CSTR *" }
+func RpcStringFreeW RPC_STATUS { String "unsigned short **" }

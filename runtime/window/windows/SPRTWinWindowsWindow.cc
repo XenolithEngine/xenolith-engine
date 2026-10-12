@@ -69,7 +69,7 @@ bool WindowsWindow_hasPointerDevice() {
 // caller below runs.
 //
 // GetMessageExtraInfo is resolved through the DSO loader rather than declared as an import: the
-// import library is a prebuilt toolchain artifact generated from wrappers/windows/def, so adding
+// import library is a prebuilt toolchain artifact built from the .def files of runtime/kdl/api, so adding
 // a symbol there would not link until the Windows target toolchain is rebuilt. Resolution is done
 // once; if it fails, touch simply never gets reported.
 static InputModifier WindowsWindow_getTouchModifier() {

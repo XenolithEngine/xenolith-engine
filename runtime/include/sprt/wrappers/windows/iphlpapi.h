@@ -27,12 +27,6 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/constants.h>
 #include <sprt/gen/wrappers/windows/abi/iphlpapi.h>
 
-__SPRT_BEGIN_DECL
-
-__SPRT_WIN_IMPORT WINAPI NET_IFINDEX if_nametoindex(PCSTR InterfaceName);
-
-__SPRT_WIN_IMPORT WINAPI PCHAR if_indextoname(NET_IFINDEX InterfaceIndex, PCHAR InterfaceName);
-
-__SPRT_END_DECL
+#include <sprt/gen/wrappers/windows/api/iphlpapi.h>
 
 #endif // SPRT_WRAPPERS_WINDOWS_IPHLPAPI_H_

@@ -1,0 +1,7 @@
+// The functions of include/sprt/wrappers/windows/tlhelp32.h, written to
+// sprt/gen/wrappers/windows/api/tlhelp32.h.
+
+defaults dll=kernel32 link=import cc=WINAPI
+
+func Module32FirstW BOOL stub=#false { hSnapshot HANDLE; lpme LPMODULEENTRY32W }
+func Module32NextW BOOL stub=#false { hSnapshot HANDLE; lpme LPMODULEENTRY32W }

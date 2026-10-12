@@ -1,0 +1,137 @@
+// The functions of include/sprt/wrappers/windows/message_api.h, written to
+// sprt/gen/wrappers/windows/api/message_api.h.
+
+dll uxtheme file="uxtheme.dll" table=UxthemeTable {
+    export BeginBufferedAnimation
+    export BeginBufferedPaint
+    export BufferedPaintClear
+    export BufferedPaintInit
+    export BufferedPaintRenderAnimation
+    export BufferedPaintSetAlpha
+    export BufferedPaintStopAllAnimations
+    export BufferedPaintUnInit
+    export CloseThemeData
+    export DrawThemeBackgroundEx
+    export DrawThemeBackground
+    export DrawThemeEdge
+    export DrawThemeIcon
+    export DrawThemeParentBackground
+    export DrawThemeText
+    export DrawThemeTextEx
+    export EnableThemeDialogTexture
+    export EnableTheming
+    export EndBufferedAnimation
+    export EndBufferedPaint
+    export OpenThemeDataEx
+    export GetBufferedPaintBits
+    export GetBufferedPaintDC
+    export GetBufferedPaintTargetDC
+    export GetBufferedPaintTargetRect
+    export GetThemeAppProperties
+    export GetThemeBackgroundContentRect
+    export GetThemeBackgroundExtent
+    export GetThemeBackgroundRegion
+    export GetThemeBitmap
+    export GetThemeBool
+    export GetThemeColor
+    export GetThemeDocumentationProperty
+    export GetThemeEnumValue
+    export GetThemeFilename
+    export GetThemeFont
+    export GetThemeInt
+    export GetThemeIntList
+    export GetThemeMargins
+    export GetThemeMetric
+    export GetThemePartSize
+    export GetThemePosition
+    export GetThemePropertyOrigin
+    export GetThemeRect
+    export GetThemeStream
+    export GetThemeString
+    export GetThemeSysBool
+    export GetThemeSysColor
+    export GetThemeSysColorBrush
+    export GetThemeSysFont
+    export GetThemeSysInt
+    export GetThemeSysSize
+    export GetThemeSysString
+    export GetThemeTextExtent
+    export GetThemeTextMetrics
+    export GetThemeTransitionDuration
+    export GetWindowTheme
+    export HitTestThemeBackground
+    export IsAppThemed
+    export IsCompositionActive
+    export IsThemeActive
+    export IsThemeBackgroundPartiallyTransparent
+    export IsThemeDialogTextureEnabled
+    export IsThemePartDefined
+    export OpenThemeData
+    export OpenThemeDataForDpi
+    export SetThemeAppProperties
+    export SetWindowTheme
+    export SetWindowThemeAttribute
+}
+
+defaults dll=user32 link=import cc=WINAPI
+
+func FormatMessageW DWORD dll=kernelbase {
+    dwFlags DWORD
+    lpSource LPCVOID
+    dwMessageId DWORD
+    dwLanguageId DWORD
+    lpBuffer LPWSTR
+    nSize DWORD
+    Arguments "__builtin_va_list *"
+}
+func FormatMessageA DWORD dll=kernelbase {
+    dwFlags DWORD
+    lpSource LPCVOID
+    dwMessageId DWORD
+    dwLanguageId DWORD
+    lpBuffer LPSTR
+    nSize DWORD
+    Arguments "__builtin_va_list *"
+}
+// Companion to FormatMessage*: the language list it should be asked to render
+// a message in. dwFlags selects MUI_LANGUAGE_ID or MUI_LANGUAGE_NAME, and
+// pwszLanguagesBuffer receives a double-null-terminated list.
+func GetUserPreferredUILanguages BOOL dll=kernel32 stub=#false {
+    dwFlags DWORD
+    pulNumLanguages PULONG
+    pwszLanguagesBuffer PZZWSTR
+    pcchLanguagesBuffer PULONG
+}
+func SendMessageW LRESULT { hWnd HWND; Msg UINT; wParam WPARAM; lParam LPARAM }
+func PostMessageW BOOL { hWnd HWND; Msg UINT; wParam WPARAM; lParam LPARAM }
+func PostQuitMessage VOID { nExitCode int }
+func PeekMessageW BOOL {
+    lpMsg LPMSG
+    hWnd HWND
+    wMsgFilterMin UINT
+    wMsgFilterMax UINT
+    wRemoveMsg UINT
+}
+func TranslateMessage BOOL { lpMsg "const MSG *" }
+func DispatchMessageW LRESULT { lpMsg "const MSG *" }
+func GetMessageTime LONG empty=VOID
+func MsgWaitForMultipleObjectsEx DWORD {
+    nCount DWORD
+    pHandles "const HANDLE *"
+    dwMilliseconds DWORD
+    dwWakeMask DWORD
+    dwFlags DWORD
+}
+func GetSystemPowerStatus BOOL dll=kernel32 { lpSystemPowerStatus LPSYSTEM_POWER_STATUS }
+func GetCurrentThemeName HRESULT dll=uxtheme {
+    pszThemeFileName LPWSTR
+    cchMaxNameChars int
+    pszColorBuff LPWSTR
+    cchMaxColorChars int
+    pszSizeBuff LPWSTR
+    cchMaxSizeChars int
+}
+func GetSystemMetrics int { nIndex int }
+func SystemParametersInfoW BOOL { uiAction UINT; uiParam UINT; pvParam PVOID; fWinIni UINT }
+func GetStockObject HANDLE dll=gdi32 { i int }
+func GetObjectW int dll=gdi32 { h HANDLE; c int; pv LPVOID }

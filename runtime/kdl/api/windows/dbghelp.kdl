@@ -1,0 +1,14 @@
+// The functions of include/sprt/wrappers/windows/dbghelp.h, written to
+// sprt/gen/wrappers/windows/api/dbghelp.h.
+
+defaults dll=dbghelp link=import cc=WINAPI
+
+func MiniDumpWriteDump BOOL stub=#false {
+    hProcess HANDLE
+    ProcessId DWORD
+    hFile HANDLE
+    DumpType MINIDUMP_TYPE
+    ExceptionParam PMINIDUMP_EXCEPTION_INFORMATION
+    UserStreamParam PMINIDUMP_USER_STREAM_INFORMATION
+    CallbackParam PMINIDUMP_CALLBACK_INFORMATION
+}

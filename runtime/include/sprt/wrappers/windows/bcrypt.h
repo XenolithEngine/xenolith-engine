@@ -87,53 +87,6 @@ THE SOFTWARE.
 #define BCRYPT_SUCCESS(Status) __SPRT_BCRYPT_SUCCESS(Status)
 
 
-__SPRT_BEGIN_DECL
-
-__SPRT_WIN_IMPORT WINAPI NTSTATUS BCryptGenRandom(BCRYPT_ALG_HANDLE hAlgorithm, PUCHAR pbBuffer,
-		ULONG cbBuffer, ULONG dwFlags);
-
-__SPRT_WIN_IMPORT WINAPI NTSTATUS BCryptGenerateSymmetricKey(BCRYPT_ALG_HANDLE hAlgorithm,
-		BCRYPT_KEY_HANDLE *phKey, PUCHAR pbKeyObject, ULONG cbKeyObject, PUCHAR pbSecret,
-		ULONG cbSecret, ULONG dwFlags);
-
-__SPRT_WIN_IMPORT WINAPI NTSTATUS BCryptDestroyKey(BCRYPT_KEY_HANDLE hKey);
-
-__SPRT_WIN_IMPORT WINAPI NTSTATUS BCryptCreateHash(BCRYPT_ALG_HANDLE hAlgorithm,
-		BCRYPT_HASH_HANDLE *phHash, PUCHAR pbHashObject, ULONG cbHashObject, PUCHAR pbSecret,
-		ULONG cbSecret, ULONG dwFlags);
-
-__SPRT_WIN_IMPORT WINAPI NTSTATUS BCryptHashData(BCRYPT_HASH_HANDLE hHash, PUCHAR pbInput,
-		ULONG cbInput, ULONG dwFlags);
-
-__SPRT_WIN_IMPORT WINAPI NTSTATUS BCryptFinishHash(BCRYPT_HASH_HANDLE hHash, PUCHAR pbOutput,
-		ULONG cbOutput, ULONG dwFlags);
-
-__SPRT_WIN_IMPORT WINAPI NTSTATUS BCryptDestroyHash(BCRYPT_HASH_HANDLE hHash);
-
-__SPRT_WIN_IMPORT WINAPI NTSTATUS BCryptGetProperty(BCRYPT_HANDLE hObject, LPCWSTR pszProperty,
-		PUCHAR pbOutput, ULONG cbOutput, ULONG *pcbResult, ULONG dwFlags);
-
-__SPRT_WIN_IMPORT WINAPI NTSTATUS BCryptSetProperty(BCRYPT_HANDLE hObject, LPCWSTR pszProperty,
-		PUCHAR pbInput, ULONG cbInput, ULONG dwFlags);
-
-__SPRT_WIN_IMPORT WINAPI NTSTATUS BCryptOpenAlgorithmProvider(BCRYPT_ALG_HANDLE *phAlgorithm,
-		LPCWSTR pszAlgId, LPCWSTR pszImplementation, ULONG dwFlags);
-
-__SPRT_WIN_IMPORT WINAPI NTSTATUS BCryptCloseAlgorithmProvider(BCRYPT_ALG_HANDLE hAlgorithm,
-		ULONG dwFlags);
-
-__SPRT_WIN_IMPORT WINAPI NTSTATUS BCryptDeriveKeyPBKDF2(BCRYPT_ALG_HANDLE hPrf, PUCHAR pbPassword,
-		ULONG cbPassword, PUCHAR pbSalt, ULONG cbSalt, ULONGLONG cIterations, PUCHAR pbDerivedKey,
-		ULONG cbDerivedKey, ULONG dwFlags);
-
-__SPRT_WIN_IMPORT WINAPI NTSTATUS BCryptEncrypt(BCRYPT_KEY_HANDLE hKey, PUCHAR pbInput,
-		ULONG cbInput, VOID *pPaddingInfo, PUCHAR pbIV, ULONG cbIV, PUCHAR pbOutput, ULONG cbOutput,
-		ULONG *pcbResult, ULONG dwFlags);
-
-__SPRT_WIN_IMPORT WINAPI NTSTATUS BCryptDecrypt(BCRYPT_KEY_HANDLE hKey, PUCHAR pbInput,
-		ULONG cbInput, VOID *pPaddingInfo, PUCHAR pbIV, ULONG cbIV, PUCHAR pbOutput, ULONG cbOutput,
-		ULONG *pcbResult, ULONG dwFlags);
-
-__SPRT_END_DECL
+#include <sprt/gen/wrappers/windows/api/bcrypt.h>
 
 #endif // SPRT_WRAPPERS_WINDOWS_BCRYPT_API_H_

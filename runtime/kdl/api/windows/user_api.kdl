@@ -1,0 +1,935 @@
+// The functions of include/sprt/wrappers/windows/user_api.h, written to
+// sprt/gen/wrappers/windows/api/user_api.h.
+
+dll dwmapi file="dwmapi.dll" table=DwmapiTable {
+    export DwmpDxGetWindowSharedSurface
+    export DwmpDxUpdateWindowSharedSurface
+    export DwmEnableComposition
+    export DwmAttachMilContent
+    export DwmDefWindowProc
+    export DwmDetachMilContent
+    export DwmEnableBlurBehindWindow
+    export DwmEnableMMCSS
+    export DwmpDxBindSwapChain
+    export DwmpDxUnbindSwapChain
+    export DwmpDxgiIsThreadDesktopComposited
+    export DwmpDxUpdateWindowRedirectionBltSurface
+    export DwmpRenderFlick
+    export DwmpAllocateSecurityDescriptor
+    export DwmpFreeSecurityDescriptor
+    export DwmpEnableDDASupport
+    export DwmTetherTextContact
+    export DwmFlush
+    export DwmGetColorizationColor
+    export DwmGetCompositionTimingInfo
+    export DwmGetGraphicsStreamClient
+    export DwmGetGraphicsStreamTransformHint
+    export DwmGetTransportAttributes
+    export DwmGetWindowAttribute
+    export DwmInvalidateIconicBitmaps
+    export DwmIsCompositionEnabled
+    export DwmModifyPreviousDxFrameDuration
+    export DwmQueryThumbnailSourceSize
+    export DwmRegisterThumbnail
+    export DwmSetDxFrameDuration
+    export DwmSetIconicLivePreviewBitmap
+    export DwmSetIconicThumbnail
+    export DwmSetPresentParameters
+    export DwmSetWindowAttribute
+    export DwmShowContact
+    export DwmUnregisterThumbnail
+    export DwmUpdateThumbnailProperties
+}
+
+dll user32 file="user32.dll" table=User32Table {
+    export ActivateKeyboardLayout
+    export AdjustWindowRectExForDpi
+    export AlignRects
+    export AllowSetForegroundWindow
+    export AnimateWindow
+    export AnyPopup
+    export AppendMenuA
+    export AppendMenuW
+    export AreDpiAwarenessContextsEqual
+    export ArrangeIconicWindows
+    export AttachThreadInput
+    export BeginDeferWindowPos
+    export BeginPaint
+    export BlockInput
+    export BringWindowToTop
+    export BroadcastSystemMessage
+    export BroadcastSystemMessageA
+    export BroadcastSystemMessageExA
+    export BroadcastSystemMessageExW
+    export BroadcastSystemMessageW
+    export CalcChildScroll
+    export CalcMenuBar
+    export CallMsgFilter
+    export CallMsgFilterA
+    export CallMsgFilterW
+    export CallNextHookEx
+    export CallWindowProcA
+    export CallWindowProcW
+    export CascadeChildWindows
+    export CascadeWindows
+    export ChangeClipboardChain
+    export ChangeDisplaySettingsA
+    export ChangeDisplaySettingsExA
+    export ChangeDisplaySettingsW
+    export ChangeMenuA
+    export ChangeMenuW
+    export ChangeWindowMessageFilter
+    export ChangeWindowMessageFilterEx
+    export CharLowerA
+    export CharLowerBuffA
+    export CharLowerBuffW
+    export CharLowerW
+    export CharNextA
+    export CharNextExA
+    export CharNextExW
+    export CharNextW
+    export CharPrevA
+    export CharPrevExA
+    export CharPrevExW
+    export CharPrevW
+    export CharToOemA
+    export CharToOemBuffA
+    export CharToOemBuffW
+    export CharToOemW
+    export CharUpperA
+    export CharUpperBuffA
+    export CharUpperBuffW
+    export CharUpperW
+    export CheckDlgButton
+    export CheckMenuItem
+    export CheckMenuRadioItem
+    export CheckRadioButton
+    export ChildWindowFromPoint
+    export ChildWindowFromPointEx
+    export CliImmSetHotKey
+    export ClientThreadConnect
+    export ClientThreadSetup
+    export ClipCursor
+    export CloseDesktop
+    export CloseGestureInfoHandle
+    export CloseTouchInputHandle
+    export CloseWindow
+    export CopyAcceleratorTableA
+    export CopyAcceleratorTableW
+    export CopyIcon
+    export CopyImage
+    export CopyRect
+    export CreateAcceleratorTableA
+    export CreateAcceleratorTableW
+    export CreateCaret
+    export CreateCursor
+    export CreateDesktopA
+    export CreateDesktopW
+    export CreateDialogIndirectParamA
+    export CreateDialogIndirectParamAorW
+    export CreateDialogIndirectParamW
+    export CreateDialogParamA
+    export CreateDialogParamW
+    export CreateIcon
+    export CreateIconFromResource
+    export CreateIconFromResourceEx
+    export CreateMDIWindowA
+    export CreateMDIWindowW
+    export CreateMenu
+    export CreateSyntheticPointerDevice
+    export CreateWindowExA
+    export CreateWindowStationA
+    export CreateWindowStationW
+    export DdeAbandonTransaction
+    export DdeAccessData
+    export DdeAddData
+    export DdeClientTransaction
+    export DdeCmpStringHandles
+    export DdeConnect
+    export DdeConnectList
+    export DdeCreateDataHandle
+    export DdeCreateStringHandleA
+    export DdeCreateStringHandleW
+    export DdeDisconnect
+    export DdeDisconnectList
+    export DdeEnableCallback
+    export DdeFreeDataHandle
+    export DdeFreeStringHandle
+    export DdeGetData
+    export DdeGetLastError
+    export DdeGetQualityOfService
+    export DdeImpersonateClient
+    export DdeInitializeA
+    export DdeInitializeW
+    export DdeKeepStringHandle
+    export DdeNameService
+    export DdePostAdvise
+    export DdeQueryConvInfo
+    export DdeQueryNextServer
+    export DdeQueryStringA
+    export DdeQueryStringW
+    export DdeReconnect
+    export DdeSetQualityOfService
+    export DdeSetUserHandle
+    export DdeUnaccessData
+    export DdeUninitialize
+    export DefDlgProcA
+    export DefDlgProcW
+    export DefFrameProcA
+    export DefFrameProcW
+    export DefMDIChildProcA
+    export DefMDIChildProcW
+    export DefRawInputProc
+    export DefWindowProcA
+    export DeferWindowPos
+    export DeleteMenu
+    export DeregisterShellHookWindow
+    export DestroyAcceleratorTable
+    export DestroyCaret
+    export DestroyCursor
+    export DialogBoxIndirectParamA
+    export DialogBoxIndirectParamAorW
+    export DialogBoxIndirectParamW
+    export DialogBoxParamA
+    export DialogBoxParamW
+    export DisableProcessWindowsGhosting
+    export DispatchMessageA
+    export DisplayConfigGetDeviceInfo
+    export DisplayConfigSetDeviceInfo
+    export DlgDirListA
+    export DlgDirListComboBoxA
+    export DlgDirListComboBoxW
+    export DlgDirListW
+    export DlgDirSelectComboBoxExA
+    export DlgDirSelectComboBoxExW
+    export DlgDirSelectExA
+    export DlgDirSelectExW
+    export DragDetect
+    export DragObject
+    export DrawAnimatedRects
+    export DrawCaption
+    export DrawCaptionTempA
+    export DrawCaptionTempW
+    export DrawEdge
+    export DrawFocusRect
+    export DrawFrame
+    export DrawFrameControl
+    export DrawIcon
+    export DrawIconEx
+    export DrawMenuBar
+    export DrawMenuBarTemp
+    export DrawStateA
+    export DrawStateW
+    export DrawTextA
+    export DrawTextExA
+    export DrawTextExW
+    export DrawTextW
+    export EditWndProc
+    export EnableMenuItem
+    export EnableMouseInPointer
+    export EnableNonClientDpiScaling
+    export EnableScrollBar
+    export EndDeferWindowPos
+    export EndDialog
+    export EndMenu
+    export EndPaint
+    export EndTask
+    export EnumChildWindows
+    export EnumDesktopWindows
+    export EnumDesktopsA
+    export EnumDesktopsW
+    export EnumDisplayDeviceModesA
+    export EnumDisplayDeviceModesW
+    export EnumDisplayDevicesA
+    export EnumDisplaySettingsA
+    export EnumDisplaySettingsExA
+    export EnumDisplaySettingsExW
+    export EnumPropsA
+    export EnumPropsExA
+    export EnumPropsExW
+    export EnumPropsW
+    export EnumThreadWindows
+    export EnumWindowStationsA
+    export EnumWindowStationsW
+    export EnumWindows
+    export EqualRect
+    export EvaluateProximityToRect
+    export ExcludeUpdateRgn
+    export ExitWindowsEx
+    export FillRect
+    export FindWindowA
+    export FindWindowExA
+    export FindWindowExW
+    export FindWindowW
+    export FlashWindowEx
+    export FrameRect
+    export FreeDDElParam
+    export GetActiveWindow
+    export GetAltTabInfo
+    export GetAltTabInfoA
+    export GetAltTabInfoW
+    export GetAncestor
+    export GetAppCompatFlags
+    export GetAppCompatFlags2
+    export GetAsyncKeyState
+    export GetAutoRotationState
+    export GetAwarenessFromDpiAwarenessContext
+    export GetCaretBlinkTime
+    export GetCaretPos
+    export GetClassInfoA
+    export GetClassInfoExA
+    export GetClassInfoExW
+    export GetClassInfoW
+    export GetClassLongA
+    export GetClassLongPtrA
+    export GetClassLongPtrW
+    export GetClassLongW
+    export GetClassNameA
+    export GetClassNameW
+    export GetClassWord
+    export GetClipCursor
+    export GetClipboardFormatNameA
+    export GetClipboardViewer
+    export GetComboBoxInfo
+    export GetCurrentInputMessageSource
+    export GetCursor
+    export GetCursorFrameInfo
+    export GetCursorInfo
+    export GetCursorPos
+    export GetDC
+    export GetDCEx
+    export GetDesktopWindow
+    export GetDialogBaseUnits
+    export GetDisplayAutoRotationPreferences
+    export GetDisplayConfigBufferSizes
+    export GetDlgCtrlID
+    export GetDlgItem
+    export GetDlgItemInt
+    export GetDlgItemTextA
+    export GetDlgItemTextW
+    export GetDoubleClickTime
+    export GetDpiAwarenessContextForProcess
+    export GetDpiForMonitorInternal
+    export GetDpiForSystem
+    export GetDpiFromDpiAwarenessContext
+    export GetFocus
+    export GetForegroundWindow
+    export GetGUIThreadInfo
+    export GetGestureConfig
+    export GetGestureExtraArgs
+    export GetGestureInfo
+    export GetGuiResources
+    export GetIconInfo
+    export GetIconInfoExA
+    export GetIconInfoExW
+    export GetInputDesktop
+    export GetInputState
+    export GetInternalWindowPos
+    export GetKBCodePage
+    export GetKeyNameTextA
+    export GetKeyNameTextW
+    export GetKeyboardLayout
+    export GetKeyboardLayoutList
+    export GetKeyboardLayoutNameA
+    export GetKeyboardLayoutNameW
+    export GetKeyboardState
+    export GetKeyboardType
+    export GetLastActivePopup
+    export GetLastInputInfo
+    export GetLayeredWindowAttributes
+    export GetListBoxInfo
+    export GetMenu
+    export GetMenuBarInfo
+    export GetMenuCheckMarkDimensions
+    export GetMenuContextHelpId
+    export GetMenuDefaultItem
+    export GetMenuIndex
+    export GetMenuInfo
+    export GetMenuItemCount
+    export GetMenuItemID
+    export GetMenuItemInfoA
+    export GetMenuItemInfoW
+    export GetMenuItemRect
+    export GetMenuState
+    export GetMenuStringA
+    export GetMenuStringW
+    export GetMessageA
+    export GetMessageExtraInfo
+    export GetMessagePos
+    export GetMessageW
+    export GetMonitorInfoA
+    export GetMouseMovePointsEx
+    export GetNextDlgGroupItem
+    export GetNextDlgTabItem
+    export GetOpenClipboardWindow
+    export GetParent
+    export GetPhysicalCursorPos
+    export GetPointerDeviceProperties
+    export GetPointerDeviceRects
+    export GetPointerDevices
+    export GetPointerInfo
+    export GetPointerPenInfo
+    export GetPointerTouchInfo
+    export GetPointerTouchInfoHistory
+    export GetPointerType
+    export GetPriorityClipboardFormat
+    export GetProcessDefaultLayout
+    export GetProcessDpiAwarenessInternal
+    export GetProgmanWindow
+    export GetPropA
+    export GetPropW
+    export GetQueueStatus
+    export GetRawInputBuffer
+    export GetRawInputData
+    export GetRawInputDeviceInfoA
+    export GetRawInputDeviceInfoW
+    export GetRawInputDeviceList
+    export GetRawPointerDeviceData
+    export GetRegisteredRawInputDevices
+    export GetScrollBarInfo
+    export GetScrollInfo
+    export GetScrollPos
+    export GetScrollRange
+    export GetShellWindow
+    export GetSubMenu
+    export GetSysColor
+    export GetSysColorBrush
+    export GetSystemDpiForProcess
+    export GetTabbedTextExtentA
+    export GetTabbedTextExtentW
+    export GetTaskmanWindow
+    export GetThreadDesktop
+    export GetThreadDpiAwarenessContext
+    export GetThreadDpiHostingBehavior
+    export GetTitleBarInfo
+    export GetTopWindow
+    export GetTouchInputInfo
+    export GetUpdateRect
+    export GetUpdateRgn
+    export GetUpdatedClipboardFormats
+    export GetUserObjectInformationA
+    export GetUserObjectSecurity
+    export GetWindow
+    export GetWindowContextHelpId
+    export GetWindowDC
+    export GetWindowDisplayAffinity
+    export GetWindowDpiAwarenessContext
+    export GetWindowDpiHostingBehavior
+    export GetWindowInfo
+    export GetWindowLongA
+    export GetWindowLongPtrA
+    export GetWindowLongW
+    export GetWindowModuleFileName
+    export GetWindowModuleFileNameA
+    export GetWindowModuleFileNameW
+    export GetWindowRgn
+    export GetWindowRgnBox
+    export GetWindowTextA
+    export GetWindowTextLengthA
+    export GetWindowTextLengthW
+    export GetWindowTextW
+    export GetWindowThreadProcessId
+    export GetWindowWord
+    export GrayStringA
+    export GrayStringW
+    export HideCaret
+    export HiliteMenuItem
+    export ImpersonateDdeClientWindow
+    export InSendMessage
+    export InSendMessageEx
+    export InflateRect
+    export InsertMenuA
+    export InsertMenuItemA
+    export InsertMenuItemW
+    export InsertMenuW
+    export InternalGetWindowIcon
+    export InternalGetWindowText
+    export IntersectRect
+    export InvalidateRect
+    export InvalidateRgn
+    export InvertRect
+    export IsCharAlphaA
+    export IsCharAlphaNumericA
+    export IsCharAlphaNumericW
+    export IsCharAlphaW
+    export IsCharLowerA
+    export IsCharLowerW
+    export IsCharUpperA
+    export IsCharUpperW
+    export IsChild
+    export IsDialogMessage
+    export IsDialogMessageA
+    export IsDialogMessageW
+    export IsDlgButtonChecked
+    export IsGUIThread
+    export IsHungAppWindow
+    export IsIconic
+    export IsMenu
+    export IsMouseInPointerEnabled
+    export IsProcessDPIAware
+    export IsRectEmpty
+    export IsTouchWindow
+    export IsValidDpiAwarenessContext
+    export IsWinEventHookInstalled
+    export IsWindow
+    export IsWindowArranged
+    export IsWindowRedirectedForPrint
+    export IsWindowUnicode
+    export IsWindowVisible
+    export IsZoomed
+    export KillSystemTimer
+    export KillTimer
+    export LoadAcceleratorsA
+    export LoadAcceleratorsW
+    export LoadBitmapA
+    export LoadBitmapW
+    export LoadCursorA
+    export LoadCursorFromFileA
+    export LoadCursorFromFileW
+    export LoadIconA
+    export LoadIconW
+    export LoadImageA
+    export LoadKeyboardLayoutA
+    export LoadKeyboardLayoutEx
+    export LoadKeyboardLayoutW
+    export LoadLocalFonts
+    export LoadMenuA
+    export LoadMenuIndirectA
+    export LoadMenuIndirectW
+    export LoadMenuW
+    export LoadRemoteFonts
+    export LoadStringA
+    export LoadStringW
+    export LockSetForegroundWindow
+    export LockWindowStation
+    export LockWindowUpdate
+    export LockWorkStation
+    export LogicalToPhysicalPoint
+    export LogicalToPhysicalPointForPerMonitorDPI
+    export LookupIconIdFromDirectory
+    export LookupIconIdFromDirectoryEx
+    export MBToWCSEx
+    export MapDialogRect
+    export MapVirtualKeyA
+    export MapVirtualKeyExA
+    export MapVirtualKeyExW
+    export MapWindowPoints
+    export MenuItemFromPoint
+    export MenuWindowProcA
+    export MenuWindowProcW
+    export MessageBeep
+    export MessageBoxA
+    export MessageBoxExA
+    export MessageBoxExW
+    export MessageBoxIndirectA
+    export MessageBoxIndirectW
+    export MessageBoxTimeoutA
+    export MessageBoxTimeoutW
+    export ModifyMenuA
+    export ModifyMenuW
+    export MonitorFromPoint
+    export MonitorFromRect
+    export MoveWindow
+    export MsgWaitForMultipleObjects
+    export NotifyWinEvent
+    export OemKeyScan
+    export OemToCharA
+    export OemToCharBuffA
+    export OemToCharBuffW
+    export OemToCharW
+    export OffsetRect
+    export OpenDesktopA
+    export OpenDesktopW
+    export OpenIcon
+    export OpenInputDesktop
+    export OpenWindowStationA
+    export OpenWindowStationW
+    export PackDDElParam
+    export PackTouchHitTestingProximityEvaluation
+    export PaintDesktop
+    export PeekMessageA
+    export PhysicalToLogicalPoint
+    export PhysicalToLogicalPointForPerMonitorDPI
+    export PlaySoundEvent
+    export PostMessageA
+    export PostThreadMessageA
+    export PostThreadMessageW
+    export PrintWindow
+    export PrivateExtractIconExA
+    export PrivateExtractIconExW
+    export PrivateExtractIconsA
+    export PrivateExtractIconsW
+    export PtInRect
+    export QueryDisplayConfig
+    export QuerySendMessage
+    export RealChildWindowFromPoint
+    export RealGetWindowClass
+    export RealGetWindowClassA
+    export RealGetWindowClassW
+    export RedrawWindow
+    export RegisterClassA
+    export RegisterClassExA
+    export RegisterClassExW
+    export RegisterClipboardFormatA
+    export RegisterDeviceNotificationA
+    export RegisterDeviceNotificationW
+    export RegisterHotKey
+    export RegisterLogonProcess
+    export RegisterNetworkCapabilities
+    export RegisterPointerDeviceNotifications
+    export RegisterPowerSettingNotification
+    export RegisterRawInputDevices
+    export RegisterServicesProcess
+    export RegisterShellHookWindow
+    export RegisterSuspendResumeNotification
+    export RegisterSystemThread
+    export RegisterTasklist
+    export RegisterTouchHitTestingWindow
+    export RegisterTouchWindow
+    export RegisterUserApiHook
+    export RegisterWindowMessageA
+    export RegisterWindowMessageW
+    export ReleaseDC
+    export RemoveMenu
+    export RemovePropA
+    export RemovePropW
+    export ReplyMessage
+    export ResetDisplay
+    export ReuseDDElParam
+    export ScrollChildren
+    export ScrollDC
+    export ScrollWindow
+    export ScrollWindowEx
+    export SendDlgItemMessageA
+    export SendDlgItemMessageW
+    export SendIMEMessageExA
+    export SendIMEMessageExW
+    export SendInput
+    export SendMessageA
+    export SendMessageCallbackA
+    export SendMessageCallbackW
+    export SendMessageTimeoutA
+    export SendMessageTimeoutW
+    export SendNotifyMessageA
+    export SendNotifyMessageW
+    export ServerSetFunctionPointers
+    export SetCaretBlinkTime
+    export SetCaretPos
+    export SetClassLongA
+    export SetClassLongPtrA
+    export SetClassLongPtrW
+    export SetClassLongW
+    export SetClassWord
+    export SetClipboardViewer
+    export SetCoalescableTimer
+    export SetCursorContents
+    export SetCursorPos
+    export SetDebugErrorLevel
+    export SetDeskWallpaper
+    export SetDisplayAutoRotationPreferences
+    export SetDisplayConfig
+    export SetDlgItemInt
+    export SetDlgItemTextA
+    export SetDlgItemTextW
+    export SetDoubleClickTime
+    export SetGestureConfig
+    export SetInternalWindowPos
+    export SetKeyboardState
+    export SetLastErrorEx
+    export SetLayeredWindowAttributes
+    export SetLogonNotifyWindow
+    export SetMenu
+    export SetMenuContextHelpId
+    export SetMenuInfo
+    export SetMenuItemBitmaps
+    export SetMenuItemInfoA
+    export SetMessageExtraInfo
+    export SetMessageQueue
+    export SetParent
+    export SetPhysicalCursorPos
+    export SetProcessDPIAware
+    export SetProcessDefaultLayout
+    export SetProcessDpiAwarenessInternal
+    export SetProcessLaunchForegroundPolicy
+    export SetProgmanWindow
+    export SetPropA
+    export SetPropW
+    export SetRect
+    export SetRectEmpty
+    export SetScrollInfo
+    export SetScrollPos
+    export SetScrollRange
+    export SetShellWindow
+    export SetShellWindowEx
+    export SetSysColors
+    export SetSysColorsTemp
+    export SetSystemCursor
+    export SetSystemMenu
+    export SetSystemTimer
+    export SetTaskmanWindow
+    export SetThreadDesktop
+    export SetThreadDpiAwarenessContext
+    export SetThreadDpiHostingBehavior
+    export SetTimer
+    export SetUserObjectInformationA
+    export SetUserObjectInformationW
+    export SetUserObjectSecurity
+    export SetWinEventHook
+    export SetWindowCompositionAttribute
+    export SetWindowContextHelpId
+    export SetWindowDisplayAffinity
+    export SetWindowLongA
+    export SetWindowLongPtrA
+    export SetWindowRgn
+    export SetWindowStationUser
+    export SetWindowTextA
+    export SetWindowTextW
+    export SetWindowWord
+    export SetWindowsHookA
+    export SetWindowsHookExA
+    export SetWindowsHookExW
+    export SetWindowsHookW
+    export ShowCaret
+    export ShowCursor
+    export ShowOwnedPopups
+    export ShowScrollBar
+    export ShowStartGlass
+    export ShowWindowAsync
+    export ShutdownBlockReasonCreate
+    export ShutdownBlockReasonDestroy
+    export SubtractRect
+    export SwapMouseButton
+    export SwitchDesktop
+    export SwitchToThisWindow
+    export SystemParametersInfoA
+    export SystemParametersInfoForDpi
+    export TabbedTextOutA
+    export TabbedTextOutW
+    export TileChildWindows
+    export TileWindows
+    export ToAscii
+    export ToAsciiEx
+    export ToUnicode
+    export ToUnicodeEx
+    export TrackPopupMenuEx
+    export TranslateAccelerator
+    export TranslateAcceleratorA
+    export TranslateAcceleratorW
+    export TranslateMDISysAccel
+    export UnhookWinEvent
+    export UnhookWindowsHook
+    export UnhookWindowsHookEx
+    export UnionRect
+    export UnloadKeyboardLayout
+    export UnlockWindowStation
+    export UnpackDDElParam
+    export UnregisterClassA
+    export UnregisterDeviceNotification
+    export UnregisterHotKey
+    export UnregisterPowerSettingNotification
+    export UnregisterSuspendResumeNotification
+    export UnregisterTouchWindow
+    export UnregisterUserApiHook
+    export UpdateLayeredWindow
+    export UpdateLayeredWindowIndirect
+    export UpdatePerUserSystemParameters
+    export UpdateWindow
+    export User32InitializeImmEntryTable
+    export UserClientDllInitialize
+    export UserHandleGrantAccess
+    export UserRealizePalette
+    export UserRegisterWowHandlers
+    export UserSignalProc
+    export ValidateRect
+    export ValidateRgn
+    export VkKeyScanA
+    export VkKeyScanExA
+    export VkKeyScanExW
+    export VkKeyScanW
+    export WCSToMBEx
+    export WINNLSEnableIME
+    export WINNLSGetEnableStatus
+    export WINNLSGetIMEHotkey
+    export WNDPROC_CALLBACK
+    export WaitForInputIdle
+    export WaitMessage
+    export WinHelpA
+    export WinHelpW
+    export WindowFromDC
+    export WindowFromPhysicalPoint
+    export WindowFromPoint
+    export keybd_event
+    export mouse_event
+    export wsprintfA
+    export wsprintfW
+    export wvsprintfA
+    export wvsprintfW
+    export DelegateInput
+    export UndelegateInput
+    export HandleDelegatedInput
+    export GetProcessUIContextInformation
+    export IsThreadMessageQueueAttached
+    export SetCoreWindow
+    export ShellMigrateWindow
+    export SetAdditionalForegroundBoostProcesses
+    export RegisterForTooltipDismissNotification
+    export RegisterForCustomDockTargets
+    export GetClipboardMetadata
+    export ShellRegisterHotKey
+    export SetUserObjectCapability
+    export SetWindowMessageCapability
+    export ShellForegroundBoostProcess
+    export SuppressWindowActions
+    export GetSuppressedWindowActions
+    export DwmWindowNotificationsEnabled
+    export ApplyWindowAction
+    export RegisterCloakedNotification
+    export SuppressWindowDisplayChange
+    export IsWindowDisplayChangeSuppressed
+    export InternalStartMoveSize
+    export RaiseLowerShellWindow
+    export RegisterPrecisionTouchpadWindow
+    export ShellHandwritingDelegateInput
+    export ShellHandwritingUndelegateInput
+    export ShellHandwritingHandleDelegatedInput
+    export EnableWindowShellWindowManagementBehavior
+}
+
+defaults dll=user32 link=import cc=WINAPI
+
+func ShellExecuteA HINSTANCE dll=shell32 {
+    hwnd HWND
+    lpOperation LPCSTR
+    lpFile LPCSTR
+    lpParameters LPCSTR
+    lpDirectory LPCSTR
+    nShowCmd INT
+}
+func ShellExecuteW HINSTANCE dll=shell32 {
+    hwnd HWND
+    lpOperation LPCWSTR
+    lpFile LPCWSTR
+    lpParameters LPCWSTR
+    lpDirectory LPCWSTR
+    nShowCmd INT
+}
+func LoadImageW HANDLE { hInst HINSTANCE; name LPCWSTR; type UINT; cx int; cy int; fuLoad UINT }
+func LoadCursorW HCURSOR { hInstance HINSTANCE; lpCursorName LPCWSTR }
+func GetKeyState SHORT { nVirtKey int }
+func GetWindowLongPtrW LONG_PTR { hWnd HWND; nIndex int }
+func SetWindowLongPtrW LONG_PTR { hWnd HWND; nIndex int; dwNewLong LONG_PTR }
+func CreateWindowExW HWND {
+    dwExStyle DWORD
+    lpClassName LPCWSTR
+    lpWindowName LPCWSTR
+    dwStyle DWORD
+    X int
+    Y int
+    nWidth int
+    nHeight int
+    hWndParent HWND
+    hMenu HMENU
+    hInstance HINSTANCE
+    lpParam LPVOID
+}
+func ShowWindow BOOL { hWnd HWND; nCmdShow int }
+func SetForegroundWindow BOOL { hWnd HWND }
+func SetActiveWindow HWND { hWnd HWND }
+func SetFocus HWND { hWnd HWND }
+func EnableWindow BOOL { hWnd HWND; bEnable BOOL }
+func IsWindowEnabled BOOL { hWnd HWND }
+func GetWindowRect BOOL { hWnd HWND; lpRect LPRECT }
+func GetClientRect BOOL stub=#false { hWnd HWND; lpRect LPRECT }
+func ClientToScreen BOOL stub=#false { hWnd HWND; lpPoint LPPOINT }
+func ScreenToClient BOOL stub=#false { hWnd HWND; lpPoint LPPOINT }
+func SetWindowLongW LONG { hWnd HWND; nIndex int; dwNewLong LONG }
+func AdjustWindowRect BOOL { lpRect LPRECT; dwStyle DWORD; bMenu BOOL }
+func AdjustWindowRectEx BOOL { lpRect LPRECT; dwStyle DWORD; bMenu BOOL; dwExStyle DWORD }
+func DefWindowProcW LRESULT link=none cc="" { hWnd HWND; Msg UINT; wParam WPARAM; lParam LPARAM }
+func SetWindowPos BOOL {
+    hWnd HWND
+    hWndInsertAfter HWND
+    X int
+    Y int
+    cx int
+    cy int
+    uFlags UINT
+}
+func MonitorFromWindow HANDLE { hwnd HWND; dwFlags DWORD }
+func GetDpiForWindow UINT { hwnd HWND }
+func FlashWindow BOOL { hWnd HWND; bInvert BOOL }
+func GetWindowPlacement BOOL { hWnd HWND; lpwndpl "WINDOWPLACEMENT *" }
+func SetWindowPlacement BOOL { hWnd HWND; lpwndpl "const WINDOWPLACEMENT *" }
+func DestroyWindow BOOL { hWnd HWND }
+func SetCursor HCURSOR { hCursor HCURSOR }
+func RegisterClassW ATOM { lpWndClass "const WNDCLASSW *" }
+// The clipboard. Owned by a WINDOW, which is why the message-only window serves it: OpenClipboard
+// takes one, and the delayed-rendering messages are delivered to whichever window took the selection.
+//
+// OpenClipboard can fail because another process holds the clipboard open - an ordinary outcome, not
+// an error condition, and one a caller has to answer rather than retry forever.
+func OpenClipboard BOOL stub=#false { hWndNewOwner HWND }
+func CloseClipboard BOOL stub=#false empty=void
+func EmptyClipboard BOOL stub=#false empty=void
+// A null hMem declares DELAYED RENDERING: the owner is asked for the bytes with WM_RENDERFORMAT
+// when someone actually pastes. With a handle, the clipboard TAKES OWNERSHIP of it.
+func SetClipboardData HANDLE stub=#false { uFormat UINT; hMem HANDLE }
+func GetClipboardData HANDLE stub=#false { uFormat UINT }
+// Walk with 0 to start; returns 0 when there are no more. Requires an open clipboard.
+func EnumClipboardFormats UINT stub=#false { format UINT }
+func CountClipboardFormats int stub=#false empty=void
+func IsClipboardFormatAvailable BOOL stub=#false { format UINT }
+// Registers a format by NAME, which is how a MIME type reaches the Windows clipboard at all. The id
+// is stable for the session and the same for every process that asks for the same name.
+func RegisterClipboardFormatW UINT stub=#false { lpszFormat LPCWSTR }
+func GetClipboardFormatNameW int stub=#false { format UINT; lpszFormatName LPWSTR; cchMaxCount int }
+func GetClipboardOwner HWND stub=#false empty=void
+// WM_CLIPBOARDUPDATE for as long as the window is listening.
+func AddClipboardFormatListener BOOL stub=#false { hwnd HWND }
+func RemoveClipboardFormatListener BOOL stub=#false { hwnd HWND }
+func GetClipboardSequenceNumber DWORD stub=#false empty=void
+func UnregisterClassW BOOL { lpClassName LPCWSTR; hInstance HINSTANCE }
+func GetSystemMenu HMENU { hWnd HWND; bRevert BOOL }
+func SetMenuItemInfoW BOOL { hmenu HMENU; item UINT; fByPositon BOOL; lpmii LPCMENUITEMINFOW }
+func SetMenuDefaultItem BOOL { hMenu HMENU; uItem UINT; fByPos UINT }
+func TrackPopupMenu BOOL {
+    hMenu HMENU
+    uFlags UINT
+    x int
+    y int
+    nReserved int
+    hWnd HWND
+    prcRect "const RECT *"
+}
+// An empty popup menu, and the call that frees it.
+//
+// Not only for menus that are shown: IContextMenu::QueryContextMenu wants somewhere to put the verbs
+// it finds, and it is what puts a shell verb handler into a state where InvokeCommand works - so a
+// caller that only ever invokes a verb by name still needs a menu to hand it. DestroyMenu releases
+// the handle and everything QueryContextMenu put in it.
+func CreatePopupMenu HMENU stub=#false empty=VOID
+func DestroyMenu BOOL stub=#false { hMenu HMENU }
+func DwmExtendFrameIntoClientArea HRESULT dll=dwmapi { hWnd HWND; pMarInset "const MARGINS *" }
+func GetCapture HWND empty=VOID
+func SetCapture HWND { hWnd HWND }
+func ReleaseCapture BOOL empty=VOID
+func TrackMouseEvent BOOL { lpEventTrack LPTRACKMOUSEEVENT }
+func MapVirtualKeyW UINT { uCode UINT; uMapType UINT }
+func MessageBoxW int { hWnd HWND; lpText LPCWSTR; lpCaption LPCWSTR; uType UINT }
+// Icon construction (window icons). CreateBitmap/DeleteObject are gdi32, the rest user32.
+//
+// CreateBitmap with nPlanes 1 and nBitCount 32 takes a BGRA pixel array directly - no HDC, no
+// BITMAPINFO, no CreateDIBSection - and the alpha survives into CreateIconIndirect. Note the rows
+// are bottom-up, as for any DDB.
+func CreateBitmap HBITMAP dll=gdi32 stub=#false {
+    nWidth int
+    nHeight int
+    nPlanes UINT
+    nBitCount UINT
+    lpBits "const VOID *"
+}
+func DeleteObject BOOL dll=gdi32 stub=#false { ho HANDLE }
+// The returned HICON is owned by the caller: WM_SETICON does not adopt it, so it must be
+// DestroyIcon'd once the window that uses it is gone.
+func CreateIconIndirect HICON stub=#false { piconinfo PICONINFO }
+func DestroyIcon BOOL stub=#false { hIcon HICON }

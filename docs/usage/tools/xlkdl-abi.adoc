@@ -277,6 +277,13 @@ definition of X goes last, so that the others still see their condition.
 and arm64, as Objective-C, Objective-C++, C and C++, against the installed `+open` sysroot with the
 overlay before and after the split copied over it, and compares macros, declarations and layouts.
 
+## Functions
+
+Functions are not ABI and have descriptions of their own: `runtime/kdl/api`, whose map loads this
+one for its types. `xlkdl api` writes from them the API headers, the umbrella headers of
+`include_libc`, and the `.def`, loader table and wrappers of each Windows DLL. See
+`docs/usage/tools/xlkdl-api.adoc`. Here a function stays a `decl`: a declaration written as C.
+
 ## Finding a name
 
     xlkdl abi --map runtime/kdl/abi/sprt.kdl --find NAME [--find NAME...]

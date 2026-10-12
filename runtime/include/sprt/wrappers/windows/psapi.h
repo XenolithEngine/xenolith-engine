@@ -27,21 +27,7 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-__SPRT_WIN_IMPORT WINAPI DWORD GetModuleFileNameExW(HANDLE hProcess, HMODULE hModule,
-		LPWSTR lpFilename, DWORD nSize);
-
-__SPRT_WIN_IMPORT WINAPI DWORD GetModuleFileNameExA(HANDLE hProcess, HMODULE hModule,
-		LPSTR lpFilename, DWORD nSize);
-
-__SPRT_WIN_IMPORT WINAPI DWORD GetMappedFileNameW(HANDLE hProcess, LPVOID lpv, LPWSTR lpFilename,
-		DWORD nSize);
-
-__SPRT_WIN_IMPORT WINAPI DWORD GetMappedFileNameA(HANDLE hProcess, LPVOID lpv, LPSTR lpFilename,
-		DWORD nSize);
-
-__SPRT_WIN_IMPORT WINAPI DWORD GetMappedFileNameA(HANDLE hProcess, LPVOID lpv, LPSTR lpFilename,
-		DWORD nSize);
-
+#include <sprt/gen/wrappers/windows/api/psapi.h>
 #ifdef UNICODE
 #define GetModuleFileNameEx GetModuleFileNameExW
 #else

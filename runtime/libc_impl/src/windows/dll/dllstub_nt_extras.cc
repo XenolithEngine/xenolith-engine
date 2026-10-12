@@ -218,11 +218,11 @@ WINAPI BOOL GetProcessAffinityMask(HANDLE hProcess, PDWORD_PTR lpProcessAffinity
    still comes from GetLogicalProcessorInformationEx, which wine implements correctly -
    this only restores the group list it refuses to report.
 
-   Lives here, not in dllstub2_kernelbase.cc: that file is compiled only when the runtime
-   provides the Win32 surface itself (!__SPRT_WIN_USE_IMPORT_LIB). This one has to exist
-   in both configurations, since the name is deliberately absent from
-   wrappers/windows/def/kernelbase.def - were it listed there, a consumer would bind
-   straight to kernelbase.dll and never reach this wrapper. */
+   Lives here, not among the generated kernelbase wrappers (gen/dllstub2_kernelbase.cc): those
+   are compiled only when the runtime provides the Win32 surface itself
+   (!__SPRT_WIN_USE_IMPORT_LIB). This one has to exist in both configurations, since the name
+   is meant to be absent from the kernelbase .def (runtime/kdl/api) - were it listed there, a
+   consumer would bind straight to kernelbase.dll and never reach this wrapper. */
 WINAPI BOOL GetProcessGroupAffinity(HANDLE hProcess, PUSHORT GroupCount, PUSHORT GroupArray) {
 	typedef BOOL(WINAPI * Fn)(HANDLE, PUSHORT, PUSHORT);
 	static sprt::qonce s_once;

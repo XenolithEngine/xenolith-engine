@@ -40,12 +40,6 @@ THE SOFTWARE.
 #define MAXIMUM_REPARSE_DATA_BUFFER_SIZE __SPRT_MAXIMUM_REPARSE_DATA_BUFFER_SIZE
 #define SYMLINK_FLAG_RELATIVE            __SPRT_SYMLINK_FLAG_RELATIVE
 
-__SPRT_BEGIN_DECL
-
-__SPRT_WIN_IMPORT WINAPI BOOL DeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode,
-		LPVOID lpInBuffer, DWORD nInBufferSize, LPVOID lpOutBuffer, DWORD nOutBufferSize,
-		LPDWORD lpBytesReturned, LPOVERLAPPED lpOverlapped);
-
-__SPRT_END_DECL
+#include <sprt/gen/wrappers/windows/api/winioctl.h>
 
 #endif // SPRT_WRAPPERS_WINDOWS_WINIOCTL_H_

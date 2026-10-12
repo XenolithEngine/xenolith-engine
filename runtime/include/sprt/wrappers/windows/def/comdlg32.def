@@ -1,5 +1,0 @@
-LIBRARY comdlg32.dll
-EXPORTS
-	ChooseColorW
-	ChooseFontW
-	CommDlgExtendedError

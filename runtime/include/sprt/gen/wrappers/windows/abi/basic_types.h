@@ -132,7 +132,7 @@ typedef int BOOL;
 typedef int *LPBOOL;
 typedef BYTE BOOLEAN;
 typedef BOOLEAN *PBOOLEAN;
-typedef int (*FARPROC)(void);
+typedef INT_PTR (*FARPROC)();
 
 #if defined(__cplusplus)
 typedef wchar_t WCHAR;

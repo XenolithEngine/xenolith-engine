@@ -1,0 +1,9 @@
+// The functions of include/sprt/wrappers/windows/shellapi.h, written to
+// sprt/gen/wrappers/windows/api/shellapi.h.
+
+defaults dll=shell32 link=import cc=WINAPI
+
+// The pre-Vista file operation. IFileOperation superseded it, but this one is still supported and
+// is the only shell delete some hosts implement, so it stays as a fallback. Returns 0 on success;
+// the non-zero codes are its own, not GetLastError's.
+func SHFileOperationW int stub=#false { lpFileOp LPSHFILEOPSTRUCTW }

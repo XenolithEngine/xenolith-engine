@@ -37,9 +37,71 @@ scope with `<winsock2.h>`: `__SPRT_BUILD` namespaces the core structs as
 types, letting both live in one TU. (This check caught `struct linger` being
 declared with POSIX `int` fields instead of winsock's `u_short`.)
 
+The per-file `check-<name>.cpp` TUs (via [`abi_check.h`](abi_check.h)) pin each
+`wrappers/windows/abi/<name>.h` header against the SDK the same way — integer
+constants by value, structs by size and field offsets.
+
 It is **compile-time only** — nothing is linked or run. A clean parse means every
 checked constant matches; a failing `static_assert` names the diverging constant
 and prints both values.
+
+## Function signatures: `check-api-<name>.cpp` + [`api_check.h`](api_check.h)
+
+The generated **api** headers (`runtime/include/sprt/gen/wrappers/windows/api/*.h`)
+declare the Win32 entry points themselves, and a wrong generated signature is a
+link error at best and silent argument garbage at worst. One `check-api-<name>.cpp`
+per api header pins every declared function against the SDK: presence on **both**
+sides, and *ABI-signature* equality, through one `SPRT_FN(Name);` line each.
+
+Each TU pulls the api header in first inside `namespace sprt_api` (the same
+namespacing trick as `abi_check.h`, so the two sides' struct tags stay nominally
+distinct), then the SDK headers, then asserts
+`__is_same(&sprt_api::F, &::F) || sprt_abi_signature<...>::value`. Making that
+comparison honest takes three deliberate moves, all in `api_check.h`:
+
+- **C linkage is neutralized** (`__SPRT_BEGIN_DECL`/`__SPRT_END_DECL`/`__SPRT_C_FUNC`
+  redefined empty after a pre-include of `__sprt_def.h`). Otherwise the wrapper's
+  `extern "C"` declarations and the SDK's would merge as *the same* entity across
+  the namespace, and clang would reject every spelling difference — starting with
+  the deliberate `typedef DWORD NTSTATUS` — as "conflicting types" before any
+  assert could run. (`__WSAFDIsSet`, spelled `extern "C"` literally in the
+  generated fdset.h, is renamed around the api block for the same reason.)
+- **Calling conventions compare for free**: `WINAPI`/`__stdcall` collapses into
+  the plain function-pointer type on x86_64/aarch64-pc-windows-msvc.
+- **`sprt_abi_signature` spells out what "same ABI signature" means** rather than
+  requiring identical C types:
+  - *return*: identical, or integers of equal width (the wrapper spells the
+    NTSTATUS/HRESULT/LSTATUS family as `DWORD` where the SDK spells `LONG`; the
+    bits are what cross the ABI, and `SPRT_STATUS` pins the constants the same way);
+  - *parameters*: identical types — width, signedness, pointee type and cv are all
+    API surface and stay strict — with four equivalences: enum-vs-integer of equal
+    width (the generator spells SDK enums as fixed-width integers: `MINIDUMP_TYPE`,
+    `FILE_INFO_BY_HANDLE_CLASS`, …), struct pointers and by-value structs by size
+    (the tags are nominally distinct by construction; the *field layout* is what the
+    per-module `SPRT_SIZE`/`SPRT_OFFSET` asserts pin), erased object pointers
+    (`HANDLE` is `void *` in the wrapper and `struct HINSTANCE__ *` in the SDK;
+    `PSID` is the reverse), and either side opaque (forward-declared only:
+    `IUnknown`, `MINIDUMP_USER_STREAM_INFORMATION`, …). Callback parameters recurse
+    into the same rules.
+  - `__declspec(noreturn)` (ExitThread/ExitProcess) models as a function-type
+    attribute no partial specialization matches; the assert accepts it through
+    `__is_constructible` one way, which only ever drops the attribute.
+
+**Not pinned, by absence of a declaration to pin against:** the ntdll entry
+points the wrapper reaches below the SDK (`NtContinueEx` in context_api,
+`NtClose`/`NtQueryObject`/`NtCreateWaitCompletionPacket`/… in windows — they live
+in `def/ntdll.def`, not in any public header) and `SetProcessDpiAwareness`
+(shcore.h is not vendored by the xwin splat). Each is listed as a skipped assert
+in its TU with a comment.
+
+This layer has already paid for itself: it caught `timeEndPeriod` returning
+`VOID` instead of `UINT`, `FindFirstFileA` taking `LPWIN32_FIND_DATAW` instead of
+`LPWIN32_FIND_DATAA`, `CoSetProxyBlanket`'s server principal name spelled
+`LPCWSTR` where the SDK takes a mutable `LPWSTR`, `FARPROC` declared as
+`int (*)(void)` instead of `INT_PTR (*)()` (a truncating 32-bit return through
+which every `GetProcAddress` result flows), and the byte-packing missing from
+com_cxx.hpp's `_SHITEMID`/`_ITEMIDLIST` (the SDK packs them to 3 bytes under
+`pshpack1.h`).
 
 ## Run
 

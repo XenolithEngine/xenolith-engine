@@ -1,8 +1,0 @@
-LIBRARY rpcrt4.dll
-EXPORTS
-	UuidCreate
-	UuidCreateSequential
-	UuidToStringA
-	UuidToStringW
-	RpcStringFreeA
-	RpcStringFreeW

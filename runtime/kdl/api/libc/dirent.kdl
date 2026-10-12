@@ -1,0 +1,31 @@
+// The functions of include/sprt/c/__sprt_dirent.h, written to sprt/gen/c/api/__sprt_dirent.h and,
+// with their public names, to sprt/gen/c/umbrella/dirent.h.
+
+defaults link=sprt
+
+func opendir "DIR *" { __path "const char *" }
+func fdopendir "DIR *" { __dir_fd int }
+func readdir "struct dirent *" { __dir "DIR *" }
+func closedir int { __dir "DIR *" }
+func rewinddir int { __dir "DIR *" }
+func seekdir int { __dir "DIR *"; __location long }
+func telldir long { __dir "DIR *" }
+func dirfd int { __dir "DIR *" }
+func alphasort int { __lhs "const struct dirent **"; __rhs "const struct dirent **" }
+func versionsort int umbrella=#false {
+    __lhs "const struct dirent **"
+    __rhs "const struct dirent **"
+}
+func scandir int {
+    __path "const char *"
+    __name_list "struct dirent ***"
+    __filter "int (*)(const struct dirent *)"
+    __comparator "int (*)(const struct dirent **, const struct dirent **)"
+}
+func scandirat int {
+    __dir_fd int
+    __path "const char *"
+    __name_list "struct dirent ***"
+    __filter "int (*)(const struct dirent *)"
+    __comparator "int (*)(const struct dirent **, const struct dirent **)"
+}

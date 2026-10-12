@@ -437,52 +437,6 @@ THE SOFTWARE.
 #define QS_ALLINPUT __SPRT_QS_ALLINPUT
 
 
-__SPRT_BEGIN_DECL
-
-__SPRT_WIN_IMPORT WINAPI DWORD FormatMessageW(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId,
-		DWORD dwLanguageId, LPWSTR lpBuffer, DWORD nSize, __builtin_va_list *Arguments);
-
-__SPRT_WIN_IMPORT WINAPI DWORD FormatMessageA(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId,
-		DWORD dwLanguageId, LPSTR lpBuffer, DWORD nSize, __builtin_va_list *Arguments);
-
-/* Companion to FormatMessage*: the language list it should be asked to render
-   a message in. dwFlags selects MUI_LANGUAGE_ID or MUI_LANGUAGE_NAME, and
-   pwszLanguagesBuffer receives a double-null-terminated list. */
-__SPRT_WIN_IMPORT WINAPI BOOL GetUserPreferredUILanguages(DWORD dwFlags, PULONG pulNumLanguages,
-		PZZWSTR pwszLanguagesBuffer, PULONG pcchLanguagesBuffer);
-
-__SPRT_WIN_IMPORT WINAPI LRESULT SendMessageW(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
-
-__SPRT_WIN_IMPORT WINAPI BOOL PostMessageW(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
-
-__SPRT_WIN_IMPORT WINAPI VOID PostQuitMessage(int nExitCode);
-
-__SPRT_WIN_IMPORT WINAPI BOOL PeekMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin,
-		UINT wMsgFilterMax, UINT wRemoveMsg);
-
-__SPRT_WIN_IMPORT WINAPI BOOL TranslateMessage(const MSG *lpMsg);
-
-__SPRT_WIN_IMPORT WINAPI LRESULT DispatchMessageW(const MSG *lpMsg);
-
-__SPRT_WIN_IMPORT WINAPI LONG GetMessageTime(VOID);
-
-__SPRT_WIN_IMPORT WINAPI DWORD MsgWaitForMultipleObjectsEx(DWORD nCount, const HANDLE *pHandles,
-		DWORD dwMilliseconds, DWORD dwWakeMask, DWORD dwFlags);
-
-__SPRT_WIN_IMPORT WINAPI BOOL GetSystemPowerStatus(LPSYSTEM_POWER_STATUS lpSystemPowerStatus);
-
-__SPRT_WIN_IMPORT WINAPI HRESULT GetCurrentThemeName(LPWSTR pszThemeFileName, int cchMaxNameChars,
-		LPWSTR pszColorBuff, int cchMaxColorChars, LPWSTR pszSizeBuff, int cchMaxSizeChars);
-
-__SPRT_WIN_IMPORT WINAPI int GetSystemMetrics(int nIndex);
-
-__SPRT_WIN_IMPORT WINAPI BOOL SystemParametersInfoW(UINT uiAction, UINT uiParam, PVOID pvParam,
-		UINT fWinIni);
-
-__SPRT_WIN_IMPORT WINAPI HANDLE GetStockObject(int i);
-
-__SPRT_WIN_IMPORT WINAPI int GetObjectW(HANDLE h, int c, LPVOID pv);
-
-__SPRT_END_DECL
+#include <sprt/gen/wrappers/windows/api/message_api.h>
 
 #endif // SPRT_WRAPPERS_WINDOWS_MESSAGE_API_H_

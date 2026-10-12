@@ -1,0 +1,572 @@
+// The functions of include/sprt/wrappers/windows/windows.h, written to
+// sprt/gen/wrappers/windows/api/windows.h.
+
+dll ole32 file="ole32.dll" {
+    export CoCreateInstance def=#true
+    export CoInitialize def=#true
+    export CoInitializeEx def=#true
+    export CoUninitialize def=#true
+    export CoTaskMemAlloc def=#true
+    export CoTaskMemRealloc def=#true
+    export CoTaskMemFree def=#true
+    export CoGetMalloc def=#true
+    export StringFromGUID2 def=#true
+}
+
+// uuid.lib is a *static* GUID library in the Windows SDK, not a DLL import lib.
+// The only named GUIDs LLVM references (CLSID_FileOperation, FOLDERID_Profile,
+// FOLDERID_LocalAppData) are already provided inline/static by the sprt Windows
+// wrappers (com_cxx.hpp, shlobj.h), so nothing here is actually pulled at link
+// time.
+dll uuid file="uuid.dll"
+
+defaults dll=kernel32 link=import cc=WINAPI
+
+//
+// Waits for the specified object to be signaled or for the time-out interval to elapse.
+// @param hHandle Handle to the object.
+// @param dwMilliseconds Time-out interval in milliseconds (INFINITE = wait forever).
+// @return One of WAIT_OBJECT_0, WAIT_ABANDONED, WAIT_TIMEOUT, or WAIT_FAILED.
+// @see https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitsingleobject
+//
+func WaitForSingleObject DWORD dll=kernelbase { hHandle HANDLE; dwMilliseconds DWORD }
+func WaitForSingleObjectEx DWORD dll=kernelbase {
+    hHandle HANDLE
+    dwMilliseconds DWORD
+    bAlertable BOOL
+}
+//
+// Opens the access token associated with a process.
+// @param ProcessHandle Handle to a process object.
+// @param DesiredAccess Access mode for the token.
+// @param TokenHandle Pointer to receive opened token handle.
+// @return TRUE on success, FALSE on failure.
+// @see https://docs.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-openprocesstoken
+//
+func OpenProcessToken BOOL dll=advapi32 {
+    ProcessHandle HANDLE
+    DesiredAccess DWORD
+    TokenHandle PHANDLE
+}
+//
+// Retrieves specified information about a security token.
+// @param TokenHandle Handle to a token object.
+// @param TokenInformationClass Type of information to retrieve.
+// @param TokenInformation Buffer for returned information.
+// @param TokenInformationLength Size of the buffer in bytes.
+// @param ReturnLength Pointer to receive actual bytes returned.
+// @return TRUE on success, FALSE on failure.
+// @see https://docs.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation
+//
+func GetTokenInformation BOOL dll=advapi32 {
+    TokenHandle HANDLE
+    TokenInformationClass TOKEN_INFORMATION_CLASS
+    TokenInformation LPVOID
+    TokenInformationLength DWORD
+    ReturnLength PDWORD
+}
+// ---- Process Snapshot (tlhelp32.h) ----
+//
+// Retrieves information about the first process encountered in a system snapshot.
+// @param hSnapshot Handle to the snapshot returned by CreateToolhelp32Snapshot.
+// @param lpEntry Pointer to PROCESSENTRY32 structure.
+// @return TRUE on success, FALSE on failure.
+// @see https://docs.microsoft.com/en-us/windows/win32/api/tlhelp32/nf-tlhelp32-process32firstw
+//
+func Process32FirstW BOOL { hSnapshot HANDLE; lpEntry LPPROCESSENTRY32W }
+func Process32NextW BOOL { hSnapshot HANDLE; lppe LPPROCESSENTRY32W }
+// ---- User Environment (winbase.h) ----
+//
+// Retrieves the user name associated with the current thread of execution.
+// @param lpBuffer Buffer to receive the user name.
+// @param lpnSize On input, size of buffer in characters; on output, characters written.
+// @return TRUE on success, FALSE on failure.
+// @see https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getusernamew
+//
+func GetUserNameW BOOL dll=advapi32 { lpBuffer LPWSTR; lpnSize LPDWORD }
+// ---- Timer Services (winbase.h) ----
+//
+// Creates a waitable timer object.
+// @param lpAttributes Security attributes (NULL = default).
+// @param bManualReset TRUE for manual reset, FALSE for automatic reset.
+// @param lpTimerName Name of the timer object.
+// @return Handle to the new timer object, or NULL on failure.
+// @see https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-creatwaitabletimerw
+//
+func CreateWaitableTimerW HANDLE {
+    lpAttributes LPSECURITY_ATTRIBUTES
+    bManualReset BOOL
+    lpTimerName LPCWSTR
+}
+func CreateWaitableTimerExW HANDLE dll=kernelbase {
+    lpTimerAttributes LPSECURITY_ATTRIBUTES
+    lpTimerName LPCWSTR
+    dwFlags DWORD
+    dwDesiredAccess DWORD
+}
+//
+// Sets a waitable timers state.
+// @param hTimer Handle to the timer object.
+// @param ftDueTime Time at which to signal the timer (negative = relative).
+// @param dwPeriod Period between signals in milliseconds (0 = single-shot).
+// @param lpCompletionRoutine Completion routine (NULL = no callback).
+// @param lpArgument Argument for completion routine.
+// @param fResume TRUE to resume system from low-power state.
+// @return TRUE on success, FALSE on failure.
+// @see https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-setwaitabletimer
+//
+func SetWaitableTimer BOOL {
+    hTimer HANDLE
+    ftDueTime "const LARGE_INTEGER *"
+    dwPeriod LONG
+    lpCompletionRoutine PTIMERAPCROUTINE
+    lpArgument LPVOID
+    fResume BOOL
+}
+func SetWaitableTimerEx BOOL dll=kernelbase {
+    hTimer HANDLE
+    lpDueTime "const LARGE_INTEGER *"
+    lPeriod LONG
+    pfnCompletionRoutine PTIMERAPCROUTINE
+    lpArgToCompletionRoutine LPVOID
+    WakeContext PREASON_CONTEXT
+    TolerableDelay ULONG
+}
+func CancelWaitableTimer BOOL { hTimer HANDLE }
+// ---- PSAPI (psapi.h) ----
+//
+// Retrieves a list of module handles for the specified process.
+// @param hProcess Handle to the process.
+// @param lphModule Array to receive module handles.
+// @param cb Size of the array in bytes.
+// @param lpcbNeeded Pointer to receive bytes needed.
+// @return TRUE on success, FALSE on failure.
+// @see https://docs.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-enumprocessmodules
+//
+func EnumProcessModules BOOL dll=kernelbase {
+    hProcess HANDLE
+    lphModule "HMODULE *"
+    cb DWORD
+    lpcbNeeded LPDWORD
+}
+//
+// Extended working set query for memory monitoring.
+// @param hProcess Handle to the process.
+// @param pWsInfo Pointer to working set information buffer.
+// @param cb Size of the buffer in bytes.
+// @return TRUE on success, FALSE on failure.
+// @see https://docs.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-queryworkingsetchain
+//
+func QueryWorkingSetEx BOOL dll=kernelbase { hProcess HANDLE; pWsInfo PVOID; cb DWORD }
+//
+// Opens the specified registry key. If the key does not exist, it is created.
+// @param hKey Handle to an open key, or one of the following predefined values:
+// HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, etc.
+// @param lpSubKey Null-terminated string specifying the name of the subkey to open.
+// @param Reserved Reserved; must be zero.
+// @param samDesired Access mode for the key.
+// @param phkResult Pointer to a handle that identifies the opened key.
+// @return ERROR_SUCCESS if successful, or a Win32 error code otherwise.
+// @see https://docs.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regopenkeyexw
+//
+func RegOpenKeyExW LONG {
+    hKey HKEY
+    lpSubKey LPCWSTR
+    Reserved DWORD
+    samDesired DWORD
+    phkResult PHANDLE
+}
+func RegOpenKeyExA LONG stub=#false {
+    hKey HKEY
+    lpSubKey LPCSTR
+    ulOptions DWORD
+    samDesired DWORD
+    phkResult PHANDLE
+}
+func RegQueryValueExW LSTATUS dll=advapi32 stub=#false {
+    hKey HKEY
+    lpValueName LPCWSTR
+    lpReserved LPDWORD
+    lpType LPDWORD
+    lpData LPBYTE
+    lpcbData LPDWORD
+}
+func RegQueryValueExA LSTATUS dll=advapi32 stub=#false {
+    hKey HKEY
+    lpValueName LPCSTR
+    lpReserved LPDWORD
+    lpType LPDWORD
+    lpData LPBYTE
+    lpcbData LPDWORD
+}
+func RegEnumKeyExA LSTATUS dll=advapi32 stub=#false {
+    hKey HKEY
+    dwIndex DWORD
+    lpName LPSTR
+    lpcchName LPDWORD
+    lpReserved LPDWORD
+    lpClass LPSTR
+    lpcchClass LPDWORD
+    lpftLastWriteTime PFILETIME
+}
+func RegEnumKeyExW LSTATUS dll="" {
+    hKey HKEY
+    dwIndex DWORD
+    lpName LPWSTR
+    lpcchName LPDWORD
+    lpReserved LPDWORD
+    lpClass LPWSTR
+    lpcchClass LPDWORD
+    lpftLastWriteTime PFILETIME
+}
+//
+// Retrieves data from a specified registry value.
+// @param hKey Handle to an open key, or one of the predefined values.
+// @param lpValueName Null-terminated string specifying the name of the registry value.
+// @param dwFlags Flags controlling retrieval (e.g., RRF_RT_REG_SZ).
+// @param lpType Pointer to a variable that receives the type of data stored.
+// @param lpData Buffer that receives the copied value.
+// @param lpcbData Pointer to a variable specifying the size of the buffer in bytes.
+// @return ERROR_SUCCESS if successful, or a Win32 error code otherwise.
+// @see https://docs.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-reggetvaluew
+//
+func RegGetValueW LSTATUS {
+    hkey HKEY
+    lpSubKey LPCWSTR
+    lpValue LPCWSTR
+    dwFlags DWORD
+    pdwType LPDWORD
+    pvData PVOID
+    pcbData LPDWORD
+}
+func RegEnumValueW LSTATUS {
+    hKey HKEY
+    dwIndex DWORD
+    lpValueName LPWSTR
+    lpcchValueName LPDWORD
+    lpReserved LPDWORD
+    lpType LPDWORD
+    lpData LPBYTE
+    lpcbData LPDWORD
+}
+//
+// Closes a registry key handle.
+// @param hKey Handle to the registry key to close.
+// @return ERROR_SUCCESS if successful, or a Win32 error code otherwise.
+// @see https://docs.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regclosekey
+//
+func RegCloseKey LONG { hKey HKEY }
+func ExpandEnvironmentStringsW DWORD stub=#false { lpSrc LPCWSTR; lpDst LPWSTR; nSize DWORD }
+//
+// Retrieves the name of the local computer.
+// @param lpBuffer Buffer to receive the computer name.
+// @param nSize On input, size of buffer in characters; on output, characters written.
+// @return TRUE on success, FALSE on failure.
+// @see https://docs.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getcomputernamew
+//
+func GetComputerNameW BOOL { lpBuffer LPWSTR; nSize LPDWORD }
+//
+// Retrieves information about the processor architecture and other system details.
+// @param pSystemInfo Pointer to a SYSTEM_INFO structure that receives the information.
+// @see https://docs.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getnativesysteminfo
+//
+func GetNativeSystemInfo void dll=kernelbase { pSystemInfo LPSYSTEM_INFO }
+func GetSystemInfo void dll=kernelbase { lpSystemInfo LPSYSTEM_INFO }
+func GetActiveProcessorCount DWORD { GroupNumber WORD }
+func GetLogicalProcessorInformation BOOL {
+    Buffer PSYSTEM_LOGICAL_PROCESSOR_INFORMATION
+    ReturnedLength PDWORD
+}
+func SetFileTime BOOL dll=kernelbase stub=#false {
+    hFile HANDLE
+    lpCreationTime "const FILETIME *"
+    lpLastAccessTime "const FILETIME *"
+    lpLastWriteTime "const FILETIME *"
+}
+func FindFirstFileExW HANDLE dll=kernelbase stub=#false {
+    lpFileName LPCWSTR
+    fInfoLevelId FINDEX_INFO_LEVELS
+    lpFindFileData LPVOID
+    fSearchOp FINDEX_SEARCH_OPS
+    lpSearchFilter LPVOID
+    dwAdditionalFlags DWORD
+}
+func GetLogicalProcessorInformationEx BOOL dll=kernelbase stub=#false {
+    RelationshipType LOGICAL_PROCESSOR_RELATIONSHIP
+    Buffer PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX
+    ReturnedLength PDWORD
+}
+func FlushInstructionCache BOOL dll=kernelbase stub=#false {
+    hProcess HANDLE
+    lpBaseAddress LPCVOID
+    dwSize SIZE_T
+}
+func GetLargePageMinimum SIZE_T dll=kernelbase stub=#false empty=VOID
+func GetLongPathNameW DWORD dll=kernelbase stub=#false {
+    lpszShortPath LPCWSTR
+    lpszLongPath LPWSTR
+    cchBuffer DWORD
+}
+func CreateJobObjectW HANDLE { lpJobAttributes LPSECURITY_ATTRIBUTES; lpName LPCWSTR }
+func AssignProcessToJobObject BOOL { hJob HANDLE; hProcess HANDLE }
+func SetInformationJobObject BOOL {
+    hJob HANDLE
+    JobObjectInformationClass JOBOBJECTINFOCLASS
+    lpJobObjectInformation LPVOID
+    cbJobObjectInformationLength DWORD
+}
+func GetThreadId DWORD dll=kernelbase stub=#false { Thread HANDLE }
+// Exported by the runtime, not imported from the system.
+//
+// These three are defined in libc_impl/src/windows/dll/dllstub_nt_extras.cc and are
+// deliberately absent from def/kernel32.def and def/kernelbase.def - were they listed
+// there, a consumer would bind straight to kernelbase.dll and never reach the wrapper.
+// Each wrapper resolves the system export dynamically and forwards to it where it
+// behaves; where it does not (wine has no GetProcessAffinityMask/SetProcessAffinityMask
+// export at all, so a direct bind aborts the process, and its GetProcessGroupAffinity
+// breaks the two-call protocol) it degrades to a documented failure or a substitute.
+func GetProcessAffinityMask BOOL link=sprt dll=kernelbase stub="manual" table=#false {
+    hProcess HANDLE
+    lpProcessAffinityMask PDWORD_PTR
+    lpSystemAffinityMask PDWORD_PTR
+}
+func SetProcessAffinityMask BOOL link=sprt dll=kernelbase stub="manual" table=#false {
+    hProcess HANDLE
+    dwProcessAffinityMask DWORD_PTR
+}
+func GetProcessGroupAffinity BOOL link=sprt dll=kernelbase stub="manual" {
+    hProcess HANDLE
+    GroupCount PUSHORT
+    GroupArray PUSHORT
+}
+func SetThreadGroupAffinity BOOL dll=kernelbase stub=#false {
+    hThread HANDLE
+    GroupAffinity "const GROUP_AFFINITY *"
+    PreviousGroupAffinity PGROUP_AFFINITY
+}
+func GetThreadGroupAffinity BOOL dll=kernelbase stub=#false {
+    hThread HANDLE
+    GroupAffinity PGROUP_AFFINITY
+}
+func SearchPathW DWORD dll=kernelbase stub=#false {
+    lpPath LPCWSTR
+    lpFileName LPCWSTR
+    lpExtension LPCWSTR
+    nBufferLength DWORD
+    lpBuffer LPWSTR
+    lpFilePart "LPWSTR *"
+}
+func SearchPathA DWORD stub=#false {
+    lpPath LPCSTR
+    lpFileName LPCSTR
+    lpExtension LPCSTR
+    nBufferLength DWORD
+    lpBuffer LPSTR
+    lpFilePart "LPSTR *"
+}
+func GlobalMemoryStatusEx BOOL { lpBuffer LPMEMORYSTATUSEX }
+func GetComputerNameExW BOOL { NameType COMPUTER_NAME_FORMAT; lpBuffer LPWSTR; nSize LPDWORD }
+func SetErrorMode UINT dll=kernelbase { uMode UINT }
+func GetErrorMode UINT stub=#false empty=void
+func CreateMemoryResourceNotification HANDLE stub=#false {
+    NotificationType MEMORY_RESOURCE_NOTIFICATION_TYPE
+}
+func QueryMemoryResourceNotification BOOL dll="" {
+    ResourceNotificationHandle HANDLE
+    ResourceState "BOOL *"
+}
+func CreateIoCompletionPort HANDLE {
+    FileHandle HANDLE
+    ExistingCompletionPort HANDLE
+    CompletionKey ULONG_PTR
+    NumberOfConcurrentThreads DWORD
+}
+func GetQueuedCompletionStatusEx BOOL {
+    CompletionPort HANDLE
+    lpCompletionPortEntries LPOVERLAPPED_ENTRY
+    ulCount ULONG
+    ulNumEntriesRemoved PULONG
+    dwMilliseconds DWORD
+    fAlertable BOOL
+}
+func PostQueuedCompletionStatus BOOL {
+    CompletionPort HANDLE
+    dwNumberOfBytesTransferred DWORD
+    dwCompletionKey ULONG_PTR
+    lpOverlapped LPOVERLAPPED
+}
+func NtClose NTSTATUS dll=ntdll stub="manual" { Handle HANDLE }
+func NtQueryObject NTSTATUS dll=ntdll stub=#false {
+    Handle HANDLE
+    ObjectInformationClass int
+    ObjectInformation PVOID
+    ObjectInformationLength ULONG
+    ReturnLength PULONG
+}
+func LCMapStringEx int {
+    lpLocaleName LPCWSTR
+    dwMapFlags DWORD
+    lpSrcStr LPCWSTR
+    cchSrc int
+    lpDestStr LPWSTR
+    cchDest int
+    lpVersionInformation LPNLSVERSIONINFO
+    lpReserved LPVOID
+    sortHandle LPARAM
+}
+func CompareStringEx int {
+    lpLocaleName LPCWSTR
+    dwCmpFlags DWORD
+    lpString1 LPCWCH
+    cchCount1 int
+    lpString2 LPCWCH
+    cchCount2 int
+    lpVersionInformation LPNLSVERSIONINFO
+    lpReserved LPVOID
+    lParam LPARAM
+}
+func CompareStringOrdinal int stub=#false {
+    lpString1 LPCWCH
+    cchCount1 int
+    lpString2 LPCWCH
+    cchCount2 int
+    bIgnoreCase BOOL
+}
+func MultiByteToWideChar int {
+    CodePage UINT
+    dwFlags DWORD
+    lpMultiByteStr LPCCH
+    cbMultiByte int
+    lpWideCharStr LPWSTR
+    cchWideChar int
+}
+func WideCharToMultiByte int {
+    CodePage UINT
+    dwFlags DWORD
+    lpWideCharStr LPCWCH
+    cchWideChar int
+    lpMultiByteStr LPSTR
+    cbMultiByte int
+    lpDefaultChar LPCCH
+    lpUsedDefaultChar LPBOOL
+}
+func GetLocaleInfoEx int { lpLocaleName LPCWSTR; LCType LCTYPE; lpLCData LPWSTR; cchData int }
+func IsValidLocaleName BOOL { lpLocaleName LPCWSTR }
+func GetUserDefaultLocaleName int { lpLocaleName LPWSTR; cchLocaleName int }
+func IdnToAscii int {
+    dwFlags DWORD
+    lpUnicodeCharStr LPCWSTR
+    cchUnicodeChar int
+    lpASCIICharStr LPWSTR
+    cchASCIIChar int
+}
+func IdnToUnicode int {
+    dwFlags DWORD
+    lpASCIICharStr LPCWSTR
+    cchASCIIChar int
+    lpUnicodeCharStr LPWSTR
+    cchUnicodeChar int
+}
+func GetACP UINT empty=void
+func ReadConsoleA BOOL {
+    hConsoleInput HANDLE
+    lpBuffer LPVOID
+    nNumberOfCharsToRead DWORD
+    lpNumberOfCharsRead LPDWORD
+    pInputControl PCONSOLE_READCONSOLE_CONTROL
+}
+func ReadConsoleW BOOL {
+    hConsoleInput HANDLE
+    lpBuffer LPVOID
+    nNumberOfCharsToRead DWORD
+    lpNumberOfCharsRead LPDWORD
+    pInputControl PCONSOLE_READCONSOLE_CONTROL
+}
+func GetSystemDirectoryA UINT { lpBuffer LPSTR; uSize UINT }
+func GetSystemDirectoryW UINT { lpBuffer LPWSTR; uSize UINT }
+func GetWindowsDirectoryA UINT dll="" { lpBuffer LPSTR; uSize UINT }
+func GetWindowsDirectoryW UINT stub=#false { lpBuffer LPWSTR; uSize UINT }
+func GetEnvironmentStringsW LPWCH redeclare=#true empty=void
+func ReadProcessMemory BOOL stub=#false {
+    hProcess HANDLE
+    lpBaseAddress LPCVOID
+    lpBuffer LPVOID
+    nSize SIZE_T
+    lpNumberOfBytesRead "SIZE_T *"
+}
+func WriteProcessMemory BOOL stub=#false {
+    hProcess HANDLE
+    lpBaseAddress LPVOID
+    lpBuffer LPCVOID
+    nSize SIZE_T
+    lpNumberOfBytesWritten "SIZE_T *"
+}
+func GetLogicalDriveStringsW DWORD stub=#false { nBufferLength DWORD; lpBuffer LPWSTR }
+func QueryDosDeviceW DWORD stub=#false { lpDeviceName LPCWSTR; lpTargetPath LPWSTR; ucchMax DWORD }
+func WaitForMultipleObjects DWORD {
+    nCount DWORD
+    lpHandles "const HANDLE *"
+    bWaitAll BOOL
+    dwMilliseconds DWORD
+}
+func PeekNamedPipe BOOL {
+    hNamedPipe HANDLE
+    lpBuffer LPVOID
+    nBufferSize DWORD
+    lpBytesRead LPDWORD
+    lpTotalBytesAvail LPDWORD
+    lpBytesLeftThisMessage LPDWORD
+}
+func NtCreateWaitCompletionPacket NTSTATUS link=none dll="" {
+    WaitCompletionPacketHandle PHANDLE
+    DesiredAccess ACCESS_MASK
+    ObjectAttributes POBJECT_ATTRIBUTES
+}
+func NtAssociateWaitCompletionPacket NTSTATUS link=none dll="" {
+    WaitCompletionPacketHandle HANDLE
+    IoCompletionHandle HANDLE
+    TargetObjectHandle HANDLE
+    KeyContext PVOID
+    ApcContext PVOID
+    IoStatus NTSTATUS
+    IoStatusInformation ULONG_PTR
+    AlreadySignaled PBOOLEAN
+}
+func NtCancelWaitCompletionPacket NTSTATUS link=none dll="" {
+    WaitCompletionPacketHandle HANDLE
+    RemoveSignaledPacket BOOLEAN
+}
+// Checks whether the functions required for fully asynchronous packet processing
+// are available at runtime:
+// - NtCreateWaitCompletionPacket
+// - NtAssociateWaitCompletionPacket
+// - NtCancelWaitCompletionPacket
+//
+// If this routines is not available, next APIs WILL crush:
+// - __sprt_RestartEventCompletion2
+// - __sprt_RestartEventCompletion
+// - __sprt_CancelEventCompletion
+// - __sprt_ReportEventAsCompletion
+func NtCompletionPacketAvailable BOOL link=none dll=""
+func __sprt_RestartEventCompletion2 int link=none dll="" {
+    hPacket "void *"
+    hIOCP "void *"
+    hEvent "void *"
+    dwNumberOfBytesTransferred DWORD
+    dwCompletionKey UINT_PTR
+    lpOverlapped "void *"
+}
+func __sprt_RestartEventCompletion int link=none dll="" {
+    hPacket "void *"
+    hIOCP "void *"
+    hEvent "void *"
+    ncompletion "const void **"
+}
+func __sprt_CancelEventCompletion int link=none dll="" { hPacket "void *"; cancel int }
+func __sprt_ReportEventAsCompletion "void *" link=none dll="" {
+    hIOCP "void *"
+    hEvent "void *"
+    dwNumberOfBytesTransferred DWORD
+    dwCompletionKey UINT_PTR
+    lpOverlapped "void *"
+}

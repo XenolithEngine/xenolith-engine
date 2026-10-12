@@ -1,0 +1,9 @@
+// Functions of the runtime, with their umbrellas.
+
+defaults link=sprt
+
+func opendir "DIR *" { __path "const char *" }
+func rewind void { __dir "DIR *" }
+func compare int noexcept=#false { __cmp "int (*)(const void *, const void *)"; - int }
+func logf int umbrella=#false { __fmt "const char *"; "..." }
+func internal int umbrella=#false

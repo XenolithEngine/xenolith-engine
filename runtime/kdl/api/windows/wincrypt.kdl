@@ -1,0 +1,340 @@
+// The functions of include/sprt/wrappers/windows/wincrypt.h, written to
+// sprt/gen/wrappers/windows/api/wincrypt.h.
+
+dll crypt32 file="crypt32.dll" table=Crypt32Table {
+    export CertAddCRLContextToStore
+    export CertAddCTLContextToStore
+    export CertAddCertificateContextToStore
+    export CertAddCertificateLinkToStore
+    export CertAddEncodedCRLToStore
+    export CertAddEncodedCTLToStore
+    export CertAddEncodedCertificateToStore
+    export CertAddEncodedCertificateToSystemStoreA
+    export CertAddEncodedCertificateToSystemStoreW
+    export CertAddEnhancedKeyUsageIdentifier
+    export CertAddSerializedElementToStore
+    export CertAddStoreToCollection
+    export CertAlgIdToOID
+    export CertCompareCertificate
+    export CertCompareCertificateName
+    export CertCompareIntegerBlob
+    export CertComparePublicKeyInfo
+    export CertControlStore
+    export CertCreateCRLContext
+    export CertCreateCTLContext
+    export CertCreateCertificateChainEngine
+    export CertCreateCertificateContext
+    export CertCreateContext
+    export CertCreateSelfSignCertificate
+    export CertDeleteCRLFromStore
+    export CertDeleteCTLFromStore
+    export CertDeleteCertificateFromStore
+    export CertDuplicateCRLContext
+    export CertDuplicateCTLContext
+    export CertDuplicateCertificateChain
+    export CertDuplicateCertificateContext
+    export CertDuplicateStore
+    export CertEnumCRLContextProperties
+    export CertEnumCRLsInStore
+    export CertEnumCTLContextProperties
+    export CertEnumCTLsInStore
+    export CertEnumCertificateContextProperties
+    export CertEnumPhysicalStore
+    export CertEnumSystemStore
+    export CertFindAttribute
+    export CertFindCRLInStore
+    export CertFindCTLInStore
+    export CertFindCertificateInCRL
+    export CertFindChainInStore
+    export CertFindExtension
+    export CertFindRDNAttr
+    export CertFindSubjectInCTL
+    export CertFreeCRLContext
+    export CertFreeCTLContext
+    export CertFreeCertificateChain
+    export CertFreeCertificateChainEngine
+    export CertGetCRLContextProperty
+    export CertGetCRLFromStore
+    export CertGetCTLContextProperty
+    export CertGetCertificateChain
+    export CertGetCertificateContextProperty
+    export CertGetIssuerCertificateFromStore
+    export CertGetNameStringA
+    export CertGetNameStringW
+    export CertGetPublicKeyLength
+    export CertGetStoreProperty
+    export CertGetSubjectCertificateFromStore
+    export CertGetValidUsages
+    export CertIsRDNAttrsInCertificateName
+    export CertIsValidCRLForCertificate
+    export CertNameToStrA
+    export CertNameToStrW
+    export CertOIDToAlgId
+    export CertOpenStore
+    export CertRDNValueToStrA
+    export CertRDNValueToStrW
+    export CertRegisterPhysicalStore
+    export CertRegisterSystemStore
+    export CertRemoveEnhancedKeyUsageIdentifier
+    export CertRemoveStoreFromCollection
+    export CertSaveStore
+    export CertSerializeCRLStoreElement
+    export CertSerializeCTLStoreElement
+    export CertSerializeCertificateStoreElement
+    export CertSetCRLContextProperty
+    export CertSetCTLContextProperty
+    export CertSetCertificateContextProperty
+    export CertSetEnhancedKeyUsage
+    export CertSetStoreProperty
+    export CertStrToNameA
+    export CertStrToNameW
+    export CertUnregisterPhysicalStore
+    export CertUnregisterSystemStore
+    export CertVerifyCRLRevocation
+    export CertVerifyCRLTimeValidity
+    export CertVerifyCTLUsage
+    export CertVerifyCertificateChainPolicy
+    export CertVerifyRevocation
+    export CertVerifySubjectCertificateContext
+    export CertVerifyTimeValidity
+    export CertVerifyValidityNesting
+    export CreateFileU
+    export CryptAcquireCertificatePrivateKey
+    export CryptAcquireContextU
+    export CryptBinaryToStringA
+    export CryptBinaryToStringW
+    export CryptCloseAsyncHandle
+    export CryptCreateAsyncHandle
+    export CryptDecodeMessage
+    export CryptDecodeObject
+    export CryptDecodeObjectEx
+    export CryptDecryptAndVerifyMessageSignature
+    export CryptDecryptMessage
+    export CryptEncodeObject
+    export CryptEncodeObjectEx
+    export CryptEncryptMessage
+    export CryptEnumOIDFunction
+    export CryptEnumOIDInfo
+    export CryptEnumProvidersU
+    export CryptExportPKCS8
+    export CryptExportPublicKeyInfo
+    export CryptExportPublicKeyInfoEx
+    export CryptFindCertificateKeyProvInfo
+    export CryptFindLocalizedName
+    export CryptFindOIDInfo
+    export CryptFormatObject
+    export CryptFreeOIDFunctionAddress
+    export CryptGetAsyncParam
+    export CryptGetDefaultOIDDllList
+    export CryptGetDefaultOIDFunctionAddress
+    export CryptGetMessageCertificates
+    export CryptGetMessageSignerCount
+    export CryptGetOIDFunctionAddress
+    export CryptGetOIDFunctionValue
+    export CryptHashCertificate
+    export CryptHashCertificate2
+    export CryptHashMessage
+    export CryptHashPublicKeyInfo
+    export CryptHashToBeSigned
+    export CryptImportPKCS8
+    export CryptImportPublicKeyInfo
+    export CryptImportPublicKeyInfoEx
+    export CryptImportPublicKeyInfoEx2
+    export CryptInitOIDFunctionSet
+    export CryptInstallOIDFunctionAddress
+    export CryptLoadSip
+    export CryptMemAlloc
+    export CryptMemFree
+    export CryptMemRealloc
+    export CryptMsgCalculateEncodedLength
+    export CryptMsgClose
+    export CryptMsgControl
+    export CryptMsgCountersign
+    export CryptMsgCountersignEncoded
+    export CryptMsgDuplicate
+    export CryptMsgEncodeAndSignCTL
+    export CryptMsgGetAndVerifySigner
+    export CryptMsgGetParam
+    export CryptMsgOpenToDecode
+    export CryptMsgOpenToEncode
+    export CryptMsgSignCTL
+    export CryptMsgUpdate
+    export CryptMsgVerifyCountersignatureEncoded
+    export CryptMsgVerifyCountersignatureEncodedEx
+    export CryptProtectData
+    export CryptProtectMemory
+    export CryptQueryObject
+    export CryptRegisterDefaultOIDFunction
+    export CryptRegisterOIDFunction
+    export CryptRegisterOIDInfo
+    export CryptSIPAddProvider
+    export CryptSIPCreateIndirectData
+    export CryptSIPGetSignedDataMsg
+    export CryptSIPLoad
+    export CryptSIPPutSignedDataMsg
+    export CryptSIPRemoveProvider
+    export CryptSIPRemoveSignedDataMsg
+    export CryptSIPRetrieveSubjectGuid
+    export CryptSIPRetrieveSubjectGuidForCatalogFile
+    export CryptSIPVerifyIndirectData
+    export CryptSetAsyncParam
+    export CryptSetKeyIdentifierProperty
+    export CryptSetOIDFunctionValue
+    export CryptSetProviderU
+    export CryptSignAndEncodeCertificate
+    export CryptSignAndEncryptMessage
+    export CryptSignCertificate
+    export CryptSignHashU
+    export CryptSignMessage
+    export CryptSignMessageWithKey
+    export CryptStringToBinaryA
+    export CryptStringToBinaryW
+    export CryptUnprotectData
+    export CryptUnprotectMemory
+    export CryptUnregisterDefaultOIDFunction
+    export CryptUnregisterOIDFunction
+    export CryptUnregisterOIDInfo
+    export CryptVerifyCertificateSignature
+    export CryptVerifyCertificateSignatureEx
+    export CryptVerifyDetachedMessageHash
+    export CryptVerifyDetachedMessageSignature
+    export CryptVerifyMessageHash
+    export CryptVerifyMessageSignature
+    export CryptVerifyMessageSignatureWithKey
+    export CryptVerifySignatureU
+    export I_CertUpdateStore
+    export I_CryptAllocTls
+    export I_CryptCreateLruCache
+    export I_CryptCreateLruEntry
+    export I_CryptDetachTls
+    export I_CryptFindLruEntry
+    export I_CryptFindLruEntryData
+    export I_CryptFlushLruCache
+    export I_CryptFreeLruCache
+    export I_CryptFreeTls
+    export I_CryptGetAsn1Decoder
+    export I_CryptGetAsn1Encoder
+    export I_CryptGetDefaultCryptProv
+    export I_CryptGetDefaultCryptProvForEncrypt
+    export I_CryptGetOssGlobal
+    export I_CryptGetTls
+    export I_CryptInsertLruEntry
+    export I_CryptInstallAsn1Module
+    export I_CryptInstallOssGlobal
+    export I_CryptReadTrustedPublisherDWORDValueFromRegistry
+    export I_CryptReleaseLruEntry
+    export I_CryptSetTls
+    export I_CryptUninstallAsn1Module
+    export I_CryptUninstallOssGlobal
+    export PFXExportCertStore
+    export PFXExportCertStoreEx
+    export PFXImportCertStore
+    export PFXIsPFXBlob
+    export PFXVerifyPassword
+    export RegCreateHKCUKeyExU
+    export RegCreateKeyExU
+    export RegDeleteValueU
+    export RegEnumValueU
+    export RegOpenHKCUKeyExU
+    export RegOpenKeyExU
+    export RegQueryInfoKeyU
+    export RegQueryValueExU
+    export RegSetValueExU
+}
+
+defaults dll=advapi32 link=import cc=WINAPI
+
+func CryptAcquireContextW BOOL {
+    phProv "HCRYPTPROV *"
+    szContainer LPCWSTR
+    szProvider LPCWSTR
+    dwProvType DWORD
+    dwFlags DWORD
+}
+func CryptReleaseContext BOOL { hProv HCRYPTPROV; dwFlags DWORD }
+func CryptGenRandom BOOL { hProv HCRYPTPROV; dwLen DWORD; pbBuffer "BYTE *" }
+func CertFreeCertificateContext BOOL dll=crypt32 { pCertContext PCCERT_CONTEXT }
+func CertEnumCertificatesInStore PCCERT_CONTEXT dll=crypt32 {
+    hCertStore HCERTSTORE
+    pPrevCertContext PCCERT_CONTEXT
+}
+func CertFindCertificateInStore PCCERT_CONTEXT dll=crypt32 {
+    hCertStore HCERTSTORE
+    dwCertEncodingType DWORD
+    dwFindFlags DWORD
+    dwFindType DWORD
+    pvFindPara "const void *"
+    pPrevCertContext PCCERT_CONTEXT
+}
+func CertGetIntendedKeyUsage BOOL dll=crypt32 {
+    dwCertEncodingType DWORD
+    pCertInfo PCERT_INFO
+    pbKeyUsage "BYTE *"
+    cbKeyUsage DWORD
+}
+func CertGetEnhancedKeyUsage BOOL dll=crypt32 {
+    pCertContext PCCERT_CONTEXT
+    dwFlags DWORD
+    pUsage PCERT_ENHKEY_USAGE
+    pcbUsage "DWORD *"
+}
+func CertOpenSystemStoreA HCERTSTORE dll=crypt32 {
+    hProv HCRYPTPROV_LEGACY
+    szSubsystemProtocol LPCSTR
+}
+func CertOpenSystemStoreW HCERTSTORE dll=crypt32 {
+    hProv HCRYPTPROV_LEGACY
+    szSubsystemProtocol LPCWSTR
+}
+func CertCloseStore BOOL dll=crypt32 { hCertStore HCERTSTORE; dwFlags DWORD }
+func CryptExportKey BOOL {
+    hKey HCRYPTKEY
+    hExpKey HCRYPTKEY
+    dwBlobType DWORD
+    dwFlags DWORD
+    pbData "BYTE *"
+    pdwDataLen "DWORD *"
+}
+func CryptImportKey BOOL {
+    hProv HCRYPTPROV
+    pbData "const BYTE *"
+    dwDataLen DWORD
+    hPubKey HCRYPTKEY
+    dwFlags DWORD
+    phKey "HCRYPTKEY *"
+}
+func CryptEncrypt BOOL {
+    hKey HCRYPTKEY
+    hHash HCRYPTHASH
+    Final BOOL
+    dwFlags DWORD
+    pbData "BYTE *"
+    pdwDataLen "DWORD *"
+    dwBufLen DWORD
+}
+func CryptDecrypt BOOL {
+    hKey HCRYPTKEY
+    hHash HCRYPTHASH
+    Final BOOL
+    dwFlags DWORD
+    pbData "BYTE *"
+    pdwDataLen "DWORD *"
+}
+func CryptDestroyKey BOOL { hKey HCRYPTKEY }
+func CryptGetHashParam BOOL {
+    hHash HCRYPTHASH
+    dwParam DWORD
+    pbData "BYTE *"
+    pdwDataLen "DWORD *"
+    dwFlags DWORD
+}
+func CryptCreateHash BOOL {
+    hProv HCRYPTPROV
+    Algid ALG_ID
+    hKey HCRYPTKEY
+    dwFlags DWORD
+    phHash "HCRYPTHASH *"
+}
+func CryptHashData BOOL { hHash HCRYPTHASH; pbData "const BYTE *"; dwDataLen DWORD; dwFlags DWORD }
+func CryptHashSessionKey BOOL { hHash HCRYPTHASH; hKey HCRYPTKEY; dwFlags DWORD }
+func CryptDestroyHash BOOL { hHash HCRYPTHASH }

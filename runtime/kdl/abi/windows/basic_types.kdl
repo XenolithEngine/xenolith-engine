@@ -96,8 +96,8 @@ typedef LPBOOL "int *"
 // BOOLEAN type
 typedef BOOLEAN BYTE
 typedef PBOOLEAN "BOOLEAN *"
-// FARPROC - pointer to function returning int and taking variable args
-typedef FARPROC "int (*)(void)"
+// FARPROC - pointer to function returning INT_PTR and taking no parameters
+typedef FARPROC "INT_PTR (*)()"
 typedef WCHAR `wchar_t` if="@cplusplus"
 typedef PWCHAR "`wchar_t` *" if="@cplusplus"
 // Pre-C++11: need to define it ourselves

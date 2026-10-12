@@ -36,13 +36,7 @@ THE SOFTWARE.
 #define MAX_MODULE_NAME32 __SPRT_MAX_MODULE_NAME32
 #endif
 
-__SPRT_BEGIN_DECL
-
-__SPRT_WIN_IMPORT WINAPI BOOL Module32FirstW(HANDLE hSnapshot, LPMODULEENTRY32W lpme);
-
-__SPRT_WIN_IMPORT WINAPI BOOL Module32NextW(HANDLE hSnapshot, LPMODULEENTRY32W lpme);
-
-__SPRT_END_DECL
+#include <sprt/gen/wrappers/windows/api/tlhelp32.h>
 
 // Neutral names resolve to the wide variants (this sysroot builds with UNICODE).
 #define PROCESSENTRY32 PROCESSENTRY32W

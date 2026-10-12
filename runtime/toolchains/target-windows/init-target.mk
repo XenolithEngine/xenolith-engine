@@ -117,7 +117,9 @@ $(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h: ../common/simde.mk
 	$(call rule_rm,simde)
 	$(call rule_touch,$(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h)
 
-RUNTIME_IMPORT_DEFS := $(wildcard $(SP_RUNTIME_ROOT)/include/sprt/wrappers/windows/def/*.def)
+# The .def files are generated from runtime/kdl/api (xlkdl api), one per system DLL.
+RUNTIME_IMPORT_DEF_DIR := $(SP_RUNTIME_ROOT)/include/sprt/gen/wrappers/windows/def
+RUNTIME_IMPORT_DEFS := $(wildcard $(RUNTIME_IMPORT_DEF_DIR)/*.def)
 RUNTIME_IMPORT_LIBS := $(addprefix $(TOOLCHAIN_OUTPUT_DIR)/lib/,$(notdir $(RUNTIME_IMPORT_DEFS:.def=.lib)))
 
 # llvm-lib is reached through the `host` symlink, which the toolchain.cmake rule creates as
@@ -125,7 +127,7 @@ RUNTIME_IMPORT_LIBS := $(addprefix $(TOOLCHAIN_OUTPUT_DIR)/lib/,$(notdir $(RUNTI
 # intermediate directory this rule usually wins: every import lib then fails with
 # "host/bin/llvm-lib: No such file or directory". Order-only, because the symlink is
 # recreated on every toolchain.cmake rebuild and would otherwise redo all of them.
-$(TOOLCHAIN_OUTPUT_DIR)/lib/%.lib : $(SP_RUNTIME_ROOT)/include/sprt/wrappers/windows/def/%.def \
+$(TOOLCHAIN_OUTPUT_DIR)/lib/%.lib : $(RUNTIME_IMPORT_DEF_DIR)/%.def \
 		| $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake
 	$(call rule_rm,$@)
 	$(TOOLCHAIN_OUTPUT_DIR)/host/bin/llvm-lib /def:$< /out:$@ /machine:$(SP_ARCH_WIN)

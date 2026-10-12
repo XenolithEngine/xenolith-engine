@@ -78,18 +78,6 @@ THE SOFTWARE.
 #define FW_NORMAL __SPRT_FW_NORMAL
 #define FW_BOLD __SPRT_FW_BOLD
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// FALSE means either "the user cancelled" or "it failed"; CommDlgExtendedError tells the two
-// apart — it returns 0 after a plain cancel.
-__SPRT_WIN_IMPORT WINAPI BOOL ChooseColorW(LPCHOOSECOLORW);
-__SPRT_WIN_IMPORT WINAPI BOOL ChooseFontW(LPCHOOSEFONTW);
-__SPRT_WIN_IMPORT WINAPI DWORD CommDlgExtendedError(void);
-
-#ifdef __cplusplus
-}
-#endif
+#include <sprt/gen/wrappers/windows/api/commdlg.h>
 
 #endif // SPRT_WRAPPERS_WINDOWS_COMMDLG_H_
