@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Xenolith · tests/wgpu</title>
+<style>:root{color-scheme:dark}body{margin:0;background:#0b0e14;color:#c8d3f5;font:13px/1.55 ui-monospace,Menlo,monospace}
+header{padding:16px 20px;border-bottom:1px solid #1c2333;position:sticky;top:0;background:#0b0e14}
+h1{margin:0;font-size:14px;color:#7aa2f7}header p{margin:4px 0 0;color:#5a668a;font-size:12px}
+#sum{margin:6px 0 0;color:#9ece6a}#sum .bad{color:#f7768e}
+#term{padding:14px 20px;white-space:pre-wrap;font-size:12px}.sec{color:#7aa2f7;font-weight:600}.fail{color:#f7768e}
+canvas{display:none}</style></head><body>
+<header><h1>Xenolith → WebAssembly → WebGPU · compute + readback suite</h1>
+<p>a compute shader transforms a batch, then buffer-map readback brings the bytes back — the same
+binary as the native wgpucompute (tests/wgpu)</p>
+<div id="sum">requesting GPU…</div></header>
+<pre id="term"></pre>
+<!-- No rendering here, but the loader only wires the GPU broker (the worker that owns
+     navigator.gpu) when a canvas exists, so a hidden one rides along. -->
+<canvas id="c"></canvas>
+<script type="module">
+import { run } from "./loader.mjs";
+const term = document.getElementById("term"), sum = document.getElementById("sum");
+let buf = "";
+const render = () => {
+	term.innerHTML = buf.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+		.replace(/^(\[ OK \].*|wgpucompute: .*)$/gm, '<span class="sec">$1</span>')
+		.replace(/(\[ FAIL \][^\n]*)/g, '<span class="fail">$1</span>');
+};
+if (!("gpu" in navigator)) {
+	sum.innerHTML = "WebGPU not supported by this browser";
+	document.title = "wgpu: no WebGPU";
+} else {
+	document.title = "wgpu: running";
+	try {
+		const code = await run("./wgpucompute.wasm", {
+			canvas: document.getElementById("c"),
+			onStdout: (s) => { buf += s; render(); },
+			onStderr: (s) => { buf += s; render(); },
+			onExit: (c) => { buf += `\n[proc_exit ${c}]\n`; },
+		});
+		render();
+		const checks = (buf.match(/\[ OK \]/g) || []).length, fails = (buf.match(/\[ FAIL \]/g) || []).length;
+		sum.innerHTML = `✓ ${checks} checks, exit ${code} · <span class="${fails ? "bad" : ""}">${fails} failures</span>`;
+		document.title = `wgpu: ${checks} checks, ${fails} fails, exit ${code}`;
+	} catch (e) {
+		sum.innerHTML = "ERROR: " + (e && e.message || e);
+		term.textContent = String(e && e.stack || e);
+		document.title = "wgpu: error";
+	}
+}
+</script></body></html>

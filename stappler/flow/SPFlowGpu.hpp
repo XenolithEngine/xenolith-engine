@@ -1527,6 +1527,647 @@ struct GlslWriter {
 	}
 };
 
+// The WGSL twin of the writer above: the same program, the same three bindings and the same byte
+// layout, in the language a WebGPU device takes as text. What differs is spelling, and it is all
+// here: a Bool member of a buffer stays a `u32` read as `(x != 0u)`, the branch state lives in
+// `var<private>` globals (which WGSL defines before use, where GLSL only warned), a ternary becomes
+// `select` with its false side first, a bit reinterpretation becomes `bitcast`, and an operation's
+// result travels through a function-local temporary because a `ptr<function>` parameter - WGSL's
+// `out` - cannot point at a module-scope variable.
+template <typename Graph>
+struct WgslWriter {
+	const Graph &g;
+	const GpuProgram &p;
+	mem_std::String out;
+
+	void line(StringView text) {
+		out.append(text.data(), text.size());
+		out.push_back('\n');
+	}
+
+	const GpuInput &input(const GpuNode &n, uint32_t pin) const { return p.inputs[n.inputBegin + pin]; }
+
+	const GpuSlot *slotOf(const GpuLayout &l, GpuSlot::Kind kind, uint32_t index) const {
+		for (auto &s : l.slots) {
+			if (s.kind == kind && s.index == index) {
+				return &s;
+			}
+		}
+		return nullptr;
+	}
+
+	// A buffer member read as the WGSL type of `type` (a Bool is stored as a u32).
+	mem_std::String member(const mem_std::String &prefix, const GpuSlot *slot) const {
+		auto text = mem_std::toString(prefix, slot->name);
+		if (slot->type == VarType::Bool) {
+			return mem_std::toString("(", text, " != 0u)");
+		}
+		return text;
+	}
+
+	Var literal(uint32_t index) const {
+		auto &lit = p.literals[index];
+		Var v;
+		if (auto c = g.getConstant(lit.node, lit.pin)) {
+			value::decodeVar(*c, lit.type, v);
+		}
+		return v;
+	}
+
+	static mem_std::String uintTextW(uint64_t v) { return mem_std::toString(v, "u"); }
+
+	static mem_std::String intTextW(int64_t v) {
+		if (v == int64_t(-2'147'483'647) - 1) {
+			return mem_std::String("(-2147483647 - 1)");
+		}
+		return mem_std::toString(v);
+	}
+
+	static mem_std::String floatTextW(float f) {
+		uint32_t bits = 0;
+		sprt::memcpy(&bits, &f, sizeof(bits));
+		char buf[16];
+		static constexpr const char *hex = "0123456789abcdef";
+		for (int k = 0; k < 8; ++k) {
+			buf[k] = hex[(bits >> (28 - 4 * k)) & 0xF];
+		}
+		return mem_std::toString("bitcast<f32>(0x", StringView(buf, 8), "u)");
+	}
+
+	static mem_std::String literalTextW(const Var &v, VarType type) {
+		switch (type) {
+		case VarType::Bool: return mem_std::String(v.i != 0 ? "true" : "false");
+		case VarType::Int32: return intTextW(int32_t(v.i));
+		case VarType::UInt32: return uintTextW(uint32_t(v.i));
+		case VarType::Float32: return floatTextW(v.v[0]);
+		case VarType::Vec2:
+			return mem_std::toString("vec2<f32>(", floatTextW(v.v[0]), ", ", floatTextW(v.v[1]), ")");
+		case VarType::Vec3:
+			return mem_std::toString("vec3<f32>(", floatTextW(v.v[0]), ", ", floatTextW(v.v[1]), ", ",
+					floatTextW(v.v[2]), ")");
+		case VarType::Vec4:
+		case VarType::Color:
+			return mem_std::toString("vec4<f32>(", floatTextW(v.v[0]), ", ", floatTextW(v.v[1]), ", ",
+					floatTextW(v.v[2]), ", ", floatTextW(v.v[3]), ")");
+		default: return mem_std::String("0u");
+		}
+	}
+
+	static mem_std::String zeroTextW(VarType type) {
+		switch (type) {
+		case VarType::Bool: return mem_std::String("false");
+		case VarType::Int32: return mem_std::String("0");
+		case VarType::UInt32: return mem_std::String("0u");
+		case VarType::Float32: return mem_std::String("0.0");
+		case VarType::Vec2: return mem_std::String("vec2<f32>(0.0)");
+		case VarType::Vec3: return mem_std::String("vec3<f32>(0.0)");
+		case VarType::Vec4:
+		case VarType::Color: return mem_std::String("vec4<f32>(0.0)");
+		default: return mem_std::String("0u");
+		}
+	}
+
+	static mem_std::String castTextW(const mem_std::String &expr, VarType from, VarType to) {
+		if (from == to || (from == VarType::Vec4 && to == VarType::Color)
+				|| (from == VarType::Color && to == VarType::Vec4)) {
+			return expr;
+		}
+		if (from == VarType::Bool) {
+			switch (to) {
+			case VarType::Int32: return mem_std::toString("i32(", expr, ")");
+			case VarType::UInt32: return mem_std::toString("u32(", expr, ")");
+			case VarType::Float32: return mem_std::toString("select(0.0, 1.0, ", expr, ")");
+			default: break;
+			}
+		}
+		if (from == VarType::Vec2 && to == VarType::Vec3) {
+			return mem_std::toString("vec3<f32>(", expr, ", 0.0)");
+		}
+		if (from == VarType::Vec2 && to == VarType::Vec4) {
+			return mem_std::toString("vec4<f32>(", expr, ", 0.0, 0.0)");
+		}
+		if (from == VarType::Vec3 && to == VarType::Vec4) {
+			return mem_std::toString("vec4<f32>(", expr, ", 0.0)");
+		}
+		return expr;
+	}
+
+	static uint32_t widenTagW(VarType type) {
+		switch (type) {
+		case VarType::UInt32: return GpuTag::UInt32;
+		case VarType::Float32: return GpuTag::Float32;
+		default: return GpuTag::Int32;
+		}
+	}
+
+	static mem_std::String bitsTextW(const mem_std::String &expr, VarType type) {
+		switch (type) {
+		case VarType::Float32: return mem_std::toString("bitcast<u32>(", expr, ")");
+		case VarType::UInt32: return expr;
+		default: return mem_std::toString("u32(", expr, ")");
+		}
+	}
+
+	// An input as a value of the pin's GPU type.
+	mem_std::String direct(const GpuInput &in, VarType pinType) const {
+		switch (in.source) {
+		case GpuSource::Cell: {
+			auto &cell = p.cells[in.index];
+			return castTextW(mem_std::toString("c", in.index), cell.type, pinType);
+		}
+		case GpuSource::Literal: {
+			auto v = literal(in.index);
+			return literalTextW(v, pinType);
+		}
+		case GpuSource::Block: {
+			auto slot = slotOf(p.blockLayout, GpuSlot::Kind::BlockValue, in.index);
+			if (!slot) {
+				return zeroTextW(pinType);
+			}
+			return castTextW(member("blk.", slot), p.blockValues[in.index].type, pinType);
+		}
+		case GpuSource::Index: return castTextW("ins[g_i].index", VarType::Int32, pinType);
+		default: return zeroTextW(pinType);
+		}
+	}
+
+	// An input as a tag and 32 bits: a value outside the GPU set.
+	void tagged(const GpuInput &in, mem_std::String &tag, mem_std::String &bits) const {
+		switch (in.source) {
+		case GpuSource::Cell: {
+			auto &cell = p.cells[in.index];
+			if (cell.rep == GpuRep::Tagged) {
+				tag = mem_std::toString("ct", in.index);
+				bits = mem_std::toString("cb", in.index);
+			} else {
+				tag = uintTextW(widenTagW(cell.type));
+				bits = bitsTextW(mem_std::toString("c", in.index), cell.type);
+			}
+			return;
+		}
+		case GpuSource::Literal:
+			tag = uintTextW(GpuTag::Literal);
+			bits = uintTextW(in.index);
+			return;
+		case GpuSource::Block: {
+			auto &value = p.blockValues[in.index];
+			if (isGpuValueType(value.type)) {
+				auto slot = slotOf(p.blockLayout, GpuSlot::Kind::BlockValue, in.index);
+				tag = uintTextW(widenTagW(value.type));
+				bits = bitsTextW(member("blk.", slot), value.type);
+			} else {
+				tag = uintTextW(GpuTag::Block);
+				bits = uintTextW(in.index);
+			}
+			return;
+		}
+		case GpuSource::Index:
+			tag = uintTextW(GpuTag::Int32);
+			bits = "u32(ins[g_i].index)";
+			return;
+		default:
+			tag = "0u";
+			bits = "0u";
+			return;
+		}
+	}
+
+	mem_std::String fail(uint32_t node, Status st) const {
+		return mem_std::toString("{ st_status = 1u; st_failNode = ", uintTextW(node), "; st_failCode = ",
+				intTextW(toInt(st)), "; return; }");
+	}
+
+	void writeRun(uint32_t i, bool last, const GpuCont &cont) {
+		auto &n = p.nodes[i];
+		auto &rt = g.getNodeAt(n.node);
+		line(mem_std::toString("\t// ", rt.op->getName(), " #", rt.id));
+		line("\tst_steps += 1u;");
+		if (n.staticFailure != Status::Ok) {
+			line(mem_std::toString("\t", fail(i, n.staticFailure)));
+			return;
+		}
+		auto ins = rt.op->getDataIn();
+		const auto notFound = Status::ErrorNotFound;
+		const auto invalid = Status::ErrorInvalidArguemnt;
+		switch (n.form) {
+		case GpuForm::Body: {
+			// The body writes through `ptr<function>`, so every cell argument travels through a
+			// temporary: a cell itself is a module-scope `var<private>`, another address space.
+			mem_std::String args;
+			for (uint32_t pin = 0; pin < n.inputCount; ++pin) {
+				auto &in = input(n, pin);
+				if (in.source == GpuSource::Name) {
+					continue;
+				}
+				if (!args.empty()) {
+					args.append(", ");
+				}
+				auto text = direct(in, ins[pin].type);
+				args.append(text.data(), text.size());
+			}
+			line("\t{");
+			for (uint32_t c = 0; c < n.cellCount; ++c) {
+				if (!args.empty()) {
+					args.append(", ");
+				}
+				args.append(mem_std::toString("&t", c));
+				line(mem_std::toString("\t\tvar t", c, ": ", getGpuWgslType(p.cells[n.cellBegin + c].type),
+						" = c", n.cellBegin + c, ";"));
+			}
+			if (n.fallible) {
+				line(mem_std::toString("\t\tlet s = ", rt.op->getShaderName(), "(", args, ");"));
+			} else {
+				line(mem_std::toString("\t\t", rt.op->getShaderName(), "(", args, ");"));
+			}
+			for (uint32_t c = 0; c < n.cellCount; ++c) {
+				line(mem_std::toString("\t\tc", n.cellBegin + c, " = t", c, ";"));
+			}
+			if (n.fallible) {
+				line(mem_std::toString("\t\tif (s != 0) { st_status = 1u; st_failNode = ", uintTextW(i),
+						"; st_failCode = s; return; }"));
+			}
+			line("\t}");
+			break;
+		}
+		case GpuForm::Passthrough:
+			line(mem_std::toString("\tc", n.cellBegin, " = ", direct(input(n, 0), ins[0].type), ";"));
+			break;
+		case GpuForm::Widen: {
+			for (uint32_t pin = 0; pin < n.inputCount; ++pin) {
+				auto &in = input(n, pin);
+				if (in.source == GpuSource::Name) {
+					continue;
+				}
+				auto value = direct(in, ins[pin].type);
+				line(mem_std::toString("\tct", n.cellBegin, " = ", uintTextW(widenTagW(ins[pin].type)), "; cb",
+						n.cellBegin, " = ", bitsTextW(value, ins[pin].type), ";"));
+				break;
+			}
+			break;
+		}
+		case GpuForm::Narrow: {
+			auto target = p.cells[n.cellBegin].type;
+			auto cell = mem_std::toString("c", n.cellBegin);
+			const GpuInput *value = nullptr;
+			for (uint32_t pin = 0; pin < n.inputCount; ++pin) {
+				if (input(n, pin).source != GpuSource::Name) {
+					value = &input(n, pin);
+				}
+			}
+			if (n.guard != InvalidIndex) {
+				auto &gd = p.guards[n.guard];
+				if (gd.source == GpuGuard::Source::Column) {
+					line(mem_std::toString("\tif (((ins[g_i].guardMask >> ", uintTextW(gd.bit), ") & 1u) != 0u) ",
+							fail(i, invalid)));
+					line(mem_std::toString("\t", cell, " = ", member("ins[g_i].", slotOf(p.inLayout, GpuSlot::Kind::Column, n.guard)), ";"));
+				} else {
+					line(mem_std::toString("\tif (((blk.guardMask >> ", uintTextW(gd.bit), ") & 1u) != 0u) ",
+							fail(i, invalid)));
+					line(mem_std::toString("\t", cell, " = ", member("blk.", slotOf(p.blockLayout, GpuSlot::Kind::BlockNarrowed, n.guard)), ";"));
+				}
+				break;
+			}
+			if (value && value->source == GpuSource::Literal) {
+				Var narrowed;
+				value::castVar(literal(value->index), target, value::CastPolicy::Lossy, narrowed);
+				line(mem_std::toString("\t", cell, " = ", literalTextW(narrowed, target), ";"));
+				break;
+			}
+			if (!value || value->source == GpuSource::Zero) {
+				line(mem_std::toString("\t", cell, " = ", zeroTextW(target), ";"));
+				break;
+			}
+			mem_std::String tag, bits;
+			tagged(*value, tag, bits);
+			line(mem_std::toString("\t{ let t: u32 = ", tag, "; let b: u32 = ", bits, ";"));
+			line(mem_std::toString("\t\tif (t == 0u) { ", cell, " = ", zeroTextW(target), "; }"));
+			switch (target) {
+			case VarType::Int32:
+				line(mem_std::toString("\t\telse if (t == 1u) { ", cell, " = i32(b); }"));
+				line(mem_std::toString("\t\telse if (t == 2u) { if (b > 2147483647u) ", fail(i, invalid), " ", cell, " = i32(b); }"));
+				line(mem_std::toString("\t\telse if (t == 3u) { let f = bitcast<f32>(b); if ((f != f) || abs(f) > 3.402823466e38 || !(f >= -2147483648.0 && f < 2147483648.0)) ",
+						fail(i, invalid), " ", cell, " = i32(f); }"));
+				break;
+			case VarType::UInt32:
+				line(mem_std::toString("\t\telse if (t == 1u) { if (i32(b) < 0) ", fail(i, invalid), " ", cell, " = b; }"));
+				line(mem_std::toString("\t\telse if (t == 2u) { ", cell, " = b; }"));
+				line(mem_std::toString("\t\telse if (t == 3u) { let f = bitcast<f32>(b); if ((f != f) || abs(f) > 3.402823466e38 || !(f > -1.0 && f < 4294967296.0)) ",
+						fail(i, invalid), " ", cell, " = u32(f); }"));
+				break;
+			case VarType::Float32:
+				line(mem_std::toString("\t\telse if (t == 1u) { ", cell, " = f32(i32(b)); }"));
+				line(mem_std::toString("\t\telse if (t == 2u) { ", cell, " = f32(b); }"));
+				line(mem_std::toString("\t\telse if (t == 3u) { ", cell, " = bitcast<f32>(b); }"));
+				break;
+			default: break;
+			}
+			line(mem_std::toString("\t\telse ", fail(i, invalid)));
+			line("\t}");
+			break;
+		}
+		case GpuForm::SceneHas:
+			if (n.own) {
+				line(mem_std::toString("\tc", n.cellBegin, " = ((ins[g_i].rowMask >> ", uintTextW(n.component), ") & 1u) != 0u;"));
+			} else if (n.foreign != InvalidIndex) {
+				line(mem_std::toString("\tc", n.cellBegin, " = ", member("blk.", slotOf(p.blockLayout, GpuSlot::Kind::ForeignValue, n.foreign)), ";"));
+			}
+			break;
+		case GpuForm::SceneGet: {
+			auto &cell = p.cells[n.cellBegin];
+			if (n.own) {
+				line(mem_std::toString("\tif (((ins[g_i].rowMask >> ", uintTextW(n.component), ") & 1u) == 0u) ", fail(i, notFound)));
+				if (cell.rep == GpuRep::Direct) {
+					auto loaded = member("ins[g_i].", slotOf(p.inLayout, GpuSlot::Kind::In, n.in));
+					if (n.write != InvalidIndex) {
+						line(mem_std::toString("\tc", n.cellBegin, " = select(", loaded, ", cv", n.write, ", cw", n.write, ");"));
+					} else {
+						line(mem_std::toString("\tc", n.cellBegin, " = ", loaded, ";"));
+					}
+				} else {
+					if (n.write != InvalidIndex) {
+						line(mem_std::toString("\tif (cw", n.write, ") { ct", n.cellBegin, " = ct", n.write, "c; cb", n.cellBegin, " = cv", n.write, "; }"));
+						line(mem_std::toString("\telse { ct", n.cellBegin, " = ", uintTextW(GpuTag::Column), "; cb", n.cellBegin, " = ", uintTextW(n.column), "; }"));
+					} else {
+						line(mem_std::toString("\tct", n.cellBegin, " = ", uintTextW(GpuTag::Column), "; cb", n.cellBegin, " = ", uintTextW(n.column), ";"));
+					}
+				}
+			} else if (n.foreign != InvalidIndex) {
+				line(mem_std::toString("\tif (((blk.foreignRowMask >> ", uintTextW(n.foreign), ") & 1u) == 0u) ", fail(i, notFound)));
+				if (cell.rep == GpuRep::Direct) {
+					line(mem_std::toString("\tc", n.cellBegin, " = ", member("blk.", slotOf(p.blockLayout, GpuSlot::Kind::ForeignValue, n.foreign)), ";"));
+				} else {
+					line(mem_std::toString("\tct", n.cellBegin, " = ", uintTextW(GpuTag::Foreign), "; cb", n.cellBegin, " = ", uintTextW(n.foreign), ";"));
+				}
+			}
+			break;
+		}
+		case GpuForm::SceneSet: {
+			line(mem_std::toString("\tif (((ins[g_i].rowMask >> ", uintTextW(n.component), ") & 1u) == 0u) ", fail(i, notFound)));
+			auto &write = g.getBlockWrites(p.block)[n.write];
+			const GpuInput *value = nullptr;
+			uint32_t valuePin = InvalidIndex;
+			for (auto &group : rt.op->getSceneGroups()) {
+				if (!group.valueIsOutput && group.valuePin != NullPin) {
+					valuePin = group.valuePin;
+				}
+			}
+			if (valuePin != InvalidIndex) {
+				value = &input(n, valuePin);
+			}
+			if (isGpuValueType(write.type)) {
+				line(mem_std::toString("\tcv", n.write, " = ", value ? direct(*value, write.type) : zeroTextW(write.type), ";"));
+			} else {
+				mem_std::String tag("0u"), bits("0u");
+				if (value) {
+					tagged(*value, tag, bits);
+				}
+				line(mem_std::toString("\tct", n.write, "c = ", tag, "; cv", n.write, " = ", bits, ";"));
+			}
+			line(mem_std::toString("\tcw", n.write, " = true;"));
+			break;
+		}
+		case GpuForm::Branch: break; // the continuation's end decides
+		default: break;
+		}
+		(void)last;
+		(void)cont;
+	}
+
+	void writeCont(uint32_t index) {
+		auto &c = p.conts[index];
+		line(mem_std::toString("fn k", index, "() {"));
+		for (uint32_t k = 0; k < c.runCount; ++k) {
+			writeRun(p.runs[c.runBegin + k], k + 1 == c.runCount, c);
+		}
+		switch (c.end) {
+		case GpuCont::End::Close: break;
+		case GpuCont::End::Budget:
+			line(mem_std::toString("\tst_status = 1u; st_budget = 1u; st_failNode = ", uintTextW(c.node),
+					"; st_failCode = ", intTextW(toInt(Status::ErrorInvalidArguemnt)), ";"));
+			break;
+		case GpuCont::End::Jump: line(mem_std::toString("\tk", c.next[0], "();")); break;
+		case GpuCont::End::Branch: {
+			auto &n = p.nodes[c.node];
+			auto &rt = g.getNodeAt(n.node);
+			auto cond = direct(input(n, 0), rt.op->getDataIn()[0].type);
+			line(mem_std::toString("\tlet d: bool = ", cond, ";"));
+			line("\tst_dec[st_decN >> 5u] |= u32(d) << (st_decN & 31u);");
+			line("\tst_decN += 1u;");
+			line(mem_std::toString("\tif (d) { k", c.next[0], "(); } else { k", c.next[1], "(); }"));
+			break;
+		}
+		}
+		line("}");
+		line("");
+	}
+
+	void declareStruct(const GpuLayout &l, StringView indent) {
+		mem_std::Vector<const GpuSlot *> order;
+		for (auto &s : l.slots) {
+			order.emplace_back(&s);
+		}
+		sprt::sort(order.begin(), order.end(), [](const GpuSlot *a, const GpuSlot *b) { return a->offset < b->offset; });
+		for (auto s : order) {
+			// A WGSL struct field declares as `name: type,` whatever the layout says; the field
+			// order carries the offsets, and the two layouts agree for the shapes this lowering
+			// writes (scalars, small vectors, arrays of u32).
+			auto type = s->type == VarType::Bool || s->type == VarType::Nil ? StringView("u32") : getGpuWgslType(s->type);
+			if (s->count > 1 || s->kind == GpuSlot::Kind::Decisions || s->kind == GpuSlot::Kind::CopyMask) {
+				line(mem_std::toString(indent, s->name, ": array<", type, ", ", s->count, ">,"));
+			} else {
+				line(mem_std::toString(indent, s->name, ": ", type, ","));
+			}
+		}
+	}
+
+	void write() {
+		// A body operation without a WGSL spelling takes the whole block off the WGSL path; the GLSL
+		// form stays what it was, and the block runs wherever that goes.
+		for (auto &n : p.nodes) {
+			auto &rt = g.getNodeAt(n.node);
+			if (n.form == GpuForm::Body && (!rt.op || rt.op->getShaderWgslSource().empty())) {
+				out.clear();
+				return;
+			}
+		}
+
+		auto &block = g.getBlockAt(p.block);
+		line(mem_std::toString("// The body of the parallel block opened by node #", g.getNodeAt(block.fanOut).id,
+				", lowered from the graph. Generated: do not edit."));
+		line("");
+		line("struct In {");
+		declareStruct(p.inLayout, "\t");
+		line("};");
+		line("");
+		line("struct Out {");
+		declareStruct(p.outLayout, "\t");
+		line("};");
+		line("");
+		line("struct Block {");
+		declareStruct(p.blockLayout, "\t");
+		line("};");
+		line("");
+		line("@group(0) @binding(0) var<storage, read> blk: Block;");
+		line("@group(0) @binding(1) var<storage, read> ins: array<In>;");
+		line("@group(0) @binding(2) var<storage, read_write> outs: array<Out>;");
+		line("");
+
+		// The operation bodies, each once, in name order.
+		mem_std::Vector<StringView> bodies;
+		mem_std::Vector<StringView> sources;
+		for (auto &n : p.nodes) {
+			auto &rt = g.getNodeAt(n.node);
+			if (n.form == GpuForm::Body && rt.op && !rt.op->getShaderWgslSource().empty()) {
+				bool seen = false;
+				for (auto &b : bodies) {
+					seen = seen || b == rt.op->getShaderName();
+				}
+				if (!seen) {
+					bodies.emplace_back(rt.op->getShaderName());
+					sources.emplace_back(rt.op->getShaderWgslSource());
+				}
+			}
+		}
+		mem_std::Vector<uint32_t> order(bodies.size());
+		for (uint32_t k = 0; k < uint32_t(order.size()); ++k) {
+			order[k] = k;
+		}
+		sprt::sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) { return bodies[a] < bodies[b]; });
+		for (auto k : order) {
+			out.append(sources[k].data(), sources[k].size());
+			line("");
+		}
+
+		// The branch's state: the path, and a global per cell and per copy. WGSL defines a global
+		// before anything reads it, and zeroes nothing on its own - main() does, as the GLSL does.
+		auto decisionWords = sprt::max(uint32_t(1), (p.maxDecisions + 31) / 32);
+		line("var<private> g_i: u32;");
+		line("var<private> st_status: u32;");
+		line("var<private> st_failNode: u32;");
+		line("var<private> st_failCode: i32;");
+		line("var<private> st_steps: u32;");
+		line("var<private> st_budget: u32;");
+		line("var<private> st_decN: u32;");
+		line(mem_std::toString("var<private> st_dec: array<u32, ", decisionWords, ">;"));
+		for (uint32_t w = 0; w < block.writeCount; ++w) {
+			auto &write = g.getBlockWrites(p.block)[w];
+			line(mem_std::toString("var<private> cw", w, ": bool;"));
+			if (isGpuValueType(write.type)) {
+				line(mem_std::toString("var<private> cv", w, ": ", getGpuWgslType(write.type), ";"));
+			} else {
+				line(mem_std::toString("var<private> ct", w, "c: u32;"));
+				line(mem_std::toString("var<private> cv", w, ": u32;"));
+			}
+		}
+		for (uint32_t c = 0; c < uint32_t(p.cells.size()); ++c) {
+			if (p.cells[c].rep == GpuRep::Direct) {
+				line(mem_std::toString("var<private> c", c, ": ", getGpuWgslType(p.cells[c].type), ";"));
+			} else {
+				line(mem_std::toString("var<private> ct", c, ": u32;"));
+				line(mem_std::toString("var<private> cb", c, ": u32;"));
+			}
+		}
+		line("");
+
+		// Callees before callers: a post-order walk from the open.
+		mem_std::Vector<uint8_t> done(p.conts.size(), 0);
+		mem_std::Vector<uint32_t> emitOrder;
+		mem_std::Function<void(uint32_t)> visit = [&](uint32_t c) {
+			if (c >= p.conts.size() || done[c]) {
+				return;
+			}
+			done[c] = 1;
+			auto &cont = p.conts[c];
+			if (cont.end == GpuCont::End::Branch || cont.end == GpuCont::End::Jump) {
+				visit(cont.next[0]);
+				if (cont.end == GpuCont::End::Branch) {
+					visit(cont.next[1]);
+				}
+			}
+			emitOrder.emplace_back(c);
+		};
+		visit(0);
+		for (auto c : emitOrder) {
+			writeCont(c);
+		}
+
+		line("@compute @workgroup_size(256)");
+		line("fn main(@builtin(global_invocation_id) gid: vec3<u32>) {");
+		line("\tg_i = gid.x;");
+		line("\tif (g_i >= blk.count) {");
+		line("\t\treturn;");
+		line("\t}");
+		line("\tst_status = 0u; st_failNode = 0u; st_failCode = 0; st_steps = 0u; st_budget = 0u; st_decN = 0u;");
+		for (uint32_t k = 0; k < decisionWords; ++k) {
+			line(mem_std::toString("\tst_dec[", k, "] = 0u;"));
+		}
+		for (uint32_t w = 0; w < block.writeCount; ++w) {
+			auto &write = g.getBlockWrites(p.block)[w];
+			if (isGpuValueType(write.type)) {
+				line(mem_std::toString("\tcw", w, " = false; cv", w, " = ", zeroTextW(write.type), ";"));
+			} else {
+				line(mem_std::toString("\tcw", w, " = false; ct", w, "c = 0u; cv", w, " = 0u;"));
+			}
+		}
+		for (uint32_t c = 0; c < uint32_t(p.cells.size()); ++c) {
+			if (p.cells[c].rep == GpuRep::Direct) {
+				line(mem_std::toString("\tc", c, " = ", zeroTextW(p.cells[c].type), ";"));
+			} else {
+				line(mem_std::toString("\tct", c, " = 0u; cb", c, " = 0u;"));
+			}
+		}
+		line("\tif (ins[g_i].preFailed != 0u) {");
+		line("\t\tst_status = 1u; st_failNode = ins[g_i].preNode; st_failCode = ins[g_i].preCode;");
+		line("\t\tst_steps = ins[g_i].preSteps; st_budget = ins[g_i].preBudget;");
+		line("\t} else {");
+		line("\t\tk0();");
+		line("\t}");
+		line("\touts[g_i].status = st_status;");
+		line("\touts[g_i].failNode = st_failNode;");
+		line("\touts[g_i].failCode = st_failCode;");
+		line("\touts[g_i].steps = st_steps;");
+		line("\touts[g_i].budget = st_budget;");
+		line("\touts[g_i].decisionCount = st_decN;");
+		for (uint32_t k = 0; k < decisionWords; ++k) {
+			line(mem_std::toString("\touts[g_i].decisions[", k, "] = st_dec[", k, "];"));
+		}
+		auto copyWords = sprt::max(uint32_t(1), (block.writeCount + 31) / 32);
+		for (uint32_t k = 0; k < copyWords; ++k) {
+			mem_std::String mask("0u");
+			for (uint32_t w = k * 32; w < sprt::min(block.writeCount, (k + 1) * 32); ++w) {
+				mask = mem_std::toString(mask, " | (u32(cw", w, ") << ", w - k * 32, "u)");
+			}
+			line(mem_std::toString("\touts[g_i].copyMask[", k, "] = ", mask, ";"));
+		}
+		for (uint32_t w = 0; w < block.writeCount; ++w) {
+			auto &write = g.getBlockWrites(p.block)[w];
+			if (isGpuValueType(write.type)) {
+				if (write.type == VarType::Bool) {
+					line(mem_std::toString("\touts[g_i].wv", w, " = u32(cv", w, ");"));
+				} else {
+					line(mem_std::toString("\touts[g_i].wv", w, " = cv", w, ";"));
+				}
+			} else {
+				line(mem_std::toString("\touts[g_i].wt", w, " = ct", w, "c;"));
+				line(mem_std::toString("\touts[g_i].wv", w, " = cv", w, ";"));
+			}
+		}
+		for (uint32_t c = 0; c < uint32_t(p.cells.size()); ++c) {
+			if (p.cells[c].rep == GpuRep::Direct) {
+				if (p.cells[c].type == VarType::Bool) {
+					line(mem_std::toString("\touts[g_i].c", c, " = u32(c", c, ");"));
+				} else {
+					line(mem_std::toString("\touts[g_i].c", c, " = c", c, ";"));
+				}
+			} else {
+				line(mem_std::toString("\touts[g_i].ct", c, " = ct", c, ";"));
+				line(mem_std::toString("\touts[g_i].cb", c, " = cb", c, ";"));
+			}
+		}
+		line("}");
+	}
+};
+
 } // namespace gpu
 
 template <typename Graph>
@@ -1651,6 +2292,13 @@ void collectGpuReducers(const Graph &g, const GpuProgram &p, mem_std::Vector<Gpu
 template <typename Graph>
 mem_std::String writeGpuGlsl(const Graph &g, const GpuProgram &p) {
 	gpu::GlslWriter<Graph> w{g, p};
+	w.write();
+	return sprt::move(w.out);
+}
+
+template <typename Graph>
+mem_std::String writeGpuWgsl(const Graph &g, const GpuProgram &p) {
+	gpu::WgslWriter<Graph> w{g, p};
 	w.write();
 	return sprt::move(w.out);
 }

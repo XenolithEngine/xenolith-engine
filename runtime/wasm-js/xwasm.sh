@@ -6,7 +6,7 @@
 #   ./xwasm.sh <test> --no-open  build + serve, print the URL (don't launch a browser)
 #   ./xwasm.sh --list            list available tests
 #
-# Tests:  libc | thread | bundled | wwin
+# Tests:  libc | thread | bundled | wwin | wgpu
 #
 # Toolchain paths auto-detect for a stock installer layout, falling back to the toolchain
 # built inside this repository (runtime/toolchains); override with env vars:
@@ -29,8 +29,10 @@ tests_libc="tests/libc         libctest.wasm     libctest.wasm     libc-test.htm
 tests_thread="tests/wthread     wthreadtest.wasm  wthreadtest.wasm  wthread.html"
 tests_bundled="tests/wasm       wasmtest.wasm     bundled-demo.wasm bundled-demo.html"
 tests_wwin="tests/wwin          wwin.wasm         wwin.wasm         wwin.html"
+tests_wgpu="tests/wgpu          wgpucompute.wasm  wgpucompute.wasm  wgpu-compute.html"
+tests_flowwgpu="tests/flowwgpu      flowwgpu.wasm     flowwgpu.wasm     flowwgpu.html"
 
-list() { echo "available tests: libc thread bundled wwin"; }
+list() { echo "available tests: libc thread bundled wwin wgpu flowwgpu"; }
 
 [ "${1:-}" = "--list" ] && { list; exit 0; }
 TEST="${1:-libc}"; shift || true
@@ -39,9 +41,10 @@ NO_OPEN=0; [ "${1:-}" = "--no-open" ] && NO_OPEN=1
 eval "spec=\${tests_${TEST}:-}"
 [ -z "$spec" ] && { echo "unknown test '$TEST'"; list; exit 1; }
 read -r MK_DIR BUILT SERVED PAGE <<<"$spec"
-if [ "$TRIPLE" = wasm64-unknown-unknown ] && [ "$TEST" = wwin ]; then
-	echo "wwin needs WebGPU, which is not supported on wasm64 yet (webgpu.mjs assumes 32-bit pointers)"
-	exit 1
+if [ "$TRIPLE" = wasm64-unknown-unknown ]; then
+	case "$TEST" in
+		wwin|wgpu|flowwgpu) echo "$TEST needs WebGPU, which is not supported on wasm64 yet (webgpu.mjs assumes 32-bit pointers)"; exit 1 ;;
+	esac
 fi
 
 # --- resolve toolchain -----------------------------------------------------------------

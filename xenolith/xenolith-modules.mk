@@ -32,6 +32,7 @@ TOOLKIT_MODULE_LIST += \
 	$(XENOLITH_MODULE_DIR)/font/font.mk \
 	$(XENOLITH_MODULE_DIR)/backend/vk/vk.mk \
 	$(XENOLITH_MODULE_DIR)/backend/webgpu/webgpu.mk \
+	$(XENOLITH_MODULE_DIR)/flow/webgpu/flowwebgpu.mk \
 	$(XENOLITH_MODULE_DIR)/backend/mtl/mtl.mk \
 	$(XENOLITH_MODULE_DIR)/backend/soft/soft.mk \
 	$(XENOLITH_MODULE_DIR)/backend/gles/gles.mk \

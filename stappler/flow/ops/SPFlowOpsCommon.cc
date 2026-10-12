@@ -142,6 +142,10 @@ static bool hasShaderForm(const OpDef &def) {
 // SPFlowOpsShader.cc: the shader form an operation's template form implies, or nothing.
 void attachShaderForm(const OpDef &def, mem_std::String &name, mem_std::String &source, bool &inexact);
 
+// The same form's WGSL spelling: the same name, or a body template without one leaves the source
+// empty and a block with that operation in it does not lower to WGSL.
+void attachShaderFormWgsl(const OpDef &def, mem_std::String &name, mem_std::String &source);
+
 // Registration that leaves an existing operation alone. That is what makes registerCoreOps
 // idempotent, and idempotence is what lets a host call it without knowing who called it first.
 struct Registrar {
@@ -156,13 +160,19 @@ struct Registrar {
 		}
 		auto copy = def;
 		// The shader form is derived from the template form (SPFlowOpsShader.cc) unless the operation
-		// names its own; ShaderForm is only set on an operation that has one.
-		mem_std::String shaderName, shaderSource;
+		// names its own; ShaderForm is only set on an operation that has one. The WGSL body is
+		// derived beside the GLSL one and stays empty for a template without a WGSL spelling.
+		mem_std::String shaderName, shaderSource, shaderWgsl;
 		bool inexact = false;
 		if (copy.shaderName.empty()) {
 			attachShaderForm(copy, shaderName, shaderSource, inexact);
 			copy.shaderName = shaderName;
 			copy.shaderSource = shaderSource;
+		}
+		if (copy.shaderWgslSource.empty()) {
+			mem_std::String wgslName;
+			attachShaderFormWgsl(copy, wgslName, shaderWgsl);
+			copy.shaderWgslSource = shaderWgsl;
 		}
 		if (hasShaderForm(def) && !copy.shaderName.empty()) {
 			copy.flags |= OpFlags::ShaderForm;

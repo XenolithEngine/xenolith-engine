@@ -329,6 +329,12 @@ struct OpDef {
 	StringView shaderName;
 	StringView shaderSource;
 
+	// The same body in WGSL, beside the GLSL one and under the same name: a device that takes WGSL
+	// lowers a block only when every body operation has this text. The structural forms are the
+	// lowering's own and have no spelling of either language; an operation written by hand fills
+	// both texts itself.
+	StringView shaderWgslSource;
+
 	// See FunctionRole: the linked name of the function, and for a return the index of the exec
 	// output of the call it leaves through.
 	FunctionRole functionRole = FunctionRole::None;
@@ -368,6 +374,10 @@ public:
 	// The shader form (OpDef::shaderName, OpDef::shaderSource), or empty.
 	StringView getShaderName() const { return _shaderName; }
 	StringView getShaderSource() const { return _shaderSource; }
+
+	// The WGSL spelling of the same body under the same name, or empty: a block with such an
+	// operation in it does not lower to WGSL.
+	StringView getShaderWgslSource() const { return _shaderWgslSource; }
 
 	// OpDef::functionRole and the two beside it.
 	FunctionRole getFunctionRole() const { return _functionRole; }
@@ -442,6 +452,7 @@ private:
 	StringView _inlineName;
 	StringView _shaderName;
 	StringView _shaderSource;
+	StringView _shaderWgslSource;
 	StringView _function;
 	FunctionRole _functionRole = FunctionRole::None;
 	uint32_t _functionExit = 0;

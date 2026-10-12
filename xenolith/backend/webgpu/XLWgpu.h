@@ -37,10 +37,13 @@
 #define XL_WGPU_NATIVE_API 1
 #endif
 
-#include "webgpu/webgpu.h"
-
+// The two headers describe the same C API and must never be included together (the enums
+// would be redefined): natively the real wgpu-native header wins, and the vendored contract
+// header — the wasm host-import surface webgpu.mjs implements — is the browser build's only one.
 #if XL_WGPU_NATIVE_API
 #include <webgpu/wgpu.h>
+#else
+#include "webgpu/webgpu.h"
 #endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::webgpu {

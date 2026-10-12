@@ -891,8 +891,83 @@ void Loop::captureImage(Function<void(const core::ImageInfoData &info, BytesView
 }
 
 void Loop::captureBuffer(Function<void(const core::BufferInfo &info, BytesView view)> &&cb,
-		const Rc<core::BufferObject> &) {
-	log::source().error("webgpu::Loop", "captureBuffer is not implemented");
+		const Rc<core::BufferObject> &bufferObject) {
+	if ((bufferObject->getInfo().usage & core::BufferUsage::TransferSrc) != core::BufferUsage::TransferSrc) {
+		log::source().error("webgpu::Loop::captureBuffer", "Buffer '", bufferObject->getName(),
+				"' has no BufferUsage::TransferSrc flag to being captured");
+		cb(bufferObject->getInfo(), BytesView());
+		return;
+	}
+
+	performOnThread([this, cb = sp::move(cb), bufferObject]() mutable {
+		const auto info = bufferObject->getInfo();
+		const uint64_t bufferSize = info.size;
+
+		if (bufferSize == 0) {
+			cb(info, BytesView());
+			return;
+		}
+
+		WGPUBufferDescriptor bufDesc = WGPU_BUFFER_DESCRIPTOR_INIT;
+		bufDesc.label = WGPUStringView{"captureBuffer", WGPU_STRLEN};
+		bufDesc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
+		bufDesc.size = bufferSize;
+		auto buffer = wgpuDeviceCreateBuffer(_device->getDevice(), &bufDesc);
+
+		auto encoder = wgpuDeviceCreateCommandEncoder(_device->getDevice(), nullptr);
+		wgpuCommandEncoderCopyBufferToBuffer(encoder,
+				static_cast<Buffer *>(bufferObject.get())->getBuffer(), 0, buffer, 0, bufferSize);
+
+		auto commands = wgpuCommandEncoderFinish(encoder, nullptr);
+		wgpuCommandEncoderRelease(encoder);
+
+		wgpuQueueSubmit(_device->getQueue(), 1, &commands);
+		wgpuCommandBufferRelease(commands);
+
+		// fully asynchronous readback, the same model as captureImage: the map
+		// callback is delivered by the loop's regular device poll (or by the event
+		// loop in a browser build), nothing blocks here
+		struct CaptureContext {
+			Rc<Loop> loop;
+			Function<void(const core::BufferInfo &, BytesView)> callback;
+			WGPUBuffer buffer;
+			core::BufferInfo info;
+			uint64_t bufferSize;
+		};
+
+		auto ctx = new CaptureContext{this, sp::move(cb), buffer, info, bufferSize};
+
+		WGPUBufferMapCallbackInfo mapCallback = WGPU_BUFFER_MAP_CALLBACK_INFO_INIT;
+		mapCallback.mode = WGPUCallbackMode_AllowProcessEvents;
+		mapCallback.callback = [](WGPUMapAsyncStatus status, WGPUStringView message,
+				void *userdata1, void *) {
+			auto ctx = reinterpret_cast<CaptureContext *>(userdata1);
+			ctx->loop->performOnThread([ctx, status] {
+				if (status == WGPUMapAsyncStatus_Success) {
+					auto mapped = reinterpret_cast<const uint8_t *>(
+							wgpuBufferGetConstMappedRange(ctx->buffer, 0, ctx->bufferSize));
+
+					Bytes data;
+					data.resize(size_t(ctx->bufferSize));
+					sprt::memcpy(data.data(), mapped, size_t(ctx->bufferSize));
+
+					wgpuBufferUnmap(ctx->buffer);
+
+					ctx->callback(ctx->info, data);
+				} else {
+					log::source().error("webgpu::Loop",
+							"captureBuffer: fail to map readback buffer");
+					ctx->callback(ctx->info, BytesView());
+				}
+
+				wgpuBufferRelease(ctx->buffer);
+				delete ctx;
+			}, ctx->loop.get(), true);
+		};
+		mapCallback.userdata1 = ctx;
+
+		wgpuBufferMapAsync(buffer, WGPUMapMode_Read, 0, bufferSize, mapCallback);
+	}, this, true);
 }
 
 Rc<core::PresentationEngine> Loop::makePresentationEngine(

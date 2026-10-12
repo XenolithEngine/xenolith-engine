@@ -14,6 +14,11 @@
 //     the calling instance itself: C callbacks (need that worker's indirect table) and wasm
 //     malloc (need that worker's TLS-valid allocator). Those never cross to the broker.
 //
+// Readback maps are split across both sides: the broker runs buffer.mapAsync (the promise
+// settles on its free event loop) and copies the mapped bytes into shared wasm memory, then
+// publishes the outcome into a status slot of the ctrl block; the registering thunk's
+// wgpuDevicePoll sees the slot and fires the C callback on the worker that asked for the map.
+//
 // ABI: the contract header (xenolith/backend/webgpu/webgpu/webgpu.h) uses real C types —
 // handles are opaque-struct POINTERS, lengths are size_t, callbacks are function pointers —
 // so the byte layout follows the module's address size. wasm32: pointer-sized fields are 4B,
@@ -176,18 +181,27 @@ export function webgpuLayouts(w64) {
 }
 
 // ---- shared control block layout (ctrl SharedArrayBuffer) ---------------------------------
-// i32 header + a BigInt64 args area (holds i32 and i64 args losslessly).
+// i32 header + a BigInt64 args area (holds i32 and i64 args losslessly) + the readback-map ring.
 const LOCK = 0, STATUS = 1, FUNC = 2, NARG = 3, RET = 4; // Int32 slots
 const ARGS_OFF = 32, ARGS_MAX = 16;                      // BigInt64 args at byte 32
 const ST_IDLE = 0, ST_REQ = 1, ST_DONE = 2;
-export const GPU_CTRL_BYTES = ARGS_OFF + ARGS_MAX * 8;
+// A readback map settles as a promise on the broker's event loop; the thunk that registered it
+// cannot block on that, so the broker writes the map's outcome into a per-map status slot here
+// and the thunk's wgpuDevicePoll fires the C callback. Slot values are WGPUMapAsyncStatus
+// (Success = 1 …); 0 means still pending. The slot INDEX is the map id the registering thunk
+// picked, which bounds in-flight maps per ctrl block to the ring length.
+const MAP_RING_LEN = 16;
+const MAP_RING_OFF = ARGS_OFF + ARGS_MAX * 8;
+export const MAP_RING = { off: MAP_RING_OFF, len: MAP_RING_LEN }; // byte offset, i32 slot count
+export const GPU_CTRL_BYTES = MAP_RING_OFF + MAP_RING_LEN * 4;
 
 // Function id table: the broker dispatches by index; thunks marshal by the same index. Real
-// wgpu functions plus two broker-internal ops ($getDevice returns the device handle for the
+// wgpu functions plus broker-internal ops ($getDevice returns the device handle for the
 // RequestDevice callback the thunk fires locally; $setMapped registers a thunk-malloc'd
-// pointer as a buffer's mapped range so the broker can flush it on unmap).
+// pointer as a buffer's mapped range so the broker can flush it on unmap; $mapAsync runs a
+// readback map on the broker and publishes its outcome through the ctrl ring).
 export const BROKER_FUNCS = [
-	"$getDevice", "$setMapped",
+	"$getDevice", "$setMapped", "$mapAsync",
 	"wgpuCreateInstance", "wgpuInstanceRelease", "wgpuInstanceProcessEvents", "wgpuSetLogLevel",
 	"wgpuSetLogCallback", "wgpuInstanceEnumerateAdapters", "wgpuInstanceCreateSurface",
 	"wgpuAdapterGetInfo", "wgpuAdapterInfoFreeMembers", "wgpuAdapterGetLimits", "wgpuAdapterGetFeatures",
@@ -202,7 +216,7 @@ export const BROKER_FUNCS = [
 	"wgpuBindGroupRelease", "wgpuBindGroupLayoutAddRef", "wgpuBindGroupLayoutRelease",
 	"wgpuPipelineLayoutRelease", "wgpuRenderPipelineRelease", "wgpuComputePipelineRelease",
 	"wgpuCommandEncoderBeginRenderPass", "wgpuCommandEncoderBeginComputePass",
-	"wgpuCommandEncoderCopyTextureToBuffer", "wgpuCommandEncoderFinish", "wgpuCommandEncoderRelease",
+	"wgpuCommandEncoderCopyBufferToBuffer", "wgpuCommandEncoderCopyTextureToBuffer", "wgpuCommandEncoderFinish", "wgpuCommandEncoderRelease",
 	"wgpuCommandBufferRelease", "wgpuRenderPassEncoderSetPipeline", "wgpuRenderPassEncoderSetBindGroup",
 	"wgpuRenderPassEncoderSetIndexBuffer", "wgpuRenderPassEncoderSetScissorRect",
 	"wgpuRenderPassEncoderDraw", "wgpuRenderPassEncoderDrawIndexed", "wgpuRenderPassEncoderEnd",
@@ -287,12 +301,18 @@ export async function bootstrapGpu(canvas) {
 // region (allocated by the engine worker, which has a TLS-valid malloc) used for the handful
 // of out-params that need to point at broker-produced arrays (surface capabilities).
 // ==========================================================================================
-export function makeBrokerTable({ memory, gpu, scratchPtr }) {
+export function makeBrokerTable({ memory, gpu, scratchPtr, ctrl, onError }) {
 	const w64 = isMemory64(memory);
 	const LO = webgpuLayouts(w64);
 	const H = new Handles();
 	const c = makeCodec(memory, w64);
 	const mapped = new Map(); // buffer handle -> { buf, ptr, size } (mappedAtCreation upload)
+	                             //                 | { buf, dir: "read" } (readback map)
+
+	// Readback completions: $mapAsync publishes each finished map into its status slot (see the
+	// ctrl layout above). Atomics so the thunk's poll can never see a torn value.
+	const mapRing = ctrl ? new Int32Array(ctrl, MAP_RING.off, MAP_RING.len) : null;
+	const publishMap = (id, status) => { if (mapRing) Atomics.store(mapRing, id, status); };
 
 	// Presentation bridge: the engine renders whenever (off its own clock), but a transferred
 	// OffscreenCanvas only shows its WebGPU output at the worker's animation-frame boundary. So
@@ -433,6 +453,30 @@ export function makeBrokerTable({ memory, gpu, scratchPtr }) {
 		// broker-internal ops
 		$getDevice: () => H.add(gpu.device),
 		$setMapped: (bufH, ptr, size) => { const buf = H.get(bufH); if (buf) mapped.set(bufH, { buf, ptr, size }); },
+		// Readback map: runs on the broker (the GPUBuffer lives here; the promise settles on this
+		// worker's free event loop). On success the bytes land in shared wasm memory at `ptr`
+		// BEFORE the status slot is published, so the thunk's callback always fires with the data
+		// in place. Read maps only — uploads go through mappedAtCreation.
+		$mapAsync: (bufH, ptr, offset, size, id) => {
+			const buf = H.get(bufH);
+			if (!buf) { publishMap(id, 2 /*CallbackCancelled*/); return 0; }
+			mapped.set(bufH, { buf, dir: "read" }); // Unmap/Release unmap without an upload flush
+			buf.mapAsync(GPUMapMode.READ, offset, size).then(() => {
+				try {
+					// fresh views: the shared memory may have grown since the map was registered
+					const data = new Uint8Array(buf.getMappedRange(offset, size));
+					new Uint8Array(memory.buffer, ptr, size).set(data);
+					publishMap(id, 1 /*Success*/);
+				} catch (e) {
+					publishMap(id, 3 /*Error*/);
+					onError?.("$mapAsync: copying the mapped range failed: " + ((e && e.message) || e));
+				}
+			}, (err) => {
+				publishMap(id, 3 /*Error*/);
+				onError?.("mapAsync rejected: " + ((err && (err.message || err)) || err));
+			});
+			return 0;
+		},
 		// Called from the rAF loop: blit the engine's latest offscreen render into the canvas.
 		$present: () => {
 			if (!presentTex) return "no-presentTex";
@@ -549,7 +593,9 @@ export function makeBrokerTable({ memory, gpu, scratchPtr }) {
 		wgpuBufferUnmap: (buffer) => {
 			const m = mapped.get(buffer);
 			if (m) {
-				new Uint8Array(m.buf.getMappedRange(0, m.size)).set(c.bytes(m.ptr, m.size)); m.buf.unmap(); mapped.delete(buffer);
+				if (m.dir === "read") { m.buf.unmap(); } // readback: the bytes were already copied out
+				else { new Uint8Array(m.buf.getMappedRange(0, m.size)).set(c.bytes(m.ptr, m.size)); m.buf.unmap(); }
+				mapped.delete(buffer);
 			}
 			else { const b = H.get(buffer); if (b) b.unmap(); }
 		},
@@ -580,6 +626,8 @@ export function makeBrokerTable({ memory, gpu, scratchPtr }) {
 
 		wgpuCommandEncoderBeginRenderPass: (enc, descPtr) => H.add(H.get(enc).beginRenderPass(decodeRenderPass(descPtr))),
 		wgpuCommandEncoderBeginComputePass: (enc) => H.add(H.get(enc).beginComputePass()),
+		wgpuCommandEncoderCopyBufferToBuffer: (enc, src, srcOffset, dst, dstOffset, size) =>
+			H.get(enc).copyBufferToBuffer(H.get(src), srcOffset, H.get(dst), dstOffset, size),
 		wgpuCommandEncoderCopyTextureToBuffer: (enc, srcPtr, dstPtr, extentPtr) => {
 			const t = LO.texelCopyTextureInfo, or = srcPtr + t.origin, og = LO.origin3d;
 			const src = { texture: H.get(c.handle(srcPtr + t.texture)), mipLevel: c.u32(srcPtr + t.mipLevel),
@@ -759,11 +807,23 @@ export function makeWebgpuThunks({ memory, ctrl, getTable, getExports }) {
 		pendingWorkDone.push([c.ptr(p + o.callback), c.ptr(p + o.userdata1), c.ptr(p + o.userdata2)]);
 	};
 	wgpu.wgpuDevicePoll = (_dev, _wait, _wsi) => {
+		// readback maps first: their bytes are already in place, and the work-done callbacks
+		// below may be what the caller loops on while waiting for a capture to finish
+		for (let i = pendingMaps.length - 1; i >= 0; --i) {
+			const m = pendingMaps[i];
+			const status = Atomics.load(ci, mapRingIdx + m.id);
+			if (status === 0) continue; // still pending on the broker
+			Atomics.store(ci, mapRingIdx + m.id, 0);
+			mapSlots[m.id] = false;
+			pendingMaps.splice(i, 1);
+			call(m.cb, status, arg64(emptySV()), arg64(m.ud1), arg64(m.ud2));
+		}
 		while (pendingWorkDone.length) { const [cb, ud1, ud2] = pendingWorkDone.shift(); call(cb, 1 /*Success*/, arg64(emptySV()), arg64(ud1), arg64(ud2)); }
 		return 1;
 	};
-	// Mapped range (mappedAtCreation uploads): malloc here (TLS-valid), register the pointer
-	// with the broker so its unmap flushes our bytes into the GPU buffer. Returns void* —
+	// Mapped range: for a mappedAtCreation upload the range is malloc'd here (TLS-valid) and
+	// registered with the broker so its unmap flushes our bytes into the GPU buffer; for a
+	// readback map the pointer was already registered by wgpuBufferMapAsync. Returns void* —
 	// i64 on wasm64.
 	const getRange = (buffer, offsetRaw, sizeRaw) => {
 		const offset = ptrArg(offsetRaw), size = ptrArg(sizeRaw);
@@ -777,13 +837,28 @@ export function makeWebgpuThunks({ memory, ctrl, getTable, getExports }) {
 		broker(FUNC_ID.wgpuBufferUnmap, [buffer]); // broker flushes + unmaps
 		const ptr = mappedPtr.get(buffer); if (ptr) { freePtr(ptr); mappedPtr.delete(buffer); }
 	};
-	// Async map (readback / screenshots): not wired through the broker yet — report cancelled so
-	// the engine doesn't wait forever. (Milestone: the render path uses writeBuffer + mapped
-	// creation, not read-back mapping.)
-	wgpu.wgpuBufferMapAsync = (_buffer, _mode, _offset, _size, cbInfoPtrRaw) => {
+	// Readback maps: the broker maps the buffer (its promise settles on the broker's event loop)
+	// and copies the bytes into wasm memory reserved here; this worker's poll then fires the C
+	// callback through its own indirect table. The pre-registered pointer doubles as the mapped
+	// range GetMappedRange hands back after the callback. Read maps only — a write map (or a full
+	// map ring) is refused up front so the engine never waits on it.
+	const mapRingIdx = MAP_RING.off / 4;
+	const mapSlots = new Array(MAP_RING.len).fill(false);
+	const pendingMaps = [];
+	wgpu.wgpuBufferMapAsync = (buffer, modeRaw, offsetRaw, sizeRaw, cbInfoPtrRaw) => {
 		const p = ptrArg(cbInfoPtrRaw), o = LO.callbackInfo;
 		const cb = c.ptr(p + o.callback), ud1 = c.ptr(p + o.userdata1), ud2 = c.ptr(p + o.userdata2);
-		call(cb, 2 /*CallbackCancelled*/, arg64(emptySV()), arg64(ud1), arg64(ud2));
+		const refuse = () => call(cb, 2 /*CallbackCancelled*/, arg64(emptySV()), arg64(ud1), arg64(ud2));
+		const mode = ptrArg(modeRaw), offset = ptrArg(offsetRaw), size = ptrArg(sizeRaw);
+		const id = mapSlots.indexOf(false);
+		if (mode !== 0x1 /*WGPUMapMode_Read*/ || id < 0) {
+			refuse();
+			return;
+		}
+		mapSlots[id] = true;
+		mappedPtr.set(buffer, mallocPtr(size || 4));
+		pendingMaps.push({ id, cb, ud1, ud2 });
+		broker(FUNC_ID.$mapAsync, [buffer, mappedPtr.get(buffer), offset, size || 4, id]);
 	};
 	return wgpu;
 }

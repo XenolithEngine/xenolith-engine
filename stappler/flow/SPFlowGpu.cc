@@ -56,6 +56,20 @@ StringView getGpuGlslType(VarType t) {
 	}
 }
 
+StringView getGpuWgslType(VarType t) {
+	switch (t) {
+	case VarType::Bool: return StringView("bool");
+	case VarType::Int32: return StringView("i32");
+	case VarType::UInt32: return StringView("u32");
+	case VarType::Float32: return StringView("f32");
+	case VarType::Vec2: return StringView("vec2<f32>");
+	case VarType::Vec3: return StringView("vec3<f32>");
+	case VarType::Vec4:
+	case VarType::Color: return StringView("vec4<f32>");
+	default: return StringView("u32");
+	}
+}
+
 uint32_t getGpuTypeSize(VarType t) {
 	switch (t) {
 	case VarType::Vec2: return 8;
@@ -444,9 +458,79 @@ mem_std::String writeGpuReduceGlsl(StringView kind, VarType type) {
 	return out;
 }
 
+// The same pass in WGSL. What the language has no spelling for: `precise` (the level-C tolerance is
+// what covers a reassociated tree either way) and push constants - the pass parameters travel in a
+// small uniform buffer at binding 2, one write of 16 bytes per stride step.
+mem_std::String writeGpuReduceWgsl(StringView kind, VarType type) {
+	// A Bool is a u32 in a buffer, and `count` folds those as numbers.
+	auto element = type == VarType::Bool ? StringView("u32") : getGpuWgslType(type);
+	mem_std::String combine;
+	if (kind == StringView("sum")) {
+		combine = type == VarType::Int32 ? mem_std::String("i32(u32(a) + u32(b))") : mem_std::String("a + b");
+	} else if (kind == StringView("count")) {
+		combine = "a + b";
+	} else if (kind == StringView("any")) {
+		combine = "a | b";
+	} else if (kind == StringView("all")) {
+		combine = "a & b";
+	} else if (kind == StringView("min")) {
+		combine = "select(a, b, b < a)";
+	} else if (kind == StringView("max")) {
+		combine = "select(a, b, a < b)";
+	}
+	mem_std::String out;
+	auto line = [&](StringView text) {
+		out.append(text.data(), text.size());
+		out.push_back('\n');
+	};
+	line(mem_std::toString("// The ", kind, " of ", value::getVarTypeName(type),
+			" branch values, one pass of a tree. Generated: do not edit."));
+	line("//");
+	line("// Pass `stride` = 1, 2, 4...: values[i] takes op(values[i], values[i + stride]) for every i that is a");
+	line("// multiple of 2 * stride; an absent side takes the other. The earlier branch stays on the left, so a");
+	line("// tie keeps it, as the CPU's fold in branch order does. For `count` the loader writes each");
+	line("// branch's Bool as 0 or 1.");
+	line("//");
+	line("// The pass parameters travel in the uniform buffer at binding 2 - WGSL has no push constants -");
+	line("// so every stride of every reducer of a block is one frame over one pair of buffers:");
+	line("// `valueBase` and `presentBase` say where this reducer's run begins.");
+	line("");
+	line("struct Params {");
+	line("\tcount: u32,");
+	line("\tstride: u32,");
+	line("\tvalueBase: u32,");
+	line("\tpresentBase: u32,");
+	line("};");
+	line("");
+	line(mem_std::toString("@group(0) @binding(0) var<storage, read_write> values: array<", element, ">;"));
+	line("@group(0) @binding(1) var<storage, read_write> present: array<u32>;");
+	line("@group(0) @binding(2) var<uniform> prm: Params;");
+	line("");
+	line("@compute @workgroup_size(256)");
+	line("fn main(@builtin(global_invocation_id) gid: vec3<u32>) {");
+	line("\tlet k = gid.x * (2u * prm.stride);");
+	line("\tlet l = k + prm.stride;");
+	line("\tif (l >= prm.count || present[prm.presentBase + l] == 0u) {");
+	line("\t\treturn;");
+	line("\t}");
+	line("\tlet i = prm.valueBase + k;");
+	line("\tlet j = prm.valueBase + l;");
+	line("\tif (present[prm.presentBase + k] == 0u) {");
+	line("\t\tvalues[i] = values[j];");
+	line("\t\tpresent[prm.presentBase + k] = 1u;");
+	line("\t\treturn;");
+	line("\t}");
+	line("\tlet a = values[i];");
+	line("\tlet b = values[j];");
+	line(mem_std::toString("\tvalues[i] = ", combine, ";"));
+	line("}");
+	return out;
+}
+
 template Status lowerGpuBlock(const RuntimeGraph &, uint32_t, GpuProgram &, DiagReport *,
 		const GpuLowerLimits &);
 template mem_std::String writeGpuGlsl(const RuntimeGraph &, const GpuProgram &);
+template mem_std::String writeGpuWgsl(const RuntimeGraph &, const GpuProgram &);
 template bool replayGpuPath(const RuntimeGraph &, const GpuProgram &, SpanView<uint32_t>, bool, bool,
 		uint32_t, Status, uint32_t, GpuPath &);
 template Status loadGpuBlock(const RuntimeGraph &, const GpuProgram &, const GpuLoadSource &,
@@ -584,6 +668,128 @@ mem_std::String writeGpuConformanceGlsl(const OpDesc &op, GpuLayout &in, GpuLayo
 	return text;
 }
 
+// The same conformance shader in WGSL: the same three bindings and layouts, the operation's own
+// WGSL body, and its outputs through the function-local temporaries the body's `ptr<function>`
+// parameters ask for.
+mem_std::String writeGpuConformanceWgsl(const OpDesc &op, GpuLayout &in, GpuLayout &out) {
+	in = GpuLayout();
+	out = GpuLayout();
+	auto ins = op.getDataIn();
+	auto outs = op.getDataOut();
+	for (uint32_t i = 0; i < uint32_t(ins.size()); ++i) {
+		GpuSlot slot;
+		slot.kind = GpuSlot::Kind::In;
+		slot.index = i;
+		slot.name = mem_std::toString("a", i);
+		slot.type = ins[i].type;
+		in.slots.emplace_back(sprt::move(slot));
+	}
+	layoutStd430(in);
+	for (uint32_t i = 0; i < uint32_t(outs.size()); ++i) {
+		GpuSlot slot;
+		slot.kind = GpuSlot::Kind::Cell;
+		slot.index = i;
+		slot.name = mem_std::toString("r", i);
+		slot.type = outs[i].type;
+		out.slots.emplace_back(sprt::move(slot));
+	}
+	{
+		GpuSlot slot;
+		slot.kind = GpuSlot::Kind::Status;
+		slot.name = mem_std::String("status");
+		slot.type = VarType::Int32;
+		out.slots.emplace_back(sprt::move(slot));
+	}
+	layoutStd430(out);
+
+	mem_std::String text;
+	auto line = [&](StringView what) {
+		text.append(what.data(), what.size());
+		text.push_back('\n');
+	};
+	auto zeroText = [&](VarType type) -> mem_std::String {
+		switch (type) {
+		case VarType::Bool: return mem_std::String("false");
+		case VarType::Int32: return mem_std::String("0");
+		case VarType::UInt32: return mem_std::String("0u");
+		case VarType::Float32: return mem_std::String("0.0");
+		case VarType::Vec2: return mem_std::String("vec2<f32>(0.0)");
+		case VarType::Vec3: return mem_std::String("vec3<f32>(0.0)");
+		case VarType::Vec4:
+		case VarType::Color: return mem_std::String("vec4<f32>(0.0)");
+		default: return mem_std::String("0u");
+		}
+	};
+	auto member = [&](const GpuLayout &l, StringView what) {
+		mem_std::Vector<uint32_t> order(l.slots.size());
+		for (uint32_t k = 0; k < uint32_t(order.size()); ++k) {
+			order[k] = k;
+		}
+		sprt::stable_sort(order.begin(), order.end(),
+				[&](uint32_t a, uint32_t b) { return l.slots[a].offset < l.slots[b].offset; });
+		line(mem_std::toString("struct ", what, " {"));
+		for (auto k : order) {
+			auto &slot = l.slots[k];
+			auto type = slot.type == VarType::Bool ? StringView("u32") : getGpuWgslType(slot.type);
+			line(mem_std::toString("\t", slot.name, ": ", type, ","));
+		}
+		line("};");
+		line("");
+	};
+
+	line(mem_std::toString("// The body of ", op.getName(),
+			" on a device, against the C++ body of the same operation."));
+	line("// Generated: do not edit.");
+	line("");
+	line("struct Block {");
+	line("\tcount: u32,");
+	line("};");
+	member(in, StringView("In"));
+	member(out, StringView("Out"));
+	line("@group(0) @binding(0) var<storage, read> blk: Block;");
+	line("@group(0) @binding(1) var<storage, read> ins: array<In>;");
+	line("@group(0) @binding(2) var<storage, read_write> outs: array<Out>;");
+	line("");
+	text.append(op.getShaderWgslSource().data(), op.getShaderWgslSource().size());
+	line("");
+	// The WGSL twin runs 256 wide where the GLSL one runs 64: each through the device that runs
+	// it, and the WGSL device (xenolith::flowwebgpu) dispatches 256-wide workgroups.
+	line("@compute @workgroup_size(256)");
+	line("fn main(@builtin(global_invocation_id) gid: vec3<u32>) {");
+	line("\tlet i = gid.x;");
+	line("\tif (i >= blk.count) {");
+	line("\t\treturn;");
+	line("\t}");
+	for (uint32_t k = 0; k < uint32_t(outs.size()); ++k) {
+		auto type = getGpuWgslType(outs[k].type);
+		line(mem_std::toString("\tvar o", k, ": ", type, " = ", zeroText(outs[k].type), ";"));
+	}
+	mem_std::String args;
+	for (uint32_t k = 0; k < uint32_t(ins.size()); ++k) {
+		if (!args.empty()) {
+			args.append(", ");
+		}
+		auto text2 = ins[k].type == VarType::Bool
+				? mem_std::toString("(ins[i].a", k, " != 0u)")
+				: mem_std::toString("ins[i].a", k);
+		args.append(text2.data(), text2.size());
+	}
+	for (uint32_t k = 0; k < uint32_t(outs.size()); ++k) {
+		if (!args.empty()) {
+			args.append(", ");
+		}
+		args.append(mem_std::toString("&o", k));
+	}
+	line(mem_std::toString("\touts[i].status = ", op.getShaderName(), "(", args, ");"));
+	for (uint32_t k = 0; k < uint32_t(outs.size()); ++k) {
+		auto value = outs[k].type == VarType::Bool ? mem_std::toString("u32(o", k, ")")
+												   : mem_std::toString("o", k);
+		line(mem_std::toString("\touts[i].r", k, " = ", value, ";"));
+	}
+	line("}");
+	return text;
+}
+
 // Both graphs own their table and answer the same two questions: the machine's launch asks them
 // through the graph policy.
 uint32_t RuntimeGraph::attachGpuShaders(SpanView<GpuShaderBinary> shaders) {
@@ -615,6 +821,7 @@ template void collectGpuReducers(const CompiledGraph &, const GpuProgram &, mem_
 template Status lowerGpuBlock(const CompiledGraph &, uint32_t, GpuProgram &, DiagReport *,
 		const GpuLowerLimits &);
 template mem_std::String writeGpuGlsl(const CompiledGraph &, const GpuProgram &);
+template mem_std::String writeGpuWgsl(const CompiledGraph &, const GpuProgram &);
 template bool isGpuBlock(const CompiledGraph &, uint32_t);
 template bool isGpuCandidate(const CompiledGraph &, uint32_t);
 template uint64_t hashGpuBlock(const CompiledGraph &, uint32_t, mem_std::String *);

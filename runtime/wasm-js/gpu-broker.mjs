@@ -13,7 +13,8 @@ self.onmessage = async (e) => {
 		// Surface async WebGPU validation errors (they don't throw synchronously).
 		gpu.device.onuncapturederror = (ev) => post({ type: "stderr", text: "[gpu] VALIDATION: " + (ev.error?.message || ev) + "\n" });
 
-		const table = makeBrokerTable({ memory, gpu, scratchPtr });
+		const onError = (m) => post({ type: "stderr", text: "[gpu] " + m + "\n" });
+		const table = makeBrokerTable({ memory, gpu, scratchPtr, ctrl, onError });
 		post({ type: "gpu-ready", info: `${gpu.format}` });
 
 		// A transferred OffscreenCanvas only pushes its latest WebGPU render to the visible
@@ -25,7 +26,7 @@ self.onmessage = async (e) => {
 			requestAnimationFrame(tick);
 		}
 
-		await runBroker({ ctrl, table, onError: (m) => post({ type: "stderr", text: "[gpu] " + m + "\n" }) });
+		await runBroker({ ctrl, table, onError });
 	} catch (err) {
 		post({ type: "error", message: "gpu-broker: " + String((err && err.stack) || err) });
 	}

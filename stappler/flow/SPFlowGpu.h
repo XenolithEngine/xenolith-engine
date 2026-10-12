@@ -292,6 +292,14 @@ uint64_t hashGpuBlock(const Graph &, uint32_t block, mem_std::String *text = nul
 template <typename Graph>
 mem_std::String writeGpuGlsl(const Graph &, const GpuProgram &);
 
+// The same program as a WGSL compute shader, for a device that takes text rather than SPIR-V: the
+// same three bindings and the same byte layout, a branch state in `var<private>` globals, and every
+// operation body in its WGSL spelling. Deterministic like the GLSL. Empty when a body operation has
+// no WGSL form - such a block does not reach a WGSL device, and the GLSL hash that keys the shader
+// table is untouched by which text a device runs.
+template <typename Graph>
+mem_std::String writeGpuWgsl(const Graph &, const GpuProgram &);
+
 // The control side of one branch, replayed from what the shader returned.
 struct GpuNodeState {
 	uint32_t flags = 0; // NodeFlags: Ran, Token, Queued
@@ -380,6 +388,7 @@ void layoutStd430(GpuLayout &);
 uint32_t getGpuTypeSize(VarType);
 uint32_t getGpuTypeAlign(VarType);
 StringView getGpuGlslType(VarType);
+StringView getGpuWgslType(VarType);
 bool isGpuValueType(VarType);
 
 // How far a GPU value may lie from the CPU's, at level C.
@@ -407,6 +416,7 @@ struct GpuReducer {
 // pass of the tree, `values[i] = op(values[i], values[i + stride])` over i = 0, 2*stride, ...
 SP_PUBLIC SpanView<Pair<StringView, VarType>> getGpuReducers();
 SP_PUBLIC mem_std::String writeGpuReduceGlsl(StringView kind, VarType type);
+SP_PUBLIC mem_std::String writeGpuReduceWgsl(StringView kind, VarType type);
 SP_PUBLIC mem_std::String getGpuReduceName(StringView kind, VarType type); // par_reduce_sum_i32
 
 // The reducers of a block's GPU collectors; a collector of a type outside the set folds on the CPU.
@@ -423,6 +433,10 @@ SP_PUBLIC bool treeFoldReference(StringView kind, VarType type, SpanView<Var> va
 // status it returned. `in` and `out` come back laid out, so the caller writes and reads the bytes
 // the way the loader does.
 SP_PUBLIC mem_std::String writeGpuConformanceGlsl(const OpDesc &, GpuLayout &in, GpuLayout &out);
+
+// The same conformance shader in WGSL, with the operation's own WGSL body. Empty for an operation
+// without one.
+SP_PUBLIC mem_std::String writeGpuConformanceWgsl(const OpDesc &, GpuLayout &in, GpuLayout &out);
 
 // The name of that shader: `conf_<shader name>`, so the file and the pipeline are one word apart.
 SP_PUBLIC mem_std::String getGpuConformanceName(const OpDesc &);

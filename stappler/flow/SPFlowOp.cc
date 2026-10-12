@@ -504,6 +504,7 @@ Status OpDesc::build(const OpDef &def, memory::pool_t *pool, DiagReport &report)
 	_inlineName = intern(def.inlineName);
 	_shaderName = intern(def.shaderName);
 	_shaderSource = intern(def.shaderSource);
+	_shaderWgslSource = intern(def.shaderWgslSource);
 	_function = intern(def.function);
 	_functionRole = def.functionRole;
 	_functionExit = def.functionExit;

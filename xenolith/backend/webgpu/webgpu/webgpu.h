@@ -377,6 +377,7 @@ WGPU_IMPORT(wgpuRenderPipelineRelease) void wgpuRenderPipelineRelease(WGPURender
 WGPU_IMPORT(wgpuComputePipelineRelease) void wgpuComputePipelineRelease(WGPUComputePipeline);
 WGPU_IMPORT(wgpuCommandEncoderBeginRenderPass) WGPURenderPassEncoder wgpuCommandEncoderBeginRenderPass(WGPUCommandEncoder, const WGPURenderPassDescriptor *);
 WGPU_IMPORT(wgpuCommandEncoderBeginComputePass) WGPUComputePassEncoder wgpuCommandEncoderBeginComputePass(WGPUCommandEncoder, const WGPUComputePassDescriptor *);
+WGPU_IMPORT(wgpuCommandEncoderCopyBufferToBuffer) void wgpuCommandEncoderCopyBufferToBuffer(WGPUCommandEncoder, WGPUBuffer, uint64_t, WGPUBuffer, uint64_t, uint64_t);
 WGPU_IMPORT(wgpuCommandEncoderCopyTextureToBuffer) void wgpuCommandEncoderCopyTextureToBuffer(WGPUCommandEncoder, const WGPUTexelCopyTextureInfo *, const WGPUTexelCopyBufferInfo *, const WGPUExtent3D *);
 WGPU_IMPORT(wgpuCommandEncoderFinish) WGPUCommandBuffer wgpuCommandEncoderFinish(WGPUCommandEncoder, const WGPUCommandBufferDescriptor *);
 WGPU_IMPORT(wgpuCommandEncoderRelease) void wgpuCommandEncoderRelease(WGPUCommandEncoder);

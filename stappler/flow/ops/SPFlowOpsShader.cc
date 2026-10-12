@@ -21,10 +21,11 @@ THE SOFTWARE.
 **/
 
 // The shader form of an operation, derived from the template form it already has. An operation's
-// C++ body is named by `inlineName`, and its GLSL body is decided here from the same name and the
-// pin types, so the two spellings of one body are one entry rather than two tables that could fall
-// out of step. Every GLSL body has one calling convention,
-// `int name(in inputs..., out outputs...)`, returning 0 or the Status the C++ body refuses with.
+// C++ body is named by `inlineName`, and its shader bodies - GLSL and WGSL - are decided here from
+// the same name and the pin types, so the spellings of one body are one entry rather than parallel
+// tables that could fall out of step. Every GLSL body has one calling convention,
+// `int name(in inputs..., out outputs...)`, returning 0 or the Status the C++ body refuses with;
+// every WGSL body is the same under `fn name(inputs..., r: ptr<function, R>) -> i32`.
 // The arithmetic follows SPFlowOpsInline.h exactly: integers wrap through `uint`, MIN / -1 and
 // abs(MIN) wrap to MIN, a zero integer divisor refuses, min and max are written as the comparisons
 // the C++ makes.
@@ -252,6 +253,202 @@ bool deriveBody(const OpDef &def, Form &f) {
 }
 
 } // namespace
+
+// The WGSL spelling of the same body, under the same name: `fn name(a: T, ..., r: ptr<function, R>)
+// -> i32`, returning 0 or the Status the C++ body refuses with, writing the result through the
+// pointer WGSL has instead of an `out` parameter. A caller passes the address of a function-local
+// `var` - a module-scope `var<private>` has another address space, and the address spaces do not
+// convert. The arithmetic is the GLSL body's, statement for statement: integers wrap through `u32`,
+// a ternary becomes `select` (its false side comes first), a bit reinterpretation becomes `bitcast`.
+namespace {
+
+StringView wgslType(VarType t) {
+	switch (t) {
+	case VarType::Bool: return StringView("bool");
+	case VarType::Int32: return StringView("i32");
+	case VarType::UInt32: return StringView("u32");
+	case VarType::Float32: return StringView("f32");
+	case VarType::Vec2: return StringView("vec2<f32>");
+	case VarType::Vec3: return StringView("vec3<f32>");
+	case VarType::Vec4:
+	case VarType::Color: return StringView("vec4<f32>");
+	default: return StringView();
+	}
+}
+
+Form binaryBodyWgsl(StringView op, VarType lhs, VarType rhs, VarType result, StringView expr,
+		StringView guard = StringView()) {
+	Form f;
+	f.name = mem_std::toString("xs_", op, "_", typeTag(lhs));
+	f.source = mem_std::toString("fn ", f.name, "(a: ", wgslType(lhs), ", b: ", wgslType(rhs),
+			", r: ptr<function, ", wgslType(result), ">) -> i32 {\n", guard, "\t*r = ", expr,
+			";\n\treturn 0;\n}\n");
+	return f;
+}
+
+Form unaryBodyWgsl(StringView op, VarType value, VarType result, StringView body) {
+	Form f;
+	f.name = mem_std::toString("xs_", op, "_", typeTag(value));
+	f.source = mem_std::toString("fn ", f.name, "(a: ", wgslType(value), ", r: ptr<function, ",
+			wgslType(result), ">) -> i32 {\n", body, "\treturn 0;\n}\n");
+	return f;
+}
+
+bool deriveBodyWgsl(const OpDef &def, Form &f) {
+	auto tmpl = templateOf(def.inlineName);
+	auto ins = def.dataIn;
+	auto outs = def.dataOut;
+	const auto invalid = statusText(Status::ErrorInvalidArguemnt);
+
+	auto allGpu = [&] {
+		for (auto &p : ins) {
+			if (!isGpuValue(p.type)) {
+				return false;
+			}
+		}
+		for (auto &p : outs) {
+			if (!isGpuValue(p.type)) {
+				return false;
+			}
+		}
+		return true;
+	};
+
+	if (ins.size() == 2 && outs.size() == 1 && allGpu()) {
+		auto l = ins[0].type;
+		auto r = outs[0].type;
+		const bool isInt = l == VarType::Int32;
+		const bool isUInt = l == VarType::UInt32;
+		if (tmpl == StringView("mathAdd")) {
+			f = binaryBodyWgsl("add", l, ins[1].type, r,
+					isInt ? StringView("i32(u32(a) + u32(b))") : StringView("a + b"));
+		} else if (tmpl == StringView("mathSub")) {
+			f = binaryBodyWgsl("sub", l, ins[1].type, r,
+					isInt ? StringView("i32(u32(a) - u32(b))") : StringView("a - b"));
+		} else if (tmpl == StringView("mathMul")) {
+			f = binaryBodyWgsl("mul", l, ins[1].type, r,
+					isInt ? StringView("i32(u32(a) * u32(b))") : StringView("a * b"));
+		} else if (tmpl == StringView("mathDiv")) {
+			if (isInt) {
+				// select carries its false side first: the plain quotient everywhere but b == -1,
+				// where the wrap through u32 spares MIN / -1.
+				f = binaryBodyWgsl("div", l, ins[1].type, r,
+						"select(a / b, i32(0u - u32(a)), b == -1)",
+						mem_std::toString("\tif (b == 0) { *r = 0; return ", invalid, "; }\n"));
+			} else if (isUInt) {
+				f = binaryBodyWgsl("div", l, ins[1].type, r, "a / b",
+						mem_std::toString("\tif (b == 0u) { *r = 0u; return ", invalid, "; }\n"));
+			} else {
+				f = binaryBodyWgsl("div", l, ins[1].type, r, "a / b");
+			}
+		} else if (tmpl == StringView("mathMin")) {
+			f = binaryBodyWgsl("min", l, ins[1].type, r, "select(a, b, b < a)");
+		} else if (tmpl == StringView("mathMax")) {
+			f = binaryBodyWgsl("max", l, ins[1].type, r, "select(a, b, a < b)");
+		} else if (tmpl == StringView("compareLess")) {
+			f = binaryBodyWgsl("less", l, ins[1].type, r, "a < b");
+		} else if (tmpl == StringView("compareEqual")) {
+			f = binaryBodyWgsl("equal", l, ins[1].type, r, "a == b");
+		} else if (tmpl == StringView("mathPow")) {
+			f = binaryBodyWgsl("pow", l, ins[1].type, r, "pow(a, b)");
+			f.inexact = true;
+		} else if (tmpl == StringView("logicAnd")) {
+			f = binaryBodyWgsl("and", l, ins[1].type, r, "a && b");
+		} else if (tmpl == StringView("logicOr")) {
+			f = binaryBodyWgsl("or", l, ins[1].type, r, "a || b");
+		} else if (tmpl == StringView("mathAddVec")) {
+			f = binaryBodyWgsl("addVec", l, ins[1].type, r, "a + b");
+		} else if (tmpl == StringView("mathSubVec")) {
+			f = binaryBodyWgsl("subVec", l, ins[1].type, r, "a - b");
+		} else if (tmpl == StringView("mathScaleVec")) {
+			f = binaryBodyWgsl("scaleVec", l, ins[1].type, r, "a * b");
+		} else if (tmpl == StringView("mathDotVec")) {
+			auto n = l == VarType::Vec2 ? 2 : (l == VarType::Vec3 ? 3 : 4);
+			f = binaryBodyWgsl("dotVec", l, ins[1].type, r, dotText(n, "a", "b"));
+		} else {
+			return false;
+		}
+		return true;
+	}
+
+	if (ins.size() == 1 && outs.size() == 1 && allGpu()) {
+		auto v = ins[0].type;
+		auto r = outs[0].type;
+		auto n = v == VarType::Vec2 ? 2 : (v == VarType::Vec3 ? 3 : 4);
+		if (tmpl == StringView("mathAbs")) {
+			f = unaryBodyWgsl("abs", v, r,
+					v == VarType::Int32 ? StringView("\t*r = select(a, i32(0u - u32(a)), a < 0);\n")
+										: StringView("\t*r = select(a, -a, a < 0.0);\n"));
+		} else if (tmpl == StringView("mathFloor")) {
+			f = unaryBodyWgsl("floor", v, r, "\t*r = floor(a);\n");
+		} else if (tmpl == StringView("mathCeil")) {
+			f = unaryBodyWgsl("ceil", v, r, "\t*r = ceil(a);\n");
+		} else if (tmpl == StringView("mathSqrt")) {
+			f = unaryBodyWgsl("sqrt", v, r, "\t*r = sqrt(a);\n");
+			f.inexact = true;
+		} else if (tmpl == StringView("mathSin")) {
+			f = unaryBodyWgsl("sin", v, r, "\t*r = sin(a);\n");
+			f.inexact = true;
+		} else if (tmpl == StringView("mathCos")) {
+			f = unaryBodyWgsl("cos", v, r, "\t*r = cos(a);\n");
+			f.inexact = true;
+		} else if (tmpl == StringView("mathTan")) {
+			f = unaryBodyWgsl("tan", v, r, "\t*r = tan(a);\n");
+			f.inexact = true;
+		} else if (tmpl == StringView("logicNot")) {
+			f = unaryBodyWgsl("not", v, r, "\t*r = !a;\n");
+		} else if (tmpl == StringView("mathLengthVec")) {
+			f = unaryBodyWgsl("lengthVec", v, r,
+					mem_std::toString("\t*r = sqrt(", dotText(n, "a", "a"), ");\n"));
+			f.inexact = true;
+		} else if (tmpl == StringView("mathNormalizeVec")) {
+			f = unaryBodyWgsl("normalizeVec", v, r,
+					mem_std::toString("\tlet l = sqrt(", dotText(n, "a", "a"), ");\n\t*r = select(",
+							wgslType(v), "(0.0), a / l, l > 0.0);\n"));
+			f.inexact = true;
+		} else if (tmpl == StringView("convertScalar")) {
+			if (v == VarType::Int32 && r == VarType::UInt32) {
+				f = unaryBodyWgsl("toUInt32", v, r,
+						mem_std::toString("\tif (a < 0) { *r = 0u; return ", invalid, "; }\n\t*r = u32(a);\n"));
+			} else if (v == VarType::UInt32 && r == VarType::Int32) {
+				f = unaryBodyWgsl("toInt32", v, r,
+						mem_std::toString("\tif (a > 2147483647u) { *r = 0; return ", invalid,
+								"; }\n\t*r = i32(a);\n"));
+			} else if (v == VarType::Float32 && r == VarType::Int32) {
+				// WGSL's own spellings of isnan and isinf - a NaN unequal to itself, an infinity
+				// beyond the largest finite value - because the named ones are not everywhere.
+				f = unaryBodyWgsl("toInt32", v, r,
+						mem_std::toString("\tif ((a != a) || abs(a) > 3.402823466e38 || !(a >= -2147483648.0 && a < 2147483648.0)) { *r = 0; return ",
+								invalid, "; }\n\t*r = i32(a);\n"));
+			} else if (v == VarType::Int32 && r == VarType::Float32) {
+				f = unaryBodyWgsl("toFloat32", v, r, "\t*r = f32(a);\n");
+			} else {
+				return false;
+			}
+		} else {
+			return false;
+		}
+		return true;
+	}
+
+	return false;
+}
+
+} // namespace
+
+void attachShaderFormWgsl(const OpDef &def, mem_std::String &name, mem_std::String &source) {
+	name.clear();
+	source.clear();
+
+	// The structural forms are the lowering's own and have no text of either language; the name is
+	// the GLSL one's, and a body template without a WGSL spelling leaves the source empty, which is
+	// what makes a block not lower to WGSL.
+	Form f;
+	if (deriveBodyWgsl(def, f)) {
+		name = sprt::move(f.name);
+		source = sprt::move(f.source);
+	}
+}
 
 void attachShaderForm(const OpDef &def, mem_std::String &name, mem_std::String &source, bool &inexact) {
 	name.clear();
