@@ -326,9 +326,16 @@ MODULE_RUNTIME_INCLUDES_OBJS += \
 	$(RUNTIME_MODULE_DIR)/libcxx/include \
 	$(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/lib/clang/lib/tau/libclang_rt.builtins-$(TARGET_ARCH).a
+MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
+ifeq ($(SPRT_SHARED),1)
+# libsprt.so (RT-A-SharedRuntime-1) carries the whole C++ ABI and unwinder for its modules; its
+# own calls stay inside it.
+MODULE_RUNTIME_GENERAL_LDFLAGS += -Wl,--whole-archive $(TARGET_SYSROOT)/usr/lib/libc++abi.a \
+	$(TARGET_SYSROOT)/usr/lib/libunwind.a -Wl,--no-whole-archive -Wl,-soname,libsprt.so -Wl,-Bsymbolic-functions
+else
 MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libc++abi.a
 MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libunwind.a
-MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
+endif
 endif
 
 

@@ -55,6 +55,11 @@ LOCAL_PRIVATE_INCLUDE_PCH :=
 
 LOCAL_MODULES_PATHS =
 
+# Tau has no window layer: libsprt.so of its user modules (RT-A-SharedRuntime-1).
+ifneq (,$(findstring -tau-,$(STAPPLER_TARGET)))
+LOCAL_MODULES ?= runtime_libc_wrapper runtime
+endif
+
 LOCAL_MODULES ?= \
 	runtime_libc_wrapper \
 	runtime_window \

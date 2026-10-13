@@ -82,3 +82,64 @@ extern "C" char *ctermid(char *s) __SPRT_NOEXCEPT {
 	}
 	return empty;
 }
+
+// What the libc wrappers name besides; the shared runtime keeps every wrapper (RT-A-SharedRuntime-1).
+extern "C" const char *__tau_module_name();
+extern "C" int faccessat(int, const char *, int, int) __SPRT_NOEXCEPT;
+
+extern "C" unsigned int sleep(unsigned int seconds) __SPRT_NOEXCEPT {
+	__sprt_tau_sleep_ns((unsigned long long)seconds * 1'000'000'000ull);
+	return 0;
+}
+
+extern "C" int eaccess(const char *path, int amode) __SPRT_NOEXCEPT { return faccessat(__SPRT_AT_FDCWD, path, amode, 0); }
+
+extern "C" int getpagesize(void) __SPRT_NOEXCEPT { return 4'096; }
+
+extern "C" int getdtablesize(void) __SPRT_NOEXCEPT { return (int)sprt::MAX_FDS; }
+
+extern "C" int getgroups(int, __SPRT_ID(gid_t) *) __SPRT_NOEXCEPT { return 0; }
+
+extern "C" int getresuid(__SPRT_ID(uid_t) * r, __SPRT_ID(uid_t) * e, __SPRT_ID(uid_t) * s) __SPRT_NOEXCEPT {
+	*r = *e = *s = 0;
+	return 0;
+}
+
+extern "C" int getresgid(__SPRT_ID(gid_t) * r, __SPRT_ID(gid_t) * e, __SPRT_ID(gid_t) * s) __SPRT_NOEXCEPT {
+	*r = *e = *s = 0;
+	return 0;
+}
+
+// The node is the module, as in uname.
+extern "C" int gethostname(char *name, __SPRT_ID(size_t) len) __SPRT_NOEXCEPT {
+	const char *n = __tau_module_name();
+	__SPRT_ID(size_t) i = 0;
+	for (; n[i]; ++i) {
+		if (i + 1 >= len) {
+			__sprt_errno = ENAMETOOLONG;
+			return -1;
+		}
+		name[i] = n[i];
+	}
+	name[i] = 0;
+	return 0;
+}
+
+extern "C" char *getlogin(void) __SPRT_NOEXCEPT {
+	__sprt_errno = ENXIO;
+	return nullptr;
+}
+
+extern "C" int getlogin_r(char *, __SPRT_ID(size_t)) __SPRT_NOEXCEPT { return ENXIO; }
+
+extern "C" char *ttyname(int) __SPRT_NOEXCEPT {
+	__sprt_errno = ENOTTY;
+	return nullptr;
+}
+
+extern "C" int ttyname_r(int, char *, __SPRT_ID(size_t)) __SPRT_NOEXCEPT { return ENOTTY; }
+
+extern "C" int lockf(int, int, __SPRT_ID(off_t)) __SPRT_NOEXCEPT {
+	__sprt_errno = ENOSYS;
+	return -1;
+}

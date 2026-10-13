@@ -42,14 +42,15 @@ OSTYPE_TAU_USER_PAGE_SIZE := 4096
 OSTYPE_TAU_USER_COMMON := -fPIE -fvisibility=hidden -ffunction-sections -fdata-sections
 
 OSTYPE_GENERAL_CFLAGS := -Wall $(OSTYPE_TAU_USER_COMMON)
-OSTYPE_LIB_CFLAGS := -fPIC
+# Root links static TLS only (SYS-A-StaticTls-1): a shared library uses no dynamic model.
+OSTYPE_LIB_CFLAGS := -fPIC -ftls-model=initial-exec
 OSTYPE_EXEC_CFLAGS :=
 
 OSTYPE_GENERAL_CXXFLAGS := -Wall -Wno-vla-cxx-extension -Wno-overloaded-virtual \
 	-frtti -fexceptions -nostdinc++ \
 	-fvisibility-inlines-hidden \
 	$(OSTYPE_TAU_USER_COMMON)
-OSTYPE_LIB_CXXFLAGS := -fPIC
+OSTYPE_LIB_CXXFLAGS := -fPIC -ftls-model=initial-exec
 OSTYPE_EXEC_CXXFLAGS :=
 
 # Native ELF TLS through TPIDR_EL0; the link below emits PT_TLS. __TAU_USER__ tells the
@@ -82,9 +83,9 @@ OSTYPE_EXEC_LDFLAGS := -nostdlib -static \
 	-Wl,--gc-sections \
 	-Wl,-e,_start \
 	-T $(TARGET_SYSROOT)/share/app-$(TARGET_ARCH).lds
-# A shared library that root links into a module (SYS-A-DynLink-1): no runtime of its own, the
-# libc and the C++ runtime come from the module. The bare-metal driver of aarch64 passes
-# neither -shared nor the hash style, so both go to lld directly.
+# A shared library that root links into a module (SYS-A-DynLink-1); libsprt.so is one too
+# (RT-A-SharedRuntime-1). The bare-metal driver of aarch64 passes neither -shared nor the hash
+# style, so both go to lld directly.
 OSTYPE_LIB_LDFLAGS := -nostdlib \
 	-Wl,-shared \
 	-Wl,--hash-style=gnu \

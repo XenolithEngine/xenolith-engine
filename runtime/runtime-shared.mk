@@ -31,8 +31,9 @@
 # so the whole process shares a single runtime instance. A project uses exactly one of
 # the two - listing both would defeat the purpose.
 #
-# Windows only for now: it is the target where the split matters (PE has no symbol
-# interposition, so a statically linked runtime really is duplicated per image).
+# Windows, where PE has no symbol interposition, so a statically linked runtime really is
+# duplicated per image; and Tau user modules, whose libsprt.so root shares between modules
+# (RT-A-SharedRuntime-1).
 #
 
 RUNTIME_SHARED_MODULE_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
@@ -64,7 +65,6 @@ MODULE_RUNTIME_SHARED_INCLUDES_DIRS :=
 # (-nostdinc), so <stdio.h> and the STL have to resolve out of the runtime tree.
 MODULE_RUNTIME_SHARED_INCLUDES_OBJS := \
 	$(RUNTIME_SHARED_MODULE_DIR)/include \
-	$(RUNTIME_SHARED_MODULE_DIR)/include/sprt/wrappers/windows \
 	$(RUNTIME_SHARED_MODULE_DIR)/include_libc/cxx \
 	$(RUNTIME_SHARED_MODULE_DIR)/libcxx/include \
 	$(RUNTIME_SHARED_MODULE_DIR)/include_libc
@@ -82,6 +82,7 @@ MODULE_RUNTIME_SHARED_PRIVATE_CFLAGS := $(MODULE_RUNTIME_SHARED_GENERAL_CFLAGS)
 MODULE_RUNTIME_SHARED_PRIVATE_CXXFLAGS := $(MODULE_RUNTIME_SHARED_GENERAL_CXXFLAGS)
 
 ifeq ($(TARGET_SYSTEM),Windows)
+MODULE_RUNTIME_SHARED_INCLUDES_OBJS += $(RUNTIME_SHARED_MODULE_DIR)/include/sprt/wrappers/windows
 MODULE_RUNTIME_SHARED_INCLUDES_OBJS += $(TARGET_INCLUDE_DIR)
 MODULE_RUNTIME_SHARED_PRIVATE_INCLUDES += $(TARGET_INCLUDE_DIR)
 
@@ -100,6 +101,17 @@ MODULE_RUNTIME_SHARED_LIBS += \
 	$(TARGET_SYSROOT)/lib/clang/lib/windows/clang_rt.builtins-$(TARGET_ARCH).lib
 
 MODULE_RUNTIME_SHARED_GENERAL_LDFLAGS := -nostdlib
+endif
+
+ifeq ($(TARGET_SYSTEM),TauUser)
+# The module keeps only _start; it reaches libsprt.so's data through the GOT, with no copy
+# relocations, and its thread-local storage is static (SYS-A-StaticTls-1).
+MODULE_RUNTIME_SHARED_SRCS_OBJS := $(RUNTIME_SHARED_MODULE_DIR)/libc_impl/app/tau/crt1.cpp
+MODULE_RUNTIME_SHARED_GENERAL_CFLAGS += -fPIC -ftls-model=initial-exec
+MODULE_RUNTIME_SHARED_GENERAL_CXXFLAGS += -fPIC -ftls-model=initial-exec
+MODULE_RUNTIME_SHARED_LIBS := $(TARGET_SYSROOT)/lib/clang/lib/tau/libclang_rt.builtins-$(TARGET_ARCH).a
+MODULE_RUNTIME_SHARED_GENERAL_LDFLAGS := -nostdlib -Wl,-z,nocopyreloc -Wl,-Bdynamic \
+	$(RUNTIME_SHARED_MODULE_DIR)/stappler-build-shared/$(STAPPLER_TARGET)/$(BUILD_TYPE)/cc/libsprt.so
 endif
 
 #spec
