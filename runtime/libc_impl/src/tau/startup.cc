@@ -2,9 +2,10 @@
 //
 // Root enters the ELF entry with the module's StartInfo in the first argument register
 // (x0, rdi) and the stack pointer at the top of its stack; there is no argv, environment
-// or auxv. libtau reads the StartInfo first (it needs no TLS for that), then the
-// program's PT_TLS image, found through the ELF header the image maps at its base, gets
-// a block for the main thread, and only then is __libc constructed: errno is
+// or auxv. libtau reads the StartInfo first (it needs no TLS for that), then the TLS
+// templates -- from libtau for a module root linked with shared libraries, else the
+// program's PT_TLS found through the ELF header the image maps at its base -- give a
+// block for the main thread, and only then is __libc constructed: errno is
 // thread_local. A service thread for the module's rings, when the manifest asks for one,
 // starts before any constructor can wait on a ring.
 
@@ -21,7 +22,6 @@ __SPRT_NORETURN void exit(int) __SPRT_NOEXCEPT;
 }
 
 #include "../embox_user/environ.cc"
-#include "../embox_user/tls_layout.h"
 
 // The linker's symbol for the ELF header, mapped at the image base with the program headers.
 extern "C" const unsigned char __ehdr_start[] __attribute__((visibility("hidden")));
@@ -64,40 +64,70 @@ constexpr unsigned long TAU_SERVICE_STACK = 64 * 1'024;
 
 __sprt_tau_process s_process;
 
-struct {
-	const void *image;
-	__SPRT_ID(size_t) filesz;
-	__SPRT_ID(size_t) memsz;
-	__SPRT_ID(size_t) align;
-} s_tls;
+// The static TLS block of a thread (SYS-A-StaticTls-1): the templates and where they go from the
+// thread pointer, the alignment of the block and how far it reaches (above the thread pointer,
+// TCB included, on aarch64; below it on x86_64).
+constexpr int TAU_TLS_MAX = 8;
+__sprt_tau_tls_image s_images[TAU_TLS_MAX];
+int s_imageCount = 0;
+__SPRT_ID(size_t) s_tlsAlign = 16;
+__SPRT_ID(size_t) s_tlsSpan = 0;
 
 #if __x86_64__
-// TLS variant II: the image ends at the thread pointer, rounded to its alignment; the TCB
-// above the thread pointer starts with its own address, read as %fs:0.
+// TLS variant II: the TCB above the thread pointer starts with its own address, read as %fs:0.
 constexpr __SPRT_ID(size_t) TAU_TCB_SIZE = 64;
 
-__SPRT_ID(size_t) __tau_tls_image_span() {
-	return (s_tls.memsz + s_tls.align - 1) & ~(s_tls.align - 1);
-}
-
-__SPRT_ID(size_t) __tau_tls_bytes() { return __tau_tls_image_span() + TAU_TCB_SIZE; }
+__SPRT_ID(size_t) __tau_tls_bytes() { return s_tlsSpan + TAU_TCB_SIZE; }
 #else
-__SPRT_ID(size_t) __tau_tls_bytes() {
-	return (__SPRT_ID(size_t))__el0_tls_gap(s_tls.align) + s_tls.memsz;
-}
+__SPRT_ID(size_t) __tau_tls_bytes() { return s_tlsSpan; }
 #endif
 
+// The templates from libtau, or the module's own PT_TLS where lld put it: variant I after a TCB of
+// 16 bytes on aarch64, variant II below the thread pointer on x86_64.
 void __tau_find_tls() {
-	auto eh = reinterpret_cast<const __tau_ehdr *>(__ehdr_start);
-	auto base = reinterpret_cast<const unsigned char *>(eh) + eh->e_phoff;
-	for (unsigned i = 0; i < eh->e_phnum; ++i) {
-		auto ph = reinterpret_cast<const __tau_phdr *>(base + i * eh->e_phentsize);
-		if (ph->p_type == TAU_PT_TLS) {
-			s_tls.image = reinterpret_cast<const void *>(ph->p_vaddr);
-			s_tls.filesz = (__SPRT_ID(size_t))ph->p_filesz;
-			s_tls.memsz = (__SPRT_ID(size_t))ph->p_memsz;
-			s_tls.align = (__SPRT_ID(size_t))(ph->p_align > 16 ? ph->p_align : 16);
-			return;
+	s_imageCount = __sprt_tau_tls_images(s_images, TAU_TLS_MAX);
+	if (s_imageCount == 0) {
+		auto eh = reinterpret_cast<const __tau_ehdr *>(__ehdr_start);
+		auto base = reinterpret_cast<const unsigned char *>(eh) + eh->e_phoff;
+		for (unsigned i = 0; i < eh->e_phnum; ++i) {
+			auto ph = reinterpret_cast<const __tau_phdr *>(base + i * eh->e_phentsize);
+			if (ph->p_type == TAU_PT_TLS && ph->p_memsz) {
+				unsigned long a = ph->p_align ? ph->p_align : 1;
+#if __x86_64__
+				long offset = -(long)(ph->p_memsz + ((0 - ph->p_vaddr - ph->p_memsz) & (a - 1)));
+#else
+				long offset = (long)(16 + ((ph->p_vaddr - 16) & (a - 1)));
+#endif
+				s_images[0] = {reinterpret_cast<const void *>(ph->p_vaddr), (unsigned long)ph->p_filesz,
+					(unsigned long)ph->p_memsz, a, offset};
+				s_imageCount = 1;
+				break;
+			}
+		}
+	}
+	for (int i = 0; i < s_imageCount; ++i) {
+		const __sprt_tau_tls_image &t = s_images[i];
+		if (!t.memsz) {
+			continue;
+		}
+		s_tlsAlign = t.align > s_tlsAlign ? t.align : s_tlsAlign;
+#if __x86_64__
+		__SPRT_ID(size_t) reach = (__SPRT_ID(size_t))-t.offset;
+#else
+		__SPRT_ID(size_t) reach = (__SPRT_ID(size_t))t.offset + t.memsz;
+#endif
+		s_tlsSpan = reach > s_tlsSpan ? reach : s_tlsSpan;
+	}
+#if __x86_64__
+	// The thread pointer is aligned to the block's alignment, so is every image below it.
+	s_tlsSpan = (s_tlsSpan + s_tlsAlign - 1) & ~(s_tlsAlign - 1);
+#endif
+}
+
+void __tau_copy_tls(unsigned char *tp) {
+	for (int i = 0; i < s_imageCount; ++i) {
+		if (s_images[i].filesz) {
+			__builtin_memcpy(tp + s_images[i].offset, s_images[i].image, s_images[i].filesz);
 		}
 	}
 }
@@ -113,41 +143,40 @@ extern "C" __attribute__((weak)) __SPRT_NORETURN void __stack_chk_fail(void) {
 }
 
 // The program has thread-local data: a thread needs a block of it.
-extern "C" bool __tau_tls_used(void) { return s_tls.memsz != 0; }
+extern "C" bool __tau_tls_used(void) { return s_tlsSpan != 0; }
 
 #if __x86_64__
-// A TLS block for a thread: the image, then the TCB at the thread pointer.
+// A TLS block for a thread: the images below the thread pointer, then the TCB at it.
 extern "C" void *__tau_tls_alloc(void) {
-	if (s_tls.memsz == 0) {
+	if (s_tlsSpan == 0) {
 		return nullptr;
 	}
 	void *base = nullptr;
-	if (__sprt_tau_mem_map(__tau_tls_bytes(), s_tls.align, 0, &base) != 0) {
+	if (__sprt_tau_mem_map(__tau_tls_bytes(), s_tlsAlign, 0, &base) != 0) {
 		return nullptr;
 	}
-	auto tp = (unsigned char *)base + __tau_tls_image_span();
-	__builtin_memcpy(tp - __tau_tls_image_span(), s_tls.image, s_tls.filesz);
+	auto tp = (unsigned char *)base + s_tlsSpan;
+	__tau_copy_tls(tp);
 	*(void **)tp = tp;
 	return tp;
 }
 
 extern "C" void __tau_tls_free(void *tp) {
 	if (tp) {
-		__sprt_tau_mem_unmap((unsigned char *)tp - __tau_tls_image_span(), __tau_tls_bytes());
+		__sprt_tau_mem_unmap((unsigned char *)tp - s_tlsSpan, __tau_tls_bytes());
 	}
 }
 #else
-// A TLS block for a thread: the thread pointer at its start, the TCB, then the image.
+// A TLS block for a thread: the thread pointer at its start, the TCB, then the images.
 extern "C" void *__tau_tls_alloc(void) {
-	if (s_tls.memsz == 0) {
+	if (s_tlsSpan == 0) {
 		return nullptr;
 	}
 	void *tp = nullptr;
-	if (__sprt_tau_mem_map(__tau_tls_bytes(), s_tls.align, 0, &tp) != 0) {
+	if (__sprt_tau_mem_map(__tau_tls_bytes(), s_tlsAlign, 0, &tp) != 0) {
 		return nullptr;
 	}
-	auto gap = (__SPRT_ID(size_t))__el0_tls_gap(s_tls.align);
-	__builtin_memcpy((unsigned char *)tp + gap, s_tls.image, s_tls.filesz);
+	__tau_copy_tls((unsigned char *)tp);
 	return tp;
 }
 
