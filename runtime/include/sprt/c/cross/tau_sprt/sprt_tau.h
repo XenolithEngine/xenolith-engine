@@ -86,6 +86,20 @@ void *__sprt_tau_dl_open(const char *path, const char **error);
 void *__sprt_tau_dl_sym(void *handle, const char *name, const char **error);
 int __sprt_tau_dl_close(void *handle, const char **error);
 int __sprt_tau_dl_addr(const void *addr, const char **fname, void **fbase, const char **sname, void **saddr);
+
+// A thread-local template of the module or of one of its shared libraries (SYS-A-StaticTls-1),
+// and where each thread's block has its copy, from the thread pointer.
+struct __sprt_tau_tls_image {
+	const void *image;
+	unsigned long filesz;
+	unsigned long memsz;
+	unsigned long align;
+	long offset;
+};
+
+// The templates root laid out for a module linked with shared libraries, at most `max`; 0 for a
+// module without them, whose own PT_TLS the runtime finds itself.
+int __sprt_tau_tls_images(struct __sprt_tau_tls_image *out, int max);
 int __sprt_tau_attach_main(void *tp);
 int __sprt_tau_service_start(void *stack_top, void *tp);
 __attribute__((noreturn)) void __sprt_tau_exit(int status);
