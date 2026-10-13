@@ -50,6 +50,13 @@ ifeq ($(SPRT_SHARED),1)
 MODULE_RUNTIME_COMMON_CFLAGS += -DSPRT_BUILD_SHARED_RUNTIME
 endif
 
+# A Tau module exports its runtime to the shared libraries root links into it
+# (SYS-A-DynLink-1): what a library references must not be hidden. A module without
+# libraries has no dynamic symbols at all.
+ifeq ($(TARGET_SYSTEM),TauUser)
+MODULE_RUNTIME_COMMON_CFLAGS += -fvisibility=default
+endif
+
 # Which collation tailorings this build carries, as SPRT_COLLATION=<set>. Every
 # group is on unless this says otherwise: an application that sorts a list for a
 # person to read should get the right order for their language by default, and a

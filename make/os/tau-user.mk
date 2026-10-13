@@ -42,14 +42,14 @@ OSTYPE_TAU_USER_PAGE_SIZE := 4096
 OSTYPE_TAU_USER_COMMON := -fvisibility=hidden -ffunction-sections -fdata-sections
 
 OSTYPE_GENERAL_CFLAGS := -Wall $(OSTYPE_TAU_USER_COMMON)
-OSTYPE_LIB_CFLAGS :=
+OSTYPE_LIB_CFLAGS := -fPIC
 OSTYPE_EXEC_CFLAGS :=
 
 OSTYPE_GENERAL_CXXFLAGS := -Wall -Wno-vla-cxx-extension -Wno-overloaded-virtual \
 	-frtti -fexceptions -nostdinc++ \
 	-fvisibility-inlines-hidden \
 	$(OSTYPE_TAU_USER_COMMON)
-OSTYPE_LIB_CXXFLAGS :=
+OSTYPE_LIB_CXXFLAGS := -fPIC
 OSTYPE_EXEC_CXXFLAGS :=
 
 # Native ELF TLS through TPIDR_EL0; the link below emits PT_TLS. __TAU_USER__ tells the
@@ -73,11 +73,21 @@ OSTYPE_GENERAL_LDFLAGS := $(OSTYPE_LDFLAGS) -fuse-ld=lld -L$(TARGET_SYSROOT)/usr
 OSTYPE_EXEC_LDFLAGS := -nostdlib -static \
 	-Wl,--no-dynamic-linker \
 	-Wl,--eh-frame-hdr \
+	-Wl,--hash-style=gnu \
 	-Wl,--image-base=$(OSTYPE_TAU_USER_IMAGE_BASE) \
 	-Wl,-z,max-page-size=$(OSTYPE_TAU_USER_PAGE_SIZE) \
 	-Wl,--gc-sections \
 	-Wl,-e,_start \
 	-T $(TARGET_SYSROOT)/share/app-$(TARGET_ARCH).lds
-OSTYPE_LIB_LDFLAGS :=
+# A shared library that root links into a module (SYS-A-DynLink-1): no runtime of its own, the
+# libc and the C++ runtime come from the module. The bare-metal driver of aarch64 passes
+# neither -shared nor the hash style, so both go to lld directly.
+OSTYPE_LIB_LDFLAGS := -nostdlib \
+	-Wl,-shared \
+	-Wl,--hash-style=gnu \
+	-Wl,--eh-frame-hdr \
+	-Wl,-z,now \
+	-Wl,-z,relro \
+	-Wl,-z,max-page-size=$(OSTYPE_TAU_USER_PAGE_SIZE)
 
 TAU_USER := 1
