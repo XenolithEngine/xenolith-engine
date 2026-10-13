@@ -39,7 +39,7 @@ OSTYPE_TAU_USER_PAGE_SIZE := 4096
 
 # No -ffreestanding: the runtime keys hosted paths off __STDC_HOSTED__ (see the
 # note in embox-user.mk); the libc modules add it to their private flags.
-OSTYPE_TAU_USER_COMMON := -fvisibility=hidden -ffunction-sections -fdata-sections
+OSTYPE_TAU_USER_COMMON := -fPIE -fvisibility=hidden -ffunction-sections -fdata-sections
 
 OSTYPE_GENERAL_CFLAGS := -Wall $(OSTYPE_TAU_USER_COMMON)
 OSTYPE_LIB_CFLAGS := -fPIC
@@ -70,8 +70,11 @@ endif
 # lld's default layout plus share/app-<arch>.lds, which only adds the
 # __eh_frame_start/__eh_frame_end symbols the unwinder needs.
 OSTYPE_GENERAL_LDFLAGS := $(OSTYPE_LDFLAGS) -fuse-ld=lld -L$(TARGET_SYSROOT)/usr/lib
+# A module is a static PIE linked at the image base (SYS-A-Pie-1): root relocates it.
 OSTYPE_EXEC_LDFLAGS := -nostdlib -static \
+	-Wl,-pie \
 	-Wl,--no-dynamic-linker \
+	-Wl,-z,now \
 	-Wl,--eh-frame-hdr \
 	-Wl,--hash-style=gnu \
 	-Wl,--image-base=$(OSTYPE_TAU_USER_IMAGE_BASE) \

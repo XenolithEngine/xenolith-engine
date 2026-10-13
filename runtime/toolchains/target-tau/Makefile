@@ -67,6 +67,8 @@ BUILTINS := lib/clang/lib/tau/libclang_rt.builtins-$(SP_ARCH).a
 # -isystem on the runtime include trees. A module exports that libc to the shared
 # libraries root links into it (SYS-A-DynLink-1), so the runtimes name it as its
 # consumers: SPRT_SHARED_RUNTIME, not hidden references that would keep it from them.
+# libc++abi and libunwind are PIC: modules are position-independent (SYS-A-Pie-1), and x86_64
+# allows no absolute relocations there.
 TAU_C_FLAGS := -nostdinc -ffreestanding $(TAU_ARCH_FLAGS) -DSPRT_SHARED_RUNTIME \
 	-isystem $(SP_RUNTIME_ROOT)/include_libc \
 	-isystem $(SP_RUNTIME_ROOT)/include \
@@ -159,12 +161,14 @@ RUNTIMES_CONFIGURE := \
 	-DCOMPILER_RT_OS_DIR=tau \
 	-DCOMPILER_RT_INSTALL_PATH=$(OUT)/lib/clang \
 	-DLIBUNWIND_ENABLE_SHARED=Off \
+	-DLIBUNWIND_ADDITIONAL_COMPILE_FLAGS=-fPIC \
 	-DLIBUNWIND_ENABLE_THREADS=On \
 	-DLIBUNWIND_HAS_PTHREAD_LIB=Off \
 	-DLIBUNWIND_IS_BAREMETAL=On \
 	-DLIBUNWIND_USE_COMPILER_RT=On \
 	-DLIBUNWIND_INSTALL_LIBRARY_DIR=usr/lib \
 	-DLIBCXXABI_ENABLE_SHARED=Off \
+	-DLIBCXXABI_ADDITIONAL_COMPILE_FLAGS=-fPIC \
 	-DLIBCXXABI_ENABLE_THREADS=On \
 	-DLIBCXXABI_HAS_PTHREAD_LIB=Off \
 	-DLIBCXXABI_ENABLE_EXCEPTIONS=On \
