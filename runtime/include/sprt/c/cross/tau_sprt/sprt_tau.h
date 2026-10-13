@@ -77,6 +77,15 @@ int __sprt_tau_init(const void *start_info, struct __sprt_tau_process *out);
 // The constructors of the module's shared libraries, its dependencies first, after the libc and
 // before the module's own; root linked them before the module started.
 void __sprt_tau_init_libraries(int argc, char **argv, char **envp);
+
+// dlopen of a library root linked from the module's preload list or DT_NEEDED (SYS-A-Preload-1):
+// open runs its constructors once, a NULL path gives the global scope; sym looks in a handle's
+// libraries, a NULL handle in the global scope; addr names the object and symbol of an address.
+// Failures leave the reason in *error; the caller serializes the calls.
+void *__sprt_tau_dl_open(const char *path, const char **error);
+void *__sprt_tau_dl_sym(void *handle, const char *name, const char **error);
+int __sprt_tau_dl_close(void *handle, const char **error);
+int __sprt_tau_dl_addr(const void *addr, const char **fname, void **fbase, const char **sname, void **saddr);
 int __sprt_tau_attach_main(void *tp);
 int __sprt_tau_service_start(void *stack_top, void *tp);
 __attribute__((noreturn)) void __sprt_tau_exit(int status);
