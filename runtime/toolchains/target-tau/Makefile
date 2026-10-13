@@ -64,8 +64,10 @@ T_USER := $(TARGETS)/$(SP_ARCH)-tau-none-elf+user
 BUILTINS := lib/clang/lib/tau/libclang_rt.builtins-$(SP_ARCH).a
 
 # Flags of the EL0 runtimes build: the libc is the sprt one, reached through
-# -isystem on the runtime include trees.
-TAU_C_FLAGS := -nostdinc -ffreestanding $(TAU_ARCH_FLAGS) \
+# -isystem on the runtime include trees. A module exports that libc to the shared
+# libraries root links into it (SYS-A-DynLink-1), so the runtimes name it as its
+# consumers: SPRT_SHARED_RUNTIME, not hidden references that would keep it from them.
+TAU_C_FLAGS := -nostdinc -ffreestanding $(TAU_ARCH_FLAGS) -DSPRT_SHARED_RUNTIME \
 	-isystem $(SP_RUNTIME_ROOT)/include_libc \
 	-isystem $(SP_RUNTIME_ROOT)/include \
 	$(TAU_RT_ARCH_INCLUDES) \
@@ -75,7 +77,7 @@ TAU_CXX_FLAGS := -nostdinc -nostdinc++ $(TAU_ARCH_FLAGS) \
 	-isystem $(SP_RUNTIME_ROOT)/include_libc/cxx \
 	-isystem $(SP_RUNTIME_ROOT)/include_libc \
 	-isystem $(SP_RUNTIME_ROOT)/include \
-	-D__TAU__ -D__SPRT_USE_STL=0 -Wno-deprecated-declarations
+	-D__TAU__ -D__SPRT_USE_STL=0 -DSPRT_SHARED_RUNTIME -Wno-deprecated-declarations
 
 define TOOLCHAIN_CMAKE
 # Tau EL0 runtimes, freestanding. "Generic" pairs with the *_BAREMETAL options.

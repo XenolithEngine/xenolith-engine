@@ -222,6 +222,7 @@ extern "C" __SPRT_NORETURN void __tau_start_main(const void *startInfo) {
 	for (auto f = __preinit_array_start; f != __preinit_array_end; ++f) {
 		(*f)(1, s_argv, s_envp);
 	}
+	__sprt_tau_init_libraries(1, s_argv, s_envp);
 	for (auto f = __init_array_start; f != __init_array_end; ++f) {
 		(*f)(1, s_argv, s_envp);
 	}
