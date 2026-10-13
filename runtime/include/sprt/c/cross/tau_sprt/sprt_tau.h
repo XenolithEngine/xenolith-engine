@@ -4,7 +4,8 @@
 // not part of the engine: libtau implements these functions for user modules and the
 // runtime's Tau files call them, as the EmboxUser files make system calls. Plain C with
 // no includes. A result >= 0 is success or a count, -E* an error (Linux numbers, as the
-// rest of tau_sprt); nothing here touches errno.
+// rest of tau_sprt); nothing here touches errno. With the shared runtime (libsprt.so,
+// RT-A-SharedRuntime-1) the module exports these to it, so they are never hidden.
 
 #ifndef RUNTIME_INCLUDE_SPRT_C_CROSS_TAU_SPRT_SPRT_TAU_H_
 #define RUNTIME_INCLUDE_SPRT_C_CROSS_TAU_SPRT_SPRT_TAU_H_
@@ -12,6 +13,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#pragma GCC visibility push(default)
 
 #define __SPRT_TAU_EPERM 1
 #define __SPRT_TAU_ENOENT 2
@@ -75,8 +78,9 @@ typedef struct __sprt_tau_stream __sprt_tau_stream;
 // runtime then gives libtau a stack and a TLS block for it.
 int __sprt_tau_init(const void *start_info, struct __sprt_tau_process *out);
 // The constructors of the module's shared libraries, its dependencies first, after the libc and
-// before the module's own; root linked them before the module started.
-void __sprt_tau_init_libraries(int argc, char **argv, char **envp);
+// before the module's own; root linked them before the module started. `self` is the base of the
+// shared runtime, which ran its own already; with it the module's constructors run here too, last.
+void __sprt_tau_init_libraries(int argc, char **argv, char **envp, const void *self);
 
 // dlopen of a library root linked from the module's preload list or DT_NEEDED (SYS-A-Preload-1):
 // open runs its constructors once, a NULL path gives the global scope; sym looks in a handle's
@@ -86,6 +90,10 @@ void *__sprt_tau_dl_open(const char *path, const char **error);
 void *__sprt_tau_dl_sym(void *handle, const char *name, const char **error);
 int __sprt_tau_dl_close(void *handle, const char **error);
 int __sprt_tau_dl_addr(const void *addr, const char **fname, void **fbase, const char **sname, void **saddr);
+
+// The loaded object `index` of the module, 0 being the module (dl_iterate_phdr); 0 past the last.
+int __sprt_tau_dl_object(int index, unsigned long *base, const char **name, const void **phdr,
+		unsigned short *phnum);
 
 // A thread-local template of the module or of one of its shared libraries (SYS-A-StaticTls-1),
 // and where each thread's block has its copy, from the thread pointer.
@@ -271,6 +279,8 @@ int __sprt_tau_sock_error(__sprt_tau_sock *s);
 unsigned __sprt_tau_sock_ready(__sprt_tau_sock *s, unsigned events);
 // The address of a host name; -ENOENT when it has none.
 int __sprt_tau_resolve(const char *name, unsigned *addr, unsigned long long timeout_ns);
+
+#pragma GCC visibility pop
 
 #ifdef __cplusplus
 }

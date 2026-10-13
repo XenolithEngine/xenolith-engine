@@ -18,12 +18,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Tau targets: <arch>-tau-none-elf (kernel and bare modules) and
-# <arch>-tau-none-elf+user (user modules), for SP_ARCH aarch64 (the default) or
-# x86_64 (modules run on a Linux host, the kernel's hosted build). One LLVM
-# runtimes build serves both: the compiler-rt builtins go to both sysroots;
-# libunwind and libc++abi, built against the sprt headers with -D__TAU__, go to
-# the user sysroot only.
+# Tau targets: <arch>-tau-none-elf (kernel and bare modules), <arch>-tau-none-elf+user (user
+# modules with the runtime linked in) and <arch>-tau-none-elf+user+dll (user modules on the shared
+# runtime libsprt.so, RT-A-SharedRuntime-1), for SP_ARCH aarch64 (the default) or x86_64 (modules
+# run on a Linux host, the kernel's hosted build). One LLVM runtimes build serves the first two:
+# the compiler-rt builtins go to every sysroot; libunwind and libc++abi, built against the sprt
+# headers with -D__TAU__, go to the user sysroot. The dll sysroot gets a second build of them
+# for libsprt.so: libunwind finds unwind tables through dl_iterate_phdr, and thread-local storage
+# is initial-exec, the only model root links. libsprt.so itself is built from the runtime tree
+# (make -C runtime SPRT_SHARED=1 STAPPLER_TARGET=<arch>-tau-none-elf+user+dll).
 
 .DEFAULT_GOAL := all
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
@@ -60,6 +63,8 @@ OUT ?= $(abspath $(MAKE_ROOT)intermediate)/$(SP_ARCH)-tau
 TARGETS ?= $(abspath $(MAKE_ROOT)targets)
 T_KERNEL := $(TARGETS)/$(SP_ARCH)-tau-none-elf
 T_USER := $(TARGETS)/$(SP_ARCH)-tau-none-elf+user
+T_DLL := $(TARGETS)/$(SP_ARCH)-tau-none-elf+user+dll
+OUT_DLL := $(OUT)-dll
 
 BUILTINS := lib/clang/lib/tau/libclang_rt.builtins-$(SP_ARCH).a
 
@@ -130,18 +135,21 @@ TARGET_EXEC_LDFLAGS :=
 TARGET_LIB_CFLAGS :=
 TARGET_LIB_CXXFLAGS :=
 TARGET_LIB_LDFLAGS :=
+$(3)
 endef
 
-RUNTIMES_CONFIGURE := \
+# $(1): the output, $(2): the runtimes, $(3): LIBUNWIND_IS_BAREMETAL, $(4): the compile flags of
+# libunwind and libc++abi.
+runtimes_configure = \
 	-G "Ninja" \
 	-S $(LIB_SRC_DIR)/llvm-project/runtimes \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_TOOLCHAIN_FILE=$(OUT)/toolchain.cmake \
 	-DCMAKE_PROJECT_INCLUDE=$(MAKE_ROOT)tau-project-include.cmake \
-	-DCMAKE_INSTALL_PREFIX=$(OUT) \
-	-DCMAKE_INSTALL_LIBDIR=$(OUT)/usr/lib \
-	-DCMAKE_INSTALL_INCLUDEDIR=$(OUT)/usr/include \
-	-DLLVM_ENABLE_RUNTIMES="compiler-rt;libunwind;libcxxabi" \
+	-DCMAKE_INSTALL_PREFIX=$(1) \
+	-DCMAKE_INSTALL_LIBDIR=$(1)/usr/lib \
+	-DCMAKE_INSTALL_INCLUDEDIR=$(1)/usr/include \
+	-DLLVM_ENABLE_RUNTIMES="$(2)" \
 	-DLLVM_INSTALL_TOOLCHAIN_ONLY=On \
 	-DLLVM_ENABLE_PIC=Off \
 	-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
@@ -159,16 +167,17 @@ RUNTIMES_CONFIGURE := \
 	-DCOMPILER_RT_BUILD_ORC=Off \
 	-DCOMPILER_RT_BUILD_GWP_ASAN=Off \
 	-DCOMPILER_RT_OS_DIR=tau \
-	-DCOMPILER_RT_INSTALL_PATH=$(OUT)/lib/clang \
+	-DCOMPILER_RT_INSTALL_PATH=$(1)/lib/clang \
 	-DLIBUNWIND_ENABLE_SHARED=Off \
-	-DLIBUNWIND_ADDITIONAL_COMPILE_FLAGS=-fPIC \
+	-DLIBUNWIND_ADDITIONAL_COMPILE_FLAGS="$(4)" \
 	-DLIBUNWIND_ENABLE_THREADS=On \
 	-DLIBUNWIND_HAS_PTHREAD_LIB=Off \
-	-DLIBUNWIND_IS_BAREMETAL=On \
+	-DLIBUNWIND_HAS_DL_LIB=Off \
+	-DLIBUNWIND_IS_BAREMETAL=$(3) \
 	-DLIBUNWIND_USE_COMPILER_RT=On \
 	-DLIBUNWIND_INSTALL_LIBRARY_DIR=usr/lib \
 	-DLIBCXXABI_ENABLE_SHARED=Off \
-	-DLIBCXXABI_ADDITIONAL_COMPILE_FLAGS=-fPIC \
+	-DLIBCXXABI_ADDITIONAL_COMPILE_FLAGS="$(4)" \
 	-DLIBCXXABI_ENABLE_THREADS=On \
 	-DLIBCXXABI_HAS_PTHREAD_LIB=Off \
 	-DLIBCXXABI_ENABLE_EXCEPTIONS=On \
@@ -180,7 +189,7 @@ RUNTIMES_CONFIGURE := \
 	-DLIBCXXABI_INSTALL_LIBRARY_DIR=usr/lib \
 	-DLIBCXXABI_LIBCXX_INCLUDES="$(SP_RUNTIME_ROOT)/include_libc/cxx;$(SP_RUNTIME_ROOT)/libcxx/include"
 
-$(OUT) $(T_KERNEL) $(T_USER):
+$(OUT) $(OUT_DLL) $(T_KERNEL) $(T_USER) $(T_DLL):
 	mkdir -p $@
 
 $(OUT)/toolchain.cmake: $(THIS_FILE) | $(OUT)
@@ -192,12 +201,24 @@ $(OUT)/target-kernel.mk: $(THIS_FILE) | $(OUT)
 $(OUT)/target-user.mk: $(THIS_FILE) | $(OUT)
 	$(file >$@,$(call TARGET_MK,TauUser,-nostdinc))
 
+# TARGET_SPRT_SHARED: user modules link libsprt.so (make/os/tau-user.mk, runtime/runtime-shared.mk).
+$(OUT)/target-dll.mk: $(THIS_FILE) | $(OUT)
+	$(file >$@,$(call TARGET_MK,TauUser,-nostdinc,TARGET_SPRT_SHARED := 1))
+
 $(OUT)/.runtimes: $(OUT)/toolchain.cmake
 	rm -rf $(OUT)/runtimes-build && mkdir -p $(OUT)/runtimes-build
-	cd $(OUT)/runtimes-build && cmake $(RUNTIMES_CONFIGURE)
+	cd $(OUT)/runtimes-build && cmake $(call runtimes_configure,$(OUT),compiler-rt;libunwind;libcxxabi,On,-fPIC)
 	cd $(OUT)/runtimes-build && cmake --build .
 	cd $(OUT)/runtimes-build && cmake --install .
 	rm -rf $(OUT)/runtimes-build
+	touch $@
+
+$(OUT_DLL)/.runtimes: $(OUT)/toolchain.cmake | $(OUT_DLL)
+	rm -rf $(OUT_DLL)/runtimes-build && mkdir -p $(OUT_DLL)/runtimes-build
+	cd $(OUT_DLL)/runtimes-build && cmake $(call runtimes_configure,$(OUT_DLL),libunwind;libcxxabi,Off,-fPIC;-ftls-model=initial-exec)
+	cd $(OUT_DLL)/runtimes-build && cmake --build .
+	cd $(OUT_DLL)/runtimes-build && cmake --install .
+	rm -rf $(OUT_DLL)/runtimes-build
 	touch $@
 
 # $(1): sysroot. The resource dir points at the host clang headers.
@@ -220,9 +241,20 @@ user: $(OUT)/.runtimes $(OUT)/target-user.mk | $(T_USER)
 	cp -f $(MAKE_ROOT)app.lds $(T_USER)/share/app-$(SP_ARCH).lds
 	cp -f $(OUT)/target-user.mk $(T_USER)/target.mk
 
-all: kernel user
+dll: $(OUT)/.runtimes $(OUT_DLL)/.runtimes $(OUT)/target-dll.mk | $(T_DLL)
+	$(call install_common,$(T_DLL))
+	mkdir -p $(T_DLL)/usr/lib $(T_DLL)/usr/include $(T_DLL)/share
+	cp -f $(OUT_DLL)/usr/lib/libunwind.a $(OUT_DLL)/usr/lib/libc++abi.a $(T_DLL)/usr/lib/
+	# libsprt.so takes libc++abi whole; the standard exception classes are libc++'s of the runtime.
+	$(HOST_DIR)/bin/llvm-ar d $(T_DLL)/usr/lib/libc++abi.a stdlib_stdexcept.cpp.obj
+	cp -rf $(OUT)/usr/include/. $(T_DLL)/usr/include/
+	if [ -d $(LIB_SRC_DIR)/simde/simde ]; then rm -rf $(T_DLL)/usr/include/simde; cp -r $(LIB_SRC_DIR)/simde/simde $(T_DLL)/usr/include/simde; fi
+	cp -f $(MAKE_ROOT)app.lds $(T_DLL)/share/app-$(SP_ARCH).lds
+	cp -f $(OUT)/target-dll.mk $(T_DLL)/target.mk
+
+all: kernel user dll
 
 clean:
-	rm -rf $(OUT) $(T_KERNEL) $(T_USER)
+	rm -rf $(OUT) $(OUT_DLL) $(T_KERNEL) $(T_USER) $(T_DLL)
 
-.PHONY: all kernel user clean
+.PHONY: all kernel user dll clean

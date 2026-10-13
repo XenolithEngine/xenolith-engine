@@ -8,6 +8,11 @@
 // block for the main thread, and only then is __libc constructed: errno is
 // thread_local. A service thread for the module's rings, when the manifest asks for one,
 // starts before any constructor can wait on a ring.
+//
+// As the shared runtime libsprt.so (SPRT_BUILD_SHARED_RUNTIME, RT-A-SharedRuntime-1) this file
+// is in the library: the module's _start (libc_impl/app/tau/crt1.cpp) passes its main, the
+// init_array here is the library's own, and libtau runs those of the other libraries and the
+// module's after it.
 
 #include "../../include/__impl_libc.h"
 
@@ -199,10 +204,10 @@ extern "C" unsigned __tau_module_index() { return s_process.module; }
 extern "C" unsigned __tau_module_cpus() { return s_process.cpus ? s_process.cpus : 1; }
 
 extern "C" {
-extern void (*__init_array_start[])(int, char **, char **) __attribute__((weak));
-extern void (*__init_array_end[])(int, char **, char **) __attribute__((weak));
-extern void (*__preinit_array_start[])(int, char **, char **) __attribute__((weak));
-extern void (*__preinit_array_end[])(int, char **, char **) __attribute__((weak));
+extern void (*__init_array_start[])(int, char **, char **) __attribute__((weak, visibility("hidden")));
+extern void (*__init_array_end[])(int, char **, char **) __attribute__((weak, visibility("hidden")));
+extern void (*__preinit_array_start[])(int, char **, char **) __attribute__((weak, visibility("hidden")));
+extern void (*__preinit_array_end[])(int, char **, char **) __attribute__((weak, visibility("hidden")));
 }
 
 alignas(16) static unsigned char s_libcBuffer[sizeof(sprt::__libc)];
@@ -211,9 +216,9 @@ sprt::__libc *sprt::__libc::get() { return reinterpret_cast<__libc *>(s_libcBuff
 
 extern "C" __SPRT_ID(uint64_t) __libc_main_thread = 0;
 
-extern "C" int main(int argc, char **argv, char **envp) __attribute__((weak));
+using __tau_main_fn = int (*)(int, char **, char **);
 
-extern "C" __SPRT_NORETURN void __tau_start_main(const void *startInfo) {
+static __SPRT_NORETURN void __tau_start(const void *startInfo, __tau_main_fn entry) {
 	if (__sprt_tau_init(startInfo, &s_process) != 0) {
 		static const char msg[] = "tau: the StartInfo is not usable\n";
 		__sprt_tau_debug_write(msg, sizeof(msg) - 1);
@@ -248,19 +253,32 @@ extern "C" __SPRT_NORETURN void __tau_start_main(const void *startInfo) {
 	auto libc = new (s_libcBuffer, sprt::nothrow) sprt::__libc;
 	__libc_main_thread = libc->mainThread;
 
-	for (auto f = __preinit_array_start; f != __preinit_array_end; ++f) {
-		(*f)(1, s_argv, s_envp);
-	}
-	__sprt_tau_init_libraries(1, s_argv, s_envp);
+#if SPRT_BUILD_SHARED_RUNTIME
 	for (auto f = __init_array_start; f != __init_array_end; ++f) {
 		(*f)(1, s_argv, s_envp);
 	}
-	int ret = 0;
-	if (&main) {
-		ret = main(1, s_argv, s_envp);
+	__sprt_tau_init_libraries(1, s_argv, s_envp, __ehdr_start);
+#else
+	for (auto f = __preinit_array_start; f != __preinit_array_end; ++f) {
+		(*f)(1, s_argv, s_envp);
 	}
-	exit(ret);
+	__sprt_tau_init_libraries(1, s_argv, s_envp, nullptr);
+	for (auto f = __init_array_start; f != __init_array_end; ++f) {
+		(*f)(1, s_argv, s_envp);
+	}
+#endif
+	exit(entry ? entry(1, s_argv, s_envp) : 0);
 }
+
+#if SPRT_BUILD_SHARED_RUNTIME
+// Entered from the module's _start with its main.
+extern "C" SPRT_API __SPRT_NORETURN void __tau_start_shared(const void *startInfo, __tau_main_fn entry) {
+	__tau_start(startInfo, entry);
+}
+#else
+extern "C" int main(int argc, char **argv, char **envp) __attribute__((weak));
+
+extern "C" __SPRT_NORETURN void __tau_start_main(const void *startInfo) { __tau_start(startInfo, &main ? main : nullptr); }
 
 #if __x86_64__
 // Entered with the StartInfo in rdi and rsp at the top of the stack.
@@ -282,4 +300,5 @@ __asm__(".text\n"
 		"	mov	x30, #0\n"
 		"	b	__tau_start_main\n"
 		".size _start, . - _start\n");
+#endif
 #endif

@@ -223,3 +223,14 @@ __SPRT_C_FUNC int seekdir(__SPRT_ID(DIR) * d, long loc) __SPRT_NOEXCEPT {
 }
 
 __SPRT_C_FUNC int rewinddir(__SPRT_ID(DIR) * d) __SPRT_NOEXCEPT { return seekdir(d, 0); }
+
+// Relative to the working directory or absolute only: tau.fs has no names of open directories.
+__SPRT_C_FUNC int scandirat(int dirfd, const char *path, struct __SPRT_DIRENT_NAME ***list,
+		int (*filter)(const struct __SPRT_DIRENT_NAME *),
+		int (*compar)(const struct __SPRT_DIRENT_NAME **, const struct __SPRT_DIRENT_NAME **)) __SPRT_NOEXCEPT {
+	if (dirfd != __SPRT_AT_FDCWD && path[0] != '/') {
+		__sprt_errno = ENOTSUP;
+		return -1;
+	}
+	return __SPRT_ID(scandir)(path, list, filter, compar);
+}

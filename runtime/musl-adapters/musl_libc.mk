@@ -40,6 +40,12 @@ MODULE_RUNTIME_MUSL_LIBC_PRIVATE_INCLUDES := \
 	$(RUNTIME_MODULE_DIR)/musl-libc/include \
 	$(RUNTIME_MODULE_DIR)/include \
 
+# musl_x86_64.S takes musl's x86 long double functions with .include: plain assembly, whose
+# comments the preprocessor of an #include would read as directives.
+ifeq ($(TARGET_ARCH),x86_64)
+MODULE_RUNTIME_MUSL_LIBC_PRIVATE_INCLUDES += $(RUNTIME_MODULE_DIR)/musl-libc/src/math/x86_64
+endif
+
 MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_FLAGS := \
 	$(MODULE_RUNTIME_COMMON_CFLAGS) \
 	-Wno-pointer-to-int-cast \

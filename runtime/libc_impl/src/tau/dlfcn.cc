@@ -21,11 +21,13 @@ THE SOFTWARE.
 **/
 // Tau user modules: dlopen gives a shared library root linked at the module's start, from its
 // preload list or DT_NEEDED (SYS-A-Preload-1); libtau knows the table, this layer is POSIX. The
-// lock is recursive: a library's constructor may call dlopen.
+// lock is recursive: a library's constructor may call dlopen. dl_iterate_phdr walks the same
+// table: libunwind of the shared runtime finds unwind tables through it (RT-A-SharedRuntime-1).
 
 #include "../../include/__impl_libc.h"
 
 #include <sprt/c/__sprt_dlfcn.h>
+#include <sprt/c/__sprt_link.h>
 #include <sprt/c/cross/tau_sprt/sprt_tau.h>
 #include <sprt/runtime/thread/rmutex.h>
 
@@ -98,3 +100,18 @@ int dladdr(const void *__addr, __SPRT_ID(Dl_info) * __info) __SPRT_NOEXCEPT {
 }
 
 } // extern "C"
+
+// The objects of the module from root's table of libraries; the table does not change, so no lock.
+__SPRT_C_FUNC int __SPRT_ID(dl_iterate_phdr)(
+		int (*__cb)(struct __SPRT_ID(dl_phdr_info) *, __SPRT_ID(size_t), void *), void *__data) {
+	struct __SPRT_ID(dl_phdr_info) info = {};
+	const void *phdr = nullptr;
+	for (int i = 0; __sprt_tau_dl_object(i, (unsigned long *)&info.dlpi_addr, &info.dlpi_name, &phdr, &info.dlpi_phnum);
+			++i) {
+		info.dlpi_phdr = (const __SPRT_ID(Elf64_Phdr) *)phdr;
+		if (int ret = __cb(&info, sizeof(info), __data)) {
+			return ret;
+		}
+	}
+	return 0;
+}
