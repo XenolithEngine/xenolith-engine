@@ -19,14 +19,14 @@
 # SOFTWARE.
 
 # Tau targets: <arch>-tau-none-elf (kernel and bare modules), <arch>-tau-none-elf+user (user
-# modules with the runtime linked in) and <arch>-tau-none-elf+user+dll (user modules on the shared
+# modules with the runtime linked in) and <arch>-tau-none-elf+dll (user modules on the shared
 # runtime libsprt.so, RT-A-SharedRuntime-1), for SP_ARCH aarch64 (the default) or x86_64 (modules
 # run on a Linux host, the kernel's hosted build). One LLVM runtimes build serves the first two:
 # the compiler-rt builtins go to every sysroot; libunwind and libc++abi, built against the sprt
 # headers with -D__TAU__, go to the user sysroot. The dll sysroot gets a second build of them
 # for libsprt.so: libunwind finds unwind tables through dl_iterate_phdr, and thread-local storage
 # is initial-exec, the only model root links. libsprt.so itself is built from the runtime tree
-# (make -C runtime SPRT_SHARED=1 STAPPLER_TARGET=<arch>-tau-none-elf+user+dll).
+# (make -C runtime SPRT_SHARED=1 STAPPLER_TARGET=<arch>-tau-none-elf+dll).
 
 .DEFAULT_GOAL := all
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
@@ -63,7 +63,7 @@ OUT ?= $(abspath $(MAKE_ROOT)intermediate)/$(SP_ARCH)-tau
 TARGETS ?= $(abspath $(MAKE_ROOT)targets)
 T_KERNEL := $(TARGETS)/$(SP_ARCH)-tau-none-elf
 T_USER := $(TARGETS)/$(SP_ARCH)-tau-none-elf+user
-T_DLL := $(TARGETS)/$(SP_ARCH)-tau-none-elf+user+dll
+T_DLL := $(TARGETS)/$(SP_ARCH)-tau-none-elf+dll
 OUT_DLL := $(OUT)-dll
 
 BUILTINS := lib/clang/lib/tau/libclang_rt.builtins-$(SP_ARCH).a
