@@ -26,7 +26,8 @@
 # headers with -D__TAU__, go to the user sysroot. The dll sysroot gets a second build of them
 # for libsprt.so: libunwind finds unwind tables through dl_iterate_phdr, and thread-local storage
 # is initial-exec, the only model root links. libsprt.so itself is built from the runtime tree
-# (make -C runtime SPRT_SHARED=1 STAPPLER_TARGET=<arch>-tau-none-elf+dll).
+# (make -C runtime SPRT_SHARED=1 STAPPLER_TARGET=<arch>-tau-none-elf+dll). The target `libs` adds
+# the engine's third-party libraries to the dll sysroot (libs.mk).
 
 .DEFAULT_GOAL := all
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
@@ -65,6 +66,7 @@ T_KERNEL := $(TARGETS)/$(SP_ARCH)-tau-none-elf
 T_USER := $(TARGETS)/$(SP_ARCH)-tau-none-elf+user
 T_DLL := $(TARGETS)/$(SP_ARCH)-tau-none-elf+dll
 OUT_DLL := $(OUT)-dll
+OUT_LIBS := $(OUT)-libs
 
 BUILTINS := lib/clang/lib/tau/libclang_rt.builtins-$(SP_ARCH).a
 
@@ -113,6 +115,43 @@ set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
+endef
+
+# The third-party libraries: common/configure.mk (TAU_USER) gives the compile flags through SP_C_FLAGS.
+# Probes compile without linking, as nothing links before the module does.
+define TOOLCHAIN_LIBS_CMAKE
+set(CMAKE_SYSTEM_NAME Generic)
+set(CMAKE_SYSTEM_PROCESSOR $(SP_ARCH))
+set(CMAKE_SHARED_LIBRARY_SUFFIX ".so")
+set(CMAKE_SHARED_LIBRARY_PREFIX "lib")
+set(CMAKE_C_COMPILER "$(HOST_DIR)/bin/clang")
+set(CMAKE_CXX_COMPILER "$(HOST_DIR)/bin/clang++")
+set(CMAKE_ASM_COMPILER "$(HOST_DIR)/bin/clang")
+set(CMAKE_AR "$(HOST_DIR)/bin/llvm-ar")
+set(CMAKE_RANLIB "$(HOST_DIR)/bin/llvm-ranlib")
+set(CMAKE_C_COMPILER_TARGET "$(SP_TARGET_CLANG)")
+set(CMAKE_CXX_COMPILER_TARGET "$(SP_TARGET_CLANG)")
+set(CMAKE_ASM_COMPILER_TARGET "$(SP_TARGET_CLANG)")
+set(CMAKE_C_COMPILER_WORKS ON)
+set(CMAKE_CXX_COMPILER_WORKS ON)
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+set(CMAKE_C_FLAGS_INIT "$${SP_C_FLAGS}" CACHE STRING "" FORCE)
+set(CMAKE_CXX_FLAGS_INIT "$${SP_CXX_FLAGS}" CACHE STRING "" FORCE)
+set(CMAKE_ASM_FLAGS_INIT "$${SP_C_FLAGS}" CACHE STRING "" FORCE)
+set(CMAKE_EXE_LINKER_FLAGS_INIT "$${SP_EXE_LINKER_FLAGS}" CACHE STRING "" FORCE)
+set(CMAKE_SHARED_LINKER_FLAGS_INIT "$${SP_SHARED_LINKER_FLAGS}" CACHE STRING "" FORCE)
+set(CMAKE_FIND_USE_CMAKE_SYSTEM_PATH Off)
+set(CMAKE_FIND_ROOT_PATH "$(OUT_LIBS);$(OUT_LIBS)/usr")
+set(PKG_CONFIG_PATH "$(OUT_LIBS)/usr/lib/pkgconfig")
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+set(CMAKE_PREFIX_PATH "$(OUT_LIBS);$(OUT_LIBS)/usr")
+set(CMAKE_INSTALL_PREFIX "$(OUT_LIBS)")
+set(CMAKE_INSTALL_LIBDIR "$(OUT_LIBS)/usr/lib")
+set(CMAKE_INSTALL_INCLUDEDIR "$(OUT_LIBS)/usr/include")
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endef
 
 # $(1): TARGET_SYSTEM, $(2): include mode. The kernel keeps the compiler's own
@@ -189,7 +228,7 @@ runtimes_configure = \
 	-DLIBCXXABI_INSTALL_LIBRARY_DIR=usr/lib \
 	-DLIBCXXABI_LIBCXX_INCLUDES="$(SP_RUNTIME_ROOT)/include_libc/cxx;$(SP_RUNTIME_ROOT)/libcxx/include"
 
-$(OUT) $(OUT_DLL) $(T_KERNEL) $(T_USER) $(T_DLL):
+$(OUT) $(OUT_DLL) $(OUT_LIBS) $(T_KERNEL) $(T_USER) $(T_DLL):
 	mkdir -p $@
 
 $(OUT)/toolchain.cmake: $(THIS_FILE) | $(OUT)
@@ -252,9 +291,30 @@ dll: $(OUT)/.runtimes $(OUT_DLL)/.runtimes $(OUT)/target-dll.mk | $(T_DLL)
 	cp -f $(MAKE_ROOT)app.lds $(T_DLL)/share/app-$(SP_ARCH).lds
 	cp -f $(OUT)/target-dll.mk $(T_DLL)/target.mk
 
-all: kernel user dll
+$(OUT_LIBS)/toolchain-libs.cmake: $(THIS_FILE) | $(OUT_LIBS)
+	$(file >$@,$(TOOLCHAIN_LIBS_CMAKE))
+
+# The libraries are built into $(OUT_LIBS), their usr/ is copied into the dll sysroot.
+libs: dll $(OUT_LIBS)/toolchain-libs.cmake
+	mkdir -p $(OUT_LIBS)/usr/lib $(OUT_LIBS)/usr/include $(OUT_LIBS)/lib/clang
+	ln -sfn $(HOST_DIR)/lib/clang/$(SP_LLVM_VER)/include $(OUT_LIBS)/lib/clang/include
+	$(MAKE) -C $(MAKE_ROOT) -f libs.mk \
+		SP_ARCH=$(SP_ARCH) \
+		SP_ARCH_TARGET_CLANG=$(SP_TARGET_CLANG) \
+		SP_TAU_ARCH_FLAGS="$(TAU_ARCH_FLAGS)" \
+		SP_INSTALL_PREFIX=$(OUT_LIBS) \
+		SP_RUNTIME_ROOT=$(SP_RUNTIME_ROOT) \
+		SP_CC=$(HOST_DIR)/bin/clang \
+		SP_CXX=$(HOST_DIR)/bin/clang++ \
+		SP_AR=$(HOST_DIR)/bin/llvm-ar \
+		LIB_SRC_DIR=$(LIB_SRC_DIR) \
+		MAKE_ROOT=$(MAKE_ROOT)
+	cp -f $(OUT_LIBS)/usr/lib/*.a $(T_DLL)/usr/lib/
+	cp -rf $(OUT_LIBS)/usr/include/. $(T_DLL)/usr/include/
+
+all: kernel user dll libs
 
 clean:
-	rm -rf $(OUT) $(OUT_DLL) $(T_KERNEL) $(T_USER) $(T_DLL)
+	rm -rf $(OUT) $(OUT_DLL) $(OUT_LIBS) $(T_KERNEL) $(T_USER) $(T_DLL)
 
-.PHONY: all kernel user dll clean
+.PHONY: all kernel user dll libs clean

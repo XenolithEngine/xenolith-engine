@@ -67,11 +67,14 @@ MODULE_RUNTIME_SHARED_INCLUDES_OBJS := \
 	$(RUNTIME_SHARED_MODULE_DIR)/include \
 	$(RUNTIME_SHARED_MODULE_DIR)/include_libc/cxx \
 	$(RUNTIME_SHARED_MODULE_DIR)/libcxx/include \
-	$(RUNTIME_SHARED_MODULE_DIR)/include_libc
+	$(RUNTIME_SHARED_MODULE_DIR)/include_libc \
+	$(RUNTIME_SHARED_MODULE_DIR)/include/sprt/runtime/geom/glsl
 
 MODULE_RUNTIME_SHARED_PRIVATE_INCLUDES := \
 	$(RUNTIME_SHARED_MODULE_DIR)/include \
 	$(RUNTIME_SHARED_MODULE_DIR)/include_libc
+
+MODULE_RUNTIME_SHARED_SHADERS_INCLUDE := $(RUNTIME_SHARED_MODULE_DIR)/include/sprt/runtime/geom/glsl
 
 # SPRT_SHARED_RUNTIME flips SPRT_API/SPRT_GLOBAL to __declspec(dllimport), so the
 # consumer reaches the runtime's data through the import table instead of expecting a

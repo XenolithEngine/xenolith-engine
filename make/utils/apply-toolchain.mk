@@ -235,5 +235,10 @@ $(call print_verbose,(apply-toolchain.mk) SPIRV_LINK: $(SPIRV_LINK))
 
 # The runtime is always built from the source tree
 include $(GLOBAL_ROOT)/runtime/runtime.mk
+# A target whose executables link the runtime as a shared library (Tau +dll) gives its modules
+# runtime_shared in place of runtime (stappler/core/core.mk).
+ifdef TARGET_SPRT_SHARED
+include $(GLOBAL_ROOT)/runtime/runtime-shared.mk
+endif
 
 $(call print_verbose,(apply-toolchain.mk) Toolchain configured!)

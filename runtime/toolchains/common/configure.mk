@@ -164,6 +164,22 @@ SP_CXXFLAGS += -nostdinc -nostdinc++ -nostdlib -std=gnu++2a $(SP_EMBOX_USER_ARCH
 SP_CPPFLAGS += -nostdinc $(SP_EMBOX_USER_ARCH_FLAGS) $(SP_EMBOX_USER_C_INCLUDES) $(SP_EMBOX_USER_RESOURCE_INC) -D__EMBOX_USER__
 SP_LDFLAGS += -nostdlib $(SP_EMBOX_USER_ARCH_FLAGS)
 endif # EMBOX_USER
+ifdef TAU_USER
+# Tau user modules on the shared runtime libsprt.so (RT-A-SharedRuntime-1). The flags are those
+# of a module (make/os/tau-user.mk, runtime/runtime-shared.mk): SPRT_SHARED_RUNTIME keeps the
+# libc references visible to libsprt.so, -fPIC because a module is a PIE, and initial-exec is
+# the only TLS model root links. SP_TAU_ARCH_FLAGS comes from target-tau/Makefile.
+SP_TAU_USER_C_INCLUDES := -isystem $(SP_RUNTIME_ROOT)/include_libc -isystem $(SP_RUNTIME_ROOT)/include
+SP_TAU_USER_CXX_INCLUDES := -isystem $(SP_RUNTIME_ROOT)/include_libc/cxx -isystem $(SP_RUNTIME_ROOT)/libcxx/include -isystem $(SP_RUNTIME_ROOT)/include_libc -isystem $(SP_RUNTIME_ROOT)/include
+SP_TAU_USER_RESOURCE_INC := -idirafter $(SP_INSTALL_PREFIX)/lib/clang/include
+SP_TAU_USER_FLAGS := $(SP_TAU_ARCH_FLAGS) -D__TAU__ -D__TAU_USER__ -DSPRT_SHARED_RUNTIME \
+	-fPIC -ftls-model=initial-exec -ffunction-sections -fdata-sections
+# C deps are freestanding, C++ deps hosted, as for EMBOX_USER above.
+SP_CFLAGS += -nostdinc -ffreestanding -nostdlib $(SP_TAU_USER_FLAGS) $(SP_TAU_USER_C_INCLUDES) $(SP_TAU_USER_RESOURCE_INC)
+SP_CXXFLAGS += -nostdinc -nostdinc++ -nostdlib -std=gnu++2a $(SP_TAU_USER_FLAGS) $(SP_TAU_USER_CXX_INCLUDES) $(SP_TAU_USER_RESOURCE_INC)
+SP_CPPFLAGS += -nostdinc $(SP_TAU_USER_FLAGS) $(SP_TAU_USER_C_INCLUDES) $(SP_TAU_USER_RESOURCE_INC)
+SP_LDFLAGS += -nostdlib
+endif # TAU_USER
 
 
 ifdef NUTTX
@@ -325,6 +341,12 @@ CONFIGURE_EXE_LINKER_FLAGS_INIT += -nostdlib \
 	-Wl,--defsym=__eh_frame_start=0 -Wl,--defsym=__eh_frame_end=0 \
 	-Wl,--defsym=__eh_frame_hdr_start=0 -Wl,--defsym=__eh_frame_hdr_end=0
 endif # EMBOX_USER
+ifdef TAU_USER
+# --target= travels in the flags for the raw compiler calls of cmake -P scripts (see EMBOX_USER).
+CONFIGURE_CMAKE_C_FLAGS_INIT += --target=$(SP_TARGET_TRIPLE) -nostdinc -ffreestanding $(SP_TAU_USER_FLAGS) $(SP_TAU_USER_C_INCLUDES) $(SP_TAU_USER_RESOURCE_INC)
+CONFIGURE_CMAKE_CXX_FLAGS_INIT += --target=$(SP_TARGET_TRIPLE) -nostdinc -nostdinc++ -std=gnu++2a $(SP_TAU_USER_FLAGS) $(SP_TAU_USER_CXX_INCLUDES) $(SP_TAU_USER_RESOURCE_INC)
+CONFIGURE_EXE_LINKER_FLAGS_INIT += -nostdlib
+endif # TAU_USER
 
 ifdef LINUX
 CONFIGURE_EXE_LINKER_FLAGS_INIT += -Wl,--gc-sections
@@ -564,6 +586,9 @@ CONFIGURE_CMAKE += -DCMAKE_PROJECT_INCLUDE=$(MAKE_ROOT)embox-deps-project-includ
 endif
 ifdef EMBOX_USER
 CONFIGURE_CMAKE += -DCMAKE_PROJECT_INCLUDE=$(MAKE_ROOT)embox-user-deps-project-include.cmake
+endif
+ifdef TAU_USER
+CONFIGURE_CMAKE += -DCMAKE_PROJECT_INCLUDE=$(MAKE_ROOT)tau-deps-project-include.cmake
 endif
 
 ifeq ($(DEBUG),1)

@@ -98,4 +98,12 @@ MODULE_RUNTIME_WINDOW_PRIVATE_CFLAGS += -ffreestanding -fbuiltin
 MODULE_RUNTIME_WINDOW_PRIVATE_CXXFLAGS += -ffreestanding -fbuiltin
 endif # ($(TARGET_SYSTEM),EmboxUser)
 
+ifeq ($(TARGET_SYSTEM),TauUser)
+# The sprt libc is the only libc of a Tau user module, as on EmboxUser.
+MODULE_RUNTIME_WINDOW_PRIVATE_INCLUDES += \
+	$(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_WINDOW_PRIVATE_CFLAGS += -ffreestanding -fbuiltin
+MODULE_RUNTIME_WINDOW_PRIVATE_CXXFLAGS += -ffreestanding -fbuiltin
+endif # ($(TARGET_SYSTEM),TauUser)
+
 $(call define_module, runtime_window, MODULE_RUNTIME_WINDOW)
