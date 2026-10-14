@@ -63,6 +63,10 @@ ifdef EMBOX_USER
 MODULE_STAPPLER_BITMAP_LIBS += -l:libz.a
 endif
 
+ifdef TAU_USER
+MODULE_STAPPLER_BITMAP_LIBS += -l:libz.a
+endif
+
 ifdef WIN32
 MODULE_STAPPLER_BITMAP_LIBS += -lz
 endif
