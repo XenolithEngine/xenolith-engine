@@ -280,6 +280,29 @@ unsigned __sprt_tau_sock_ready(__sprt_tau_sock *s, unsigned events);
 // The address of a host name; -ENOENT when it has none.
 int __sprt_tau_resolve(const char *name, unsigned *addr, unsigned long long timeout_ns);
 
+// The display of the module (dev.display@1 through libtau): one session with both buffers
+// mapped. open() attaches, `wait` waits for a provider to start; -EBUSY: another client holds
+// the display, -ENOENT: no provider runs. present() shows a rectangle of a buffer and returns
+// once the buffer may be drawn into again; -ECONNRESET: the session is lost with its buffers
+// (the driver died), open() again.
+#define __SPRT_TAU_DISPLAY_B8G8R8A8 1
+
+struct __sprt_tau_display_info {
+	unsigned width;
+	unsigned height;
+	unsigned stride; // bytes of a row
+	unsigned format;
+	unsigned buffers;
+	unsigned refresh_mhz;
+};
+
+int __sprt_tau_display_open(int wait, struct __sprt_tau_display_info *info);
+// Buffer `index` of the session: stride * height bytes.
+int __sprt_tau_display_buffer(unsigned index, void **data, unsigned long *size);
+int __sprt_tau_display_present(unsigned index, unsigned x, unsigned y, unsigned w, unsigned h);
+// Ends the session; the display keeps the last frame.
+void __sprt_tau_display_close(void);
+
 #pragma GCC visibility pop
 
 #ifdef __cplusplus
