@@ -155,6 +155,13 @@ struct BitmapWriter : ImageInfo {
 	uint8_t *(*getData)(void *, uint32_t location);
 	void (*assign)(void *, const uint8_t *, uint32_t);
 	void (*clear)(void *);
+
+	/* The PNG encode effort, -1 meaning the library's own behaviour - every filter searched a row,
+	zlib's default level - so a writer that sets neither writes the bytes it always wrote. A level
+	is zlib's 0..9; a mask is libpng's PNG_FILTER_* bits, and one fixed filter row over row is the
+	cheap spelling. Read by the PNG writer only, before the first row. */
+	int zlibLevel = -1;
+	int filterMask = -1;
 };
 
 class SP_PUBLIC BitmapFormat {

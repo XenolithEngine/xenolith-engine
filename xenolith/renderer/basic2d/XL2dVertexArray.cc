@@ -82,11 +82,12 @@ VertexData::Bounds VertexData::getBounds(const core::DataAtlas *atlas) const {
 	return ret;
 }
 
-VertexArray::Quad &VertexArray::Quad::setTextureRect(const Rect &texRect, float texWidth,
-		float texHeight, bool flippedX, bool flippedY, bool rotated) {
-
-	Vertex *data = const_cast<Vertex *>(vertexes.data());
-
+/* The four corner texture coordinates a fragment maps to, tl bl tr br, with flips and the
+quarter turn a frame laid sideways on a sheet needs. Quad and Polygon answer through the same
+helper so the two paths cannot drift: a rectangle ring and a quad of the same arguments sample
+the same texels. */
+static void VertexArray_texCorners(const Rect &texRect, float texWidth, float texHeight,
+		bool flippedX, bool flippedY, bool rotated, Vec2 out[4]) {
 	float texLeft = texRect.origin.x / texWidth;
 	float texRight = (texRect.origin.x + texRect.size.width) / texWidth;
 	float texTop = texRect.origin.y / texHeight;
@@ -102,16 +103,28 @@ VertexArray::Quad &VertexArray::Quad::setTextureRect(const Rect &texRect, float 
 
 	if (!rotated) {
 		// tl bl tr br
-		data[0].tex = Vec2(texLeft, texTop);
-		data[1].tex = Vec2(texLeft, texBottom);
-		data[2].tex = Vec2(texRight, texTop);
-		data[3].tex = Vec2(texRight, texBottom);
+		out[0] = Vec2(texLeft, texTop);
+		out[1] = Vec2(texLeft, texBottom);
+		out[2] = Vec2(texRight, texTop);
+		out[3] = Vec2(texRight, texBottom);
 	} else {
 		// tl bl tr br
-		data[0].tex = Vec2(texLeft, texTop);
-		data[1].tex = Vec2(texRight, texTop);
-		data[2].tex = Vec2(texLeft, texBottom);
-		data[3].tex = Vec2(texRight, texBottom);
+		out[0] = Vec2(texLeft, texTop);
+		out[1] = Vec2(texRight, texTop);
+		out[2] = Vec2(texLeft, texBottom);
+		out[3] = Vec2(texRight, texBottom);
+	}
+}
+
+VertexArray::Quad &VertexArray::Quad::setTextureRect(const Rect &texRect, float texWidth,
+		float texHeight, bool flippedX, bool flippedY, bool rotated) {
+
+	Vertex *data = const_cast<Vertex *>(vertexes.data());
+
+	Vec2 tex[4];
+	VertexArray_texCorners(texRect, texWidth, texHeight, flippedX, flippedY, rotated, tex);
+	for (uint32_t i = 0; i < 4; ++i) {
+		data[i].tex = tex[i];
 	}
 
 	return *this;
@@ -358,6 +371,213 @@ VertexArray::Quad VertexArray::getQuad(size_t firstVertex, size_t firstIndex) {
 
 	return Quad({SpanView<Vertex>(_data->data.data() + firstVertex, 4),
 		SpanView<uint32_t>(_data->indexes.data() + firstIndex, 6), firstVertex, firstIndex});
+}
+
+/* Ear clipping over a ring in image space (x right, y down). Everything the caller may hand over
+is normalized to [0..1], so one epsilon serves every ring; a distance or an area below it is
+sub-pixel at any size a sprite fragment has.
+
+Deterministic by construction: the ring is canonicalized to one orientation (the quad's own
+facing, negative shoelace in image space) and the ear scan always starts from the same vertex of
+the canonical ring, so the same shape walked in either direction yields the same triangles.
+
+`ring` receives the kept points in canonical order, `out` the triangle corners as positions into
+that ring. False when the ring cannot be a mesh - and then neither output is used. */
+static bool VertexArray_triangulate(SpanView<const Vec2> points, Vector<Vec2> &ring,
+		Vector<uint32_t> &out) {
+	constexpr float Eps = 1e-7f;
+
+	ring.clear();
+	for (size_t i = 0; i < points.size(); ++i) {
+		const auto &p = points[i];
+		if (!ring.empty() && sprt::abs(p.x - ring.back().x) < Eps
+				&& sprt::abs(p.y - ring.back().y) < Eps) {
+			continue;
+		}
+		ring.push_back(p);
+	}
+	// A closed ring repeats its first point last; both repeats fall to the dedup above.
+	while (ring.size() > 1 && sprt::abs(ring.front().x - ring.back().x) < Eps
+			&& sprt::abs(ring.front().y - ring.back().y) < Eps) {
+		ring.pop_back();
+	}
+
+	// Straight points can never be an ear and would stall the walk; drop them before it starts.
+	auto crossAt = [&](size_t i) {
+		const auto &p = ring[(i + ring.size() - 1) % ring.size()];
+		const auto &c = ring[i];
+		const auto &n = ring[(i + 1) % ring.size()];
+		return (c.x - p.x) * (n.y - c.y) - (c.y - p.y) * (n.x - c.x);
+	};
+	bool dropped = true;
+	while (dropped && ring.size() > 3) {
+		dropped = false;
+		for (size_t i = 0; i < ring.size(); ++i) {
+			if (sprt::abs(crossAt(i)) < Eps) {
+				ring.erase(ring.begin() + i);
+				dropped = true;
+				break;
+			}
+		}
+	}
+
+	if (ring.size() < 3) {
+		return false;
+	}
+
+	// The quad's triangles run clockwise in image space (y down); the mesh must face with them.
+	float shoelace = 0.0f;
+	for (size_t i = 0; i < ring.size(); ++i) {
+		const auto &a = ring[i];
+		const auto &b = ring[(i + 1) % ring.size()];
+		shoelace += a.x * b.y - b.x * a.y;
+	}
+	if (sprt::abs(shoelace) < Eps) {
+		// Zero area: every kept point is on one line, whatever their count.
+		return false;
+	}
+	if (shoelace > 0.0f) {
+		sprt::reverse(ring.begin(), ring.end());
+	}
+
+	/* The walk runs over POSITIONS into the canonical ring, and only the walk list shrinks - the
+	ring itself is what the caller receives, and the triangle corners must stay positions into it
+	from the first clip to the last. */
+	Vector<uint32_t> loop;
+	loop.reserve(ring.size());
+	for (size_t j = 0; j < ring.size(); ++j) {
+		loop.push_back(uint32_t(j));
+	}
+
+	size_t i = 0;
+	size_t lap = 0;
+	while (loop.size() > 3) {
+		const auto m = loop.size();
+		const auto prevIdx = loop[(i + m - 1) % m];
+		const auto curIdx = loop[i];
+		const auto nextIdx = loop[(i + 1) % m];
+		const auto &p = ring[prevIdx];
+		const auto &c = ring[curIdx];
+		const auto &nx = ring[nextIdx];
+		const auto cross = (c.x - p.x) * (nx.y - c.y) - (c.y - p.y) * (nx.x - c.x);
+
+		bool ear = cross < -Eps;
+		for (size_t j = 0; j < m && ear; ++j) {
+			const auto o = loop[j];
+			if (o == prevIdx || o == curIdx || o == nextIdx) {
+				continue;
+			}
+			const auto &q = ring[o];
+			const auto d0 = (c.x - p.x) * (q.y - p.y) - (c.y - p.y) * (q.x - p.x);
+			const auto d1 = (nx.x - c.x) * (q.y - c.y) - (nx.y - c.y) * (q.x - c.x);
+			const auto d2 = (p.x - nx.x) * (q.y - nx.y) - (p.y - nx.y) * (q.x - nx.x);
+			// Inside strictly is all three on the inner side; a point on an edge does not block.
+			if (d0 < -Eps && d1 < -Eps && d2 < -Eps) {
+				ear = false;
+			}
+		}
+
+		if (ear) {
+			out.push_back(prevIdx);
+			out.push_back(curIdx);
+			out.push_back(nextIdx);
+			loop.erase(loop.begin() + i);
+			if (i >= loop.size()) {
+				i = 0;
+			}
+			lap = 0;
+		} else {
+			i = (i + 1) % loop.size();
+			++lap;
+			if (lap > loop.size()) {
+				// A whole lap without an ear: the ring is not a simple polygon.
+				out.clear();
+				return false;
+			}
+		}
+	}
+
+	out.push_back(loop[0]);
+	out.push_back(loop[1]);
+	out.push_back(loop[2]);
+	return true;
+}
+
+VertexArray::Polygon VertexArray::addPolygon(SpanView<const Vec2> points) {
+	mutate();
+
+	Vector<Vec2> ring;
+	Vector<uint32_t> indexes;
+	if (!VertexArray_triangulate(points, ring, indexes)) {
+		return Polygon({Vector<Vec2>(), SpanView<Vertex>(), SpanView<uint32_t>(),
+			_data->data.size(), _data->indexes.size(), false});
+	}
+
+	const auto firstVertex = uint32_t(_data->data.size());
+	const auto firstIndex = uint32_t(_data->indexes.size());
+	const auto count = ring.size();
+
+	_data->data.resize(_data->data.size() + count);
+	for (size_t j = 0; j < indexes.size(); ++j) {
+		_data->indexes.push_back(firstVertex + indexes[j]);
+	}
+
+	return Polygon({sp::move(ring), SpanView<Vertex>(_data->data.data() + firstVertex, count),
+		SpanView<uint32_t>(_data->indexes.data() + firstIndex, indexes.size()), firstVertex,
+		firstIndex, true});
+}
+
+VertexArray::Polygon &VertexArray::Polygon::setGeometry(const Vec4 &origin, const Size2 &size) {
+	if (!valid) {
+		return *this;
+	}
+
+	Vertex *data = const_cast<Vertex *>(vertexes.data());
+	for (size_t i = 0; i < ring.size(); ++i) {
+		const auto &p = ring[i];
+		data[i].pos = Vec4(origin.x + p.x * size.width,
+				origin.y + size.height - p.y * size.height, origin.z, origin.w);
+	}
+
+	return *this;
+}
+
+VertexArray::Polygon &VertexArray::Polygon::setTextureRect(const Rect &texRect, float texWidth,
+		float texHeight, bool flippedX, bool flippedY, bool rotated) {
+	if (!valid) {
+		return *this;
+	}
+
+	Vertex *data = const_cast<Vertex *>(vertexes.data());
+
+	Vec2 tex[4];
+	VertexArray_texCorners(texRect, texWidth, texHeight, flippedX, flippedY, rotated, tex);
+
+	// The corner mapping is affine (the quarter turn included), so the corner answers at the
+	// corners are exact and every inner point is the same bilinear combination of them.
+	const auto &tl = tex[0];
+	const auto &bl = tex[1];
+	const auto &tr = tex[2];
+	for (size_t i = 0; i < ring.size(); ++i) {
+		const auto &p = ring[i];
+		data[i].tex = Vec2(tl.x + p.x * (tr.x - tl.x) + p.y * (bl.x - tl.x),
+				tl.y + p.x * (tr.y - tl.y) + p.y * (bl.y - tl.y));
+	}
+
+	return *this;
+}
+
+VertexArray::Polygon &VertexArray::Polygon::setColor(const Color4F &color) {
+	if (!valid) {
+		return *this;
+	}
+
+	Vertex *data = const_cast<Vertex *>(vertexes.data());
+	for (size_t i = 0; i < ring.size(); ++i) {
+		data[i].color = color;
+	}
+
+	return *this;
 }
 
 void VertexArray::updateColor(const Color4F &color) {

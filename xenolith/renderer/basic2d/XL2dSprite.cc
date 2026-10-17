@@ -177,6 +177,27 @@ void Sprite::setTextureRect(const Rect &rect) {
 	}
 }
 
+void Sprite::setTextureMesh(Vector<Vec2> &&mesh) {
+	if (_textureMesh != mesh) {
+		_textureMesh = move(mesh);
+		markVertexesDirty();
+	}
+}
+
+void Sprite::clearTextureMesh() {
+	if (!_textureMesh.empty()) {
+		_textureMesh.clear();
+		markVertexesDirty();
+	}
+}
+
+void Sprite::setTextureRotated(bool value) {
+	if (_rotated != value) {
+		_rotated = value;
+		markVertexesDirty();
+	}
+}
+
 bool Sprite::visitDraw(FrameInfo &frame, NodeVisitFlags parentFlags) {
 	if (_texture) {
 		auto loaded = _texture->isLoaded();
@@ -469,12 +490,30 @@ void Sprite::updateVertexes(FrameInfo &frame) {
 	auto placementResult = _texturePlacement.resolve(_contentSize,
 			Size2(_texture->getExtent().width, _texture->getExtent().height));
 
-	_vertexes.addQuad()
-			.setGeometry(Vec4(placementResult.viewRect.origin.x, placementResult.viewRect.origin.y,
-								 _textureLayer, 1.0f),
-					placementResult.viewRect.size)
-			.setTextureRect(placementResult.textureRect, 1.0f, 1.0f, _flippedX, _flippedY, _rotated)
-			.setColor(_displayedColor);
+	if (!_textureMesh.empty()) {
+		// The same placement the quad uses, on the same terms: the geometry is the fragment's
+		// upright rectangle and the texture rectangle carries the sheet's orientation.
+		auto polygon = _vertexes.addPolygon(
+				SpanView<const Vec2>(_textureMesh.data(), _textureMesh.size()));
+		if (polygon.valid) {
+			polygon.setGeometry(Vec4(placementResult.viewRect.origin.x,
+									 placementResult.viewRect.origin.y, _textureLayer, 1.0f),
+							placementResult.viewRect.size)
+					.setTextureRect(placementResult.textureRect, 1.0f, 1.0f, _flippedX, _flippedY,
+							_rotated)
+					.setColor(_displayedColor);
+		} else {
+			log::source().error("Sprite", "texture mesh refused for texture '",
+					_texture ? _texture->getName() : StringView("?"), "'");
+		}
+	} else {
+		_vertexes.addQuad()
+				.setGeometry(Vec4(placementResult.viewRect.origin.x, placementResult.viewRect.origin.y,
+									 _textureLayer, 1.0f),
+						placementResult.viewRect.size)
+				.setTextureRect(placementResult.textureRect, 1.0f, 1.0f, _flippedX, _flippedY, _rotated)
+				.setColor(_displayedColor);
+	}
 	_textureScale = placementResult.scale;
 	_vertexColorDirty = false;
 }

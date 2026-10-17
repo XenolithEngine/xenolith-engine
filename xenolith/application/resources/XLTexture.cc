@@ -180,7 +180,14 @@ Extent3 Texture::getExtent() const {
 }
 
 bool Texture::isLoaded() const {
-	return _dynamic || (_temporary && _temporary->isLoaded() && _data->image) || _data->image;
+	if (_dynamic) {
+		/* A dynamic image is usable exactly when its compiled instance exists: before the compile
+		lands, getInstance() is null and the index/material paths would dereference it. Sprite's
+		draw asks this question first and declines to draw - so this answer is the one place the
+		uncompiled window is caught. */
+		return _dynamic->getInstance() != nullptr;
+	}
+	return (_temporary && _temporary->isLoaded() && _data->image) || _data->image;
 }
 
 core::MaterialImage Texture::getMaterialImage() const {

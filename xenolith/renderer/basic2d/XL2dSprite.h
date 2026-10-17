@@ -60,6 +60,23 @@ public:
 	virtual void setTextureRect(const Rect &);
 	virtual const Rect &getTextureRect() const { return _texturePlacement.textureRect; }
 
+	/* A polygon frame's contour in the texture rectangle's own terms: [0..1] across the upright
+	fragment, x to the right, y down, an open ring of at least three distinct points (see
+	VertexArray::addPolygon). Set, the sprite submits the contour's mesh instead of the quad - the
+	frame's transparent corners are then not drawn at all, which is the point of a polygon trim.
+	The mesh belongs to the rectangle it was made for: a caller that changes the picture clears it
+	(clearTextureMesh), or the next rectangle is drawn through the old contour. A contour that
+	cannot be triangulated draws nothing rather than a bounding box that was never the picture. */
+	virtual void setTextureMesh(Vector<Vec2> &&mesh);
+	const Vector<Vec2> &getTextureMesh() const { return _textureMesh; }
+	void clearTextureMesh();
+
+	// The frame lies on the sheet turned a quarter turn: the texture rectangle is its oriented
+	// on-sheet rect and the geometry stays the fragment's upright size. A sprite fed from an atlas
+	// reads the flag off the frame and hands it here; the quad and the mesh both take it.
+	virtual void setTextureRotated(bool);
+	bool isTextureRotated() const { return _rotated; }
+
 	virtual bool visitDraw(FrameInfo &, NodeVisitFlags parentFlags) override;
 	virtual void draw(FrameInfo &, NodeVisitFlags flags) override;
 
@@ -177,6 +194,8 @@ protected:
 	float _textureScale = 1.0f;
 	float _textureLayer = 0.0f;
 	float _shadedOutlineOffset = 0.0f;
+
+	Vector<Vec2> _textureMesh;
 
 	ImagePlacementInfo _texturePlacement;
 

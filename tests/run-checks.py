@@ -106,6 +106,7 @@ CLI = [
     ("tests/tess", "tesstest", ["golden"], False),
     ("tests/tess", "tesstest", ["raster-golden"], False),
     ("tests/tess", "tesstest", ["strokes"], False),
+    ("tests/sprite", "spritetest", [], True),
     ("tests/git", "gittest", [], False),
     ("tests/thirdparty", "thirdpartytest", [], False),
     ("tests/remote", "remotetest", [], False),
@@ -134,6 +135,7 @@ OWES = [
     ("xenolith/renderer/ui/layout", ["uilayouttest"]),
     ("xenolith/renderer/basic2d/particle", ["particlestest"]),
     ("xenolith/renderer/basic2d/glsl", ["particlestest"]),
+    ("xenolith/renderer/basic2d", ["spritetest"]),
     ("xenolith/backend/vk", ["computetest"]),
     ("xenolith/backend/webgpu", ["wgpucompute"]),
     ("stappler/flow/executors", ["flowwgpu"]),
@@ -172,6 +174,7 @@ COST = {
     "window/remote-multi-check.py": 30, "remotetest": 3,
     "window/frame-request-check.py": 34, "window/label-bounds-check.py": 27,
     "gittest": 19, "computetest": 6, "wgpucompute": 2, "flowwgpu": 8, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
+    "spritetest": 8,
     "uilayouttest": 1, "particlestest": 1, "vstoretest": 5, "vstoretest --full": 200,
     "flowtest": 13, "flowtest --full": 36,
 }

@@ -140,6 +140,14 @@ public:
 	template <typename BytesType = typename Interface::BytesType>
 	auto write(StringView name, bool invert = false) const -> BytesType;
 
+	/* The PNG encode effort this bitmap's writes carry; see BitmapWriter. Unset is the library's
+	own behaviour, so a bitmap that never calls this writes what it always wrote. `filterMask` is
+	libpng's PNG_FILTER_* bits - PNG_FILTER_UP alone is the usual fast spelling. */
+	void setPngEncodeEffort(int zlibLevel, int filterMask) {
+		_pngZlibLevel = zlibLevel;
+		_pngFilterMask = filterMask;
+	}
+
 	// resample with default filter (usually Lanczos4)
 	BitmapTemplate resample(uint32_t width, uint32_t height, uint32_t stride = 0) const;
 
@@ -169,6 +177,9 @@ protected:
 
 	FileFormat _originalFormat = FileFormat::Custom;
 	StringView _originalFormatName;
+
+	int _pngZlibLevel = -1;
+	int _pngFilterMask = -1;
 };
 
 
@@ -318,6 +329,8 @@ void BitmapTemplate<Interface>::_setupWriter(BitmapWriter &w,
 	w.width = width();
 	w.height = height();
 	w.stride = stride();
+	w.zlibLevel = _pngZlibLevel;
+	w.filterMask = _pngFilterMask;
 
 	if (target && target->strideFn) {
 		w.getStride = [](void *ptr, PixelFormat f, uint32_t w) {
