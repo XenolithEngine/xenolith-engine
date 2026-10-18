@@ -177,9 +177,9 @@ bool TauWindow::connect(bool wait) {
 		__sprt_tau_display_close();
 		return false;
 	}
-	void *data = nullptr;
+	void *data[2] = {nullptr, nullptr};
 	unsigned long size = 0;
-	if (__sprt_tau_display_buffer(0, &data, &size) < 0) {
+	if (__sprt_tau_display_buffer(0, &data[0], &size) < 0 || __sprt_tau_display_buffer(1, &data[1], &size) < 0) {
 		return false;
 	}
 	if (_extent.width == 0) {
@@ -191,7 +191,10 @@ bool TauWindow::connect(bool wait) {
 		__sprt_tau_display_close();
 		return false;
 	}
-	_buffer = static_cast<uint8_t *>(data);
+	_buffers[0] = static_cast<uint8_t *>(data[0]);
+	_buffers[1] = static_cast<uint8_t *>(data[1]);
+	_next = 0;
+	_wholeLeft = 2;
 	return true;
 }
 
@@ -206,31 +209,46 @@ void TauWindow::show(const uint8_t *frame, uint32_t x, uint32_t y, uint32_t w, u
 			return;
 		}
 		_lost = false;
-		whole = true;
 		oslog::vpinfo(__SPRT_LOCATION, "TauWindow", "the display is back");
 	}
+	whole = whole || _wholeLeft > 0;
 	if (!whole && (w == 0 || h == 0)) {
 		return;
 	}
+	uint8_t *target = _buffers[_next];
+	const Rect own = whole ? Rect{0, 0, _extent.width, _extent.height} : Rect{x, y, w, h};
 	if (whole) {
 		x = y = 0;
 		w = _extent.width;
 		h = _extent.height;
-		::memcpy(_buffer, frame, size_t(_stride) * h);
+		::memcpy(target, frame, size_t(_stride) * h);
+		_wholeLeft = _wholeLeft > 0 ? _wholeLeft - 1 : 0;
 	} else {
+		if (_last.w > 0 && _last.h > 0) {
+			uint32_t x1 = x + w > _last.x + _last.w ? x + w : _last.x + _last.w;
+			uint32_t y1 = y + h > _last.y + _last.h ? y + h : _last.y + _last.h;
+			x = x < _last.x ? x : _last.x;
+			y = y < _last.y ? y : _last.y;
+			w = x1 - x;
+			h = y1 - y;
+		}
 		const size_t rowBytes = size_t(w) * 4;
 		for (uint32_t row = y; row < y + h; ++row) {
 			const size_t off = size_t(row) * _stride + size_t(x) * 4;
-			::memcpy(_buffer + off, frame + off, rowBytes);
+			::memcpy(target + off, frame + off, rowBytes);
 		}
 	}
-	int st = __sprt_tau_display_present(0, x, y, w, h);
+	int st = __sprt_tau_display_present(_next, x, y, w, h);
+	_last = own;
+	_next ^= 1;
 	if (st == -__SPRT_TAU_ECONNRESET) {
 		_lost = true;
 		_lostTriedUs = nowUs();
-		_buffer = nullptr;
+		_buffers[0] = _buffers[1] = nullptr;
 		oslog::vpwarn(__SPRT_LOCATION, "TauWindow", "the display is lost");
 	} else if (st < 0) {
+		// The buffer's image on the display is not what was copied into it.
+		_wholeLeft = 2;
 		oslog::vperror(__SPRT_LOCATION, "TauWindow", "present failed: ", -st);
 	}
 }
@@ -298,8 +316,8 @@ PresentationOptions TauWindow::getPreferredOptions() const {
 
 void TauWindow::teardown() {
 	stopInput();
-	if (_buffer) {
-		_buffer = nullptr;
+	if (_buffers[0]) {
+		_buffers[0] = _buffers[1] = nullptr;
 		__sprt_tau_display_close();
 	}
 }
