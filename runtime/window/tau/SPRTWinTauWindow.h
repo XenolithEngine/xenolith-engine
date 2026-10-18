@@ -50,9 +50,9 @@ protected:
 	TauWindow *_owner = nullptr;
 };
 
-// The swapchain's slots are CPU shadows; present() copies the damaged rows of one into buffer 0
-// of the display and shows them. Two shadows let the rasterizer draw one while the other
-// presents.
+// The swapchain's slots are CPU shadows; present() hands the damaged rows of one to the window,
+// which copies them into a display buffer and shows it. Two shadows let the rasterizer draw one
+// while the other presents.
 class TauSoftwareSwapchain final : public SoftwareSwapchain {
 public:
 	virtual ~TauSoftwareSwapchain();
@@ -88,10 +88,11 @@ public:
 
 	uint32_t getStride() const { return _stride; }
 
-	// Copies rows [y, y + h) from x, w pixels wide, of a whole frame at the display's stride and
-	// shows them; `whole` shows the frame, an empty rectangle nothing. A lost display drops the
-	// frame and is connected again at most every s_reconnectUs; the first frame after that is
-	// shown whole.
+	// Copies rows [y, y + h) from x, w pixels wide, of a whole frame at the display's stride into
+	// the display buffer not on screen and shows it; `whole` shows the frame, an empty rectangle
+	// nothing. That buffer last got the frame before the previous one, so the previous frame's
+	// rectangle is copied too, and the first two frames after a connect go whole. A lost display
+	// drops the frame and is connected again at most every s_reconnectUs.
 	void show(const uint8_t *frame, uint32_t x, uint32_t y, uint32_t w, uint32_t h, bool whole);
 
 protected:
@@ -116,7 +117,14 @@ protected:
 	void post(InputKeyCode, InputEventName);
 	void postCancel();
 
-	uint8_t *_buffer = nullptr; // buffer 0 of the display, while connected
+	struct Rect {
+		uint32_t x, y, w, h;
+	};
+
+	uint8_t *_buffers[2] = {nullptr, nullptr}; // the display's buffers, while connected
+	uint32_t _next = 0; // the buffer the next frame goes into
+	uint32_t _wholeLeft = 0; // frames to show whole: buffers not yet holding a whole frame
+	Rect _last = {0, 0, 0, 0}; // the damage of the last frame shown, without the one before it
 	uint32_t _stride = 0;
 	Extent2 _extent;
 	bool _closed = false;
