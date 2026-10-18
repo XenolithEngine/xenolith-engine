@@ -124,8 +124,13 @@ unsigned long long __sprt_tau_clock_ns(void);
 unsigned long long __sprt_tau_clock_res_ns(void);
 int __sprt_tau_sleep_ns(unsigned long long ns);
 void __sprt_tau_yield(void);
-// Not suitable for keys: the counter's jitter mixed, no hardware generator.
+// The module's generator, keyed from the seed root gives each start; never waits.
 int __sprt_tau_random(void *buf, unsigned long len);
+// Whether a getrandom may take the generator's bytes: 0 when it may, -EAGAIN when the
+// generator is not credited and NONBLOCK is set. INSECURE takes them in any case.
+#define __SPRT_TAU_RANDOM_NONBLOCK 1u
+#define __SPRT_TAU_RANDOM_INSECURE 2u
+int __sprt_tau_random_wait(unsigned flags);
 
 // The module's private futex: wait returns 0 when woken (or spuriously), -EAGAIN when
 // *addr != expected, -ETIMEDOUT; wake returns how many it woke.
