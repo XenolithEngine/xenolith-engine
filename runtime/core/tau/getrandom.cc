@@ -19,7 +19,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// Random bytes on Tau come from libtau (sprt_tau.h): not suitable for keys.
+// Random bytes on Tau come from the generator of libtau (sprt_tau.h).
 
 #ifndef __SPRT_BUILD
 #define __SPRT_BUILD 1
@@ -31,9 +31,16 @@ THE SOFTWARE.
 
 namespace sprt {
 
-static __SPRT_ID(ssize_t) getrandom(void *__buffer, __SPRT_ID(size_t) __length, unsigned) {
+static __SPRT_ID(ssize_t) getrandom(void *__buffer, __SPRT_ID(size_t) __length, unsigned __flags) {
 	if (!__buffer) {
 		__sprt_errno = EFAULT;
+		return -1;
+	}
+	unsigned wait = ((__flags & __SPRT_GRND_NONBLOCK) ? __SPRT_TAU_RANDOM_NONBLOCK : 0u)
+			| ((__flags & __SPRT_GRND_INSECURE) ? __SPRT_TAU_RANDOM_INSECURE : 0u);
+	int st = __sprt_tau_random_wait(wait);
+	if (st < 0) {
+		__sprt_errno = -st;
 		return -1;
 	}
 	__sprt_tau_random(__buffer, __length);
@@ -43,6 +50,11 @@ static __SPRT_ID(ssize_t) getrandom(void *__buffer, __SPRT_ID(size_t) __length, 
 static int getentropy(void *__buffer, __SPRT_ID(size_t) __length) {
 	if (__length > 256 || __length == 0 || !__buffer) {
 		__sprt_errno = EINVAL;
+		return -1;
+	}
+	int st = __sprt_tau_random_wait(0);
+	if (st < 0) {
+		__sprt_errno = -st;
 		return -1;
 	}
 	__sprt_tau_random(__buffer, __length);
