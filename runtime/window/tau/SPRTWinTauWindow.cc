@@ -328,7 +328,9 @@ void *TauWindow::inputThread(void *arg) {
 }
 
 void TauWindow::startInput() {
-	if (::getenv("XL_UART_KEYS") && strcmp(::getenv("XL_UART_KEYS"), "0") == 0) {
+	_console = !(::getenv("XL_UART_KEYS") && strcmp(::getenv("XL_UART_KEYS"), "0") == 0);
+	_usb = !(::getenv("XL_USB_INPUT") && strcmp(::getenv("XL_USB_INPUT"), "0") == 0);
+	if (!_console && !_usb) {
 		return;
 	}
 	if (const char *env = ::getenv("XL_UART_HOLD_US")) {
@@ -357,10 +359,18 @@ void TauWindow::stopInput() {
 }
 
 // The console stream of stdin has no O_NONBLOCK and no termios on Tau: poll() with a timeout
-// keeps the release tick going, and a read after POLLIN does not block.
+// keeps the release tick going, and a read after POLLIN does not block. USB input is taken on
+// the same tick; its events also wake the poll.
 void TauWindow::inputLoop() {
 	uint8_t buf[32];
 	while (_running.load()) {
+		if (_usb) {
+			pollUsb(nowUs());
+		}
+		if (!_console) {
+			::usleep(unsigned(s_inputPollMs) * 1'000);
+			continue;
+		}
 		struct __SPRT_POLLFD_NAME p = {STDIN_FILENO, __SPRT_POLLIN, 0};
 		int ready = __SPRT_ID(poll)(&p, 1, s_inputPollMs);
 		uint64_t now = nowUs();
@@ -378,6 +388,11 @@ void TauWindow::inputLoop() {
 		}
 	}
 	postCancel();
+	usbCancel();
+	if (_usbOpen) {
+		__sprt_tau_input_close();
+		_usbOpen = false;
+	}
 }
 
 void TauWindow::feed(uint8_t byte, uint64_t now) {
@@ -526,7 +541,23 @@ void TauWindow::post(InputKeyCode code, InputEventName event) {
 	ev.key.keycode = code;
 	ev.key.keysym = 0;
 	ev.key.keychar = 0;
-	// handleInputEvents runs on the looper's thread; performOnThread retains the window.
+	postEvent(ev);
+}
+
+void TauWindow::postCancel() {
+	for (size_t i = 0; i < _heldCount; ++i) {
+		auto ev = InputEventData();
+		ev.event = InputEventName::KeyCanceled;
+		ev.key.keycode = _held[i].keycode;
+		ev.key.keysym = 0;
+		ev.key.keychar = 0;
+		postEvent(ev);
+	}
+	_heldCount = 0;
+}
+
+// handleInputEvents runs on the looper's thread; performOnThread retains the window.
+void TauWindow::postEvent(const InputEventData &ev) {
 	auto looper = _controller ? _controller->getLooper() : nullptr;
 	if (looper) {
 		looper->performOnThread([this, ev] {
@@ -538,28 +569,6 @@ void TauWindow::post(InputKeyCode code, InputEventName event) {
 			handleInputEvents(sprt::move(events));
 		}, this);
 	}
-}
-
-void TauWindow::postCancel() {
-	for (size_t i = 0; i < _heldCount; ++i) {
-		auto ev = InputEventData();
-		ev.event = InputEventName::KeyCanceled;
-		ev.key.keycode = _held[i].keycode;
-		ev.key.keysym = 0;
-		ev.key.keychar = 0;
-		auto looper = _controller ? _controller->getLooper() : nullptr;
-		if (looper) {
-			looper->performOnThread([this, ev] {
-				if (_closed) {
-					return;
-				}
-				Vector<InputEventData> events;
-				events.emplace_back(ev);
-				handleInputEvents(sprt::move(events));
-			}, this);
-		}
-	}
-	_heldCount = 0;
 }
 
 } // namespace sprt::window
