@@ -26,6 +26,7 @@
 #include <sprt/runtime/window/native_window.h>
 #include <sprt/runtime/window/software_surface.h>
 #include <sprt/runtime/window/input.h>
+#include <sprt/c/cross/tau_sprt/sprt_tau.h>
 #include <sprt/cxx/atomic>
 #include <stdint.h>
 
@@ -116,6 +117,19 @@ protected:
 	void expireHeld(uint64_t nowUs);
 	void post(InputKeyCode, InputEventName);
 	void postCancel();
+	void postEvent(const InputEventData &);
+
+	/* USB input: the events of dev.input@1 (__sprt_tau_input_*), polled on the input thread.
+	 * Touches are Begin/Move/End by contact, a mouse moves a cursor in the window, a tablet places
+	 * it, buttons are Begin/End and the wheel Scroll at the cursor; HID keys repeat after
+	 * s_usbRepeatDelayUs. The session is opened again after a loss. XL_USB_INPUT=0 disables. */
+	void pollUsb(uint64_t nowUs);
+	void usbEvent(const __sprt_tau_input_event &, uint64_t nowUs);
+	void usbPointer(const __sprt_tau_input_event &, bool absolute);
+	void usbKey(uint32_t usage, bool down, uint64_t nowUs);
+	void usbRepeat(uint64_t nowUs);
+	void usbCancel();
+	InputEventData usbPoint(InputEventName, uint32_t id, InputMouseButton, float x, float y) const;
 
 	struct Rect {
 		uint32_t x, y, w, h;
@@ -142,6 +156,28 @@ protected:
 	};
 	HeldKey _held[16] = {};
 	size_t _heldCount = 0;
+	bool _console = false;
+
+	struct UsbDevice {
+		uint32_t id, kind, xMax, yMax;
+	};
+	struct UsbKey {
+		InputKeyCode keycode;
+		uint64_t repeatUs; // when it repeats next
+	};
+	bool _usb = false;
+	bool _usbOpen = false;
+	uint64_t _usbTriedUs = 0;
+	UsbDevice _usbDevices[8] = {};
+	size_t _usbDeviceCount = 0;
+	uint32_t _contacts[16] = {}; // touches down, by contact
+	size_t _contactCount = 0;
+	float _cursorX = 0.0f, _cursorY = 0.0f; // window coordinates, y up
+	bool _cursorSet = false;
+	uint32_t _buttons = 0; // bit n: button n + 1 down
+	UsbKey _usbKeys[8] = {};
+	size_t _usbKeyCount = 0;
+	InputModifier _modifiers = InputModifier::None;
 };
 
 } // namespace sprt::window

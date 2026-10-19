@@ -26,4 +26,5 @@
 #if __SPRT_RUNTIME_CONFIG_HAVE_WINDOW && SPRT_TAU
 #include "SPRTWinTauController.cc"
 #include "SPRTWinTauWindow.cc"
+#include "SPRTWinTauInput.cc"
 #endif
