@@ -122,8 +122,12 @@ protected:
 	/* USB input: the events of dev.input@1 (__sprt_tau_input_*), polled on the input thread.
 	 * Touches are Begin/Move/End by contact, a mouse moves a cursor in the window, a tablet places
 	 * it, buttons are Begin/End and the wheel Scroll at the cursor; HID keys repeat after
-	 * s_usbRepeatDelayUs. The session is opened again after a loss. XL_USB_INPUT=0 disables. */
+	 * s_usbRepeatDelayUs. The session is opened again after a loss. XL_USB_INPUT=0 disables.
+	 * XL_INPUT_LATENCY=1 prints, for the earliest touch or key press not yet shown, the time from
+	 * its report to the second present after it was posted: an upper bound, to within a frame. */
 	void pollUsb(uint64_t nowUs);
+	void markLatency(uint64_t reportNs, bool key);
+	void showLatency();
 	void usbEvent(const __sprt_tau_input_event &, uint64_t nowUs);
 	void usbPointer(const __sprt_tau_input_event &, bool absolute);
 	void usbKey(uint32_t usage, bool down, uint64_t nowUs);
@@ -178,6 +182,11 @@ protected:
 	UsbKey _usbKeys[8] = {};
 	size_t _usbKeyCount = 0;
 	InputModifier _modifiers = InputModifier::None;
+
+	// Report times in ns, bit 0 set for a key: posted and not yet past a present, and armed.
+	bool _latency = false;
+	sprt::atomic<uint64_t> _latencyPosted = 0;
+	uint64_t _latencyArmed = 0;
 };
 
 } // namespace sprt::window
