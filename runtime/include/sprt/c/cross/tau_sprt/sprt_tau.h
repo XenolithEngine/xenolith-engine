@@ -308,6 +308,57 @@ int __sprt_tau_display_present(unsigned index, unsigned x, unsigned y, unsigned 
 // Ends the session; the display keeps the last frame.
 void __sprt_tau_display_close(void);
 
+// The input of the module (dev.input@1 through libtau): one session with every event of the
+// provider. open() attaches, `wait` waits for a provider to start; -EBUSY: another client holds
+// the input, -ENOENT: no provider runs. next() takes an event without waiting: 1 with one, 0
+// without; -ECONNRESET: the session is lost (the provider died), open() again. An event wakes
+// __sprt_tau_io_wait.
+#define __SPRT_TAU_INPUT_TOUCH 1 // device kinds
+#define __SPRT_TAU_INPUT_POINTER 2
+#define __SPRT_TAU_INPUT_KEYBOARD 3
+#define __SPRT_TAU_INPUT_TABLET 4
+
+#define __SPRT_TAU_INPUT_EV_CONNECT 1 // value: the device's kind
+#define __SPRT_TAU_INPUT_EV_DISCONNECT 2
+#define __SPRT_TAU_INPUT_EV_TOUCH 3 // phase, contact, x, y
+#define __SPRT_TAU_INPUT_EV_POINTER 4 // x, y deltas, value buttons (bit n: button n + 1), wheel
+#define __SPRT_TAU_INPUT_EV_KEY 5 // phase, value the usage of HID page 7
+#define __SPRT_TAU_INPUT_EV_ABSOLUTE 6 // x, y the place, value buttons, wheel
+
+#define __SPRT_TAU_INPUT_DOWN 1 // phases
+#define __SPRT_TAU_INPUT_MOVE 2
+#define __SPRT_TAU_INPUT_UP 3
+
+#define __SPRT_TAU_INPUT_FRAME 1 // marks: the last event of a report
+
+struct __sprt_tau_input_event {
+	unsigned kind;
+	unsigned phase;
+	unsigned marks;
+	unsigned device;
+	unsigned long long time; // ns of the provider's clock
+	unsigned contact;
+	int x;
+	int y;
+	unsigned value;
+	int wheel;
+};
+
+struct __sprt_tau_input_device {
+	unsigned id; // the device of its events
+	unsigned kind;
+	unsigned contacts;
+	unsigned x_max; // touch, tablet: x is 0 up to x_max
+	unsigned y_max;
+};
+
+int __sprt_tau_input_open(int wait);
+// The device `id` names; -ENOENT when the provider lists none.
+int __sprt_tau_input_device(unsigned id, struct __sprt_tau_input_device *out);
+int __sprt_tau_input_next(struct __sprt_tau_input_event *out);
+// Ends the session; the provider takes a new one.
+void __sprt_tau_input_close(void);
+
 #pragma GCC visibility pop
 
 #ifdef __cplusplus
