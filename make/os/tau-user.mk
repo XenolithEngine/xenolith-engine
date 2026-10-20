@@ -85,13 +85,15 @@ OSTYPE_EXEC_LDFLAGS := -nostdlib -static \
 	-T $(TARGET_SYSROOT)/share/app-$(TARGET_ARCH).lds
 # A shared library that root links into a module (SYS-A-DynLink-1); libsprt.so is one too
 # (RT-A-SharedRuntime-1). The bare-metal driver of aarch64 passes neither -shared nor the hash
-# style, so both go to lld directly.
+# style, so both go to lld directly. Each segment starts a page of the file at its address, so
+# root can map a library's code from the file itself (KRN-A-RegionSlice-1).
 OSTYPE_LIB_LDFLAGS := -nostdlib \
 	-Wl,-shared \
 	-Wl,--hash-style=gnu \
 	-Wl,--eh-frame-hdr \
 	-Wl,-z,now \
 	-Wl,-z,relro \
-	-Wl,-z,max-page-size=$(OSTYPE_TAU_USER_PAGE_SIZE)
+	-Wl,-z,max-page-size=$(OSTYPE_TAU_USER_PAGE_SIZE) \
+	-Wl,-z,separate-loadable-segments
 
 TAU_USER := 1
