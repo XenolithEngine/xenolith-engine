@@ -111,6 +111,28 @@ InputEventData TauWindow::usbPoint(InputEventName event, uint32_t id, InputMouse
 	return ev;
 }
 
+// Keeps the earliest press not yet shown; its report time and the window's clock are both ns
+// of the counter since boot.
+void TauWindow::markLatency(uint64_t reportNs, bool key) {
+	if (!_latency || reportNs == 0) {
+		return;
+	}
+	uint64_t none = 0;
+	_latencyPosted.compare_exchange_strong(none, (reportNs & ~uint64_t(1)) | (key ? 1 : 0),
+			memory_order::relaxed, memory_order::relaxed);
+}
+
+void TauWindow::showLatency() {
+	if (_latencyArmed) {
+		uint64_t now = __sprt_tau_clock_ns(), from = _latencyArmed & ~uint64_t(1);
+		if (now > from) {
+			oslog::vpinfo(__SPRT_LOCATION, "TauWindow", "input latency ", (now - from) / 1'000, " us (",
+					(_latencyArmed & 1) ? "key" : "touch", "), report to present");
+		}
+	}
+	_latencyArmed = _latencyPosted.exchange(0, memory_order::relaxed);
+}
+
 void TauWindow::pollUsb(uint64_t now) {
 	if (!_usbOpen) {
 		if (_usbTriedUs && now - _usbTriedUs < s_usbReopenUs) {
@@ -184,11 +206,19 @@ void TauWindow::usbEvent(const __sprt_tau_input_event &e, uint64_t now) {
 		auto ev = usbPoint(name, s_touchId + e.contact, InputMouseButton::Touch, x, y);
 		ev.input.modifiers |= InputModifier::Touch;
 		postEvent(ev);
+		if (name == InputEventName::Begin) {
+			markLatency(e.time, false);
+		}
 		break;
 	}
 	case __SPRT_TAU_INPUT_EV_POINTER: usbPointer(e, false); break;
 	case __SPRT_TAU_INPUT_EV_ABSOLUTE: usbPointer(e, true); break;
-	case __SPRT_TAU_INPUT_EV_KEY: usbKey(e.value, e.phase == __SPRT_TAU_INPUT_DOWN, now); break;
+	case __SPRT_TAU_INPUT_EV_KEY:
+		usbKey(e.value, e.phase == __SPRT_TAU_INPUT_DOWN, now);
+		if (e.phase == __SPRT_TAU_INPUT_DOWN) {
+			markLatency(e.time, true);
+		}
+		break;
 	default: break;
 	}
 }

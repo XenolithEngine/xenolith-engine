@@ -241,6 +241,9 @@ void TauWindow::show(const uint8_t *frame, uint32_t x, uint32_t y, uint32_t w, u
 	int st = __sprt_tau_display_present(_next, x, y, w, h);
 	_last = own;
 	_next ^= 1;
+	if (_latency && st >= 0) {
+		showLatency();
+	}
 	if (st == -__SPRT_TAU_ECONNRESET) {
 		_lost = true;
 		_lostTriedUs = nowUs();
@@ -330,6 +333,7 @@ void *TauWindow::inputThread(void *arg) {
 void TauWindow::startInput() {
 	_console = !(::getenv("XL_UART_KEYS") && strcmp(::getenv("XL_UART_KEYS"), "0") == 0);
 	_usb = !(::getenv("XL_USB_INPUT") && strcmp(::getenv("XL_USB_INPUT"), "0") == 0);
+	_latency = ::getenv("XL_INPUT_LATENCY") && strcmp(::getenv("XL_INPUT_LATENCY"), "1") == 0;
 	if (!_console && !_usb) {
 		return;
 	}
