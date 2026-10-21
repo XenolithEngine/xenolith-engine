@@ -237,6 +237,7 @@ struct GpuProgram {
 	uint32_t maxSteps = 0;
 
 	mem_std::Vector<uint32_t> bodyNodes; // body index -> graph index, ascending
+	mem_std::Vector<uint32_t> bodyOf; // graph index -> body index, InvalidIndex outside the body
 	mem_std::Vector<GpuNode> nodes;
 	mem_std::Vector<GpuInput> inputs;
 	mem_std::Vector<GpuCell> cells;

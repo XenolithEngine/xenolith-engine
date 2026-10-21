@@ -108,7 +108,9 @@ struct Simulator {
 		if (first != InvalidIndex) {
 			s.nodes[first].flags |= FlagToken;
 		}
-		mem_std::Vector<uint32_t> ready;
+		// Capacity stays for the next branch. A fresh vector here is one allocation per branch.
+		thread_local mem_std::Vector<uint32_t> ready;
+		ready.clear();
 		for (uint32_t i = 0; i < uint32_t(p.bodyNodes.size()); ++i) {
 			if (isReady(s, i)) {
 				ready.emplace_back(i);
@@ -129,8 +131,11 @@ struct Simulator {
 		auto outs = uint32_t(rt.op->getDataOut().size());
 		n.produced |= outs >= 32 ? uint32_t(0xFFFF'FFFF) : ((uint32_t(1) << outs) - 1);
 
-		mem_std::Vector<uint32_t> dataReady;
-		mem_std::Vector<uint32_t> execReady;
+		// Capacity stays across steps and branches. A fresh vector here is one allocation per node.
+		thread_local mem_std::Vector<uint32_t> dataReady;
+		thread_local mem_std::Vector<uint32_t> execReady;
+		dataReady.clear();
+		execReady.clear();
 		for (auto e : g.getDataOutEdges(graphIndex)) {
 			auto &edge = g.getDataEdges()[e];
 			if ((n.produced & (uint32_t(1) << edge.srcPin)) == 0) {
@@ -227,7 +232,8 @@ Status lowerGpuBlock(const Graph &g, uint32_t blockIndex, GpuProgram &p, DiagRep
 	p.block = blockIndex;
 	p.maxSteps = block.maxSteps;
 
-	mem_std::Vector<uint32_t> bodyOf(g.getNodeCount(), InvalidIndex);
+	p.bodyOf.assign(g.getNodeCount(), InvalidIndex);
+	auto &bodyOf = p.bodyOf;
 	for (auto n : g.getScopeNodes(block.scope)) {
 		bodyOf[n] = uint32_t(p.bodyNodes.size());
 		p.bodyNodes.emplace_back(n);
@@ -707,31 +713,33 @@ Status lowerGpuBlock(const Graph &g, uint32_t blockIndex, GpuProgram &p, DiagRep
 template <typename Graph>
 bool replayGpuPath(const Graph &g, const GpuProgram &p, SpanView<uint32_t> decisions, bool failed,
 		bool budget, uint32_t failNode, Status failStatus, uint32_t steps, GpuPath &out) {
-	mem_std::Vector<uint32_t> bodyOf(g.getNodeCount(), InvalidIndex);
-	for (uint32_t i = 0; i < uint32_t(p.bodyNodes.size()); ++i) {
-		bodyOf[p.bodyNodes[i]] = i;
+	if (p.bodyOf.size() != g.getNodeCount()) {
+		return false;
 	}
-	gpu::Simulator<Graph> sim{g, p, bodyOf};
+	gpu::Simulator<Graph> sim{g, p, p.bodyOf};
 	uint32_t first = InvalidIndex;
 	{
 		auto &block = g.getBlockAt(p.block);
 		auto &fanOut = g.getNodeAt(block.fanOut);
 		for (auto e : g.getExecOutEdges(block.fanOut)) {
 			auto &edge = g.getExecEdges()[e];
-			if (fanOut.op->opensScope(edge.srcPin) && bodyOf[edge.dstNode] != InvalidIndex) {
-				first = bodyOf[edge.dstNode];
+			if (fanOut.op->opensScope(edge.srcPin) && p.bodyOf[edge.dstNode] != InvalidIndex) {
+				first = p.bodyOf[edge.dstNode];
 				break;
 			}
 		}
 	}
 
 	out = GpuPath();
+	out.log.reserve(p.bodyNodes.size());
+	out.fired.reserve(p.bodyNodes.size());
 	out.failed = failed;
 	out.budget = budget;
 	out.failNode = failed ? failNode : InvalidIndex;
 	out.failStatus = failed ? failStatus : Status::Ok;
 
-	gpu::SimState s;
+	// The node vector is the size of the body. Keeping it avoids allocating one per branch.
+	thread_local gpu::SimState s;
 	sim.open(s, first);
 
 	// The pre-dispatch refusals stop inside the prefix without a decision: a budget one before its

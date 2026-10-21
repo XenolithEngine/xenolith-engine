@@ -350,6 +350,34 @@ inline void dropUnpublishedBodyRecords(const Graph &g, mem_std::Value &pathRecor
 	}
 }
 
+// The device log keeps the body nodes a node outside the block reads. Drop the rest on both
+// snapshots. The step count still counts every unit, so it is left alone.
+template <typename Graph>
+inline void dropUnpublishedBodyTrace(const Graph &g, RunSnapshot &snap) {
+	auto unpublished = [&](uint32_t node) {
+		return node != graph::InvalidIndex && !graph::gpuBodyRecordPublished(g, node);
+	};
+	mem_std::Vector<graph::RunStep> log;
+	log.reserve(snap.log.size());
+	for (auto &it : snap.log) {
+		if (it.kind == graph::RunStepKind::Node && unpublished(it.node)) {
+			continue;
+		}
+		log.emplace_back(it);
+	}
+	snap.log = sprt::move(log);
+
+	mem_std::Vector<RunSnapshot::PathStep> path;
+	path.reserve(snap.pathLog.size());
+	for (auto &it : snap.pathLog) {
+		if (it.kind == graph::RunStepKind::Node && unpublished(g.findNode(it.id))) {
+			continue;
+		}
+		path.emplace_back(sprt::move(it));
+	}
+	snap.pathLog = sprt::move(path);
+}
+
 // Everything a run left behind, from the pieces a host holds.
 template <typename Graph, typename Run, typename A>
 inline void takeSnapshot(const Graph &g, const Run &run, const A &arena,

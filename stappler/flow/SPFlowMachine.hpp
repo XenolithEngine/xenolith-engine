@@ -3089,9 +3089,10 @@ Status MachineT<Graph, Local, Trace>::importRows(BranchJobT<Graph, Local, Trace>
 
 /* The records of a dispatch, taken back as if the branches had run here. `writeGpuBranch` rebuilds
 the header, the copies, and the state of each body node something outside the body reads. What it
-cannot know is what a run wrote down while it happened: the log with the pins each unit fired, the
-failure of a branch with its diagnostic, the stalls of a branch that closed with a node still
-holding a token, and the counters. Those are here, in the order and with the wording `stepNode`,
+cannot know is what a run wrote down while it happened: the log of the nodes something outside
+the body reads, with the pins each such unit fired, the failure of a branch with its diagnostic,
+the stalls of a branch that closed with a node still holding a token, and the counters. Those are
+here, in the order and with the wording `stepNode`,
 `failBranch` and `closeActivation` use, because an oracle compares them against serial. */
 template <typename Graph, typename Local, typename Trace>
 Status MachineT<Graph, Local, Trace>::importGpu(GpuBlockJobT<Graph, Local, Trace> &job, uint32_t first,
@@ -3151,17 +3152,22 @@ Status MachineT<Graph, Local, Trace>::importGpu(GpuBlockJobT<Graph, Local, Trace
 		}
 
 		for (uint32_t k = 0; k < uint32_t(result.path.log.size()); ++k) {
-			auto node = p.bodyNodes[result.path.log[k]];
+			auto body = result.path.log[k];
+			auto node = p.bodyNodes[body];
+			// The step still counts. The log keeps the nodes something outside the body reads.
+			bool publish = body >= uint32_t(p.nodes.size()) || p.nodes[body].published;
 			if constexpr (Trace::Log) {
-				RunStep record;
-				record.step = report.stepCount + units;
-				record.kind = RunStepKind::Node;
-				record.node = node;
-				record.activation = act;
-				record.id = _graph->getNodeAt(node).id;
-				record.fired = k < result.path.fired.size() ? result.path.fired[k] : 0;
-				record.baseVersion = _quantumBase;
-				report.log.emplace_back(record);
+				if (publish) {
+					RunStep record;
+					record.step = report.stepCount + units;
+					record.kind = RunStepKind::Node;
+					record.node = node;
+					record.activation = act;
+					record.id = _graph->getNodeAt(node).id;
+					record.fired = k < result.path.fired.size() ? result.path.fired[k] : 0;
+					record.baseVersion = _quantumBase;
+					report.log.emplace_back(record);
+				}
 			} else {
 				_lastNode = node;
 				_lastActivation = act;

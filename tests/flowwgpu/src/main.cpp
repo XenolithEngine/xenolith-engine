@@ -551,6 +551,7 @@ static void performCorpus(Rig &rig) {
 		oracle::takeSnapshot(fx.graph, fx.interp, fx.arena, fx.report, out, &fx.scene, &fx.sceneArena,
 				true);
 		oracle::dropUnpublishedBodyRecords(fx.graph, out.pathRecords);
+		oracle::dropUnpublishedBodyTrace(fx.graph, out);
 	};
 	// level C per activation - what a device may differ in, and nothing more
 	auto levelC = [] {

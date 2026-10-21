@@ -324,6 +324,10 @@ bool decodeGpuBranch(const Graph &g, const GpuProgram &p, const GpuLoaded &loade
 	res.cells.resize(p.cells.size());
 	for (uint32_t c = 0; c < uint32_t(p.cells.size()); ++c) {
 		auto &cell = p.cells[c];
+		// A record nobody outside the body reads is never stored, so its cells are not decoded.
+		if (cell.node < p.nodes.size() && !p.nodes[cell.node].published) {
+			continue;
+		}
 		auto value = gpu::findSlot(l, GpuSlot::Kind::Cell, c);
 		if (cell.rep == GpuRep::Direct) {
 			res.cells[c] = readGpuValue(o + value->offset, cell.type);
