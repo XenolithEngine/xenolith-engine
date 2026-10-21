@@ -3088,11 +3088,11 @@ Status MachineT<Graph, Local, Trace>::importRows(BranchJobT<Graph, Local, Trace>
 }
 
 /* The records of a dispatch, taken back as if the branches had run here. `writeGpuBranch` rebuilds
-the frames themselves - the header, the copies, every node's state and every cell. What it cannot
-know is what a run wrote down while it happened: the log with the pins each unit fired, the failure
-of a branch with its diagnostic, the stalls of a branch that closed with a node still holding a
-token, and the counters. Those are here, in the order and with the wording `stepNode`, `failBranch`
-and `closeActivation` use, because an oracle compares them against serial. */
+the header, the copies, and the state of each body node something outside the body reads. What it
+cannot know is what a run wrote down while it happened: the log with the pins each unit fired, the
+failure of a branch with its diagnostic, the stalls of a branch that closed with a node still
+holding a token, and the counters. Those are here, in the order and with the wording `stepNode`,
+`failBranch` and `closeActivation` use, because an oracle compares them against serial. */
 template <typename Graph, typename Local, typename Trace>
 Status MachineT<Graph, Local, Trace>::importGpu(GpuBlockJobT<Graph, Local, Trace> &job, uint32_t first,
 		uint64_t timeoutMs, RunReport &report, bool &cancelled) {

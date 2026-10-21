@@ -240,6 +240,7 @@ Status lowerGpuBlock(const Graph &g, uint32_t blockIndex, GpuProgram &p, DiagRep
 		GpuNode node;
 		node.node = p.bodyNodes[i];
 		node.form = rt.op ? classifyGpuOp(*rt.op) : GpuForm::None;
+		node.published = gpuBodyRecordPublished(g, p.bodyNodes[i]);
 		node.cellBegin = uint32_t(p.cells.size());
 		if (rt.op) {
 			auto outs = rt.op->getDataOut();

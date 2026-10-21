@@ -28,6 +28,7 @@ THE SOFTWARE.
 #include "SPData.h"
 
 #include "SPFlowInterp.h"
+#include "SPFlowGpu.h"
 
 #include "flow_check.h"
 
@@ -325,6 +326,27 @@ inline void dumpRecordsByPath(const Graph &g, const Local &local, mem_std::Value
 	auto &list = out.newArray("stalled");
 	for (auto &it : stalled) {
 		list.addString(it);
+	}
+}
+
+// A device writes back the body records a node outside the block reads, and marks Ran on the rest.
+// Drop the ones it does not write, on both snapshots, so the comparison is the delivery.
+template <typename Graph>
+inline void dropUnpublishedBodyRecords(const Graph &g, mem_std::Value &pathRecords) {
+	if (!pathRecords.isDictionary() || !pathRecords.hasValue("nodes")) {
+		return;
+	}
+	auto &nodes = pathRecords.getDict("nodes");
+	mem_std::Vector<mem_std::String> drop;
+	for (auto &it : nodes) {
+		auto id = uint32_t(StringView(it.first).readInteger(10).get(0));
+		auto node = g.findNode(id);
+		if (node != graph::InvalidIndex && !graph::gpuBodyRecordPublished(g, node)) {
+			drop.emplace_back(it.first);
+		}
+	}
+	for (auto &it : drop) {
+		nodes.erase(it);
 	}
 }
 

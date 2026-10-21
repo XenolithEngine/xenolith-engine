@@ -26,8 +26,10 @@ THE SOFTWARE.
 // only where a value decides the path (`flow.branch`), and the paths it finds are continuations -
 // runs of nodes in the order the machine would pop them. States the paths reach twice share a
 // continuation. What a shader then computes per branch is the values along its path; what happened
-// to the node records, the front and the log is replayed on the CPU from the decisions the shader
-// hands back. Values outside the GPU set never reach the shader as values: a row read of an Int or
+// to the records a node outside the body reads, the front and the log is replayed on the CPU from
+// the decisions the shader hands back. A body record nobody outside the body reads stays as the
+// frame was opened, apart from the Ran flag of a node that ran. Values outside the GPU set never
+// reach the shader as values: a row read of an Int or
 // an Enum field is a column the CPU loads, narrowed per target type with a guard bit, and a widened
 // value travels as a tag and 32 bits the CPU widens when it rebuilds the frame. Every check the CPU
 // can make - a row, a guard, a static refusal - that stands on the body's unconditional prefix is
@@ -135,6 +137,7 @@ struct GpuNode {
 	uint32_t node = InvalidIndex; // graph index
 	GpuForm form = GpuForm::None;
 	bool fallible = false; // may refuse on the GPU
+	bool published = false; // an output is read by a node outside the body
 	uint32_t inputBegin = 0, inputCount = 0;
 	uint32_t cellBegin = 0, cellCount = 0;
 
@@ -372,12 +375,40 @@ template <typename Graph>
 bool decodeGpuBranch(const Graph &, const GpuProgram &, const GpuLoaded &, BytesView outs, uint32_t branch,
 		GpuBranchResult &);
 
-// A branch the shader ran, written into its frame the way the machine would have left it: the
-// header, the copies, every node's state and record. What a delivery then commits is the GPU's. The
-// stalls a closed branch leaves are the caller's to push (Local::pushStalled) - they belong to the
-// run's report.
+// A branch the shader ran, written into its frame: the header, the copies, and the state and record
+// of each body node something outside the body reads. What a delivery then commits is the GPU's.
+// The stalls a closed branch leaves are the caller's to push (Local::pushStalled) - they belong to
+// the run's report.
 template <typename Graph, typename Local>
 Status writeGpuBranch(const Graph &, Local &, const GpuProgram &, uint32_t activation, const GpuBranchResult &);
+
+// Whether `node` sits in a parallel body and one of its outputs is read from outside that body.
+// A node that does not is not written back: the delivery reads the header and the copies, and a
+// collector reads only the node its edge names.
+template <typename Graph>
+inline bool gpuBodyRecordPublished(const Graph &g, uint32_t node) {
+	if (node >= g.getNodeCount()) {
+		return true;
+	}
+	auto scope = g.getNodeAt(node).scope;
+	bool inBody = false;
+	for (uint32_t b = 0; b < g.getBlockCount(); ++b) {
+		if (g.getBlockAt(b).scope == scope) {
+			inBody = true;
+			break;
+		}
+	}
+	if (!inBody) {
+		return true;
+	}
+	for (auto e : g.getDataOutEdges(node)) {
+		auto dst = g.getDataEdges()[e].dstNode;
+		if (dst < g.getNodeCount() && !g.isScopeWithin(g.getNodeAt(dst).scope, scope)) {
+			return true;
+		}
+	}
+	return false;
+}
 
 // A Var of a GPU type written at, or read from, a std430 member.
 SP_PUBLIC void writeGpuValue(uint8_t *, VarType, const Var &);
