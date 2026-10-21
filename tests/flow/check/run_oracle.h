@@ -329,8 +329,8 @@ inline void dumpRecordsByPath(const Graph &g, const Local &local, mem_std::Value
 	}
 }
 
-// A device writes back the body records a node outside the block reads, and marks Ran on the rest.
-// Drop the ones it does not write, on both snapshots, so the comparison is the delivery.
+// A device writes back the body records a node outside the block reads. A settled branch leaves the
+// rest as the frame was opened. Drop those records on both snapshots, so the comparison is the delivery.
 template <typename Graph>
 inline void dropUnpublishedBodyRecords(const Graph &g, mem_std::Value &pathRecords) {
 	if (!pathRecords.isDictionary() || !pathRecords.hasValue("nodes")) {

@@ -179,18 +179,7 @@ struct Simulator {
 		}
 	}
 
-	uint32_t firedBy(uint32_t i) const {
-		auto &node = p.nodes[i];
-		auto &rt = g.getNodeAt(node.node);
-		auto execs = uint32_t(rt.op->getExecOut().size());
-		switch (node.form) {
-		case GpuForm::FireAll:
-		case GpuForm::SceneGet:
-		case GpuForm::SceneSet:
-		case GpuForm::SceneHas: return execs >= 32 ? uint32_t(0xFFFF'FFFF) : ((uint32_t(1) << execs) - 1);
-		default: return 0;
-		}
-	}
+	uint32_t firedBy(uint32_t i) const { return p.nodes[i].fired; }
 };
 
 inline bool isNameRole(PinRole role) {
@@ -247,6 +236,18 @@ Status lowerGpuBlock(const Graph &g, uint32_t blockIndex, GpuProgram &p, DiagRep
 		node.node = p.bodyNodes[i];
 		node.form = rt.op ? classifyGpuOp(*rt.op) : GpuForm::None;
 		node.published = gpuBodyRecordPublished(g, p.bodyNodes[i]);
+		if (rt.op) {
+			auto execs = uint32_t(rt.op->getExecOut().size());
+			switch (node.form) {
+			case GpuForm::FireAll:
+			case GpuForm::SceneGet:
+			case GpuForm::SceneSet:
+			case GpuForm::SceneHas:
+				node.fired = execs >= 32 ? uint32_t(0xFFFF'FFFF) : ((uint32_t(1) << execs) - 1);
+				break;
+			default: break;
+			}
+		}
 		node.cellBegin = uint32_t(p.cells.size());
 		if (rt.op) {
 			auto outs = rt.op->getDataOut();
@@ -531,6 +532,22 @@ Status lowerGpuBlock(const Graph &g, uint32_t blockIndex, GpuProgram &p, DiagRep
 		while (true) {
 			if (s.stack.empty()) {
 				cont.end = GpuCont::End::Close;
+				cont.endSteps = s.steps;
+				cont.endBegin = uint32_t(p.contEnds.size());
+				auto count = uint32_t(s.nodes.size());
+				p.contEnds.reserve(p.contEnds.size() + count);
+				for (uint32_t i = 0; i < count; ++i) {
+					auto &n = s.nodes[i];
+					GpuNodeState st;
+					st.flags = n.flags;
+					st.inputs = n.inputs;
+					st.produced = n.produced;
+					if ((n.flags & gpu::FlagRan) == 0 && (n.flags & gpu::FlagToken) != 0
+							&& !sim.isReady(s, i)) {
+						st.stalled = true;
+					}
+					p.contEnds.emplace_back(st);
+				}
 				break;
 			}
 			auto top = s.stack.back();
@@ -710,8 +727,90 @@ Status lowerGpuBlock(const Graph &g, uint32_t blockIndex, GpuProgram &p, DiagRep
 	return Status::Ok;
 }
 
+// The runs along `decisions`, and the end state the lowering stored for the Close they reach.
+// A failed or budgeted branch does not come here: its prefix stops inside a run the table does not
+// name.
+inline bool replaySettledPath(const GpuProgram &p, SpanView<uint32_t> decisions, GpuPath &out) {
+	out = GpuPath();
+	out.log.reserve(p.bodyNodes.size());
+	out.fired.reserve(p.bodyNodes.size());
+	uint32_t cont = 0;
+	uint32_t decision = 0;
+	auto limit = uint32_t(p.conts.size()) + 1;
+	for (uint32_t hop = 0; hop < limit; ++hop) {
+		if (cont >= p.conts.size()) {
+			return false;
+		}
+		auto &c = p.conts[cont];
+		for (uint32_t k = 0; k < c.runCount; ++k) {
+			auto i = p.runs[c.runBegin + k];
+			if (i >= p.nodes.size()) {
+				return false;
+			}
+			out.log.emplace_back(i);
+			out.fired.emplace_back(p.nodes[i].fired);
+		}
+		switch (c.end) {
+		case GpuCont::End::Close: {
+			auto count = uint32_t(p.bodyNodes.size());
+			if (c.endBegin == InvalidIndex || c.endBegin + count > uint32_t(p.contEnds.size())) {
+				return false;
+			}
+			out.steps = c.endSteps;
+			out.nodes.resize(count);
+			for (uint32_t i = 0; i < count; ++i) {
+				out.nodes[i] = p.contEnds[c.endBegin + i];
+			}
+			return true;
+		}
+		case GpuCont::End::Budget: return false;
+		case GpuCont::End::Jump: cont = c.next[0]; break;
+		case GpuCont::End::Branch: {
+			if (decision >= decisions.size()) {
+				return false;
+			}
+			auto taken = decisions[decision++] != 0;
+			out.decisions.emplace_back(taken ? 1u : 0u);
+			auto fired = taken ? (uint32_t(1) << 0) : (uint32_t(1) << 1);
+			if (!out.fired.empty() && !out.log.empty() && out.log.back() == c.node) {
+				out.fired.back() = fired;
+			}
+			cont = c.next[taken ? 0 : 1];
+			break;
+		}
+		}
+	}
+	return false;
+}
+
+inline bool gpuPathMatches(const GpuPath &a, const GpuPath &b) {
+	if (a.failed != b.failed || a.budget != b.budget || a.failNode != b.failNode
+			|| a.failStatus != b.failStatus || a.steps != b.steps || a.log.size() != b.log.size()
+			|| a.fired.size() != b.fired.size() || a.decisions.size() != b.decisions.size()
+			|| a.nodes.size() != b.nodes.size()) {
+		return false;
+	}
+	for (uint32_t i = 0; i < uint32_t(a.log.size()); ++i) {
+		if (a.log[i] != b.log[i] || a.fired[i] != b.fired[i]) {
+			return false;
+		}
+	}
+	for (uint32_t i = 0; i < uint32_t(a.decisions.size()); ++i) {
+		if (a.decisions[i] != b.decisions[i]) {
+			return false;
+		}
+	}
+	for (uint32_t i = 0; i < uint32_t(a.nodes.size()); ++i) {
+		if (a.nodes[i].flags != b.nodes[i].flags || a.nodes[i].inputs != b.nodes[i].inputs
+				|| a.nodes[i].produced != b.nodes[i].produced || a.nodes[i].stalled != b.nodes[i].stalled) {
+			return false;
+		}
+	}
+	return true;
+}
+
 template <typename Graph>
-bool replayGpuPath(const Graph &g, const GpuProgram &p, SpanView<uint32_t> decisions, bool failed,
+bool replayGpuPathWalk(const Graph &g, const GpuProgram &p, SpanView<uint32_t> decisions, bool failed,
 		bool budget, uint32_t failNode, Status failStatus, uint32_t steps, GpuPath &out) {
 	if (p.bodyOf.size() != g.getNodeCount()) {
 		return false;
@@ -827,6 +926,27 @@ bool replayGpuPath(const Graph &g, const GpuProgram &p, SpanView<uint32_t> decis
 			out.nodes[i].stalled = true;
 		}
 	}
+	return true;
+}
+
+template <typename Graph>
+bool replayGpuPath(const Graph &g, const GpuProgram &p, SpanView<uint32_t> decisions, bool failed,
+		bool budget, uint32_t failNode, Status failStatus, uint32_t steps, GpuPath &out) {
+	if (failed || budget) {
+		return replayGpuPathWalk(g, p, decisions, failed, budget, failNode, failStatus, steps, out);
+	}
+	if (!replaySettledPath(p, decisions, out)) {
+		return false;
+	}
+	// The walk is what a failed branch still runs. A debug build checks that the copied end state
+	// is that walk; a release build does not walk a branch that closed.
+#ifndef NDEBUG
+	GpuPath live;
+	if (!replayGpuPathWalk(g, p, decisions, false, false, InvalidIndex, Status::Ok, steps, live)
+			|| !gpuPathMatches(out, live)) {
+		return false;
+	}
+#endif
 	return true;
 }
 

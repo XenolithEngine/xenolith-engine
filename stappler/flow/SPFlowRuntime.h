@@ -225,7 +225,7 @@ SP_PUBLIC StringView getParallelFailureName(ParallelFailure);
 // The header every branch frame starts with. Offsets are fixed; the row copies follow at the
 // offsets RuntimeBlockWrite names.
 struct BranchHeader {
-	static constexpr uint32_t StatusOffset = 0; // Int32: BranchFailed | BranchClosed
+	static constexpr uint32_t StatusOffset = 0; // Int32: Failed | Closed | Settled
 	static constexpr uint32_t StepsOffset = 4; // Int32: units of work this branch took
 	static constexpr uint32_t ActivationsOffset = 8; // Int32: activations its loops opened
 	static constexpr uint32_t EntityOffset = 16; // UInt64: EntityId::pack() of the branch's entity
@@ -233,6 +233,7 @@ struct BranchHeader {
 
 	static constexpr int32_t Failed = 1 << 0;
 	static constexpr int32_t Closed = 1 << 1;
+	static constexpr int32_t Settled = 1 << 2; // closed on a device; unread body records stay opened
 };
 
 // The locals a fan-out keeps (OpDef::locals of `par.forEach` and `par.forEachWith`): the set it

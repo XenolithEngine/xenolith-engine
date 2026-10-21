@@ -25,10 +25,12 @@ THE SOFTWARE.
 // machine's front over the body at generation time. The values stay symbolic; the simulation forks
 // only where a value decides the path (`flow.branch`), and the paths it finds are continuations -
 // runs of nodes in the order the machine would pop them. States the paths reach twice share a
-// continuation. What a shader then computes per branch is the values along its path; what happened
-// to the records a node outside the body reads, the front and the log is replayed on the CPU from
-// the decisions the shader hands back. A body record nobody outside the body reads stays as the
-// frame was opened, apart from the Ran flag of a node that ran. Values outside the GPU set never
+// continuation. What a shader then computes per branch is the values along its path. A branch that
+// failed is replayed from the decisions the shader hands back. A branch that closed copies the end
+// state recorded for that continuation and builds its log from the runs the decisions select. A
+// body record nobody outside the body reads stays as the frame was opened; a closed device branch
+// is settled, so the sweep leaves that record alone, and a failed branch still marks Ran where it
+// ran. Values outside the GPU set never
 // reach the shader as values: a row read of an Int or
 // an Enum field is a column the CPU loads, narrowed per target type with a guard bit, and a widened
 // value travels as a tag and 32 bits the CPU widens when it rebuilds the frame. Every check the CPU
@@ -138,6 +140,7 @@ struct GpuNode {
 	GpuForm form = GpuForm::None;
 	bool fallible = false; // may refuse on the GPU
 	bool published = false; // an output is read by a node outside the body
+	uint32_t fired = 0; // exec pins this unit fires when it is not a branch
 	uint32_t inputBegin = 0, inputCount = 0;
 	uint32_t cellBegin = 0, cellCount = 0;
 
@@ -167,6 +170,17 @@ struct GpuCont {
 	End end = End::Close;
 	uint32_t node = InvalidIndex; // body index
 	uint32_t next[2] = {InvalidIndex, InvalidIndex};
+	// A drained Close only: body states at GpuProgram::contEnds, and the steps that got there.
+	uint32_t endBegin = InvalidIndex;
+	uint32_t endSteps = 0;
+};
+
+// The control side of one body node at the end of a continuation.
+struct GpuNodeState {
+	uint32_t flags = 0; // NodeFlags: Ran, Token, Queued
+	uint32_t inputs = 0;
+	uint32_t produced = 0;
+	bool stalled = false;
 };
 
 // A check the loader makes before dispatch, in the order the body's prefix meets them.
@@ -251,6 +265,7 @@ struct GpuProgram {
 
 	mem_std::Vector<GpuCont> conts; // conts[0] starts at the branch's open
 	mem_std::Vector<uint32_t> runs;
+	mem_std::Vector<GpuNodeState> contEnds; // one body per drained Close, at GpuCont::endBegin
 	mem_std::Vector<GpuPrefixCheck> prefix;
 	uint32_t prefixRuns = 0; // how many runs of conts[0] are the prefix
 	uint32_t maxDecisions = 0;
@@ -304,14 +319,6 @@ mem_std::String writeGpuGlsl(const Graph &, const GpuProgram &);
 template <typename Graph>
 mem_std::String writeGpuWgsl(const Graph &, const GpuProgram &);
 
-// The control side of one branch, replayed from what the shader returned.
-struct GpuNodeState {
-	uint32_t flags = 0; // NodeFlags: Ran, Token, Queued
-	uint32_t inputs = 0;
-	uint32_t produced = 0;
-	bool stalled = false;
-};
-
 struct GpuPath {
 	bool failed = false;
 	bool budget = false;
@@ -326,7 +333,8 @@ struct GpuPath {
 
 // Walks the program along `decisions`. A branch that failed stops at the unit `steps` names (the
 // one that refused, which counts, or - under `budget` - the pop that found the budget spent, which
-// does not). False when the decisions do not describe a path of this program.
+// does not). A branch that closed copies the end state recorded for the continuation it reaches.
+// False when the decisions do not describe a path of this program.
 template <typename Graph>
 bool replayGpuPath(const Graph &, const GpuProgram &, SpanView<uint32_t> decisions, bool failed,
 		bool budget, uint32_t failNode, Status failStatus, uint32_t steps, GpuPath &);
@@ -377,7 +385,8 @@ bool decodeGpuBranch(const Graph &, const GpuProgram &, const GpuLoaded &, Bytes
 		GpuBranchResult &);
 
 // A branch the shader ran, written into its frame: the header, the copies, and the state and record
-// of each body node something outside the body reads. What a delivery then commits is the GPU's.
+// of each body node something outside the body reads. A branch that closed is marked settled, and
+// the records nobody reads stay as the frame was opened. What a delivery then commits is the GPU's.
 // The stalls a closed branch leaves are the caller's to push (Local::pushStalled) - they belong to
 // the run's report.
 template <typename Graph, typename Local>

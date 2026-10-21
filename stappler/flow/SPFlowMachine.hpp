@@ -195,6 +195,7 @@ void MachineT<Graph, Local, Trace>::reset() {
 	run that just ended. */
 	_lastBreakpoint = 0;
 	_stoppedBefore = false;
+	_gpuQuiet.clear();
 	for (auto &bp : _breakpoints) {
 		bp.last = value::makeNil();
 		bp.hasLast = false;
@@ -735,6 +736,9 @@ void MachineT<Graph, Local, Trace>::collectBlocked(RunReport &report) {
 	// Over every record, not over the nodes: with loops a node has a record per iteration, and a
 	// node that stalled in iteration three is not the same fact as the same node in iteration four.
 	// The enumeration is the activations and their scopes, which is where the answer lives.
+	// One header read per activation: every record of an activation shares its branch.
+	mem_std::Vector<uint8_t> known;
+	mem_std::Vector<int32_t> statusByAct;
 	_local.forEachRecord([&](uint32_t n, uint32_t activation, Addr frame) {
 		if (n >= _graph->getNodeCount()) {
 			return true;
@@ -749,20 +753,38 @@ void MachineT<Graph, Local, Trace>::collectBlocked(RunReport &report) {
 			return true;
 		}
 
+		if (activation >= known.size()) {
+			known.resize(activation + 1, 0);
+			statusByAct.resize(activation + 1, 0);
+		}
+		if (known[activation] == 0) {
+			uint32_t block = InvalidIndex;
+			uint32_t branch = InvalidIndex;
+			if (branchOf(n, activation, block, branch)) {
+				statusByAct[activation] = readBranchInt(*_local.getArena(),
+						_local.activationFrame(branch), BranchHeader::StatusOffset);
+				known[activation] = 2;
+			} else {
+				known[activation] = 1;
+			}
+		}
+
 		// A failed branch stopped on purpose; what it left waiting is not a deadlock.
-		uint32_t block = InvalidIndex;
-		uint32_t branch = InvalidIndex;
-		if (branchOf(n, activation, block, branch)
-				&& (readBranchInt(*_local.getArena(), _local.activationFrame(branch),
-							BranchHeader::StatusOffset)
-						   & BranchHeader::Failed)
-						!= 0) {
+		if (known[activation] == 2 && (statusByAct[activation] & BranchHeader::Failed) != 0) {
 			return true;
 		}
 
 		// A barrier whose block was never delivered waits for a delivery, not for anything it could
 		// be blamed for.
 		if ((state.flags & NodeFlags::StallExternal) != 0) {
+			return true;
+		}
+
+		// A settled device branch left the records nobody reads as the frame was opened. Writing
+		// StallExec on each of them would be the sweep doing that write back.
+		if (known[activation] == 2 && (statusByAct[activation] & BranchHeader::Settled) != 0
+				&& n < _gpuQuiet.size() && _gpuQuiet[n] != 0
+				&& (state.flags & (NodeFlags::Token | NodeFlags::StallData)) == 0) {
 			return true;
 		}
 
@@ -3131,6 +3153,15 @@ Status MachineT<Graph, Local, Trace>::importGpu(GpuBlockJobT<Graph, Local, Trace
 					DiagLocus::Timeout, values);
 		}
 		return Status::Ok;
+	}
+
+	if (_gpuQuiet.size() != _graph->getNodeCount()) {
+		_gpuQuiet.assign(_graph->getNodeCount(), 0);
+	}
+	for (uint32_t n = 0; n < uint32_t(p.nodes.size()); ++n) {
+		if (!p.nodes[n].published && p.bodyNodes[n] < _gpuQuiet.size()) {
+			_gpuQuiet[p.bodyNodes[n]] = 1;
+		}
 	}
 
 	uint32_t units = 0;

@@ -357,7 +357,9 @@ Status writeGpuBranch(const Graph &g, Local &local, const GpuProgram &p, uint32_
 		return Status::ErrorInvalidArguemnt;
 	}
 	auto &block = g.getBlockAt(p.block);
-	auto status = r.failed ? (BranchHeader::Failed | BranchHeader::Closed) : BranchHeader::Closed;
+	// Settled tells the sweep that unread body records were left as the frame was opened.
+	auto status = r.failed ? (BranchHeader::Failed | BranchHeader::Closed)
+						   : (BranchHeader::Closed | BranchHeader::Settled);
 	writeBranchInt(*arena, frame, BranchHeader::StatusOffset, status);
 	writeBranchInt(*arena, frame, BranchHeader::StepsOffset, int32_t(r.steps));
 
@@ -386,8 +388,12 @@ Status writeGpuBranch(const Graph &g, Local &local, const GpuProgram &p, uint32_
 		auto &node = p.nodes[i];
 		// The sweep re-reads the frame and clears the stall list importGpu just pushed, so a token
 		// that is still waiting has to be in the frame. A node that ran, and that nobody outside
-		// the body reads, is only marked Ran.
+		// the body reads, stays as the frame was opened when the branch settled. A failed branch
+		// still marks Ran: its frame is not settled, and the sweep treats the branch as stopped.
 		if (!node.published && (state.flags & uint32_t(NodeFlags::Ran)) != 0) {
+			if (!r.failed && !state.stalled) {
+				continue;
+			}
 			local.addFlags(stateAddr, NodeFlags::Ran);
 			continue;
 		}
@@ -433,8 +439,15 @@ Status writeGpuBranch(const Graph &g, Local &local, const GpuProgram &p, uint32_
 				continue;
 			}
 			auto &left = r.path.nodes[body];
-			if ((left.flags & uint32_t(NodeFlags::Ran)) == 0
-					&& (left.flags & uint32_t(NodeFlags::Token)) == 0 && !left.stalled) {
+			// The launch token stays in the frame when the entry's state is not written back. A
+			// stall keeps its token. A node that ran on a settled branch does not: nothing reads it.
+			bool ran = (left.flags & uint32_t(NodeFlags::Ran)) != 0;
+			bool token = (left.flags & uint32_t(NodeFlags::Token)) != 0;
+			bool clear = !left.stalled && !ran && !token;
+			if (!r.failed && !left.stalled && ran) {
+				clear = true;
+			}
+			if (clear) {
 				local.removeFlags(local.getStateIn(frame, dst), NodeFlags::Token);
 			}
 		}
