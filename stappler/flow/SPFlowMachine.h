@@ -252,6 +252,37 @@ struct BlockLaunch {
 	uint32_t batch = 0; // Threads: branches per batch
 };
 
+// Host time of one parallel block: from the moment its branches open until deliver returns.
+// Wall time, so a device wait sits in the kind that launched the block. A run does not read it.
+struct FlowBlockAccount {
+	uint64_t gpuNs = 0;
+	uint64_t threadNs = 0;
+	uint64_t machineNs = 0;
+	// Open is the host up to the launch, flight is the wait, import is deliver after the wait.
+	uint64_t gpuOpenNs = 0;
+	uint64_t gpuFlightNs = 0;
+	uint64_t gpuImportNs = 0;
+	uint64_t threadOpenNs = 0;
+	uint64_t threadFlightNs = 0;
+	uint64_t threadImportNs = 0;
+	uint64_t machineOpenNs = 0;
+	uint64_t machineFlightNs = 0;
+	uint64_t machineImportNs = 0;
+	uint32_t gpuLaunches = 0;
+	uint32_t threadLaunches = 0;
+	uint32_t machineLaunches = 0;
+};
+
+struct FlowBlockAccounts {
+	mem_std::Vector<FlowBlockAccount> blocks;
+};
+
+SP_PUBLIC const FlowBlockAccounts &flowBlockAccounts();
+SP_PUBLIC void flowBlockAccountsReset();
+SP_PUBLIC uint64_t flowBlockStamp();
+SP_PUBLIC void flowBlockAccountAdd(uint32_t block, BlockLaunchKind kind, uint64_t openStamp,
+		uint64_t launchedStamp, uint64_t importStamp);
+
 // Who decides when a block is delivered. The `serial` executor is the machine itself and needs no
 // object: a block is deliverable the moment its last branch closes. Another executor is told about
 // every block that closes and is asked, before every unit, whether one is ready.
@@ -809,7 +840,7 @@ private:
 
 	// The branches of a block with an executor that runs them, and their way back.
 	bool launchBlock(uint32_t fanOut, uint32_t activation, SpanView<value::EntityId>,
-			BlockLaunch choice = BlockLaunch());
+			BlockLaunch choice = BlockLaunch(), uint64_t accountStamp = 0);
 	BlockLaunchInfo makeLaunchInfo(uint32_t block, uint32_t branchCount) const;
 
 	// The deadline of a flight about to start: the author's `timeout`, or the executor's own
@@ -966,6 +997,7 @@ private:
 
 	// Blocks in flight, with the time they started; host-side, restamped after the arena moves
 	// back. `job` is set when an executor runs the branches, and owned by the flight.
+	// `accountNs` is the monotonic stamp from the open; 0 is a flight that is not timed.
 	struct Flight {
 		uint32_t fanOut = InvalidIndex;
 		uint32_t activation = InvalidIndex;
@@ -973,6 +1005,9 @@ private:
 		uint64_t timeoutMs = 0; // the author's number, or the executor's default
 		bool aborted = false;
 		BranchJob *job = nullptr; // a batch of branch runs, or a dispatch (getKind)
+		uint64_t accountNs = 0;
+		uint64_t launchedNs = 0; // monotonic stamp once the job is in flight; 0 with accountNs set means "not yet"
+		BlockLaunchKind accountKind = BlockLaunchKind::Machine;
 	};
 	mem_std::Vector<Flight> _flights;
 
