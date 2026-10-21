@@ -44,6 +44,7 @@ using RunConfig = Fixture::ConfigType;
 void snapshot(Fixture &fx, RunSnapshot &out) {
 	oracle::takeSnapshot(fx.graph, fx.interp, fx.arena, fx.report, out, &fx.scene, &fx.sceneArena,
 			true);
+	oracle::dropUnpublishedBodyRecords(fx.graph, out.pathRecords);
 }
 
 // Level C, per activation: what a device may differ in, and nothing more.

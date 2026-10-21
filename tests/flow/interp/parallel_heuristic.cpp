@@ -107,6 +107,7 @@ mem_std::Vector<flow::GpuShaderBinary> manifest(const flow::RuntimeGraph &g) {
 void snapshot(Fixture &fx, RunSnapshot &out) {
 	oracle::takeSnapshot(fx.graph, fx.interp, fx.arena, fx.report, out, &fx.scene, &fx.sceneArena,
 			true);
+	oracle::dropUnpublishedBodyRecords(fx.graph, out.pathRecords);
 }
 
 // `gpu-basic`, with its `executors` list taken out: the author now names nothing, so the model

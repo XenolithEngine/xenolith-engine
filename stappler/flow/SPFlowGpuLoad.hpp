@@ -379,6 +379,17 @@ Status writeGpuBranch(const Graph &g, Local &local, const GpuProgram &p, uint32_
 		auto n = p.bodyNodes[i];
 		auto stateAddr = local.getStateIn(frame, n);
 		auto &state = r.path.nodes[i];
+		auto &node = p.nodes[i];
+		// The sweep re-reads the frame and clears the stall list importGpu just pushed, so a token
+		// that is still waiting has to be in the frame. A node that ran, and that nobody outside
+		// the body reads, is only marked Ran.
+		if (!node.published && (state.flags & uint32_t(NodeFlags::Ran)) != 0) {
+			local.addFlags(stateAddr, NodeFlags::Ran);
+			continue;
+		}
+		if (!node.published && (state.flags & uint32_t(NodeFlags::Token)) == 0 && !state.stalled) {
+			continue;
+		}
 		auto flags = int64_t(state.flags) | (state.stalled ? NodeFlags::StallData : 0);
 		stateType->setField(*arena, stateAddr, *flagsField, value::makeInt(flags));
 		stateType->setField(*arena, stateAddr, *inputsField, value::makeInt(int64_t(state.inputs)));
@@ -386,7 +397,6 @@ Status writeGpuBranch(const Graph &g, Local &local, const GpuProgram &p, uint32_
 				value::makeInt(int64_t(state.produced)));
 
 		auto &rt = g.getNodeAt(n);
-		auto &node = p.nodes[i];
 		auto record = local.getRecordIn(frame, n);
 		if (!rt.localSchema || record == NullAddr) {
 			continue;
@@ -399,6 +409,30 @@ Status writeGpuBranch(const Graph &g, Local &local, const GpuProgram &p, uint32_
 		auto fields = rt.localSchema->getFields();
 		for (uint32_t c = 0; c < node.cellCount && c < fields.size(); ++c) {
 			rt.localSchema->setField(*arena, record, fields[c], r.cells[node.cellBegin + c]);
+		}
+	}
+
+	// The launch puts a token on the body's entry before the dispatch. A record that is not written
+	// back leaves that token in place; if the entry never ran, the sweep would call it a deadlock.
+	if (block.fanOut != InvalidIndex) {
+		for (auto e : g.getExecOutEdges(block.fanOut)) {
+			auto dst = g.getExecEdges()[e].dstNode;
+			uint32_t body = InvalidIndex;
+			for (uint32_t i = 0; i < uint32_t(p.bodyNodes.size()); ++i) {
+				if (p.bodyNodes[i] == dst) {
+					body = i;
+					break;
+				}
+			}
+			if (body == InvalidIndex || body >= uint32_t(p.nodes.size())
+					|| body >= uint32_t(r.path.nodes.size()) || p.nodes[body].published) {
+				continue;
+			}
+			auto &left = r.path.nodes[body];
+			if ((left.flags & uint32_t(NodeFlags::Ran)) == 0
+					&& (left.flags & uint32_t(NodeFlags::Token)) == 0 && !left.stalled) {
+				local.removeFlags(local.getStateIn(frame, dst), NodeFlags::Token);
+			}
 		}
 	}
 	return Status::Ok;
