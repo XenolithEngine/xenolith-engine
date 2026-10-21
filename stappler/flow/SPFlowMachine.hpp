@@ -1341,6 +1341,7 @@ void MachineT<Graph, Local, Trace>::writeFanOut(uint32_t fanOut, uint32_t activa
 template <typename Graph, typename Local, typename Trace>
 void MachineT<Graph, Local, Trace>::openBlock(uint32_t fanOut, uint32_t activation, uint32_t scope,
 		uint32_t firstNode, mem_std::Vector<uint64_t> &ready) {
+	auto accountStamp = flowBlockStamp();
 	auto &blockScope = _graph->getScopeAt(scope);
 	auto barrier = blockScope.barrier;
 
@@ -1402,7 +1403,8 @@ void MachineT<Graph, Local, Trace>::openBlock(uint32_t fanOut, uint32_t activati
 			_local.addFlags(_local.getStateIn(_local.activationFrame(first + i), firstNode), NodeFlags::Token);
 		}
 		if (!launchBlock(fanOut, activation,
-					SpanView<value::EntityId>(entities.data(), entities.size()), launch)) {
+					SpanView<value::EntityId>(entities.data(), entities.size()), launch,
+					accountStamp)) {
 			// The executor took the branches and the job could not be prepared: run them here.
 			writeFanOut(fanOut, activation, FanOutLocal::Phase, FanOutLocal::InFlight);
 			for (uint32_t i = 0; i < uint32_t(entities.size()); ++i) {
@@ -1427,8 +1429,12 @@ void MachineT<Graph, Local, Trace>::openBlock(uint32_t fanOut, uint32_t activati
 
 	if (_executor && _clock) {
 		auto &blockScopeHere = _graph->getScopeAt(_graph->getNodeAt(fanOut).opensScope);
-		_flights.emplace_back(Flight{fanOut, activation, _clock->nowMs(),
-			_graph->getBlockAt(blockScopeHere.block).timeoutMs, false});
+		Flight flight{fanOut, activation, _clock->nowMs(),
+			_graph->getBlockAt(blockScopeHere.block).timeoutMs, false};
+		flight.accountNs = accountStamp;
+		flight.launchedNs = flowBlockStamp();
+		flight.accountKind = BlockLaunchKind::Machine;
+		_flights.emplace_back(flight);
 	}
 
 	if (entities.empty()) {
@@ -1730,6 +1736,21 @@ Status MachineT<Graph, Local, Trace>::deliver(const BlockTicket &ticket, RunRepo
 	auto &block = _graph->getBlockAt(blockIndex);
 	auto activation = ticket.activation;
 
+	// Closed on every return, including a failed import. The stamp was taken when the block opened.
+	struct AccountClose {
+		uint32_t block = InvalidIndex;
+		BlockLaunchKind kind = BlockLaunchKind::Machine;
+		uint64_t stamp = 0;
+		uint64_t launched = 0;
+		uint64_t importStamp = 0;
+
+		~AccountClose() {
+			if (stamp != 0) {
+				flowBlockAccountAdd(block, kind, stamp, launched, importStamp);
+			}
+		}
+	} accountClose;
+
 	for (auto it = _pending.begin(); it != _pending.end(); ++it) {
 		if (it->node == ticket.node && it->activation == ticket.activation) {
 			_pending.erase(it);
@@ -1739,6 +1760,10 @@ Status MachineT<Graph, Local, Trace>::deliver(const BlockTicket &ticket, RunRepo
 	auto first = uint32_t(readFanOut(ticket.node, activation, FanOutLocal::First));
 	for (auto it = _flights.begin(); it != _flights.end(); ++it) {
 		if (it->fanOut == ticket.node && it->activation == ticket.activation) {
+			accountClose.block = blockIndex;
+			accountClose.kind = it->accountKind;
+			accountClose.stamp = it->accountNs;
+			accountClose.launched = it->launchedNs;
 			auto job = it->job;
 			auto timeoutMs = it->timeoutMs; // the flight goes before the import reads it
 			_flights.erase(it);
@@ -1746,6 +1771,7 @@ Status MachineT<Graph, Local, Trace>::deliver(const BlockTicket &ticket, RunRepo
 				// What an executor ran comes back into this store first, as if run here: a batch of
 				// branch runs, or the records of a dispatch.
 				job->waitDone();
+				accountClose.importStamp = flowBlockStamp();
 				bool cancelled = false;
 				Status st = Status::Ok;
 				if (job->getKind() == BranchJob::Kind::Gpu) {
@@ -1777,6 +1803,8 @@ Status MachineT<Graph, Local, Trace>::deliver(const BlockTicket &ticket, RunRepo
 					conclude(report, RunOutcome::Cancelled, Status::ErrorCancelled);
 					return Status::Ok;
 				}
+			} else {
+				accountClose.importStamp = flowBlockStamp();
 			}
 			break;
 		}
@@ -2589,7 +2617,10 @@ void MachineT<Graph, Local, Trace>::noteThreaded(int32_t delta) {
 
 template <typename Graph, typename Local, typename Trace>
 bool MachineT<Graph, Local, Trace>::launchBlock(uint32_t fanOut, uint32_t activation,
-		SpanView<value::EntityId> entities, BlockLaunch choice) {
+		SpanView<value::EntityId> entities, BlockLaunch choice, uint64_t accountStamp) {
+	if (accountStamp == 0) {
+		accountStamp = flowBlockStamp();
+	}
 	if (!_executor || _branchMode || entities.empty()) {
 		return false;
 	}
@@ -2606,10 +2637,14 @@ bool MachineT<Graph, Local, Trace>::launchBlock(uint32_t fanOut, uint32_t activa
 		if (info.gpu) {
 			auto job = new GpuBlockJobT<Graph, Local, Trace>();
 			if (job->prepare(*this, ticket, *info.gpu, entities) == Status::Ok) {
-				_flights.emplace_back(Flight{fanOut, activation, _clock ? _clock->nowMs() : 0,
-					flightTimeout(blockIndex, ticket, choice, uint32_t(entities.size())), false, job});
+				Flight flight{fanOut, activation, _clock ? _clock->nowMs() : 0,
+					flightTimeout(blockIndex, ticket, choice, uint32_t(entities.size())), false, job};
+				flight.accountNs = accountStamp;
+				flight.accountKind = BlockLaunchKind::Gpu;
+				_flights.emplace_back(flight);
 				noteThreaded(1);
 				if (_executor->launchGpu(*job)) {
+					_flights.back().launchedNs = flowBlockStamp();
 					return true;
 				}
 				// Refused right now (no device, no buffers): take the flight back and ask again, so
@@ -2645,10 +2680,14 @@ bool MachineT<Graph, Local, Trace>::launchBlock(uint32_t fanOut, uint32_t activa
 			return false;
 		}
 		job->beginPhase(BranchJob::Phase::Run);
-		_flights.emplace_back(Flight{fanOut, activation, _clock ? _clock->nowMs() : 0,
-			flightTimeout(blockIndex, ticket, choice, uint32_t(entities.size())), false, job});
+		Flight flight{fanOut, activation, _clock ? _clock->nowMs() : 0,
+			flightTimeout(blockIndex, ticket, choice, uint32_t(entities.size())), false, job};
+		flight.accountNs = accountStamp;
+		flight.accountKind = BlockLaunchKind::Threads;
+		_flights.emplace_back(flight);
 		noteThreaded(1);
 		_executor->launch(*job);
+		_flights.back().launchedNs = flowBlockStamp();
 		return true;
 	}
 	return false;

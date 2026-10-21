@@ -26,6 +26,7 @@ THE SOFTWARE.
 // XSGraph.scu.cpp instantiates it for the built graph and the three arena kinds.
 
 #include "SPFlowInterp.h"
+#include "SPPlatform.h"
 
 
 namespace STAPPLER_VERSIONIZED stappler::flow {
@@ -198,6 +199,55 @@ Status resolveNodeStateFields(const value::ComponentType &type, NodeStateFields 
 		}
 	}
 	return Status::Ok;
+}
+
+static FlowBlockAccounts s_blockAccounts;
+
+const FlowBlockAccounts &flowBlockAccounts() { return s_blockAccounts; }
+
+void flowBlockAccountsReset() { s_blockAccounts.blocks.clear(); }
+
+uint64_t flowBlockStamp() { return platform::nanoclock(ClockType::Monotonic); }
+
+void flowBlockAccountAdd(uint32_t block, BlockLaunchKind kind, uint64_t openStamp,
+		uint64_t launchedStamp, uint64_t importStamp) {
+	if (openStamp == 0) {
+		return;
+	}
+	auto now = platform::nanoclock(ClockType::Monotonic);
+	auto between = [](uint64_t later, uint64_t earlier) {
+		return later > earlier ? later - earlier : 0;
+	};
+	auto open = between(launchedStamp, openStamp);
+	auto flight = between(importStamp, launchedStamp);
+	auto import = between(now, importStamp);
+	if (s_blockAccounts.blocks.size() <= block) {
+		s_blockAccounts.blocks.resize(block + 1);
+	}
+	auto &slot = s_blockAccounts.blocks[block];
+	switch (kind) {
+	case BlockLaunchKind::Gpu:
+		slot.gpuNs += open + flight + import;
+		slot.gpuOpenNs += open;
+		slot.gpuFlightNs += flight;
+		slot.gpuImportNs += import;
+		++slot.gpuLaunches;
+		break;
+	case BlockLaunchKind::Threads:
+		slot.threadNs += open + flight + import;
+		slot.threadOpenNs += open;
+		slot.threadFlightNs += flight;
+		slot.threadImportNs += import;
+		++slot.threadLaunches;
+		break;
+	case BlockLaunchKind::Machine:
+		slot.machineNs += open + flight + import;
+		slot.machineOpenNs += open;
+		slot.machineFlightNs += flight;
+		slot.machineImportNs += import;
+		++slot.machineLaunches;
+		break;
+	}
 }
 
 } // namespace stappler::flow
