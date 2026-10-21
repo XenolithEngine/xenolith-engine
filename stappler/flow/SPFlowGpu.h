@@ -348,6 +348,18 @@ public:
 	virtual Status readField(value::EntityId, TypeId component, StringView field,
 			Var &out) const = 0;
 	virtual Status readBlockValue(uint32_t srcNode, uint32_t srcPin, Var &out) const = 0;
+
+	// A source that can name a component and a record once, then read its fields by descriptor.
+	// The default keeps readField. bindsRecords is false unless all three below are implemented.
+	virtual bool bindsRecords() const { return false; }
+	virtual const value::ComponentType *resolveComponent(TypeId) const { return nullptr; }
+	virtual vstore::Addr componentRecord(value::EntityId, const value::ComponentType &) const {
+		return vstore::NullAddr;
+	}
+	virtual Status readRecord(value::EntityId, const value::ComponentType &, vstore::Addr,
+			const value::FieldDesc &, Var &) const {
+		return Status::ErrorNotSupported;
+	}
 };
 
 // The bytes of one dispatch and what the CPU keeps beside them: the values a Tagged cell or copy

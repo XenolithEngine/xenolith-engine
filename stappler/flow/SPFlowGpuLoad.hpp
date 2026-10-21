@@ -200,38 +200,126 @@ Status loadGpuBlock(const Graph &g, const GpuProgram &p, const GpuLoadSource &so
 	}
 	gpu::putUInt(blk, gpu::findSlot(p.blockLayout, GpuSlot::Kind::BlockGuardMask), blockGuards);
 
-	// The branches.
+	// The branches. Slot offsets and field descriptors do not depend on the branch.
+
+	auto indexSlot = gpu::findSlot(p.inLayout, GpuSlot::Kind::Index);
+	auto rowSlot = gpu::findSlot(p.inLayout, GpuSlot::Kind::RowMask);
+	auto guardSlot = gpu::findSlot(p.inLayout, GpuSlot::Kind::GuardMask);
+	auto preFailedSlot = gpu::findSlot(p.inLayout, GpuSlot::Kind::PreFailed);
+	auto preNodeSlot = gpu::findSlot(p.inLayout, GpuSlot::Kind::PreNode);
+	auto preCodeSlot = gpu::findSlot(p.inLayout, GpuSlot::Kind::PreCode);
+	auto preStepsSlot = gpu::findSlot(p.inLayout, GpuSlot::Kind::PreSteps);
+	auto preBudgetSlot = gpu::findSlot(p.inLayout, GpuSlot::Kind::PreBudget);
+
+	struct BoundRead {
+		uint32_t component = InvalidIndex;
+		const value::ComponentType *type = nullptr;
+		const value::FieldDesc *desc = nullptr;
+		const GpuSlot *slot = nullptr;
+	};
+	// The row mask is one word. A wider component list keeps the name walk.
+	bool direct = source.bindsRecords() && p.components.size() <= 32;
+	mem_std::Vector<const value::ComponentType *> compTypes(p.components.size());
+	for (uint32_t c = 0; c < uint32_t(p.components.size()); ++c) {
+		compTypes[c] = direct ? source.resolveComponent(p.components[c]) : nullptr;
+		if (!compTypes[c]) {
+			direct = false;
+		}
+	}
+	mem_std::Vector<BoundRead> fieldBinds(p.fields.size());
+	for (uint32_t k = 0; k < uint32_t(p.fields.size()); ++k) {
+		auto &f = p.fields[k];
+		auto &bind = fieldBinds[k];
+		bind.component = f.component;
+		bind.slot = gpu::findSlot(p.inLayout, GpuSlot::Kind::In, k);
+		if (f.component < compTypes.size()) {
+			bind.type = compTypes[f.component];
+		}
+		if (bind.type) {
+			bind.desc = bind.type->getField(f.field);
+		}
+		if (direct && !bind.desc) {
+			direct = false;
+		}
+	}
+	mem_std::Vector<BoundRead> columnBinds(p.columns.size());
+	for (uint32_t k = 0; k < uint32_t(p.columns.size()); ++k) {
+		auto &col = p.columns[k];
+		auto &bind = columnBinds[k];
+		bind.component = col.component;
+		if (col.component < compTypes.size()) {
+			bind.type = compTypes[col.component];
+		}
+		if (bind.type) {
+			bind.desc = bind.type->getField(col.field);
+		}
+		if (direct && !bind.desc) {
+			direct = false;
+		}
+	}
+	mem_std::Vector<const GpuSlot *> columnSlots(p.guards.size());
+	for (uint32_t k = 0; k < uint32_t(p.guards.size()); ++k) {
+		columnSlots[k] = gpu::findSlot(p.inLayout, GpuSlot::Kind::Column, k);
+	}
 
 	for (uint32_t b = 0; b < uint32_t(entities.size()); ++b) {
 		auto in = out.ins.data() + size_t(p.inLayout.size) * b;
 		auto entity = entities[b];
-		gpu::putInt(in, gpu::findSlot(p.inLayout, GpuSlot::Kind::Index), int32_t(b));
+		gpu::putInt(in, indexSlot, int32_t(b));
 
 		uint32_t rows = 0;
-		for (uint32_t c = 0; c < uint32_t(p.components.size()); ++c) {
-			if (source.hasComponent(entity, p.components[c])) {
-				rows |= uint32_t(1) << c;
+		vstore::Addr records[32] = {};
+		if (direct) {
+			for (uint32_t c = 0; c < uint32_t(p.components.size()); ++c) {
+				records[c] = source.componentRecord(entity, *compTypes[c]);
+				if (records[c] != vstore::NullAddr) {
+					rows |= uint32_t(1) << c;
+				}
+			}
+		} else {
+			for (uint32_t c = 0; c < uint32_t(p.components.size()); ++c) {
+				if (source.hasComponent(entity, p.components[c])) {
+					rows |= uint32_t(1) << c;
+				}
 			}
 		}
-		gpu::putUInt(in, gpu::findSlot(p.inLayout, GpuSlot::Kind::RowMask), rows);
+		gpu::putUInt(in, rowSlot, rows);
 
 		for (uint32_t k = 0; k < uint32_t(p.fields.size()); ++k) {
 			auto &f = p.fields[k];
+			auto &bind = fieldBinds[k];
 			Var v;
-			value::decodeVar(mem_std::Value(), f.type, v);
-			if ((rows & (uint32_t(1) << f.component)) != 0) {
-				source.readField(entity, p.components[f.component], f.field, v);
+			auto present = bind.component < 32 && (rows & (uint32_t(1) << bind.component)) != 0;
+			if (direct && present) {
+				if (source.readRecord(entity, *bind.type, records[bind.component], *bind.desc, v)
+						!= Status::Ok) {
+					v = value::makeNil();
+				}
+			} else {
+				value::decodeVar(mem_std::Value(), f.type, v);
+				if (present) {
+					source.readField(entity, p.components[f.component], f.field, v);
+				}
 			}
-			if (auto slot = gpu::findSlot(p.inLayout, GpuSlot::Kind::In, k)) {
-				writeGpuValue(in + slot->offset, f.type, v);
+			if (bind.slot) {
+				writeGpuValue(in + bind.slot->offset, f.type, v);
 			}
 		}
 		for (uint32_t k = 0; k < uint32_t(p.columns.size()); ++k) {
 			auto &col = p.columns[k];
+			auto &bind = columnBinds[k];
 			auto &v = out.columns[b * p.columns.size() + k];
-			value::decodeVar(mem_std::Value(), col.type, v);
-			if ((rows & (uint32_t(1) << col.component)) != 0) {
-				source.readField(entity, p.components[col.component], col.field, v);
+			auto present = bind.component < 32 && (rows & (uint32_t(1) << bind.component)) != 0;
+			if (direct && present) {
+				if (source.readRecord(entity, *bind.type, records[bind.component], *bind.desc, v)
+						!= Status::Ok) {
+					v = value::makeNil();
+				}
+			} else {
+				value::decodeVar(mem_std::Value(), col.type, v);
+				if (present) {
+					source.readField(entity, p.components[col.component], col.field, v);
+				}
 			}
 		}
 
@@ -248,11 +336,11 @@ Status loadGpuBlock(const Graph &g, const GpuProgram &p, const GpuLoadSource &so
 				guards |= uint32_t(1) << gd.bit;
 				value::decodeVar(mem_std::Value(), gd.target, narrowed);
 			}
-			if (auto slot = gpu::findSlot(p.inLayout, GpuSlot::Kind::Column, k)) {
-				writeGpuValue(in + slot->offset, gd.target, narrowed);
+			if (columnSlots[k]) {
+				writeGpuValue(in + columnSlots[k]->offset, gd.target, narrowed);
 			}
 		}
-		gpu::putUInt(in, gpu::findSlot(p.inLayout, GpuSlot::Kind::GuardMask), guards);
+		gpu::putUInt(in, guardSlot, guards);
 
 		// The prefix, in the order the machine meets it: the first refusal fails the branch before
 		// dispatch, with the node, the status and the steps serial reports.
@@ -271,12 +359,11 @@ Status loadGpuBlock(const Graph &g, const GpuProgram &p, const GpuLoadSource &so
 			}
 			if (refuses) {
 				out.preFailed[b] = 1;
-				gpu::putUInt(in, gpu::findSlot(p.inLayout, GpuSlot::Kind::PreFailed), 1);
-				gpu::putUInt(in, gpu::findSlot(p.inLayout, GpuSlot::Kind::PreNode), check.node);
-				gpu::putInt(in, gpu::findSlot(p.inLayout, GpuSlot::Kind::PreCode), toInt(check.status));
-				gpu::putUInt(in, gpu::findSlot(p.inLayout, GpuSlot::Kind::PreSteps), check.steps);
-				gpu::putUInt(in, gpu::findSlot(p.inLayout, GpuSlot::Kind::PreBudget),
-						check.kind == GpuPrefixCheck::Kind::Budget ? 1 : 0);
+				gpu::putUInt(in, preFailedSlot, 1);
+				gpu::putUInt(in, preNodeSlot, check.node);
+				gpu::putInt(in, preCodeSlot, toInt(check.status));
+				gpu::putUInt(in, preStepsSlot, check.steps);
+				gpu::putUInt(in, preBudgetSlot, check.kind == GpuPrefixCheck::Kind::Budget ? 1 : 0);
 				break;
 			}
 		}
