@@ -1,0 +1,3 @@
+// Pages whose rights mprotect may change, one by one, up to read and execute (RT-A-JitMemory-1
+// of xenolith-tau); a bit the Linux values leave free.
+macro MAP_JIT 0x200000

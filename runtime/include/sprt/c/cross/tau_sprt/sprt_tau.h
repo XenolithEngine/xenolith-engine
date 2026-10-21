@@ -114,10 +114,19 @@ __attribute__((noreturn)) void __sprt_tau_exit(int status);
 void __sprt_tau_debug_write(const char *str, unsigned long len);
 
 // Memory: zeroed, readable and writable, aligned to `align` (a power of two). GUARD
-// leaves the page below unmapped. An unmap of part of a mapping keeps it mapped.
+// leaves the page below unmapped. An unmap of part of a mapping keeps it mapped, except for
+// JIT memory: pages in the JIT window, each its own frame, whose rights protect changes.
 #define __SPRT_TAU_MEM_GUARD 1u
+#define __SPRT_TAU_MEM_JIT 2u
 int __sprt_tau_mem_map(unsigned long len, unsigned long align, unsigned flags, void **out);
 int __sprt_tau_mem_unmap(void *addr, unsigned long len);
+// Rights of the pages: a mask of READ, WRITE and EXEC. On JIT memory read, read-write, read and
+// execute or none; write and execute together is EACCES. Elsewhere only the rights a mapping has
+// already, without EXEC (EACCES).
+#define __SPRT_TAU_PROT_READ 1
+#define __SPRT_TAU_PROT_WRITE 2
+#define __SPRT_TAU_PROT_EXEC 4
+int __sprt_tau_mem_protect(void *addr, unsigned long len, int prot);
 
 // Time from the virtual counter, since boot.
 unsigned long long __sprt_tau_clock_ns(void);

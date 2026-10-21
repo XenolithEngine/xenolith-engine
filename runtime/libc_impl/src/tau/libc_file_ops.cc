@@ -377,14 +377,28 @@ void __libc::load_file_fd_ops(__fd_ops *ops) {
 	ops->fo_msync = &__file_msync;
 }
 
-// Zeroed pages anywhere in the map region; there is no fixed placement.
-void *__file_mmap_anon(void *addr, size_t length, int, int flags, off_t) {
+// Zeroed pages anywhere in the map region; there is no fixed placement. Only MAP_JIT memory
+// may be executable, its rights set after it is mapped.
+void *__file_mmap_anon(void *addr, size_t length, int prot, int flags, off_t) {
 	if ((flags & __SPRT_MAP_FIXED) && addr) {
 		__sprt_errno = ENOTSUP;
 		return __SPRT_MAP_FAILED;
 	}
+	bool jit = flags & __SPRT_MAP_JIT;
+	if ((prot & __SPRT_PROT_EXEC) && !jit) {
+		__sprt_errno = EACCES;
+		return __SPRT_MAP_FAILED;
+	}
 	void *p = nullptr;
-	int st = __sprt_tau_mem_map(length, 4'096, 0, &p);
+	int st = __sprt_tau_mem_map(length, 4'096, jit ? __SPRT_TAU_MEM_JIT : 0, &p);
+	if (st == 0 && (prot & __SPRT_PROT_EXEC)) {
+		int rights = __SPRT_TAU_PROT_EXEC | ((prot & __SPRT_PROT_READ) ? __SPRT_TAU_PROT_READ : 0)
+				| ((prot & __SPRT_PROT_WRITE) ? __SPRT_TAU_PROT_WRITE : 0);
+		st = __sprt_tau_mem_protect(p, length, rights);
+		if (st != 0) {
+			__sprt_tau_mem_unmap(p, length);
+		}
+	}
 	if (st != 0) {
 		__sprt_errno = -st;
 		return __SPRT_MAP_FAILED;
