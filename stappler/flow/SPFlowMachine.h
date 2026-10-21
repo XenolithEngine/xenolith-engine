@@ -1019,6 +1019,10 @@ private:
 		uint32_t branch = InvalidIndex;
 	} _budgetFailure;
 
+	// Graph node → 1 when a GPU body does not publish it. The sweep reads it with BranchHeader::Settled,
+	// which lives in the frame, so a rollback that restores the header restores the question.
+	mem_std::Vector<uint8_t> _gpuQuiet;
+
 	// Host-side, and outliving both reset() and any rollback - see the note above the Breakpoint
 	// declaration. Ids are never reused, so a stale id is rejected rather than silently retargeted.
 	mem_std::Vector<Breakpoint> _breakpoints;
