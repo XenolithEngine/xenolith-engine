@@ -1,0 +1,21 @@
+Subject: [PATCH] gallivm: the host's features and a reserved x18 on Tau AArch64
+
+--- a/src/gallium/auxiliary/gallivm/lp_bld_misc.cpp
++++ b/src/gallium/auxiliary/gallivm/lp_bld_misc.cpp
+@@ -421,6 +421,16 @@
+    MAttrs.push_back(util_get_cpu_caps()->has_rv_zbs ? "+zbb" : "-zbs");
+ #endif
+ 
++#if DETECT_ARCH_AARCH64 && DETECT_OS_TAU
++   /* The CPU name alone would enable what the model has, not what the core
++    * has (Cortex-A72 without the crypto extension): the features come from the
++    * ID registers, which Tau's kernel answers from EL0. x18 is kept for the
++    * shadow call stack of Tau's modules: JIT code must not touch it. */
++   for (const auto &f : llvm::sys::getHostCPUFeatures())
++      MAttrs.push_back((f.second ? "+" : "-") + f.first().str());
++   MAttrs.push_back("+reserve-x18");
++#endif
++
+ #if DETECT_ARCH_LOONGARCH64 == 1
+    /*
+     * No FPU-less LoongArch64 systems are ever shipped yet, and LP64D is

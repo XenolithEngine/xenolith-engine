@@ -1,0 +1,30 @@
+Subject: [PATCH] TargetParser: the host CPU from the ID registers on Tau
+
+--- a/llvm/lib/TargetParser/Host.cpp
++++ b/llvm/lib/TargetParser/Host.cpp
+@@ -1644,9 +1644,10 @@
+   StringRef Content = P ? P->getBuffer() : "";
+   return detail::getHostCPUNameForARM(Content);
+ }
+-#elif defined(__EMBOX__) && defined(__aarch64__)
++#elif (defined(__EMBOX__) || defined(__TAU__)) && defined(__aarch64__)
+ // Embox runs applications at EL1, where MIDR_EL1 is readable directly; there
+-// is no /proc/cpuinfo. Only the current core is seen.
++// is no /proc/cpuinfo. Only the current core is seen. Tau's kernel answers the
++// read from EL0 with the value every core shares.
+ StringRef sys::getHostCPUName() {
+   uint64_t Midr;
+   asm volatile("mrs %0, midr_el1" : "=r"(Midr));
+@@ -2539,9 +2540,10 @@
+ 
+   return Features;
+ }
+-#elif defined(__EMBOX__) && defined(__aarch64__)
++#elif (defined(__EMBOX__) || defined(__TAU__)) && defined(__aarch64__)
+ // The features Linux reports in /proc/cpuinfo, read from the ID registers at
+-// EL1 (see Documentation/arch/arm64/elf_hwcaps.rst for the fields).
++// EL1, or from EL0 through Tau's kernel, which clears what it does not enable
++// (see Documentation/arch/arm64/elf_hwcaps.rst for the fields).
+ StringMap<bool> sys::getHostCPUFeatures() {
+   uint64_t Pfr0, Isar0;
+   asm volatile("mrs %0, id_aa64pfr0_el1" : "=r"(Pfr0));

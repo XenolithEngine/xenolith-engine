@@ -1,0 +1,15 @@
+Subject: [PATCH] Support: JIT memory from the JIT window on Tau (MAP_JIT)
+
+--- a/llvm/lib/Support/Unix/Memory.inc
++++ b/llvm/lib/Support/Unix/Memory.inc
+@@ -95,6 +95,10 @@
+ #if defined(MAP_ANON)
+   MMFlags |= MAP_ANON;
+ #endif
++#if defined(__TAU__) && defined(MAP_JIT)
++  // Tau gives the right to execute only to pages of its JIT window (MAP_JIT).
++  MMFlags |= MAP_JIT;
++#endif
+   int Protect = getPosixProtectionFlags(PFlags);
+ 
+ #if defined(__NetBSD__) && defined(PROT_MPROTECT)

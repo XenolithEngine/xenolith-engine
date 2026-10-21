@@ -1,0 +1,18 @@
+Subject: [PATCH] meson: Tau probes through the libc layer, as Embox
+
+--- a/meson.build
++++ b/meson.build
+@@ -1633,11 +1633,11 @@
+   'sysconf': '#include <unistd.h>',
+ }
+ 
+-# Embox: without a prefix, has_function declares the function itself and finds
++# Embox and Tau: without a prefix, has_function declares the function itself and finds
+ # whatever symbol the kernel's own libc has. Mesa is compiled against the libc
+ # layer on top of it (sprt), so ask through its headers. qsort_s there is the
+ # Microsoft one (context first), which util_qsort_r would call as C11's.
+-if host_machine.system() == 'embox'
++if host_machine.system() in ['embox', 'tau']
+   functions_to_detect = {
+     'strtof': '#include <stdlib.h>',
+     'mkostemp': '#include <stdlib.h>',

@@ -1,0 +1,107 @@
+Subject: [PATCH] Support: no rlimit, rusage, password database or wait on Tau; no symbolizer
+
+--- a/llvm/lib/Support/ProgramStack.cpp
++++ b/llvm/lib/Support/ProgramStack.cpp
+@@ -10,7 +10,7 @@
+ #include "llvm/Config/config.h"
+ #include "llvm/Support/Compiler.h"
+ 
+-#if defined(LLVM_ON_UNIX) && !defined(__wasm__)
++#if defined(LLVM_ON_UNIX) && !defined(__wasm__) && !defined(__TAU__)
+ # include <sys/resource.h> // for getrlimit
+ #endif
+ 
+@@ -42,7 +42,7 @@
+ }
+ 
+ unsigned llvm::getDefaultStackSize() {
+-#if defined(LLVM_ON_UNIX) && !defined(__wasm__)
++#if defined(LLVM_ON_UNIX) && !defined(__wasm__) && !defined(__TAU__)
+   rlimit RL;
+   getrlimit(RLIMIT_STACK, &RL);
+   return RL.rlim_cur;
+--- a/llvm/lib/Support/Signals.cpp
++++ b/llvm/lib/Support/Signals.cpp
+@@ -381,6 +381,13 @@
+ }
+ void llvm::sys::DefaultOneShotPipeSignalHandler() {}
+ void sys::unregisterHandlers() {}
++// No loaded objects to name: the symbolizer gets nothing to symbolize.
++static bool findModulesAndOffsets(void **StackTrace, int Depth,
++                                  const char **Modules, intptr_t *Offsets,
++                                  const char *MainExecutableName,
++                                  StringSaver &StrPool) {
++  return false;
++}
+ #elif defined(LLVM_ON_UNIX)
+ #include "Unix/Signals.inc"
+ #elif defined(_WIN32)
+--- a/llvm/lib/Support/Unix/Path.inc
++++ b/llvm/lib/Support/Unix/Path.inc
+@@ -31,7 +31,7 @@
+ #endif
+ 
+ #include <dirent.h>
+-#if !defined(__wasm__)
++#if !defined(__wasm__) && !defined(__TAU__)
+ #include <pwd.h>
+ #endif
+ 
+@@ -716,7 +716,7 @@
+     return;
+   }
+ 
+-#if defined(__wasm__)
++#if defined(__wasm__) || defined(__TAU__)
+   // No access to password database, return back the original path.
+   (void)Remainder;
+   return;
+@@ -1491,7 +1491,7 @@
+ bool home_directory(SmallVectorImpl<char> &result) {
+   std::unique_ptr<char[]> Buf;
+   char *RequestedDir = getenv("HOME");
+-#if !defined(__wasm__)
++#if !defined(__wasm__) && !defined(__TAU__)
+   if (!RequestedDir) {
+     long BufSize = sysconf(_SC_GETPW_R_SIZE_MAX);
+     if (BufSize <= 0)
+--- a/llvm/lib/Support/Unix/Process.inc
++++ b/llvm/lib/Support/Unix/Process.inc
+@@ -19,7 +19,7 @@
+ #include <optional>
+ #include <fcntl.h>
+ #include <sys/time.h>
+-#if !defined(__wasm__)
++#if !defined(__wasm__) && !defined(__TAU__)
+ #include <sys/resource.h>
+ #endif
+ #include <sys/stat.h>
+@@ -56,7 +56,7 @@
+   return {toDuration(RU.ru_utime), toDuration(RU.ru_stime)};
+ #else
+ #if !(defined(__MVS__) ||                                                      \
+-      defined(__wasm__)) // Exclude in case -pedantic is used
++      defined(__wasm__) || defined(__TAU__)) // Exclude in case -pedantic is used
+ #warning Cannot get usage times on this platform
+ #endif
+   return {std::chrono::microseconds::zero(), std::chrono::microseconds::zero()};
+@@ -143,7 +143,7 @@
+ // their operation. To prevent the disk from filling up, this function
+ // does what's necessary to prevent their generation.
+ void Process::PreventCoreFiles() {
+-#if defined(__wasm__)
++#if defined(__wasm__) || defined(__TAU__)
+   return;
+ #else
+   struct rlimit rlim;
+--- a/llvm/lib/Support/Unix/Unix.h
++++ b/llvm/lib/Support/Unix/Unix.h
+@@ -30,7 +30,7 @@
+ #include <string>
+ #include <sys/types.h>
+ 
+-#if !defined(__wasm__)
++#if !defined(__wasm__) && !defined(__TAU__)
+ #include <sys/wait.h>
+ #endif
+ 

@@ -25,6 +25,7 @@ THE SOFTWARE.
 #include "stdlib/bsearch.cc"
 #include "stdlib/floatscan.cc"
 #include "stdlib/intscan.cc"
+#include "stdlib/rand.cc"
 #include "stdlib/shgetc.cc"
 #include "stdlib/strtod.cc"
 #include "stdlib/strtol.cc"
