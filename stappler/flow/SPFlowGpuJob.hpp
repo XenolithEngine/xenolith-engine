@@ -72,6 +72,35 @@ public:
 			return ct->getField(*scene->getArena(), record, field, out);
 		}
 
+		bool bindsRecords() const override { return true; }
+
+		const value::ComponentType *resolveComponent(TypeId component) const override {
+			auto scene = parent.getScene();
+			if (!scene || !scene->isValid() || !scene->getRegistry()) {
+				return nullptr;
+			}
+			return scene->getRegistry()->get(component);
+		}
+
+		vstore::Addr componentRecord(value::EntityId id,
+				const value::ComponentType &type) const override {
+			auto scene = parent.getScene();
+			if (!scene || !scene->isValid()) {
+				return vstore::NullAddr;
+			}
+			return scene->getComponent(id, type);
+		}
+
+		Status readRecord(value::EntityId, const value::ComponentType &type, vstore::Addr record,
+				const value::FieldDesc &field, Var &out) const override {
+			auto scene = parent.getScene();
+			if (!scene || !scene->isValid() || record == vstore::NullAddr) {
+				out = value::makeNil();
+				return Status::ErrorNotFound;
+			}
+			return type.getField(*scene->getArena(), record, field, out);
+		}
+
 		Status readBlockValue(uint32_t srcNode, uint32_t srcPin, Var &out) const override {
 			auto &local = parent.getLocal();
 			auto &rt = parent.getGraph()->getNodeAt(srcNode);
