@@ -288,6 +288,9 @@ public:
 					ptr->value.destroy(_allocator);
 					ptr->active = 0;
 				}
+				// an inactive slot must not keep a chain offset: the next occupant is a new tail
+				ptr->next = 0;
+				ptr->is_first = 0;
 				++ptr;
 			}
 			_size = 0;
@@ -320,13 +323,14 @@ public:
 		bool equalNodeFound = false;
 		size_type offset = 0;
 		node_type *prev = chain;
-		auto hashPosition = hashValue % _capacity;
+		// `capacity` is the table being written. During rehash that is not `_capacity` yet.
+		auto hashPosition = size_type(hashValue % capacity);
 
 		if (chain->active) {
 			// If chain is active, we can use chain->hash to early detect equality,
 			// before using _equal.
 			// Note that ->next node is always also active
-			while (chain->next != 0 && chain->hash % _capacity == hashPosition
+			while (chain->next != 0 && size_type(chain->hash % capacity) == hashPosition
 					&& (chain->hash != hashValue
 							|| !(equalNodeFound = _equal(key,
 										 aligned_storage_kv_traits<Key, Value>::extract_key(
@@ -392,6 +396,7 @@ public:
 
 		chain->active = 1;
 		chain->hash = hashValue;
+		chain->next = 0;
 		if (prev) {
 			prev->next = offset;
 		}
