@@ -140,7 +140,13 @@ void AppWindow::runWithQueue(const Rc<core::Queue> &queue) {
 
 void AppWindow::run() {
 	auto c = _presentationEngine->getFrameConstraints();
-	_application->performOnAppThread([this, c]() mutable {
+	// The director reads getWindowState() as it is created. A window can already be
+	// focused with the pointer inside; that event has nowhere to land before this.
+	const auto state = _window ? _window->getInfo()->state : WindowState::None;
+	_application->performOnAppThread([this, c, state]() mutable {
+		if (_state == WindowState::None) {
+			_state = state;
+		}
 		// _client is set by Director::init (during makeDirector below), before the initial scene
 		// runs, so queue announcements reach the client.
 		_director = _application->handleAppWindowCreated(this, c);

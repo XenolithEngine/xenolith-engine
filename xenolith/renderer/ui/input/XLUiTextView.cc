@@ -786,6 +786,9 @@ bool TextView::init() {
 	// basic2d::ScrollView is single-axis and owns its own gesture set, so the wheel is wired
 	// directly onto the viewport offset instead.
 	_listener->addScrollRecognizer([this](const GestureScroll &scroll) {
+		if (scroll.input && hasFlag(scroll.input->data.input.modifiers, InputModifier::Magnify)) {
+			return false;
+		}
 		auto lh = getView()->getLineHeight();
 		if (lh <= 0.0f) {
 			lh = 16.0f; // fallback step until the font is measured

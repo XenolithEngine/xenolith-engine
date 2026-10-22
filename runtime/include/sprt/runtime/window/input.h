@@ -157,6 +157,10 @@ enum class InputModifier : uint32_t {
 	// See WindowState::InputTouch for touchscreen *presence*.
 	Touch = 1 << 25,
 
+	// A trackpad pinch, carried on a Scroll event so it hits the node under the pointer.
+	// point.valueY is the magnification delta (positive grows). A scroll view ignores it.
+	Magnify = 1 << 26,
+
 	Command = Mod3, // MacOS Command
 	Meta = Mod3, // Android Meta
 	Function = Mod4, // Android Function

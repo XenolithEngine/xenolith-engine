@@ -1780,6 +1780,62 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 	_currentPointerLocation = loc;
 }
 
+// A trackpad pinch. AppKit reports it apart from scrollWheel: `magnification` is the
+// change since the last event of the gesture, positive when the fingers move apart.
+// It rides a Scroll so the node under the pointer receives it, and the Magnify bit
+// tells a scroll view that this one is not a pan.
+- (void)magnifyWithEvent:(NSEvent *)theEvent {
+	if (!_engineWindow) {
+		return;
+	}
+
+	auto pointInView = [self.targetView convertPoint:theEvent.locationInWindow fromView:nil];
+	auto loc = CGPoint([self.targetView convertPointToBacking:pointInView]);
+	auto mods = NSSPWIN::getInputModifiers(uint32_t(theEvent.modifierFlags)) | _currentModifiers
+			| NSSPWIN::InputModifier::Magnify;
+
+	auto buttonName = NSSPWIN::InputMouseButton::MouseScrollUp;
+	uint32_t buttonId = sprt::Max<uint32_t> - sprt::toInt(buttonName);
+
+	NSSPWIN::Vector<NSSPWIN::InputEventData> events;
+	events.emplace_back(NSSPWIN::InputEventData{
+		buttonId,
+		NSSPWIN::InputEventName::Begin,
+		{{
+			buttonName,
+			mods,
+			float(loc.x),
+			float(loc.y),
+		}},
+	});
+	events.emplace_back(NSSPWIN::InputEventData{
+		buttonId,
+		NSSPWIN::InputEventName::Scroll,
+		{{
+			buttonName,
+			mods,
+			float(loc.x),
+			float(loc.y),
+		}},
+	});
+	events.emplace_back(NSSPWIN::InputEventData{
+		buttonId,
+		NSSPWIN::InputEventName::End,
+		{{
+			buttonName,
+			mods,
+			float(loc.x),
+			float(loc.y),
+		}},
+	});
+
+	events.at(1).point.valueY = float(theEvent.magnification);
+	events.at(1).point.density = _engineWindow->getWindow().backingScaleFactor;
+
+	_engineWindow->handleInputEvents(move(events));
+	_currentPointerLocation = loc;
+}
+
 - (void)rightMouseDragged:(NSEvent *)theEvent {
 	if (!_engineWindow) {
 		return;

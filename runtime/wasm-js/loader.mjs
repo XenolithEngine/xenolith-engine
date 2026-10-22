@@ -92,6 +92,11 @@ function attachCanvasInput(canvas, inputSab, density, getSize) {
 		let s = WSTATE.Enabled;
 		if (focused) { s |= WSTATE.Focused; }
 		if (pointerIn) { s |= WSTATE.Pointer; }
+		// updateState ignores a WindowState whose bits did not change. The wasm
+		// window already claims these bits before the app is listening, so one
+		// matching report never arrives and :hover stays off until a resize
+		// changes something. The flipped report makes the real state a transition.
+		send({ id: 0, name: NAME.WindowState, keycode: (s ^ WSTATE.Pointer) >>> 0 });
 		send({ id: 0, name: NAME.WindowState, keycode: s >>> 0 });
 	};
 	pushState();

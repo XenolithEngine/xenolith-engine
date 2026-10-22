@@ -72,6 +72,10 @@ bool ScrollViewBase::init(Layout layout) {
 	}, InputSwipeInfo{makeButtonMask(InputMouseButton::Touch), TapDistanceAllowed, true});
 
 	_inputListener->addScrollRecognizer([this](const GestureScroll &w) -> bool {
+		// A trackpad pinch uses the scroll channel and is not a pan of this list.
+		if (w.input && hasFlag(w.input->data.input.modifiers, InputModifier::Magnify)) {
+			return false;
+		}
 		auto pos = getScrollPosition();
 		onSwipeBegin();
 		if (_layout == Vertical) {
