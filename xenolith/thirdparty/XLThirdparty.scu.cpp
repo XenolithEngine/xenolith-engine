@@ -25,8 +25,7 @@
 ///@ SP_EXCLUDE
  */
 
-// SPIR-V reflection: not on wasm (WGSL), Embox and Tau EL0; on RTOS only for the Vulkan backend
-// (lavapipe on Embox), the software rasterizer does not read SPIR-V.
-#if !SPRT_WASM && !SPRT_EMBOX_USER && !SPRT_TAU_USER && (!SPRT_HOSTED_RTOS || MODULE_XENOLITH_BACKEND_VK)
+// Tau and RTOS builds need SPIR-V reflection when the Vulkan backend is enabled.
+#if !SPRT_WASM && !SPRT_EMBOX_USER && (!SPRT_TAU_USER || MODULE_XENOLITH_BACKEND_VK) && (!SPRT_HOSTED_RTOS || MODULE_XENOLITH_BACKEND_VK)
 #include "SPIRV-Reflect/spirv_reflect.cc"
 #endif

@@ -127,6 +127,8 @@ int __sprt_tau_mem_unmap(void *addr, unsigned long len);
 #define __SPRT_TAU_PROT_WRITE 2
 #define __SPRT_TAU_PROT_EXEC 4
 int __sprt_tau_mem_protect(void *addr, unsigned long len, int prot);
+// Bytes of the module's quota, 0 when root does not say.
+unsigned long long __sprt_tau_mem_total(void);
 
 // Time from the virtual counter, since boot.
 unsigned long long __sprt_tau_clock_ns(void);

@@ -57,7 +57,12 @@ struct SP_PUBLIC MemoryRequirements {
 
 class SP_PUBLIC Allocator : public Ref {
 public:
+#if SPRT_TAU_USER
+	// Device memory of lavapipe is the module's quota: smaller pages leave less of it unused.
+	static constexpr uint64_t PageSize = 1_MiB;
+#else
 	static constexpr uint64_t PageSize = 8_MiB;
+#endif
 	static constexpr uint64_t MaxIndex = 20; // Largest block
 	static constexpr uint64_t PreservePages = 20;
 

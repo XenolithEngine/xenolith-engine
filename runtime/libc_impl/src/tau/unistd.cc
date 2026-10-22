@@ -41,6 +41,10 @@ extern "C" long sysconf(int name) __SPRT_NOEXCEPT {
 	case __SPRT_SC_NPROCESSORS_CONF:
 	case __SPRT_SC_NPROCESSORS_ONLN: return (long)__tau_module_cpus(); // the module's CPU mask
 	case __SPRT_SC_OPEN_MAX: return (long)sprt::MAX_FDS;
+	case __SPRT_SC_PHYS_PAGES: { // the module's quota
+		unsigned long long total = __sprt_tau_mem_total();
+		return total ? (long)(total / 4'096) : -1;
+	}
 	default: return -1;
 	}
 }

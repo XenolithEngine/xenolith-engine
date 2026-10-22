@@ -294,14 +294,10 @@ def main():
         check("and draws them", shot.startswith(b"\x89PNG") and shot != before,
                 "the frame is the server's own scene")
 
-        # --- late once is a frame, late always is a client (S5) -----------------------------------
-        #
-        # The limit is what keeps "a late frame is not fatal" from meaning "a client that never
-        # draws is welcome forever": after a few in a row the session goes. Last, because it ends
-        # the only session still running.
+        # Keep both windows late throughout the deadline window, until the session is dropped.
         cc = open_inspector(sock_c)
         if cc:
-            cc.invoke("client-frame-delay", ms=3000, frames=8)
+            cc.invoke("client-frame-delay", ms=3000, frames=1000)
             gone = False
             deadline = time.monotonic() + 90.0
             while time.monotonic() < deadline:

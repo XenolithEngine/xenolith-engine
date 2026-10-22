@@ -82,10 +82,10 @@ class Session:
         self.call("input", events=[dict(ev, event="End")])
         return self.settle(until)
 
-    def key(self, code):
+    def key(self, code, until):
         ev = [{"event": "KeyPressed", "keycode": code}, {"event": "KeyReleased", "keycode": code}]
         self.call("input", native=True, events=ev)
-        return self.settle()
+        return self.settle(until)
 
     def close(self):
         self.s.close()
@@ -191,11 +191,11 @@ def drive(s, c, probe):
     c.expect(st.get("keyboardSelects") == 0, "a tap was reported as a keyboard pick")
 
     selects = st.get("selects", 0)
-    st = s.key("DOWN")
+    st = s.key("DOWN", lambda st: st.get("row") == 2)
     c.expect(st.get("row") == 2, "Down did not move the row: %s" % st.get("row"))
     c.expect(st.get("keyboardSelects") == 1 and st.get("selects") == selects + 1,
             "the arrow pick was not reported as a keyboard pick: %s" % st)
-    st = s.key("ENTER")
+    st = s.key("ENTER", lambda st: st.get("activations") == 1)
     c.expect(st.get("activations") == 1, "Enter did not activate the selected row")
 
     st = s.press(probe["treeEmpty"])
@@ -210,7 +210,7 @@ def drive(s, c, probe):
     c.expect(st.get("owner") == "outer-left", "the empty area did not select the tree's frame: %s"
             % st.get("owner"))
     c.expect(st.get("outerCurrent") == "outer-left", "the tree's frame is not current")
-    st = s.key("DOWN")
+    st = s.key("DOWN", lambda st: st.get("owner") == "tree")
     c.expect(st.get("owner") == "tree", "Down from the frame did not enter the tree: %s"
             % st.get("owner"))
 
@@ -266,6 +266,6 @@ if probe is None:
 print("  %s dock-focus: %d checks, %d failures" % (
         "ok  " if not c.failures else "FAIL", c.count, len(c.failures)))
 for f in c.failures:
-    print("       " + f)
+    print("       FAIL " + f)
 
 sys.exit(0 if not c.failures else 1)
