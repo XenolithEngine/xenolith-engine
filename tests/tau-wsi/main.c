@@ -52,6 +52,11 @@ static int query(struct __sprt_tau_display_info *info, unsigned long long *gener
 	}
 	return 0;
 }
+static int open_then_lose(int wait, struct __sprt_tau_display_info *info) {
+	connected = false;
+	return 0;
+}
+static void close_session(void) { connected = false; }
 static int buffer(unsigned index, void **map, unsigned long *size) {
 	buffer_calls++;
 	*map = target[index];
@@ -220,6 +225,13 @@ int main(void) {
 	check("failed chain stays out of date",
 			wsi_tau_swapchain_acquire_next_image(&chain->base, &acquire, &extra)
 					== VK_ERROR_OUT_OF_DATE_KHR);
+	screen.open = open_then_lose;
+	screen.close = close_session;
+	screen.opened = connected = false;
+	mtx_lock(&screen.mutex);
+	check("connect observes immediate loss", !wsi_tau_connect(&screen));
+	check("successful open stays owned until close", screen.opened);
+	mtx_unlock(&screen.mutex);
 	free(chain);
 	cnd_destroy(&screen.available);
 	mtx_destroy(&screen.mutex);

@@ -29,7 +29,7 @@ diff --git a/src/vulkan/wsi/wsi_common_tau.c b/src/vulkan/wsi/wsi_common_tau.c
 new file mode 100644
 --- /dev/null
 +++ b/src/vulkan/wsi/wsi_common_tau.c
-@@ -0,0 +1,940 @@
+@@ -0,0 +1,943 @@
 +/*
 + * Copyright 2026 Xenolith Team
 + *
@@ -115,7 +115,10 @@ new file mode 100644
 +   if (!s->open || !s->query || !s->buffer || !s->present || !s->close)
 +      return false;
 +   if (s->query(&in, &generation) < 0) {
-+      if (s->open(0, &in) < 0 || s->query(&in, &generation) < 0)
++      if (s->open(0, &in) < 0)
++         return false;
++      s->opened = true;
++      if (s->query(&in, &generation) < 0)
 +         return false;
 +   }
 +   if (in.format != __SPRT_TAU_DISPLAY_B8G8R8A8 || in.buffers != 2 ||

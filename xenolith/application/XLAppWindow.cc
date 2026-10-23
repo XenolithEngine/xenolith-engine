@@ -510,7 +510,13 @@ void AppWindow::handleFrameReady(NotNull<core::PresentationFrame> frame) {
 }
 
 void AppWindow::handleFramePresented(NotNull<core::PresentationFrame> frame) {
-	if (_window) {
+#if SPRT_TAU_USER
+	const auto status = frame->getPresentationStatus();
+	const bool notify = status == Status::Ok || status == Status::Suboptimal;
+#else
+	constexpr bool notify = true;
+#endif
+	if (_window && notify) {
 		_window->handleFramePresented(frame->getInfo());
 	}
 
