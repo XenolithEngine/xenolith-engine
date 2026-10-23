@@ -29,8 +29,7 @@
 
 namespace sprt::window {
 
-// Tau: one fullscreen window over the display of dev.display@1 (the __sprt_tau_display_* hooks
-// of libtau). The software rasterizer writes the window's CPU buffers.
+// One fullscreen window over dev.display@1, with CPU buffers or Vulkan display WSI.
 class TauContextController : public ContextController {
 public:
 	static Rc<TauContextController> create(NotNull<Context>, ContextConfig &&, NotNull<dispatch::Looper>);
@@ -45,10 +44,12 @@ public:
 
 	virtual bool isCursorSupported(WindowCursor, bool serverSide) const override { return false; }
 	virtual WindowCapabilities getCapabilities() const override { return WindowCapabilities::None; }
-	virtual SurfaceSupportInfo getSupportInfo() const override { return SurfaceSupportInfo(); }
+	virtual SurfaceSupportInfo getSupportInfo() const override;
+	bool isVulkanDisplay() const { return _vulkanDisplay; }
 	virtual void openUrl(StringView) override;
 
 protected:
+	bool _vulkanDisplay = false;
 	virtual bool loadWindow(Rc<WindowInfo> &&) override;
 };
 

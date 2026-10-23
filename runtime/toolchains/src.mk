@@ -663,6 +663,7 @@ $(SRC_ROOT)/mesa: | prepare
 	$(call sp_patch,mesa,mesa/26.2.3-tau/0006-lavapipe-no-memory-fd-on-tau.patch)
 	$(call sp_patch,mesa,mesa/26.2.3-tau/0007-gallivm-host-features-and-x18-on-tau.patch)
 	$(call sp_patch,mesa,mesa/26.2.3-tau/0008-lavapipe-exports-only-the-icd-on-tau.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-tau/0009-wsi-display-over-dev-display-on-tau.patch)
 
 
 #

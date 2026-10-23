@@ -257,7 +257,15 @@ void TauWindow::show(const uint8_t *frame, uint32_t x, uint32_t y, uint32_t w, u
 }
 
 bool TauWindow::init(NotNull<TauContextController> c, Rc<WindowInfo> &&info) {
-	if (!connect(true)) {
+	if (c->isVulkanDisplay()) {
+		struct __sprt_tau_display_info in = {};
+		if (__sprt_tau_display_query(&in, nullptr) < 0) {
+			return false;
+		}
+		_extent = Extent2(in.width, in.height);
+		_stride = in.stride;
+		oslog::vpinfo(__SPRT_LOCATION, "TauWindow", "Vulkan display WSI");
+	} else if (!connect(true)) {
 		return false;
 	}
 
@@ -293,8 +301,21 @@ bool TauWindow::close() {
 
 SurfaceInterfaceInfo TauWindow::getSurfaceInterfaceInfo() const {
 	SurfaceInterfaceInfo ret;
-	ret.backend = SurfaceBackend::Surface;
+	if (static_cast<TauContextController *>(_controller.get())->isVulkanDisplay()) {
+		ret.backend = SurfaceBackend::Display;
+		ret.display.fd = -1;
+		ret.display.width = _extent.width;
+		ret.display.height = _extent.height;
+	} else {
+		ret.backend = SurfaceBackend::Surface;
+	}
 	return ret;
+}
+
+void TauWindow::handleFramePresented(const PresentationFrameInfo &) {
+	if (_latency && static_cast<TauContextController *>(_controller.get())->isVulkanDisplay()) {
+		showLatency();
+	}
 }
 
 SurfaceInfo TauWindow::getSurfaceOptions(SurfaceInfo &&info) const {

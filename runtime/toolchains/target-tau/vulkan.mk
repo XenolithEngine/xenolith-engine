@@ -65,7 +65,7 @@ $(P)/lib/libvulkan.so.1: vulkan-loader.mk $(VK_HEADERS)
 $(P)/lib/libLLVMCore.a: llvm.mk lavapipe-options.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(P)/lib/libvulkan_lvp.so: mesa.mk lavapipe-options.mk $(P)/lib/libLLVMCore.a $(VK_HEADERS)
+$(P)/lib/libvulkan_lvp.so: mesa.mk lavapipe-options.mk $(wildcard $(MAKE_ROOT)../replacements/mesa/26.2.3-tau/*.patch) $(P)/lib/libLLVMCore.a $(VK_HEADERS)
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 .PHONY: all

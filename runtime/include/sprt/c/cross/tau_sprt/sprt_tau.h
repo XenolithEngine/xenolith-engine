@@ -313,6 +313,8 @@ struct __sprt_tau_display_info {
 };
 
 int __sprt_tau_display_open(int wait, struct __sprt_tau_display_info *info);
+// Reads the active session without reconnecting or releasing its buffers; -ECONNRESET if lost.
+int __sprt_tau_display_query(struct __sprt_tau_display_info *info, unsigned long long *generation);
 // Buffer `index` of the session: stride * height bytes.
 int __sprt_tau_display_buffer(unsigned index, void **data, unsigned long *size);
 int __sprt_tau_display_present(unsigned index, unsigned x, unsigned y, unsigned w, unsigned h);

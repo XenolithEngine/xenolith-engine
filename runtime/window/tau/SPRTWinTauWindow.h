@@ -86,6 +86,7 @@ public:
 	virtual SurfaceInfo getSurfaceOptions(SurfaceInfo &&) const override;
 	virtual Rc<SoftwareSurface> makeSoftwareSurface() override;
 	virtual PresentationOptions getPreferredOptions() const override;
+	virtual void handleFramePresented(const PresentationFrameInfo &) override;
 
 	uint32_t getStride() const { return _stride; }
 

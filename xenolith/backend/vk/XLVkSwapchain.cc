@@ -395,8 +395,7 @@ Status SwapchainHandle::present(core::DeviceQueue *queue, core::ImageStorage *im
 	}
 
 	// VK_KHR_incremental_present: a hint of which regions changed; `rects` must outlive the call.
-	// An empty damage list means "full surface": chain nothing, since rectangleCount == 0
-	// would claim nothing changed.
+	// An empty damage list and rectangleCount == 0 both mean the full surface.
 	Vector<VkRectLayerKHR> rects;
 	VkPresentRegionKHR region{};
 	VkPresentRegionsKHR regions{VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR, nullptr, 1, &region};

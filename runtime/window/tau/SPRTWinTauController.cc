@@ -84,7 +84,20 @@ bool TauContextController::init(NotNull<Context> ctx, ContextConfig &&config, No
 	if (_instanceInfo->api == gapi::InstanceApi::None) {
 		_instanceInfo->api = gapi::InstanceApi::Software;
 	}
+	if (_instanceInfo->api == gapi::InstanceApi::Vulkan) {
+		const char *env = ::getenv("XL_VK_DISPLAY");
+		_vulkanDisplay = !(env && StringView(env) == "0");
+	}
 	return true;
+}
+
+SurfaceSupportInfo TauContextController::getSupportInfo() const {
+	SurfaceSupportInfo info;
+	if (_vulkanDisplay) {
+		info.backendMask.set(toInt(SurfaceBackend::Display));
+		info.display.fd = -1;
+	}
+	return info;
 }
 
 void TauContextController::openUrl(StringView) {

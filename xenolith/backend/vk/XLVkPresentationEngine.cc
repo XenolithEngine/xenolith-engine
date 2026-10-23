@@ -207,6 +207,20 @@ bool PresentationEngine::recreateSwapchain() {
 
 	ret = createSwapchain(info, move(cfg), mode, oldSwapchainValid);
 
+#if SPRT_TAU_USER
+	if (!ret && _running) {
+		_swapchainRecreationScheduled = true;
+		_loop->getLooper()->schedule(TimeInterval::milliseconds(100),
+				[self = Rc<PresentationEngine>(this)](sprt::dispatch::Handle *, bool success) {
+			self->_swapchainRecreationScheduled = false;
+			if (success && self->_running) {
+				self->scheduleSwapchainRecreation();
+			}
+		}, this);
+		return false;
+	}
+#endif
+
 	_deprecationFlags = core::UpdateConstraintsFlags::None;
 
 	auto callbacks = sp::move(_deprecationCallbacks);
@@ -310,7 +324,8 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::Sw
 			}
 		} else {
 			log::source().error("vk::PresentationEngine", "Fail to create swapchain");
-			break;
+			_swapchain = move(oldSwapchain);
+			return false;
 		}
 	} while (!_swapchain);
 

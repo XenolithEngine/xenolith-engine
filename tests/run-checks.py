@@ -95,6 +95,7 @@ BUILD = os.environ.get("XL_CHECK_BUILD", "debug")
 # `tesstest` is two goldens and neither alone is the check - geometry can move without the digest
 # moving and the other way round (docs/agents/test-projects.md) - so both are listed.
 CLI = [
+    ("tests/tau-wsi", "tauwsitest", [], False),
     ("tests/runtime", "runtimetest", [], True),
     ("tests/libc", "libctest", [], True),
     ("tests/locale", "localetest", [], True),
@@ -123,6 +124,8 @@ GATE_ARGS = {
 
 # Which console harnesses a directory owes. First match wins, so the specific paths lead.
 OWES = [
+    ("runtime/toolchains/replacements/mesa/26.2.3-tau", ["tauwsitest"]),
+    ("tests/tau-wsi", ["tauwsitest"]),
     ("stappler/tess", ["tesstest"]),
     ("stappler/vg", ["tesstest", "stapplertest"]),
     ("stappler/vstore", ["vstoretest", "flowtest"]),
