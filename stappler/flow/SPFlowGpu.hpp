@@ -727,11 +727,25 @@ Status lowerGpuBlock(const Graph &g, uint32_t blockIndex, GpuProgram &p, DiagRep
 	return Status::Ok;
 }
 
+// A path emptied in place: a job replays every branch into the same result, and the vectors keep
+// their storage from one branch to the next.
+inline void resetGpuPath(GpuPath &out) {
+	out.failed = false;
+	out.budget = false;
+	out.failNode = InvalidIndex;
+	out.failStatus = Status::Ok;
+	out.steps = 0;
+	out.nodes.clear();
+	out.log.clear();
+	out.fired.clear();
+	out.decisions.clear();
+}
+
 // The runs along `decisions`, and the end state the lowering stored for the Close they reach.
 // A failed or budgeted branch does not come here: its prefix stops inside a run the table does not
 // name.
 inline bool replaySettledPath(const GpuProgram &p, SpanView<uint32_t> decisions, GpuPath &out) {
-	out = GpuPath();
+	resetGpuPath(out);
 	out.log.reserve(p.bodyNodes.size());
 	out.fired.reserve(p.bodyNodes.size());
 	uint32_t cont = 0;
@@ -829,7 +843,7 @@ bool replayGpuPathWalk(const Graph &g, const GpuProgram &p, SpanView<uint32_t> d
 		}
 	}
 
-	out = GpuPath();
+	resetGpuPath(out);
 	out.log.reserve(p.bodyNodes.size());
 	out.fired.reserve(p.bodyNodes.size());
 	out.failed = failed;
@@ -1035,6 +1049,7 @@ void buildGpuLayouts(const Graph &g, GpuProgram &p) {
 	layoutStd430(b);
 	layoutStd430(in);
 	layoutStd430(out);
+	gpu::indexOutLayout(out, block.writeCount, uint32_t(p.cells.size()), p.outIndex);
 }
 
 namespace gpu {

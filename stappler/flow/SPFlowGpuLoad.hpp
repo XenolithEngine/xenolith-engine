@@ -374,37 +374,54 @@ Status loadGpuBlock(const Graph &g, const GpuProgram &p, const GpuLoadSource &so
 template <typename Graph>
 bool decodeGpuBranch(const Graph &g, const GpuProgram &p, const GpuLoaded &loaded, BytesView outs,
 		uint32_t branch, GpuBranchResult &res) {
-	res = GpuBranchResult();
+	// The vectors keep their storage: a job decodes every branch into the same results.
+	res.failed = false;
+	res.budget = false;
+	res.failNode = InvalidIndex;
+	res.failStatus = Status::Ok;
+	res.steps = 0;
+	res.written.clear();
+	res.copies.clear();
+	res.cells.clear();
 	if (size_t(p.outLayout.size) * (branch + 1) > outs.size()) {
+		res.path = GpuPath();
 		return false;
 	}
-	auto o = outs.data() + size_t(p.outLayout.size) * branch;
-	auto &l = p.outLayout;
-	res.failed = gpu::getUInt(o, gpu::findSlot(l, GpuSlot::Kind::Status)) != 0;
-	res.budget = gpu::getUInt(o, gpu::findSlot(l, GpuSlot::Kind::Budget)) != 0;
-	res.failNode = gpu::getUInt(o, gpu::findSlot(l, GpuSlot::Kind::FailNode));
-	res.failStatus = Status(int32_t(gpu::getUInt(o, gpu::findSlot(l, GpuSlot::Kind::FailCode))));
-	res.steps = gpu::getUInt(o, gpu::findSlot(l, GpuSlot::Kind::Steps));
-
 	auto &block = g.getBlockAt(p.block);
-	auto copyMask = gpu::findSlot(l, GpuSlot::Kind::CopyMask);
+
+	// The program's own index, or one made here for a program that was not built by buildGpuLayouts.
+	const GpuOutIndex *x = &p.outIndex;
+	thread_local GpuOutIndex local;
+	if (x->copy.size() != block.writeCount || x->cell.size() != p.cells.size()) {
+		gpu::indexOutLayout(p.outLayout, block.writeCount, uint32_t(p.cells.size()), local);
+		x = &local;
+	}
+	auto o = outs.data() + size_t(p.outLayout.size) * branch;
+	auto at = [o](uint32_t offset, uint32_t word = 0) {
+		uint32_t v = 0;
+		if (offset != InvalidIndex) {
+			sprt::memcpy(&v, o + offset + 4 * word, 4);
+		}
+		return v;
+	};
+	res.failed = at(x->status) != 0;
+	res.budget = at(x->budget) != 0;
+	res.failNode = at(x->failNode);
+	res.failStatus = Status(int32_t(at(x->failCode)));
+	res.steps = at(x->steps);
+
 	res.written.resize(block.writeCount);
 	res.copies.resize(block.writeCount);
 	for (uint32_t w = 0; w < block.writeCount; ++w) {
 		auto &write = g.getBlockWrites(p.block)[w];
-		res.written[w] = (gpu::getUInt(o, copyMask, w / 32) >> (w % 32)) & 1;
-		auto value = gpu::findSlot(l, GpuSlot::Kind::Copy, w);
-		if (isGpuValueType(write.type)) {
-			res.copies[w] = readGpuValue(o + value->offset, write.type);
-		} else {
-			auto tag = gpu::getUInt(o, gpu::findSlot(l, GpuSlot::Kind::CopyTag, w));
-			res.copies[w] = gpu::widen(g, p, loaded, branch, tag, gpu::getUInt(o, value), write.type,
-					write.subtypeId);
-		}
+		res.written[w] = (at(x->copyMask, w / 32) >> (w % 32)) & 1;
 		if (!res.written[w]) {
-			Var zero;
-			value::decodeVar(mem_std::Value(), write.type, zero);
-			res.copies[w] = zero;
+			value::decodeVar(mem_std::Value(), write.type, res.copies[w]);
+		} else if (isGpuValueType(write.type)) {
+			res.copies[w] = readGpuValue(o + x->copy[w], write.type);
+		} else {
+			res.copies[w] = gpu::widen(g, p, loaded, branch, at(x->copyTag[w]), at(x->copy[w]),
+					write.type, write.subtypeId);
 		}
 	}
 
@@ -415,21 +432,19 @@ bool decodeGpuBranch(const Graph &g, const GpuProgram &p, const GpuLoaded &loade
 		if (cell.node < p.nodes.size() && !p.nodes[cell.node].published) {
 			continue;
 		}
-		auto value = gpu::findSlot(l, GpuSlot::Kind::Cell, c);
 		if (cell.rep == GpuRep::Direct) {
-			res.cells[c] = readGpuValue(o + value->offset, cell.type);
+			res.cells[c] = readGpuValue(o + x->cell[c], cell.type);
 		} else {
-			auto tag = gpu::getUInt(o, gpu::findSlot(l, GpuSlot::Kind::CellTag, c));
-			res.cells[c] = gpu::widen(g, p, loaded, branch, tag, gpu::getUInt(o, value), cell.type,
-					cell.subtypeId);
+			res.cells[c] = gpu::widen(g, p, loaded, branch, at(x->cellTag[c]), at(x->cell[c]),
+					cell.type, cell.subtypeId);
 		}
 	}
 
-	auto count = gpu::getUInt(o, gpu::findSlot(l, GpuSlot::Kind::DecisionCount));
-	auto words = gpu::findSlot(l, GpuSlot::Kind::Decisions);
-	mem_std::Vector<uint32_t> decisions;
+	auto count = at(x->decisionCount);
+	thread_local mem_std::Vector<uint32_t> decisions;
+	decisions.clear();
 	for (uint32_t k = 0; k < count; ++k) {
-		decisions.emplace_back((gpu::getUInt(o, words, k / 32) >> (k % 32)) & 1);
+		decisions.emplace_back((at(x->decisions, k / 32) >> (k % 32)) & 1);
 	}
 	return replayGpuPath(g, p, SpanView<uint32_t>(decisions.data(), decisions.size()), res.failed,
 			res.budget, res.failNode, res.failStatus, res.steps, res.path);

@@ -404,6 +404,20 @@ void MachineT<Graph, Local, Trace>::propagate(uint32_t node, uint32_t activation
 	mem_std::Vector<uint64_t> dataReady;
 	mem_std::Vector<uint64_t> execReady;
 
+	// A consumer this node made ready goes on the front once, however many of its outputs reached
+	// it. A fan-out whose body reads several of them is found ready once per edge, and pushed once
+	// per edge it would run - and launch its block - once per edge: on a busy machine, where this
+	// node runs after the fan-out's token has arrived. Only a token is permission to run again
+	// (the exec loop below); data is not.
+	auto markDataReady = [&](uint64_t key) {
+		for (auto it : dataReady) {
+			if (it == key) {
+				return;
+			}
+		}
+		dataReady.emplace_back(key);
+	};
+
 	// Data first: every output that was actually produced marks its consumers' inputs.
 	for (auto e : _graph->getDataOutEdges(node)) {
 		auto &edge = _graph->getDataEdges()[e];
@@ -419,7 +433,7 @@ void MachineT<Graph, Local, Trace>::propagate(uint32_t node, uint32_t activation
 		if (dstScope == rt.scope) {
 			_local.markInput(_local.getStateIn(frame, edge.dstNode), edge.dstPin);
 			if (isReadyIn(frame, edge.dstNode, activation)) {
-				dataReady.emplace_back(makeRecordKey(edge.dstNode, activation));
+				markDataReady(makeRecordKey(edge.dstNode, activation));
 			}
 			continue;
 		}
@@ -432,7 +446,7 @@ void MachineT<Graph, Local, Trace>::propagate(uint32_t node, uint32_t activation
 			auto fanOutScope = _graph->getNodeAt(fanOut).scope;
 			if (fanOutScope == rt.scope) {
 				if (isReadyIn(frame, fanOut, activation)) {
-					dataReady.emplace_back(makeRecordKey(fanOut, activation));
+					markDataReady(makeRecordKey(fanOut, activation));
 				}
 			} else {
 				auto count = _local.getOpenCount();
@@ -441,7 +455,7 @@ void MachineT<Graph, Local, Trace>::propagate(uint32_t node, uint32_t activation
 					if (_local.activationScope(open) == fanOutScope
 							&& _local.resolveScope(open, rt.scope) == activation
 							&& isReady(fanOut, open)) {
-						dataReady.emplace_back(makeRecordKey(fanOut, open));
+						markDataReady(makeRecordKey(fanOut, open));
 					}
 				}
 			}
@@ -462,7 +476,7 @@ void MachineT<Graph, Local, Trace>::propagate(uint32_t node, uint32_t activation
 				continue; // an iteration of the same loop, but not one of ours
 			}
 			if (isReady(edge.dstNode, open)) {
-				dataReady.emplace_back(makeRecordKey(edge.dstNode, open));
+				markDataReady(makeRecordKey(edge.dstNode, open));
 			}
 		}
 	}

@@ -246,6 +246,65 @@ struct GpuLayout {
 	uint32_t align = 0;
 };
 
+// The Out record's slots by kind and index, for the decoder: byte offsets into one record, and
+// InvalidIndex for a slot the layout does not have. Offsets rather than slot pointers, so that a
+// copied program indexes its own layout. Without it the decoder searches the layout once for every
+// write and every cell of every branch.
+struct GpuOutIndex {
+	uint32_t status = InvalidIndex;
+	uint32_t failNode = InvalidIndex;
+	uint32_t failCode = InvalidIndex;
+	uint32_t steps = InvalidIndex;
+	uint32_t budget = InvalidIndex;
+	uint32_t decisionCount = InvalidIndex;
+	uint32_t decisions = InvalidIndex;
+	uint32_t copyMask = InvalidIndex;
+	mem_std::Vector<uint32_t> copy; // per block write
+	mem_std::Vector<uint32_t> copyTag;
+	mem_std::Vector<uint32_t> cell; // per GpuProgram::cells
+	mem_std::Vector<uint32_t> cellTag;
+};
+
+namespace gpu {
+
+// One walk of the layout. The first slot of a kind and index wins, as a search would have found it.
+inline void indexOutLayout(const GpuLayout &l, uint32_t writes, uint32_t cells, GpuOutIndex &out) {
+	out = GpuOutIndex();
+	out.copy.assign(writes, InvalidIndex);
+	out.copyTag.assign(writes, InvalidIndex);
+	out.cell.assign(cells, InvalidIndex);
+	out.cellTag.assign(cells, InvalidIndex);
+	auto put = [](uint32_t &at, const GpuSlot &s) {
+		if (at == InvalidIndex) {
+			at = s.offset;
+		}
+	};
+	auto putAt = [&](mem_std::Vector<uint32_t> &v, const GpuSlot &s) {
+		if (s.index < v.size()) {
+			put(v[s.index], s);
+		}
+	};
+	for (auto &s : l.slots) {
+		switch (s.kind) {
+		case GpuSlot::Kind::Status: if (s.index == 0) { put(out.status, s); } break;
+		case GpuSlot::Kind::FailNode: if (s.index == 0) { put(out.failNode, s); } break;
+		case GpuSlot::Kind::FailCode: if (s.index == 0) { put(out.failCode, s); } break;
+		case GpuSlot::Kind::Steps: if (s.index == 0) { put(out.steps, s); } break;
+		case GpuSlot::Kind::Budget: if (s.index == 0) { put(out.budget, s); } break;
+		case GpuSlot::Kind::DecisionCount: if (s.index == 0) { put(out.decisionCount, s); } break;
+		case GpuSlot::Kind::Decisions: if (s.index == 0) { put(out.decisions, s); } break;
+		case GpuSlot::Kind::CopyMask: if (s.index == 0) { put(out.copyMask, s); } break;
+		case GpuSlot::Kind::Copy: putAt(out.copy, s); break;
+		case GpuSlot::Kind::CopyTag: putAt(out.copyTag, s); break;
+		case GpuSlot::Kind::Cell: putAt(out.cell, s); break;
+		case GpuSlot::Kind::CellTag: putAt(out.cellTag, s); break;
+		default: break;
+		}
+	}
+}
+
+} // namespace gpu
+
 struct GpuProgram {
 	uint32_t block = InvalidIndex;
 	uint32_t maxSteps = 0;
@@ -271,6 +330,7 @@ struct GpuProgram {
 	uint32_t maxDecisions = 0;
 
 	GpuLayout blockLayout, inLayout, outLayout;
+	GpuOutIndex outIndex; // written with the layouts
 
 	mem_std::Vector<StringView> bodies; // the GLSL functions used, sorted, unique
 	uint64_t hash = 0;
