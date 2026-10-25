@@ -70,9 +70,43 @@ SPRT_API __SPRT_ID(size_t) __SPRT_ID(strnlen_impl)(const char *, __SPRT_ID(size_
 SPRT_API char *__SPRT_ID(strerror_impl)(int);
 
 
+#if defined(__GNUC__) || defined(__clang__)
+// An extent known at compile time is the compiler's to lower: through the exported function every
+// 4-byte read of a store field is two calls and libc's dispatch, where the builtin is one move.
+// Any other extent still goes through the runtime's own function. Functions rather than
+// expression macros, so that `::__sprt_memcpy(...)` still names something.
+__attribute__((always_inline)) static inline void *__sprt_memcpy_inline(void *__SPRT_RESTRICT __d,
+		const void *__SPRT_RESTRICT __s, __SPRT_ID(size_t) __n) {
+	if (__builtin_constant_p(__n)) {
+		return __builtin_memcpy(__d, __s, __n);
+	}
+	return __SPRT_ID(memcpy_impl)(__d, __s, __n);
+}
+
+__attribute__((always_inline)) static inline void *__sprt_memmove_inline(void *__d, const void *__s,
+		__SPRT_ID(size_t) __n) {
+	if (__builtin_constant_p(__n)) {
+		return __builtin_memmove(__d, __s, __n);
+	}
+	return __SPRT_ID(memmove_impl)(__d, __s, __n);
+}
+
+__attribute__((always_inline)) static inline void *__sprt_memset_inline(void *__d, int __c,
+		__SPRT_ID(size_t) __n) {
+	if (__builtin_constant_p(__n)) {
+		return __builtin_memset(__d, __c, __n);
+	}
+	return __SPRT_ID(memset_impl)(__d, __c, __n);
+}
+
+#define __sprt_memcpy __sprt_memcpy_inline
+#define __sprt_memmove __sprt_memmove_inline
+#define __sprt_memset __sprt_memset_inline
+#else
 #define __sprt_memcpy __SPRT_ID(memcpy_impl)
 #define __sprt_memmove __SPRT_ID(memmove_impl)
 #define __sprt_memset __SPRT_ID(memset_impl)
+#endif
 #define __sprt_memcmp __SPRT_ID(memcmp_impl)
 #define __sprt_memchr __SPRT_ID(memchr_impl)
 #define __sprt_strcpy __SPRT_ID(strcpy_impl)
