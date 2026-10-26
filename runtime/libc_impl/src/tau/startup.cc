@@ -64,6 +64,7 @@ struct __tau_phdr {
 static_assert(sizeof(__tau_ehdr) == 64, "Elf64_Ehdr is 64 bytes");
 static_assert(sizeof(__tau_phdr) == 56, "Elf64_Phdr is 56 bytes");
 
+constexpr __SPRT_ID(uint32_t) TAU_PT_LOAD = 1;
 constexpr __SPRT_ID(uint32_t) TAU_PT_TLS = 7;
 constexpr unsigned long TAU_SERVICE_STACK = 64 * 1'024;
 
@@ -88,12 +89,22 @@ __SPRT_ID(size_t) __tau_tls_bytes() { return s_tlsSpan; }
 #endif
 
 // The templates from libtau, or the module's own PT_TLS where lld put it: variant I after a TCB of
-// 16 bytes on aarch64, variant II below the thread pointer on x86_64.
+// 16 bytes on aarch64, variant II below the thread pointer on x86_64. Root loads the module away
+// from its link address (SYS-A-RandomLayout-1): the bias is where its ELF header is against the
+// address of the segment that holds it.
 void __tau_find_tls() {
 	s_imageCount = __sprt_tau_tls_images(s_images, TAU_TLS_MAX);
 	if (s_imageCount == 0) {
 		auto eh = reinterpret_cast<const __tau_ehdr *>(__ehdr_start);
 		auto base = reinterpret_cast<const unsigned char *>(eh) + eh->e_phoff;
+		unsigned long bias = 0;
+		for (unsigned i = 0; i < eh->e_phnum; ++i) {
+			auto ph = reinterpret_cast<const __tau_phdr *>(base + i * eh->e_phentsize);
+			if (ph->p_type == TAU_PT_LOAD && ph->p_offset == 0) {
+				bias = reinterpret_cast<unsigned long>(eh) - ph->p_vaddr;
+				break;
+			}
+		}
 		for (unsigned i = 0; i < eh->e_phnum; ++i) {
 			auto ph = reinterpret_cast<const __tau_phdr *>(base + i * eh->e_phentsize);
 			if (ph->p_type == TAU_PT_TLS && ph->p_memsz) {
@@ -103,7 +114,7 @@ void __tau_find_tls() {
 #else
 				long offset = (long)(16 + ((ph->p_vaddr - 16) & (a - 1)));
 #endif
-				s_images[0] = {reinterpret_cast<const void *>(ph->p_vaddr), (unsigned long)ph->p_filesz,
+				s_images[0] = {reinterpret_cast<const void *>(bias + ph->p_vaddr), (unsigned long)ph->p_filesz,
 					(unsigned long)ph->p_memsz, a, offset};
 				s_imageCount = 1;
 				break;
