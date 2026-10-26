@@ -141,10 +141,12 @@ void __tau_copy_tls(unsigned char *tp) {
 
 extern "C" __attribute__((weak)) unsigned long __stack_chk_guard = 0;
 
+// A fault, not an exit: root counts it against the module's restart limit, so guessing the
+// canary stops the module (RT-A-StackProtector-1, SYS-A-RestartWindow-1).
 extern "C" __attribute__((weak)) __SPRT_NORETURN void __stack_chk_fail(void) {
 	static const char msg[] = "*** stack smashing detected ***\n";
 	__sprt_tau_debug_write(msg, sizeof(msg) - 1);
-	__sprt_tau_exit(127);
+	__builtin_trap();
 }
 
 // The program has thread-local data: a thread needs a block of it.
@@ -224,7 +226,11 @@ static __SPRT_NORETURN void __tau_start(const void *startInfo, __tau_main_fn ent
 		__sprt_tau_debug_write(msg, sizeof(msg) - 1);
 		__sprt_tau_exit(126);
 	}
-	__sprt_tau_random(&__stack_chk_guard, sizeof(__stack_chk_guard));
+	// Through a copy: __sprt_tau_random checks its own frame against the guard it entered with. The
+	// zero byte ends string copies before the rest of the guard.
+	unsigned long guard = 0;
+	__sprt_tau_random(&guard, sizeof(guard));
+	__stack_chk_guard = guard & ~0xffUL;
 
 	__tau_find_tls();
 	void *tp = __tau_tls_alloc();

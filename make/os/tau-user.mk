@@ -38,8 +38,10 @@ OSTYPE_TAU_USER_IMAGE_BASE := 0x0000000000400000
 OSTYPE_TAU_USER_PAGE_SIZE := 4096
 
 # No -ffreestanding: the runtime keys hosted paths off __STDC_HOSTED__ (see the
-# note in embox-user.mk); the libc modules add it to their private flags.
-OSTYPE_TAU_USER_COMMON := -fPIE -fvisibility=hidden -ffunction-sections -fdata-sections
+# note in embox-user.mk); the libc modules add it to their private flags. The canary is
+# keyed from the module's seed at every start (RT-A-StackProtector-1).
+OSTYPE_TAU_USER_COMMON := -fPIE -fvisibility=hidden -ffunction-sections -fdata-sections \
+	-fstack-protector-strong
 
 OSTYPE_GENERAL_CFLAGS := -Wall $(OSTYPE_TAU_USER_COMMON)
 # Root links static TLS only (SYS-A-StaticTls-1): a shared library uses no dynamic model.

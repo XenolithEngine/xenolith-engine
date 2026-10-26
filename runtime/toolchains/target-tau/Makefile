@@ -220,7 +220,8 @@ $(3)
 endef
 
 # $(1): the output, $(2): the runtimes, $(3): LIBUNWIND_IS_BAREMETAL, $(4): the compile flags of
-# libunwind and libc++abi.
+# libunwind and libc++abi. They are EL0 code and carry the canary (RT-A-StackProtector-1); the
+# builtins do not, the kernel links them too.
 runtimes_configure = \
 	-G "Ninja" \
 	-S $(LIB_SRC_DIR)/llvm-project/runtimes \
@@ -288,7 +289,7 @@ $(OUT)/target-dll.mk: $(THIS_FILE) | $(OUT)
 
 $(OUT)/.runtimes: $(OUT)/toolchain.cmake
 	rm -rf $(OUT)/runtimes-build && mkdir -p $(OUT)/runtimes-build
-	cd $(OUT)/runtimes-build && cmake $(call runtimes_configure,$(OUT),compiler-rt;libunwind;libcxxabi,On,-fPIC)
+	cd $(OUT)/runtimes-build && cmake $(call runtimes_configure,$(OUT),compiler-rt;libunwind;libcxxabi,On,-fPIC;-fstack-protector-strong)
 	cd $(OUT)/runtimes-build && cmake --build .
 	cd $(OUT)/runtimes-build && cmake --install .
 	rm -rf $(OUT)/runtimes-build
@@ -296,7 +297,7 @@ $(OUT)/.runtimes: $(OUT)/toolchain.cmake
 
 $(OUT_DLL)/.runtimes: $(OUT)/toolchain.cmake | $(OUT_DLL)
 	rm -rf $(OUT_DLL)/runtimes-build && mkdir -p $(OUT_DLL)/runtimes-build
-	cd $(OUT_DLL)/runtimes-build && cmake $(call runtimes_configure,$(OUT_DLL),libunwind;libcxxabi,Off,-fPIC;-ftls-model=initial-exec)
+	cd $(OUT_DLL)/runtimes-build && cmake $(call runtimes_configure,$(OUT_DLL),libunwind;libcxxabi,Off,-fPIC;-ftls-model=initial-exec;-fstack-protector-strong)
 	cd $(OUT_DLL)/runtimes-build && cmake --build .
 	cd $(OUT_DLL)/runtimes-build && cmake --install .
 	rm -rf $(OUT_DLL)/runtimes-build
