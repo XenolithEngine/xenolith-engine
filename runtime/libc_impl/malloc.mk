@@ -89,10 +89,14 @@ MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS += \
 endif
 
 ifeq ($(TARGET_SYSTEM),TauUser)
-# Tau modules have no demand paging either: every page is granted up front.
+# Tau modules have no demand paging either: every page is granted up front, and each thread's
+# heap takes a segment. 2 MiB is one block of a module's map; the commit mask of a segment must
+# fill whole words, so its slices are 32 KiB (small pages of 32 KiB, objects past 1 MiB mapped
+# apart).
 MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS += \
 	-DMI_DEFAULT_ARENA_RESERVE=0 \
-	-DMI_SEGMENT_SHIFT=22
+	-DMI_SEGMENT_SLICE_SHIFT=15 \
+	-DMI_SEGMENT_SHIFT=21
 endif
 
 ifeq ($(TARGET_SYSTEM),Embox)
