@@ -44,7 +44,10 @@ SP_ARCH ?= aarch64
 ifeq ($(SP_ARCH),aarch64)
 SP_TARGET_CLANG := aarch64-none-elf
 SP_LINK_CLANG := $(SP_TARGET_CLANG)
-TAU_ARCH_FLAGS := -march=armv8-a
+# x18 is the shadow call stack of EL0 (xenolith-tau RT-A-ShadowStack-1): no code of any target
+# takes it, EL0 code keeps its return addresses there.
+TAU_ARCH_FLAGS := -march=armv8-a -ffixed-x18
+TAU_EL0_FLAGS := -fsanitize=shadow-call-stack
 else ifeq ($(SP_ARCH),x86_64)
 SP_TARGET_CLANG := x86_64-unknown-none-elf
 # clang hands the link of x86_64-unknown-none-elf to the system gcc; its Linux driver runs
@@ -52,6 +55,7 @@ SP_TARGET_CLANG := x86_64-unknown-none-elf
 SP_LINK_CLANG := x86_64-unknown-linux-gnu
 # The thread pointer (fs) belongs to the module's TLS block: no canary there.
 TAU_ARCH_FLAGS := -march=x86-64 -mstack-protector-guard=global
+TAU_EL0_FLAGS :=
 # The builtins' cpu_model/x86.c needs the compiler's cpuid.h.
 TAU_RT_ARCH_INCLUDES = -isystem $(HOST_DIR)/lib/clang/$(SP_LLVM_VER)/include
 else
@@ -220,8 +224,9 @@ $(3)
 endef
 
 # $(1): the output, $(2): the runtimes, $(3): LIBUNWIND_IS_BAREMETAL, $(4): the compile flags of
-# libunwind and libc++abi. They are EL0 code and carry the canary (RT-A-StackProtector-1); the
-# builtins do not, the kernel links them too.
+# libunwind and libc++abi. They are EL0 code and carry the canary (RT-A-StackProtector-1) and the
+# shadow call stack; the builtins do not, the kernel links them too.
+TAU_EL0_LIST := $(if $(TAU_EL0_FLAGS),;$(TAU_EL0_FLAGS))
 runtimes_configure = \
 	-G "Ninja" \
 	-S $(LIB_SRC_DIR)/llvm-project/runtimes \
@@ -281,15 +286,15 @@ $(OUT)/target-kernel.mk: $(THIS_FILE) | $(OUT)
 	$(file >$@,$(call TARGET_MK,Tau,-nostdlibinc))
 
 $(OUT)/target-user.mk: $(THIS_FILE) | $(OUT)
-	$(file >$@,$(call TARGET_MK,TauUser,-nostdinc))
+	$(file >$@,$(call TARGET_MK,TauUser,-nostdinc $(TAU_EL0_FLAGS)))
 
 # TARGET_SPRT_SHARED: user modules link libsprt.so (make/os/tau-user.mk, runtime/runtime-shared.mk).
 $(OUT)/target-dll.mk: $(THIS_FILE) | $(OUT)
-	$(file >$@,$(call TARGET_MK,TauUser,-nostdinc,TARGET_SPRT_SHARED := 1))
+	$(file >$@,$(call TARGET_MK,TauUser,-nostdinc $(TAU_EL0_FLAGS),TARGET_SPRT_SHARED := 1))
 
 $(OUT)/.runtimes: $(OUT)/toolchain.cmake
 	rm -rf $(OUT)/runtimes-build && mkdir -p $(OUT)/runtimes-build
-	cd $(OUT)/runtimes-build && cmake $(call runtimes_configure,$(OUT),compiler-rt;libunwind;libcxxabi,On,-fPIC;-fstack-protector-strong)
+	cd $(OUT)/runtimes-build && cmake $(call runtimes_configure,$(OUT),compiler-rt;libunwind;libcxxabi,On,-fPIC;-fstack-protector-strong$(TAU_EL0_LIST))
 	cd $(OUT)/runtimes-build && cmake --build .
 	cd $(OUT)/runtimes-build && cmake --install .
 	rm -rf $(OUT)/runtimes-build
@@ -297,7 +302,7 @@ $(OUT)/.runtimes: $(OUT)/toolchain.cmake
 
 $(OUT_DLL)/.runtimes: $(OUT)/toolchain.cmake | $(OUT_DLL)
 	rm -rf $(OUT_DLL)/runtimes-build && mkdir -p $(OUT_DLL)/runtimes-build
-	cd $(OUT_DLL)/runtimes-build && cmake $(call runtimes_configure,$(OUT_DLL),libunwind;libcxxabi,Off,-fPIC;-ftls-model=initial-exec;-fstack-protector-strong)
+	cd $(OUT_DLL)/runtimes-build && cmake $(call runtimes_configure,$(OUT_DLL),libunwind;libcxxabi,Off,-fPIC;-ftls-model=initial-exec;-fstack-protector-strong$(TAU_EL0_LIST))
 	cd $(OUT_DLL)/runtimes-build && cmake --build .
 	cd $(OUT_DLL)/runtimes-build && cmake --install .
 	rm -rf $(OUT_DLL)/runtimes-build
@@ -344,7 +349,7 @@ libs: dll $(OUT_LIBS)/toolchain-libs.cmake
 	$(MAKE) -C $(MAKE_ROOT) -f libs.mk \
 		SP_ARCH=$(SP_ARCH) \
 		SP_ARCH_TARGET_CLANG=$(SP_TARGET_CLANG) \
-		SP_TAU_ARCH_FLAGS="$(TAU_ARCH_FLAGS)" \
+		SP_TAU_ARCH_FLAGS="$(TAU_ARCH_FLAGS) $(TAU_EL0_FLAGS)" \
 		SP_INSTALL_PREFIX=$(OUT_LIBS) \
 		SP_RUNTIME_ROOT=$(SP_RUNTIME_ROOT) \
 		SP_CC=$(HOST_DIR)/bin/clang \
@@ -369,7 +374,7 @@ vulkan: $(OUT_VK)/toolchain-vulkan.cmake $(SPRT_SO)
 	$(MAKE) -C $(MAKE_ROOT) -f vulkan.mk \
 		SP_ARCH=$(SP_ARCH) \
 		SP_ARCH_TARGET_CLANG=$(SP_TARGET_CLANG) \
-		SP_TAU_ARCH_FLAGS="$(TAU_ARCH_FLAGS)" \
+		SP_TAU_ARCH_FLAGS="$(TAU_ARCH_FLAGS) $(TAU_EL0_FLAGS)" \
 		SP_VK_LINK_FLAGS="$(VK_LINK_FLAGS)" \
 		SP_INSTALL_PREFIX=$(OUT_VK) \
 		SP_RUNTIME_ROOT=$(SP_RUNTIME_ROOT) \
