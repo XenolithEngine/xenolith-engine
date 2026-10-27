@@ -296,9 +296,11 @@ Status Looper::performOnThread(dispatch::Function<void()> &&func, Ref *target, b
 	}
 }
 
+// Without workers the task goes to the looper's queue, never in place: the caller expects it to run
+// later, and may hold what the task takes.
 Status Looper::performAsync(Rc<Task> &&task, bool first) {
 	if (_data->threadPoolInfo.threadCount == 0) {
-		return performOnThread(sprt::move(task), true);
+		return performOnThread(sprt::move(task), false);
 	}
 	return _data->getThreadPool()->perform(sprt::move(task), first);
 }
@@ -306,7 +308,7 @@ Status Looper::performAsync(Rc<Task> &&task, bool first) {
 Status Looper::performAsync(dispatch::Function<void()> &&func, Ref *target, bool first,
 		StringView tag) {
 	if (_data->threadPoolInfo.threadCount == 0) {
-		return performOnThread(sprt::move(func), target, true, tag);
+		return performOnThread(sprt::move(func), target, false, tag);
 	}
 	return _data->getThreadPool()->perform(sprt::move(func), target, first, tag);
 }
