@@ -321,6 +321,52 @@ int __sprt_tau_display_present(unsigned index, unsigned x, unsigned y, unsigned 
 // Ends the session; the display keeps the last frame.
 void __sprt_tau_display_close(void);
 
+// The GPU of the module (dev.gpu@1 through libtau, IO-A-GpuIface-1): one session with its heaps
+// mapped, found by Mesa through dlsym. open() attaches, `wait` waits for a provider to start;
+// -EBUSY: another client holds the GPU, -ENOENT: no provider runs. A submit's fence is the value
+// its ring of its context reaches; the session sees each fence come. -ECONNRESET: the session is
+// lost with its heaps, contexts and BOs (the driver died), open() again.
+#define __SPRT_TAU_GPU_NO_RING 255 // the context's timeline without a ring
+
+struct __sprt_tau_gpu_info {
+	unsigned kind; // gpu_kind of dev.gpu
+	unsigned vendor;
+	unsigned device;
+	unsigned heaps;
+	unsigned params_bytes; // of the block of query(1)
+};
+
+struct __sprt_tau_gpu_point {
+	unsigned ctx;
+	unsigned ring;
+	unsigned long long value;
+};
+
+int __sprt_tau_gpu_open(int wait, struct __sprt_tau_gpu_info *info);
+// Heap `index`, mapped whole; flags are dev.gpu's GPU_HEAP_*.
+int __sprt_tau_gpu_heap(unsigned index, void **data, unsigned long long *size, unsigned *flags);
+// A block of parameters or a capset (dev.gpu's query) into `out`; *written of `len` bytes.
+int __sprt_tau_gpu_query(unsigned what, unsigned arg0, unsigned arg1, void *out, unsigned len,
+		unsigned *written);
+int __sprt_tau_gpu_ctx_create(unsigned capset, unsigned rings, unsigned *ctx);
+int __sprt_tau_gpu_ctx_destroy(unsigned ctx);
+// A BO of a heap: its id, the device's resource, and its bytes in the heap's mapping.
+int __sprt_tau_gpu_bo_create(unsigned heap, unsigned flags, unsigned long long size, unsigned ctx,
+		unsigned long long blob_id, unsigned *bo, void **data);
+int __sprt_tau_gpu_bo_destroy(unsigned bo);
+// Sends `len` bytes of commands, whole words, to `ring` of `ctx` and returns once they are sent:
+// *value is the fence the ring reaches with them.
+int __sprt_tau_gpu_submit(unsigned ctx, unsigned ring, const void *cmds, unsigned len,
+		unsigned long long *value);
+// The value `ring` of `ctx` reached.
+int __sprt_tau_gpu_reached(unsigned ctx, unsigned ring, unsigned long long *value);
+// Waits until every point is reached, or one when `any`; -ETIMEDOUT after timeout_ns (0: looks
+// once, __SPRT_TAU_TIMEOUT_INFINITE: never).
+int __sprt_tau_gpu_wait(const struct __sprt_tau_gpu_point *points, unsigned count, int any,
+		unsigned long long timeout_ns);
+// Ends the session: the driver frees its contexts and BOs.
+void __sprt_tau_gpu_close(void);
+
 // The input of the module (dev.input@1 through libtau): one session with every event of the
 // provider. open() attaches, `wait` waits for a provider to start; -EBUSY: another client holds
 // the input, -ENOENT: no provider runs. next() takes an event without waiting: 1 with one, 0
