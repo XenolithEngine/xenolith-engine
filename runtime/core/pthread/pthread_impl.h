@@ -171,9 +171,10 @@ struct __thread_slot {
 struct __thread_pool {
 	static __thread_pool *get();
 
-	// Initial capacity reserved for the per-thread lookup tables (activeThreads /
-	// activeThreadsByTid) at construction, so inserts done under `mutex` from a
-	// newly-spawned thread's registerThread() stay allocation-free (see the ctor).
+	// Initial capacity reserved for the lookup tables (activeThreads, activeThreadsByTid, keys)
+	// at construction, so inserts done under `mutex` from a newly-spawned thread's
+	// registerThread(), or for the key the allocator makes when that thread's heap starts, stay
+	// allocation-free (see the ctor).
 	static constexpr uint32_t ThreadTableReserve = 128;
 
 	int fifoPrioMin = 0;

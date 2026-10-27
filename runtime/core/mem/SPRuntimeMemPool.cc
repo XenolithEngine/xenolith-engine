@@ -329,10 +329,21 @@ void Pool::clear() {
 Pool *Pool::create(Allocator *alloc) {
 	Allocator *allocator = alloc;
 	if (allocator == nullptr) {
-		allocator = new (__sprt_local_alloc(sizeof(Allocator)), sprt::nothrow) Allocator();
+		auto mem = __sprt_local_alloc(sizeof(Allocator));
+		if (!mem) {
+			return nullptr;
+		}
+		allocator = new (mem, sprt::nothrow) Allocator();
 	}
 
 	auto node = allocator->alloc(config::MIN_ALLOC - SIZEOF_MEMNODE);
+	if (!node) {
+		if (!alloc) {
+			sprt::destroy_at(allocator);
+			__sprt_local_free(allocator, sizeof(Allocator));
+		}
+		return nullptr;
+	}
 	node->next = node;
 	node->ref = &node->next;
 

@@ -96,7 +96,8 @@ size_t malloc_usable_size(void *p) { return mi_usable_size(p); }
 
 #endif // Embox EL1
 
-void __sprt_malloc_thread_attach(void) __SPRT_NOEXCEPT {
+/* False when a new thread's heap cannot take its first block: the thread is refused. */
+bool __sprt_malloc_thread_attach(void) __SPRT_NOEXCEPT {
 	mi_heap_t *heap = mi_prim_get_default_heap();
 
 	/* The main thread is the one whose heap is the main heap. Not
@@ -104,13 +105,15 @@ void __sprt_malloc_thread_attach(void) __SPRT_NOEXCEPT {
 	 * is 0, and on Embox EL0 process init runs before the thread pointer is set,
 	 * so there it said yes for every thread. */
 	if (heap == &_mi_heap_main) {
-		return;
+		return true;
 	}
 	if (!mi_heap_is_initialized(heap)) {
-		mi_free(mi_malloc(1));
-		return;
+		void *first = mi_malloc(1);
+		mi_free(first);
+		return first != NULL;
 	}
 	_mi_prim_thread_associate_default_heap(heap);
+	return true;
 }
 
 // Total bytes currently allocated from the default heap, summed over mimalloc's

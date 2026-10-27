@@ -231,16 +231,20 @@ int __SPRT_ID(sprt_plock_lock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock
 
 	unique_lock ulock(storage->plockMutex);
 
-	// The table moves and frees its slots on insert and erase: once its mutex is released only
-	// the data may be used, kept alive by the refcount taken here.
-	__plock_data *data = nullptr;
-	auto it = storage->plocks.find(lock);
-	if (it == storage->plocks.end()) {
-		auto newplock = (__plock_data *)__sprt_local_alloc(sizeof(__plock_data));
-		data = storage->plocks.emplace(lock, new (newplock, nothrow) __plock_data).first->second;
+	// Once the table's mutex is released the data is kept alive by the refcount taken here.
+	auto link = storage->find(lock);
+	auto data = *link;
+	if (!data) {
+		auto mem = __sprt_local_alloc(sizeof(__plock_data));
+		if (!mem) {
+			__sprt_errno = ENOMEM;
+			return -1;
+		}
+		data = new (mem, nothrow) __plock_data;
+		data->lock = lock;
 		data->refcount = 1;
+		*link = data;
 	} else {
-		data = it->second;
 		++data->refcount;
 	}
 
@@ -276,11 +280,17 @@ int __SPRT_ID(sprt_plock_trylock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_l
 
 	unique_lock ulock(storage->plockMutex);
 
-	auto it = storage->plocks.find(lock);
-	if (it == storage->plocks.end()) {
-		auto newplock = (__plock_data *)__sprt_local_alloc(sizeof(__plock_data));
-		auto data = storage->plocks.emplace(lock, new (newplock, nothrow) __plock_data).first->second;
+	auto link = storage->find(lock);
+	if (!*link) {
+		auto mem = __sprt_local_alloc(sizeof(__plock_data));
+		if (!mem) {
+			__sprt_errno = ENOMEM;
+			return -1;
+		}
+		auto data = new (mem, nothrow) __plock_data;
+		data->lock = lock;
 		data->refcount = 1;
+		*link = data;
 
 		// It's a new lock, this should return immediately
 		__sprt_sprt_rlock_t tid;
@@ -302,7 +312,7 @@ int __SPRT_ID(sprt_plock_trylock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_l
 		__sprt_sprt_rlock_t tid;
 		*rmutex_base::getNativeValue(tid) = __sprt_gettid();
 
-		auto data = it->second;
+		auto data = *link;
 		auto res = rmutex_base::_try_lock<sprt_rlock_try_wait>(data->data.value, tid,
 				__SPRT_SPRT_LOCK_FLAG_PI);
 		switch (res) {
@@ -376,24 +386,24 @@ int __SPRT_ID(sprt_plock_unlock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lo
 
 	unique_lock ulock(storage->plockMutex);
 
-	auto it = storage->plocks.find(lock);
-	if (it == storage->plocks.end()) {
+	auto link = storage->find(lock);
+	auto data = *link;
+	if (!data) {
 		__sprt_errno = ESRCH;
 		return -1;
 	}
 
-	auto recount = it->second->refcount;
-	if (recount == 1) {
-		doUnlock(it->second->data.value, &it->second->data.counter);
-		destroy_at(it->second);
-		__sprt_local_free((void *)it->second, sizeof(__plock_data));
-		storage->plocks.erase(it);
+	if (data->refcount == 1) {
+		doUnlock(data->data.value, &data->data.counter);
+		*link = data->next;
+		destroy_at(data);
+		__sprt_local_free((void *)data, sizeof(__plock_data));
 	} else {
 		if (flags & __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED) {
-			it->second->flags |= __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED;
+			data->flags |= __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED;
 		}
-		--it->second->refcount;
-		doUnlock(it->second->data.value, &it->second->data.counter);
+		--data->refcount;
+		doUnlock(data->data.value, &data->data.counter);
 	}
 	return 0;
 }

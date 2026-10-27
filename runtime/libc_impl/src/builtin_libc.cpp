@@ -101,8 +101,6 @@ __libc::__libc() {
 		__get_locale(__SPRT_LC_MESSAGES, "C.UTF8", 6),
 	};
 
-	plockStorage.plocks.max_load_factor(2.0);
-
 	mainThread = __sprt_gettid();
 }
 
