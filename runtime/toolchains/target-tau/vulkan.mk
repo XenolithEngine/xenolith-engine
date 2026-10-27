@@ -20,8 +20,8 @@
 
 # Vulkan for Tau user modules (the target `vulkan` of the Makefile, BLD-A-VulkanLibs-1 of
 # xenolith-tau), built into SP_INSTALL_PREFIX: the Vulkan and SPIR-V headers, the loader
-# libvulkan.so.1 (vulkan-loader.mk) and lavapipe libvulkan_lvp.so with LLVM inside it
-# (llvm.mk, mesa.mk), both shared libraries linked against libsprt.so.
+# libvulkan.so.1 (vulkan-loader.mk), lavapipe libvulkan_lvp.so with LLVM inside it (llvm.mk,
+# mesa.mk) and Venus libvulkan_virtio.so (mesa.mk), shared libraries linked against libsprt.so.
 
 .DEFAULT_GOAL := all
 .NOTPARALLEL:
@@ -51,7 +51,7 @@ P := $(SP_INSTALL_PREFIX)/usr
 VK_HEADERS := $(P)/include/vulkan/vulkan.h
 SPIRV_HEADERS := $(P)/include/spirv/unified1/spirv.h
 
-all: $(VK_HEADERS) $(SPIRV_HEADERS) $(P)/lib/libvulkan.so.1 $(P)/lib/libvulkan_lvp.so
+all: $(VK_HEADERS) $(SPIRV_HEADERS) $(P)/lib/libvulkan.so.1 $(P)/lib/libvulkan_lvp.so $(P)/lib/libvulkan_virtio.so
 
 $(VK_HEADERS): ../common/vulkan-headers.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
@@ -67,5 +67,8 @@ $(P)/lib/libLLVMCore.a: llvm.mk lavapipe-options.mk
 
 $(P)/lib/libvulkan_lvp.so: mesa.mk lavapipe-options.mk $(wildcard $(MAKE_ROOT)../replacements/mesa/26.2.3-tau/*.patch) $(P)/lib/libLLVMCore.a $(VK_HEADERS)
 	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(P)/lib/libvulkan_virtio.so: mesa.mk lavapipe-options.mk $(wildcard $(MAKE_ROOT)../replacements/mesa/26.2.3-tau/*.patch) $(VK_HEADERS)
+	$(MAKE) -f $< $(FORWARD_VARS) MESA_VARIANT=venus
 
 .PHONY: all

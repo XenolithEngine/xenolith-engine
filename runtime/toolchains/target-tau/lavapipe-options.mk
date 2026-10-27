@@ -65,8 +65,9 @@ LLVM_LIBRARIES := \
 # The libraries, their headers and CMake package: `all` would also link programs.
 LLVM_INSTALL_TARGETS := install-llvm-libraries install-llvm-headers install-cmake-exports
 
-# Mesa: lavapipe only, MCJIT (llvm-orcjit=false), no window systems, no shader cache.
-MESA_OPTIONS := \
+# Mesa without window systems and shader cache; MESA_OPTIONS adds lavapipe with MCJIT
+# (llvm-orcjit=false), MESA_VENUS_OPTIONS Venus, the driver of virtio-gpu, without LLVM.
+MESA_COMMON_OPTIONS := \
 	--buildtype release \
 	-Db_ndebug=true \
 	-Ddefault_library=static \
@@ -92,12 +93,19 @@ MESA_OPTIONS := \
 	-Dspirv-tools=disabled \
 	-Dbuild-tests=false \
 	-Dvideo-codecs= \
-	-Dperfetto=false \
+	-Dperfetto=false
+
+MESA_OPTIONS := $(MESA_COMMON_OPTIONS) \
 	-Dvulkan-drivers=swrast \
 	-Dgallium-drivers=llvmpipe \
 	-Dllvm=enabled \
 	-Dshared-llvm=disabled \
 	-Ddraw-use-llvm=true \
 	-Dllvm-orcjit=false
+
+MESA_VENUS_OPTIONS := $(MESA_COMMON_OPTIONS) \
+	-Dvulkan-drivers=virtio \
+	-Dgallium-drivers= \
+	-Dllvm=disabled
 
 MESA_LVP := src/gallium/targets/lavapipe/libvulkan_lvp.so

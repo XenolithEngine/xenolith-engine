@@ -18,9 +18,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-# lavapipe for Tau: libvulkan_lvp.so, a shared library root links into a user module
-# (SYS-A-DynLink-1 of xenolith-tau), with the LLVM of llvm.mk inside it, and its ICD manifest
-# naming the library by its soname (RT-A-VulkanLoader-1).
+# Mesa's Vulkan drivers for Tau, shared libraries root links into a user module (SYS-A-DynLink-1
+# of xenolith-tau), each with its ICD manifest naming the library by its soname
+# (RT-A-VulkanLoader-1): MESA_VARIANT=lavapipe, libvulkan_lvp.so with the LLVM of llvm.mk inside
+# it; MESA_VARIANT=venus, libvulkan_virtio.so, Venus over dev.gpu@1 (BLD-A-GpuLibs-1).
 #
 # The meson cross file is generated from the flags of the other libraries of the dll sysroot
 # (common/configure.mk, TAU_USER) and the link of a module's library (VK_LINK_FLAGS of the
@@ -28,7 +29,7 @@
 # does not have fails the link, and meson finds it absent. system = 'tau' keeps Mesa off its
 # Linux paths; the patches of replacements/mesa/<ver>-tau teach it the rest.
 #
-# The build tree stays (mesa-build).
+# The build trees stay (mesa-build, mesa-build-venus).
 
 .DEFAULT_GOAL := all
 
@@ -37,9 +38,24 @@ LIBNAME = mesa
 include ../common/configure.mk
 include lavapipe-options.mk
 
+MESA_VARIANT ?= lavapipe
 MESA_SRC ?= $(LIB_SRC_DIR)/mesa
-MESA_BUILD := $(SP_INSTALL_PREFIX)/mesa-build
 MESA_CROSS := $(SP_INSTALL_PREFIX)/tau-meson-cross.ini
+ifeq ($(MESA_VARIANT),venus)
+MESA_BUILD := $(SP_INSTALL_PREFIX)/mesa-build-venus
+MESA_VARIANT_OPTIONS := $(MESA_VENUS_OPTIONS)
+MESA_LIB := src/virtio/vulkan/libvulkan_virtio.so
+MESA_ICD := src/virtio/vulkan/virtio_icd.$(SP_ARCH).json
+MESA_SONAME := libvulkan_virtio.so
+MESA_ICD_NAME := virtio_icd.json
+else
+MESA_BUILD := $(SP_INSTALL_PREFIX)/mesa-build
+MESA_VARIANT_OPTIONS := $(MESA_OPTIONS)
+MESA_LIB := $(MESA_LVP)
+MESA_ICD := src/gallium/targets/lavapipe/lvp_icd.$(SP_ARCH).json
+MESA_SONAME := libvulkan_lvp.so
+MESA_ICD_NAME := lvp_icd.json
+endif
 
 # meson lists: one quoted element per flag.
 sq := '
@@ -79,18 +95,16 @@ $(MESA_CROSS): mesa.mk
 	@echo "c_link_args = $(call meson_list,$(MESA_LINK_ARGS))" >> $@
 	@echo "cpp_link_args = $(call meson_list,$(MESA_LINK_ARGS))" >> $@
 
-LVP_DIR := src/gallium/targets/lavapipe
-
 # The manifest names the library by its soname: dlopen finds it among the module's libraries.
 all: $(MESA_CROSS)
 	meson setup --wipe $(MESA_BUILD) $(MESA_SRC) --cross-file $(MESA_CROSS) \
-		--prefix /usr --libdir lib $(MESA_OPTIONS) \
+		--prefix /usr --libdir lib $(MESA_VARIANT_OPTIONS) \
 		|| meson setup $(MESA_BUILD) $(MESA_SRC) --cross-file $(MESA_CROSS) \
-		--prefix /usr --libdir lib $(MESA_OPTIONS)
-	ninja -C $(MESA_BUILD) $(MESA_LVP) $(LVP_DIR)/lvp_icd.$(SP_ARCH).json
+		--prefix /usr --libdir lib $(MESA_VARIANT_OPTIONS)
+	ninja -C $(MESA_BUILD) $(MESA_LIB) $(MESA_ICD)
 	mkdir -p $(SP_INSTALL_PREFIX)/usr/lib $(SP_INSTALL_PREFIX)/usr/share/vulkan/icd.d
-	cp -f $(MESA_BUILD)/$(MESA_LVP) $(SP_INSTALL_PREFIX)/usr/lib/libvulkan_lvp.so
-	sed -e 's|"library_path": "[^"]*"|"library_path": "libvulkan_lvp.so"|' \
-		$(MESA_BUILD)/$(LVP_DIR)/lvp_icd.$(SP_ARCH).json > $(SP_INSTALL_PREFIX)/usr/share/vulkan/icd.d/lvp_icd.json
+	cp -f $(MESA_BUILD)/$(MESA_LIB) $(SP_INSTALL_PREFIX)/usr/lib/$(MESA_SONAME)
+	sed -e 's|"library_path": "[^"]*"|"library_path": "$(MESA_SONAME)"|' \
+		$(MESA_BUILD)/$(MESA_ICD) > $(SP_INSTALL_PREFIX)/usr/share/vulkan/icd.d/$(MESA_ICD_NAME)
 
 .PHONY: all

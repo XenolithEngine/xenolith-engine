@@ -1,0 +1,905 @@
+Subject: [PATCH] venus: a renderer over dev.gpu@1 on Tau
+
+--- a/src/virtio/vulkan/vn_renderer.h
++++ b/src/virtio/vulkan/vn_renderer.h
+@@ -233,6 +233,14 @@
+                          struct vn_renderer **renderer);
+ #endif
+ 
++#if DETECT_OS_TAU
++/* dev.gpu@1 through the module's libtau (vn_renderer_tau.c) */
++VkResult
++vn_renderer_create_tau(struct vn_instance *instance,
++                       const VkAllocationCallbacks *alloc,
++                       struct vn_renderer **renderer);
++#endif
++
+ static inline VkResult
+ vn_renderer_create(struct vn_instance *instance,
+                    const VkAllocationCallbacks *alloc,
+@@ -240,6 +248,8 @@
+ {
+ #if DETECT_OS_EMBOX
+    return vn_renderer_create_embox(instance, alloc, renderer);
++#elif DETECT_OS_TAU
++   return vn_renderer_create_tau(instance, alloc, renderer);
+ #elif defined(HAVE_LIBDRM)
+    VkResult result;
+    if (VN_DEBUG(VTEST)) {
+--- /dev/null
++++ b/src/virtio/vulkan/vn_renderer_tau.c
+@@ -0,0 +1,788 @@
++/*
++ * Copyright 2026 Xenolith Team
++ * SPDX-License-Identifier: MIT
++ */
++
++/** The Venus renderer on Tau: virtio-gpu through dev.gpu@1.
++ *
++ * The module's libtau holds the one session of the GPU and exports its calls
++ * (sprt_tau.h, __sprt_tau_gpu_*), found here with dlsym, as the display's are
++ * by wsi_common_tau.c. This file follows vn_renderer_embox.c, with:
++ *
++ *  - one context of the session per renderer (per VkInstance), 64 rings;
++ *  - shmems and host-visible bos: HOST3D blobs in the heap of host memory,
++ *    which the session maps once, normal and cached (KRN-A-HostMem-1) -- the
++ *    mappings are coherent, flush and invalidate have nothing to do;
++ *  - no dma-buf and no sync_file;
++ *  - a submission's fence is the value of its ring, known when it is sent; the
++ *    session sees each fence come. A sync remembers (ring, value) for every
++ *    submission that is to signal it; its value is the largest of those whose
++ *    ring has got there. Venus signals each sync from one ring only;
++ *  - a bo of device memory comes after the commands that make it: they go on
++ *    the CPU ring 0, whose fence the renderer comes right after processing
++ *    them, and the blob is made once it has come.
++ */
++
++#include <dlfcn.h>
++#include <errno.h>
++#include <string.h>
++
++#include <sprt/c/cross/tau_sprt/sprt_tau.h>
++
++#include "virtio/virtio-gpu/venus_hw.h"
++
++#include "util/os_time.h"
++
++#include "vn_renderer_internal.h"
++
++#define TAU_VGPU_PCI_VENDOR_ID 0x1af4
++#define TAU_VGPU_PCI_DEVICE_ID 0x1050
++#define TAU_GPU_KIND_VIRTIO 1
++#define TAU_GPU_QUERY_CAPSET 2
++#define TAU_GPU_CAPSET_VENUS 4
++#define TAU_GPU_RINGS 64
++#define TAU_GPU_HEAP_HOST_VISIBLE 4
++#define TAU_GPU_BO_MAPPABLE 1
++#define TAU_GPU_BO_SHAREABLE 2
++#define TAU_PAGE 4096
++
++/* a wait re-checks its syncs at least this often */
++#define TAU_WAIT_SLICE_NS (1000ull * 1000)
++
++struct tau_gpu_calls {
++   int (*open)(int, struct __sprt_tau_gpu_info *);
++   int (*heap)(unsigned, void **, unsigned long long *, unsigned *);
++   int (*query)(unsigned, unsigned, unsigned, void *, unsigned, unsigned *);
++   int (*ctx_create)(unsigned, unsigned, unsigned *);
++   int (*ctx_destroy)(unsigned);
++   int (*bo_create)(unsigned, unsigned, unsigned long long, unsigned,
++                    unsigned long long, unsigned *, void **);
++   int (*bo_destroy)(unsigned);
++   int (*submit)(unsigned, unsigned, const void *, unsigned,
++                 unsigned long long *);
++   int (*reached)(unsigned, unsigned, unsigned long long *);
++   int (*wait)(const struct __sprt_tau_gpu_point *, unsigned, int,
++               unsigned long long);
++};
++
++static struct tau_gpu_calls tau_gpu;
++static once_flag tau_gpu_once = ONCE_FLAG_INIT;
++
++static void
++tau_gpu_resolve(void)
++{
++   void *module = dlopen(NULL, RTLD_NOW);
++   if (!module)
++      return;
++#define TAU_CALL(name) tau_gpu.name = dlsym(module, "__sprt_tau_gpu_" #name)
++   TAU_CALL(open);
++   TAU_CALL(heap);
++   TAU_CALL(query);
++   TAU_CALL(ctx_create);
++   TAU_CALL(ctx_destroy);
++   TAU_CALL(bo_create);
++   TAU_CALL(bo_destroy);
++   TAU_CALL(submit);
++   TAU_CALL(reached);
++   TAU_CALL(wait);
++#undef TAU_CALL
++   dlclose(module);
++}
++
++struct tau_shmem {
++   struct vn_renderer_shmem base;
++};
++
++struct tau_bo {
++   struct vn_renderer_bo base;
++   void *data;
++   uint32_t blob_flags;
++};
++
++/* a submission that signals the sync with `value` once `ring` reached `fence` */
++struct tau_sync_point {
++   uint64_t fence;
++   uint64_t value;
++   uint32_t ring;
++};
++
++struct tau_sync {
++   struct vn_renderer_sync base;
++
++   uint64_t value;
++   struct tau_sync_point *points;
++   uint32_t point_count;
++   uint32_t point_capacity;
++};
++
++struct tau_renderer {
++   struct vn_renderer base;
++
++   struct vn_instance *instance;
++
++   uint32_t ctx;
++   uint32_t host_heap;
++   struct virgl_renderer_capset_venus capset;
++
++   struct vn_renderer_shmem_cache shmem_cache;
++
++   /* the state of every sync; nobody blocks while holding it */
++   mtx_t sync_mutex;
++   /* broadcast when a sync gets a new point or value */
++   cnd_t sync_cond;
++};
++
++static inline struct tau_renderer *
++tau_renderer(struct vn_renderer *renderer)
++{
++   return (struct tau_renderer *)renderer;
++}
++
++/* The value `ring` of the renderer's context reached; 0 when the session is
++ * lost (the waits find out). */
++static uint64_t
++tau_reached(const struct tau_renderer *tau, uint32_t ring)
++{
++   unsigned long long value = 0;
++   if (tau_gpu.reached(tau->ctx, ring, &value) < 0)
++      return 0;
++   return value;
++}
++
++/* ---- syncs --------------------------------------------------------------- */
++
++/* Fold the points whose rings got there into the value. */
++static void
++tau_sync_update_locked(const struct tau_renderer *tau, struct tau_sync *sync)
++{
++   uint32_t kept = 0;
++   for (uint32_t i = 0; i < sync->point_count; i++) {
++      const struct tau_sync_point *p = &sync->points[i];
++      if (tau_reached(tau, p->ring) >= p->fence) {
++         if (p->value > sync->value)
++            sync->value = p->value;
++      } else {
++         sync->points[kept++] = *p;
++      }
++   }
++   sync->point_count = kept;
++}
++
++static bool
++tau_sync_add_point_locked(const struct tau_renderer *tau,
++                          struct tau_sync *sync,
++                          uint32_t ring,
++                          uint64_t fence,
++                          uint64_t value)
++{
++   tau_sync_update_locked(tau, sync);
++
++   if (sync->point_count == sync->point_capacity) {
++      const uint32_t capacity = MAX2(sync->point_capacity * 2, 4);
++      struct tau_sync_point *points =
++         realloc(sync->points, capacity * sizeof(*points));
++      if (!points)
++         return false;
++      sync->points = points;
++      sync->point_capacity = capacity;
++   }
++
++   sync->points[sync->point_count++] = (struct tau_sync_point){
++      .fence = fence,
++      .value = value,
++      .ring = ring,
++   };
++   return true;
++}
++
++/* The point that brings the sync to `value`, if one is submitted. */
++static const struct tau_sync_point *
++tau_sync_find_point_locked(const struct tau_sync *sync, uint64_t value)
++{
++   for (uint32_t i = 0; i < sync->point_count; i++) {
++      if (sync->points[i].value >= value)
++         return &sync->points[i];
++   }
++   return NULL;
++}
++
++static VkResult
++tau_sync_create(struct vn_renderer *renderer,
++                uint64_t initial_val,
++                struct vn_renderer_sync **out_sync)
++{
++   struct tau_sync *sync = calloc(1, sizeof(*sync));
++   if (!sync)
++      return VK_ERROR_OUT_OF_HOST_MEMORY;
++
++   sync->value = initial_val;
++   *out_sync = &sync->base;
++   return VK_SUCCESS;
++}
++
++static VkResult
++tau_sync_create_from_syncobj(struct vn_renderer *renderer,
++                             int fd,
++                             bool sync_file,
++                             struct vn_renderer_sync **out_sync)
++{
++   return VK_ERROR_INVALID_EXTERNAL_HANDLE;
++}
++
++static void
++tau_sync_destroy(struct vn_renderer *renderer, struct vn_renderer_sync *_sync)
++{
++   struct tau_sync *sync = (struct tau_sync *)_sync;
++
++   free(sync->points);
++   free(sync);
++}
++
++static int
++tau_sync_export_syncobj(struct vn_renderer *renderer,
++                        struct vn_renderer_sync *sync,
++                        bool sync_file)
++{
++   return -1;
++}
++
++static VkResult
++tau_sync_reset(struct vn_renderer *renderer, struct vn_renderer_sync *_sync)
++{
++   struct tau_renderer *tau = tau_renderer(renderer);
++   struct tau_sync *sync = (struct tau_sync *)_sync;
++
++   mtx_lock(&tau->sync_mutex);
++   sync->value = 0;
++   sync->point_count = 0;
++   mtx_unlock(&tau->sync_mutex);
++
++   return VK_SUCCESS;
++}
++
++static VkResult
++tau_sync_read(struct vn_renderer *renderer,
++              struct vn_renderer_sync *_sync,
++              uint64_t *val)
++{
++   struct tau_renderer *tau = tau_renderer(renderer);
++   struct tau_sync *sync = (struct tau_sync *)_sync;
++
++   mtx_lock(&tau->sync_mutex);
++   tau_sync_update_locked(tau, sync);
++   *val = sync->value;
++   mtx_unlock(&tau->sync_mutex);
++
++   return VK_SUCCESS;
++}
++
++static VkResult
++tau_sync_write(struct vn_renderer *renderer,
++               struct vn_renderer_sync *_sync,
++               uint64_t val)
++{
++   struct tau_renderer *tau = tau_renderer(renderer);
++   struct tau_sync *sync = (struct tau_sync *)_sync;
++
++   mtx_lock(&tau->sync_mutex);
++   tau_sync_update_locked(tau, sync);
++   if (val > sync->value)
++      sync->value = val;
++   cnd_broadcast(&tau->sync_cond);
++   mtx_unlock(&tau->sync_mutex);
++
++   return VK_SUCCESS;
++}
++
++/* ---- submit and wait ----------------------------------------------------- */
++
++static VkResult
++tau_submit(struct vn_renderer *renderer,
++           const struct vn_renderer_submit_batch *batch)
++{
++   struct tau_renderer *tau = tau_renderer(renderer);
++   unsigned long long fence;
++
++   /* the session copies the stream, the fence is on the batch's ring */
++   int ret = tau_gpu.submit(tau->ctx, batch->ring_idx, batch->cs_data,
++                            batch->cs_size, &fence);
++   if (ret) {
++      vn_log(tau->instance, "submit to ring %u failed: %d", batch->ring_idx,
++             ret);
++      return VK_ERROR_DEVICE_LOST;
++   }
++
++   if (!batch->sync_count)
++      return VK_SUCCESS;
++
++   VkResult result = VK_SUCCESS;
++   mtx_lock(&tau->sync_mutex);
++   for (uint32_t i = 0; i < batch->sync_count; i++) {
++      struct tau_sync *sync = (struct tau_sync *)batch->syncs[i];
++      if (!tau_sync_add_point_locked(tau, sync, batch->ring_idx, fence,
++                                     batch->sync_values[i]))
++         result = VK_ERROR_OUT_OF_HOST_MEMORY;
++   }
++   cnd_broadcast(&tau->sync_cond);
++   mtx_unlock(&tau->sync_mutex);
++
++   return result;
++}
++
++static bool
++tau_wait_satisfied_locked(const struct tau_renderer *tau,
++                          const struct vn_renderer_wait *wait)
++{
++   for (uint32_t i = 0; i < wait->sync_count; i++) {
++      struct tau_sync *sync = (struct tau_sync *)wait->syncs[i];
++      tau_sync_update_locked(tau, sync);
++      const bool done = sync->value >= wait->sync_values[i];
++      if (wait->wait_any && done)
++         return true;
++      if (!wait->wait_any && !done)
++         return false;
++   }
++   return !wait->wait_any || !wait->sync_count;
++}
++
++static VkResult
++tau_wait(struct vn_renderer *renderer, const struct vn_renderer_wait *wait)
++{
++   struct tau_renderer *tau = tau_renderer(renderer);
++   const int64_t deadline = (int64_t)MIN2(
++      os_time_get_absolute_timeout(wait->timeout), (uint64_t)INT64_MAX);
++
++   mtx_lock(&tau->sync_mutex);
++   for (;;) {
++      if (tau_wait_satisfied_locked(tau, wait)) {
++         mtx_unlock(&tau->sync_mutex);
++         return VK_SUCCESS;
++      }
++
++      const int64_t now = os_time_get_nano();
++      if (now >= deadline) {
++         mtx_unlock(&tau->sync_mutex);
++         return VK_TIMEOUT;
++      }
++
++      /* A submitted point to wait on: the first unsatisfied sync's (waiting
++       * for all), or any (waiting for any: then only a slice of it, the
++       * others may get there first). */
++      struct __sprt_tau_gpu_point point;
++      bool have_point = false;
++      for (uint32_t i = 0; i < wait->sync_count && !have_point; i++) {
++         struct tau_sync *sync = (struct tau_sync *)wait->syncs[i];
++         if (sync->value >= wait->sync_values[i])
++            continue;
++         const struct tau_sync_point *p =
++            tau_sync_find_point_locked(sync, wait->sync_values[i]);
++         if (p) {
++            point = (struct __sprt_tau_gpu_point){
++               .ctx = tau->ctx,
++               .ring = p->ring,
++               .value = p->fence,
++            };
++            have_point = true;
++         } else if (!wait->wait_any) {
++            break; /* not submitted yet: wait for that first */
++         }
++      }
++
++      uint64_t slice = (uint64_t)(deadline - now);
++      if (!have_point || wait->wait_any || wait->sync_count > 1)
++         slice = MIN2(slice, TAU_WAIT_SLICE_NS);
++
++      if (have_point) {
++         mtx_unlock(&tau->sync_mutex);
++         int ret = tau_gpu.wait(&point, 1, 0, slice);
++         mtx_lock(&tau->sync_mutex);
++         if (ret && ret != -ETIMEDOUT) {
++            mtx_unlock(&tau->sync_mutex);
++            return VK_ERROR_DEVICE_LOST;
++         }
++      } else {
++         /* wait-before-submit: a submission or a host write will come */
++         struct timespec ts;
++         timespec_get(&ts, TIME_UTC);
++         ts.tv_nsec += (long)slice;
++         ts.tv_sec += ts.tv_nsec / 1000000000l;
++         ts.tv_nsec %= 1000000000l;
++         cnd_timedwait(&tau->sync_cond, &tau->sync_mutex, &ts);
++      }
++   }
++}
++
++/* ---- bos ----------------------------------------------------------------- */
++
++static void
++tau_bo_invalidate(struct vn_renderer *renderer,
++                  struct vn_renderer_bo *bo,
++                  VkDeviceSize offset,
++                  VkDeviceSize size)
++{
++   /* nop: the heap of host memory is mapped coherent */
++}
++
++static void
++tau_bo_flush(struct vn_renderer *renderer,
++             struct vn_renderer_bo *bo,
++             VkDeviceSize offset,
++             VkDeviceSize size)
++{
++   /* nop: the heap of host memory is mapped coherent */
++}
++
++static void *
++tau_bo_map(struct vn_renderer *renderer,
++           struct vn_renderer_bo *_bo,
++           void *placed_addr)
++{
++   struct tau_bo *bo = (struct tau_bo *)_bo;
++
++   /* the mapping is where the heap is, not where one asks */
++   if (placed_addr || !(bo->blob_flags & TAU_GPU_BO_MAPPABLE))
++      return NULL;
++
++   bo->base.mmap_ptr = bo->data;
++   return bo->base.mmap_ptr;
++}
++
++static int
++tau_bo_export_dma_buf(struct vn_renderer *renderer, struct vn_renderer_bo *bo)
++{
++   return -1;
++}
++
++static int
++tau_bo_export_sync_file(struct vn_renderer *renderer,
++                        struct vn_renderer_bo *bo)
++{
++   return -1;
++}
++
++static bool
++tau_bo_destroy(struct vn_renderer *renderer, struct vn_renderer_bo *_bo)
++{
++   struct tau_bo *bo = (struct tau_bo *)_bo;
++
++   /* nothing imports bos here, the refcount cannot come back */
++   tau_gpu.bo_destroy(bo->base.res_id);
++   free(bo);
++   return true;
++}
++
++static VkResult
++tau_bo_create_from_dma_buf(struct vn_renderer *renderer,
++                           VkDeviceSize size,
++                           int fd,
++                           VkMemoryPropertyFlags flags,
++                           struct vn_renderer_bo **out_bo)
++{
++   return VK_ERROR_INVALID_EXTERNAL_HANDLE;
++}
++
++static VkResult
++tau_bo_create_from_device_memory(
++   struct vn_renderer *renderer,
++   struct vn_renderer_submit_batch *batch,
++   VkDeviceSize size,
++   vn_object_id mem_id,
++   VkMemoryPropertyFlags flags,
++   VkExternalMemoryHandleTypeFlags external_handles,
++   struct vn_renderer_bo **out_bo)
++{
++   struct tau_renderer *tau = tau_renderer(renderer);
++
++   uint32_t blob_flags = 0;
++   if (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
++      blob_flags |= TAU_GPU_BO_MAPPABLE;
++   if (external_handles)
++      blob_flags |= TAU_GPU_BO_SHAREABLE;
++
++   /* the commands that make the memory reach the host before the blob */
++   if (batch && batch->cs_size) {
++      unsigned long long fence;
++      struct __sprt_tau_gpu_point point = {.ctx = tau->ctx, .ring = 0};
++      int ret = tau_gpu.submit(tau->ctx, 0, batch->cs_data, batch->cs_size,
++                               &fence);
++      point.value = fence;
++      if (!ret)
++         ret = tau_gpu.wait(&point, 1, 0, __SPRT_TAU_TIMEOUT_INFINITE);
++      if (ret) {
++         vn_log(tau->instance, "commands of a blob failed: %d", ret);
++         return VK_ERROR_DEVICE_LOST;
++      }
++   }
++
++   struct tau_bo *bo = calloc(1, sizeof(*bo));
++   if (!bo)
++      return VK_ERROR_OUT_OF_HOST_MEMORY;
++
++   const uint64_t blob_size = align64(size, TAU_PAGE);
++   unsigned res_id;
++   void *data;
++   int ret = tau_gpu.bo_create(tau->host_heap, blob_flags, blob_size, tau->ctx,
++                               mem_id, &res_id, &data);
++   if (ret) {
++      vn_log(tau->instance,
++             "blob create failed: flags=%u, size=%" PRIu64 ", id=%" PRIu64
++             ", err=%d",
++             blob_flags, (uint64_t)size, (uint64_t)mem_id, ret);
++      free(bo);
++      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
++   }
++
++   *bo = (struct tau_bo){
++      .base = {
++         .refcount = VN_REFCOUNT_INIT(1),
++         .res_id = res_id,
++         .mmap_size = size,
++      },
++      .data = data,
++      .blob_flags = blob_flags,
++   };
++
++   *out_bo = &bo->base;
++   return VK_SUCCESS;
++}
++
++/* ---- shmems -------------------------------------------------------------- */
++
++static void
++tau_shmem_destroy_now(struct vn_renderer *renderer,
++                      struct vn_renderer_shmem *_shmem)
++{
++   struct tau_shmem *shmem = (struct tau_shmem *)_shmem;
++
++   tau_gpu.bo_destroy(shmem->base.res_id);
++   free(shmem);
++}
++
++static void
++tau_shmem_destroy(struct vn_renderer *renderer,
++                  struct vn_renderer_shmem *shmem)
++{
++   struct tau_renderer *tau = tau_renderer(renderer);
++
++   if (vn_renderer_shmem_cache_add(&tau->shmem_cache, shmem))
++      return;
++
++   tau_shmem_destroy_now(renderer, shmem);
++}
++
++/* Blob id 0, HOST3D, mappable: the renderer allocates host shared memory for
++ * it (supports_blob_id_0, see virtgpu_init_shmem_blob_mem). */
++static struct vn_renderer_shmem *
++tau_shmem_create(struct vn_renderer *renderer, size_t size)
++{
++   struct tau_renderer *tau = tau_renderer(renderer);
++
++   struct vn_renderer_shmem *cached_shmem =
++      vn_renderer_shmem_cache_get(&tau->shmem_cache, size);
++   if (cached_shmem) {
++      cached_shmem->refcount = VN_REFCOUNT_INIT(1);
++      return cached_shmem;
++   }
++
++   struct tau_shmem *shmem = calloc(1, sizeof(*shmem));
++   if (!shmem)
++      return NULL;
++
++   unsigned res_id;
++   void *ptr;
++   int ret = tau_gpu.bo_create(tau->host_heap, TAU_GPU_BO_MAPPABLE,
++                               align64(size, TAU_PAGE), tau->ctx, 0, &res_id,
++                               &ptr);
++   if (ret) {
++      vn_log(tau->instance, "shmem of %zu bytes failed: %d", size, ret);
++      free(shmem);
++      return NULL;
++   }
++
++   *shmem = (struct tau_shmem){
++      .base = {
++         .refcount = VN_REFCOUNT_INIT(1),
++         .res_id = res_id,
++         .mmap_size = size,
++         .mmap_ptr = ptr,
++      },
++   };
++
++   return &shmem->base;
++}
++
++/* ---- renderer ------------------------------------------------------------ */
++
++static void
++tau_init_renderer_info(struct tau_renderer *tau)
++{
++   struct vn_renderer_info *info = &tau->base.info;
++   const struct virgl_renderer_capset_venus *capset = &tau->capset;
++
++   info->pci.vendor_id = TAU_VGPU_PCI_VENDOR_ID;
++   info->pci.device_id = TAU_VGPU_PCI_DEVICE_ID;
++
++   info->has_dma_buf_import = false;
++   info->has_external_sync = false;
++   info->has_timeline_sync = true;
++   info->has_implicit_fencing = false;
++   info->has_guest_vram = false;
++
++   info->max_timeline_count = TAU_GPU_RINGS;
++
++   info->wire_format_version = capset->wire_format_version;
++   info->vk_xml_version = capset->vk_xml_version;
++   info->vk_ext_command_serialization_spec_version =
++      capset->vk_ext_command_serialization_spec_version;
++   info->vk_mesa_venus_protocol_spec_version =
++      capset->vk_mesa_venus_protocol_spec_version;
++
++   STATIC_ASSERT(sizeof(info->vk_extension_mask) >=
++                 sizeof(capset->vk_extension_mask1));
++   memcpy(info->vk_extension_mask, capset->vk_extension_mask1,
++          sizeof(capset->vk_extension_mask1));
++}
++
++static void
++tau_destroy(struct vn_renderer *renderer, const VkAllocationCallbacks *alloc)
++{
++   struct tau_renderer *tau = tau_renderer(renderer);
++
++   vn_renderer_shmem_cache_fini(&tau->shmem_cache);
++
++   if (tau->ctx)
++      tau_gpu.ctx_destroy(tau->ctx);
++
++   cnd_destroy(&tau->sync_cond);
++   mtx_destroy(&tau->sync_mutex);
++
++   vk_free(alloc, tau);
++}
++
++/* The heap of host memory, where blobs of the host are mapped. */
++static bool
++tau_find_host_heap(struct tau_renderer *tau, unsigned heaps)
++{
++   for (unsigned i = 0; i < heaps; i++) {
++      void *data;
++      unsigned long long size;
++      unsigned flags;
++      if (tau_gpu.heap(i, &data, &size, &flags) == 0 &&
++          (flags & TAU_GPU_HEAP_HOST_VISIBLE)) {
++         tau->host_heap = i;
++         return true;
++      }
++   }
++   return false;
++}
++
++static VkResult
++tau_init(struct tau_renderer *tau)
++{
++   call_once(&tau_gpu_once, tau_gpu_resolve);
++
++   struct __sprt_tau_gpu_info info;
++   if (!tau_gpu.open || !tau_gpu.wait || tau_gpu.open(0, &info) < 0 ||
++       info.kind != TAU_GPU_KIND_VIRTIO) {
++      if (VN_DEBUG(INIT))
++         vn_log(tau->instance, "no virtio GPU in dev.gpu@1");
++      return VK_ERROR_INITIALIZATION_FAILED;
++   }
++   if (!tau_find_host_heap(tau, info.heaps)) {
++      vn_log(tau->instance, "the GPU has no heap of host memory");
++      return VK_ERROR_INITIALIZATION_FAILED;
++   }
++
++   unsigned written = 0;
++   int ret = tau_gpu.query(TAU_GPU_QUERY_CAPSET, TAU_GPU_CAPSET_VENUS, 0,
++                           &tau->capset, sizeof(tau->capset), &written);
++   if (ret < 0) {
++      if (VN_DEBUG(INIT))
++         vn_log(tau->instance, "failed to get venus v0 capset: %d", ret);
++      return VK_ERROR_INITIALIZATION_FAILED;
++   }
++   if (tau->capset.wire_format_version == 0) {
++      if (VN_DEBUG(INIT))
++         vn_log(tau->instance, "Unsupported wire format version %u",
++                tau->capset.wire_format_version);
++      return VK_ERROR_INITIALIZATION_FAILED;
++   }
++   /* what virtgpu asserts, and this transport relies on too; blobs of guest
++    * vram are not made here */
++   if (!tau->capset.supports_blob_id_0 ||
++       !tau->capset.supports_multiple_timelines || tau->capset.use_guest_vram) {
++      vn_log(tau->instance,
++             "the host lacks blob id 0 or multiple timelines, or wants guest "
++             "vram");
++      return VK_ERROR_INITIALIZATION_FAILED;
++   }
++
++   ret = tau_gpu.ctx_create(TAU_GPU_CAPSET_VENUS, TAU_GPU_RINGS, &tau->ctx);
++   if (ret) {
++      tau->ctx = 0;
++      if (VN_DEBUG(INIT))
++         vn_log(tau->instance, "failed to initialize context: %d", ret);
++      return VK_ERROR_INITIALIZATION_FAILED;
++   }
++
++   vn_renderer_shmem_cache_init(&tau->shmem_cache, &tau->base,
++                                tau_shmem_destroy_now);
++
++   tau_init_renderer_info(tau);
++
++   tau->base.ops.destroy = tau_destroy;
++   tau->base.ops.submit = tau_submit;
++   tau->base.ops.wait = tau_wait;
++
++   tau->base.shmem_ops.create = tau_shmem_create;
++   tau->base.shmem_ops.destroy = tau_shmem_destroy;
++
++   tau->base.bo_ops.create_from_device_memory =
++      tau_bo_create_from_device_memory;
++   tau->base.bo_ops.create_from_dma_buf = tau_bo_create_from_dma_buf;
++   tau->base.bo_ops.destroy = tau_bo_destroy;
++   tau->base.bo_ops.export_dma_buf = tau_bo_export_dma_buf;
++   tau->base.bo_ops.export_sync_file = tau_bo_export_sync_file;
++   tau->base.bo_ops.map = tau_bo_map;
++   tau->base.bo_ops.flush = tau_bo_flush;
++   tau->base.bo_ops.invalidate = tau_bo_invalidate;
++
++   tau->base.sync_ops.create = tau_sync_create;
++   tau->base.sync_ops.create_from_syncobj = tau_sync_create_from_syncobj;
++   tau->base.sync_ops.destroy = tau_sync_destroy;
++   tau->base.sync_ops.export_syncobj = tau_sync_export_syncobj;
++   tau->base.sync_ops.reset = tau_sync_reset;
++   tau->base.sync_ops.read = tau_sync_read;
++   tau->base.sync_ops.write = tau_sync_write;
++
++   return VK_SUCCESS;
++}
++
++VkResult
++vn_renderer_create_tau(struct vn_instance *instance,
++                       const VkAllocationCallbacks *alloc,
++                       struct vn_renderer **renderer)
++{
++   struct tau_renderer *tau = vk_zalloc(alloc, sizeof(*tau), VN_DEFAULT_ALIGN,
++                                        VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
++   if (!tau)
++      return VK_ERROR_OUT_OF_HOST_MEMORY;
++
++   tau->instance = instance;
++   mtx_init(&tau->sync_mutex, mtx_plain);
++   cnd_init(&tau->sync_cond);
++
++   VkResult result = tau_init(tau);
++   if (result != VK_SUCCESS) {
++      tau_destroy(&tau->base, alloc);
++      return result;
++   }
++
++   *renderer = &tau->base;
++
++   if (VN_DEBUG(INIT))
++      vn_log(instance, "tau dev.gpu@1 backend initialized, context %u",
++             tau->ctx);
++
++   return VK_SUCCESS;
++}
+--- a/src/virtio/vulkan/meson.build
++++ b/src/virtio/vulkan/meson.build
+@@ -126,6 +126,9 @@
+ # (xl_vgpu.h) is the transport; no vtest socket, no DRM.
+ if host_machine.system() == 'embox'
+   libvn_files += files('vn_renderer_embox.c')
++# Tau: dev.gpu@1 through the module's libtau, found with dlsym.
++elif host_machine.system() == 'tau'
++  libvn_files += files('vn_renderer_tau.c')
+ elif not with_platform_windows
+   libvn_files += files('vn_renderer_vtest.c')
+ endif
+@@ -140,7 +143,7 @@
+ 
+ if with_platform_wayland or with_platform_x11 or \
+    (system_has_kms_drm and not with_platform_android) or \
+-   with_platform_windows or host_machine.system() == 'embox'
++   with_platform_windows or host_machine.system() in ['embox', 'tau']
+   libvn_files += files('vn_wsi.c')
+   vn_c_args += '-DVN_USE_WSI_PLATFORM'
+ endif
+--- a/src/virtio/vulkan/vn_common.h
++++ b/src/virtio/vulkan/vn_common.h
+@@ -52,7 +52,11 @@
+ #if DETECT_OS_WINDOWS
+ #include <processthreadsapi.h>
+ #else
++#if DETECT_OS_TAU /* the runtime's thread id, no syscalls */
++#include <sprt/c/__sprt_unistd.h>
++#else
+ #include <sys/syscall.h>
++#endif
+ 
+ #include "drm-uapi/drm_fourcc.h"
+ #include "util/libsync.h"
+@@ -644,6 +648,8 @@
+ {
+ #if DETECT_OS_ANDROID || DETECT_OS_EMBOX
+    return gettid();
++#elif DETECT_OS_TAU
++   return __sprt_gettid();
+ #elif DETECT_OS_FREEBSD
+    return syscall(SYS_thr_self);
+ #elif DETECT_OS_WINDOWS
+--- a/src/virtio/vulkan/vn_ring.c
++++ b/src/virtio/vulkan/vn_ring.c
+@@ -5,7 +5,7 @@
+ 
+ #include "vn_ring.h"
+ 
+-#if !DETECT_OS_WINDOWS
++#if !DETECT_OS_WINDOWS && !DETECT_OS_TAU /* no process priorities on Tau */
+ #include <sys/resource.h>
+ #endif
+ 
+@@ -340,13 +340,13 @@
+     * VK_MESA_VENUS_PROTOCOL_SPEC_VERSION >= 2  */
+    int prio = 0;
+    bool ring_priority = false;
+-#if !DETECT_OS_WINDOWS
++#if !DETECT_OS_WINDOWS && !DETECT_OS_TAU
+    if (instance->renderer->info.vk_mesa_venus_protocol_spec_version >= 2) {
+       errno = 0;
+       prio = getpriority(PRIO_PROCESS, 0);
+       ring_priority = is_tls_ring && !(prio == -1 && errno);
+    }
+-#endif /* !DETECT_OS_WINDOWS */
++#endif /* !DETECT_OS_WINDOWS && !DETECT_OS_TAU */
+    const struct VkRingPriorityInfoMESA priority_info = {
+       .sType = VK_STRUCTURE_TYPE_RING_PRIORITY_INFO_MESA,
+       .priority = prio,
+--- a/src/util/libsync.h
++++ b/src/util/libsync.h
+@@ -43,9 +43,10 @@
+ #include "util/detect_os.h"
+ #include "util/os_file.h"
+ 
+-#if DETECT_OS_EMBOX && !defined(_IOWR)
++#if (DETECT_OS_EMBOX || DETECT_OS_TAU) && !defined(_IOWR)
+ /* The libc layer's sys/ioctl.h does not encode requests. There are no sync
+- * files on Embox: these requests only have to compile, and fail on any fd. */
++ * files on Embox and Tau: these requests only have to compile, and fail on any
++ * fd. */
+ #define _IOWR(type, nr, arg) ((((type) & 0xff) << 8) | ((nr) & 0xff))
+ #endif
+ 
