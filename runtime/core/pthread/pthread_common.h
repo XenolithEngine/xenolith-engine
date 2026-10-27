@@ -75,9 +75,11 @@ using thread_result_t = void *;
 
 static constexpr timeout_t Infinite = __SPRT_SPRT_TIMEOUT_INFINITE;
 
+// Lives apart from the key table, which moves its entries: the table and every thread with a value
+// of the key hold a reference.
 struct __key_data {
-	void (*destructor)(void *);
-	uint32_t refcount = 1;
+	void (*destructor)(void *) = nullptr;
+	uint32_t refcount = 0;
 };
 
 struct __key_specific {

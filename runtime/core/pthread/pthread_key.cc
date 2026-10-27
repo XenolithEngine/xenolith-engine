@@ -41,12 +41,38 @@ __SPRT_C_FUNC int __SPRT_ID(
 		return EAGAIN;
 	}
 
+	__key_data *data = nullptr;
+	for (auto &slot : pool->keySlots) {
+		if (_atomic::loadSeq(&slot.refcount) == 0) {
+			data = &slot;
+			break;
+		}
+	}
+	if (!data) {
+		auto mem = __sprt_local_alloc(sizeof(__key_data));
+		if (!mem) {
+			return EAGAIN;
+		}
+		data = new (mem, nothrow) __key_data;
+	}
+	data->destructor = cb;
+	_atomic::storeSeq(&data->refcount, uint32_t(1));
+
 	// Publish *key only after the table entry is committed, so a caller never sees
 	// a key index with no backing entry.
 	auto k = pool->nkeys.fetch_add(1);
-	pool->keys.emplace(k, __key_data{cb, 1});
+	pool->keys.emplace(k, data);
 	*key = k;
 	return 0;
+}
+
+static void __releaseKey(__key_data *data) {
+	auto pool = __thread_pool::get();
+	if (_atomic::fetchSub(&data->refcount, uint32_t(1)) == 1
+			&& (data < pool->keySlots || data >= pool->keySlots + __thread_pool::KeySlots)) {
+		destroy_at(data);
+		__sprt_local_free(data, sizeof(__key_data));
+	}
 }
 
 __SPRT_C_FUNC int __SPRT_ID(pthread_key_delete)(__SPRT_ID(pthread_key_t) key) {
@@ -58,9 +84,11 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_key_delete)(__SPRT_ID(pthread_key_t) key) {
 		return EINVAL;
 	}
 
-	if (_atomic::fetchSub(&it->second.refcount, uint32_t(1)) == 1) {
-		pool->keys.erase(it);
-	}
+	auto data = it->second;
+	pool->keys.erase(it);
+	lock.unlock();
+
+	__releaseKey(data);
 	return 0;
 }
 
@@ -102,8 +130,8 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_setspecific)(__SPRT_ID(pthread_key_t) key, c
 			return EINVAL;
 		}
 
-		_atomic::fetchAdd(&keyIt->second.refcount, uint32_t(1));
-		data = &keyIt->second;
+		data = keyIt->second;
+		_atomic::fetchAdd(&data->refcount, uint32_t(1));
 		lock.unlock();
 
 		self->threadKeyStorage->emplace(key, __key_specific{data, val});

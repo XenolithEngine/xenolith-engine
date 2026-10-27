@@ -496,13 +496,7 @@ bool thread_t::registerThread() {
 				}
 			} while (!empty && --iter > 0);
 
-			for (auto &it : *specs) {
-				// spec created only via increment for refcount, decrement it
-				if (_atomic::fetchSub(&it.second.data->refcount, uint32_t(1)) == 1) {
-					unique_lock lock(s_handlePool.mutex);
-					s_handlePool.keys.erase(it.first);
-				}
-			}
+			for (auto &it : *specs) { __releaseKey(it.second.data); }
 
 			return Status::Ok;
 		});
