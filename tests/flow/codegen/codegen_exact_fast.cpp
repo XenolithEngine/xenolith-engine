@@ -251,6 +251,8 @@ void performCodegenExactFastTests() {
 		if constexpr (shadowIsItsOwnKind) {
 			exactFast<flow::value::ShadowArena>(StringView("shadow"));
 		}
+		exactFast<flow::value::LargePlainArena>(StringView("large plain"));
+		exactFast<flow::value::LargeTrackedArena>(StringView("large tracked"));
 	} else {
 		// The suite's own kind. The fast store's own frames are a PlainArena whatever the kind, so
 		// one kind reduced and three in full.

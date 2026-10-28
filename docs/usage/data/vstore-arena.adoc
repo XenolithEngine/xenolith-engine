@@ -6,7 +6,8 @@ below [the journal](vstore-journal.adoc). Sources:
 [SPVStoreArena.h](../../../stappler/vstore/SPVStoreArena.h),
 [SPVStoreArena.cc](../../../stappler/vstore/SPVStoreArena.cc),
 [SPVStoreTracking.h](../../../stappler/vstore/SPVStoreTracking.h). Tests: `vstoretest arena-basic
-arena-relocate arena-torture arena-barrier arena-oom arena-header arena-kinds arena-write-view`.
+arena-relocate arena-torture arena-barrier arena-oom arena-header arena-kinds arena-geometry
+arena-write-view`.
 
 This note is about **why** the layer is shaped this way.
 
@@ -53,9 +54,10 @@ chunk 0                                chunk N (normal)        run head + 2 tail
 `firstDataOffset` has a floor of one page, so **no block is ever handed out inside the first page of
 the store**, at any budget.
 
-Nothing else makes this true. The largest descriptor table a store can have is `MaxChunks * 4` =
-32 KiB, but the one for the default 64 MiB budget is 4 KiB and stops a quarter of the way into a
-16 KiB page. The floor is what enforces the property, at every budget.
+Nothing else makes this true. The largest descriptor table a store can have is the whole of chunk 0
+after `Root` — `DescsOffset + MaxChunks * 4 == ChunkSize`, to the byte, in both geometries — but the
+one for the default 64 MiB budget is 4 KiB and stops a quarter of the way into a 16 KiB page. The
+floor is what enforces the property, at every budget.
 
 What it enforces: `Root::firstPageUsed` says how many bytes of that page can hold anything —
 `DescsOffset + chunkCount * 4`, capped at a page — and the journal reads it through
@@ -67,9 +69,10 @@ the version closes.
 The ceiling is derived, so `verify()` and `adopt()` check it rather than trusting it: an image
 claiming a small one would make the journal skip bytes that really do change.
 
-**What the page size costs here is a quarter of chunk 0** — 16 KiB of 64 KiB reserved for a header
-that uses a few hundred bytes of it, at every budget. That is the price of the geometry and it is
-paid once per store rather than per chunk.
+**What the page size costs here is a quarter of chunk 0 at the default budget** — 16 KiB of 64 KiB
+reserved for a header that uses a few hundred bytes of it. At full table capacity the table takes
+all of chunk 0 and no block is there at all (the empty chain below); either way the price is paid
+once per store rather than per chunk.
 
 The floor is also the only way to state the property. The alternative would be a **minimum budget**,
 but the budget is also the descriptor table's capacity, so buying a whole page of table would mean a
@@ -89,7 +92,9 @@ than the default budget*.
 **A chunk is always fully covered by a chain of blocks.** There is no virgin tail and no undescribed
 region, so the structural walk in `verify()` is total: it visits every byte and can therefore check
 that the physical layout, the free lists and the accounting all agree. Allocation is carving from a
-free block, never bumping a pointer into undescribed space.
+free block, never bumping a pointer into undescribed space. The one exception is chunk 0 at full
+table capacity: the table fills it to the byte, its data start is its end, and it holds no blocks —
+the walk accepts that empty chain for slot 0 alone, and the first `alloc` grows a chunk of its own.
 
 Alignment is free: chunks are 16-aligned, the header is 16 bytes and every extent is a multiple of
 16, so **every payload is 16-aligned unconditionally**. `align > 16` is refused rather than rounded.
@@ -126,13 +131,19 @@ still grows the pool monotonically.
 
 ## Limits
 
-| Limit | Value | Why |
-|---|---|---|
-| Store size | 8192 chunks = **512 MiB** | the descriptor table lives in chunk 0 after `Root`; raising it to ~1 GiB needs no format change |
-| Address space | 4 GiB (`uint32_t`) | not reachable given the above |
-| Max payload in a chunk | 65520 bytes | above that a run is allocated |
-| Alignment | 16 | larger requests are refused |
-| Threads | one writer | single-threaded by design; move the pool, don't share the store. Readers on other threads go through a view (below) |
+The chunk geometry is a template parameter of `ArenaT` (`DefaultGeometry`, `LargeGeometry`), so one
+process holds stores of both side by side; an image names its own (`Root::chunkShift`,
+`Root::maxChunks`) and a reader of another geometry refuses it at the header. Old 8192-chunk images
+adopt into the wider default table and round-trip unchanged.
+
+| Limit | Default | Large | Why |
+|---|---|---|---|
+| Store size | 16316 chunks = **~1016 MiB** | 32700 chunks = **~3.99 GiB** | the descriptor table fills chunk 0 after `Root`, to the byte |
+| Chunk size | 64 KiB | 128 KiB | `ChunkShift` 16 vs 17 over the same 32-bit `Addr` |
+| Address space | 4 GiB (`uint32_t`) | 4 GiB (`uint32_t`) | the large geometry reaches nearly all of it, within a `uint32_t` budget |
+| Max payload in a chunk | 65520 bytes | 131056 bytes | above that a run is allocated |
+| Alignment | 16 | 16 | larger requests are refused |
+| Threads | one writer | one writer | single-threaded by design; move the pool, don't share the store. Readers on other threads go through a view (below) |
 
 **Views:** `initView(src)` makes a read-only arena over another store's chunks: the chunk table
 copied, no pool, nothing owned. A worker reads through it without touching the source's `_chunks`,

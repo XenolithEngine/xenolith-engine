@@ -217,7 +217,7 @@ struct Tables {
 	static constexpr flow::CompiledIdentity identity = {
 		.name = StringView("addTen"),
 		.assetHash = 0x8591e32bb844d15full,
-		.textHash = 0x12594f7dbb3beb6dull,
+		.textHash = 0x61c468b63cc2d662ull,
 		.stateSchemaHash = 0x9b08f22c113ee2f8ull,
 		.ops = SpanView<flow::CompiledOpIdentity>(ops, ops + opsCount),
 		.frameBytes = SpanView<uint32_t>(frameBytes, frameBytes + frameBytesCount),

@@ -38,13 +38,18 @@ THE SOFTWARE.
 #define SP_FLOW_FOR_EACH_ARENA(M) \
 	M(value::PlainArena) \
 	M(value::TrackedArena) \
-	M(value::ShadowArena)
+	M(value::ShadowArena) \
+	M(value::LargePlainArena) \
+	M(value::LargeTrackedArena) \
+	M(value::LargeShadowArena)
 #else
 // ShadowArena is TrackedArena in a release build, so naming it would instantiate the same
-// specialization twice.
+// specialization twice; the same holds for the large geometry's shadow.
 #define SP_FLOW_FOR_EACH_ARENA(M) \
 	M(value::PlainArena) \
-	M(value::TrackedArena)
+	M(value::TrackedArena) \
+	M(value::LargePlainArena) \
+	M(value::LargeTrackedArena)
 #endif
 
 #define SP_FLOW_INSTANTIATE_IN(A, E) \

@@ -254,6 +254,38 @@ void performInterpDataflowTests() {
 				"interp-dataflow: so a run that materialised the constant and one that did not "
 				"leave different images");
 	}
+
+	// ---- the same graphs over the large geometry ----------------------------------------------------
+	//
+	// The interpreter is one machine over any store, and the second chunk geometry is a store the
+	// machine had never been handed when this section was written. A dataflow graph, an exec chain
+	// and a loop scope run to the same reports there, at full run size - reduced runs keep one arm,
+	// as everywhere else in the suite.
+	if (test::full()) {
+		struct Case {
+			StringView json;
+			StringView name;
+			uint64_t steps;
+		};
+		const Case cases[] = {
+			{StringView(corpus::Arithmetic), StringView("arithmetic"), 3},
+			{StringView(corpus::Chain), StringView("an exec chain"), 3},
+			{StringView(corpus::Loop), StringView("a loop scope"), 0},
+		};
+		for (auto &c : cases) {
+			FixtureT<flow::value::LargeTrackedArena> fx;
+			check(fx.prepare(c.json),
+					mem_std::toString("interp-dataflow: ", c.name, " builds over the large geometry"));
+			check(fx.run() == Status::Ok && fx.report.outcome == RunOutcome::Completed,
+					mem_std::toString("interp-dataflow: ", c.name,
+							" completes over the large geometry"));
+			if (c.steps) {
+				check(fx.report.stepCount == c.steps,
+						mem_std::toString("interp-dataflow: ", c.name,
+								" takes the same steps over the large geometry"));
+			}
+		}
+	}
 }
 
 } // namespace STAPPLER_VERSIONIZED stappler

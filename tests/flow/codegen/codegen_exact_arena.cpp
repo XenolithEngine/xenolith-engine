@@ -463,12 +463,13 @@ void performCodegenExactArenaTests() {
 				"codegen-exact-arena: with no next unit and no store to look at");
 	}
 
-	// The kinds are the sweep's arms. The full run walks all three - a PlainArena announces
+	// The kinds are the sweep's arms. The full run walks them all - a PlainArena announces
 	// nothing and is what a shipped game runs on, a TrackedArena is journalled, a ShadowArena
-	// proves the barrier had no holes - and the reduced run keeps the suite's own kind, the one
-	// every other section runs on, so that a reduced run is a run of every block on one arm rather
-	// than of some blocks on three. ShadowArena is TrackedArena in a release build, and running the
-	// same kind twice would prove nothing twice.
+	// proves the barrier had no holes, and the large kinds run the same units over 128 KiB
+	// chunks - and the reduced run keeps the suite's own kind, the one every other section runs
+	// on, so that a reduced run is a run of every block on one arm rather than of some blocks on
+	// all. The shadow kinds are their tracked ones in a release build, and running the same kind
+	// twice would prove nothing twice.
 	constexpr bool shadowIsItsOwnKind = !std::is_same_v<flow::value::ShadowArena, flow::value::TrackedArena>;
 	if (test::full()) {
 		exactArena<flow::value::PlainArena>(StringView("plain"));
@@ -476,6 +477,8 @@ void performCodegenExactArenaTests() {
 		if constexpr (shadowIsItsOwnKind) {
 			exactArena<flow::value::ShadowArena>(StringView("shadow"));
 		}
+		exactArena<flow::value::LargePlainArena>(StringView("large plain"));
+		exactArena<flow::value::LargeTrackedArena>(StringView("large tracked"));
 	} else {
 		exactArena<Arena>(shadowIsItsOwnKind ? StringView("shadow") : StringView("tracked"));
 	}

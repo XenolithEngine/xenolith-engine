@@ -187,6 +187,9 @@ void JournalStore::init(TrackedArenaRef arena, memory::pool_t *pool, JournalCode
 		DeltaPolicy delta) {
 	_arena = arena;
 	_arena.noteObserver();
+	_chunkShift = _arena.getChunkShift();
+	_chunkSize = uint32_t(1) << _chunkShift;
+	_pagesPerChunk = _chunkSize >> PageShift;
 	_codec = codec;
 	_delta = delta;
 	_blobs.init(pool);
@@ -207,7 +210,7 @@ void JournalStore::init(TrackedArenaRef arena, memory::pool_t *pool, JournalCode
 // down - it is derived from chunkCount - and a truncated copy there would leave the tail of the
 // baseline holding bytes the store no longer has.
 void JournalStore::rebasePage(uint32_t slot, uint32_t page, uint32_t bytes) {
-	auto dst = _base.data() + size_t(slot) * ChunkSize + size_t(page) * PageSize;
+	auto dst = _base.data() + size_t(slot) * _chunkSize + size_t(page) * PageSize;
 	if (auto src = _arena.getPage(slot, page)) {
 		__sprt_memcpy(dst, src, bytes);
 	} else {
@@ -218,19 +221,19 @@ void JournalStore::rebasePage(uint32_t slot, uint32_t page, uint32_t bytes) {
 }
 
 void JournalStore::rebaseAll() {
-	_base.assign(size_t(_arena.getChunkCount()) * ChunkSize, 0);
+	_base.assign(size_t(_arena.getChunkCount()) * _chunkSize, 0);
 	for (uint32_t slot = 0; slot < _arena.getChunkCount(); ++slot) {
-		for (uint32_t p = 0; p < PagesPerChunk; ++p) { rebasePage(slot, p); }
+		for (uint32_t p = 0; p < _pagesPerChunk; ++p) { rebasePage(slot, p); }
 	}
 }
 
 void JournalStore::rebaseAfterRollback(SpanView<uint32_t> rehosted) {
 	uint32_t count = _arena.getChunkCount();
-	_base.resize(size_t(count) * ChunkSize, 0);
+	_base.resize(size_t(count) * _chunkSize, 0);
 
 	for (auto slot : rehosted) {
 		if (slot < count) {
-			for (uint32_t p = 0; p < PagesPerChunk; ++p) { rebasePage(slot, p); }
+			for (uint32_t p = 0; p < _pagesPerChunk; ++p) { rebasePage(slot, p); }
 		}
 	}
 
@@ -238,20 +241,20 @@ void JournalStore::rebaseAfterRollback(SpanView<uint32_t> rehosted) {
 		if (_restored[index] == 0) {
 			continue;
 		}
-		uint32_t slot = index >> (ChunkShift - PageShift);
+		uint32_t slot = index >> (_chunkShift - PageShift);
 		if (slot >= count) {
 			break; // the index ascends, so every page after this one is out of the store too
 		}
 		// The whole page, not the sub-blocks that were put back: whatever the records restored, the
 		// baseline as a whole has to describe the state the store is in now.
-		rebasePage(slot, index & (PagesPerChunk - 1));
+		rebasePage(slot, index & (_pagesPerChunk - 1));
 	}
 }
 
 void JournalStore::capture() {
 	// Growth first, and with zeros: a slot the store gained since the last commit has a baseline of
 	// zeros, which is exactly what that version's image says about it.
-	size_t want = size_t(_arena.getChunkCount()) * ChunkSize;
+	size_t want = size_t(_arena.getChunkCount()) * _chunkSize;
 	if (_base.size() != want) {
 		_base.resize(want, 0);
 	}
@@ -273,8 +276,8 @@ void JournalStore::capture() {
 		_markedBytes += dirtySpanOf(map[index]);
 		_markedSubBlockBytes += uint32_t(__builtin_popcountll(marks)) * SubSize;
 
-		uint32_t slot = index >> (ChunkShift - PageShift);
-		uint32_t p = index & (PagesPerChunk - 1);
+		uint32_t slot = index >> (_chunkShift - PageShift);
+		uint32_t p = index & (_pagesPerChunk - 1);
 
 		auto before = _base.data() + size_t(index) * PageSize;
 
@@ -596,14 +599,18 @@ Status Journal::planStore(uint32_t index, uint32_t recordFrom, RehostPlan &plan,
 	auto &store = _stores[index];
 	auto arena = store._arena;
 
-	scratch.assign(ChunkSize, 0);
-	for (uint32_t p = 0; p < PagesPerChunk; ++p) {
+	scratch.assign(store._chunkSize, 0);
+	for (uint32_t p = 0; p < store._pagesPerChunk; ++p) {
 		if (auto src = arena.getPage(0, p)) {
 			__sprt_memcpy(scratch.data() + size_t(p) * PageSize, src, PageSize);
 		}
 	}
 
-	uint64_t seen[PagesPerChunk] = {};
+	// Per page of chunk 0, the sub-blocks a record has already put back - the same "oldest wins"
+	// the data phase keeps in _restored, over the metadata only. A buffer rather than the stack
+	// array it used to be: its length is the watched store's geometry, not this reader's.
+	mem_std::Vector<uint64_t> seen;
+	seen.resize(store._pagesPerChunk, 0);
 	for (uint32_t i = recordFrom; i < store._records.size(); ++i) {
 		auto &r = store._records[i];
 		if (r.slot != 0) {
@@ -625,7 +632,7 @@ Status Journal::planStore(uint32_t index, uint32_t recordFrom, RehostPlan &plan,
 	}
 
 	auto root = reinterpret_cast<const Root *>(scratch.data());
-	if (root->magic != RootMagic || root->chunkShift != ChunkShift
+	if (root->magic != RootMagic || root->chunkShift != store._chunkShift
 			|| root->pageShift != PageShift) {
 		slog().error("vstore::Journal", "rollback: store ", index, " restored a broken superblock");
 		return Status::ErrorNotRecoverable;
@@ -699,7 +706,7 @@ void Journal::applyRecords(uint32_t index, uint32_t recordFrom, bool metadataOnl
 			continue;
 		}
 
-		uint32_t pageIndex = r.slot * PagesPerChunk + r.page;
+		uint32_t pageIndex = r.slot * store._pagesPerChunk + r.page;
 		if (pageIndex >= store._restored.size()) {
 			store._restored.resize(pageIndex + 1, 0);
 		}
@@ -776,7 +783,7 @@ Status Journal::rollback(Version v) {
 		store._restored.assign(size_t(store._arena.getChunkCount() > plans[i].chunkCount
 											   ? store._arena.getChunkCount()
 											   : plans[i].chunkCount)
-						* PagesPerChunk,
+						* store._pagesPerChunk,
 				0);
 
 		// Taken before Phase 2, which consumes the plan. These are the slots whose content can
@@ -876,7 +883,7 @@ Status Journal::setKeyframe() {
 		payload.clear();
 		uint32_t at = 0;
 
-		// save() emits whole chunks, so every piece is a multiple of ChunkSize and splitting it
+		// save() emits whole chunks, so every piece is a multiple of _chunkSize and splitting it
 		// into pages needs no carry across pieces.
 		arena.save([&](const uint8_t *data, size_t bytes, bool zero) {
 			for (size_t off = 0; off < bytes; off += PageSize) {

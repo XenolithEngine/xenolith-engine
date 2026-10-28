@@ -63,16 +63,23 @@ static Status step(flow::CompiledStepSiteT<Local> &site) {
 }
 
 // One entry per store a run may live in: the arena store and the fast store, each over the three
-// arena kinds a scene is ever in. In a release build ShadowArena is TrackedArena, so two slots of
-// each pair name one function - which is what the loader would have handed out anyway.
+// arena kinds of each chunk geometry. In a release build the shadow kinds are their tracked
+// ones, so two slots of each pair name one function - which is what the loader would have
+// handed out anyway.
 const flow::CompiledStepsT<flow::NoEnv> *steps() {
 	static constexpr flow::CompiledStepsT<flow::NoEnv> table = {
 		.plain = &step<flow::CompiledLocalT<flow::value::PlainArena, flow::NoEnv>>,
 		.tracked = &step<flow::CompiledLocalT<flow::value::TrackedArena, flow::NoEnv>>,
 		.shadow = &step<flow::CompiledLocalT<flow::value::ShadowArena, flow::NoEnv>>,
+		.largePlain = &step<flow::CompiledLocalT<flow::value::LargePlainArena, flow::NoEnv>>,
+		.largeTracked = &step<flow::CompiledLocalT<flow::value::LargeTrackedArena, flow::NoEnv>>,
+		.largeShadow = &step<flow::CompiledLocalT<flow::value::LargeShadowArena, flow::NoEnv>>,
 		.fastPlain = &step<flow::CompiledFastLocalT<flow::value::PlainArena, flow::NoEnv>>,
 		.fastTracked = &step<flow::CompiledFastLocalT<flow::value::TrackedArena, flow::NoEnv>>,
 		.fastShadow = &step<flow::CompiledFastLocalT<flow::value::ShadowArena, flow::NoEnv>>,
+		.fastLargePlain = &step<flow::CompiledFastLocalT<flow::value::LargePlainArena, flow::NoEnv>>,
+		.fastLargeTracked = &step<flow::CompiledFastLocalT<flow::value::LargeTrackedArena, flow::NoEnv>>,
+		.fastLargeShadow = &step<flow::CompiledFastLocalT<flow::value::LargeShadowArena, flow::NoEnv>>,
 	};
 	return &table;
 }

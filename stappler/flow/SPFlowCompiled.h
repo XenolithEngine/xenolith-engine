@@ -62,24 +62,36 @@ template <typename Local>
 using CompiledStepFnT = Status (*)(CompiledStepSiteT<Local> &);
 
 // The unit's compiled steps, one per store a run may live in - because the door reaches the store,
-// and another store is another type. Six, and exactly six: the arena store and the fast store, each
-// over the three arena kinds a scene is ever in (XSGraph.scu.cpp). In a release build ShadowArena
-// is TrackedArena, so the unit writes the same function into two slots of each pair. Compiled for
-// one environment (SPFlowEnv.h), whose scene the door reaches: a unit names it, and a run in
-// another environment takes none of these and performs its nodes through the registry.
+// and another store is another type. Twelve, and exactly twelve: the arena store and the fast store,
+// each over the three arena kinds a scene is ever in for each of the two chunk geometries
+// (SPFlow.scu.cpp). In a release build ShadowArena is TrackedArena, so the unit writes the same
+// function into two slots of each pair. Compiled for one environment (SPFlowEnv.h), whose scene the
+// door reaches: a unit names it, and a run in another environment takes none of these and performs
+// its nodes through the registry.
 template <typename Env>
 struct CompiledStepsT {
 	CompiledStepFnT<CompiledLocalT<value::PlainArena, Env>> plain = nullptr;
 	CompiledStepFnT<CompiledLocalT<value::TrackedArena, Env>> tracked = nullptr;
 	CompiledStepFnT<CompiledLocalT<value::ShadowArena, Env>> shadow = nullptr;
 
+	CompiledStepFnT<CompiledLocalT<value::LargePlainArena, Env>> largePlain = nullptr;
+	CompiledStepFnT<CompiledLocalT<value::LargeTrackedArena, Env>> largeTracked = nullptr;
+	CompiledStepFnT<CompiledLocalT<value::LargeShadowArena, Env>> largeShadow = nullptr;
+
 	CompiledStepFnT<CompiledFastLocalT<value::PlainArena, Env>> fastPlain = nullptr;
 	CompiledStepFnT<CompiledFastLocalT<value::TrackedArena, Env>> fastTracked = nullptr;
 	CompiledStepFnT<CompiledFastLocalT<value::ShadowArena, Env>> fastShadow = nullptr;
 
+	CompiledStepFnT<CompiledFastLocalT<value::LargePlainArena, Env>> fastLargePlain = nullptr;
+	CompiledStepFnT<CompiledFastLocalT<value::LargeTrackedArena, Env>> fastLargeTracked = nullptr;
+	CompiledStepFnT<CompiledFastLocalT<value::LargeShadowArena, Env>> fastLargeShadow = nullptr;
+
 	// By the store, which carries the arena kind in it. `Local::ArenaType` is the scene's kind
-	// under both stores - the fast one keeps its frames in a PlainArena of its own whatever the
-	// scene is - so the two halves are told apart by the store type and not by the arena.
+	// under both stores - the fast one keeps its frames in a PlainArena of its own geometry
+	// whatever the scene is - so the two halves are told apart by the store type and not by the
+	// arena. A kind no slot was written for answers nullptr, and the machine performs that run's
+	// nodes through the registry: a host that compiles its units before it has large stores keeps
+	// the same units, slower rather than wrong over them.
 	template <typename Local>
 	CompiledStepFnT<Local> get() const {
 		using A = typename Local::ArenaType;
@@ -88,16 +100,32 @@ struct CompiledStepsT {
 				return plain;
 			} else if constexpr (std::is_same_v<A, value::TrackedArena>) {
 				return tracked;
-			} else {
+			} else if constexpr (std::is_same_v<A, value::ShadowArena>) {
 				return shadow;
+			} else if constexpr (std::is_same_v<A, value::LargePlainArena>) {
+				return largePlain;
+			} else if constexpr (std::is_same_v<A, value::LargeTrackedArena>) {
+				return largeTracked;
+			} else if constexpr (std::is_same_v<A, value::LargeShadowArena>) {
+				return largeShadow;
+			} else {
+				return nullptr;
 			}
 		} else {
 			if constexpr (std::is_same_v<A, value::PlainArena>) {
 				return fastPlain;
 			} else if constexpr (std::is_same_v<A, value::TrackedArena>) {
 				return fastTracked;
-			} else {
+			} else if constexpr (std::is_same_v<A, value::ShadowArena>) {
 				return fastShadow;
+			} else if constexpr (std::is_same_v<A, value::LargePlainArena>) {
+				return fastLargePlain;
+			} else if constexpr (std::is_same_v<A, value::LargeTrackedArena>) {
+				return fastLargeTracked;
+			} else if constexpr (std::is_same_v<A, value::LargeShadowArena>) {
+				return fastLargeShadow;
+			} else {
+				return nullptr;
 			}
 		}
 	}

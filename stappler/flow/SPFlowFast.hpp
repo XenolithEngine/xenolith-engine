@@ -63,11 +63,13 @@ Status FastLocalT<A, Graph, Env>::init(A &run, const Graph &graph, const value::
 	// owns is its frames, and destroy() gives those back.
 	//
 	// Its budget is the run arena's: a host that sized the arena store for its blocks has sized this
-	// store too, since the frames that would have lived there live here.
+	// store too, since the frames that would have lived there live here. getCapacityBytes() and not
+	// getMaxChunks() against a shift constant: the run arena's geometry is its own, and the scratch -
+	// being A::PlainT - is sized in the same one.
 	if (!_scratch.isInitialized()) {
 		vstore::Config config;
-		if (run.isInitialized() && (uint64_t(run.getMaxChunks()) << vstore::ChunkShift) > config.budgetBytes) {
-			config.budgetBytes = uint32_t(uint64_t(run.getMaxChunks()) << vstore::ChunkShift);
+		if (run.isInitialized() && run.getCapacityBytes() > config.budgetBytes) {
+			config.budgetBytes = uint32_t(run.getCapacityBytes());
 		}
 		if (!_scratch.init(config)) {
 			return Status::ErrorOutOfHostMemory;

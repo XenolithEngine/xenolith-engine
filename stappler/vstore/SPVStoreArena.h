@@ -73,6 +73,10 @@ struct FreeLinks {
 static constexpr uint16_t FreeClassNone = 0xffff;
 static constexpr uint32_t BlockHeaderSize = uint32_t(sizeof(BlockHeader));
 static constexpr uint32_t MinBlockTotal = BlockHeaderSize + MinPayload;
+
+// The default geometry's ceiling of an in-chunk payload, for callers that hold no arena. Code
+// inside ArenaT spells `Geometry::ChunkSize - BlockHeaderSize` instead, so a large store keeps
+// its own boundary.
 static constexpr uint32_t MaxInChunkPayload = ChunkSize - BlockHeaderSize;
 
 static constexpr uint32_t NumSizeClasses = 40;
@@ -160,11 +164,18 @@ struct RehostPlan {
 // original, and snapshots, rollback and keyframes all follow from it. Not thread-safe: to move a
 // store between threads, move its pool. `Tracking` is what the store remembers about its own writes
 // and the only thing that differs between the three aliases below; there is no bare `Arena` alias,
-// so every call site says which kind it means.
-template <typename Tracking>
+// so every call site says which kind it means. `Geometry` is the chunk geometry (DefaultGeometry,
+// LargeGeometry), a compile-time property of the type: two stores of different geometries coexist
+// in one process and never exchange images, an image carrying its own chunkShift and maxChunks.
+template <typename Tracking, typename Geometry = DefaultGeometry>
 class SP_PUBLIC ArenaT final {
 public:
 	using TrackingType = Tracking;
+	using GeometryType = Geometry;
+
+	// The same geometry's release store: the kind a layer above cuts its own scratch frames
+	// from, so a store built over a large run arena keeps large-geometry chunks, not default ones.
+	using PlainT = ArenaT<NoTracking, Geometry>;
 
 	// Whether this kind of store announces its writes, and therefore whether a journal can watch
 	// it. Ordinary code branches on this with `if constexpr` rather than growing a preprocessor
@@ -216,9 +227,10 @@ public:
 	// change hands, and the tracker is rebuilt rather than transferred, a dirty map and a shadow
 	// being host-side derived state. The source is left uninitialized - one set of chunks must not
 	// have two owners - and the map starts empty, since nothing has been written to this store
-	// since it took over.
+	// since it took over. Same geometry only: the chunk table and the addresses inside it are the
+	// geometry's, so a move across geometries is a copy and not a move.
 	template <typename Other>
-	Status adoptFrom(ArenaT<Other> &src);
+	Status adoptFrom(ArenaT<Other, Geometry> &src);
 
 	// How many observers currently hold a reference to this store, a journal in practice. Its one
 	// use is catching a move out from under one.
@@ -286,6 +298,15 @@ public:
 
 	uint32_t getChunkCount() const;
 	uint32_t getMaxChunks() const;
+
+	// The chunk shift of this store's geometry, for an observer that must derive chunk math
+	// (the journal) instead of borrowing the compile-time constant of whichever geometry its
+	// own translation unit happens to name.
+	uint32_t getChunkShift() const { return Geometry::ChunkShift; }
+
+	// The store's ceiling in bytes: maxChunks of its own geometry, in uint64 so a caller that
+	// sizes one store from another never borrows the reader's ChunkShift to do the multiply.
+	uint64_t getCapacityBytes() const;
 
 	// Whether a slot carries data, decided by the descriptor alone and never by the host pointer.
 	// An observer must use this definition to know a page's previous content: a slot that is not
@@ -449,7 +470,7 @@ public:
 	}
 
 private:
-	uint8_t *resolve(Addr a) const { return _chunks[a >> ChunkShift] + (a & ChunkMask); }
+	uint8_t *resolve(Addr a) const { return _chunks[a >> Geometry::ChunkShift] + (a & Geometry::ChunkMask); }
 
 	Root *root() const { return reinterpret_cast<Root *>(_chunks[0]); }
 	ChunkDesc *descs() const { return reinterpret_cast<ChunkDesc *>(_chunks[0] + DescsOffset); }
@@ -581,7 +602,7 @@ private:
 
 	// So that adoptFrom() may take another specialization's chunks. Specializations of one template
 	// are unrelated types and are not friends of each other by default.
-	template <typename Other>
+	template <typename Other, typename OtherGeometry>
 	friend class ArenaT;
 
 	// What this store remembers about its own writes, and the only member whose presence depends on
@@ -606,6 +627,17 @@ using ShadowArena = ArenaT<ShadowTracking>;
 // In a release build the shadow is a check with nothing to check for, so this is an alias and not a
 // third instantiation of the whole stack. Code that names it still compiles.
 using ShadowArena = TrackedArena;
+#endif
+
+// The large geometry's kinds, the same three roles over 128 KiB chunks (~3.99 GiB of store). A
+// large image never loads into a default-geometry reader and the other way round: Root carries
+// the geometry, and the header check is what says so.
+using LargePlainArena = ArenaT<NoTracking, LargeGeometry>;
+using LargeTrackedArena = ArenaT<DirtyTracking, LargeGeometry>;
+#if DEBUG
+using LargeShadowArena = ArenaT<ShadowTracking, LargeGeometry>;
+#else
+using LargeShadowArena = LargeTrackedArena;
 #endif
 
 // A store whose kind is not known at compile time, for the seams where the type cannot travel: a
@@ -639,8 +671,9 @@ public:
 
 	// Deliberately not explicit and not a constructor on ArenaT: `arena.ref()` reads as a
 	// conversion the caller asked for, and an implicit one would let a store be erased by accident.
-	template <typename Tracking>
-	static ArenaRef of(ArenaT<Tracking> &);
+	// Geometry is deduced with the kind, so a ref carries whichever geometry the store has.
+	template <typename Tracking, typename Geometry>
+	static ArenaRef of(ArenaT<Tracking, Geometry> &);
 
 	const uint8_t *read(Addr a, uint32_t size) const { return _ops->read(_arena, a, size); }
 	uint8_t *write(Addr a, uint32_t size) { return _ops->write(_arena, a, size); }
@@ -673,9 +706,9 @@ private:
 
 // The table for one kind, built once per instantiation. Out of line in the class so that `ref()`
 // is the only way a caller ever names it.
-template <typename Tracking>
-ArenaRef ArenaRef::of(ArenaT<Tracking> &a) {
-	using A = ArenaT<Tracking>;
+template <typename Tracking, typename Geometry>
+ArenaRef ArenaRef::of(ArenaT<Tracking, Geometry> &a) {
+	using A = ArenaT<Tracking, Geometry>;
 	static const ArenaOps ops = {
 		[](const void *p, Addr x, uint32_t n) { return static_cast<const A *>(p)->read(x, n); },
 		[](void *p, Addr x, uint32_t n) { return static_cast<A *>(p)->write(x, n); },
@@ -714,6 +747,11 @@ class SP_PUBLIC TrackedArenaRef;
 struct SP_PUBLIC TrackedArenaOps {
 	bool (*isInitialized)(const void *);
 	uint32_t (*getChunkCount)(const void *);
+
+	// The watched store's own chunk shift, so an observer that must derive chunk math (the
+	// journal) never borrows the compile-time constant of whichever geometry its own
+	// translation unit happens to name.
+	uint32_t (*getChunkShift)(const void *);
 	bool (*isHosted)(const void *, uint32_t);
 	const uint8_t *(*getPage)(const void *, uint32_t, uint32_t);
 	uint32_t (*getPageFootprint)(const void *, uint32_t, uint32_t);
@@ -746,14 +784,15 @@ class SP_PUBLIC TrackedArenaRef final {
 public:
 	TrackedArenaRef() = default;
 
-	template <typename Tracking>
+	template <typename Tracking, typename Geometry>
 	requires (Tracking::IsTracked)
-	static TrackedArenaRef of(ArenaT<Tracking> &);
+	static TrackedArenaRef of(ArenaT<Tracking, Geometry> &);
 
 	bool isNull() const { return _ops == nullptr; }
 	bool isInitialized() const { return _ops && _ops->isInitialized(_arena); }
 
 	uint32_t getChunkCount() const { return _ops->getChunkCount(_arena); }
+	uint32_t getChunkShift() const { return _ops->getChunkShift(_arena); }
 	bool isHosted(uint32_t slot) const { return _ops->isHosted(_arena, slot); }
 	const uint8_t *getPage(uint32_t slot, uint32_t page) const {
 		return _ops->getPage(_arena, slot, page);
@@ -798,13 +837,14 @@ private:
 	const TrackedArenaOps *_ops = nullptr;
 };
 
-template <typename Tracking>
+template <typename Tracking, typename Geometry>
 requires (Tracking::IsTracked)
-TrackedArenaRef TrackedArenaRef::of(ArenaT<Tracking> &a) {
-	using A = ArenaT<Tracking>;
+TrackedArenaRef TrackedArenaRef::of(ArenaT<Tracking, Geometry> &a) {
+	using A = ArenaT<Tracking, Geometry>;
 	static const TrackedArenaOps ops = {
 		[](const void *p) { return static_cast<const A *>(p)->isInitialized(); },
 		[](const void *p) { return static_cast<const A *>(p)->getChunkCount(); },
+		[](const void *p) { return static_cast<const A *>(p)->getChunkShift(); },
 		[](const void *p, uint32_t s) { return static_cast<const A *>(p)->isHosted(s); },
 		[](const void *p, uint32_t s, uint32_t g) {
 		return static_cast<const A *>(p)->getPage(s, g);

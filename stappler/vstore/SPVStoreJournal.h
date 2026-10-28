@@ -251,6 +251,15 @@ private:
 	// another would make "which arena did you build" a question the undo log had an opinion about,
 	// and one journal could then not hold a tracked scene beside a plain local store.
 	TrackedArenaRef _arena;
+
+	// The watched store's chunk geometry, read from the arena at init and never from the
+	// namespace-scope constants: those name the default geometry, and one journal may watch stores
+	// of several geometries at once - a tracked scene and a large-geometry local store under one
+	// version counter. Page geometry is shared by every chunk geometry, so PageSize and its
+	// friends stay compile-time.
+	uint32_t _chunkShift = DefaultGeometry::ChunkShift;
+	uint32_t _chunkSize = DefaultGeometry::ChunkSize;
+	uint32_t _pagesPerChunk = DefaultGeometry::PagesPerChunk;
 	JournalCodecContext *_codec = nullptr; // owned by the Journal, shared by all of its stores
 	DeltaPolicy _delta = DeltaPolicy::Smallest;
 
@@ -331,10 +340,11 @@ public:
 
 	// The ordinary spelling. It is where "a journal needs a store that announces its writes" is
 	// enforced: a PlainArena does not satisfy the constraint, so attaching one is a compile error
-	// at the call rather than an empty dirty map discovered at the first commit.
-	template <typename Tracking>
+	// at the call rather than an empty dirty map discovered at the first commit. Geometry is
+	// deduced with the kind: a journal may watch a large store as readily as a default one.
+	template <typename Tracking, typename Geometry>
 	requires (Tracking::IsTracked)
-	uint32_t attach(ArenaT<Tracking> *a) {
+	uint32_t attach(ArenaT<Tracking, Geometry> *a) {
 		return attach(TrackedArenaRef::of(*a));
 	}
 

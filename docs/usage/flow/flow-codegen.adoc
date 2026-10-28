@@ -37,7 +37,8 @@ A unit is what the build settled, as data, plus one function per node that decid
   itself (`embedAsset`); and the identity block;
 * `<name>.gen.cpp` (or several parts under `split`) - `step<N>` for every node, which builds the door
   over the unit's tables with the node index a compile-time constant and calls the operation's body by
-  its inline name, and the table of entry points per store (arena and fast, over every arena kind).
+  its inline name, and the table of entry points per store (arena and fast, over every arena kind of
+  both chunk geometries - twelve slots; a kind no slot was written for falls back to the registry).
 
 The identity says what the unit was written against: the asset's content hash, the hash of the unit's
 own text, `interp.NodeState`'s schema hash, every operation with its signature hash and its record
