@@ -70,6 +70,10 @@ public:
 
 	VkDeviceSize getBlockOffset() const { return _memBlock.offset; }
 
+	// A dma-buf descriptor of the memory, the caller's to close; -1 unless it was allocated
+	// exportable (Allocator::spawnExportable).
+	int exportDmaBuf() const;
+
 	bool isMappable() const {
 		return _usage != AllocationUsage::DeviceLocal
 				&& _usage != AllocationUsage::DeviceLocalLazilyAllocated;

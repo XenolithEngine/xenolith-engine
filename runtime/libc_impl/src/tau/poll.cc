@@ -1,6 +1,6 @@
-// poll over the streams and sockets of a Tau module (sprt_tau.h): readiness is asked of
-// each, and the wait is on the module's I/O epoch, so nothing is held while sleeping. Files
-// of the namespace are always ready. There are no pipes.
+// poll over the streams, sockets and GPU descriptors of a Tau module (sprt_tau.h, gpufd.h):
+// readiness is asked of each, and the wait is on the module's I/O epoch, so nothing is held while
+// sleeping. Files of the namespace are always ready. There are no pipes.
 
 #include "tau_fs.h"
 
@@ -37,6 +37,9 @@ static int __tau_poll(struct __SPRT_POLLFD_NAME *fds, __SPRT_ID(nfds_t) n, unsig
 			} else if (slot->ops == __tau_sock_ops()) {
 				fds[i].revents = short(__sprt_tau_sock_ready(*static_cast<__sprt_tau_sock **>(slot->handle),
 						unsigned(fds[i].events) | __SPRT_TAU_POLLERR | __SPRT_TAU_POLLHUP));
+			} else {
+				int r = __tau_gpufd_ready(slot, fds[i].events);
+				fds[i].revents = short(r < 0 ? 0 : r);
 			}
 			ready += fds[i].revents ? 1 : 0;
 		}

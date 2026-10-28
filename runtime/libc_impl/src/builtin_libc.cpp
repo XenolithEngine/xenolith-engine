@@ -49,6 +49,7 @@ THE SOFTWARE.
 #include "tau/libc_file_ops.cc"
 #include "tau/libc_dir_ops.cc"
 #include "tau/libc_path.cc"
+#include "tau/gpufd.cc"
 #include "tau/poll.cc"
 #endif
 

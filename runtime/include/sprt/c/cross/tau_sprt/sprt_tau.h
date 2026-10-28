@@ -366,6 +366,35 @@ int __sprt_tau_gpu_wait(const struct __sprt_tau_gpu_point *points, unsigned coun
 		unsigned long long timeout_ns);
 // Ends the session: the driver frees its contexts and BOs.
 void __sprt_tau_gpu_close(void);
+// The number of the session, counted from 1 over the module's life; 0 without one. Points of
+// another session name contexts that are gone.
+unsigned long long __sprt_tau_gpu_session(void);
+
+// A shareable BO handed out as a buffer, what a dma-buf descriptor holds (RT-A-DmaBuf-1). The BO
+// stays until its creator and each import destroy it and every reference is released. Calls on
+// a buffer of a lost session answer -ECONNRESET.
+struct __sprt_tau_gpu_buf;
+
+struct __sprt_tau_gpu_bo_desc {
+	unsigned bo;
+	unsigned ctx; // the context it was made for
+	unsigned heap;
+	unsigned flags; // dev.gpu's GPU_BO_*
+	unsigned long long size;
+	void *data; // in the heap's mapping; NULL when not mappable
+};
+
+// A reference to the buffer of `desc`, a BO of this session; the export token comes with the first.
+int __sprt_tau_gpu_bo_export(const struct __sprt_tau_gpu_bo_desc *desc,
+		struct __sprt_tau_gpu_buf **buf);
+// The BO of a buffer as a new holder of it, which bo_destroy ends; -EXDEV: made for another context.
+int __sprt_tau_gpu_buf_import(struct __sprt_tau_gpu_buf *buf, unsigned ctx,
+		struct __sprt_tau_gpu_bo_desc *desc);
+int __sprt_tau_gpu_buf_desc(const struct __sprt_tau_gpu_buf *buf,
+		struct __sprt_tau_gpu_bo_desc *desc);
+// The slot of its export token (dev.gpu's export), what another module is given; the buffer's.
+int __sprt_tau_gpu_buf_token(const struct __sprt_tau_gpu_buf *buf, unsigned *slot);
+void __sprt_tau_gpu_buf_release(struct __sprt_tau_gpu_buf *buf);
 
 // The input of the module (dev.input@1 through libtau): one session with every event of the
 // provider. open() attaches, `wait` waits for a provider to start; -EBUSY: another client holds

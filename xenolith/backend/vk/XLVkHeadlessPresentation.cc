@@ -292,7 +292,7 @@ void HeadlessSwapchain::invalidateViews() {
 
 bool HeadlessSwapchain::init(Device &dev, NotNull<core::Loop> loop, const core::SurfaceInfo &info,
 		const core::SwapchainConfig &cfg, ImageInfo &&swapchainImageInfo,
-		core::PresentMode presentMode, HeadlessSurface *surface) {
+		core::PresentMode presentMode, HeadlessSurface *surface, bool exportable) {
 	// AppWindow asks for ColorAttachment [| TransferDst]; TransferSrc is what turns these into
 	// always-capturable buffers.
 	swapchainImageInfo.usage |= core::ImageUsage::TransferSrc;
@@ -301,9 +301,19 @@ bool HeadlessSwapchain::init(Device &dev, NotNull<core::Loop> loop, const core::
 	auto viewInfo = getSwapchainImageViewInfo(swapchainImageInfo);
 
 	_images.reserve(imageCount);
+	uint32_t exported = 0;
 	for (uint32_t i = 0; i < imageCount; ++i) {
-		auto image = dev.getAllocator()->spawnPersistent(AllocationUsage::DeviceLocal,
-				toString("HeadlessSwapchainImage[", i, "]"), swapchainImageInfo, false);
+		auto key = toString("HeadlessSwapchainImage[", i, "]");
+		Rc<Image> image;
+		if (exportable) {
+			image = dev.getAllocator()->spawnExportable(AllocationUsage::DeviceLocal, key,
+					swapchainImageInfo);
+			exported += image ? 1 : 0;
+		}
+		if (!image) {
+			image = dev.getAllocator()->spawnPersistent(AllocationUsage::DeviceLocal, key,
+					swapchainImageInfo, false);
+		}
 		if (!image) {
 			log::source().error("vk::HeadlessSwapchain", "Fail to allocate image ", i);
 			return false;
@@ -319,6 +329,10 @@ bool HeadlessSwapchain::init(Device &dev, NotNull<core::Loop> loop, const core::
 		views.emplace(viewInfo, sp::move(view));
 
 		_images.emplace_back(SwapchainImageData{sp::move(image), sp::move(views)});
+	}
+	if (exportable) {
+		log::source().debug("vk::HeadlessSwapchain", exported, " of ", imageCount,
+				" images export as dma-bufs");
 	}
 
 	if (auto output = surface ? surface->getOutput() : nullptr) {
@@ -643,7 +657,7 @@ bool HeadlessPresentationEngine::createSwapchain(const core::SurfaceInfo &info,
 	auto swapchainImageInfo = _window->getSwapchainImageInfo(cfg);
 
 	_swapchain = Rc<HeadlessSwapchain>::create(*dev, _loop, info, cfg, move(swapchainImageInfo),
-			presentMode, surface);
+			presentMode, surface, _window->getPlaneSource() != nullptr);
 	if (!_swapchain) {
 		log::source().error("vk::HeadlessPresentationEngine", "Fail to create swapchain");
 		return false;

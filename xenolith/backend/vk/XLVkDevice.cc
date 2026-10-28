@@ -571,6 +571,12 @@ bool Device::hasExternalFences() const {
 					& VK_EXTERNAL_FENCE_FEATURE_EXPORTABLE_BIT);
 }
 
+bool Device::hasExternalDmaBuf() const {
+	return _info.features.optionals.test(toInt(OptionalDeviceExtension::ExternalMemoryFd))
+			&& _info.features.optionals.test(toInt(OptionalDeviceExtension::ExternalMemoryDmaBuf))
+			&& _table->vkGetMemoryFdKHR;
+}
+
 bool Device::isPortabilityMode() const {
 #ifdef VK_ENABLE_BETA_EXTENSIONS
 	return _info.features.devicePortability.sType

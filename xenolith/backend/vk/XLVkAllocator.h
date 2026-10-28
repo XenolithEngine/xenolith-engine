@@ -172,10 +172,12 @@ public:
 	Rc<Buffer> spawnPersistent(AllocationUsage, const BufferInfo &, BytesView = BytesView());
 	Rc<Image> spawnPersistent(AllocationUsage, StringView, const ImageInfoData &,
 			bool preinitialized, uint64_t forceId = 0);
+	// An image in dedicated memory that exports as a dma-buf; nullptr when the device can not.
+	Rc<Image> spawnExportable(AllocationUsage, StringView, const ImageInfoData &);
 
 	Rc<Buffer> preallocate(const BufferInfo &, BytesView = BytesView());
 	Rc<Image> preallocate(StringView key, const ImageInfoData &, bool preinitialized,
-			uint64_t forceId = 0);
+			uint64_t forceId = 0, const void *next = nullptr);
 
 	Rc<DeviceMemory> emplaceObjects(AllocationUsage usage, SpanView<Image *>, SpanView<Buffer *>);
 
@@ -189,7 +191,7 @@ protected:
 	void free(MemType *, SpanView<MemNode>);
 
 	bool allocateDedicated(AllocationUsage usage, Buffer *);
-	bool allocateDedicated(AllocationUsage usage, Image *);
+	bool allocateDedicated(AllocationUsage usage, Image *, bool exportable = false);
 
 	mutable sprt::mutex _mutex;
 	VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;

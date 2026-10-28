@@ -658,6 +658,48 @@ Rc<Image> Allocator::spawnPersistent(AllocationUsage usage, StringView key,
 	return target;
 }
 
+Rc<Image> Allocator::spawnExportable(AllocationUsage usage, StringView key,
+		const core::ImageInfoData &info) {
+	auto instance = _device->getInstance();
+	if (!_device->hasExternalDmaBuf() || !instance->vkGetPhysicalDeviceImageFormatProperties2) {
+		return nullptr;
+	}
+
+	VkPhysicalDeviceExternalImageFormatInfo externalFormat{};
+	externalFormat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO;
+	externalFormat.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+	VkPhysicalDeviceImageFormatInfo2 formatInfo{};
+	formatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
+	formatInfo.pNext = &externalFormat;
+	formatInfo.format = VkFormat(info.format);
+	formatInfo.type = VkImageType(info.imageType);
+	formatInfo.tiling = VkImageTiling(info.tiling);
+	formatInfo.usage = VkImageUsageFlags(info.usage);
+	formatInfo.flags = VkImageCreateFlags(info.flags);
+	VkExternalImageFormatProperties externalProps{};
+	externalProps.sType = VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES;
+	VkImageFormatProperties2 formatProps{};
+	formatProps.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2;
+	formatProps.pNext = &externalProps;
+	if (instance->vkGetPhysicalDeviceImageFormatProperties2(_device->getPhysicalDevice(),
+				&formatInfo, &formatProps)
+					!= VK_SUCCESS
+			|| !(externalProps.externalMemoryProperties.externalMemoryFeatures
+					& VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT)) {
+		return nullptr;
+	}
+
+	VkExternalMemoryImageCreateInfo externalInfo{};
+	externalInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+	externalInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+
+	auto target = preallocate(key, info, false, 0, &externalInfo);
+	if (!target || !allocateDedicated(usage, target, true)) {
+		return nullptr;
+	}
+	return target;
+}
+
 Rc<Buffer> Allocator::preallocate(const BufferInfo &info, BytesView view) {
 	auto usage = info.usage;
 	if ((usage & core::BufferUsage::ShaderDeviceAddress) != core::BufferUsage::None) {
@@ -689,10 +731,10 @@ Rc<Buffer> Allocator::preallocate(const BufferInfo &info, BytesView view) {
 }
 
 Rc<Image> Allocator::preallocate(StringView key, const ImageInfoData &info, bool preinitialized,
-		uint64_t forceId) {
+		uint64_t forceId, const void *next) {
 	VkImageCreateInfo imageInfo{};
 	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	imageInfo.pNext = nullptr;
+	imageInfo.pNext = next;
 	imageInfo.flags = VkImageCreateFlags(info.flags);
 	imageInfo.imageType = VkImageType(info.imageType);
 	imageInfo.format = VkFormat(info.format);
@@ -959,7 +1001,7 @@ bool Allocator::allocateDedicated(AllocationUsage usage, Buffer *target) {
 	return true;
 }
 
-bool Allocator::allocateDedicated(AllocationUsage usage, Image *target) {
+bool Allocator::allocateDedicated(AllocationUsage usage, Image *target, bool exportable) {
 	auto req = getImageMemoryRequirements(target->getImage());
 	auto type = findMemoryType(req.requirements.memoryTypeBits, usage);
 	if (!type) {
@@ -971,6 +1013,7 @@ bool Allocator::allocateDedicated(AllocationUsage usage, Image *target) {
 
 	VkMemoryAllocateInfo allocInfo;
 	VkMemoryDedicatedAllocateInfo dedicatedInfo;
+	VkExportMemoryAllocateInfo exportInfo;
 
 	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	allocInfo.pNext = nullptr;
@@ -984,6 +1027,14 @@ bool Allocator::allocateDedicated(AllocationUsage usage, Image *target) {
 		dedicatedInfo.buffer = VK_NULL_HANDLE;
 
 		allocInfo.pNext = &dedicatedInfo;
+	}
+
+	if (exportable) {
+		exportInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+		exportInfo.pNext = allocInfo.pNext;
+		exportInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+
+		allocInfo.pNext = &exportInfo;
 	}
 
 	VkResult result = VK_ERROR_UNKNOWN;

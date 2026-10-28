@@ -67,7 +67,8 @@ protected:
 // Acquisition is synchronous and hands out no semaphore (an unsignalled one would deadlock the
 // submit). The engine must run with acquireImageWithoutFence: vk::Fence has no host-signal path.
 //
-// With a plane source attached (a virtual window, see core::PlaneSource) every presented image is
+// With a plane source attached (a virtual window, see core::PlaneSource) the images are exportable
+// as dma-bufs where the device allows it (DeviceMemory::exportDmaBuf), and every presented image is
 // published as a frame, and its slot stays pinned - skipped by acquire - until the last reader lets
 // go. Ownership moves by layout: a device task takes the image PresentSrc -> ShaderReadOnly before
 // the frame is published, and back to PresentSrc before the slot is unpinned. Between the two the
@@ -81,7 +82,8 @@ public:
 	virtual ~HeadlessSwapchain();
 
 	bool init(Device &dev, NotNull<core::Loop>, const core::SurfaceInfo &,
-			const core::SwapchainConfig &, ImageInfo &&, core::PresentMode, HeadlessSurface *);
+			const core::SwapchainConfig &, ImageInfo &&, core::PresentMode, HeadlessSurface *,
+			bool exportable);
 
 	virtual Rc<SwapchainAcquiredImage> acquire(bool lockfree, const Rc<core::Fence> &fence,
 			Status &) override;

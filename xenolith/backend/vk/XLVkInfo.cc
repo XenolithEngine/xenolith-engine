@@ -78,6 +78,8 @@ DeviceInfo::Features DeviceInfo::Features::getOptional() {
 	ret.optionals.set(toInt(OptionalDeviceExtension::DedicatedAllocation));
 	ret.optionals.set(toInt(OptionalDeviceExtension::GetMemoryRequirements2));
 	ret.optionals.set(toInt(OptionalDeviceExtension::ExternalFenceFd));
+	ret.optionals.set(toInt(OptionalDeviceExtension::ExternalMemoryFd));
+	ret.optionals.set(toInt(OptionalDeviceExtension::ExternalMemoryDmaBuf));
 
 
 #ifdef VK_ENABLE_BETA_EXTENSIONS
