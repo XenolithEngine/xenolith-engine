@@ -296,9 +296,7 @@ void EmboxData::notifyWakeup() {
 				0);
 	}
 #elif SPRT_TAU
-	if (__atomic_load_n(&_sleepers, __ATOMIC_SEQ_CST) != 0) {
-		__sprt_tau_futex_wake(reinterpret_cast<volatile unsigned *>(&_wakeupReq), INT_MAX);
-	}
+	__sprt_tau_event_signal();
 #endif
 }
 
@@ -335,11 +333,11 @@ void EmboxData::spinWait(int timeoutMs) {
 		return;
 	}
 #elif SPRT_TAU
-	// One sleep on the module's futex until notifyWakeup() changes the word or the timeout.
-	__atomic_add_fetch(&_sleepers, 1, __ATOMIC_SEQ_CST);
-	__sprt_tau_futex_wait(reinterpret_cast<volatile unsigned *>(&_wakeupReq), 0,
-			(unsigned long long)timeoutMs * 1'000'000ull);
-	__atomic_sub_fetch(&_sleepers, 1, __ATOMIC_SEQ_CST);
+	auto epoch = __sprt_tau_io_epoch();
+	if (!hasChangedAddress()) {
+		__sprt_tau_event_wait(reinterpret_cast<volatile unsigned *>(&_wakeupReq), 0, epoch,
+				(unsigned long long)timeoutMs * 1'000'000ull);
+	}
 	return;
 #endif
 	// usleep() slices, NOT a sched_yield() spin. The looper usually runs on the

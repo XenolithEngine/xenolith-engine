@@ -44,6 +44,12 @@ public:
 	// Polled from TransportConnection::handleEvents; false once the peer is known to be gone.
 	virtual bool isPeerAlive() { return true; }
 
+	virtual bool isDataAlive() { return true; }
+
+	virtual void ringPeer() { }
+
+	virtual TransportWaitAddress getWaitAddress() { return {}; }
+
 	// This side closed: withdraw whatever the platform still holds for the peer to find.
 	virtual void handleLocalClose() { }
 

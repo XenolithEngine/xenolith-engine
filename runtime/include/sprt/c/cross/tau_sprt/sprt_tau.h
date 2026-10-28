@@ -423,6 +423,33 @@ int __sprt_tau_gpu_buf_desc(const struct __sprt_tau_gpu_buf *buf,
 int __sprt_tau_gpu_buf_token(const struct __sprt_tau_gpu_buf *buf, unsigned *slot);
 void __sprt_tau_gpu_buf_release(struct __sprt_tau_gpu_buf *buf);
 
+// Shared-memory rendezvous with tau.wm@1. A block is a client-owned Frame; its doorbell
+// signals the peer's Notification. The connection memory remains mapped until release.
+struct __sprt_tau_wm_block;
+struct __sprt_tau_wm_view {
+	void *data;
+	unsigned long size;
+	unsigned long long peer;
+	unsigned *wake;
+};
+int __sprt_tau_wm_listen(unsigned long max_size);
+void __sprt_tau_wm_stop(void);
+unsigned *__sprt_tau_wm_pending(void);
+int __sprt_tau_wm_accept(struct __sprt_tau_wm_block **block);
+int __sprt_tau_wm_create(unsigned long size, struct __sprt_tau_wm_block **block);
+int __sprt_tau_wm_post(struct __sprt_tau_wm_block *block);
+int __sprt_tau_wm_view(struct __sprt_tau_wm_block *block, struct __sprt_tau_wm_view *view);
+int __sprt_tau_wm_alive(struct __sprt_tau_wm_block *block);
+int __sprt_tau_wm_data_alive(struct __sprt_tau_wm_block *block);
+void __sprt_tau_wm_ring(struct __sprt_tau_wm_block *block);
+void __sprt_tau_wm_release(struct __sprt_tau_wm_block *block);
+
+// The event loop sleeps until its local word or the I/O epoch changes. signal wakes every
+// event loop; shared-memory notifications change the epoch through the rings' driver.
+int __sprt_tau_event_wait(volatile unsigned *word, unsigned expected, unsigned epoch,
+		unsigned long long timeout_ns);
+void __sprt_tau_event_signal(void);
+
 // The input of the module (dev.input@1 through libtau): one session with every event of the
 // provider. open() attaches, `wait` waits for a provider to start; -EBUSY: another client holds
 // the input, -ENOENT: no provider runs. next() takes an event without waiting: 1 with one, 0
