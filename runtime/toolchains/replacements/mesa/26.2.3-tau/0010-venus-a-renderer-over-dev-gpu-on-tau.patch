@@ -888,6 +888,19 @@ Subject: [PATCH] venus: a renderer over dev.gpu@1 on Tau
     const struct VkRingPriorityInfoMESA priority_info = {
        .sType = VK_STRUCTURE_TYPE_RING_PRIORITY_INFO_MESA,
        .priority = prio,
+@@ -462,6 +462,12 @@
+    }
+ 
+    vn_ring_store_tail(ring);
++   /* The renderer sets the idle bit and then loads the tail: without a full
++    * fence here both may read the old value and the ring sleeps on a command.
++    * QEMU's TCG gives stlr and the ldar after it no store-load barrier on an
++    * x86 host.
++    */
++   atomic_thread_fence(memory_order_seq_cst);
+    const VkRingStatusFlagsMESA status = vn_ring_load_status(ring);
+    if (status & VK_RING_STATUS_FATAL_BIT_MESA) {
+       vn_log(NULL, "vn_ring_submit abort on fatal");
 --- a/src/util/libsync.h
 +++ b/src/util/libsync.h
 @@ -43,9 +43,10 @@
