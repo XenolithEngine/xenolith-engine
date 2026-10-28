@@ -106,7 +106,7 @@ static unsigned shows, last_shown, fence_waits;
 static bool fail_show;
 static int p_query(struct __sprt_tau_display2_info *info, unsigned long long *generation) {
 	if (info) {
-		*info = (struct __sprt_tau_display2_info){WIDTH, HEIGHT, 60'000, 2};
+		*info = (struct __sprt_tau_display2_info){WIDTH, HEIGHT, 60 * 1000, 2};
 	}
 	if (generation) {
 		*generation = 7;
