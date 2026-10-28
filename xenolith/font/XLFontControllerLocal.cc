@@ -44,10 +44,17 @@ bool FontControllerLocal::init(FontComponent *comp, StringView name, FontLibrary
 }
 
 void FontControllerLocal::initialize(AppThread *app) {
+	initializeImage(app, nullptr);
+}
+
+void FontControllerLocal::initializeImage(AppThread *app, Function<void(bool)> &&cb) {
 	_image = FontComponent::makeInitialImage(_name);
-	// gAPI endpoint: compile the atlas image on the gl Loop.
-	_gapi->compileImage(_image, [app = Rc<AppThread>(app)](bool success) { });
 	_texture = Rc<Texture>::create(_image);
+	_gapi->compileImage(_image, [app = Rc<AppThread>(app), cb = sp::move(cb)](bool success) mutable {
+		if (cb) {
+			app->performOnAppThread([cb = sp::move(cb), success] { cb(success); }, app);
+		}
+	});
 }
 
 void FontControllerLocal::invalidate(AppThread *) {

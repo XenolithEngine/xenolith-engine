@@ -115,6 +115,15 @@ bool RemoteSession::sendMessageWithReply(remote::Domain d, uint8_t code, const V
 
 Rc<RemoteFontServer> RemoteSession::close() {
 	_resetRequested = false;
+	if (auto registry = _host->getSharedObjects()) {
+		for (auto &resource : _resources) {
+			for (auto image : resource->getImages()) {
+				if (image->image) { registry->drop(image->image.get()); }
+			}
+		}
+	}
+	_resources.clear();
+	_resourceBytes = 0;
 	_replies.clear();
 	if (_blockTransfer) {
 		_blockTransfer->invalidate();

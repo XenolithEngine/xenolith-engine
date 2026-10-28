@@ -45,7 +45,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 static constexpr uint32_t kClientDependencyEventMask = 0x8000'0000u;
 
 // Keepalive: disconnect if the server has not pinged us within this window (it pings ~1/s).
-static constexpr uint64_t kKeepalivePingTimeoutUs = 5'000'000; // 5s
+#if SPRT_TAU
+static constexpr uint64_t kKeepalivePingTimeoutUs = 120'000'000;
+#else
+static constexpr uint64_t kKeepalivePingTimeoutUs = 5'000'000;
+#endif
 
 /* Creating a window is a hop to the server's context thread plus the window system's own work; it
 is NOT the window becoming drawable (that needs a presented frame and a compiled queue, which is why
@@ -472,7 +476,7 @@ void ClientAppThread::pumpConnection() {
 	});
 
 	// A dispatcher can end the session, but must not tear the connection down inside the poll.
-	bool disconnect = _disconnectRequested;
+	bool disconnect = _disconnectRequested || _connection->isClosed();
 
 	// Request watchdog: if the server left a request unanswered past its reply deadline, the waiter
 	// was already failed locally; treat the server as gone and end the client.
@@ -489,7 +493,7 @@ void ClientAppThread::pumpConnection() {
 			&& sp::platform::clock(ClockType::Monotonic) - _lastPingTime
 					>= kKeepalivePingTimeoutUs) {
 		log::source().info("ClientAppThread",
-				"server keepalive timeout (no ping for 5s); disconnecting");
+				"server keepalive timeout; disconnecting");
 		disconnect = true;
 	}
 

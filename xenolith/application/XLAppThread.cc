@@ -115,8 +115,10 @@ bool AppThread::worker() {
 void AppThread::stop() {
 	Thread::stop();
 
-	_appLooper->wakeup(
-			sprt::dispatch::WakeupFlags::Graceful | sprt::dispatch::WakeupFlags::SuspendThreads);
+	if (_appLooper) {
+		_appLooper->wakeup(
+				sprt::dispatch::WakeupFlags::Graceful | sprt::dispatch::WakeupFlags::SuspendThreads);
+	}
 }
 
 void AppThread::wakeup(Function<void()> &&fn) {

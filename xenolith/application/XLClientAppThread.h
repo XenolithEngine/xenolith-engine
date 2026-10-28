@@ -60,6 +60,8 @@ public:
 
 	remote::ObjectFactory *getSharedObjects() const { return _sharedObjects; }
 
+	void compileRemoteResource(Rc<core::Resource> &&, Function<void(bool)> &&);
+
 	// AppThread platform-services interface (TODO: route to the remote server). The transport
 	// carries no clipboard, so every call below is a stub and hasClipboard() reports it.
 	virtual bool hasClipboard() const override { return false; }
@@ -191,6 +193,7 @@ protected:
 	Rc<remote::ClientConnection> _connection;
 
 	Rc<remote::ObjectFactory> _sharedObjects;
+	Vector<Rc<core::Resource>> _remoteResources;
 
 	// The server's identity (GlobalCode::ServerInfo). Kept for the whole session; a reconnect
 	// builds a new thread.

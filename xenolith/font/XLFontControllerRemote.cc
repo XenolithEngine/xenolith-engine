@@ -37,7 +37,11 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 
 // SourcesAnnounce reply (SourcesReady / error) deadline.
-static constexpr uint64_t kSourcesAnnounceTimeoutUs = 10'000'000; // 10s
+#if SPRT_TAU
+static constexpr uint64_t kSourcesAnnounceTimeoutUs = 120'000'000;
+#else
+static constexpr uint64_t kSourcesAnnounceTimeoutUs = 10'000'000;
+#endif
 
 Rc<FontController> FontControllerRemote::createRemoteController(AppThread *owner) {
 	return Rc<FontControllerRemote>::create(owner);
@@ -170,6 +174,10 @@ bool FontControllerRemote::sendSourcesAnnounce() {
 void FontControllerRemote::handleSourcesReady(BytesView payload) {
 	auto v = data::read<Interface>(payload);
 	_atlasImageServerId = uint64_t(v.getInteger("atlas"));
+	if (!_atlasImageServerId) {
+		_announced = false;
+		return;
+	}
 
 	// Hashes the server lacks must be shipped (small -> FontInline, large -> Domain::Data Font)
 	// before we flip loaded. For the resource-font scenario the server already holds them, so this

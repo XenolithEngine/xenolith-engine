@@ -25,6 +25,7 @@
 #include "XLCoreLoop.h"
 #include "XLAppThread.h"
 #include "XLContext.h"
+#include "XLClientAppThread.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -325,6 +326,17 @@ void ResourceCache::removeTemporaryResource(StringView str) {
 }
 
 void ResourceCache::compileResource(TemporaryResource *res) {
+	if (!_loop && !_application->isServerThread()) {
+		res->setRequested(true);
+		static_cast<ClientAppThread *>(_application)->compileRemoteResource(
+				Rc<core::Resource>(res->getResource()),
+				[res = Rc<TemporaryResource>(res), guard = Rc<ResourceCache>(this)](bool success) {
+			if (success) { res->setLoaded(true); }
+			else { res->setCompileFailed(); }
+			guard->getApplication()->wakeup();
+		});
+		return;
+	}
 	if (_loop) {
 		res->setRequested(true);
 		_loop->compileResource(Rc<core::Resource>(res->getResource()),

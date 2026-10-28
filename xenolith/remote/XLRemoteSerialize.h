@@ -53,6 +53,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 // it dereferences the (null) attachment object.
 class SP_PUBLIC QueueCodec {
 public:
+	static constexpr uint64_t ResourceUploadMaxBytes = 16 * 1024 * 1024;
+	// RGBA sampled images from an untrusted client; failure consumes none of its byte budget.
+	static Rc<core::Resource> decodeResourceUpload(const Value &, uint64_t budget, uint64_t &used);
 	// Encode a compiled queue (with its internal + linked resources) to a CBOR blob; gAPI objects get
 	// ids assigned in `registry`.
 	static Bytes encodeQueue(const core::Queue &,

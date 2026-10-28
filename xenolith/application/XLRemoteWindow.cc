@@ -89,6 +89,7 @@ bool RemoteWindow::init(NotNull<ClientAppThread> thread, const Value &val) {
 }
 
 void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &q, Function<void(bool)> &&cb) {
+	if (!cb) { cb = [](bool) { }; }
 	auto n = q->getName();
 	uint64_t id = 0;
 	for (auto &it : _queues) {
@@ -103,7 +104,6 @@ void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &q, Function<void(bo
 		return;
 	}
 
-	// now, we should send server a note that queue is requested
 
 	auto c = _thread->getConnection();
 	if (!c) {
@@ -116,7 +116,7 @@ void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &q, Function<void(bo
 
 	if (!_thread->sendMessageWithReply(remote::Domain::Window,
 				toInt(remote::WindowCode::CompileQueue), Value(id),
-				[this, cb = sp::move(cb), q, id](const remote::MessageHeader &h,
+				[this, cb, q, id](const remote::MessageHeader &h,
 						BytesView payload) {
 		if (remote::isError(h)) {
 			slog().error("RemoteWindow", "compileRenderQueue: network failure: ", int(h.code));
@@ -246,7 +246,9 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 	});
 }
 
-void RemoteWindow::compileResource(Rc<core::Resource> &&, Function<void(bool)> &&, bool preload) { }
+void RemoteWindow::compileResource(Rc<core::Resource> &&resource, Function<void(bool)> &&cb, bool) {
+	_thread->compileRemoteResource(sp::move(resource), sp::move(cb));
+}
 
 void RemoteWindow::compileMaterials(Rc<core::MaterialInputData> &&req,
 		const Vector<Rc<core::DependencyEvent>> &deps) {

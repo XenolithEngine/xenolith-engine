@@ -52,7 +52,10 @@ bool RemoteFontServerEndpoint::init(AppThread *thread, FontComponent *comp, Rc<R
 	_controller =
 			Rc<FontControllerLocal>::create(comp, "RemoteFontServerController", _library.get());
 	if (_controller) {
-		_controller->initialize(_thread);
+		_controller->initializeImage(_thread, [self = Rc<RemoteFontServerEndpoint>(this)](bool success) {
+			self->_atlasStatus = success ? 1 : -1;
+			self->sendSourcesReady();
+		});
 	}
 	if (store) {
 		_store = static_cast<FontStore *>(store.get());
@@ -118,6 +121,10 @@ void RemoteFontServerEndpoint::handleSourcesAnnounce(uint32_t serial, BytesView 
 	if (!_peer) {
 		return;
 	}
+	if (!serial || _sourcesSerial) {
+		_peer->remoteSendError(remote::Domain::Font, toInt(remote::FontError::SourcesNotReady), serial);
+		return;
+	}
 	auto v = data::read<Interface>(payload);
 
 	// Report only the content hashes we do not already hold; the client ships just those.
@@ -129,17 +136,27 @@ void RemoteFontServerEndpoint::handleSourcesAnnounce(uint32_t serial, BytesView 
 		}
 	}
 
-	// Pin the network atlas image to a stable wire id and announce it, so the client can build a
-	// mirror Texture with the matching index -- the identity its Label materials must carry to hash
-	// to the server's font material.
+	_sourcesSerial = serial;
+	_sourcesGeneration = _peerGeneration;
+	_sourcesMissing = sp::move(missing);
+	sendSourcesReady();
+}
+
+void RemoteFontServerEndpoint::sendSourcesReady() {
+	if (!_peer || !_sourcesSerial || _sourcesGeneration != _peerGeneration || !_atlasStatus) {
+		return;
+	}
+	auto serial = _sourcesSerial;
+	_sourcesSerial = 0;
 	uint64_t atlasId = pinAtlasImage();
-	if (atlasId == 0) {
-		log::source().warn("RemoteFontServerEndpoint",
-				"network atlas image not compiled yet; mirror identity unavailable");
+	if (_atlasStatus < 0 || !atlasId) {
+		_sourcesMissing = Value();
+		_peer->remoteSendError(remote::Domain::Font, toInt(remote::FontError::SourcesNotReady), serial);
+		return;
 	}
 
 	Value reply;
-	reply.setValue(sp::move(missing), "missing");
+	reply.setValue(sp::move(_sourcesMissing), "missing");
 	reply.setInteger(int64_t(atlasId), "atlas");
 	_peer->remoteSendCborReply(serial, remote::Domain::Font, toInt(remote::FontCode::SourcesReady),
 			reply);
@@ -298,6 +315,8 @@ void RemoteFontServerEndpoint::reset() {
 	++_peerGeneration;
 	_deps.clear();
 	_atlasStableId = 0;
+	_sourcesSerial = 0;
+	_sourcesMissing = Value();
 }
 
 void RemoteFontServerEndpoint::invalidate() {

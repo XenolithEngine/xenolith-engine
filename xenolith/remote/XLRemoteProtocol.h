@@ -233,6 +233,10 @@ enum class WindowCode {
 	The client clears its mirror and writes the epoch into every operation list after this; lists
 	of an older epoch are declined together with their frames, without another reset. */
 	FrameDataReset = 17,
+
+	// Client -> server request: bounded RGBA sampled images for an owned window; reply is the
+	// compiled Resource codec, with server object ids. No shaders or executable data.
+	CompileResource = 18,
 };
 
 // Every WindowCode has a handler on the side that receives it; see the note on codeBit.
@@ -245,7 +249,7 @@ constexpr uint64_t kSupportedWindowCodes = codeBit(WindowCode::CompileQueue)
 		| codeBit(WindowCode::WindowGeometryChanged) | codeBit(WindowCode::WindowControl)
 		| codeBit(WindowCode::TextInputControl) | codeBit(WindowCode::TextInputState)
 		| codeBit(WindowCode::CreateWindow) | codeBit(WindowCode::FrameDeclined)
-		| codeBit(WindowCode::FrameDataReset);
+		| codeBit(WindowCode::FrameDataReset) | codeBit(WindowCode::CompileResource);
 
 
 // Operations carried by WindowCode::TextInputControl.

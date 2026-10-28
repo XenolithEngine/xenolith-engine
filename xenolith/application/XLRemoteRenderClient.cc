@@ -48,7 +48,11 @@ whether the client is still there is the keepalive's question, and only its answ
 
 A client that misses them again and again is serving nothing, so kMaxConsecutiveLateFrames in a row
 does drop it. */
-static constexpr uint64_t kAcquireFrameReplyTimeoutUs = 2'000'000; // 2s
+#if SPRT_TAU
+static constexpr uint64_t kAcquireFrameReplyTimeoutUs = 120'000'000;
+#else
+static constexpr uint64_t kAcquireFrameReplyTimeoutUs = 2'000'000;
+#endif
 
 /* The input deadline is deliberately generous: it guards against a client that stopped mid-frame,
 not against a slow one. A client's first frames legitimately take seconds -- fonts are announced,
@@ -575,6 +579,9 @@ void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
 	// Resolve a static (non-atlas) image by its gAPI object id through an existing material in this
 	// set that references the same ImageObject; the wire carries only the id.
 	auto resolveStaticImageData = [&](uint64_t imageId) -> const core::ImageData * {
+		if (auto image = _session->resolveResourceImage(imageId)) {
+			return image;
+		}
 		auto obj = reg->resolveObject(imageId);
 		if (!obj) {
 			return nullptr;
@@ -591,6 +598,9 @@ void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
 		return nullptr;
 	};
 
+	struct ResourceOwners : Ref {
+		Vector<Rc<core::Resource>> resources;
+	};
 	for (auto &mn : v.getValue("mats").asArray()) {
 		auto id = core::MaterialId(mn.getInteger("id"));
 		auto pipeline = resolvePipeline(mn.getString("pl"));
@@ -600,6 +610,7 @@ void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
 			continue;
 		}
 		Vector<core::MaterialImage> images;
+		auto owners = Rc<ResourceOwners>::alloc();
 		bool ok = true;
 		for (auto &in : mn.getValue("imgs").asArray()) {
 			uint64_t imageId = 0;
@@ -613,6 +624,9 @@ void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
 				mi.image = &inst->data;
 			} else if (auto imgData = resolveStaticImageData(imageId)) {
 				mi.image = imgData;
+				if (imgData->resource) {
+					owners->resources.emplace_back(const_cast<core::Resource *>(imgData->resource));
+				}
 			} else {
 				log::source().warn("RemoteRenderClient", "CompileMaterials: unresolved image id ",
 						imageId);
@@ -624,7 +638,7 @@ void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
 		if (!ok || images.empty()) {
 			continue;
 		}
-		if (auto mat = Rc<core::Material>::create(id, pipeline, sp::move(images), Rc<Ref>())) {
+		if (auto mat = Rc<core::Material>::create(id, pipeline, sp::move(images), Rc<Ref>(owners))) {
 			input->materialsToAddOrUpdate.emplace_back(sp::move(mat));
 		}
 	}

@@ -51,7 +51,12 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 // Keepalive cadence: ping the connected client this often, and terminate it if it has not answered
 // a pong within the timeout.
 static constexpr uint64_t kKeepalivePingIntervalUs = 1'000'000; // 1s
-static constexpr uint64_t kKeepalivePongTimeoutUs = 5'000'000; // 5s
+// Tau peers also expose endpoint revocation; the heartbeat allows slow image decoding on TCG.
+#if SPRT_TAU
+static constexpr uint64_t kKeepalivePongTimeoutUs = 120'000'000;
+#else
+static constexpr uint64_t kKeepalivePongTimeoutUs = 5'000'000;
+#endif
 
 // Rate limit on setup handshakes: every failure doubles a cool-off window during which connections
 // are refused, so key guessing costs wall-clock time. A successful handshake clears it.
@@ -867,7 +872,7 @@ void ServerAppThread::pumpListener() {
 		// AppThread update timer (appUpdateInterval), not frame timing, so it ticks while idle.
 		if (!session->updateKeepalive(now, kKeepalivePingIntervalUs, kKeepalivePongTimeoutUs)) {
 			log::source().info("AppThread", "client ", session->getId(),
-					" keepalive timeout (no pong for 5s); terminating connection");
+					" keepalive timeout; terminating connection");
 			resetSession(session);
 		}
 	}
@@ -1030,6 +1035,10 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 		}
 	} else if (remote::Domain(h.domain) == remote::Domain::Window) {
 		switch (remote::WindowCode(h.code)) {
+		case remote::WindowCode::CompileResource: {
+			if (conn) { session->compileResource(h, payload); }
+			return true;
+		}
 		case remote::WindowCode::CompileQueue: {
 			// Replies go through `conn`, which is null once the client is gone (the message may
 			// still sit in the deferred queue).

@@ -72,6 +72,9 @@ static void Blend_source(const raster::Target &target, const BlendSource &source
 			uint32_t g = src[1];
 			uint32_t b = src[srcB];
 			uint32_t a = opaque ? 255 : src[3];
+			if ((r | g | b | a) == 0) {
+				continue;
+			}
 
 			if (planeAlpha != 255) {
 				r = Blend_divide255(r * planeAlpha);

@@ -72,6 +72,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 void performAddressTests();
 void performFramingTests();
 void performSerializeTests();
+void performResourceUploadTests();
 void performTransportTests();
 void performStreamTests();
 void performWireTests();

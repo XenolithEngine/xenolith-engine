@@ -44,6 +44,7 @@ public:
 	bool init(FontComponent *, StringView name, FontLibrary *lib = nullptr);
 
 	virtual void initialize(AppThread *) override;
+	void initializeImage(AppThread *, Function<void(bool)> &&);
 	virtual void invalidate(AppThread *) override;
 
 	virtual const Rc<core::DynamicImage> &getImage() const override { return _image; }

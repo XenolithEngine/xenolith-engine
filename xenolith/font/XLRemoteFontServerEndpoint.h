@@ -25,6 +25,7 @@
 
 #include "XLRemoteFontServer.h" // the stappler::xenolith::RemoteFontServer interface
 #include "XLFontControllerLocal.h"
+#include "SPData.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 
@@ -64,6 +65,7 @@ protected:
 
 	void preloadDefaultFonts();
 	void handleSourcesAnnounce(uint32_t serial, BytesView payload);
+	void sendSourcesReady();
 	void handleGlyphRequest(BytesView payload);
 	Rc<core::DependencyEvent> getOrCreateDep(uint32_t depId);
 
@@ -85,6 +87,10 @@ protected:
 			_deps; // depId -> server-local gating event (per-connection)
 	Set<uint64_t> _unknownFonts; // content hashes already reported as missing
 	uint64_t _atlasStableId = 0; // constant wire id pinned to the current atlas image
+	int _atlasStatus = 0;
+	uint32_t _sourcesSerial = 0;
+	uint64_t _sourcesGeneration = 0;
+	Value _sourcesMissing;
 };
 
 } // namespace stappler::xenolith::font
