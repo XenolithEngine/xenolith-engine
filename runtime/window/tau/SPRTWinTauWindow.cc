@@ -258,12 +258,18 @@ void TauWindow::show(const uint8_t *frame, uint32_t x, uint32_t y, uint32_t w, u
 
 bool TauWindow::init(NotNull<TauContextController> c, Rc<WindowInfo> &&info) {
 	if (c->isVulkanDisplay()) {
+		// The WSI opened the session: of dev.display@1, or for a GPU the planes of dev.display@2.
 		struct __sprt_tau_display_info in = {};
-		if (__sprt_tau_display_query(&in, nullptr) < 0) {
+		struct __sprt_tau_display2_info planes = {};
+		if (__sprt_tau_display_query(&in, nullptr) == 0) {
+			_extent = Extent2(in.width, in.height);
+			_stride = in.stride;
+		} else if (__sprt_tau_display2_query(&planes, nullptr) == 0) {
+			_extent = Extent2(planes.width, planes.height);
+			_stride = planes.width * 4;
+		} else {
 			return false;
 		}
-		_extent = Extent2(in.width, in.height);
-		_stride = in.stride;
 		oslog::vpinfo(__SPRT_LOCATION, "TauWindow", "Vulkan display WSI");
 	} else if (!connect(true)) {
 		return false;
