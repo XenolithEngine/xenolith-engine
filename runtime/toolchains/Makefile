@@ -355,6 +355,50 @@ clean-targets:
 	rm -rf target-nuttx/intermediate
 	rm -rf target-wasm/intermediate
 
+# Everything a host or target build leaves behind besides its package: build trees,
+# stage sysroots and per-target intermediate roots. Downloaded sources (src/, xwin/)
+# and the packages themselves (hosts/, targets/, target-*/targets/, release/) stay.
+#
+# host-linux-glibc/sysroot-clang-out stays too, although it is a stage: target-linux/glibc
+# compiles with it and host-windows-msvc/cross takes its native tools from it, while
+# `make host` will not rebuild it as long as hosts/<id>/release exists.
+CLEAN_BUILD_DIRS := $(wildcard $(addprefix $(LIBS_MAKE_ROOT),\
+	intermediate \
+	host-linux-glibc/build \
+	host-linux-glibc/sysroot-gcc \
+	host-linux-glibc/sysroot-clang1 \
+	host-linux-glibc/sysroot-clang2 \
+	host-linux-glibc/cross/build \
+	host-linux-glibc/cross/sysroot \
+	host-linux-glibc/cross/resource \
+	host-linux-musl/build \
+	host-linux-musl/sysroot-stage0 \
+	host-linux-musl/sysroot-out \
+	host-linux-musl/cross/build \
+	host-linux-musl/cross/sysroot \
+	host-macos/cross/build \
+	host-macos/cross/sysroot-target \
+	host-windows-msvc/build \
+	host-windows-msvc/sysroot-windows \
+	host-windows-msvc/cross/build \
+	host-windows-msvc/cross/sysroot-windows \
+	toolchain-macos-cross/build \
+	toolchain-macos-cross/sysroot-host \
+	target-*/intermediate \
+	target-*/build \
+	target-linux/glibc/build \
+	target-linux/glibc/sysroot-host \
+	target-linux/glibc/sysroot-target-* \
+	target-linux/musl/build \
+	target-linux/musl/*-unknown-linux-musl \
+	target-xenolithos/device/build \
+	target-xenolithos/device/sysroot-target-* \
+	target-xenolithos/device/sysroot-userland-* \
+	target-xenolithos/device/sysroot-gpu-*))
+
+clean-build:
+	$(if $(CLEAN_BUILD_DIRS),rm -rf $(CLEAN_BUILD_DIRS),@echo "clean-build: nothing to remove")
+
 
 HOSTS_AVAILABLE = $(wildcard hosts/*/)
 TARGETS_AVAILABLE = $(wildcard targets/*/)
@@ -517,6 +561,7 @@ clean-release:
 	release-verify \
 	clean-release \
 	clean-targets \
+	clean-build \
 	target-all \
 	target-linux \
 	target-x86_64-unknown-linux-gnu \
