@@ -83,6 +83,7 @@ public:
 	virtual ~DisplayPlane();
 
 	bool init(DisplayPipe *, uint32_t id, NotNull<AppWindow>);
+	bool init(DisplayPipe *, uint32_t id, NotNull<core::PlaneSource>);
 
 	uint32_t getId() const { return _id; }
 	AppWindow *getWindow() const { return _window; }
@@ -142,6 +143,8 @@ public:
 
 	// A new plane is disabled; set its state and commit() to show it.
 	Rc<DisplayPlane> createPlane(NotNull<AppWindow>);
+	// A published image source without window input or display-link pacing.
+	Rc<DisplayPlane> createPlane(NotNull<core::PlaneSource>);
 	void destroyPlane(NotNull<DisplayPlane>);
 
 	// Apply every plane's pending state at once. On refusal nothing changes and the pending states

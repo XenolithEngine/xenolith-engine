@@ -81,6 +81,8 @@ public:
 	bool isAttached() const { return _attached; }
 
 	virtual Extent2 getExtent() const override;
+	// The exact plane frames selected for one host presentation order, on the app thread.
+	virtual void handleHostFrameAcquired(uint64_t, const PlaneSetInput &) { }
 
 protected:
 	virtual void requestHostFrame() override;
