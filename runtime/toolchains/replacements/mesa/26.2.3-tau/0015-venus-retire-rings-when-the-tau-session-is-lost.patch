@@ -2,13 +2,13 @@
 +++ b/src/virtio/vulkan/vn_renderer.h
 @@ -114,6 +114,8 @@
  };
- 
+
  struct vn_renderer_ops {
 +   bool (*is_lost)(struct vn_renderer *renderer);
 +
     void (*destroy)(struct vn_renderer *renderer,
                     const VkAllocationCallbacks *alloc);
- 
+
 @@ -212,6 +214,12 @@
     struct vn_renderer_bo_ops bo_ops;
     struct vn_renderer_sync_ops sync_ops;
@@ -19,13 +19,13 @@
 +{
 +   return renderer->ops.is_lost && renderer->ops.is_lost(renderer);
 +}
- 
+
  #ifdef HAVE_LIBDRM
  VkResult
 --- a/src/virtio/vulkan/vn_renderer_tau.c
 +++ b/src/virtio/vulkan/vn_renderer_tau.c
 @@ -59,6 +59,7 @@
- 
+
  struct tau_gpu_calls {
     int (*open)(int, struct __sprt_tau_gpu_info *);
 +   unsigned long long (*session)(void);
@@ -42,12 +42,12 @@
     TAU_CALL(ctx_create);
 @@ -143,6 +145,7 @@
     struct vn_instance *instance;
- 
+
     uint32_t ctx;
 +   unsigned long long session;
     uint32_t host_heap;
     struct virgl_renderer_capset_venus capset;
- 
+
 @@ -164,6 +167,13 @@
  tau_renderer(struct vn_renderer *renderer)
  {
@@ -60,7 +60,7 @@
 +   struct tau_renderer *tau = tau_renderer(renderer);
 +   return !tau->session || tau_gpu.session() != tau->session;
  }
- 
+
  /* The value `ring` of the renderer's context reached; 0 when the session is
 @@ -337,6 +347,9 @@
                uint64_t *val)
@@ -70,7 +70,7 @@
 +      return VK_ERROR_DEVICE_LOST;
 +
     struct tau_sync *sync = (struct tau_sync *)_sync;
- 
+
     mtx_lock(&tau->sync_mutex);
 @@ -353,6 +366,9 @@
                 uint64_t val)
@@ -80,7 +80,7 @@
 +      return VK_ERROR_DEVICE_LOST;
 +
     struct tau_sync *sync = (struct tau_sync *)_sync;
- 
+
     mtx_lock(&tau->sync_mutex);
 @@ -372,6 +388,9 @@
             const struct vn_renderer_submit_batch *batch)
@@ -90,10 +90,10 @@
 +      return VK_ERROR_DEVICE_LOST;
 +
     unsigned long long fence;
- 
+
     /* the session copies the stream, the fence is on the batch's ring */
 @@ -423,6 +442,10 @@
- 
+
     mtx_lock(&tau->sync_mutex);
     for (;;) {
 +      if (tau_is_lost(renderer)) {
@@ -105,12 +105,12 @@
           return VK_SUCCESS;
 @@ -509,7 +532,7 @@
     struct tau_bo *bo = (struct tau_bo *)_bo;
- 
+
     /* the mapping is where the heap is, not where one asks */
 -   if (placed_addr || !(bo->blob_flags & TAU_GPU_BO_MAPPABLE))
 +   if (tau_is_lost(renderer) || placed_addr || !(bo->blob_flags & TAU_GPU_BO_MAPPABLE))
        return NULL;
- 
+
     bo->base.mmap_ptr = bo->data;
 @@ -520,6 +543,9 @@
  tau_bo_export_dma_buf(struct vn_renderer *renderer, struct vn_renderer_bo *_bo)
@@ -120,7 +120,7 @@
 +      return -1;
 +
     struct tau_bo *bo = (struct tau_bo *)_bo;
- 
+
     if (!(bo->blob_flags & TAU_GPU_BO_SHAREABLE))
 @@ -553,6 +579,9 @@
                          struct vn_renderer_bo *bo)
@@ -131,15 +131,15 @@
 +
     struct __sprt_tau_gpu_point points[TAU_GPU_RINGS];
     uint32_t count = 0;
- 
+
 @@ -581,7 +610,8 @@
     }
- 
+
     bo->live = false;
 -   tau_gpu.bo_destroy(bo->base.res_id);
 +   if (!tau_is_lost(renderer))
 +      tau_gpu.bo_destroy(bo->base.res_id);
- 
+
     mtx_unlock(&tau->import_mutex);
     return true;
 @@ -597,6 +627,9 @@
@@ -149,7 +149,7 @@
 +   if (tau_is_lost(renderer))
 +      return VK_ERROR_DEVICE_LOST;
 +
- 
+
     struct __sprt_tau_gpu_buf *buf = __sprt_dmabuf_buf(fd);
     struct __sprt_tau_gpu_bo_desc desc;
 @@ -662,6 +695,9 @@
@@ -159,19 +159,19 @@
 +   if (tau_is_lost(renderer))
 +      return VK_ERROR_DEVICE_LOST;
 +
- 
+
     uint32_t blob_flags = 0;
     if (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
 @@ -727,7 +763,8 @@
  {
     struct tau_shmem *shmem = (struct tau_shmem *)_shmem;
- 
+
 -   tau_gpu.bo_destroy(shmem->base.res_id);
 +   if (!tau_is_lost(renderer))
 +      tau_gpu.bo_destroy(shmem->base.res_id);
     free(shmem);
  }
- 
+
 @@ -749,6 +786,9 @@
  tau_shmem_create(struct vn_renderer *renderer, size_t size)
  {
@@ -179,21 +179,21 @@
 +   if (tau_is_lost(renderer))
 +      return NULL;
 +
- 
+
     struct vn_renderer_shmem *cached_shmem =
        vn_renderer_shmem_cache_get(&tau->shmem_cache, size);
 @@ -823,7 +863,7 @@
- 
+
     vn_renderer_shmem_cache_fini(&tau->shmem_cache);
- 
+
 -   if (tau->ctx)
 +   if (tau->ctx && !tau_is_lost(renderer))
        tau_gpu.ctx_destroy(tau->ctx);
- 
+
     cnd_destroy(&tau->sync_cond);
 @@ -857,13 +897,14 @@
     call_once(&tau_gpu_once, tau_gpu_resolve);
- 
+
     struct __sprt_tau_gpu_info info;
 -   if (!tau_gpu.open || !tau_gpu.wait || !tau_gpu.buf_release ||
 +   if (!tau_gpu.open || !tau_gpu.session || !tau_gpu.wait || !tau_gpu.buf_release ||
@@ -208,9 +208,9 @@
        vn_log(tau->instance, "the GPU has no heap of host memory");
        return VK_ERROR_INITIALIZATION_FAILED;
 @@ -906,6 +947,7 @@
- 
+
     tau_init_renderer_info(tau);
- 
+
 +   tau->base.ops.is_lost = tau_is_lost;
     tau->base.ops.destroy = tau_destroy;
     tau->base.ops.submit = tau_submit;
@@ -220,11 +220,11 @@
 @@ -65,7 +65,7 @@
  bool
  vn_ring_get_seqno_status(struct vn_ring *ring, uint32_t seqno);
- 
+
 -void
 +bool
  vn_ring_wait_seqno(struct vn_ring *ring, uint32_t seqno);
- 
+
  void
 --- a/src/virtio/vulkan/vn_ring.c
 +++ b/src/virtio/vulkan/vn_ring.c
@@ -262,7 +262,7 @@
 @@ -228,28 +233,22 @@
     return false;
  }
- 
+
 -static uint32_t
 -vn_ring_wait_space(struct vn_ring *ring, uint32_t size)
 +static bool
@@ -301,7 +301,7 @@
 +      vn_relax(&relax_state);
     }
  }
- 
+
 @@ -447,7 +446,7 @@
  vn_ring_submit_internal(struct vn_ring *ring,
                          struct vn_ring_submit *submit,
@@ -312,7 +312,7 @@
     /* write cs to the ring */
     assert(!vn_cs_encoder_is_empty(cs));
 @@ -457,10 +456,13 @@
- 
+
     for (uint32_t i = 0; i < cs->buffer_count; i++) {
        const struct vn_cs_encoder_buffer *buf = &cs->buffers[i];
 -      cur_seqno = vn_ring_wait_space(ring, buf->committed_size);
@@ -320,7 +320,7 @@
 +         return false;
        vn_ring_write_buffer(ring, buf->base, buf->committed_size);
     }
- 
+
 +   if (vn_renderer_is_lost(ring->instance->renderer))
 +      return false;
     vn_ring_store_tail(ring);
@@ -328,10 +328,10 @@
      * fence here both may read the old value and the ring sleeps on a command.
 @@ -480,6 +482,7 @@
     list_addtail(&submit->head, &ring->submits);
- 
+
     *seqno = submit->seqno;
 +   *accepted = true;
- 
+
     /* Notify renderer to wake up idle ring if at least VN_RING_IDLE_TIMEOUT_NS
      * has passed since the last sent notification to avoid excessive wake up
 @@ -636,6 +639,9 @@
@@ -346,7 +346,7 @@
        cs = vn_ring_cs_upload_locked(ring, cs);
 @@ -651,8 +657,16 @@
        return result;
- 
+
     uint32_t seqno;
 +   bool accepted = false;
     const bool notify =
@@ -364,7 +364,7 @@
        struct vn_cs_encoder local_enc = VN_CS_ENCODER_INITIALIZER_LOCAL(
 @@ -733,11 +747,12 @@
     mtx_unlock(&ring->mutex);
- 
+
     if (submit->reply_size) {
 +      submit->ring_seqno_valid = submit->ring_seqno_valid &&
 +         vn_ring_wait_seqno(ring, submit->ring_seqno);
@@ -383,9 +383,9 @@
  #include "vn_feedback.h"
  #include "vn_physical_device.h"
 +#include "vn_renderer.h"
- 
+
  /* query pool commands */
- 
+
 @@ -303,6 +304,10 @@
        vn_relax_init(dev->instance, VN_RELAX_REASON_QUERY);
     for (uint32_t i = 0, j = 0; i < query_count; i++, j += step) {
@@ -395,7 +395,7 @@
 +            return false;
 +         }
           vn_relax(&relax_state);
- 
+
           /* Wait until warn order is reached. */
 @@ -333,6 +338,8 @@
     if (flags & VK_QUERY_RESULT_WAIT_BIT) {
@@ -413,7 +413,7 @@
 +   if (vn_renderer_is_lost(dev->renderer))
 +      return VK_ERROR_DEVICE_LOST;
     VkResult result;
- 
+
     /* Get results from feedback buffers
 --- a/src/virtio/vulkan/vn_sync.c
 +++ b/src/virtio/vulkan/vn_sync.c
