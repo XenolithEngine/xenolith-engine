@@ -32,7 +32,8 @@ static uint8_t target[2][STRIDE * HEIGHT];
 static uint8_t frames[3][PITCH * HEIGHT];
 static uint8_t canvas[PITCH * HEIGHT];
 static unsigned checks, failures, buffer_calls, shown, px, py, pw, ph;
-static bool connected = true, fail_present;
+static bool connected = true, fail_present, fail_copy;
+static unsigned present_calls;
 static unsigned long long epoch = 1;
 
 static void check(const char *name, bool ok) {
@@ -63,7 +64,19 @@ static int buffer(unsigned index, void **map, unsigned long *size) {
 	*size = sizeof(target[index]);
 	return 0;
 }
+static int copy(unsigned index, const void *source, unsigned long stride,
+		unsigned x, unsigned y, unsigned w, unsigned h) {
+	if (fail_copy) {
+		return -__SPRT_TAU_ECONNRESET;
+	}
+	for (unsigned row = y; row < y + h; ++row) {
+		memcpy(target[index] + row * STRIDE + x * 4,
+				(const uint8_t *)source + row * stride + x * 4, w * 4);
+	}
+	return 0;
+}
 static int present(unsigned index, unsigned x, unsigned y, unsigned w, unsigned h) {
+	present_calls++;
 	shown = index;
 	px = x;
 	py = y;
@@ -209,6 +222,7 @@ int main(void) {
 		.stride = STRIDE,
 		.query = query,
 		.buffer = buffer,
+		.copy = copy,
 		.present = present,
 	};
 	mtx_init(&screen.mutex, mtx_plain);
@@ -325,6 +339,15 @@ int main(void) {
 	check("failed chain stays out of date",
 			wsi_tau_swapchain_acquire_next_image(&chain->base, &acquire, &extra)
 					== VK_ERROR_OUT_OF_DATE_KHR);
+	chain->serial = screen.serial;
+	fail_present = false;
+	fail_copy = true;
+	calls = present_calls;
+	check("loss during copy",
+			wsi_tau_swapchain_queue_present(&chain->base, 0, 0, NULL) == VK_ERROR_OUT_OF_DATE_KHR);
+	check("incomplete copy is not presented", present_calls == calls && screen.next == next);
+	fail_copy = false;
+
 	screen.open = open_then_lose;
 	screen.close = close_session;
 	screen.opened = connected = false;

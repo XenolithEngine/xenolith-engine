@@ -215,13 +215,11 @@ void TauWindow::show(const uint8_t *frame, uint32_t x, uint32_t y, uint32_t w, u
 	if (!whole && (w == 0 || h == 0)) {
 		return;
 	}
-	uint8_t *target = _buffers[_next];
 	const Rect own = whole ? Rect{0, 0, _extent.width, _extent.height} : Rect{x, y, w, h};
 	if (whole) {
 		x = y = 0;
 		w = _extent.width;
 		h = _extent.height;
-		::memcpy(target, frame, size_t(_stride) * h);
 		_wholeLeft = _wholeLeft > 0 ? _wholeLeft - 1 : 0;
 	} else {
 		if (_last.w > 0 && _last.h > 0) {
@@ -232,13 +230,11 @@ void TauWindow::show(const uint8_t *frame, uint32_t x, uint32_t y, uint32_t w, u
 			w = x1 - x;
 			h = y1 - y;
 		}
-		const size_t rowBytes = size_t(w) * 4;
-		for (uint32_t row = y; row < y + h; ++row) {
-			const size_t off = size_t(row) * _stride + size_t(x) * 4;
-			::memcpy(target + off, frame + off, rowBytes);
-		}
 	}
-	int st = __sprt_tau_display_present(_next, x, y, w, h);
+	int st = __sprt_tau_display_copy(_next, frame, _stride, x, y, w, h);
+	if (st >= 0) {
+		st = __sprt_tau_display_present(_next, x, y, w, h);
+	}
 	_last = own;
 	_next ^= 1;
 	if (_latency && st >= 0) {

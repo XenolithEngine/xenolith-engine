@@ -168,6 +168,7 @@ public:
 
 	// Hands the host's input to the planes.
 	InputRouter *getInputRouter() const { return _inputRouter; }
+	virtual void handleHostInputEvents(SpanView<core::InputEventData>);
 
 	const PlaneCaps &getCaps() const { return _caps; }
 	const Rc<PipeSnapshot> &getSnapshot() const { return _snapshot; }
@@ -181,10 +182,10 @@ public:
 	virtual Extent2 getExtent() const = 0;
 
 	// The host showed a frame of the pipe.
-	void handleHostPresented(uint64_t order);
+	virtual void handleHostPresented(uint64_t order);
 
 	// A host frame asked for will not come.
-	void handleHostFrameDeclined();
+	virtual void handleHostFrameDeclined();
 
 protected:
 	// Ask the output for a frame of the current snapshot.

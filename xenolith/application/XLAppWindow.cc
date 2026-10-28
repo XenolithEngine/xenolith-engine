@@ -521,9 +521,13 @@ void AppWindow::handleFramePresented(NotNull<core::PresentationFrame> frame) {
 	}
 
 	if (_clientWantsPresented.load(sprt::memory_order_acquire)) {
-		_application->performOnAppThread([this, order = frame->getFrameOrder()] {
+		_application->performOnAppThread([this, order = frame->getFrameOrder(), presented = notify] {
 			if (_client && _client->wantsFramePresented()) {
-				_client->handleFramePresented(order);
+				if (presented) {
+					_client->handleFramePresented(order);
+				} else {
+					_client->handleFrameDeclined(getSharedWindowId());
+				}
 			}
 		}, this);
 	}

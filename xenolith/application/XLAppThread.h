@@ -260,6 +260,10 @@ protected:
 			ReplyCallback &&, uint64_t timeoutUs) override;
 
 	sprt::dispatch::Looper *_appLooper = nullptr;
+	sprt::mutex _postingMutex;
+	sprt::condition_variable _postingReady;
+	bool _acceptPosts = false;
+	bool _postsStopped = false;
 	Rc<sprt::dispatch::TimerHandle> _timer;
 	UpdateTime _time;
 	uint64_t _clock = 0;

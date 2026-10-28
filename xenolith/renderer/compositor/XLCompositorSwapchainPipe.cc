@@ -92,13 +92,19 @@ void PipeRenderClient::acquireFrame(uint64_t, NotNull<core::FrameRequestProxy> p
 
 void PipeRenderClient::handleInputEvents(uint64_t, Vector<core::InputEventData> &&events) {
 	if (_pipe) {
-		_pipe->getInputRouter()->handleHostEvents(events);
+		_pipe->handleHostInputEvents(events);
 	}
 }
 
 void PipeRenderClient::handleFramePresented(uint64_t frameOrder) {
 	if (_pipe) {
 		_pipe->handleHostPresented(frameOrder);
+	}
+}
+
+void PipeRenderClient::handleFrameDeclined(uint64_t) {
+	if (_pipe) {
+		_pipe->handleHostFrameDeclined();
 	}
 }
 

@@ -224,8 +224,7 @@ public:
 	virtual void handleFramePresented(uint64_t frameOrder) = 0;
 	virtual bool wantsFramePresented() const { return false; }
 
-	/* The server will not draw the frame asked for with setReadyForNextFrame: the window is not
-	one this client may draw into. Only a remote server says so; a local window never declines. */
+	// The requested frame will not be shown; another scene or output change can request it again.
 	virtual void handleFrameDeclined(uint64_t windowId) { }
 
 	virtual void pushDrawStat(uint64_t windowId, const DrawStat &) = 0;

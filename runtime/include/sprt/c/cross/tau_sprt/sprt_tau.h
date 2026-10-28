@@ -317,6 +317,9 @@ int __sprt_tau_display_open(int wait, struct __sprt_tau_display_info *info);
 int __sprt_tau_display_query(struct __sprt_tau_display_info *info, unsigned long long *generation);
 // Buffer `index` of the session: stride * height bytes.
 int __sprt_tau_display_buffer(unsigned index, void **data, unsigned long *size);
+// Copies a rectangle while checking that its destination Region still belongs to the driver.
+int __sprt_tau_display_copy(unsigned index, const void *data, unsigned long stride,
+		unsigned x, unsigned y, unsigned width, unsigned height);
 int __sprt_tau_display_present(unsigned index, unsigned x, unsigned y, unsigned w, unsigned h);
 // Ends the session; the display keeps the last frame.
 void __sprt_tau_display_close(void);
@@ -338,14 +341,36 @@ struct __sprt_tau_display2_info {
 	unsigned planes;
 };
 
+#define __SPRT_TAU_DISPLAY2_PRIMARY 1
+#define __SPRT_TAU_DISPLAY2_OVERLAY 2
+#define __SPRT_TAU_DISPLAY2_CURSOR 3
+#define __SPRT_TAU_DISPLAY2_SCALE 1
+#define __SPRT_TAU_DISPLAY2_ALPHA 2
+
+struct __sprt_tau_display2_plane_info {
+	unsigned kind, formats, tilings, caps;
+	unsigned max_width, max_height, max_scale;
+	unsigned zpos_min, zpos_max;
+};
+
+struct __sprt_tau_display2_plane_state {
+	unsigned plane, buffer;
+	unsigned src_x, src_y, src_w, src_h;
+	unsigned dst_x, dst_y, dst_w, dst_h;
+};
+
 int __sprt_tau_display2_open(int wait, struct __sprt_tau_display2_info *info);
 int __sprt_tau_display2_query(struct __sprt_tau_display2_info *info,
 		unsigned long long *generation);
+int __sprt_tau_display2_plane(unsigned index, struct __sprt_tau_display2_plane_info *info);
 int __sprt_tau_display2_import(unsigned token, unsigned format, unsigned width, unsigned height,
 		unsigned stride, unsigned offset, unsigned *buffer);
 int __sprt_tau_display2_release(unsigned buffer);
 // *blank: the number of the vertical blank it is shown from.
 int __sprt_tau_display2_show(unsigned buffer, unsigned long long *blank);
+// Unnamed planes keep their last committed state, including across WSI presents.
+int __sprt_tau_display2_commit(const struct __sprt_tau_display2_plane_state *states,
+		unsigned count, unsigned long long *blank);
 void __sprt_tau_display2_close(void);
 
 // The GPU of the module (dev.gpu@1 through libtau, IO-A-GpuIface-1): one session with its heaps

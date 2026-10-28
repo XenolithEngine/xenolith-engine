@@ -22,6 +22,7 @@
 
 #include "XLCommon.h"
 #include "XLClientContext.h"
+#include "XLClientAppThread.h"
 #include "XLRemoteProtocol.h" // remote::getDevBearerKey
 #include "SPCoreCrypto.h" // crypto::Sha512
 #include "ClientScene.h"
@@ -32,7 +33,7 @@ using namespace sp;
 using namespace sp::xenolith;
 
 int main(int argc, const char *argv[]) {
-	perform_main(argc, argv, [&] {
+	return perform_main(argc, argv, [&] {
 		auto ctx = Rc<ClientContext>::create();
 
 		// Server endpoint: first CLI arg "host:port" (the live-reload server passes it here when it
@@ -117,6 +118,16 @@ int main(int argc, const char *argv[]) {
 		}
 
 		ctx->run();
-		return 0;
+		bool latePost = false;
+		if (auto thread = ctx->getAppThread()) {
+			sprt::thread late([&] {
+				thread->performOnAppThread([&] { latePost = true; }, nullptr, true);
+				thread->performOnAppThread(Rc<AppThread::Task>::create(nullptr,
+						[&](const AppThread::Task &, bool) { latePost = true; }), true);
+			});
+			late.join();
+		}
+		log::source().info("client", "late post after stop: ", latePost ? "FAIL" : "ok");
+		return latePost ? 1 : 0;
 	});
 }

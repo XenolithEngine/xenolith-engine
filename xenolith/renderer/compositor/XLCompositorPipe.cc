@@ -69,6 +69,10 @@ bool DisplayPipe::init(NotNull<ServerAppThread> app) {
 	return true;
 }
 
+void DisplayPipe::handleHostInputEvents(SpanView<core::InputEventData> events) {
+	_inputRouter->handleHostEvents(events);
+}
+
 Rc<DisplayPlane> DisplayPipe::createPlane(NotNull<AppWindow> window) {
 	auto plane = Rc<DisplayPlane>::create(this, _nextPlaneId, window);
 	if (!plane) {

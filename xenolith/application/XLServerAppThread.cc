@@ -1778,6 +1778,7 @@ void ServerAppThread::loadExtensions() {
 }
 
 void ServerAppThread::finalizeExtensions() {
+	stopListening();
 	AppThread::finalizeExtensions();
 
 	// Font endpoints are not registered extensions, so release them here while the gapi device is

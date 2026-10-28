@@ -306,8 +306,17 @@ bool HeadlessSwapchain::init(Device &dev, NotNull<core::Loop> loop, const core::
 		auto key = toString("HeadlessSwapchainImage[", i, "]");
 		Rc<Image> image;
 		if (exportable) {
+#if SPRT_TAU
+			ImageInfo linearInfo;
+			linearInfo = swapchainImageInfo;
+			linearInfo.tiling = core::ImageTiling::Linear;
 			image = dev.getAllocator()->spawnExportable(AllocationUsage::DeviceLocal, key,
-					swapchainImageInfo);
+					linearInfo);
+#endif
+			if (!image) {
+				image = dev.getAllocator()->spawnExportable(AllocationUsage::DeviceLocal, key,
+						swapchainImageInfo);
+			}
 			exported += image ? 1 : 0;
 		}
 		if (!image) {
