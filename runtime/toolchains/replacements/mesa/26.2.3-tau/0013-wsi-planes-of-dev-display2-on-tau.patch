@@ -1,0 +1,383 @@
+Subject: [PATCH] wsi: the planes of dev.display@2 for a GPU on Tau, Venus no sw device
+
+--- a/src/virtio/vulkan/vn_wsi.c
++++ b/src/virtio/vulkan/vn_wsi.c
+@@ -131,9 +131,7 @@
+ VkResult
+ vn_wsi_init(struct vn_physical_device *physical_dev)
+ {
+-   /* Tau: the display takes CPU images until its planes import dma-bufs */
+    const bool use_sw_device =
+-      DETECT_OS_TAU ||
+       !physical_dev->base.vk.supported_extensions
+           .EXT_external_memory_dma_buf ||
+       (physical_dev->renderer_driver_id == VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
+--- a/src/vulkan/wsi/wsi_common_tau.c
++++ b/src/vulkan/wsi/wsi_common_tau.c
+@@ -21,12 +21,18 @@
+  * DEALINGS IN THE SOFTWARE.
+  */
+ 
+-/* VK_KHR_display over the exclusive dev.display@1 session of this process. */
++/* VK_KHR_display over the exclusive display session of this process: for a GPU the planes of
++ * dev.display@2, the swapchain's images blitted on the GPU into dma-bufs it imports once and shows
++ * by commits (RT-A-GpuWsi-1); else, or without dev.display@2, the CPU's copies into the buffers of
++ * dev.display@1 (RT-A-VulkanWsi-1).
++ */
+ #include <assert.h>
+ #include <dlfcn.h>
++#include <fcntl.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <unistd.h>
+ #include <sprt/c/cross/tau_sprt/sprt_tau.h>
+ 
+ #include "c11/threads.h"
+@@ -45,11 +51,19 @@
+    unsigned long long generation, serial;
+    uint32_t width, height, stride, refresh;
+    bool opened, lost;
++   bool planes; /* the session is dev.display@2's */
+    int (*open)(int, struct __sprt_tau_display_info *);
+    int (*query)(struct __sprt_tau_display_info *, unsigned long long *);
+    int (*buffer)(unsigned, void **, unsigned long *);
+    int (*present)(unsigned, unsigned, unsigned, unsigned, unsigned);
+    void (*close)(void);
++   int (*p_open)(int, struct __sprt_tau_display2_info *);
++   int (*p_query)(struct __sprt_tau_display2_info *, unsigned long long *);
++   int (*p_import)(unsigned, unsigned, unsigned, unsigned, unsigned, unsigned, unsigned *);
++   int (*p_release)(unsigned);
++   int (*p_show)(unsigned, unsigned long long *);
++   int (*buf_token)(const struct __sprt_tau_gpu_buf *, unsigned *);
++   struct __sprt_tau_gpu_buf *(*dmabuf_buf)(int); /* the runtime's (gpufd.h) */
+ };
+ 
+ static struct wsi_tau_screen tau_screen;
+@@ -71,15 +85,74 @@
+    TAU_HOOK(present);
+    TAU_HOOK(close);
+ #undef TAU_HOOK
++#define TAU_HOOK2(name) s->p_##name = dlsym(module, "__sprt_tau_display2_" #name)
++   TAU_HOOK2(open);
++   TAU_HOOK2(query);
++   TAU_HOOK2(import);
++   TAU_HOOK2(release);
++   TAU_HOOK2(show);
++#undef TAU_HOOK2
++   s->buf_token = dlsym(module, "__sprt_tau_gpu_buf_token");
++   s->dmabuf_buf = dlsym(module, "__sprt_dmabuf_buf");
+    dlclose(module);
+ }
+ 
+-/* The caller holds the screen lock; only WSI reconnects and frees gone mappings. */
++/* The generation of the open session, either major; < 0 when it is lost. */
++static int
++wsi_tau_query(struct wsi_tau_screen *s, unsigned long long *generation)
++{
++   return s->planes ? s->p_query(NULL, generation) : s->query(NULL, generation);
++}
++
++static void
++wsi_tau_connected(struct wsi_tau_screen *s, unsigned long long generation)
++{
++   if (s->lost)
++      fprintf(stderr, "Tau WSI: the display is back, generation %llu\n", generation);
++   if (s->generation != generation)
++      s->next = 0;
++   s->lost = false;
++   s->opened = true;
++   s->generation = generation;
++}
++
++/* The planes for a GPU; false without dev.display@2, which leaves dev.display@1 to try. */
+ static bool
+-wsi_tau_connect(struct wsi_tau_screen *s)
++wsi_tau_connect_planes(struct wsi_tau_screen *s)
++{
++   struct __sprt_tau_display2_info in;
++   unsigned long long generation;
++   if (!s->p_open || !s->p_query || !s->p_import || !s->p_release || !s->p_show || !s->buf_token ||
++       !s->dmabuf_buf)
++      return false;
++   if (s->p_query(&in, &generation) < 0) {
++      if (s->p_open(0, &in) < 0 || s->p_query(&in, &generation) < 0)
++         return false;
++   }
++   if (!in.width || !in.height)
++      return false;
++   if (!s->planes)
++      fprintf(stderr, "Tau WSI: planes of dev.display@2, %ux%u\n", in.width, in.height);
++   s->planes = true;
++   wsi_tau_connected(s, generation);
++   s->width = in.width;
++   s->height = in.height;
++   s->stride = in.width * 4;
++   s->refresh = in.refresh_mhz ? in.refresh_mhz : 60000;
++   return true;
++}
++
++/* The caller holds the screen lock; only WSI reconnects and frees gone mappings. A GPU takes the
++ * planes when they are there; the session stays of the major it opened with. */
++static bool
++wsi_tau_connect(struct wsi_tau_screen *s, bool gpu)
+ {
+    struct __sprt_tau_display_info in;
+    unsigned long long generation;
++   if (gpu && (!s->opened || s->planes) && wsi_tau_connect_planes(s))
++      return true;
++   if (s->planes)
++      return false;
+    if (!s->open || !s->query || !s->buffer || !s->present || !s->close)
+       return false;
+    if (s->query(&in, &generation) < 0) {
+@@ -95,13 +168,7 @@
+       s->opened = false;
+       return false;
+    }
+-   if (s->lost)
+-      fprintf(stderr, "Tau WSI: the display is back, generation %llu\n", generation);
+-   if (s->generation != generation)
+-      s->next = 0;
+-   s->lost = false;
+-   s->opened = true;
+-   s->generation = generation;
++   wsi_tau_connected(s, generation);
+    s->width = in.width;
+    s->height = in.height;
+    s->stride = in.stride;
+@@ -116,7 +183,7 @@
+    unsigned long long current;
+    if (serial != s->serial)
+       return VK_ERROR_OUT_OF_DATE_KHR;
+-   if (!s->opened || s->query(NULL, &current) < 0 ||
++   if (!s->opened || wsi_tau_query(s, &current) < 0 ||
+        generation != current || serial != s->serial) {
+       ++s->serial;
+       if (!s->lost) {
+@@ -159,7 +226,7 @@
+    struct wsi_tau *wsi = (struct wsi_tau *)wsi_device->wsi[VK_ICD_WSI_PLATFORM_DISPLAY];
+    if (wsi) {
+       mtx_lock(&tau_screen.mutex);
+-      if (wsi_tau_connect(&tau_screen) && !wsi->screen) {
++      if (wsi_tau_connect(&tau_screen, !wsi_device->sw) && !wsi->screen) {
+          wsi->mode.width = tau_screen.width;
+          wsi->mode.height = tau_screen.height;
+          wsi->mode.refresh = tau_screen.refresh;
+@@ -177,7 +244,7 @@
+                                   VkDisplayPropertiesKHR *properties)
+ {
+    properties->display = wsi_tau_connector_to_handle(&wsi->connector);
+-   properties->displayName = "dev.display@1";
++   properties->displayName = tau_screen.planes ? "dev.display@2" : "dev.display@1";
+    properties->physicalResolution.width = wsi->mode.width;
+    properties->physicalResolution.height = wsi->mode.height;
+    /* 96 dpi, as wsi_common_display.c does without EDID */
+@@ -613,6 +680,9 @@
+ struct wsi_tau_image {
+    struct wsi_image base;
+    bool acquired;
++   bool shown; /* on the planes' screen until the next commit */
++   int fd; /* the dma-buf of the blit's memory, -1 without */
++   unsigned buffer; /* its import into dev.display@2 */
+ };
+ 
+ struct wsi_tau_swapchain {
+@@ -669,7 +739,7 @@
+          break;
+       for (uint32_t n = 0; n < chain->base.image_count; n++) {
+          uint32_t i = (chain->next_image + n) % chain->base.image_count;
+-         if (!chain->images[i].acquired) {
++         if (!chain->images[i].acquired && !chain->images[i].shown) {
+             chain->images[i].acquired = true;
+             chain->next_image = (i + 1) % chain->base.image_count;
+             *image_index = i;
+@@ -693,7 +763,21 @@
+    return result;
+ }
+ 
+-/* Software rendering is complete before WSI copies into the driver's buffers. */
++/* A commit of the image's buffer on the primary plane, the whole mode: it returns at the blank
++ * that shows it, and the image shown before is free again. The damage is not needed: the plane
++ * shows the buffer whole. */
++static VkResult
++wsi_tau_show(struct wsi_tau_swapchain *chain, uint32_t image_index)
++{
++   struct wsi_tau_screen *screen = chain->screen;
++   unsigned long long blank;
++   if (screen->p_show(chain->images[image_index].buffer, &blank) < 0)
++      return VK_ERROR_OUT_OF_DATE_KHR;
++   for (uint32_t i = 0; i < chain->base.image_count; i++)
++      chain->images[i].shown = i == image_index;
++   return VK_SUCCESS;
++}
++
+ static VkResult
+ wsi_tau_swapchain_queue_present(struct wsi_swapchain *wsi_chain,
+                                   uint32_t image_index,
+@@ -703,12 +787,22 @@
+    struct wsi_tau_swapchain *chain = (struct wsi_tau_swapchain *)wsi_chain;
+    struct wsi_tau_screen *screen = chain->screen;
+    struct wsi_image *image = &chain->images[image_index].base;
++   const struct wsi_device *wsi = chain->base.wsi;
+ 
+    assert(image_index < chain->base.image_count);
++   /* the common code waits for the blit of a software rasterizer only */
++   if (!wsi->sw)
++      wsi->WaitForFences(chain->base.device, 1, &chain->base.fences[image_index], true, ~0ull);
+    mtx_lock(&screen->mutex);
+    VkResult result = wsi_tau_check(screen, chain->generation, chain->serial);
+    if (result != VK_SUCCESS)
+       goto done;
++   if (screen->planes) {
++      result = wsi_tau_show(chain, image_index);
++      if (result != VK_SUCCESS)
++         goto lost;
++      goto done;
++   }
+ 
+    uint32_t width = chain->extent.width, height = chain->extent.height;
+    uint32_t x0 = 0, y0 = 0, x1 = width, y1 = height;
+@@ -789,8 +883,14 @@
+    struct wsi_tau_swapchain *chain = (struct wsi_tau_swapchain *)wsi_chain;
+ 
+    for (uint32_t i = 0; i < chain->base.image_count; i++) {
+-      if (chain->images[i].base.image != VK_NULL_HANDLE)
+-         wsi_destroy_image(&chain->base, &chain->images[i].base);
++      struct wsi_tau_image *image = &chain->images[i];
++      /* one on screen stays imported: its BO going turns the plane off */
++      if (image->buffer && chain->screen->p_release)
++         chain->screen->p_release(image->buffer);
++      if (image->base.image != VK_NULL_HANDLE)
++         wsi_destroy_image(&chain->base, &image->base);
++      if (image->fd >= 0)
++         close(image->fd);
+    }
+ 
+    wsi_swapchain_finish(&chain->base);
+@@ -798,6 +898,53 @@
+    return VK_SUCCESS;
+ }
+ 
++/* The blit's destination of a plane: a linear buffer in exportable memory of the device. */
++static VkResult
++wsi_tau_create_plane_mem(const struct wsi_swapchain *chain,
++                         const struct wsi_image_info *info,
++                         struct wsi_image *image)
++{
++   return wsi_create_buffer_blit_context(chain, info, image,
++                                         VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT);
++}
++
++static unsigned
++wsi_tau_plane_format(VkFormat format)
++{
++   switch (format) {
++   case VK_FORMAT_B8G8R8A8_UNORM:
++   case VK_FORMAT_B8G8R8A8_SRGB:
++      return __SPRT_TAU_DISPLAY2_B8G8R8X8;
++   case VK_FORMAT_R8G8B8A8_UNORM:
++   case VK_FORMAT_R8G8B8A8_SRGB:
++      return __SPRT_TAU_DISPLAY2_R8G8B8X8;
++   default:
++      return 0;
++   }
++}
++
++/* The image's blit memory as a dma-buf, imported into dev.display@2 by its export token. */
++static VkResult
++wsi_tau_import_image(struct wsi_tau_swapchain *chain, struct wsi_tau_image *image, VkFormat format)
++{
++   const struct wsi_device *wsi = chain->base.wsi;
++   struct wsi_tau_screen *screen = chain->screen;
++   const VkMemoryGetFdInfoKHR fd_info = {
++      .sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
++      .memory = image->base.blit.memory,
++      .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
++   };
++   unsigned token = 0;
++   if (wsi->GetMemoryFdKHR(chain->base.device, &fd_info, &image->fd) != VK_SUCCESS ||
++       screen->buf_token(screen->dmabuf_buf(image->fd), &token) < 0 ||
++       screen->p_import(token, wsi_tau_plane_format(format), chain->extent.width,
++                        chain->extent.height, image->base.row_pitches[0], 0, &image->buffer) < 0) {
++      fprintf(stderr, "Tau WSI: the display did not import the image's buffer\n");
++      return VK_ERROR_SURFACE_LOST_KHR;
++   }
++   return VK_SUCCESS;
++}
++
+ static VkResult
+ wsi_tau_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
+                                    VkDevice device,
+@@ -811,11 +958,9 @@
+ 
+    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR);
+ 
+-   /* Only software rasterizers: the images must be readable by the CPU. */
+-   if (!wsi_device->sw)
+-      return VK_ERROR_SURFACE_LOST_KHR;
+    mtx_lock(&tau_screen.mutex);
+-   bool connected = wsi_tau_connect(&tau_screen);
++   bool connected = wsi_tau_connect(&tau_screen, !wsi_device->sw);
++   bool planes = tau_screen.planes;
+    unsigned long long generation = tau_screen.generation;
+    uint32_t width = tau_screen.width, height = tau_screen.height;
+    mtx_unlock(&tau_screen.mutex);
+@@ -824,6 +969,8 @@
+    if (pCreateInfo->imageExtent.width != width ||
+        pCreateInfo->imageExtent.height != height)
+       return VK_ERROR_OUT_OF_DATE_KHR;
++   if (planes && !wsi_tau_plane_format(pCreateInfo->imageFormat))
++      return VK_ERROR_SURFACE_LOST_KHR;
+ 
+    const uint32_t num_images = pCreateInfo->minImageCount;
+ 
+@@ -851,18 +998,30 @@
+    chain->base.image_count = num_images;
+    chain->screen = &tau_screen;
+    chain->extent = pCreateInfo->imageExtent;
++   if (planes) {
++      chain->base.image_info.create_mem = wsi_tau_create_plane_mem;
++      chain->base.image_info.select_blit_dst_memory_type = wsi_select_device_memory_type;
++   }
+ 
+    uint32_t image = 0;
+    for (; image < chain->base.image_count; image++) {
++      chain->images[image].fd = -1;
+       result = wsi_create_image(&chain->base, &chain->base.image_info,
+                                 &chain->images[image].base);
+       if (result != VK_SUCCESS)
+          goto fail_destroy_images;
++      if (planes) {
++         result = wsi_tau_import_image(chain, &chain->images[image], pCreateInfo->imageFormat);
++         if (result != VK_SUCCESS) {
++            ++image;
++            goto fail_destroy_images;
++         }
++      }
+    }
+ 
+    mtx_lock(&tau_screen.mutex);
+    unsigned long long current;
+-   if (tau_screen.query(NULL, &current) < 0 || current != generation ||
++   if (wsi_tau_query(&tau_screen, &current) < 0 || current != generation ||
+        tau_screen.generation != generation) {
+       mtx_unlock(&tau_screen.mutex);
+       result = VK_ERROR_OUT_OF_DATE_KHR;
+@@ -880,8 +1039,14 @@
+    return VK_SUCCESS;
+ 
+ fail_destroy_images:
+-   for (uint32_t i = 0; i < image; i++)
+-      wsi_destroy_image(&chain->base, &chain->images[i].base);
++   for (uint32_t i = 0; i < image; i++) {
++      if (chain->images[i].buffer)
++         tau_screen.p_release(chain->images[i].buffer);
++      if (chain->images[i].base.image != VK_NULL_HANDLE)
++         wsi_destroy_image(&chain->base, &chain->images[i].base);
++      if (chain->images[i].fd >= 0)
++         close(chain->images[i].fd);
++   }
+    wsi_swapchain_finish(&chain->base);
+ fail_free_chain:
+    vk_free(pAllocator, chain);

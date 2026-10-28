@@ -321,6 +321,33 @@ int __sprt_tau_display_present(unsigned index, unsigned x, unsigned y, unsigned 
 // Ends the session; the display keeps the last frame.
 void __sprt_tau_display_close(void);
 
+// The planes of the display (dev.display@2 through libtau, IO-A-DisplayPlanes-1): one session,
+// exclusive with dev.display@1's, found by Mesa through dlsym. Buffers are BOs of the GPU imported
+// by the slot of their export token (__sprt_tau_gpu_buf_token); show() puts one on the primary
+// plane, the whole mode, from the next vertical blank and returns at that blank. -ECONNRESET: the
+// session is lost with its imports, open() again.
+#define __SPRT_TAU_DISPLAY2_B8G8R8A8 1
+#define __SPRT_TAU_DISPLAY2_B8G8R8X8 2
+#define __SPRT_TAU_DISPLAY2_R8G8B8A8 3
+#define __SPRT_TAU_DISPLAY2_R8G8B8X8 4
+
+struct __sprt_tau_display2_info {
+	unsigned width;
+	unsigned height;
+	unsigned refresh_mhz;
+	unsigned planes;
+};
+
+int __sprt_tau_display2_open(int wait, struct __sprt_tau_display2_info *info);
+int __sprt_tau_display2_query(struct __sprt_tau_display2_info *info,
+		unsigned long long *generation);
+int __sprt_tau_display2_import(unsigned token, unsigned format, unsigned width, unsigned height,
+		unsigned stride, unsigned offset, unsigned *buffer);
+int __sprt_tau_display2_release(unsigned buffer);
+// *blank: the number of the vertical blank it is shown from.
+int __sprt_tau_display2_show(unsigned buffer, unsigned long long *blank);
+void __sprt_tau_display2_close(void);
+
 // The GPU of the module (dev.gpu@1 through libtau, IO-A-GpuIface-1): one session with its heaps
 // mapped, found by Mesa through dlsym. open() attaches, `wait` waits for a provider to start;
 // -EBUSY: another client holds the GPU, -ENOENT: no provider runs. A submit's fence is the value

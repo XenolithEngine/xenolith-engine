@@ -101,6 +101,104 @@ static int release_worker(void *arg) {
 	return wsi_tau_swapchain_release_images(&request->chain->base, 1, &request->index);
 }
 
+/* The planes of dev.display@2 for a GPU: stubs of its hooks and of the fence wait. */
+static unsigned shows, last_shown, fence_waits;
+static bool fail_show;
+static int p_query(struct __sprt_tau_display2_info *info, unsigned long long *generation) {
+	if (info) {
+		*info = (struct __sprt_tau_display2_info){WIDTH, HEIGHT, 60'000, 2};
+	}
+	if (generation) {
+		*generation = 7;
+	}
+	return 0;
+}
+static int p_open(int wait, struct __sprt_tau_display2_info *info) { return p_query(info, NULL); }
+static int p_import(unsigned t, unsigned f, unsigned w, unsigned h, unsigned s, unsigned o,
+		unsigned *b) {
+	return 0;
+}
+static int p_release(unsigned buffer) { return 0; }
+static int p_show(unsigned buffer, unsigned long long *blank) {
+	if (fail_show) {
+		return -__SPRT_TAU_ECONNRESET;
+	}
+	shows++;
+	last_shown = buffer;
+	*blank = shows;
+	return 0;
+}
+static int buf_token(const struct __sprt_tau_gpu_buf *b, unsigned *slot) { return 0; }
+static struct __sprt_tau_gpu_buf *dmabuf_buf(int fd) { return NULL; }
+static VkResult VKAPI_PTR wait_fences(VkDevice d, uint32_t n, const VkFence *f, VkBool32 all,
+		uint64_t t) {
+	fence_waits++;
+	return VK_SUCCESS;
+}
+
+static void planes(void) {
+	struct wsi_tau_screen screen = {
+		.query = query,
+		.p_open = p_open,
+		.p_query = p_query,
+		.p_import = p_import,
+		.p_release = p_release,
+		.p_show = p_show,
+		.buf_token = buf_token,
+		.dmabuf_buf = dmabuf_buf,
+	};
+	mtx_init(&screen.mutex, mtx_plain);
+	cnd_init(&screen.available);
+	mtx_lock(&screen.mutex);
+	check("a GPU takes the planes",
+			wsi_tau_connect(&screen, true) && screen.planes && screen.width == WIDTH);
+	check("the planes keep dev.display@1 away", !wsi_tau_connect(&screen, false));
+	mtx_unlock(&screen.mutex);
+	struct wsi_device wsi = {.sw = false};
+	wsi.WaitForFences = wait_fences;
+	VkFence fences[3] = {VK_NULL_HANDLE};
+	struct wsi_tau_swapchain *chain = calloc(1, sizeof(*chain) + 3 * sizeof(chain->images[0]));
+	chain->base.wsi = &wsi;
+	chain->base.fences = fences;
+	chain->base.image_count = 3;
+	chain->screen = &screen;
+	chain->extent = (VkExtent2D){WIDTH, HEIGHT};
+	chain->generation = 7;
+	chain->serial = screen.serial;
+	for (unsigned i = 0; i < 3; i++) {
+		chain->images[i].buffer = i + 1;
+		chain->images[i].fd = -1;
+	}
+	VkAcquireNextImageInfoKHR acquire = {.sType = VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR,
+		.timeout = 0};
+	uint32_t a = 0, b = 0, c = 0;
+	check("acquire on the planes",
+			wsi_tau_swapchain_acquire_next_image(&chain->base, &acquire, &a) == VK_SUCCESS);
+	check("present commits the image's buffer after its fence",
+			wsi_tau_swapchain_queue_present(&chain->base, a, 0, NULL) == VK_SUCCESS && shows == 1
+					&& last_shown == a + 1 && fence_waits == 1);
+	check("the other two are free",
+			wsi_tau_swapchain_acquire_next_image(&chain->base, &acquire, &b) == VK_SUCCESS
+					&& wsi_tau_swapchain_acquire_next_image(&chain->base, &acquire, &c)
+							== VK_SUCCESS
+					&& b != a && c != a);
+	check("the shown one is not acquired",
+			wsi_tau_swapchain_acquire_next_image(&chain->base, &acquire, &b) == VK_NOT_READY);
+	check("the next present frees it",
+			wsi_tau_swapchain_queue_present(&chain->base, c, 0, NULL) == VK_SUCCESS
+					&& last_shown == c + 1
+					&& wsi_tau_swapchain_acquire_next_image(&chain->base, &acquire, &b)
+							== VK_SUCCESS
+					&& b == a);
+	fail_show = true;
+	check("a lost session is out of date",
+			wsi_tau_swapchain_queue_present(&chain->base, b, 0, NULL) == VK_ERROR_OUT_OF_DATE_KHR
+					&& screen.lost);
+	free(chain);
+	cnd_destroy(&screen.available);
+	mtx_destroy(&screen.mutex);
+}
+
 int main(void) {
 	struct wsi_tau_screen screen = {
 		.opened = true,
@@ -116,6 +214,8 @@ int main(void) {
 	mtx_init(&screen.mutex, mtx_plain);
 	cnd_init(&screen.available);
 	struct wsi_tau_swapchain *chain = calloc(1, sizeof(*chain) + 3 * sizeof(chain->images[0]));
+	struct wsi_device wsi = {.sw = true};
+	chain->base.wsi = &wsi;
 	chain->base.image_count = 3;
 	chain->screen = &screen;
 	chain->extent = (VkExtent2D){WIDTH, HEIGHT};
@@ -229,12 +329,13 @@ int main(void) {
 	screen.close = close_session;
 	screen.opened = connected = false;
 	mtx_lock(&screen.mutex);
-	check("connect observes immediate loss", !wsi_tau_connect(&screen));
+	check("connect observes immediate loss", !wsi_tau_connect(&screen, false));
 	check("successful open stays owned until close", screen.opened);
 	mtx_unlock(&screen.mutex);
 	free(chain);
 	cnd_destroy(&screen.available);
 	mtx_destroy(&screen.mutex);
+	planes();
 	printf("%u checks, %u failures\n", checks, failures);
 	return failures ? 1 : 0;
 }
