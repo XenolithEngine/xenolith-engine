@@ -103,10 +103,20 @@ template Status stepPart1<flow::CompiledLocalT<flow::value::TrackedArena, flow::
 #if DEBUG
 template Status stepPart1<flow::CompiledLocalT<flow::value::ShadowArena, flow::NoEnv>>(flow::CompiledStepSiteT<flow::CompiledLocalT<flow::value::ShadowArena, flow::NoEnv>> &);
 #endif
+template Status stepPart1<flow::CompiledLocalT<flow::value::LargePlainArena, flow::NoEnv>>(flow::CompiledStepSiteT<flow::CompiledLocalT<flow::value::LargePlainArena, flow::NoEnv>> &);
+template Status stepPart1<flow::CompiledLocalT<flow::value::LargeTrackedArena, flow::NoEnv>>(flow::CompiledStepSiteT<flow::CompiledLocalT<flow::value::LargeTrackedArena, flow::NoEnv>> &);
+#if DEBUG
+template Status stepPart1<flow::CompiledLocalT<flow::value::LargeShadowArena, flow::NoEnv>>(flow::CompiledStepSiteT<flow::CompiledLocalT<flow::value::LargeShadowArena, flow::NoEnv>> &);
+#endif
 template Status stepPart1<flow::CompiledFastLocalT<flow::value::PlainArena, flow::NoEnv>>(flow::CompiledStepSiteT<flow::CompiledFastLocalT<flow::value::PlainArena, flow::NoEnv>> &);
 template Status stepPart1<flow::CompiledFastLocalT<flow::value::TrackedArena, flow::NoEnv>>(flow::CompiledStepSiteT<flow::CompiledFastLocalT<flow::value::TrackedArena, flow::NoEnv>> &);
 #if DEBUG
 template Status stepPart1<flow::CompiledFastLocalT<flow::value::ShadowArena, flow::NoEnv>>(flow::CompiledStepSiteT<flow::CompiledFastLocalT<flow::value::ShadowArena, flow::NoEnv>> &);
+#endif
+template Status stepPart1<flow::CompiledFastLocalT<flow::value::LargePlainArena, flow::NoEnv>>(flow::CompiledStepSiteT<flow::CompiledFastLocalT<flow::value::LargePlainArena, flow::NoEnv>> &);
+template Status stepPart1<flow::CompiledFastLocalT<flow::value::LargeTrackedArena, flow::NoEnv>>(flow::CompiledStepSiteT<flow::CompiledFastLocalT<flow::value::LargeTrackedArena, flow::NoEnv>> &);
+#if DEBUG
+template Status stepPart1<flow::CompiledFastLocalT<flow::value::LargeShadowArena, flow::NoEnv>>(flow::CompiledStepSiteT<flow::CompiledFastLocalT<flow::value::LargeShadowArena, flow::NoEnv>> &);
 #endif
 
 } // namespace stappler::flow::gen::synth_4105

@@ -44,28 +44,34 @@ THE SOFTWARE.
 namespace STAPPLER_VERSIONIZED stappler::flow::value {
 
 // The kinds, plus the erased one. ShadowArena is an alias of TrackedArena in a release build, so
-// naming it there would instantiate the same specialization twice.
+// naming it there would instantiate the same specialization twice; the same holds for the large
+// geometry's shadow. A cross-geometry copy is an ordinary copy - each store resolves its own
+// addresses - so the pairs cross geometries too.
 #if DEBUG
-#define SP_FLOW_VALUE_FOR_EACH_ARENA(M) M(PlainArena) M(TrackedArena) M(ShadowArena) M(ArenaRef)
-#else
-#define SP_FLOW_VALUE_FOR_EACH_ARENA(M) M(PlainArena) M(TrackedArena) M(ArenaRef)
-#endif
-
-// The cross product, for the calls that read one store and write another: carrying a record out of
-// a debugger's arena into a release one is an ordinary copy.
-#define SP_FLOW_VALUE_PAIRS_WITH(M, D) M(D, PlainArena) M(D, TrackedArena) M(D, ShadowArena) M(D, ArenaRef)
-
-#if DEBUG
+#define SP_FLOW_VALUE_FOR_EACH_ARENA(M) \
+	M(PlainArena) M(TrackedArena) M(ShadowArena) \
+	M(LargePlainArena) M(LargeTrackedArena) M(LargeShadowArena) M(ArenaRef)
+#define SP_FLOW_VALUE_PAIRS_WITH(M, D) \
+	M(D, PlainArena) M(D, TrackedArena) M(D, ShadowArena) \
+	M(D, LargePlainArena) M(D, LargeTrackedArena) M(D, LargeShadowArena) M(D, ArenaRef)
 #define SP_FLOW_VALUE_FOR_EACH_ARENA_PAIR(M) \
 	SP_FLOW_VALUE_PAIRS_WITH(M, PlainArena) \
 	SP_FLOW_VALUE_PAIRS_WITH(M, TrackedArena) \
 	SP_FLOW_VALUE_PAIRS_WITH(M, ShadowArena) \
+	SP_FLOW_VALUE_PAIRS_WITH(M, LargePlainArena) \
+	SP_FLOW_VALUE_PAIRS_WITH(M, LargeTrackedArena) \
+	SP_FLOW_VALUE_PAIRS_WITH(M, LargeShadowArena) \
 	SP_FLOW_VALUE_PAIRS_WITH(M, ArenaRef)
 #else
-#define SP_FLOW_VALUE_PAIRS_RELEASE(M, D) M(D, PlainArena) M(D, TrackedArena) M(D, ArenaRef)
+#define SP_FLOW_VALUE_FOR_EACH_ARENA(M) \
+	M(PlainArena) M(TrackedArena) M(LargePlainArena) M(LargeTrackedArena) M(ArenaRef)
+#define SP_FLOW_VALUE_PAIRS_RELEASE(M, D) \
+	M(D, PlainArena) M(D, TrackedArena) M(D, LargePlainArena) M(D, LargeTrackedArena) M(D, ArenaRef)
 #define SP_FLOW_VALUE_FOR_EACH_ARENA_PAIR(M) \
 	SP_FLOW_VALUE_PAIRS_RELEASE(M, PlainArena) \
 	SP_FLOW_VALUE_PAIRS_RELEASE(M, TrackedArena) \
+	SP_FLOW_VALUE_PAIRS_RELEASE(M, LargePlainArena) \
+	SP_FLOW_VALUE_PAIRS_RELEASE(M, LargeTrackedArena) \
 	SP_FLOW_VALUE_PAIRS_RELEASE(M, ArenaRef)
 #endif
 

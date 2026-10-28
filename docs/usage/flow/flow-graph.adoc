@@ -161,6 +161,10 @@ that brings an environment includes them and `SPFlowInstantiate.h`, and expands,
 SP_FLOW_FOR_EACH_ARENA(MY_INSTANTIATE)
 ----
 
+The list walks the three arena kinds of each chunk geometry - `PlainArena`, `TrackedArena` and
+(DEBUG only) `ShadowArena`, then the same three as `Large*` over 128 KiB chunks - so one expansion
+serves stores of either geometry, at the cost of roughly twice the instantiations of one.
+
 `RunEngineT<A, Env>` is the abstract executor a host holds when which machine it runs - the
 interpreter or a unit - is decided at run time.
 

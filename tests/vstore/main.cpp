@@ -42,6 +42,7 @@ static const TestEntry s_testList[] = {
 	{"arena-oom", &stappler::performArenaOomTests},
 	{"arena-header", &stappler::performArenaHeaderTests},
 	{"arena-kinds", &stappler::performArenaKindsTests},
+	{"arena-geometry", &stappler::performArenaGeometryTests},
 	{"arena-write-view", &stappler::performArenaWriteViewTests},
 	{"journal-pages", &stappler::performJournalPagesTests},
 	{"journal-rollback", &stappler::performJournalRollbackTests},

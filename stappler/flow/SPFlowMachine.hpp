@@ -1169,7 +1169,7 @@ bool MachineT<Graph, Local, Trace>::stepOnce(RunReport &report) {
 		// and a batch of branches, which ends here without one, would call complete.
 		if (_storeExhausted) {
 			auto arena = _local.getArena();
-			int64_t values[] = {int64_t(arena ? (uint64_t(arena->getMaxChunks()) << vstore::ChunkShift) : 0)};
+			int64_t values[] = {int64_t(arena ? arena->getCapacityBytes() : 0)};
 			reportRun<EnvType>(report, DiagSeverity::Error, DiagCode::OutOfMemory,
 					DiagText(DiagDetail::OutOfMemory).number(values[0] >> 20), DiagLocus::Limit, values);
 			conclude(report, RunOutcome::OutOfMemory, Status::ErrorOutOfHostMemory);

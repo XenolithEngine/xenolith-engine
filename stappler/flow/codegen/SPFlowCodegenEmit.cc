@@ -993,7 +993,8 @@ Status emit(const RuntimeGraph &g, const GraphAsset &asset, const OpRegistry &op
 		s.line(StringView("\treturn Status::ErrorNotImplemented;"));
 		s.line(StringView("}"));
 
-		// The six instantiations, so that the dispatcher in the first part links against them.
+		// The twelve instantiations, so that the dispatcher in the first part links against them:
+		// both stores over the three kinds of each geometry.
 		auto locals = [&](const Callback<void(StringView, bool)> &each) {
 			struct Store {
 				StringView name;
@@ -1003,9 +1004,15 @@ Status emit(const RuntimeGraph &g, const GraphAsset &asset, const OpRegistry &op
 				{StringView("flow::CompiledLocalT<flow::value::PlainArena, "), false},
 				{StringView("flow::CompiledLocalT<flow::value::TrackedArena, "), false},
 				{StringView("flow::CompiledLocalT<flow::value::ShadowArena, "), true},
+				{StringView("flow::CompiledLocalT<flow::value::LargePlainArena, "), false},
+				{StringView("flow::CompiledLocalT<flow::value::LargeTrackedArena, "), false},
+				{StringView("flow::CompiledLocalT<flow::value::LargeShadowArena, "), true},
 				{StringView("flow::CompiledFastLocalT<flow::value::PlainArena, "), false},
 				{StringView("flow::CompiledFastLocalT<flow::value::TrackedArena, "), false},
 				{StringView("flow::CompiledFastLocalT<flow::value::ShadowArena, "), true},
+				{StringView("flow::CompiledFastLocalT<flow::value::LargePlainArena, "), false},
+				{StringView("flow::CompiledFastLocalT<flow::value::LargeTrackedArena, "), false},
+				{StringView("flow::CompiledFastLocalT<flow::value::LargeShadowArena, "), true},
 			};
 			for (auto &store : stores) {
 				auto local = mem_std::toString(store.name, options.env, ">");
@@ -1048,10 +1055,11 @@ Status emit(const RuntimeGraph &g, const GraphAsset &asset, const OpRegistry &op
 			s.nl();
 			s.line(StringView("// One entry per store a run may live in: the arena store and the "
 							  "fast store, each over the three"));
-			s.line(StringView("// arena kinds a scene is ever in. In a release build ShadowArena is "
-							  "TrackedArena, so two slots of"));
-			s.line(StringView("// each pair name one function - which is what the loader would have "
-							  "handed out anyway."));
+			s.line(StringView("// arena kinds of each chunk geometry. In a release build the shadow "
+							  "kinds are their tracked"));
+			s.line(StringView("// ones, so two slots of each pair name one function - which is what "
+							  "the loader would have"));
+			s.line(StringView("// handed out anyway."));
 			s.line(mem_std::toString("const flow::CompiledStepsT<", options.env, "> *steps() {"));
 			s.line(mem_std::toString("\tstatic constexpr flow::CompiledStepsT<", options.env,
 					"> table = {"));
@@ -1064,6 +1072,15 @@ Status emit(const RuntimeGraph &g, const GraphAsset &asset, const OpRegistry &op
 					"\t\t.shadow = &step<flow::CompiledLocalT<flow::value::ShadowArena, ", options.env,
 					">>,"));
 			s.line(mem_std::toString(
+					"\t\t.largePlain = &step<flow::CompiledLocalT<flow::value::LargePlainArena, ",
+					options.env, ">>,"));
+			s.line(mem_std::toString(
+					"\t\t.largeTracked = &step<flow::CompiledLocalT<flow::value::LargeTrackedArena, ",
+					options.env, ">>,"));
+			s.line(mem_std::toString(
+					"\t\t.largeShadow = &step<flow::CompiledLocalT<flow::value::LargeShadowArena, ",
+					options.env, ">>,"));
+			s.line(mem_std::toString(
 					"\t\t.fastPlain = &step<flow::CompiledFastLocalT<flow::value::PlainArena, ",
 					options.env, ">>,"));
 			s.line(mem_std::toString(
@@ -1071,6 +1088,15 @@ Status emit(const RuntimeGraph &g, const GraphAsset &asset, const OpRegistry &op
 					options.env, ">>,"));
 			s.line(mem_std::toString(
 					"\t\t.fastShadow = &step<flow::CompiledFastLocalT<flow::value::ShadowArena, ",
+					options.env, ">>,"));
+			s.line(mem_std::toString(
+					"\t\t.fastLargePlain = &step<flow::CompiledFastLocalT<flow::value::LargePlainArena, ",
+					options.env, ">>,"));
+			s.line(mem_std::toString(
+					"\t\t.fastLargeTracked = &step<flow::CompiledFastLocalT<flow::value::LargeTrackedArena, ",
+					options.env, ">>,"));
+			s.line(mem_std::toString(
+					"\t\t.fastLargeShadow = &step<flow::CompiledFastLocalT<flow::value::LargeShadowArena, ",
 					options.env, ">>,"));
 			s.line(StringView("\t};"));
 			s.line(StringView("\treturn &table;"));

@@ -26,6 +26,11 @@ THE SOFTWARE.
 // partially described region, so a structural walk is total - it visits every byte of the store and
 // can therefore check that the accounting, the free lists and the physical layout all agree.
 // Allocation is carving from a free block, never bumping a pointer into undescribed space.
+//
+// The one exception is chunk 0 with a full descriptor table: a geometry whose table fills chunk 0
+// to the byte (both shipped geometries do) leaves it no data start below its end, and such a chunk
+// holds no blocks at all. The walk and init() accept that for slot 0 alone, and every other rule is
+// unchanged - the first alloc() grows a chunk of its own rather than carving chunk 0.
 
 #include "SPVStoreArena.h"
 
@@ -121,8 +126,8 @@ void DirtyTracking::markRange(Addr a, uint32_t size) {
 	_dirty[lastPage] = dirtyMerge(_dirty[lastPage], 0, last & PageMask);
 }
 
-template <typename Tracking>
-void ArenaT<Tracking>::releasePool() {
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::releasePool() {
 	if (_pool && _ownsPool) {
 		memory::pool::destroy(_pool);
 	}
@@ -140,8 +145,8 @@ void ArenaT<Tracking>::releasePool() {
 	}
 }
 
-template <typename Tracking>
-Status ArenaT<Tracking>::initView(const ArenaT &src) {
+template <typename Tracking, typename Geometry>
+Status ArenaT<Tracking, Geometry>::initView(const ArenaT &src) {
 	if (isInitialized() || !src.isInitialized()) {
 		return Status::ErrorInvalidArguemnt;
 	}
@@ -162,8 +167,8 @@ Status ArenaT<Tracking>::initView(const ArenaT &src) {
 // share cannot lose each other's bits. The map is sized from the snapshot, which is the honest
 // length: a page that does not exist yet cannot be written through this view, because the only
 // addresses a worker may touch are blocks the owner allocated before the snapshot was taken.
-template <typename Tracking>
-Status ArenaT<Tracking>::initWriteView(const ArenaT &src) {
+template <typename Tracking, typename Geometry>
+Status ArenaT<Tracking, Geometry>::initWriteView(const ArenaT &src) {
 	auto st = initView(src);
 	if (st != Status::Ok) {
 		return st;
@@ -176,8 +181,8 @@ Status ArenaT<Tracking>::initWriteView(const ArenaT &src) {
 	return Status::Ok;
 }
 
-template <typename Tracking>
-void ArenaT<Tracking>::closeView() {
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::closeView() {
 	sprt_passert(_view, "vstore::Arena: closeView on a store that owns its memory");
 	if (!_view) {
 		return;
@@ -186,8 +191,8 @@ void ArenaT<Tracking>::closeView() {
 	releasePool(); // a view owns no pool: this releases the copy and nothing else
 }
 
-template <typename Tracking>
-void ArenaT<Tracking>::mergeDirtyFrom(const ArenaT &view) requires (Tracking::IsTracked)
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::mergeDirtyFrom(const ArenaT &view) requires (Tracking::IsTracked)
 {
 	_tracking.mergeFrom(view._tracking);
 }
@@ -196,8 +201,8 @@ void ArenaT<Tracking>::mergeDirtyFrom(const ArenaT &view) requires (Tracking::Is
 // worker thread, and a release build that let the call through would be rearranging the owner's
 // free lists from two threads at once. The refusal is spelled the way a full store's is - NullAddr
 // out of alloc, nothing out of free - so every caller already has the path.
-template <typename Tracking>
-bool ArenaT<Tracking>::checkAllocatorCall() const {
+template <typename Tracking, typename Geometry>
+bool ArenaT<Tracking, Geometry>::checkAllocatorCall() const {
 	if (_view) {
 		noteViewAlloc();
 		return false;
@@ -210,23 +215,24 @@ bool ArenaT<Tracking>::checkAllocatorCall() const {
 	return true;
 }
 
-template <typename Tracking>
-ArenaT<Tracking>::~ArenaT() {
+template <typename Tracking, typename Geometry>
+ArenaT<Tracking, Geometry>::~ArenaT() {
 	releasePool();
 }
 
-template <typename Tracking>
-bool ArenaT<Tracking>::init(const Config &cfg) {
+template <typename Tracking, typename Geometry>
+bool ArenaT<Tracking, Geometry>::init(const Config &cfg) {
 	if (isInitialized()) {
 		return false;
 	}
 
 	// The budget and the descriptor table capacity are the same quantity on purpose: they cannot
 	// drift apart, so "out of budget" and "out of table" are one check instead of two.
-	uint64_t chunks = uint64_t(cfg.budgetBytes) >> ChunkShift;
-	if (chunks > MaxChunks) {
+	uint64_t chunks = uint64_t(cfg.budgetBytes) >> Geometry::ChunkShift;
+	if (chunks > Geometry::MaxChunks) {
 		slog().error("vstore::Arena", "budget of ", cfg.budgetBytes,
-				" bytes exceeds the maximum store size of ", uint64_t(MaxChunks) * ChunkSize);
+				" bytes exceeds the maximum store size of ",
+				uint64_t(Geometry::MaxChunks) * Geometry::ChunkSize);
 		return false;
 	}
 	if (chunks < 1) {
@@ -243,7 +249,7 @@ bool ArenaT<Tracking>::init(const Config &cfg) {
 		return false;
 	}
 
-	auto mem = reinterpret_cast<uint8_t *>(memory::pool::palloc(_pool, ChunkSize, MaxAlign));
+	auto mem = reinterpret_cast<uint8_t *>(memory::pool::palloc(_pool, Geometry::ChunkSize, MaxAlign));
 	if (!mem) {
 		if (_ownsPool) {
 			memory::pool::destroy(_pool);
@@ -254,14 +260,14 @@ bool ArenaT<Tracking>::init(const Config &cfg) {
 
 	// Zeroed on creation: an image must be a function of the store's logical state alone, so no
 	// byte of it may be left holding whatever the allocator handed us.
-	__sprt_memset(mem, 0, ChunkSize);
+	__sprt_memset(mem, 0, Geometry::ChunkSize);
 	_chunks.emplace_back(mem);
 	syncSlotArrays();
 
 	auto r = root();
 	r->magic = RootMagic;
 	r->formatVersion = RootFormatVersion;
-	r->chunkShift = uint16_t(ChunkShift);
+	r->chunkShift = uint16_t(Geometry::ChunkShift);
 	r->pageShift = uint16_t(PageShift);
 	r->maxChunks = uint32_t(chunks);
 	r->chunkCount = 1;
@@ -270,20 +276,28 @@ bool ArenaT<Tracking>::init(const Config &cfg) {
 
 	descs()[0] = makeChunkDesc(ChunkKind::Normal, 1);
 
-	// Chunk 0's data area is one free block covering everything after the table.
-	Addr blockAddr = r->firstDataOffset;
-	uint32_t total = ChunkSize - r->firstDataOffset;
+	// Chunk 0's data area is one free block covering everything after the table - unless the table
+	// already covers the whole chunk, which is what both shipped geometries ask for at full table
+	// capacity. A chunk with no room for even one block holds none: the first alloc() grows a chunk
+	// of its own, and resolve() never hands out an address inside chunk 0's table.
+	uint32_t total = Geometry::ChunkSize - r->firstDataOffset;
+	if (total >= MinBlockTotal) {
+		Addr blockAddr = r->firstDataOffset;
+		auto h = blockAt(blockAddr);
+		h->size = total - BlockHeaderSize;
+		h->total = total;
+		h->prevTotal = 0;
+		h->flags = BlockFlags::LastInChunk;
 
-	auto h = blockAt(blockAddr);
-	h->size = total - BlockHeaderSize;
-	h->total = total;
-	h->prevTotal = 0;
-	h->flags = BlockFlags::LastInChunk;
-
-	r->freeCount = 1;
-	r->freeBytes = h->size;
-	r->freeTotal = total;
-	pushFree(blockAddr);
+		r->freeCount = 1;
+		r->freeBytes = h->size;
+		r->freeTotal = total;
+		pushFree(blockAddr);
+	} else {
+		r->freeCount = 0;
+		r->freeBytes = 0;
+		r->freeTotal = 0;
+	}
 
 	// Taken only after the store is laid out: init()'s own writes are the initial state, not a
 	// delta against anything, so there is nothing for them to be checked against.
@@ -298,31 +312,31 @@ bool ArenaT<Tracking>::init(const Config &cfg) {
 
 // One entry per page of the store, so the tracker follows _chunks rather than growing on demand at
 // every use. For a PlainArena this is a call to an empty function and the size never exists.
-template <typename Tracking>
-void ArenaT<Tracking>::syncSlotArrays() {
-	_tracking.resize(uint32_t(_chunks.size()) * PagesPerChunk);
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::syncSlotArrays() {
+	_tracking.resize(uint32_t(_chunks.size()) * Geometry::PagesPerChunk);
 }
 
-template <typename Tracking>
-void ArenaT<Tracking>::clearDirtyMap() requires (Tracking::IsTracked)
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::clearDirtyMap() requires (Tracking::IsTracked)
 {
 	_tracking.clear();
 }
 
 #if DEBUG
 
-template <typename Tracking>
-void ArenaT<Tracking>::resync() requires (Tracking::HasShadow)
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::resync() requires (Tracking::HasShadow)
 {
 	if (!_tracking._enabled) {
 		return;
 	}
 
 	auto r = root();
-	_tracking._shadow.assign(size_t(r->chunkCount) * ChunkSize, 0);
+	_tracking._shadow.assign(size_t(r->chunkCount) * Geometry::ChunkSize, 0);
 	for (uint32_t slot = 0; slot < r->chunkCount; ++slot) {
 		if (auto mem = _chunks[slot]) {
-			__sprt_memcpy(_tracking._shadow.data() + size_t(slot) * ChunkSize, mem, ChunkSize);
+			__sprt_memcpy(_tracking._shadow.data() + size_t(slot) * Geometry::ChunkSize, mem, Geometry::ChunkSize);
 		}
 	}
 
@@ -331,8 +345,8 @@ void ArenaT<Tracking>::resync() requires (Tracking::HasShadow)
 	clearDirtyMap();
 }
 
-template <typename Tracking>
-Status ArenaT<Tracking>::validate(
+template <typename Tracking, typename Geometry>
+Status ArenaT<Tracking, Geometry>::validate(
 		const Callback<void(uint32_t slot, uint32_t page)> &onMismatch) const
 		requires (Tracking::HasShadow)
 {
@@ -343,7 +357,7 @@ Status ArenaT<Tracking>::validate(
 	auto r = root();
 	auto &shadow = _tracking._shadow;
 	auto map = _tracking.map();
-	uint32_t shadowSlots = uint32_t(shadow.size() / ChunkSize);
+	uint32_t shadowSlots = uint32_t(shadow.size() / Geometry::ChunkSize);
 	// A page of zeros stands in for a slot that did not exist at the last resync: a new chunk is
 	// created zeroed, so any non-zero byte in it must have been written - and therefore marked. In
 	// .bss rather than on the stack: a page is 16 KiB, and a validator that runs on every commit of
@@ -356,15 +370,15 @@ Status ArenaT<Tracking>::validate(
 			continue;
 		}
 
-		for (uint32_t page = 0; page < PagesPerChunk; ++page) {
-			uint32_t index = slot * PagesPerChunk + page;
+		for (uint32_t page = 0; page < Geometry::PagesPerChunk; ++page) {
+			uint32_t index = slot * Geometry::PagesPerChunk + page;
 			uint64_t marks = dirtyMaskOf(index < map.size() ? map[index] : uint64_t(0));
 			if (marks == SubAll) {
 				continue;
 			}
 
 			const uint8_t *before = slot < shadowSlots
-					? shadow.data() + size_t(slot) * ChunkSize + size_t(page) * PageSize
+					? shadow.data() + size_t(slot) * Geometry::ChunkSize + size_t(page) * PageSize
 					: zero;
 			auto live = mem + size_t(page) * PageSize;
 
@@ -387,8 +401,8 @@ Status ArenaT<Tracking>::validate(
 	return Status::Ok;
 }
 
-template <typename Tracking>
-uint8_t *ArenaT<Tracking>::unbarrieredWriteForTesting(Addr a, uint32_t size)
+template <typename Tracking, typename Geometry>
+uint8_t *ArenaT<Tracking, Geometry>::unbarrieredWriteForTesting(Addr a, uint32_t size)
 		requires (Tracking::HasShadow)
 {
 	sprt_passert(checkRange(a, size), "vstore::Arena: write outside the store");
@@ -397,8 +411,8 @@ uint8_t *ArenaT<Tracking>::unbarrieredWriteForTesting(Addr a, uint32_t size)
 
 #endif
 
-template <typename Tracking>
-void ArenaT<Tracking>::pushFree(Addr block) {
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::pushFree(Addr block) {
 	auto r = rootForWrite();
 	auto h = headerForWrite(block);
 	auto cls = sizeClassOf(h->size);
@@ -414,8 +428,8 @@ void ArenaT<Tracking>::pushFree(Addr block) {
 	r->freeHead[cls] = block;
 }
 
-template <typename Tracking>
-void ArenaT<Tracking>::unlinkFree(Addr block) {
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::unlinkFree(Addr block) {
 	auto r = rootForWrite();
 	auto h = headerForWrite(block);
 	auto links = linksForWrite(block);
@@ -434,21 +448,21 @@ void ArenaT<Tracking>::unlinkFree(Addr block) {
 	h->sizeClass = FreeClassNone;
 }
 
-template <typename Tracking>
-void ArenaT<Tracking>::setNextPrevTotal(Addr block, uint32_t total) {
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::setNextPrevTotal(Addr block, uint32_t total) {
 	auto h = blockAt(block);
 	if ((h->flags & BlockFlags::LastInChunk) == 0) {
 		headerForWrite(block + h->total)->prevTotal = total;
 	}
 }
 
-template <typename Tracking>
-size_t ArenaT<Tracking>::saveSize() const {
-	return isInitialized() ? size_t(root()->chunkCount) * ChunkSize : 0;
+template <typename Tracking, typename Geometry>
+size_t ArenaT<Tracking, Geometry>::saveSize() const {
+	return isInitialized() ? size_t(root()->chunkCount) * Geometry::ChunkSize : 0;
 }
 
-template <typename Tracking>
-void ArenaT<Tracking>::save(const Callback<void(const uint8_t *, size_t, bool)> &cb) const {
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::save(const Callback<void(const uint8_t *, size_t, bool)> &cb) const {
 	if (!isInitialized()) {
 		return;
 	}
@@ -467,23 +481,23 @@ void ArenaT<Tracking>::save(const Callback<void(const uint8_t *, size_t, bool)> 
 
 		if (!mem) {
 			while (end < r->chunkCount && !isSlotLive(end)) { ++end; }
-			cb(nullptr, size_t(end - slot) * ChunkSize, true);
+			cb(nullptr, size_t(end - slot) * Geometry::ChunkSize, true);
 		} else {
 			// The slots of an oversize run come from one allocation, so they are contiguous and
 			// go out as a single piece. Unrelated chunks that happen to land next to each other
 			// merge on the same test, which is harmless - the bytes are the same either way.
-			while (end < r->chunkCount && _chunks[end] == mem + size_t(end - slot) * ChunkSize) {
+			while (end < r->chunkCount && _chunks[end] == mem + size_t(end - slot) * Geometry::ChunkSize) {
 				++end;
 			}
-			cb(mem, size_t(end - slot) * ChunkSize, false);
+			cb(mem, size_t(end - slot) * Geometry::ChunkSize, false);
 		}
 
 		slot = end;
 	}
 }
 
-template <typename Tracking>
-bool ArenaT<Tracking>::rebuildHostState(BytesView image) {
+template <typename Tracking, typename Geometry>
+bool ArenaT<Tracking, Geometry>::rebuildHostState(BytesView image) {
 	auto imageRoot = reinterpret_cast<const Root *>(image.data());
 	uint32_t chunkCount = imageRoot->chunkCount;
 	auto imageDescs = reinterpret_cast<const ChunkDesc *>(image.data() + DescsOffset);
@@ -503,21 +517,21 @@ bool ArenaT<Tracking>::rebuildHostState(BytesView image) {
 			return false;
 		}
 
-		size_t bytes = size_t(count) * ChunkSize;
+		size_t bytes = size_t(count) * Geometry::ChunkSize;
 		auto mem = reinterpret_cast<uint8_t *>(memory::pool::palloc(_pool, bytes, MaxAlign));
 		if (!mem) {
 			return false;
 		}
-		__sprt_memcpy(mem, image.data() + size_t(slot) * ChunkSize, bytes);
+		__sprt_memcpy(mem, image.data() + size_t(slot) * Geometry::ChunkSize, bytes);
 
-		for (uint32_t k = 0; k < count; ++k) { _chunks[slot + k] = mem + size_t(k) * ChunkSize; }
+		for (uint32_t k = 0; k < count; ++k) { _chunks[slot + k] = mem + size_t(k) * Geometry::ChunkSize; }
 	}
 
 	return true;
 }
 
-template <typename Tracking>
-Status ArenaT<Tracking>::adopt(BytesView image, const Config &cfg) {
+template <typename Tracking, typename Geometry>
+Status ArenaT<Tracking, Geometry>::adopt(BytesView image, const Config &cfg) {
 	if (isInitialized()) {
 		return Status::ErrorAlreadyPerformed;
 	}
@@ -540,16 +554,16 @@ Status ArenaT<Tracking>::adopt(BytesView image, const Config &cfg) {
 				RootFormatVersion);
 		return Status::ErrorInvalidArguemnt;
 	}
-	if (r->chunkShift != ChunkShift) {
+	if (r->chunkShift != Geometry::ChunkShift) {
 		slog().error("vstore::Arena", "adopt: chunk shift ", r->chunkShift, ", expected ",
-				ChunkShift);
+				Geometry::ChunkShift);
 		return Status::ErrorInvalidArguemnt;
 	}
 	if (r->pageShift != PageShift) {
 		slog().error("vstore::Arena", "adopt: page shift ", r->pageShift, ", expected ", PageShift);
 		return Status::ErrorInvalidArguemnt;
 	}
-	if (r->maxChunks == 0 || r->maxChunks > MaxChunks || r->chunkCount == 0
+	if (r->maxChunks == 0 || r->maxChunks > Geometry::MaxChunks || r->chunkCount == 0
 			|| r->chunkCount > r->maxChunks) {
 		slog().error("vstore::Arena", "adopt: chunk counts out of range: ", r->chunkCount, "/",
 				r->maxChunks);
@@ -565,16 +579,16 @@ Status ArenaT<Tracking>::adopt(BytesView image, const Config &cfg) {
 		slog().error("vstore::Arena", "adopt: firstPageUsed does not match chunkCount");
 		return Status::ErrorInvalidArguemnt;
 	}
-	if (image.size() != size_t(r->chunkCount) * ChunkSize) {
+	if (image.size() != size_t(r->chunkCount) * Geometry::ChunkSize) {
 		slog().error("vstore::Arena", "adopt: image is ", image.size(), " bytes, header implies ",
-				size_t(r->chunkCount) * ChunkSize);
+				size_t(r->chunkCount) * Geometry::ChunkSize);
 		return Status::ErrorInvalidArguemnt;
 	}
 	// Range only. That the root also names a live block is verify()'s business, and asking for it
 	// here would mean walking the whole block chain before a single chunk is hosted.
 	if (r->userRoot != NullAddr
 			&& (r->userRoot < r->firstDataOffset
-					|| r->userRoot >= size_t(r->chunkCount) * ChunkSize)) {
+					|| r->userRoot >= size_t(r->chunkCount) * Geometry::ChunkSize)) {
 		slog().error("vstore::Arena", "adopt: userRoot ", r->userRoot, " is outside the image");
 		return Status::ErrorInvalidArguemnt;
 	}
@@ -615,9 +629,9 @@ Status ArenaT<Tracking>::adopt(BytesView image, const Config &cfg) {
 // Zero copying: the chunks are the state, so handing them over is the whole of the move. What is
 // not handed over is everything the kinds differ in - the map, the shadow - because none of it is
 // state.
-template <typename Tracking>
+template <typename Tracking, typename Geometry>
 template <typename Other>
-Status ArenaT<Tracking>::adoptFrom(ArenaT<Other> &src) {
+Status ArenaT<Tracking, Geometry>::adoptFrom(ArenaT<Other, Geometry> &src) {
 	if (isInitialized()) {
 		slog().error("vstore::Arena", "adoptFrom: this store already holds one");
 		return Status::ErrorInvalidArguemnt;
@@ -662,19 +676,19 @@ Status ArenaT<Tracking>::adoptFrom(ArenaT<Other> &src) {
 	return Status::Ok;
 }
 
-template <typename Tracking>
-uint32_t ArenaT<Tracking>::chunkExtent(uint32_t slot) const {
+template <typename Tracking, typename Geometry>
+uint32_t ArenaT<Tracking, Geometry>::chunkExtent(uint32_t slot) const {
 	auto desc = descs()[slot];
 	if (getChunkKind(desc) == ChunkKind::OversizeHead) {
-		return getChunkPayload(desc) * ChunkSize;
+		return getChunkPayload(desc) * Geometry::ChunkSize;
 	}
-	return ChunkSize;
+	return Geometry::ChunkSize;
 }
 
 // Smallest extent that fits, so that a long stretch is not spent on a single chunk and left unable
 // to host a run later.
-template <typename Tracking>
-uint8_t *ArenaT<Tracking>::takeSpare(uint32_t count) {
+template <typename Tracking, typename Geometry>
+uint8_t *ArenaT<Tracking, Geometry>::takeSpare(uint32_t count) {
 	size_t best = _spareChunks.size();
 	for (size_t i = 0; i < _spareChunks.size(); ++i) {
 		if (_spareChunks[i].count < count) {
@@ -693,14 +707,14 @@ uint8_t *ArenaT<Tracking>::takeSpare(uint32_t count) {
 		_spareChunks[best] = _spareChunks.back();
 		_spareChunks.pop_back();
 	} else {
-		_spareChunks[best].base += size_t(count) * ChunkSize;
+		_spareChunks[best].base += size_t(count) * Geometry::ChunkSize;
 		_spareChunks[best].count -= count;
 	}
 	return mem;
 }
 
-template <typename Tracking>
-void ArenaT<Tracking>::giveSpare(uint8_t *base, uint32_t count) {
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::giveSpare(uint8_t *base, uint32_t count) {
 	if (!base || count == 0) {
 		return;
 	}
@@ -716,9 +730,9 @@ void ArenaT<Tracking>::giveSpare(uint8_t *base, uint32_t count) {
 			for (size_t j = i + 1; j < _spareChunks.size(); ++j) {
 				auto &a = _spareChunks[i];
 				auto &b = _spareChunks[j];
-				if (a.base + size_t(a.count) * ChunkSize == b.base) {
+				if (a.base + size_t(a.count) * Geometry::ChunkSize == b.base) {
 					a.count += b.count;
-				} else if (b.base + size_t(b.count) * ChunkSize == a.base) {
+				} else if (b.base + size_t(b.count) * Geometry::ChunkSize == a.base) {
 					a.base = b.base;
 					a.count += b.count;
 				} else {
@@ -733,15 +747,15 @@ void ArenaT<Tracking>::giveSpare(uint8_t *base, uint32_t count) {
 	}
 }
 
-template <typename Tracking>
-uint8_t *ArenaT<Tracking>::getPageForRestore(uint32_t slot, uint32_t page) {
-	sprt_passert(isHosted(slot) && page < PagesPerChunk,
+template <typename Tracking, typename Geometry>
+uint8_t *ArenaT<Tracking, Geometry>::getPageForRestore(uint32_t slot, uint32_t page) {
+	sprt_passert(isHosted(slot) && page < Geometry::PagesPerChunk,
 			"vstore::Arena: restoring a page of an unhosted slot");
 	return _chunks[slot] + size_t(page) * PageSize;
 }
 
-template <typename Tracking>
-Status ArenaT<Tracking>::planRehost(const ChunkDesc *targetDescs, uint32_t targetCount,
+template <typename Tracking, typename Geometry>
+Status ArenaT<Tracking, Geometry>::planRehost(const ChunkDesc *targetDescs, uint32_t targetCount,
 		RehostPlan &plan) {
 	plan.entries.clear();
 	plan.chunkCount = targetCount;
@@ -796,14 +810,14 @@ Status ArenaT<Tracking>::planRehost(const ChunkDesc *targetDescs, uint32_t targe
 		bool usable = isHosted(slot);
 		for (uint32_t k = 1; usable && k < count; ++k) {
 			usable = isHosted(slot + k)
-					&& _chunks[slot + k] == _chunks[slot] + size_t(k) * ChunkSize;
+					&& _chunks[slot + k] == _chunks[slot] + size_t(k) * Geometry::ChunkSize;
 		}
 
 		if (!usable) {
 			auto mem = takeSpare(count);
 			if (!mem) {
 				mem = reinterpret_cast<uint8_t *>(
-						memory::pool::palloc(_pool, size_t(count) * ChunkSize, MaxAlign));
+						memory::pool::palloc(_pool, size_t(count) * Geometry::ChunkSize, MaxAlign));
 			}
 			if (!mem) {
 				slog().error("vstore::Arena", "planRehost: out of memory for ", count,
@@ -827,8 +841,8 @@ Status ArenaT<Tracking>::planRehost(const ChunkDesc *targetDescs, uint32_t targe
 	return Status::Ok;
 }
 
-template <typename Tracking>
-void ArenaT<Tracking>::discardRehost(RehostPlan &plan) {
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::discardRehost(RehostPlan &plan) {
 	for (auto &it : plan.entries) {
 		if (it.memory) {
 			giveSpare(it.memory, it.count);
@@ -838,8 +852,8 @@ void ArenaT<Tracking>::discardRehost(RehostPlan &plan) {
 	plan.valid = false;
 }
 
-template <typename Tracking>
-void ArenaT<Tracking>::rehost(RehostPlan &plan) {
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::rehost(RehostPlan &plan) {
 	sprt_passert(plan.valid, "vstore::Arena: applying an unplanned rehost");
 
 	// The old table is snapshotted first: a slot's new buffer is filled from its old one, and a
@@ -856,15 +870,15 @@ void ArenaT<Tracking>::rehost(RehostPlan &plan) {
 			continue;
 		}
 		for (uint32_t k = 0; k < e.count; ++k) {
-			auto dst = e.memory + size_t(k) * ChunkSize;
+			auto dst = e.memory + size_t(k) * Geometry::ChunkSize;
 			auto src = (e.slot + k < old.size()) ? old[e.slot + k] : nullptr;
 			// Content-preserving: a slot that moves takes its bytes along, and a slot that gains
 			// memory it never had reads as zeros - which is what an unhosted slot's image says.
 			// Without this, a rollback would depend on the journal happening to cover every page.
 			if (src) {
-				__sprt_memcpy(dst, src, ChunkSize);
+				__sprt_memcpy(dst, src, Geometry::ChunkSize);
 			} else {
-				__sprt_memset(dst, 0, ChunkSize);
+				__sprt_memset(dst, 0, Geometry::ChunkSize);
 			}
 			_chunks[e.slot + k] = dst;
 		}
@@ -887,8 +901,8 @@ void ArenaT<Tracking>::rehost(RehostPlan &plan) {
 // them stays contiguous in memory and resolve() needs no special case. Holes left by released runs
 // are reused first: slots are 32-bit address space, and leaking them would exhaust the store long
 // before its memory budget.
-template <typename Tracking>
-bool ArenaT<Tracking>::addChunkRun(uint32_t count, uint32_t &outSlot) {
+template <typename Tracking, typename Geometry>
+bool ArenaT<Tracking, Geometry>::addChunkRun(uint32_t count, uint32_t &outSlot) {
 	auto r = rootForWrite();
 
 	uint32_t slot = r->maxChunks;
@@ -916,7 +930,7 @@ bool ArenaT<Tracking>::addChunkRun(uint32_t count, uint32_t &outSlot) {
 	uint8_t *mem = takeSpare(count);
 	if (!mem) {
 		mem = reinterpret_cast<uint8_t *>(
-				memory::pool::palloc(_pool, size_t(count) * ChunkSize, MaxAlign));
+				memory::pool::palloc(_pool, size_t(count) * Geometry::ChunkSize, MaxAlign));
 	}
 	if (!mem) {
 		return false;
@@ -930,13 +944,13 @@ bool ArenaT<Tracking>::addChunkRun(uint32_t count, uint32_t &outSlot) {
 		// appending path can move it: reusing a hole writes a descriptor that was already counted.
 		r->firstPageUsed = firstPageUsedFor(r->chunkCount);
 	}
-	for (uint32_t k = 0; k < count; ++k) { _chunks[slot + k] = mem + size_t(k) * ChunkSize; }
+	for (uint32_t k = 0; k < count; ++k) { _chunks[slot + k] = mem + size_t(k) * Geometry::ChunkSize; }
 
 	// The mark is required - these pages really do change. Where it stands relative to the
 	// descriptor writes is not: a reader's before-image comes from its own baseline, and a slot
 	// that did not exist at the last commit has a baseline of zeros by construction.
-	markDirty(slot << ChunkShift, count * ChunkSize);
-	__sprt_memset(mem, 0, size_t(count) * ChunkSize);
+	markDirty(slot << Geometry::ChunkShift, count * Geometry::ChunkSize);
+	__sprt_memset(mem, 0, size_t(count) * Geometry::ChunkSize);
 
 	if (count == 1) {
 		*descForWrite(slot) = makeChunkDesc(ChunkKind::Normal, 1);
@@ -951,18 +965,18 @@ bool ArenaT<Tracking>::addChunkRun(uint32_t count, uint32_t &outSlot) {
 	return true;
 }
 
-template <typename Tracking>
-bool ArenaT<Tracking>::growChunk() {
+template <typename Tracking, typename Geometry>
+bool ArenaT<Tracking, Geometry>::growChunk() {
 	uint32_t slot = 0;
 	if (!addChunkRun(1, slot)) {
 		return false;
 	}
 
 	auto r = rootForWrite();
-	Addr blockAddr = slot << ChunkShift;
+	Addr blockAddr = slot << Geometry::ChunkShift;
 	auto h = headerForWrite(blockAddr);
-	h->size = ChunkSize - BlockHeaderSize;
-	h->total = ChunkSize;
+	h->size = Geometry::ChunkSize - BlockHeaderSize;
+	h->total = Geometry::ChunkSize;
 	h->prevTotal = 0;
 	h->flags = BlockFlags::LastInChunk;
 
@@ -979,8 +993,8 @@ bool ArenaT<Tracking>::growChunk() {
 // Turns a free block into a live one of `total` bytes, returning whatever is left over to the free
 // lists. The leftover keeps the physical chain intact, which is what lets the following block's
 // prevTotal - and therefore backwards coalescing - stay correct.
-template <typename Tracking>
-Addr ArenaT<Tracking>::carveFrom(Addr b, uint32_t size, uint32_t total) {
+template <typename Tracking, typename Geometry>
+Addr ArenaT<Tracking, Geometry>::carveFrom(Addr b, uint32_t size, uint32_t total) {
 	auto r = rootForWrite();
 	auto h = headerForWrite(b);
 
@@ -1039,10 +1053,10 @@ Addr ArenaT<Tracking>::carveFrom(Addr b, uint32_t size, uint32_t total) {
 // A block that cannot fit a chunk gets a run of its own. The run is one host allocation, so the
 // block is contiguous and read()/write() can keep handing out a plain pointer; nothing on the read
 // path knows oversize blocks exist.
-template <typename Tracking>
-Addr ArenaT<Tracking>::allocOversize(uint32_t size) {
+template <typename Tracking, typename Geometry>
+Addr ArenaT<Tracking, Geometry>::allocOversize(uint32_t size) {
 	uint64_t needed = uint64_t(BlockHeaderSize) + size;
-	uint32_t count = uint32_t((needed + ChunkSize - 1) / ChunkSize);
+	uint32_t count = uint32_t((needed + Geometry::ChunkSize - 1) / Geometry::ChunkSize);
 
 	uint32_t slot = 0;
 	if (!addChunkRun(count, slot)) {
@@ -1050,8 +1064,8 @@ Addr ArenaT<Tracking>::allocOversize(uint32_t size) {
 	}
 
 	auto r = rootForWrite();
-	Addr blockAddr = slot << ChunkShift;
-	uint32_t total = count * ChunkSize;
+	Addr blockAddr = slot << Geometry::ChunkShift;
+	uint32_t total = count * Geometry::ChunkSize;
 
 	auto h = headerForWrite(blockAddr);
 	h->size = size;
@@ -1068,8 +1082,8 @@ Addr ArenaT<Tracking>::allocOversize(uint32_t size) {
 	return blockAddr + BlockHeaderSize;
 }
 
-template <typename Tracking>
-Addr ArenaT<Tracking>::alloc(uint32_t size, uint32_t align) {
+template <typename Tracking, typename Geometry>
+Addr ArenaT<Tracking, Geometry>::alloc(uint32_t size, uint32_t align) {
 	if (!checkAllocatorCall()) {
 		return NullAddr;
 	}
@@ -1080,7 +1094,7 @@ Addr ArenaT<Tracking>::alloc(uint32_t size, uint32_t align) {
 	if (size < MinPayload) {
 		size = MinPayload;
 	}
-	if (size > MaxInChunkPayload) {
+	if (size > Geometry::ChunkSize - BlockHeaderSize) {
 		return allocOversize(size);
 	}
 
@@ -1106,8 +1120,8 @@ Addr ArenaT<Tracking>::alloc(uint32_t size, uint32_t align) {
 	return NullAddr;
 }
 
-template <typename Tracking>
-void ArenaT<Tracking>::free(Addr a) {
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::free(Addr a) {
 	if (a == NullAddr) {
 		return;
 	}
@@ -1139,8 +1153,8 @@ void ArenaT<Tracking>::free(Addr a) {
 
 // `block` must already be marked free with its size covering its whole payload, and must not be
 // accounted or linked yet.
-template <typename Tracking>
-void ArenaT<Tracking>::insertFreeRange(Addr block) {
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::insertFreeRange(Addr block) {
 	auto r = rootForWrite();
 	auto h = headerForWrite(block);
 
@@ -1191,8 +1205,8 @@ void ArenaT<Tracking>::insertFreeRange(Addr block) {
 	pushFree(block);
 }
 
-template <typename Tracking>
-Addr ArenaT<Tracking>::realloc(Addr a, uint32_t newSize, uint32_t align) {
+template <typename Tracking, typename Geometry>
+Addr ArenaT<Tracking, Geometry>::realloc(Addr a, uint32_t newSize, uint32_t align) {
 	if (a == NullAddr) {
 		return alloc(newSize, align);
 	}
@@ -1215,7 +1229,7 @@ Addr ArenaT<Tracking>::realloc(Addr a, uint32_t newSize, uint32_t align) {
 
 	// An oversize block owns whole chunks, so resizing it in place would mean resizing its run;
 	// relocating is simpler and rare enough not to matter.
-	if ((h->flags & BlockFlags::Oversize) != 0 || newSize > MaxInChunkPayload) {
+	if ((h->flags & BlockFlags::Oversize) != 0 || newSize > Geometry::ChunkSize - BlockHeaderSize) {
 		Addr moved = alloc(newSize, align);
 		if (moved == NullAddr) {
 			return NullAddr;
@@ -1291,8 +1305,8 @@ Addr ArenaT<Tracking>::realloc(Addr a, uint32_t newSize, uint32_t align) {
 	return moved;
 }
 
-template <typename Tracking>
-void ArenaT<Tracking>::free(Addr a, uint32_t size) {
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::free(Addr a, uint32_t size) {
 	sprt_passert(a == NullAddr || sizeOf(a) == size,
 			"vstore::Arena: free() size does not match the block header");
 	(void)size;
@@ -1301,17 +1315,17 @@ void ArenaT<Tracking>::free(Addr a, uint32_t size) {
 
 // An oversize block owns its whole run, so freeing it releases the slots outright rather than
 // leaving a free block behind - a run is allocated for one block and can never hold another.
-template <typename Tracking>
-void ArenaT<Tracking>::releaseRun(Addr block) {
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::releaseRun(Addr block) {
 	auto r = rootForWrite();
-	uint32_t slot = block >> ChunkShift;
+	uint32_t slot = block >> Geometry::ChunkShift;
 	uint32_t count = getChunkPayload(descs()[slot]);
 
 	// Marked while the run is still reachable, though now only for tidiness: a moment later this
 	// address range reads as a hole. What the mark is for is that these pages change - from content
 	// to zeros, as far as the image is concerned - and a reader whose baseline still holds the
 	// content has to be told to look.
-	markDirty(slot << ChunkShift, count * ChunkSize);
+	markDirty(slot << Geometry::ChunkShift, count * Geometry::ChunkSize);
 
 	// The run was one allocation and goes back as one extent, so it can be taken as a run again.
 	giveSpare(_chunks[slot], count);
@@ -1323,16 +1337,16 @@ void ArenaT<Tracking>::releaseRun(Addr block) {
 	--r->oversizeRuns;
 }
 
-template <typename Tracking>
-uint32_t ArenaT<Tracking>::sizeOf(Addr a) const {
+template <typename Tracking, typename Geometry>
+uint32_t ArenaT<Tracking, Geometry>::sizeOf(Addr a) const {
 	if (a == NullAddr) {
 		return 0;
 	}
 	return blockAt(a - BlockHeaderSize)->size;
 }
 
-template <typename Tracking>
-bool ArenaT<Tracking>::isLivePayload(Addr a) const {
+template <typename Tracking, typename Geometry>
+bool ArenaT<Tracking, Geometry>::isLivePayload(Addr a) const {
 	// The header has to fit in front of it, and the payload has to start where a payload can: every
 	// block is carved at a granule, so an address that is not is not one this allocator handed out.
 	if (!isInitialized() || a == NullAddr || a < BlockHeaderSize || (a % Granule) != 0) {
@@ -1356,34 +1370,34 @@ bool ArenaT<Tracking>::isLivePayload(Addr a) const {
 // which means it must stay inside one chunk - or inside one oversize run, whose slots are backed by
 // a single allocation. Checked in debug only; the cost of the run lookup does not belong on the
 // release read path.
-template <typename Tracking>
-bool ArenaT<Tracking>::checkRange(Addr a, uint32_t size) const {
+template <typename Tracking, typename Geometry>
+bool ArenaT<Tracking, Geometry>::checkRange(Addr a, uint32_t size) const {
 	if (a == NullAddr) {
 		return false;
 	}
 
-	uint32_t slot = a >> ChunkShift;
+	uint32_t slot = a >> Geometry::ChunkShift;
 	auto r = root();
 	if (slot >= r->chunkCount || !_chunks[slot]) {
 		return false;
 	}
 
-	uint64_t offset = a & ChunkMask;
-	uint64_t limit = ChunkSize;
+	uint64_t offset = a & Geometry::ChunkMask;
+	uint64_t limit = Geometry::ChunkSize;
 
 	auto kind = getChunkKind(descs()[slot]);
 	if (kind == ChunkKind::OversizeHead || kind == ChunkKind::OversizeTail) {
 		uint32_t head = kind == ChunkKind::OversizeHead ? slot : getChunkPayload(descs()[slot]);
 		uint32_t count = getChunkPayload(descs()[head]);
-		offset += uint64_t(slot - head) * ChunkSize;
-		limit = uint64_t(count) * ChunkSize;
+		offset += uint64_t(slot - head) * Geometry::ChunkSize;
+		limit = uint64_t(count) * Geometry::ChunkSize;
 	}
 
 	return offset + size <= limit;
 }
 
-template <typename Tracking>
-Status ArenaT<Tracking>::setUserRoot(Addr a) {
+template <typename Tracking, typename Geometry>
+Status ArenaT<Tracking, Geometry>::setUserRoot(Addr a) {
 	if (!isInitialized()) {
 		return Status::ErrorInvalidArguemnt;
 	}
@@ -1402,48 +1416,53 @@ Status ArenaT<Tracking>::setUserRoot(Addr a) {
 	return Status::Ok;
 }
 
-template <typename Tracking>
-Addr ArenaT<Tracking>::getUserRoot() const {
+template <typename Tracking, typename Geometry>
+Addr ArenaT<Tracking, Geometry>::getUserRoot() const {
 	return isInitialized() ? root()->userRoot : NullAddr;
 }
 
-template <typename Tracking>
-uint32_t ArenaT<Tracking>::getChunkCount() const {
+template <typename Tracking, typename Geometry>
+uint32_t ArenaT<Tracking, Geometry>::getChunkCount() const {
 	return isInitialized() ? root()->chunkCount : 0;
 }
 
-template <typename Tracking>
-uint32_t ArenaT<Tracking>::getMaxChunks() const {
+template <typename Tracking, typename Geometry>
+uint32_t ArenaT<Tracking, Geometry>::getMaxChunks() const {
 	return isInitialized() ? root()->maxChunks : 0;
 }
 
-template <typename Tracking>
-bool ArenaT<Tracking>::isSlotLive(uint32_t slot) const {
+template <typename Tracking, typename Geometry>
+uint64_t ArenaT<Tracking, Geometry>::getCapacityBytes() const {
+	return isInitialized() ? uint64_t(root()->maxChunks) << Geometry::ChunkShift : 0;
+}
+
+template <typename Tracking, typename Geometry>
+bool ArenaT<Tracking, Geometry>::isSlotLive(uint32_t slot) const {
 	return isInitialized() && slot < root()->chunkCount
 			&& getChunkKind(descs()[slot]) != ChunkKind::Empty;
 }
 
-template <typename Tracking>
-bool ArenaT<Tracking>::isHosted(uint32_t slot) const {
+template <typename Tracking, typename Geometry>
+bool ArenaT<Tracking, Geometry>::isHosted(uint32_t slot) const {
 	return slot < _chunks.size() && _chunks[slot] != nullptr;
 }
 
-template <typename Tracking>
-ChunkDesc ArenaT<Tracking>::getChunkDesc(uint32_t slot) const {
+template <typename Tracking, typename Geometry>
+ChunkDesc ArenaT<Tracking, Geometry>::getChunkDesc(uint32_t slot) const {
 	return (isInitialized() && slot < root()->maxChunks) ? descs()[slot]
 														 : makeChunkDesc(ChunkKind::Empty, 0);
 }
 
-template <typename Tracking>
-const uint8_t *ArenaT<Tracking>::getPage(uint32_t slot, uint32_t page) const {
-	if (!isSlotLive(slot) || !isHosted(slot) || page >= PagesPerChunk) {
+template <typename Tracking, typename Geometry>
+const uint8_t *ArenaT<Tracking, Geometry>::getPage(uint32_t slot, uint32_t page) const {
+	if (!isSlotLive(slot) || !isHosted(slot) || page >= Geometry::PagesPerChunk) {
 		return nullptr;
 	}
 	return _chunks[slot] + size_t(page) * PageSize;
 }
 
-template <typename Tracking>
-uint32_t ArenaT<Tracking>::getPageFootprint(uint32_t slot, uint32_t page) const {
+template <typename Tracking, typename Geometry>
+uint32_t ArenaT<Tracking, Geometry>::getPageFootprint(uint32_t slot, uint32_t page) const {
 	if (slot != 0 || page != 0 || !isInitialized()) {
 		return PageSize;
 	}
@@ -1452,8 +1471,8 @@ uint32_t ArenaT<Tracking>::getPageFootprint(uint32_t slot, uint32_t page) const 
 	return root()->firstPageUsed;
 }
 
-template <typename Tracking>
-Status ArenaT<Tracking>::verify() const {
+template <typename Tracking, typename Geometry>
+Status ArenaT<Tracking, Geometry>::verify() const {
 	if (!isInitialized()) {
 		slog().error("vstore::Arena", "verify: not initialized");
 		return Status::ErrorNotRecoverable;
@@ -1461,11 +1480,11 @@ Status ArenaT<Tracking>::verify() const {
 
 	auto r = root();
 	if (r->magic != RootMagic || r->formatVersion != RootFormatVersion
-			|| r->chunkShift != ChunkShift || r->pageShift != PageShift) {
+			|| r->chunkShift != Geometry::ChunkShift || r->pageShift != PageShift) {
 		slog().error("vstore::Arena", "verify: bad root header");
 		return Status::ErrorNotRecoverable;
 	}
-	if (r->maxChunks == 0 || r->maxChunks > MaxChunks || r->chunkCount == 0
+	if (r->maxChunks == 0 || r->maxChunks > Geometry::MaxChunks || r->chunkCount == 0
 			|| r->chunkCount > r->maxChunks) {
 		slog().error("vstore::Arena", "verify: chunk counts out of range: ", r->chunkCount, "/",
 				r->maxChunks);
@@ -1517,7 +1536,7 @@ Status ArenaT<Tracking>::verify() const {
 						" is a tail of a run that does not cover it");
 				return Status::ErrorNotRecoverable;
 			}
-			if (_chunks[slot] != _chunks[head] + size_t(slot - head) * ChunkSize) {
+			if (_chunks[slot] != _chunks[head] + size_t(slot - head) * Geometry::ChunkSize) {
 				slog().error("vstore::Arena", "verify: run slot ", slot, " is not contiguous");
 				return Status::ErrorNotRecoverable;
 			}
@@ -1536,8 +1555,8 @@ Status ArenaT<Tracking>::verify() const {
 			return Status::ErrorNotRecoverable;
 		}
 
-		Addr begin = (slot << ChunkShift) + chunkDataBegin(slot);
-		uint64_t end = uint64_t(slot << ChunkShift) + chunkExtent(slot);
+		Addr begin = (slot << Geometry::ChunkShift) + chunkDataBegin(slot);
+		uint64_t end = uint64_t(slot << Geometry::ChunkShift) + chunkExtent(slot);
 
 		uint32_t prevTotal = 0;
 		uint32_t lastFlags = 0;
@@ -1605,7 +1624,15 @@ Status ArenaT<Tracking>::verify() const {
 					", expected ", end);
 			return Status::ErrorNotRecoverable;
 		}
-		if ((lastFlags & BlockFlags::LastInChunk) == 0) {
+		// The one empty chain a store may hold: chunk 0 under a geometry whose table fills it to
+		// the byte, so its data start is its end and no block was ever there. Every other chunk
+		// must end in a LastInChunk block, or the chain does not cover what the walk demands.
+		if (at == begin) {
+			if (slot != 0 || chunkDataBegin(slot) != chunkExtent(slot)) {
+				slog().error("vstore::Arena", "verify: chunk ", slot, " holds no blocks");
+				return Status::ErrorNotRecoverable;
+			}
+		} else if ((lastFlags & BlockFlags::LastInChunk) == 0) {
 			slog().error("vstore::Arena", "verify: chunk ", slot, " has no LastInChunk block");
 			return Status::ErrorNotRecoverable;
 		}
@@ -1691,8 +1718,8 @@ Status ArenaT<Tracking>::verify() const {
 	return Status::Ok;
 }
 
-template <typename Tracking>
-void ArenaT<Tracking>::describe(mem_std::Value &out) const {
+template <typename Tracking, typename Geometry>
+void ArenaT<Tracking, Geometry>::describe(mem_std::Value &out) const {
 	out = mem_std::Value();
 	if (!isInitialized()) {
 		return;
@@ -1732,8 +1759,8 @@ void ArenaT<Tracking>::describe(mem_std::Value &out) const {
 		if (kind == ChunkKind::OversizeTail || kind == ChunkKind::Empty) {
 			continue;
 		}
-		uint64_t at = uint64_t(slot << ChunkShift) + chunkDataBegin(slot);
-		uint64_t end = uint64_t(slot << ChunkShift) + chunkExtent(slot);
+		uint64_t at = uint64_t(slot << Geometry::ChunkShift) + chunkDataBegin(slot);
+		uint64_t end = uint64_t(slot << Geometry::ChunkShift) + chunkExtent(slot);
 		while (at < end) {
 			auto h = blockAt(Addr(at));
 			if (h->total < MinBlockTotal) {
@@ -1761,6 +1788,16 @@ template class ArenaT<NoTracking>;
 template class ArenaT<DirtyTracking>;
 #if DEBUG
 template class ArenaT<ShadowTracking>;
+#endif
+
+// The large geometry's kinds, instantiated here unconditionally: the arena implementation is one
+// class each, and a host that names a large store must not also have to name its instantiation to
+// link. What stays opt-in per host is everything above the arena (stappler_flow's stores), which
+// is an order of magnitude more code per kind.
+template class ArenaT<NoTracking, LargeGeometry>;
+template class ArenaT<DirtyTracking, LargeGeometry>;
+#if DEBUG
+template class ArenaT<ShadowTracking, LargeGeometry>;
 #endif
 
 } // namespace stappler::vstore

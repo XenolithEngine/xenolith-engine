@@ -246,6 +246,12 @@ static void runInterpreter(StringView kind) {
 static void performRun() {
 	runInterpreter<flow::value::PlainArena>("a plain arena");
 	runInterpreter<flow::value::TrackedArena>("a tracked arena");
+	// The large geometry beside the default one: the same graphs over 128 KiB chunks, so a store of
+	// either geometry runs the corpus to the same reports.
+	if (test::s_full) {
+		runInterpreter<flow::value::LargePlainArena>("a large plain arena");
+		runInterpreter<flow::value::LargeTrackedArena>("a large tracked arena");
+	}
 }
 
 static void performScene() {

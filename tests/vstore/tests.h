@@ -82,6 +82,7 @@ void performArenaBarrierTests();
 void performArenaOomTests();
 void performArenaHeaderTests();
 void performArenaKindsTests();
+void performArenaGeometryTests();
 void performArenaWriteViewTests();
 void performJournalPagesTests();
 void performJournalRollbackTests();

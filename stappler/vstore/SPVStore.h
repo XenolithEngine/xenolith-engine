@@ -44,21 +44,51 @@ using Version = uint64_t;
 // so there is nothing to allocate there in the first place.
 static constexpr Addr NullAddr = 0;
 
-static constexpr uint32_t ChunkShift = 16;
-static constexpr uint32_t ChunkSize = 1u << ChunkShift; // 64 KiB
-static constexpr uint32_t ChunkMask = ChunkSize - 1;
-
 // Journal granularity. Nothing in the arena may key off it except the debug write-barrier
 // validator, or the arena would bake in a decision the journal has to make. At 16 KiB a page's
 // dirty-map entry is 64 sub-blocks of 256 bytes, exactly one uint64_t, so the arena announces not
 // just which page a write landed on but where inside it at the same one-word cost, and the
 // journal's per-page work narrows to the sub-blocks really touched. The ceiling on this direction
 // is 64 KiB: JournalRecord::size and KeyframeBlock::size are uint16_t, and a raw record stores size
-// == PageSize.
+// == PageSize. Page geometry is shared by every chunk geometry: the journal and the codec may keep
+// naming it as a constant.
 static constexpr uint32_t PageShift = 14;
 static constexpr uint32_t PageSize = 1u << PageShift; // 16 KiB
 static constexpr uint32_t PageMask = PageSize - 1;
-static constexpr uint32_t PagesPerChunk = 1u << (ChunkShift - PageShift);
+
+// The chunk geometry: chunk size and chunk-table capacity bound together, a template parameter of
+// ArenaT, so one process may hold stores of several geometries side by side. An image names its
+// own geometry in Root (chunkShift, maxChunks) and a reader of another geometry refuses it at the
+// header; nothing below interprets an image through these numbers.
+//
+// Both geometries fill chunk 0 with the descriptor table to the byte - DescsOffset + 4 * MaxChunks
+// == ChunkSize for each - so the table's capacity is the whole of chunk 0 and no block ever lives
+// there (firstDataOffset == ChunkSize, an empty block chain the verifier accepts for slot 0 alone).
+// The default keeps 64 KiB chunks and reaches ~1016 MiB; the large one takes 128 KiB chunks over
+// the same 32-bit address space, ~3.99 GiB, a capacity that still fits a uint32_t budget.
+struct DefaultGeometry {
+	static constexpr uint32_t ChunkShift = 16;
+	static constexpr uint32_t ChunkSize = 1u << ChunkShift; // 64 KiB
+	static constexpr uint32_t ChunkMask = ChunkSize - 1;
+	static constexpr uint32_t PagesPerChunk = 1u << (ChunkShift - PageShift);
+	static constexpr uint32_t MaxChunks = 16316;
+};
+
+struct LargeGeometry {
+	static constexpr uint32_t ChunkShift = 17;
+	static constexpr uint32_t ChunkSize = 1u << ChunkShift; // 128 KiB
+	static constexpr uint32_t ChunkMask = ChunkSize - 1;
+	static constexpr uint32_t PagesPerChunk = 1u << (ChunkShift - PageShift);
+	static constexpr uint32_t MaxChunks = 32700;
+};
+
+// The default geometry, spelled at namespace scope for a caller that holds no arena - tests,
+// diagnostics. Code inside ArenaT names Geometry:: and never these: for a store of another
+// geometry they would be the wrong numbers.
+static constexpr uint32_t ChunkShift = DefaultGeometry::ChunkShift;
+static constexpr uint32_t ChunkSize = DefaultGeometry::ChunkSize;
+static constexpr uint32_t ChunkMask = DefaultGeometry::ChunkMask;
+static constexpr uint32_t PagesPerChunk = DefaultGeometry::PagesPerChunk;
 
 // Sub-page granularity: exactly 64 per page, so a page's dirty extent is one machine word and the
 // mask needs no addressing of its own. 64 is not a tuning parameter - it is the width of the word,
@@ -171,9 +201,11 @@ static constexpr uint32_t alignUp(uint32_t value, uint32_t align) {
 	return (value + align - 1) & ~(align - 1);
 }
 
-// The descriptor table lives inside chunk 0, right after Root, so the number of chunks a store can
-// ever hold is bounded by what fits there. 8192 chunks is 512 MiB of store and a 32 KiB table.
-static constexpr uint32_t MaxChunks = 8192;
+// The default geometry's chunk-table ceiling, kept beside the other namespace-scope delegates
+// above for the callers that hold no arena. MaxChunks == Geometry::MaxChunks by construction: the
+// budget a Config names and the table's capacity are one quantity, so "out of budget" and "out of
+// table" stay one check.
+static constexpr uint32_t MaxChunks = DefaultGeometry::MaxChunks;
 
 // Versioning is a type rather than a build flag. A PlainArena announces nothing and its write()
 // compiles to what its read() compiles to; a TrackedArena carries the map a Journal reads; a

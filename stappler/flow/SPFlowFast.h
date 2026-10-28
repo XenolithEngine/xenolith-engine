@@ -64,8 +64,10 @@ public:
 	using SceneType = typename Env::template Scene<A>;
 
 	// Where the frames are cut from. Named so that a reader of the door's `getArena()` can see what
-	// kind of arena an operation is handed in this mode.
-	using ScratchArena = value::PlainArena;
+	// kind of arena an operation is handed in this mode. The run arena's own geometry, as its plain
+	// kind: a fast store over a large run arena cuts its frames from large-geometry chunks, so no
+	// address this store hands out crosses a geometry the run did not choose.
+	using ScratchArena = typename A::PlainT;
 
 	// The store a frame's bytes live in, which is what a copy into one has to be told. Here it is
 	// the scratch; in the arena store it is the run's own arena. The two names are deliberately
