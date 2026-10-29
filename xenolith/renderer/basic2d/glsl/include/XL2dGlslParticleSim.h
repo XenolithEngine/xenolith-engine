@@ -326,6 +326,17 @@ SP_GLSL_INLINE void particleFrameCell(SP_GLSL_IN(ParticleFrameData) frame, uint 
 	uv1 = vec2(uv0.x + cw, uv0.y + ch);
 }
 
+// Godot's scale_curve: the curve multiplies the scale chosen at birth, sampled at the lifetime
+// fraction. No curve - the birth scale stands untouched, the state the step kept before the
+// curve existed.
+SP_GLSL_INLINE void particleApplyScaleCurve(SP_GLSL_INOUT(ParticleData) particle,
+		SP_GLSL_IN(ParticleEmitterData) emitter) {
+	if (emitter.scaleCurveOffset != 0u) {
+		particle.scale = particle.birthScale
+				* particleSampleCurve(emitter.scaleCurveOffset, particleLifeFraction(particle)).x;
+	}
+}
+
 // Simulates frame.nframes steps: a particle whose emission step comes is born (again, if it is still
 // alive), otherwise a living particle ages by one step and moves if it is still alive. The counters
 // grow by the births and the aging steps.
@@ -347,6 +358,8 @@ SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
 				point = particleEmissionPoint(pcg16_boundedrand_r(particle.rng, npoints));
 			}
 			particleEmit(particle, emitter, frame, point);
+			particle.birthScale = particle.scale;
+			particleApplyScaleCurve(particle, emitter);
 			counters.births += 1u;
 		} else if (particle.currentLifetime > 0u) {
 			// A lifetime of L steps covers the birth step and L - 1 more
@@ -354,6 +367,7 @@ SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
 			counters.steps += 1u;
 			if (particle.currentLifetime > 0u) {
 				particleStep(particle, frame.dt);
+				particleApplyScaleCurve(particle, emitter);
 			}
 		}
 	}

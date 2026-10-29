@@ -54,6 +54,7 @@ struct SP_PUBLIC ParticleSystemData : public Ref {
 	ParticleEmitterData data;
 	Rc<CurveBuffer> colorCurve;
 	Rc<CurveBuffer> animFrameCurve;
+	Rc<CurveBuffer> scaleCurve;
 	Vector<Vec2> emissionPoints;
 
 	uint64_t systemId = 0;
@@ -286,6 +287,11 @@ public:
 	// Float curve from the lifetime fraction to the animation frame fraction; null removes it
 	bool setAnimFrameCurve(CurveBuffer *);
 	CurveBuffer *getAnimFrameCurve() const;
+
+	// Float curve over the particle's lifetime, multiplies the scale chosen at birth; null
+	// removes it. Two stops carry what Particle Designer calls start and end size
+	bool setScaleCurve(CurveBuffer *);
+	CurveBuffer *getScaleCurve() const;
 
 	void addFlags(ParticleSystemFlags);
 	void clearFlags(ParticleSystemFlags);

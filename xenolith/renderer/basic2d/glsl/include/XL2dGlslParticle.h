@@ -194,7 +194,7 @@ struct ParticleEmitterData {
 	// [208-223]
 	uint colorCurveOffset;
 	uint animFrameCurveOffset;
-	uint padding216;
+	uint scaleCurveOffset;
 	float dt;
 
 	// [224]
@@ -233,7 +233,7 @@ struct ParticleData {
 
 	// [96-111]
 	float tangentialAcceleration; // perpendicular to the direction from origin, dp per second^2
-	uint padding100;
+	float birthScale; // the scale chosen at birth; the scale curve multiplies it
 	uint padding104;
 	uint padding108;
 

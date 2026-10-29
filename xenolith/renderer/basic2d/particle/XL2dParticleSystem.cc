@@ -50,7 +50,8 @@ static size_t ParticleSystem_getCurveSize(const CurveBuffer *curve) {
 size_t ParticleSystemData::getExtraDataSize() const {
 	return ParticleSystem_align(
 				   sizeof(ParticleEmissionPoints) + emissionPoints.size() * sizeof(Vec2))
-			+ ParticleSystem_getCurveSize(colorCurve) + ParticleSystem_getCurveSize(animFrameCurve);
+			+ ParticleSystem_getCurveSize(colorCurve) + ParticleSystem_getCurveSize(animFrameCurve)
+			+ ParticleSystem_getCurveSize(scaleCurve);
 }
 
 void ParticleSystemData::writeExtraData(uint8_t *buf, size_t size,
@@ -83,6 +84,7 @@ void ParticleSystemData::writeExtraData(uint8_t *buf, size_t size,
 
 	target.colorCurveOffset = writeCurve(colorCurve);
 	target.animFrameCurveOffset = writeCurve(animFrameCurve);
+	target.scaleCurveOffset = writeCurve(scaleCurve);
 }
 
 void ParticleSystemData::writeParticleSize(ParticleEmitterData &data, Size2 size) {
@@ -311,6 +313,10 @@ void ParticleSystem::apply(const Value &value) {
 		const auto &v = value.getValue("animFrameCurve");
 		setAnimFrameCurve(v.isDictionary() ? ParticleSystem_readCurve(v).get() : nullptr);
 	}
+	if (value.hasValue("scaleCurve")) {
+		const auto &v = value.getValue("scaleCurve");
+		setScaleCurve(v.isDictionary() ? ParticleSystem_readCurve(v).get() : nullptr);
+	}
 
 	if (value.isArray("flags")) {
 		auto flags = ParticleSystemFlags::None;
@@ -383,6 +389,9 @@ Value ParticleSystem::encode() const {
 	}
 	if (_data->animFrameCurve) {
 		ret.setValue(ParticleSystem_writeCurve(_data->animFrameCurve), "animFrameCurve");
+	}
+	if (_data->scaleCurve) {
+		ret.setValue(ParticleSystem_writeCurve(_data->scaleCurve), "scaleCurve");
 	}
 
 	Value flags(Value::Type::ARRAY);
@@ -514,6 +523,18 @@ bool ParticleSystem::setAnimFrameCurve(CurveBuffer *curve) {
 
 CurveBuffer *ParticleSystem::getAnimFrameCurve() const { return _data->animFrameCurve; }
 
+bool ParticleSystem::setScaleCurve(CurveBuffer *curve) {
+	if (curve && curve->getType() != CurveBufferType::Float) {
+		log::source().error("ParticleSystem", "Scale curve must be of Float type");
+		return false;
+	}
+
+	mutate().scaleCurve = curve;
+	return true;
+}
+
+CurveBuffer *ParticleSystem::getScaleCurve() const { return _data->scaleCurve; }
+
 void ParticleSystem::addFlags(ParticleSystemFlags flags) { setFlags(getFlags() | flags); }
 
 void ParticleSystem::clearFlags(ParticleSystemFlags flags) { setFlags(getFlags() & ~flags); }
@@ -571,6 +592,7 @@ Rc<ParticleSystemData> ParticleSystem::dup() {
 	data->data = _data->data;
 	data->colorCurve = _data->colorCurve;
 	data->animFrameCurve = _data->animFrameCurve;
+	data->scaleCurve = _data->scaleCurve;
 	data->emissionPoints = _data->emissionPoints;
 	data->systemId = _data->systemId;
 	data->paramsGeneration = _data->paramsGeneration;
