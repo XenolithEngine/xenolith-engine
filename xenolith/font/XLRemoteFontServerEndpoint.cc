@@ -106,7 +106,7 @@ bool RemoteFontServerEndpoint::dispatch(uint8_t code, uint32_t serial, BytesView
 	case remote::FontCode::GlyphRequest: handleGlyphRequest(payload); return true;
 	case remote::FontCode::FontInline: {
 		// A small missing font shipped inline {contentHash, bytes}.
-		auto v = data::read<Interface>(payload);
+		auto v = remote::readMessagePayload<Interface>(payload);
 		receiveFontData(uint64_t(v.getInteger("hash")), v.getBytes("bytes"));
 		return true;
 	}
@@ -125,7 +125,7 @@ void RemoteFontServerEndpoint::handleSourcesAnnounce(uint32_t serial, BytesView 
 		_peer->remoteSendError(remote::Domain::Font, toInt(remote::FontError::SourcesNotReady), serial);
 		return;
 	}
-	auto v = data::read<Interface>(payload);
+	auto v = remote::readMessagePayload<Interface>(payload);
 
 	// Report only the content hashes we do not already hold; the client ships just those.
 	Value missing;

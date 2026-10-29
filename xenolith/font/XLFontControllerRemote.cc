@@ -172,7 +172,7 @@ bool FontControllerRemote::sendSourcesAnnounce() {
 }
 
 void FontControllerRemote::handleSourcesReady(BytesView payload) {
-	auto v = data::read<Interface>(payload);
+	auto v = remote::readMessagePayload<Interface>(payload);
 	_atlasImageServerId = uint64_t(v.getInteger("atlas"));
 	if (!_atlasImageServerId) {
 		_announced = false;
@@ -225,7 +225,7 @@ bool FontControllerRemote::dispatchFontMessage(uint8_t code, uint32_t serial, By
 }
 
 void FontControllerRemote::handleAtlasReady(BytesView payload) {
-	auto v = data::read<Interface>(payload);
+	auto v = remote::readMessagePayload<Interface>(payload);
 	const auto depId = uint32_t(v.getInteger("dep"));
 	const bool ok = v.getInteger("ok") != 0;
 

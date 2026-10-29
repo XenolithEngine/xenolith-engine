@@ -101,7 +101,7 @@ void RemoteSession::compileResource(const remote::MessageHeader &header, BytesVi
 		refuse();
 		return;
 	}
-	auto value = data::read<Interface>(payload);
+	auto value = remote::readMessagePayload<Interface>(payload);
 	auto id = uint64_t(value.getInteger("window"));
 	auto registry = _host->getSharedObjects();
 	if (!registry) {

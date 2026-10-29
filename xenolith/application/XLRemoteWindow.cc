@@ -361,7 +361,7 @@ void RemoteWindow::sendWindowControl(remote::WindowControlOp op, Value &&args,
 			cb(Status::ErrorNotSupported);
 			return;
 		}
-		cb(Status(int32_t(data::read<Interface>(payload).getInteger(0))));
+		cb(Status(int32_t(remote::readMessagePayload<Interface>(payload).getInteger(0))));
 	}, kWindowControlReplyTimeoutUs)) {
 		// Not connected, or the send failed: answer, so the caller does not wait forever.
 		if (cb) {

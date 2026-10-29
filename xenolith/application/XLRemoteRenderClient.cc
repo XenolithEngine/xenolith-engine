@@ -230,7 +230,7 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 			return;
 		}
 
-		auto val = data::read<Interface>(payload);
+		auto val = remote::readMessagePayload<Interface>(payload);
 		auto queueId = uint64_t(val.getInteger(1));
 		auto sq = _host->getSharedObjects()->resolveQueue(queueId);
 		if (!sq) {
@@ -522,7 +522,7 @@ Rc<core::DependencyEvent> RemoteRenderClient::reconcileDependency(uint32_t depId
 }
 
 void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
-	auto v = data::read<Interface>(payload);
+	auto v = remote::readMessagePayload<Interface>(payload);
 	auto windowId = uint64_t(v.getInteger("window"));
 
 	auto reg = _host->getSharedObjects();

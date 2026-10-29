@@ -29,6 +29,14 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
+// The protocol speaks CBOR only. Reading a payload through the sniffing data::read would run the
+// JSON and Serenity decoders on whatever bytes a hostile peer sends; the CBOR reader rejects them
+// by the magic alone.
+template <typename Interface>
+auto readMessagePayload(BytesView payload) -> data::ValueTemplate<Interface> {
+	return data::cbor::read<Interface>(payload);
+}
+
 // X11-like connection-setup protocol (the first wire messages). Setup messages are uncompressed and
 // length-framed ([u32 len][payload]); subsequent data messages are LZ4-compressed with the
 // dictionary negotiated here. Everything is network byte order.

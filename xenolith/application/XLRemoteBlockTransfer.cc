@@ -235,7 +235,7 @@ void BlockTransferManager::deliverIncoming(IncomingTransfer &t) {
 }
 
 bool BlockTransferManager::handleAnnounce(const remote::MessageHeader &h, BytesView payload) {
-	auto val = data::read<Interface>(payload);
+	auto val = remote::readMessagePayload<Interface>(payload);
 	uint64_t id = uint64_t(val.getInteger("id"));
 	auto type = DataType(val.getInteger("type"));
 	uint64_t size = uint64_t(val.getInteger("size"));
@@ -353,7 +353,7 @@ bool BlockTransferManager::handlePacket(const remote::MessageHeader &, BytesView
 }
 
 bool BlockTransferManager::handleComplete(const remote::MessageHeader &, BytesView payload) {
-	auto val = data::read<Interface>(payload);
+	auto val = remote::readMessagePayload<Interface>(payload);
 	uint64_t id = uint64_t(val.getInteger("id"));
 	auto it = _outgoing.find(id);
 	if (it == _outgoing.end()) {
@@ -371,7 +371,7 @@ bool BlockTransferManager::handleComplete(const remote::MessageHeader &, BytesVi
 }
 
 bool BlockTransferManager::handleRelease(const remote::MessageHeader &, BytesView payload) {
-	auto val = data::read<Interface>(payload);
+	auto val = remote::readMessagePayload<Interface>(payload);
 	uint64_t id = uint64_t(val.getInteger("id"));
 	auto it = _incoming.find(id);
 	if (it == _incoming.end()) {
@@ -390,7 +390,7 @@ bool BlockTransferManager::handleRelease(const remote::MessageHeader &, BytesVie
 }
 
 bool BlockTransferManager::handleCancel(const remote::MessageHeader &, BytesView payload) {
-	auto val = data::read<Interface>(payload);
+	auto val = remote::readMessagePayload<Interface>(payload);
 	uint64_t id = uint64_t(val.getInteger("id"));
 	if (_incoming.find(id) == _incoming.end()) {
 		return true; // never accepted it, or already dropped: nothing to undo
@@ -401,7 +401,7 @@ bool BlockTransferManager::handleCancel(const remote::MessageHeader &, BytesView
 }
 
 bool BlockTransferManager::handleUnavailable(const remote::MessageHeader &, BytesView payload) {
-	auto val = data::read<Interface>(payload);
+	auto val = remote::readMessagePayload<Interface>(payload);
 	uint64_t id = uint64_t(val.getInteger("id"));
 	auto it = _outgoing.find(id);
 	if (it == _outgoing.end()) {

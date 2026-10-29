@@ -188,7 +188,7 @@ bool ServerAppThread::sendAppRequest(NotNull<RemoteSession> session, const Value
 			toInt(remote::GlobalCode::AppRequest), val,
 			[cb = sp::move(cb)](const remote::MessageHeader &h, BytesView payload) {
 		auto st = getAppReplyStatus(h);
-		cb(st, sprt::status::isSuccessful(st) ? data::read<Interface>(payload) : Value());
+		cb(st, sprt::status::isSuccessful(st) ? remote::readMessagePayload<Interface>(payload) : Value());
 	}, timeoutUs, false);
 }
 
@@ -1030,7 +1030,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			if (isRequest) {
 				reply = Rc<AppReply>::create(session, session, h.serial);
 			}
-			_appMessageHandler(session, data::read<Interface>(payload), sp::move(reply));
+			_appMessageHandler(session, remote::readMessagePayload<Interface>(payload), sp::move(reply));
 			return true;
 		}
 		default:
@@ -1054,7 +1054,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			if (!conn || !_sharedObjects) {
 				return true;
 			}
-			auto val = data::read<Interface>(payload);
+			auto val = remote::readMessagePayload<Interface>(payload);
 			auto queueId = uint64_t(val.getInteger());
 			auto q = _sharedObjects->isQueueVisible(queueId, sessionId)
 					? _sharedObjects->resolveQueue(queueId)
@@ -1085,7 +1085,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			// client -> server: one streamed input for one or more attachments [frameId, keys[],
 			// bytes, frameData?] - the last is the input's frame data cache operations
 			if (client) {
-				const auto val = data::read<Interface>(payload);
+				const auto val = remote::readMessagePayload<Interface>(payload);
 				Vector<StringView> keys;
 				for (auto &k : val.getValue(1).asArray()) { keys.emplace_back(k.getString()); }
 				client->handleFrameInput(uint64_t(val.getInteger(0)), keys, val.getBytes(2),
@@ -1096,7 +1096,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 		case remote::WindowCode::FrameCommit: {
 			// client -> server: all inputs for a frame were submitted
 			if (client) {
-				auto val = data::read<Interface>(payload);
+				auto val = remote::readMessagePayload<Interface>(payload);
 				client->handleFrameCommit(uint64_t(val.getInteger(0)));
 			}
 			return true;
@@ -1107,7 +1107,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			// Compiled into the window's queue, so only for a window this session owns.
 			if (client
 					&& resolveOwnedWindow(
-							uint64_t(data::read<Interface>(payload).getInteger("window")))) {
+							uint64_t(remote::readMessagePayload<Interface>(payload).getInteger("window")))) {
 				client->handleCompileMaterials(payload);
 			}
 			return true;
@@ -1119,7 +1119,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			if (!conn) {
 				return true;
 			}
-			auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
+			auto windowId = uint64_t(remote::readMessagePayload<Interface>(payload).getInteger());
 			if (!takeoverSharedWindow(windowId, session)) {
 				conn->sendError(remote::Domain::Window,
 						toInt(remote::WindowError::InvalidObjecthandle), h.serial);
@@ -1141,7 +1141,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 						h.serial);
 				return true;
 			}
-			auto val = data::read<Interface>(payload);
+			auto val = remote::readMessagePayload<Interface>(payload);
 			if (!val.isDictionary()) {
 				conn->sendError(remote::Domain::Window,
 						toInt(remote::WindowError::SerializationFailed), h.serial);
@@ -1165,7 +1165,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			// client -> server: the client's scene wants the next frame; schedule it on the window's
 			// PresentationEngine. The answer is the frame itself, or FrameDeclined: the client
 			// sends nothing more until one of them arrives.
-			auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
+			auto windowId = uint64_t(remote::readMessagePayload<Interface>(payload).getInteger());
 			auto w = resolveWindow(windowId);
 			session->countFrameRequest(w == nullptr);
 			if (w) {
@@ -1182,7 +1182,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			// Domain::Data as a Screenshot transfer; `reason` references this request so the client
 			// can match it. No reply.
 			if (_sharedObjects) {
-				auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
+				auto windowId = uint64_t(remote::readMessagePayload<Interface>(payload).getInteger());
 				auto reqSerial = h.serial;
 				if (auto w = resolveOwnedWindow(windowId)) {
 					w->captureScreenshot(
@@ -1278,7 +1278,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			if (!_sharedObjects) {
 				return true;
 			}
-			auto val = data::read<Interface>(payload);
+			auto val = remote::readMessagePayload<Interface>(payload);
 			auto w = resolveOwnedWindow(uint64_t(val.getInteger("w")));
 			if (!w) {
 				return true;
@@ -1299,7 +1299,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			if (!conn || !_sharedObjects) {
 				return true;
 			}
-			auto val = data::read<Interface>(payload);
+			auto val = remote::readMessagePayload<Interface>(payload);
 			auto windowId = uint64_t(val.getInteger("w"));
 			auto w = resolveOwnedWindow(windowId);
 			if (!w) {
@@ -1663,7 +1663,7 @@ void ServerAppThread::handleClientInfo(RemoteSession *session, const remote::Mes
 			return;
 		}
 	} else {
-		auto info = remote::deserializePeerInfo(data::read<Interface>(payload));
+		auto info = remote::deserializePeerInfo(remote::readMessagePayload<Interface>(payload));
 		// A compliant client refuses a mismatch itself (error branch above); this catches a peer
 		// that answered anyway.
 		if (!_localInfo.isWireCompatible(info)) {
