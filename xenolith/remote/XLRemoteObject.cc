@@ -395,6 +395,14 @@ bool ObjectRegistry::isWindowVisible(uint64_t windowId, uint64_t session) const 
 	return it->second.assignedSession == 0 || it->second.assignedSession == session;
 }
 
+bool ObjectRegistry::isWindowOwned(uint64_t windowId, uint64_t session) const {
+	auto it = _windowById.find(windowId);
+	if (it == _windowById.end() || session == 0) {
+		return false;
+	}
+	return it->second.ownerSession == session || it->second.creatorSession == session;
+}
+
 bool ObjectRegistry::isQueueVisible(uint64_t queueId, uint64_t session) const {
 	for (auto &it : _windowById) {
 		for (auto q : it.second.queues) {

@@ -410,12 +410,14 @@ void TauWindow::inputLoop() {
 			flushSequence(now);
 		}
 		expireHeld(now);
+		flushInput();
 		if (ready < 0 || (ready > 0 && n <= 0)) {
 			::usleep(unsigned(s_inputPollMs) * 1'000); // stdin closed or failed: keep the release tick
 		}
 	}
 	postCancel();
 	usbCancel();
+	flushInput();
 	if (_usbOpen) {
 		__sprt_tau_input_close();
 		_usbOpen = false;
@@ -583,18 +585,23 @@ void TauWindow::postCancel() {
 	_heldCount = 0;
 }
 
-// handleInputEvents runs on the looper's thread; performOnThread retains the window.
+// handleInputEvents runs on the looper's thread; performOnThread retains the window. Events
+// collect in _inputBatch (the input thread's own) and leave once per loop pass, so a frame's
+// worth of arrivals reaches the scene as one batch (IO-A-Frame-1).
 void TauWindow::postEvent(const InputEventData &ev) {
+	_inputBatch.emplace_back(ev);
+}
+
+void TauWindow::flushInput() {
 	auto looper = _controller ? _controller->getLooper() : nullptr;
-	if (looper) {
-		looper->performOnThread([this, ev] {
+	if (looper && !_inputBatch.empty()) {
+		looper->performOnThread([this, events = sprt::move(_inputBatch)]() mutable {
 			if (_closed) {
 				return;
 			}
-			Vector<InputEventData> events;
-			events.emplace_back(ev);
 			handleInputEvents(sprt::move(events));
 		}, this);
+		_inputBatch.clear();
 	}
 }
 

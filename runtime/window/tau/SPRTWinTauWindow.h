@@ -119,6 +119,7 @@ protected:
 	void post(InputKeyCode, InputEventName);
 	void postCancel();
 	void postEvent(const InputEventData &);
+	void flushInput();
 
 	/* USB input: the events of dev.input@1 (__sprt_tau_input_*), polled on the input thread.
 	 * Touches are Begin/Move/End by contact, a mouse moves a cursor in the window, a tablet places
@@ -162,6 +163,7 @@ protected:
 	HeldKey _held[16] = {};
 	size_t _heldCount = 0;
 	bool _console = false;
+	Vector<InputEventData> _inputBatch; // the input thread's, flushed once per loop pass
 
 	struct UsbDevice {
 		uint32_t id, kind, xMax, yMax;

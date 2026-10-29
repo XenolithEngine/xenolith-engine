@@ -371,6 +371,9 @@ int __sprt_tau_display2_show(unsigned buffer, unsigned long long *blank);
 // Unnamed planes keep their last committed state, including across WSI presents.
 int __sprt_tau_display2_commit(const struct __sprt_tau_display2_plane_state *states,
 		unsigned count, unsigned long long *blank);
+// The number and time (ns of the machine's monotonic clock) of the last vertical blank the
+// session saw: the measurement of a frame's path from the blank interrupt to the commit.
+int __sprt_tau_display2_blank(unsigned long long *seq, unsigned long long *time);
 void __sprt_tau_display2_close(void);
 
 // The GPU of the module (dev.gpu@1 through libtau, IO-A-GpuIface-1): one session with its heaps
@@ -523,6 +526,9 @@ int __sprt_tau_input_open(int wait);
 // The device `id` names; -ENOENT when the provider lists none.
 int __sprt_tau_input_device(unsigned id, struct __sprt_tau_input_device *out);
 int __sprt_tau_input_next(struct __sprt_tau_input_event *out);
+// A tap on every event as it leaves the provider: the display server of legacy dev.display@1
+// clients forwards them as its own dev.input@1. Install before the first open().
+void __sprt_tau_input_tap(void (*tap)(const struct __sprt_tau_input_event *, void *), void *ctx);
 // Ends the session; the provider takes a new one.
 void __sprt_tau_input_close(void);
 

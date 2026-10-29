@@ -990,6 +990,15 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 		return static_cast<AppWindow *>(_sharedObjects->resolveWindow(windowId));
 	};
 
+	// A window this session owns or created: pixels, layers and control of a window only offered
+	// (an unclaimed server window) stay with the server.
+	auto resolveOwnedWindow = [&](uint64_t windowId) -> AppWindow * {
+		if (!_sharedObjects || !_sharedObjects->isWindowOwned(windowId, sessionId)) {
+			return nullptr;
+		}
+		return static_cast<AppWindow *>(_sharedObjects->resolveWindow(windowId));
+	};
+
 	if (remote::Domain(h.domain) == remote::Domain::Global) {
 		switch (remote::GlobalCode(h.code)) {
 		case remote::GlobalCode::Ping: {
@@ -1095,9 +1104,9 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 		case remote::WindowCode::CompileMaterials: {
 			// client -> server: compile a runtime (font atlas) material the headless client can't
 			// compile.
-			// Compiled into the window's queue, so only for a window this session can see.
+			// Compiled into the window's queue, so only for a window this session owns.
 			if (client
-					&& resolveWindow(
+					&& resolveOwnedWindow(
 							uint64_t(data::read<Interface>(payload).getInteger("window")))) {
 				client->handleCompileMaterials(payload);
 			}
@@ -1175,7 +1184,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			if (_sharedObjects) {
 				auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
 				auto reqSerial = h.serial;
-				if (auto w = resolveWindow(windowId)) {
+				if (auto w = resolveOwnedWindow(windowId)) {
 					w->captureScreenshot(
 							[this, session = Rc<RemoteSession>(session), reqSerial,
 									windowId](const core::ImageInfoData &info, BytesView pixels) {
@@ -1254,7 +1263,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 						" flags=", uint32_t(toInt(layer.flags)));
 			}
 
-			if (auto w = resolveWindow(windowId)) {
+			if (auto w = resolveOwnedWindow(windowId)) {
 				log::source().info("AppThread", "UpdateLayers: applying ", layers.size(),
 						" layer(s) to window ", windowId);
 				w->updateLayers(sp::move(layers));
@@ -1270,7 +1279,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 				return true;
 			}
 			auto val = data::read<Interface>(payload);
-			auto w = resolveWindow(uint64_t(val.getInteger("w")));
+			auto w = resolveOwnedWindow(uint64_t(val.getInteger("w")));
 			if (!w) {
 				return true;
 			}
@@ -1292,7 +1301,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			}
 			auto val = data::read<Interface>(payload);
 			auto windowId = uint64_t(val.getInteger("w"));
-			auto w = resolveWindow(windowId);
+			auto w = resolveOwnedWindow(windowId);
 			if (!w) {
 				conn->sendError(remote::Domain::Window,
 						toInt(remote::WindowError::InvalidObjecthandle), h.serial);
