@@ -472,6 +472,14 @@ void ShadowPass::makeMaterialSubpass(Queue::Builder &queueBuilder, QueuePassBuil
 										  BlendOp::Add),
 				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}));
 
+	// The additive twin of the transparent pipeline - what a ParticleEmitter with
+	// ParticleBlendMode::Add asks for. The blend is part of the material key, so no existing
+	// request reaches this pipeline but an additive one.
+	subpassBuilder.addGraphicPipeline("Add", layout2d->defaultFamily, shaderSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::One, BlendOp::Add,
+										  BlendFactor::Zero, BlendFactor::One, BlendOp::Add),
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}));
+
 	// pipeline for debugging - draw lines instead of triangles
 	subpassBuilder.addGraphicPipeline("DebugTriangles", layout2d->defaultFamily, shaderSpecInfo,
 			PipelineMaterialInfo(BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
@@ -568,6 +576,15 @@ void ShadowPass::makeMaterialSubpass(Queue::Builder &queueBuilder, QueuePassBuil
 			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
 										 BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
 										 BlendOp::Add),
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D,
+				PipelineVariant::ParticleQuadMask}));
+
+	// The masked draw's own additive twin, the same opened destination the base Add pipeline
+	// above carries: a builtin-masked emitter can be additive too
+	subpassBuilder.addGraphicPipeline("Add_Particle", layout2d->defaultFamily,
+			particleSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::One, BlendOp::Add,
+										 BlendFactor::Zero, BlendFactor::One, BlendOp::Add),
 				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D,
 				PipelineVariant::ParticleQuadMask}));
 

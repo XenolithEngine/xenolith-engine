@@ -37,6 +37,16 @@ enum class ParticleQuadMask : uint32_t {
 	Streak = 3,
 };
 
+// The blend modes the emitter's material asks the pass for. The particle draw writes straight
+// color with the shape's alpha in its own channel, so `Alpha` is the sprite pair (the source
+// scaled by its own alpha over the destination reduced by it) and `Add` keeps the source's own
+// scaling but sums the destination unchanged - a fading particle adds less and nothing else,
+// which no raw `One/One` pair would give over a straight-color draw.
+enum class ParticleBlendMode : uint32_t {
+	Alpha = 0,
+	Add = 1,
+};
+
 class ParticleEmitter : public Sprite {
 public:
 	virtual ~ParticleEmitter() = default;
@@ -67,6 +77,12 @@ public:
 	ParticleQuadMask getQuadMask() const { return _quadMask; }
 	float getQuadMaskThickness() const { return _maskThickness; }
 	float getQuadMaskSoftness() const { return _maskSoftness; }
+
+	// How the draw lands on what is already there; `Alpha` is what a sprite does, `Add` sums
+	// over it. The mode is a material state, not a simulation one: two emitters of one system
+	// simulate together and may still differ here.
+	void setBlendMode(ParticleBlendMode mode);
+	ParticleBlendMode getBlendMode() const { return _blendMode; }
 
 	// Particles carry their own alpha: without an explicit level the emitter is transparent
 	virtual RenderingLevel getRealRenderingLevel() const override;
@@ -99,6 +115,7 @@ protected:
 	ParticleQuadMask _quadMask = ParticleQuadMask::None;
 	float _maskThickness = 0.0f;
 	float _maskSoftness = 0.0f;
+	ParticleBlendMode _blendMode = ParticleBlendMode::Alpha;
 
 	Action *_actionRenderLock = nullptr;
 	bool _feedbackEnabled = false;

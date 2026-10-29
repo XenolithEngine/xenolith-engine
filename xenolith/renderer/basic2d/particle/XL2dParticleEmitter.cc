@@ -148,10 +148,27 @@ void ParticleEmitter::setQuadMask(ParticleQuadMask shape, float ringThickness,
 	markMaterialDirty();
 }
 
+void ParticleEmitter::setBlendMode(ParticleBlendMode mode) {
+	if (_blendMode == mode) {
+		return;
+	}
+	_blendMode = mode;
+	// The mode names another pipeline of the same family, found by the material's blend
+	markMaterialDirty();
+}
+
 MaterialInfo ParticleEmitter::getMaterialInfo() const {
 	auto info = Sprite::getMaterialInfo();
 	if (_quadMask != ParticleQuadMask::None) {
 		info.pipeline.setVariant(core::PipelineVariant::ParticleQuadMask);
+	}
+	if (_blendMode == ParticleBlendMode::Add) {
+		// The sprite pair with the destination factor opened: the source still brings its own
+		// alpha (SrcAlpha), the destination is summed and not reduced (One). The alpha channel
+		// keeps the transparent twin's pass-through - the destination's alpha stays what it was.
+		info.pipeline.setBlendInfo(core::BlendInfo(core::BlendFactor::SrcAlpha,
+				core::BlendFactor::One, core::BlendOp::Add, core::BlendFactor::Zero,
+				core::BlendFactor::One, core::BlendOp::Add));
 	}
 	return info;
 }
