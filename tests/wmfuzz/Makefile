@@ -32,11 +32,14 @@ LOCAL_MODULES_PATHS = stappler/stappler-modules.mk xenolith/xenolith-modules.mk
 LOCAL_MODULES := xenolith_remote xenolith_font
 
 LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
-LOCAL_SRCS_OBJS := fuzz.cpp
 LOCAL_MAIN := fuzz.cpp
 
-LOCAL_CFLAGS += -O1 -g -fsanitize=fuzzer-no-link,address,undefined -fno-sanitize-recover=undefined
-LOCAL_LDFLAGS += -fsanitize=fuzzer,address,undefined
+# One sanitizer per flag: the build splits flag lists on commas. The toolchain ships no libFuzzer
+# runtime, so the driver flag would also inject a -lc++ the host build has no library for; the
+# system's fuzzer archive is freestanding and links as it is.
+LOCAL_CFLAGS += -O1 -g -fsanitize=fuzzer-no-link -fsanitize=address -fsanitize=undefined -fno-sanitize-recover=undefined
+LOCAL_CXXFLAGS += -O1 -g -fsanitize=fuzzer-no-link -fsanitize=address -fsanitize=undefined -fno-sanitize-recover=undefined
+LOCAL_LDFLAGS += /usr/lib/clang/23/lib/linux/libclang_rt.fuzzer-x86_64.a -fsanitize=address -fsanitize=undefined
 
 APPCONFIG_APP_NAME := WmFuzz
 APPCONFIG_BUNDLE_NAME := org.stappler.WmFuzz

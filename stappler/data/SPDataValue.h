@@ -867,8 +867,13 @@ template <typename Interface>
 int64_t ValueTemplate<Interface>::asInteger() const {
 	switch (_type) {
 	case Type::INTEGER: return intVal; break;
-	case Type::DOUBLE: return static_cast<int64_t>(doubleVal); break;
-	case Type::BOOLEAN: return boolVal ? 1 : 0; break;
+	case Type::DOUBLE:
+		// Casting a double outside int64's range (or NaN) is undefined; saturate at the bounds.
+		if (doubleVal > -9223372036854775808.0 && doubleVal < 9223372036854775808.0) {
+			return static_cast<int64_t>(doubleVal);
+		}
+		return doubleVal > 0 ? maxOf<int64_t>() : minOf<int64_t>();
+		break;
 	case Type::CHARSTRING: return StringToNumber<int64_t>(strVal->c_str(), nullptr, 0); break;
 	default: return 0; break;
 	}

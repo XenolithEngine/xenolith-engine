@@ -130,7 +130,10 @@ void Decoder<Interface>::decodeCharString(uint8_t type, ValueType &v) {
 		// variable-length string
 		StringType ret;
 		decodeUndefinedLength(ret, MajorTypeEncoded::CharString);
-		ret[ret.length()] = 0;
+		// Force the NUL terminator without writing at [length()]: the string does not promise a
+		// writable terminator slot there.
+		ret.push_back(0);
+		ret.pop_back();
 		v._type = ValueType::Type::CHARSTRING;
 		v.strVal = new (sprt::nothrow) StringType(sp::move(ret));
 	}
@@ -146,7 +149,7 @@ void Decoder<Interface>::decodeArray(uint8_t type, ValueType &ret) {
 	}
 
 	MajorTypeEncoded majorType = MajorTypeEncoded::Simple;
-	if (size > 0) {
+	if (size > 0 && !r.empty()) {
 		type = r.readUnsigned();
 		majorType = MajorTypeEncoded(type & toInt(Flags::MajorTypeMaskEncoded));
 		type = type & toInt(Flags::AdditionalInfoMask);
@@ -186,7 +189,9 @@ void Decoder<Interface>::decodeArray(uint8_t type, ValueType &ret) {
 
 		size--;
 
-		if (size > 0) {
+		// A declared count past the input's end must not keep producing elements: reading a head
+		// from an empty input answers garbage, and the loop would run until the memory is gone.
+		if (size > 0 && !r.empty()) {
 			type = r.readUnsigned();
 			majorType = (MajorTypeEncoded)(type & toInt(Flags::MajorTypeMaskEncoded));
 			type = type & toInt(Flags::AdditionalInfoMask);
@@ -241,31 +246,42 @@ void Decoder<Interface>::decodeMap(uint8_t type, ValueType &ret) {
 					int64_t(-1 - _readIntValue(r, type)));
 			key = StringView(parsedKey);
 			break;
-		case MajorTypeEncoded::ByteString:
-			if (type == toInt(Flags::UndefinedLength)) {
-				decodeUndefinedLength(parsedKey, MajorTypeEncoded::ByteString);
-				key = StringView(parsedKey);
-			} else {
-				auto size = min(r.size(), size_t(_readIntValue(r, type)));
-				key = StringView((char *)r.data(), size);
-				r += size;
+			case MajorTypeEncoded::ByteString:
+				if (type == toInt(Flags::UndefinedLength)) {
+					decodeUndefinedLength(parsedKey, MajorTypeEncoded::ByteString);
+					key = StringView(parsedKey);
+				} else {
+					// The length int is read before the clamp: its own bytes leave r, and the
+					// clamp must see that.
+					auto size = size_t(_readIntValue(r, type));
+					size = min(r.size(), size);
+					key = StringView((char *)r.data(), size);
+					r += size;
+				}
+				break;
+			case MajorTypeEncoded::CharString:
+				if (type == toInt(Flags::UndefinedLength)) {
+					decodeUndefinedLength(parsedKey, MajorTypeEncoded::CharString);
+					key = StringView(parsedKey);
+				} else {
+					auto size = size_t(_readIntValue(r, type));
+					size = min(r.size(), size);
+					key = StringView((char *)r.data(), size);
+					r += size;
+				}
+				break;
+			case MajorTypeEncoded::Array:
+			case MajorTypeEncoded::Map:
+			case MajorTypeEncoded::Tag:
+			case MajorTypeEncoded::Simple: {
+				// A key of one of these shapes has no string name; the pair is skipped below. The
+				// key is decoded into a scratch value: the decoders assign ret's fields directly,
+				// so decoding into the map being built would drop it.
+				ValueType scratch;
+				decode(majorType, type, scratch);
+				break;
 			}
-			break;
-		case MajorTypeEncoded::CharString:
-			if (type == toInt(Flags::UndefinedLength)) {
-				decodeUndefinedLength(parsedKey, MajorTypeEncoded::CharString);
-				key = StringView(parsedKey);
-			} else {
-				auto size = min(r.size(), size_t(_readIntValue(r, type)));
-				key = StringView((char *)r.data(), size);
-				r += size;
 			}
-			break;
-		case MajorTypeEncoded::Array:
-		case MajorTypeEncoded::Map:
-		case MajorTypeEncoded::Tag:
-		case MajorTypeEncoded::Simple: decode(majorType, type, ret); break;
-		}
 
 
 		if (key.empty()) {
@@ -283,9 +299,13 @@ void Decoder<Interface>::decodeMap(uint8_t type, ValueType &ret) {
 			}
 
 			if (!skip) {
-				decode(majorType, type,
-						ret.dictVal->emplace(key.str<Interface>(), ValueType::Type::EMPTY)
-								.first->second);
+				// A repeated key decodes onto a slot that may hold the earlier pair; the decoders
+				// assign fields directly, so the new value moves in through an assignment that
+				// frees what the slot held.
+				ValueType val;
+				decode(majorType, type, val);
+				ret.dictVal->emplace(key.str<Interface>(), ValueType::Type::EMPTY).first->second =
+						sprt::move(val);
 			} else {
 				ValueType val;
 				decode(majorType, type, val);

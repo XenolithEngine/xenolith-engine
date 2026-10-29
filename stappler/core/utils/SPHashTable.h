@@ -122,7 +122,9 @@ struct HashEntry {
 
 	HashEntry *next;
 	uint32_t hash;
-	sprt::array<uint8_t, sizeof(Value)> data;
+	// The value slot must carry the value's own alignment: a plain byte array would place an
+	// 8-byte type at a 4-mod-8 offset behind the 12-byte header.
+	alignas(alignof(Type)) sprt::array<uint8_t, sizeof(Value)> data;
 
 	Value *get() { return (Value *)data.data(); }
 	const Value *get() const { return (const Value *)data.data(); }

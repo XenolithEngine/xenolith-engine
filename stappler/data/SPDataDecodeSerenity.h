@@ -495,6 +495,9 @@ void Decoder<Interface>::parse(ValueType &val) {
 			} else {
 				log::source().error("DataSerenityDecoder", "Invalid token in plain stop: '",
 						r.sub(16), "'");
+				// Nothing was consumed: without stopping here the loop would spin on the same
+				// input forever.
+				stop = true;
 			}
 
 			break;
