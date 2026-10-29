@@ -177,6 +177,13 @@ struct SP_PUBLIC StencilInfo {
 
 using LineWidth = ValueWrapper<float, class LineWidthFlag>;
 
+// Pipelines of one material state can still differ by their fragment program; the value
+// selects the program family, and zero is the common material one every existing request keeps
+enum class PipelineVariant : uint32_t {
+	Default = 0,
+	ParticleQuadMask = 1,
+};
+
 class SP_PUBLIC PipelineMaterialInfo {
 public:
 	PipelineMaterialInfo();
@@ -198,6 +205,7 @@ public:
 	void disableStancil();
 	void setLineWidth(float);
 	void setImageViewType(ImageViewType);
+	void setVariant(PipelineVariant);
 
 	const BlendInfo &getBlendInfo() const { return blend; }
 	const DepthInfo &getDepthInfo() const { return depth; }
@@ -211,18 +219,24 @@ public:
 
 	ImageViewType getImageViewType() const { return imageViewType; }
 
+	PipelineVariant getVariant() const { return variant; }
+
 	bool operator==(const PipelineMaterialInfo &tmp2) const {
 		return this->blend == tmp2.blend && this->depth == tmp2.depth && this->bounds == tmp2.bounds
 				&& this->stencil == tmp2.stencil
 				&& (!this->stencil || (this->front == tmp2.front && this->back == tmp2.back))
-				&& this->lineWidth == tmp2.lineWidth && this->imageViewType == tmp2.imageViewType;
+				&& this->lineWidth == tmp2.lineWidth
+				&& this->imageViewType == tmp2.imageViewType
+				&& this->variant == tmp2.variant;
 	}
 
 	bool operator!=(const PipelineMaterialInfo &tmp2) const {
 		return this->blend != tmp2.blend || this->depth != tmp2.depth || this->bounds != tmp2.bounds
 				|| this->stencil != tmp2.stencil
 				|| (this->stencil && (this->front != tmp2.front || this->back != tmp2.back))
-				|| this->lineWidth != tmp2.lineWidth || this->imageViewType != tmp2.imageViewType;
+				|| this->lineWidth != tmp2.lineWidth
+				|| this->imageViewType != tmp2.imageViewType
+				|| this->variant != tmp2.variant;
 	}
 
 	size_t hash() const { return sprt::hashSize((const char *)this, sizeof(PipelineMaterialInfo)); }
@@ -237,6 +251,7 @@ protected:
 	void _setup(const StencilInfo &);
 	void _setup(LineWidth);
 	void _setup(ImageViewType);
+	void _setup(PipelineVariant);
 
 	template <typename T>
 	void setup(T &&t) {
@@ -259,6 +274,7 @@ protected:
 	uint32_t stencil = 0;
 	float lineWidth = 0.0f; // 0.0f - draw triangles, < 0.0f - points,  > 0.0f - lines with width
 	ImageViewType imageViewType = ImageViewType::ImageView1D;
+	PipelineVariant variant = PipelineVariant::Default;
 };
 
 } // namespace stappler::xenolith::core

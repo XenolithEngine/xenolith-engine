@@ -548,6 +548,29 @@ void ShadowPass::makeMaterialSubpass(Queue::Builder &queueBuilder, QueuePassBuil
 										  BlendOp::Add),
 				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView3D}));
 
+	// The particle draw's own fragment - the quad's alpha from its UV, no texture sampled. The
+	// variant keeps these pipelines from sharing one material lookup with their sampling twins,
+	// so only a masked emitter's material request reaches them
+	auto particleFrag = queueBuilder.addProgramByRef("Loader_ParticleFrag", shaders::ParticleFrag);
+
+	auto particleSpecInfo = Vector<SpecializationInfo>({
+		core::SpecializationInfo(materialVert),
+		core::SpecializationInfo(particleFrag),
+	});
+
+	subpassBuilder.addGraphicPipeline("Solid_Particle", layout2d->defaultFamily,
+			particleSpecInfo,
+			PipelineMaterialInfo({BlendInfo(), DepthInfo(true, true, CompareOp::Less),
+				ImageViewType::ImageView2D, PipelineVariant::ParticleQuadMask}));
+
+	subpassBuilder.addGraphicPipeline("Transparent_Particle", layout2d->defaultFamily,
+			particleSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
+										 BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
+										 BlendOp::Add),
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D,
+				PipelineVariant::ParticleQuadMask}));
+
 	static_cast<MaterialAttachment *>(_materials->attachment.get())
 			->addPredefinedMaterials(Vector<Rc<Material>>({
 				Rc<Material>::create(Material::MaterialIdInitial, materialPipeline,

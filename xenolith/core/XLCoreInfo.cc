@@ -1006,7 +1006,8 @@ String PipelineMaterialInfo::description() const {
 		   << blend.opColor << "," << blend.srcAlpha << "," << blend.dstAlpha << ","
 		   << blend.opAlpha << "," << blend.writeMask << "},{" << depth.writeEnabled << ","
 		   << depth.testEnabled << "," << depth.compare << "},{" << bounds.enabled << ","
-		   << bounds.min << "," << bounds.max << "},{" << stencil << "}";
+		   << bounds.min << "," << bounds.max << "},{" << stencil << "},{" << toInt(variant)
+		   << "}";
 	return stream.str();
 }
 
@@ -1074,7 +1075,11 @@ void PipelineMaterialInfo::setLineWidth(float width) {
 
 void PipelineMaterialInfo::setImageViewType(ImageViewType type) { imageViewType = type; }
 
+void PipelineMaterialInfo::setVariant(PipelineVariant v) { variant = v; }
+
 void PipelineMaterialInfo::_setup(const BlendInfo &info) { setBlendInfo(info); }
+
+void PipelineMaterialInfo::_setup(PipelineVariant v) { setVariant(v); }
 
 void PipelineMaterialInfo::_setup(const DepthInfo &info) { setDepthInfo(info); }
 

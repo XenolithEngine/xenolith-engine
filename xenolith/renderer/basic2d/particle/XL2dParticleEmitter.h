@@ -28,6 +28,15 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
+// The quad mask shapes the particle fragment knows (xl_2d_particle.frag); the values are the
+// shader's own switch over the mask push constant
+enum class ParticleQuadMask : uint32_t {
+	None = 0,
+	Disc = 1,
+	Ring = 2,
+	Streak = 3,
+};
+
 class ParticleEmitter : public Sprite {
 public:
 	virtual ~ParticleEmitter() = default;
@@ -51,6 +60,14 @@ public:
 	void setFrameGrid(uint32_t h, uint32_t v);
 	UVec2 getFrameGrid() const { return _frameGrid; }
 
+	// The quad mask the draw computes from its UV instead of sampling the texture; the two
+	// numbers belong to the ring (band thickness and edge softness, both in UV units). The
+	// shape also switches the emitter's material to the particle fragment's own pipeline
+	void setQuadMask(ParticleQuadMask shape, float ringThickness = 0.0f, float ringSoftness = 0.0f);
+	ParticleQuadMask getQuadMask() const { return _quadMask; }
+	float getQuadMaskThickness() const { return _maskThickness; }
+	float getQuadMaskSoftness() const { return _maskSoftness; }
+
 	// Particles carry their own alpha: without an explicit level the emitter is transparent
 	virtual RenderingLevel getRealRenderingLevel() const override;
 
@@ -71,12 +88,17 @@ public:
 	void requestSnapshot(uint32_t count, Function<void(ParticleSnapshot &&)> &&);
 
 protected:
+	virtual MaterialInfo getMaterialInfo() const override;
+
 	void updateFeedback();
 
 	UVec2 _frameGrid = UVec2(1, 1);
 	uint64_t _emitterId = 0;
 	Rc<ParticleSystem> _system;
 	uint32_t _maxFramesPerCall = 2;
+	ParticleQuadMask _quadMask = ParticleQuadMask::None;
+	float _maskThickness = 0.0f;
+	float _maskSoftness = 0.0f;
 
 	Action *_actionRenderLock = nullptr;
 	bool _feedbackEnabled = false;

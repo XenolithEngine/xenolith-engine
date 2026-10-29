@@ -662,10 +662,24 @@ void VertexPassHandle::drawSpans(core::MaterialSet *materials, CommandBuffer &bu
 				pcbParticle.vertexPointer =
 						UVec2::convertFromPacked(particleVertexes->getDeviceAddress());
 
-				buf.cmdPushConstants(pass->getPipelineLayout(0),
-						VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-						BytesView(reinterpret_cast<const uint8_t *>(&pcbParticle),
-								sizeof(VertexConstantData)));
+				if (emitterRenderInfo->maskShape != 0u) {
+					// The masked draw runs the particle fragment, whose pcb carries the mask
+					// after the material words the shared vertex stage still reads
+					glsl::ParticleDrawConstantData pcbMasked;
+					pcbMasked.base = pcbParticle;
+					pcbMasked.mask = glsl::vec4(float(emitterRenderInfo->maskShape),
+							emitterRenderInfo->maskThickness, emitterRenderInfo->maskSoftness,
+							0.0f);
+					buf.cmdPushConstants(pass->getPipelineLayout(0),
+							VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+							BytesView(reinterpret_cast<const uint8_t *>(&pcbMasked),
+									sizeof(glsl::ParticleDrawConstantData)));
+				} else {
+					buf.cmdPushConstants(pass->getPipelineLayout(0),
+							VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+							BytesView(reinterpret_cast<const uint8_t *>(&pcbParticle),
+									sizeof(VertexConstantData)));
+				}
 
 				buf.cmdDrawIndirect(_particles->getCommands(),
 						emitterRenderInfo->index * sizeof(ParticleIndirectCommand), 1,

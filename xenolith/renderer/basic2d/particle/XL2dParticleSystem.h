@@ -171,6 +171,13 @@ struct ParticleSystemRenderInfo {
 	Rc<ParticleFeedbackReceiver> feedback;
 	uint32_t snapshotId = 0; // 0 - no snapshot this frame
 	uint32_t snapshotCount = 0;
+
+	// The quad mask the draw multiplies its alpha by: the shape is a ParticleQuadMask value,
+	// the two numbers the ring's thickness and edge softness. Shape zero keeps the texture
+	// path - the emitter's material stays the common sampling one
+	uint32_t maskShape = 0;
+	float maskThickness = 0.0f;
+	float maskSoftness = 0.0f;
 };
 
 class SP_PUBLIC ParticleSystem : public Ref {

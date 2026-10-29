@@ -31,6 +31,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d::shaders {
 extern SpanView<uint32_t> MaterialFrag;
 extern SpanView<uint32_t> MaterialVert;
 extern SpanView<uint32_t> MaterialNoBdaVert;
+extern SpanView<uint32_t> ParticleFrag;
 extern SpanView<uint32_t> PseudoSdfFrag;
 extern SpanView<uint32_t> PseudoSdfVert;
 extern SpanView<uint32_t> PseudoSdfShadowFrag;

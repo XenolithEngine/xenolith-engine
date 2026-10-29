@@ -136,6 +136,26 @@ void ParticleEmitter::setFrameGrid(uint32_t h, uint32_t v) {
 	_frameGrid = UVec2(sprt::max(h, uint32_t(1)), sprt::max(v, uint32_t(1)));
 }
 
+void ParticleEmitter::setQuadMask(ParticleQuadMask shape, float ringThickness,
+		float ringSoftness) {
+	if (_quadMask == shape && _maskThickness == ringThickness && _maskSoftness == ringSoftness) {
+		return;
+	}
+	_quadMask = shape;
+	_maskThickness = ringThickness;
+	_maskSoftness = ringSoftness;
+	// The mask picks the particle fragment's own pipeline, which the material carries
+	markMaterialDirty();
+}
+
+MaterialInfo ParticleEmitter::getMaterialInfo() const {
+	auto info = Sprite::getMaterialInfo();
+	if (_quadMask != ParticleQuadMask::None) {
+		info.pipeline.setVariant(core::PipelineVariant::ParticleQuadMask);
+	}
+	return info;
+}
+
 RenderingLevel ParticleEmitter::getRealRenderingLevel() const {
 	auto level = Sprite::getRealRenderingLevel();
 	if (_renderingLevel == RenderingLevel::Default && level < RenderingLevel::Transparent) {
@@ -267,6 +287,10 @@ void ParticleEmitter::pushCommands(FrameInfo &frame, NodeVisitFlags flags) {
 		_displayedColor,
 		_feedback,
 	};
+
+	info.maskShape = uint32_t(_quadMask);
+	info.maskThickness = _maskThickness;
+	info.maskSoftness = _maskSoftness;
 
 	if (_feedback) {
 		// Sent with every frame until one of them answers it
