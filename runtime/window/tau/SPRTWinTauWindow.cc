@@ -395,6 +395,7 @@ void TauWindow::inputLoop() {
 			pollUsb(nowUs());
 		}
 		if (!_console) {
+			flushInput();
 			::usleep(unsigned(s_inputPollMs) * 1'000);
 			continue;
 		}
