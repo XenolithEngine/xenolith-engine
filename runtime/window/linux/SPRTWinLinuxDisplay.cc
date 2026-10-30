@@ -63,7 +63,19 @@ void DisplayWindow::mapWindow() {
 void DisplayWindow::unmapWindow() { }
 
 bool DisplayWindow::close() {
-	// Nothing to release at the window-system level.
+	if (_closed) {
+		return true;
+	}
+
+	// Direct display has no window system to report the accepted close.
+	_closed = true;
+	if (!_controller->notifyWindowClosed(this)) {
+		if (hasFlag(_info->state, WindowState::CloseGuard)) {
+			updateState(0, _info->state | WindowState::CloseRequest);
+		}
+		_closed = false;
+		return false;
+	}
 	return true;
 }
 

@@ -74,6 +74,7 @@ protected:
 
 	Rc<DrmDevice> _drm;
 	Extent2 _extent;
+	bool _closed = false;
 };
 
 } // namespace sprt::window
