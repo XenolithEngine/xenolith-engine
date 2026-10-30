@@ -373,6 +373,13 @@ void FontAttachmentHandle::doSubmitInput(FrameHandle &handle, Function<void(bool
 			core::BufferInfo(core::ForceBufferUsage(core::BufferUsage::TransferSrc),
 					size_t(CopyBlockSize)));
 
+	if (!_frontBuffer) {
+		log::source().error("FontAttachmentHandle", "Font staging allocation failed");
+		_onInput(false);
+		_onInput = nullptr;
+		return;
+	}
+
 	_copyFromTmpBufferData.resize(totalCount - processedPersistent + (underlinePersistent ? 0 : 1));
 
 	if (extraPersistent > 0 || !underlinePersistent) {
@@ -398,6 +405,13 @@ void FontAttachmentHandle::doSubmitInput(FrameHandle &handle, Function<void(bool
 				_persistentTargetBuffer = _userdata->buffers.back();
 			}
 		}
+	}
+
+	if ((extraPersistent > 0 || !underlinePersistent) && !_persistentTargetBuffer) {
+		log::source().error("FontAttachmentHandle", "Font persistent allocation failed");
+		_onInput(false);
+		_onInput = nullptr;
+		return;
 	}
 
 	font::DeferredRequest::runFontRenderer(_input->queue, _input->ext, _input->requests,
