@@ -52,9 +52,10 @@ OSTYPE_GENERAL_CXXFLAGS := -Wall -Wno-vla-cxx-extension -Wno-overloaded-virtual 
 OSTYPE_LIB_CXXFLAGS :=
 OSTYPE_EXEC_CXXFLAGS :=
 
-# Native ELF TLS through TPIDR_EL0; the link below emits PT_TLS.
-OSTYPE_GENERAL_CFLAGS += -idirafter $(TARGET_SYSROOT)/usr/include
-OSTYPE_GENERAL_CXXFLAGS += -idirafter $(TARGET_SYSROOT)/usr/include
+# Native ELF TLS through TPIDR_EL0; the link below emits PT_TLS. __TAU_USER__ tells the
+# EL0 side from the kernel side, which also defines __TAU__.
+OSTYPE_GENERAL_CFLAGS += -D__TAU_USER__ -idirafter $(TARGET_SYSROOT)/usr/include
+OSTYPE_GENERAL_CXXFLAGS += -D__TAU_USER__ -idirafter $(TARGET_SYSROOT)/usr/include
 
 ifeq ($(RELEASE),1)
 OSTYPE_GENERAL_CFLAGS += -O2

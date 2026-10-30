@@ -109,6 +109,14 @@
 #define SPRT_EMBOX_ANY 1
 #endif
 
+#if SPRT_TAU && defined(__TAU_USER__)
+#define SPRT_TAU_USER 1
+#endif
+
+#if SPRT_EMBOX_USER || SPRT_TAU
+#define SPRT_EL0_LIBC 1
+#endif
+
 #define __SPRT_ARCH_NAME_AARCH64 aarch64_sprt
 #define __SPRT_ARCH_ID_AARCH64 1
 #define __SPRT_ARCH_NAME_ARM64 __SPRT_ARCH_NAME_AARCH64

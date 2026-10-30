@@ -64,6 +64,11 @@ macro `SPRT_HOSTED_RTOS` 1 if="SPRT_NUTTX || SPRT_EMBOX"
 // runs (device names, /dev/fb0 geometry, board quirks); anything about Embox's libc, its types, or
 // its flat address space is SPRT_EMBOX alone.
 macro `SPRT_EMBOX_ANY` 1 if="SPRT_EMBOX || SPRT_EMBOX_USER"
+// The EL0 side of Tau, a module linking the runtime as its libc (make/os/tau-user.mk).
+macro `SPRT_TAU_USER` 1 if="SPRT_TAU && defined(__TAU_USER__)"
+// The runtime is the libc of an EL0 process with no platform libc under it: EmboxUser and Tau
+// share the parts of their platform layers that make no system call.
+macro `SPRT_EL0_LIBC` 1 if="SPRT_EMBOX_USER || SPRT_TAU"
 
 targets ARCH suffix=_sprt error="Unknown arch" {
     target aarch64 1 also=arm64 if="defined(__aarch64__) || defined(_M_ARM64)"

@@ -43,11 +43,11 @@
 #endif
 
 #if !defined(__SPRT_CONFIG_HAVE_FUTEX)
-#define __SPRT_CONFIG_HAVE_FUTEX 0
+#define __SPRT_CONFIG_HAVE_FUTEX 1
 #endif
 
 #if !defined(__SPRT_CONFIG_HAVE_POLL)
-#define __SPRT_CONFIG_HAVE_POLL 0
+#define __SPRT_CONFIG_HAVE_POLL 1
 #endif
 
 #if !defined(__SPRT_CONFIG_HAVE_UNISTD_FORK)
