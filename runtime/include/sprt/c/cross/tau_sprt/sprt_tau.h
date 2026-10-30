@@ -133,6 +133,7 @@ unsigned long long __sprt_tau_mem_total(void);
 // Time from the virtual counter, since boot.
 unsigned long long __sprt_tau_clock_ns(void);
 unsigned long long __sprt_tau_clock_res_ns(void);
+int __sprt_tau_realtime_get(long long *seconds, long *nanoseconds);
 int __sprt_tau_sleep_ns(unsigned long long ns);
 void __sprt_tau_yield(void);
 // The module's generator, keyed from the seed root gives each start; never waits.
