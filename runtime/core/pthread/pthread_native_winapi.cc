@@ -86,6 +86,9 @@ static void __closeNativeHandle(void *handle) {
 	CloseHandle((HANDLE)handle); //
 }
 
+// The joiner frees a finalized thread at once: nothing of it outlives its finalization here.
+static void __waitNativeThread(void *) { }
+
 static bool __initNativeHandle(thread_t *thread) {
 	// Get a real (non-pseudo) handle to the current thread. Duplicate into a local
 	// first: for SPRT-created threads thread->handle already holds the CreateThread

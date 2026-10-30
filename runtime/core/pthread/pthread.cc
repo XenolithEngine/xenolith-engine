@@ -664,8 +664,9 @@ int thread_t::create(thread_t **__SPRT_RESTRICT outthread, const attr_t *__SPRT_
 		}
 		memory::allocator::terminate(&thread->threadAlloc);
 		if (thread->handle) {
-			// Under the pool's mutex, as on every other path: the native layers keep their
-			// lists of threads still to reap under it.
+			// Its stack and TLS go back to the quota before EAGAIN; then under the pool's mutex,
+			// as on every other path: the native layers keep their lists of threads to reap under it.
+			native::__waitNativeThread(thread->handle);
 			unique_lock lock(s_handlePool.mutex);
 			native::__closeNativeHandle(thread->handle);
 			thread->handle = nullptr;
@@ -704,16 +705,17 @@ int thread_t::detach(thread_t *thread) {
 	// We hold the thread's mutex, so, it can not change state by itself
 	// Finalizer (if ready) will be called after we release mutex
 
-	if (thread->state.try_wait(thread_t::StateFinalized)) {
+	if (hasFlag(thread->attr.attr, ThreadAttrFlags::JoinRequested)) {
+		// pthread_detach called when other thread calls pthread_join; a joiner of a finalized
+		// thread may wait for it without the mutex
+		return EINVAL;
+	} else if (thread->state.try_wait(thread_t::StateFinalized)) {
 		// thread was finalized as joinable, release it's resources
 		__detachAndDeallocateThread(thread, &lock);
-	} else if (!hasFlag(thread->attr.attr, ThreadAttrFlags::JoinRequested)) {
+	} else {
 		// Mark the thread as detached;
 		// with this flag, thread's resources will be destroyed right before __runthread func returns
 		thread->attr.attr |= ThreadAttrFlags::Detached;
-	} else {
-		// pthread_detach called when other thread calls pthread_join
-		return EINVAL;
 	}
 	return 0;
 }
@@ -731,6 +733,18 @@ __SPRT_NORETURN void thread_t::exit(void *exitCode) {
 		__sprt_longjmp(tl_self.thread->jmpToRunthread, 1);
 		__builtin_unreachable();
 	}
+}
+
+// The joiner's end of a finalized thread, with its mutex held: the thread may still run its TLS
+// destructors, so the joiner waits for it without the lock before it frees the thread.
+static void __joinFinalized(thread_t *thread, void **ret, unique_lock<qmutex> &lock) {
+	if (ret) {
+		*ret = thread->arg;
+	}
+	lock.unlock();
+	native::__waitNativeThread(thread->handle);
+	lock.lock();
+	__detachAndDeallocateThread(thread, &lock);
 }
 
 static int __pthread_join(thread_t *thread, void **ret, timeout_t timeout, bool tryjoin) {
@@ -758,11 +772,8 @@ static int __pthread_join(thread_t *thread, void **ret, timeout_t timeout, bool 
 
 	// release all data if already complete
 	if (thread->state.try_wait(thread_t::StateFinalized)) {
-		// thread was finalized as joinable, release it's resources
-		if (ret) {
-			*ret = thread->arg;
-		}
-		__detachAndDeallocateThread(thread, &lock);
+		thread->attr.attr |= ThreadAttrFlags::JoinRequested;
+		__joinFinalized(thread, ret, lock);
 		return 0;
 	}
 
@@ -792,12 +803,7 @@ static int __pthread_join(thread_t *thread, void **ret, timeout_t timeout, bool 
 		// publishes StateFinalized while still holding it, so locking here guarantees
 		// __runthead has released the mutex and is no longer touching the thread.
 		lock.lock();
-		if (ret) {
-			*ret = thread->arg;
-		}
-
-		__detachAndDeallocateThread(thread, &lock);
-
+		__joinFinalized(thread, ret, lock);
 		return 0;
 	}
 
@@ -809,10 +815,7 @@ static int __pthread_join(thread_t *thread, void **ret, timeout_t timeout, bool 
 	if (thread->state.try_wait(thread_t::StateFinalized)) {
 		// It finalized in the race window between the timeout and re-locking; complete
 		// the join now rather than forcing the caller to retry.
-		if (ret) {
-			*ret = thread->arg;
-		}
-		__detachAndDeallocateThread(thread, &lock);
+		__joinFinalized(thread, ret, lock);
 		return 0;
 	}
 

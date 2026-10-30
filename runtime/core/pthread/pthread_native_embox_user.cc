@@ -268,6 +268,9 @@ static void __closeNativeHandle(void *handle) {
 	__el0_reap();
 }
 
+// __closeNativeHandle waits for a joined thread to be gone itself.
+static void __waitNativeThread(void *) { }
+
 static bool __isNativeHandleValid(thread_t *thread) { return thread->handle != nullptr; }
 
 // exit(93) ends this thread, exit_group(94) ends the program -- since K6 the
