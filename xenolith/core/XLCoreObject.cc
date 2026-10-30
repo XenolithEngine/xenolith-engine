@@ -25,7 +25,8 @@
 #include "XLCoreInfo.h"
 #include "XLCoreDevice.h"
 #include "XLCoreDeviceQueue.h"
-#if !SPRT_WASM && !SPRT_EMBOX_USER && (!SPRT_TAU_USER || MODULE_XENOLITH_BACKEND_VK) && (!SPRT_HOSTED_RTOS || MODULE_XENOLITH_BACKEND_VK)
+#include "XLCoreConfig.h"
+#if XL_SPIRV_REFLECT
 #include "SPIRV-Reflect/spirv_reflect.h"
 #endif
 
@@ -302,7 +303,7 @@ void CommandBuffer::bindFramebuffer(Framebuffer *fb) {
 }
 
 String Shader::inspectShader(SpanView<uint32_t> data) {
-#if SPRT_WASM || SPRT_EMBOX_USER || (SPRT_TAU_USER && !MODULE_XENOLITH_BACKEND_VK) || (SPRT_HOSTED_RTOS && !MODULE_XENOLITH_BACKEND_VK)
+#if !XL_SPIRV_REFLECT
 	(void)data;
 	return String();
 #else

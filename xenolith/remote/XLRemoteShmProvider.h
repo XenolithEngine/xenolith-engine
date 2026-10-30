@@ -82,6 +82,9 @@ public:
 	// server as the platform knows it.
 	virtual Rc<ShmBlockMemory> connect(const Address &, const ShmBlockConfig &config,
 			PeerIdentity &peer) = 0;
+
+	// Largest block the platform can share; a client's rings are shrunk to fit it. 0 is no limit.
+	virtual size_t getMaxBlockSize() const { return 0; }
 };
 
 // In-process rendezvous by name, available wherever the transport is built.

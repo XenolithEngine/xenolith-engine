@@ -36,30 +36,20 @@
 #include "XLCoreLoop.h" // gapi loop performOnThread for frame-input submission
 #include "XLCoreFrameCapture.h" // FrameCaptureAttachmentName + FrameCaptureInput
 #include "XLCoreFrameDataCache.h"
+#include "XLApplicationConfig.h"
 
 #include "SPData.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-/* A client must answer AcquireFrame within this budget, and must have committed its input within
-kFrameInputDeadlineUs of answering. Both are about ONE FRAME, not about the client: missing them
-cancels the frame (the window keeps showing what it last presented) and the session lives on --
-whether the client is still there is the keepalive's question, and only its answer drops a session.
+/* A client must answer AcquireFrame within config::RemoteAcquireFrameReplyTimeout, and must have
+committed its input within config::RemoteFrameInputDeadline of answering. Both are about ONE FRAME,
+not about the client: missing them cancels the frame (the window keeps showing what it last
+presented) and the session lives on -- whether the client is still there is the keepalive's
+question, and only its answer drops a session.
 
 A client that misses them again and again is serving nothing, so kMaxConsecutiveLateFrames in a row
 does drop it. */
-#if SPRT_TAU
-static constexpr uint64_t kAcquireFrameReplyTimeoutUs = 120'000'000;
-#else
-static constexpr uint64_t kAcquireFrameReplyTimeoutUs = 2'000'000;
-#endif
-
-/* The input deadline is deliberately generous: it guards against a client that stopped mid-frame,
-not against a slow one. A client's first frames legitimately take seconds -- fonts are announced,
-glyphs rasterized, materials compiled, all of it round trips -- and cancelling those would drop
-frames that were about to arrive. */
-static constexpr uint64_t kFrameInputDeadlineUs = 10'000'000; // 10s
-
 static constexpr uint32_t kMaxConsecutiveLateFrames = 3;
 
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
@@ -250,7 +240,8 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 		nothing else can be scheduled for it. The engine's own per-frame timer cancels it at the
 		deadline (it is armed from FrameRequest::getDeadline once the frame is submitted); the
 		deadline kept here is what lets the server notice, count it and nudge the window. */
-		auto deadline = sp::platform::clock(ClockType::Monotonic) + kFrameInputDeadlineUs;
+		auto deadline =
+				sp::platform::clock(ClockType::Monotonic) + config::RemoteFrameInputDeadline;
 		if (auto request = localProxy->getRequest()) {
 			request->setDeadline(deadline);
 		}
@@ -259,7 +250,7 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 		submitServerOwnedInputs(frameId, windowId, localProxy);
 		pending->cb(true);
 	},
-			kAcquireFrameReplyTimeoutUs, /* fatal */ false);
+			config::RemoteAcquireFrameReplyTimeout, /* fatal */ false);
 
 	if (!sent) {
 		pending->cb(false);

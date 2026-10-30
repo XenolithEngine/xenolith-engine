@@ -36,6 +36,7 @@
 #include "XLRemoteSerialize.h"
 #include "XLRemoteBlockTransfer.h"
 #include "XLRemoteFontServer.h"
+#include "XLApplicationConfig.h"
 
 #include <sprt/runtime/dispatch/handle.h>
 
@@ -48,31 +49,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-// Keepalive cadence: ping the connected client this often, and terminate it if it has not answered
-// a pong within the timeout.
-static constexpr uint64_t kKeepalivePingIntervalUs = 1'000'000; // 1s
-// Tau peers also expose endpoint revocation; the heartbeat allows slow image decoding on TCG.
-#if SPRT_TAU
-static constexpr uint64_t kKeepalivePongTimeoutUs = 120'000'000;
-#else
-static constexpr uint64_t kKeepalivePongTimeoutUs = 5'000'000;
-#endif
-
-// Rate limit on setup handshakes: every failure doubles a cool-off window during which connections
-// are refused, so key guessing costs wall-clock time. A successful handshake clears it.
-static constexpr uint64_t kHandshakeBackoffBaseUs = 250'000; // after the 1st failure
-static constexpr uint64_t kHandshakeBackoffMaxUs = 8'000'000; // ceiling
-
-// Connections allowed in their setup handshake at once, how long one may take, and how long a
-// refused one is given to send its hello before the refusal is written anyway (see
-// remote::serverHandshakeReject for why it waits at all).
+// Connections allowed in their setup handshake at once; a successful handshake clears the backoff
+// (config::RemoteHandshakeBackoffBase), so key guessing costs wall-clock time.
 static constexpr size_t kMaxPendingHandshakes = 8;
-static constexpr uint64_t kServerHandshakeDeadlineUs = 2'000'000; // 2s
-static constexpr uint64_t kRefusalHelloWaitUs = 100'000; // 100ms
-
-// A client must answer ServerInfo within this budget (from its first app-thread tick); nothing is
-// announced until it arrives.
-static constexpr uint64_t kPeerInfoReplyTimeoutUs = 5'000'000; // 5s
 
 /* Screenshot transfers sit below the default priority, so bulk data a frame waits on (fonts)
  * goes first; negative so a caller with the default priority still outranks it. */
@@ -870,7 +849,8 @@ void ServerAppThread::pumpListener() {
 
 		// Keepalive: a pong restarts the timeout (see dispatchSessionMessage). Driven by the
 		// AppThread update timer (appUpdateInterval), not frame timing, so it ticks while idle.
-		if (!session->updateKeepalive(now, kKeepalivePingIntervalUs, kKeepalivePongTimeoutUs)) {
+		if (!session->updateKeepalive(now, config::RemoteKeepalivePingInterval,
+					config::RemoteKeepalivePongTimeout)) {
 			log::source().info("AppThread", "client ", session->getId(),
 					" keepalive timeout; terminating connection");
 			resetSession(session);
@@ -1438,7 +1418,7 @@ void ServerAppThread::handleRemoteConnection(Rc<remote::ServerConnection> &&conn
 		pending.refusal = remote::GlobalError::Busy;
 	}
 
-	conn->getHandshake().begin(now + kServerHandshakeDeadlineUs);
+	conn->getHandshake().begin(now + config::RemoteHandshakeDeadline);
 
 	// Step the handshake as soon as the peer writes. QUIC's accepted connections share the
 	// listener's socket, which _listenPoll already watches.
@@ -1502,7 +1482,7 @@ void ServerAppThread::stepPendingHandshakes() {
 			}
 			state = handshake.step(*transport, now);
 		} else if (state == State::ReadingHello && pending.refusal != remote::GlobalError::Ok
-				&& now >= pending.acceptedAt + kRefusalHelloWaitUs) {
+				&& now >= pending.acceptedAt + config::RemoteRefusalHelloWait) {
 			handshake.reply(pending.refusal, BytesView());
 			state = handshake.step(*transport, now);
 		}
@@ -1581,7 +1561,7 @@ void ServerAppThread::installRemoteClient(Rc<remote::ServerConnection> &&conn, S
 				toInt(remote::GlobalCode::ServerInfo), remote::serializePeerInfo(_localInfo),
 				[this, s](const remote::MessageHeader &h, BytesView payload) {
 		handleClientInfo(s, h, payload);
-	}, kPeerInfoReplyTimeoutUs)) {
+	}, config::RemotePeerInfoReplyTimeout)) {
 		log::source().error("AppThread", "failed to send ServerInfo; dropping connection");
 		resetSession(session);
 	}
@@ -1637,8 +1617,9 @@ uint64_t ServerAppThread::recordHandshakeResult(StringView key, bool success, ui
 		it = _handshakeBackoff.emplace(name, HandshakeBackoff()).first;
 	}
 	// Each consecutive failure doubles the cool-off, up to the ceiling.
-	auto backoff = kHandshakeBackoffBaseUs << sprt::min(it->second.failures, uint32_t(8));
-	backoff = sprt::min(backoff, kHandshakeBackoffMaxUs);
+	auto backoff = config::RemoteHandshakeBackoffBase
+			<< sprt::min(it->second.failures, uint32_t(8));
+	backoff = sprt::min(backoff, config::RemoteHandshakeBackoffMax);
 	++it->second.failures;
 	it->second.until = now + backoff;
 	return backoff;

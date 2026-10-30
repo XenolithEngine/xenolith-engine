@@ -122,6 +122,25 @@ static String readString(ShmEndpoint &ep, StreamClass c) {
 	return out;
 }
 
+static void testFitSize() {
+	ShmBlockConfig cfg{1u << 20, 16u << 20};
+	check(ShmBlock::fitSize(cfg, 2u << 20), "shm: default rings fit a 2 MiB block");
+	checkEq(cfg.controlCapacity, uint32_t(64u << 10), "shm: fitted control ring");
+	checkEq(cfg.bulkCapacity, uint32_t(512u << 10), "shm: fitted bulk ring");
+	check(ShmBlock::computeSize(cfg) <= (2u << 20), "shm: fitted block is within the limit");
+
+	ShmBlockConfig same{1u << 20, 16u << 20};
+	check(ShmBlock::fitSize(same, 64u << 20) && same.controlCapacity == (1u << 20)
+					&& same.bulkCapacity == (16u << 20),
+			"shm: rings that fit are kept");
+
+	ShmBlockConfig tiny{1u << 20, 16u << 20};
+	check(!ShmBlock::fitSize(tiny, 4'096), "shm: a limit below the smallest block fails");
+
+	ShmBlockConfig invalid{5'000, 8'192};
+	check(!ShmBlock::fitSize(invalid, 64u << 20), "shm: an invalid configuration does not fit");
+}
+
 static void testLayout() {
 	check(ShmBlock::computeSize(ShmBlockConfig{5'000, 8'192}) == 0,
 			"shm: capacity that is not a power of two is rejected");
@@ -535,6 +554,7 @@ static void testHostilePeer() {
 void performShmTests() {
 	sprt::cout << "--- remote shared-memory block ---\n";
 	testLayout();
+	testFitSize();
 	testExchange();
 	testClose();
 	testDoorbell();

@@ -149,14 +149,10 @@ struct SP_PUBLIC TransportClientConfig {
 	// that authenticate by other means.
 	Bytes expectedFingerprint;
 
-// Ring capacities of the block a `shm:` client creates; powers of two.
-#if SPRT_TAU
-	uint32_t shmControlCapacity = 64u << 10;
-	uint32_t shmBulkCapacity = 512u << 10;
-#else
+	// Ring capacities of the block a `shm:` client creates; powers of two. A platform with a smaller
+	// largest block gets them halved to fit (ShmBlock::fitSize).
 	uint32_t shmControlCapacity = 1u << 20;
 	uint32_t shmBulkCapacity = 16u << 20;
-#endif
 };
 
 // A bound endpoint accepting connections.

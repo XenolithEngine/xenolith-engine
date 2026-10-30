@@ -255,6 +255,10 @@ struct SPRT_API SurfaceSupportInfo {
 		int fd = -1;
 		uint32_t connectorId = 0;
 	} display;
+
+	// Images of virtual windows are read as plain rows (a display scans them out), so they are
+	// allocated linear where the device allows it.
+	bool linearPlanes = false;
 };
 
 struct SPRT_API SurfaceInterfaceInfo {

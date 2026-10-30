@@ -32,6 +32,7 @@
 #include "XLCoreAttachment.h" // core::DependencyEvent id mask
 #include "XLCoreInfo.h" // core::ImageInfoData / ImageFormat / Extent3
 #include "XLRemoteBlockTransfer.h"
+#include "XLApplicationConfig.h"
 
 #if MODULE_XENOLITH_FONT
 // Downstream module: reached only via SharedModule symbol and the font::FontController type.
@@ -43,19 +44,6 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 // Top bit of the DependencyEvent id space is reserved for the remote client, so its ids never
 // collide with server/local ones (low half).
 static constexpr uint32_t kClientDependencyEventMask = 0x8000'0000u;
-
-// Keepalive: disconnect if the server has not pinged us within this window (it pings ~1/s).
-#if SPRT_TAU
-static constexpr uint64_t kKeepalivePingTimeoutUs = 120'000'000;
-#else
-static constexpr uint64_t kKeepalivePingTimeoutUs = 5'000'000;
-#endif
-
-/* Creating a window is a hop to the server's context thread plus the window system's own work; it
-is NOT the window becoming drawable (that needs a presented frame and a compiled queue, which is why
-the reply does not wait for it -- see the announce's creator serial). Generous, because an
-unanswered request past its deadline is treated as a dead server. */
-static constexpr uint64_t kCreateWindowReplyTimeoutUs = 10'000'000; // 10s
 
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
@@ -300,7 +288,7 @@ void ClientAppThread::createWindow(Rc<sprt::window::WindowInfo> &&info,
 					}
 				}
 			}
-		}, kCreateWindowReplyTimeoutUs);
+		}, config::RemoteCreateWindowReplyTimeout);
 
 		_pendingWindows.emplace_back(
 				PendingWindow{serial, sp::move(handle), sp::move(complete), String(), false});
@@ -491,7 +479,7 @@ void ClientAppThread::pumpConnection() {
 	// frame timing, so they are evaluated steadily while idle.
 	if (!disconnect && _connection
 			&& sp::platform::clock(ClockType::Monotonic) - _lastPingTime
-					>= kKeepalivePingTimeoutUs) {
+					>= config::RemoteKeepalivePingTimeout) {
 		log::source().info("ClientAppThread",
 				"server keepalive timeout; disconnecting");
 		disconnect = true;

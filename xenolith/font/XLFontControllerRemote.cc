@@ -30,18 +30,12 @@
 #include "XLTexture.h"
 #include "XLCoreAttachment.h"
 #include "XLCoreDynamicImage.h"
+#include "XLApplicationConfig.h"
 #include "XLRemoteProtocol.h"
 #include "SPFilesystem.h"
 #include "SPData.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
-
-// SourcesAnnounce reply (SourcesReady / error) deadline.
-#if SPRT_TAU
-static constexpr uint64_t kSourcesAnnounceTimeoutUs = 120'000'000;
-#else
-static constexpr uint64_t kSourcesAnnounceTimeoutUs = 10'000'000;
-#endif
 
 Rc<FontController> FontControllerRemote::createRemoteController(AppThread *owner) {
 	return Rc<FontControllerRemote>::create(owner);
@@ -164,7 +158,7 @@ bool FontControllerRemote::sendSourcesAnnounce() {
 			return;
 		}
 		handleSourcesReady(payload);
-	}, kSourcesAnnounceTimeoutUs);
+	}, config::RemoteFontSourcesReplyTimeout);
 	if (sent) {
 		log::source().info("FontControllerRemote", "SourcesAnnounce sent");
 	}

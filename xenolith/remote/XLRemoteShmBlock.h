@@ -108,6 +108,10 @@ struct SP_PUBLIC ShmBlock {
 	// Bytes a block with this configuration needs; 0 when the configuration is invalid.
 	static size_t computeSize(const ShmBlockConfig &);
 
+	// Halve the rings until the block fits `maxSize`: the bulk ring alone down to eight times the
+	// control one, then both. False when even the smallest rings do not fit.
+	static bool fitSize(ShmBlockConfig &, size_t maxSize);
+
 	// Lay out a fresh block in `mem`. `size` may exceed computeSize (page rounding) and becomes the
 	// block size both endpoints check.
 	static Status format(uint8_t *mem, size_t size, const ShmBlockConfig &);

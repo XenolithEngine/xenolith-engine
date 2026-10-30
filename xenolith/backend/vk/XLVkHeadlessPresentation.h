@@ -73,7 +73,8 @@ protected:
 // go. Ownership moves by layout: a device task takes the image PresentSrc -> ShaderReadOnly before
 // the frame is published, and back to PresentSrc before the slot is unpinned. Between the two the
 // image is read by any number of compositor frames and written by none.
-// Tau tries linear exports so the display can scan their rows without another render pass.
+// With PresentationOptions::linearImages the exports are tried linear first, so a display can scan
+// their rows without another render pass.
 //
 // With an output (see HeadlessSurface) a presented slot is pinned the same way while a device task
 // copies the damaged part of its image into a host-visible buffer of its own; once the task is
@@ -84,7 +85,7 @@ public:
 
 	bool init(Device &dev, NotNull<core::Loop>, const core::SurfaceInfo &,
 			const core::SwapchainConfig &, ImageInfo &&, core::PresentMode, HeadlessSurface *,
-			bool exportable);
+			bool exportable, bool linear);
 
 	virtual Rc<SwapchainAcquiredImage> acquire(bool lockfree, const Rc<core::Fence> &fence,
 			Status &) override;

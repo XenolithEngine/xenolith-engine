@@ -318,6 +318,14 @@ public:
 			return nullptr;
 		}
 
+		if (auto maxSize = provider->getMaxBlockSize()) {
+			if (!ShmBlock::fitSize(blockConfig, maxSize)) {
+				log::source().error("remote::shm", "no ring capacities fit the platform's ",
+						maxSize, " byte block for ", addr.description());
+				return nullptr;
+			}
+		}
+
 		PeerIdentity peer;
 		auto memory = provider->connect(addr, blockConfig, peer);
 		if (!memory) {
