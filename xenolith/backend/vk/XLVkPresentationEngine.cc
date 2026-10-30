@@ -272,8 +272,9 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::Sw
 
 		_swapchain = Rc<SwapchainHandle>::create(*dev, info, cfg, move(swapchainImageInfo),
 				presentMode, _surface.get_cast<Surface>(), queueFamilyIndices,
-				(oldSwapchain && oldSwapchainValid) ? oldSwapchain.get_cast<SwapchainHandle>()
-													: nullptr);
+				(oldSwapchain && oldSwapchainValid && !_swapchainRetired)
+						? oldSwapchain.get_cast<SwapchainHandle>()
+						: nullptr);
 
 		if (!_swapchain) {
 			log::source().error("WindowDiag", "createSwapchain failed id=",
@@ -282,6 +283,8 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::Sw
 		}
 
 		if (_swapchain) {
+			_swapchainRetired = false;
+
 			if (cfg.fullscreenMode == core::FullScreenExclusiveMode::ApplicationControlled) {
 				if (!_swapchain.get_cast<SwapchainHandle>()->enableExclusiveFullscreen(*dev)) {
 					cfg.fullscreenMode = core::FullScreenExclusiveMode::Allowed;
@@ -324,8 +327,20 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::Sw
 			}
 		} else {
 			log::source().error("vk::PresentationEngine", "Fail to create swapchain");
+#if SPRT_TAU_USER
+			// recreateSwapchain retries on Tau, and the frame loop asks the published swapchain in
+			// the meantime, so the old one stays published. vkCreateSwapchainKHR retires
+			// oldSwapchain even when it fails: deprecated, it gives no more frames, and it is
+			// not handed to the next attempt as the old swapchain.
+			if (oldSwapchain) {
+				oldSwapchain->deprecate();
+				_swapchainRetired = true;
+			}
 			_swapchain = move(oldSwapchain);
 			return false;
+#else
+			break;
+#endif
 		}
 	} while (!_swapchain);
 
