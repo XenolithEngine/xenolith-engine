@@ -434,6 +434,31 @@ void ParticleSystem::apply(const Value &value) {
 	if (value.isBasicType("turbulenceShiftSpeed")) {
 		setTurbulenceShiftSpeed(float(value.getDouble("turbulenceShiftSpeed")));
 	}
+
+	if (value.isArray("attractors")) {
+		// The seats take one entry each, in list order: a strength of zero seats nothing - the
+		// entry is dropped, not refused - and the fourth seat is the last, a fifth entry is the
+		// studio door's own refusal before it ever reaches this loop
+		ParticleAttractor seated[4] = {};
+		uint32_t count = 0;
+		for (auto &it : value.getArray("attractors")) {
+			if (!it.isDictionary()) {
+				continue;
+			}
+			auto strength = it.getDouble("strength", 0.0);
+			if (strength == 0.0) {
+				continue;
+			}
+			if (count == 4) {
+				break;
+			}
+			seated[count] = ParticleAttractor{ParticleSystem_readVec2(it.getValue("point"),
+												  Vec2::ZERO),
+					float(strength), float(it.getDouble("radius", 0.0))};
+			++count;
+		}
+		setAttractors(SpanView<ParticleAttractor>(seated, count));
+	}
 }
 
 Value ParticleSystem::encode() const {
@@ -562,6 +587,22 @@ Value ParticleSystem::encode() const {
 	if (_data->data.turbulenceShiftSpeed != 0.0f) {
 		ret.setDouble(_data->data.turbulenceShiftSpeed, "turbulenceShiftSpeed");
 	}
+	// The taken seats alone, each as the full triple the apply reads; no seat taken is the fresh
+	// default, and the key stays out
+	Value attractors(Value::Type::ARRAY);
+	for (const auto &seat : _data->data.attractors) {
+		if (seat.strength == 0.0f) {
+			continue;
+		}
+		Value entry(Value::Type::DICTIONARY);
+		entry.setValue(ParticleSystem_writeVec2(seat.point), "point");
+		entry.setDouble(seat.strength, "strength");
+		entry.setDouble(seat.radius, "radius");
+		attractors.addValue(sp::move(entry));
+	}
+	if (!attractors.empty()) {
+		ret.setValue(sp::move(attractors), "attractors");
+	}
 	return ret;
 }
 
@@ -616,6 +657,23 @@ void ParticleSystem::setTurbulenceShiftSpeed(float shiftSpeed) {
 
 float ParticleSystem::getTurbulenceShiftSpeed() const {
 	return _data->data.turbulenceShiftSpeed;
+}
+
+void ParticleSystem::setAttractors(SpanView<ParticleAttractor> attractors) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the step follows. The seats past
+	// the given list are cleared, so a shorter list unseats what a longer one had
+	auto &data = mutate().data;
+	size_t i = 0;
+	for (; i < attractors.size() && i < 4; ++i) {
+		data.attractors[i] = attractors[i];
+	}
+	for (; i < 4; ++i) {
+		data.attractors[i] = ParticleAttractor{Vec2::ZERO, 0.0f, 0.0f};
+	}
+}
+
+SpanView<const ParticleAttractor> ParticleSystem::getAttractors() const {
+	return SpanView<const ParticleAttractor>(_data->data.attractors, 4);
 }
 
 void ParticleSystem::setCount(uint32_t c) { mutate().data.count = c; }

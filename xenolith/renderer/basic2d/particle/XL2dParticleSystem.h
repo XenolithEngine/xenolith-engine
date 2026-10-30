@@ -237,6 +237,13 @@ public:
 	void setTurbulenceShiftSpeed(float);
 	float getTurbulenceShiftSpeed() const;
 
+	// The attractor seats, up to four: each pulls (a positive strength) toward its point or
+	// pushes (a negative one) away, the force fallen off to zero at the seat's radius. A
+	// strength of zero seats nothing - the entry is dropped from the list, not refused - and the
+	// key encode() writes only when a seat is taken
+	void setAttractors(SpanView<ParticleAttractor>);
+	SpanView<const ParticleAttractor> getAttractors() const;
+
 	void setCount(uint32_t);
 	uint32_t getCount() const;
 

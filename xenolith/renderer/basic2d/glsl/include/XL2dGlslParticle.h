@@ -136,6 +136,15 @@ struct ParticleEmissionPoints {
 	uint padding4;
 };
 
+// One attractor seat: the force's point, its strength and its radius. A strength of zero is an
+// unused seat; a positive strength pulls toward the point, a negative one pushes away, and past
+// the radius the force is zero
+struct ParticleAttractor {
+	vec2 point;
+	float strength;
+	float radius;
+};
+
 // Header of a curve in the emitter's extra data buffer, followed by count * components floats
 struct ParticleCurveHeader {
 	uint count;
@@ -226,7 +235,12 @@ struct ParticleEmitterData {
 	ParticleFloatParam turbulenceInfluence;
 	uint padding260;
 
-	// [264]
+	// [264-327]
+	// the attractor seats, in the order the file's list seats them; a seat of strength 0 is
+	// unused
+	ParticleAttractor attractors[4];
+
+	// [328]
 };
 
 // State of one particle. Parameters are chosen at birth; positions are in the node's space with

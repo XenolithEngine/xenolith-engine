@@ -276,6 +276,41 @@ SP_GLSL_INLINE vec2 particleTurbulence(SP_GLSL_IN(ParticleData) particle,
 	return noise * (emitter.turbulenceStrength * influence);
 }
 
+// The attractor force of up to four seats. Godot's own attractors are 3D - its tutorial says
+// "Particle attractors are not yet implemented for 2D particle systems", so this seat is this
+// model's own - and the image is Effekseer's, whose force field window "can specifies up to 4
+// types of force fields" with the attract one moving the particle "towards the position
+// specified under" its point. The strength's sign is Godot's, "If strength is negative, particles
+// will be pushed in the opposite direction": positive pulls toward the point, negative pushes
+// away. The falloff is the shape Godot's attractor tutorial words - "Attenuation controls the
+// strength falloff within the attractor's influence region", the strength "weakest at the border
+// of this boundary and strongest at its center", and "Particles outside of the boundary are not
+// affected by the attractor at all" - the straight line between those two ends:
+//
+//     strength * (1 - dist / radius)
+//
+// Godot's directionality - "At 0.0, the attractor is not directional at all: it will attract
+// particles towards its center" - stays at that 0 seat: every force points at its own point,
+// never along a chosen axis. A pure function of the particle's position, no rng read.
+SP_GLSL_INLINE vec2 particleAttractors(SP_GLSL_IN(ParticleData) particle,
+		SP_GLSL_IN(ParticleEmitterData) emitter) {
+	vec2 force = vec2(0.0f, 0.0f);
+	for (uint i = 0u; i < 4u; ++i) {
+		if (emitter.attractors[i].strength == 0.0f) {
+			continue;
+		}
+		vec2 toPoint = emitter.attractors[i].point - particle.position;
+		float dist = length(toPoint);
+		// The boundary sits at the falloff's zero, and a particle at it is the "not affected at
+		// all" of one past it; a seat radius of zero leaves no inside
+		if (dist < emitter.attractors[i].radius) {
+			float falloff = 1.0f - dist / emitter.attractors[i].radius;
+			force += particleNormalize(toPoint) * (emitter.attractors[i].strength * falloff);
+		}
+	}
+	return force;
+}
+
 // One step of the cpu_particles_2d model: forces change the velocity, the damping and the speed
 // ceiling correct it, the velocity moves the particle, then the orbital and radial velocities move
 // it around and away from origin
@@ -294,6 +329,13 @@ SP_GLSL_INLINE void particleStep(SP_GLSL_INOUT(ParticleData) particle,
 	// hash - it always had
 	if (emitter.turbulenceStrength != 0.0f) {
 		force += particleTurbulence(particle, emitter, seed, index, simTime);
+	}
+
+	// The attractors read the seats' words the same way, and an empty seating touches no byte
+	// either: only a force that is not exactly zero reaches the velocity
+	vec2 attracted = particleAttractors(particle, emitter);
+	if (attracted.x != 0.0f || attracted.y != 0.0f) {
+		force += attracted;
 	}
 
 	particle.velocity = particle.velocity + force * dt;
