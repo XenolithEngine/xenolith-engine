@@ -214,7 +214,19 @@ struct ParticleEmitterData {
 	float maxSpeed;
 	uint padding236;
 
-	// [240]
+	// [240-263]
+	// scale of the turbulence force, 0 - no turbulence
+	float turbulenceStrength;
+	// variations of the one-octave noise across its two axes, 0 - none
+	float turbulenceFrequency;
+	// slide of the noise pattern per second of simulation time, 0 - a static pattern
+	float turbulenceShiftSpeed;
+	// min and max of the influence ramp over the lifetime, the min at birth, the max at the last
+	// step
+	ParticleFloatParam turbulenceInfluence;
+	uint padding260;
+
+	// [264]
 };
 
 // State of one particle. Parameters are chosen at birth; positions are in the node's space with

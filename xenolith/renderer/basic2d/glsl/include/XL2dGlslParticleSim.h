@@ -174,6 +174,14 @@ SP_GLSL_INLINE vec2 particleEmissionShapePoint(SP_GLSL_IN(ParticleEmitterData) e
 	return a + (b - a) * pcg16_random_float_r(rng);
 }
 
+// Fraction of the lifetime lived, 0 at birth
+SP_GLSL_INLINE float particleLifeFraction(SP_GLSL_IN(ParticleData) particle) {
+	if (particle.fullLifetime == 0u) {
+		return 0.0f;
+	}
+	return 1.0f - float(particle.currentLifetime) / float(particle.fullLifetime);
+}
+
 // Every parameter is chosen per particle. Without XL_PARTICLE_FLAG_LOCAL_COORDS the particle is
 // moved into the scene by the node's transform; the linear acceleration stays in scene axes.
 SP_GLSL_INLINE void particleEmit(SP_GLSL_INOUT(ParticleData) particle,
@@ -223,17 +231,70 @@ SP_GLSL_INLINE void particleEmit(SP_GLSL_INOUT(ParticleData) particle,
 	}
 }
 
+// One octave of value noise on a 2D integer lattice: the four corner hashes come from the
+// engine's own particleHash01, Perlin's quintic fades the fraction between them, and the result
+// spans [-1, 1). No texture and no clock - a pure function of the seed and the domain point. The
+// domain the turbulence hands it is non-negative by construction: the frequency and the shift
+// speed are clamped to it and the lifetime fraction spans [0, 1], so the lattice word conversion
+// stays defined.
+SP_GLSL_INLINE float particleNoise2(uint seed, vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = p - i;
+	vec2 u = f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);
+	uint x = uint(i.x);
+	uint y = uint(i.y);
+	float a = particleHash01(seed, x, y);
+	float b = particleHash01(seed, x + 1u, y);
+	float c = particleHash01(seed, x, y + 1u);
+	float d = particleHash01(seed, x + 1u, y + 1u);
+	return mix(mix(a, b, u.x), mix(c, d, u.x), u.y) * 2.0f - 1.0f;
+}
+
+// The turbulence force, Godot's turbulence block: its noise_strength "The turbulence noise
+// strength. Increasing this will result in a stronger, more contrasting, flow pattern.", its
+// noise_scale "This value controls the overall scale/frequency of the turbulence noise pattern.
+// A small scale will result in smaller features with more detail while a high scale will result
+// in smoother noise with larger features." - dividing where this frequency multiplies, its
+// noise_speed "A scrolling velocity for the turbulence field. This sets a directional trend for
+// the pattern to move in over time." - sliding the index axis as the simulation time grows.
+// Godot samples its noise at the particle's position, a 3D texture this model refuses, so the
+// pattern lives on the particles instead of the space: the domain's two axes are the particle's
+// index and its lifetime fraction. Its influence_min / influence_max - "Minimum turbulence
+// influence on each particle.", "Maximum turbulence influence on each particle." - draw the
+// actual value at random between the two; the rng order is a hash contract, so the influence
+// here ramps from the min at birth to the max at the last step instead. The second component
+// rehashes the seed, keeping the two axes of the force decorrelated.
+SP_GLSL_INLINE vec2 particleTurbulence(SP_GLSL_IN(ParticleData) particle,
+		SP_GLSL_IN(ParticleEmitterData) emitter, uint seed, uint index, float simTime) {
+	float life = particleLifeFraction(particle);
+	vec2 domain = vec2(float(index) * emitter.turbulenceFrequency
+					+ simTime * emitter.turbulenceShiftSpeed,
+			life * emitter.turbulenceFrequency);
+	vec2 noise = vec2(particleNoise2(seed, domain), particleNoise2(seed ^ 0x9e3779b9u, domain));
+	float influence = mix(emitter.turbulenceInfluence.init,
+			emitter.turbulenceInfluence.init + emitter.turbulenceInfluence.rnd, life);
+	return noise * (emitter.turbulenceStrength * influence);
+}
+
 // One step of the cpu_particles_2d model: forces change the velocity, the damping and the speed
 // ceiling correct it, the velocity moves the particle, then the orbital and radial velocities move
 // it around and away from origin
 SP_GLSL_INLINE void particleStep(SP_GLSL_INOUT(ParticleData) particle,
-		SP_GLSL_IN(ParticleEmitterData) emitter, float dt) {
+		SP_GLSL_IN(ParticleEmitterData) emitter, float dt, uint seed, uint index,
+		float simTime) {
 	vec2 radial = particleNormalize(particle.position - particle.origin);
 	vec2 tangent = vec2(-radial.y, radial.x);
 
 	vec2 force = particle.linearAcceleration
 			+ particleNormalize(particle.velocity) * particle.acceleration
 			+ radial * particle.radialAcceleration + tangent * particle.tangentialAcceleration;
+
+	// The turbulence force reads the emitter's words alone - no draw from the particle's
+	// generator - and a zero strength touches no byte: an old file answers the step - and the
+	// hash - it always had
+	if (emitter.turbulenceStrength != 0.0f) {
+		force += particleTurbulence(particle, emitter, seed, index, simTime);
+	}
 
 	particle.velocity = particle.velocity + force * dt;
 
@@ -306,14 +367,6 @@ SP_GLSL_INLINE void particleQuad(SP_GLSL_IN(ParticleData) particle,
 	tl = particle.position - ax + ay;
 	tr = particle.position + ax + ay;
 	br = particle.position + ax - ay;
-}
-
-// Fraction of the lifetime lived, 0 at birth
-SP_GLSL_INLINE float particleLifeFraction(SP_GLSL_IN(ParticleData) particle) {
-	if (particle.fullLifetime == 0u) {
-		return 0.0f;
-	}
-	return 1.0f - float(particle.currentLifetime) / float(particle.fullLifetime);
 }
 
 SP_GLSL_INLINE float particleCurveComponent(uint base, uint i0, uint i1, float f, uint components,
@@ -431,6 +484,14 @@ SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
 		uint cycle = frame.cycle + t / frame.framesInGen;
 		uint cycleStep = t % frame.framesInGen;
 
+		// The simulation time the turbulence reads. t counts the steps of this frame from the
+		// start of cycle frame.cycle, and a cycle holds framesInGen steps, so the absolute step
+		// of the simulation is frame.cycle * framesInGen + t; every step ages the simulation by
+		// dt, so the time the first `step` steps sum to is step * dt. No wall clock is read: the
+		// same document at the same frame answers the same time on every run.
+		uint step = frame.cycle * frame.framesInGen + t;
+		float simTime = float(step) * frame.dt;
+
 		uint emitStep = particleEmitFrame(index, emitter.count, cycle, frame.seed,
 				emitter.randomness, emitter.explosiveness, frame.framesInGen);
 
@@ -456,7 +517,7 @@ SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
 			particle.currentLifetime -= 1u;
 			counters.steps += 1u;
 			if (particle.currentLifetime > 0u) {
-				particleStep(particle, emitter, frame.dt);
+				particleStep(particle, emitter, frame.dt, frame.seed, index, simTime);
 				particleApplyScaleCurve(particle, emitter);
 			}
 		}

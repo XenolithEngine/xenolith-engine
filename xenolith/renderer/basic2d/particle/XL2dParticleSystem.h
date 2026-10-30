@@ -226,6 +226,17 @@ public:
 	void setMaxSpeed(float);
 	float getMaxSpeed() const;
 
+	// Turbulence: the strength scales a one-octave 2D noise force, the frequency the noise's
+	// variation across its two axes (the fresh system carries 1), the shift speed the pattern's
+	// slide per second of simulation time; a negative value clamps to 0, and each key encode()
+	// writes only when the value is not that 0
+	void setTurbulenceStrength(float);
+	float getTurbulenceStrength() const;
+	void setTurbulenceFrequency(float);
+	float getTurbulenceFrequency() const;
+	void setTurbulenceShiftSpeed(float);
+	float getTurbulenceShiftSpeed() const;
+
 	void setCount(uint32_t);
 	uint32_t getCount() const;
 
@@ -316,6 +327,12 @@ public:
 	void setDamping(float damping, float rnd = 0.0f);
 	float getDampingMin() const;
 	float getDampingMax() const;
+
+	// The min and max of the turbulence influence ramp over the particle's lifetime; the pair
+	// key encode() always writes
+	void setTurbulenceInfluence(float influence, float rnd = 0.0f);
+	float getTurbulenceInfluenceMin() const;
+	float getTurbulenceInfluenceMax() const;
 
 	// Vec4 curve over the particle's lifetime, multiplied by the color; null removes it
 	bool setColorCurve(CurveBuffer *);

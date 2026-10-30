@@ -141,6 +141,11 @@ bool ParticleSystem::init() {
 	d.normal.init = -float(M_PI_4);
 	d.normal.rnd = float(M_PI_2);
 
+	// The fresh system's turbulence: no force, one variation of the noise per lifetime, a static
+	// pattern, full influence
+	d.turbulenceFrequency = 1.0f;
+	d.turbulenceInfluence.init = 1.0f;
+
 	return true;
 }
 
@@ -372,6 +377,9 @@ void ParticleSystem::apply(const Value &value) {
 			[&](float v, float r) { setHue(v, r); });
 	ParticleSystem_readRange(value, "damping", getDampingMin(), getDampingMax(),
 			[&](float v, float r) { setDamping(v, r); });
+	ParticleSystem_readRange(value, "turbulenceInfluence", getTurbulenceInfluenceMin(),
+			getTurbulenceInfluenceMax(),
+			[&](float v, float r) { setTurbulenceInfluence(v, r); });
 	// clang-format on
 
 	if (value.hasValue("colorCurve")) {
@@ -415,6 +423,16 @@ void ParticleSystem::apply(const Value &value) {
 
 	if (value.isBasicType("maxSpeed")) {
 		setMaxSpeed(float(value.getDouble("maxSpeed")));
+	}
+
+	if (value.isBasicType("turbulenceStrength")) {
+		setTurbulenceStrength(float(value.getDouble("turbulenceStrength")));
+	}
+	if (value.isBasicType("turbulenceFrequency")) {
+		setTurbulenceFrequency(float(value.getDouble("turbulenceFrequency")));
+	}
+	if (value.isBasicType("turbulenceShiftSpeed")) {
+		setTurbulenceShiftSpeed(float(value.getDouble("turbulenceShiftSpeed")));
 	}
 }
 
@@ -501,6 +519,9 @@ Value ParticleSystem::encode() const {
 			"tangentialAcceleration");
 	ret.setValue(ParticleSystem_writeRange(getHueMin(), getHueMax()), "hue");
 	ret.setValue(ParticleSystem_writeRange(getDampingMin(), getDampingMax()), "damping");
+	ret.setValue(ParticleSystem_writeRange(getTurbulenceInfluenceMin(),
+						 getTurbulenceInfluenceMax()),
+			"turbulenceInfluence");
 
 	if (_data->colorCurve) {
 		ret.setValue(ParticleSystem_writeCurve(_data->colorCurve), "colorCurve");
@@ -532,6 +553,15 @@ Value ParticleSystem::encode() const {
 	if (_data->data.maxSpeed != 0.0f) {
 		ret.setDouble(_data->data.maxSpeed, "maxSpeed");
 	}
+	if (_data->data.turbulenceStrength != 0.0f) {
+		ret.setDouble(_data->data.turbulenceStrength, "turbulenceStrength");
+	}
+	if (_data->data.turbulenceFrequency != 0.0f) {
+		ret.setDouble(_data->data.turbulenceFrequency, "turbulenceFrequency");
+	}
+	if (_data->data.turbulenceShiftSpeed != 0.0f) {
+		ret.setDouble(_data->data.turbulenceShiftSpeed, "turbulenceShiftSpeed");
+	}
 	return ret;
 }
 
@@ -557,6 +587,36 @@ void ParticleSystem::setMaxSpeed(float maxSpeed) {
 }
 
 float ParticleSystem::getMaxSpeed() const { return _data->data.maxSpeed; }
+
+void ParticleSystem::setTurbulenceStrength(float strength) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the step follows; a negative
+	// strength is the no-turbulence default
+	mutate().data.turbulenceStrength = sprt::max(strength, 0.0f);
+}
+
+float ParticleSystem::getTurbulenceStrength() const {
+	return _data->data.turbulenceStrength;
+}
+
+void ParticleSystem::setTurbulenceFrequency(float frequency) {
+	// A negative frequency collapses the noise's axes the way a zero one does; clamped to that 0
+	mutate().data.turbulenceFrequency = sprt::max(frequency, 0.0f);
+}
+
+float ParticleSystem::getTurbulenceFrequency() const {
+	return _data->data.turbulenceFrequency;
+}
+
+void ParticleSystem::setTurbulenceShiftSpeed(float shiftSpeed) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the step follows; a negative
+	// shift speed would drag the noise domain below the lattice's non-negative words, so it
+	// clamps to the static-pattern default
+	mutate().data.turbulenceShiftSpeed = sprt::max(shiftSpeed, 0.0f);
+}
+
+float ParticleSystem::getTurbulenceShiftSpeed() const {
+	return _data->data.turbulenceShiftSpeed;
+}
 
 void ParticleSystem::setCount(uint32_t c) { mutate().data.count = c; }
 
@@ -652,6 +712,7 @@ XL_PARTICLE_FLOAT_PARAM(RadialAcceleration, radialAcceleration)
 XL_PARTICLE_FLOAT_PARAM(TangentialAcceleration, tangentialAcceleration)
 XL_PARTICLE_FLOAT_PARAM(Hue, hue)
 XL_PARTICLE_FLOAT_PARAM(Damping, damping)
+XL_PARTICLE_FLOAT_PARAM(TurbulenceInfluence, turbulenceInfluence)
 
 #undef XL_PARTICLE_FLOAT_PARAM
 #undef XL_PARTICLE_VEC2_PARAM
