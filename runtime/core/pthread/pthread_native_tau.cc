@@ -161,10 +161,9 @@ static bool __initNativeHandle(thread_t *thread) {
 	return true;
 }
 
-// With the handle pool's mutex held: on the joiner for a joined thread, on the thread itself for a
-// detached one. A thread not gone yet - one standing on the stack it would free, or a joined one
-// still running its TLS destructors - is left for the next create or join to reap: waiting for it
-// here would hold the mutex every thread and key operation of the module takes.
+// With the handle pool's mutex held: on the joiner of a joined or refused thread, already gone
+// (__waitNativeThread), on the thread itself for a detached one. A detached thread stands on the
+// stack it would free and is left for the next create or join to reap.
 static void __closeNativeHandle(void *handle) {
 	if (!handle || handle == reinterpret_cast<void *>(uintptr_t(1))) {
 		return;
@@ -177,6 +176,18 @@ static void __closeNativeHandle(void *handle) {
 		s_tau_zombies = rec;
 	}
 	__tau_reap();
+}
+
+// On the joiner, without a lock: its TLS destructors take the handle pool's mutex. A finalized
+// thread still runs them; join and a refused create return once it is gone.
+static void __waitNativeThread(void *handle) {
+	if (!handle || handle == reinterpret_cast<void *>(uintptr_t(1))) {
+		return;
+	}
+	auto rec = (tau_thread_rec *)handle;
+	if (rec->id != __sprt_tau_thread_self()) {
+		__sprt_tau_thread_wait(rec->thread, __SPRT_TAU_TIMEOUT_INFINITE);
+	}
 }
 
 static bool __isNativeHandleValid(thread_t *thread) { return thread->handle != nullptr; }

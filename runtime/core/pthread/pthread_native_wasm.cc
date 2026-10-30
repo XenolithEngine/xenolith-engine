@@ -224,6 +224,9 @@ static bool __initNativeHandle(thread_t *thread) {
 
 static void __closeNativeHandle(void *handle) { }
 
+// The joiner frees a finalized thread at once: nothing of it outlives its finalization here.
+static void __waitNativeThread(void *) { }
+
 static bool __isNativeHandleValid(thread_t *thread) { return thread->handle != nullptr; }
 
 static void __exitNativeThread(void *ret) {
