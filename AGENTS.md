@@ -16,6 +16,12 @@ Android `.so` runs on an Android device/emulator, a macOS `.app` runs on macOS.
 Building (compile-verification) always works from any supported host; running may
 require the target platform.
 
+## Commit attribution
+
+Do not add `Co-Authored-By` trailers for commercial AI agents or their vendors to
+commit messages. Such attribution is considered commercial advertising in this
+repository. Preserve attribution to human contributors.
+
 ---
 
 ## The chapters
