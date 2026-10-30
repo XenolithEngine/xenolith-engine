@@ -370,6 +370,8 @@ void ParticleSystem::apply(const Value &value) {
 			getTangentialAccelerationMax(), [&](float v, float r) { setTangentialAcceleration(v, r); });
 	ParticleSystem_readRange(value, "hue", getHueMin(), getHueMax(),
 			[&](float v, float r) { setHue(v, r); });
+	ParticleSystem_readRange(value, "damping", getDampingMin(), getDampingMax(),
+			[&](float v, float r) { setDamping(v, r); });
 	// clang-format on
 
 	if (value.hasValue("colorCurve")) {
@@ -409,6 +411,10 @@ void ParticleSystem::apply(const Value &value) {
 
 	if (value.isBasicType("stretch")) {
 		setStretch(float(value.getDouble("stretch")));
+	}
+
+	if (value.isBasicType("maxSpeed")) {
+		setMaxSpeed(float(value.getDouble("maxSpeed")));
 	}
 }
 
@@ -494,6 +500,7 @@ Value ParticleSystem::encode() const {
 						 getTangentialAccelerationMax()),
 			"tangentialAcceleration");
 	ret.setValue(ParticleSystem_writeRange(getHueMin(), getHueMax()), "hue");
+	ret.setValue(ParticleSystem_writeRange(getDampingMin(), getDampingMax()), "damping");
 
 	if (_data->colorCurve) {
 		ret.setValue(ParticleSystem_writeCurve(_data->colorCurve), "colorCurve");
@@ -522,6 +529,9 @@ Value ParticleSystem::encode() const {
 	if (_data->data.stretch != 0.0f) {
 		ret.setDouble(_data->data.stretch, "stretch");
 	}
+	if (_data->data.maxSpeed != 0.0f) {
+		ret.setDouble(_data->data.maxSpeed, "maxSpeed");
+	}
 	return ret;
 }
 
@@ -539,6 +549,14 @@ void ParticleSystem::setStretch(float stretch) {
 }
 
 float ParticleSystem::getStretch() const { return _data->data.stretch; }
+
+void ParticleSystem::setMaxSpeed(float maxSpeed) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the step follows; a negative
+	// ceiling is the no-ceiling default
+	mutate().data.maxSpeed = sprt::max(maxSpeed, 0.0f);
+}
+
+float ParticleSystem::getMaxSpeed() const { return _data->data.maxSpeed; }
 
 void ParticleSystem::setCount(uint32_t c) { mutate().data.count = c; }
 
@@ -633,6 +651,7 @@ XL_PARTICLE_VEC2_PARAM(LinearAcceleration, linearAcceleration)
 XL_PARTICLE_FLOAT_PARAM(RadialAcceleration, radialAcceleration)
 XL_PARTICLE_FLOAT_PARAM(TangentialAcceleration, tangentialAcceleration)
 XL_PARTICLE_FLOAT_PARAM(Hue, hue)
+XL_PARTICLE_FLOAT_PARAM(Damping, damping)
 
 #undef XL_PARTICLE_FLOAT_PARAM
 #undef XL_PARTICLE_VEC2_PARAM

@@ -221,6 +221,11 @@ public:
 	void setStretch(float);
 	float getStretch() const;
 
+	// Upper limit of the particle speed, 0 - no limit; a negative value clamps to that default,
+	// and the key encode() writes only when the value is not it
+	void setMaxSpeed(float);
+	float getMaxSpeed() const;
+
 	void setCount(uint32_t);
 	uint32_t getCount() const;
 
@@ -306,6 +311,11 @@ public:
 	void setHue(float hue, float rnd = 0.0f);
 	float getHueMin() const;
 	float getHueMax() const;
+
+	// The rate the speed loses per second, chosen at birth; 0 - no loss
+	void setDamping(float damping, float rnd = 0.0f);
+	float getDampingMin() const;
+	float getDampingMax() const;
 
 	// Vec4 curve over the particle's lifetime, multiplied by the color; null removes it
 	bool setColorCurve(CurveBuffer *);

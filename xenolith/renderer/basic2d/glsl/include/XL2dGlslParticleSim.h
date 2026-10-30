@@ -203,6 +203,17 @@ SP_GLSL_INLINE void particleEmit(SP_GLSL_INOUT(ParticleData) particle,
 	particle.radialAcceleration = particleParam(emitter.radialAcceleration, particle.rng);
 	particle.tangentialAcceleration = particleParam(emitter.tangentialAcceleration, particle.rng);
 
+	// Godot's damping_min / damping_max - "The maximum rate at which particles lose velocity.
+	// For example value of 100 means that the particle will go from 100 velocity to 0 in 1
+	// second", the pair's low end the "Minimum equivalent of damping_max" - is drawn last, past
+	// every parameter the step already read. The rng order is part of the hash contract, and
+	// particleParam draws even at rnd 0, so a zero pair stays out of the stream entirely: a
+	// document without damping keeps the births - and the hash - it always had.
+	particle.damping = 0.0f;
+	if (emitter.damping.init != 0.0f || emitter.damping.rnd != 0.0f) {
+		particle.damping = particleParam(emitter.damping, particle.rng);
+	}
+
 	if ((emitter.flags & XL_PARTICLE_FLAG_LOCAL_COORDS) == 0u) {
 		particle.position = particleTransformPoint(frame, particle.position);
 		particle.origin = particleTransformPoint(frame, particle.origin);
@@ -212,9 +223,11 @@ SP_GLSL_INLINE void particleEmit(SP_GLSL_INOUT(ParticleData) particle,
 	}
 }
 
-// One step of the cpu_particles_2d model: forces change the velocity, the velocity moves the
-// particle, then the orbital and radial velocities move it around and away from origin
-SP_GLSL_INLINE void particleStep(SP_GLSL_INOUT(ParticleData) particle, float dt) {
+// One step of the cpu_particles_2d model: forces change the velocity, the damping and the speed
+// ceiling correct it, the velocity moves the particle, then the orbital and radial velocities move
+// it around and away from origin
+SP_GLSL_INLINE void particleStep(SP_GLSL_INOUT(ParticleData) particle,
+		SP_GLSL_IN(ParticleEmitterData) emitter, float dt) {
 	vec2 radial = particleNormalize(particle.position - particle.origin);
 	vec2 tangent = vec2(-radial.y, radial.x);
 
@@ -223,6 +236,28 @@ SP_GLSL_INLINE void particleStep(SP_GLSL_INOUT(ParticleData) particle, float dt)
 			+ radial * particle.radialAcceleration + tangent * particle.tangentialAcceleration;
 
 	particle.velocity = particle.velocity + force * dt;
+
+	// Godot's damping - "The maximum rate at which particles lose velocity. For example value of
+	// 100 means that the particle will go from 100 velocity to 0 in 1 second" - takes the rate
+	// chosen at birth off the speed, never below zero; Wallpaper Engine's Cap velocity - "Lets
+	// you set an upper limit for the speed of particles", its Max speed "The maximum speed for
+	// each individual particle" - then holds the speed under the emitter's ceiling. Zero damping
+	// and a zero ceiling touch no byte: an old file answers the step - and the hash - it always
+	// had, with no float noise from a length round trip the values never asked for.
+	if (particle.damping != 0.0f) {
+		float speed = length(particle.velocity);
+		if (speed > 0.0f) {
+			float damped = speed - particle.damping * dt;
+			particle.velocity = particle.velocity * ((damped > 0.0f ? damped : 0.0f) / speed);
+		}
+	}
+	if (emitter.maxSpeed != 0.0f) {
+		float speed = length(particle.velocity);
+		if (speed > emitter.maxSpeed) {
+			particle.velocity = particle.velocity * (emitter.maxSpeed / speed);
+		}
+	}
+
 	particle.position = particle.position + particle.velocity * dt;
 
 	if (particle.orbitalVelocity != 0.0f) {
@@ -421,7 +456,7 @@ SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
 			particle.currentLifetime -= 1u;
 			counters.steps += 1u;
 			if (particle.currentLifetime > 0u) {
-				particleStep(particle, frame.dt);
+				particleStep(particle, emitter, frame.dt);
 				particleApplyScaleCurve(particle, emitter);
 			}
 		}

@@ -207,7 +207,14 @@ struct ParticleEmitterData {
 	uint scaleCurveOffset;
 	float dt;
 
-	// [224]
+	// [224-239]
+	// the rate the speed loses per second, chosen at birth from the pair; 0 - no loss
+	ParticleFloatParam damping;
+	// upper limit of the speed, 0 - no limit
+	float maxSpeed;
+	uint padding236;
+
+	// [240]
 };
 
 // State of one particle. Parameters are chosen at birth; positions are in the node's space with
@@ -244,7 +251,7 @@ struct ParticleData {
 	// [96-111]
 	float tangentialAcceleration; // perpendicular to the direction from origin, dp per second^2
 	float birthScale; // the scale chosen at birth; the scale curve multiplies it
-	uint padding104;
+	float damping; // the rate the speed loses per second, chosen at birth; 0 - no loss
 	uint padding108;
 
 	// [112]
