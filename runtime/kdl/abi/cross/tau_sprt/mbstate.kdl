@@ -1,0 +1,12 @@
+// mbstate_t has the shape libc_impl's multibyte decoder writes through.
+macro (n)mbstate_t "__SPRT_ID(mbstate_t)" if="defined(__SPRT_BUILD)"
+macro (n)mbstate_t __mbstate_t if="!defined(__SPRT_BUILD)"
+macro MBSTATE_DIRECT 0
+macro WEOF "0xffffffffU" if="!defined(WEOF)"
+typedef wctype_t "unsigned long"
+typedef wchar_t `wchar_t` if="defined(__cplusplus)"
+typedef wchar_t __WCHAR_TYPE__ if="!defined(__cplusplus)"
+struct typedef=(n)mbstate_t {
+    field _Char "unsigned int"
+    field _State "unsigned int"
+}

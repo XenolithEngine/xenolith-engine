@@ -207,14 +207,14 @@ qemu-system-aarch64 -cpu cortex-a53 -machine virt,virtualization=on,gic-version=
 
 . Платформы — список `targets PLATFORM` в `runtime/kdl/abi/bits/__sprt_targets.kdl`, в порядке
   проверки. Добавьте запись: имя (каталог cross-заголовков — `<os>_sprt`), следующее свободное число
-  (сейчас заняты 1–10; номер никогда не используется повторно) и условие. *Порядок важен*: RTOS могут
+  (сейчас заняты 1–11; номер никогда не используется повторно) и условие. *Порядок важен*: RTOS могут
   определять «линуксовые» макросы, поэтому NuttX и Embox стоят *до* `linux`. Ставьте свою запись перед
   первой платформой, макросы которой ваша ОС может случайно определить:
 +
 [source,kdl]
 ----
 // MyOS. LLVM has no OSType for it, so target-myos passes -D__MYOS__.
-target myos 11 if="defined(__MYOS__)"
+target myos 12 if="defined(__MYOS__)"
 ----
 +
 После перегенерации (`xlkdl abi --map runtime/kdl/abi/sprt.kdl --out runtime/include`) список даёт

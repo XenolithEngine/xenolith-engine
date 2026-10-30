@@ -57,7 +57,7 @@ THE SOFTWARE.
 // value libc++ gives Linux and musl. A BSD libc defines ELAST the same way.
 // Outside the branches above: the runtime's own libc++ sources are a hosted
 // build and take the first one.
-#if defined(__EMBOX_USER__) && !defined(ELAST)
+#if (defined(__EMBOX_USER__) || defined(__TAU__)) && !defined(ELAST)
 #define ELAST 4095
 #endif
 

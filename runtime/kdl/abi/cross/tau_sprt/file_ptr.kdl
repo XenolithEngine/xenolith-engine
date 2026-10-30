@@ -1,0 +1,2 @@
+// FILE is libc_impl's own struct on a freestanding libc.
+typedef FILE "struct __sprt_file_struct"

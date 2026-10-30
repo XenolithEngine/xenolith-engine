@@ -50,7 +50,7 @@ THE SOFTWARE.
 // type/prototype surface must be visible there too. The Linux/musl ABI values
 // match their own <netdb.h>, so the same definitions work for every
 // freestanding target.
-#if defined(SPRT_WASM) || defined(SPRT_HOSTED_RTOS) || defined(SPRT_EMBOX_USER)
+#if defined(SPRT_WASM) || defined(SPRT_HOSTED_RTOS) || defined(SPRT_EMBOX_USER) || defined(SPRT_TAU)
 
 struct hostent {
 	char *h_name; // official name of host
@@ -164,7 +164,7 @@ void endprotoent(void);
 
 __SPRT_END_DECL
 
-#endif // SPRT_WASM || SPRT_HOSTED_RTOS || SPRT_EMBOX_USER
+#endif // SPRT_WASM || SPRT_HOSTED_RTOS || SPRT_EMBOX_USER || SPRT_TAU
 
 #endif
 

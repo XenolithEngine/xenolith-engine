@@ -204,14 +204,14 @@ branch exists, the build stops at `#error "Unknown platform"`.
 
 . The platforms are a list in `runtime/kdl/abi/bits/__sprt_targets.kdl`, `targets PLATFORM`, in the
   order they are tested. Add a target: its name (the cross directory is `<os>_sprt`), the next free
-  number (1–10 are taken now; a number is never reused) and the condition. *Order matters*: an RTOS
+  number (1–11 are taken now; a number is never reused) and the condition. *Order matters*: an RTOS
   may define "Linux" macros, which is why NuttX and Embox stand *before* `linux`. Put yours before the
   first platform whose macros your OS might define by accident:
 +
 [source,kdl]
 ----
 // MyOS. LLVM has no OSType for it, so target-myos passes -D__MYOS__.
-target myos 11 if="defined(__MYOS__)"
+target myos 12 if="defined(__MYOS__)"
 ----
 +
 Regenerated (`xlkdl abi --map runtime/kdl/abi/sprt.kdl --out runtime/include`), the list gives

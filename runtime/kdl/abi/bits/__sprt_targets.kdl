@@ -3,8 +3,8 @@
 // reused. Its name, with `_sprt`, is the directory of its fragments under sprt/gen/c/cross.
 //
 // The platform defines one of SPRT_MACOS, SPRT_IOS, SPRT_DARWIN_UNKNOWN, SPRT_WINDOWS,
-// SPRT_ANDROID, SPRT_LINUX, SPRT_WASM, SPRT_NUTTX, SPRT_EMBOX, SPRT_EMBOX_USER, and SPRT_APPLE on
-// any Apple/Darwin platform - use it for libSystem/XNU behavior shared across the whole family, and
+// SPRT_ANDROID, SPRT_LINUX, SPRT_WASM, SPRT_NUTTX, SPRT_EMBOX, SPRT_EMBOX_USER, SPRT_TAU, and SPRT_APPLE
+// on any Apple/Darwin platform - use it for libSystem/XNU behavior shared across the whole family, and
 // SPRT_MACOS / SPRT_IOS only for genuinely OS-specific code. __SPRT_WINDOWS and __SPRT_WASM, defined
 // from outside, force the platform for specific cross-compilation targets.
 targets PLATFORM flag=SPRT_ suffix=_sprt error="Unknown platform" {
@@ -24,6 +24,10 @@ targets PLATFORM flag=SPRT_ suffix=_sprt error="Unknown platform" {
     }
     target windows 4 if="defined(_WIN32) || defined(_WIN64) || defined(__SPRT_WINDOWS)"
     target android 5 if="defined(__ANDROID__)"
+    // Tau capability microkernel. One platform for both sides: the kernel uses the freestanding
+    // header subset only, EL0 modules link the runtime as their libc. LLVM knows no such OS; the
+    // target-tau toolchain defines __TAU__.
+    target tau 11 if="defined(__TAU__)"
     // Embox in user mode: the application is a real EL0 process on its own freestanding libc
     // (runtime/libc_impl), reaching the kernel only through the syscall boundary. Deliberately a
     // SEPARATE platform from EMBOX rather than a flag on it - the two share a kernel but not a libc,
