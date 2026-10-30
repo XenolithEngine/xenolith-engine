@@ -247,7 +247,7 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 }
 
 void RemoteWindow::compileResource(Rc<core::Resource> &&resource, Function<void(bool)> &&cb, bool) {
-	_thread->compileRemoteResource(sp::move(resource), sp::move(cb));
+	_thread->compileRemoteResource(sp::move(resource), sp::move(cb), _id);
 }
 
 void RemoteWindow::compileMaterials(Rc<core::MaterialInputData> &&req,
@@ -308,12 +308,13 @@ void RemoteWindow::attachRenderQueue(const Rc<core::Queue> &) {
 
 	if (!_thread->sendMessageWithReply(remote::Domain::Window,
 				toInt(remote::WindowCode::AttachQueue), Value(_id),
-				[](const remote::MessageHeader &h, BytesView) {
+				[self = Rc<RemoteWindow>(this)](const remote::MessageHeader &h, BytesView) {
 		if (remote::isError(h)) {
 			slog().error("RemoteWindow", "attachRenderQueue: server rejected (code ", int(h.code),
 					")");
 			return;
 		}
+		self->_attached = true;
 		slog().debug("RemoteWindow", "attachRenderQueue: server switched to client");
 	}, kAttachQueueReplyTimeoutUs)) {
 		slog().error("RemoteWindow", "attachRenderQueue: failed to send ready signal");

@@ -10,6 +10,11 @@ static constexpr uint64_t RemoteResourceMaxBytes = remote::QueueCodec::ResourceU
 static constexpr uint64_t RemoteResourceSessionBytes = 32 * 1'024 * 1'024;
 
 const core::ImageData *RemoteSession::resolveResourceImage(uint64_t id) const {
+	// get() answers 0 for an image not registered yet (registration is the reply's encoding), so a
+	// 0 would match the first such image: no id names no image.
+	if (id == 0) {
+		return nullptr;
+	}
 	for (auto &resource : _resources) {
 		for (auto image : resource->getImages()) {
 			if (image->image && _host->getSharedObjects()->get(image->image.get()) == id) {
@@ -20,19 +25,31 @@ const core::ImageData *RemoteSession::resolveResourceImage(uint64_t id) const {
 	return nullptr;
 }
 
+uint64_t ClientAppThread::resourceWindow() const {
+	for (auto &it : _windows) {
+		if (it.second->getCreatorSerial() != 0 || it.second->isAttached()) {
+			return it.first;
+		}
+	}
+	return 0;
+}
+
 void ClientAppThread::compileRemoteResource(Rc<core::Resource> &&res,
-		Function<void(bool)> &&callback) {
+		Function<void(bool)> &&callback, uint64_t windowId) {
 	log::source().debug("RemoteResource", "compile ", res ? res->getName() : StringView());
 	if (!callback) {
 		callback = [](bool) { };
 	}
-	if (_windows.empty() || !res || !res->getBuffers().empty() || res->getImages().empty()
+	if (!windowId) {
+		windowId = resourceWindow();
+	}
+	if (!windowId || !res || !res->getBuffers().empty() || res->getImages().empty()
 			|| res->getImages().size() > 16) {
 		callback(false);
 		return;
 	}
 	Value request;
-	request.setInteger(int64_t(_windows.begin()->first), "window");
+	request.setInteger(int64_t(windowId), "window");
 	request.setString(res->getName(), "name");
 	Value images(Value::Type::ARRAY);
 	uint64_t total = 0;
@@ -125,9 +142,19 @@ void RemoteSession::compileResource(const remote::MessageHeader &header, BytesVi
 	_resourceBytes += total;
 	_resources.emplace_back(resource);
 	_host->getGlLoop()->compileResource(Rc<core::Resource>(resource),
-			[host = Rc<ServerAppThread>(_host), session = Rc<RemoteSession>(this), resource,
+			[host = Rc<ServerAppThread>(_host), session = Rc<RemoteSession>(this), resource, total,
 					serial = header.serial](bool success) {
-		host->performOnAppThread([host, session, resource, serial, success] {
+		host->performOnAppThread([host, session, resource, total, serial, success] {
+			if (!success) {
+				// A resource the GL loop could not compile holds nothing on the GPU: it gives its
+				// bytes and its slot back to the session's budget.
+				auto &resources = session->_resources;
+				auto it = sprt::find(resources.begin(), resources.end(), resource);
+				if (it != resources.end()) {
+					resources.erase(it);
+					session->_resourceBytes -= sprt::min(session->_resourceBytes, total);
+				}
+			}
 			if (session->isClosed()) {
 				return;
 			}

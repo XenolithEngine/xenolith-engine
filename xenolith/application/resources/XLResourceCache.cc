@@ -327,6 +327,11 @@ void ResourceCache::removeTemporaryResource(StringView str) {
 
 void ResourceCache::compileResource(TemporaryResource *res) {
 	if (!_loop && !_application->isServerThread()) {
+		// Without a window of its own the server refuses the upload; left unrequested, the
+		// resource is compiled by a later update() once there is one.
+		if (!static_cast<ClientAppThread *>(_application)->resourceWindow()) {
+			return;
+		}
 		res->setRequested(true);
 		static_cast<ClientAppThread *>(_application)->compileRemoteResource(
 				Rc<core::Resource>(res->getResource()),

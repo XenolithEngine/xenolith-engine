@@ -60,7 +60,14 @@ public:
 
 	remote::ObjectFactory *getSharedObjects() const { return _sharedObjects; }
 
-	void compileRemoteResource(Rc<core::Resource> &&, Function<void(bool)> &&);
+	// The server compiles a resource for a session with a window of its own: `windowId`, or, when
+	// it is 0, the first window this client created or attached (see resourceWindow()).
+	void compileRemoteResource(Rc<core::Resource> &&, Function<void(bool)> &&,
+			uint64_t windowId = 0);
+
+	// A window the server holds this session's own - one it created on request or handed over by
+	// AttachQueue - or 0 while there is none and a resource can not be compiled yet.
+	uint64_t resourceWindow() const;
 
 	// AppThread platform-services interface (TODO: route to the remote server). The transport
 	// carries no clipboard, so every call below is a stub and hasClipboard() reports it.
