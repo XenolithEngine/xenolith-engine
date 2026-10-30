@@ -39,6 +39,13 @@ using namespace sprt::glsl;
 #define XL_PARTICLE_FLAG_USE_LIFETIME_MAX 8
 #define XL_PARTICLE_FLAG_ONE_SHOT 16
 
+// ParticleEmitterData::emissionType, the same values as basic2d::ParticleEmissionType
+#define XL_PARTICLE_EMISSION_POINTS 0
+#define XL_PARTICLE_EMISSION_DISC 1
+#define XL_PARTICLE_EMISSION_RING 2
+#define XL_PARTICLE_EMISSION_RECT 3
+#define XL_PARTICLE_EMISSION_SEGMENT 4
+
 struct ParticleConstantData {
 	uvec2 frameDataPointer;
 	uvec2 outVerticesPointer;
@@ -137,7 +144,8 @@ struct ParticleCurveHeader {
 
 struct ParticleEmitterData {
 	// [0-15]
-	// 0 - points
+	// 0 - the point list; 1 - disc, 2 - ring, 3 - rect, 4 - segment, the birth shapes whose
+	// numbers follow the point list in the extra data buffer
 	uint count;
 	uint emissionType;
 	uvec2 emissionData;

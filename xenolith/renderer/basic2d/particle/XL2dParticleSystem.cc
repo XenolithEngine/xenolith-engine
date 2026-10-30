@@ -34,10 +34,28 @@ static_assert(toInt(ParticleSystemFlags::OrderByLifetime) == XL_PARTICLE_FLAG_OR
 static_assert(toInt(ParticleSystemFlags::UseLifetimeMax) == XL_PARTICLE_FLAG_USE_LIFETIME_MAX);
 static_assert(toInt(ParticleSystemFlags::OneShot) == XL_PARTICLE_FLAG_ONE_SHOT);
 
+static_assert(toInt(ParticleEmissionType::Points) == XL_PARTICLE_EMISSION_POINTS);
+static_assert(toInt(ParticleEmissionType::Disc) == XL_PARTICLE_EMISSION_DISC);
+static_assert(toInt(ParticleEmissionType::Ring) == XL_PARTICLE_EMISSION_RING);
+static_assert(toInt(ParticleEmissionType::Rect) == XL_PARTICLE_EMISSION_RECT);
+static_assert(toInt(ParticleEmissionType::Segment) == XL_PARTICLE_EMISSION_SEGMENT);
+
 static constexpr size_t ParticleExtraAlign = 8;
 
 static size_t ParticleSystem_align(size_t size) {
 	return (size + ParticleExtraAlign - 1) & ~(ParticleExtraAlign - 1);
+}
+
+// The floats the shape reads from its extra data block: disc 1, ring 4, rect 2, segment 4
+static size_t ParticleSystem_shapeParamCount(ParticleEmissionType type) {
+	switch (type) {
+	case ParticleEmissionType::Disc: return 1;
+	case ParticleEmissionType::Ring: return 4;
+	case ParticleEmissionType::Rect: return 2;
+	case ParticleEmissionType::Segment: return 4;
+	case ParticleEmissionType::Points: break;
+	}
+	return 0;
 }
 
 static size_t ParticleSystem_getCurveSize(const CurveBuffer *curve) {
@@ -49,9 +67,14 @@ static size_t ParticleSystem_getCurveSize(const CurveBuffer *curve) {
 }
 
 size_t ParticleSystemData::getExtraDataSize() const {
-	return ParticleSystem_align(
-				   sizeof(ParticleEmissionPoints) + emissionPoints.size() * sizeof(Vec2))
-			+ ParticleSystem_getCurveSize(colorCurve) + ParticleSystem_getCurveSize(animFrameCurve)
+	size_t ret = ParticleSystem_align(
+			sizeof(ParticleEmissionPoints) + emissionPoints.size() * sizeof(Vec2));
+	if (data.emissionType != toInt(ParticleEmissionType::Points)) {
+		ret += ParticleSystem_align(
+				ParticleSystem_shapeParamCount(ParticleEmissionType(data.emissionType))
+				* sizeof(float));
+	}
+	return ret + ParticleSystem_getCurveSize(colorCurve) + ParticleSystem_getCurveSize(animFrameCurve)
 			+ ParticleSystem_getCurveSize(scaleCurve);
 }
 
@@ -67,6 +90,14 @@ void ParticleSystemData::writeExtraData(uint8_t *buf, size_t size,
 			emissionPoints.size() * sizeof(Vec2));
 	offset += ParticleSystem_align(
 			sizeof(ParticleEmissionPoints) + emissionPoints.size() * sizeof(Vec2));
+
+	// The birth shape's numbers, right after the points block - the words past the last point,
+	// the base the shader computes on its own
+	if (data.emissionType != toInt(ParticleEmissionType::Points)) {
+		auto count = ParticleSystem_shapeParamCount(ParticleEmissionType(data.emissionType));
+		::__sprt_memcpy(buf + offset, emissionShape, count * sizeof(float));
+		offset += ParticleSystem_align(count * sizeof(float));
+	}
 
 	auto writeCurve = [&](const CurveBuffer *curve) -> uint32_t {
 		if (!curve) {
@@ -275,6 +306,40 @@ void ParticleSystem::apply(const Value &value) {
 		}
 		setEmissionPoints(points);
 	}
+	if (value.isDictionary("emissionShape")) {
+		const auto &shape = value.getValue("emissionShape");
+		auto type = shape.getString("type");
+		float params[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+		ParticleEmissionType parsed = ParticleEmissionType::Points;
+		if (type == "disc") {
+			parsed = ParticleEmissionType::Disc;
+			params[0] = float(shape.getDouble("radius", 0.0));
+		} else if (type == "ring") {
+			parsed = ParticleEmissionType::Ring;
+			params[0] = float(shape.getDouble("outer", 0.0));
+			params[1] = float(shape.getDouble("inner", 0.0));
+			params[2] = float(shape.getDouble("from", 0.0));
+			params[3] = float(shape.getDouble("to", 0.0));
+		} else if (type == "rect") {
+			parsed = ParticleEmissionType::Rect;
+			auto half = ParticleSystem_readVec2(shape.getValue("half"), Vec2::ZERO);
+			params[0] = half.x;
+			params[1] = half.y;
+		} else if (type == "segment") {
+			parsed = ParticleEmissionType::Segment;
+			auto from = ParticleSystem_readVec2(shape.getValue("from"), Vec2::ZERO);
+			auto to = ParticleSystem_readVec2(shape.getValue("to"), Vec2::ZERO);
+			params[0] = from.x;
+			params[1] = from.y;
+			params[2] = to.x;
+			params[3] = to.y;
+		}
+		// A shape word the engine does not know leaves the system untouched, so encode()
+		// drops the key and the studio door refuses the document
+		if (parsed != ParticleEmissionType::Points) {
+			setEmissionShape(parsed, params);
+		}
+	}
 
 	// clang-format off
 	ParticleSystem_readRange(value, "normal", getNormalMin(), getNormalMax(),
@@ -366,6 +431,42 @@ Value ParticleSystem::encode() const {
 	for (auto &it : _data->emissionPoints) { points.addValue(ParticleSystem_writeVec2(it)); }
 	ret.setValue(sp::move(points), "emissionPoints");
 
+	// The birth shape, only when one stands - the fresh system's point birth writes no key, and
+	// a shape's numbers ride inside its own word
+	if (getEmissionType() != ParticleEmissionType::Points) {
+		Value shape;
+		switch (getEmissionType()) {
+		case ParticleEmissionType::Disc:
+			shape.setString("disc", "type");
+			shape.setDouble(_data->emissionShape[0], "radius");
+			break;
+		case ParticleEmissionType::Ring:
+			shape.setString("ring", "type");
+			shape.setDouble(_data->emissionShape[0], "outer");
+			shape.setDouble(_data->emissionShape[1], "inner");
+			shape.setDouble(_data->emissionShape[2], "from");
+			shape.setDouble(_data->emissionShape[3], "to");
+			break;
+		case ParticleEmissionType::Rect:
+			shape.setString("rect", "type");
+			shape.setValue(
+					ParticleSystem_writeVec2(Vec2(_data->emissionShape[0], _data->emissionShape[1])),
+					"half");
+			break;
+		case ParticleEmissionType::Segment:
+			shape.setString("segment", "type");
+			shape.setValue(
+					ParticleSystem_writeVec2(Vec2(_data->emissionShape[0], _data->emissionShape[1])),
+					"from");
+			shape.setValue(
+					ParticleSystem_writeVec2(Vec2(_data->emissionShape[2], _data->emissionShape[3])),
+					"to");
+			break;
+		case ParticleEmissionType::Points: break;
+		}
+		ret.setValue(sp::move(shape), "emissionShape");
+	}
+
 	ret.setValue(ParticleSystem_writeRange(getNormalMin(), getNormalMax()), "normal");
 	ret.setValue(ParticleSystem_writeRange(getLifetimeMin(), getLifetimeMax()), "lifetime");
 	ret.setValue(ParticleSystem_writeRange(getScaleMin(), getScaleMax()), "scale");
@@ -454,6 +555,20 @@ void ParticleSystem::setEmissionPoints(SpanView<Vec2> points) {
 }
 
 SpanView<Vec2> ParticleSystem::getEmissionPoints() const { return _data->emissionPoints; }
+
+void ParticleSystem::setEmissionShape(ParticleEmissionType type, SpanView<float> params) {
+	auto &d = mutate();
+	d.data.emissionType = toInt(type);
+	for (size_t i = 0; i < 4; ++i) {
+		d.emissionShape[i] = (i < params.size()) ? params[i] : 0.0f;
+	}
+}
+
+ParticleEmissionType ParticleSystem::getEmissionType() const {
+	return ParticleEmissionType(_data->data.emissionType);
+}
+
+const float *ParticleSystem::getEmissionShape() const { return _data->emissionShape; }
 
 void ParticleSystem::setOrigin(Vec2 origin) { mutate().data.origin = origin; }
 
@@ -612,6 +727,7 @@ Rc<ParticleSystemData> ParticleSystem::dup() {
 	data->animFrameCurve = _data->animFrameCurve;
 	data->scaleCurve = _data->scaleCurve;
 	data->emissionPoints = _data->emissionPoints;
+	::__sprt_memcpy(data->emissionShape, _data->emissionShape, sizeof(data->emissionShape));
 	data->systemId = _data->systemId;
 	data->paramsGeneration = _data->paramsGeneration;
 	data->restartGeneration = _data->restartGeneration;

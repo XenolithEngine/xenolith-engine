@@ -37,6 +37,10 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
 enum class ParticleEmissionType : uint32_t {
 	Points,
+	Disc,
+	Ring,
+	Rect,
+	Segment,
 };
 
 enum class ParticleSystemFlags : uint32_t {
@@ -58,6 +62,11 @@ struct SP_PUBLIC ParticleSystemData : public Ref {
 	Rc<CurveBuffer> scaleCurve;
 	Vector<Vec2> emissionPoints;
 
+	// The numbers of the birth shape data.emissionType names, in the shader's read order:
+	// disc [radius]; ring [outer, inner, arc from, arc to]; rect [half width, half height];
+	// segment [two points]
+	float emissionShape[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+
 	uint64_t systemId = 0;
 
 	// Any parameter change bumps paramsGeneration; restart() and a seed change bump
@@ -78,8 +87,9 @@ struct SP_PUBLIC ParticleSystemData : public Ref {
 	ParticleSystemData() { ::__sprt_memset(&data, 0, sizeof(ParticleEmitterData)); }
 
 	// The extra data buffer at ParticleEmitterData::emissionData:
-	// [ParticleEmissionPoints][vec2 x count][ParticleCurveHeader][float x count * components]...,
-	// every block aligned to 8 bytes.
+	// [ParticleEmissionPoints][vec2 x count][shape floats][ParticleCurveHeader][float x count *
+	// components]..., every block aligned to 8 bytes. The shape floats sit after the emission
+	// points block only when emissionType is a shape, in the order listed above.
 	size_t getExtraDataSize() const;
 
 	// Writes the buffer and sets the curve offsets (0 - no curve) in `target`, a copy of `data`
@@ -221,6 +231,13 @@ public:
 
 	void setEmissionPoints(SpanView<Vec2>);
 	SpanView<Vec2> getEmissionPoints() const;
+
+	// The shape newborn particles are sampled on, uniform over its area, by the particle's own
+	// generator; the type names how many of the four numbers the shape reads. Points leaves the
+	// birth on the point list, and setEmissionPoints returns to it
+	void setEmissionShape(ParticleEmissionType, SpanView<float>);
+	ParticleEmissionType getEmissionType() const;
+	const float *getEmissionShape() const;
 
 	void setOrigin(Vec2);
 	Vec2 getOrigin() const;

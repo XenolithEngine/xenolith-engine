@@ -133,6 +133,47 @@ SP_GLSL_INLINE void particleSeedRng(SP_GLSL_INOUT(pcg16_state_t) rng, uint seed,
 	pcg16_srandom_r(rng, state, inc);
 }
 
+// The birth point of a shape emitter, drawn from the particle's own generator, spent before
+// particleEmit draws the parameters. The shapes are the flat half of the engines the plan
+// reads: the disc is Godot's sphere - "Particles will be emitted in the volume of a sphere";
+// the rect its box - "Particles will be emitted in the volume of a box", its extents extending
+// "in both directions from center"; the ring its ring - "Particles will be emitted in a ring
+// or cylinder" with "The inner radius of the ring" and Effekseer's circle angle - "you specify
+// just the radius and rotation angle"; the segment Effekseer's line - "Particles are placed on
+// the line". Uniform over the area: the fraction u of it lies inside radius r = outer * sqrt(u)
+// on the disc and inside r = sqrt(inner * inner + (outer * outer - inner * inner) * u) on the
+// ring, so the point density stands flat; the rect draws its two axes apart, the segment one
+// fraction between its ends.
+SP_GLSL_INLINE vec2 particleEmissionShapePoint(SP_GLSL_IN(ParticleEmitterData) emitter,
+		SP_GLSL_INOUT(pcg16_state_t) rng) {
+	// The shape block follows the emission points one; both are whole 8-byte blocks, so the
+	// words after the last point are its floats
+	uint base = 2u + 2u * particleEmissionPointCount();
+	if (emitter.emissionType == XL_PARTICLE_EMISSION_DISC) {
+		float r = particleExtraFloat(base) * sqrt(pcg16_random_float_r(rng));
+		float a = pcg16_random_float_r(rng) * 2.0f * 3.14159265358979323846f;
+		return vec2(r * cos(a), r * sin(a));
+	}
+	if (emitter.emissionType == XL_PARTICLE_EMISSION_RING) {
+		float outer = particleExtraFloat(base);
+		float inner = particleExtraFloat(base + 1u);
+		float from = particleExtraFloat(base + 2u);
+		float to = particleExtraFloat(base + 3u);
+		float r = sqrt(inner * inner + (outer * outer - inner * inner) * pcg16_random_float_r(rng));
+		float a = from + (to - from) * pcg16_random_float_r(rng);
+		return vec2(r * cos(a), r * sin(a));
+	}
+	if (emitter.emissionType == XL_PARTICLE_EMISSION_RECT) {
+		float x = particleExtraFloat(base) * (2.0f * pcg16_random_float_r(rng) - 1.0f);
+		float y = particleExtraFloat(base + 1u) * (2.0f * pcg16_random_float_r(rng) - 1.0f);
+		return vec2(x, y);
+	}
+	// XL_PARTICLE_EMISSION_SEGMENT
+	vec2 a = vec2(particleExtraFloat(base), particleExtraFloat(base + 1u));
+	vec2 b = vec2(particleExtraFloat(base + 2u), particleExtraFloat(base + 3u));
+	return a + (b - a) * pcg16_random_float_r(rng);
+}
+
 // Every parameter is chosen per particle. Without XL_PARTICLE_FLAG_LOCAL_COORDS the particle is
 // moved into the scene by the node's transform; the linear acceleration stays in scene axes.
 SP_GLSL_INLINE void particleEmit(SP_GLSL_INOUT(ParticleData) particle,
@@ -356,9 +397,13 @@ SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
 		if (emitStep == cycleStep
 				&& (((emitter.flags & XL_PARTICLE_FLAG_ONE_SHOT) == 0u) || cycle == 0u)) {
 			vec2 point = vec2(0.0f, 0.0f);
-			uint npoints = particleEmissionPointCount();
-			if (npoints > 0u) {
-				point = particleEmissionPoint(pcg16_boundedrand_r(particle.rng, npoints));
+			if (emitter.emissionType == XL_PARTICLE_EMISSION_POINTS) {
+				uint npoints = particleEmissionPointCount();
+				if (npoints > 0u) {
+					point = particleEmissionPoint(pcg16_boundedrand_r(particle.rng, npoints));
+				}
+			} else {
+				point = particleEmissionShapePoint(emitter, particle.rng);
 			}
 			particleEmit(particle, emitter, frame, point);
 			particle.birthScale = particle.scale;
