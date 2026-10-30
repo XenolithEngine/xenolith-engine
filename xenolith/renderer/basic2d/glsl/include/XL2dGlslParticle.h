@@ -160,7 +160,8 @@ struct ParticleEmitterData {
 
 	// [32-47]
 	float sizeValue;
-	uint padding36;
+	// growth of the velocity-aligned quad's half-length per unit of speed, 0 - no growth
+	float stretch;
 	vec2 sizeNormal;
 
 	// [48-63]

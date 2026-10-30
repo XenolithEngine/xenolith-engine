@@ -241,7 +241,11 @@ SP_GLSL_INLINE void particleStep(SP_GLSL_INOUT(ParticleData) particle, float dt)
 }
 
 // Corners of the particle's quad. With XL_PARTICLE_FLAG_ALIGN_WITH_VELOCITY the quad's Y axis
-// follows a non-zero velocity instead of the angle.
+// follows a non-zero velocity instead of the angle, and the emitter's stretch grows that axis's
+// half-length by speed * stretch - Unity 6's Velocity Scale, "Specifies how much particles
+// stretch depending on their velocity", on a mode whose particles "still align to the velocity"
+// at a zero scale; Godot's scale_over_velocity_curve "scales each particle based on its
+// velocity". Zero stretch adds nothing: the quad stays the one the birth scale built.
 SP_GLSL_INLINE void particleQuad(SP_GLSL_IN(ParticleData) particle,
 		SP_GLSL_IN(ParticleEmitterData) emitter, SP_GLSL_OUT(vec2) bl, SP_GLSL_OUT(vec2) tl,
 		SP_GLSL_OUT(vec2) tr, SP_GLSL_OUT(vec2) br) {
@@ -250,6 +254,9 @@ SP_GLSL_INLINE void particleQuad(SP_GLSL_IN(ParticleData) particle,
 	float c = cos(particle.angle);
 	float s = sin(particle.angle);
 	if ((emitter.flags & XL_PARTICLE_FLAG_ALIGN_WITH_VELOCITY) != 0u) {
+		if (emitter.stretch != 0.0f) {
+			halfSize.y = halfSize.y + length(particle.velocity) * emitter.stretch;
+		}
 		vec2 dir = particleNormalize(particle.velocity);
 		if (dir.x != 0.0f || dir.y != 0.0f) {
 			c = dir.y;

@@ -216,6 +216,11 @@ public:
 	void setParticleSize(Size2);
 	Size2 getParticleSize() const;
 
+	// Growth of the velocity-aligned quad's half-length per unit of speed; 0 - no growth, the
+	// key encode() writes only when the value is not that default
+	void setStretch(float);
+	float getStretch() const;
+
 	void setCount(uint32_t);
 	uint32_t getCount() const;
 

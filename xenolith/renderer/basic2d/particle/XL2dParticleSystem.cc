@@ -406,6 +406,10 @@ void ParticleSystem::apply(const Value &value) {
 	if (value.isBasicType("warm")) {
 		setWarm(float(value.getDouble("warm")));
 	}
+
+	if (value.isBasicType("stretch")) {
+		setStretch(float(value.getDouble("stretch")));
+	}
 }
 
 Value ParticleSystem::encode() const {
@@ -515,6 +519,9 @@ Value ParticleSystem::encode() const {
 	if (_data->warm != 0.0f) {
 		ret.setDouble(_data->warm, "warm");
 	}
+	if (_data->data.stretch != 0.0f) {
+		ret.setDouble(_data->data.stretch, "stretch");
+	}
 	return ret;
 }
 
@@ -525,6 +532,13 @@ void ParticleSystem::setParticleSize(Size2 size) {
 }
 
 Size2 ParticleSystem::getParticleSize() const { return _data->particleSize; }
+
+void ParticleSystem::setStretch(float stretch) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the drawn quads follow
+	mutate().data.stretch = stretch;
+}
+
+float ParticleSystem::getStretch() const { return _data->data.stretch; }
 
 void ParticleSystem::setCount(uint32_t c) { mutate().data.count = c; }
 
