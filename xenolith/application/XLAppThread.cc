@@ -46,6 +46,7 @@ void AppThread::run() {
 		sprt::unique_lock lock(_postingMutex);
 		_acceptPosts = false;
 		_postsStopped = false;
+		_stopRequested = false;
 	}
 	Thread::run();
 }
@@ -103,7 +104,7 @@ void AppThread::threadInit() {
 	{
 		sprt::unique_lock lock(_postingMutex);
 		_acceptPosts = true;
-		if (_postsStopped) {
+		if (_stopRequested) {
 			_appLooper->wakeup(sprt::dispatch::WakeupFlags::Graceful);
 		}
 	}
@@ -111,17 +112,20 @@ void AppThread::threadInit() {
 }
 
 void AppThread::threadDispose() {
-	{
-		sprt::unique_lock lock(_postingMutex);
-		_postsStopped = true;
-	}
-	_postingReady.notify_all();
 	handleThreadDisposed();
 
 	_timer->cancel();
 	_timer = nullptr;
 
 	finalizeExtensions();
+
+	// What other threads posted until now - a GL thread's completions among them - runs in the
+	// final poll; a post after it would reach no one, so it is refused from here on.
+	{
+		sprt::unique_lock lock(_postingMutex);
+		_postsStopped = true;
+	}
+	_postingReady.notify_all();
 
 	_appLooper->poll();
 	{
@@ -142,7 +146,7 @@ bool AppThread::worker() {
 
 void AppThread::stop() {
 	sprt::unique_lock lock(_postingMutex);
-	_postsStopped = true;
+	_stopRequested = true;
 	_postingReady.notify_all();
 	Thread::stop();
 
@@ -193,8 +197,9 @@ void AppThread::performOnAppThread(Function<void()> &&func, Ref *target, bool on
 		}
 	} else {
 		sprt::unique_lock lock(_postingMutex);
-		_postingReady.wait(lock, [this] { return _acceptPosts || _postsStopped; });
-		if (!_postsStopped && _appLooper) {
+		_postingReady.wait(lock,
+				[this] { return _acceptPosts || _postsStopped || _stopRequested; });
+		if (_acceptPosts && !_postsStopped && _appLooper) {
 			_appLooper->performOnThread(sp::move(func), target, !onNextFrame, tag);
 		}
 	}
@@ -209,8 +214,9 @@ void AppThread::performOnAppThread(Rc<Task> &&task, bool onNextFrame) {
 		}
 	} else {
 		sprt::unique_lock lock(_postingMutex);
-		_postingReady.wait(lock, [this] { return _acceptPosts || _postsStopped; });
-		if (!_postsStopped && _appLooper) {
+		_postingReady.wait(lock,
+				[this] { return _acceptPosts || _postsStopped || _stopRequested; });
+		if (_acceptPosts && !_postsStopped && _appLooper) {
 			_appLooper->performOnThread(sp::move(task));
 		}
 	}
