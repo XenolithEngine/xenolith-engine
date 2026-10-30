@@ -121,6 +121,8 @@ PresentationOptions VirtualWindow::getPreferredOptions() const {
 	// The pseudo-swapchain hands out images synchronously and can not signal a fence.
 	opts.acquireImageWithoutFence = true;
 
+	opts.linearImages = _controller->getSupportInfo().linearPlanes;
+
 	return opts;
 }
 

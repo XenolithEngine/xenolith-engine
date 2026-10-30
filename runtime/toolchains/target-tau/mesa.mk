@@ -18,18 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-# Mesa's Vulkan drivers for Tau, shared libraries root links into a user module (SYS-A-DynLink-1
-# of xenolith-tau), each with its ICD manifest naming the library by its soname
-# (RT-A-VulkanLoader-1): MESA_VARIANT=lavapipe, libvulkan_lvp.so with the LLVM of llvm.mk inside
-# it; MESA_VARIANT=venus, libvulkan_virtio.so, Venus over dev.gpu@1 (BLD-A-GpuLibs-1).
-#
-# The meson cross file is generated from the flags of the other libraries of the dll sysroot
-# (common/configure.mk, TAU_USER) and the link of a module's library (VK_LINK_FLAGS of the
-# Makefile). Every link is a shared object with -z defs, the probes' too: a function libsprt.so
-# does not have fails the link, and meson finds it absent. system = 'tau' keeps Mesa off its
-# Linux paths; the patches of replacements/mesa/<ver>-tau teach it the rest.
-#
-# The build trees stay (mesa-build, mesa-build-venus).
+# Tau ICDs are shared libraries over libsprt.so, selected by MESA_VARIANT.
+# Meson probes through the dll sysroot, so unsupported libc calls fail at link time.
 
 .DEFAULT_GOAL := all
 
@@ -48,6 +38,13 @@ MESA_LIB := src/virtio/vulkan/libvulkan_virtio.so
 MESA_ICD := src/virtio/vulkan/virtio_icd.$(SP_ARCH).json
 MESA_SONAME := libvulkan_virtio.so
 MESA_ICD_NAME := virtio_icd.json
+else ifeq ($(MESA_VARIANT),broadcom)
+MESA_BUILD := $(SP_INSTALL_PREFIX)/mesa-build-broadcom
+MESA_VARIANT_OPTIONS := $(MESA_BROADCOM_OPTIONS)
+MESA_LIB := src/broadcom/vulkan/libvulkan_broadcom.so
+MESA_ICD := src/broadcom/vulkan/broadcom_icd.$(SP_ARCH).json
+MESA_SONAME := libvulkan_broadcom.so
+MESA_ICD_NAME := broadcom_icd.json
 else
 MESA_BUILD := $(SP_INSTALL_PREFIX)/mesa-build
 MESA_VARIANT_OPTIONS := $(MESA_OPTIONS)
@@ -65,9 +62,9 @@ space := $(empty) $(empty)
 meson_list = [$(sq)$(subst $(space),$(sq)$(comma) $(sq),$(strip $(1)))$(sq)]
 
 MESA_TARGET_FLAGS := -resource-dir $(SP_INSTALL_PREFIX)/lib/clang $(SP_OPT)
-MESA_C_ARGS := $(MESA_TARGET_FLAGS) $(CONFIGURE_CMAKE_C_FLAGS_INIT) -D_GNU_SOURCE
+MESA_C_ARGS := -I$(SP_INSTALL_PREFIX) $(MESA_TARGET_FLAGS) $(CONFIGURE_CMAKE_C_FLAGS_INIT) -D_GNU_SOURCE
 # __SPRT_STD_EXTERNAL=1: libc++ is the STL in every C++ unit (tau-llvm-project-include.cmake).
-MESA_CPP_ARGS := $(MESA_TARGET_FLAGS) $(CONFIGURE_CMAKE_CXX_FLAGS_INIT) -D_GNU_SOURCE -D__SPRT_STD_EXTERNAL=1
+MESA_CPP_ARGS := -I$(SP_INSTALL_PREFIX) $(MESA_TARGET_FLAGS) $(CONFIGURE_CMAKE_CXX_FLAGS_INIT) -D_GNU_SOURCE -D__SPRT_STD_EXTERNAL=1
 MESA_LINK_ARGS := -resource-dir $(SP_INSTALL_PREFIX)/lib/clang $(SP_VK_LINK_FLAGS) -Wl,-shared
 
 $(MESA_CROSS): mesa.mk
@@ -97,6 +94,7 @@ $(MESA_CROSS): mesa.mk
 
 # The manifest names the library by its soname: dlopen finds it among the module's libraries.
 all: $(MESA_CROSS)
+	printf '#define MESA_TAU_BUILD_ID "%s"\n' "$$(cat $(MAKE_ROOT)../replacements/mesa/26.2.3-tau/*.patch mesa.mk lavapipe-options.mk $(MESA_CROSS) | sha256sum | cut -d' ' -f1)" > $(SP_INSTALL_PREFIX)/tau-mesa-build-id.h
 	meson setup --wipe $(MESA_BUILD) $(MESA_SRC) --cross-file $(MESA_CROSS) \
 		--prefix /usr --libdir lib $(MESA_VARIANT_OPTIONS) \
 		|| meson setup $(MESA_BUILD) $(MESA_SRC) --cross-file $(MESA_CROSS) \

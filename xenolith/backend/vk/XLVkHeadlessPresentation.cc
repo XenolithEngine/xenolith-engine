@@ -292,7 +292,7 @@ void HeadlessSwapchain::invalidateViews() {
 
 bool HeadlessSwapchain::init(Device &dev, NotNull<core::Loop> loop, const core::SurfaceInfo &info,
 		const core::SwapchainConfig &cfg, ImageInfo &&swapchainImageInfo,
-		core::PresentMode presentMode, HeadlessSurface *surface, bool exportable) {
+		core::PresentMode presentMode, HeadlessSurface *surface, bool exportable, bool linear) {
 	// AppWindow asks for ColorAttachment [| TransferDst]; TransferSrc is what turns these into
 	// always-capturable buffers.
 	swapchainImageInfo.usage |= core::ImageUsage::TransferSrc;
@@ -306,13 +306,13 @@ bool HeadlessSwapchain::init(Device &dev, NotNull<core::Loop> loop, const core::
 		auto key = toString("HeadlessSwapchainImage[", i, "]");
 		Rc<Image> image;
 		if (exportable) {
-#if SPRT_TAU
-			ImageInfo linearInfo;
-			linearInfo = swapchainImageInfo;
-			linearInfo.tiling = core::ImageTiling::Linear;
-			image = dev.getAllocator()->spawnExportable(AllocationUsage::DeviceLocal, key,
-					linearInfo);
-#endif
+			if (linear) {
+				ImageInfo linearInfo;
+				linearInfo = swapchainImageInfo;
+				linearInfo.tiling = core::ImageTiling::Linear;
+				image = dev.getAllocator()->spawnExportable(AllocationUsage::DeviceLocal, key,
+						linearInfo);
+			}
 			if (!image) {
 				image = dev.getAllocator()->spawnExportable(AllocationUsage::DeviceLocal, key,
 						swapchainImageInfo);
@@ -666,7 +666,7 @@ bool HeadlessPresentationEngine::createSwapchain(const core::SurfaceInfo &info,
 	auto swapchainImageInfo = _window->getSwapchainImageInfo(cfg);
 
 	_swapchain = Rc<HeadlessSwapchain>::create(*dev, _loop, info, cfg, move(swapchainImageInfo),
-			presentMode, surface, _window->getPlaneSource() != nullptr);
+			presentMode, surface, _window->getPlaneSource() != nullptr, _options.linearImages);
 	if (!_swapchain) {
 		log::source().error("vk::HeadlessPresentationEngine", "Fail to create swapchain");
 		return false;

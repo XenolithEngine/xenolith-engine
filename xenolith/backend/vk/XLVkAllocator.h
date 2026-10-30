@@ -57,12 +57,9 @@ struct SP_PUBLIC MemoryRequirements {
 
 class SP_PUBLIC Allocator : public Ref {
 public:
-#if SPRT_TAU_USER
-	// Device memory of lavapipe is the module's quota: smaller pages leave less of it unused.
-	static constexpr uint64_t PageSize = 1_MiB;
-#else
 	static constexpr uint64_t PageSize = 8_MiB;
-#endif
+	// Memory of a CPU device is the process's own: smaller pages leave less of it unused.
+	static constexpr uint64_t CpuPageSize = 1_MiB;
 	static constexpr uint64_t MaxIndex = 20; // Largest block
 	static constexpr uint64_t PreservePages = 20;
 
@@ -106,7 +103,7 @@ public:
 	struct MemType {
 		uint32_t idx;
 		VkMemoryType type;
-		uint64_t min = 2; // in PageSize
+		uint64_t min = 2; // in pages
 		uint64_t last = 0; // largest used index into free
 		uint64_t max = PreservePages; // Pages to preserve, 0 - do not preserve
 		uint64_t current = PreservePages; // current allocated size in BOUNDARY_SIZE
@@ -205,6 +202,7 @@ protected:
 
 	VkDeviceSize _bufferImageGranularity = 1;
 	VkDeviceSize _nonCoherentAtomSize = 1;
+	uint64_t _pageSize = PageSize;
 	bool _hasBudget = false;
 	bool _hasMemReq2 = false;
 	bool _hasDedicated = false;

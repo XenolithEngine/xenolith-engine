@@ -19,8 +19,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// Tau clocks: every clock reads the virtual counter since boot (there is no clock of the
-// day); setting a clock is not supported.
+// Civil time comes from the published trust bound; elapsed clocks use the virtual counter.
 
 #ifndef __SPRT_BUILD
 #define __SPRT_BUILD 1
@@ -30,12 +29,25 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_time.h>
 #include <sprt/c/cross/tau_sprt/sprt_tau.h>
 
+extern "C" int __sprt_tau_realtime_get(long long *, long *) __attribute__((weak));
+
 namespace sprt {
 
-__SPRT_C_FUNC int clock_gettime(__SPRT_ID(clockid_t), struct __SPRT_TIMESPEC_NAME *tp) __SPRT_NOEXCEPT {
+__SPRT_C_FUNC int clock_gettime(__SPRT_ID(clockid_t) id, struct __SPRT_TIMESPEC_NAME *tp) __SPRT_NOEXCEPT {
 	if (!tp) {
 		__sprt_errno = EFAULT;
 		return -1;
+	}
+	if (id == __SPRT_CLOCK_REALTIME || id == __SPRT_CLOCK_REALTIME_COARSE) {
+		long long seconds = 0;
+		long nanoseconds = 0;
+		if (!__sprt_tau_realtime_get || __sprt_tau_realtime_get(&seconds, &nanoseconds)) {
+			__sprt_errno = ENOSYS;
+			return -1;
+		}
+		tp->tv_sec = (__SPRT_ID(time_t))seconds;
+		tp->tv_nsec = nanoseconds;
+		return 0;
 	}
 	unsigned long long ns = __sprt_tau_clock_ns();
 	tp->tv_sec = (__SPRT_ID(time_t))(ns / 1'000'000'000ull);
@@ -43,13 +55,14 @@ __SPRT_C_FUNC int clock_gettime(__SPRT_ID(clockid_t), struct __SPRT_TIMESPEC_NAM
 	return 0;
 }
 
-__SPRT_C_FUNC int clock_getres(__SPRT_ID(clockid_t), struct __SPRT_TIMESPEC_NAME *tp) __SPRT_NOEXCEPT {
+__SPRT_C_FUNC int clock_getres(__SPRT_ID(clockid_t) id, struct __SPRT_TIMESPEC_NAME *tp) __SPRT_NOEXCEPT {
 	if (!tp) {
 		__sprt_errno = EFAULT;
 		return -1;
 	}
-	tp->tv_sec = 0;
-	tp->tv_nsec = (long)__sprt_tau_clock_res_ns();
+	bool realtime = id == __SPRT_CLOCK_REALTIME || id == __SPRT_CLOCK_REALTIME_COARSE;
+	tp->tv_sec = realtime ? 1 : 0;
+	tp->tv_nsec = realtime ? 0 : (long)__sprt_tau_clock_res_ns();
 	return 0;
 }
 

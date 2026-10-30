@@ -185,6 +185,9 @@ bool Allocator::init(Device &dev, VkPhysicalDevice device, const DeviceInfo::Fea
 	_device = &dev;
 	_bufferImageGranularity = props.device10.properties.limits.bufferImageGranularity;
 	_nonCoherentAtomSize = props.device10.properties.limits.nonCoherentAtomSize;
+	if (props.device10.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU) {
+		_pageSize = CpuPageSize;
+	}
 
 	if (features.optionals.test(toInt(OptionalDeviceExtension::GetMemoryRequirements2))) {
 		_hasMemReq2 = true;
@@ -339,17 +342,17 @@ void Allocator::unlock() { _mutex.unlock(); }
 Allocator::MemNode Allocator::alloc(MemType *type, uint64_t in_size, bool persistent) {
 	sprt::unique_lock<sprt::mutex> lock;
 
-	// PageSize boundary should be large enough to match all alignment requirements
-	uint64_t size = uint64_t(math::align<uint64_t>(in_size, PageSize));
+	// The page boundary should be large enough to match all alignment requirements
+	uint64_t size = uint64_t(math::align<uint64_t>(in_size, _pageSize));
 	if (size < in_size) {
 		return MemNode();
 	}
 
-	if (size < type->min * PageSize) {
-		size = type->min * PageSize;
+	if (size < type->min * _pageSize) {
+		size = type->min * _pageSize;
 	}
 
-	uint64_t index = size / PageSize - type->min + 1;
+	uint64_t index = size / _pageSize - type->min + 1;
 
 	/* First see if there are any nodes in the area we know
 	 * our node will fit into. */

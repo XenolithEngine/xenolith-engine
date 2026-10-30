@@ -217,6 +217,7 @@ void PresentationFrame::markRemote() { _flags |= Remote; }
 void PresentationFrame::setPresented(Status st) {
 	_flags |= ImagePresented;
 	_presentationStatus = st;
+	_info.presented = st == Status::Ok || st == Status::Suboptimal;
 	if (_active && _engine) {
 		_engine->handleFramePresented(this);
 		if (_completeCallback) {

@@ -25,6 +25,15 @@
 
 #include "SPCore.h"
 
+// SPIR-V reflection is built everywhere but wasm and Embox; Tau and hosted RTOS need it only with
+// the Vulkan backend.
+#if SPRT_WASM || SPRT_EMBOX_USER \
+		|| ((SPRT_TAU_USER || SPRT_HOSTED_RTOS) && !MODULE_XENOLITH_BACKEND_VK)
+#define XL_SPIRV_REFLECT 0
+#else
+#define XL_SPIRV_REFLECT 1
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::config {
 
 /* Presentation Scheduler interval, used for non-blocking vkWaitForFence */

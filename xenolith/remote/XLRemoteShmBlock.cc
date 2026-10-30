@@ -68,6 +68,26 @@ size_t ShmBlock::computeSize(const ShmBlockConfig &cfg) {
 	return size_t(offset);
 }
 
+bool ShmBlock::fitSize(ShmBlockConfig &cfg, size_t maxSize) {
+	auto size = computeSize(cfg);
+	while (size > maxSize) {
+		const bool shrinkControl = cfg.bulkCapacity <= uint64_t(cfg.controlCapacity) * 8
+				&& cfg.controlCapacity > kShmRingMinCapacity;
+		const bool shrinkBulk = cfg.bulkCapacity > kShmRingMinCapacity;
+		if (!shrinkControl && !shrinkBulk) {
+			return false;
+		}
+		if (shrinkControl) {
+			cfg.controlCapacity /= 2;
+		}
+		if (shrinkBulk) {
+			cfg.bulkCapacity /= 2;
+		}
+		size = computeSize(cfg);
+	}
+	return size != 0;
+}
+
 Status ShmBlock::format(uint8_t *mem, size_t size, const ShmBlockConfig &cfg) {
 	auto required = computeSize(cfg);
 	if (!mem || required == 0 || size < required || size > maxOf<uint32_t>()

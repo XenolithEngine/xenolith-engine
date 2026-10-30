@@ -27,17 +27,9 @@
 #include "XLCoreFrameRequestProxy.h"
 #include "XLCoreMaterial.h" // forward runtime material compiles to the server
 #include "XLCoreAttachment.h" // DependencyEvent ids
+#include "XLApplicationConfig.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
-
-// Per-request reply deadlines (relative us). CompileQueue compiles a render graph on the server,
-// so it is generous; AttachQueue is a trivial ack. On timeout the watchdog fails the waiter and
-// the client disconnects.
-static constexpr uint64_t kCompileQueueReplyTimeoutUs = 15'000'000; // 15s
-static constexpr uint64_t kAttachQueueReplyTimeoutUs = 5'000'000; // 5s
-
-// A window-control op is a short round trip on the server's app thread.
-static constexpr uint64_t kWindowControlReplyTimeoutUs = 5'000'000; // 5s
 
 RemoteWindow::~RemoteWindow() { }
 
@@ -116,8 +108,7 @@ void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &q, Function<void(bo
 
 	if (!_thread->sendMessageWithReply(remote::Domain::Window,
 				toInt(remote::WindowCode::CompileQueue), Value(id),
-				[this, cb, q, id](const remote::MessageHeader &h,
-						BytesView payload) {
+				[this, cb, q, id](const remote::MessageHeader &h, BytesView payload) {
 		if (remote::isError(h)) {
 			slog().error("RemoteWindow", "compileRenderQueue: network failure: ", int(h.code));
 			cb(false);
@@ -132,8 +123,7 @@ void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &q, Function<void(bo
 		} else {
 			cb(false);
 		}
-	},
-				kCompileQueueReplyTimeoutUs)) {
+	}, config::RemoteCompileQueueReplyTimeout)) {
 		cb(false);
 	}
 }
@@ -316,7 +306,7 @@ void RemoteWindow::attachRenderQueue(const Rc<core::Queue> &) {
 		}
 		self->_attached = true;
 		slog().debug("RemoteWindow", "attachRenderQueue: server switched to client");
-	}, kAttachQueueReplyTimeoutUs)) {
+	}, config::RemoteAttachQueueReplyTimeout)) {
 		slog().error("RemoteWindow", "attachRenderQueue: failed to send ready signal");
 	}
 }
@@ -363,7 +353,7 @@ void RemoteWindow::sendWindowControl(remote::WindowControlOp op, Value &&args,
 			return;
 		}
 		cb(Status(int32_t(remote::readMessagePayload<Interface>(payload).getInteger(0))));
-	}, kWindowControlReplyTimeoutUs)) {
+	}, config::RemoteWindowControlReplyTimeout)) {
 		// Not connected, or the send failed: answer, so the caller does not wait forever.
 		if (cb) {
 			cb(Status::ErrorNotSupported);

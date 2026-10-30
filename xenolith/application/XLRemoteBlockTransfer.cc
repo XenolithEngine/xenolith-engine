@@ -22,15 +22,12 @@
 
 #include "XLRemoteBlockTransfer.h"
 #include "XLAppThread.h"
+#include "XLApplicationConfig.h"
 
 #include <sprt/runtime/hash.h>
 #include <sprt/runtime/utils/byteorder.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
-
-// Reply deadline for an Announce, which the receiver answers immediately. On timeout the watchdog
-// fails the waiter and the connection is reset.
-static constexpr uint64_t kAnnounceReplyTimeoutUs = 5'000'000; // 5s
 
 // 12-byte binary header of a Data packet: [u64 id][u32 index], network byte order, then the chunk.
 static constexpr size_t kPacketPrefixSize = sizeof(uint64_t) + sizeof(uint32_t);
@@ -102,7 +99,7 @@ uint64_t BlockTransferManager::startTransfer(DataType type, BytesView data, Valu
 		it->second.nextPacket = 0;
 		it->second.accepted = true;
 		schedulePump();
-	}, kAnnounceReplyTimeoutUs)) {
+	}, config::RemoteAnnounceReplyTimeout)) {
 		finishOutgoing(id, false);
 		return 0;
 	}

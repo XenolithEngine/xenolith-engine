@@ -384,9 +384,9 @@ vulkan: $(OUT_VK)/toolchain-vulkan.cmake $(SPRT_SO)
 		LIB_SRC_DIR=$(LIB_SRC_DIR) \
 		MAKE_ROOT=$(MAKE_ROOT)
 	mkdir -p $(T_DLL)/usr/share/vulkan/icd.d
-	cp -f $(OUT_VK)/usr/lib/libvulkan.so.1 $(OUT_VK)/usr/lib/libvulkan_lvp.so $(OUT_VK)/usr/lib/libvulkan_virtio.so $(T_DLL)/usr/lib/
+	cp -f $(OUT_VK)/usr/lib/libvulkan.so.1 $(OUT_VK)/usr/lib/libvulkan_lvp.so $(OUT_VK)/usr/lib/libvulkan_virtio.so $(OUT_VK)/usr/lib/libvulkan_broadcom.so $(T_DLL)/usr/lib/
 	cp -rf $(OUT_VK)/usr/include/vulkan $(OUT_VK)/usr/include/vk_video $(OUT_VK)/usr/include/spirv $(T_DLL)/usr/include/
-	cp -f $(OUT_VK)/usr/share/vulkan/icd.d/lvp_icd.json $(OUT_VK)/usr/share/vulkan/icd.d/virtio_icd.json \
+	cp -f $(OUT_VK)/usr/share/vulkan/icd.d/lvp_icd.json $(OUT_VK)/usr/share/vulkan/icd.d/virtio_icd.json $(OUT_VK)/usr/share/vulkan/icd.d/broadcom_icd.json \
 		$(T_DLL)/usr/share/vulkan/icd.d/
 
 all: kernel user dll libs

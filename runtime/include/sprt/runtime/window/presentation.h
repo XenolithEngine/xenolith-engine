@@ -106,6 +106,10 @@ struct PresentationOptions {
 	// Движок презентации в этом режиме выбирается отдельный (см. Loop::makePresentationEngine)
 	bool headless = false;
 
+	// Размещать изображения псевдо-swapchain линейно, где устройство это позволяет: читатель берёт
+	// их строки напрямую, без дополнительного прохода отрисовки
+	bool linearImages = false;
+
 	// Это опция обходит баг в реализации VkFence для получения следующего изображения в очереди;
 	// На текущий момент баг зафиксирован в:
 	//  - Linux: NVidia + Wayland
@@ -147,6 +151,9 @@ struct PresentationFrameInfo {
 	uint64_t order = 0;
 	uint64_t serial = 0;
 	FrameConstraints constraints;
+
+	// False when the swapchain refused the image, so the screen still shows the previous frame.
+	bool presented = true;
 };
 
 } // namespace sprt::window

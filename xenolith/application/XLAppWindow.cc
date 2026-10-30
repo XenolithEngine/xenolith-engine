@@ -510,18 +510,14 @@ void AppWindow::handleFrameReady(NotNull<core::PresentationFrame> frame) {
 }
 
 void AppWindow::handleFramePresented(NotNull<core::PresentationFrame> frame) {
-#if SPRT_TAU_USER
-	const auto status = frame->getPresentationStatus();
-	const bool notify = status == Status::Ok || status == Status::Suboptimal;
-#else
-	constexpr bool notify = true;
-#endif
-	if (_window && notify) {
+	// The window is told either way: a refused image still ends the frame for the window system.
+	if (_window) {
 		_window->handleFramePresented(frame->getInfo());
 	}
 
 	if (_clientWantsPresented.load(sprt::memory_order_acquire)) {
-		_application->performOnAppThread([this, order = frame->getFrameOrder(), presented = notify] {
+		_application->performOnAppThread(
+				[this, order = frame->getFrameOrder(), presented = frame->getInfo().presented] {
 			if (_client && _client->wantsFramePresented()) {
 				if (presented) {
 					_client->handleFramePresented(order);

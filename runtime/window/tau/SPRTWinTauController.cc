@@ -93,6 +93,7 @@ bool TauContextController::init(NotNull<Context> ctx, ContextConfig &&config, No
 
 SurfaceSupportInfo TauContextController::getSupportInfo() const {
 	SurfaceSupportInfo info;
+	info.linearPlanes = true;
 	if (_vulkanDisplay) {
 		info.backendMask.set(toInt(SurfaceBackend::Display));
 		info.display.fd = -1;

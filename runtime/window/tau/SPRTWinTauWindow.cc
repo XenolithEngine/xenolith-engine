@@ -314,8 +314,10 @@ SurfaceInterfaceInfo TauWindow::getSurfaceInterfaceInfo() const {
 	return ret;
 }
 
-void TauWindow::handleFramePresented(const PresentationFrameInfo &) {
-	if (_latency && static_cast<TauContextController *>(_controller.get())->isVulkanDisplay()) {
+void TauWindow::handleFramePresented(const PresentationFrameInfo &frame) {
+	// Input latency counts only frames that reached the display.
+	if (frame.presented && _latency
+			&& static_cast<TauContextController *>(_controller.get())->isVulkanDisplay()) {
 		showLatency();
 	}
 }

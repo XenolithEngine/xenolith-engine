@@ -119,6 +119,8 @@ protected:
 
 class TauShmProvider : public ShmProvider {
 public:
+	virtual size_t getMaxBlockSize() const override { return kShmTauMaxBlock; }
+
 	virtual Rc<ShmListenerBackend> listen(const Address &addr,
 			const TransportServerConfig &cfg) override {
 		if (addr.path != "tau.wm") {
