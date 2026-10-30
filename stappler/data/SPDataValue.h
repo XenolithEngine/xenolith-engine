@@ -874,6 +874,7 @@ int64_t ValueTemplate<Interface>::asInteger() const {
 		}
 		return doubleVal > 0 ? maxOf<int64_t>() : minOf<int64_t>();
 		break;
+	case Type::BOOLEAN: return boolVal ? 1 : 0; break;
 	case Type::CHARSTRING: return StringToNumber<int64_t>(strVal->c_str(), nullptr, 0); break;
 	default: return 0; break;
 	}

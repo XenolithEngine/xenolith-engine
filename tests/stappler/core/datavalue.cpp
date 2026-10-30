@@ -187,6 +187,14 @@ void performDataValueTests() {
 	Value dict;
 	dict.setValue(Value(Value::Type::ARRAY), "last");
 	check(roundTrip(dict) == dict, "cbor: an empty array as the last value of a dictionary survives");
+
+	// asInteger: a boolean is 0 or 1, and a double outside int64's range saturates rather than
+	// reaching a cast with no defined answer
+	check(Value(true).asInteger() == 1, "asInteger: true is 1");
+	check(Value(false).asInteger() == 0, "asInteger: false is 0");
+	check(Value(1e300).asInteger() == maxOf<int64_t>(), "asInteger: a huge double saturates up");
+	check(Value(-1e300).asInteger() == minOf<int64_t>(), "asInteger: and down");
+	check(Value(-2.5).asInteger() == -2, "asInteger: an in-range double truncates");
 }
 
 } // namespace stappler
