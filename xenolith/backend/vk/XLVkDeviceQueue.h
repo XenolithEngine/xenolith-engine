@@ -347,6 +347,7 @@ public:
 
 	VkQueryPool getPool() const { return _queryPool; }
 
+	// A lost device has no readable timestamp results.
 	Status getResults(Device &dev, const Callback<void(SpanView<uint64_t>, uint32_t tag)> &);
 
 protected:

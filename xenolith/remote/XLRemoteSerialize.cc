@@ -306,6 +306,50 @@ static Rc<core::Resource> decodeResourceValue(const DataValue &root, ObjectFacto
 	return res;
 }
 
+Rc<core::Resource> QueueCodec::decodeResourceUpload(const Value &value, uint64_t budget, uint64_t &used) {
+	used = 0;
+	auto &images = value.getValue("images");
+	auto name = value.getString("name");
+	if (name.empty() || name.size() > 128 || !images.isArray() || images.size() == 0
+			|| images.size() > 16) {
+		return nullptr;
+	}
+	uint64_t total = 0;
+	Set<String> keys;
+	for (auto &image : images.asArray()) {
+		auto width = image.getInteger("width"), height = image.getInteger("height");
+		auto key = image.getString("key");
+		if (width <= 0 || height <= 0 || width > 4'096 || height > 4'096 || key.empty()
+				|| key.size() > 128 || !keys.emplace(key).second) {
+			return nullptr;
+		}
+		auto size = uint64_t(width) * uint64_t(height) * 4;
+		if (size > ResourceUploadMaxBytes - total || image.getBytes("pixels").size() != size) {
+			return nullptr;
+		}
+		total += size;
+	}
+	if (total > budget) {
+		return nullptr;
+	}
+	core::Resource::Builder builder(name);
+	for (auto &image : images.asArray()) {
+		core::ImageInfo info(core::ImageFormat::R8G8B8A8_UNORM, core::ImageUsage::Sampled);
+		info.extent = Extent3(uint32_t(image.getInteger("width")),
+				uint32_t(image.getInteger("height")), 1);
+		if (image.getBool("opaque")) {
+			info.hints |= core::ImageHints::Opaque;
+		}
+		if (!builder.addBitmapImage(image.getString("key"), sp::move(info),
+					image.getBytes("pixels"))) {
+			return nullptr;
+		}
+	}
+	auto resource = Rc<core::Resource>::create(sp::move(builder));
+	if (resource) { used = total; }
+	return resource;
+}
+
 Bytes QueueCodec::encodeResource(const core::Resource &res, ObjectRegistry &registry) {
 	return data::write(encodeResourceValue(res, registry), data::EncodeFormat::Cbor);
 }

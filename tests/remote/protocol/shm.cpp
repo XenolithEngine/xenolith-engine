@@ -333,6 +333,41 @@ static void testDoorbell() {
 	check(result.waitedUs < 2'000'000, "shm: the doorbell wakes the reader without a timeout");
 }
 
+static void testPlatformDoorbell() {
+	TestBlock block;
+	if (!block.init(ShmBlock::computeSize(s_smallConfig))) {
+		check(false, "shm: platform doorbell block allocated");
+		return;
+	}
+	ShmBlock::format(block.mem, block.size, s_smallConfig);
+	ShmEndpoint server, client;
+	server.attach(block.mem, block.size, ShmSide::Server);
+	client.attach(block.mem, block.size, ShmSide::Client);
+	uint32_t calls = 0;
+	server.setRingCallback([&] { ++calls; });
+	writeString(server, StreamClass::Control, "before wait");
+	checkEq(calls, uint32_t(0), "shm: idle peer needs no platform signal");
+	readString(client, StreamClass::Control);
+	client.prepareWait();
+	writeString(server, StreamClass::Control, "waiting");
+	checkEq(calls, uint32_t(1), "shm: armed peer gets the platform signal");
+	checkEq(readString(client, StreamClass::Control), "waiting",
+			"shm: signalled bytes are published");
+	client.finishWait();
+	writeString(server, StreamClass::Control, "awake");
+	checkEq(calls, uint32_t(1), "shm: unarmed peer gets no platform signal");
+	client.prepareWait();
+	server.close();
+	checkEq(calls, uint32_t(2), "shm: close signals the platform too");
+	server.detach();
+	ShmBlock::format(block.mem, block.size, s_smallConfig);
+	server.attach(block.mem, block.size, ShmSide::Server);
+	client.attach(block.mem, block.size, ShmSide::Client);
+	client.prepareWait();
+	writeString(server, StreamClass::Control, "new block");
+	checkEq(calls, uint32_t(2), "shm: detach releases the platform callback");
+}
+
 static void testSpsc() {
 	static constexpr ShmBlockConfig config{65'536, 4'096};
 	static constexpr size_t totalBytes = 32u * 1'024 * 1'024;
@@ -503,6 +538,7 @@ void performShmTests() {
 	testExchange();
 	testClose();
 	testDoorbell();
+	testPlatformDoorbell();
 	testSpsc();
 	testHostilePeer();
 }

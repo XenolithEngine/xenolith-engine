@@ -1,0 +1,13 @@
+Subject: [PATCH] c11: no weak pthread_mutexattr declarations on Tau
+
+--- a/src/c11/impl/threads_posix.c
++++ b/src/c11/impl/threads_posix.c
+@@ -142,7 +142,7 @@
+  * weak declaration of them in a static link resolves to 0 -- mtx_init() would
+  * call address 0 for the first recursive mutex.
+  */
+-#if defined(HAVE_FUNC_ATTRIBUTE_WEAK) && !defined(__CYGWIN__) && !defined(__EMBOX__)
++#if defined(HAVE_FUNC_ATTRIBUTE_WEAK) && !defined(__CYGWIN__) && !defined(__EMBOX__) && !defined(__TAU__)
+ __attribute__((weak))
+ int pthread_mutexattr_init(pthread_mutexattr_t *attr);
+ 

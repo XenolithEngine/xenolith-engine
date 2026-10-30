@@ -1,0 +1,68 @@
+// Tau userspace platform configuration.
+//
+// A module is a static ELF on libc_impl; it reaches the kernel and other
+// modules only through libtau (capability invocations and shared rings).
+// A gate at 0 routes the call to ENOSYS through include_libc/; a gate flips
+// to 1 when libtau gains the service behind it.
+
+// Linux-kernel readiness mechanisms.
+macro CONFIG_HAVE_EPOLL 0 if="!defined(CONFIG_HAVE_EPOLL)"
+macro CONFIG_HAVE_EVENTFD 0 if="!defined(CONFIG_HAVE_EVENTFD)"
+macro CONFIG_HAVE_SIGNALFD 0 if="!defined(CONFIG_HAVE_SIGNALFD)"
+macro CONFIG_HAVE_TIMERFD 0 if="!defined(CONFIG_HAVE_TIMERFD)"
+macro CONFIG_HAVE_URING 0 if="!defined(CONFIG_HAVE_URING)"
+
+// The module-private futex over notifications and poll over the module's streams
+// (sprt_tau.h).
+macro CONFIG_HAVE_FUTEX 1 if="!defined(CONFIG_HAVE_FUTEX)"
+macro CONFIG_HAVE_POLL 1 if="!defined(CONFIG_HAVE_POLL)"
+
+// Process model: modules are created by the root supervisor, never by fork/exec.
+macro CONFIG_HAVE_UNISTD_FORK 0 if="!defined(CONFIG_HAVE_UNISTD_FORK)"
+macro CONFIG_HAVE_UNISTD_EXEC 0 if="!defined(CONFIG_HAVE_UNISTD_EXEC)"
+macro CONFIG_HAVE_UNISTD_FEXEC 0 if="!defined(CONFIG_HAVE_UNISTD_FEXEC)"
+macro CONFIG_HAVE_UNISTD_GETPPID 0 if="!defined(CONFIG_HAVE_UNISTD_GETPPID)"
+
+// Credentials, hostname, scheduling knobs: no such kernel state.
+macro CONFIG_HAVE_UNISTD_CHOWN 0 if="!defined(CONFIG_HAVE_UNISTD_CHOWN)"
+macro CONFIG_HAVE_UNISTD_SETUIDGID 0 if="!defined(CONFIG_HAVE_UNISTD_SETUIDGID)"
+macro CONFIG_HAVE_UNISTD_SETLOGIN 0 if="!defined(CONFIG_HAVE_UNISTD_SETLOGIN)"
+macro CONFIG_HAVE_UNISTD_SETHOSTNAME 0 if="!defined(CONFIG_HAVE_UNISTD_SETHOSTNAME)"
+macro CONFIG_HAVE_UNISTD_DOMAINNAME 0 if="!defined(CONFIG_HAVE_UNISTD_DOMAINNAME)"
+macro CONFIG_HAVE_UNISTD_NICE 0 if="!defined(CONFIG_HAVE_UNISTD_NICE)"
+macro CONFIG_HAVE_SCHED_SETSCHEDULER 0 if="!defined(CONFIG_HAVE_SCHED_SETSCHEDULER)"
+macro CONFIG_HAVE_PTHREAD_AFFINITY 0 if="!defined(CONFIG_HAVE_PTHREAD_AFFINITY)"
+
+// Descriptors and file plumbing.
+macro CONFIG_HAVE_UNISTD_DUP3 0 if="!defined(CONFIG_HAVE_UNISTD_DUP3)"
+macro CONFIG_HAVE_UNISTD_COPY_FILE_RANGE 0 if="!defined(CONFIG_HAVE_UNISTD_COPY_FILE_RANGE)"
+macro CONFIG_HAVE_FCNTL_SPLICE 0 if="!defined(CONFIG_HAVE_FCNTL_SPLICE)"
+macro CONFIG_HAVE_FCNTL_TEE 0 if="!defined(CONFIG_HAVE_FCNTL_TEE)"
+macro CONFIG_HAVE_FCNTL_FALLOCATE 0 if="!defined(CONFIG_HAVE_FCNTL_FALLOCATE)"
+macro CONFIG_HAVE_FCNTL_FADVICE 0 if="!defined(CONFIG_HAVE_FCNTL_FADVICE)"
+macro CONFIG_HAVE_FCNTL_READAHEAD 0 if="!defined(CONFIG_HAVE_FCNTL_READAHEAD)"
+macro CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE 0 if="!defined(CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE)"
+macro CONFIG_HAVE_STAT_MKFIFO 0 if="!defined(CONFIG_HAVE_STAT_MKFIFO)"
+macro CONFIG_HAVE_STAT_MKNOD 0 if="!defined(CONFIG_HAVE_STAT_MKNOD)"
+
+// Memory: the heap grows inside the region the root grants in StartInfo.
+macro CONFIG_HAVE_UNISTD_BRK 0 if="!defined(CONFIG_HAVE_UNISTD_BRK)"
+macro CONFIG_HAVE_MMAN_MREMAP 0 if="!defined(CONFIG_HAVE_MMAN_MREMAP)"
+
+// Module memory is resident and never paged out.
+macro CONFIG_HAVE_MMAN_MLOCKALL 0 if="!defined(CONFIG_HAVE_MMAN_MLOCKALL)"
+macro CONFIG_HAVE_MMAN_MEMFD 0 if="!defined(CONFIG_HAVE_MMAN_MEMFD)"
+
+// Time: clock_gettime reads CNTVCT_EL0 directly; everything else needs timer@1.
+macro CONFIG_HAVE_TIME_CLOCK_SETTIME 0 if="!defined(CONFIG_HAVE_TIME_CLOCK_SETTIME)"
+macro CONFIG_HAVE_TIME_TIMER 0 if="!defined(CONFIG_HAVE_TIME_TIMER)"
+macro CONFIG_HAVE_TIME_ADJTIME 0 if="!defined(CONFIG_HAVE_TIME_ADJTIME)"
+
+// Pure libc_impl gates.
+
+// The per-thread signal mask is libc_impl state and reaches no kernel call.
+macro CONFIG_HAVE_SIGNAL_SIGPROCMASK 1 if="!defined(CONFIG_HAVE_SIGNAL_SIGPROCMASK)"
+
+// Guards open_wmemstream only; libc_impl does not build it.
+macro CONFIG_HAVE_STDIO_OPEN_MEMSTREAM 0 if="!defined(CONFIG_HAVE_STDIO_OPEN_MEMSTREAM)"
+macro CONFIG_HAVE_FLOCK 0 if="!defined(CONFIG_HAVE_FLOCK)"

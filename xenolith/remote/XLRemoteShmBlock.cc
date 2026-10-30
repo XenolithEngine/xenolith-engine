@@ -170,6 +170,7 @@ Status ShmEndpoint::attach(uint8_t *mem, size_t size, ShmSide side) {
 }
 
 void ShmEndpoint::detach() {
+	_ringCallback = nullptr;
 	_header = nullptr;
 	_corrupted = false;
 	_closed = false;
@@ -325,6 +326,9 @@ void ShmEndpoint::ringPeer() {
 	auto peer = uint32_t(getShmPeerSide(_side));
 	sprt::_atomic::fetchAdd(&_header->doorbell[peer], uint32_t(1));
 	if (sprt::_atomic::loadSeq(&_header->waiting[peer]) != 0) {
+		if (_ringCallback) {
+			_ringCallback();
+		}
 		__sprt_sprt_qlock_wake_all(&_header->doorbell[peer], __SPRT_SPRT_LOCK_FLAG_SHARED);
 	}
 }

@@ -45,6 +45,11 @@ public:
 
 protected:
 	bool isImagePresentable(const core::ImageObject &image, VkFilter &filter) const;
+
+	// The published swapchain was kept after a failed recreation: vkCreateSwapchainKHR retired it
+	// (or it belongs to the surface that was replaced), so it can not be the oldSwapchain of the
+	// next attempt.
+	bool _swapchainRetired = false;
 };
 
 } // namespace stappler::xenolith::vk

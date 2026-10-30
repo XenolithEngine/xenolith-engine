@@ -94,7 +94,7 @@ int __wfmodeflags(const wchar_t *mode) {
 
 #if SPRT_WASM
 #include "wasm/popen.cc"
-#elif SPRT_EMBOX_USER
+#elif SPRT_EL0_LIBC
 #include "embox_user/popen.cc"
 #endif
 

@@ -1,10 +1,21 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <sprt/runtime/thread/qbarrier.h>
+
+#include "../../tests.h"
 
 namespace sprt {
 
-// --- pthread_barrier_t test ---
+static int singleBarrierWait(qbarrier_base::value_type *, qbarrier_base::value_type,
+		qbarrier_base::timeout_type, qbarrier_base::flags_type) {
+	__sprt_errno = EDEADLK;
+	return -1;
+}
+
+static int singleBarrierWake(qbarrier_base::value_type *, qbarrier_base::flags_type) {
+	return 0;
+}
 
 struct BarrierArg {
 	int id;
@@ -38,6 +49,16 @@ static void *barrierWaiterFunc(void *arg) {
 
 void performPthreadBarrierTest() {
 	printf("--- pthread_barrier_t test ---\n");
+	qbarrier_base::barrier_data single{1};
+	bool singleOk = true;
+	for (unsigned i = 0; i < 100; ++i) {
+		if (qbarrier_base::_wait<singleBarrierWait, singleBarrierWake>(&single, 0) != Status::Done) {
+			singleOk = false;
+			break;
+		}
+	}
+	printf("pthread_barrier: single participant, 100 phases: %s\n",
+			singleOk ? "PASS" : sprt::test::failed("FAILED"));
 
 	const int numThreads = 4;
 	pthread_barrier_t barrier;

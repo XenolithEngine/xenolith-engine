@@ -976,6 +976,8 @@ Status PresentationEngine::acquireScheduledImage() {
 		if (status == Status::Timeout || status == Status::Declined) {
 			// schedule timed waiter
 			scheduleImageAcquisition();
+		} else if (_swapchain->isDeprecated() && _swapchain->getAcquiredImagesCount() == 0) {
+			scheduleSwapchainRecreation();
 		}
 	}
 	return status;

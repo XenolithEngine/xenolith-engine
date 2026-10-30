@@ -1,0 +1,118 @@
+// The tau platform: the cross fragments under sprt/gen/c/cross/tau_sprt. Tau userspace uses the
+// Linux generic ABI values for libc types and constants, so most fragments forward to linux_sprt.
+
+platforms { platform tau_sprt { arch aarch64_sprt x86_64_sprt; }; }
+
+// Every HAVE_* gate for Tau lives in tau_sprt/config.h; this file must exist.
+header "sprt/gen/c/cross/tau_sprt/aarch64_sprt/config.h"
+
+header "sprt/gen/c/cross/tau_sprt/aarch64_sprt/fcntl.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/fcntl.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/aarch64_sprt/fenv.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/fenv.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/aarch64_sprt/jmp_buf.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/jmp_buf.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/aarch64_sprt/signal.h" {
+    include "sprt/gen/c/cross/linux_sprt/aarch64_sprt/signal.h"
+}
+
+// Tau has no Linux syscall table: modules reach the kernel through capability invocations in
+// libtau, so no SYSCALL_* numbers are defined here.
+header "sprt/gen/c/cross/tau_sprt/aarch64_sprt/syscall.h"
+
+// Every HAVE_* gate for Tau lives in tau_sprt/config.h; this file must exist.
+header "sprt/gen/c/cross/tau_sprt/x86_64_sprt/config.h"
+
+header "sprt/gen/c/cross/tau_sprt/x86_64_sprt/fcntl.h" {
+    include "sprt/gen/c/cross/linux_sprt/x86_64_sprt/fcntl.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/x86_64_sprt/fenv.h" {
+    include "sprt/gen/c/cross/linux_sprt/x86_64_sprt/fenv.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/x86_64_sprt/jmp_buf.h" {
+    include "sprt/gen/c/cross/linux_sprt/x86_64_sprt/jmp_buf.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/x86_64_sprt/signal.h" {
+    include "sprt/gen/c/cross/linux_sprt/x86_64_sprt/signal.h"
+}
+
+// Tau has no Linux syscall table: modules reach the kernel through capability invocations in
+// libtau, so no SYSCALL_* numbers are defined here.
+header "sprt/gen/c/cross/tau_sprt/x86_64_sprt/syscall.h"
+
+header "sprt/gen/c/cross/tau_sprt/clockid.h" {
+    include "sprt/gen/c/cross/linux_sprt/clockid.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/config.h"
+
+header "sprt/gen/c/cross/tau_sprt/dir_ptr.h" {
+    include "sprt/gen/c/cross/linux_sprt/dir_ptr.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/errno.h" guard=CORE_RUNTIME_INCLUDE_C_CROSS_TAU_SPRT_ERRNO_H_ {
+    include "sprt/gen/c/cross/linux_sprt/errno.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/fdset.h" {
+    include "sprt/gen/c/cross/linux_sprt/fdset.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/file_ptr.h"
+
+header "sprt/gen/c/cross/tau_sprt/langinfo.h" {
+    include "sprt/gen/c/cross/linux_sprt/langinfo.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/locale.h"
+
+header "sprt/gen/c/cross/tau_sprt/math.h" {
+    include "sprt/gen/c/cross/linux_sprt/math.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/mbstate.h"
+
+header "sprt/gen/c/cross/tau_sprt/mman.h" {
+    include "sprt/gen/c/cross/linux_sprt/mman.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/netinetdef.h" guard=CORE_RUNTIME_INCLUDE_C_CROSS_TAU_SPRT_NETINETDEF_H_ {
+    include "sprt/gen/c/cross/linux_sprt/netinetdef.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/polltypes.h" {
+    include "sprt/gen/c/cross/linux_sprt/polltypes.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/setjmp.h" {
+    include "sprt/gen/c/cross/linux_sprt/setjmp.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/signal.h" {
+    include "sprt/gen/c/cross/linux_sprt/signal.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/sockdef.h" {
+    include "sprt/gen/c/cross/linux_sprt/sockdef.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/socket.h" {
+    include "sprt/gen/c/cross/linux_sprt/socket.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/stdio.h" {
+    include "sprt/gen/c/cross/linux_sprt/stdio.h"
+}
+
+header "sprt/gen/c/cross/tau_sprt/sysconf.h" {
+    include "sprt/gen/c/cross/linux_sprt/sysconf.h"
+}

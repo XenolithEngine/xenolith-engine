@@ -127,6 +127,9 @@ static MemNode *Allocator_malloc(size_t size, uint32_t index) {
 		mapped = 1;
 	} else {
 		ptr = reinterpret_cast<uint8_t *>(::__sprt_local_alloc(size));
+		if (!ptr) {
+			return nullptr;
+		}
 	}
 
 	return new (ptr) MemNode{

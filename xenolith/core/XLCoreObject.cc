@@ -25,7 +25,7 @@
 #include "XLCoreInfo.h"
 #include "XLCoreDevice.h"
 #include "XLCoreDeviceQueue.h"
-#if !SPRT_WASM && !SPRT_EMBOX_USER && (!SPRT_HOSTED_RTOS || MODULE_XENOLITH_BACKEND_VK)
+#if !SPRT_WASM && !SPRT_EMBOX_USER && (!SPRT_TAU_USER || MODULE_XENOLITH_BACKEND_VK) && (!SPRT_HOSTED_RTOS || MODULE_XENOLITH_BACKEND_VK)
 #include "SPIRV-Reflect/spirv_reflect.h"
 #endif
 
@@ -302,9 +302,9 @@ void CommandBuffer::bindFramebuffer(Framebuffer *fb) {
 }
 
 String Shader::inspectShader(SpanView<uint32_t> data) {
-#if SPRT_WASM || SPRT_EMBOX_USER || (SPRT_HOSTED_RTOS && !MODULE_XENOLITH_BACKEND_VK)
+#if SPRT_WASM || SPRT_EMBOX_USER || (SPRT_TAU_USER && !MODULE_XENOLITH_BACKEND_VK) || (SPRT_HOSTED_RTOS && !MODULE_XENOLITH_BACKEND_VK)
 	(void)data;
-	return String(); // no SPIR-V reflection on wasm (WGSL), Embox EL0 or an RTOS without Vulkan
+	return String();
 #else
 	SpvReflectShaderModule shader;
 

@@ -49,7 +49,7 @@ THE SOFTWARE.
 
 #include <sprt/cxx/new>
 
-#if !(SPRT_WINDOWS || SPRT_WASM || SPRT_EMBOX_USER)
+#if !(SPRT_WINDOWS || SPRT_WASM || SPRT_EL0_LIBC)
 
 // The set splits into two groups under SPRT_NO_STRONG_OPERATOR_NEW_DELETE:
 //
@@ -158,4 +158,4 @@ void operator delete[](void *__p, sprt::size_t, sprt::align_val_t __al) noexcept
 #undef SPRT_STD_NEWDELETE
 #undef SPRT_NOTHROW_LINKAGE
 
-#endif // !(SPRT_WINDOWS || SPRT_WASM || SPRT_EMBOX_USER)
+#endif // !(SPRT_WINDOWS || SPRT_WASM || SPRT_EL0_LIBC)

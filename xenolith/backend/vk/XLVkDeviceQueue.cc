@@ -1210,6 +1210,9 @@ void QueryPool::reset(core::Device &cdev) { core::QueryPool::reset(cdev); }
 
 Status QueryPool::getResults(Device &dev,
 		const Callback<void(SpanView<uint64_t>, uint32_t tag)> &cb) {
+	if (dev.isDeviceLost()) {
+		return Status::ErrorDeviceLost;
+	}
 	if (_usedQueries == 0) {
 		return Status::Declined;
 	}

@@ -28,6 +28,7 @@
 #include "XLCoreInstance.h"
 #include "XLCoreFrameRequest.h"
 #include "XLCoreFrameRequestProxy.h"
+#include "XLCorePresentationFrame.h"
 
 #if MODULE_XENOLITH_RENDERER_COMPOSITOR_SOFT
 #include "XLCompositorSoftPass.h"
@@ -81,6 +82,9 @@ void PipeRenderClient::acquireFrame(uint64_t, NotNull<core::FrameRequestProxy> p
 	// loop thread, as on every other path; every frame gets one, an empty plane set included.
 	auto request = Rc<core::FrameRequest>(
 			static_cast<core::LocalFrameRequestProxy *>(proxy.get())->getRequest());
+	if (auto presentation = request->getPresentationFrame()) {
+		pipe->handleHostFrameAcquired(presentation->getFrameOrder(), *input);
+	}
 	if (auto loop = pipe->getApplication()->getGlLoop()) {
 		loop->performOnThread([request, attachment = _planeSet, input]() mutable {
 			request->addInput(attachment, sp::move(input));
@@ -92,13 +96,19 @@ void PipeRenderClient::acquireFrame(uint64_t, NotNull<core::FrameRequestProxy> p
 
 void PipeRenderClient::handleInputEvents(uint64_t, Vector<core::InputEventData> &&events) {
 	if (_pipe) {
-		_pipe->getInputRouter()->handleHostEvents(events);
+		_pipe->handleHostInputEvents(events);
 	}
 }
 
 void PipeRenderClient::handleFramePresented(uint64_t frameOrder) {
 	if (_pipe) {
 		_pipe->handleHostPresented(frameOrder);
+	}
+}
+
+void PipeRenderClient::handleFrameDeclined(uint64_t) {
+	if (_pipe) {
+		_pipe->handleHostFrameDeclined();
 	}
 }
 

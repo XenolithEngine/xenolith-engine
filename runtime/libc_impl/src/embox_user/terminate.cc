@@ -41,7 +41,21 @@ THE SOFTWARE.
 #include <sprt/cxx/mutex>
 #include <sprt/cxx/atomic>
 
+#if SPRT_TAU
+#include <sprt/c/cross/tau_sprt/sprt_tau.h>
+#else
 #include "../../../core/include/__el0_syscall.h"
+#endif
+
+// The process ends: exit_group on Embox, root's exit on Tau.
+__SPRT_NORETURN static inline void __el0_end_process(int result) {
+#if SPRT_TAU
+	__sprt_tau_exit(result);
+#else
+	__el0_exit_group(result);
+	__builtin_unreachable();
+#endif
+}
 
 namespace sprt {
 
@@ -148,7 +162,7 @@ __SPRT_NORETURN void exit(int result) __SPRT_NOEXCEPT {
 	int expected = 0;
 	if (!sprt::s_exiting.compare_exchange_strong(expected, 1)) {
 		// A concurrent exit() is already tearing the process down.
-		__el0_exit_group(result);
+		__el0_end_process(result);
 		__builtin_unreachable();
 	}
 	sprt::__sprt_libc_thread_exit(false);
@@ -163,18 +177,18 @@ __SPRT_NORETURN void exit(int result) __SPRT_NOEXCEPT {
 	}
 	sprt::__run(sprt::s_atexit, atexitCount);
 	__stdio_exit();
-	__el0_exit_group(result);
+	__el0_end_process(result);
 	__builtin_unreachable();
 }
 
 __SPRT_NORETURN void _Exit(int result) __SPRT_NOEXCEPT {
 	// No atexit handlers, no stdio flush.
-	__el0_exit_group(result);
+	__el0_end_process(result);
 	__builtin_unreachable();
 }
 
 __SPRT_NORETURN void _exit(int result) __SPRT_NOEXCEPT {
-	__el0_exit_group(result);
+	__el0_end_process(result);
 	__builtin_unreachable();
 }
 
@@ -188,7 +202,7 @@ __SPRT_NORETURN void quick_exit(int result) __SPRT_NOEXCEPT {
 		}
 		sprt::__run(sprt::s_quickExit, n);
 	}
-	__el0_exit_group(result);
+	__el0_end_process(result);
 	__builtin_unreachable();
 }
 

@@ -157,13 +157,15 @@ String resolveEngineRoot(const Layout &layout, StringView engineOverride, bool *
 	if (ok) {
 		*ok = true;
 	}
+	// The build changes into the project directory, so a relative path is resolved here, against
+	// the directory the command was started in.
 	if (!engineOverride.empty()) {
-		auto p = toString(engineOverride);
+		auto p = getCanonicalPath(engineOverride);
 		*ok = validateEngineRoot(p).empty();
 		return p; // explicit --engine path wins (validated)
 	}
 	if (const char *e = ::getenv("XENOLITH_ENGINE"); e && *e) {
-		auto p = toString(e);
+		auto p = getCanonicalPath(StringView(e));
 		*ok = validateEngineRoot(p).empty();
 		return p;
 	}

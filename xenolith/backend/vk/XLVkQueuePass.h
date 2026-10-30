@@ -115,6 +115,7 @@ protected:
 	// called before OnComplete event sended to FrameHandle (so, before any finalization)
 	virtual void doComplete(FrameQueue &, Function<void(bool)> &&, bool);
 
+	// Query results require a successful fence on a live device.
 	virtual void doProcessQueries(FrameQueue &, SpanView<Rc<core::QueryPool>> queries);
 
 	virtual void doFinalizeTransfer(core::MaterialSet *materials,

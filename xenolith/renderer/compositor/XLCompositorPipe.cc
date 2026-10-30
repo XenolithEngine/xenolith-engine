@@ -37,16 +37,16 @@ DisplayPlane::~DisplayPlane() {
 }
 
 bool DisplayPlane::init(DisplayPipe *pipe, uint32_t id, NotNull<AppWindow> window) {
-	_source = window->getPlaneSource();
-	if (!_source) {
-		log::source().error("compositor::DisplayPlane", "window '", window->getId(),
-				"' publishes no frames: only a virtual window can be a plane");
-		return false;
-	}
+	auto source = window->getPlaneSource();
+	if (!source || !init(pipe, id, source)) { return false; }
+	_window = window.get();
+	return true;
+}
 
+bool DisplayPlane::init(DisplayPipe *pipe, uint32_t id, NotNull<core::PlaneSource> source) {
 	_pipe = pipe;
 	_id = id;
-	_window = window.get();
+	_source = source.get();
 	_link = Rc<DisplayPlaneLink>::alloc();
 	_link->plane = this;
 	return true;
@@ -69,8 +69,23 @@ bool DisplayPipe::init(NotNull<ServerAppThread> app) {
 	return true;
 }
 
+void DisplayPipe::handleHostInputEvents(SpanView<core::InputEventData> events) {
+	_inputRouter->handleHostEvents(events);
+}
+
 Rc<DisplayPlane> DisplayPipe::createPlane(NotNull<AppWindow> window) {
-	auto plane = Rc<DisplayPlane>::create(this, _nextPlaneId, window);
+	auto source = window->getPlaneSource();
+	if (!source) { return nullptr; }
+	auto plane = createPlane(source);
+	if (plane) {
+		plane->_window = window.get();
+		window->setVirtualState(core::WindowState::Minimized, true);
+	}
+	return plane;
+}
+
+Rc<DisplayPlane> DisplayPipe::createPlane(NotNull<core::PlaneSource> source) {
+	auto plane = Rc<DisplayPlane>::create(this, _nextPlaneId, source);
 	if (!plane) {
 		return nullptr;
 	}
@@ -78,8 +93,6 @@ Rc<DisplayPlane> DisplayPipe::createPlane(NotNull<AppWindow> window) {
 	++_nextPlaneId;
 	_planes.emplace_back(plane);
 
-	// Paused until enabled.
-	window->setVirtualState(core::WindowState::Minimized, true);
 
 	// The listener is set and called on the presentation thread; the pipe lives on this one.
 	_app->getContext()->performOnThread(
@@ -113,7 +126,7 @@ void DisplayPipe::destroyPlane(NotNull<DisplayPlane> plane) {
 	_app->getContext()->performOnThread([source = plane->_source] { source->setListener(nullptr); },
 			plane.get());
 
-	if (plane->_paced) {
+	if (plane->_paced && plane->_window) {
 		plane->_window->setExternalDisplayLink(false);
 	}
 
@@ -151,7 +164,7 @@ Status DisplayPipe::commit() {
 		auto wasEnabled = it->_state.enabled;
 		it->_state = it->_pending;
 
-		if (wasEnabled == it->_state.enabled) {
+		if (!it->_window || wasEnabled == it->_state.enabled) {
 			continue;
 		}
 
@@ -178,7 +191,7 @@ Status DisplayPipe::commit() {
 }
 
 void DisplayPipe::setFocusedPlane(DisplayPlane *plane) {
-	if (plane && plane->_pipe != this) {
+	if (plane && (plane->_pipe != this || !plane->_window || !plane->_state.focusable)) {
 		return;
 	}
 	if (_focused == plane) {
@@ -251,7 +264,7 @@ void DisplayPipe::handlePlanePublished(DisplayPlane *plane, uint64_t serial) {
 
 	// From its first frame on, the window draws on the pipe's vblank. Not earlier: the scene that
 	// shares the window with its client needs a frame of its own before it does.
-	if (!plane->_paced) {
+	if (!plane->_paced && plane->_window) {
 		plane->_paced = true;
 		plane->_window->setExternalDisplayLink(true);
 	}

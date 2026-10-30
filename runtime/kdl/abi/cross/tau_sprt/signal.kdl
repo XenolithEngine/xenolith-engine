@@ -1,0 +1,3 @@
+// The freestanding signal() in libc_impl compares against these two sentinels.
+macro SIG_GET "((void (*)(int))2)"
+macro SIG_ACK "((void (*)(int))4)"

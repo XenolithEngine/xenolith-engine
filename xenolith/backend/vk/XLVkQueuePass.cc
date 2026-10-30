@@ -317,7 +317,9 @@ void QueuePassHandle::submit(FrameQueue &q, Rc<FrameSync> &&sync, Function<void(
 	_fence->addQueryCallback(
 			[this, func = sp::move(onComplete), q = &q](bool success,
 					SpanView<Rc<core::QueryPool>> queries) mutable {
-		doProcessQueries(*q, queries);
+		if (success && !_device->isDeviceLost()) {
+			doProcessQueries(*q, queries);
+		}
 		doComplete(*q, sp::move(func), success);
 	},
 			this, "QueuePassHandle::submit onComplete");

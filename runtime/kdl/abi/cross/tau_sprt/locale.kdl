@@ -1,0 +1,2 @@
+// locale_t is libc_impl's refcounted freestanding locale.
+typedef locale_t "struct __freestanding_locale_struct *"

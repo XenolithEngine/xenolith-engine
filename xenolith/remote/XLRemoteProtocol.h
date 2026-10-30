@@ -29,6 +29,14 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
+// The protocol speaks CBOR only. Reading a payload through the sniffing data::read would run the
+// JSON and Serenity decoders on whatever bytes a hostile peer sends; the CBOR reader rejects them
+// by the magic alone.
+template <typename Interface>
+auto readMessagePayload(BytesView payload) -> data::ValueTemplate<Interface> {
+	return data::cbor::read<Interface>(payload);
+}
+
 // X11-like connection-setup protocol (the first wire messages). Setup messages are uncompressed and
 // length-framed ([u32 len][payload]); subsequent data messages are LZ4-compressed with the
 // dictionary negotiated here. Everything is network byte order.
@@ -233,6 +241,10 @@ enum class WindowCode {
 	The client clears its mirror and writes the epoch into every operation list after this; lists
 	of an older epoch are declined together with their frames, without another reset. */
 	FrameDataReset = 17,
+
+	// Client -> server request: bounded RGBA sampled images for an owned window; reply is the
+	// compiled Resource codec, with server object ids. No shaders or executable data.
+	CompileResource = 18,
 };
 
 // Every WindowCode has a handler on the side that receives it; see the note on codeBit.
@@ -245,7 +257,7 @@ constexpr uint64_t kSupportedWindowCodes = codeBit(WindowCode::CompileQueue)
 		| codeBit(WindowCode::WindowGeometryChanged) | codeBit(WindowCode::WindowControl)
 		| codeBit(WindowCode::TextInputControl) | codeBit(WindowCode::TextInputState)
 		| codeBit(WindowCode::CreateWindow) | codeBit(WindowCode::FrameDeclined)
-		| codeBit(WindowCode::FrameDataReset);
+		| codeBit(WindowCode::FrameDataReset) | codeBit(WindowCode::CompileResource);
 
 
 // Operations carried by WindowCode::TextInputControl.

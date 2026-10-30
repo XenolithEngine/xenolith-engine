@@ -85,6 +85,9 @@ public:
 	// The serial of the CreateWindow request this window answers, or 0 for a window the server
 	// offered by itself. How a client tells which of its requests a window is.
 	uint32_t getCreatorSerial() const { return _creatorSerial; }
+
+	// The server accepted AttachQueue: the window is this session's, not one it is only offered.
+	bool isAttached() const { return _attached; }
 	void setSceneInfo(Rc<WindowSceneInfo> &&s);
 
 	virtual bool enableState(core::WindowState) override;
@@ -163,6 +166,8 @@ protected:
 
 	// A ReadyForNextFrame is unanswered: no AcquireFrame and no FrameDeclined since it was sent.
 	bool _frameRequested = false;
+
+	bool _attached = false;
 };
 
 } // namespace stappler::xenolith

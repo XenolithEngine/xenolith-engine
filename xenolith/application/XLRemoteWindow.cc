@@ -89,6 +89,7 @@ bool RemoteWindow::init(NotNull<ClientAppThread> thread, const Value &val) {
 }
 
 void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &q, Function<void(bool)> &&cb) {
+	if (!cb) { cb = [](bool) { }; }
 	auto n = q->getName();
 	uint64_t id = 0;
 	for (auto &it : _queues) {
@@ -103,7 +104,6 @@ void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &q, Function<void(bo
 		return;
 	}
 
-	// now, we should send server a note that queue is requested
 
 	auto c = _thread->getConnection();
 	if (!c) {
@@ -116,7 +116,7 @@ void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &q, Function<void(bo
 
 	if (!_thread->sendMessageWithReply(remote::Domain::Window,
 				toInt(remote::WindowCode::CompileQueue), Value(id),
-				[this, cb = sp::move(cb), q, id](const remote::MessageHeader &h,
+				[this, cb, q, id](const remote::MessageHeader &h,
 						BytesView payload) {
 		if (remote::isError(h)) {
 			slog().error("RemoteWindow", "compileRenderQueue: network failure: ", int(h.code));
@@ -246,7 +246,9 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 	});
 }
 
-void RemoteWindow::compileResource(Rc<core::Resource> &&, Function<void(bool)> &&, bool preload) { }
+void RemoteWindow::compileResource(Rc<core::Resource> &&resource, Function<void(bool)> &&cb, bool) {
+	_thread->compileRemoteResource(sp::move(resource), sp::move(cb), _id);
+}
 
 void RemoteWindow::compileMaterials(Rc<core::MaterialInputData> &&req,
 		const Vector<Rc<core::DependencyEvent>> &deps) {
@@ -306,12 +308,13 @@ void RemoteWindow::attachRenderQueue(const Rc<core::Queue> &) {
 
 	if (!_thread->sendMessageWithReply(remote::Domain::Window,
 				toInt(remote::WindowCode::AttachQueue), Value(_id),
-				[](const remote::MessageHeader &h, BytesView) {
+				[self = Rc<RemoteWindow>(this)](const remote::MessageHeader &h, BytesView) {
 		if (remote::isError(h)) {
 			slog().error("RemoteWindow", "attachRenderQueue: server rejected (code ", int(h.code),
 					")");
 			return;
 		}
+		self->_attached = true;
 		slog().debug("RemoteWindow", "attachRenderQueue: server switched to client");
 	}, kAttachQueueReplyTimeoutUs)) {
 		slog().error("RemoteWindow", "attachRenderQueue: failed to send ready signal");
@@ -359,7 +362,7 @@ void RemoteWindow::sendWindowControl(remote::WindowControlOp op, Value &&args,
 			cb(Status::ErrorNotSupported);
 			return;
 		}
-		cb(Status(int32_t(data::read<Interface>(payload).getInteger(0))));
+		cb(Status(int32_t(remote::readMessagePayload<Interface>(payload).getInteger(0))));
 	}, kWindowControlReplyTimeoutUs)) {
 		// Not connected, or the send failed: answer, so the caller does not wait forever.
 		if (cb) {

@@ -71,6 +71,25 @@ bool DeviceMemory::init(DeviceMemoryPool *p, Allocator::MemBlock &&block, Alloca
 
 bool DeviceMemory::isPersistentMapped() const { return _memBlock.ptr != nullptr; }
 
+int DeviceMemory::exportDmaBuf() const {
+	auto dev = static_cast<Device *>(_object.device);
+	if (!_memory || !dev->hasExternalDmaBuf()) {
+		return -1;
+	}
+
+	VkMemoryGetFdInfoKHR info{};
+	info.sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR;
+	info.memory = _memory;
+	info.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+
+	int fd = -1;
+	VkResult result = VK_ERROR_UNKNOWN;
+	dev->makeApiCall([&](const DeviceTable &table, VkDevice device) {
+		result = table.vkGetMemoryFdKHR(device, &info, &fd);
+	});
+	return result == VK_SUCCESS ? fd : -1;
+}
+
 uint8_t *DeviceMemory::getPersistentMappedRegion() const {
 	return static_cast<uint8_t *>(_memBlock.ptr) + _memBlock.offset;
 }

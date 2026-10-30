@@ -51,6 +51,7 @@ public:
 	virtual void handleInputEvents(uint64_t, Vector<core::InputEventData> &&) override;
 	virtual void handleTextInput(uint64_t, const core::TextInputState &) override { }
 	virtual void handleFramePresented(uint64_t frameOrder) override;
+	virtual void handleFrameDeclined(uint64_t) override;
 	virtual bool wantsFramePresented() const override { return true; }
 	virtual void pushDrawStat(uint64_t, const core::DrawStat &) override { }
 
@@ -80,6 +81,8 @@ public:
 	bool isAttached() const { return _attached; }
 
 	virtual Extent2 getExtent() const override;
+	// The exact plane frames selected for one host presentation order, on the app thread.
+	virtual void handleHostFrameAcquired(uint64_t, const PlaneSetInput &) { }
 
 protected:
 	virtual void requestHostFrame() override;

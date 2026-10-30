@@ -120,6 +120,8 @@ public:
 	Status attach(uint8_t *mem, size_t size, ShmSide);
 	void detach();
 
+	void setRingCallback(Function<void()> &&cb) { _ringCallback = sp::move(cb); }
+
 	bool isAttached() const { return _header != nullptr; }
 	ShmSide getSide() const { return _side; }
 
@@ -164,6 +166,7 @@ protected:
 	void ringPeer();
 	void markCorrupted();
 
+	Function<void()> _ringCallback;
 	ShmBlockHeader *_header = nullptr;
 	ShmSide _side = ShmSide::Server;
 	bool _corrupted = false;

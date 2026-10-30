@@ -1,0 +1,16 @@
+Subject: [PATCH] c11: thread stacks of 4 MiB on Tau
+
+--- a/src/c11/impl/threads_posix.c
++++ b/src/c11/impl/threads_posix.c
+@@ -257,9 +257,9 @@
+     if (!pack) return thrd_nomem;
+     pack->func = func;
+     pack->arg = arg;
+-#if defined(__EMBOX__)
++#if defined(__EMBOX__) || defined(__TAU__)
+     /* A thread on Embox gets 1 MiB unless it asks, and exception frames share
+-     * it at EL1. LLVM compiles shader variants on lavapipe's queue thread,
++     * it at EL1; on Tau 128 KiB. LLVM compiles shader variants on lavapipe's queue thread,
+      * llvmpipe's threads run the JIT code. Stacks come from a heap of their
+      * own (96 MiB on the boards), so not Linux's 8 MiB for each: 4. */
+     pthread_attr_t attr;

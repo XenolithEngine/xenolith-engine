@@ -4,6 +4,9 @@
 
 *Part of the [build & test guide](../../AGENTS.md).*
 
+- **Do not add `Co-Authored-By` trailers for commercial AI agents or their vendors.**
+  The repository considers such attribution commercial advertising. Preserve
+  attribution to human contributors.
 - **Build with `xenolith-cli` when available; `make` is the fallback.**
   Check once per session: `command -v xenolith-cli`. If it is on
   `PATH`, **always** build through it — do **not** call `make` / `gmake` /

@@ -39,6 +39,7 @@ class ServerAppThread;
 class RemoteRenderClient;
 class RemoteFontServer;
 class BlockTransferManager;
+namespace core { class Resource; struct ImageData; }
 
 // One connected client on a server: its connection, the render client its windows are handed to,
 // and everything counted per connection -- reply serials, block transfers, font dependencies,
@@ -65,6 +66,9 @@ public:
 
 	// What the transport knows about the process on the other end (uid/pid on local transports).
 	int64_t getPeerPid() const;
+
+	void compileResource(const remote::MessageHeader &, BytesView);
+	const core::ImageData *resolveResourceImage(uint64_t) const;
 
 	// The label of the bearer key the client presented (ServerAppThread::addBearerKey); empty when
 	// it was accepted without a labelled key.
@@ -127,6 +131,8 @@ public:
 			ReplyCallback &&, uint64_t timeoutUs) override;
 
 protected:
+	Vector<Rc<core::Resource>> _resources;
+	uint64_t _resourceBytes = 0;
 	ServerAppThread *_host = nullptr;
 	uint64_t _id = 0;
 	uint64_t _frameRequests = 0;

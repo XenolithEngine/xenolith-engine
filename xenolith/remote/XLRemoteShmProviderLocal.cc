@@ -28,7 +28,7 @@
 
 #include "XLRemoteShmProvider.h"
 
-#if SPRT_LINUX || SPRT_EMBOX_ANY
+#if SPRT_LINUX || SPRT_EMBOX_ANY || SPRT_TAU
 
 #include <sprt/cxx/__atomic/ops.h>
 #include <sprt/cxx/mutex>

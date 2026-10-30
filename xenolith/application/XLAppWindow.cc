@@ -510,14 +510,24 @@ void AppWindow::handleFrameReady(NotNull<core::PresentationFrame> frame) {
 }
 
 void AppWindow::handleFramePresented(NotNull<core::PresentationFrame> frame) {
-	if (_window) {
+#if SPRT_TAU_USER
+	const auto status = frame->getPresentationStatus();
+	const bool notify = status == Status::Ok || status == Status::Suboptimal;
+#else
+	constexpr bool notify = true;
+#endif
+	if (_window && notify) {
 		_window->handleFramePresented(frame->getInfo());
 	}
 
 	if (_clientWantsPresented.load(sprt::memory_order_acquire)) {
-		_application->performOnAppThread([this, order = frame->getFrameOrder()] {
+		_application->performOnAppThread([this, order = frame->getFrameOrder(), presented = notify] {
 			if (_client && _client->wantsFramePresented()) {
-				_client->handleFramePresented(order);
+				if (presented) {
+					_client->handleFramePresented(order);
+				} else {
+					_client->handleFrameDeclined(getSharedWindowId());
+				}
 			}
 		}, this);
 	}

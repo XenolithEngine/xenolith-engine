@@ -55,6 +55,9 @@ size_t read(const Producer &from, const Callback<void(const Buffer &)> &f) {
 size_t read(const Producer &from, const Buffer &buf, const Callback<void(const Buffer &)> &f) {
 	size_t ret = 0;
 	size_t cap = buf.capacity();
+	if (cap == 0) {
+		return 0; // a zero-sized read would never end the loop
+	}
 	size_t c = cap;
 	while (cap == c) {
 		c = from.read(buf, cap);
@@ -89,6 +92,9 @@ size_t read(const Producer &from, const Consumer &to, const Callback<void(const 
 size_t read(const Producer &from, const Consumer &to, const Buffer &buf) {
 	size_t ret = 0;
 	size_t cap = buf.capacity();
+	if (cap == 0) {
+		return 0; // a zero-sized read would never end the loop
+	}
 	size_t c = cap;
 	while (cap == c) {
 		c = from.read(buf, cap);
@@ -103,6 +109,9 @@ size_t read(const Producer &from, const Consumer &to, const Buffer &buf,
 		const Callback<void(const Buffer &)> &f) {
 	size_t ret = 0;
 	size_t cap = buf.capacity();
+	if (cap == 0) {
+		return 0; // a zero-sized read would never end the loop
+	}
 	size_t c = cap;
 	while (cap == c) {
 		c = from.read(buf, cap);

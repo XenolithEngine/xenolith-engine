@@ -134,6 +134,9 @@ DisplayPlane *InputRouter::findPlane(const Vec2 &host) const {
 		if (!InputRouter_contains(state.dst, pt)) {
 			continue;
 		}
+		if (!it->plane->getWindow()) {
+			return nullptr;
+		}
 		if (!state.inputRegion.empty()) {
 			auto local = toPlane(it->plane, host);
 			auto height = it->plane->getWindow()->getConstraints().extent.height;

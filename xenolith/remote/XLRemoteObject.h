@@ -180,6 +180,10 @@ public:
 	// unassigned and to its assigned session otherwise.
 	bool isWindowVisible(uint64_t windowId, uint64_t session) const;
 
+	// A window the session owns or created. Visibility is not ownership: pixels, layers and control
+	// of an offered (unclaimed) window stay with the server until a client takes it over.
+	bool isWindowOwned(uint64_t windowId, uint64_t session) const;
+
 	// A queue is visible through any window visible to the session that uses it.
 	bool isQueueVisible(uint64_t queueId, uint64_t session) const;
 

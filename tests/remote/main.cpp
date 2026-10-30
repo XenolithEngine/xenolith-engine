@@ -49,6 +49,7 @@ static const TestEntry s_testList[] = {
 	{"address", &stappler::xenolith::remote::performAddressTests},
 	{"framing", &stappler::xenolith::remote::performFramingTests},
 	{"serialize", &stappler::xenolith::remote::performSerializeTests},
+	{"resource-upload", &stappler::xenolith::remote::performResourceUploadTests},
 	{"transport", &stappler::xenolith::remote::performTransportTests},
 	{"streams", &stappler::xenolith::remote::performStreamTests},
 	{"wire", &stappler::xenolith::remote::performWireTests},

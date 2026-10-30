@@ -114,6 +114,12 @@ sp_fetch_clone = $(SP_FETCH_CMD) clone $(call sp_opt,name,$(1)) \
 # Windows host runs recipes through PowerShell 5.1, which has no `&&`, and a `;`
 # there would let a failed cd fall through into a patch applied in the wrong tree.
 # $(1) = dependency name, $(2) = path under replacements/
+ifeq ($(findstring Windows,$(OS)),Windows)
 sp_patch = git -C "$(SRC_ROOT)/$(1)" apply -p1 "$(LIBS_MAKE_ROOT)replacements/$(2)"
+else
+# An unpacked tarball has no .git of its own: without the ceiling git finds the repository the
+# sources sit in, and its `apply` skips every path outside the current directory without a word.
+sp_patch = GIT_CEILING_DIRECTORIES="$(abspath $(SRC_ROOT))" git -C "$(SRC_ROOT)/$(1)" apply -p1 "$(LIBS_MAKE_ROOT)replacements/$(2)"
+endif
 
 endif

@@ -1,0 +1,53 @@
+Subject: [PATCH] util: Tau is POSIX, not Linux
+
+--- a/src/util/detect_os.h
++++ b/src/util/detect_os.h
+@@ -100,6 +100,16 @@
+ #define DETECT_OS_POSIX 1
+ #endif
+ 
++/*
++ * Tau, a microkernel: Mesa runs in a user module, a shared library over the
++ * Xenolith engine's POSIX layer (sprt). No __linux__, no /proc, no DRM, no
++ * signals.
++ */
++#if defined(__TAU__)
++#define DETECT_OS_TAU 1
++#define DETECT_OS_POSIX 1
++#endif
++
+ 
+ /*
+  * Make sure DETECT_OS_* are always defined, so that they can be used with #if
+@@ -109,6 +119,9 @@
+ #endif
+ #ifndef DETECT_OS_EMBOX
+ #define DETECT_OS_EMBOX 0
++#endif
++#ifndef DETECT_OS_TAU
++#define DETECT_OS_TAU 0
+ #endif
+ #ifndef DETECT_OS_APPLE
+ #define DETECT_OS_APPLE 0
+--- a/src/util/log.c
++++ b/src/util/log.c
+@@ -152,7 +152,7 @@
+ 
+          snprintf(log_file, sizeof(log_file), "/tmp/mesa_%s_%d_XXXXXX.log", util_get_process_name(),
+                   getpid());
+-#if DETECT_OS_EMBOX
++#if DETECT_OS_EMBOX || DETECT_OS_TAU
+          /* mkstemp and no mkstemps in Embox's libc layer: the name loses ".log". */
+          log_file[strlen(log_file) - 4] = '\0';
+          fd = mkstemp(log_file);
+--- a/src/util/os_misc.c
++++ b/src/util/os_misc.c
+@@ -60,7 +60,7 @@
+ #  include <unistd.h>
+ #  include <android/log.h>
+ #  include <sys/system_properties.h>
+-#elif DETECT_OS_LINUX || DETECT_OS_CYGWIN || DETECT_OS_SOLARIS || DETECT_OS_HURD || DETECT_OS_MANAGARM || DETECT_OS_EMBOX
++#elif DETECT_OS_LINUX || DETECT_OS_CYGWIN || DETECT_OS_SOLARIS || DETECT_OS_HURD || DETECT_OS_MANAGARM || DETECT_OS_EMBOX || DETECT_OS_TAU
+ #  include <unistd.h>
+ #elif DETECT_OS_OPENBSD || DETECT_OS_FREEBSD
+ #  include <sys/resource.h>

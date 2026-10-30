@@ -82,7 +82,7 @@ __SPRT_C_FUNC int fstatvfs(int __fd, struct __SPRT_STATVFS_NAME *buf) __SPRT_NOE
 	}
 	return platform::hstatvfs(fdSlot->handle, buf);
 }
-#else
+#elif !SPRT_TAU
 // No filesystem-statistics backend on freestanding targets (wasm): report an
 // unknown/empty volume as a successful no-op (zeroed buffer), so callers such as
 // std::filesystem::space see well-defined values instead of a failure.

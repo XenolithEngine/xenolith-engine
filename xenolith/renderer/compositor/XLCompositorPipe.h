@@ -83,6 +83,7 @@ public:
 	virtual ~DisplayPlane();
 
 	bool init(DisplayPipe *, uint32_t id, NotNull<AppWindow>);
+	bool init(DisplayPipe *, uint32_t id, NotNull<core::PlaneSource>);
 
 	uint32_t getId() const { return _id; }
 	AppWindow *getWindow() const { return _window; }
@@ -142,6 +143,8 @@ public:
 
 	// A new plane is disabled; set its state and commit() to show it.
 	Rc<DisplayPlane> createPlane(NotNull<AppWindow>);
+	// A published image source without window input or display-link pacing.
+	Rc<DisplayPlane> createPlane(NotNull<core::PlaneSource>);
 	void destroyPlane(NotNull<DisplayPlane>);
 
 	// Apply every plane's pending state at once. On refusal nothing changes and the pending states
@@ -168,6 +171,7 @@ public:
 
 	// Hands the host's input to the planes.
 	InputRouter *getInputRouter() const { return _inputRouter; }
+	virtual void handleHostInputEvents(SpanView<core::InputEventData>);
 
 	const PlaneCaps &getCaps() const { return _caps; }
 	const Rc<PipeSnapshot> &getSnapshot() const { return _snapshot; }
@@ -181,10 +185,10 @@ public:
 	virtual Extent2 getExtent() const = 0;
 
 	// The host showed a frame of the pipe.
-	void handleHostPresented(uint64_t order);
+	virtual void handleHostPresented(uint64_t order);
 
 	// A host frame asked for will not come.
-	void handleHostFrameDeclined();
+	virtual void handleHostFrameDeclined();
 
 protected:
 	// Ask the output for a frame of the current snapshot.

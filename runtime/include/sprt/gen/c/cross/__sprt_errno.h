@@ -47,10 +47,13 @@
 #if !(SPRT_IOS) && !(SPRT_MACOS) && !(SPRT_ANDROID) && !(SPRT_LINUX) && !(SPRT_NUTTX) && !(SPRT_EMBOX) && SPRT_EMBOX_USER
 #include <sprt/gen/c/cross/embox_user_sprt/errno.h>
 #endif
-#if !(SPRT_IOS) && !(SPRT_MACOS) && !(SPRT_ANDROID) && !(SPRT_LINUX) && !(SPRT_NUTTX) && !(SPRT_EMBOX) && !(SPRT_EMBOX_USER) && SPRT_WINDOWS
+#if !(SPRT_IOS) && !(SPRT_MACOS) && !(SPRT_ANDROID) && !(SPRT_LINUX) && !(SPRT_NUTTX) && !(SPRT_EMBOX) && !(SPRT_EMBOX_USER) && SPRT_TAU
+#include <sprt/gen/c/cross/tau_sprt/errno.h>
+#endif
+#if !(SPRT_IOS) && !(SPRT_MACOS) && !(SPRT_ANDROID) && !(SPRT_LINUX) && !(SPRT_NUTTX) && !(SPRT_EMBOX) && !(SPRT_EMBOX_USER) && !(SPRT_TAU) && SPRT_WINDOWS
 #include <sprt/gen/c/cross/windows_sprt/errno.h>
 #endif
-#if !(SPRT_IOS) && !(SPRT_MACOS) && !(SPRT_ANDROID) && !(SPRT_LINUX) && !(SPRT_NUTTX) && !(SPRT_EMBOX) && !(SPRT_EMBOX_USER) && !(SPRT_WINDOWS)
+#if !(SPRT_IOS) && !(SPRT_MACOS) && !(SPRT_ANDROID) && !(SPRT_LINUX) && !(SPRT_NUTTX) && !(SPRT_EMBOX) && !(SPRT_EMBOX_USER) && !(SPRT_TAU) && !(SPRT_WINDOWS)
 #include <sprt/gen/c/cross/linux_sprt/errno.h>
 #endif
 

@@ -1,0 +1,15 @@
+Subject: [PATCH] gallium: no memory fd on Tau
+
+--- a/src/gallium/include/pipe/p_defines.h
++++ b/src/gallium/include/pipe/p_defines.h
+@@ -1416,8 +1416,8 @@
+ #define PIPE_UUID_SIZE 16
+ #define PIPE_LUID_SIZE 8
+ 
+-/* Embox: one process, nobody to hand an fd of memory to. */
+-#if DETECT_OS_POSIX && !DETECT_OS_EMBOX
++/* Embox: one process, nobody to hand an fd of memory to; Tau: no memfd. */
++#if DETECT_OS_POSIX && !DETECT_OS_EMBOX && !DETECT_OS_TAU
+ #define PIPE_MEMORY_FD
+ #endif
+ 

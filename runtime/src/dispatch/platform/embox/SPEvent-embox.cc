@@ -26,6 +26,10 @@ SPDX-License-Identifier: MIT
 #include "../../../../core/include/__el0_syscall.h"
 #endif
 
+#if SPRT_TAU
+#include <sprt/c/cross/tau_sprt/sprt_tau.h>
+#endif
+
 #if SPRT_EMBOX && !SPRT_EMBOX_USER
 // xenolith-os drivers/xlfutex. Weak, as in core/embox/sprt_lock.cc: an image
 // without it links both null and the looper polls as it always did.
@@ -291,6 +295,8 @@ void EmboxData::notifyWakeup() {
 		__el0_futex(reinterpret_cast<uint32_t *>(&_wakeupReq), EL0_FUTEX_WAKE, INT_MAX, nullptr,
 				0);
 	}
+#elif SPRT_TAU
+	__sprt_tau_event_signal();
 #endif
 }
 
@@ -326,6 +332,13 @@ void EmboxData::spinWait(int timeoutMs) {
 		__atomic_sub_fetch(&_sleepers, 1, __ATOMIC_SEQ_CST);
 		return;
 	}
+#elif SPRT_TAU
+	auto epoch = __sprt_tau_io_epoch();
+	if (!hasChangedAddress()) {
+		__sprt_tau_event_wait(reinterpret_cast<volatile unsigned *>(&_wakeupReq), 0, epoch,
+				(unsigned long long)timeoutMs * 1'000'000ull);
+	}
+	return;
 #endif
 	// usleep() slices, NOT a sched_yield() spin. The looper usually runs on the
 	// task that owns the window, and sched_yield() there does not run a pthread

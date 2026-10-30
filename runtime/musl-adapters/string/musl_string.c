@@ -26,7 +26,7 @@
 // EL0) are in the same position, so they skip the musl versions here to avoid
 // duplicate symbols. wcsstr is the one exception — the builtins do not provide
 // it, so musl supplies it everywhere.
-#if !SPRT_WASM && !SPRT_EMBOX_USER
+#if !SPRT_WASM && !SPRT_EL0_LIBC
 #include "../../musl-libc/src/string/wcscasecmp_l.c"
 #include "../../musl-libc/src/string/wcsncasecmp_l.c"
 #include "../../musl-libc/src/string/wcscasecmp.c"
@@ -54,7 +54,7 @@
 // here regardless.
 #if __SPRT_ARCH_ID == __SPRT_ARCH_ID_X86_64
 #elif __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
-#if SPRT_EMBOX_USER
+#if SPRT_EL0_LIBC
 #include "../../musl-libc/src/string/memmove.c"
 #endif
 #else

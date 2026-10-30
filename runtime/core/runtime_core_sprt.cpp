@@ -63,6 +63,9 @@ THE SOFTWARE.
 // No emutls sibling: the EL0 startup sets up a real PT_TLS block and
 // TPIDR_EL0 (libc_impl embox_user/startup.cc), so thread_local is native.
 #include "embox_user/sprt_lock.cc"
+#elif SPRT_TAU
+// Native thread_local as on EmboxUser; locks wait on the module's private futex.
+#include "tau/sprt_lock.cc"
 #elif SPRT_EMBOX
 #include "embox/sprt_lock.cc"
 #include "embox/emutls.cc"
@@ -221,6 +224,18 @@ __SPRT_C_FUNC int __SPRT_ID(sprt_qlock_oneshot_unlock)(__SPRT_ID(sprt_qlock_t) *
 	return 0;
 }
 
+// With the table's mutex held: drops the reference a lock that failed took, and the data with it
+// when nobody else holds or waits for the lock.
+static void __plock_release(__plock_storage *storage, __SPRT_ID(sprt_plock_t) lock) {
+	auto link = storage->find(lock);
+	auto data = *link;
+	if (data && --data->refcount == 0) {
+		*link = data->next;
+		destroy_at(data);
+		__sprt_local_free((void *)data, sizeof(__plock_data));
+	}
+}
+
 __SPRT_C_FUNC
 int __SPRT_ID(sprt_plock_lock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock_flags_t) flags,
 		__SPRT_ID(pid_t) * tidPtr) {
@@ -228,13 +243,21 @@ int __SPRT_ID(sprt_plock_lock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock
 
 	unique_lock ulock(storage->plockMutex);
 
-	auto it = storage->plocks.find(lock);
-	if (it == storage->plocks.end()) {
-		auto newplock = (__plock_data *)__sprt_local_alloc(sizeof(__plock_data));
-		it = storage->plocks.emplace(lock, new (newplock, nothrow) __plock_data).first;
-		it->second->refcount = 1;
+	// Once the table's mutex is released the data is kept alive by the refcount taken here.
+	auto link = storage->find(lock);
+	auto data = *link;
+	if (!data) {
+		auto mem = __sprt_local_alloc(sizeof(__plock_data));
+		if (!mem) {
+			__sprt_errno = ENOMEM;
+			return -1;
+		}
+		data = new (mem, nothrow) __plock_data;
+		data->lock = lock;
+		data->refcount = 1;
+		*link = data;
 	} else {
-		++it->second->refcount;
+		++data->refcount;
 	}
 
 	ulock.unlock();
@@ -243,15 +266,20 @@ int __SPRT_ID(sprt_plock_lock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock
 	*rmutex_base::getNativeValue(tid) = __sprt_gettid();
 
 	auto res = rmutex_base::_lock<sprt_rlock_wait, nullptr,
-			bool(__SPRT_SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(it->second->data.value, tid, 0,
+			bool(__SPRT_SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(data->data.value, tid, 0,
 			__SPRT_SPRT_LOCK_FLAG_PI);
 	switch (res) {
 	case Status::Ok:
-	case Status::Propagate: ++it->second->data.counter; break;
-	default: return -1; break;
+	case Status::Propagate: ++data->data.counter; break;
+	default:
+		ulock.lock();
+		__plock_release(storage, lock);
+		__sprt_errno = status::toErrno(res);
+		return -1;
+		break;
 	}
 
-	if (it->second->flags & __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED) {
+	if (data->flags & __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED) {
 		__sprt_sprt_plock_unlock(lock, __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED, tidPtr);
 		__sprt_errno = EOWNERDEAD;
 		return -1;
@@ -269,22 +297,33 @@ int __SPRT_ID(sprt_plock_trylock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_l
 
 	unique_lock ulock(storage->plockMutex);
 
-	auto it = storage->plocks.find(lock);
-	if (it == storage->plocks.end()) {
-		it = storage->plocks.emplace(lock).first;
-		it->second->refcount = 1;
+	auto link = storage->find(lock);
+	if (!*link) {
+		auto mem = __sprt_local_alloc(sizeof(__plock_data));
+		if (!mem) {
+			__sprt_errno = ENOMEM;
+			return -1;
+		}
+		auto data = new (mem, nothrow) __plock_data;
+		data->lock = lock;
+		data->refcount = 1;
+		*link = data;
 
 		// It's a new lock, this should return immediately
 		__sprt_sprt_rlock_t tid;
 		*rmutex_base::getNativeValue(tid) = __sprt_gettid();
 
 		auto res = rmutex_base::_lock<sprt_rlock_wait, nullptr,
-				bool(__SPRT_SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(it->second->data.value, tid, 0,
+				bool(__SPRT_SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(data->data.value, tid, 0,
 				__SPRT_SPRT_LOCK_FLAG_PI);
 		switch (res) {
 		case Status::Ok:
-		case Status::Propagate: ++it->second->data.counter; break;
-		default: return -1; break;
+		case Status::Propagate: ++data->data.counter; break;
+		default:
+			__plock_release(storage, lock);
+			__sprt_errno = status::toErrno(res);
+			return -1;
+			break;
 		}
 		if (tidPtr != nullptr) {
 			*tidPtr = (*rmutex_base::getNativeValue(tid)) & rmutex_base::THREAD_ID_MASK;
@@ -294,16 +333,17 @@ int __SPRT_ID(sprt_plock_trylock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_l
 		__sprt_sprt_rlock_t tid;
 		*rmutex_base::getNativeValue(tid) = __sprt_gettid();
 
-		auto res = rmutex_base::_try_lock<sprt_rlock_try_wait>(it->second->data.value, tid,
+		auto data = *link;
+		auto res = rmutex_base::_try_lock<sprt_rlock_try_wait>(data->data.value, tid,
 				__SPRT_SPRT_LOCK_FLAG_PI);
 		switch (res) {
 		case Status::Ok:
 		case Status::Propagate:
-			++it->second->refcount;
+			++data->refcount;
 			ulock.unlock();
 
-			++it->second->data.counter;
-			if (it->second->flags & __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED) {
+			++data->data.counter;
+			if (data->flags & __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED) {
 				__sprt_sprt_plock_unlock(lock, __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED, tidPtr);
 				__sprt_errno = EOWNERDEAD;
 				return -1;
@@ -350,52 +390,41 @@ int __SPRT_ID(sprt_plock_unlock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lo
 			*tidPtr = 0;
 		}
 
-		// We check if we already know about the waiting threads.
-		// If we don’t know, then we try to atomically unlock the mutex.
-		bool unlocked = false;
-		if ((*rmutex_base::getNativeValue(expected) & rmutex_base::WAITERS_BIT) != 0
-				|| !(unlocked = _atomic::compareSwap(rmutex_base::getNativeValue(data),
-							 rmutex_base::getNativeValue(expected),
-							 *rmutex_base::getNativeValue(zero)))) {
-			// Now we know for sure that there are waiting threads
-			if (!unlocked) {
-				// CAS failed (Waiters flag was added)
-				// or WAITERS_BIT was already set, CAS was not performed
-				//
-				// Force-set data to 0;
-				_atomic::storeSeq(rmutex_base::getNativeValue(data),
-						*rmutex_base::getNativeValue(zero));
-			}
-			if (sprt_rlock_wake(&data, 0) != 0) {
-				return status::errnoToStatus(__sprt_errno);
-			}
-			return Status::Ok;
+		// The lock is taken with the PI flag, so it is released as rmutex_base::_unlock releases
+		// a PI lock: with waiters the word keeps our tid for a kernel that hands it over itself.
+		if ((*rmutex_base::getNativeValue(expected) & rmutex_base::WAITERS_BIT) == 0
+				&& _atomic::compareSwap(rmutex_base::getNativeValue(data),
+						rmutex_base::getNativeValue(expected), *rmutex_base::getNativeValue(zero))) {
+			return Status::Done;
 		}
-		return Status::Done;
+		if (sprt_rlock_wake(&data, __SPRT_SPRT_LOCK_FLAG_PI) != 0) {
+			return status::errnoToStatus(__sprt_errno);
+		}
+		return Status::Ok;
 	};
 
 	auto storage = __libc_get_plock_storage();
 
 	unique_lock ulock(storage->plockMutex);
 
-	auto it = storage->plocks.find(lock);
-	if (it == storage->plocks.end()) {
+	auto link = storage->find(lock);
+	auto data = *link;
+	if (!data) {
 		__sprt_errno = ESRCH;
 		return -1;
 	}
 
-	auto recount = it->second->refcount;
-	if (recount == 1) {
-		doUnlock(it->second->data.value, &it->second->data.counter);
-		destroy_at(it->second);
-		__sprt_local_free((void *)it->second, sizeof(__plock_data));
-		storage->plocks.erase(it);
+	if (data->refcount == 1) {
+		doUnlock(data->data.value, &data->data.counter);
+		*link = data->next;
+		destroy_at(data);
+		__sprt_local_free((void *)data, sizeof(__plock_data));
 	} else {
 		if (flags & __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED) {
-			it->second->flags |= __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED;
+			data->flags |= __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED;
 		}
-		--it->second->refcount;
-		doUnlock(it->second->data.value, &it->second->data.counter);
+		--data->refcount;
+		doUnlock(data->data.value, &data->data.counter);
 	}
 	return 0;
 }

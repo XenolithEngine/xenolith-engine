@@ -70,7 +70,11 @@ struct StreamTraits {
 		auto target = ret.data();
 		auto targetSize = bufferSize;
 		__processArgs<CharType>([&](StringViewBase<CharType> str) {
-			target = strappend(target, &targetSize, str.data(), str.size());
+			// An empty view may carry a null pointer, and memcpy'ing from one is undefined even
+			// for no bytes.
+			if (str.size() > 0) {
+				target = strappend(target, &targetSize, str.data(), str.size());
+			}
 		}, forward<Args>(args)...);
 
 		ret.resize(target - ret.data());
@@ -82,7 +86,11 @@ struct StreamTraits {
 		auto target = buf;
 		auto targetSize = bufferSize;
 		__processArgs<CharType>([&](StringViewBase<CharType> str) {
-			target = strappend(target, &targetSize, str.data(), str.size());
+			// An empty view may carry a null pointer, and memcpy'ing from one is undefined even
+			// for no bytes.
+			if (str.size() > 0) {
+				target = strappend(target, &targetSize, str.data(), str.size());
+			}
 		}, forward<Args>(args)...);
 		return target - buf;
 	}

@@ -402,6 +402,7 @@ vulkan-loader_SUBMODULES := 1
 
 $(SRC_ROOT)/vulkan-loader: | prepare
 	$(call sp_fetch_clone,vulkan-loader)
+	$(call sp_patch,vulkan-loader,vulkan-loader/$(VULKAN_SDK_VER)-tau/0001-tau-a-unix-platform.patch)
 
 # https://github.com/KhronosGroup/Vulkan-ValidationLayers # revised: 25 sep 2026
 vulkan-validationlayers_REPO       := https://github.com/KhronosGroup/Vulkan-ValidationLayers.git
@@ -565,6 +566,11 @@ $(SRC_ROOT)/llvm-project: | prepare
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-embox/0002-orc-no-shared-memory-on-embox.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-embox/0003-host-cpu-from-id-registers-on-embox.patch)
 	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-embox/0004-process-handle-without-dlopen-on-embox.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-tau/0001-support-tau-like-embox.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-tau/0002-orc-no-shared-memory-on-tau.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-tau/0003-memory-map-jit-on-tau.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-tau/0004-host-cpu-from-id-registers-on-tau.patch)
+	$(call sp_patch,llvm-project,llvm/$(SP_LLVM_V)-sprt-tau/0005-support-headers-tau-has-not.patch)
 
 # https://download.gnome.org/sources/libxml2  # revised: 25 sep 2026
 # Supply chain: GNOME publishes a .sha256sum next to the tarball but no signature;
@@ -623,7 +629,8 @@ $(SRC_ROOT)/libdrm: | prepare
 	$(call sp_fetch_tar,libdrm)
 
 # Mesa, for lavapipe (llvmpipe's Vulkan driver) on the Embox target: the software
-# Vulkan the flat EL1 image links in (xenolith-os docs/EMBOX-LAVAPIPE.md), and for
+# Vulkan the flat EL1 image links in (xenolith-os docs/EMBOX-LAVAPIPE.md), on Tau
+# (target-tau/vulkan.mk, a shared library of user modules), and for
 # Venus, Vulkan on the host's GPU through virtio-gpu (docs/EMBOX-VENUS.md). Not in
 # LIBS, so `make download` does not fetch 80 MB for every other target; the Embox
 # target asks for it by name.
@@ -648,6 +655,17 @@ $(SRC_ROOT)/mesa: | prepare
 	$(call sp_patch,mesa,mesa/26.2.3-embox/0010-venus-a-renderer-over-the-embox-virtio-gpu-driver.patch)
 	$(call sp_patch,mesa,mesa/26.2.3-embox/0011-venus-a-static-driver-for-embox.patch)
 	$(call sp_patch,mesa,mesa/26.2.3-embox/0012-venus-no-fds-no-drm-a-sw-device-for-wsi-on-embox.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-tau/0001-util-tau-is-posix.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-tau/0002-c11-no-weak-mutexattr-on-tau.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-tau/0003-meson-tau-probes-through-the-libc-layer.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-tau/0004-no-bsd-ioccom-no-hud-signals-on-tau.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-tau/0005-c11-thread-stacks-of-4-mib-on-tau.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-tau/0006-lavapipe-no-memory-fd-on-tau.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-tau/0007-gallivm-host-features-and-x18-on-tau.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-tau/0008-lavapipe-exports-only-the-icd-on-tau.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-tau/0009-wsi-display-over-dev-display-on-tau.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-tau/0010-venus-a-renderer-over-dev-gpu-on-tau.patch)
+	$(call sp_patch,mesa,mesa/26.2.3-tau/0011-venus-no-fds-no-drm-a-sw-device-for-wsi-on-tau.patch)
 
 
 #

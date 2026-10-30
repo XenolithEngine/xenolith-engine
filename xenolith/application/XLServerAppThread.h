@@ -224,6 +224,7 @@ protected:
 	virtual void performAppUpdate(const UpdateTime &, bool wakeup) override;
 
 	virtual void loadExtensions() override;
+	// Close ingress before releasing extensions and the graphics device.
 	virtual void finalizeExtensions() override;
 
 	// Pump the listener's QUIC events (poll-readable or update tick), accept new connections and

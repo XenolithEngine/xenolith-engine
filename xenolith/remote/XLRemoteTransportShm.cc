@@ -30,7 +30,7 @@
 #include "XLRemoteShmProvider.h"
 #include "XLRemoteShmEmbox.h"
 
-#if SPRT_LINUX || SPRT_EMBOX_ANY
+#if SPRT_LINUX || SPRT_EMBOX_ANY || SPRT_TAU
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
@@ -91,7 +91,16 @@ public:
 	virtual bool isClosed() override;
 	virtual void close(bool graceful = true) override;
 
-	ShmEndpoint &getEndpoint() { return _endpoint; }
+	ShmEndpoint &getEndpoint() {
+		checkMemory();
+		return _endpoint;
+	}
+	void checkMemory() {
+		if (_memory && !_memory->isDataAlive()) {
+			_peerGone = true;
+			_endpoint.detach();
+		}
+	}
 	bool isPeerGone() const { return _peerGone; }
 	bool isClosedLocally() const { return _closed; }
 
@@ -145,6 +154,8 @@ bool ShmConnection::init(Rc<ShmBlockMemory> &&memory, ShmSide side, PeerIdentity
 		return false;
 	}
 
+	_endpoint.setRingCallback([this] { _memory->ringPeer(); });
+
 	_control = Rc<ShmStream>::create(this, StreamClass::Control);
 	_bulk = Rc<ShmStream>::create(this, StreamClass::Bulk);
 	if (!_control || !_bulk) {
@@ -156,6 +167,7 @@ bool ShmConnection::init(Rc<ShmBlockMemory> &&memory, ShmSide side, PeerIdentity
 }
 
 Status ShmConnection::handleEvents() {
+	checkMemory();
 	if (_closed) {
 		return Status::Ok;
 	}
@@ -167,11 +179,13 @@ Status ShmConnection::handleEvents() {
 }
 
 bool ShmConnection::isClosed() {
+	checkMemory();
 	return _closed || _endpoint.isClosed() || (_peerGone && !_endpoint.hasPending());
 }
 
 // The peer keeps its own view of the block, so bytes already in the rings stay readable for it.
 void ShmConnection::close(bool) {
+	checkMemory();
 	if (_closed) {
 		return;
 	}
@@ -189,11 +203,13 @@ void ShmConnection::close(bool) {
 }
 
 TransportWaitAddress ShmConnection::getWaitAddress() {
+	checkMemory();
 	if (_closed || !_endpoint.isAttached()) {
 		return TransportWaitAddress();
 	}
 	auto value = _endpoint.prepareWait();
-	return TransportWaitAddress{_endpoint.getDoorbell(), value};
+	auto address = _memory->getWaitAddress();
+	return address.address ? address : TransportWaitAddress{_endpoint.getDoorbell(), value};
 }
 
 // `@name` is the in-process rendezvous; the rest belongs to the platform.

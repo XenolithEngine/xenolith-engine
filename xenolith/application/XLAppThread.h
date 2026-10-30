@@ -260,6 +260,14 @@ protected:
 			ReplyCallback &&, uint64_t timeoutUs) override;
 
 	sprt::dispatch::Looper *_appLooper = nullptr;
+	sprt::mutex _postingMutex;
+	sprt::condition_variable _postingReady;
+	// Posts from other threads: accepted from the end of threadInit until the final poll of
+	// threadDispose, which runs everything accepted before it. _stopRequested remembers a stop()
+	// that came before the looper existed, and releases the posters waiting for it.
+	bool _acceptPosts = false;
+	bool _postsStopped = false;
+	bool _stopRequested = false;
 	Rc<sprt::dispatch::TimerHandle> _timer;
 	UpdateTime _time;
 	uint64_t _clock = 0;

@@ -1,0 +1,42 @@
+--- a/src/vulkan/wsi/wsi_common_tau.c
++++ b/src/vulkan/wsi/wsi_common_tau.c
+@@ -55,6 +55,7 @@
+    int (*open)(int, struct __sprt_tau_display_info *);
+    int (*query)(struct __sprt_tau_display_info *, unsigned long long *);
+    int (*buffer)(unsigned, void **, unsigned long *);
++   int (*copy)(unsigned, const void *, unsigned long, unsigned, unsigned, unsigned, unsigned);
+    int (*present)(unsigned, unsigned, unsigned, unsigned, unsigned);
+    void (*close)(void);
+    int (*p_open)(int, struct __sprt_tau_display2_info *);
+@@ -82,6 +83,7 @@
+    TAU_HOOK(open);
+    TAU_HOOK(query);
+    TAU_HOOK(buffer);
++   TAU_HOOK(copy);
+    TAU_HOOK(present);
+    TAU_HOOK(close);
+ #undef TAU_HOOK
+@@ -153,7 +155,7 @@
+       return true;
+    if (s->planes)
+       return false;
+-   if (!s->open || !s->query || !s->buffer || !s->present || !s->close)
++   if (!s->open || !s->query || !s->buffer || !s->copy || !s->present || !s->close)
+       return false;
+    if (s->query(&in, &generation) < 0) {
+       if (s->open(0, &in) < 0)
+@@ -839,10 +841,10 @@
+       goto lost;
+    }
+    if (x1 > x0 && y1 > y0) {
+-      for (uint32_t y = y0; y < y1; y++) {
+-         memcpy((uint8_t *)map + (size_t)y * screen->stride + (size_t)x0 * 4,
+-                (const uint8_t *)image->cpu_map + (size_t)y * image->row_pitches[0] + (size_t)x0 * 4,
+-                (size_t)(x1 - x0) * 4);
++      if (screen->copy(target, image->cpu_map, image->row_pitches[0],
++                       x0, y0, x1 - x0, y1 - y0) < 0) {
++         result = VK_ERROR_OUT_OF_DATE_KHR;
++         goto lost;
+       }
+    } else {
+       x0 = y0 = x1 = y1 = 0;

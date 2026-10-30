@@ -51,7 +51,12 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 // Keepalive cadence: ping the connected client this often, and terminate it if it has not answered
 // a pong within the timeout.
 static constexpr uint64_t kKeepalivePingIntervalUs = 1'000'000; // 1s
-static constexpr uint64_t kKeepalivePongTimeoutUs = 5'000'000; // 5s
+// Tau peers also expose endpoint revocation; the heartbeat allows slow image decoding on TCG.
+#if SPRT_TAU
+static constexpr uint64_t kKeepalivePongTimeoutUs = 120'000'000;
+#else
+static constexpr uint64_t kKeepalivePongTimeoutUs = 5'000'000;
+#endif
 
 // Rate limit on setup handshakes: every failure doubles a cool-off window during which connections
 // are refused, so key guessing costs wall-clock time. A successful handshake clears it.
@@ -183,7 +188,7 @@ bool ServerAppThread::sendAppRequest(NotNull<RemoteSession> session, const Value
 			toInt(remote::GlobalCode::AppRequest), val,
 			[cb = sp::move(cb)](const remote::MessageHeader &h, BytesView payload) {
 		auto st = getAppReplyStatus(h);
-		cb(st, sprt::status::isSuccessful(st) ? data::read<Interface>(payload) : Value());
+		cb(st, sprt::status::isSuccessful(st) ? remote::readMessagePayload<Interface>(payload) : Value());
 	}, timeoutUs, false);
 }
 
@@ -867,7 +872,7 @@ void ServerAppThread::pumpListener() {
 		// AppThread update timer (appUpdateInterval), not frame timing, so it ticks while idle.
 		if (!session->updateKeepalive(now, kKeepalivePingIntervalUs, kKeepalivePongTimeoutUs)) {
 			log::source().info("AppThread", "client ", session->getId(),
-					" keepalive timeout (no pong for 5s); terminating connection");
+					" keepalive timeout; terminating connection");
 			resetSession(session);
 		}
 	}
@@ -985,6 +990,15 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 		return static_cast<AppWindow *>(_sharedObjects->resolveWindow(windowId));
 	};
 
+	// A window this session owns or created: pixels, layers and control of a window only offered
+	// (an unclaimed server window) stay with the server.
+	auto resolveOwnedWindow = [&](uint64_t windowId) -> AppWindow * {
+		if (!_sharedObjects || !_sharedObjects->isWindowOwned(windowId, sessionId)) {
+			return nullptr;
+		}
+		return static_cast<AppWindow *>(_sharedObjects->resolveWindow(windowId));
+	};
+
 	if (remote::Domain(h.domain) == remote::Domain::Global) {
 		switch (remote::GlobalCode(h.code)) {
 		case remote::GlobalCode::Ping: {
@@ -1016,7 +1030,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			if (isRequest) {
 				reply = Rc<AppReply>::create(session, session, h.serial);
 			}
-			_appMessageHandler(session, data::read<Interface>(payload), sp::move(reply));
+			_appMessageHandler(session, remote::readMessagePayload<Interface>(payload), sp::move(reply));
 			return true;
 		}
 		default:
@@ -1030,13 +1044,17 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 		}
 	} else if (remote::Domain(h.domain) == remote::Domain::Window) {
 		switch (remote::WindowCode(h.code)) {
+		case remote::WindowCode::CompileResource: {
+			if (conn) { session->compileResource(h, payload); }
+			return true;
+		}
 		case remote::WindowCode::CompileQueue: {
 			// Replies go through `conn`, which is null once the client is gone (the message may
 			// still sit in the deferred queue).
 			if (!conn || !_sharedObjects) {
 				return true;
 			}
-			auto val = data::read<Interface>(payload);
+			auto val = remote::readMessagePayload<Interface>(payload);
 			auto queueId = uint64_t(val.getInteger());
 			auto q = _sharedObjects->isQueueVisible(queueId, sessionId)
 					? _sharedObjects->resolveQueue(queueId)
@@ -1067,7 +1085,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			// client -> server: one streamed input for one or more attachments [frameId, keys[],
 			// bytes, frameData?] - the last is the input's frame data cache operations
 			if (client) {
-				const auto val = data::read<Interface>(payload);
+				const auto val = remote::readMessagePayload<Interface>(payload);
 				Vector<StringView> keys;
 				for (auto &k : val.getValue(1).asArray()) { keys.emplace_back(k.getString()); }
 				client->handleFrameInput(uint64_t(val.getInteger(0)), keys, val.getBytes(2),
@@ -1078,7 +1096,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 		case remote::WindowCode::FrameCommit: {
 			// client -> server: all inputs for a frame were submitted
 			if (client) {
-				auto val = data::read<Interface>(payload);
+				auto val = remote::readMessagePayload<Interface>(payload);
 				client->handleFrameCommit(uint64_t(val.getInteger(0)));
 			}
 			return true;
@@ -1086,10 +1104,10 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 		case remote::WindowCode::CompileMaterials: {
 			// client -> server: compile a runtime (font atlas) material the headless client can't
 			// compile.
-			// Compiled into the window's queue, so only for a window this session can see.
+			// Compiled into the window's queue, so only for a window this session owns.
 			if (client
-					&& resolveWindow(
-							uint64_t(data::read<Interface>(payload).getInteger("window")))) {
+					&& resolveOwnedWindow(
+							uint64_t(remote::readMessagePayload<Interface>(payload).getInteger("window")))) {
 				client->handleCompileMaterials(payload);
 			}
 			return true;
@@ -1101,7 +1119,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			if (!conn) {
 				return true;
 			}
-			auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
+			auto windowId = uint64_t(remote::readMessagePayload<Interface>(payload).getInteger());
 			if (!takeoverSharedWindow(windowId, session)) {
 				conn->sendError(remote::Domain::Window,
 						toInt(remote::WindowError::InvalidObjecthandle), h.serial);
@@ -1123,7 +1141,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 						h.serial);
 				return true;
 			}
-			auto val = data::read<Interface>(payload);
+			auto val = remote::readMessagePayload<Interface>(payload);
 			if (!val.isDictionary()) {
 				conn->sendError(remote::Domain::Window,
 						toInt(remote::WindowError::SerializationFailed), h.serial);
@@ -1147,7 +1165,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			// client -> server: the client's scene wants the next frame; schedule it on the window's
 			// PresentationEngine. The answer is the frame itself, or FrameDeclined: the client
 			// sends nothing more until one of them arrives.
-			auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
+			auto windowId = uint64_t(remote::readMessagePayload<Interface>(payload).getInteger());
 			auto w = resolveWindow(windowId);
 			session->countFrameRequest(w == nullptr);
 			if (w) {
@@ -1164,9 +1182,9 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			// Domain::Data as a Screenshot transfer; `reason` references this request so the client
 			// can match it. No reply.
 			if (_sharedObjects) {
-				auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
+				auto windowId = uint64_t(remote::readMessagePayload<Interface>(payload).getInteger());
 				auto reqSerial = h.serial;
-				if (auto w = resolveWindow(windowId)) {
+				if (auto w = resolveOwnedWindow(windowId)) {
 					w->captureScreenshot(
 							[this, session = Rc<RemoteSession>(session), reqSerial,
 									windowId](const core::ImageInfoData &info, BytesView pixels) {
@@ -1245,7 +1263,7 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 						" flags=", uint32_t(toInt(layer.flags)));
 			}
 
-			if (auto w = resolveWindow(windowId)) {
+			if (auto w = resolveOwnedWindow(windowId)) {
 				log::source().info("AppThread", "UpdateLayers: applying ", layers.size(),
 						" layer(s) to window ", windowId);
 				w->updateLayers(sp::move(layers));
@@ -1260,8 +1278,8 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			if (!_sharedObjects) {
 				return true;
 			}
-			auto val = data::read<Interface>(payload);
-			auto w = resolveWindow(uint64_t(val.getInteger("w")));
+			auto val = remote::readMessagePayload<Interface>(payload);
+			auto w = resolveOwnedWindow(uint64_t(val.getInteger("w")));
 			if (!w) {
 				return true;
 			}
@@ -1281,9 +1299,9 @@ bool ServerAppThread::dispatchSessionMessage(RemoteSession *session, const remot
 			if (!conn || !_sharedObjects) {
 				return true;
 			}
-			auto val = data::read<Interface>(payload);
+			auto val = remote::readMessagePayload<Interface>(payload);
 			auto windowId = uint64_t(val.getInteger("w"));
-			auto w = resolveWindow(windowId);
+			auto w = resolveOwnedWindow(windowId);
 			if (!w) {
 				conn->sendError(remote::Domain::Window,
 						toInt(remote::WindowError::InvalidObjecthandle), h.serial);
@@ -1645,7 +1663,7 @@ void ServerAppThread::handleClientInfo(RemoteSession *session, const remote::Mes
 			return;
 		}
 	} else {
-		auto info = remote::deserializePeerInfo(data::read<Interface>(payload));
+		auto info = remote::deserializePeerInfo(remote::readMessagePayload<Interface>(payload));
 		// A compliant client refuses a mismatch itself (error branch above); this catches a peer
 		// that answered anyway.
 		if (!_localInfo.isWireCompatible(info)) {
@@ -1769,6 +1787,7 @@ void ServerAppThread::loadExtensions() {
 }
 
 void ServerAppThread::finalizeExtensions() {
+	stopListening();
 	AppThread::finalizeExtensions();
 
 	// Font endpoints are not registered extensions, so release them here while the gapi device is

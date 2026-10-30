@@ -41,7 +41,15 @@ XL_DECLARE_EVENT_CLASS(AppThread, onThemeInfo)
 
 AppThread::~AppThread() { }
 
-void AppThread::run() { Thread::run(); }
+void AppThread::run() {
+	{
+		sprt::unique_lock lock(_postingMutex);
+		_acceptPosts = false;
+		_postsStopped = false;
+		_stopRequested = false;
+	}
+	Thread::run();
+}
 
 void AppThread::threadInit() {
 	// Bidirectional block-transfer manager (Domain::Data); both subclasses share it.
@@ -49,7 +57,7 @@ void AppThread::threadInit() {
 
 	_thisThreadId = getCurrentThreadId();
 
-	_appLooper = sprt::dispatch::Looper::acquire(sprt::dispatch::LooperInfo{
+	auto appLooper = sprt::dispatch::Looper::acquire(sprt::dispatch::LooperInfo{
 		.name = StringView("App"),
 		.workersCount = getContextInfo()->appThreadsCount,
 
@@ -60,6 +68,11 @@ void AppThread::threadInit() {
 		.engineMask = sprt::dispatch::QueueEngine::Any & ~sprt::dispatch::QueueEngine::ALooper,
 #endif
 	});
+
+	{
+		sprt::unique_lock lock(_postingMutex);
+		_appLooper = appLooper;
+	}
 
 	// App-event heartbeat: an infinite Looper timer at appUpdateInterval (default 1s, not the frame
 	// interval). It drives performAppUpdate regardless of frames, which pumps the connection and
@@ -88,6 +101,14 @@ void AppThread::threadInit() {
 	performUpdate(true);
 
 	Thread::threadInit();
+	{
+		sprt::unique_lock lock(_postingMutex);
+		_acceptPosts = true;
+		if (_stopRequested) {
+			_appLooper->wakeup(sprt::dispatch::WakeupFlags::Graceful);
+		}
+	}
+	_postingReady.notify_all();
 }
 
 void AppThread::threadDispose() {
@@ -98,8 +119,19 @@ void AppThread::threadDispose() {
 
 	finalizeExtensions();
 
+	// What other threads posted until now - a GL thread's completions among them - runs in the
+	// final poll; a post after it would reach no one, so it is refused from here on.
+	{
+		sprt::unique_lock lock(_postingMutex);
+		_postsStopped = true;
+	}
+	_postingReady.notify_all();
+
 	_appLooper->poll();
-	_appLooper = nullptr;
+	{
+		sprt::unique_lock lock(_postingMutex);
+		_appLooper = nullptr;
+	}
 
 	Thread::threadDispose();
 }
@@ -113,10 +145,15 @@ bool AppThread::worker() {
 }
 
 void AppThread::stop() {
+	sprt::unique_lock lock(_postingMutex);
+	_stopRequested = true;
+	_postingReady.notify_all();
 	Thread::stop();
 
-	_appLooper->wakeup(
-			sprt::dispatch::WakeupFlags::Graceful | sprt::dispatch::WakeupFlags::SuspendThreads);
+	if (_appLooper) {
+		_appLooper->wakeup(
+				sprt::dispatch::WakeupFlags::Graceful | sprt::dispatch::WakeupFlags::SuspendThreads);
+	}
 }
 
 void AppThread::wakeup(Function<void()> &&fn) {
@@ -152,22 +189,34 @@ void AppThread::handleMatrialsUpdated(NotNull<core::MaterialSet> set) { }
 
 void AppThread::performOnAppThread(Function<void()> &&func, Ref *target, bool onNextFrame,
 		StringView tag) {
-	if (isOnThisThread() && !onNextFrame) {
-		func();
+	if (isOnThisThread()) {
+		if (!onNextFrame) {
+			func();
+		} else if (_appLooper) {
+			_appLooper->performOnThread(sp::move(func), target, false, tag);
+		}
 	} else {
-		waitRunning();
-		if (_appLooper) {
+		sprt::unique_lock lock(_postingMutex);
+		_postingReady.wait(lock,
+				[this] { return _acceptPosts || _postsStopped || _stopRequested; });
+		if (_acceptPosts && !_postsStopped && _appLooper) {
 			_appLooper->performOnThread(sp::move(func), target, !onNextFrame, tag);
 		}
 	}
 }
 
 void AppThread::performOnAppThread(Rc<Task> &&task, bool onNextFrame) {
-	if (isOnThisThread() && !onNextFrame) {
-		task->handleCompleted();
+	if (isOnThisThread()) {
+		if (!onNextFrame) {
+			task->handleCompleted();
+		} else if (_appLooper) {
+			_appLooper->performOnThread(sp::move(task));
+		}
 	} else {
-		waitRunning();
-		if (_appLooper) {
+		sprt::unique_lock lock(_postingMutex);
+		_postingReady.wait(lock,
+				[this] { return _acceptPosts || _postsStopped || _stopRequested; });
+		if (_acceptPosts && !_postsStopped && _appLooper) {
 			_appLooper->performOnThread(sp::move(task));
 		}
 	}

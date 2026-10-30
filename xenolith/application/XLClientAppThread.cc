@@ -45,7 +45,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 static constexpr uint32_t kClientDependencyEventMask = 0x8000'0000u;
 
 // Keepalive: disconnect if the server has not pinged us within this window (it pings ~1/s).
-static constexpr uint64_t kKeepalivePingTimeoutUs = 5'000'000; // 5s
+#if SPRT_TAU
+static constexpr uint64_t kKeepalivePingTimeoutUs = 120'000'000;
+#else
+static constexpr uint64_t kKeepalivePingTimeoutUs = 5'000'000;
+#endif
 
 /* Creating a window is a hop to the server's context thread plus the window system's own work; it
 is NOT the window becoming drawable (that needs a presented frame and a compiled queue, which is why
@@ -220,7 +224,7 @@ bool ClientAppThread::sendAppRequest(const Value &val, Function<void(Status, Val
 	}
 	waitForReply(serial, [cb = sp::move(cb)](const remote::MessageHeader &h, BytesView payload) {
 		auto st = getAppReplyStatus(h);
-		cb(st, sprt::status::isSuccessful(st) ? data::read<Interface>(payload) : Value());
+		cb(st, sprt::status::isSuccessful(st) ? remote::readMessagePayload<Interface>(payload) : Value());
 	}, timeoutUs, false);
 	return true;
 }
@@ -277,7 +281,7 @@ void ClientAppThread::createWindow(Rc<sprt::window::WindowInfo> &&info,
 			Status st = Status::ErrorNotImplemented;
 			String id;
 			if (!remote::isError(h)) {
-				auto val = data::read<Interface>(payload);
+				auto val = remote::readMessagePayload<Interface>(payload);
 				st = Status(int32_t(val.getInteger("st")));
 				id = val.getString("id");
 				rec->grantedId = id;
@@ -472,7 +476,7 @@ void ClientAppThread::pumpConnection() {
 	});
 
 	// A dispatcher can end the session, but must not tear the connection down inside the poll.
-	bool disconnect = _disconnectRequested;
+	bool disconnect = _disconnectRequested || _connection->isClosed();
 
 	// Request watchdog: if the server left a request unanswered past its reply deadline, the waiter
 	// was already failed locally; treat the server as gone and end the client.
@@ -489,7 +493,7 @@ void ClientAppThread::pumpConnection() {
 			&& sp::platform::clock(ClockType::Monotonic) - _lastPingTime
 					>= kKeepalivePingTimeoutUs) {
 		log::source().info("ClientAppThread",
-				"server keepalive timeout (no ping for 5s); disconnecting");
+				"server keepalive timeout; disconnecting");
 		disconnect = true;
 	}
 
@@ -608,7 +612,7 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			//log::source().info("ClientAppThread", "received pong (serial ", h.serial, ")");
 			return true;
 		case remote::GlobalCode::SharedObjectsAnnounce:
-			handleAnnounce(data::read<Interface>(payload));
+			handleAnnounce(remote::readMessagePayload<Interface>(payload));
 			return true;
 		case remote::GlobalCode::ServerInfo: handleServerInfo(h, payload); return true;
 		case remote::GlobalCode::AppRequest:
@@ -629,7 +633,7 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			if (isRequest) {
 				reply = Rc<AppReply>::create(this, this, h.serial);
 			}
-			_appMessageHandler(data::read<Interface>(payload), sp::move(reply));
+			_appMessageHandler(remote::readMessagePayload<Interface>(payload), sp::move(reply));
 			return true;
 		}
 		default:
@@ -675,7 +679,7 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 				return true;
 			}
 
-			auto val = data::read<Interface>(payload);
+			auto val = remote::readMessagePayload<Interface>(payload);
 			auto frameId = uint64_t(val.getInteger(0));
 			auto windowId = uint64_t(val.getInteger(1));
 			auto constraints = remote::deserializeFrameConstraints(val.getValue(2));
@@ -719,7 +723,7 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 		case remote::WindowCode::TextInputState: {
 			// server -> client: [windowId, TextInputState]. The processor's echo, on its way to the
 			// focused widget through the Director's TextInputManager.
-			auto val = data::read<Interface>(payload);
+			auto val = remote::readMessagePayload<Interface>(payload);
 			auto windowId = uint64_t(val.getInteger(0));
 			auto wIt = _windows.find(windowId);
 			if (wIt == _windows.end()) {
@@ -731,7 +735,7 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			return true;
 		}
 		case remote::WindowCode::FrameDeclined: {
-			auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
+			auto windowId = uint64_t(remote::readMessagePayload<Interface>(payload).getInteger());
 			auto wIt = _windows.find(windowId);
 			if (wIt != _windows.end()) {
 				wIt->second->handleFrameDeclined();
@@ -741,7 +745,7 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 		case remote::WindowCode::FrameDataReset: {
 			// server -> client: [epoch]. The server dropped what it held of our frame data; the
 			// inputs already in flight are declined there, and every later one starts over.
-			auto epoch = uint32_t(data::read<Interface>(payload).getInteger(0));
+			auto epoch = uint32_t(remote::readMessagePayload<Interface>(payload).getInteger(0));
 			if (_frameData) {
 				log::source().warn("ClientAppThread",
 						"the server reset the frame data cache (epoch ", epoch, ")");
@@ -752,7 +756,7 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 		case remote::WindowCode::WindowGeometryChanged: {
 			// server -> client: [windowId, WindowGeometry]. Updates the window's mirror and lets the
 			// scene hear about the move.
-			auto val = data::read<Interface>(payload);
+			auto val = remote::readMessagePayload<Interface>(payload);
 			auto windowId = uint64_t(val.getInteger(0));
 			auto wIt = _windows.find(windowId);
 			if (wIt == _windows.end()) {
@@ -876,7 +880,7 @@ remote::PeerInfo ClientAppThread::makeClientInfo() const {
 }
 
 void ClientAppThread::handleServerInfo(const remote::MessageHeader &h, BytesView payload) {
-	auto info = remote::deserializePeerInfo(data::read<Interface>(payload));
+	auto info = remote::deserializePeerInfo(remote::readMessagePayload<Interface>(payload));
 	auto local = makeClientInfo();
 
 	if (!local.isWireCompatible(info)) {

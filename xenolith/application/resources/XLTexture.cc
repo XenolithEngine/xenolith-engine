@@ -74,8 +74,9 @@ StringView Texture::getName() const {
 
 uint64_t Texture::getIndex() const {
 	if (_dynamic) {
-		return _dynamic->getInstance()->data.image->getIndex();
-	} else if (_data->image) {
+		auto instance = _dynamic->getInstance();
+		return instance && instance->data.image ? instance->data.image->getIndex() : 0;
+	} else if (_data && _data->image) {
 		return _data->image->getIndex();
 	}
 	return 0;
@@ -180,7 +181,11 @@ Extent3 Texture::getExtent() const {
 }
 
 bool Texture::isLoaded() const {
-	return _dynamic || (_temporary && _temporary->isLoaded() && _data->image) || _data->image;
+	if (_dynamic) {
+		auto instance = _dynamic->getInstance();
+		return instance && instance->data.image;
+	}
+	return _data && _data->image;
 }
 
 core::MaterialImage Texture::getMaterialImage() const {

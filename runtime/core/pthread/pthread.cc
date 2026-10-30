@@ -25,8 +25,8 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_time.h>
 #include <sprt/c/__sprt_stdlib.h>
 
-#if SPRT_WASM || SPRT_EMBOX_ANY
-extern "C" void __sprt_malloc_thread_attach(void) __SPRT_NOEXCEPT;
+#if SPRT_WASM || SPRT_EMBOX_ANY || SPRT_TAU
+extern "C" bool __sprt_malloc_thread_attach(void) __SPRT_NOEXCEPT;
 #endif
 #include <sprt/c/__sprt_sched.h>
 
@@ -37,6 +37,8 @@ extern "C" void __sprt_malloc_thread_attach(void) __SPRT_NOEXCEPT;
 // the umbrella header would forward to a system one that -nostdinc removed. The
 // backend is single-threaded by construction -- see its header comment (L3a).
 #include "pthread_native_embox_user.cc"
+#elif SPRT_TAU
+#include "pthread_native_tau.cc"
 #elif !defined(SPRT_WINDOWS)
 #include <pthread.h>
 
@@ -61,6 +63,7 @@ __thread_pool *__thread_pool::get() { return &s_handlePool; }
 __thread_pool::__thread_pool() {
 	activeThreads.reserve(ThreadTableReserve);
 	activeThreadsByTid.reserve(ThreadTableReserve);
+	keys.reserve(ThreadTableReserve);
 
 	// Acquire OS schedulers limits on startup to use it with attr_t
 	fifoPrioMin = __sprt_sched_get_priority_min(__SPRT_SCHED_FIFO);
@@ -150,6 +153,12 @@ static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg) {
 	tl_self.thread = thread;
 
 	if (!thread->registerThread()) {
+		// The pool's key destructors run here: a heap the allocator keeps per thread is released
+		// only by its own thread.
+		if (thread->threadMemPool) {
+			memory::pool::destroy(thread->threadMemPool);
+			thread->threadMemPool = nullptr;
+		}
 		tl_self.thread = nullptr;
 
 		unique_lock globalLock(s_handlePool.mutex);
@@ -235,6 +244,9 @@ static thread_t *__allocateThread(const attr_t *attr) {
 	} else {
 		lock.unlock();
 		handle = (thread_t *)__sprt_local_alloc(sizeof(thread_t));
+		if (!handle) {
+			return nullptr;
+		}
 		handle->next = nullptr;
 	}
 
@@ -307,6 +319,10 @@ static bool attachExternalThread(thread_t *thread) {
 
 	memory::allocator::initialize(&thread->threadAlloc);
 	thread->threadMemPool = memory::pool::create(&thread->threadAlloc);
+	if (!thread->threadMemPool) {
+		memory::allocator::terminate(&thread->threadAlloc);
+		return false;
+	}
 
 	// The thread is this thread's from here on, as a thread the runtime starts is
 	// found in activeThreads while it registers: registerThread() can come back to
@@ -372,6 +388,9 @@ thread_t *thread_t::self() {
 
 		// it's an external thread, create pthread_t handle
 		auto nthread = __allocateThread(nullptr);
+		if (!nthread) {
+			return nullptr;
+		}
 		nthread->nativeId = nativeId;
 		if (!attachExternalThread(nthread)) {
 			__deallocateThread(nthread);
@@ -477,20 +496,16 @@ bool thread_t::registerThread() {
 				}
 			} while (!empty && --iter > 0);
 
-			for (auto &it : *specs) {
-				// spec created only via increment for refcount, decrement it
-				if (_atomic::fetchSub(&it.second.data->refcount, uint32_t(1)) == 1) {
-					unique_lock lock(s_handlePool.mutex);
-					s_handlePool.keys.erase(it.first);
-				}
-			}
+			for (auto &it : *specs) { __releaseKey(it.second.data); }
 
 			return Status::Ok;
 		});
 	}, threadMemPool);
 
-#if SPRT_WASM || SPRT_EMBOX_ANY
-	__sprt_malloc_thread_attach();
+#if SPRT_WASM || SPRT_EMBOX_ANY || SPRT_TAU
+	if (!__sprt_malloc_thread_attach()) {
+		return false;
+	}
 #endif
 
 	// Make this thread discoverable by kernel tid for the PI boost path. Done last so
@@ -591,6 +606,9 @@ int thread_t::create(thread_t **__SPRT_RESTRICT outthread, const attr_t *__SPRT_
 		void *(*cb)(thread_base_t *), void *__SPRT_RESTRICT arg,
 		const Callback<void(uint8_t *st, size_t stSize)> &dataCallback) {
 	auto thread = __allocateThread(attr);
+	if (!thread) {
+		return EAGAIN;
+	}
 	thread->cb = cb;
 	thread->arg = arg;
 
@@ -602,6 +620,11 @@ int thread_t::create(thread_t **__SPRT_RESTRICT outthread, const attr_t *__SPRT_
 	// We need to provide allocator and pool before it
 	memory::allocator::initialize(&thread->threadAlloc);
 	thread->threadMemPool = memory::pool::create(&thread->threadAlloc);
+	if (!thread->threadMemPool) {
+		memory::allocator::terminate(&thread->threadAlloc);
+		__deallocateThread(thread);
+		return EAGAIN;
+	}
 
 	auto ret =
 			native::__createThread(thread, attr ? attr : &s_handlePool.defaultAttr, &s_handlePool);
@@ -641,12 +664,14 @@ int thread_t::create(thread_t **__SPRT_RESTRICT outthread, const attr_t *__SPRT_
 		}
 		memory::allocator::terminate(&thread->threadAlloc);
 		if (thread->handle) {
+			// Under the pool's mutex, as on every other path: the native layers keep their
+			// lists of threads still to reap under it.
+			unique_lock lock(s_handlePool.mutex);
 			native::__closeNativeHandle(thread->handle);
 			thread->handle = nullptr;
 		}
 		__deallocateThread(thread);
-		// TODO: find a better value?
-		return EINVAL;
+		return EAGAIN;
 	}
 
 	thread->state.set_and_signal(thread_t::StateExternalInit);

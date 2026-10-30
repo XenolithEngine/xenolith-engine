@@ -67,6 +67,7 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"libc_emutls_threads", &sprt::performEmutlsThreadsTest},
 	{"libc_sched_affinity", &sprt::performSchedAffinityTest},
 	{"libc_flock", &sprt::performFlockTest},
+	{"libc_plock_threads", &sprt::performPlockThreadsTest},
 	{"libc_at", &sprt::performAtFunctionsTest},
 	{"libc_setjmp", &sprt::performSetjmpTest},
 	{"libc_locale", &sprt::performLocaleTest},

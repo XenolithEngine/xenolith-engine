@@ -36,6 +36,8 @@ THE SOFTWARE.
 #include "wasm/unistd.cc"
 #elif SPRT_EMBOX_USER
 #include "embox_user/unistd.cc"
+#elif SPRT_TAU
+#include "tau/unistd.cc"
 #endif
 
 __SPRT_C_FUNC char *__strchrnul(const char *s, int c);

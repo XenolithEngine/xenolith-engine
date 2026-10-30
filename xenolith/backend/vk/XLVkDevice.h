@@ -134,6 +134,8 @@ public:
 	bool hasDynamicIndexedBuffers() const;
 	bool hasBufferDeviceAddresses() const;
 	bool hasExternalFences() const;
+	// Memory exports as a dma-buf (DeviceMemory::exportDmaBuf).
+	bool hasExternalDmaBuf() const;
 	bool isPortabilityMode() const;
 
 	virtual void waitIdle() const override;

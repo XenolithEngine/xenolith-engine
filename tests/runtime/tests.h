@@ -46,6 +46,7 @@ void performMallocThreadsTest();
 void performEmutlsThreadsTest();
 void performSchedAffinityTest();
 void performFlockTest();
+void performPlockThreadsTest();
 void performAtFunctionsTest();
 void performSetjmpTest();
 void performLocaleTest();

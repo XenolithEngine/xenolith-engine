@@ -39,6 +39,7 @@
 #include "render/DamageLayout.h"
 #include "render/FrameCaptureLayout.h"
 #include "render/GradientLayout.h"
+#include "render/ResourceUploadLayout.h"
 #include "render/LabelFillLayout.h"
 #include "layout/FitContentLayout.h"
 #include "layout/FlexboxLayout.h"
@@ -622,6 +623,11 @@ static const TestInfo s_renderTests[] = {
 				   "actually is. Drive it over the inspector: canvas.state, canvas.set-view, "
 				   "canvas.zoom-at, canvas.wheel, canvas.fit, canvas.set-clipped, canvas.limits."),
 		TestRegistry_make<CanvasViewLayout>, true},
+
+	TestInfo{StringView("resource-upload"), StringView("XL_RESOURCE_UPLOAD_TEST"),
+		StringView("Sampled image upload"),
+		StringView("A 128x128 image with four distinct colour quadrants, compiled by the render server."),
+		TestRegistry_make<ResourceUploadLayout>, true},
 
 	TestInfo{StringView("damage"), StringView("XL_DAMAGE_TEST"), StringView("Damage tracking"),
 		StringView("A red square jumps in discrete steps beside a static grey one. Exactly one red "

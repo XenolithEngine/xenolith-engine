@@ -171,9 +171,10 @@ struct __thread_slot {
 struct __thread_pool {
 	static __thread_pool *get();
 
-	// Initial capacity reserved for the per-thread lookup tables (activeThreads /
-	// activeThreadsByTid) at construction, so inserts done under `mutex` from a
-	// newly-spawned thread's registerThread() stay allocation-free (see the ctor).
+	// Initial capacity reserved for the lookup tables (activeThreads, activeThreadsByTid, keys)
+	// at construction, so inserts done under `mutex` from a newly-spawned thread's
+	// registerThread(), or for the key the allocator makes when that thread's heap starts, stay
+	// allocation-free (see the ctor).
 	static constexpr uint32_t ThreadTableReserve = 128;
 
 	int fifoPrioMin = 0;
@@ -184,7 +185,12 @@ struct __thread_pool {
 	int otherPrioMax = 0;
 	atomic<int> concurency = 0;
 	atomic<uint32_t> nkeys = 1;
-	sprt::__malloc_unordered_map<key_t, __key_data> keys;
+	sprt::__malloc_unordered_map<key_t, __key_data *> keys;
+
+	// The first keys' data, a slot free while its refcount is 0: a key made while memory runs out
+	// (the allocator's, as the first thread's heap starts) needs none.
+	static constexpr uint32_t KeySlots = 64;
+	__key_data keySlots[KeySlots];
 
 	sprt::__malloc_unordered_map<__sprt_native_thread_id_t, thread_t *> activeThreads;
 
@@ -222,6 +228,9 @@ SPRT_UNUSED static void __detachAndDeallocateThread(thread_t *thread,
 		unique_lock<qmutex> *externalLock);
 
 SPRT_UNUSED static void __deallocateThread(thread_t *handle);
+
+// Drops a reference to a key's data; the last one frees it.
+SPRT_UNUSED static void __releaseKey(__key_data *data);
 
 SPRT_UNUSED static int __pthread_join(thread_t *thread, void **ret, timeout_t timeout,
 		bool tryjoin);

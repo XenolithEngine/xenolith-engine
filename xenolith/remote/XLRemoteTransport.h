@@ -111,7 +111,9 @@ public:
 	// --- integration with the host looper ---
 
 	// The handle to wait on, when the transport declares Pollable; invalid otherwise.
-	virtual sprt::dispatch::NativeHandle getPollHandle() const { return sprt::dispatch::NativeHandle(-1); }
+	virtual sprt::dispatch::NativeHandle getPollHandle() const {
+		return sprt::dispatch::NativeHandle(-1);
+	}
 
 	// For a transport with no pollable handle: the word to wait on with Looper::waitOnAddress.
 	// Asking arms wakeups, so the peer wakes a waiter on every change from then on. Empty where the
@@ -147,9 +149,14 @@ struct SP_PUBLIC TransportClientConfig {
 	// that authenticate by other means.
 	Bytes expectedFingerprint;
 
-	// Ring capacities of the block a `shm:` client creates; powers of two.
+// Ring capacities of the block a `shm:` client creates; powers of two.
+#if SPRT_TAU
+	uint32_t shmControlCapacity = 64u << 10;
+	uint32_t shmBulkCapacity = 512u << 10;
+#else
 	uint32_t shmControlCapacity = 1u << 20;
 	uint32_t shmBulkCapacity = 16u << 20;
+#endif
 };
 
 // A bound endpoint accepting connections.

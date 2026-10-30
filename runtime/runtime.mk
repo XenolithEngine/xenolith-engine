@@ -50,6 +50,13 @@ ifeq ($(SPRT_SHARED),1)
 MODULE_RUNTIME_COMMON_CFLAGS += -DSPRT_BUILD_SHARED_RUNTIME
 endif
 
+# A Tau module exports its runtime to the shared libraries root links into it
+# (SYS-A-DynLink-1): what a library references must not be hidden. A module without
+# libraries has no dynamic symbols at all.
+ifeq ($(TARGET_SYSTEM),TauUser)
+MODULE_RUNTIME_COMMON_CFLAGS += -fvisibility=default
+endif
+
 # Which collation tailorings this build carries, as SPRT_COLLATION=<set>. Every
 # group is on unless this says otherwise: an application that sorts a list for a
 # person to read should get the right order for their language by default, and a
@@ -330,6 +337,30 @@ MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/lib/clang/lib/embox_user/libclang_rt.bu
 MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libc++abi.a
 MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libunwind.a
 MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
+endif
+
+
+ifeq ($(TARGET_SYSTEM),TauUser)
+# Tau EL0 modules: the same freestanding shape as EmboxUser -- our libc, our STL
+# headers, toolchain runtimes pulled by name. The Tau kernel target links none of
+# this; it uses the sprt header subset only.
+MODULE_RUNTIME_DEPENDS_ON += runtime_libc_impl
+MODULE_RUNTIME_PRIVATE_INCLUDES += $(TARGET_SYSROOT)/usr/include
+MODULE_RUNTIME_INCLUDES_OBJS += \
+	$(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	$(RUNTIME_MODULE_DIR)/libcxx/include \
+	$(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/lib/clang/lib/tau/libclang_rt.builtins-$(TARGET_ARCH).a
+MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
+ifeq ($(SPRT_SHARED),1)
+# libsprt.so (RT-A-SharedRuntime-1) carries the whole C++ ABI and unwinder for its modules; its
+# own calls stay inside it.
+MODULE_RUNTIME_GENERAL_LDFLAGS += -Wl,--whole-archive $(TARGET_SYSROOT)/usr/lib/libc++abi.a \
+	$(TARGET_SYSROOT)/usr/lib/libunwind.a -Wl,--no-whole-archive -Wl,-soname,libsprt.so -Wl,-Bsymbolic-functions
+else
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libc++abi.a
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libunwind.a
+endif
 endif
 
 

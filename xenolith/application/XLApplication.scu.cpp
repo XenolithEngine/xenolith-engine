@@ -40,6 +40,7 @@
 #include "XLRemoteRenderClient.cc"
 #include "XLRemoteWindow.cc"
 #include "XLRemoteBlockTransfer.cc"
+#include "XLRemoteResource.cc"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 

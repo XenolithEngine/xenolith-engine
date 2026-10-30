@@ -721,8 +721,8 @@ bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remote
 	}
 
 	auto cmdCount = r.u32();
+	commands = r.ok ? Rc<CommandList>::create(Rc<sprt::PoolRef>::alloc()) : nullptr;
 	if (cmdCount > 0 && r.ok) {
-		commands = Rc<CommandList>::create(Rc<sprt::PoolRef>::alloc());
 		for (uint32_t i = 0; i < cmdCount && r.ok; ++i) {
 			auto material = r.u32();
 			auto state = r.u32();

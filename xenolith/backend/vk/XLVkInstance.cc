@@ -281,32 +281,43 @@ Rc<Device> Instance::makeDevice(const core::LoopInfo &info) const {
 	};
 
 	if (info.deviceIdx == core::InstanceDefaultDevice) {
-		for (auto &it : _devices) {
-			it.once([&] { getDeviceInfo(it.info, it.info.device); });
+		// A rasterizer of this process (lavapipe, SwiftShader) after any other device: a virtual
+		// GPU is the host's even when the host draws on its CPU (Venus over lavapipe).
+		for (bool local : {false, true}) {
+			for (auto &it : _devices) {
+				it.once([&] { getDeviceInfo(it.info, it.info.device); });
 
-			if (!isDeviceSupported(it.info)) {
-				log::source().warn("vk::Instance", "Device rejected: device is not supported");
-				continue;
-			}
+				auto driver = it.info.properties.deviceDriver.driverID;
+				if ((driver == VK_DRIVER_ID_MESA_LLVMPIPE
+							|| driver == VK_DRIVER_ID_GOOGLE_SWIFTSHADER)
+						!= local) {
+					continue;
+				}
 
-			auto requiredExtensions = getDeviceExtensions(it.info);
-			if (!isExtensionsSupported(it.info, requiredExtensions)) {
-				log::source().warn("vk::Instance",
-						"Device rejected: required extensions is not available");
-				continue;
-			}
+				if (!isDeviceSupported(it.info)) {
+					log::source().warn("vk::Instance", "Device rejected: device is not supported");
+					continue;
+				}
 
-			DeviceInfo::Features targetFeatures;
-			if (!buildFeaturesList(it.info, targetFeatures)) {
-				log::source().warn("vk::Instance",
-						"Device rejected: required features is not available");
-				continue;
-			}
+				auto requiredExtensions = getDeviceExtensions(it.info);
+				if (!isExtensionsSupported(it.info, requiredExtensions)) {
+					log::source().warn("vk::Instance",
+							"Device rejected: required extensions is not available");
+					continue;
+				}
 
-			if (it.info.features.canEnable(targetFeatures,
-						it.info.properties.device10.properties.apiVersion)) {
-				return Rc<vk::Device>::create(this, DeviceInfo(it.info), targetFeatures,
-						requiredExtensions);
+				DeviceInfo::Features targetFeatures;
+				if (!buildFeaturesList(it.info, targetFeatures)) {
+					log::source().warn("vk::Instance",
+							"Device rejected: required features is not available");
+					continue;
+				}
+
+				if (it.info.features.canEnable(targetFeatures,
+							it.info.properties.device10.properties.apiVersion)) {
+					return Rc<vk::Device>::create(this, DeviceInfo(it.info), targetFeatures,
+							requiredExtensions);
+				}
 			}
 		}
 	} else if (info.deviceIdx < _devices.size()) {
@@ -691,6 +702,10 @@ void Instance::getDeviceProperties(const VkPhysicalDevice &device,
 	if (flags.test(toInt(OptionalDeviceExtension::DescriptorIndexing))) {
 		properties.deviceDescriptorIndexing.pNext = next;
 		next = &properties.deviceDescriptorIndexing;
+	}
+	if (api >= VK_API_VERSION_1_2) {
+		properties.deviceDriver.pNext = next;
+		next = &properties.deviceDriver;
 	}
 
 	properties.device10.pNext = next;

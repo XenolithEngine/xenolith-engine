@@ -31,6 +31,7 @@
 #include "XLRemoteShmProviderLocal.cc"
 #include "XLRemoteShmProviderLinux.cc"
 #include "XLRemoteShmProviderEmbox.cc"
+#include "XLRemoteShmProviderTau.cc"
 #include "XLRemoteTransportMem.cc"
 #include "XLRemoteTransportQuic.cc"
 #include "XLRemoteTransportUnix.cc"

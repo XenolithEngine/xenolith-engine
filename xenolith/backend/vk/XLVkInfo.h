@@ -144,6 +144,8 @@ struct SP_PUBLIC DeviceInfo {
 			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT, nullptr};
 		VkPhysicalDeviceMaintenance3PropertiesKHR deviceMaintenance3 = {
 			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES_KHR, nullptr};
+		VkPhysicalDeviceDriverProperties deviceDriver = {
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES, nullptr};
 		VkPhysicalDeviceProperties2KHR device10 = {
 			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR, nullptr};
 
