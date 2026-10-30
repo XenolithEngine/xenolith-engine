@@ -1,0 +1,1053 @@
+Subject: [PATCH] broadcom: v3dv over dev.gpu on Tau
+
+--- a/include/drm-uapi/drm.h
++++ b/include/drm-uapi/drm.h
+@@ -1033,10 +1033,17 @@
+ #endif
+ 
+ #define DRM_IOCTL_BASE			'd'
++#if defined(__TAU__)
++#define DRM_IO(nr) ((DRM_IOCTL_BASE << 8) | (nr))
++#define DRM_IOR(nr,type) (DRM_IO(nr) | (sizeof(type) << 16) | 0x80000000u)
++#define DRM_IOW(nr,type) (DRM_IO(nr) | (sizeof(type) << 16) | 0x40000000u)
++#define DRM_IOWR(nr,type) (DRM_IO(nr) | (sizeof(type) << 16) | 0xc0000000u)
++#else
+ #define DRM_IO(nr)			_IO(DRM_IOCTL_BASE,nr)
+ #define DRM_IOR(nr,type)		_IOR(DRM_IOCTL_BASE,nr,type)
+ #define DRM_IOW(nr,type)		_IOW(DRM_IOCTL_BASE,nr,type)
+ #define DRM_IOWR(nr,type)		_IOWR(DRM_IOCTL_BASE,nr,type)
++#endif
+ 
+ #define DRM_IOCTL_VERSION		DRM_IOWR(0x00, struct drm_version)
+ #define DRM_IOCTL_GET_UNIQUE		DRM_IOWR(0x01, struct drm_unique)
+--- a/meson.build
++++ b/meson.build
+@@ -1938,7 +1938,9 @@
+ allow_fallback_for_libdrm = get_option('allow-fallback-for').contains('libdrm')
+ 
+ with_gallium_drisw_kms = false
+-if system_has_kms_drm
++if host_machine.system() == 'tau' and with_broadcom_vk
++  dep_libdrm = declare_dependency(include_directories : include_directories('src/broadcom/tau'))
++elif system_has_kms_drm
+   dep_libdrm = dependency(
+     'libdrm', version : '>=' + _drm_ver,
+     required : with_dri2 or with_dri or with_gbm,
+--- a/src/broadcom/cle/v3d_decoder.c
++++ b/src/broadcom/cle/v3d_decoder.c
+@@ -34,7 +34,9 @@
+ #include <expat.h>
+ #endif
+ #include <inttypes.h>
++#ifdef WITH_LIBEXPAT
+ #include <zlib.h>
++#endif
+ 
+ #include <util/log.h>
+ #include <util/macros.h>
+--- /dev/null
++++ b/src/broadcom/tau/drm.h
+@@ -0,0 +1,4 @@
++/* Copyright 2026 Xenolith Team
++ * SPDX-License-Identifier: MIT
++ */
++#include "drm-uapi/drm.h"
+--- /dev/null
++++ b/src/broadcom/tau/v3d_tau.c
+@@ -0,0 +1,533 @@
++/* Copyright 2026 Xenolith Team
++ * SPDX-License-Identifier: MIT
++ */
++#include <dlfcn.h>
++#include <errno.h>
++#include <fcntl.h>
++#include <string.h>
++#include <stdbool.h>
++#include <threads.h>
++#include <time.h>
++#include <unistd.h>
++#include <sprt/c/cross/tau_sprt/sprt_tau.h>
++#include <sprt/c/cross/tau_sprt/gpufd.h>
++#include "xf86drm.h"
++#include "v3d_tau.h"
++#include "drm-uapi/v3d_drm.h"
++#include "util/os_time.h"
++
++#define MAX_BOS 1025
++#define MAX_SYNCS 1024
++#define MAX_POINTS 64
++#define TAU_FD 0x563344
++#define PTR(v) ((void *)(uintptr_t)(v))
++
++struct gpu_calls {
++   int (*open)(int, struct __sprt_tau_gpu_info *);
++   int (*heap)(unsigned, void **, unsigned long long *, unsigned *);
++   int (*query)(unsigned, unsigned, unsigned, void *, unsigned, unsigned *);
++   int (*ctx_create)(unsigned, unsigned, unsigned *);
++   int (*ctx_destroy)(unsigned);
++   int (*bo_create)(unsigned, unsigned, unsigned long long, unsigned,
++                    unsigned long long, unsigned *, void **);
++   int (*bo_destroy)(unsigned);
++   int (*bo_export)(const struct __sprt_tau_gpu_bo_desc *, struct __sprt_tau_gpu_buf **);
++   int (*buf_import)(struct __sprt_tau_gpu_buf *, unsigned, struct __sprt_tau_gpu_bo_desc *);
++   void (*buf_release)(struct __sprt_tau_gpu_buf *);
++   int (*submit)(unsigned, unsigned, unsigned, const void *, unsigned,
++                 const struct __sprt_tau_gpu_ref *, unsigned,
++                 const struct __sprt_tau_gpu_point *, unsigned, unsigned long long *);
++   int (*wait)(const struct __sprt_tau_gpu_point *, unsigned, int, unsigned long long);
++   void (*close)(void);
++   unsigned long long (*session)(void);
++};
++static struct gpu_calls gpu;
++static once_flag once = ONCE_FLAG_INIT;
++static mtx_t lock;
++static cnd_t changed;
++static unsigned ctx, users;
++static unsigned long long session, heap_size;
++static void *heap_data;
++static struct {
++   uint32_t heap_va, cpu_ops;
++   uint64_t resets, values[12];
++} params;
++static struct bo {
++   struct __sprt_tau_gpu_bo_desc desc;
++   struct __sprt_tau_gpu_point last;
++} bos[MAX_BOS];
++static struct sync {
++   bool used, available;
++   unsigned count;
++   struct __sprt_tau_gpu_point points[MAX_POINTS];
++} syncs[MAX_SYNCS];
++
++static int error(int e) { errno = e; return -1; }
++static int status(int s) { return s ? error(-s) : 0; }
++static void init(void)
++{
++   mtx_init(&lock, mtx_plain);
++   cnd_init(&changed);
++#define LOAD(name, symbol) gpu.name = dlsym(RTLD_DEFAULT, "__sprt_tau_gpu_" symbol)
++   LOAD(open, "open"); LOAD(heap, "heap"); LOAD(query, "query");
++   LOAD(ctx_create, "ctx_create"); LOAD(ctx_destroy, "ctx_destroy");
++   LOAD(bo_create, "bo_create"); LOAD(bo_destroy, "bo_destroy");
++   LOAD(bo_export, "bo_export"); LOAD(buf_import, "buf_import");
++   LOAD(buf_release, "buf_release"); LOAD(submit, "submit_job");
++   LOAD(wait, "wait"); LOAD(close, "close"); LOAD(session, "session");
++#undef LOAD
++}
++static bool live(void) { return users && gpu.session() == session; }
++static struct bo *bo(uint32_t h) { return h && h < MAX_BOS && bos[h].desc.bo ? &bos[h] : NULL; }
++static struct sync *syncobj(uint32_t h) { return h && h < MAX_SYNCS && syncs[h].used ? &syncs[h] : NULL; }
++
++int v3d_tau_open(void)
++{
++   call_once(&once, init);
++   mtx_lock(&lock);
++   if (users) {
++      int ret = live() ? (++users, TAU_FD) : error(ECONNRESET);
++      mtx_unlock(&lock);
++      return ret;
++   }
++   struct __sprt_tau_gpu_info info;
++   unsigned flags, written;
++   int st = -ENOENT;
++   if (!gpu.open || !gpu.heap || !gpu.query || !gpu.ctx_create || !gpu.ctx_destroy ||
++       !gpu.bo_create || !gpu.bo_destroy || !gpu.bo_export || !gpu.buf_import ||
++       !gpu.buf_release || !gpu.submit || !gpu.wait || !gpu.close || !gpu.session)
++      goto fail;
++   st = gpu.open(1, &info);
++   if (st) goto fail;
++   if (info.kind != 2 || info.params_bytes != sizeof(params)) { st = -ENODEV; goto close; }
++   st = gpu.heap(0, &heap_data, &heap_size, &flags);
++   if (st) goto close;
++   st = gpu.query(1, 0, 0, &params, sizeof(params), &written);
++   if (st || written != sizeof(params)) { st = st ? st : -EIO; goto close; }
++   st = gpu.ctx_create(0, 4, &ctx);
++   if (st) goto close;
++   session = gpu.session();
++   users = 1;
++   mtx_unlock(&lock);
++   return TAU_FD;
++close:
++   gpu.close();
++fail:
++   mtx_unlock(&lock);
++   return error(-st);
++}
++void v3d_tau_close(void)
++{
++   mtx_lock(&lock);
++   if (users && !--users) {
++      gpu.ctx_destroy(ctx);
++      for (unsigned i = 1; i < MAX_BOS; ++i)
++         if (bo(i)) gpu.bo_destroy(i);
++      gpu.close();
++      memset(bos, 0, sizeof(bos));
++      memset(syncs, 0, sizeof(syncs));
++      session = 0;
++      cnd_broadcast(&changed);
++   }
++   mtx_unlock(&lock);
++}
++uint64_t v3d_tau_heap_size(void) { return heap_size > (4u << 20) ? heap_size - (4u << 20) : 0; }
++
++static bool add_point(struct __sprt_tau_gpu_point *points, unsigned *count,
++                      struct __sprt_tau_gpu_point point)
++{
++   if (!point.value) return true;
++   for (unsigned i = 0; i < *count; ++i) {
++      if (points[i].ctx == point.ctx && points[i].ring == point.ring) {
++         if (points[i].value < point.value) points[i].value = point.value;
++         return true;
++      }
++   }
++   if (*count == MAX_POINTS) return false;
++   points[(*count)++] = point;
++   return true;
++}
++static int create_sync(uint32_t flags, uint32_t *handle)
++{
++   if (flags & ~DRM_SYNCOBJ_CREATE_SIGNALED) return error(EINVAL);
++   for (unsigned i = 1; i < MAX_SYNCS; ++i) {
++      if (!syncs[i].used) {
++         syncs[i] = (struct sync){.used = true, .available = !!(flags & DRM_SYNCOBJ_CREATE_SIGNALED)};
++         *handle = i;
++         return 0;
++      }
++   }
++   return error(ENOMEM);
++}
++int drmSyncobjCreate(int fd, uint32_t flags, uint32_t *h)
++{
++   mtx_lock(&lock); int ret = live() ? create_sync(flags, h) : error(ECONNRESET);
++   mtx_unlock(&lock); return ret;
++}
++int drmSyncobjDestroy(int fd, uint32_t h)
++{
++   mtx_lock(&lock); struct sync *s = syncobj(h); int ret = s ? 0 : error(EINVAL);
++   if (s) { memset(s, 0, sizeof(*s)); cnd_broadcast(&changed); }
++   mtx_unlock(&lock); return ret;
++}
++static int set_syncs(const uint32_t *handles, unsigned count, bool signal)
++{
++   for (unsigned i = 0; i < count; ++i) if (!syncobj(handles[i])) return error(EINVAL);
++   for (unsigned i = 0; i < count; ++i) {
++      struct sync *s = syncobj(handles[i]); s->available = signal; s->count = 0;
++   }
++   cnd_broadcast(&changed); return 0;
++}
++int drmSyncobjReset(int fd, const uint32_t *h, uint32_t n)
++{ mtx_lock(&lock); int r = set_syncs(h, n, false); mtx_unlock(&lock); return r; }
++int drmSyncobjSignal(int fd, const uint32_t *h, uint32_t n)
++{ mtx_lock(&lock); int r = set_syncs(h, n, true); mtx_unlock(&lock); return r; }
++
++int drmSyncobjWait(int fd, uint32_t *handles, unsigned count, int64_t deadline,
++                   unsigned flags, uint32_t *first)
++{
++   if (!count || count > MAX_SYNCS) return error(EINVAL);
++   mtx_lock(&lock);
++   for (;;) {
++      unsigned ready = 0;
++      struct __sprt_tau_gpu_point pending[MAX_POINTS]; unsigned n = 0;
++      if (!live()) { mtx_unlock(&lock); return error(ECONNRESET); }
++      for (unsigned i = 0; i < count; ++i) {
++         struct sync *s = syncobj(handles[i]);
++         if (!s) { mtx_unlock(&lock); return error(EINVAL); }
++         bool done = s->available;
++         if (done && !(flags & DRM_SYNCOBJ_WAIT_FLAGS_WAIT_AVAILABLE)) {
++            int st = gpu.wait(s->points, s->count, 0, 0);
++            if (st && st != -ETIMEDOUT) { mtx_unlock(&lock); return status(st); }
++            done = !st;
++         }
++         if (done) {
++            if (first && !ready) *first = i;
++            ++ready;
++         } else if (s->available) {
++            for (unsigned j = 0; j < s->count; ++j)
++               add_point(pending, &n, s->points[j]);
++         }
++      }
++      if (ready == count || (ready && !(flags & DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL))) {
++         mtx_unlock(&lock); return 0;
++      }
++      uint64_t now = os_time_get_nano();
++      if (deadline <= 0 || now >= (uint64_t)deadline) { mtx_unlock(&lock); return error(ETIME); }
++      uint64_t remaining = (uint64_t)deadline - now;
++      if (remaining > 10000000) remaining = 10000000;
++      if (n) {
++         mtx_unlock(&lock);
++         int st = gpu.wait(pending, n, 0, remaining);
++         mtx_lock(&lock);
++         if (st && st != -ETIMEDOUT) { mtx_unlock(&lock); return status(st); }
++      } else {
++         struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
++         ts.tv_sec += (ts.tv_nsec + remaining) / 1000000000;
++         ts.tv_nsec = (ts.tv_nsec + remaining) % 1000000000;
++         cnd_timedwait(&changed, &lock, &ts);
++      }
++   }
++}
++int drmSyncobjExportSyncFile(int fd, uint32_t h, int *out)
++{
++   mtx_lock(&lock); struct sync *s = syncobj(h);
++   int ret = !s ? error(EINVAL) : !s->available ? error(EAGAIN) : 0;
++   if (!ret) { *out = __sprt_syncfile_fd(s->points, s->count); ret = *out < 0 ? -1 : 0; }
++   mtx_unlock(&lock); return ret;
++}
++int drmSyncobjImportSyncFile(int fd, uint32_t h, int in)
++{
++   mtx_lock(&lock); struct sync *s = syncobj(h);
++   int n = s ? __sprt_syncfile_points(in, s->points, MAX_POINTS) : -1;
++   int ret = !s ? error(EINVAL) : n < 0 ? -1 : n > MAX_POINTS ? error(E2BIG) : 0;
++   if (!ret) { s->count = n; s->available = true; cnd_broadcast(&changed); }
++   mtx_unlock(&lock); return ret;
++}
++int drmSyncobjTransfer(int fd, uint32_t dst, uint64_t dp, uint32_t src, uint64_t sp, uint32_t flags)
++{
++   mtx_lock(&lock); struct sync *d = syncobj(dst), *s = syncobj(src);
++   int ret = !d || !s || dp || sp || flags || !s->available ? error(EINVAL) : 0;
++   if (!ret) { bool used = d->used; *d = *s; d->used = used; cnd_broadcast(&changed); }
++   mtx_unlock(&lock); return ret;
++}
++int drmSyncobjHandleToFD(int fd, uint32_t h, int *out) { return error(ENOTSUP); }
++int drmSyncobjFDToHandle(int fd, int in, uint32_t *h) { return error(ENOTSUP); }
++int drmSyncobjTimelineSignal(int fd, const uint32_t *h, uint64_t *p, uint32_t n) { return error(ENOTSUP); }
++int drmSyncobjTimelineWait(int fd, uint32_t *h, uint64_t *p, unsigned n, int64_t t, unsigned f, uint32_t *s) { return error(ENOTSUP); }
++int drmSyncobjQuery2(int fd, uint32_t *h, uint64_t *p, uint32_t n, uint32_t f) { return error(ENOTSUP); }
++int drmGetCap(int fd, uint64_t cap, uint64_t *value)
++{ *value = cap == DRM_CAP_SYNCOBJ; return 0; }
++
++int drmPrimeHandleToFD(int fd, uint32_t h, uint32_t flags, int *out)
++{
++   mtx_lock(&lock); struct bo *b = bo(h); struct __sprt_tau_gpu_buf *buf = NULL;
++   int ret = !live() ? error(ECONNRESET) : !b ? error(EINVAL) : status(gpu.bo_export(&b->desc, &buf));
++   if (!ret) {
++      *out = __sprt_dmabuf_fd(buf, flags & O_CLOEXEC);
++      if (*out < 0) gpu.buf_release(buf);
++      ret = *out < 0 ? -1 : 0;
++   }
++   mtx_unlock(&lock); return ret;
++}
++int drmPrimeFDToHandle(int fd, int in, uint32_t *h)
++{
++   mtx_lock(&lock); struct __sprt_tau_gpu_buf *buf = __sprt_dmabuf_buf(in);
++   struct __sprt_tau_gpu_bo_desc desc;
++   int ret = !live() ? error(ECONNRESET) : !buf ? error(EINVAL) : status(gpu.buf_import(buf, 0, &desc));
++   if (!ret) {
++      if (!desc.bo || desc.bo >= MAX_BOS) { gpu.bo_destroy(desc.bo); ret = error(EINVAL); }
++      else {
++         if (bo(desc.bo)) gpu.bo_destroy(desc.bo);
++         else bos[desc.bo].desc = desc;
++         *h = desc.bo;
++      }
++   }
++   mtx_unlock(&lock); return ret;
++}
++
++struct submission {
++   struct __sprt_tau_gpu_ref refs[64]; unsigned count;
++   struct __sprt_tau_gpu_point needs[MAX_POINTS]; unsigned need_count;
++   struct drm_v3d_multi_sync *ms;
++};
++static int prepare(struct submission *s, uint64_t handles, unsigned count, uint64_t extensions)
++{
++   if (count > 64 || (count && !handles)) return error(EINVAL);
++   for (unsigned i = 0; i < count; ++i) {
++      uint32_t h = ((uint32_t *)PTR(handles))[i];
++      if (!bo(h)) return error(EINVAL);
++      s->refs[s->count++] = (struct __sprt_tau_gpu_ref){h, 1};
++   }
++   unsigned depth = 0;
++   for (struct drm_v3d_extension *e = PTR(extensions); e; e = PTR(e->next)) {
++      if (++depth > 8) return error(EINVAL);
++      if (e->id != DRM_V3D_EXT_ID_MULTI_SYNC) continue;
++      if (s->ms) return error(EINVAL);
++      s->ms = (void *)e;
++      struct drm_v3d_sem *in = PTR(s->ms->in_syncs), *out = PTR(s->ms->out_syncs);
++      if (s->ms->in_sync_count > MAX_SYNCS || s->ms->out_sync_count > MAX_SYNCS) return error(EINVAL);
++      for (unsigned i = 0; i < s->ms->in_sync_count; ++i) {
++         struct sync *sync = syncobj(in[i].handle);
++         if (!sync || !sync->available || in[i].point || in[i].flags) return error(EINVAL);
++         for (unsigned j = 0; j < sync->count; ++j)
++            if (!add_point(s->needs, &s->need_count, sync->points[j])) return error(E2BIG);
++      }
++      for (unsigned i = 0; i < s->ms->out_sync_count; ++i)
++         if (!syncobj(out[i].handle) || out[i].point || out[i].flags) return error(EINVAL);
++   }
++   return 0;
++}
++static int submit(struct submission *s, unsigned kind, const void *body, unsigned bytes, unsigned ring)
++{
++   unsigned long long value;
++   int ret = gpu.submit(ctx, ring, kind, body, bytes, s->refs, s->count,
++                         s->needs, s->need_count, &value);
++   if (ret) return status(ret);
++   struct __sprt_tau_gpu_point point = {ctx, ring, value};
++   for (unsigned i = 0; i < s->count; ++i) bos[s->refs[i].bo].last = point;
++   if (s->ms) {
++      struct drm_v3d_sem *out = PTR(s->ms->out_syncs);
++      for (unsigned i = 0; i < s->ms->out_sync_count; ++i) {
++         struct sync *sync = syncobj(out[i].handle);
++         sync->available = true; sync->count = 1; sync->points[0] = point;
++      }
++   }
++   cnd_broadcast(&changed);
++   return 0;
++}
++static void *bo_bytes(struct bo *b, uint64_t offset, uint64_t bytes)
++{
++   return b && offset <= b->desc.size && bytes <= b->desc.size - offset ?
++          (char *)b->desc.data + offset : NULL;
++}
++static void finish_cpu(struct submission *s)
++{
++   if (s->ms) {
++      struct drm_v3d_sem *out = PTR(s->ms->out_syncs);
++      for (unsigned i = 0; i < s->ms->out_sync_count; ++i) {
++         struct sync *sync = syncobj(out[i].handle);
++         sync->available = true; sync->count = 0;
++      }
++   }
++   cnd_broadcast(&changed);
++}
++static int cpu_job(struct drm_v3d_submit_cpu *p)
++{
++   struct submission s = {0};
++   if (prepare(&s, p->bo_handles, p->bo_handle_count, p->extensions)) return -1;
++   struct drm_v3d_extension *op = NULL; unsigned depth = 0;
++   for (struct drm_v3d_extension *e = PTR(p->extensions); e; e = PTR(e->next)) {
++      if (++depth > 8) return error(EINVAL);
++      if (e->id != DRM_V3D_EXT_ID_MULTI_SYNC) {
++         if (op) return error(EINVAL);
++         op = e;
++      }
++   }
++   if (!op || !s.count) return error(EINVAL);
++   /* CPU mappings are coherent WC; dependencies must complete before host access. */
++   int st = gpu.wait(s.needs, s.need_count, 0, ~0ull);
++   if (st) return status(st);
++   struct bo *first = bo(s.refs[0].bo);
++   uint32_t body[14] = {0};
++   switch (op->id) {
++   case DRM_V3D_EXT_ID_CPU_INDIRECT_CSD: {
++      struct drm_v3d_indirect_csd *ind = (void *)op;
++      uint32_t *counts = bo_bytes(first, ind->offset, 12);
++      if (!counts || !ind->wg_size || ind->wg_size > 1024) return error(EINVAL);
++      uint32_t wg[3]; memcpy(wg, counts, sizeof(wg));
++      uint64_t batches = (ind->wg_size + 15) / 16;
++      bool empty = !wg[0] || !wg[1] || !wg[2];
++      for (unsigned i = 0; i < 3; ++i) {
++         if (wg[i] > 65535) return error(EINVAL);
++         if (!empty) {
++            if (batches > 0x100000000ull / wg[i]) return error(EINVAL);
++            batches *= wg[i];
++         }
++      }
++      uint32_t cfg[7]; memcpy(cfg, ind->submit.cfg, sizeof(cfg));
++      for (unsigned i = 0; i < 3; ++i) {
++         cfg[i] = wg[i] << 16;
++         if (ind->wg_uniform_offsets[i] != UINT32_MAX) {
++            void *dst = bo_bytes(bo(ind->indirect), (uint64_t)ind->wg_uniform_offsets[i] * 4, 4);
++            if (!dst) return error(EINVAL);
++            memcpy(dst, &wg[i], 4);
++         }
++      }
++      if (empty) { finish_cpu(&s); return 0; }
++      cfg[4] = batches - 1;
++      uint32_t *handles = PTR(ind->submit.bo_handles);
++      if (ind->submit.bo_handle_count > 64 - s.count) return error(E2BIG);
++      for (unsigned i = 0; i < ind->submit.bo_handle_count; ++i) {
++         if (!bo(handles[i])) return error(EINVAL);
++         s.refs[s.count++] = (struct __sprt_tau_gpu_ref){handles[i], 1};
++      }
++      return submit(&s, 4, cfg, sizeof(cfg), 2);
++   }
++   case DRM_V3D_EXT_ID_CPU_TIMESTAMP_QUERY: {
++      struct drm_v3d_timestamp_query *q = (void *)op;
++      uint32_t *offsets = PTR(q->offsets), *handles = PTR(q->syncs);
++      for (unsigned i = 0; i < q->count; ++i) {
++         struct sync *sync = syncobj(handles[i]);
++         if (!sync || !bo_bytes(first, offsets[i], 8)) return error(EINVAL);
++         body[0] = 1; body[3] = first->desc.bo; body[4] = offsets[i];
++         if (submit(&s, 5, body, sizeof(body), 3)) return -1;
++         sync->available = true; sync->count = 1; sync->points[0] = first->last;
++      }
++      return 0;
++   }
++   case DRM_V3D_EXT_ID_CPU_RESET_TIMESTAMP_QUERY: {
++      struct drm_v3d_reset_timestamp_query *q = (void *)op;
++      uint32_t *handles = PTR(q->syncs);
++      if (!bo_bytes(first, q->offset, (uint64_t)q->count * 8)) return error(EINVAL);
++      for (unsigned i = 0; i < q->count; ++i) if (!syncobj(handles[i])) return error(EINVAL);
++      if (!q->count) { finish_cpu(&s); return 0; }
++      body[0] = 2; body[3] = first->desc.bo; body[4] = q->offset;
++      body[5] = q->count * 8;
++      if (submit(&s, 5, body, sizeof(body), 3)) return -1;
++      return set_syncs(handles, q->count, false);
++   }
++   case DRM_V3D_EXT_ID_CPU_COPY_TIMESTAMP_QUERY: {
++      struct drm_v3d_copy_timestamp_query *q = (void *)op;
++      if (s.count != 2) return error(EINVAL);
++      struct bo *src = bo(s.refs[1].bo);
++      uint32_t *offsets = PTR(q->offsets), *handles = PTR(q->syncs);
++      unsigned width = q->do_64bit ? 8 : 4;
++      for (unsigned i = 0; i < q->count; ++i) {
++         struct sync *sync = syncobj(handles[i]);
++         void *in = bo_bytes(src, offsets[i], 8);
++         void *out = bo_bytes(first, (uint64_t)q->offset + (uint64_t)i * q->stride,
++                              width * (1 + !!q->availability_bit));
++         if (!sync || !in || !out) return error(EINVAL);
++         int st = sync->available ? gpu.wait(sync->points, sync->count, 0, 0) : -ETIMEDOUT;
++         if (st && st != -ETIMEDOUT) return status(st);
++         if (!st || q->do_partial) memcpy(out, in, width);
++         if (q->availability_bit) {
++            uint64_t available = !st; memcpy((char *)out + width, &available, width);
++         }
++      }
++      finish_cpu(&s); return 0;
++   }
++   default: return error(ENOTSUP);
++   }
++}
++static int ioctl_locked(unsigned long request, void *arg)
++{
++   if (!live()) return error(ECONNRESET);
++   switch (request) {
++   case DRM_IOCTL_V3D_GET_PARAM: {
++      struct drm_v3d_get_param *p = arg;
++      if (p->param < DRM_V3D_PARAM_SUPPORTS_MULTISYNC_EXT) p->value = params.values[p->param];
++      else if (p->param == DRM_V3D_PARAM_SUPPORTS_MULTISYNC_EXT || p->param == DRM_V3D_PARAM_SUPPORTS_CPU_QUEUE) p->value = 1;
++      else if (p->param == DRM_V3D_PARAM_MAX_PERF_COUNTERS) p->value = params.values[11];
++      else if (p->param == DRM_V3D_PARAM_GLOBAL_RESET_COUNTER || p->param == DRM_V3D_PARAM_CONTEXT_RESET_COUNTER) {
++         unsigned written; int ret = gpu.query(1, 0, 0, &params, sizeof(params), &written);
++         if (ret) return status(ret);
++         p->value = params.resets;
++      } else return error(EINVAL);
++      return 0;
++   }
++   case DRM_IOCTL_V3D_CREATE_BO: {
++      struct drm_v3d_create_bo *p = arg; unsigned h; void *data;
++      if (p->flags) return error(EINVAL);
++      uint64_t size = ((uint64_t)p->size + 4095) & ~4095ull;
++      int ret = gpu.bo_create(0, 3, size, 0, 0, &h, &data);
++      if (ret) return status(ret);
++      if (!h || h >= MAX_BOS) { gpu.bo_destroy(h); return error(ENOMEM); }
++      bos[h] = (struct bo){.desc = {h, 0, 0, 3, size, data}};
++      p->handle = h; p->offset = params.heap_va + (uintptr_t)data - (uintptr_t)heap_data;
++      return 0;
++   }
++   case DRM_IOCTL_GEM_CLOSE: {
++      struct drm_gem_close *p = arg;
++      if (!bo(p->handle)) return error(EINVAL);
++      int ret = gpu.bo_destroy(p->handle);
++      if (!ret) memset(&bos[p->handle], 0, sizeof(struct bo));
++      return status(ret);
++   }
++   case DRM_IOCTL_V3D_MMAP_BO: {
++      struct drm_v3d_mmap_bo *p = arg; struct bo *b = bo(p->handle);
++      if (!b) return error(EINVAL);
++      p->offset = (uintptr_t)b->desc.data; return 0;
++   }
++   case DRM_IOCTL_V3D_GET_BO_OFFSET: {
++      struct drm_v3d_get_bo_offset *p = arg; struct bo *b = bo(p->handle);
++      if (!b) return error(EINVAL);
++      p->offset = params.heap_va + (uintptr_t)b->desc.data - (uintptr_t)heap_data; return 0;
++   }
++   case DRM_IOCTL_V3D_WAIT_BO: {
++      struct drm_v3d_wait_bo *p = arg; struct bo *b = bo(p->handle);
++      if (!b) return error(EINVAL);
++      return status(gpu.wait(&b->last, b->last.value ? 1 : 0, 0, p->timeout_ns));
++   }
++   case DRM_IOCTL_V3D_SUBMIT_CL: {
++      struct drm_v3d_submit_cl *p = arg; struct submission s = {0};
++      if (p->perfmon_id || p->in_sync_bcl || p->in_sync_rcl || p->out_sync) return error(ENOTSUP);
++      if (prepare(&s, p->bo_handles, p->bo_handle_count, p->extensions)) return -1;
++      uint32_t body[] = {p->bcl_start,p->bcl_end,p->rcl_start,p->rcl_end,p->qma,p->qms,p->qts,
++                         !!(p->flags & DRM_V3D_SUBMIT_CL_FLUSH_CACHE)};
++      return submit(&s, 2, body, sizeof(body), 0);
++   }
++   case DRM_IOCTL_V3D_SUBMIT_TFU: {
++      struct drm_v3d_submit_tfu *p = arg; struct submission s = {0}; uint32_t handles[4]; unsigned n = 0;
++      for (unsigned i = 0; i < 4; ++i) if (p->bo_handles[i]) handles[n++] = p->bo_handles[i];
++      if (p->in_sync || p->out_sync) return error(ENOTSUP);
++      if (prepare(&s, (uintptr_t)handles, n, p->extensions)) return -1;
++      uint32_t body[] = {p->iia,p->iis,p->ica,p->iua,p->ioa,p->ios,p->coef[0],p->coef[1],p->coef[2],p->coef[3],p->icfg};
++      return submit(&s, 3, body, sizeof(body), 1);
++   }
++   case DRM_IOCTL_V3D_SUBMIT_CPU: return cpu_job(arg);
++   case DRM_IOCTL_V3D_SUBMIT_CSD: {
++      struct drm_v3d_submit_csd *p = arg; struct submission s = {0};
++      if (p->perfmon_id || p->in_sync || p->out_sync) return error(ENOTSUP);
++      if (prepare(&s, p->bo_handles, p->bo_handle_count, p->extensions)) return -1;
++      return submit(&s, 4, p->cfg, 7 * sizeof(uint32_t), 2);
++   }
++   default: return error(ENOTSUP);
++   }
++}
++int drmIoctl(int fd, unsigned long request, void *arg)
++{
++   if (fd != TAU_FD || !arg) return error(EINVAL);
++   mtx_lock(&lock); int ret = ioctl_locked(request, arg); mtx_unlock(&lock); return ret;
++}
+--- /dev/null
++++ b/src/broadcom/tau/v3d_tau.h
+@@ -0,0 +1,10 @@
++/* Copyright 2026 Xenolith Team
++ * SPDX-License-Identifier: MIT
++ */
++#ifndef V3D_TAU_H
++#define V3D_TAU_H
++#include <stdint.h>
++int v3d_tau_open(void);
++void v3d_tau_close(void);
++uint64_t v3d_tau_heap_size(void);
++#endif
+--- /dev/null
++++ b/src/broadcom/tau/xf86drm.h
+@@ -0,0 +1,28 @@
++/* Copyright 2026 Xenolith Team
++ * SPDX-License-Identifier: MIT
++ */
++#ifndef V3D_TAU_XF86DRM_H
++#define V3D_TAU_XF86DRM_H
++#include <stdint.h>
++#include "drm-uapi/drm.h"
++#include "drm-uapi/drm_mode.h"
++#define DRM_CLOEXEC O_CLOEXEC
++#define DRM_RDWR O_RDWR
++int drmIoctl(int, unsigned long, void *);
++int drmGetCap(int, uint64_t, uint64_t *);
++int drmPrimeFDToHandle(int, int, uint32_t *);
++int drmPrimeHandleToFD(int, uint32_t, uint32_t, int *);
++int drmSyncobjCreate(int, uint32_t, uint32_t *);
++int drmSyncobjDestroy(int, uint32_t);
++int drmSyncobjHandleToFD(int, uint32_t, int *);
++int drmSyncobjFDToHandle(int, int, uint32_t *);
++int drmSyncobjExportSyncFile(int, uint32_t, int *);
++int drmSyncobjImportSyncFile(int, uint32_t, int);
++int drmSyncobjWait(int, uint32_t *, unsigned, int64_t, unsigned, uint32_t *);
++int drmSyncobjReset(int, const uint32_t *, uint32_t);
++int drmSyncobjSignal(int, const uint32_t *, uint32_t);
++int drmSyncobjTimelineSignal(int, const uint32_t *, uint64_t *, uint32_t);
++int drmSyncobjTimelineWait(int, uint32_t *, uint64_t *, unsigned, int64_t, unsigned, uint32_t *);
++int drmSyncobjQuery2(int, uint32_t *, uint64_t *, uint32_t, uint32_t);
++int drmSyncobjTransfer(int, uint32_t, uint64_t, uint32_t, uint64_t, uint32_t);
++#endif
+--- a/src/broadcom/vulkan/meson.build
++++ b/src/broadcom/vulkan/meson.build
+@@ -77,6 +77,9 @@
+ v3d_versions = ['42', '71']
+ 
+ v3dv_flags = [v3d_simulator_arg]
++if host_machine.system() == 'tau'
++  libv3dv_files += files('../tau/v3d_tau.c')
++endif
+ 
+ v3dv_deps = [
+   dep_dl,
+--- a/src/broadcom/vulkan/v3dv_bo.c
++++ b/src/broadcom/vulkan/v3dv_bo.c
+@@ -295,8 +295,12 @@
+       return false;
+    }
+ 
++#if DETECT_OS_TAU
++   bo->map = (void *)(uintptr_t)map.offset;
++#else
+    bo->map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                   device->pdevice->render_fd, map.offset);
++#endif
+    if (bo->map == MAP_FAILED) {
+       mesa_loge("mmap of bo %d (offset 0x%016llx, size %d) failed\n",
+                 bo->handle, (long long)map.offset, (uint32_t)bo->size);
+@@ -346,7 +350,9 @@
+ {
+    assert(bo && bo->map && bo->map_size > 0);
+ 
++#if !DETECT_OS_TAU
+    munmap(bo->map, bo->map_size);
++#endif
+    VG(VALGRIND_FREELIKE_BLOCK(bo->map, 0));
+    bo->map = NULL;
+    bo->map_size = 0;
+--- a/src/broadcom/vulkan/v3dv_device.c
++++ b/src/broadcom/vulkan/v3dv_device.c
+@@ -27,8 +27,14 @@
+ #include <string.h>
+ #include <sys/mman.h>
+ #include <unistd.h>
++#include "util/detect_os.h"
+ #include <xf86drm.h>
++#if !DETECT_OS_TAU
+ #include <xf86drmMode.h>
++#else
++#include "tau/v3d_tau.h"
++#include "tau-mesa-build-id.h"
++#endif
+ 
+ #ifdef MAJOR_IN_MKDEV
+ #include <sys/mkdev.h>
+@@ -262,7 +268,7 @@
+       .EXT_line_rasterization               = true,
+       .EXT_memory_budget                    = true,
+       .EXT_multi_draw                       = true,
+-      .EXT_physical_device_drm              = true,
++      .EXT_physical_device_drm              = !DETECT_OS_TAU,
+       .EXT_pipeline_creation_cache_control  = true,
+       .EXT_pipeline_creation_feedback       = true,
+       .EXT_pipeline_robustness              = true,
+@@ -765,7 +771,11 @@
+    if (device->perfcntr)
+       v3d_perfcntrs_fini(device->perfcntr);
+ 
++#if DETECT_OS_TAU
++   v3d_tau_close();
++#else
+    close(device->render_fd);
++#endif
+    if (device->display_fd >= 0)
+       close(device->display_fd);
+    if (device->primary_fd >= 0)
+@@ -864,6 +874,11 @@
+ static VkResult
+ init_uuids(struct v3dv_physical_device *device)
+ {
++#if DETECT_OS_TAU
++   _mesa_blake3_compute(MESA_TAU_BUILD_ID, strlen(MESA_TAU_BUILD_ID), device->driver_build_sha1);
++   const void *build_id = device->driver_build_sha1;
++   unsigned build_id_len = sizeof(device->driver_build_sha1);
++#else
+    const struct build_id_note *note =
+       build_id_find_nhdr_for_addr(init_uuids);
+    if (!note) {
+@@ -880,6 +895,8 @@
+    }
+ 
+    copy_build_id_to_sha1(device->driver_build_sha1, note);
++   const void *build_id = build_id_data(note);
++#endif
+ 
+    uint32_t vendor_id = v3dv_physical_device_vendor_id(device);
+    uint32_t device_id = v3dv_physical_device_device_id(device);
+@@ -892,7 +909,7 @@
+     * invalid.  It needs both a driver build and the PCI ID of the device.
+     */
+    _mesa_blake3_init(&blake3_ctx);
+-   _mesa_blake3_update(&blake3_ctx, build_id_data(note), build_id_len);
++   _mesa_blake3_update(&blake3_ctx, build_id, build_id_len);
+    _mesa_blake3_update(&blake3_ctx, &device_id, sizeof(device_id));
+    _mesa_blake3_final(&blake3_ctx, blake3);
+    memcpy(device->pipeline_cache_uuid, blake3, VK_UUID_SIZE);
+@@ -902,7 +919,7 @@
+     * share memory need to also check the device UUID (below) so all this
+     * needs to be is the build-id.
+     */
+-   memcpy(device->driver_uuid, build_id_data(note), VK_UUID_SIZE);
++   memcpy(device->driver_uuid, build_id, VK_UUID_SIZE);
+ 
+    /* The device UUID uniquely identifies the given device within the machine.
+     * Since we never have more than one device, this doesn't need to be a real
+@@ -1328,11 +1345,13 @@
+ 
+       /* VkPhysicalDeviceDrmPropertiesEXT */
+       .drmHasPrimary = device->has_primary,
++#if !DETECT_OS_TAU
+       .drmPrimaryMajor = (int64_t) major(device->primary_devid),
+       .drmPrimaryMinor = (int64_t) minor(device->primary_devid),
+       .drmHasRender = device->has_render,
+       .drmRenderMajor = (int64_t) major(device->render_devid),
+       .drmRenderMinor = (int64_t) minor(device->render_devid),
++#endif
+ 
+       /* VkPhysicalDeviceLineRasterizationPropertiesEXT */
+       .lineSubPixelPrecisionBits = V3D_COORD_SHIFT,
+@@ -1426,6 +1445,7 @@
+    if (result != VK_SUCCESS)
+       goto fail;
+ 
++#if !DETECT_OS_TAU
+    struct stat primary_stat = {0}, render_stat = {0};
+    if (fstat(primary_fd, &primary_stat) != 0) {
+       result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
+@@ -1448,16 +1468,19 @@
+    device->sim_file = v3d_simulator_init(render_fd);
+ #endif
+ 
++#endif
+    device->primary_fd = primary_fd;
+    device->render_fd = render_fd;
+    device->display_fd = display_fd;
+ 
++#if !DETECT_OS_TAU
+    drmVersionPtr version = drmGetVersion(render_fd);
+    if (version) {
+       device->is_shim = version->desc && strcmp(version->desc, "shim") == 0;
+       drmFreeVersion(version);
+    }
+ 
++#endif
+    if (!v3d_get_device_info(device->render_fd, &device->devinfo, &v3d_ioctl)) {
+       result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
+                          "Failed to get info from device.");
+@@ -1509,7 +1532,11 @@
+    /* Setup available memory heaps and types */
+    VkPhysicalDeviceMemoryProperties *mem = &device->memory;
+    mem->memoryHeapCount = 1;
++#if DETECT_OS_TAU
++   mem->memoryHeaps[0].size = v3d_tau_heap_size();
++#else
+    mem->memoryHeaps[0].size = compute_heap_size(instance);
++#endif
+    mem->memoryHeaps[0].flags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
+ 
+    /* This is the only combination required by the spec */
+@@ -1526,6 +1553,10 @@
+    device->merge_jobs = !V3D_DBG(NO_MERGE_JOBS);
+ 
+    device->drm_syncobj_type = vk_drm_syncobj_get_type(device->render_fd);
++#if DETECT_OS_TAU
++   device->drm_syncobj_type.import_opaque_fd = NULL;
++   device->drm_syncobj_type.export_opaque_fd = NULL;
++#endif
+ 
+    /* We don't support timelines in the uAPI yet and we don't want it getting
+     * suddenly turned on by vk_drm_syncobj_get_type() without us adding v3dv
+@@ -1563,14 +1594,19 @@
+ 
+    if (primary_fd >= 0)
+       close(primary_fd);
++#if DETECT_OS_TAU
++   v3d_tau_close();
++#else
+    if (render_fd >= 0)
+       close(render_fd);
++#endif
+    if (display_fd >= 0)
+       close(display_fd);
+ 
+    return result;
+ }
+ 
++#if !DETECT_OS_TAU
+ static bool
+ try_device(const char *path, int *fd, const char *target)
+ {
+@@ -1674,6 +1710,8 @@
+    *fd = -1;
+ }
+ 
++#endif
++
+ /* This driver hook is expected to return VK_SUCCESS (unless a memory
+  * allocation error happened) if no compatible device is found. If a
+  * compatible device is found, it may return an error code if device
+@@ -1685,6 +1723,12 @@
+    struct v3dv_instance *instance =
+       container_of(vk_instance, struct v3dv_instance, vk);
+ 
++#if DETECT_OS_TAU
++   int fd = v3d_tau_open();
++   if (fd < 0)
++      return errno == ENOENT ? VK_SUCCESS : vk_error(instance, VK_ERROR_INITIALIZATION_FAILED);
++   return create_physical_device(instance, -1, fd, -1);
++#else
+    /* FIXME: Check for more devices? */
+    drmDevicePtr devices[8];
+    int max_devices;
+@@ -1746,6 +1790,7 @@
+    drmFreeDevices(devices, max_devices);
+ 
+    return result;
++#endif
+ }
+ 
+ uint32_t
+--- a/src/broadcom/vulkan/v3dv_wsi.c
++++ b/src/broadcom/vulkan/v3dv_wsi.c
+@@ -26,7 +26,9 @@
+ #include "v3dv_device.h"
+ #include "v3dv_entrypoints.h"
+ #include "vk_util.h"
++#if !DETECT_OS_TAU
+ #include "wsi_common_drm.h"
++#endif
+ #include "wsi_common_entrypoints.h"
+ 
+ static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
+@@ -48,8 +50,12 @@
+     * In particular, this callback receives the render device when
+     * running in an XWayland environment.
+     */
++#if DETECT_OS_TAU
++   return false;
++#else
+    return wsi_common_drm_devices_equal(fd, pdevice->display_fd) ||
+           wsi_common_drm_devices_equal(fd, pdevice->render_fd);
++#endif
+ }
+ 
+ 
+--- a/src/vulkan/runtime/vk_image.c
++++ b/src/vulkan/runtime/vk_image.c
+@@ -23,7 +23,7 @@
+ 
+ #include "vk_image.h"
+ 
+-#if DETECT_OS_LINUX || DETECT_OS_BSD
++#if DETECT_OS_LINUX || DETECT_OS_BSD || DETECT_OS_TAU
+ #include <drm-uapi/drm_fourcc.h>
+ #endif
+ 
+@@ -105,7 +105,7 @@
+       vk_find_struct_const(pCreateInfo->pNext, WSI_IMAGE_CREATE_INFO_MESA);
+    image->wsi_legacy_scanout = wsi_info && wsi_info->scanout;
+ 
+-#if DETECT_OS_LINUX || DETECT_OS_BSD
++#if DETECT_OS_LINUX || DETECT_OS_BSD || DETECT_OS_TAU
+    image->drm_format_mod = ((1ULL << 56) - 1) /* DRM_FORMAT_MOD_INVALID */;
+ #endif
+ 
+@@ -185,7 +185,7 @@
+    vk_object_free(device, alloc, image);
+ }
+ 
+-#if DETECT_OS_LINUX || DETECT_OS_BSD
++#if DETECT_OS_LINUX || DETECT_OS_BSD || DETECT_OS_TAU
+ VKAPI_ATTR VkResult VKAPI_CALL
+ vk_common_GetImageDrmFormatModifierPropertiesEXT(UNUSED VkDevice device,
+                                                  VkImage _image,
+--- a/src/vulkan/runtime/vk_image.h
++++ b/src/vulkan/runtime/vk_image.h
+@@ -77,7 +77,7 @@
+    /* wsi_image_create_info::scanout */
+    bool wsi_legacy_scanout;
+ 
+-#if DETECT_OS_LINUX || DETECT_OS_BSD
++#if DETECT_OS_LINUX || DETECT_OS_BSD || DETECT_OS_TAU
+    /* VK_EXT_drm_format_modifier
+     *
+     * Initialized by vk_image_create/init() to DRM_FORMAT_MOD_INVALID.  It's
+--- a/src/vulkan/runtime/vk_instance.c
++++ b/src/vulkan/runtime/vk_instance.c
+@@ -413,6 +413,9 @@
+ static VkResult
+ enumerate_drm_physical_devices_locked(struct vk_instance *instance)
+ {
++#if DETECT_OS_TAU
++   return VK_SUCCESS;
++#else
+    /* libdrm returns a maximum of 256 devices (see MAX_DRM_NODES in libdrm) */
+    drmDevicePtr devices[256];
+    int max_devices = drmGetDevices2(0, devices, ARRAY_SIZE(devices));
+@@ -440,6 +443,7 @@
+ 
+    drmFreeDevices(devices, max_devices);
+    return result;
++#endif
+ }
+ 
+ static VkResult
+--- a/src/vulkan/wsi/meson.build
++++ b/src/vulkan/wsi/meson.build
+@@ -5,7 +5,7 @@
+ links_vulkan_wsi = []
+ platform_deps = []
+ 
+-if dep_libdrm.found()
++if dep_libdrm.found() and host_machine.system() != 'tau'
+   files_vulkan_wsi += files('wsi_common_drm.c')
+ endif
+ 
+--- a/src/vulkan/wsi/wsi_common.c
++++ b/src/vulkan/wsi/wsi_common.c
+@@ -315,16 +315,9 @@
+ 
+    }
+ 
+-   /* can_present_on_device is a function pointer used to determine if images
+-    * can be presented directly on a given device file descriptor (fd).
+-    * If HAVE_LIBDRM is defined, it will be initialized to a platform-specific
+-    * function (wsi_device_matches_drm_fd). Otherwise, it is initialized to
+-    * present_false to ensure that it always returns false, preventing potential
+-    * segmentation faults from unchecked calls.
+-    * Drivers for non-PCI based GPUs are expected to override this after calling
+-    * wsi_device_init().
+-    */
+-#ifdef HAVE_LIBDRM
++   /* DRM platforms match presentation devices; other platforms and non-PCI drivers
++    * provide their own callback after initialization. */
++#if defined(HAVE_LIBDRM) && !DETECT_OS_TAU
+    wsi->can_present_on_device = wsi_device_matches_drm_fd;
+ #else
+    wsi->can_present_on_device = present_false;
+@@ -408,7 +401,7 @@
+       return wsi_cpu_image_needs_buffer_blit(wsi, cpu_params) ?
+          WSI_SWAPCHAIN_BUFFER_BLIT : WSI_SWAPCHAIN_NO_BLIT;
+    }
+-#ifdef HAVE_LIBDRM
++#if defined(HAVE_LIBDRM) && !DETECT_OS_TAU
+    case WSI_IMAGE_TYPE_DRM: {
+       const struct wsi_drm_image_params *drm_params =
+          container_of(params, const struct wsi_drm_image_params, base);
+@@ -458,7 +451,7 @@
+          container_of(params, const struct wsi_cpu_image_params, base);
+       return wsi_configure_cpu_image(chain, pCreateInfo, cpu_params, info);
+    }
+-#ifdef HAVE_LIBDRM
++#if defined(HAVE_LIBDRM) && !DETECT_OS_TAU
+    case WSI_IMAGE_TYPE_DRM: {
+       const struct wsi_drm_image_params *drm_params =
+          container_of(params, const struct wsi_drm_image_params, base);
+@@ -572,7 +565,7 @@
+    if (result != VK_SUCCESS)
+       goto fail;
+ 
+-#ifdef HAVE_LIBDRM
++#if defined(HAVE_LIBDRM) && !DETECT_OS_TAU
+    result = wsi_drm_init_swapchain_implicit_sync(chain);
+    if (result != VK_SUCCESS)
+       goto fail;
+@@ -911,7 +904,7 @@
+    }
+ 
+    if (info->explicit_sync) {
+-#if HAVE_LIBDRM
++#if HAVE_LIBDRM && !DETECT_OS_TAU
+       result = wsi_create_image_explicit_sync_drm(chain, image);
+       if (result != VK_SUCCESS)
+          goto fail;
+@@ -1027,7 +1020,7 @@
+ #endif
+ 
+    if (image->explicit_sync[WSI_ES_ACQUIRE].semaphore) {
+-#if HAVE_LIBDRM
++#if HAVE_LIBDRM && !DETECT_OS_TAU
+       wsi_destroy_image_explicit_sync_drm(chain, image);
+ #endif
+    }
+@@ -2219,7 +2212,7 @@
+ 
+    vk_semaphore_reset_temporary(device, semaphore);
+ 
+-#ifdef HAVE_LIBDRM
++#if defined(HAVE_LIBDRM) && !DETECT_OS_TAU
+    VkResult result = chain->image_info.explicit_sync ?
+       wsi_create_sync_for_image_syncobj(chain, image,
+                                         VK_SYNC_FEATURE_GPU_WAIT,
+@@ -2249,7 +2242,7 @@
+ 
+    vk_fence_reset_temporary(device, fence);
+ 
+-#ifdef HAVE_LIBDRM
++#if defined(HAVE_LIBDRM) && !DETECT_OS_TAU
+    VkResult result = chain->image_info.explicit_sync ?
+       wsi_create_sync_for_image_syncobj(chain, image,
+                                         VK_SYNC_FEATURE_CPU_WAIT,
+@@ -2869,7 +2862,7 @@
+        * implicitly syncs on it.
+        */
+       if (swapchain->dma_buf_semaphore != VK_NULL_HANDLE) {
+-#ifdef HAVE_LIBDRM
++#if defined(HAVE_LIBDRM) && !DETECT_OS_TAU
+          assert(!swapchain->image_info.explicit_sync);
+          results[i] = wsi_signal_dma_buf_from_semaphore(swapchain, image);
+          if (results[i] != VK_SUCCESS)

@@ -108,4 +108,9 @@ MESA_VENUS_OPTIONS := $(MESA_COMMON_OPTIONS) \
 	-Dgallium-drivers= \
 	-Dllvm=disabled
 
+MESA_BROADCOM_OPTIONS := $(MESA_COMMON_OPTIONS) \
+	-Dvulkan-drivers=broadcom \
+	-Dgallium-drivers= \
+	-Dllvm=disabled
+
 MESA_LVP := src/gallium/targets/lavapipe/libvulkan_lvp.so

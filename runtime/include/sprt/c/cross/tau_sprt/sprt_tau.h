@@ -413,6 +413,15 @@ int __sprt_tau_gpu_bo_destroy(unsigned bo);
 // *value is the fence the ring reaches with them.
 int __sprt_tau_gpu_submit(unsigned ctx, unsigned ring, const void *cmds, unsigned len,
 		unsigned long long *value);
+struct __sprt_tau_gpu_ref {
+	unsigned bo;
+	unsigned flags;
+};
+
+// Copies a device-specific body, BO references and dependencies until its fence completes.
+int __sprt_tau_gpu_submit_job(unsigned ctx, unsigned ring, unsigned kind, const void *body,
+		unsigned len, const struct __sprt_tau_gpu_ref *bufs, unsigned count,
+		const struct __sprt_tau_gpu_point *needs, unsigned need_count, unsigned long long *value);
 // The value `ring` of `ctx` reached.
 int __sprt_tau_gpu_reached(unsigned ctx, unsigned ring, unsigned long long *value);
 // Waits until every point is reached, or one when `any`; -ETIMEDOUT after timeout_ns (0: looks
