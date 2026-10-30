@@ -32,6 +32,7 @@ static_assert(
 		toInt(ParticleSystemFlags::AlignWithVelocity) == XL_PARTICLE_FLAG_ALIGN_WITH_VELOCITY);
 static_assert(toInt(ParticleSystemFlags::OrderByLifetime) == XL_PARTICLE_FLAG_ORDER_BY_LIFETIME);
 static_assert(toInt(ParticleSystemFlags::UseLifetimeMax) == XL_PARTICLE_FLAG_USE_LIFETIME_MAX);
+static_assert(toInt(ParticleSystemFlags::OneShot) == XL_PARTICLE_FLAG_ONE_SHOT);
 
 static constexpr size_t ParticleExtraAlign = 8;
 
@@ -234,6 +235,7 @@ static constexpr ParticleSystemFlagName s_particleFlagNames[] = {
 	{ParticleSystemFlags::AlignWithVelocity, "alignWithVelocity"},
 	{ParticleSystemFlags::OrderByLifetime, "orderByLifetime"},
 	{ParticleSystemFlags::UseLifetimeMax, "useLifetimeMax"},
+	{ParticleSystemFlags::OneShot, "oneShot"},
 };
 
 void ParticleSystem::apply(const Value &value) {
@@ -335,6 +337,10 @@ void ParticleSystem::apply(const Value &value) {
 	} else if (value.hasValue("seed")) {
 		clearSeed();
 	}
+
+	if (value.isBasicType("warm")) {
+		setWarm(float(value.getDouble("warm")));
+	}
 }
 
 Value ParticleSystem::encode() const {
@@ -404,6 +410,9 @@ Value ParticleSystem::encode() const {
 
 	if (_data->hasSeed) {
 		ret.setInteger(_data->seed, "seed");
+	}
+	if (_data->warm != 0.0f) {
+		ret.setDouble(_data->warm, "warm");
 	}
 	return ret;
 }
@@ -578,6 +587,15 @@ uint32_t ParticleSystem::getSeed() const { return _data->seed; }
 
 bool ParticleSystem::hasSeed() const { return _data->hasSeed; }
 
+void ParticleSystem::setWarm(float seconds) {
+	// No generation bump: warm lives outside ParticleEmitterData, so the renderer neither
+	// restarts nor re-uploads for it - only the CPU-side sim reads the field
+	copy();
+	_data->warm = sprt::max(seconds, 0.0f);
+}
+
+float ParticleSystem::getWarm() const { return _data->warm; }
+
 uint64_t ParticleSystem::getParamsGeneration() const { return _data->paramsGeneration; }
 
 uint64_t ParticleSystem::getRestartGeneration() const { return _data->restartGeneration; }
@@ -599,6 +617,7 @@ Rc<ParticleSystemData> ParticleSystem::dup() {
 	data->restartGeneration = _data->restartGeneration;
 	data->seed = _data->seed;
 	data->hasSeed = _data->hasSeed;
+	data->warm = _data->warm;
 	data->particleSize = _data->particleSize;
 	return data;
 }

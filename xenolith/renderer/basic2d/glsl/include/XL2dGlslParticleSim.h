@@ -351,7 +351,10 @@ SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
 		uint emitStep = particleEmitFrame(index, emitter.count, cycle, frame.seed,
 				emitter.randomness, emitter.explosiveness, frame.framesInGen);
 
-		if (emitStep == cycleStep) {
+		// oneShot is Godot's one_shot - "If true, only one emission cycle occurs": past cycle 0
+		// the flagged emitter gives no birth, and the slot ages a living particle instead
+		if (emitStep == cycleStep
+				&& (((emitter.flags & XL_PARTICLE_FLAG_ONE_SHOT) == 0u) || cycle == 0u)) {
 			vec2 point = vec2(0.0f, 0.0f);
 			uint npoints = particleEmissionPointCount();
 			if (npoints > 0u) {

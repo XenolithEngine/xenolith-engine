@@ -45,6 +45,7 @@ enum class ParticleSystemFlags : uint32_t {
 	AlignWithVelocity = 1 << 1,
 	OrderByLifetime = 1 << 2,
 	UseLifetimeMax = 1 << 3,
+	OneShot = 1 << 4,
 };
 
 SP_DEFINE_ENUM_AS_MASK(ParticleSystemFlags)
@@ -66,6 +67,10 @@ struct SP_PUBLIC ParticleSystemData : public Ref {
 
 	uint32_t seed = 0;
 	bool hasSeed = false;
+
+	// Seconds the system starts as if it had already run, Godot's preprocess; the renderer's own
+	// frames start at zero, the CPU-side sim fast-forwards this much before its first hashed frame
+	float warm = 0.0f;
 
 	// As set by the user; data.sizeValue and data.sizeNormal are derived from it
 	Size2 particleSize;
@@ -306,6 +311,11 @@ public:
 	void clearSeed();
 	uint32_t getSeed() const;
 	bool hasSeed() const;
+
+	// Seconds of preprocess before the first hashed frame; a negative value clamps to the 0 the
+	// fresh system carries, and encode() writes the field only when it is not that default
+	void setWarm(float);
+	float getWarm() const;
 
 	uint64_t getParamsGeneration() const;
 	uint64_t getRestartGeneration() const;

@@ -37,6 +37,7 @@ using namespace sprt::glsl;
 #define XL_PARTICLE_FLAG_ALIGN_WITH_VELOCITY 2
 #define XL_PARTICLE_FLAG_ORDER_BY_LIFETIME 4
 #define XL_PARTICLE_FLAG_USE_LIFETIME_MAX 8
+#define XL_PARTICLE_FLAG_ONE_SHOT 16
 
 struct ParticleConstantData {
 	uvec2 frameDataPointer;
