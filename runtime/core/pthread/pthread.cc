@@ -664,6 +664,9 @@ int thread_t::create(thread_t **__SPRT_RESTRICT outthread, const attr_t *__SPRT_
 		}
 		memory::allocator::terminate(&thread->threadAlloc);
 		if (thread->handle) {
+			// Under the pool's mutex, as on every other path: the native layers keep their
+			// lists of threads still to reap under it.
+			unique_lock lock(s_handlePool.mutex);
 			native::__closeNativeHandle(thread->handle);
 			thread->handle = nullptr;
 		}

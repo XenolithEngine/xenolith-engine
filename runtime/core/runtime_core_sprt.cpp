@@ -224,6 +224,18 @@ __SPRT_C_FUNC int __SPRT_ID(sprt_qlock_oneshot_unlock)(__SPRT_ID(sprt_qlock_t) *
 	return 0;
 }
 
+// With the table's mutex held: drops the reference a lock that failed took, and the data with it
+// when nobody else holds or waits for the lock.
+static void __plock_release(__plock_storage *storage, __SPRT_ID(sprt_plock_t) lock) {
+	auto link = storage->find(lock);
+	auto data = *link;
+	if (data && --data->refcount == 0) {
+		*link = data->next;
+		destroy_at(data);
+		__sprt_local_free((void *)data, sizeof(__plock_data));
+	}
+}
+
 __SPRT_C_FUNC
 int __SPRT_ID(sprt_plock_lock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock_flags_t) flags,
 		__SPRT_ID(pid_t) * tidPtr) {
@@ -259,7 +271,12 @@ int __SPRT_ID(sprt_plock_lock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock
 	switch (res) {
 	case Status::Ok:
 	case Status::Propagate: ++data->data.counter; break;
-	default: return -1; break;
+	default:
+		ulock.lock();
+		__plock_release(storage, lock);
+		__sprt_errno = status::toErrno(res);
+		return -1;
+		break;
 	}
 
 	if (data->flags & __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED) {
@@ -302,7 +319,11 @@ int __SPRT_ID(sprt_plock_trylock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_l
 		switch (res) {
 		case Status::Ok:
 		case Status::Propagate: ++data->data.counter; break;
-		default: return -1; break;
+		default:
+			__plock_release(storage, lock);
+			__sprt_errno = status::toErrno(res);
+			return -1;
+			break;
 		}
 		if (tidPtr != nullptr) {
 			*tidPtr = (*rmutex_base::getNativeValue(tid)) & rmutex_base::THREAD_ID_MASK;
