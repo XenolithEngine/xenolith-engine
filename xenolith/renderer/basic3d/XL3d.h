@@ -28,12 +28,30 @@ class FrameContext3d;
 class SceneContent3d;
 class Scene3d;
 
+// The stock pipeline of a material: the mesh shader, texture times Lambert
+static constexpr uint32_t MeshPipeline = 0;
+
+/* A pipeline an app adds to the 3d pass (Scene3d::init): its own vertex and fragment shaders over
+the pass's interface - the push constants Constants3d, the buffers they point to and the texture
+array at set 0, binding 0 (see XL3dGlslData.h). Depth test Less with writes, back faces culled,
+counter-clockwise front faces, as the mesh pipeline. A material picks it by its place in the list
+plus one. The SPIR-V is referenced, not copied: it lives as long as the app. */
+struct SP_PUBLIC Pipeline3dInfo {
+	String name;
+	SpanView<uint32_t> vert;
+	SpanView<uint32_t> frag;
+};
+
 // What a draw looks like: a colour, optionally times a texture tiled `uvScale` times per unit of
-// the mesh's texture coordinates
+// the mesh's texture coordinates. An app pipeline reads `flags` and `params` as it likes; the mesh
+// pipeline ignores them.
 struct SP_PUBLIC Material3d {
 	Color4F color = Color4F::WHITE;
 	Rc<Texture> texture;
 	float uvScale = 1.0f;
+	uint32_t pipeline = MeshPipeline; // MeshPipeline, or the index of an app pipeline plus one
+	uint32_t flags = 0;
+	Vec4 params[2] = {Vec4::ZERO, Vec4::ZERO};
 };
 
 // A mesh where `transform` puts it, looking like `material`

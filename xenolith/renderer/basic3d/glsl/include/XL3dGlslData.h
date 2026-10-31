@@ -33,8 +33,9 @@ struct DrawData3d {
 	vec4 color;
 	uint textureIdx; // into the pass's texture array, or XL_GLSL_3D_NO_TEXTURE
 	float uvScale;
-	uint flags;
+	uint flags; // the material's, for an app pipeline
 	uint padding;
+	vec4 params[2]; // the material's, for an app pipeline
 };
 
 // One view: its camera and its light
@@ -43,6 +44,7 @@ struct ViewData3d {
 	vec4 sunDirection; // xyz - toward the sun, unit length
 	vec4 sunColor; // rgb - colour times intensity
 	vec4 ambient; // rgb - colour times intensity
+	vec4 screen; // xy - the viewport's size in pixels, z - pixels per point, w - free
 };
 
 struct Constants3d {

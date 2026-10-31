@@ -23,6 +23,10 @@ public:
 	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel>,
 			const core::FrameConstraints &constraints) override;
 
+	// with pipelines of the app's own in the 3d pass; a material picks the i-th as i + 1
+	bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel>,
+			const core::FrameConstraints &constraints, Vector<Pipeline3dInfo> &&pipelines);
+
 protected:
 	using basic2d::Scene2d::init;
 

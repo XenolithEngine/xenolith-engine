@@ -95,6 +95,8 @@ void View3d::draw(FrameInfo &frame, NodeVisitFlags flags) {
 	view.data.sunDirection = Vec4(_sunDirection.x, _sunDirection.y, _sunDirection.z, 0.0f);
 	view.data.sunColor = Vec4(_sunColor.r, _sunColor.g, _sunColor.b, 1.0f);
 	view.data.ambient = Vec4(_ambient.r, _ambient.g, _ambient.b, 1.0f);
+	view.data.screen =
+			Vec4(view.viewport.size.width, view.viewport.size.height, _camera.getDensity(), 0.0f);
 	collectDraws(view);
 }
 

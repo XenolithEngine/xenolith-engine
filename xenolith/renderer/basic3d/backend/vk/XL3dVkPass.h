@@ -21,6 +21,7 @@ the textures the draws use become the array's slots, each sampled by the pass's 
 class SP_PUBLIC Scene3dInputHandle : public xvk::ImageAttachmentHandle {
 public:
 	struct DrawRecord {
+		uint32_t pipeline = MeshPipeline;
 		uint32_t drawIndex = 0;
 		uint32_t indexCount = 0;
 		uint32_t firstIndex = 0;
@@ -96,23 +97,36 @@ public:
 };
 
 /* The 3d pass: before basic2d's pass in the same queue, into the same Output, with a depth
-attachment of its own. One pipeline draws every mesh: depth test Less, back faces culled
-(counter-clockwise front faces, which the camera's flipped clip y keeps on the framebuffer). */
+attachment of its own. The mesh pipeline draws a material by default, the app's pipelines those
+that pick them; all of them test depth Less and cull back faces (counter-clockwise front faces,
+which the camera's flipped clip y keeps on the framebuffer). */
 class SP_PUBLIC Pass3d : public core::QueuePassTyped<Pass3dHandle, xvk::QueuePass> {
 public:
 	static constexpr StringView MeshPipelineName = "Basic3dMesh";
 	static constexpr StringView DepthAttachmentName = "Depth3d";
 
+	struct PipelineProgram {
+		String name;
+		const core::ProgramData *vert = nullptr;
+		const core::ProgramData *frag = nullptr;
+	};
+
 	// adds the pass, its depth and its input to a queue whose Output basic2d has made
-	static bool addToQueue(core::Loop *, core::Queue::Builder &, Extent2 extent);
+	static bool addToQueue(core::Loop *, core::Queue::Builder &, Extent2 extent,
+			SpanView<Pipeline3dInfo> = SpanView<Pipeline3dInfo>());
 
 	virtual ~Pass3d() = default;
 
+	// the first of `pipelines` is the mesh pipeline, the rest are the app's in their order
 	virtual bool init(core::QueuePassBuilder &, const core::AttachmentData *output,
 			const core::AttachmentData *depth, const core::AttachmentData *input,
-			const core::ProgramData *vert, const core::ProgramData *frag);
+			Vector<PipelineProgram> &&pipelines);
 
 	const core::AttachmentData *getInput() const { return _input; }
+	SpanView<String> getPipelineNames() const { return _pipelineNames; }
+
+	// a material's pipeline the pass does not have is drawn by the mesh pipeline, with one warning
+	void warnUnknownPipeline(uint32_t);
 
 	// trilinear, repeating, anisotropic; BASIC3D_NOMIPS=1 samples level 0 alone (a test hook)
 	const Rc<core::Sampler> &acquireSampler(xvk::Device &);
@@ -121,6 +135,8 @@ protected:
 	using xvk::QueuePass::init;
 
 	const core::AttachmentData *_input = nullptr;
+	Vector<String> _pipelineNames;
+	sprt::atomic<bool> _unknownPipelineWarned = false;
 	Rc<core::Sampler> _sampler;
 };
 

@@ -67,6 +67,19 @@ void performMeshTests() {
 					&& near(plane->getVertexes()[0].normal.z, 1.0f, 1.0e-5f),
 			"mesh: plane counts, texture repeat and normal");
 	checkMesh(*plane, "plane");
+
+	// the records the shaders read by buffer reference, std430: an app pipeline's shaders read
+	// the material's flags and params, and the view's screen, at these offsets
+	check(sizeof(DrawData3d) == 192 && offsetof(DrawData3d, flags) == 152
+					&& offsetof(DrawData3d, params) == 160,
+			"mesh: a draw's record is 192 bytes, its params at 160", toString(sizeof(DrawData3d)));
+	check(sizeof(ViewData3d) == 128 && offsetof(ViewData3d, screen) == 112,
+			"mesh: a view's record is 128 bytes, its screen at 112", toString(sizeof(ViewData3d)));
+
+	Material3d material;
+	check(material.pipeline == MeshPipeline && material.flags == 0
+					&& material.params[0] == Vec4::ZERO && material.params[1] == Vec4::ZERO,
+			"mesh: a material draws with the mesh pipeline, no flags and no params by default");
 }
 
 } // namespace stappler::xenolith::basic3d

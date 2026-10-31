@@ -7,6 +7,7 @@ A depth-tested 3d scene drawn under the basic2d UI of the same window: meshes wi
 - The scene is a [`basic3d::Scene3d`](../../../xenolith/renderer/basic3d/XL3dScene.h) with a [`basic3d::SceneContent3d`](../../../xenolith/renderer/basic3d/XL3dSceneContent.h); any number of [`basic3d::View3d`](../../../xenolith/renderer/basic3d/XL3dView.h) nodes in it show 3d views, and every basic2d node works as before, over them.
 - A view draws [`Draw3d`](../../../xenolith/renderer/basic3d/XL3d.h)s: a [`Mesh3d`](../../../xenolith/renderer/basic3d/XL3dMesh.h), a transform and a `Material3d` (a colour times an optional `Texture`, tiled `uvScale` times).
 - The [`Camera`](../../../xenolith/renderer/basic3d/XL3dCamera.h) is plain math: a target, a yaw, an elevation and a distance; orthographic in points per unit (times the density) or perspective; depth in [0, 1], clip y flipped for Vulkan. `project`, `unproject`, `screenRay`, `screenToGround` and `projectAabb` work in the scene's pixels, y up - the space of input locations and of `Node::getWorldBoundingBox`.
+- An app can add pipelines of its own: `Scene3d::init` takes a list of [`Pipeline3dInfo`](../../../xenolith/renderer/basic3d/XL3d.h) (SPIR-V vertex and fragment shaders over the pass's interface), and a material picks one by `pipeline`, with `flags` and two `params` for its shaders.
 - Textures sample trilinear and anisotropic: give them mips (`core::MipLevelsFull` with `core::ImageHints::GenerateMipmaps`, which images decoded from files get by themselves).
 - Local and Vulkan only, for now.
 
@@ -31,7 +32,32 @@ public:
 };
 ```
 
-[`examples/window/basic3d`](../../../examples/window/basic3d/main.cpp) is a complete one: a spinning textured torus over a ground plane, a translucent panel over both, mouse pan and wheel zoom on the view.
+[`examples/window/basic3d`](../../../examples/window/basic3d/main.cpp) is a complete one: a spinning textured torus over a ground plane, two boxes drawn by a pipeline of the example's own, a translucent panel over all of them, mouse pan and wheel zoom on the view.
+
+## Pipelines of the app
+
+The stock mesh pipeline draws a material as its colour times its texture, lit by Lambert. A material can name another pipeline instead: one the app gives `Scene3d::init`.
+
+```cpp
+// shaders/my_terrain.vert and .frag, built by LOCAL_SHADERS_DIR in the app's Makefile
+#include "my_terrain.vert.h"
+#include "my_terrain.frag.h"
+
+Scene3d::init(app, window, constraints, Vector<basic3d::Pipeline3dInfo>{{"MyTerrain",
+	SpanView<uint32_t>((const uint32_t *)my_terrain_vert, sizeof(my_terrain_vert) / 4),
+	SpanView<uint32_t>((const uint32_t *)my_terrain_frag, sizeof(my_terrain_frag) / 4)}});
+
+// the first of the app's pipelines is 1: 0 is the mesh pipeline
+view->addDraw(Draw3d{mesh, Mat4::IDENTITY, Material3d{.texture = ground, .pipeline = 1,
+	.flags = GridBit, .params = {Vec4(width, height, 0, 0), Vec4::ZERO}}});
+```
+
+- The shaders read what the mesh shaders read, from [`XL3dGlslData.h`](../../../xenolith/renderer/basic3d/glsl/include/XL3dGlslData.h): the push constants `Constants3d`, the vertexes, draws and views they point to, and the texture array at set 0, binding 0. A draw's `flags` and `params` are the material's; a view's `screen` holds its size in pixels and the density, to turn widths in points into pixels. [`xl_3d_mesh.vert`](../../../xenolith/renderer/basic3d/glsl/shaders/xl_3d_mesh.vert) is a starting point.
+- Every pipeline tests depth Less with writes and culls back faces.
+- The SPIR-V is referenced, not copied: it has to outlive the scene, as embedded shader headers do.
+- A material that picks a pipeline the scene does not have draws with the mesh pipeline, and the pass warns once. A pipeline with no name, a taken one or no shaders is refused at `init` with an error, and keeps its index.
+
+The example's boxes are drawn by a pipeline of its own: stripes in the two colours of their params.
 
 A view's camera, draws and lights change through its setters, which ask the window for a frame. A subclass with draws of its own (a terrain made of chunks) overrides `View3d::collectDraws`.
 
@@ -55,6 +81,6 @@ Vertexes are read by `buffer_reference` through `gl_VertexIndex`; the layouts sh
 
 ## Tests
 
-- `tests/basic3d` (`basic3dtest`, no device): the camera's math and the mesh builders.
-- `tests/window/basic3d-check.py` drives the example headless: the torus drawn, textured and lit; the panel over it; the ground's fine checker even through the mips and aliased with `BASIC3D_NOMIPS=1`; no validation error.
+- `tests/basic3d` (`basic3dtest`, no device): the camera's math, the mesh builders, the layout of the records the shaders read.
+- `tests/window/basic3d-check.py` drives the example headless: the torus drawn, textured and lit; the boxes of the app pipeline in the colours of their params and flags; a material with an unknown pipeline drawn as a mesh, with one warning; the panel over it; the ground's fine checker even through the mips and aliased with `BASIC3D_NOMIPS=1`; no validation error.
 - `tests/window/pass3d-check.py` checks the engine features under the module - a pass under basic2d, culling, depth bias and clamp, two subpasses - with a hand-made pass.

@@ -133,8 +133,8 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			auto meshVertexes = draw.mesh->getVertexes();
 			auto meshIndexes = draw.mesh->getIndexes();
 
-			_draws.emplace_back(DrawRecord{uint32_t(draws.size()), uint32_t(meshIndexes.size()),
-				uint32_t(indexes.size()), int32_t(vertexes.size())});
+			_draws.emplace_back(DrawRecord{draw.material.pipeline, uint32_t(draws.size()),
+				uint32_t(meshIndexes.size()), uint32_t(indexes.size()), int32_t(vertexes.size())});
 			vertexes.insert(vertexes.end(), meshVertexes.begin(), meshVertexes.end());
 			indexes.insert(indexes.end(), meshIndexes.begin(), meshIndexes.end());
 
@@ -157,8 +157,10 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			data.color = Vec4(c.r, c.g, c.b, c.a);
 			data.textureIdx = textureIdx;
 			data.uvScale = draw.material.uvScale;
-			data.flags = 0;
+			data.flags = draw.material.flags;
 			data.padding = 0;
+			data.params[0] = draw.material.params[0];
+			data.params[1] = draw.material.params[1];
 			draws.emplace_back(data);
 
 			++record.drawCount;
@@ -234,17 +236,25 @@ static core::ImageFormat Pass3d_selectDepthFormat(SpanView<core::ImageFormat> fo
 }
 
 static void Pass3d_record(core::FrameQueue &q, const core::SubpassData &subpass,
-		xvk::CommandBuffer &buf, const core::AttachmentData *inputData) {
-	auto attachment = q.getAttachment(inputData);
+		xvk::CommandBuffer &buf, Pass3d *pass) {
+	auto attachment = q.getAttachment(pass->getInput());
 	auto input = attachment ? static_cast<Scene3dInputHandle *>(attachment->handle.get()) : nullptr;
-	auto pipeline = subpass.graphicPipelines.get(Pass3d::MeshPipelineName);
-	if (!input || input->empty() || !pipeline) {
+	if (!input || input->empty()) {
+		return;
+	}
+
+	// by a material's pipeline index: the mesh pipeline first, then the app's
+	Vector<const core::GraphicPipelineData *> pipelines;
+	for (auto &name : pass->getPipelineNames()) {
+		pipelines.emplace_back(subpass.graphicPipelines.get(name));
+	}
+	if (pipelines.empty() || !pipelines.front()) {
 		return;
 	}
 
 	auto extent = q.getFrame()->getFrameConstraints().extent;
 
-	buf.cmdBindPipelineWithDescriptors(pipeline);
+	const core::GraphicPipelineData *bound = nullptr;
 	buf.cmdBindIndexBuffer(input->getIndexes(), 0, VK_INDEX_TYPE_UINT32);
 
 	auto viewBase = buf.bindBufferAddress(input->getViewData().get());
@@ -282,6 +292,16 @@ static void Pass3d_record(core::FrameQueue &q, const core::SubpassData &subpass,
 
 		for (uint32_t i = 0; i < view.drawCount; ++i) {
 			auto &d = draws[view.firstDraw + i];
+			auto pipeline = d.pipeline < pipelines.size() ? pipelines[d.pipeline] : nullptr;
+			if (!pipeline) {
+				pass->warnUnknownPipeline(d.pipeline);
+				pipeline = pipelines.front();
+			}
+			if (pipeline != bound) {
+				// one layout for all of them: the descriptors stay bound across the switch
+				buf.cmdBindPipelineWithDescriptors(pipeline);
+				bound = pipeline;
+			}
 			pcb.drawIndex = d.drawIndex;
 			buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
 					BytesView(reinterpret_cast<const uint8_t *>(&pcb), sizeof(Constants3d)));
@@ -290,7 +310,8 @@ static void Pass3d_record(core::FrameQueue &q, const core::SubpassData &subpass,
 	}
 }
 
-bool Pass3d::addToQueue(core::Loop *loop, core::Queue::Builder &builder, Extent2 extent) {
+bool Pass3d::addToQueue(core::Loop *loop, core::Queue::Builder &builder, Extent2 extent,
+		SpanView<Pipeline3dInfo> appPipelines) {
 	using namespace core;
 
 	auto output = builder.getAttachment("Output");
@@ -319,13 +340,30 @@ bool Pass3d::addToQueue(core::Loop *loop, core::Queue::Builder &builder, Extent2
 		return Rc<Scene3dInputAttachment>::create(b);
 	});
 
-	auto vert = builder.addProgramByRef("Basic3dMeshVert", shaders::MeshVert);
-	auto frag = builder.addProgramByRef("Basic3dMeshFrag", shaders::MeshFrag);
+	Vector<PipelineProgram> pipelines;
+	pipelines.emplace_back(PipelineProgram{MeshPipelineName.str<Interface>(),
+		builder.addProgramByRef("Basic3dMeshVert", shaders::MeshVert),
+		builder.addProgramByRef("Basic3dMeshFrag", shaders::MeshFrag)});
+
+	for (auto &it : appPipelines) {
+		auto taken = sprt::find_if(pipelines.begin(), pipelines.end(),
+				[&](const PipelineProgram &p) { return p.name == it.name; });
+		if (it.name.empty() || taken != pipelines.end() || it.vert.empty() || it.frag.empty()) {
+			log::source().error("basic3d::Pass3d", "the pipeline '", it.name,
+					"' has no name, a taken one or no shaders: its materials draw as meshes");
+			// keeps its index, with no pipeline under it
+			pipelines.emplace_back(PipelineProgram{String(), nullptr, nullptr});
+			continue;
+		}
+		pipelines.emplace_back(PipelineProgram{it.name,
+			builder.addProgramByRef(toString(it.name, "Vert"), it.vert),
+			builder.addProgramByRef(toString(it.name, "Frag"), it.frag)});
+	}
 
 	// before basic2d's pass (RenderOrderingHighest), which loads what this one drew
 	builder.addPass("Basic3dPass", PassType::Graphics, RenderOrdering(10),
 			[&](core::QueuePassBuilder &passBuilder) -> Rc<core::QueuePass> {
-		return Rc<Pass3d>::create(passBuilder, output, depth, input, vert, frag);
+		return Rc<Pass3d>::create(passBuilder, output, depth, input, sp::move(pipelines));
 	});
 
 	return true;
@@ -333,10 +371,11 @@ bool Pass3d::addToQueue(core::Loop *loop, core::Queue::Builder &builder, Extent2
 
 bool Pass3d::init(core::QueuePassBuilder &passBuilder, const core::AttachmentData *output,
 		const core::AttachmentData *depth, const core::AttachmentData *input,
-		const core::ProgramData *vert, const core::ProgramData *frag) {
+		Vector<PipelineProgram> &&pipelines) {
 	using namespace core;
 
 	_input = input;
+	for (auto &it : pipelines) { _pipelineNames.emplace_back(it.name); }
 
 	auto colorPass = passBuilder.addAttachment(output);
 	auto depthPass = passBuilder.addAttachment(depth);
@@ -369,21 +408,33 @@ bool Pass3d::init(core::QueuePassBuilder &passBuilder, const core::AttachmentDat
 					FrameRenderPassState::Submitted,
 				});
 
-		subpassBuilder.addGraphicPipeline(MeshPipelineName, layout->defaultFamily,
-				Vector<SpecializationInfo>({
-					SpecializationInfo(vert),
-					SpecializationInfo(frag),
-				}),
-				PipelineMaterialInfo(BlendInfo(), DepthInfo(true, true, CompareOp::Less),
-						RasterizationInfo(CullMode::Back, FrontFace::CounterClockwise)));
+		for (auto &it : pipelines) {
+			if (!it.vert || !it.frag) {
+				continue;
+			}
+			subpassBuilder.addGraphicPipeline(it.name, layout->defaultFamily,
+					Vector<SpecializationInfo>({
+						SpecializationInfo(it.vert),
+						SpecializationInfo(it.frag),
+					}),
+					PipelineMaterialInfo(BlendInfo(), DepthInfo(true, true, CompareOp::Less),
+							RasterizationInfo(CullMode::Back, FrontFace::CounterClockwise)));
+		}
 
-		subpassBuilder.setCommandsCallback([input](FrameQueue &q, const SubpassData &subpass,
-												   core::CommandBuffer &commands) {
-			Pass3d_record(q, subpass, static_cast<xvk::CommandBuffer &>(commands), input);
+		subpassBuilder.setCommandsCallback([this](FrameQueue &q, const SubpassData &subpass,
+												  core::CommandBuffer &commands) {
+			Pass3d_record(q, subpass, static_cast<xvk::CommandBuffer &>(commands), this);
 		});
 	});
 
 	return xvk::QueuePass::init(passBuilder);
+}
+
+void Pass3d::warnUnknownPipeline(uint32_t index) {
+	if (!_unknownPipelineWarned.exchange(true)) {
+		log::source().warn("basic3d::Pass3d", "a material picks the pipeline ", index,
+				", which the pass does not have: it draws with the mesh pipeline");
+	}
 }
 
 const Rc<core::Sampler> &Pass3d::acquireSampler(xvk::Device &device) {

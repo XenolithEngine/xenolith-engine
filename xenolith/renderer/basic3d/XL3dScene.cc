@@ -14,6 +14,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic3d {
 
 bool Scene3d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 		const core::FrameConstraints &constraints) {
+	return init(app, window, constraints, Vector<Pipeline3dInfo>());
+}
+
+bool Scene3d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
+		const core::FrameConstraints &constraints, Vector<Pipeline3dInfo> &&pipelines) {
 	if (!app->isServerThread()) {
 		log::source().error("basic3d::Scene3d",
 				"a remote client is not supported: the 3d pass is not in the server's queue");
@@ -22,7 +27,7 @@ bool Scene3d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> wi
 	auto extent = Extent2(constraints.extent.width, constraints.extent.height);
 	return basic2d::Scene2d::init(app, window, [&](core::Queue::Builder &builder) {
 #ifdef MODULE_XENOLITH_BACKEND_VK
-		if (!vk::Pass3d::addToQueue(app->getGlLoop(), builder, extent)) {
+		if (!vk::Pass3d::addToQueue(app->getGlLoop(), builder, extent, pipelines)) {
 			log::source().error("basic3d::Scene3d", "fail to add the 3d pass");
 		}
 #else
