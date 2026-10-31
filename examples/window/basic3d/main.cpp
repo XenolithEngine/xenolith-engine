@@ -20,7 +20,13 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
+#include "basic3d_stripes.vert.h"
+#include "basic3d_stripes.frag.h"
+
 using namespace basic3d;
+
+// The example's own pipeline, the first app pipeline of the scene: a material picks it as 1
+static constexpr uint32_t StripesPipeline = 1;
 
 // A square checker of `size` pixels with squares of `square` pixels, RGBA8
 static Bytes makeChecker(uint32_t size, uint32_t square, Color4B a, Color4B b) {
@@ -126,6 +132,28 @@ protected:
 		_torus = _view->addDraw(Draw3d{Mesh3d::makeTorus(2.0f, 0.7f, 64, 24), torusTransform(0.4f),
 			Material3d{Color4F::WHITE, coarse, 1.0f}});
 
+		// Two boxes drawn by the app pipeline: red and blue stripes, and with flag 1 green alone
+		// where its params would give green and yellow ones
+		Mat4 left, right;
+		Mat4::createTranslation(Vec3(-4.0f, 5.0f, 0.75f), &left);
+		Mat4::createTranslation(Vec3(5.0f, -4.0f, 0.75f), &right);
+		_view->addDraw(Draw3d{Mesh3d::makeBox(Vec3(1.5f, 1.5f, 0.75f)), left,
+			Material3d{.pipeline = StripesPipeline,
+				.params = {Vec4(1.0f, 0.0f, 0.0f, 1.0f), Vec4(0.0f, 0.0f, 1.0f, 1.0f)}}});
+		_view->addDraw(Draw3d{Mesh3d::makeBox(Vec3(1.5f, 1.5f, 0.75f)), right,
+			Material3d{.pipeline = StripesPipeline,
+				.flags = 1,
+				.params = {Vec4(0.0f, 1.0f, 0.0f, 1.0f), Vec4(1.0f, 1.0f, 0.0f, 1.0f)}}});
+
+		// BASIC3D_UNKNOWN_PIPELINE=1: a third box picks a pipeline the scene does not have, and
+		// draws as a white mesh
+		if (__sprt_getenv("BASIC3D_UNKNOWN_PIPELINE")) {
+			Mat4 back;
+			Mat4::createTranslation(Vec3(-6.0f, -6.0f, 0.75f), &back);
+			_view->addDraw(Draw3d{Mesh3d::makeBox(Vec3(1.0f, 1.0f, 0.75f)), back,
+				Material3d{.pipeline = 7}});
+		}
+
 		if (!__sprt_getenv("BASIC3D_STILL")) {
 			_view->runAction(Rc<RepeatForever>::create(Rc<ActionProgress>::create(8.0f,
 					[this](float progress) {
@@ -173,7 +201,12 @@ public:
 
 	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 			const core::FrameConstraints &constraints) override {
-		if (!Scene3d::init(app, window, constraints)) {
+		auto stripes = Pipeline3dInfo{"Basic3dExampleStripes",
+			SpanView<uint32_t>(reinterpret_cast<const uint32_t *>(basic3d_stripes_vert),
+					sizeof(basic3d_stripes_vert) / sizeof(uint32_t)),
+			SpanView<uint32_t>(reinterpret_cast<const uint32_t *>(basic3d_stripes_frag),
+					sizeof(basic3d_stripes_frag) / sizeof(uint32_t))};
+		if (!Scene3d::init(app, window, constraints, Vector<Pipeline3dInfo>{stripes})) {
 			return false;
 		}
 		setContent(Rc<Basic3dContent>::create());

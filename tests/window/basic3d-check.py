@@ -12,6 +12,10 @@ headless screenshot:
     generated, it averages to an even colour. A second run with BASIC3D_NOMIPS=1 samples level 0
     alone and the same ground aliases into noise - that the two differ is what proves the chain is
     sampled;
+  * two boxes are drawn by the example's own pipeline (Scene3d's app pipelines): one in red and blue
+    stripes, the colours of its material's params, the other green alone, as its flag 1 asks;
+  * a material picking a pipeline the scene does not have (BASIC3D_UNKNOWN_PIPELINE=1, in the second
+    run) draws as a mesh, with one warning;
   * the 2d panel composites over the 3d picture;
   * no validation error, no render pass ending early, no basic3d complaint in the log.
 
@@ -38,6 +42,9 @@ TORUS_SHADED = (325, 110, 430, 355)  # the -x side, away from the sun
 TORUS_SUNNY = (530, 110, 640, 355)  # the +y side, toward it
 GROUND = [(700, 450, 740, 490), (800, 100, 840, 140)]  # clear of the torus and the 2d
 PANEL = (240, 78)  # inside the translucent panel, clear of its label
+STRIPES = (760, 200, 950, 400)  # the box in red and blue stripes
+SOLID = (10, 200, 200, 400)  # the box in green alone
+UNKNOWN = (395, 5, 565, 85)  # the box of an unknown pipeline, in the second run
 
 checks = 0
 failures = 0
@@ -139,6 +146,20 @@ def main():
     check("its sunny side is brighter than its shaded one", sunnyMean - shadedMean > 40,
             f"{sunnyMean:.1f} vs {shadedMean:.1f}")
 
+    print("--- an app pipeline")
+    stripes = pixels(image, STRIPES)
+    red = sum(1 for p in stripes if p[0] > 120 and p[1] < 40 and p[2] < 40)
+    blue = sum(1 for p in stripes if p[2] > 120 and p[0] < 40 and p[1] < 40)
+    check("it draws a box in the two colours of its params", red > 1500 and blue > 1500,
+            f"red {red}, blue {blue}")
+    solid = pixels(image, SOLID)
+    green = sum(1 for p in solid if p[1] > 120 and p[0] < 40 and p[2] < 40)
+    yellow = sum(1 for p in solid if p[0] > 120 and p[1] > 120 and p[2] < 40)
+    check("and the other in the first colour alone, by its flag", green > 5000 and yellow == 0,
+            f"green {green}, yellow {yellow}")
+    check("the unknown pipeline's box is absent without its variable",
+            sum(1 for p in pixels(image, UNKNOWN) if min(p) > 150) < 50)
+
     print("--- the 2d over it")
     panel = image.getpixel(PANEL)
     check("the translucent panel composites over the ground",
@@ -150,10 +171,17 @@ def main():
             all(s < 4 for s in spreads), str([round(s, 1) for s in spreads]))
 
     nomips_path = f"/tmp/xl-basic3d-check-nomips-{os.getpid()}.log"
-    nomips, _ = run(binary, {"BASIC3D_STILL": "1", "BASIC3D_NOMIPS": "1"}, nomips_path)
+    nomips, nomipsText = run(binary, {"BASIC3D_STILL": "1", "BASIC3D_NOMIPS": "1",
+            "BASIC3D_UNKNOWN_PIPELINE": "1"}, nomips_path)
     raw = [statistics.pstdev([lum(p) for p in pixels(nomips, box)]) for box in GROUND]
     check("and aliases when level 0 alone is sampled", all(s > 20 for s in raw),
             str([round(s, 1) for s in raw]))
+
+    print("--- a pipeline the scene does not have")
+    white = sum(1 for p in pixels(nomips, UNKNOWN) if min(p) > 150)
+    check("its box draws as a mesh", white > 3000, f"{white} pixels")
+    warnings = nomipsText.count("which the pass does not have")
+    check("with one warning", warnings == 1, f"{warnings} warnings")
 
     print("--- the log")
     check("no Vulkan validation error", "Validation Error" not in text, log_path)

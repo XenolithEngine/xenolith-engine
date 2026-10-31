@@ -1,8 +1,9 @@
 # Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 # SPDX-License-Identifier: MIT
 
-# A textured torus over a ground plane, drawn by basic3d under the basic2d UI; mouse drag pans,
-# the wheel zooms. tests/window/basic3d-check.py drives it headless.
+# A textured torus over a ground plane and two boxes drawn by a pipeline of the example's own, by
+# basic3d under the basic2d UI; mouse drag pans, the wheel zooms. tests/window/basic3d-check.py
+# drives it headless.
 
 LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
@@ -27,6 +28,10 @@ LOCAL_MODULES += xenolith_backend_vk
 endif
 
 LOCAL_MAIN := main.cpp
+
+# an app pipeline of the 3d pass: the stripes on the boxes
+LOCAL_SHADERS_DIR := $(LOCAL_ROOT)shaders
+LOCAL_PRIVATE_DEPS = $(BUILD_SHADERS_EMBEDDED)
 
 APPCONFIG_APP_NAME    := Basic3d Example
 APPCONFIG_BUNDLE_NAME := org.stappler.xenolith.examples.basic3d
