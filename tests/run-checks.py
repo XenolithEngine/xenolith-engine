@@ -27,9 +27,10 @@ change that names no widget still gets `WINDOW_SMOKE` - five cheap scripts that 
 layout, style, hit-testing, the canvas and hotkeys - and a path that matches nothing at all widens
 the plan to everything. `full` is what a commit is gated on regardless.
 
-A WINDOW CHECK WITH ITS OWN BINARY. `particles-check.py` drives `examples/window/particles` and
-`filesystem-explorer-check.py` drives `examples/window/fileexplorer`, not `testapp` (`WINDOW_BINARIES`):
-each is selected by name like the rest (`XL2dParticleSystem.cc`, `XLUiFilesystemModel.cc`), and
+A WINDOW CHECK WITH ITS OWN BINARY. `particles-check.py` drives `examples/window/particles`,
+`filesystem-explorer-check.py` drives `examples/window/fileexplorer` and `pass3d-check.py` drives
+`tests/pass3d`, not `testapp` (`WINDOW_BINARIES`): each is selected by name like the rest
+(`XL2dParticleSystem.cc`, `XLUiFilesystemModel.cc`; `pass3d-check.py` through `WINDOW_ALSO`), and
 also by a change under its own example (`EXAMPLE_CHECKS`), which is otherwise outside the plan. An
 unbuilt example skips it the way an unbuilt harness is skipped.
 
@@ -174,6 +175,7 @@ COST = {
     "window/wm-compositor-check.py": 100, "window/remote-cache-check.py": 162,
     "window/remote-multi-check.py": 30, "remotetest": 3,
     "window/frame-request-check.py": 34, "window/label-bounds-check.py": 27,
+    "window/pass3d-check.py": 6,
     "gittest": 19, "computetest": 6, "wgpucompute": 2, "flowwgpu": 8, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
     "uilayouttest": 1, "particlestest": 1, "vstoretest": 5, "vstoretest --full": 200,
     "flowtest": 13, "flowtest --full": 36,
@@ -185,6 +187,7 @@ WINDOW_BINARIES = {
     "particles-check.py": ("examples/window/particles", "particles"),
     "filesystem-explorer-check.py": ("examples/window/fileexplorer", "fileexplorer"),
     "wm-compositor-check.py": ("examples/os/server", "wmserver"),
+    "pass3d-check.py": ("tests/pass3d", "pass3d"),
 }
 
 # `examples/` is outside the plan, except the examples a window check drives
@@ -198,6 +201,7 @@ EXAMPLE_CHECKS = [
     ("examples/os/shell", ["wm-compositor-check.py"]),
     ("examples/os/shade", ["wm-compositor-check.py"]),
     ("examples/os/common", ["wm-compositor-check.py"]),
+    ("tests/pass3d", ["pass3d-check.py"]),
 ]
 
 # Clients a window check's server launches itself. They run without --headless, and a server that
@@ -238,6 +242,9 @@ WINDOW_ALSO = [
     ("XL2dCommandList", ["remote-cache-check.py", "remote-render-check.py"]),
     ("XLCoreFrameRequestProxy", ["remote-cache-check.py"]),
     ("XLClientAppThread", ["remote-cache-check.py", "remote-check.py"]),
+    # the load/store ops of an attachment shared by passes, and the 2d pass loading a 3d one's output
+    ("XLCoreQueue", ["pass3d-check.py"]),
+    ("XL2dVkShadowPass", ["pass3d-check.py"]),
 ]
 
 

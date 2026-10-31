@@ -16,6 +16,7 @@
 | `tests/compute` | `computetest` | Vulkan compute with no window (`xenolith_backend_vk` + `xenolith_core`): a `core::Queue` with one compute pass, `Loop::runRenderQueue`, `Loop::captureBuffer`, and a lost device through `vk::Device::setTestFault`. Needs a Vulkan device; without one it prints SKIP. `computetest timings` is the round-trip benchmark ([Measuring compute](measuring-compute.md)) | CLI, GPU |
 | `tests/wgpu` | `wgpucompute` | WebGPU compute with readback and no window (`xenolith_backend_webgpu`), the wg twin of `computetest`: a WGSL compute pipeline over one storage buffer, `Loop::captureBuffer` through a MapRead staging buffer. Natively it runs over wgpu-native (the toolchain must ship `libwgpu_native.so`; without an adapter it prints SKIP); the same binary is the browser test `runtime/wasm-js/xwasm.sh wgpu`, where the readback exercises the browser mapAsync bridge | CLI, GPU, wasm browser |
 | `tests/flowwgpu` | `flowwgpu` | The flow GPU executor on WebGPU (`xenolith_flow_webgpu`): the WGSL lowering of flow blocks proved against the CPU - every operation body's conformance on edge cases, the GPU corpus of `tests/flow` through `flow::GpuExecutor` and the device, and the reducer library's tree folds against `treeFoldReference`. Natively wgpu-native (SKIP without an adapter); in a browser `xwasm.sh flowwgpu` | CLI, GPU, wasm browser |
+| `tests/pass3d` | `pass3d` | a depth-tested 3d graphics pass with its own GLSL, added to the stock basic2d queue through the `Scene2d::init` builder callback and drawing into the same `Output` before the 2d pass composites over it; `tests/window/pass3d-check.py` runs it headless and reads known pixels of a still frame (the 3d content survives the 2d pass, the depth test, the UI over it), then a baseline without the 3d pass | GUI, driven by a check |
 | `examples/window/particles` | `particles` | the GPU particles of `basic2d` behind a control panel; `tests/window/particles-check.py` runs it headless and compares a GPU snapshot of the particles with the CPU reference the example computes from the same `XL2dGlslParticleSim.h` | GUI, driven by a check |
 | `examples/window/fileexplorer` | `fileexplorer` | `ui::FilesystemModel` behind a two-pane navigator - a places tree, and a right pane that is either `ui::TableView` or the example's own virtualized icon grid, with image thumbnails decoded off the app thread; `tests/window/filesystem-explorer-check.py` builds a directory tree of its own and drives the app headless over it. It is the only coverage `ui::FilesystemModel` has | GUI, driven by a check |
 | `examples/window/{dndtree,form,dock}` | `dndtree`, `form`, `dock` | the ui examples, unmodified, as remote clients: `tests/window/remote-example-check.py` starts each with `--connect` against the headless `testapp` in a window manager's shape (client windows only, labelled launch keys) and checks the window, its frame, its popups (overlays) and the process lifetime | GUI, driven by a check |
@@ -67,6 +68,12 @@
   let go is proved back in the ring by a newer frame published from it: on Vulkan a slot is also
   pinned for a moment after its frame is presented or replaced, so its absence from `pinned` is not
   the test.
+- Changed how a queue works out an attachment's load and store ops (`Queue_buildLoadStore` in
+  `xenolith/core/XLCoreQueue.cc`), how the basic2d pass treats `Output`, or anything a pass added beside
+  basic2d's relies on → build `tests/pass3d` and run `tests/window/pass3d-check.py` (the runner selects it
+  for `XLCoreQueue*` and `XL2dVkShadowPass*`). With `PASS3D_DAMAGE=1` the app turns partial redraw on; the
+  UI outside the damage is then lost on screen, which a screenshot does not show (it is rendered by the
+  offscreen variant of the pass).
 - Changed the Vulkan queue compiler (`vk::RenderQueueCompiler`, `FrameExternalTask`,
   `Queue::setCompiled`) → `tests/window/virtual-window-check.py --gapi vulkan` under CPU load: a
   second window compiles a Flat queue whose shaders are already cached, which is where a task
