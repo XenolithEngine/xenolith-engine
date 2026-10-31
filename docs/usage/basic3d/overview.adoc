@@ -13,6 +13,8 @@ A depth-tested 3d scene drawn under the basic2d UI of the same window: meshes wi
 - Textures sample trilinear and anisotropic: give them mips (`core::MipLevelsFull` with `core::ImageHints::GenerateMipmaps`, which images decoded from files get by themselves).
 - Local and Vulkan only, for now.
 
+Why it is built this way - the queue, the records, the pass, the packs, the alternatives not taken and the open questions - is in [design/basic3d.adoc](../../design/basic3d.adoc).
+
 ## Making a scene
 
 ```cpp

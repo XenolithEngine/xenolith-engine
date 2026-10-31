@@ -1,0 +1,391 @@
+# The 3d layer: how basic3d joins the 2d model
+
+How a depth-tested 3d world is drawn in an application whose scene is a basic2d node tree, and
+why it is done this way. This document is the reference for the frame's path from a `View3d` node
+to the GPU: the queue, the records the shaders read, the pass, and the meshes that outlive a
+frame. It answers, for one way of doing it, the open item "an approach to 3D rendering and its
+integration into the application's 2D model" of
+[how-to-support.adoc](../usage/how-to-support.adoc).
+
+Sources:
+
+* [XL3d.h](../../xenolith/renderer/basic3d/XL3d.h) — `Material3d`, `Light3d`, `Draw3d`, `ViewInput3d`, `Pipeline3dInfo`, the limits
+* [XL3dScene.cc](../../xenolith/renderer/basic3d/XL3dScene.cc) — `Scene3d`: the queue and its type
+* [XL3dFrameContext.h](../../xenolith/renderer/basic3d/XL3dFrameContext.h) / [XL3dFrameContext.cc](../../xenolith/renderer/basic3d/XL3dFrameContext.cc) — the frame handle that carries both 2d commands and 3d views
+* [XL3dView.h](../../xenolith/renderer/basic3d/XL3dView.h) / [XL3dView.cc](../../xenolith/renderer/basic3d/XL3dView.cc) — the node, its draws, the snapshot of packed meshes
+* [XL3dCamera.h](../../xenolith/renderer/basic3d/XL3dCamera.h) — the camera and its screen space
+* [XL3dMeshPack.h](../../xenolith/renderer/basic3d/XL3dMeshPack.h) / [XL3dMeshPack.cc](../../xenolith/renderer/basic3d/XL3dMeshPack.cc) — meshes in GPU memory between frames
+* [XL3dGlslData.h](../../xenolith/renderer/basic3d/glsl/include/XL3dGlslData.h) — the records shared by C++ and GLSL
+* [XL3dVkPass.h](../../xenolith/renderer/basic3d/backend/vk/XL3dVkPass.h) / [XL3dVkPass.cc](../../xenolith/renderer/basic3d/backend/vk/XL3dVkPass.cc) — the Vulkan pass: packing a frame, recording it
+* [xl_3d_mesh.vert](../../xenolith/renderer/basic3d/glsl/shaders/xl_3d_mesh.vert) / [xl_3d_mesh.frag](../../xenolith/renderer/basic3d/glsl/shaders/xl_3d_mesh.frag) — the stock mesh pipeline
+
+Companion documents: [usage/basic3d/overview.adoc](../usage/basic3d/overview.adoc) is the guide
+for using the module — making a scene, a pipeline of the app, a pack — and this document does not
+repeat it. [draw-order.adoc](draw-order.adoc) is how basic2d orders what it draws over the 3d layer.
+
+**TL;DR**
+
+* The 3d layer is **one more pass in basic2d's own queue**, recorded before basic2d's pass into
+  the same `Output` image, with a depth attachment of its own. basic2d then loads what it drew.
+  There is no 3d image composited as a sprite.
+* So **every 3d view lies under every 2d node**, whatever their z-order in the tree. A `View3d` is
+  an ordinary node that claims a rect of the scene and hands the frame a list of draws, not
+  vertexes.
+* The frame handle is basic2d's with a list of views added (`FrameContextHandle3d`); the 3d pass
+  reads it as an **input attachment fed every frame**, empty when there are no views.
+* Shaders read everything through **buffer references**: vertexes by `gl_VertexIndex`, the draw,
+  view and light records by pointers in 40 bytes of push constants. There is no vertex input
+  state, so one pipeline layout serves the mesh pipeline and every pipeline of the app.
+* The records are defined once, in `XL3dGlslData.h`, which C++ and GLSL both include; `basic3dtest`
+  checks the sizes and offsets of the draw, view, light and push-constant records.
+* A frame packs, on a worker, the meshes that are not in GPU memory yet into buffers of its own;
+  meshes of a loaded **`MeshPack3d`** — a temporary resource of the `ResourceCache` holding many
+  meshes — are drawn straight from the pack's buffers, with nothing copied.
+* The app thread decides what the frame draws and where every packed mesh is (`Draw3d::gpu`); the
+  worker reads only that snapshot. An app may therefore move meshes between packs while frames
+  are in flight.
+* Local and Vulkan only, the 2d damage off. The open questions are at the end.
+
+---
+
+## The decision everything follows from
+
+There are two ways to put a 3d world under a 2d interface:
+
+1. render the 3d world into an image of its own and draw that image as a sprite of the 2d scene;
+2. add a pass to the queue the 2d scene already renders with, before basic2d's pass, into the same
+   output image.
+
+basic3d takes the second. `tests/pass3d` was written first to find out whether it works — the
+order of the passes, loading `Output` in the second pass, basic2d's damage — and it does:
+3d is drawn under the 2d content in the same frame, depth works, translucent 2d blends over 3d.
+The first way would cost an extra full-screen image and an extra full-screen draw every frame;
+it would buy only the freedom to place a 3d view
+*between* 2d nodes, which no user needs yet.
+
+What the decision gives up: **the z-order of a `View3d` among its siblings does not matter**. All
+3d views are recorded by one pass before basic2d's, so all 2d content of the frame is over all of
+them. A 2d node meant to be under a 3d view cannot be.
+
+## The queue
+
+`Scene3d` is a `basic2d::Scene2d`. It builds basic2d's queue as usual and, through the callback
+`Scene2d::init` takes, adds three things to it (`Pass3d::addToQueue`):
+
+| What | Name | What it is |
+|---|---|---|
+| depth | `Depth3d` | an image attachment, D32F where the device has it, cleared on load |
+| input | `Scene3dInput` | a generic attachment defined as the queue's input; its handle packs the frame (below) |
+| pass | `Basic3dPass` | a graphics pass at `RenderOrdering(10)`, before basic2d's `MaterialSwapchainPass` at `RenderOrderingHighest` |
+
+The pass finds basic2d's `Output` with `Queue::Builder::getAttachment` (E6) — the callback runs
+after basic2d has added it. Nothing else in basic2d knows the pass is there:
+
+* `Output` is written by two passes now. The queue compiler gives the first writer a clear and
+  the later one a load by itself; that needed a fix of the compiler's load/store pass counter
+  (E7), which had made every writer of a shared attachment think it was the first. basic2d's pass
+  already declares `Output` as `WritesColor | ReadColor`, so it needed no flag of its own (E3).
+* The queue is basic2d's **Default** type with **damage off** (`Scene3d::describeQueue`, E4).
+  Partial redraw is a feature of the pass that presents the image; the 3d pass repaints the whole
+  frame, so with damage on, basic2d would redraw only its damage rect over a fresh 3d frame and
+  the interface outside it would vanish. `SkipEmptyFrames` would freeze the 3d world while the 2d
+  content does not change.
+
+## The frame: from a node to the pass
+
+```
+app thread                         render thread / worker                        GPU
+----------                         ----------------------                        ---
+View3d::draw
+  camera viewport ← world rect
+  collectDraws → ViewInput3d
+  Draw3d::gpu ← loaded packs
+FrameContext3d::submitHandle  ──►  FrameRequest::addInput(Scene3dInput, handle)
+                                   Scene3dInputHandle::submitInput
+                                     waits for dependencies
+                                     pack() on a worker:
+                                       frame buffers, records, texture slots
+                                   Pass3dHandle::prepare: image views, sampler
+                                   Pass3d_record                          ──►  draws
+```
+
+### The frame context
+
+`SceneContent3d` replaces basic2d's frame context with a `FrameContext3d`. Its handle,
+`FrameContextHandle3d`, **is** a `basic2d::FrameContextHandle2d` — the command list, the shadow
+lights, the window decorations and the particle emitters every 2d node writes into — with one
+field added: `Vector<ViewInput3d> views`.
+Every basic2d node therefore draws under a `SceneContent3d` exactly as under a 2d one.
+
+`FrameContext3d::submitHandle` submits the 2d inputs as basic2d does and, on the render thread,
+adds the same handle as the input of `Scene3dInput`. **It does so every frame, with no views when
+none was drawn.** An input attachment the frame expects and nobody feeds stalls the frame, and the
+pass is in the queue whether or not the scene has a view on screen.
+
+### The view
+
+A `View3d` is a `Node`. In `draw` it:
+
+1. sets its camera's viewport to `getWorldBoundingBox()` — the scene's pixels, y up — and the
+   density;
+2. appends a `ViewInput3d` to the frame handle: the viewport, a `ViewData3d` (the camera's
+   view-projection, the sun, the ambient, the viewport's size and the density) and the draws and lights
+   from `collectDraws`;
+3. for every draw whose mesh is in a loaded pack, writes where it is: `Draw3d::gpu` gets the pack's
+   two buffers and the mesh's `firstIndex` and `vertexOffset` in them.
+
+The draws are **records, not vertexes**: a mesh (`Rc<Mesh3d>`, whose vertexes and indexes do not
+change once made), a transform and a material. Nothing is projected or culled on the CPU by the module; a subclass with many
+meshes (a terrain from chunks) overrides `collectDraws` and culls them itself with
+`Camera::projectAabb`.
+
+A view has **no 2d children**: they would be 2d content of the same frame, drawn over all 3d
+views, which a child "inside" a 3d view never means. Views **share one depth buffer**: two views
+that overlap test against each other.
+
+### The camera and its spaces
+
+* **The world:** z up. The default camera is the isometric game camera: yaw 45°, elevation 30°
+  (a ground cell projects to a 2:1 rhombus), orthographic at 64 points per unit; perspective is
+  also there.
+* **Depth** is in [0, 1] — `Mat4::createOrthographicZO`/`createPerspectiveZO` (E1) — and the
+  camera flips clip y itself, as Vulkan expects.
+* **The screen** of every camera method (`project`, `unproject`, `screenRay`, `screenToGround`,
+  `projectAabb`) is the scene's pixels with y up: the space of input locations and of
+  `Node::getWorldBoundingBox`. The pass turns the view's rect into a framebuffer viewport (y down)
+  when it records.
+* **Faces** wind counter-clockwise seen from outside. With the flipped clip y they stay
+  counter-clockwise on the framebuffer, so every pipeline culls back faces with
+  `FrontFace::CounterClockwise` — rasterization state the core did not have before (E2).
+
+### Threads
+
+| Thread | Does | Reads |
+|---|---|---|
+| app | `View3d::draw`, `collectDraws`, the `Draw3d::gpu` snapshot; makes and retains packs | the node tree, `MeshPack3d` |
+| render thread | hands the handle to the frame request | — |
+| a worker | `Scene3dInputHandle::pack`: copies the unpacked meshes and builds the records | the handle only |
+| render thread, recording | `Pass3d_record`, the subpass's commands callback; the GPU then runs what it recorded | the handle's buffers and the snapshot's `Rc`s |
+
+The worker reads no `MeshPack3d` and no `Mesh3d`'s pack: a pack is app-thread-only, and the
+snapshot carries `Rc`s of its buffers into the frame. That is what lets an app compact packs
+while frames are in flight (below).
+
+One reference does cross threads: the handle's `Draw3d`s hold `Rc<Mesh3d>`, and a packed mesh
+holds `Rc<MeshPack3d>`. A frame that ends after the app has dropped a mesh releases the last
+reference to it, and maybe to its pack, off the app thread; the pack's `MeshIndex` and temporary
+resource then go there too. Nothing guards that yet (see the open questions).
+
+## The records
+
+All of them are in [XL3dGlslData.h](../../xenolith/renderer/basic3d/glsl/include/XL3dGlslData.h),
+written once in the subset of C that `sprt_glsl.h` makes valid both as C++ (`stappler::glsl`, with
+`vec4`, `mat4`, `uvec2` as C++ types) and as GLSL. The layout is std430; every record is a whole
+number of 16-byte rows, so the C++ and the GLSL sizes agree. `basic3dtest` checks the sizes and
+the offsets an app shader reads.
+
+| Record | Size | Holds | Where |
+|---|---|---|---|
+| `Vertex3d` | 64 B | `pos` (xyz, w = 1), `normal` (xyz), `tangent` (xyz, w = the bitangent's sign), `attr` (xy = texture coordinates, zw free) | the frame's or a pack's vertex buffer |
+| `DrawData3d` | 224 B | `model`, `normal` (inverse transpose of the model's rotation and scale), `color`, `textureIdx`, `uvScale`, `flags` (152), `textureIdx2` (156), `params[4]` (160) | one per draw, the frame's draw buffer |
+| `ViewData3d` | 144 B | `viewProj`, `sunDirection`, `sunColor`, `ambient`, `screen` (112: the view's viewport width and height in pixels, pixels per point), `firstLight` (128), `lightCount` (132) | one per view, the frame's view buffer |
+| `LightData3d` | 32 B | `position` (xyz, w = radius), `color` (rgb = colour × intensity) | the frame's light buffer, every view's lights one after another |
+| `Constants3d` | 40 B | `viewPointer`, `drawPointer`, `vertexPointer`, `lightPointer` (each a `uvec2` address), `drawIndex` (32) | push constants, per draw |
+
+### Vertexes by reference
+
+There is **no vertex input state**. The vertex shader reads
+`VertexBuffer(constants.vertexPointer).vertices[gl_VertexIndex]`; `gl_VertexIndex` already includes
+the draw's `vertexOffset`, so a mesh's indexes stay as the mesh has them, from 0, wherever its
+vertexes land in a buffer. The draw's record is `draws[constants.drawIndex]`, the view's is at
+`viewPointer`.
+
+What this buys:
+
+* **one pipeline layout** — one descriptor set (the texture array) and one push constant range —
+  for the mesh pipeline and every pipeline of the app; switching pipelines keeps the descriptors
+  bound;
+* **one vertex format** for every mesh, with no pipeline per format;
+* switching vertex buffers is writing a different address into the push constants, and a pack's
+  buffer serves the shaders without any rebinding of descriptor sets.
+
+What it costs: a vertex is 64 bytes. Packing the normal and the tangent into octahedral `snorm16`
+and `attr` into halves would make it 32. That is deferred until a measurement shows vertex
+bandwidth matters; with meshes in packs (below) the bytes are uploaded once, not every frame.
+
+The records, the draws and the views, are written by the frame on the worker; the materials'
+`flags`, `params` and `texture2` pass through to them untouched, which is the whole interface of
+an app pipeline (E9): it reads the same records the mesh pipeline reads.
+
+## The pass
+
+### Pipelines
+
+One subpass, one color attachment (`Output`), one depth attachment (`Depth3d`), one descriptor
+set: an array of `MaxTextures` (64) combined image samplers.
+
+The pipelines of the subpass are, in order: `Basic3dMesh` (the stock mesh shaders) and then the
+app's, from the `Pipeline3dInfo` list `Scene3d::init` takes. A material names one by its place:
+`MeshPipeline` (0), or an app pipeline's index plus one. All of them use the same state: depth
+test Less with writes, back faces culled, counter-clockwise front faces, no blending. A pipeline
+with no name, a name taken or no shaders keeps its index with nothing under it, and its materials
+fall back to the mesh pipeline with one warning — so the indexes the app gave never shift.
+
+### Packing a frame (worker)
+
+`Scene3dInputHandle::submitInput` waits for the frame's dependencies, then runs `pack` on a worker
+with the frame's memory pool:
+
+1. It counts the draws, and the vertexes and indexes of the meshes **without** a `Draw3d::gpu`.
+2. For every view it writes a `ViewData3d` and a `ViewRecord` (the viewport, the range of its
+   draws), and appends up to `MaxLights` (64) of its lights to the frame's light array, setting
+   the view's `firstLight` and `lightCount`. Lights past that are dropped, with one warning.
+3. For every draw it writes a `DrawData3d` and a `DrawRecord`:
+   * a draw with a snapshot takes its buffers, `firstIndex` and `vertexOffset` from it;
+   * a draw without one gets its mesh's vertexes and indexes appended to the frame's arrays, and
+     their offsets there.
+4. The textures of the draws become slots of the array, in the order met; a texture still loading
+   draws as its colour alone, and textures past 64 likewise, with a warning.
+5. It allocates five buffers from the frame's pool — vertexes, indexes, draws, views, lights,
+   device-local and host-visible, the storage ones with device addresses — and copies into them.
+   Each has at least one record, so its address exists even when every mesh is packed or there
+   are no lights.
+6. It stores `Pass3dStats` (`getLastPassStats`): the vertex and index bytes copied into the frame,
+   the draws from the frame and from packs, the bytes of the records.
+
+`Pass3dHandle::prepare` then makes image views for the slots and hands them, an empty image for
+the unused ones, and the pass's sampler to the descriptor writes. The sampler is trilinear,
+repeating, anisotropic 8×, over all mip levels — the textures' mip chains are built by the
+transfer queue on the GPU (`ImageHints::GenerateMipmaps`, E5). `BASIC3D_NOMIPS=1` samples level 0
+alone, without anisotropy, for the checks.
+
+### Recording
+
+`Pass3d_record`, per frame:
+
+* binds the frame's index buffer and puts the addresses of the frame's draws, vertexes and lights
+  into the push constants;
+* per view: a viewport of its whole rect (the projection covers it) and a scissor of that rect
+  clipped to the frame; the view's address into `viewPointer`. A view off the frame or with no
+  draws is skipped;
+* per draw: binds the pipeline if it changed; if the draw's vertex buffer differs from the bound
+  one, binds its address into `vertexPointer`; if its index buffer differs, binds it; pushes the
+  constants with `drawIndex`; `vkCmdDrawIndexed(indexCount, 1, firstIndex, vertexOffset, 0)`.
+
+So the order of the draws is the order the views and their `collectDraws` gave. Draws of one pack
+next to each other bind its buffers once.
+
+### Lights
+
+The sun and the ambient are per view, in `ViewData3d`. Point lights are `Light3d` — a position, a
+radius, a colour times intensity — whose light falls off as `(1 - (d / r)^2)^2`, reaching zero at
+the radius with a zero slope. They are per view, in one frame array (E10): the mesh shader sums
+the view's range, and an app shader reads the same range through `lightPointer`. Choosing which
+lights a view hands the frame — nearest, brightest, visible — is the app's: the module only caps
+them at 64.
+
+## Meshes between frames: packs
+
+A mesh drawn with no pack is copied into the frame every frame. That is right for a few small
+meshes and wrong for a world: a terrain zoomed out shows a hundred chunks, about 7 MiB of vertexes
+a frame. A `MeshPack3d` (E11) keeps meshes in GPU memory:
+
+* **One resource for many meshes.** `MeshPack3d::init(cache, meshes)` lays the meshes one after
+  another into one vertex and one index buffer (`layoutPack`: indexes unchanged, a draw adds its
+  range's `vertexOffset`) and makes them one **temporary resource** of the `ResourceCache`,
+  named `basic3d.pack.<n>`, with an app-level `MeshIndex` over it. A resource per mesh would take
+  an allocation per mesh, against Vulkan's usual limit of 4096 allocations; a few hundred meshes
+  in packs take a few dozen.
+* **Loaded while used.** The pack's `MeshIndex` is a resource object with owners, as a texture is:
+  `View3d::retainPack`/`releasePack` add and remove the frame context as its owner, once per mesh
+  that draws from it; a view's own draws do it in `addDraw`/`clearDraws`, and a view out of a
+  running scene retains nothing. The cache compiles a resource with owners; once a loaded one has
+  none, the cache's next update clears it and, by `RemoveOnClear` with no timeout, removes it. A
+  pack released while it is still compiling stays until it has loaded. A pack released
+  before it was ever requested is removed by `removeUser` itself, since the cache would never clear
+  what it never loaded.
+* **Drawn while loaded.** Until the cache has loaded it, `View3d::draw` leaves `Draw3d::gpu` empty
+  and the frame copies the mesh as before: a new pack never leaves a hole.
+* **Moved without stopping frames.** Making a pack sets it on its meshes (`Mesh3d::setPack`), and
+  a later pack takes a mesh over. An app compacts packs whose meshes mostly left by repacking the
+  rest and releasing the old pack; a frame in flight still holds its `Rc`s of the old buffers from
+  its snapshot, so they live until that frame ends.
+
+The module provides the mechanism, not the policy: when to pack (how many meshes, how long to wait
+for more), when to compact, which meshes go together is the app's. gamefield's `PackSet`, for
+example, packs chunk meshes 16 at a time or after 4 frames, and repacks a pack whose live meshes
+fell under a quarter for 120 frames.
+
+`BASIC3D_NOPACK=1` makes views ignore packs (the snapshot stays empty), for checks that compare
+the picture with and without them.
+
+The packs were the first static resource with device-address buffers; the transfer queue
+allocated static resources' memory without `VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT`, which only
+the validation layer in a windowed run noticed. It now asks for the flag when a buffer has
+`ShaderDeviceAddress` (`982675dc`).
+
+## Alternatives not taken
+
+* **A 3d image composited as a sprite.** See the decision above: an extra image and a full-screen
+  draw, for an ordering freedom nobody needs.
+* **A vertex input state per format.** Every format would need its own pipelines, and a pack's
+  buffers would be bound as vertex buffers per draw. Buffer references keep one layout.
+* **`MeshAttachment`, or a GPU pool of the module's own, for resident meshes.** An attachment's
+  data is the frame's, rebuilt or carried by the queue; a pool of the module's own would duplicate
+  what the `ResourceCache` already does — compiling, owning, releasing — and give the app a
+  second lifetime model to learn. Temporary resources already held external images (the
+  Markdown view's, for one); a pack is the first to hold meshes, through `MeshIndex`.
+* **A resource per mesh.** One allocation per mesh, and the 4096 allocations limit within reach
+  of a large field.
+* **A depth buffer per view.** Overlapping views are rare; a depth image per view is not.
+
+## Limits and open questions
+
+These are what remains open of the `how-to-support` item:
+
+* **Vulkan only.** The pass is `basic3d::vk::Pass3d`; there is no WebGPU, Metal, GLES or software
+  pass. The records and the shaders are backend-neutral in intent, but a port has to replace
+  buffer references where the backend lacks them.
+* **Local only.** A remote client's queue is the server's, and the 3d pass is not added there;
+  `Scene3d` reports it.
+* **No 2d damage** while a 3d view is on screen (E4): partial redraw needs a view to report the
+  damage of its own frames.
+* **All 3d under all 2d**, and one depth buffer for all views.
+* **No instancing, no objects, no shadow maps.** A draw is one mesh with one transform. Shadows of
+  terrain are an app pipeline's business (gamefield traces them through a height map); shadow maps
+  for objects, instanced objects, translucency and a second subpass reading depth (water) are
+  future work.
+* **64 textures a frame**, 64 lights a view.
+* **A mesh's last reference may go off the app thread** (see Threads). Releasing frame handles'
+  meshes on the app thread, or making a pack's release thread-safe, would close it.
+
+## Engine edits made for it
+
+| # | Edit | Commit |
+|---|---|---|
+| E1 | `Mat4::createPerspectiveZO`, `createOrthographicZO`, `createOrthographicOffCenterZO`: depth in [0, 1] | `d037051a` |
+| E2 | `core::RasterizationInfo` in `PipelineMaterialInfo`: cull mode, front face, depth bias and clamp | `a6d543a1`, check `626e6fa9` |
+| E3 | none needed: basic2d's pass already declares `Output` as `WritesColor \| ReadColor`, and the compiler picks load or clear (checked in stage 0) | — |
+| E4 | `Scene3d` keeps the Default queue with damage off | `b41e4e9f` |
+| E5 | mip levels of an image: prebuilt levels uploaded, a chain generated by blits | `1c12db99`, `6d4d8b99`, check `0d2507bc` |
+| E6 | `Queue::Builder::getAttachment`: a pass added by a callback finds an attachment added before | `40f5ed03` |
+| E7 | the queue compiler counts the passes of a shared attachment, so only the first clears it | `40f5ed03` |
+| E8 | the generic Vulkan pass advances through every subpass; a render pass ending early is logged | `61baac5c`, check `b576e264` |
+| E9 | pipelines an app supplies, with material flags and params | `873b97b1`, example `91a986a3` |
+| E10 | point lights, a second texture and four params for a material | `d8d6ae6a`, example `6d078c74` |
+| E11 | mesh packs: meshes drawn from GPU buffers that outlive the frame; device-address memory for static resources | `4275a2fd`, `982675dc`, example `ff75cf52` |
+| E12 | shaders are rebuilt when a header they include changes (glslang `--depfile`) | `1db1019d` |
+
+The module itself: `b41e4e9f`, its checks `224b434d`, the example `143fc7eb`. The integration was
+tried first in `tests/pass3d` (`4b018a1c`).
+
+## Tests
+
+* `tests/basic3d` (`basic3dtest`, no device): the camera's math, the mesh builders, the sizes and
+  offsets of the records, a pack's layout.
+* `tests/window/basic3d-check.py` drives `examples/window/basic3d` headless: the mesh pipeline,
+  the app pipeline and its params, a point light, the pack (no vertex copied into the frame, the
+  same picture with `BASIC3D_NOPACK=1`, the pack leaving the cache when its draws go), mips, the
+  2d panel over the 3d world, no validation errors.
+* `tests/window/pass3d-check.py` checks the engine features under the module with a pass made by
+  hand: a pass under basic2d, culling, depth bias and clamp, two subpasses.
