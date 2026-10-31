@@ -97,6 +97,7 @@ MODULE_RUNTIME_COMMON_CFLAGS += $(foreach g,$(SPRT_COLLATION_ALL_GROUPS),\
 	-DSPRT_COLLATION_$(g)=$(if $(filter $(g),$(SPRT_COLLATION_GROUPS)),1,0))
 
 include $(RUNTIME_MODULE_DIR)/core/core.mk
+include $(RUNTIME_MODULE_DIR)/libc_freestanding/libc-freestanding.mk
 include $(RUNTIME_MODULE_DIR)/musl-adapters/musl_libc.mk
 include $(RUNTIME_MODULE_DIR)/libc_impl/malloc.mk
 include $(RUNTIME_MODULE_DIR)/libc_impl/libc.mk

@@ -1,0 +1,130 @@
+# Freestanding string primitives
+
+`runtime_libc_freestanding` provides the memory and string primitives of the targets
+without a platform libc:
+
+`memcpy memmove memset memcmp bcmp memchr memrchr strlen strnlen strcmp strncmp strchr strrchr`
+
+and the floating-point environment of `<fenv.h>`:
+
+`feclearexcept feraiseexcept fetestexcept fegetround fesetround fegetenv fesetenv
+feholdexcept feupdateenv fegetexceptflag fesetexceptflag __flt_rounds`
+
+It has no dependencies, so the same sources serve the runtime's own libc
+(`runtime_libc_impl`: WASM, EmboxUser, TauUser, Windows) and can be compiled into code
+that has no runtime at all, such as the Tau kernel and bare modules. The rest of
+`<string.h>` and `<wchar.h>` still comes from musl (`musl-adapters/string`).
+
+## Where each function comes from
+
+* `src/sprt_fs_string.cpp` (SCU of `sprt_fs_mem.cc` and `sprt_fs_str.cc`): plain C loops for
+  every function. They are compiled `no_builtin`, so they are never turned back into calls
+  to themselves.
+* `asm/<arch>/sprt_fs_<arch>.S` for x86_64, aarch64, riscv64 and loongarch64: `memcpy
+  memmove memset memcmp bcmp memchr strlen strcmp` for the ELF ABIs (SysV, AAPCS64, LP64D).
+  A function the assembly defines is not compiled from C (`SPRT_FS_ASM_<name>` in
+  `include/sprt_fs_config.h`).
+* `src/sprt_fs_fenv.cpp`: musl's arch independent fenv (`src/fenv/*.c`) on the `FE_*` values
+  and `fenv_t` of sprt's `<fenv.h>`. `asm/<arch>/sprt_fs_fenv_<arch>.S` is musl's
+  `src/fenv/<arch>/fenv.s` for the primitives, wherever code may touch the FP control
+  registers: the SIMD level of x86_64 and aarch64, and hard-float riscv64 and loongarch64.
+  Elsewhere (WASM, soft float, code built with FP disabled) they are musl's stubs for a
+  machine with no FP environment.
+* Windows takes `memcpy memmove memset memcmp strlen strnlen strcmp strncmp strchr` from
+  ntdll (`__SPRT_WIN_USE_IMPORT_STRING_LIB`); the module adds the other four, in C. Its
+  fenv primitives are the Win64 port in `libc_impl/asm/Windows`; the module adds the
+  wrappers. There is no assembly for Windows or WASM.
+* No freestanding target runs on riscv64 or loongarch64 yet: their assembly is held to the
+  conformance run under qemu-user, and has not been timed.
+
+## The levels of the assembly
+
+The assembly is built either for general registers only, or with SIMD: SSE2, NEON, RVV
+1.0, LSX. The choice is made by `__SSE2__` / `__ARM_NEON` (which `-mgeneral-regs-only`
+removes, so code built for the Tau kernel or a bare module, where FP/SIMD traps, gets the
+first level), `__riscv_vector` and `__loongarch_sx`.
+`SPRT_FS_FORCE_GPR` selects it explicitly. No level touches x18 (the shadow call stack) or
+the callee-saved vector registers.
+
+Wider vectors are taken where they can be:
+
+* x86_64, SIMD level: AVX2 paths for the long inputs of all eight functions. When the
+  flags guarantee AVX2 (`__AVX2__`) they are always taken; otherwise the first call that
+  reaches one asks CPUID and XGETBV (the OS must save the YMM state) and keeps the answer
+  in a byte of `.bss`. The test sits only where the AVX2 path begins, so short calls do
+  not pay for it. `SPRT_FS_FORCE_AVX2` / `SPRT_FS_NO_AVX2` decide it at build time.
+* aarch64, SIMD level: SVE versions of `memcmp memchr strlen strcmp`, for any vector
+  length, when the flags enable SVE (`__ARM_FEATURE_SVE`, or `SPRT_FS_FORCE_SVE`). There
+  is no run time choice here: reading the ID registers from EL0 traps on systems that do
+  not emulate it. Copies and fills stay NEON.
+* riscv64: the general-register level makes aligned word accesses only, since a
+  misaligned one may trap or be emulated by the firmware; a copy whose source and
+  destination are aligned differently merges aligned source words by shifts. Zbb (`orc.b`,
+  `ctz`) speeds up its searches when the flags enable it (`__riscv_zbb`, or
+  `SPRT_FS_FORCE_ZBB`). The vector level (RVV 1.0, `__riscv_vector` or `SPRT_FS_FORCE_RVV`)
+  is vector-length agnostic, and its searches use fault-only-first loads, like SVE.
+* loongarch64: LA64 cores access unaligned memory in hardware, so both levels follow the
+  aarch64 version; the SIMD level is LSX, which la64v1.0 includes. LASX (256-bit) is not
+  used yet.
+
+The same CPUID answer carries the vendor, which the x86_64 copies need at both levels (see
+below). The only relocations are PC-relative references to that byte.
+
+Rules both levels keep:
+
+* A copy loads everything a step stores before storing it, and the tail of a long copy is
+  loaded first, so the forward paths are also a correct `memmove` when `dst < src`.
+* `memchr` and `strlen` read aligned blocks only, and read a block past a match only when it
+  is in the same 32 (64) byte group, so no read crosses into a page the object does not
+  reach. `strcmp` cannot align its two strings together: it counts the whole steps before
+  either reaches a page end and takes that step byte by byte.
+* x86_64 uses `rep movsb` / `rep stosb` from 256 bytes (GPR), 1 KiB (SSE2), or 8 KiB for
+  copies and 256 KiB for fills (AVX2); below that the loops are faster on both Zen 4 and
+  Coffee Lake. On AMD rep stops at 1 MiB, past a core's L2, and is not used when
+  `dst - src` is 1..15 modulo 64: Zen copies those an order of magnitude slower than the
+  loop. Intel keeps rep at any size and alignment.
+* The x86_64 assembly is assembled with `-mbranches-within-32B-boundaries`: Intel Skylake
+  to Comet Lake (the JCC erratum fix) lose time on a branch that crosses or ends at a
+  32-byte boundary. Measured on an i7-8700K, the assembly got 4-7% faster.
+
+These paths make unaligned and overlapping accesses: they are for normal memory. Device
+memory (MMIO, a framebuffer mapped Device-nGnRE) needs copies with aligned accesses only,
+which this module does not provide yet.
+
+## Using it without the runtime
+
+A project that cannot depend on modules compiles the sources directly (the includes inside
+are relative):
+
+```make
+LOCAL_SRCS_OBJS += \
+	$(STAPPLER_ROOT)/runtime/libc_freestanding/src/sprt_fs_string.cpp \
+	$(STAPPLER_ROOT)/runtime/libc_freestanding/asm/$(TARGET_ARCH)/sprt_fs_$(TARGET_ARCH).S
+```
+
+The files then get the project's flags; a project whose assembly flags do not carry
+`-mgeneral-regs-only` defines `SPRT_FS_FORCE_GPR` for them, and on x86_64 it adds
+`-mbranches-within-32B-boundaries` as the module does. Its own definitions of these
+functions have to go.
+
+## Tests
+
+`tests/libc-freestanding` (`lfstest`) holds every implementation in one hosted binary
+under renamed symbols, against a byte-loop reference: the module in C (`fs_c`); its
+assembly at each level (`fs_gpr`; on x86_64 `fs_sse2`, `fs_avx2` and the run-time choice
+`fs_simd`; on aarch64 `fs_simd` for NEON and `fs_sve`; on riscv64 `fs_zbb` and `fs_rvv`;
+on loongarch64 `fs_simd` for LSX), built with the module's own assembler flags; musl's C
+and assembly; and the host libc. A forced variant runs only where the CPU has what it
+forces (CPUID, `HWCAP`, `riscv_hwprobe`). The fenv part (`--func fenv`) holds the module's
+fenv to the hardware: the flags real operations raise, the modes a division rounds in, and
+what the host libc reads back.
+`lfstest` is the conformance run, `lfstest --full` the gate's, `lfstest bench` the
+timing table (release build only). `run.sh --target aarch64-unknown-linux-gnu` runs the
+conformance under qemu-user, and `--qemu-cpu` picks the emulated CPU:
+`max,sve-default-vector-length=N` the SVE vector length (N bytes) on aarch64,
+`rv64,v=true,zbb=true,vlen=N` the RVV one (N bits) on riscv64. Times under qemu mean
+nothing.
+
+The benchmark times the implementations one after another on the same buffers, so one
+can leave them in a cache state that helps or hurts the next; for a close call, time the
+two with `--impl` in separate runs.
