@@ -145,7 +145,21 @@ protected:
 				.flags = 1,
 				.params = {Vec4(0.0f, 1.0f, 0.0f, 1.0f), Vec4(1.0f, 1.0f, 0.0f, 1.0f)}}});
 
-		// BASIC3D_UNKNOWN_PIPELINE=1: a third box picks a pipeline the scene does not have, and
+		// A third box of the pipeline, its second colour from a second texture: the coarse checker
+		Mat4 front;
+		Mat4::createTranslation(Vec3(-7.0f, -2.0f, 0.75f), &front);
+		_view->addDraw(Draw3d{Mesh3d::makeBox(Vec3(1.5f, 1.5f, 0.75f)), front,
+			Material3d{.pipeline = StripesPipeline,
+				.params = {Vec4(1.0f, 0.0f, 0.0f, 1.0f), Vec4(0.0f, 0.0f, 1.0f, 1.0f)},
+				.texture2 = coarse}});
+
+		// A point light low over the ground beside the torus, unless BASIC3D_NO_LIGHT=1: a pool
+		// of warm light on the ground under it
+		if (!__sprt_getenv("BASIC3D_NO_LIGHT")) {
+			_view->addLight(Light3d{Vec3(6.0f, 4.0f, 1.0f), 6.0f, Color4F(1.6f, 1.2f, 0.6f, 1.0f)});
+		}
+
+		// BASIC3D_UNKNOWN_PIPELINE=1: a fourth box picks a pipeline the scene does not have, and
 		// draws as a white mesh
 		if (__sprt_getenv("BASIC3D_UNKNOWN_PIPELINE")) {
 			Mat4 back;

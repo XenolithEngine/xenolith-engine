@@ -14,6 +14,10 @@ headless screenshot:
     sampled;
   * two boxes are drawn by the example's own pipeline (Scene3d's app pipelines): one in red and blue
     stripes, the colours of its material's params, the other green alone, as its flag 1 asks;
+  * a third box takes its second colour from the material's second texture: the coarse checker's
+    orange shows where its blue would be;
+  * a point light makes a pool of light on the ground under it, gone with BASIC3D_NO_LIGHT=1,
+    and the ground past its radius is as without it;
   * a material picking a pipeline the scene does not have (BASIC3D_UNKNOWN_PIPELINE=1, in the second
     run) draws as a mesh, with one warning;
   * the 2d panel composites over the 3d picture;
@@ -40,11 +44,13 @@ WIDTH, HEIGHT = 960, 640
 TORUS = (325, 110, 640, 355)
 TORUS_SHADED = (325, 110, 430, 355)  # the -x side, away from the sun
 TORUS_SUNNY = (530, 110, 640, 355)  # the +y side, toward it
-GROUND = [(700, 450, 740, 490), (800, 100, 840, 140)]  # clear of the torus and the 2d
+GROUND = [(700, 450, 740, 490), (60, 120, 100, 160)]  # clear of the torus, the boxes and the 2d
 PANEL = (240, 78)  # inside the translucent panel, clear of its label
 STRIPES = (760, 200, 950, 400)  # the box in red and blue stripes
 SOLID = (10, 200, 200, 400)  # the box in green alone
 UNKNOWN = (395, 5, 565, 85)  # the box of an unknown pipeline, in the second run
+TEXTURED = (600, 15, 830, 170)  # the box whose second colour is the material's second texture
+POOL = (370, 500, 410, 530)  # the ground under the point light
 
 checks = 0
 failures = 0
@@ -157,6 +163,11 @@ def main():
     yellow = sum(1 for p in solid if p[0] > 120 and p[1] > 120 and p[2] < 40)
     check("and the other in the first colour alone, by its flag", green > 5000 and yellow == 0,
             f"green {green}, yellow {yellow}")
+    textured = pixels(image, TEXTURED)
+    orange = sum(1 for p in textured if p[0] > 150 and 60 < p[1] < 160 and p[2] < 90)
+    blue = sum(1 for p in textured if p[2] > 120 and p[0] < 40 and p[1] < 40)
+    check("a second texture takes the place of the second colour", orange > 800 and blue == 0,
+            f"orange {orange}, blue {blue}")
     check("the unknown pipeline's box is absent without its variable",
             sum(1 for p in pixels(image, UNKNOWN) if min(p) > 150) < 50)
 
@@ -177,6 +188,17 @@ def main():
     check("and aliases when level 0 alone is sampled", all(s > 20 for s in raw),
             str([round(s, 1) for s in raw]))
 
+    print("--- a point light")
+    dark_path = f"/tmp/xl-basic3d-check-nolight-{os.getpid()}.log"
+    dark, _ = run(binary, {"BASIC3D_STILL": "1", "BASIC3D_NO_LIGHT": "1"}, dark_path)
+    pool = statistics.mean(lum(p) for p in pixels(image, POOL))
+    unlit = statistics.mean(lum(p) for p in pixels(dark, POOL))
+    check("it makes a pool of light on the ground", pool - unlit > 40,
+            f"{pool:.1f} with it, {unlit:.1f} without")
+    far = [statistics.mean(lum(p) for p in pixels(im, GROUND[1])) for im in (image, dark)]
+    check("past its radius the ground is as without it", abs(far[0] - far[1]) < 1.0,
+            f"{far[0]:.1f} with it, {far[1]:.1f} without")
+
     print("--- a pipeline the scene does not have")
     white = sum(1 for p in pixels(nomips, UNKNOWN) if min(p) > 150)
     check("its box draws as a mesh", white > 3000, f"{white} pixels")
@@ -190,7 +212,7 @@ def main():
 
     print(f"\n{checks} checks, {failures} failures")
     if failures == 0:
-        for p in (log_path, nomips_path):
+        for p in (log_path, nomips_path, dark_path):
             try:
                 os.unlink(p)
             except OSError:
