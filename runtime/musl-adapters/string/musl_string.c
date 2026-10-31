@@ -8,17 +8,13 @@
 
 #include "../include/defs.h"
 
+// memcpy memmove memset memcmp bcmp memchr memrchr strlen strnlen strcmp strncmp
+// strchr strrchr come from runtime/libc_freestanding (on Windows partly from ntdll).
+
 #if !SPRT_WINDOWS
-#include "../../musl-libc/src/string/memcmp.c"
 #include "../../musl-libc/src/string/strcpy.c"
-#include "../../musl-libc/src/string/strnlen.c"
 #include "../../musl-libc/src/string/strncpy.c"
 #include "../../musl-libc/src/string/strstr.c"
-#include "../../musl-libc/src/string/strchr.c"
-#include "../../musl-libc/src/string/strcmp.c"
-#include "../../musl-libc/src/string/strncmp.c"
-#include "../../musl-libc/src/string/strlen.c"
-#undef ALIGN
 
 // The wcs* collation/compare entry points are owned by the freestanding libc's
 // own builtin_wchar.cpp / builtin_locale.cpp (they route through the locale
@@ -47,23 +43,6 @@
 #pragma clang diagnostic ignored "-Wunused-label"
 #pragma clang diagnostic ignored "-Wunused-variable"
 
-// x86_64 and aarch64 have hand-written assembly upstream, so the C versions are
-// skipped there -- but on a FREESTANDING target something still has to compile
-// that assembly, and until Embox EL0 nothing did (see
-// musl_aarch64.S). memmove has no aarch64 assembly, so it comes from C
-// here regardless.
-#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_X86_64
-#elif __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
-#if SPRT_EL0_LIBC
-#include "../../musl-libc/src/string/memmove.c"
-#endif
-#else
-#include "../../musl-libc/src/string/memcpy.c"
-#include "../../musl-libc/src/string/memmove.c"
-#include "../../musl-libc/src/string/memset.c"
-#endif
-
-#include "../../musl-libc/src/string/bcmp.c"
 #include "../../musl-libc/src/string/bcopy.c"
 #include "../../musl-libc/src/string/bzero.c"
 #include "../../musl-libc/src/string/explicit_bzero.c"
@@ -73,10 +52,8 @@
 #include "../../musl-libc/src/string/memccpy.c"
 #undef ALIGN
 
-#include "../../musl-libc/src/string/memchr.c"
 #include "../../musl-libc/src/string/memmem.c"
 #include "../../musl-libc/src/string/mempcpy.c"
-#include "../../musl-libc/src/string/memrchr.c"
 #include "../../musl-libc/src/string/rindex.c"
 #include "../../musl-libc/src/string/stpncpy.c"
 #include "../../musl-libc/src/string/strcasecmp.c"
@@ -97,7 +74,6 @@
 #include "../../musl-libc/src/string/strncat.c"
 #include "../../musl-libc/src/string/strndup.c"
 #include "../../musl-libc/src/string/strpbrk.c"
-#include "../../musl-libc/src/string/strrchr.c"
 #include "../../musl-libc/src/string/strsep.c"
 #include "../../musl-libc/src/string/strspn.c"
 #include "../../musl-libc/src/string/strtok.c"

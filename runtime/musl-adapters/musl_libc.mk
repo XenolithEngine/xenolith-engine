@@ -24,7 +24,7 @@
 
 MODULE_RUNTIME_MUSL_LIBC_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
 MODULE_RUNTIME_MUSL_LIBC_PRIVATE_STANDALONE := 1
-MODULE_RUNTIME_MUSL_LIBC_DEPENDS_ON := runtime_malloc runtime_core
+MODULE_RUNTIME_MUSL_LIBC_DEPENDS_ON := runtime_malloc runtime_libc_freestanding runtime_core
 MODULE_RUNTIME_MUSL_LIBC_SRCS_DIRS := \
 	$(RUNTIME_MODULE_DIR)/musl-adapters
 # wasm32 is not a musl-supported arch, so its arch/ headers live in the adapter
