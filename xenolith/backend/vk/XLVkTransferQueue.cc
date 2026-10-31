@@ -366,6 +366,19 @@ bool TransferResource::allocate() {
 		allocInfo.allocationSize = _requiredMemory;
 		allocInfo.memoryTypeIndex = _memType->idx;
 
+		// a buffer read by its device address needs memory allocated for one
+		VkMemoryAllocateFlagsInfo flagsInfo{};
+		if (dev->hasBufferDeviceAddresses()) {
+			for (auto &it : _buffers) {
+				if ((it.info.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0) {
+					flagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+					flagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+					allocInfo.pNext = &flagsInfo;
+					break;
+				}
+			}
+		}
+
 		if (table->vkAllocateMemory(dev->getDevice(), &allocInfo, nullptr, &_memory)
 				!= VK_SUCCESS) {
 			log::source().error("Vk-Error",
@@ -734,6 +747,15 @@ bool TransferResource::allocateDedicated(const Rc<Allocator> &alloc, BufferAlloc
 	dedicatedInfo.pNext = nullptr;
 	dedicatedInfo.image = VK_NULL_HANDLE;
 	dedicatedInfo.buffer = it.buffer;
+
+	// a buffer read by its device address needs memory allocated for one
+	VkMemoryAllocateFlagsInfo flagsInfo{};
+	if (dev->hasBufferDeviceAddresses()
+			&& (it.info.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0) {
+		flagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+		flagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+		dedicatedInfo.pNext = &flagsInfo;
+	}
 
 	VkMemoryAllocateInfo allocInfo{};
 	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
