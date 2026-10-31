@@ -55,14 +55,14 @@ __SPRT_C_FUNC int clock_gettime(__SPRT_ID(clockid_t) id, struct __SPRT_TIMESPEC_
 	return 0;
 }
 
-__SPRT_C_FUNC int clock_getres(__SPRT_ID(clockid_t) id, struct __SPRT_TIMESPEC_NAME *tp) __SPRT_NOEXCEPT {
+// The civil clock is carried on by the virtual counter between the bounds: both tick alike.
+__SPRT_C_FUNC int clock_getres(__SPRT_ID(clockid_t), struct __SPRT_TIMESPEC_NAME *tp) __SPRT_NOEXCEPT {
 	if (!tp) {
 		__sprt_errno = EFAULT;
 		return -1;
 	}
-	bool realtime = id == __SPRT_CLOCK_REALTIME || id == __SPRT_CLOCK_REALTIME_COARSE;
-	tp->tv_sec = realtime ? 1 : 0;
-	tp->tv_nsec = realtime ? 0 : (long)__sprt_tau_clock_res_ns();
+	tp->tv_sec = 0;
+	tp->tv_nsec = (long)__sprt_tau_clock_res_ns();
 	return 0;
 }
 
