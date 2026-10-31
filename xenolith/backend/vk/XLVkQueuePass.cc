@@ -379,7 +379,9 @@ Vector<const core::CommandBuffer *> QueuePassHandle::doPrepareCommands(FrameHand
 				if (it->commandsCallback != nullptr) {
 					it->commandsCallback(*queue, *it, buf);
 				}
-				if (i + 2 < _data->subpasses.size()) {
+				// one advance between each two subpasses; outside a render pass (compute) it does
+				// nothing
+				if (i + 1 < _data->subpasses.size()) {
 					buf.cmdNextSubpass();
 				}
 				++i;

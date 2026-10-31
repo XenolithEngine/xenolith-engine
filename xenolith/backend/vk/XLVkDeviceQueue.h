@@ -299,6 +299,9 @@ protected:
 
 	CommandBufferInfo _info;
 
+	// the render pass in progress, to tell when it ends before its last subpass
+	const RenderPass *_renderPass = nullptr;
+
 	Vector<Rc<DescriptorPool>> _availableDescriptors;
 	Set<Rc<DescriptorPool>> _usedDescriptors;
 
