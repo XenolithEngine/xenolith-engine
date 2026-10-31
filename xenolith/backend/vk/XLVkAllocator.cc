@@ -211,6 +211,10 @@ bool Allocator::init(Device &dev, VkPhysicalDevice device, const DeviceInfo::Fea
 				_memHeaps.emplace_back(MemHeap{i, _memProperties.memoryProperties.memoryHeaps[i]});
 		if ((it.heap.flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0) {
 			it.type = DeviceLocal;
+			// Keep allocation blocks small enough for shared device heaps.
+			while (_pageSize > CpuPageSize && it.heap.size / _pageSize < 128) {
+				_pageSize /= 2;
+			}
 		}
 		for (uint32_t j = 0; j < _memProperties.memoryProperties.memoryTypeCount; ++j) {
 			if (_memProperties.memoryProperties.memoryTypes[j].heapIndex == i) {
