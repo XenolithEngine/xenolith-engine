@@ -41,6 +41,7 @@ TOOLKIT_MODULE_LIST += \
 	$(XENOLITH_MODULE_DIR)/renderer/basic2d/backend/mtl/basic2d-mtl.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/basic2d/backend/soft/basic2d-soft.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/basic2d/backend/gles/basic2d-gles.mk \
+	$(XENOLITH_MODULE_DIR)/renderer/basic3d/basic3d.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/compositor/compositor.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/compositor/backend/soft/compositor-soft.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/compositor/backend/vk/compositor-vk.mk \
