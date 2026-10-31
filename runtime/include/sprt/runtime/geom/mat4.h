@@ -71,38 +71,43 @@ public:
 			float targetCenterX, float targetCenterY, float targetCenterZ, float upX, float upY,
 			float upZ, Mat4 *dst);
 
-	/** Builds a perspective projection matrix based on a field of view and returns by value.
+	/** Builds a perspective projection matrix based on a field of view (in degrees).
 	 *
-	 * Projection space refers to the space after applying projection transformation from view space.
-	 * After the projection transformation, visible content has x- and y-coordinates ranging from -1 to 1,
-	 * and a z-coordinate ranging from 0 to 1. To obtain the viewable area (in world space) of a scene,
-	 * create a BoundingFrustum and pass the combined view and projection matrix to the constructor. */
+	 * The view looks along -z, as createLookAt builds it; zNearPlane and zFarPlane are positive
+	 * distances. After the projection and the divide by w, visible content has x and y from -1 to 1
+	 * and z from -1 (near) to 1 (far), as OpenGL expects. For Vulkan, WebGPU and Metal, whose depth
+	 * goes from 0 to 1, use createPerspectiveZO. */
 	static void createPerspective(float fieldOfView, float aspectRatio, float zNearPlane,
 			float zFarPlane, Mat4 *dst);
 
-	/** Creates an orthographic projection matrix. */
+	/** As createPerspective, with z from 0 (near) to 1 (far): the depth range of Vulkan, WebGPU
+	 * and Metal. Clip y still points up; a Vulkan camera flips it (m[5] negated, or a negative
+	 * viewport height). */
+	static void createPerspectiveZO(float fieldOfView, float aspectRatio, float zNearPlane,
+			float zFarPlane, Mat4 *dst);
+
+	/** Creates an orthographic projection matrix centered on the view axis, with z from -1 to 1
+	 * (see createOrthographicOffCenter). */
 	static void createOrthographic(float width, float height, float zNearPlane, float zFarPlane,
+			Mat4 *dst);
+
+	/** As createOrthographic, with z from 0 to 1 (see createOrthographicOffCenterZO). */
+	static void createOrthographicZO(float width, float height, float zNearPlane, float zFarPlane,
 			Mat4 *dst);
 
 	/** Creates an orthographic projection matrix.
 	 *
-	 * Projection space refers to the space after applying
-	 * projection transformation from view space. After the
-	 * projection transformation, visible content has
-	 * x and y coordinates ranging from -1 to 1, and z coordinates
-	 * ranging from 0 to 1.
-	 *
-	 * Unlike perspective projection, in orthographic projection
-	 * there is no perspective foreshortening.
-	 *
-	 * The viewable area of this orthographic projection extends
-	 * from left to right on the x-axis, bottom to top on the y-axis,
-	 * and zNearPlane to zFarPlane on the z-axis. These values are
-	 * relative to the position and x, y, and z-axes of the view.
-	 * To obtain the viewable area (in world space) of a scene,
-	 * create a BoundingFrustum and pass the combined view and
-	 * projection matrix to the constructor. */
+	 * The viewable area extends from left to right on the x-axis, bottom to top on the y-axis, and
+	 * from zNearPlane to zFarPlane along -z, relative to the view. After the projection, visible
+	 * content has x and y from -1 to 1 and z from -1 (near) to 1 (far), as OpenGL expects. For
+	 * Vulkan, WebGPU and Metal, whose depth goes from 0 to 1, use createOrthographicOffCenterZO. */
 	static void createOrthographicOffCenter(float left, float right, float bottom, float top,
+			float zNearPlane, float zFarPlane, Mat4 *dst);
+
+	/** As createOrthographicOffCenter, with z from 0 (near) to 1 (far): the depth range of Vulkan,
+	 * WebGPU and Metal. Clip y still points up; a Vulkan camera flips it (m[5] negated, or a
+	 * negative viewport height). */
+	static void createOrthographicOffCenterZO(float left, float right, float bottom, float top,
 			float zNearPlane, float zFarPlane, Mat4 *dst);
 
 	/** Creates a spherical billboard that rotates around a specified object position.

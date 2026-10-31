@@ -45,30 +45,20 @@ struct SceneConstants {
 };
 
 // Orthographic camera at yaw 45 deg and elevation 30 deg (a 2:1 rhombus per ground cell), looking
-// at the origin. Depth goes to [0, 1] as Vulkan expects; the runtime's createOrthographic gives the
-// GL range. Column-major, as GLSL reads a mat4.
+// at the origin from 50 units away, with depth in [0, 1] as Vulkan expects. Column-major, as GLSL
+// reads a mat4.
 void makeViewProj(float *m, float width, float height, float pixelsPerUnit) {
-	// to-camera direction (cos30 cos45, cos30 sin45, sin30), forward is its negation
-	const float fx = -0.61237244f, fy = -0.61237244f, fz = -0.5f;
-	// right = normalize(cross(forward, up)), up' = cross(right, forward)
-	const float rx = -0.70710678f, ry = 0.70710678f, rz = 0.0f;
-	const float ux = -0.35355339f, uy = -0.35355339f, uz = 0.8660254f;
-
-	const float halfW = width / (2.0f * pixelsPerUnit);
-	const float halfH = height / (2.0f * pixelsPerUnit);
+	// to-camera direction (cos30 cos45, cos30 sin45, sin30)
+	const Vec3 toCamera(0.61237244f, 0.61237244f, 0.5f);
 	const float dist = 50.0f, zNear = 0.0f, zFar = 100.0f;
-	const float depth = zFar - zNear;
 
-	float rows[4][4] = {
-		{rx / halfW, ry / halfW, rz / halfW, 0.0f},
-		{-ux / halfH, -uy / halfH, -uz / halfH, 0.0f}, // Vulkan clip y points down
-		{fx / depth, fy / depth, fz / depth, (dist - zNear) / depth},
-		{0.0f, 0.0f, 0.0f, 1.0f},
-	};
+	Mat4 view, proj;
+	Mat4::createLookAt(toCamera * dist, Vec3::ZERO, Vec3::UNIT_Z, &view);
+	Mat4::createOrthographicZO(width / pixelsPerUnit, height / pixelsPerUnit, zNear, zFar, &proj);
+	proj.m[5] = -proj.m[5]; // Vulkan clip y points down
 
-	for (uint32_t col = 0; col < 4; ++col) {
-		for (uint32_t row = 0; row < 4; ++row) { m[col * 4 + row] = rows[row][col]; }
-	}
+	const Mat4 viewProj = proj * view;
+	memcpy(m, viewProj.m, sizeof(viewProj.m));
 }
 
 core::ImageFormat selectDepthFormat(SpanView<core::ImageFormat> formats) {
