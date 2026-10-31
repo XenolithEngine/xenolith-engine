@@ -35,6 +35,8 @@ SpanView<uint32_t> SceneFrag(reinterpret_cast<const uint32_t *>(pass3d_scene_fra
 		sizeof(pass3d_scene_frag) / sizeof(uint32_t));
 
 constexpr StringView ScenePipelineName = "Pass3dScene";
+constexpr StringView DecalPipelineName = "Pass3dDecal";
+constexpr StringView ClampPipelineName = "Pass3dClamp";
 
 // PASS3D_STILL=1 stops the spinning cube, so the check samples a fixed picture
 bool s_still = false;
@@ -122,19 +124,47 @@ void addScenePass(core::Loop *loop, core::Queue::Builder &builder, Extent2 exten
 						FrameRenderPassState::Submitted,
 					});
 
-			subpassBuilder.addGraphicPipeline(ScenePipelineName, layout->defaultFamily,
-					Vector<SpecializationInfo>({
-						SpecializationInfo(vert),
-						SpecializationInfo(frag),
-					}),
-					PipelineMaterialInfo({BlendInfo(), DepthInfo(true, true, CompareOp::Less)}));
+			auto shaders = Vector<SpecializationInfo>({
+				SpecializationInfo(vert),
+				SpecializationInfo(frag),
+			});
+
+			// The faces wind counter-clockwise seen from outside. The camera flips clip y and the
+			// framebuffer's y points down: the two cancel, and a front face stays counter-clockwise.
+			// PASS3D_CULL=front culls the front faces instead, and the scene turns inside out.
+			auto culled = RasterizationInfo(
+					__sprt_getenv("PASS3D_CULL") ? CullMode::Front : CullMode::Back,
+					FrontFace::CounterClockwise);
+
+			subpassBuilder.addGraphicPipeline(ScenePipelineName, layout->defaultFamily, shaders,
+					PipelineMaterialInfo(BlendInfo(), DepthInfo(true, true, CompareOp::Less), culled));
+
+			// The decal lies 5 mm under the ground's top: it shows only when its depth is biased
+			// toward the camera past the ground, which in [0, 1] depth is a negative bias. The
+			// slope term carries it: the ground is steep in depth under this camera.
+			auto decal = culled;
+			if (!__sprt_getenv("PASS3D_NOBIAS")) {
+				decal.setDepthBias(-4.0f, -1.0f);
+			}
+			subpassBuilder.addGraphicPipeline(DecalPipelineName, layout->defaultFamily, shaders,
+					PipelineMaterialInfo(BlendInfo(), DepthInfo(true, true, CompareOp::Less), decal));
+
+			// The far cube is past the far plane: clamped, its depth is 1.0, the clear value, so
+			// the test is LessOrEqual
+			auto clamped = culled;
+			clamped.setDepthClamp(!__sprt_getenv("PASS3D_NOCLAMP"));
+			subpassBuilder.addGraphicPipeline(ClampPipelineName, layout->defaultFamily, shaders,
+					PipelineMaterialInfo(BlendInfo(), DepthInfo(true, true, CompareOp::LessOrEqual),
+							clamped));
 
 			subpassBuilder.setCommandsCallback([density](FrameQueue &queue,
 													   const SubpassData &subpass,
 													   CommandBuffer &commands) {
 				auto &buf = static_cast<vk::CommandBuffer &>(commands);
 				auto pipeline = subpass.graphicPipelines.get(ScenePipelineName);
-				if (!pipeline) {
+				auto decalPipeline = subpass.graphicPipelines.get(DecalPipelineName);
+				auto clampPipeline = subpass.graphicPipelines.get(ClampPipelineName);
+				if (!pipeline || !decalPipeline || !clampPipeline) {
 					return;
 				}
 
@@ -157,10 +187,21 @@ void addScenePass(core::Loop *loop, core::Queue::Builder &builder, Extent2 exten
 								/ 1'000'000.0f;
 				pcb.params[1] = pcb.params[2] = pcb.params[3] = 0.0f;
 
+				auto constants =
+						BytesView(reinterpret_cast<const uint8_t *>(&pcb), sizeof(SceneConstants));
+
 				buf.cmdBindPipelineWithDescriptors(pipeline);
-				buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0,
-						BytesView(reinterpret_cast<const uint8_t *>(&pcb), sizeof(SceneConstants)));
+				buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, constants);
 				buf.cmdDraw(36, 3, 0, 0);
+
+				// the +z face only (vertices 6..11) of instance 3
+				buf.cmdBindPipelineWithDescriptors(decalPipeline);
+				buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, constants);
+				buf.cmdDraw(6, 1, 6, 3);
+
+				buf.cmdBindPipelineWithDescriptors(clampPipeline);
+				buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, constants);
+				buf.cmdDraw(36, 1, 0, 4);
 			});
 		});
 

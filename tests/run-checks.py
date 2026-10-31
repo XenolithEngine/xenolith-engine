@@ -175,7 +175,7 @@ COST = {
     "window/wm-compositor-check.py": 100, "window/remote-cache-check.py": 162,
     "window/remote-multi-check.py": 30, "remotetest": 3,
     "window/frame-request-check.py": 34, "window/label-bounds-check.py": 27,
-    "window/pass3d-check.py": 6,
+    "window/pass3d-check.py": 12,
     "gittest": 19, "computetest": 6, "wgpucompute": 2, "flowwgpu": 8, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
     "uilayouttest": 1, "particlestest": 1, "vstoretest": 5, "vstoretest --full": 200,
     "flowtest": 13, "flowtest --full": 36,
@@ -245,6 +245,9 @@ WINDOW_ALSO = [
     # the load/store ops of an attachment shared by passes, and the 2d pass loading a 3d one's output
     ("XLCoreQueue", ["pass3d-check.py"]),
     ("XL2dVkShadowPass", ["pass3d-check.py"]),
+    # the rasterization state of a material, and the Vulkan pipeline that applies it
+    ("XLCorePipelineInfo", ["pass3d-check.py"]),
+    ("XLVkPipeline", ["pass3d-check.py"]),
 ]
 
 

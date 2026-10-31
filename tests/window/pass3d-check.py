@@ -12,10 +12,20 @@ picture is fixed, so the check reads known pixels of a headless screenshot:
   * the boxes are in front of the ground, which is drawn last: the depth test works;
   * the tall box hides the cube in one place and the cube hides the box in another: they intersect
     by depth, not by draw order;
-  * the semi-transparent 2d veil shows the ground through it: the UI composites over the 3d pass.
+  * the semi-transparent 2d veil shows the ground through it: the UI composites over the 3d pass;
+  * with back faces culled and counter-clockwise front faces, the picture is the one above - the
+    rasterization state of the material reaches the pipeline (core::RasterizationInfo);
+  * a decal 5 mm under the ground shows through it: its pipeline has a depth bias;
+  * a cube past the far plane shows: its pipeline has depth clamp.
 
-A second run with PASS3D_NO3D=1 is the baseline: the same pixels then show the background, so the
-first run's numbers are not something the stock queue draws anyway.
+Then each part is turned off and the picture must change where it says:
+
+  * PASS3D_NO3D=1 - no 3d pass: the ground pixel is the background, the veil is over it;
+  * PASS3D_CULL=front - front faces culled: the ground and the box top show their far sides;
+  * PASS3D_NOBIAS=1 - no bias: the ground hides the decal entirely;
+  * PASS3D_NOCLAMP=1 - no clamp: the far cube is clipped and the background shows.
+
+A device without depthClamp makes the backend warn and drop it; the clamp checks then SKIP.
 
     tests/window/pass3d-check.py [path-to-pass3d]
 
@@ -42,6 +52,10 @@ BOX_TOP = ((462, 152), (70, 116, 197))  # the tall box's top, above the ground d
 BOX_OVER_CUBE = ((420, 260), (27, 45, 76))  # the tall box's face in front of the cube
 CUBE_OVER_BOX = ((495, 300), (172, 85, 61))  # the cube's face in front of the tall box
 VEIL = ((480, 510), (176, 191, 166))  # white at 0.5 over the ground
+GROUND_BELOW = (37, 49, 29)  # the slab's unlit bottom, seen with front faces culled
+DECAL = ((683, 286), (220, 197, 46))  # the decal's centre
+FAR_CUBE = ((100, 100), (112, 35, 112))  # the clamped cube past the far plane
+CLAMP_UNSUPPORTED = "depth clamp is not supported by the device"
 
 checks = 0
 failures = 0
@@ -141,9 +155,43 @@ def main():
     check("and the veil blends over the background",
             not near(base.getpixel(VEIL[0]), VEIL[1]), str(base.getpixel(VEIL[0])))
 
+    print("--- rasterization state")
+    check("the decal shows through the ground with a depth bias", near(at(DECAL), DECAL[1]),
+            str(at(DECAL)))
+    clamp = CLAMP_UNSUPPORTED not in text
+    if clamp:
+        check("the cube past the far plane shows with depth clamp", near(at(FAR_CUBE), FAR_CUBE[1]),
+                str(at(FAR_CUBE)))
+    else:
+        print("  SKIP the cube past the far plane: the device has no depthClamp")
+
+    cull_path = f"/tmp/xl-pass3d-check-cull-{os.getpid()}.log"
+    cull, _ = run(binary, {"PASS3D_STILL": "1", "PASS3D_CULL": "front"}, cull_path)
+    check("culling front faces shows the ground from below",
+            near(cull.getpixel(GROUND[0]), GROUND_BELOW), str(cull.getpixel(GROUND[0])))
+    check("and the box top is gone", not near(cull.getpixel(BOX_TOP[0]), BOX_TOP[1]),
+            str(cull.getpixel(BOX_TOP[0])))
+
+    bias_path = f"/tmp/xl-pass3d-check-nobias-{os.getpid()}.log"
+    nobias, _ = run(binary, {"PASS3D_STILL": "1", "PASS3D_NOBIAS": "1"}, bias_path)
+    window = [(DECAL[0][0] + dx, DECAL[0][1] + dy) for dx in range(-12, 13, 3)
+            for dy in range(-6, 7, 3)]
+    shown = sum(1 for p in window if near(nobias.getpixel(p), DECAL[1]))
+    check("without the bias the ground hides the decal", shown == 0,
+            f"{shown} of {len(window)} pixels")
+
+    clamp_path = f"/tmp/xl-pass3d-check-noclamp-{os.getpid()}.log"
+    noclamp, _ = run(binary, {"PASS3D_STILL": "1", "PASS3D_NOCLAMP": "1"}, clamp_path)
+    if clamp:
+        check("without depth clamp the far cube is clipped",
+                near(noclamp.getpixel(FAR_CUBE[0]), BACKGROUND[1]),
+                str(noclamp.getpixel(FAR_CUBE[0])))
+    else:
+        print("  SKIP the far cube without clamp: the device has no depthClamp")
+
     print(f"\n{checks} checks, {failures} failures")
     if failures == 0:
-        for p in (log_path, base_path):
+        for p in (log_path, base_path, cull_path, bias_path, clamp_path):
             try:
                 os.unlink(p)
             except OSError:
