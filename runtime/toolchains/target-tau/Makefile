@@ -339,7 +339,30 @@ dll: $(OUT)/.runtimes $(OUT_DLL)/.runtimes $(OUT)/target-dll.mk | $(T_DLL)
 	cp -f $(MAKE_ROOT)app.lds $(T_DLL)/share/app-$(SP_ARCH).lds
 	cp -f $(OUT)/target-dll.mk $(T_DLL)/target.mk
 
-$(OUT_LIBS)/toolchain-libs.cmake: $(THIS_FILE) | $(OUT_LIBS)
+# The flags a tree of third-party builds was made with; other flags build the tree again from
+# nothing, since its own makefiles see their outputs and nothing else. Not under -n, -q or -t:
+# their recursive makes still run, and a removed tree would send them elsewhere.
+LIBS_FLAGS := $(strip $(TAU_ARCH_FLAGS) $(TAU_EL0_FLAGS))
+VK_FLAGS := $(strip $(TAU_ARCH_FLAGS) $(TAU_EL0_FLAGS) $(VK_LINK_FLAGS))
+SHORT_FLAGS := $(filter-out ---%,$(firstword -$(MAKEFLAGS)))
+ifneq ($(filter libs vulkan all,$(or $(MAKECMDGOALS),all)),)
+ifeq ($(findstring n,$(SHORT_FLAGS))$(findstring q,$(SHORT_FLAGS))$(findstring t,$(SHORT_FLAGS)),)
+ifneq ($(strip $(file <$(OUT_LIBS)/.flags)),$(LIBS_FLAGS))
+$(shell rm -rf $(OUT_LIBS))
+endif
+ifneq ($(strip $(file <$(OUT_VK)/.flags)),$(VK_FLAGS))
+$(shell rm -rf $(OUT_VK))
+endif
+endif
+endif
+
+$(OUT_LIBS)/.flags: | $(OUT_LIBS)
+	$(file >$@,$(LIBS_FLAGS))
+
+$(OUT_VK)/.flags: | $(OUT_VK)
+	$(file >$@,$(VK_FLAGS))
+
+$(OUT_LIBS)/toolchain-libs.cmake: $(THIS_FILE) $(OUT_LIBS)/.flags | $(OUT_LIBS)
 	$(file >$@,$(TOOLCHAIN_LIBS_CMAKE))
 
 # The libraries are built into $(OUT_LIBS), their usr/ is copied into the dll sysroot.
@@ -360,7 +383,7 @@ libs: dll $(OUT_LIBS)/toolchain-libs.cmake
 	cp -f $(OUT_LIBS)/usr/lib/*.a $(T_DLL)/usr/lib/
 	cp -rf $(OUT_LIBS)/usr/include/. $(T_DLL)/usr/include/
 
-$(OUT_VK)/toolchain-vulkan.cmake: $(THIS_FILE) | $(OUT_VK)
+$(OUT_VK)/toolchain-vulkan.cmake: $(THIS_FILE) $(OUT_VK)/.flags | $(OUT_VK)
 	$(file >$@,$(TOOLCHAIN_VULKAN_CMAKE))
 
 $(SPRT_SO):
