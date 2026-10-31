@@ -127,6 +127,11 @@ public:
 			core::AttachmentLayout l);
 	virtual void captureImage(Function<void(const ImageInfoData &info, BytesView view)> &&cb,
 			const Rc<ImageObject> &image, AttachmentLayout l) = 0;
+
+	// One mip level with all its array layers; the callback is given the level's extent. A backend
+	// that does not read levels answers level 0 and an empty view for the others.
+	virtual void captureImage(Function<void(const ImageInfoData &info, BytesView view)> &&cb,
+			const Rc<ImageObject> &image, AttachmentLayout l, uint32_t level);
 	virtual void captureBuffer(Function<void(const BufferInfo &info, BytesView view)> &&cb,
 			const Rc<BufferObject> &) = 0;
 

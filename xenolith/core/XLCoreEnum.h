@@ -381,6 +381,8 @@ enum class ImageHints : uint32_t {
 	FixedSize = 1 << 1,
 	DoNotCache = 1 << 2,
 	ReadOnly = 1 << 3,
+	// the data is level 0 only; the backend builds the other mip levels from it
+	GenerateMipmaps = 1 << 4,
 	Static = FixedSize | DoNotCache | ReadOnly
 };
 

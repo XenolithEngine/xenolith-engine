@@ -50,6 +50,13 @@ using ObjectHandle = ValueWrapper<uint64_t, class ObjectHandleFlag>;
 #endif
 
 using MipLevels = ValueWrapper<uint32_t, class MipLevelFlag>;
+
+// The whole mip chain, down to 1x1: resolved to a count once the image's extent is known
+// (ImageInfoData::resolveMipLevels)
+constexpr MipLevels MipLevelsFull = MipLevels(0);
+
+// SamplerInfo::maxLod that does not limit the mip level sampled (VK_LOD_CLAMP_NONE)
+constexpr float SamplerLodClampNone = 1000.0f;
 using ArrayLayers = ValueWrapper<uint32_t, class ArrayLayersFlag>;
 using Extent1 = ValueWrapper<uint32_t, class Extent1Flag>;
 using BaseArrayLayer = ValueWrapper<uint32_t, class BaseArrayLayerFlag>;
@@ -163,6 +170,18 @@ struct SP_PUBLIC ImageInfoData {
 	ImageHints hints = ImageHints::None;
 
 	ImageViewInfo getViewInfo(const ImageViewInfo &info) const;
+
+	// MipLevelsFull becomes the chain's length, and a count past it is clamped to it. An image
+	// whose data can only be level 0 (decoded from a file) is given GenerateMipmaps.
+	void resolveMipLevels(bool levelZeroOnly = false);
+
+	// mip levels are carried in the data, not generated
+	bool hasPrebuiltMipLevels() const {
+		return mipLevels.get() > 1 && !hasFlag(hints, ImageHints::GenerateMipmaps);
+	}
+
+	// what the data holds: every level when they are prebuilt, level 0 otherwise
+	uint64_t getDataSize() const;
 
 	auto operator<=>(const ImageInfoData &) const = default;
 
@@ -506,6 +525,15 @@ using sprt::window::getFormatBlockExtent;
 using sprt::window::getFormatImageSize;
 using sprt::window::getFormatRowCount;
 using sprt::window::getFormatRowSize;
+
+// Mip levels: each halves the one above, floored, never below 1. Data of several levels lists
+// them in order, every level holding all its array layers one after another.
+SP_PUBLIC uint32_t getMipLevelCount(const Extent3 &extent);
+SP_PUBLIC Extent3 getMipExtent(const Extent3 &extent, uint32_t level);
+SP_PUBLIC uint64_t getMipLevelOffset(ImageFormat format, const Extent3 &extent, uint32_t level,
+		uint32_t arrayLayers = 1);
+SP_PUBLIC uint64_t getMipChainSize(ImageFormat format, const Extent3 &extent, uint32_t levels,
+		uint32_t arrayLayers = 1);
 
 SP_PUBLIC PixelFormat getImagePixelFormat(ImageFormat format);
 SP_PUBLIC bool isStencilFormat(ImageFormat format);
