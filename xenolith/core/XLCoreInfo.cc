@@ -1006,7 +1006,11 @@ String PipelineMaterialInfo::description() const {
 		   << blend.opColor << "," << blend.srcAlpha << "," << blend.dstAlpha << ","
 		   << blend.opAlpha << "," << blend.writeMask << "},{" << depth.writeEnabled << ","
 		   << depth.testEnabled << "," << depth.compare << "},{" << bounds.enabled << ","
-		   << bounds.min << "," << bounds.max << "},{" << stencil << "}";
+		   << bounds.min << "," << bounds.max << "},{" << stencil << "},{"
+		   << uint32_t(toInt(raster.cullMode)) << "," << uint32_t(toInt(raster.frontFace)) << ","
+		   << uint32_t(raster.depthBiasEnabled) << "," << raster.depthBiasConstant << ","
+		   << raster.depthBiasSlope << "," << raster.depthBiasClamp << ","
+		   << uint32_t(raster.depthClampEnabled) << "}";
 	return stream.str();
 }
 
@@ -1074,6 +1078,20 @@ void PipelineMaterialInfo::setLineWidth(float width) {
 
 void PipelineMaterialInfo::setImageViewType(ImageViewType type) { imageViewType = type; }
 
+void PipelineMaterialInfo::setRasterizationInfo(const RasterizationInfo &info) {
+	// the bytes are the hash: a disabled bias carries no values, and -0.0f is stored as 0.0f
+	auto normalize = [](float value) { return value == 0.0f ? 0.0f : value; };
+
+	raster = RasterizationInfo(info.cullMode, info.frontFace);
+	raster.depthClampEnabled = info.depthClampEnabled ? 1 : 0;
+	if (info.depthBiasEnabled) {
+		raster.depthBiasEnabled = 1;
+		raster.depthBiasConstant = normalize(info.depthBiasConstant);
+		raster.depthBiasSlope = normalize(info.depthBiasSlope);
+		raster.depthBiasClamp = normalize(info.depthBiasClamp);
+	}
+}
+
 void PipelineMaterialInfo::_setup(const BlendInfo &info) { setBlendInfo(info); }
 
 void PipelineMaterialInfo::_setup(const DepthInfo &info) { setDepthInfo(info); }
@@ -1085,5 +1103,7 @@ void PipelineMaterialInfo::_setup(const StencilInfo &info) { enableStencil(info)
 void PipelineMaterialInfo::_setup(LineWidth width) { setLineWidth(width.get()); }
 
 void PipelineMaterialInfo::_setup(ImageViewType type) { setImageViewType(type); }
+
+void PipelineMaterialInfo::_setup(const RasterizationInfo &info) { setRasterizationInfo(info); }
 
 } // namespace stappler::xenolith::core

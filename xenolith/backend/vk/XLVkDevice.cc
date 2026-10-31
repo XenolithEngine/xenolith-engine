@@ -557,6 +557,10 @@ bool Device::hasNonSolidFillMode() const {
 	return _info.features.device10.features.fillModeNonSolid;
 }
 
+bool Device::hasDepthClamp() const { return _info.features.device10.features.depthClamp; }
+
+bool Device::hasDepthBiasClamp() const { return _info.features.device10.features.depthBiasClamp; }
+
 bool Device::hasDynamicIndexedBuffers() const {
 	return _info.features.device10.features.shaderStorageBufferArrayDynamicIndexing;
 }

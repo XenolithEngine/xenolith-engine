@@ -37,6 +37,12 @@ bool Shader::init(Device &dev, const core::ProgramData &data) {
 bool GraphicPipeline::init(Device &dev, const PipelineData &data) {
 	auto &material = data.material;
 
+	// face culling, depth bias and depth clamp are applied by the Vulkan backend only
+	if (material.getRasterizationInfo() != core::RasterizationInfo()) {
+		log::source().warn("soft::GraphicPipeline", data.key,
+				": rasterization state (cull, depth bias, depth clamp) is not supported, ignored");
+	}
+
 	// The flat contract has three blend states, told apart by the alpha factors; anything else
 	// means the queue is not the one this backend implements.
 	auto blend = data.blend.isEnabled() ? data.blend : material.getBlendInfo();

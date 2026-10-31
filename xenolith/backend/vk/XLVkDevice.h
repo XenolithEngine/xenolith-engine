@@ -131,6 +131,8 @@ public:
 	}
 
 	bool hasNonSolidFillMode() const;
+	bool hasDepthClamp() const;
+	bool hasDepthBiasClamp() const;
 	bool hasDynamicIndexedBuffers() const;
 	bool hasBufferDeviceAddresses() const;
 	bool hasExternalFences() const;

@@ -423,6 +423,20 @@ enum class CompareOp : uint8_t {
 	Always = 7,
 };
 
+// VkCullModeFlagBits
+enum class CullMode : uint8_t {
+	None = 0,
+	Front = 1,
+	Back = 2,
+	FrontAndBack = 3,
+};
+
+// VkFrontFace: the winding of a front face in framebuffer coordinates
+enum class FrontFace : uint8_t {
+	CounterClockwise = 0,
+	Clockwise = 1,
+};
+
 enum class BlendFactor : uint8_t {
 	Zero = 0,
 	One = 1,
