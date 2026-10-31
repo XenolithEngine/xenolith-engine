@@ -98,6 +98,7 @@ CLI = [
     ("tests/tau-wsi", "tauwsitest", [], False),
     ("tests/runtime", "runtimetest", [], True),
     ("tests/libc", "libctest", [], True),
+    ("tests/libc-freestanding", "lfstest", [], True),
     ("tests/locale", "localetest", [], True),
     ("tests/uilayout", "uilayouttest", [], True),
     ("tests/stappler", "stapplertest", [], True),
@@ -120,6 +121,7 @@ CLI = [
 GATE_ARGS = {
     "vstoretest": ["--full"],
     "flowtest": ["--full"],
+    "lfstest": ["--full"],
 }
 
 # Which console harnesses a directory owes. First match wins, so the specific paths lead.
@@ -130,6 +132,9 @@ OWES = [
     ("stappler/vg", ["tesstest", "stapplertest"]),
     ("stappler/vstore", ["vstoretest", "flowtest"]),
     ("stappler/flow", ["flowtest"]),
+    ("runtime/libc_freestanding", ["lfstest", "libctest", "runtimetest"]),
+    ("runtime/musl-adapters", ["lfstest", "libctest", "runtimetest"]),
+    ("tests/libc-freestanding", ["lfstest"]),
     ("runtime/libc_impl", ["libctest", "runtimetest"]),
     ("runtime", ["runtimetest", "libctest"]),
     ("stappler", ["stapplertest"]),
@@ -174,7 +179,7 @@ COST = {
     "window/wm-compositor-check.py": 100, "window/remote-cache-check.py": 162,
     "window/remote-multi-check.py": 30, "remotetest": 3,
     "window/frame-request-check.py": 34, "window/label-bounds-check.py": 27,
-    "gittest": 19, "computetest": 6, "wgpucompute": 2, "flowwgpu": 8, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
+    "gittest": 19, "computetest": 6, "wgpucompute": 2, "flowwgpu": 8, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "lfstest": 7, "lfstest --full": 80, "localetest": 1,
     "uilayouttest": 1, "particlestest": 1, "vstoretest": 5, "vstoretest --full": 200,
     "flowtest": 13, "flowtest --full": 36,
 }
