@@ -111,6 +111,10 @@ public:
 
 	virtual void finalize(FrameQueue &, bool successful) override;
 
+	// a resource with a generated mip chain is blitted, which a transfer queue can not do; the
+	// pool and the submission both follow this
+	virtual core::QueueFlags getQueueOps() const override;
+
 protected:
 	virtual bool prepareMaterials(FrameHandle &frame, CommandBuffer &buf,
 			core::MaterialAttachment *attachment, Vector<BufferMemoryBarrier> &barriers);
@@ -496,8 +500,7 @@ bool RenderQueuePassHandle::prepare(FrameQueue &frame, Function<void(bool)> &&cb
 
 	if (res || hasMaterials) {
 		_resource = res;
-		_pool = static_cast<CommandPool *>(
-				_device->acquireCommandPool(core::QueueFlags::Transfer).get());
+		_pool = static_cast<CommandPool *>(_device->acquireCommandPool(getQueueOps()).get());
 		if (!_pool) {
 			invalidate();
 			return false;
@@ -567,6 +570,13 @@ void RenderQueuePassHandle::submit(FrameQueue &queue, Rc<FrameSync> &&sync,
 	} else {
 		QueuePassHandle::submit(queue, sp::move(sync), sp::move(onSubmited), sp::move(onComplete));
 	}
+}
+
+core::QueueFlags RenderQueuePassHandle::getQueueOps() const {
+	if (_resource && _resource->needsGraphicsQueue()) {
+		return core::QueueFlags::Graphics;
+	}
+	return QueuePassHandle::getQueueOps();
 }
 
 void RenderQueuePassHandle::finalize(FrameQueue &frame, bool successful) {

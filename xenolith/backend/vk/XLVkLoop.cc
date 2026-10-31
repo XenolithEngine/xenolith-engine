@@ -850,12 +850,17 @@ void Loop::waitIdle() {
 
 void Loop::captureImage(Function<void(const ImageInfoData &info, BytesView view)> &&cb,
 		const Rc<core::ImageObject> &image, core::AttachmentLayout l) {
-	performOnThread([this, cb = sp::move(cb), image, l]() mutable {
+	captureImage(sp::move(cb), image, l, 0);
+}
+
+void Loop::captureImage(Function<void(const ImageInfoData &info, BytesView view)> &&cb,
+		const Rc<core::ImageObject> &image, core::AttachmentLayout l, uint32_t level) {
+	performOnThread([this, cb = sp::move(cb), image, l, level]() mutable {
 		if (!_internal->device || _internal->device->isDeviceLost()) {
 			cb(image->getInfo(), BytesView());
 			return;
 		}
-		_internal->device->readImage(*this, image.cast<Image>(), l, sp::move(cb));
+		_internal->device->readImage(*this, image.cast<Image>(), l, level, sp::move(cb));
 	}, this, true);
 }
 

@@ -107,6 +107,8 @@ public:
 
 	virtual void captureImage(Function<void(const ImageInfoData &info, BytesView view)> &&cb,
 			const Rc<core::ImageObject> &image, core::AttachmentLayout l) override;
+	virtual void captureImage(Function<void(const ImageInfoData &info, BytesView view)> &&cb,
+			const Rc<core::ImageObject> &image, core::AttachmentLayout l, uint32_t level) override;
 
 	virtual void captureBuffer(Function<void(const BufferInfo &info, BytesView view)> &&cb,
 			const Rc<core::BufferObject> &) override;

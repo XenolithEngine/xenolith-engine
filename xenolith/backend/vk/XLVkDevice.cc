@@ -44,7 +44,7 @@ class ReadImageTask : public core::DeviceQueueTask {
 public:
 	virtual ~ReadImageTask() = default;
 
-	bool init(const Rc<Image> &img, core::AttachmentLayout l,
+	bool init(const Rc<Image> &img, core::AttachmentLayout l, uint32_t level,
 			Function<void(const ImageInfoData &, BytesView)> &&cb) {
 		if (!DeviceQueueTask::init(vk::getQueueFlags(img->getInfo().type))) {
 			return false;
@@ -52,6 +52,8 @@ public:
 
 		_layout = l;
 		_image = img;
+		_level = sprt::min(level, sprt::max(img->getInfo().mipLevels.get(), uint32_t(1)) - 1);
+		_extent = core::getMipExtent(img->getInfo().extent, _level);
 		_callback = sp::move(cb);
 
 		return true;
@@ -61,11 +63,12 @@ public:
 		_mempool = Rc<DeviceMemoryPool>::create(static_cast<Device &>(dev).getAllocator(), true);
 
 		auto &info = _image->getInfo();
-		auto &extent = info.extent;
 
+		// one mip level, every array layer of it
 		_transferBuffer = _mempool->spawn(AllocationUsage::HostTransitionDestination,
 				BufferInfo(core::ForceBufferUsage(core::BufferUsage::TransferDst),
-						size_t(core::getFormatImageSize(info.format, extent)),
+						size_t(core::getFormatImageSize(info.format, _extent,
+								info.arrayLayers.get())),
 						_image->getInfo().type));
 		return true;
 	}
@@ -80,7 +83,12 @@ public:
 		buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
 				0, makeSpanView(&inImageBarrier, 1));
 
-		buf.cmdCopyImageToBuffer(_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, _transferBuffer, 0);
+		VkBufferImageCopy region{0, 0, 0,
+			VkImageSubresourceLayers{VkImageAspectFlags(_image->getAspects()), _level, 0,
+				_image->getInfo().arrayLayers.get()},
+			VkOffset3D{0, 0, 0}, VkExtent3D{_extent.width, _extent.height, _extent.depth}};
+		buf.cmdCopyImageToBuffer(_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, _transferBuffer,
+				makeSpanView(&region, 1));
 
 		BufferMemoryBarrier bufferOutBarrier(_transferBuffer, VK_ACCESS_TRANSFER_WRITE_BIT,
 				VK_ACCESS_HOST_READ_BIT);
@@ -102,12 +110,14 @@ public:
 	}
 
 	virtual void handleComplete(bool success) override {
+		// the level read: its extent, not the image's
+		auto info = static_cast<const ImageInfoData &>(_image->getInfo());
+		info.extent = _extent;
 		if (success) {
-			_transferBuffer->map([&](uint8_t *buf, VkDeviceSize size) {
-				_callback(_image->getInfo(), BytesView(buf, size));
-			});
+			_transferBuffer->map(
+					[&](uint8_t *buf, VkDeviceSize size) { _callback(info, BytesView(buf, size)); });
 		} else {
-			_callback(_image->getInfo(), BytesView());
+			_callback(info, BytesView());
 		}
 	}
 
@@ -116,6 +126,8 @@ protected:
 	Rc<DeviceMemoryPool> _mempool;
 	Rc<Buffer> _transferBuffer;
 	Rc<Image> _image;
+	uint32_t _level = 0;
+	Extent3 _extent;
 	Function<void(const ImageInfoData &, BytesView)> _callback;
 };
 
@@ -603,6 +615,10 @@ void Device::waitIdle() const {
 
 void Device::compileImage(const Loop &loop, const Rc<core::DynamicImage> &img,
 		Function<void(bool)> &&cb) {
+	if (img->getInfo().mipLevels.get() > 1) {
+		log::source().warn("vk::Device", img->getInfo().key,
+				": a dynamic image uploads level 0 only, its other mip levels stay undefined");
+	}
 	doImageTransfer(loop, img, Bytes(), false, sp::move(cb));
 }
 
@@ -733,12 +749,17 @@ void Device::doImageTransfer(const Loop &loop, const Rc<core::DynamicImage> &img
 
 void Device::readImage(Loop &loop, const Rc<Image> &image, core::AttachmentLayout l,
 		Function<void(const ImageInfoData &, BytesView)> &&cb) {
+	readImage(loop, image, l, 0, sp::move(cb));
+}
+
+void Device::readImage(Loop &loop, const Rc<Image> &image, core::AttachmentLayout l,
+		uint32_t level, Function<void(const ImageInfoData &, BytesView)> &&cb) {
 	if (!image) {
 		log::source().error("vk::Device", "readImage: Image is null");
 		return;
 	}
 
-	runTask(loop, Rc<ReadImageTask>::create(image, l, sp::move(cb)));
+	runTask(loop, Rc<ReadImageTask>::create(image, l, level, sp::move(cb)));
 }
 
 void Device::readBuffer(Loop &loop, const Rc<Buffer> &buf,

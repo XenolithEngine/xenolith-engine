@@ -40,6 +40,7 @@ DeviceInfo::Features DeviceInfo::Features::getOptional() {
 	ret.device10.features.fillModeNonSolid = VK_TRUE;
 	ret.device10.features.depthClamp = VK_TRUE;
 	ret.device10.features.depthBiasClamp = VK_TRUE;
+	ret.device10.features.samplerAnisotropy = VK_TRUE;
 	ret.device10.features.shaderStorageBufferArrayDynamicIndexing = VK_TRUE;
 	ret.device10.features.shaderStorageImageArrayDynamicIndexing = VK_TRUE;
 	ret.device10.features.shaderUniformBufferArrayDynamicIndexing = VK_TRUE;

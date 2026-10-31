@@ -196,6 +196,11 @@ public:
 	void cmdCopyImage(Image *src, XImageLayout, Image *dst, XImageLayout, const VkImageCopy &copy);
 	void cmdCopyImage(Image *src, XImageLayout, Image *dst, XImageLayout, SpanView<VkImageCopy>);
 
+	void cmdBlitImage(Image *src, XImageLayout, Image *dst, XImageLayout, SpanView<VkImageBlit>,
+			VkFilter filter = VK_FILTER_LINEAR);
+	void cmdBlitImage(VkImage src, XImageLayout, VkImage dst, XImageLayout, SpanView<VkImageBlit>,
+			VkFilter filter = VK_FILTER_LINEAR);
+
 	void cmdCopyBufferToImage(Buffer *, Image *, XImageLayout, VkDeviceSize offset);
 	void cmdCopyBufferToImage(Buffer *, Image *, XImageLayout, SpanView<VkBufferImageCopy>);
 	void cmdCopyBufferToImage(VkBuffer, VkImage, XImageLayout, SpanView<VkBufferImageCopy>);

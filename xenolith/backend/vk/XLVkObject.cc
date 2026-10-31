@@ -612,6 +612,21 @@ bool Sampler::init(Device &dev, const SamplerInfo &info) {
 	createInfo.mipLodBias = info.mipLodBias;
 	createInfo.anisotropyEnable = info.anisotropyEnable;
 	createInfo.maxAnisotropy = info.maxAnisotropy;
+
+	// anisotropy is an optional feature, and its degree has a device limit
+	if (createInfo.anisotropyEnable) {
+		auto &info10 = dev.getInfo();
+		if (!info10.features.device10.features.samplerAnisotropy) {
+			log::source().warn("vk::Sampler",
+					"anisotropic filtering is not supported by the device, ignored");
+			createInfo.anisotropyEnable = VK_FALSE;
+			createInfo.maxAnisotropy = 1.0f;
+		} else {
+			auto limit = info10.properties.device10.properties.limits.maxSamplerAnisotropy;
+			createInfo.maxAnisotropy =
+					sprt::max(1.0f, sprt::min(createInfo.maxAnisotropy, limit));
+		}
+	}
 	createInfo.compareEnable = info.compareEnable;
 	createInfo.compareOp = VkCompareOp(info.compareOp);
 	createInfo.minLod = info.minLod;

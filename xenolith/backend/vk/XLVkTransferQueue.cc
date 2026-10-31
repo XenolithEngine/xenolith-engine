@@ -73,6 +73,9 @@ class TransferRenderPassHandle : public QueuePassHandle {
 public:
 	virtual ~TransferRenderPassHandle();
 
+	// a resource with a generated mip chain is blitted, which a transfer queue can not do
+	virtual core::QueueFlags getQueueOps() const override;
+
 protected:
 	virtual Vector<const core::CommandBuffer *> doPrepareCommands(FrameHandle &) override;
 	virtual void doComplete(FrameQueue &, Function<void(bool)> &&, bool) override;
@@ -124,7 +127,7 @@ TransferResource::ImageAllocInfo::ImageAllocInfo(core::ImageData *d) {
 	info.imageType = VkImageType(data->imageType);
 	info.format = VkFormat(data->format);
 	info.extent = VkExtent3D({data->extent.width, data->extent.height, data->extent.depth});
-	info.mipLevels = data->mipLevels.get();
+	info.mipLevels = sprt::max(data->mipLevels.get(), uint32_t(1));
 	info.arrayLayers = data->arrayLayers.get();
 	info.samples = VkSampleCountFlagBits(data->samples);
 	info.tiling = VkImageTiling(data->tiling);
@@ -223,6 +226,36 @@ bool TransferResource::initialize(AllocationUsage usage) {
 	for (auto &it : _resource->getBuffers()) { _buffers.emplace_back(it); }
 
 	for (auto &it : _resource->getImages()) { _images.emplace_back(it); }
+
+	// A generated chain is blitted from level 0, which needs a format that can be blitted; one that
+	// can not (compressed, or not supported by the device) keeps level 0 alone.
+	auto formatFeatures = dev->getFormatFeatures();
+	for (auto &it : _images) {
+		if (it.info.mipLevels <= 1 || !hasFlag(it.data->hints, core::ImageHints::GenerateMipmaps)) {
+			continue;
+		}
+
+		auto features = size_t(it.info.format) < formatFeatures.size()
+				? formatFeatures[size_t(it.info.format)]
+				: VkFormatFeatureFlags(0);
+		auto blit = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
+		if ((features & blit) != blit || it.info.tiling != VK_IMAGE_TILING_OPTIMAL) {
+			log::source().warn("DeviceResourceTransfer", _resource->getName(), ": image '",
+					it.data->key, "' can not be blitted in format ",
+					core::getImageFormatName(it.data->format), ", only level 0 is kept");
+			it.info.mipLevels = 1;
+			it.data->mipLevels = core::MipLevels(1);
+			it.data->hints &= ~core::ImageHints::GenerateMipmaps;
+			continue;
+		}
+
+		it.generateMips = true;
+		it.mipFilter = (features & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)
+				? VK_FILTER_LINEAR
+				: VK_FILTER_NEAREST;
+		it.info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+		_needsGraphicsQueue = true;
+	}
 
 	// pre-create objects
 	auto mask = _alloc->getInitialTypeMask();
@@ -488,6 +521,53 @@ static VkImageAspectFlagBits getFormatAspectFlags(VkFormat fmt, bool separateDep
 	}
 }
 
+// What the staging holds for an image: every level when they are prebuilt, level 0 otherwise
+static uint64_t TransferResource_getImageDataSize(const TransferResource::ImageAllocInfo &it) {
+	auto format = core::ImageFormat(it.info.format);
+	auto extent = Extent3(it.info.extent.width, it.info.extent.height, it.info.extent.depth);
+	return core::getMipChainSize(format, extent, it.generateMips ? 1 : it.info.mipLevels,
+			it.info.arrayLayers);
+}
+
+// Level 0 is in TRANSFER_DST; each level is blitted from the one above it, all layers at once.
+// Every level ends in TRANSFER_SRC, so one barrier takes the whole image to its target layout.
+static void TransferResource_generateMipChain(CommandBuffer &buf,
+		const TransferResource::ImageAllocInfo &img) {
+	auto aspect = VkImageAspectFlags(getFormatAspectFlags(img.info.format, false));
+	auto layers = img.info.arrayLayers;
+	auto extent = Extent3(img.info.extent.width, img.info.extent.height, img.info.extent.depth);
+
+	auto toSource = [&](uint32_t level) {
+		ImageMemoryBarrier barrier(img.image, VK_ACCESS_TRANSFER_WRITE_BIT,
+				VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				VkImageSubresourceRange{aspect, level, 1, 0, layers});
+		buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+				makeSpanView(&barrier, 1));
+	};
+
+	auto offset = [](const Extent3 &e) {
+		return VkOffset3D{int32_t(e.width), int32_t(e.height), int32_t(e.depth)};
+	};
+
+	for (uint32_t level = 1; level < img.info.mipLevels; ++level) {
+		toSource(level - 1);
+
+		VkImageBlit blit{};
+		blit.srcSubresource = VkImageSubresourceLayers{aspect, level - 1, 0, layers};
+		blit.srcOffsets[0] = VkOffset3D{0, 0, 0};
+		blit.srcOffsets[1] = offset(core::getMipExtent(extent, level - 1));
+		blit.dstSubresource = VkImageSubresourceLayers{aspect, level, 0, layers};
+		blit.dstOffsets[0] = VkOffset3D{0, 0, 0};
+		blit.dstOffsets[1] = offset(core::getMipExtent(extent, level));
+
+		buf.cmdBlitImage(img.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, img.image,
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, makeSpanView(&blit, 1), img.mipFilter);
+	}
+
+	toSource(img.info.mipLevels - 1);
+}
+
 bool TransferResource::prepareCommands(uint32_t idx, CommandBuffer &buf,
 		Vector<ImageMemoryBarrier> &outputImageBarriers,
 		Vector<BufferMemoryBarrier> &outputBufferBarriers) {
@@ -515,20 +595,38 @@ bool TransferResource::prepareCommands(uint32_t idx, CommandBuffer &buf,
 			buf.cmdCopyBuffer(_stagingBuffer.buffer.buffer, it.targetBuffer->buffer,
 					makeSpanView(&copyRegion, 1));
 		} else if (it.targetImage) {
-			VkBufferImageCopy copyRegion{};
-			copyRegion.bufferOffset = it.sourceOffet;
-			copyRegion.bufferRowLength =
-					0; // If either of these values is zero, that aspect of the buffer memory
-			copyRegion.bufferImageHeight =
-					0; // is considered to be tightly packed according to the imageExtent
-			copyRegion.imageSubresource = VkImageSubresourceLayers(
-					{VkImageAspectFlags(getFormatAspectFlags(it.targetImage->info.format, false)),
-						0, 0, it.targetImage->data->arrayLayers.get()});
-			copyRegion.imageOffset = VkOffset3D({0, 0, 0});
-			copyRegion.imageExtent = it.targetImage->info.extent;
+			auto &img = *it.targetImage;
+			auto aspect = VkImageAspectFlags(getFormatAspectFlags(img.info.format, false));
+			auto format = core::ImageFormat(img.info.format);
+			auto extent = Extent3(img.info.extent.width, img.info.extent.height,
+					img.info.extent.depth);
 
-			buf.cmdCopyBufferToImage(_stagingBuffer.buffer.buffer, it.targetImage->image,
-					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, makeSpanView(&copyRegion, 1));
+			// Prebuilt levels follow level 0 in the data, all layers of a level together; a
+			// generated chain starts from level 0 alone. Zero row length and height: tightly
+			// packed by the level's extent.
+			uint32_t copyLevels = img.generateMips ? 1 : img.info.mipLevels;
+			Vector<VkBufferImageCopy> regions;
+			for (uint32_t level = 0; level < copyLevels; ++level) {
+				auto levelExtent = core::getMipExtent(extent, level);
+				VkBufferImageCopy copyRegion{};
+				copyRegion.bufferOffset = it.sourceOffet
+						+ core::getMipLevelOffset(format, extent, level, img.info.arrayLayers);
+				copyRegion.bufferRowLength = 0;
+				copyRegion.bufferImageHeight = 0;
+				copyRegion.imageSubresource =
+						VkImageSubresourceLayers({aspect, level, 0, img.info.arrayLayers});
+				copyRegion.imageOffset = VkOffset3D({0, 0, 0});
+				copyRegion.imageExtent =
+						VkExtent3D({levelExtent.width, levelExtent.height, levelExtent.depth});
+				regions.emplace_back(copyRegion);
+			}
+
+			buf.cmdCopyBufferToImage(_stagingBuffer.buffer.buffer, img.image,
+					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions);
+
+			if (img.generateMips) {
+				TransferResource_generateMipChain(buf, img);
+			}
 		}
 	}
 
@@ -546,7 +644,9 @@ bool TransferResource::prepareCommands(uint32_t idx, CommandBuffer &buf,
 				auto &ref = outputImageBarriers.emplace_back(
 						ImageMemoryBarrier(it.targetImage->image, VK_ACCESS_TRANSFER_WRITE_BIT,
 								VkAccessFlags(it.targetImage->data->targetAccess),
-								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								it.targetImage->generateMips
+										? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+										: VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 								VkImageLayout(it.targetImage->data->targetLayout),
 								QueueFamilyTransfer(srcQueueFamilyIndex, dstQueueFamilyIndex),
 								VkImageAspectFlags(
@@ -691,9 +791,7 @@ size_t TransferResource::writeData(uint8_t *mem, BufferAllocInfo &info) {
 }
 
 size_t TransferResource::writeData(uint8_t *mem, ImageAllocInfo &info) {
-	auto expectedSize = core::getFormatImageSize(info.data->format, info.data->extent,
-			info.data->arrayLayers.get());
-	return info.data->writeData(mem, expectedSize);
+	return info.data->writeData(mem, TransferResource_getImageDataSize(info));
 }
 
 size_t TransferResource::preTransferData() {
@@ -716,7 +814,7 @@ size_t TransferResource::preTransferData() {
 
 	for (auto &it : _images) {
 		if (it.dedicated && _alloc->getType(it.dedicatedMemType)->isHostVisible()
-				&& it.info.tiling != VK_IMAGE_TILING_OPTIMAL) {
+				&& it.info.tiling != VK_IMAGE_TILING_OPTIMAL && it.info.mipLevels == 1) {
 			void *targetMem = nullptr;
 			if (table->vkMapMemory(dev->getDevice(), it.dedicated, 0, VK_WHOLE_SIZE, 0, &targetMem)
 					!= VK_SUCCESS) {
@@ -736,15 +834,11 @@ size_t TransferResource::preTransferData() {
 				table->vkFlushMappedMemoryRanges(dev->getDevice(), 1, &range);
 			}
 		} else if (it.info.tiling == VK_IMAGE_TILING_OPTIMAL || it.dedicated
-				|| generalMem == nullptr) {
+				|| generalMem == nullptr || it.info.mipLevels > 1) {
 			it.useStaging = true;
 			stagingSize = math::align<VkDeviceSize>(stagingSize, alignment);
 			it.stagingOffset = stagingSize;
-			// it.info is the VkImageCreateInfo, so its extent is a VkExtent3D and has to be spelled
-			// out rather than converted.
-			stagingSize += core::getFormatImageSize(core::ImageFormat(it.info.format),
-					Extent3(it.info.extent.width, it.info.extent.height, it.info.extent.depth),
-					it.info.arrayLayers);
+			stagingSize += TransferResource_getImageDataSize(it);
 		} else {
 			writeData(generalMem + it.offset, it);
 		}
@@ -917,7 +1011,7 @@ bool TransferResource::writeStaging(StagingBuffer &buffer) {
 		VkMappedMemoryRange range;
 		range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
 		range.pNext = nullptr;
-		range.memory = _memory;
+		range.memory = buffer.buffer.dedicated;
 		range.offset = 0;
 		range.size = VK_WHOLE_SIZE;
 		table->vkFlushMappedMemoryRanges(dev->getDevice(), 1, &range);
@@ -979,6 +1073,19 @@ auto TransferPass::makeFrameHandle(const FrameQueue &handle) -> Rc<QueuePassHand
 }
 
 TransferRenderPassHandle::~TransferRenderPassHandle() { }
+
+core::QueueFlags TransferRenderPassHandle::getQueueOps() const {
+	auto pass = static_cast<TransferPass *>(_queuePass.get());
+	for (auto &it : _queueData->attachments) {
+		if (it.first->attachment == pass->getAttachment()) {
+			auto transfer = static_cast<TransferAttachmentHandle *>(it.second->handle.get());
+			if (transfer->getResource() && transfer->getResource()->needsGraphicsQueue()) {
+				return core::QueueFlags::Graphics;
+			}
+		}
+	}
+	return QueuePassHandle::getQueueOps();
+}
 
 Vector<const core::CommandBuffer *> TransferRenderPassHandle::doPrepareCommands(FrameHandle &) {
 	auto pass = static_cast<TransferPass *>(_queuePass.get());
