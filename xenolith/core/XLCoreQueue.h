@@ -371,6 +371,9 @@ public:
 	const AttachmentData *addAttachemnt(StringView name,
 			const Callback<Rc<Attachment>(AttachmentBuilder &)> &);
 
+	// an attachment added earlier, e.g. by the renderer whose graph this builder extends
+	const AttachmentData *getAttachment(StringView name) const;
+
 	const QueuePassData *addPass(StringView name, PassType, RenderOrdering,
 			const Callback<Rc<QueuePass>(QueuePassBuilder &)> &);
 

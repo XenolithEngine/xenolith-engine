@@ -314,8 +314,8 @@ static void Queue_buildLoadStore(QueueData *data) {
 					}
 					desc->stencilStoreOp = AttachmentStoreOp::DontCare;
 				}
+				++descIndex;
 			}
-			++descIndex;
 		}
 
 		if (attachment->type != AttachmentType::Image) {
@@ -1706,6 +1706,14 @@ const AttachmentData *Queue::Builder::addAttachemnt(StringView name,
 		return ret;
 	} else {
 		log::source().error("Queue::Builder", "Attachment for name already defined: ", name);
+	}
+	return nullptr;
+}
+
+const AttachmentData *Queue::Builder::getAttachment(StringView name) const {
+	auto it = _data->attachments.find(name);
+	if (it != _data->attachments.end()) {
+		return *it;
 	}
 	return nullptr;
 }
