@@ -15,6 +15,8 @@
 #include "XL3dSceneContent.h"
 #include "XL3dView.h"
 #include "XL3dMesh.h"
+#include "XL3dMeshPack.h"
+#include "XLSceneInspector.h"
 
 #include <sprt/c/__sprt_stdlib.h>
 
@@ -100,6 +102,16 @@ public:
 		if (_torus == maxOf<uint32_t>()) {
 			makeScene(scene->getDirector()->getResourceCache());
 		}
+
+		// for basic3d-check.py: the pass's last frame and the pack; drop removes every draw
+		inspector::addCommand(this, "basic3d.stats", "the 3d pass's last frame and the pack",
+				[this](Value &&, Function<void(Value &&)> &&done) { done(describeStats()); });
+		inspector::addCommand(this, "basic3d.drop", "remove every draw, releasing the pack",
+				[this](Value &&, Function<void(Value &&)> &&done) {
+			_view->stopAllActions();
+			_view->clearDraws();
+			done(describeStats());
+		});
 	}
 
 	virtual void handleContentSizeDirty() override {
@@ -126,10 +138,18 @@ protected:
 		auto fine = cache->addExternalBitmapImage("basic3d.example.fine", info(64),
 				makeChecker(64, 2, Color4B(0, 0, 0, 255), Color4B(255, 255, 255, 255)));
 
-		_view->addDraw(Draw3d{Mesh3d::makePlane(40.0f, 160.0f), Mat4::IDENTITY,
+		// Every mesh of the scene in one pack in GPU memory: the frames draw them from it once it
+		// is loaded, and copy nothing (BASIC3D_NOPACK=1 draws them from the frame's buffers)
+		auto plane = Mesh3d::makePlane(40.0f, 160.0f);
+		auto torus = Mesh3d::makeTorus(2.0f, 0.7f, 64, 24);
+		auto box = Mesh3d::makeBox(Vec3(1.5f, 1.5f, 0.75f));
+		auto small = Mesh3d::makeBox(Vec3(1.0f, 1.0f, 0.75f));
+		_pack = Rc<MeshPack3d>::create(cache, Vector<Rc<Mesh3d>>{plane, torus, box, small});
+
+		_view->addDraw(Draw3d{plane, Mat4::IDENTITY,
 			Material3d{Color4F(0.75f, 0.85f, 0.7f, 1.0f), fine, 1.0f}});
 
-		_torus = _view->addDraw(Draw3d{Mesh3d::makeTorus(2.0f, 0.7f, 64, 24), torusTransform(0.4f),
+		_torus = _view->addDraw(Draw3d{torus, torusTransform(0.4f),
 			Material3d{Color4F::WHITE, coarse, 1.0f}});
 
 		// Two boxes drawn by the app pipeline: red and blue stripes, and with flag 1 green alone
@@ -137,10 +157,10 @@ protected:
 		Mat4 left, right;
 		Mat4::createTranslation(Vec3(-4.0f, 5.0f, 0.75f), &left);
 		Mat4::createTranslation(Vec3(5.0f, -4.0f, 0.75f), &right);
-		_view->addDraw(Draw3d{Mesh3d::makeBox(Vec3(1.5f, 1.5f, 0.75f)), left,
+		_view->addDraw(Draw3d{box, left,
 			Material3d{.pipeline = StripesPipeline,
 				.params = {Vec4(1.0f, 0.0f, 0.0f, 1.0f), Vec4(0.0f, 0.0f, 1.0f, 1.0f)}}});
-		_view->addDraw(Draw3d{Mesh3d::makeBox(Vec3(1.5f, 1.5f, 0.75f)), right,
+		_view->addDraw(Draw3d{box, right,
 			Material3d{.pipeline = StripesPipeline,
 				.flags = 1,
 				.params = {Vec4(0.0f, 1.0f, 0.0f, 1.0f), Vec4(1.0f, 1.0f, 0.0f, 1.0f)}}});
@@ -148,7 +168,7 @@ protected:
 		// A third box of the pipeline, its second colour from a second texture: the coarse checker
 		Mat4 front;
 		Mat4::createTranslation(Vec3(-7.0f, -2.0f, 0.75f), &front);
-		_view->addDraw(Draw3d{Mesh3d::makeBox(Vec3(1.5f, 1.5f, 0.75f)), front,
+		_view->addDraw(Draw3d{box, front,
 			Material3d{.pipeline = StripesPipeline,
 				.params = {Vec4(1.0f, 0.0f, 0.0f, 1.0f), Vec4(0.0f, 0.0f, 1.0f, 1.0f)},
 				.texture2 = coarse}});
@@ -164,7 +184,7 @@ protected:
 		if (__sprt_getenv("BASIC3D_UNKNOWN_PIPELINE")) {
 			Mat4 back;
 			Mat4::createTranslation(Vec3(-6.0f, -6.0f, 0.75f), &back);
-			_view->addDraw(Draw3d{Mesh3d::makeBox(Vec3(1.0f, 1.0f, 0.75f)), back,
+			_view->addDraw(Draw3d{small, back,
 				Material3d{.pipeline = 7}});
 		}
 
@@ -174,6 +194,22 @@ protected:
 				_view->setDrawTransform(_torus, torusTransform(0.4f + progress * 6.2831853f));
 			})));
 		}
+	}
+
+	Value describeStats() const {
+		auto stats = getLastPassStats();
+		Value ret(Value::Type::DICTIONARY);
+		ret.setInteger(int64_t(stats.frameVertexBytes), "frameVertexBytes");
+		ret.setInteger(int64_t(stats.frameIndexBytes), "frameIndexBytes");
+		ret.setInteger(stats.frameDraws, "frameDraws");
+		ret.setInteger(stats.packDraws, "packDraws");
+		ret.setInteger(int64_t(stats.recordBytes), "recordBytes");
+		ret.setBool(_pack && _pack->isLoaded(), "packLoaded");
+		ret.setInteger(_pack ? _pack->getUsers() : 0, "packUsers");
+		ret.setBool(_pack && _director
+						&& _director->getResourceCache()->hasTemporaryResource(_pack->getName()),
+				"packInCache");
+		return ret;
 	}
 
 	void pan(const Vec2 &delta) {
@@ -199,6 +235,7 @@ protected:
 	basic2d::Layer *_panel = nullptr;
 	basic2d::Label *_label = nullptr;
 	uint32_t _torus = maxOf<uint32_t>();
+	Rc<MeshPack3d> _pack;
 };
 
 DEFINE_CONFIG_FUNCTION((ContextConfig &cfg) {

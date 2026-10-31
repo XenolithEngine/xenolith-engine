@@ -18,6 +18,10 @@ headless screenshot:
     orange shows where its blue would be;
   * a point light makes a pool of light on the ground under it, gone with BASIC3D_NO_LIGHT=1,
     and the ground past its radius is as without it;
+  * every mesh is in one pack in GPU memory (MeshPack3d): once it is loaded the frames copy no
+    vertex into themselves and draw everything from the pack; with BASIC3D_NOPACK=1 they copy
+    every mesh, and the picture is the same; removing the draws releases the pack, which leaves
+    the resource cache;
   * a material picking a pipeline the scene does not have (BASIC3D_UNKNOWN_PIPELINE=1, in the second
     run) draws as a mesh, with one warning;
   * the 2d panel composites over the 3d picture;
@@ -75,8 +79,9 @@ def pixels(image, box):
     return [image.getpixel((x, y)) for x in range(x0, x1) for y in range(y0, y1)]
 
 
-def run(binary, env_extra, log_path):
-    """The screenshot of a still frame and the app's log"""
+def run(binary, env_extra, log_path, probe=None):
+    """The screenshot of a still frame and the app's log; `probe(session)` runs after the shot,
+    and what it returns is the third value"""
     env = dict(os.environ)
     env.update(env_extra)
     env["XENOLITH_INSPECTOR_ADDRESS"] = "unix:" + ADDR
@@ -111,6 +116,7 @@ def run(binary, env_extra, log_path):
         session.call("frame")
     shot = session.call("screenshot")
     image = Image.open(io.BytesIO(xlclient.decode_bytes(shot["data"]))).convert("RGB")
+    probed = probe(session) if probe else None
 
     try:
         session.call("quit", graceful=True)
@@ -120,6 +126,8 @@ def run(binary, env_extra, log_path):
         proc.kill()
     log.close()
     with open(log_path, errors="replace") as f:
+        if probe:
+            return image, f.read(), probed
         return image, f.read()
 
 
@@ -130,7 +138,21 @@ def main():
         raise SystemExit(f"no basic3d at {binary}: build examples/window/basic3d first")
 
     log_path = f"/tmp/xl-basic3d-check-{os.getpid()}.log"
-    image, text = run(binary, {"BASIC3D_STILL": "1"}, log_path)
+
+    def probe(session):
+        stats = session.call("invoke", name="basic3d.stats", args={})
+        session.call("invoke", name="basic3d.drop", args={})
+        gone = None
+        for i in range(120):
+            session.call("frame")
+            time.sleep(0.02)
+            after = session.call("invoke", name="basic3d.stats", args={})
+            if not after["packInCache"]:
+                gone = i + 1
+                break
+        return stats, after, gone
+
+    image, text, (packed, dropped, gone) = run(binary, {"BASIC3D_STILL": "1"}, log_path, probe)
 
     ground = image.getpixel((GROUND[0][0], GROUND[0][1]))
 
@@ -188,6 +210,22 @@ def main():
     check("and aliases when level 0 alone is sampled", all(s > 20 for s in raw),
             str([round(s, 1) for s in raw]))
 
+    print("--- the mesh pack")
+    check("the frame copies no vertex: every draw is from the pack",
+            packed["frameVertexBytes"] == 0 and packed["frameDraws"] == 0
+            and packed["packDraws"] >= 5 and packed["packLoaded"], str(packed))
+    flat_path = f"/tmp/xl-basic3d-check-nopack-{os.getpid()}.log"
+    flat, _, unpacked = run(binary, {"BASIC3D_STILL": "1", "BASIC3D_NOPACK": "1"}, flat_path,
+            lambda session: session.call("invoke", name="basic3d.stats", args={}))
+    check("with BASIC3D_NOPACK=1 the frame copies every mesh",
+            unpacked["frameVertexBytes"] > 50000 and unpacked["packDraws"] == 0, str(unpacked))
+    # the frame statistics at the bottom left change between runs
+    worst = max(max(abs(a - b) for a, b in zip(image.getpixel((x, y)), flat.getpixel((x, y))))
+            for x in range(0, WIDTH, 2) for y in range(0, 540, 2))
+    check("and the picture is the same", worst <= 1, f"{worst} levels at most")
+    check("removing the draws releases the pack: it leaves the cache",
+            dropped["packUsers"] == 0 and gone is not None, f"after {gone} frames")
+
     print("--- a point light")
     dark_path = f"/tmp/xl-basic3d-check-nolight-{os.getpid()}.log"
     dark, _ = run(binary, {"BASIC3D_STILL": "1", "BASIC3D_NO_LIGHT": "1"}, dark_path)
@@ -212,7 +250,7 @@ def main():
 
     print(f"\n{checks} checks, {failures} failures")
     if failures == 0:
-        for p in (log_path, nomips_path, dark_path):
+        for p in (log_path, nomips_path, dark_path, flat_path):
             try:
                 os.unlink(p)
             except OSError:
