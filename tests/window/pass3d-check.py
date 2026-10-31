@@ -3,7 +3,9 @@
 
 tests/pass3d adds its own graphics pass to the stock basic2d queue through the Scene2d::init builder
 callback: the pass clears Output, draws a ground slab and two boxes that cut through each other with
-its own depth attachment, and the basic2d pass composites the UI over it. With PASS3D_STILL=1 the
+its own depth attachment, and the basic2d pass composites the UI over it. The pass has two
+subpasses on the generic vk::QueuePassHandle: the scene, then a decal and a far cube tested against
+the scene's depth; the engine reports a render pass that ends before its last subpass. With PASS3D_STILL=1 the
 picture is fixed, so the check reads known pixels of a headless screenshot:
 
   * the ground and both boxes are there - the 2d pass LOADS what the 3d pass wrote. If the queue
@@ -145,6 +147,7 @@ def main():
             str(at(CUBE_OVER_BOX)))
     check("the 2d veil blends over the ground", near(at(VEIL), VEIL[1]), str(at(VEIL)))
     check("no Vulkan validation error", "Validation Error" not in text, log_path)
+    check("the render pass ends in its last subpass", "ended in subpass" not in text, log_path)
 
     base_path = f"/tmp/xl-pass3d-check-base-{os.getpid()}.log"
     base, _ = run(binary, {"PASS3D_STILL": "1", "PASS3D_NO3D": "1"}, base_path)

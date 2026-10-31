@@ -72,6 +72,30 @@ core::ImageFormat selectDepthFormat(SpanView<core::ImageFormat> formats) {
 	return formats.empty() ? core::ImageFormat::Undefined : formats.front();
 }
 
+// Viewport and scissor of the whole frame, and the constants of this frame's camera
+SceneConstants beginSubpass(core::FrameQueue &queue, vk::CommandBuffer &buf, float density) {
+	auto extent = queue.getFrame()->getFrameConstraints().extent;
+
+	VkViewport viewport{0.0f, 0.0f, float(extent.width), float(extent.height), 0.0f, 1.0f};
+	buf.cmdSetViewport(0, makeSpanView(&viewport, 1));
+
+	VkRect2D scissor{{0, 0}, {extent.width, extent.height}};
+	buf.cmdSetScissor(0, makeSpanView(&scissor, 1));
+
+	// 64 points per unit: the scene keeps its size on a dense screen
+	SceneConstants pcb;
+	makeViewProj(pcb.viewProj, float(extent.width), float(extent.height), 64.0f * density);
+	pcb.params[0] = s_still
+			? 0.0f
+			: float(sp::platform::clock(ClockType::Monotonic) % 1'000'000'000) / 1'000'000.0f;
+	pcb.params[1] = pcb.params[2] = pcb.params[3] = 0.0f;
+	return pcb;
+}
+
+BytesView constantsOf(const SceneConstants &pcb) {
+	return BytesView(reinterpret_cast<const uint8_t *>(&pcb), sizeof(SceneConstants));
+}
+
 void addScenePass(core::Loop *loop, core::Queue::Builder &builder, Extent2 extent,
 		float density) {
 	using namespace core;
@@ -103,7 +127,8 @@ void addScenePass(core::Loop *loop, core::Queue::Builder &builder, Extent2 exten
 		auto layout = passBuilder.addDescriptorLayout("Pass3dLayout",
 				[](PipelineLayoutBuilder &) { });
 
-		passBuilder.addSubpass([&](SubpassBuilder &subpassBuilder) {
+		// both subpasses draw into the same Output and Depth3d
+		auto addTargets = [&](SubpassBuilder &subpassBuilder) {
 			subpassBuilder.addColor(colorPass,
 					AttachmentDependencyInfo{
 						PipelineStage::ColorAttachmentOutput,
@@ -123,21 +148,46 @@ void addScenePass(core::Loop *loop, core::Queue::Builder &builder, Extent2 exten
 								| AccessType::DepthStencilAttachmentWrite,
 						FrameRenderPassState::Submitted,
 					});
+		};
 
-			auto shaders = Vector<SpecializationInfo>({
-				SpecializationInfo(vert),
-				SpecializationInfo(frag),
-			});
+		auto shaders = Vector<SpecializationInfo>({
+			SpecializationInfo(vert),
+			SpecializationInfo(frag),
+		});
 
-			// The faces wind counter-clockwise seen from outside. The camera flips clip y and the
-			// framebuffer's y points down: the two cancel, and a front face stays counter-clockwise.
-			// PASS3D_CULL=front culls the front faces instead, and the scene turns inside out.
-			auto culled = RasterizationInfo(
-					__sprt_getenv("PASS3D_CULL") ? CullMode::Front : CullMode::Back,
-					FrontFace::CounterClockwise);
+		// The faces wind counter-clockwise seen from outside. The camera flips clip y and the
+		// framebuffer's y points down: the two cancel, and a front face stays counter-clockwise.
+		// PASS3D_CULL=front culls the front faces instead, and the scene turns inside out.
+		auto culled = RasterizationInfo(
+				__sprt_getenv("PASS3D_CULL") ? CullMode::Front : CullMode::Back,
+				FrontFace::CounterClockwise);
+
+		// Subpass 0: the scene
+		auto sceneSubpass = passBuilder.addSubpass([&](SubpassBuilder &subpassBuilder) {
+			addTargets(subpassBuilder);
 
 			subpassBuilder.addGraphicPipeline(ScenePipelineName, layout->defaultFamily, shaders,
 					PipelineMaterialInfo(BlendInfo(), DepthInfo(true, true, CompareOp::Less), culled));
+
+			subpassBuilder.setCommandsCallback([density](FrameQueue &queue,
+													   const SubpassData &subpass,
+													   CommandBuffer &commands) {
+				auto &buf = static_cast<vk::CommandBuffer &>(commands);
+				auto pipeline = subpass.graphicPipelines.get(ScenePipelineName);
+				if (!pipeline) {
+					return;
+				}
+
+				auto pcb = beginSubpass(queue, buf, density);
+				buf.cmdBindPipelineWithDescriptors(pipeline);
+				buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, constantsOf(pcb));
+				buf.cmdDraw(36, 3, 0, 0);
+			});
+		});
+
+		// Subpass 1: what tests the rasterization state against the scene's depth
+		auto overlaySubpass = passBuilder.addSubpass([&](SubpassBuilder &subpassBuilder) {
+			addTargets(subpassBuilder);
 
 			// The decal lies 5 mm under the ground's top: it shows only when its depth is biased
 			// toward the camera past the ground, which in [0, 1] depth is a negative bias. The
@@ -161,49 +211,34 @@ void addScenePass(core::Loop *loop, core::Queue::Builder &builder, Extent2 exten
 													   const SubpassData &subpass,
 													   CommandBuffer &commands) {
 				auto &buf = static_cast<vk::CommandBuffer &>(commands);
-				auto pipeline = subpass.graphicPipelines.get(ScenePipelineName);
 				auto decalPipeline = subpass.graphicPipelines.get(DecalPipelineName);
 				auto clampPipeline = subpass.graphicPipelines.get(ClampPipelineName);
-				if (!pipeline || !decalPipeline || !clampPipeline) {
+				if (!decalPipeline || !clampPipeline) {
 					return;
 				}
 
-				auto extent = queue.getFrame()->getFrameConstraints().extent;
-
-				VkViewport viewport{0.0f, 0.0f, float(extent.width), float(extent.height), 0.0f,
-					1.0f};
-				buf.cmdSetViewport(0, makeSpanView(&viewport, 1));
-
-				VkRect2D scissor{{0, 0}, {extent.width, extent.height}};
-				buf.cmdSetScissor(0, makeSpanView(&scissor, 1));
-
-				// 64 points per unit: the scene keeps its size on a dense screen
-				SceneConstants pcb;
-				makeViewProj(pcb.viewProj, float(extent.width), float(extent.height),
-						64.0f * density);
-				pcb.params[0] = s_still
-						? 0.0f
-						: float(sp::platform::clock(ClockType::Monotonic) % 1'000'000'000)
-								/ 1'000'000.0f;
-				pcb.params[1] = pcb.params[2] = pcb.params[3] = 0.0f;
-
-				auto constants =
-						BytesView(reinterpret_cast<const uint8_t *>(&pcb), sizeof(SceneConstants));
-
-				buf.cmdBindPipelineWithDescriptors(pipeline);
-				buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, constants);
-				buf.cmdDraw(36, 3, 0, 0);
+				auto pcb = beginSubpass(queue, buf, density);
 
 				// the +z face only (vertices 6..11) of instance 3
 				buf.cmdBindPipelineWithDescriptors(decalPipeline);
-				buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, constants);
+				buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, constantsOf(pcb));
 				buf.cmdDraw(6, 1, 6, 3);
 
 				buf.cmdBindPipelineWithDescriptors(clampPipeline);
-				buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, constants);
+				buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, constantsOf(pcb));
 				buf.cmdDraw(36, 1, 0, 4);
 			});
 		});
+
+		// subpass 1 tests against the depth subpass 0 wrote, and draws over its colour
+		passBuilder.addSubpassDependency(sceneSubpass,
+				PipelineStage::ColorAttachmentOutput | PipelineStage::LateFragmentTest,
+				AccessType::ColorAttachmentWrite | AccessType::DepthStencilAttachmentWrite,
+				overlaySubpass,
+				PipelineStage::EarlyFragmentTest | PipelineStage::ColorAttachmentOutput,
+				AccessType::DepthStencilAttachmentRead | AccessType::DepthStencilAttachmentWrite
+						| AccessType::ColorAttachmentRead | AccessType::ColorAttachmentWrite,
+				true);
 
 		return Rc<vk::QueuePass>::create(passBuilder);
 	});
