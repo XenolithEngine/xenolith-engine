@@ -19,11 +19,17 @@ bool View3d::init() {
 
 void View3d::handleEnter(xenolith::Scene *scene) {
 	Node::handleEnter(scene);
-	for (auto &it : _draws) { retainTexture(it.material.texture); }
+	for (auto &it : _draws) {
+		retainTexture(it.material.texture);
+		retainTexture(it.material.texture2);
+	}
 }
 
 void View3d::handleExit() {
-	for (auto &it : _draws) { releaseTexture(it.material.texture); }
+	for (auto &it : _draws) {
+		releaseTexture(it.material.texture);
+		releaseTexture(it.material.texture2);
+	}
 	Node::handleExit();
 }
 
@@ -46,6 +52,7 @@ void View3d::setSun(const Vec3 &towardSun, const Color4F &color) {
 
 uint32_t View3d::addDraw(Draw3d &&d) {
 	retainTexture(d.material.texture);
+	retainTexture(d.material.texture2);
 	_draws.emplace_back(sp::move(d));
 	markSceneChanged();
 	return uint32_t(_draws.size() - 1);
@@ -61,14 +68,19 @@ void View3d::setDrawTransform(uint32_t idx, const Mat4 &transform) {
 void View3d::setDrawMaterial(uint32_t idx, Material3d &&material) {
 	if (idx < _draws.size()) {
 		retainTexture(material.texture);
+		retainTexture(material.texture2);
 		releaseTexture(_draws[idx].material.texture);
+		releaseTexture(_draws[idx].material.texture2);
 		_draws[idx].material = sp::move(material);
 		markSceneChanged();
 	}
 }
 
 void View3d::clearDraws() {
-	for (auto &it : _draws) { releaseTexture(it.material.texture); }
+	for (auto &it : _draws) {
+		releaseTexture(it.material.texture);
+		releaseTexture(it.material.texture2);
+	}
 	_draws.clear();
 	markSceneChanged();
 }
@@ -100,7 +112,20 @@ void View3d::draw(FrameInfo &frame, NodeVisitFlags flags) {
 	collectDraws(view);
 }
 
-void View3d::collectDraws(ViewInput3d &view) { view.draws = _draws; }
+void View3d::addLight(const Light3d &light) {
+	_lights.emplace_back(light);
+	markSceneChanged();
+}
+
+void View3d::clearLights() {
+	_lights.clear();
+	markSceneChanged();
+}
+
+void View3d::collectDraws(ViewInput3d &view) {
+	view.draws = _draws;
+	view.lights = _lights;
+}
 
 void View3d::retainTexture(const Rc<Texture> &texture) {
 	if (texture && isRunning() && _frameContext) {

@@ -30,6 +30,7 @@ layout (std430, push_constant) uniform pcb {
 layout (location = 0) out vec3 fragNormal;
 layout (location = 1) out vec2 fragTexCoord;
 layout (location = 2) out flat uint fragDraw;
+layout (location = 3) out vec3 fragWorld;
 
 void main() {
 	// gl_VertexIndex includes the draw's vertexOffset
@@ -40,5 +41,7 @@ void main() {
 	fragTexCoord = v.attr.xy * d.uvScale;
 	fragDraw = constants.drawIndex;
 
-	gl_Position = ViewBuffer(constants.viewPointer).view.viewProj * (d.model * vec4(v.pos.xyz, 1.0));
+	vec4 world = d.model * vec4(v.pos.xyz, 1.0);
+	fragWorld = world.xyz;
+	gl_Position = ViewBuffer(constants.viewPointer).view.viewProj * world;
 }

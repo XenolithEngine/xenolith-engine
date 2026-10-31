@@ -118,12 +118,27 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 	draws.reserve(drawCount);
 	views.reserve(input.views.size());
 
+	Vector<LightData3d> lights;
 	bool overflow = false;
+	bool tooManyLights = false;
 	for (auto &view : input.views) {
 		// a record for every view, so a view's index is its place in the view buffer
 		auto &record = _views.emplace_back(
 				ViewRecord{view.viewport, uint32_t(_draws.size()), 0});
-		views.emplace_back(view.data);
+		auto &viewData = views.emplace_back(view.data);
+
+		// its lights, after those of the views before it
+		viewData.firstLight = uint32_t(lights.size());
+		viewData.lightCount = uint32_t(sprt::min(view.lights.size(), size_t(MaxLights)));
+		viewData.padding0 = viewData.padding1 = 0;
+		tooManyLights = tooManyLights || view.lights.size() > MaxLights;
+		for (uint32_t i = 0; i < viewData.lightCount; ++i) {
+			auto &l = view.lights[i];
+			lights.emplace_back(LightData3d{
+				Vec4(l.position.x, l.position.y, l.position.z, l.radius),
+				Vec4(l.color.r, l.color.g, l.color.b, 1.0f),
+			});
+		}
 
 		for (auto &draw : view.draws) {
 			if (!draw.mesh || draw.mesh->getIndexes().empty()) {
@@ -158,9 +173,12 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			data.textureIdx = textureIdx;
 			data.uvScale = draw.material.uvScale;
 			data.flags = draw.material.flags;
-			data.padding = 0;
-			data.params[0] = draw.material.params[0];
-			data.params[1] = draw.material.params[1];
+			data.textureIdx2 = acquireTexture(draw.material.texture2);
+			if (draw.material.texture2 && data.textureIdx2 == NoTexture
+					&& _images.size() >= MaxTextures) {
+				overflow = true;
+			}
+			for (uint32_t i = 0; i < 4; ++i) { data.params[i] = draw.material.params[i]; }
 			draws.emplace_back(data);
 
 			++record.drawCount;
@@ -170,6 +188,17 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 	if (overflow) {
 		log::source().warn("basic3d::Pass3d", "more than ", MaxTextures,
 				" textures in a frame: the rest draw as their colour");
+	}
+
+	static sprt::atomic<bool> s_lightsWarned = false;
+	if (tooManyLights && !s_lightsWarned.exchange(true)) {
+		log::source().warn("basic3d::Pass3d", "a view has more than ", MaxLights,
+				" lights: the rest are dropped");
+	}
+
+	// at least one record, so the buffer exists for the pointer
+	if (lights.empty()) {
+		lights.emplace_back(LightData3d());
 	}
 
 	_vertexes = pool->spawn(xvk::AllocationUsage::DeviceLocalHostVisible,
@@ -185,7 +214,11 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			core::BufferInfo(StringView("Basic3dViews"), core::BufferUsage::StorageBuffer,
 					core::BufferUsage::ShaderDeviceAddress, views.size() * sizeof(ViewData3d)));
 
-	if (!_vertexes || !_indexes || !_drawData || !_viewData) {
+	_lightData = pool->spawn(xvk::AllocationUsage::DeviceLocalHostVisible,
+			core::BufferInfo(StringView("Basic3dLights"), core::BufferUsage::StorageBuffer,
+					core::BufferUsage::ShaderDeviceAddress, lights.size() * sizeof(LightData3d)));
+
+	if (!_vertexes || !_indexes || !_drawData || !_viewData || !_lightData) {
 		_draws.clear();
 		return false;
 	}
@@ -198,6 +231,8 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			draws.size() * sizeof(DrawData3d)));
 	_viewData->setData(BytesView(reinterpret_cast<const uint8_t *>(views.data()),
 			views.size() * sizeof(ViewData3d)));
+	_lightData->setData(BytesView(reinterpret_cast<const uint8_t *>(lights.data()),
+			lights.size() * sizeof(LightData3d)));
 	return true;
 }
 
@@ -262,6 +297,7 @@ static void Pass3d_record(core::FrameQueue &q, const core::SubpassData &subpass,
 	Constants3d pcb;
 	pcb.drawPointer = UVec2::convertFromPacked(buf.bindBufferAddress(input->getDrawData().get()));
 	pcb.vertexPointer = UVec2::convertFromPacked(buf.bindBufferAddress(input->getVertexes().get()));
+	pcb.lightPointer = UVec2::convertFromPacked(buf.bindBufferAddress(input->getLightData().get()));
 	pcb.padding = 0;
 
 	auto draws = input->getDraws();

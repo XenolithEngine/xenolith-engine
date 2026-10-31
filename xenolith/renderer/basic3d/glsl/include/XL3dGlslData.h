@@ -34,8 +34,14 @@ struct DrawData3d {
 	uint textureIdx; // into the pass's texture array, or XL_GLSL_3D_NO_TEXTURE
 	float uvScale;
 	uint flags; // the material's, for an app pipeline
-	uint padding;
-	vec4 params[2]; // the material's, for an app pipeline
+	uint textureIdx2; // the material's second texture, or XL_GLSL_3D_NO_TEXTURE; an app pipeline's
+	vec4 params[4]; // the material's, for an app pipeline
+};
+
+// A point light: its light falls off as (1 - (d / radius)^2)^2, zero at the radius
+struct LightData3d {
+	vec4 position; // xyz - in the world, w - the radius
+	vec4 color; // rgb - colour times intensity, a - free
 };
 
 // One view: its camera and its light
@@ -45,14 +51,19 @@ struct ViewData3d {
 	vec4 sunColor; // rgb - colour times intensity
 	vec4 ambient; // rgb - colour times intensity
 	vec4 screen; // xy - the viewport's size in pixels, z - pixels per point, w - free
+	uint firstLight; // this view's point lights in the frame's LightData3d array
+	uint lightCount;
+	uint padding0;
+	uint padding1;
 };
 
 struct Constants3d {
 	uvec2 viewPointer; // 0-8, this view's ViewData3d
 	uvec2 drawPointer; // 8-16, the frame's DrawData3d array
 	uvec2 vertexPointer; // 16-24, the frame's Vertex3d array
-	uint drawIndex; // 24-28
-	uint padding; // 28-32
+	uvec2 lightPointer; // 24-32, the frame's LightData3d array
+	uint drawIndex; // 32-36
+	uint padding; // 36-40
 };
 
 #ifndef SP_GLSL

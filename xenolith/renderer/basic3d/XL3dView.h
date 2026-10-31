@@ -41,6 +41,11 @@ public:
 	const Vec3 &getSunDirection() const { return _sunDirection; }
 	const Color4F &getSunColor() const { return _sunColor; }
 
+	// point lights; a frame takes up to MaxLights of them
+	void addLight(const Light3d &);
+	void clearLights();
+	SpanView<Light3d> getLights() const { return _lights; }
+
 	// the index of the draw, valid until clearDraws
 	uint32_t addDraw(Draw3d &&);
 	void setDrawTransform(uint32_t, const Mat4 &);
@@ -52,7 +57,7 @@ public:
 	virtual void draw(FrameInfo &, NodeVisitFlags flags) override;
 
 protected:
-	// the draws of this frame: the ones added, by default
+	// the draws and the lights of this frame: the ones added, by default
 	virtual void collectDraws(ViewInput3d &);
 
 	// a texture asks to be loaded while it has an owner: the frame context, as for a sprite
@@ -61,6 +66,7 @@ protected:
 
 	Camera _camera;
 	Vector<Draw3d> _draws;
+	Vector<Light3d> _lights;
 	Color4F _ambient = Color4F(0.3f, 0.3f, 0.35f, 1.0f);
 	Vec3 _sunDirection = Vec3(-0.4f, 0.3f, 0.85f);
 	Color4F _sunColor = Color4F(0.8f, 0.78f, 0.7f, 1.0f);

@@ -16,7 +16,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic3d::vk {
 namespace xvk = stappler::xenolith::vk;
 
 /* The frame input of the 3d pass, and its texture descriptor array. submitInput packs every view's
-meshes into one vertex and one index buffer, with a buffer of draws and one of views, on a worker;
+meshes into one vertex and one index buffer, with a buffer of draws, one of views and one of their
+point lights, on a worker;
 the textures the draws use become the array's slots, each sampled by the pass's sampler. */
 class SP_PUBLIC Scene3dInputHandle : public xvk::ImageAttachmentHandle {
 public:
@@ -59,6 +60,7 @@ public:
 	const Rc<xvk::Buffer> &getIndexes() const { return _indexes; }
 	const Rc<xvk::Buffer> &getDrawData() const { return _drawData; }
 	const Rc<xvk::Buffer> &getViewData() const { return _viewData; }
+	const Rc<xvk::Buffer> &getLightData() const { return _lightData; }
 
 	void setTextures(Vector<Rc<core::ImageView>> &&, Rc<core::ImageView> &&empty,
 			Rc<core::Sampler> &&);
@@ -76,6 +78,7 @@ protected:
 	Rc<xvk::Buffer> _indexes;
 	Rc<xvk::Buffer> _drawData;
 	Rc<xvk::Buffer> _viewData;
+	Rc<xvk::Buffer> _lightData;
 
 	Vector<Rc<core::ImageView>> _textureViews;
 	Rc<core::ImageView> _emptyView;

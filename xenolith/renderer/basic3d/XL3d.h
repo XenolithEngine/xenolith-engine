@@ -16,10 +16,14 @@ using Vertex3d = glsl::Vertex3d;
 using DrawData3d = glsl::DrawData3d;
 using ViewData3d = glsl::ViewData3d;
 using Constants3d = glsl::Constants3d;
+using LightData3d = glsl::LightData3d;
 
 // Images one frame of the 3d pass can sample; the pass's descriptor array has this many slots
 static constexpr uint32_t MaxTextures = 64;
 static constexpr uint32_t NoTexture = XL_GLSL_3D_NO_TEXTURE;
+
+// Point lights one view hands a frame; the rest are dropped, with a warning
+static constexpr uint32_t MaxLights = 64;
 
 class Camera;
 class Mesh3d;
@@ -43,15 +47,23 @@ struct SP_PUBLIC Pipeline3dInfo {
 };
 
 // What a draw looks like: a colour, optionally times a texture tiled `uvScale` times per unit of
-// the mesh's texture coordinates. An app pipeline reads `flags` and `params` as it likes; the mesh
-// pipeline ignores them.
+// the mesh's texture coordinates. An app pipeline reads `texture2`, `flags` and `params` as it
+// likes; the mesh pipeline ignores them.
 struct SP_PUBLIC Material3d {
 	Color4F color = Color4F::WHITE;
 	Rc<Texture> texture;
 	float uvScale = 1.0f;
 	uint32_t pipeline = MeshPipeline; // MeshPipeline, or the index of an app pipeline plus one
 	uint32_t flags = 0;
-	Vec4 params[2] = {Vec4::ZERO, Vec4::ZERO};
+	Vec4 params[4] = {Vec4::ZERO, Vec4::ZERO, Vec4::ZERO, Vec4::ZERO};
+	Rc<Texture> texture2;
+};
+
+// A point light in the world: its colour times its intensity falls off as (1 - (d / radius)^2)^2
+struct SP_PUBLIC Light3d {
+	Vec3 position;
+	float radius = 1.0f;
+	Color4F color = Color4F::WHITE;
 };
 
 // A mesh where `transform` puts it, looking like `material`
@@ -66,6 +78,7 @@ struct SP_PUBLIC ViewInput3d {
 	Rect viewport; // in the scene's pixels, y up, as Node::getWorldBoundingBox gives it
 	ViewData3d data;
 	Vector<Draw3d> draws;
+	Vector<Light3d> lights; // up to MaxLights
 };
 
 } // namespace stappler::xenolith::basic3d
