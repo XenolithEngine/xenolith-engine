@@ -28,8 +28,9 @@ layout, style, hit-testing, the canvas and hotkeys - and a path that matches not
 the plan to everything. `full` is what a commit is gated on regardless.
 
 A WINDOW CHECK WITH ITS OWN BINARY. `particles-check.py` drives `examples/window/particles`,
-`filesystem-explorer-check.py` drives `examples/window/fileexplorer` and `pass3d-check.py` drives
-`tests/pass3d`, not `testapp` (`WINDOW_BINARIES`): each is selected by name like the rest
+`filesystem-explorer-check.py` drives `examples/window/fileexplorer`, `pass3d-check.py` drives
+`tests/pass3d` and `basic3d-check.py` drives `examples/window/basic3d`, not `testapp`
+(`WINDOW_BINARIES`): each is selected by name like the rest
 (`XL2dParticleSystem.cc`, `XLUiFilesystemModel.cc`; `pass3d-check.py` through `WINDOW_ALSO`), and
 also by a change under its own example (`EXAMPLE_CHECKS`), which is otherwise outside the plan. An
 unbuilt example skips it the way an unbuilt harness is skipped.
@@ -101,6 +102,7 @@ CLI = [
     ("tests/libc", "libctest", [], True),
     ("tests/locale", "localetest", [], True),
     ("tests/uilayout", "uilayouttest", [], True),
+    ("tests/basic3d", "basic3dtest", [], True),
     ("tests/stappler", "stapplertest", [], True),
     ("tests/particles", "particlestest", [], True),
     ("tests/vstore", "vstoretest", [], True),
@@ -136,6 +138,7 @@ OWES = [
     ("stappler", ["stapplertest"]),
     ("xenolith/font", ["localetest", "stapplertest"]),
     ("xenolith/renderer/ui/layout", ["uilayouttest"]),
+    ("xenolith/renderer/basic3d", ["basic3dtest"]),
     ("xenolith/renderer/basic2d/particle", ["particlestest"]),
     ("xenolith/renderer/basic2d/glsl", ["particlestest"]),
     ("xenolith/backend/vk", ["computetest"]),
@@ -175,9 +178,9 @@ COST = {
     "window/wm-compositor-check.py": 100, "window/remote-cache-check.py": 162,
     "window/remote-multi-check.py": 30, "remotetest": 3,
     "window/frame-request-check.py": 34, "window/label-bounds-check.py": 27,
-    "window/pass3d-check.py": 12,
+    "window/pass3d-check.py": 12, "window/basic3d-check.py": 10,
     "gittest": 19, "computetest": 6, "wgpucompute": 2, "flowwgpu": 8, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
-    "uilayouttest": 1, "particlestest": 1, "vstoretest": 5, "vstoretest --full": 200,
+    "uilayouttest": 1, "basic3dtest": 1, "particlestest": 1, "vstoretest": 5, "vstoretest --full": 200,
     "flowtest": 13, "flowtest --full": 36,
 }
 
@@ -188,6 +191,7 @@ WINDOW_BINARIES = {
     "filesystem-explorer-check.py": ("examples/window/fileexplorer", "fileexplorer"),
     "wm-compositor-check.py": ("examples/os/server", "wmserver"),
     "pass3d-check.py": ("tests/pass3d", "pass3d"),
+    "basic3d-check.py": ("examples/window/basic3d", "basic3d"),
 }
 
 # `examples/` is outside the plan, except the examples a window check drives
@@ -202,6 +206,7 @@ EXAMPLE_CHECKS = [
     ("examples/os/shade", ["wm-compositor-check.py"]),
     ("examples/os/common", ["wm-compositor-check.py"]),
     ("tests/pass3d", ["pass3d-check.py"]),
+    ("examples/window/basic3d", ["basic3d-check.py"]),
 ]
 
 # Clients a window check's server launches itself. They run without --headless, and a server that
@@ -248,6 +253,8 @@ WINDOW_ALSO = [
     # the rasterization state of a material, and the Vulkan pipeline that applies it
     ("XLCorePipelineInfo", ["pass3d-check.py"]),
     ("XLVkPipeline", ["pass3d-check.py"]),
+    # the 3d layer: its camera, meshes, frame context, view and pass
+    ("XL3d", ["basic3d-check.py"]),
 ]
 
 
