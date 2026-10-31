@@ -27,6 +27,7 @@ static constexpr uint32_t MaxLights = 64;
 
 class Camera;
 class Mesh3d;
+class MeshPack3d;
 class View3d;
 class FrameContext3d;
 class SceneContent3d;
@@ -66,11 +67,21 @@ struct SP_PUBLIC Light3d {
 	Color4F color = Color4F::WHITE;
 };
 
+// Where a draw's mesh is in GPU memory, when its pack is loaded: taken by the view on the app
+// thread for the frame, so the pass reads no pack while an app moves meshes between them
+struct SP_PUBLIC DrawGpu3d {
+	Rc<core::BufferObject> vertexes;
+	Rc<core::BufferObject> indexes;
+	uint32_t firstIndex = 0;
+	int32_t vertexOffset = 0;
+};
+
 // A mesh where `transform` puts it, looking like `material`
 struct SP_PUBLIC Draw3d {
 	Rc<Mesh3d> mesh;
 	Mat4 transform = Mat4::IDENTITY;
 	Material3d material;
+	DrawGpu3d gpu; // filled by View3d::draw
 };
 
 // What one View3d hands the pass for a frame

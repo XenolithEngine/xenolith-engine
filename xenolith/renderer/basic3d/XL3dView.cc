@@ -4,6 +4,7 @@
 **/
 
 #include "XL3dView.h"
+#include "XL3dMesh.h"
 #include "XLFrameContext.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic3d {
@@ -23,6 +24,7 @@ void View3d::handleEnter(xenolith::Scene *scene) {
 		retainTexture(it.material.texture);
 		retainTexture(it.material.texture2);
 	}
+	for (auto &it : _drawPacks) { retainPack(it); }
 }
 
 void View3d::handleExit() {
@@ -30,6 +32,7 @@ void View3d::handleExit() {
 		releaseTexture(it.material.texture);
 		releaseTexture(it.material.texture2);
 	}
+	for (auto &it : _drawPacks) { releasePack(it); }
 	Node::handleExit();
 }
 
@@ -53,6 +56,9 @@ void View3d::setSun(const Vec3 &towardSun, const Color4F &color) {
 uint32_t View3d::addDraw(Draw3d &&d) {
 	retainTexture(d.material.texture);
 	retainTexture(d.material.texture2);
+	auto pack = d.mesh ? d.mesh->getPack() : nullptr;
+	retainPack(pack);
+	_drawPacks.emplace_back(pack);
 	_draws.emplace_back(sp::move(d));
 	markSceneChanged();
 	return uint32_t(_draws.size() - 1);
@@ -81,6 +87,8 @@ void View3d::clearDraws() {
 		releaseTexture(it.material.texture);
 		releaseTexture(it.material.texture2);
 	}
+	for (auto &it : _drawPacks) { releasePack(it); }
+	_drawPacks.clear();
 	_draws.clear();
 	markSceneChanged();
 }
@@ -110,6 +118,30 @@ void View3d::draw(FrameInfo &frame, NodeVisitFlags flags) {
 	view.data.screen =
 			Vec4(view.viewport.size.width, view.viewport.size.height, _camera.getDensity(), 0.0f);
 	collectDraws(view);
+
+	// where the meshes of loaded packs are, taken here on the app thread for the pass's worker
+	if (!isPackingDisabled()) {
+		for (auto &d : view.draws) {
+			auto pack = d.mesh ? d.mesh->getPack() : nullptr;
+			if (pack && pack->isLoaded()) {
+				auto &range = d.mesh->getPackRange();
+				d.gpu = DrawGpu3d{pack->getVertexBuffer(), pack->getIndexBuffer(), range.firstIndex,
+					range.vertexOffset};
+			}
+		}
+	}
+}
+
+void View3d::retainPack(MeshPack3d *pack) {
+	if (pack && isRunning() && _frameContext) {
+		pack->addUser(_frameContext);
+	}
+}
+
+void View3d::releasePack(MeshPack3d *pack) {
+	if (pack && isRunning() && _frameContext) {
+		pack->removeUser(_frameContext);
+	}
 }
 
 void View3d::addLight(const Light3d &light) {

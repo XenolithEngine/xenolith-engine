@@ -7,6 +7,7 @@
 #define XENOLITH_RENDERER_BASIC3D_XL3DMESH_H_
 
 #include "XL3d.h"
+#include "XL3dMeshPack.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic3d {
 
@@ -34,11 +35,19 @@ public:
 	const Vec3 &getMin() const { return _min; }
 	const Vec3 &getMax() const { return _max; }
 
+	// the pack the mesh is in, if any, and its range there (XL3dMeshPack.h); set by the pack.
+	// App thread only
+	MeshPack3d *getPack() const { return _pack; }
+	const MeshPackRange &getPackRange() const { return _packRange; }
+	void setPack(MeshPack3d *, const MeshPackRange &);
+
 protected:
 	Vector<Vertex3d> _vertexes;
 	Vector<uint32_t> _indexes;
 	Vec3 _min;
 	Vec3 _max;
+	Rc<MeshPack3d> _pack;
+	MeshPackRange _packRange;
 };
 
 } // namespace stappler::xenolith::basic3d

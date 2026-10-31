@@ -14,6 +14,7 @@
 #include "XLVkDeviceQueue.h"
 #include "XLVkRenderPass.h"
 #include "glsl/XL3dShaders.h"
+#include "XL3dMeshPack.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic3d::vk {
 
@@ -98,16 +99,24 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 	for (auto &view : input.views) {
 		for (auto &draw : view.draws) {
 			if (draw.mesh && !draw.mesh->getIndexes().empty()) {
-				vertexCount += draw.mesh->getVertexes().size();
-				indexCount += draw.mesh->getIndexes().size();
+				// a mesh of a loaded pack is in GPU memory already
+				if (!draw.gpu.vertexes) {
+					vertexCount += draw.mesh->getVertexes().size();
+					indexCount += draw.mesh->getIndexes().size();
+				}
 				++drawCount;
 			}
 		}
 	}
 
 	if (drawCount == 0) {
+		setLastPassStats(Pass3dStats());
 		return true;
 	}
+
+	Pass3dStats stats;
+	stats.frameVertexBytes = vertexCount * sizeof(Vertex3d);
+	stats.frameIndexBytes = indexCount * sizeof(uint32_t);
 
 	Vector<Vertex3d> vertexes;
 	Vector<uint32_t> indexes;
@@ -148,10 +157,19 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			auto meshVertexes = draw.mesh->getVertexes();
 			auto meshIndexes = draw.mesh->getIndexes();
 
-			_draws.emplace_back(DrawRecord{draw.material.pipeline, uint32_t(draws.size()),
-				uint32_t(meshIndexes.size()), uint32_t(indexes.size()), int32_t(vertexes.size())});
-			vertexes.insert(vertexes.end(), meshVertexes.begin(), meshVertexes.end());
-			indexes.insert(indexes.end(), meshIndexes.begin(), meshIndexes.end());
+			if (draw.gpu.vertexes && draw.gpu.indexes) {
+				_draws.emplace_back(DrawRecord{draw.material.pipeline, uint32_t(draws.size()),
+					uint32_t(meshIndexes.size()), draw.gpu.firstIndex, draw.gpu.vertexOffset,
+					draw.gpu.vertexes, draw.gpu.indexes});
+				++stats.packDraws;
+			} else {
+				_draws.emplace_back(DrawRecord{draw.material.pipeline, uint32_t(draws.size()),
+					uint32_t(meshIndexes.size()), uint32_t(indexes.size()),
+					int32_t(vertexes.size())});
+				vertexes.insert(vertexes.end(), meshVertexes.begin(), meshVertexes.end());
+				indexes.insert(indexes.end(), meshIndexes.begin(), meshIndexes.end());
+				++stats.frameDraws;
+			}
 
 			// normals take the inverse transpose of the rotation and scale, without the move
 			Mat4 normal = draw.transform;
@@ -196,10 +214,18 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 				" lights: the rest are dropped");
 	}
 
-	// at least one record, so the buffer exists for the pointer
+	// at least one record each, so the buffers exist for their pointers when every draw is from
+	// a pack or there are no lights
 	if (lights.empty()) {
 		lights.emplace_back(LightData3d());
 	}
+	if (vertexes.empty()) {
+		vertexes.emplace_back(Vertex3d());
+		indexes.emplace_back(0);
+	}
+	stats.recordBytes = draws.size() * sizeof(DrawData3d) + views.size() * sizeof(ViewData3d)
+			+ lights.size() * sizeof(LightData3d);
+	setLastPassStats(stats);
 
 	_vertexes = pool->spawn(xvk::AllocationUsage::DeviceLocalHostVisible,
 			core::BufferInfo(StringView("Basic3dVertexes"), core::BufferUsage::StorageBuffer,
@@ -292,6 +318,12 @@ static void Pass3d_record(core::FrameQueue &q, const core::SubpassData &subpass,
 	const core::GraphicPipelineData *bound = nullptr;
 	buf.cmdBindIndexBuffer(input->getIndexes(), 0, VK_INDEX_TYPE_UINT32);
 
+	// the frame's buffers, and those of the packs the draws come from, bound when they change
+	core::BufferObject *frameIndexes = input->getIndexes().get();
+	core::BufferObject *boundIndexes = frameIndexes;
+	core::BufferObject *frameVertexes = input->getVertexes().get();
+	core::BufferObject *boundVertexes = frameVertexes;
+
 	auto viewBase = buf.bindBufferAddress(input->getViewData().get());
 
 	Constants3d pcb;
@@ -337,6 +369,17 @@ static void Pass3d_record(core::FrameQueue &q, const core::SubpassData &subpass,
 				// one layout for all of them: the descriptors stay bound across the switch
 				buf.cmdBindPipelineWithDescriptors(pipeline);
 				bound = pipeline;
+			}
+			auto vertexes = d.vertexes ? d.vertexes.get() : frameVertexes;
+			if (vertexes != boundVertexes) {
+				pcb.vertexPointer = UVec2::convertFromPacked(buf.bindBufferAddress(vertexes));
+				boundVertexes = vertexes;
+			}
+			auto indexes = d.indexes ? d.indexes.get() : frameIndexes;
+			if (indexes != boundIndexes) {
+				buf.bindBuffer(indexes);
+				buf.cmdBindIndexBuffer(static_cast<xvk::Buffer *>(indexes), 0, VK_INDEX_TYPE_UINT32);
+				boundIndexes = indexes;
 			}
 			pcb.drawIndex = d.drawIndex;
 			buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,

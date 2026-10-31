@@ -5,6 +5,7 @@
 
 #include "XLCommon.h"
 #include "XL3dMesh.h"
+#include "XL3dMeshPack.h"
 
 #include "../tests.h"
 
@@ -87,6 +88,27 @@ void performMeshTests() {
 					&& offsetof(Constants3d, drawIndex) == 32,
 			"mesh: the push constants are 40 bytes, the lights' pointer at 24",
 			toString(sizeof(Constants3d)));
+
+	// a pack lays its meshes one after another, indexes unchanged
+	auto packBox = Mesh3d::makeBox(Vec3(1.0f, 1.0f, 1.0f));
+	auto packPlane = Mesh3d::makePlane(4.0f, 2.0f);
+	auto layout = layoutPack(Vector<Rc<Mesh3d>>{packBox, packPlane, packBox});
+	auto &r = layout.ranges;
+	auto vertexAt = [&](size_t i) {
+		return reinterpret_cast<const Vertex3d *>(layout.vertexes.data())[i];
+	};
+	auto indexAt = [&](size_t i) {
+		return reinterpret_cast<const uint32_t *>(layout.indexes.data())[i];
+	};
+	check(r.size() == 3 && r[0].vertexOffset == 0 && r[0].firstIndex == 0
+					&& r[1].vertexOffset == 24 && r[1].firstIndex == 36 && r[2].vertexOffset == 28
+					&& r[2].firstIndex == 42 && r[1].vertexCount == 4 && r[1].indexCount == 6
+					&& layout.vertexes.size() == 52 * sizeof(Vertex3d)
+					&& layout.indexes.size() == 78 * sizeof(uint32_t),
+			"mesh: a pack lays its meshes one after another");
+	check(vertexAt(25).pos == packPlane->getVertexes()[1].pos
+					&& indexAt(40) == packPlane->getIndexes()[4] && indexAt(50) == packBox->getIndexes()[8],
+			"mesh: their data as it is, indexes left relative to the mesh's own vertexes");
 
 	Material3d material;
 	check(material.pipeline == MeshPipeline && material.flags == 0 && !material.texture2

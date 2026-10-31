@@ -27,6 +27,10 @@ public:
 		uint32_t indexCount = 0;
 		uint32_t firstIndex = 0;
 		int32_t vertexOffset = 0;
+
+		// a mesh of a loaded pack draws from the pack's buffers, null for the frame's
+		Rc<core::BufferObject> vertexes;
+		Rc<core::BufferObject> indexes;
 	};
 
 	struct ViewRecord {

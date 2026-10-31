@@ -104,6 +104,11 @@ Rc<Mesh3d> Mesh3d::makeTorus(float major, float minor, uint32_t segments, uint32
 	return Rc<Mesh3d>::create(sp::move(vertexes), sp::move(indexes));
 }
 
+void Mesh3d::setPack(MeshPack3d *pack, const MeshPackRange &range) {
+	_pack = pack;
+	_packRange = range;
+}
+
 bool Mesh3d::init(Vector<Vertex3d> &&vertexes, Vector<uint32_t> &&indexes) {
 	_vertexes = sp::move(vertexes);
 	_indexes = sp::move(indexes);

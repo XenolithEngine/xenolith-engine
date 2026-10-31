@@ -41,6 +41,13 @@ public:
 	const Vec3 &getSunDirection() const { return _sunDirection; }
 	const Color4F &getSunColor() const { return _sunColor; }
 
+	/* A pack of meshes (XL3dMeshPack.h) loads while a view retains it: once for every mesh that
+	draws from it. The view's own draws retain the packs of their meshes by themselves (addDraw,
+	clearDraws); a subclass with draws of its own retains and releases the packs of its meshes.
+	A view out of a scene retains nothing: its packs are retained again when it enters one */
+	void retainPack(MeshPack3d *);
+	void releasePack(MeshPack3d *);
+
 	// point lights; a frame takes up to MaxLights of them
 	void addLight(const Light3d &);
 	void clearLights();
@@ -66,6 +73,7 @@ protected:
 
 	Camera _camera;
 	Vector<Draw3d> _draws;
+	Vector<Rc<MeshPack3d>> _drawPacks; // the pack each of the draws retained, null for none
 	Vector<Light3d> _lights;
 	Color4F _ambient = Color4F(0.3f, 0.3f, 0.35f, 1.0f);
 	Vec3 _sunDirection = Vec3(-0.4f, 0.3f, 0.85f);
