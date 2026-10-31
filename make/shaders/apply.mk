@@ -45,3 +45,6 @@ $(foreach FILE,$(BUILD_SHADERS_SRCS_FILES) $(TOOLKIT_SHADERS_SRCS_FILES),\
 	$(eval $(call BUILD_SHADERS_compile_single_rule,$(FILE),\
 		$(addsuffix .h,$(addprefix $(BUILD_SHADERS_OUTDIR)/,$(notdir $(FILE))))\
 	)))
+
+# the headers each shader included, from the depfiles the compiler wrote
+-include $(wildcard $(addsuffix .d,$(BUILD_SHADERS_EMBEDDED) $(TOOLKIT_SHADERS_EMBEDDED)))
