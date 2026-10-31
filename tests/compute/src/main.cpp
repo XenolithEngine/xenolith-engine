@@ -282,6 +282,244 @@ int performPath(FencePath path) {
 	return 0;
 }
 
+// --- mip levels ----------------------------------------------------------------------------------
+//
+// Images with mip levels go through core::Resource and Loop::compileResource, and every level is
+// read back with Loop::captureImage. Prebuilt levels are copied from the data; a generated chain is
+// blitted from level 0 on a queue that can blit, whatever family the transfer queue is.
+
+struct Rgba {
+	uint8_t r = 0, g = 0, b = 0, a = 0;
+};
+
+Rgba texelAt(const Bytes &data, const Extent3 &e, uint32_t layer, uint32_t x, uint32_t y) {
+	auto at = (size_t(layer) * e.width * e.height + size_t(y) * e.width + x) * 4;
+	if (at + 4 > data.size()) {
+		return Rgba();
+	}
+	return Rgba{data[at], data[at + 1], data[at + 2], data[at + 3]};
+}
+
+bool nearRgba(const Rgba &a, const Rgba &b, int tolerance) {
+	auto d = [](uint8_t x, uint8_t y) { return x > y ? x - y : y - x; };
+	return d(a.r, b.r) <= tolerance && d(a.g, b.g) <= tolerance && d(a.b, b.b) <= tolerance
+			&& d(a.a, b.a) <= tolerance;
+}
+
+String describe(const Rgba &c) { return toString("(", c.r, ",", c.g, ",", c.b, ",", c.a, ")"); }
+
+// Every texel of one layer of a level is `expected`
+bool solidLevel(const Bytes &data, const Extent3 &e, uint32_t layer, const Rgba &expected,
+		Rgba &found) {
+	for (uint32_t y = 0; y < e.height; ++y) {
+		for (uint32_t x = 0; x < e.width; ++x) {
+			found = texelAt(data, e, layer, x, y);
+			if (!nearRgba(found, expected, 1)) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+struct LevelRead : public Ref {
+	uint32_t calls = 0;
+	Extent3 extent;
+	Bytes data;
+};
+
+Vector<Rc<LevelRead>> readLevels(Rig &rig, const Rc<core::ImageObject> &image, uint32_t levels) {
+	Vector<Rc<LevelRead>> ret;
+	for (uint32_t i = 0; i < levels; ++i) {
+		auto state = Rc<LevelRead>::alloc();
+		rig.getLoop()->captureImage([state](const core::ImageInfoData &info, BytesView view) {
+			++state->calls;
+			state->extent = info.extent;
+			state->data = view.bytes<memory::StandartInterface>();
+		}, image, core::AttachmentLayout::ShaderReadOnlyOptimal, i);
+		ret.emplace_back(state);
+	}
+	rig.pump([&] {
+		for (auto &it : ret) {
+			if (it->calls == 0) {
+				return false;
+			}
+		}
+		return true;
+	}, 10'000);
+	return ret;
+}
+
+void appendTexels(Bytes &data, const Rgba &c, uint32_t count) {
+	for (uint32_t i = 0; i < count; ++i) {
+		data.emplace_back(c.r);
+		data.emplace_back(c.g);
+		data.emplace_back(c.b);
+		data.emplace_back(c.a);
+	}
+}
+
+void performMips(Rig &rig) {
+	using namespace core;
+
+	auto dev = rig.getDevice();
+	auto transfer = dev->getQueueFamily(QueueFlags::Transfer);
+	auto graphics = dev->getQueueFamily(QueueFlags::Graphics);
+	if (transfer && graphics) {
+		sprt::cout << "mips: transfer family " << transfer->index << ", graphics family "
+				   << graphics->index
+				   << ((transfer->index != graphics->index)
+								  ? " - a generated chain takes the graphics family\n"
+								  : " - one family for both\n");
+	}
+
+	const auto usage = ImageUsage::Sampled | ImageUsage::TransferSrc;
+	const Rgba red{255, 0, 0, 255};
+	const Rgba blue{0, 0, 255, 255};
+
+	// Prebuilt: five levels of 16x16, each a solid colour of its own, one after another in the data
+	const Rgba prebuiltColors[] = {{255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255},
+		{255, 255, 0, 255}, {0, 255, 255, 255}};
+	const Extent3 prebuiltExtent(16, 16, 1);
+	Bytes prebuilt;
+	for (uint32_t level = 0; level < 5; ++level) {
+		auto e = getMipExtent(prebuiltExtent, level);
+		appendTexels(prebuilt, prebuiltColors[level], e.width * e.height);
+	}
+
+	// Generated, 48x20: red on the left half, blue on the right; the chain is 6 levels long
+	const Extent3 halvesExtent(48, 20, 1);
+	Bytes halves;
+	for (uint32_t y = 0; y < halvesExtent.height; ++y) {
+		appendTexels(halves, red, halvesExtent.width / 2);
+		appendTexels(halves, blue, halvesExtent.width / 2);
+	}
+
+	// Generated, 16x16 one-pixel checker: level 1 averages it to grey
+	const Extent3 checkerExtent(16, 16, 1);
+	Bytes checker;
+	for (uint32_t y = 0; y < checkerExtent.height; ++y) {
+		for (uint32_t x = 0; x < checkerExtent.width; ++x) {
+			uint8_t v = ((x + y) & 1) ? 255 : 0;
+			appendTexels(checker, Rgba{v, v, v, 255}, 1);
+		}
+	}
+
+	// Generated, two layers of 8x8: each keeps its colour down the chain
+	const Rgba layerColors[] = {{0, 200, 0, 255}, {200, 0, 200, 255}};
+	const Extent3 layersExtent(8, 8, 1);
+	Bytes layers;
+	for (auto &c : layerColors) { appendTexels(layers, c, layersExtent.width * layersExtent.height); }
+
+	Resource::Builder builder("MipsResource");
+	builder.addBitmapImage("prebuilt",
+			ImageInfo(Extent2(16, 16), ImageFormat::R8G8B8A8_UNORM, usage, MipLevels(5)), prebuilt);
+	builder.addBitmapImage("halves",
+			ImageInfo(Extent2(48, 20), ImageFormat::R8G8B8A8_UNORM, usage, MipLevelsFull,
+					ImageHints::GenerateMipmaps),
+			halves);
+	builder.addBitmapImage("checker",
+			ImageInfo(Extent2(16, 16), ImageFormat::R8G8B8A8_UNORM, usage, MipLevelsFull,
+					ImageHints::GenerateMipmaps),
+			checker);
+	builder.addBitmapImage("layers",
+			ImageInfo(Extent2(8, 8), ImageFormat::R8G8B8A8_UNORM, usage, MipLevelsFull,
+					ArrayLayers(2), ImageHints::GenerateMipmaps),
+			layers);
+
+	auto resource = Rc<Resource>::create(move(builder));
+	check(resource->getImage("halves")->mipLevels.get() == 6,
+			"mips: MipLevelsFull resolves to the chain's length",
+			toString(resource->getImage("halves")->mipLevels.get()));
+
+	auto compiled = Rc<CallState>::alloc();
+	rig.getLoop()->compileResource(Rc<Resource>(resource), [compiled](bool success) {
+		++compiled->calls;
+		compiled->success = success;
+	});
+	rig.pump([&] { return compiled->calls > 0; }, 10'000);
+	check(compiled->calls == 1 && compiled->success, "mips: the resource compiles");
+	if (!compiled->success) {
+		return;
+	}
+
+	{
+		auto reads = readLevels(rig, resource->getImage("prebuilt")->image, 5);
+		bool ok = true;
+		String detail;
+		for (uint32_t level = 0; level < 5 && ok; ++level) {
+			auto &r = reads[level];
+			auto e = getMipExtent(prebuiltExtent, level);
+			Rgba found;
+			ok = r->calls == 1 && r->extent == e
+					&& solidLevel(r->data, e, 0, prebuiltColors[level], found);
+			if (!ok) {
+				detail = toString("level ", level, ": ", r->extent.width, "x", r->extent.height,
+						" ", describe(found));
+			}
+		}
+		check(ok, "mips: prebuilt levels are uploaded each from its place in the data", detail);
+	}
+
+	{
+		auto reads = readLevels(rig, resource->getImage("halves")->image, 6);
+		bool ok = true;
+		String detail;
+		for (uint32_t level = 1; level < 6 && ok; ++level) {
+			auto &r = reads[level];
+			auto e = getMipExtent(halvesExtent, level);
+			if (r->calls != 1 || r->extent != e) {
+				ok = false;
+				detail = toString("level ", level, ": ", r->extent.width, "x", r->extent.height);
+				break;
+			}
+			// red on the left, blue on the right; a mixed column only between them
+			for (uint32_t y = 0; y < e.height && ok && e.width >= 2; ++y) {
+				auto left = texelAt(r->data, e, 0, 0, y);
+				auto right = texelAt(r->data, e, 0, e.width - 1, y);
+				ok = left.r > 200 && left.b < 55 && right.b > 200 && right.r < 55;
+				if (!ok) {
+					detail = toString("level ", level, " row ", y, ": ", describe(left), " ",
+							describe(right));
+				}
+			}
+		}
+		check(ok, "mips: a generated chain of an odd extent keeps red left and blue right", detail);
+	}
+
+	{
+		auto reads = readLevels(rig, resource->getImage("checker")->image, 2);
+		auto e = getMipExtent(checkerExtent, 1);
+		Rgba found;
+		bool grey = reads[1]->calls == 1 && reads[1]->extent == e;
+		for (uint32_t y = 0; y < e.height && grey; ++y) {
+			for (uint32_t x = 0; x < e.width && grey; ++x) {
+				found = texelAt(reads[1]->data, e, 0, x, y);
+				grey = nearRgba(found, Rgba{128, 128, 128, 255}, 2);
+			}
+		}
+		check(grey, "mips: a one-pixel checker averages to grey at level 1", describe(found));
+	}
+
+	{
+		auto reads = readLevels(rig, resource->getImage("layers")->image, 4);
+		bool ok = true;
+		String detail;
+		for (uint32_t level = 0; level < 4 && ok; ++level) {
+			auto e = getMipExtent(layersExtent, level);
+			for (uint32_t layer = 0; layer < 2 && ok; ++layer) {
+				Rgba found;
+				ok = reads[level]->calls == 1
+						&& solidLevel(reads[level]->data, e, layer, layerColors[layer], found);
+				if (!ok) {
+					detail = toString("level ", level, " layer ", layer, ": ", describe(found));
+				}
+			}
+		}
+		check(ok, "mips: every layer of an array keeps its colour down the chain", detail);
+	}
+}
+
 int performChecks() {
 	StringView reason;
 	switch (Rig::prepareInstance(reason)) {
@@ -302,6 +540,17 @@ int performChecks() {
 		if (result != 0) {
 			return result;
 		}
+	}
+
+	{
+		Rig rig;
+		if (!bringUp(rig, "mips")) {
+			return 2;
+		}
+		watchdogArm("mips", 60);
+		performMips(rig);
+		watchdogDisarm();
+		tearDown(rig, "mips");
 	}
 
 	Rig::releaseInstance();
