@@ -24,7 +24,7 @@
 
 MODULE_RUNTIME_LIBC_IMPL_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
 MODULE_RUNTIME_LIBC_IMPL_PRIVATE_STANDALONE := 1
-MODULE_RUNTIME_LIBC_IMPL_DEPENDS_ON := runtime_malloc runtime_musl_libc runtime_core
+MODULE_RUNTIME_LIBC_IMPL_DEPENDS_ON := runtime_malloc runtime_musl_libc runtime_libc_freestanding runtime_core
 MODULE_RUNTIME_LIBC_IMPL_SRCS_DIRS := \
 	$(RUNTIME_MODULE_DIR)/libc_impl/src \
 	$(RUNTIME_MODULE_DIR)/libc_impl/asm/$(TARGET_SYSTEM)/$(TARGET_ARCH)

@@ -63,9 +63,12 @@ $(BUILD_SHARED_LIBRARY): $(BUILD_COMPILATION_DATABASE) $(BUILD_LIB_OBJS) $(BUILD
 	$(VERBOSE_GUARD) $(GLOBAL_CC) -shared $(BUILD_LIB_OBJS) $(BUILD_LIB_LDFLAGS) -o $(BUILD_SHARED_LIBRARY)
 $(BUILD_SHARED_LIBRARY):.TARGET_NAME := [Link (shared)] $(BUILD_SHARED_LIBRARY)
 
+# ar rcs only adds and replaces members: the object of a source that is gone would stay in
+# the archive, so it is written anew.
 $(BUILD_STATIC_LIBRARY): $(BUILD_COMPILATION_DATABASE) $(BUILD_LIB_OBJS) $(BUILD_WASM_OUTPUT)
 	@$(call rule_mkdir,$(dir $@))
 	$(GLOBAL_QUIET_LINK)
+	@$(call rule_rm,$(BUILD_STATIC_LIBRARY))
 	$(VERBOSE_GUARD) $(GLOBAL_AR) $(BUILD_STATIC_LIBRARY) $(BUILD_LIB_OBJS)
 $(BUILD_STATIC_LIBRARY):.TARGET_NAME := [Link (static)] $(BUILD_STATIC_LIBRARY)
 

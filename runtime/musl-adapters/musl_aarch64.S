@@ -1,18 +1,7 @@
-/* musl's hand-written aarch64 assembly, for the freestanding aarch64 targets.
- *
- * The adapter SCUs above skip several C implementations on x86_64 and aarch64
- * because musl ships assembly for them -- but nothing in this tree ever compiled
- * that assembly. Every other aarch64 target is hosted (platform libc) or Windows
- * (MSVC CRT plus libc_impl/asm/Windows/aarch64), so the symbols always came from
- * somewhere else. Embox EL0 is the first freestanding aarch64 target, and it is
- * where the gap shows up as undefined symbols at link time:
- *
- *   memcpy/memset      musl_string.c skips the C versions here
- *   fenv primitives    musl_fenv.c defers them to "the platform layer"
- *   setjmp/longjmp     libc_impl has no aarch64 asm directory
- *
- * memmove and siglongjmp have no aarch64 assembly upstream; the C versions come
- * in through musl_string.c and musl_siglongjmp.c.
+/* musl's hand-written aarch64 assembly, for the freestanding aarch64 targets
+ * (Embox EL0 and Tau): setjmp/longjmp, for which libc_impl has no aarch64 asm
+ * directory. The string functions and the fenv primitives come from
+ * runtime/libc_freestanding.
  *
  * Conditioned on predefines only -- no #include of the sprt platform header.
  * Assembly is compiled with its own flag set (TARGET_GENERAL_SFLAGS), which
@@ -21,11 +10,6 @@
  */
 
 #if defined(__aarch64__) && (defined(__EMBOX_USER__) || defined(__TAU__))
-
-#include "../musl-libc/src/string/aarch64/memcpy.S"
-#include "../musl-libc/src/string/aarch64/memset.S"
-
-#include "../musl-libc/src/fenv/aarch64/fenv.s"
 
 #if defined(__TAU__)
 /* musl's pair with x18, the shadow call stack (xenolith-tau RT-A-ShadowStack-1), in the word
