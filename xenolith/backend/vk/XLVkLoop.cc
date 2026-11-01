@@ -406,14 +406,15 @@ struct Loop::Internal final : memory::AllocPool {
 	Rc<Device> device;
 	mem_pool::Vector<Rc<Fence>> defaultFences;
 	mem_pool::Vector<Rc<Fence>> swapchainFences;
-	mem_pool::Set<Rc<Fence>> scheduledFences;
+	// Every frame adds and erases fences here: the pool would keep each small node.
+	Set<Rc<Fence>> scheduledFences;
 
 	struct ExportedFence {
 		Rc<Fence> fence;
 		Rc<sprt::dispatch::PollHandle> handle;
 	};
 
-	mem_pool::Map<Fence *, ExportedFence> exportedFences;
+	Map<Fence *, ExportedFence> exportedFences;
 
 	Rc<RenderQueueCompiler> renderQueueCompiler;
 	Rc<TransferQueue> transferQueue;
