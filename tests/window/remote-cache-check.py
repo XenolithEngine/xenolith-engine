@@ -136,10 +136,12 @@ def run_clientapp(server_bin, client_bin, gapi, budget, reset):
         for ch in "ab":
             vw.type_keys(s, name, ch)
             vw.settle(s, name)
+        ret["beforeTyped"] = session_of(s)
         mark = log_mark()
         vw.type_keys(s, name, "c")
         vw.settle(s, name)
         ret["typed"] = log_since(mark)
+        ret["afterTyped"] = session_of(s)
 
         if reset:
             before = session_of(s)
@@ -209,6 +211,13 @@ def stage_static(server_bin, client_bin, gapi):
     check("the server that keeps nothing stores nothing",
             (plain["second"].get("frameData") or {}).get("entries", 0) == 0,
             str(plain["second"].get("frameData")))
+
+    # A changed text is the next generation of its label's set, which replaces the cached one.
+    btd = (cached.get("beforeTyped") or {}).get("frameData") or {}
+    atd = (cached.get("afterTyped") or {}).get("frameData") or {}
+    check("a typed character replaces the field's sets in the cache, adds none",
+            atd.get("stores", 0) > btd.get("stores", 0) and atd.get("entries") == btd.get("entries"),
+            f"{btd} -> {atd}")
 
     word = "damage: partial redraw" if gapi == "vulkan" else "damage: repainting"
     typed = cached.get("typed", "")

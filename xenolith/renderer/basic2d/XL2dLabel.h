@@ -41,6 +41,17 @@ struct SP_PUBLIC LabelResult : Ref {
 	Vector<ColorMask> colorMap;
 };
 
+// The data set of a label's deferred results, shared with them: a new layout and a recolour both
+// take the next generation, so no two contents share one (DataIdentity). App thread only.
+struct SP_PUBLIC LabelDataIdentity : public Ref {
+	DataIdentity identity;
+
+	DataIdentity next() {
+		identity.invalidate();
+		return identity;
+	}
+};
+
 class SP_PUBLIC LabelDeferredResult : public DeferredVertexResult {
 public:
 	virtual ~LabelDeferredResult();
@@ -56,8 +67,11 @@ public:
 
 	Rc<VertexData> getResult() const;
 
+	void setIdentity(Rc<LabelDataIdentity> &&id) { _identity = sp::move(id); }
+
 protected:
 	Rc<LabelResult> _result;
+	Rc<LabelDataIdentity> _identity;
 };
 
 class SP_PUBLIC Label : public Sprite, public font::LabelBase {
@@ -253,6 +267,7 @@ protected:
 	Vector<ColorMask> _colorMap;
 
 	bool _deferred = true;
+	Rc<LabelDataIdentity> _deferredIdentity;
 
 	uint8_t _adjustValue = 0;
 	size_t _updateCount = 0;

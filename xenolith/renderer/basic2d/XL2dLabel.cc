@@ -597,14 +597,19 @@ Rc<LabelDeferredResult> Label::runDeferredCounted(sprt::dispatch::Looper *queue,
 Rc<LabelDeferredResult> Label::runDeferred(sprt::dispatch::Looper *queue, TextLayout *format,
 		const Color4F &color) {
 	Rc<LabelDeferredResult> ret = Rc<LabelDeferredResult>::create();
-	queue->performAsync(
-			[format = Rc<Label::TextLayout>(format), color, ret, layer = _textureLayer]() mutable {
+	if (!_deferredIdentity) {
+		_deferredIdentity = Rc<LabelDataIdentity>::alloc();
+	}
+	ret->setIdentity(Rc<LabelDataIdentity>(_deferredIdentity));
+	queue->performAsync([format = Rc<Label::TextLayout>(format), color, ret, layer = _textureLayer,
+								identity = _deferredIdentity->next()]() mutable {
 #if XL_FRAME_ACCOUNT
 		// Counted too: a node view at full detail is a dozen Labels, so text can outweigh
 		// tesselation.
 		const auto workStart = core::getAccountClock();
 #endif
 		auto result = Label::writeResult(format, color, layer);
+		result->data.data->identity = identity;
 #if XL_FRAME_ACCOUNT
 		ret->setWorkTime(core::getAccountClock() - workStart);
 #endif
@@ -1229,6 +1234,9 @@ void LabelDeferredResult::updateColor(const Color4F &color) {
 		arr.init(_result->data.data);
 		arr.updateColorQuads(color, _result->colorMap);
 		_result->data.data = arr.pop();
+		if (_identity) {
+			_result->data.data->identity = _identity->next();
+		}
 	}
 }
 
