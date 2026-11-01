@@ -1612,7 +1612,15 @@ void QueuePassBuilder::addCompleteCallback(
 	_data->submittedCallbacks.emplace_back(move(cb));
 }
 
-void QueuePassBuilder::setAcquireTimestamps(uint32_t t) { _data->acquireTimestamps = t; }
+// XL_GPU_TIMESTAMPS=0 leaves them out: where a device writes a timestamp as a CPU job (V3DV), the
+// job waits for the work before it and holds the work after it.
+void QueuePassBuilder::setAcquireTimestamps(uint32_t t) {
+	static const bool enabled = [] {
+		auto value = ::getenv("XL_GPU_TIMESTAMPS");
+		return !value || StringView(value) != "0";
+	}();
+	_data->acquireTimestamps = enabled ? t : 0;
+}
 
 StringView QueuePassBuilder::getName() const { return _data->key; }
 
