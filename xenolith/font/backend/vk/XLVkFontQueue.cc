@@ -149,6 +149,8 @@ protected:
 	uint64_t _clockAtlas = 0; // the atlas is packed and the copies are recorded
 	uint32_t _atlasGlyphs = 0; // how many glyphs that pack covered
 	uint64_t _clockAddSum = 0; // summed across the four DataAtlas::addObject calls per glyph
+	void finishInput(bool success);
+
 	sprt::mutex _mutex;
 	Function<void(bool)> _onInput;
 };
@@ -375,8 +377,7 @@ void FontAttachmentHandle::doSubmitInput(FrameHandle &handle, Function<void(bool
 
 	if (!_frontBuffer) {
 		log::source().error("FontAttachmentHandle", "Font staging allocation failed");
-		_onInput(false);
-		_onInput = nullptr;
+		finishInput(false);
 		return;
 	}
 
@@ -409,8 +410,7 @@ void FontAttachmentHandle::doSubmitInput(FrameHandle &handle, Function<void(bool
 
 	if ((extraPersistent > 0 || !underlinePersistent) && !_persistentTargetBuffer) {
 		log::source().error("FontAttachmentHandle", "Font persistent allocation failed");
-		_onInput(false);
-		_onInput = nullptr;
+		finishInput(false);
 		return;
 	}
 
@@ -497,10 +497,16 @@ void FontAttachmentHandle::writeAtlasData(FrameHandle &handle, bool underlinePer
 	// The pack is done and the copies are recorded; everything past this is the device's.
 	_clockAtlas = sp::platform::clock(ClockType::Monotonic);
 
-	handle.performOnGlThread([this](FrameHandle &handle) {
-		_onInput(true);
-		_onInput = nullptr;
-	}, this, false, "RenderFontAttachmentHandle::writeAtlasData");
+	handle.performOnGlThread([this](FrameHandle &handle) { finishInput(true); }, this, false,
+			"RenderFontAttachmentHandle::writeAtlasData");
+}
+
+/* The callback holds the frame queue, and the queue holds this handle: once it is called or
+ destroyed, this may be gone, so it leaves the member first and the handle is not touched after. */
+void FontAttachmentHandle::finishInput(bool success) {
+	auto onInput = sp::move(_onInput);
+	_onInput = nullptr;
+	onInput(success);
 }
 
 uint32_t FontAttachmentHandle::nextBufferOffset(size_t blockSize) {
