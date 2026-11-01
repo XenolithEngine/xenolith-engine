@@ -21,7 +21,8 @@ headless screenshot:
   * every mesh is in one pack in GPU memory (MeshPack3d): once it is loaded the frames copy no
     vertex into themselves and draw everything from the pack; with BASIC3D_NOPACK=1 they copy
     every mesh, and the picture is the same; removing the draws releases the pack, which leaves
-    the resource cache;
+    the resource cache; with the example letting go of the meshes and the pack too, the frames in
+    flight hold their last references and release them on the app thread;
   * a material picking a pipeline the scene does not have (BASIC3D_UNKNOWN_PIPELINE=1, in the second
     run) draws as a mesh, with one warning;
   * the 2d panel composites over the 3d picture;
@@ -141,7 +142,7 @@ def main():
 
     def probe(session):
         stats = session.call("invoke", name="basic3d.stats", args={})
-        session.call("invoke", name="basic3d.drop", args={})
+        dropped = session.call("invoke", name="basic3d.drop", args={})
         gone = None
         for i in range(120):
             session.call("frame")
@@ -150,9 +151,13 @@ def main():
             if not after["packInCache"]:
                 gone = i + 1
                 break
-        return stats, after, gone
+        # the frames in flight held the last references to the meshes, and through them the pack
+        for _ in range(10):
+            session.call("frame")
+        after = session.call("invoke", name="basic3d.stats", args={})
+        return stats, dropped, after, gone
 
-    image, text, (packed, dropped, gone) = run(binary, {"BASIC3D_STILL": "1"}, log_path, probe)
+    image, text, (packed, dropped, released, gone) = run(binary, {"BASIC3D_STILL": "1"}, log_path, probe)
 
     ground = image.getpixel((GROUND[0][0], GROUND[0][1]))
 
@@ -225,6 +230,8 @@ def main():
     check("and the picture is the same", worst <= 1, f"{worst} levels at most")
     check("removing the draws releases the pack: it leaves the cache",
             dropped["packUsers"] == 0 and gone is not None, f"after {gone} frames")
+    check("the last references the frames held are released on the app thread",
+            released["packsReleasedOffThread"] == 0, str(released))
 
     print("--- a point light")
     dark_path = f"/tmp/xl-basic3d-check-nolight-{os.getpid()}.log"

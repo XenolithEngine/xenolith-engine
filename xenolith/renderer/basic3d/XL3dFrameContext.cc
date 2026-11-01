@@ -10,6 +10,13 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic3d {
 
+FrameContextHandle3d::~FrameContextHandle3d() {
+	if (app && !views.empty() && !app->isOnThisThread()) {
+		app->performOnAppThread([views = sp::move(views)]() { }, nullptr, false,
+				"basic3d::FrameContextHandle3d::~FrameContextHandle3d");
+	}
+}
+
 void FrameContext3d::onEnter(xenolith::Scene *scene) {
 	FrameContext2d::onEnter(scene);
 
@@ -34,6 +41,7 @@ Rc<FrameContextHandle> FrameContext3d::makeHandle(FrameInfo &frame) {
 	// Locally built frame: the client is this window's Director, so the id is the local-request 0.
 	h->windowId = 0;
 	h->context = this;
+	h->app = frame.director->getApplication();
 	h->commands = Rc<basic2d::CommandList>::create(frame.pool);
 	return h;
 }

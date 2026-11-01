@@ -9,15 +9,20 @@
 #include "XL3d.h"
 #include "XL2dFrameContext.h"
 #include "XL2dCommandList.h"
+#include "XLAppThread.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic3d {
 
 /* A frame of a scene with a 3d layer: everything a 2d frame has, so every basic2d node below works
-unchanged, and the views the 3d pass draws. */
+unchanged, and the views the 3d pass draws.
+The views hold the app's objects - meshes, and through them their packs, and textures - and the
+frame ends on another thread, maybe after the app let go of them: the handle hands the views back
+to the app thread, so their last references go there. */
 struct SP_PUBLIC FrameContextHandle3d : public basic2d::FrameContextHandle2d {
-	virtual ~FrameContextHandle3d() = default;
+	virtual ~FrameContextHandle3d();
 
 	Vector<ViewInput3d> views;
+	Rc<AppThread> app;
 };
 
 /* The frame context of SceneContent3d. Besides the 2d inputs it feeds the 3d pass's input

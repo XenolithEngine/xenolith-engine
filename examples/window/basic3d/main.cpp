@@ -106,11 +106,14 @@ public:
 		// for basic3d-check.py: the pass's last frame and the pack; drop removes every draw
 		inspector::addCommand(this, "basic3d.stats", "the 3d pass's last frame and the pack",
 				[this](Value &&, Function<void(Value &&)> &&done) { done(describeStats()); });
+		// the meshes and the pack are let go of here: the frames in flight hold the last references
 		inspector::addCommand(this, "basic3d.drop", "remove every draw, releasing the pack",
 				[this](Value &&, Function<void(Value &&)> &&done) {
 			_view->stopAllActions();
 			_view->clearDraws();
-			done(describeStats());
+			auto ret = describeStats();
+			_pack = nullptr;
+			done(sp::move(ret));
 		});
 	}
 
@@ -145,6 +148,7 @@ protected:
 		auto box = Mesh3d::makeBox(Vec3(1.5f, 1.5f, 0.75f));
 		auto small = Mesh3d::makeBox(Vec3(1.0f, 1.0f, 0.75f));
 		_pack = Rc<MeshPack3d>::create(cache, Vector<Rc<Mesh3d>>{plane, torus, box, small});
+		_packName = _pack->getName().str<Interface>();
 
 		_view->addDraw(Draw3d{plane, Mat4::IDENTITY,
 			Material3d{Color4F(0.75f, 0.85f, 0.7f, 1.0f), fine, 1.0f}});
@@ -206,9 +210,9 @@ protected:
 		ret.setInteger(int64_t(stats.recordBytes), "recordBytes");
 		ret.setBool(_pack && _pack->isLoaded(), "packLoaded");
 		ret.setInteger(_pack ? _pack->getUsers() : 0, "packUsers");
-		ret.setBool(_pack && _director
-						&& _director->getResourceCache()->hasTemporaryResource(_pack->getName()),
+		ret.setBool(_director && _director->getResourceCache()->hasTemporaryResource(_packName),
 				"packInCache");
+		ret.setInteger(getPacksReleasedOffThread(), "packsReleasedOffThread");
 		return ret;
 	}
 
@@ -236,6 +240,7 @@ protected:
 	basic2d::Label *_label = nullptr;
 	uint32_t _torus = maxOf<uint32_t>();
 	Rc<MeshPack3d> _pack;
+	String _packName;
 };
 
 DEFINE_CONFIG_FUNCTION((ContextConfig &cfg) {

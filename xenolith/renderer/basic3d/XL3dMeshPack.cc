@@ -6,6 +6,7 @@
 #include "XL3dMeshPack.h"
 #include "XL3dMesh.h"
 #include "XLTemporaryResource.h"
+#include "XLAppThread.h"
 
 #include <sprt/c/__sprt_stdlib.h>
 
@@ -37,7 +38,17 @@ MeshPackLayout layoutPack(SpanView<Rc<Mesh3d>> meshes) {
 
 static sprt::atomic<uint64_t> s_packCounter = 0;
 
-MeshPack3d::~MeshPack3d() { }
+static sprt::atomic<uint32_t> s_packsReleasedOffThread = 0;
+
+MeshPack3d::~MeshPack3d() {
+	// the resource and its index belong to the app thread: they are released there
+	if (_app && !_app->isOnThisThread() && (_mesh || _temporary)) {
+		s_packsReleasedOffThread.fetch_add(1);
+		_app->performOnAppThread(
+				[mesh = sp::move(_mesh), temporary = sp::move(_temporary)]() { }, nullptr, false,
+				"basic3d::MeshPack3d::~MeshPack3d");
+	}
+}
 
 bool MeshPack3d::init(ResourceCache *cache, SpanView<Rc<Mesh3d>> meshes) {
 	if (!cache || meshes.empty()) {
@@ -76,6 +87,7 @@ bool MeshPack3d::init(ResourceCache *cache, SpanView<Rc<Mesh3d>> meshes) {
 	if (!temporary) {
 		return false;
 	}
+	_app = cache->getApplication();
 	_cache = cache;
 	_temporary = temporary;
 	_mesh = temporary->acquireMeshIndex("vertexes");
@@ -140,6 +152,8 @@ void setLastPassStats(const Pass3dStats &stats) {
 	s_packDraws.store(stats.packDraws);
 	s_recordBytes.store(stats.recordBytes);
 }
+
+uint32_t getPacksReleasedOffThread() { return s_packsReleasedOffThread.load(); }
 
 bool isPackingDisabled() {
 	static const bool disabled = [] {

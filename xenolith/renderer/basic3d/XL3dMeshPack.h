@@ -39,7 +39,7 @@ The pack is loaded while a view retains it (View3d::retainPack, once for every m
 it), and goes - cleared and removed from the cache - once nobody does. Making a pack sets it on
 its meshes (Mesh3d::getPack); a later pack takes a mesh over, which is how an app compacts packs
 whose meshes mostly left: the frames still drawing from the old one hold its buffers until they
-end. App thread only. */
+end. App thread only: a pack destroyed elsewhere sends its resource back to the app thread. */
 class SP_PUBLIC MeshPack3d : public Ref {
 public:
 	virtual ~MeshPack3d();
@@ -64,6 +64,7 @@ public:
 
 protected:
 	String _name;
+	Rc<AppThread> _app;
 	ResourceCache *_cache = nullptr;
 	Rc<TemporaryResource> _temporary;
 	Rc<MeshIndex> _mesh;
@@ -85,6 +86,10 @@ struct SP_PUBLIC Pass3dStats {
 
 SP_PUBLIC Pass3dStats getLastPassStats();
 SP_PUBLIC void setLastPassStats(const Pass3dStats &);
+
+// Packs destroyed off the app thread, which sent their resource back to it. A frame releases what
+// it holds of the app's on the app thread, so a pack's last reference stays there (for checks)
+SP_PUBLIC uint32_t getPacksReleasedOffThread();
 
 // BASIC3D_NOPACK=1: views draw every mesh from the frame's buffers, packs or not (for checks)
 SP_PUBLIC bool isPackingDisabled();

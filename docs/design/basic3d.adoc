@@ -171,10 +171,16 @@ The worker reads no `MeshPack3d` and no `Mesh3d`'s pack: a pack is app-thread-on
 snapshot carries `Rc`s of its buffers into the frame. That is what lets an app compact packs
 while frames are in flight (below).
 
-One reference does cross threads: the handle's `Draw3d`s hold `Rc<Mesh3d>`, and a packed mesh
-holds `Rc<MeshPack3d>`. A frame that ends after the app has dropped a mesh releases the last
-reference to it, and maybe to its pack, off the app thread; the pack's `MeshIndex` and temporary
-resource then go there too. Nothing guards that yet (see the open questions).
+The handle itself does carry app objects across threads: its `Draw3d`s hold `Rc<Mesh3d>` and
+the materials' `Rc<Texture>`, and a packed mesh holds `Rc<MeshPack3d>`. A frame that ends after
+the app has dropped a mesh would release the last reference to it, and maybe to its pack and the
+pack's resource, off the app thread. So `~FrameContextHandle3d`, when it runs elsewhere, hands
+its views back to the app thread (`performOnAppThread`), and their last references go there.
+
+A pack destroyed off the app thread anyway — an app holding draws on a thread of its own — sends
+its resource and index to the app thread and counts itself (`getPacksReleasedOffThread`).
+`basic3d-check.py` drops every draw and the pack while frames are in flight and expects the count
+to stay 0; without the handle's hand-back it is 1 on every run.
 
 ## The records
 
@@ -356,8 +362,6 @@ These are what remains open of the `how-to-support` item:
   for objects, instanced objects, translucency and a second subpass reading depth (water) are
   future work.
 * **64 textures a frame**, 64 lights a view.
-* **A mesh's last reference may go off the app thread** (see Threads). Releasing frame handles'
-  meshes on the app thread, or making a pack's release thread-safe, would close it.
 
 ## Engine edits made for it
 
@@ -385,7 +389,8 @@ tried first in `tests/pass3d` (`4b018a1c`).
   offsets of the records, a pack's layout.
 * `tests/window/basic3d-check.py` drives `examples/window/basic3d` headless: the mesh pipeline,
   the app pipeline and its params, a point light, the pack (no vertex copied into the frame, the
-  same picture with `BASIC3D_NOPACK=1`, the pack leaving the cache when its draws go), mips, the
+  same picture with `BASIC3D_NOPACK=1`, the pack leaving the cache when its draws go, the last
+  references of the frames in flight released on the app thread), mips, the
   2d panel over the 3d world, no validation errors.
 * `tests/window/pass3d-check.py` checks the engine features under the module with a pass made by
   hand: a pass under basic2d, culling, depth bias and clamp, two subpasses.
