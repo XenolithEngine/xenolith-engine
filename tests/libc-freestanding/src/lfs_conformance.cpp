@@ -693,6 +693,13 @@ void testPageEdges(Ctx &ctx) {
 		case Func::Memchr:
 			fillWithout(hi - n, n, 0x5A);
 			ctx.expect(impl.fMemchr(hi - n, 0x5A, n) == nullptr, "page edge n=%zu: absent found", n);
+			// a range that ends k bytes before the page end, the match absent up to it: the
+			// blocks that cover the range must not lead the scan on past its end
+			for (size_t k = 1; k < 96 && n + k <= s_pageSize; ++k) {
+				fillWithout(hi - n - k, n + k, 0x5A);
+				ctx.expect(impl.fMemchr(hi - n - k, 0x5A, n) == nullptr,
+						"page edge n=%zu k=%zu: absent found", n, k);
+			}
 			if (n > 0) {
 				hi[-1] = 0x5A;
 				// a bound past the page: the match at the last byte must stop the scan
