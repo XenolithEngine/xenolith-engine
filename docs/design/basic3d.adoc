@@ -208,7 +208,7 @@ vertexes land in a buffer. The draw's record is `draws[constants.drawIndex]`, th
 
 What this buys:
 
-* **one pipeline layout** — one descriptor set (the texture array) and one push constant range —
+* **one pipeline layout** — one descriptor set (the texture arrays) and one push constant range —
   for the mesh pipeline and every pipeline of the app; switching pipelines keeps the descriptors
   bound;
 * **one vertex format** for every mesh, with no pipeline per format;
@@ -228,7 +228,12 @@ an app pipeline (E9): it reads the same records the mesh pipeline reads.
 ### Pipelines
 
 One subpass, one color attachment (`Output`), one depth attachment (`Depth3d`), one descriptor
-set: an array of `MaxTextures` (64) combined image samplers.
+set of two arrays of combined image samplers: binding 0, `MaxTextures` (64) `sampler2D`s, and
+binding 1, `MaxTextureArrays` (16) `sampler2DArray`s for layered textures — images with array
+layers, such as a terrain's surface types, one layer each (E13). A shader cannot sample a layered
+view through a `sampler2D`, so each kind has its own slots; a draw's `textureIdx` and
+`textureIdx2` index the array of their texture's kind, and the app's shaders know which kind they
+gave a material.
 
 The pipelines of the subpass are, in order: `Basic3dMesh` (the stock mesh shaders) and then the
 app's, from the `Pipeline3dInfo` list `Scene3d::init` takes. A material names one by its place:
@@ -250,8 +255,11 @@ with the frame's memory pool:
    * a draw with a snapshot takes its buffers, `firstIndex` and `vertexOffset` from it;
    * a draw without one gets its mesh's vertexes and indexes appended to the frame's arrays, and
      their offsets there.
-4. The textures of the draws become slots of the array, in the order met; a texture still loading
-   draws as its colour alone, and textures past 64 likewise, with a warning.
+4. The textures of the draws become slots of their array, in the order met; a texture still
+   loading draws as its colour alone, and textures past 64 (16 layered) likewise, with a warning.
+   The mesh pipeline samples no layered texture: a material it draws — its own, or one whose
+   pipeline the pass does not have — drops one, with a warning, so its index never points into
+   the wrong array.
 5. It allocates five buffers from the frame's pool — vertexes, indexes, draws, views, lights,
    device-local and host-visible, the storage ones with device addresses — and copies into them.
    Each has at least one record, so its address exists even when every mesh is packed or there
@@ -361,7 +369,7 @@ These are what remains open of the `how-to-support` item:
   terrain are an app pipeline's business (gamefield traces them through a height map); shadow maps
   for objects, instanced objects, translucency and a second subpass reading depth (water) are
   future work.
-* **64 textures a frame**, 64 lights a view.
+* **64 textures and 16 layered ones a frame**, 64 lights a view.
 
 ## Engine edits made for it
 
@@ -379,7 +387,7 @@ These are what remains open of the `how-to-support` item:
 | E10 | point lights, a second texture and four params for a material | `d8d6ae6a`, example `6d078c74` |
 | E11 | mesh packs: meshes drawn from GPU buffers that outlive the frame; device-address memory for static resources | `4275a2fd`, `982675dc`, example `ff75cf52` |
 | E12 | shaders are rebuilt when a header they include changes (glslang `--depfile`) | `1db1019d` |
-
+| E13 | layered textures: a second descriptor array of `sampler2DArray`s, for textures with array layers | "basic3d: layered textures" |
 The module itself: `b41e4e9f`, its checks `224b434d`, the example `143fc7eb`. The integration was
 tried first in `tests/pass3d` (`4b018a1c`).
 

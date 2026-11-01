@@ -141,6 +141,19 @@ protected:
 		auto fine = cache->addExternalBitmapImage("basic3d.example.fine", info(64),
 				makeChecker(64, 2, Color4B(0, 0, 0, 255), Color4B(255, 255, 255, 255)));
 
+		// A layered texture: three layers, red, white and cyan, each a plain colour
+		Bytes layers;
+		for (auto c : {Color4B(255, 0, 0, 255), Color4B(255, 255, 255, 255),
+				 Color4B(0, 255, 255, 255)}) {
+			for (uint32_t i = 0; i < 16 * 16; ++i) {
+				layers.insert(layers.end(), {c.r, c.g, c.b, c.a});
+			}
+		}
+		auto layered = cache->addExternalBitmapImage("basic3d.example.layers",
+				core::ImageInfo(Extent2(16, 16), core::ArrayLayers(3),
+						core::ImageFormat::R8G8B8A8_UNORM, core::ImageUsage::Sampled),
+				layers);
+
 		// Every mesh of the scene in one pack in GPU memory: the frames draw them from it once it
 		// is loaded, and copy nothing (BASIC3D_NOPACK=1 draws them from the frame's buffers)
 		auto plane = Mesh3d::makePlane(40.0f, 160.0f);
@@ -177,19 +190,29 @@ protected:
 				.params = {Vec4(1.0f, 0.0f, 0.0f, 1.0f), Vec4(0.0f, 0.0f, 1.0f, 1.0f)},
 				.texture2 = coarse}});
 
+		// A fourth, its second colour from the layered texture's third layer (params[2].x), by
+		// flag 2: cyan
+		Mat4 rear;
+		Mat4::createTranslation(Vec3(2.0f, 10.0f, 0.75f), &rear);
+		_view->addDraw(Draw3d{box, rear,
+			Material3d{.texture = layered,
+				.pipeline = StripesPipeline,
+				.flags = 2,
+				.params = {Vec4(1.0f, 0.0f, 0.0f, 1.0f), Vec4(0.0f, 0.0f, 1.0f, 1.0f),
+					Vec4(2.0f, 0.0f, 0.0f, 0.0f)}}});
 		// A point light low over the ground beside the torus, unless BASIC3D_NO_LIGHT=1: a pool
 		// of warm light on the ground under it
 		if (!__sprt_getenv("BASIC3D_NO_LIGHT")) {
 			_view->addLight(Light3d{Vec3(6.0f, 4.0f, 1.0f), 6.0f, Color4F(1.6f, 1.2f, 0.6f, 1.0f)});
 		}
 
-		// BASIC3D_UNKNOWN_PIPELINE=1: a fourth box picks a pipeline the scene does not have, and
-		// draws as a white mesh
+		// BASIC3D_UNKNOWN_PIPELINE=1: a fifth box picks a pipeline the scene does not have, and
+		// draws as a white mesh: its layered texture is none the mesh pipeline can sample
 		if (__sprt_getenv("BASIC3D_UNKNOWN_PIPELINE")) {
 			Mat4 back;
 			Mat4::createTranslation(Vec3(-6.0f, -6.0f, 0.75f), &back);
 			_view->addDraw(Draw3d{small, back,
-				Material3d{.pipeline = 7}});
+				Material3d{.texture = layered, .pipeline = 7}});
 		}
 
 		if (!__sprt_getenv("BASIC3D_STILL")) {

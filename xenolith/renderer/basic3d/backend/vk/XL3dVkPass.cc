@@ -44,7 +44,11 @@ void Scene3dInputHandle::submitInput(core::FrameQueue &q, Rc<core::AttachmentInp
 
 bool Scene3dInputHandle::writeDescriptor(const core::QueuePassHandle &,
 		core::DescriptorImageInfo &info) {
-	auto &view = info.index < _textureViews.size() ? _textureViews[info.index] : _emptyView;
+	// binding 1 is the layered array
+	auto layered = info.descriptor && info.descriptor->index == 1;
+	auto &views = layered ? _arrayViews : _textureViews;
+	auto &empty = layered ? _emptyArrayView : _emptyView;
+	auto &view = info.index < views.size() ? views[info.index] : empty;
 	if (!view || !_sampler) {
 		return false;
 	}
@@ -55,20 +59,27 @@ bool Scene3dInputHandle::writeDescriptor(const core::QueuePassHandle &,
 }
 
 uint32_t Scene3dInputHandle::enumerateDirtyDescriptors(const core::QueuePassHandle &,
-		const core::PipelineDescriptor &, const core::DescriptorBinding &,
+		const core::PipelineDescriptor &desc, const core::DescriptorBinding &,
 		const Callback<void(uint32_t)> &cb) const {
-	for (uint32_t i = 0; i < MaxTextures; ++i) { cb(i); }
-	return MaxTextures;
+	for (uint32_t i = 0; i < desc.count; ++i) { cb(i); }
+	return desc.count;
 }
 
 void Scene3dInputHandle::setTextures(Vector<Rc<core::ImageView>> &&views,
-		Rc<core::ImageView> &&empty, Rc<core::Sampler> &&sampler) {
+		Rc<core::ImageView> &&empty, Vector<Rc<core::ImageView>> &&arrays,
+		Rc<core::ImageView> &&emptyArray, Rc<core::Sampler> &&sampler) {
 	_textureViews = sp::move(views);
 	_emptyView = sp::move(empty);
+	_arrayViews = sp::move(arrays);
+	_emptyArrayView = sp::move(emptyArray);
 	_sampler = sp::move(sampler);
 }
 
-uint32_t Scene3dInputHandle::acquireTexture(const Rc<Texture> &texture) {
+static bool Scene3dInputHandle_isLayered(const Rc<Texture> &texture) {
+	return texture && texture->getImageData() && texture->getImageData()->arrayLayers.get() > 1;
+}
+
+uint32_t Scene3dInputHandle::acquireTexture(const Rc<Texture> &texture, bool &overflow) {
 	// a texture still loading draws as its colour alone
 	if (!texture || !texture->isLoaded() || !texture->getImageData()
 			|| !texture->getImageData()->image) {
@@ -76,22 +87,28 @@ uint32_t Scene3dInputHandle::acquireTexture(const Rc<Texture> &texture) {
 	}
 
 	auto &image = texture->getImageData()->image;
-	for (uint32_t i = 0; i < _images.size(); ++i) {
-		if (_images[i] == image) {
+	auto layered = Scene3dInputHandle_isLayered(texture);
+	auto &images = layered ? _imageArrays : _images;
+	for (uint32_t i = 0; i < images.size(); ++i) {
+		if (images[i] == image) {
 			return i;
 		}
 	}
-	if (_images.size() >= MaxTextures) {
+
+	if (images.size() >= (layered ? MaxTextureArrays : MaxTextures)) {
+		overflow = true;
 		return NoTexture;
 	}
-	_images.emplace_back(image);
-	return uint32_t(_images.size() - 1);
+
+	images.emplace_back(image);
+	return uint32_t(images.size() - 1);
 }
 
 bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHandle3d &input) {
 	_views.clear();
 	_draws.clear();
 	_images.clear();
+	_imageArrays.clear();
 
 	size_t vertexCount = 0;
 	size_t indexCount = 0;
@@ -130,6 +147,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 	Vector<LightData3d> lights;
 	bool overflow = false;
 	bool tooManyLights = false;
+	bool layeredMesh = false;
 	for (auto &view : input.views) {
 		// a record for every view, so a view's index is its place in the view buffer
 		auto &record = _views.emplace_back(
@@ -178,11 +196,15 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			normal.transpose();
 
 			auto &c = draw.material.color;
-			auto textureIdx = acquireTexture(draw.material.texture);
-			if (draw.material.texture && textureIdx == NoTexture
-					&& _images.size() >= MaxTextures) {
-				overflow = true;
+			// the mesh pipeline samples no layered texture
+			auto texture = draw.material.texture;
+			if (Scene3dInputHandle_isLayered(texture)
+					&& static_cast<Scene3dInputAttachment *>(_attachment.get())
+							   ->isDrawnAsMesh(draw.material.pipeline)) {
+				layeredMesh = true;
+				texture = nullptr;
 			}
+			auto textureIdx = acquireTexture(texture, overflow);
 
 			DrawData3d data;
 			data.model = draw.transform;
@@ -191,11 +213,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			data.textureIdx = textureIdx;
 			data.uvScale = draw.material.uvScale;
 			data.flags = draw.material.flags;
-			data.textureIdx2 = acquireTexture(draw.material.texture2);
-			if (draw.material.texture2 && data.textureIdx2 == NoTexture
-					&& _images.size() >= MaxTextures) {
-				overflow = true;
-			}
+			data.textureIdx2 = acquireTexture(draw.material.texture2, overflow);
 			for (uint32_t i = 0; i < 4; ++i) { data.params[i] = draw.material.params[i]; }
 			draws.emplace_back(data);
 
@@ -204,8 +222,13 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 	}
 
 	if (overflow) {
-		log::source().warn("basic3d::Pass3d", "more than ", MaxTextures,
-				" textures in a frame: the rest draw as their colour");
+		log::source().warn("basic3d::Pass3d", "more than ", MaxTextures, " textures or ",
+				MaxTextureArrays, " layered ones in a frame: the rest draw as their colour");
+	}
+	static sprt::atomic<bool> s_layeredMeshWarned = false;
+	if (layeredMesh && !s_layeredMeshWarned.exchange(true)) {
+		log::source().warn("basic3d::Pass3d",
+				"the mesh pipeline samples no layered texture: such a material draws as its colour");
 	}
 
 	static sprt::atomic<bool> s_lightsWarned = false;
@@ -262,6 +285,14 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 	return true;
 }
 
+void Scene3dInputAttachment::setPipelines(Vector<bool> &&pipelines) {
+	_pipelines = sp::move(pipelines);
+}
+
+bool Scene3dInputAttachment::isDrawnAsMesh(uint32_t pipeline) const {
+	return pipeline == MeshPipeline || pipeline >= _pipelines.size() || !_pipelines[pipeline];
+}
+
 bool Pass3dHandle::prepare(core::FrameQueue &q, Function<void(bool)> &&cb) {
 	auto pass = static_cast<Pass3d *>(_queuePass.get());
 	auto device = static_cast<xvk::Device *>(q.getFrame()->getDevice());
@@ -273,15 +304,25 @@ bool Pass3dHandle::prepare(core::FrameQueue &q, Function<void(bool)> &&cb) {
 					image->getViewInfo(core::ImageViewInfo(image->getInfo()))));
 		}
 
+		Vector<Rc<core::ImageView>> arrays;
+		for (auto &image : input->getImageArrays()) {
+			arrays.emplace_back(device->makeImageView(image,
+					image->getViewInfo(core::ImageViewInfo(image->getInfo(),
+							core::ImageViewType::ImageView2DArray))));
+		}
 		Rc<core::ImageView> empty;
+		Rc<core::ImageView> emptyArray;
 		if (auto emptyImage = _data->queue->emptyImage) {
 			if (!emptyImage->views.empty()) {
 				empty = emptyImage->views.front()->view;
 			}
+			// the empty image's one layer, seen as an array, for the layered array's free slots
+			if (emptyImage->image) {
+				emptyArray = pass->acquireEmptyArrayView(*device, emptyImage->image);
+			}
 		}
-
-		input->setTextures(sp::move(views), sp::move(empty),
-				Rc<core::Sampler>(pass->acquireSampler(*device)));
+		input->setTextures(sp::move(views), sp::move(empty), sp::move(arrays),
+				sp::move(emptyArray), Rc<core::Sampler>(pass->acquireSampler(*device)));
 	}
 
 	return xvk::QueuePassHandle::prepare(q, sp::move(cb));
@@ -454,7 +495,14 @@ bool Pass3d::init(core::QueuePassBuilder &passBuilder, const core::AttachmentDat
 	using namespace core;
 
 	_input = input;
-	for (auto &it : pipelines) { _pipelineNames.emplace_back(it.name); }
+	Vector<bool> available;
+	for (auto &it : pipelines) {
+		_pipelineNames.emplace_back(it.name);
+		available.emplace_back(it.vert && it.frag);
+	}
+	if (auto attachment = dynamic_cast<Scene3dInputAttachment *>(input->attachment.get())) {
+		attachment->setPipelines(sp::move(available));
+	}
 
 	auto colorPass = passBuilder.addAttachment(output);
 	auto depthPass = passBuilder.addAttachment(depth);
@@ -464,6 +512,8 @@ bool Pass3d::init(core::QueuePassBuilder &passBuilder, const core::AttachmentDat
 			[&](PipelineLayoutBuilder &layoutBuilder) {
 		layoutBuilder.addSet([&](DescriptorSetBuilder &setBuilder) {
 			setBuilder.addDescriptorArray(inputPass, MaxTextures,
+					DescriptorType::CombinedImageSampler, AttachmentLayout::ShaderReadOnlyOptimal);
+			setBuilder.addDescriptorArray(inputPass, MaxTextureArrays,
 					DescriptorType::CombinedImageSampler, AttachmentLayout::ShaderReadOnlyOptimal);
 		});
 	});
@@ -514,6 +564,16 @@ void Pass3d::warnUnknownPipeline(uint32_t index) {
 		log::source().warn("basic3d::Pass3d", "a material picks the pipeline ", index,
 				", which the pass does not have: it draws with the mesh pipeline");
 	}
+}
+
+const Rc<core::ImageView> &Pass3d::acquireEmptyArrayView(xvk::Device &device,
+		const Rc<core::ImageObject> &image) {
+	if (!_emptyArrayView) {
+		_emptyArrayView = device.makeImageView(image,
+				image->getViewInfo(core::ImageViewInfo(image->getInfo(),
+						core::ImageViewType::ImageView2DArray)));
+	}
+	return _emptyArrayView;
 }
 
 const Rc<core::Sampler> &Pass3d::acquireSampler(xvk::Device &device) {

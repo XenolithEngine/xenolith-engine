@@ -16,6 +16,8 @@ headless screenshot:
     stripes, the colours of its material's params, the other green alone, as its flag 1 asks;
   * a third box takes its second colour from the material's second texture: the coarse checker's
     orange shows where its blue would be;
+  * a fourth takes it from a layered texture (array layers, the pass's sampler2DArray slots), the
+    layer its params pick: the third layer's cyan, none of the other layers' red or white;
   * a point light makes a pool of light on the ground under it, gone with BASIC3D_NO_LIGHT=1,
     and the ground past its radius is as without it;
   * every mesh is in one pack in GPU memory (MeshPack3d): once it is loaded the frames copy no
@@ -24,7 +26,8 @@ headless screenshot:
     the resource cache; with the example letting go of the meshes and the pack too, the frames in
     flight hold their last references and release them on the app thread;
   * a material picking a pipeline the scene does not have (BASIC3D_UNKNOWN_PIPELINE=1, in the second
-    run) draws as a mesh, with one warning;
+    run) draws as a mesh, with one warning; its layered texture is none the mesh pipeline can
+    sample, so it is white, with a warning of its own;
   * the 2d panel composites over the 3d picture;
   * no validation error, no render pass ending early, no basic3d complaint in the log.
 
@@ -55,6 +58,7 @@ STRIPES = (760, 200, 950, 400)  # the box in red and blue stripes
 SOLID = (10, 200, 200, 400)  # the box in green alone
 UNKNOWN = (395, 5, 565, 85)  # the box of an unknown pipeline, in the second run
 TEXTURED = (600, 15, 830, 170)  # the box whose second colour is the material's second texture
+LAYERED = (740, 450, 950, 600)  # the box whose second colour is a layer of a layered texture
 POOL = (370, 500, 410, 530)  # the ground under the point light
 
 checks = 0
@@ -195,6 +199,12 @@ def main():
     blue = sum(1 for p in textured if p[2] > 120 and p[0] < 40 and p[1] < 40)
     check("a second texture takes the place of the second colour", orange > 800 and blue == 0,
             f"orange {orange}, blue {blue}")
+    layered = pixels(image, LAYERED)
+    cyan = sum(1 for p in layered if p[1] > 120 and p[2] > 120 and p[0] < 40)
+    white = sum(1 for p in layered if min(p) > 150)
+    blue = sum(1 for p in layered if p[2] > 120 and p[0] < 40 and p[1] < 40)
+    check("a layered texture's layer the params pick takes its place", cyan > 3000
+            and white == 0 and blue == 0, f"cyan {cyan}, white {white}, blue {blue}")
     check("the unknown pipeline's box is absent without its variable",
             sum(1 for p in pixels(image, UNKNOWN) if min(p) > 150) < 50)
 
@@ -249,6 +259,9 @@ def main():
     check("its box draws as a mesh", white > 3000, f"{white} pixels")
     warnings = nomipsText.count("which the pass does not have")
     check("with one warning", warnings == 1, f"{warnings} warnings")
+    layeredWarnings = nomipsText.count("samples no layered texture")
+    check("its layered texture is dropped, with one warning", layeredWarnings == 1,
+            f"{layeredWarnings} warnings")
 
     print("--- the log")
     check("no Vulkan validation error", "Validation Error" not in text, log_path)

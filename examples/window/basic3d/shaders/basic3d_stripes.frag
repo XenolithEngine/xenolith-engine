@@ -14,9 +14,11 @@
 
 // Stripes across the world's x, half a unit wide, in the material's two params colours; with
 // flag 1 the first colour alone. A second texture, when the material has one, takes the place of
-// the second colour, laid over the world's xy
+// the second colour, laid over the world's xy; with flag 2 the material's texture does, a layered
+// one, its layer params[2].x
 
 layout (set = 0, binding = 0) uniform sampler2D textures[64];
+layout (set = 0, binding = 1) uniform sampler2DArray textureArrays[16];
 
 layout(std430, buffer_reference, buffer_reference_align = 16) readonly buffer DrawBuffer {
 	DrawData3d draws[];
@@ -44,6 +46,10 @@ void main() {
 	vec4 base = second ? d.params[1] : d.params[0];
 	if (second && d.textureIdx2 != XL_GLSL_3D_NO_TEXTURE) {
 		base = texture(textures[nonuniformEXT(d.textureIdx2)], fragWorld.xy * 0.5);
+	}
+	if (second && (d.flags & 2u) != 0u && d.textureIdx != XL_GLSL_3D_NO_TEXTURE) {
+		base = texture(textureArrays[nonuniformEXT(d.textureIdx)],
+				vec3(fragWorld.xy * 0.5, d.params[2].x));
 	}
 
 	vec3 n = normalize(fragNormal);

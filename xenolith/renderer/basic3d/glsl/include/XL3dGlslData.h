@@ -31,10 +31,12 @@ struct DrawData3d {
 	mat4 model;
 	mat4 normal; // the inverse transpose of the model's rotation and scale, for normals
 	vec4 color;
-	uint textureIdx; // into the pass's texture array, or XL_GLSL_3D_NO_TEXTURE
+	// into the pass's texture array (binding 0) - or into its layered one (binding 1) for a texture
+	// with array layers - or XL_GLSL_3D_NO_TEXTURE
+	uint textureIdx;
 	float uvScale;
 	uint flags; // the material's, for an app pipeline
-	uint textureIdx2; // the material's second texture, or XL_GLSL_3D_NO_TEXTURE; an app pipeline's
+	uint textureIdx2; // the material's second texture, as textureIdx; an app pipeline's
 	vec4 params[4]; // the material's, for an app pipeline
 };
 

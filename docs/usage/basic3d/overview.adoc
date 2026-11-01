@@ -56,7 +56,7 @@ view->addDraw(Draw3d{mesh, Mat4::IDENTITY, Material3d{.texture = ground, .pipeli
 	.flags = GridBit, .params = {Vec4(width, height, 0, 0), Vec4::ZERO}}});
 ```
 
-- The shaders read what the mesh shaders read, from [`XL3dGlslData.h`](../../../xenolith/renderer/basic3d/glsl/include/XL3dGlslData.h): the push constants `Constants3d`, the vertexes, draws, views and lights they point to, and the texture array at set 0, binding 0. A draw's `flags`, `params` and `textureIdx2` are the material's; a view's `screen` holds its size in pixels and the density, to turn widths in points into pixels, and `firstLight`/`lightCount` its lights in the frame's array. [`xl_3d_mesh.vert`](../../../xenolith/renderer/basic3d/glsl/shaders/xl_3d_mesh.vert) is a starting point.
+- The shaders read what the mesh shaders read, from [`XL3dGlslData.h`](../../../xenolith/renderer/basic3d/glsl/include/XL3dGlslData.h): the push constants `Constants3d`, the vertexes, draws, views and lights they point to, the texture array at set 0, binding 0, and the layered one at binding 1. A draw's `flags`, `params` and `textureIdx2` are the material's; a view's `screen` holds its size in pixels and the density, to turn widths in points into pixels, and `firstLight`/`lightCount` its lights in the frame's array. [`xl_3d_mesh.vert`](../../../xenolith/renderer/basic3d/glsl/shaders/xl_3d_mesh.vert) is a starting point.
 - Every pipeline tests depth Less with writes and culls back faces.
 - The SPIR-V is referenced, not copied: it has to outlive the scene, as embedded shader headers do.
 - A material that picks a pipeline the scene does not have draws with the mesh pipeline, and the pass warns once. A pipeline with no name, a taken one or no shaders is refused at `init` with an error, and keeps its index.
@@ -77,7 +77,8 @@ Vertexes are read by `buffer_reference` through `gl_VertexIndex`; the layouts sh
 ## Limits
 
 - **No 2d children under a View3d.** They would be drawn as 2d content of the same frame, over everything.
-- **64 textures a frame** (`basic3d::MaxTextures`). Draws past that show their colour alone, with a warning.
+- **64 textures a frame** (`basic3d::MaxTextures`) and **16 layered ones** (`MaxTextureArrays`). Draws past that show their colour alone, with a warning.
+- **Layered textures are for app pipelines.** A texture with array layers takes a slot of the `sampler2DArray` array at binding 1, and the draw's index points there; the mesh pipeline samples none and draws such a material as its colour, with a warning.
 - **Views share one depth buffer**: two views that overlap test against each other.
 - **Local only.** A remote client's queue is the server's, and basic3d does not add its pass there.
 - **Vulkan only.** There is no WebGPU, Metal, GLES or software pass yet.
@@ -86,5 +87,5 @@ Vertexes are read by `buffer_reference` through `gl_VertexIndex`; the layouts sh
 ## Tests
 
 - `tests/basic3d` (`basic3dtest`, no device): the camera's math, the mesh builders, the layout of the records the shaders read, a pack's layout.
-- `tests/window/basic3d-check.py` drives the example headless: the torus drawn, textured and lit; the boxes of the app pipeline in the colours of their params and flags, one with a second texture; the pool of a point light, gone without it; every draw from the mesh pack with no vertex copied into the frame, the same picture with `BASIC3D_NOPACK=1`, the pack leaving the cache once its draws are removed; a material with an unknown pipeline drawn as a mesh, with one warning; the panel over it; the ground's fine checker even through the mips and aliased with `BASIC3D_NOMIPS=1`; no validation error.
+- `tests/window/basic3d-check.py` drives the example headless: the torus drawn, textured and lit; the boxes of the app pipeline in the colours of their params and flags, one with a second texture, one with a layer of a layered texture; the pool of a point light, gone without it; every draw from the mesh pack with no vertex copied into the frame, the same picture with `BASIC3D_NOPACK=1`, the pack leaving the cache once its draws are removed; a material with an unknown pipeline drawn as a mesh, with one warning; the panel over it; the ground's fine checker even through the mips and aliased with `BASIC3D_NOMIPS=1`; no validation error.
 - `tests/window/pass3d-check.py` checks the engine features under the module - a pass under basic2d, culling, depth bias and clamp, two subpasses - with a hand-made pass.

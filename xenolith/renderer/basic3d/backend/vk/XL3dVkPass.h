@@ -18,7 +18,8 @@ namespace xvk = stappler::xenolith::vk;
 /* The frame input of the 3d pass, and its texture descriptor array. submitInput packs every view's
 meshes into one vertex and one index buffer, with a buffer of draws, one of views and one of their
 point lights, on a worker;
-the textures the draws use become the array's slots, each sampled by the pass's sampler. */
+the textures the draws use become the array's slots, each sampled by the pass's sampler: the
+layered ones (array layers) slots of the second, sampler2DArray, array. */
 class SP_PUBLIC Scene3dInputHandle : public xvk::ImageAttachmentHandle {
 public:
 	struct DrawRecord {
@@ -59,6 +60,7 @@ public:
 	SpanView<ViewRecord> getViews() const { return _views; }
 	SpanView<DrawRecord> getDraws() const { return _draws; }
 	SpanView<Rc<core::ImageObject>> getImages() const { return _images; }
+	SpanView<Rc<core::ImageObject>> getImageArrays() const { return _imageArrays; }
 
 	const Rc<xvk::Buffer> &getVertexes() const { return _vertexes; }
 	const Rc<xvk::Buffer> &getIndexes() const { return _indexes; }
@@ -67,16 +69,20 @@ public:
 	const Rc<xvk::Buffer> &getLightData() const { return _lightData; }
 
 	void setTextures(Vector<Rc<core::ImageView>> &&, Rc<core::ImageView> &&empty,
+			Vector<Rc<core::ImageView>> &&arrays, Rc<core::ImageView> &&emptyArray,
 			Rc<core::Sampler> &&);
 
 protected:
 	bool pack(xvk::DeviceMemoryPool *, const FrameContextHandle3d &);
 
-	uint32_t acquireTexture(const Rc<Texture> &);
+	// the slot of a texture, in the layered array for one with array layers; `overflow` set when
+	// its array is full
+	uint32_t acquireTexture(const Rc<Texture> &, bool &overflow);
 
 	Vector<ViewRecord> _views;
 	Vector<DrawRecord> _draws;
 	Vector<Rc<core::ImageObject>> _images;
+	Vector<Rc<core::ImageObject>> _imageArrays;
 
 	Rc<xvk::Buffer> _vertexes;
 	Rc<xvk::Buffer> _indexes;
@@ -86,6 +92,8 @@ protected:
 
 	Vector<Rc<core::ImageView>> _textureViews;
 	Rc<core::ImageView> _emptyView;
+	Vector<Rc<core::ImageView>> _arrayViews;
+	Rc<core::ImageView> _emptyArrayView;
 	Rc<core::Sampler> _sampler;
 };
 
@@ -93,6 +101,16 @@ class SP_PUBLIC Scene3dInputAttachment
 : public core::AttachmentTyped<Scene3dInputHandle, core::GenericAttachment> {
 public:
 	virtual ~Scene3dInputAttachment() = default;
+
+	// which of a material's pipeline indexes the pass has, set once by the pass as it is made
+	void setPipelines(Vector<bool> &&);
+
+	// whether a material with this pipeline is drawn by the mesh pipeline: it picks the mesh
+	// pipeline, or one the pass does not have
+	bool isDrawnAsMesh(uint32_t pipeline) const;
+
+protected:
+	Vector<bool> _pipelines;
 };
 
 // Makes the views of the frame's textures before the descriptors are written
@@ -138,6 +156,9 @@ public:
 	// trilinear, repeating, anisotropic; BASIC3D_NOMIPS=1 samples level 0 alone (a test hook)
 	const Rc<core::Sampler> &acquireSampler(xvk::Device &);
 
+	// the queue's empty image seen as a layered texture, for the layered array's free slots
+	const Rc<core::ImageView> &acquireEmptyArrayView(xvk::Device &, const Rc<core::ImageObject> &);
+
 protected:
 	using xvk::QueuePass::init;
 
@@ -145,6 +166,7 @@ protected:
 	Vector<String> _pipelineNames;
 	sprt::atomic<bool> _unknownPipelineWarned = false;
 	Rc<core::Sampler> _sampler;
+	Rc<core::ImageView> _emptyArrayView;
 };
 
 } // namespace stappler::xenolith::basic3d::vk

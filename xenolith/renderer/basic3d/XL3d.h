@@ -20,6 +20,10 @@ using LightData3d = glsl::LightData3d;
 
 // Images one frame of the 3d pass can sample; the pass's descriptor array has this many slots
 static constexpr uint32_t MaxTextures = 64;
+
+// Layered images (a texture with more than one array layer) one frame can sample: they have an
+// array of slots of their own, sampler2DArray at set 0, binding 1
+static constexpr uint32_t MaxTextureArrays = 16;
 static constexpr uint32_t NoTexture = XL_GLSL_3D_NO_TEXTURE;
 
 // Point lights one view hands a frame; the rest are dropped, with a warning
@@ -37,8 +41,8 @@ class Scene3d;
 static constexpr uint32_t MeshPipeline = 0;
 
 /* A pipeline an app adds to the 3d pass (Scene3d::init): its own vertex and fragment shaders over
-the pass's interface - the push constants Constants3d, the buffers they point to and the texture
-array at set 0, binding 0 (see XL3dGlslData.h). Depth test Less with writes, back faces culled,
+the pass's interface - the push constants Constants3d, the buffers they point to, the texture
+array at set 0, binding 0 and the layered one at binding 1 (see XL3dGlslData.h). Depth test Less with writes, back faces culled,
 counter-clockwise front faces, as the mesh pipeline. A material picks it by its place in the list
 plus one. The SPIR-V is referenced, not copied: it lives as long as the app. */
 struct SP_PUBLIC Pipeline3dInfo {
@@ -50,6 +54,9 @@ struct SP_PUBLIC Pipeline3dInfo {
 // What a draw looks like: a colour, optionally times a texture tiled `uvScale` times per unit of
 // the mesh's texture coordinates. An app pipeline reads `texture2`, `flags` and `params` as it
 // likes; the mesh pipeline ignores them.
+// A texture with array layers takes a slot of the layered array instead (MaxTextureArrays), and
+// its index in DrawData3d is into that array: an app pipeline samples it as a sampler2DArray. The
+// mesh pipeline has no use for one and draws such a material as its colour, with a warning.
 struct SP_PUBLIC Material3d {
 	Color4F color = Color4F::WHITE;
 	Rc<Texture> texture;
