@@ -43,9 +43,12 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d::vk {
 
-// The shader reads the frame data with the std430 layout
-static_assert(sizeof(ParticleFrameData) == 144
-		&& __builtin_offsetof(ParticleFrameData, feedbackPointer) == 88);
+// The shader reads the frame data with the std430 layout; the size carries explicit padding to
+// the vec4 alignment, the stride of the frame array the shader indexes - a bare trailing vec2
+// would end the member-wise size at 152 while this sizeof rounds to 160
+static_assert(sizeof(ParticleFrameData) == 160
+		&& __builtin_offsetof(ParticleFrameData, feedbackPointer) == 88
+		&& __builtin_offsetof(ParticleFrameData, nodeVelocity) == 144);
 
 // TransferSrc: a resized emitter copies its particles out of the old buffer
 static constexpr auto s_particleBufferUsage = core::BufferUsage::ShaderDeviceAddress
@@ -649,6 +652,7 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 			target->transformY = Vec4(m[1], m[5], m[13], 0.0f);
 			target->transformRotation = sprt::atan2(m[1], m[0]);
 			target->transformScale = sprt::sqrt(sprt::fabs(m[0] * m[5] - m[4] * m[1]));
+			target->nodeVelocity = e.renderInfo->nodeVelocity;
 
 			auto &rect = e.renderInfo->textureRect;
 			target->textureRect =

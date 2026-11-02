@@ -120,6 +120,11 @@ protected:
 	Action *_actionRenderLock = nullptr;
 	bool _feedbackEnabled = false;
 	Rc<ParticleFeedbackReceiver> _feedback; // exists while enabled and once on a scene
+
+	// The node's origin in scene space as the last pushed frame saw it, for the velocity a
+	// newborn with inheritVelocity inherits its share of; false until the first frame stands it
+	Vec2 _previousOrigin = Vec2::ZERO;
+	bool _originSeen = false;
 };
 
 } // namespace stappler::xenolith::basic2d

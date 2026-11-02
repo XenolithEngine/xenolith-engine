@@ -510,6 +510,10 @@ void ParticleSystem::apply(const Value &value) {
 			}
 			setDeflectors(SpanView<ParticleDeflector>(seated, count));
 		}
+
+		if (value.isBasicType("inheritVelocity")) {
+			setInheritVelocity(float(value.getDouble("inheritVelocity")));
+		}
 	}
 
 Value ParticleSystem::encode() const {
@@ -681,6 +685,9 @@ Value ParticleSystem::encode() const {
 	if (!deflectors.empty()) {
 		ret.setValue(sp::move(deflectors), "deflectors");
 	}
+	if (_data->data.inheritVelocity != 0.0f) {
+		ret.setDouble(_data->data.inheritVelocity, "inheritVelocity");
+	}
 	return ret;
 }
 
@@ -778,6 +785,14 @@ void ParticleSystem::setDeflectors(SpanView<ParticleDeflector> deflectors) {
 SpanView<const ParticleDeflector> ParticleSystem::getDeflectors() const {
 	return SpanView<const ParticleDeflector>(_data->data.deflectors, 4);
 }
+
+void ParticleSystem::setInheritVelocity(float ratio) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the birth follows; a negative
+	// ratio is the no-inheritance default
+	mutate().data.inheritVelocity = sprt::max(ratio, 0.0f);
+}
+
+float ParticleSystem::getInheritVelocity() const { return _data->data.inheritVelocity; }
 
 void ParticleSystem::setCount(uint32_t c) { mutate().data.count = c; }
 

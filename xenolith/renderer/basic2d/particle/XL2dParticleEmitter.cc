@@ -281,6 +281,18 @@ void ParticleEmitter::pushCommands(FrameInfo &frame, NodeVisitFlags flags) {
 	auto cmdInfo = buildCmdInfo(frame);
 	auto materialIndex = cmdInfo.material;
 
+	// The node's velocity a newborn with inheritVelocity inherits its share of: the origin
+	// displacement between this frame and the last one, divided by the system's own dt - the
+	// simulation's step, never the wall clock. The first frame has no previous origin, and a
+	// node that never moved holds the zero the fresh frame carries
+	const Vec2 sceneOrigin = Vec2(nodeToScene.m[12], nodeToScene.m[13]);
+	Vec2 nodeVelocity = Vec2::ZERO;
+	if (_originSeen && particleSystem->data.dt > 0.0f) {
+		nodeVelocity = (sceneOrigin - _previousOrigin) / particleSystem->data.dt;
+	}
+	_previousOrigin = sceneOrigin;
+	_originSeen = true;
+
 	auto transform = handle->commands->pushParticleEmitter(_emitterId, targetTransform,
 			move(cmdInfo), _commandFlags);
 
@@ -308,6 +320,7 @@ void ParticleEmitter::pushCommands(FrameInfo &frame, NodeVisitFlags flags) {
 	info.maskShape = uint32_t(_quadMask);
 	info.maskThickness = _maskThickness;
 	info.maskSoftness = _maskSoftness;
+	info.nodeVelocity = nodeVelocity;
 
 	if (_feedback) {
 		// Sent with every frame until one of them answers it

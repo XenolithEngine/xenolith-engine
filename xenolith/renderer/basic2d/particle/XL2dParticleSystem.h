@@ -194,6 +194,11 @@ struct ParticleSystemRenderInfo {
 	uint32_t maskShape = 0;
 	float maskThickness = 0.0f;
 	float maskSoftness = 0.0f;
+
+	// The node's velocity over the last frame - its origin displacement divided by the system's
+	// own dt, never a wall clock read - a newborn inherits its inheritVelocity share of; zero
+	// in every frame the node never moved
+	Vec2 nodeVelocity = Vec2::ZERO;
 };
 
 class SP_PUBLIC ParticleSystem : public Ref {
@@ -256,6 +261,11 @@ public:
 	// refused - and the key encode() writes only when a seat is taken
 	void setDeflectors(SpanView<ParticleDeflector>);
 	SpanView<const ParticleDeflector> getDeflectors() const;
+
+	// Ratio of the node's velocity a newborn particle inherits, 0 - no inheritance; a negative
+	// value clamps to that default, and the key encode() writes only when the value is not it
+	void setInheritVelocity(float);
+	float getInheritVelocity() const;
 
 	void setCount(uint32_t);
 	uint32_t getCount() const;

@@ -230,6 +230,18 @@ SP_GLSL_INLINE void particleEmit(SP_GLSL_INOUT(ParticleData) particle,
 		particle.scale = particle.scale * frame.transformScale;
 	}
 
+	// Godot's inherit_velocity_ratio - "Percentage of the velocity of the respective GPUParticles2D
+	// or GPUParticles3D inherited by each particle when spawning."
+	// (docs.godotengine.org, ParticleProcessMaterial) - adds the node's share to the velocity the
+	// birth chose. The node's velocity rides the frame: its origin displacement over the last step
+	// divided by dt, never a wall clock read, so the same frame answers the same sum on every run.
+	// A pure sum - the generator stands unread - and the pair's zeros guard it: a zero ratio or a
+	// node that never moved leaves the velocity - and the hash - the birth chose
+	if (emitter.inheritVelocity != 0.0f
+			&& (frame.nodeVelocity.x != 0.0f || frame.nodeVelocity.y != 0.0f)) {
+		particle.velocity = particle.velocity + frame.nodeVelocity * emitter.inheritVelocity;
+	}
+
 	// The trail starts at the birth point the last transform left: every seat holds it, and the
 	// seats part one to a step as the particle walks away. The width's zero guards the writes: a
 	// trail-less emitter leaves every seat of every particle untouched

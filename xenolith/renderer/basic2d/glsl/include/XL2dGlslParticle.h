@@ -111,7 +111,18 @@ struct ParticleFrameData {
 	uint newest; // index of the last born particle, for XL_PARTICLE_FLAG_ORDER_BY_LIFETIME
 	uint padding140;
 
-	// [144]
+	// [144-151]
+	// the node's velocity over the last step - its origin displacement divided by dt, never a
+	// wall clock read - the share a newborn with inheritVelocity carries; zero in every frame
+	// the node never moved
+	vec2 nodeVelocity;
+
+	// [152-159]
+	// explicit padding: without it the member-wise size ends at 152 while the C++ side's sizeof
+	// rounds to the vec4 alignment's 160, and the frame array's strides part ways
+	vec2 padding152;
+
+	// [160]
 };
 
 // What one particle did in a frame, written by the feedback pipeline to the particle's own record:
@@ -273,7 +284,11 @@ struct ParticleEmitterData {
 	// the deflector seats, in the order the file's list seats them; a seat of shape 0 is unused
 	ParticleDeflector deflectors[4];
 
-	// [460]
+	// [460-463]
+	// ratio of the node's velocity a newborn inherits, 0 - no inheritance
+	float inheritVelocity;
+
+	// [464]
 };
 
 // State of one particle. Parameters are chosen at birth; positions are in the node's space with
