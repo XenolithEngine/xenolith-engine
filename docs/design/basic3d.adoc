@@ -193,7 +193,7 @@ the offsets an app shader reads.
 | Record | Size | Holds | Where |
 |---|---|---|---|
 | `Vertex3d` | 64 B | `pos` (xyz, w = 1), `normal` (xyz), `tangent` (xyz, w = the bitangent's sign), `attr` (xy = texture coordinates, zw free) | the frame's or a pack's vertex buffer |
-| `DrawData3d` | 224 B | `model`, `normal` (inverse transpose of the model's rotation and scale), `color`, `textureIdx`, `uvScale`, `flags` (152), `textureIdx2` (156), `params[4]` (160) | one per draw, the frame's draw buffer |
+| `DrawData3d` | 240 B | `model`, `normal` (inverse transpose of the model's rotation and scale), `color`, `textureIdx`, `uvScale`, `flags` (152), `textureIdx2` (156), `params[4]` (160), `textureIdx3` (224) | one per draw, the frame's draw buffer |
 | `ViewData3d` | 144 B | `viewProj`, `sunDirection`, `sunColor`, `ambient`, `screen` (112: the view's viewport width and height in pixels, pixels per point), `firstLight` (128), `lightCount` (132) | one per view, the frame's view buffer |
 | `LightData3d` | 32 B | `position` (xyz, w = radius), `color` (rgb = colour × intensity) | the frame's light buffer, every view's lights one after another |
 | `Constants3d` | 40 B | `viewPointer`, `drawPointer`, `vertexPointer`, `lightPointer` (each a `uvec2` address), `drawIndex` (32) | push constants, per draw |
@@ -220,7 +220,7 @@ and `attr` into halves would make it 32. That is deferred until a measurement sh
 bandwidth matters; with meshes in packs (below) the bytes are uploaded once, not every frame.
 
 The records, the draws and the views, are written by the frame on the worker; the materials'
-`flags`, `params` and `texture2` pass through to them untouched, which is the whole interface of
+`flags`, `params`, `texture2` and `texture3` pass through to them untouched, which is the whole interface of
 an app pipeline (E9): it reads the same records the mesh pipeline reads.
 
 ## The pass
@@ -231,8 +231,8 @@ One subpass, one color attachment (`Output`), one depth attachment (`Depth3d`), 
 set of two arrays of combined image samplers: binding 0, `MaxTextures` (64) `sampler2D`s, and
 binding 1, `MaxTextureArrays` (16) `sampler2DArray`s for layered textures — images with array
 layers, such as a terrain's surface types, one layer each (E13). A shader cannot sample a layered
-view through a `sampler2D`, so each kind has its own slots; a draw's `textureIdx` and
-`textureIdx2` index the array of their texture's kind, and the app's shaders know which kind they
+view through a `sampler2D`, so each kind has its own slots; a draw's `textureIdx`,
+`textureIdx2` and `textureIdx3` index the array of their texture's kind, and the app's shaders know which kind they
 gave a material.
 
 The pipelines of the subpass are, in order: `Basic3dMesh` (the stock mesh shaders) and then the
@@ -387,7 +387,8 @@ These are what remains open of the `how-to-support` item:
 | E10 | point lights, a second texture and four params for a material | `d8d6ae6a`, example `6d078c74` |
 | E11 | mesh packs: meshes drawn from GPU buffers that outlive the frame; device-address memory for static resources | `4275a2fd`, `982675dc`, example `ff75cf52` |
 | E12 | shaders are rebuilt when a header they include changes (glslang `--depfile`) | `1db1019d` |
-| E13 | layered textures: a second descriptor array of `sampler2DArray`s, for textures with array layers | "basic3d: layered textures" |
+| E13 | layered textures: a second descriptor array of `sampler2DArray`s, for textures with array layers | `bca6a513` |
+| E14 | a third texture for a material | "basic3d: a third texture for a material" |
 The module itself: `b41e4e9f`, its checks `224b434d`, the example `143fc7eb`. The integration was
 tried first in `tests/pass3d` (`4b018a1c`).
 

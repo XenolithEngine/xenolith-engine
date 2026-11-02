@@ -47,6 +47,9 @@ void main() {
 	if (second && d.textureIdx2 != XL_GLSL_3D_NO_TEXTURE) {
 		base = texture(textures[nonuniformEXT(d.textureIdx2)], fragWorld.xy * 0.5);
 	}
+	if (!second && d.textureIdx3 != XL_GLSL_3D_NO_TEXTURE) {
+		base = texture(textures[nonuniformEXT(d.textureIdx3)], fragWorld.xy * 0.5);
+	}
 	if (second && (d.flags & 2u) != 0u && d.textureIdx != XL_GLSL_3D_NO_TEXTURE) {
 		base = texture(textureArrays[nonuniformEXT(d.textureIdx)],
 				vec3(fragWorld.xy * 0.5, d.params[2].x));

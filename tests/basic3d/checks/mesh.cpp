@@ -72,10 +72,12 @@ void performMeshTests() {
 	// the records the shaders read by buffer reference, std430: an app pipeline's shaders read
 	// the material's flags, second texture and params, the view's screen and lights, at these
 	// offsets
-	check(sizeof(DrawData3d) == 224 && offsetof(DrawData3d, flags) == 152
+	check(sizeof(DrawData3d) == 240 && offsetof(DrawData3d, flags) == 152
 					&& offsetof(DrawData3d, textureIdx2) == 156
-					&& offsetof(DrawData3d, params) == 160,
-			"mesh: a draw's record is 224 bytes, its second texture at 156, its params at 160",
+					&& offsetof(DrawData3d, params) == 160
+					&& offsetof(DrawData3d, textureIdx3) == 224,
+			"mesh: a draw's record is 240 bytes, its second texture at 156, its params at 160, its "
+			"third texture at 224",
 			toString(sizeof(DrawData3d)));
 	check(sizeof(ViewData3d) == 144 && offsetof(ViewData3d, screen) == 112
 					&& offsetof(ViewData3d, firstLight) == 128
@@ -112,10 +114,11 @@ void performMeshTests() {
 
 	Material3d material;
 	check(material.pipeline == MeshPipeline && material.flags == 0 && !material.texture2
+					&& !material.texture3
 					&& material.params[0] == Vec4::ZERO && material.params[1] == Vec4::ZERO
 					&& material.params[2] == Vec4::ZERO && material.params[3] == Vec4::ZERO,
-			"mesh: a material draws with the mesh pipeline, no flags, no second texture and no "
-			"params by default");
+			"mesh: a material draws with the mesh pipeline, no flags, no second or third texture "
+			"and no params by default");
 }
 
 } // namespace stappler::xenolith::basic3d

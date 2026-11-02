@@ -15,7 +15,8 @@ headless screenshot:
   * two boxes are drawn by the example's own pipeline (Scene3d's app pipelines): one in red and blue
     stripes, the colours of its material's params, the other green alone, as its flag 1 asks;
   * a third box takes its second colour from the material's second texture: the coarse checker's
-    orange shows where its blue would be;
+    orange shows where its blue would be; and its first from the third texture: magenta where
+    its red would be;
   * a fourth takes it from a layered texture (array layers, the pass's sampler2DArray slots), the
     layer its params pick: the third layer's cyan, none of the other layers' red or white;
   * a point light makes a pool of light on the ground under it, gone with BASIC3D_NO_LIGHT=1,
@@ -199,6 +200,10 @@ def main():
     blue = sum(1 for p in textured if p[2] > 120 and p[0] < 40 and p[1] < 40)
     check("a second texture takes the place of the second colour", orange > 800 and blue == 0,
             f"orange {orange}, blue {blue}")
+    magenta = sum(1 for p in textured if p[0] > 120 and p[2] > 120 and p[1] < 40)
+    red = sum(1 for p in textured if p[0] > 120 and p[1] < 40 and p[2] < 40)
+    check("a third texture takes the place of the first colour", magenta > 800 and red == 0,
+            f"magenta {magenta}, red {red}")
     layered = pixels(image, LAYERED)
     cyan = sum(1 for p in layered if p[1] > 120 and p[2] > 120 and p[0] < 40)
     white = sum(1 for p in layered if min(p) > 150)

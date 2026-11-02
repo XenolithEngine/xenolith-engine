@@ -140,6 +140,8 @@ protected:
 				makeChecker(64, 8, Color4B(255, 140, 40, 255), Color4B(250, 250, 240, 255)));
 		auto fine = cache->addExternalBitmapImage("basic3d.example.fine", info(64),
 				makeChecker(64, 2, Color4B(0, 0, 0, 255), Color4B(255, 255, 255, 255)));
+		auto magenta = cache->addExternalBitmapImage("basic3d.example.magenta", info(4),
+				makeChecker(4, 2, Color4B(255, 0, 255, 255), Color4B(255, 0, 255, 255)));
 
 		// A layered texture: three layers, red, white and cyan, each a plain colour
 		Bytes layers;
@@ -182,13 +184,15 @@ protected:
 				.flags = 1,
 				.params = {Vec4(0.0f, 1.0f, 0.0f, 1.0f), Vec4(1.0f, 1.0f, 0.0f, 1.0f)}}});
 
-		// A third box of the pipeline, its second colour from a second texture: the coarse checker
+		// A third box of the pipeline, its second colour from a second texture: the coarse
+		// checker; its first from a third: magenta
 		Mat4 front;
 		Mat4::createTranslation(Vec3(-7.0f, -2.0f, 0.75f), &front);
 		_view->addDraw(Draw3d{box, front,
 			Material3d{.pipeline = StripesPipeline,
 				.params = {Vec4(1.0f, 0.0f, 0.0f, 1.0f), Vec4(0.0f, 0.0f, 1.0f, 1.0f)},
-				.texture2 = coarse}});
+				.texture2 = coarse,
+				.texture3 = magenta}});
 
 		// A fourth, its second colour from the layered texture's third layer (params[2].x), by
 		// flag 2: cyan

@@ -38,6 +38,10 @@ struct DrawData3d {
 	uint flags; // the material's, for an app pipeline
 	uint textureIdx2; // the material's second texture, as textureIdx; an app pipeline's
 	vec4 params[4]; // the material's, for an app pipeline
+	uint textureIdx3; // the material's third texture, as textureIdx2
+	uint padding0;
+	uint padding1;
+	uint padding2;
 };
 
 // A point light: its light falls off as (1 - (d / radius)^2)^2, zero at the radius

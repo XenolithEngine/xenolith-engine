@@ -52,8 +52,8 @@ struct SP_PUBLIC Pipeline3dInfo {
 };
 
 // What a draw looks like: a colour, optionally times a texture tiled `uvScale` times per unit of
-// the mesh's texture coordinates. An app pipeline reads `texture2`, `flags` and `params` as it
-// likes; the mesh pipeline ignores them.
+// the mesh's texture coordinates. An app pipeline reads `texture2`, `texture3`, `flags` and
+// `params` as it likes; the mesh pipeline ignores them.
 // A texture with array layers takes a slot of the layered array instead (MaxTextureArrays), and
 // its index in DrawData3d is into that array: an app pipeline samples it as a sampler2DArray. The
 // mesh pipeline has no use for one and draws such a material as its colour, with a warning.
@@ -65,6 +65,7 @@ struct SP_PUBLIC Material3d {
 	uint32_t flags = 0;
 	Vec4 params[4] = {Vec4::ZERO, Vec4::ZERO, Vec4::ZERO, Vec4::ZERO};
 	Rc<Texture> texture2;
+	Rc<Texture> texture3;
 };
 
 // A point light in the world: its colour times its intensity falls off as (1 - (d / radius)^2)^2

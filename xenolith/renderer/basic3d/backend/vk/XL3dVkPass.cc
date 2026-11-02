@@ -215,6 +215,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			data.flags = draw.material.flags;
 			data.textureIdx2 = acquireTexture(draw.material.texture2, overflow);
 			for (uint32_t i = 0; i < 4; ++i) { data.params[i] = draw.material.params[i]; }
+			data.textureIdx3 = acquireTexture(draw.material.texture3, overflow);
 			draws.emplace_back(data);
 
 			++record.drawCount;
