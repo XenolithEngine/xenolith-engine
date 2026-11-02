@@ -18,12 +18,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-# xlkdl: KDL documents from the command line, and C headers generated from ABI descriptions.
+# xlkdl: KDL documents from the command line, and C headers generated from ABI and API descriptions
+# and from GPU schemas.
 #
 #     make -C utils/xlkdl
 #     xlkdl dump <file.kdl>
 #     xlkdl fmt <file.kdl>
 #     xlkdl abi --map <map.kdl> --out <dir> [--check] [--inline] [<header>...]
+#     xlkdl api --map <map.kdl> --root <dir> [--check]
+#     xlkdl gpu <schema.kdl>... [--out <file>] [--check]
 
 LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 

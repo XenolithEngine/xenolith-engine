@@ -1,0 +1,105 @@
+# GPU schemas: `xlkdl gpu`
+
+`xlkdl gpu` generates a header of records that C++ and GLSL both read from a schema written in KDL.
+The header is valid in both languages: as C++ through the types of `sprt_glsl.h`, as GLSL when
+`SP_GLSL` is defined. The schema of basic3d is
+[basic3d.kdl](../../../xenolith/renderer/basic3d/glsl/basic3d.kdl).
+
+    make -C utils/xlkdl
+    xlkdl gpu <schema.kdl>... [--out <file>] [--check]
+
+A schema's header is written to its `output`, from the schema's directory, or to `--out` when a
+single schema is given. `--check` writes nothing; the exit code is the number of headers that are
+not what would be written. A schema that does not load exits with 1 and `file:line:column: message`
+lines.
+
+The header a schema writes is committed next to it. After a change to basic3d's schema:
+
+    xlkdl gpu xenolith/renderer/basic3d/glsl/basic3d.kdl
+
+**TL;DR**
+
+* A **record** is a list of fields, laid out by **std430** - the layout of a storage buffer and of
+  push constants. The generator computes every offset and the record's size.
+* A field starts where the one before it ends. A gap std430 would leave is an error, since C++
+  would not leave it: reorder the fields, or fill the gap with a field of your own.
+* A record ends at its std430 size - a multiple of its largest alignment - with `uint` fields
+  named `padding` (one) or `padding0`, `padding1`... (more).
+* The header asserts the layout: `static_assert` on the size of every record and the offset of
+  every field, so a C++ type that lays out differently from std430 does not compile.
+* Comments are part of the schema, as `doc=` - KDL comments do not reach the header. A doc of one
+  line follows its field; one of several lines (a multi-line string) goes before it.
+
+---
+
+## The schema
+
+```kdl
+schema basic3d {
+    output "include/XL3dGlslData.h"
+    guard "XENOLITH_RENDERER_BASIC3D_GLSL_INCLUDE_XL3DGLSLDATA_H_"
+    namespace "stappler::glsl"
+    macro-prefix "XL_GLSL_3D_"
+    copyright "2026 Xenolith Team <admin@xenolith.studio>"
+    license "MIT"
+}
+```
+
+One `schema` node per description, named by its argument, with:
+
+| Child | Required | What it is |
+|---|---|---|
+| `output` | yes | the header, from the description's directory |
+| `guard` | yes | the include guard |
+| `namespace` | yes | the C++ namespace of the records, versioned (`namespace STAPPLER_VERSIONIZED …`), with `using namespace sprt::glsl` in it |
+| `macro-prefix` | no | put before the name of every constant |
+| `copyright`, `license` | no | the license block: ` Copyright (c) …` and ` SPDX-License-Identifier: …` |
+
+## Constants
+
+```kdl
+const NO_TEXTURE 0xFFFFFFFF type=uint doc="DrawData3d::textureIdx of a draw with no texture"
+```
+
+A constant is a `#define` of its prefixed name: `#define XL_GLSL_3D_NO_TEXTURE 0xFFFFFFFFu`. Its
+`type` is `uint` (an integer that fits 32 bits, written with `u`), `int` (a signed 32-bit integer)
+or `float` (a float literal). The number is written as it was typed, without KDL's `_` digit
+separators.
+
+## Records
+
+```kdl
+record DrawData3d doc="One draw: where the model is and what it looks like" {
+    model mat4
+    color vec4
+    textureIdx uint doc="""
+        into the pass's texture array (binding 0) - or into its layered one (binding 1)
+        - or XL_GLSL_3D_NO_TEXTURE
+        """
+    params vec4 count=4 doc="the material's, for an app pipeline"
+}
+```
+
+A record is a `struct`; each child is a field, named by the node, its type the argument. `count=N`
+makes it an array.
+
+| Type | Size | std430 alignment | Arrays |
+|---|---|---|---|
+| `float`, `int`, `uint` | 4 | 4 | yes |
+| `vec2`, `uvec2` | 8 | 8 | yes |
+| `vec3`, `uvec3` | 12 | 16 | no: an array steps 16 bytes in std430 and 12 in C++ |
+| `vec4`, `uvec4`, `color4` | 16 | 16 | yes |
+| `mat4` | 64 | 16 | yes |
+
+The C++ alignment of a type may be smaller than std430's (`UVec2` aligns to 4): the padding the
+generator adds and the asserts it writes keep the sizes equal.
+
+## Errors
+
+Every one carries its place in the description:
+
+* an unknown node, property or type; a node with the wrong number of arguments;
+* a name that is not an identifier, or a name defined twice;
+* a field that would start past a gap, or an array of a type that steps differently in C++;
+* a record whose padding would take the name of one of its fields;
+* a constant whose value does not fit its type.

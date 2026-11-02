@@ -1,0 +1,62 @@
+// The records basic3d's C++ and its shaders share, std430: include/XL3dGlslData.h is generated
+// from this description (docs/usage/tools/xlkdl-gpu.adoc). After a change:
+//
+//     xlkdl gpu xenolith/renderer/basic3d/glsl/basic3d.kdl
+
+schema basic3d {
+	output "include/XL3dGlslData.h"
+	guard "XENOLITH_RENDERER_BASIC3D_GLSL_INCLUDE_XL3DGLSLDATA_H_"
+	namespace "stappler::glsl"
+	macro-prefix "XL_GLSL_3D_"
+	copyright "2026 Xenolith Team <admin@xenolith.studio>"
+	license "MIT"
+}
+
+const NO_TEXTURE 0xFFFFFFFF type=uint \
+	doc="DrawData3d::textureIdx of a draw with no texture: its colour alone"
+
+record Vertex3d doc="One vertex, 64 bytes, read by gl_VertexIndex through a buffer reference" {
+	pos vec4 doc="xyz - position in the model, w - 1"
+	normal vec4 doc="xyz - unit normal, w - free"
+	tangent vec4 doc="xyz - unit tangent, w - the bitangent's sign"
+	attr vec4 doc="xy - texture coordinates, zw - free"
+}
+
+record DrawData3d doc="One draw: where the model is and what it looks like" {
+	model mat4
+	normal mat4 doc="the inverse transpose of the model's rotation and scale, for normals"
+	color vec4
+	textureIdx uint doc="""
+		into the pass's texture array (binding 0) - or into its layered one (binding 1) for a texture
+		with array layers - or XL_GLSL_3D_NO_TEXTURE
+		"""
+	uvScale float
+	flags uint doc="the material's, for an app pipeline"
+	textureIdx2 uint doc="the material's second texture, as textureIdx; an app pipeline's"
+	params vec4 count=4 doc="the material's, for an app pipeline"
+	textureIdx3 uint doc="the material's third texture, as textureIdx2"
+}
+
+record LightData3d \
+		doc="A point light: its light falls off as (1 - (d / radius)^2)^2, zero at the radius" {
+	position vec4 doc="xyz - in the world, w - the radius"
+	color vec4 doc="rgb - colour times intensity, a - free"
+}
+
+record ViewData3d doc="One view: its camera and its light" {
+	viewProj mat4 doc="depth in [0, 1], clip y flipped for Vulkan"
+	sunDirection vec4 doc="xyz - toward the sun, unit length"
+	sunColor vec4 doc="rgb - colour times intensity"
+	ambient vec4 doc="rgb - colour times intensity"
+	screen vec4 doc="xy - the viewport's size in pixels, z - pixels per point, w - free"
+	firstLight uint doc="this view's point lights in the frame's LightData3d array"
+	lightCount uint
+}
+
+record Constants3d {
+	viewPointer uvec2 doc="0-8, this view's ViewData3d"
+	drawPointer uvec2 doc="8-16, the frame's DrawData3d array"
+	vertexPointer uvec2 doc="16-24, the frame's Vertex3d array"
+	lightPointer uvec2 doc="24-32, the frame's LightData3d array"
+	drawIndex uint doc="32-36"
+}

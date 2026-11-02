@@ -36,6 +36,26 @@ THE SOFTWARE.
 
 namespace STAPPLER_VERSIONIZED stappler::xlkdl {
 
+bool writeOrCheck(StringView path, StringView text, StringView from, bool check) {
+	if (check) {
+		auto have = filesystem::exists(FileInfo{path})
+				? filesystem::readTextFile<memory::StandardInterface>(FileInfo{path})
+				: String();
+		if (StringView(have) != text) {
+			sprt::cerr << path << ": not what " << from << " generates\n";
+			return false;
+		}
+		return true;
+	}
+	filesystem::mkdir_recursive(FileInfo{filepath::root(path)});
+	if (!filesystem::write(FileInfo{path}, reinterpret_cast<const uint8_t *>(text.data()),
+				text.size())) {
+		sprt::cerr << path << ": cannot write\n";
+		return false;
+	}
+	return true;
+}
+
 namespace {
 
 bool readDocument(StringView file, KdlDocument &doc) {
@@ -122,28 +142,6 @@ void printAbiUsage(const CommandLineParser<AbiArgs> &parser) {
 			<< "  writes every header of the map that has a description, or the named ones;\n"
 			<< "  --find prints where a name is defined, --index every definition as JSON\n";
 	parser.describe([](StringView str) { sprt::cerr << str; });
-}
-
-// Writes a generated file, or under check compares it with the file there; false when it differs or
-// cannot be written.
-bool writeOrCheck(StringView path, StringView text, StringView from, bool check) {
-	if (check) {
-		auto have = filesystem::exists(FileInfo{path})
-				? filesystem::readTextFile<memory::StandardInterface>(FileInfo{path})
-				: String();
-		if (StringView(have) != text) {
-			sprt::cerr << path << ": not what " << from << " generates\n";
-			return false;
-		}
-		return true;
-	}
-	filesystem::mkdir_recursive(FileInfo{filepath::root(path)});
-	if (!filesystem::write(FileInfo{path}, reinterpret_cast<const uint8_t *>(text.data()),
-				text.size())) {
-		sprt::cerr << path << ": cannot write\n";
-		return false;
-	}
-	return true;
 }
 
 } // namespace

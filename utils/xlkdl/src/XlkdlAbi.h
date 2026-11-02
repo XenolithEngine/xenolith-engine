@@ -437,10 +437,15 @@ int findNames(const Map &map, SpanView<String> names, const Callback<void(String
 // Every definition of the map, as JSON.
 void writeIndex(const Map &map, const Callback<void(StringView)> &out);
 
+// Writes a generated file, or under check compares it with the file there; false when it differs or
+// cannot be written.
+bool writeOrCheck(StringView path, StringView text, StringView from, bool check);
+
 int runDump(int argc, const char *argv[]);
 int runFormat(int argc, const char *argv[]);
 int runAbi(int argc, const char *argv[]);
 int runApi(int argc, const char *argv[]);
+int runGpu(int argc, const char *argv[]);
 
 } // namespace stappler::xlkdl
 

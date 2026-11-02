@@ -15,7 +15,7 @@ Sources:
 * [XL3dView.h](../../xenolith/renderer/basic3d/XL3dView.h) / [XL3dView.cc](../../xenolith/renderer/basic3d/XL3dView.cc) — the node, its draws, the snapshot of packed meshes
 * [XL3dCamera.h](../../xenolith/renderer/basic3d/XL3dCamera.h) — the camera and its screen space
 * [XL3dMeshPack.h](../../xenolith/renderer/basic3d/XL3dMeshPack.h) / [XL3dMeshPack.cc](../../xenolith/renderer/basic3d/XL3dMeshPack.cc) — meshes in GPU memory between frames
-* [XL3dGlslData.h](../../xenolith/renderer/basic3d/glsl/include/XL3dGlslData.h) — the records shared by C++ and GLSL
+* [basic3d.kdl](../../xenolith/renderer/basic3d/glsl/basic3d.kdl) — the schema of the records; [XL3dGlslData.h](../../xenolith/renderer/basic3d/glsl/include/XL3dGlslData.h), generated from it, is what C++ and GLSL include
 * [XL3dVkPass.h](../../xenolith/renderer/basic3d/backend/vk/XL3dVkPass.h) / [XL3dVkPass.cc](../../xenolith/renderer/basic3d/backend/vk/XL3dVkPass.cc) — the Vulkan pass: packing a frame, recording it
 * [xl_3d_mesh.vert](../../xenolith/renderer/basic3d/glsl/shaders/xl_3d_mesh.vert) / [xl_3d_mesh.frag](../../xenolith/renderer/basic3d/glsl/shaders/xl_3d_mesh.frag) — the stock mesh pipeline
 
@@ -36,8 +36,9 @@ repeat it. [draw-order.adoc](draw-order.adoc) is how basic2d orders what it draw
 * Shaders read everything through **buffer references**: vertexes by `gl_VertexIndex`, the draw,
   view and light records by pointers in 40 bytes of push constants. There is no vertex input
   state, so one pipeline layout serves the mesh pipeline and every pipeline of the app.
-* The records are defined once, in `XL3dGlslData.h`, which C++ and GLSL both include; `basic3dtest`
-  checks the sizes and offsets of the draw, view, light and push-constant records.
+* The records are defined once, in the schema `basic3d.kdl`; `xlkdl gpu` generates `XL3dGlslData.h`,
+  which C++ and GLSL both include, with its std430 layout asserted in C++. `basic3dtest` checks the
+  sizes and offsets of the draw, view, light and push-constant records.
 * A frame packs, on a worker, the meshes that are not in GPU memory yet into buffers of its own;
   meshes of a loaded **`MeshPack3d`** — a temporary resource of the `ResourceCache` holding many
   meshes — are drawn straight from the pack's buffers, with nothing copied.
@@ -185,10 +186,14 @@ to stay 0; without the handle's hand-back it is 1 on every run.
 ## The records
 
 All of them are in [XL3dGlslData.h](../../xenolith/renderer/basic3d/glsl/include/XL3dGlslData.h),
-written once in the subset of C that `sprt_glsl.h` makes valid both as C++ (`stappler::glsl`, with
-`vec4`, `mat4`, `uvec2` as C++ types) and as GLSL. The layout is std430; every record is a whole
-number of 16-byte rows, so the C++ and the GLSL sizes agree. `basic3dtest` checks the sizes and
-the offsets an app shader reads.
+in the subset of C that `sprt_glsl.h` makes valid both as C++ (`stappler::glsl`, with `vec4`,
+`mat4`, `uvec2` as C++ types) and as GLSL. The header is generated from the schema
+[basic3d.kdl](../../xenolith/renderer/basic3d/glsl/basic3d.kdl) by `xlkdl gpu`
+([xlkdl-gpu.adoc](../usage/tools/xlkdl-gpu.adoc)) and committed; a record is changed in the schema,
+then `xlkdl gpu xenolith/renderer/basic3d/glsl/basic3d.kdl` rewrites the header, and `--check`
+answers whether it is up to date. The generator lays the records out by std430, pads each to its
+std430 size, and asserts the size and every offset in C++, so the C++ and the GLSL layouts cannot
+drift apart. `basic3dtest` checks, independently, the sizes and the offsets an app shader reads.
 
 | Record | Size | Holds | Where |
 |---|---|---|---|

@@ -74,3 +74,5 @@ A `/- kdl-version 1` marker is refused: this parser reads KDL v2 only.
 
 Related: [tools/xlkdl-abi.adoc](tools/xlkdl-abi.adoc) - C headers generated
 from ABI descriptions written in KDL.
+[tools/xlkdl-gpu.adoc](tools/xlkdl-gpu.adoc) - records shared by C++ and GLSL, generated from GPU
+schemas written in KDL.
