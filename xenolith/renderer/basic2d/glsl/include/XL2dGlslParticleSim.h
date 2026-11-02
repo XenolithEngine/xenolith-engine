@@ -320,6 +320,102 @@ SP_GLSL_INLINE vec2 particleAttractors(SP_GLSL_IN(ParticleData) particle,
 	return force;
 }
 
+// The deflector answer of up to four figures, Wallpaper Engine's own collision operators
+// (docs.wallpaperengine.io/en/scene/particles/component/operator.html): its round figure words
+// the sphere "Collides particles against a spherical object" - an origin and a radius, a circle
+// in a 2D wallpaper - and its line one "Collides particles along a limited line from one side",
+// this seat's segment the same line of two points alone, answered from both sides. The answers
+// are the two the plan keeps: Bounce, "Particles will bounce off when the collision occurs" -
+// the Bounce factor the page tweaks is not carried, the reflection is the full one - and the
+// plan's kill, the page's deleting answer: "Particles will be deleted when they collide with the
+// object", which "Triggers the death event on the particle, allowing you to spawn child
+// particles for example".
+//
+// The reflection, off the figure the quote words the particle bouncing away from: the wall's
+// unit normal n splits the velocity into its normal and its tangential part,
+//
+//     v = (v . n) n + t
+//
+// and the bounce keeps the tangential part while it flips the normal one,
+//
+//     v' = t - (v . n) n = v - 2 (v . n) n
+//
+// The normal's sign never enters the formula, so the circle's radial line and the segment's
+// perpendicular answer alike. The through-half of the step is the wall's own symmetry undone:
+// the position mirrors across the boundary - the circle's radial boundary, the segment's line -
+// the depth it crossed by, so the bounced particle stands strictly on the side it came from and
+// the next step carries it away; a particle left past the wall would meet it again every step,
+// the bounce off the quote words never happening.
+//
+// The hit test is the stepped sim's own: the circle's is the particle inside the ball, a
+// distance under the radius; the segment's is the step's path crossing the line - the previous
+// position strictly on one side and the new one on the other or on it - with the crossing
+// between the segment's ends. The kill is the lifetime pair's own zero, the death signature the
+// document cycle reads, and its walk ends at the first killing seat - a dead particle bounces
+// off nothing. A pure state write - the generator stands unread - and a seat of shape 0 seats
+// nothing: an emitter whose every seat is unused touches no byte, and an old file answers the
+// step - and the hash - it always had
+SP_GLSL_INLINE void particleDeflectors(SP_GLSL_INOUT(ParticleData) particle,
+		SP_GLSL_IN(ParticleEmitterData) emitter, vec2 previous) {
+	for (uint i = 0u; i < 4u; ++i) {
+		if (emitter.deflectors[i].shape == 0u) {
+			continue;
+		}
+		bool hit = false;
+		vec2 normal = vec2(0.0f, 0.0f); // the wall's unit normal, signed as the test found it
+		vec2 through = vec2(0.0f, 0.0f); // the offset the mirror takes back off the position
+		if (emitter.deflectors[i].shape == XL_PARTICLE_DEFLECTOR_CIRCLE) {
+			// The ball's extent alone: a radius of zero or less leaves no inside
+			vec2 radial = particle.position - emitter.deflectors[i].a;
+			float dist = length(radial);
+			if (dist < emitter.deflectors[i].radius) {
+				hit = true;
+				normal = radial / dist;
+				// The depth past the boundary, along the radial unit
+				through = normal * (dist - emitter.deflectors[i].radius);
+			}
+		} else {
+			// The side of the line through a and b the point stands on, by the sign of the cross
+			vec2 d = emitter.deflectors[i].b - emitter.deflectors[i].a;
+			vec2 path = particle.position - previous;
+			float s0 = d.x * (previous.y - emitter.deflectors[i].a.y)
+					- d.y * (previous.x - emitter.deflectors[i].a.x);
+			float s1 = d.x * (particle.position.y - emitter.deflectors[i].a.y)
+					- d.y * (particle.position.x - emitter.deflectors[i].a.x);
+			float denominator = path.x * d.y - path.y * d.x;
+			if (((s0 > 0.0f && s1 <= 0.0f) || (s0 < 0.0f && s1 >= 0.0f))
+					&& denominator != 0.0f) {
+				// The crossing point, then its place between the segment's ends
+				float u = ((emitter.deflectors[i].a.x - previous.x) * d.y
+								  - (emitter.deflectors[i].a.y - previous.y) * d.x)
+						/ denominator;
+				vec2 crossing = previous + path * u;
+				vec2 along = crossing - emitter.deflectors[i].a;
+				float extent = along.x * d.x + along.y * d.y;
+				if (extent >= 0.0f && extent <= d.x * d.x + d.y * d.y) {
+					hit = true;
+					normal = vec2(-d.y, d.x);
+					// s1 is the cross of d with the offset from the line, so the perpendicular
+					// offset itself is s1 / (d . d) along the perpendicular
+					through = normal * (s1 / (d.x * d.x + d.y * d.y));
+				}
+			}
+		}
+		if (!hit) {
+			continue;
+		}
+		if (emitter.deflectors[i].response == XL_PARTICLE_DEFLECTOR_KILL) {
+			particle.currentLifetime = 0u;
+			return;
+		}
+		if (emitter.deflectors[i].response == XL_PARTICLE_DEFLECTOR_BOUNCE) {
+			vec2 n = particleNormalize(normal);
+			particle.velocity = particle.velocity - 2.0f * dot(particle.velocity, n) * n;
+			particle.position = particle.position - 2.0f * through;
+		}
+	}
+}
+
 // One step of the cpu_particles_2d model: forces change the velocity, the damping and the speed
 // ceiling correct it, the velocity moves the particle, then the orbital and radial velocities move
 // it around and away from origin
@@ -370,6 +466,9 @@ SP_GLSL_INLINE void particleStep(SP_GLSL_INOUT(ParticleData) particle,
 		}
 	}
 
+	// The step's path starts where the position last stood; the deflectors read it past every
+	// move this step made, the radial one the last
+	vec2 previous = particle.position;
 	particle.position = particle.position + particle.velocity * dt;
 
 	if (particle.orbitalVelocity != 0.0f) {
@@ -383,6 +482,8 @@ SP_GLSL_INLINE void particleStep(SP_GLSL_INOUT(ParticleData) particle,
 				+ particleNormalize(particle.position - particle.origin)
 						* (particle.radialVelocity * dt);
 	}
+
+	particleDeflectors(particle, emitter, previous);
 
 	particle.angle = particle.angle + particle.angularVelocity * dt;
 }

@@ -249,6 +249,14 @@ public:
 	void setTrailWidth(float);
 	float getTrailWidth() const;
 
+	// The deflector seats, up to four: each seats a figure - a circle of its center and radius,
+	// a segment of its two ends - and the answer a particle that meets the figure earns, a
+	// bounce off the figure or the death the onDeath event sees. An entry whose shape or
+	// response word the engine does not know seats nothing - dropped from the list, not
+	// refused - and the key encode() writes only when a seat is taken
+	void setDeflectors(SpanView<ParticleDeflector>);
+	SpanView<const ParticleDeflector> getDeflectors() const;
+
 	void setCount(uint32_t);
 	uint32_t getCount() const;
 

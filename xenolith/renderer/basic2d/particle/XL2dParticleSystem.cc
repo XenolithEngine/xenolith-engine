@@ -463,6 +463,53 @@ void ParticleSystem::apply(const Value &value) {
 		if (value.isBasicType("trailWidth")) {
 			setTrailWidth(float(value.getDouble("trailWidth")));
 		}
+
+		if (value.isArray("deflectors")) {
+			// The seats take one entry each, in list order: an entry whose shape or response word
+			// the engine does not know seats nothing - dropped, not refused - and the fourth seat
+			// is the last, a fifth entry is the studio door's own refusal before it ever reaches
+			// this loop
+			ParticleDeflector seated[4] = {};
+			uint32_t count = 0;
+			for (auto &it : value.getArray("deflectors")) {
+				if (!it.isDictionary()) {
+					continue;
+				}
+				const auto type = it.getString("type");
+				const auto response = it.getString("response");
+				uint32_t shape = 0;
+				if (type == StringView("circle")) {
+					shape = XL_PARTICLE_DEFLECTOR_CIRCLE;
+				} else if (type == StringView("segment")) {
+					shape = XL_PARTICLE_DEFLECTOR_SEGMENT;
+				} else {
+					continue;
+				}
+				uint32_t answer = 0;
+				if (response == StringView("bounce")) {
+					answer = XL_PARTICLE_DEFLECTOR_BOUNCE;
+				} else if (response == StringView("kill")) {
+					answer = XL_PARTICLE_DEFLECTOR_KILL;
+				} else {
+					continue;
+				}
+				if (count == 4) {
+					break;
+				}
+				ParticleDeflector seat =
+						ParticleDeflector{Vec2::ZERO, Vec2::ZERO, 0.0f, shape, answer};
+				if (shape == XL_PARTICLE_DEFLECTOR_CIRCLE) {
+					seat.a = ParticleSystem_readVec2(it.getValue("center"), Vec2::ZERO);
+					seat.radius = float(it.getDouble("radius", 0.0));
+				} else {
+					seat.a = ParticleSystem_readVec2(it.getValue("from"), Vec2::ZERO);
+					seat.b = ParticleSystem_readVec2(it.getValue("to"), Vec2::ZERO);
+				}
+				seated[count] = seat;
+				++count;
+			}
+			setDeflectors(SpanView<ParticleDeflector>(seated, count));
+		}
 	}
 
 Value ParticleSystem::encode() const {
@@ -610,6 +657,30 @@ Value ParticleSystem::encode() const {
 	if (_data->data.trailWidth != 0.0f) {
 		ret.setDouble(_data->data.trailWidth, "trailWidth");
 	}
+	// The taken seats alone, each as the full entry the apply reads; no seat taken is the fresh
+	// default, and the key stays out
+	Value deflectors(Value::Type::ARRAY);
+	for (const auto &seat : _data->data.deflectors) {
+		if (seat.shape == 0u) {
+			continue;
+		}
+		Value entry(Value::Type::DICTIONARY);
+		if (seat.shape == XL_PARTICLE_DEFLECTOR_CIRCLE) {
+			entry.setString("circle", "type");
+			entry.setValue(ParticleSystem_writeVec2(seat.a), "center");
+			entry.setDouble(seat.radius, "radius");
+		} else {
+			entry.setString("segment", "type");
+			entry.setValue(ParticleSystem_writeVec2(seat.a), "from");
+			entry.setValue(ParticleSystem_writeVec2(seat.b), "to");
+		}
+		entry.setString(seat.response == XL_PARTICLE_DEFLECTOR_BOUNCE ? "bounce" : "kill",
+				"response");
+		deflectors.addValue(sp::move(entry));
+	}
+	if (!deflectors.empty()) {
+		ret.setValue(sp::move(deflectors), "deflectors");
+	}
 	return ret;
 }
 
@@ -690,6 +761,23 @@ void ParticleSystem::setTrailWidth(float width) {
 }
 
 float ParticleSystem::getTrailWidth() const { return _data->data.trailWidth; }
+
+void ParticleSystem::setDeflectors(SpanView<ParticleDeflector> deflectors) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the step follows. The seats past
+	// the given list are cleared, so a shorter list unseats what a longer one had
+	auto &data = mutate().data;
+	size_t i = 0;
+	for (; i < deflectors.size() && i < 4; ++i) {
+		data.deflectors[i] = deflectors[i];
+	}
+	for (; i < 4; ++i) {
+		data.deflectors[i] = ParticleDeflector{Vec2::ZERO, Vec2::ZERO, 0.0f, 0u, 0u};
+	}
+}
+
+SpanView<const ParticleDeflector> ParticleSystem::getDeflectors() const {
+	return SpanView<const ParticleDeflector>(_data->data.deflectors, 4);
+}
 
 void ParticleSystem::setCount(uint32_t c) { mutate().data.count = c; }
 

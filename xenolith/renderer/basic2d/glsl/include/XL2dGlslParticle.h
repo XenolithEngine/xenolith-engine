@@ -52,6 +52,14 @@ using namespace sprt::glsl;
 // same count
 #define XL_PARTICLE_TRAIL_SEATS 8
 
+// ParticleDeflector::shape, the figure a seat carries; zero is the unused seat
+#define XL_PARTICLE_DEFLECTOR_CIRCLE 1
+#define XL_PARTICLE_DEFLECTOR_SEGMENT 2
+
+// ParticleDeflector::response, the answer a particle that meets the figure earns
+#define XL_PARTICLE_DEFLECTOR_BOUNCE 1
+#define XL_PARTICLE_DEFLECTOR_KILL 2
+
 struct ParticleConstantData {
 	uvec2 frameDataPointer;
 	uvec2 outVerticesPointer;
@@ -149,6 +157,17 @@ struct ParticleAttractor {
 	vec2 point;
 	float strength;
 	float radius;
+};
+
+// One deflector seat: the shape names the figure - a circle of `a` as its center and `radius`, a
+// segment of `a` to `b` - and the response the answer a particle that meets the figure earns, a
+// bounce off the figure or the death the onDeath event sees. A shape of zero is an unused seat
+struct ParticleDeflector {
+	vec2 a; // the circle's center or the segment's first end
+	vec2 b; // the segment's second end, unread by the circle
+	float radius; // the circle's radius, unread by the segment
+	uint shape; // a XL_PARTICLE_DEFLECTOR_* shape, 0 - unused
+	uint response; // a XL_PARTICLE_DEFLECTOR_* response
 };
 
 // Header of a curve in the emitter's extra data buffer, followed by count * components floats
@@ -250,7 +269,11 @@ struct ParticleEmitterData {
 	// width of the trail strip the particle's seat history draws, 0 - no trail
 	float trailWidth;
 
-	// [332]
+	// [332-459]
+	// the deflector seats, in the order the file's list seats them; a seat of shape 0 is unused
+	ParticleDeflector deflectors[4];
+
+	// [460]
 };
 
 // State of one particle. Parameters are chosen at birth; positions are in the node's space with
