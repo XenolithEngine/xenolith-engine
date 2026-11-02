@@ -157,6 +157,12 @@ void ParticleEmitter::setBlendMode(ParticleBlendMode mode) {
 	markMaterialDirty();
 }
 
+void ParticleEmitter::setBlendOverLife(bool value) {
+	// Draw state the pass has no pipeline for yet, so the material stands: no dirty mark, the
+	// flag waits for the shader pair that reads it
+	_blendOverLife = value;
+}
+
 MaterialInfo ParticleEmitter::getMaterialInfo() const {
 	auto info = Sprite::getMaterialInfo();
 	if (_quadMask != ParticleQuadMask::None) {

@@ -84,6 +84,18 @@ public:
 	void setBlendMode(ParticleBlendMode mode);
 	ParticleBlendMode getBlendMode() const { return _blendMode; }
 
+	// The mode's journey over a life, Trapcode Particular 2026's reception: a flagged particle
+	// starts at the sprite pair and ends additive, the blend fraction the fraction of its
+	// lifetime it has lived - alpha at birth, add at the last step, the one pair there is. The
+	// flag is draw state beside the mode and the simulation never reads it, but the pass cannot
+	// express it yet: the emitter draws through the shared sprite vertex stage and, for a
+	// texture, the shared material fragment, and a per-particle blend weight has no seat in
+	// either without forking them - the wall the quad mask met, which that stage answered with
+	// the pass's own fragment. The state rides the emitter unread until such a shader pair
+	// gives it a seat; setting it moves no material.
+	void setBlendOverLife(bool);
+	bool isBlendOverLife() const { return _blendOverLife; }
+
 	// Particles carry their own alpha: without an explicit level the emitter is transparent
 	virtual RenderingLevel getRealRenderingLevel() const override;
 
@@ -116,6 +128,7 @@ protected:
 	float _maskThickness = 0.0f;
 	float _maskSoftness = 0.0f;
 	ParticleBlendMode _blendMode = ParticleBlendMode::Alpha;
+	bool _blendOverLife = false;
 
 	Action *_actionRenderLock = nullptr;
 	bool _feedbackEnabled = false;
