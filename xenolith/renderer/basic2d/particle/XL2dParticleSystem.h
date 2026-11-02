@@ -267,6 +267,18 @@ public:
 	void setInheritVelocity(float);
 	float getInheritVelocity() const;
 
+	// Slide of the sampled UV window over the texture per second of simulation time, in UV
+	// units, signed per axis; the pair's zero is the no-slide default, and the key encode()
+	// writes only when the value is not it
+	void setUvScroll(Vec2);
+	Vec2 getUvScroll() const;
+
+	// Probability of the U mirror a newborn particle draws from its own generator, 0 - never;
+	// a negative value clamps to that default, and the key encode() writes only when the value
+	// is not it
+	void setUvFlip(float);
+	float getUvFlip() const;
+
 	void setCount(uint32_t);
 	uint32_t getCount() const;
 

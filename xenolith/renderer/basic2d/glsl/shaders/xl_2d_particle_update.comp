@@ -143,6 +143,25 @@ void main() {
 	vec2 uv1;
 	particleFrameCell(frame, particleAnimFrame(particle, emitter, frame.hFrames * frame.vFrames), uv0, uv1);
 
+	// Effekseer's scroll - the rendererCommon page words it "Move the UV range at a constant
+	// speed." (effekseer.github.io, Help_Tool, rendererCommon) - slides the sampled window over
+	// the texture: the emitter's speed in UV per second times the simulation time the frame
+	// stands at, particleSimTime above, never a wall clock. The pair's zero guards the add: a
+	// scroll-less emitter writes the window the cell built, byte for byte
+	if (emitter.uvScroll.x != 0.0f || emitter.uvScroll.y != 0.0f) {
+		vec2 shift = emitter.uvScroll * particleSimTime(frame);
+		uv0 += shift;
+		uv1 += shift;
+	}
+
+	// The mirror the birth drew, Effekseer's own flip probability, turns the window around its
+	// U: the left and the right corners trade their u, the V the scroll left alone
+	if ((particle.drawFlags & XL_PARTICLE_DRAW_FLAG_FLIP_U) != 0u) {
+		float u = uv0.x;
+		uv0.x = uv1.x;
+		uv1.x = u;
+	}
+
 	// The corners take the texture as a Sprite does: the top of the quad samples the top of the image
 	writeVertex(vertexBuffer, vertexOffset + 0, bl, vec2(uv0.x, uv1.y), color, frame.materialIndex);
 	writeVertex(vertexBuffer, vertexOffset + 1, tl, vec2(uv0.x, uv0.y), color, frame.materialIndex);

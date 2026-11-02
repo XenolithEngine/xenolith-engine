@@ -514,6 +514,14 @@ void ParticleSystem::apply(const Value &value) {
 		if (value.isBasicType("inheritVelocity")) {
 			setInheritVelocity(float(value.getDouble("inheritVelocity")));
 		}
+
+		if (value.isArray("uvScroll")) {
+			setUvScroll(ParticleSystem_readVec2(value.getValue("uvScroll"), getUvScroll()));
+		}
+
+		if (value.isBasicType("uvFlip")) {
+			setUvFlip(float(value.getDouble("uvFlip")));
+		}
 	}
 
 Value ParticleSystem::encode() const {
@@ -688,6 +696,12 @@ Value ParticleSystem::encode() const {
 	if (_data->data.inheritVelocity != 0.0f) {
 		ret.setDouble(_data->data.inheritVelocity, "inheritVelocity");
 	}
+	if (_data->data.uvScroll.x != 0.0f || _data->data.uvScroll.y != 0.0f) {
+		ret.setValue(ParticleSystem_writeVec2(_data->data.uvScroll), "uvScroll");
+	}
+	if (_data->data.uvFlip != 0.0f) {
+		ret.setDouble(_data->data.uvFlip, "uvFlip");
+	}
 	return ret;
 }
 
@@ -793,6 +807,22 @@ void ParticleSystem::setInheritVelocity(float ratio) {
 }
 
 float ParticleSystem::getInheritVelocity() const { return _data->data.inheritVelocity; }
+
+void ParticleSystem::setUvScroll(Vec2 scroll) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the pass follows; the speed is
+	// signed per axis - the slide's direction is the sign's own - and no component is clamped
+	mutate().data.uvScroll = scroll;
+}
+
+Vec2 ParticleSystem::getUvScroll() const { return _data->data.uvScroll; }
+
+void ParticleSystem::setUvFlip(float flip) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the birth follows; a negative
+	// probability is the never-flip default
+	mutate().data.uvFlip = sprt::max(flip, 0.0f);
+}
+
+float ParticleSystem::getUvFlip() const { return _data->data.uvFlip; }
 
 void ParticleSystem::setCount(uint32_t c) { mutate().data.count = c; }
 

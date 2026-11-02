@@ -60,6 +60,10 @@ using namespace sprt::glsl;
 #define XL_PARTICLE_DEFLECTOR_BOUNCE 1
 #define XL_PARTICLE_DEFLECTOR_KILL 2
 
+// ParticleData::drawFlags, the draw words a birth chose; the bits are the draw's own, the step
+// reads none of them
+#define XL_PARTICLE_DRAW_FLAG_FLIP_U 1
+
 struct ParticleConstantData {
 	uvec2 frameDataPointer;
 	uvec2 outVerticesPointer;
@@ -288,7 +292,19 @@ struct ParticleEmitterData {
 	// ratio of the node's velocity a newborn inherits, 0 - no inheritance
 	float inheritVelocity;
 
-	// [464]
+	// [464-471]
+	// slide of the sampled UV window over the texture per second of simulation time, signed per
+	// axis, (0, 0) - no slide
+	vec2 uvScroll;
+	// probability of the U mirror a birth draws from the particle's own generator, 0 - never
+	float uvFlip;
+
+	// [476-479]
+	// explicit padding: without it the member-wise size ends at 476 while the C++ side's sizeof
+	// rounds to the vec4 alignment's 480, and the emitter words part ways between the two texts
+	uint padding476;
+
+	// [480]
 };
 
 // State of one particle. Parameters are chosen at birth; positions are in the node's space with
@@ -326,7 +342,8 @@ struct ParticleData {
 	float tangentialAcceleration; // perpendicular to the direction from origin, dp per second^2
 	float birthScale; // the scale chosen at birth; the scale curve multiplies it
 	float damping; // the rate the speed loses per second, chosen at birth; 0 - no loss
-	uint padding108;
+	// the draw words the birth drew, XL_PARTICLE_DRAW_FLAG_* bits; the step reads none of them
+	uint drawFlags;
 
 	// [112-175]
 	// the trail's seats, the newest first: seat 0 is the position of the step before the current

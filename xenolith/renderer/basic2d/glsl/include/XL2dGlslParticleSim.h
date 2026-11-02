@@ -182,6 +182,18 @@ SP_GLSL_INLINE float particleLifeFraction(SP_GLSL_IN(ParticleData) particle) {
 	return 1.0f - float(particle.currentLifetime) / float(particle.fullLifetime);
 }
 
+// The simulation time the frame stands at once its steps are done: every step t counts from the
+// start of cycle frame.cycle - the absolute step is frame.cycle * framesInGen + t, as
+// particleUpdate numbers it - and each ages the simulation by dt, so a run that completed
+// `done` steps stands at done * dt. genframe still names the frame's first step while the
+// update reads it (the caller advances past the call), so done is every step before the frame
+// plus nframes; a frame that simulates nothing leaves the last simulated step standing. No
+// wall clock is read: the same frame words answer the same time on every run
+SP_GLSL_INLINE float particleSimTime(SP_GLSL_IN(ParticleFrameData) frame) {
+	uint done = frame.cycle * frame.framesInGen + frame.genframe + frame.nframes;
+	return float(done) * frame.dt;
+}
+
 // Every parameter is chosen per particle. Without XL_PARTICLE_FLAG_LOCAL_COORDS the particle is
 // moved into the scene by the node's transform; the linear acceleration stays in scene axes.
 SP_GLSL_INLINE void particleEmit(SP_GLSL_INOUT(ParticleData) particle,
@@ -220,6 +232,17 @@ SP_GLSL_INLINE void particleEmit(SP_GLSL_INOUT(ParticleData) particle,
 	particle.damping = 0.0f;
 	if (emitter.damping.init != 0.0f || emitter.damping.rnd != 0.0f) {
 		particle.damping = particleParam(emitter.damping, particle.rng);
+	}
+
+	// Effekseer's flip, the rendererCommon page's own words - "Specifies the probability of
+	// flipping the UV horizontally for each particle." (effekseer.github.io, Help_Tool,
+	// rendererCommon) - is drawn per particle at birth, past the damping pair, and lands as a
+	// draw word the step never reads. The rng order is part of the hash contract, so the
+	// probability's zero guards the draw: an emitter without the key spends no rng and keeps
+	// the births - and the hash - it always had
+	particle.drawFlags = 0u;
+	if (emitter.uvFlip != 0.0f && pcg16_random_float_r(particle.rng) < emitter.uvFlip) {
+		particle.drawFlags |= XL_PARTICLE_DRAW_FLAG_FLIP_U;
 	}
 
 	if ((emitter.flags & XL_PARTICLE_FLAG_LOCAL_COORDS) == 0u) {
