@@ -300,9 +300,8 @@ struct ParticleEmitterData {
 	float uvFlip;
 
 	// [476-479]
-	// explicit padding: without it the member-wise size ends at 476 while the C++ side's sizeof
-	// rounds to the vec4 alignment's 480, and the emitter words part ways between the two texts
-	uint padding476;
+	// seconds the birth schedule waits before the emitter's own timeline begins, 0 - no wait
+	float start;
 
 	// [480]
 };

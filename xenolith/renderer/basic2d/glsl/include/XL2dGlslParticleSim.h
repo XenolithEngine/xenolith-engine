@@ -668,8 +668,6 @@ SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
 		SP_GLSL_INOUT(ParticleUpdateCounters) counters) {
 	for (uint k = 0u; k < frame.nframes; ++k) {
 		uint t = frame.genframe + k;
-		uint cycle = frame.cycle + t / frame.framesInGen;
-		uint cycleStep = t % frame.framesInGen;
 
 		// The simulation time the turbulence reads. t counts the steps of this frame from the
 		// start of cycle frame.cycle, and a cycle holds framesInGen steps, so the absolute step
@@ -679,12 +677,34 @@ SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
 		uint step = frame.cycle * frame.framesInGen + t;
 		float simTime = float(step) * frame.dt;
 
+		// The start delay, Effekseer's GenerationTimeOffset - the frames before the node's first
+		// birth at the corpus clock of 60 Hz, seconds in this document. The emitter's own
+		// timeline begins at start: the birth schedule - the cycle number that seeds the phase
+		// and the step inside it - reads the steps counted past the delay, the first of them the
+		// first step whose stood-at time is not before start, the ceil of the same division the
+		// lifetime's step count makes. A step before it births nothing - no particle is alive
+		// yet, so nothing ages either - and oneShot reads the cycles of the delayed timeline,
+		// its one cycle beginning with it. The delay's zero guards the shift: an emitter without
+		// the key reads the schedule - and answers the hash - it always had
+		uint ownStep = step;
+		bool beforeStart = false;
+		if (emitter.start > 0.0f) {
+			uint startStep = uint(ceil(emitter.start / frame.dt));
+			if (step < startStep) {
+				beforeStart = true;
+			} else {
+				ownStep = step - startStep;
+			}
+		}
+		uint cycle = ownStep / frame.framesInGen;
+		uint cycleStep = ownStep % frame.framesInGen;
+
 		uint emitStep = particleEmitFrame(index, emitter.count, cycle, frame.seed,
 				emitter.randomness, emitter.explosiveness, frame.framesInGen);
 
 		// oneShot is Godot's one_shot - "If true, only one emission cycle occurs": past cycle 0
 		// the flagged emitter gives no birth, and the slot ages a living particle instead
-		if (emitStep == cycleStep
+		if (!beforeStart && emitStep == cycleStep
 				&& (((emitter.flags & XL_PARTICLE_FLAG_ONE_SHOT) == 0u) || cycle == 0u)) {
 			vec2 point = vec2(0.0f, 0.0f);
 			if (emitter.emissionType == XL_PARTICLE_EMISSION_POINTS) {

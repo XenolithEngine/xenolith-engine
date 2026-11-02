@@ -279,6 +279,12 @@ public:
 	void setUvFlip(float);
 	float getUvFlip() const;
 
+	// Seconds the birth schedule waits before the emitter's own timeline begins, 0 - no wait;
+	// a negative value clamps to that default, and the key encode() writes only when the value
+	// is not it
+	void setStart(float);
+	float getStart() const;
+
 	void setCount(uint32_t);
 	uint32_t getCount() const;
 

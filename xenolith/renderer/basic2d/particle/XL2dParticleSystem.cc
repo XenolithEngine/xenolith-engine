@@ -522,6 +522,10 @@ void ParticleSystem::apply(const Value &value) {
 		if (value.isBasicType("uvFlip")) {
 			setUvFlip(float(value.getDouble("uvFlip")));
 		}
+
+		if (value.isBasicType("start")) {
+			setStart(float(value.getDouble("start")));
+		}
 	}
 
 Value ParticleSystem::encode() const {
@@ -702,6 +706,9 @@ Value ParticleSystem::encode() const {
 	if (_data->data.uvFlip != 0.0f) {
 		ret.setDouble(_data->data.uvFlip, "uvFlip");
 	}
+	if (_data->data.start != 0.0f) {
+		ret.setDouble(_data->data.start, "start");
+	}
 	return ret;
 }
 
@@ -823,6 +830,14 @@ void ParticleSystem::setUvFlip(float flip) {
 }
 
 float ParticleSystem::getUvFlip() const { return _data->data.uvFlip; }
+
+void ParticleSystem::setStart(float seconds) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the birth schedule follows; a
+	// negative delay is the no-delay default
+	mutate().data.start = sprt::max(seconds, 0.0f);
+}
+
+float ParticleSystem::getStart() const { return _data->data.start; }
 
 void ParticleSystem::setCount(uint32_t c) { mutate().data.count = c; }
 
