@@ -30,6 +30,10 @@ headless screenshot:
     run) draws as a mesh, with one warning; its layered texture is none the mesh pipeline can
     sample, so it is white, with a warning of its own;
   * the 2d panel composites over the 3d picture;
+  * a translucent pipeline (BASIC3D_GLASS=1, a run of its own) draws in the second subpass, over
+    the opaque draws: a tilted glass blends its colour over the ground and the green box behind
+    it, more where the depth it reads from the opaque draws is further behind it; outside it the
+    picture is as without it; the pass counts it a translucent draw;
   * no validation error, no render pass ending early, no basic3d complaint in the log.
 
     tests/window/basic3d-check.py [path-to-basic3d]
@@ -61,6 +65,9 @@ UNKNOWN = (395, 5, 565, 85)  # the box of an unknown pipeline, in the second run
 TEXTURED = (600, 15, 830, 170)  # the box whose second colour is the material's second texture
 LAYERED = (740, 450, 950, 600)  # the box whose second colour is a layer of a layered texture
 POOL = (370, 500, 410, 530)  # the ground under the point light
+GLASS_COLOUR = (25.5, 76.5, 229.5)  # the glass's params[1], as 8 bits
+GLASS_THICK = (160, 370, 200, 390)  # the glass where the ground is two units behind it
+GLASS_THIN = (250, 480, 290, 500)  # where it is under a unit
 
 checks = 0
 failures = 0
@@ -259,6 +266,37 @@ def main():
     check("past its radius the ground is as without it", abs(far[0] - far[1]) < 1.0,
             f"{far[0]:.1f} with it, {far[1]:.1f} without")
 
+    print("--- a translucent pipeline")
+    check("the pass has no translucent draw without the glass", packed["translucentDraws"] == 0,
+            str(packed))
+    glass_path = f"/tmp/xl-basic3d-check-glass-{os.getpid()}.log"
+    glass, glassText, glassStats = run(binary, {"BASIC3D_STILL": "1", "BASIC3D_GLASS": "1"},
+            glass_path, lambda session: session.call("invoke", name="basic3d.stats", args={}))
+    check("and one with it", glassStats["translucentDraws"] == 1, str(glassStats))
+
+    def alpha(box):
+        # how far each pixel went from the scene toward the glass's colour, the mean over the box
+        ret = []
+        for x in range(box[0], box[2]):
+            for y in range(box[1], box[3]):
+                on, off = glass.getpixel((x, y)), image.getpixel((x, y))
+                d = [GLASS_COLOUR[i] - off[i] for i in range(3)]
+                ret.append(sum((on[i] - off[i]) * d[i] for i in range(3)) / sum(v * v for v in d))
+        return statistics.mean(ret)
+
+    thick, thin = alpha(GLASS_THICK), alpha(GLASS_THIN)
+    check("it blends over the opaque draws: neither its colour nor theirs",
+            0.15 < thin and thick < 0.97, f"{thin:.2f} and {thick:.2f} of the way to its colour")
+    check("more where the depth it reads is further behind it", thick - thin > 0.2,
+            f"{thick:.2f} vs {thin:.2f}")
+    worst = max(max(abs(a - b) for a, b in zip(image.getpixel((x, y)), glass.getpixel((x, y))))
+            for box in [TORUS, STRIPES, TEXTURED, LAYERED] + GROUND
+            for x in range(box[0], box[2], 2) for y in range(box[1], box[3], 2))
+    check("outside it the picture is as without it", worst <= 1, f"{worst} levels at most")
+    check("no Vulkan validation error with it", "Validation Error" not in glassText, glass_path)
+    check("its render pass ends in its last subpass", "ended in subpass" not in glassText,
+            glass_path)
+
     print("--- a pipeline the scene does not have")
     white = sum(1 for p in pixels(nomips, UNKNOWN) if min(p) > 150)
     check("its box draws as a mesh", white > 3000, f"{white} pixels")
@@ -275,7 +313,7 @@ def main():
 
     print(f"\n{checks} checks, {failures} failures")
     if failures == 0:
-        for p in (log_path, nomips_path, dark_path, flat_path):
+        for p in (log_path, nomips_path, dark_path, flat_path, glass_path):
             try:
                 os.unlink(p)
             except OSError:

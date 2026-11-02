@@ -74,7 +74,7 @@ them. A 2d node meant to be under a 3d view cannot be.
 
 | What | Name | What it is |
 |---|---|---|
-| depth | `Depth3d` | an image attachment, D32F where the device has it, cleared on load |
+| depth | `Depth3d` | an image attachment of a depth-only format, D32F where the device has it, cleared on load |
 | input | `Scene3dInput` | a generic attachment defined as the queue's input; its handle packs the frame (below) |
 | pass | `Basic3dPass` | a graphics pass at `RenderOrdering(10)`, before basic2d's `MaterialSwapchainPass` at `RenderOrderingHighest` |
 
@@ -227,7 +227,8 @@ an app pipeline (E9): it reads the same records the mesh pipeline reads.
 
 ### Pipelines
 
-One subpass, one color attachment (`Output`), one depth attachment (`Depth3d`), one descriptor
+One color attachment (`Output`), one depth attachment (`Depth3d`), and one or two subpasses (below,
+"Translucent pipelines"). The opaque subpass has one descriptor
 set of two arrays of combined image samplers: binding 0, `MaxTextures` (64) `sampler2D`s, and
 binding 1, `MaxTextureArrays` (16) `sampler2DArray`s for layered textures — images with array
 layers, such as a terrain's surface types, one layer each (E13). A shader cannot sample a layered
@@ -237,10 +238,35 @@ gave a material.
 
 The pipelines of the subpass are, in order: `Basic3dMesh` (the stock mesh shaders) and then the
 app's, from the `Pipeline3dInfo` list `Scene3d::init` takes. A material names one by its place:
-`MeshPipeline` (0), or an app pipeline's index plus one. All of them use the same state: depth
-test Less with writes, back faces culled, counter-clockwise front faces, no blending. A pipeline
+`MeshPipeline` (0), or an app pipeline's index plus one. All the opaque ones use the same state:
+depth test Less with writes, back faces culled, counter-clockwise front faces, no blending. A pipeline
 with no name, a name taken or no shaders keeps its index with nothing under it, and its materials
 fall back to the mesh pipeline with one warning — so the indexes the app gave never shift.
+
+### Translucent pipelines
+
+A `Pipeline3dInfo` with `translucent` set draws in a **second subpass**, after the opaque draws of
+every view (E15). Its state: source-over blending by its alpha (`SrcAlpha, OneMinusSrcAlpha`; the
+alpha `One, OneMinusSrcAlpha`, so the output stays opaque where it was), depth test Less without
+writes, back faces culled. It reads the opaque draws' depth as an **input attachment** at set 0,
+binding 2 (`subpassInput`, depth in `r`), for what lies behind it — the thickness of water, foam
+where it meets the ground.
+
+* The second subpass uses `Depth3d` twice: as its depth attachment, read only, and as an input.
+  Vulkan wants one layout for an attachment within a subpass, so both are given
+  `DepthStencilReadOnlyOptimal` explicitly; left to themselves they would resolve to a writable
+  depth layout and a read-only input one.
+* The translucent pipelines have a layout of their own, `Basic3dTranslucentLayout`: the two
+  texture arrays at bindings 0 and 1, as before, and the depth at binding 2. The opaque subpass
+  keeps `Basic3dLayout`, so it never binds a descriptor of the depth it is writing.
+* A dependency from the first subpass to the second, by region, orders the color and depth writes
+  before the depth tests, the input reads and the blending.
+* `Depth3d` is of a depth-only format (D32F, X8_D24, D16, in that order): an image view of a
+  format with stencil has both aspects, which an input attachment descriptor can't take.
+* With no translucent pipeline the pass is one subpass, as before.
+
+The draws of a translucent pipeline are recorded in the order the view gives them, with no
+sorting: if they overlap on screen, the app orders them far to near.
 
 ### Packing a frame (worker)
 
@@ -265,7 +291,10 @@ with the frame's memory pool:
    Each has at least one record, so its address exists even when every mesh is packed or there
    are no lights.
 6. It stores `Pass3dStats` (`getLastPassStats`): the vertex and index bytes copied into the frame,
-   the draws from the frame and from packs, the bytes of the records.
+   the draws from the frame and from packs, the bytes of the records, the translucent draws.
+
+A draw's record knows whether its pipeline is translucent, from the pass's list of pipelines; one
+drawn by the mesh pipeline instead is opaque.
 
 `Pass3dHandle::prepare` then makes image views for the slots and hands them, an empty image for
 the unused ones, and the pass's sampler to the descriptor writes. The sampler is trilinear,
@@ -275,7 +304,8 @@ alone, without anisotropy, for the checks.
 
 ### Recording
 
-`Pass3d_record`, per frame:
+`Pass3d_record`, per frame and per subpass — the opaque draws in the first, the translucent ones in
+the second; a view with none of a subpass's draws is skipped in it:
 
 * binds the frame's index buffer and puts the addresses of the frame's draws, vertexes and lights
   into the push constants;
@@ -367,8 +397,9 @@ These are what remains open of the `how-to-support` item:
 * **All 3d under all 2d**, and one depth buffer for all views.
 * **No instancing, no objects, no shadow maps.** A draw is one mesh with one transform. Shadows of
   terrain are an app pipeline's business (gamefield traces them through a height map); shadow maps
-  for objects, instanced objects, translucency and a second subpass reading depth (water) are
-  future work.
+  for objects and instanced objects are future work.
+* **Translucent draws are not sorted**, and see the opaque depth alone: one translucent draw does
+  not hide or read another.
 * **64 textures and 16 layered ones a frame**, 64 lights a view.
 
 ## Engine edits made for it
@@ -388,7 +419,8 @@ These are what remains open of the `how-to-support` item:
 | E11 | mesh packs: meshes drawn from GPU buffers that outlive the frame; device-address memory for static resources | `4275a2fd`, `982675dc`, example `ff75cf52` |
 | E12 | shaders are rebuilt when a header they include changes (glslang `--depfile`) | `1db1019d` |
 | E13 | layered textures: a second descriptor array of `sampler2DArray`s, for textures with array layers | `bca6a513` |
-| E14 | a third texture for a material | "basic3d: a third texture for a material" |
+| E14 | a third texture for a material | `782db0ce` |
+| E15 | translucent pipelines: a second subpass, the opaque depth as an input attachment; depth-only formats | "basic3d: translucent pipelines - a second subpass, the opaque depth as an input attachment" |
 The module itself: `b41e4e9f`, its checks `224b434d`, the example `143fc7eb`. The integration was
 tried first in `tests/pass3d` (`4b018a1c`).
 
@@ -399,7 +431,8 @@ tried first in `tests/pass3d` (`4b018a1c`).
 * `tests/window/basic3d-check.py` drives `examples/window/basic3d` headless: the mesh pipeline,
   the app pipeline and its params, a point light, the pack (no vertex copied into the frame, the
   same picture with `BASIC3D_NOPACK=1`, the pack leaving the cache when its draws go, the last
-  references of the frames in flight released on the app thread), mips, the
+  references of the frames in flight released on the app thread), mips, a translucent pipeline
+  (a tilted glass blending over the opaque draws, more where the depth it reads is further), the
   2d panel over the 3d world, no validation errors.
 * `tests/window/pass3d-check.py` checks the engine features under the module with a pass made by
   hand: a pass under basic2d, culling, depth bias and clamp, two subpasses.

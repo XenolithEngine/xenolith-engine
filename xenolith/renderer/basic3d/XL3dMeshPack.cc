@@ -139,10 +139,11 @@ static sprt::atomic<uint64_t> s_frameIndexBytes = 0;
 static sprt::atomic<uint32_t> s_frameDraws = 0;
 static sprt::atomic<uint32_t> s_packDraws = 0;
 static sprt::atomic<uint64_t> s_recordBytes = 0;
+static sprt::atomic<uint32_t> s_translucentDraws = 0;
 
 Pass3dStats getLastPassStats() {
 	return Pass3dStats{s_frameVertexBytes.load(), s_frameIndexBytes.load(), s_frameDraws.load(),
-		s_packDraws.load(), s_recordBytes.load()};
+		s_packDraws.load(), s_recordBytes.load(), s_translucentDraws.load()};
 }
 
 void setLastPassStats(const Pass3dStats &stats) {
@@ -151,6 +152,7 @@ void setLastPassStats(const Pass3dStats &stats) {
 	s_frameDraws.store(stats.frameDraws);
 	s_packDraws.store(stats.packDraws);
 	s_recordBytes.store(stats.recordBytes);
+	s_translucentDraws.store(stats.translucentDraws);
 }
 
 uint32_t getPacksReleasedOffThread() { return s_packsReleasedOffThread.load(); }

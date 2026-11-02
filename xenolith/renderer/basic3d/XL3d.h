@@ -44,11 +44,17 @@ static constexpr uint32_t MeshPipeline = 0;
 the pass's interface - the push constants Constants3d, the buffers they point to, the texture
 array at set 0, binding 0 and the layered one at binding 1 (see XL3dGlslData.h). Depth test Less with writes, back faces culled,
 counter-clockwise front faces, as the mesh pipeline. A material picks it by its place in the list
-plus one. The SPIR-V is referenced, not copied: it lives as long as the app. */
+plus one. The SPIR-V is referenced, not copied: it lives as long as the app.
+
+A translucent one draws in a second subpass, after the opaque draws of every view: it blends
+over what they drew by its alpha (source over), tests depth Less without writing it, and reads
+the opaque draws' depth at set 0, binding 2, as an input attachment (`subpassInput`, depth in r).
+Its draws go in the order the view gives them: far to near, if they overlap on screen. */
 struct SP_PUBLIC Pipeline3dInfo {
 	String name;
 	SpanView<uint32_t> vert;
 	SpanView<uint32_t> frag;
+	bool translucent = false;
 };
 
 // What a draw looks like: a colour, optionally times a texture tiled `uvScale` times per unit of

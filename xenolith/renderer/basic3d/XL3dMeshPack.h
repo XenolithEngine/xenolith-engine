@@ -75,13 +75,15 @@ protected:
 
 // What the last frame of the 3d pass drew, for checks and overlays: the vertex and index bytes
 // it copied into the frame, its draws from the frame's buffers and from packs, the bytes of its
-// draw records. Written by the pass's worker, read from any thread
+// draw records, and how many of the draws were translucent (either kind). Written by the pass's
+// worker, read from any thread
 struct SP_PUBLIC Pass3dStats {
 	uint64_t frameVertexBytes = 0;
 	uint64_t frameIndexBytes = 0;
 	uint32_t frameDraws = 0;
 	uint32_t packDraws = 0;
 	uint64_t recordBytes = 0;
+	uint32_t translucentDraws = 0;
 };
 
 SP_PUBLIC Pass3dStats getLastPassStats();

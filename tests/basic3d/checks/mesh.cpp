@@ -119,6 +119,18 @@ void performMeshTests() {
 					&& material.params[2] == Vec4::ZERO && material.params[3] == Vec4::ZERO,
 			"mesh: a material draws with the mesh pipeline, no flags, no second or third texture "
 			"and no params by default");
+
+	Pipeline3dInfo pipeline;
+	check(!pipeline.translucent, "mesh: an app pipeline is opaque by default");
+
+	// the pass's stats round trip, the count of translucent draws with them
+	auto last = getLastPassStats();
+	setLastPassStats(Pass3dStats{1, 2, 3, 4, 5, 6});
+	auto stats = getLastPassStats();
+	setLastPassStats(last);
+	check(stats.frameVertexBytes == 1 && stats.frameIndexBytes == 2 && stats.frameDraws == 3
+					&& stats.packDraws == 4 && stats.recordBytes == 5 && stats.translucentDraws == 6,
+			"mesh: the pass's stats keep what it set, its translucent draws too");
 }
 
 } // namespace stappler::xenolith::basic3d

@@ -32,6 +32,9 @@ public:
 		// a mesh of a loaded pack draws from the pack's buffers, null for the frame's
 		Rc<core::BufferObject> vertexes;
 		Rc<core::BufferObject> indexes;
+
+		// its pipeline is translucent: drawn in the second subpass
+		bool translucent = false;
 	};
 
 	struct ViewRecord {
@@ -56,6 +59,7 @@ public:
 			const Callback<void(core::Object *, const core::SubresourceRangeInfo &)> &) override { }
 
 	bool empty() const { return _draws.empty(); }
+	bool hasTranslucent() const { return _translucentDraws > 0; }
 
 	SpanView<ViewRecord> getViews() const { return _views; }
 	SpanView<DrawRecord> getDraws() const { return _draws; }
@@ -81,6 +85,7 @@ protected:
 
 	Vector<ViewRecord> _views;
 	Vector<DrawRecord> _draws;
+	uint32_t _translucentDraws = 0;
 	Vector<Rc<core::ImageObject>> _images;
 	Vector<Rc<core::ImageObject>> _imageArrays;
 
@@ -102,15 +107,20 @@ class SP_PUBLIC Scene3dInputAttachment
 public:
 	virtual ~Scene3dInputAttachment() = default;
 
-	// which of a material's pipeline indexes the pass has, set once by the pass as it is made
-	void setPipelines(Vector<bool> &&);
+	// which of a material's pipeline indexes the pass has, and which of them are translucent, set
+	// once by the pass as it is made
+	void setPipelines(Vector<bool> &&, Vector<bool> &&translucent);
 
 	// whether a material with this pipeline is drawn by the mesh pipeline: it picks the mesh
 	// pipeline, or one the pass does not have
 	bool isDrawnAsMesh(uint32_t pipeline) const;
 
+	// whether a material with this pipeline draws in the second subpass
+	bool isTranslucent(uint32_t pipeline) const;
+
 protected:
 	Vector<bool> _pipelines;
+	Vector<bool> _translucent;
 };
 
 // Makes the views of the frame's textures before the descriptors are written
@@ -124,7 +134,12 @@ public:
 /* The 3d pass: before basic2d's pass in the same queue, into the same Output, with a depth
 attachment of its own. The mesh pipeline draws a material by default, the app's pipelines those
 that pick them; all of them test depth Less and cull back faces (counter-clockwise front faces,
-which the camera's flipped clip y keeps on the framebuffer). */
+which the camera's flipped clip y keeps on the framebuffer).
+
+Two subpasses: the opaque pipelines draw in the first, writing depth; the translucent ones in the
+second, over them, with the depth read only - tested, and read as an input attachment. They have
+a layout of their own with the depth at binding 2, so the first subpass binds no descriptor of the
+depth it writes. */
 class SP_PUBLIC Pass3d : public core::QueuePassTyped<Pass3dHandle, xvk::QueuePass> {
 public:
 	static constexpr StringView MeshPipelineName = "Basic3dMesh";
@@ -134,6 +149,7 @@ public:
 		String name;
 		const core::ProgramData *vert = nullptr;
 		const core::ProgramData *frag = nullptr;
+		bool translucent = false;
 	};
 
 	// adds the pass, its depth and its input to a queue whose Output basic2d has made

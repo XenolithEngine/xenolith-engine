@@ -107,6 +107,7 @@ uint32_t Scene3dInputHandle::acquireTexture(const Rc<Texture> &texture, bool &ov
 bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHandle3d &input) {
 	_views.clear();
 	_draws.clear();
+	_translucentDraws = 0;
 	_images.clear();
 	_imageArrays.clear();
 
@@ -144,6 +145,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 	draws.reserve(drawCount);
 	views.reserve(input.views.size());
 
+	auto attachment = static_cast<Scene3dInputAttachment *>(_attachment.get());
 	Vector<LightData3d> lights;
 	bool overflow = false;
 	bool tooManyLights = false;
@@ -188,6 +190,10 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 				indexes.insert(indexes.end(), meshIndexes.begin(), meshIndexes.end());
 				++stats.frameDraws;
 			}
+			if (attachment->isTranslucent(draw.material.pipeline)) {
+				_draws.back().translucent = true;
+				++_translucentDraws;
+			}
 
 			// normals take the inverse transpose of the rotation and scale, without the move
 			Mat4 normal = draw.transform;
@@ -199,8 +205,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			// the mesh pipeline samples no layered texture
 			auto texture = draw.material.texture;
 			if (Scene3dInputHandle_isLayered(texture)
-					&& static_cast<Scene3dInputAttachment *>(_attachment.get())
-							   ->isDrawnAsMesh(draw.material.pipeline)) {
+					&& attachment->isDrawnAsMesh(draw.material.pipeline)) {
 				layeredMesh = true;
 				texture = nullptr;
 			}
@@ -247,6 +252,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 		vertexes.emplace_back(Vertex3d());
 		indexes.emplace_back(0);
 	}
+	stats.translucentDraws = _translucentDraws;
 	stats.recordBytes = draws.size() * sizeof(DrawData3d) + views.size() * sizeof(ViewData3d)
 			+ lights.size() * sizeof(LightData3d);
 	setLastPassStats(stats);
@@ -286,12 +292,18 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 	return true;
 }
 
-void Scene3dInputAttachment::setPipelines(Vector<bool> &&pipelines) {
+void Scene3dInputAttachment::setPipelines(Vector<bool> &&pipelines, Vector<bool> &&translucent) {
 	_pipelines = sp::move(pipelines);
+	_translucent = sp::move(translucent);
 }
 
 bool Scene3dInputAttachment::isDrawnAsMesh(uint32_t pipeline) const {
 	return pipeline == MeshPipeline || pipeline >= _pipelines.size() || !_pipelines[pipeline];
+}
+
+bool Scene3dInputAttachment::isTranslucent(uint32_t pipeline) const {
+	// one drawn as a mesh is opaque
+	return !isDrawnAsMesh(pipeline) && pipeline < _translucent.size() && _translucent[pipeline];
 }
 
 bool Pass3dHandle::prepare(core::FrameQueue &q, Function<void(bool)> &&cb) {
@@ -329,29 +341,38 @@ bool Pass3dHandle::prepare(core::FrameQueue &q, Function<void(bool)> &&cb) {
 	return xvk::QueuePassHandle::prepare(q, sp::move(cb));
 }
 
+// Depth alone: the translucent subpass reads it as an input attachment, and a view of a format with
+// stencil has both aspects, which a descriptor can't take
 static core::ImageFormat Pass3d_selectDepthFormat(SpanView<core::ImageFormat> formats) {
-	for (auto &it : formats) {
-		if (it == core::ImageFormat::D32_SFLOAT) {
-			return it;
+	for (auto format : {core::ImageFormat::D32_SFLOAT, core::ImageFormat::X8_D24_UNORM_PACK32,
+			 core::ImageFormat::D16_UNORM}) {
+		for (auto &it : formats) {
+			if (it == format) {
+				return it;
+			}
 		}
 	}
+	log::source().error("basic3d::Pass3d", "the device has no depth-only format: the translucent ",
+			"pipelines can't read the depth");
 	return formats.empty() ? core::ImageFormat::Undefined : formats.front();
 }
 
+// The draws of one subpass, the opaque or the translucent ones, view by view
 static void Pass3d_record(core::FrameQueue &q, const core::SubpassData &subpass,
-		xvk::CommandBuffer &buf, Pass3d *pass) {
+		xvk::CommandBuffer &buf, Pass3d *pass, bool translucent) {
 	auto attachment = q.getAttachment(pass->getInput());
 	auto input = attachment ? static_cast<Scene3dInputHandle *>(attachment->handle.get()) : nullptr;
-	if (!input || input->empty()) {
+	if (!input || input->empty() || (translucent && !input->hasTranslucent())) {
 		return;
 	}
 
-	// by a material's pipeline index: the mesh pipeline first, then the app's
+	// by a material's pipeline index: the mesh pipeline first, then the app's; a subpass has only
+	// its own, null for the rest
 	Vector<const core::GraphicPipelineData *> pipelines;
 	for (auto &name : pass->getPipelineNames()) {
-		pipelines.emplace_back(subpass.graphicPipelines.get(name));
+		pipelines.emplace_back(name.empty() ? nullptr : subpass.graphicPipelines.get(name));
 	}
-	if (pipelines.empty() || !pipelines.front()) {
+	if (pipelines.empty() || (!translucent && !pipelines.front())) {
 		return;
 	}
 
@@ -396,19 +417,31 @@ static void Pass3d_record(core::FrameQueue &q, const core::SubpassData &subpass,
 			continue;
 		}
 
+		bool any = false;
+		for (uint32_t i = 0; i < view.drawCount && !any; ++i) {
+			any = draws[view.firstDraw + i].translucent == translucent;
+		}
+		if (!any) {
+			continue;
+		}
+
 		VkRect2D scissor{{int32_t(x0), int32_t(y0)}, {uint32_t(x1 - x0), uint32_t(y1 - y0)}};
 		buf.cmdSetViewport(0, makeSpanView(&viewport, 1));
 		buf.cmdSetScissor(0, makeSpanView(&scissor, 1));
 
 		for (uint32_t i = 0; i < view.drawCount; ++i) {
 			auto &d = draws[view.firstDraw + i];
+			if (d.translucent != translucent) {
+				continue;
+			}
+			// a translucent draw's pipeline is always in its subpass: one the pass has
 			auto pipeline = d.pipeline < pipelines.size() ? pipelines[d.pipeline] : nullptr;
 			if (!pipeline) {
 				pass->warnUnknownPipeline(d.pipeline);
 				pipeline = pipelines.front();
 			}
 			if (pipeline != bound) {
-				// one layout for all of them: the descriptors stay bound across the switch
+				// one layout for all of a subpass's: the descriptors stay bound across the switch
 				buf.cmdBindPipelineWithDescriptors(pipeline);
 				bound = pipeline;
 			}
@@ -478,7 +511,7 @@ bool Pass3d::addToQueue(core::Loop *loop, core::Queue::Builder &builder, Extent2
 		}
 		pipelines.emplace_back(PipelineProgram{it.name,
 			builder.addProgramByRef(toString(it.name, "Vert"), it.vert),
-			builder.addProgramByRef(toString(it.name, "Frag"), it.frag)});
+			builder.addProgramByRef(toString(it.name, "Frag"), it.frag), it.translucent});
 	}
 
 	// before basic2d's pass (RenderOrderingHighest), which loads what this one drew
@@ -497,29 +530,56 @@ bool Pass3d::init(core::QueuePassBuilder &passBuilder, const core::AttachmentDat
 
 	_input = input;
 	Vector<bool> available;
+	Vector<bool> translucent;
+	bool anyTranslucent = false;
 	for (auto &it : pipelines) {
 		_pipelineNames.emplace_back(it.name);
 		available.emplace_back(it.vert && it.frag);
+		translucent.emplace_back(it.vert && it.frag && it.translucent);
+		anyTranslucent = anyTranslucent || translucent.back();
 	}
 	if (auto attachment = dynamic_cast<Scene3dInputAttachment *>(input->attachment.get())) {
-		attachment->setPipelines(sp::move(available));
+		attachment->setPipelines(sp::move(available), sp::move(translucent));
 	}
 
 	auto colorPass = passBuilder.addAttachment(output);
 	auto depthPass = passBuilder.addAttachment(depth);
 	auto inputPass = passBuilder.addAttachment(input);
 
-	auto layout = passBuilder.addDescriptorLayout("Basic3dLayout",
-			[&](PipelineLayoutBuilder &layoutBuilder) {
-		layoutBuilder.addSet([&](DescriptorSetBuilder &setBuilder) {
-			setBuilder.addDescriptorArray(inputPass, MaxTextures,
-					DescriptorType::CombinedImageSampler, AttachmentLayout::ShaderReadOnlyOptimal);
-			setBuilder.addDescriptorArray(inputPass, MaxTextureArrays,
-					DescriptorType::CombinedImageSampler, AttachmentLayout::ShaderReadOnlyOptimal);
-		});
-	});
+	auto addTextures = [&](DescriptorSetBuilder &setBuilder) {
+		setBuilder.addDescriptorArray(inputPass, MaxTextures, DescriptorType::CombinedImageSampler,
+				AttachmentLayout::ShaderReadOnlyOptimal);
+		setBuilder.addDescriptorArray(inputPass, MaxTextureArrays,
+				DescriptorType::CombinedImageSampler, AttachmentLayout::ShaderReadOnlyOptimal);
+	};
 
-	passBuilder.addSubpass([&](SubpassBuilder &subpassBuilder) {
+	auto layout = passBuilder.addDescriptorLayout("Basic3dLayout",
+			[&](PipelineLayoutBuilder &layoutBuilder) { layoutBuilder.addSet(addTextures); });
+
+	auto addPipelines = [&](SubpassBuilder &subpassBuilder, const PipelineLayoutData *layout,
+								bool translucent) {
+		for (auto &it : pipelines) {
+			if (!it.vert || !it.frag || it.translucent != translucent) {
+				continue;
+			}
+			// a translucent one blends source over, the alpha too, so the output stays opaque
+			// where it was
+			subpassBuilder.addGraphicPipeline(it.name, layout->defaultFamily,
+					Vector<SpecializationInfo>({
+						SpecializationInfo(it.vert),
+						SpecializationInfo(it.frag),
+					}),
+					PipelineMaterialInfo(translucent
+									? BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
+											  BlendOp::Add, BlendFactor::One,
+											  BlendFactor::OneMinusSrcAlpha, BlendOp::Add)
+									: BlendInfo(),
+							DepthInfo(!translucent, true, CompareOp::Less),
+							RasterizationInfo(CullMode::Back, FrontFace::CounterClockwise)));
+		}
+	};
+
+	auto opaque = passBuilder.addSubpass([&](SubpassBuilder &subpassBuilder) {
 		subpassBuilder.addColor(colorPass,
 				AttachmentDependencyInfo{
 					PipelineStage::ColorAttachmentOutput,
@@ -538,24 +598,76 @@ bool Pass3d::init(core::QueuePassBuilder &passBuilder, const core::AttachmentDat
 					FrameRenderPassState::Submitted,
 				});
 
-		for (auto &it : pipelines) {
-			if (!it.vert || !it.frag) {
-				continue;
-			}
-			subpassBuilder.addGraphicPipeline(it.name, layout->defaultFamily,
-					Vector<SpecializationInfo>({
-						SpecializationInfo(it.vert),
-						SpecializationInfo(it.frag),
-					}),
-					PipelineMaterialInfo(BlendInfo(), DepthInfo(true, true, CompareOp::Less),
-							RasterizationInfo(CullMode::Back, FrontFace::CounterClockwise)));
-		}
+		addPipelines(subpassBuilder, layout, false);
 
 		subpassBuilder.setCommandsCallback([this](FrameQueue &q, const SubpassData &subpass,
 												  core::CommandBuffer &commands) {
-			Pass3d_record(q, subpass, static_cast<xvk::CommandBuffer &>(commands), this);
+			Pass3d_record(q, subpass, static_cast<xvk::CommandBuffer &>(commands), this, false);
 		});
 	});
+
+	// with no translucent pipeline, the pass is one subpass, as before them
+	if (!anyTranslucent) {
+		return xvk::QueuePass::init(passBuilder);
+	}
+
+	// the depth at binding 2, after the texture arrays, which keep their bindings
+	auto translucentLayout = passBuilder.addDescriptorLayout("Basic3dTranslucentLayout",
+			[&](PipelineLayoutBuilder &layoutBuilder) {
+		layoutBuilder.addSet([&](DescriptorSetBuilder &setBuilder) {
+			addTextures(setBuilder);
+			setBuilder.addDescriptor(depthPass, DescriptorType::InputAttachment,
+					AttachmentLayout::DepthStencilReadOnlyOptimal);
+		});
+	});
+
+	auto second = passBuilder.addSubpass([&](SubpassBuilder &subpassBuilder) {
+		subpassBuilder.addColor(colorPass,
+				AttachmentDependencyInfo{
+					PipelineStage::ColorAttachmentOutput,
+					AccessType::ColorAttachmentRead | AccessType::ColorAttachmentWrite,
+					PipelineStage::ColorAttachmentOutput,
+					AccessType::ColorAttachmentRead | AccessType::ColorAttachmentWrite,
+					FrameRenderPassState::Submitted,
+				});
+
+		// the depth is tested and read as an input in the same subpass: both in one read-only
+		// layout, as an attachment can't be in two in a subpass
+		subpassBuilder.setDepthStencil(depthPass,
+				AttachmentDependencyInfo{
+					PipelineStage::EarlyFragmentTest,
+					AccessType::DepthStencilAttachmentRead,
+					PipelineStage::LateFragmentTest,
+					AccessType::DepthStencilAttachmentRead,
+					FrameRenderPassState::Submitted,
+				},
+				AttachmentLayout::DepthStencilReadOnlyOptimal);
+		subpassBuilder.addInput(depthPass,
+				AttachmentDependencyInfo{
+					PipelineStage::FragmentShader,
+					AccessType::InputAttachmantRead,
+					PipelineStage::FragmentShader,
+					AccessType::InputAttachmantRead,
+					FrameRenderPassState::Submitted,
+				},
+				AttachmentLayout::DepthStencilReadOnlyOptimal);
+
+		addPipelines(subpassBuilder, translucentLayout, true);
+
+		subpassBuilder.setCommandsCallback([this](FrameQueue &q, const SubpassData &subpass,
+												  core::CommandBuffer &commands) {
+			Pass3d_record(q, subpass, static_cast<xvk::CommandBuffer &>(commands), this, true);
+		});
+	});
+
+	passBuilder.addSubpassDependency(opaque,
+			PipelineStage::ColorAttachmentOutput | PipelineStage::LateFragmentTest,
+			AccessType::ColorAttachmentWrite | AccessType::DepthStencilAttachmentWrite, second,
+			PipelineStage::EarlyFragmentTest | PipelineStage::FragmentShader
+					| PipelineStage::ColorAttachmentOutput,
+			AccessType::DepthStencilAttachmentRead | AccessType::InputAttachmantRead
+					| AccessType::ColorAttachmentRead | AccessType::ColorAttachmentWrite,
+			true);
 
 	return xvk::QueuePass::init(passBuilder);
 }

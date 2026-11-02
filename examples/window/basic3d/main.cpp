@@ -24,11 +24,14 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
 #include "basic3d_stripes.vert.h"
 #include "basic3d_stripes.frag.h"
+#include "basic3d_glass.frag.h"
 
 using namespace basic3d;
 
-// The example's own pipeline, the first app pipeline of the scene: a material picks it as 1
+// The example's own pipelines, the scene's app pipelines: a material picks the first as 1; the
+// second is translucent
 static constexpr uint32_t StripesPipeline = 1;
+static constexpr uint32_t GlassPipeline = 2;
 
 // A square checker of `size` pixels with squares of `square` pixels, RGBA8
 static Bytes makeChecker(uint32_t size, uint32_t square, Color4B a, Color4B b) {
@@ -219,6 +222,22 @@ protected:
 				Material3d{.texture = layered, .pipeline = 7}});
 		}
 
+		// BASIC3D_GLASS=1: a tinted glass by the translucent pipeline, 4 units square, tilted over
+		// the ground between the green box and the light, toward the camera - a quarter of a unit
+		// over it at its +y end, two and a quarter at its -y one - as clear as the ground behind it
+		// is near
+		if (__sprt_getenv("BASIC3D_GLASS")) {
+			auto glass = Mesh3d::makePlane(4.0f);
+			Mat4 move, tilt;
+			Mat4::createTranslation(Vec3(6.0f, 0.5f, 1.25f), &move);
+			Mat4::createRotationX(-asinf(0.5f), &tilt);
+			auto &camera = _view->getCamera();
+			_view->addDraw(Draw3d{glass, move * tilt,
+				Material3d{.pipeline = GlassPipeline,
+					.params = {Vec4(camera.getFar() - camera.getNear(), 0.6f, 0.0f, 0.0f),
+						Vec4(0.1f, 0.3f, 0.9f, 1.0f)}}});
+		}
+
 		if (!__sprt_getenv("BASIC3D_STILL")) {
 			_view->runAction(Rc<RepeatForever>::create(Rc<ActionProgress>::create(8.0f,
 					[this](float progress) {
@@ -235,6 +254,7 @@ protected:
 		ret.setInteger(stats.frameDraws, "frameDraws");
 		ret.setInteger(stats.packDraws, "packDraws");
 		ret.setInteger(int64_t(stats.recordBytes), "recordBytes");
+		ret.setInteger(stats.translucentDraws, "translucentDraws");
 		ret.setBool(_pack && _pack->isLoaded(), "packLoaded");
 		ret.setInteger(_pack ? _pack->getUsers() : 0, "packUsers");
 		ret.setBool(_director && _director->getResourceCache()->hasTemporaryResource(_packName),
@@ -289,7 +309,12 @@ public:
 					sizeof(basic3d_stripes_vert) / sizeof(uint32_t)),
 			SpanView<uint32_t>(reinterpret_cast<const uint32_t *>(basic3d_stripes_frag),
 					sizeof(basic3d_stripes_frag) / sizeof(uint32_t))};
-		if (!Scene3d::init(app, window, constraints, Vector<Pipeline3dInfo>{stripes})) {
+		// the glass shares the stripes' vertex shader
+		auto glass = Pipeline3dInfo{"Basic3dExampleGlass", stripes.vert,
+			SpanView<uint32_t>(reinterpret_cast<const uint32_t *>(basic3d_glass_frag),
+					sizeof(basic3d_glass_frag) / sizeof(uint32_t)),
+			true};
+		if (!Scene3d::init(app, window, constraints, Vector<Pipeline3dInfo>{stripes, glass})) {
 			return false;
 		}
 		setContent(Rc<Basic3dContent>::create());
