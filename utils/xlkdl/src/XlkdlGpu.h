@@ -26,11 +26,15 @@ THE SOFTWARE.
 #include "XlkdlAbi.h"
 
 // A GPU schema: the records C++ and GLSL both read, laid out by std430, and the constants they
-// share. A description writes one header, valid as C++ through the types of sprt_glsl.h and as
-// GLSL.
+// share - written to one header, valid as C++ through the types of sprt_glsl.h and as GLSL - and
+// the interface of the shaders over them: for each shader a preamble it includes, with its
+// extensions, push constants, buffer references, descriptors and varyings.
+//
+// A schema may import others: what they define is visible and is not written again; a preamble
+// includes the headers of the records it uses.
 namespace STAPPLER_VERSIONIZED stappler::xlkdl::gpu {
 
-// A type a field or a constant can have, spelled the same in GLSL and in sprt::glsl.
+// A type a field, a varying or a constant can have, spelled the same in GLSL and in sprt::glsl.
 struct FieldType {
 	StringView name;
 	uint32_t size = 0;
@@ -64,20 +68,114 @@ struct Record {
 	kdl::Location location;
 	Vector<Field> fields;
 
+	// the header that defines it, as a preamble includes it; set for an imported one as well
+	String header;
+	bool imported = false;
+
 	// set by the layout
 	uint32_t size = 0;
 	uint32_t align = 0;
+
+	const Field *findField(StringView) const;
 };
 
 struct Constant {
 	String name;
+	String macro; // the name with its schema's prefix
 	const FieldType *type = nullptr;
 	String value; // as C and GLSL spell it
 	String doc;
 	kdl::Location location;
+	bool imported = false;
 };
 
-// A definition in the order of the description.
+// A buffer the push constants point to: an array of a record, or a single one, read through a
+// function of its name.
+struct Buffer {
+	String name;
+	String recordName;
+	const Record *record = nullptr;
+	String pointer; // the field of the push constants that holds its address
+	bool single = false;
+	kdl::Location location;
+};
+
+// An array of combined image samplers at set 0, in fragment shaders.
+struct Samplers {
+	String name;
+	String type; // sampler2D or sampler2DArray
+	uint32_t binding = 0;
+	String count; // as GLSL spells it: a number, or a constant's macro
+	String countName; // the constant, until linked
+	kdl::Location location;
+};
+
+// The depth of what the pass drew before, as an input attachment of the fragment shaders of a
+// translucent pipeline.
+struct Depth {
+	String name;
+	uint32_t binding = 0;
+	uint32_t index = 0;
+	bool present = false;
+	kdl::Location location;
+};
+
+// What a pass gives the shaders of its pipelines.
+struct Interface {
+	String name;
+	String doc;
+	String file; // the description that defines it
+	kdl::Location location;
+	bool imported = false;
+
+	String pushRecordName;
+	const Record *push = nullptr;
+	String pushName;
+	kdl::Location pushLocation;
+
+	Vector<Buffer> buffers;
+	Vector<Samplers> samplers;
+	Depth depth;
+};
+
+struct Varying {
+	String name;
+	const FieldType *type = nullptr;
+	bool flat = false;
+	String doc;
+	kdl::Location location;
+};
+
+// What a vertex shader hands the fragment shaders of its pipelines: an interface block both
+// declare, its locations in the order of its members.
+struct Varyings {
+	String name;
+	String doc;
+	kdl::Location location;
+	bool imported = false;
+	Vector<Varying> fields;
+};
+
+enum class Stage : uint8_t {
+	Vertex,
+	Fragment,
+};
+
+// A shader file and what its preamble declares; the preamble is <name>.glsl.
+struct Shader {
+	String name;
+	Stage stage = Stage::Vertex;
+	String interfaceName;
+	const Interface *interface = nullptr;
+	String varyingsName;
+	const Varyings *varyings = nullptr;
+	bool translucent = false;
+	String file; // the description that defines it
+	kdl::Location location;
+	bool imported = false;
+};
+
+// A definition of the header in the order of the description.
 struct Item {
 	bool record = false;
 	size_t index = 0;
@@ -92,19 +190,31 @@ struct Schema {
 	String macroPrefix;
 	String copyright;
 	String license;
+	String preambles; // the directory of the preambles, from the description's directory
+
+	// every file loaded, the root first
+	Vector<String> files;
+
 	Vector<Constant> constants;
 	Vector<Record> records;
 	Vector<Item> items;
+	Vector<Interface> interfaces;
+	Vector<Varyings> varyings;
+	Vector<Shader> shaders;
+
+	// whether the schema writes a header: it has records or constants of its own
+	bool hasHeader() const;
 };
 
-// Reads a description and lays its records out; false, with the reasons in `diag`, when it is not
-// a valid one.
+// Reads a description and what it imports, links the names and lays the records out; false, with
+// the reasons in `diag`, when it is not a valid one.
 bool loadSchema(StringView file, Schema &schema, Diagnostics &diag);
 
 // The std430 offsets and sizes of the records, and the padding that ends each at its size.
 bool layoutSchema(Schema &schema, Diagnostics &diag);
 
 void emitHeader(const Schema &schema, String &out);
+void emitPreamble(const Schema &schema, const Shader &shader, String &out);
 
 } // namespace stappler::xlkdl::gpu
 

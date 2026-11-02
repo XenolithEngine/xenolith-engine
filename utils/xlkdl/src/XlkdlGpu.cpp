@@ -46,14 +46,15 @@ using GpuOption = CommandLineOption<GpuArgs>;
 
 void printGpuUsage(const CommandLineParser<GpuArgs> &parser) {
 	sprt::cerr << "usage: xlkdl gpu <schema.kdl>... [--out <file>] [--check]\n"
-			   << "  writes the header of each schema to its output, from the schema's directory\n";
+			   << "  writes the header of each schema to its output and the preambles of its\n"
+			   << "  shaders to its preambles, from the schema's directory\n";
 	parser.describe([](StringView str) { sprt::cerr << str; });
 }
 
 } // namespace
 
-// The exit code is 1 when a schema does not load; otherwise the number of headers that could not
-// be written, or under --check the number that are not what would be written.
+// The exit code is 1 when a schema does not load; otherwise the number of files - the header and
+// the preambles - that could not be written, or under --check the number that are not what would be.
 int runGpu(int argc, const char *argv[]) {
 	CommandLineParser<GpuArgs> parser({
 		GpuOption{.patterns = {"--out <file>"},
@@ -63,7 +64,7 @@ int runGpu(int argc, const char *argv[]) {
 		return true;
 	}},
 		GpuOption{.patterns = {"--check"},
-			.description = StringView("Write nothing; answer whether the headers are up to date"),
+			.description = StringView("Write nothing; answer whether the files are up to date"),
 			.callback = [](GpuArgs &target, StringView, SpanView<StringView>) -> bool {
 		target.check = true;
 		return true;
@@ -98,13 +99,28 @@ int runGpu(int argc, const char *argv[]) {
 			for (auto &it : diag.messages) { sprt::cerr << it << "\n"; }
 			return 1;
 		}
+		auto dir = filepath::root(StringView(file));
+		auto from = filepath::lastComponent(file);
 		String text;
-		gpu::emitHeader(schema, text);
-		auto path = args.out.empty() ? filepath::merge<memory::StandardInterface>(
-											   filepath::root(StringView(file)), schema.output)
-									 : args.out;
-		if (!writeOrCheck(path, text, filepath::lastComponent(file), args.check)) {
-			++failed;
+		if (schema.hasHeader()) {
+			gpu::emitHeader(schema, text);
+			auto path = args.out.empty()
+					? filepath::merge<memory::StandardInterface>(dir, schema.output)
+					: args.out;
+			if (!writeOrCheck(path, text, from, args.check)) {
+				++failed;
+			}
+		}
+		for (auto &shader : schema.shaders) {
+			if (shader.imported) {
+				continue;
+			}
+			gpu::emitPreamble(schema, shader, text);
+			auto path = filepath::merge<memory::StandardInterface>(dir, schema.preambles,
+					mem_std::toString(shader.name, ".glsl"));
+			if (!writeOrCheck(path, text, from, args.check)) {
+				++failed;
+			}
 		}
 	}
 	return failed;

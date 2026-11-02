@@ -31,6 +31,8 @@ LOCAL_MAIN := main.cpp
 
 # an app pipeline of the 3d pass: the stripes on the boxes
 LOCAL_SHADERS_DIR := $(LOCAL_ROOT)shaders
+# the preambles of the shaders, generated from glsl/basic3d-example.kdl
+LOCAL_SHADERS_INCLUDE := $(LOCAL_ROOT)glsl
 LOCAL_PRIVATE_DEPS = $(BUILD_SHADERS_EMBEDDED)
 
 APPCONFIG_APP_NAME    := Basic3d Example

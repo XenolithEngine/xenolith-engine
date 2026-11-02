@@ -1,47 +1,18 @@
 #version 450
-#extension GL_ARB_separate_shader_objects : enable
 #extension GL_GOOGLE_include_directive : enable
-#extension GL_EXT_buffer_reference : require
-#extension GL_EXT_buffer_reference_uvec2 : require
 
-#ifndef SP_GLSL
-#define SP_GLSL
-#endif
-
-#include "sprt_glsl.h"
-#include "XL3dGlslData.h"
-
-layout(std430, buffer_reference, buffer_reference_align = 16) readonly buffer VertexBuffer {
-	Vertex3d vertices[];
-};
-
-layout(std430, buffer_reference, buffer_reference_align = 16) readonly buffer DrawBuffer {
-	DrawData3d draws[];
-};
-
-layout(std430, buffer_reference, buffer_reference_align = 16) readonly buffer ViewBuffer {
-	ViewData3d view;
-};
-
-layout (std430, push_constant) uniform pcb {
-	Constants3d constants;
-};
-
-layout (location = 0) out vec3 fragNormal;
-layout (location = 1) out vec2 fragTexCoord;
-layout (location = 2) out flat uint fragDraw;
-layout (location = 3) out vec3 fragWorld;
+// The pass's interface and the varyings, from basic3d.kdl
+#include "xl_3d_mesh.vert.glsl"
 
 void main() {
 	// gl_VertexIndex includes the draw's vertexOffset
-	Vertex3d v = VertexBuffer(constants.vertexPointer).vertices[gl_VertexIndex];
-	DrawData3d d = DrawBuffer(constants.drawPointer).draws[constants.drawIndex];
+	Vertex3d v = vertices(gl_VertexIndex);
+	DrawData3d d = draws(constants.drawIndex);
 
-	fragNormal = (d.normal * vec4(v.normal.xyz, 0.0)).xyz;
-	fragTexCoord = v.attr.xy * d.uvScale;
-	fragDraw = constants.drawIndex;
+	vary.normal = (d.normal * vec4(v.normal.xyz, 0.0)).xyz;
+	vary.texCoord = v.attr.xy * d.uvScale;
 
 	vec4 world = d.model * vec4(v.pos.xyz, 1.0);
-	fragWorld = world.xyz;
-	gl_Position = ViewBuffer(constants.viewPointer).view.viewProj * world;
+	vary.world = world.xyz;
+	gl_Position = view().viewProj * world;
 }

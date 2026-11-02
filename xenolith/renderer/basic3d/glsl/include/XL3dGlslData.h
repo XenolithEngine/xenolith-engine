@@ -20,6 +20,12 @@ using namespace sprt::glsl;
 // DrawData3d::textureIdx of a draw with no texture: its colour alone
 #define XL_GLSL_3D_NO_TEXTURE 0xFFFFFFFFu
 
+// Images one frame can sample: the slots of the texture array (basic3d::MaxTextures)
+#define XL_GLSL_3D_MAX_TEXTURES 64u
+
+// Layered images one frame can sample: the layered array's slots (basic3d::MaxTextureArrays)
+#define XL_GLSL_3D_MAX_TEXTURE_ARRAYS 16u
+
 // One vertex, 64 bytes, read by gl_VertexIndex through a buffer reference
 struct Vertex3d {
 	vec4 pos; // xyz - position in the model, w - 1

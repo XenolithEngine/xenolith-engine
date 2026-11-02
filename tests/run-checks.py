@@ -151,6 +151,9 @@ GENERATED = [
       "utils/xlkdl"]),
     ("xlkdl gpu basic3d", ["gpu", "xenolith/renderer/basic3d/glsl/basic3d.kdl", "--check"],
      ["xenolith/renderer/basic3d/glsl", "utils/xlkdl"]),
+    ("xlkdl gpu basic3d-example",
+     ["gpu", "examples/window/basic3d/glsl/basic3d-example.kdl", "--check"],
+     ["examples/window/basic3d/glsl", "xenolith/renderer/basic3d/glsl", "utils/xlkdl"]),
 ]
 
 # Which console harnesses a directory owes. First match wins, so the specific paths lead.
@@ -211,6 +214,7 @@ COST = {
     "uilayouttest": 1, "basic3dtest": 1, "particlestest": 1, "vstoretest": 5, "vstoretest --full": 200,
     "flowtest": 13, "flowtest --full": 36,
     "xlkdl abi sprt": 12, "xlkdl abi apple-open": 1, "xlkdl api": 2, "xlkdl gpu basic3d": 1,
+    "xlkdl gpu basic3d-example": 1,
 }
 
 # Window checks that start a binary other than tests/window's testapp: (project, binary). The runner
@@ -416,11 +420,13 @@ def plan(args):
     all_paths = changed_paths(args.since)
     examples = sorted({s for prefix, names in EXAMPLE_CHECKS for s in names
                        if any(p.startswith(prefix + "/") for p in all_paths)})
+    # an example's generated files are owed their check like the engine's
+    generated = generated_jobs(all_paths)
     paths = [p for p in all_paths
              if not p.startswith(("docs/", "examples/")) and not p.endswith(".md")]
     if not paths:
         if examples:
-            return (dedup(cli_jobs(console_only=True) + window_jobs(examples)),
+            return (dedup(cli_jobs(console_only=True) + generated + window_jobs(examples)),
                     f"only examples changed - the console harnesses and {', '.join(examples)}")
         return cli_jobs(console_only=True), "the working tree is clean - the console harnesses only"
     owed, wide = set(), None
@@ -439,7 +445,7 @@ def plan(args):
     if not scripts and any(p.startswith("xenolith/") for p in paths):
         scripts = WINDOW_SMOKE
     scripts = scripts + [s for s in examples if s not in scripts]
-    jobs = dedup(cli_jobs(console_only=True) + cli_jobs(names=owed) + generated_jobs(paths)
+    jobs = dedup(cli_jobs(console_only=True) + cli_jobs(names=owed) + generated
                  + window_jobs(scripts))
     return jobs, f"{len(paths)} changed paths -> {len(jobs)} jobs"
 

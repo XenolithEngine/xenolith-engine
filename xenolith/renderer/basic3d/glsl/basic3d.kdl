@@ -1,5 +1,7 @@
-// The records basic3d's C++ and its shaders share, std430: include/XL3dGlslData.h is generated
-// from this description (docs/usage/tools/xlkdl-gpu.adoc). After a change:
+// The records basic3d's C++ and its shaders share, std430, and the interface of the 3d pass's
+// shaders: include/XL3dGlslData.h and the preambles of the mesh pipeline's shaders,
+// include/xl_3d_mesh.*.glsl, are generated from this description (docs/usage/tools/xlkdl-gpu.adoc).
+// After a change:
 //
 //     xlkdl gpu xenolith/renderer/basic3d/glsl/basic3d.kdl
 
@@ -10,10 +12,16 @@ schema basic3d {
 	macro-prefix "XL_GLSL_3D_"
 	copyright "2026 Xenolith Team <admin@xenolith.studio>"
 	license "MIT"
+	preambles "include"
 }
 
 const NO_TEXTURE 0xFFFFFFFF type=uint \
 	doc="DrawData3d::textureIdx of a draw with no texture: its colour alone"
+
+const MAX_TEXTURES 64 type=uint \
+	doc="Images one frame can sample: the slots of the texture array (basic3d::MaxTextures)"
+const MAX_TEXTURE_ARRAYS 16 type=uint \
+	doc="Layered images one frame can sample: the layered array's slots (basic3d::MaxTextureArrays)"
 
 record Vertex3d doc="One vertex, 64 bytes, read by gl_VertexIndex through a buffer reference" {
 	pos vec4 doc="xyz - position in the model, w - 1"
@@ -60,3 +68,27 @@ record Constants3d {
 	lightPointer uvec2 doc="24-32, the frame's LightData3d array"
 	drawIndex uint doc="32-36"
 }
+
+interface pass3d doc="""
+	The 3d pass: the push constants of a draw, the frame's buffers they point to, the texture
+	arrays every slot of which is written (the unused ones with an empty image) and, in a
+	translucent pipeline, the opaque draws' depth (depth in r)
+	""" {
+	push-constants Constants3d name=constants
+	buffer vertices Vertex3d pointer=vertexPointer
+	buffer draws DrawData3d pointer=drawPointer
+	buffer view ViewData3d pointer=viewPointer single=#true
+	buffer lights LightData3d pointer=lightPointer
+	samplers textures sampler2D binding=0 count=MAX_TEXTURES
+	samplers textureArrays sampler2DArray binding=1 count=MAX_TEXTURE_ARRAYS
+	depth sceneDepth binding=2 index=0
+}
+
+varyings Mesh3dVaryings doc="What the mesh pipeline's vertex shader hands its fragment shader" {
+	normal vec3 doc="in the world, not normalized"
+	texCoord vec2 doc="times the material's uvScale"
+	world vec3
+}
+
+shader xl_3d_mesh.vert interface=pass3d varyings=Mesh3dVaryings
+shader xl_3d_mesh.frag interface=pass3d varyings=Mesh3dVaryings

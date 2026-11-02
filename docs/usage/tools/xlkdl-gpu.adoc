@@ -1,24 +1,33 @@
 # GPU schemas: `xlkdl gpu`
 
-`xlkdl gpu` generates a header of records that C++ and GLSL both read from a schema written in KDL.
-The header is valid in both languages: as C++ through the types of `sprt_glsl.h`, as GLSL when
-`SP_GLSL` is defined. The schema of basic3d is
-[basic3d.kdl](../../../xenolith/renderer/basic3d/glsl/basic3d.kdl).
+`xlkdl gpu` generates, from a schema written in KDL, two kinds of files:
+
+* a **header** of records that C++ and GLSL both read, valid in both languages: as C++ through the
+  types of `sprt_glsl.h`, as GLSL when `SP_GLSL` is defined;
+* a **preamble** for each shader the schema names: everything the shader declares to read its
+  pass's interface - extensions, push constants, buffer references, descriptors, varyings - so
+  the shader itself is an `#include` and a `main()`.
+
+The schema of basic3d is [basic3d.kdl](../../../xenolith/renderer/basic3d/glsl/basic3d.kdl); the
+basic3d example's, which imports it, is
+[basic3d-example.kdl](../../../examples/window/basic3d/glsl/basic3d-example.kdl).
 
     make -C utils/xlkdl
     xlkdl gpu <schema.kdl>... [--out <file>] [--check]
 
-A schema's header is written to its `output`, from the schema's directory, or to `--out` when a
-single schema is given. `--check` writes nothing; the exit code is the number of headers that are
-not what would be written. A schema that does not load exits with 1 and `file:line:column: message`
-lines.
+A schema's header is written to its `output` and its preambles to its `preambles` directory, both
+from the schema's directory; `--out` writes the header elsewhere, when a single schema is given.
+`--check` writes nothing; the exit code is the number of files that are not what would be written.
+A schema that does not load exits with 1 and `file:line:column: message` lines.
 
-The header a schema writes is committed next to it. After a change to basic3d's schema:
+What a schema writes is committed next to it - the engine's and an app's alike. After a change:
 
     xlkdl gpu xenolith/renderer/basic3d/glsl/basic3d.kdl
+    xlkdl gpu examples/window/basic3d/glsl/basic3d-example.kdl
 
-`tests/run-checks.py` runs `--check` on it (`xlkdl gpu basic3d`) when the schema, the header or
-`utils/xlkdl` changed, and in the gate; `xlkdl` has to be built for it, as a harness has.
+`tests/run-checks.py` runs `--check` on both (`xlkdl gpu basic3d`, `xlkdl gpu basic3d-example`)
+when a schema, what it writes or `utils/xlkdl` changed, and in the gate; `xlkdl` has to be built
+for it, as a harness has.
 
 **TL;DR**
 
@@ -30,7 +39,12 @@ The header a schema writes is committed next to it. After a change to basic3d's 
   named `padding` (one) or `padding0`, `padding1`... (more).
 * The header asserts the layout: `static_assert` on the size of every record and the offset of
   every field, so a C++ type that lays out differently from std430 does not compile.
-* Comments are part of the schema, as `doc=` - KDL comments do not reach the header. A doc of one
+* An **interface** is what a pass gives its shaders; a **shader** names its interface and its
+  **varyings**, and gets a preamble, `<shader>.glsl`. A vertex shader and a fragment shader that
+  name the same varyings declare the same interface block, so their locations cannot disagree.
+* A schema **imports** another to use its records, constants and interfaces; nothing imported is
+  written again, and a preamble includes the header that defines the records it reads.
+* Comments are part of the schema, as `doc=` - KDL comments do not reach the files. A doc of one
   line follows its field; one of several lines (a multi-line string) goes before it.
 
 ---
@@ -45,6 +59,7 @@ schema basic3d {
     macro-prefix "XL_GLSL_3D_"
     copyright "2026 Xenolith Team <admin@xenolith.studio>"
     license "MIT"
+    preambles "include"
 }
 ```
 
@@ -52,11 +67,24 @@ One `schema` node per description, named by its argument, with:
 
 | Child | Required | What it is |
 |---|---|---|
-| `output` | yes | the header, from the description's directory |
-| `guard` | yes | the include guard |
-| `namespace` | yes | the C++ namespace of the records, versioned (`namespace STAPPLER_VERSIONIZED …`), with `using namespace sprt::glsl` in it |
+| `output` | with records or constants of its own | the header, from the description's directory |
+| `guard` | with records or constants of its own | the include guard |
+| `namespace` | with records or constants of its own | the C++ namespace of the records, versioned (`namespace STAPPLER_VERSIONIZED …`), with `using namespace sprt::glsl` in it |
 | `macro-prefix` | no | put before the name of every constant |
-| `copyright`, `license` | no | the license block: ` Copyright (c) …` and ` SPDX-License-Identifier: …` |
+| `copyright`, `license` | no | the license block of every file: ` Copyright (c) …` and ` SPDX-License-Identifier: …` |
+| `preambles` | with shaders of its own | the directory of the preambles, from the description's directory |
+
+## Imports
+
+```kdl
+import "../../../../xenolith/renderer/basic3d/glsl/basic3d.kdl"
+```
+
+From the importing file's directory, or absolute. Every name is one definition across the files: a
+record, a constant, an interface, varyings or a shader defined twice is an error, wherever the two
+are. A file imported twice is read once; a file that imports itself through others is an error at
+the import. An imported schema writes nothing; its records are included from its `output`, so a
+schema with records of its own has an `output` even when it is only imported.
 
 ## Constants
 
@@ -97,6 +125,73 @@ makes it an array.
 The C++ alignment of a type may be smaller than std430's (`UVec2` aligns to 4): the padding the
 generator adds and the asserts it writes keep the sizes equal.
 
+## Interfaces
+
+```kdl
+interface pass3d doc="The 3d pass: ..." {
+    push-constants Constants3d name=constants
+    buffer vertices Vertex3d pointer=vertexPointer
+    buffer draws DrawData3d pointer=drawPointer
+    buffer view ViewData3d pointer=viewPointer single=#true
+    buffer lights LightData3d pointer=lightPointer
+    samplers textures sampler2D binding=0 count=MAX_TEXTURES
+    samplers textureArrays sampler2DArray binding=1 count=MAX_TEXTURE_ARRAYS
+    depth sceneDepth binding=2 index=0
+}
+```
+
+| Child | What a preamble declares |
+|---|---|
+| `push-constants <record> name=<n>` | `layout (std430, push_constant) uniform PushConstants { <record> <n>; };` |
+| `buffer <name> <record> pointer=<field>` | a `buffer_reference` block `<record>Buffer` holding `<record> <name>[]` (or one, with `single=#true`), and a function to read it: `<record> <name>(uint i)` or `<record> <name>()`, from the address in the push constants' `uvec2` field |
+| `samplers <name> sampler2D\|sampler2DArray binding=N count=…` | in a fragment shader, `layout (set = 0, binding = N) uniform … <name>[count]`; the count is a number or a constant |
+| `depth <name> binding=N index=I` | in a translucent fragment shader, `layout (input_attachment_index = I, set = 0, binding = N) uniform subpassInput <name>` |
+
+A vertex shader gets no samplers and no depth, a fragment shader of an opaque pipeline no depth:
+the pipeline's layout is made from what the SPIR-V declares, and a translucent pipeline's alone has
+the depth.
+
+## Varyings and shaders
+
+```kdl
+varyings Mesh3dVaryings doc="What the mesh pipeline's vertex shader hands its fragment shader" {
+    normal vec3 doc="in the world, not normalized"
+    texCoord vec2
+    world vec3
+}
+
+shader xl_3d_mesh.vert interface=pass3d varyings=Mesh3dVaryings
+shader xl_3d_mesh.frag interface=pass3d varyings=Mesh3dVaryings
+shader basic3d_glass.frag interface=pass3d varyings=Stripes3dVaryings translucent=#true
+```
+
+Varyings are an interface block, `out` of a vertex shader and `in` a fragment one, named `vary`:
+`layout (location = 0) out Mesh3dVaryings { vec3 normal; … } vary;`. Its members take locations in
+their order. A varying is a scalar or a vector; an integer one is `flat`, and `flat=#true` makes a
+float one so.
+
+A shader is named by its file - a name, then `.vert` or `.frag` - and its preamble is that name
+with `.glsl`. A fragment shader also gets `layout (location = 0) out vec4 outColor;`. The shader
+includes its preamble after `#version` and the include directive:
+
+```glsl
+#version 450
+#extension GL_GOOGLE_include_directive : enable
+
+#include "xl_3d_mesh.vert.glsl"
+
+void main() {
+	Vertex3d v = vertices(gl_VertexIndex);
+	DrawData3d d = draws(constants.drawIndex);
+	vary.normal = (d.normal * vec4(v.normal.xyz, 0.0)).xyz;
+	gl_Position = view().viewProj * (d.model * vec4(v.pos.xyz, 1.0));
+}
+```
+
+The directory of the preambles has to be on the shaders' include path: a module's
+`MODULE_<X>_SHADERS_INCLUDE`, an app's `LOCAL_SHADERS_INCLUDE`. It cannot be the shaders'
+directory itself, where the build compiles every file with a dot in its name.
+
 ## Errors
 
 Every one carries its place in the description:
@@ -105,4 +200,10 @@ Every one carries its place in the description:
 * a name that is not an identifier, or a name defined twice;
 * a field that would start past a gap, or an array of a type that steps differently in C++;
 * a record whose padding would take the name of one of its fields;
-* a constant whose value does not fit its type.
+* a constant whose value does not fit its type;
+* an import that is not there, or an import cycle;
+* a record, an interface, varyings or a constant a definition names and no file defines;
+* a buffer whose pointer is not a `uvec2` field of the push constants;
+* a sampler type other than `sampler2D` and `sampler2DArray`;
+* a varying that is not a scalar or a vector; a shader name that is not `<name>.vert` or
+  `<name>.frag`; a translucent vertex shader.

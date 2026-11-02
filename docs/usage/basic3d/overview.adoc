@@ -43,7 +43,8 @@ public:
 The stock mesh pipeline draws a material as its colour times its texture, lit by Lambert. A material can name another pipeline instead: one the app gives `Scene3d::init`.
 
 ```cpp
-// shaders/my_terrain.vert and .frag, built by LOCAL_SHADERS_DIR in the app's Makefile
+// shaders/my_terrain.vert and .frag, built by LOCAL_SHADERS_DIR in the app's Makefile; their
+// preambles, glsl/my_terrain.*.glsl, from the app's schema on LOCAL_SHADERS_INCLUDE
 #include "my_terrain.vert.h"
 #include "my_terrain.frag.h"
 
@@ -56,9 +57,10 @@ view->addDraw(Draw3d{mesh, Mat4::IDENTITY, Material3d{.texture = ground, .pipeli
 	.flags = GridBit, .params = {Vec4(width, height, 0, 0), Vec4::ZERO}}});
 ```
 
-- The shaders read what the mesh shaders read, from [`XL3dGlslData.h`](../../../xenolith/renderer/basic3d/glsl/include/XL3dGlslData.h): the push constants `Constants3d`, the vertexes, draws, views and lights they point to, the texture array at set 0, binding 0, and the layered one at binding 1. A draw's `flags`, `params`, `textureIdx2` and `textureIdx3` are the material's; a view's `screen` holds its size in pixels and the density, to turn widths in points into pixels, and `firstLight`/`lightCount` its lights in the frame's array. [`xl_3d_mesh.vert`](../../../xenolith/renderer/basic3d/glsl/shaders/xl_3d_mesh.vert) is a starting point.
+- The shaders read what the mesh shaders read, from [`XL3dGlslData.h`](../../../xenolith/renderer/basic3d/glsl/include/XL3dGlslData.h): the push constants `Constants3d`, the vertexes, draws, views and lights they point to, the texture array at set 0, binding 0, and the layered one at binding 1. A draw's `flags`, `params`, `textureIdx2` and `textureIdx3` are the material's; a view's `screen` holds its size in pixels and the density, to turn widths in points into pixels, and `firstLight`/`lightCount` its lights in the frame's array.
+- What a shader declares to read them comes from a schema of the app that imports basic3d's and names its shaders and their varyings ([xlkdl-gpu.adoc](../tools/xlkdl-gpu.adoc)): `xlkdl gpu` writes a preamble for each, and the shader includes it and writes `main()` - `vertices(i)`, `draws(constants.drawIndex)`, `view()`, `lights(i)`, the varyings as `vary.<name>`, a fragment shader's `outColor`. The preambles are committed; the app puts their directory on `LOCAL_SHADERS_INCLUDE`, not in `LOCAL_SHADERS_DIR`. The example's [basic3d-example.kdl](../../../examples/window/basic3d/glsl/basic3d-example.kdl) is one, and the mesh shaders, [`xl_3d_mesh.vert`](../../../xenolith/renderer/basic3d/glsl/shaders/xl_3d_mesh.vert) and `.frag`, are a starting point.
 - Every pipeline tests depth Less and culls back faces; an opaque one writes depth.
-- A pipeline with `translucent = true` draws after every opaque draw, in a second subpass of the pass: it blends over them by its alpha, does not write depth, and reads theirs as an input attachment at set 0, binding 2 - `layout (input_attachment_index = 0, set = 0, binding = 2) uniform subpassInput sceneDepth;` - for how far the view goes through it (water's thickness). Its draws go in the order the view gives them: far to near, if they overlap on screen. The example's glass (`BASIC3D_GLASS=1`) is one.
+- A pipeline with `translucent = true` draws after every opaque draw, in a second subpass of the pass: it blends over them by its alpha, does not write depth, and reads theirs as an input attachment at set 0, binding 2 - `sceneDepth` in the preamble of a fragment shader the schema marks `translucent=#true` - for how far the view goes through it (water's thickness). Its draws go in the order the view gives them: far to near, if they overlap on screen. The example's glass (`BASIC3D_GLASS=1`) is one.
 - The SPIR-V is referenced, not copied: it has to outlive the scene, as embedded shader headers do.
 - A material that picks a pipeline the scene does not have draws with the mesh pipeline, and the pass warns once. A pipeline with no name, a taken one or no shaders is refused at `init` with an error, and keeps its index.
 

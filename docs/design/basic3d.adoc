@@ -17,7 +17,7 @@ Sources:
 * [XL3dMeshPack.h](../../xenolith/renderer/basic3d/XL3dMeshPack.h) / [XL3dMeshPack.cc](../../xenolith/renderer/basic3d/XL3dMeshPack.cc) — meshes in GPU memory between frames
 * [basic3d.kdl](../../xenolith/renderer/basic3d/glsl/basic3d.kdl) — the schema of the records; [XL3dGlslData.h](../../xenolith/renderer/basic3d/glsl/include/XL3dGlslData.h), generated from it, is what C++ and GLSL include
 * [XL3dVkPass.h](../../xenolith/renderer/basic3d/backend/vk/XL3dVkPass.h) / [XL3dVkPass.cc](../../xenolith/renderer/basic3d/backend/vk/XL3dVkPass.cc) — the Vulkan pass: packing a frame, recording it
-* [xl_3d_mesh.vert](../../xenolith/renderer/basic3d/glsl/shaders/xl_3d_mesh.vert) / [xl_3d_mesh.frag](../../xenolith/renderer/basic3d/glsl/shaders/xl_3d_mesh.frag) — the stock mesh pipeline
+* [xl_3d_mesh.vert](../../xenolith/renderer/basic3d/glsl/shaders/xl_3d_mesh.vert) / [xl_3d_mesh.frag](../../xenolith/renderer/basic3d/glsl/shaders/xl_3d_mesh.frag) — the stock mesh pipeline, over the preambles `include/xl_3d_mesh.*.glsl`
 
 Companion documents: [usage/basic3d/overview.adoc](../usage/basic3d/overview.adoc) is the guide
 for using the module — making a scene, a pipeline of the app, a pack — and this document does not
@@ -194,6 +194,14 @@ then `xlkdl gpu xenolith/renderer/basic3d/glsl/basic3d.kdl` rewrites the header,
 answers whether it is up to date. The generator lays the records out by std430, pads each to its
 std430 size, and asserts the size and every offset in C++, so the C++ and the GLSL layouts cannot
 drift apart. `basic3dtest` checks, independently, the sizes and the offsets an app shader reads.
+
+The same schema describes the pass's interface to its shaders, `pass3d`: the push constants, the
+buffers they point to, the texture arrays and the translucent pipelines' depth. A shader the schema
+names - the mesh pipeline's two, an app's in a schema of its own that imports this one - includes a
+preamble `xlkdl gpu` writes for it, which declares all of that and the varyings its vertex and
+fragment shaders share, and `main()` is all the shader has to write. The limits of the texture
+arrays are the schema's constants (`XL_GLSL_3D_MAX_TEXTURES`, `…_MAX_TEXTURE_ARRAYS`), which
+`MaxTextures` and `MaxTextureArrays` are.
 
 | Record | Size | Holds | Where |
 |---|---|---|---|

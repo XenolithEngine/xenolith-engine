@@ -19,11 +19,11 @@ using Constants3d = glsl::Constants3d;
 using LightData3d = glsl::LightData3d;
 
 // Images one frame of the 3d pass can sample; the pass's descriptor array has this many slots
-static constexpr uint32_t MaxTextures = 64;
+static constexpr uint32_t MaxTextures = XL_GLSL_3D_MAX_TEXTURES;
 
 // Layered images (a texture with more than one array layer) one frame can sample: they have an
 // array of slots of their own, sampler2DArray at set 0, binding 1
-static constexpr uint32_t MaxTextureArrays = 16;
+static constexpr uint32_t MaxTextureArrays = XL_GLSL_3D_MAX_TEXTURE_ARRAYS;
 static constexpr uint32_t NoTexture = XL_GLSL_3D_NO_TEXTURE;
 
 // Point lights one view hands a frame; the rest are dropped, with a warning
