@@ -83,15 +83,23 @@ That stability is what lets the bound material survive atlas growth without bein
 
 For one `FontUpdateRequest{ FontFaceObject, chars }`:
 
-1. **Rasterize (worker threads).** `DeferredRequest::runFontRenderer` → FreeType →
-   `CharTexture{ bitmap, x, y, w, h, fontID, charID }`. (`xenolith/font/XLFontDeferredRequest.cc`)
+1. **Rasterize (worker threads).** The Vulkan queue runs `DeferredRequest::runFontRendererDirect`
+   twice. The first pass measures: FreeType loads each glyph and reports its `CharTexture` size,
+   nothing is drawn. Then `placeGlyphs` (on the frame's queue) allocates the staging buffer to the
+   byte and gives every glyph its slot; the second pass draws each glyph straight into its slot
+   (`font::GlyphTarget`). When the staging buffer is not mapped for the frame, the glyphs go to
+   one zeroed run of process memory of the same layout, copied in once
+   (`XL_FONT_STAGING_COPY=1` forces that path). (`xenolith/font/XLFontDeferredRequest.cc`)
    The per-thread FreeType handle comes from the library the face was opened from
    (`FontUpdateRequest::library`, the component's when null): that library's cache of handles is
    keyed by the face object and dropped with the face, and a face of another library would leave
    its handle behind for the next face allocated at the same address.
-2. **Collect bitmaps.** `FontAttachmentHandle::pushCopyTexture` writes pixels into the `_frontBuffer`
-   staging buffer and records a `VkBufferImageCopy`; `persistent` glyphs are also copied into
-   `_persistentTargetBuffer`. (`xenolith/font/backend/vk/XLVkFontQueue.cc`)
+2. **Place.** `placeGlyphs` records a `VkBufferImageCopy` per slot; `persistent` glyphs are also
+   copied into the last persistent block while it has room, into a new block otherwise. A block is
+   a thirty-second of the device-local heap's budget, within 1 and 32 MiB (4 MiB on the 128-MiB
+   heap of the RPi4's V3D), or the input that does not fit one; `XL_FONT_PERSISTENT_BLOCK` (bytes)
+   sets it, and `window/font-persistent-check.py` spreads the glyphs over many blocks with it.
+   (`xenolith/font/backend/vk/XLVkFontQueue.cc`)
 3. **Pack + atlas.** `writeAtlasData` packs the rectangles (`font::emplaceChars`), computes the final
    `Extent2`, creates a `core::DataAtlas`, and via `pushAtlasTexture` adds **4 `FontAtlasValue{pos,tex}`
    per glyph** keyed by `font::CharId`. (`xenolith/font/backend/vk/XLVkFontQueue.cc`)

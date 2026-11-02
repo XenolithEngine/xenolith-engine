@@ -41,6 +41,7 @@
 #include "render/GradientLayout.h"
 #include "render/ResourceUploadLayout.h"
 #include "render/LabelFillLayout.h"
+#include "render/FontPersistentLayout.h"
 #include "layout/FitContentLayout.h"
 #include "layout/FlexboxLayout.h"
 #include "layout/TableLayout.h"
@@ -640,6 +641,13 @@ static const TestInfo s_renderTests[] = {
 				   "and reads the damage box in both modes of Label::setBoundsFromLayout; "
 				   "label-fill.fill sets how many labels and how long."),
 		TestRegistry_make<LabelFillLayout>, true},
+
+	TestInfo{StringView("font-persistent"), StringView("XL_FONT_PERSISTENT_TEST"),
+		StringView("Persistent glyphs over many blocks"),
+		StringView("Labels with persistent glyph data, each of its own size and characters. "
+				   "font-persistent.show shows the first N; font-persistent.state says how many "
+				   "of their glyphs the atlas lacks."),
+		TestRegistry_make<FontPersistentLayout>, true},
 
 	TestInfo{StringView("gradient"), StringView("XL_GRADIENT_TEST"),
 		StringView("Gradients and outlines"),
