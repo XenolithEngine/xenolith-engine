@@ -4,7 +4,9 @@
     tests/run-checks.py                  # FAST - what the working tree's diff can break
     tests/run-checks.py console          # the console harnesses alone, no window at all
     tests/run-checks.py suite window     # every headless window check
-    tests/run-checks.py full             # THE GATE: every console harness and every window check
+    tests/run-checks.py suite generated  # every generated file against its generator
+    tests/run-checks.py full             # THE GATE: every console harness, generator check and
+                                         # window check
     tests/run-checks.py --list           # print the plan and run nothing
 
 WHY THIS EXISTS, AND WHAT IT COSTS. Measured on a 16-core Linux host on 2026-09-13, debug builds,
@@ -51,6 +53,12 @@ regenerates its corpus with a `gen-big-md.py` that is not in the repository. `te
 `tests/wwin`, `tests/wthread`, `tests/mtl`, `tests/auxui` and `tests/wasm` are cross-target harnesses
 (Windows under wine, macOS, wasm) and belong to `docs/agents/cross-target.md`, not to an iteration
 loop on Linux.
+
+GENERATED FILES. What `utils/xlkdl` writes is committed - the ABI and API headers of the runtime,
+the records of basic3d - and `xlkdl <command> --check` proves the commit is what the descriptions
+generate (`GENERATED`). A `fast` run owes the check when a description, the generated files or the
+tool changed; `full` runs every one. Like a harness, the tool is not built by the runner: an unbuilt
+`xlkdl` skips them.
 
 `computetest` needs a Vulkan device and is not in the `console` tier; `xenolith/core` and
 `xenolith/backend/vk` owe it. On a host with no loader or no device it prints SKIP, counts 0 checks
@@ -125,6 +133,26 @@ GATE_ARGS = {
     "flowtest": ["--full"],
 }
 
+# Files the repository commits as a generator wrote them, and the check that proves they still are:
+# (name, the generator's arguments, the directories a change under which owes it). `--check` writes
+# nothing, and its exit code is the number of files that are not what would be written. Every match
+# counts, not the first; `full` runs them all, a `fast` run those its paths owe.
+XLKDL = ("utils/xlkdl", "xlkdl")
+GENERATED = [
+    ("xlkdl abi sprt", ["abi", "--map", "runtime/kdl/abi/sprt.kdl", "--out", "runtime/include",
+                        "--check"],
+     ["runtime/kdl/abi", "runtime/include/sprt/gen", "utils/xlkdl"]),
+    ("xlkdl abi apple-open", ["abi", "--map", "runtime/kdl/abi/apple-open.kdl", "--check", "--out",
+                              "runtime/toolchains/target-apple/open/sysroot/include_libc"],
+     ["runtime/kdl/abi", "runtime/toolchains/target-apple/open/sysroot/include_libc/__sprt_abi",
+      "utils/xlkdl"]),
+    ("xlkdl api", ["api", "--map", "runtime/kdl/api/sprt-api.kdl", "--root", "runtime", "--check"],
+     ["runtime/kdl", "runtime/include/sprt/gen", "runtime/libc_impl/src/windows/dll/gen",
+      "utils/xlkdl"]),
+    ("xlkdl gpu basic3d", ["gpu", "xenolith/renderer/basic3d/glsl/basic3d.kdl", "--check"],
+     ["xenolith/renderer/basic3d/glsl", "utils/xlkdl"]),
+]
+
 # Which console harnesses a directory owes. First match wins, so the specific paths lead.
 OWES = [
     ("runtime/toolchains/replacements/mesa/26.2.3-tau", ["tauwsitest"]),
@@ -182,6 +210,7 @@ COST = {
     "gittest": 19, "computetest": 6, "wgpucompute": 2, "flowwgpu": 8, "runtimetest": 12, "stapplertest": 4, "libctest": 1, "localetest": 1,
     "uilayouttest": 1, "basic3dtest": 1, "particlestest": 1, "vstoretest": 5, "vstoretest --full": 200,
     "flowtest": 13, "flowtest --full": 36,
+    "xlkdl abi sprt": 12, "xlkdl abi apple-open": 1, "xlkdl api": 2, "xlkdl gpu basic3d": 1,
 }
 
 # Window checks that start a binary other than tests/window's testapp: (project, binary). The runner
@@ -307,8 +336,9 @@ class Job:
         if self.checks is None:  # studiotest and the console harnesses count by `[ OK ]` line
             n = text.count("[ OK ]")
             self.checks = n or None
-        self.fails = [l.rstrip() for l in text.splitlines()
-                      if re.search(r"\bFAIL\b|\[ FAIL|Traceback|SystemExit|TIMEOUT", l)][:20]
+        # a generator check says which file is stale, and nothing else
+        fail = r"\bFAIL\b|\[ FAIL|Traceback|SystemExit|TIMEOUT|: not what .* generates$"
+        self.fails = [l.rstrip() for l in text.splitlines() if re.search(fail, l)][:20]
         if self.rc != 0 and not self.fails:
             # A job can fail without a line that says FAIL - a harness that exits on a signal, a
             # script that raises where nothing prints. The tail is then the only evidence there is.
@@ -332,6 +362,12 @@ def cli_jobs(names=None, console_only=False, gate=False):
         label = name + (" " + " ".join(args) if args else "")
         jobs.append(Job(label, [binary(proj, name)] + args, cwd=os.path.join(ROOT, proj)))
     return jobs
+
+
+def generated_jobs(paths=None):
+    """The generator checks, all of them or those a change under `paths` owes."""
+    return [Job(name, [binary(*XLKDL)] + args) for name, args, owners in GENERATED
+            if paths is None or any(p.startswith(o + "/") for p in paths for o in owners)]
 
 
 def window_jobs(scripts):
@@ -359,7 +395,8 @@ def plan(args):
     if args.tier == "console":
         return cli_jobs(console_only=True), "the console harnesses, no window"
     if args.tier == "full":
-        return cli_jobs(gate=True) + window_jobs(window_scripts()), "the gate"
+        return (cli_jobs(gate=True) + generated_jobs() + window_jobs(window_scripts()),
+                "the gate")
     if args.tier == "suite":
         jobs = []
         for n in args.names:
@@ -367,10 +404,13 @@ def plan(args):
                 jobs += window_jobs(window_scripts())
             elif n in ("cli", "console"):
                 jobs += cli_jobs()
+            elif n in ("generated", "xlkdl"):
+                jobs += generated_jobs()
             else:
                 jobs += cli_jobs(names={n, n + "test"})
         if not jobs:
-            sys.exit("suite: name `window`, `cli`, or a harness (runtime, libc, stappler, tess, ...)")
+            sys.exit("suite: name `window`, `cli`, `generated`, or a harness (runtime, libc, "
+                     "stappler, tess, ...)")
         return dedup(jobs), " ".join(args.names)
 
     all_paths = changed_paths(args.since)
@@ -393,13 +433,14 @@ def plan(args):
             if not p.startswith(("tests/", "make/", "toolchains/", "utils/")):
                 wide = p
     if wide:
-        return (cli_jobs() + window_jobs(window_scripts()),
+        return (cli_jobs() + generated_jobs() + window_jobs(window_scripts()),
                 f"{wide} maps to nothing - running everything")
     scripts = select_window(paths)
     if not scripts and any(p.startswith("xenolith/") for p in paths):
         scripts = WINDOW_SMOKE
     scripts = scripts + [s for s in examples if s not in scripts]
-    jobs = dedup(cli_jobs(console_only=True) + cli_jobs(names=owed) + window_jobs(scripts))
+    jobs = dedup(cli_jobs(console_only=True) + cli_jobs(names=owed) + generated_jobs(paths)
+                 + window_jobs(scripts))
     return jobs, f"{len(paths)} changed paths -> {len(jobs)} jobs"
 
 
@@ -427,7 +468,8 @@ def main():
     sys.stdout.reconfigure(line_buffering=True)
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("tier", nargs="?", default="fast", choices=["fast", "console", "suite", "full"])
-    ap.add_argument("names", nargs="*", help="for `suite`: window, cli, or a harness name")
+    ap.add_argument("names", nargs="*",
+                    help="for `suite`: window, cli, generated, or a harness name")
     ap.add_argument("-j", "--jobs", type=int, default=int(os.environ.get("XL_CHECK_JOBS", 4)))
     ap.add_argument("--since", metavar="REV", help="select from `git diff REV`, not the working tree")
     ap.add_argument("--only", action="append", default=[], metavar="TEXT",
@@ -476,8 +518,10 @@ def main():
     if left:
         print(f"\n! {len(left)} testapp process(es) still alive - a script died before `quit`")
     if red:
+        tier = " ".join([args.tier] + args.names)
+        only = red[0].name.split("/")[-1]
         print("\nRe-run a red job alone before believing it:  tests/run-checks.py "
-              f"{args.tier} --only {red[0].name.split('/')[-1]} -j1")
+              f"{tier} --only {repr(only) if ' ' in only else only} -j1")
     return len(red)
 
 

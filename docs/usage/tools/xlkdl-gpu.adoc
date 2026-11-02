@@ -17,6 +17,9 @@ The header a schema writes is committed next to it. After a change to basic3d's 
 
     xlkdl gpu xenolith/renderer/basic3d/glsl/basic3d.kdl
 
+`tests/run-checks.py` runs `--check` on it (`xlkdl gpu basic3d`) when the schema, the header or
+`utils/xlkdl` changed, and in the gate; `xlkdl` has to be built for it, as a harness has.
+
 **TL;DR**
 
 * A **record** is a list of fields, laid out by **std430** - the layout of a storage buffer and of

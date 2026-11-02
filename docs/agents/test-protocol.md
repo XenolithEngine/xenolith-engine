@@ -12,6 +12,7 @@ runner that decides all three.*
 tests/run-checks.py                  # FAST    - what the working tree's diff can break
 tests/run-checks.py console          # CONSOLE - the six console harnesses, no window at all
 tests/run-checks.py suite window     # every headless window check
+tests/run-checks.py suite generated  # every committed generated file against its generator
 tests/run-checks.py full             # THE GATE - every console harness and every window check
 tests/run-checks.py --list           # the plan, without running it
 ```
@@ -21,7 +22,8 @@ tests/run-checks.py --list           # the plan, without running it
 | `console` | `runtimetest`, `libctest`, `localetest`, `uilayouttest`, `stapplertest`, `particlestest`, `vstoretest`, `flowtest` (reduced) | **14 s**, 6743 assertions | after any edit under `runtime/` or `stappler/` |
 | `fast` (default) | `console`, plus the harnesses the changed directories owe, plus the window checks named after the changed files | 20 s – 2 min | after an edit, before the next one |
 | `suite window` | every headless window check | 226 s at `-j4` (29 checks, before `particles-check`) | when the work is in `xenolith/renderer/ui` |
-| `full` | everything above plus `gittest`, `thirdpartytest`, `remotetest`, `tesstest`'s two goldens, `vstoretest --full` and `flowtest --full` | 223 s at `-j4`, 124 s at `-j8` | **before a commit** |
+| `suite generated` | `xlkdl … --check` over every file `utils/xlkdl` writes: the runtime's ABI and API headers, basic3d's records | 12 s | a `fast` run picks the ones a change to a description, a generated file or `utils/xlkdl` owes |
+| `full` | everything above plus the generator checks, `gittest`, `thirdpartytest`, `remotetest`, `tesstest`'s two goldens, `vstoretest --full` and `flowtest --full` | 223 s at `-j4`, 124 s at `-j8` | **before a commit** |
 
 **The gate is `full`.** A `fast` run selects by name and by directory, so a change that breaks a widget it is not
 named after is invisible to it by construction.
