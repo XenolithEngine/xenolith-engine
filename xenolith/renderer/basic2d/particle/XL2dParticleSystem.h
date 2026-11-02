@@ -244,6 +244,11 @@ public:
 	void setAttractors(SpanView<ParticleAttractor>);
 	SpanView<const ParticleAttractor> getAttractors() const;
 
+	// Width of the trail strip the particle's seat history draws, 0 - no trail; a negative value
+	// clamps to that default, and the key encode() writes only when the value is not it
+	void setTrailWidth(float);
+	float getTrailWidth() const;
+
 	void setCount(uint32_t);
 	uint32_t getCount() const;
 

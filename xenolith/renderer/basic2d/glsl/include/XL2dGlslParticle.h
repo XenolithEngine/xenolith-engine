@@ -46,6 +46,12 @@ using namespace sprt::glsl;
 #define XL_PARTICLE_EMISSION_RECT 3
 #define XL_PARTICLE_EMISSION_SEGMENT 4
 
+// The trail seats every particle carries. The number is Godot's own - its GPUParticles2D page
+// words trail_sections as "The number of sections to use for the particle trail rendering" and
+// carries 8 as the default - and no key chooses it: every emitter that draws a trail draws the
+// same count
+#define XL_PARTICLE_TRAIL_SEATS 8
+
 struct ParticleConstantData {
 	uvec2 frameDataPointer;
 	uvec2 outVerticesPointer;
@@ -240,7 +246,11 @@ struct ParticleEmitterData {
 	// unused
 	ParticleAttractor attractors[4];
 
-	// [328]
+	// [328-331]
+	// width of the trail strip the particle's seat history draws, 0 - no trail
+	float trailWidth;
+
+	// [332]
 };
 
 // State of one particle. Parameters are chosen at birth; positions are in the node's space with
@@ -280,7 +290,12 @@ struct ParticleData {
 	float damping; // the rate the speed loses per second, chosen at birth; 0 - no loss
 	uint padding108;
 
-	// [112]
+	// [112-175]
+	// the trail's seats, the newest first: seat 0 is the position of the step before the current
+	// one, the last seat the oldest of the eight
+	vec2 trail[XL_PARTICLE_TRAIL_SEATS];
+
+	// [176]
 };
 
 #ifndef SP_GLSL

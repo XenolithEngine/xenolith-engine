@@ -457,9 +457,13 @@ void ParticleSystem::apply(const Value &value) {
 					float(strength), float(it.getDouble("radius", 0.0))};
 			++count;
 		}
-		setAttractors(SpanView<ParticleAttractor>(seated, count));
+			setAttractors(SpanView<ParticleAttractor>(seated, count));
+		}
+
+		if (value.isBasicType("trailWidth")) {
+			setTrailWidth(float(value.getDouble("trailWidth")));
+		}
 	}
-}
 
 Value ParticleSystem::encode() const {
 	Value ret;
@@ -603,6 +607,9 @@ Value ParticleSystem::encode() const {
 	if (!attractors.empty()) {
 		ret.setValue(sp::move(attractors), "attractors");
 	}
+	if (_data->data.trailWidth != 0.0f) {
+		ret.setDouble(_data->data.trailWidth, "trailWidth");
+	}
 	return ret;
 }
 
@@ -675,6 +682,14 @@ void ParticleSystem::setAttractors(SpanView<ParticleAttractor> attractors) {
 SpanView<const ParticleAttractor> ParticleSystem::getAttractors() const {
 	return SpanView<const ParticleAttractor>(_data->data.attractors, 4);
 }
+
+void ParticleSystem::setTrailWidth(float width) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the step follows; a negative
+	// width is the no-trail default
+	mutate().data.trailWidth = sprt::max(width, 0.0f);
+}
+
+float ParticleSystem::getTrailWidth() const { return _data->data.trailWidth; }
 
 void ParticleSystem::setCount(uint32_t c) { mutate().data.count = c; }
 

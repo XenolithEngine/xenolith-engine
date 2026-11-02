@@ -229,6 +229,15 @@ SP_GLSL_INLINE void particleEmit(SP_GLSL_INOUT(ParticleData) particle,
 		particle.angle = particle.angle + frame.transformRotation;
 		particle.scale = particle.scale * frame.transformScale;
 	}
+
+	// The trail starts at the birth point the last transform left: every seat holds it, and the
+	// seats part one to a step as the particle walks away. The width's zero guards the writes: a
+	// trail-less emitter leaves every seat of every particle untouched
+	if (emitter.trailWidth != 0.0f) {
+		for (uint i = 0u; i < XL_PARTICLE_TRAIL_SEATS; ++i) {
+			particle.trail[i] = particle.position;
+		}
+	}
 }
 
 // One octave of value noise on a 2D integer lattice: the four corner hashes come from the
@@ -559,6 +568,22 @@ SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
 			particle.currentLifetime -= 1u;
 			counters.steps += 1u;
 			if (particle.currentLifetime > 0u) {
+				// The trail's history, Godot's trail_enabled - "If true, enables particle trails
+				// using a mesh skinning system" - taken without the skinning mesh: the strip this
+				// model draws is Effekseer's track, which "is not influenced by them and always
+				// faces the camera", not its ribbon, "shaped by connecting lines between
+				// (-0.5, 0, 0) and (0.5, 0, 0) of each particle" - a 3D seat this model refuses.
+				// The history is the positions the particle stood in: this step's pre-move
+				// position becomes the newest seat and the oldest falls out, so no seat repeats
+				// the current position. A pure state write - the generator stands unread - and
+				// the width's zero guards it: an old file answers the step - and the hash - it
+				// always had
+				if (emitter.trailWidth != 0.0f) {
+					for (uint i = XL_PARTICLE_TRAIL_SEATS - 1u; i > 0u; --i) {
+						particle.trail[i] = particle.trail[i - 1u];
+					}
+					particle.trail[0] = particle.position;
+				}
 				particleStep(particle, emitter, frame.dt, frame.seed, index, simTime);
 				particleApplyScaleCurve(particle, emitter);
 			}
