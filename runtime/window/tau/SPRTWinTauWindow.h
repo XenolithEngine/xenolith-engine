@@ -126,10 +126,19 @@ protected:
 	 * it, buttons are Begin/End and the wheel Scroll at the cursor; HID keys repeat after
 	 * s_usbRepeatDelayUs. The session is opened again after a loss. XL_USB_INPUT=0 disables.
 	 * XL_INPUT_LATENCY=1 prints, for the earliest touch or key press not yet shown, the time from
-	 * its report to the second present after it was posted: an upper bound, to within a frame. */
+	 * its report to the second present after it was posted: an upper bound, to within a frame.
+	 * A compositor on display planes reports the plane frames instead
+	 * (__sprt_tau_window_plane_shown): a press ends at the first one whose content was asked for
+	 * after it was posted. */
 	void pollUsb(uint64_t nowUs);
 	void markLatency(uint64_t reportNs, bool key);
 	void showLatency();
+
+public:
+	// A frame whose content was asked for at `contentNs` reached the screen on a display plane.
+	void showPlaneLatency(uint64_t contentNs);
+
+protected:
 	void usbEvent(const __sprt_tau_input_event &, uint64_t nowUs);
 	void usbPointer(const __sprt_tau_input_event &, bool absolute);
 	void usbKey(uint32_t usage, bool down, uint64_t nowUs);
@@ -189,6 +198,8 @@ protected:
 	// Report times in ns, bit 0 set for a key: posted and not yet past a present, and armed.
 	bool _latency = false;
 	sprt::atomic<uint64_t> _latencyPosted = 0;
+	sprt::atomic<uint64_t> _latencyPostedAt = 0; // when the press reached the application
+	sprt::atomic<bool> _planeLatency = false; // a compositor reports the frames that show presses
 	uint64_t _latencyArmed = 0;
 };
 

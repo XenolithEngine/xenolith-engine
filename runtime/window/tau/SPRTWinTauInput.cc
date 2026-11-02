@@ -114,15 +114,20 @@ InputEventData TauWindow::usbPoint(InputEventName event, uint32_t id, InputMouse
 // Keeps the earliest press not yet shown; its report time and the window's clock are both ns
 // of the counter since boot.
 void TauWindow::markLatency(uint64_t reportNs, bool key) {
-	if (!_latency || reportNs == 0) {
+	if (!_latency || reportNs == 0 || _latencyPosted.load(memory_order::relaxed) != 0) {
 		return;
 	}
+	_latencyPostedAt.store(__sprt_tau_clock_ns(), memory_order::relaxed);
 	uint64_t none = 0;
 	_latencyPosted.compare_exchange_strong(none, (reportNs & ~uint64_t(1)) | (key ? 1 : 0),
-			memory_order::relaxed, memory_order::relaxed);
+			memory_order::release, memory_order::relaxed);
 }
 
 void TauWindow::showLatency() {
+	// On display planes the window's own frames do not show what the clients drew.
+	if (_planeLatency.load(memory_order::relaxed)) {
+		return;
+	}
 	if (_latencyArmed) {
 		uint64_t now = __sprt_tau_clock_ns(), from = _latencyArmed & ~uint64_t(1);
 		if (now > from) {
@@ -336,4 +341,31 @@ void TauWindow::usbCancel() {
 	_modifiers = InputModifier::None;
 }
 
+// A press shows in the first frame whose content was asked for after the press reached the
+// application.
+void TauWindow::showPlaneLatency(uint64_t contentNs) {
+	_planeLatency.store(true, memory_order::relaxed);
+	auto posted = _latencyPosted.load(memory_order::acquire);
+	if (!posted || contentNs <= _latencyPostedAt.load(memory_order::relaxed)
+			|| !_latencyPosted.compare_exchange_strong(posted, 0, memory_order::relaxed,
+					memory_order::relaxed)) {
+		return;
+	}
+	uint64_t now = __sprt_tau_clock_ns(), from = posted & ~uint64_t(1);
+	if (now > from) {
+		oslog::vpinfo(__SPRT_LOCATION, "TauWindow", "input latency ", (now - from) / 1'000, " us (",
+				(posted & 1) ? "key" : "touch", "), report to plane");
+	}
+}
+
+TauWindow *s_latencyWindow = nullptr;
+
 } // namespace sprt::window
+
+// The compositor's call when a display plane shows a frame: `contentNs` is when its content was
+// asked for (FrameRequest::getContentClock, in ns).
+extern "C" SPRT_API void __sprt_tau_window_plane_shown(unsigned long long contentNs) {
+	if (auto w = sprt::window::s_latencyWindow) {
+		w->showPlaneLatency(contentNs);
+	}
+}

@@ -201,6 +201,11 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 	auto localProxy = Rc<core::LocalFrameRequestProxy>(
 			static_cast<core::LocalFrameRequestProxy *>(proxy.get()));
 
+	// The client draws this frame from what it has handled when the request reaches it.
+	if (auto request = localProxy->getRequest()) {
+		request->setContentClock(sp::platform::clock(ClockType::Monotonic));
+	}
+
 	auto sent = _session->sendMessageWithReply(remote::Domain::Window,
 			toInt(remote::WindowCode::AcquireFrame), req,
 			[this, pending, frameId, windowId, localProxy](const remote::MessageHeader &h,

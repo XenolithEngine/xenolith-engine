@@ -113,7 +113,10 @@ def run(binary, tag, block, steps, copy=False, wait=True):
         ret["state"] = invoke(s, "font-persistent.state")
         s.ok("frame", count=4)
         time.sleep(0.2)
-        ret["shot"] = dc.shot_bytes(s)
+        # A refused input fails its frames, so then there may be no picture to take.
+        if wait:
+            ret["shot"] = dc.shot_bytes(s)
+        ret["alive"] = proc.poll() is None
     finally:
         s.close()
         proc.terminate()
@@ -191,7 +194,7 @@ def main():
     text = open(refused["log"], errors="replace").read()
     check("the persistent buffer is refused", "Font persistent allocation failed" in text,
             f"see {refused['log']}")
-    check("and the app goes on drawing frames", refused.get("shot") is not None
+    check("and the app goes on running frames", refused.get("alive")
             and refused.get("state", {}).get("shown") == 4, str(refused.get("state")))
     check("without a fault", not re.search(r"Segmentation|SIGSEGV|SIGABRT|Assertion", text),
             f"see {refused['log']}")

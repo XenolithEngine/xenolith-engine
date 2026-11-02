@@ -126,7 +126,7 @@ protected:
 	using core::Object::init;
 
 	// Move a presented image into the plane: layout task, then publish (loop thread).
-	void publishPlaneFrame(uint32_t slot, Rc<Image> &&);
+	void publishPlaneFrame(uint32_t slot, Rc<Image> &&, uint64_t contentClock);
 
 	// Copy a presented image into the output: copy task, then the rows (loop thread).
 	void presentToOutput(uint32_t slot, Rc<Image> &&, Vector<URect> &&damage);

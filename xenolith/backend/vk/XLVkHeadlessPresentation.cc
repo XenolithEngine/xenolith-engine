@@ -474,7 +474,7 @@ Status HeadlessSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 	lock.unlock();
 
 	if (published) {
-		publishPlaneFrame(publishedSlot, sp::move(published));
+		publishPlaneFrame(publishedSlot, sp::move(published), info.contentClock);
 	}
 
 	if (output) {
@@ -532,7 +532,7 @@ void HeadlessSwapchain::attachPlaneSource(NotNull<core::PlaneSource> source) {
 	_planeSource->setSlotTable(Rc<core::PlaneSlotTable>(_slots));
 }
 
-void HeadlessSwapchain::publishPlaneFrame(uint32_t slot, Rc<Image> &&image) {
+void HeadlessSwapchain::publishPlaneFrame(uint32_t slot, Rc<Image> &&image, uint64_t contentClock) {
 	auto loop = Rc<core::Loop>(_loop);
 	auto device = Rc<Device>(static_cast<Device *>(_object.device));
 	auto source = _planeSource;
@@ -557,10 +557,11 @@ void HeadlessSwapchain::publishPlaneFrame(uint32_t slot, Rc<Image> &&image) {
 	// Published only once readable: the frame is announced after its image reached ShaderReadOnly.
 	device->runTask(*loop,
 			Rc<PlaneLayoutTask>::create(Rc<Image>(image), true,
-					[source, serial, slot, image, slots, release = sp::move(release)](
+					[source, serial, slot, image, slots, contentClock, release = sp::move(release)](
 							bool success) mutable {
 		auto frame = Rc<core::PlaneFrame>::create(serial, slot, Rc<core::ImageObject>(image.get()),
 				sp::move(slots), sp::move(release));
+		frame->setContentClock(contentClock);
 		if (success) {
 			source->publish(sp::move(frame));
 		}

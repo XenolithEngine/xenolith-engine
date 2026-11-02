@@ -54,6 +54,7 @@ protected:
 struct SP_PUBLIC PresentInfo {
 	uint64_t presentWindow = 0;
 	SpanView<URect> damage;
+	uint64_t contentClock = 0; // FrameRequest::getContentClock of the frame, 0 - unknown
 };
 
 // Turns "current frame vs a stored snapshot of what was drawn" into a list of damaged rectangles.

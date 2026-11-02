@@ -64,6 +64,7 @@ bool FrameRequest::init(const Rc<PresentationFrame> &pFrame, const Rc<Queue> &q,
 
 bool FrameRequest::init(const Rc<PresentationFrame> &pFrame, const FrameConstraints &constraints) {
 	_pool = Rc<sprt::PoolRef>::alloc();
+	_contentClock = sp::platform::clock(ClockType::Monotonic);
 	_presentationFrame = pFrame;
 	_constraints = constraints;
 	return true;
@@ -71,6 +72,7 @@ bool FrameRequest::init(const Rc<PresentationFrame> &pFrame, const FrameConstrai
 
 bool FrameRequest::init(const Rc<Queue> &q) {
 	_pool = Rc<sprt::PoolRef>::alloc();
+	_contentClock = sp::platform::clock(ClockType::Monotonic);
 	setQueue(q);
 	return true;
 }

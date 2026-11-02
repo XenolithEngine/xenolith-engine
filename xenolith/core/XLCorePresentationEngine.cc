@@ -139,19 +139,19 @@ bool PresentationEngine::scheduleSwapchainImage(Rc<PresentationFrame> &&frame) {
 			frame->getRequest()->setOutput(a,
 					[frame = Rc<PresentationFrame>(frame)](core::FrameAttachmentData &data,
 							bool success, Ref *) mutable -> bool {
-				if (!frame) {
+				// Invalidating the frame drops its request, and with it this callback: the frame
+				// leaves the capture first and the callback is not touched after.
+				auto f = sp::move(frame);
+				if (!f) {
 					return true;
 				}
 				// Called in GL Thread
 				XL_COREPRESENT_LOG("scheduleSwapchainImage: output on frame");
 				if (data.image && success) {
-					frame->assignResult(data.image);
-					frame = nullptr;
+					f->assignResult(data.image);
 					return false;
-				} else {
-					frame->invalidate();
 				}
-				frame = nullptr;
+				f->invalidate();
 				return true;
 			},
 					this);
@@ -462,7 +462,7 @@ void PresentationEngine::presentWithQueue(DeviceQueue *queue, NotNull<Presentati
 	}
 
 	core::PresentInfo presentInfo{presentWindow,
-		partial ? makeSpanView(damage) : SpanView<URect>()};
+		partial ? makeSpanView(damage) : SpanView<URect>(), request ? request->getContentClock() : 0};
 
 	auto clock = sp::platform::clock(ClockType::Monotonic);
 	auto res = _swapchain->present(queue, image, presentInfo);
