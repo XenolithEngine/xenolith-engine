@@ -151,9 +151,6 @@ GENERATED = [
       "utils/xlkdl"]),
     ("xlkdl gpu basic3d", ["gpu", "xenolith/renderer/basic3d/glsl/basic3d.kdl", "--check"],
      ["xenolith/renderer/basic3d/glsl", "utils/xlkdl"]),
-    ("xlkdl gpu basic3d-example",
-     ["gpu", "examples/window/basic3d/glsl/basic3d-example.kdl", "--check"],
-     ["examples/window/basic3d/glsl", "xenolith/renderer/basic3d/glsl", "utils/xlkdl"]),
     ("xlkdl gpu basic3d-test", ["gpu", "tests/basic3d/glsl/basic3d-test.kdl", "--check"],
      ["tests/basic3d/glsl", "xenolith/renderer/basic3d/glsl", "utils/xlkdl"]),
 ]
@@ -216,7 +213,7 @@ COST = {
     "uilayouttest": 1, "basic3dtest": 1, "particlestest": 1, "vstoretest": 5, "vstoretest --full": 200,
     "flowtest": 13, "flowtest --full": 36,
     "xlkdl abi sprt": 12, "xlkdl abi apple-open": 1, "xlkdl api": 2, "xlkdl gpu basic3d": 1,
-    "xlkdl gpu basic3d-example": 1, "xlkdl gpu basic3d-test": 1,
+    "xlkdl gpu basic3d-test": 1,
 }
 
 # Window checks that start a binary other than tests/window's testapp: (project, binary). The runner

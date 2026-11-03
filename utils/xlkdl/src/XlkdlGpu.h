@@ -70,6 +70,9 @@ struct Field {
 	const FieldType *type = nullptr;
 	uint32_t count = 0; // an array's length, 0 for a single value
 	String fallback; // a builder's initial value, as C++ spells it; 0 when none is given
+
+	// a uint of `count` values `bits` wide each, the first in the lowest bits; 0 for a plain field
+	uint32_t bits = 0;
 	String doc;
 	kdl::Location location;
 

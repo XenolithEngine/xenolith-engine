@@ -52,11 +52,13 @@ void performVertexTests() {
 		.uv = Vec2(0.5f, 0.75f),
 		.color = Vec4(1.0f, 0.0f, 0.0f, 1.0f),
 		.layer = 2.0f,
+		.marks = {5, 10},
 	};
 	auto p = v.pack();
 	check(p.pos == v.pos && p.normal == packOct16(v.normal) && p.uv == packHalf2(v.uv)
-					&& p.color == 0xFF0000FFu && p.layer == 2.0f && p.padding == 0,
-			"vertex: pack() packs each field by its type");
+					&& p.color == 0xFF0000FFu && p.layer == 2.0f && p.marks == (5u | 10u << 4)
+					&& checks::marksAt(p, 1) == 10,
+			"vertex: pack() packs each field by its type, the marks' bits too");
 
 	// a mesh of the format: its bytes, their count and bounds; no Vertex3d to read
 	auto a = v;

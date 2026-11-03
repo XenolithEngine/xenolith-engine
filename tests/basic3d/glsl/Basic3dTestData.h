@@ -43,15 +43,23 @@ struct Packed3dTest {
 	uint uv;
 	uint color;
 	float layer;
-	uint padding;
+	uint marks; // two 4-bit marks
 };
+
+// the i-th of Packed3dTest::marks's 2 values, 4 bits each
+SP_GLSL_INLINE uint marksAt(SP_GLSL_IN(Packed3dTest) r, uint i) { return (r.marks >> (i * 4u)) & 15u; }
 
 // A view's block, as an app would have one
 struct Field3dTest {
 	vec2 origin;
 	uint heights; // a height map
 	float time;
+	uint tiles; // eight 3-bit values, as a terrain's types' tiling
+	uint padding;
 };
+
+// the i-th of Field3dTest::tiles's 8 values, 3 bits each
+SP_GLSL_INLINE uint tilesAt(SP_GLSL_IN(Field3dTest) r, uint i) { return (r.tiles >> (i * 3u)) & 7u; }
 
 #ifndef SP_GLSL
 // Terrain3dTest with its textures, for Material3d::data of a pipeline that reads it
@@ -60,7 +68,7 @@ struct Terrain3dTestMaterial {
 	xl3d::MaterialTexture3d ground;
 	xl3d::MaterialTexture3d detail;
 	vec2 scale;
-	vec4 params[2];
+	vec4 params[2] = {};
 	uint flags = 0;
 
 	static constexpr xl3d::MaterialTextureField3d Textures[] = {
@@ -91,6 +99,7 @@ struct Packed3dTestVertex {
 	vec2 uv;
 	vec4 color;
 	float layer = 0.0f;
+	uint marks[2] = {};
 
 	static constexpr xl3d::VertexFormat3d Format{"Packed3dTest", 32, 16, 0};
 
@@ -101,7 +110,8 @@ struct Packed3dTestVertex {
 		d.uv = xl3d::packHalf2(uv);
 		d.color = xl3d::packUnorm8x4(color);
 		d.layer = layer;
-		d.padding = 0;
+		d.marks = 0;
+		for (uint32_t i = 0; i < 2; ++i) { d.marks |= (marks[i] & 15u) << (i * 4); }
 		return d;
 	}
 };
@@ -111,17 +121,21 @@ struct Field3dTestBlock {
 	vec2 origin;
 	xl3d::MaterialTexture3d heights;
 	float time = 0.0f;
+	uint tiles[8] = {};
 
 	static constexpr xl3d::MaterialTextureField3d Textures[] = {
 		{8, xl3d::MaterialTextureKind3d::Texture2d},
 	};
-	static constexpr xl3d::MaterialSchema3d Schema{"Field3dTest", 16, 8, Textures, 1};
+	static constexpr xl3d::MaterialSchema3d Schema{"Field3dTest", 24, 8, Textures, 1};
 
 	sprt::Rc<xl3d::MaterialData3d> make() const {
 		Field3dTest d;
 		d.origin = origin;
 		d.heights = 0xFFFFFFFFu; // the pass writes the frame's slot
 		d.time = time;
+		d.tiles = 0;
+		for (uint32_t i = 0; i < 8; ++i) { d.tiles |= (tiles[i] & 7u) << (i * 3); }
+		d.padding = 0;
 		return xl3d::MaterialData3d::make(&Schema, d, {heights});
 	}
 };
@@ -143,11 +157,13 @@ static_assert(__builtin_offsetof(Packed3dTest, normal) == 12);
 static_assert(__builtin_offsetof(Packed3dTest, uv) == 16);
 static_assert(__builtin_offsetof(Packed3dTest, color) == 20);
 static_assert(__builtin_offsetof(Packed3dTest, layer) == 24);
-static_assert(__builtin_offsetof(Packed3dTest, padding) == 28);
-static_assert(sizeof(Field3dTest) == 16);
+static_assert(__builtin_offsetof(Packed3dTest, marks) == 28);
+static_assert(sizeof(Field3dTest) == 24);
 static_assert(__builtin_offsetof(Field3dTest, origin) == 0);
 static_assert(__builtin_offsetof(Field3dTest, heights) == 8);
 static_assert(__builtin_offsetof(Field3dTest, time) == 12);
+static_assert(__builtin_offsetof(Field3dTest, tiles) == 16);
+static_assert(__builtin_offsetof(Field3dTest, padding) == 20);
 
 } // namespace stappler::xenolith::basic3d::checks
 #endif

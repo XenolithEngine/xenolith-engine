@@ -31,9 +31,9 @@ LOCAL_MAIN := main.cpp
 
 # an app pipeline of the 3d pass: the stripes on the boxes
 LOCAL_SHADERS_DIR := $(LOCAL_ROOT)shaders
-# the preambles of the shaders and the glass's material, generated from glsl/basic3d-example.kdl
-LOCAL_SHADERS_INCLUDE := $(LOCAL_ROOT)glsl
-LOCAL_INCLUDES_OBJS := $(LOCAL_ROOT)glsl
+# the example's GPU data: its header and the shaders' preambles are generated in the build from
+# it (xlkdl gpu, which has to be built for the host first)
+LOCAL_SHADERS_SCHEMA := $(LOCAL_ROOT)glsl/basic3d-example.kdl
 LOCAL_PRIVATE_DEPS = $(BUILD_SHADERS_EMBEDDED)
 
 APPCONFIG_APP_NAME    := Basic3d Example

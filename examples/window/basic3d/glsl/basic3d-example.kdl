@@ -1,8 +1,7 @@
-// The example's pipelines over the 3d pass's interface: the stripes' vertex, the glass's material,
-// the view's block and the preambles of the shaders, next to this description, are generated from
-// it (docs/usage/tools/xlkdl-gpu.adoc). After a change:
-//
-//     xlkdl gpu examples/window/basic3d/glsl/basic3d-example.kdl
+// The example's pipelines over the 3d pass's interface: the stripes' vertex and material, the
+// glass's material, the view's block, the varyings. The build generates the header and the shaders'
+// preambles from it (LOCAL_SHADERS_SCHEMA in the Makefile, docs/usage/tools/xlkdl-gpu.adoc) into
+// stappler-build; nothing generated is committed.
 
 import "../../../../xenolith/renderer/basic3d/glsl/basic3d.kdl"
 

@@ -45,7 +45,8 @@ bool layoutRecord(const Schema &schema, Record &record, Diagnostics &diag) {
 			return false;
 		}
 		field.offset = start;
-		offset = start + field.type->size * (field.count ? field.count : 1);
+		// a field of bits is one uint, however many values it holds
+		offset = start + (field.bits ? 4 : field.type->size * (field.count ? field.count : 1));
 		align = sprt::max(align, field.type->align);
 		prev = &field;
 	}

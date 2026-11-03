@@ -47,6 +47,7 @@ GLOBAL_QUIET_LINK = $(call verbose_log,"[Link] $@")
 GLOBAL_QUIET_LINK_SHARED = $(call verbose_log,"[DSO Link] $$(notdir $$@)")
 GLOBAL_QUIET_LINK_STATIC = $(call verbose_log,"[Static Link] $$(notdir $$@)")
 GLOBAL_QUIET_GLSLC = $(call verbose_log,"[$(notdir $(GLSLC))] $(notdir $(abspath $(dir $(1))))/$(notdir $(1))")
+GLOBAL_QUIET_XLKDL = $(call verbose_log,"[xlkdl] $(notdir $(1))")
 GLOBAL_QUIET_WIT = $(call verbose_log,"[wit] $(notdir $@)")
 GLOBAL_QUIET_WIT_BINDGEN = $(call verbose_log,"[$(notdir $(WIT_BINDGEN))]")
 

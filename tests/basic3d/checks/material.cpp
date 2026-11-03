@@ -71,18 +71,29 @@ void performMaterialTests() {
 	// a view's block is made as a material is
 	using checks::Field3dTestBlock;
 	auto &blockSchema = Field3dTestBlock::Schema;
-	check(blockSchema.size == 16 && blockSchema.align == 8 && blockSchema.textureCount == 1
+	check(blockSchema.size == 24 && blockSchema.align == 8 && blockSchema.textureCount == 1
 					&& blockSchema.textures[0].offset == 8
 					&& blockSchema.textures[0].kind == MaterialTextureKind3d::Texture2d,
 			"block: its schema, its texture field at 8",
 			toString(blockSchema.size, " ", blockSchema.align));
-	auto block = Field3dTestBlock{.origin = Vec2(16.0f, 32.0f), .time = 1.5f}.make();
-	check(block && block->getSchema() == &blockSchema && block->getData().size() == 16
+	auto block = Field3dTestBlock{.origin = Vec2(16.0f, 32.0f), .time = 1.5f,
+		.tiles = {1, 2, 3, 4, 5, 6, 7, 9}}.make();
+	check(block && block->getSchema() == &blockSchema && block->getData().size() == 24
 					&& readAt<Vec2>(block->getData(), 0) == Vec2(16.0f, 32.0f)
 					&& readAt<uint32_t>(block->getData(), 8) == NoTexture
 					&& readAt<float>(block->getData(), 12) == 1.5f
 					&& block->getTextures().size() == 1,
 			"block: the builder makes its bytes and its texture");
+
+	// a field of bits: eight 3-bit values in one uint, each masked to its width, read back by the
+	// function the header gives C++ and GLSL alike
+	auto tiles = block ? readAt<uint32_t>(block->getData(), 16) : 0;
+	checks::Field3dTest record;
+	record.tiles = tiles;
+	check(tiles == (1u | 2u << 3 | 3u << 6 | 4u << 9 | 5u << 12 | 6u << 15 | 7u << 18 | 1u << 21)
+					&& checks::tilesAt(record, 2) == 3 && checks::tilesAt(record, 7) == 1,
+			"block: a field of bits packs its values, the first lowest, and tilesAt reads them",
+			toString(tiles));
 }
 
 } // namespace stappler::xenolith::basic3d

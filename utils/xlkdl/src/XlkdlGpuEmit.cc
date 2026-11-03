@@ -53,7 +53,7 @@ void appendRecord(const Record &r, String &out) {
 			appendDocLines(out, f.doc, "\t");
 		}
 		out.append(mem_std::toString("\t", f.type->spelled(), " ", f.name));
-		if (f.count) {
+		if (f.count && !f.bits) {
 			out.append(mem_std::toString("[", f.count, "]"));
 		}
 		out.push_back(';');
@@ -63,6 +63,16 @@ void appendRecord(const Record &r, String &out) {
 		out.push_back('\n');
 	}
 	out.append("};\n");
+
+	// a field of bits is read by a function of the same in C++ and in GLSL
+	for (auto &f : r.fields) {
+		if (f.bits) {
+			out.append(mem_std::toString("\n// the i-th of ", r.name, "::", f.name, "'s ", f.count,
+					" values, ", f.bits, " bits each\nSP_GLSL_INLINE uint ", f.name,
+					"At(SP_GLSL_IN(", r.name, ") r, uint i) { return (r.", f.name, " >> (i * ",
+					f.bits, "u)) & ", (1u << f.bits) - 1, "u; }\n"));
+		}
+	}
 }
 
 // The layout the shaders read, checked against the one C++ makes
@@ -104,6 +114,18 @@ String initial(const Field &f, StringView type) {
 	return String(type == "float" ? " = 0.0f" : (type == "uint" || type == "int") ? " = 0" : "");
 }
 
+// A builder's values of a field of bits into its uint, each masked to its width
+void appendBitsPack(const Field &f, String &out) {
+	auto mask = (1u << f.bits) - 1;
+	if (f.count == 1) {
+		out.append(mem_std::toString("\t\td.", f.name, " = ", f.name, " & ", mask, "u;\n"));
+		return;
+	}
+	out.append(mem_std::toString("\t\td.", f.name, " = 0;\n\t\tfor (uint32_t i = 0; i < ", f.count,
+			"; ++i) { d.", f.name, " |= (", f.name, "[i] & ", mask, "u) << (i * ", f.bits,
+			"); }\n"));
+}
+
 // A material's or a block's builder for C++: its fields, textures as textures; its schema; and
 // make(), which lays them out as the record and hands the pass the textures, whose slots it writes
 // each frame.
@@ -127,8 +149,10 @@ void appendBuilder(const Record &r, String &out) {
 		}
 		auto zero = initial(f, f.type->name);
 		out.append(mem_std::toString("\t", f.type->name, " ", f.name));
-		if (f.count) {
-			out.append(mem_std::toString("[", f.count, "]"));
+		if (f.count && f.bits && f.count == 1) {
+			out.append(" = 0");
+		} else if (f.count) {
+			out.append(mem_std::toString("[", f.count, "] = {}"));
 		} else {
 			out.append(zero);
 		}
@@ -158,6 +182,8 @@ void appendBuilder(const Record &r, String &out) {
 			out.append(mem_std::toString("\t\td.", f.name,
 					" = 0xFFFFFFFFu; // the pass writes the frame's slot\n"));
 			list.append(mem_std::toString(list.empty() ? "" : ", ", f.name));
+		} else if (f.bits) {
+			appendBitsPack(f, out);
 		} else if (f.count) {
 			out.append(mem_std::toString("\t\tfor (uint32_t i = 0; i < ", f.count, "; ++i) { d.",
 					f.name, "[i] = ", f.name, "[i]; }\n"));
@@ -179,6 +205,10 @@ void appendVertexBuilder(const Record &r, String &out) {
 			continue;
 		}
 		auto type = f.type->packed() ? f.type->unpacked : f.type->name;
+		if (f.bits && f.count > 1) {
+			out.append(mem_std::toString("\t", type, " ", f.name, "[", f.count, "] = {};\n"));
+			continue;
+		}
 		auto zero = initial(f, type);
 		out.append(mem_std::toString("\t", type, " ", f.name, zero, ";\n"));
 	}
@@ -191,6 +221,8 @@ void appendVertexBuilder(const Record &r, String &out) {
 		} else if (f.type->packed()) {
 			out.append(mem_std::toString("\t\td.", f.name, " = xl3d::", f.type->pack, "(", f.name,
 					");\n"));
+		} else if (f.bits) {
+			appendBitsPack(f, out);
 		} else {
 			out.append(mem_std::toString("\t\td.", f.name, " = ", f.name, ";\n"));
 		}
@@ -273,7 +305,8 @@ void appendVertexReader(const Record &v, const Interface &iface, String &out) {
 	for (auto &f : v.fields) {
 		if (!f.padding) {
 			out.append(mem_std::toString("\t", f.type->packed() ? f.type->unpacked : f.type->name,
-					" ", f.name, ";\n"));
+					" ", f.name, f.bits && f.count > 1 ? mem_std::toString("[", f.count, "]") : "",
+					";\n"));
 			oct = oct || f.type->name == "oct16";
 		}
 	}
@@ -298,6 +331,13 @@ void appendVertexReader(const Record &v, const Interface &iface, String &out) {
 		if (f.type->packed()) {
 			out.append(mem_std::toString("\tv.", f.name, " = ", f.type->unpack, "(p.", f.name,
 					");\n"));
+		} else if (f.bits && f.count > 1) {
+			for (uint32_t i = 0; i < f.count; ++i) {
+				out.append(mem_std::toString("\tv.", f.name, "[", i, "] = ", f.name, "At(p, ", i,
+						"u);\n"));
+			}
+		} else if (f.bits) {
+			out.append(mem_std::toString("\tv.", f.name, " = ", f.name, "At(p, 0u);\n"));
 		} else {
 			out.append(mem_std::toString("\tv.", f.name, " = p.", f.name, ";\n"));
 		}

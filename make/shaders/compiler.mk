@@ -20,6 +20,11 @@
 
 BUILD_SHADERS_OUTDIR := $(BUILD_OUTDIR)/$(notdir $(GLSLC))
 
+# What xlkdl gpu writes for the project's schemas (LOCAL_SHADERS_SCHEMA): their headers and the
+# preambles of their shaders, and a depfile of the schemas they come from
+BUILD_SHADERS_SCHEMA_OUTDIR := $(BUILD_OUTDIR)/schema
+BUILD_SHADERS_SCHEMA_DEPFILE := $(BUILD_SHADERS_SCHEMA_OUTDIR)/schema.d
+
 # Both write a make depfile beside the output ($(1).d): a shader is rebuilt when a header it
 # includes changes, not only when its own file does
 sp_compile_glsl = $(VERBOSE_GUARD) $(GLSLC) \

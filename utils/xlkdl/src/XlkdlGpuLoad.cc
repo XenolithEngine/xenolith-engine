@@ -70,7 +70,7 @@ struct NodeShape {
 
 const StringView s_constProps[] = {"type", "doc"};
 const StringView s_docProps[] = {"doc"};
-const StringView s_fieldProps[] = {"count", "default", "doc"};
+const StringView s_fieldProps[] = {"count", "bits", "default", "doc"};
 const StringView s_pushProps[] = {"name"};
 const StringView s_bufferProps[] = {"pointer", "single"};
 const StringView s_samplersProps[] = {"binding", "count"};
@@ -80,6 +80,8 @@ const StringView s_shaderProps[] = {"interface", "varyings", "material", "block"
 	"translucent", "doc"};
 const StringView s_vertexProps[] = {"position", "doc"};
 const StringView s_pointerProps[] = {"pointer"};
+const StringView s_bitsError =
+		"'bits' packs 'count' values of a material's, a block's or a vertex's uint in its 32 bits";
 
 bool isIdentifier(StringView name) {
 	if (name.empty() || (!isalpha(name[0]) && name[0] != '_')) {
@@ -572,8 +574,10 @@ protected:
 				ok = false;
 				continue;
 			}
-			if (kind == RecordKind::Vertex && child.getPropertyValue("count")) {
-				error(child.location, "a vertex has no arrays");
+			if (kind == RecordKind::Vertex && child.getPropertyValue("count")
+					&& !child.getPropertyValue("bits")) {
+				error(child.location,
+						"a vertex has no arrays, but for the values of a field of bits");
 				ok = false;
 				continue;
 			}
@@ -598,6 +602,19 @@ protected:
 					continue;
 				}
 				f.count = uint32_t(v.get());
+			}
+			// several small values in one uint
+			if (auto bits = child.getPropertyValue("bits")) {
+				auto v = bits->getUnsigned();
+				auto count = f.count ? f.count : 1;
+				if (f.type->name != "uint" || kind == RecordKind::Record || !bits->isInteger() || !v
+						|| v.get() == 0 || v.get() * count > 32) {
+					error(bits->location, s_bitsError);
+					ok = false;
+					continue;
+				}
+				f.bits = uint32_t(v.get());
+				f.count = count;
 			}
 			// what a builder starts the field with: a number for a scalar
 			if (auto value = child.getPropertyValue("default")) {

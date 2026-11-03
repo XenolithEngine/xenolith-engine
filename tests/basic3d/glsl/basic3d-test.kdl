@@ -1,6 +1,6 @@
 // A material, a view's block and a vertex for basic3dtest's checks of what xlkdl gpu makes of them
-// (checks/material.cpp, checks/vertex.cpp): both kinds of texture, every packed type, an array and
-// padding at the end. After a change:
+// (checks/material.cpp, checks/vertex.cpp): both kinds of texture, every packed type, fields of
+// bits, an array and padding at the end. After a change:
 //
 //     xlkdl gpu tests/basic3d/glsl/basic3d-test.kdl
 
@@ -29,10 +29,12 @@ vertex Packed3dTest position=pos doc="A vertex with every packed type" {
 	uv half2
 	color unorm8x4
 	layer float
+	marks uint bits=4 count=2 doc="two 4-bit marks"
 }
 
 block Field3dTest doc="A view's block, as an app would have one" {
 	origin vec2
 	heights texture2d doc="a height map"
 	time float
+	tiles uint bits=3 count=8 doc="eight 3-bit values, as a terrain's types' tiling"
 }

@@ -16,21 +16,36 @@ basic3d example's, which imports it, is
 [basic3d-example.kdl](../../../examples/window/basic3d/glsl/basic3d-example.kdl).
 
     make -C utils/xlkdl
-    xlkdl gpu <schema.kdl>... [--out <file>] [--check]
+    xlkdl gpu <schema.kdl>... [--out <file> | --dir <dir>] [--depfile <file>] [--check]
 
 A schema's header is written to its `output` and its preambles to its `preambles` directory, both
-from the schema's directory; `--out` writes the header elsewhere, when a single schema is given.
-`--check` writes nothing; the exit code is the number of files that are not what would be written.
-A schema that does not load exits with 1 and `file:line:column: message` lines.
+from the schema's directory; `--out` writes the header elsewhere, when a single schema is given,
+and `--dir` writes the header and the preambles of every schema given into one directory, by
+their names. `--depfile` writes a make depfile last: the file itself depends on every schema read,
+the imported ones too. `--check` writes nothing; the exit code is the number of files that are not
+what would be written. A schema that does not load exits with 1 and `file:line:column: message`
+lines.
 
-What a schema writes is committed next to it - the engine's and an app's alike. After a change:
+What a schema writes is either committed next to it or generated in the build:
 
-    xlkdl gpu xenolith/renderer/basic3d/glsl/basic3d.kdl
-    xlkdl gpu examples/window/basic3d/glsl/basic3d-example.kdl
+* **Committed** - the engine's own schema, basic3d.kdl, whose header the module compiles with, and
+  basic3dtest's. After a change:
 
-`tests/run-checks.py` runs `--check` on both (`xlkdl gpu basic3d`, `xlkdl gpu basic3d-example`)
-when a schema, what it writes or `utils/xlkdl` changed, and in the gate; `xlkdl` has to be built
-for it, as a harness has.
+      xlkdl gpu xenolith/renderer/basic3d/glsl/basic3d.kdl
+
+  `tests/run-checks.py` runs `--check` on them (`xlkdl gpu basic3d`, `xlkdl gpu basic3d-test`)
+  when a schema, what it writes or `utils/xlkdl` changed, and in the gate.
+* **Generated in the build** - a project's, named by `LOCAL_SHADERS_SCHEMA` in its Makefile, as the
+  basic3d example and gamefield do:
+
+      LOCAL_SHADERS_SCHEMA := $(LOCAL_ROOT)glsl/basic3d-example.kdl
+
+  The build runs `xlkdl gpu --dir <build>/schema --depfile <build>/schema/schema.d` before any of
+  the project's shaders and sources compiles, and puts `<build>/schema` on the include path of
+  both; a schema, or one it imports, changing regenerates them and recompiles what includes them.
+  `xlkdl` is a tool of the host and the build does not build it: `XLKDL` names it, or the build
+  finds the engine's own, `utils/xlkdl/stappler-build/<host>/{release,debug}/cc/xlkdl`, and stops
+  with how to build it when there is none.
 
 **TL;DR**
 
@@ -51,6 +66,8 @@ for it, as a harness has.
   view: one a frame for all the view's draws, read by `block()`.
 * A schema **imports** another to use its records, constants and interfaces; nothing imported is
   written again, and a preamble includes the header that defines the records it reads.
+* A uint field of **bits** holds several small values: `tiles uint bits=3 count=8` is one uint in
+  the record, an array in the builder, and `tilesAt(record, i)` reads the i-th in C++ and GLSL.
 * Comments are part of the schema, as `doc=` - KDL comments do not reach the files. A doc of one
   line follows its field; one of several lines (a multi-line string) goes before it.
 
@@ -122,6 +139,18 @@ record ViewData3d doc="One view: its camera and its light" {
 A record is a `struct`; each child is a field, named by the node, its type the argument. `count=N`
 makes it an array. In a material, a block or a vertex, `default=` gives a scalar field the value
 its builder starts with (`uvScale float default=1`); with none it starts at 0.
+
+In a material, a block or a vertex a `uint` field can hold `count` values of `bits` bits each in
+its 32, the first in the lowest:
+
+```kdl
+cellsPerTile uint bits=3 count=8 doc="the first 8 types' cellsPerTile - 1"
+```
+
+The record has one `uint`; the builder an array of `count` (or one value), each masked to its width
+as it packs them; and the header a function the same in C++ and in GLSL,
+`uint cellsPerTileAt(GfField3d r, uint i)`, that reads the i-th. A vertex shader's unpacked vertex
+has them as an array.
 
 | Type | Size | std430 alignment | Arrays |
 |---|---|---|---|
@@ -297,5 +326,8 @@ Every one carries its place in the description:
 * a texture field outside a material or a block, or an array of them; a shader's `material=` or
   `block=` that is not one, or whose interface gives none; a material's or a block's pointer that
   is not a `uvec2` of the push constants;
-* a packed type outside a vertex, an array in a vertex, a `position=` that is missing or no `vec3`
-  or `vec4` field, a `vertex=` on a fragment shader or naming no vertex.
+* a packed type outside a vertex, an array in a vertex (but for a field of bits), a `position=`
+  that is missing or no `vec3` or `vec4` field, a `vertex=` on a fragment shader or naming no
+  vertex;
+* `bits` on anything but a uint of a material, a block or a vertex, or more values than 32 bits
+  hold; `default=` on an array or a field of bits.

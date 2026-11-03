@@ -197,8 +197,8 @@ drift apart. `basic3dtest` checks, independently, the sizes and the offsets an a
 
 The same schema describes the pass's interface to its shaders, `pass3d`: the push constants, the
 buffers they point to, the texture arrays and the translucent pipelines' depth. A shader the schema
-names - the mesh pipeline's two, an app's in a schema of its own that imports this one - includes a
-preamble `xlkdl gpu` writes for it, which declares all of that and the varyings its vertex and
+names - the mesh pipeline's two, an app's in a schema of its own that imports this one, which the
+app's build generates (`LOCAL_SHADERS_SCHEMA`) - includes a preamble `xlkdl gpu` writes for it, which declares all of that and the varyings its vertex and
 fragment shaders share, and `main()` is all the shader has to write. The limits of the texture
 arrays are the schema's constants (`XL_GLSL_3D_MAX_TEXTURES`, `…_MAX_TEXTURE_ARRAYS`), which
 `MaxTextures` and `MaxTextureArrays` are.
