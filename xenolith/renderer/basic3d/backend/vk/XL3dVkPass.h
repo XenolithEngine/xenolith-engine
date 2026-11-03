@@ -17,7 +17,7 @@ namespace xvk = stappler::xenolith::vk;
 
 /* The frame input of the 3d pass, and its texture descriptor array. submitInput packs every view's
 meshes into one vertex and one index buffer, with a buffer of draws, one of views, one of their
-point lights and one of the materials of a schema the draws use, each once, on a worker;
+point lights and one of the materials and the views' blocks of a schema, each once, on a worker;
 the textures the draws use become the array's slots, each sampled by the pass's sampler: the
 layered ones (array layers) slots of the second, sampler2DArray, array. */
 class SP_PUBLIC Scene3dInputHandle : public xvk::ImageAttachmentHandle {
@@ -44,6 +44,9 @@ public:
 		Rect viewport; // the scene's pixels, y up
 		uint32_t firstDraw = 0;
 		uint32_t drawCount = 0;
+
+		// where its block of a schema is in the frame's material buffer
+		uint32_t blockOffset = 0;
 	};
 
 	virtual ~Scene3dInputHandle() = default;
@@ -112,10 +115,12 @@ class SP_PUBLIC Scene3dInputAttachment
 public:
 	virtual ~Scene3dInputAttachment() = default;
 
-	// which of a material's pipeline indexes the pass has, which of them are translucent and the
-	// schema of the material each reads, set once by the pass as it is made
+	// which of a material's pipeline indexes the pass has, which of them are translucent, and the
+	// schemas of the material and of the view's block each reads, set once by the pass as it is
+	// made
 	void setPipelines(Vector<bool> &&, Vector<bool> &&translucent,
-			Vector<const MaterialSchema3d *> &&materials);
+			Vector<const MaterialSchema3d *> &&materials,
+			Vector<const MaterialSchema3d *> &&blocks);
 
 	// whether a material with this pipeline is drawn by the mesh pipeline: it picks the mesh
 	// pipeline, or one the pass does not have
@@ -124,13 +129,16 @@ public:
 	// whether a material with this pipeline draws in the second subpass
 	bool isTranslucent(uint32_t pipeline) const;
 
-	// the schema of the material a pipeline reads, null for none or for one drawn as a mesh
+	// the schema of the material, or of the view's block, a pipeline reads: null for none or for
+	// one drawn as a mesh
 	const MaterialSchema3d *getMaterialSchema(uint32_t pipeline) const;
+	const MaterialSchema3d *getBlockSchema(uint32_t pipeline) const;
 
 protected:
 	Vector<bool> _pipelines;
 	Vector<bool> _translucent;
 	Vector<const MaterialSchema3d *> _materials;
+	Vector<const MaterialSchema3d *> _blocks;
 };
 
 // Makes the views of the frame's textures before the descriptors are written
@@ -161,6 +169,7 @@ public:
 		const core::ProgramData *frag = nullptr;
 		bool translucent = false;
 		const MaterialSchema3d *material = nullptr;
+		const MaterialSchema3d *block = nullptr;
 	};
 
 	// adds the pass, its depth and its input to a queue whose Output basic2d has made

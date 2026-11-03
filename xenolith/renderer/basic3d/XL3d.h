@@ -53,13 +53,15 @@ the opaque draws' depth at set 0, binding 2, as an input attachment (`subpassInp
 Its draws go in the order the view gives them: far to near, if they overlap on screen.
 
 A pipeline that reads a material of a schema names it: a draw of it whose Material3d::data is not
-of that schema draws with the mesh pipeline, with one warning. */
+of that schema draws with the mesh pipeline, with one warning. So does one that reads a view's
+block of a schema, in a view whose block (View3d::setBlock) is not of it. */
 struct SP_PUBLIC Pipeline3dInfo {
 	String name;
 	SpanView<uint32_t> vert;
 	SpanView<uint32_t> frag;
 	bool translucent = false;
 	const MaterialSchema3d *material = nullptr;
+	const MaterialSchema3d *block = nullptr;
 };
 
 // What a draw looks like: a colour, optionally times a texture tiled `uvScale` times per unit of
@@ -112,6 +114,9 @@ struct SP_PUBLIC ViewInput3d {
 	ViewData3d data;
 	Vector<Draw3d> draws;
 	Vector<Light3d> lights; // up to MaxLights
+
+	// the view's block of a schema, for the pipelines that read one: their shaders read block()
+	Rc<MaterialData3d> block;
 };
 
 } // namespace stappler::xenolith::basic3d

@@ -35,6 +35,13 @@ struct Terrain3dTest {
 	uint padding2;
 };
 
+// A view's block, as an app would have one
+struct Field3dTest {
+	vec2 origin;
+	uint heights; // a height map
+	float time;
+};
+
 #ifndef SP_GLSL
 // Terrain3dTest with its textures, for Material3d::data of a pipeline that reads it
 struct Terrain3dTestMaterial {
@@ -66,6 +73,26 @@ struct Terrain3dTestMaterial {
 	}
 };
 
+// Field3dTest with its textures, for View3d::setBlock of a pipeline that reads it
+struct Field3dTestBlock {
+	vec2 origin;
+	xl3d::MaterialTexture3d heights;
+	float time = 0.0f;
+
+	static constexpr xl3d::MaterialTextureField3d Textures[] = {
+		{8, xl3d::MaterialTextureKind3d::Texture2d},
+	};
+	static constexpr xl3d::MaterialSchema3d Schema{"Field3dTest", 16, 8, Textures, 1};
+
+	sprt::Rc<xl3d::MaterialData3d> make() const {
+		Field3dTest d;
+		d.origin = origin;
+		d.heights = 0xFFFFFFFFu; // the pass writes the frame's slot
+		d.time = time;
+		return xl3d::MaterialData3d::make(&Schema, d, {heights});
+	}
+};
+
 // the records as std430 lays them out, which C++ has to agree with
 static_assert(sizeof(Terrain3dTest) == 80);
 static_assert(__builtin_offsetof(Terrain3dTest, tint) == 0);
@@ -77,6 +104,10 @@ static_assert(__builtin_offsetof(Terrain3dTest, flags) == 64);
 static_assert(__builtin_offsetof(Terrain3dTest, padding0) == 68);
 static_assert(__builtin_offsetof(Terrain3dTest, padding1) == 72);
 static_assert(__builtin_offsetof(Terrain3dTest, padding2) == 76);
+static_assert(sizeof(Field3dTest) == 16);
+static_assert(__builtin_offsetof(Field3dTest, origin) == 0);
+static_assert(__builtin_offsetof(Field3dTest, heights) == 8);
+static_assert(__builtin_offsetof(Field3dTest, time) == 12);
 
 } // namespace stappler::xenolith::basic3d::checks
 #endif

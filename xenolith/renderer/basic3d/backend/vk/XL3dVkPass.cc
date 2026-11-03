@@ -148,15 +148,17 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 	auto attachment = static_cast<Scene3dInputAttachment *>(_attachment.get());
 	Vector<LightData3d> lights;
 
-	// the materials of a schema, each once, 16-byte aligned
-	Bytes materials;
-	Map<const MaterialData3d *, uint32_t> materialOffsets;
+	bool overflow = false;
+
+	// the materials and the blocks of a schema, each once, 16-byte aligned
+	Bytes schemaData;
+	Map<const MaterialData3d *, uint32_t> dataOffsets;
 	bool materialMismatch = false;
+	bool blockMismatch = false;
 	bool wrongKind = false;
 
-	// the slot of a material's texture field: a texture of the other kind than the field's has none
-	auto acquireField = [&](const MaterialTextureField3d &field, const Rc<Texture> &texture,
-								bool &overflow) {
+	// the slot of a texture field: a texture of the other kind than the field's has none
+	auto acquireField = [&](const MaterialTextureField3d &field, const Rc<Texture> &texture) {
 		if (texture && texture->isLoaded() && texture->getImageData()
 				&& Scene3dInputHandle_isLayered(texture)
 						!= (field.kind == MaterialTextureKind3d::TextureArray)) {
@@ -166,7 +168,31 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 		return acquireTexture(texture, overflow);
 	};
 
-	bool overflow = false;
+	// the offset of a material or a block in the frame's buffer, written the first time a draw or
+	// a view has it, with the frame's slots of its textures
+	auto writeData = [&](const Rc<MaterialData3d> &data, bool block) {
+		auto it = dataOffsets.find(data.get());
+		if (it != dataOffsets.end()) {
+			return it->second;
+		}
+		auto offset = uint32_t((schemaData.size() + 15) / 16 * 16);
+		auto bytes = data->getData();
+		schemaData.resize(offset + bytes.size());
+		sprt::memcpy(schemaData.data() + offset, bytes.data(), bytes.size());
+
+		auto schema = data->getSchema();
+		auto textures = data->getTextures();
+		for (uint32_t i = 0; i < schema->textureCount; ++i) {
+			auto &field = schema->textures[i];
+			auto slot = acquireField(field, textures[i]);
+			sprt::memcpy(schemaData.data() + offset + field.offset, &slot, sizeof(uint32_t));
+		}
+		++(block ? stats.blocks : stats.materials);
+		(block ? stats.blockBytes : stats.materialBytes) += bytes.size();
+		dataOffsets.emplace(data.get(), offset);
+		return offset;
+	};
+
 	bool tooManyLights = false;
 	bool layeredMesh = false;
 	for (auto &view : input.views) {
@@ -174,6 +200,12 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 		auto &record = _views.emplace_back(
 				ViewRecord{view.viewport, uint32_t(_draws.size()), 0});
 		auto &viewData = views.emplace_back(view.data);
+
+		// its block, for the pipelines that read one
+		auto viewBlock = view.block ? view.block->getSchema() : nullptr;
+		if (view.block) {
+			record.blockOffset = writeData(view.block, true);
+		}
 
 		// its lights, after those of the views before it
 		viewData.firstLight = uint32_t(lights.size());
@@ -196,12 +228,17 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			auto meshVertexes = draw.mesh->getVertexes();
 			auto meshIndexes = draw.mesh->getIndexes();
 
-			// a pipeline that reads a material of a schema draws only one of it: otherwise the
-			// mesh pipeline draws the draw
+			// a pipeline that reads a material or a view's block of a schema draws only one of it:
+			// otherwise the mesh pipeline draws the draw
 			auto pipeline = draw.material.pipeline;
 			auto schema = attachment->getMaterialSchema(pipeline);
-			if (schema && (!draw.material.data || draw.material.data->getSchema() != schema)) {
-				materialMismatch = true;
+			auto blockSchema = attachment->getBlockSchema(pipeline);
+			auto noMaterial = schema
+					&& (!draw.material.data || draw.material.data->getSchema() != schema);
+			auto noBlock = blockSchema && blockSchema != viewBlock;
+			if (noMaterial || noBlock) {
+				materialMismatch = materialMismatch || noMaterial;
+				blockMismatch = blockMismatch || noBlock;
 				pipeline = MeshPipeline;
 				schema = nullptr;
 			}
@@ -253,25 +290,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			draws.emplace_back(data);
 
 			if (schema) {
-				auto &material = draw.material.data;
-				auto it = materialOffsets.find(material.get());
-				if (it == materialOffsets.end()) {
-					auto offset = uint32_t((materials.size() + 15) / 16 * 16);
-					auto bytes = material->getData();
-					materials.resize(offset + bytes.size());
-					sprt::memcpy(materials.data() + offset, bytes.data(), bytes.size());
-
-					// the textures' slots are the frame's
-					auto textures = material->getTextures();
-					for (uint32_t i = 0; i < schema->textureCount; ++i) {
-						auto &field = schema->textures[i];
-						auto slot = acquireField(field, textures[i], overflow);
-						sprt::memcpy(materials.data() + offset + field.offset, &slot,
-								sizeof(uint32_t));
-					}
-					it = materialOffsets.emplace(material.get(), offset).first;
-				}
-				_draws.back().materialOffset = it->second;
+				_draws.back().materialOffset = writeData(draw.material.data, false);
 			}
 
 			++record.drawCount;
@@ -294,11 +313,17 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 				"a pipeline that reads a material of a schema has a draw without one, or with one "
 				"of another schema: the mesh pipeline draws it");
 	}
+	static sprt::atomic<bool> s_blockWarned = false;
+	if (blockMismatch && !s_blockWarned.exchange(true)) {
+		log::source().warn("basic3d::Pass3d",
+				"a pipeline that reads a view's block of a schema has a draw in a view without "
+				"one, or with one of another schema: the mesh pipeline draws it");
+	}
 	static sprt::atomic<bool> s_kindWarned = false;
 	if (wrongKind && !s_kindWarned.exchange(true)) {
 		log::source().warn("basic3d::Pass3d",
-				"a material's texture is layered where its field is a texture2d, or the other way "
-				"round: the field has no texture");
+				"a material's or a block's texture is layered where its field is a texture2d, or "
+				"the other way round: the field has no texture");
 	}
 
 	static sprt::atomic<bool> s_lightsWarned = false;
@@ -317,12 +342,10 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 		indexes.emplace_back(0);
 	}
 	stats.translucentDraws = _translucentDraws;
-	stats.materials = uint32_t(materialOffsets.size());
-	stats.materialBytes = materials.size();
 	stats.recordBytes = draws.size() * sizeof(DrawData3d) + views.size() * sizeof(ViewData3d)
-			+ lights.size() * sizeof(LightData3d) + materials.size();
-	if (materials.empty()) {
-		materials.resize(16);
+			+ lights.size() * sizeof(LightData3d) + schemaData.size();
+	if (schemaData.empty()) {
+		schemaData.resize(16);
 	}
 	setLastPassStats(stats);
 
@@ -345,7 +368,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 
 	_materialData = pool->spawn(xvk::AllocationUsage::DeviceLocalHostVisible,
 			core::BufferInfo(StringView("Basic3dMaterials"), core::BufferUsage::StorageBuffer,
-					core::BufferUsage::ShaderDeviceAddress, materials.size()));
+					core::BufferUsage::ShaderDeviceAddress, schemaData.size()));
 
 	if (!_vertexes || !_indexes || !_drawData || !_viewData || !_lightData || !_materialData) {
 		_draws.clear();
@@ -362,15 +385,16 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			views.size() * sizeof(ViewData3d)));
 	_lightData->setData(BytesView(reinterpret_cast<const uint8_t *>(lights.data()),
 			lights.size() * sizeof(LightData3d)));
-	_materialData->setData(materials);
+	_materialData->setData(schemaData);
 	return true;
 }
 
 void Scene3dInputAttachment::setPipelines(Vector<bool> &&pipelines, Vector<bool> &&translucent,
-		Vector<const MaterialSchema3d *> &&materials) {
+		Vector<const MaterialSchema3d *> &&materials, Vector<const MaterialSchema3d *> &&blocks) {
 	_pipelines = sp::move(pipelines);
 	_translucent = sp::move(translucent);
 	_materials = sp::move(materials);
+	_blocks = sp::move(blocks);
 }
 
 bool Scene3dInputAttachment::isDrawnAsMesh(uint32_t pipeline) const {
@@ -380,6 +404,10 @@ bool Scene3dInputAttachment::isDrawnAsMesh(uint32_t pipeline) const {
 bool Scene3dInputAttachment::isTranslucent(uint32_t pipeline) const {
 	// one drawn as a mesh is opaque
 	return !isDrawnAsMesh(pipeline) && pipeline < _translucent.size() && _translucent[pipeline];
+}
+
+const MaterialSchema3d *Scene3dInputAttachment::getBlockSchema(uint32_t pipeline) const {
+	return !isDrawnAsMesh(pipeline) && pipeline < _blocks.size() ? _blocks[pipeline] : nullptr;
 }
 
 const MaterialSchema3d *Scene3dInputAttachment::getMaterialSchema(uint32_t pipeline) const {
@@ -493,6 +521,7 @@ static void Pass3d_record(core::FrameQueue &q, const core::SubpassData &subpass,
 		auto y1 = sprt::min(top + r.size.height, float(extent.height));
 
 		pcb.viewPointer = UVec2::convertFromPacked(viewBase + viewIdx * sizeof(ViewData3d));
+		pcb.blockPointer = UVec2::convertFromPacked(materialBase + view.blockOffset);
 		++viewIdx;
 
 		if (x1 <= x0 || y1 <= y0 || view.drawCount == 0) {
@@ -595,7 +624,7 @@ bool Pass3d::addToQueue(core::Loop *loop, core::Queue::Builder &builder, Extent2
 		pipelines.emplace_back(PipelineProgram{it.name,
 			builder.addProgramByRef(toString(it.name, "Vert"), it.vert),
 			builder.addProgramByRef(toString(it.name, "Frag"), it.frag), it.translucent,
-			it.material});
+			it.material, it.block});
 	}
 
 	// before basic2d's pass (RenderOrderingHighest), which loads what this one drew
@@ -616,17 +645,19 @@ bool Pass3d::init(core::QueuePassBuilder &passBuilder, const core::AttachmentDat
 	Vector<bool> available;
 	Vector<bool> translucent;
 	Vector<const MaterialSchema3d *> materials;
+	Vector<const MaterialSchema3d *> blocks;
 	bool anyTranslucent = false;
 	for (auto &it : pipelines) {
 		_pipelineNames.emplace_back(it.name);
 		available.emplace_back(it.vert && it.frag);
 		translucent.emplace_back(it.vert && it.frag && it.translucent);
 		materials.emplace_back(it.material);
+		blocks.emplace_back(it.block);
 		anyTranslucent = anyTranslucent || translucent.back();
 	}
 	if (auto attachment = dynamic_cast<Scene3dInputAttachment *>(input->attachment.get())) {
-		attachment->setPipelines(sp::move(available), sp::move(translucent),
-				sp::move(materials));
+		attachment->setPipelines(sp::move(available), sp::move(translucent), sp::move(materials),
+				sp::move(blocks));
 	}
 
 	auto colorPass = passBuilder.addAttachment(output);

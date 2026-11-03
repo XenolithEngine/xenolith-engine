@@ -1,5 +1,5 @@
-// A material for basic3dtest's checks of what xlkdl gpu makes of one (checks/material.cpp): both
-// kinds of texture, an array and padding at its end. After a change:
+// A material and a view's block for basic3dtest's checks of what xlkdl gpu makes of them
+// (checks/material.cpp): both kinds of texture, an array and padding at the end. After a change:
 //
 //     xlkdl gpu tests/basic3d/glsl/basic3d-test.kdl
 
@@ -20,4 +20,10 @@ material Terrain3dTest doc="A terrain's material, as an app would have one" {
 	scale vec2
 	params vec4 count=2
 	flags uint
+}
+
+block Field3dTest doc="A view's block, as an app would have one" {
+	origin vec2
+	heights texture2d doc="a height map"
+	time float
 }

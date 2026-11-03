@@ -24,6 +24,7 @@ void View3d::handleEnter(xenolith::Scene *scene) {
 		retainMaterial(it.material);
 	}
 	for (auto &it : _drawPacks) { retainPack(it); }
+	retainData(_block);
 }
 
 void View3d::handleExit() {
@@ -31,6 +32,7 @@ void View3d::handleExit() {
 		releaseMaterial(it.material);
 	}
 	for (auto &it : _drawPacks) { releasePack(it); }
+	releaseData(_block);
 	Node::handleExit();
 }
 
@@ -77,6 +79,13 @@ void View3d::setDrawMaterial(uint32_t idx, Material3d &&material) {
 	}
 }
 
+void View3d::setBlock(Rc<MaterialData3d> &&block) {
+	retainData(block);
+	releaseData(_block);
+	_block = sp::move(block);
+	markSceneChanged();
+}
+
 void View3d::clearDraws() {
 	for (auto &it : _draws) {
 		releaseMaterial(it.material);
@@ -111,6 +120,7 @@ void View3d::draw(FrameInfo &frame, NodeVisitFlags flags) {
 	view.data.ambient = Vec4(_ambient.r, _ambient.g, _ambient.b, 1.0f);
 	view.data.screen =
 			Vec4(view.viewport.size.width, view.viewport.size.height, _camera.getDensity(), 0.0f);
+	view.block = _block;
 	collectDraws(view);
 
 	// where the meshes of loaded packs are, taken here on the app thread for the pass's worker
@@ -157,17 +167,25 @@ void View3d::retainMaterial(const Material3d &material) {
 	retainTexture(material.texture);
 	retainTexture(material.texture2);
 	retainTexture(material.texture3);
-	if (material.data) {
-		for (auto &it : material.data->getTextures()) { retainTexture(it); }
-	}
+	retainData(material.data);
 }
 
 void View3d::releaseMaterial(const Material3d &material) {
 	releaseTexture(material.texture);
 	releaseTexture(material.texture2);
 	releaseTexture(material.texture3);
-	if (material.data) {
-		for (auto &it : material.data->getTextures()) { releaseTexture(it); }
+	releaseData(material.data);
+}
+
+void View3d::retainData(const Rc<MaterialData3d> &data) {
+	if (data) {
+		for (auto &it : data->getTextures()) { retainTexture(it); }
+	}
+}
+
+void View3d::releaseData(const Rc<MaterialData3d> &data) {
+	if (data) {
+		for (auto &it : data->getTextures()) { releaseTexture(it); }
 	}
 }
 

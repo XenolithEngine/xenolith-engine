@@ -96,14 +96,17 @@ void appendBanner(const Schema &schema, String &out) {
 			filepath::lastComponent(schema.file), ". Do not edit: regenerate it.\n\n"));
 }
 
-// A material's builder for C++: its fields, textures as textures; its schema; and make(), which
-// lays them out as the record and hands the pass the textures, whose slots it writes each frame.
+// A material's or a block's builder for C++: its fields, textures as textures; its schema; and
+// make(), which lays them out as the record and hands the pass the textures, whose slots it writes
+// each frame.
 void appendBuilder(const Record &r, String &out) {
+	auto block = r.kind == RecordKind::Block;
 	appendDocLines(out,
-			mem_std::toString(r.name,
-					" with its textures, for Material3d::data of a pipeline that reads it"),
+			mem_std::toString(r.name, " with its textures, for ",
+					block ? "View3d::setBlock" : "Material3d::data",
+					" of a pipeline that reads it"),
 			"");
-	out.append(mem_std::toString("struct ", r.name, "Material {\n"));
+	out.append(mem_std::toString("struct ", r.name, block ? "Block" : "Material", " {\n"));
 	uint32_t textures = 0;
 	for (auto &f : r.fields) {
 		if (f.padding) {
@@ -179,7 +182,7 @@ void emitHeader(const Schema &schema, String &out) {
 	out.clear();
 	appendBanner(schema, out);
 	out.append(mem_std::toString("#ifndef ", schema.guard, "\n#define ", schema.guard, "\n\n"));
-	auto materials = schema.hasMaterials();
+	auto materials = schema.hasData();
 	out.append("#include \"sprt_glsl.h\"\n\n");
 	if (materials) {
 		out.append("#ifndef SP_GLSL\n#include \"XL3dMaterial.h\"\n#endif\n\n");
@@ -207,7 +210,7 @@ void emitHeader(const Schema &schema, String &out) {
 
 	out.append("\n#ifndef SP_GLSL\n");
 	for (auto &r : schema.records) {
-		if (!r.imported && r.material) {
+		if (!r.imported && r.isData()) {
 			appendBuilder(r, out);
 			out.push_back('\n');
 		}
@@ -250,8 +253,10 @@ void emitPreamble(const Schema &schema, const Shader &shader, String &out) {
 		appendInclude(seen, iface.push->header, out);
 	}
 	for (auto &b : iface.buffers) { appendInclude(seen, b.record->header, out); }
-	if (shader.material) {
-		appendInclude(seen, shader.material->header, out);
+	for (auto data : {shader.material, shader.block}) {
+		if (data) {
+			appendInclude(seen, data->header, out);
+		}
 	}
 	if (schema.hasHeader()) {
 		appendInclude(seen, filepath::lastComponent(StringView(schema.output)), out);
@@ -267,10 +272,22 @@ void emitPreamble(const Schema &schema, const Shader &shader, String &out) {
 				") readonly buffer ", b.record->name, "Buffer {\n\t", b.record->name, " ", b.name,
 				b.single ? "" : "[]", ";\n};\n"));
 	}
-	if (auto m = shader.material) {
-		out.append(mem_std::toString(
-				"\nlayout (std430, buffer_reference, buffer_reference_align = ", m->align,
-				") readonly buffer ", m->name, "Buffer {\n\t", m->name, " material;\n};\n"));
+	// a draw's material and its view's block, each read by a function of its kind's name
+	struct Data {
+		const Record *record;
+		StringView name;
+		const String &pointer;
+	} data[] = {
+		{shader.material, "material", iface.materialPointer},
+		{shader.block, "block", iface.blockPointer},
+	};
+	for (auto &it : data) {
+		if (it.record) {
+			out.append(mem_std::toString(
+					"\nlayout (std430, buffer_reference, buffer_reference_align = ",
+					it.record->align, ") readonly buffer ", it.record->name, "Buffer {\n\t",
+					it.record->name, " ", it.name, ";\n};\n"));
+		}
 	}
 
 	if (frag) {
@@ -311,7 +328,7 @@ void emitPreamble(const Schema &schema, const Shader &shader, String &out) {
 		out.append("\nlayout (location = 0) out vec4 outColor;\n");
 	}
 
-	if (!iface.buffers.empty() || shader.material) {
+	if (!iface.buffers.empty() || shader.material || shader.block) {
 		out.push_back('\n');
 	}
 	for (auto &b : iface.buffers) {
@@ -325,9 +342,12 @@ void emitPreamble(const Schema &schema, const Shader &shader, String &out) {
 					".", b.name, "[i]; }\n"));
 		}
 	}
-	if (auto m = shader.material) {
-		out.append(mem_std::toString(m->name, " material() { return ", m->name, "Buffer(",
-				iface.pushName, ".", iface.materialPointer, ").material; }\n"));
+	for (auto &it : data) {
+		if (it.record) {
+			out.append(mem_std::toString(it.record->name, " ", it.name, "() { return ",
+					it.record->name, "Buffer(", iface.pushName, ".", it.pointer, ").", it.name,
+					"; }\n"));
+		}
 	}
 }
 

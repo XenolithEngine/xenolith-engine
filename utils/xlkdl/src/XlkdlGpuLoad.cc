@@ -51,10 +51,11 @@ const StringView s_samplerTypes[] = {"sampler2D", "sampler2DArray"};
 const StringView s_headNodes[] = {"output", "guard", "namespace", "macro-prefix", "copyright",
 	"license", "preambles"};
 
-const StringView s_interfaceNodes[] = {"push-constants", "buffer", "samplers", "depth", "material"};
+const StringView s_interfaceNodes[] = {"push-constants", "buffer", "samplers", "depth", "material",
+	"block"};
 
-const StringView s_nodes[] = {"schema", "import", "const", "record", "material", "interface",
-	"varyings", "shader"};
+const StringView s_nodes[] = {"schema", "import", "const", "record", "material", "block",
+	"interface", "varyings", "shader"};
 
 // What a node may carry: how many arguments, which properties, whether children.
 struct NodeShape {
@@ -72,8 +73,9 @@ const StringView s_bufferProps[] = {"pointer", "single"};
 const StringView s_samplersProps[] = {"binding", "count"};
 const StringView s_depthProps[] = {"binding", "index"};
 const StringView s_varyingProps[] = {"flat", "doc"};
-const StringView s_shaderProps[] = {"interface", "varyings", "material", "translucent", "doc"};
-const StringView s_materialProps[] = {"pointer"};
+const StringView s_shaderProps[] = {"interface", "varyings", "material", "block", "translucent",
+	"doc"};
+const StringView s_pointerProps[] = {"pointer"};
 
 bool isIdentifier(StringView name) {
 	if (name.empty() || (!isalpha(name[0]) && name[0] != '_')) {
@@ -215,9 +217,11 @@ protected:
 			} else if (name == "const") {
 				ok = loadConstant(node) && ok;
 			} else if (name == "record") {
-				ok = loadRecord(node, false) && ok;
+				ok = loadRecord(node, RecordKind::Record) && ok;
 			} else if (name == "material") {
-				ok = loadRecord(node, true) && ok;
+				ok = loadRecord(node, RecordKind::Material) && ok;
+			} else if (name == "block") {
+				ok = loadRecord(node, RecordKind::Block) && ok;
 			} else if (name == "interface") {
 				ok = loadInterface(node) && ok;
 			} else if (name == "varyings") {
@@ -498,18 +502,19 @@ protected:
 		return true;
 	}
 
-	bool loadRecord(const KdlNode &node, bool material) {
+	bool loadRecord(const KdlNode &node, RecordKind kind) {
+		auto what = kind == RecordKind::Material ? StringView("material")
+				: kind == RecordKind::Block		 ? StringView("block")
+												 : StringView("record");
 		Record r;
 		r.location = node.location;
 		r.imported = _imported;
-		r.material = material;
+		r.kind = kind;
 		r.header =
 				filepath::lastComponent(StringView(_head.output)).str<memory::StandardInterface>();
 		if (!checkShape(node, NodeShape{1, 1, s_docProps, true})
-				|| !readName(node.arguments[0], r.name,
-						material ? "a material's name" : "a record's name")
-				|| !readDoc(node, r.doc)
-				|| !checkUnique(material ? "material" : "record", r.name, node.location)) {
+				|| !readName(node.arguments[0], r.name, mem_std::toString("a ", what, "'s name"))
+				|| !readDoc(node, r.doc) || !checkUnique(what, r.name, node.location)) {
 			return false;
 		}
 		if (node.children.empty()) {
@@ -537,9 +542,10 @@ protected:
 				ok = false;
 				continue;
 			}
-			if (f.type->texture && !material) {
+			if (f.type->texture && !r.isData()) {
 				error(child.arguments[0].location,
-						mem_std::toString("a texture is a field of a material, not of the record '",
+						mem_std::toString(
+								"a texture is a field of a material or a block, not of a record: '",
 								r.name, "'"));
 				ok = false;
 				continue;
@@ -597,7 +603,8 @@ protected:
 
 		auto takenHere = [&](StringView name) {
 			if (name == iface.pushName || (iface.depth.present && name == iface.depth.name)
-					|| (!iface.materialPointer.empty() && name == "material")) {
+					|| (!iface.materialPointer.empty() && name == "material")
+					|| (!iface.blockPointer.empty() && name == "block")) {
 				return true;
 			}
 			for (auto &it : iface.buffers) {
@@ -725,22 +732,24 @@ protected:
 				}
 				d.present = true;
 				iface.depth = sprt::move(d);
-			} else if (kind == "material") {
-				if (!iface.materialPointer.empty()) {
-					error(child.location, "an interface has one 'material'");
+			} else if (kind == "material" || kind == "block") {
+				auto &target = kind == "material" ? iface.materialPointer : iface.blockPointer;
+				if (!target.empty()) {
+					error(child.location, mem_std::toString("an interface has one '", kind, "'"));
 					ok = false;
 					continue;
 				}
 				auto pointer = child.getPropertyValue("pointer");
-				if (!checkShape(child, NodeShape{0, 0, s_materialProps}) || !pointer
-						|| !readName(*pointer, iface.materialPointer, "'pointer'")) {
+				if (!checkShape(child, NodeShape{0, 0, s_pointerProps}) || !pointer
+						|| !readName(*pointer, target, "'pointer'")) {
 					if (!pointer) {
-						error(child.location, "'material' has no 'pointer'");
+						error(child.location, mem_std::toString("'", kind, "' has no 'pointer'"));
 					}
 					ok = false;
 					continue;
 				}
-				iface.materialLocation = child.location;
+				(kind == "material" ? iface.materialLocation : iface.blockLocation) =
+						child.location;
 			} else {
 				error(child.location,
 						mem_std::toString("unknown node '", kind, "' of 'interface' (",
@@ -863,6 +872,11 @@ protected:
 				return false;
 			}
 		}
+		if (auto block = node.getPropertyValue("block")) {
+			if (!readName(*block, s.blockName, "'block'")) {
+				return false;
+			}
+		}
 		if (s.translucent && s.stage != Stage::Fragment) {
 			error(node.location, "only a fragment shader reads the depth a translucent one does");
 			return false;
@@ -929,14 +943,19 @@ protected:
 								iface.push->name));
 			}
 		}
-		if (!iface.materialPointer.empty()) {
-			auto field = iface.push ? iface.push->findField(iface.materialPointer) : nullptr;
+		auto checkPointer = [&](const String &pointer, kdl::Location loc, StringView what) {
+			if (pointer.empty()) {
+				return;
+			}
+			auto field = iface.push ? iface.push->findField(pointer) : nullptr;
 			if (!field || field->type->name != "uvec2" || field->count) {
-				fail(iface.materialLocation,
-						mem_std::toString("the material's pointer '", iface.materialPointer,
+				fail(loc,
+						mem_std::toString("the ", what, "'s pointer '", pointer,
 								"' is not a uvec2 of the push constants"));
 			}
-		}
+		};
+		checkPointer(iface.materialPointer, iface.materialLocation, "material");
+		checkPointer(iface.blockPointer, iface.blockLocation, "block");
 		for (auto &s : iface.samplers) {
 			if (s.countName.empty()) {
 				continue;
@@ -961,22 +980,30 @@ protected:
 					mem_std::toString("no interface '", s.interfaceName, "'"));
 			ok = false;
 		}
-		if (!s.materialName.empty()) {
-			s.material = find(_schema->records, s.materialName);
-			if (!s.material || !s.material->material) {
+		// what the shader reads through a pointer of its interface
+		auto linkData = [&](const String &name, const Record *&target, RecordKind kind,
+								StringView what, bool given) {
+			if (name.empty()) {
+				return;
+			}
+			target = find(_schema->records, name);
+			if (!target || target->kind != kind) {
 				_diag->error(s.file, s.location,
-						s.material ? mem_std::toString("'", s.materialName,
-											 "' is a record, not a material")
-								   : mem_std::toString("no material '", s.materialName, "'"));
-				s.material = nullptr;
+						target ? mem_std::toString("'", name, "' is not a ", what)
+							   : mem_std::toString("no ", what, " '", name, "'"));
+				target = nullptr;
 				ok = false;
-			} else if (s.interface && s.interface->materialPointer.empty()) {
+			} else if (s.interface && !given) {
 				_diag->error(s.file, s.location,
 						mem_std::toString("the interface '", s.interface->name,
-								"' gives its shaders no material"));
+								"' gives its shaders no ", what));
 				ok = false;
 			}
-		}
+		};
+		linkData(s.materialName, s.material, RecordKind::Material, "material",
+				s.interface && !s.interface->materialPointer.empty());
+		linkData(s.blockName, s.block, RecordKind::Block, "block",
+				s.interface && !s.interface->blockPointer.empty());
 		if (!s.varyingsName.empty()) {
 			s.varyings = find(_schema->varyings, s.varyingsName);
 			if (!s.varyings) {
@@ -1034,9 +1061,9 @@ bool Schema::hasHeader() const {
 	return false;
 }
 
-bool Schema::hasMaterials() const {
+bool Schema::hasData() const {
 	for (auto &it : records) {
-		if (!it.imported && it.material) {
+		if (!it.imported && it.isData()) {
 			return true;
 		}
 	}

@@ -20,8 +20,8 @@ static T readAt(BytesView data, size_t offset) {
 	return ret;
 }
 
-// What xlkdl gpu makes of a material (glsl/basic3d-test.kdl): its schema, and the bytes and the
-// textures its builder hands the pass
+// What xlkdl gpu makes of a material and of a view's block (glsl/basic3d-test.kdl): their schemas,
+// and the bytes and the textures their builders hand the pass
 void performMaterialTests() {
 	using checks::Terrain3dTestMaterial;
 
@@ -67,6 +67,22 @@ void performMaterialTests() {
 	Bytes whole(80);
 	check(!Rc<MaterialData3d>::create(&schema, whole, Vector<MaterialTexture3d>(1)),
 			"material: a texture short is refused");
+
+	// a view's block is made as a material is
+	using checks::Field3dTestBlock;
+	auto &blockSchema = Field3dTestBlock::Schema;
+	check(blockSchema.size == 16 && blockSchema.align == 8 && blockSchema.textureCount == 1
+					&& blockSchema.textures[0].offset == 8
+					&& blockSchema.textures[0].kind == MaterialTextureKind3d::Texture2d,
+			"block: its schema, its texture field at 8",
+			toString(blockSchema.size, " ", blockSchema.align));
+	auto block = Field3dTestBlock{.origin = Vec2(16.0f, 32.0f), .time = 1.5f}.make();
+	check(block && block->getSchema() == &blockSchema && block->getData().size() == 16
+					&& readAt<Vec2>(block->getData(), 0) == Vec2(16.0f, 32.0f)
+					&& readAt<uint32_t>(block->getData(), 8) == NoTexture
+					&& readAt<float>(block->getData(), 12) == 1.5f
+					&& block->getTextures().size() == 1,
+			"block: the builder makes its bytes and its texture");
 }
 
 } // namespace stappler::xenolith::basic3d

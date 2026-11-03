@@ -77,6 +77,15 @@ public:
 		_view->setSun(Vec3(-0.5f, 0.7f, 0.5f), Color4F(0.9f, 0.88f, 0.8f, 1.0f));
 		_view->setAmbient(Color4F(0.18f, 0.18f, 0.22f, 1.0f));
 
+		// the view's block of the example's schema, what the glass reads of the camera;
+		// BASIC3D_NOBLOCK=1 leaves it out, and the mesh pipeline draws the glass instead
+		if (!__sprt_getenv("BASIC3D_NOBLOCK")) {
+			auto &camera = _view->getCamera();
+			_view->setBlock(example::Example3dViewBlock{
+				.depthRange = camera.getFar() - camera.getNear(),
+			}.make());
+		}
+
 		_panel = addChild(Rc<basic2d::Layer>::create(Color4F(1.0f, 1.0f, 1.0f, 0.5f)), ZOrder(1));
 		_panel->setAnchorPoint(Anchor::BottomLeft);
 		_panel->setContentSize(Size2(260.0f, 70.0f));
@@ -227,19 +236,18 @@ protected:
 		// BASIC3D_GLASS=1: a tinted glass by the translucent pipeline, 4 units square, tilted over
 		// the ground between the green box and the light, toward the camera - a quarter of a unit
 		// over it at its +y end, two and a quarter at its -y one - as clear as the ground behind it
-		// is near. Its material is of the example's schema (glsl/basic3d-example.kdl);
-		// BASIC3D_GLASS_NODATA=1 leaves it out, and the mesh pipeline draws the glass instead
+		// is near. Its material is of the example's schema (glsl/basic3d-example.kdl), as is the
+		// view's block it reads; BASIC3D_GLASS_NODATA=1 leaves the material out, and the mesh
+		// pipeline draws the glass instead
 		if (__sprt_getenv("BASIC3D_GLASS")) {
 			auto glass = Mesh3d::makePlane(4.0f);
 			Mat4 move, tilt;
 			Mat4::createTranslation(Vec3(6.0f, 0.5f, 1.25f), &move);
 			Mat4::createRotationX(-asinf(0.5f), &tilt);
-			auto &camera = _view->getCamera();
 			Material3d material{.pipeline = GlassPipeline};
 			if (!__sprt_getenv("BASIC3D_GLASS_NODATA")) {
 				material.data = example::Glass3dMaterial{
 					.color = Vec4(0.1f, 0.3f, 0.9f, 1.0f),
-					.depthRange = camera.getFar() - camera.getNear(),
 					.density = 0.6f,
 				}.make();
 			}
@@ -265,6 +273,8 @@ protected:
 		ret.setInteger(stats.translucentDraws, "translucentDraws");
 		ret.setInteger(stats.materials, "materials");
 		ret.setInteger(int64_t(stats.materialBytes), "materialBytes");
+		ret.setInteger(stats.blocks, "blocks");
+		ret.setInteger(int64_t(stats.blockBytes), "blockBytes");
 		ret.setBool(_pack && _pack->isLoaded(), "packLoaded");
 		ret.setInteger(_pack ? _pack->getUsers() : 0, "packUsers");
 		ret.setBool(_director && _director->getResourceCache()->hasTemporaryResource(_packName),
@@ -319,11 +329,12 @@ public:
 					sizeof(basic3d_stripes_vert) / sizeof(uint32_t)),
 			SpanView<uint32_t>(reinterpret_cast<const uint32_t *>(basic3d_stripes_frag),
 					sizeof(basic3d_stripes_frag) / sizeof(uint32_t))};
-		// the glass shares the stripes' vertex shader, and reads a material of its own schema
+		// the glass shares the stripes' vertex shader, and reads a material and the view's block of
+		// the example's schema
 		auto glass = Pipeline3dInfo{"Basic3dExampleGlass", stripes.vert,
 			SpanView<uint32_t>(reinterpret_cast<const uint32_t *>(basic3d_glass_frag),
 					sizeof(basic3d_glass_frag) / sizeof(uint32_t)),
-			true, &example::Glass3dMaterial::Schema};
+			true, &example::Glass3dMaterial::Schema, &example::Example3dViewBlock::Schema};
 		if (!Scene3d::init(app, window, constraints, Vector<Pipeline3dInfo>{stripes, glass})) {
 			return false;
 		}

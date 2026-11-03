@@ -69,6 +69,14 @@ struct Field {
 	bool padding = false;
 };
 
+// A record, or the data of a schema a shader reads through a pointer of the push constants: a
+// draw's material or its view's block, which may have textures and get a builder in C++.
+enum class RecordKind : uint8_t {
+	Record,
+	Material,
+	Block,
+};
+
 struct Record {
 	String name;
 	String doc;
@@ -79,8 +87,10 @@ struct Record {
 	String header;
 	bool imported = false;
 
-	// a material: a record of a pipeline's material, which may have textures and gets a builder
-	bool material = false;
+	RecordKind kind = RecordKind::Record;
+
+	// a material or a block
+	bool isData() const { return kind != RecordKind::Record; }
 
 	// set by the layout
 	uint32_t size = 0;
@@ -147,9 +157,12 @@ struct Interface {
 	Vector<Samplers> samplers;
 	Depth depth;
 
-	// the field of the push constants that holds the address of a draw's material
+	// the fields of the push constants that hold the addresses of a draw's material and of its
+	// view's block
 	String materialPointer;
 	kdl::Location materialLocation;
+	String blockPointer;
+	kdl::Location blockLocation;
 };
 
 struct Varying {
@@ -185,6 +198,8 @@ struct Shader {
 	const Varyings *varyings = nullptr;
 	String materialName;
 	const Record *material = nullptr;
+	String blockName;
+	const Record *block = nullptr;
 	bool translucent = false;
 	String file; // the description that defines it
 	kdl::Location location;
@@ -221,8 +236,8 @@ struct Schema {
 	// whether the schema writes a header: it has records or constants of its own
 	bool hasHeader() const;
 
-	// whether it has materials of its own, which its header makes builders for
-	bool hasMaterials() const;
+	// whether it has materials or blocks of its own, which its header makes builders for
+	bool hasData() const;
 };
 
 // Reads a description and what it imports, links the names and lays the records out; false, with

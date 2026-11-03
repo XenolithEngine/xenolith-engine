@@ -86,10 +86,12 @@ void performMeshTests() {
 			toString(sizeof(ViewData3d)));
 	check(sizeof(LightData3d) == 32 && offsetof(LightData3d, color) == 16,
 			"mesh: a light's record is 32 bytes", toString(sizeof(LightData3d)));
-	check(sizeof(Constants3d) == 48 && offsetof(Constants3d, lightPointer) == 24
+	check(sizeof(Constants3d) == 56 && offsetof(Constants3d, lightPointer) == 24
 					&& offsetof(Constants3d, materialPointer) == 32
-					&& offsetof(Constants3d, drawIndex) == 40,
-			"mesh: the push constants are 48 bytes, the lights' pointer at 24, the material's at 32",
+					&& offsetof(Constants3d, blockPointer) == 40
+					&& offsetof(Constants3d, drawIndex) == 48,
+			"mesh: the push constants are 56 bytes, the lights' pointer at 24, the material's at 32, "
+			"the block's at 40",
 			toString(sizeof(Constants3d)));
 
 	// a pack lays its meshes one after another, indexes unchanged

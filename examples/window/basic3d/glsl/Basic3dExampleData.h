@@ -25,17 +25,21 @@ namespace xl3d = STAPPLER_VERSIONIZED_NAMESPACE::xenolith::basic3d;
 // The tinted glass of the translucent pipeline
 struct Glass3d {
 	vec4 color; // its colour; its alpha comes from the depth behind it
-	float depthRange; // the camera's far - near: a depth difference times it is in world units
 	float density; // the alpha is 1 - exp(-density * the distance the view goes through it)
 	uint padding0;
 	uint padding1;
+	uint padding2;
+};
+
+// What the example's view gives the pipelines that read it
+struct Example3dView {
+	float depthRange; // the camera's far - near: a depth difference times it is in world units
 };
 
 #ifndef SP_GLSL
 // Glass3d with its textures, for Material3d::data of a pipeline that reads it
 struct Glass3dMaterial {
 	vec4 color;
-	float depthRange = 0.0f;
 	float density = 0.0f;
 
 	static constexpr xl3d::MaterialSchema3d Schema{"Glass3d", 32, 16, nullptr, 0};
@@ -43,10 +47,23 @@ struct Glass3dMaterial {
 	sprt::Rc<xl3d::MaterialData3d> make() const {
 		Glass3d d;
 		d.color = color;
-		d.depthRange = depthRange;
 		d.density = density;
 		d.padding0 = 0;
 		d.padding1 = 0;
+		d.padding2 = 0;
+		return xl3d::MaterialData3d::make(&Schema, d, {});
+	}
+};
+
+// Example3dView with its textures, for View3d::setBlock of a pipeline that reads it
+struct Example3dViewBlock {
+	float depthRange = 0.0f;
+
+	static constexpr xl3d::MaterialSchema3d Schema{"Example3dView", 4, 4, nullptr, 0};
+
+	sprt::Rc<xl3d::MaterialData3d> make() const {
+		Example3dView d;
+		d.depthRange = depthRange;
 		return xl3d::MaterialData3d::make(&Schema, d, {});
 	}
 };
@@ -54,10 +71,12 @@ struct Glass3dMaterial {
 // the records as std430 lays them out, which C++ has to agree with
 static_assert(sizeof(Glass3d) == 32);
 static_assert(__builtin_offsetof(Glass3d, color) == 0);
-static_assert(__builtin_offsetof(Glass3d, depthRange) == 16);
-static_assert(__builtin_offsetof(Glass3d, density) == 20);
-static_assert(__builtin_offsetof(Glass3d, padding0) == 24);
-static_assert(__builtin_offsetof(Glass3d, padding1) == 28);
+static_assert(__builtin_offsetof(Glass3d, density) == 16);
+static_assert(__builtin_offsetof(Glass3d, padding0) == 20);
+static_assert(__builtin_offsetof(Glass3d, padding1) == 24);
+static_assert(__builtin_offsetof(Glass3d, padding2) == 28);
+static_assert(sizeof(Example3dView) == 4);
+static_assert(__builtin_offsetof(Example3dView, depthRange) == 0);
 
 } // namespace stappler::xenolith::basic3d::example
 #endif

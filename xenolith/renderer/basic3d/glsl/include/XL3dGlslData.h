@@ -77,7 +77,8 @@ struct Constants3d {
 	uvec2 vertexPointer; // 16-24, the frame's Vertex3d array
 	uvec2 lightPointer; // 24-32, the frame's LightData3d array
 	uvec2 materialPointer; // 32-40, this draw's material of a schema
-	uint drawIndex; // 40-44
+	uvec2 blockPointer; // 40-48, this view's block of a schema
+	uint drawIndex; // 48-52
 	uint padding;
 };
 
@@ -114,14 +115,15 @@ static_assert(__builtin_offsetof(ViewData3d, firstLight) == 128);
 static_assert(__builtin_offsetof(ViewData3d, lightCount) == 132);
 static_assert(__builtin_offsetof(ViewData3d, padding0) == 136);
 static_assert(__builtin_offsetof(ViewData3d, padding1) == 140);
-static_assert(sizeof(Constants3d) == 48);
+static_assert(sizeof(Constants3d) == 56);
 static_assert(__builtin_offsetof(Constants3d, viewPointer) == 0);
 static_assert(__builtin_offsetof(Constants3d, drawPointer) == 8);
 static_assert(__builtin_offsetof(Constants3d, vertexPointer) == 16);
 static_assert(__builtin_offsetof(Constants3d, lightPointer) == 24);
 static_assert(__builtin_offsetof(Constants3d, materialPointer) == 32);
-static_assert(__builtin_offsetof(Constants3d, drawIndex) == 40);
-static_assert(__builtin_offsetof(Constants3d, padding) == 44);
+static_assert(__builtin_offsetof(Constants3d, blockPointer) == 40);
+static_assert(__builtin_offsetof(Constants3d, drawIndex) == 48);
+static_assert(__builtin_offsetof(Constants3d, padding) == 52);
 
 } // namespace stappler::glsl
 #endif

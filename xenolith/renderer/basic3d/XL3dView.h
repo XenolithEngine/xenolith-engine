@@ -61,6 +61,11 @@ public:
 
 	SpanView<Draw3d> getDraws() const { return _draws; }
 
+	// the view's block of a schema (its builder's make()), the same for every draw of a frame:
+	// the pipelines that read one read it by block()
+	void setBlock(Rc<MaterialData3d> &&);
+	const Rc<MaterialData3d> &getBlock() const { return _block; }
+
 	virtual void draw(FrameInfo &, NodeVisitFlags flags) override;
 
 protected:
@@ -71,14 +76,17 @@ protected:
 	void retainTexture(const Rc<Texture> &);
 	void releaseTexture(const Rc<Texture> &);
 
-	// every texture of a material, its data's too
+	// every texture of a material, its data's too; of a material's data or a block
 	void retainMaterial(const Material3d &);
 	void releaseMaterial(const Material3d &);
+	void retainData(const Rc<MaterialData3d> &);
+	void releaseData(const Rc<MaterialData3d> &);
 
 	Camera _camera;
 	Vector<Draw3d> _draws;
 	Vector<Rc<MeshPack3d>> _drawPacks; // the pack each of the draws retained, null for none
 	Vector<Light3d> _lights;
+	Rc<MaterialData3d> _block;
 	Color4F _ambient = Color4F(0.3f, 0.3f, 0.35f, 1.0f);
 	Vec3 _sunDirection = Vec3(-0.4f, 0.3f, 0.85f);
 	Color4F _sunColor = Color4F(0.8f, 0.78f, 0.7f, 1.0f);

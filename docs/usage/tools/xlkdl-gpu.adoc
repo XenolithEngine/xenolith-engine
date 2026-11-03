@@ -7,8 +7,8 @@
 * a **preamble** for each shader the schema names: everything the shader declares to read its
   pass's interface - extensions, push constants, buffer references, descriptors, varyings, its
   material - so the shader itself is an `#include` and a `main()`;
-* for each **material**, besides its record, a C++ builder that makes it for a draw
-  (`Material3d::data`).
+* for each **material** and **block**, besides its record, a C++ builder that makes it for a draw
+  (`Material3d::data`) or a view (`View3d::setBlock`).
 
 The schema of basic3d is [basic3d.kdl](../../../xenolith/renderer/basic3d/glsl/basic3d.kdl); the
 basic3d example's, which imports it, is
@@ -46,7 +46,8 @@ for it, as a harness has.
   name the same varyings declare the same interface block, so their locations cannot disagree.
 * A **material** is a record of a pipeline's own data, which may have textures of a known kind;
   its builder makes a `MaterialData3d` a draw carries, the frame writes it once however many draws
-  share it, and a shader that names it reads it by `material()`.
+  share it, and a shader that names it reads it by `material()`. A **block** is the same for a
+  view: one a frame for all the view's draws, read by `block()`.
 * A schema **imports** another to use its records, constants and interfaces; nothing imported is
   written again, and a preamble includes the header that defines the records it reads.
 * Comments are part of the schema, as `doc=` - KDL comments do not reach the files. A doc of one
@@ -165,6 +166,19 @@ struct Terrain3dMaterial {
 the pass compares a draw's material with, by address; `make()` is what a draw carries
 (`Material3d::data`, see [the basic3d guide](../basic3d/overview.adoc)).
 
+## Blocks
+
+```kdl
+block Example3dView doc="What the example's view gives the pipelines that read it" {
+    depthRange float doc="the camera's far - near"
+}
+```
+
+A block is a material of a view rather than of a draw: the same rules for its fields, textures
+included, and a builder `<Name>Block` with its `Schema` and `make()`. A view takes what `make()`
+returns (`View3d::setBlock`), a pipeline that reads it names its schema (`Pipeline3dInfo::block`),
+and its shaders read it by `block()`.
+
 ## Interfaces
 
 ```kdl
@@ -187,6 +201,7 @@ interface pass3d doc="The 3d pass: ..." {
 | `samplers <name> sampler2D\|sampler2DArray binding=N count=…` | in a fragment shader, `layout (set = 0, binding = N) uniform … <name>[count]`; the count is a number or a constant |
 | `depth <name> binding=N index=I` | in a translucent fragment shader, `layout (input_attachment_index = I, set = 0, binding = N) uniform subpassInput <name>` |
 | `material pointer=<field>` | in a shader that names a material, a `buffer_reference` block `<material>Buffer` holding one, and `<material> material()` from the address in the push constants' `uvec2` field |
+| `block pointer=<field>` | in a shader that names a block, `<block>Buffer` and `<block> block()`, likewise |
 
 A vertex shader gets no samplers and no depth, a fragment shader of an opaque pipeline no depth:
 the pipeline's layout is made from what the SPIR-V declares, and a translucent pipeline's alone has
@@ -213,7 +228,8 @@ their order. A varying is a scalar or a vector; an integer one is `flat`, and `f
 float one so.
 
 A shader is named by its file - a name, then `.vert` or `.frag` - and its preamble is that name
-with `.glsl`. `material=` names the material its pipeline reads; its interface has to give one. A fragment shader also gets `layout (location = 0) out vec4 outColor;`. The shader
+with `.glsl`. `material=` names the material its pipeline reads, `block=` the view's block; its
+interface has to give them. A fragment shader also gets `layout (location = 0) out vec4 outColor;`. The shader
 includes its preamble after `#version` and the include directive:
 
 ```glsl
@@ -249,6 +265,6 @@ Every one carries its place in the description:
 * a sampler type other than `sampler2D` and `sampler2DArray`;
 * a varying that is not a scalar or a vector; a shader name that is not `<name>.vert` or
   `<name>.frag`; a translucent vertex shader;
-* a texture field outside a material, or an array of them; a shader's `material=` that is no
-  material, or whose interface gives no material; a material pointer that is not a `uvec2` of the
-  push constants.
+* a texture field outside a material or a block, or an array of them; a shader's `material=` or
+  `block=` that is not one, or whose interface gives none; a material's or a block's pointer that
+  is not a `uvec2` of the push constants.

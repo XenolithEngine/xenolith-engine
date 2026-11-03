@@ -48,6 +48,10 @@ layout (std430, buffer_reference, buffer_reference_align = 16) readonly buffer G
 	Glass3d material;
 };
 
+layout (std430, buffer_reference, buffer_reference_align = 4) readonly buffer Example3dViewBuffer {
+	Example3dView block;
+};
+
 layout (set = 0, binding = 0) uniform sampler2D textures[XL_GLSL_3D_MAX_TEXTURES];
 layout (set = 0, binding = 1) uniform sampler2DArray textureArrays[XL_GLSL_3D_MAX_TEXTURE_ARRAYS];
 
@@ -66,3 +70,4 @@ DrawData3d draws(uint i) { return DrawData3dBuffer(constants.drawPointer).draws[
 ViewData3d view() { return ViewData3dBuffer(constants.viewPointer).view; }
 LightData3d lights(uint i) { return LightData3dBuffer(constants.lightPointer).lights[i]; }
 Glass3d material() { return Glass3dBuffer(constants.materialPointer).material; }
+Example3dView block() { return Example3dViewBuffer(constants.blockPointer).block; }
