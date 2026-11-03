@@ -23,6 +23,7 @@ THE SOFTWARE.
 #ifndef STAPPLER_KDL_SPKDL_H_
 #define STAPPLER_KDL_SPKDL_H_
 
+#include "SPMemory.h" // IWYU pragma: keep
 #include "SPKdlValue.h" // IWYU pragma: keep
 #include "SPKdlParser.h" // IWYU pragma: keep
 #include "SPKdlEmitter.h" // IWYU pragma: keep

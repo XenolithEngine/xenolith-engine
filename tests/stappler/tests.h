@@ -100,6 +100,7 @@ void performShapeTests();
 void performGlyphTests();
 void performPugTests();
 void performKdlTests();
+void performKdlDataTests();
 void performCssTests();
 void performFlexboxGridCssTests();
 void performTableCssTests();

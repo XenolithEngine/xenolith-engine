@@ -67,7 +67,7 @@ void writeNode(const OutputCallback &out, const NodeTemplate<Interface> &node, u
 		writeValue(out, arg);
 	}
 
-	mem_std::Vector<const PropertyTemplate<Interface> *> props;
+	memory::StandardInterface::VectorType<const PropertyTemplate<Interface> *> props;
 	for (auto &prop : node.properties) {
 		if (node.getProperty(viewOf(prop.name)) == &prop) {
 			props.emplace_back(&prop);

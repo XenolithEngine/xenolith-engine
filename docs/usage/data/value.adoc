@@ -412,13 +412,14 @@ The regression test for all of this is `tests/stappler/core/datavalue.cpp`
 
 ## 9. Serialization
 
-Four formats, one API:
+Five formats, one API:
 
 | Format | `EncodeFormat::` | Round-trips bytes | Notes |
 |---|---|---|---|
 | JSON | `Json`, `Pretty`, `PrettyTime`, `JsonGit` | **no** | text; bytes become `"BASE64:…"` |
 | CBOR | `Cbor` (and `DefaultFormat`) | yes | binary, self-describing tag `d9 d9 f7` |
 | Serenity | `Serenity`, `SerenityPretty` | yes | urlencoded-ish text form |
+| KDL v2 | `Kdl` | yes | text; the root must be a dictionary; read only when asked for |
 | urlencoded | — (`data::readUrlencoded`) | n/a | HTML form bodies, decode only |
 
 [source,cpp]
@@ -450,8 +451,8 @@ String  sr = data::serenity::write(value, false);
 * Decoders cap nesting at `MaxDecodeDepth` (256): they parse iteratively, but
   destroying and re-encoding the resulting tree is recursive, so a deeper input
   would blow the native stack.
-* `data::save` with `DefaultFormat` picks JSON for a `.json` extension and CBOR
-  otherwise. Requires `stappler_filesystem`.
+* `data::save` with `DefaultFormat` picks JSON for a `.json` extension, KDL for
+  `.kdl` and CBOR otherwise. Requires `stappler_filesystem`.
 * Compression and the `CborCompressed` / `JsonCompressed` presets are part of
   `EncodeFormat` (LZ4, LZ4HC, Brotli when `stappler_brotli_lib` is in the
   build). Compressed output carries its own `LZ4…` / `SBr…` mark, so
@@ -519,6 +520,87 @@ belongs in CBOR.
 
 The cost, said plainly: a container of ten thousand scalars is one very long
 line. That is the same rule working as intended — a grid is one value.
+
+### `Kdl`: a value as a KDL document
+
+`EncodeFormat::Kdl` writes a value as a [KDL v2](../kdl.adoc) document, and
+`data::kdl::read` reads one back (`stappler/data/SPDataEncodeKdl.h`,
+`SPDataDecodeKdl.h`; `stapplertest kdl-data`). It is for documents a person
+writes by hand as well as reads: a value written and read back is the same
+value, bytes included, and a hand-written document reads by the same rules.
+
+[source]
+----
+__meta generator=xlstudio kind=component version=2
+components {
+    - name=arena.Board {
+        fields {
+            - name=turn type=int
+            - name=size type=vec2
+        }
+        meta doc="The board itself."
+    }
+    - name=arena.Selected {
+        (array)fields
+    }
+}
+----
+
+The mapping is JiK 4.0.0, the
+[JSON-in-KDL](https://github.com/kdl-org/kdl/blob/main/JSON-IN-KDL.md)
+microsyntax of kdl-org, with the root dictionary's entries as top-level nodes:
+
+* A node is a value. One argument is a scalar. Arguments and children named `-`
+  are an array, in order. Properties and named children are a dictionary.
+* `(array)` marks an array of one scalar and an empty array (`(array)fields`);
+  `(object)` marks an empty dictionary and a dictionary whose only entry is a
+  container under the key `-`. Nothing else is annotated.
+* The root has to be a dictionary: its keys are the top-level nodes, so the
+  first key is the first line, which is what the studio's `__meta` envelope
+  needs. Any other root is refused by the writer (`false`, nothing written),
+  and an empty document reads as an empty dictionary.
+* `null` is `#null`, a `double` always has a point or an exponent (`1.0`,
+  `1.5E+300`), the non-finite ones are `#inf`, `#-inf`, `#nan`, bytes are
+  `(base64)"…"`. Strings and keys have to be UTF-8, or the writer refuses.
+* The writer is canonical: scalar entries of a dictionary are its properties,
+  containers its children, both in key order; an array of two or more scalars
+  is arguments, an array holding a container is children throughout. The text
+  is the canonical form of `stappler_kdl`'s emitter, so `kdl::write` over the
+  parsed text gives the same text back.
+* The reader also takes the hand-written spellings — a scalar entry as a child
+  (`doc "text"` inside `meta { … }`), comments, `/-`, raw and multi-line
+  strings, any KDL number. A repeated property follows KDL: the rightmost wins.
+* What the mapping cannot tell apart is an error, with the line and column in
+  `kdl::ParseError`: a key twice (two children, or a property and a child), a
+  node with arguments and properties, an array element not named `-`, an
+  unknown annotation, a node with no value, a bad base64 string, an integer
+  outside int64.
+
+[source,cpp]
+----
+mem_std::String text = data::kdl::write<Interface>(value);  // empty when refused
+bool ok = data::kdl::write<Interface>(stream, value);
+
+data::kdl::ParseError err;
+mem_std::Value v;
+if (data::kdl::read<Interface>(text, v, &err) != Status::Ok) {
+	log::error("doc", err.location.line, ":", err.location.column, " ", err.message);
+}
+
+auto v2 = data::read<Interface>(bytes, data::DataFormat::Kdl);
+auto v3 = data::readFile<Interface>(FileInfo{"doc.kdl"});  // by the extension
+----
+
+`data::read` without a format never picks KDL: a KDL document has no signature,
+and a leading `(` already means Serenity. Ask for it with `DataFormat::Kdl`, or
+read a `.kdl` file through `readFile`.
+
+The writer drops what is not data: comments and the layout of a hand-written
+document do not survive a write.
+
+From the command line, `xlkdl data <file.kdl>` prints a document as `JsonGit`
+and `xlkdl data --kdl <file.json>` prints one as KDL
+(`utils/xlkdl`).
 
 ### Streaming a value, and the format manipulator
 
