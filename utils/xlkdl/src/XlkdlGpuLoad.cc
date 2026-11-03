@@ -131,7 +131,11 @@ public:
 	// A description and, first where they are written, what it imports. A file imported twice is
 	// read once; a file that imports itself through others is an error at the import.
 	bool loadFile(StringView file, bool imported, kdl::Location from = kdl::Location()) {
-		auto path = filepath::reconstructPath<memory::StandardInterface>(file);
+		// absolute, so an import above the working directory keeps its way up
+		auto path = filepath::reconstructPath<memory::StandardInterface>(filepath::isAbsolute(file)
+						? file.str<memory::StandardInterface>()
+						: filepath::merge<memory::StandardInterface>(
+								  filesystem::currentDir<memory::StandardInterface>(), file));
 		for (auto &it : _stack) {
 			if (it == path) {
 				error(from,
