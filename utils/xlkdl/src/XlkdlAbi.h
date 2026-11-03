@@ -443,6 +443,7 @@ bool writeOrCheck(StringView path, StringView text, StringView from, bool check)
 
 int runDump(int argc, const char *argv[]);
 int runFormat(int argc, const char *argv[]);
+int runData(int argc, const char *argv[]);
 int runAbi(int argc, const char *argv[]);
 int runApi(int argc, const char *argv[]);
 int runGpu(int argc, const char *argv[]);

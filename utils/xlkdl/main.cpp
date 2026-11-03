@@ -20,8 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// xlkdl: KDL documents from the command line, and C headers generated from ABI and API descriptions
-// and from GPU schemas.
+// xlkdl: KDL documents from the command line, documents between KDL and JSON, and C headers
+// generated from ABI and API descriptions and from GPU schemas.
 
 #include "SPCommon.h"
 #include "XlkdlAbi.h"
@@ -36,6 +36,8 @@ int main(int argc, const char *argv[]) {
 			return xlkdl::runDump(argc - 2, argv + 2);
 		} else if (command == "fmt") {
 			return xlkdl::runFormat(argc - 2, argv + 2);
+		} else if (command == "data") {
+			return xlkdl::runData(argc - 2, argv + 2);
 		} else if (command == "abi") {
 			return xlkdl::runAbi(argc - 2, argv + 2);
 		} else if (command == "api") {
@@ -45,6 +47,7 @@ int main(int argc, const char *argv[]) {
 		}
 		sprt::cerr << "usage: xlkdl dump <file.kdl>\n"
 				   << "       xlkdl fmt <file.kdl>\n"
+				   << "       xlkdl data [--kdl] <file>\n"
 				   << "       xlkdl abi --map <map.kdl> --out <dir> [--check] [--inline] [<header>...]\n"
 				   << "       xlkdl api --map <map.kdl> --root <dir> [--check]\n"
 				   << "       xlkdl gpu <schema.kdl>... [--out <file>] [--check]\n";
