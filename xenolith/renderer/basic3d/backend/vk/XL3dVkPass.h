@@ -129,8 +129,8 @@ public:
 	// whether a material with this pipeline draws in the second subpass
 	bool isTranslucent(uint32_t pipeline) const;
 
-	// the schema of the material, or of the view's block, a pipeline reads: null for none or for
-	// one drawn as a mesh
+	// the schema of the material, or of the view's block, a pipeline reads: null for none; for
+	// one drawn as a mesh, the mesh pipeline's material and no block
 	const MaterialSchema3d *getMaterialSchema(uint32_t pipeline) const;
 	const MaterialSchema3d *getBlockSchema(uint32_t pipeline) const;
 

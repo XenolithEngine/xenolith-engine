@@ -5,9 +5,9 @@ A depth-tested 3d scene drawn under the basic2d UI of the same window: meshes wi
 **TL;DR**
 
 - The scene is a [`basic3d::Scene3d`](../../../xenolith/renderer/basic3d/XL3dScene.h) with a [`basic3d::SceneContent3d`](../../../xenolith/renderer/basic3d/XL3dSceneContent.h); any number of [`basic3d::View3d`](../../../xenolith/renderer/basic3d/XL3dView.h) nodes in it show 3d views, and every basic2d node works as before, over them.
-- A view draws [`Draw3d`](../../../xenolith/renderer/basic3d/XL3d.h)s: a [`Mesh3d`](../../../xenolith/renderer/basic3d/XL3dMesh.h), a transform and a `Material3d` (a colour times an optional `Texture`, tiled `uvScale` times).
+- A view draws [`Draw3d`](../../../xenolith/renderer/basic3d/XL3d.h)s: a [`Mesh3d`](../../../xenolith/renderer/basic3d/XL3dMesh.h), a transform and a `Material3d`: the pipeline that draws it and the material of a schema it reads (`data`). The stock mesh pipeline reads a `Lambert3d` - a colour times an optional `Texture`, tiled `uvScale` times - which `Material3d::lambert(colour, texture, uvScale)` makes; with no data it draws white.
 - The [`Camera`](../../../xenolith/renderer/basic3d/XL3dCamera.h) is plain math: a target, a yaw, an elevation and a distance; orthographic in points per unit (times the density) or perspective; depth in [0, 1], clip y flipped for Vulkan. `project`, `unproject`, `screenRay`, `screenToGround` and `projectAabb` work in the scene's pixels, y up - the space of input locations and of `Node::getWorldBoundingBox`.
-- An app can add pipelines of its own: `Scene3d::init` takes a list of [`Pipeline3dInfo`](../../../xenolith/renderer/basic3d/XL3d.h) (SPIR-V vertex and fragment shaders over the pass's interface), and a material picks one by `pipeline`, with `flags`, four `params` and a second and a third texture, `texture2` and `texture3`, for its shaders.
+- An app can add pipelines of its own: `Scene3d::init` takes a list of [`Pipeline3dInfo`](../../../xenolith/renderer/basic3d/XL3d.h) (SPIR-V vertex and fragment shaders over the pass's interface), and a material picks one by `pipeline`, with a material of the app's schema for its shaders.
 - Point lights: [`Light3d`](../../../xenolith/renderer/basic3d/XL3d.h) - a position, a radius and a colour times intensity, falling off as `(1 - (d / r)^2)^2`. `View3d::addLight`, or `ViewInput3d::lights` from an overriding `collectDraws`; up to `MaxLights` (64) a view, the rest dropped with a warning. The mesh shader lights by them; an app shader reads them through `Constants3d::lightPointer` and the view's `firstLight`/`lightCount`.
 - Meshes can live in GPU memory between frames: a [`MeshPack3d`](../../../xenolith/renderer/basic3d/XL3dMeshPack.h) puts a batch of meshes in one vertex and one index buffer of a temporary resource. While a view retains it (its own draws do by themselves; `View3d::retainPack`/`releasePack` otherwise), the pass draws those meshes from it and copies nothing into the frame; with no one retaining it, it is cleared and leaves the resource cache.
 - Textures sample trilinear and anisotropic: give them mips (`core::MipLevelsFull` with `core::ImageHints::GenerateMipmaps`, which images decoded from files get by themselves).
@@ -29,7 +29,7 @@ public:
 		auto view = content->addChild(Rc<basic3d::View3d>::create());
 		view->setContentSize(Size2(800.0f, 600.0f));
 		view->addDraw(basic3d::Draw3d{basic3d::Mesh3d::makeTorus(2.0f, 0.7f, 64, 24),
-			Mat4::IDENTITY, basic3d::Material3d{Color4F::WHITE, texture, 1.0f}});
+			Mat4::IDENTITY, basic3d::Material3d::lambert(Color4F::WHITE, texture)});
 		setContent(content);
 		return true;
 	}
@@ -53,13 +53,13 @@ Scene3d::init(app, window, constraints, Vector<basic3d::Pipeline3dInfo>{{"MyTerr
 	SpanView<uint32_t>((const uint32_t *)my_terrain_frag, sizeof(my_terrain_frag) / 4)}});
 
 // the first of the app's pipelines is 1: 0 is the mesh pipeline
-view->addDraw(Draw3d{mesh, Mat4::IDENTITY, Material3d{.texture = ground, .pipeline = 1,
-	.flags = GridBit, .params = {Vec4(width, height, 0, 0), Vec4::ZERO}}});
+view->addDraw(Draw3d{mesh, Mat4::IDENTITY, Material3d{.pipeline = 1,
+	.data = MyTerrainMaterial{.ground = ground, .flags = GridBit}.make()}});
 ```
 
-- The shaders read what the mesh shaders read, from [`XL3dGlslData.h`](../../../xenolith/renderer/basic3d/glsl/include/XL3dGlslData.h): the push constants `Constants3d`, the vertexes, draws, views and lights they point to, the texture array at set 0, binding 0, and the layered one at binding 1. A draw's `flags`, `params`, `textureIdx2` and `textureIdx3` are the material's; a view's `screen` holds its size in pixels and the density, to turn widths in points into pixels, and `firstLight`/`lightCount` its lights in the frame's array.
+- The shaders read what the mesh shaders read, from [`XL3dGlslData.h`](../../../xenolith/renderer/basic3d/glsl/include/XL3dGlslData.h): the push constants `Constants3d`, the vertexes, draws, views and lights they point to, the texture array at set 0, binding 0, and the layered one at binding 1. A draw's record is its matrices; what it looks like is its material's; a view's `screen` holds its size in pixels and the density, to turn widths in points into pixels, and `firstLight`/`lightCount` its lights in the frame's array.
 - What a shader declares to read them comes from a schema of the app that imports basic3d's and names its shaders and their varyings ([xlkdl-gpu.adoc](../tools/xlkdl-gpu.adoc)): `xlkdl gpu` writes a preamble for each, and the shader includes it and writes `main()` - `vertices(i)`, `draws(constants.drawIndex)`, `view()`, `lights(i)`, the varyings as `vary.<name>`, a fragment shader's `outColor`. The preambles are committed; the app puts their directory on `LOCAL_SHADERS_INCLUDE`, not in `LOCAL_SHADERS_DIR`. The example's [basic3d-example.kdl](../../../examples/window/basic3d/glsl/basic3d-example.kdl) is one, and the mesh shaders, [`xl_3d_mesh.vert`](../../../xenolith/renderer/basic3d/glsl/shaders/xl_3d_mesh.vert) and `.frag`, are a starting point.
-- A pipeline can read a material of its own instead of `flags` and `params`: a `material` of the app's schema, with fields of its own and textures of a known kind. The schema's header has a builder for it; a draw carries what it makes, and the pipeline names its schema:
+- A pipeline reads a material of its own: a `material` of the app's schema, with fields of its own and textures of a known kind. The schema's header has a builder for it; a draw carries what it makes, and the pipeline names its schema:
 
   ```cpp
   #include "MyFieldData.h" // the app's schema's header
@@ -69,7 +69,7 @@ view->addDraw(Draw3d{mesh, Mat4::IDENTITY, Material3d{.texture = ground, .pipeli
   	.data = WaterMaterial{.ripples = normals, .time = t}.make()}});
   ```
 
-  The shader reads it by `material()` (its schema's `shader … material=Water`). The frame writes a material once, however many draws share it - make it once and keep it, not once a draw - and patches the slots of its textures; a texture of the other kind than its field (a layered one in a `texture2d`) is none, with a warning. A draw of the pipeline without a material of that schema draws with the mesh pipeline, with one warning. `getLastPassStats()` counts the materials a frame wrote and their bytes. The example's glass is one ([basic3d-example.kdl](../../../examples/window/basic3d/glsl/basic3d-example.kdl)).
+  The shader reads it by `material()` (its schema's `shader … material=Water`). The frame writes a material once, however many draws share it - make it once and keep it, not once a draw - and patches the slots of its textures; a texture of the other kind than its field (a layered one in a `texture2d`) is none, with a warning. A draw of the pipeline without a material of that schema draws with the mesh pipeline, white, with one warning. `getLastPassStats()` counts the materials a frame wrote and their bytes. The example's glass is one ([basic3d-example.kdl](../../../examples/window/basic3d/glsl/basic3d-example.kdl)).
 - What is the same for every draw of a view - the size of a field, where its height map starts, the camera's depth range - is the view's **block**: a `block` of the schema, set once with `View3d::setBlock(MyFieldBlock{...}.make())` (or put into `ViewInput3d::block` by an overriding `collectDraws`) and read by `block()` in the shaders of a pipeline that names its schema (`Pipeline3dInfo::block`). The frame writes it once a view; a draw of such a pipeline in a view whose block is none or of another schema draws with the mesh pipeline, with one warning. The example's view has one, the glass's depth range.
 - A pipeline can read meshes of a vertex format of its own instead of the 64-byte `Vertex3d`: a `vertex` of the app's schema, with packed fields (`oct16`, `half2`, `unorm8x4`). `Mesh3d::make<MyVertex>(vertexes, indexes)` makes a mesh of the builder the header writes, the pipeline names the format (`Pipeline3dInfo::vertex`), and its vertex shader reads `vertex(gl_VertexIndex)`, unpacked. A mesh of another format than its pipeline's draws with the mesh pipeline if it is of `Vertex3d`, and is not drawn otherwise, with one warning; a pack holds meshes of any formats. The example's stripes are of one, `Compact3d`.
 - Every pipeline tests depth Less and culls back faces; an opaque one writes depth.
@@ -77,7 +77,7 @@ view->addDraw(Draw3d{mesh, Mat4::IDENTITY, Material3d{.texture = ground, .pipeli
 - The SPIR-V is referenced, not copied: it has to outlive the scene, as embedded shader headers do.
 - A material that picks a pipeline the scene does not have draws with the mesh pipeline, and the pass warns once. A pipeline with no name, a taken one or no shaders is refused at `init` with an error, and keeps its index.
 
-The example's boxes are drawn by a pipeline of its own: stripes in the two colours of their params.
+The example's boxes are drawn by a pipeline of its own: stripes in the two colours of their material, `Stripes3d`.
 
 A view's camera, draws and lights change through its setters, which ask the window for a frame. A subclass with draws of its own (a terrain made of chunks) overrides `View3d::collectDraws`.
 
@@ -102,6 +102,6 @@ Vertexes are read by `buffer_reference` through `gl_VertexIndex`; the layouts sh
 
 ## Tests
 
-- `tests/basic3d` (`basic3dtest`, no device): the camera's math, the mesh builders, the layout of the records the shaders read, a pack's layout.
-- `tests/window/basic3d-check.py` drives the example headless: the torus drawn, textured and lit; the boxes of the app pipeline in the colours of their params and flags, one with a second and a third texture, one with a layer of a layered texture; a translucent glass blending over them, more where the depth behind it is further; the pool of a point light, gone without it; every draw from the mesh pack with no vertex copied into the frame, the same picture with `BASIC3D_NOPACK=1`, the pack leaving the cache once its draws are removed; a material with an unknown pipeline drawn as a mesh, with one warning; the panel over it; the ground's fine checker even through the mips and aliased with `BASIC3D_NOMIPS=1`; no validation error.
+- `tests/basic3d` (`basic3dtest`, no device): the camera's math, the mesh builders, the layout of the records the shaders read, a pack's layout, what a schema's materials, blocks and vertexes make, the mesh pipeline's material.
+- `tests/window/basic3d-check.py` drives the example headless: the torus drawn, textured and lit; the boxes of the app pipeline in the colours of their materials, by their flags, one with two textures, one with a layer of a layered texture; a translucent glass blending over them, more where the depth behind it is further; the pool of a point light, gone without it; every draw from the mesh pack with no vertex copied into the frame, the same picture with `BASIC3D_NOPACK=1`, the pack leaving the cache once its draws are removed; a material with an unknown pipeline drawn as a mesh, with one warning; the panel over it; the ground's fine checker even through the mips and aliased with `BASIC3D_NOMIPS=1`; no validation error.
 - `tests/window/pass3d-check.py` checks the engine features under the module - a pass under basic2d, culling, depth bias and clamp, two subpasses - with a hand-made pass.

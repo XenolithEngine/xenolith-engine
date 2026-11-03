@@ -76,7 +76,7 @@ protected:
 	void retainTexture(const Rc<Texture> &);
 	void releaseTexture(const Rc<Texture> &);
 
-	// every texture of a material, its data's too; of a material's data or a block
+	// the textures of a material's data, or of a block
 	void retainMaterial(const Material3d &);
 	void releaseMaterial(const Material3d &);
 	void retainData(const Rc<MaterialData3d> &);

@@ -203,14 +203,16 @@ fragment shaders share, and `main()` is all the shader has to write. The limits 
 arrays are the schema's constants (`XL_GLSL_3D_MAX_TEXTURES`, `…_MAX_TEXTURE_ARRAYS`), which
 `MaxTextures` and `MaxTextureArrays` are.
 
-A pipeline's own data can be a **material of a schema** rather than the draw's `flags`, `params`
-and second and third texture: a record of the app's schema whose fields may be textures of a known
-kind. A draw carries it as `Material3d::data`, an immutable `MaterialData3d` its builder made, shared
+What a draw looks like is a **material of a schema**: a record whose fields may be textures of a
+known kind - the mesh pipeline's `Lambert3d` (a colour, a texture, its tiling) or one of the app's
+schema. A draw carries it as `Material3d::data`, an immutable `MaterialData3d` its builder made, shared
 by the draws that use it; the pipeline names its schema (`Pipeline3dInfo::material`). The frame
 writes each material once into a buffer of its own and pushes, per draw, the address of the draw's
 material (`materialPointer`), as it does a view's - so a shader reads it by `material()` with no
-index and no arithmetic on the GPU. `DrawData3d` keeps the old fields until gamefield, which reads
-them, has moved to materials of its own.
+index and no arithmetic on the GPU. A draw the mesh pipeline draws in place of its own pipeline -
+one the pass does not have, or whose material, block or format the draw's are not - draws with the
+mesh pipeline's default material, white, since its own is not a `Lambert3d`; so does a draw of the
+mesh pipeline with no data. `DrawData3d` holds the draw's matrices alone.
 
 What is the same for all of a view's draws is its **block**, a record of the schema the view sets
 once (`View3d::setBlock`, `ViewInput3d::block`): the frame writes it into the same buffer, once a
@@ -220,7 +222,7 @@ pipeline that names its schema (`Pipeline3dInfo::block`) read it by `block()`.
 | Record | Size | Holds | Where |
 |---|---|---|---|
 | `Vertex3d` | 64 B | `pos` (xyz, w = 1), `normal` (xyz), `tangent` (xyz, w = the bitangent's sign), `attr` (xy = texture coordinates, zw free) | the frame's or a pack's vertex buffer |
-| `DrawData3d` | 240 B | `model`, `normal` (inverse transpose of the model's rotation and scale), `color`, `textureIdx`, `uvScale`, `flags` (152), `textureIdx2` (156), `params[4]` (160), `textureIdx3` (224) | one per draw, the frame's draw buffer |
+| `DrawData3d` | 128 B | `model`, `normal` (inverse transpose of the model's rotation and scale) | one per draw, the frame's draw buffer |
 | `ViewData3d` | 144 B | `viewProj`, `sunDirection`, `sunColor`, `ambient`, `screen` (112: the view's viewport width and height in pixels, pixels per point), `firstLight` (128), `lightCount` (132) | one per view, the frame's view buffer |
 | `LightData3d` | 32 B | `position` (xyz, w = radius), `color` (rgb = colour × intensity) | the frame's light buffer, every view's lights one after another |
 | `Constants3d` | 56 B | `viewPointer`, `drawPointer`, `vertexPointer`, `lightPointer`, `materialPointer` (32), `blockPointer` (40) (each a `uvec2` address), `drawIndex` (48) | push constants, per draw |
@@ -254,9 +256,9 @@ pipeline if it is of Vertex3d and is not drawn otherwise, with one warning. The 
 buffer and a pack's hold meshes of any formats, each from a 16-byte boundary (a range's
 `vertexByteOffset`). The example's stripes are 16 bytes a vertex, a position and an oct16 normal.
 
-The records, the draws and the views, are written by the frame on the worker; the materials'
-`flags`, `params`, `texture2` and `texture3` pass through to them untouched, which is the whole interface of
-an app pipeline (E9): it reads the same records the mesh pipeline reads.
+The records - the draws, the views, the materials and the blocks - are written by the frame on the
+worker; an app pipeline reads the same records the mesh pipeline reads, and its material and block
+of its own schema.
 
 ## The pass
 
@@ -267,9 +269,9 @@ One color attachment (`Output`), one depth attachment (`Depth3d`), and one or tw
 set of two arrays of combined image samplers: binding 0, `MaxTextures` (64) `sampler2D`s, and
 binding 1, `MaxTextureArrays` (16) `sampler2DArray`s for layered textures — images with array
 layers, such as a terrain's surface types, one layer each (E13). A shader cannot sample a layered
-view through a `sampler2D`, so each kind has its own slots; a draw's `textureIdx`,
-`textureIdx2` and `textureIdx3` index the array of their texture's kind, and the app's shaders know which kind they
-gave a material.
+view through a `sampler2D`, so each kind has its own slots; a texture field of a material or a
+block is of one kind (`texture2d`, `texture-array`) and indexes its array, and a texture of the
+other kind in it is none, with a warning.
 
 The pipelines of the subpass are, in order: `Basic3dMesh` (the stock mesh shaders) and then the
 app's, from the `Pipeline3dInfo` list `Scene3d::init` takes. A material names one by its place:
@@ -321,11 +323,8 @@ with the frame's memory pool:
      its textures; one without such a material, or with one of another schema, is drawn by the
      mesh pipeline, with one warning; so is one whose pipeline reads a view's block the view does
      not have (a view's block is written with it, step 2).
-4. The textures of the draws become slots of their array, in the order met; a texture still
-   loading draws as its colour alone, and textures past 64 (16 layered) likewise, with a warning.
-   The mesh pipeline samples no layered texture: a material it draws — its own, or one whose
-   pipeline the pass does not have — drops one, with a warning, so its index never points into
-   the wrong array.
+4. The textures of the materials and the blocks become slots of their array, in the order met; a
+   texture still loading is none, and textures past 64 (16 layered) likewise, with a warning.
 5. It allocates six buffers from the frame's pool — vertexes, indexes, draws, views, lights,
    materials, device-local and host-visible, the storage ones with device addresses — and copies
    into them. Each has at least one record (16 bytes, for the materials), so its address exists
@@ -470,7 +469,7 @@ tried first in `tests/pass3d` (`4b018a1c`).
 * `tests/basic3d` (`basic3dtest`, no device): the camera's math, the mesh builders, the sizes and
   offsets of the records, a pack's layout.
 * `tests/window/basic3d-check.py` drives `examples/window/basic3d` headless: the mesh pipeline,
-  the app pipeline and its params, a point light, the pack (no vertex copied into the frame, the
+  the app pipeline and its material, a point light, the pack (no vertex copied into the frame, the
   same picture with `BASIC3D_NOPACK=1`, the pack leaving the cache when its draws go, the last
   references of the frames in flight released on the app thread), mips, a translucent pipeline
   (a tilted glass blending over the opaque draws, more where the depth it reads is further), the

@@ -16,7 +16,7 @@ schema basic3d {
 }
 
 const NO_TEXTURE 0xFFFFFFFF type=uint \
-	doc="DrawData3d::textureIdx of a draw with no texture: its colour alone"
+	doc="A texture field of a material or a block with no texture"
 
 const MAX_TEXTURES 64 type=uint \
 	doc="Images one frame can sample: the slots of the texture array (basic3d::MaxTextures)"
@@ -30,19 +30,15 @@ record Vertex3d doc="One vertex, 64 bytes, read by gl_VertexIndex through a buff
 	attr vec4 doc="xy - texture coordinates, zw - free"
 }
 
-record DrawData3d doc="One draw: where the model is and what it looks like" {
+record DrawData3d doc="One draw: where the model is; what it looks like is its material's" {
 	model mat4
 	normal mat4 doc="the inverse transpose of the model's rotation and scale, for normals"
-	color vec4
-	textureIdx uint doc="""
-		into the pass's texture array (binding 0) - or into its layered one (binding 1) for a texture
-		with array layers - or XL_GLSL_3D_NO_TEXTURE
-		"""
-	uvScale float
-	flags uint doc="the material's, for an app pipeline"
-	textureIdx2 uint doc="the material's second texture, as textureIdx; an app pipeline's"
-	params vec4 count=4 doc="the material's, for an app pipeline"
-	textureIdx3 uint doc="the material's third texture, as textureIdx2"
+}
+
+material Lambert3d doc="The mesh pipeline's material: a colour times a texture, lit by Lambert" {
+	color vec4 doc="times the texture"
+	texture texture2d doc="tiled uvScale times per unit of the mesh's texture coordinates"
+	uvScale float default=1
 }
 
 record LightData3d \
@@ -95,5 +91,5 @@ varyings Mesh3dVaryings doc="What the mesh pipeline's vertex shader hands its fr
 	world vec3
 }
 
-shader xl_3d_mesh.vert interface=pass3d varyings=Mesh3dVaryings
-shader xl_3d_mesh.frag interface=pass3d varyings=Mesh3dVaryings
+shader xl_3d_mesh.vert interface=pass3d varyings=Mesh3dVaryings material=Lambert3d
+shader xl_3d_mesh.frag interface=pass3d varyings=Mesh3dVaryings material=Lambert3d

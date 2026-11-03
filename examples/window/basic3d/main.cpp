@@ -193,45 +193,44 @@ protected:
 		_pack = Rc<MeshPack3d>::create(cache, Vector<Rc<Mesh3d>>{plane, torus, box, small});
 		_packName = _pack->getName().str<Interface>();
 
+		// the ground and the torus by the mesh pipeline: a colour times a texture
 		_view->addDraw(Draw3d{plane, Mat4::IDENTITY,
-			Material3d{Color4F(0.75f, 0.85f, 0.7f, 1.0f), fine, 1.0f}});
+			Material3d::lambert(Color4F(0.75f, 0.85f, 0.7f, 1.0f), fine)});
 
 		_torus = _view->addDraw(Draw3d{torus, torusTransform(0.4f),
-			Material3d{Color4F::WHITE, coarse, 1.0f}});
+			Material3d::lambert(Color4F::WHITE, coarse)});
 
-		// Two boxes drawn by the app pipeline: red and blue stripes, and with flag 1 green alone
-		// where its params would give green and yellow ones
+		// Two boxes drawn by the app pipeline, a material of the example's schema each (Stripes3d):
+		// red and blue stripes, and with STRIPES_SINGLE green alone where its colours would give
+		// green and yellow ones
+		auto stripes = [](example::Stripes3dMaterial &&m) {
+			return Material3d{.pipeline = StripesPipeline, .data = m.make()};
+		};
 		Mat4 left, right;
 		Mat4::createTranslation(Vec3(-4.0f, 5.0f, 0.75f), &left);
 		Mat4::createTranslation(Vec3(5.0f, -4.0f, 0.75f), &right);
 		_view->addDraw(Draw3d{box, left,
-			Material3d{.pipeline = StripesPipeline,
-				.params = {Vec4(1.0f, 0.0f, 0.0f, 1.0f), Vec4(0.0f, 0.0f, 1.0f, 1.0f)}}});
+			stripes({.first = Vec4(1.0f, 0.0f, 0.0f, 1.0f),
+				.second = Vec4(0.0f, 0.0f, 1.0f, 1.0f)})});
 		_view->addDraw(Draw3d{box, right,
-			Material3d{.pipeline = StripesPipeline,
-				.flags = 1,
-				.params = {Vec4(0.0f, 1.0f, 0.0f, 1.0f), Vec4(1.0f, 1.0f, 0.0f, 1.0f)}}});
+			stripes({.first = Vec4(0.0f, 1.0f, 0.0f, 1.0f), .second = Vec4(1.0f, 1.0f, 0.0f, 1.0f),
+				.flags = BASIC3D_EXAMPLE_STRIPES_SINGLE})});
 
-		// A third box of the pipeline, its second colour from a second texture: the coarse
-		// checker; its first from a third: magenta
+		// A third box of the pipeline, its second colour from a texture: the coarse checker; its
+		// first from another: magenta
 		Mat4 front;
 		Mat4::createTranslation(Vec3(-7.0f, -2.0f, 0.75f), &front);
 		_view->addDraw(Draw3d{box, front,
-			Material3d{.pipeline = StripesPipeline,
-				.params = {Vec4(1.0f, 0.0f, 0.0f, 1.0f), Vec4(0.0f, 0.0f, 1.0f, 1.0f)},
-				.texture2 = coarse,
-				.texture3 = magenta}});
+			stripes({.first = Vec4(1.0f, 0.0f, 0.0f, 1.0f), .second = Vec4(0.0f, 0.0f, 1.0f, 1.0f),
+				.firstTexture = magenta, .secondTexture = coarse})});
 
-		// A fourth, its second colour from the layered texture's third layer (params[2].x), by
-		// flag 2: cyan
+		// A fourth, its second colour from the layered texture's third layer, by STRIPES_LAYERED:
+		// cyan
 		Mat4 rear;
 		Mat4::createTranslation(Vec3(2.0f, 10.0f, 0.75f), &rear);
 		_view->addDraw(Draw3d{box, rear,
-			Material3d{.texture = layered,
-				.pipeline = StripesPipeline,
-				.flags = 2,
-				.params = {Vec4(1.0f, 0.0f, 0.0f, 1.0f), Vec4(0.0f, 0.0f, 1.0f, 1.0f),
-					Vec4(2.0f, 0.0f, 0.0f, 0.0f)}}});
+			stripes({.first = Vec4(1.0f, 0.0f, 0.0f, 1.0f), .second = Vec4(0.0f, 0.0f, 1.0f, 1.0f),
+				.layers = layered, .layer = 2.0f, .flags = BASIC3D_EXAMPLE_STRIPES_LAYERED})});
 		// A point light low over the ground beside the torus, unless BASIC3D_NO_LIGHT=1: a pool
 		// of warm light on the ground under it
 		if (!__sprt_getenv("BASIC3D_NO_LIGHT")) {
@@ -239,12 +238,13 @@ protected:
 		}
 
 		// BASIC3D_UNKNOWN_PIPELINE=1: a fifth box picks a pipeline the scene does not have, and
-		// draws as a white mesh: its layered texture is none the mesh pipeline can sample
+		// draws as a white mesh: its material, a Stripes3d, is none the mesh pipeline reads
 		if (__sprt_getenv("BASIC3D_UNKNOWN_PIPELINE")) {
 			Mat4 back;
 			Mat4::createTranslation(Vec3(-6.0f, -6.0f, 0.75f), &back);
 			_view->addDraw(Draw3d{small, back,
-				Material3d{.texture = layered, .pipeline = 7}});
+				Material3d{.pipeline = 7,
+					.data = example::Stripes3dMaterial{.layers = layered, .layer = 2.0f}.make()}});
 		}
 
 		// BASIC3D_GLASS=1: a tinted glass by the translucent pipeline, 4 units square, tilted over
@@ -345,7 +345,7 @@ public:
 					sizeof(basic3d_stripes_vert) / sizeof(uint32_t)),
 			SpanView<uint32_t>(reinterpret_cast<const uint32_t *>(basic3d_stripes_frag),
 					sizeof(basic3d_stripes_frag) / sizeof(uint32_t)),
-			false, nullptr, nullptr, &example::Compact3dVertex::Format};
+			false, &example::Stripes3dMaterial::Schema, nullptr, &example::Compact3dVertex::Format};
 		// the glass shares the stripes' vertex shader, and reads a material and the view's block of
 		// the example's schema
 		auto glass = Pipeline3dInfo{"Basic3dExampleGlass", stripes.vert,

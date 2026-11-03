@@ -70,7 +70,7 @@ struct NodeShape {
 
 const StringView s_constProps[] = {"type", "doc"};
 const StringView s_docProps[] = {"doc"};
-const StringView s_fieldProps[] = {"count", "doc"};
+const StringView s_fieldProps[] = {"count", "default", "doc"};
 const StringView s_pushProps[] = {"name"};
 const StringView s_bufferProps[] = {"pointer", "single"};
 const StringView s_samplersProps[] = {"binding", "count"};
@@ -598,6 +598,32 @@ protected:
 					continue;
 				}
 				f.count = uint32_t(v.get());
+			}
+			// what a builder starts the field with: a number for a scalar
+			if (auto value = child.getPropertyValue("default")) {
+				auto name = f.type->name;
+				auto scalar = name == "float" || name == "int" || name == "uint";
+				if (!scalar || f.count || kind == RecordKind::Record || !value->isNumber()
+						|| (name != "float" && !value->isInteger())) {
+					error(value->location,
+							"'default' is a number for a scalar field of a material, a block or a "
+							"vertex");
+					ok = false;
+					continue;
+				}
+				for (auto ch : StringView(value->literal)) {
+					if (ch != '_') {
+						f.fallback.push_back(ch);
+					}
+				}
+				if (name == "float") {
+					if (f.fallback.find_first_of(".eE") == String::npos) {
+						f.fallback.append(".0");
+					}
+					f.fallback.push_back('f');
+				} else if (name == "uint") {
+					f.fallback.push_back('u');
+				}
 			}
 			if (r.findField(f.name)) {
 				error(child.location,

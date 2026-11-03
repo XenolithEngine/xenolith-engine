@@ -12,13 +12,14 @@ headless screenshot:
     generated, it averages to an even colour. A second run with BASIC3D_NOMIPS=1 samples level 0
     alone and the same ground aliases into noise - that the two differ is what proves the chain is
     sampled;
-  * two boxes are drawn by the example's own pipeline (Scene3d's app pipelines): one in red and blue
-    stripes, the colours of its material's params, the other green alone, as its flag 1 asks;
+  * two boxes are drawn by the example's own pipeline (Scene3d's app pipelines), a material of the
+    example's schema each (Stripes3d): one in red and blue stripes, its two colours, the other
+    green alone, as its STRIPES_SINGLE flag asks;
   * a third box takes its second colour from the material's second texture: the coarse checker's
-    orange shows where its blue would be; and its first from the third texture: magenta where
+    orange shows where its blue would be; and its first from the first texture: magenta where
     its red would be;
   * a fourth takes it from a layered texture (array layers, the pass's sampler2DArray slots), the
-    layer its params pick: the third layer's cyan, none of the other layers' red or white;
+    layer its material picks: the third layer's cyan, none of the other layers' red or white;
   * a point light makes a pool of light on the ground under it, gone with BASIC3D_NO_LIGHT=1,
     and the ground past its radius is as without it;
   * every mesh is in one pack in GPU memory (MeshPack3d): once it is loaded the frames copy no
@@ -27,8 +28,8 @@ headless screenshot:
     the resource cache; with the example letting go of the meshes and the pack too, the frames in
     flight hold their last references and release them on the app thread;
   * a material picking a pipeline the scene does not have (BASIC3D_UNKNOWN_PIPELINE=1, in the second
-    run) draws as a mesh, with one warning; its layered texture is none the mesh pipeline can
-    sample, so it is white, with a warning of its own;
+    run) draws as a mesh, with one warning; its material is no Lambert3d the mesh pipeline reads,
+    so it is white;
   * the 2d panel composites over the 3d picture;
   * a translucent pipeline (BASIC3D_GLASS=1, a run of its own) draws in the second subpass, over
     the opaque draws: a tilted glass blends its colour over the ground and the green box behind
@@ -195,7 +196,7 @@ def main():
     stripes = pixels(image, STRIPES)
     red = sum(1 for p in stripes if p[0] > 120 and p[1] < 40 and p[2] < 40)
     blue = sum(1 for p in stripes if p[2] > 120 and p[0] < 40 and p[1] < 40)
-    check("it draws a box in the two colours of its params", red > 1500 and blue > 1500,
+    check("it draws a box in the two colours of its material", red > 1500 and blue > 1500,
             f"red {red}, blue {blue}")
     solid = pixels(image, SOLID)
     green = sum(1 for p in solid if p[1] > 120 and p[0] < 40 and p[2] < 40)
@@ -215,7 +216,7 @@ def main():
     cyan = sum(1 for p in layered if p[1] > 120 and p[2] > 120 and p[0] < 40)
     white = sum(1 for p in layered if min(p) > 150)
     blue = sum(1 for p in layered if p[2] > 120 and p[0] < 40 and p[1] < 40)
-    check("a layered texture's layer the params pick takes its place", cyan > 3000
+    check("a layered texture's layer the material picks takes its place", cyan > 3000
             and white == 0 and blue == 0, f"cyan {cyan}, white {white}, blue {blue}")
     check("the unknown pipeline's box is absent without its variable",
             sum(1 for p in pixels(image, UNKNOWN) if min(p) > 150) < 50)
@@ -277,10 +278,12 @@ def main():
     glass, glassText, glassStats = run(binary, {"BASIC3D_STILL": "1", "BASIC3D_GLASS": "1"},
             glass_path, lambda session: session.call("invoke", name="basic3d.stats", args={}))
     check("and one with it", glassStats["translucentDraws"] == 1, str(glassStats))
-    check("its material of a schema is written once, 32 bytes",
-            glassStats["materials"] == 1 and glassStats["materialBytes"] == 32, str(glassStats))
-    check("and none without it", packed["materials"] == 0 and packed["materialBytes"] == 0,
-            str(packed))
+    # the ground's and the torus's Lambert3d, 32 bytes each, the four boxes' Stripes3d, 64 each
+    check("each material of the frame is written once",
+            packed["materials"] == 6 and packed["materialBytes"] == 2 * 32 + 4 * 64, str(packed))
+    check("and the glass's, 32 bytes, with it",
+            glassStats["materials"] == 7 and glassStats["materialBytes"] == 2 * 32 + 4 * 64 + 32,
+            str(glassStats))
     check("the view's block is written once, 4 bytes, with the glass and without it",
             glassStats["blocks"] == 1 and glassStats["blockBytes"] == 4
             and packed["blocks"] == 1 and packed["blockBytes"] == 4, f"{glassStats} {packed}")
@@ -313,9 +316,10 @@ def main():
     nodata, nodataText, nodataStats = run(binary, {"BASIC3D_STILL": "1", "BASIC3D_GLASS": "1",
             "BASIC3D_GLASS_NODATA": "1"}, nodata_path,
             lambda session: session.call("invoke", name="basic3d.stats", args={}))
-    check("the glass without its material is no translucent draw",
-            nodataStats["translucentDraws"] == 0 and nodataStats["materials"] == 0,
-            str(nodataStats))
+    # the mesh pipeline would draw it, but its mesh is of the stripes' format: it is not drawn
+    check("the glass without its material is not drawn",
+            nodataStats["translucentDraws"] == 0 and nodataStats["materials"] == 6
+            and nodataStats["frameIndexBytes"] == 0, str(nodataStats))
     mismatch = nodataText.count("reads a material of a schema")
     check("the mesh pipeline draws it, with one warning", mismatch == 1, f"{mismatch} warnings")
     check("no Vulkan validation error without it", "Validation Error" not in nodataText,
@@ -340,9 +344,9 @@ def main():
     check("its box draws as a mesh", white > 3000, f"{white} pixels")
     warnings = nomipsText.count("which the pass does not have")
     check("with one warning", warnings == 1, f"{warnings} warnings")
-    layeredWarnings = nomipsText.count("samples no layered texture")
-    check("its layered texture is dropped, with one warning", layeredWarnings == 1,
-            f"{layeredWarnings} warnings")
+    meshWarnings = nomipsText.count("of another schema than Lambert3d")
+    check("its material, of another schema, is the mesh pipeline's default, with no other warning",
+            meshWarnings == 0, f"{meshWarnings} warnings")
 
     print("--- the log")
     check("no Vulkan validation error", "Validation Error" not in text, log_path)

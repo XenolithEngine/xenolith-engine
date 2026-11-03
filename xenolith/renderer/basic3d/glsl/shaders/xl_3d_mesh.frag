@@ -1,17 +1,17 @@
 #version 450
 #extension GL_GOOGLE_include_directive : enable
 
-// The pass's interface and the varyings, from basic3d.kdl; every slot of the texture arrays is
-// written, the unused ones with an empty image
+// The pass's interface, the varyings and the material, Lambert3d, from basic3d.kdl; every slot of
+// the texture arrays is written, the unused ones with an empty image
 #include "xl_3d_mesh.frag.glsl"
 
 void main() {
-	DrawData3d d = draws(constants.drawIndex);
+	Lambert3d m = material();
 	ViewData3d v = view();
 
-	vec4 base = d.color;
-	if (d.textureIdx != XL_GLSL_3D_NO_TEXTURE) {
-		base *= texture(textures[nonuniformEXT(d.textureIdx)], vary.texCoord);
+	vec4 base = m.color;
+	if (m.texture != XL_GLSL_3D_NO_TEXTURE) {
+		base *= texture(textures[nonuniformEXT(m.texture)], vary.texCoord);
 	}
 
 	vec3 n = normalize(vary.normal);

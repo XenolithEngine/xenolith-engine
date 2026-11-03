@@ -44,6 +44,10 @@ layout (std430, buffer_reference, buffer_reference_align = 16) readonly buffer L
 	LightData3d lights[];
 };
 
+layout (std430, buffer_reference, buffer_reference_align = 16) readonly buffer Stripes3dBuffer {
+	Stripes3d material;
+};
+
 layout (set = 0, binding = 0) uniform sampler2D textures[XL_GLSL_3D_MAX_TEXTURES];
 layout (set = 0, binding = 1) uniform sampler2DArray textureArrays[XL_GLSL_3D_MAX_TEXTURE_ARRAYS];
 
@@ -59,3 +63,4 @@ Vertex3d vertices(uint i) { return Vertex3dBuffer(constants.vertexPointer).verti
 DrawData3d draws(uint i) { return DrawData3dBuffer(constants.drawPointer).draws[i]; }
 ViewData3d view() { return ViewData3dBuffer(constants.viewPointer).view; }
 LightData3d lights(uint i) { return LightData3dBuffer(constants.lightPointer).lights[i]; }
+Stripes3d material() { return Stripes3dBuffer(constants.materialPointer).material; }

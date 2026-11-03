@@ -96,6 +96,14 @@ void appendBanner(const Schema &schema, String &out) {
 			filepath::lastComponent(schema.file), ". Do not edit: regenerate it.\n\n"));
 }
 
+// What a builder's field starts with: its default, or zero for a scalar
+String initial(const Field &f, StringView type) {
+	if (!f.fallback.empty()) {
+		return mem_std::toString(" = ", f.fallback);
+	}
+	return String(type == "float" ? " = 0.0f" : (type == "uint" || type == "int") ? " = 0" : "");
+}
+
 // A material's or a block's builder for C++: its fields, textures as textures; its schema; and
 // make(), which lays them out as the record and hands the pass the textures, whose slots it writes
 // each frame.
@@ -117,9 +125,7 @@ void appendBuilder(const Record &r, String &out) {
 			++textures;
 			continue;
 		}
-		auto zero = f.type->name == "float"							? " = 0.0f"
-				: (f.type->name == "uint" || f.type->name == "int") ? " = 0"
-																	: "";
+		auto zero = initial(f, f.type->name);
 		out.append(mem_std::toString("\t", f.type->name, " ", f.name));
 		if (f.count) {
 			out.append(mem_std::toString("[", f.count, "]"));
@@ -173,7 +179,7 @@ void appendVertexBuilder(const Record &r, String &out) {
 			continue;
 		}
 		auto type = f.type->packed() ? f.type->unpacked : f.type->name;
-		auto zero = type == "float" ? " = 0.0f" : (type == "uint" || type == "int") ? " = 0" : "";
+		auto zero = initial(f, type);
 		out.append(mem_std::toString("\t", type, " ", f.name, zero, ";\n"));
 	}
 	out.append(mem_std::toString("\n\tstatic constexpr xl3d::VertexFormat3d Format{\"", r.name,

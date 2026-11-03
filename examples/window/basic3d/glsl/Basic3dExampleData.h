@@ -23,6 +23,26 @@ namespace xl3d = STAPPLER_VERSIONIZED_NAMESPACE::xenolith::basic3d;
 
 #endif
 
+// The stripes' boxes
+struct Stripes3d {
+	vec4 first; // the first stripes' colour
+	vec4 second; // the second stripes' colour
+	uint firstTexture; // in place of the first colour, laid over the world's xy
+	uint secondTexture; // in place of the second colour, likewise
+	uint layers; // with STRIPES_LAYERED, in place of the second colour, its layer's
+	float layer;
+	uint flags; // STRIPES_SINGLE, STRIPES_LAYERED
+	uint padding0;
+	uint padding1;
+	uint padding2;
+};
+
+// the first colour alone
+#define BASIC3D_EXAMPLE_STRIPES_SINGLE 1u
+
+// the second colour from the layered texture
+#define BASIC3D_EXAMPLE_STRIPES_LAYERED 2u
+
 // The tinted glass of the translucent pipeline
 struct Glass3d {
 	vec4 color; // its colour; its alpha comes from the depth behind it
@@ -44,6 +64,39 @@ struct Compact3d {
 };
 
 #ifndef SP_GLSL
+// Stripes3d with its textures, for Material3d::data of a pipeline that reads it
+struct Stripes3dMaterial {
+	vec4 first;
+	vec4 second;
+	xl3d::MaterialTexture3d firstTexture;
+	xl3d::MaterialTexture3d secondTexture;
+	xl3d::MaterialTexture3d layers;
+	float layer = 0.0f;
+	uint flags = 0;
+
+	static constexpr xl3d::MaterialTextureField3d Textures[] = {
+		{32, xl3d::MaterialTextureKind3d::Texture2d},
+		{36, xl3d::MaterialTextureKind3d::Texture2d},
+		{40, xl3d::MaterialTextureKind3d::TextureArray},
+	};
+	static constexpr xl3d::MaterialSchema3d Schema{"Stripes3d", 64, 16, Textures, 3};
+
+	sprt::Rc<xl3d::MaterialData3d> make() const {
+		Stripes3d d;
+		d.first = first;
+		d.second = second;
+		d.firstTexture = 0xFFFFFFFFu; // the pass writes the frame's slot
+		d.secondTexture = 0xFFFFFFFFu; // the pass writes the frame's slot
+		d.layers = 0xFFFFFFFFu; // the pass writes the frame's slot
+		d.layer = layer;
+		d.flags = flags;
+		d.padding0 = 0;
+		d.padding1 = 0;
+		d.padding2 = 0;
+		return xl3d::MaterialData3d::make(&Schema, d, {firstTexture, secondTexture, layers});
+	}
+};
+
 // Glass3d with its textures, for Material3d::data of a pipeline that reads it
 struct Glass3dMaterial {
 	vec4 color;
@@ -91,6 +144,17 @@ struct Compact3dVertex {
 };
 
 // the records as std430 lays them out, which C++ has to agree with
+static_assert(sizeof(Stripes3d) == 64);
+static_assert(__builtin_offsetof(Stripes3d, first) == 0);
+static_assert(__builtin_offsetof(Stripes3d, second) == 16);
+static_assert(__builtin_offsetof(Stripes3d, firstTexture) == 32);
+static_assert(__builtin_offsetof(Stripes3d, secondTexture) == 36);
+static_assert(__builtin_offsetof(Stripes3d, layers) == 40);
+static_assert(__builtin_offsetof(Stripes3d, layer) == 44);
+static_assert(__builtin_offsetof(Stripes3d, flags) == 48);
+static_assert(__builtin_offsetof(Stripes3d, padding0) == 52);
+static_assert(__builtin_offsetof(Stripes3d, padding1) == 56);
+static_assert(__builtin_offsetof(Stripes3d, padding2) == 60);
 static_assert(sizeof(Glass3d) == 32);
 static_assert(__builtin_offsetof(Glass3d, color) == 0);
 static_assert(__builtin_offsetof(Glass3d, density) == 16);

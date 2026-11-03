@@ -11,13 +11,18 @@
 #include "sprt_glsl.h"
 
 #ifndef SP_GLSL
+#include "XL3dMaterial.h"
+#endif
+
+#ifndef SP_GLSL
 namespace STAPPLER_VERSIONIZED stappler::glsl {
 
 using namespace sprt::glsl;
+namespace xl3d = STAPPLER_VERSIONIZED_NAMESPACE::xenolith::basic3d;
 
 #endif
 
-// DrawData3d::textureIdx of a draw with no texture: its colour alone
+// A texture field of a material or a block with no texture
 #define XL_GLSL_3D_NO_TEXTURE 0xFFFFFFFFu
 
 // Images one frame can sample: the slots of the texture array (basic3d::MaxTextures)
@@ -34,22 +39,19 @@ struct Vertex3d {
 	vec4 attr; // xy - texture coordinates, zw - free
 };
 
-// One draw: where the model is and what it looks like
+// One draw: where the model is; what it looks like is its material's
 struct DrawData3d {
 	mat4 model;
 	mat4 normal; // the inverse transpose of the model's rotation and scale, for normals
-	vec4 color;
-	// into the pass's texture array (binding 0) - or into its layered one (binding 1) for a texture
-	// with array layers - or XL_GLSL_3D_NO_TEXTURE
-	uint textureIdx;
+};
+
+// The mesh pipeline's material: a colour times a texture, lit by Lambert
+struct Lambert3d {
+	vec4 color; // times the texture
+	uint texture; // tiled uvScale times per unit of the mesh's texture coordinates
 	float uvScale;
-	uint flags; // the material's, for an app pipeline
-	uint textureIdx2; // the material's second texture, as textureIdx; an app pipeline's
-	vec4 params[4]; // the material's, for an app pipeline
-	uint textureIdx3; // the material's third texture, as textureIdx2
 	uint padding0;
 	uint padding1;
-	uint padding2;
 };
 
 // A point light: its light falls off as (1 - (d / radius)^2)^2, zero at the radius
@@ -83,25 +85,43 @@ struct Constants3d {
 };
 
 #ifndef SP_GLSL
+// Lambert3d with its textures, for Material3d::data of a pipeline that reads it
+struct Lambert3dMaterial {
+	vec4 color;
+	xl3d::MaterialTexture3d texture;
+	float uvScale = 1.0f;
+
+	static constexpr xl3d::MaterialTextureField3d Textures[] = {
+		{16, xl3d::MaterialTextureKind3d::Texture2d},
+	};
+	static constexpr xl3d::MaterialSchema3d Schema{"Lambert3d", 32, 16, Textures, 1};
+
+	sprt::Rc<xl3d::MaterialData3d> make() const {
+		Lambert3d d;
+		d.color = color;
+		d.texture = 0xFFFFFFFFu; // the pass writes the frame's slot
+		d.uvScale = uvScale;
+		d.padding0 = 0;
+		d.padding1 = 0;
+		return xl3d::MaterialData3d::make(&Schema, d, {texture});
+	}
+};
+
 // the records as std430 lays them out, which C++ has to agree with
 static_assert(sizeof(Vertex3d) == 64);
 static_assert(__builtin_offsetof(Vertex3d, pos) == 0);
 static_assert(__builtin_offsetof(Vertex3d, normal) == 16);
 static_assert(__builtin_offsetof(Vertex3d, tangent) == 32);
 static_assert(__builtin_offsetof(Vertex3d, attr) == 48);
-static_assert(sizeof(DrawData3d) == 240);
+static_assert(sizeof(DrawData3d) == 128);
 static_assert(__builtin_offsetof(DrawData3d, model) == 0);
 static_assert(__builtin_offsetof(DrawData3d, normal) == 64);
-static_assert(__builtin_offsetof(DrawData3d, color) == 128);
-static_assert(__builtin_offsetof(DrawData3d, textureIdx) == 144);
-static_assert(__builtin_offsetof(DrawData3d, uvScale) == 148);
-static_assert(__builtin_offsetof(DrawData3d, flags) == 152);
-static_assert(__builtin_offsetof(DrawData3d, textureIdx2) == 156);
-static_assert(__builtin_offsetof(DrawData3d, params) == 160);
-static_assert(__builtin_offsetof(DrawData3d, textureIdx3) == 224);
-static_assert(__builtin_offsetof(DrawData3d, padding0) == 228);
-static_assert(__builtin_offsetof(DrawData3d, padding1) == 232);
-static_assert(__builtin_offsetof(DrawData3d, padding2) == 236);
+static_assert(sizeof(Lambert3d) == 32);
+static_assert(__builtin_offsetof(Lambert3d, color) == 0);
+static_assert(__builtin_offsetof(Lambert3d, texture) == 16);
+static_assert(__builtin_offsetof(Lambert3d, uvScale) == 20);
+static_assert(__builtin_offsetof(Lambert3d, padding0) == 24);
+static_assert(__builtin_offsetof(Lambert3d, padding1) == 28);
 static_assert(sizeof(LightData3d) == 32);
 static_assert(__builtin_offsetof(LightData3d, position) == 0);
 static_assert(__builtin_offsetof(LightData3d, color) == 16);

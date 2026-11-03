@@ -42,6 +42,10 @@ layout (std430, buffer_reference, buffer_reference_align = 16) readonly buffer L
 	LightData3d lights[];
 };
 
+layout (std430, buffer_reference, buffer_reference_align = 16) readonly buffer Lambert3dBuffer {
+	Lambert3d material;
+};
+
 // What the mesh pipeline's vertex shader hands its fragment shader
 layout (location = 0) out Mesh3dVaryings {
 	vec3 normal; // in the world, not normalized
@@ -53,3 +57,4 @@ Vertex3d vertices(uint i) { return Vertex3dBuffer(constants.vertexPointer).verti
 DrawData3d draws(uint i) { return DrawData3dBuffer(constants.drawPointer).draws[i]; }
 ViewData3d view() { return ViewData3dBuffer(constants.viewPointer).view; }
 LightData3d lights(uint i) { return LightData3dBuffer(constants.lightPointer).lights[i]; }
+Lambert3d material() { return Lambert3dBuffer(constants.materialPointer).material; }

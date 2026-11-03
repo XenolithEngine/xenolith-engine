@@ -163,19 +163,9 @@ void View3d::collectDraws(ViewInput3d &view) {
 	view.lights = _lights;
 }
 
-void View3d::retainMaterial(const Material3d &material) {
-	retainTexture(material.texture);
-	retainTexture(material.texture2);
-	retainTexture(material.texture3);
-	retainData(material.data);
-}
+void View3d::retainMaterial(const Material3d &material) { retainData(material.data); }
 
-void View3d::releaseMaterial(const Material3d &material) {
-	releaseTexture(material.texture);
-	releaseTexture(material.texture2);
-	releaseTexture(material.texture3);
-	releaseData(material.data);
-}
+void View3d::releaseMaterial(const Material3d &material) { releaseData(material.data); }
 
 void View3d::retainData(const Rc<MaterialData3d> &data) {
 	if (data) {

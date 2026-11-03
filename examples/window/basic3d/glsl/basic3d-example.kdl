@@ -10,10 +10,24 @@ schema basic3d_example {
 	output "Basic3dExampleData.h"
 	guard "EXAMPLES_WINDOW_BASIC3D_GLSL_BASIC3DEXAMPLEDATA_H_"
 	namespace "stappler::xenolith::basic3d::example"
+	macro-prefix "BASIC3D_EXAMPLE_"
 	preambles "."
 	copyright "2026 Xenolith Team <admin@xenolith.studio>"
 	license "MIT"
 }
+
+material Stripes3d doc="The stripes' boxes" {
+	first vec4 doc="the first stripes' colour"
+	second vec4 doc="the second stripes' colour"
+	firstTexture texture2d doc="in place of the first colour, laid over the world's xy"
+	secondTexture texture2d doc="in place of the second colour, likewise"
+	layers texture-array doc="with STRIPES_LAYERED, in place of the second colour, its layer's"
+	layer float
+	flags uint doc="STRIPES_SINGLE, STRIPES_LAYERED"
+}
+
+const STRIPES_SINGLE 1 type=uint doc="the first colour alone"
+const STRIPES_LAYERED 2 type=uint doc="the second colour from the layered texture"
 
 material Glass3d doc="The tinted glass of the translucent pipeline" {
 	color vec4 doc="its colour; its alpha comes from the depth behind it"
@@ -35,6 +49,6 @@ varyings Stripes3dVaryings doc="What the stripes' vertex shader hands both fragm
 }
 
 shader basic3d_stripes.vert interface=pass3d varyings=Stripes3dVaryings vertex=Compact3d
-shader basic3d_stripes.frag interface=pass3d varyings=Stripes3dVaryings
+shader basic3d_stripes.frag interface=pass3d varyings=Stripes3dVaryings material=Stripes3d
 shader basic3d_glass.frag interface=pass3d varyings=Stripes3dVaryings translucent=#true \
 	material=Glass3d block=Example3dView

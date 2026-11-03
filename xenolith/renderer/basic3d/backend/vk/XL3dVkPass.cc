@@ -104,6 +104,12 @@ uint32_t Scene3dInputHandle::acquireTexture(const Rc<Texture> &texture, bool &ov
 	return uint32_t(images.size() - 1);
 }
 
+// What the mesh pipeline draws a draw with when it has no Lambert3d of its own: white
+static const Rc<MaterialData3d> &Scene3dInputHandle_defaultMaterial() {
+	static Rc<MaterialData3d> s_material = glsl::Lambert3dMaterial{.color = Vec4::ONE}.make();
+	return s_material;
+}
+
 bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHandle3d &input) {
 	_views.clear();
 	_draws.clear();
@@ -133,7 +139,6 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 	}
 
 	Pass3dStats stats;
-	stats.frameIndexBytes = indexCount * sizeof(uint32_t);
 
 	// the meshes' vertexes, whatever their format, each from a 16-byte boundary
 	Bytes vertexes;
@@ -195,7 +200,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 	};
 
 	bool tooManyLights = false;
-	bool layeredMesh = false;
+	bool meshMismatch = false;
 	for (auto &view : input.views) {
 		// a record for every view, so a view's index is its place in the view buffer
 		auto &record = _views.emplace_back(
@@ -229,30 +234,37 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			auto meshVertexes = draw.mesh->getVertexData();
 			auto meshIndexes = draw.mesh->getIndexes();
 
-			// a pipeline that reads a material or a view's block of a schema draws only one of it:
-			// otherwise the mesh pipeline draws the draw
+			// A pipeline draws a draw whose material, view's block and mesh's vertexes are of what
+			// it reads; the mesh pipeline draws the others, if their mesh is of Vertex3d, and with
+			// its default material when theirs is not a Lambert3d
 			auto pipeline = draw.material.pipeline;
+			auto asMesh = attachment->isDrawnAsMesh(pipeline);
 			auto schema = attachment->getMaterialSchema(pipeline);
-			auto blockSchema = attachment->getBlockSchema(pipeline);
-			auto noMaterial = schema
-					&& (!draw.material.data || draw.material.data->getSchema() != schema);
-			auto noBlock = blockSchema && blockSchema != viewBlock;
-			if (noMaterial || noBlock) {
-				materialMismatch = materialMismatch || noMaterial;
-				blockMismatch = blockMismatch || noBlock;
-				pipeline = MeshPipeline;
-				schema = nullptr;
-			}
-
-			// a pipeline reads the vertexes of its format: a mesh of another one draws with the
-			// mesh pipeline if it can - one of Vertex3d - and not at all otherwise
-			if (draw.mesh->getFormat() != attachment->getVertexFormat(pipeline)) {
-				formatMismatch = true;
-				if (draw.mesh->getFormat() != &Vertex3dFormat) {
-					continue;
+			if (!asMesh) {
+				auto blockSchema = attachment->getBlockSchema(pipeline);
+				auto noMaterial = schema
+						&& (!draw.material.data || draw.material.data->getSchema() != schema);
+				auto noBlock = blockSchema && blockSchema != viewBlock;
+				auto noFormat = draw.mesh->getFormat() != attachment->getVertexFormat(pipeline);
+				if (noMaterial || noBlock || noFormat) {
+					materialMismatch = materialMismatch || noMaterial;
+					blockMismatch = blockMismatch || noBlock;
+					formatMismatch = formatMismatch || noFormat;
+					asMesh = true;
+					pipeline = MeshPipeline;
+					schema = attachment->getMaterialSchema(MeshPipeline);
 				}
-				pipeline = MeshPipeline;
-				schema = nullptr;
+			}
+			if (asMesh && draw.mesh->getFormat() != &Vertex3dFormat) {
+				formatMismatch = true;
+				continue;
+			}
+			auto material = schema ? draw.material.data : nullptr;
+			if (asMesh && (!material || material->getSchema() != schema)) {
+				// a draw of the mesh pipeline itself with another schema's material is a mistake
+				meshMismatch = meshMismatch
+						|| (draw.material.pipeline == MeshPipeline && draw.material.data);
+				material = Scene3dInputHandle_defaultMaterial();
 			}
 
 			if (draw.gpu.vertexes && draw.gpu.indexes) {
@@ -269,6 +281,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 						meshVertexes.data() + meshVertexes.size());
 				indexes.insert(indexes.end(), meshIndexes.begin(), meshIndexes.end());
 				stats.frameVertexBytes += meshVertexes.size();
+				stats.frameIndexBytes += meshIndexes.size() * sizeof(uint32_t);
 				++stats.frameDraws;
 			}
 			if (attachment->isTranslucent(pipeline)) {
@@ -282,30 +295,13 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			normal.inverse();
 			normal.transpose();
 
-			auto &c = draw.material.color;
-			// the mesh pipeline samples no layered texture
-			auto texture = draw.material.texture;
-			if (Scene3dInputHandle_isLayered(texture)
-					&& attachment->isDrawnAsMesh(pipeline)) {
-				layeredMesh = true;
-				texture = nullptr;
-			}
-			auto textureIdx = acquireTexture(texture, overflow);
-
 			DrawData3d data;
 			data.model = draw.transform;
 			data.normal = normal;
-			data.color = Vec4(c.r, c.g, c.b, c.a);
-			data.textureIdx = textureIdx;
-			data.uvScale = draw.material.uvScale;
-			data.flags = draw.material.flags;
-			data.textureIdx2 = acquireTexture(draw.material.texture2, overflow);
-			for (uint32_t i = 0; i < 4; ++i) { data.params[i] = draw.material.params[i]; }
-			data.textureIdx3 = acquireTexture(draw.material.texture3, overflow);
 			draws.emplace_back(data);
 
-			if (schema) {
-				_draws.back().materialOffset = writeData(draw.material.data, false);
+			if (material) {
+				_draws.back().materialOffset = writeData(material, false);
 			}
 
 			++record.drawCount;
@@ -316,12 +312,12 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 		log::source().warn("basic3d::Pass3d", "more than ", MaxTextures, " textures or ",
 				MaxTextureArrays, " layered ones in a frame: the rest draw as their colour");
 	}
-	static sprt::atomic<bool> s_layeredMeshWarned = false;
-	if (layeredMesh && !s_layeredMeshWarned.exchange(true)) {
+	static sprt::atomic<bool> s_meshWarned = false;
+	if (meshMismatch && !s_meshWarned.exchange(true)) {
 		log::source().warn("basic3d::Pass3d",
-				"the mesh pipeline samples no layered texture: such a material draws as its colour");
+				"a draw of the mesh pipeline has a material of another schema than Lambert3d: it "
+				"draws white");
 	}
-
 	static sprt::atomic<bool> s_materialWarned = false;
 	if (materialMismatch && !s_materialWarned.exchange(true)) {
 		log::source().warn("basic3d::Pass3d",
@@ -440,8 +436,10 @@ const MaterialSchema3d *Scene3dInputAttachment::getBlockSchema(uint32_t pipeline
 }
 
 const MaterialSchema3d *Scene3dInputAttachment::getMaterialSchema(uint32_t pipeline) const {
-	return !isDrawnAsMesh(pipeline) && pipeline < _materials.size() ? _materials[pipeline]
-																	 : nullptr;
+	if (isDrawnAsMesh(pipeline)) {
+		return &glsl::Lambert3dMaterial::Schema;
+	}
+	return pipeline < _materials.size() ? _materials[pipeline] : nullptr;
 }
 
 bool Pass3dHandle::prepare(core::FrameQueue &q, Function<void(bool)> &&cb) {
@@ -642,7 +640,8 @@ bool Pass3d::addToQueue(core::Loop *loop, core::Queue::Builder &builder, Extent2
 	Vector<PipelineProgram> pipelines;
 	pipelines.emplace_back(PipelineProgram{MeshPipelineName.str<Interface>(),
 		builder.addProgramByRef("Basic3dMeshVert", shaders::MeshVert),
-		builder.addProgramByRef("Basic3dMeshFrag", shaders::MeshFrag)});
+		builder.addProgramByRef("Basic3dMeshFrag", shaders::MeshFrag), false,
+		&glsl::Lambert3dMaterial::Schema});
 
 	for (auto &it : appPipelines) {
 		auto taken = sprt::find_if(pipelines.begin(), pipelines.end(),

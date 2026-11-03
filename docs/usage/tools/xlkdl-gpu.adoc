@@ -96,7 +96,7 @@ schema with records of its own has an `output` even when it is only imported.
 ## Constants
 
 ```kdl
-const NO_TEXTURE 0xFFFFFFFF type=uint doc="DrawData3d::textureIdx of a draw with no texture"
+const NO_TEXTURE 0xFFFFFFFF type=uint doc="A texture field with no texture"
 ```
 
 A constant is a `#define` of its prefixed name: `#define XL_GLSL_3D_NO_TEXTURE 0xFFFFFFFFu`. Its
@@ -107,19 +107,21 @@ separators.
 ## Records
 
 ```kdl
-record DrawData3d doc="One draw: where the model is and what it looks like" {
-    model mat4
-    color vec4
-    textureIdx uint doc="""
-        into the pass's texture array (binding 0) - or into its layered one (binding 1)
-        - or XL_GLSL_3D_NO_TEXTURE
+record ViewData3d doc="One view: its camera and its light" {
+    viewProj mat4 doc="depth in [0, 1], clip y flipped for Vulkan"
+    sunDirection vec4 doc="""
+        xyz - toward the sun,
+        unit length
         """
-    params vec4 count=4 doc="the material's, for an app pipeline"
+    screen vec4
+    firstLight uint
+    lightCount uint
 }
 ```
 
 A record is a `struct`; each child is a field, named by the node, its type the argument. `count=N`
-makes it an array.
+makes it an array. In a material, a block or a vertex, `default=` gives a scalar field the value
+its builder starts with (`uvScale float default=1`); with none it starts at 0.
 
 | Type | Size | std430 alignment | Arrays |
 |---|---|---|---|

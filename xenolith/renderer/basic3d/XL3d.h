@@ -68,23 +68,24 @@ struct SP_PUBLIC Pipeline3dInfo {
 	const VertexFormat3d *vertex = nullptr; // null for Vertex3d
 };
 
-// What a draw looks like: a colour, optionally times a texture tiled `uvScale` times per unit of
-// the mesh's texture coordinates. An app pipeline reads `texture2`, `texture3`, `flags` and
-// `params` as it likes; the mesh pipeline ignores them.
-// A texture with array layers takes a slot of the layered array instead (MaxTextureArrays), and
-// its index in DrawData3d is into that array: an app pipeline samples it as a sampler2DArray. The
-// mesh pipeline has no use for one and draws such a material as its colour, with a warning.
+// What a draw looks like: the pipeline that draws it, and the material of the schema it reads
+// (its builder's make()). The mesh pipeline reads a Lambert3d - a colour times a texture tiled
+// `uvScale` times per unit of the mesh's texture coordinates - and with no data draws white;
+// lambert() makes one. A draw the mesh pipeline draws instead of its own, for a pipeline the pass
+// does not have or a material, a block or a format its pipeline does not read, draws white too.
 struct SP_PUBLIC Material3d {
-	Color4F color = Color4F::WHITE;
-	Rc<Texture> texture;
-	float uvScale = 1.0f;
-	uint32_t pipeline = MeshPipeline; // MeshPipeline, or the index of an app pipeline plus one
-	uint32_t flags = 0;
-	Vec4 params[4] = {Vec4::ZERO, Vec4::ZERO, Vec4::ZERO, Vec4::ZERO};
-	Rc<Texture> texture2;
-	Rc<Texture> texture3;
+	static Material3d lambert(const Color4F &color, Rc<Texture> texture = nullptr,
+			float uvScale = 1.0f) {
+		return Material3d{.data = glsl::Lambert3dMaterial{
+			.color = Vec4(color.r, color.g, color.b, color.a),
+			.texture = sp::move(texture),
+			.uvScale = uvScale,
+		}.make()};
+	}
 
-	// a material of a schema, for a pipeline that reads one; its shaders read it by material()
+	uint32_t pipeline = MeshPipeline; // MeshPipeline, or the index of an app pipeline plus one
+
+	// its shaders read it by material()
 	Rc<MaterialData3d> data;
 };
 

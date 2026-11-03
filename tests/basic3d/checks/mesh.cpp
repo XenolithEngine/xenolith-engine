@@ -70,14 +70,9 @@ void performMeshTests() {
 	checkMesh(*plane, "plane");
 
 	// the records the shaders read by buffer reference, std430: an app pipeline's shaders read
-	// the material's flags, second texture and params, the view's screen and lights, at these
-	// offsets
-	check(sizeof(DrawData3d) == 240 && offsetof(DrawData3d, flags) == 152
-					&& offsetof(DrawData3d, textureIdx2) == 156
-					&& offsetof(DrawData3d, params) == 160
-					&& offsetof(DrawData3d, textureIdx3) == 224,
-			"mesh: a draw's record is 240 bytes, its second texture at 156, its params at 160, its "
-			"third texture at 224",
+	// the draw's matrices, the view's screen and lights, at these offsets
+	check(sizeof(DrawData3d) == 128 && offsetof(DrawData3d, normal) == 64,
+			"mesh: a draw's record is its two matrices, 128 bytes; its look is its material's",
 			toString(sizeof(DrawData3d)));
 	check(sizeof(ViewData3d) == 144 && offsetof(ViewData3d, screen) == 112
 					&& offsetof(ViewData3d, firstLight) == 128
@@ -117,12 +112,24 @@ void performMeshTests() {
 			"mesh: their data as it is, indexes left relative to the mesh's own vertexes");
 
 	Material3d material;
-	check(material.pipeline == MeshPipeline && material.flags == 0 && !material.texture2
-					&& !material.texture3
-					&& material.params[0] == Vec4::ZERO && material.params[1] == Vec4::ZERO
-					&& material.params[2] == Vec4::ZERO && material.params[3] == Vec4::ZERO,
-			"mesh: a material draws with the mesh pipeline, no flags, no second or third texture "
-			"and no params by default");
+	check(material.pipeline == MeshPipeline && !material.data,
+			"mesh: a material draws with the mesh pipeline, with no data (white) by default");
+
+	// the mesh pipeline's own material: a colour, a texture and its tiling
+	auto lambert = Material3d::lambert(Color4F(0.25f, 0.5f, 0.75f, 1.0f), nullptr, 4.0f);
+	auto lambertData = lambert.data ? lambert.data->getData() : BytesView();
+	auto readFloat = [&](size_t offset) {
+		float ret = 0.0f;
+		sprt::memcpy(&ret, lambertData.data() + offset, sizeof(float));
+		return ret;
+	};
+	check(lambert.pipeline == MeshPipeline && lambert.data
+					&& lambert.data->getSchema() == &glsl::Lambert3dMaterial::Schema
+					&& lambertData.size() == 32 && readFloat(0) == 0.25f && readFloat(8) == 0.75f
+					&& readFloat(20) == 4.0f && lambert.data->getTextures().size() == 1,
+			"mesh: Material3d::lambert makes the mesh pipeline's material, Lambert3d");
+	check(glsl::Lambert3dMaterial{}.uvScale == 1.0f,
+			"mesh: a Lambert3d tiles its texture once by default");
 
 	Pipeline3dInfo pipeline;
 	check(!pipeline.translucent, "mesh: an app pipeline is opaque by default");
