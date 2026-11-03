@@ -71,6 +71,10 @@ protected:
 	void retainTexture(const Rc<Texture> &);
 	void releaseTexture(const Rc<Texture> &);
 
+	// every texture of a material, its data's too
+	void retainMaterial(const Material3d &);
+	void releaseMaterial(const Material3d &);
+
 	Camera _camera;
 	Vector<Draw3d> _draws;
 	Vector<Rc<MeshPack3d>> _drawPacks; // the pack each of the draws retained, null for none

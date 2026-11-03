@@ -1,14 +1,24 @@
-// The example's pipelines over the 3d pass's interface: the preambles of their shaders, next to
-// this description, are generated from it (docs/usage/tools/xlkdl-gpu.adoc). After a change:
+// The example's pipelines over the 3d pass's interface: the glass's material and the preambles of
+// the shaders, next to this description, are generated from it (docs/usage/tools/xlkdl-gpu.adoc).
+// After a change:
 //
 //     xlkdl gpu examples/window/basic3d/glsl/basic3d-example.kdl
 
 import "../../../../xenolith/renderer/basic3d/glsl/basic3d.kdl"
 
 schema basic3d_example {
+	output "Basic3dExampleData.h"
+	guard "EXAMPLES_WINDOW_BASIC3D_GLSL_BASIC3DEXAMPLEDATA_H_"
+	namespace "stappler::xenolith::basic3d::example"
 	preambles "."
 	copyright "2026 Xenolith Team <admin@xenolith.studio>"
 	license "MIT"
+}
+
+material Glass3d doc="The tinted glass of the translucent pipeline" {
+	color vec4 doc="its colour; its alpha comes from the depth behind it"
+	depthRange float doc="the camera's far - near: a depth difference times it is in world units"
+	density float doc="the alpha is 1 - exp(-density * the distance the view goes through it)"
 }
 
 varyings Stripes3dVaryings doc="What the stripes' vertex shader hands both fragment shaders" {
@@ -18,4 +28,5 @@ varyings Stripes3dVaryings doc="What the stripes' vertex shader hands both fragm
 
 shader basic3d_stripes.vert interface=pass3d varyings=Stripes3dVaryings
 shader basic3d_stripes.frag interface=pass3d varyings=Stripes3dVaryings
-shader basic3d_glass.frag interface=pass3d varyings=Stripes3dVaryings translucent=#true
+shader basic3d_glass.frag interface=pass3d varyings=Stripes3dVaryings translucent=#true \
+	material=Glass3d

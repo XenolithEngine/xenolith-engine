@@ -22,6 +22,7 @@
 
 #include "sprt_glsl.h"
 #include "XL3dGlslData.h"
+#include "Basic3dExampleData.h"
 
 layout (std430, push_constant) uniform PushConstants {
 	Constants3d constants;
@@ -43,6 +44,10 @@ layout (std430, buffer_reference, buffer_reference_align = 16) readonly buffer L
 	LightData3d lights[];
 };
 
+layout (std430, buffer_reference, buffer_reference_align = 16) readonly buffer Glass3dBuffer {
+	Glass3d material;
+};
+
 layout (set = 0, binding = 0) uniform sampler2D textures[XL_GLSL_3D_MAX_TEXTURES];
 layout (set = 0, binding = 1) uniform sampler2DArray textureArrays[XL_GLSL_3D_MAX_TEXTURE_ARRAYS];
 
@@ -60,3 +65,4 @@ Vertex3d vertices(uint i) { return Vertex3dBuffer(constants.vertexPointer).verti
 DrawData3d draws(uint i) { return DrawData3dBuffer(constants.drawPointer).draws[i]; }
 ViewData3d view() { return ViewData3dBuffer(constants.viewPointer).view; }
 LightData3d lights(uint i) { return LightData3dBuffer(constants.lightPointer).lights[i]; }
+Glass3d material() { return Glass3dBuffer(constants.materialPointer).material; }

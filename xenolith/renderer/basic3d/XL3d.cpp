@@ -6,6 +6,7 @@
 #include "XLCommon.h" // IWYU pragma: keep
 
 #include "XL3dCamera.cc"
+#include "XL3dMaterial.cc"
 #include "XL3dMesh.cc"
 #include "XL3dMeshPack.cc"
 #include "XL3dFrameContext.cc"

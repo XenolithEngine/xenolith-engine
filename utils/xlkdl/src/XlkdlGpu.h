@@ -46,6 +46,13 @@ struct FieldType {
 	// a constant of it is an integer literal, written with this suffix
 	bool integer = false;
 	StringView suffix;
+
+	// a texture of a material: a slot, written as a uint, of the texture array (1) or the layered
+	// one (2)
+	uint8_t texture = 0;
+
+	// as GLSL and the record spell it
+	StringView spelled() const { return texture ? StringView("uint") : name; }
 };
 
 const FieldType *findType(StringView name);
@@ -71,6 +78,9 @@ struct Record {
 	// the header that defines it, as a preamble includes it; set for an imported one as well
 	String header;
 	bool imported = false;
+
+	// a material: a record of a pipeline's material, which may have textures and gets a builder
+	bool material = false;
 
 	// set by the layout
 	uint32_t size = 0;
@@ -136,6 +146,10 @@ struct Interface {
 	Vector<Buffer> buffers;
 	Vector<Samplers> samplers;
 	Depth depth;
+
+	// the field of the push constants that holds the address of a draw's material
+	String materialPointer;
+	kdl::Location materialLocation;
 };
 
 struct Varying {
@@ -169,6 +183,8 @@ struct Shader {
 	const Interface *interface = nullptr;
 	String varyingsName;
 	const Varyings *varyings = nullptr;
+	String materialName;
+	const Record *material = nullptr;
 	bool translucent = false;
 	String file; // the description that defines it
 	kdl::Location location;
@@ -204,6 +220,9 @@ struct Schema {
 
 	// whether the schema writes a header: it has records or constants of its own
 	bool hasHeader() const;
+
+	// whether it has materials of its own, which its header makes builders for
+	bool hasMaterials() const;
 };
 
 // Reads a description and what it imports, links the names and lays the records out; false, with

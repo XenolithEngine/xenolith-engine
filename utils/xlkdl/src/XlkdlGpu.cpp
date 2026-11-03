@@ -54,7 +54,7 @@ void printGpuUsage(const CommandLineParser<GpuArgs> &parser) {
 } // namespace
 
 // The exit code is 1 when a schema does not load; otherwise the number of files - the header and
-// the preambles - that could not be written, or under --check the number that are not what would be.
+// the preambles - that could not be written, or under --check the number that are stale.
 int runGpu(int argc, const char *argv[]) {
 	CommandLineParser<GpuArgs> parser({
 		GpuOption{.patterns = {"--out <file>"},

@@ -1,8 +1,9 @@
 # Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 # SPDX-License-Identifier: MIT
 
-# basic3dtest: the device-free part of basic3d - the camera's math and the mesh builders. It links
-# the module without a backend, so the Vulkan pass is not compiled in.
+# basic3dtest: the device-free part of basic3d - the camera's math, the mesh builders and a material
+# of a schema (glsl/basic3d-test.kdl). It links the module without a backend, so the Vulkan pass is
+# not compiled in.
 
 LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
@@ -16,7 +17,7 @@ LOCAL_MODULES := xenolith_renderer_basic3d
 
 LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 LOCAL_SRCS_DIRS := checks
-LOCAL_INCLUDES_OBJS := .
+LOCAL_INCLUDES_OBJS := . glsl
 LOCAL_MAIN := main.cpp
 
 APPCONFIG_APP_NAME := Basic3dTest

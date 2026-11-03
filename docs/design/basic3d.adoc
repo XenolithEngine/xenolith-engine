@@ -203,13 +203,23 @@ fragment shaders share, and `main()` is all the shader has to write. The limits 
 arrays are the schema's constants (`XL_GLSL_3D_MAX_TEXTURES`, `…_MAX_TEXTURE_ARRAYS`), which
 `MaxTextures` and `MaxTextureArrays` are.
 
+A pipeline's own data can be a **material of a schema** rather than the draw's `flags`, `params`
+and second and third texture: a record of the app's schema whose fields may be textures of a known
+kind. A draw carries it as `Material3d::data`, an immutable `MaterialData3d` its builder made, shared
+by the draws that use it; the pipeline names its schema (`Pipeline3dInfo::material`). The frame
+writes each material once into a buffer of its own and pushes, per draw, the address of the draw's
+material (`materialPointer`), as it does a view's - so a shader reads it by `material()` with no
+index and no arithmetic on the GPU. `DrawData3d` keeps the old fields until gamefield, which reads
+them, has moved to materials of its own.
+
 | Record | Size | Holds | Where |
 |---|---|---|---|
 | `Vertex3d` | 64 B | `pos` (xyz, w = 1), `normal` (xyz), `tangent` (xyz, w = the bitangent's sign), `attr` (xy = texture coordinates, zw free) | the frame's or a pack's vertex buffer |
 | `DrawData3d` | 240 B | `model`, `normal` (inverse transpose of the model's rotation and scale), `color`, `textureIdx`, `uvScale`, `flags` (152), `textureIdx2` (156), `params[4]` (160), `textureIdx3` (224) | one per draw, the frame's draw buffer |
 | `ViewData3d` | 144 B | `viewProj`, `sunDirection`, `sunColor`, `ambient`, `screen` (112: the view's viewport width and height in pixels, pixels per point), `firstLight` (128), `lightCount` (132) | one per view, the frame's view buffer |
 | `LightData3d` | 32 B | `position` (xyz, w = radius), `color` (rgb = colour × intensity) | the frame's light buffer, every view's lights one after another |
-| `Constants3d` | 40 B | `viewPointer`, `drawPointer`, `vertexPointer`, `lightPointer` (each a `uvec2` address), `drawIndex` (32) | push constants, per draw |
+| `Constants3d` | 48 B | `viewPointer`, `drawPointer`, `vertexPointer`, `lightPointer`, `materialPointer` (32) (each a `uvec2` address), `drawIndex` (40) | push constants, per draw |
+| a material of a schema | its record's | what the app's schema describes (`material`), its textures' slots patched in | the frame's material buffer, each material once, 16-byte aligned |
 
 ### Vertexes by reference
 
@@ -293,18 +303,23 @@ with the frame's memory pool:
 3. For every draw it writes a `DrawData3d` and a `DrawRecord`:
    * a draw with a snapshot takes its buffers, `firstIndex` and `vertexOffset` from it;
    * a draw without one gets its mesh's vertexes and indexes appended to the frame's arrays, and
-     their offsets there.
+     their offsets there;
+   * a draw whose pipeline reads a material of a schema gets its material's offset in the frame's
+     material buffer, the material written there the first time a draw has it, with the slots of
+     its textures; one without such a material, or with one of another schema, is drawn by the
+     mesh pipeline, with one warning.
 4. The textures of the draws become slots of their array, in the order met; a texture still
    loading draws as its colour alone, and textures past 64 (16 layered) likewise, with a warning.
    The mesh pipeline samples no layered texture: a material it draws — its own, or one whose
    pipeline the pass does not have — drops one, with a warning, so its index never points into
    the wrong array.
-5. It allocates five buffers from the frame's pool — vertexes, indexes, draws, views, lights,
-   device-local and host-visible, the storage ones with device addresses — and copies into them.
-   Each has at least one record, so its address exists even when every mesh is packed or there
-   are no lights.
+5. It allocates six buffers from the frame's pool — vertexes, indexes, draws, views, lights,
+   materials, device-local and host-visible, the storage ones with device addresses — and copies
+   into them. Each has at least one record (16 bytes, for the materials), so its address exists
+   even when every mesh is packed or there are no lights or materials.
 6. It stores `Pass3dStats` (`getLastPassStats`): the vertex and index bytes copied into the frame,
-   the draws from the frame and from packs, the bytes of the records, the translucent draws.
+   the draws from the frame and from packs, the bytes of the records, the translucent draws, the
+   materials of a schema and their bytes.
 
 A draw's record knows whether its pipeline is translucent, from the pass's list of pipelines; one
 drawn by the mesh pipeline instead is opaque.

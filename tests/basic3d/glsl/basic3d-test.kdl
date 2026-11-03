@@ -1,0 +1,23 @@
+// A material for basic3dtest's checks of what xlkdl gpu makes of one (checks/material.cpp): both
+// kinds of texture, an array and padding at its end. After a change:
+//
+//     xlkdl gpu tests/basic3d/glsl/basic3d-test.kdl
+
+import "../../../xenolith/renderer/basic3d/glsl/basic3d.kdl"
+
+schema basic3d_test {
+	output "Basic3dTestData.h"
+	guard "TESTS_BASIC3D_GLSL_BASIC3DTESTDATA_H_"
+	namespace "stappler::xenolith::basic3d::checks"
+	copyright "2026 Xenolith Team <admin@xenolith.studio>"
+	license "MIT"
+}
+
+material Terrain3dTest doc="A terrain's material, as an app would have one" {
+	tint vec4
+	ground texture-array doc="the surface types, a layer each"
+	detail texture2d
+	scale vec2
+	params vec4 count=2
+	flags uint
+}

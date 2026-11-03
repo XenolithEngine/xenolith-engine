@@ -39,12 +39,22 @@ const FieldType s_types[] = {
 	FieldType{"uvec4", 16, 16},
 	FieldType{"color4", 16, 16},
 	FieldType{"mat4", 64, 16},
+	FieldType{"texture2d", 4, 4, false, false, "", 1},
+	FieldType{"texture-array", 4, 4, false, false, "", 2},
 };
 
 // GLSL interpolates no integer: a varying of these types is flat
 const StringView s_flatTypes[] = {"int", "uint", "uvec2", "uvec3", "uvec4"};
 
 const StringView s_samplerTypes[] = {"sampler2D", "sampler2DArray"};
+
+const StringView s_headNodes[] = {"output", "guard", "namespace", "macro-prefix", "copyright",
+	"license", "preambles"};
+
+const StringView s_interfaceNodes[] = {"push-constants", "buffer", "samplers", "depth", "material"};
+
+const StringView s_nodes[] = {"schema", "import", "const", "record", "material", "interface",
+	"varyings", "shader"};
 
 // What a node may carry: how many arguments, which properties, whether children.
 struct NodeShape {
@@ -62,7 +72,8 @@ const StringView s_bufferProps[] = {"pointer", "single"};
 const StringView s_samplersProps[] = {"binding", "count"};
 const StringView s_depthProps[] = {"binding", "index"};
 const StringView s_varyingProps[] = {"flat", "doc"};
-const StringView s_shaderProps[] = {"interface", "varyings", "translucent", "doc"};
+const StringView s_shaderProps[] = {"interface", "varyings", "material", "translucent", "doc"};
+const StringView s_materialProps[] = {"pointer"};
 
 bool isIdentifier(StringView name) {
 	if (name.empty() || (!isalpha(name[0]) && name[0] != '_')) {
@@ -204,7 +215,9 @@ protected:
 			} else if (name == "const") {
 				ok = loadConstant(node) && ok;
 			} else if (name == "record") {
-				ok = loadRecord(node) && ok;
+				ok = loadRecord(node, false) && ok;
+			} else if (name == "material") {
+				ok = loadRecord(node, true) && ok;
 			} else if (name == "interface") {
 				ok = loadInterface(node) && ok;
 			} else if (name == "varyings") {
@@ -213,13 +226,7 @@ protected:
 				ok = loadShader(node) && ok;
 			} else {
 				error(node.location,
-						mem_std::toString("unknown node '", name,
-								"': a schema has 'schema', 'import', 'const', 'record', " "'interfa"
-																						  "ce', "
-																						  "'varying"
-																						  "s' and "
-																						  "'shader"
-																						  "'"));
+						mem_std::toString("unknown node '", name, "' (", joined(s_nodes), ")"));
 				ok = false;
 			}
 		}
@@ -402,10 +409,8 @@ protected:
 				target = &_head.preambles;
 			} else {
 				error(child.location,
-						mem_std::
-								toString("unknown node '", name,
-										"' of 'schema': output, guard, namespace, macro-prefix, "
-										"copyright, " "license, preambles"));
+						mem_std::toString("unknown node '", name, "' of 'schema' (",
+								joined(s_headNodes), ")"));
 				ok = false;
 				continue;
 			}
@@ -450,7 +455,7 @@ protected:
 		if (!c.type) {
 			return false;
 		}
-		if (c.type->size != 4) {
+		if (c.type->size != 4 || c.type->texture) {
 			error(typeValue->location, "a constant is a float, an int or a uint");
 			return false;
 		}
@@ -493,15 +498,18 @@ protected:
 		return true;
 	}
 
-	bool loadRecord(const KdlNode &node) {
+	bool loadRecord(const KdlNode &node, bool material) {
 		Record r;
 		r.location = node.location;
 		r.imported = _imported;
+		r.material = material;
 		r.header =
 				filepath::lastComponent(StringView(_head.output)).str<memory::StandardInterface>();
 		if (!checkShape(node, NodeShape{1, 1, s_docProps, true})
-				|| !readName(node.arguments[0], r.name, "a record's name") || !readDoc(node, r.doc)
-				|| !checkUnique("record", r.name, node.location)) {
+				|| !readName(node.arguments[0], r.name,
+						material ? "a material's name" : "a record's name")
+				|| !readDoc(node, r.doc)
+				|| !checkUnique(material ? "material" : "record", r.name, node.location)) {
 			return false;
 		}
 		if (node.children.empty()) {
@@ -526,6 +534,18 @@ protected:
 			}
 			f.type = readType(child.arguments[0], "a field's type");
 			if (!f.type) {
+				ok = false;
+				continue;
+			}
+			if (f.type->texture && !material) {
+				error(child.arguments[0].location,
+						mem_std::toString("a texture is a field of a material, not of the record '",
+								r.name, "'"));
+				ok = false;
+				continue;
+			}
+			if (f.type->texture && child.getPropertyValue("count")) {
+				error(child.location, "a texture field is one texture, not an array");
 				ok = false;
 				continue;
 			}
@@ -576,7 +596,8 @@ protected:
 		}
 
 		auto takenHere = [&](StringView name) {
-			if (name == iface.pushName || (iface.depth.present && name == iface.depth.name)) {
+			if (name == iface.pushName || (iface.depth.present && name == iface.depth.name)
+					|| (!iface.materialPointer.empty() && name == "material")) {
 				return true;
 			}
 			for (auto &it : iface.buffers) {
@@ -704,10 +725,26 @@ protected:
 				}
 				d.present = true;
 				iface.depth = sprt::move(d);
+			} else if (kind == "material") {
+				if (!iface.materialPointer.empty()) {
+					error(child.location, "an interface has one 'material'");
+					ok = false;
+					continue;
+				}
+				auto pointer = child.getPropertyValue("pointer");
+				if (!checkShape(child, NodeShape{0, 0, s_materialProps}) || !pointer
+						|| !readName(*pointer, iface.materialPointer, "'pointer'")) {
+					if (!pointer) {
+						error(child.location, "'material' has no 'pointer'");
+					}
+					ok = false;
+					continue;
+				}
+				iface.materialLocation = child.location;
 			} else {
 				error(child.location,
-						mem_std::toString("unknown node '", kind,
-								"' of 'interface': push-constants, buffer, samplers, depth"));
+						mem_std::toString("unknown node '", kind, "' of 'interface' (",
+								joined(s_interfaceNodes), ")"));
 				ok = false;
 			}
 		}
@@ -752,7 +789,7 @@ protected:
 				ok = false;
 				continue;
 			}
-			if (f.type->size > 16) {
+			if (f.type->size > 16 || f.type->texture) {
 				error(child.arguments[0].location,
 						mem_std::toString("a varying is a scalar or a vector, not a ",
 								f.type->name));
@@ -818,6 +855,11 @@ protected:
 		}
 		if (auto varyings = node.getPropertyValue("varyings")) {
 			if (!readName(*varyings, s.varyingsName, "'varyings'")) {
+				return false;
+			}
+		}
+		if (auto material = node.getPropertyValue("material")) {
+			if (!readName(*material, s.materialName, "'material'")) {
 				return false;
 			}
 		}
@@ -887,6 +929,14 @@ protected:
 								iface.push->name));
 			}
 		}
+		if (!iface.materialPointer.empty()) {
+			auto field = iface.push ? iface.push->findField(iface.materialPointer) : nullptr;
+			if (!field || field->type->name != "uvec2" || field->count) {
+				fail(iface.materialLocation,
+						mem_std::toString("the material's pointer '", iface.materialPointer,
+								"' is not a uvec2 of the push constants"));
+			}
+		}
 		for (auto &s : iface.samplers) {
 			if (s.countName.empty()) {
 				continue;
@@ -910,6 +960,22 @@ protected:
 			_diag->error(s.file, s.location,
 					mem_std::toString("no interface '", s.interfaceName, "'"));
 			ok = false;
+		}
+		if (!s.materialName.empty()) {
+			s.material = find(_schema->records, s.materialName);
+			if (!s.material || !s.material->material) {
+				_diag->error(s.file, s.location,
+						s.material ? mem_std::toString("'", s.materialName,
+											 "' is a record, not a material")
+								   : mem_std::toString("no material '", s.materialName, "'"));
+				s.material = nullptr;
+				ok = false;
+			} else if (s.interface && s.interface->materialPointer.empty()) {
+				_diag->error(s.file, s.location,
+						mem_std::toString("the interface '", s.interface->name,
+								"' gives its shaders no material"));
+				ok = false;
+			}
 		}
 		if (!s.varyingsName.empty()) {
 			s.varyings = find(_schema->varyings, s.varyingsName);
@@ -962,6 +1028,15 @@ bool Schema::hasHeader() const {
 	}
 	for (auto &it : constants) {
 		if (!it.imported) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool Schema::hasMaterials() const {
+	for (auto &it : records) {
+		if (!it.imported && it.material) {
 			return true;
 		}
 	}

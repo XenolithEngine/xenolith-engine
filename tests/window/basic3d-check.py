@@ -273,6 +273,10 @@ def main():
     glass, glassText, glassStats = run(binary, {"BASIC3D_STILL": "1", "BASIC3D_GLASS": "1"},
             glass_path, lambda session: session.call("invoke", name="basic3d.stats", args={}))
     check("and one with it", glassStats["translucentDraws"] == 1, str(glassStats))
+    check("its material of a schema is written once, 32 bytes",
+            glassStats["materials"] == 1 and glassStats["materialBytes"] == 32, str(glassStats))
+    check("and none without it", packed["materials"] == 0 and packed["materialBytes"] == 0,
+            str(packed))
 
     def alpha(box):
         # how far each pixel went from the scene toward the glass's colour, the mean over the box
@@ -297,6 +301,19 @@ def main():
     check("its render pass ends in its last subpass", "ended in subpass" not in glassText,
             glass_path)
 
+    print("--- a pipeline's material missing")
+    nodata_path = f"/tmp/xl-basic3d-check-nodata-{os.getpid()}.log"
+    nodata, nodataText, nodataStats = run(binary, {"BASIC3D_STILL": "1", "BASIC3D_GLASS": "1",
+            "BASIC3D_GLASS_NODATA": "1"}, nodata_path,
+            lambda session: session.call("invoke", name="basic3d.stats", args={}))
+    check("the glass without its material is no translucent draw",
+            nodataStats["translucentDraws"] == 0 and nodataStats["materials"] == 0,
+            str(nodataStats))
+    mismatch = nodataText.count("reads a material of a schema")
+    check("the mesh pipeline draws it, with one warning", mismatch == 1, f"{mismatch} warnings")
+    check("no Vulkan validation error without it", "Validation Error" not in nodataText,
+            nodata_path)
+
     print("--- a pipeline the scene does not have")
     white = sum(1 for p in pixels(nomips, UNKNOWN) if min(p) > 150)
     check("its box draws as a mesh", white > 3000, f"{white} pixels")
@@ -313,7 +330,7 @@ def main():
 
     print(f"\n{checks} checks, {failures} failures")
     if failures == 0:
-        for p in (log_path, nomips_path, dark_path, flat_path, glass_path):
+        for p in (log_path, nomips_path, dark_path, flat_path, glass_path, nodata_path):
             try:
                 os.unlink(p)
             except OSError:

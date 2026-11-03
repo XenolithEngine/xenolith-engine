@@ -8,6 +8,7 @@
 
 #include "XL2d.h"
 #include "XLTexture.h"
+#include "XL3dMaterial.h"
 #include "glsl/include/XL3dGlslData.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic3d {
@@ -49,12 +50,16 @@ plus one. The SPIR-V is referenced, not copied: it lives as long as the app.
 A translucent one draws in a second subpass, after the opaque draws of every view: it blends
 over what they drew by its alpha (source over), tests depth Less without writing it, and reads
 the opaque draws' depth at set 0, binding 2, as an input attachment (`subpassInput`, depth in r).
-Its draws go in the order the view gives them: far to near, if they overlap on screen. */
+Its draws go in the order the view gives them: far to near, if they overlap on screen.
+
+A pipeline that reads a material of a schema names it: a draw of it whose Material3d::data is not
+of that schema draws with the mesh pipeline, with one warning. */
 struct SP_PUBLIC Pipeline3dInfo {
 	String name;
 	SpanView<uint32_t> vert;
 	SpanView<uint32_t> frag;
 	bool translucent = false;
+	const MaterialSchema3d *material = nullptr;
 };
 
 // What a draw looks like: a colour, optionally times a texture tiled `uvScale` times per unit of
@@ -72,6 +77,9 @@ struct SP_PUBLIC Material3d {
 	Vec4 params[4] = {Vec4::ZERO, Vec4::ZERO, Vec4::ZERO, Vec4::ZERO};
 	Rc<Texture> texture2;
 	Rc<Texture> texture3;
+
+	// a material of a schema, for a pipeline that reads one; its shaders read it by material()
+	Rc<MaterialData3d> data;
 };
 
 // A point light in the world: its colour times its intensity falls off as (1 - (d / radius)^2)^2

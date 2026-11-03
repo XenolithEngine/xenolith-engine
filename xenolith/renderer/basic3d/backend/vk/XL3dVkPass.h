@@ -16,8 +16,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic3d::vk {
 namespace xvk = stappler::xenolith::vk;
 
 /* The frame input of the 3d pass, and its texture descriptor array. submitInput packs every view's
-meshes into one vertex and one index buffer, with a buffer of draws, one of views and one of their
-point lights, on a worker;
+meshes into one vertex and one index buffer, with a buffer of draws, one of views, one of their
+point lights and one of the materials of a schema the draws use, each once, on a worker;
 the textures the draws use become the array's slots, each sampled by the pass's sampler: the
 layered ones (array layers) slots of the second, sampler2DArray, array. */
 class SP_PUBLIC Scene3dInputHandle : public xvk::ImageAttachmentHandle {
@@ -35,6 +35,9 @@ public:
 
 		// its pipeline is translucent: drawn in the second subpass
 		bool translucent = false;
+
+		// where its material of a schema is in the frame's material buffer
+		uint32_t materialOffset = 0;
 	};
 
 	struct ViewRecord {
@@ -71,6 +74,7 @@ public:
 	const Rc<xvk::Buffer> &getDrawData() const { return _drawData; }
 	const Rc<xvk::Buffer> &getViewData() const { return _viewData; }
 	const Rc<xvk::Buffer> &getLightData() const { return _lightData; }
+	const Rc<xvk::Buffer> &getMaterialData() const { return _materialData; }
 
 	void setTextures(Vector<Rc<core::ImageView>> &&, Rc<core::ImageView> &&empty,
 			Vector<Rc<core::ImageView>> &&arrays, Rc<core::ImageView> &&emptyArray,
@@ -94,6 +98,7 @@ protected:
 	Rc<xvk::Buffer> _drawData;
 	Rc<xvk::Buffer> _viewData;
 	Rc<xvk::Buffer> _lightData;
+	Rc<xvk::Buffer> _materialData;
 
 	Vector<Rc<core::ImageView>> _textureViews;
 	Rc<core::ImageView> _emptyView;
@@ -107,9 +112,10 @@ class SP_PUBLIC Scene3dInputAttachment
 public:
 	virtual ~Scene3dInputAttachment() = default;
 
-	// which of a material's pipeline indexes the pass has, and which of them are translucent, set
-	// once by the pass as it is made
-	void setPipelines(Vector<bool> &&, Vector<bool> &&translucent);
+	// which of a material's pipeline indexes the pass has, which of them are translucent and the
+	// schema of the material each reads, set once by the pass as it is made
+	void setPipelines(Vector<bool> &&, Vector<bool> &&translucent,
+			Vector<const MaterialSchema3d *> &&materials);
 
 	// whether a material with this pipeline is drawn by the mesh pipeline: it picks the mesh
 	// pipeline, or one the pass does not have
@@ -118,9 +124,13 @@ public:
 	// whether a material with this pipeline draws in the second subpass
 	bool isTranslucent(uint32_t pipeline) const;
 
+	// the schema of the material a pipeline reads, null for none or for one drawn as a mesh
+	const MaterialSchema3d *getMaterialSchema(uint32_t pipeline) const;
+
 protected:
 	Vector<bool> _pipelines;
 	Vector<bool> _translucent;
+	Vector<const MaterialSchema3d *> _materials;
 };
 
 // Makes the views of the frame's textures before the descriptors are written
@@ -150,6 +160,7 @@ public:
 		const core::ProgramData *vert = nullptr;
 		const core::ProgramData *frag = nullptr;
 		bool translucent = false;
+		const MaterialSchema3d *material = nullptr;
 	};
 
 	// adds the pass, its depth and its input to a queue whose Output basic2d has made

@@ -147,6 +147,25 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 
 	auto attachment = static_cast<Scene3dInputAttachment *>(_attachment.get());
 	Vector<LightData3d> lights;
+
+	// the materials of a schema, each once, 16-byte aligned
+	Bytes materials;
+	Map<const MaterialData3d *, uint32_t> materialOffsets;
+	bool materialMismatch = false;
+	bool wrongKind = false;
+
+	// the slot of a material's texture field: a texture of the other kind than the field's has none
+	auto acquireField = [&](const MaterialTextureField3d &field, const Rc<Texture> &texture,
+								bool &overflow) {
+		if (texture && texture->isLoaded() && texture->getImageData()
+				&& Scene3dInputHandle_isLayered(texture)
+						!= (field.kind == MaterialTextureKind3d::TextureArray)) {
+			wrongKind = true;
+			return NoTexture;
+		}
+		return acquireTexture(texture, overflow);
+	};
+
 	bool overflow = false;
 	bool tooManyLights = false;
 	bool layeredMesh = false;
@@ -177,20 +196,30 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			auto meshVertexes = draw.mesh->getVertexes();
 			auto meshIndexes = draw.mesh->getIndexes();
 
+			// a pipeline that reads a material of a schema draws only one of it: otherwise the
+			// mesh pipeline draws the draw
+			auto pipeline = draw.material.pipeline;
+			auto schema = attachment->getMaterialSchema(pipeline);
+			if (schema && (!draw.material.data || draw.material.data->getSchema() != schema)) {
+				materialMismatch = true;
+				pipeline = MeshPipeline;
+				schema = nullptr;
+			}
+
 			if (draw.gpu.vertexes && draw.gpu.indexes) {
-				_draws.emplace_back(DrawRecord{draw.material.pipeline, uint32_t(draws.size()),
+				_draws.emplace_back(DrawRecord{pipeline, uint32_t(draws.size()),
 					uint32_t(meshIndexes.size()), draw.gpu.firstIndex, draw.gpu.vertexOffset,
 					draw.gpu.vertexes, draw.gpu.indexes});
 				++stats.packDraws;
 			} else {
-				_draws.emplace_back(DrawRecord{draw.material.pipeline, uint32_t(draws.size()),
+				_draws.emplace_back(DrawRecord{pipeline, uint32_t(draws.size()),
 					uint32_t(meshIndexes.size()), uint32_t(indexes.size()),
 					int32_t(vertexes.size())});
 				vertexes.insert(vertexes.end(), meshVertexes.begin(), meshVertexes.end());
 				indexes.insert(indexes.end(), meshIndexes.begin(), meshIndexes.end());
 				++stats.frameDraws;
 			}
-			if (attachment->isTranslucent(draw.material.pipeline)) {
+			if (attachment->isTranslucent(pipeline)) {
 				_draws.back().translucent = true;
 				++_translucentDraws;
 			}
@@ -205,7 +234,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			// the mesh pipeline samples no layered texture
 			auto texture = draw.material.texture;
 			if (Scene3dInputHandle_isLayered(texture)
-					&& attachment->isDrawnAsMesh(draw.material.pipeline)) {
+					&& attachment->isDrawnAsMesh(pipeline)) {
 				layeredMesh = true;
 				texture = nullptr;
 			}
@@ -223,6 +252,28 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			data.textureIdx3 = acquireTexture(draw.material.texture3, overflow);
 			draws.emplace_back(data);
 
+			if (schema) {
+				auto &material = draw.material.data;
+				auto it = materialOffsets.find(material.get());
+				if (it == materialOffsets.end()) {
+					auto offset = uint32_t((materials.size() + 15) / 16 * 16);
+					auto bytes = material->getData();
+					materials.resize(offset + bytes.size());
+					sprt::memcpy(materials.data() + offset, bytes.data(), bytes.size());
+
+					// the textures' slots are the frame's
+					auto textures = material->getTextures();
+					for (uint32_t i = 0; i < schema->textureCount; ++i) {
+						auto &field = schema->textures[i];
+						auto slot = acquireField(field, textures[i], overflow);
+						sprt::memcpy(materials.data() + offset + field.offset, &slot,
+								sizeof(uint32_t));
+					}
+					it = materialOffsets.emplace(material.get(), offset).first;
+				}
+				_draws.back().materialOffset = it->second;
+			}
+
 			++record.drawCount;
 		}
 	}
@@ -235,6 +286,19 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 	if (layeredMesh && !s_layeredMeshWarned.exchange(true)) {
 		log::source().warn("basic3d::Pass3d",
 				"the mesh pipeline samples no layered texture: such a material draws as its colour");
+	}
+
+	static sprt::atomic<bool> s_materialWarned = false;
+	if (materialMismatch && !s_materialWarned.exchange(true)) {
+		log::source().warn("basic3d::Pass3d",
+				"a pipeline that reads a material of a schema has a draw without one, or with one "
+				"of another schema: the mesh pipeline draws it");
+	}
+	static sprt::atomic<bool> s_kindWarned = false;
+	if (wrongKind && !s_kindWarned.exchange(true)) {
+		log::source().warn("basic3d::Pass3d",
+				"a material's texture is layered where its field is a texture2d, or the other way "
+				"round: the field has no texture");
 	}
 
 	static sprt::atomic<bool> s_lightsWarned = false;
@@ -253,8 +317,13 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 		indexes.emplace_back(0);
 	}
 	stats.translucentDraws = _translucentDraws;
+	stats.materials = uint32_t(materialOffsets.size());
+	stats.materialBytes = materials.size();
 	stats.recordBytes = draws.size() * sizeof(DrawData3d) + views.size() * sizeof(ViewData3d)
-			+ lights.size() * sizeof(LightData3d);
+			+ lights.size() * sizeof(LightData3d) + materials.size();
+	if (materials.empty()) {
+		materials.resize(16);
+	}
 	setLastPassStats(stats);
 
 	_vertexes = pool->spawn(xvk::AllocationUsage::DeviceLocalHostVisible,
@@ -274,7 +343,11 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			core::BufferInfo(StringView("Basic3dLights"), core::BufferUsage::StorageBuffer,
 					core::BufferUsage::ShaderDeviceAddress, lights.size() * sizeof(LightData3d)));
 
-	if (!_vertexes || !_indexes || !_drawData || !_viewData || !_lightData) {
+	_materialData = pool->spawn(xvk::AllocationUsage::DeviceLocalHostVisible,
+			core::BufferInfo(StringView("Basic3dMaterials"), core::BufferUsage::StorageBuffer,
+					core::BufferUsage::ShaderDeviceAddress, materials.size()));
+
+	if (!_vertexes || !_indexes || !_drawData || !_viewData || !_lightData || !_materialData) {
 		_draws.clear();
 		return false;
 	}
@@ -289,12 +362,15 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			views.size() * sizeof(ViewData3d)));
 	_lightData->setData(BytesView(reinterpret_cast<const uint8_t *>(lights.data()),
 			lights.size() * sizeof(LightData3d)));
+	_materialData->setData(materials);
 	return true;
 }
 
-void Scene3dInputAttachment::setPipelines(Vector<bool> &&pipelines, Vector<bool> &&translucent) {
+void Scene3dInputAttachment::setPipelines(Vector<bool> &&pipelines, Vector<bool> &&translucent,
+		Vector<const MaterialSchema3d *> &&materials) {
 	_pipelines = sp::move(pipelines);
 	_translucent = sp::move(translucent);
+	_materials = sp::move(materials);
 }
 
 bool Scene3dInputAttachment::isDrawnAsMesh(uint32_t pipeline) const {
@@ -304,6 +380,11 @@ bool Scene3dInputAttachment::isDrawnAsMesh(uint32_t pipeline) const {
 bool Scene3dInputAttachment::isTranslucent(uint32_t pipeline) const {
 	// one drawn as a mesh is opaque
 	return !isDrawnAsMesh(pipeline) && pipeline < _translucent.size() && _translucent[pipeline];
+}
+
+const MaterialSchema3d *Scene3dInputAttachment::getMaterialSchema(uint32_t pipeline) const {
+	return !isDrawnAsMesh(pipeline) && pipeline < _materials.size() ? _materials[pipeline]
+																	 : nullptr;
 }
 
 bool Pass3dHandle::prepare(core::FrameQueue &q, Function<void(bool)> &&cb) {
@@ -394,6 +475,7 @@ static void Pass3d_record(core::FrameQueue &q, const core::SubpassData &subpass,
 	pcb.vertexPointer = UVec2::convertFromPacked(buf.bindBufferAddress(input->getVertexes().get()));
 	pcb.lightPointer = UVec2::convertFromPacked(buf.bindBufferAddress(input->getLightData().get()));
 	pcb.padding = 0;
+	auto materialBase = buf.bindBufferAddress(input->getMaterialData().get());
 
 	auto draws = input->getDraws();
 	uint32_t viewIdx = 0;
@@ -457,6 +539,7 @@ static void Pass3d_record(core::FrameQueue &q, const core::SubpassData &subpass,
 				boundIndexes = indexes;
 			}
 			pcb.drawIndex = d.drawIndex;
+			pcb.materialPointer = UVec2::convertFromPacked(materialBase + d.materialOffset);
 			buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
 					BytesView(reinterpret_cast<const uint8_t *>(&pcb), sizeof(Constants3d)));
 			buf.cmdDrawIndexed(d.indexCount, 1, d.firstIndex, d.vertexOffset, 0);
@@ -511,7 +594,8 @@ bool Pass3d::addToQueue(core::Loop *loop, core::Queue::Builder &builder, Extent2
 		}
 		pipelines.emplace_back(PipelineProgram{it.name,
 			builder.addProgramByRef(toString(it.name, "Vert"), it.vert),
-			builder.addProgramByRef(toString(it.name, "Frag"), it.frag), it.translucent});
+			builder.addProgramByRef(toString(it.name, "Frag"), it.frag), it.translucent,
+			it.material});
 	}
 
 	// before basic2d's pass (RenderOrderingHighest), which loads what this one drew
@@ -531,15 +615,18 @@ bool Pass3d::init(core::QueuePassBuilder &passBuilder, const core::AttachmentDat
 	_input = input;
 	Vector<bool> available;
 	Vector<bool> translucent;
+	Vector<const MaterialSchema3d *> materials;
 	bool anyTranslucent = false;
 	for (auto &it : pipelines) {
 		_pipelineNames.emplace_back(it.name);
 		available.emplace_back(it.vert && it.frag);
 		translucent.emplace_back(it.vert && it.frag && it.translucent);
+		materials.emplace_back(it.material);
 		anyTranslucent = anyTranslucent || translucent.back();
 	}
 	if (auto attachment = dynamic_cast<Scene3dInputAttachment *>(input->attachment.get())) {
-		attachment->setPipelines(sp::move(available), sp::move(translucent));
+		attachment->setPipelines(sp::move(available), sp::move(translucent),
+				sp::move(materials));
 	}
 
 	auto colorPass = passBuilder.addAttachment(output);

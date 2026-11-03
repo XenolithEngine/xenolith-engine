@@ -39,6 +39,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic3d {
 
 void performCameraTests();
 void performMeshTests();
+void performMaterialTests();
 
 } // namespace stappler::xenolith::basic3d
 

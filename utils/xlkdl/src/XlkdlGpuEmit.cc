@@ -52,7 +52,7 @@ void appendRecord(const Record &r, String &out) {
 		if (!oneLine) {
 			appendDocLines(out, f.doc, "\t");
 		}
-		out.append(mem_std::toString("\t", f.type->name, " ", f.name));
+		out.append(mem_std::toString("\t", f.type->spelled(), " ", f.name));
 		if (f.count) {
 			out.append(mem_std::toString("[", f.count, "]"));
 		}
@@ -96,6 +96,70 @@ void appendBanner(const Schema &schema, String &out) {
 			filepath::lastComponent(schema.file), ". Do not edit: regenerate it.\n\n"));
 }
 
+// A material's builder for C++: its fields, textures as textures; its schema; and make(), which
+// lays them out as the record and hands the pass the textures, whose slots it writes each frame.
+void appendBuilder(const Record &r, String &out) {
+	appendDocLines(out,
+			mem_std::toString(r.name,
+					" with its textures, for Material3d::data of a pipeline that reads it"),
+			"");
+	out.append(mem_std::toString("struct ", r.name, "Material {\n"));
+	uint32_t textures = 0;
+	for (auto &f : r.fields) {
+		if (f.padding) {
+			continue;
+		}
+		if (f.type->texture) {
+			out.append(mem_std::toString("\txl3d::MaterialTexture3d ", f.name, ";\n"));
+			++textures;
+			continue;
+		}
+		auto zero = f.type->name == "float"							? " = 0.0f"
+				: (f.type->name == "uint" || f.type->name == "int") ? " = 0"
+																	: "";
+		out.append(mem_std::toString("\t", f.type->name, " ", f.name));
+		if (f.count) {
+			out.append(mem_std::toString("[", f.count, "]"));
+		} else {
+			out.append(zero);
+		}
+		out.append(";\n");
+	}
+	out.push_back('\n');
+	if (textures) {
+		out.append("\tstatic constexpr xl3d::MaterialTextureField3d Textures[] = {\n");
+		for (auto &f : r.fields) {
+			if (f.type->texture) {
+				out.append(mem_std::toString("\t\t{", f.offset, ", xl3d::MaterialTextureKind3d::",
+						f.type->texture == 1 ? "Texture2d" : "TextureArray", "},\n"));
+			}
+		}
+		out.append("\t};\n");
+	}
+	out.append(mem_std::toString("\tstatic constexpr xl3d::MaterialSchema3d Schema{\"", r.name,
+			"\", ", r.size, ", ", r.align, ", ", textures ? "Textures" : "nullptr", ", ", textures,
+			"};\n\n"));
+	out.append(mem_std::toString("\tsprt::Rc<xl3d::MaterialData3d> make() const {\n\t\t", r.name,
+			" d;\n"));
+	String list;
+	for (auto &f : r.fields) {
+		if (f.padding) {
+			out.append(mem_std::toString("\t\td.", f.name, " = 0;\n"));
+		} else if (f.type->texture) {
+			out.append(mem_std::toString("\t\td.", f.name,
+					" = 0xFFFFFFFFu; // the pass writes the frame's slot\n"));
+			list.append(mem_std::toString(list.empty() ? "" : ", ", f.name));
+		} else if (f.count) {
+			out.append(mem_std::toString("\t\tfor (uint32_t i = 0; i < ", f.count, "; ++i) { d.",
+					f.name, "[i] = ", f.name, "[i]; }\n"));
+		} else {
+			out.append(mem_std::toString("\t\td.", f.name, " = ", f.name, ";\n"));
+		}
+	}
+	out.append(mem_std::toString("\t\treturn xl3d::MaterialData3d::make(&Schema, d, {", list,
+			"});\n\t}\n};\n"));
+}
+
 void appendInclude(Vector<StringView> &seen, StringView header, String &out) {
 	if (header.empty()) {
 		return;
@@ -115,9 +179,17 @@ void emitHeader(const Schema &schema, String &out) {
 	out.clear();
 	appendBanner(schema, out);
 	out.append(mem_std::toString("#ifndef ", schema.guard, "\n#define ", schema.guard, "\n\n"));
+	auto materials = schema.hasMaterials();
 	out.append("#include \"sprt_glsl.h\"\n\n");
+	if (materials) {
+		out.append("#ifndef SP_GLSL\n#include \"XL3dMaterial.h\"\n#endif\n\n");
+	}
 	out.append(mem_std::toString("#ifndef SP_GLSL\nnamespace STAPPLER_VERSIONIZED ", schema.ns,
-			" {\n\nusing namespace sprt::glsl;\n\n#endif\n"));
+			" {\n\nusing namespace sprt::glsl;\n"));
+	if (materials) {
+		out.append("namespace xl3d = STAPPLER_VERSIONIZED_NAMESPACE::xenolith::basic3d;\n");
+	}
+	out.append("\n#endif\n");
 
 	for (auto &item : schema.items) {
 		auto imported = item.record ? schema.records[item.index].imported
@@ -134,6 +206,12 @@ void emitHeader(const Schema &schema, String &out) {
 	}
 
 	out.append("\n#ifndef SP_GLSL\n");
+	for (auto &r : schema.records) {
+		if (!r.imported && r.material) {
+			appendBuilder(r, out);
+			out.push_back('\n');
+		}
+	}
 	appendAsserts(schema, out);
 	out.append(mem_std::toString("\n} // namespace ", schema.ns, "\n#endif\n"));
 	out.append(mem_std::toString("\n#endif /* ", schema.guard, " */\n"));
@@ -172,6 +250,9 @@ void emitPreamble(const Schema &schema, const Shader &shader, String &out) {
 		appendInclude(seen, iface.push->header, out);
 	}
 	for (auto &b : iface.buffers) { appendInclude(seen, b.record->header, out); }
+	if (shader.material) {
+		appendInclude(seen, shader.material->header, out);
+	}
 	if (schema.hasHeader()) {
 		appendInclude(seen, filepath::lastComponent(StringView(schema.output)), out);
 	}
@@ -185,6 +266,11 @@ void emitPreamble(const Schema &schema, const Shader &shader, String &out) {
 				"\nlayout (std430, buffer_reference, buffer_reference_align = ", b.record->align,
 				") readonly buffer ", b.record->name, "Buffer {\n\t", b.record->name, " ", b.name,
 				b.single ? "" : "[]", ";\n};\n"));
+	}
+	if (auto m = shader.material) {
+		out.append(mem_std::toString(
+				"\nlayout (std430, buffer_reference, buffer_reference_align = ", m->align,
+				") readonly buffer ", m->name, "Buffer {\n\t", m->name, " material;\n};\n"));
 	}
 
 	if (frag) {
@@ -225,7 +311,7 @@ void emitPreamble(const Schema &schema, const Shader &shader, String &out) {
 		out.append("\nlayout (location = 0) out vec4 outColor;\n");
 	}
 
-	if (!iface.buffers.empty()) {
+	if (!iface.buffers.empty() || shader.material) {
 		out.push_back('\n');
 	}
 	for (auto &b : iface.buffers) {
@@ -238,6 +324,10 @@ void emitPreamble(const Schema &schema, const Shader &shader, String &out) {
 			out.append(mem_std::toString(b.record->name, " ", b.name, "(uint i) { return ", pointer,
 					".", b.name, "[i]; }\n"));
 		}
+	}
+	if (auto m = shader.material) {
+		out.append(mem_std::toString(m->name, " material() { return ", m->name, "Buffer(",
+				iface.pushName, ".", iface.materialPointer, ").material; }\n"));
 	}
 }
 

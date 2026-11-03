@@ -21,18 +21,14 @@ bool View3d::init() {
 void View3d::handleEnter(xenolith::Scene *scene) {
 	Node::handleEnter(scene);
 	for (auto &it : _draws) {
-		retainTexture(it.material.texture);
-		retainTexture(it.material.texture2);
-		retainTexture(it.material.texture3);
+		retainMaterial(it.material);
 	}
 	for (auto &it : _drawPacks) { retainPack(it); }
 }
 
 void View3d::handleExit() {
 	for (auto &it : _draws) {
-		releaseTexture(it.material.texture);
-		releaseTexture(it.material.texture2);
-		releaseTexture(it.material.texture3);
+		releaseMaterial(it.material);
 	}
 	for (auto &it : _drawPacks) { releasePack(it); }
 	Node::handleExit();
@@ -56,9 +52,7 @@ void View3d::setSun(const Vec3 &towardSun, const Color4F &color) {
 }
 
 uint32_t View3d::addDraw(Draw3d &&d) {
-	retainTexture(d.material.texture);
-	retainTexture(d.material.texture2);
-	retainTexture(d.material.texture3);
+	retainMaterial(d.material);
 	auto pack = d.mesh ? d.mesh->getPack() : nullptr;
 	retainPack(pack);
 	_drawPacks.emplace_back(pack);
@@ -76,12 +70,8 @@ void View3d::setDrawTransform(uint32_t idx, const Mat4 &transform) {
 
 void View3d::setDrawMaterial(uint32_t idx, Material3d &&material) {
 	if (idx < _draws.size()) {
-		retainTexture(material.texture);
-		retainTexture(material.texture2);
-		retainTexture(material.texture3);
-		releaseTexture(_draws[idx].material.texture);
-		releaseTexture(_draws[idx].material.texture2);
-		releaseTexture(_draws[idx].material.texture3);
+		retainMaterial(material);
+		releaseMaterial(_draws[idx].material);
 		_draws[idx].material = sp::move(material);
 		markSceneChanged();
 	}
@@ -89,9 +79,7 @@ void View3d::setDrawMaterial(uint32_t idx, Material3d &&material) {
 
 void View3d::clearDraws() {
 	for (auto &it : _draws) {
-		releaseTexture(it.material.texture);
-		releaseTexture(it.material.texture2);
-		releaseTexture(it.material.texture3);
+		releaseMaterial(it.material);
 	}
 	for (auto &it : _drawPacks) { releasePack(it); }
 	_drawPacks.clear();
@@ -163,6 +151,24 @@ void View3d::clearLights() {
 void View3d::collectDraws(ViewInput3d &view) {
 	view.draws = _draws;
 	view.lights = _lights;
+}
+
+void View3d::retainMaterial(const Material3d &material) {
+	retainTexture(material.texture);
+	retainTexture(material.texture2);
+	retainTexture(material.texture3);
+	if (material.data) {
+		for (auto &it : material.data->getTextures()) { retainTexture(it); }
+	}
+}
+
+void View3d::releaseMaterial(const Material3d &material) {
+	releaseTexture(material.texture);
+	releaseTexture(material.texture2);
+	releaseTexture(material.texture3);
+	if (material.data) {
+		for (auto &it : material.data->getTextures()) { releaseTexture(it); }
+	}
 }
 
 void View3d::retainTexture(const Rc<Texture> &texture) {

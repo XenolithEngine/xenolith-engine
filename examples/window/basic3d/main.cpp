@@ -20,6 +20,8 @@
 
 #include <sprt/c/__sprt_stdlib.h>
 
+#include "Basic3dExampleData.h"
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
 
 #include "basic3d_stripes.vert.h"
@@ -225,17 +227,23 @@ protected:
 		// BASIC3D_GLASS=1: a tinted glass by the translucent pipeline, 4 units square, tilted over
 		// the ground between the green box and the light, toward the camera - a quarter of a unit
 		// over it at its +y end, two and a quarter at its -y one - as clear as the ground behind it
-		// is near
+		// is near. Its material is of the example's schema (glsl/basic3d-example.kdl);
+		// BASIC3D_GLASS_NODATA=1 leaves it out, and the mesh pipeline draws the glass instead
 		if (__sprt_getenv("BASIC3D_GLASS")) {
 			auto glass = Mesh3d::makePlane(4.0f);
 			Mat4 move, tilt;
 			Mat4::createTranslation(Vec3(6.0f, 0.5f, 1.25f), &move);
 			Mat4::createRotationX(-asinf(0.5f), &tilt);
 			auto &camera = _view->getCamera();
-			_view->addDraw(Draw3d{glass, move * tilt,
-				Material3d{.pipeline = GlassPipeline,
-					.params = {Vec4(camera.getFar() - camera.getNear(), 0.6f, 0.0f, 0.0f),
-						Vec4(0.1f, 0.3f, 0.9f, 1.0f)}}});
+			Material3d material{.pipeline = GlassPipeline};
+			if (!__sprt_getenv("BASIC3D_GLASS_NODATA")) {
+				material.data = example::Glass3dMaterial{
+					.color = Vec4(0.1f, 0.3f, 0.9f, 1.0f),
+					.depthRange = camera.getFar() - camera.getNear(),
+					.density = 0.6f,
+				}.make();
+			}
+			_view->addDraw(Draw3d{glass, move * tilt, sp::move(material)});
 		}
 
 		if (!__sprt_getenv("BASIC3D_STILL")) {
@@ -255,6 +263,8 @@ protected:
 		ret.setInteger(stats.packDraws, "packDraws");
 		ret.setInteger(int64_t(stats.recordBytes), "recordBytes");
 		ret.setInteger(stats.translucentDraws, "translucentDraws");
+		ret.setInteger(stats.materials, "materials");
+		ret.setInteger(int64_t(stats.materialBytes), "materialBytes");
 		ret.setBool(_pack && _pack->isLoaded(), "packLoaded");
 		ret.setInteger(_pack ? _pack->getUsers() : 0, "packUsers");
 		ret.setBool(_director && _director->getResourceCache()->hasTemporaryResource(_packName),
@@ -309,11 +319,11 @@ public:
 					sizeof(basic3d_stripes_vert) / sizeof(uint32_t)),
 			SpanView<uint32_t>(reinterpret_cast<const uint32_t *>(basic3d_stripes_frag),
 					sizeof(basic3d_stripes_frag) / sizeof(uint32_t))};
-		// the glass shares the stripes' vertex shader
+		// the glass shares the stripes' vertex shader, and reads a material of its own schema
 		auto glass = Pipeline3dInfo{"Basic3dExampleGlass", stripes.vert,
 			SpanView<uint32_t>(reinterpret_cast<const uint32_t *>(basic3d_glass_frag),
 					sizeof(basic3d_glass_frag) / sizeof(uint32_t)),
-			true};
+			true, &example::Glass3dMaterial::Schema};
 		if (!Scene3d::init(app, window, constraints, Vector<Pipeline3dInfo>{stripes, glass})) {
 			return false;
 		}

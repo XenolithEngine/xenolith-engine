@@ -66,7 +66,8 @@ record Constants3d {
 	drawPointer uvec2 doc="8-16, the frame's DrawData3d array"
 	vertexPointer uvec2 doc="16-24, the frame's Vertex3d array"
 	lightPointer uvec2 doc="24-32, the frame's LightData3d array"
-	drawIndex uint doc="32-36"
+	materialPointer uvec2 doc="32-40, this draw's material of a schema"
+	drawIndex uint doc="40-44"
 }
 
 interface pass3d doc="""
@@ -82,6 +83,7 @@ interface pass3d doc="""
 	samplers textures sampler2D binding=0 count=MAX_TEXTURES
 	samplers textureArrays sampler2DArray binding=1 count=MAX_TEXTURE_ARRAYS
 	depth sceneDepth binding=2 index=0
+	material pointer=materialPointer
 }
 
 varyings Mesh3dVaryings doc="What the mesh pipeline's vertex shader hands its fragment shader" {

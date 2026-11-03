@@ -22,6 +22,7 @@
 
 #include "sprt_glsl.h"
 #include "XL3dGlslData.h"
+#include "Basic3dExampleData.h"
 
 layout (std430, push_constant) uniform PushConstants {
 	Constants3d constants;

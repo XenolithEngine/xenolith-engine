@@ -5,8 +5,10 @@
 * a **header** of records that C++ and GLSL both read, valid in both languages: as C++ through the
   types of `sprt_glsl.h`, as GLSL when `SP_GLSL` is defined;
 * a **preamble** for each shader the schema names: everything the shader declares to read its
-  pass's interface - extensions, push constants, buffer references, descriptors, varyings - so
-  the shader itself is an `#include` and a `main()`.
+  pass's interface - extensions, push constants, buffer references, descriptors, varyings, its
+  material - so the shader itself is an `#include` and a `main()`;
+* for each **material**, besides its record, a C++ builder that makes it for a draw
+  (`Material3d::data`).
 
 The schema of basic3d is [basic3d.kdl](../../../xenolith/renderer/basic3d/glsl/basic3d.kdl); the
 basic3d example's, which imports it, is
@@ -42,6 +44,9 @@ for it, as a harness has.
 * An **interface** is what a pass gives its shaders; a **shader** names its interface and its
   **varyings**, and gets a preamble, `<shader>.glsl`. A vertex shader and a fragment shader that
   name the same varyings declare the same interface block, so their locations cannot disagree.
+* A **material** is a record of a pipeline's own data, which may have textures of a known kind;
+  its builder makes a `MaterialData3d` a draw carries, the frame writes it once however many draws
+  share it, and a shader that names it reads it by `material()`.
 * A schema **imports** another to use its records, constants and interfaces; nothing imported is
   written again, and a preamble includes the header that defines the records it reads.
 * Comments are part of the schema, as `doc=` - KDL comments do not reach the files. A doc of one
@@ -125,6 +130,41 @@ makes it an array.
 The C++ alignment of a type may be smaller than std430's (`UVec2` aligns to 4): the padding the
 generator adds and the asserts it writes keep the sizes equal.
 
+## Materials
+
+```kdl
+material Glass3d doc="The tinted glass of the translucent pipeline" {
+    color vec4
+    depthRange float
+    density float
+}
+material Terrain3d { tint vec4; ground texture-array; detail texture2d; params vec4 count=2 }
+```
+
+A material is a record, laid out as one, whose fields may also be textures: `texture2d` (a slot of
+the texture array) or `texture-array` (one of the layered array), one texture each. In the record
+and in GLSL a texture field is the `uint` slot the pass writes for the frame, or the schema's
+`NO_TEXTURE`. A record of the schema with a material has its `output`, and the header includes
+`XL3dMaterial.h` for C++ and writes, for each material, a builder:
+
+```cpp
+struct Terrain3dMaterial {
+	vec4 tint;
+	xl3d::MaterialTexture3d ground; // Rc<Texture>
+	xl3d::MaterialTexture3d detail;
+	vec4 params[2];
+
+	static constexpr xl3d::MaterialTextureField3d Textures[] = {...};
+	static constexpr xl3d::MaterialSchema3d Schema{"Terrain3d", 64, 16, Textures, 2};
+
+	sprt::Rc<xl3d::MaterialData3d> make() const; // the record and the textures, in their order
+};
+```
+
+`Schema` is what a pipeline that reads the material names (`Pipeline3dInfo::material`) and what
+the pass compares a draw's material with, by address; `make()` is what a draw carries
+(`Material3d::data`, see [the basic3d guide](../basic3d/overview.adoc)).
+
 ## Interfaces
 
 ```kdl
@@ -146,6 +186,7 @@ interface pass3d doc="The 3d pass: ..." {
 | `buffer <name> <record> pointer=<field>` | a `buffer_reference` block `<record>Buffer` holding `<record> <name>[]` (or one, with `single=#true`), and a function to read it: `<record> <name>(uint i)` or `<record> <name>()`, from the address in the push constants' `uvec2` field |
 | `samplers <name> sampler2D\|sampler2DArray binding=N count=…` | in a fragment shader, `layout (set = 0, binding = N) uniform … <name>[count]`; the count is a number or a constant |
 | `depth <name> binding=N index=I` | in a translucent fragment shader, `layout (input_attachment_index = I, set = 0, binding = N) uniform subpassInput <name>` |
+| `material pointer=<field>` | in a shader that names a material, a `buffer_reference` block `<material>Buffer` holding one, and `<material> material()` from the address in the push constants' `uvec2` field |
 
 A vertex shader gets no samplers and no depth, a fragment shader of an opaque pipeline no depth:
 the pipeline's layout is made from what the SPIR-V declares, and a translucent pipeline's alone has
@@ -162,7 +203,8 @@ varyings Mesh3dVaryings doc="What the mesh pipeline's vertex shader hands its fr
 
 shader xl_3d_mesh.vert interface=pass3d varyings=Mesh3dVaryings
 shader xl_3d_mesh.frag interface=pass3d varyings=Mesh3dVaryings
-shader basic3d_glass.frag interface=pass3d varyings=Stripes3dVaryings translucent=#true
+shader basic3d_glass.frag interface=pass3d varyings=Stripes3dVaryings translucent=#true \
+    material=Glass3d
 ```
 
 Varyings are an interface block, `out` of a vertex shader and `in` a fragment one, named `vary`:
@@ -171,7 +213,7 @@ their order. A varying is a scalar or a vector; an integer one is `flat`, and `f
 float one so.
 
 A shader is named by its file - a name, then `.vert` or `.frag` - and its preamble is that name
-with `.glsl`. A fragment shader also gets `layout (location = 0) out vec4 outColor;`. The shader
+with `.glsl`. `material=` names the material its pipeline reads; its interface has to give one. A fragment shader also gets `layout (location = 0) out vec4 outColor;`. The shader
 includes its preamble after `#version` and the include directive:
 
 ```glsl
@@ -206,4 +248,7 @@ Every one carries its place in the description:
 * a buffer whose pointer is not a `uvec2` field of the push constants;
 * a sampler type other than `sampler2D` and `sampler2DArray`;
 * a varying that is not a scalar or a vector; a shader name that is not `<name>.vert` or
-  `<name>.frag`; a translucent vertex shader.
+  `<name>.frag`; a translucent vertex shader;
+* a texture field outside a material, or an array of them; a shader's `material=` that is no
+  material, or whose interface gives no material; a material pointer that is not a `uvec2` of the
+  push constants.
