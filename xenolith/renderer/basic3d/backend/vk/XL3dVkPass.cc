@@ -111,7 +111,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 	_images.clear();
 	_imageArrays.clear();
 
-	size_t vertexCount = 0;
+	size_t vertexBytes = 0;
 	size_t indexCount = 0;
 	size_t drawCount = 0;
 	for (auto &view : input.views) {
@@ -119,7 +119,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 			if (draw.mesh && !draw.mesh->getIndexes().empty()) {
 				// a mesh of a loaded pack is in GPU memory already
 				if (!draw.gpu.vertexes) {
-					vertexCount += draw.mesh->getVertexes().size();
+					vertexBytes += (draw.mesh->getVertexData().size() + 15) / 16 * 16;
 					indexCount += draw.mesh->getIndexes().size();
 				}
 				++drawCount;
@@ -133,14 +133,14 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 	}
 
 	Pass3dStats stats;
-	stats.frameVertexBytes = vertexCount * sizeof(Vertex3d);
 	stats.frameIndexBytes = indexCount * sizeof(uint32_t);
 
-	Vector<Vertex3d> vertexes;
+	// the meshes' vertexes, whatever their format, each from a 16-byte boundary
+	Bytes vertexes;
 	Vector<uint32_t> indexes;
 	Vector<DrawData3d> draws;
 	Vector<ViewData3d> views;
-	vertexes.reserve(vertexCount);
+	vertexes.reserve(vertexBytes);
 	indexes.reserve(indexCount);
 	draws.reserve(drawCount);
 	views.reserve(input.views.size());
@@ -155,6 +155,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 	Map<const MaterialData3d *, uint32_t> dataOffsets;
 	bool materialMismatch = false;
 	bool blockMismatch = false;
+	bool formatMismatch = false;
 	bool wrongKind = false;
 
 	// the slot of a texture field: a texture of the other kind than the field's has none
@@ -225,7 +226,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 				continue;
 			}
 
-			auto meshVertexes = draw.mesh->getVertexes();
+			auto meshVertexes = draw.mesh->getVertexData();
 			auto meshIndexes = draw.mesh->getIndexes();
 
 			// a pipeline that reads a material or a view's block of a schema draws only one of it:
@@ -243,17 +244,31 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 				schema = nullptr;
 			}
 
+			// a pipeline reads the vertexes of its format: a mesh of another one draws with the
+			// mesh pipeline if it can - one of Vertex3d - and not at all otherwise
+			if (draw.mesh->getFormat() != attachment->getVertexFormat(pipeline)) {
+				formatMismatch = true;
+				if (draw.mesh->getFormat() != &Vertex3dFormat) {
+					continue;
+				}
+				pipeline = MeshPipeline;
+				schema = nullptr;
+			}
+
 			if (draw.gpu.vertexes && draw.gpu.indexes) {
 				_draws.emplace_back(DrawRecord{pipeline, uint32_t(draws.size()),
-					uint32_t(meshIndexes.size()), draw.gpu.firstIndex, draw.gpu.vertexOffset,
+					uint32_t(meshIndexes.size()), draw.gpu.firstIndex, draw.gpu.vertexByteOffset,
 					draw.gpu.vertexes, draw.gpu.indexes});
 				++stats.packDraws;
 			} else {
+				auto offset = (vertexes.size() + 15) / 16 * 16;
 				_draws.emplace_back(DrawRecord{pipeline, uint32_t(draws.size()),
-					uint32_t(meshIndexes.size()), uint32_t(indexes.size()),
-					int32_t(vertexes.size())});
-				vertexes.insert(vertexes.end(), meshVertexes.begin(), meshVertexes.end());
+					uint32_t(meshIndexes.size()), uint32_t(indexes.size()), uint32_t(offset)});
+				vertexes.resize(offset);
+				vertexes.insert(vertexes.end(), meshVertexes.data(),
+						meshVertexes.data() + meshVertexes.size());
 				indexes.insert(indexes.end(), meshIndexes.begin(), meshIndexes.end());
+				stats.frameVertexBytes += meshVertexes.size();
 				++stats.frameDraws;
 			}
 			if (attachment->isTranslucent(pipeline)) {
@@ -319,6 +334,12 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 				"a pipeline that reads a view's block of a schema has a draw in a view without "
 				"one, or with one of another schema: the mesh pipeline draws it");
 	}
+	static sprt::atomic<bool> s_formatWarned = false;
+	if (formatMismatch && !s_formatWarned.exchange(true)) {
+		log::source().warn("basic3d::Pass3d",
+				"a mesh's vertexes are not of the format its pipeline reads: the mesh pipeline "
+				"draws a mesh of Vertex3d, and one of another format is not drawn");
+	}
 	static sprt::atomic<bool> s_kindWarned = false;
 	if (wrongKind && !s_kindWarned.exchange(true)) {
 		log::source().warn("basic3d::Pass3d",
@@ -338,7 +359,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 		lights.emplace_back(LightData3d());
 	}
 	if (vertexes.empty()) {
-		vertexes.emplace_back(Vertex3d());
+		vertexes.resize(sizeof(Vertex3d));
 		indexes.emplace_back(0);
 	}
 	stats.translucentDraws = _translucentDraws;
@@ -351,7 +372,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 
 	_vertexes = pool->spawn(xvk::AllocationUsage::DeviceLocalHostVisible,
 			core::BufferInfo(StringView("Basic3dVertexes"), core::BufferUsage::StorageBuffer,
-					core::BufferUsage::ShaderDeviceAddress, vertexes.size() * sizeof(Vertex3d)));
+					core::BufferUsage::ShaderDeviceAddress, vertexes.size()));
 	_indexes = pool->spawn(xvk::AllocationUsage::DeviceLocalHostVisible,
 			core::BufferInfo(StringView("Basic3dIndexes"), core::BufferUsage::IndexBuffer,
 					indexes.size() * sizeof(uint32_t)));
@@ -375,8 +396,7 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 		return false;
 	}
 
-	_vertexes->setData(BytesView(reinterpret_cast<const uint8_t *>(vertexes.data()),
-			vertexes.size() * sizeof(Vertex3d)));
+	_vertexes->setData(vertexes);
 	_indexes->setData(BytesView(reinterpret_cast<const uint8_t *>(indexes.data()),
 			indexes.size() * sizeof(uint32_t)));
 	_drawData->setData(BytesView(reinterpret_cast<const uint8_t *>(draws.data()),
@@ -390,11 +410,20 @@ bool Scene3dInputHandle::pack(xvk::DeviceMemoryPool *pool, const FrameContextHan
 }
 
 void Scene3dInputAttachment::setPipelines(Vector<bool> &&pipelines, Vector<bool> &&translucent,
-		Vector<const MaterialSchema3d *> &&materials, Vector<const MaterialSchema3d *> &&blocks) {
+		Vector<const MaterialSchema3d *> &&materials, Vector<const MaterialSchema3d *> &&blocks,
+		Vector<const VertexFormat3d *> &&formats) {
 	_pipelines = sp::move(pipelines);
 	_translucent = sp::move(translucent);
 	_materials = sp::move(materials);
 	_blocks = sp::move(blocks);
+	_formats = sp::move(formats);
+}
+
+const VertexFormat3d *Scene3dInputAttachment::getVertexFormat(uint32_t pipeline) const {
+	if (isDrawnAsMesh(pipeline) || pipeline >= _formats.size() || !_formats[pipeline]) {
+		return &Vertex3dFormat;
+	}
+	return _formats[pipeline];
 }
 
 bool Scene3dInputAttachment::isDrawnAsMesh(uint32_t pipeline) const {
@@ -495,6 +524,7 @@ static void Pass3d_record(core::FrameQueue &q, const core::SubpassData &subpass,
 	core::BufferObject *boundIndexes = frameIndexes;
 	core::BufferObject *frameVertexes = input->getVertexes().get();
 	core::BufferObject *boundVertexes = frameVertexes;
+	auto vertexBase = buf.bindBufferAddress(frameVertexes);
 
 	auto viewBase = buf.bindBufferAddress(input->getViewData().get());
 
@@ -556,11 +586,14 @@ static void Pass3d_record(core::FrameQueue &q, const core::SubpassData &subpass,
 				buf.cmdBindPipelineWithDescriptors(pipeline);
 				bound = pipeline;
 			}
+			// the mesh's vertexes from where they are in their buffer, so gl_VertexIndex is the
+			// mesh's own index
 			auto vertexes = d.vertexes ? d.vertexes.get() : frameVertexes;
 			if (vertexes != boundVertexes) {
-				pcb.vertexPointer = UVec2::convertFromPacked(buf.bindBufferAddress(vertexes));
+				vertexBase = buf.bindBufferAddress(vertexes);
 				boundVertexes = vertexes;
 			}
+			pcb.vertexPointer = UVec2::convertFromPacked(vertexBase + d.vertexByteOffset);
 			auto indexes = d.indexes ? d.indexes.get() : frameIndexes;
 			if (indexes != boundIndexes) {
 				buf.bindBuffer(indexes);
@@ -571,7 +604,7 @@ static void Pass3d_record(core::FrameQueue &q, const core::SubpassData &subpass,
 			pcb.materialPointer = UVec2::convertFromPacked(materialBase + d.materialOffset);
 			buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
 					BytesView(reinterpret_cast<const uint8_t *>(&pcb), sizeof(Constants3d)));
-			buf.cmdDrawIndexed(d.indexCount, 1, d.firstIndex, d.vertexOffset, 0);
+			buf.cmdDrawIndexed(d.indexCount, 1, d.firstIndex, 0, 0);
 		}
 	}
 }
@@ -624,7 +657,7 @@ bool Pass3d::addToQueue(core::Loop *loop, core::Queue::Builder &builder, Extent2
 		pipelines.emplace_back(PipelineProgram{it.name,
 			builder.addProgramByRef(toString(it.name, "Vert"), it.vert),
 			builder.addProgramByRef(toString(it.name, "Frag"), it.frag), it.translucent,
-			it.material, it.block});
+			it.material, it.block, it.vertex});
 	}
 
 	// before basic2d's pass (RenderOrderingHighest), which loads what this one drew
@@ -646,6 +679,7 @@ bool Pass3d::init(core::QueuePassBuilder &passBuilder, const core::AttachmentDat
 	Vector<bool> translucent;
 	Vector<const MaterialSchema3d *> materials;
 	Vector<const MaterialSchema3d *> blocks;
+	Vector<const VertexFormat3d *> formats;
 	bool anyTranslucent = false;
 	for (auto &it : pipelines) {
 		_pipelineNames.emplace_back(it.name);
@@ -653,11 +687,12 @@ bool Pass3d::init(core::QueuePassBuilder &passBuilder, const core::AttachmentDat
 		translucent.emplace_back(it.vert && it.frag && it.translucent);
 		materials.emplace_back(it.material);
 		blocks.emplace_back(it.block);
+		formats.emplace_back(it.vertex);
 		anyTranslucent = anyTranslucent || translucent.back();
 	}
 	if (auto attachment = dynamic_cast<Scene3dInputAttachment *>(input->attachment.get())) {
 		attachment->setPipelines(sp::move(available), sp::move(translucent), sp::move(materials),
-				sp::move(blocks));
+				sp::move(blocks), sp::move(formats));
 	}
 
 	auto colorPass = passBuilder.addAttachment(output);

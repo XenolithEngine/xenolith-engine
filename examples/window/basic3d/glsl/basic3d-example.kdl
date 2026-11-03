@@ -1,7 +1,6 @@
-// The example's pipelines over the 3d pass's interface: the glass's material, the view's block and
-// the preambles of the shaders, next to this description, are generated from it
-// (docs/usage/tools/xlkdl-gpu.adoc).
-// After a change:
+// The example's pipelines over the 3d pass's interface: the stripes' vertex, the glass's material,
+// the view's block and the preambles of the shaders, next to this description, are generated from
+// it (docs/usage/tools/xlkdl-gpu.adoc). After a change:
 //
 //     xlkdl gpu examples/window/basic3d/glsl/basic3d-example.kdl
 
@@ -25,12 +24,17 @@ block Example3dView doc="What the example's view gives the pipelines that read i
 	depthRange float doc="the camera's far - near: a depth difference times it is in world units"
 }
 
+vertex Compact3d position=pos doc="The stripes' meshes: a position and a normal, 16 bytes" {
+	pos vec3
+	normal oct16
+}
+
 varyings Stripes3dVaryings doc="What the stripes' vertex shader hands both fragment shaders" {
 	normal vec3 doc="in the world"
 	world vec3
 }
 
-shader basic3d_stripes.vert interface=pass3d varyings=Stripes3dVaryings
+shader basic3d_stripes.vert interface=pass3d varyings=Stripes3dVaryings vertex=Compact3d
 shader basic3d_stripes.frag interface=pass3d varyings=Stripes3dVaryings
 shader basic3d_glass.frag interface=pass3d varyings=Stripes3dVaryings translucent=#true \
 	material=Glass3d block=Example3dView

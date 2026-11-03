@@ -110,21 +110,45 @@ void Mesh3d::setPack(MeshPack3d *pack, const MeshPackRange &range) {
 }
 
 bool Mesh3d::init(Vector<Vertex3d> &&vertexes, Vector<uint32_t> &&indexes) {
+	auto count = uint32_t(vertexes.size());
+	auto bytes = reinterpret_cast<const uint8_t *>(vertexes.data());
+	return init(&Vertex3dFormat, Bytes(bytes, bytes + vertexes.size() * sizeof(Vertex3d)), count,
+			sp::move(indexes));
+}
+
+bool Mesh3d::init(const VertexFormat3d *format, Bytes &&vertexes, uint32_t count,
+		Vector<uint32_t> &&indexes) {
+	if (!format || vertexes.size() != size_t(count) * format->stride) {
+		log::source().error("basic3d::Mesh3d", "a mesh of ", format ? format->name : "no format",
+				" has ", vertexes.size(), " bytes for ", count, " vertexes");
+		return false;
+	}
+	_format = format;
 	_vertexes = sp::move(vertexes);
+	_vertexCount = count;
 	_indexes = sp::move(indexes);
 
+	// the bounds, by the format's position
 	_min = Vec3(maxOf<float>(), maxOf<float>(), maxOf<float>());
 	_max = -_min;
-	for (auto &it : _vertexes) {
-		_min = Vec3(sprt::min(_min.x, it.pos.x), sprt::min(_min.y, it.pos.y),
-				sprt::min(_min.z, it.pos.z));
-		_max = Vec3(sprt::max(_max.x, it.pos.x), sprt::max(_max.y, it.pos.y),
-				sprt::max(_max.z, it.pos.z));
+	for (uint32_t i = 0; i < _vertexCount; ++i) {
+		Vec3 pos;
+		auto at = _vertexes.data() + size_t(i) * _format->stride + _format->positionOffset;
+		sprt::memcpy(&pos.x, at, sizeof(float) * 3);
+		_min = Vec3(sprt::min(_min.x, pos.x), sprt::min(_min.y, pos.y), sprt::min(_min.z, pos.z));
+		_max = Vec3(sprt::max(_max.x, pos.x), sprt::max(_max.y, pos.y), sprt::max(_max.z, pos.z));
 	}
-	if (_vertexes.empty()) {
+	if (_vertexCount == 0) {
 		_min = _max = Vec3::ZERO;
 	}
 	return true;
+}
+
+SpanView<Vertex3d> Mesh3d::getVertexes() const {
+	if (_format != &Vertex3dFormat) {
+		return SpanView<Vertex3d>();
+	}
+	return SpanView<Vertex3d>(reinterpret_cast<const Vertex3d *>(_vertexes.data()), _vertexCount);
 }
 
 } // namespace stappler::xenolith::basic3d

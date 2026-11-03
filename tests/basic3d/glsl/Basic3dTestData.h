@@ -12,6 +12,7 @@
 
 #ifndef SP_GLSL
 #include "XL3dMaterial.h"
+#include "XL3dVertex.h"
 #endif
 
 #ifndef SP_GLSL
@@ -33,6 +34,16 @@ struct Terrain3dTest {
 	uint padding0;
 	uint padding1;
 	uint padding2;
+};
+
+// A vertex with every packed type
+struct Packed3dTest {
+	vec3 pos;
+	uint normal;
+	uint uv;
+	uint color;
+	float layer;
+	uint padding;
 };
 
 // A view's block, as an app would have one
@@ -73,6 +84,28 @@ struct Terrain3dTestMaterial {
 	}
 };
 
+// Packed3dTest unpacked, for Mesh3d::make
+struct Packed3dTestVertex {
+	vec3 pos;
+	vec3 normal;
+	vec2 uv;
+	vec4 color;
+	float layer = 0.0f;
+
+	static constexpr xl3d::VertexFormat3d Format{"Packed3dTest", 32, 16, 0};
+
+	Packed3dTest pack() const {
+		Packed3dTest d;
+		d.pos = pos;
+		d.normal = xl3d::packOct16(normal);
+		d.uv = xl3d::packHalf2(uv);
+		d.color = xl3d::packUnorm8x4(color);
+		d.layer = layer;
+		d.padding = 0;
+		return d;
+	}
+};
+
 // Field3dTest with its textures, for View3d::setBlock of a pipeline that reads it
 struct Field3dTestBlock {
 	vec2 origin;
@@ -104,6 +137,13 @@ static_assert(__builtin_offsetof(Terrain3dTest, flags) == 64);
 static_assert(__builtin_offsetof(Terrain3dTest, padding0) == 68);
 static_assert(__builtin_offsetof(Terrain3dTest, padding1) == 72);
 static_assert(__builtin_offsetof(Terrain3dTest, padding2) == 76);
+static_assert(sizeof(Packed3dTest) == 32);
+static_assert(__builtin_offsetof(Packed3dTest, pos) == 0);
+static_assert(__builtin_offsetof(Packed3dTest, normal) == 12);
+static_assert(__builtin_offsetof(Packed3dTest, uv) == 16);
+static_assert(__builtin_offsetof(Packed3dTest, color) == 20);
+static_assert(__builtin_offsetof(Packed3dTest, layer) == 24);
+static_assert(__builtin_offsetof(Packed3dTest, padding) == 28);
 static_assert(sizeof(Field3dTest) == 16);
 static_assert(__builtin_offsetof(Field3dTest, origin) == 0);
 static_assert(__builtin_offsetof(Field3dTest, heights) == 8);

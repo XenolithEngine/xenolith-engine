@@ -41,6 +41,9 @@ const FieldType s_types[] = {
 	FieldType{"mat4", 64, 16},
 	FieldType{"texture2d", 4, 4, false, false, "", 1},
 	FieldType{"texture-array", 4, 4, false, false, "", 2},
+	FieldType{"oct16", 4, 4, false, false, "", 0, "vec3", "packOct16", "xl3dUnpackOct16"},
+	FieldType{"half2", 4, 4, false, false, "", 0, "vec2", "packHalf2", "unpackHalf2x16"},
+	FieldType{"unorm8x4", 4, 4, false, false, "", 0, "vec4", "packUnorm8x4", "unpackUnorm4x8"},
 };
 
 // GLSL interpolates no integer: a varying of these types is flat
@@ -52,9 +55,9 @@ const StringView s_headNodes[] = {"output", "guard", "namespace", "macro-prefix"
 	"license", "preambles"};
 
 const StringView s_interfaceNodes[] = {"push-constants", "buffer", "samplers", "depth", "material",
-	"block"};
+	"block", "vertex"};
 
-const StringView s_nodes[] = {"schema", "import", "const", "record", "material", "block",
+const StringView s_nodes[] = {"schema", "import", "const", "record", "material", "block", "vertex",
 	"interface", "varyings", "shader"};
 
 // What a node may carry: how many arguments, which properties, whether children.
@@ -73,8 +76,9 @@ const StringView s_bufferProps[] = {"pointer", "single"};
 const StringView s_samplersProps[] = {"binding", "count"};
 const StringView s_depthProps[] = {"binding", "index"};
 const StringView s_varyingProps[] = {"flat", "doc"};
-const StringView s_shaderProps[] = {"interface", "varyings", "material", "block", "translucent",
-	"doc"};
+const StringView s_shaderProps[] = {"interface", "varyings", "material", "block", "vertex",
+	"translucent", "doc"};
+const StringView s_vertexProps[] = {"position", "doc"};
 const StringView s_pointerProps[] = {"pointer"};
 
 bool isIdentifier(StringView name) {
@@ -222,6 +226,8 @@ protected:
 				ok = loadRecord(node, RecordKind::Material) && ok;
 			} else if (name == "block") {
 				ok = loadRecord(node, RecordKind::Block) && ok;
+			} else if (name == "vertex") {
+				ok = loadRecord(node, RecordKind::Vertex) && ok;
 			} else if (name == "interface") {
 				ok = loadInterface(node) && ok;
 			} else if (name == "varyings") {
@@ -505,6 +511,7 @@ protected:
 	bool loadRecord(const KdlNode &node, RecordKind kind) {
 		auto what = kind == RecordKind::Material ? StringView("material")
 				: kind == RecordKind::Block		 ? StringView("block")
+				: kind == RecordKind::Vertex	 ? StringView("vertex")
 												 : StringView("record");
 		Record r;
 		r.location = node.location;
@@ -512,7 +519,11 @@ protected:
 		r.kind = kind;
 		r.header =
 				filepath::lastComponent(StringView(_head.output)).str<memory::StandardInterface>();
-		if (!checkShape(node, NodeShape{1, 1, s_docProps, true})
+		auto shape = NodeShape{1, 1,
+			kind == RecordKind::Vertex ? SpanView<StringView>(s_vertexProps)
+									   : SpanView<StringView>(s_docProps),
+			true};
+		if (!checkShape(node, shape)
 				|| !readName(node.arguments[0], r.name, mem_std::toString("a ", what, "'s name"))
 				|| !readDoc(node, r.doc) || !checkUnique(what, r.name, node.location)) {
 			return false;
@@ -550,6 +561,18 @@ protected:
 				ok = false;
 				continue;
 			}
+			if (f.type->packed() && kind != RecordKind::Vertex) {
+				error(child.arguments[0].location,
+						mem_std::toString("a packed type is a field of a vertex, not of '", r.name,
+								"'"));
+				ok = false;
+				continue;
+			}
+			if (kind == RecordKind::Vertex && child.getPropertyValue("count")) {
+				error(child.location, "a vertex has no arrays");
+				ok = false;
+				continue;
+			}
 			if (f.type->texture && child.getPropertyValue("count")) {
 				error(child.location, "a texture field is one texture, not an array");
 				ok = false;
@@ -582,6 +605,25 @@ protected:
 		}
 		if (!ok) {
 			return false;
+		}
+		if (kind == RecordKind::Vertex) {
+			// the mesh's bounds are taken from its position
+			auto position = node.getPropertyValue("position");
+			if (!position) {
+				error(node.location,
+						mem_std::toString("the vertex '", r.name, "' has no 'position'"));
+				return false;
+			}
+			if (!readName(*position, r.position, "'position'")) {
+				return false;
+			}
+			auto field = r.findField(r.position);
+			if (!field || (field->type->name != "vec3" && field->type->name != "vec4")) {
+				error(position->location,
+						mem_std::toString("the position of '", r.name,
+								"' is not a vec3 or a vec4 field: '", r.position, "'"));
+				return false;
+			}
 		}
 		++_ownData;
 		_schema->items.emplace_back(Item{true, _schema->records.size()});
@@ -732,8 +774,10 @@ protected:
 				}
 				d.present = true;
 				iface.depth = sprt::move(d);
-			} else if (kind == "material" || kind == "block") {
-				auto &target = kind == "material" ? iface.materialPointer : iface.blockPointer;
+			} else if (kind == "material" || kind == "block" || kind == "vertex") {
+				auto &target = kind == "material" ? iface.materialPointer
+						: kind == "block"		  ? iface.blockPointer
+												  : iface.vertexPointer;
 				if (!target.empty()) {
 					error(child.location, mem_std::toString("an interface has one '", kind, "'"));
 					ok = false;
@@ -748,8 +792,9 @@ protected:
 					ok = false;
 					continue;
 				}
-				(kind == "material" ? iface.materialLocation : iface.blockLocation) =
-						child.location;
+				(kind == "material"				  ? iface.materialLocation
+								: kind == "block" ? iface.blockLocation
+												  : iface.vertexLocation) = child.location;
 			} else {
 				error(child.location,
 						mem_std::toString("unknown node '", kind, "' of 'interface' (",
@@ -877,6 +922,15 @@ protected:
 				return false;
 			}
 		}
+		if (auto vertex = node.getPropertyValue("vertex")) {
+			if (!readName(*vertex, s.vertexName, "'vertex'")) {
+				return false;
+			}
+			if (s.stage != Stage::Vertex) {
+				error(vertex->location, "only a vertex shader reads the mesh's vertexes");
+				return false;
+			}
+		}
 		if (s.translucent && s.stage != Stage::Fragment) {
 			error(node.location, "only a fragment shader reads the depth a translucent one does");
 			return false;
@@ -956,6 +1010,7 @@ protected:
 		};
 		checkPointer(iface.materialPointer, iface.materialLocation, "material");
 		checkPointer(iface.blockPointer, iface.blockLocation, "block");
+		checkPointer(iface.vertexPointer, iface.vertexLocation, "vertex");
 		for (auto &s : iface.samplers) {
 			if (s.countName.empty()) {
 				continue;
@@ -1004,6 +1059,8 @@ protected:
 				s.interface && !s.interface->materialPointer.empty());
 		linkData(s.blockName, s.block, RecordKind::Block, "block",
 				s.interface && !s.interface->blockPointer.empty());
+		linkData(s.vertexName, s.vertex, RecordKind::Vertex, "vertex",
+				s.interface && !s.interface->vertexPointer.empty());
 		if (!s.varyingsName.empty()) {
 			s.varyings = find(_schema->varyings, s.varyingsName);
 			if (!s.varyings) {
@@ -1064,6 +1121,15 @@ bool Schema::hasHeader() const {
 bool Schema::hasData() const {
 	for (auto &it : records) {
 		if (!it.imported && it.isData()) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool Schema::hasVertexes() const {
+	for (auto &it : records) {
+		if (!it.imported && it.kind == RecordKind::Vertex) {
 			return true;
 		}
 	}

@@ -51,8 +51,16 @@ struct FieldType {
 	// one (2)
 	uint8_t texture = 0;
 
+	// a packed field of a vertex, a uint in the record: what it holds unpacked, and how C++ packs
+	// it and GLSL unpacks it
+	StringView unpacked;
+	StringView pack;
+	StringView unpack;
+
+	bool packed() const { return !unpacked.empty(); }
+
 	// as GLSL and the record spell it
-	StringView spelled() const { return texture ? StringView("uint") : name; }
+	StringView spelled() const { return texture || packed() ? StringView("uint") : name; }
 };
 
 const FieldType *findType(StringView name);
@@ -75,6 +83,7 @@ enum class RecordKind : uint8_t {
 	Record,
 	Material,
 	Block,
+	Vertex, // a vertex of a mesh, which may have packed fields
 };
 
 struct Record {
@@ -90,7 +99,10 @@ struct Record {
 	RecordKind kind = RecordKind::Record;
 
 	// a material or a block
-	bool isData() const { return kind != RecordKind::Record; }
+	bool isData() const { return kind == RecordKind::Material || kind == RecordKind::Block; }
+
+	// a vertex's position, a vec3 or a vec4: the mesh's bounds
+	String position;
 
 	// set by the layout
 	uint32_t size = 0;
@@ -163,6 +175,10 @@ struct Interface {
 	kdl::Location materialLocation;
 	String blockPointer;
 	kdl::Location blockLocation;
+
+	// the field of the push constants that holds the address of a draw's mesh's vertexes
+	String vertexPointer;
+	kdl::Location vertexLocation;
 };
 
 struct Varying {
@@ -200,6 +216,8 @@ struct Shader {
 	const Record *material = nullptr;
 	String blockName;
 	const Record *block = nullptr;
+	String vertexName;
+	const Record *vertex = nullptr;
 	bool translucent = false;
 	String file; // the description that defines it
 	kdl::Location location;
@@ -236,8 +254,10 @@ struct Schema {
 	// whether the schema writes a header: it has records or constants of its own
 	bool hasHeader() const;
 
-	// whether it has materials or blocks of its own, which its header makes builders for
+	// whether it has materials or blocks, or vertexes, of its own, which its header makes builders
+	// for
 	bool hasData() const;
+	bool hasVertexes() const;
 };
 
 // Reads a description and what it imports, links the names and lays the records out; false, with

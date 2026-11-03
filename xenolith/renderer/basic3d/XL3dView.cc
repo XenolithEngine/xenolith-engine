@@ -130,7 +130,7 @@ void View3d::draw(FrameInfo &frame, NodeVisitFlags flags) {
 			if (pack && pack->isLoaded()) {
 				auto &range = d.mesh->getPackRange();
 				d.gpu = DrawGpu3d{pack->getVertexBuffer(), pack->getIndexBuffer(), range.firstIndex,
-					range.vertexOffset};
+					range.vertexByteOffset};
 			}
 		}
 	}

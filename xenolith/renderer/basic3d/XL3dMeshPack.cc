@@ -16,21 +16,22 @@ MeshPackLayout layoutPack(SpanView<Rc<Mesh3d>> meshes) {
 	MeshPackLayout ret;
 	size_t vertexes = 0, indexes = 0;
 	for (auto &it : meshes) {
-		vertexes += it->getVertexes().size();
+		vertexes += (it->getVertexData().size() + 15) / 16 * 16;
 		indexes += it->getIndexes().size();
 	}
-	ret.vertexes.reserve(vertexes * sizeof(Vertex3d));
+	ret.vertexes.reserve(vertexes);
 	ret.indexes.reserve(indexes * sizeof(uint32_t));
 
 	for (auto &it : meshes) {
-		auto v = it->getVertexes();
+		auto v = it->getVertexData();
 		auto i = it->getIndexes();
+		auto offset = (ret.vertexes.size() + 15) / 16 * 16;
+		ret.vertexes.resize(offset);
 		ret.ranges.emplace_back(
 				MeshPackRange{uint32_t(ret.indexes.size() / sizeof(uint32_t)), uint32_t(i.size()),
-					int32_t(ret.vertexes.size() / sizeof(Vertex3d)), uint32_t(v.size())});
-		auto vb = reinterpret_cast<const uint8_t *>(v.data());
+					uint32_t(offset), it->getVertexCount()});
 		auto ib = reinterpret_cast<const uint8_t *>(i.data());
-		ret.vertexes.insert(ret.vertexes.end(), vb, vb + v.size() * sizeof(Vertex3d));
+		ret.vertexes.insert(ret.vertexes.end(), v.data(), v.data() + v.size());
 		ret.indexes.insert(ret.indexes.end(), ib, ib + i.size() * sizeof(uint32_t));
 	}
 	return ret;

@@ -27,7 +27,7 @@ public:
 		uint32_t drawIndex = 0;
 		uint32_t indexCount = 0;
 		uint32_t firstIndex = 0;
-		int32_t vertexOffset = 0;
+		uint32_t vertexByteOffset = 0; // in the vertex buffer, where the mesh's vertexes start
 
 		// a mesh of a loaded pack draws from the pack's buffers, null for the frame's
 		Rc<core::BufferObject> vertexes;
@@ -116,11 +116,11 @@ public:
 	virtual ~Scene3dInputAttachment() = default;
 
 	// which of a material's pipeline indexes the pass has, which of them are translucent, and the
-	// schemas of the material and of the view's block each reads, set once by the pass as it is
-	// made
+	// schemas of the material and of the view's block and the vertex format each reads, set once
+	// by the pass as it is made
 	void setPipelines(Vector<bool> &&, Vector<bool> &&translucent,
 			Vector<const MaterialSchema3d *> &&materials,
-			Vector<const MaterialSchema3d *> &&blocks);
+			Vector<const MaterialSchema3d *> &&blocks, Vector<const VertexFormat3d *> &&formats);
 
 	// whether a material with this pipeline is drawn by the mesh pipeline: it picks the mesh
 	// pipeline, or one the pass does not have
@@ -134,11 +134,15 @@ public:
 	const MaterialSchema3d *getMaterialSchema(uint32_t pipeline) const;
 	const MaterialSchema3d *getBlockSchema(uint32_t pipeline) const;
 
+	// the vertex format a pipeline reads: Vertex3dFormat for the mesh pipeline and one drawn as it
+	const VertexFormat3d *getVertexFormat(uint32_t pipeline) const;
+
 protected:
 	Vector<bool> _pipelines;
 	Vector<bool> _translucent;
 	Vector<const MaterialSchema3d *> _materials;
 	Vector<const MaterialSchema3d *> _blocks;
+	Vector<const VertexFormat3d *> _formats;
 };
 
 // Makes the views of the frame's textures before the descriptors are written
@@ -170,6 +174,7 @@ public:
 		bool translucent = false;
 		const MaterialSchema3d *material = nullptr;
 		const MaterialSchema3d *block = nullptr;
+		const VertexFormat3d *vertex = nullptr;
 	};
 
 	// adds the pass, its depth and its input to a queue whose Output basic2d has made

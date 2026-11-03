@@ -35,6 +35,19 @@ using namespace basic3d;
 static constexpr uint32_t StripesPipeline = 1;
 static constexpr uint32_t GlassPipeline = 2;
 
+// A mesh of the builders as the stripes' vertex of the example's schema, Compact3d: its position
+// and normal, 16 bytes a vertex for Vertex3d's 64
+static Rc<Mesh3d> makeCompact(const Rc<Mesh3d> &mesh) {
+	Vector<example::Compact3dVertex> vertexes;
+	for (auto &v : mesh->getVertexes()) {
+		vertexes.emplace_back(example::Compact3dVertex{Vec3(v.pos.x, v.pos.y, v.pos.z),
+			Vec3(v.normal.x, v.normal.y, v.normal.z)});
+	}
+	auto indexes = mesh->getIndexes();
+	return Mesh3d::make<example::Compact3dVertex>(vertexes,
+			Vector<uint32_t>(indexes.begin(), indexes.end()));
+}
+
 // A square checker of `size` pixels with squares of `square` pixels, RGBA8
 static Bytes makeChecker(uint32_t size, uint32_t square, Color4B a, Color4B b) {
 	Bytes ret;
@@ -171,10 +184,11 @@ protected:
 				layers);
 
 		// Every mesh of the scene in one pack in GPU memory: the frames draw them from it once it
-		// is loaded, and copy nothing (BASIC3D_NOPACK=1 draws them from the frame's buffers)
+		// is loaded, and copy nothing (BASIC3D_NOPACK=1 draws them from the frame's buffers). The
+		// stripes' box is of their vertex format, the others of Vertex3d: one pack holds both
 		auto plane = Mesh3d::makePlane(40.0f, 160.0f);
 		auto torus = Mesh3d::makeTorus(2.0f, 0.7f, 64, 24);
-		auto box = Mesh3d::makeBox(Vec3(1.5f, 1.5f, 0.75f));
+		auto box = makeCompact(Mesh3d::makeBox(Vec3(1.5f, 1.5f, 0.75f)));
 		auto small = Mesh3d::makeBox(Vec3(1.0f, 1.0f, 0.75f));
 		_pack = Rc<MeshPack3d>::create(cache, Vector<Rc<Mesh3d>>{plane, torus, box, small});
 		_packName = _pack->getName().str<Interface>();
@@ -240,7 +254,8 @@ protected:
 		// view's block it reads; BASIC3D_GLASS_NODATA=1 leaves the material out, and the mesh
 		// pipeline draws the glass instead
 		if (__sprt_getenv("BASIC3D_GLASS")) {
-			auto glass = Mesh3d::makePlane(4.0f);
+			// of the stripes' vertex format, whose vertex shader the glass's pipeline shares
+			auto glass = makeCompact(Mesh3d::makePlane(4.0f));
 			Mat4 move, tilt;
 			Mat4::createTranslation(Vec3(6.0f, 0.5f, 1.25f), &move);
 			Mat4::createRotationX(-asinf(0.5f), &tilt);
@@ -324,17 +339,20 @@ public:
 
 	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 			const core::FrameConstraints &constraints) override {
+		// the stripes read the meshes of their own vertex format
 		auto stripes = Pipeline3dInfo{"Basic3dExampleStripes",
 			SpanView<uint32_t>(reinterpret_cast<const uint32_t *>(basic3d_stripes_vert),
 					sizeof(basic3d_stripes_vert) / sizeof(uint32_t)),
 			SpanView<uint32_t>(reinterpret_cast<const uint32_t *>(basic3d_stripes_frag),
-					sizeof(basic3d_stripes_frag) / sizeof(uint32_t))};
+					sizeof(basic3d_stripes_frag) / sizeof(uint32_t)),
+			false, nullptr, nullptr, &example::Compact3dVertex::Format};
 		// the glass shares the stripes' vertex shader, and reads a material and the view's block of
 		// the example's schema
 		auto glass = Pipeline3dInfo{"Basic3dExampleGlass", stripes.vert,
 			SpanView<uint32_t>(reinterpret_cast<const uint32_t *>(basic3d_glass_frag),
 					sizeof(basic3d_glass_frag) / sizeof(uint32_t)),
-			true, &example::Glass3dMaterial::Schema, &example::Example3dViewBlock::Schema};
+			true, &example::Glass3dMaterial::Schema, &example::Example3dViewBlock::Schema,
+			&example::Compact3dVertex::Format};
 		if (!Scene3d::init(app, window, constraints, Vector<Pipeline3dInfo>{stripes, glass})) {
 			return false;
 		}

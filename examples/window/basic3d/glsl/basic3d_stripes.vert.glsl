@@ -43,6 +43,10 @@ layout (std430, buffer_reference, buffer_reference_align = 16) readonly buffer L
 	LightData3d lights[];
 };
 
+layout (std430, buffer_reference, buffer_reference_align = 16) readonly buffer Compact3dBuffer {
+	Compact3d vertexes[];
+};
+
 // What the stripes' vertex shader hands both fragment shaders
 layout (location = 0) out Stripes3dVaryings {
 	vec3 normal; // in the world
@@ -53,3 +57,26 @@ Vertex3d vertices(uint i) { return Vertex3dBuffer(constants.vertexPointer).verti
 DrawData3d draws(uint i) { return DrawData3dBuffer(constants.drawPointer).draws[i]; }
 ViewData3d view() { return ViewData3dBuffer(constants.viewPointer).view; }
 LightData3d lights(uint i) { return LightData3dBuffer(constants.lightPointer).lights[i]; }
+
+// Compact3d unpacked
+struct Compact3dVertex {
+	vec3 pos;
+	vec3 normal;
+};
+
+// a unit vector from its octahedral form (basic3d::packOct16)
+vec3 xl3dUnpackOct16(uint v) {
+	vec2 e = unpackSnorm2x16(v);
+	vec3 n = vec3(e, 1.0 - abs(e.x) - abs(e.y));
+	float t = max(-n.z, 0.0);
+	n.xy += vec2(n.x >= 0.0 ? -t : t, n.y >= 0.0 ? -t : t);
+	return normalize(n);
+}
+
+Compact3dVertex vertex(uint i) {
+	Compact3d p = Compact3dBuffer(constants.vertexPointer).vertexes[i];
+	Compact3dVertex v;
+	v.pos = p.pos;
+	v.normal = xl3dUnpackOct16(p.normal);
+	return v;
+}

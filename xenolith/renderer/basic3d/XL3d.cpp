@@ -7,6 +7,7 @@
 
 #include "XL3dCamera.cc"
 #include "XL3dMaterial.cc"
+#include "XL3dVertex.cc"
 #include "XL3dMesh.cc"
 #include "XL3dMeshPack.cc"
 #include "XL3dFrameContext.cc"

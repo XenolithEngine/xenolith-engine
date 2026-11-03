@@ -228,24 +228,31 @@ pipeline that names its schema (`Pipeline3dInfo::block`) read it by `block()`.
 
 ### Vertexes by reference
 
-There is **no vertex input state**. The vertex shader reads
-`VertexBuffer(constants.vertexPointer).vertices[gl_VertexIndex]`; `gl_VertexIndex` already includes
-the draw's `vertexOffset`, so a mesh's indexes stay as the mesh has them, from 0, wherever its
-vertexes land in a buffer. The draw's record is `draws[constants.drawIndex]`, the view's is at
-`viewPointer`.
+There is **no vertex input state**. The vertex shader reads `vertices(gl_VertexIndex)` (or, for
+a vertex format of a schema, `vertex(gl_VertexIndex)`) from `constants.vertexPointer`, which the
+pass sets per draw to where the draw's mesh's vertexes start in their buffer - so a mesh's indexes
+stay as the mesh has them, from 0, wherever its vertexes land, and the draw's `vertexOffset` is
+0. The draw's record is `draws[constants.drawIndex]`, the view's is at `viewPointer`.
 
 What this buys:
 
 * **one pipeline layout** — one descriptor set (the texture arrays) and one push constant range —
   for the mesh pipeline and every pipeline of the app; switching pipelines keeps the descriptors
   bound;
-* **one vertex format** for every mesh, with no pipeline per format;
+* **any vertex format** with no vertex input state: a pipeline names the format it reads, and its
+  shaders unpack it;
 * switching vertex buffers is writing a different address into the push constants, and a pack's
   buffer serves the shaders without any rebinding of descriptor sets.
 
-What it costs: a vertex is 64 bytes. Packing the normal and the tangent into octahedral `snorm16`
-and `attr` into halves would make it 32. That is deferred until a measurement shows vertex
-bandwidth matters; with meshes in packs (below) the bytes are uploaded once, not every frame.
+`Vertex3d`, the vertex of the mesh builders and of the mesh pipeline, is 64 bytes. A mesh can be of
+a **vertex format of a schema** instead (`vertex` in the app's schema): its fields may be packed -
+`oct16` for a unit vector, `half2`, `unorm8x4` - and the builder the schema's header writes packs
+them (`Mesh3d::make`). The mesh holds the bytes of its format and the format itself
+(`VertexFormat3d`, compared by address); a pipeline names the format it reads
+(`Pipeline3dInfo::vertex`, Vertex3d by default), and a mesh of another format draws with the mesh
+pipeline if it is of Vertex3d and is not drawn otherwise, with one warning. The frame's vertex
+buffer and a pack's hold meshes of any formats, each from a 16-byte boundary (a range's
+`vertexByteOffset`). The example's stripes are 16 bytes a vertex, a position and an oct16 normal.
 
 The records, the draws and the views, are written by the frame on the worker; the materials'
 `flags`, `params`, `texture2` and `texture3` pass through to them untouched, which is the whole interface of

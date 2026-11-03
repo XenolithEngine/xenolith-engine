@@ -105,9 +105,10 @@ void performMeshTests() {
 	auto indexAt = [&](size_t i) {
 		return reinterpret_cast<const uint32_t *>(layout.indexes.data())[i];
 	};
-	check(r.size() == 3 && r[0].vertexOffset == 0 && r[0].firstIndex == 0
-					&& r[1].vertexOffset == 24 && r[1].firstIndex == 36 && r[2].vertexOffset == 28
-					&& r[2].firstIndex == 42 && r[1].vertexCount == 4 && r[1].indexCount == 6
+	check(r.size() == 3 && r[0].vertexByteOffset == 0 && r[0].firstIndex == 0
+					&& r[1].vertexByteOffset == 24 * sizeof(Vertex3d) && r[1].firstIndex == 36
+					&& r[2].vertexByteOffset == 28 * sizeof(Vertex3d) && r[2].firstIndex == 42
+					&& r[1].vertexCount == 4 && r[1].indexCount == 6
 					&& layout.vertexes.size() == 52 * sizeof(Vertex3d)
 					&& layout.indexes.size() == 78 * sizeof(uint32_t),
 			"mesh: a pack lays its meshes one after another");

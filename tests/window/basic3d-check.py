@@ -246,6 +246,10 @@ def main():
             lambda session: session.call("invoke", name="basic3d.stats", args={}))
     check("with BASIC3D_NOPACK=1 the frame copies every mesh",
             unpacked["frameVertexBytes"] > 50000 and unpacked["packDraws"] == 0, str(unpacked))
+    # the ground's 4 vertexes and the torus's 65 x 25 of Vertex3d, 64 bytes each; the four boxes of
+    # the stripes, 24 vertexes each of their own format, Compact3d, 16 bytes each
+    check("each mesh in the bytes of its vertex format",
+            unpacked["frameVertexBytes"] == (4 + 65 * 25) * 64 + 4 * 24 * 16, str(unpacked))
     # the frame statistics at the bottom left change between runs
     worst = max(max(abs(a - b) for a, b in zip(image.getpixel((x, y)), flat.getpixel((x, y))))
             for x in range(0, WIDTH, 2) for y in range(0, 540, 2))

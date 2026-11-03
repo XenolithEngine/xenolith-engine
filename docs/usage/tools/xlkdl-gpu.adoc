@@ -8,7 +8,8 @@
   pass's interface - extensions, push constants, buffer references, descriptors, varyings, its
   material - so the shader itself is an `#include` and a `main()`;
 * for each **material** and **block**, besides its record, a C++ builder that makes it for a draw
-  (`Material3d::data`) or a view (`View3d::setBlock`).
+  (`Material3d::data`) or a view (`View3d::setBlock`); for each **vertex**, a builder that packs it
+  for a mesh (`Mesh3d::make`).
 
 The schema of basic3d is [basic3d.kdl](../../../xenolith/renderer/basic3d/glsl/basic3d.kdl); the
 basic3d example's, which imports it, is
@@ -166,6 +167,31 @@ struct Terrain3dMaterial {
 the pass compares a draw's material with, by address; `make()` is what a draw carries
 (`Material3d::data`, see [the basic3d guide](../basic3d/overview.adoc)).
 
+## Vertexes
+
+```kdl
+vertex Compact3d position=pos doc="A box's vertex: 16 bytes" {
+    pos vec3
+    normal oct16
+}
+```
+
+A vertex is a record of a mesh's vertexes, its fields of a record's types or packed, a `uint` in
+the record and in GLSL:
+
+| Type | Holds | C++ packs by | GLSL unpacks by |
+|---|---|---|---|
+| `oct16` | a unit `vec3`, octahedral, in two snorm16 | `basic3d::packOct16` | `xl3dUnpackOct16` (in the preamble) |
+| `half2` | a `vec2` in two halves | `basic3d::packHalf2` | `unpackHalf2x16` |
+| `unorm8x4` | a `vec4` from 0 to 1, a byte each, x in the lowest | `basic3d::packUnorm8x4` | `unpackUnorm4x8` |
+
+`position=` names a `vec3` or `vec4` field: the mesh's bounds are taken from it. A vertex has no
+arrays and no textures. The header includes `XL3dVertex.h` and writes a builder, `<Name>Vertex`,
+with the fields unpacked, the `Format` (`VertexFormat3d`: stride, alignment, the position's offset)
+and `pack()`; `Mesh3d::make<Compact3dVertex>(vertexes, indexes)` makes a mesh of them. A vertex
+shader that names it (`vertex=`) gets the GLSL `<Name>Vertex`, unpacked, and `<Name>Vertex
+vertex(uint i)`, through the interface's `vertex pointer=`.
+
 ## Blocks
 
 ```kdl
@@ -202,6 +228,7 @@ interface pass3d doc="The 3d pass: ..." {
 | `depth <name> binding=N index=I` | in a translucent fragment shader, `layout (input_attachment_index = I, set = 0, binding = N) uniform subpassInput <name>` |
 | `material pointer=<field>` | in a shader that names a material, a `buffer_reference` block `<material>Buffer` holding one, and `<material> material()` from the address in the push constants' `uvec2` field |
 | `block pointer=<field>` | in a shader that names a block, `<block>Buffer` and `<block> block()`, likewise |
+| `vertex pointer=<field>` | in a vertex shader that names a vertex, `<vertex>Buffer` of them, the unpacked `<vertex>Vertex` and `vertex(uint i)` |
 
 A vertex shader gets no samplers and no depth, a fragment shader of an opaque pipeline no depth:
 the pipeline's layout is made from what the SPIR-V declares, and a translucent pipeline's alone has
@@ -228,8 +255,8 @@ their order. A varying is a scalar or a vector; an integer one is `flat`, and `f
 float one so.
 
 A shader is named by its file - a name, then `.vert` or `.frag` - and its preamble is that name
-with `.glsl`. `material=` names the material its pipeline reads, `block=` the view's block; its
-interface has to give them. A fragment shader also gets `layout (location = 0) out vec4 outColor;`. The shader
+with `.glsl`. `material=` names the material its pipeline reads, `block=` the view's block, and,
+for a vertex shader, `vertex=` the format of its meshes; its interface has to give them. A fragment shader also gets `layout (location = 0) out vec4 outColor;`. The shader
 includes its preamble after `#version` and the include directive:
 
 ```glsl
@@ -267,4 +294,6 @@ Every one carries its place in the description:
   `<name>.frag`; a translucent vertex shader;
 * a texture field outside a material or a block, or an array of them; a shader's `material=` or
   `block=` that is not one, or whose interface gives none; a material's or a block's pointer that
-  is not a `uvec2` of the push constants.
+  is not a `uvec2` of the push constants;
+* a packed type outside a vertex, an array in a vertex, a `position=` that is missing or no `vec3`
+  or `vec4` field, a `vertex=` on a fragment shader or naming no vertex.

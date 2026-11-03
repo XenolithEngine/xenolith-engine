@@ -18,6 +18,7 @@ static const TestEntry s_testList[] = {
 	{"camera", &stappler::xenolith::basic3d::performCameraTests},
 	{"mesh", &stappler::xenolith::basic3d::performMeshTests},
 	{"material", &stappler::xenolith::basic3d::performMaterialTests},
+	{"vertex", &stappler::xenolith::basic3d::performVertexTests},
 };
 
 int main(int argc, const char *argv[]) {

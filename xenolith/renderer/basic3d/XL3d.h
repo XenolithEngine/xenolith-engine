@@ -9,6 +9,7 @@
 #include "XL2d.h"
 #include "XLTexture.h"
 #include "XL3dMaterial.h"
+#include "XL3dVertex.h"
 #include "glsl/include/XL3dGlslData.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic3d {
@@ -54,7 +55,9 @@ Its draws go in the order the view gives them: far to near, if they overlap on s
 
 A pipeline that reads a material of a schema names it: a draw of it whose Material3d::data is not
 of that schema draws with the mesh pipeline, with one warning. So does one that reads a view's
-block of a schema, in a view whose block (View3d::setBlock) is not of it. */
+block of a schema, in a view whose block (View3d::setBlock) is not of it. A pipeline reads the
+vertexes of one format (`vertex`, Vertex3d by default): a mesh of another draws with the mesh
+pipeline if it is of Vertex3d, and is not drawn otherwise, with one warning. */
 struct SP_PUBLIC Pipeline3dInfo {
 	String name;
 	SpanView<uint32_t> vert;
@@ -62,6 +65,7 @@ struct SP_PUBLIC Pipeline3dInfo {
 	bool translucent = false;
 	const MaterialSchema3d *material = nullptr;
 	const MaterialSchema3d *block = nullptr;
+	const VertexFormat3d *vertex = nullptr; // null for Vertex3d
 };
 
 // What a draw looks like: a colour, optionally times a texture tiled `uvScale` times per unit of
@@ -97,7 +101,7 @@ struct SP_PUBLIC DrawGpu3d {
 	Rc<core::BufferObject> vertexes;
 	Rc<core::BufferObject> indexes;
 	uint32_t firstIndex = 0;
-	int32_t vertexOffset = 0;
+	uint32_t vertexByteOffset = 0;
 };
 
 // A mesh where `transform` puts it, looking like `material`

@@ -163,6 +163,35 @@ void appendBuilder(const Record &r, String &out) {
 			"});\n\t}\n};\n"));
 }
 
+// A vertex's builder for C++: its fields unpacked, its format, and pack(), which makes the record
+// Mesh3d::make lays out.
+void appendVertexBuilder(const Record &r, String &out) {
+	appendDocLines(out, mem_std::toString(r.name, " unpacked, for Mesh3d::make"), "");
+	out.append(mem_std::toString("struct ", r.name, "Vertex {\n"));
+	for (auto &f : r.fields) {
+		if (f.padding) {
+			continue;
+		}
+		auto type = f.type->packed() ? f.type->unpacked : f.type->name;
+		auto zero = type == "float" ? " = 0.0f" : (type == "uint" || type == "int") ? " = 0" : "";
+		out.append(mem_std::toString("\t", type, " ", f.name, zero, ";\n"));
+	}
+	out.append(mem_std::toString("\n\tstatic constexpr xl3d::VertexFormat3d Format{\"", r.name,
+			"\", ", r.size, ", ", r.align, ", ", r.findField(r.position)->offset, "};\n\n"));
+	out.append(mem_std::toString("\t", r.name, " pack() const {\n\t\t", r.name, " d;\n"));
+	for (auto &f : r.fields) {
+		if (f.padding) {
+			out.append(mem_std::toString("\t\td.", f.name, " = 0;\n"));
+		} else if (f.type->packed()) {
+			out.append(mem_std::toString("\t\td.", f.name, " = xl3d::", f.type->pack, "(", f.name,
+					");\n"));
+		} else {
+			out.append(mem_std::toString("\t\td.", f.name, " = ", f.name, ";\n"));
+		}
+	}
+	out.append("\t\treturn d;\n\t}\n};\n");
+}
+
 void appendInclude(Vector<StringView> &seen, StringView header, String &out) {
 	if (header.empty()) {
 		return;
@@ -183,13 +212,21 @@ void emitHeader(const Schema &schema, String &out) {
 	appendBanner(schema, out);
 	out.append(mem_std::toString("#ifndef ", schema.guard, "\n#define ", schema.guard, "\n\n"));
 	auto materials = schema.hasData();
+	auto vertexes = schema.hasVertexes();
 	out.append("#include \"sprt_glsl.h\"\n\n");
-	if (materials) {
-		out.append("#ifndef SP_GLSL\n#include \"XL3dMaterial.h\"\n#endif\n\n");
+	if (materials || vertexes) {
+		out.append("#ifndef SP_GLSL\n");
+		if (materials) {
+			out.append("#include \"XL3dMaterial.h\"\n");
+		}
+		if (vertexes) {
+			out.append("#include \"XL3dVertex.h\"\n");
+		}
+		out.append("#endif\n\n");
 	}
 	out.append(mem_std::toString("#ifndef SP_GLSL\nnamespace STAPPLER_VERSIONIZED ", schema.ns,
 			" {\n\nusing namespace sprt::glsl;\n"));
-	if (materials) {
+	if (materials || vertexes) {
 		out.append("namespace xl3d = STAPPLER_VERSIONIZED_NAMESPACE::xenolith::basic3d;\n");
 	}
 	out.append("\n#endif\n");
@@ -213,11 +250,53 @@ void emitHeader(const Schema &schema, String &out) {
 		if (!r.imported && r.isData()) {
 			appendBuilder(r, out);
 			out.push_back('\n');
+		} else if (!r.imported && r.kind == RecordKind::Vertex) {
+			appendVertexBuilder(r, out);
+			out.push_back('\n');
 		}
 	}
 	appendAsserts(schema, out);
 	out.append(mem_std::toString("\n} // namespace ", schema.ns, "\n#endif\n"));
 	out.append(mem_std::toString("\n#endif /* ", schema.guard, " */\n"));
+}
+
+// A mesh's vertex unpacked, and vertex(i), which reads and unpacks the i-th from the draw's mesh
+void appendVertexReader(const Record &v, const Interface &iface, String &out) {
+	bool oct = false;
+	out.append(mem_std::toString("\n// ", v.name, " unpacked\nstruct ", v.name, "Vertex {\n"));
+	for (auto &f : v.fields) {
+		if (!f.padding) {
+			out.append(mem_std::toString("\t", f.type->packed() ? f.type->unpacked : f.type->name,
+					" ", f.name, ";\n"));
+			oct = oct || f.type->name == "oct16";
+		}
+	}
+	out.append("};\n");
+	if (oct) {
+		out.append("\n// a unit vector from its octahedral form (basic3d::packOct16)\n"
+				   "vec3 xl3dUnpackOct16(uint v) {\n"
+				   "\tvec2 e = unpackSnorm2x16(v);\n"
+				   "\tvec3 n = vec3(e, 1.0 - abs(e.x) - abs(e.y));\n"
+				   "\tfloat t = max(-n.z, 0.0);\n"
+				   "\tn.xy += vec2(n.x >= 0.0 ? -t : t, n.y >= 0.0 ? -t : t);\n"
+				   "\treturn normalize(n);\n"
+				   "}\n");
+	}
+	out.append(mem_std::toString("\n", v.name, "Vertex vertex(uint i) {\n\t", v.name,
+			" p = ", v.name, "Buffer(", iface.pushName, ".", iface.vertexPointer,
+			").vertexes[i];\n\t", v.name, "Vertex v;\n"));
+	for (auto &f : v.fields) {
+		if (f.padding) {
+			continue;
+		}
+		if (f.type->packed()) {
+			out.append(mem_std::toString("\tv.", f.name, " = ", f.type->unpack, "(p.", f.name,
+					");\n"));
+		} else {
+			out.append(mem_std::toString("\tv.", f.name, " = p.", f.name, ";\n"));
+		}
+	}
+	out.append("\treturn v;\n}\n");
 }
 
 // The extensions and the includes; the push constants, the buffers they point to and a function to
@@ -253,7 +332,7 @@ void emitPreamble(const Schema &schema, const Shader &shader, String &out) {
 		appendInclude(seen, iface.push->header, out);
 	}
 	for (auto &b : iface.buffers) { appendInclude(seen, b.record->header, out); }
-	for (auto data : {shader.material, shader.block}) {
+	for (auto data : {shader.material, shader.block, shader.vertex}) {
 		if (data) {
 			appendInclude(seen, data->header, out);
 		}
@@ -288,6 +367,11 @@ void emitPreamble(const Schema &schema, const Shader &shader, String &out) {
 					it.record->align, ") readonly buffer ", it.record->name, "Buffer {\n\t",
 					it.record->name, " ", it.name, ";\n};\n"));
 		}
+	}
+	if (auto v = shader.vertex) {
+		out.append(mem_std::toString(
+				"\nlayout (std430, buffer_reference, buffer_reference_align = ", v->align,
+				") readonly buffer ", v->name, "Buffer {\n\t", v->name, " vertexes[];\n};\n"));
 	}
 
 	if (frag) {
@@ -328,7 +412,7 @@ void emitPreamble(const Schema &schema, const Shader &shader, String &out) {
 		out.append("\nlayout (location = 0) out vec4 outColor;\n");
 	}
 
-	if (!iface.buffers.empty() || shader.material || shader.block) {
+	if (!iface.buffers.empty() || shader.material || shader.block || shader.vertex) {
 		out.push_back('\n');
 	}
 	for (auto &b : iface.buffers) {
@@ -348,6 +432,9 @@ void emitPreamble(const Schema &schema, const Shader &shader, String &out) {
 					it.record->name, "Buffer(", iface.pushName, ".", it.pointer, ").", it.name,
 					"; }\n"));
 		}
+	}
+	if (auto v = shader.vertex) {
+		appendVertexReader(*v, iface, out);
 	}
 }
 

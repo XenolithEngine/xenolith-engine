@@ -12,6 +12,7 @@
 
 #ifndef SP_GLSL
 #include "XL3dMaterial.h"
+#include "XL3dVertex.h"
 #endif
 
 #ifndef SP_GLSL
@@ -34,6 +35,12 @@ struct Glass3d {
 // What the example's view gives the pipelines that read it
 struct Example3dView {
 	float depthRange; // the camera's far - near: a depth difference times it is in world units
+};
+
+// The stripes' meshes: a position and a normal, 16 bytes
+struct Compact3d {
+	vec3 pos;
+	uint normal;
 };
 
 #ifndef SP_GLSL
@@ -68,6 +75,21 @@ struct Example3dViewBlock {
 	}
 };
 
+// Compact3d unpacked, for Mesh3d::make
+struct Compact3dVertex {
+	vec3 pos;
+	vec3 normal;
+
+	static constexpr xl3d::VertexFormat3d Format{"Compact3d", 16, 16, 0};
+
+	Compact3d pack() const {
+		Compact3d d;
+		d.pos = pos;
+		d.normal = xl3d::packOct16(normal);
+		return d;
+	}
+};
+
 // the records as std430 lays them out, which C++ has to agree with
 static_assert(sizeof(Glass3d) == 32);
 static_assert(__builtin_offsetof(Glass3d, color) == 0);
@@ -77,6 +99,9 @@ static_assert(__builtin_offsetof(Glass3d, padding1) == 24);
 static_assert(__builtin_offsetof(Glass3d, padding2) == 28);
 static_assert(sizeof(Example3dView) == 4);
 static_assert(__builtin_offsetof(Example3dView, depthRange) == 0);
+static_assert(sizeof(Compact3d) == 16);
+static_assert(__builtin_offsetof(Compact3d, pos) == 0);
+static_assert(__builtin_offsetof(Compact3d, normal) == 12);
 
 } // namespace stappler::xenolith::basic3d::example
 #endif

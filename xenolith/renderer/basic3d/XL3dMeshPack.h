@@ -12,16 +12,18 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic3d {
 
-// Where a mesh is in a pack: its indexes from `firstIndex`, its vertexes from `vertexOffset`
+// Where a mesh is in a pack: its indexes from `firstIndex`, its vertexes from the byte
+// `vertexByteOffset` of the vertex buffer
 struct SP_PUBLIC MeshPackRange {
 	uint32_t firstIndex = 0;
 	uint32_t indexCount = 0;
-	int32_t vertexOffset = 0;
+	uint32_t vertexByteOffset = 0;
 	uint32_t vertexCount = 0;
 };
 
-// The data of a pack: the meshes' vertexes one after another, their indexes likewise, unchanged -
-// a draw adds its range's vertexOffset
+// The data of a pack: the meshes' vertexes one after another, each from a 16-byte boundary,
+// whatever their format, and their indexes likewise, unchanged - a draw reads its vertexes from
+// its range's vertexByteOffset
 struct SP_PUBLIC MeshPackLayout {
 	Bytes vertexes;
 	Bytes indexes;
@@ -76,8 +78,8 @@ protected:
 // What the last frame of the 3d pass drew, for checks and overlays: the vertex and index bytes
 // it copied into the frame, its draws from the frame's buffers and from packs, the bytes of its
 // records (the materials' and the blocks' among them), how many of the draws were translucent
-// (either kind), and the materials and the views' blocks of a schema it wrote. Written by the pass's
-// worker, read from any thread
+// (either kind), and the materials and the views' blocks of a schema it wrote. Written by the
+// pass's worker, read from any thread
 struct SP_PUBLIC Pass3dStats {
 	uint64_t frameVertexBytes = 0;
 	uint64_t frameIndexBytes = 0;
