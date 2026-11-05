@@ -234,10 +234,9 @@ SP_ATTR_OPTIMIZE_INLINE_FN inline void transformVec4Components_impl(const float 
 			"fmla v13.4s, v11.4s, v0.s[2]           \n\t" // DST->V += M[m8-m11] * V[z]
 			"fmla v13.4s, v12.4s, v0.s[3]           \n\t" // DST->V += M[m12-m15] * V[w]
 
-			//"st1 {v13.4s}, [%0]               \n\t"    // DST->V[x, y] // DST->V[z]
-			"st1 {v13.2s}, [%0], 8               \n\t" "st1 {v13.s}[2], [%0]                \n\t"
-			: "+r"(dst) // the first store advances it
-			: "r"(&x), "r"(&y), "r"(&z), "r"(&w), "r"(m)
+		"st1 {v13.4s}, [%0]                  \n\t" // DST->V[x, y, z, w]
+		:
+		: "r"(dst), "r"(&x), "r"(&y), "r"(&z), "r"(&w), "r"(m)
 			: "v0", "v9", "v10", "v11", "v12", "v13", "memory");
 }
 
