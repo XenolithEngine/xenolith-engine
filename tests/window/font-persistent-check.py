@@ -15,7 +15,10 @@ characters of its own, so each step is an input with new persistent glyphs:
            buffer (XL_FONT_STAGING_COPY=1), as when the buffer is not mapped;
   picture  the last frame is the same in all three runs, pixel for pixel;
   refused  a block no heap can place (XL_FONT_PERSISTENT_BLOCK of 1 TiB): the persistent buffer is
-           refused, the input with it, and the app goes on drawing frames.
+           refused, the input with it, and the app goes on drawing frames; through seconds of
+           frames the refused set is resent a few times, with growing delays, not every frame;
+  recover  the first blocks refused (XL_FONT_PERSISTENT_REFUSE), as by a heap that frees later:
+           a resend after the delay places them and the glyphs reach the atlas.
 
     tests/window/font-persistent-check.py [--steps N] [path-to-testapp]
 
@@ -47,13 +50,14 @@ def check(name, ok, detail=""):
         print(f"  FAIL {name} {detail}")
 
 
-def start_app(binary, sock, log, block, copy=False):
+def start_app(binary, sock, log, block, copy=False, refuse=0):
     env = dict(os.environ)
     env["XENOLITH_INSPECTOR_ADDRESS"] = "unix:" + sock
     env["XL_FONT_PERSISTENT_TEST"] = "1"
     env["XL_HIDE_FPS"] = "1"
     env.pop("XL_FONT_PERSISTENT_BLOCK", None)
     env["XL_FONT_STAGING_COPY"] = "1" if copy else "0"
+    env["XL_FONT_PERSISTENT_REFUSE"] = str(refuse)
     if block:
         env["XL_FONT_PERSISTENT_BLOCK"] = str(block)
     try:
@@ -94,11 +98,11 @@ def settle(s, count, timeout=30.0):
     return False, st
 
 
-def run(binary, tag, block, steps, copy=False, wait=True):
+def run(binary, tag, block, steps, copy=False, wait=True, hold=0.0, refuse=0):
     sock = f"/tmp/xl-font-persistent-{tag}-{os.getpid()}.sock"
     log = f"/tmp/xl-font-persistent-{tag}-{os.getpid()}.log"
-    proc, s = start_app(binary, sock, log, block, copy)
-    ret = {"log": log, "settled": 0, "failed": []}
+    proc, s = start_app(binary, sock, log, block, copy, refuse)
+    ret = {"log": log, "settled": 0, "failed": [], "frames": 0}
     try:
         for k in range(1, steps + 1):
             invoke(s, "font-persistent.show", count=k)
@@ -110,6 +114,12 @@ def run(binary, tag, block, steps, copy=False, wait=True):
                 ret["settled"] += 1
             else:
                 ret["failed"].append((k, st))
+        # Frames with nothing new to lay out: what a refused set costs while it stays refused.
+        deadline = time.monotonic() + hold
+        while time.monotonic() < deadline:
+            s.ok("frame", count=2)
+            ret["frames"] += 2
+            time.sleep(0.02)
         ret["state"] = invoke(s, "font-persistent.state")
         s.ok("frame", count=4)
         time.sleep(0.2)
@@ -117,6 +127,10 @@ def run(binary, tag, block, steps, copy=False, wait=True):
         if wait:
             ret["shot"] = dc.shot_bytes(s)
         ret["alive"] = proc.poll() is None
+    except OSError as e:
+        # The app stopped answering: the checks below judge what its log shows.
+        ret["alive"] = False
+        print(f"       the app stopped answering: {e}")
     finally:
         s.close()
         proc.terminate()
@@ -135,6 +149,9 @@ def run(binary, tag, block, steps, copy=False, wait=True):
             text)]
     ret["errors"] = [l for l in text.splitlines() if "FontAttachmentHandle" in l
             and ("failed" in l or "Not enough" in l or "measured" in l or "exceeds" in l)]
+    ret["refusals"] = text.count("Font persistent allocation failed")
+    ret["delays"] = [int(m.group(1)) for m in re.finditer(r"atlas batch failed \(\d+ in a row\), "
+            r"resent in (\d+) ms", text)]
     return ret
 
 
@@ -190,14 +207,30 @@ def main():
     check("the copied staging buffer draws the same", copied.get("shot") == b)
 
     print("\n-- a persistent block no heap can place")
-    refused = run(binary, "refused", 1 << 40, 4, wait=False)
+    refused = run(binary, "refused", 1 << 40, 4, wait=False, hold=4.0)
     text = open(refused["log"], errors="replace").read()
-    check("the persistent buffer is refused", "Font persistent allocation failed" in text,
-            f"see {refused['log']}")
+    check("the persistent buffer is refused", refused["refusals"] > 0, f"see {refused['log']}")
     check("and the app goes on running frames", refused.get("alive")
             and refused.get("state", {}).get("shown") == 4, str(refused.get("state")))
     check("without a fault", not re.search(r"Segmentation|SIGSEGV|SIGABRT|Assertion", text),
             f"see {refused['log']}")
+    # Four inputs with new glyphs, then resends at 0.25, 0.5, 1, 2, 4 s: a dozen at most, against
+    # one a frame (hundreds) when a refusal is resent on the next update.
+    check("the refused set is not resent every frame", refused["refusals"] <= 12,
+            f"{refused['refusals']} refusals over {refused['frames']} frames")
+    check("each resend waits longer than the one before",
+            len(refused["delays"]) >= 3 and refused["delays"][-1] > refused["delays"][0],
+            str(refused["delays"]))
+    print(f"       {refused['refusals']} refusals over {refused['frames']} frames, delays "
+            f"{refused['delays']} ms")
+
+    print("\n-- the first three blocks refused, then placed")
+    recover = run(binary, "recover", 0, 4, refuse=3)
+    check("every step's glyphs reach the atlas", recover["settled"] == 4,
+            f"{recover['failed'][:3]}, see {recover['log']}")
+    check("the three refusals were resent after a delay", recover["refusals"] == 3
+            and len(recover["delays"]) == 3, f"{recover['refusals']} refusals, delays "
+            f"{recover['delays']}, see {recover['log']}")
 
     print(f"\n{checks} checks, {failures} failures")
     return 1 if failures else 0

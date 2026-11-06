@@ -182,7 +182,7 @@ void RemoteFontServerEndpoint::handleGlyphRequest(BytesView payload) {
 	}
 
 	// A face that can not be drawn still lets the rest of the batch through, but the batch fails:
-	// the client resends it on its next flush.
+	// the client resends it after its retry delay (FontController::flushPendingGlyphs).
 	bool complete = true;
 	Vector<FontUpdateRequest> requests;
 	for (auto &f : faces) {
