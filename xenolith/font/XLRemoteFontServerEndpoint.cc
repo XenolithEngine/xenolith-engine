@@ -332,7 +332,12 @@ void RemoteFontServerEndpoint::invalidate() {
 	}
 
 	_store = nullptr;
-	_library = nullptr;
+	// The library's per-thread face handles hold the library itself: invalidate() breaks that
+	// cycle, as FontComponent::handleStop does for the component's library.
+	if (_library) {
+		_library->invalidate();
+		_library = nullptr;
+	}
 	_component = nullptr;
 	_thread = nullptr;
 }
