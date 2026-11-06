@@ -59,7 +59,14 @@ void QueuePass::setFrameHandleCallback(FrameHandleCallback &&cb) {
 
 void QueuePass::prepare(Device &device) { }
 
-QueuePassHandle::~QueuePassHandle() { }
+QueuePassHandle::~QueuePassHandle() {
+	// A fence never submitted (the pass failed to prepare) holds itself and the loop through its
+	// callbacks until it is scheduled: unarmed, that returns it to the loop's pool.
+	if (_fence && _loop) {
+		auto fence = sp::move(_fence);
+		fence->schedule(*_loop);
+	}
+}
 
 bool QueuePassHandle::init(QueuePass &pass, const FrameQueue &queue) {
 	_queuePass = &pass;
