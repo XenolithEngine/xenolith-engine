@@ -84,6 +84,9 @@ protected:
 	struct Plane {
 		Rc<core::PlaneFrame> frame;
 		Rc<core::ImageView> view;
+		// A frame whose image is not Sampled (a display scans it out as it is) is sampled from a
+		// copy, made by the pass before it draws.
+		Rc<xvk::Image> shadow;
 		URect dst; // clipped to the output
 		UVec2 srcOrigin;
 		float alpha = 1.0f;

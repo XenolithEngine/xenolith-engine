@@ -122,6 +122,7 @@ PresentationOptions VirtualWindow::getPreferredOptions() const {
 	opts.acquireImageWithoutFence = true;
 
 	opts.linearImages = _controller->getSupportInfo().linearPlanes;
+	opts.scanoutImages = opts.linearImages && hasFlag(_info->flags, WindowCreationFlags::Scanout);
 
 	return opts;
 }
