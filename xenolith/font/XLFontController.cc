@@ -768,9 +768,25 @@ void FontController::update(AppThread *app, const UpdateTime &clock, bool) {
 }
 
 void FontController::flushPendingGlyphs(AppThread *app) {
+	if (_uploadSucceeded.exchange(false)) {
+		_retryFailures = 0;
+	}
+
 	if (_uploadFailed.exchange(false)) {
-		// A batch never reached the atlas. Its characters are still required and the flush below
-		// skips a set that has not grown, so drop the submission record to resend everything.
+		// A batch never reached the atlas. Its characters stay required and counted as sent, so
+		// nothing gates on them until the retry; only new characters open a batch before it.
+		_retryFailures = sprt::min(_retryFailures + 1, uint32_t(16));
+		const auto delay = sprt::min(RetryDelayMin << (_retryFailures - 1), RetryDelayMax);
+		_retryAt = _clock.load() + delay;
+		_retryPending = true;
+		log::source().warn("FontController", "atlas batch failed (", _retryFailures,
+				" in a row), resent in ", delay / 1'000, " ms");
+	}
+
+	if (_retryPending && _clock.load() >= _retryAt) {
+		// The flush below skips a set that has not grown, so drop the submission record to resend
+		// everything.
+		_retryPending = false;
 		resetSubmittedGlyphs();
 		_dirty = true;
 	}
@@ -854,6 +870,8 @@ void FontController::flushPendingGlyphs(AppThread *app) {
 					dep->setSignalCallback([self = Rc<FontController>(this), e = dep.get()] {
 						if (!e->isSuccessful()) {
 							self->_uploadFailed.store(true);
+						} else {
+							self->_uploadSucceeded.store(true);
 						}
 						if (self->_uploadsInFlight.fetch_sub(1) == 1) {
 							self->_uploadedGeneration.store(self->_submittedGeneration.load());

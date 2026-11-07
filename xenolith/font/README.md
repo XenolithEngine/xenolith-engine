@@ -142,6 +142,17 @@ client flushes glyphs right before it sends a frame input — and holds the fram
 answered with `AtlasReady {dep, ok}`, which signals the client's event; a batch the server could not
 draw completely answers `ok: 0`, and the client resends it.
 
+### A failed batch
+
+A batch that does not reach the atlas (a staging or persistent buffer the heap refuses, `ok: 0` from
+a server) signals its event as failed, and its frames go on without the glyphs. Its characters stay
+required and counted as sent, so nothing gates on them, and the whole set is resent after a delay
+that doubles with each failure in a row, 250 ms to 4 s; a batch that lands resets it
+(`FontController::flushPendingGlyphs`). A batch with new characters goes at once, as always. Resent
+on the next update instead, a refusal that lasts costs a full rebuild every frame.
+`window/font-persistent-check.py` holds a refused set through seconds of frames and refuses the
+first blocks only (`XL_FONT_PERSISTENT_REFUSE=N`) to see a resend place them.
+
 ---
 
 ## Texture → Material binding

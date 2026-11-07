@@ -163,6 +163,13 @@ bool Device::acquireQueue(QueueFlags ops, FrameHandle &handle,
 	if (!family->queues.empty()) {
 		queue = move(family->queues.back());
 		family->queues.pop_back();
+	} else if (!handle.getLoop()->isRunning()) {
+		// A stopped loop runs no release that would serve a waiter (invalidateQueueWaiters).
+		lock.unlock();
+		if (invalidate) {
+			invalidate(handle);
+		}
+		return true;
 	} else {
 		// XL_VKDEVICE_LOG("acquireQueue-wait ", family->index, " (", family->count, ") ", getQueueFlagsDesc(family->flags));
 		family->waiters.emplace_back(DeviceQueueFamily::Waiter(sp::move(acquire),
@@ -204,6 +211,24 @@ bool Device::acquireQueue(QueueFlags ops, Loop &loop,
 		acquire(loop, queue);
 	}
 	return true;
+}
+
+void Device::invalidateQueueWaiters() {
+	Vector<DeviceQueueFamily::Waiter> waiters;
+	{
+		sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
+		for (auto &family : _families) {
+			for (auto &it : family.waiters) { waiters.emplace_back(sp::move(it)); }
+			family.waiters.clear();
+		}
+	}
+	for (auto &it : waiters) {
+		if (it.handle && it.releaseForFrame) {
+			it.releaseForFrame(*it.handle);
+		} else if (it.loop && it.releaseForLoop) {
+			it.releaseForLoop(*it.loop);
+		}
+	}
 }
 
 void Device::releaseQueue(Rc<DeviceQueue> &&queue) {

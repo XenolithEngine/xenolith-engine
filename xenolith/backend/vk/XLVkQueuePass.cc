@@ -351,6 +351,12 @@ void QueuePassHandle::submit(FrameQueue &q, Rc<FrameSync> &&sync, Function<void(
 	},
 			[this](FrameHandle &frame) {
 		_sync = nullptr;
+		// The fence already holds this pass (its callbacks) and the command pool: released
+		// unarmed, it returns the pools and completes the pass as failed.
+		_pool = nullptr;
+		if (auto fence = sp::move(_fence)) {
+			fence->schedule(*_loop);
+		}
 		invalidate();
 	}, this);
 }

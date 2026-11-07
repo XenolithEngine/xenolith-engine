@@ -508,10 +508,18 @@ bool FontAttachmentHandle::placeGlyphs(FrameHandle &handle, bool underlinePersis
 							> _persistentTargetBuffer->getSize())) {
 		auto blockSize =
 				sprt::max(persistentSize, getPersistentBlockSize(memPool->getAllocator()));
-		auto block = _userdata->mempool->spawn(AllocationUsage::DeviceLocal,
-				core::BufferInfo(core::ForceBufferUsage(
-										 core::BufferUsage::TransferSrc | core::BufferUsage::TransferDst),
-						size_t(blockSize)));
+		// XL_FONT_PERSISTENT_REFUSE=N refuses the first N blocks, as a full heap would.
+		static sprt::atomic<int64_t> s_refuse = [] {
+			auto v = ::getenv("XL_FONT_PERSISTENT_REFUSE");
+			return v ? int64_t(::strtoll(v, nullptr, 10)) : int64_t(0);
+		}();
+		Rc<Buffer> block;
+		if (s_refuse.load() <= 0 || s_refuse.fetch_sub(1) <= 0) {
+			block = _userdata->mempool->spawn(AllocationUsage::DeviceLocal,
+					core::BufferInfo(core::ForceBufferUsage(core::BufferUsage::TransferSrc
+											 | core::BufferUsage::TransferDst),
+							size_t(blockSize)));
+		}
 		if (!block) {
 			log::source().error("FontAttachmentHandle", "Font persistent allocation failed: ",
 					blockSize, " bytes");

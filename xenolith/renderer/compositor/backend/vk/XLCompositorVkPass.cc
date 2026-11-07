@@ -118,6 +118,9 @@ bool CompositorPassHandle::prepare(core::FrameQueue &q, Function<void(bool)> &&c
 		it.frame->lock(core::PlaneFrameAccess::Shared, loop,
 				[this, handle = Rc<CompositorPassHandle>(this), queue = Rc<core::FrameQueue>(&q)](
 						Rc<core::PlaneFrameLock> &&lock) {
+			if (_finalized) {
+				return;
+			}
 			_locks.emplace_back(sp::move(lock));
 			if (--_pendingLocks == 0 && _lockDeferred) {
 				if (prepareLocked(*queue)) {
@@ -306,6 +309,13 @@ Vector<const core::CommandBuffer *> CompositorPassHandle::doPrepareCommands(
 	}
 
 	return Vector<const core::CommandBuffer *>{buf};
+}
+
+void CompositorPassHandle::finalize(core::FrameQueue &q, bool successful) {
+	_finalized = true;
+	_locks.clear();
+	_onLocked = nullptr;
+	xvk::QueuePassHandle::finalize(q, successful);
 }
 
 void CompositorPassHandle::doComplete(core::FrameQueue &q, Function<void(bool)> &&func,

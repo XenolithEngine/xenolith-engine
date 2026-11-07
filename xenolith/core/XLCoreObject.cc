@@ -430,7 +430,9 @@ bool Fence::schedule(Loop &loop) {
 	if (_state != Armed) {
 		lock.unlock();
 		if (_releaseFn) {
-			loop.performOnThread([this, loop = &loop] {
+			// Through the looper: a stopped loop drops its own tasks, and an unreleased fence keeps
+			// itself and the loop through _releaseFn.
+			loop.getLooper()->performOnThread([this, loop = &loop] {
 				doRelease(loop, false);
 
 				if (_releaseFn) {
