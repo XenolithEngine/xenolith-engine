@@ -37,9 +37,14 @@ static inline sprt::uint64_t rdtsc() {
 static inline sprt::uint64_t rdtsc() { return __rdtsc(); }
 #elif __aarch64__
 #define SP_HAS_RDTSC 1
+// A value whose low nine bits are all ones or all zeros is read again: on the Allwinner A64 they
+// are indeterminate while bit 10 or above rolls over (Linux sun50i_a64_read_cntvct_el0).
 static inline sprt::uint64_t rdtsc() {
 	sprt::uint64_t cntvct;
-	asm volatile("mrs %0, cntvct_el0; " : "=r"(cntvct)::"memory");
+	int tries = 150;
+	do {
+		asm volatile("mrs %0, cntvct_el0; " : "=r"(cntvct)::"memory");
+	} while (((cntvct + 1) & 0x1ff) <= 1 && --tries);
 	return cntvct;
 }
 #else
