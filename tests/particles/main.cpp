@@ -117,6 +117,9 @@ struct Emitter {
 		data.dt = data.frameInterval / 1'000'000.0f;
 		data.lifetime.init = lifetime;
 		data.scale.init = 1.0f;
+		// The zeroed words would seat a phantom second axis of 0..0; the unseated state is the
+		// second axis's words equal to the first's, as ParticleSystem::init leaves them
+		data.scaleY = data.scale;
 		::memset(particles, 0, sizeof(particles));
 		reset(0, count);
 	}
@@ -695,6 +698,7 @@ static void testKinematics() {
 		e.data.sizeValue = (size / 2.0f).length();
 		e.data.sizeNormal = size.getNormalized();
 		e.data.scale.init = 2.0f;
+		e.data.scaleY = e.data.scale; // the pair moves together, no axis of its own
 		e.run(0);
 
 		glsl::vec2 bl, tl, tr, br;
@@ -718,8 +722,108 @@ static void testKinematics() {
 	}
 }
 
-static void testSceneSpace() {
-	auto setup = [](Single &e) {
+// Writes a curve at a word offset: header, then the values; returns the byte offset
+static uint32_t writeCurve(uint32_t word, uint32_t components,
+		std::initializer_list<float> values) {
+	s_extra[word] = uint32_t(values.size() / components);
+	s_extra[word + 1] = components;
+	uint32_t i = 0;
+	for (auto v : values) { ::memcpy(&s_extra[word + 2 + i++], &v, sizeof(float)); }
+	return word * 4;
+}
+
+// The per-axis birth scale: the second axis's own range draws its own number only when seated,
+// the words' equality guarding the generator, and the curve's components name the axes - one
+// multiplies both, two each its own
+static void testScaleAxes() {
+	{
+		// The unseated pair: the second axis takes the X draw's own value and the stream the
+		// single-axis birth always spent. A test that moves `scale` after the ctor moves the
+		// pair with it - the harness has no setter, and words left behind would seat a phantom
+		Single plain;
+		plain.data.scale.init = 2.0f;
+		plain.data.scale.rnd = 1.0f;
+		plain.data.scaleY = plain.data.scale;
+		plain.run(0);
+
+		Single paired;
+		paired.data.scale.init = 2.0f;
+		paired.data.scale.rnd = 1.0f;
+		paired.data.scaleY = paired.data.scale; // equal words, still the unseated state
+		paired.run(0);
+
+		checkNear(paired.p().scaleY, paired.p().scale,
+				"scale axes: the unseated second axis takes the X draw's value");
+		check(paired.p().rng.state == plain.p().rng.state
+						&& paired.p().rng.inc == plain.p().rng.inc,
+				"scale axes: equal words spend no generator draw");
+	}
+
+	{
+		// The seated range draws its own number right after the X draw, so every later draw
+		// shifts - the stream contract a seated second axis buys
+		Single seated;
+		seated.data.scale.init = 2.0f;
+		seated.data.scale.rnd = 1.0f;
+		seated.data.scaleY.init = 3.0f;
+		seated.data.scaleY.rnd = 0.5f;
+		seated.run(0);
+
+		check(seated.p().scale >= 2.0f && seated.p().scale < 3.0f,
+				"scale axes: the X draw keeps its own range");
+		check(seated.p().scaleY >= 3.0f && seated.p().scaleY < 3.5f,
+				"scale axes: the seated second axis draws from its own range");
+
+		Single plain;
+		plain.data.scale.init = 2.0f;
+		plain.data.scale.rnd = 1.0f;
+		plain.data.scaleY = plain.data.scale;
+		plain.run(0);
+		check(seated.p().rng.state != plain.p().rng.state,
+				"scale axes: the seated draw shifts the stream");
+	}
+
+	{
+		// A 20x10 quad, as ParticleSystemData::writeParticleSize stores it: each axis's
+		// multiplier grows its own half-length
+		Single e;
+		auto size = glsl::vec2(20.0f, 10.0f);
+		e.data.sizeValue = (size / 2.0f).length();
+		e.data.sizeNormal = size.getNormalized();
+		e.data.scale.init = 2.0f;
+		e.data.scaleY.init = 3.0f;
+		e.data.scaleY.rnd = 0.0f;
+		e.run(0);
+
+		glsl::vec2 bl, tl, tr, br;
+		glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+		checkNear(bl.x, -20.0f, "scale axes: the X multiplier doubles the width");
+		checkNear(bl.y, -15.0f, "scale axes: the Y multiplier triples the height");
+		checkNear(tr.x, 20.0f, "scale axes: the corner pair agrees (x)");
+		checkNear(tr.y, 15.0f, "scale axes: the corner pair agrees (y)");
+	}
+
+	{
+		// The curve's components: one multiplies both axes, two each its own
+		::memset(s_extra, 0, sizeof(s_extra));
+
+		Single one;
+		one.data.scaleCurveOffset = writeCurve(2, 1, {0.5f});
+		one.run(0);
+		checkNear(one.p().scale, 0.5f, "scale axes: a one-component curve multiplies X");
+		checkNear(one.p().scaleY, 0.5f, "scale axes: a one-component curve multiplies Y alike");
+
+		Single two;
+		two.data.scaleCurveOffset = writeCurve(2, 2, {0.5f, 2.0f});
+		two.run(0);
+		checkNear(two.p().scale, 0.5f, "scale axes: the first component is X's own");
+		checkNear(two.p().scaleY, 2.0f, "scale axes: the second component is Y's own");
+
+		::memset(s_extra, 0, sizeof(s_extra));
+	}
+}
+
+static void testSceneSpace() {	auto setup = [](Single &e) {
 		e.data.velocity.init = 100.0f;
 		e.data.origin = glsl::vec2(1.0f, 0.0f);
 		e.data.angle.init = 0.3f;
@@ -756,16 +860,6 @@ static void testSceneSpace() {
 	checkNear(local.p().velocity.x, 100.0f, "LocalCoords: velocity is untouched");
 	checkNear(local.p().angle, 0.3f, "LocalCoords: angle is untouched");
 	checkNear(local.p().scale, 1.0f, "LocalCoords: scale is untouched");
-}
-
-// Writes a curve at a word offset: header, then the values; returns the byte offset
-static uint32_t writeCurve(uint32_t word, uint32_t components,
-		std::initializer_list<float> values) {
-	s_extra[word] = uint32_t(values.size() / components);
-	s_extra[word + 1] = components;
-	uint32_t i = 0;
-	for (auto v : values) { ::memcpy(&s_extra[word + 2 + i++], &v, sizeof(float)); }
-	return word * 4;
 }
 
 static void testCurves() {
@@ -949,6 +1043,7 @@ int main(int argc, const char *argv[]) {
 	testSeedRng();
 	testRandom();
 	testKinematics();
+	testScaleAxes();
 	testSceneSpace();
 	testCurves();
 	testHue();

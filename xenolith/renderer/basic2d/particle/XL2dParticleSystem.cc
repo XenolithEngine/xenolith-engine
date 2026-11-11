@@ -137,6 +137,9 @@ bool ParticleSystem::init() {
 	d.dt = d.frameInterval / 1'000'000.0f;
 	d.lifetime.init = 1.0f;
 	d.scale.init = 1.0f;
+	// The fresh system's second axis is no axis of its own: the words equal to the first's are
+	// the unseated state every later edit of the pair keeps until `scaleY` stands apart
+	d.scaleY = d.scale;
 	d.color = Vec4(1.0f, 1.0f, 1.0f, 1.0f);
 	d.normal.init = -float(M_PI_4);
 	d.normal.rnd = float(M_PI_2);
@@ -353,6 +356,10 @@ void ParticleSystem::apply(const Value &value) {
 			[&](float v, float r) { setLifetime(v, r); });
 	ParticleSystem_readRange(value, "scale", getScaleMin(), getScaleMax(),
 			[&](float v, float r) { setScale(v, r); });
+	// The second axis's own key: absent, the setter is never called and the words stay equal to
+	// the first axis's - the unseated state the birth and encode() keep
+	ParticleSystem_readRange(value, "scaleY", getScaleYMin(), getScaleYMax(),
+			[&](float v, float r) { setScaleY(v, r); });
 	ParticleSystem_readRange(value, "angle", getAngleMin(), getAngleMax(),
 			[&](float v, float r) { setAngle(v, r); });
 	ParticleSystem_readRange(value, "velocity", getVelocityMin(), getVelocityMax(),
@@ -590,6 +597,13 @@ Value ParticleSystem::encode() const {
 	ret.setValue(ParticleSystem_writeRange(getNormalMin(), getNormalMax()), "normal");
 	ret.setValue(ParticleSystem_writeRange(getLifetimeMin(), getLifetimeMax()), "lifetime");
 	ret.setValue(ParticleSystem_writeRange(getScaleMin(), getScaleMax()), "scale");
+	// The second axis's own range, only when its words stand apart from the first axis's - a
+	// range equal to `scale` is the unseated state the birth keeps, and the key stays out so an
+	// old file saves byte for byte
+	if (_data->data.scaleY.init != _data->data.scale.init
+			|| _data->data.scaleY.rnd != _data->data.scale.rnd) {
+		ret.setValue(ParticleSystem_writeRange(getScaleYMin(), getScaleYMax()), "scaleY");
+	}
 	ret.setValue(ParticleSystem_writeRange(getAngleMin(), getAngleMax()), "angle");
 	ret.setValue(ParticleSystem_writeRange(getVelocityMin(), getVelocityMax()), "velocity");
 	ret.setValue(ParticleSystem_writeRange(getLinearVelocityMin(), getLinearVelocityMax()),
@@ -918,9 +932,29 @@ Color4F ParticleSystem::getColor() const {
 		return _data->data.field.init + _data->data.field.rnd; \
 	}
 
+// The first axis's range carries the pair's tracking: an unseated second axis (its words equal
+// to the first's) follows every scale edit, so a document that never named `scaleY` keeps its
+// two axes one, while a seated one stands where its own key put it
+void ParticleSystem::setScale(float value, float rnd) {
+	auto &d = mutate();
+	const bool tracking = d.data.scaleY.init == d.data.scale.init
+			&& d.data.scaleY.rnd == d.data.scale.rnd;
+	d.data.scale.init = value;
+	d.data.scale.rnd = rnd;
+	if (tracking) {
+		d.data.scaleY = d.data.scale;
+	}
+}
+
+float ParticleSystem::getScaleMin() const { return _data->data.scale.init; }
+
+float ParticleSystem::getScaleMax() const {
+	return _data->data.scale.init + _data->data.scale.rnd;
+}
+
 XL_PARTICLE_FLOAT_PARAM(Normal, normal)
 XL_PARTICLE_FLOAT_PARAM(Lifetime, lifetime)
-XL_PARTICLE_FLOAT_PARAM(Scale, scale)
+XL_PARTICLE_FLOAT_PARAM(ScaleY, scaleY)
 XL_PARTICLE_FLOAT_PARAM(Angle, angle)
 XL_PARTICLE_FLOAT_PARAM(Velocity, velocity)
 XL_PARTICLE_VEC2_PARAM(LinearVelocity, linearVelocity)
@@ -963,8 +997,11 @@ bool ParticleSystem::setAnimFrameCurve(CurveBuffer *curve) {
 CurveBuffer *ParticleSystem::getAnimFrameCurve() const { return _data->animFrameCurve; }
 
 bool ParticleSystem::setScaleCurve(CurveBuffer *curve) {
-	if (curve && curve->getType() != CurveBufferType::Float) {
-		log::source().error("ParticleSystem", "Scale curve must be of Float type");
+	// The Float curve is both axes with the one component; the Vec2 one is Effekseer's scale by
+	// axis, each axis its own component - anything wider has no axis to ride
+	if (curve && curve->getType() != CurveBufferType::Float
+			&& curve->getType() != CurveBufferType::Vec2) {
+		log::source().error("ParticleSystem", "Scale curve must be of Float or Vec2 type");
 		return false;
 	}
 

@@ -326,6 +326,15 @@ public:
 	float getScaleMin() const;
 	float getScaleMax() const;
 
+	// The second axis's own birth range, Effekseer's scale by axis. The range seats itself by
+	// standing apart from the first axis's words: an unseated second axis (the words equal to
+	// `scale`'s) follows every scale edit, while a seated one stands where its own key put it.
+	// A seated range equal to the first axis's is the absence again - the birth draws no second
+	// number and encode() writes no key
+	void setScaleY(float scale, float rnd = 0.0f);
+	float getScaleYMin() const;
+	float getScaleYMax() const;
+
 	void setAngle(float angle, float rnd = 0.0f);
 	float getAngleMin() const;
 	float getAngleMax() const;
@@ -390,8 +399,9 @@ public:
 	bool setAnimFrameCurve(CurveBuffer *);
 	CurveBuffer *getAnimFrameCurve() const;
 
-	// Float curve over the particle's lifetime, multiplies the scale chosen at birth; null
-	// removes it. Two stops carry what Particle Designer calls start and end size
+	// Curve over the particle's lifetime, multiplies the scale chosen at birth; null removes
+	// it. A Float curve multiplies both axes with the one component, a Vec2 one multiplies each
+	// axis with its own. Two stops carry what Particle Designer calls start and end size
 	bool setScaleCurve(CurveBuffer *);
 	CurveBuffer *getScaleCurve() const;
 

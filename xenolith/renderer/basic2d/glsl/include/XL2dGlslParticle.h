@@ -303,7 +303,13 @@ struct ParticleEmitterData {
 	// seconds the birth schedule waits before the emitter's own timeline begins, 0 - no wait
 	float start;
 
-	// [480]
+	// [480-487]
+	// the second axis's own birth range, Effekseer's scale by axis; words equal to `scale` are
+	// the absence this model keeps - the second axis takes the first's draw, the generator
+	// stands unread, and the file writes no key
+	ParticleFloatParam scaleY;
+
+	// [488]
 };
 
 // State of one particle. Parameters are chosen at birth; positions are in the node's space with
@@ -323,7 +329,7 @@ struct ParticleData {
 	// [48-63]
 	float angle; // quad rotation, radians
 	float angularVelocity; // radians per second
-	float scale; // quad size multiplier
+	float scale; // quad size multiplier, the X axis's own; the pair's Y is scaleY
 	float hue;
 
 	// [64-79]
@@ -339,17 +345,26 @@ struct ParticleData {
 
 	// [96-111]
 	float tangentialAcceleration; // perpendicular to the direction from origin, dp per second^2
-	float birthScale; // the scale chosen at birth; the scale curve multiplies it
+	// the X scale chosen at birth; the scale curve multiplies it, the pair's Y is birthScaleY
+	float birthScale;
 	float damping; // the rate the speed loses per second, chosen at birth; 0 - no loss
 	// the draw words the birth drew, XL_PARTICLE_DRAW_FLAG_* bits; the step reads none of them
 	uint drawFlags;
 
-	// [112-175]
+	// [112-119]
+	// the second axis's pair since the per-axis scale: the multiplier its birth chose and the
+	// drawn one the curve left standing. A birth the emitter seated no own second axis for
+	// takes the X draw's own value in both, so the quad - and the hash - answer what they
+	// always had
+	float birthScaleY;
+	float scaleY;
+
+	// [120-183]
 	// the trail's seats, the newest first: seat 0 is the position of the step before the current
 	// one, the last seat the oldest of the eight
 	vec2 trail[XL_PARTICLE_TRAIL_SEATS];
 
-	// [176]
+	// [184]
 };
 
 #ifndef SP_GLSL

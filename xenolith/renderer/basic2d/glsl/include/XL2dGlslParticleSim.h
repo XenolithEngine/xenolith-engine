@@ -214,6 +214,19 @@ SP_GLSL_INLINE void particleEmit(SP_GLSL_INOUT(ParticleData) particle,
 	particle.angle = particleParam(emitter.angle, particle.rng);
 	particle.angularVelocity = particleParam(emitter.angularVelocity, particle.rng);
 	particle.scale = particleParam(emitter.scale, particle.rng);
+
+	// The second axis's own range, Effekseer's scale by axis: words standing apart from the
+	// first axis's are a seated range and draw their own number - the draw sits right after the
+	// X draw, the pair one seam in the stream - while equal words are the absence this model
+	// keeps: the generator stands unread, the second axis takes the X draw's own value, and the
+	// file writes no key. The rng order is part of the hash contract, so the words' equality
+	// guards the draw: an emitter without its own second axis keeps the births - and the hash -
+	// it always had
+	particle.scaleY = particle.scale;
+	if (emitter.scaleY.init != emitter.scale.init || emitter.scaleY.rnd != emitter.scale.rnd) {
+		particle.scaleY = particleParam(emitter.scaleY, particle.rng);
+	}
+
 	particle.hue = particleParam(emitter.hue, particle.rng);
 
 	particle.orbitalVelocity = particleParam(emitter.orbitalVelocity, particle.rng);
@@ -251,6 +264,7 @@ SP_GLSL_INLINE void particleEmit(SP_GLSL_INOUT(ParticleData) particle,
 		particle.velocity = particleTransformVector(frame, particle.velocity);
 		particle.angle = particle.angle + frame.transformRotation;
 		particle.scale = particle.scale * frame.transformScale;
+		particle.scaleY = particle.scaleY * frame.transformScale;
 	}
 
 	// Godot's inherit_velocity_ratio - "Percentage of the velocity of the respective GPUParticles2D
@@ -523,7 +537,9 @@ SP_GLSL_INLINE void particleStep(SP_GLSL_INOUT(ParticleData) particle,
 	particle.angle = particle.angle + particle.angularVelocity * dt;
 }
 
-// Corners of the particle's quad. With XL_PARTICLE_FLAG_ALIGN_WITH_VELOCITY the quad's Y axis
+// Corners of the particle's quad. The birth scale is a pair: each axis's multiplier grows its
+// own half-length, the emitter's sizeNormal carrying the base quad's own width-to-height share
+// the pair multiplies. With XL_PARTICLE_FLAG_ALIGN_WITH_VELOCITY the quad's Y axis
 // follows a non-zero velocity instead of the angle, and the emitter's stretch grows that axis's
 // half-length by speed * stretch - Unity 6's Velocity Scale, "Specifies how much particles
 // stretch depending on their velocity", on a mode whose particles "still align to the velocity"
@@ -532,7 +548,8 @@ SP_GLSL_INLINE void particleStep(SP_GLSL_INOUT(ParticleData) particle,
 SP_GLSL_INLINE void particleQuad(SP_GLSL_IN(ParticleData) particle,
 		SP_GLSL_IN(ParticleEmitterData) emitter, SP_GLSL_OUT(vec2) bl, SP_GLSL_OUT(vec2) tl,
 		SP_GLSL_OUT(vec2) tr, SP_GLSL_OUT(vec2) br) {
-	vec2 halfSize = emitter.sizeNormal * (emitter.sizeValue * particle.scale);
+	vec2 halfSize = emitter.sizeNormal
+			* (emitter.sizeValue * vec2(particle.scale, particle.scaleY));
 
 	float c = cos(particle.angle);
 	float s = sin(particle.angle);
@@ -650,13 +667,17 @@ SP_GLSL_INLINE void particleFrameCell(SP_GLSL_IN(ParticleFrameData) frame, uint 
 }
 
 // Godot's scale_curve: the curve multiplies the scale chosen at birth, sampled at the lifetime
-// fraction. No curve - the birth scale stands untouched, the state the step kept before the
-// curve existed.
+// fraction. The curve's own components name the axes: one component repeats itself into both
+// (particleSampleCurve's own repeat of the last), a two-component curve multiplies each axis
+// with its own - Effekseer's scale by axis. No curve - the birth scale stands untouched, the
+// state the step kept before the curve existed.
 SP_GLSL_INLINE void particleApplyScaleCurve(SP_GLSL_INOUT(ParticleData) particle,
 		SP_GLSL_IN(ParticleEmitterData) emitter) {
 	if (emitter.scaleCurveOffset != 0u) {
-		particle.scale = particle.birthScale
-				* particleSampleCurve(emitter.scaleCurveOffset, particleLifeFraction(particle)).x;
+		vec4 curve = particleSampleCurve(emitter.scaleCurveOffset,
+				particleLifeFraction(particle));
+		particle.scale = particle.birthScale * curve.x;
+		particle.scaleY = particle.birthScaleY * curve.y;
 	}
 }
 
@@ -717,6 +738,7 @@ SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
 			}
 			particleEmit(particle, emitter, frame, point);
 			particle.birthScale = particle.scale;
+			particle.birthScaleY = particle.scaleY;
 			particleApplyScaleCurve(particle, emitter);
 			counters.births += 1u;
 		} else if (particle.currentLifetime > 0u) {
