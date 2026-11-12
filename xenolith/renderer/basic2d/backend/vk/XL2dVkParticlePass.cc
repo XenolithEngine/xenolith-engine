@@ -689,7 +689,7 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 	pcb.frameDataPointer = UVec2::convertFromPacked(buf.bindBufferAddress(frameData));
 	pcb.outVerticesPointer =
 			UVec2::convertFromPacked(buf.bindBufferAddress(aHandle->getVertices()));
-	pcb.padding12 = 0;
+	pcb.stripPass = 0;
 
 	uint32_t emitterIndex = 0;
 	for (auto &e : emitters) {
@@ -700,6 +700,36 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 		buf.cmdDispatchPipeline(*pipelineIt, e.systemData->data.count);
 
 		++emitterIndex;
+	}
+
+	// The strip's own dispatch, the same program and the same vertex list: the segment a
+	// particle owns reads the next particle's standing state, and one dispatch's invocations
+	// cannot order their writes for one another, so a barrier between the two dispatches seats
+	// what the update wrote before the strip reads it. Only an emitter whose words seat a
+	// strip takes the second dispatch - an emitter without the key pays nothing, and its
+	// quads stand as the update drew them
+	bool anyStrip = false;
+	for (auto &e : emitters) {
+		anyStrip = anyStrip || e.systemData->data.stripWidth > 0.0f;
+	}
+	if (anyStrip) {
+		buf.cmdGlobalBarrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+				VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+				VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT);
+
+		pcb.stripPass = 1;
+		emitterIndex = 0;
+		for (auto &e : emitters) {
+			if (e.systemData->data.stripWidth > 0.0f) {
+				pcb.emitterIndex = emitterIndex;
+
+				buf.cmdPushConstants(VK_SHADER_STAGE_COMPUTE_BIT, 0,
+						BytesView((const uint8_t *)&pcb, sizeof(ParticleConstantData)));
+				buf.cmdDispatchPipeline(*pipelineIt, e.systemData->data.count);
+			}
+			++emitterIndex;
+		}
 	}
 
 	recordFeedback(queue, buf, memPool, emitters, feedbackRecords);

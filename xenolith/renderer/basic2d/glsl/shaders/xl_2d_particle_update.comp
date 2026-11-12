@@ -88,12 +88,97 @@ void writeVertex(VerticesBuffer target, uint index, vec2 pos, vec2 tex, vec4 col
 	target.vertices[index].object = 0;
 }
 
+void writeDegenerate(VerticesBuffer target, uint at, uint seats, uint material) {
+	for (uint i = 0u; i < seats; ++i) {
+		writeVertex(target, at + i, vec2(0.0, 0.0), vec2(0.0, 0.0), vec4(0.0, 0.0, 0.0, 0.0), material);
+	}
+}
+
+// The strip's own draw, Effekseer's ribbon taken in the screen plane: the emitter's particles
+// joined in their birth order, each particle owning the segment to the next born in the one
+// vertex list the pass always filled. The order is the cyclic slot walk broken at the frame's
+// newest word - within a cycle the births run by index and the wrap between the last slot and
+// the first is the seam of the two adjacent cycles, so the walk newest+1, ..., count-1, 0,
+// ..., newest is the birth order, and the break between the youngest and the oldest leaves
+// the strip open where a closed walk would fold it into a loop. The walk's word is the
+// nominal newest the ordered draw rotates by, the same word the pass computes for the seats;
+// randomness shifts a birth by less than one slot and the walk takes the slot order for the
+// tie. A dead end cuts its segment: the seats a segment never fills draw the same degenerate
+// quad a dead particle draws, and the strip runs on through the alive seats beyond it
+void stripDraw(uint index, ParticleFrameData frame) {
+	VerticesBuffer vertexBuffer = VerticesBuffer(pcb.outVerticesPointer);
+
+	uint slot = index;
+	if ((emitter.flags & XL_PARTICLE_FLAG_ORDER_BY_LIFETIME) != 0u) {
+		slot = (index + emitter.count - frame.newest - 1u) % emitter.count;
+	}
+	const uint seats = particleVertexSeats(emitter);
+	const uint vertexOffset = frame.vertexOffset + slot * seats;
+
+	ParticleData particle = particleBuffers[frame.particleBufferIndex].particles[index];
+	const uint next = (index + 1u == emitter.count) ? 0u : index + 1u;
+	if (index == frame.newest || particle.currentLifetime == 0u) {
+		writeDegenerate(vertexBuffer, vertexOffset, seats, frame.materialIndex);
+		return;
+	}
+	ParticleData nextParticle = particleBuffers[frame.particleBufferIndex].particles[next];
+	if (nextParticle.currentLifetime == 0u) {
+		writeDegenerate(vertexBuffer, vertexOffset, seats, frame.materialIndex);
+		return;
+	}
+
+	vec2 bl;
+	vec2 tl;
+	vec2 tr;
+	vec2 br;
+	particleStripSegment(particle, nextParticle, emitter, bl, tl, tr, br);
+
+	// Each end carries its own tint, the color curve's journey reading along the strip, while
+	// the window is the owner's own: u along the segment, v across the band, the quad's own
+	// corner order and the quad's own scroll, flip and animation frame
+	vec4 tintA = particleColor(particle, emitter);
+	vec4 tintB = particleColor(nextParticle, emitter);
+	const vec4 colorA = tintA * frame.nodeColor;
+	const vec4 colorB = tintB * frame.nodeColor;
+
+	vec2 uv0;
+	vec2 uv1;
+	particleFrameCell(frame, particleAnimFrame(particle, emitter, frame.hFrames * frame.vFrames), uv0, uv1);
+	if (emitter.uvScroll.x != 0.0f || emitter.uvScroll.y != 0.0f) {
+		vec2 shift = emitter.uvScroll * particleSimTime(frame);
+		uv0 += shift;
+		uv1 += shift;
+	}
+	if ((particle.drawFlags & XL_PARTICLE_DRAW_FLAG_FLIP_U) != 0u) {
+		float u = uv0.x;
+		uv0.x = uv1.x;
+		uv1.x = u;
+	}
+
+	writeVertex(vertexBuffer, vertexOffset + 0u, bl, vec2(uv0.x, uv1.y), colorA, frame.materialIndex);
+	writeVertex(vertexBuffer, vertexOffset + 1u, tl, vec2(uv0.x, uv0.y), colorA, frame.materialIndex);
+	writeVertex(vertexBuffer, vertexOffset + 2u, br, vec2(uv1.x, uv1.y), colorB, frame.materialIndex);
+	writeVertex(vertexBuffer, vertexOffset + 3u, tr, vec2(uv1.x, uv0.y), colorB, frame.materialIndex);
+	writeVertex(vertexBuffer, vertexOffset + 4u, br, vec2(uv1.x, uv1.y), colorB, frame.materialIndex);
+	writeVertex(vertexBuffer, vertexOffset + 5u, tl, vec2(uv0.x, uv0.y), colorA, frame.materialIndex);
+}
+
 void main() {
 	const ParticleFrameData frame = FrameDataBuffer(pcb.frameDataPointer).frames[pcb.emitterIndex];
 	emitter = EmitterBuffer(frame.emitterPointer).data;
 
 	const uint index = gl_GlobalInvocationID.x;
 	if (index >= emitter.count) {
+		return;
+	}
+
+	// The strip's own dispatch: no update, no write-back, no feedback - the barrier the pass
+	// seated between the two dispatches hands every particle its standing state, and the
+	// segment a particle owns reads the next particle, which one dispatch's own invocations
+	// cannot order for one another. The update dispatch drew the quad into these seats; this
+	// pass overwrites every seat of the emitter, segment or degenerate, one writer whole
+	if (pcb.stripPass != 0u) {
+		stripDraw(index, frame);
 		return;
 	}
 
@@ -125,9 +210,7 @@ void main() {
 	const uint vertexOffset = frame.vertexOffset + slot * seats;
 
 	if (particle.currentLifetime == 0u) {
-		for (uint i = 0u; i < seats; ++i) {
-			writeVertex(vertexBuffer, vertexOffset + i, vec2(0.0, 0.0), vec2(0.0, 0.0), vec4(0.0, 0.0, 0.0, 0.0), frame.materialIndex);
-		}
+		writeDegenerate(vertexBuffer, vertexOffset, seats, frame.materialIndex);
 		return;
 	}
 

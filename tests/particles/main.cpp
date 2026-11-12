@@ -1312,6 +1312,77 @@ static void testRing() {
 	checkNear(atEnd.y, 0.0f, "ring: the partial arc's last corner is against the x axis");
 }
 
+// Effekseer's ribbon taken in the screen plane, the strip of Particle-41: the seats stay the
+// quad's own six - the segment a particle owns between itself and the next born is a quad of
+// the same pair of list triangles - and the segment's corners seat by the width word, each
+// end's half the emitter's width multiplied by the scale that end's curve left standing, the
+// perpendicular of the segment's own direction the plain band the simplest ribbon draws
+static void testStrip() {
+	// The seat contract: a seated strip keeps the quad's own seats, and a ring standing ahead
+	// of it keeps the ring's own count
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+	checkEq(glsl::particleVertexSeats(emitter), 6u,
+			"strip: the unseated emitter keeps the quad's six seats");
+
+	emitter.stripWidth = 4.0f;
+	checkEq(glsl::particleVertexSeats(emitter), 6u,
+			"strip: a seated strip keeps the quad's own six seats");
+
+	emitter.ringOuter = 40.0f;
+	checkEq(glsl::particleVertexSeats(emitter), 192u,
+			"strip: a ring standing ahead of the strip keeps the ring's own seats");
+
+	glsl::ParticleData a;
+	glsl::ParticleData b;
+	::memset(&a, 0, sizeof(a));
+	::memset(&b, 0, sizeof(b));
+	a.scale = 1.0f;
+	b.scale = 1.0f;
+	a.position = glsl::vec2(0.0f, 0.0f);
+	b.position = glsl::vec2(10.0f, 0.0f);
+
+	// The horizontal segment: the perpendicular of the x axis is the y axis, both halves the
+	// width's own half at a scale of one
+	glsl::vec2 bl;
+	glsl::vec2 tl;
+	glsl::vec2 tr;
+	glsl::vec2 br;
+	glsl::particleStripSegment(a, b, emitter, bl, tl, tr, br);
+	checkNear(bl.x, 0.0f, "strip: the segment's first end seats at its particle");
+	checkNear(bl.y, -2.0f, "strip: the bottom left corner sits half the width below");
+	checkNear(tl.y, 2.0f, "strip: the top left corner sits half the width above");
+	checkNear(tr.x, 10.0f, "strip: the segment's second end seats at the next particle");
+	checkNear(tr.y, 2.0f, "strip: the top right corner sits half the width above");
+	checkNear(br.y, -2.0f, "strip: the bottom right corner sits half the width below");
+
+	// The width multiplies the scale the curve left standing, each end its own - the ring's
+	// own one-scale precedent, the band taking the one scale both ends share
+	b.scale = 2.0f;
+	glsl::particleStripSegment(a, b, emitter, bl, tl, tr, br);
+	checkNear(tl.y, 2.0f, "strip: the first end keeps its own scale's half");
+	checkNear(tr.y, 4.0f, "strip: the second end's half is the width times its own scale");
+
+	// A vertical segment turns the perpendicular with it: the band's width lands across the x
+	// axis the same way
+	a.scale = 1.0f;
+	b.scale = 1.0f;
+	a.position = glsl::vec2(0.0f, 0.0f);
+	b.position = glsl::vec2(0.0f, 8.0f);
+	glsl::particleStripSegment(a, b, emitter, bl, tl, tr, br);
+	checkNear(tl.x, -2.0f, "strip: the turned segment carries its width across the x axis");
+	checkNear(bl.x, 2.0f, "strip: the turned segment's bottom corner mirrors the top");
+	checkNear(tl.y, 0.0f, "strip: the turned segment's top corner stays at its end");
+
+	// A segment of zero length leaves particleNormalize's zero cross: every corner at the
+	// point, the degenerate quad a dead seat draws
+	b.position = glsl::vec2(0.0f, 0.0f);
+	glsl::particleStripSegment(a, b, emitter, bl, tl, tr, br);
+	checkNear(tl.x, 0.0f, "strip: a zero-length segment folds to its point");
+	checkNear(tr.y, 0.0f, "strip: a zero-length segment leaves the far end at the same point");
+	checkNear(br.x, 0.0f, "strip: a zero-length segment's bottom corners fold with the top");
+}
+
 int main(int argc, const char *argv[]) {
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);
@@ -1341,6 +1412,7 @@ int main(int argc, const char *argv[]) {
 	testParentBound();
 	testDeflectorSeats();
 	testRing();
+	testStrip();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 

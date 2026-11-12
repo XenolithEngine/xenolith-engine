@@ -583,10 +583,12 @@ SP_GLSL_INLINE void particleQuad(SP_GLSL_IN(ParticleData) particle,
 	br = particle.position + ax - ay;
 }
 
-// The vertex seats one particle owns in the pass's vertex list: the quad's six, or - a seated
-// ring - the ring's own count. The pass sizes its vertex buffer, its indirect commands and its
-// writes by this count alone, every emitter's particles striding the shared list by it, so the
-// count is read where the pass's own words seat it, never carried a second time
+// The vertex seats one particle owns in the pass's vertex list: the quad's six, a seated ring's
+// own count - or a seated strip's six again, for the segment a particle owns between itself and
+// the next born is a quad of the same pair of list triangles. The pass sizes its vertex buffer,
+// its indirect commands and its writes by this count alone, every emitter's particles striding
+// the shared list by it, so the count is read where the pass's own words seat it, never carried
+// a second time
 SP_GLSL_INLINE uint particleVertexSeats(SP_GLSL_IN(ParticleEmitterData) emitter) {
 	return (emitter.ringOuter > 0.0f) ? XL_PARTICLE_RING_SEATS : XL_PARTICLE_QUAD_SEATS;
 }
@@ -612,6 +614,27 @@ SP_GLSL_INLINE vec2 particleRingPoint(SP_GLSL_IN(ParticleData) particle,
 	float degrees = emitter.ringArcFrom + (emitter.ringArcTo - emitter.ringArcFrom) * t;
 	float a = particle.angle + degrees * (3.14159265358979323846f / 180.0f);
 	return particle.position + vec2(radius * cos(a), radius * sin(a));
+}
+
+// The strip's own quad between two birth-adjacent particles, Effekseer's ribbon taken in the
+// screen plane: the segment's own perpendicular carries the width, the plain band the simplest
+// ribbon draws - no mitered join, each segment its own cross direction, so a turn leaves the
+// two segments' ends standing apart at the corner. The width is the emitter's own word
+// multiplied by the scale the curve left standing at each end, the ring's own one-scale
+// precedent - the second axis is the quad's, the band takes the one scale both ends share. A
+// segment of zero length leaves particleNormalize's zero cross: every corner at the point, the
+// degenerate quad a dead seat draws
+SP_GLSL_INLINE void particleStripSegment(SP_GLSL_IN(ParticleData) a, SP_GLSL_IN(ParticleData) b,
+		SP_GLSL_IN(ParticleEmitterData) emitter, SP_GLSL_OUT(vec2) bl, SP_GLSL_OUT(vec2) tl,
+		SP_GLSL_OUT(vec2) tr, SP_GLSL_OUT(vec2) br) {
+	vec2 dir = particleNormalize(b.position - a.position);
+	vec2 n = vec2(-dir.y, dir.x);
+	float halfA = emitter.stripWidth * a.scale * 0.5f;
+	float halfB = emitter.stripWidth * b.scale * 0.5f;
+	bl = a.position - n * halfA;
+	tl = a.position + n * halfA;
+	tr = b.position + n * halfB;
+	br = b.position - n * halfB;
 }
 
 SP_GLSL_INLINE float particleCurveComponent(uint base, uint i0, uint i1, float f, uint components,

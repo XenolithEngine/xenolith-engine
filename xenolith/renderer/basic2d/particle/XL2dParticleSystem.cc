@@ -563,6 +563,10 @@ void ParticleSystem::apply(const Value &value) {
 				clearRing();
 			}
 		}
+
+		if (value.isBasicType("strip")) {
+			setStripWidth(float(value.getDouble("strip")));
+		}
 	}
 
 Value ParticleSystem::encode() const {
@@ -784,6 +788,11 @@ Value ParticleSystem::encode() const {
 		writeColor("colorInner", _data->data.ringColorInner);
 		ret.setValue(sp::move(entry), "ring");
 	}
+	// The strip, only when one stands - the width word is the seat, the scalar zero fate the
+	// fresh default keeps, so an off strip never reaches a file
+	if (_data->data.stripWidth != 0.0f) {
+		ret.setDouble(_data->data.stripWidth, "strip");
+	}
 	return ret;
 }
 
@@ -970,6 +979,14 @@ ParticleRing ParticleSystem::getRing() const {
 			_data->data.ringColorInner.z, _data->data.ringColorInner.w);
 	return ret;
 }
+
+void ParticleSystem::setStripWidth(float width) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the pass follows; a negative
+	// width is the no-strip default, clamped to it
+	mutate().data.stripWidth = sprt::max(width, 0.0f);
+}
+
+float ParticleSystem::getStripWidth() const { return _data->data.stripWidth; }
 
 void ParticleSystem::setCount(uint32_t c) { mutate().data.count = c; }
 

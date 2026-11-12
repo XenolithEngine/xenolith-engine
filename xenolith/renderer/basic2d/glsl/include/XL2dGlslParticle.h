@@ -89,7 +89,10 @@ struct ParticleConstantData {
 	uvec2 frameDataPointer;
 	uvec2 outVerticesPointer;
 	uint emitterIndex;
-	uint padding12;
+	// 1 - the strip's own dispatch, the draw alone: the update it reads already ran, the
+	// barrier between the dispatches seats every particle's standing state, so the segment a
+	// particle owns may read the next particle. 0 - the update dispatch, simulation and draw
+	uint stripPass;
 };
 
 // One emitter in the frame data buffer
@@ -355,10 +358,15 @@ struct ParticleEmitterData {
 	float ringArcFrom;
 	float ringArcTo;
 
-	// [504-511]
-	// explicit padding: the color vec4s below seat std430-aligned at 512, eight bytes past the
-	// member-wise end, so the word is carried by hand
-	uvec2 padding504;
+	// [504-507]
+	// width of the strip the pass draws through the emitter's particles in their birth order,
+	// Effekseer's ribbon taken in the screen plane, 0 - no strip, the quad the pass always drew
+	float stripWidth;
+
+	// [508-511]
+	// explicit padding: the color vec4s below seat std430-aligned at 512, four bytes past the
+	// strip word, so the word is carried by hand
+	uint padding508;
 
 	// [512-559]
 	// the ring's three color bands, Effekseer's own "a triple structure of outside, center and
@@ -389,6 +397,7 @@ static_assert(sizeof(ParticleEmitterData) == 560
 		&& __builtin_offsetof(ParticleEmitterData, scaleY) == 480
 		&& __builtin_offsetof(ParticleEmitterData, ringOuter) == 488
 		&& __builtin_offsetof(ParticleEmitterData, ringArcTo) == 500
+		&& __builtin_offsetof(ParticleEmitterData, stripWidth) == 504
 		&& __builtin_offsetof(ParticleEmitterData, ringColorOuter) == 512
 		&& __builtin_offsetof(ParticleEmitterData, ringColorInner) == 544);
 // The deflector seat is the std430 array stride of the struct: 32, the vec2 alignment's own

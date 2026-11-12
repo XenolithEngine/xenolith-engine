@@ -321,6 +321,13 @@ public:
 	void clearRing();
 	ParticleRing getRing() const;
 
+	// Width of the strip the pass draws through the emitter's particles in their birth order,
+	// Effekseer's ribbon taken in the screen plane, 0 - no strip, the quad the pass always
+	// drew; a negative value clamps to that default, and the key encode() writes only when
+	// the value is not it. The width multiplies the scale the curve left standing at each end
+	void setStripWidth(float);
+	float getStripWidth() const;
+
 	void setCount(uint32_t);
 	uint32_t getCount() const;
 
