@@ -1383,6 +1383,100 @@ static void testStrip() {
 	checkNear(br.x, 0.0f, "strip: a zero-length segment's bottom corners fold with the top");
 }
 
+// Effekseer's position by curve, the start and the end point read as a displacement over the
+// lifetime fraction: every step past particleStep adds the walk the fraction made, so the
+// offset lands on the birth point's own path and the velocity's walk and the curve's one sum -
+// the integrator the plan keeps seated in its place
+static void testPositionCurve() {
+	// The seat contract: the word sits in the strip block's own hand-carried padding, the word
+	// map still 560 under its static_assert
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, positionCurveOffset)), 508,
+			"position curve: the offset word seats at the strip block's padding");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 560,
+			"position curve: the word map keeps its 560");
+
+	::memset(s_extra, 0, sizeof(s_extra));
+
+	// The plan's own acceptance shape: a curve giving (10, 0) at the end of life walks the
+	// particle to it at zero velocity, k steps in at the sampler's own share - the stops sit at
+	// k / count and the last one holds, the same ladder every curve of the extra buffer climbs
+	uint32_t curve = writeCurve(2, 2, {0.0f, 0.0f, 10.0f, 0.0f});
+	Single seated;
+	seated.data.positionCurveOffset = curve;
+	seated.run(30);
+	checkNear(seated.p().position.x,
+			10.0f * sprt::min(float(30) * 2.0f / float(seated.p().fullLifetime), 1.0f),
+			"position curve: k steps stand at the curve's own fraction of the lifetime");
+	checkNear(seated.p().position.y, 0.0f, "position curve: the second axis walks its own zero");
+
+	// The walk is measured from the first stop: a curve starting away from the origin walks its
+	// own delta, not its own value - the start point is the walk's zero
+	Single offset;
+	offset.data.positionCurveOffset = writeCurve(40, 2, {6.0f, 0.0f, 16.0f, 0.0f});
+	offset.run(30);
+	checkNear(offset.p().position.x,
+			10.0f * sprt::min(float(30) * 2.0f / float(offset.p().fullLifetime), 1.0f),
+			"position curve: the walk is measured from the curve's first stop");
+
+	// The generator stands unread: the same seed walks the same stream beside the curve
+	Single plain;
+	plain.run(30);
+	check(plain.p().rng.state == seated.p().rng.state && plain.p().rng.inc == seated.p().rng.inc,
+			"position curve: the curve spends no draw of the generator");
+	checkNear(plain.p().position.x, 0.0f,
+			"position curve: no curve leaves the birth point standing");
+
+	// The file with both sums them - the plan's own letter: the velocity's walk and the curve's
+	// one are two paths on one birth point
+	Single velocity;
+	velocity.data.velocity.init = 30.0f;
+	velocity.run(30);
+	Single both;
+	both.data.velocity.init = 30.0f;
+	both.data.positionCurveOffset = curve;
+	both.run(30);
+	checkNear(both.p().position.x, velocity.p().position.x + seated.p().position.x,
+			"position curve: the velocity's walk and the curve's one sum");
+
+	// The word's zero guard: an emitter without the offset walks the particles it always did,
+	// byte for byte
+	Single unseated;
+	unseated.data.positionCurveOffset = 0;
+	unseated.run(30);
+	check(::memcmp(&unseated.p(), &plain.p(), sizeof(glsl::ParticleData)) == 0,
+			"position curve: the unseated word keeps the old particles whole");
+
+	// Two steps of one frame walk the same two fractions the ladder climbs inside
+	// particleUpdate's own loop
+	Single paird;
+	paird.data.positionCurveOffset = curve;
+	paird.maxSteps = 2;
+	s_points[0] = glsl::vec2(0.0f, 0.0f);
+	s_pointCount = 1;
+	paird.tick();
+	for (uint32_t i = 0; i < 15; ++i) { paird.tick(2); }
+	s_pointCount = 0;
+	check(::memcmp(&paird.p(), &seated.p(), sizeof(glsl::ParticleData)) == 0,
+			"position curve: two steps of one frame equal two frames of one step");
+
+	// A birth stands at the birth point - the curve adds nothing at the birth, the plan's own
+	// "after the step" - and a reborn slot restarts its walk from the same zero
+	Emitter cycled(4, 0.3f, 9);
+	cycled.data.positionCurveOffset = curve;
+	auto frames = cycled.cycleFrames();
+	bool birthsAtPoint = true;
+	for (uint32_t k = 0; k < frames * 3; ++k) {
+		cycled.tick();
+		for (uint32_t i = 0; i < 4; ++i) {
+			if (cycled.born[i]) {
+				birthsAtPoint = birthsAtPoint && cycled.particles[i].position.x == 0.0f
+						&& cycled.particles[i].position.y == 0.0f;
+			}
+		}
+	}
+	check(birthsAtPoint, "position curve: a birth stands at the birth point, the curve off it");
+}
+
 int main(int argc, const char *argv[]) {
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);
@@ -1413,6 +1507,7 @@ int main(int argc, const char *argv[]) {
 	testDeflectorSeats();
 	testRing();
 	testStrip();
+	testPositionCurve();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 

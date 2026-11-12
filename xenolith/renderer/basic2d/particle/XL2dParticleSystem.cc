@@ -76,7 +76,7 @@ size_t ParticleSystemData::getExtraDataSize() const {
 				* sizeof(float));
 	}
 	return ret + ParticleSystem_getCurveSize(colorCurve) + ParticleSystem_getCurveSize(animFrameCurve)
-			+ ParticleSystem_getCurveSize(scaleCurve);
+			+ ParticleSystem_getCurveSize(scaleCurve) + ParticleSystem_getCurveSize(positionCurve);
 }
 
 void ParticleSystemData::writeExtraData(uint8_t *buf, size_t size,
@@ -118,6 +118,9 @@ void ParticleSystemData::writeExtraData(uint8_t *buf, size_t size,
 	target.colorCurveOffset = writeCurve(colorCurve);
 	target.animFrameCurveOffset = writeCurve(animFrameCurve);
 	target.scaleCurveOffset = writeCurve(scaleCurve);
+	// The position curve seats last: the buffer grows at its end, so every older curve's offset
+	// stands where it stood and an old file's words read their own curve
+	target.positionCurveOffset = writeCurve(positionCurve);
 }
 
 void ParticleSystemData::writeParticleSize(ParticleEmitterData &data, Size2 size) {
@@ -402,6 +405,10 @@ void ParticleSystem::apply(const Value &value) {
 		const auto &v = value.getValue("scaleCurve");
 		setScaleCurve(v.isDictionary() ? ParticleSystem_readCurve(v).get() : nullptr);
 	}
+	if (value.hasValue("positionCurve")) {
+		const auto &v = value.getValue("positionCurve");
+		setPositionCurve(v.isDictionary() ? ParticleSystem_readCurve(v).get() : nullptr);
+	}
 
 	if (value.isArray("flags")) {
 		auto flags = ParticleSystemFlags::None;
@@ -671,6 +678,11 @@ Value ParticleSystem::encode() const {
 	}
 	if (_data->scaleCurve) {
 		ret.setValue(ParticleSystem_writeCurve(_data->scaleCurve), "scaleCurve");
+	}
+	// The seated curve alone; a curve the setter cleared - a type the pair cannot ride, every
+	// word zero - never reaches a file
+	if (_data->positionCurve) {
+		ret.setValue(ParticleSystem_writeCurve(_data->positionCurve), "positionCurve");
 	}
 
 	Value flags(Value::Type::ARRAY);
@@ -1145,6 +1157,30 @@ bool ParticleSystem::setScaleCurve(CurveBuffer *curve) {
 }
 
 CurveBuffer *ParticleSystem::getScaleCurve() const { return _data->scaleCurve; }
+
+bool ParticleSystem::setPositionCurve(CurveBuffer *curve) {
+	// The displacement is a pair: a Vec2 curve alone carries it, the Float one has no pair and a
+	// wider one no seat. A curve whose every word is zero walks nowhere - it cannot take effect,
+	// the width word's own zero fate - so it seats nothing, as an empty one does
+	if (curve && curve->getType() == CurveBufferType::Vec2) {
+		bool zero = true;
+		auto n = curve->getSize() * curve->getElementSize();
+		for (size_t i = 0; i < n; ++i) {
+			zero = zero && curve->getData()[i] == 0.0f;
+		}
+		if (zero) {
+			curve = nullptr;
+		}
+	} else if (curve) {
+		log::source().error("ParticleSystem", "Position curve must be of Vec2 type");
+		return false;
+	}
+
+	mutate().positionCurve = curve;
+	return true;
+}
+
+CurveBuffer *ParticleSystem::getPositionCurve() const { return _data->positionCurve; }
 
 void ParticleSystem::addFlags(ParticleSystemFlags flags) { setFlags(getFlags() | flags); }
 

@@ -364,9 +364,13 @@ struct ParticleEmitterData {
 	float stripWidth;
 
 	// [508-511]
-	// explicit padding: the color vec4s below seat std430-aligned at 512, four bytes past the
-	// strip word, so the word is carried by hand
-	uint padding508;
+	// offset of the position curve in the extra data buffer, a vec2 curve over the lifetime
+	// fraction whose walk the step adds to the birth point every step past particleStep,
+	// Effekseer's position of the start and the end point summed beside the velocity rather than
+	// seated in its place; 0 - no curve, the position the step always left. The word sits in the
+	// hand-carried padding between the strip and the ring's colors: the seat the strip's own
+	// stage left, the strip word's own precedent
+	uint positionCurveOffset;
 
 	// [512-559]
 	// the ring's three color bands, Effekseer's own "a triple structure of outside, center and
@@ -398,6 +402,7 @@ static_assert(sizeof(ParticleEmitterData) == 560
 		&& __builtin_offsetof(ParticleEmitterData, ringOuter) == 488
 		&& __builtin_offsetof(ParticleEmitterData, ringArcTo) == 500
 		&& __builtin_offsetof(ParticleEmitterData, stripWidth) == 504
+		&& __builtin_offsetof(ParticleEmitterData, positionCurveOffset) == 508
 		&& __builtin_offsetof(ParticleEmitterData, ringColorOuter) == 512
 		&& __builtin_offsetof(ParticleEmitterData, ringColorInner) == 544);
 // The deflector seat is the std430 array stride of the struct: 32, the vec2 alignment's own

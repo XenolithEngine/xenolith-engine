@@ -79,6 +79,7 @@ struct SP_PUBLIC ParticleSystemData : public Ref {
 	Rc<CurveBuffer> colorCurve;
 	Rc<CurveBuffer> animFrameCurve;
 	Rc<CurveBuffer> scaleCurve;
+	Rc<CurveBuffer> positionCurve;
 	Vector<Vec2> emissionPoints;
 
 	// The numbers of the birth shape data.emissionType names, in the shader's read order:
@@ -447,6 +448,15 @@ public:
 	// axis with its own. Two stops carry what Particle Designer calls start and end size
 	bool setScaleCurve(CurveBuffer *);
 	CurveBuffer *getScaleCurve() const;
+
+	// Vec2 curve over the particle's lifetime whose walk the step adds to the birth point every
+	// step past the step's own moves, Effekseer's position of the start and the end point taken
+	// as a displacement - the walk measured from the curve's first stop, so the velocity's path
+	// and the curve's one sum. Null removes it; a curve of another type, or one whose every word
+	// is zero - a curve that cannot move a particle - seats nothing, the width word's own zero
+	// fate
+	bool setPositionCurve(CurveBuffer *);
+	CurveBuffer *getPositionCurve() const;
 
 	void addFlags(ParticleSystemFlags);
 	void clearFlags(ParticleSystemFlags);
