@@ -505,7 +505,7 @@ void ParticleSystem::apply(const Value &value) {
 					break;
 				}
 				ParticleDeflector seat =
-						ParticleDeflector{Vec2::ZERO, Vec2::ZERO, 0.0f, shape, answer};
+						ParticleDeflector{Vec2::ZERO, Vec2::ZERO, 0.0f, shape, answer, 0u};
 				if (shape == XL_PARTICLE_DEFLECTOR_CIRCLE) {
 					seat.a = ParticleSystem_readVec2(it.getValue("center"), Vec2::ZERO);
 					seat.radius = float(it.getDouble("radius", 0.0));
@@ -821,7 +821,7 @@ void ParticleSystem::setDeflectors(SpanView<ParticleDeflector> deflectors) {
 		data.deflectors[i] = deflectors[i];
 	}
 	for (; i < 4; ++i) {
-		data.deflectors[i] = ParticleDeflector{Vec2::ZERO, Vec2::ZERO, 0.0f, 0u, 0u};
+		data.deflectors[i] = ParticleDeflector{Vec2::ZERO, Vec2::ZERO, 0.0f, 0u, 0u, 0u};
 	}
 }
 

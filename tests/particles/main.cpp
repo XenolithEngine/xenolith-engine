@@ -1186,6 +1186,65 @@ static void testParentBound() {
 	check(bornAgain, "parent-bound: the bit off restores the own schedule's births");
 }
 
+static void testDeflectorSeats() {
+	// The stride contract first: the GPU indexes the seats at the std430 stride, so the seat the
+	// C++ text writes and the seat the step reads are the same words only while these hold
+	checkEq(int64_t(sizeof(glsl::ParticleDeflector)), 32, "deflector seats: the seat is the 32-byte stride");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, deflectors)), 328,
+			"deflector seats: the array opens at its 8-aligned std430 seat");
+
+	auto seat = [](glsl::vec2 a, glsl::vec2 b, uint32_t response) {
+		return glsl::ParticleDeflector{a, b, 0.0f, uint32_t(XL_PARTICLE_DEFLECTOR_SEGMENT),
+				response, 0u};
+	};
+
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+	// Two vertical segments, x = 10 and x = 20; a straight step across the second never meets
+	// the first, so the second seat answers in its own words
+	emitter.deflectors[0] = seat(glsl::vec2(10.0f, -10.0f), glsl::vec2(10.0f, 10.0f),
+			XL_PARTICLE_DEFLECTOR_KILL);
+	emitter.deflectors[1] = seat(glsl::vec2(20.0f, -10.0f), glsl::vec2(20.0f, 10.0f),
+			XL_PARTICLE_DEFLECTOR_KILL);
+
+	auto walk = [&](glsl::vec2 previous, glsl::vec2 position) {
+		glsl::ParticleData particle;
+		::memset(&particle, 0, sizeof(particle));
+		particle.position = position;
+		particle.currentLifetime = 16;
+		glsl::particleDeflectors(particle, emitter, previous);
+		return particle.currentLifetime;
+	};
+
+	checkEq(walk(glsl::vec2(9.0f, 0.0f), glsl::vec2(11.0f, 0.0f)), 0,
+			"deflector seats: kill at the first seat");
+	checkEq(walk(glsl::vec2(19.0f, 0.0f), glsl::vec2(21.0f, 0.0f)), 0,
+			"deflector seats: kill at the second seat");
+	checkEq(walk(glsl::vec2(0.0f, 0.0f), glsl::vec2(2.0f, 0.0f)), 16,
+			"deflector seats: a path past both figures lives");
+
+	// The first seat unused: the second answers alone
+	emitter.deflectors[0] = glsl::ParticleDeflector{glsl::vec2(0.0f, 0.0f),
+			glsl::vec2(0.0f, 0.0f), 0.0f, 0u, 0u, 0u};
+	checkEq(walk(glsl::vec2(19.0f, 0.0f), glsl::vec2(21.0f, 0.0f)), 0,
+			"deflector seats: the second seat answers alone");
+
+	// A bounce on the second seat mirrors the velocity and keeps the particle alive
+	emitter.deflectors[1] = seat(glsl::vec2(20.0f, -10.0f), glsl::vec2(20.0f, 10.0f),
+			XL_PARTICLE_DEFLECTOR_BOUNCE);
+	glsl::ParticleData particle;
+	::memset(&particle, 0, sizeof(particle));
+	particle.position = glsl::vec2(21.0f, 0.0f);
+	particle.velocity = glsl::vec2(2.0f, 0.0f);
+	particle.currentLifetime = 16;
+	glsl::particleDeflectors(particle, emitter, glsl::vec2(19.0f, 0.0f));
+	checkEq(particle.currentLifetime, 16, "deflector seats: bounce keeps the particle alive");
+	check(particle.velocity.x < 0.0f && particle.velocity.y == 0.0f,
+			"deflector seats: bounce mirrors the velocity off the second seat");
+	check(particle.position.x < 20.0f,
+			"deflector seats: bounce takes the position back across the figure");
+}
+
 int main(int argc, const char *argv[]) {
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);
@@ -1213,6 +1272,7 @@ int main(int argc, const char *argv[]) {
 	testHue();
 	testNewest();
 	testParentBound();
+	testDeflectorSeats();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 

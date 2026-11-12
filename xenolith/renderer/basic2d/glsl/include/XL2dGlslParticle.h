@@ -190,6 +190,9 @@ struct ParticleDeflector {
 	float radius; // the circle's radius, unread by the segment
 	uint shape; // a XL_PARTICLE_DEFLECTOR_* shape, 0 - unused
 	uint response; // a XL_PARTICLE_DEFLECTOR_* response
+	// explicit padding: the member-wise size ends at 28 while std430 strides an array of the
+	// struct at its vec2 alignment's 32, so the seat carries the word itself
+	uint padding28;
 };
 
 // Header of a curve in the emitter's extra data buffer, followed by count * components floats
@@ -295,45 +298,68 @@ struct ParticleEmitterData {
 	// width of the trail strip the particle's seat history draws, 0 - no trail
 	float trailWidth;
 
-	// [324-435]
+	// [324]
+	// explicit padding: the deflector array's std430 seat is 8-aligned and would open at 328,
+	// four bytes past the member-wise end, so the word is carried by hand
+	uint padding324;
+
+	// [328-455]
 	// the deflector seats, in the order the file's list seats them; a seat of shape 0 is unused
 	ParticleDeflector deflectors[4];
 
-	// [436-439]
+	// [456-459]
 	// ratio of the node's velocity a newborn inherits, 0 - no inheritance
 	float inheritVelocity;
 
-	// [440-451]
+	// [460]
+	// explicit padding: uvScroll's std430 seat is 8-aligned and would open at 464, not 460
+	uint padding460;
+
+	// [464-475]
 	// slide of the sampled UV window over the texture per second of simulation time, signed per
 	// axis, (0, 0) - no slide
 	vec2 uvScroll;
 	// probability of the U mirror a birth draws from the particle's own generator, 0 - never
 	float uvFlip;
 
-	// [452-455]
+	// [476-479]
 	// seconds the birth schedule waits before the emitter's own timeline begins, 0 - no wait
 	float start;
 
-	// [456-463]
+	// [480-487]
 	// the second axis's own birth range, Effekseer's scale by axis; words equal to `scale` are
 	// the absence this model keeps - the second axis takes the first's draw, the generator
 	// stands unread, and the file writes no key
 	ParticleFloatParam scaleY;
 
-	// [464]
+	// [488-495]
+	// explicit padding: the struct's std430 alignment is the color vec4's 16, so an array of
+	// emitters strides at 496; the tail is carried so both texts seat the same size
+	uvec2 padding488;
+
+	// [496]
 };
 
 #ifndef SP_GLSL
 // The word map above is the compiler's own, locked where it is declared: both texts share this
-// struct, and the seating of a new word reads these offsets
-static_assert(sizeof(ParticleEmitterData) == 464
+// struct, and the seating of a new word reads these offsets. The offsets past the attractors are
+// the std430 seats first - a vec2-aligned array or member opens on an 8-byte boundary, and the
+// explicit padding members hold the C++ text to the same numbers
+static_assert(sizeof(ParticleEmitterData) == 496
 		&& __builtin_offsetof(ParticleEmitterData, colorCurveOffset) == 200
 		&& __builtin_offsetof(ParticleEmitterData, interval) == 252
 		&& __builtin_offsetof(ParticleEmitterData, attractors) == 256
-		&& __builtin_offsetof(ParticleEmitterData, deflectors) == 324
-		&& __builtin_offsetof(ParticleEmitterData, uvScroll) == 440
-		&& __builtin_offsetof(ParticleEmitterData, start) == 452
-		&& __builtin_offsetof(ParticleEmitterData, scaleY) == 456);
+		&& __builtin_offsetof(ParticleEmitterData, deflectors) == 328
+		&& __builtin_offsetof(ParticleEmitterData, inheritVelocity) == 456
+		&& __builtin_offsetof(ParticleEmitterData, uvScroll) == 464
+		&& __builtin_offsetof(ParticleEmitterData, uvFlip) == 472
+		&& __builtin_offsetof(ParticleEmitterData, start) == 476
+		&& __builtin_offsetof(ParticleEmitterData, scaleY) == 480);
+// The deflector seat is the std430 array stride of the struct: 32, the vec2 alignment's own
+// rounding of the member-wise 28
+static_assert(sizeof(ParticleDeflector) == 32
+		&& __builtin_offsetof(ParticleDeflector, radius) == 16
+		&& __builtin_offsetof(ParticleDeflector, response) == 24);
 #endif
 
 // State of one particle. Parameters are chosen at birth; positions are in the node's space with
@@ -388,8 +414,20 @@ struct ParticleData {
 	// one, the last seat the oldest of the eight
 	vec2 trail[XL_PARTICLE_TRAIL_SEATS];
 
-	// [184]
+	// [184-191]
+	// explicit padding: the member-wise size ends at 184 while std430 strides the particle
+	// array at the color vec4's alignment of 192, so the tail is carried in the struct itself
+	uvec2 padding184;
+
+	// [192]
 };
+
+#ifndef SP_GLSL
+// The particle's own seat, locked the same way: the CPU both seeds and reads the buffer the
+// step strides over, so the two texts cannot part ways on the array stride
+static_assert(sizeof(ParticleData) == 192
+		&& __builtin_offsetof(ParticleData, trail) == 120);
+#endif
 
 #ifndef SP_GLSL
 }
