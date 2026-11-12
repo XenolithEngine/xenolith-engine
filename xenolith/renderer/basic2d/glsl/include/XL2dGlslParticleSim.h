@@ -583,6 +583,37 @@ SP_GLSL_INLINE void particleQuad(SP_GLSL_IN(ParticleData) particle,
 	br = particle.position + ax - ay;
 }
 
+// The vertex seats one particle owns in the pass's vertex list: the quad's six, or - a seated
+// ring - the ring's own count. The pass sizes its vertex buffer, its indirect commands and its
+// writes by this count alone, every emitter's particles striding the shared list by it, so the
+// count is read where the pass's own words seat it, never carried a second time
+SP_GLSL_INLINE uint particleVertexSeats(SP_GLSL_IN(ParticleEmitterData) emitter) {
+	return (emitter.ringOuter > 0.0f) ? XL_PARTICLE_RING_SEATS : XL_PARTICLE_QUAD_SEATS;
+}
+
+// The ring's three edge radii as the pass draws them, all three multiplied by the scale the
+// curve left standing - the plan's own "scaleCurve multiplies both radii" - the middle edge at
+// the band's half, the even Center Ratio the stage seats as a constant. The second scale axis
+// is the quad's own: the circle takes the one scale both radii share
+SP_GLSL_INLINE void particleRingRadii(SP_GLSL_IN(ParticleData) particle,
+		SP_GLSL_IN(ParticleEmitterData) emitter, SP_GLSL_OUT(float) inner, SP_GLSL_OUT(float) middle,
+		SP_GLSL_OUT(float) outer) {
+	inner = emitter.ringInner * particle.scale;
+	outer = emitter.ringOuter * particle.scale;
+	middle = 0.5f * (inner + outer);
+}
+
+// One point of the ring's edge: the arc fraction t in [0, 1] between the arc's own two degree
+// words, the radius the edge's own. The corner's angle turns by the particle's own angle word -
+// the quad's own rotation, the angular velocity a spinning arc - and the degrees meet the
+// trigonometry at the radians line, the file's unit riding the words verbatim
+SP_GLSL_INLINE vec2 particleRingPoint(SP_GLSL_IN(ParticleData) particle,
+		SP_GLSL_IN(ParticleEmitterData) emitter, float t, float radius) {
+	float degrees = emitter.ringArcFrom + (emitter.ringArcTo - emitter.ringArcFrom) * t;
+	float a = particle.angle + degrees * (3.14159265358979323846f / 180.0f);
+	return particle.position + vec2(radius * cos(a), radius * sin(a));
+}
+
 SP_GLSL_INLINE float particleCurveComponent(uint base, uint i0, uint i1, float f, uint components,
 		uint c) {
 	uint k = (c < components) ? c : components - 1u;

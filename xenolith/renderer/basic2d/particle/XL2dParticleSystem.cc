@@ -538,6 +538,31 @@ void ParticleSystem::apply(const Value &value) {
 		if (value.isBasicType("interval")) {
 			setInterval(float(value.getDouble("interval")));
 		}
+
+		if (value.hasValue("ring")) {
+			// The ring rides its own object the way the curves ride theirs: a dictionary seats
+			// one - the absent word its own default, the arc's default the full circle - and
+			// anything else, an explicit null, clears it
+			const auto &v = value.getValue("ring");
+			if (v.isDictionary()) {
+				ParticleRing ring;
+				ring.outer = float(v.getDouble("outer", 0.0));
+				ring.inner = float(v.getDouble("inner", 0.0));
+				ring.arcFrom = float(v.getDouble("from", 0.0));
+				ring.arcTo = float(v.getDouble("to", 360.0));
+				const auto &readColor = [&](StringView key, Color4F def) {
+					const auto &c = v.getValue(key);
+					return Color4F(float(c.getDouble(0, def.r)), float(c.getDouble(1, def.g)),
+							float(c.getDouble(2, def.b)), float(c.getDouble(3, def.a)));
+				};
+				ring.colorOuter = readColor("colorOuter", ParticleRing().colorOuter);
+				ring.colorMiddle = readColor("colorMiddle", ParticleRing().colorMiddle);
+				ring.colorInner = readColor("colorInner", ParticleRing().colorInner);
+				setRing(ring);
+			} else {
+				clearRing();
+			}
+		}
 	}
 
 Value ParticleSystem::encode() const {
@@ -731,6 +756,34 @@ Value ParticleSystem::encode() const {
 	if (_data->data.interval != 0.0f) {
 		ret.setDouble(_data->data.interval, "interval");
 	}
+	// The ring, only when one stands - the outer word is the seat, and every other word rides
+	// only at its own default's side: the full arc 0 to 360 stays out of the file, and a white
+	// band is the absence the three colors' default keeps
+	if (_data->data.ringOuter > 0.0f) {
+		Value entry;
+		entry.setDouble(_data->data.ringOuter, "outer");
+		if (_data->data.ringInner != 0.0f) {
+			entry.setDouble(_data->data.ringInner, "inner");
+		}
+		if (_data->data.ringArcFrom != 0.0f || _data->data.ringArcTo != 360.0f) {
+			entry.setDouble(_data->data.ringArcFrom, "from");
+			entry.setDouble(_data->data.ringArcTo, "to");
+		}
+		const auto &writeColor = [&](StringView key, const Vec4 &seated) {
+			if (seated != Vec4(1.0f, 1.0f, 1.0f, 1.0f)) {
+				Value c(Value::Type::ARRAY);
+				c.addDouble(seated.x);
+				c.addDouble(seated.y);
+				c.addDouble(seated.z);
+				c.addDouble(seated.w);
+				entry.setValue(sp::move(c), key);
+			}
+		};
+		writeColor("colorOuter", _data->data.ringColorOuter);
+		writeColor("colorMiddle", _data->data.ringColorMiddle);
+		writeColor("colorInner", _data->data.ringColorInner);
+		ret.setValue(sp::move(entry), "ring");
+	}
 	return ret;
 }
 
@@ -868,6 +921,55 @@ void ParticleSystem::setInterval(float seconds) {
 }
 
 float ParticleSystem::getInterval() const { return _data->data.interval; }
+
+void ParticleSystem::setRing(const ParticleRing &ring) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the pass follows. A negative
+	// outer is the no-ring default, clamped to it; the inner follows its own sign the same way,
+	// for the band between the two edges is drawn whatever their order, and the arc's degrees
+	// ride the words verbatim - any span, even past the full circle or back around it, the
+	// birth shape ring's own plain lerp
+	auto &data = mutate().data;
+	data.ringOuter = sprt::max(ring.outer, 0.0f);
+	data.ringInner = sprt::max(ring.inner, 0.0f);
+	data.ringArcFrom = ring.arcFrom;
+	data.ringArcTo = ring.arcTo;
+	data.ringColorOuter = Vec4(ring.colorOuter.r, ring.colorOuter.g, ring.colorOuter.b,
+			ring.colorOuter.a);
+	data.ringColorMiddle = Vec4(ring.colorMiddle.r, ring.colorMiddle.g, ring.colorMiddle.b,
+			ring.colorMiddle.a);
+	data.ringColorInner = Vec4(ring.colorInner.r, ring.colorInner.g, ring.colorInner.b,
+			ring.colorInner.a);
+}
+
+void ParticleSystem::clearRing() {
+	// The memset state, byte for byte: the outer's zero is the quad the pass always drew, and
+	// the words no draw reads stand zeroed as a fresh system carries them
+	auto &data = mutate().data;
+	data.ringOuter = 0.0f;
+	data.ringInner = 0.0f;
+	data.ringArcFrom = 0.0f;
+	data.ringArcTo = 0.0f;
+	data.ringColorOuter = Vec4(0.0f, 0.0f, 0.0f, 0.0f);
+	data.ringColorMiddle = Vec4(0.0f, 0.0f, 0.0f, 0.0f);
+	data.ringColorInner = Vec4(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+ParticleRing ParticleSystem::getRing() const {
+	// The seated words verbatim: an unseated ring reads the memset state, the arc's own 0 to 0 -
+	// the defaults the file and the panel seat live in ParticleRing itself
+	ParticleRing ret;
+	ret.outer = _data->data.ringOuter;
+	ret.inner = _data->data.ringInner;
+	ret.arcFrom = _data->data.ringArcFrom;
+	ret.arcTo = _data->data.ringArcTo;
+	ret.colorOuter = Color4F(_data->data.ringColorOuter.x, _data->data.ringColorOuter.y,
+			_data->data.ringColorOuter.z, _data->data.ringColorOuter.w);
+	ret.colorMiddle = Color4F(_data->data.ringColorMiddle.x, _data->data.ringColorMiddle.y,
+			_data->data.ringColorMiddle.z, _data->data.ringColorMiddle.w);
+	ret.colorInner = Color4F(_data->data.ringColorInner.x, _data->data.ringColorInner.y,
+			_data->data.ringColorInner.z, _data->data.ringColorInner.w);
+	return ret;
+}
 
 void ParticleSystem::setCount(uint32_t c) { mutate().data.count = c; }
 

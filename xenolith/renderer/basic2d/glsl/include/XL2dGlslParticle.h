@@ -71,6 +71,20 @@ using namespace sprt::glsl;
 // reads none of them
 #define XL_PARTICLE_DRAW_FLAG_FLIP_U 1
 
+// The vertex seats one particle owns in the pass's vertex list: the quad's own pair of list
+// triangles
+#define XL_PARTICLE_QUAD_SEATS 6
+
+// The ring's corner count, Effekseer's own ring page numbering its Vertex Count - "The number
+// of corner vertices around the ring ... 3 makes a triangle, 4 a diamond" - a constant of the
+// draw the stage seats, never a field: every ring the pass draws carries the same count
+#define XL_PARTICLE_RING_CORNERS 16
+
+// The ring's vertex seats per particle: the corners' count of arc segments, each segment two
+// color bands wide - inner to middle, middle to outer - and each band a pair of list triangles,
+// the quad's own six
+#define XL_PARTICLE_RING_SEATS 192
+
 struct ParticleConstantData {
 	uvec2 frameDataPointer;
 	uvec2 outVerticesPointer;
@@ -332,12 +346,30 @@ struct ParticleEmitterData {
 	// stands unread, and the file writes no key
 	ParticleFloatParam scaleY;
 
-	// [488-495]
-	// explicit padding: the struct's std430 alignment is the color vec4's 16, so an array of
-	// emitters strides at 496; the tail is carried so both texts seat the same size
-	uvec2 padding488;
+	// [488-503]
+	// Effekseer's ring renderer, the stage's own draw: the ring's outer edge in dp, 0 - no
+	// ring, the quad the pass always drew; the inner edge in dp, read only beside a seated
+	// outer; the arc's first and last edge in degrees, the full circle 0 to 360
+	float ringOuter;
+	float ringInner;
+	float ringArcFrom;
+	float ringArcTo;
 
-	// [496]
+	// [504-511]
+	// explicit padding: the color vec4s below seat std430-aligned at 512, eight bytes past the
+	// member-wise end, so the word is carried by hand
+	uvec2 padding504;
+
+	// [512-559]
+	// the ring's three color bands, Effekseer's own "a triple structure of outside, center and
+	// inside": the outer and inner colors fill their edges, the middle one blends between them
+	// across the band's half - the even Center Ratio 0.5 the stage seats as a constant beside
+	// the corner count, never a field
+	vec4 ringColorOuter;
+	vec4 ringColorMiddle;
+	vec4 ringColorInner;
+
+	// [560]
 };
 
 #ifndef SP_GLSL
@@ -345,7 +377,7 @@ struct ParticleEmitterData {
 // struct, and the seating of a new word reads these offsets. The offsets past the attractors are
 // the std430 seats first - a vec2-aligned array or member opens on an 8-byte boundary, and the
 // explicit padding members hold the C++ text to the same numbers
-static_assert(sizeof(ParticleEmitterData) == 496
+static_assert(sizeof(ParticleEmitterData) == 560
 		&& __builtin_offsetof(ParticleEmitterData, colorCurveOffset) == 200
 		&& __builtin_offsetof(ParticleEmitterData, interval) == 252
 		&& __builtin_offsetof(ParticleEmitterData, attractors) == 256
@@ -354,7 +386,11 @@ static_assert(sizeof(ParticleEmitterData) == 496
 		&& __builtin_offsetof(ParticleEmitterData, uvScroll) == 464
 		&& __builtin_offsetof(ParticleEmitterData, uvFlip) == 472
 		&& __builtin_offsetof(ParticleEmitterData, start) == 476
-		&& __builtin_offsetof(ParticleEmitterData, scaleY) == 480);
+		&& __builtin_offsetof(ParticleEmitterData, scaleY) == 480
+		&& __builtin_offsetof(ParticleEmitterData, ringOuter) == 488
+		&& __builtin_offsetof(ParticleEmitterData, ringArcTo) == 500
+		&& __builtin_offsetof(ParticleEmitterData, ringColorOuter) == 512
+		&& __builtin_offsetof(ParticleEmitterData, ringColorInner) == 544);
 // The deflector seat is the std430 array stride of the struct: 32, the vec2 alignment's own
 // rounding of the member-wise 28
 static_assert(sizeof(ParticleDeflector) == 32

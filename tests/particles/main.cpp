@@ -1245,6 +1245,73 @@ static void testDeflectorSeats() {
 			"deflector seats: bounce takes the position back across the figure");
 }
 
+// Effekseer's ring renderer, the stage's own draw: the pass's vertex seats grow from the
+// quad's own six to the ring's count, and the ring's edges seat by the emitter's words - both
+// radii multiplied by the scale the curve left standing, the middle edge at the band's half,
+// the corner angles the arc's degrees turned by the particle's own angle word
+static void testRing() {
+	// The seat contract: the constants the pass strides its list by, and the two counts an
+	// emitter's words choose between
+	checkEq(XL_PARTICLE_RING_SEATS, XL_PARTICLE_RING_CORNERS * 2 * 6,
+			"ring: the seats are the corners times two bands times a triangle pair");
+
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+	checkEq(glsl::particleVertexSeats(emitter), 6u,
+			"ring: the unseated emitter keeps the quad's six seats");
+
+	emitter.ringOuter = 40.0f;
+	emitter.ringInner = 20.0f;
+	emitter.ringArcFrom = 0.0f;
+	emitter.ringArcTo = 360.0f;
+	checkEq(glsl::particleVertexSeats(emitter), 192u,
+			"ring: a seated ring owns the ring's own seats");
+
+	glsl::ParticleData particle;
+	::memset(&particle, 0, sizeof(particle));
+	particle.scale = 2.0f;
+
+	// The radii: both multiplied by the drawn scale, the middle edge at the band's half - the
+	// even Center Ratio the stage seats beside the corner count
+	float inner = 0.0f;
+	float middle = 0.0f;
+	float outer = 0.0f;
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(inner, 40.0f, "ring: the inner edge is the emitter's own times the drawn scale");
+	checkNear(outer, 80.0f, "ring: the outer edge is the emitter's own times the drawn scale");
+	checkNear(middle, 60.0f, "ring: the middle edge stands at the band's half");
+
+	// The full circle's corners: the arc fraction walks the degrees between the two words, so
+	// the quarter corner of a 0 to 360 arc points where the quad's own angle word would
+	glsl::vec2 at0 = glsl::particleRingPoint(particle, emitter, 0.0f, outer);
+	glsl::vec2 atQuarter = glsl::particleRingPoint(particle, emitter, 0.25f, outer);
+	glsl::vec2 atHalf = glsl::particleRingPoint(particle, emitter, 0.5f, outer);
+	checkNear(at0.x, 80.0f, "ring: the full arc's first corner points along the x axis");
+	checkNear(at0.y, 0.0f, "ring: the first corner's y is the axis' own zero");
+	checkNear(atQuarter.x, 0.0f, "ring: the quarter corner's x is the turn's own zero");
+	checkNear(atQuarter.y, 80.0f, "ring: the quarter corner points along the y axis");
+	checkNear(atHalf.x, -80.0f, "ring: the half corner points against the x axis");
+
+	// The particle's own angle word turns the ring with the quad: a quarter-turn rotation
+	// moves the first corner onto the y axis
+	particle.angle = 1.5707963267948966f;
+	at0 = glsl::particleRingPoint(particle, emitter, 0.0f, outer);
+	checkNear(at0.x, 0.0f, "ring: the particle's angle turns the first corner's x to zero");
+	checkNear(at0.y, 80.0f, "ring: the particle's angle seats the first corner on the y axis");
+
+	// A partial arc: the arc fraction walks the degrees between the two words alone, the birth
+	// shape ring's own plain lerp - 90 to 180 spans the second quadrant only
+	particle.angle = 0.0f;
+	emitter.ringArcFrom = 90.0f;
+	emitter.ringArcTo = 180.0f;
+	at0 = glsl::particleRingPoint(particle, emitter, 0.0f, outer);
+	glsl::vec2 atEnd = glsl::particleRingPoint(particle, emitter, 1.0f, outer);
+	checkNear(at0.y, 80.0f, "ring: the partial arc opens at its own first degree");
+	checkNear(at0.x, 0.0f, "ring: the partial arc's first corner is on the y axis");
+	checkNear(atEnd.x, -80.0f, "ring: the partial arc closes at its own last degree");
+	checkNear(atEnd.y, 0.0f, "ring: the partial arc's last corner is against the x axis");
+}
+
 int main(int argc, const char *argv[]) {
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);
@@ -1273,6 +1340,7 @@ int main(int argc, const char *argv[]) {
 	testNewest();
 	testParentBound();
 	testDeflectorSeats();
+	testRing();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 

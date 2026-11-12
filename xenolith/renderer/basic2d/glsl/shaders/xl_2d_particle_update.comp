@@ -112,18 +112,20 @@ void main() {
 				particle.currentLifetime > 0u ? 1u : 0u, 0u);
 	}
 
-	// Every particle owns six vertices of its emitter's range; a dead one writes a degenerate quad.
-	// Ordered by lifetime, the slots rotate so the newest particle is drawn last.
+	// Every particle owns its emitter's vertex seats - the quad's six or the ring's own count -
+	// and a dead one writes them degenerate. Ordered by lifetime, the slots rotate so the newest
+	// particle is drawn last.
 	uint slot = index;
 	if ((emitter.flags & XL_PARTICLE_FLAG_ORDER_BY_LIFETIME) != 0u) {
 		slot = (index + emitter.count - frame.newest - 1u) % emitter.count;
 	}
 
 	VerticesBuffer vertexBuffer = VerticesBuffer(pcb.outVerticesPointer);
-	const uint vertexOffset = frame.vertexOffset + slot * 6u;
+	const uint seats = particleVertexSeats(emitter);
+	const uint vertexOffset = frame.vertexOffset + slot * seats;
 
 	if (particle.currentLifetime == 0u) {
-		for (uint i = 0u; i < 6u; ++i) {
+		for (uint i = 0u; i < seats; ++i) {
 			writeVertex(vertexBuffer, vertexOffset + i, vec2(0.0, 0.0), vec2(0.0, 0.0), vec4(0.0, 0.0, 0.0, 0.0), frame.materialIndex);
 		}
 		return;
@@ -163,6 +165,55 @@ void main() {
 	}
 
 	// The corners take the texture as a Sprite does: the top of the quad samples the top of the image
+	if (emitter.ringOuter > 0.0f) {
+		// Effekseer's ring in the screen plane, the stage's own draw: XL_PARTICLE_RING_CORNERS arc
+		// segments, each two color bands wide - inner to middle, middle to outer, the middle edge
+		// at the band's half - and each band the quad's own pair of list triangles, the corner
+		// order the quad's own. The bands carry the emitter's three colors, each multiplied by the
+		// tint the quad would draw; the window maps u along the arc fraction and v across the
+		// band, the outer edge at the window's top row as the quad's top, the inner at its bottom
+		float rIn;
+		float rMid;
+		float rOut;
+		particleRingRadii(particle, emitter, rIn, rMid, rOut);
+		const float vIn = uv1.y;
+		const float vOut = uv0.y;
+		const float vMid = 0.5f * (vIn + vOut);
+		uint at = vertexOffset;
+		for (uint s = 0u; s < XL_PARTICLE_RING_CORNERS; ++s) {
+			const float f0 = float(s) / float(XL_PARTICLE_RING_CORNERS);
+			const float f1 = float(s + 1u) / float(XL_PARTICLE_RING_CORNERS);
+			const float u0 = mix(uv0.x, uv1.x, f0);
+			const float u1 = mix(uv0.x, uv1.x, f1);
+			const vec2 inA = particleRingPoint(particle, emitter, f0, rIn);
+			const vec2 inB = particleRingPoint(particle, emitter, f1, rIn);
+			const vec2 midA = particleRingPoint(particle, emitter, f0, rMid);
+			const vec2 midB = particleRingPoint(particle, emitter, f1, rMid);
+			const vec2 outA = particleRingPoint(particle, emitter, f0, rOut);
+			const vec2 outB = particleRingPoint(particle, emitter, f1, rOut);
+			const vec4 cIn = color * emitter.ringColorInner;
+			const vec4 cMid = color * emitter.ringColorMiddle;
+			const vec4 cOut = color * emitter.ringColorOuter;
+			// the inner band: the quad's (bl, tl, br, tr, br, tl) with the inner edge as its
+			// bottom row and the middle as its top
+			writeVertex(vertexBuffer, at + 0u, inA, vec2(u0, vIn), cIn, frame.materialIndex);
+			writeVertex(vertexBuffer, at + 1u, midA, vec2(u0, vMid), cMid, frame.materialIndex);
+			writeVertex(vertexBuffer, at + 2u, inB, vec2(u1, vIn), cIn, frame.materialIndex);
+			writeVertex(vertexBuffer, at + 3u, midB, vec2(u1, vMid), cMid, frame.materialIndex);
+			writeVertex(vertexBuffer, at + 4u, inB, vec2(u1, vIn), cIn, frame.materialIndex);
+			writeVertex(vertexBuffer, at + 5u, midA, vec2(u0, vMid), cMid, frame.materialIndex);
+			// the outer band: the middle edge as its bottom row and the outer as its top
+			writeVertex(vertexBuffer, at + 6u, midA, vec2(u0, vMid), cMid, frame.materialIndex);
+			writeVertex(vertexBuffer, at + 7u, outA, vec2(u0, vOut), cOut, frame.materialIndex);
+			writeVertex(vertexBuffer, at + 8u, midB, vec2(u1, vMid), cMid, frame.materialIndex);
+			writeVertex(vertexBuffer, at + 9u, outB, vec2(u1, vOut), cOut, frame.materialIndex);
+			writeVertex(vertexBuffer, at + 10u, midB, vec2(u1, vMid), cMid, frame.materialIndex);
+			writeVertex(vertexBuffer, at + 11u, outA, vec2(u0, vOut), cOut, frame.materialIndex);
+			at += 12u;
+		}
+		return;
+	}
+
 	writeVertex(vertexBuffer, vertexOffset + 0, bl, vec2(uv0.x, uv1.y), color, frame.materialIndex);
 	writeVertex(vertexBuffer, vertexOffset + 1, tl, vec2(uv0.x, uv0.y), color, frame.materialIndex);
 	writeVertex(vertexBuffer, vertexOffset + 2, br, vec2(uv1.x, uv1.y), color, frame.materialIndex);

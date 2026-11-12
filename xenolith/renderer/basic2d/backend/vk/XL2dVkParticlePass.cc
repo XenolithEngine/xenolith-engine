@@ -313,7 +313,7 @@ void ParticlePersistentData::update(DeviceMemoryPool *pool, FrameContextHandle2d
 		frame.nextCycle = e.cycle;
 		frame.nextGenframe = e.frame;
 
-		vertexOffset += e.count * 6;
+		vertexOffset += e.count * glsl::particleVertexSeats(s->data);
 		frameEmitters.emplace_back(move(frame));
 	}
 }
@@ -426,11 +426,14 @@ void ParticleEmitterAttachment::handleInput(FrameQueue &q, ParticleEmitterAttach
 
 	if (!handle._frameEmitters.empty()) {
 		size_t nVertexes = 0;
-		for (auto &it : handle._frameEmitters) { nVertexes += it.systemData->data.count; }
+		for (auto &it : handle._frameEmitters) {
+			nVertexes += size_t(it.systemData->data.count)
+					* glsl::particleVertexSeats(it.systemData->data);
+		}
 
 		handle._vertices = pool->spawn(AllocationUsage::DeviceLocal,
 				BufferInfo(core::BufferUsage::ShaderDeviceAddress, core::BufferUsage::TransferDst,
-						sizeof(Vertex) * nVertexes * 6));
+						sizeof(Vertex) * nVertexes));
 
 		handle._commands = pool->spawn(AllocationUsage::DeviceLocal,
 				BufferInfo(core::BufferUsage::ShaderDeviceAddress,
@@ -573,11 +576,13 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 			BufferInfo(core::ForceBufferUsage(core::BufferUsage::TransferSrc),
 					aHandle->getCommands()->getSize()));
 
-	// Every emitter draws its own range: six vertices per particle, dead ones degenerate
+	// Every emitter draws its own range: its own vertex seats per particle - the quad's six or
+	// the ring's own count - dead ones degenerate
 	transferIndirectBuffer->map([&](uint8_t *buf, VkDeviceSize bufSize) {
 		auto target = reinterpret_cast<ParticleIndirectCommand *>(buf);
 		for (auto &e : emitters) {
-			target->vertexCount = e.systemData->data.count * 6;
+			target->vertexCount = e.systemData->data.count
+					* glsl::particleVertexSeats(e.systemData->data);
 			target->instanceCount = 1;
 			target->firstVertex = e.vertexOffset;
 			target->firstInstance = 0;

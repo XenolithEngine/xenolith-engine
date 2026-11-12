@@ -59,6 +59,20 @@ enum class ParticleSystemFlags : uint32_t {
 
 SP_DEFINE_ENUM_AS_MASK(ParticleSystemFlags)
 
+// Effekseer's ring renderer, the stage's own draw: the outer and inner edges in dp, the arc's
+// first and last edge in degrees - the full circle 0 to 360 the arc words' default, saved
+// without them - and the three colors of the bands across the width, white the default each.
+// An outer of zero is the absence this model keeps: the pass draws the quad it always drew
+struct ParticleRing {
+	float outer = 0.0f;
+	float inner = 0.0f;
+	float arcFrom = 0.0f;
+	float arcTo = 360.0f;
+	Color4F colorOuter = Color4F::WHITE;
+	Color4F colorMiddle = Color4F::WHITE;
+	Color4F colorInner = Color4F::WHITE;
+};
+
 // Immutable once handed to the renderer: ParticleSystem copies it before the next change.
 struct SP_PUBLIC ParticleSystemData : public Ref {
 	ParticleEmitterData data;
@@ -297,6 +311,15 @@ public:
 	// unread
 	void setInterval(float);
 	float getInterval() const;
+
+	// The ring the pass draws in place of the quad, Effekseer's ring renderer in the screen
+	// plane: both radii and the arc name themselves into the frame hash the drawing words'
+	// own way, and the scale curve multiplies both radii. An outer of zero - or a negative
+	// one, clamped to it - seats nothing, and the key encode() writes only when a ring stands.
+	// The corner count is the draw's own constant, never a field
+	void setRing(const ParticleRing &);
+	void clearRing();
+	ParticleRing getRing() const;
 
 	void setCount(uint32_t);
 	uint32_t getCount() const;
