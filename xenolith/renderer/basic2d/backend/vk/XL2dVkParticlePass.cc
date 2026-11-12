@@ -665,7 +665,8 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 			// the last step this frame simulates, or the last one simulated before it
 			auto lastStep = (e.genframe + e.nframes + e.framesInGen - 1) % e.framesInGen;
 			target->newest = glsl::particleNewest(e.systemData->data.count,
-					e.systemData->data.explosiveness, e.framesInGen, lastStep);
+					e.systemData->data.explosiveness, e.systemData->data.interval,
+					e.systemData->data.dt, e.framesInGen, lastStep);
 
 			// the extra data is reached through the emitter data, keep it alive with the commands
 			buf.bindBufferAddress(e.extraData);

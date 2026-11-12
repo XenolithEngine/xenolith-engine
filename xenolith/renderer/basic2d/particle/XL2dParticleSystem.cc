@@ -533,6 +533,10 @@ void ParticleSystem::apply(const Value &value) {
 		if (value.isBasicType("start")) {
 			setStart(float(value.getDouble("start")));
 		}
+
+		if (value.isBasicType("interval")) {
+			setInterval(float(value.getDouble("interval")));
+		}
 	}
 
 Value ParticleSystem::encode() const {
@@ -723,6 +727,9 @@ Value ParticleSystem::encode() const {
 	if (_data->data.start != 0.0f) {
 		ret.setDouble(_data->data.start, "start");
 	}
+	if (_data->data.interval != 0.0f) {
+		ret.setDouble(_data->data.interval, "interval");
+	}
 	return ret;
 }
 
@@ -852,6 +859,14 @@ void ParticleSystem::setStart(float seconds) {
 }
 
 float ParticleSystem::getStart() const { return _data->data.start; }
+
+void ParticleSystem::setInterval(float seconds) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the birth schedule follows; a
+	// negative interval is the phase-schedule default
+	mutate().data.interval = sprt::max(seconds, 0.0f);
+}
+
+float ParticleSystem::getInterval() const { return _data->data.interval; }
 
 void ParticleSystem::setCount(uint32_t c) { mutate().data.count = c; }
 

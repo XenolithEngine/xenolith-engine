@@ -61,9 +61,19 @@ SP_GLSL_INLINE float particleHash01(uint seed, uint cycle, uint index) {
 }
 
 // Step of the emission cycle the particle is born at: its phase i / count, shifted by up to one
-// slot with randomness, compressed by explosiveness
+// slot with randomness, compressed by explosiveness - or, with a seated interval, Effekseer's
+// GenerationTime, the frames between the adjacent births of one node, carried as seconds: the
+// birth of slot i takes the step i * interval / dt, floored as the phase branch floors, the
+// schedule the interval's alone - randomness and explosiveness stand unread, and a birth seated
+// past the cycle's last step takes that step. The interval's zero guards the branch: an emitter
+// without the key keeps the phase schedule - and the hash - it always had
 SP_GLSL_INLINE uint particleEmitFrame(uint index, uint count, uint cycle, uint seed,
-		float randomness, float explosiveness, uint framesInGen) {
+		float randomness, float explosiveness, float interval, float dt, uint framesInGen) {
+	if (interval > 0.0f) {
+		uint seated = uint(floor(float(index) * interval / dt));
+		return (seated < framesInGen) ? seated : framesInGen - 1u;
+	}
+
 	float offset = 0.0f;
 	if (randomness > 0.0f) {
 		offset = clamp(randomness, 0.0f, 1.0f) * particleHash01(seed, cycle, index);
@@ -721,7 +731,8 @@ SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
 		uint cycleStep = ownStep % frame.framesInGen;
 
 		uint emitStep = particleEmitFrame(index, emitter.count, cycle, frame.seed,
-				emitter.randomness, emitter.explosiveness, frame.framesInGen);
+				emitter.randomness, emitter.explosiveness, emitter.interval, emitter.dt,
+				frame.framesInGen);
 
 		// oneShot is Godot's one_shot - "If true, only one emission cycle occurs": past cycle 0
 		// the flagged emitter gives no birth, and the slot ages a living particle instead
@@ -790,8 +801,10 @@ inline uint32_t particleAdvanceClock(uint64_t &clock, uint64_t now, uint32_t int
 }
 
 // The particle born last by the step `cycleStep` of the cycle, from the nominal phases (no
-// randomness): the largest index whose emission step is not after it
-inline uint32_t particleNewest(uint count, float explosiveness, uint framesInGen, uint cycleStep) {
+// randomness): the largest index whose emission step is not after it. A seated interval seats
+// the nominal steps the same particleEmitFrame branch does
+inline uint32_t particleNewest(uint count, float explosiveness, float interval, float dt,
+		uint framesInGen, uint cycleStep) {
 	if (count == 0) {
 		return 0;
 	}
@@ -800,7 +813,8 @@ inline uint32_t particleNewest(uint count, float explosiveness, uint framesInGen
 	uint32_t hi = count - 1;
 	while (lo < hi) {
 		auto mid = lo + (hi - lo + 1) / 2;
-		if (particleEmitFrame(mid, count, 0, 0, 0.0f, explosiveness, framesInGen) <= cycleStep) {
+		if (particleEmitFrame(mid, count, 0, 0, 0.0f, explosiveness, interval, dt, framesInGen)
+				<= cycleStep) {
 			lo = mid;
 		} else {
 			hi = mid - 1;

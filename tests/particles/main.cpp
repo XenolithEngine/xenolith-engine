@@ -823,6 +823,105 @@ static void testScaleAxes() {
 	}
 }
 
+// The birth interval, Effekseer's GenerationTime: a seated interval puts slot i's birth at the
+// step i * interval / dt of every cycle, the schedule the interval's alone - randomness and
+// explosiveness stand unread - while the interval's zero keeps the phase schedule byte for byte
+static void testInterval() {
+	const float dt = 16'667 / 1'000'000.0f;
+
+	{
+		// 16 slots over a 59-step cycle, an interval of two steps: slot i is born at its seated
+		// step and only there, the second cycle seating the same steps again. The seated step is
+		// the engine's own float expression - the two-step ladder the floats round at most one
+		// step down, the last slot's 30 arriving as 29
+		Emitter e(16, 1.0f, 21);
+		e.data.interval = 2.0f * dt;
+		auto framesInGen = e.cycleFrames();
+
+		uint32_t seated[16];
+		bool ladder = true;
+		for (uint32_t i = 0; i < 16; ++i) {
+			seated[i] = uint32_t(floor(float(i) * e.data.interval / e.data.dt));
+			ladder = ladder && seated[i] + 1u >= 2u * i && seated[i] <= 2u * i;
+		}
+		check(ladder, "interval: the seated steps are the two-step ladder");
+
+		bool exact = true;
+		for (uint32_t k = 0; k < 2 * framesInGen; ++k) {
+			e.tick();
+			uint32_t step = k % framesInGen;
+			for (uint32_t i = 0; i < 16; ++i) {
+				exact = exact && e.born[i] == (seated[i] == step);
+			}
+		}
+		check(exact, "interval: slot i is born at its seated step of every cycle");
+	}
+
+	{
+		// A birth seated past the cycle takes its last step: an interval of 32 steps over four
+		// slots seats 0 and 32, the past-cycle pair sharing the cycle's last step
+		Emitter e(4, 1.0f, 22);
+		e.data.interval = 32.0f * dt;
+		auto framesInGen = e.cycleFrames();
+
+		const uint32_t seated[4] = {0, 32, framesInGen - 1, framesInGen - 1};
+		bool exact = true;
+		for (uint32_t k = 0; k < framesInGen; ++k) {
+			e.tick();
+			for (uint32_t i = 0; i < 4; ++i) {
+				exact = exact && e.born[i] == (seated[i] == k);
+			}
+		}
+		check(exact, "interval: a birth past the cycle takes its last step");
+	}
+
+	{
+		// The schedule is the interval's alone: explosiveness and randomness stand unread, the
+		// births and every particle state equal the plain interval run
+		Emitter plain(16, 1.0f, 23);
+		plain.data.interval = 2.0f * dt;
+		Emitter loaded(16, 1.0f, 23);
+		loaded.data.interval = 2.0f * dt;
+		loaded.data.explosiveness = 0.75f;
+		loaded.data.randomness = 1.0f;
+
+		bool same = true;
+		for (uint32_t k = 0; k < plain.cycleFrames(); ++k) {
+			plain.tick();
+			loaded.tick();
+			same = same
+					&& 0 == ::memcmp(plain.particles, loaded.particles, sizeof(plain.particles));
+		}
+		check(same, "interval: explosiveness and randomness stand unread");
+	}
+
+	{
+		// The zero guard: an interval of zero answers the phase schedule byte for byte, the run
+		// that never seated one
+		Emitter plain(16, 1.0f, 24);
+		plain.data.randomness = 0.5f;
+		Emitter zero(16, 1.0f, 24);
+		zero.data.randomness = 0.5f;
+		zero.data.interval = 0.0f;
+
+		bool same = true;
+		for (uint32_t k = 0; k < 2 * plain.cycleFrames(); ++k) {
+			plain.tick();
+			zero.tick();
+			same = same
+					&& 0 == ::memcmp(plain.particles, zero.particles, sizeof(plain.particles));
+		}
+		check(same, "interval: the zero keeps the phase schedule byte for byte");
+	}
+
+	checkEq(glsl::particleNewest(16, 0.0f, 2.0f * dt, dt, 60, 0), 0,
+			"interval: newest at step 0 is slot 0");
+	checkEq(glsl::particleNewest(16, 0.0f, 2.0f * dt, dt, 60, 2), 1,
+			"interval: newest at step 2 is slot 1");
+	checkEq(glsl::particleNewest(16, 0.0f, 2.0f * dt, dt, 60, 30), 15,
+			"interval: newest at step 30 is slot 15");
+}
+
 static void testSceneSpace() {	auto setup = [](Single &e) {
 		e.data.velocity.init = 100.0f;
 		e.data.origin = glsl::vec2(1.0f, 0.0f);
@@ -1004,9 +1103,11 @@ static void testHue() {
 }
 
 static void testNewest() {
-	checkEq(glsl::particleNewest(16, 1.0f, 60, 0), 15,
+	const float dt = 16'667 / 1'000'000.0f;
+	checkEq(glsl::particleNewest(16, 1.0f, 0.0f, dt, 60, 0), 15,
 			"newest: a burst makes the last index newest");
-	checkEq(glsl::particleNewest(16, 0.0f, 60, 0), 0, "newest: the first step of a cycle births 0");
+	checkEq(glsl::particleNewest(16, 0.0f, 0.0f, dt, 60, 0), 0,
+			"newest: the first step of a cycle births 0");
 
 	Emitter e(16, 1.0f, 12);
 	auto framesInGen = e.cycleFrames();
@@ -1016,7 +1117,10 @@ static void testNewest() {
 		e.tick();
 		for (uint32_t i = 0; i < 16; ++i) {
 			if (e.born[i]) {
-				matches = matches && glsl::particleNewest(16, 0.0f, framesInGen, step) == i;
+				matches = matches
+						&& glsl::particleNewest(16, 0.0f, e.data.interval, e.data.dt, framesInGen,
+								   step)
+								== i;
 			}
 		}
 	}
@@ -1044,6 +1148,7 @@ int main(int argc, const char *argv[]) {
 	testRandom();
 	testKinematics();
 	testScaleAxes();
+	testInterval();
 	testSceneSpace();
 	testCurves();
 	testHue();

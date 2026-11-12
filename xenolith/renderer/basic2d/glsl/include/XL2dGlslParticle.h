@@ -247,23 +247,23 @@ struct ParticleEmitterData {
 	ParticleFloatParam radialAcceleration; // ускорение от origin, dp в секунду^2
 	ParticleFloatParam tangentialAcceleration; // ускорение перпендикулярно движению, dp в секунду^2
 
-	// [192-207]
+	// [192-199]
 	ParticleFloatParam hue;
 
-	// [208-223]
+	// [200-215]
 	uint colorCurveOffset;
 	uint animFrameCurveOffset;
 	uint scaleCurveOffset;
 	float dt;
 
-	// [224-239]
+	// [216-231]
 	// the rate the speed loses per second, chosen at birth from the pair; 0 - no loss
 	ParticleFloatParam damping;
 	// upper limit of the speed, 0 - no limit
 	float maxSpeed;
-	uint padding236;
+	uint padding228;
 
-	// [240-263]
+	// [232-251]
 	// scale of the turbulence force, 0 - no turbulence
 	float turbulenceStrength;
 	// variations of the one-octave noise across its two axes, 0 - none
@@ -273,44 +273,61 @@ struct ParticleEmitterData {
 	// min and max of the influence ramp over the lifetime, the min at birth, the max at the last
 	// step
 	ParticleFloatParam turbulenceInfluence;
-	uint padding260;
 
-	// [264-327]
+	// [252-255]
+	// seconds between the births of adjacent slots, Effekseer's GenerationTime, 0 - the phase
+	// schedule of count over the cycle
+	float interval;
+
+	// [256-319]
 	// the attractor seats, in the order the file's list seats them; a seat of strength 0 is
 	// unused
 	ParticleAttractor attractors[4];
 
-	// [328-331]
+	// [320-323]
 	// width of the trail strip the particle's seat history draws, 0 - no trail
 	float trailWidth;
 
-	// [332-459]
+	// [324-435]
 	// the deflector seats, in the order the file's list seats them; a seat of shape 0 is unused
 	ParticleDeflector deflectors[4];
 
-	// [460-463]
+	// [436-439]
 	// ratio of the node's velocity a newborn inherits, 0 - no inheritance
 	float inheritVelocity;
 
-	// [464-471]
+	// [440-451]
 	// slide of the sampled UV window over the texture per second of simulation time, signed per
 	// axis, (0, 0) - no slide
 	vec2 uvScroll;
 	// probability of the U mirror a birth draws from the particle's own generator, 0 - never
 	float uvFlip;
 
-	// [476-479]
+	// [452-455]
 	// seconds the birth schedule waits before the emitter's own timeline begins, 0 - no wait
 	float start;
 
-	// [480-487]
+	// [456-463]
 	// the second axis's own birth range, Effekseer's scale by axis; words equal to `scale` are
 	// the absence this model keeps - the second axis takes the first's draw, the generator
 	// stands unread, and the file writes no key
 	ParticleFloatParam scaleY;
 
-	// [488]
+	// [464]
 };
+
+#ifndef SP_GLSL
+// The word map above is the compiler's own, locked where it is declared: both texts share this
+// struct, and the seating of a new word reads these offsets
+static_assert(sizeof(ParticleEmitterData) == 464
+		&& __builtin_offsetof(ParticleEmitterData, colorCurveOffset) == 200
+		&& __builtin_offsetof(ParticleEmitterData, interval) == 252
+		&& __builtin_offsetof(ParticleEmitterData, attractors) == 256
+		&& __builtin_offsetof(ParticleEmitterData, deflectors) == 324
+		&& __builtin_offsetof(ParticleEmitterData, uvScroll) == 440
+		&& __builtin_offsetof(ParticleEmitterData, start) == 452
+		&& __builtin_offsetof(ParticleEmitterData, scaleY) == 456);
+#endif
 
 // State of one particle. Parameters are chosen at birth; positions are in the node's space with
 // XL_PARTICLE_FLAG_LOCAL_COORDS, in the scene's otherwise

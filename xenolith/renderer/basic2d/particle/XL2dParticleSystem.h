@@ -285,6 +285,14 @@ public:
 	void setStart(float);
 	float getStart() const;
 
+	// Seconds between the births of adjacent slots, Effekseer's GenerationTime, 0 - the phase
+	// schedule of count over the cycle; a negative value clamps to that default, and the key
+	// encode() writes only when the value is not it. A seated interval seats the birth of slot
+	// i at the step i * interval / dt of every cycle, and randomness and explosiveness stand
+	// unread
+	void setInterval(float);
+	float getInterval() const;
+
 	void setCount(uint32_t);
 	uint32_t getCount() const;
 
