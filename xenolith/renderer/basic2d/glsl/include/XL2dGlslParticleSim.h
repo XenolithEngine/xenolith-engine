@@ -735,8 +735,12 @@ SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
 				frame.framesInGen);
 
 		// oneShot is Godot's one_shot - "If true, only one emission cycle occurs": past cycle 0
-		// the flagged emitter gives no birth, and the slot ages a living particle instead
+		// the flagged emitter gives no birth, and the slot ages a living particle instead. The
+		// parent-bound bit empties the own schedule the same way and on every cycle: the emitter
+		// whose parent the document names is not standalone, its births seated by the host from
+		// the living parent particles - the step here ages what those births left standing
 		if (!beforeStart && emitStep == cycleStep
+				&& (emitter.flags & XL_PARTICLE_FLAG_PARENT_BOUND) == 0u
 				&& (((emitter.flags & XL_PARTICLE_FLAG_ONE_SHOT) == 0u) || cycle == 0u)) {
 			vec2 point = vec2(0.0f, 0.0f);
 			if (emitter.emissionType == XL_PARTICLE_EMISSION_POINTS) {

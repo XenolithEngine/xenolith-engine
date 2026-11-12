@@ -50,6 +50,11 @@ enum class ParticleSystemFlags : uint32_t {
 	OrderByLifetime = 1 << 2,
 	UseLifetimeMax = 1 << 3,
 	OneShot = 1 << 4,
+	// Effekseer's parent binding, the continuous child of Particle-39: suppresses the emitter's
+	// own birth schedule, the host seating its births from the living parent particles. Deliber-
+	// ately absent from the flag word list below - no document carries it; the host sets the bit
+	// on its own copy of the words
+	ParentBound = 1 << 5,
 };
 
 SP_DEFINE_ENUM_AS_MASK(ParticleSystemFlags)

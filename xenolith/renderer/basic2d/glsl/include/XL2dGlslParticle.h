@@ -39,6 +39,13 @@ using namespace sprt::glsl;
 #define XL_PARTICLE_FLAG_USE_LIFETIME_MAX 8
 #define XL_PARTICLE_FLAG_ONE_SHOT 16
 
+// ParticleEmitterData::flags, Effekseer's parent binding, the continuous child of Particle-39: the
+// bit suppresses the emitter's own birth schedule - its births are seated by the host that knows
+// the parent, one generation per living parent particle, so the step the bit flags never births on
+// its own. The bit is host-set, unnamed in ParticleSystem's flag word list, so no document carries
+// it: the child's parenting rides the document's envelope, not the system's words
+#define XL_PARTICLE_FLAG_PARENT_BOUND 32
+
 // ParticleEmitterData::emissionType, the same values as basic2d::ParticleEmissionType
 #define XL_PARTICLE_EMISSION_POINTS 0
 #define XL_PARTICLE_EMISSION_DISC 1

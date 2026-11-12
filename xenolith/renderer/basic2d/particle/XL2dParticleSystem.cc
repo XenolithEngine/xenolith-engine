@@ -33,6 +33,7 @@ static_assert(
 static_assert(toInt(ParticleSystemFlags::OrderByLifetime) == XL_PARTICLE_FLAG_ORDER_BY_LIFETIME);
 static_assert(toInt(ParticleSystemFlags::UseLifetimeMax) == XL_PARTICLE_FLAG_USE_LIFETIME_MAX);
 static_assert(toInt(ParticleSystemFlags::OneShot) == XL_PARTICLE_FLAG_ONE_SHOT);
+static_assert(toInt(ParticleSystemFlags::ParentBound) == XL_PARTICLE_FLAG_PARENT_BOUND);
 
 static_assert(toInt(ParticleEmissionType::Points) == XL_PARTICLE_EMISSION_POINTS);
 static_assert(toInt(ParticleEmissionType::Disc) == XL_PARTICLE_EMISSION_DISC);

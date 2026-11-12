@@ -1127,6 +1127,65 @@ static void testNewest() {
 	check(matches, "newest: the particle born on a step is the newest after it");
 }
 
+// Effekseer's parent binding, the continuous child of Particle-39: the bit empties the emitter's
+// own birth schedule on every cycle - the host that knows the parent seats its births - while the
+// step still ages a particle the host seated, so the bound emitter is no second system
+static void testParentBound() {
+	Emitter e(8, 1.0f, 5);
+	auto framesInGen = e.cycleFrames();
+	e.data.flags |= XL_PARTICLE_FLAG_PARENT_BOUND;
+
+	// A whole cycle of the suppressed schedule: no birth, nothing alive, the generators untouched
+	bool anyBorn = false;
+	bool anyDrawn = false;
+	for (uint32_t k = 0; k < framesInGen + 2u; ++k) {
+		e.tick();
+		anyBorn = anyBorn || e.births() != 0;
+		anyDrawn = anyDrawn || e.alive() != 0;
+	}
+	check(!anyBorn, "parent-bound: the own schedule births nothing");
+	check(!anyDrawn, "parent-bound: no particle stands alive without a host birth");
+
+	// The step the bit flags still ages what the host seats: one particle born by particleEmit at
+	// the point a parent particle stood, aged by the same update until it dies on schedule
+	glsl::ParticleFrameData f;
+	::memset(&f, 0, sizeof(f));
+	f.framesInGen = framesInGen;
+	f.genframe = e.frame;
+	f.nframes = 0;
+	f.cycle = e.cycle;
+	f.seed = e.seed;
+	f.dt = e.data.dt;
+	glsl::particleSeedRng(e.particles[0].rng, e.seed, 0);
+	glsl::particleEmit(e.particles[0], e.data, f, glsl::vec2(3.0f, 4.0f));
+	e.particles[0].birthScale = e.particles[0].scale;
+	e.particles[0].birthScaleY = e.particles[0].scaleY;
+	checkEq(e.particles[0].currentLifetime, e.particles[0].fullLifetime,
+			"parent-bound: a host-seated birth stands alive");
+
+	// The lifetime 1.0 s covers 59 steps; aging one per tick, the particle dies on the last of
+	// them and the run births nothing on its own
+	uint32_t ticks = 0;
+	bool bornWhileAging = false;
+	while (e.particles[0].currentLifetime > 0u) {
+		e.tick();
+		++ticks;
+		bornWhileAging = bornWhileAging || e.births() != 0;
+	}
+	check(!bornWhileAging, "parent-bound: the aging run births nothing on its own");
+	checkEq(ticks, uint32_t(e.particles[0].fullLifetime),
+			"parent-bound: the seated particle ages one step per tick and dies on schedule");
+
+	// The bit off is the standalone schedule again: the first cycle births every slot
+	e.data.flags &= ~uint32_t(XL_PARTICLE_FLAG_PARENT_BOUND);
+	bool bornAgain = false;
+	for (uint32_t k = 0; k < framesInGen + 2u && !bornAgain; ++k) {
+		e.tick();
+		bornAgain = e.births() != 0;
+	}
+	check(bornAgain, "parent-bound: the bit off restores the own schedule's births");
+}
+
 int main(int argc, const char *argv[]) {
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);
@@ -1153,6 +1212,7 @@ int main(int argc, const char *argv[]) {
 	testCurves();
 	testHue();
 	testNewest();
+	testParentBound();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 
