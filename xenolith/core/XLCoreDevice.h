@@ -114,6 +114,10 @@ public:
 			Function<void(Loop &)> &&invalidate, Rc<Ref> && = nullptr);
 	void releaseQueue(Rc<DeviceQueue> &&);
 
+	// The loop stopped: no queue comes back to a waiter any more (a release is posted to the loop),
+	// so every waiter gets its invalidation now.
+	void invalidateQueueWaiters();
+
 	// Запросить DeviceQueue синхронно, если возможно
 	Rc<DeviceQueue> tryAcquireQueue(QueueFlags);
 

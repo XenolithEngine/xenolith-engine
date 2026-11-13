@@ -348,9 +348,20 @@ protected:
 	sprt::atomic<uint64_t> _uploadedGeneration = 0;
 	sprt::atomic<uint32_t> _uploadsInFlight = 0;
 
-	// Raised on the signalling thread when a batch reports failure, consumed by the next flush on
-	// the app thread. Not a hop, just a note: the reset itself walks the layouts and belongs there.
+	// Raised on the signalling thread when a batch reports failure or success, consumed by the
+	// next flush on the app thread. Not a hop, just a note: the reset itself walks the layouts and
+	// belongs there.
 	sprt::atomic<bool> _uploadFailed = false;
+	sprt::atomic<bool> _uploadSucceeded = false;
+
+	// A failed set is resent at _retryAt, not on the next update: a refusal that lasts (a full
+	// device heap) would otherwise cost a rebuild every frame. The delay doubles with each failure
+	// in a row within RetryDelayMin..RetryDelayMax (microseconds); a batch that lands resets it.
+	static constexpr uint64_t RetryDelayMin = 250'000;
+	static constexpr uint64_t RetryDelayMax = 4'000'000;
+	uint32_t _retryFailures = 0;
+	uint64_t _retryAt = 0;
+	bool _retryPending = false;
 
 	bool _dirty = false;
 	mutable sprt::shared_mutex _layoutSharedMutex;

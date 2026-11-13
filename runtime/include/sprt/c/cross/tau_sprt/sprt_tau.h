@@ -377,6 +377,24 @@ int __sprt_tau_display2_commit(const struct __sprt_tau_display2_plane_state *sta
 int __sprt_tau_display2_blank(unsigned long long *seq, unsigned long long *time);
 void __sprt_tau_display2_close(void);
 
+// The sink's modes (dev.display@2 minor 2.1): modes() reads them anew and answers their count, with
+// the generation of the list, which changes when a display comes or goes (0 with a driver of minor
+// 2.0). set_mode() takes mode `index` from now: a commit of no planes shows it blank, query()
+// then tells its size.
+#define __SPRT_TAU_DISPLAY2_MODE_PREFERRED 1
+#define __SPRT_TAU_DISPLAY2_MODE_CURRENT 2
+
+struct __sprt_tau_display2_mode {
+	unsigned width;
+	unsigned height;
+	unsigned refresh_mhz;
+	unsigned flags;
+};
+
+int __sprt_tau_display2_modes(unsigned long long *generation);
+int __sprt_tau_display2_mode(unsigned index, struct __sprt_tau_display2_mode *mode);
+int __sprt_tau_display2_set_mode(unsigned index);
+
 // The GPU of the module (dev.gpu@1 through libtau, IO-A-GpuIface-1): one session with its heaps
 // mapped, found by Mesa through dlsym. open() attaches, `wait` waits for a provider to start;
 // -EBUSY: another client holds the GPU, -ENOENT: no provider runs. A submit's fence is the value

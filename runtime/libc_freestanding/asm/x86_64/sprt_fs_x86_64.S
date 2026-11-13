@@ -827,9 +827,11 @@ FS_FUNC(memchr)
 	jnz .Lchr_found
 	add $16, %rdi
 6:	FS_IF_AVX2(.Lchr_avx2)
-	/* two blocks at a time while both start before the end */
+	/* two blocks at a time while both start before the end; the blocks before
+	 * may already have passed it */
 3:	mov %r8, %rdx
 	sub %rdi, %rdx
+	jbe .Lchr_null
 	cmp $32, %rdx
 	jbe 4f
 	movdqa (%rdi), %xmm1
@@ -881,6 +883,7 @@ FS_FUNC(memchr)
 	add $32, %rdi
 1:	mov %r8, %rdx
 	sub %rdi, %rdx
+	jbe .Lchr_avx2_null
 	cmp $64, %rdx
 	jbe 2f
 	vpcmpeqb (%rdi), %ymm0, %ymm1

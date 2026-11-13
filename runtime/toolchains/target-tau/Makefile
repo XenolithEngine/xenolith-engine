@@ -46,7 +46,11 @@ SP_TARGET_CLANG := aarch64-none-elf
 SP_LINK_CLANG := $(SP_TARGET_CLANG)
 # x18 is the shadow call stack of EL0 (xenolith-tau RT-A-ShadowStack-1): no code of any target
 # takes it, EL0 code keeps its return addresses there.
-TAU_ARCH_FLAGS := -march=armv8-a -ffixed-x18
+# The Cortex-A53 errata 835769 (a 64-bit multiply-accumulate after a load or store) and 843419 (an
+# ADRP at the end of a page): every AArch64 binary runs on the A53 too (xenolith-tau
+# BLD-A-CortexErrata-1).
+TAU_ARCH_FLAGS := -march=armv8-a -ffixed-x18 -mfix-cortex-a53-835769
+TAU_ARCH_LDFLAGS := -Wl,--fix-cortex-a53-843419
 TAU_EL0_FLAGS := -fsanitize=shadow-call-stack
 else ifeq ($(SP_ARCH),x86_64)
 SP_TARGET_CLANG := x86_64-unknown-none-elf
@@ -55,6 +59,7 @@ SP_TARGET_CLANG := x86_64-unknown-none-elf
 SP_LINK_CLANG := x86_64-unknown-linux-gnu
 # The thread pointer (fs) belongs to the module's TLS block: no canary there.
 TAU_ARCH_FLAGS := -march=x86-64 -mstack-protector-guard=global
+TAU_ARCH_LDFLAGS :=
 TAU_EL0_FLAGS :=
 # The builtins' cpu_model/x86.c needs the compiler's cpuid.h.
 TAU_RT_ARCH_INCLUDES = -isystem $(HOST_DIR)/lib/clang/$(SP_LLVM_VER)/include
@@ -166,7 +171,7 @@ endef
 # What other systems split out of their libc (libm, libdl, librt, libpthread) is libsprt.so's too:
 # empty archives answer the builds that ask for them.
 SPRT_SO := $(SP_RUNTIME_ROOT)/stappler-build-shared/$(SP_ARCH)-tau-none-elf+dll/debug/cc/libsprt.so
-VK_LINK_FLAGS := --target=$(SP_LINK_CLANG) -fuse-ld=lld -nostdlib -no-pie -Wl,--hash-style=gnu -Wl,--eh-frame-hdr \
+VK_LINK_FLAGS := --target=$(SP_LINK_CLANG)$(if $(TAU_ARCH_LDFLAGS), $(TAU_ARCH_LDFLAGS)) -fuse-ld=lld -nostdlib -no-pie -Wl,--hash-style=gnu -Wl,--eh-frame-hdr \
 	-Wl,-z,now -Wl,-z,relro -Wl,-z,max-page-size=4096 -Wl,-z,separate-loadable-segments \
 	-Wl,-Bsymbolic-functions -Wl,-z,defs -L$(OUT_VK)/usr/lib -Wl,-Bdynamic $(SPRT_SO) $(T_DLL)/$(BUILTINS)
 
@@ -212,7 +217,7 @@ TARGET_NAME := $(SP_TARGET_CLANG)
 TARGET_GENERAL_CFLAGS := --target=$(SP_TARGET_CLANG) $(2) -resource-dir $$(TARGET_SYSROOT)/lib/clang $(TAU_ARCH_FLAGS) -D__TAU__
 TARGET_GENERAL_CXXFLAGS := --target=$(SP_TARGET_CLANG) $(2) -resource-dir $$(TARGET_SYSROOT)/lib/clang $(TAU_ARCH_FLAGS) -D__TAU__
 TARGET_GENERAL_SFLAGS := --target=$(SP_TARGET_CLANG) -resource-dir $$(TARGET_SYSROOT)/lib/clang $(TAU_ARCH_FLAGS) -D__TAU__
-TARGET_GENERAL_LDFLAGS := --target=$(SP_LINK_CLANG) -resource-dir $$(TARGET_SYSROOT)/lib/clang
+TARGET_GENERAL_LDFLAGS := --target=$(SP_LINK_CLANG) -resource-dir $$(TARGET_SYSROOT)/lib/clang$(if $(TAU_ARCH_LDFLAGS), $(TAU_ARCH_LDFLAGS))
 TARGET_LIB_DIR := $$(TARGET_SYSROOT)/usr/lib
 TARGET_EXEC_CFLAGS :=
 TARGET_EXEC_CXXFLAGS :=

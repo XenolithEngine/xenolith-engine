@@ -51,22 +51,25 @@ public:
 
 	virtual void fillCommandBuffer(core::Device &, core::CommandBuffer &cbuf) override {
 		auto &buf = static_cast<CommandBuffer &>(cbuf);
+		// Readers sample the image, or copy it when it is not Sampled (a plane scans it out).
+		bool sampled = hasFlag(_image->getInfo().usage, core::ImageUsage::Sampled);
+		auto layout = sampled ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		auto access = sampled ? VK_ACCESS_SHADER_READ_BIT : VK_ACCESS_TRANSFER_READ_BIT;
+		auto stages = sampled ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+							  : VK_PIPELINE_STAGE_TRANSFER_BIT;
 		if (_toReaders) {
-			// What the render pass wrote becomes visible to whatever samples the image.
-			auto barrier = ImageMemoryBarrier(_image, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-					VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-					VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-			buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-					VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+			// What the render pass wrote becomes visible to the readers.
+			auto barrier = ImageMemoryBarrier(_image, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, access,
+					VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, layout);
+			buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, stages, 0,
 					makeSpanView(&barrier, 1));
 		} else {
 			// Every read is done before the image is drawn into again - a partial redraw LOADs it.
-			auto barrier = ImageMemoryBarrier(_image, VK_ACCESS_SHADER_READ_BIT,
+			auto barrier = ImageMemoryBarrier(_image, access,
 					VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-					VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-			buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
-							| VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-					VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, makeSpanView(&barrier, 1));
+					layout, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+			buf.cmdPipelineBarrier(stages, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
+					makeSpanView(&barrier, 1));
 		}
 	}
 
@@ -292,7 +295,8 @@ void HeadlessSwapchain::invalidateViews() {
 
 bool HeadlessSwapchain::init(Device &dev, NotNull<core::Loop> loop, const core::SurfaceInfo &info,
 		const core::SwapchainConfig &cfg, ImageInfo &&swapchainImageInfo,
-		core::PresentMode presentMode, HeadlessSurface *surface, bool exportable, bool linear) {
+		core::PresentMode presentMode, HeadlessSurface *surface, bool exportable, bool linear,
+		bool scanout) {
 	// AppWindow asks for ColorAttachment [| TransferDst]; TransferSrc is what turns these into
 	// always-capturable buffers.
 	swapchainImageInfo.usage |= core::ImageUsage::TransferSrc;
@@ -312,6 +316,11 @@ bool HeadlessSwapchain::init(Device &dev, NotNull<core::Loop> loop, const core::
 				linearInfo.tiling = core::ImageTiling::Linear;
 				image = dev.getAllocator()->spawnExportable(AllocationUsage::DeviceLocal, key,
 						linearInfo);
+				if (!image && scanout) {
+					linearInfo.usage &= ~core::ImageUsage::Sampled;
+					image = dev.getAllocator()->spawnExportable(AllocationUsage::DeviceLocal, key,
+							linearInfo);
+				}
 			}
 			if (!image) {
 				image = dev.getAllocator()->spawnExportable(AllocationUsage::DeviceLocal, key,
@@ -474,7 +483,7 @@ Status HeadlessSwapchain::present(core::DeviceQueue *, core::ImageStorage *image
 	lock.unlock();
 
 	if (published) {
-		publishPlaneFrame(publishedSlot, sp::move(published));
+		publishPlaneFrame(publishedSlot, sp::move(published), info.contentClock);
 	}
 
 	if (output) {
@@ -532,7 +541,7 @@ void HeadlessSwapchain::attachPlaneSource(NotNull<core::PlaneSource> source) {
 	_planeSource->setSlotTable(Rc<core::PlaneSlotTable>(_slots));
 }
 
-void HeadlessSwapchain::publishPlaneFrame(uint32_t slot, Rc<Image> &&image) {
+void HeadlessSwapchain::publishPlaneFrame(uint32_t slot, Rc<Image> &&image, uint64_t contentClock) {
 	auto loop = Rc<core::Loop>(_loop);
 	auto device = Rc<Device>(static_cast<Device *>(_object.device));
 	auto source = _planeSource;
@@ -557,10 +566,11 @@ void HeadlessSwapchain::publishPlaneFrame(uint32_t slot, Rc<Image> &&image) {
 	// Published only once readable: the frame is announced after its image reached ShaderReadOnly.
 	device->runTask(*loop,
 			Rc<PlaneLayoutTask>::create(Rc<Image>(image), true,
-					[source, serial, slot, image, slots, release = sp::move(release)](
+					[source, serial, slot, image, slots, contentClock, release = sp::move(release)](
 							bool success) mutable {
 		auto frame = Rc<core::PlaneFrame>::create(serial, slot, Rc<core::ImageObject>(image.get()),
 				sp::move(slots), sp::move(release));
+		frame->setContentClock(contentClock);
 		if (success) {
 			source->publish(sp::move(frame));
 		}
@@ -666,7 +676,8 @@ bool HeadlessPresentationEngine::createSwapchain(const core::SurfaceInfo &info,
 	auto swapchainImageInfo = _window->getSwapchainImageInfo(cfg);
 
 	_swapchain = Rc<HeadlessSwapchain>::create(*dev, _loop, info, cfg, move(swapchainImageInfo),
-			presentMode, surface, _window->getPlaneSource() != nullptr, _options.linearImages);
+			presentMode, surface, _window->getPlaneSource() != nullptr, _options.linearImages,
+			_options.scanoutImages);
 	if (!_swapchain) {
 		log::source().error("vk::HeadlessPresentationEngine", "Fail to create swapchain");
 		return false;
@@ -705,20 +716,23 @@ bool HeadlessPresentationEngine::createSwapchain(const core::SurfaceInfo &info,
 void HeadlessPresentationEngine::captureScreenshot(
 		Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) {
 	/* A window read as a plane is captured as the compositor sees it: the latest published frame,
-	in ShaderReadOnly. The copy moves the layout and back, so it takes the frame alone: compositor
-	frames sampling it finish first, and the next ones wait for the copy. */
+	in ShaderReadOnly (TransferSrc when not Sampled). The copy moves the layout and back, so it takes
+	the frame alone: compositor frames sampling it finish first, and the next ones wait for the copy. */
 	if (auto source = _window->getPlaneSource()) {
 		if (auto frame = source->getLatest()) {
 			frame->lock(core::PlaneFrameAccess::Exclusive, _loop,
 					[loop = _loop, cb = sp::move(cb)](Rc<core::PlaneFrameLock> &&lock) mutable {
 				auto image = Rc<core::ImageObject>(lock->getFrame()->getImage());
+				auto layout = hasFlag(image->getInfo().usage, core::ImageUsage::Sampled)
+						? core::AttachmentLayout::ShaderReadOnlyOptimal
+						: core::AttachmentLayout::TransferSrcOptimal;
 				loop->captureImage(
 						[cb = sp::move(cb), lock = sp::move(lock)](const core::ImageInfoData &info,
 								BytesView view) mutable {
 					cb(info, view);
 					lock = nullptr;
 				},
-						image, core::AttachmentLayout::ShaderReadOnlyOptimal);
+						image, layout);
 			});
 			return;
 		}

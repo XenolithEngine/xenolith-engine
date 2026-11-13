@@ -489,8 +489,10 @@ FS_FUNC(memchr)
 	vpickve2gr.hu $t1, $vr1, 0
 	bnez $t1, .Lchr_found
 	addi.d $a0, $a0, 16
-	/* two blocks at a time while both start before the end */
-3:	sub.d $t0, $a3, $a0
+	/* two blocks at a time while both start before the end; the blocks before
+	 * may already have passed it */
+3:	bgeu $a0, $a3, .Lchr_null
+	sub.d $t0, $a3, $a0
 	li.d $t8, 32
 	bgeu $t8, $t0, 4f
 	vld $vr1, $a0, 0

@@ -543,8 +543,10 @@ FS_FUNC(memchr)
 	fmov x3, d1
 	cbnz x3, .Lchr_found
 	add x10, x10, #16
-	/* two blocks at a time while both start before the end */
-3:	sub x4, x8, x10
+	/* two blocks at a time while both start before the end; the blocks before
+	 * may already have passed it */
+3:	subs x4, x8, x10
+	b.ls .Lchr_null
 	cmp x4, #32
 	b.ls 4f
 	ldp q1, q2, [x10]

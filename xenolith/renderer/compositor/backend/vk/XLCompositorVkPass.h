@@ -76,10 +76,17 @@ public:
 	// descriptors and commands are prepared.
 	virtual bool prepare(core::FrameQueue &, Function<void(bool)> &&) override;
 
+	// The planes' locks go with the pass, completed or not: a failed prepare never completes, and a
+	// lock kept would hold the planes' frames and the loop, and a copy waiting for it, for good.
+	virtual void finalize(core::FrameQueue &, bool) override;
+
 protected:
 	struct Plane {
 		Rc<core::PlaneFrame> frame;
 		Rc<core::ImageView> view;
+		// A frame whose image is not Sampled (a display scans it out as it is) is sampled from a
+		// copy, made by the pass before it draws.
+		Rc<xvk::Image> shadow;
 		URect dst; // clipped to the output
 		UVec2 srcOrigin;
 		float alpha = 1.0f;
@@ -99,6 +106,7 @@ protected:
 	Extent2 _extent;
 	uint32_t _pendingLocks = 0;
 	bool _lockDeferred = false;
+	bool _finalized = false;
 };
 
 class SP_PUBLIC CompositorPass : public core::QueuePassTyped<CompositorPassHandle, xvk::QueuePass> {

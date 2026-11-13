@@ -827,6 +827,9 @@ void CommandBuffer::cmdDispatchPipeline(const core::ComputePipelineData *pipelin
 }
 
 uint32_t CommandBuffer::cmdWriteTimestamp(XPipelineStage stage, uint32_t tag) {
+	if (!_info.timestampQueries) {
+		return maxOf<uint32_t>();
+	}
 	if (!_timestampQueryPool) {
 		auto dev = static_cast<Device *>(_pool->getObjectData().device);
 

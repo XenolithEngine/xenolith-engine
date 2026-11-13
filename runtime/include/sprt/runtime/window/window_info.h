@@ -427,6 +427,11 @@ enum class WindowCreationFlags : uint32_t {
 	// server sets it for a client's window; a request from a client never carries it.
 	Virtual = 1 << 10,
 
+	// For a Virtual window: the compositor may show its image as it is, on a display plane. Where the
+	// device samples no linear images, they are linear and not Sampled, and a composition samples
+	// a copy of them.
+	Scanout = 1 << 11,
+
 	// Use direct output to display, bypassing whole WM stack
 	// Check if it actually supported with WindowCapabilities::DirectOutput
 	DirectOutput = 1 << 27,

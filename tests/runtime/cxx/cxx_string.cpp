@@ -422,6 +422,27 @@ void performStringTests() {
 		return str.size() == "Where is"_len && strcmp(str.data(), "Where is") == 0;
 	});
 
+	// Past the size a block stays zero: shrinking zeroes what it drops, not the whole capacity.
+	runTest(stream, "resize() truncate of a large string zeroes what it drops", count, passed, [&] {
+		String str;
+		str.resize(4'096, 'x');
+		str.resize(8);
+		bool zero = true;
+		for (size_t i = 8; i < 4'096; ++i) { zero = zero && str.data()[i] == 0; }
+		str.append("tail");
+		return zero && str.size() == 12 && strcmp(str.data(), "xxxxxxxxtail") == 0;
+	});
+
+	runTest(stream, "clear() of a large string zeroes what it held", count, passed, [&] {
+		String str;
+		str.resize(4'096, 'y');
+		str.clear();
+		bool zero = true;
+		for (size_t i = 0; i < 4'096; ++i) { zero = zero && str.data()[i] == 0; }
+		str.append("again");
+		return zero && str.size() == 5 && strcmp(str.data(), "again") == 0;
+	});
+
 	runTest(stream, "resize() fill test", count, passed, [&] {
 		String str("Ha");
 		str.resize(8, 'a');

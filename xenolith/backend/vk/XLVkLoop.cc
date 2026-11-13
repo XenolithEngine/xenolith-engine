@@ -406,14 +406,15 @@ struct Loop::Internal final : memory::AllocPool {
 	Rc<Device> device;
 	mem_pool::Vector<Rc<Fence>> defaultFences;
 	mem_pool::Vector<Rc<Fence>> swapchainFences;
-	mem_pool::Set<Rc<Fence>> scheduledFences;
+	// Every frame adds and erases fences here: the pool would keep each small node.
+	Set<Rc<Fence>> scheduledFences;
 
 	struct ExportedFence {
 		Rc<Fence> fence;
 		Rc<sprt::dispatch::PollHandle> handle;
 	};
 
-	mem_pool::Map<Fence *, ExportedFence> exportedFences;
+	Map<Fence *, ExportedFence> exportedFences;
 
 	Rc<RenderQueueCompiler> renderQueueCompiler;
 	Rc<TransferQueue> transferQueue;
@@ -518,6 +519,13 @@ void Loop::stop() {
 			_internal->waitIdle();
 
 			_internal->update(false);
+
+			// A queue goes back to the device through a task on this loop, which no longer runs: a
+			// pass still waiting for one would keep its frame, the frame's output engine and window,
+			// and this loop.
+			if (_internal->device) {
+				_internal->device->invalidateQueueWaiters();
+			}
 
 			_internal->updateTimerHandle->cancel();
 			_internal->updateTimerHandle->setUserdata(nullptr);
@@ -767,8 +775,12 @@ Rc<core::Fence> Loop::acquireFence(core::FenceType type) {
 				guard->_internal->scheduleFence(Rc<Fence>(fence));
 				return true;
 			} else {
-				guard->performOnThread([guard, fence = move(fence)]() mutable {
-					if (!fence->check(*guard, true)) {
+				// Through the looper, not Loop::performOnThread: a stopped loop drops its tasks, and a
+				// fence nobody checks keeps its callbacks, their frame and this loop for good.
+				// scheduleFence waits for it then.
+				guard->_looper->performOnThread([guard, fence = move(fence)]() mutable {
+					// check() is true once the fence is done with: only a pending one is scheduled.
+					if (fence->check(*guard, true)) {
 						return;
 					}
 

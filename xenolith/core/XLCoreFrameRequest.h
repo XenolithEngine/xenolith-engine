@@ -118,6 +118,11 @@ public:
 	void setDeadline(uint64_t val) { _deadline = val; }
 	uint64_t getDeadline() const { return _deadline; }
 
+	// When the frame's content was asked for (monotonic clock, microseconds): the request's
+	// creation, or a remote client's AcquireFrame. An input handled before it may show in the frame.
+	void setContentClock(uint64_t val) { _contentClock = val; }
+	uint64_t getContentClock() const { return _contentClock; }
+
 	const Vector<Rc<DependencyEvent>> &getSignalDependencies() const { return _signalDependencies; }
 
 	FrameRequest() = default;
@@ -147,6 +152,7 @@ protected:
 	Rc<FrameDamageState> _damage;
 	bool _redrawSkipped = false;
 	uint64_t _deadline = 0; // absolute monotonic-clock deadline (us); 0 = none
+	uint64_t _contentClock = 0;
 
 	Map<const ImageAttachment *, ImageInfoData> _imageSpecialization;
 	Map<const AttachmentData *, Rc<FrameOutputBinding>> _output;

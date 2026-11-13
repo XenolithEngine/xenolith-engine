@@ -93,12 +93,13 @@ public:
 
 protected:
 	void copy();
+	void detach(Rc<VertexData> &&);
 
 	// mutate() for a change that moves no vertex: keeps the layout box
 	void mutateColor();
 
-	// Prologue of every mutator: either detach a shared set (new object -> new id) or bump the
-	// generation of the set we own exclusively. Mutating in place without the bump would be
+	// Prologue of every mutator: either detach a shared set (a new object in the next generation of
+	// the same identity) or bump the generation of the set we own exclusively. Mutating in place without the bump would be
 	// invisible to damage tracking.
 	void mutate();
 

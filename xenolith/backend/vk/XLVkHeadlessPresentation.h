@@ -74,7 +74,8 @@ protected:
 // the frame is published, and back to PresentSrc before the slot is unpinned. Between the two the
 // image is read by any number of compositor frames and written by none.
 // With PresentationOptions::linearImages the exports are tried linear first, so a display can scan
-// their rows without another render pass.
+// their rows without another render pass; with scanoutImages too, linear without Sampled where the
+// device samples no linear images (a composition samples a copy).
 //
 // With an output (see HeadlessSurface) a presented slot is pinned the same way while a device task
 // copies the damaged part of its image into a host-visible buffer of its own; once the task is
@@ -85,7 +86,7 @@ public:
 
 	bool init(Device &dev, NotNull<core::Loop>, const core::SurfaceInfo &,
 			const core::SwapchainConfig &, ImageInfo &&, core::PresentMode, HeadlessSurface *,
-			bool exportable, bool linear);
+			bool exportable, bool linear, bool scanout = false);
 
 	virtual Rc<SwapchainAcquiredImage> acquire(bool lockfree, const Rc<core::Fence> &fence,
 			Status &) override;
@@ -126,7 +127,7 @@ protected:
 	using core::Object::init;
 
 	// Move a presented image into the plane: layout task, then publish (loop thread).
-	void publishPlaneFrame(uint32_t slot, Rc<Image> &&);
+	void publishPlaneFrame(uint32_t slot, Rc<Image> &&, uint64_t contentClock);
 
 	// Copy a presented image into the output: copy task, then the rows (loop thread).
 	void presentToOutput(uint32_t slot, Rc<Image> &&, Vector<URect> &&damage);

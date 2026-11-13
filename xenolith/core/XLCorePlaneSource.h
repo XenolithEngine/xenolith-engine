@@ -132,6 +132,10 @@ public:
 	// The slots of the generation the frame was drawn in; null if the backend keeps none.
 	PlaneSlotTable *getSlotTable() const { return _slots; }
 
+	// FrameRequest::getContentClock of the frame drawn, 0 - unknown
+	void setContentClock(uint64_t val) { _contentClock = val; }
+	uint64_t getContentClock() const { return _contentClock; }
+
 	// On the loop thread: `cb` gets the lock once it is granted - at once, or later on the loop
 	// thread, when the readers ahead of it let go. Waiters are served in order.
 	void lock(PlaneFrameAccess, NotNull<Loop>, LockCallback &&cb);
@@ -151,6 +155,7 @@ protected:
 	Vector<LockRequest> acquireGranted();
 
 	uint64_t _serial = 0;
+	uint64_t _contentClock = 0;
 	uint32_t _slot = 0;
 	Rc<ImageObject> _image;
 	Rc<PlaneSlotTable> _slots;

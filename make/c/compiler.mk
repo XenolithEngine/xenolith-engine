@@ -136,4 +136,5 @@ include $(BUILD_ROOT)/c/rules.mk
 
 BUILD_С_OUTDIR := $(abspath $(BUILD_OUTDIR)/$(notdir $(GLOBAL_CC)))
 
-BUILD_COMPILATION_DATABASE := ./compile_commands.json
+# The compilation database: the project's LOCAL_COMPILATION_DATABASE, else beside its Makefile.
+BUILD_COMPILATION_DATABASE := $(or $(LOCAL_COMPILATION_DATABASE),./compile_commands.json)

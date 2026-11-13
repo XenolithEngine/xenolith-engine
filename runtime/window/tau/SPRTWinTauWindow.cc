@@ -159,6 +159,8 @@ void TauSoftwareSwapchain::invalidate() {
 	_shadowSize = 0;
 }
 
+extern TauWindow *s_latencyWindow;
+
 TauWindow::~TauWindow() { teardown(); }
 
 TauWindow::TauWindow() { }
@@ -344,6 +346,9 @@ PresentationOptions TauWindow::getPreferredOptions() const {
 
 void TauWindow::teardown() {
 	stopInput();
+	if (s_latencyWindow == this) {
+		s_latencyWindow = nullptr;
+	}
 	if (_buffers[0]) {
 		_buffers[0] = _buffers[1] = nullptr;
 		__sprt_tau_display_close();
@@ -359,6 +364,9 @@ void TauWindow::startInput() {
 	_console = !(::getenv("XL_UART_KEYS") && strcmp(::getenv("XL_UART_KEYS"), "0") == 0);
 	_usb = !(::getenv("XL_USB_INPUT") && strcmp(::getenv("XL_USB_INPUT"), "0") == 0);
 	_latency = ::getenv("XL_INPUT_LATENCY") && strcmp(::getenv("XL_INPUT_LATENCY"), "1") == 0;
+	if (_latency) {
+		s_latencyWindow = this;
+	}
 	if (!_console && !_usb) {
 		return;
 	}

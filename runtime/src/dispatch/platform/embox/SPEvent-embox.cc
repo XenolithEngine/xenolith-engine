@@ -469,6 +469,11 @@ Status EmboxData::run(TimeInterval ival, QueueWakeupInfo &&winfo) {
 		if (ctx.state != RunContext::Running) {
 			break;
 		}
+		// The poke taken here may be work posted after the handles fired; the sleep below waits
+		// for the word to change from zero, so it would not see that work until its timeout.
+		if (req & WakeupPresent) {
+			continue;
+		}
 
 		int64_t now = embox_now_ns();
 		int64_t rel = embox_rel_timeout(ival, nearestDeadline(), now);

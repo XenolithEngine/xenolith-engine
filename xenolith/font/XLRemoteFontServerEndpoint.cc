@@ -182,7 +182,7 @@ void RemoteFontServerEndpoint::handleGlyphRequest(BytesView payload) {
 	}
 
 	// A face that can not be drawn still lets the rest of the batch through, but the batch fails:
-	// the client resends it on its next flush.
+	// the client resends it after its retry delay (FontController::flushPendingGlyphs).
 	bool complete = true;
 	Vector<FontUpdateRequest> requests;
 	for (auto &f : faces) {
@@ -332,7 +332,12 @@ void RemoteFontServerEndpoint::invalidate() {
 	}
 
 	_store = nullptr;
-	_library = nullptr;
+	// The library's per-thread face handles hold the library itself: invalidate() breaks that
+	// cycle, as FontComponent::handleStop does for the component's library.
+	if (_library) {
+		_library->invalidate();
+		_library = nullptr;
+	}
 	_component = nullptr;
 	_thread = nullptr;
 }

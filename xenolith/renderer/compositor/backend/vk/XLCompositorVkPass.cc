@@ -118,6 +118,9 @@ bool CompositorPassHandle::prepare(core::FrameQueue &q, Function<void(bool)> &&c
 		it.frame->lock(core::PlaneFrameAccess::Shared, loop,
 				[this, handle = Rc<CompositorPassHandle>(this), queue = Rc<core::FrameQueue>(&q)](
 						Rc<core::PlaneFrameLock> &&lock) {
+			if (_finalized) {
+				return;
+			}
 			_locks.emplace_back(sp::move(lock));
 			if (--_pendingLocks == 0 && _lockDeferred) {
 				if (prepareLocked(*queue)) {
@@ -147,6 +150,27 @@ bool CompositorPassHandle::prepareLocked(core::FrameQueue &q) {
 		auto slots = it.frame->getSlotTable();
 		if (slots) {
 			it.view = slots->getView(it.frame->getSlot());
+		}
+		if (!hasFlag(image->getInfo().usage, core::ImageUsage::Sampled)) {
+			// The slot's view is of its shadow: an optimal image of the same size and format.
+			if (!it.view || it.view->getImage() == image) {
+				auto info = image->getInfo();
+				info.tiling = core::ImageTiling::Optimal;
+				info.usage = core::ImageUsage::Sampled | core::ImageUsage::TransferDst;
+				auto shadow = device->getAllocator()->spawnPersistent(xvk::AllocationUsage::DeviceLocal,
+						"CompositorShadow", info, false);
+				it.view = shadow ? device->makeImageView(shadow, shadow->getViewInfo(core::ImageViewInfo(shadow->getInfo())))
+								 : nullptr;
+				if (!it.view) {
+					return false;
+				}
+				if (slots) {
+					slots->setView(it.frame->getSlot(), Rc<core::ImageView>(it.view));
+				}
+			}
+			it.shadow = static_cast<xvk::Image *>(it.view->getImage().get());
+			views.emplace_back(it.view);
+			continue;
 		}
 		if (!it.view || it.view->getImage() != image) {
 			it.view = device->makeImageView(image,
@@ -253,6 +277,27 @@ Vector<const core::CommandBuffer *> CompositorPassHandle::doPrepareCommands(
 
 	auto buf = _pool->recordBuffer(*_device, Vector<Rc<xvk::DescriptorPool>>(_descriptors),
 			[&, this](xvk::CommandBuffer &buf) {
+		for (size_t i = first; i < _planes.size(); ++i) {
+			auto &it = _planes[i];
+			if (!it.shadow) {
+				continue;
+			}
+			// The source waits for readers in TransferSrc (it is not Sampled): copied as it is.
+			auto source = static_cast<xvk::Image *>(it.frame->getImage());
+			auto extent = source->getInfo().extent;
+			xvk::ImageMemoryBarrier toCopy(it.shadow, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+					VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+			buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+					makeSpanView(&toCopy, 1));
+			VkImageCopy region{{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0},
+				{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0}, {extent.width, extent.height, 1}};
+			buf.cmdCopyImage(source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, it.shadow,
+					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, region);
+			xvk::ImageMemoryBarrier toRead(it.shadow, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			buf.cmdPipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+					makeSpanView(&toRead, 1));
+		}
 		pass->perform(*this, buf, [&, this] {
 			VkViewport viewport{0.0f, 0.0f, float(_extent.width), float(_extent.height), 0.0f,
 				1.0f};
@@ -306,6 +351,13 @@ Vector<const core::CommandBuffer *> CompositorPassHandle::doPrepareCommands(
 	}
 
 	return Vector<const core::CommandBuffer *>{buf};
+}
+
+void CompositorPassHandle::finalize(core::FrameQueue &q, bool successful) {
+	_finalized = true;
+	_locks.clear();
+	_onLocked = nullptr;
+	xvk::QueuePassHandle::finalize(q, successful);
 }
 
 void CompositorPassHandle::doComplete(core::FrameQueue &q, Function<void(bool)> &&func,

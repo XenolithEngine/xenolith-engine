@@ -77,11 +77,12 @@ public:
 			}
 		}
 		__allocator_copy_rewrite(alloc, data(), size(), ptr, count);
+		const auto was = _used;
 		if (_used > count) {
 			alloc.destroy(data() + count, _used - count);
 		}
 		_used = count;
-		drop_unused();
+		drop_unused(was);
 	}
 
 	constexpr void move_assign(allocator &alloc, pointer ptr, size_type count) {
@@ -89,11 +90,12 @@ public:
 			reserve(alloc, count);
 		}
 		__allocator_move_rewrite(alloc, _ptr, _used, ptr, count);
+		const auto was = _used;
 		if (_used > count) {
 			alloc.destroy(data() + count, _used - count);
 		}
 		_used = count;
-		drop_unused();
+		drop_unused(was);
 	}
 
 	constexpr void assign_mem(allocator &alloc, pointer ptr, size_type s, size_type nalloc) {
@@ -148,35 +150,38 @@ public:
 		return ret;
 	}
 
+	// Zeroes the elements from the size to `end` and the extra ones after it. Everything past the
+	// size stays zero, so a block that shrank from `end` needs only that range, and only a new
+	// block (`end` its capacity) needs all of it.
 	// drop constexpr if empty sprt::construct_at is not supported
-	constexpr void drop_unused() requires requires(Type *t) { sprt::construct_at(t); }
+	constexpr void drop_unused(size_type end = Max<size_type>) requires requires(Type *t) { sprt::construct_at(t); }
 	{
 		auto _allocated = capacity();
-		if (_allocated > 0 && _allocated >= _used && _ptr) {
+		end = end < _allocated ? end : _allocated;
+		if (_allocated > 0 && _allocated >= _used && _ptr && end >= _used) {
 			if (sprt::is_constant_evaluated()) {
 				// __builtin_memset / void* casts are not valid in constant
 				// evaluation; construct the (raw / already-destroyed) tail as
 				// value-initialised (zero) elements so c_str()/data() sees a live
 				// null terminator (and the spare capacity stays writable) during
 				// constant evaluation.
-				for (size_type i = _used; i < _allocated + Extra; ++i) {
+				for (size_type i = _used; i < end + Extra; ++i) {
 					sprt::construct_at(_ptr + i);
 				}
 			} else {
 				// data is already garbage, bypass -Wclass-memaccess
-				__builtin_memset((void *)(_ptr + _used), 0,
-						(_allocated - _used + Extra) * sizeof(Type));
+				__builtin_memset((void *)(_ptr + _used), 0, (end - _used + Extra) * sizeof(Type));
 			}
 		}
 	}
 
-	void drop_unused() requires (!requires(Type *t) { sprt::construct_at(t); })
+	void drop_unused(size_type end = Max<size_type>) requires (!requires(Type *t) { sprt::construct_at(t); })
 	{
 		auto _allocated = capacity();
-		if (_allocated > 0 && _allocated >= _used && _ptr) {
+		end = end < _allocated ? end : _allocated;
+		if (_allocated > 0 && _allocated >= _used && _ptr && end >= _used) {
 			// data is already garbage, bypass -Wclass-memaccess
-			__builtin_memset((void *)(_ptr + _used), 0,
-					(_allocated - _used + Extra) * sizeof(Type));
+			__builtin_memset((void *)(_ptr + _used), 0, (end - _used + Extra) * sizeof(Type));
 		}
 	}
 
@@ -215,8 +220,9 @@ public:
 
 	constexpr void set_size(size_t s) {
 		if (s < _used) {
+			const auto was = _used;
 			_used = s;
-			drop_unused();
+			drop_unused(was);
 		} else {
 			_used = s;
 		}

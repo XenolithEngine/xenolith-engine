@@ -73,7 +73,9 @@ public:
 
 class FontAttachmentHandle : public core::AttachmentHandle {
 public:
+	// The largest bitmap of one glyph, and the largest persistent block
 	static constexpr uint64_t CopyBlockSize = 32_MiB;
+	static constexpr uint64_t MinPersistentBlockSize = 1_MiB;
 
 	virtual ~FontAttachmentHandle();
 
@@ -117,7 +119,11 @@ protected:
 	uint32_t nextPersistentTransferOffset(size_t blockSize);
 
 	bool addPersistentCopy(uint16_t fontId, char32_t);
-	void pushCopyTexture(uint32_t reqIdx, const font::CharTexture &texData);
+	void measureGlyph(uint32_t reqIdx, const font::CharTexture &texData);
+	bool placeGlyphs(FrameHandle &, bool underlinePersistent);
+	font::GlyphTarget targetGlyph(uint32_t reqIdx, const font::CharTexture &texData);
+	void finishGlyphs(FrameHandle &, bool underlinePersistent);
+	uint64_t getPersistentBlockSize(const Allocator *) const;
 	void pushAtlasTexture(core::DataAtlas *, VkBufferImageCopy &);
 
 	Rc<font::RenderFontInput> _input;
@@ -149,7 +155,22 @@ protected:
 	uint64_t _clockAtlas = 0; // the atlas is packed and the copies are recorded
 	uint32_t _atlasGlyphs = 0; // how many glyphs that pack covered
 	uint64_t _clockAddSum = 0; // summed across the four DataAtlas::addObject calls per glyph
+	void finishInput(bool success);
+
+	// A glyph of this input: measured on the workers (_mutex), then placed in the staging buffer
+	struct GlyphSlot {
+		uint32_t reqIdx = 0;
+		font::CharTexture texture;
+		uint64_t offset = 0;
+	};
+
+	static uint64_t getSlotKey(uint32_t reqIdx, char32_t c) { return (uint64_t(reqIdx) << 32) | c; }
+
 	sprt::mutex _mutex;
+	Vector<GlyphSlot> _slots;
+	HashMap<uint64_t, uint32_t> _slotIndex;
+	uint8_t *_stagingData = nullptr; // the staging buffer's mapping, or _stagingCopy
+	Bytes _stagingCopy; // when the staging buffer is not mapped for the frame
 	Function<void(bool)> _onInput;
 };
 
@@ -369,17 +390,6 @@ void FontAttachmentHandle::doSubmitInput(FrameHandle &handle, Function<void(bool
 	auto frame = static_cast<DeviceFrameHandle *>(&handle);
 	auto memPool = frame->getMemPool(&handle);
 
-	_frontBuffer = memPool->spawn(AllocationUsage::HostTransitionSource,
-			core::BufferInfo(core::ForceBufferUsage(core::BufferUsage::TransferSrc),
-					size_t(CopyBlockSize)));
-
-	if (!_frontBuffer) {
-		log::source().error("FontAttachmentHandle", "Font staging allocation failed");
-		_onInput(false);
-		_onInput = nullptr;
-		return;
-	}
-
 	_copyFromTmpBufferData.resize(totalCount - processedPersistent + (underlinePersistent ? 0 : 1));
 
 	if (extraPersistent > 0 || !underlinePersistent) {
@@ -389,11 +399,6 @@ void FontAttachmentHandle::doSubmitInput(FrameHandle &handle, Function<void(bool
 		if (!_userdata) {
 			_userdata = Rc<RenderFontPersistentBufferUserdata>::alloc();
 			_userdata->mempool = Rc<DeviceMemoryPool>::create(memPool->getAllocator(), false);
-			_userdata->buffers.emplace_back(_userdata->mempool->spawn(AllocationUsage::DeviceLocal,
-					core::BufferInfo(core::ForceBufferUsage(core::BufferUsage::TransferSrc
-											 | core::BufferUsage::TransferDst),
-							size_t(CopyBlockSize))));
-			_persistentTargetBuffer = _userdata->buffers.back();
 		} else {
 			auto tmp = move(_userdata);
 			_userdata = Rc<RenderFontPersistentBufferUserdata>::alloc();
@@ -407,19 +412,193 @@ void FontAttachmentHandle::doSubmitInput(FrameHandle &handle, Function<void(bool
 		}
 	}
 
-	if ((extraPersistent > 0 || !underlinePersistent) && !_persistentTargetBuffer) {
-		log::source().error("FontAttachmentHandle", "Font persistent allocation failed");
-		_onInput(false);
-		_onInput = nullptr;
+	// Two passes over the glyphs: the first measures (FreeType loads, nothing is drawn), so the
+	// staging buffer is allocated to the byte; the second draws into it.
+	font::DeferredRequest::runFontRendererDirect(_input->queue, _input->ext, _input->requests,
+			[this](uint32_t reqIdx, const font::CharTexture &texData) {
+		measureGlyph(reqIdx, texData);
+		return font::GlyphTarget();
+	}, [this, handle = Rc<FrameHandle>(&handle), underlinePersistent] {
+		handle->performInQueue([this, underlinePersistent](FrameHandle &handle) -> bool {
+			if (!placeGlyphs(handle, underlinePersistent)) {
+				finishInput(false);
+				return true;
+			}
+			font::DeferredRequest::runFontRendererDirect(_input->queue, _input->ext,
+					_input->requests, [this](uint32_t reqIdx, const font::CharTexture &texData) {
+				return targetGlyph(reqIdx, texData);
+			}, [this, handle = Rc<FrameHandle>(&handle), underlinePersistent] {
+				finishGlyphs(*handle, underlinePersistent);
+			});
+			return true;
+		}, nullptr, "RenderFontAttachmentHandle::placeGlyphs");
+	});
+}
+
+void FontAttachmentHandle::measureGlyph(uint32_t reqIdx, const font::CharTexture &texData) {
+	auto size = uint64_t(texData.bitmapWidth) * uint64_t(texData.bitmapRows);
+	if (size == 0) {
 		return;
 	}
+	if (size > CopyBlockSize) {
+		log::source().error("FontAttachmentHandle", "Texture block exceeds CopyBlockSize: ", size,
+				" > ", CopyBlockSize);
+		return;
+	}
+	auto texture = texData;
+	texture.bitmap = nullptr;
+	sprt::unique_lock<sprt::mutex> lock(_mutex);
+	_slots.emplace_back(GlyphSlot{reqIdx, texture, 0});
+}
 
-	font::DeferredRequest::runFontRenderer(_input->queue, _input->ext, _input->requests,
-			[this](uint32_t reqIdx, const font::CharTexture &texData) {
-		pushCopyTexture(reqIdx, texData);
-	}, [this, handle = Rc<FrameHandle>(&handle), underlinePersistent] {
-		writeAtlasData(*handle, underlinePersistent);
+// A thirty-second of the device-local heap's budget, within 1 and 32 MiB: a block that a small
+// heap can always place, few blocks on a large one. XL_FONT_PERSISTENT_BLOCK (bytes) sets it.
+uint64_t FontAttachmentHandle::getPersistentBlockSize(const Allocator *allocator) const {
+	static const uint64_t s_override = [] {
+		auto v = ::getenv("XL_FONT_PERSISTENT_BLOCK");
+		return v ? uint64_t(::strtoull(v, nullptr, 10)) : uint64_t(0);
+	}();
+	if (s_override) {
+		return s_override;
+	}
+	uint64_t budget = 0;
+	for (auto &it : allocator->getMemHeaps()) {
+		if ((it.heap.flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0) {
+			budget = sprt::max(budget, uint64_t(it.budget ? it.budget : it.heap.size));
+		}
+	}
+	return sprt::clamp(budget / 32, MinPersistentBlockSize, CopyBlockSize);
+}
+
+// The staging buffer takes this input's glyphs and nothing more; the persistent ones go to the
+// last persistent block while it has room, to a new block otherwise. The slots are placed in a
+// fixed order, so the same input lays out the same way.
+bool FontAttachmentHandle::placeGlyphs(FrameHandle &handle, bool underlinePersistent) {
+	const auto alignment = uint64_t(_optimalTextureAlignment);
+	const uint64_t pixel = math::align(uint64_t(1), alignment);
+
+	sprt::sort(_slots.begin(), _slots.end(), [](const GlyphSlot &l, const GlyphSlot &r) {
+		return getSlotKey(l.reqIdx, l.texture.charID) < getSlotKey(r.reqIdx, r.texture.charID);
 	});
+
+	uint64_t stagingSize = underlinePersistent ? 0 : pixel;
+	uint64_t persistentSize = stagingSize;
+	for (auto &it : _slots) {
+		auto size = math::align(uint64_t(it.texture.bitmapWidth) * it.texture.bitmapRows, alignment);
+		stagingSize += size;
+		if (_input->requests[it.reqIdx].persistent) {
+			persistentSize += size;
+		}
+	}
+
+	auto frame = static_cast<DeviceFrameHandle *>(&handle);
+	auto memPool = frame->getMemPool(&handle);
+	_frontBuffer = memPool->spawn(AllocationUsage::HostTransitionSource,
+			core::BufferInfo(core::ForceBufferUsage(core::BufferUsage::TransferSrc),
+					size_t(sprt::max(stagingSize, pixel))));
+	if (!_frontBuffer) {
+		log::source().error("FontAttachmentHandle", "Font staging allocation failed: ",
+				stagingSize, " bytes");
+		return false;
+	}
+
+	if (persistentSize > 0
+			&& (!_persistentTargetBuffer
+					|| _persistentTargetBuffer->getReservedSize() + persistentSize
+							> _persistentTargetBuffer->getSize())) {
+		auto blockSize =
+				sprt::max(persistentSize, getPersistentBlockSize(memPool->getAllocator()));
+		// XL_FONT_PERSISTENT_REFUSE=N refuses the first N blocks, as a full heap would.
+		static sprt::atomic<int64_t> s_refuse = [] {
+			auto v = ::getenv("XL_FONT_PERSISTENT_REFUSE");
+			return v ? int64_t(::strtoll(v, nullptr, 10)) : int64_t(0);
+		}();
+		Rc<Buffer> block;
+		if (s_refuse.load() <= 0 || s_refuse.fetch_sub(1) <= 0) {
+			block = _userdata->mempool->spawn(AllocationUsage::DeviceLocal,
+					core::BufferInfo(core::ForceBufferUsage(core::BufferUsage::TransferSrc
+											 | core::BufferUsage::TransferDst),
+							size_t(blockSize)));
+		}
+		if (!block) {
+			log::source().error("FontAttachmentHandle", "Font persistent allocation failed: ",
+					blockSize, " bytes");
+			return false;
+		}
+		_userdata->buffers.emplace_back(block);
+		_persistentTargetBuffer = sp::move(block);
+		log::source().info("FontAttachmentHandle", "persistent glyph block ",
+				_userdata->buffers.size(), ": ", blockSize, " bytes for ", persistentSize);
+	}
+
+	_slotIndex.reserve(_slots.size());
+	for (uint32_t i = 0; i < _slots.size(); ++i) {
+		auto &it = _slots[i];
+		auto &tex = it.texture;
+		auto size = uint32_t(tex.bitmapWidth) * tex.bitmapRows;
+		it.offset = _frontBuffer->reserveBlock(size, alignment);
+		_slotIndex.emplace(getSlotKey(it.reqIdx, tex.charID), i);
+
+		auto objectId = font::CharId::getCharId(tex.fontID, tex.charID, font::CharAnchor::BottomLeft);
+		auto texOffset = _textureTargetOffset.fetch_add(1);
+		_copyFromTmpBufferData[_copyFromTmpOffset.fetch_add(1)] =
+				VkBufferImageCopy({VkDeviceSize(it.offset), uint32_t(texOffset), uint32_t(objectId),
+					VkImageSubresourceLayers({VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}),
+					VkOffset3D({0, 0, 0}), VkExtent3D({tex.bitmapWidth, tex.bitmapRows, 1})});
+		_textureTarget[texOffset] = RenderFontCharTextureData{tex.x, tex.y, tex.width, tex.height};
+
+		if (_input->requests[it.reqIdx].persistent) {
+			auto targetIdx = _copyToPersistentOffset.fetch_add(1);
+			auto targetOffset = _persistentTargetBuffer->reserveBlock(size, alignment);
+			_copyToPersistentBufferData[targetIdx] =
+					VkBufferCopy({it.offset, targetOffset, VkDeviceSize(size)});
+			_copyPersistentCharData[targetIdx] = RenderFontCharPersistentData{
+				RenderFontCharTextureData{tex.x, tex.y, tex.width, tex.height}, objectId, 0,
+				uint32_t(targetOffset)};
+		}
+	}
+
+	// FreeType composites into its target, which has to arrive zeroed (font::GlyphTarget).
+	// XL_FONT_STAGING_COPY=1 draws into process memory even when the buffer is mapped.
+	static const bool s_stagingCopy = [] {
+		auto v = ::getenv("XL_FONT_STAGING_COPY");
+		return v && StringView(v) != "0";
+	}();
+	_stagingData = s_stagingCopy ? nullptr : _frontBuffer->getPersistentMappedRegion(false);
+	if (!_stagingData) {
+		_stagingCopy.resize(size_t(_frontBuffer->getSize()));
+		_stagingData = _stagingCopy.data();
+	}
+	sprt::memset(_stagingData, 0, size_t(_frontBuffer->getSize()));
+	return true;
+}
+
+font::GlyphTarget FontAttachmentHandle::targetGlyph(uint32_t reqIdx,
+		const font::CharTexture &texData) {
+	auto it = _slotIndex.find(getSlotKey(reqIdx, texData.charID));
+	if (it == _slotIndex.end()) {
+		return font::GlyphTarget();
+	}
+	auto &slot = _slots[it->second];
+	if (slot.texture.bitmapWidth != texData.bitmapWidth
+			|| slot.texture.bitmapRows != texData.bitmapRows) {
+		log::source().error("FontAttachmentHandle", "Glyph ", uint32_t(texData.charID),
+				" measured ", slot.texture.bitmapWidth, "x", slot.texture.bitmapRows, ", drawn ",
+				texData.bitmapWidth, "x", texData.bitmapRows);
+		return font::GlyphTarget();
+	}
+	return font::GlyphTarget{_stagingData + slot.offset, int32_t(texData.bitmapWidth)};
+}
+
+void FontAttachmentHandle::finishGlyphs(FrameHandle &handle, bool underlinePersistent) {
+	if (!_stagingCopy.empty()) {
+		_frontBuffer->setData(_stagingCopy);
+		_stagingCopy.clear();
+	} else {
+		_frontBuffer->flushMappedRegion();
+	}
+	_stagingData = nullptr;
+	writeAtlasData(handle, underlinePersistent);
 }
 
 void FontAttachmentHandle::writeAtlasData(FrameHandle &handle, bool underlinePersistent) {
@@ -431,7 +610,7 @@ void FontAttachmentHandle::writeAtlasData(FrameHandle &handle, bool underlinePer
 	if (!underlinePersistent) {
 		// write single white pixel for underlines
 		auto offset = _frontBuffer->reserveBlock(1, _optimalTextureAlignment);
-		if (offset + 1 <= CopyBlockSize) {
+		if (offset + 1 <= _frontBuffer->getSize()) {
 			uint8_t whiteColor = 255;
 			_frontBuffer->setData(BytesView(&whiteColor, 1), offset);
 			auto objectId = font::CharId::getCharId(font::CharId::SourceMax, 0,
@@ -497,10 +676,16 @@ void FontAttachmentHandle::writeAtlasData(FrameHandle &handle, bool underlinePer
 	// The pack is done and the copies are recorded; everything past this is the device's.
 	_clockAtlas = sp::platform::clock(ClockType::Monotonic);
 
-	handle.performOnGlThread([this](FrameHandle &handle) {
-		_onInput(true);
-		_onInput = nullptr;
-	}, this, false, "RenderFontAttachmentHandle::writeAtlasData");
+	handle.performOnGlThread([this](FrameHandle &handle) { finishInput(true); }, this, false,
+			"RenderFontAttachmentHandle::writeAtlasData");
+}
+
+/* The callback holds the frame queue, and the queue holds this handle: once it is called or
+ destroyed, this may be gone, so it leaves the member first and the handle is not touched after. */
+void FontAttachmentHandle::finishInput(bool success) {
+	auto onInput = sp::move(_onInput);
+	_onInput = nullptr;
+	onInput(success);
 }
 
 uint32_t FontAttachmentHandle::nextBufferOffset(size_t blockSize) {
@@ -533,58 +718,6 @@ bool FontAttachmentHandle::addPersistentCopy(uint16_t fontId, char32_t theChar) 
 		return true;
 	}
 	return false;
-}
-
-void FontAttachmentHandle::pushCopyTexture(uint32_t reqIdx, const font::CharTexture &texData) {
-	if (texData.width != texData.bitmapWidth || texData.height != texData.bitmapRows) {
-		log::source().error("FontAttachmentHandle", "Invalid size: ", texData.width, ";",
-				texData.height, " vs. ", texData.bitmapWidth, ";", texData.bitmapRows, "\n");
-	}
-
-	auto size64 = uint64_t(texData.bitmapRows) * uint64_t(sprt::abs(texData.pitch));
-	if (size64 > CopyBlockSize) {
-		log::error("FontAttachmentHandle",
-				"Texture block exceeds CopyBlockSize: ", size64, " > ", CopyBlockSize);
-		return;
-	}
-	auto size = uint32_t(size64);
-	auto offset = _frontBuffer->reserveBlock(size, _optimalTextureAlignment);
-	if (offset == maxOf<uint64_t>() || offset + size > CopyBlockSize) {
-		log::error("FontAttachmentHandle",
-				"Not enough space in _frontBuffer: ", _frontBuffer->getSize(), " (",
-				_frontBuffer->getReservedSize(), ")");
-		return;
-	}
-
-	auto ptr = texData.bitmap;
-	if (texData.pitch >= 0) {
-		_frontBuffer->setData(BytesView(ptr, texData.pitch * texData.bitmapRows), offset);
-	} else {
-		for (size_t i = 0; i < texData.bitmapRows; ++i) {
-			_frontBuffer->setData(BytesView(ptr, -texData.pitch), offset + i * (-texData.pitch));
-			ptr += texData.pitch;
-		}
-	}
-
-	auto objectId =
-			font::CharId::getCharId(texData.fontID, texData.charID, font::CharAnchor::BottomLeft);
-	auto texOffset = _textureTargetOffset.fetch_add(1);
-	_copyFromTmpBufferData[_copyFromTmpOffset.fetch_add(1)] =
-			VkBufferImageCopy({VkDeviceSize(offset), uint32_t(texOffset), uint32_t(objectId),
-				VkImageSubresourceLayers({VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}),
-				VkOffset3D({0, 0, 0}), VkExtent3D({texData.bitmapWidth, texData.bitmapRows, 1})});
-	_textureTarget[texOffset] =
-			RenderFontCharTextureData{texData.x, texData.y, texData.width, texData.height};
-
-	if (_input->requests[reqIdx].persistent) {
-		auto targetIdx = _copyToPersistentOffset.fetch_add(1);
-		auto targetOffset = _persistentTargetBuffer->reserveBlock(size, _optimalTextureAlignment);
-		_copyToPersistentBufferData[targetIdx] =
-				VkBufferCopy({offset, targetOffset, VkDeviceSize(size)});
-		_copyPersistentCharData[targetIdx] = RenderFontCharPersistentData{
-			RenderFontCharTextureData{texData.x, texData.y, texData.width, texData.height},
-			objectId, 0, uint32_t(targetOffset)};
-	}
 }
 
 void FontAttachmentHandle::pushAtlasTexture(core::DataAtlas *atlas, VkBufferImageCopy &d) {

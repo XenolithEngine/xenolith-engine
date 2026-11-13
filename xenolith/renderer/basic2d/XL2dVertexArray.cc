@@ -319,7 +319,7 @@ bool VertexArray::empty() const { return _data->indexes.empty() || _data->data.e
 
 void VertexArray::clear() {
 	if (_copyOnWrite) {
-		_data = Rc<VertexData>::alloc();
+		detach(Rc<VertexData>::alloc());
 	} else {
 		_data->identity.invalidate();
 		_data->data.clear();
@@ -450,9 +450,17 @@ void VertexArray::copy() {
 		auto data = Rc<VertexData>::alloc();
 		data->data = _data->data;
 		data->indexes = _data->indexes;
-		_data = data;
-		_copyOnWrite = false;
+		detach(sp::move(data));
 	}
+}
+
+// The array goes on as the same data set: it keeps the identity in a new generation, so a remote
+// server replaces its cached copy instead of holding every past one under a new id.
+void VertexArray::detach(Rc<VertexData> &&data) {
+	data->identity = _data->identity;
+	data->identity.invalidate();
+	_data = sp::move(data);
+	_copyOnWrite = false;
 }
 
 void VertexArray::setLayoutBounds(const Rect &r) {
@@ -473,7 +481,6 @@ void VertexArray::mutateColor() {
 
 void VertexArray::mutate() {
 	if (_copyOnWrite) {
-		// detaching allocates a fresh VertexData, which carries a fresh identity already
 		copy();
 	} else {
 		// we own the set exclusively: nothing else observes the change, so the generation is
