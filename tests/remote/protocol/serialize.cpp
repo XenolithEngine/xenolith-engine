@@ -301,6 +301,62 @@ void performSerializeTests() {
 		check(tolerant && tolerant->rect.width == 640 && tolerant->type == request.type,
 				"window request: an unknown key is ignored");
 	}
+
+	{
+		// A pipeline's material crosses the wire as its raw bytes, and a client matches materials
+		// by them (hash, then ==). The rasterization state is part of those bytes; a material that
+		// does not set it keeps all zeros there, the bytes it had before the state existed.
+		using core::CompareOp;
+		using core::PipelineMaterialInfo;
+		using core::RasterizationInfo;
+
+		const core::DepthInfo depth(true, true, CompareOp::Less);
+
+		PipelineMaterialInfo plain(core::BlendInfo(), depth);
+		bool zeros = true;
+		auto raw = reinterpret_cast<const uint8_t *>(&plain.getRasterizationInfo());
+		for (size_t i = 0; i < sizeof(RasterizationInfo); ++i) { zeros = zeros && raw[i] == 0; }
+		check(zeros, "material: a default rasterization state is all zero bytes");
+
+		PipelineMaterialInfo culled(depth,
+				RasterizationInfo(core::CullMode::Back, core::FrontFace::Clockwise));
+		PipelineMaterialInfo unculled(depth);
+		check(culled != unculled && !(culled == unculled) && culled.hash() != unculled.hash()
+						&& culled.data() != unculled.data()
+						&& culled.description() != unculled.description(),
+				"material: culling changes ==, hash, data and description");
+
+		PipelineMaterialInfo biased(RasterizationInfo().setDepthBias(-4.0f, -1.0f));
+		PipelineMaterialInfo biasedMore(RasterizationInfo().setDepthBias(-8.0f, -1.0f));
+		check(biased != biasedMore && biased.hash() != biasedMore.hash(),
+				"material: the bias values are part of the key");
+
+		// a disabled bias carries no values, and -0.0f is stored as 0.0f: equal materials hash equal
+		RasterizationInfo stale(core::CullMode::Back);
+		stale.depthBiasConstant = 3.0f;
+		PipelineMaterialInfo staleBias(stale);
+		PipelineMaterialInfo cleanBias{RasterizationInfo(core::CullMode::Back)};
+		check(staleBias == cleanBias && staleBias.hash() == cleanBias.hash(),
+				"material: values of a disabled bias are dropped");
+
+		PipelineMaterialInfo negZero(RasterizationInfo().setDepthBias(-0.0f, 1.0f));
+		PipelineMaterialInfo posZero(RasterizationInfo().setDepthBias(0.0f, 1.0f));
+		check(negZero == posZero && negZero.hash() == posZero.hash(),
+				"material: -0.0 and 0.0 bias hash alike");
+
+		// what the wire does with it: copy the bytes into a default material
+		PipelineMaterialInfo sent(core::BlendInfo(), depth,
+				RasterizationInfo(core::CullMode::Front)
+						.setDepthBias(-2.0f, -0.5f, 0.25f)
+						.setDepthClamp(true));
+		PipelineMaterialInfo received;
+		memcpy(&received, &sent, sizeof(PipelineMaterialInfo));
+		auto &r = received.getRasterizationInfo();
+		check(received == sent && received.hash() == sent.hash()
+						&& r.cullMode == core::CullMode::Front && r.depthBiasEnabled
+						&& r.depthBiasClamp == 0.25f && r.depthClampEnabled,
+				"material: a byte copy keeps the rasterization state");
+	}
 }
 
 } // namespace stappler::xenolith::remote

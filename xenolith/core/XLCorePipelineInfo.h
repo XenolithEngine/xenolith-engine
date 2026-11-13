@@ -153,6 +153,44 @@ struct SP_PUBLIC DepthInfo {
 	bool operator!=(const DepthInfo &other) const = default;
 };
 
+// Face culling, depth bias and depth clamp. All zeros is the state every pipeline had before it
+// existed (no culling, counter-clockwise front faces, no bias, no clamp), so a material that does
+// not set it keeps its bytes.
+struct SP_PUBLIC RasterizationInfo {
+	CullMode cullMode = CullMode::None;
+	FrontFace frontFace = FrontFace::CounterClockwise;
+	uint8_t depthBiasEnabled = 0;
+	uint8_t depthClampEnabled = 0;
+	float depthBiasConstant = 0.0f; // in the depth format's minimal resolvable steps
+	float depthBiasSlope = 0.0f; // times the polygon's depth slope
+	float depthBiasClamp = 0.0f; // the largest bias applied; 0 - unclamped
+
+	RasterizationInfo() = default;
+
+	RasterizationInfo(CullMode cull, FrontFace face = FrontFace::CounterClockwise)
+	: cullMode(cull), frontFace(face) { }
+
+	// a negative bias moves depth toward the camera when depth grows away from it
+	RasterizationInfo &setDepthBias(float constant, float slope, float clamp = 0.0f) {
+		depthBiasEnabled = 1;
+		depthBiasConstant = constant;
+		depthBiasSlope = slope;
+		depthBiasClamp = clamp;
+		return *this;
+	}
+
+	RasterizationInfo &setDepthClamp(bool value) {
+		depthClampEnabled = value ? 1 : 0;
+		return *this;
+	}
+
+	bool operator==(const RasterizationInfo &other) const = default;
+	bool operator!=(const RasterizationInfo &other) const = default;
+};
+
+// hashed and sent over the wire as raw bytes within PipelineMaterialInfo: no padding
+static_assert(sizeof(RasterizationInfo) == 16, "RasterizationInfo should have no padding");
+
 struct SP_PUBLIC DepthBounds {
 	bool enabled = false;
 	float min = 0.0f;
@@ -198,6 +236,7 @@ public:
 	void disableStancil();
 	void setLineWidth(float);
 	void setImageViewType(ImageViewType);
+	void setRasterizationInfo(const RasterizationInfo &);
 
 	const BlendInfo &getBlendInfo() const { return blend; }
 	const DepthInfo &getDepthInfo() const { return depth; }
@@ -211,18 +250,22 @@ public:
 
 	ImageViewType getImageViewType() const { return imageViewType; }
 
+	const RasterizationInfo &getRasterizationInfo() const { return raster; }
+
 	bool operator==(const PipelineMaterialInfo &tmp2) const {
 		return this->blend == tmp2.blend && this->depth == tmp2.depth && this->bounds == tmp2.bounds
 				&& this->stencil == tmp2.stencil
 				&& (!this->stencil || (this->front == tmp2.front && this->back == tmp2.back))
-				&& this->lineWidth == tmp2.lineWidth && this->imageViewType == tmp2.imageViewType;
+				&& this->lineWidth == tmp2.lineWidth && this->imageViewType == tmp2.imageViewType
+				&& this->raster == tmp2.raster;
 	}
 
 	bool operator!=(const PipelineMaterialInfo &tmp2) const {
 		return this->blend != tmp2.blend || this->depth != tmp2.depth || this->bounds != tmp2.bounds
 				|| this->stencil != tmp2.stencil
 				|| (this->stencil && (this->front != tmp2.front || this->back != tmp2.back))
-				|| this->lineWidth != tmp2.lineWidth || this->imageViewType != tmp2.imageViewType;
+				|| this->lineWidth != tmp2.lineWidth || this->imageViewType != tmp2.imageViewType
+				|| this->raster != tmp2.raster;
 	}
 
 	size_t hash() const { return sprt::hashSize((const char *)this, sizeof(PipelineMaterialInfo)); }
@@ -237,6 +280,7 @@ protected:
 	void _setup(const StencilInfo &);
 	void _setup(LineWidth);
 	void _setup(ImageViewType);
+	void _setup(const RasterizationInfo &);
 
 	template <typename T>
 	void setup(T &&t) {
@@ -259,6 +303,9 @@ protected:
 	uint32_t stencil = 0;
 	float lineWidth = 0.0f; // 0.0f - draw triangles, < 0.0f - points,  > 0.0f - lines with width
 	ImageViewType imageViewType = ImageViewType::ImageView1D;
+
+	// after everything else: data() slices the bytes before it by the sizes of the parts
+	RasterizationInfo raster;
 };
 
 } // namespace stappler::xenolith::core

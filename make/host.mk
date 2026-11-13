@@ -111,6 +111,7 @@ install: $(BUILD_INSTALL_SHARED_LIBRARY) $(BUILD_INSTALL_EXECUTABLE) $(BUILD_INS
 clean:
 	$(call rule_rm,$(BUILD_С_OUTDIR))
 	$(call rule_rm,$(BUILD_SHADERS_OUTDIR))
+	$(call rule_rm,$(BUILD_SHADERS_SCHEMA_OUTDIR))
 	$(call rule_rm,$(BUILD_WIT_OUTDIR))
 	$(call rule_rm,$(BUILD_WASM_OUTDIR))
 

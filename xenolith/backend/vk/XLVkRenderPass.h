@@ -134,6 +134,8 @@ public:
 
 	const Vector<VkClearValue> &getClearValues() const { return _clearValues; }
 
+	uint32_t getSubpassCount() const { return uint32_t(_subpasses.size()); }
+
 	Rc<DescriptorPool> acquireDescriptorPool(Device &dev, uint32_t idx);
 	void releaseDescriptorPool(Rc<DescriptorPool> &&);
 

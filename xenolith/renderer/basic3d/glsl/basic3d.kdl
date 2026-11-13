@@ -1,0 +1,95 @@
+// The records basic3d's C++ and its shaders share, std430, and the interface of the 3d pass's
+// shaders: include/XL3dGlslData.h and the preambles of the mesh pipeline's shaders,
+// include/xl_3d_mesh.*.glsl, are generated from this description (docs/usage/tools/xlkdl-gpu.adoc).
+// After a change:
+//
+//     xlkdl gpu xenolith/renderer/basic3d/glsl/basic3d.kdl
+
+schema basic3d {
+	output "include/XL3dGlslData.h"
+	guard "XENOLITH_RENDERER_BASIC3D_GLSL_INCLUDE_XL3DGLSLDATA_H_"
+	namespace "stappler::glsl"
+	macro-prefix "XL_GLSL_3D_"
+	copyright "2026 Xenolith Team <admin@xenolith.studio>"
+	license "MIT"
+	preambles "include"
+}
+
+const NO_TEXTURE 0xFFFFFFFF type=uint \
+	doc="A texture field of a material or a block with no texture"
+
+const MAX_TEXTURES 64 type=uint \
+	doc="Images one frame can sample: the slots of the texture array (basic3d::MaxTextures)"
+const MAX_TEXTURE_ARRAYS 16 type=uint \
+	doc="Layered images one frame can sample: the layered array's slots (basic3d::MaxTextureArrays)"
+
+record Vertex3d doc="One vertex, 64 bytes, read by gl_VertexIndex through a buffer reference" {
+	pos vec4 doc="xyz - position in the model, w - 1"
+	normal vec4 doc="xyz - unit normal, w - free"
+	tangent vec4 doc="xyz - unit tangent, w - the bitangent's sign"
+	attr vec4 doc="xy - texture coordinates, zw - free"
+}
+
+record DrawData3d doc="One draw: where the model is; what it looks like is its material's" {
+	model mat4
+	normal mat4 doc="the inverse transpose of the model's rotation and scale, for normals"
+}
+
+material Lambert3d doc="The mesh pipeline's material: a colour times a texture, lit by Lambert" {
+	color vec4 doc="times the texture"
+	texture texture2d doc="tiled uvScale times per unit of the mesh's texture coordinates"
+	uvScale float default=1
+}
+
+record LightData3d \
+		doc="A point light: its light falls off as (1 - (d / radius)^2)^2, zero at the radius" {
+	position vec4 doc="xyz - in the world, w - the radius"
+	color vec4 doc="rgb - colour times intensity, a - free"
+}
+
+record ViewData3d doc="One view: its camera and its light" {
+	viewProj mat4 doc="depth in [0, 1], clip y flipped for Vulkan"
+	sunDirection vec4 doc="xyz - toward the sun, unit length"
+	sunColor vec4 doc="rgb - colour times intensity"
+	ambient vec4 doc="rgb - colour times intensity"
+	screen vec4 doc="xy - the viewport's size in pixels, z - pixels per point, w - free"
+	firstLight uint doc="this view's point lights in the frame's LightData3d array"
+	lightCount uint
+}
+
+record Constants3d {
+	viewPointer uvec2 doc="0-8, this view's ViewData3d"
+	drawPointer uvec2 doc="8-16, the frame's DrawData3d array"
+	vertexPointer uvec2 doc="16-24, the frame's Vertex3d array"
+	lightPointer uvec2 doc="24-32, the frame's LightData3d array"
+	materialPointer uvec2 doc="32-40, this draw's material of a schema"
+	blockPointer uvec2 doc="40-48, this view's block of a schema"
+	drawIndex uint doc="48-52"
+}
+
+interface pass3d doc="""
+	The 3d pass: the push constants of a draw, the frame's buffers they point to, the texture
+	arrays every slot of which is written (the unused ones with an empty image) and, in a
+	translucent pipeline, the opaque draws' depth (depth in r)
+	""" {
+	push-constants Constants3d name=constants
+	buffer vertices Vertex3d pointer=vertexPointer
+	buffer draws DrawData3d pointer=drawPointer
+	buffer view ViewData3d pointer=viewPointer single=#true
+	buffer lights LightData3d pointer=lightPointer
+	samplers textures sampler2D binding=0 count=MAX_TEXTURES
+	samplers textureArrays sampler2DArray binding=1 count=MAX_TEXTURE_ARRAYS
+	depth sceneDepth binding=2 index=0
+	material pointer=materialPointer
+	block pointer=blockPointer
+	vertex pointer=vertexPointer
+}
+
+varyings Mesh3dVaryings doc="What the mesh pipeline's vertex shader hands its fragment shader" {
+	normal vec3 doc="in the world, not normalized"
+	texCoord vec2 doc="times the material's uvScale"
+	world vec3
+}
+
+shader xl_3d_mesh.vert interface=pass3d varyings=Mesh3dVaryings material=Lambert3d
+shader xl_3d_mesh.frag interface=pass3d varyings=Mesh3dVaryings material=Lambert3d

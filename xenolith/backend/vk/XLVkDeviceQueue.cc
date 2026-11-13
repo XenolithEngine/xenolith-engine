@@ -32,6 +32,7 @@
 #include "XLVk.h"
 #include "XLVkDevice.h"
 #include "XLVkObject.h"
+#include "XLVkRenderPass.h"
 #include "XLVkPipeline.h"
 #include "XLVkRenderPass.h"
 #include "XLVkSync.h"
@@ -470,6 +471,9 @@ void CommandBuffer::cmdCopyImage(Image *src, XImageLayout srcLayout, Image *dst,
 	auto sourceExtent = src->getInfo().extent;
 	auto targetExtent = dst->getInfo().extent;
 
+	bindImage(src);
+	bindImage(dst);
+
 	if (sourceExtent == targetExtent) {
 		VkImageCopy copy{
 			VkImageSubresourceLayers{VkImageAspectFlags(src->getAspects()), 0, 0,
@@ -481,8 +485,8 @@ void CommandBuffer::cmdCopyImage(Image *src, XImageLayout srcLayout, Image *dst,
 			VkExtent3D{targetExtent.width, targetExtent.height, targetExtent.depth},
 		};
 
-		_table->vkCmdCopyImage(_buffer, src->getImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-				dst->getImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+		_table->vkCmdCopyImage(_buffer, src->getImage(), srcLayout, dst->getImage(), dstLayout, 1,
+				&copy);
 	} else {
 		VkImageBlit blit{
 			VkImageSubresourceLayers{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0,
@@ -497,9 +501,23 @@ void CommandBuffer::cmdCopyImage(Image *src, XImageLayout srcLayout, Image *dst,
 					int32_t(targetExtent.depth)}},
 		};
 
-		_table->vkCmdBlitImage(_buffer, src->getImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-				dst->getImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, filter);
+		cmdBlitImage(src->getImage(), srcLayout, dst->getImage(), dstLayout, makeSpanView(&blit, 1),
+				filter);
 	}
+}
+
+void CommandBuffer::cmdBlitImage(Image *src, XImageLayout srcLayout, Image *dst,
+		XImageLayout dstLayout, SpanView<VkImageBlit> blits, VkFilter filter) {
+	bindImage(src);
+	bindImage(dst);
+
+	cmdBlitImage(src->getImage(), srcLayout, dst->getImage(), dstLayout, blits, filter);
+}
+
+void CommandBuffer::cmdBlitImage(VkImage src, XImageLayout srcLayout, VkImage dst,
+		XImageLayout dstLayout, SpanView<VkImageBlit> blits, VkFilter filter) {
+	_table->vkCmdBlitImage(_buffer, src, srcLayout, dst, dstLayout, uint32_t(blits.size()),
+			blits.data(), filter);
 }
 
 void CommandBuffer::cmdCopyImage(Image *src, XImageLayout srcLayout, Image *dst,
@@ -604,13 +622,22 @@ void CommandBuffer::cmdBeginRenderPass(RenderPass *pass, Framebuffer *fb, VkSubp
 
 	_currentSubpass = 0;
 	_withinRenderpass = true;
+	_renderPass = pass;
 }
 
 void CommandBuffer::cmdEndRenderPass() {
+	// vkCmdEndRenderPass is valid only in the last subpass; a pass that records fewer advances
+	// draws the rest of its subpasses into the earlier ones, which a lenient driver does not show
+	if (_renderPass && _currentSubpass + 1 != _renderPass->getSubpassCount()) {
+		log::source().error("vk::CommandBuffer", "render pass '", _renderPass->getName(),
+				"' ended in subpass ", _currentSubpass, " of ", _renderPass->getSubpassCount());
+	}
+
 	_table->vkCmdEndRenderPass(_buffer);
 
 	_withinRenderpass = false;
 	_currentSubpass = 0;
+	_renderPass = nullptr;
 }
 
 void CommandBuffer::cmdSetViewport(uint32_t firstViewport, SpanView<VkViewport> viewports) {

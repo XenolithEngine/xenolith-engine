@@ -132,11 +132,43 @@ void Mat4::createPerspective(float fieldOfView, float aspectRatio, float zNearPl
 	dst->m[14] = -2.0f * zFarPlane * zNearPlane * f_n;
 }
 
+void Mat4::createPerspectiveZO(float fieldOfView, float aspectRatio, float zNearPlane,
+		float zFarPlane, Mat4 *dst) {
+	assert(dst);
+	assert(zFarPlane != zNearPlane);
+
+	float f_n = 1.0f / (zFarPlane - zNearPlane);
+	float theta = math::to_rad(fieldOfView) * 0.5f;
+	if (fabs(fmod(theta, MATH_PIOVER2)) < MATH_EPSILON) {
+		return;
+	}
+	float divisor = tan(theta);
+	assert(divisor);
+	float factor = 1.0f / divisor;
+
+	memset((void *)dst, 0, sizeof(Mat4));
+
+	assert(aspectRatio);
+	dst->m[0] = (1.0f / aspectRatio) * factor;
+	dst->m[5] = factor;
+	dst->m[10] = -zFarPlane * f_n;
+	dst->m[11] = -1.0f;
+	dst->m[14] = -zFarPlane * zNearPlane * f_n;
+}
+
 void Mat4::createOrthographic(float width, float height, float zNearPlane, float zFarPlane,
 		Mat4 *dst) {
 	float halfWidth = width / 2.0f;
 	float halfHeight = height / 2.0f;
 	createOrthographicOffCenter(-halfWidth, halfWidth, -halfHeight, halfHeight, zNearPlane,
+			zFarPlane, dst);
+}
+
+void Mat4::createOrthographicZO(float width, float height, float zNearPlane, float zFarPlane,
+		Mat4 *dst) {
+	float halfWidth = width / 2.0f;
+	float halfHeight = height / 2.0f;
+	createOrthographicOffCenterZO(-halfWidth, halfWidth, -halfHeight, halfHeight, zNearPlane,
 			zFarPlane, dst);
 }
 
@@ -155,6 +187,24 @@ void Mat4::createOrthographicOffCenter(float left, float right, float bottom, fl
 	dst->m[12] = (left + right) / (left - right);
 	dst->m[13] = (top + bottom) / (bottom - top);
 	dst->m[14] = (zNearPlane + zFarPlane) / (zNearPlane - zFarPlane);
+	dst->m[15] = 1;
+}
+
+void Mat4::createOrthographicOffCenterZO(float left, float right, float bottom, float top,
+		float zNearPlane, float zFarPlane, Mat4 *dst) {
+	assert(dst);
+	assert(right != left);
+	assert(top != bottom);
+	assert(zFarPlane != zNearPlane);
+
+	memset((void *)dst, 0, sizeof(Mat4));
+	dst->m[0] = 2 / (right - left);
+	dst->m[5] = 2 / (top - bottom);
+	dst->m[10] = 1 / (zNearPlane - zFarPlane);
+
+	dst->m[12] = (left + right) / (left - right);
+	dst->m[13] = (top + bottom) / (bottom - top);
+	dst->m[14] = zNearPlane / (zNearPlane - zFarPlane);
 	dst->m[15] = 1;
 }
 

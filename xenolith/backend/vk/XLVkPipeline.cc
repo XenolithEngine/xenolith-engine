@@ -135,6 +135,16 @@ bool GraphicPipeline::init(Device &dev, const PipelineData &params, const Subpas
 	rasterizer.depthClampEnable = VK_FALSE;
 	rasterizer.rasterizerDiscardEnable = VK_FALSE;
 
+	auto &raster = params.material.getRasterizationInfo();
+	if (raster.depthClampEnabled) {
+		if (dev.hasDepthClamp()) {
+			rasterizer.depthClampEnable = VK_TRUE;
+		} else {
+			log::source().warn("GraphicPipeline", "pipeline '", params.key,
+					"': depth clamp is not supported by the device, ignored");
+		}
+	}
+
 	if (params.material.getLineWidth() == 0.0f || !dev.hasNonSolidFillMode()) {
 		rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
 		rasterizer.lineWidth = 1.0f;
@@ -146,12 +156,18 @@ bool GraphicPipeline::init(Device &dev, const PipelineData &params, const Subpas
 		rasterizer.lineWidth = -params.material.getLineWidth();
 	}
 
-	rasterizer.cullMode = VK_CULL_MODE_NONE;
-	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-	rasterizer.depthBiasEnable = VK_FALSE;
-	rasterizer.depthBiasConstantFactor = 0.0f; // Optional
-	rasterizer.depthBiasClamp = 0.0f; // Optional
-	rasterizer.depthBiasSlopeFactor = 0.0f; // Optional
+	// core::CullMode and core::FrontFace hold the Vulkan values
+	rasterizer.cullMode = VkCullModeFlags(raster.cullMode);
+	rasterizer.frontFace = VkFrontFace(raster.frontFace);
+	rasterizer.depthBiasEnable = raster.depthBiasEnabled ? VK_TRUE : VK_FALSE;
+	rasterizer.depthBiasConstantFactor = raster.depthBiasConstant;
+	rasterizer.depthBiasClamp = raster.depthBiasClamp;
+	rasterizer.depthBiasSlopeFactor = raster.depthBiasSlope;
+	if (rasterizer.depthBiasClamp != 0.0f && !dev.hasDepthBiasClamp()) {
+		log::source().warn("GraphicPipeline", "pipeline '", params.key,
+				"': depth bias clamp is not supported by the device, ignored");
+		rasterizer.depthBiasClamp = 0.0f;
+	}
 
 	VkPipelineMultisampleStateCreateInfo multisampling{};
 	sanitizeVkStruct(multisampling);

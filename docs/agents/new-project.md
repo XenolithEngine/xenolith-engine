@@ -74,6 +74,7 @@ xenolith-cli build myproject --engine <abs-engine-root>   # add --release / --ta
 | `LOCAL_SRCS_DIRS` / `LOCAL_SRCS_OBJS` | source dirs (recursive) / individual sources |
 | `LOCAL_INCLUDES_DIRS` / `LOCAL_INCLUDES_OBJS` | header dirs (recursive) / direct include dirs |
 | `LOCAL_SHADERS_DIR` / `LOCAL_SHADERS_INCLUDE` | GLSL dirs / shader include dirs |
+| `LOCAL_SHADERS_SCHEMA` | GPU schemas (`.kdl`) generated in the build: needs `xlkdl` built for the host ([xlkdl-gpu](../usage/tools/xlkdl-gpu.adoc)) |
 | `LOCAL_CFLAGS` / `LOCAL_CXXFLAGS` / `LOCAL_LDFLAGS` / `LOCAL_LIBS` | extra flags / libs (`-lfoo`, `-l:libfoo.a`) |
 | `LOCAL_PRIVATE_INCLUDE_PCH` | precompiled header(s), e.g. `SPCommon.h` |
 | `LOCAL_OUTDIR` / `LOCAL_INSTALL_DIR` | build output root / install destination |

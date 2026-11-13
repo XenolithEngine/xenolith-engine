@@ -64,7 +64,7 @@ public:
 
 private:
 	StringView _source;
-	mem_std::Vector<size_t> _starts;
+	memory::StandardInterface::VectorType<size_t> _starts;
 };
 
 // Parses a KDL v2 document. On failure the handler has seen a prefix of the document, and `err`
@@ -120,7 +120,7 @@ private:
 
 	// A child is placed in its parent's vector only after the parent stops growing, so the pointers
 	// stay valid: siblings are appended after the previous sibling has ended.
-	mem_std::Vector<Node *> _stack;
+	memory::StandardInterface::VectorType<Node *> _stack;
 };
 
 template <typename Interface>

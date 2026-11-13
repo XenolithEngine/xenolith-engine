@@ -73,6 +73,7 @@ static const TestEntry s_testList[] = {
 	{"json-git", &stappler::performJsonGitTests},
 	{"bitmap-resample", &stappler::performBitmapResampleTests},
 	{"compression-libs", &stappler::performCompressionLibTests},
+	{"kdl-data", &stappler::performKdlDataTests},
 };
 
 int main(int argc, const char *argv[]) {

@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include "SPDataEncodeCbor.h"
 #include "SPDataEncodeJson.h"
 #include "SPDataEncodeSerenity.h"
+#include "SPDataEncodeKdl.h"
 
 #ifdef MODULE_STAPPLER_FILESYSTEM
 #include "SPFilepath.h"
@@ -46,6 +47,7 @@ struct SP_PUBLIC EncodeFormat {
 		Serenity = 0b0100,
 		SerenityPretty = 0b0101,
 		JsonGit = 0b0110,
+		Kdl = 0b0111, // KDL v2 document, the root has to be a dictionary (SPDataEncodeKdl.h)
 		PrettyTime = 0b1001, // Pretty-printed JSON data (with time markers comment)
 	};
 
@@ -94,7 +96,7 @@ struct SP_PUBLIC EncodeFormat {
 	// No caller in the tree today, which is exactly why the new format has to be added here by
 	// hand and asserted by a check: nothing else would notice it missing.
 	bool isTextual() const {
-		return isRaw() && (format == Json || format == Pretty || format == JsonGit);
+		return isRaw() && (format == Json || format == Pretty || format == JsonGit || format == Kdl);
 	}
 
 	int flag() const { return (int)format | (int)compression | (int)encryption; }
@@ -163,6 +165,12 @@ struct EncodeTraits {
 			ret.assign(s.begin(), s.end());
 			break;
 		}
+		case EncodeFormat::Kdl: {
+			StringType s = kdl::write(data);
+			ret.reserve(s.length());
+			ret.assign(s.begin(), s.end());
+			break;
+		}
 		}
 
 		if (fmt.compression != EncodeFormat::NoCompression) {
@@ -201,6 +209,7 @@ struct EncodeTraits {
 				serenity::write(stream, data, true);
 				return true;
 				break;
+			case EncodeFormat::Kdl: return kdl::write(stream, data); break;
 			}
 		} else {
 			auto ret = write(data, fmt);
@@ -221,6 +230,8 @@ struct EncodeTraits {
 			auto ext = filepath::lastExtension(info.path);
 			if (ext == "json") {
 				fmt.format = EncodeFormat::Json;
+			} else if (ext == "kdl") {
+				fmt.format = EncodeFormat::Kdl;
 			} else {
 				fmt.format = EncodeFormat::Cbor;
 			}
@@ -235,6 +246,7 @@ struct EncodeTraits {
 			case EncodeFormat::DefaultFormat: return cbor::save(data, info); break;
 			case EncodeFormat::Serenity: return serenity::save(data, info, false); break;
 			case EncodeFormat::SerenityPretty: return serenity::save(data, info, true); break;
+			case EncodeFormat::Kdl: return kdl::save(data, info); break;
 			}
 		} else {
 			auto ret = write(data, fmt);
@@ -284,6 +296,7 @@ inline auto toString(const ValueTemplate<Interface> &data, EncodeFormat::Format 
 	case EncodeFormat::DefaultFormat: return json::write<Interface>(data, false); break;
 	case EncodeFormat::Serenity: return serenity::write<Interface>(data, false); break;
 	case EncodeFormat::SerenityPretty: return serenity::write<Interface>(data, true); break;
+	case EncodeFormat::Kdl: return kdl::write<Interface>(data); break;
 	}
 	return typename ValueTemplate<Interface>::StringType();
 }

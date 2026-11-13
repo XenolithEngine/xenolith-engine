@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef STAPPLER_KDL_SPKDLVALUE_H_
 #define STAPPLER_KDL_SPKDLVALUE_H_
 
-#include "SPMemory.h"
+#include "SPString.h"
 
 namespace STAPPLER_VERSIONIZED stappler::kdl {
 

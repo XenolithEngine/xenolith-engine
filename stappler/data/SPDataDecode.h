@@ -27,8 +27,10 @@ THE SOFTWARE.
 #include "SPDataDecodeCbor.h"
 #include "SPDataDecodeJson.h"
 #include "SPDataDecodeSerenity.h"
+#include "SPDataDecodeKdl.h"
 
 #ifdef MODULE_STAPPLER_FILESYSTEM
+#include "SPFilepath.h"
 #include "SPFilesystem.h"
 #endif
 
@@ -41,6 +43,9 @@ enum class DataFormat {
 	Serenity,
 
 	CborBase64,
+
+	// Never detected: a KDL document has no signature, so it is read only when asked for.
+	Kdl,
 
 	LZ4_Short,
 	LZ4_Word,
@@ -213,10 +218,34 @@ auto read(const StringType &data, const StringView &key = StringView())
 	return ValueTemplate<Interface>();
 }
 
+// Reads in the format given rather than the one detected; Unknown detects.
+template <typename Interface, typename StringType>
+auto read(const StringType &data, DataFormat fmt) -> ValueTemplate<Interface> {
+	switch (fmt) {
+	case DataFormat::Unknown: return read<Interface>(data); break;
+	case DataFormat::Json:
+		return json::read<Interface>(StringView((const char *)data.data(), data.size()));
+		break;
+	case DataFormat::Cbor: return cbor::read<Interface>(data); break;
+	case DataFormat::Serenity:
+		return serenity::read<Interface>(StringView((const char *)data.data(), data.size()));
+		break;
+	case DataFormat::Kdl:
+		return kdl::read<Interface>(StringView((const char *)data.data(), data.size()));
+		break;
+	default: break;
+	}
+	return read<Interface>(data);
+}
+
 #ifdef MODULE_STAPPLER_FILESYSTEM
+// A `.kdl` file is read as KDL; anything else by its content.
 template <typename Interface>
 auto readFile(const FileInfo &filename, const StringView &key = StringView())
 		-> ValueTemplate<Interface> {
+	if (filepath::lastExtension(filename.path) == "kdl") {
+		return read<Interface>(filesystem::readIntoMemory<Interface>(filename), DataFormat::Kdl);
+	}
 	return read<Interface>(filesystem::readIntoMemory<Interface>(filename));
 }
 #endif

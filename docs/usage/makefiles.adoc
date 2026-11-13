@@ -179,6 +179,7 @@ across [make/c/apply.mk](../../make/c/apply.mk) and friends.
 | `LOCAL_INCLUDES_OBJS` | Individual directories added directly to the include path.
 | `LOCAL_SHADERS_DIR` | Directories with GLSL shaders to compile to SPIR-V.
 | `LOCAL_SHADERS_INCLUDE` | Include dirs for `#include` inside shaders.
+| `LOCAL_SHADERS_SCHEMA` | GPU schemas (`.kdl`, [xlkdl gpu](tools/xlkdl-gpu.adoc)) whose headers and shader preambles the build generates into `<build>/schema`, on the include path of the shaders and the sources. Needs `xlkdl` built for the host (`XLKDL`, or the engine's `utils/xlkdl` build).
 | `LOCAL_CFLAGS` / `LOCAL_CXXFLAGS` / `LOCAL_LDFLAGS` | Extra flags appended to the project's compile/link commands.
 | `LOCAL_LIBS` | Extra libraries to link (`-lfoo`, or `-l:libfoo.a` / `-l:foo.lib` for a static lib from the toolchain).
 | `LOCAL_PRIVATE_INCLUDE_PCH` | Precompiled-header file name(s) to consume (e.g. `SPCommon.h`).

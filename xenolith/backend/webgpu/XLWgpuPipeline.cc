@@ -168,6 +168,12 @@ bool Shader::setup(Device &dev, const core::ProgramData &programData, SpanView<u
 bool GraphicPipeline::init(Device &dev, const PipelineData &data) {
 	_name = data.key.str<Interface>();
 
+	// face culling, depth bias and depth clamp are applied by the Vulkan backend only
+	if (data.material.getRasterizationInfo() != core::RasterizationInfo()) {
+		log::source().warn("webgpu::GraphicPipeline", _name,
+				": rasterization state (cull, depth bias, depth clamp) is not supported, ignored");
+	}
+
 	WGPUShaderModule vertexModule = nullptr;
 	WGPUShaderModule fragmentModule = nullptr;
 

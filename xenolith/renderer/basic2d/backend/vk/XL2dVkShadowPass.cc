@@ -202,7 +202,12 @@ bool ShadowPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilde
 		return Rc<core::FrameCaptureAttachment>::create(builder);
 	});
 
-	auto colorAttachment = passBuilder.addAttachment(_output);
+	// Reading the output makes the 2d content composite over a pass that wrote it earlier (a 3d
+	// scene below the UI); with no such pass the output is still cleared on load.
+	auto colorAttachment =
+			passBuilder.addAttachment(_output, [](AttachmentPassBuilder &attachmentBuilder) {
+		attachmentBuilder.setAttachmentOps(AttachmentOps::WritesColor | AttachmentOps::ReadColor);
+	});
 	auto shadowAttachment = passBuilder.addAttachment(_shadow);
 	auto sdfAttachment = passBuilder.addAttachment(_sdf);
 	auto sdfDepthAttachment = passBuilder.addAttachment(_depthSdf);

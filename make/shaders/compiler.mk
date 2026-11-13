@@ -20,12 +20,21 @@
 
 BUILD_SHADERS_OUTDIR := $(BUILD_OUTDIR)/$(notdir $(GLSLC))
 
+# What xlkdl gpu writes for the project's schemas (LOCAL_SHADERS_SCHEMA): their headers and the
+# preambles of their shaders, and a depfile of the schemas they come from
+BUILD_SHADERS_SCHEMA_OUTDIR := $(BUILD_OUTDIR)/schema
+BUILD_SHADERS_SCHEMA_DEPFILE := $(BUILD_SHADERS_SCHEMA_OUTDIR)/schema.d
+
+# Both write a make depfile beside the output ($(1).d): a shader is rebuilt when a header it
+# includes changes, not only when its own file does
 sp_compile_glsl = $(VERBOSE_GUARD) $(GLSLC) \
-	$(BUILD_SHADERS_FLAGS) $(3) -V --target-env vulkan1.1 --target-env vulkan1.0 -o $(1) $(2) -e $(notdir $(basename $(1))) --sep main 
+	$(BUILD_SHADERS_FLAGS) $(3) -V --target-env vulkan1.1 --target-env vulkan1.0 \
+	--depfile $(strip $(1)).d -o $(1) $(2) -e $(notdir $(basename $(1))) --sep main 
 
 sp_compile_glsl_header = $(VERBOSE_GUARD) $(GLSLC) \
 	$(BUILD_SHADERS_FLAGS) --quiet $(3) -V --target-env vulkan1.1 --target-env vulkan1.0 \
-	--vn $(subst .,_,$(notdir $(basename $(1)))) -o $(1) $(2) -e $(notdir $(basename $(1))) --sep main 
+	--depfile $(strip $(1)).d --vn $(subst .,_,$(notdir $(basename $(1)))) -o $(1) $(2) \
+	-e $(notdir $(basename $(1))) --sep main 
 
 # $(1) - dirs where to find shaders
 sp_toolkit_shaders_files = $(realpath $(foreach dir,$(1),$(wildcard $(dir)/*.*)))

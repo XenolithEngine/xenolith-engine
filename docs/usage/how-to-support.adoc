@@ -56,7 +56,10 @@ Many things are still at the discussion stage, which you can influence by propos
 implementation:
 
 * an audio engine
-* an approach to 3D rendering and its integration into the application's 2D model
+* 3D rendering beyond what `basic3d` does: one approach to 3D and its integration into the
+  application's 2D model is in place and described in
+  link:../design/basic3d.adoc[The 3d layer]; its open questions (backends other than Vulkan,
+  objects and instancing, shadow maps, 2D damage over a 3D view) are listed there
 * gamepad/controller support
 * anything else you can think of that a game engine or an application engine needs
 

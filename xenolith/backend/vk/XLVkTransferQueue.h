@@ -66,6 +66,10 @@ public:
 		sprt::optional<ImageMemoryBarrier> barrier;
 		bool useStaging = false;
 
+		// the levels above 0 are built from level 0 by blits after the copy
+		bool generateMips = false;
+		VkFilter mipFilter = VK_FILTER_LINEAR;
+
 		ImageAllocInfo() = default;
 		ImageAllocInfo(core::ImageData *);
 	};
@@ -102,6 +106,9 @@ public:
 	bool transfer(const Rc<DeviceQueue> &, const Rc<CommandPool> &, const Rc<Fence> &);
 
 	bool isValid() const { return _alloc != nullptr; }
+
+	// a mip chain is generated: the commands need a queue that can blit (graphics)
+	bool needsGraphicsQueue() const { return _needsGraphicsQueue; }
 	bool isStagingRequired() const { return !_stagingBuffer.copyData.empty(); }
 
 protected:
@@ -133,6 +140,7 @@ protected:
 	Function<void(bool)> _callback;
 
 	bool _initialized = false;
+	bool _needsGraphicsQueue = false;
 	AllocationUsage _targetUsage = AllocationUsage::DeviceLocal;
 };
 

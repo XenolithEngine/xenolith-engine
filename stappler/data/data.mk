@@ -26,7 +26,7 @@ MODULE_STAPPLER_DATA_SRCS_DIRS := $(STAPPLER_MODULE_DIR)/data
 MODULE_STAPPLER_DATA_SRCS_OBJS :=
 MODULE_STAPPLER_DATA_INCLUDES_DIRS :=
 MODULE_STAPPLER_DATA_INCLUDES_OBJS := $(STAPPLER_MODULE_DIR)/data 
-MODULE_STAPPLER_DATA_DEPENDS_ON := stappler_core
+MODULE_STAPPLER_DATA_DEPENDS_ON := stappler_core stappler_kdl
 MODULE_STAPPLER_DATA_SHARED_DEPENDS_ON := stappler_filesystem
 
 MODULE_STAPPLER_DATA_SHARED_CONSUME := \
@@ -39,7 +39,7 @@ MODULE_STAPPLER_DATA_SHARED_SPEC_SUMMARY := libstappler JSON/CBOR support
 define MODULE_STAPPLER_DATA_SHARED_SPEC_DESCRIPTION
 Module libstappler-data adds:
 - weakly-typed container data::Valye
-- encoding/decoding for JSON and CBOR
+- encoding/decoding for JSON, CBOR and KDL
 - command line arguments processing
 - URL arguments processing
 - compression/decompression with brotli or lz4

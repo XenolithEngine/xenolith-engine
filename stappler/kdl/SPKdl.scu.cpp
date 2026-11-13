@@ -21,6 +21,7 @@ THE SOFTWARE.
 **/
 
 #include "SPCommon.h"
+#include "SPMemory.h"
 
 #include "SPKdlNumber.cc"
 #include "SPKdlParser.cc"

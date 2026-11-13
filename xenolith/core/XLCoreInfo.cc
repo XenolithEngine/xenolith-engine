@@ -286,6 +286,52 @@ size_t BufferData::writeData(uint8_t *mem, size_t expected) const {
 	return 0;
 }
 
+uint32_t getMipLevelCount(const Extent3 &extent) {
+	auto side = sprt::max(extent.width, sprt::max(extent.height, extent.depth));
+	uint32_t count = 1;
+	while (side > 1) {
+		side >>= 1;
+		++count;
+	}
+	return count;
+}
+
+Extent3 getMipExtent(const Extent3 &extent, uint32_t level) {
+	auto half = [&](uint32_t value) { return sprt::max(uint32_t(1), value >> level); };
+	return Extent3(half(extent.width), half(extent.height), half(extent.depth));
+}
+
+uint64_t getMipLevelOffset(ImageFormat format, const Extent3 &extent, uint32_t level,
+		uint32_t arrayLayers) {
+	return getMipChainSize(format, extent, level, arrayLayers);
+}
+
+uint64_t getMipChainSize(ImageFormat format, const Extent3 &extent, uint32_t levels,
+		uint32_t arrayLayers) {
+	uint64_t size = 0;
+	for (uint32_t i = 0; i < levels; ++i) {
+		size += getFormatImageSize(format, getMipExtent(extent, i), arrayLayers);
+	}
+	return size;
+}
+
+void ImageInfoData::resolveMipLevels(bool levelZeroOnly) {
+	auto full = getMipLevelCount(extent);
+	if (mipLevels.get() == 0 || mipLevels.get() > full) {
+		mipLevels = MipLevels(full);
+	}
+	if (levelZeroOnly && mipLevels.get() > 1) {
+		hints |= ImageHints::GenerateMipmaps;
+	}
+}
+
+uint64_t ImageInfoData::getDataSize() const {
+	if (hasPrebuiltMipLevels()) {
+		return getMipChainSize(format, extent, mipLevels.get(), arrayLayers.get());
+	}
+	return getFormatImageSize(format, extent, arrayLayers.get());
+}
+
 ImageViewInfo ImageInfoData::getViewInfo(const ImageViewInfo &info) const {
 	ImageViewInfo ret(info);
 	if (ret.format == ImageFormat::Undefined) {
@@ -333,8 +379,8 @@ String ImageInfo::description() const {
 
 size_t ImageData::writeData(uint8_t *mem, size_t expected) const {
 	// Blocks, not pixels: for a compressed format the size is blocks * bytes-per-block, which
-	// getFormatImageSize accounts for.
-	uint64_t expectedSize = getFormatImageSize(format, extent, arrayLayers.get());
+	// getFormatImageSize accounts for. Prebuilt mip levels follow level 0 in the data.
+	uint64_t expectedSize = getDataSize();
 	if (expectedSize > expected) {
 		log::source().error("core::ImageData", "Not enoudh space for image: ", expectedSize,
 				" required, ", expected, " allocated");
@@ -1006,7 +1052,11 @@ String PipelineMaterialInfo::description() const {
 		   << blend.opColor << "," << blend.srcAlpha << "," << blend.dstAlpha << ","
 		   << blend.opAlpha << "," << blend.writeMask << "},{" << depth.writeEnabled << ","
 		   << depth.testEnabled << "," << depth.compare << "},{" << bounds.enabled << ","
-		   << bounds.min << "," << bounds.max << "},{" << stencil << "}";
+		   << bounds.min << "," << bounds.max << "},{" << stencil << "},{"
+		   << uint32_t(toInt(raster.cullMode)) << "," << uint32_t(toInt(raster.frontFace)) << ","
+		   << uint32_t(raster.depthBiasEnabled) << "," << raster.depthBiasConstant << ","
+		   << raster.depthBiasSlope << "," << raster.depthBiasClamp << ","
+		   << uint32_t(raster.depthClampEnabled) << "}";
 	return stream.str();
 }
 
@@ -1074,6 +1124,20 @@ void PipelineMaterialInfo::setLineWidth(float width) {
 
 void PipelineMaterialInfo::setImageViewType(ImageViewType type) { imageViewType = type; }
 
+void PipelineMaterialInfo::setRasterizationInfo(const RasterizationInfo &info) {
+	// the bytes are the hash: a disabled bias carries no values, and -0.0f is stored as 0.0f
+	auto normalize = [](float value) { return value == 0.0f ? 0.0f : value; };
+
+	raster = RasterizationInfo(info.cullMode, info.frontFace);
+	raster.depthClampEnabled = info.depthClampEnabled ? 1 : 0;
+	if (info.depthBiasEnabled) {
+		raster.depthBiasEnabled = 1;
+		raster.depthBiasConstant = normalize(info.depthBiasConstant);
+		raster.depthBiasSlope = normalize(info.depthBiasSlope);
+		raster.depthBiasClamp = normalize(info.depthBiasClamp);
+	}
+}
+
 void PipelineMaterialInfo::_setup(const BlendInfo &info) { setBlendInfo(info); }
 
 void PipelineMaterialInfo::_setup(const DepthInfo &info) { setDepthInfo(info); }
@@ -1085,5 +1149,7 @@ void PipelineMaterialInfo::_setup(const StencilInfo &info) { enableStencil(info)
 void PipelineMaterialInfo::_setup(LineWidth width) { setLineWidth(width.get()); }
 
 void PipelineMaterialInfo::_setup(ImageViewType type) { setImageViewType(type); }
+
+void PipelineMaterialInfo::_setup(const RasterizationInfo &info) { setRasterizationInfo(info); }
 
 } // namespace stappler::xenolith::core

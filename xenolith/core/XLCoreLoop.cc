@@ -70,4 +70,13 @@ void Loop::captureImage(const FileInfo &file, const Rc<core::ImageObject> &image
 	}, image, l);
 }
 
+void Loop::captureImage(Function<void(const ImageInfoData &info, BytesView view)> &&cb,
+		const Rc<ImageObject> &image, AttachmentLayout l, uint32_t level) {
+	if (level == 0) {
+		captureImage(sp::move(cb), image, l);
+	} else {
+		cb(image->getInfo(), BytesView());
+	}
+}
+
 } // namespace stappler::xenolith::core

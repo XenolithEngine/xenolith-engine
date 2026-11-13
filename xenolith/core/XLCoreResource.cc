@@ -519,6 +519,7 @@ const ImageData *Resource::Builder::addBitmapImage(StringView key, ImageInfo &&i
 		buf->data = data.pdup(_data->pool);
 		buf->targetLayout = layout;
 		buf->targetAccess = access;
+		buf->resolveMipLevels();
 		return buf;
 	}, _data->pool);
 	if (!p) {
@@ -550,6 +551,7 @@ const ImageData *Resource::Builder::addEncodedImageByRef(StringView key, ImageIn
 		buf->extent = extent;
 		buf->targetLayout = layout;
 		buf->targetAccess = access;
+		buf->resolveMipLevels(true);
 		return buf;
 	}, _data->pool);
 	if (!p) {
@@ -583,6 +585,7 @@ const ImageData *Resource::Builder::addEncodedImage(StringView key, ImageInfo &&
 		buf->extent = extent;
 		buf->targetLayout = layout;
 		buf->targetAccess = access;
+		buf->resolveMipLevels(true);
 		return buf;
 	}, _data->pool);
 	if (!p) {
@@ -631,6 +634,7 @@ const ImageData *Resource::Builder::addImage(StringView key, ImageInfo &&img, co
 		buf->extent = extent;
 		buf->targetLayout = layout;
 		buf->targetAccess = access;
+		buf->resolveMipLevels(true);
 		return buf;
 	}, _data->pool);
 	if (!p) {
@@ -717,6 +721,7 @@ const ImageData *Resource::Builder::addImage(StringView key, ImageInfo &&img,
 		}
 		buf->targetLayout = layout;
 		buf->targetAccess = access;
+		buf->resolveMipLevels(true);
 		return buf;
 	}, _data->pool);
 	if (!p) {
@@ -740,6 +745,7 @@ const ImageData *Resource::Builder::addBitmapImageByRef(StringView key, ImageInf
 		buf->data = data;
 		buf->targetLayout = layout;
 		buf->targetAccess = access;
+		buf->resolveMipLevels();
 		return buf;
 	}, _data->pool);
 	if (!p) {
@@ -763,6 +769,7 @@ const ImageData *Resource::Builder::addImage(StringView key, ImageInfo &&img,
 		buf->memCallback = cb;
 		buf->targetLayout = layout;
 		buf->targetAccess = access;
+		buf->resolveMipLevels();
 		return buf;
 	}, _data->pool);
 	if (!p) {

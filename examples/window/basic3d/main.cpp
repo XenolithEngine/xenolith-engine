@@ -1,0 +1,372 @@
+/**
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+ SPDX-License-Identifier: MIT
+**/
+
+#include "XLCommon.h"
+#include "XLEntryPoint.h"
+#include "XLDirector.h"
+#include "XLResourceCache.h"
+#include "XLInputListener.h"
+#include "XLAction.h"
+#include "XL2dLayer.h"
+#include "XL2dLabel.h"
+#include "XL3dScene.h"
+#include "XL3dSceneContent.h"
+#include "XL3dView.h"
+#include "XL3dMesh.h"
+#include "XL3dMeshPack.h"
+#include "XLSceneInspector.h"
+
+#include <sprt/c/__sprt_stdlib.h>
+
+#include "Basic3dExampleData.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith::examples {
+
+#include "basic3d_stripes.vert.h"
+#include "basic3d_stripes.frag.h"
+#include "basic3d_glass.frag.h"
+
+using namespace basic3d;
+
+// The example's own pipelines, the scene's app pipelines: a material picks the first as 1; the
+// second is translucent
+static constexpr uint32_t StripesPipeline = 1;
+static constexpr uint32_t GlassPipeline = 2;
+
+// A mesh of the builders as the stripes' vertex of the example's schema, Compact3d: its position
+// and normal, 16 bytes a vertex for Vertex3d's 64
+static Rc<Mesh3d> makeCompact(const Rc<Mesh3d> &mesh) {
+	Vector<example::Compact3dVertex> vertexes;
+	for (auto &v : mesh->getVertexes()) {
+		vertexes.emplace_back(example::Compact3dVertex{Vec3(v.pos.x, v.pos.y, v.pos.z),
+			Vec3(v.normal.x, v.normal.y, v.normal.z)});
+	}
+	auto indexes = mesh->getIndexes();
+	return Mesh3d::make<example::Compact3dVertex>(vertexes,
+			Vector<uint32_t>(indexes.begin(), indexes.end()));
+}
+
+// A square checker of `size` pixels with squares of `square` pixels, RGBA8
+static Bytes makeChecker(uint32_t size, uint32_t square, Color4B a, Color4B b) {
+	Bytes ret;
+	ret.reserve(size * size * 4);
+	for (uint32_t y = 0; y < size; ++y) {
+		for (uint32_t x = 0; x < size; ++x) {
+			auto &c = (((x / square) + (y / square)) & 1) ? a : b;
+			ret.insert(ret.end(), {c.r, c.g, c.b, c.a});
+		}
+	}
+	return ret;
+}
+
+static Mat4 torusTransform(float angle) {
+	Mat4 move, spin, tilt;
+	Mat4::createTranslation(Vec3(0.0f, 0.0f, 1.6f), &move);
+	Mat4::createRotationZ(angle, &spin);
+	Mat4::createRotationX(0.6f, &tilt);
+	return move * spin * tilt;
+}
+
+/* The content: a View3d over the whole window, a translucent panel and a label over it. With
+BASIC3D_STILL=1 the torus does not spin, so a check reads a fixed picture. */
+class Basic3dContent : public SceneContent3d {
+public:
+	virtual ~Basic3dContent() = default;
+
+	virtual bool init() override {
+		if (!SceneContent3d::init()) {
+			return false;
+		}
+
+		setDefaultLights();
+
+		_view = addChild(Rc<View3d>::create());
+		_view->setAnchorPoint(Anchor::BottomLeft);
+		_view->setPosition(Vec2::ZERO);
+
+		// the sun comes from the +y side: the torus's +y faces are lit, its +x faces are not
+		_view->setSun(Vec3(-0.5f, 0.7f, 0.5f), Color4F(0.9f, 0.88f, 0.8f, 1.0f));
+		_view->setAmbient(Color4F(0.18f, 0.18f, 0.22f, 1.0f));
+
+		// the view's block of the example's schema, what the glass reads of the camera;
+		// BASIC3D_NOBLOCK=1 leaves it out, and the mesh pipeline draws the glass instead
+		if (!__sprt_getenv("BASIC3D_NOBLOCK")) {
+			auto &camera = _view->getCamera();
+			_view->setBlock(example::Example3dViewBlock{
+				.depthRange = camera.getFar() - camera.getNear(),
+			}.make());
+		}
+
+		_panel = addChild(Rc<basic2d::Layer>::create(Color4F(1.0f, 1.0f, 1.0f, 0.5f)), ZOrder(1));
+		_panel->setAnchorPoint(Anchor::BottomLeft);
+		_panel->setContentSize(Size2(260.0f, 70.0f));
+
+		_label = addChild(Rc<basic2d::Label>::create("basic3d: drag to pan, wheel to zoom"),
+				ZOrder(2));
+		_label->setFontSize(18);
+		_label->setAnchorPoint(Anchor::BottomLeft);
+
+		auto listener = _view->addSystem(Rc<InputListener>::create());
+		listener->addSwipeRecognizer([this](const GestureSwipe &swipe) {
+			if (swipe.event == GestureEvent::Activated) {
+				pan(swipe.delta);
+			}
+			return true;
+		});
+		listener->addScrollRecognizer([this](const GestureScroll &scroll) {
+			zoom(scroll.amount.y > 0.0f ? 1.15f : 1.0f / 1.15f);
+			return true;
+		});
+
+		return true;
+	}
+
+	virtual void handleEnter(xenolith::Scene *scene) override {
+		SceneContent3d::handleEnter(scene);
+
+		if (_torus == maxOf<uint32_t>()) {
+			makeScene(scene->getDirector()->getResourceCache());
+		}
+
+		// for basic3d-check.py: the pass's last frame and the pack; drop removes every draw
+		inspector::addCommand(this, "basic3d.stats", "the 3d pass's last frame and the pack",
+				[this](Value &&, Function<void(Value &&)> &&done) { done(describeStats()); });
+		// the meshes and the pack are let go of here: the frames in flight hold the last references
+		inspector::addCommand(this, "basic3d.drop", "remove every draw, releasing the pack",
+				[this](Value &&, Function<void(Value &&)> &&done) {
+			_view->stopAllActions();
+			_view->clearDraws();
+			auto ret = describeStats();
+			_pack = nullptr;
+			done(sp::move(ret));
+		});
+	}
+
+	virtual void handleContentSizeDirty() override {
+		SceneContent3d::handleContentSizeDirty();
+
+		// top left, clear of the frame statistics at the bottom left
+		_view->setContentSize(_contentSize);
+		_panel->setPosition(Vec2(16.0f, _contentSize.height - 16.0f - 70.0f));
+		_label->setPosition(Vec2(28.0f, _contentSize.height - 16.0f - 46.0f));
+	}
+
+protected:
+	void makeScene(ResourceCache *cache) {
+		// Mips are generated by the GPU from level 0. The ground's checker squares are two pixels:
+		// at this scale the texture shrinks four to eight times, which only mips average to grey.
+		auto info = [](uint32_t size) {
+			return core::ImageInfo(Extent2(size, size), core::ImageFormat::R8G8B8A8_UNORM,
+					core::ImageUsage::Sampled, core::MipLevelsFull,
+					core::ImageHints::GenerateMipmaps);
+		};
+
+		auto coarse = cache->addExternalBitmapImage("basic3d.example.coarse", info(64),
+				makeChecker(64, 8, Color4B(255, 140, 40, 255), Color4B(250, 250, 240, 255)));
+		auto fine = cache->addExternalBitmapImage("basic3d.example.fine", info(64),
+				makeChecker(64, 2, Color4B(0, 0, 0, 255), Color4B(255, 255, 255, 255)));
+		auto magenta = cache->addExternalBitmapImage("basic3d.example.magenta", info(4),
+				makeChecker(4, 2, Color4B(255, 0, 255, 255), Color4B(255, 0, 255, 255)));
+
+		// A layered texture: three layers, red, white and cyan, each a plain colour
+		Bytes layers;
+		for (auto c : {Color4B(255, 0, 0, 255), Color4B(255, 255, 255, 255),
+				 Color4B(0, 255, 255, 255)}) {
+			for (uint32_t i = 0; i < 16 * 16; ++i) {
+				layers.insert(layers.end(), {c.r, c.g, c.b, c.a});
+			}
+		}
+		auto layered = cache->addExternalBitmapImage("basic3d.example.layers",
+				core::ImageInfo(Extent2(16, 16), core::ArrayLayers(3),
+						core::ImageFormat::R8G8B8A8_UNORM, core::ImageUsage::Sampled),
+				layers);
+
+		// Every mesh of the scene in one pack in GPU memory: the frames draw them from it once it
+		// is loaded, and copy nothing (BASIC3D_NOPACK=1 draws them from the frame's buffers). The
+		// stripes' box is of their vertex format, the others of Vertex3d: one pack holds both
+		auto plane = Mesh3d::makePlane(40.0f, 160.0f);
+		auto torus = Mesh3d::makeTorus(2.0f, 0.7f, 64, 24);
+		auto box = makeCompact(Mesh3d::makeBox(Vec3(1.5f, 1.5f, 0.75f)));
+		auto small = Mesh3d::makeBox(Vec3(1.0f, 1.0f, 0.75f));
+		_pack = Rc<MeshPack3d>::create(cache, Vector<Rc<Mesh3d>>{plane, torus, box, small});
+		_packName = _pack->getName().str<Interface>();
+
+		// the ground and the torus by the mesh pipeline: a colour times a texture
+		_view->addDraw(Draw3d{plane, Mat4::IDENTITY,
+			Material3d::lambert(Color4F(0.75f, 0.85f, 0.7f, 1.0f), fine)});
+
+		_torus = _view->addDraw(Draw3d{torus, torusTransform(0.4f),
+			Material3d::lambert(Color4F::WHITE, coarse)});
+
+		// Two boxes drawn by the app pipeline, a material of the example's schema each (Stripes3d):
+		// red and blue stripes, and with STRIPES_SINGLE green alone where its colours would give
+		// green and yellow ones
+		auto stripes = [](example::Stripes3dMaterial &&m) {
+			return Material3d{.pipeline = StripesPipeline, .data = m.make()};
+		};
+		Mat4 left, right;
+		Mat4::createTranslation(Vec3(-4.0f, 5.0f, 0.75f), &left);
+		Mat4::createTranslation(Vec3(5.0f, -4.0f, 0.75f), &right);
+		_view->addDraw(Draw3d{box, left,
+			stripes({.first = Vec4(1.0f, 0.0f, 0.0f, 1.0f),
+				.second = Vec4(0.0f, 0.0f, 1.0f, 1.0f)})});
+		_view->addDraw(Draw3d{box, right,
+			stripes({.first = Vec4(0.0f, 1.0f, 0.0f, 1.0f), .second = Vec4(1.0f, 1.0f, 0.0f, 1.0f),
+				.flags = BASIC3D_EXAMPLE_STRIPES_SINGLE})});
+
+		// A third box of the pipeline, its second colour from a texture: the coarse checker; its
+		// first from another: magenta
+		Mat4 front;
+		Mat4::createTranslation(Vec3(-7.0f, -2.0f, 0.75f), &front);
+		_view->addDraw(Draw3d{box, front,
+			stripes({.first = Vec4(1.0f, 0.0f, 0.0f, 1.0f), .second = Vec4(0.0f, 0.0f, 1.0f, 1.0f),
+				.firstTexture = magenta, .secondTexture = coarse})});
+
+		// A fourth, its second colour from the layered texture's third layer, by STRIPES_LAYERED:
+		// cyan
+		Mat4 rear;
+		Mat4::createTranslation(Vec3(2.0f, 10.0f, 0.75f), &rear);
+		_view->addDraw(Draw3d{box, rear,
+			stripes({.first = Vec4(1.0f, 0.0f, 0.0f, 1.0f), .second = Vec4(0.0f, 0.0f, 1.0f, 1.0f),
+				.layers = layered, .layer = 2.0f, .flags = BASIC3D_EXAMPLE_STRIPES_LAYERED})});
+		// A point light low over the ground beside the torus, unless BASIC3D_NO_LIGHT=1: a pool
+		// of warm light on the ground under it
+		if (!__sprt_getenv("BASIC3D_NO_LIGHT")) {
+			_view->addLight(Light3d{Vec3(6.0f, 4.0f, 1.0f), 6.0f, Color4F(1.6f, 1.2f, 0.6f, 1.0f)});
+		}
+
+		// BASIC3D_UNKNOWN_PIPELINE=1: a fifth box picks a pipeline the scene does not have, and
+		// draws as a white mesh: its material, a Stripes3d, is none the mesh pipeline reads
+		if (__sprt_getenv("BASIC3D_UNKNOWN_PIPELINE")) {
+			Mat4 back;
+			Mat4::createTranslation(Vec3(-6.0f, -6.0f, 0.75f), &back);
+			_view->addDraw(Draw3d{small, back,
+				Material3d{.pipeline = 7,
+					.data = example::Stripes3dMaterial{.layers = layered, .layer = 2.0f}.make()}});
+		}
+
+		// BASIC3D_GLASS=1: a tinted glass by the translucent pipeline, 4 units square, tilted over
+		// the ground between the green box and the light, toward the camera - a quarter of a unit
+		// over it at its +y end, two and a quarter at its -y one - as clear as the ground behind it
+		// is near. Its material is of the example's schema (glsl/basic3d-example.kdl), as is the
+		// view's block it reads; BASIC3D_GLASS_NODATA=1 leaves the material out, and the mesh
+		// pipeline draws the glass instead
+		if (__sprt_getenv("BASIC3D_GLASS")) {
+			// of the stripes' vertex format, whose vertex shader the glass's pipeline shares
+			auto glass = makeCompact(Mesh3d::makePlane(4.0f));
+			Mat4 move, tilt;
+			Mat4::createTranslation(Vec3(6.0f, 0.5f, 1.25f), &move);
+			Mat4::createRotationX(-asinf(0.5f), &tilt);
+			Material3d material{.pipeline = GlassPipeline};
+			if (!__sprt_getenv("BASIC3D_GLASS_NODATA")) {
+				material.data = example::Glass3dMaterial{
+					.color = Vec4(0.1f, 0.3f, 0.9f, 1.0f),
+					.density = 0.6f,
+				}.make();
+			}
+			_view->addDraw(Draw3d{glass, move * tilt, sp::move(material)});
+		}
+
+		if (!__sprt_getenv("BASIC3D_STILL")) {
+			_view->runAction(Rc<RepeatForever>::create(Rc<ActionProgress>::create(8.0f,
+					[this](float progress) {
+				_view->setDrawTransform(_torus, torusTransform(0.4f + progress * 6.2831853f));
+			})));
+		}
+	}
+
+	Value describeStats() const {
+		auto stats = getLastPassStats();
+		Value ret(Value::Type::DICTIONARY);
+		ret.setInteger(int64_t(stats.frameVertexBytes), "frameVertexBytes");
+		ret.setInteger(int64_t(stats.frameIndexBytes), "frameIndexBytes");
+		ret.setInteger(stats.frameDraws, "frameDraws");
+		ret.setInteger(stats.packDraws, "packDraws");
+		ret.setInteger(int64_t(stats.recordBytes), "recordBytes");
+		ret.setInteger(stats.translucentDraws, "translucentDraws");
+		ret.setInteger(stats.materials, "materials");
+		ret.setInteger(int64_t(stats.materialBytes), "materialBytes");
+		ret.setInteger(stats.blocks, "blocks");
+		ret.setInteger(int64_t(stats.blockBytes), "blockBytes");
+		ret.setBool(_pack && _pack->isLoaded(), "packLoaded");
+		ret.setInteger(_pack ? _pack->getUsers() : 0, "packUsers");
+		ret.setBool(_director && _director->getResourceCache()->hasTemporaryResource(_packName),
+				"packInCache");
+		ret.setInteger(getPacksReleasedOffThread(), "packsReleasedOffThread");
+		return ret;
+	}
+
+	void pan(const Vec2 &delta) {
+		// the ground under the view's centre moves with the pointer
+		auto camera = _view->getCamera();
+		auto &rect = camera.getViewport();
+		Vec2 centre(rect.getMidX(), rect.getMidY());
+		Vec3 a, b;
+		if (camera.screenToGround(centre, 0.0f, a)
+				&& camera.screenToGround(centre - delta, 0.0f, b)) {
+			camera.setTarget(camera.getTarget() + (b - a));
+			_view->setCamera(camera);
+		}
+	}
+
+	void zoom(float ratio) {
+		auto camera = _view->getCamera();
+		camera.setOrthographic(sprt::clamp(camera.getPointsPerUnit() * ratio, 8.0f, 512.0f));
+		_view->setCamera(camera);
+	}
+
+	View3d *_view = nullptr;
+	basic2d::Layer *_panel = nullptr;
+	basic2d::Label *_label = nullptr;
+	uint32_t _torus = maxOf<uint32_t>();
+	Rc<MeshPack3d> _pack;
+	String _packName;
+};
+
+DEFINE_CONFIG_FUNCTION((ContextConfig &cfg) {
+	if (!cfg.window) {
+		cfg.window = Rc<sprt::window::WindowInfo>::alloc();
+	}
+	cfg.window->flags = sprt::window::WindowCreationFlags::Regular;
+	cfg.window->minExtent = Extent2(640, 480);
+});
+
+class MainScene : public Scene3d {
+public:
+	virtual ~MainScene() = default;
+
+	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
+			const core::FrameConstraints &constraints) override {
+		// the stripes read the meshes of their own vertex format
+		auto stripes = Pipeline3dInfo{"Basic3dExampleStripes",
+			SpanView<uint32_t>(reinterpret_cast<const uint32_t *>(basic3d_stripes_vert),
+					sizeof(basic3d_stripes_vert) / sizeof(uint32_t)),
+			SpanView<uint32_t>(reinterpret_cast<const uint32_t *>(basic3d_stripes_frag),
+					sizeof(basic3d_stripes_frag) / sizeof(uint32_t)),
+			false, &example::Stripes3dMaterial::Schema, nullptr, &example::Compact3dVertex::Format};
+		// the glass shares the stripes' vertex shader, and reads a material and the view's block of
+		// the example's schema
+		auto glass = Pipeline3dInfo{"Basic3dExampleGlass", stripes.vert,
+			SpanView<uint32_t>(reinterpret_cast<const uint32_t *>(basic3d_glass_frag),
+					sizeof(basic3d_glass_frag) / sizeof(uint32_t)),
+			true, &example::Glass3dMaterial::Schema, &example::Example3dViewBlock::Schema,
+			&example::Compact3dVertex::Format};
+		if (!Scene3d::init(app, window, constraints, Vector<Pipeline3dInfo>{stripes, glass})) {
+			return false;
+		}
+		setContent(Rc<Basic3dContent>::create());
+		return true;
+	}
+
+protected:
+	virtual void describeQueue(QueueInfo &info) override {
+		Scene3d::describeQueue(info);
+		info.backgroundColor = Color4F(0.1f, 0.11f, 0.13f, 1.0f);
+	}
+};
+
+DEFINE_PRIMARY_SCENE_CLASS(MainScene)
+
+} // namespace stappler::xenolith::examples

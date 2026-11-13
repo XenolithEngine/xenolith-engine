@@ -381,6 +381,8 @@ enum class ImageHints : uint32_t {
 	FixedSize = 1 << 1,
 	DoNotCache = 1 << 2,
 	ReadOnly = 1 << 3,
+	// the data is level 0 only; the backend builds the other mip levels from it
+	GenerateMipmaps = 1 << 4,
 	Static = FixedSize | DoNotCache | ReadOnly
 };
 
@@ -421,6 +423,20 @@ enum class CompareOp : uint8_t {
 	NotEqual = 5,
 	GreaterOrEqual = 6,
 	Always = 7,
+};
+
+// VkCullModeFlagBits
+enum class CullMode : uint8_t {
+	None = 0,
+	Front = 1,
+	Back = 2,
+	FrontAndBack = 3,
+};
+
+// VkFrontFace: the winding of a front face in framebuffer coordinates
+enum class FrontFace : uint8_t {
+	CounterClockwise = 0,
+	Clockwise = 1,
 };
 
 enum class BlendFactor : uint8_t {

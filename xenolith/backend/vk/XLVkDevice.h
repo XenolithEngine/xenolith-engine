@@ -131,6 +131,8 @@ public:
 	}
 
 	bool hasNonSolidFillMode() const;
+	bool hasDepthClamp() const;
+	bool hasDepthBiasClamp() const;
 	bool hasDynamicIndexedBuffers() const;
 	bool hasBufferDeviceAddresses() const;
 	bool hasExternalFences() const;
@@ -145,6 +147,9 @@ public:
 			Function<void(bool)> &&);
 
 	void readImage(Loop &loop, const Rc<Image> &, core::AttachmentLayout,
+			Function<void(const ImageInfoData &, BytesView)> &&);
+	// one mip level, all its array layers; the callback is given the level's extent
+	void readImage(Loop &loop, const Rc<Image> &, core::AttachmentLayout, uint32_t level,
 			Function<void(const ImageInfoData &, BytesView)> &&);
 	void readBuffer(Loop &loop, const Rc<Buffer> &,
 			Function<void(const BufferInfo &, BytesView)> &&);

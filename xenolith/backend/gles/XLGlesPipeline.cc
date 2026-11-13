@@ -194,6 +194,12 @@ bool Shader::setup(Device &dev, SpanView<uint32_t> data) {
 bool GraphicPipeline::init(Device &dev, const PipelineData &params) {
 	_name = params.key.str<Interface>();
 
+	// face culling, depth bias and depth clamp are applied by the Vulkan backend only
+	if (params.material.getRasterizationInfo() != core::RasterizationInfo()) {
+		log::source().warn("gles::GraphicPipeline", _name,
+				": rasterization state (cull, depth bias, depth clamp) is not supported, ignored");
+	}
+
 	GLuint vertex = 0;
 	GLuint fragment = 0;
 

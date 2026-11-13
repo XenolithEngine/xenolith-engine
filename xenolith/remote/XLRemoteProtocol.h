@@ -50,8 +50,10 @@ constexpr uint32_t kProtocolMagic = 0x584C'5250; // 'XLRP'
  * extension (gradient, shaded outline) - see FrameContextHandle2d::serialize.
  * Version 4: each data set of a 2d frame input says whether its body is inline or a reference into
  * the session's frame data cache (XLCoreFrameDataCache.h); FrameInput carries the cache operations.
+ * Version 5: a pipeline's material bytes grew by core::RasterizationInfo (cull, depth bias, depth
+ * clamp); a client matches materials by those bytes.
  * Older peers are refused at the handshake; no compatibility is kept. */
-constexpr uint16_t kProtocolVersion = 4;
+constexpr uint16_t kProtocolVersion = 5;
 constexpr uint32_t kBearerKeySize = 64;
 
 // Size of one record in the typed input/layer batches (WindowCode::InputEvents / ::UpdateLayers).

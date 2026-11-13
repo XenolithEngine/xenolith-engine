@@ -24,6 +24,7 @@ THE SOFTWARE.
 #include <sprt/runtime/geom/geom.h>
 #include <sprt/runtime/geom/mat4.h>
 #include <sprt/runtime/geom/vec3.h>
+#include <sprt/runtime/geom/vec4.h>
 
 #include "../tests.h"
 
@@ -60,6 +61,77 @@ static bool same(const Mat4 &a, const Mat4 &b) {
 		}
 	}
 	return true;
+}
+
+static bool near(float a, float b, float eps = 1.0e-5f) {
+	const float d = a - b;
+	return (d < 0.0f ? -d : d) <= eps;
+}
+
+// A view-space point through a projection: (x, y, z) after the divide by w, and w itself
+static Vec4 project(const Mat4 &proj, float x, float y, float z) {
+	Vec4 clip;
+	proj.transformVector(x, y, z, 1.0f, &clip);
+	return Vec4(clip.x / clip.w, clip.y / clip.w, clip.z / clip.w, clip.w);
+}
+
+// The projections: GL keeps depth in [-1, 1], the ZO variants put it in [0, 1] for Vulkan, WebGPU
+// and Metal. The view looks along -z with near and far as positive distances, as createLookAt
+// builds it.
+static void performProjectionTests() {
+	const float zNear = 2.0f, zFar = 50.0f;
+
+	Mat4 orthoGl, orthoZo;
+	Mat4::createOrthographic(8.0f, 6.0f, zNear, zFar, &orthoGl);
+	Mat4::createOrthographicZO(8.0f, 6.0f, zNear, zFar, &orthoZo);
+
+	check(near(project(orthoZo, 0.0f, 0.0f, -zNear).z, 0.0f)
+					&& near(project(orthoZo, 0.0f, 0.0f, -zFar).z, 1.0f),
+			"Mat4::createOrthographicZO: near at depth 0, far at depth 1");
+	auto corner = project(orthoZo, 4.0f, -3.0f, -10.0f);
+	check(near(corner.x, 1.0f) && near(corner.y, -1.0f) && near(corner.w, 1.0f),
+			"Mat4::createOrthographicZO: half extents at the clip edges");
+	check(near(project(orthoGl, 0.0f, 0.0f, -zNear).z, -1.0f)
+					&& near(project(orthoGl, 0.0f, 0.0f, -zFar).z, 1.0f),
+			"Mat4::createOrthographic: near at depth -1, far at depth 1");
+
+	Mat4 offCenter;
+	Mat4::createOrthographicOffCenterZO(1.0f, 5.0f, -2.0f, 4.0f, zNear, zFar, &offCenter);
+	auto lo = project(offCenter, 1.0f, -2.0f, -zNear);
+	auto hi = project(offCenter, 5.0f, 4.0f, -zFar);
+	check(near(lo.x, -1.0f) && near(lo.y, -1.0f) && near(lo.z, 0.0f) && near(hi.x, 1.0f)
+					&& near(hi.y, 1.0f) && near(hi.z, 1.0f),
+			"Mat4::createOrthographicOffCenterZO: asymmetric bounds at the clip edges");
+
+	Mat4 perspGl, perspZo;
+	Mat4::createPerspective(60.0f, 1.5f, zNear, zFar, &perspGl);
+	Mat4::createPerspectiveZO(60.0f, 1.5f, zNear, zFar, &perspZo);
+
+	auto pNear = project(perspZo, 0.0f, 0.0f, -zNear);
+	auto pFar = project(perspZo, 0.0f, 0.0f, -zFar);
+	check(near(pNear.z, 0.0f) && near(pFar.z, 1.0f) && near(pNear.w, zNear)
+					&& near(pFar.w, zFar),
+			"Mat4::createPerspectiveZO: near at depth 0, far at depth 1, w is the distance");
+	check(near(project(perspGl, 0.0f, 0.0f, -zNear).z, -1.0f)
+					&& near(project(perspGl, 0.0f, 0.0f, -zFar).z, 1.0f),
+			"Mat4::createPerspective: near at depth -1, far at depth 1");
+	check(near(perspZo.m[0], perspGl.m[0]) && near(perspZo.m[5], perspGl.m[5]),
+			"Mat4::createPerspectiveZO: x and y as createPerspective");
+
+	// The two conventions differ by the remap z' = (z + w) / 2 in clip space, at any point
+	bool remapped = true;
+	const float points[][3] = {{0.5f, -0.25f, -3.0f}, {-1.0f, 2.0f, -17.0f}, {3.0f, 1.0f, -44.0f}};
+	for (auto &p : points) {
+		Vec4 gl, zo;
+		orthoGl.transformVector(p[0], p[1], p[2], 1.0f, &gl);
+		orthoZo.transformVector(p[0], p[1], p[2], 1.0f, &zo);
+		remapped = remapped && near(zo.z, 0.5f * gl.z + 0.5f * gl.w, 1.0e-4f);
+		perspGl.transformVector(p[0], p[1], p[2], 1.0f, &gl);
+		perspZo.transformVector(p[0], p[1], p[2], 1.0f, &zo);
+		remapped = remapped && near(zo.z, 0.5f * gl.z + 0.5f * gl.w, 1.0e-4f)
+				&& near(zo.w, gl.w);
+	}
+	check(remapped, "ZO projections: z is the GL z remapped by (z + w) / 2");
 }
 
 void performGeomTests() {
@@ -102,6 +174,8 @@ void performGeomTests() {
 	check(same(prod, Mat4(4.0f, 0.0f, 0.0f, 4.0f, 15.0f, 21.0f)), "Mat4::multiply");
 	check(same(diff, prod), "Mat4::add, Mat4::subtract");
 	check(same(neg, prod), "Mat4::transpose, Mat4::negate");
+
+	performProjectionTests();
 
 	sprt::cout << "geom tests: " << (s_geomFailures == 0 ? "ALL PASS" : "FAILURES") << "\n";
 }
