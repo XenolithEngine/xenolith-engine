@@ -61,7 +61,8 @@ SP_DEFINE_ENUM_AS_MASK(ParticleSystemFlags)
 
 // Effekseer's ring renderer, the stage's own draw: the outer and inner edges in dp, the arc's
 // first and last edge in degrees - the full circle 0 to 360 the arc words' default, saved
-// without them - and the three colors of the bands across the width, white the default each.
+// without them - the three colors of the bands across the width, white the default each, and
+// the corner count, Effekseer's Vertex Count, 3..64 with sixteen the default the file leaves.
 // An outer of zero is the absence this model keeps: the pass draws the quad it always drew
 struct ParticleRing {
 	float outer = 0.0f;
@@ -71,6 +72,7 @@ struct ParticleRing {
 	Color4F colorOuter = Color4F::WHITE;
 	Color4F colorMiddle = Color4F::WHITE;
 	Color4F colorInner = Color4F::WHITE;
+	uint32_t vertexCount = 16;
 };
 
 // Immutable once handed to the renderer: ParticleSystem copies it before the next change.
@@ -80,6 +82,14 @@ struct SP_PUBLIC ParticleSystemData : public Ref {
 	Rc<CurveBuffer> animFrameCurve;
 	Rc<CurveBuffer> scaleCurve;
 	Rc<CurveBuffer> positionCurve;
+	// The ring's five scalar curves, the draw's own: the outer and inner edges, the arc's two
+	// degrees and the middle edge's fraction over the band, each a Float curve over the
+	// lifetime fraction whose sample the pass reads in the ring word's place
+	Rc<CurveBuffer> ringOuterCurve;
+	Rc<CurveBuffer> ringInnerCurve;
+	Rc<CurveBuffer> ringArcFromCurve;
+	Rc<CurveBuffer> ringArcToCurve;
+	Rc<CurveBuffer> ringRatioCurve;
 	Vector<Vec2> emissionPoints;
 
 	// The numbers of the birth shape data.emissionType names, in the shader's read order:
@@ -317,10 +327,28 @@ public:
 	// plane: both radii and the arc name themselves into the frame hash the drawing words'
 	// own way, and the scale curve multiplies both radii. An outer of zero - or a negative
 	// one, clamped to it - seats nothing, and the key encode() writes only when a ring stands.
-	// The corner count is the draw's own constant, never a field
+	// The corner count seats itself with the ring, 3..64 clamped, sixteen the default the
+	// key encode() leaves out, and the whole object's seat resets the five scalar curves -
+	// the ring's words are one object every patch carries whole
 	void setRing(const ParticleRing &);
 	void clearRing();
 	ParticleRing getRing() const;
+
+	// The ring's five scalar curves, each a Float curve over the lifetime fraction whose
+	// sample the draw reads in the ring word's place - the outer and inner edges, the arc's
+	// two degrees, the middle edge's fraction over the band. Null removes it; a curve of
+	// another type seats nothing. The curves are draw words: no particle field or step reads
+	// them, and setRing's whole-object seat clears every one of them
+	bool setRingOuterCurve(CurveBuffer *);
+	CurveBuffer *getRingOuterCurve() const;
+	bool setRingInnerCurve(CurveBuffer *);
+	CurveBuffer *getRingInnerCurve() const;
+	bool setRingArcFromCurve(CurveBuffer *);
+	CurveBuffer *getRingArcFromCurve() const;
+	bool setRingArcToCurve(CurveBuffer *);
+	CurveBuffer *getRingArcToCurve() const;
+	bool setRingRatioCurve(CurveBuffer *);
+	CurveBuffer *getRingRatioCurve() const;
 
 	// Width of the strip the pass draws through the emitter's particles in their birth order,
 	// Effekseer's ribbon taken in the screen plane, 0 - no strip, the quad the pass always

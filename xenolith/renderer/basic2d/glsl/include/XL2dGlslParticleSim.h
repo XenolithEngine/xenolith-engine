@@ -123,6 +123,39 @@ SP_GLSL_INLINE vec2 particleRotate(vec2 v, float angle) {
 	return vec2(v.x * c - v.y * s, v.x * s + v.y * c);
 }
 
+SP_GLSL_INLINE float particleCurveComponent(uint base, uint i0, uint i1, float f, uint components,
+		uint c) {
+	uint k = (c < components) ? c : components - 1u;
+	float a = particleExtraFloat(base + i0 * components + k);
+	float b = particleExtraFloat(base + i1 * components + k);
+	return a + (b - a) * f;
+}
+
+// A curve of the extra data buffer at a byte offset, linearly interpolated at t in [0, 1]. Missing
+// components repeat the last one, so a float curve reads as (v, v, v, v).
+SP_GLSL_INLINE vec4 particleSampleCurve(uint offset, float t) {
+	uint word = offset / 4u;
+	uint count = particleExtraUint(word);
+	uint components = particleExtraUint(word + 1u);
+	if (count == 0u || components == 0u) {
+		return vec4(1.0f, 1.0f, 1.0f, 1.0f);
+	}
+
+	float pos = clamp(t, 0.0f, 1.0f) * float(count);
+	uint i0 = uint(floor(pos));
+	if (i0 > count - 1u) {
+		i0 = count - 1u;
+	}
+	uint i1 = (i0 + 1u < count) ? i0 + 1u : i0;
+	float f = clamp(pos - float(i0), 0.0f, 1.0f);
+
+	uint base = word + 2u;
+	return vec4(particleCurveComponent(base, i0, i1, f, components, 0u),
+			particleCurveComponent(base, i0, i1, f, components, 1u),
+			particleCurveComponent(base, i0, i1, f, components, 2u),
+			particleCurveComponent(base, i0, i1, f, components, 3u));
+}
+
 SP_GLSL_INLINE vec2 particleTransformPoint(SP_GLSL_IN(ParticleFrameData) frame, vec2 p) {
 	return vec2(frame.transformX.x * p.x + frame.transformX.y * p.y + frame.transformX.z,
 			frame.transformY.x * p.x + frame.transformY.y * p.y + frame.transformY.z);
@@ -583,35 +616,72 @@ SP_GLSL_INLINE void particleQuad(SP_GLSL_IN(ParticleData) particle,
 	br = particle.position + ax - ay;
 }
 
+// The ring's corner count, the emitter's own word: 3..64 when the word seats itself, the
+// default sixteen the word's zero carries - the state every old buffer keeps
+SP_GLSL_INLINE uint particleRingCorners(SP_GLSL_IN(ParticleEmitterData) emitter) {
+	return (emitter.ringVertexCount != 0u) ? emitter.ringVertexCount : XL_PARTICLE_RING_CORNERS;
+}
+
 // The vertex seats one particle owns in the pass's vertex list: the quad's six, a seated ring's
-// own count - or a seated strip's six again, for the segment a particle owns between itself and
-// the next born is a quad of the same pair of list triangles. The pass sizes its vertex buffer,
-// its indirect commands and its writes by this count alone, every emitter's particles striding
-// the shared list by it, so the count is read where the pass's own words seat it, never carried
-// a second time
+// own count - the corners' count of arc segments, each two bands wide, each band a pair of
+// list triangles - or a seated strip's six again, for the segment a particle owns between
+// itself and the next born is a quad of the same pair of list triangles. The pass sizes its
+// vertex buffer, its indirect commands and its writes by this count alone, every emitter's
+// particles striding the shared list by it, so the count is read where the pass's own words
+// seat it, never carried a second time
 SP_GLSL_INLINE uint particleVertexSeats(SP_GLSL_IN(ParticleEmitterData) emitter) {
-	return (emitter.ringOuter > 0.0f) ? XL_PARTICLE_RING_SEATS : XL_PARTICLE_QUAD_SEATS;
+	if (emitter.ringOuter <= 0.0f) {
+		return XL_PARTICLE_QUAD_SEATS;
+	}
+	return particleRingCorners(emitter) * 12u;
 }
 
 // The ring's three edge radii as the pass draws them, all three multiplied by the scale the
-// curve left standing - the plan's own "scaleCurve multiplies both radii" - the middle edge at
-// the band's half, the even Center Ratio the stage seats as a constant. The second scale axis
-// is the quad's own: the circle takes the one scale both radii share
+// curve left standing - the plan's own "scaleCurve multiplies both radii". The outer and the
+// inner edge read their own scalar curve at the lifetime fraction in the word's place - no
+// curve, the word the draw always read - and the middle edge stands at the fraction the ratio
+// curve names over the band, the even 0.5 the absent curve keeps, `inner + (outer - inner) *
+// ratio` the formula rather than the average it draws at that fraction alone. The second scale
+// axis is the quad's own: the circle takes the one scale both radii share
 SP_GLSL_INLINE void particleRingRadii(SP_GLSL_IN(ParticleData) particle,
 		SP_GLSL_IN(ParticleEmitterData) emitter, SP_GLSL_OUT(float) inner, SP_GLSL_OUT(float) middle,
 		SP_GLSL_OUT(float) outer) {
-	inner = emitter.ringInner * particle.scale;
-	outer = emitter.ringOuter * particle.scale;
-	middle = 0.5f * (inner + outer);
+	float fraction = particleLifeFraction(particle);
+	outer = emitter.ringOuter;
+	if (emitter.ringOuterCurveOffset != 0u) {
+		outer = particleSampleCurve(emitter.ringOuterCurveOffset, fraction).x;
+	}
+	inner = emitter.ringInner;
+	if (emitter.ringInnerCurveOffset != 0u) {
+		inner = particleSampleCurve(emitter.ringInnerCurveOffset, fraction).x;
+	}
+	float ratio = 0.5f;
+	if (emitter.ringRatioCurveOffset != 0u) {
+		ratio = particleSampleCurve(emitter.ringRatioCurveOffset, fraction).x;
+	}
+	middle = inner + (outer - inner) * ratio;
+	inner *= particle.scale;
+	middle *= particle.scale;
+	outer *= particle.scale;
 }
 
 // One point of the ring's edge: the arc fraction t in [0, 1] between the arc's own two degree
-// words, the radius the edge's own. The corner's angle turns by the particle's own angle word -
-// the quad's own rotation, the angular velocity a spinning arc - and the degrees meet the
+// words, each reading its own scalar curve at the lifetime fraction in the word's place, the
+// radius the edge's own. The corner's angle turns by the particle's own angle word - the
+// quad's own rotation, the angular velocity a spinning arc - and the degrees meet the
 // trigonometry at the radians line, the file's unit riding the words verbatim
 SP_GLSL_INLINE vec2 particleRingPoint(SP_GLSL_IN(ParticleData) particle,
 		SP_GLSL_IN(ParticleEmitterData) emitter, float t, float radius) {
-	float degrees = emitter.ringArcFrom + (emitter.ringArcTo - emitter.ringArcFrom) * t;
+	float fraction = particleLifeFraction(particle);
+	float from = emitter.ringArcFrom;
+	if (emitter.ringArcFromCurveOffset != 0u) {
+		from = particleSampleCurve(emitter.ringArcFromCurveOffset, fraction).x;
+	}
+	float to = emitter.ringArcTo;
+	if (emitter.ringArcToCurveOffset != 0u) {
+		to = particleSampleCurve(emitter.ringArcToCurveOffset, fraction).x;
+	}
+	float degrees = from + (to - from) * t;
 	float a = particle.angle + degrees * (3.14159265358979323846f / 180.0f);
 	return particle.position + vec2(radius * cos(a), radius * sin(a));
 }
@@ -635,39 +705,6 @@ SP_GLSL_INLINE void particleStripSegment(SP_GLSL_IN(ParticleData) a, SP_GLSL_IN(
 	tl = a.position + n * halfA;
 	tr = b.position + n * halfB;
 	br = b.position - n * halfB;
-}
-
-SP_GLSL_INLINE float particleCurveComponent(uint base, uint i0, uint i1, float f, uint components,
-		uint c) {
-	uint k = (c < components) ? c : components - 1u;
-	float a = particleExtraFloat(base + i0 * components + k);
-	float b = particleExtraFloat(base + i1 * components + k);
-	return a + (b - a) * f;
-}
-
-// A curve of the extra data buffer at a byte offset, linearly interpolated at t in [0, 1]. Missing
-// components repeat the last one, so a float curve reads as (v, v, v, v).
-SP_GLSL_INLINE vec4 particleSampleCurve(uint offset, float t) {
-	uint word = offset / 4u;
-	uint count = particleExtraUint(word);
-	uint components = particleExtraUint(word + 1u);
-	if (count == 0u || components == 0u) {
-		return vec4(1.0f, 1.0f, 1.0f, 1.0f);
-	}
-
-	float pos = clamp(t, 0.0f, 1.0f) * float(count);
-	uint i0 = uint(floor(pos));
-	if (i0 > count - 1u) {
-		i0 = count - 1u;
-	}
-	uint i1 = (i0 + 1u < count) ? i0 + 1u : i0;
-	float f = clamp(pos - float(i0), 0.0f, 1.0f);
-
-	uint base = word + 2u;
-	return vec4(particleCurveComponent(base, i0, i1, f, components, 0u),
-			particleCurveComponent(base, i0, i1, f, components, 1u),
-			particleCurveComponent(base, i0, i1, f, components, 2u),
-			particleCurveComponent(base, i0, i1, f, components, 3u));
 }
 
 // Hue rotation by `turns` with the matrix of Godot's ParticleProcessMaterial, its vectors taken as

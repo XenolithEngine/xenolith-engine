@@ -1246,15 +1246,12 @@ static void testDeflectorSeats() {
 }
 
 // Effekseer's ring renderer, the stage's own draw: the pass's vertex seats grow from the
-// quad's own six to the ring's count, and the ring's edges seat by the emitter's words - both
-// radii multiplied by the scale the curve left standing, the middle edge at the band's half,
-// the corner angles the arc's degrees turned by the particle's own angle word
+// quad's own six to the ring's own count - the corner word's times two bands times a triangle
+// pair - and the ring's edges seat by the emitter's words - both radii multiplied by the scale
+// the curve left standing, the middle edge at the fraction the ratio curve names, the corner
+// angles the arc's degrees turned by the particle's own angle word
 static void testRing() {
-	// The seat contract: the constants the pass strides its list by, and the two counts an
-	// emitter's words choose between
-	checkEq(XL_PARTICLE_RING_SEATS, XL_PARTICLE_RING_CORNERS * 2 * 6,
-			"ring: the seats are the corners times two bands times a triangle pair");
-
+	// The seat contract: the quad's own six, and the emitter's own word the ring's seats ride
 	glsl::ParticleEmitterData emitter;
 	::memset(&emitter, 0, sizeof(emitter));
 	checkEq(glsl::particleVertexSeats(emitter), 6u,
@@ -1265,7 +1262,19 @@ static void testRing() {
 	emitter.ringArcFrom = 0.0f;
 	emitter.ringArcTo = 360.0f;
 	checkEq(glsl::particleVertexSeats(emitter), 192u,
-			"ring: a seated ring owns the ring's own seats");
+			"ring: a seated ring owns the default's own seats");
+	checkEq(glsl::particleRingCorners(emitter), 16u,
+			"ring: the count word's zero carries the default sixteen");
+
+	// Effekseer's Vertex Count as the field the stage seats: 3 makes a triangle, 64 the
+	// ceiling, every count its own stride the pass sizes the list by
+	const uint32_t counts[] = {3u, 16u, 32u, 64u};
+	for (auto count : counts) {
+		emitter.ringVertexCount = count;
+		checkEq(glsl::particleVertexSeats(emitter), count * 12u,
+				"ring: the corner count of segments owns its own seats");
+	}
+	emitter.ringVertexCount = 0u;
 
 	glsl::ParticleData particle;
 	::memset(&particle, 0, sizeof(particle));
@@ -1388,12 +1397,13 @@ static void testStrip() {
 // offset lands on the birth point's own path and the velocity's walk and the curve's one sum -
 // the integrator the plan keeps seated in its place
 static void testPositionCurve() {
-	// The seat contract: the word sits in the strip block's own hand-carried padding, the word
-	// map still 560 under its static_assert
+	// The seat contract: the word sits in the strip block's own hand-carried padding, its
+	// offset unmoved by every stage after it - the ring's tail grew the word map past the
+	// colors, the words before it standing where they stood
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, positionCurveOffset)), 508,
 			"position curve: the offset word seats at the strip block's padding");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 560,
-			"position curve: the word map keeps its 560");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 592,
+			"position curve: the word map keeps its grown tail, the older words in place");
 
 	::memset(s_extra, 0, sizeof(s_extra));
 
@@ -1477,6 +1487,126 @@ static void testPositionCurve() {
 	check(birthsAtPoint, "position curve: a birth stands at the birth point, the curve off it");
 }
 
+// The ring over life, the stage's scalar curves: the outer and inner edges, the arc's two
+// degrees and the middle edge's fraction each read their own Float curve at the lifetime
+// fraction in the emitter word's place - draw words the step never touches - and the corner
+// count word seats the corners the pass walks
+static void testRingCurve() {
+	// The seat contract: the five offsets and the count word stand past the ring's colors, the
+	// word map the static_assert locks
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringOuterCurveOffset)), 560,
+			"ring curve: the outer curve's offset word seats past the colors");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringRatioCurveOffset)), 576,
+			"ring curve: the ratio curve's offset word is the fifth");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringVertexCount)), 580,
+			"ring curve: the count word seats past the curve offsets");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 592,
+			"ring curve: the word map keeps its tail whole");
+
+	::memset(s_extra, 0, sizeof(s_extra));
+
+	// The fraction the draw reads: a particle of ten steps stands at the fraction its ladder
+	// climbed, the shared helpers' own particleLifeFraction
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+	emitter.ringOuter = 40.0f;
+	emitter.ringInner = 20.0f;
+	emitter.ringArcFrom = 0.0f;
+	emitter.ringArcTo = 360.0f;
+
+	glsl::ParticleData particle;
+	::memset(&particle, 0, sizeof(particle));
+	particle.scale = 1.0f;
+	particle.fullLifetime = 10u;
+
+	// The word the draw always read: no curve, the edges the emitter's own at every fraction
+	float inner = 0.0f;
+	float middle = 0.0f;
+	float outer = 0.0f;
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(outer, 40.0f, "ring curve: no curve keeps the outer word standing");
+	checkNear(inner, 20.0f, "ring curve: no curve keeps the inner word standing");
+	checkNear(middle, 30.0f, "ring curve: the even ratio keeps the middle at the band's half");
+
+	// The outer's own curve: the word's place taken at the fraction - birth at the first stop,
+	// the last step at the last one, the middle edge walking the band's half with it
+	emitter.ringOuterCurveOffset = writeCurve(2, 1, {40.0f, 80.0f});
+	particle.currentLifetime = 10u;
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(outer, 40.0f, "ring curve: a birth stands at the outer curve's first stop");
+	checkNear(middle, 30.0f, "ring curve: the middle walks with the edge it fractions");
+	particle.currentLifetime = 0u;
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(outer, 80.0f, "ring curve: the last step stands at the outer curve's last stop");
+	checkNear(inner, 20.0f, "ring curve: the inner word stands where no curve of its own sits");
+	checkNear(middle, 50.0f, "ring curve: the middle is the band's own lerp at the fraction");
+
+	// The middle's fraction, Effekseer's CenterRatio: 0.2 puts the middle edge a fifth of the
+	// band off the inner edge, the absent curve's 0.5 the average it replaced
+	emitter.ringRatioCurveOffset = writeCurve(6, 1, {0.2f, 0.2f});
+	particle.currentLifetime = 5u;
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(outer, 80.0f,
+			"ring curve: the half's own fraction stands on the outer curve's second stop");
+	checkNear(middle, 32.0f,
+			"ring curve: the ratio 0.2 puts the middle a fifth of the band off the inner");
+	particle.currentLifetime = 10u;
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(middle, 24.0f,
+			"ring curve: the ratio holds at birth, the constant curve its own");
+
+	// The scale still multiplies the drawn radii, the curve's word and the fraction's alike -
+	// the plan's own "scaleCurve multiplies both radii"
+	particle.scale = 2.0f;
+	particle.currentLifetime = 5u;
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(inner, 40.0f, "ring curve: the inner edge takes the drawn scale");
+	checkNear(outer, 160.0f, "ring curve: the outer's curve sample takes the drawn scale");
+	checkNear(middle, 64.0f, "ring curve: the middle's lerp multiplies whole");
+	particle.scale = 1.0f;
+
+	// The arc's two degrees, each its own curve: a quarter turn's word walks the corners from
+	// the y axis to the -x one, the file's degrees meeting the trigonometry at the radians line
+	emitter.ringArcFromCurveOffset = writeCurve(10, 1, {90.0f, 90.0f});
+	emitter.ringArcToCurveOffset = writeCurve(14, 1, {180.0f, 180.0f});
+	glsl::vec2 at0 = glsl::particleRingPoint(particle, emitter, 0.0f, 40.0f);
+	glsl::vec2 at1 = glsl::particleRingPoint(particle, emitter, 1.0f, 40.0f);
+	checkNear(at0.x, 0.0f, "ring curve: the arc curve's first corner opens on the y axis");
+	checkNear(at0.y, 40.0f, "ring curve: the first corner's degree is the curve's own");
+	checkNear(at1.x, -40.0f, "ring curve: the arc curve's last corner closes against the x axis");
+	checkNear(at1.y, 0.0f, "ring curve: the last corner's degree is the curve's own");
+
+	// The degenerate band, inner past outer: the formula stands whatever the order, the middle
+	// lerping between the two words - no crash, the pass's own band between the edges
+	::memset(&emitter, 0, sizeof(emitter));
+	emitter.ringOuter = 40.0f;
+	emitter.ringInner = 100.0f;
+	emitter.ringRatioCurveOffset = writeCurve(18, 1, {0.25f, 0.25f});
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(inner, 100.0f, "ring curve: the inverted band keeps its own inner");
+	checkNear(outer, 40.0f, "ring curve: the inverted band keeps its own outer");
+	checkNear(middle, 85.0f, "ring curve: the inverted band's middle lerps between the words");
+
+	// The outer's zero is the ring's own gate: the quad's six seats whatever curves ride
+	// beside it, the words the pass never reads
+	::memset(&emitter, 0, sizeof(emitter));
+	emitter.ringOuter = 0.0f;
+	emitter.ringOuterCurveOffset = writeCurve(22, 1, {40.0f, 80.0f});
+	emitter.ringVertexCount = 32u;
+	checkEq(glsl::particleVertexSeats(emitter), 6u,
+			"ring curve: the zero outer keeps the quad's own seats, curves and all");
+
+	// The corner count's own ladder: 3 makes a triangle, the word's zero the default sixteen
+	emitter.ringOuter = 40.0f;
+	emitter.ringVertexCount = 3u;
+	checkEq(glsl::particleRingCorners(emitter), 3u, "ring curve: three corners make the triangle");
+	emitter.ringVertexCount = 64u;
+	checkEq(glsl::particleVertexSeats(emitter), 768u, "ring curve: the ceiling owns its seats");
+	emitter.ringVertexCount = 0u;
+	checkEq(glsl::particleRingCorners(emitter), 16u,
+			"ring curve: the zero word carries the default sixteen");
+}
+
 int main(int argc, const char *argv[]) {
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);
@@ -1508,6 +1638,7 @@ int main(int argc, const char *argv[]) {
 	testRing();
 	testStrip();
 	testPositionCurve();
+	testRingCurve();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 

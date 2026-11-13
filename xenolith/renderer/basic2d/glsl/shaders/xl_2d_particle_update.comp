@@ -249,23 +249,25 @@ void main() {
 
 	// The corners take the texture as a Sprite does: the top of the quad samples the top of the image
 	if (emitter.ringOuter > 0.0f) {
-		// Effekseer's ring in the screen plane, the stage's own draw: XL_PARTICLE_RING_CORNERS arc
-		// segments, each two color bands wide - inner to middle, middle to outer, the middle edge
-		// at the band's half - and each band the quad's own pair of list triangles, the corner
-		// order the quad's own. The bands carry the emitter's three colors, each multiplied by the
-		// tint the quad would draw; the window maps u along the arc fraction and v across the
-		// band, the outer edge at the window's top row as the quad's top, the inner at its bottom
-		float rIn;
-		float rMid;
-		float rOut;
-		particleRingRadii(particle, emitter, rIn, rMid, rOut);
-		const float vIn = uv1.y;
-		const float vOut = uv0.y;
-		const float vMid = 0.5f * (vIn + vOut);
-		uint at = vertexOffset;
-		for (uint s = 0u; s < XL_PARTICLE_RING_CORNERS; ++s) {
-			const float f0 = float(s) / float(XL_PARTICLE_RING_CORNERS);
-			const float f1 = float(s + 1u) / float(XL_PARTICLE_RING_CORNERS);
+	// Effekseer's ring in the screen plane, the stage's own draw: the emitter's own corner
+	// count of arc segments, each two color bands wide - inner to middle, middle to outer, the
+	// middle edge at the fraction the ratio curve names - and each band the quad's own pair of
+	// list triangles, the corner order the quad's own. The bands carry the emitter's three
+	// colors, each multiplied by the tint the quad would draw; the window maps u along the arc
+	// fraction and v across the band, the outer edge at the window's top row as the quad's
+	// top, the inner at its bottom
+	float rIn;
+	float rMid;
+	float rOut;
+	particleRingRadii(particle, emitter, rIn, rMid, rOut);
+	const float vIn = uv1.y;
+	const float vOut = uv0.y;
+	const float vMid = 0.5f * (vIn + vOut);
+	const uint corners = particleRingCorners(emitter);
+	uint at = vertexOffset;
+	for (uint s = 0u; s < corners; ++s) {
+		const float f0 = float(s) / float(corners);
+		const float f1 = float(s + 1u) / float(corners);
 			const float u0 = mix(uv0.x, uv1.x, f0);
 			const float u1 = mix(uv0.x, uv1.x, f1);
 			const vec2 inA = particleRingPoint(particle, emitter, f0, rIn);
