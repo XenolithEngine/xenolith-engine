@@ -401,7 +401,24 @@ struct ParticleEmitterData {
 	// the color vec4's alignment of 16, so the tail is carried in the struct itself
 	uvec2 padding584;
 
-	// [592]
+	// [592-603]
+	// offsets of the ring's three color-band curves in the extra data buffer, each a vec4
+	// curve over the lifetime fraction whose sample the draw reads in the band's color word's
+	// place - the outer and inner edges and the middle between them, Effekseer's OuterColor,
+	// CenterColor and InnerColor; 0 - no curve, the color word the draw always read. The
+	// curves are draw words like the five scalars beside them: the step and every particle
+	// field stand untouched, and the whole ring object's own words seat the fallbacks the old
+	// files' buffers carry
+	uint ringColorOuterCurveOffset;
+	uint ringColorMiddleCurveOffset;
+	uint ringColorInnerCurveOffset;
+
+	// [604-607]
+	// explicit padding: the member-wise size ends at 604 while std430 strides the struct at
+	// the color vec4's alignment of 16, so the tail is carried in the struct itself
+	uint padding604;
+
+	// [608]
 };
 
 #ifndef SP_GLSL
@@ -409,7 +426,7 @@ struct ParticleEmitterData {
 // struct, and the seating of a new word reads these offsets. The offsets past the attractors are
 // the std430 seats first - a vec2-aligned array or member opens on an 8-byte boundary, and the
 // explicit padding members hold the C++ text to the same numbers
-static_assert(sizeof(ParticleEmitterData) == 592
+static_assert(sizeof(ParticleEmitterData) == 608
 		&& __builtin_offsetof(ParticleEmitterData, colorCurveOffset) == 200
 		&& __builtin_offsetof(ParticleEmitterData, interval) == 252
 		&& __builtin_offsetof(ParticleEmitterData, attractors) == 256
@@ -429,8 +446,12 @@ static_assert(sizeof(ParticleEmitterData) == 592
 		&& __builtin_offsetof(ParticleEmitterData, ringInnerCurveOffset) == 564
 		&& __builtin_offsetof(ParticleEmitterData, ringArcFromCurveOffset) == 568
 		&& __builtin_offsetof(ParticleEmitterData, ringArcToCurveOffset) == 572
-		&& __builtin_offsetof(ParticleEmitterData, ringRatioCurveOffset) == 576
-		&& __builtin_offsetof(ParticleEmitterData, ringVertexCount) == 580);
+	&& __builtin_offsetof(ParticleEmitterData, ringRatioCurveOffset) == 576
+	&& __builtin_offsetof(ParticleEmitterData, ringVertexCount) == 580
+	&& __builtin_offsetof(ParticleEmitterData, ringColorOuterCurveOffset) == 592
+	&& __builtin_offsetof(ParticleEmitterData, ringColorMiddleCurveOffset) == 596
+	&& __builtin_offsetof(ParticleEmitterData, ringColorInnerCurveOffset) == 600
+	&& __builtin_offsetof(ParticleEmitterData, padding604) == 604);
 // The deflector seat is the std430 array stride of the struct: 32, the vec2 alignment's own
 // rounding of the member-wise 28
 static_assert(sizeof(ParticleDeflector) == 32

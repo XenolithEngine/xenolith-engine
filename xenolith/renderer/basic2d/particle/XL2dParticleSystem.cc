@@ -79,7 +79,10 @@ size_t ParticleSystemData::getExtraDataSize() const {
 			+ ParticleSystem_getCurveSize(scaleCurve) + ParticleSystem_getCurveSize(positionCurve)
 			+ ParticleSystem_getCurveSize(ringOuterCurve) + ParticleSystem_getCurveSize(ringInnerCurve)
 			+ ParticleSystem_getCurveSize(ringArcFromCurve) + ParticleSystem_getCurveSize(ringArcToCurve)
-			+ ParticleSystem_getCurveSize(ringRatioCurve);
+			+ ParticleSystem_getCurveSize(ringRatioCurve)
+			+ ParticleSystem_getCurveSize(ringOuterColorCurve)
+			+ ParticleSystem_getCurveSize(ringMiddleColorCurve)
+			+ ParticleSystem_getCurveSize(ringInnerColorCurve);
 }
 
 void ParticleSystemData::writeExtraData(uint8_t *buf, size_t size,
@@ -131,6 +134,11 @@ void ParticleSystemData::writeExtraData(uint8_t *buf, size_t size,
 	target.ringArcFromCurveOffset = writeCurve(ringArcFromCurve);
 	target.ringArcToCurveOffset = writeCurve(ringArcToCurve);
 	target.ringRatioCurveOffset = writeCurve(ringRatioCurve);
+	// The three color-band curves seat past them, the same end-growth and the same fixed
+	// order the emitter words name
+	target.ringColorOuterCurveOffset = writeCurve(ringOuterColorCurve);
+	target.ringColorMiddleCurveOffset = writeCurve(ringMiddleColorCurve);
+	target.ringColorInnerCurveOffset = writeCurve(ringInnerColorCurve);
 }
 
 void ParticleSystemData::writeParticleSize(ParticleEmitterData &data, Size2 size) {
@@ -583,54 +591,64 @@ void ParticleSystem::apply(const Value &value) {
 				ring.colorMiddle = readColor("colorMiddle", ParticleRing().colorMiddle);
 				ring.colorInner = readColor("colorInner", ParticleRing().colorInner);
 
-				bool takes = ring.vertexCount >= 3u && ring.vertexCount <= 64u;
-				Rc<CurveBuffer> outerCurve;
-				Rc<CurveBuffer> innerCurve;
-				Rc<CurveBuffer> arcFromCurve;
-				Rc<CurveBuffer> arcToCurve;
-				Rc<CurveBuffer> ratioCurve;
-				if (takes) {
-					// A present dictionary seats the curve it names, an explicit null clears
-					// the one the object's own seat reset - and a dictionary whose type names
-					// no Float curve seats nothing, the whole object refusing with it
-					const auto &readRingCurve =
-							[&](StringView key, Rc<CurveBuffer> &seat) {
-						if (!v.hasValue(key)) {
-							return;
-						}
-						const auto &cv = v.getValue(key);
-						if (!cv.isDictionary()) {
-							return;
-						}
-						auto parsed = ParticleSystem_readCurve(cv);
-						if (!parsed || parsed->getType() != CurveBufferType::Float) {
-							takes = false;
-							return;
-						}
-						seat = sp::move(parsed);
-					};
-					readRingCurve("outerCurve", outerCurve);
-					readRingCurve("innerCurve", innerCurve);
-					readRingCurve("fromCurve", arcFromCurve);
-					readRingCurve("toCurve", arcToCurve);
-					readRingCurve("ratioCurve", ratioCurve);
-				}
+					bool takes = ring.vertexCount >= 3u && ring.vertexCount <= 64u;
+					Rc<CurveBuffer> outerCurve;
+					Rc<CurveBuffer> innerCurve;
+					Rc<CurveBuffer> arcFromCurve;
+					Rc<CurveBuffer> arcToCurve;
+					Rc<CurveBuffer> ratioCurve;
+					Rc<CurveBuffer> outerColorCurve;
+					Rc<CurveBuffer> middleColorCurve;
+					Rc<CurveBuffer> innerColorCurve;
+					if (takes) {
+						// A present dictionary seats the curve it names, an explicit null clears
+						// the one the object's own seat reset - and a dictionary whose type names
+						// no curve of the band's own kind seats nothing, the whole object refusing
+						// with it: the five scalars ride Float, the three color bands vec4
+						const auto &readRingCurve =
+								[&](StringView key, Rc<CurveBuffer> &seat, CurveBufferType type) {
+							if (!v.hasValue(key)) {
+								return;
+							}
+							const auto &cv = v.getValue(key);
+							if (!cv.isDictionary()) {
+								return;
+							}
+							auto parsed = ParticleSystem_readCurve(cv);
+							if (!parsed || parsed->getType() != type) {
+								takes = false;
+								return;
+							}
+							seat = sp::move(parsed);
+						};
+						readRingCurve("outerCurve", outerCurve, CurveBufferType::Float);
+						readRingCurve("innerCurve", innerCurve, CurveBufferType::Float);
+						readRingCurve("fromCurve", arcFromCurve, CurveBufferType::Float);
+						readRingCurve("toCurve", arcToCurve, CurveBufferType::Float);
+						readRingCurve("ratioCurve", ratioCurve, CurveBufferType::Float);
+						readRingCurve("colorOuterCurve", outerColorCurve, CurveBufferType::Vec4);
+						readRingCurve("colorMiddleCurve", middleColorCurve, CurveBufferType::Vec4);
+						readRingCurve("colorInnerCurve", innerColorCurve, CurveBufferType::Vec4);
+					}
 
-				// The whole object every seat: an outer of zero keeps the clear word, a ring
-				// that cannot take effect - a stranger count, a stranger curve - leaves the
-				// previous words standing for encode() to drop
-				if (ring.outer <= 0.0f) {
-					clearRing();
-				} else if (takes) {
-					setRing(ring);
-					// The object's own seat reset the curves; the dictionaries' seats land on
-					// the copy setRing's mutate made, past it
-					_data->ringOuterCurve = outerCurve;
-					_data->ringInnerCurve = innerCurve;
-					_data->ringArcFromCurve = arcFromCurve;
-					_data->ringArcToCurve = arcToCurve;
-					_data->ringRatioCurve = ratioCurve;
-				}
+					// The whole object every seat: an outer of zero keeps the clear word, a ring
+					// that cannot take effect - a stranger count, a stranger curve - leaves the
+					// previous words standing for encode() to drop
+					if (ring.outer <= 0.0f) {
+						clearRing();
+					} else if (takes) {
+						setRing(ring);
+						// The object's own seat reset the curves; the dictionaries' seats land on
+						// the copy setRing's mutate made, past it
+						_data->ringOuterCurve = outerCurve;
+						_data->ringInnerCurve = innerCurve;
+						_data->ringArcFromCurve = arcFromCurve;
+						_data->ringArcToCurve = arcToCurve;
+						_data->ringRatioCurve = ratioCurve;
+						_data->ringOuterColorCurve = outerColorCurve;
+						_data->ringMiddleColorCurve = middleColorCurve;
+						_data->ringInnerColorCurve = innerColorCurve;
+					}
 			} else {
 				clearRing();
 			}
@@ -878,6 +896,9 @@ Value ParticleSystem::encode() const {
 		writeCurve("fromCurve", _data->ringArcFromCurve);
 		writeCurve("toCurve", _data->ringArcToCurve);
 		writeCurve("ratioCurve", _data->ringRatioCurve);
+		writeCurve("colorOuterCurve", _data->ringOuterColorCurve);
+		writeCurve("colorMiddleCurve", _data->ringMiddleColorCurve);
+		writeCurve("colorInnerCurve", _data->ringInnerColorCurve);
 		ret.setValue(sp::move(entry), "ring");
 	}
 	// The strip, only when one stands - the width word is the seat, the scalar zero fate the
@@ -1030,8 +1051,9 @@ void ParticleSystem::setRing(const ParticleRing &ring) {
 	// ride the words verbatim - any span, even past the full circle or back around it, the
 	// birth shape ring's own plain lerp. The corner count clamps to the field's own 3..64 -
 	// the document door refuses a count outside it before this setter ever runs - and the
-	// whole object's seat resets the five scalar curves: the ring's words are one object every
-	// patch carries whole, the curve keys riding inside it or absent together
+	// whole object's seat resets the five scalar curves and the three color-band ones: the
+	// ring's words are one object every patch carries whole, the curve keys riding inside it
+	// or absent together
 	auto &data = mutate().data;
 	data.ringOuter = sprt::max(ring.outer, 0.0f);
 	data.ringInner = sprt::max(ring.inner, 0.0f);
@@ -1049,6 +1071,9 @@ void ParticleSystem::setRing(const ParticleRing &ring) {
 	_data->ringArcFromCurve = nullptr;
 	_data->ringArcToCurve = nullptr;
 	_data->ringRatioCurve = nullptr;
+	_data->ringOuterColorCurve = nullptr;
+	_data->ringMiddleColorCurve = nullptr;
+	_data->ringInnerColorCurve = nullptr;
 }
 
 void ParticleSystem::clearRing() {
@@ -1068,6 +1093,9 @@ void ParticleSystem::clearRing() {
 	_data->ringArcFromCurve = nullptr;
 	_data->ringArcToCurve = nullptr;
 	_data->ringRatioCurve = nullptr;
+	_data->ringOuterColorCurve = nullptr;
+	_data->ringMiddleColorCurve = nullptr;
+	_data->ringInnerColorCurve = nullptr;
 }
 
 ParticleRing ParticleSystem::getRing() const {
@@ -1106,6 +1134,25 @@ XL_PARTICLE_RING_CURVE(RingArcTo, ringArcToCurve)
 XL_PARTICLE_RING_CURVE(RingRatio, ringRatioCurve)
 
 #undef XL_PARTICLE_RING_CURVE
+
+// The color bands' own macro: the same seat, the vec4 the band's four words ride the only
+// type that takes effect - a Float curve has no color and a narrower one no seat
+#define XL_PARTICLE_RING_COLOR_CURVE(Name, field) \
+	bool ParticleSystem::set##Name##Curve(CurveBuffer *curve) { \
+		if (curve && curve->getType() != CurveBufferType::Vec4) { \
+			log::source().error("ParticleSystem", #Name " ring curve must be of Vec4 type"); \
+			return false; \
+		} \
+		mutate().field = curve; \
+		return true; \
+	} \
+	CurveBuffer *ParticleSystem::get##Name##Curve() const { return _data->field; }
+
+XL_PARTICLE_RING_COLOR_CURVE(RingOuterColor, ringOuterColorCurve)
+XL_PARTICLE_RING_COLOR_CURVE(RingMiddleColor, ringMiddleColorCurve)
+XL_PARTICLE_RING_COLOR_CURVE(RingInnerColor, ringInnerColorCurve)
+
+#undef XL_PARTICLE_RING_COLOR_CURVE
 
 void ParticleSystem::setStripWidth(float width) {
 	// Inside ParticleEmitterData, so the emitter re-uploads and the pass follows; a negative
@@ -1370,6 +1417,9 @@ Rc<ParticleSystemData> ParticleSystem::dup() {
 	data->ringArcFromCurve = _data->ringArcFromCurve;
 	data->ringArcToCurve = _data->ringArcToCurve;
 	data->ringRatioCurve = _data->ringRatioCurve;
+	data->ringOuterColorCurve = _data->ringOuterColorCurve;
+	data->ringMiddleColorCurve = _data->ringMiddleColorCurve;
+	data->ringInnerColorCurve = _data->ringInnerColorCurve;
 	data->emissionPoints = _data->emissionPoints;
 	::__sprt_memcpy(data->emissionShape, _data->emissionShape, sizeof(data->emissionShape));
 	data->systemId = _data->systemId;

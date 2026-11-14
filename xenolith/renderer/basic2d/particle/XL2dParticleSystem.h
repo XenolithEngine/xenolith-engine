@@ -90,6 +90,13 @@ struct SP_PUBLIC ParticleSystemData : public Ref {
 	Rc<CurveBuffer> ringArcFromCurve;
 	Rc<CurveBuffer> ringArcToCurve;
 	Rc<CurveBuffer> ringRatioCurve;
+	// The three color-band curves, the same draw words over the same fraction: each a vec4
+	// curve whose sample the pass reads in the band's color word's place - Effekseer's
+	// OuterColor, CenterColor and InnerColor over life, the particle's own color the tint
+	// that multiplies them
+	Rc<CurveBuffer> ringOuterColorCurve;
+	Rc<CurveBuffer> ringMiddleColorCurve;
+	Rc<CurveBuffer> ringInnerColorCurve;
 	Vector<Vec2> emissionPoints;
 
 	// The numbers of the birth shape data.emissionType names, in the shader's read order:
@@ -349,6 +356,18 @@ public:
 	CurveBuffer *getRingArcToCurve() const;
 	bool setRingRatioCurve(CurveBuffer *);
 	CurveBuffer *getRingRatioCurve() const;
+
+	// The ring's three color-band curves, each a vec4 curve over the lifetime fraction whose
+	// sample the draw reads in the band's color word's place - the outer and inner edges and
+	// the middle between them, the particle's own color the tint that multiplies them, never
+	// a replacement. Null removes it; a curve of another type seats nothing. The curves are
+	// draw words the same way, and setRing's whole-object seat clears every one of them
+	bool setRingOuterColorCurve(CurveBuffer *);
+	CurveBuffer *getRingOuterColorCurve() const;
+	bool setRingMiddleColorCurve(CurveBuffer *);
+	CurveBuffer *getRingMiddleColorCurve() const;
+	bool setRingInnerColorCurve(CurveBuffer *);
+	CurveBuffer *getRingInnerColorCurve() const;
 
 	// Width of the strip the pass draws through the emitter's particles in their birth order,
 	// Effekseer's ribbon taken in the screen plane, 0 - no strip, the quad the pass always

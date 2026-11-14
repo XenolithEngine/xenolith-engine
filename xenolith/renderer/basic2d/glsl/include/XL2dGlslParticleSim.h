@@ -665,6 +665,31 @@ SP_GLSL_INLINE void particleRingRadii(SP_GLSL_IN(ParticleData) particle,
 	outer *= particle.scale;
 }
 
+// The ring's three band colors as the pass draws them, the draw's own words over the
+// fraction the radii sample at. Each band reads its own vec4 curve at the lifetime fraction
+// in the color word's place - no curve, the color word the draw always read - and the
+// fraction is the life's own, never a place on the arc: every corner of one band shares the
+// sample the particle stands at. The samples land where the pass and the shared helpers
+// read them, the tint multiplying after - the band curve colors its band, it does not
+// replace the color the particle already carries
+SP_GLSL_INLINE void particleRingColors(SP_GLSL_IN(ParticleData) particle,
+		SP_GLSL_IN(ParticleEmitterData) emitter, SP_GLSL_OUT(vec4) inner, SP_GLSL_OUT(vec4) middle,
+		SP_GLSL_OUT(vec4) outer) {
+	float fraction = particleLifeFraction(particle);
+	inner = emitter.ringColorInner;
+	if (emitter.ringColorInnerCurveOffset != 0u) {
+		inner = particleSampleCurve(emitter.ringColorInnerCurveOffset, fraction);
+	}
+	middle = emitter.ringColorMiddle;
+	if (emitter.ringColorMiddleCurveOffset != 0u) {
+		middle = particleSampleCurve(emitter.ringColorMiddleCurveOffset, fraction);
+	}
+	outer = emitter.ringColorOuter;
+	if (emitter.ringColorOuterCurveOffset != 0u) {
+		outer = particleSampleCurve(emitter.ringColorOuterCurveOffset, fraction);
+	}
+}
+
 // One point of the ring's edge: the arc fraction t in [0, 1] between the arc's own two degree
 // words, each reading its own scalar curve at the lifetime fraction in the word's place, the
 // radius the edge's own. The corner's angle turns by the particle's own angle word - the

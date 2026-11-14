@@ -1399,10 +1399,11 @@ static void testStrip() {
 static void testPositionCurve() {
 	// The seat contract: the word sits in the strip block's own hand-carried padding, its
 	// offset unmoved by every stage after it - the ring's tail grew the word map past the
-	// colors, the words before it standing where they stood
+	// colors and the band curves grew it past the count, the words before it standing where
+	// they stood
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, positionCurveOffset)), 508,
 			"position curve: the offset word seats at the strip block's padding");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 592,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 608,
 			"position curve: the word map keeps its grown tail, the older words in place");
 
 	::memset(s_extra, 0, sizeof(s_extra));
@@ -1500,8 +1501,8 @@ static void testRingCurve() {
 			"ring curve: the ratio curve's offset word is the fifth");
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringVertexCount)), 580,
 			"ring curve: the count word seats past the curve offsets");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 592,
-			"ring curve: the word map keeps its tail whole");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 608,
+			"ring curve: the band curves' tail grew the word map past the count");
 
 	::memset(s_extra, 0, sizeof(s_extra));
 
@@ -1607,6 +1608,91 @@ static void testRingCurve() {
 			"ring curve: the zero word carries the default sixteen");
 }
 
+static void testRingBand() {
+	// The seat contract: the three band offsets stand past the count word, the word map the
+	// static_assert locks at its grown tail
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringColorOuterCurveOffset)),
+			592, "ring band: the outer band's offset word seats past the count");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringColorMiddleCurveOffset)),
+			596, "ring band: the middle band's offset word is the second");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringColorInnerCurveOffset)),
+			600, "ring band: the inner band's offset word is the third");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 608,
+			"ring band: the word map keeps its tail whole");
+
+	::memset(s_extra, 0, sizeof(s_extra));
+
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+	emitter.ringOuter = 40.0f;
+	emitter.ringInner = 20.0f;
+	emitter.ringColorOuter = glsl::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+	emitter.ringColorMiddle = glsl::vec4(0.5f, 0.5f, 0.5f, 1.0f);
+	emitter.ringColorInner = glsl::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+
+	glsl::ParticleData particle;
+	::memset(&particle, 0, sizeof(particle));
+	particle.scale = 1.0f;
+	particle.fullLifetime = 10u;
+
+	// The words the draw always read: no curve, the three bands the emitter's own at every
+	// fraction - the constant ring the old files' buffers keep
+	glsl::vec4 bandIn;
+	glsl::vec4 bandMid;
+	glsl::vec4 bandOut;
+	glsl::particleRingColors(particle, emitter, bandIn, bandMid, bandOut);
+	checkNear(bandOut.x, 1.0f, "ring band: no curve keeps the outer word standing");
+	checkNear(bandMid.x, 0.5f, "ring band: no curve keeps the middle word standing");
+	checkNear(bandIn.z, 1.0f, "ring band: no curve keeps the inner word standing");
+
+	// The middle band's own curve: the word's place taken at the fraction, the two neighbours
+	// the words they were - the letter's own "only the middle curve changes"
+	emitter.ringColorMiddleCurveOffset = writeCurve(2, 4,
+			{0.25f, 0.5f, 0.0f, 1.0f, 1.0f, 0.5f, 0.25f, 1.0f});
+	particle.currentLifetime = 10u;
+	glsl::particleRingColors(particle, emitter, bandIn, bandMid, bandOut);
+	checkNear(bandMid.x, 0.25f, "ring band: a birth stands at the middle curve's first stop");
+	checkNear(bandMid.z, 0.0f, "ring band: the birth's middle is the curve's own color");
+	checkNear(bandOut.x, 1.0f, "ring band: the outer word stands where no curve of its own sits");
+	checkNear(bandIn.z, 1.0f, "ring band: the inner word stands where no curve of its own sits");
+	particle.currentLifetime = 0u;
+	glsl::particleRingColors(particle, emitter, bandIn, bandMid, bandOut);
+	checkNear(bandMid.x, 1.0f, "ring band: the last step stands at the middle curve's last stop");
+	checkNear(bandMid.z, 0.25f, "ring band: the last step's middle is the curve's own color");
+
+	// The multiply, pinned by the product the pass writes: the color curve multiplies the
+	// particle's own color into the tint, the band curve multiplies the whole - neither
+	// replaces the other, every component including alpha. The fraction 1/4 stands halfway
+	// between the middle curve's two stops, the sample (0.625, 0.5, 0.125, 1) the ladder's own
+	particle.color = glsl::vec4(1.0f, 0.5f, 0.0f, 0.5f);
+	emitter.colorCurveOffset = writeCurve(18, 4, {0.5f, 1.0f, 1.0f, 0.5f, 0.5f, 1.0f, 1.0f, 0.5f});
+	particle.currentLifetime = 10u;
+	glsl::vec4 tinted = glsl::particleColor(particle, emitter);
+	checkNear(tinted.x, 0.5f, "ring band: the color curve's tint is the particle's own share");
+	checkNear(tinted.w, 0.25f, "ring band: the tint's alpha multiplies the same way");
+	particle.fullLifetime = 8u;
+	particle.currentLifetime = 6u;
+	glsl::particleRingColors(particle, emitter, bandIn, bandMid, bandOut);
+	checkNear(bandMid.x, 0.625f, "ring band: the quarter fraction stands halfway up the ladder");
+	glsl::vec4 product = glsl::vec4(tinted.x * bandMid.x, tinted.y * bandMid.y,
+			tinted.z * bandMid.z, tinted.w * bandMid.w);
+	checkNear(product.x, 0.3125f,
+			"ring band: the middle band multiplies the tint, not replaces it");
+	checkNear(product.y, 0.25f, "ring band: the product's green is both curves' own share");
+	checkNear(product.z, 0.0f, "ring band: the product's blue stays the tint's own zero");
+	checkNear(product.w, 0.25f, "ring band: the band's alpha rides the product");
+	checkNear(bandOut.x * tinted.x, 0.5f,
+			"ring band: the outer band takes the tint alone, its word standing");
+
+	// The band words are draw words: the quad's own seats whatever curves ride beside a zero
+	// outer, the gate the pass reads first
+	::memset(&emitter, 0, sizeof(emitter));
+	emitter.ringOuter = 0.0f;
+	emitter.ringColorMiddleCurveOffset = writeCurve(26, 4, {0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f});
+	checkEq(glsl::particleVertexSeats(emitter), 6u,
+			"ring band: the zero outer keeps the quad's own seats, band curves and all");
+}
+
 int main(int argc, const char *argv[]) {
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);
@@ -1639,6 +1725,7 @@ int main(int argc, const char *argv[]) {
 	testStrip();
 	testPositionCurve();
 	testRingCurve();
+	testRingBand();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 

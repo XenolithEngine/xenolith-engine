@@ -249,17 +249,24 @@ void main() {
 
 	// The corners take the texture as a Sprite does: the top of the quad samples the top of the image
 	if (emitter.ringOuter > 0.0f) {
-	// Effekseer's ring in the screen plane, the stage's own draw: the emitter's own corner
-	// count of arc segments, each two color bands wide - inner to middle, middle to outer, the
-	// middle edge at the fraction the ratio curve names - and each band the quad's own pair of
-	// list triangles, the corner order the quad's own. The bands carry the emitter's three
-	// colors, each multiplied by the tint the quad would draw; the window maps u along the arc
-	// fraction and v across the band, the outer edge at the window's top row as the quad's
-	// top, the inner at its bottom
+// Effekseer's ring in the screen plane, the stage's own draw: the emitter's own corner
+// count of arc segments, each two color bands wide - inner to middle, middle to outer, the
+// middle edge at the fraction the ratio curve names - and each band the quad's own pair of
+// list triangles, the corner order the quad's own. The bands carry the emitter's three
+// colors or the curves seated over them, each multiplied by the tint the quad would draw;
+// the window maps u along the arc fraction and v across the band, the outer edge at the
+// window's top row as the quad's top, the inner at its bottom
 	float rIn;
 	float rMid;
 	float rOut;
 	particleRingRadii(particle, emitter, rIn, rMid, rOut);
+	// The three bands' own colors, each its vec4 curve's sample at the lifetime fraction in
+	// the color word's place - the life's own axis, never a place on the arc - the tint the
+	// quad draws multiplying after
+	vec4 bandIn;
+	vec4 bandMid;
+	vec4 bandOut;
+	particleRingColors(particle, emitter, bandIn, bandMid, bandOut);
 	const float vIn = uv1.y;
 	const float vOut = uv0.y;
 	const float vMid = 0.5f * (vIn + vOut);
@@ -276,9 +283,9 @@ void main() {
 			const vec2 midB = particleRingPoint(particle, emitter, f1, rMid);
 			const vec2 outA = particleRingPoint(particle, emitter, f0, rOut);
 			const vec2 outB = particleRingPoint(particle, emitter, f1, rOut);
-			const vec4 cIn = color * emitter.ringColorInner;
-			const vec4 cMid = color * emitter.ringColorMiddle;
-			const vec4 cOut = color * emitter.ringColorOuter;
+			const vec4 cIn = color * bandIn;
+			const vec4 cMid = color * bandMid;
+			const vec4 cOut = color * bandOut;
 			// the inner band: the quad's (bl, tl, br, tr, br, tl) with the inner edge as its
 			// bottom row and the middle as its top
 			writeVertex(vertexBuffer, at + 0u, inA, vec2(u0, vIn), cIn, frame.materialIndex);
