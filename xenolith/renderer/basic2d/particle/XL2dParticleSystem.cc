@@ -582,6 +582,10 @@ void ParticleSystem::apply(const Value &value) {
 				ring.vertexCount = v.isInteger("vertexCount")
 						? uint32_t(v.getInteger("vertexCount"))
 						: ParticleRing().vertexCount;
+				ring.crescentFrom = float(v.getDouble("crescentFrom", 0.0));
+				ring.crescentTo = float(v.getDouble("crescentTo", 360.0));
+				ring.fadeFrom = float(v.getDouble("fadeFrom", 0.0));
+				ring.fadeTo = float(v.getDouble("fadeTo", 0.0));
 				const auto &readColor = [&](StringView key, Color4F def) {
 					const auto &c = v.getValue(key);
 					return Color4F(float(c.getDouble(0, def.r)), float(c.getDouble(1, def.g)),
@@ -592,6 +596,18 @@ void ParticleSystem::apply(const Value &value) {
 				ring.colorInner = readColor("colorInner", ParticleRing().colorInner);
 
 					bool takes = ring.vertexCount >= 3u && ring.vertexCount <= 64u;
+					// The shape word names the figure the arc draws: the absent word and the
+					// donut word the same old ring, the crescent its own four degrees - and a
+					// stranger word a ring that cannot take effect, the whole object left as
+					// it stood for encode() to drop
+					const auto &shape = v.getString("shape");
+					if (shape.empty() || shape == "donut") {
+						ring.crescent = false;
+					} else if (shape == "crescent") {
+						ring.crescent = true;
+					} else {
+						takes = false;
+					}
 					Rc<CurveBuffer> outerCurve;
 					Rc<CurveBuffer> innerCurve;
 					Rc<CurveBuffer> arcFromCurve;
@@ -632,8 +648,8 @@ void ParticleSystem::apply(const Value &value) {
 					}
 
 					// The whole object every seat: an outer of zero keeps the clear word, a ring
-					// that cannot take effect - a stranger count, a stranger curve - leaves the
-					// previous words standing for encode() to drop
+					// that cannot take effect - a stranger count, a stranger shape, a stranger
+					// curve - leaves the previous words standing for encode() to drop
 					if (ring.outer <= 0.0f) {
 						clearRing();
 					} else if (takes) {
@@ -873,6 +889,20 @@ Value ParticleSystem::encode() const {
 		if (_data->data.ringVertexCount != ParticleRing().vertexCount) {
 			entry.setInteger(_data->data.ringVertexCount, "vertexCount");
 		}
+		// The shape word, only the crescent's own: the donut is the absence the file always
+		// kept, and the crescent's four degrees ride beside it each at its default's side -
+		// the full arc and the hard edges staying out of the file the arc words' own rule
+		if (_data->data.ringShape == XL_PARTICLE_RING_SHAPE_CRESCENT) {
+			entry.setString("crescent", "shape");
+			if (_data->data.ringCrescentFrom != 0.0f || _data->data.ringCrescentTo != 360.0f) {
+				entry.setDouble(_data->data.ringCrescentFrom, "crescentFrom");
+				entry.setDouble(_data->data.ringCrescentTo, "crescentTo");
+			}
+			if (_data->data.ringFadeFrom != 0.0f || _data->data.ringFadeTo != 0.0f) {
+				entry.setDouble(_data->data.ringFadeFrom, "fadeFrom");
+				entry.setDouble(_data->data.ringFadeTo, "fadeTo");
+			}
+		}
 		const auto &writeColor = [&](StringView key, const Vec4 &seated) {
 			if (seated != Vec4(1.0f, 1.0f, 1.0f, 1.0f)) {
 				Value c(Value::Type::ARRAY);
@@ -1053,13 +1083,21 @@ void ParticleSystem::setRing(const ParticleRing &ring) {
 	// the document door refuses a count outside it before this setter ever runs - and the
 	// whole object's seat resets the five scalar curves and the three color-band ones: the
 	// ring's words are one object every patch carries whole, the curve keys riding inside it
-	// or absent together
+	// or absent together. The shape word rides the same seat: the crescent's own four degrees
+	// verbatim - any span, any fade, even a fade wider than the arc, the fade words answering
+	// the corners they are given - and a donut seat resets them to the defaults the file
+	// never carries
 	auto &data = mutate().data;
 	data.ringOuter = sprt::max(ring.outer, 0.0f);
 	data.ringInner = sprt::max(ring.inner, 0.0f);
 	data.ringArcFrom = ring.arcFrom;
 	data.ringArcTo = ring.arcTo;
 	data.ringVertexCount = sprt::min(sprt::max(ring.vertexCount, 3u), 64u);
+	data.ringShape = ring.crescent ? XL_PARTICLE_RING_SHAPE_CRESCENT : XL_PARTICLE_RING_SHAPE_DONUT;
+	data.ringCrescentFrom = ring.crescentFrom;
+	data.ringCrescentTo = ring.crescentTo;
+	data.ringFadeFrom = ring.fadeFrom;
+	data.ringFadeTo = ring.fadeTo;
 	data.ringColorOuter = Vec4(ring.colorOuter.r, ring.colorOuter.g, ring.colorOuter.b,
 			ring.colorOuter.a);
 	data.ringColorMiddle = Vec4(ring.colorMiddle.r, ring.colorMiddle.g, ring.colorMiddle.b,
@@ -1085,6 +1123,11 @@ void ParticleSystem::clearRing() {
 	data.ringArcFrom = 0.0f;
 	data.ringArcTo = 0.0f;
 	data.ringVertexCount = 0u;
+	data.ringShape = XL_PARTICLE_RING_SHAPE_DONUT;
+	data.ringCrescentFrom = 0.0f;
+	data.ringCrescentTo = 0.0f;
+	data.ringFadeFrom = 0.0f;
+	data.ringFadeTo = 0.0f;
 	data.ringColorOuter = Vec4(0.0f, 0.0f, 0.0f, 0.0f);
 	data.ringColorMiddle = Vec4(0.0f, 0.0f, 0.0f, 0.0f);
 	data.ringColorInner = Vec4(0.0f, 0.0f, 0.0f, 0.0f);

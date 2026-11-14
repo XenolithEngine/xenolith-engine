@@ -692,23 +692,62 @@ SP_GLSL_INLINE void particleRingColors(SP_GLSL_IN(ParticleData) particle,
 
 // One point of the ring's edge: the arc fraction t in [0, 1] between the arc's own two degree
 // words, each reading its own scalar curve at the lifetime fraction in the word's place, the
-// radius the edge's own. The corner's angle turns by the particle's own angle word - the
-// quad's own rotation, the angular velocity a spinning arc - and the degrees meet the
-// trigonometry at the radians line, the file's unit riding the words verbatim
+// radius the edge's own. A seated crescent takes the shape's own two degree words in the ring
+// arc's place - the shape's own four angles the words seat, no curve riding them - and the
+// donut's arc words, and the curves seated over them, stand unread beside it. The corner's
+// angle turns by the particle's own angle word - the quad's own rotation, the angular velocity
+// a spinning arc - and the degrees meet the trigonometry at the radians line, the file's unit
+// riding the words verbatim
 SP_GLSL_INLINE vec2 particleRingPoint(SP_GLSL_IN(ParticleData) particle,
 		SP_GLSL_IN(ParticleEmitterData) emitter, float t, float radius) {
 	float fraction = particleLifeFraction(particle);
 	float from = emitter.ringArcFrom;
-	if (emitter.ringArcFromCurveOffset != 0u) {
-		from = particleSampleCurve(emitter.ringArcFromCurveOffset, fraction).x;
+	if (emitter.ringShape != XL_PARTICLE_RING_SHAPE_CRESCENT) {
+		if (emitter.ringArcFromCurveOffset != 0u) {
+			from = particleSampleCurve(emitter.ringArcFromCurveOffset, fraction).x;
+		}
+	} else {
+		from = emitter.ringCrescentFrom;
 	}
 	float to = emitter.ringArcTo;
-	if (emitter.ringArcToCurveOffset != 0u) {
-		to = particleSampleCurve(emitter.ringArcToCurveOffset, fraction).x;
+	if (emitter.ringShape != XL_PARTICLE_RING_SHAPE_CRESCENT) {
+		if (emitter.ringArcToCurveOffset != 0u) {
+			to = particleSampleCurve(emitter.ringArcToCurveOffset, fraction).x;
+		}
+	} else {
+		to = emitter.ringCrescentTo;
 	}
 	float degrees = from + (to - from) * t;
 	float a = particle.angle + degrees * (3.14159265358979323846f / 180.0f);
 	return particle.position + vec2(radius * cos(a), radius * sin(a));
+}
+
+// The crescent's edge fade at the arc fraction t, the alpha the shape's two fade words answer:
+// the corner's degree position from the arc's own start measured against the fade words - a
+// position inside the starting fade comes up along the straight line to the arc's own first
+// degree, one past the span less the ending fade runs down the same way, Effekseer's own
+// corner walk ("the start / end angle and fade angle of the circle"). The fade dims the band
+// colors' alpha alone - the drawn red, green and blue stand - and a donut answers one at every
+// fraction, the colors it always wrote. The fade's zero word is the hard edge: no fade at that
+// side, the branch's own guard standing where Effekseer's division stands, so a degenerate
+// span answers numbers and never divides by zero
+SP_GLSL_INLINE float particleRingFade(SP_GLSL_IN(ParticleEmitterData) emitter, float t) {
+	if (emitter.ringShape != XL_PARTICLE_RING_SHAPE_CRESCENT) {
+		return 1.0f;
+	}
+	float span = emitter.ringCrescentTo - emitter.ringCrescentFrom;
+	float angle = span * t;
+	float alpha = 1.0f;
+	if (emitter.ringFadeFrom > 0.0f) {
+		if (angle < emitter.ringFadeFrom) {
+			alpha = angle / emitter.ringFadeFrom;
+		} else if (emitter.ringFadeTo > 0.0f && angle > span - emitter.ringFadeTo) {
+			alpha = 1.0f - (angle - (span - emitter.ringFadeTo)) / emitter.ringFadeTo;
+		}
+	} else if (emitter.ringFadeTo > 0.0f && angle > span - emitter.ringFadeTo) {
+		alpha = 1.0f - (angle - (span - emitter.ringFadeTo)) / emitter.ringFadeTo;
+	}
+	return clamp(alpha, 0.0f, 1.0f);
 }
 
 // The strip's own quad between two birth-adjacent particles, Effekseer's ribbon taken in the

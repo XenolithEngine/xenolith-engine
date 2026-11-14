@@ -1403,7 +1403,7 @@ static void testPositionCurve() {
 	// they stood
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, positionCurveOffset)), 508,
 			"position curve: the offset word seats at the strip block's padding");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 608,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 624,
 			"position curve: the word map keeps its grown tail, the older words in place");
 
 	::memset(s_extra, 0, sizeof(s_extra));
@@ -1501,7 +1501,7 @@ static void testRingCurve() {
 			"ring curve: the ratio curve's offset word is the fifth");
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringVertexCount)), 580,
 			"ring curve: the count word seats past the curve offsets");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 608,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 624,
 			"ring curve: the band curves' tail grew the word map past the count");
 
 	::memset(s_extra, 0, sizeof(s_extra));
@@ -1617,7 +1617,7 @@ static void testRingBand() {
 			596, "ring band: the middle band's offset word is the second");
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringColorInnerCurveOffset)),
 			600, "ring band: the inner band's offset word is the third");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 608,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 624,
 			"ring band: the word map keeps its tail whole");
 
 	::memset(s_extra, 0, sizeof(s_extra));
@@ -1693,6 +1693,165 @@ static void testRingBand() {
 			"ring band: the zero outer keeps the quad's own seats, band curves and all");
 }
 
+// Effekseer's RingShape page, the crescent: "a circle with a part cut ... the start / end
+// angle and fade angle of the circle". The shape's own four degree words draw the arc in the
+// ring arc's place and the two fade words soften its tips - the corner's degree position from
+// the arc's own start the fade measures, the alpha alone it dims, the same vertex list and
+// the same pass the donut's ring fills
+static void testRingCrescent() {
+	// The seat contract: the shape word takes the band offsets' hand-carried padding, the
+	// four degrees the grown tail past it, the word map the static_assert locks
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringShape)), 604,
+			"ring crescent: the shape word takes the padding seat past the band offsets");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringCrescentFrom)), 608,
+			"ring crescent: the arc's first degree opens the grown tail");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringCrescentTo)), 612,
+			"ring crescent: the arc's last degree is the second");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringFadeFrom)), 616,
+			"ring crescent: the starting fade is the third");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringFadeTo)), 620,
+			"ring crescent: the ending fade is the fourth");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 624,
+			"ring crescent: the four degrees end the word map on the alignment's own boundary");
+
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+
+	// The donut's answer at every fraction is one, whatever the fade words carry beside it -
+	// the colors the ring always wrote, the words the shape never reads
+	emitter.ringOuter = 40.0f;
+	emitter.ringFadeFrom = 30.0f;
+	emitter.ringFadeTo = 30.0f;
+	checkNear(glsl::particleRingFade(emitter, 0.0f), 1.0f,
+			"ring crescent: the donut keeps the first corner's alpha whole");
+	checkNear(glsl::particleRingFade(emitter, 0.5f), 1.0f,
+			"ring crescent: the donut keeps the half corner's alpha whole");
+	checkNear(glsl::particleRingFade(emitter, 1.0f), 1.0f,
+			"ring crescent: the donut keeps the last corner's alpha whole");
+
+	// The crescent's own ramp: a 0 to 180 arc with 30 degree fades - the tip's first corner
+	// flat at the arc's own start, the eighth corner on the ramp's exact half, the middle
+	// whole, the last corner down the closing ramp the same way
+	emitter.ringShape = XL_PARTICLE_RING_SHAPE_CRESCENT;
+	emitter.ringCrescentFrom = 0.0f;
+	emitter.ringCrescentTo = 180.0f;
+	checkNear(glsl::particleRingFade(emitter, 0.0f), 0.0f,
+			"ring crescent: the tip's first corner stands at the ramp's own zero");
+	checkNear(glsl::particleRingFade(emitter, 0.125f), 0.75f,
+			"ring crescent: the eighth corner stands three quarters up the opening ramp");
+	checkNear(glsl::particleRingFade(emitter, 0.25f), 1.0f,
+			"ring crescent: the quarter corner stands past the opening fade whole");
+	checkNear(glsl::particleRingFade(emitter, 0.5f), 1.0f,
+			"ring crescent: the half corner stands whole between the fades");
+	checkNear(glsl::particleRingFade(emitter, 0.875f), 0.75f,
+			"ring crescent: the seventh-eighth corner stands three quarters down the closing ramp");
+	checkNear(glsl::particleRingFade(emitter, 1.0f), 0.0f,
+			"ring crescent: the last corner stands at the closing ramp's own zero");
+
+	// A hard edge on one side: the zero fade word the side's own absence, the branch's guard
+	// standing where Effekseer's division stands - the tip flat, the other side's ramp alone
+	emitter.ringFadeFrom = 0.0f;
+	checkNear(glsl::particleRingFade(emitter, 0.0f), 1.0f,
+			"ring crescent: the zero starting fade keeps its own tip hard");
+	checkNear(glsl::particleRingFade(emitter, 1.0f), 0.0f,
+			"ring crescent: the zero starting fade leaves the closing ramp alone");
+	emitter.ringFadeFrom = 30.0f;
+	emitter.ringFadeTo = 0.0f;
+	checkNear(glsl::particleRingFade(emitter, 0.0f), 0.0f,
+			"ring crescent: the zero ending fade leaves the opening ramp alone");
+	checkNear(glsl::particleRingFade(emitter, 1.0f), 1.0f,
+			"ring crescent: the zero ending fade keeps its own tip hard");
+
+	// The degenerate spans answer numbers: a zero arc folds every corner onto the start - a
+	// seated opening fade reads the position zero and answers the flat tip, no fades the
+	// collapsed wedge the donut's own zero arc draws - and a backwards arc's position runs
+	// negative, the clamp holding the ramp below its floor, never a NaN
+	emitter.ringFadeTo = 30.0f;
+	emitter.ringCrescentTo = 0.0f;
+	float alpha = glsl::particleRingFade(emitter, 0.5f);
+	check(isfinite(alpha), "ring crescent: the zero arc's fade answers a number");
+	checkNear(alpha, 0.0f, "ring crescent: the zero arc's own position folds to the flat tip");
+	emitter.ringFadeFrom = 0.0f;
+	emitter.ringFadeTo = 0.0f;
+	checkNear(glsl::particleRingFade(emitter, 0.5f), 1.0f,
+			"ring crescent: the zero arc without fades keeps the collapsed wedge whole");
+	emitter.ringCrescentTo = -90.0f;
+	emitter.ringFadeFrom = 30.0f;
+	alpha = glsl::particleRingFade(emitter, 0.5f);
+	check(isfinite(alpha), "ring crescent: the backwards arc's fade answers a number");
+	checkNear(alpha, 0.0f, "ring crescent: the backwards arc's ramp clamps below its floor");
+
+	// The angles past the full circle: no wrap anywhere, the span winding over itself and the
+	// fades measuring their own degrees of it
+	emitter.ringCrescentFrom = 0.0f;
+	emitter.ringCrescentTo = 540.0f;
+	emitter.ringFadeTo = 30.0f;
+	checkNear(glsl::particleRingFade(emitter, 0.5f), 1.0f,
+			"ring crescent: the past-circle arc's half stands whole between the fades");
+	checkNear(glsl::particleRingFade(emitter, 1.0f), 0.0f,
+			"ring crescent: the past-circle arc closes on its own last degree's ramp");
+
+	// The shape's own arc in the ring arc's place: the crescent's two degree words walk the
+	// corners, the ring's own arc words - and a curve seated over them - standing unread
+	::memset(&emitter, 0, sizeof(emitter));
+	emitter.ringOuter = 40.0f;
+	emitter.ringArcFrom = 0.0f;
+	emitter.ringArcTo = 360.0f;
+	emitter.ringShape = XL_PARTICLE_RING_SHAPE_CRESCENT;
+	emitter.ringCrescentFrom = 90.0f;
+	emitter.ringCrescentTo = 180.0f;
+
+	glsl::ParticleData particle;
+	::memset(&particle, 0, sizeof(particle));
+	glsl::vec2 at0 = glsl::particleRingPoint(particle, emitter, 0.0f, 40.0f);
+	glsl::vec2 atEnd = glsl::particleRingPoint(particle, emitter, 1.0f, 40.0f);
+	checkNear(at0.x, 0.0f, "ring crescent: the shape's arc opens at its own first degree");
+	checkNear(at0.y, 40.0f, "ring crescent: the opening corner is on the y axis");
+	checkNear(atEnd.x, -40.0f, "ring crescent: the shape's arc closes at its own last degree");
+	checkNear(atEnd.y, 0.0f, "ring crescent: the closing corner is against the x axis");
+	checkNear(glsl::particleRingFade(emitter, 0.5f), 1.0f,
+			"ring crescent: the fades' zero words keep the shape's own arc hard");
+
+	// The fade dims the alpha alone: the bands carry their color, the corner's alpha the
+	// product the pass writes - rgb the bands' own, alpha the fade's share of the product
+	emitter.ringFadeFrom = 45.0f;
+	emitter.ringFadeTo = 45.0f;
+	emitter.ringColorOuter = glsl::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+	glsl::vec4 bandIn;
+	glsl::vec4 bandMid;
+	glsl::vec4 bandOut;
+	glsl::particleRingColors(particle, emitter, bandIn, bandMid, bandOut);
+	float fadeAtTip = glsl::particleRingFade(emitter, 0.0f);
+	checkNear(bandOut.x * fadeAtTip, 0.0f,
+			"ring crescent: the tip's drawn red is the fade's own share");
+	checkNear(bandOut.y, 0.0f, "ring crescent: the band's green stands where its word put it");
+	checkNear(bandOut.z, 0.0f, "ring crescent: the band's blue stands where its word put it");
+	checkNear(bandOut.w * fadeAtTip, 0.0f,
+			"ring crescent: the tip's drawn alpha is the fade's own share");
+	float fadeAtMid = glsl::particleRingFade(emitter, 0.5f);
+	checkNear(bandOut.x * fadeAtMid, 1.0f,
+			"ring crescent: the half corner's red stands whole past the fades");
+	checkNear(bandOut.w * fadeAtMid, 1.0f,
+			"ring crescent: the half corner's alpha stands whole past the fades");
+
+	// The shape is a draw word: the quad's own seats whatever shape rides beside a zero
+	// outer, the gate the pass reads first
+	::memset(&emitter, 0, sizeof(emitter));
+	emitter.ringOuter = 0.0f;
+	emitter.ringShape = XL_PARTICLE_RING_SHAPE_CRESCENT;
+	emitter.ringCrescentFrom = 90.0f;
+	emitter.ringCrescentTo = 270.0f;
+	checkEq(glsl::particleVertexSeats(emitter), 6u,
+			"ring crescent: the zero outer keeps the quad's own seats, shape and all");
+
+	// The corner count composes: the shape's own arc walking the emitter's own count of
+	// segments, the seats the count's own
+	emitter.ringOuter = 40.0f;
+	emitter.ringVertexCount = 32u;
+	checkEq(glsl::particleVertexSeats(emitter), 384u,
+			"ring crescent: the corner count owns its seats under the crescent");
+}
+
 int main(int argc, const char *argv[]) {
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);
@@ -1726,6 +1885,7 @@ int main(int argc, const char *argv[]) {
 	testPositionCurve();
 	testRingCurve();
 	testRingBand();
+	testRingCrescent();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 

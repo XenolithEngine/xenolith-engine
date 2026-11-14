@@ -63,7 +63,11 @@ SP_DEFINE_ENUM_AS_MASK(ParticleSystemFlags)
 // first and last edge in degrees - the full circle 0 to 360 the arc words' default, saved
 // without them - the three colors of the bands across the width, white the default each, and
 // the corner count, Effekseer's Vertex Count, 3..64 with sixteen the default the file leaves.
-// An outer of zero is the absence this model keeps: the pass draws the quad it always drew
+// The shape word names the figure the arc draws: the donut the ring words always drew, or the
+// crescent - Effekseer's RingShape page, "a circle with a part cut ... the start / end angle
+// and fade angle of the circle" - whose own two degree words draw the arc in the ring arc's
+// place and whose two fade words soften its tips, each the zero the hard edge keeps. An outer
+// of zero is the absence this model keeps: the pass draws the quad it always drew
 struct ParticleRing {
 	float outer = 0.0f;
 	float inner = 0.0f;
@@ -73,6 +77,11 @@ struct ParticleRing {
 	Color4F colorMiddle = Color4F::WHITE;
 	Color4F colorInner = Color4F::WHITE;
 	uint32_t vertexCount = 16;
+	bool crescent = false;
+	float crescentFrom = 0.0f;
+	float crescentTo = 360.0f;
+	float fadeFrom = 0.0f;
+	float fadeTo = 0.0f;
 };
 
 // Immutable once handed to the renderer: ParticleSystem copies it before the next change.

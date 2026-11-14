@@ -277,31 +277,43 @@ void main() {
 		const float f1 = float(s + 1u) / float(corners);
 			const float u0 = mix(uv0.x, uv1.x, f0);
 			const float u1 = mix(uv0.x, uv1.x, f1);
-			const vec2 inA = particleRingPoint(particle, emitter, f0, rIn);
-			const vec2 inB = particleRingPoint(particle, emitter, f1, rIn);
-			const vec2 midA = particleRingPoint(particle, emitter, f0, rMid);
-			const vec2 midB = particleRingPoint(particle, emitter, f1, rMid);
-			const vec2 outA = particleRingPoint(particle, emitter, f0, rOut);
-			const vec2 outB = particleRingPoint(particle, emitter, f1, rOut);
-			const vec4 cIn = color * bandIn;
-			const vec4 cMid = color * bandMid;
-			const vec4 cOut = color * bandOut;
-			// the inner band: the quad's (bl, tl, br, tr, br, tl) with the inner edge as its
-			// bottom row and the middle as its top
-			writeVertex(vertexBuffer, at + 0u, inA, vec2(u0, vIn), cIn, frame.materialIndex);
-			writeVertex(vertexBuffer, at + 1u, midA, vec2(u0, vMid), cMid, frame.materialIndex);
-			writeVertex(vertexBuffer, at + 2u, inB, vec2(u1, vIn), cIn, frame.materialIndex);
-			writeVertex(vertexBuffer, at + 3u, midB, vec2(u1, vMid), cMid, frame.materialIndex);
-			writeVertex(vertexBuffer, at + 4u, inB, vec2(u1, vIn), cIn, frame.materialIndex);
-			writeVertex(vertexBuffer, at + 5u, midA, vec2(u0, vMid), cMid, frame.materialIndex);
-			// the outer band: the middle edge as its bottom row and the outer as its top
-			writeVertex(vertexBuffer, at + 6u, midA, vec2(u0, vMid), cMid, frame.materialIndex);
-			writeVertex(vertexBuffer, at + 7u, outA, vec2(u0, vOut), cOut, frame.materialIndex);
-			writeVertex(vertexBuffer, at + 8u, midB, vec2(u1, vMid), cMid, frame.materialIndex);
-			writeVertex(vertexBuffer, at + 9u, outB, vec2(u1, vOut), cOut, frame.materialIndex);
-			writeVertex(vertexBuffer, at + 10u, midB, vec2(u1, vMid), cMid, frame.materialIndex);
-			writeVertex(vertexBuffer, at + 11u, outA, vec2(u0, vOut), cOut, frame.materialIndex);
-			at += 12u;
+		const vec2 inA = particleRingPoint(particle, emitter, f0, rIn);
+		const vec2 inB = particleRingPoint(particle, emitter, f1, rIn);
+		const vec2 midA = particleRingPoint(particle, emitter, f0, rMid);
+		const vec2 midB = particleRingPoint(particle, emitter, f1, rMid);
+		const vec2 outA = particleRingPoint(particle, emitter, f0, rOut);
+		const vec2 outB = particleRingPoint(particle, emitter, f1, rOut);
+		const vec4 cIn = color * bandIn;
+		const vec4 cMid = color * bandMid;
+		const vec4 cOut = color * bandOut;
+		// each end its own alpha: the crescent's own fade answers the corner's arc fraction
+		// at both ends - the segment's tips the shape's fade words soften, the drawn rgb
+		// standing - and the donut's fade answers one at both, the multiply leaving the
+		// colors the ring always wrote (a float times one is exact)
+		const float fadeA = particleRingFade(emitter, f0);
+		const float fadeB = particleRingFade(emitter, f1);
+		const vec4 cInA = vec4(cIn.x, cIn.y, cIn.z, cIn.w * fadeA);
+		const vec4 cMidA = vec4(cMid.x, cMid.y, cMid.z, cMid.w * fadeA);
+		const vec4 cOutA = vec4(cOut.x, cOut.y, cOut.z, cOut.w * fadeA);
+		const vec4 cInB = vec4(cIn.x, cIn.y, cIn.z, cIn.w * fadeB);
+		const vec4 cMidB = vec4(cMid.x, cMid.y, cMid.z, cMid.w * fadeB);
+		const vec4 cOutB = vec4(cOut.x, cOut.y, cOut.z, cOut.w * fadeB);
+		// the inner band: the quad's (bl, tl, br, tr, br, tl) with the inner edge as its
+		// bottom row and the middle as its top
+		writeVertex(vertexBuffer, at + 0u, inA, vec2(u0, vIn), cInA, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 1u, midA, vec2(u0, vMid), cMidA, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 2u, inB, vec2(u1, vIn), cInB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 3u, midB, vec2(u1, vMid), cMidB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 4u, inB, vec2(u1, vIn), cInB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 5u, midA, vec2(u0, vMid), cMidA, frame.materialIndex);
+		// the outer band: the middle edge as its bottom row and the outer as its top
+		writeVertex(vertexBuffer, at + 6u, midA, vec2(u0, vMid), cMidA, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 7u, outA, vec2(u0, vOut), cOutA, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 8u, midB, vec2(u1, vMid), cMidB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 9u, outB, vec2(u1, vOut), cOutB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 10u, midB, vec2(u1, vMid), cMidB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 11u, outA, vec2(u0, vOut), cOutA, frame.materialIndex);
+		at += 12u;
 		}
 		return;
 	}

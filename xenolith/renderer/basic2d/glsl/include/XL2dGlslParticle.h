@@ -71,6 +71,12 @@ using namespace sprt::glsl;
 // reads none of them
 #define XL_PARTICLE_DRAW_FLAG_FLIP_U 1
 
+// ParticleEmitterData::ringShape, the figure the ring's own arc draws: 0 - the donut, the
+// full or partial circle the ring words always drew, 1 - the crescent, the shape's own arc
+// whose edges fade over the two fade words
+#define XL_PARTICLE_RING_SHAPE_DONUT 0
+#define XL_PARTICLE_RING_SHAPE_CRESCENT 1
+
 // The vertex seats one particle owns in the pass's vertex list: the quad's own pair of list
 // triangles
 #define XL_PARTICLE_QUAD_SEATS 6
@@ -414,11 +420,26 @@ struct ParticleEmitterData {
 	uint ringColorInnerCurveOffset;
 
 	// [604-607]
-	// explicit padding: the member-wise size ends at 604 while std430 strides the struct at
-	// the color vec4's alignment of 16, so the tail is carried in the struct itself
-	uint padding604;
+	// the ring's own shape, an XL_PARTICLE_RING_SHAPE_* word: 0 - the donut, the arc the
+	// ring words draw, 1 - the crescent, whose own two degree words below draw the arc and
+	// whose two fade words soften its edges. The word sits in the hand-carried padding the
+	// band offsets' stage left, the strip word's own precedent; 0 - the donut, the state
+	// every old buffer keeps
+	uint ringShape;
 
-	// [608]
+	// [608-623]
+	// the crescent's own four degrees: the arc's first and last edge, then the two edge
+	// fades - the degrees from the arc's own ends its tips take to come up, the zero word
+	// the hard edge the absent fade keeps. Effekseer's RingShape page: a crescent "can set
+	// the start / end angle and fade angle of the circle". The words are the shape's own:
+	// a seated crescent draws them in the ring arc's place, the donut's arc words - and the
+	// curves seated over them - standing unread beside it, and a donut never reads them
+	float ringCrescentFrom;
+	float ringCrescentTo;
+	float ringFadeFrom;
+	float ringFadeTo;
+
+	// [624]
 };
 
 #ifndef SP_GLSL
@@ -426,7 +447,7 @@ struct ParticleEmitterData {
 // struct, and the seating of a new word reads these offsets. The offsets past the attractors are
 // the std430 seats first - a vec2-aligned array or member opens on an 8-byte boundary, and the
 // explicit padding members hold the C++ text to the same numbers
-static_assert(sizeof(ParticleEmitterData) == 608
+static_assert(sizeof(ParticleEmitterData) == 624
 		&& __builtin_offsetof(ParticleEmitterData, colorCurveOffset) == 200
 		&& __builtin_offsetof(ParticleEmitterData, interval) == 252
 		&& __builtin_offsetof(ParticleEmitterData, attractors) == 256
@@ -451,7 +472,11 @@ static_assert(sizeof(ParticleEmitterData) == 608
 	&& __builtin_offsetof(ParticleEmitterData, ringColorOuterCurveOffset) == 592
 	&& __builtin_offsetof(ParticleEmitterData, ringColorMiddleCurveOffset) == 596
 	&& __builtin_offsetof(ParticleEmitterData, ringColorInnerCurveOffset) == 600
-	&& __builtin_offsetof(ParticleEmitterData, padding604) == 604);
+	&& __builtin_offsetof(ParticleEmitterData, ringShape) == 604
+	&& __builtin_offsetof(ParticleEmitterData, ringCrescentFrom) == 608
+	&& __builtin_offsetof(ParticleEmitterData, ringCrescentTo) == 612
+	&& __builtin_offsetof(ParticleEmitterData, ringFadeFrom) == 616
+	&& __builtin_offsetof(ParticleEmitterData, ringFadeTo) == 620);
 // The deflector seat is the std430 array stride of the struct: 32, the vec2 alignment's own
 // rounding of the member-wise 28
 static_assert(sizeof(ParticleDeflector) == 32
