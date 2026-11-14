@@ -82,7 +82,8 @@ size_t ParticleSystemData::getExtraDataSize() const {
 			+ ParticleSystem_getCurveSize(ringRatioCurve)
 			+ ParticleSystem_getCurveSize(ringOuterColorCurve)
 			+ ParticleSystem_getCurveSize(ringMiddleColorCurve)
-			+ ParticleSystem_getCurveSize(ringInnerColorCurve);
+			+ ParticleSystem_getCurveSize(ringInnerColorCurve)
+			+ ParticleSystem_getCurveSize(angleCurve);
 }
 
 void ParticleSystemData::writeExtraData(uint8_t *buf, size_t size,
@@ -139,6 +140,9 @@ void ParticleSystemData::writeExtraData(uint8_t *buf, size_t size,
 	target.ringColorOuterCurveOffset = writeCurve(ringOuterColorCurve);
 	target.ringColorMiddleCurveOffset = writeCurve(ringMiddleColorCurve);
 	target.ringColorInnerCurveOffset = writeCurve(ringInnerColorCurve);
+	// The angle curve seats last of all, the buffer growing at its end the same way - the
+	// step's own word, past every draw curve the stages before this one carried
+	target.angleCurveOffset = writeCurve(angleCurve);
 }
 
 void ParticleSystemData::writeParticleSize(ParticleEmitterData &data, Size2 size) {
@@ -427,6 +431,10 @@ void ParticleSystem::apply(const Value &value) {
 		const auto &v = value.getValue("positionCurve");
 		setPositionCurve(v.isDictionary() ? ParticleSystem_readCurve(v).get() : nullptr);
 	}
+	if (value.hasValue("angleCurve")) {
+		const auto &v = value.getValue("angleCurve");
+		setAngleCurve(v.isDictionary() ? ParticleSystem_readCurve(v).get() : nullptr);
+	}
 
 	if (value.isArray("flags")) {
 		auto flags = ParticleSystemFlags::None;
@@ -599,12 +607,19 @@ void ParticleSystem::apply(const Value &value) {
 					// The shape word names the figure the arc draws: the absent word and the
 					// donut word the same old ring, the crescent its own four degrees - and a
 					// stranger word a ring that cannot take effect, the whole object left as
-					// it stood for encode() to drop
-					const auto &shape = v.getString("shape");
-					if (shape.empty() || shape == "donut") {
-						ring.crescent = false;
-					} else if (shape == "crescent") {
-						ring.crescent = true;
+					// it stood for encode() to drop. The explicit null the patch carries is
+					// the donut's own clear, the word the row's gesture writes under a donut;
+					// a word of any other kind - a number where the string waits - cannot
+					// name a figure and refuses the same way
+					if (v.isNull("shape") || v.isString("shape")) {
+						const auto &shape = v.getString("shape");
+						if (shape.empty() || shape == "donut") {
+							ring.crescent = false;
+						} else if (shape == "crescent") {
+							ring.crescent = true;
+						} else {
+							takes = false;
+						}
 					} else {
 						takes = false;
 					}
@@ -782,6 +797,9 @@ Value ParticleSystem::encode() const {
 	// word zero - never reaches a file
 	if (_data->positionCurve) {
 		ret.setValue(ParticleSystem_writeCurve(_data->positionCurve), "positionCurve");
+	}
+	if (_data->angleCurve) {
+		ret.setValue(ParticleSystem_writeCurve(_data->angleCurve), "angleCurve");
 	}
 
 	Value flags(Value::Type::ARRAY);
@@ -1387,6 +1405,31 @@ bool ParticleSystem::setPositionCurve(CurveBuffer *curve) {
 
 CurveBuffer *ParticleSystem::getPositionCurve() const { return _data->positionCurve; }
 
+bool ParticleSystem::setAngleCurve(CurveBuffer *curve) {
+	// The walk is a scalar: the Float curve alone carries it, anything wider has no axis to
+	// ride. A curve whose every word is zero turns nowhere - it cannot take effect, the width
+	// word's own zero fate - so it seats nothing, as an empty one does
+	if (curve && curve->getType() != CurveBufferType::Float) {
+		log::source().error("ParticleSystem", "Angle curve must be of Float type");
+		return false;
+	}
+	if (curve) {
+		bool zero = true;
+		auto n = curve->getSize() * curve->getElementSize();
+		for (size_t i = 0; i < n; ++i) {
+			zero = zero && curve->getData()[i] == 0.0f;
+		}
+		if (zero) {
+			curve = nullptr;
+		}
+	}
+
+	mutate().angleCurve = curve;
+	return true;
+}
+
+CurveBuffer *ParticleSystem::getAngleCurve() const { return _data->angleCurve; }
+
 void ParticleSystem::addFlags(ParticleSystemFlags flags) { setFlags(getFlags() | flags); }
 
 void ParticleSystem::clearFlags(ParticleSystemFlags flags) { setFlags(getFlags() & ~flags); }
@@ -1463,6 +1506,7 @@ Rc<ParticleSystemData> ParticleSystem::dup() {
 	data->ringOuterColorCurve = _data->ringOuterColorCurve;
 	data->ringMiddleColorCurve = _data->ringMiddleColorCurve;
 	data->ringInnerColorCurve = _data->ringInnerColorCurve;
+	data->angleCurve = _data->angleCurve;
 	data->emissionPoints = _data->emissionPoints;
 	::__sprt_memcpy(data->emissionShape, _data->emissionShape, sizeof(data->emissionShape));
 	data->systemId = _data->systemId;

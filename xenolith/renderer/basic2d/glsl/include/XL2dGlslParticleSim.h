@@ -870,6 +870,26 @@ SP_GLSL_INLINE void particleApplyPositionCurve(SP_GLSL_INOUT(ParticleData) parti
 	}
 }
 
+// The angle by curve, the spin Effekseer's rotation page keys over the life: every step past
+// particleStep adds the walk the fraction made - the sample at the fraction the step stands on
+// less the sample the previous step stood at - so the curve never replaces the angular velocity
+// the birth chose: the two walks sum, the plan's own letter. The previous fraction is derivable,
+// not seated: a lifetime of L steps advances the fraction by 1/L a step, the same ladder the
+// position curve's walk climbs, and the walk is measured from the first stop, so a curve
+// constant from its own first word turns nothing. The generator stands unread - the angle is a
+// pure function of the fraction - and the offset's zero guard is the word's own: no curve - the
+// angle the step left stands, the state before the curve existed
+SP_GLSL_INLINE void particleApplyAngleCurve(SP_GLSL_INOUT(ParticleData) particle,
+		SP_GLSL_IN(ParticleEmitterData) emitter) {
+	if (emitter.angleCurveOffset != 0u) {
+		float fraction = particleLifeFraction(particle);
+		float previous = fraction - 1.0f / float(particle.fullLifetime);
+		float walked = particleSampleCurve(emitter.angleCurveOffset, fraction).x;
+		float stood = particleSampleCurve(emitter.angleCurveOffset, previous).x;
+		particle.angle = particle.angle + (walked - stood);
+	}
+}
+
 // Simulates frame.nframes steps: a particle whose emission step comes is born (again, if it is still
 // alive), otherwise a living particle ages by one step and moves if it is still alive. The counters
 // grow by the births and the aging steps.
@@ -962,6 +982,10 @@ SP_GLSL_INLINE void particleUpdate(SP_GLSL_INOUT(ParticleData) particle,
 				// made: the standing position the pass draws and the hash folds carries it, the
 				// two texts reading this one function
 				particleApplyPositionCurve(particle, emitter);
+				// The angle's walk rides the same step's result, past the angular velocity the
+				// step itself added: the two walks sum, and the standing angle the pass draws -
+				// the quad's own and the ring arc's own - is the one the hash folds
+				particleApplyAngleCurve(particle, emitter);
 			}
 		}
 	}

@@ -439,7 +439,26 @@ struct ParticleEmitterData {
 	float ringFadeFrom;
 	float ringFadeTo;
 
-	// [624]
+	// [624-627]
+	// offset of the angle curve in the extra data buffer, a Float curve over the lifetime
+	// fraction whose walk the step adds to the angle every step past particleStep - the spin
+	// Effekseer's rotation page keys over the life, the radians the file carries verbatim.
+	// The walk is the increment the position curve rides, the sample at the fraction the step
+	// stands on less the sample the previous step stood at, so the curve never replaces the
+	// angular velocity the birth chose: the two walks sum. 0 - no curve, the angle the step
+	// always left. The word seats past the crescent's degrees - the first word past the tail
+	// the stages before this one carried, the buffer growing at its end the same way
+	uint angleCurveOffset;
+
+	// [628-639]
+	// explicit padding: the member-wise size ends at 628 while std430 strides the struct at
+	// the color vec4's alignment of 16, so the tail is carried in the struct itself, each
+	// word its own seat the next stage's word map reads
+	uint padding628;
+	uint padding632;
+	uint padding636;
+
+	// [640]
 };
 
 #ifndef SP_GLSL
@@ -447,7 +466,7 @@ struct ParticleEmitterData {
 // struct, and the seating of a new word reads these offsets. The offsets past the attractors are
 // the std430 seats first - a vec2-aligned array or member opens on an 8-byte boundary, and the
 // explicit padding members hold the C++ text to the same numbers
-static_assert(sizeof(ParticleEmitterData) == 624
+static_assert(sizeof(ParticleEmitterData) == 640
 		&& __builtin_offsetof(ParticleEmitterData, colorCurveOffset) == 200
 		&& __builtin_offsetof(ParticleEmitterData, interval) == 252
 		&& __builtin_offsetof(ParticleEmitterData, attractors) == 256
@@ -476,7 +495,9 @@ static_assert(sizeof(ParticleEmitterData) == 624
 	&& __builtin_offsetof(ParticleEmitterData, ringCrescentFrom) == 608
 	&& __builtin_offsetof(ParticleEmitterData, ringCrescentTo) == 612
 	&& __builtin_offsetof(ParticleEmitterData, ringFadeFrom) == 616
-	&& __builtin_offsetof(ParticleEmitterData, ringFadeTo) == 620);
+	&& __builtin_offsetof(ParticleEmitterData, ringFadeTo) == 620
+	&& __builtin_offsetof(ParticleEmitterData, angleCurveOffset) == 624
+	&& __builtin_offsetof(ParticleEmitterData, padding628) == 628);
 // The deflector seat is the std430 array stride of the struct: 32, the vec2 alignment's own
 // rounding of the member-wise 28
 static_assert(sizeof(ParticleDeflector) == 32

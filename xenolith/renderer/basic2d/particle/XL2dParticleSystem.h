@@ -106,6 +106,11 @@ struct SP_PUBLIC ParticleSystemData : public Ref {
 	Rc<CurveBuffer> ringOuterColorCurve;
 	Rc<CurveBuffer> ringMiddleColorCurve;
 	Rc<CurveBuffer> ringInnerColorCurve;
+	// The angle's own curve, the step's word: a Float curve over the lifetime fraction whose
+	// walk the step adds to the angle every step past particleStep - the spin Effekseer's
+	// rotation page keys over the life, the radians the file carries verbatim, the angular
+	// velocity the birth chose standing beside it
+	Rc<CurveBuffer> angleCurve;
 	Vector<Vec2> emissionPoints;
 
 	// The numbers of the birth shape data.emissionType names, in the shader's read order:
@@ -513,6 +518,15 @@ public:
 	// fate
 	bool setPositionCurve(CurveBuffer *);
 	CurveBuffer *getPositionCurve() const;
+
+	// Float curve over the particle's lifetime whose walk the step adds to the angle every step
+	// past the step's own angular velocity, Effekseer's spin over the life keyed by the rotation
+	// page - the walk measured from the curve's first stop, so the two walks sum and neither
+	// replaces the other, the radians the file carries verbatim. Null removes it; a curve of
+	// another type, or one whose every word is zero - a curve that cannot turn a particle -
+	// seats nothing, the width word's own zero fate
+	bool setAngleCurve(CurveBuffer *);
+	CurveBuffer *getAngleCurve() const;
 
 	void addFlags(ParticleSystemFlags);
 	void clearFlags(ParticleSystemFlags);

@@ -1403,7 +1403,7 @@ static void testPositionCurve() {
 	// they stood
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, positionCurveOffset)), 508,
 			"position curve: the offset word seats at the strip block's padding");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 624,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 640,
 			"position curve: the word map keeps its grown tail, the older words in place");
 
 	::memset(s_extra, 0, sizeof(s_extra));
@@ -1501,7 +1501,7 @@ static void testRingCurve() {
 			"ring curve: the ratio curve's offset word is the fifth");
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringVertexCount)), 580,
 			"ring curve: the count word seats past the curve offsets");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 624,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 640,
 			"ring curve: the band curves' tail grew the word map past the count");
 
 	::memset(s_extra, 0, sizeof(s_extra));
@@ -1617,7 +1617,7 @@ static void testRingBand() {
 			596, "ring band: the middle band's offset word is the second");
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringColorInnerCurveOffset)),
 			600, "ring band: the inner band's offset word is the third");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 624,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 640,
 			"ring band: the word map keeps its tail whole");
 
 	::memset(s_extra, 0, sizeof(s_extra));
@@ -1711,8 +1711,8 @@ static void testRingCrescent() {
 			"ring crescent: the starting fade is the third");
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringFadeTo)), 620,
 			"ring crescent: the ending fade is the fourth");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 624,
-			"ring crescent: the four degrees end the word map on the alignment's own boundary");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 640,
+			"ring crescent: the four degrees end their own stretch, the word map grown past them");
 
 	glsl::ParticleEmitterData emitter;
 	::memset(&emitter, 0, sizeof(emitter));
@@ -1852,6 +1852,163 @@ static void testRingCrescent() {
 			"ring crescent: the corner count owns its seats under the crescent");
 }
 
+// The angle by curve, the stage's own step word: a Float curve over the lifetime fraction whose
+// walk the step adds to the angle every step past particleStep - the increment the position
+// curve rides, so the curve never replaces the angular velocity the birth chose: the two walks
+// sum. The birth stands at the birth angle, the walk restarting with every rebirth
+static void testAngleCurve() {
+	// The seat contract: the word seats past the crescent's degrees, the first word past the
+	// tail the stages before this one carried, and the explicit padding holds the map to the
+	// vec4 alignment's own boundary
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, angleCurveOffset)), 624,
+			"angle curve: the offset word seats past the crescent's degrees");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 640,
+			"angle curve: the word map keeps its own tail on the alignment's boundary");
+
+	::memset(s_extra, 0, sizeof(s_extra));
+
+	// The plan's own acceptance shape: a curve giving a quarter turn at the end of life walks
+	// the angle to it at zero angular velocity, k steps in at the sampler's own share - the
+	// stops sit at k / count and the last one holds, the same ladder every curve climbs
+	constexpr float quarter = 1.5707963705062866f;
+	uint32_t curve = writeCurve(4, 1, {0.0f, quarter});
+	Single seated;
+	seated.data.angleCurveOffset = curve;
+	seated.run(30);
+	checkNear(seated.p().angle,
+			quarter * sprt::min(float(30) * 2.0f / float(seated.p().fullLifetime), 1.0f),
+			"angle curve: k steps stand at the curve's own fraction of the lifetime");
+
+	// The walk is measured from the first stop: a curve standing away from the zero turns its
+	// own delta, not its own value - the start angle is the walk's zero
+	Single offset;
+	offset.data.angleCurveOffset = writeCurve(8, 1, {0.7853981852531433f, 2.356194490192345f});
+	offset.run(30);
+	checkNear(offset.p().angle,
+			quarter * sprt::min(float(30) * 2.0f / float(offset.p().fullLifetime), 1.0f),
+			"angle curve: the walk is measured from the curve's first stop");
+
+	// A curve constant from its own first word walks nothing: the sample the step stands on
+	// and the sample the previous step stood at are the one number
+	Single constant;
+	constant.data.angleCurveOffset = writeCurve(12, 1, {quarter, quarter});
+	constant.run(30);
+	checkNear(constant.p().angle, 0.0f,
+			"angle curve: the curve constant from its own first word turns nothing");
+
+	// The generator stands unread: the same seed walks the same stream beside the curve
+	Single plain;
+	plain.run(30);
+	check(plain.p().rng.state == seated.p().rng.state && plain.p().rng.inc == seated.p().rng.inc,
+			"angle curve: the curve spends no draw of the generator");
+	checkNear(plain.p().angle, 0.0f, "angle curve: no curve leaves the birth angle standing");
+
+	// The letter's own pin: the two walks sum - the file with both stands at the sum of the
+	// walks each file stands at alone, neither zeroed
+	Single velocity;
+	velocity.data.angularVelocity.init = 0.5f;
+	velocity.run(30);
+	Single both;
+	both.data.angularVelocity.init = 0.5f;
+	both.data.angleCurveOffset = curve;
+	both.run(30);
+	checkNear(both.p().angle, velocity.p().angle + seated.p().angle,
+			"angle curve: the angular velocity's walk and the curve's one sum");
+
+	// The word's zero guard: an emitter without the offset turns the particles it always did,
+	// byte for byte
+	Single unseated;
+	unseated.data.angleCurveOffset = 0;
+	unseated.run(30);
+	check(::memcmp(&unseated.p(), &plain.p(), sizeof(glsl::ParticleData)) == 0,
+			"angle curve: the unseated word keeps the old particles whole");
+
+	// Two steps of one frame walk the same two fractions the ladder climbs inside
+	// particleUpdate's own loop
+	Single paird;
+	paird.data.angleCurveOffset = curve;
+	paird.maxSteps = 2;
+	s_points[0] = glsl::vec2(0.0f, 0.0f);
+	s_pointCount = 1;
+	paird.tick();
+	for (uint32_t i = 0; i < 15; ++i) { paird.tick(2); }
+	s_pointCount = 0;
+	check(::memcmp(&paird.p(), &seated.p(), sizeof(glsl::ParticleData)) == 0,
+			"angle curve: two steps of one frame equal two frames of one step");
+
+	// A birth stands at the birth angle - the curve adds nothing at the birth, the walk
+	// starting with the aging steps - and a reborn slot restarts its walk from the same zero
+	Emitter cycled(4, 0.3f, 9);
+	cycled.data.angle.init = 0.25f;
+	cycled.data.angleCurveOffset = curve;
+	auto frames = cycled.cycleFrames();
+	bool birthsAtAngle = true;
+	for (uint32_t k = 0; k < frames * 3; ++k) {
+		cycled.tick();
+		for (uint32_t i = 0; i < 4; ++i) {
+			if (cycled.born[i]) {
+				birthsAtAngle = birthsAtAngle && cycled.particles[i].angle == 0.25f;
+			}
+		}
+	}
+	check(birthsAtAngle, "angle curve: a birth stands at the birth angle, the curve off it");
+
+	// The draw composites for free: the ring's corner walks the arc the particle angle turns,
+	// so the curve's walk rotates the ring point - and the crescent's own arc with it - around
+	// the particle, the radius the walk leaves standing
+	Single ringPlain;
+	ringPlain.data.ringOuter = 40.0f;
+	ringPlain.data.ringInner = 20.0f;
+	ringPlain.run(30);
+	Single ringTurned;
+	ringTurned.data.ringOuter = 40.0f;
+	ringTurned.data.ringInner = 20.0f;
+	ringTurned.data.angleCurveOffset = curve;
+	ringTurned.run(30);
+	glsl::vec2 stood = glsl::particleRingPoint(ringPlain.p(), ringPlain.data, 0.5f, 40.0f);
+	glsl::vec2 turned = glsl::particleRingPoint(ringTurned.p(), ringTurned.data, 0.5f, 40.0f);
+	float walked = ringTurned.p().angle;
+	glsl::vec2 rotated = ringTurned.p().position
+			+ glsl::particleRotate(stood - ringTurned.p().position, walked);
+	checkNear(turned.x, rotated.x,
+			"angle curve: the ring's corner rides the walk around the particle");
+	checkNear(turned.y, rotated.y,
+			"angle curve: the ring's corner's second axis rides the walk");
+	checkNear((turned - ringTurned.p().position).length(),
+			(stood - ringPlain.p().position).length(),
+			"angle curve: the walk turns the corner, the radius it leaves standing");
+
+	// The crescent's own arc under the same walk: the shape's own two degree words drawing it,
+	// the rotation the particle angle carries riding there the same way
+	Single shapePlain;
+	shapePlain.data.ringOuter = 40.0f;
+	shapePlain.data.ringInner = 20.0f;
+	shapePlain.data.ringShape = XL_PARTICLE_RING_SHAPE_CRESCENT;
+	shapePlain.data.ringArcFrom = 0.0f;
+	shapePlain.data.ringArcTo = 360.0f;
+	shapePlain.data.ringCrescentFrom = 90.0f;
+	shapePlain.data.ringCrescentTo = 270.0f;
+	shapePlain.run(30);
+	Single shapeTurned;
+	shapeTurned.data.ringOuter = 40.0f;
+	shapeTurned.data.ringInner = 20.0f;
+	shapeTurned.data.ringShape = XL_PARTICLE_RING_SHAPE_CRESCENT;
+	shapeTurned.data.ringArcFrom = 0.0f;
+	shapeTurned.data.ringArcTo = 360.0f;
+	shapeTurned.data.ringCrescentFrom = 90.0f;
+	shapeTurned.data.ringCrescentTo = 270.0f;
+	shapeTurned.data.angleCurveOffset = curve;
+	shapeTurned.run(30);
+	glsl::vec2 shapeStood = glsl::particleRingPoint(shapePlain.p(), shapePlain.data, 0.25f, 40.0f);
+	glsl::vec2 shapeWent = glsl::particleRingPoint(shapeTurned.p(), shapeTurned.data, 0.25f, 40.0f);
+	glsl::vec2 shapeRound = shapeTurned.p().position
+			+ glsl::particleRotate(shapeStood - shapeTurned.p().position, shapeTurned.p().angle);
+	checkNear(shapeWent.x, shapeRound.x,
+			"angle curve: the crescent's corner rides the walk on the shape's own arc");
+	checkNear(shapeWent.y, shapeRound.y,
+			"angle curve: the crescent's corner's second axis rides the walk");
+}
+
 int main(int argc, const char *argv[]) {
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);
@@ -1886,6 +2043,7 @@ int main(int argc, const char *argv[]) {
 	testRingCurve();
 	testRingBand();
 	testRingCrescent();
+	testAngleCurve();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 
