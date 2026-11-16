@@ -474,28 +474,28 @@ OUT_INCLUDES := $(addprefix $(OUT_SYSROOT)/include/,\
 
 ALL_BUILT := $(CLANG) $(RUNTIMES) $(SYSROOT)/bin/glslang $(SYSROOT)/bin/make
 
-$(OUT_SYSROOT)/lib/%: $(SYSROOT)/lib/% $(ALL_BUILT)
+$(OUT_SYSROOT)/lib/%: $(ALL_BUILT)
 	@mkdir -p $(OUT_SYSROOT)/lib
 	@rm -f $@
-	$(STRIP) $< -o $@
+	$(STRIP) $(SYSROOT)/lib/$* -o $@
 	chmod +x $@
 
-$(OUT_SYSROOT)/lib/clang: $(SYSROOT)/lib/clang $(ALL_BUILT)
+$(OUT_SYSROOT)/lib/clang: $(ALL_BUILT)
 	@mkdir -p $(OUT_SYSROOT)/lib
 	@rm -rf $@
-	cp -rf $< $@
+	cp -rf $(SYSROOT)/lib/clang $@
 	rm -rf $@/lib $@/include $@/$(SP_LLVM_VER)/lib 
 
-$(OUT_SYSROOT)/bin/%: $(SYSROOT)/bin/% $(ALL_BUILT)
+$(OUT_SYSROOT)/bin/%: $(ALL_BUILT)
 	@mkdir -p $(OUT_SYSROOT)/bin
 	@rm -f $@
-	$(STRIP) $< -o $@
+	$(STRIP) $(SYSROOT)/bin/$* -o $@
 	chmod +x $@
 
-$(OUT_SYSROOT)/include/%: $(SYSROOT)/include/% $(ALL_BUILT)
+$(OUT_SYSROOT)/include/%: $(ALL_BUILT)
 	rm -rf $@
 	mkdir -p $@
-	cp -fr $</* $@
+	cp -fr $(SYSROOT)/include/$*/* $@
 
 $(OUT_SYSROOT)/share/licenses: ../licenses
 	rm -rf $@

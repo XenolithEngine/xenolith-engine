@@ -107,6 +107,7 @@ OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
 	spirv-reduce \
 	spirv-val)
 
+# SPIRV-Tools is linked statically into the exported shader tools.
 OUT_LIBS := $(addprefix $(OUT_SYSROOT)/lib/,\
 	libc++.so.1.0 \
 	libc++abi.so.1.0 \
@@ -115,13 +116,7 @@ OUT_LIBS := $(addprefix $(OUT_SYSROOT)/lib/,\
 	liblldb.so.$(SP_LLVM_V) \
 	liblldbIntelFeatures.so.$(SP_LLVM_SOVER) \
 	libLLVM.so.$(SP_LLVM_SOVER) \
-	libRemarks.so.$(SP_LLVM_SOVER) \
-	libSPIRV-Tools.so \
-	libSPIRV-Tools-diff.so \
-	libSPIRV-Tools-link.so \
-	libSPIRV-Tools-lint.so \
-	libSPIRV-Tools-opt.so \
-	libSPIRV-Tools-reduce.so)
+	libRemarks.so.$(SP_LLVM_SOVER))
 
 OUT_INCLUDES := $(addprefix $(OUT_SYSROOT)/include/,\
 	clang \

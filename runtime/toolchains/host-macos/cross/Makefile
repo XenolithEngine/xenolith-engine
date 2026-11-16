@@ -378,31 +378,31 @@ OUT_INCLUDES := $(addprefix $(OUT_SYSROOT)/include/,\
 	llvm-c\
 	lldb)
 
-$(OUT_SYSROOT)/lib/%: $(TARGET_SYSROOT)/lib/% $(TARGET_SYSROOT)/bin/glslang $(TARGET_SYSROOT)/bin/clang
+$(OUT_SYSROOT)/lib/%: $(TARGET_SYSROOT)/bin/glslang $(TARGET_SYSROOT)/bin/clang
 	@mkdir -p $(OUT_SYSROOT)/lib
 	@rm -f $@
-	$(HOST_STRIP) $< -o $@
+	$(HOST_STRIP) $(TARGET_SYSROOT)/lib/$* -o $@
 	$(if $(CODESIGN),$(CODESIGN) sign $@)
 	chmod +x $@
 
-$(OUT_SYSROOT)/lib/clang: $(TARGET_SYSROOT)/lib/clang $(TARGET_SYSROOT)/bin/clang
+$(OUT_SYSROOT)/lib/clang: $(TARGET_SYSROOT)/bin/clang
 	@mkdir -p $(OUT_SYSROOT)/lib
 	@rm -rf $@
-	cp -rf $< $@
+	cp -rf $(TARGET_SYSROOT)/lib/clang $@
 
-$(OUT_SYSROOT)/bin/%: $(TARGET_SYSROOT)/bin/% $(TARGET_SYSROOT)/bin/glslang $(TARGET_SYSROOT)/bin/make $(TARGET_SYSROOT)/bin/clang
+$(OUT_SYSROOT)/bin/%: $(TARGET_SYSROOT)/bin/glslang $(TARGET_SYSROOT)/bin/make $(TARGET_SYSROOT)/bin/clang
 	@mkdir -p $(OUT_SYSROOT)/bin
 	@rm -f $@
-	$(HOST_STRIP) $< -o $@
+	$(HOST_STRIP) $(TARGET_SYSROOT)/bin/$* -o $@
 	$(HOST_NAMETOOL) -delete_all_rpaths $@
 	$(HOST_NAMETOOL) -prepend_rpath @loader_path/../lib $@
 	$(if $(CODESIGN),$(CODESIGN) sign $@)
 	chmod +x $@
 
-$(OUT_SYSROOT)/include/%: $(TARGET_SYSROOT)/include/% $(TARGET_SYSROOT)/bin/clang
+$(OUT_SYSROOT)/include/%: $(TARGET_SYSROOT)/bin/clang
 	rm -rf $@
 	mkdir -p $@
-	cp -fr $</* $@
+	cp -fr $(TARGET_SYSROOT)/include/$*/* $@
 
 $(OUT_SYSROOT)/share/licenses: ../licenses
 	rm -rf $@
