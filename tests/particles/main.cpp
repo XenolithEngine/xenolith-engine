@@ -1403,7 +1403,7 @@ static void testPositionCurve() {
 	// they stood
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, positionCurveOffset)), 508,
 			"position curve: the offset word seats at the strip block's padding");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 656,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 688,
 			"position curve: the word map keeps its grown tail, the older words in place");
 
 	::memset(s_extra, 0, sizeof(s_extra));
@@ -1501,7 +1501,7 @@ static void testRingCurve() {
 			"ring curve: the ratio curve's offset word is the fifth");
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringVertexCount)), 580,
 			"ring curve: the count word seats past the curve offsets");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 656,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 688,
 			"ring curve: the band curves' tail grew the word map past the count");
 
 	::memset(s_extra, 0, sizeof(s_extra));
@@ -1617,7 +1617,7 @@ static void testRingBand() {
 			596, "ring band: the middle band's offset word is the second");
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringColorInnerCurveOffset)),
 			600, "ring band: the inner band's offset word is the third");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 656,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 688,
 			"ring band: the word map keeps its tail whole");
 
 	::memset(s_extra, 0, sizeof(s_extra));
@@ -1711,7 +1711,7 @@ static void testRingCrescent() {
 			"ring crescent: the starting fade is the third");
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringFadeTo)), 620,
 			"ring crescent: the ending fade is the fourth");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 656,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 688,
 			"ring crescent: the four degrees end their own stretch, the word map grown past them");
 
 	glsl::ParticleEmitterData emitter;
@@ -1862,7 +1862,7 @@ static void testAngleCurve() {
 	// vec4 alignment's own boundary
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, angleCurveOffset)), 624,
 			"angle curve: the offset word seats past the crescent's degrees");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 656,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 688,
 			"angle curve: the word map keeps its own tail on the alignment's boundary");
 
 	::memset(s_extra, 0, sizeof(s_extra));
@@ -2015,7 +2015,7 @@ static void testUvRect() {
 	// the struct to the alignment's own boundary
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, uvRect)), 640,
 			"uv rect: the rect's own vec4 seats past the angle curve's offset");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 656,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 688,
 			"uv rect: the word map keeps its own tail on the alignment's boundary");
 
 	// The window's frame standing one second into the simulation: the scroll reads the same
@@ -2117,6 +2117,156 @@ static void testUvRect() {
 			"uv rect: the cut moves no particle field, the step the step always was");
 }
 
+// The quad's own four corners: the emitter's eight words seat past the rect, each its pair of
+// the quad's own fractions in the pairs' own order - bottom-left, bottom-right, top-left,
+// top-right - and the seated shape turns with the rotation, the birth scale growing every
+// corner's own reach the way it grew the whole quad. The defaults ±0.5 are the corners the
+// size-built quad always made and the zero state every old buffer keeps the absence's own
+// seat; the strip's segment and the ring's point read none of the eight
+static void testCorners() {
+	// The seat contract: the four pairs' own words seat past the rect - the buffer growing at
+	// its end the same way - and the word map's tail carries the struct to the alignment's own
+	// boundary
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, cornerBL)), 656,
+			"corners: the bottom-left pair seats past the rect");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, cornerBR)), 664,
+			"corners: the bottom-right pair is the second seat");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, cornerTL)), 672,
+			"corners: the top-left pair is the third seat");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, cornerTR)), 680,
+			"corners: the top-right pair is the fourth seat");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 688,
+			"corners: the word map keeps its own tail on the alignment's boundary");
+
+	// A 20x10 base quad at scale 1, the pattern testKinematics carries: halfSize (10, 5), the
+	// defaults ±0.5 the corners ±(10, 5)
+	Single e;
+	auto size = glsl::vec2(20.0f, 10.0f);
+	e.data.sizeValue = (size / 2.0f).length();
+	e.data.sizeNormal = size.getNormalized();
+	e.run(0);
+
+	// The zero state every old buffer keeps is the absence's own seat: the corners the size
+	// built, all four standing where the draw always made them
+	glsl::vec2 bl, tl, tr, br;
+	glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+	checkNear(bl.x, -10.0f, "corners: the zero seat opens the quad at its left edge (x)");
+	checkNear(bl.y, -5.0f, "corners: the zero seat opens the quad at its bottom (y)");
+	checkNear(tr.x, 10.0f, "corners: the zero seat closes the quad at its right edge (x)");
+	checkNear(tr.y, 5.0f, "corners: the zero seat closes the quad at its top (y)");
+
+	// The defaults ±0.5 seated whole are the same four: the fraction the word names of the
+	// quad's own full extent, a half of it the corner the draw always made
+	e.data.cornerBL = glsl::vec2(-0.5f, -0.5f);
+	e.data.cornerBR = glsl::vec2(0.5f, -0.5f);
+	e.data.cornerTL = glsl::vec2(-0.5f, 0.5f);
+	e.data.cornerTR = glsl::vec2(0.5f, 0.5f);
+	glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+	checkNear(bl.x, -10.0f, "corners: the defaults are the absence, the left edge standing (x)");
+	checkNear(bl.y, -5.0f, "corners: the defaults are the absence, the bottom standing (y)");
+	checkNear(tr.x, 10.0f, "corners: the defaults are the absence, the right edge standing (x)");
+	checkNear(tr.y, 5.0f, "corners: the defaults are the absence, the top standing (y)");
+
+	// The plan's own acceptance shape: the top-right corner pulled in to the quad's own
+	// middle, its pair alone moving - the corner's fraction of the quad's full extent, the
+	// other three corners standing where the size built them
+	e.data.cornerTR = glsl::vec2(0.0f, 0.5f);
+	glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+	checkNear(tr.x, 0.0f, "corners: the shifted corner's x is its fraction of the full extent");
+	checkNear(tr.y, 5.0f, "corners: the shifted corner's y keeps the top");
+	checkNear(bl.x, -10.0f, "corners: the shifted corner leaves the bottom-left standing (x)");
+	checkNear(br.x, 10.0f, "corners: the shifted corner leaves the bottom-right standing (x)");
+	checkNear(tl.x, -10.0f, "corners: the shifted corner leaves the top-left standing (x)");
+
+	// The order the plan names: the shape the words seat first, the quad's own transform
+	// turning it - the quarter turn every corner rides, the shifted one its own share turned
+	e.p().angle = float(M_PI_2);
+	glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+	checkNear(tr.x, -5.0f, "corners: the turn carries the shifted corner's own share (x)");
+	checkNear(tr.y, 0.0f, "corners: the turn carries the shifted corner's own share (y)");
+	checkNear(bl.x, 5.0f, "corners: the turn carries the bottom-left's share (x)");
+	checkNear(bl.y, -10.0f, "corners: the turn carries the bottom-left's share (y)");
+	e.p().angle = 0.0f;
+
+	// The birth scale is the transform's own pair: it doubles every corner's reach the way it
+	// doubles the whole quad, the corner's fraction of the doubled extent
+	e.p().scale = 2.0f;
+	e.p().scaleY = 2.0f;
+	e.data.cornerTR = glsl::vec2(1.0f, 1.0f);
+	glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+	checkNear(tr.x, 40.0f, "corners: the scale doubles the corner's own reach (x)");
+	checkNear(tr.y, 20.0f, "corners: the scale doubles the corner's own reach (y)");
+
+	// The alignment and the stretch are the same transform: the quad's Y axis follows the
+	// velocity and the stretch grows that axis's extent, the corner's share of the grown
+	// extent - and the defaults seated whole answer the stretched quad the draw always made
+	e.data.cornerBL = glsl::vec2(-0.5f, -0.5f);
+	e.data.cornerBR = glsl::vec2(0.5f, -0.5f);
+	e.data.cornerTL = glsl::vec2(-0.5f, 0.5f);
+	e.data.cornerTR = glsl::vec2(0.5f, 0.5f);
+	e.p().scale = 1.0f;
+	e.p().scaleY = 1.0f;
+	e.data.flags |= XL_PARTICLE_FLAG_ALIGN_WITH_VELOCITY;
+	e.data.stretch = 1.0f;
+	e.p().velocity = glsl::vec2(100.0f, 0.0f);
+	glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+	checkNear(tl.x, 105.0f,
+			"corners: the defaults answer the stretched quad the draw always made (x)");
+	checkNear(tl.y, 10.0f,
+			"corners: the defaults answer the stretched quad the draw always made (y)");
+	e.data.cornerTL = glsl::vec2(-0.5f, 1.0f);
+	e.data.cornerTR = glsl::vec2(0.5f, 1.0f);
+	glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+	checkNear(tl.x, 210.0f, "corners: the stretch grows the corner's own share with the quad");
+	checkNear(tl.y, 10.0f, "corners: the aligned axis's corners ride the velocity's direction");
+
+	// The strip's segment and the ring's point read none of the eight: the shapes the stages
+	// before this one carried stand, the corners the quad's own words
+	glsl::ParticleData a;
+	glsl::ParticleData b;
+	::memset(&a, 0, sizeof(a));
+	::memset(&b, 0, sizeof(b));
+	a.position = glsl::vec2(-20.0f, 0.0f);
+	a.scale = 1.0f;
+	b.position = glsl::vec2(20.0f, 0.0f);
+	b.scale = 1.0f;
+	glsl::ParticleEmitterData plainEmitter;
+	::memset(&plainEmitter, 0, sizeof(plainEmitter));
+	plainEmitter.stripWidth = 8.0f;
+	glsl::ParticleEmitterData corneredEmitter = plainEmitter;
+	corneredEmitter.cornerBL = glsl::vec2(-2.0f, -2.0f);
+	corneredEmitter.cornerBR = glsl::vec2(2.0f, -2.0f);
+	corneredEmitter.cornerTL = glsl::vec2(-2.0f, 2.0f);
+	corneredEmitter.cornerTR = glsl::vec2(2.0f, 2.0f);
+	glsl::vec2 sbl, stl, str, sbr;
+	glsl::particleStripSegment(a, b, plainEmitter, sbl, stl, str, sbr);
+	glsl::vec2 cbl, ctl, ctr, cbr;
+	glsl::particleStripSegment(a, b, corneredEmitter, cbl, ctl, ctr, cbr);
+	check(sbl == cbl && stl == ctl && str == ctr && sbr == cbr,
+			"corners: the strip's segment reads none of the eight");
+
+	corneredEmitter.stripWidth = 0.0f;
+	corneredEmitter.ringOuter = 40.0f;
+	auto point0 = glsl::particleRingPoint(a, plainEmitter, 0.5f, 40.0f);
+	auto point1 = glsl::particleRingPoint(a, corneredEmitter, 0.5f, 40.0f);
+	check(point0.x == point1.x && point0.y == point1.y,
+			"corners: the ring's point reads none of the eight");
+
+	// The corners are a draw word: the step births and keeps the same particles
+	Single plain;
+	Single cornered;
+	cornered.data.cornerBL = glsl::vec2(-0.25f, -0.5f);
+	cornered.data.cornerBR = glsl::vec2(0.5f, -0.5f);
+	cornered.data.cornerTL = glsl::vec2(-0.5f, 0.5f);
+	cornered.data.cornerTR = glsl::vec2(0.5f, 0.75f);
+	plain.run(30);
+	cornered.run(30);
+	check(plain.p().position.x == cornered.p().position.x
+					&& plain.p().position.y == cornered.p().position.y
+					&& plain.p().currentLifetime == cornered.p().currentLifetime,
+			"corners: the shape moves no particle field, the step the step always was");
+}
+
 int main(int argc, const char *argv[]) {
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);
@@ -2153,6 +2303,7 @@ int main(int argc, const char *argv[]) {
 	testRingCrescent();
 	testAngleCurve();
 	testUvRect();
+	testCorners();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 

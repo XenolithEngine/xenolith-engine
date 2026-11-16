@@ -588,6 +588,24 @@ void ParticleSystem::apply(const Value &value) {
 			}
 		}
 
+		if (value.hasValue("corners")) {
+			// The corners ride their own array the rect rides its four: eight numbers in the
+			// pairs' own order - bottom-left, bottom-right, top-left, top-right - and a seat
+			// that cannot take effect, the defaults ±0.5 the absence is or the all-center
+			// zero the old buffers keep, seats nothing. The explicit null the row's clear
+			// writes - and a word of any other kind, or an array too short for the four
+			// pairs - clears the seat, the rect's own reading
+			const auto &v = value.getValue("corners");
+			if (v.isArray() && v.size() >= 8) {
+				setCorners(Vec2(float(v.getDouble(0)), float(v.getDouble(1))),
+						Vec2(float(v.getDouble(2)), float(v.getDouble(3))),
+						Vec2(float(v.getDouble(4)), float(v.getDouble(5))),
+						Vec2(float(v.getDouble(6)), float(v.getDouble(7))));
+			} else {
+				setCorners(Vec2(0.0f, 0.0f), Vec2(0.0f, 0.0f), Vec2(0.0f, 0.0f), Vec2(0.0f, 0.0f));
+			}
+		}
+
 		if (value.isBasicType("start")) {
 			setStart(float(value.getDouble("start")));
 		}
@@ -914,6 +932,25 @@ Value ParticleSystem::encode() const {
 				|| _data->data.uvRect.z != 1.0f || _data->data.uvRect.w != 1.0f)) {
 		ret.setValue(ParticleSystem_writeVec4(_data->data.uvRect), "uvRect");
 	}
+	// The seated corners alone: the setter leaves the words at their zero for every seat that
+	// cannot take effect - the defaults ±0.5 the absence is and the all-center zero the old
+	// buffers keep - so the zero words are the absence both texts keep, the key staying out so
+	// an old file saves byte for byte
+	if (_data->data.cornerBL.x != 0.0f || _data->data.cornerBL.y != 0.0f
+			|| _data->data.cornerBR.x != 0.0f || _data->data.cornerBR.y != 0.0f
+			|| _data->data.cornerTL.x != 0.0f || _data->data.cornerTL.y != 0.0f
+			|| _data->data.cornerTR.x != 0.0f || _data->data.cornerTR.y != 0.0f) {
+		Value corners(Value::Type::ARRAY);
+		corners.addDouble(_data->data.cornerBL.x);
+		corners.addDouble(_data->data.cornerBL.y);
+		corners.addDouble(_data->data.cornerBR.x);
+		corners.addDouble(_data->data.cornerBR.y);
+		corners.addDouble(_data->data.cornerTL.x);
+		corners.addDouble(_data->data.cornerTL.y);
+		corners.addDouble(_data->data.cornerTR.x);
+		corners.addDouble(_data->data.cornerTR.y);
+		ret.setValue(sp::move(corners), "corners");
+	}
 	if (_data->data.start != 0.0f) {
 		ret.setDouble(_data->data.start, "start");
 	}
@@ -1124,6 +1161,36 @@ void ParticleSystem::setUvRect(Vec4 rect) {
 }
 
 Vec4 ParticleSystem::getUvRect() const { return _data->data.uvRect; }
+
+void ParticleSystem::setCorners(Vec2 bl, Vec2 br, Vec2 tl, Vec2 tr) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the quad follows. A seat whose
+	// every word stands at its own default - the corners the size-built quad always made, the
+	// absence the file never carries - and the all-center seat, the zero state every old
+	// buffer keeps, cannot take effect: both leave the words at their zero, the draw the quad
+	// the size always built, the key encode() drops
+	static constexpr Vec2 kDefaults[] = {Vec2(-0.5f, -0.5f), Vec2(0.5f, -0.5f), Vec2(-0.5f, 0.5f),
+		Vec2(0.5f, 0.5f)};
+	const Vec2 seats[] = {bl, br, tl, tr};
+	bool absence = true;
+	bool empty = true;
+	for (size_t i = 0; i < 4; ++i) {
+		absence = absence && seats[i] == kDefaults[i];
+		empty = empty && seats[i] == Vec2(0.0f, 0.0f);
+	}
+	if (absence || empty) {
+		bl = br = tl = tr = Vec2(0.0f, 0.0f);
+	}
+	auto &d = mutate();
+	d.data.cornerBL = bl;
+	d.data.cornerBR = br;
+	d.data.cornerTL = tl;
+	d.data.cornerTR = tr;
+}
+
+Vec2 ParticleSystem::getCornerBL() const { return _data->data.cornerBL; }
+Vec2 ParticleSystem::getCornerBR() const { return _data->data.cornerBR; }
+Vec2 ParticleSystem::getCornerTL() const { return _data->data.cornerTL; }
+Vec2 ParticleSystem::getCornerTR() const { return _data->data.cornerTR; }
 
 void ParticleSystem::setStart(float seconds) {
 	// Inside ParticleEmitterData, so the emitter re-uploads and the birth schedule follows; a

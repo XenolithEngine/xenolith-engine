@@ -588,6 +588,14 @@ SP_GLSL_INLINE void particleStep(SP_GLSL_INOUT(ParticleData) particle,
 // stretch depending on their velocity", on a mode whose particles "still align to the velocity"
 // at a zero scale; Godot's scale_over_velocity_curve "scales each particle based on its
 // velocity". Zero stretch adds nothing: the quad stays the one the birth scale built.
+// The emitter's own four corner words reshape the local quad before any of that acts: each
+// corner takes its own pair of the quad's fractions - the share of the quad's full extent the
+// corner stands at along each of the quad's own two axes - so the shape the words seat turns
+// with the rotation and the alignment, the birth scale and the stretch growing every corner's
+// own reach the way they grew the whole quad. The defaults ±0.5 are the corners the size-built
+// quad always made and the absence the file never carries; the zero state every old buffer
+// keeps is that absence's own seat - all eight words at zero stand the corners the draw always
+// made, and any word off its zero is the shape's own seat.
 SP_GLSL_INLINE void particleQuad(SP_GLSL_IN(ParticleData) particle,
 		SP_GLSL_IN(ParticleEmitterData) emitter, SP_GLSL_OUT(vec2) bl, SP_GLSL_OUT(vec2) tl,
 		SP_GLSL_OUT(vec2) tr, SP_GLSL_OUT(vec2) br) {
@@ -610,10 +618,25 @@ SP_GLSL_INLINE void particleQuad(SP_GLSL_IN(ParticleData) particle,
 	vec2 ax = vec2(c, s) * halfSize.x;
 	vec2 ay = vec2(-s, c) * halfSize.y;
 
-	bl = particle.position - ax - ay;
-	tl = particle.position - ax + ay;
-	tr = particle.position + ax + ay;
-	br = particle.position + ax - ay;
+	if (emitter.cornerBL.x == 0.0f && emitter.cornerBL.y == 0.0f && emitter.cornerBR.x == 0.0f
+			&& emitter.cornerBR.y == 0.0f && emitter.cornerTL.x == 0.0f
+			&& emitter.cornerTL.y == 0.0f && emitter.cornerTR.x == 0.0f
+			&& emitter.cornerTR.y == 0.0f) {
+		bl = particle.position - ax - ay;
+		tl = particle.position - ax + ay;
+		tr = particle.position + ax + ay;
+		br = particle.position + ax - ay;
+	} else {
+		// The seated shape: each corner its fraction of the quad's own full extent along the
+		// quad's own two axes - a ±0.5 word answers the corner the size-built quad always
+		// made, the halving and the doubling exact powers of two apart
+		vec2 ex = ax * 2.0f;
+		vec2 ey = ay * 2.0f;
+		bl = particle.position + ex * emitter.cornerBL.x + ey * emitter.cornerBL.y;
+		br = particle.position + ex * emitter.cornerBR.x + ey * emitter.cornerBR.y;
+		tl = particle.position + ex * emitter.cornerTL.x + ey * emitter.cornerTL.y;
+		tr = particle.position + ex * emitter.cornerTR.x + ey * emitter.cornerTR.y;
+	}
 }
 
 // The ring's corner count, the emitter's own word: 3..64 when the word seats itself, the

@@ -470,7 +470,24 @@ struct ParticleEmitterData {
 	// carried, the buffer growing at its end the same way
 	vec4 uvRect;
 
-	// [656]
+	// [656-687]
+	// the quad's own four corners, Effekseer's Sprite Position taken as the four corners the
+	// sprite's page names against the square: four pairs in the order bottom-left, bottom-
+	// right, top-left, top-right, each its pair of the quad's own fractions - the position
+	// the corner takes along the quad's own two axes, the defaults ±0.5 the corners the
+	// size-built quad always made and the absence the file never carries. The zero state
+	// every old buffer keeps is the absence's own seat: all eight words at zero stand the
+	// corners the draw always made, and any word off its zero is the shape's own seat - the
+	// fraction of the quad's full extent the corner takes along each axis, the birth scale,
+	// the rotation, the alignment and the stretch the quad already carries acting on the
+	// shape they always acted on. The words seat past the rect - the buffer growing at its
+	// end the same way, the member-wise end on the alignment's own boundary
+	vec2 cornerBL; // [656-663]
+	vec2 cornerBR; // [664-671]
+	vec2 cornerTL; // [672-679]
+	vec2 cornerTR; // [680-687]
+
+	// [688]
 };
 
 #ifndef SP_GLSL
@@ -478,7 +495,7 @@ struct ParticleEmitterData {
 // struct, and the seating of a new word reads these offsets. The offsets past the attractors are
 // the std430 seats first - a vec2-aligned array or member opens on an 8-byte boundary, and the
 // explicit padding members hold the C++ text to the same numbers
-static_assert(sizeof(ParticleEmitterData) == 656
+static_assert(sizeof(ParticleEmitterData) == 688
 		&& __builtin_offsetof(ParticleEmitterData, colorCurveOffset) == 200
 		&& __builtin_offsetof(ParticleEmitterData, interval) == 252
 		&& __builtin_offsetof(ParticleEmitterData, attractors) == 256
@@ -510,7 +527,11 @@ static_assert(sizeof(ParticleEmitterData) == 656
 	&& __builtin_offsetof(ParticleEmitterData, ringFadeTo) == 620
 	&& __builtin_offsetof(ParticleEmitterData, angleCurveOffset) == 624
 	&& __builtin_offsetof(ParticleEmitterData, padding628) == 628
-	&& __builtin_offsetof(ParticleEmitterData, uvRect) == 640);
+	&& __builtin_offsetof(ParticleEmitterData, uvRect) == 640
+	&& __builtin_offsetof(ParticleEmitterData, cornerBL) == 656
+	&& __builtin_offsetof(ParticleEmitterData, cornerBR) == 664
+	&& __builtin_offsetof(ParticleEmitterData, cornerTL) == 672
+	&& __builtin_offsetof(ParticleEmitterData, cornerTR) == 680);
 // The deflector seat is the std430 array stride of the struct: 32, the vec2 alignment's own
 // rounding of the member-wise 28
 static_assert(sizeof(ParticleDeflector) == 32

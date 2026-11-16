@@ -339,6 +339,21 @@ public:
 	void setUvRect(Vec4);
 	Vec4 getUvRect() const;
 
+	// The quad's own four corners, Effekseer's Sprite Position taken as the four corners the
+	// sprite's page names against the square: four pairs in the order bottom-left, bottom-
+	// right, top-left, top-right, each its pair of the quad's own fractions - the share of
+	// the quad's full extent the corner stands at along each of the quad's own two axes, so
+	// the birth scale, the rotation, the alignment and the stretch the quad already carries
+	// act on the shape the words seat. The defaults ±0.5 are the corners the size-built quad
+	// always made and the absence the file never carries; a seat whose every word stands at
+	// its own default - and the all-center seat, the zero state every old buffer keeps -
+	// seats nothing, and the key encode() writes only when a corner stands off its own default
+	void setCorners(Vec2 bl, Vec2 br, Vec2 tl, Vec2 tr);
+	Vec2 getCornerBL() const;
+	Vec2 getCornerBR() const;
+	Vec2 getCornerTL() const;
+	Vec2 getCornerTR() const;
+
 	// Seconds the birth schedule waits before the emitter's own timeline begins, 0 - no wait;
 	// a negative value clamps to that default, and the key encode() writes only when the value
 	// is not it
