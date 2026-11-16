@@ -166,18 +166,18 @@ $(RUNTIME_LIB): $(COMPILER_RT_FILE)
 # rule). A static-archive build only archives the objects of the modules it is HANDED
 # — it does NOT pull transitive dependencies — so LOCAL_MODULES must spell out the full
 # non-window closure (identical to what tests/libc links): the wrapper + the
-# freestanding libc impl + musl adapters + malloc + core + the libc++ port + the runtime
+# freestanding libc impl and primitives + musl adapters + malloc + core + the libc++ port + the runtime
 # itself. libc and libc++ ship in the SAME archive - nothing downstream wants them split.
 # Window/GUI is left out (no dep probes it, and a compiler host has no window). It only
 # archives objects, so it needs just the headers + simde + compiler that RUNTIME_LIB
 # already staged into the sysroot.
-$(SPRT_LIB): $(RUNTIME_LIB)
+$(SPRT_LIB): $(RUNTIME_LIB) $(MAKE_FILE)
 	$(call rule_rm,$(abspath build/xlsprt))
 	$(MAKE) -C $(SP_RUNTIME_ROOT) \
 		STAPPLER_HOST_FILE=$(SP_INSTALL_PREFIX)/host/host.mk \
 		STAPPLER_TARGET_FILE=$(SP_INSTALL_PREFIX)/target.mk \
 		STAPPLER_TARGET=$(SP_ARCH_TARGET_CLANG) \
-		LOCAL_MODULES="runtime_libc_wrapper runtime_core runtime_libc_impl runtime_malloc runtime_musl_libc runtime_libcxx runtime" \
+		LOCAL_MODULES="runtime_libc_wrapper runtime_core runtime_libc_impl runtime_libc_freestanding runtime_malloc runtime_musl_libc runtime_libcxx runtime" \
 		LOCAL_OUTDIR=$(abspath build/xlsprt) \
 		RELEASE=1
 	cp -f $(abspath build/xlsprt)/$(SP_ARCH_TARGET_CLANG)/release/cc/libsprt.a $@
