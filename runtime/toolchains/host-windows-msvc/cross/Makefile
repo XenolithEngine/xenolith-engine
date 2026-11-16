@@ -22,39 +22,56 @@ GIT_TAG ?= $(shell git describe --tags --abbrev=0)
 
 SP_USE_STAPPLER_DISTRIB ?= 1
 
-unexport LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
-unexport LOCAL_ROOT := $(dir $(THIS_FILE))
+LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
+unexport LOCAL_MAKEFILE
+LOCAL_ROOT := $(dir $(realpath $(LOCAL_MAKEFILE)))
+unexport LOCAL_ROOT
 
 include $(LOCAL_ROOT)../../common/utils/detect-platform.mk
 include $(LOCAL_ROOT)../../common/utils/init-shell.mk
 
-unexport SP_ARCH_HOST ?= x86_64
+SP_ARCH_HOST ?= x86_64
+unexport SP_ARCH_HOST
 
-unexport SP_ARCH_WINDOWS := $(SP_ARCH_HOST)
+SP_ARCH_WINDOWS := $(SP_ARCH_HOST)
+unexport SP_ARCH_WINDOWS
 
-unexport SP_NJOBS := -j16
+SP_NJOBS := -j16
+unexport SP_NJOBS
 override SP_ARCH_CLANG := $(SP_ARCH_HOST)-pc-windows-msvc
 
 include $(LOCAL_ROOT)../../common/utils/llvm-version.mk
 unexport SP_LLVM_VER
 
-unexport LLVM_DIR := $(realpath $(LOCAL_ROOT)../../src/llvm-project)
-unexport SDK_DIR ?= $(realpath $(LOCAL_ROOT)../../src/xwin/splat/sdk)
-unexport CRT_DIR ?= $(realpath $(LOCAL_ROOT)../../src/xwin/splat/crt)
+LLVM_DIR := $(realpath $(LOCAL_ROOT)../../src/llvm-project)
+unexport LLVM_DIR
+SDK_DIR ?= $(realpath $(LOCAL_ROOT)../../src/xwin/splat/sdk)
+unexport SDK_DIR
+CRT_DIR ?= $(realpath $(LOCAL_ROOT)../../src/xwin/splat/crt)
+unexport CRT_DIR
 
-unexport VULKAN_HEADERS_DIR := $(realpath ../../src/vulkan-headers)
-unexport SPIRV_HEADERS_DIR := $(realpath ../../src/spirv-headers)
-unexport GLSLANG_DIR := $(realpath ../../src/glslang)
-unexport SPIRV_TOOLS_DIR := $(realpath ../../src/spirv-tools)
-unexport LIBXML2_DIR := $(realpath ../../src/libxml2)
-unexport ZLIB_DIR := $(realpath ../../src/zlib)
+VULKAN_HEADERS_DIR := $(realpath ../../src/vulkan-headers)
+unexport VULKAN_HEADERS_DIR
+SPIRV_HEADERS_DIR := $(realpath ../../src/spirv-headers)
+unexport SPIRV_HEADERS_DIR
+GLSLANG_DIR := $(realpath ../../src/glslang)
+unexport GLSLANG_DIR
+SPIRV_TOOLS_DIR := $(realpath ../../src/spirv-tools)
+unexport SPIRV_TOOLS_DIR
+LIBXML2_DIR := $(realpath ../../src/libxml2)
+unexport LIBXML2_DIR
+ZLIB_DIR := $(realpath ../../src/zlib)
+unexport ZLIB_DIR
 
-unexport HOST_ROOT := $(realpath $(LOCAL_ROOT)../../hosts/$(HOST_ID))
+HOST_ROOT := $(realpath $(LOCAL_ROOT)../../hosts/$(HOST_ID))
+unexport HOST_ROOT
 
 $(info HOST_ROOT $(HOST_ROOT))
 
-unexport OUT_SYSROOT := ../../hosts/$(SP_ARCH_CLANG)
-unexport ROOT_DIR := $(abspath ../..)
+OUT_SYSROOT := ../../hosts/$(SP_ARCH_CLANG)
+unexport OUT_SYSROOT
+ROOT_DIR := $(abspath ../..)
+unexport ROOT_DIR
 
 # The "+dll" sysroot, never the stock one. This build links DLLs of its own - liblldb, LTO,
 # the DynamicLibrary unit tests - and the DLL entry point _DllMainCRTStartup only exists in
@@ -65,12 +82,14 @@ unexport ROOT_DIR := $(abspath ../..)
 # stage0.mk derives the matching intermediate directory from this name (see its LIB export),
 # so the suffix has to live here and nowhere else. SP_ARCH_CLANG stays the bare triple - it
 # is the compiler target.
-unexport TARGET_SYSROOT := $(ROOT_DIR)/targets/$(SP_ARCH_CLANG)+dll
+TARGET_SYSROOT := $(ROOT_DIR)/targets/$(SP_ARCH_CLANG)+dll
+unexport TARGET_SYSROOT
 
 # Where the "+dll" target installs sprt.dll. Windows resolves imports from the directory of
 # the running image and has no rpath equivalent, so the DLL has to ship next to the toolchain
 # binaries. The target is built by host-cross-* in the parent makefile before this one runs.
-unexport SPRT_TARGET_BIN := $(TARGET_SYSROOT)/usr/bin
+SPRT_TARGET_BIN := $(TARGET_SYSROOT)/usr/bin
+unexport SPRT_TARGET_BIN
 
 include stage0.mk
 

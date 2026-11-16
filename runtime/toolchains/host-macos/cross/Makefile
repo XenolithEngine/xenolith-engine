@@ -39,9 +39,11 @@ endif
 SP_NJOBS := -j16
 SP_ARCH_CLANG ?= $(SP_ARCH_HOST)-apple-macosx
 
-unexport ROOT_DIR := $(abspath ../..)
+ROOT_DIR := $(abspath ../..)
+unexport ROOT_DIR
 # xlmake is built against the SDK-free "+open" target export (SDK-less end to end).
-unexport OUT_TARGET_SYSROOT := $(ROOT_DIR)/targets/$(SP_ARCH_CLANG)+open
+OUT_TARGET_SYSROOT := $(ROOT_DIR)/targets/$(SP_ARCH_CLANG)+open
+unexport OUT_TARGET_SYSROOT
 
 include $(LOCAL_ROOT)../../common/utils/llvm-version.mk
 

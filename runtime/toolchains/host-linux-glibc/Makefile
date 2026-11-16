@@ -23,10 +23,14 @@ GIT_TAG ?= $(shell git describe --tags --abbrev=0)
 LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
 SP_NJOBS ?= -j16
-unexport SP_ARCH ?= x86_64
-unexport SP_ARCH_LD ?= x86-64
-unexport SP_ARCH_CLANG ?= $(SP_ARCH)-unknown-linux-gnu
-unexport SP_ARCH_LLVM ?= X86
+SP_ARCH ?= x86_64
+unexport SP_ARCH
+SP_ARCH_LD ?= x86-64
+unexport SP_ARCH_LD
+SP_ARCH_CLANG ?= $(SP_ARCH)-unknown-linux-gnu
+unexport SP_ARCH_CLANG
+SP_ARCH_LLVM ?= X86
+unexport SP_ARCH_LLVM
 
 include ../common/utils/llvm-version.mk
 unexport SP_LLVM_VER
@@ -51,10 +55,13 @@ include stage0.mk
 include stage1.mk
 include stage2.mk
 
-unexport OUT_SYSROOT ?= ../hosts/$(SP_ARCH_CLANG)
+OUT_SYSROOT ?= ../hosts/$(SP_ARCH_CLANG)
+unexport OUT_SYSROOT
 
-unexport ROOT_DIR := $(abspath ..)
-unexport TARGET_SYSROOT := $(ROOT_DIR)/targets/$(SP_ARCH_CLANG)
+ROOT_DIR := $(abspath ..)
+unexport ROOT_DIR
+TARGET_SYSROOT := $(ROOT_DIR)/targets/$(SP_ARCH_CLANG)
+unexport TARGET_SYSROOT
 
 OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
 	clang-$(SP_LLVM_VER) \
