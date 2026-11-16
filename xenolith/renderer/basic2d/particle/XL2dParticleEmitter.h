@@ -41,10 +41,18 @@ enum class ParticleQuadMask : uint32_t {
 // color with the shape's alpha in its own channel, so `Alpha` is the sprite pair (the source
 // scaled by its own alpha over the destination reduced by it) and `Add` keeps the source's own
 // scaling but sums the destination unchanged - a fading particle adds less and nothing else,
-// which no raw `One/One` pair would give over a straight-color draw.
+// which no raw `One/One` pair would give over a straight-color draw. `Sub` and `Mul` are
+// Effekseer's AlphaBlend 3 and 4: `Sub` subtracts the alpha-weighted source from the
+// destination (the reverse-subtract equation, not `src - dst`) and `Mul` scales the
+// destination by the source, the factor pair Effekseer's straight-color shaders carry so the
+// transparent edge multiplies by one. The alpha channel of both stays the destination's own,
+// the pass-through `Add` keeps - the modes are RGB arithmetic over the frame, the mask's own
+// channel is not a term of them.
 enum class ParticleBlendMode : uint32_t {
 	Alpha = 0,
 	Add = 1,
+	Sub = 2,
+	Mul = 3,
 };
 
 class ParticleEmitter : public Sprite {

@@ -480,6 +480,23 @@ void ShadowPass::makeMaterialSubpass(Queue::Builder &queueBuilder, QueuePassBuil
 										  BlendFactor::Zero, BlendFactor::One, BlendOp::Add),
 				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}));
 
+	// The subtractive and multiplying twins, what ParticleBlendMode::Sub and ParticleBlendMode::Mul
+	// ask for: the reverse-subtract equation is the destination minus the alpha-weighted source,
+	// and the (DstColor, OneMinusSrcAlpha) pair scales the destination by the source while the
+	// transparent edge eases to one. The blend is part of the material key, so no request
+	// reaches these but a sub or mul one.
+	subpassBuilder.addGraphicPipeline("Sub", layout2d->defaultFamily, shaderSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::One,
+										  BlendOp::ReverseSubtract, BlendFactor::Zero,
+										  BlendFactor::One, BlendOp::Add),
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}));
+
+	subpassBuilder.addGraphicPipeline("Mul", layout2d->defaultFamily, shaderSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::DstColor, BlendFactor::OneMinusSrcAlpha,
+										  BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
+										  BlendOp::Add),
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}));
+
 	// pipeline for debugging - draw lines instead of triangles
 	subpassBuilder.addGraphicPipeline("DebugTriangles", layout2d->defaultFamily, shaderSpecInfo,
 			PipelineMaterialInfo(BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
@@ -585,6 +602,24 @@ void ShadowPass::makeMaterialSubpass(Queue::Builder &queueBuilder, QueuePassBuil
 			particleSpecInfo,
 			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::One, BlendOp::Add,
 										 BlendFactor::Zero, BlendFactor::One, BlendOp::Add),
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D,
+				PipelineVariant::ParticleQuadMask}));
+
+	// The masked draw's subtractive and multiplying twins, the same equations the base Sub and
+	// Mul pipelines above carry: a builtin-masked emitter can subtract and multiply too
+	subpassBuilder.addGraphicPipeline("Sub_Particle", layout2d->defaultFamily,
+			particleSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::One,
+										 BlendOp::ReverseSubtract, BlendFactor::Zero,
+										 BlendFactor::One, BlendOp::Add),
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D,
+				PipelineVariant::ParticleQuadMask}));
+
+	subpassBuilder.addGraphicPipeline("Mul_Particle", layout2d->defaultFamily,
+			particleSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::DstColor, BlendFactor::OneMinusSrcAlpha,
+										 BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
+										 BlendOp::Add),
 				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D,
 				PipelineVariant::ParticleQuadMask}));
 

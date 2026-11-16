@@ -175,6 +175,28 @@ MaterialInfo ParticleEmitter::getMaterialInfo() const {
 		info.pipeline.setBlendInfo(core::BlendInfo(core::BlendFactor::SrcAlpha,
 				core::BlendFactor::One, core::BlendOp::Add, core::BlendFactor::Zero,
 				core::BlendFactor::One, core::BlendOp::Add));
+	} else if (_blendMode == ParticleBlendMode::Sub) {
+		// Effekseer's AlphaBlend 3, the destination minus the alpha-weighted source: the
+		// reverse-subtract equation is the subtraction that lands on the frame
+		// (out.rgb = dst.rgb·1 − src.rgb·src.a), the regular Subtract one would take the frame
+		// from the source (src − dst). The factors are the additive pair's (SrcAlpha, One)
+		// under that equation - a fading particle subtracts less - and the alpha channel the
+		// pass-through both non-alpha modes keep: the mask's own channel is not a term of the
+		// equation.
+		info.pipeline.setBlendInfo(core::BlendInfo(core::BlendFactor::SrcAlpha,
+				core::BlendFactor::One, core::BlendOp::ReverseSubtract,
+				core::BlendFactor::Zero, core::BlendFactor::One, core::BlendOp::Add));
+	} else if (_blendMode == ParticleBlendMode::Mul) {
+		// Effekseer's AlphaBlend 4, the destination scaled by the source: the factor pair
+		// Effekseer's straight-color shaders carry (DstColor, OneMinusSrcAlpha) - the product
+		// src.rgb·dst.rgb where the particle stands, the factor easing back to One as the
+		// particle's alpha falls, so the transparent edge multiplies by one. A raw (DstColor,
+		// Zero) product would darken by the tint where the mask has already killed the
+		// particle: the draw's rgb is not premultiplied by its own alpha. The alpha channel is
+		// the destination's own, the pass-through `Add` keeps.
+		info.pipeline.setBlendInfo(core::BlendInfo(core::BlendFactor::DstColor,
+				core::BlendFactor::OneMinusSrcAlpha, core::BlendOp::Add,
+				core::BlendFactor::Zero, core::BlendFactor::One, core::BlendOp::Add));
 	}
 	return info;
 }
