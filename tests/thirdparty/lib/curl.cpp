@@ -131,9 +131,14 @@ void performCurlVersionTest() {
 		{CURL_VERSION_ZSTD, "zstd"},
 		{CURL_VERSION_HTTP3, "HTTP3"},
 		{CURL_VERSION_IPV6, "IPv6"},
+#if !SPRT_WASM
 		{CURL_VERSION_ASYNCHDNS, "AsynchDNS"},
+#endif
 	};
 	for (auto &f : features) { check((info->features & f.bit) != 0, f.name); }
+#if SPRT_WASM
+	check((info->features & CURL_VERSION_ASYNCHDNS) == 0, "wasm uses the synchronous resolver");
+#endif
 
 	// The protocol table drives every transfer this file makes.
 	bool haveHttp = false, haveHttps = false, haveFile = false;

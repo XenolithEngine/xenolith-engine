@@ -29,6 +29,11 @@ THE SOFTWARE.
 namespace thirdparty::test {
 
 static const TestCase s_tests[] = {
+	{"dependency_data", &performDependencyDataTest, TestDefault},
+	{"openssl_gcm_siv_regression", &performOpensslGcmSivRegressionTest, TestDefault},
+#if SPRT_LINUX
+	{"dependency_linux", &performDependencyLinuxTest, TestDefault},
+#endif
 	// libcrypto: primitives with published test vectors
 	{"openssl_version", &performOpensslVersionTest, TestDefault},
 	{"openssl_digest", &performOpensslDigestTest, TestDefault},

@@ -24,6 +24,7 @@ THE SOFTWARE.
 #define TESTS_THIRDPARTY_TESTS_H
 
 #include <stddef.h>
+#include <sprt/c/bits/__sprt_def.h>
 
 namespace thirdparty::test {
 
@@ -94,6 +95,13 @@ void performOpensslErrorTest();
 void performOpensslTlsMemoryTest();
 
 //
+// Additional dependency and security regression tests
+void performDependencyDataTest();
+void performOpensslGcmSivRegressionTest();
+#if SPRT_LINUX
+void performDependencyLinuxTest();
+#endif
+
 // curl
 //
 void performCurlVersionTest();

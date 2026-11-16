@@ -80,3 +80,16 @@ MODULE_THIRDPARTY_CURL_FLAGS := -DCURL_STATICLIB -DNGHTTP3_STATICLIB -DNGTCP2_ST
 # archive members are pulled in lazily.
 
 $(call define_module, thirdparty_curl, MODULE_THIRDPARTY_CURL)
+
+# Additional direct data/ABI tests; Expat and libffi are Linux target libraries.
+MODULE_THIRDPARTY_DATA_DEFINED_IN := $(THIRDPARTY_MODULE_DIR)/thirdparty-modules.mk
+MODULE_THIRDPARTY_DATA_LIBS := -l:libsqlite3.a -l:libbrotlienc.a
+MODULE_THIRDPARTY_DATA_SRCS_DIRS :=
+MODULE_THIRDPARTY_DATA_SRCS_OBJS :=
+MODULE_THIRDPARTY_DATA_INCLUDES_DIRS :=
+MODULE_THIRDPARTY_DATA_INCLUDES_OBJS :=
+MODULE_THIRDPARTY_DATA_DEPENDS_ON := thirdparty_curl
+ifeq ($(TARGET_SYSTEM),Linux)
+MODULE_THIRDPARTY_DATA_LIBS += -l:libexpat.a -l:libffi.a
+endif
+$(call define_module, thirdparty_data, MODULE_THIRDPARTY_DATA)

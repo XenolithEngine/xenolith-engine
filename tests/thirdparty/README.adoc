@@ -54,6 +54,9 @@ symbol.
 
 [cols="1,3"]
 |===
+| `dependency_data` | zlib/Brotli versions, compression round trip and truncated input, SQLite rollback/blob/JSON
+| `dependency_linux` | Expat UTF-16 validation, custom-decoder bounds (CVE-2026-124317), and libffi mixed integer/floating-point ABI (Linux only)
+| `openssl_gcm_siv_regression` | empty AAD preserves authentication; short/long IV rejection (CVE-2026-88823/95692)
 | `openssl_version` | linked libcrypto matches the headers; the default provider is available
 | `openssl_digest` | MD5 / SHA-1 / SHA-2 / SHA-3 over `"abc"`; empty input; chunked == one-shot; `EVP_MD_fetch`
 | `openssl_hmac` | RFC 4231 cases 1-2 (SHA-256/512), RFC 2202 case 2 (SHA-1), the same via `EVP_MAC`
@@ -73,7 +76,7 @@ symbol.
 
 [cols="1,3"]
 |===
-| `curl_version` | version matches the headers; TLS backend is OpenSSL; SSL/libz/brotli/zstd/HTTP3/IPv6/AsynchDNS features; protocol table
+| `curl_version` | version matches the headers; TLS backend is OpenSSL; SSL/libz/brotli/zstd/HTTP3/IPv6 features; AsynchDNS (synchronous resolver on wasm); protocol table
 | `curl_easy_options` | `setopt`/`getinfo` round trips, unknown-option rejection, the option metadata table, `duphandle`, `reset`, `strerror`
 | `curl_url_api` | full URL split into parts, relative-reference resolution, scheme requirement, `CURLU_DEFAULT_SCHEME`
 | `curl_escape` | percent-encoding incl. binary input with an embedded NUL, RFC 3986 unreserved set
@@ -91,18 +94,24 @@ symbol.
 .Linux, `x86_64-unknown-linux-gnu`
 [source]
 ----
-257 checks, 0 failures     (with --network; 251 without)
+284 checks, 0 failures     (with --network; 278 without)
 ----
 
 .Windows, `x86_64-pc-windows-msvc` (under wine)
 [source]
 ----
-257 checks, 0 failures     (with --network; 251 without)
+274 checks, 0 failures     (with --network; 268 without)
 ----
 
 All of libcrypto, all of libssl (including a full TLS 1.3 handshake) and all of
 curl -- including the loopback TLS transfer and a real `https://` fetch -- pass
 identically on both targets.
+
+WebAssembly 32 and 64 also pass 257 checks each under the repository's Node
+runner, with `--no-sockets` and without `--network`. These include the in-memory
+TLS handshake, security regressions, compression/SQLite tests, `file://`
+transfers and the multi interface. The wasm curl build disables descriptor-based
+socketpair wakeups and uses its configured synchronous resolver.
 
 == Fixed: the miscompiled strchr that killed TLS on Windows
 

@@ -43,7 +43,8 @@ LOCAL_MODULES ?= \
 	runtime_libc_wrapper \
 	runtime \
 	thirdparty_curl \
-	thirdparty_openssl
+	thirdparty_openssl \
+	thirdparty_data
 
 LOCAL_ROOT = $(abspath $(dir $(LOCAL_MAKEFILE)))
 

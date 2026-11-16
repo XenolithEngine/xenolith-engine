@@ -120,7 +120,12 @@ void performFlockTest() {
 			"LOCK_* have the values every libc gives them");
 
 	errno = 0;
+#if __SPRT_CONFIG_HAVE_FLOCK
 	check(flock(-1, LOCK_EX) == -1 && errno == EBADF, "a bad descriptor is EBADF");
+#else
+	check(flock(-1, LOCK_EX) == -1 && errno == ENOSYS,
+			"an unavailable flock reports ENOSYS");
+#endif
 
 #if defined(__EMBOX__) && !defined(__EMBOX_USER__)
 	const char *path = "/tmp/runtimetest-flock";
