@@ -1031,7 +1031,7 @@ static void testCurves() {
 	frame.hFrames = 4;
 	frame.vFrames = 4;
 	glsl::vec2 uv0, uv1;
-	glsl::particleFrameCell(frame, 5, uv0, uv1);
+	glsl::particleFrameCell(frame.textureRect, frame.hFrames, frame.vFrames, 5, uv0, uv1);
 	checkNear(uv0.x, 0.625f, "frame cell: column 1 starts a quarter into the rect");
 	checkNear(uv1.x, 0.75f, "frame cell: and is a quarter wide");
 	checkNear(uv0.y, 0.25f, "frame cell: row 1 from the top of the image");
@@ -1403,7 +1403,7 @@ static void testPositionCurve() {
 	// they stood
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, positionCurveOffset)), 508,
 			"position curve: the offset word seats at the strip block's padding");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 640,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 656,
 			"position curve: the word map keeps its grown tail, the older words in place");
 
 	::memset(s_extra, 0, sizeof(s_extra));
@@ -1501,7 +1501,7 @@ static void testRingCurve() {
 			"ring curve: the ratio curve's offset word is the fifth");
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringVertexCount)), 580,
 			"ring curve: the count word seats past the curve offsets");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 640,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 656,
 			"ring curve: the band curves' tail grew the word map past the count");
 
 	::memset(s_extra, 0, sizeof(s_extra));
@@ -1617,7 +1617,7 @@ static void testRingBand() {
 			596, "ring band: the middle band's offset word is the second");
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringColorInnerCurveOffset)),
 			600, "ring band: the inner band's offset word is the third");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 640,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 656,
 			"ring band: the word map keeps its tail whole");
 
 	::memset(s_extra, 0, sizeof(s_extra));
@@ -1711,7 +1711,7 @@ static void testRingCrescent() {
 			"ring crescent: the starting fade is the third");
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringFadeTo)), 620,
 			"ring crescent: the ending fade is the fourth");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 640,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 656,
 			"ring crescent: the four degrees end their own stretch, the word map grown past them");
 
 	glsl::ParticleEmitterData emitter;
@@ -1862,7 +1862,7 @@ static void testAngleCurve() {
 	// vec4 alignment's own boundary
 	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, angleCurveOffset)), 624,
 			"angle curve: the offset word seats past the crescent's degrees");
-	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 640,
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 656,
 			"angle curve: the word map keeps its own tail on the alignment's boundary");
 
 	::memset(s_extra, 0, sizeof(s_extra));
@@ -2009,6 +2009,114 @@ static void testAngleCurve() {
 			"angle curve: the crescent's corner's second axis rides the walk");
 }
 
+static void testUvRect() {
+	// The seat contract: the rect's own vec4 seats past the angle curve's offset - the first
+	// word past the tail the stages before this one carried - and the word map's tail carries
+	// the struct to the alignment's own boundary
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, uvRect)), 640,
+			"uv rect: the rect's own vec4 seats past the angle curve's offset");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 656,
+			"uv rect: the word map keeps its own tail on the alignment's boundary");
+
+	// The window's frame standing one second into the simulation: the scroll reads the same
+	// particleSimTime the pass's own shift reads, never a wall clock
+	glsl::ParticleFrameData frame;
+	::memset(&frame, 0, sizeof(frame));
+	frame.textureRect = glsl::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+	frame.dt = 1.0f / 60.0f;
+	frame.genframe = 60;
+	frame.framesInGen = 60;
+
+	glsl::ParticleData particle;
+	::memset(&particle, 0, sizeof(particle));
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+
+	// The absence keeps the UVs the pass always sampled: the zero state's window is the region
+	// itself, and the full [0,0,1,1] - the absence the file never carries - answers the same
+	// window
+	glsl::vec2 uv0, uv1;
+	glsl::particleUvWindow(frame, particle, emitter, uv0, uv1);
+	checkNear(uv0.x, 0.0f, "uv rect: the zero seat opens the region at its left");
+	checkNear(uv0.y, 0.0f, "uv rect: the zero seat opens the region at its top");
+	checkNear(uv1.x, 1.0f, "uv rect: the zero seat closes the region at its right");
+	checkNear(uv1.y, 1.0f, "uv rect: the zero seat closes the region at its bottom");
+	emitter.uvRect = glsl::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+	glsl::particleUvWindow(frame, particle, emitter, uv0, uv1);
+	checkNear(uv0.x, 0.0f, "uv rect: the full rect is the absence, the window the region");
+	checkNear(uv1.x, 1.0f, "uv rect: the full rect closes the window where the region closes");
+	emitter.uvRect = glsl::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+
+	// The plan's own acceptance shape: the left half of the texture - the cut's start at the
+	// region's left edge, its width the region's half, the V the cut leaves whole
+	emitter.uvRect = glsl::vec4(0.0f, 0.0f, 0.5f, 1.0f);
+	glsl::particleUvWindow(frame, particle, emitter, uv0, uv1);
+	checkNear(uv0.x, 0.0f, "uv rect: the cut opens at the region's own left edge");
+	checkNear(uv0.y, 0.0f, "uv rect: the cut opens at the region's own top");
+	checkNear(uv1.x, 0.5f, "uv rect: the cut closes at the half the word names");
+	checkNear(uv1.y, 1.0f, "uv rect: the cut closes at the region's own bottom");
+
+	// The frame grid divides the cut, never the texture around it: two frames across the half
+	// window, the second cell opening at the cut's own middle - the animation frame's answer
+	// riding the same window the grid walks. The particle carries a standing lifetime so the
+	// animation fraction the curve reads is the one the pass reads, no dead seat's NaN, and
+	// the grid's own count is the product the animFrame's curve answers
+	frame.hFrames = 2u;
+	frame.vFrames = 1u;
+	particle.fullLifetime = 600u;
+	particle.currentLifetime = 600u;
+	glsl::particleUvWindow(frame, particle, emitter, uv0, uv1);
+	checkNear(uv0.x, 0.0f, "uv rect: the grid's first cell opens at the cut's own left");
+	checkNear(uv1.x, 0.25f, "uv rect: the grid's first cell is the cut's own half");
+	::memset(&s_extra, 0, sizeof(s_extra));
+	emitter.animFrameCurveOffset = writeCurve(4, 1, {1.0f});
+	glsl::particleUvWindow(frame, particle, emitter, uv0, uv1);
+	checkNear(uv0.x, 0.25f,
+			"uv rect: the second frame opens at the cut's own middle, the grid inside the cut");
+	checkNear(uv1.x, 0.5f, "uv rect: the second frame closes at the cut's own right");
+	frame.hFrames = 0u;
+	emitter.animFrameCurveOffset = 0u;
+
+	// The scroll slides the cut window, never replaces it: a half window at a full second of
+	// simulation time under a half-per-second slide stands at the cut's own right edge, the
+	// slide's whole answer the window the cut named moved
+	emitter.uvScroll = glsl::vec2(0.5f, 0.0f);
+	glsl::particleUvWindow(frame, particle, emitter, uv0, uv1);
+	checkNear(uv0.x, 0.5f, "uv rect: the slide moves the cut window, the cut's left riding it");
+	checkNear(uv1.x, 1.0f, "uv rect: the slide's window stands a half past the cut's own left");
+	emitter.uvScroll = glsl::vec2(0.0f, 0.0f);
+
+	// The birth's flip mirrors the cut window's own U: the cut's edges trade and the window
+	// stays the cut's own span - a flip and a rect compose, neither erasing the other
+	particle.drawFlags = XL_PARTICLE_DRAW_FLAG_FLIP_U;
+	glsl::particleUvWindow(frame, particle, emitter, uv0, uv1);
+	checkNear(uv0.x, 0.5f, "uv rect: the flip mirrors the cut, the window's right at its left");
+	checkNear(uv1.x, 0.0f, "uv rect: the flip mirrors the cut, the window's left at its right");
+	particle.drawFlags = 0u;
+
+	// The ring and the strip read the one text: the window the helper answers is the window
+	// the pass's three call sites sample - the ring's u walking the cut's span along its arc,
+	// the strip's ends the same window's own - and a stepped particle's standing state, the
+	// state the pass draws from, answers the same cut the fresh frame answered
+	Single stepped;
+	stepped.data.uvRect = glsl::vec4(0.0f, 0.0f, 0.5f, 1.0f);
+	stepped.run(30);
+	glsl::particleUvWindow(frame, stepped.p(), stepped.data, uv0, uv1);
+	checkNear(uv0.x, 0.0f, "uv rect: the drawn state's cut opens where the word names");
+	checkNear(uv1.x, 0.5f, "uv rect: the drawn state's cut closes a half in");
+
+	// The rect is a draw word: the step and every particle field stand, the births the
+	// schedule carries - a seated rect moves no position, no lifetime, no birth
+	Single plain;
+	Single cut;
+	cut.data.uvRect = glsl::vec4(0.0f, 0.0f, 0.5f, 1.0f);
+	plain.run(30);
+	cut.run(30);
+	check(plain.p().position.x == cut.p().position.x && plain.p().position.y == cut.p().position.y
+					&& plain.p().currentLifetime == cut.p().currentLifetime,
+			"uv rect: the cut moves no particle field, the step the step always was");
+}
+
 int main(int argc, const char *argv[]) {
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);
@@ -2044,6 +2152,7 @@ int main(int argc, const char *argv[]) {
 	testRingBand();
 	testRingCrescent();
 	testAngleCurve();
+	testUvRect();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 

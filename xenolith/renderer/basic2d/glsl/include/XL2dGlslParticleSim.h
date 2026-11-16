@@ -817,18 +817,56 @@ SP_GLSL_INLINE uint particleAnimFrame(SP_GLSL_IN(ParticleData) particle,
 	return (ret < frames) ? ret : frames - 1u;
 }
 
-// Texture coordinates of an animation frame: the frame's cell of the grid inside textureRect,
-// uv0 at the top left of the image cell, uv1 at the bottom right
-SP_GLSL_INLINE void particleFrameCell(SP_GLSL_IN(ParticleFrameData) frame, uint index,
+// Texture coordinates of an animation frame: the frame's cell of the grid inside the window's
+// own rectangle, uv0 at the top left of the image cell, uv1 at the bottom right. The rectangle
+// is the caller's - the whole region the emitter samples or the cut the uvRect word seats -
+// so the grid divides what the emitter asked for, never the texture whole
+SP_GLSL_INLINE void particleFrameCell(vec4 rect, uint hFrames, uint vFrames, uint index,
 		SP_GLSL_OUT(vec2) uv0, SP_GLSL_OUT(vec2) uv1) {
-	uint h = (frame.hFrames > 0u) ? frame.hFrames : 1u;
-	uint v = (frame.vFrames > 0u) ? frame.vFrames : 1u;
-	float cw = frame.textureRect.z / float(h);
-	float ch = frame.textureRect.w / float(v);
+	uint h = (hFrames > 0u) ? hFrames : 1u;
+	uint v = (vFrames > 0u) ? vFrames : 1u;
+	float cw = rect.z / float(h);
+	float ch = rect.w / float(v);
 	uint col = index % h;
 	uint row = (index / h) % v;
-	uv0 = vec2(frame.textureRect.x + float(col) * cw, frame.textureRect.y + float(row) * ch);
+	uv0 = vec2(rect.x + float(col) * cw, rect.y + float(row) * ch);
 	uv1 = vec2(uv0.x + cw, uv0.y + ch);
+}
+
+// The window the draw samples, quad, ring and strip one text - the pass's three call sites read
+// this one function. The emitter's own uvRect cuts its region out of the emitter's texture
+// region first - the cut's start and size in the region's fractions, so a cut of the whole is
+// the whole and the frame grid divides the cut into its cells, never the texture around it -
+// then the scroll slides the cut window over the texture, then the birth's flip mirrors it in
+// U. Effekseer's UV page, Mode = Fixed: "UV Fixed" - the sampled rectangle's start and size
+// over the texture - and the scroll the same page's own speed words, moving the rectangle
+// already cut, never replacing it. The full [0,0,1,1] is the absence the file never carries
+// and the zero state every old buffer keeps: the cut is the region itself, and a zero width or
+// height word is the rect that cannot take effect - the same fate the zero seat carries, the
+// UVs the pass always sampled. No wall clock: the shift reads particleSimTime's own steps
+SP_GLSL_INLINE void particleUvWindow(SP_GLSL_IN(ParticleFrameData) frame,
+		SP_GLSL_IN(ParticleData) particle, SP_GLSL_IN(ParticleEmitterData) emitter,
+		SP_GLSL_OUT(vec2) uv0, SP_GLSL_OUT(vec2) uv1) {
+	vec4 rect = frame.textureRect;
+	if (emitter.uvRect.z > 0.0f && emitter.uvRect.w > 0.0f
+			&& (emitter.uvRect.x != 0.0f || emitter.uvRect.y != 0.0f || emitter.uvRect.z != 1.0f
+				|| emitter.uvRect.w != 1.0f)) {
+		rect = vec4(frame.textureRect.x + emitter.uvRect.x * frame.textureRect.z,
+				frame.textureRect.y + emitter.uvRect.y * frame.textureRect.w,
+				emitter.uvRect.z * frame.textureRect.z, emitter.uvRect.w * frame.textureRect.w);
+	}
+	particleFrameCell(rect, frame.hFrames, frame.vFrames,
+			particleAnimFrame(particle, emitter, frame.hFrames * frame.vFrames), uv0, uv1);
+	if (emitter.uvScroll.x != 0.0f || emitter.uvScroll.y != 0.0f) {
+		vec2 shift = emitter.uvScroll * particleSimTime(frame);
+		uv0 += shift;
+		uv1 += shift;
+	}
+	if ((particle.drawFlags & XL_PARTICLE_DRAW_FLAG_FLIP_U) != 0u) {
+		float u = uv0.x;
+		uv0.x = uv1.x;
+		uv1.x = u;
+	}
 }
 
 // Godot's scale_curve: the curve multiplies the scale chosen at birth, sampled at the lifetime

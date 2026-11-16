@@ -214,6 +214,15 @@ static Value ParticleSystem_writeVec2(Vec2 v) {
 	return ret;
 }
 
+static Value ParticleSystem_writeVec4(Vec4 v) {
+	Value ret(Value::Type::ARRAY);
+	ret.addDouble(v.x);
+	ret.addDouble(v.y);
+	ret.addDouble(v.z);
+	ret.addDouble(v.w);
+	return ret;
+}
+
 static void ParticleSystem_readRange(const Value &value, StringView key, float min, float max,
 		const Callback<void(float, float)> &setter) {
 	// Keyed checks: an absent key reads as Value::Null, and that counts as a basic type
@@ -564,6 +573,21 @@ void ParticleSystem::apply(const Value &value) {
 			setUvFlip(float(value.getDouble("uvFlip")));
 		}
 
+		if (value.hasValue("uvRect")) {
+			// The rect rides an array of its four numbers the scroll rides its pair: the
+			// numbers clamp to their own 0..1 and a rect that cannot take effect - a zero
+			// width or height word, or the full [0,0,1,1] the absence is - seats nothing.
+			// The explicit null the row's clear writes - and a word of any other kind - clears
+			// the seat, the angle curve's own reading
+			const auto &v = value.getValue("uvRect");
+			if (v.isArray() && v.size() >= 4) {
+				setUvRect(Vec4(float(v.getDouble(0)), float(v.getDouble(1)), float(v.getDouble(2)),
+						float(v.getDouble(3))));
+			} else {
+				setUvRect(Vec4(0.0f, 0.0f, 0.0f, 0.0f));
+			}
+		}
+
 		if (value.isBasicType("start")) {
 			setStart(float(value.getDouble("start")));
 		}
@@ -883,6 +907,13 @@ Value ParticleSystem::encode() const {
 	if (_data->data.uvFlip != 0.0f) {
 		ret.setDouble(_data->data.uvFlip, "uvFlip");
 	}
+	// The seated rect alone: the zero seat and the full [0,0,1,1] are the absence both texts
+	// keep, the key staying out so an old file saves byte for byte
+	if (_data->data.uvRect.z > 0.0f && _data->data.uvRect.w > 0.0f
+			&& (_data->data.uvRect.x != 0.0f || _data->data.uvRect.y != 0.0f
+				|| _data->data.uvRect.z != 1.0f || _data->data.uvRect.w != 1.0f)) {
+		ret.setValue(ParticleSystem_writeVec4(_data->data.uvRect), "uvRect");
+	}
 	if (_data->data.start != 0.0f) {
 		ret.setDouble(_data->data.start, "start");
 	}
@@ -1075,6 +1106,24 @@ void ParticleSystem::setUvFlip(float flip) {
 }
 
 float ParticleSystem::getUvFlip() const { return _data->data.uvFlip; }
+
+void ParticleSystem::setUvRect(Vec4 rect) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the pass follows. Each word
+	// clamps to its own 0..1; a rect that cannot take effect - a zero width or height word,
+	// or the full [0,0,1,1] the absence is - seats nothing: the cut the region itself, the
+	// zero state every old buffer keeps, the width word's own zero fate
+	rect.x = sprt::clamp(rect.x, 0.0f, 1.0f);
+	rect.y = sprt::clamp(rect.y, 0.0f, 1.0f);
+	rect.z = sprt::clamp(rect.z, 0.0f, 1.0f);
+	rect.w = sprt::clamp(rect.w, 0.0f, 1.0f);
+	if (rect.z <= 0.0f || rect.w <= 0.0f
+			|| (rect.x == 0.0f && rect.y == 0.0f && rect.z == 1.0f && rect.w == 1.0f)) {
+		rect = Vec4(0.0f, 0.0f, 0.0f, 0.0f);
+	}
+	mutate().data.uvRect = rect;
+}
+
+Vec4 ParticleSystem::getUvRect() const { return _data->data.uvRect; }
 
 void ParticleSystem::setStart(float seconds) {
 	// Inside ParticleEmitterData, so the emitter re-uploads and the birth schedule follows; a

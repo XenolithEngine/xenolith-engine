@@ -330,6 +330,15 @@ public:
 	void setUvFlip(float);
 	float getUvFlip() const;
 
+	// The sampled window's own rectangle, Effekseer's UV page taken as Mode = Fixed: the start
+	// and the size of the region the pass samples, in the emitter's own texture region's
+	// fractions - the rect cuts the region out, the frame grid divides the cut into its cells,
+	// the uvScroll slides the cut window, the birth's flip mirrors it. Each word clamps to its
+	// 0..1; a zero width or height word - or the full [0,0,1,1], the absence the file never
+	// carries - seats nothing, and the key encode() writes only when a cut stands
+	void setUvRect(Vec4);
+	Vec4 getUvRect() const;
+
 	// Seconds the birth schedule waits before the emitter's own timeline begins, 0 - no wait;
 	// a negative value clamps to that default, and the key encode() writes only when the value
 	// is not it

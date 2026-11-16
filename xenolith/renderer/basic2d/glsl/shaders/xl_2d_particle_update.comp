@@ -135,7 +135,8 @@ void stripDraw(uint index, ParticleFrameData frame) {
 
 	// Each end carries its own tint, the color curve's journey reading along the strip, while
 	// the window is the owner's own: u along the segment, v across the band, the quad's own
-	// corner order and the quad's own scroll, flip and animation frame
+	// corner order and the quad's own window - the cut, the scroll and the flip one helper
+	// reads, the strip's own seats sampling the same window the quad would
 	vec4 tintA = particleColor(particle, emitter);
 	vec4 tintB = particleColor(nextParticle, emitter);
 	const vec4 colorA = tintA * frame.nodeColor;
@@ -143,17 +144,7 @@ void stripDraw(uint index, ParticleFrameData frame) {
 
 	vec2 uv0;
 	vec2 uv1;
-	particleFrameCell(frame, particleAnimFrame(particle, emitter, frame.hFrames * frame.vFrames), uv0, uv1);
-	if (emitter.uvScroll.x != 0.0f || emitter.uvScroll.y != 0.0f) {
-		vec2 shift = emitter.uvScroll * particleSimTime(frame);
-		uv0 += shift;
-		uv1 += shift;
-	}
-	if ((particle.drawFlags & XL_PARTICLE_DRAW_FLAG_FLIP_U) != 0u) {
-		float u = uv0.x;
-		uv0.x = uv1.x;
-		uv1.x = u;
-	}
+	particleUvWindow(frame, particle, emitter, uv0, uv1);
 
 	writeVertex(vertexBuffer, vertexOffset + 0u, bl, vec2(uv0.x, uv1.y), colorA, frame.materialIndex);
 	writeVertex(vertexBuffer, vertexOffset + 1u, tl, vec2(uv0.x, uv0.y), colorA, frame.materialIndex);
@@ -224,28 +215,13 @@ void main() {
 	const vec4 color = vec4(particleTint.x * frame.nodeColor.x, particleTint.y * frame.nodeColor.y,
 			particleTint.z * frame.nodeColor.z, particleTint.w * frame.nodeColor.w);
 
+	// The window the quad, the ring and the strip read one text: the emitter's uvRect cuts its
+	// region out of the texture region, the frame grid divides the cut, the scroll slides the
+	// cut window, the birth's flip mirrors it in U - particleUvWindow above, the one function
+	// the pass's three call sites read
 	vec2 uv0;
 	vec2 uv1;
-	particleFrameCell(frame, particleAnimFrame(particle, emitter, frame.hFrames * frame.vFrames), uv0, uv1);
-
-	// Effekseer's scroll - the rendererCommon page words it "Move the UV range at a constant
-	// speed." (effekseer.github.io, Help_Tool, rendererCommon) - slides the sampled window over
-	// the texture: the emitter's speed in UV per second times the simulation time the frame
-	// stands at, particleSimTime above, never a wall clock. The pair's zero guards the add: a
-	// scroll-less emitter writes the window the cell built, byte for byte
-	if (emitter.uvScroll.x != 0.0f || emitter.uvScroll.y != 0.0f) {
-		vec2 shift = emitter.uvScroll * particleSimTime(frame);
-		uv0 += shift;
-		uv1 += shift;
-	}
-
-	// The mirror the birth drew, Effekseer's own flip probability, turns the window around its
-	// U: the left and the right corners trade their u, the V the scroll left alone
-	if ((particle.drawFlags & XL_PARTICLE_DRAW_FLAG_FLIP_U) != 0u) {
-		float u = uv0.x;
-		uv0.x = uv1.x;
-		uv1.x = u;
-	}
+	particleUvWindow(frame, particle, emitter, uv0, uv1);
 
 	// The corners take the texture as a Sprite does: the top of the quad samples the top of the image
 	if (emitter.ringOuter > 0.0f) {

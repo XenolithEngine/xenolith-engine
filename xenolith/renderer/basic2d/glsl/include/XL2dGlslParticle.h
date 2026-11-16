@@ -458,7 +458,19 @@ struct ParticleEmitterData {
 	uint padding632;
 	uint padding636;
 
-	// [640]
+	// [640-655]
+	// the sampled window's own rectangle, Effekseer's UV page taken as Mode = Fixed - the
+	// start and the size of the region the pass samples, in the emitter's own texture region's
+	// fractions: the rect cuts the region out, the frame grid divides the cut into its cells,
+	// the uvScroll slides the cut window, the birth's flip mirrors it. The full [0,0,1,1] is
+	// the absence the file never carries and the zero state every old buffer keeps - the cut
+	// the region itself, the UVs the pass always sampled - and a zero width or height word is
+	// the rect that cannot take effect, the same fate the zero seat carries. The word seats
+	// past the angle curve's offset - the first word past the tail the stages before this one
+	// carried, the buffer growing at its end the same way
+	vec4 uvRect;
+
+	// [656]
 };
 
 #ifndef SP_GLSL
@@ -466,7 +478,7 @@ struct ParticleEmitterData {
 // struct, and the seating of a new word reads these offsets. The offsets past the attractors are
 // the std430 seats first - a vec2-aligned array or member opens on an 8-byte boundary, and the
 // explicit padding members hold the C++ text to the same numbers
-static_assert(sizeof(ParticleEmitterData) == 640
+static_assert(sizeof(ParticleEmitterData) == 656
 		&& __builtin_offsetof(ParticleEmitterData, colorCurveOffset) == 200
 		&& __builtin_offsetof(ParticleEmitterData, interval) == 252
 		&& __builtin_offsetof(ParticleEmitterData, attractors) == 256
@@ -497,7 +509,8 @@ static_assert(sizeof(ParticleEmitterData) == 640
 	&& __builtin_offsetof(ParticleEmitterData, ringFadeFrom) == 616
 	&& __builtin_offsetof(ParticleEmitterData, ringFadeTo) == 620
 	&& __builtin_offsetof(ParticleEmitterData, angleCurveOffset) == 624
-	&& __builtin_offsetof(ParticleEmitterData, padding628) == 628);
+	&& __builtin_offsetof(ParticleEmitterData, padding628) == 628
+	&& __builtin_offsetof(ParticleEmitterData, uvRect) == 640);
 // The deflector seat is the std430 array stride of the struct: 32, the vec2 alignment's own
 // rounding of the member-wise 28
 static_assert(sizeof(ParticleDeflector) == 32
