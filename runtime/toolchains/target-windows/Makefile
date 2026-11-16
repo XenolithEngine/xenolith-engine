@@ -292,7 +292,8 @@ $(SP_INSTALL_PREFIX)/usr/include/idn2.h: $(MAKE_ROOT)../../include/sprt/compat/i
 	$(MKDIR) $(SP_INSTALL_PREFIX)/usr/include
 	cp -f $< $@
 
-$(SP_INSTALL_PREFIX)/usr/lib/curl-openssl.lib: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/ssl.lib $(SP_INSTALL_PREFIX)/usr/lib/ngtcp2.lib $(SP_INSTALL_PREFIX)/usr/lib/nghttp3.lib $(SP_INSTALL_PREFIX)/usr/include/idn2.h
+$(SP_INSTALL_PREFIX)/usr/lib/curl-openssl.lib: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/ssl.lib $(SP_INSTALL_PREFIX)/usr/lib/ngtcp2.lib $(SP_INSTALL_PREFIX)/usr/lib/nghttp3.lib $(SP_INSTALL_PREFIX)/usr/include/idn2.h \
+		$(SP_INSTALL_PREFIX)/usr/lib/z.lib $(SP_INSTALL_PREFIX)/usr/lib/zstd.lib $(SP_INSTALL_PREFIX)/usr/lib/brotlienc.lib
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
 $(SP_INSTALL_PREFIX)/usr/lib/iwasm-release.lib $(SP_INSTALL_PREFIX)/usr/lib/iwasm-debug.lib: $(MAKE_ROOT)wamr.mk $(SP_INSTALL_PREFIX)/usr/lib/z.lib

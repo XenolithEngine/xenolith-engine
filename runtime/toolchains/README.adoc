@@ -216,6 +216,159 @@ updating that too, on a host with `gpg` installed:
 Verification failures are not build breakage to route around. A SHA-256 mismatch
 or a bad signature is the check doing its job; find out why before changing a pin.
 
+## Target dependency refresh (16 November 2026)
+
+The regular Linux, Windows, Android, Apple and WebAssembly target dependencies
+use the following source pins. OS/RTOS targets and Mesa are outside this refresh;
+the compiler/bootstrap, libc, vendor SDK and Unicode-reference versions stay unchanged.
+The e2k libffi backend remains the MCST fork.
+
+[cols="1,2",options="header"]
+|===
+|Dependency |Version
+|zlib |1.4
+|Brotli |1.2.1
+|libjpeg-turbo |3.2.1
+|libpng |1.6.59
+|FreeType |2.15.0 (includes the former CVE-2026-50811 backport)
+|HarfBuzz |15.1.0
+|SQLite |3.54.1, amalgamation 3540100
+|nghttp3 / ngtcp2 |1.19.0 / 1.26.0
+|curl |8.23.0, OpenSSL backend with HTTP/3
+|OpenSSL |3.5.9 LTS plus five upstream security fixes listed below
+|libffi / Expat |3.8.1 / 2.10.0 plus the upstream CVE-2026-124317 fix
+|Vulkan SDK repositories |1.4.363.0; ValidationLayers hotfix 1.4.363.1
+|CA bundle |cacert-2026-11-05.pem plus the three pinned Russian Trusted CA certificates
+|===
+
+Both `replacements/curl/cacert.pem` and the embedded
+`stappler/network/SPNetworkCABundle.cc` carry the same 118 Mozilla certificates
+and three Russian Trusted CA certificates. The latter three keep their previous
+DER fingerprints.
+
+OpenSSL 3.5.10 is not released at the refresh date. The patches under
+`replacements/openssl/3.5.9-security/` are the upstream 3.5-branch commits linked
+from https://openssl-library.org/news/vulnerabilities-3.5/[the OpenSSL advisory index]:
+CVE-2026-88822, CVE-2026-88823, CVE-2026-95691, CVE-2026-95692 and CVE-2026-107496.
+Retire them when upgrading to a release that includes those commits. This keeps
+ENGINE support for the GOST engine. The Brotli, zlib, libpng, FreeType, HarfBuzz,
+curl, libffi and Expat updates also include upstream security fixes; upstream
+Expat still https://github.com/libexpat/libexpat/issues/1160[lists known issues], so this refresh does not imply that every CVE
+in every feature of every dependency is resolved.
+
+Expat's `replacements/expat/2.10.0-security/` series backports
+https://github.com/libexpat/libexpat/pull/1492[upstream PR #1492]
+(commits `bf26290d2f021111cf806753dcb87d165f53571b` and
+`3d77567612994172f9d09b46f31bb604e16fb08d`). This closes an overread in custom
+encoding diagnostics, scheduled upstream for 2.11.0. The matching regression
+fails against stock 2.10.0 and passes with the backport. CVE-2026-128241 affects
+the `xmlwf` tool, which the target recipe does not build.
+
+Archives with detached signatures were verified using the keys already pinned
+under `keys/`; unsigned archives have new SHA-256 pins and git sources have
+both tag and commit pins in `src.mk`. The Brotli LoongArch and HarfBuzz e2k128
+patches still apply. The Vulkan Loader Tau patch changes context only for the
+new loader release. zlib's installed static archive keeps the consumer name
+`z.lib` / `libz.a`, including correct installed CMake exports. FreeType keeps
+static HarfBuzz integration (with an FT-free HarfBuzz bootstrap for an empty
+sysroot), and WAMR reuses the SIMDe source pin instead of fetching another copy.
+
+The direct third-party harness now checks SQLite transactions/JSON, Brotli
+round trips and truncated input, Expat malformed UTF-16 and custom-decoder bounds, libffi mixed argument
+calling conventions, and the OpenSSL empty-AAD / invalid-IV security regressions.
+The Expat/libffi checks are Linux-only because those libraries are not shipped
+in the Windows target.
+
+### Build verification
+
+The refreshed libraries were built through `xenolith-cli`, reusing the installed
+compiler, system libraries and vendor SDKs. Local exports are under
+`runtime/toolchains/targets/`; the isolated build trees are under
+`runtime/toolchains/intermediate/refresh-20261116/`. These are local build
+artifacts, not a signed SDK release or a replacement of the configured SDK.
+
+[cols="2,1",options="header"]
+|===
+|Target family |Successful exports
+|Linux glibc / musl, four architectures each |8
+|Linux e2k32 / e2k64 / e2k128 |3
+|Windows x86_64 / aarch64, static and `+dll` |4
+|macOS, macOS `+open`, iOS device and simulators |7
+|Standalone Android, four architectures |4
+|Android NDK bundle, four ABIs |1
+|WebAssembly 32 / 64 |2
+|===
+
+All 29 exports passed architecture inspection (1218 static/import archives).
+Version checks passed for 189 dependency headers; the 30 existing C++/runtime
+archives and 226 compiler-rt archives compared with the installed SDK stayed
+byte-identical. The `+dll` exports carry the rebuilt current sprt DLL and its
+import library. glslang and SPIRV-Tools from the new SDK were built separately
+for the Linux host and used for the shader checks.
+
+The compiler's 363 exported unwind, sanitizer, profiling and related headers
+also match the original SDK; they are not part of the dependency overlay.
+
+The direct dependency tests pass with network checks enabled: 284 checks on
+Linux and 274 under Wine, including a verified HTTPS transfer and the local
+TLS handshake. Upstream Brotli tests pass on both platforms (12/12 each).
+The OpenSSL EC, QUIC-stream and QUIC state-machine suites pass on Linux.
+Both tessellation goldens pass on Linux and under Wine without changing their
+reference files; Vulkan compute runs real checks on both platforms. The libc
+comparison gives identical output for all 78 common cases; the Windows-only
+`io_msvc` case runs successfully on Windows and prints a skip on Linux.
+
+`tests/run-checks.py -j4` passes all 12 selected jobs (22,828,860 checks).
+The full Linux run executes 74 jobs and 130,188,037 checks. Ten UI jobs fail
+under concurrent load; every one passes when repeated individually with
+`full --only <check> -j1`. The initial full run is retained as a failed run,
+not relabelled green. Three jobs are explicitly skipped: `tauwsitest` needs
+the excluded Mesa/Tau headers, and `wgpucompute` / `flowwgpu` need a
+`libwgpu_native.so` absent from the installed SDK.
+
+The pre-commit full rerun at `-j2` executes 74 jobs and 130,188,333 checks,
+with one failed job: `remote-render-check.py` captures four correct square
+images in its three-second window but requires at least five. Its subsequent
+standalone run passes all 15 checks, as does a separately built original-SDK
+baseline. The failed full run remains recorded rather than labelled green.
+
+Windows runtime verification was also compared with the original installed SDK.
+Both builds have the same failures: `libc_at` (`faccessat`/ENOTDIR),
+`runtime_address_wait`, and timeouts in `runtime_dispatch` and `libc_setjmp`;
+the other 52 runtime cases pass. Stappler's `ForceContainer` configuration cannot
+exercise the suite under Wine, so the console validation uses
+`APPCONFIG_APP_PATH_COMMON=0`. It runs 3208 successful checks and the same 13
+failing assertions with either SDK: application-directory writes and invoking
+the external Windows `unzip` program. These results are not reported as green
+Windows suites and their runtime implementations are outside this refresh.
+
+WebAssembly execution was checked with Node.js 24.22.1 and the repository's
+`runtime/wasm-js/run-node.mjs` host, using clean builds against the refreshed
+sysroots. Both wasm32 and wasm64 pass 257 direct dependency checks (including
+the OpenSSL security regressions and an in-memory TLS handshake), 3191 Stappler
+checks, and the bundled-file smoke test. All 56 runtime cases exit successfully
+on each target, retaining their explicit platform skips (processes, sockets,
+setjmp, Windows-only checks and unavailable locales; wasm64 probes also skip on
+wasm32). Both libc runs execute 76 cases without traps and produce identical
+output. The wasm64 high-memory test actually allocates above 4 GiB and verifies
+memory operations, file reads, random bytes, thread stacks and mutexes there.
+The optional external KDL suite is absent; loopback TCP and public HTTPS tests
+are excluded because the wasm host has no socket backend. These are Node
+console checks, not browser/WebGPU validation.
+
+These runs found that curl's descriptor-based multi wakeup initialization fails
+on the wasm libc and presents as an out-of-memory error, including with the
+original SDK. The wasm curl recipe now disables socketpair wakeups; `file://`
+transfers and the multi interface pass on both pointer widths. The feature test
+also checks the synchronous resolver that this target explicitly configures.
+The same harness still passes all 284 Linux and 274 Wine network checks.
+The installed CLI does not register wasm64 as an available target, so its
+builds use a maintenance project driven by the CLI, forwarding the explicit
+wasm64 target and sysroot to the existing make recipes.
+
+The local validation summary, raw logs and source/signature provenance are in
+`runtime/toolchains/tmp/refresh-validation-20261116/`.
+
 ## Code style
 
 Most of the build scripts here can be used both in the GNU environment and in PowerShell on Windows. For this purpose, standard commands (cp, rm, and others) are implemented as functions `rule_*`, which ensures their uniform behavior.

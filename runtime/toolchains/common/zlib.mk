@@ -26,7 +26,6 @@ include ../common/configure.mk
 
 CONFIGURE := \
 	$(CONFIGURE_CMAKE) \
-	-DZLIB_BUILD_EXAMPLES=OFF \
 	-DZLIB_BUILD_TESTING=Off \
 	-DZLIB_BUILD_EXAMPLES=Off \
 	-DZLIB_BUILD_SHARED=Off \
@@ -42,7 +41,5 @@ all:
 	cd $(LIBNAME); cmake --build . --parallel
 	cd $(LIBNAME); cmake --install .
 	$(call rule_rm,$(LIBNAME))
-	$(if $(WINDOWS),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/zlib.lib))
-	$(if $(WINDOWS),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/zs.lib,$(SP_INSTALL_PREFIX)/usr/lib/z.lib))
 
 .PHONY: all

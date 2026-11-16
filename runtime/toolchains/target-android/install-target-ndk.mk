@@ -100,7 +100,7 @@ ALL_ARCH_LIBS := \
 $(ANDROID_TARGET):
 	mkdir -p $(ANDROID_TARGET)/include
 	mkdir -p $(addprefix $(ANDROID_TARGET)/lib/,$(ARCH_TARGET_DIRS))
-	mkdir $(sort $(dir $(ALL_ARCH_FILES)))
+	mkdir -p $(sort $(dir $(ALL_ARCH_FILES)))
 	cp -rf $(TOOLCHAIN_INTERMEDIATE)/x86_64-ndk-linux-android/usr/include/* $(ANDROID_TARGET)/include
 	rm $(FILES_TO_REMOVE)
 

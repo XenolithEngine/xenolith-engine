@@ -27,7 +27,7 @@ include ../common/configure.mk
 TARGET_LDFLAGS := $(SPIRV_EXTRA_LINKER_FLAGS)
 
 ifdef LINUX
-TARGET_LDFLAGS +=  -Wl,--gc-sections -lc++ -lc++abi
+TARGET_LDFLAGS +=  -Wl,--gc-sections -lc++ -lc++abi -lm
 endif
 
 ifdef ANDROID
@@ -49,7 +49,7 @@ CONFIGURE := \
 
 all:
 	$(call rule_rm,$(LIBNAME))
-	$(MKDIR) $(LIBNAME) | Out-Null
+	$(call rule_mkdir,$(LIBNAME))
 	cd $(LIBNAME); cmake -G "Ninja" $(LIB_SRC_DIR)/$(LIBNAME) $(CONFIGURE);
 	cd $(LIBNAME); cmake --build .
 	cd $(LIBNAME); cmake --install .

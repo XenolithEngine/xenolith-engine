@@ -30,7 +30,18 @@ CONFIGURE := \
     -D FT_REQUIRE_BZIP2=TRUE \
     -D FT_REQUIRE_PNG=TRUE \
     -D FT_REQUIRE_HARFBUZZ=TRUE \
+    -D FT_DYNAMIC_HARFBUZZ=FALSE \
     -D FT_REQUIRE_BROTLI=TRUE \
+
+# FreeType's auto-hinter needs HarfBuzz, while the final HarfBuzz needs FreeType.
+# A fresh sysroot starts with an FT-free HarfBuzz; the target's regular HarfBuzz
+# rule rebuilds it with FT after this archive has been installed.
+ifeq ($(wildcard $(SP_INSTALL_PREFIX)/usr/lib/libharfbuzz.a $(SP_INSTALL_PREFIX)/usr/lib/harfbuzz.lib),)
+all: bootstrap-harfbuzz
+bootstrap-harfbuzz:
+	$(MAKE) -f ../common/harfbuzz.mk HB_WITH_FREETYPE=Off
+.PHONY: bootstrap-harfbuzz
+endif
 
 all:
 	$(call rule_rm,$(LIBNAME))

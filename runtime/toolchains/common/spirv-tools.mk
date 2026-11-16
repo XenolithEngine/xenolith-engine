@@ -28,7 +28,7 @@ TARGET_LDFLAGS := $(SPIRV_EXTRA_LINKER_FLAGS)
 TARGET_CFLAGS := $(CONFIGURE_CMAKE_C_FLAGS_INIT)
 
 ifdef LINUX
-TARGET_LDFLAGS +=  -Wl,--gc-sections -lc++ -lc++abi
+TARGET_LDFLAGS +=  -Wl,--gc-sections -lc++ -lc++abi -lm
 TARGET_CFLAGS += -ffunction-sections -fdata-sections
 endif
 

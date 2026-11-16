@@ -62,7 +62,7 @@ CONFIGURE := \
 	-DENABLE_UNICODE=On \
 	-DCURL_DISABLE_LDAP=On \
 	-DCURL_STATIC_CRT=On \
-	-DCURL_CA_BUNDLE="$(realpath ../replacements/curl/cacert.pem)"
+	-DCURL_CA_BUNDLE="$(realpath $(LIB_SRC_DIR)/../replacements/curl/cacert.pem)"
 
 # IDN comes from the runtime's own UTS-46 engine, which exports the libidn2 C ABI
 # (runtime/src/idn/SPRuntimeIdn2Api.cpp) on every target. That replaces what used to
@@ -101,12 +101,14 @@ CONFIGURE += \
 endif
 
 ifdef WASM
+# The wasm libc has no pipe/socketpair wakeup descriptors for curl_multi_poll.
 CONFIGURE += \
 	-DOPENSSL_ROOT_DIR=$(SP_INSTALL_PREFIX)/usr \
 	-DOPENSSL_CRYPTO_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libcrypto.a \
 	-DOPENSSL_SSL_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
 	-DOPENSSL_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/usr/include \
 	-DCURL_DISABLE_NETRC=ON \
+	-DCURL_DISABLE_SOCKETPAIR=ON \
 	-DCURL_USE_LIBPSL=OFF \
 	-DENABLE_THREADED_RESOLVER=OFF
 endif

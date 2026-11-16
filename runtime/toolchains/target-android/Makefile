@@ -303,7 +303,7 @@ $(SP_INSTALL_PREFIX)/usr/lib/libbrotlienc.a: ../common/brotli.mk
 $(SP_INSTALL_PREFIX)/usr/lib/libjpeg.a: ../common/libjpeg-turbo.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/lib/libpng16.a: ../common/libpng.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libpng16.a: ../common/libpng.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/libgif.a: ../common/gif.mk
@@ -344,6 +344,7 @@ $(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a:  ../common/gost.mk $(SP_INSTALL_P
 $(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
 		$(SP_INSTALL_PREFIX)/usr/lib/libngtcp2.a \
 		$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a \
+		$(SP_INSTALL_PREFIX)/usr/lib/libz.a $(SP_INSTALL_PREFIX)/usr/lib/libzstd.a $(SP_INSTALL_PREFIX)/usr/lib/libbrotlienc.a \
 		$(SP_INSTALL_PREFIX)/usr/include/idn2.h
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 

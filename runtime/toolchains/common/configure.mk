@@ -67,6 +67,11 @@ override SP_TOOLCHAIN_PREFIX :=
 SP_TARGET_FLAGS := $(if $(filter e2k32,$(SP_ARCH)),-m32,$(if $(filter e2k128,$(SP_ARCH)),-m128,))
 else
 SP_TARGET_FLAGS := --target=$(SP_TARGET_TRIPLE)
+ifdef ANDROID
+# CMake's NDK compiler uses an API-qualified target. An unversioned --target
+# later on the command line would override it and make clang look for API 0 CRTs.
+SP_TARGET_FLAGS := --target=$(SP_TARGET_TRIPLE)$(ANDROID_PLATFORM_LEVEL)
+endif
 endif
 
 SP_CFLAGS := $(SP_OPT) $(SP_USER_CFLAGS) $(SP_TARGET_FLAGS) -isystem $(SP_INSTALL_PREFIX)/usr/include

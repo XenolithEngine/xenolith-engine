@@ -262,6 +262,7 @@ $(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk \
 		$(SP_INSTALL_PREFIX)/usr/lib/libngtcp2.a \
 		$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a \
 		$(SP_INSTALL_PREFIX)/usr/lib/libz.a \
+		$(SP_INSTALL_PREFIX)/usr/lib/libzstd.a $(SP_INSTALL_PREFIX)/usr/lib/libbrotlienc.a \
 		$(SP_INSTALL_PREFIX)/usr/include/idn2.h
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 

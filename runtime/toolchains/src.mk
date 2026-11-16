@@ -95,19 +95,20 @@ LIBS = \
 	plasma-wayland-protocols \
 	libdrm
 
-# One tag drives every Khronos repository below; they are released together and
-# mixing SDK versions across them is not supported upstream.
-VULKAN_SDK_VER := 1.4.357.0
+# The Khronos repositories use the same SDK release. ValidationLayers has an
+# additional .1 SDK hotfix, pinned separately below.
+VULKAN_SDK_VER := 1.4.363.0
 
 
-# https://www.zlib.net/ # revised: 25 sep 2026
-zlib_URL    := https://www.zlib.net/zlib-1.3.2.tar.gz
-zlib_SHA256 := bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16
+# https://www.zlib.net/ # revised: 16 nov 2026
+zlib_URL    := https://www.zlib.net/zlib-1.4.tar.gz
+zlib_SHA256 := 02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584
 zlib_SIG    := .asc
 zlib_KEY    := zlib
 
 $(SRC_ROOT)/zlib: | prepare
 	$(call sp_fetch_tar,zlib)
+	$(call sp_patch,zlib,zlib/0001-stable-static-archive-name.patch)
 
 # https://sourceware.org/bzip2/downloads.html # revised: 25 sep 2026
 bzip2_URL    := https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz
@@ -139,9 +140,9 @@ zstd_KEY    := zstd
 $(SRC_ROOT)/zstd: | prepare
 	$(call sp_fetch_tar,zstd)
 
-# https://github.com/libjpeg-turbo/libjpeg-turbo/releases # revised: 25 sep 2026
-libjpeg-turbo_URL    := https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz
-libjpeg-turbo_SHA256 := 6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e
+# https://github.com/libjpeg-turbo/libjpeg-turbo/releases # revised: 16 nov 2026
+libjpeg-turbo_URL    := https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.1/libjpeg-turbo-3.2.1.tar.gz
+libjpeg-turbo_SHA256 := c27ad72a68da151177929aa969ae773a2da5ac2af9ce946079314fdac8cece7f
 libjpeg-turbo_SIG    := .sig
 libjpeg-turbo_KEY    := libjpeg-turbo
 
@@ -149,10 +150,10 @@ $(SRC_ROOT)/libjpeg-turbo: | prepare
 	$(call sp_fetch_tar,libjpeg-turbo)
 
 # Move to github source releases; sourceforge distribution can block downloads from Russia
-# https://github.com/pnggroup/libpng # revised: 25 sep 2026
+# https://github.com/pnggroup/libpng # revised: 16 nov 2026
 libpng_REPO       := https://github.com/pnggroup/libpng.git
-libpng_TAG        := v1.6.58
-libpng_COMMIT     := 3061454d980de7d53608f594194cfac722721d2a
+libpng_TAG        := v1.6.59
+libpng_COMMIT     := cd952f49f95bb27154ae77dbb103032d95f6e580
 libpng_DEPTH      := 1
 libpng_SUBMODULES := 1
 
@@ -211,70 +212,67 @@ tiff_KEY    := tiff
 $(SRC_ROOT)/tiff: | prepare
 	$(call sp_fetch_tar,tiff)
 
-# https://github.com/google/brotli/releases # revised: 25 sep 2026
+# https://github.com/google/brotli/releases # revised: 16 nov 2026
 # TODO: Move to git release
 # Supply chain: this is a GitHub-generated tag archive, which upstream neither signs
 #  nor publishes a checksum for; the SHA-256 pin is the whole of the verification.
 #  Moving to a git clone with a _COMMIT pin would be strictly better - see the TODO.
-brotli_URL    := https://github.com/google/brotli/archive/refs/tags/v1.2.0.tar.gz
-brotli_SHA256 := 816c96e8e8f193b40151dad7e8ff37b1221d019dbcb9c35cd3fadbfe6477dfec
+brotli_URL    := https://github.com/google/brotli/archive/refs/tags/v1.2.1.tar.gz
+brotli_SHA256 := 98d35d11a78dc453aebb7d10c3748f3f73ff78c8267c0dc697b8631f67bf7e8f
 
 $(SRC_ROOT)/brotli: | prepare
 	$(call sp_fetch_tar,brotli)
 	$(call sp_patch,brotli,brotli/0001-no-model-small-on-loongarch.patch)
 
-# https://github.com/ngtcp2/nghttp3/releases # revised: 25 sep 2026
-nghttp3_URL    := https://github.com/ngtcp2/nghttp3/releases/download/v1.18.0/nghttp3-1.18.0.tar.xz
-nghttp3_SHA256 := aad782c23d3f01bd4bb52c8bac7a553b631ef8115fd1612703df6183449fef19
+# https://github.com/ngtcp2/nghttp3/releases # revised: 16 nov 2026
+nghttp3_URL    := https://github.com/ngtcp2/nghttp3/releases/download/v1.19.0/nghttp3-1.19.0.tar.xz
+nghttp3_SHA256 := 228e17f5cc3d4de7bfced9912bd09de30e7f45741cc47503cf88d3fa9209e155
 nghttp3_SIG    := .asc
 nghttp3_KEY    := tatsuhiro-t
 
 $(SRC_ROOT)/nghttp3: | prepare
 	$(call sp_fetch_tar,nghttp3)
 
-# https://github.com/ngtcp2/ngtcp2/releases # revised: 25 sep 2026
-ngtcp2_URL    := https://github.com/ngtcp2/ngtcp2/releases/download/v1.25.0/ngtcp2-1.25.0.tar.xz
-ngtcp2_SHA256 := 2a34d2484ba17847a5d11965704e9dd0fac4c6d8efc75ffe1ec7de66d8c6b6fb
+# https://github.com/ngtcp2/ngtcp2/releases # revised: 16 nov 2026
+ngtcp2_URL    := https://github.com/ngtcp2/ngtcp2/releases/download/v1.26.0/ngtcp2-1.26.0.tar.xz
+ngtcp2_SHA256 := 7804aa0fa1c39942ba322a90805824c37231f7675b08d0c3cc4332858a7b085e
 ngtcp2_SIG    := .asc
 ngtcp2_KEY    := tatsuhiro-t
 
 $(SRC_ROOT)/ngtcp2: | prepare
 	$(call sp_fetch_tar,ngtcp2)
 
-# https://curl.se/download.html # revised: 25 sep 2026
-# Security: 8.22.0 fixes nine CVEs present in 8.21.0. Reachable in our configuration:
-#  CVE-2026-19931 (Negotiate connection reuse; Windows, where SSPI stays on),
-#  CVE-2026-80255 (Set-Cookie Secure flag), CVE-2026-80229 (OpenSSL provider UAF),
-#  CVE-2026-80230 and CVE-2026-80231 (conditional). The rest need HTTP/2, libpsl,
-#  wolfSSL or LDAP, none of which are built.
-curl_URL    := https://curl.se/download/curl-8.22.0.tar.xz
-curl_SHA256 := f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7
+# https://curl.se/download.html # revised: 16 nov 2026
+# Security: 8.23.0 fixes the October advisory, including CVE-2026-86414
+#  (proxy credentials), cookie/HSTS and connection-reuse issues. CVE-2026-92392
+#  requires HTTP/2; common/curl.mk disables nghttp2.
+curl_URL    := https://curl.se/download/curl-8.23.0.tar.xz
+curl_SHA256 := 8dadd7d2536a314f982ad05a651b713f426bf7d02cc2c76cffb9796f2218e6c5
 curl_SIG    := .asc
 curl_KEY    := curl
 
 $(SRC_ROOT)/curl: | prepare
 	$(call sp_fetch_tar,curl)
 
-# https://deac-fra.dl.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz # revised: 25 sep 2026
-# Security: 2.14.3 is the latest release; backport CVE-2026-50811 (the fix is only
-#  on master, no upstream release carries it yet)
+# https://deac-fra.dl.sourceforge.net/project/freetype/freetype2/2.15.0/freetype-2.15.0.tar.xz # revised: 16 nov 2026
+# Security: 2.15.0 includes CVE-2026-50811 (TT_Get_Var_Design bounds;
+#  the local backport is retired) and CVE-2026-95512 (CID resource exhaustion).
 # The URL names one SourceForge mirror rather than the redirector, which hands out
 #  hosts that are unreachable from some networks. The mirror only serves bytes: the
 #  signature is Werner Lemberg's, so a substituted mirror copy fails verification.
-freetype_URL    := https://deac-fra.dl.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz
-freetype_SHA256 := 36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f
+freetype_URL    := https://deac-fra.dl.sourceforge.net/project/freetype/freetype2/2.15.0/freetype-2.15.0.tar.xz
+freetype_SHA256 := 93cd47eb719c325107f2d3cf087d06299e944c3b48a40b55537302304dea1dd5
 freetype_SIG    := .sig
 freetype_KEY    := freetype
 
 $(SRC_ROOT)/freetype: | prepare
 	$(call sp_fetch_tar,freetype)
-	$(call sp_patch,freetype,freetype/0001-CVE-2026-50811-ttgxvar-bound-TT_Get_Var_Design.patch)
 
-# https://github.com/harfbuzz/harfbuzz/releases/ # revised: 25 sep 2026
+# https://github.com/harfbuzz/harfbuzz/releases/ # revised: 16 nov 2026
 # TODO: Move to git release
 # Supply chain: harfbuzz release assets are unsigned; pinned by SHA-256 only.
-harfbuzz_URL    := https://github.com/harfbuzz/harfbuzz/releases/download/14.5.0/harfbuzz-14.5.0.tar.xz
-harfbuzz_SHA256 := b7132e148358a45185c9feafd049dbaf243649d3c44414b3534d9c95d18592b9
+harfbuzz_URL    := https://github.com/harfbuzz/harfbuzz/releases/download/15.1.0/harfbuzz-15.1.0.tar.xz
+harfbuzz_SHA256 := 0fc7c565443a5f4be7da65ac5ee5bd737d9b158dc908708b7689a0a5796b0c8d
 
 $(SRC_ROOT)/harfbuzz: | prepare
 	$(call sp_fetch_tar,harfbuzz)
@@ -291,35 +289,39 @@ sheenbidi_DEPTH  := 1
 $(SRC_ROOT)/sheenbidi: | prepare
 	$(call sp_fetch_clone,sheenbidi)
 
-# https://www.sqlite.org/download.html # revised: 25 sep 2026
+# https://www.sqlite.org/download.html # revised: 16 nov 2026
 # Weak supply chain validation: only sha3 provided upstream, so the SHA-256 pinned
 #  here is ours - computed once from a reviewed download and kept in git.
 # Security: CVE-2026-50812 / CVE-2026-50813 are both in the Session Extension; common/sqlite.mk
 #  compiles the amalgamation with no -D at all, so SQLITE_ENABLE_SESSION is off - N/A.
 # The versioned directory inside the zip (sqlite-amalgamation-NNNNNNN) is stripped by
 #  the fetcher, so the release number appears in one place only - the URL.
-sqlite_URL    := https://www.sqlite.org/2026/sqlite-amalgamation-3530400.zip
-sqlite_SHA256 := 1e71ddf93849c6a6ecf58b827c0692073d2dd7ee40196158068f7b29f422e87d
+sqlite_URL    := https://www.sqlite.org/2026/sqlite-amalgamation-3540100.zip
+sqlite_SHA256 := 0a9c8e34352dad46006aa82836d5383bff9dc6bc9ce5a60553c05aa30e6ad1f9
 
 $(SRC_ROOT)/sqlite: | prepare
 	$(call sp_fetch_zip,sqlite)
 
 # Use 3.5 LTS until new LTS
-# https://openssl-library.org/source/index.html # revised: 25 sep 2026
-# Security: 3.5.8 fixes the ten CVEs of the 2026-08-25 advisory. The ones a client can
-#  reach are CVE-2026-63075 (QUIC ACK-only packet retention), CVE-2026-75803 (AEAD
-#  forgery with an empty ciphertext via EVP_Cipher()) and, for CMS users,
-#  CVE-2026-63072; the QUIC-server, CMP and DTLS ones are not reachable here.
-# 3.5.8 is the first release signed by the rotated release key - see keys/README.adoc.
+# https://openssl-library.org/source/index.html # revised: 16 nov 2026
+# Security: 3.5.9 includes the September fixes. The five public fixes from
+#  https://openssl-library.org/news/secadv/20261110.txt are backported below:
+#  CVE-2026-88822, CVE-2026-88823, CVE-2026-95691, CVE-2026-95692,
+#  CVE-2026-107496. Drop the series when 3.5.10 is released.
 # OpenSSL 4.0 removed ENGINE support, which openssl-gost-engine below depends on; the
 #  next LTS move needs the gost provider instead.
-openssl_URL    := https://github.com/openssl/openssl/releases/download/openssl-3.5.8/openssl-3.5.8.tar.gz
-openssl_SHA256 := a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2
+openssl_URL    := https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz
+openssl_SHA256 := 603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
 openssl_SIG    := .asc
 openssl_KEY    := openssl
 
 $(SRC_ROOT)/openssl: | prepare
 	$(call sp_fetch_tar,openssl)
+	$(call sp_patch,openssl,openssl/3.5.9-security/0001-CVE-2026-88822.patch)
+	$(call sp_patch,openssl,openssl/3.5.9-security/0002-CVE-2026-88823.patch)
+	$(call sp_patch,openssl,openssl/3.5.9-security/0003-CVE-2026-95691.patch)
+	$(call sp_patch,openssl,openssl/3.5.9-security/0004-CVE-2026-95692.patch)
+	$(call sp_patch,openssl,openssl/3.5.9-security/0005-CVE-2026-107496.patch)
 	$(call rule_cp,replacements/openssl/async_posix.c,$(SRC_ROOT)/openssl/crypto/async/arch/async_posix.c)
 	$(call rule_cp,replacements/openssl/49-xwin-clang.conf,$(SRC_ROOT)/openssl/Configurations)
 	$(call rule_cp,replacements/openssl/50-wasm-sprt-clang.conf,$(SRC_ROOT)/openssl/Configurations)
@@ -349,54 +351,54 @@ wasm-micro-runtime_SUBMODULES := 1
 $(SRC_ROOT)/wasm-micro-runtime: | prepare
 	$(call sp_fetch_clone,wasm-micro-runtime)
 
-# The Khronos repositories below are all cut from the same SDK tag. Khronos does not
+# The Khronos repositories below are cut from the same SDK release. Khronos does not
 # sign the tags, so each one carries the commit that tag pointed at when the SDK was
 # adopted; `make src-pins` re-resolves them all when VULKAN_SDK_VER moves.
 
-# https://github.com/KhronosGroup/Vulkan-Headers # revised: 25 sep 2026
+# https://github.com/KhronosGroup/Vulkan-Headers # revised: 16 nov 2026
 vulkan-headers_REPO       := https://github.com/KhronosGroup/Vulkan-Headers.git
 vulkan-headers_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
-vulkan-headers_COMMIT     := e3b1eec08173d6b825cd3ac88c885a63b621504a
+vulkan-headers_COMMIT     := 6802bb4733b63ed5efd3adb308a6c885ef180ea1
 vulkan-headers_DEPTH      := 1
 vulkan-headers_SUBMODULES := 1
 
 $(SRC_ROOT)/vulkan-headers: | prepare
 	$(call sp_fetch_clone,vulkan-headers)
 
-# https://github.com/KhronosGroup/SPIRV-Headers # revised: 25 sep 2026
+# https://github.com/KhronosGroup/SPIRV-Headers # revised: 16 nov 2026
 spirv-headers_REPO       := https://github.com/KhronosGroup/SPIRV-Headers.git
 spirv-headers_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
-spirv-headers_COMMIT     := 29981f65241605e08b0ede4cfeb999fe3b723c6a
+spirv-headers_COMMIT     := 496543121ce6419f23d6fa5d7194ba66c36212d2
 spirv-headers_DEPTH      := 1
 spirv-headers_SUBMODULES := 1
 
 $(SRC_ROOT)/spirv-headers: | prepare
 	$(call sp_fetch_clone,spirv-headers)
 
-# https://github.com/KhronosGroup/glslang # revised: 25 sep 2026
+# https://github.com/KhronosGroup/glslang # revised: 16 nov 2026
 glslang_REPO       := https://github.com/KhronosGroup/glslang.git
 glslang_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
-glslang_COMMIT     := 168d452a4f460d24b588fed08477a81c44ee27a1
+glslang_COMMIT     := e1b562a8bed273a02f30b59b66a5d499793cede5
 glslang_DEPTH      := 1
 glslang_SUBMODULES := 1
 
 $(SRC_ROOT)/glslang: | prepare
 	$(call sp_fetch_clone,glslang)
 
-# https://github.com/KhronosGroup/SPIRV-Tools # revised: 25 sep 2026
+# https://github.com/KhronosGroup/SPIRV-Tools # revised: 16 nov 2026
 spirv-tools_REPO       := https://github.com/KhronosGroup/SPIRV-Tools.git
 spirv-tools_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
-spirv-tools_COMMIT     := 9a49b0883b9b635689a85b5647dbfcb223268151
+spirv-tools_COMMIT     := ef96ed763b43b59b33b31b362f09a02b729fa1c9
 spirv-tools_DEPTH      := 1
 spirv-tools_SUBMODULES := 1
 
 $(SRC_ROOT)/spirv-tools: | prepare
 	$(call sp_fetch_clone,spirv-tools)
 
-# https://github.com/KhronosGroup/Vulkan-Loader # revised: 25 sep 2026
+# https://github.com/KhronosGroup/Vulkan-Loader # revised: 16 nov 2026
 vulkan-loader_REPO       := https://github.com/KhronosGroup/Vulkan-Loader.git
 vulkan-loader_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
-vulkan-loader_COMMIT     := 5f157b62e333c63260d05d81bf66faa216ab0fb8
+vulkan-loader_COMMIT     := fa218055ff4948b159f31d43f800c808a13d51df
 vulkan-loader_DEPTH      := 1
 vulkan-loader_SUBMODULES := 1
 
@@ -404,30 +406,30 @@ $(SRC_ROOT)/vulkan-loader: | prepare
 	$(call sp_fetch_clone,vulkan-loader)
 	$(call sp_patch,vulkan-loader,vulkan-loader/$(VULKAN_SDK_VER)-tau/0001-tau-a-unix-platform.patch)
 
-# https://github.com/KhronosGroup/Vulkan-ValidationLayers # revised: 25 sep 2026
+# https://github.com/KhronosGroup/Vulkan-ValidationLayers # revised: 16 nov 2026
 vulkan-validationlayers_REPO       := https://github.com/KhronosGroup/Vulkan-ValidationLayers.git
-vulkan-validationlayers_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
-vulkan-validationlayers_COMMIT     := f4874eee15c78d7bdb2b7e60659d539f14741500
+vulkan-validationlayers_TAG        := vulkan-sdk-1.4.363.1
+vulkan-validationlayers_COMMIT     := 317cff060893783f96d4174f50491e6374eb3714
 vulkan-validationlayers_DEPTH      := 1
 vulkan-validationlayers_SUBMODULES := 1
 
 $(SRC_ROOT)/vulkan-validationlayers: | prepare
 	$(call sp_fetch_clone,vulkan-validationlayers)
 
-# https://github.com/KhronosGroup/Vulkan-Utility-Libraries # revised: 25 sep 2026
+# https://github.com/KhronosGroup/Vulkan-Utility-Libraries # revised: 16 nov 2026
 vulkan-utility_REPO       := https://github.com/KhronosGroup/Vulkan-Utility-Libraries.git
 vulkan-utility_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
-vulkan-utility_COMMIT     := e9585c3e3d41ab608ee3b098ce4721d357308fc8
+vulkan-utility_COMMIT     := 57f01541b3959f2528f769043396e882851a7e75
 vulkan-utility_DEPTH      := 1
 vulkan-utility_SUBMODULES := 1
 
 $(SRC_ROOT)/vulkan-utility: | prepare
 	$(call sp_fetch_clone,vulkan-utility)
 
-# https://github.com/KhronosGroup/Vulkan-Tools # revised: 25 sep 2026
+# https://github.com/KhronosGroup/Vulkan-Tools # revised: 16 nov 2026
 vulkan-tools_REPO       := https://github.com/KhronosGroup/Vulkan-Tools.git
 vulkan-tools_TAG        := vulkan-sdk-$(VULKAN_SDK_VER)
-vulkan-tools_COMMIT     := 286299bb6b732e4b22771cfb9d7d421542d40501
+vulkan-tools_COMMIT     := 6fe2055cf2fa921d52a4c6a31528cfc279a6977f
 vulkan-tools_DEPTH      := 1
 vulkan-tools_SUBMODULES := 1
 
@@ -464,11 +466,11 @@ icu4c_KEY    := icu4c
 $(SRC_ROOT)/icu4c: | prepare
 	$(call sp_fetch_tar,icu4c)
 
-# https://github.com/libffi/libffi/releases # revised: 25 sep 2026
+# https://github.com/libffi/libffi/releases # revised: 16 nov 2026
 # TODO: move to git releases
 # Supply chain: libffi release assets are unsigned; pinned by SHA-256 only.
-ffi_URL    := https://github.com/libffi/libffi/releases/download/v3.8.0/libffi-3.8.0.tar.gz
-ffi_SHA256 := 7da3e2d9a171eb0a038f592ecad3ff2bb2550f3496d87b3b29ad0cf4430c0db4
+ffi_URL    := https://github.com/libffi/libffi/releases/download/v3.8.1/libffi-3.8.1.tar.gz
+ffi_SHA256 := 81e879c094cc5ec3186c48510c6385ac6b3e866192e8bc71a35245703757ee40
 
 $(SRC_ROOT)/ffi: | prepare
 	$(call sp_fetch_tar,ffi)
@@ -485,19 +487,22 @@ ffi-e2k_SHA256 := ee222c17d022520d40a17986b511acfe6cb67ef890e12a897a5d6f7bb4f129
 $(SRC_ROOT)/ffi-e2k: | prepare
 	$(call sp_fetch_tar,ffi-e2k)
 
-# https://github.com/libexpat/libexpat/releases # revised: 25 sep 2026
-# Security: 2.8.5 fixes CVE-2026-93990 (UTF-16 decoding let a lone high surrogate through
-#  to the application); 2.8.4 fixed CVE-2026-66046 and CVE-2026-76641 (quadratic isCdata
-#  attribute lookup), CVE-2026-76956 (inverted getentropy() result enabling hash
-#  flooding) and CVE-2026-76957 (parser re-entry from encoding callbacks). Upstream
-#  still flags unfixed issues, including CVE-2025-66382 - see libexpat issue #1160.
-expat_URL    := https://github.com/libexpat/libexpat/releases/download/R_2_8_5/expat-2.8.5.tar.xz
-expat_SHA256 := 1e727b8933ec51a77a9a9d9afcf8e688bce45d907c13e36ab7393fe36e703182
+# https://github.com/libexpat/libexpat/releases # revised: 16 nov 2026
+# Security: 2.10.0 includes the 2.9 fixes (CVE-2026-102633/77214) and
+#  CVE-2026-113351, CVE-2026-115506, CVE-2026-117610, CVE-2026-118370.
+#  Backport CVE-2026-124317 from upstream PR #1492 (targeted at 2.11.0).
+#  CVE-2026-128241 is xmlwf-only; target-linux/expat.mk disables tools.
+#  This is not a claim that every upstream Expat issue is fixed; consult its
+#  release notes for the remaining known issues.
+expat_URL    := https://github.com/libexpat/libexpat/releases/download/R_2_10_0/expat-2.10.0.tar.xz
+expat_SHA256 := c624ba2998fc65df1163a49641ff3f9ab73138b11641d92c86bee0fb01b1bc7f
 expat_SIG    := .asc
 expat_KEY    := expat
 
 $(SRC_ROOT)/expat: | prepare
 	$(call sp_fetch_tar,expat)
+	$(call sp_patch,expat,expat/2.10.0-security/0001-unknown-to-utf16-control-flow.patch)
+	$(call sp_patch,expat,expat/2.10.0-security/0002-CVE-2026-124317-unknown-encoding-overread.patch)
 
 # Use upstream - releases bound with GCC
 # https://github.com/ianlancetaylor/libbacktrace.git # revised: 25 sep 2026
@@ -672,7 +677,7 @@ $(SRC_ROOT)/mesa: | prepare
 # CA bundle
 #
 # Inject Russia Ministry of Digital Development certificates
-# https://curl.se/ca # revised: 25 sep 2026
+# https://curl.se/ca # revised: 16 nov 2026
 # https://www.gosuslugi.ru/crt # revised: 25 sep 2026
 #
 # curl.se serves a dated, immutable file, so its pin is stable until CERT_NAME
@@ -681,10 +686,10 @@ $(SRC_ROOT)/mesa: | prepare
 # SHA-256 mismatch here rather than as a silently changed trust store. When that
 # happens, look at the new certificate before updating the pin.
 
-CERT_NAME := cacert-2026-09-25.pem
+CERT_NAME := cacert-2026-11-05.pem
 
 cacert_URL    := https://curl.se/ca/$(CERT_NAME)
-cacert_SHA256 := a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505
+cacert_SHA256 := 427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285
 
 ru-ca-root_URL    := https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt
 ru-ca-root_SHA256 := 936a43fea6e8e525bcc0f81acd9c3d21b4fc4b9b68acea7906d698005afc6504
