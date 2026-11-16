@@ -332,6 +332,12 @@ images in its three-second window but requires at least five. Its subsequent
 standalone run passes all 15 checks, as does a separately built original-SDK
 baseline. The failed full run remains recorded rather than labelled green.
 
+The clean native-host export repair has another full run: 74 jobs,
+130,188,302 checks and one `remote-multi-check.py` exception. Its standalone
+rerun passes all 31 checks. The export itself is checked against the freshly
+built libc++abi: explicit export targets depend on the stage build markers,
+so GNU Make need not discover CMake's output files before they exist.
+
 Windows runtime verification was also compared with the original installed SDK.
 Both builds have the same failures: `libc_at` (`faccessat`/ENOTDIR),
 `runtime_address_wait`, and timeouts in `runtime_dispatch` and `libc_setjmp`;

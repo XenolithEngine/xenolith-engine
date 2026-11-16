@@ -130,27 +130,27 @@ OUT_INCLUDES := $(addprefix $(OUT_SYSROOT)/include/,\
 	llvm-c\
 	lldb)
 
-$(OUT_SYSROOT)/lib/%: $(STAGEOUT_SYSROOT)/lib/% $(STAGE2_CLANG_CC) $(STAGEOUT_LIBCXX) $(STAGEOUT_SYSROOT)/bin/glslang
+$(OUT_LIBS): $(STAGE2_CLANG_CC) $(STAGEOUT_LIBCXX) $(STAGEOUT_SYSROOT)/bin/glslang
 	@mkdir -p $(OUT_SYSROOT)/lib
 	@rm -f $@
-	$(STAGEOUT_SYSROOT)/bin/llvm-strip $< -o $@
+	$(STAGEOUT_SYSROOT)/bin/llvm-strip $(STAGEOUT_SYSROOT)/lib/$(notdir $@) -o $@
 	chmod +x $@
 
-$(OUT_SYSROOT)/lib/clang: $(STAGEOUT_SYSROOT)/lib/clang
+$(OUT_SYSROOT)/lib/clang: $(STAGE2_CLANG_CC)
 	@mkdir -p $(OUT_SYSROOT)/lib
 	@rm -rf $@
-	cp -rf $< $@
+	cp -rf $(STAGEOUT_SYSROOT)/lib/clang $@
 
-$(OUT_SYSROOT)/bin/%: $(STAGEOUT_SYSROOT)/bin/% $(STAGE2_CLANG_CC) $(STAGEOUT_LIBCXX) $(STAGEOUT_SYSROOT)/bin/glslang $(STAGEOUT_MAKE)
+$(OUT_TOOLS): $(STAGE2_CLANG_CC) $(STAGEOUT_LIBCXX) $(STAGEOUT_SYSROOT)/bin/glslang $(STAGEOUT_MAKE)
 	@mkdir -p $(OUT_SYSROOT)/bin
 	@rm -f $@
-	$(STAGEOUT_SYSROOT)/bin/llvm-strip $< -o $@
+	$(STAGEOUT_SYSROOT)/bin/llvm-strip $(STAGEOUT_SYSROOT)/bin/$(notdir $@) -o $@
 	chmod +x $@
 
-$(OUT_SYSROOT)/include/%: $(STAGEOUT_SYSROOT)/include/% $(STAGE2_CLANG_CC) $(STAGEOUT_LIBCXX) $(STAGEOUT_SYSROOT)/bin/glslang
+$(OUT_INCLUDES): $(STAGE2_CLANG_CC) $(STAGEOUT_LIBCXX) $(STAGEOUT_SYSROOT)/bin/glslang
 	rm -rf $@
 	mkdir -p $@
-	cp -fr $</* $@
+	cp -fr $(STAGEOUT_SYSROOT)/include/$(notdir $@)/* $@
 
 $(OUT_SYSROOT)/share/licenses: licenses
 	rm -rf $@
