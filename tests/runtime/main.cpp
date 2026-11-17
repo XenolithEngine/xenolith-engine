@@ -116,7 +116,31 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"runtime_idn_conformance", &sprt::performIdnConformanceTests},
 };
 
+static int s_startupArgc = 0;
+static const char **s_startupArgv = nullptr;
+static const char *s_startupName = nullptr;
+
+static void checkStartupArgvAtExit() {
+	if (s_startupArgv[s_startupArgc] != nullptr
+			|| (s_startupArgc > 0 && s_startupArgv[0] != s_startupName)) {
+		fputs("runtimetest: startup argv did not survive until process termination\n", stderr);
+		_Exit(1);
+	}
+}
+
 int main(int argc, const char *argv[]) {
+	if (argc < 0 || argv == nullptr || argv[argc] != nullptr) {
+		fputs("runtimetest: startup argv is not NULL-terminated\n", stderr);
+		return 1;
+	}
+	s_startupArgc = argc;
+	s_startupArgv = argv;
+	s_startupName = argc > 0 ? argv[0] : nullptr;
+	if (atexit(checkStartupArgvAtExit) != 0) {
+		fputs("runtimetest: cannot register startup argv lifetime check\n", stderr);
+		return 1;
+	}
+
 	auto str =
 			"Проверяю работоспособность вывода в UTF-8, строка должна быть читаема из терминала\n";
 

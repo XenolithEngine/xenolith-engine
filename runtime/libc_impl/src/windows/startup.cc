@@ -300,8 +300,9 @@ static int __sprt_invoke_main(__sprt_main_fn mainFn, bool manageWsa) {
 		int argc = 0;
 		wchar_t **wargv = wCommandLine ? CommandLineToArgvW(wCommandLine, &argc) : nullptr;
 
+		static char *emptyArgv[] = {nullptr};
 		char *buf = nullptr;
-		char **argvTarget = nullptr;
+		char **argvTarget = emptyArgv;
 		int outArgc = 0;
 
 		// The command line is attacker-controlled. wcstombs returns (size_t)-1
@@ -311,7 +312,8 @@ static int __sprt_invoke_main(__sprt_main_fn mainFn, bool manageWsa) {
 		// and every Win32 return; on any failure fall back to an empty argv
 		// rather than corrupting memory before main() runs.
 		if (wargv && argc > 0) {
-			size_t blockSize = (size_t)argc * sizeof(char *);
+			size_t argvSize = ((size_t)argc + 1) * sizeof(char *);
+			size_t blockSize = argvSize;
 			bool ok = true;
 			for (int i = 0; i < argc; ++i) {
 				size_t len = wcstombs(nullptr, wargv[i], 0);
@@ -328,8 +330,9 @@ static int __sprt_invoke_main(__sprt_main_fn mainFn, bool manageWsa) {
 
 			if (buf) {
 				argvTarget = (char **)buf;
-				char *stringsTarget = buf + (size_t)argc * sizeof(char *);
-				size_t bufferSize = blockSize - (size_t)argc * sizeof(char *);
+				argvTarget[argc] = nullptr;
+				char *stringsTarget = buf + argvSize;
+				size_t bufferSize = blockSize - argvSize;
 
 				for (int i = 0; i < argc; ++i) {
 					size_t len = wcstombs(stringsTarget, wargv[i], bufferSize);
@@ -349,7 +352,9 @@ static int __sprt_invoke_main(__sprt_main_fn mainFn, bool manageWsa) {
 				} else {
 					// Partial/failed conversion: do not hand main() a
 					// half-populated argv.
-					argvTarget = nullptr;
+					free(buf);
+					buf = nullptr;
+					argvTarget = emptyArgv;
 				}
 			}
 		}
@@ -381,7 +386,7 @@ static int __sprt_invoke_main(__sprt_main_fn mainFn, bool manageWsa) {
 			WSACleanup();
 		}
 
-		free(buf); // free(nullptr) is a no-op
+		// Keep argv and its strings alive through the exit handlers.
 	}
 	__finally {
 	}
