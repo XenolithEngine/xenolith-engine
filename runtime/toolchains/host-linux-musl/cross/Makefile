@@ -270,6 +270,8 @@ $(ZLIB): $(BUILD_CMAKE)
 		-DCMAKE_INSTALL_PREFIX=$(SYSROOT)
 	cmake --build build/zlib
 	cmake --install build/zlib
+	# CMake truncates installed mtimes to seconds; order them after the toolchain file.
+	touch $(ZLIB)
 
 $(LIBXML2): $(ZLIB)
 	@echo "Build libxml2"
@@ -291,6 +293,7 @@ $(LIBXML2): $(ZLIB)
 		-DCMAKE_INSTALL_PREFIX=$(SYSROOT)
 	cmake --build build/libxml2
 	cmake --install build/libxml2
+	touch $(LIBXML2)
 
 #
 # 5. финальный clang/lld/lldb + libLLVM.so (мульти-таргетный backend).
