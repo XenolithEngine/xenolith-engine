@@ -447,7 +447,9 @@ void Scene2d::handleContentSizeDirty() {
 		_fps->setPosition(Vec2(6.0f, 6.0f));
 	}
 
-	_pointerCenter->setPosition(_contentSize / 2.0f);
+	if (_pointerCenter) {
+		_pointerCenter->setPosition(_contentSize / 2.0f);
+	}
 }
 
 void Scene2d::setFpsVisible(bool value) {
