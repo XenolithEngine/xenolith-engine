@@ -215,6 +215,19 @@ struct SP_PUBLIC StencilInfo {
 
 using LineWidth = ValueWrapper<float, class LineWidthFlag>;
 
+// Pipelines of one material state can still differ by their fragment program; the value
+// selects the program family, and zero is the common material one every existing request keeps
+enum class PipelineVariant : uint32_t {
+	Default = 0,
+	ParticleQuadMask = 1,
+
+	// The frame distortion pair, Particle-52: the shift draw that fetches the settled frame
+	// at the displaced coordinate and the composite draw that blends the intermediate back.
+	// No material resolves to them - a distorted emitter's own span is routed by the pass,
+	// not by its material - the variant only keeps the pair out of every existing match.
+	ParticleDistort = 2,
+};
+
 class SP_PUBLIC PipelineMaterialInfo {
 public:
 	PipelineMaterialInfo();
@@ -237,6 +250,7 @@ public:
 	void setLineWidth(float);
 	void setImageViewType(ImageViewType);
 	void setRasterizationInfo(const RasterizationInfo &);
+	void setVariant(PipelineVariant);
 
 	const BlendInfo &getBlendInfo() const { return blend; }
 	const DepthInfo &getDepthInfo() const { return depth; }
@@ -251,13 +265,14 @@ public:
 	ImageViewType getImageViewType() const { return imageViewType; }
 
 	const RasterizationInfo &getRasterizationInfo() const { return raster; }
+	PipelineVariant getVariant() const { return variant; }
 
 	bool operator==(const PipelineMaterialInfo &tmp2) const {
 		return this->blend == tmp2.blend && this->depth == tmp2.depth && this->bounds == tmp2.bounds
 				&& this->stencil == tmp2.stencil
 				&& (!this->stencil || (this->front == tmp2.front && this->back == tmp2.back))
 				&& this->lineWidth == tmp2.lineWidth && this->imageViewType == tmp2.imageViewType
-				&& this->raster == tmp2.raster;
+				&& this->raster == tmp2.raster && this->variant == tmp2.variant;
 	}
 
 	bool operator!=(const PipelineMaterialInfo &tmp2) const {
@@ -265,7 +280,7 @@ public:
 				|| this->stencil != tmp2.stencil
 				|| (this->stencil && (this->front != tmp2.front || this->back != tmp2.back))
 				|| this->lineWidth != tmp2.lineWidth || this->imageViewType != tmp2.imageViewType
-				|| this->raster != tmp2.raster;
+				|| this->raster != tmp2.raster || this->variant != tmp2.variant;
 	}
 
 	size_t hash() const { return sprt::hashSize((const char *)this, sizeof(PipelineMaterialInfo)); }
@@ -281,6 +296,7 @@ protected:
 	void _setup(LineWidth);
 	void _setup(ImageViewType);
 	void _setup(const RasterizationInfo &);
+	void _setup(PipelineVariant);
 
 	template <typename T>
 	void setup(T &&t) {
@@ -304,8 +320,9 @@ protected:
 	float lineWidth = 0.0f; // 0.0f - draw triangles, < 0.0f - points,  > 0.0f - lines with width
 	ImageViewType imageViewType = ImageViewType::ImageView1D;
 
-	// after everything else: data() slices the bytes before it by the sizes of the parts
+	// data() slices the prefix by the sizes of its parts
 	RasterizationInfo raster;
+	PipelineVariant variant = PipelineVariant::Default;
 };
 
 } // namespace stappler::xenolith::core

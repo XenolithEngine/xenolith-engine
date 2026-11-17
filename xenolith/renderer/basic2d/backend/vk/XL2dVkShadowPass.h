@@ -39,6 +39,16 @@ public:
 	static constexpr StringView PseudoSdfSolidPipeline = "PseudoSdfSolidPipeline";
 	static constexpr StringView PseudoSdfBackreadPipeline = "PseudoSdfBackreadPipeline";
 
+	// The frame distortion pair, Particle-52: the shift draw and the four blend twins of the
+	// composite draw, in the ParticleBlendMode order alpha, add, sub, mul
+	static constexpr StringView DistortShiftPipeline = "DistortShiftPipeline";
+	static constexpr StringView DistortCompositePipelines[4] = {
+		"DistortCompositeAlpha",
+		"DistortCompositeAdd",
+		"DistortCompositeSub",
+		"DistortCompositeMul",
+	};
+
 	enum class Flags : uint32_t {
 		None = 0,
 		UsePseudoSdf = 1 << 0,
@@ -104,6 +114,12 @@ protected:
 	virtual void prepareMaterialCommands(core::MaterialSet *materials, CommandBuffer &buf) override;
 
 	virtual void recordOverlaySubpasses(CommandBuffer &buf, SpanView<VertexSpan> spans) override;
+
+private:
+	// The trailing pair's draws: the distorted spans through the shift pipeline into the
+	// intermediate, then through the composite pipeline their blend mode names. Called with
+	// the subpass walk standing before the shift subpass in both render pass instances
+	void recordDistortionSubpasses(CommandBuffer &buf, SpanView<VertexSpan> spans);
 
 	// shadows
 	const ShadowLightDataAttachmentHandle *_shadowData = nullptr;

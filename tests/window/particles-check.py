@@ -30,7 +30,7 @@ A second, short run sets XL_PARTICLE_FEEDBACK=1 and checks the counters of the f
 With no argument it expects the debug x86_64-linux build of examples/window/particles. It starts its
 own app instances, runs the checks and prints "N checks, M failures"; exit status is the result.
 """
-import os, subprocess, sys, time, zlib, struct
+import os, subprocess, sys, time, zlib, struct, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -70,7 +70,7 @@ def check(name, ok, detail=""):
 
 
 class App:
-    def __init__(self, binary, env_extra=None):
+    def __init__(self, binary, env_extra=None, output=None):
         env = dict(os.environ)
         env.update(env_extra or {})
         env["XENOLITH_INSPECTOR_ADDRESS"] = "unix:" + ADDR
@@ -79,7 +79,9 @@ class App:
         except OSError:
             pass
         self.proc = subprocess.Popen([binary, "--headless", "--width", str(WIDTH), "--height",
-                str(HEIGHT)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                str(HEIGHT)], env=env,
+                stdout=output if output is not None else subprocess.DEVNULL,
+                stderr=subprocess.STDOUT if output is not None else subprocess.DEVNULL)
         self.session = None
         for _ in range(600):
             if self.proc.poll() is not None:
@@ -93,6 +95,13 @@ class App:
             time.sleep(0.05)
         if not self.session:
             self.proc.kill()
+            self.proc.wait(timeout=5)
+            if output is not None:
+                output.seek(0)
+                text = output.read()
+                errors = [line for line in text.splitlines()
+                        if "VUID-" in line or "Validation Error" in line]
+                print("\n".join(errors[:8] or text.splitlines()[-25:]), file=sys.stderr)
             raise SystemExit("app did not come up")
 
     def invoke(self, command, **args):
@@ -382,13 +391,110 @@ def feedback_run(binary):
         app.close()
 
 
+def check_ring_strip(app):
+    """A zero-length strip must replace every ring triangle reserved for its particles."""
+    app.invoke("emitters", n=1)
+    app.invoke("preset", name="explosion")
+    app.invoke("render", distortion=False, blend=0, mask=0)
+    app.invoke("move", x=480, y=450)
+    zero = {"min": 0.0, "max": 0.0}
+    vector_zero = {"min": [0.0, 0.0], "max": [0.0, 0.0]}
+    app.invoke("set", count=2, lifetime={"min": 10.0, "max": 10.0}, explosiveness=1.0,
+            velocity=zero, linearVelocity=vector_zero, acceleration=zero,
+            linearAcceleration=vector_zero, radialAcceleration=zero, tangentialAcceleration=zero,
+            angularVelocity=zero, angle=zero, scale={"min": 1.0, "max": 1.0}, flags=[],
+            emissionPoints=[], origin=[0, 0], shape=None, colorCurve=None, scaleCurve=None,
+            strip=4, ring=None)
+
+    def crop():
+        _, _, rows = app.screenshot()
+        return [pixel for row in rows[360:540] for pixel in row[360:600]]
+
+    restart_and_wait(app, 10)
+    baseline = crop()
+    app.invoke("set", ring={"outer": 40, "inner": 20})
+    restart_and_wait(app, 10)
+    combined = crop()
+    particles = app.invoke("snapshot", n=2).get("particles", [])
+    check("strip/ring: both particles are alive at the same position",
+            len(particles) == 2 and all(p["currentLifetime"] > 0 for p in particles)
+                    and particles[0]["position"] == particles[1]["position"])
+    check("strip/ring: a zero-length strip leaves no reserved ring triangles",
+            combined == baseline)
+    app.invoke("set", strip=0)
+    restart_and_wait(app, 10)
+    ring = crop()
+    check("strip/ring: disabling the strip exposes the visible ring",
+            sum(a != b for a, b in zip(baseline, ring)) > 100)
+
+
+def distortion_run(binary):
+    """Every distortion draw must execute in the subpass its pipeline was compiled for."""
+    validation_env = {"VK_INSTANCE_LAYERS": "VK_LAYER_KHRONOS_validation", "VK_LOADER_DEBUG": "layer"}
+    with tempfile.TemporaryFile(mode="w+t", encoding="utf-8", errors="replace") as output:
+        # Closing the baseline instance flushes the validation layer's buffered output.
+        app = App(binary, validation_env, output=output)
+        try:
+            app.session.call("frame", count=5)
+            app.screenshot()
+            app.session.call("frame", count=3)
+            app.screenshot()
+        finally:
+            app.close()
+        output.seek(0)
+        baseline = output.read()
+        baseline_errors = {line for line in baseline.splitlines()
+                if "Validation Error" in line or "Vk-Validation-Error" in line}
+        if os.environ.get("XL_PARTICLE_VALIDATION_LOG"):
+            with open(os.environ["XL_PARTICLE_VALIDATION_LOG"] + ".baseline", "w") as saved:
+                saved.write(baseline)
+        output.seek(0)
+        output.truncate()
+        app = App(binary, validation_env, output=output)
+        try:
+            app.session.call("frame", count=5)
+            app.invoke("emitters", n=2, shared=False)
+            app.invoke("preset", name="explosion")
+            app.invoke("set", count=4, lifetime={"min": 10.0, "max": 10.0})
+            for distortion in (False, True):
+                for blend in range(4):
+                    for mask in range(4):
+                        result = app.invoke("render", distortion=distortion, blend=blend, mask=mask)
+                        states = result.get("emitters", [])
+                        check(f"particles: distortion {distortion}, blend {blend}, mask {mask}",
+                                len(states) == 2 and all(s["distortion"] == distortion
+                                        and s["blend"] == blend and s["mask"] == mask
+                                        for s in states))
+                        app.session.call("frame", count=3)
+            snapshot = app.invoke("snapshot", n=1)
+            check("distortion: particle simulation and readback remain available",
+                    snapshot.get("ok") and len(snapshot.get("particles", [])) == 1)
+            check_ring_strip(app)
+        finally:
+            app.close()
+        output.seek(0)
+        log = output.read()
+        if os.environ.get("XL_PARTICLE_VALIDATION_LOG"):
+            with open(os.environ["XL_PARTICLE_VALIDATION_LOG"], "w") as saved:
+                saved.write(log)
+        check("distortion: Vulkan validation layer was loaded",
+                "Insert instance layer \"VK_LAYER_KHRONOS_validation\"" in log)
+        errors = list(dict.fromkeys(line for line in log.splitlines()
+                if ("Validation Error" in line or "Vk-Validation-Error" in line)
+                        and line not in baseline_errors))
+        check("distortion: enabling the draws adds no Vulkan validation errors",
+                not errors, "\n".join(errors[:12]))
+
+
 binary = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT,
         "examples/window/particles/stappler-build/x86_64-unknown-linux-gnu/debug/cc/particles")
 if not os.path.exists(binary):
     raise SystemExit(f"{binary} is not built: xenolith-cli build examples/window/particles")
 
 started = time.time()
-reference_run(binary)
-feedback_run(binary)
+if "--distortion-only" not in sys.argv[2:]:
+    reference_run(binary)
+    feedback_run(binary)
+distortion_run(binary)
 print(f"\n{checks} checks, {failures} failures ({time.time() - started:.0f} s)")
 sys.exit(1 if failures else 0)

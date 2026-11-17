@@ -136,6 +136,71 @@ void ParticleEmitter::setFrameGrid(uint32_t h, uint32_t v) {
 	_frameGrid = UVec2(sprt::max(h, uint32_t(1)), sprt::max(v, uint32_t(1)));
 }
 
+void ParticleEmitter::setQuadMask(ParticleQuadMask shape, float ringThickness,
+		float ringSoftness) {
+	if (_quadMask == shape && _maskThickness == ringThickness && _maskSoftness == ringSoftness) {
+		return;
+	}
+	_quadMask = shape;
+	_maskThickness = ringThickness;
+	_maskSoftness = ringSoftness;
+	// The mask picks the particle fragment's own pipeline, which the material carries
+	markMaterialDirty();
+}
+
+void ParticleEmitter::setBlendMode(ParticleBlendMode mode) {
+	if (_blendMode == mode) {
+		return;
+	}
+	_blendMode = mode;
+	// The mode names another pipeline of the same family, found by the material's blend
+	markMaterialDirty();
+}
+
+void ParticleEmitter::setBlendOverLife(bool value) {
+	// Draw state the pass has no pipeline for yet, so the material stands: no dirty mark, the
+	// flag waits for the shader pair that reads it
+	_blendOverLife = value;
+}
+
+MaterialInfo ParticleEmitter::getMaterialInfo() const {
+	auto info = Sprite::getMaterialInfo();
+	if (_quadMask != ParticleQuadMask::None) {
+		info.pipeline.setVariant(core::PipelineVariant::ParticleQuadMask);
+	}
+	if (_blendMode == ParticleBlendMode::Add) {
+		// The sprite pair with the destination factor opened: the source still brings its own
+		// alpha (SrcAlpha), the destination is summed and not reduced (One). The alpha channel
+		// keeps the transparent twin's pass-through - the destination's alpha stays what it was.
+		info.pipeline.setBlendInfo(core::BlendInfo(core::BlendFactor::SrcAlpha,
+				core::BlendFactor::One, core::BlendOp::Add, core::BlendFactor::Zero,
+				core::BlendFactor::One, core::BlendOp::Add));
+	} else if (_blendMode == ParticleBlendMode::Sub) {
+		// Effekseer's AlphaBlend 3, the destination minus the alpha-weighted source: the
+		// reverse-subtract equation is the subtraction that lands on the frame
+		// (out.rgb = dst.rgb·1 − src.rgb·src.a), the regular Subtract one would take the frame
+		// from the source (src − dst). The factors are the additive pair's (SrcAlpha, One)
+		// under that equation - a fading particle subtracts less - and the alpha channel the
+		// pass-through both non-alpha modes keep: the mask's own channel is not a term of the
+		// equation.
+		info.pipeline.setBlendInfo(core::BlendInfo(core::BlendFactor::SrcAlpha,
+				core::BlendFactor::One, core::BlendOp::ReverseSubtract,
+				core::BlendFactor::Zero, core::BlendFactor::One, core::BlendOp::Add));
+	} else if (_blendMode == ParticleBlendMode::Mul) {
+		// Effekseer's AlphaBlend 4, the destination scaled by the source: the factor pair
+		// Effekseer's straight-color shaders carry (DstColor, OneMinusSrcAlpha) - the product
+		// src.rgb·dst.rgb where the particle stands, the factor easing back to One as the
+		// particle's alpha falls, so the transparent edge multiplies by one. A raw (DstColor,
+		// Zero) product would darken by the tint where the mask has already killed the
+		// particle: the draw's rgb is not premultiplied by its own alpha. The alpha channel is
+		// the destination's own, the pass-through `Add` keeps.
+		info.pipeline.setBlendInfo(core::BlendInfo(core::BlendFactor::DstColor,
+				core::BlendFactor::OneMinusSrcAlpha, core::BlendOp::Add,
+				core::BlendFactor::Zero, core::BlendFactor::One, core::BlendOp::Add));
+	}
+	return info;
+}
+
 RenderingLevel ParticleEmitter::getRealRenderingLevel() const {
 	auto level = Sprite::getRealRenderingLevel();
 	if (_renderingLevel == RenderingLevel::Default && level < RenderingLevel::Transparent) {
@@ -244,6 +309,18 @@ void ParticleEmitter::pushCommands(FrameInfo &frame, NodeVisitFlags flags) {
 	auto cmdInfo = buildCmdInfo(frame);
 	auto materialIndex = cmdInfo.material;
 
+	// The node's velocity a newborn with inheritVelocity inherits its share of: the origin
+	// displacement between this frame and the last one, divided by the system's own dt - the
+	// simulation's step, never the wall clock. The first frame has no previous origin, and a
+	// node that never moved holds the zero the fresh frame carries
+	const Vec2 sceneOrigin = Vec2(nodeToScene.m[12], nodeToScene.m[13]);
+	Vec2 nodeVelocity = Vec2::ZERO;
+	if (_originSeen && particleSystem->data.dt > 0.0f) {
+		nodeVelocity = (sceneOrigin - _previousOrigin) / particleSystem->data.dt;
+	}
+	_previousOrigin = sceneOrigin;
+	_originSeen = true;
+
 	auto transform = handle->commands->pushParticleEmitter(_emitterId, targetTransform,
 			move(cmdInfo), _commandFlags);
 
@@ -267,6 +344,13 @@ void ParticleEmitter::pushCommands(FrameInfo &frame, NodeVisitFlags flags) {
 		_displayedColor,
 		_feedback,
 	};
+
+	info.maskShape = uint32_t(_quadMask);
+	info.maskThickness = _maskThickness;
+	info.maskSoftness = _maskSoftness;
+	info.nodeVelocity = nodeVelocity;
+	info.distortion = _distortion ? 1u : 0u;
+	info.blendMode = uint32_t(_blendMode);
 
 	if (_feedback) {
 		// Sent with every frame until one of them answers it

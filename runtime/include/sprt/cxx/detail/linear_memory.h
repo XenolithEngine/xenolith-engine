@@ -416,8 +416,14 @@ public:
 	constexpr void fill(size_type s, Args &&...args) {
 		clear();
 		auto _ptr = reserve(s, true);
-		for (size_type i = 0; i < s; i++) {
-			_allocator.construct(_ptr + i, sprt::forward<Args>(args)...);
+		// The same zero-bytes fast path as resize() - see there.
+		if constexpr (sizeof...(Args) == 0
+				&& (is_integral_v<Type> || is_floating_point_v<Type>)) {
+			__zero_raw_tail(_ptr, s);
+		} else {
+			for (size_type i = 0; i < s; i++) {
+				_allocator.construct(_ptr + i, sprt::forward<Args>(args)...);
+			}
 		}
 
 		set_size(s);
@@ -433,8 +439,17 @@ public:
 				_allocator.destroy(_ptr + n, _used - n);
 			}
 		} else if (n > _used) {
-			for (size_type i = _used; i < n; i++) {
-				_allocator.construct(_ptr + i, sprt::forward<Args>(args)...);
+			// An integer or a float value-initializes to zero bytes, and the grown region of
+			// megabyte buffers is where image pipelines spend their time: one memset, not a
+			// construct per element. __zero_raw_tail keeps constant evaluation on the construct
+			// path, so the semantics are the loop's and only the machine code changes.
+			if constexpr (sizeof...(Args) == 0
+					&& (is_integral_v<Type> || is_floating_point_v<Type>)) {
+				__zero_raw_tail(_ptr + _used, n - _used);
+			} else {
+				for (size_type i = _used; i < n; i++) {
+					_allocator.construct(_ptr + i, sprt::forward<Args>(args)...);
+				}
 			}
 		}
 
@@ -449,6 +464,19 @@ public:
 	using base::data;
 	using base::size;
 	using base::capacity;
+
+	/* A bulk copy of trivially copyable elements into storage reserved for exactly them, from
+	nothing. Public for __vector's range constructor: a copy of such an element IS its object
+	representation, and building megabyte buffers an emplace_back at a time costs an order of
+	magnitude over one memmove. The precondition - `n` elements reserved, none appended - is the
+	constructor's own. */
+	void assign_raw(const Type *first, size_type n) requires is_trivially_copyable_v<Type> {
+		reserve(n, true);
+		if (n != 0) {
+			__builtin_memmove(data(), first, n * sizeof(Type));
+		}
+		set_size(n);
+	}
 
 	constexpr reference at(size_type s) noexcept { return data()[s]; }
 

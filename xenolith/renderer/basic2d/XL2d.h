@@ -75,6 +75,8 @@ enum class QueueType : uint32_t {
 using core::SamplerIndex;
 
 using glsl::ParticleIndirectCommand;
+using glsl::ParticleAttractor;
+using glsl::ParticleDeflector;
 using glsl::ParticleFloatParam;
 using glsl::ParticleVec2Param;
 using glsl::ParticleEmissionPoints;

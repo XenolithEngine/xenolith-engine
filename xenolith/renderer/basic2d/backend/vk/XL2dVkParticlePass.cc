@@ -43,9 +43,12 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d::vk {
 
-// The shader reads the frame data with the std430 layout
-static_assert(sizeof(ParticleFrameData) == 144
-		&& __builtin_offsetof(ParticleFrameData, feedbackPointer) == 88);
+// The shader reads the frame data with the std430 layout; the size carries explicit padding to
+// the vec4 alignment, the stride of the frame array the shader indexes - a bare trailing vec2
+// would end the member-wise size at 152 while this sizeof rounds to 160
+static_assert(sizeof(ParticleFrameData) == 160
+		&& __builtin_offsetof(ParticleFrameData, feedbackPointer) == 88
+		&& __builtin_offsetof(ParticleFrameData, nodeVelocity) == 144);
 
 // TransferSrc: a resized emitter copies its particles out of the old buffer
 static constexpr auto s_particleBufferUsage = core::BufferUsage::ShaderDeviceAddress
@@ -310,7 +313,7 @@ void ParticlePersistentData::update(DeviceMemoryPool *pool, FrameContextHandle2d
 		frame.nextCycle = e.cycle;
 		frame.nextGenframe = e.frame;
 
-		vertexOffset += e.count * 6;
+		vertexOffset += e.count * glsl::particleVertexSeats(s->data);
 		frameEmitters.emplace_back(move(frame));
 	}
 }
@@ -423,11 +426,14 @@ void ParticleEmitterAttachment::handleInput(FrameQueue &q, ParticleEmitterAttach
 
 	if (!handle._frameEmitters.empty()) {
 		size_t nVertexes = 0;
-		for (auto &it : handle._frameEmitters) { nVertexes += it.systemData->data.count; }
+		for (auto &it : handle._frameEmitters) {
+			nVertexes += size_t(it.systemData->data.count)
+					* glsl::particleVertexSeats(it.systemData->data);
+		}
 
 		handle._vertices = pool->spawn(AllocationUsage::DeviceLocal,
 				BufferInfo(core::BufferUsage::ShaderDeviceAddress, core::BufferUsage::TransferDst,
-						sizeof(Vertex) * nVertexes * 6));
+						sizeof(Vertex) * nVertexes));
 
 		handle._commands = pool->spawn(AllocationUsage::DeviceLocal,
 				BufferInfo(core::BufferUsage::ShaderDeviceAddress,
@@ -570,11 +576,13 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 			BufferInfo(core::ForceBufferUsage(core::BufferUsage::TransferSrc),
 					aHandle->getCommands()->getSize()));
 
-	// Every emitter draws its own range: six vertices per particle, dead ones degenerate
+	// Every emitter draws its own range: its own vertex seats per particle - the quad's six or
+	// the ring's own count - dead ones degenerate
 	transferIndirectBuffer->map([&](uint8_t *buf, VkDeviceSize bufSize) {
 		auto target = reinterpret_cast<ParticleIndirectCommand *>(buf);
 		for (auto &e : emitters) {
-			target->vertexCount = e.systemData->data.count * 6;
+			target->vertexCount = e.systemData->data.count
+					* glsl::particleVertexSeats(e.systemData->data);
 			target->instanceCount = 1;
 			target->firstVertex = e.vertexOffset;
 			target->firstInstance = 0;
@@ -649,6 +657,7 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 			target->transformY = Vec4(m[1], m[5], m[13], 0.0f);
 			target->transformRotation = sprt::atan2(m[1], m[0]);
 			target->transformScale = sprt::sqrt(sprt::fabs(m[0] * m[5] - m[4] * m[1]));
+			target->nodeVelocity = e.renderInfo->nodeVelocity;
 
 			auto &rect = e.renderInfo->textureRect;
 			target->textureRect =
@@ -661,7 +670,8 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 			// the last step this frame simulates, or the last one simulated before it
 			auto lastStep = (e.genframe + e.nframes + e.framesInGen - 1) % e.framesInGen;
 			target->newest = glsl::particleNewest(e.systemData->data.count,
-					e.systemData->data.explosiveness, e.framesInGen, lastStep);
+					e.systemData->data.explosiveness, e.systemData->data.interval,
+					e.systemData->data.dt, e.framesInGen, lastStep);
 
 			// the extra data is reached through the emitter data, keep it alive with the commands
 			buf.bindBufferAddress(e.extraData);
@@ -679,7 +689,7 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 	pcb.frameDataPointer = UVec2::convertFromPacked(buf.bindBufferAddress(frameData));
 	pcb.outVerticesPointer =
 			UVec2::convertFromPacked(buf.bindBufferAddress(aHandle->getVertices()));
-	pcb.padding12 = 0;
+	pcb.stripPass = 0;
 
 	uint32_t emitterIndex = 0;
 	for (auto &e : emitters) {
@@ -690,6 +700,36 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 		buf.cmdDispatchPipeline(*pipelineIt, e.systemData->data.count);
 
 		++emitterIndex;
+	}
+
+	// The strip's own dispatch, the same program and the same vertex list: the segment a
+	// particle owns reads the next particle's standing state, and one dispatch's invocations
+	// cannot order their writes for one another, so a barrier between the two dispatches seats
+	// what the update wrote before the strip reads it. Only an emitter whose words seat a
+	// strip takes the second dispatch - an emitter without the key pays nothing, and its
+	// quads stand as the update drew them
+	bool anyStrip = false;
+	for (auto &e : emitters) {
+		anyStrip = anyStrip || e.systemData->data.stripWidth > 0.0f;
+	}
+	if (anyStrip) {
+		buf.cmdGlobalBarrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+				VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+				VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT);
+
+		pcb.stripPass = 1;
+		emitterIndex = 0;
+		for (auto &e : emitters) {
+			if (e.systemData->data.stripWidth > 0.0f) {
+				pcb.emitterIndex = emitterIndex;
+
+				buf.cmdPushConstants(VK_SHADER_STAGE_COMPUTE_BIT, 0,
+						BytesView((const uint8_t *)&pcb, sizeof(ParticleConstantData)));
+				buf.cmdDispatchPipeline(*pipelineIt, e.systemData->data.count);
+			}
+			++emitterIndex;
+		}
 	}
 
 	recordFeedback(queue, buf, memPool, emitters, feedbackRecords);

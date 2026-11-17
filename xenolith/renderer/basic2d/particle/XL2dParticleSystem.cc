@@ -32,11 +32,31 @@ static_assert(
 		toInt(ParticleSystemFlags::AlignWithVelocity) == XL_PARTICLE_FLAG_ALIGN_WITH_VELOCITY);
 static_assert(toInt(ParticleSystemFlags::OrderByLifetime) == XL_PARTICLE_FLAG_ORDER_BY_LIFETIME);
 static_assert(toInt(ParticleSystemFlags::UseLifetimeMax) == XL_PARTICLE_FLAG_USE_LIFETIME_MAX);
+static_assert(toInt(ParticleSystemFlags::OneShot) == XL_PARTICLE_FLAG_ONE_SHOT);
+static_assert(toInt(ParticleSystemFlags::ParentBound) == XL_PARTICLE_FLAG_PARENT_BOUND);
+
+static_assert(toInt(ParticleEmissionType::Points) == XL_PARTICLE_EMISSION_POINTS);
+static_assert(toInt(ParticleEmissionType::Disc) == XL_PARTICLE_EMISSION_DISC);
+static_assert(toInt(ParticleEmissionType::Ring) == XL_PARTICLE_EMISSION_RING);
+static_assert(toInt(ParticleEmissionType::Rect) == XL_PARTICLE_EMISSION_RECT);
+static_assert(toInt(ParticleEmissionType::Segment) == XL_PARTICLE_EMISSION_SEGMENT);
 
 static constexpr size_t ParticleExtraAlign = 8;
 
 static size_t ParticleSystem_align(size_t size) {
 	return (size + ParticleExtraAlign - 1) & ~(ParticleExtraAlign - 1);
+}
+
+// The floats the shape reads from its extra data block: disc 1, ring 4, rect 2, segment 4
+static size_t ParticleSystem_shapeParamCount(ParticleEmissionType type) {
+	switch (type) {
+	case ParticleEmissionType::Disc: return 1;
+	case ParticleEmissionType::Ring: return 4;
+	case ParticleEmissionType::Rect: return 2;
+	case ParticleEmissionType::Segment: return 4;
+	case ParticleEmissionType::Points: break;
+	}
+	return 0;
 }
 
 static size_t ParticleSystem_getCurveSize(const CurveBuffer *curve) {
@@ -48,9 +68,22 @@ static size_t ParticleSystem_getCurveSize(const CurveBuffer *curve) {
 }
 
 size_t ParticleSystemData::getExtraDataSize() const {
-	return ParticleSystem_align(
-				   sizeof(ParticleEmissionPoints) + emissionPoints.size() * sizeof(Vec2))
-			+ ParticleSystem_getCurveSize(colorCurve) + ParticleSystem_getCurveSize(animFrameCurve);
+	size_t ret = ParticleSystem_align(
+			sizeof(ParticleEmissionPoints) + emissionPoints.size() * sizeof(Vec2));
+	if (data.emissionType != toInt(ParticleEmissionType::Points)) {
+		ret += ParticleSystem_align(
+				ParticleSystem_shapeParamCount(ParticleEmissionType(data.emissionType))
+				* sizeof(float));
+	}
+	return ret + ParticleSystem_getCurveSize(colorCurve) + ParticleSystem_getCurveSize(animFrameCurve)
+			+ ParticleSystem_getCurveSize(scaleCurve) + ParticleSystem_getCurveSize(positionCurve)
+			+ ParticleSystem_getCurveSize(ringOuterCurve) + ParticleSystem_getCurveSize(ringInnerCurve)
+			+ ParticleSystem_getCurveSize(ringArcFromCurve) + ParticleSystem_getCurveSize(ringArcToCurve)
+			+ ParticleSystem_getCurveSize(ringRatioCurve)
+			+ ParticleSystem_getCurveSize(ringOuterColorCurve)
+			+ ParticleSystem_getCurveSize(ringMiddleColorCurve)
+			+ ParticleSystem_getCurveSize(ringInnerColorCurve)
+			+ ParticleSystem_getCurveSize(angleCurve);
 }
 
 void ParticleSystemData::writeExtraData(uint8_t *buf, size_t size,
@@ -65,6 +98,14 @@ void ParticleSystemData::writeExtraData(uint8_t *buf, size_t size,
 			emissionPoints.size() * sizeof(Vec2));
 	offset += ParticleSystem_align(
 			sizeof(ParticleEmissionPoints) + emissionPoints.size() * sizeof(Vec2));
+
+	// The birth shape's numbers, right after the points block - the words past the last point,
+	// the base the shader computes on its own
+	if (data.emissionType != toInt(ParticleEmissionType::Points)) {
+		auto count = ParticleSystem_shapeParamCount(ParticleEmissionType(data.emissionType));
+		::__sprt_memcpy(buf + offset, emissionShape, count * sizeof(float));
+		offset += ParticleSystem_align(count * sizeof(float));
+	}
 
 	auto writeCurve = [&](const CurveBuffer *curve) -> uint32_t {
 		if (!curve) {
@@ -83,6 +124,25 @@ void ParticleSystemData::writeExtraData(uint8_t *buf, size_t size,
 
 	target.colorCurveOffset = writeCurve(colorCurve);
 	target.animFrameCurveOffset = writeCurve(animFrameCurve);
+	target.scaleCurveOffset = writeCurve(scaleCurve);
+	// The position curve seats last: the buffer grows at its end, so every older curve's offset
+	// stands where it stood and an old file's words read their own curve
+	target.positionCurveOffset = writeCurve(positionCurve);
+	// The ring's five scalar curves seat past it, the buffer growing at its end the same way -
+	// one fixed order, the offsets the emitter words name
+	target.ringOuterCurveOffset = writeCurve(ringOuterCurve);
+	target.ringInnerCurveOffset = writeCurve(ringInnerCurve);
+	target.ringArcFromCurveOffset = writeCurve(ringArcFromCurve);
+	target.ringArcToCurveOffset = writeCurve(ringArcToCurve);
+	target.ringRatioCurveOffset = writeCurve(ringRatioCurve);
+	// The three color-band curves seat past them, the same end-growth and the same fixed
+	// order the emitter words name
+	target.ringColorOuterCurveOffset = writeCurve(ringOuterColorCurve);
+	target.ringColorMiddleCurveOffset = writeCurve(ringMiddleColorCurve);
+	target.ringColorInnerCurveOffset = writeCurve(ringInnerColorCurve);
+	// The angle curve seats last of all, the buffer growing at its end the same way - the
+	// step's own word, past every draw curve the stages before this one carried
+	target.angleCurveOffset = writeCurve(angleCurve);
 }
 
 void ParticleSystemData::writeParticleSize(ParticleEmitterData &data, Size2 size) {
@@ -103,9 +163,17 @@ bool ParticleSystem::init() {
 	d.dt = d.frameInterval / 1'000'000.0f;
 	d.lifetime.init = 1.0f;
 	d.scale.init = 1.0f;
+	// The fresh system's second axis is no axis of its own: the words equal to the first's are
+	// the unseated state every later edit of the pair keeps until `scaleY` stands apart
+	d.scaleY = d.scale;
 	d.color = Vec4(1.0f, 1.0f, 1.0f, 1.0f);
 	d.normal.init = -float(M_PI_4);
 	d.normal.rnd = float(M_PI_2);
+
+	// The fresh system's turbulence: no force, one variation of the noise per lifetime, a static
+	// pattern, full influence
+	d.turbulenceFrequency = 1.0f;
+	d.turbulenceInfluence.init = 1.0f;
 
 	return true;
 }
@@ -143,6 +211,15 @@ static Value ParticleSystem_writeVec2(Vec2 v) {
 	Value ret(Value::Type::ARRAY);
 	ret.addDouble(v.x);
 	ret.addDouble(v.y);
+	return ret;
+}
+
+static Value ParticleSystem_writeVec4(Vec4 v) {
+	Value ret(Value::Type::ARRAY);
+	ret.addDouble(v.x);
+	ret.addDouble(v.y);
+	ret.addDouble(v.z);
+	ret.addDouble(v.w);
 	return ret;
 }
 
@@ -232,6 +309,7 @@ static constexpr ParticleSystemFlagName s_particleFlagNames[] = {
 	{ParticleSystemFlags::AlignWithVelocity, "alignWithVelocity"},
 	{ParticleSystemFlags::OrderByLifetime, "orderByLifetime"},
 	{ParticleSystemFlags::UseLifetimeMax, "useLifetimeMax"},
+	{ParticleSystemFlags::OneShot, "oneShot"},
 };
 
 void ParticleSystem::apply(const Value &value) {
@@ -271,6 +349,40 @@ void ParticleSystem::apply(const Value &value) {
 		}
 		setEmissionPoints(points);
 	}
+	if (value.isDictionary("emissionShape")) {
+		const auto &shape = value.getValue("emissionShape");
+		auto type = shape.getString("type");
+		float params[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+		ParticleEmissionType parsed = ParticleEmissionType::Points;
+		if (type == "disc") {
+			parsed = ParticleEmissionType::Disc;
+			params[0] = float(shape.getDouble("radius", 0.0));
+		} else if (type == "ring") {
+			parsed = ParticleEmissionType::Ring;
+			params[0] = float(shape.getDouble("outer", 0.0));
+			params[1] = float(shape.getDouble("inner", 0.0));
+			params[2] = float(shape.getDouble("from", 0.0));
+			params[3] = float(shape.getDouble("to", 0.0));
+		} else if (type == "rect") {
+			parsed = ParticleEmissionType::Rect;
+			auto half = ParticleSystem_readVec2(shape.getValue("half"), Vec2::ZERO);
+			params[0] = half.x;
+			params[1] = half.y;
+		} else if (type == "segment") {
+			parsed = ParticleEmissionType::Segment;
+			auto from = ParticleSystem_readVec2(shape.getValue("from"), Vec2::ZERO);
+			auto to = ParticleSystem_readVec2(shape.getValue("to"), Vec2::ZERO);
+			params[0] = from.x;
+			params[1] = from.y;
+			params[2] = to.x;
+			params[3] = to.y;
+		}
+		// A shape word the engine does not know leaves the system untouched, so encode()
+		// drops the key and the studio door refuses the document
+		if (parsed != ParticleEmissionType::Points) {
+			setEmissionShape(parsed, params);
+		}
+	}
 
 	// clang-format off
 	ParticleSystem_readRange(value, "normal", getNormalMin(), getNormalMax(),
@@ -279,6 +391,10 @@ void ParticleSystem::apply(const Value &value) {
 			[&](float v, float r) { setLifetime(v, r); });
 	ParticleSystem_readRange(value, "scale", getScaleMin(), getScaleMax(),
 			[&](float v, float r) { setScale(v, r); });
+	// The second axis's own key: absent, the setter is never called and the words stay equal to
+	// the first axis's - the unseated state the birth and encode() keep
+	ParticleSystem_readRange(value, "scaleY", getScaleYMin(), getScaleYMax(),
+			[&](float v, float r) { setScaleY(v, r); });
 	ParticleSystem_readRange(value, "angle", getAngleMin(), getAngleMax(),
 			[&](float v, float r) { setAngle(v, r); });
 	ParticleSystem_readRange(value, "velocity", getVelocityMin(), getVelocityMax(),
@@ -301,6 +417,11 @@ void ParticleSystem::apply(const Value &value) {
 			getTangentialAccelerationMax(), [&](float v, float r) { setTangentialAcceleration(v, r); });
 	ParticleSystem_readRange(value, "hue", getHueMin(), getHueMax(),
 			[&](float v, float r) { setHue(v, r); });
+	ParticleSystem_readRange(value, "damping", getDampingMin(), getDampingMax(),
+			[&](float v, float r) { setDamping(v, r); });
+	ParticleSystem_readRange(value, "turbulenceInfluence", getTurbulenceInfluenceMin(),
+			getTurbulenceInfluenceMax(),
+			[&](float v, float r) { setTurbulenceInfluence(v, r); });
 	// clang-format on
 
 	if (value.hasValue("colorCurve")) {
@@ -310,6 +431,18 @@ void ParticleSystem::apply(const Value &value) {
 	if (value.hasValue("animFrameCurve")) {
 		const auto &v = value.getValue("animFrameCurve");
 		setAnimFrameCurve(v.isDictionary() ? ParticleSystem_readCurve(v).get() : nullptr);
+	}
+	if (value.hasValue("scaleCurve")) {
+		const auto &v = value.getValue("scaleCurve");
+		setScaleCurve(v.isDictionary() ? ParticleSystem_readCurve(v).get() : nullptr);
+	}
+	if (value.hasValue("positionCurve")) {
+		const auto &v = value.getValue("positionCurve");
+		setPositionCurve(v.isDictionary() ? ParticleSystem_readCurve(v).get() : nullptr);
+	}
+	if (value.hasValue("angleCurve")) {
+		const auto &v = value.getValue("angleCurve");
+		setAngleCurve(v.isDictionary() ? ParticleSystem_readCurve(v).get() : nullptr);
 	}
 
 	if (value.isArray("flags")) {
@@ -329,7 +462,275 @@ void ParticleSystem::apply(const Value &value) {
 	} else if (value.hasValue("seed")) {
 		clearSeed();
 	}
-}
+
+	if (value.isBasicType("warm")) {
+		setWarm(float(value.getDouble("warm")));
+	}
+
+	if (value.isBasicType("stretch")) {
+		setStretch(float(value.getDouble("stretch")));
+	}
+
+	if (value.isBasicType("maxSpeed")) {
+		setMaxSpeed(float(value.getDouble("maxSpeed")));
+	}
+
+	if (value.isBasicType("turbulenceStrength")) {
+		setTurbulenceStrength(float(value.getDouble("turbulenceStrength")));
+	}
+	if (value.isBasicType("turbulenceFrequency")) {
+		setTurbulenceFrequency(float(value.getDouble("turbulenceFrequency")));
+	}
+	if (value.isBasicType("turbulenceShiftSpeed")) {
+		setTurbulenceShiftSpeed(float(value.getDouble("turbulenceShiftSpeed")));
+	}
+
+	if (value.isArray("attractors")) {
+		// The seats take one entry each, in list order: a strength of zero seats nothing - the
+		// entry is dropped, not refused - and the fourth seat is the last, a fifth entry is the
+		// studio door's own refusal before it ever reaches this loop
+		ParticleAttractor seated[4] = {};
+		uint32_t count = 0;
+		for (auto &it : value.getArray("attractors")) {
+			if (!it.isDictionary()) {
+				continue;
+			}
+			auto strength = it.getDouble("strength", 0.0);
+			if (strength == 0.0) {
+				continue;
+			}
+			if (count == 4) {
+				break;
+			}
+			seated[count] = ParticleAttractor{ParticleSystem_readVec2(it.getValue("point"),
+												  Vec2::ZERO),
+					float(strength), float(it.getDouble("radius", 0.0))};
+			++count;
+		}
+			setAttractors(SpanView<ParticleAttractor>(seated, count));
+		}
+
+		if (value.isBasicType("trailWidth")) {
+			setTrailWidth(float(value.getDouble("trailWidth")));
+		}
+
+		if (value.isArray("deflectors")) {
+			// The seats take one entry each, in list order: an entry whose shape or response word
+			// the engine does not know seats nothing - dropped, not refused - and the fourth seat
+			// is the last, a fifth entry is the studio door's own refusal before it ever reaches
+			// this loop
+			ParticleDeflector seated[4] = {};
+			uint32_t count = 0;
+			for (auto &it : value.getArray("deflectors")) {
+				if (!it.isDictionary()) {
+					continue;
+				}
+				const auto type = it.getString("type");
+				const auto response = it.getString("response");
+				uint32_t shape = 0;
+				if (type == StringView("circle")) {
+					shape = XL_PARTICLE_DEFLECTOR_CIRCLE;
+				} else if (type == StringView("segment")) {
+					shape = XL_PARTICLE_DEFLECTOR_SEGMENT;
+				} else {
+					continue;
+				}
+				uint32_t answer = 0;
+				if (response == StringView("bounce")) {
+					answer = XL_PARTICLE_DEFLECTOR_BOUNCE;
+				} else if (response == StringView("kill")) {
+					answer = XL_PARTICLE_DEFLECTOR_KILL;
+				} else {
+					continue;
+				}
+				if (count == 4) {
+					break;
+				}
+				ParticleDeflector seat =
+						ParticleDeflector{Vec2::ZERO, Vec2::ZERO, 0.0f, shape, answer, 0u};
+				if (shape == XL_PARTICLE_DEFLECTOR_CIRCLE) {
+					seat.a = ParticleSystem_readVec2(it.getValue("center"), Vec2::ZERO);
+					seat.radius = float(it.getDouble("radius", 0.0));
+				} else {
+					seat.a = ParticleSystem_readVec2(it.getValue("from"), Vec2::ZERO);
+					seat.b = ParticleSystem_readVec2(it.getValue("to"), Vec2::ZERO);
+				}
+				seated[count] = seat;
+				++count;
+			}
+			setDeflectors(SpanView<ParticleDeflector>(seated, count));
+		}
+
+		if (value.isBasicType("inheritVelocity")) {
+			setInheritVelocity(float(value.getDouble("inheritVelocity")));
+		}
+
+		if (value.isArray("uvScroll")) {
+			setUvScroll(ParticleSystem_readVec2(value.getValue("uvScroll"), getUvScroll()));
+		}
+
+		if (value.isBasicType("uvFlip")) {
+			setUvFlip(float(value.getDouble("uvFlip")));
+		}
+
+		if (value.hasValue("uvRect")) {
+			// The rect rides an array of its four numbers the scroll rides its pair: the
+			// numbers clamp to their own 0..1 and a rect that cannot take effect - a zero
+			// width or height word, or the full [0,0,1,1] the absence is - seats nothing.
+			// The explicit null the row's clear writes - and a word of any other kind - clears
+			// the seat, the angle curve's own reading
+			const auto &v = value.getValue("uvRect");
+			if (v.isArray() && v.size() >= 4) {
+				setUvRect(Vec4(float(v.getDouble(0)), float(v.getDouble(1)), float(v.getDouble(2)),
+						float(v.getDouble(3))));
+			} else {
+				setUvRect(Vec4(0.0f, 0.0f, 0.0f, 0.0f));
+			}
+		}
+
+		if (value.hasValue("corners")) {
+			// The corners ride their own array the rect rides its four: eight numbers in the
+			// pairs' own order - bottom-left, bottom-right, top-left, top-right - and a seat
+			// that cannot take effect, the defaults ±0.5 the absence is or the all-center
+			// zero the old buffers keep, seats nothing. The explicit null the row's clear
+			// writes - and a word of any other kind, or an array too short for the four
+			// pairs - clears the seat, the rect's own reading
+			const auto &v = value.getValue("corners");
+			if (v.isArray() && v.size() >= 8) {
+				setCorners(Vec2(float(v.getDouble(0)), float(v.getDouble(1))),
+						Vec2(float(v.getDouble(2)), float(v.getDouble(3))),
+						Vec2(float(v.getDouble(4)), float(v.getDouble(5))),
+						Vec2(float(v.getDouble(6)), float(v.getDouble(7))));
+			} else {
+				setCorners(Vec2(0.0f, 0.0f), Vec2(0.0f, 0.0f), Vec2(0.0f, 0.0f), Vec2(0.0f, 0.0f));
+			}
+		}
+
+		if (value.isBasicType("start")) {
+			setStart(float(value.getDouble("start")));
+		}
+
+		if (value.isBasicType("interval")) {
+			setInterval(float(value.getDouble("interval")));
+		}
+
+		if (value.hasValue("ring")) {
+			// The ring rides its own object the way the curves ride theirs: a dictionary seats
+			// one - the absent word its own default, the arc's default the full circle - and
+			// anything else, an explicit null, clears it. The corner count and the five scalar
+			// curve keys ride inside the object: a count outside the field's own 3..64 cannot
+			// take effect and a curve key that seats no curve of its own cannot either, the
+			// emission shape's unknown word's own fate - the whole ring left as it stood, so
+			// encode() drops the key and the studio door refuses the document
+			const auto &v = value.getValue("ring");
+			if (v.isDictionary()) {
+				ParticleRing ring;
+				ring.outer = float(v.getDouble("outer", 0.0));
+				ring.inner = float(v.getDouble("inner", 0.0));
+				ring.arcFrom = float(v.getDouble("from", 0.0));
+				ring.arcTo = float(v.getDouble("to", 360.0));
+				ring.vertexCount = v.isInteger("vertexCount")
+						? uint32_t(v.getInteger("vertexCount"))
+						: ParticleRing().vertexCount;
+				ring.crescentFrom = float(v.getDouble("crescentFrom", 0.0));
+				ring.crescentTo = float(v.getDouble("crescentTo", 360.0));
+				ring.fadeFrom = float(v.getDouble("fadeFrom", 0.0));
+				ring.fadeTo = float(v.getDouble("fadeTo", 0.0));
+				const auto &readColor = [&](StringView key, Color4F def) {
+					const auto &c = v.getValue(key);
+					return Color4F(float(c.getDouble(0, def.r)), float(c.getDouble(1, def.g)),
+							float(c.getDouble(2, def.b)), float(c.getDouble(3, def.a)));
+				};
+				ring.colorOuter = readColor("colorOuter", ParticleRing().colorOuter);
+				ring.colorMiddle = readColor("colorMiddle", ParticleRing().colorMiddle);
+				ring.colorInner = readColor("colorInner", ParticleRing().colorInner);
+
+					bool takes = ring.vertexCount >= 3u && ring.vertexCount <= 64u;
+					// The shape word names the figure the arc draws: the absent word and the
+					// donut word the same old ring, the crescent its own four degrees - and a
+					// stranger word a ring that cannot take effect, the whole object left as
+					// it stood for encode() to drop. The explicit null the patch carries is
+					// the donut's own clear, the word the row's gesture writes under a donut;
+					// a word of any other kind - a number where the string waits - cannot
+					// name a figure and refuses the same way
+					if (v.isNull("shape") || v.isString("shape")) {
+						const auto &shape = v.getString("shape");
+						if (shape.empty() || shape == "donut") {
+							ring.crescent = false;
+						} else if (shape == "crescent") {
+							ring.crescent = true;
+						} else {
+							takes = false;
+						}
+					} else {
+						takes = false;
+					}
+					Rc<CurveBuffer> outerCurve;
+					Rc<CurveBuffer> innerCurve;
+					Rc<CurveBuffer> arcFromCurve;
+					Rc<CurveBuffer> arcToCurve;
+					Rc<CurveBuffer> ratioCurve;
+					Rc<CurveBuffer> outerColorCurve;
+					Rc<CurveBuffer> middleColorCurve;
+					Rc<CurveBuffer> innerColorCurve;
+					if (takes) {
+						// A present dictionary seats the curve it names, an explicit null clears
+						// the one the object's own seat reset - and a dictionary whose type names
+						// no curve of the band's own kind seats nothing, the whole object refusing
+						// with it: the five scalars ride Float, the three color bands vec4
+						const auto &readRingCurve =
+								[&](StringView key, Rc<CurveBuffer> &seat, CurveBufferType type) {
+							if (!v.hasValue(key)) {
+								return;
+							}
+							const auto &cv = v.getValue(key);
+							if (!cv.isDictionary()) {
+								return;
+							}
+							auto parsed = ParticleSystem_readCurve(cv);
+							if (!parsed || parsed->getType() != type) {
+								takes = false;
+								return;
+							}
+							seat = sp::move(parsed);
+						};
+						readRingCurve("outerCurve", outerCurve, CurveBufferType::Float);
+						readRingCurve("innerCurve", innerCurve, CurveBufferType::Float);
+						readRingCurve("fromCurve", arcFromCurve, CurveBufferType::Float);
+						readRingCurve("toCurve", arcToCurve, CurveBufferType::Float);
+						readRingCurve("ratioCurve", ratioCurve, CurveBufferType::Float);
+						readRingCurve("colorOuterCurve", outerColorCurve, CurveBufferType::Vec4);
+						readRingCurve("colorMiddleCurve", middleColorCurve, CurveBufferType::Vec4);
+						readRingCurve("colorInnerCurve", innerColorCurve, CurveBufferType::Vec4);
+					}
+
+					// The whole object every seat: an outer of zero keeps the clear word, a ring
+					// that cannot take effect - a stranger count, a stranger shape, a stranger
+					// curve - leaves the previous words standing for encode() to drop
+					if (ring.outer <= 0.0f) {
+						clearRing();
+					} else if (takes) {
+						setRing(ring);
+						// The object's own seat reset the curves; the dictionaries' seats land on
+						// the copy setRing's mutate made, past it
+						_data->ringOuterCurve = outerCurve;
+						_data->ringInnerCurve = innerCurve;
+						_data->ringArcFromCurve = arcFromCurve;
+						_data->ringArcToCurve = arcToCurve;
+						_data->ringRatioCurve = ratioCurve;
+						_data->ringOuterColorCurve = outerColorCurve;
+						_data->ringMiddleColorCurve = middleColorCurve;
+						_data->ringInnerColorCurve = innerColorCurve;
+					}
+			} else {
+				clearRing();
+			}
+		}
+
+		if (value.isBasicType("strip")) {
+			setStripWidth(float(value.getDouble("strip")));
+		}
+	}
 
 Value ParticleSystem::encode() const {
 	Value ret;
@@ -354,9 +755,52 @@ Value ParticleSystem::encode() const {
 	for (auto &it : _data->emissionPoints) { points.addValue(ParticleSystem_writeVec2(it)); }
 	ret.setValue(sp::move(points), "emissionPoints");
 
+	// The birth shape, only when one stands - the fresh system's point birth writes no key, and
+	// a shape's numbers ride inside its own word
+	if (getEmissionType() != ParticleEmissionType::Points) {
+		Value shape;
+		switch (getEmissionType()) {
+		case ParticleEmissionType::Disc:
+			shape.setString("disc", "type");
+			shape.setDouble(_data->emissionShape[0], "radius");
+			break;
+		case ParticleEmissionType::Ring:
+			shape.setString("ring", "type");
+			shape.setDouble(_data->emissionShape[0], "outer");
+			shape.setDouble(_data->emissionShape[1], "inner");
+			shape.setDouble(_data->emissionShape[2], "from");
+			shape.setDouble(_data->emissionShape[3], "to");
+			break;
+		case ParticleEmissionType::Rect:
+			shape.setString("rect", "type");
+			shape.setValue(
+					ParticleSystem_writeVec2(Vec2(_data->emissionShape[0], _data->emissionShape[1])),
+					"half");
+			break;
+		case ParticleEmissionType::Segment:
+			shape.setString("segment", "type");
+			shape.setValue(
+					ParticleSystem_writeVec2(Vec2(_data->emissionShape[0], _data->emissionShape[1])),
+					"from");
+			shape.setValue(
+					ParticleSystem_writeVec2(Vec2(_data->emissionShape[2], _data->emissionShape[3])),
+					"to");
+			break;
+		case ParticleEmissionType::Points: break;
+		}
+		ret.setValue(sp::move(shape), "emissionShape");
+	}
+
 	ret.setValue(ParticleSystem_writeRange(getNormalMin(), getNormalMax()), "normal");
 	ret.setValue(ParticleSystem_writeRange(getLifetimeMin(), getLifetimeMax()), "lifetime");
 	ret.setValue(ParticleSystem_writeRange(getScaleMin(), getScaleMax()), "scale");
+	// The second axis's own range, only when its words stand apart from the first axis's - a
+	// range equal to `scale` is the unseated state the birth keeps, and the key stays out so an
+	// old file saves byte for byte
+	if (_data->data.scaleY.init != _data->data.scale.init
+			|| _data->data.scaleY.rnd != _data->data.scale.rnd) {
+		ret.setValue(ParticleSystem_writeRange(getScaleYMin(), getScaleYMax()), "scaleY");
+	}
 	ret.setValue(ParticleSystem_writeRange(getAngleMin(), getAngleMax()), "angle");
 	ret.setValue(ParticleSystem_writeRange(getVelocityMin(), getVelocityMax()), "velocity");
 	ret.setValue(ParticleSystem_writeRange(getLinearVelocityMin(), getLinearVelocityMax()),
@@ -377,12 +821,27 @@ Value ParticleSystem::encode() const {
 						 getTangentialAccelerationMax()),
 			"tangentialAcceleration");
 	ret.setValue(ParticleSystem_writeRange(getHueMin(), getHueMax()), "hue");
+	ret.setValue(ParticleSystem_writeRange(getDampingMin(), getDampingMax()), "damping");
+	ret.setValue(ParticleSystem_writeRange(getTurbulenceInfluenceMin(),
+						 getTurbulenceInfluenceMax()),
+			"turbulenceInfluence");
 
 	if (_data->colorCurve) {
 		ret.setValue(ParticleSystem_writeCurve(_data->colorCurve), "colorCurve");
 	}
 	if (_data->animFrameCurve) {
 		ret.setValue(ParticleSystem_writeCurve(_data->animFrameCurve), "animFrameCurve");
+	}
+	if (_data->scaleCurve) {
+		ret.setValue(ParticleSystem_writeCurve(_data->scaleCurve), "scaleCurve");
+	}
+	// The seated curve alone; a curve the setter cleared - a type the pair cannot ride, every
+	// word zero - never reaches a file
+	if (_data->positionCurve) {
+		ret.setValue(ParticleSystem_writeCurve(_data->positionCurve), "positionCurve");
+	}
+	if (_data->angleCurve) {
+		ret.setValue(ParticleSystem_writeCurve(_data->angleCurve), "angleCurve");
 	}
 
 	Value flags(Value::Type::ARRAY);
@@ -396,6 +855,173 @@ Value ParticleSystem::encode() const {
 	if (_data->hasSeed) {
 		ret.setInteger(_data->seed, "seed");
 	}
+	if (_data->warm != 0.0f) {
+		ret.setDouble(_data->warm, "warm");
+	}
+	if (_data->data.stretch != 0.0f) {
+		ret.setDouble(_data->data.stretch, "stretch");
+	}
+	if (_data->data.maxSpeed != 0.0f) {
+		ret.setDouble(_data->data.maxSpeed, "maxSpeed");
+	}
+	if (_data->data.turbulenceStrength != 0.0f) {
+		ret.setDouble(_data->data.turbulenceStrength, "turbulenceStrength");
+	}
+	if (_data->data.turbulenceFrequency != 0.0f) {
+		ret.setDouble(_data->data.turbulenceFrequency, "turbulenceFrequency");
+	}
+	if (_data->data.turbulenceShiftSpeed != 0.0f) {
+		ret.setDouble(_data->data.turbulenceShiftSpeed, "turbulenceShiftSpeed");
+	}
+	// The taken seats alone, each as the full triple the apply reads; no seat taken is the fresh
+	// default, and the key stays out
+	Value attractors(Value::Type::ARRAY);
+	for (const auto &seat : _data->data.attractors) {
+		if (seat.strength == 0.0f) {
+			continue;
+		}
+		Value entry(Value::Type::DICTIONARY);
+		entry.setValue(ParticleSystem_writeVec2(seat.point), "point");
+		entry.setDouble(seat.strength, "strength");
+		entry.setDouble(seat.radius, "radius");
+		attractors.addValue(sp::move(entry));
+	}
+	if (!attractors.empty()) {
+		ret.setValue(sp::move(attractors), "attractors");
+	}
+	if (_data->data.trailWidth != 0.0f) {
+		ret.setDouble(_data->data.trailWidth, "trailWidth");
+	}
+	// The taken seats alone, each as the full entry the apply reads; no seat taken is the fresh
+	// default, and the key stays out
+	Value deflectors(Value::Type::ARRAY);
+	for (const auto &seat : _data->data.deflectors) {
+		if (seat.shape == 0u) {
+			continue;
+		}
+		Value entry(Value::Type::DICTIONARY);
+		if (seat.shape == XL_PARTICLE_DEFLECTOR_CIRCLE) {
+			entry.setString("circle", "type");
+			entry.setValue(ParticleSystem_writeVec2(seat.a), "center");
+			entry.setDouble(seat.radius, "radius");
+		} else {
+			entry.setString("segment", "type");
+			entry.setValue(ParticleSystem_writeVec2(seat.a), "from");
+			entry.setValue(ParticleSystem_writeVec2(seat.b), "to");
+		}
+		entry.setString(seat.response == XL_PARTICLE_DEFLECTOR_BOUNCE ? "bounce" : "kill",
+				"response");
+		deflectors.addValue(sp::move(entry));
+	}
+	if (!deflectors.empty()) {
+		ret.setValue(sp::move(deflectors), "deflectors");
+	}
+	if (_data->data.inheritVelocity != 0.0f) {
+		ret.setDouble(_data->data.inheritVelocity, "inheritVelocity");
+	}
+	if (_data->data.uvScroll.x != 0.0f || _data->data.uvScroll.y != 0.0f) {
+		ret.setValue(ParticleSystem_writeVec2(_data->data.uvScroll), "uvScroll");
+	}
+	if (_data->data.uvFlip != 0.0f) {
+		ret.setDouble(_data->data.uvFlip, "uvFlip");
+	}
+	// The seated rect alone: the zero seat and the full [0,0,1,1] are the absence both texts
+	// keep, the key staying out so an old file saves byte for byte
+	if (_data->data.uvRect.z > 0.0f && _data->data.uvRect.w > 0.0f
+			&& (_data->data.uvRect.x != 0.0f || _data->data.uvRect.y != 0.0f
+				|| _data->data.uvRect.z != 1.0f || _data->data.uvRect.w != 1.0f)) {
+		ret.setValue(ParticleSystem_writeVec4(_data->data.uvRect), "uvRect");
+	}
+	// The seated corners alone: the setter leaves the words at their zero for every seat that
+	// cannot take effect - the defaults ±0.5 the absence is and the all-center zero the old
+	// buffers keep - so the zero words are the absence both texts keep, the key staying out so
+	// an old file saves byte for byte
+	if (_data->data.cornerBL.x != 0.0f || _data->data.cornerBL.y != 0.0f
+			|| _data->data.cornerBR.x != 0.0f || _data->data.cornerBR.y != 0.0f
+			|| _data->data.cornerTL.x != 0.0f || _data->data.cornerTL.y != 0.0f
+			|| _data->data.cornerTR.x != 0.0f || _data->data.cornerTR.y != 0.0f) {
+		Value corners(Value::Type::ARRAY);
+		corners.addDouble(_data->data.cornerBL.x);
+		corners.addDouble(_data->data.cornerBL.y);
+		corners.addDouble(_data->data.cornerBR.x);
+		corners.addDouble(_data->data.cornerBR.y);
+		corners.addDouble(_data->data.cornerTL.x);
+		corners.addDouble(_data->data.cornerTL.y);
+		corners.addDouble(_data->data.cornerTR.x);
+		corners.addDouble(_data->data.cornerTR.y);
+		ret.setValue(sp::move(corners), "corners");
+	}
+	if (_data->data.start != 0.0f) {
+		ret.setDouble(_data->data.start, "start");
+	}
+	if (_data->data.interval != 0.0f) {
+		ret.setDouble(_data->data.interval, "interval");
+	}
+	// The ring, only when one stands - the outer word is the seat, and every other word rides
+	// only at its own default's side: the full arc 0 to 360 stays out of the file, a white
+	// band is the absence the three colors' default keeps, the default sixteen corners the
+	// count word leaves out, and a seated scalar curve is the only word of its own the file
+	// carries - no curve, the word the draw reads
+	if (_data->data.ringOuter > 0.0f) {
+		Value entry;
+		entry.setDouble(_data->data.ringOuter, "outer");
+		if (_data->data.ringInner != 0.0f) {
+			entry.setDouble(_data->data.ringInner, "inner");
+		}
+		if (_data->data.ringArcFrom != 0.0f || _data->data.ringArcTo != 360.0f) {
+			entry.setDouble(_data->data.ringArcFrom, "from");
+			entry.setDouble(_data->data.ringArcTo, "to");
+		}
+		if (_data->data.ringVertexCount != ParticleRing().vertexCount) {
+			entry.setInteger(_data->data.ringVertexCount, "vertexCount");
+		}
+		// The shape word, only the crescent's own: the donut is the absence the file always
+		// kept, and the crescent's four degrees ride beside it each at its default's side -
+		// the full arc and the hard edges staying out of the file the arc words' own rule
+		if (_data->data.ringShape == XL_PARTICLE_RING_SHAPE_CRESCENT) {
+			entry.setString("crescent", "shape");
+			if (_data->data.ringCrescentFrom != 0.0f || _data->data.ringCrescentTo != 360.0f) {
+				entry.setDouble(_data->data.ringCrescentFrom, "crescentFrom");
+				entry.setDouble(_data->data.ringCrescentTo, "crescentTo");
+			}
+			if (_data->data.ringFadeFrom != 0.0f || _data->data.ringFadeTo != 0.0f) {
+				entry.setDouble(_data->data.ringFadeFrom, "fadeFrom");
+				entry.setDouble(_data->data.ringFadeTo, "fadeTo");
+			}
+		}
+		const auto &writeColor = [&](StringView key, const Vec4 &seated) {
+			if (seated != Vec4(1.0f, 1.0f, 1.0f, 1.0f)) {
+				Value c(Value::Type::ARRAY);
+				c.addDouble(seated.x);
+				c.addDouble(seated.y);
+				c.addDouble(seated.z);
+				c.addDouble(seated.w);
+				entry.setValue(sp::move(c), key);
+			}
+		};
+		writeColor("colorOuter", _data->data.ringColorOuter);
+		writeColor("colorMiddle", _data->data.ringColorMiddle);
+		writeColor("colorInner", _data->data.ringColorInner);
+		const auto &writeCurve = [&](StringView key, const Rc<CurveBuffer> &seated) {
+			if (seated) {
+				entry.setValue(ParticleSystem_writeCurve(seated.get()), key);
+			}
+		};
+		writeCurve("outerCurve", _data->ringOuterCurve);
+		writeCurve("innerCurve", _data->ringInnerCurve);
+		writeCurve("fromCurve", _data->ringArcFromCurve);
+		writeCurve("toCurve", _data->ringArcToCurve);
+		writeCurve("ratioCurve", _data->ringRatioCurve);
+		writeCurve("colorOuterCurve", _data->ringOuterColorCurve);
+		writeCurve("colorMiddleCurve", _data->ringMiddleColorCurve);
+		writeCurve("colorInnerCurve", _data->ringInnerColorCurve);
+		ret.setValue(sp::move(entry), "ring");
+	}
+	// The strip, only when one stands - the width word is the seat, the scalar zero fate the
+	// fresh default keeps, so an off strip never reaches a file
+	if (_data->data.stripWidth != 0.0f) {
+		ret.setDouble(_data->data.stripWidth, "strip");
+	}
 	return ret;
 }
 
@@ -406,6 +1032,312 @@ void ParticleSystem::setParticleSize(Size2 size) {
 }
 
 Size2 ParticleSystem::getParticleSize() const { return _data->particleSize; }
+
+void ParticleSystem::setStretch(float stretch) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the drawn quads follow
+	mutate().data.stretch = stretch;
+}
+
+float ParticleSystem::getStretch() const { return _data->data.stretch; }
+
+void ParticleSystem::setMaxSpeed(float maxSpeed) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the step follows; a negative
+	// ceiling is the no-ceiling default
+	mutate().data.maxSpeed = sprt::max(maxSpeed, 0.0f);
+}
+
+float ParticleSystem::getMaxSpeed() const { return _data->data.maxSpeed; }
+
+void ParticleSystem::setTurbulenceStrength(float strength) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the step follows; a negative
+	// strength is the no-turbulence default
+	mutate().data.turbulenceStrength = sprt::max(strength, 0.0f);
+}
+
+float ParticleSystem::getTurbulenceStrength() const {
+	return _data->data.turbulenceStrength;
+}
+
+void ParticleSystem::setTurbulenceFrequency(float frequency) {
+	// A negative frequency collapses the noise's axes the way a zero one does; clamped to that 0
+	mutate().data.turbulenceFrequency = sprt::max(frequency, 0.0f);
+}
+
+float ParticleSystem::getTurbulenceFrequency() const {
+	return _data->data.turbulenceFrequency;
+}
+
+void ParticleSystem::setTurbulenceShiftSpeed(float shiftSpeed) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the step follows; a negative
+	// shift speed would drag the noise domain below the lattice's non-negative words, so it
+	// clamps to the static-pattern default
+	mutate().data.turbulenceShiftSpeed = sprt::max(shiftSpeed, 0.0f);
+}
+
+float ParticleSystem::getTurbulenceShiftSpeed() const {
+	return _data->data.turbulenceShiftSpeed;
+}
+
+void ParticleSystem::setAttractors(SpanView<ParticleAttractor> attractors) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the step follows. The seats past
+	// the given list are cleared, so a shorter list unseats what a longer one had
+	auto &data = mutate().data;
+	size_t i = 0;
+	for (; i < attractors.size() && i < 4; ++i) {
+		data.attractors[i] = attractors[i];
+	}
+	for (; i < 4; ++i) {
+		data.attractors[i] = ParticleAttractor{Vec2::ZERO, 0.0f, 0.0f};
+	}
+}
+
+SpanView<const ParticleAttractor> ParticleSystem::getAttractors() const {
+	return SpanView<const ParticleAttractor>(_data->data.attractors, 4);
+}
+
+void ParticleSystem::setTrailWidth(float width) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the step follows; a negative
+	// width is the no-trail default
+	mutate().data.trailWidth = sprt::max(width, 0.0f);
+}
+
+float ParticleSystem::getTrailWidth() const { return _data->data.trailWidth; }
+
+void ParticleSystem::setDeflectors(SpanView<ParticleDeflector> deflectors) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the step follows. The seats past
+	// the given list are cleared, so a shorter list unseats what a longer one had
+	auto &data = mutate().data;
+	size_t i = 0;
+	for (; i < deflectors.size() && i < 4; ++i) {
+		data.deflectors[i] = deflectors[i];
+	}
+	for (; i < 4; ++i) {
+		data.deflectors[i] = ParticleDeflector{Vec2::ZERO, Vec2::ZERO, 0.0f, 0u, 0u, 0u};
+	}
+}
+
+SpanView<const ParticleDeflector> ParticleSystem::getDeflectors() const {
+	return SpanView<const ParticleDeflector>(_data->data.deflectors, 4);
+}
+
+void ParticleSystem::setInheritVelocity(float ratio) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the birth follows; a negative
+	// ratio is the no-inheritance default
+	mutate().data.inheritVelocity = sprt::max(ratio, 0.0f);
+}
+
+float ParticleSystem::getInheritVelocity() const { return _data->data.inheritVelocity; }
+
+void ParticleSystem::setUvScroll(Vec2 scroll) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the pass follows; the speed is
+	// signed per axis - the slide's direction is the sign's own - and no component is clamped
+	mutate().data.uvScroll = scroll;
+}
+
+Vec2 ParticleSystem::getUvScroll() const { return _data->data.uvScroll; }
+
+void ParticleSystem::setUvFlip(float flip) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the birth follows; a negative
+	// probability is the never-flip default
+	mutate().data.uvFlip = sprt::max(flip, 0.0f);
+}
+
+float ParticleSystem::getUvFlip() const { return _data->data.uvFlip; }
+
+void ParticleSystem::setUvRect(Vec4 rect) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the pass follows. Each word
+	// clamps to its own 0..1; a rect that cannot take effect - a zero width or height word,
+	// or the full [0,0,1,1] the absence is - seats nothing: the cut the region itself, the
+	// zero state every old buffer keeps, the width word's own zero fate
+	rect.x = sprt::clamp(rect.x, 0.0f, 1.0f);
+	rect.y = sprt::clamp(rect.y, 0.0f, 1.0f);
+	rect.z = sprt::clamp(rect.z, 0.0f, 1.0f);
+	rect.w = sprt::clamp(rect.w, 0.0f, 1.0f);
+	if (rect.z <= 0.0f || rect.w <= 0.0f
+			|| (rect.x == 0.0f && rect.y == 0.0f && rect.z == 1.0f && rect.w == 1.0f)) {
+		rect = Vec4(0.0f, 0.0f, 0.0f, 0.0f);
+	}
+	mutate().data.uvRect = rect;
+}
+
+Vec4 ParticleSystem::getUvRect() const { return _data->data.uvRect; }
+
+void ParticleSystem::setCorners(Vec2 bl, Vec2 br, Vec2 tl, Vec2 tr) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the quad follows. A seat whose
+	// every word stands at its own default - the corners the size-built quad always made, the
+	// absence the file never carries - and the all-center seat, the zero state every old
+	// buffer keeps, cannot take effect: both leave the words at their zero, the draw the quad
+	// the size always built, the key encode() drops
+	static constexpr Vec2 kDefaults[] = {Vec2(-0.5f, -0.5f), Vec2(0.5f, -0.5f), Vec2(-0.5f, 0.5f),
+		Vec2(0.5f, 0.5f)};
+	const Vec2 seats[] = {bl, br, tl, tr};
+	bool absence = true;
+	bool empty = true;
+	for (size_t i = 0; i < 4; ++i) {
+		absence = absence && seats[i] == kDefaults[i];
+		empty = empty && seats[i] == Vec2(0.0f, 0.0f);
+	}
+	if (absence || empty) {
+		bl = br = tl = tr = Vec2(0.0f, 0.0f);
+	}
+	auto &d = mutate();
+	d.data.cornerBL = bl;
+	d.data.cornerBR = br;
+	d.data.cornerTL = tl;
+	d.data.cornerTR = tr;
+}
+
+Vec2 ParticleSystem::getCornerBL() const { return _data->data.cornerBL; }
+Vec2 ParticleSystem::getCornerBR() const { return _data->data.cornerBR; }
+Vec2 ParticleSystem::getCornerTL() const { return _data->data.cornerTL; }
+Vec2 ParticleSystem::getCornerTR() const { return _data->data.cornerTR; }
+
+void ParticleSystem::setStart(float seconds) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the birth schedule follows; a
+	// negative delay is the no-delay default
+	mutate().data.start = sprt::max(seconds, 0.0f);
+}
+
+float ParticleSystem::getStart() const { return _data->data.start; }
+
+void ParticleSystem::setInterval(float seconds) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the birth schedule follows; a
+	// negative interval is the phase-schedule default
+	mutate().data.interval = sprt::max(seconds, 0.0f);
+}
+
+float ParticleSystem::getInterval() const { return _data->data.interval; }
+
+void ParticleSystem::setRing(const ParticleRing &ring) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the pass follows. A negative
+	// outer is the no-ring default, clamped to it; the inner follows its own sign the same way,
+	// for the band between the two edges is drawn whatever their order, and the arc's degrees
+	// ride the words verbatim - any span, even past the full circle or back around it, the
+	// birth shape ring's own plain lerp. The corner count clamps to the field's own 3..64 -
+	// the document door refuses a count outside it before this setter ever runs - and the
+	// whole object's seat resets the five scalar curves and the three color-band ones: the
+	// ring's words are one object every patch carries whole, the curve keys riding inside it
+	// or absent together. The shape word rides the same seat: the crescent's own four degrees
+	// verbatim - any span, any fade, even a fade wider than the arc, the fade words answering
+	// the corners they are given - and a donut seat resets them to the defaults the file
+	// never carries
+	auto &data = mutate().data;
+	data.ringOuter = sprt::max(ring.outer, 0.0f);
+	data.ringInner = sprt::max(ring.inner, 0.0f);
+	data.ringArcFrom = ring.arcFrom;
+	data.ringArcTo = ring.arcTo;
+	data.ringVertexCount = sprt::min(sprt::max(ring.vertexCount, 3u), 64u);
+	data.ringShape = ring.crescent ? XL_PARTICLE_RING_SHAPE_CRESCENT : XL_PARTICLE_RING_SHAPE_DONUT;
+	data.ringCrescentFrom = ring.crescentFrom;
+	data.ringCrescentTo = ring.crescentTo;
+	data.ringFadeFrom = ring.fadeFrom;
+	data.ringFadeTo = ring.fadeTo;
+	data.ringColorOuter = Vec4(ring.colorOuter.r, ring.colorOuter.g, ring.colorOuter.b,
+			ring.colorOuter.a);
+	data.ringColorMiddle = Vec4(ring.colorMiddle.r, ring.colorMiddle.g, ring.colorMiddle.b,
+			ring.colorMiddle.a);
+	data.ringColorInner = Vec4(ring.colorInner.r, ring.colorInner.g, ring.colorInner.b,
+			ring.colorInner.a);
+	_data->ringOuterCurve = nullptr;
+	_data->ringInnerCurve = nullptr;
+	_data->ringArcFromCurve = nullptr;
+	_data->ringArcToCurve = nullptr;
+	_data->ringRatioCurve = nullptr;
+	_data->ringOuterColorCurve = nullptr;
+	_data->ringMiddleColorCurve = nullptr;
+	_data->ringInnerColorCurve = nullptr;
+}
+
+void ParticleSystem::clearRing() {
+	// The memset state, byte for byte: the outer's zero is the quad the pass always drew, and
+	// the words no draw reads stand zeroed as a fresh system carries them
+	auto &data = mutate().data;
+	data.ringOuter = 0.0f;
+	data.ringInner = 0.0f;
+	data.ringArcFrom = 0.0f;
+	data.ringArcTo = 0.0f;
+	data.ringVertexCount = 0u;
+	data.ringShape = XL_PARTICLE_RING_SHAPE_DONUT;
+	data.ringCrescentFrom = 0.0f;
+	data.ringCrescentTo = 0.0f;
+	data.ringFadeFrom = 0.0f;
+	data.ringFadeTo = 0.0f;
+	data.ringColorOuter = Vec4(0.0f, 0.0f, 0.0f, 0.0f);
+	data.ringColorMiddle = Vec4(0.0f, 0.0f, 0.0f, 0.0f);
+	data.ringColorInner = Vec4(0.0f, 0.0f, 0.0f, 0.0f);
+	_data->ringOuterCurve = nullptr;
+	_data->ringInnerCurve = nullptr;
+	_data->ringArcFromCurve = nullptr;
+	_data->ringArcToCurve = nullptr;
+	_data->ringRatioCurve = nullptr;
+	_data->ringOuterColorCurve = nullptr;
+	_data->ringMiddleColorCurve = nullptr;
+	_data->ringInnerColorCurve = nullptr;
+}
+
+ParticleRing ParticleSystem::getRing() const {
+	// The seated words verbatim: an unseated ring reads the memset state, the arc's own 0 to 0
+	// and the count's 0 - the defaults the file and the panel seat live in ParticleRing itself
+	ParticleRing ret;
+	ret.outer = _data->data.ringOuter;
+	ret.inner = _data->data.ringInner;
+	ret.arcFrom = _data->data.ringArcFrom;
+	ret.arcTo = _data->data.ringArcTo;
+	ret.vertexCount = _data->data.ringVertexCount;
+	ret.colorOuter = Color4F(_data->data.ringColorOuter.x, _data->data.ringColorOuter.y,
+			_data->data.ringColorOuter.z, _data->data.ringColorOuter.w);
+	ret.colorMiddle = Color4F(_data->data.ringColorMiddle.x, _data->data.ringColorMiddle.y,
+			_data->data.ringColorMiddle.z, _data->data.ringColorMiddle.w);
+	ret.colorInner = Color4F(_data->data.ringColorInner.x, _data->data.ringColorInner.y,
+			_data->data.ringColorInner.z, _data->data.ringColorInner.w);
+	return ret;
+}
+
+#define XL_PARTICLE_RING_CURVE(Name, field) \
+	bool ParticleSystem::set##Name##Curve(CurveBuffer *curve) { \
+		if (curve && curve->getType() != CurveBufferType::Float) { \
+			log::source().error("ParticleSystem", #Name " ring curve must be of Float type"); \
+			return false; \
+		} \
+		mutate().field = curve; \
+		return true; \
+	} \
+	CurveBuffer *ParticleSystem::get##Name##Curve() const { return _data->field; }
+
+XL_PARTICLE_RING_CURVE(RingOuter, ringOuterCurve)
+XL_PARTICLE_RING_CURVE(RingInner, ringInnerCurve)
+XL_PARTICLE_RING_CURVE(RingArcFrom, ringArcFromCurve)
+XL_PARTICLE_RING_CURVE(RingArcTo, ringArcToCurve)
+XL_PARTICLE_RING_CURVE(RingRatio, ringRatioCurve)
+
+#undef XL_PARTICLE_RING_CURVE
+
+// The color bands' own macro: the same seat, the vec4 the band's four words ride the only
+// type that takes effect - a Float curve has no color and a narrower one no seat
+#define XL_PARTICLE_RING_COLOR_CURVE(Name, field) \
+	bool ParticleSystem::set##Name##Curve(CurveBuffer *curve) { \
+		if (curve && curve->getType() != CurveBufferType::Vec4) { \
+			log::source().error("ParticleSystem", #Name " ring curve must be of Vec4 type"); \
+			return false; \
+		} \
+		mutate().field = curve; \
+		return true; \
+	} \
+	CurveBuffer *ParticleSystem::get##Name##Curve() const { return _data->field; }
+
+XL_PARTICLE_RING_COLOR_CURVE(RingOuterColor, ringOuterColorCurve)
+XL_PARTICLE_RING_COLOR_CURVE(RingMiddleColor, ringMiddleColorCurve)
+XL_PARTICLE_RING_COLOR_CURVE(RingInnerColor, ringInnerColorCurve)
+
+#undef XL_PARTICLE_RING_COLOR_CURVE
+
+void ParticleSystem::setStripWidth(float width) {
+	// Inside ParticleEmitterData, so the emitter re-uploads and the pass follows; a negative
+	// width is the no-strip default, clamped to it
+	mutate().data.stripWidth = sprt::max(width, 0.0f);
+}
+
+float ParticleSystem::getStripWidth() const { return _data->data.stripWidth; }
 
 void ParticleSystem::setCount(uint32_t c) { mutate().data.count = c; }
 
@@ -436,6 +1368,20 @@ void ParticleSystem::setEmissionPoints(SpanView<Vec2> points) {
 }
 
 SpanView<Vec2> ParticleSystem::getEmissionPoints() const { return _data->emissionPoints; }
+
+void ParticleSystem::setEmissionShape(ParticleEmissionType type, SpanView<float> params) {
+	auto &d = mutate();
+	d.data.emissionType = toInt(type);
+	for (size_t i = 0; i < 4; ++i) {
+		d.emissionShape[i] = (i < params.size()) ? params[i] : 0.0f;
+	}
+}
+
+ParticleEmissionType ParticleSystem::getEmissionType() const {
+	return ParticleEmissionType(_data->data.emissionType);
+}
+
+const float *ParticleSystem::getEmissionShape() const { return _data->emissionShape; }
 
 void ParticleSystem::setOrigin(Vec2 origin) { mutate().data.origin = origin; }
 
@@ -472,9 +1418,29 @@ Color4F ParticleSystem::getColor() const {
 		return _data->data.field.init + _data->data.field.rnd; \
 	}
 
+// The first axis's range carries the pair's tracking: an unseated second axis (its words equal
+// to the first's) follows every scale edit, so a document that never named `scaleY` keeps its
+// two axes one, while a seated one stands where its own key put it
+void ParticleSystem::setScale(float value, float rnd) {
+	auto &d = mutate();
+	const bool tracking = d.data.scaleY.init == d.data.scale.init
+			&& d.data.scaleY.rnd == d.data.scale.rnd;
+	d.data.scale.init = value;
+	d.data.scale.rnd = rnd;
+	if (tracking) {
+		d.data.scaleY = d.data.scale;
+	}
+}
+
+float ParticleSystem::getScaleMin() const { return _data->data.scale.init; }
+
+float ParticleSystem::getScaleMax() const {
+	return _data->data.scale.init + _data->data.scale.rnd;
+}
+
 XL_PARTICLE_FLOAT_PARAM(Normal, normal)
 XL_PARTICLE_FLOAT_PARAM(Lifetime, lifetime)
-XL_PARTICLE_FLOAT_PARAM(Scale, scale)
+XL_PARTICLE_FLOAT_PARAM(ScaleY, scaleY)
 XL_PARTICLE_FLOAT_PARAM(Angle, angle)
 XL_PARTICLE_FLOAT_PARAM(Velocity, velocity)
 XL_PARTICLE_VEC2_PARAM(LinearVelocity, linearVelocity)
@@ -486,6 +1452,8 @@ XL_PARTICLE_VEC2_PARAM(LinearAcceleration, linearAcceleration)
 XL_PARTICLE_FLOAT_PARAM(RadialAcceleration, radialAcceleration)
 XL_PARTICLE_FLOAT_PARAM(TangentialAcceleration, tangentialAcceleration)
 XL_PARTICLE_FLOAT_PARAM(Hue, hue)
+XL_PARTICLE_FLOAT_PARAM(Damping, damping)
+XL_PARTICLE_FLOAT_PARAM(TurbulenceInfluence, turbulenceInfluence)
 
 #undef XL_PARTICLE_FLOAT_PARAM
 #undef XL_PARTICLE_VEC2_PARAM
@@ -513,6 +1481,70 @@ bool ParticleSystem::setAnimFrameCurve(CurveBuffer *curve) {
 }
 
 CurveBuffer *ParticleSystem::getAnimFrameCurve() const { return _data->animFrameCurve; }
+
+bool ParticleSystem::setScaleCurve(CurveBuffer *curve) {
+	// The Float curve is both axes with the one component; the Vec2 one is Effekseer's scale by
+	// axis, each axis its own component - anything wider has no axis to ride
+	if (curve && curve->getType() != CurveBufferType::Float
+			&& curve->getType() != CurveBufferType::Vec2) {
+		log::source().error("ParticleSystem", "Scale curve must be of Float or Vec2 type");
+		return false;
+	}
+
+	mutate().scaleCurve = curve;
+	return true;
+}
+
+CurveBuffer *ParticleSystem::getScaleCurve() const { return _data->scaleCurve; }
+
+bool ParticleSystem::setPositionCurve(CurveBuffer *curve) {
+	// The displacement is a pair: a Vec2 curve alone carries it, the Float one has no pair and a
+	// wider one no seat. A curve whose every word is zero walks nowhere - it cannot take effect,
+	// the width word's own zero fate - so it seats nothing, as an empty one does
+	if (curve && curve->getType() == CurveBufferType::Vec2) {
+		bool zero = true;
+		auto n = curve->getSize() * curve->getElementSize();
+		for (size_t i = 0; i < n; ++i) {
+			zero = zero && curve->getData()[i] == 0.0f;
+		}
+		if (zero) {
+			curve = nullptr;
+		}
+	} else if (curve) {
+		log::source().error("ParticleSystem", "Position curve must be of Vec2 type");
+		return false;
+	}
+
+	mutate().positionCurve = curve;
+	return true;
+}
+
+CurveBuffer *ParticleSystem::getPositionCurve() const { return _data->positionCurve; }
+
+bool ParticleSystem::setAngleCurve(CurveBuffer *curve) {
+	// The walk is a scalar: the Float curve alone carries it, anything wider has no axis to
+	// ride. A curve whose every word is zero turns nowhere - it cannot take effect, the width
+	// word's own zero fate - so it seats nothing, as an empty one does
+	if (curve && curve->getType() != CurveBufferType::Float) {
+		log::source().error("ParticleSystem", "Angle curve must be of Float type");
+		return false;
+	}
+	if (curve) {
+		bool zero = true;
+		auto n = curve->getSize() * curve->getElementSize();
+		for (size_t i = 0; i < n; ++i) {
+			zero = zero && curve->getData()[i] == 0.0f;
+		}
+		if (zero) {
+			curve = nullptr;
+		}
+	}
+
+	mutate().angleCurve = curve;
+	return true;
+}
+
+CurveBuffer *ParticleSystem::getAngleCurve() const { return _data->angleCurve; }
 
 void ParticleSystem::addFlags(ParticleSystemFlags flags) { setFlags(getFlags() | flags); }
 
@@ -557,6 +1589,15 @@ uint32_t ParticleSystem::getSeed() const { return _data->seed; }
 
 bool ParticleSystem::hasSeed() const { return _data->hasSeed; }
 
+void ParticleSystem::setWarm(float seconds) {
+	// No generation bump: warm lives outside ParticleEmitterData, so the renderer neither
+	// restarts nor re-uploads for it - only the CPU-side sim reads the field
+	copy();
+	_data->warm = sprt::max(seconds, 0.0f);
+}
+
+float ParticleSystem::getWarm() const { return _data->warm; }
+
 uint64_t ParticleSystem::getParamsGeneration() const { return _data->paramsGeneration; }
 
 uint64_t ParticleSystem::getRestartGeneration() const { return _data->restartGeneration; }
@@ -571,12 +1612,25 @@ Rc<ParticleSystemData> ParticleSystem::dup() {
 	data->data = _data->data;
 	data->colorCurve = _data->colorCurve;
 	data->animFrameCurve = _data->animFrameCurve;
+	data->scaleCurve = _data->scaleCurve;
+	data->positionCurve = _data->positionCurve;
+	data->ringOuterCurve = _data->ringOuterCurve;
+	data->ringInnerCurve = _data->ringInnerCurve;
+	data->ringArcFromCurve = _data->ringArcFromCurve;
+	data->ringArcToCurve = _data->ringArcToCurve;
+	data->ringRatioCurve = _data->ringRatioCurve;
+	data->ringOuterColorCurve = _data->ringOuterColorCurve;
+	data->ringMiddleColorCurve = _data->ringMiddleColorCurve;
+	data->ringInnerColorCurve = _data->ringInnerColorCurve;
+	data->angleCurve = _data->angleCurve;
 	data->emissionPoints = _data->emissionPoints;
+	::__sprt_memcpy(data->emissionShape, _data->emissionShape, sizeof(data->emissionShape));
 	data->systemId = _data->systemId;
 	data->paramsGeneration = _data->paramsGeneration;
 	data->restartGeneration = _data->restartGeneration;
 	data->seed = _data->seed;
 	data->hasSeed = _data->hasSeed;
+	data->warm = _data->warm;
 	data->particleSize = _data->particleSize;
 	return data;
 }

@@ -5,6 +5,7 @@
 
 #include "XLCommon.h"
 #include "XL3d.h"
+#include "XLCorePipelineInfo.h"
 #include "Basic3dTestData.h"
 
 #include "../tests.h"
@@ -24,6 +25,24 @@ static T readAt(BytesView data, size_t offset) {
 // and the bytes and the textures their builders hand the pass
 void performMaterialTests() {
 	using checks::Terrain3dTestMaterial;
+	using namespace core;
+
+	auto raster = RasterizationInfo(CullMode::Back, FrontFace::CounterClockwise);
+	raster.setDepthBias(1.0f, 2.0f);
+	PipelineMaterialInfo regular(BlendInfo(), raster);
+	PipelineMaterialInfo masked(BlendInfo(), raster, PipelineVariant::ParticleQuadMask);
+	check(regular != masked && !(regular == masked) && regular.hash() != masked.hash()
+					&& regular.data() != masked.data(),
+			"pipeline: fragment variants have distinct material keys");
+	check(masked.getRasterizationInfo() == raster
+					&& masked.getVariant() == PipelineVariant::ParticleQuadMask,
+			"pipeline: selecting a fragment variant preserves rasterization state");
+	core::PipelineMaterialInfo otherRaster;
+	otherRaster = masked;
+	otherRaster.setRasterizationInfo(RasterizationInfo(CullMode::Front));
+	check(otherRaster != masked && otherRaster.hash() != masked.hash()
+					&& otherRaster.getVariant() == masked.getVariant(),
+			"pipeline: rasterization still distinguishes materials with the same variant");
 
 	auto &schema = Terrain3dTestMaterial::Schema;
 	check(schema.size == 80 && schema.align == 16 && StringView(schema.name) == "Terrain3dTest",

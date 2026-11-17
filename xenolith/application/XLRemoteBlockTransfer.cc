@@ -158,16 +158,24 @@ BlockTransferManager::OutgoingTransfer *BlockTransferManager::selectNextTransfer
 }
 
 void BlockTransferManager::schedulePump() {
-	if (_pumpScheduled || !_owner) {
+	if (_pumpTimer || !_owner || !selectNextTransfer()) {
 		return;
 	}
-	_pumpScheduled = true;
-	// Keep the manager alive across the deferral: the connection can go away first.
-	auto self = Rc<BlockTransferManager>(this);
-	_owner->getPeerThread()->performOnAppThread([self] {
-		self->_pumpScheduled = false;
-		self->pumpOutgoing();
-	}, this, true);
+	_pumpTimer = _owner->getPeerThread()->getLooper()->scheduleTimer(sprt::dispatch::TimerInfo{
+		.completion = sprt::dispatch::TimerInfo::Completion::create<BlockTransferManager>(this,
+				[](BlockTransferManager *self, sprt::dispatch::TimerHandle *timer, uint32_t,
+						Status status) {
+		if (self->_pumpTimer != timer) {
+			return;
+		}
+		self->_pumpTimer = nullptr;
+		if (status == Status::Ok) {
+			self->pumpOutgoing();
+		}
+	}),
+		.interval = TimeInterval::milliseconds(1),
+		.count = 1,
+	});
 }
 
 void BlockTransferManager::pumpOutgoing() {
@@ -210,8 +218,7 @@ void BlockTransferManager::pumpOutgoing() {
 				" packet(s) for transfer ", t.id);
 	}
 
-	// Yield to the looper so I/O is serviced before the next batch. Always scheduled: another
-	// transfer may be unfinished, and schedulePump is a no-op when nothing is left.
+	// Let I/O and cancellation run before sending the next batch.
 	schedulePump();
 }
 
@@ -518,6 +525,10 @@ void BlockTransferManager::reset() {
 
 	_outgoing.clear();
 	_incoming.clear();
+	auto pumpTimer = sp::move(_pumpTimer);
+	if (pumpTimer) {
+		pumpTimer->cancel();
+	}
 	_lastServed = 0;
 	// _nextId stays monotonic across reconnects so transfer ids remain unambiguous in logs.
 }

@@ -283,6 +283,10 @@ bool ScrollSystem::handleScrollGesture(const GestureScroll &s) {
 	if (!_owner) {
 		return false;
 	}
+	// A trackpad pinch is delivered as a scroll with this bit. It is not a pan.
+	if (s.input && hasFlag(s.input->data.input.modifiers, InputModifier::Magnify)) {
+		return false;
+	}
 	// Classify by the shape of the amount, not by timing (a fast wheel spin is also a burst). The
 	// burst only disambiguates a pixel stream whose first event lands on a notch value.
 	const bool notchShaped =

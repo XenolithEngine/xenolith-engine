@@ -326,6 +326,15 @@ struct PngWriteStruct {
 			png_set_write_fn(png_ptr, out, &writePngFn, nullptr);
 		}
 
+		/* The caller's effort, applied before the first row so it cannot land on a half-written
+		picture. Unset (-1) leaves libpng's own search and level, which is every prior byte. */
+		if (state.zlibLevel >= 0) {
+			png_set_compression_level(png_ptr, state.zlibLevel);
+		}
+		if (state.filterMask >= 0) {
+			png_set_filter(png_ptr, PNG_FILTER_TYPE_BASE, state.filterMask);
+		}
+
 		png_set_rows(png_ptr, info_ptr, row_pointers);
 		png_write_png(png_ptr, info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
 		return true;

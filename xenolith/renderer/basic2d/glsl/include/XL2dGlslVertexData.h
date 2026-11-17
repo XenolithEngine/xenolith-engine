@@ -67,6 +67,18 @@ struct PSDFConstantData {
 	float pseudoSdfMax;
 };
 
+// The particle draw's own push constants: the material pcb the shared vertex stage reads, then
+// the quad mask only the particle fragment looks at. mask.x carries the shape (0 none, 1 disc,
+// 2 ring, 3 streak), mask.y and mask.z the ring's thickness and edge softness in UV units
+struct ParticleDrawConstantData {
+	VertexConstantData base;
+	vec4 mask;
+
+#ifndef SP_GLSL
+	static_assert(sizeof(vec4) == 16, "the mask word must sit std430-aligned after the pcb");
+#endif
+};
+
 struct Vertex {
 	vec4 pos;
 	vec4 color;

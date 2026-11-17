@@ -155,6 +155,7 @@ protected:
 
 	const AttachmentData *_output = nullptr;
 	const AttachmentData *_shadow = nullptr;
+	const AttachmentData *_distort = nullptr;
 	const AttachmentData *_depth2d = nullptr;
 	const AttachmentData *_depthSdf = nullptr;
 
@@ -204,8 +205,15 @@ protected:
 	virtual void prepareRenderPass(CommandBuffer &);
 	virtual void prepareMaterialCommands(core::MaterialSet *materials, CommandBuffer &);
 
+	// Which spans one run of the draw loop takes: every span, or only the ones the frame
+	// distortion pair does not draw here, or only the ones it does. The common walk keeps
+	// All - a distorted emitter's span leaves the scene subpass to the pass's own trailing
+	// pair, and a queue without the pair must keep drawing it the common way
+	enum class DistortFilter { All, SkipDistort, OnlyDistort };
+
 	// One run of the draw loop over a given set of spans; see the definition
-	void drawSpans(core::MaterialSet *materials, CommandBuffer &, SpanView<VertexSpan> spans);
+	void drawSpans(core::MaterialSet *materials, CommandBuffer &, SpanView<VertexSpan> spans,
+			DistortFilter filter = DistortFilter::All);
 
 	virtual void finalizeRenderPass(CommandBuffer &);
 

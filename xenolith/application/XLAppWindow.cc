@@ -140,7 +140,17 @@ void AppWindow::runWithQueue(const Rc<core::Queue> &queue) {
 
 void AppWindow::run() {
 	auto c = _presentationEngine->getFrameConstraints();
-	_application->performOnAppThread([this, c]() mutable {
+	// Canvas publishes its initial state before AppWindow exists. Native windows deliver
+	// their state transitions through the event queue.
+	const auto state = _window
+					&& _window->getSurfaceInterfaceInfo().backend
+							== sprt::window::SurfaceBackend::Canvas
+			? _window->getInfo()->state
+			: WindowState::None;
+	_application->performOnAppThread([this, c, state]() mutable {
+		if (_state == WindowState::None) {
+			_state = state;
+		}
 		// _client is set by Director::init (during makeDirector below), before the initial scene
 		// runs, so queue announcements reach the client.
 		_director = _application->handleAppWindowCreated(this, c);
@@ -394,11 +404,8 @@ core::ImageInfo AppWindow::getSwapchainImageInfo(const core::SwapchainConfig &cf
 	if (cfg.transferSrc) {
 		swapchainImageInfo.usage |= core::ImageUsage::TransferSrc;
 	}
-	// A virtual window's image is a compositor's texture. Both pseudo-swapchains (vk and soft) offer
-	// Sampled; nothing else would ask for it.
-	if (isVirtual()) {
-		swapchainImageInfo.usage |= core::ImageUsage::Sampled;
-	}
+	// The distortion passes read the settled scene both at this pixel and at displaced coordinates.
+	swapchainImageInfo.usage |= core::ImageUsage::Sampled | core::ImageUsage::InputAttachment;
 	return swapchainImageInfo;
 }
 

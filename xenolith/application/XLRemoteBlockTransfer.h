@@ -27,6 +27,8 @@
 #include "XLRemoteProtocol.h"
 #include "XLRemotePeer.h"
 
+#include <sprt/runtime/dispatch/handle.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 // Bidirectional large-binary block transfer over remote::Domain::Data, one per connection (owned by
@@ -152,8 +154,8 @@ protected:
 	HashMap<uint64_t, OutgoingTransfer> _outgoing; // keyed by our id (we are the sender)
 	HashMap<uint64_t, IncomingTransfer> _incoming; // keyed by the peer's id (we are the receiver)
 
-	// At most one pump task in flight, so transfers share the looper's attention.
-	bool _pumpScheduled = false;
+	// A timer yields to network I/O between packet batches.
+	Rc<sprt::dispatch::TimerHandle> _pumpTimer;
 	// Last transfer served, so equal priorities take turns.
 	uint64_t _lastServed = 0;
 };

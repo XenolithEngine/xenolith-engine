@@ -6,7 +6,7 @@ import { makeImports, isMemory64, ptrConverter } from "./sprt-imports.mjs";
 import { makeWebgpuThunks } from "./webgpu.mjs";
 
 self.onmessage = async (e) => {
-	const { module, memory, tid, threadPtr, stackTop, stackSize, tlsBase, bundle, tidBuf, opfsSab, gpuCtrl, dispW, dispH, dispDensity, inputSab, displaySab } = e.data;
+	const { module, memory, tid, threadPtr, stackTop, stackSize, tlsBase, bundle, tidBuf, opfsSab, gpuCtrl, dispW, dispH, dispDensity, inputSab, displaySab, wantFilePut } = e.data;
 	const tidCounter = new Int32Array(tidBuf);
 
 	// Nested spawn: like the engine worker, delegate creation to the main thread (this
@@ -19,7 +19,11 @@ self.onmessage = async (e) => {
 	};
 
 	try {
-		const imports = makeImports({ memory, bundle, opfsSab, dispW, dispH, dispDensity, inputSab, displaySab, log: (s, t) => self.postMessage({ type: s, text: t }), spawn });
+		// A job thread writes files too (a publish packs and writes on this thread), so a
+		// host that asked for file_put hears about the writes closed here as well.
+		const imports = makeImports({ memory, bundle, opfsSab, dispW, dispH, dispDensity, inputSab, displaySab,
+			log: (s, t) => self.postMessage({ type: s, text: t }), spawn,
+			onFilePut: wantFilePut ? (path, bytes) => self.postMessage({ type: "file-put", path, bytes }) : null });
 		// This thread can run engine GL work (the app thread is a worker of its own). Route its
 		// wgpu* calls to the GPU broker over gpuCtrl, exactly like the engine worker does.
 		let instance;

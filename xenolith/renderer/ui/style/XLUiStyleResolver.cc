@@ -322,13 +322,17 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 	memory::perform([&] {
 		auto style = new (ret._pool) document::StyleList();
 
-		// Gather each level's sorted matches once for both passes. Fill the cache for every level
-		// first, then take pointers: an insert may rehash the map.
+		// Gather each level's sorted matches once for both passes. Fill the cache first: an
+		// insert may rehash it. The matches are then copied out. The variable table below
+		// allocates before either pass reads them, and a pointer into the cache does not
+		// survive that insert.
 		const size_t outerLevel = scopes.back().chainIndex;
 		auto &cache = getMatchCache();
 		if (cache.size() > MatchCacheLimit) {
 			cache.clear();
 		}
+		Vector<Vector<document::StyleContainer::MatchedRule>> levelMatches;
+		levelMatches.resize(outerLevel + 1);
 		for (size_t i = outerLevel + 1; i-- > 0;) {
 			auto it = cache.find(chain[i]);
 			if (it != cache.end() && it->second.stamp == stampFrom[i]) {
@@ -340,15 +344,24 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 			if (it == cache.end()) {
 				it = cache.emplace(chain[i], MatchCacheEntry()).first;
 			}
+			// no slot: this level is resolved below from levelMatches alone
+			if (it == cache.end()) {
+				gatherLevel(levelMatches[i], chain[i], i);
+				continue;
+			}
 			it->second.matches.clear();
 			it->second.stamp = stampFrom[i];
 			gatherLevel(it->second.matches, chain[i], i);
 		}
 
-		Vector<const Vector<document::StyleContainer::MatchedRule> *> levelMatches;
-		levelMatches.resize(outerLevel + 1, nullptr);
 		for (size_t i = outerLevel + 1; i-- > 0;) {
-			levelMatches[i] = &cache.find(chain[i])->second.matches;
+			if (!levelMatches[i].empty()) {
+				continue;
+			}
+			auto found = cache.find(chain[i]);
+			if (found != cache.end()) {
+				levelMatches[i] = found->second.matches;
+			}
 		}
 
 #if XL_FRAME_ACCOUNT
@@ -373,7 +386,7 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 			};
 			auto collect = [&](size_t chainIndex) {
 				Node *levelNode = chain[chainIndex];
-				for (auto &m : *levelMatches[chainIndex]) {
+				for (auto &m : levelMatches[chainIndex]) {
 					for (auto &c : m.style->custom) {
 						if (c.mediaQuery != document::MediaQueryIdNone
 								&& !m.media.at(c.mediaQuery.get())) {
@@ -400,7 +413,7 @@ ResolvedStyle StyleResolver::resolveStyleForNode(NotNull<Node> node) {
 		// Pass 2: parameters in cascade order; a rule's deferred var() declarations expand right
 		// after its literal ones, keeping their cascade position.
 		auto resolveLevel = [&](document::StyleList &dst, size_t chainIndex, bool inherit) {
-			for (auto &m : *levelMatches[chainIndex]) {
+			for (auto &m : levelMatches[chainIndex]) {
 				dst.merge(*m.style, m.media, inherit);
 				// an ancestor's `font-size: var(--s)` is inherited like a literal one; its
 				// `width: var(--w)` is not

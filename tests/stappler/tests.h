@@ -123,6 +123,7 @@ void performImageFormatTests();
 void performDiagnosticRegistryTests();
 void performJsonGitTests();
 void performBitmapResampleTests();
+void performBitmapEncodeTests();
 void performCompressionLibTests();
 
 } // namespace stappler

@@ -646,6 +646,10 @@ void PresentationEngine::handleFrameInvalidated(NotNull<PresentationFrame> frame
 		_waitForDisplayLink = false;
 	}
 
+	if (!_swapchain) {
+		return;
+	}
+
 	if (_swapchain->isDeprecated()) {
 		auto acquiredImageCount = _swapchain->getAcquiredImagesCount();
 		if (acquiredImageCount == 0) {
@@ -883,13 +887,12 @@ void PresentationEngine::scheduleSwapchainRecreation() {
 }
 
 void PresentationEngine::resetFrames() {
-	auto frames = _activeFrames;
-	for (auto &it : frames) { it->invalidate(); }
-
-	frames = _totalFrames;
-	for (auto &it : frames) { it->invalidate(); }
-
-	frames = _detachedFrames;
+	// Cancelling one frame can release another through its completion callbacks.
+	Vector<Rc<PresentationFrame>> frames;
+	frames.reserve(_activeFrames.size() + _totalFrames.size() + _detachedFrames.size());
+	for (auto it : _activeFrames) { frames.emplace_back(it); }
+	for (auto it : _totalFrames) { frames.emplace_back(it); }
+	for (auto it : _detachedFrames) { frames.emplace_back(it); }
 	for (auto &it : frames) { it->invalidate(); }
 
 	// Move out before cancelling: a cancel runs its completion, which erases the handle from this

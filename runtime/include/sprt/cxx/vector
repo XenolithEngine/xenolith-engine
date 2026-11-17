@@ -77,9 +77,16 @@ public:
 	template < typename InputIt, typename = enable_if_t<!is_integral_v<InputIt>> >
 	__vector(InputIt first, InputIt last, const allocator_type &alloc = allocator_type()) noexcept
 	: _mem(alloc) {
-		auto size = sprt::distance(first, last);
-		_mem.reserve(size);
-		for (auto it = first; it != last; ++it) { _mem.emplace_back_unsafe(*it); }
+		// Pointers to the vector's own trivially copyable type copy as their bytes - see
+		// linear_memory::assign_raw.
+		if constexpr (is_pointer_v<InputIt> && is_trivially_copyable_v<Type>
+				&& is_same_v<remove_cv_t<remove_pointer_t<InputIt>>, remove_cv_t<Type>>) {
+			_mem.assign_raw(first, size_type(last - first));
+		} else {
+			auto size = sprt::distance(first, last);
+			_mem.reserve(size);
+			for (auto it = first; it != last; ++it) { _mem.emplace_back_unsafe(*it); }
+		}
 	}
 
 	__vector(const __vector &other) noexcept : _mem(other._mem) { }

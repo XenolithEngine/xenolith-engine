@@ -117,6 +117,9 @@ struct Emitter {
 		data.dt = data.frameInterval / 1'000'000.0f;
 		data.lifetime.init = lifetime;
 		data.scale.init = 1.0f;
+		// The zeroed words would seat a phantom second axis of 0..0; the unseated state is the
+		// second axis's words equal to the first's, as ParticleSystem::init leaves them
+		data.scaleY = data.scale;
 		::memset(particles, 0, sizeof(particles));
 		reset(0, count);
 	}
@@ -695,6 +698,7 @@ static void testKinematics() {
 		e.data.sizeValue = (size / 2.0f).length();
 		e.data.sizeNormal = size.getNormalized();
 		e.data.scale.init = 2.0f;
+		e.data.scaleY = e.data.scale; // the pair moves together, no axis of its own
 		e.run(0);
 
 		glsl::vec2 bl, tl, tr, br;
@@ -718,8 +722,207 @@ static void testKinematics() {
 	}
 }
 
-static void testSceneSpace() {
-	auto setup = [](Single &e) {
+// Writes a curve at a word offset: header, then the values; returns the byte offset
+static uint32_t writeCurve(uint32_t word, uint32_t components,
+		std::initializer_list<float> values) {
+	s_extra[word] = uint32_t(values.size() / components);
+	s_extra[word + 1] = components;
+	uint32_t i = 0;
+	for (auto v : values) { ::memcpy(&s_extra[word + 2 + i++], &v, sizeof(float)); }
+	return word * 4;
+}
+
+// The per-axis birth scale: the second axis's own range draws its own number only when seated,
+// the words' equality guarding the generator, and the curve's components name the axes - one
+// multiplies both, two each its own
+static void testScaleAxes() {
+	{
+		// The unseated pair: the second axis takes the X draw's own value and the stream the
+		// single-axis birth always spent. A test that moves `scale` after the ctor moves the
+		// pair with it - the harness has no setter, and words left behind would seat a phantom
+		Single plain;
+		plain.data.scale.init = 2.0f;
+		plain.data.scale.rnd = 1.0f;
+		plain.data.scaleY = plain.data.scale;
+		plain.run(0);
+
+		Single paired;
+		paired.data.scale.init = 2.0f;
+		paired.data.scale.rnd = 1.0f;
+		paired.data.scaleY = paired.data.scale; // equal words, still the unseated state
+		paired.run(0);
+
+		checkNear(paired.p().scaleY, paired.p().scale,
+				"scale axes: the unseated second axis takes the X draw's value");
+		check(paired.p().rng.state == plain.p().rng.state
+						&& paired.p().rng.inc == plain.p().rng.inc,
+				"scale axes: equal words spend no generator draw");
+	}
+
+	{
+		// The seated range draws its own number right after the X draw, so every later draw
+		// shifts - the stream contract a seated second axis buys
+		Single seated;
+		seated.data.scale.init = 2.0f;
+		seated.data.scale.rnd = 1.0f;
+		seated.data.scaleY.init = 3.0f;
+		seated.data.scaleY.rnd = 0.5f;
+		seated.run(0);
+
+		check(seated.p().scale >= 2.0f && seated.p().scale < 3.0f,
+				"scale axes: the X draw keeps its own range");
+		check(seated.p().scaleY >= 3.0f && seated.p().scaleY < 3.5f,
+				"scale axes: the seated second axis draws from its own range");
+
+		Single plain;
+		plain.data.scale.init = 2.0f;
+		plain.data.scale.rnd = 1.0f;
+		plain.data.scaleY = plain.data.scale;
+		plain.run(0);
+		check(seated.p().rng.state != plain.p().rng.state,
+				"scale axes: the seated draw shifts the stream");
+	}
+
+	{
+		// A 20x10 quad, as ParticleSystemData::writeParticleSize stores it: each axis's
+		// multiplier grows its own half-length
+		Single e;
+		auto size = glsl::vec2(20.0f, 10.0f);
+		e.data.sizeValue = (size / 2.0f).length();
+		e.data.sizeNormal = size.getNormalized();
+		e.data.scale.init = 2.0f;
+		e.data.scaleY.init = 3.0f;
+		e.data.scaleY.rnd = 0.0f;
+		e.run(0);
+
+		glsl::vec2 bl, tl, tr, br;
+		glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+		checkNear(bl.x, -20.0f, "scale axes: the X multiplier doubles the width");
+		checkNear(bl.y, -15.0f, "scale axes: the Y multiplier triples the height");
+		checkNear(tr.x, 20.0f, "scale axes: the corner pair agrees (x)");
+		checkNear(tr.y, 15.0f, "scale axes: the corner pair agrees (y)");
+	}
+
+	{
+		// The curve's components: one multiplies both axes, two each its own
+		::memset(s_extra, 0, sizeof(s_extra));
+
+		Single one;
+		one.data.scaleCurveOffset = writeCurve(2, 1, {0.5f});
+		one.run(0);
+		checkNear(one.p().scale, 0.5f, "scale axes: a one-component curve multiplies X");
+		checkNear(one.p().scaleY, 0.5f, "scale axes: a one-component curve multiplies Y alike");
+
+		Single two;
+		two.data.scaleCurveOffset = writeCurve(2, 2, {0.5f, 2.0f});
+		two.run(0);
+		checkNear(two.p().scale, 0.5f, "scale axes: the first component is X's own");
+		checkNear(two.p().scaleY, 2.0f, "scale axes: the second component is Y's own");
+
+		::memset(s_extra, 0, sizeof(s_extra));
+	}
+}
+
+// The birth interval, Effekseer's GenerationTime: a seated interval puts slot i's birth at the
+// step i * interval / dt of every cycle, the schedule the interval's alone - randomness and
+// explosiveness stand unread - while the interval's zero keeps the phase schedule byte for byte
+static void testInterval() {
+	const float dt = 16'667 / 1'000'000.0f;
+
+	{
+		// 16 slots over a 59-step cycle, an interval of two steps: slot i is born at its seated
+		// step and only there, the second cycle seating the same steps again. The seated step is
+		// the engine's own float expression - the two-step ladder the floats round at most one
+		// step down, the last slot's 30 arriving as 29
+		Emitter e(16, 1.0f, 21);
+		e.data.interval = 2.0f * dt;
+		auto framesInGen = e.cycleFrames();
+
+		uint32_t seated[16];
+		bool ladder = true;
+		for (uint32_t i = 0; i < 16; ++i) {
+			seated[i] = uint32_t(floor(float(i) * e.data.interval / e.data.dt));
+			ladder = ladder && seated[i] + 1u >= 2u * i && seated[i] <= 2u * i;
+		}
+		check(ladder, "interval: the seated steps are the two-step ladder");
+
+		bool exact = true;
+		for (uint32_t k = 0; k < 2 * framesInGen; ++k) {
+			e.tick();
+			uint32_t step = k % framesInGen;
+			for (uint32_t i = 0; i < 16; ++i) {
+				exact = exact && e.born[i] == (seated[i] == step);
+			}
+		}
+		check(exact, "interval: slot i is born at its seated step of every cycle");
+	}
+
+	{
+		// A birth seated past the cycle takes its last step: an interval of 32 steps over four
+		// slots seats 0 and 32, the past-cycle pair sharing the cycle's last step
+		Emitter e(4, 1.0f, 22);
+		e.data.interval = 32.0f * dt;
+		auto framesInGen = e.cycleFrames();
+
+		const uint32_t seated[4] = {0, 32, framesInGen - 1, framesInGen - 1};
+		bool exact = true;
+		for (uint32_t k = 0; k < framesInGen; ++k) {
+			e.tick();
+			for (uint32_t i = 0; i < 4; ++i) {
+				exact = exact && e.born[i] == (seated[i] == k);
+			}
+		}
+		check(exact, "interval: a birth past the cycle takes its last step");
+	}
+
+	{
+		// The schedule is the interval's alone: explosiveness and randomness stand unread, the
+		// births and every particle state equal the plain interval run
+		Emitter plain(16, 1.0f, 23);
+		plain.data.interval = 2.0f * dt;
+		Emitter loaded(16, 1.0f, 23);
+		loaded.data.interval = 2.0f * dt;
+		loaded.data.explosiveness = 0.75f;
+		loaded.data.randomness = 1.0f;
+
+		bool same = true;
+		for (uint32_t k = 0; k < plain.cycleFrames(); ++k) {
+			plain.tick();
+			loaded.tick();
+			same = same
+					&& 0 == ::memcmp(plain.particles, loaded.particles, sizeof(plain.particles));
+		}
+		check(same, "interval: explosiveness and randomness stand unread");
+	}
+
+	{
+		// The zero guard: an interval of zero answers the phase schedule byte for byte, the run
+		// that never seated one
+		Emitter plain(16, 1.0f, 24);
+		plain.data.randomness = 0.5f;
+		Emitter zero(16, 1.0f, 24);
+		zero.data.randomness = 0.5f;
+		zero.data.interval = 0.0f;
+
+		bool same = true;
+		for (uint32_t k = 0; k < 2 * plain.cycleFrames(); ++k) {
+			plain.tick();
+			zero.tick();
+			same = same
+					&& 0 == ::memcmp(plain.particles, zero.particles, sizeof(plain.particles));
+		}
+		check(same, "interval: the zero keeps the phase schedule byte for byte");
+	}
+
+	checkEq(glsl::particleNewest(16, 0.0f, 2.0f * dt, dt, 60, 0), 0,
+			"interval: newest at step 0 is slot 0");
+	checkEq(glsl::particleNewest(16, 0.0f, 2.0f * dt, dt, 60, 2), 1,
+			"interval: newest at step 2 is slot 1");
+	checkEq(glsl::particleNewest(16, 0.0f, 2.0f * dt, dt, 60, 30), 15,
+			"interval: newest at step 30 is slot 15");
+}
+
+static void testSceneSpace() {	auto setup = [](Single &e) {
 		e.data.velocity.init = 100.0f;
 		e.data.origin = glsl::vec2(1.0f, 0.0f);
 		e.data.angle.init = 0.3f;
@@ -756,16 +959,6 @@ static void testSceneSpace() {
 	checkNear(local.p().velocity.x, 100.0f, "LocalCoords: velocity is untouched");
 	checkNear(local.p().angle, 0.3f, "LocalCoords: angle is untouched");
 	checkNear(local.p().scale, 1.0f, "LocalCoords: scale is untouched");
-}
-
-// Writes a curve at a word offset: header, then the values; returns the byte offset
-static uint32_t writeCurve(uint32_t word, uint32_t components,
-		std::initializer_list<float> values) {
-	s_extra[word] = uint32_t(values.size() / components);
-	s_extra[word + 1] = components;
-	uint32_t i = 0;
-	for (auto v : values) { ::memcpy(&s_extra[word + 2 + i++], &v, sizeof(float)); }
-	return word * 4;
 }
 
 static void testCurves() {
@@ -838,7 +1031,7 @@ static void testCurves() {
 	frame.hFrames = 4;
 	frame.vFrames = 4;
 	glsl::vec2 uv0, uv1;
-	glsl::particleFrameCell(frame, 5, uv0, uv1);
+	glsl::particleFrameCell(frame.textureRect, frame.hFrames, frame.vFrames, 5, uv0, uv1);
 	checkNear(uv0.x, 0.625f, "frame cell: column 1 starts a quarter into the rect");
 	checkNear(uv1.x, 0.75f, "frame cell: and is a quarter wide");
 	checkNear(uv0.y, 0.25f, "frame cell: row 1 from the top of the image");
@@ -910,9 +1103,11 @@ static void testHue() {
 }
 
 static void testNewest() {
-	checkEq(glsl::particleNewest(16, 1.0f, 60, 0), 15,
+	const float dt = 16'667 / 1'000'000.0f;
+	checkEq(glsl::particleNewest(16, 1.0f, 0.0f, dt, 60, 0), 15,
 			"newest: a burst makes the last index newest");
-	checkEq(glsl::particleNewest(16, 0.0f, 60, 0), 0, "newest: the first step of a cycle births 0");
+	checkEq(glsl::particleNewest(16, 0.0f, 0.0f, dt, 60, 0), 0,
+			"newest: the first step of a cycle births 0");
 
 	Emitter e(16, 1.0f, 12);
 	auto framesInGen = e.cycleFrames();
@@ -922,11 +1117,1154 @@ static void testNewest() {
 		e.tick();
 		for (uint32_t i = 0; i < 16; ++i) {
 			if (e.born[i]) {
-				matches = matches && glsl::particleNewest(16, 0.0f, framesInGen, step) == i;
+				matches = matches
+						&& glsl::particleNewest(16, 0.0f, e.data.interval, e.data.dt, framesInGen,
+								   step)
+								== i;
 			}
 		}
 	}
 	check(matches, "newest: the particle born on a step is the newest after it");
+}
+
+// Effekseer's parent binding, the continuous child of Particle-39: the bit empties the emitter's
+// own birth schedule on every cycle - the host that knows the parent seats its births - while the
+// step still ages a particle the host seated, so the bound emitter is no second system
+static void testParentBound() {
+	Emitter e(8, 1.0f, 5);
+	auto framesInGen = e.cycleFrames();
+	e.data.flags |= XL_PARTICLE_FLAG_PARENT_BOUND;
+
+	// A whole cycle of the suppressed schedule: no birth, nothing alive, the generators untouched
+	bool anyBorn = false;
+	bool anyDrawn = false;
+	for (uint32_t k = 0; k < framesInGen + 2u; ++k) {
+		e.tick();
+		anyBorn = anyBorn || e.births() != 0;
+		anyDrawn = anyDrawn || e.alive() != 0;
+	}
+	check(!anyBorn, "parent-bound: the own schedule births nothing");
+	check(!anyDrawn, "parent-bound: no particle stands alive without a host birth");
+
+	// The step the bit flags still ages what the host seats: one particle born by particleEmit at
+	// the point a parent particle stood, aged by the same update until it dies on schedule
+	glsl::ParticleFrameData f;
+	::memset(&f, 0, sizeof(f));
+	f.framesInGen = framesInGen;
+	f.genframe = e.frame;
+	f.nframes = 0;
+	f.cycle = e.cycle;
+	f.seed = e.seed;
+	f.dt = e.data.dt;
+	glsl::particleSeedRng(e.particles[0].rng, e.seed, 0);
+	glsl::particleEmit(e.particles[0], e.data, f, glsl::vec2(3.0f, 4.0f));
+	e.particles[0].birthScale = e.particles[0].scale;
+	e.particles[0].birthScaleY = e.particles[0].scaleY;
+	checkEq(e.particles[0].currentLifetime, e.particles[0].fullLifetime,
+			"parent-bound: a host-seated birth stands alive");
+
+	// The lifetime 1.0 s covers 59 steps; aging one per tick, the particle dies on the last of
+	// them and the run births nothing on its own
+	uint32_t ticks = 0;
+	bool bornWhileAging = false;
+	while (e.particles[0].currentLifetime > 0u) {
+		e.tick();
+		++ticks;
+		bornWhileAging = bornWhileAging || e.births() != 0;
+	}
+	check(!bornWhileAging, "parent-bound: the aging run births nothing on its own");
+	checkEq(ticks, uint32_t(e.particles[0].fullLifetime),
+			"parent-bound: the seated particle ages one step per tick and dies on schedule");
+
+	// The bit off is the standalone schedule again: the first cycle births every slot
+	e.data.flags &= ~uint32_t(XL_PARTICLE_FLAG_PARENT_BOUND);
+	bool bornAgain = false;
+	for (uint32_t k = 0; k < framesInGen + 2u && !bornAgain; ++k) {
+		e.tick();
+		bornAgain = e.births() != 0;
+	}
+	check(bornAgain, "parent-bound: the bit off restores the own schedule's births");
+}
+
+static void testDeflectorSeats() {
+	// The stride contract first: the GPU indexes the seats at the std430 stride, so the seat the
+	// C++ text writes and the seat the step reads are the same words only while these hold
+	checkEq(int64_t(sizeof(glsl::ParticleDeflector)), 32, "deflector seats: the seat is the 32-byte stride");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, deflectors)), 328,
+			"deflector seats: the array opens at its 8-aligned std430 seat");
+
+	auto seat = [](glsl::vec2 a, glsl::vec2 b, uint32_t response) {
+		return glsl::ParticleDeflector{a, b, 0.0f, uint32_t(XL_PARTICLE_DEFLECTOR_SEGMENT),
+				response, 0u};
+	};
+
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+	// Two vertical segments, x = 10 and x = 20; a straight step across the second never meets
+	// the first, so the second seat answers in its own words
+	emitter.deflectors[0] = seat(glsl::vec2(10.0f, -10.0f), glsl::vec2(10.0f, 10.0f),
+			XL_PARTICLE_DEFLECTOR_KILL);
+	emitter.deflectors[1] = seat(glsl::vec2(20.0f, -10.0f), glsl::vec2(20.0f, 10.0f),
+			XL_PARTICLE_DEFLECTOR_KILL);
+
+	auto walk = [&](glsl::vec2 previous, glsl::vec2 position) {
+		glsl::ParticleData particle;
+		::memset(&particle, 0, sizeof(particle));
+		particle.position = position;
+		particle.currentLifetime = 16;
+		glsl::particleDeflectors(particle, emitter, previous);
+		return particle.currentLifetime;
+	};
+
+	checkEq(walk(glsl::vec2(9.0f, 0.0f), glsl::vec2(11.0f, 0.0f)), 0,
+			"deflector seats: kill at the first seat");
+	checkEq(walk(glsl::vec2(19.0f, 0.0f), glsl::vec2(21.0f, 0.0f)), 0,
+			"deflector seats: kill at the second seat");
+	checkEq(walk(glsl::vec2(0.0f, 0.0f), glsl::vec2(2.0f, 0.0f)), 16,
+			"deflector seats: a path past both figures lives");
+
+	// The first seat unused: the second answers alone
+	emitter.deflectors[0] = glsl::ParticleDeflector{glsl::vec2(0.0f, 0.0f),
+			glsl::vec2(0.0f, 0.0f), 0.0f, 0u, 0u, 0u};
+	checkEq(walk(glsl::vec2(19.0f, 0.0f), glsl::vec2(21.0f, 0.0f)), 0,
+			"deflector seats: the second seat answers alone");
+
+	// A bounce on the second seat mirrors the velocity and keeps the particle alive
+	emitter.deflectors[1] = seat(glsl::vec2(20.0f, -10.0f), glsl::vec2(20.0f, 10.0f),
+			XL_PARTICLE_DEFLECTOR_BOUNCE);
+	glsl::ParticleData particle;
+	::memset(&particle, 0, sizeof(particle));
+	particle.position = glsl::vec2(21.0f, 0.0f);
+	particle.velocity = glsl::vec2(2.0f, 0.0f);
+	particle.currentLifetime = 16;
+	glsl::particleDeflectors(particle, emitter, glsl::vec2(19.0f, 0.0f));
+	checkEq(particle.currentLifetime, 16, "deflector seats: bounce keeps the particle alive");
+	check(particle.velocity.x < 0.0f && particle.velocity.y == 0.0f,
+			"deflector seats: bounce mirrors the velocity off the second seat");
+	check(particle.position.x < 20.0f,
+			"deflector seats: bounce takes the position back across the figure");
+}
+
+// Effekseer's ring renderer, the stage's own draw: the pass's vertex seats grow from the
+// quad's own six to the ring's own count - the corner word's times two bands times a triangle
+// pair - and the ring's edges seat by the emitter's words - both radii multiplied by the scale
+// the curve left standing, the middle edge at the fraction the ratio curve names, the corner
+// angles the arc's degrees turned by the particle's own angle word
+static void testRing() {
+	// The seat contract: the quad's own six, and the emitter's own word the ring's seats ride
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+	checkEq(glsl::particleVertexSeats(emitter), 6u,
+			"ring: the unseated emitter keeps the quad's six seats");
+
+	emitter.ringOuter = 40.0f;
+	emitter.ringInner = 20.0f;
+	emitter.ringArcFrom = 0.0f;
+	emitter.ringArcTo = 360.0f;
+	checkEq(glsl::particleVertexSeats(emitter), 192u,
+			"ring: a seated ring owns the default's own seats");
+	checkEq(glsl::particleRingCorners(emitter), 16u,
+			"ring: the count word's zero carries the default sixteen");
+
+	// Effekseer's Vertex Count as the field the stage seats: 3 makes a triangle, 64 the
+	// ceiling, every count its own stride the pass sizes the list by
+	const uint32_t counts[] = {3u, 16u, 32u, 64u};
+	for (auto count : counts) {
+		emitter.ringVertexCount = count;
+		checkEq(glsl::particleVertexSeats(emitter), count * 12u,
+				"ring: the corner count of segments owns its own seats");
+	}
+	emitter.ringVertexCount = 0u;
+
+	glsl::ParticleData particle;
+	::memset(&particle, 0, sizeof(particle));
+	particle.scale = 2.0f;
+
+	// The radii: both multiplied by the drawn scale, the middle edge at the band's half - the
+	// even Center Ratio the stage seats beside the corner count
+	float inner = 0.0f;
+	float middle = 0.0f;
+	float outer = 0.0f;
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(inner, 40.0f, "ring: the inner edge is the emitter's own times the drawn scale");
+	checkNear(outer, 80.0f, "ring: the outer edge is the emitter's own times the drawn scale");
+	checkNear(middle, 60.0f, "ring: the middle edge stands at the band's half");
+
+	// The full circle's corners: the arc fraction walks the degrees between the two words, so
+	// the quarter corner of a 0 to 360 arc points where the quad's own angle word would
+	glsl::vec2 at0 = glsl::particleRingPoint(particle, emitter, 0.0f, outer);
+	glsl::vec2 atQuarter = glsl::particleRingPoint(particle, emitter, 0.25f, outer);
+	glsl::vec2 atHalf = glsl::particleRingPoint(particle, emitter, 0.5f, outer);
+	checkNear(at0.x, 80.0f, "ring: the full arc's first corner points along the x axis");
+	checkNear(at0.y, 0.0f, "ring: the first corner's y is the axis' own zero");
+	checkNear(atQuarter.x, 0.0f, "ring: the quarter corner's x is the turn's own zero");
+	checkNear(atQuarter.y, 80.0f, "ring: the quarter corner points along the y axis");
+	checkNear(atHalf.x, -80.0f, "ring: the half corner points against the x axis");
+
+	// The particle's own angle word turns the ring with the quad: a quarter-turn rotation
+	// moves the first corner onto the y axis
+	particle.angle = 1.5707963267948966f;
+	at0 = glsl::particleRingPoint(particle, emitter, 0.0f, outer);
+	checkNear(at0.x, 0.0f, "ring: the particle's angle turns the first corner's x to zero");
+	checkNear(at0.y, 80.0f, "ring: the particle's angle seats the first corner on the y axis");
+
+	// A partial arc: the arc fraction walks the degrees between the two words alone, the birth
+	// shape ring's own plain lerp - 90 to 180 spans the second quadrant only
+	particle.angle = 0.0f;
+	emitter.ringArcFrom = 90.0f;
+	emitter.ringArcTo = 180.0f;
+	at0 = glsl::particleRingPoint(particle, emitter, 0.0f, outer);
+	glsl::vec2 atEnd = glsl::particleRingPoint(particle, emitter, 1.0f, outer);
+	checkNear(at0.y, 80.0f, "ring: the partial arc opens at its own first degree");
+	checkNear(at0.x, 0.0f, "ring: the partial arc's first corner is on the y axis");
+	checkNear(atEnd.x, -80.0f, "ring: the partial arc closes at its own last degree");
+	checkNear(atEnd.y, 0.0f, "ring: the partial arc's last corner is against the x axis");
+}
+
+// Effekseer's ribbon taken in the screen plane, the strip of Particle-41: the seats stay the
+// quad's own six - the segment a particle owns between itself and the next born is a quad of
+// the same pair of list triangles - and the segment's corners seat by the width word, each
+// end's half the emitter's width multiplied by the scale that end's curve left standing, the
+// perpendicular of the segment's own direction the plain band the simplest ribbon draws
+static void testStrip() {
+	// The seat contract: a seated strip keeps the quad's own seats, and a ring standing ahead
+	// of it keeps the ring's own count
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+	checkEq(glsl::particleVertexSeats(emitter), 6u,
+			"strip: the unseated emitter keeps the quad's six seats");
+
+	emitter.stripWidth = 4.0f;
+	checkEq(glsl::particleVertexSeats(emitter), 6u,
+			"strip: a seated strip keeps the quad's own six seats");
+
+	emitter.ringOuter = 40.0f;
+	checkEq(glsl::particleVertexSeats(emitter), 192u,
+			"strip: a ring standing ahead of the strip keeps the ring's own seats");
+
+	glsl::ParticleData a;
+	glsl::ParticleData b;
+	::memset(&a, 0, sizeof(a));
+	::memset(&b, 0, sizeof(b));
+	a.scale = 1.0f;
+	b.scale = 1.0f;
+	a.position = glsl::vec2(0.0f, 0.0f);
+	b.position = glsl::vec2(10.0f, 0.0f);
+
+	// The horizontal segment: the perpendicular of the x axis is the y axis, both halves the
+	// width's own half at a scale of one
+	glsl::vec2 bl;
+	glsl::vec2 tl;
+	glsl::vec2 tr;
+	glsl::vec2 br;
+	glsl::particleStripSegment(a, b, emitter, bl, tl, tr, br);
+	checkNear(bl.x, 0.0f, "strip: the segment's first end seats at its particle");
+	checkNear(bl.y, -2.0f, "strip: the bottom left corner sits half the width below");
+	checkNear(tl.y, 2.0f, "strip: the top left corner sits half the width above");
+	checkNear(tr.x, 10.0f, "strip: the segment's second end seats at the next particle");
+	checkNear(tr.y, 2.0f, "strip: the top right corner sits half the width above");
+	checkNear(br.y, -2.0f, "strip: the bottom right corner sits half the width below");
+
+	// The width multiplies the scale the curve left standing, each end its own - the ring's
+	// own one-scale precedent, the band taking the one scale both ends share
+	b.scale = 2.0f;
+	glsl::particleStripSegment(a, b, emitter, bl, tl, tr, br);
+	checkNear(tl.y, 2.0f, "strip: the first end keeps its own scale's half");
+	checkNear(tr.y, 4.0f, "strip: the second end's half is the width times its own scale");
+
+	// A vertical segment turns the perpendicular with it: the band's width lands across the x
+	// axis the same way
+	a.scale = 1.0f;
+	b.scale = 1.0f;
+	a.position = glsl::vec2(0.0f, 0.0f);
+	b.position = glsl::vec2(0.0f, 8.0f);
+	glsl::particleStripSegment(a, b, emitter, bl, tl, tr, br);
+	checkNear(tl.x, -2.0f, "strip: the turned segment carries its width across the x axis");
+	checkNear(bl.x, 2.0f, "strip: the turned segment's bottom corner mirrors the top");
+	checkNear(tl.y, 0.0f, "strip: the turned segment's top corner stays at its end");
+
+	// A segment of zero length leaves particleNormalize's zero cross: every corner at the
+	// point, the degenerate quad a dead seat draws
+	b.position = glsl::vec2(0.0f, 0.0f);
+	glsl::particleStripSegment(a, b, emitter, bl, tl, tr, br);
+	checkNear(tl.x, 0.0f, "strip: a zero-length segment folds to its point");
+	checkNear(tr.y, 0.0f, "strip: a zero-length segment leaves the far end at the same point");
+	checkNear(br.x, 0.0f, "strip: a zero-length segment's bottom corners fold with the top");
+}
+
+// Effekseer's position by curve, the start and the end point read as a displacement over the
+// lifetime fraction: every step past particleStep adds the walk the fraction made, so the
+// offset lands on the birth point's own path and the velocity's walk and the curve's one sum -
+// the integrator the plan keeps seated in its place
+static void testPositionCurve() {
+	// The seat contract: the word sits in the strip block's own hand-carried padding, its
+	// offset unmoved by every stage after it - the ring's tail grew the word map past the
+	// colors and the band curves grew it past the count, the words before it standing where
+	// they stood
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, positionCurveOffset)), 508,
+			"position curve: the offset word seats at the strip block's padding");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 688,
+			"position curve: the word map keeps its grown tail, the older words in place");
+
+	::memset(s_extra, 0, sizeof(s_extra));
+
+	// The plan's own acceptance shape: a curve giving (10, 0) at the end of life walks the
+	// particle to it at zero velocity, k steps in at the sampler's own share - the stops sit at
+	// k / count and the last one holds, the same ladder every curve of the extra buffer climbs
+	uint32_t curve = writeCurve(2, 2, {0.0f, 0.0f, 10.0f, 0.0f});
+	Single seated;
+	seated.data.positionCurveOffset = curve;
+	seated.run(30);
+	checkNear(seated.p().position.x,
+			10.0f * sprt::min(float(30) * 2.0f / float(seated.p().fullLifetime), 1.0f),
+			"position curve: k steps stand at the curve's own fraction of the lifetime");
+	checkNear(seated.p().position.y, 0.0f, "position curve: the second axis walks its own zero");
+
+	// The walk is measured from the first stop: a curve starting away from the origin walks its
+	// own delta, not its own value - the start point is the walk's zero
+	Single offset;
+	offset.data.positionCurveOffset = writeCurve(40, 2, {6.0f, 0.0f, 16.0f, 0.0f});
+	offset.run(30);
+	checkNear(offset.p().position.x,
+			10.0f * sprt::min(float(30) * 2.0f / float(offset.p().fullLifetime), 1.0f),
+			"position curve: the walk is measured from the curve's first stop");
+
+	// The generator stands unread: the same seed walks the same stream beside the curve
+	Single plain;
+	plain.run(30);
+	check(plain.p().rng.state == seated.p().rng.state && plain.p().rng.inc == seated.p().rng.inc,
+			"position curve: the curve spends no draw of the generator");
+	checkNear(plain.p().position.x, 0.0f,
+			"position curve: no curve leaves the birth point standing");
+
+	// The file with both sums them - the plan's own letter: the velocity's walk and the curve's
+	// one are two paths on one birth point
+	Single velocity;
+	velocity.data.velocity.init = 30.0f;
+	velocity.run(30);
+	Single both;
+	both.data.velocity.init = 30.0f;
+	both.data.positionCurveOffset = curve;
+	both.run(30);
+	checkNear(both.p().position.x, velocity.p().position.x + seated.p().position.x,
+			"position curve: the velocity's walk and the curve's one sum");
+
+	// The word's zero guard: an emitter without the offset walks the particles it always did,
+	// byte for byte
+	Single unseated;
+	unseated.data.positionCurveOffset = 0;
+	unseated.run(30);
+	check(::memcmp(&unseated.p(), &plain.p(), sizeof(glsl::ParticleData)) == 0,
+			"position curve: the unseated word keeps the old particles whole");
+
+	// Two steps of one frame walk the same two fractions the ladder climbs inside
+	// particleUpdate's own loop
+	Single paird;
+	paird.data.positionCurveOffset = curve;
+	paird.maxSteps = 2;
+	s_points[0] = glsl::vec2(0.0f, 0.0f);
+	s_pointCount = 1;
+	paird.tick();
+	for (uint32_t i = 0; i < 15; ++i) { paird.tick(2); }
+	s_pointCount = 0;
+	check(::memcmp(&paird.p(), &seated.p(), sizeof(glsl::ParticleData)) == 0,
+			"position curve: two steps of one frame equal two frames of one step");
+
+	// A birth stands at the birth point - the curve adds nothing at the birth, the plan's own
+	// "after the step" - and a reborn slot restarts its walk from the same zero
+	Emitter cycled(4, 0.3f, 9);
+	cycled.data.positionCurveOffset = curve;
+	auto frames = cycled.cycleFrames();
+	bool birthsAtPoint = true;
+	for (uint32_t k = 0; k < frames * 3; ++k) {
+		cycled.tick();
+		for (uint32_t i = 0; i < 4; ++i) {
+			if (cycled.born[i]) {
+				birthsAtPoint = birthsAtPoint && cycled.particles[i].position.x == 0.0f
+						&& cycled.particles[i].position.y == 0.0f;
+			}
+		}
+	}
+	check(birthsAtPoint, "position curve: a birth stands at the birth point, the curve off it");
+}
+
+// The ring over life, the stage's scalar curves: the outer and inner edges, the arc's two
+// degrees and the middle edge's fraction each read their own Float curve at the lifetime
+// fraction in the emitter word's place - draw words the step never touches - and the corner
+// count word seats the corners the pass walks
+static void testRingCurve() {
+	// The seat contract: the five offsets and the count word stand past the ring's colors, the
+	// word map the static_assert locks
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringOuterCurveOffset)), 560,
+			"ring curve: the outer curve's offset word seats past the colors");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringRatioCurveOffset)), 576,
+			"ring curve: the ratio curve's offset word is the fifth");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringVertexCount)), 580,
+			"ring curve: the count word seats past the curve offsets");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 688,
+			"ring curve: the band curves' tail grew the word map past the count");
+
+	::memset(s_extra, 0, sizeof(s_extra));
+
+	// The fraction the draw reads: a particle of ten steps stands at the fraction its ladder
+	// climbed, the shared helpers' own particleLifeFraction
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+	emitter.ringOuter = 40.0f;
+	emitter.ringInner = 20.0f;
+	emitter.ringArcFrom = 0.0f;
+	emitter.ringArcTo = 360.0f;
+
+	glsl::ParticleData particle;
+	::memset(&particle, 0, sizeof(particle));
+	particle.scale = 1.0f;
+	particle.fullLifetime = 10u;
+
+	// The word the draw always read: no curve, the edges the emitter's own at every fraction
+	float inner = 0.0f;
+	float middle = 0.0f;
+	float outer = 0.0f;
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(outer, 40.0f, "ring curve: no curve keeps the outer word standing");
+	checkNear(inner, 20.0f, "ring curve: no curve keeps the inner word standing");
+	checkNear(middle, 30.0f, "ring curve: the even ratio keeps the middle at the band's half");
+
+	// The outer's own curve: the word's place taken at the fraction - birth at the first stop,
+	// the last step at the last one, the middle edge walking the band's half with it
+	emitter.ringOuterCurveOffset = writeCurve(2, 1, {40.0f, 80.0f});
+	particle.currentLifetime = 10u;
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(outer, 40.0f, "ring curve: a birth stands at the outer curve's first stop");
+	checkNear(middle, 30.0f, "ring curve: the middle walks with the edge it fractions");
+	particle.currentLifetime = 0u;
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(outer, 80.0f, "ring curve: the last step stands at the outer curve's last stop");
+	checkNear(inner, 20.0f, "ring curve: the inner word stands where no curve of its own sits");
+	checkNear(middle, 50.0f, "ring curve: the middle is the band's own lerp at the fraction");
+
+	// The middle's fraction, Effekseer's CenterRatio: 0.2 puts the middle edge a fifth of the
+	// band off the inner edge, the absent curve's 0.5 the average it replaced
+	emitter.ringRatioCurveOffset = writeCurve(6, 1, {0.2f, 0.2f});
+	particle.currentLifetime = 5u;
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(outer, 80.0f,
+			"ring curve: the half's own fraction stands on the outer curve's second stop");
+	checkNear(middle, 32.0f,
+			"ring curve: the ratio 0.2 puts the middle a fifth of the band off the inner");
+	particle.currentLifetime = 10u;
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(middle, 24.0f,
+			"ring curve: the ratio holds at birth, the constant curve its own");
+
+	// The scale still multiplies the drawn radii, the curve's word and the fraction's alike -
+	// the plan's own "scaleCurve multiplies both radii"
+	particle.scale = 2.0f;
+	particle.currentLifetime = 5u;
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(inner, 40.0f, "ring curve: the inner edge takes the drawn scale");
+	checkNear(outer, 160.0f, "ring curve: the outer's curve sample takes the drawn scale");
+	checkNear(middle, 64.0f, "ring curve: the middle's lerp multiplies whole");
+	particle.scale = 1.0f;
+
+	// The arc's two degrees, each its own curve: a quarter turn's word walks the corners from
+	// the y axis to the -x one, the file's degrees meeting the trigonometry at the radians line
+	emitter.ringArcFromCurveOffset = writeCurve(10, 1, {90.0f, 90.0f});
+	emitter.ringArcToCurveOffset = writeCurve(14, 1, {180.0f, 180.0f});
+	glsl::vec2 at0 = glsl::particleRingPoint(particle, emitter, 0.0f, 40.0f);
+	glsl::vec2 at1 = glsl::particleRingPoint(particle, emitter, 1.0f, 40.0f);
+	checkNear(at0.x, 0.0f, "ring curve: the arc curve's first corner opens on the y axis");
+	checkNear(at0.y, 40.0f, "ring curve: the first corner's degree is the curve's own");
+	checkNear(at1.x, -40.0f, "ring curve: the arc curve's last corner closes against the x axis");
+	checkNear(at1.y, 0.0f, "ring curve: the last corner's degree is the curve's own");
+
+	// The degenerate band, inner past outer: the formula stands whatever the order, the middle
+	// lerping between the two words - no crash, the pass's own band between the edges
+	::memset(&emitter, 0, sizeof(emitter));
+	emitter.ringOuter = 40.0f;
+	emitter.ringInner = 100.0f;
+	emitter.ringRatioCurveOffset = writeCurve(18, 1, {0.25f, 0.25f});
+	glsl::particleRingRadii(particle, emitter, inner, middle, outer);
+	checkNear(inner, 100.0f, "ring curve: the inverted band keeps its own inner");
+	checkNear(outer, 40.0f, "ring curve: the inverted band keeps its own outer");
+	checkNear(middle, 85.0f, "ring curve: the inverted band's middle lerps between the words");
+
+	// The outer's zero is the ring's own gate: the quad's six seats whatever curves ride
+	// beside it, the words the pass never reads
+	::memset(&emitter, 0, sizeof(emitter));
+	emitter.ringOuter = 0.0f;
+	emitter.ringOuterCurveOffset = writeCurve(22, 1, {40.0f, 80.0f});
+	emitter.ringVertexCount = 32u;
+	checkEq(glsl::particleVertexSeats(emitter), 6u,
+			"ring curve: the zero outer keeps the quad's own seats, curves and all");
+
+	// The corner count's own ladder: 3 makes a triangle, the word's zero the default sixteen
+	emitter.ringOuter = 40.0f;
+	emitter.ringVertexCount = 3u;
+	checkEq(glsl::particleRingCorners(emitter), 3u, "ring curve: three corners make the triangle");
+	emitter.ringVertexCount = 64u;
+	checkEq(glsl::particleVertexSeats(emitter), 768u, "ring curve: the ceiling owns its seats");
+	emitter.ringVertexCount = 0u;
+	checkEq(glsl::particleRingCorners(emitter), 16u,
+			"ring curve: the zero word carries the default sixteen");
+}
+
+static void testRingBand() {
+	// The seat contract: the three band offsets stand past the count word, the word map the
+	// static_assert locks at its grown tail
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringColorOuterCurveOffset)),
+			592, "ring band: the outer band's offset word seats past the count");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringColorMiddleCurveOffset)),
+			596, "ring band: the middle band's offset word is the second");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringColorInnerCurveOffset)),
+			600, "ring band: the inner band's offset word is the third");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 688,
+			"ring band: the word map keeps its tail whole");
+
+	::memset(s_extra, 0, sizeof(s_extra));
+
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+	emitter.ringOuter = 40.0f;
+	emitter.ringInner = 20.0f;
+	emitter.ringColorOuter = glsl::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+	emitter.ringColorMiddle = glsl::vec4(0.5f, 0.5f, 0.5f, 1.0f);
+	emitter.ringColorInner = glsl::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+
+	glsl::ParticleData particle;
+	::memset(&particle, 0, sizeof(particle));
+	particle.scale = 1.0f;
+	particle.fullLifetime = 10u;
+
+	// The words the draw always read: no curve, the three bands the emitter's own at every
+	// fraction - the constant ring the old files' buffers keep
+	glsl::vec4 bandIn;
+	glsl::vec4 bandMid;
+	glsl::vec4 bandOut;
+	glsl::particleRingColors(particle, emitter, bandIn, bandMid, bandOut);
+	checkNear(bandOut.x, 1.0f, "ring band: no curve keeps the outer word standing");
+	checkNear(bandMid.x, 0.5f, "ring band: no curve keeps the middle word standing");
+	checkNear(bandIn.z, 1.0f, "ring band: no curve keeps the inner word standing");
+
+	// The middle band's own curve: the word's place taken at the fraction, the two neighbours
+	// the words they were - the letter's own "only the middle curve changes"
+	emitter.ringColorMiddleCurveOffset = writeCurve(2, 4,
+			{0.25f, 0.5f, 0.0f, 1.0f, 1.0f, 0.5f, 0.25f, 1.0f});
+	particle.currentLifetime = 10u;
+	glsl::particleRingColors(particle, emitter, bandIn, bandMid, bandOut);
+	checkNear(bandMid.x, 0.25f, "ring band: a birth stands at the middle curve's first stop");
+	checkNear(bandMid.z, 0.0f, "ring band: the birth's middle is the curve's own color");
+	checkNear(bandOut.x, 1.0f, "ring band: the outer word stands where no curve of its own sits");
+	checkNear(bandIn.z, 1.0f, "ring band: the inner word stands where no curve of its own sits");
+	particle.currentLifetime = 0u;
+	glsl::particleRingColors(particle, emitter, bandIn, bandMid, bandOut);
+	checkNear(bandMid.x, 1.0f, "ring band: the last step stands at the middle curve's last stop");
+	checkNear(bandMid.z, 0.25f, "ring band: the last step's middle is the curve's own color");
+
+	// The multiply, pinned by the product the pass writes: the color curve multiplies the
+	// particle's own color into the tint, the band curve multiplies the whole - neither
+	// replaces the other, every component including alpha. The fraction 1/4 stands halfway
+	// between the middle curve's two stops, the sample (0.625, 0.5, 0.125, 1) the ladder's own
+	particle.color = glsl::vec4(1.0f, 0.5f, 0.0f, 0.5f);
+	emitter.colorCurveOffset = writeCurve(18, 4, {0.5f, 1.0f, 1.0f, 0.5f, 0.5f, 1.0f, 1.0f, 0.5f});
+	particle.currentLifetime = 10u;
+	glsl::vec4 tinted = glsl::particleColor(particle, emitter);
+	checkNear(tinted.x, 0.5f, "ring band: the color curve's tint is the particle's own share");
+	checkNear(tinted.w, 0.25f, "ring band: the tint's alpha multiplies the same way");
+	particle.fullLifetime = 8u;
+	particle.currentLifetime = 6u;
+	glsl::particleRingColors(particle, emitter, bandIn, bandMid, bandOut);
+	checkNear(bandMid.x, 0.625f, "ring band: the quarter fraction stands halfway up the ladder");
+	glsl::vec4 product = glsl::vec4(tinted.x * bandMid.x, tinted.y * bandMid.y,
+			tinted.z * bandMid.z, tinted.w * bandMid.w);
+	checkNear(product.x, 0.3125f,
+			"ring band: the middle band multiplies the tint, not replaces it");
+	checkNear(product.y, 0.25f, "ring band: the product's green is both curves' own share");
+	checkNear(product.z, 0.0f, "ring band: the product's blue stays the tint's own zero");
+	checkNear(product.w, 0.25f, "ring band: the band's alpha rides the product");
+	checkNear(bandOut.x * tinted.x, 0.5f,
+			"ring band: the outer band takes the tint alone, its word standing");
+
+	// The band words are draw words: the quad's own seats whatever curves ride beside a zero
+	// outer, the gate the pass reads first
+	::memset(&emitter, 0, sizeof(emitter));
+	emitter.ringOuter = 0.0f;
+	emitter.ringColorMiddleCurveOffset = writeCurve(26, 4, {0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f});
+	checkEq(glsl::particleVertexSeats(emitter), 6u,
+			"ring band: the zero outer keeps the quad's own seats, band curves and all");
+}
+
+// Effekseer's RingShape page, the crescent: "a circle with a part cut ... the start / end
+// angle and fade angle of the circle". The shape's own four degree words draw the arc in the
+// ring arc's place and the two fade words soften its tips - the corner's degree position from
+// the arc's own start the fade measures, the alpha alone it dims, the same vertex list and
+// the same pass the donut's ring fills
+static void testRingCrescent() {
+	// The seat contract: the shape word takes the band offsets' hand-carried padding, the
+	// four degrees the grown tail past it, the word map the static_assert locks
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringShape)), 604,
+			"ring crescent: the shape word takes the padding seat past the band offsets");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringCrescentFrom)), 608,
+			"ring crescent: the arc's first degree opens the grown tail");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringCrescentTo)), 612,
+			"ring crescent: the arc's last degree is the second");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringFadeFrom)), 616,
+			"ring crescent: the starting fade is the third");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ringFadeTo)), 620,
+			"ring crescent: the ending fade is the fourth");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 688,
+			"ring crescent: the four degrees end their own stretch, the word map grown past them");
+
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+
+	// The donut's answer at every fraction is one, whatever the fade words carry beside it -
+	// the colors the ring always wrote, the words the shape never reads
+	emitter.ringOuter = 40.0f;
+	emitter.ringFadeFrom = 30.0f;
+	emitter.ringFadeTo = 30.0f;
+	checkNear(glsl::particleRingFade(emitter, 0.0f), 1.0f,
+			"ring crescent: the donut keeps the first corner's alpha whole");
+	checkNear(glsl::particleRingFade(emitter, 0.5f), 1.0f,
+			"ring crescent: the donut keeps the half corner's alpha whole");
+	checkNear(glsl::particleRingFade(emitter, 1.0f), 1.0f,
+			"ring crescent: the donut keeps the last corner's alpha whole");
+
+	// The crescent's own ramp: a 0 to 180 arc with 30 degree fades - the tip's first corner
+	// flat at the arc's own start, the eighth corner on the ramp's exact half, the middle
+	// whole, the last corner down the closing ramp the same way
+	emitter.ringShape = XL_PARTICLE_RING_SHAPE_CRESCENT;
+	emitter.ringCrescentFrom = 0.0f;
+	emitter.ringCrescentTo = 180.0f;
+	checkNear(glsl::particleRingFade(emitter, 0.0f), 0.0f,
+			"ring crescent: the tip's first corner stands at the ramp's own zero");
+	checkNear(glsl::particleRingFade(emitter, 0.125f), 0.75f,
+			"ring crescent: the eighth corner stands three quarters up the opening ramp");
+	checkNear(glsl::particleRingFade(emitter, 0.25f), 1.0f,
+			"ring crescent: the quarter corner stands past the opening fade whole");
+	checkNear(glsl::particleRingFade(emitter, 0.5f), 1.0f,
+			"ring crescent: the half corner stands whole between the fades");
+	checkNear(glsl::particleRingFade(emitter, 0.875f), 0.75f,
+			"ring crescent: the seventh-eighth corner stands three quarters down the closing ramp");
+	checkNear(glsl::particleRingFade(emitter, 1.0f), 0.0f,
+			"ring crescent: the last corner stands at the closing ramp's own zero");
+
+	// A hard edge on one side: the zero fade word the side's own absence, the branch's guard
+	// standing where Effekseer's division stands - the tip flat, the other side's ramp alone
+	emitter.ringFadeFrom = 0.0f;
+	checkNear(glsl::particleRingFade(emitter, 0.0f), 1.0f,
+			"ring crescent: the zero starting fade keeps its own tip hard");
+	checkNear(glsl::particleRingFade(emitter, 1.0f), 0.0f,
+			"ring crescent: the zero starting fade leaves the closing ramp alone");
+	emitter.ringFadeFrom = 30.0f;
+	emitter.ringFadeTo = 0.0f;
+	checkNear(glsl::particleRingFade(emitter, 0.0f), 0.0f,
+			"ring crescent: the zero ending fade leaves the opening ramp alone");
+	checkNear(glsl::particleRingFade(emitter, 1.0f), 1.0f,
+			"ring crescent: the zero ending fade keeps its own tip hard");
+
+	// The degenerate spans answer numbers: a zero arc folds every corner onto the start - a
+	// seated opening fade reads the position zero and answers the flat tip, no fades the
+	// collapsed wedge the donut's own zero arc draws - and a backwards arc's position runs
+	// negative, the clamp holding the ramp below its floor, never a NaN
+	emitter.ringFadeTo = 30.0f;
+	emitter.ringCrescentTo = 0.0f;
+	float alpha = glsl::particleRingFade(emitter, 0.5f);
+	check(isfinite(alpha), "ring crescent: the zero arc's fade answers a number");
+	checkNear(alpha, 0.0f, "ring crescent: the zero arc's own position folds to the flat tip");
+	emitter.ringFadeFrom = 0.0f;
+	emitter.ringFadeTo = 0.0f;
+	checkNear(glsl::particleRingFade(emitter, 0.5f), 1.0f,
+			"ring crescent: the zero arc without fades keeps the collapsed wedge whole");
+	emitter.ringCrescentTo = -90.0f;
+	emitter.ringFadeFrom = 30.0f;
+	alpha = glsl::particleRingFade(emitter, 0.5f);
+	check(isfinite(alpha), "ring crescent: the backwards arc's fade answers a number");
+	checkNear(alpha, 0.0f, "ring crescent: the backwards arc's ramp clamps below its floor");
+
+	// The angles past the full circle: no wrap anywhere, the span winding over itself and the
+	// fades measuring their own degrees of it
+	emitter.ringCrescentFrom = 0.0f;
+	emitter.ringCrescentTo = 540.0f;
+	emitter.ringFadeTo = 30.0f;
+	checkNear(glsl::particleRingFade(emitter, 0.5f), 1.0f,
+			"ring crescent: the past-circle arc's half stands whole between the fades");
+	checkNear(glsl::particleRingFade(emitter, 1.0f), 0.0f,
+			"ring crescent: the past-circle arc closes on its own last degree's ramp");
+
+	// The shape's own arc in the ring arc's place: the crescent's two degree words walk the
+	// corners, the ring's own arc words - and a curve seated over them - standing unread
+	::memset(&emitter, 0, sizeof(emitter));
+	emitter.ringOuter = 40.0f;
+	emitter.ringArcFrom = 0.0f;
+	emitter.ringArcTo = 360.0f;
+	emitter.ringShape = XL_PARTICLE_RING_SHAPE_CRESCENT;
+	emitter.ringCrescentFrom = 90.0f;
+	emitter.ringCrescentTo = 180.0f;
+
+	glsl::ParticleData particle;
+	::memset(&particle, 0, sizeof(particle));
+	glsl::vec2 at0 = glsl::particleRingPoint(particle, emitter, 0.0f, 40.0f);
+	glsl::vec2 atEnd = glsl::particleRingPoint(particle, emitter, 1.0f, 40.0f);
+	checkNear(at0.x, 0.0f, "ring crescent: the shape's arc opens at its own first degree");
+	checkNear(at0.y, 40.0f, "ring crescent: the opening corner is on the y axis");
+	checkNear(atEnd.x, -40.0f, "ring crescent: the shape's arc closes at its own last degree");
+	checkNear(atEnd.y, 0.0f, "ring crescent: the closing corner is against the x axis");
+	checkNear(glsl::particleRingFade(emitter, 0.5f), 1.0f,
+			"ring crescent: the fades' zero words keep the shape's own arc hard");
+
+	// The fade dims the alpha alone: the bands carry their color, the corner's alpha the
+	// product the pass writes - rgb the bands' own, alpha the fade's share of the product
+	emitter.ringFadeFrom = 45.0f;
+	emitter.ringFadeTo = 45.0f;
+	emitter.ringColorOuter = glsl::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+	glsl::vec4 bandIn;
+	glsl::vec4 bandMid;
+	glsl::vec4 bandOut;
+	glsl::particleRingColors(particle, emitter, bandIn, bandMid, bandOut);
+	float fadeAtTip = glsl::particleRingFade(emitter, 0.0f);
+	checkNear(bandOut.x * fadeAtTip, 0.0f,
+			"ring crescent: the tip's drawn red is the fade's own share");
+	checkNear(bandOut.y, 0.0f, "ring crescent: the band's green stands where its word put it");
+	checkNear(bandOut.z, 0.0f, "ring crescent: the band's blue stands where its word put it");
+	checkNear(bandOut.w * fadeAtTip, 0.0f,
+			"ring crescent: the tip's drawn alpha is the fade's own share");
+	float fadeAtMid = glsl::particleRingFade(emitter, 0.5f);
+	checkNear(bandOut.x * fadeAtMid, 1.0f,
+			"ring crescent: the half corner's red stands whole past the fades");
+	checkNear(bandOut.w * fadeAtMid, 1.0f,
+			"ring crescent: the half corner's alpha stands whole past the fades");
+
+	// The shape is a draw word: the quad's own seats whatever shape rides beside a zero
+	// outer, the gate the pass reads first
+	::memset(&emitter, 0, sizeof(emitter));
+	emitter.ringOuter = 0.0f;
+	emitter.ringShape = XL_PARTICLE_RING_SHAPE_CRESCENT;
+	emitter.ringCrescentFrom = 90.0f;
+	emitter.ringCrescentTo = 270.0f;
+	checkEq(glsl::particleVertexSeats(emitter), 6u,
+			"ring crescent: the zero outer keeps the quad's own seats, shape and all");
+
+	// The corner count composes: the shape's own arc walking the emitter's own count of
+	// segments, the seats the count's own
+	emitter.ringOuter = 40.0f;
+	emitter.ringVertexCount = 32u;
+	checkEq(glsl::particleVertexSeats(emitter), 384u,
+			"ring crescent: the corner count owns its seats under the crescent");
+}
+
+// The angle by curve, the stage's own step word: a Float curve over the lifetime fraction whose
+// walk the step adds to the angle every step past particleStep - the increment the position
+// curve rides, so the curve never replaces the angular velocity the birth chose: the two walks
+// sum. The birth stands at the birth angle, the walk restarting with every rebirth
+static void testAngleCurve() {
+	// The seat contract: the word seats past the crescent's degrees, the first word past the
+	// tail the stages before this one carried, and the explicit padding holds the map to the
+	// vec4 alignment's own boundary
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, angleCurveOffset)), 624,
+			"angle curve: the offset word seats past the crescent's degrees");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 688,
+			"angle curve: the word map keeps its own tail on the alignment's boundary");
+
+	::memset(s_extra, 0, sizeof(s_extra));
+
+	// The plan's own acceptance shape: a curve giving a quarter turn at the end of life walks
+	// the angle to it at zero angular velocity, k steps in at the sampler's own share - the
+	// stops sit at k / count and the last one holds, the same ladder every curve climbs
+	constexpr float quarter = 1.5707963705062866f;
+	uint32_t curve = writeCurve(4, 1, {0.0f, quarter});
+	Single seated;
+	seated.data.angleCurveOffset = curve;
+	seated.run(30);
+	checkNear(seated.p().angle,
+			quarter * sprt::min(float(30) * 2.0f / float(seated.p().fullLifetime), 1.0f),
+			"angle curve: k steps stand at the curve's own fraction of the lifetime");
+
+	// The walk is measured from the first stop: a curve standing away from the zero turns its
+	// own delta, not its own value - the start angle is the walk's zero
+	Single offset;
+	offset.data.angleCurveOffset = writeCurve(8, 1, {0.7853981852531433f, 2.356194490192345f});
+	offset.run(30);
+	checkNear(offset.p().angle,
+			quarter * sprt::min(float(30) * 2.0f / float(offset.p().fullLifetime), 1.0f),
+			"angle curve: the walk is measured from the curve's first stop");
+
+	// A curve constant from its own first word walks nothing: the sample the step stands on
+	// and the sample the previous step stood at are the one number
+	Single constant;
+	constant.data.angleCurveOffset = writeCurve(12, 1, {quarter, quarter});
+	constant.run(30);
+	checkNear(constant.p().angle, 0.0f,
+			"angle curve: the curve constant from its own first word turns nothing");
+
+	// The generator stands unread: the same seed walks the same stream beside the curve
+	Single plain;
+	plain.run(30);
+	check(plain.p().rng.state == seated.p().rng.state && plain.p().rng.inc == seated.p().rng.inc,
+			"angle curve: the curve spends no draw of the generator");
+	checkNear(plain.p().angle, 0.0f, "angle curve: no curve leaves the birth angle standing");
+
+	// The letter's own pin: the two walks sum - the file with both stands at the sum of the
+	// walks each file stands at alone, neither zeroed
+	Single velocity;
+	velocity.data.angularVelocity.init = 0.5f;
+	velocity.run(30);
+	Single both;
+	both.data.angularVelocity.init = 0.5f;
+	both.data.angleCurveOffset = curve;
+	both.run(30);
+	checkNear(both.p().angle, velocity.p().angle + seated.p().angle,
+			"angle curve: the angular velocity's walk and the curve's one sum");
+
+	// The word's zero guard: an emitter without the offset turns the particles it always did,
+	// byte for byte
+	Single unseated;
+	unseated.data.angleCurveOffset = 0;
+	unseated.run(30);
+	check(::memcmp(&unseated.p(), &plain.p(), sizeof(glsl::ParticleData)) == 0,
+			"angle curve: the unseated word keeps the old particles whole");
+
+	// Two steps of one frame walk the same two fractions the ladder climbs inside
+	// particleUpdate's own loop
+	Single paird;
+	paird.data.angleCurveOffset = curve;
+	paird.maxSteps = 2;
+	s_points[0] = glsl::vec2(0.0f, 0.0f);
+	s_pointCount = 1;
+	paird.tick();
+	for (uint32_t i = 0; i < 15; ++i) { paird.tick(2); }
+	s_pointCount = 0;
+	check(::memcmp(&paird.p(), &seated.p(), sizeof(glsl::ParticleData)) == 0,
+			"angle curve: two steps of one frame equal two frames of one step");
+
+	// A birth stands at the birth angle - the curve adds nothing at the birth, the walk
+	// starting with the aging steps - and a reborn slot restarts its walk from the same zero
+	Emitter cycled(4, 0.3f, 9);
+	cycled.data.angle.init = 0.25f;
+	cycled.data.angleCurveOffset = curve;
+	auto frames = cycled.cycleFrames();
+	bool birthsAtAngle = true;
+	for (uint32_t k = 0; k < frames * 3; ++k) {
+		cycled.tick();
+		for (uint32_t i = 0; i < 4; ++i) {
+			if (cycled.born[i]) {
+				birthsAtAngle = birthsAtAngle && cycled.particles[i].angle == 0.25f;
+			}
+		}
+	}
+	check(birthsAtAngle, "angle curve: a birth stands at the birth angle, the curve off it");
+
+	// The draw composites for free: the ring's corner walks the arc the particle angle turns,
+	// so the curve's walk rotates the ring point - and the crescent's own arc with it - around
+	// the particle, the radius the walk leaves standing
+	Single ringPlain;
+	ringPlain.data.ringOuter = 40.0f;
+	ringPlain.data.ringInner = 20.0f;
+	ringPlain.run(30);
+	Single ringTurned;
+	ringTurned.data.ringOuter = 40.0f;
+	ringTurned.data.ringInner = 20.0f;
+	ringTurned.data.angleCurveOffset = curve;
+	ringTurned.run(30);
+	glsl::vec2 stood = glsl::particleRingPoint(ringPlain.p(), ringPlain.data, 0.5f, 40.0f);
+	glsl::vec2 turned = glsl::particleRingPoint(ringTurned.p(), ringTurned.data, 0.5f, 40.0f);
+	float walked = ringTurned.p().angle;
+	glsl::vec2 rotated = ringTurned.p().position
+			+ glsl::particleRotate(stood - ringTurned.p().position, walked);
+	checkNear(turned.x, rotated.x,
+			"angle curve: the ring's corner rides the walk around the particle");
+	checkNear(turned.y, rotated.y,
+			"angle curve: the ring's corner's second axis rides the walk");
+	checkNear((turned - ringTurned.p().position).length(),
+			(stood - ringPlain.p().position).length(),
+			"angle curve: the walk turns the corner, the radius it leaves standing");
+
+	// The crescent's own arc under the same walk: the shape's own two degree words drawing it,
+	// the rotation the particle angle carries riding there the same way
+	Single shapePlain;
+	shapePlain.data.ringOuter = 40.0f;
+	shapePlain.data.ringInner = 20.0f;
+	shapePlain.data.ringShape = XL_PARTICLE_RING_SHAPE_CRESCENT;
+	shapePlain.data.ringArcFrom = 0.0f;
+	shapePlain.data.ringArcTo = 360.0f;
+	shapePlain.data.ringCrescentFrom = 90.0f;
+	shapePlain.data.ringCrescentTo = 270.0f;
+	shapePlain.run(30);
+	Single shapeTurned;
+	shapeTurned.data.ringOuter = 40.0f;
+	shapeTurned.data.ringInner = 20.0f;
+	shapeTurned.data.ringShape = XL_PARTICLE_RING_SHAPE_CRESCENT;
+	shapeTurned.data.ringArcFrom = 0.0f;
+	shapeTurned.data.ringArcTo = 360.0f;
+	shapeTurned.data.ringCrescentFrom = 90.0f;
+	shapeTurned.data.ringCrescentTo = 270.0f;
+	shapeTurned.data.angleCurveOffset = curve;
+	shapeTurned.run(30);
+	glsl::vec2 shapeStood = glsl::particleRingPoint(shapePlain.p(), shapePlain.data, 0.25f, 40.0f);
+	glsl::vec2 shapeWent = glsl::particleRingPoint(shapeTurned.p(), shapeTurned.data, 0.25f, 40.0f);
+	glsl::vec2 shapeRound = shapeTurned.p().position
+			+ glsl::particleRotate(shapeStood - shapeTurned.p().position, shapeTurned.p().angle);
+	checkNear(shapeWent.x, shapeRound.x,
+			"angle curve: the crescent's corner rides the walk on the shape's own arc");
+	checkNear(shapeWent.y, shapeRound.y,
+			"angle curve: the crescent's corner's second axis rides the walk");
+}
+
+static void testUvRect() {
+	// The seat contract: the rect's own vec4 seats past the angle curve's offset - the first
+	// word past the tail the stages before this one carried - and the word map's tail carries
+	// the struct to the alignment's own boundary
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, uvRect)), 640,
+			"uv rect: the rect's own vec4 seats past the angle curve's offset");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 688,
+			"uv rect: the word map keeps its own tail on the alignment's boundary");
+
+	// The window's frame standing one second into the simulation: the scroll reads the same
+	// particleSimTime the pass's own shift reads, never a wall clock
+	glsl::ParticleFrameData frame;
+	::memset(&frame, 0, sizeof(frame));
+	frame.textureRect = glsl::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+	frame.dt = 1.0f / 60.0f;
+	frame.genframe = 60;
+	frame.framesInGen = 60;
+
+	glsl::ParticleData particle;
+	::memset(&particle, 0, sizeof(particle));
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+
+	// The absence keeps the UVs the pass always sampled: the zero state's window is the region
+	// itself, and the full [0,0,1,1] - the absence the file never carries - answers the same
+	// window
+	glsl::vec2 uv0, uv1;
+	glsl::particleUvWindow(frame, particle, emitter, uv0, uv1);
+	checkNear(uv0.x, 0.0f, "uv rect: the zero seat opens the region at its left");
+	checkNear(uv0.y, 0.0f, "uv rect: the zero seat opens the region at its top");
+	checkNear(uv1.x, 1.0f, "uv rect: the zero seat closes the region at its right");
+	checkNear(uv1.y, 1.0f, "uv rect: the zero seat closes the region at its bottom");
+	emitter.uvRect = glsl::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+	glsl::particleUvWindow(frame, particle, emitter, uv0, uv1);
+	checkNear(uv0.x, 0.0f, "uv rect: the full rect is the absence, the window the region");
+	checkNear(uv1.x, 1.0f, "uv rect: the full rect closes the window where the region closes");
+	emitter.uvRect = glsl::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+
+	// The plan's own acceptance shape: the left half of the texture - the cut's start at the
+	// region's left edge, its width the region's half, the V the cut leaves whole
+	emitter.uvRect = glsl::vec4(0.0f, 0.0f, 0.5f, 1.0f);
+	glsl::particleUvWindow(frame, particle, emitter, uv0, uv1);
+	checkNear(uv0.x, 0.0f, "uv rect: the cut opens at the region's own left edge");
+	checkNear(uv0.y, 0.0f, "uv rect: the cut opens at the region's own top");
+	checkNear(uv1.x, 0.5f, "uv rect: the cut closes at the half the word names");
+	checkNear(uv1.y, 1.0f, "uv rect: the cut closes at the region's own bottom");
+
+	// The frame grid divides the cut, never the texture around it: two frames across the half
+	// window, the second cell opening at the cut's own middle - the animation frame's answer
+	// riding the same window the grid walks. The particle carries a standing lifetime so the
+	// animation fraction the curve reads is the one the pass reads, no dead seat's NaN, and
+	// the grid's own count is the product the animFrame's curve answers
+	frame.hFrames = 2u;
+	frame.vFrames = 1u;
+	particle.fullLifetime = 600u;
+	particle.currentLifetime = 600u;
+	glsl::particleUvWindow(frame, particle, emitter, uv0, uv1);
+	checkNear(uv0.x, 0.0f, "uv rect: the grid's first cell opens at the cut's own left");
+	checkNear(uv1.x, 0.25f, "uv rect: the grid's first cell is the cut's own half");
+	::memset(&s_extra, 0, sizeof(s_extra));
+	emitter.animFrameCurveOffset = writeCurve(4, 1, {1.0f});
+	glsl::particleUvWindow(frame, particle, emitter, uv0, uv1);
+	checkNear(uv0.x, 0.25f,
+			"uv rect: the second frame opens at the cut's own middle, the grid inside the cut");
+	checkNear(uv1.x, 0.5f, "uv rect: the second frame closes at the cut's own right");
+	frame.hFrames = 0u;
+	emitter.animFrameCurveOffset = 0u;
+
+	// The scroll slides the cut window, never replaces it: a half window at a full second of
+	// simulation time under a half-per-second slide stands at the cut's own right edge, the
+	// slide's whole answer the window the cut named moved
+	emitter.uvScroll = glsl::vec2(0.5f, 0.0f);
+	glsl::particleUvWindow(frame, particle, emitter, uv0, uv1);
+	checkNear(uv0.x, 0.5f, "uv rect: the slide moves the cut window, the cut's left riding it");
+	checkNear(uv1.x, 1.0f, "uv rect: the slide's window stands a half past the cut's own left");
+	emitter.uvScroll = glsl::vec2(0.0f, 0.0f);
+
+	// The birth's flip mirrors the cut window's own U: the cut's edges trade and the window
+	// stays the cut's own span - a flip and a rect compose, neither erasing the other
+	particle.drawFlags = XL_PARTICLE_DRAW_FLAG_FLIP_U;
+	glsl::particleUvWindow(frame, particle, emitter, uv0, uv1);
+	checkNear(uv0.x, 0.5f, "uv rect: the flip mirrors the cut, the window's right at its left");
+	checkNear(uv1.x, 0.0f, "uv rect: the flip mirrors the cut, the window's left at its right");
+	particle.drawFlags = 0u;
+
+	// The ring and the strip read the one text: the window the helper answers is the window
+	// the pass's three call sites sample - the ring's u walking the cut's span along its arc,
+	// the strip's ends the same window's own - and a stepped particle's standing state, the
+	// state the pass draws from, answers the same cut the fresh frame answered
+	Single stepped;
+	stepped.data.uvRect = glsl::vec4(0.0f, 0.0f, 0.5f, 1.0f);
+	stepped.run(30);
+	glsl::particleUvWindow(frame, stepped.p(), stepped.data, uv0, uv1);
+	checkNear(uv0.x, 0.0f, "uv rect: the drawn state's cut opens where the word names");
+	checkNear(uv1.x, 0.5f, "uv rect: the drawn state's cut closes a half in");
+
+	// The rect is a draw word: the step and every particle field stand, the births the
+	// schedule carries - a seated rect moves no position, no lifetime, no birth
+	Single plain;
+	Single cut;
+	cut.data.uvRect = glsl::vec4(0.0f, 0.0f, 0.5f, 1.0f);
+	plain.run(30);
+	cut.run(30);
+	check(plain.p().position.x == cut.p().position.x && plain.p().position.y == cut.p().position.y
+					&& plain.p().currentLifetime == cut.p().currentLifetime,
+			"uv rect: the cut moves no particle field, the step the step always was");
+}
+
+// The quad's own four corners: the emitter's eight words seat past the rect, each its pair of
+// the quad's own fractions in the pairs' own order - bottom-left, bottom-right, top-left,
+// top-right - and the seated shape turns with the rotation, the birth scale growing every
+// corner's own reach the way it grew the whole quad. The defaults ±0.5 are the corners the
+// size-built quad always made and the zero state every old buffer keeps the absence's own
+// seat; the strip's segment and the ring's point read none of the eight
+static void testCorners() {
+	// The seat contract: the four pairs' own words seat past the rect - the buffer growing at
+	// its end the same way - and the word map's tail carries the struct to the alignment's own
+	// boundary
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, cornerBL)), 656,
+			"corners: the bottom-left pair seats past the rect");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, cornerBR)), 664,
+			"corners: the bottom-right pair is the second seat");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, cornerTL)), 672,
+			"corners: the top-left pair is the third seat");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, cornerTR)), 680,
+			"corners: the top-right pair is the fourth seat");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 688,
+			"corners: the word map keeps its own tail on the alignment's boundary");
+
+	// A 20x10 base quad at scale 1, the pattern testKinematics carries: halfSize (10, 5), the
+	// defaults ±0.5 the corners ±(10, 5)
+	Single e;
+	auto size = glsl::vec2(20.0f, 10.0f);
+	e.data.sizeValue = (size / 2.0f).length();
+	e.data.sizeNormal = size.getNormalized();
+	e.run(0);
+
+	// The zero state every old buffer keeps is the absence's own seat: the corners the size
+	// built, all four standing where the draw always made them
+	glsl::vec2 bl, tl, tr, br;
+	glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+	checkNear(bl.x, -10.0f, "corners: the zero seat opens the quad at its left edge (x)");
+	checkNear(bl.y, -5.0f, "corners: the zero seat opens the quad at its bottom (y)");
+	checkNear(tr.x, 10.0f, "corners: the zero seat closes the quad at its right edge (x)");
+	checkNear(tr.y, 5.0f, "corners: the zero seat closes the quad at its top (y)");
+
+	// The defaults ±0.5 seated whole are the same four: the fraction the word names of the
+	// quad's own full extent, a half of it the corner the draw always made
+	e.data.cornerBL = glsl::vec2(-0.5f, -0.5f);
+	e.data.cornerBR = glsl::vec2(0.5f, -0.5f);
+	e.data.cornerTL = glsl::vec2(-0.5f, 0.5f);
+	e.data.cornerTR = glsl::vec2(0.5f, 0.5f);
+	glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+	checkNear(bl.x, -10.0f, "corners: the defaults are the absence, the left edge standing (x)");
+	checkNear(bl.y, -5.0f, "corners: the defaults are the absence, the bottom standing (y)");
+	checkNear(tr.x, 10.0f, "corners: the defaults are the absence, the right edge standing (x)");
+	checkNear(tr.y, 5.0f, "corners: the defaults are the absence, the top standing (y)");
+
+	// The plan's own acceptance shape: the top-right corner pulled in to the quad's own
+	// middle, its pair alone moving - the corner's fraction of the quad's full extent, the
+	// other three corners standing where the size built them
+	e.data.cornerTR = glsl::vec2(0.0f, 0.5f);
+	glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+	checkNear(tr.x, 0.0f, "corners: the shifted corner's x is its fraction of the full extent");
+	checkNear(tr.y, 5.0f, "corners: the shifted corner's y keeps the top");
+	checkNear(bl.x, -10.0f, "corners: the shifted corner leaves the bottom-left standing (x)");
+	checkNear(br.x, 10.0f, "corners: the shifted corner leaves the bottom-right standing (x)");
+	checkNear(tl.x, -10.0f, "corners: the shifted corner leaves the top-left standing (x)");
+
+	// The order the plan names: the shape the words seat first, the quad's own transform
+	// turning it - the quarter turn every corner rides, the shifted one its own share turned
+	e.p().angle = float(M_PI_2);
+	glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+	checkNear(tr.x, -5.0f, "corners: the turn carries the shifted corner's own share (x)");
+	checkNear(tr.y, 0.0f, "corners: the turn carries the shifted corner's own share (y)");
+	checkNear(bl.x, 5.0f, "corners: the turn carries the bottom-left's share (x)");
+	checkNear(bl.y, -10.0f, "corners: the turn carries the bottom-left's share (y)");
+	e.p().angle = 0.0f;
+
+	// The birth scale is the transform's own pair: it doubles every corner's reach the way it
+	// doubles the whole quad, the corner's fraction of the doubled extent
+	e.p().scale = 2.0f;
+	e.p().scaleY = 2.0f;
+	e.data.cornerTR = glsl::vec2(1.0f, 1.0f);
+	glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+	checkNear(tr.x, 40.0f, "corners: the scale doubles the corner's own reach (x)");
+	checkNear(tr.y, 20.0f, "corners: the scale doubles the corner's own reach (y)");
+
+	// The alignment and the stretch are the same transform: the quad's Y axis follows the
+	// velocity and the stretch grows that axis's extent, the corner's share of the grown
+	// extent - and the defaults seated whole answer the stretched quad the draw always made
+	e.data.cornerBL = glsl::vec2(-0.5f, -0.5f);
+	e.data.cornerBR = glsl::vec2(0.5f, -0.5f);
+	e.data.cornerTL = glsl::vec2(-0.5f, 0.5f);
+	e.data.cornerTR = glsl::vec2(0.5f, 0.5f);
+	e.p().scale = 1.0f;
+	e.p().scaleY = 1.0f;
+	e.data.flags |= XL_PARTICLE_FLAG_ALIGN_WITH_VELOCITY;
+	e.data.stretch = 1.0f;
+	e.p().velocity = glsl::vec2(100.0f, 0.0f);
+	glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+	checkNear(tl.x, 105.0f,
+			"corners: the defaults answer the stretched quad the draw always made (x)");
+	checkNear(tl.y, 10.0f,
+			"corners: the defaults answer the stretched quad the draw always made (y)");
+	e.data.cornerTL = glsl::vec2(-0.5f, 1.0f);
+	e.data.cornerTR = glsl::vec2(0.5f, 1.0f);
+	glsl::particleQuad(e.p(), e.data, bl, tl, tr, br);
+	checkNear(tl.x, 210.0f, "corners: the stretch grows the corner's own share with the quad");
+	checkNear(tl.y, 10.0f, "corners: the aligned axis's corners ride the velocity's direction");
+
+	// The strip's segment and the ring's point read none of the eight: the shapes the stages
+	// before this one carried stand, the corners the quad's own words
+	glsl::ParticleData a;
+	glsl::ParticleData b;
+	::memset(&a, 0, sizeof(a));
+	::memset(&b, 0, sizeof(b));
+	a.position = glsl::vec2(-20.0f, 0.0f);
+	a.scale = 1.0f;
+	b.position = glsl::vec2(20.0f, 0.0f);
+	b.scale = 1.0f;
+	glsl::ParticleEmitterData plainEmitter;
+	::memset(&plainEmitter, 0, sizeof(plainEmitter));
+	plainEmitter.stripWidth = 8.0f;
+	glsl::ParticleEmitterData corneredEmitter = plainEmitter;
+	corneredEmitter.cornerBL = glsl::vec2(-2.0f, -2.0f);
+	corneredEmitter.cornerBR = glsl::vec2(2.0f, -2.0f);
+	corneredEmitter.cornerTL = glsl::vec2(-2.0f, 2.0f);
+	corneredEmitter.cornerTR = glsl::vec2(2.0f, 2.0f);
+	glsl::vec2 sbl, stl, str, sbr;
+	glsl::particleStripSegment(a, b, plainEmitter, sbl, stl, str, sbr);
+	glsl::vec2 cbl, ctl, ctr, cbr;
+	glsl::particleStripSegment(a, b, corneredEmitter, cbl, ctl, ctr, cbr);
+	check(sbl == cbl && stl == ctl && str == ctr && sbr == cbr,
+			"corners: the strip's segment reads none of the eight");
+
+	corneredEmitter.stripWidth = 0.0f;
+	corneredEmitter.ringOuter = 40.0f;
+	auto point0 = glsl::particleRingPoint(a, plainEmitter, 0.5f, 40.0f);
+	auto point1 = glsl::particleRingPoint(a, corneredEmitter, 0.5f, 40.0f);
+	check(point0.x == point1.x && point0.y == point1.y,
+			"corners: the ring's point reads none of the eight");
+
+	// The corners are a draw word: the step births and keeps the same particles
+	Single plain;
+	Single cornered;
+	cornered.data.cornerBL = glsl::vec2(-0.25f, -0.5f);
+	cornered.data.cornerBR = glsl::vec2(0.5f, -0.5f);
+	cornered.data.cornerTL = glsl::vec2(-0.5f, 0.5f);
+	cornered.data.cornerTR = glsl::vec2(0.5f, 0.75f);
+	plain.run(30);
+	cornered.run(30);
+	check(plain.p().position.x == cornered.p().position.x
+					&& plain.p().position.y == cornered.p().position.y
+					&& plain.p().currentLifetime == cornered.p().currentLifetime,
+			"corners: the shape moves no particle field, the step the step always was");
 }
 
 int main(int argc, const char *argv[]) {
@@ -949,10 +2287,23 @@ int main(int argc, const char *argv[]) {
 	testSeedRng();
 	testRandom();
 	testKinematics();
+	testScaleAxes();
+	testInterval();
 	testSceneSpace();
 	testCurves();
 	testHue();
 	testNewest();
+	testParentBound();
+	testDeflectorSeats();
+	testRing();
+	testStrip();
+	testPositionCurve();
+	testRingCurve();
+	testRingBand();
+	testRingCrescent();
+	testAngleCurve();
+	testUvRect();
+	testCorners();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 

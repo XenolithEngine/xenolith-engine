@@ -88,12 +88,90 @@ void writeVertex(VerticesBuffer target, uint index, vec2 pos, vec2 tex, vec4 col
 	target.vertices[index].object = 0;
 }
 
+void writeDegenerate(VerticesBuffer target, uint at, uint seats, uint material) {
+	for (uint i = 0u; i < seats; ++i) {
+		writeVertex(target, at + i, vec2(0.0, 0.0), vec2(0.0, 0.0), vec4(0.0, 0.0, 0.0, 0.0), material);
+	}
+}
+
+// The strip's own draw, Effekseer's ribbon taken in the screen plane: the emitter's particles
+// joined in their birth order, each particle owning the segment to the next born in the one
+// vertex list the pass always filled. The order is the cyclic slot walk broken at the frame's
+// newest word - within a cycle the births run by index and the wrap between the last slot and
+// the first is the seam of the two adjacent cycles, so the walk newest+1, ..., count-1, 0,
+// ..., newest is the birth order, and the break between the youngest and the oldest leaves
+// the strip open where a closed walk would fold it into a loop. The walk's word is the
+// nominal newest the ordered draw rotates by, the same word the pass computes for the seats;
+// randomness shifts a birth by less than one slot and the walk takes the slot order for the
+// tie. A dead end cuts its segment: the seats a segment never fills draw the same degenerate
+// quad a dead particle draws, and the strip runs on through the alive seats beyond it
+void stripDraw(uint index, ParticleFrameData frame) {
+	VerticesBuffer vertexBuffer = VerticesBuffer(pcb.outVerticesPointer);
+
+	uint slot = index;
+	if ((emitter.flags & XL_PARTICLE_FLAG_ORDER_BY_LIFETIME) != 0u) {
+		slot = (index + emitter.count - frame.newest - 1u) % emitter.count;
+	}
+	const uint seats = particleVertexSeats(emitter);
+	const uint vertexOffset = frame.vertexOffset + slot * seats;
+
+	ParticleData particle = particleBuffers[frame.particleBufferIndex].particles[index];
+	const uint next = (index + 1u == emitter.count) ? 0u : index + 1u;
+	if (index == frame.newest || particle.currentLifetime == 0u) {
+		writeDegenerate(vertexBuffer, vertexOffset, seats, frame.materialIndex);
+		return;
+	}
+	ParticleData nextParticle = particleBuffers[frame.particleBufferIndex].particles[next];
+	if (nextParticle.currentLifetime == 0u) {
+		writeDegenerate(vertexBuffer, vertexOffset, seats, frame.materialIndex);
+		return;
+	}
+
+	vec2 bl;
+	vec2 tl;
+	vec2 tr;
+	vec2 br;
+	particleStripSegment(particle, nextParticle, emitter, bl, tl, tr, br);
+
+	// Each end carries its own tint, the color curve's journey reading along the strip, while
+	// the window is the owner's own: u along the segment, v across the band, the quad's own
+	// corner order and the quad's own window - the cut, the scroll and the flip one helper
+	// reads, the strip's own seats sampling the same window the quad would
+	vec4 tintA = particleColor(particle, emitter);
+	vec4 tintB = particleColor(nextParticle, emitter);
+	const vec4 colorA = tintA * frame.nodeColor;
+	const vec4 colorB = tintB * frame.nodeColor;
+
+	vec2 uv0;
+	vec2 uv1;
+	particleUvWindow(frame, particle, emitter, uv0, uv1);
+
+	writeVertex(vertexBuffer, vertexOffset + 0u, bl, vec2(uv0.x, uv1.y), colorA, frame.materialIndex);
+	writeVertex(vertexBuffer, vertexOffset + 1u, tl, vec2(uv0.x, uv0.y), colorA, frame.materialIndex);
+	writeVertex(vertexBuffer, vertexOffset + 2u, br, vec2(uv1.x, uv1.y), colorB, frame.materialIndex);
+	writeVertex(vertexBuffer, vertexOffset + 3u, tr, vec2(uv1.x, uv0.y), colorB, frame.materialIndex);
+	writeVertex(vertexBuffer, vertexOffset + 4u, br, vec2(uv1.x, uv1.y), colorB, frame.materialIndex);
+	writeVertex(vertexBuffer, vertexOffset + 5u, tl, vec2(uv0.x, uv0.y), colorA, frame.materialIndex);
+	// Ring emitters reserve more seats than the strip's quad uses.
+	writeDegenerate(vertexBuffer, vertexOffset + 6u, seats - 6u, frame.materialIndex);
+}
+
 void main() {
 	const ParticleFrameData frame = FrameDataBuffer(pcb.frameDataPointer).frames[pcb.emitterIndex];
 	emitter = EmitterBuffer(frame.emitterPointer).data;
 
 	const uint index = gl_GlobalInvocationID.x;
 	if (index >= emitter.count) {
+		return;
+	}
+
+	// The strip's own dispatch: no update, no write-back, no feedback - the barrier the pass
+	// seated between the two dispatches hands every particle its standing state, and the
+	// segment a particle owns reads the next particle, which one dispatch's own invocations
+	// cannot order for one another. The update dispatch drew the quad into these seats; this
+	// pass overwrites every seat of the emitter, segment or degenerate, one writer whole
+	if (pcb.stripPass != 0u) {
+		stripDraw(index, frame);
 		return;
 	}
 
@@ -112,20 +190,20 @@ void main() {
 				particle.currentLifetime > 0u ? 1u : 0u, 0u);
 	}
 
-	// Every particle owns six vertices of its emitter's range; a dead one writes a degenerate quad.
-	// Ordered by lifetime, the slots rotate so the newest particle is drawn last.
+	// Every particle owns its emitter's vertex seats - the quad's six or the ring's own count -
+	// and a dead one writes them degenerate. Ordered by lifetime, the slots rotate so the newest
+	// particle is drawn last.
 	uint slot = index;
 	if ((emitter.flags & XL_PARTICLE_FLAG_ORDER_BY_LIFETIME) != 0u) {
 		slot = (index + emitter.count - frame.newest - 1u) % emitter.count;
 	}
 
 	VerticesBuffer vertexBuffer = VerticesBuffer(pcb.outVerticesPointer);
-	const uint vertexOffset = frame.vertexOffset + slot * 6u;
+	const uint seats = particleVertexSeats(emitter);
+	const uint vertexOffset = frame.vertexOffset + slot * seats;
 
 	if (particle.currentLifetime == 0u) {
-		for (uint i = 0u; i < 6u; ++i) {
-			writeVertex(vertexBuffer, vertexOffset + i, vec2(0.0, 0.0), vec2(0.0, 0.0), vec4(0.0, 0.0, 0.0, 0.0), frame.materialIndex);
-		}
+		writeDegenerate(vertexBuffer, vertexOffset, seats, frame.materialIndex);
 		return;
 	}
 
@@ -139,11 +217,85 @@ void main() {
 	const vec4 color = vec4(particleTint.x * frame.nodeColor.x, particleTint.y * frame.nodeColor.y,
 			particleTint.z * frame.nodeColor.z, particleTint.w * frame.nodeColor.w);
 
+	// The window the quad, the ring and the strip read one text: the emitter's uvRect cuts its
+	// region out of the texture region, the frame grid divides the cut, the scroll slides the
+	// cut window, the birth's flip mirrors it in U - particleUvWindow above, the one function
+	// the pass's three call sites read
 	vec2 uv0;
 	vec2 uv1;
-	particleFrameCell(frame, particleAnimFrame(particle, emitter, frame.hFrames * frame.vFrames), uv0, uv1);
+	particleUvWindow(frame, particle, emitter, uv0, uv1);
 
 	// The corners take the texture as a Sprite does: the top of the quad samples the top of the image
+	if (emitter.ringOuter > 0.0f) {
+// Effekseer's ring in the screen plane, the stage's own draw: the emitter's own corner
+// count of arc segments, each two color bands wide - inner to middle, middle to outer, the
+// middle edge at the fraction the ratio curve names - and each band the quad's own pair of
+// list triangles, the corner order the quad's own. The bands carry the emitter's three
+// colors or the curves seated over them, each multiplied by the tint the quad would draw;
+// the window maps u along the arc fraction and v across the band, the outer edge at the
+// window's top row as the quad's top, the inner at its bottom
+	float rIn;
+	float rMid;
+	float rOut;
+	particleRingRadii(particle, emitter, rIn, rMid, rOut);
+	// The three bands' own colors, each its vec4 curve's sample at the lifetime fraction in
+	// the color word's place - the life's own axis, never a place on the arc - the tint the
+	// quad draws multiplying after
+	vec4 bandIn;
+	vec4 bandMid;
+	vec4 bandOut;
+	particleRingColors(particle, emitter, bandIn, bandMid, bandOut);
+	const float vIn = uv1.y;
+	const float vOut = uv0.y;
+	const float vMid = 0.5f * (vIn + vOut);
+	const uint corners = particleRingCorners(emitter);
+	uint at = vertexOffset;
+	for (uint s = 0u; s < corners; ++s) {
+		const float f0 = float(s) / float(corners);
+		const float f1 = float(s + 1u) / float(corners);
+			const float u0 = mix(uv0.x, uv1.x, f0);
+			const float u1 = mix(uv0.x, uv1.x, f1);
+		const vec2 inA = particleRingPoint(particle, emitter, f0, rIn);
+		const vec2 inB = particleRingPoint(particle, emitter, f1, rIn);
+		const vec2 midA = particleRingPoint(particle, emitter, f0, rMid);
+		const vec2 midB = particleRingPoint(particle, emitter, f1, rMid);
+		const vec2 outA = particleRingPoint(particle, emitter, f0, rOut);
+		const vec2 outB = particleRingPoint(particle, emitter, f1, rOut);
+		const vec4 cIn = color * bandIn;
+		const vec4 cMid = color * bandMid;
+		const vec4 cOut = color * bandOut;
+		// each end its own alpha: the crescent's own fade answers the corner's arc fraction
+		// at both ends - the segment's tips the shape's fade words soften, the drawn rgb
+		// standing - and the donut's fade answers one at both, the multiply leaving the
+		// colors the ring always wrote (a float times one is exact)
+		const float fadeA = particleRingFade(emitter, f0);
+		const float fadeB = particleRingFade(emitter, f1);
+		const vec4 cInA = vec4(cIn.x, cIn.y, cIn.z, cIn.w * fadeA);
+		const vec4 cMidA = vec4(cMid.x, cMid.y, cMid.z, cMid.w * fadeA);
+		const vec4 cOutA = vec4(cOut.x, cOut.y, cOut.z, cOut.w * fadeA);
+		const vec4 cInB = vec4(cIn.x, cIn.y, cIn.z, cIn.w * fadeB);
+		const vec4 cMidB = vec4(cMid.x, cMid.y, cMid.z, cMid.w * fadeB);
+		const vec4 cOutB = vec4(cOut.x, cOut.y, cOut.z, cOut.w * fadeB);
+		// the inner band: the quad's (bl, tl, br, tr, br, tl) with the inner edge as its
+		// bottom row and the middle as its top
+		writeVertex(vertexBuffer, at + 0u, inA, vec2(u0, vIn), cInA, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 1u, midA, vec2(u0, vMid), cMidA, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 2u, inB, vec2(u1, vIn), cInB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 3u, midB, vec2(u1, vMid), cMidB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 4u, inB, vec2(u1, vIn), cInB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 5u, midA, vec2(u0, vMid), cMidA, frame.materialIndex);
+		// the outer band: the middle edge as its bottom row and the outer as its top
+		writeVertex(vertexBuffer, at + 6u, midA, vec2(u0, vMid), cMidA, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 7u, outA, vec2(u0, vOut), cOutA, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 8u, midB, vec2(u1, vMid), cMidB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 9u, outB, vec2(u1, vOut), cOutB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 10u, midB, vec2(u1, vMid), cMidB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 11u, outA, vec2(u0, vOut), cOutA, frame.materialIndex);
+		at += 12u;
+		}
+		return;
+	}
+
 	writeVertex(vertexBuffer, vertexOffset + 0, bl, vec2(uv0.x, uv1.y), color, frame.materialIndex);
 	writeVertex(vertexBuffer, vertexOffset + 1, tl, vec2(uv0.x, uv0.y), color, frame.materialIndex);
 	writeVertex(vertexBuffer, vertexOffset + 2, br, vec2(uv1.x, uv1.y), color, frame.materialIndex);

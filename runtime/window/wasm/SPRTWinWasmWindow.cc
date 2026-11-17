@@ -74,8 +74,10 @@ bool WasmWindow::init(NotNull<WasmContextController> c, Rc<WindowInfo> &&info,
 	if (!NativeWindow::init(c, sprt::move(info), caps)) {
 		return false;
 	}
-	// The canvas is the only window: it starts enabled, focused and with the
-	// pointer inside so :hover and keyboard work before the first JS WindowState.
+	// Enabled, focused, pointer inside. This event is dropped: AppWindow does not
+	// exist until notifyWindowCreated. AppWindow::run copies these bits into the
+	// state the director reads, because a later WindowState with the same bits
+	// is ignored.
 	updateState(0, _info->state | WindowState::Enabled | WindowState::Focused | WindowState::Pointer);
 	return true;
 }

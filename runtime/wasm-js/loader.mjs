@@ -92,6 +92,11 @@ function attachCanvasInput(canvas, inputSab, density, getSize) {
 		let s = WSTATE.Enabled;
 		if (focused) { s |= WSTATE.Focused; }
 		if (pointerIn) { s |= WSTATE.Pointer; }
+		// updateState ignores a WindowState whose bits did not change. The wasm
+		// window already claims these bits before the app is listening, so one
+		// matching report never arrives and :hover stays off until a resize
+		// changes something. The flipped report makes the real state a transition.
+		send({ id: 0, name: NAME.WindowState, keycode: (s ^ WSTATE.Pointer) >>> 0 });
 		send({ id: 0, name: NAME.WindowState, keycode: s >>> 0 });
 	};
 	pushState();
@@ -357,6 +362,7 @@ export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0, args, 
 					module: shared.module, memory: shared.memory, bundle: shared.bundle, tidBuf: shared.tidBuf,
 					opfsSab: shared.opfsSab, gpuCtrl: shared.gpuCtrl, dispW: shared.dispW, dispH: shared.dispH, dispDensity: shared.dispDensity,
 					inputSab: shared.inputSab, displaySab: shared.displaySab,
+					wantFilePut: !!onFilePut,
 					tid: m.tid, threadPtr: m.threadPtr, stackTop: m.stackTop, stackSize: m.stackSize, tlsBase: m.tlsBase,
 				});
 				break;
@@ -382,6 +388,9 @@ export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0, args, 
 			wasmUrl, bundleManifest: bundle, argv0, args, hasCanvas: !!offscreen, dispW, dispH, dispDensity,
 			sdkGzUrl, mkGzUrl, productBundle, memoryInitial, memoryMaximum, sdkSab,
 			wantProcess: !!(onProcess || wantProcess),
+			// Thread workers wire the same import: a publish writes its files from a
+			// job thread, and every closed write has to reach the same onFilePut.
+			wantFilePut: !!onFilePut,
 		});
 	});
 	done.stop = stop;

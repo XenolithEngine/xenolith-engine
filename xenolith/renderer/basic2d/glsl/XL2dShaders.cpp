@@ -30,11 +30,14 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d::shaders {
 
 #include "xl_2d_material.frag.h"
 #include "xl_2d_material.vert.h"
+#include "xl_2d_particle.frag.h"
 #include "xl_2d_pseudosdf.frag.h"
 #include "xl_2d_pseudosdf.vert.h"
 #include "xl_2d_pseudosdf_shadow.frag.h"
 #include "xl_2d_pseudosdf_shadow.vert.h"
 #include "xl_2d_frameclipper.frag.h"
+#include "xl_2d_particle_distort_shift.frag.h"
+#include "xl_2d_particle_distort_composite.frag.h"
 #include "xl_2d_particle_update.comp.h"
 #include "xl_2d_flat.frag.h"
 #include "xl_2d_flat.vert.h"
@@ -43,6 +46,8 @@ SpanView<uint32_t> MaterialFrag(reinterpret_cast<const uint32_t *>(xl_2d_materia
 		sizeof(xl_2d_material_frag) / sizeof(uint32_t));
 SpanView<uint32_t> MaterialVert(reinterpret_cast<const uint32_t *>(xl_2d_material_vert),
 		sizeof(xl_2d_material_vert) / sizeof(uint32_t));
+SpanView<uint32_t> ParticleFrag(reinterpret_cast<const uint32_t *>(xl_2d_particle_frag),
+		sizeof(xl_2d_particle_frag) / sizeof(uint32_t));
 SpanView<uint32_t> PseudoSdfFrag(reinterpret_cast<const uint32_t *>(xl_2d_pseudosdf_frag),
 		sizeof(xl_2d_pseudosdf_frag) / sizeof(uint32_t));
 SpanView<uint32_t> PseudoSdfVert(reinterpret_cast<const uint32_t *>(xl_2d_pseudosdf_vert),
@@ -56,6 +61,14 @@ SpanView<uint32_t> PseudoSdfShadowVert(
 
 SpanView<uint32_t> FrameClipperFrag(reinterpret_cast<const uint32_t *>(xl_2d_frameclipper_frag),
 		sizeof(xl_2d_frameclipper_frag) / sizeof(uint32_t));
+
+SpanView<uint32_t> ParticleDistortShiftFrag(
+		reinterpret_cast<const uint32_t *>(xl_2d_particle_distort_shift_frag),
+		sizeof(xl_2d_particle_distort_shift_frag) / sizeof(uint32_t));
+
+SpanView<uint32_t> ParticleDistortCompositeFrag(
+		reinterpret_cast<const uint32_t *>(xl_2d_particle_distort_composite_frag),
+		sizeof(xl_2d_particle_distort_composite_frag) / sizeof(uint32_t));
 
 SpanView<uint32_t> FlatFrag(reinterpret_cast<const uint32_t *>(xl_2d_flat_frag),
 		sizeof(xl_2d_flat_frag) / sizeof(uint32_t));

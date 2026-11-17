@@ -1193,6 +1193,30 @@ void ParticleDemoLayout::registerCommands() {
 		return encodeStats();
 	});
 
+	addCommand("render", "Set emitter draw state: {distortion, blend: 0..3, mask: 0..3}",
+			[this](const Value &args) {
+		auto blend = args.getInteger("blend");
+		auto mask = args.getInteger("mask");
+		Value ret;
+		if (blend < 0 || blend > 3 || mask < 0 || mask > 3) {
+			ret.setString("invalid blend or mask", "error");
+			return ret;
+		}
+		Value emitters(Value::Type::ARRAY);
+		for (auto slot : getTargets(args)) {
+			slot->node->setDistortion(args.getBool("distortion"));
+			slot->node->setBlendMode(basic2d::ParticleBlendMode(blend));
+			slot->node->setQuadMask(basic2d::ParticleQuadMask(mask), 0.25f, 0.1f);
+			Value state;
+			state.setBool(slot->node->isDistortion(), "distortion");
+			state.setInteger(toInt(slot->node->getBlendMode()), "blend");
+			state.setInteger(toInt(slot->node->getQuadMask()), "mask");
+			emitters.addValue(sp::move(state));
+		}
+		ret.setValue(sp::move(emitters), "emitters");
+		return ret;
+	});
+
 	addCommand("preset", "Apply a preset by {name} to every emitter or to {emitter: index}",
 			[this](const Value &args) {
 		const auto &name = args.getString("name");

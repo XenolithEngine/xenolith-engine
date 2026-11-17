@@ -72,6 +72,7 @@ static const TestEntry s_testList[] = {
 	{"diag-registry", &stappler::performDiagnosticRegistryTests},
 	{"json-git", &stappler::performJsonGitTests},
 	{"bitmap-resample", &stappler::performBitmapResampleTests},
+	{"bitmap-encode", &stappler::performBitmapEncodeTests},
 	{"compression-libs", &stappler::performCompressionLibTests},
 	{"kdl-data", &stappler::performKdlDataTests},
 };

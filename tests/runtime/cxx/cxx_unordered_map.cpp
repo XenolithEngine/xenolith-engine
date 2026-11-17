@@ -424,6 +424,66 @@ void performMallocUnorderedMapTests() {
 	}
 
 
+	// Test 26: clear must not leave chain offsets, and rehash must accept a non-multiple size
+	{
+		using Map = __malloc_unordered_map<int, int>;
+		Map map;
+		bool ok = true;
+		for (int i = 0; i < 64; ++i) {
+			auto inserted = map.emplace(i, i);
+			if (inserted.first.node() == nullptr || inserted.first->second != i) {
+				ok = false;
+			}
+		}
+		auto cap = map.bucket_count();
+		map.clear();
+		if (!map.empty() || cap == 0) {
+			ok = false;
+		}
+		for (int k = 0; k < 8; ++k) {
+			int key = k * int(cap);
+			auto inserted = map.emplace(key, key + 1);
+			if (inserted.first.node() == nullptr || inserted.first->second != key + 1) {
+				ok = false;
+			}
+		}
+		for (int i = 0; i < 200; ++i) {
+			auto inserted = map.emplace(1000 + i, i);
+			if (inserted.first.node() == nullptr || inserted.first->second != i) {
+				ok = false;
+			}
+		}
+		auto grown = map.bucket_count();
+		map.rehash(grown * 2 + 3);
+		if (map.bucket_count() < grown * 2 + 3) {
+			ok = false;
+		}
+		for (int k = 0; k < 8; ++k) {
+			int key = k * int(cap);
+			auto found = map.find(key);
+			if (found == map.end() || found->second != key + 1) {
+				ok = false;
+			}
+		}
+		for (int i = 0; i < 200; ++i) {
+			auto found = map.find(1000 + i);
+			if (found == map.end() || found->second != i) {
+				ok = false;
+			}
+		}
+		auto extra = map.emplace(99999, 7);
+		if (extra.first.node() == nullptr || map.find(99999) == map.end()
+				|| map.find(99999)->second != 7) {
+			ok = false;
+		}
+		sprt::cout << "Test 26 - Clear and odd rehash: ";
+		if (ok) {
+			sprt::cout << "PASS\n";
+		} else {
+			sprt::cout << sprt::test::failed("FAIL\n");
+		}
+	}
+
 	sprt::cout << "\nUnordered map tests completed.\n";
 }
 

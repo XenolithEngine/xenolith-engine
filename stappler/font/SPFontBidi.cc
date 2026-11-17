@@ -98,6 +98,16 @@ struct BidiInterface {
 	BidiInterface() { addInitializer(this, initialize, terminate); }
 
 	void init() {
+		// initialize() re-runs every registered initializer on each call, and a windowed app
+		// reaches it twice (perform_main plus the window Context's ContentInitializer). The
+		// allocator object's own chunk is taken from the current default and freed through the
+		// current default on release, so a re-created allocator would draw its chunk from this
+		// pool allocator and later hand it to free(). The first allocator serves the whole
+		// process; the second pass keeps it.
+		if (_allocator) {
+			return;
+		}
+
 		static const SBAllocatorProtocol protocol = {
 			&poolAllocateBlock,
 			&poolReallocateBlock,

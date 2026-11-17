@@ -548,7 +548,7 @@ void VertexPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 the frame copy. Spans carry absolute firstIndex/vertexOffset/firstInstance and nothing depends on
 iteration order, so two runs equal one run over the concatenation. */
 void VertexPassHandle::drawSpans(core::MaterialSet *materials, CommandBuffer &buf,
-		SpanView<VertexSpan> spans) {
+		SpanView<VertexSpan> spans, DistortFilter filter) {
 	auto commands = _vertexBuffer->getCommands();
 	auto pass = static_cast<RenderPass *>(_data->impl.get());
 
@@ -591,6 +591,23 @@ void VertexPassHandle::drawSpans(core::MaterialSet *materials, CommandBuffer &bu
 		//}
 
 		//++ i;
+
+		// the frame distortion pair's span: the emitter's render info says so, and the span
+		// leaves this walk for the pass's trailing pair when the filter asks
+		const bool distorted = [&]() {
+			if (materialVertexSpan.particleEmitterId == 0 || !_particles) {
+				return false;
+			}
+			auto emitterRenderInfo =
+					_particles->getEmitterRenderInfo(materialVertexSpan.particleEmitterId);
+			return emitterRenderInfo && emitterRenderInfo->distortion != 0u;
+		}();
+		if (filter == DistortFilter::SkipDistort && distorted) {
+			return;
+		}
+		if (filter == DistortFilter::OnlyDistort && !distorted) {
+			return;
+		}
 
 		auto material = materials->getMaterialById(materialVertexSpan.material);
 		if (!material) {
@@ -662,10 +679,28 @@ void VertexPassHandle::drawSpans(core::MaterialSet *materials, CommandBuffer &bu
 				pcbParticle.vertexPointer =
 						UVec2::convertFromPacked(particleVertexes->getDeviceAddress());
 
-				buf.cmdPushConstants(pass->getPipelineLayout(0),
-						VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-						BytesView(reinterpret_cast<const uint8_t *>(&pcbParticle),
-								sizeof(VertexConstantData)));
+				if (emitterRenderInfo->maskShape != 0u) {
+					// The masked draw runs the particle fragment, whose pcb carries the mask
+					// after the material words the shared vertex stage still reads
+					glsl::ParticleDrawConstantData pcbMasked;
+					pcbMasked.base = pcbParticle;
+					pcbMasked.mask = glsl::vec4(float(emitterRenderInfo->maskShape),
+							emitterRenderInfo->maskThickness, emitterRenderInfo->maskSoftness,
+							0.0f);
+					buf.cmdPushConstants(pass->getPipelineLayout(0),
+							VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+							BytesView(reinterpret_cast<const uint8_t *>(&pcbMasked.base),
+									sizeof(VertexConstantData)));
+					buf.cmdPushConstants(pass->getPipelineLayout(0), VK_SHADER_STAGE_FRAGMENT_BIT,
+							sizeof(VertexConstantData),
+							BytesView(reinterpret_cast<const uint8_t *>(&pcbMasked.mask),
+									sizeof(pcbMasked.mask)));
+				} else {
+					buf.cmdPushConstants(pass->getPipelineLayout(0),
+							VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+							BytesView(reinterpret_cast<const uint8_t *>(&pcbParticle),
+									sizeof(VertexConstantData)));
+				}
 
 				buf.cmdDrawIndirect(_particles->getCommands(),
 						emitterRenderInfo->index * sizeof(ParticleIndirectCommand), 1,

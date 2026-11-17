@@ -113,7 +113,8 @@ bool ShadowPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilde
 		builder.defineAsOutput();
 
 		return Rc<vk::ImageAttachment>::create(builder,
-				ImageInfo(info.extent, core::ForceImageUsage(core::ImageUsage::ColorAttachment),
+				ImageInfo(info.extent, core::ForceImageUsage(core::ImageUsage::ColorAttachment
+								| core::ImageUsage::InputAttachment | core::ImageUsage::Sampled),
 						info.target->getCommonFormat()),
 				core::ImageAttachment::AttachmentInfo{
 					.initialLayout = AttachmentLayout::Undefined,
@@ -135,6 +136,23 @@ bool ShadowPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilde
 					.finalLayout = AttachmentLayout::ShaderReadOnlyOptimal,
 					.clearOnLoad = true,
 					.clearColor = Color4F(0.0f, 0.0f, 0.0f, 0.0f) // Color4F::BLACK;
+				});
+	});
+
+	// The frame distortion pair's intermediate, Particle-52: the displaced frame values the
+	// shift subpass writes for the distorted emitters' footprints alone
+	_distort =
+			queueBuilder.addAttachemnt("Distort", [&](AttachmentBuilder &builder) -> Rc<Attachment> {
+		return Rc<vk::ImageAttachment>::create(builder,
+				ImageInfo(info.extent,
+						core::ForceImageUsage(core::ImageUsage::ColorAttachment
+								| core::ImageUsage::InputAttachment),
+						info.target->getCommonFormat()),
+				core::ImageAttachment::AttachmentInfo{
+					.initialLayout = AttachmentLayout::Undefined,
+					.finalLayout = AttachmentLayout::ShaderReadOnlyOptimal,
+					.clearOnLoad = true,
+					.clearColor = Color4F(0.0f, 0.0f, 0.0f, 0.0f)
 				});
 	});
 
@@ -212,6 +230,10 @@ bool ShadowPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilde
 	auto sdfAttachment = passBuilder.addAttachment(_sdf);
 	auto sdfDepthAttachment = passBuilder.addAttachment(_depthSdf);
 	auto depth2dAttachment = passBuilder.addAttachment(_depth2d);
+	auto distortAttachment = passBuilder.addAttachment(_distort,
+			AttachmentDependencyInfo::make(PipelineStage::ColorAttachmentOutput
+							| PipelineStage::FragmentShader,
+					AccessType::ColorAttachmentWrite | AccessType::InputAttachmantRead));
 
 	_particles = info.particleAttachment;
 
@@ -245,6 +267,19 @@ bool ShadowPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilde
 					AttachmentLayout::ShaderReadOnlyOptimal);
 			setBuilder.addDescriptor(sdfAttachment, DescriptorType::InputAttachment,
 					AttachmentLayout::ShaderReadOnlyOptimal);
+		});
+	});
+
+	// The frame distortion pair's layout, Particle-52: the settled frame for the shift draw's
+	// displaced fetch, the intermediate for the composite draw's same-pixel backread. One set
+	// serves both halves; each fragment binds the one it reads
+	auto layoutDistort =
+			passBuilder.addDescriptorLayout("LayoutDistort", [&](PipelineLayoutBuilder &layoutBuilder) {
+		layoutBuilder.addSet([&](DescriptorSetBuilder &setBuilder) {
+			setBuilder.addDescriptor(colorAttachment, DescriptorType::SampledImage,
+					AttachmentLayout::General);
+			setBuilder.addDescriptor(distortAttachment, DescriptorType::InputAttachment,
+					AttachmentLayout::General);
 		});
 	});
 
@@ -392,6 +427,120 @@ bool ShadowPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilde
 				}));
 	});
 
+	// The frame distortion pair, Particle-52: a distorted emitter's draw leaves the scene
+	// subpass for these two. The shift subpass fetches the frame the earlier subpasses settled
+	// at the coordinate the particle's color names and writes the fetched values into the
+	// intermediate with the particle's coverage as the alpha; the composite subpass reads the
+	// same pixel of the intermediate through an input attachment - the SDF backread's own
+	// shape - and blends it into the frame under the emitter's blend mode, one pipeline per
+	// registered pair. Every draw is scissored to the emitter's own box - no fullscreen pass,
+	// and the displaced fetches never read what their own subpass writes
+	auto distortVert = queueBuilder.addProgramByRef("Loader_MaterialVertByRef", shaders::MaterialVert);
+	auto distortShiftFrag =
+			queueBuilder.addProgramByRef("Loader_DistortShiftFrag", shaders::ParticleDistortShiftFrag);
+	auto distortCompositeFrag =
+			queueBuilder.addProgramByRef("Loader_DistortCompositeFrag",
+					shaders::ParticleDistortCompositeFrag);
+
+	auto subpassDistortShift = passBuilder.addSubpass([&](SubpassBuilder &subpassBuilder) {
+		subpassBuilder.addColor(distortAttachment,
+				AttachmentDependencyInfo{
+					PipelineStage::ColorAttachmentOutput,
+					AccessType::ColorAttachmentWrite,
+					PipelineStage::ColorAttachmentOutput,
+					AccessType::ColorAttachmentWrite,
+					FrameRenderPassState::Submitted,
+				},
+				AttachmentLayout::General);
+
+		subpassBuilder.addInput(colorAttachment,
+				AttachmentDependencyInfo{
+					PipelineStage::FragmentShader,
+					AccessType::ShaderRead,
+					PipelineStage::FragmentShader,
+					AccessType::ShaderRead,
+					FrameRenderPassState::Submitted,
+				},
+				AttachmentLayout::General);
+
+		subpassBuilder.addGraphicPipeline(DistortShiftPipeline, layoutDistort->defaultFamily,
+				Vector<SpecializationInfo>({
+					distortVert,
+					distortShiftFrag,
+				}),
+				PipelineMaterialInfo({BlendInfo(), DepthInfo(), ImageViewType::ImageView2D,
+						PipelineVariant::ParticleDistort}));
+	});
+
+	auto subpassDistortComposite = passBuilder.addSubpass([&](SubpassBuilder &subpassBuilder) {
+		subpassBuilder.addColor(colorAttachment,
+				AttachmentDependencyInfo{
+					PipelineStage::ColorAttachmentOutput,
+					AccessType::ColorAttachmentWrite,
+					PipelineStage::ColorAttachmentOutput,
+					AccessType::ColorAttachmentWrite,
+					FrameRenderPassState::Submitted,
+				},
+				AttachmentLayout::General);
+
+		subpassBuilder.addInput(distortAttachment,
+				AttachmentDependencyInfo{
+					PipelineStage::FragmentShader,
+					AccessType::ShaderRead,
+					PipelineStage::FragmentShader,
+					AccessType::ShaderWrite,
+					FrameRenderPassState::Submitted,
+				},
+				AttachmentLayout::General);
+
+		// The blend is part of the material key the same way the scene subpass's twins are:
+		// the four pipelines carry the alpha/add/sub/mul pairs the emitter's mode asks for -
+		// alpha the transparent pair the sprite draw itself lands under - and the variant
+		// keeps every existing material's match away from them
+		subpassBuilder.addGraphicPipeline(DistortCompositePipelines[0], layoutDistort->defaultFamily,
+				Vector<SpecializationInfo>({
+					distortVert,
+					distortCompositeFrag,
+				}),
+				PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
+											BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
+											BlendOp::Add),
+						DepthInfo(), ImageViewType::ImageView2D,
+						PipelineVariant::ParticleDistort}));
+
+		subpassBuilder.addGraphicPipeline(DistortCompositePipelines[1], layoutDistort->defaultFamily,
+				Vector<SpecializationInfo>({
+					distortVert,
+					distortCompositeFrag,
+				}),
+				PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::One, BlendOp::Add,
+											BlendFactor::Zero, BlendFactor::One, BlendOp::Add),
+						DepthInfo(), ImageViewType::ImageView2D,
+						PipelineVariant::ParticleDistort}));
+
+		subpassBuilder.addGraphicPipeline(DistortCompositePipelines[2], layoutDistort->defaultFamily,
+				Vector<SpecializationInfo>({
+					distortVert,
+					distortCompositeFrag,
+				}),
+				PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::One,
+											BlendOp::ReverseSubtract, BlendFactor::Zero,
+											BlendFactor::One, BlendOp::Add),
+						DepthInfo(), ImageViewType::ImageView2D,
+						PipelineVariant::ParticleDistort}));
+
+		subpassBuilder.addGraphicPipeline(DistortCompositePipelines[3], layoutDistort->defaultFamily,
+				Vector<SpecializationInfo>({
+					distortVert,
+					distortCompositeFrag,
+				}),
+				PipelineMaterialInfo({BlendInfo(BlendFactor::DstColor, BlendFactor::OneMinusSrcAlpha,
+											BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
+											BlendOp::Add),
+						DepthInfo(), ImageViewType::ImageView2D,
+						PipelineVariant::ParticleDistort}));
+	});
+
 	passBuilder.addSubpassDependency(subpass2d, PipelineStage::LateFragmentTest,
 			AccessType::DepthStencilAttachmentWrite, subpassShadows, PipelineStage::FragmentShader,
 			AccessType::InputAttachmantRead, true);
@@ -411,6 +560,27 @@ bool ShadowPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilde
 			AccessType::ColorAttachmentWrite, subpassSdf,
 			PipelineStage::ColorAttachmentOutput | PipelineStage::FragmentShader,
 			AccessType::ColorAttachmentWrite | AccessType::InputAttachmantRead, true);
+
+	// the pair's dependencies: the scene and the shadow composite settle the frame before the
+	// shift subpass reads it, and the intermediate settles before the same-pixel backread
+	passBuilder.addSubpassDependency(subpass2d, PipelineStage::ColorAttachmentOutput,
+			AccessType::ColorAttachmentWrite, subpassDistortShift,
+			PipelineStage::FragmentShader | PipelineStage::ColorAttachmentOutput,
+			AccessType::ShaderRead | AccessType::InputAttachmantRead
+					| AccessType::ColorAttachmentWrite,
+			false);
+
+	passBuilder.addSubpassDependency(subpassShadows, PipelineStage::ColorAttachmentOutput,
+			AccessType::ColorAttachmentWrite, subpassDistortShift,
+			PipelineStage::FragmentShader | PipelineStage::ColorAttachmentOutput,
+			AccessType::ShaderRead | AccessType::InputAttachmantRead
+					| AccessType::ColorAttachmentWrite,
+			false);
+
+	passBuilder.addSubpassDependency(subpassDistortShift, PipelineStage::ColorAttachmentOutput,
+			AccessType::ColorAttachmentWrite, subpassDistortComposite,
+			PipelineStage::FragmentShader | PipelineStage::ColorAttachmentOutput,
+			AccessType::InputAttachmantRead | AccessType::ColorAttachmentWrite, true);
 
 	passBuilder.setAcquireTimestamps(2);
 
@@ -473,6 +643,31 @@ void ShadowPass::makeMaterialSubpass(Queue::Builder &queueBuilder, QueuePassBuil
 	auto transparentPipeline = subpassBuilder.addGraphicPipeline("Transparent",
 			layout2d->defaultFamily, shaderSpecInfo,
 			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
+										  BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
+										  BlendOp::Add),
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}));
+
+	// The additive twin of the transparent pipeline - what a ParticleEmitter with
+	// ParticleBlendMode::Add asks for. The blend is part of the material key, so no existing
+	// request reaches this pipeline but an additive one.
+	subpassBuilder.addGraphicPipeline("Add", layout2d->defaultFamily, shaderSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::One, BlendOp::Add,
+										  BlendFactor::Zero, BlendFactor::One, BlendOp::Add),
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}));
+
+	// The subtractive and multiplying twins, what ParticleBlendMode::Sub and ParticleBlendMode::Mul
+	// ask for: the reverse-subtract equation is the destination minus the alpha-weighted source,
+	// and the (DstColor, OneMinusSrcAlpha) pair scales the destination by the source while the
+	// transparent edge eases to one. The blend is part of the material key, so no request
+	// reaches these but a sub or mul one.
+	subpassBuilder.addGraphicPipeline("Sub", layout2d->defaultFamily, shaderSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::One,
+										  BlendOp::ReverseSubtract, BlendFactor::Zero,
+										  BlendFactor::One, BlendOp::Add),
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}));
+
+	subpassBuilder.addGraphicPipeline("Mul", layout2d->defaultFamily, shaderSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::DstColor, BlendFactor::OneMinusSrcAlpha,
 										  BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
 										  BlendOp::Add),
 				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D}));
@@ -552,6 +747,56 @@ void ShadowPass::makeMaterialSubpass(Queue::Builder &queueBuilder, QueuePassBuil
 										  BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
 										  BlendOp::Add),
 				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView3D}));
+
+	// The particle draw's own fragment - the quad's alpha from its UV, no texture sampled. The
+	// variant keeps these pipelines from sharing one material lookup with their sampling twins,
+	// so only a masked emitter's material request reaches them
+	auto particleFrag = queueBuilder.addProgramByRef("Loader_ParticleFrag", shaders::ParticleFrag);
+
+	auto particleSpecInfo = Vector<SpecializationInfo>({
+		core::SpecializationInfo(materialVert),
+		core::SpecializationInfo(particleFrag),
+	});
+
+	subpassBuilder.addGraphicPipeline("Solid_Particle", layout2d->defaultFamily,
+			particleSpecInfo,
+			PipelineMaterialInfo({BlendInfo(), DepthInfo(true, true, CompareOp::Less),
+				ImageViewType::ImageView2D, PipelineVariant::ParticleQuadMask}));
+
+	subpassBuilder.addGraphicPipeline("Transparent_Particle", layout2d->defaultFamily,
+			particleSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
+										 BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
+										 BlendOp::Add),
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D,
+				PipelineVariant::ParticleQuadMask}));
+
+	// The masked draw's own additive twin, the same opened destination the base Add pipeline
+	// above carries: a builtin-masked emitter can be additive too
+	subpassBuilder.addGraphicPipeline("Add_Particle", layout2d->defaultFamily,
+			particleSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::One, BlendOp::Add,
+										 BlendFactor::Zero, BlendFactor::One, BlendOp::Add),
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D,
+				PipelineVariant::ParticleQuadMask}));
+
+	// The masked draw's subtractive and multiplying twins, the same equations the base Sub and
+	// Mul pipelines above carry: a builtin-masked emitter can subtract and multiply too
+	subpassBuilder.addGraphicPipeline("Sub_Particle", layout2d->defaultFamily,
+			particleSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::One,
+										 BlendOp::ReverseSubtract, BlendFactor::Zero,
+										 BlendFactor::One, BlendOp::Add),
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D,
+				PipelineVariant::ParticleQuadMask}));
+
+	subpassBuilder.addGraphicPipeline("Mul_Particle", layout2d->defaultFamily,
+			particleSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::DstColor, BlendFactor::OneMinusSrcAlpha,
+										 BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
+										 BlendOp::Add),
+				DepthInfo(false, true, CompareOp::LessOrEqual), ImageViewType::ImageView2D,
+				PipelineVariant::ParticleQuadMask}));
 
 	static_cast<MaterialAttachment *>(_materials->attachment.get())
 			->addPredefinedMaterials(Vector<Rc<Material>>({
@@ -650,7 +895,9 @@ void ShadowPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 		);
 	};
 
-	VertexPassHandle::prepareMaterialCommands(materials, buf);
+	// The scene subpass draws everything but the distorted spans - those leave for the
+	// trailing pair, where the frame they displace is already settled
+	drawSpans(materials, buf, _vertexBuffer->getVertexData(), DistortFilter::SkipDistort);
 
 	uint32_t subpassIdx = 0;
 
@@ -791,16 +1038,92 @@ void ShadowPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 			drawFullscreen(pipeline);
 		}
 	}
+
+	// The distortion pair's own draws
+	recordDistortionSubpasses(buf, _vertexBuffer->getVertexData());
 }
 
 void ShadowPassHandle::recordOverlaySubpasses(CommandBuffer &buf, SpanView<VertexSpan> spans) {
-	VertexPassHandle::recordOverlaySubpasses(buf, spans);
+	// the overlay's scene subpass keeps everything but the distorted spans, same as the main
+	// walk; the pair draws them after the SDF and shadow subpasses are walked empty
+	drawSpans(_materialBuffer->getSet().get(), buf, spans, DistortFilter::SkipDistort);
 
-	// The render pass has three subpasses and an instance must walk all of them. The overlay draws
-	// only in the first (lighting is already resolved); SDF and shadow subpasses are advanced
+	// The render pass has five subpasses and an instance must walk all of them. The overlay draws
+	// the scene and, below, the distorted spans; SDF and shadow subpasses are advanced
 	// empty, as for a frame with no lights.
 	buf.cmdNextSubpass();
 	buf.cmdNextSubpass();
+
+	recordDistortionSubpasses(buf, spans);
+}
+
+void ShadowPassHandle::recordDistortionSubpasses(CommandBuffer &buf, SpanView<VertexSpan> spans) {
+	auto commands = _vertexBuffer->getCommands();
+	auto subpassIdx = buf.cmdNextSubpass();
+	auto shiftPipeline = _data->subpasses[subpassIdx]->graphicPipelines.get(
+			StringView(ShadowPass::DistortShiftPipeline));
+	auto particleVertexes = _particles ? _particles->getVertices() : nullptr;
+
+	auto draw = [&](bool shift) {
+		if (!particleVertexes || !shiftPipeline || !shiftPipeline->pipeline) {
+			return;
+		}
+		clearDynamicState(buf);
+		for (auto &span : spans) {
+			if (span.particleEmitterId == 0) {
+				continue;
+			}
+			auto emitter = _particles->getEmitterRenderInfo(span.particleEmitterId);
+			if (!emitter || emitter->distortion == 0u || emitter->blendMode >= 4u) {
+				continue;
+			}
+			auto pipeline = shift
+					? shiftPipeline
+					: _data->subpasses[subpassIdx]->graphicPipelines.get(StringView(
+							  ShadowPass::DistortCompositePipelines[emitter->blendMode]));
+			auto material = _materialBuffer->getSet()->getMaterialById(span.material);
+			if (!pipeline || !pipeline->pipeline || !material) {
+				continue;
+			}
+			applyDynamicState(commands, buf, span.state);
+			buf.cmdBindPipelineWithDescriptors(pipeline);
+
+			glsl::ParticleDrawConstantData pcb;
+			pcb.base.vertexPointer = UVec2::convertFromPacked(particleVertexes->getDeviceAddress());
+			pcb.base.transformPointer = UVec2::convertFromPacked(
+					buf.bindBufferAddress(_vertexBuffer->getTransforms().get()));
+			pcb.base.materialPointer =
+					UVec2::convertFromPacked(buf.bindBufferAddress(material->getBuffer()));
+			pcb.base.atlasPointer = UVec2(0, 0);
+			if (auto atlas = material->getAtlas()) {
+				if (auto atlasBuffer = atlas->getBuffer()) {
+					pcb.base.atlasPointer =
+							UVec2::convertFromPacked(buf.bindBufferAddress(atlasBuffer));
+				}
+			}
+			pcb.base.imageIdx = material->getImages().front().descriptor;
+			pcb.base.samplerIdx = material->getImages().front().sampler;
+			pcb.base.gradientOffset = span.gradientOffset;
+			pcb.base.gradientCount = span.gradientCount;
+			buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+					BytesView(reinterpret_cast<const uint8_t *>(&pcb.base),
+							sizeof(glsl::VertexConstantData)));
+			if (shift) {
+				pcb.mask = glsl::vec4(float(emitter->maskShape), emitter->maskThickness,
+						emitter->maskSoftness, 0.0f);
+				buf.cmdPushConstants(VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(glsl::VertexConstantData),
+						BytesView(reinterpret_cast<const uint8_t *>(&pcb.mask), sizeof(pcb.mask)));
+			}
+			buf.cmdDrawIndirect(_particles->getCommands(),
+					emitter->index * sizeof(ParticleIndirectCommand), 1,
+					sizeof(ParticleIndirectCommand));
+		}
+	};
+
+	// Finish every shifted draw before entering the subpass that reads the intermediate image.
+	draw(true);
+	subpassIdx = buf.cmdNextSubpass();
+	draw(false);
 }
 
 } // namespace stappler::xenolith::basic2d::vk

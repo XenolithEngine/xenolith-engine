@@ -182,12 +182,21 @@ public:
 
 	bool init(void *ssl) {
 		_ssl = ssl;
-		return _ssl != nullptr;
+		_writeRetrySize = 0;
+		if (!_ssl) {
+			return false;
+		}
+		SSL_set_mode((SSL *)_ssl,
+				SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+		return true;
 	}
 
 	// Detach when the connection tears the SSL down, so a stream outliving its connection answers
 	// "closed" rather than touching freed memory.
-	void invalidate() { _ssl = nullptr; }
+	void invalidate() {
+		_ssl = nullptr;
+		_writeRetrySize = 0;
+	}
 
 	virtual Status write(BytesView data, size_t &written) override {
 		written = 0;
@@ -195,8 +204,15 @@ public:
 			return _ssl ? Status::Ok : Status::ErrorNotPermitted;
 		}
 		auto ssl = (SSL *)_ssl;
+		// Queued data may grow or move while a write waits for flow control. Its retry
+		// still uses the same prefix and length required by SSL_write_ex.
+		const size_t size = _writeRetrySize ? _writeRetrySize : data.size();
+		if (size > data.size()) {
+			return Status::ErrorNotPermitted;
+		}
 		size_t w = 0;
-		if (SSL_write_ex(ssl, data.data(), data.size(), &w) == 1) {
+		if (SSL_write_ex(ssl, data.data(), size, &w) == 1) {
+			_writeRetrySize = 0;
 			written = w;
 			return Status::Ok;
 		}
@@ -204,9 +220,11 @@ public:
 		if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
 			// Backpressure: the send buffer or the peer's flow-control window is full. Not an error;
 			// the caller keeps the remainder and retries on the next pump.
+			_writeRetrySize = size;
 			SSL_handle_events(ssl);
 			return Status::Ok;
 		}
+		_writeRetrySize = 0;
 		return Status::ErrorNotPermitted;
 	}
 
@@ -238,6 +256,7 @@ public:
 
 protected:
 	void *_ssl = nullptr; // borrowed from the owning QuicConnection
+	size_t _writeRetrySize = 0;
 };
 
 // --- connection ---

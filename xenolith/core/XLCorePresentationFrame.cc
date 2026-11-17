@@ -181,19 +181,18 @@ void PresentationFrame::invalidate() {
 		_target->invalidate();
 	}
 
-	if (_active && _engine) {
-		_active = false;
-		if (_frameHandle) {
-			_frameHandle->invalidate();
-		}
+	const bool active = _active;
+	_active = false;
+	if (_frameHandle) {
+		_frameHandle->invalidate();
+	}
 
-		if (_engine) {
-			_engine->handleFrameInvalidated(this);
-		}
+	if (_engine) {
+		_engine->handleFrameInvalidated(this);
+	}
 
-		if (_completeCallback) {
-			_completeCallback(this, false);
-		}
+	if (active && _completeCallback) {
+		_completeCallback(this, false);
 	}
 
 	_swapchain = nullptr;
@@ -206,7 +205,10 @@ void PresentationFrame::invalidate() {
 }
 
 void PresentationFrame::cancelFrameHandle() {
-	_engine->handleFrameComplete(this);
+	// Invalidation removes image-acquisition waiters before scheduling another frame.
+	if (!hasFlag(Invalidated)) {
+		_engine->handleFrameComplete(this);
+	}
 	_frameHandle = nullptr;
 }
 

@@ -29,34 +29,59 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
-class SP_PUBLIC VertexArray : public Ref {
-public:
-	struct Quad {
-		// 0 - 2
-		// |   |
-		// 1 - 3
-		SpanView<Vertex> vertexes; // tl bl tr br
-		SpanView<uint32_t> indexes; // 0 1 2 3 2 1
-		size_t firstVertex;
-		size_t firstIndex;
+	class SP_PUBLIC VertexArray : public Ref {
+	public:
+		struct Quad {
+			// 0 - 2
+			// |   |
+			// 1 - 3
+			SpanView<Vertex> vertexes; // tl bl tr br
+			SpanView<uint32_t> indexes; // 0 1 2 3 2 1
+			size_t firstVertex;
+			size_t firstIndex;
 
-		Quad &setTextureRect(const Rect &, float texWidth, float texHeight, bool flippedX,
-				bool flippedY, bool rotated = false);
-		Quad &setTexturePoints(const Vec2 &tl, const Vec2 &bl, const Vec2 &tr, const Vec2 &br,
-				float texWidth, float texHeight);
+			Quad &setTextureRect(const Rect &, float texWidth, float texHeight, bool flippedX,
+					bool flippedY, bool rotated = false);
+			Quad &setTexturePoints(const Vec2 &tl, const Vec2 &bl, const Vec2 &tr, const Vec2 &br,
+					float texWidth, float texHeight);
 
-		// Vec4 - you can pass whatever you want as w component to shader
-		Quad &setGeometry(const Vec4 &origin, const Size2 &size, const Mat4 &t);
-		Quad &setGeometry(const Vec4 &origin, const Size2 &size);
-		Quad &setColor(const Color4F &color);
-		Quad &setColor(SpanView<Color4F>); // tl bl tr br
-		Quad &setColor(sprt::initializer_list<Color4F> &&); // tl bl tr br
+			// Vec4 - you can pass whatever you want as w component to shader
+			Quad &setGeometry(const Vec4 &origin, const Size2 &size, const Mat4 &t);
+			Quad &setGeometry(const Vec4 &origin, const Size2 &size);
+			Quad &setColor(const Color4F &color);
+			Quad &setColor(SpanView<Color4F>); // tl bl tr br
+			Quad &setColor(sprt::initializer_list<Color4F> &&); // tl bl tr br
 
-		Quad &drawChar(const font::Metrics &m, char32_t l, int16_t charX, int16_t charY,
-				const Color4B &color, font::TextDecoration, uint16_t face, float layer = 0.0f);
-		Quad &drawUnderlineRect(int16_t charX, int16_t charY, uint16_t width, uint16_t height,
-				const Color4B &color, float layer = 0.0f);
-	};
+			Quad &drawChar(const font::Metrics &m, char32_t l, int16_t charX, int16_t charY,
+					const Color4B &color, font::TextDecoration, uint16_t face, float layer = 0.0f);
+			Quad &drawUnderlineRect(int16_t charX, int16_t charY, uint16_t width, uint16_t height,
+					const Color4B &color, float layer = 0.0f);
+		};
+
+		/* A polygon frame's contour, triangulated. `points` are the caller's, in the texture
+		rectangle's own terms: [0..1] across the upright fragment, x to the right, y down, an open
+		ring of at least three distinct points. A closed ring (first pair repeated last) is
+		accepted and the repeat dropped; a ring that cannot be triangulated - fewer than three
+		distinct points, all collinear, self-intersecting beyond what ear clipping recovers from -
+		appends nothing and leaves `valid` false, so the caller draws nothing rather than a
+		bounding box that was never the picture. */
+		struct Polygon {
+			Vector<Vec2> ring; // the kept points, canonical orientation, one per vertex
+			SpanView<Vertex> vertexes; // one per ring point, in ring order
+			SpanView<uint32_t> indexes; // three per triangle
+			size_t firstVertex;
+			size_t firstIndex;
+			bool valid = false;
+
+			// The corner mapping is the quad's own, so a rectangle ring and a quad of the same
+			// texture rectangle sample the same texels at the same places - see setTextureRect.
+			Polygon &setTextureRect(const Rect &, float texWidth, float texHeight, bool flippedX,
+					bool flippedY, bool rotated = false);
+			// `origin` and `size` are what Quad::setGeometry would take for the fragment's
+			// upright rectangle; each point lands where its place in that rectangle is.
+			Polygon &setGeometry(const Vec4 &origin, const Size2 &size);
+			Polygon &setColor(const Color4F &color);
+		};
 
 	virtual ~VertexArray();
 
@@ -79,6 +104,11 @@ public:
 	// Use firstVertex and firstIndex to reacquire this quad when needed
 	Quad addQuad();
 	Quad getQuad(size_t firstVertex, size_t firstIndex);
+
+	// Triangulates `points` (see Polygon) and appends the mesh. Deterministic: the same ring
+	// gives the same triangles whatever order it was walked in, because the ring is canonicalized
+	// to one orientation first. Polygon is not valid after any other modifications.
+	Polygon addPolygon(SpanView<const Vec2> points);
 
 	void updateColor(const Color4F &color);
 	void updateColor(const Color4F &color, const Vector<ColorMask> &);

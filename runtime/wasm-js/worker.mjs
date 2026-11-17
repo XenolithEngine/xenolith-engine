@@ -71,7 +71,7 @@ self.onmessage = async (e) => {
 		return;
 	}
 	const { wasmUrl, bundleManifest, argv0, args, hasCanvas, dispW, dispH, dispDensity,
-		wantProcess, memoryInitial, memoryMaximum, productBundle } = e.data;
+		wantProcess, wantFilePut, memoryInitial, memoryMaximum, productBundle } = e.data;
 	const post = (m) => self.postMessage(m);
 	try {
 		const bundle = await loadBundle(bundleManifest);
@@ -161,7 +161,10 @@ self.onmessage = async (e) => {
 			log: (s, t) => post({ type: s, text: t }),
 			spawn, opfsSab, dispW, dispH, dispDensity, inputQueue, inputSab, displaySab,
 			processCtrl, processOut, postProcess: wantProcess ? post : null,
-			onFilePut: wantProcess ? (path, bytes) => post({ type: "file-put", path, bytes }) : null,
+			// Every closed non-empty write surfaces to a host that asked for it (xlmake
+			// process outputs, a canvas session's publish download).
+			onFilePut: (wantProcess || wantFilePut)
+				? (path, bytes) => post({ type: "file-put", path, bytes }) : null,
 			onExit: (c) => post({ type: "exit", code: c }),
 		});
 

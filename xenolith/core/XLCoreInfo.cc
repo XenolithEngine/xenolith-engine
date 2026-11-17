@@ -1056,7 +1056,7 @@ String PipelineMaterialInfo::description() const {
 		   << uint32_t(toInt(raster.cullMode)) << "," << uint32_t(toInt(raster.frontFace)) << ","
 		   << uint32_t(raster.depthBiasEnabled) << "," << raster.depthBiasConstant << ","
 		   << raster.depthBiasSlope << "," << raster.depthBiasClamp << ","
-		   << uint32_t(raster.depthClampEnabled) << "}";
+		   << uint32_t(raster.depthClampEnabled) << "},{" << uint32_t(toInt(variant)) << "}";
 	return stream.str();
 }
 
@@ -1138,7 +1138,11 @@ void PipelineMaterialInfo::setRasterizationInfo(const RasterizationInfo &info) {
 	}
 }
 
+void PipelineMaterialInfo::setVariant(PipelineVariant v) { variant = v; }
+
 void PipelineMaterialInfo::_setup(const BlendInfo &info) { setBlendInfo(info); }
+
+void PipelineMaterialInfo::_setup(PipelineVariant v) { setVariant(v); }
 
 void PipelineMaterialInfo::_setup(const DepthInfo &info) { setDepthInfo(info); }
 
