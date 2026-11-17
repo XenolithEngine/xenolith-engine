@@ -237,7 +237,8 @@ core::SurfaceInfo HeadlessSurface::getSurfaceOptions(const core::Device &, //
 	// TransferSrc is the whole point: whatever is rendered must stay readable through
 	// Loop::captureImage without an extra offscreen pass.
 	info.supportedUsageFlags = core::ImageUsage::ColorAttachment | core::ImageUsage::TransferSrc
-			| core::ImageUsage::TransferDst | core::ImageUsage::Sampled;
+			| core::ImageUsage::TransferDst | core::ImageUsage::Sampled
+			| core::ImageUsage::InputAttachment;
 
 	// B8G8R8A8 first, so a capture matches what a real swapchain would have produced on the same
 	// machine (core::getBitmap already un-swizzles it).

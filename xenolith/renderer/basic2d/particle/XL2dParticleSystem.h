@@ -246,6 +246,15 @@ struct ParticleSystemRenderInfo {
 	float maskThickness = 0.0f;
 	float maskSoftness = 0.0f;
 
+	// The frame distortion switch, Particle-52: non-zero moves the emitter's draw out of the
+	// scene subpass into the trailing pair - the shift draw fetches the settled frame at the
+	// coordinate the particle's color names, the composite draw blends the intermediate back
+	// under this mode's own factors. Zero draws the span the common way
+	uint32_t distortion = 0;
+
+	// The blend mode the composite draw picks its pipeline by, a ParticleBlendMode value
+	uint32_t blendMode = 0;
+
 	// The node's velocity over the last frame - its origin displacement divided by the system's
 	// own dt, never a wall clock read - a newborn inherits its inheritVelocity share of; zero
 	// in every frame the node never moved

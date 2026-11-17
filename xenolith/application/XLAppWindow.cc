@@ -404,6 +404,9 @@ core::ImageInfo AppWindow::getSwapchainImageInfo(const core::SwapchainConfig &cf
 	// Sampled; nothing else would ask for it.
 	if (isVirtual()) {
 		swapchainImageInfo.usage |= core::ImageUsage::Sampled;
+		// The frame distortion pair, Particle-52, reads the presented image; the headless and
+		// virtual windows are where the editor's own passes prove it
+		swapchainImageInfo.usage |= core::ImageUsage::InputAttachment;
 	}
 	return swapchainImageInfo;
 }

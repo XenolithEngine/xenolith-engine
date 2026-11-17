@@ -182,6 +182,12 @@ using LineWidth = ValueWrapper<float, class LineWidthFlag>;
 enum class PipelineVariant : uint32_t {
 	Default = 0,
 	ParticleQuadMask = 1,
+
+	// The frame distortion pair, Particle-52: the shift draw that fetches the settled frame
+	// at the displaced coordinate and the composite draw that blends the intermediate back.
+	// No material resolves to them - a distorted emitter's own span is routed by the pass,
+	// not by its material - the variant only keeps the pair out of every existing match.
+	ParticleDistort = 2,
 };
 
 class SP_PUBLIC PipelineMaterialInfo {

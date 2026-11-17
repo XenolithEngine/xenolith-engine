@@ -92,6 +92,13 @@ public:
 	void setBlendMode(ParticleBlendMode mode);
 	ParticleBlendMode getBlendMode() const { return _blendMode; }
 
+	// The frame distortion switch, Effekseer's Distortion: the draw fetches the already drawn
+	// frame at the coordinate the particle's own color names instead of tinting itself. Draw
+	// state beside the blend like the mask is - the simulation never reads it, the switch
+	// rides the render info to the pass, and the pass routes the draw into its trailing pair
+	void setDistortion(bool value) { _distortion = value; }
+	bool isDistortion() const { return _distortion; }
+
 	// The mode's journey over a life, Trapcode Particular 2026's reception: a flagged particle
 	// starts at the sprite pair and ends additive, the blend fraction the fraction of its
 	// lifetime it has lived - alpha at birth, add at the last step, the one pair there is. The
@@ -137,6 +144,7 @@ protected:
 	float _maskSoftness = 0.0f;
 	ParticleBlendMode _blendMode = ParticleBlendMode::Alpha;
 	bool _blendOverLife = false;
+	bool _distortion = false;
 
 	Action *_actionRenderLock = nullptr;
 	bool _feedbackEnabled = false;
