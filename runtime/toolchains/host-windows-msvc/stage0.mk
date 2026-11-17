@@ -21,7 +21,7 @@
 PREBUILTS_PATH := C:/x86_64-pc-windows-msvc/bin
 STAGE0_SYSROOT := sysroot-windows
 STAGE0_LIBCXX := $(STAGE0_SYSROOT)/bin/c++.dll
-STAGE0_ZLIB := $(STAGE0_SYSROOT)/lib/zs.lib
+STAGE0_ZLIB := $(STAGE0_SYSROOT)/lib/z.lib
 STAGE0_LIBXML2 := $(STAGE0_SYSROOT)/lib/libxml2s.lib
 STAGE0_CLANG_CC := $(STAGE0_SYSROOT)/bin/clang.exe
 STAGE0_CLANG_CXX := $(STAGE0_SYSROOT)/bin/clang++.exe
