@@ -1,4 +1,4 @@
-# Xenolith Toolchains — `sdk-v0rc1`
+# Xenolith Toolchains — `sdk-v0rc2`
 
 Universal, self-contained C/C++ toolchains for building **Xenolith Runtime** and
 projects based on it, on **Linux, Windows and macOS**, cross-compiling to every
@@ -13,9 +13,10 @@ This release publishes two sets of binary packages:
   one, compiler-rt, bundled libraries) that you *build for*.
 
 You pick one host (matching the machine you compile on) and one or more targets
-(the platforms you ship to). All packages are `.tar.xz` with a detached GnuPG
-signature (`.tar.xz.sig`), and every package carries a `release` file holding
-the SDK tag (`sdk-v0rc1`).
+(the platforms you ship to). Packages are staged as unsigned `.tar.xz` archives
+with a `SHA256SUMS-sdk-v0rc2` manifest; detached GnuPG signatures (`.tar.xz.sig`)
+are added when publishing. Every package carries a `release` file holding
+the SDK tag (`sdk-v0rc2`).
 
 Release assets are named `host_<id>.tar.xz` and `target_<id>.tar.xz`. The prefix
 is not cosmetic: a GitHub release has one flat asset namespace, and the host and
@@ -24,98 +25,73 @@ Inside the archive the top-level directory is still the bare `<id>`.
 
 ---
 
-## What changed since `sdk-v0rc0`
+## What changed since `sdk-v0rc1`
 
-### New host and targets: LoongArch 64
+### Target libraries and trusted certificates
 
-`loongarch64-unknown-linux-gnu` and `loongarch64-unknown-linux-musl` join the
-release as **both a host and a target** (new-world ABI), cross-built from the same
-templates as the riscv64 ones. The glibc target is built against glibc **2.36**
-and Linux **6.1 LTS** UAPI headers — LoongArch entered the kernel only in 5.19;
-the musl one against the same musl as every other Linux target.
+The regular target dependency set is refreshed: zlib 1.4, Brotli 1.2.1,
+libjpeg-turbo 3.2.1, libpng 1.6.59, FreeType 2.15.0, HarfBuzz 15.1.0,
+SQLite 3.54.1, libffi 3.8.1, nghttp3 1.19.0, ngtcp2 1.26.0 and curl 8.23.0.
+E2K retains its MCST libffi 3.3 port. Vulkan headers, loader, utility libraries,
+SPIRV-Headers, SPIRV-Tools and glslang move to Vulkan SDK 1.4.363.0;
+ValidationLayers uses the 1.4.363.1 hotfix.
 
-The architecture shows in a few places:
+OpenSSL 3.5.9 includes five upstream security backports: CVE-2026-88822,
+CVE-2026-88823, CVE-2026-95691, CVE-2026-95692 and CVE-2026-107496.
+Expat 2.10.0 includes the upstream CVE-2026-124317 backport and its control-flow
+prerequisite. FreeType's former CVE-2026-50811 backport is now included upstream.
+This does not mean that every known upstream Expat issue is resolved.
 
-* **No WAMR.** WAMR has no LoongArch backend (no `WAMR_BUILD_TARGET`, no 64-bit
-  `invokeNative`), so these targets ship no `libiwasm-*.a` and `stappler_wasm`
-  is not available on them.
-* **No `libanl` / `libutil` on the glibc target.** glibc had already merged them
-  into `libc` when LoongArch arrived, so the port has no compatibility stubs.
-* **libjpeg-turbo is built without SIMD** — it has no LoongArch SIMD code.
-* **brotli** carries a patch dropping its `model("small")` table attribute,
-  which clang rejects on LoongArch (the valid code models there are normal,
-  medium and extreme). OpenSSL builds as `linux64-loongarch64`.
+Both the toolchain curl bundle and the runtime's embedded CA bundle use the
+2026-11-05 Mozilla snapshot (118 certificates). The three Russian Trusted CA
+certificates are preserved byte for byte, bringing the bundle to 121 certificates.
 
-### Package fixes
+The compiler/bootstrap versions (LLVM 22.1.8, GCC 15.2.0 and the system libc
+sources) are unchanged. Xenolith OS, RTOS targets and Mesa are outside this
+release refresh and are not included in its package set.
 
-All of these were found by the new package check (see below), and all of them
-were present in earlier releases too:
+### Build, runtime and packaging fixes
 
-* **The `x86_64-unknown-linux-gnu` host now ships the SPIRV-Tools shared
-  libraries** (`libSPIRV-Tools*.so`). That host's `glslang` and `spirv-*` tools
-  are linked against them, but the libraries were never packaged: the tools ran
-  only where the system happened to have SPIRV-Tools of its own in `/usr/lib`,
-  and failed on a clean machine. The other hosts link SPIRV-Tools statically
-  (Linux) or already shipped the `.dylib`s (macOS).
-* **The iOS targets now ship `libtiff.a`.** libtiff 4.7 builds a `tiff.framework`
-  instead of a static archive on iOS by default, so all three iOS sysroots were
-  missing it while the build still reported success.
-* **The Windows hosts now ship `share/licenses`**, like every other package: LLVM,
-  glslang, SPIRV-Tools, libxml2 and zlib, which is what they link.
-* **musl targets:** the dynamic loader `lib/ld-musl-<arch>.so.1` was an absolute
-  link into the build machine's tree and dangled in the package. It now points
-  at `libc.so` next to it.
-* **wasm targets:** `lib/clang/include` was a link to
-  `hosts/x86_64-unknown-linux-gnu`, hard-wired to the machine the target was
-  built on, and dangled under every other host. It is gone; the compiler's
-  builtin headers come from the host, through the `-idirafter` in `host.mk`, as
-  on every other target.
-* A host build that has to build its own target first no longer leaves a copy of
-  that target's whole sysroot (≈230 MB) inside the host package: a command-line
-  `OUT_SYSROOT` was leaking into the nested target build.
-
-### Package check: `make release-verify`
-
-`make release-check` only asks whether every package exists and carries the
-release tag. The new `make release-verify` (`check-release.py`) looks inside:
-
-* the tools every host and the libraries every target must carry, with the
-  known per-architecture gaps written out (WAMR on LoongArch, sanitizers and the
-  ORC runtime where compiler-rt does not support them, …);
-* the architecture of every binary — executables and shared libraries by their
-  header, static and import libraries by their first object;
-* what every host binary loads at run time — a library that is neither in the
-  package nor part of the OS means the host is not self-contained;
-* that sibling targets of one family carry the same set of libraries;
-* absolute, dangling and package-escaping symlinks and stray directories, which
-  would ship in the tarball as they are;
-* with `--archives`, the staged `release/` archives and their signatures.
-
-### Source-only targets
-
-* **Embox** gains experimental Vulkan through Mesa 26.2.3 — lavapipe (software)
-  and Venus (the host's GPU over virtio-gpu) — and the `jmp_buf`/NEON updates.
-  Mesa is fetched only when the Embox target asks for it.
-* LLVM carries four more patches for running LLVM itself on Embox (**25** in
-  total). Every hunk is guarded by `__EMBOX__`, so the published hosts are built
-  from the same code as before.
-* NuttX and Embox targets are still built from source only.
+* Native host exports declare their outputs before CMake configures them, and
+  host-variable initialization works with GNU Make 4.3.
+* Shader tools link SPIRV-Tools statically; cross-host packages export the tools
+  and libraries needed to run independently of the build machine.
+* FreeType/HarfBuzz bootstrap and static linking are ordered explicitly. Windows
+  builds use zlib 1.4's `z.lib` archive name.
+* musl host installs preserve dependency timestamp ordering so repeated exports
+  do not spuriously rebuild zlib, libxml2 and LLVM.
+* The Windows runtime keeps `argv` NULL-terminated and alive through process
+  exit, including `atexit` handlers. This also fixes SPIRV-Tools startup.
+* wasm `libsprt.a` includes the freestanding memory/string primitives. wasm curl
+  uses the supported wakeup configuration, and dependency tests respect the
+  libraries available on each target.
+* Apple `+open` sysroots use the generated runtime ABI descriptions for their
+  libc and framework declarations.
 
 ## How this release was checked
 
-* Every package was built from this tree; `make release-check` confirms that the
-  whole release set — 12 hosts and 27 targets — is present and tagged
-  `sdk-v0rc1`.
-* `make release-verify` passes on every package with no errors.
-* Every test project and example of the engine (31 projects) was built from scratch
-  against these packages for every published target: 837 cells, 676 of them
-  applicable, and all 676 compile and link. The 161 that do not apply are the
-  platform harnesses on foreign platforms (the Windows, wasm and Apple ones), the
-  Vulkan-only projects on wasm, the Metal backend on the `+open` sysroots, which
-  have no Metal stub, and `unknown-ndk-linux-android` for the projects that have
-  no `proj.android`.
-* The engine's full test gate (63 jobs, 877 816 checks, Vulkan compute on a real
-  device included), built with the `x86_64-unknown-linux-gnu` packages, passes.
+* Clean builds produced 12 hosts and 29 target exports: 24 packaged targets,
+  three E2K sysroots and two Windows DLL helper sysroots. OS/RTOS and Mesa were
+  excluded. The release contains 36 archives (12 hosts + 24 targets).
+* `check-release.py --tag sdk-v0rc2` checks all packaged hosts and targets;
+  the additional five target exports are checked separately. Archive validation
+  compares file lists, paths, links, modes, sizes and every regular file's contents
+  against the exported directories. SHA-256 checks cover all 36 archives.
+* All eight Linux hosts pass eight tool startup probes each, natively or under
+  QEMU. Six x86-64 Windows host version probes pass under Wine. Windows ARM64 and
+  macOS packages are checked structurally; they were not run on this Linux host.
+* Linux, wasm32 and wasm64 functional suites pass, including dependency,
+  Stappler, runtime, libc and bundle checks. wasm64 also passes the memory64
+  checks, including bundle reads above 4 GiB.
+* Windows/Wine dependency checks pass. Four runtime cases (`libc_at`,
+  `libc_setjmp`, `runtime_dispatch`, `runtime_address_wait`) still fail or time out;
+  Stappler retains the same 13 failures as the original installed SDK. These
+  baseline failures are not counted as successful tests.
+* The clean-build full engine gate passed before release labeling (74 jobs,
+  130,188,333 checks). Labeling runs encountered intermittent `flowtest`
+  `parallel-threads` and font-persistence failures; both pass on isolated reruns.
+  Golden references are unchanged. This refresh does not repeat the previous
+  release's all-project/all-target build matrix.
 
 ## Packages
 
@@ -155,7 +131,7 @@ Notes:
 * The macOS `lldb` is built with `LLDB_USE_SYSTEM_DEBUGSERVER` — `debugserver`
   needs `task_for_pid` entitlements and Apple code signing, so it is not shipped.
 
-### Targets (27)
+### Targets (24)
 
 | Package | Builds for |
 |---|---|
@@ -167,9 +143,6 @@ Notes:
 | `aarch64-unknown-linux-musl`          | Linux / musl, ARM64 |
 | `riscv64-unknown-linux-musl`          | Linux / musl, RISC-V 64 |
 | `loongarch64-unknown-linux-musl`      | Linux / musl, LoongArch 64 |
-| `x86_64-xenolithos-linux-gnu`         | Xenolith OS device, x86-64 |
-| `aarch64-xenolithos-linux-gnu`        | Xenolith OS device, ARM64 |
-| `riscv64-xenolithos-linux-gnu`        | Xenolith OS device, RISC-V 64 |
 | `aarch64-unknown-linux-android`       | Android, arm64-v8a |
 | `armv7a-unknown-linux-androideabi`    | Android, armeabi-v7a |
 | `i686-unknown-linux-android`          | Android, x86 |
@@ -204,7 +177,8 @@ Notes:
 * The Windows `+dll` sysroot variants (`*-pc-windows-msvc+dll`, built around
   `sprt.dll` instead of the static runtime archive) exist as build targets and
   are what the Windows host toolchain is produced from, but they are **not
-  published** as packages. The same holds for the NuttX and Embox targets.
+  published** as packages. E2K sysroots and OS/RTOS targets are also outside
+  the published package set.
 
 ### What a target sysroot actually contains
 
@@ -212,7 +186,6 @@ Notes:
 |---|---|---|---|
 | `*-unknown-linux-gnu` | glibc **2.33** (riscv64: **2.35**, loongarch64: **2.36**) + Linux 5.10 LTS UAPI headers (loongarch64: 6.1 LTS) | `include_libc/c++/v1`, `libc++abi.a`, `libunwind.a` | headers only — system loader |
 | `*-unknown-linux-musl` | musl **1.2.6** (pinned upstream) | same | headers only — system loader |
-| `*-xenolithos-linux-gnu` | glibc **2.39** + device `runtime/rootfs` | same | **`libvulkan.so` 1.4.357** bundled (no OS to provide it), GPU driver applied as an overlay by `xenolith-os` |
 | `*-linux-android(eabi)` | bionic stubs + headers, API 24 | same | headers only — system loader |
 | `*-apple-macosx`, `*-apple-ios*` | the Apple SDK's (not redistributed) | provided by the platform | **`libvulkan.dylib` + MoltenVK + validation layer** bundled |
 | `*-apple-macosx+open` | apple-oss headers in `include_libc` + generated `.tbd` link stubs, `System/Library/Frameworks/` | `libc++.tbd`/`libc++abi.tbd` stubs, apple-oss headers | same as above |
@@ -227,7 +200,7 @@ expat/libffi/wayland/libdrm. Android targets ship WAMR and libbacktrace.
 libbacktrace. Every target's `libcurl` is the OpenSSL build
 (`libcurl-openssl.a`), with HTTP/3.
 
-Every target ships `share/licenses` (47 entries), and every target except the
+Every packaged target ships `share/licenses`, and every target except the
 `unknown-ndk-linux-android` bridge ships `lib/clang` — the compiler-rt resource
 dir, with sanitizers where the platform supports them.
 
@@ -245,7 +218,7 @@ download time. This is the complete manifest shipped in this release.
 ### Compiler & toolchain
 | Component | Version |
 |---|---|
-| LLVM / Clang / LLD / LLDB | 22.1.8 (`llvmorg-22.1.8`, + 25 patches: wine-LLDB ×4, non-`__ulock`, wasm libunwind, wasm64 compiler-rt, no-delayload, sprt-windows ×6, sprt-wasm-host ×7, sprt-embox ×4) |
+| LLVM / Clang / LLD / LLDB | 22.1.8 (`llvmorg-22.1.8`, with the existing platform patches) |
 | libc++ / libc++abi / libunwind / compiler-rt | 22.1.8 (from LLVM) |
 | GNU Make | 4.3 (not present on Windows hosts) |
 | xlmake (build driver) | 1.1 |
@@ -257,39 +230,37 @@ download time. This is the complete manifest shipped in this release.
 | Component | Version |
 |---|---|
 | glibc (Linux targets) | 2.33 — riscv64: 2.35, loongarch64: 2.36 |
-| glibc (Xenolith OS targets) | 2.39 |
 | musl | 1.2.6 (`runtime/musl-libc` submodule, `v1.2.6-62`: v1.2.6 + upstream fixes) |
 | Linux UAPI headers | 5.10.258 (LTS) — loongarch64: 6.1.189 (LTS) |
 | Android API level | 24 |
 | macOS / iOS deployment target | 14.5 / 17.4 |
 
-### Vulkan / shaders (Vulkan SDK 1.4.357.0)
+### Vulkan / shaders (Vulkan SDK 1.4.363.0)
 | Component | Version |
 |---|---|
-| Vulkan-Headers | `vulkan-sdk-1.4.357.0` |
-| Vulkan-Loader | `vulkan-sdk-1.4.357.0` |
-| Vulkan-ValidationLayers | `vulkan-sdk-1.4.357.0` |
-| Vulkan-Utility-Libraries | `vulkan-sdk-1.4.357.0` |
-| Vulkan-Tools (`vulkaninfo`, Xenolith OS rootfs only) | `vulkan-sdk-1.4.357.0` |
-| SPIRV-Headers | `vulkan-sdk-1.4.357.0` |
-| SPIRV-Tools | `vulkan-sdk-1.4.357.0` |
-| glslang | `vulkan-sdk-1.4.357.0` (16.4.0) |
+| Vulkan-Headers | `vulkan-sdk-1.4.363.0` |
+| Vulkan-Loader | `vulkan-sdk-1.4.363.0` |
+| Vulkan-ValidationLayers | `vulkan-sdk-1.4.363.1` |
+| Vulkan-Utility-Libraries | `vulkan-sdk-1.4.363.0` |
+| SPIRV-Headers | `vulkan-sdk-1.4.363.0` |
+| SPIRV-Tools | `vulkan-sdk-1.4.363.0` |
+| glslang | `vulkan-sdk-1.4.363.0` (16.6.0) |
 | MoltenVK (Apple) | 1.4.2 |
 
 ### Compression & archive
 | Component | Version |
 |---|---|
-| zlib | 1.3.2 |
+| zlib | 1.4 |
 | bzip2 | 1.0.8 |
 | xz / liblzma | 5.8.4 |
 | zstd | 1.5.7 |
-| brotli | 1.2.0 (+ LoongArch build fix) |
+| brotli | 1.2.1 (+ LoongArch build fix) |
 
 ### Image
 | Component | Version |
 |---|---|
-| libjpeg-turbo | 3.2.0 (no SIMD on LoongArch) |
-| libpng | 1.6.58 |
+| libjpeg-turbo | 3.2.1 (no SIMD on LoongArch) |
+| libpng | 1.6.59 |
 | giflib | 6.1.3 (+ upstream fixes: CVE-2026-26740, integer overflows, `GifUnionColorMap` NULL dereference) |
 | libwebp | 1.6.0 |
 | libtiff | 4.7.2 (CVE-2026-12912 + CVE-2026-4775 fixed upstream) |
@@ -297,29 +268,29 @@ download time. This is the complete manifest shipped in this release.
 ### Text, fonts & i18n
 | Component | Version |
 |---|---|
-| FreeType | 2.14.3 (+ backport: CVE-2026-50811) |
-| HarfBuzz | 14.5.0 |
+| FreeType | 2.15.0 |
+| HarfBuzz | 15.1.0 |
 | SheenBidi | 3.0.0 (Unicode 17.0) |
 | libxml2 | 2.15.4 |
-| expat | 2.8.5 |
+| expat | 2.10.0 (+ upstream CVE-2026-124317 and prerequisite patches) |
 | ICU4C (build-time only — UCD & conformance data, not shipped) | 78.3 |
 
 ### Crypto & network
 | Component | Version |
 |---|---|
-| OpenSSL (LTS) | 3.5.8 |
+| OpenSSL (LTS) | 3.5.9 (+ five upstream security patches listed above) |
 | openssl-gost-engine | 3.0.3 |
-| nghttp3 | 1.18.0 |
-| ngtcp2 | 1.25.0 |
-| libcurl | 8.22.0 (OpenSSL, with HTTP/3) |
-| CA bundle | `cacert-2026-09-25.pem` + Russian Trusted CA (Root / Sub / Sub-2024) |
+| nghttp3 | 1.19.0 |
+| ngtcp2 | 1.26.0 |
+| libcurl | 8.23.0 (OpenSSL, with HTTP/3) |
+| CA bundle | `cacert-2026-11-05.pem` + Russian Trusted CA (Root / Sub / Sub-2024) |
 
 ### Database & runtime
 | Component | Version |
 |---|---|
-| SQLite | 3.53.4 (amalgamation 3530400) |
+| SQLite | 3.54.1 (amalgamation 3540100) |
 | WAMR (wasm-micro-runtime) | 2.4.5 |
-| libffi | 3.8.0 |
+| libffi | 3.8.1 (E2K: MCST 3.3) |
 
 ### Linux windowing / system
 | Component | Version |
@@ -362,8 +333,7 @@ looks for.
 
 Each host package extracts to `bin/ lib/ share/ host.mk release`; each target to
 `usr/ lib/ share/ target.mk release` plus `include_libc/` where the target
-carries libc headers. Xenolith OS targets additionally carry `target.ini` (meson
-cross-file), `toolchain.cmake` and `runtime/rootfs`.
+carries libc headers.
 
 ### 2. Use with the Xenolith / Stappler build system (recommended)
 
@@ -457,12 +427,6 @@ Sub-2024). GOST ciphers can be loaded statically through the
 
 ## Known limitations
 
-* **`riscv64-xenolithos-linux-gnu` is built by name only** — there is no real
-  board for it yet. x86-64 and ARM64 are the validated device architectures.
-* **Xenolith OS targets carry no GPU driver.** The mesa driver differs per board
-  (v3dv, panvk, venus, lavapipe) and is applied as an overlay by `xenolith-os`;
-  lavapipe additionally needs a native LLVM for the target architecture, which
-  cross-compilation does not provide.
 * **The `+open` framework headers are not complete framework headers.** They
   declare only what real code in this repository and the host projects use, with
   every constant and symbol validated against the real SDK.
@@ -482,7 +446,12 @@ Sub-2024). GOST ciphers can be loaded statically through the
 * **No target ships ICU or libidn2 any more.** Code that linked `-licuuc` or
   `-lidn2` from these toolchains must either build ICU itself
   (`make -C target-linux icu`) or move to the runtime's own Unicode API.
-* **NuttX and Embox targets are not published** — build them from the tree.
+* **OS/RTOS targets are not part of this release refresh.** Build them from the tree.
+* **Wine does not support the shipped Windows `xlmake` container path policy.**
+  Its help probe returns without output; this is recorded separately from the six
+  successful Windows host version probes.
+* **Expat still has known upstream issues** beyond the security fixes described
+  above; this release makes no claim that all Expat CVEs are closed.
 
 ## License
 
