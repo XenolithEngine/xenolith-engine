@@ -647,13 +647,22 @@ SP_GLSL_INLINE uint particleRingCorners(SP_GLSL_IN(ParticleEmitterData) emitter)
 
 // The vertex seats one particle owns in the pass's vertex list: the quad's six, a seated ring's
 // own count - the corners' count of arc segments, each two bands wide, each band a pair of
-// list triangles - or a seated strip's six again, for the segment a particle owns between
-// itself and the next born is a quad of the same pair of list triangles. The pass sizes its
-// vertex buffer, its indirect commands and its writes by this count alone, every emitter's
-// particles striding the shared list by it, so the count is read where the pass's own words
-// seat it, never carried a second time
+// list triangles - a seated strip's six again, for the segment a particle owns between
+// itself and the next born is a quad of the same pair of list triangles - or a seated
+// ribbon's own count, Vfx-1: the strip mode's XL_PARTICLE_RIBBON_STATIONS cells along the
+// segment times the two the band's three cross rows walk, the trail mode's history
+// segments the same two across - each cell the pair of list triangles the quad owns. The
+// pass sizes its vertex buffer, its indirect commands and its writes by this count alone,
+// every emitter's particles striding the shared list by it, so the count is read where the
+// pass's own words seat it, never carried a second time
 SP_GLSL_INLINE uint particleVertexSeats(SP_GLSL_IN(ParticleEmitterData) emitter) {
 	if (emitter.ringOuter <= 0.0f) {
+		if ((emitter.flags & XL_PARTICLE_FLAG_RIBBON) != 0u) {
+			if ((emitter.flags & XL_PARTICLE_FLAG_RIBBON_TRAIL) != 0u) {
+				return XL_PARTICLE_TRAIL_SEATS * 12u;
+			}
+			return XL_PARTICLE_RIBBON_STATIONS * 12u;
+		}
 		return XL_PARTICLE_QUAD_SEATS;
 	}
 	return particleRingCorners(emitter) * 12u;
@@ -807,6 +816,92 @@ SP_GLSL_INLINE void particleStripSegment(SP_GLSL_IN(ParticleData) a, SP_GLSL_IN(
 	br = b.position - n * halfB;
 }
 
+// The profile ribbon's own words, Vfx-1: the width and the color the curves name over the
+// band's own normalized length - the strip's birth order or the trail's oldest-to-current
+// walk, never the lifetime the color curve reads. The width's sample is the dp the station
+// takes, the scale multiplication riding it; the color's sample multiplies the tint, never
+// replaces it; a zero offset is the seat that cannot draw - zero width, white color
+SP_GLSL_INLINE float particleRibbonWidth(SP_GLSL_IN(ParticleEmitterData) emitter, float u) {
+	if (emitter.ribbonWidthCurveOffset == 0u) {
+		return 0.0f;
+	}
+	return particleSampleCurve(emitter.ribbonWidthCurveOffset, u).x;
+}
+
+SP_GLSL_INLINE vec4 particleRibbonColor(SP_GLSL_IN(ParticleEmitterData) emitter, float u) {
+	if (emitter.ribbonColorCurveOffset == 0u) {
+		return vec4(1.0f, 1.0f, 1.0f, 1.0f);
+	}
+	return particleSampleCurve(emitter.ribbonColorCurveOffset, u);
+}
+
+// The softness factors the three cross rows take: the edge rows sit at the band's own
+// edges - distance zero in half-width units, the fade's own floor, zero whenever a
+// softness stands - and the middle row sits a half-width in, the sample the fade climbs
+// to. A softness of zero is the hard edge the absent key keeps: every row the whole
+// alpha, the band the plain quad's own colors
+SP_GLSL_INLINE float particleRibbonSoftnessEdge(SP_GLSL_IN(ParticleEmitterData) emitter) {
+	return (emitter.ribbonSoftness > 0.0f) ? 0.0f : 1.0f;
+}
+
+SP_GLSL_INLINE float particleRibbonSoftnessMiddle(SP_GLSL_IN(ParticleEmitterData) emitter) {
+	if (emitter.ribbonSoftness <= 0.0f) {
+		return 1.0f;
+	}
+	float climbed = 1.0f / emitter.ribbonSoftness;
+	return (climbed < 1.0f) ? climbed : 1.0f;
+}
+
+// The join's own corner direction at one end of a segment: the two crosses - the
+// segment's own perpendicular and the neighbor segment's - and the word the emitter
+// carries. The bevel is each segment its own cross, the factor one; the miter averages
+// the two into one bisector the corner extends along, its ratio the half-width over the
+// bisector's own cosine floored by XL_PARTICLE_RIBBON_MITER_LIMIT - a turn sharper than
+// the limit's angle, and the full reversal the two crosses' sum vanishes at, answers the
+// bevel's own cross. The floor keeps every answer a number: the division reads a cosine
+// the limit already bounded away from zero
+SP_GLSL_INLINE vec2 particleRibbonJoin(SP_GLSL_IN(ParticleEmitterData) emitter, vec2 nOwn,
+		vec2 nJoin, SP_GLSL_OUT(float) k) {
+	k = 1.0f;
+	if ((emitter.flags & XL_PARTICLE_FLAG_RIBBON_MITER) == 0u) {
+		return nOwn;
+	}
+	vec2 sum = nOwn + nJoin;
+	float len = length(sum);
+	if (len <= 0.0f) {
+		return nOwn;
+	}
+	vec2 bisector = sum / len;
+	float cosHalf = bisector.x * nOwn.x + bisector.y * nOwn.y;
+	if (cosHalf < 1.0f / XL_PARTICLE_RIBBON_MITER_LIMIT) {
+		return nOwn;
+	}
+	k = 1.0f / cosHalf;
+	return bisector;
+}
+
+// One cross row of the profile: the band's own three stations across, the bottom and top
+// corners the half-width carries off the center along the row's own direction, the
+// extension factor the join named. The half-width is the profile's own - the width the
+// curve sampled times the scale the station stands at - and the miter's extension moves
+// the corners along the bisector without moving the fade's own distances
+struct ParticleRibbonStation {
+	vec2 bottom;
+	vec2 center;
+	vec2 top;
+	vec4 color; // the tinted color, the node color and the softness factors multiplying after
+	float u; // the profile fraction, the window's u walking by it
+};
+
+// The band one segment fills: the stations along it, the trail's own history points
+// among them. XL_PARTICLE_TRAIL_SEATS + 1 covers both modes' station counts - the strip
+// mode's XL_PARTICLE_RIBBON_STATIONS + 1 stations of one segment and the trail mode's
+// one more than the history's seats
+struct ParticleRibbonBand {
+	ParticleRibbonStation stations[XL_PARTICLE_TRAIL_SEATS + 1u];
+	uint count;
+};
+
 // Hue rotation by `turns` with the matrix of Godot's ParticleProcessMaterial, its vectors taken as
 // rows: luminance and grays are kept, alpha is untouched
 SP_GLSL_INLINE vec4 particleHueRotate(vec4 color, float turns) {
@@ -838,6 +933,108 @@ SP_GLSL_INLINE vec4 particleColor(SP_GLSL_IN(ParticleData) particle,
 	}
 	return color;
 }
+
+// One strip-mode segment of the ribbon, the band between two birth-adjacent particles
+// the plain strip walked: the profile's stations sample the curves at their own fraction
+// of the segment's piece of the whole ribbon's length, the width's sample times the
+// lerp'd scale of the two ends, the color's sample times the lerp'd tint of the two
+// ends. The joins ride the segment's ends alone - nIn the cross the incoming segment
+// carries, nOut the outgoing one's, a zero pair the open end the walk's break or a dead
+// neighbor leaves - and the interior stations the segment's own perpendicular. A segment
+// of zero length folds every station onto its point, the degenerate band a dead seat
+// draws, the normalize's own zero guard
+SP_GLSL_INLINE void particleRibbonStripBand(SP_GLSL_IN(ParticleData) a, SP_GLSL_IN(ParticleData) b,
+		SP_GLSL_IN(ParticleEmitterData) emitter, vec2 nIn, vec2 nOut, float uA, float uB,
+		SP_GLSL_OUT(ParticleRibbonBand) band) {
+	vec2 dir = particleNormalize(b.position - a.position);
+	vec2 n = vec2(-dir.y, dir.x);
+	float kA = 1.0f;
+	float kB = 1.0f;
+	vec2 nA = particleRibbonJoin(emitter, n, nIn, kA);
+	vec2 nB = particleRibbonJoin(emitter, n, nOut, kB);
+	vec4 tintA = particleColor(a, emitter);
+	vec4 tintB = particleColor(b, emitter);
+
+	band.count = XL_PARTICLE_RIBBON_STATIONS + 1u;
+	for (uint s = 0u; s < band.count; ++s) {
+		float t = float(s) / float(XL_PARTICLE_RIBBON_STATIONS);
+		float u = uA + (uB - uA) * t;
+		float scale = a.scale + (b.scale - a.scale) * t;
+		float halfWidth = particleRibbonWidth(emitter, u) * scale * 0.5f;
+		vec2 rowDir = n;
+		float k = 1.0f;
+		if (s == 0u) {
+			rowDir = nA;
+			k = kA;
+		} else if (s == band.count - 1u) {
+			rowDir = nB;
+			k = kB;
+		}
+		ParticleRibbonStation station;
+		station.center = a.position + (b.position - a.position) * t;
+		station.bottom = station.center - rowDir * (halfWidth * k);
+		station.top = station.center + rowDir * (halfWidth * k);
+		vec4 curve = particleRibbonColor(emitter, u);
+		station.color = vec4((tintA.x + (tintB.x - tintA.x) * t) * curve.x,
+				(tintA.y + (tintB.y - tintA.y) * t) * curve.y,
+				(tintA.z + (tintB.z - tintA.z) * t) * curve.z,
+				(tintA.w + (tintB.w - tintA.w) * t) * curve.w);
+		station.u = u;
+		band.stations[s] = station;
+	}
+}
+
+// One particle's whole trail history as the band, the trail mode's own walk: the eight
+// seats oldest first, the current position the walk's last point, the u ladder climbing
+// from the oldest point's zero to the current's one - the profile sampled at the points
+// the history already owns. One scale and one tint the whole band carries, the particle's
+// own standing words; the joins ride the interior points the two neighbour segments'
+// crosses name, the walk's two open ends the plain cross. A seat the history has not
+// spread into holds its birth point: the zero-length segments fold, the guard the strip
+// segment already carries
+SP_GLSL_INLINE void particleRibbonTrailBand(SP_GLSL_IN(ParticleData) particle,
+		SP_GLSL_IN(ParticleEmitterData) emitter, SP_GLSL_OUT(ParticleRibbonBand) band) {
+	vec2 points[XL_PARTICLE_TRAIL_SEATS + 1u];
+	for (uint i = 0u; i < XL_PARTICLE_TRAIL_SEATS; ++i) {
+		points[i] = particle.trail[XL_PARTICLE_TRAIL_SEATS - 1u - i];
+	}
+	points[XL_PARTICLE_TRAIL_SEATS] = particle.position;
+
+	band.count = XL_PARTICLE_TRAIL_SEATS + 1u;
+	vec4 tint = particleColor(particle, emitter);
+	float scale = particle.scale;
+	for (uint j = 0u; j < band.count; ++j) {
+		float u = float(j) / float(XL_PARTICLE_TRAIL_SEATS);
+		vec2 inDir = vec2(0.0f, 0.0f);
+		vec2 outDir = vec2(0.0f, 0.0f);
+		if (j > 0u) {
+			vec2 dir = particleNormalize(points[j] - points[j - 1u]);
+			inDir = vec2(-dir.y, dir.x);
+		}
+		if (j + 1u < band.count) {
+			vec2 dir = particleNormalize(points[j + 1u] - points[j]);
+			outDir = vec2(-dir.y, dir.x);
+		}
+		float k = 1.0f;
+		vec2 rowDir = inDir;
+		if (j == 0u) {
+			rowDir = outDir;
+		} else if (j + 1u < band.count) {
+			rowDir = particleRibbonJoin(emitter, outDir, inDir, k);
+		}
+		float halfWidth = particleRibbonWidth(emitter, u) * scale * 0.5f;
+		ParticleRibbonStation station;
+		station.center = points[j];
+		station.bottom = station.center - rowDir * (halfWidth * k);
+		station.top = station.center + rowDir * (halfWidth * k);
+		vec4 curve = particleRibbonColor(emitter, u);
+		station.color = vec4(tint.x * curve.x, tint.y * curve.y, tint.z * curve.z,
+				tint.w * curve.w);
+		station.u = u;
+		band.stations[j] = station;
+	}
+}
+
 
 // Animation frame of `frames`: the animation curve maps the lifetime fraction to [0, 1] of them
 SP_GLSL_INLINE uint particleAnimFrame(SP_GLSL_IN(ParticleData) particle,

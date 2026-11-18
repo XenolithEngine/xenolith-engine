@@ -706,11 +706,17 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 	// particle owns reads the next particle's standing state, and one dispatch's invocations
 	// cannot order their writes for one another, so a barrier between the two dispatches seats
 	// what the update wrote before the strip reads it. Only an emitter whose words seat a
-	// strip takes the second dispatch - an emitter without the key pays nothing, and its
+	// strip - the plain strip's width word, or the profile ribbon's own word the `ribbon`
+	// object carries, Vfx-1: the band's joins read the neighbour particles the same barrier
+	// seats - takes the second dispatch. An emitter without either pays nothing, and its
 	// quads stand as the update drew them
+	auto stripEmitter = [](const ParticleSystemData *s) {
+		return s->data.stripWidth > 0.0f
+				|| (s->data.flags & XL_PARTICLE_FLAG_RIBBON) != 0u;
+	};
 	bool anyStrip = false;
 	for (auto &e : emitters) {
-		anyStrip = anyStrip || e.systemData->data.stripWidth > 0.0f;
+		anyStrip = anyStrip || stripEmitter(e.systemData.get());
 	}
 	if (anyStrip) {
 		buf.cmdGlobalBarrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -721,7 +727,7 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 		pcb.stripPass = 1;
 		emitterIndex = 0;
 		for (auto &e : emitters) {
-			if (e.systemData->data.stripWidth > 0.0f) {
+			if (stripEmitter(e.systemData.get())) {
 				pcb.emitterIndex = emitterIndex;
 
 				buf.cmdPushConstants(VK_SHADER_STAGE_COMPUTE_BIT, 0,

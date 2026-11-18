@@ -61,6 +61,13 @@ enum class ParticleSystemFlags : uint32_t {
 	// own mask words, deliberately absent from the flag word list below - no document carries
 	// it; the emitter sets the bit on the system it draws from
 	BuiltinMask = 1 << 6,
+	// The profile ribbon's own three words, Vfx-1, the `ribbon` object's buffer state: the
+	// seat itself, the mode's trail word and the join's miter word. Set by apply() beside
+	// the object's own words, deliberately absent from the flag word list below - the
+	// document carries `ribbon`, the bits the buffer state the pass and the seats read
+	Ribbon = 1 << 7,
+	RibbonTrail = 1 << 8,
+	RibbonMiter = 1 << 9,
 };
 
 SP_DEFINE_ENUM_AS_MASK(ParticleSystemFlags)
@@ -90,6 +97,21 @@ struct ParticleRing {
 	float fadeTo = 0.0f;
 };
 
+// Vfx-1's profile ribbon, the improved geometry the `ribbon` object chooses for the strip
+// slot: the plain strip's birth-order walk or the trail history the trailWidth word feeds,
+// drawn as one band whose width and color the curves sample over the band's own normalized
+// length - never the lifetime - whose edges the softness fades across, and whose turns the
+// join answers, the miter floored by its own limit, the bevel the default. The scalar words
+// ride this struct; the two curves ride their own setters the ring's curves do - the object
+// seats the words and clears the curves, the curve keys inside the file's object land on the
+// copy. A width curve is the word that cannot be missing: without one the band draws no
+// width, so encode() carries the key only when both stand
+struct ParticleRibbon {
+	bool trail = false; // the mode: false - the strip, the birth order; true - the trail
+	bool miter = false; // the join: false - the bevel, the default; true - the miter
+	float softness = 0.0f; // the edge fade across the band, in half-width fractions; 0 - hard
+};
+
 // Immutable once handed to the renderer: ParticleSystem copies it before the next change.
 struct SP_PUBLIC ParticleSystemData : public Ref {
 	ParticleEmitterData data;
@@ -117,6 +139,13 @@ struct SP_PUBLIC ParticleSystemData : public Ref {
 	// rotation page keys over the life, the radians the file carries verbatim, the angular
 	// velocity the birth chose standing beside it
 	Rc<CurveBuffer> angleCurve;
+	// The ribbon's two profile curves, Vfx-1: the width and the color the `ribbon` object
+	// keys over the band's own normalized length - the strip's birth order or the trail's
+	// oldest-to-current walk, never the lifetime. The width's Float curve is the band's
+	// dp, the color's vec4 multiplies the tint; both seat past the angle curve, the buffer
+	// growing at its end the same way
+	Rc<CurveBuffer> ribbonWidthCurve;
+	Rc<CurveBuffer> ribbonColorCurve;
 	Vector<Vec2> emissionPoints;
 
 	// The numbers of the birth shape data.emissionType names, in the shader's read order:
@@ -428,6 +457,29 @@ public:
 	// the value is not it. The width multiplies the scale the curve left standing at each end
 	void setStripWidth(float);
 	float getStripWidth() const;
+
+	// The profile ribbon, Vfx-1: the improved geometry the `ribbon` object chooses for the
+	// strip slot - the plain strip's birth-order walk or the trail history the trailWidth
+	// word feeds, one band whose width and color curves sample over the band's own
+	// normalized length, whose edges the softness fades across and whose turns the join
+	// answers. The whole object every patch carries: the words seat and the two curves
+	// clear, the curve keys landing on the copy past the seat, the ring's own rule. A
+	// width curve is the word that cannot be missing - encode() writes the key only when
+	// the seat and one stand - and the key's file beside `strip` is the one draw slot's
+	// own clash the document refuses
+	void setRibbon(const ParticleRibbon &);
+	void clearRibbon();
+	ParticleRibbon getRibbon() const;
+
+	// The ribbon's two profile curves, each over the band's own normalized length: the
+	// width's Float curve the dp the stations take, the color's vec4 curve the multiply
+	// the tint carries. Null removes it; a curve of another type seats nothing. The
+	// curves are draw words like the ring's own: no particle field or step reads them,
+	// and setRibbon's whole-object seat clears both
+	bool setRibbonWidthCurve(CurveBuffer *);
+	CurveBuffer *getRibbonWidthCurve() const;
+	bool setRibbonColorCurve(CurveBuffer *);
+	CurveBuffer *getRibbonColorCurve() const;
 
 	void setCount(uint32_t);
 	uint32_t getCount() const;

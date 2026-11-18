@@ -54,6 +54,23 @@ using namespace sprt::glsl;
 // so no document carries it
 #define XL_PARTICLE_FLAG_BUILTIN_MASK 64
 
+// ParticleEmitterData::flags, the profile ribbon's own words, Vfx-1: the bit seats the
+// ribbon the system's `ribbon` object carries - the pass draws the profiled band through
+// the strip's second dispatch, and the emitter's vertex seats grow to the ribbon's own
+// count - instead of the plain quads or the plain strip. The bits are set by apply()
+// beside the object's own words, unnamed in ParticleSystem's flag word list, so no
+// document carries them: the document carries `ribbon`, the bits its buffer state
+#define XL_PARTICLE_FLAG_RIBBON 128
+// the ribbon's mode: the bit stands for the trail - the particle's own trail history the
+// trailWidth word feeds drawn as one band per particle; the bit's absence is the strip
+// mode, the emitter's particles joined in their birth order the strip always walked
+#define XL_PARTICLE_FLAG_RIBBON_TRAIL 256
+// the ribbon's join at the turns: the bit stands for the miter - the two segments'
+// perpendiculars averaged into one bisector the corners extend along, the length floored
+// by XL_PARTICLE_RIBBON_MITER_LIMIT, a turn past the limit falling back to the bevel -
+// and the bit's absence is the bevel, each segment its own cross, the default
+#define XL_PARTICLE_FLAG_RIBBON_MITER 512
+
 // ParticleEmitterData::emissionType, the same values as basic2d::ParticleEmissionType
 #define XL_PARTICLE_EMISSION_POINTS 0
 #define XL_PARTICLE_EMISSION_DISC 1
@@ -66,6 +83,19 @@ using namespace sprt::glsl;
 // carries 8 as the default - and no key chooses it: every emitter that draws a trail draws the
 // same count
 #define XL_PARTICLE_TRAIL_SEATS 8
+
+// The ribbon's profile stations along one strip-mode segment, the count the stations the
+// width and color curves are sampled at between the segment's own two ends - a fixed
+// constant no key chooses, the ring's corner constant the same way. Two cells across the
+// band ride every station pair, the middle row carrying the softness factor's own vertex
+#define XL_PARTICLE_RIBBON_STATIONS 4
+
+// The miter's own explicit limit, the ratio the corner's extension may reach over the
+// half-width before the join falls back to the bevel: a turn sharper than the limit's
+// angle answers the bevel's two crosses. The word is the model's own constant - the
+// document names the join, the limit bounds it - and 4 is the miter limit the SVG path
+// specification carries
+#define XL_PARTICLE_RIBBON_MITER_LIMIT 4.0f
 
 // ParticleDeflector::shape, the figure a seat carries; zero is the unused seat
 #define XL_PARTICLE_DEFLECTOR_CIRCLE 1
@@ -458,13 +488,29 @@ struct ParticleEmitterData {
 	// the stages before this one carried, the buffer growing at its end the same way
 	uint angleCurveOffset;
 
-	// [628-639]
-	// explicit padding: the member-wise size ends at 628 while std430 strides the struct at
-	// the color vec4's alignment of 16, so the tail is carried in the struct itself, each
-	// word its own seat the next stage's word map reads
-	uint padding628;
-	uint padding632;
-	uint padding636;
+	// [628-631]
+	// offset of the ribbon's width curve in the extra data buffer, a Float curve over the
+	// ribbon's own normalized length - the strip's birth order or the trail's oldest-to-
+	// current walk, never the lifetime - whose sample the draw reads as the band's width
+	// in dp at that fraction, the strip word's own scale multiplication riding the station.
+	// The word takes the hand-carried padding the angle curve's stage left, the position
+	// curve offset's own precedent at 508; 0 - no curve, a ribbon that cannot draw
+	uint ribbonWidthCurveOffset;
+
+	// [632-635]
+	// offset of the ribbon's color curve in the extra data buffer, a vec4 curve over the
+	// same normalized length whose sample multiplies the particle color the tint already
+	// carries - the band colors its length, never replaces the color. The word takes the
+	// padding's second seat; 0 - no curve, the particle color alone
+	uint ribbonColorCurveOffset;
+
+	// [636-639]
+	// softness of the ribbon's edges across the band, in fractions of its own half-width:
+	// the fade zone the edge's alpha climbs over, the zero word the hard edge the absent
+	// key keeps. The factor is baked into the vertices' alpha - the band's middle row the
+	// whole tint, the edges the fade's share - so the shared helper answers the same
+	// numbers the CPU stand reads. The word takes the padding's last seat
+	float ribbonSoftness;
 
 	// [640-655]
 	// the sampled window's own rectangle, Effekseer's UV page taken as Mode = Fixed - the
@@ -534,7 +580,9 @@ static_assert(sizeof(ParticleEmitterData) == 688
 	&& __builtin_offsetof(ParticleEmitterData, ringFadeFrom) == 616
 	&& __builtin_offsetof(ParticleEmitterData, ringFadeTo) == 620
 	&& __builtin_offsetof(ParticleEmitterData, angleCurveOffset) == 624
-	&& __builtin_offsetof(ParticleEmitterData, padding628) == 628
+	&& __builtin_offsetof(ParticleEmitterData, ribbonWidthCurveOffset) == 628
+	&& __builtin_offsetof(ParticleEmitterData, ribbonColorCurveOffset) == 632
+	&& __builtin_offsetof(ParticleEmitterData, ribbonSoftness) == 636
 	&& __builtin_offsetof(ParticleEmitterData, uvRect) == 640
 	&& __builtin_offsetof(ParticleEmitterData, cornerBL) == 656
 	&& __builtin_offsetof(ParticleEmitterData, cornerBR) == 664

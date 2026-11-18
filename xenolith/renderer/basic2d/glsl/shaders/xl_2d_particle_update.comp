@@ -94,6 +94,123 @@ void writeDegenerate(VerticesBuffer target, uint at, uint seats, uint material) 
 	}
 }
 
+// The ribbon band's own cells, the profile's stations the two crosses between walk: the
+// band's stations are the rows the cells share - along the strip's stations or the
+// trail's history points, across the bottom, middle and top rows - and each along cell
+// draws the quad's own pair of list triangles twice, once below the middle row and once
+// above it. The window's u walks the profile fraction the station carries, the v the
+// rows' own three - the bottom row the window's bottom the quad's own order keeps - and
+// the row's alpha carries the softness factor the emitter's word names, baked here the
+// fragment never seeing it
+void ribbonWriteBand(VerticesBuffer vertexBuffer, uint vertexOffset,
+		ParticleRibbonBand band, ParticleFrameData frame, vec2 uv0, vec2 uv1, float edgeFactor,
+		float middleFactor) {
+	uint at = vertexOffset;
+	const float vTop = uv0.y;
+	const float vMid = 0.5f * (uv0.y + uv1.y);
+	const float vBottom = uv1.y;
+	for (uint c = 1u; c < band.count; ++c) {
+		const ParticleRibbonStation s0 = band.stations[c - 1u];
+		const ParticleRibbonStation s1 = band.stations[c];
+		const float u0 = mix(uv0.x, uv1.x, s0.u);
+		const float u1 = mix(uv0.x, uv1.x, s1.u);
+		const vec4 c0Bottom = vec4(s0.color.x * frame.nodeColor.x, s0.color.y * frame.nodeColor.y,
+				s0.color.z * frame.nodeColor.z, s0.color.w * frame.nodeColor.w * edgeFactor);
+		const vec4 c0Middle = vec4(s0.color.x * frame.nodeColor.x, s0.color.y * frame.nodeColor.y,
+				s0.color.z * frame.nodeColor.z, s0.color.w * frame.nodeColor.w * middleFactor);
+		const vec4 c1Bottom = vec4(s1.color.x * frame.nodeColor.x, s1.color.y * frame.nodeColor.y,
+				s1.color.z * frame.nodeColor.z, s1.color.w * frame.nodeColor.w * edgeFactor);
+		const vec4 c1Middle = vec4(s1.color.x * frame.nodeColor.x, s1.color.y * frame.nodeColor.y,
+				s1.color.z * frame.nodeColor.z, s1.color.w * frame.nodeColor.w * middleFactor);
+		// the lower cell: the bottom row its floor, the middle row its top
+		writeVertex(vertexBuffer, at + 0u, s0.bottom, vec2(u0, vBottom), c0Bottom, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 1u, s0.center, vec2(u0, vMid), c0Middle, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 2u, s1.bottom, vec2(u1, vBottom), c1Bottom, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 3u, s1.center, vec2(u1, vMid), c1Middle, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 4u, s1.bottom, vec2(u1, vBottom), c1Bottom, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 5u, s0.center, vec2(u0, vMid), c0Middle, frame.materialIndex);
+		at += 6u;
+		// the upper cell: the middle row its floor, the top row its top
+		writeVertex(vertexBuffer, at + 0u, s0.center, vec2(u0, vMid), c0Middle, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 1u, s0.top, vec2(u0, vTop), c0Bottom, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 2u, s1.center, vec2(u1, vMid), c1Middle, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 3u, s1.top, vec2(u1, vTop), c1Bottom, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 4u, s1.center, vec2(u1, vMid), c1Middle, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 5u, s0.top, vec2(u0, vTop), c0Bottom, frame.materialIndex);
+		at += 6u;
+	}
+}
+
+// The profile ribbon's own draw, Vfx-1: the word the emitter's `ribbon` object seats, the
+// band drawn into the seats the pass allocated by the seats function - the strip mode one
+// segment of profiled cells between the birth-adjacent pair the plain strip walked, the
+// trail mode the particle's own trail history the trailWidth word feeds drawn as one band
+// per particle. The window one helper reads, the softness factors the word's own two
+void ribbonDraw(uint index, uint vertexOffset, uint seats, ParticleFrameData frame,
+		VerticesBuffer vertexBuffer) {
+	ParticleData particle = particleBuffers[frame.particleBufferIndex].particles[index];
+	if (particle.currentLifetime == 0u) {
+		writeDegenerate(vertexBuffer, vertexOffset, seats, frame.materialIndex);
+		return;
+	}
+
+	ParticleRibbonBand band;
+	vec2 uv0;
+	vec2 uv1;
+	particleUvWindow(frame, particle, emitter, uv0, uv1);
+	const float edgeFactor = particleRibbonSoftnessEdge(emitter);
+	const float middleFactor = particleRibbonSoftnessMiddle(emitter);
+
+	if ((emitter.flags & XL_PARTICLE_FLAG_RIBBON_TRAIL) != 0u) {
+		particleRibbonTrailBand(particle, emitter, band);
+		ribbonWriteBand(vertexBuffer, vertexOffset, band, frame, uv0, uv1, edgeFactor, middleFactor);
+		return;
+	}
+
+	// The strip mode: the segment between this particle and the next born, the walk
+	// position the profile fraction rides - u the station's own share of the whole
+	// ribbon's length, the birth order the plain strip walks broken at the frame's newest
+	// word. The segment is cut at the walk's own ends: the newest owns no outgoing, the
+	// walk's start no incoming, a dead end its own segment - the plain strip's own rules
+	const uint count = emitter.count;
+	const uint next = (index + 1u == count) ? 0u : index + 1u;
+	if (index == frame.newest) {
+		writeDegenerate(vertexBuffer, vertexOffset, seats, frame.materialIndex);
+		return;
+	}
+	ParticleData nextParticle = particleBuffers[frame.particleBufferIndex].particles[next];
+	if (nextParticle.currentLifetime == 0u) {
+		writeDegenerate(vertexBuffer, vertexOffset, seats, frame.materialIndex);
+		return;
+	}
+
+	// the incoming cross: the previous living particle of the walk, none at the walk's start
+	vec2 nIn = vec2(0.0f, 0.0f);
+	if (index != (frame.newest + 1u) % count) {
+		const uint prev = (index + count - 1u) % count;
+		ParticleData prevParticle = particleBuffers[frame.particleBufferIndex].particles[prev];
+		if (prevParticle.currentLifetime != 0u) {
+			vec2 dir = particleNormalize(particle.position - prevParticle.position);
+			nIn = vec2(-dir.y, dir.x);
+		}
+	}
+	// the outgoing cross: the one past the next, none past the walk's end
+	vec2 nOut = vec2(0.0f, 0.0f);
+	if (next != frame.newest) {
+		const uint next2 = (next + 1u == count) ? 0u : next + 1u;
+		ParticleData next2Particle = particleBuffers[frame.particleBufferIndex].particles[next2];
+		if (next2Particle.currentLifetime != 0u) {
+			vec2 dir = particleNormalize(next2Particle.position - nextParticle.position);
+			nOut = vec2(-dir.y, dir.x);
+		}
+	}
+
+	const float uA = float((index + count - frame.newest - 1u) % count) / float(count - 1u);
+	const float uB = float(((index + count - frame.newest - 1u) % count) + 1u) / float(count - 1u);
+	particleRibbonStripBand(particle, nextParticle, emitter, nIn, nOut, uA, uB, band);
+	ribbonWriteBand(vertexBuffer, vertexOffset, band, frame, uv0, uv1, edgeFactor, middleFactor);
+}
+
 // The strip's own draw, Effekseer's ribbon taken in the screen plane: the emitter's particles
 // joined in their birth order, each particle owning the segment to the next born in the one
 // vertex list the pass always filled. The order is the cyclic slot walk broken at the frame's
@@ -114,6 +231,15 @@ void stripDraw(uint index, ParticleFrameData frame) {
 	}
 	const uint seats = particleVertexSeats(emitter);
 	const uint vertexOffset = frame.vertexOffset + slot * seats;
+
+	// The profile ribbon's own branch, Vfx-1: the word the `ribbon` object seats draws the
+	// profiled band into the seats the pass grew for it - the strip mode's one segment of
+	// profiled cells and the trail mode's own history one branch each, the plain strip's
+	// walk beneath untouched
+	if ((emitter.flags & XL_PARTICLE_FLAG_RIBBON) != 0u) {
+		ribbonDraw(index, vertexOffset, seats, frame, vertexBuffer);
+		return;
+	}
 
 	ParticleData particle = particleBuffers[frame.particleBufferIndex].particles[index];
 	const uint next = (index + 1u == emitter.count) ? 0u : index + 1u;

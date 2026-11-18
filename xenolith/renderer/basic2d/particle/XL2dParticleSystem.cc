@@ -35,6 +35,15 @@ static_assert(toInt(ParticleSystemFlags::UseLifetimeMax) == XL_PARTICLE_FLAG_USE
 static_assert(toInt(ParticleSystemFlags::OneShot) == XL_PARTICLE_FLAG_ONE_SHOT);
 static_assert(toInt(ParticleSystemFlags::ParentBound) == XL_PARTICLE_FLAG_PARENT_BOUND);
 static_assert(toInt(ParticleSystemFlags::BuiltinMask) == XL_PARTICLE_FLAG_BUILTIN_MASK);
+static_assert(toInt(ParticleSystemFlags::Ribbon) == XL_PARTICLE_FLAG_RIBBON);
+static_assert(toInt(ParticleSystemFlags::RibbonTrail) == XL_PARTICLE_FLAG_RIBBON_TRAIL);
+static_assert(toInt(ParticleSystemFlags::RibbonMiter) == XL_PARTICLE_FLAG_RIBBON_MITER);
+
+// The bits no document flag word list carries - the host's own and the objects' - the
+// words setFlags never wipes: a word list that cannot carry them cannot clear them
+static constexpr uint32_t ParticleInternalFlagBits = XL_PARTICLE_FLAG_PARENT_BOUND
+		| XL_PARTICLE_FLAG_BUILTIN_MASK | XL_PARTICLE_FLAG_RIBBON | XL_PARTICLE_FLAG_RIBBON_TRAIL
+		| XL_PARTICLE_FLAG_RIBBON_MITER;
 
 static_assert(toInt(ParticleEmissionType::Points) == XL_PARTICLE_EMISSION_POINTS);
 static_assert(toInt(ParticleEmissionType::Disc) == XL_PARTICLE_EMISSION_DISC);
@@ -84,7 +93,9 @@ size_t ParticleSystemData::getExtraDataSize() const {
 			+ ParticleSystem_getCurveSize(ringOuterColorCurve)
 			+ ParticleSystem_getCurveSize(ringMiddleColorCurve)
 			+ ParticleSystem_getCurveSize(ringInnerColorCurve)
-			+ ParticleSystem_getCurveSize(angleCurve);
+			+ ParticleSystem_getCurveSize(angleCurve)
+			+ ParticleSystem_getCurveSize(ribbonWidthCurve)
+			+ ParticleSystem_getCurveSize(ribbonColorCurve);
 }
 
 void ParticleSystemData::writeExtraData(uint8_t *buf, size_t size,
@@ -144,6 +155,10 @@ void ParticleSystemData::writeExtraData(uint8_t *buf, size_t size,
 	// The angle curve seats last of all, the buffer growing at its end the same way - the
 	// step's own word, past every draw curve the stages before this one carried
 	target.angleCurveOffset = writeCurve(angleCurve);
+	// The ribbon's two profile curves seat past it, the same end-growth and the same fixed
+	// order the emitter words name - Vfx-1's own pair, the band's length their axis
+	target.ribbonWidthCurveOffset = writeCurve(ribbonWidthCurve);
+	target.ribbonColorCurveOffset = writeCurve(ribbonColorCurve);
 }
 
 void ParticleSystemData::writeParticleSize(ParticleEmitterData &data, Size2 size) {
@@ -455,7 +470,12 @@ void ParticleSystem::apply(const Value &value) {
 				}
 			}
 		}
-		setFlags(flags);
+		// The document's flag words alone: the internal bits the host and the objects seat
+		// - ParentBound, BuiltinMask and the ribbon's own three - stand untouched by a word
+		// list that cannot carry them, so a partial patch of the list never wipes a seated
+		// object. setFlags itself takes the caller's word whole: addFlags and clearFlags
+		// seat their own internal bit through it
+		setFlags(flags | (getFlags() & static_cast<ParticleSystemFlags>(ParticleInternalFlagBits)));
 	}
 
 	if (value.isBasicType("seed")) {
@@ -730,6 +750,96 @@ void ParticleSystem::apply(const Value &value) {
 
 		if (value.isBasicType("strip")) {
 			setStripWidth(float(value.getDouble("strip")));
+		}
+
+		if (value.hasValue("ribbon")) {
+			// The ribbon rides its own object the ring rides its: a dictionary seats one -
+			// the absent words their own defaults, the strip mode and the bevel join - and
+			// anything else, an explicit null, clears it. A width curve is the word that
+			// cannot be missing: a dictionary without one, one of another kind, a color
+			// curve of another kind, or a stranger mode or join word leaves the previous
+			// words standing for encode() to drop, the ring's own rule. The trail mode
+			// seats without a trailWidth the same way: the history the word feeds is the
+			// births' own points until it stands, the band the seats hold folds onto them
+			const auto &v = value.getValue("ribbon");
+			if (v.isDictionary()) {
+				ParticleRibbon ribbon;
+				bool takes = false;
+				// the mode: the absent word and the strip the same old walk, the trail the
+				// history's own
+				if (v.isNull("mode") || v.isString("mode")) {
+					const auto &mode = v.getString("mode");
+					if (mode.empty() || mode == StringView("strip")) {
+						ribbon.trail = false;
+						takes = true;
+					} else if (mode == StringView("trail")) {
+						ribbon.trail = true;
+						takes = true;
+					}
+				}
+				// the join: the absent word and the bevel the same default, the miter its own
+				if (takes && (v.isNull("join") || v.isString("join"))) {
+					const auto &join = v.getString("join");
+					if (join.empty() || join == StringView("bevel")) {
+						ribbon.miter = false;
+					} else if (join == StringView("miter")) {
+						ribbon.miter = true;
+					} else {
+						takes = false;
+					}
+				} else if (takes && v.hasValue("join")) {
+					takes = false;
+				}
+				// the softness: a number the pair's negative clamps to the hard edge's zero
+				if (takes && v.hasValue("softness")) {
+					if (v.isInteger("softness") || v.isDouble("softness")) {
+						ribbon.softness = sprt::max(float(v.getDouble("softness")), 0.0f);
+					} else {
+						takes = false;
+					}
+				}
+				// the width curve: the word the key cannot stand without
+				Rc<CurveBuffer> widthCurve;
+				Rc<CurveBuffer> colorCurve;
+				if (takes) {
+					const auto &wv = v.getValue("width");
+					if (wv.isDictionary()) {
+						auto parsed = ParticleSystem_readCurve(wv);
+						if (parsed && parsed->getType() == CurveBufferType::Float) {
+							widthCurve = sp::move(parsed);
+						} else {
+							takes = false;
+						}
+					} else {
+						takes = false;
+					}
+				}
+				// the color curve: the absent word the tint alone, an explicit null the
+				// clear the object's own seat reset, a stranger kind a ribbon that cannot
+				// take effect
+				if (takes && v.hasValue("color")) {
+					const auto &cv = v.getValue("color");
+					if (cv.isDictionary()) {
+						auto parsed = ParticleSystem_readCurve(cv);
+						if (parsed && parsed->getType() == CurveBufferType::Vec4) {
+							colorCurve = sp::move(parsed);
+						} else {
+							takes = false;
+						}
+					} else if (!cv.isNull()) {
+						takes = false;
+					}
+				}
+				if (takes) {
+					setRibbon(ribbon);
+					// The object's own seat cleared the curves; the dictionaries' seats land
+					// on the copy setRibbon's mutate made, past it - the ring's own rule
+					_data->ribbonWidthCurve = widthCurve;
+					_data->ribbonColorCurve = colorCurve;
+				}
+			} else {
+				clearRibbon();
+			}
 		}
 	}
 
@@ -1022,6 +1132,28 @@ Value ParticleSystem::encode() const {
 	// fresh default keeps, so an off strip never reaches a file
 	if (_data->data.stripWidth != 0.0f) {
 		ret.setDouble(_data->data.stripWidth, "strip");
+	}
+	// The ribbon, only when one stands: the seat and a width curve together are the words
+	// the key cannot part with - a seated word without its width curve draws no band, the
+	// seat that cannot take effect. The strip mode and the bevel join are the defaults the
+	// absent words keep, the zero softness the hard edge; the width curve always rides, the
+	// color curve only when seated
+	if ((_data->data.flags & XL_PARTICLE_FLAG_RIBBON) != 0u && _data->ribbonWidthCurve) {
+		Value entry;
+		if ((_data->data.flags & XL_PARTICLE_FLAG_RIBBON_TRAIL) != 0u) {
+			entry.setString("trail", "mode");
+		}
+		entry.setValue(ParticleSystem_writeCurve(_data->ribbonWidthCurve.get()), "width");
+		if (_data->ribbonColorCurve) {
+			entry.setValue(ParticleSystem_writeCurve(_data->ribbonColorCurve.get()), "color");
+		}
+		if (_data->data.ribbonSoftness != 0.0f) {
+			entry.setDouble(_data->data.ribbonSoftness, "softness");
+		}
+		if ((_data->data.flags & XL_PARTICLE_FLAG_RIBBON_MITER) != 0u) {
+			entry.setString("miter", "join");
+		}
+		ret.setValue(sp::move(entry), "ribbon");
 	}
 	return ret;
 }
@@ -1340,6 +1472,71 @@ void ParticleSystem::setStripWidth(float width) {
 
 float ParticleSystem::getStripWidth() const { return _data->data.stripWidth; }
 
+void ParticleSystem::setRibbon(const ParticleRibbon &ribbon) {
+	// The object's own words: the three bits the standing flags word carries - the seat,
+	// the mode's trail, the join's miter - and the softness float beside them, the words
+	// inside ParticleEmitterData so the emitter re-uploads and the pass follows. The seat
+	// resets the two profile curves: the ribbon's words are one object every patch carries
+	// whole, the curve keys landing on the copy past it
+	auto &data = mutate().data;
+	data.flags = (data.flags & ~(XL_PARTICLE_FLAG_RIBBON | XL_PARTICLE_FLAG_RIBBON_TRAIL
+									 | XL_PARTICLE_FLAG_RIBBON_MITER))
+			| XL_PARTICLE_FLAG_RIBBON | (ribbon.trail ? XL_PARTICLE_FLAG_RIBBON_TRAIL : 0u)
+			| (ribbon.miter ? XL_PARTICLE_FLAG_RIBBON_MITER : 0u);
+	data.ribbonSoftness = sprt::max(ribbon.softness, 0.0f);
+	_data->ribbonWidthCurve = nullptr;
+	_data->ribbonColorCurve = nullptr;
+}
+
+void ParticleSystem::clearRibbon() {
+	// The bits off and the words zeroed: the quad the pass always drew, the seats the old
+	// buffers keep
+	auto &data = mutate().data;
+	data.flags &= ~(XL_PARTICLE_FLAG_RIBBON | XL_PARTICLE_FLAG_RIBBON_TRAIL
+			| XL_PARTICLE_FLAG_RIBBON_MITER);
+	data.ribbonSoftness = 0.0f;
+	_data->ribbonWidthCurve = nullptr;
+	_data->ribbonColorCurve = nullptr;
+}
+
+ParticleRibbon ParticleSystem::getRibbon() const {
+	// The seated words verbatim: an unseated ribbon reads the memset state - no bits, the
+	// zero softness - the defaults the file and the panel seat live in ParticleRibbon itself
+	ParticleRibbon ret;
+	const auto flags = _data->data.flags;
+	ret.trail = (flags & XL_PARTICLE_FLAG_RIBBON_TRAIL) != 0u;
+	ret.miter = (flags & XL_PARTICLE_FLAG_RIBBON_MITER) != 0u;
+	ret.softness = _data->data.ribbonSoftness;
+	return ret;
+}
+
+bool ParticleSystem::setRibbonWidthCurve(CurveBuffer *curve) {
+	// The width is a scalar: the Float curve alone carries it, anything wider has no band
+	if (curve && curve->getType() != CurveBufferType::Float) {
+		log::source().error("ParticleSystem", "Ribbon width curve must be of Float type");
+		return false;
+	}
+
+	mutate().ribbonWidthCurve = curve;
+	return true;
+}
+
+CurveBuffer *ParticleSystem::getRibbonWidthCurve() const { return _data->ribbonWidthCurve; }
+
+bool ParticleSystem::setRibbonColorCurve(CurveBuffer *curve) {
+	// The color is the tint's vec4 multiply: the four words the tint carries the only type
+	// that takes effect
+	if (curve && curve->getType() != CurveBufferType::Vec4) {
+		log::source().error("ParticleSystem", "Ribbon color curve must be of Vec4 type");
+		return false;
+	}
+
+	mutate().ribbonColorCurve = curve;
+	return true;
+}
+
+CurveBuffer *ParticleSystem::getRibbonColorCurve() const { return _data->ribbonColorCurve; }
+
 void ParticleSystem::setCount(uint32_t c) { mutate().data.count = c; }
 
 uint32_t ParticleSystem::getCount() const { return _data->data.count; }
@@ -1547,9 +1744,28 @@ bool ParticleSystem::setAngleCurve(CurveBuffer *curve) {
 
 CurveBuffer *ParticleSystem::getAngleCurve() const { return _data->angleCurve; }
 
-void ParticleSystem::addFlags(ParticleSystemFlags flags) { setFlags(getFlags() | flags); }
+void ParticleSystem::addFlags(ParticleSystemFlags flags) {
+	// The raw word, not setFlags: the bit the caller seats may be one of the internal bits
+	// the document's flag list cannot carry, and a word built from the standing bits
+	// carries it whole - a funnel through the word list's own rule would drop it
+	auto &d = mutate();
+	const auto changed = getFlags() ^ (getFlags() | flags);
+	d.data.flags = toInt(getFlags()) | toInt(flags);
+	if (hasFlag(changed, ParticleSystemFlags::LocalCoords)) {
+		++d.restartGeneration;
+	}
+}
 
-void ParticleSystem::clearFlags(ParticleSystemFlags flags) { setFlags(getFlags() & ~flags); }
+void ParticleSystem::clearFlags(ParticleSystemFlags flags) {
+	// The raw word the same way: the bit the caller clears may be an internal one, and the
+	// standing word's own copy is what comes off
+	auto &d = mutate();
+	const auto changed = getFlags() ^ (getFlags() & ~flags);
+	d.data.flags = toInt(getFlags()) & ~toInt(flags);
+	if (hasFlag(changed, ParticleSystemFlags::LocalCoords)) {
+		++d.restartGeneration;
+	}
+}
 
 void ParticleSystem::setFlags(ParticleSystemFlags flags) {
 	const auto changed = getFlags() ^ flags;
@@ -1624,6 +1840,8 @@ Rc<ParticleSystemData> ParticleSystem::dup() {
 	data->ringMiddleColorCurve = _data->ringMiddleColorCurve;
 	data->ringInnerColorCurve = _data->ringInnerColorCurve;
 	data->angleCurve = _data->angleCurve;
+	data->ribbonWidthCurve = _data->ribbonWidthCurve;
+	data->ribbonColorCurve = _data->ribbonColorCurve;
 	data->emissionPoints = _data->emissionPoints;
 	::__sprt_memcpy(data->emissionShape, _data->emissionShape, sizeof(data->emissionShape));
 	data->systemId = _data->systemId;

@@ -2295,6 +2295,299 @@ static void testRingMaskUv() {
 	checkNear(uv.y, 0.5f, "ring mask uv: the degenerate radius keeps the centre at the middle (y)");
 }
 
+// The profile ribbon, Vfx-1: the word the `ribbon` object seats draws the band the curves
+// name over the band's own normalized length - the strip's birth order or the trail's
+// oldest-to-current walk, never the lifetime - the joins the join word answers, the
+// softness the cross rows' own alphas. The seats grow the words' own way, the plain strip
+// and the quad stand byte for byte beneath the bit's absence
+static void testRibbon() {
+	// The seat contract: the word map's tail keeps its own three seats - the two curve
+	// offsets and the softness float the hand-carried padding carried - and the word map
+	// itself stands where it stood, the struct grown not one byte
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ribbonWidthCurveOffset)), 628,
+			"ribbon: the width curve's offset word takes the padding's first seat");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ribbonColorCurveOffset)), 632,
+			"ribbon: the color curve's offset word takes the padding's second seat");
+	checkEq(int64_t(__builtin_offsetof(glsl::ParticleEmitterData, ribbonSoftness)), 636,
+			"ribbon: the softness word takes the padding's last seat");
+	checkEq(int64_t(sizeof(glsl::ParticleEmitterData)), 688,
+			"ribbon: the word map keeps its own tail on the alignment's boundary, no byte grown");
+
+	::memset(s_extra, 0, sizeof(s_extra));
+
+	glsl::ParticleEmitterData emitter;
+	::memset(&emitter, 0, sizeof(emitter));
+
+	// The seats' own ladder: the quad's six beneath no bit, the strip mode's stations of
+	// cells, the trail mode's history segments, the ring standing ahead its own count - the
+	// one draw slot the document refuses to seat twice
+	checkEq(glsl::particleVertexSeats(emitter), 6u,
+			"ribbon: the unseated emitter keeps the quad's six seats");
+	emitter.flags |= XL_PARTICLE_FLAG_RIBBON;
+	checkEq(glsl::particleVertexSeats(emitter), XL_PARTICLE_RIBBON_STATIONS * 12u,
+			"ribbon: the strip mode's stations of cells own the seats");
+	emitter.flags |= XL_PARTICLE_FLAG_RIBBON_TRAIL;
+	checkEq(glsl::particleVertexSeats(emitter), XL_PARTICLE_TRAIL_SEATS * 12u,
+			"ribbon: the trail mode's history segments own the seats");
+	emitter.flags &= ~static_cast<uint32_t>(XL_PARTICLE_FLAG_RIBBON | XL_PARTICLE_FLAG_RIBBON_TRAIL);
+	emitter.ringOuter = 40.0f;
+	checkEq(glsl::particleVertexSeats(emitter), 192u,
+			"ribbon: a ring standing ahead keeps the ring's own seats");
+	emitter.ringOuter = 0.0f;
+
+	// The width's own curve over the band's length, sampled at the fraction the station
+	// stands at - the ladder every curve of the extra buffer climbs, the stops sitting at
+	// k / count and the last one holding
+	emitter.flags |= XL_PARTICLE_FLAG_RIBBON;
+	emitter.ribbonWidthCurveOffset = writeCurve(2, 1, {20.0f, 60.0f});
+	checkNear(glsl::particleRibbonWidth(emitter, 0.0f), 20.0f,
+			"ribbon: the width curve's first stop stands at the band's own start");
+	checkNear(glsl::particleRibbonWidth(emitter, 0.25f), 40.0f,
+			"ribbon: the width curve's first segment stands halfway up the ladder");
+	checkNear(glsl::particleRibbonWidth(emitter, 1.0f), 60.0f,
+			"ribbon: the width curve's last stop stands at the band's own end");
+	// The word's zero guard: no curve, the width that cannot draw
+	emitter.ribbonWidthCurveOffset = 0;
+	checkNear(glsl::particleRibbonWidth(emitter, 0.5f), 0.0f,
+			"ribbon: the zero offset keeps the width that cannot draw");
+	emitter.ribbonWidthCurveOffset = writeCurve(2, 1, {20.0f, 60.0f});
+
+	// The softness factors: the hard edge the zero word keeps is every row the whole alpha,
+	// the fade the word seats is the edges' own floor and the middle's climb
+	emitter.ribbonSoftness = 0.0f;
+	checkNear(glsl::particleRibbonSoftnessEdge(emitter), 1.0f,
+			"ribbon: the zero softness keeps the edge rows whole");
+	checkNear(glsl::particleRibbonSoftnessMiddle(emitter), 1.0f,
+			"ribbon: the zero softness keeps the middle row whole");
+	emitter.ribbonSoftness = 1.0f;
+	checkNear(glsl::particleRibbonSoftnessEdge(emitter), 0.0f,
+			"ribbon: the fade seats the edge rows at its own floor");
+	checkNear(glsl::particleRibbonSoftnessMiddle(emitter), 1.0f,
+			"ribbon: the one half-width fade climbs to the whole alpha at the middle");
+	emitter.ribbonSoftness = 2.0f;
+	checkNear(glsl::particleRibbonSoftnessMiddle(emitter), 0.5f,
+			"ribbon: a fade wider than the half-width climbs to its own share at the middle");
+	emitter.ribbonSoftness = 0.25f;
+	checkNear(glsl::particleRibbonSoftnessMiddle(emitter), 1.0f,
+			"ribbon: a fade narrower than the half-width saturates at the middle");
+	emitter.ribbonSoftness = 0.0f;
+
+	// The strip mode's band: one horizontal segment at a scale of one, the width curve the
+	// taper - the stations sample the curve at their own fraction of the segment's piece,
+	// the ends at the walk's own two u words, the cross rows the half-width off the center
+	glsl::ParticleData a;
+	glsl::ParticleData b;
+	::memset(&a, 0, sizeof(a));
+	::memset(&b, 0, sizeof(b));
+	a.scale = 1.0f;
+	b.scale = 1.0f;
+	a.position = glsl::vec2(0.0f, 0.0f);
+	b.position = glsl::vec2(40.0f, 0.0f);
+	a.color = glsl::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+	b.color = glsl::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+
+	glsl::ParticleRibbonBand band;
+	glsl::vec2 nIn = glsl::vec2(0.0f, 0.0f);
+	glsl::vec2 nOut = glsl::vec2(0.0f, 0.0f);
+	glsl::particleRibbonStripBand(a, b, emitter, nIn, nOut, 0.0f, 1.0f, band);
+	checkEq(band.count, XL_PARTICLE_RIBBON_STATIONS + 1u,
+			"ribbon: the strip band carries the stations' own count");
+	checkNear(band.stations[0].u, 0.0f, "ribbon: the first station stands at the segment's own u");
+	checkNear(band.stations[band.count - 1u].u, 1.0f,
+			"ribbon: the last station stands at the segment's end u");
+	checkNear(band.stations[1].u, 0.25f,
+			"ribbon: the interior stations walk the segment's own piece");
+	// the taper: the first station's half is the curve's own start, the last its end - the
+	// bevel's own cross, the perpendicular of the x axis the y axis
+	checkNear(band.stations[0].bottom.y, -10.0f,
+			"ribbon: the taper's first half is the curve's own start");
+	checkNear(band.stations[0].top.y, 10.0f, "ribbon: the taper's first cross carries both rows");
+	checkNear(band.stations[band.count - 1u].bottom.y, -30.0f,
+			"ribbon: the taper's last half is the curve's own end");
+	// the stations' centers walk the segment, the interior cross the segment's own
+	// perpendicular
+	checkNear(band.stations[2].center.x, 20.0f,
+			"ribbon: the stations' centers walk the segment");
+	checkNear(band.stations[2].center.y, 0.0f,
+			"ribbon: the horizontal segment's centers keep the y axis");
+	checkNear(band.stations[1].top.y, band.stations[1].center.y + 20.0f,
+			"ribbon: the interior station's half is its own fraction's sample");
+	// the profile color multiplies the lerp'd tint, never replaces it: the middle station's
+	// tint is the pair's own half, the color curve's white the identity
+	{
+		glsl::ParticleEmitterData colored = emitter;
+		colored.ribbonColorCurveOffset = writeCurve(6, 4,
+				{1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+		glsl::particleRibbonStripBand(a, b, colored, nIn, nOut, 0.0f, 1.0f, band);
+		checkNear(band.stations[0].color.x, 1.0f,
+				"ribbon: the color curve's first stop stands whole at the band's start");
+		checkNear(band.stations[0].color.w, 1.0f,
+				"ribbon: the color curve's alpha rides its own words");
+		checkNear(band.stations[1].color.x, 0.375f,
+				"ribbon: the quarter station's red is the lerp'd tint's own share");
+		checkNear(band.stations[band.count - 1u].color.x, 0.0f,
+				"ribbon: the blue end's tint rides the curve's zero");
+	}
+
+	// The join: the bevel the bit's absence keeps is each segment its own cross - the
+	// corner at the turn the perpendicular alone; the miter averages the two crosses into
+	// one bisector the corner extends along, the quarter turn's own half a sqrt of two
+	// over, the limit flooring a turn sharper than its angle back to the bevel
+	{
+		glsl::ParticleEmitterData bevel = emitter;
+		bevel.flags &= ~static_cast<uint32_t>(XL_PARTICLE_FLAG_RIBBON_MITER);
+		glsl::ParticleData turned;
+		::memset(&turned, 0, sizeof(turned));
+		turned.scale = 1.0f;
+		turned.position = glsl::vec2(40.0f, 40.0f);
+		turned.color = glsl::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+		glsl::vec2 perp = glsl::vec2(0.0f, 1.0f); // the incoming segment's cross, the x axis turned up
+		float k = 0.0f;
+		glsl::vec2 corner = glsl::particleRibbonJoin(bevel, glsl::vec2(-1.0f, 0.0f), perp, k);
+		checkNear(corner.x, -1.0f, "ribbon join: the bevel keeps the segment's own cross");
+		checkNear(corner.y, 0.0f, "ribbon join: the bevel's cross carries no neighbour");
+		checkNear(k, 1.0f, "ribbon join: the bevel's corner takes no extension");
+
+		glsl::ParticleEmitterData mitered = bevel;
+		mitered.flags |= XL_PARTICLE_FLAG_RIBBON_MITER;
+		corner = glsl::particleRibbonJoin(mitered, glsl::vec2(-1.0f, 0.0f), perp, k);
+		float halfSqrtTwo = 1.0f / 1.4142135623730951f;
+		checkNear(corner.x, -halfSqrtTwo,
+				"ribbon join: the miter's bisector averages the quarter turn's crosses");
+		checkNear(corner.y, halfSqrtTwo,
+				"ribbon join: the miter's bisector carries both crosses' share");
+		checkNear(k, 1.4142135623730951f,
+				"ribbon join: the quarter turn's corner extends by its own cosine");
+		// the reversal: the two crosses' sum vanishes, the bevel's own cross the answer
+		corner = glsl::particleRibbonJoin(mitered, glsl::vec2(-1.0f, 0.0f), glsl::vec2(1.0f, 0.0f), k);
+		checkNear(corner.x, -1.0f,
+				"ribbon join: the full reversal falls back to the bevel's own cross");
+		checkNear(k, 1.0f, "ribbon join: the reversal's corner takes no extension");
+		// the limit: a turn of a hundred and sixty degrees sinks the bisector's own
+		// cosine under the limit's fourth, the bevel the answer; a seventy degree turn
+		// stands past it, the miter its own extension
+		glsl::vec2 sharp = glsl::vec2(0.9396926f, 0.3420201f);
+		corner = glsl::particleRibbonJoin(mitered, glsl::vec2(-1.0f, 0.0f), sharp, k);
+		check(corner.x == -1.0f && corner.y == 0.0f && k == 1.0f,
+				"ribbon join: a turn past the limit's angle answers the bevel");
+		glsl::vec2 wide = glsl::vec2(-0.3420201f, 0.9396926f);
+		corner = glsl::particleRibbonJoin(mitered, glsl::vec2(-1.0f, 0.0f), wide, k);
+		checkNear(corner.x, -0.8191520f,
+				"ribbon join: the wide turn's bisector carries both crosses' share");
+		checkNear(corner.y, 0.5735764f,
+				"ribbon join: the wide turn's bisector keeps the y share");
+		checkNear(k, 1.2207746f,
+				"ribbon join: the wide turn's corner extends by its own cosine");
+	}
+
+	// The band's own numbers answer finite at every degenerate shape: the zero-length
+	// segment folds every station onto its point, the zero width flattens the cross, the
+	// reversal's join carries no NaN
+	{
+		glsl::ParticleEmitterData mitered = emitter;
+		mitered.flags |= XL_PARTICLE_FLAG_RIBBON_MITER;
+		glsl::ParticleData still = a;
+		glsl::ParticleRibbonBand folded;
+		glsl::particleRibbonStripBand(a, still, mitered, glsl::vec2(0.0f, 0.0f), glsl::vec2(0.0f, 0.0f),
+				0.0f, 1.0f, folded);
+		bool finite = true;
+		for (uint32_t s = 0; s < folded.count; ++s) {
+			const auto &station = folded.stations[s];
+			finite = finite && std::isfinite(station.bottom.x) && std::isfinite(station.bottom.y)
+					&& std::isfinite(station.top.x) && std::isfinite(station.top.y)
+					&& std::isfinite(station.center.x) && std::isfinite(station.color.w);
+		}
+		check(finite, "ribbon: the zero-length segment's band answers numbers");
+		checkNear(folded.stations[2].center.x, 0.0f,
+				"ribbon: the zero-length segment folds its stations onto the point");
+	}
+
+	// The trail mode's own band: the seats oldest first and the current position last, the
+	// u ladder climbing from the oldest point's zero to the current's one, one scale and
+	// one tint the whole band carries. The history seats the trailWidth word feeds: an
+	// emitter without it seats no history, and the band's own walks fold the birth point's
+	// own seats
+	{
+		glsl::ParticleEmitterData trailed = emitter;
+		trailed.flags |= XL_PARTICLE_FLAG_RIBBON_TRAIL;
+		trailed.trailWidth = 4.0f;
+		Single walker(glsl::vec2(0.0f, 0.0f));
+		walker.data = trailed;
+		walker.data.count = 1;
+		walker.data.flags |= XL_PARTICLE_FLAG_LOCAL_COORDS;
+		s_points[0] = glsl::vec2(0.0f, 0.0f);
+		s_pointCount = 1;
+		walker.tick();
+		for (uint32_t i = 0; i < 8; ++i) { walker.tick(); }
+		s_pointCount = 0;
+		const auto &particle = walker.p();
+		glsl::ParticleRibbonBand trailBand;
+		glsl::particleRibbonTrailBand(particle, walker.data, trailBand);
+		checkEq(trailBand.count, XL_PARTICLE_TRAIL_SEATS + 1u,
+				"ribbon: the trail band carries the history's own points");
+		checkNear(trailBand.stations[trailBand.count - 1u].center.x, particle.position.x,
+				"ribbon: the trail band's last point is the current position");
+		checkNear(trailBand.stations[0].center.x, particle.trail[XL_PARTICLE_TRAIL_SEATS - 1u].x,
+				"ribbon: the trail band's first point is the oldest seat");
+		checkNear(trailBand.stations[4].center.x, particle.trail[XL_PARTICLE_TRAIL_SEATS - 5u].x,
+				"ribbon: the trail band's middle point is its own seat");
+		checkNear(trailBand.stations[0].u, 0.0f,
+				"ribbon: the trail band's u ladder opens at the oldest point");
+		checkNear(trailBand.stations[trailBand.count - 1u].u, 1.0f,
+				"ribbon: the trail band's u ladder closes at the current position");
+		checkNear(trailBand.stations[trailBand.count - 1u].bottom.y,
+				-20.0f * particle.scale * 0.5f,
+				"ribbon: the trail band's cross carries the width curve's own taper");
+
+		// the trail band is the step's own draw word: the seats the history feeds stand
+		// where the step left them, the band reading them alone
+		glsl::ParticleData plainParticle = particle;
+		trailed.flags &= ~static_cast<uint32_t>(XL_PARTICLE_FLAG_RIBBON_TRAIL);
+		glsl::particleRibbonTrailBand(particle, trailed, trailBand);
+		check(::memcmp(&plainParticle, &particle, sizeof(glsl::ParticleData)) == 0,
+				"ribbon: the band's own walk reads the history, the particle stands");
+	}
+
+	// The ribbon's words are draw words: the step births and keeps the same particles, and
+	// the bit's absence keeps the plain strip's segment byte for byte
+	{
+		Single plainRibbon;
+		plainRibbon.data.flags |= XL_PARTICLE_FLAG_LOCAL_COORDS | XL_PARTICLE_FLAG_RIBBON;
+		plainRibbon.data.ribbonWidthCurveOffset = writeCurve(30, 1, {20.0f, 60.0f});
+		plainRibbon.data.ribbonColorCurveOffset = writeCurve(34, 4, {1.0f, 0.5f, 1.0f, 1.0f});
+		Single bare = plainRibbon;
+		bare.data.flags &= ~static_cast<uint32_t>(XL_PARTICLE_FLAG_RIBBON);
+		bare.data.ribbonWidthCurveOffset = 0;
+		bare.data.ribbonColorCurveOffset = 0;
+		plainRibbon.run(30);
+		bare.run(30);
+		check(plainRibbon.p().position.x == bare.p().position.x
+						&& plainRibbon.p().position.y == bare.p().position.y
+						&& plainRibbon.p().currentLifetime == bare.p().currentLifetime,
+				"ribbon: the band moves no particle field, the step the step always was");
+		glsl::vec2 sbl;
+		glsl::vec2 stl;
+		glsl::vec2 str;
+		glsl::vec2 sbr;
+		{
+			glsl::ParticleEmitterData stripEmitter;
+			::memset(&stripEmitter, 0, sizeof(stripEmitter));
+			stripEmitter.stripWidth = 8.0f;
+			glsl::ParticleData pa;
+			glsl::ParticleData pb;
+			::memset(&pa, 0, sizeof(pa));
+			::memset(&pb, 0, sizeof(pb));
+			pa.scale = 1.0f;
+			pb.scale = 1.0f;
+			pa.position = glsl::vec2(-20.0f, 0.0f);
+			pb.position = glsl::vec2(20.0f, 0.0f);
+			glsl::particleStripSegment(pa, pb, stripEmitter, sbl, stl, str, sbr);
+		}
+		checkNear(sbl.y, -4.0f,
+				"ribbon: the plain strip's own segment stands beneath the bit's absence");
+	}
+}
+
 int main(int argc, const char *argv[]) {
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);
@@ -2333,6 +2626,7 @@ int main(int argc, const char *argv[]) {
 	testUvRect();
 	testCorners();
 	testRingMaskUv();
+	testRibbon();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 
