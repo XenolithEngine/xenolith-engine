@@ -773,6 +773,19 @@ SP_GLSL_INLINE float particleRingFade(SP_GLSL_IN(ParticleEmitterData) emitter, f
 	return clamp(alpha, 0.0f, 1.0f);
 }
 
+// The builtin mask's own coordinates on the ring: the vertex's offset from the particle's
+// centre in units of the drawn outer radius, mapped to [0, 1] so the fragment's p = uv*2 - 1
+// reads the offset again - the mask's shape laid over the ring's own extent, the disc's
+// boundary at the outer edge, every angle of one band edge sharing the sample the radius
+// stands at. The unwrapped window the texture would sample is not the mask's space: u along
+// the arc and v across the band name a place on the unrolled strip, not a distance from the
+// centre, and the mask's shapes are named for the figure they cut, not for the place they
+// land on. The outer radius floors at a fourth of a thousandth so a degenerate scale answers
+// numbers and never divides by zero
+SP_GLSL_INLINE vec2 particleRingMaskUv(vec2 point, vec2 center, float outer) {
+	return (point - center) / (2.0f * max(outer, 1.0e-4f)) + 0.5f;
+}
+
 // The strip's own quad between two birth-adjacent particles, Effekseer's ribbon taken in the
 // screen plane: the segment's own perpendicular carries the width, the plain band the simplest
 // ribbon draws - no mitered join, each segment its own cross direction, so a turn leaves the

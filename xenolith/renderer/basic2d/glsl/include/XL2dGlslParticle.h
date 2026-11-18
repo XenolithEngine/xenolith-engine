@@ -46,6 +46,14 @@ using namespace sprt::glsl;
 // it: the child's parenting rides the document's envelope, not the system's words
 #define XL_PARTICLE_FLAG_PARENT_BOUND 32
 
+// ParticleEmitterData::flags, the draw-side reading of the builtin quad mask: the emitter's
+// texture word carries {"builtin": ...} instead of a sampled image, so the ring's vertices hand
+// the fragment the mask's own coordinates - the offset from the particle's centre in units of the
+// drawn outer radius - instead of the texture window the draw would sample. The bit is
+// emitter-set beside the material's own mask words, unnamed in ParticleSystem's flag word list,
+// so no document carries it
+#define XL_PARTICLE_FLAG_BUILTIN_MASK 64
+
 // ParticleEmitterData::emissionType, the same values as basic2d::ParticleEmissionType
 #define XL_PARTICLE_EMISSION_POINTS 0
 #define XL_PARTICLE_EMISSION_DISC 1

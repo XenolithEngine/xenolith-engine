@@ -2267,6 +2267,34 @@ static void testCorners() {
 			"corners: the shape moves no particle field, the step the step always was");
 }
 
+// The builtin mask's own coordinates on the ring, the fix stage's reading: the offset from
+// the particle's centre in units of the drawn outer radius, mapped to [0, 1] so the
+// fragment's p = uv*2 - 1 reads the offset again - the shape laid over the drawn extent, the
+// disc's boundary at the outer edge, not the unwrapped window the texture would sample
+static void testRingMaskUv() {
+	const glsl::vec2 center(0.0f, 0.0f);
+	// the centre itself sits at the window's middle, the fragment's p = (0, 0)
+	auto uv = glsl::particleRingMaskUv(center, center, 60.0f);
+	checkNear(uv.x, 0.5f, "ring mask uv: the centre reads the window's own middle (x)");
+	checkNear(uv.y, 0.5f, "ring mask uv: the centre reads the window's own middle (y)");
+	// the outer edge lands on the window's boundary, the mask's shape cut where it ends
+	uv = glsl::particleRingMaskUv(glsl::vec2(60.0f, 0.0f), center, 60.0f);
+	checkNear(uv.x, 1.0f, "ring mask uv: the drawn outer radius reads the window's own edge");
+	checkNear(uv.y, 0.5f, "ring mask uv: the axis' own y stands at the middle");
+	// half the drawn outer radius - the mask's smoothstep reads the radius fraction, the
+	// same value every angle of that band edge shares
+	uv = glsl::particleRingMaskUv(glsl::vec2(-30.0f, 0.0f), center, 60.0f);
+	checkNear(uv.x, 0.25f, "ring mask uv: half the radius reads a quarter of the window");
+	// the drawn radius is the word the curve and the scale left standing, so the same
+	// screen offset reads differently when the ring itself stands larger
+	uv = glsl::particleRingMaskUv(glsl::vec2(60.0f, 0.0f), center, 120.0f);
+	checkNear(uv.x, 0.75f, "ring mask uv: the offset reads in units of the drawn radius");
+	// a degenerate outer answers numbers, never a division by zero
+	uv = glsl::particleRingMaskUv(glsl::vec2(0.0f, 0.0f), center, 0.0f);
+	checkNear(uv.x, 0.5f, "ring mask uv: the degenerate radius keeps the centre at the middle (x)");
+	checkNear(uv.y, 0.5f, "ring mask uv: the degenerate radius keeps the centre at the middle (y)");
+}
+
 int main(int argc, const char *argv[]) {
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);
@@ -2304,6 +2332,7 @@ int main(int argc, const char *argv[]) {
 	testAngleCurve();
 	testUvRect();
 	testCorners();
+	testRingMaskUv();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 

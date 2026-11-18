@@ -55,6 +55,12 @@ enum class ParticleSystemFlags : uint32_t {
 	// ately absent from the flag word list below - no document carries it; the host sets the bit
 	// on its own copy of the words
 	ParentBound = 1 << 5,
+	// The draw-side reading of the builtin quad mask (Particle-19's texture word carrying
+	// {"builtin": ...}): the ring's vertices hand the fragment the mask's own coordinates
+	// instead of the texture window the draw would sample. Emitter-set beside the material's
+	// own mask words, deliberately absent from the flag word list below - no document carries
+	// it; the emitter sets the bit on the system it draws from
+	BuiltinMask = 1 << 6,
 };
 
 SP_DEFINE_ENUM_AS_MASK(ParticleSystemFlags)

@@ -246,6 +246,11 @@ void main() {
 	const float vIn = uv1.y;
 	const float vOut = uv0.y;
 	const float vMid = 0.5f * (vIn + vOut);
+	// The builtin mask rides its own coordinates: the vertices hand the fragment the offset
+	// from the particle's centre in units of the drawn outer radius - the mask's shape laid
+	// over the ring's own extent - while the texture's unwrapped window stands for the draw
+	// that samples one
+	const bool masked = (emitter.flags & XL_PARTICLE_FLAG_BUILTIN_MASK) != 0u;
 	const uint corners = particleRingCorners(emitter);
 	uint at = vertexOffset;
 	for (uint s = 0u; s < corners; ++s) {
@@ -259,6 +264,12 @@ void main() {
 		const vec2 midB = particleRingPoint(particle, emitter, f1, rMid);
 		const vec2 outA = particleRingPoint(particle, emitter, f0, rOut);
 		const vec2 outB = particleRingPoint(particle, emitter, f1, rOut);
+		const vec2 uvInA = masked ? particleRingMaskUv(inA, particle.position, rOut) : vec2(u0, vIn);
+		const vec2 uvMidA = masked ? particleRingMaskUv(midA, particle.position, rOut) : vec2(u0, vMid);
+		const vec2 uvOutA = masked ? particleRingMaskUv(outA, particle.position, rOut) : vec2(u0, vOut);
+		const vec2 uvInB = masked ? particleRingMaskUv(inB, particle.position, rOut) : vec2(u1, vIn);
+		const vec2 uvMidB = masked ? particleRingMaskUv(midB, particle.position, rOut) : vec2(u1, vMid);
+		const vec2 uvOutB = masked ? particleRingMaskUv(outB, particle.position, rOut) : vec2(u1, vOut);
 		const vec4 cIn = color * bandIn;
 		const vec4 cMid = color * bandMid;
 		const vec4 cOut = color * bandOut;
@@ -276,19 +287,19 @@ void main() {
 		const vec4 cOutB = vec4(cOut.x, cOut.y, cOut.z, cOut.w * fadeB);
 		// the inner band: the quad's (bl, tl, br, tr, br, tl) with the inner edge as its
 		// bottom row and the middle as its top
-		writeVertex(vertexBuffer, at + 0u, inA, vec2(u0, vIn), cInA, frame.materialIndex);
-		writeVertex(vertexBuffer, at + 1u, midA, vec2(u0, vMid), cMidA, frame.materialIndex);
-		writeVertex(vertexBuffer, at + 2u, inB, vec2(u1, vIn), cInB, frame.materialIndex);
-		writeVertex(vertexBuffer, at + 3u, midB, vec2(u1, vMid), cMidB, frame.materialIndex);
-		writeVertex(vertexBuffer, at + 4u, inB, vec2(u1, vIn), cInB, frame.materialIndex);
-		writeVertex(vertexBuffer, at + 5u, midA, vec2(u0, vMid), cMidA, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 0u, inA, uvInA, cInA, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 1u, midA, uvMidA, cMidA, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 2u, inB, uvInB, cInB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 3u, midB, uvMidB, cMidB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 4u, inB, uvInB, cInB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 5u, midA, uvMidA, cMidA, frame.materialIndex);
 		// the outer band: the middle edge as its bottom row and the outer as its top
-		writeVertex(vertexBuffer, at + 6u, midA, vec2(u0, vMid), cMidA, frame.materialIndex);
-		writeVertex(vertexBuffer, at + 7u, outA, vec2(u0, vOut), cOutA, frame.materialIndex);
-		writeVertex(vertexBuffer, at + 8u, midB, vec2(u1, vMid), cMidB, frame.materialIndex);
-		writeVertex(vertexBuffer, at + 9u, outB, vec2(u1, vOut), cOutB, frame.materialIndex);
-		writeVertex(vertexBuffer, at + 10u, midB, vec2(u1, vMid), cMidB, frame.materialIndex);
-		writeVertex(vertexBuffer, at + 11u, outA, vec2(u0, vOut), cOutA, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 6u, midA, uvMidA, cMidA, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 7u, outA, uvOutA, cOutA, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 8u, midB, uvMidB, cMidB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 9u, outB, uvOutB, cOutB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 10u, midB, uvMidB, cMidB, frame.materialIndex);
+		writeVertex(vertexBuffer, at + 11u, outA, uvOutA, cOutA, frame.materialIndex);
 		at += 12u;
 		}
 		return;

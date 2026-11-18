@@ -144,6 +144,17 @@ void ParticleEmitter::setQuadMask(ParticleQuadMask shape, float ringThickness,
 	_quadMask = shape;
 	_maskThickness = ringThickness;
 	_maskSoftness = ringSoftness;
+	// The ring's compute reads the mask's presence through the system's own flag word: the
+	// vertices it writes carry the mask's coordinates instead of the sampled window, the
+	// fragment's p = uv*2-1 reading them back, so the shape's cut follows the drawn geometry
+	// rather than the unwrapped band the texture would sample
+	if (_system) {
+		if (_quadMask != ParticleQuadMask::None) {
+			_system->addFlags(ParticleSystemFlags::BuiltinMask);
+		} else {
+			_system->clearFlags(ParticleSystemFlags::BuiltinMask);
+		}
+	}
 	// The mask picks the particle fragment's own pipeline, which the material carries
 	markMaterialDirty();
 }
