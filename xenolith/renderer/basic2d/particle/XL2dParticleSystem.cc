@@ -1815,6 +1815,29 @@ void ParticleSystem::setWarm(float seconds) {
 
 float ParticleSystem::getWarm() const { return _data->warm; }
 
+void ParticleSystem::setHostDriven(bool value) {
+	if (_data->hostDriven == value) {
+		return;
+	}
+	mutate().hostDriven = value;
+}
+
+bool ParticleSystem::isHostDriven() const { return _data->hostDriven; }
+
+void ParticleSystem::publishHostState(SpanView<ParticleData> particles, uint32_t cycle,
+		uint32_t genframe, uint32_t nframes) {
+	// Copy-on-write the standing object a frame the renderer still reads may hold, but the
+	// particles move under their own generation: paramsGeneration stands, so the pass
+	// re-uploads the particle buffer alone and never the system data - the per-frame cost of
+	// a host-driven schedule is the particles' own bytes, not the emitter's
+	copy();
+	_data->hostParticles.assign(particles.begin(), particles.end());
+	_data->hostCycle = cycle;
+	_data->hostGenframe = genframe;
+	_data->hostNframes = nframes;
+	++_data->particlesGeneration;
+}
+
 uint64_t ParticleSystem::getParamsGeneration() const { return _data->paramsGeneration; }
 
 uint64_t ParticleSystem::getRestartGeneration() const { return _data->restartGeneration; }
@@ -1851,6 +1874,12 @@ Rc<ParticleSystemData> ParticleSystem::dup() {
 	data->hasSeed = _data->hasSeed;
 	data->warm = _data->warm;
 	data->particleSize = _data->particleSize;
+	data->hostDriven = _data->hostDriven;
+	data->particlesGeneration = _data->particlesGeneration;
+	data->hostParticles = _data->hostParticles;
+	data->hostCycle = _data->hostCycle;
+	data->hostGenframe = _data->hostGenframe;
+	data->hostNframes = _data->hostNframes;
 	return data;
 }
 

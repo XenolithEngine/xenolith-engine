@@ -170,6 +170,23 @@ struct SP_PUBLIC ParticleSystemData : public Ref {
 	// As set by the user; data.sizeValue and data.sizeNormal are derived from it
 	Size2 particleSize;
 
+	// The host-driven schedule's own seat, Vfx-3: when hostDriven stands, the pass stops
+	// advancing this system's clock - the host's own scheduler owns the step - and the
+	// particles the host published are the standing state the update dispatch rewrites the
+	// vertex seats from (its nframes-zero shape, which ages nothing and draws what stands).
+	// The particles ride their own generation: a publish moves it alone, paramsGeneration and
+	// the system-data upload it gates stand where the last parameter change left them, so a
+	// per-frame publish is never a per-frame system-data re-upload. The cycle/genframe pair is
+	// the host scheduler's own frame - the pass seats the draw's newest word from it, so the
+	// lifetime slot rotation and the strip walk read the frame the host stands at - and
+	// hostNframes is the steps the publish paid, the feedback's own answer
+	bool hostDriven = false;
+	uint64_t particlesGeneration = 0;
+	Vector<ParticleData> hostParticles;
+	uint32_t hostCycle = 0;
+	uint32_t hostGenframe = 0;
+	uint32_t hostNframes = 0;
+
 	ParticleSystemData() { ::__sprt_memset(&data, 0, sizeof(ParticleEmitterData)); }
 
 	// The extra data buffer at ParticleEmitterData::emissionData:
@@ -646,6 +663,22 @@ public:
 	// fresh system carries, and encode() writes the field only when it is not that default
 	void setWarm(float);
 	float getWarm() const;
+
+	// The host-driven schedule, Vfx-3: hostDriven hands the step to the host - the pass stops
+	// advancing this system's clock and draws the particles the host publishes instead of the
+	// ones its own schedule would have seated. The mode is a parameter change, a rebuild's own
+	// word; the per-frame publish below is not. The words the document carries never name it:
+	// the mode is the host's own decision, the way the parent-bound bit is the sim's
+	void setHostDriven(bool value);
+	bool isHostDriven() const;
+
+	// One publish of the host's standing state: the particles, the host scheduler's own
+	// cycle/genframe pair, and the steps this publish paid. Copy-on-write like every setter,
+	// so a frame the renderer still reads keeps its own object, but the particles ride their
+	// own generation - paramsGeneration stands, and the pass re-uploads the particle buffer
+	// alone
+	void publishHostState(SpanView<ParticleData>, uint32_t cycle, uint32_t genframe,
+			uint32_t nframes);
 
 	uint64_t getParamsGeneration() const;
 	uint64_t getRestartGeneration() const;

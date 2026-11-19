@@ -95,6 +95,9 @@ public:
 		uint64_t systemId = 0;
 		uint64_t paramsGeneration = 0;
 		uint64_t restartGeneration = 0;
+		// The particle-buffer generation the GPU holds; a host-driven emitter's publishes move
+		// the system's own word, and 0 is the never-staged state an invalidated frame returns to
+		uint64_t particlesGeneration = 0;
 		Size2 defaultSize;
 
 		bool needsEmitterUpload = true;

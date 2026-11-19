@@ -281,7 +281,34 @@ void ParticlePersistentData::update(DeviceMemoryPool *pool, FrameContextHandle2d
 		e.systemData = s;
 
 		FrameEmitter frame;
-		frame.uploads = e.needsEmitterUpload || e.initStart < e.count;
+
+		// The host-driven schedule, Vfx-3: the host's own scheduler owns the step, so the pass
+		// reads no clock and pays no steps - the update dispatch runs in its nframes-zero
+		// shape, aging nothing and rewriting the vertex seats from the particles the host
+		// published. The host's cycle/genframe seat the draw the way the pass's own words
+		// would: the newest word the lifetime slot rotation and the strip walk read answers
+		// the frame the host stands at, not the zero a never-advanced clock would hold. The
+		// particle buffer rides its own generation - the publish's, never paramsGeneration -
+		// so a frame's staging is the particles' bytes alone
+		bool stageHost = false;
+		if (s->hostDriven) {
+			e.frame = s->hostGenframe;
+			e.cycle = s->hostCycle;
+			glsl::particleAdvanceFrame(e.frame, e.cycle, glsl::particleCycleFrames(s->data), 0);
+
+			if (e.particlesGeneration != s->particlesGeneration
+					&& s->hostParticles.size() >= s->data.count) {
+				ParticlePersistentData_addStaging(pool, staging, e.particles,
+						sizeof(ParticleData) * s->data.count, 0,
+						[&](uint8_t *ptr, VkDeviceSize size) {
+					::__sprt_memcpy(ptr, s->hostParticles.data(), size);
+				});
+				e.particlesGeneration = s->particlesGeneration;
+				stageHost = true;
+			}
+		}
+
+		frame.uploads = e.needsEmitterUpload || e.initStart < e.count || stageHost;
 
 		writeUploads(pool, e, info.second, staging);
 
@@ -302,11 +329,16 @@ void ParticlePersistentData::update(DeviceMemoryPool *pool, FrameContextHandle2d
 		frame.seed = e.phaseSeed;
 		frame.vertexOffset = vertexOffset;
 
-		// a frame built before the latest one (a screenshot, another window) simulates nothing
-		frame.nframes = glsl::particleAdvanceClock(e.clock, ctx->clock, s->data.frameInterval,
-				info.second.maxFramesPerCall);
+		if (s->hostDriven) {
+			// no clock, no steps: the host paid them, and the publish says how many
+			frame.nframes = 0;
+		} else {
+			// a frame built before the latest one (a screenshot, another window) simulates nothing
+			frame.nframes = glsl::particleAdvanceClock(e.clock, ctx->clock, s->data.frameInterval,
+					info.second.maxFramesPerCall);
 
-		glsl::particleAdvanceFrame(e.frame, e.cycle, framesInGen, frame.nframes);
+			glsl::particleAdvanceFrame(e.frame, e.cycle, framesInGen, frame.nframes);
+		}
 
 		frame.sequence = _frameSequence;
 		frame.restartGeneration = e.restartGeneration;
@@ -345,7 +377,10 @@ void ParticlePersistentData::writeUploads(DeviceMemoryPool *pool, EmitterData &e
 		e.needsEmitterUpload = false;
 	}
 
-	if (e.initStart < e.count) {
+	// A host-driven emitter's buffer is the host's own state: the rng seeding below would
+	// stage a fresh buffer the host's publish overwrites in the same frame, so the host
+	// upload is the only initialization this emitter pays
+	if (!s->hostDriven && e.initStart < e.count) {
 		auto first = e.initStart;
 		auto n = e.count - first;
 		glsl::pcg16_state_t firstRng;
@@ -373,6 +408,9 @@ void ParticlePersistentData::invalidate(SpanView<FrameEmitter> emitters) {
 		if (eIt != _emitters.end() && eIt->second.particles == it.particles) {
 			eIt->second.needsEmitterUpload = true;
 			eIt->second.initStart = 0;
+			// a host-driven frame's lost particle staging replays the same way: 0 is the
+			// never-staged generation the next frame stages against
+			eIt->second.particlesGeneration = 0;
 		}
 	}
 }
@@ -739,6 +777,7 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 	}
 
 	recordFeedback(queue, buf, memPool, emitters, feedbackRecords);
+
 }
 
 void ParticlePass::recordFeedback(core::FrameQueue &queue, vk::CommandBuffer &buf,
@@ -792,7 +831,9 @@ void ParticlePass::recordFeedback(core::FrameQueue &queue, vk::CommandBuffer &bu
 		feedback.cycle = e.nextCycle;
 		feedback.cycleFrame = e.nextGenframe;
 		feedback.framesInGen = e.framesInGen;
-		feedback.nframes = e.nframes;
+		// A host-driven frame simulated no steps of its own: the steps the host's scheduler
+		// paid are the publish's own word, the answer the report owes its reader
+		feedback.nframes = e.systemData->hostDriven ? e.systemData->hostNframes : e.nframes;
 
 		// Read on the loop thread once the frame's commands have run; the buffers live in the
 		// frame's pool, which has to outlive them
