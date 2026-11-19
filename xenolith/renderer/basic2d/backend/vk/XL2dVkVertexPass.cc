@@ -548,7 +548,7 @@ void VertexPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 the frame copy. Spans carry absolute firstIndex/vertexOffset/firstInstance and nothing depends on
 iteration order, so two runs equal one run over the concatenation. */
 void VertexPassHandle::drawSpans(core::MaterialSet *materials, CommandBuffer &buf,
-		SpanView<VertexSpan> spans, DistortFilter filter) {
+		SpanView<VertexSpan> spans, DistortFilter filter, bool skipEmitters) {
 	auto commands = _vertexBuffer->getCommands();
 	auto pass = static_cast<RenderPass *>(_data->impl.get());
 
@@ -606,6 +606,12 @@ void VertexPassHandle::drawSpans(core::MaterialSet *materials, CommandBuffer &bu
 			return;
 		}
 		if (filter == DistortFilter::OnlyDistort && !distorted) {
+			return;
+		}
+		// the HDR world's own routing, Vfx-2: a posted frame's scene subpass draws everything
+		// but the world - the world's light lives in its own floating-point target and the
+		// tonemap composite returns it
+		if (skipEmitters && materialVertexSpan.particleEmitterId != 0) {
 			return;
 		}
 

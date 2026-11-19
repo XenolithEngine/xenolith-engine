@@ -32,6 +32,7 @@
 #include <sprt/cxx/cmath>
 
 #include "XL2dGlslParticleSim.h"
+#include "XL2dGlslBloom.h"
 
 namespace glsl = stappler::glsl;
 
@@ -2588,6 +2589,72 @@ static void testRibbon() {
 	}
 }
 
+
+// The HDR bloom's own numbers, Vfx-2: the shared header's helpers the composite fragment
+// runs, read here as the CPU reference - the threshold's hue-preserving scale, the tonemap's
+// shapes, the kernel's own normalization
+static void testBloom() {
+	using glsl::vec3;
+	// the threshold factor: below the threshold answers zero, above it the share above
+	auto f = [](vec3 c, float t) { return glsl::bloomBrightFactor(c, t); };
+	check(f(vec3(0.4f, 0.4f, 0.4f), 0.5f) == 0.0f,
+			"bloom: a pixel below the threshold brights zero");
+	check(f(vec3(0.5f, 0.5f, 0.5f), 0.5f) == 0.0f,
+			"bloom: a pixel at the threshold brights zero");
+	check(f(vec3(0.0f, 0.0f, 0.0f), 0.5f) == 0.0f, "bloom: a black pixel brights zero");
+
+	float k = f(vec3(1.0f, 1.0f, 1.0f), 0.5f);
+	check(near(k, 0.5f), "bloom: the factor above the threshold is the share above");
+
+	// the hue's own preservation: the factor multiplies every channel alike, so a red
+	// source keeps its red ratio and a cyan source its cyan ratio at any threshold
+	vec3 red(4.0f, 0.0f, 0.0f);
+	vec3 cyan(0.0f, 4.0f, 4.0f);
+	float kr = f(red, 0.5f);
+	float kc = f(cyan, 0.5f);
+	vec3 scaledRed = red * kr;
+	vec3 scaledCyan = cyan * kc;
+	check(scaledRed.y == 0.0f && scaledRed.z == 0.0f, "bloom: the scaled red keeps its hue");
+	check(near(scaledCyan.x, 0.0f) && near(scaledCyan.y, scaledCyan.z),
+			"bloom: the scaled cyan keeps its hue");
+
+	// equal-luminance red and cyan: the luma weights read the same number for both, and the
+	// scaled halos answer the same luminance with the hues intact
+	// one luma: red carries all its weight in the 0.2126 seat, cyan in the 0.7152+0.0722
+	// pair, so the cyan magnitude is the red magnitude divided by the pair's share
+	float lumR = glsl::bloomLuma(vec3(4.704f, 0.0f, 0.0f));
+	float lumC = glsl::bloomLuma(vec3(0.0f, 1.2703f, 1.2703f));
+	check(near(lumR, lumC), "bloom: equal-luminance sources read one luma");
+
+	// the tonemap: linear at the dim end, compressing the bright end into the framebuffer's
+	// own range, monotonic, and the white point the fixed constant names
+	float w = XL_PARTICLE_BLOOM_WHITE;
+	auto tm = [](float c) { return glsl::bloomTonemap(vec3(c, c, c)).x; };
+	check(tm(0.0f) == 0.0f, "bloom: the tonemap keeps zero at zero");
+	check(near(tm(0.01f), 0.01f), "bloom: the tonemap is near linear at the dim end");
+	check(tm(1.0f) < 1.0f, "bloom: the tonemap compresses one below the dim source");
+	check(near(tm(w), 1.0f), "bloom: the tonemap maps the white point to one");
+	check(tm(w * 4.0f) > tm(w), "bloom: the tonemap keeps rising past the white point");
+	check(tm(2.0f) > tm(1.0f) && tm(4.0f) > tm(2.0f), "bloom: the tonemap is monotonic");
+
+	// the per-channel tonemap keeps a pure hue pure: red in, red out, the ratios intact
+	vec3 tmRed = glsl::bloomTonemap(red * 0.9f);
+	check(tmRed.y == 0.0f && tmRed.z == 0.0f, "bloom: the tonemap keeps a pure hue pure");
+
+	// the kernel's own weights: the three scales sum to one, so a constant bloom source
+	// answers itself and the kernel adds no energy
+	float weights[XL_PARTICLE_BLOOM_LEVELS] = {XL_PARTICLE_BLOOM_WEIGHTS};
+	float sum = 0.0f;
+	int radii[XL_PARTICLE_BLOOM_LEVELS] = {XL_PARTICLE_BLOOM_RADII};
+	for (int i = 0; i < XL_PARTICLE_BLOOM_LEVELS; ++i) {
+		sum += weights[i];
+	}
+	check(near(sum, 1.0f), "bloom: the scales' weights sum to one");
+	check(radii[0] < radii[1] && radii[1] < radii[2], "bloom: the scales' radii grow");
+	check(radii[0] == 3 && radii[1] == 9 && radii[2] == 27, "bloom: the scales' radii are fixed");
+	check(XL_PARTICLE_BLOOM_TAPS == 8, "bloom: the kernel walks eight taps a scale");
+}
+
 int main(int argc, const char *argv[]) {
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);
@@ -2627,6 +2694,7 @@ int main(int argc, const char *argv[]) {
 	testCorners();
 	testRingMaskUv();
 	testRibbon();
+	testBloom();
 
 	sprt::cout << s_checks << " checks, " << s_failures << " failures\n";
 

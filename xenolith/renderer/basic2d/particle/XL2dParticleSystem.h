@@ -290,6 +290,15 @@ struct ParticleSystemRenderInfo {
 	// The blend mode the composite draw picks its pipeline by, a ParticleBlendMode value
 	uint32_t blendMode = 0;
 
+	// The HDR post switch, Vfx-2: non-zero moves the emitter's draw out of the scene subpass
+	// into the world's own floating-point target, which the bloom chain and the tonemap
+	// composite return to the frame. Zero draws the span the common way. Every emitter of one
+	// document carries the same document-level words, so the pass treats the switch as a
+	// frame-level one: any emitter with it moves the whole world into the target
+	uint32_t post = 0;
+	float bloomThreshold = 1.0f;
+	float bloomStrength = 1.0f;
+
 	// The node's velocity over the last frame - its origin displacement divided by the system's
 	// own dt, never a wall clock read - a newborn inherits its inheritVelocity share of; zero
 	// in every frame the node never moved

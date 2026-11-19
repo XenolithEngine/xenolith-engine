@@ -32,6 +32,7 @@
 #include "XL2dFrameContext.h"
 #include "XLVkTextureSet.h"
 #include "glsl/XL2dShaders.h"
+#include "glsl/include/XL2dGlslBloom.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d::vk {
 
@@ -146,8 +147,44 @@ bool ShadowPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilde
 		return Rc<vk::ImageAttachment>::create(builder,
 				ImageInfo(info.extent,
 						core::ForceImageUsage(core::ImageUsage::ColorAttachment
-								| core::ImageUsage::InputAttachment),
+										| core::ImageUsage::InputAttachment),
 						info.target->getCommonFormat()),
+				core::ImageAttachment::AttachmentInfo{
+					.initialLayout = AttachmentLayout::Undefined,
+					.finalLayout = AttachmentLayout::ShaderReadOnlyOptimal,
+					.clearOnLoad = true,
+					.clearColor = Color4F(0.0f, 0.0f, 0.0f, 0.0f)
+				});
+	});
+
+	// The HDR world's own accumulation, Vfx-2: the posted frame's emitters draw here instead
+	// of the scene subpass, linear and unclamped, the alpha accumulating premultiplied over
+	// the transparent black the clear leaves. The bright pass and the tonemap composite read
+	// it same-pixel, the blur chain the pair below walks the levels
+	_hdr = queueBuilder.addAttachemnt("ParticleHdr",
+			[&](AttachmentBuilder &builder) -> Rc<Attachment> {
+		return Rc<vk::ImageAttachment>::create(builder,
+				ImageInfo(info.extent,
+						core::ForceImageUsage(core::ImageUsage::ColorAttachment
+										| core::ImageUsage::InputAttachment
+										| core::ImageUsage::Sampled),
+						core::ImageFormat::R16G16B16A16_SFLOAT),
+				core::ImageAttachment::AttachmentInfo{
+					.initialLayout = AttachmentLayout::Undefined,
+					.finalLayout = AttachmentLayout::ShaderReadOnlyOptimal,
+					.clearOnLoad = true,
+					.clearColor = Color4F(0.0f, 0.0f, 0.0f, 0.0f)
+				});
+	});
+
+	_bloomA = queueBuilder.addAttachemnt("ParticleBloomA",
+			[&](AttachmentBuilder &builder) -> Rc<Attachment> {
+		return Rc<vk::ImageAttachment>::create(builder,
+				ImageInfo(info.extent,
+						core::ForceImageUsage(core::ImageUsage::ColorAttachment
+										| core::ImageUsage::InputAttachment
+										| core::ImageUsage::Sampled),
+						core::ImageFormat::R16G16B16A16_SFLOAT),
 				core::ImageAttachment::AttachmentInfo{
 					.initialLayout = AttachmentLayout::Undefined,
 					.finalLayout = AttachmentLayout::ShaderReadOnlyOptimal,
@@ -230,6 +267,18 @@ bool ShadowPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilde
 							| PipelineStage::FragmentShader,
 					AccessType::ColorAttachmentWrite | AccessType::InputAttachmantRead));
 
+	auto hdrAttachment = passBuilder.addAttachment(_hdr,
+			AttachmentDependencyInfo::make(PipelineStage::ColorAttachmentOutput
+							| PipelineStage::FragmentShader,
+					AccessType::ColorAttachmentWrite | AccessType::InputAttachmantRead
+							| AccessType::ShaderRead));
+
+	auto bloomAAttachment = passBuilder.addAttachment(_bloomA,
+			AttachmentDependencyInfo::make(PipelineStage::ColorAttachmentOutput
+							| PipelineStage::FragmentShader,
+					AccessType::ColorAttachmentWrite | AccessType::InputAttachmantRead
+							| AccessType::ShaderRead));
+
 	_particles = info.particleAttachment;
 
 	passBuilder.addAttachment(_vertexes);
@@ -274,6 +323,29 @@ bool ShadowPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilde
 			setBuilder.addDescriptor(colorAttachment, DescriptorType::SampledImage,
 					AttachmentLayout::General);
 			setBuilder.addDescriptor(distortAttachment, DescriptorType::InputAttachment,
+					AttachmentLayout::General);
+		});
+	});
+
+	// The HDR world chain's own layouts, Vfx-2: the bright draw reads the world same-pixel,
+	// the blur's two walks read their own half of the pair as sampled images, the composite
+	// reads the world and the last level same-pixel
+	auto layoutBloomBright =
+			passBuilder.addDescriptorLayout("LayoutBloomBright",
+					[&](PipelineLayoutBuilder &layoutBuilder) {
+		layoutBuilder.addSet([&](DescriptorSetBuilder &setBuilder) {
+			setBuilder.addDescriptor(hdrAttachment, DescriptorType::InputAttachment,
+					AttachmentLayout::General);
+		});
+	});
+
+	auto layoutBloomComposite =
+			passBuilder.addDescriptorLayout("LayoutBloomComposite",
+					[&](PipelineLayoutBuilder &layoutBuilder) {
+		layoutBuilder.addSet([&](DescriptorSetBuilder &setBuilder) {
+			setBuilder.addDescriptor(hdrAttachment, DescriptorType::InputAttachment,
+					AttachmentLayout::General);
+			setBuilder.addDescriptor(bloomAAttachment, DescriptorType::SampledImage,
 					AttachmentLayout::General);
 		});
 	});
@@ -536,6 +608,129 @@ bool ShadowPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilde
 						PipelineVariant::ParticleDistort}));
 	});
 
+	// The HDR world's own chain, Vfx-2: the world's emitter spans draw into the floating-point
+	// target under the material twins, the bright pass lifts what sits above the threshold,
+	// the three fixed levels of separable blur walk the pair, and the tonemap composite
+	// returns the world to the frame as a premultiplied pair. A frame without the post walks
+	// all of them empty, which is the old frame exactly
+	auto subpassBloomWorld = passBuilder.addSubpass([&](SubpassBuilder &subpassBuilder) {
+		subpassBuilder.addColor(hdrAttachment,
+				AttachmentDependencyInfo{
+					PipelineStage::ColorAttachmentOutput,
+					AccessType::ColorAttachmentWrite,
+					PipelineStage::ColorAttachmentOutput,
+					AccessType::ColorAttachmentWrite,
+					FrameRenderPassState::Submitted,
+				},
+				AttachmentLayout::General);
+
+		makeBloomMaterialPipelines(queueBuilder, subpassBuilder, layout2d);
+	});
+
+	auto bloomVert = queueBuilder.addProgramByRef("Loader_BloomVertByRef", shaders::PseudoSdfShadowVert);
+
+	auto subpassBloomBright = passBuilder.addSubpass([&](SubpassBuilder &subpassBuilder) {
+		subpassBuilder.addColor(bloomAAttachment,
+				AttachmentDependencyInfo{
+					PipelineStage::ColorAttachmentOutput,
+					AccessType::ColorAttachmentWrite,
+					PipelineStage::ColorAttachmentOutput,
+					AccessType::ColorAttachmentWrite,
+					FrameRenderPassState::Submitted,
+				},
+				AttachmentLayout::General);
+
+		subpassBuilder.addInput(hdrAttachment,
+				AttachmentDependencyInfo{
+					PipelineStage::FragmentShader,
+					AccessType::InputAttachmantRead,
+					PipelineStage::FragmentShader,
+					AccessType::ShaderWrite,
+					FrameRenderPassState::Submitted,
+				},
+				AttachmentLayout::General);
+
+		auto bloomBrightFrag =
+				queueBuilder.addProgramByRef("Loader_BloomBrightFrag", shaders::BloomBrightFrag);
+
+		subpassBuilder.addGraphicPipeline(ShadowPass::BloomBrightPipeline,
+				layoutBloomBright->defaultFamily,
+				Vector<SpecializationInfo>({
+					bloomVert,
+					bloomBrightFrag,
+				}),
+				PipelineMaterialInfo({BlendInfo(), DepthInfo()}));
+	});
+
+	auto subpassBloomComposite = passBuilder.addSubpass([&](SubpassBuilder &subpassBuilder) {
+		subpassBuilder.addColor(colorAttachment,
+				AttachmentDependencyInfo{
+					PipelineStage::ColorAttachmentOutput,
+					AccessType::ColorAttachmentWrite,
+					PipelineStage::ColorAttachmentOutput,
+					AccessType::ColorAttachmentWrite,
+					FrameRenderPassState::Submitted,
+				},
+				AttachmentLayout::General);
+
+		subpassBuilder.addInput(hdrAttachment,
+				AttachmentDependencyInfo{
+					PipelineStage::FragmentShader,
+					AccessType::InputAttachmantRead,
+					PipelineStage::FragmentShader,
+					AccessType::ShaderWrite,
+					FrameRenderPassState::Submitted,
+				},
+				AttachmentLayout::General);
+
+		subpassBuilder.addInput(bloomAAttachment,
+				AttachmentDependencyInfo{
+					PipelineStage::FragmentShader,
+					AccessType::ShaderRead,
+					PipelineStage::ColorAttachmentOutput,
+					AccessType::ColorAttachmentWrite,
+					FrameRenderPassState::Submitted,
+				},
+				AttachmentLayout::General);
+
+		auto bloomCompositeFrag = queueBuilder.addProgramByRef("Loader_BloomCompositeFrag",
+				shaders::BloomCompositeFrag);
+
+		// the premultiplied pair: a pixel with no world in it is a no-op, so the scene the
+		// earlier subpasses drew - the chrome among it - stands exactly what it was
+		subpassBuilder.addGraphicPipeline(ShadowPass::BloomCompositePipeline,
+				layoutBloomComposite->defaultFamily,
+				Vector<SpecializationInfo>({
+					bloomVert,
+					bloomCompositeFrag,
+				}),
+				PipelineMaterialInfo({BlendInfo(BlendFactor::One, BlendFactor::OneMinusSrcAlpha,
+											  BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
+											  BlendOp::Add),
+						DepthInfo()}));
+	});
+
+	// the world subpass settles the target the bright pass lifts and the composite returns
+	passBuilder.addSubpassDependency(subpassBloomWorld, PipelineStage::ColorAttachmentOutput,
+			AccessType::ColorAttachmentWrite, subpassBloomBright,
+			PipelineStage::FragmentShader, AccessType::InputAttachmantRead, true);
+
+
+	passBuilder.addSubpassDependency(subpassBloomWorld, PipelineStage::ColorAttachmentOutput,
+			AccessType::ColorAttachmentWrite, subpassBloomComposite,
+			PipelineStage::FragmentShader, AccessType::InputAttachmantRead, true);
+
+	// the bright pass's own write hands the bloom to the composite as a sampled read
+	passBuilder.addSubpassDependency(subpassBloomBright, PipelineStage::ColorAttachmentOutput,
+			AccessType::ColorAttachmentWrite, subpassBloomComposite,
+			PipelineStage::FragmentShader, AccessType::ShaderRead, false);
+
+	// the scene and the distortion pair wrote the frame the composite blends the world over
+	passBuilder.addSubpassDependency(subpassDistortComposite, PipelineStage::ColorAttachmentOutput,
+			AccessType::ColorAttachmentWrite, subpassBloomComposite,
+			PipelineStage::FragmentShader | PipelineStage::ColorAttachmentOutput,
+			AccessType::InputAttachmantRead | AccessType::ColorAttachmentWrite, true);
+
 	passBuilder.addSubpassDependency(subpass2d, PipelineStage::LateFragmentTest,
 			AccessType::DepthStencilAttachmentWrite, subpassShadows, PipelineStage::FragmentShader,
 			AccessType::InputAttachmantRead, true);
@@ -589,6 +784,111 @@ bool ShadowPass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilde
 
 auto ShadowPass::makeFrameHandle(const FrameQueue &handle) -> Rc<QueuePassHandle> {
 	return Rc<ShadowPassHandle>::create(*this, handle);
+}
+
+// The HDR world subpass's material twins, Vfx-2: the scene subpass's own blend pairs and the
+// mask path's particle fragment, the same shaders and the same texture set, declared against
+// the floating-point target under the ParticlePost variant no material resolves to - the
+// world's draws bind them by the blend mode and the mask the way the distortion pair binds
+// its composite, never through a material
+void ShadowPass::makeBloomMaterialPipelines(Queue::Builder &queueBuilder,
+		core::SubpassBuilder &subpassBuilder, const core::PipelineLayoutData *layout2d) {
+	using namespace core;
+
+	auto bloomVert =
+			queueBuilder.addProgramByRef("Loader_BloomMaterialVertByRef", shaders::MaterialVert);
+
+	auto nsamplers = layout2d->textureSetLayout->samplers.size();
+
+	auto materialSpecInfo = Vector<SpecializationInfo>({
+		core::SpecializationInfo(bloomVert),
+		core::SpecializationInfo(
+			queueBuilder.addProgramByRef("Loader_BloomMaterialFragByRef", shaders::MaterialFrag),
+			Vector<SpecializationConstant>{
+				SpecializationConstant([nsamplers](const core::Device &dev,
+											   const PipelineLayoutData &) -> SpecializationConstant {
+					return uint32_t(nsamplers);
+				}),
+				SpecializationConstant([](const core::Device &dev,
+									 const PipelineLayoutData &data) -> SpecializationConstant {
+					auto l = data.textureSetLayout->layout.get_cast<vk::TextureSetLayout>()
+									 ->getImageCount();
+					return uint32_t(l);
+				}),
+				SpecializationConstant(0)
+			}
+		),
+	});
+
+	auto particleSpecInfo = Vector<SpecializationInfo>({
+		core::SpecializationInfo(bloomVert),
+		core::SpecializationInfo(queueBuilder.addProgramByRef("Loader_BloomParticleFragByRef",
+										 shaders::ParticleFrag)),
+	});
+
+	// the blend pairs are the scene twins' own, the depth the target has none of: the world
+	// draws in the span order the scene walks, the painter's order the transparent level keeps
+	subpassBuilder.addGraphicPipeline(ShadowPass::BloomMaterialPipelines[0], layout2d->defaultFamily,
+			materialSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
+										  BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
+										  BlendOp::Add),
+					DepthInfo(), ImageViewType::ImageView2D,
+					PipelineVariant::ParticlePost}));
+
+	subpassBuilder.addGraphicPipeline(ShadowPass::BloomMaterialPipelines[1], layout2d->defaultFamily,
+			materialSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::One, BlendOp::Add,
+										  BlendFactor::Zero, BlendFactor::One, BlendOp::Add),
+					DepthInfo(), ImageViewType::ImageView2D,
+					PipelineVariant::ParticlePost}));
+
+	subpassBuilder.addGraphicPipeline(ShadowPass::BloomMaterialPipelines[2], layout2d->defaultFamily,
+			materialSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::One,
+										  BlendOp::ReverseSubtract, BlendFactor::Zero,
+										  BlendFactor::One, BlendOp::Add),
+					DepthInfo(), ImageViewType::ImageView2D,
+					PipelineVariant::ParticlePost}));
+
+	subpassBuilder.addGraphicPipeline(ShadowPass::BloomMaterialPipelines[3], layout2d->defaultFamily,
+			materialSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::DstColor, BlendFactor::OneMinusSrcAlpha,
+										  BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
+										  BlendOp::Add),
+					DepthInfo(), ImageViewType::ImageView2D,
+					PipelineVariant::ParticlePost}));
+
+	subpassBuilder.addGraphicPipeline(ShadowPass::BloomParticlePipelines[0], layout2d->defaultFamily,
+			particleSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
+										  BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
+										  BlendOp::Add),
+					DepthInfo(), ImageViewType::ImageView2D,
+					PipelineVariant::ParticlePost}));
+
+	subpassBuilder.addGraphicPipeline(ShadowPass::BloomParticlePipelines[1], layout2d->defaultFamily,
+			particleSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::One, BlendOp::Add,
+										  BlendFactor::Zero, BlendFactor::One, BlendOp::Add),
+					DepthInfo(), ImageViewType::ImageView2D,
+					PipelineVariant::ParticlePost}));
+
+	subpassBuilder.addGraphicPipeline(ShadowPass::BloomParticlePipelines[2], layout2d->defaultFamily,
+			particleSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::One,
+										  BlendOp::ReverseSubtract, BlendFactor::Zero,
+										  BlendFactor::One, BlendOp::Add),
+					DepthInfo(), ImageViewType::ImageView2D,
+					PipelineVariant::ParticlePost}));
+
+	subpassBuilder.addGraphicPipeline(ShadowPass::BloomParticlePipelines[3], layout2d->defaultFamily,
+			particleSpecInfo,
+			PipelineMaterialInfo({BlendInfo(BlendFactor::DstColor, BlendFactor::OneMinusSrcAlpha,
+										  BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
+										  BlendOp::Add),
+					DepthInfo(), ImageViewType::ImageView2D,
+					PipelineVariant::ParticlePost}));
 }
 
 void ShadowPass::makeMaterialSubpass(Queue::Builder &queueBuilder, QueuePassBuilder &passBuilder,
@@ -890,9 +1190,31 @@ void ShadowPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 		);
 	};
 
+	// The post words the frame's own render infos carry, Vfx-2: any emitter with them moves
+	// the whole world into the floating-point target - the document is this window's whole
+	// world, and the scene subpass of a posted frame draws everything but the world
+	_postOn = false;
+	_postThreshold = 1.0f;
+	_postStrength = 1.0f;
+	if (_particles) {
+		for (auto &span : _vertexBuffer->getVertexData()) {
+			if (span.particleEmitterId == 0) {
+				continue;
+			}
+			auto emitterRenderInfo = _particles->getEmitterRenderInfo(span.particleEmitterId);
+			if (emitterRenderInfo && emitterRenderInfo->post != 0u) {
+				_postOn = true;
+				_postThreshold = emitterRenderInfo->bloomThreshold;
+				_postStrength = emitterRenderInfo->bloomStrength;
+				break;
+			}
+		}
+	}
+
 	// The scene subpass draws everything but the distorted spans - those leave for the
-	// trailing pair, where the frame they displace is already settled
-	drawSpans(materials, buf, _vertexBuffer->getVertexData(), DistortFilter::SkipDistort);
+	// trailing pair, where the frame they displace is already settled - and a posted frame's
+	// emitter spans leave for the world's own subpass after it
+	drawSpans(materials, buf, _vertexBuffer->getVertexData(), DistortFilter::SkipDistort, _postOn);
 
 	uint32_t subpassIdx = 0;
 
@@ -1036,20 +1358,31 @@ void ShadowPassHandle::prepareMaterialCommands(core::MaterialSet *materials, Com
 
 	// The distortion pair's own draws
 	recordDistortionSubpasses(buf, _vertexBuffer->getVertexData());
+
+	// The HDR world's own draws, Vfx-2
+	recordPostSubpasses(buf, _vertexBuffer->getVertexData());
 }
 
 void ShadowPassHandle::recordOverlaySubpasses(CommandBuffer &buf, SpanView<VertexSpan> spans) {
 	// the overlay's scene subpass keeps everything but the distorted spans, same as the main
-	// walk; the pair draws them after the SDF and shadow subpasses are walked empty
-	drawSpans(_materialBuffer->getSet().get(), buf, spans, DistortFilter::SkipDistort);
+	// walk; the pair draws them after the SDF and shadow subpasses are walked empty. A posted
+	// frame's emitter spans leave for the world's own subpass, which the overlay walks empty -
+	// the drag ghost is chrome, and the composite the main instance drew has already returned
+	// the world to the frame
+	drawSpans(_materialBuffer->getSet().get(), buf, spans, DistortFilter::SkipDistort, _postOn);
 
-	// The render pass has five subpasses and an instance must walk all of them. The overlay draws
-	// the scene and, below, the distorted spans; SDF and shadow subpasses are advanced
-	// empty, as for a frame with no lights.
+	// The render pass has eight subpasses and an instance must walk all of them. The overlay
+	// draws the scene and, below, the distorted spans; SDF and shadow subpasses are advanced
+	// empty, as for a frame with no lights, and the HDR world's bright and composite the same
+	// way - the drag ghost is chrome, and the world the main instance returned stands.
 	buf.cmdNextSubpass();
 	buf.cmdNextSubpass();
 
 	recordDistortionSubpasses(buf, spans);
+
+	buf.cmdNextSubpass();
+	buf.cmdNextSubpass();
+	buf.cmdNextSubpass();
 }
 
 void ShadowPassHandle::recordDistortionSubpasses(CommandBuffer &buf, SpanView<VertexSpan> spans) {
@@ -1160,6 +1493,190 @@ void ShadowPassHandle::recordDistortionSubpasses(CommandBuffer &buf, SpanView<Ve
 						sizeof(ParticleIndirectCommand));
 			}
 		}
+	}
+}
+
+
+// The HDR world's own recording, Vfx-2: the world's emitter spans into the floating-point
+// target, the bright pass at the document's threshold, the tonemap composite at the
+// document's strength - the composite walks the multi-scale kernel over the bright pass's
+// own output itself. A frame without the post draws no world and every subpass is walked
+// empty, which is the old frame exactly
+void ShadowPassHandle::recordPostSubpasses(CommandBuffer &buf, SpanView<VertexSpan> spans) {
+	auto commands = _vertexBuffer->getCommands();
+	auto pass = static_cast<RenderPass *>(_data->impl.get());
+
+	// the world subpass: the posted frame's emitter spans draw into the floating-point target
+	// through the material twins, bound by the blend mode and the mask the way the distortion
+	// pair binds its composite
+	auto subpassIdx = buf.cmdNextSubpass();
+	const core::GraphicPipelineData *materialPipelines[4] = {
+		_data->subpasses[subpassIdx]->graphicPipelines.get(
+				StringView(ShadowPass::BloomMaterialPipelines[0])),
+		_data->subpasses[subpassIdx]->graphicPipelines.get(
+				StringView(ShadowPass::BloomMaterialPipelines[1])),
+		_data->subpasses[subpassIdx]->graphicPipelines.get(
+				StringView(ShadowPass::BloomMaterialPipelines[2])),
+		_data->subpasses[subpassIdx]->graphicPipelines.get(
+				StringView(ShadowPass::BloomMaterialPipelines[3])),
+	};
+	const core::GraphicPipelineData *particlePipelines[4] = {
+		_data->subpasses[subpassIdx]->graphicPipelines.get(
+				StringView(ShadowPass::BloomParticlePipelines[0])),
+		_data->subpasses[subpassIdx]->graphicPipelines.get(
+				StringView(ShadowPass::BloomParticlePipelines[1])),
+		_data->subpasses[subpassIdx]->graphicPipelines.get(
+				StringView(ShadowPass::BloomParticlePipelines[2])),
+		_data->subpasses[subpassIdx]->graphicPipelines.get(
+				StringView(ShadowPass::BloomParticlePipelines[3])),
+	};
+
+	if (_postOn && _particles && _particles->getVertices()) {
+		auto materials = _materialBuffer->getSet().get();
+		auto particleVertexes = _particles->getVertices();
+
+		clearDynamicState(buf);
+
+		uint32_t boundTextureSetIndex = maxOf<uint32_t>();
+
+		for (auto &materialVertexSpan : spans) {
+			if (materialVertexSpan.particleEmitterId == 0) {
+				continue;
+			}
+			auto emitterRenderInfo =
+					_particles->getEmitterRenderInfo(materialVertexSpan.particleEmitterId);
+			if (!emitterRenderInfo) {
+				continue;
+			}
+
+			auto material = materials->getMaterialById(materialVertexSpan.material);
+			if (!material) {
+				continue;
+			}
+
+			const auto mode = emitterRenderInfo->blendMode;
+			if (mode >= 4u) {
+				continue;
+			}
+
+			auto pipeline = emitterRenderInfo->maskShape != 0u ? particlePipelines[mode]
+															   : materialPipelines[mode];
+			if (!pipeline || !pipeline->pipeline) {
+				continue;
+			}
+
+			applyDynamicState(commands, buf, materialVertexSpan.state);
+
+			buf.cmdBindPipelineWithDescriptors(pipeline);
+
+			// the material's own texture set, the same binding the scene's draws make
+			auto textureSetIndex = material->getLayoutIndex();
+			if (textureSetIndex != boundTextureSetIndex) {
+				auto l = materials->getLayout(textureSetIndex);
+				if (l && l->set) {
+					auto s = static_cast<TextureSet *>(l->set.get());
+					auto set = s->getSet();
+					buf.cmdBindDescriptorSets(static_cast<RenderPass *>(_data->impl.get()),
+							makeSpanView(&set, 1), pipeline->layout->sets.size());
+					boundTextureSetIndex = textureSetIndex;
+				} else {
+					continue;
+				}
+			}
+
+			glsl::VertexConstantData pcb;
+			pcb.vertexPointer =
+					UVec2::convertFromPacked(particleVertexes->getDeviceAddress());
+			pcb.transformPointer = UVec2::convertFromPacked(
+					buf.bindBufferAddress(_vertexBuffer->getTransforms().get()));
+			pcb.materialPointer =
+					UVec2::convertFromPacked(buf.bindBufferAddress(material->getBuffer()));
+			pcb.atlasPointer = UVec2(0, 0);
+			if (auto a = material->getAtlas()) {
+				if (auto atlasBuf = a->getBuffer()) {
+					pcb.atlasPointer = UVec2::convertFromPacked(buf.bindBufferAddress(atlasBuf));
+				}
+			}
+			pcb.imageIdx = material->getImages().front().descriptor;
+			pcb.samplerIdx = material->getImages().front().sampler;
+			pcb.gradientOffset = materialVertexSpan.gradientOffset;
+			pcb.gradientCount = materialVertexSpan.gradientCount;
+
+			if (emitterRenderInfo->maskShape != 0u) {
+				glsl::ParticleDrawConstantData pcbMasked;
+				pcbMasked.base = pcb;
+				pcbMasked.mask = glsl::vec4(float(emitterRenderInfo->maskShape),
+						emitterRenderInfo->maskThickness, emitterRenderInfo->maskSoftness, 0.0f);
+				buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+						BytesView(reinterpret_cast<const uint8_t *>(&pcbMasked),
+								sizeof(glsl::ParticleDrawConstantData)));
+			} else {
+				buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0,
+						BytesView(reinterpret_cast<const uint8_t *>(&pcb),
+								sizeof(glsl::VertexConstantData)));
+			}
+
+			buf.cmdDrawIndirect(_particles->getCommands(),
+					emitterRenderInfo->index * sizeof(ParticleIndirectCommand), 1,
+					sizeof(ParticleIndirectCommand));
+		}
+	}
+
+	auto drawFullscreen = [&](const core::GraphicPipelineData *pipeline) {
+		if (!pipeline || !pipeline->pipeline) {
+			return;
+		}
+		auto currentExtent = getFramebuffer()->getExtent();
+		auto viewport = VkViewport{0.0f, 0.0f, float(currentExtent.width),
+			float(currentExtent.height), 0.0f, 1.0f};
+		buf.cmdSetViewport(0, makeSpanView(&viewport, 1));
+
+		auto scissorRect = VkRect2D{{0, 0}, {currentExtent.width, currentExtent.height}};
+		buf.cmdSetScissor(0, makeSpanView(&scissorRect, 1));
+
+		buf.cmdDrawIndexed(6, // indexCount
+				1, // instanceCount
+				6, // firstIndex
+				0, // int32_t   vertexOffset
+				0 // uint32_t  firstInstance
+		);
+	};
+
+	// the bright pass: what sits above the threshold, the alpha scaled by the same factor
+	subpassIdx = buf.cmdNextSubpass();
+	auto brightPipeline = _data->subpasses[subpassIdx]->graphicPipelines.get(
+			StringView(ShadowPass::BloomBrightPipeline));
+
+	if (_postOn && brightPipeline && brightPipeline->pipeline) {
+		buf.cmdBindPipelineWithDescriptors(brightPipeline);
+
+		struct BrightPcb {
+			float threshold;
+		} brightPcb{_postThreshold};
+
+		buf.cmdPushConstants(VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+				BytesView(reinterpret_cast<const uint8_t *>(&brightPcb), sizeof(BrightPcb)));
+		drawFullscreen(brightPipeline);
+	}
+
+	// the tonemap composite: the multi-scale kernel over the bright pass's own output, the
+	// strength the document named
+	subpassIdx = buf.cmdNextSubpass();
+	auto compositePipeline = _data->subpasses[subpassIdx]->graphicPipelines.get(
+			StringView(ShadowPass::BloomCompositePipeline));
+
+	if (_postOn && compositePipeline && compositePipeline->pipeline) {
+		buf.cmdBindPipelineWithDescriptors(compositePipeline);
+
+		struct CompositePcb {
+			float strength;
+			float pad[3];
+		} compositePcb{_postStrength, {0.0f, 0.0f, 0.0f}};
+
+		buf.cmdPushConstants(VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+				BytesView(reinterpret_cast<const uint8_t *>(&compositePcb),
+						sizeof(CompositePcb)));
+		drawFullscreen(compositePipeline);
 	}
 }
 

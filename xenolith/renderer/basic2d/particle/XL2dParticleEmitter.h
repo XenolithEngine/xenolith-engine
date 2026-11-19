@@ -99,6 +99,20 @@ public:
 	void setDistortion(bool value) { _distortion = value; }
 	bool isDistortion() const { return _distortion; }
 
+	// The HDR post switch, Vfx-2: the draw lands in the world's own floating-point target and
+	// the bloom chain's tonemap composite returns it to the frame. Draw state beside the
+	// distortion like it - the simulation never reads it, the words ride the render info to the
+	// pass, and the pass routes the draw into the world subpass. The threshold is a luminance
+	// the bright pass keeps from blooming, the strength the weight the composite gives the blur
+	void setPost(bool value, float threshold = 1.0f, float strength = 1.0f) {
+		_post = value;
+		_bloomThreshold = threshold;
+		_bloomStrength = strength;
+	}
+	bool isPost() const { return _post; }
+	float getBloomThreshold() const { return _bloomThreshold; }
+	float getBloomStrength() const { return _bloomStrength; }
+
 	// The mode's journey over a life, Trapcode Particular 2026's reception: a flagged particle
 	// starts at the sprite pair and ends additive, the blend fraction the fraction of its
 	// lifetime it has lived - alpha at birth, add at the last step, the one pair there is. The
@@ -145,6 +159,9 @@ protected:
 	ParticleBlendMode _blendMode = ParticleBlendMode::Alpha;
 	bool _blendOverLife = false;
 	bool _distortion = false;
+	bool _post = false;
+	float _bloomThreshold = 1.0f;
+	float _bloomStrength = 1.0f;
 
 	Action *_actionRenderLock = nullptr;
 	bool _feedbackEnabled = false;

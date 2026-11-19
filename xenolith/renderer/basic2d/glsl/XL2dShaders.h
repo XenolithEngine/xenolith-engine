@@ -39,6 +39,8 @@ extern SpanView<uint32_t> PseudoSdfShadowVert;
 extern SpanView<uint32_t> FrameClipperFrag;
 extern SpanView<uint32_t> ParticleDistortShiftFrag;
 extern SpanView<uint32_t> ParticleDistortCompositeFrag;
+extern SpanView<uint32_t> BloomBrightFrag;
+extern SpanView<uint32_t> BloomCompositeFrag;
 
 // lightweight (flat) render queue
 extern SpanView<uint32_t> FlatFrag;

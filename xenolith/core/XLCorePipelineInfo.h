@@ -188,6 +188,12 @@ enum class PipelineVariant : uint32_t {
 	// No material resolves to them - a distorted emitter's own span is routed by the pass,
 	// not by its material - the variant only keeps the pair out of every existing match.
 	ParticleDistort = 2,
+
+	// The HDR world's own material twins, Vfx-2: the scene subpass's blend pairs pointed at
+	// the world's floating-point target, bound by the pass's own walk the way the distortion
+	// pair's composite is. No material resolves to them - a posted emitter's own span is
+	// routed by the pass - the variant only keeps the twins out of every existing match.
+	ParticlePost = 3,
 };
 
 class SP_PUBLIC PipelineMaterialInfo {

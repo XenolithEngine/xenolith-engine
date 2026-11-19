@@ -362,6 +362,9 @@ void ParticleEmitter::pushCommands(FrameInfo &frame, NodeVisitFlags flags) {
 	info.nodeVelocity = nodeVelocity;
 	info.distortion = _distortion ? 1u : 0u;
 	info.blendMode = uint32_t(_blendMode);
+	info.post = _post ? 1u : 0u;
+	info.bloomThreshold = _bloomThreshold;
+	info.bloomStrength = _bloomStrength;
 
 	if (_feedback) {
 		// Sent with every frame until one of them answers it

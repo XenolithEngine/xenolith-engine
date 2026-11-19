@@ -211,9 +211,12 @@ protected:
 	// pair, and a queue without the pair must keep drawing it the common way
 	enum class DistortFilter { All, SkipDistort, OnlyDistort };
 
-	// One run of the draw loop over a given set of spans; see the definition
+	// One run of the draw loop over a given set of spans; see the definition. `skipEmitters`
+	// takes every emitter span out of the walk - the HDR world's own routing, Vfx-2: the
+	// scene subpass of a posted frame draws everything but the world, and the world draws in
+	// its own subpass after the frame is settled
 	void drawSpans(core::MaterialSet *materials, CommandBuffer &, SpanView<VertexSpan> spans,
-			DistortFilter filter = DistortFilter::All);
+			DistortFilter filter = DistortFilter::All, bool skipEmitters = false);
 
 	virtual void finalizeRenderPass(CommandBuffer &);
 

@@ -38,6 +38,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d::shaders {
 #include "xl_2d_frameclipper.frag.h"
 #include "xl_2d_particle_distort_shift.frag.h"
 #include "xl_2d_particle_distort_composite.frag.h"
+#include "xl_2d_bloom_bright.frag.h"
+#include "xl_2d_bloom_composite.frag.h"
 #include "xl_2d_particle_update.comp.h"
 #include "xl_2d_flat.frag.h"
 #include "xl_2d_flat.vert.h"
@@ -69,6 +71,12 @@ SpanView<uint32_t> ParticleDistortShiftFrag(
 SpanView<uint32_t> ParticleDistortCompositeFrag(
 		reinterpret_cast<const uint32_t *>(xl_2d_particle_distort_composite_frag),
 		sizeof(xl_2d_particle_distort_composite_frag) / sizeof(uint32_t));
+
+SpanView<uint32_t> BloomBrightFrag(reinterpret_cast<const uint32_t *>(xl_2d_bloom_bright_frag),
+		sizeof(xl_2d_bloom_bright_frag) / sizeof(uint32_t));
+
+SpanView<uint32_t> BloomCompositeFrag(reinterpret_cast<const uint32_t *>(xl_2d_bloom_composite_frag),
+		sizeof(xl_2d_bloom_composite_frag) / sizeof(uint32_t));
 
 SpanView<uint32_t> FlatFrag(reinterpret_cast<const uint32_t *>(xl_2d_flat_frag),
 		sizeof(xl_2d_flat_frag) / sizeof(uint32_t));

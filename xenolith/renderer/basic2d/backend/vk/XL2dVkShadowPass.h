@@ -49,6 +49,25 @@ public:
 		"DistortCompositeMul",
 	};
 
+	// The HDR world's own chain, Vfx-2: the bright draw, the tonemap composite (which walks
+	// the multi-scale kernel over the bright pass's own output) - and the material twins the
+	// world's draws bind, the scene subpass's pairs pointed at the floating-point target, in
+	// the same blend order
+	static constexpr StringView BloomBrightPipeline = "BloomBrightPipeline";
+	static constexpr StringView BloomCompositePipeline = "BloomCompositePipeline";
+	static constexpr StringView BloomMaterialPipelines[4] = {
+		"BloomMaterialAlpha",
+		"BloomMaterialAdd",
+		"BloomMaterialSub",
+		"BloomMaterialMul",
+	};
+	static constexpr StringView BloomParticlePipelines[4] = {
+		"BloomParticleAlpha",
+		"BloomParticleAdd",
+		"BloomParticleSub",
+		"BloomParticleMul",
+	};
+
 	enum class Flags : uint32_t {
 		None = 0,
 		UsePseudoSdf = 1 << 0,
@@ -97,9 +116,20 @@ protected:
 			const core::AttachmentPassData *shadowAttachment,
 			const core::AttachmentPassData *depth2dAttachment);
 
+	// The HDR world subpass's material twins: the scene subpass's blend pairs and the mask
+	// path's particle fragment, declared against the floating-point target under the
+	// ParticlePost variant no material resolves to
+	void makeBloomMaterialPipelines(Queue::Builder &queueBuilder,
+			core::SubpassBuilder &subpassBuilder, const core::PipelineLayoutData *layout2d);
+
 	// shadows
 	const AttachmentData *_lightsData = nullptr;
 	const AttachmentData *_sdf = nullptr;
+
+	// The HDR world's own targets, Vfx-2: the world's floating-point accumulation and the
+	// bright pass's thresholded output the composite's kernel walks
+	const AttachmentData *_hdr = nullptr;
+	const AttachmentData *_bloomA = nullptr;
 };
 
 SP_DEFINE_ENUM_AS_MASK(ShadowPass::Flags)
@@ -120,6 +150,18 @@ private:
 	// intermediate, then through the composite pipeline their blend mode names. Called with
 	// the subpass walk standing before the shift subpass in both render pass instances
 	void recordDistortionSubpasses(CommandBuffer &buf, SpanView<VertexSpan> spans);
+
+	// The HDR world's own recording, Vfx-2: the world's emitter spans into the floating-point
+	// target, the bright pass at the document's threshold, the three fixed blur levels, the
+	// tonemap composite at the document's strength. A frame without the post draws no world
+	// and the subpasses are walked empty, which is the old frame exactly
+	void recordPostSubpasses(CommandBuffer &buf, SpanView<VertexSpan> spans);
+
+	// Set in prepare() from the frame's emitter render infos: any emitter with the post words
+	// moves the whole world into the target - the document is the one window's whole world
+	bool _postOn = false;
+	float _postThreshold = 1.0f;
+	float _postStrength = 1.0f;
 
 	// shadows
 	const ShadowLightDataAttachmentHandle *_shadowData = nullptr;
