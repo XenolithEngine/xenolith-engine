@@ -610,9 +610,22 @@ void VertexPassHandle::drawSpans(core::MaterialSet *materials, CommandBuffer &bu
 		}
 		// the HDR world's own routing, Vfx-2: a posted frame's scene subpass draws everything
 		// but the world - the world's light lives in its own floating-point target and the
-		// tonemap composite returns it
+		// tonemap composite returns it. Horizon-2, H1, exempts the subtracting emitter: the
+		// world target's blend write clamps its negative result to zero, so its darkness
+		// cannot ride the world's light - the scene subpass draws it, and the sub it always
+		// carried blackens the frame the bytes the unposted frame always read
 		if (skipEmitters && materialVertexSpan.particleEmitterId != 0) {
-			return;
+			const bool subtracting = [&]() {
+				if (!_particles) {
+					return false;
+				}
+				auto emitterRenderInfo = _particles->getEmitterRenderInfo(
+						materialVertexSpan.particleEmitterId);
+				return emitterRenderInfo && emitterRenderInfo->blendMode == 2u;
+			}();
+			if (!subtracting) {
+				return;
+			}
 		}
 
 		auto material = materials->getMaterialById(materialVertexSpan.material);

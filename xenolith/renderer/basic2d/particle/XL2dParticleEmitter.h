@@ -99,6 +99,13 @@ public:
 	void setDistortion(bool value) { _distortion = value; }
 	bool isDistortion() const { return _distortion; }
 
+	// The distortion's own pixel scale, Horizon-2's H3: the reach the color's half-range maps
+	// onto, both directions. Sixteen is the reach the shift shader's own constant always drew -
+	// a document without the word renders exactly what it always did. A value below one clamps
+	// to it; the scale is draw state beside the switch, riding the render info, never a sim word
+	void setDistortionScale(float scale) { _distortionScale = sprt::max(scale, 1.0f); }
+	float getDistortionScale() const { return _distortionScale; }
+
 	// The HDR post switch, Vfx-2: the draw lands in the world's own floating-point target and
 	// the bloom chain's tonemap composite returns it to the frame. Draw state beside the
 	// distortion like it - the simulation never reads it, the words ride the render info to the
@@ -159,6 +166,7 @@ protected:
 	ParticleBlendMode _blendMode = ParticleBlendMode::Alpha;
 	bool _blendOverLife = false;
 	bool _distortion = false;
+	float _distortionScale = 16.0f;
 	bool _post = false;
 	float _bloomThreshold = 1.0f;
 	float _bloomStrength = 1.0f;

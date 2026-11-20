@@ -827,12 +827,17 @@ void ShadowPass::makeBloomMaterialPipelines(Queue::Builder &queueBuilder,
 	});
 
 	// the blend pairs are the scene twins' own, the depth the target has none of: the world
-	// draws in the span order the scene walks, the painter's order the transparent level keeps
+	// draws in the span order the scene walks, the painter's order the transparent level keeps.
+	// The alpha twin's ALPHA factors are Horizon-2's own: (One, OneMinusSrcAlpha), the coverage
+	// the composite's veil reads accumulating over draws - the scene twins' (Zero, One) left
+	// the world's alpha channel empty forever, so a posted alpha-blended puff never occluded
+	// the frame beneath and the composite returned it as pure addition. The light modes - add,
+	// sub, mul - keep the passthrough pair: light does not cover
 	subpassBuilder.addGraphicPipeline(ShadowPass::BloomMaterialPipelines[0], layout2d->defaultFamily,
 			materialSpecInfo,
 			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
-										  BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
-										  BlendOp::Add),
+										 BlendOp::Add, BlendFactor::One,
+										 BlendFactor::OneMinusSrcAlpha, BlendOp::Add),
 					DepthInfo(), ImageViewType::ImageView2D,
 					PipelineVariant::ParticlePost}));
 
@@ -862,8 +867,8 @@ void ShadowPass::makeBloomMaterialPipelines(Queue::Builder &queueBuilder,
 	subpassBuilder.addGraphicPipeline(ShadowPass::BloomParticlePipelines[0], layout2d->defaultFamily,
 			particleSpecInfo,
 			PipelineMaterialInfo({BlendInfo(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha,
-										  BlendOp::Add, BlendFactor::Zero, BlendFactor::One,
-										  BlendOp::Add),
+										 BlendOp::Add, BlendFactor::One,
+										 BlendFactor::OneMinusSrcAlpha, BlendOp::Add),
 					DepthInfo(), ImageViewType::ImageView2D,
 					PipelineVariant::ParticlePost}));
 
@@ -1457,8 +1462,12 @@ void ShadowPassHandle::recordDistortionSubpasses(CommandBuffer &buf, SpanView<Ve
 		pcbShift.base.samplerIdx = material->getImages().front().sampler;
 		pcbShift.base.gradientOffset = materialVertexSpan.gradientOffset;
 		pcbShift.base.gradientCount = materialVertexSpan.gradientCount;
+		// the mask word's own free tail carries the emitter's distortion scale, Horizon-2's H3:
+		// the shift fragment reads its pixel reach there, the sixteen the fresh emitter carries
+		// the old shader's own constant - one push word, no struct seat, no extra constant
 		pcbShift.mask = glsl::vec4(float(emitterRenderInfo->maskShape),
-				emitterRenderInfo->maskThickness, emitterRenderInfo->maskSoftness, 0.0f);
+				emitterRenderInfo->maskThickness, emitterRenderInfo->maskSoftness,
+				emitterRenderInfo->distortionScale);
 		buf.cmdPushConstants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
 				BytesView(reinterpret_cast<const uint8_t *>(&pcbShift),
 						sizeof(glsl::ParticleDrawConstantData)));
@@ -1546,6 +1555,21 @@ void ShadowPassHandle::recordPostSubpasses(CommandBuffer &buf, SpanView<VertexSp
 			auto emitterRenderInfo =
 					_particles->getEmitterRenderInfo(materialVertexSpan.particleEmitterId);
 			if (!emitterRenderInfo) {
+				continue;
+			}
+			// Horizon-2, H4: a distorted emitter's draw belongs to the trailing pair alone -
+			// the pair displaces the settled frame, and the same span drawn here as an ordinary
+			// tinted quad was the bubble the lens showed beside its own displacement
+			if (emitterRenderInfo->distortion != 0u) {
+				continue;
+			}
+			// Horizon-2, H1: a subtracting emitter never enters the world - the float target's
+			// blend write clamps the reverse-subtract's negative result to zero (probed on this
+			// device: an additive quad under a full sub quad answers the empty world exactly),
+			// so its darkness cannot live in the world's light. The scene subpass draws it - the
+			// span the posted routing below leaves in the scene - and the sub it always carried
+			// blackens the frame the same bytes the unposted frame always read
+			if (emitterRenderInfo->blendMode == 2u) {
 				continue;
 			}
 

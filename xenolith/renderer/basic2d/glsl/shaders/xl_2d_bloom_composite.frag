@@ -11,7 +11,9 @@
 // earlier-settled attachment fetched by the coordinate's own offsets. The sum is weighted by
 // the document's strength, tonemapped back into the framebuffer's own range, and handed to
 // the blend units as a premultiplied pair - One, OneMinusSrcAlpha - so a pixel with no world
-// in it is a no-op and the chrome the scene subpass drew stays exactly what it was
+// in it is a no-op and the chrome the scene subpass drew stays exactly what it was.
+// Horizon-2 narrows the pair's veil to the world's own coverage and seats the hue-preserving
+// tonemap the shared header now carries
 
 #include "sprt_glsl.h"
 #include "XL2dGlslBloom.h"
@@ -38,7 +40,6 @@ void main() {
 	vec4 hdr = subpassLoad(hdrColor);
 
 	vec3 bloom = vec3(0.0);
-	float alpha = 0.0;
 	for (int level = 0; level < XL_PARTICLE_BLOOM_LEVELS; ++level) {
 		float r = float(radii[level]);
 		float weight = levelWeights[level] / float(XL_PARTICLE_BLOOM_TAPS);
@@ -48,11 +49,15 @@ void main() {
 					int(round(sin(angle) * r)));
 			vec4 c = texelFetch(bloomColor, tap, 0);
 			bloom += c.rgb * weight;
-			alpha += c.a * weight;
 		}
 	}
 
+	// Horizon-2: the veil the composite lowers over the scene is the world's OWN coverage
+	// alone - the alpha the world's alpha-blended draws accumulated. The bloom's own alpha
+	// no longer seats beside it: a halo is light, not coverage, and the veil it used to lower
+	// dimmed the very stars the horizon's halo bends. A pixel with no world in it stays the
+	// exact no-op it always was - zero light added, the destination untouch
 	vec3 color = hdr.rgb + bloom * words.x;
-	float outAlpha = min(1.0, hdr.a + alpha * words.x);
+	float outAlpha = min(1.0, hdr.a);
 	outColor = vec4(bloomTonemap(color), outAlpha);
 }

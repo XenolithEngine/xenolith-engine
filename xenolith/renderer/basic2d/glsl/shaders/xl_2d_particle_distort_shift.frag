@@ -50,9 +50,11 @@ float particleMaskAlpha(vec2 uv, vec4 maskWords) {
 
 void main() {
 	// the frame's own pixels, half the color's range aside the middle: the shift the color
-	// names, zero at mid-gray
-	const float XL_PARTICLE_DISTORT_PIXELS = 16.0;
-	ivec2 shift = ivec2(round((fragColor.rg - vec2(0.5)) * 2.0 * XL_PARTICLE_DISTORT_PIXELS));
+	// names, zero at mid-gray. The pixel reach is the emitter's own scale word riding the
+	// mask push's free tail, Horizon-2's H3 - sixteen the fresh emitter's default, the reach
+	// every distortion document drew before the word existed
+	float distortPixels = pushConstants.mask.w;
+	ivec2 shift = ivec2(round((fragColor.rg - vec2(0.5)) * 2.0 * distortPixels));
 	ivec2 coord = ivec2(gl_FragCoord.xy) + shift;
 	vec3 displaced = texelFetch(frameColor, coord, 0).rgb;
 

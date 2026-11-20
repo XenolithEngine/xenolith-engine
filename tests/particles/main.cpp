@@ -2641,6 +2641,29 @@ static void testBloom() {
 	vec3 tmRed = glsl::bloomTonemap(red * 0.9f);
 	check(tmRed.y == 0.0f && tmRed.z == 0.0f, "bloom: the tonemap keeps a pure hue pure");
 
+	// Horizon-2, H5: the tonemap preserves a MIXED color's channel ratios - the luma curve
+	// rescales every channel alike, where the per-channel curve this replaces compressed each
+	// by its own factor and answered a mid-luminance blue with ratios crushed toward gray
+	{
+		vec3 blue(0.35f, 0.7f, 1.0f);
+		vec3 out = glsl::bloomTonemap(blue);
+		check(out.x > 0.0f && out.y > out.x && out.z > out.y,
+				"bloom: the tonemap keeps a mixed color's channel order");
+		check(near(out.x / blue.x, out.y / blue.y) && near(out.y / blue.y, out.z / blue.z),
+				"bloom: the tonemap rescales every channel of a mixed color alike");
+		check(near(glsl::bloomLuma(out), glsl::bloomTonemap(
+						   vec3(glsl::bloomLuma(blue), glsl::bloomLuma(blue),
+								   glsl::bloomLuma(blue))).x),
+				"bloom: the tonemap's luma is the curve's own answer at the source's luma");
+		vec3 gold(1.0f, 0.8f, 0.3f);
+		vec3 outGold = glsl::bloomTonemap(gold);
+		check(near(outGold.x / gold.x, outGold.y / gold.y)
+						&& near(outGold.y / gold.y, outGold.z / gold.z),
+				"bloom: the tonemap keeps a gold ribbon's ratios at every channel");
+		check(glsl::bloomTonemap(vec3(0.0f, 0.0f, 0.0f)) == vec3(0.0f, 0.0f, 0.0f),
+				"bloom: the tonemap keeps black at zero under the luma shape");
+	}
+
 	// the kernel's own weights: the three scales sum to one, so a constant bloom source
 	// answers itself and the kernel adds no energy
 	float weights[XL_PARTICLE_BLOOM_LEVELS] = {XL_PARTICLE_BLOOM_WEIGHTS};

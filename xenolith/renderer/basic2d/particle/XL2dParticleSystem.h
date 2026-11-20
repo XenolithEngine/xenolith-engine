@@ -304,6 +304,14 @@ struct ParticleSystemRenderInfo {
 	// under this mode's own factors. Zero draws the span the common way
 	uint32_t distortion = 0;
 
+	// The distortion's own pixel scale, Horizon-2's H3: the reach the shift fragment reads from
+	// the mask push's free tail - the color's half-range mapped onto this many frame pixels,
+	// both directions. Sixteen is the constant the shader carried before the word existed, the
+	// reach every distortion document drew; a word below one clamps to it, and the scale rides
+	// the render info beside the switch the way the bloom's numbers ride the post switch - a
+	// draw word, never a sim one
+	float distortionScale = 16.0f;
+
 	// The blend mode the composite draw picks its pipeline by, a ParticleBlendMode value
 	uint32_t blendMode = 0;
 

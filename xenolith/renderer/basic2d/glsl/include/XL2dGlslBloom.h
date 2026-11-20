@@ -46,11 +46,23 @@ SP_GLSL_INLINE float bloomBrightFactor(vec3 c, float threshold) {
 	return (luma - threshold) / luma;
 }
 
-// The tonemap the composite returns the frame with, per channel; the white core may clip,
-// the dim end stays linear
+// The tonemap the composite returns the frame with, Horizon-2's hue-preserving shape: the
+// extended Reinhard curve rides the pixel's LUMA and its answer rescales every channel by the
+// same ratio, so a mixed color - a ribbon's gold, a dusk gradient - keeps its channel ratios
+// whatever the curve compresses. The per-channel curve this replaces answered a mid-luminance
+// blue (0.35, 0.7, 1.0) with ratios crushed toward gray, each channel compressed by its own
+// factor; the luma curve answers the same blue with its own ratios intact. Gray inputs read
+// the same numbers the per-channel curve always did - a gray pixel's luma is the pixel itself -
+// and the white point, the dim-end linearity and the monotonic climb stand as they were; a
+// pure hue stays pure the same way, all its energy one luma seat
 SP_GLSL_INLINE vec3 bloomTonemap(vec3 c) {
 	float w = XL_PARTICLE_BLOOM_WHITE;
-	return c * (1.0 + c / (w * w)) / (1.0 + c);
+	float luma = bloomLuma(c);
+	if (luma <= 0.0) {
+		return vec3(0.0, 0.0, 0.0);
+	}
+	float mapped = luma * (1.0 + luma / (w * w)) / (1.0 + luma);
+	return c * (mapped / luma);
 }
 
 #ifndef SP_GLSL
